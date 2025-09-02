@@ -162,7 +162,9 @@ describe("useAnonymousSession", () => {
       const { result } = renderHook(() => useAnonymousSession());
 
       await act(async () => {
-        await result.current.createSession();
+        await expect(result.current.createSession()).rejects.toThrow(
+          "Storage quota exceeded",
+        );
       });
 
       expect(console.error).toHaveBeenCalledWith(
@@ -229,7 +231,9 @@ describe("useAnonymousSession", () => {
       });
 
       await act(async () => {
-        await result.current.updateSession({ currentStep: 2 });
+        await expect(
+          result.current.updateSession({ currentStep: 2 }),
+        ).rejects.toThrow("Storage error");
       });
 
       expect(console.error).toHaveBeenCalledWith(
@@ -278,8 +282,14 @@ describe("useAnonymousSession", () => {
 
       await act(async () => {
         await result.current.createSession();
+      });
+
+      await act(async () => {
         await result.current.updateSession({ sequence: mockSequence });
       });
+
+      // Wait for state to update
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
       const storedSequence = result.current.getStoredSequence();
       expect(storedSequence).toEqual(mockSequence);

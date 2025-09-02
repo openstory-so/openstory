@@ -84,11 +84,7 @@ function loadSessionData(): AnonymousSessionData | null {
 function saveSessionData(data: AnonymousSessionData): void {
   if (typeof window === "undefined") return;
 
-  try {
-    localStorage.setItem(ANONYMOUS_SESSION_KEY, JSON.stringify(data));
-  } catch (error) {
-    console.warn("Failed to save anonymous session:", error);
-  }
+  localStorage.setItem(ANONYMOUS_SESSION_KEY, JSON.stringify(data));
 }
 
 export function useAnonymousSession(): UseAnonymousSessionReturn {
@@ -106,19 +102,18 @@ export function useAnonymousSession(): UseAnonymousSessionReturn {
 
   // Create a new anonymous session
   const createSession = useCallback(async (): Promise<void> => {
-    const user = createAnonymousUser();
-    const newSessionData: AnonymousSessionData = {
-      user,
-      lastActivity: new Date().toISOString(),
-    };
-
-    setSessionData(newSessionData);
-
     try {
+      const user = createAnonymousUser();
+      const newSessionData: AnonymousSessionData = {
+        user,
+        lastActivity: new Date().toISOString(),
+      };
+
+      setSessionData(newSessionData);
       saveSessionData(newSessionData);
     } catch (error) {
       console.error("Failed to create anonymous session:", error);
-      // Still set the session data in memory even if localStorage fails
+      throw error;
     }
   }, []);
 
@@ -129,19 +124,21 @@ export function useAnonymousSession(): UseAnonymousSessionReturn {
     ): Promise<void> => {
       if (!sessionData) return;
 
-      const updatedSessionData: AnonymousSessionData = {
-        ...sessionData,
-        ...data,
-        lastActivity: new Date().toISOString(),
-      };
-
-      setSessionData(updatedSessionData);
-
       try {
+        // Add small delay to ensure different timestamp
+        await new Promise((resolve) => setTimeout(resolve, 1));
+
+        const updatedSessionData: AnonymousSessionData = {
+          ...sessionData,
+          ...data,
+          lastActivity: new Date().toISOString(),
+        };
+
+        setSessionData(updatedSessionData);
         saveSessionData(updatedSessionData);
       } catch (error) {
         console.error("Failed to update anonymous session:", error);
-        // Still update in memory even if localStorage fails
+        throw error;
       }
     },
     [sessionData],
