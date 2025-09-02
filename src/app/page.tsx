@@ -16,13 +16,14 @@ export const HomePage: React.FC = () => {
           AI-Powered Video Sequence Creation
         </PageHeading>
         <PageDescription size="large" align="center" maxWidth="narrow">
-          Transform your scripts into consistent, styled video productions using
-          multiple AI models. Create professional video sequences with ease.
+          Try our AI-powered video creation tool instantly. No signup required -
+          start creating professional video sequences from your script right
+          away.
         </PageDescription>
 
         <HeroActions>
           <Button asChild size="lg">
-            <Link href="/sequences/new">Create New Sequence</Link>
+            <Link href="/create">Start Creating</Link>
           </Button>
 
           <Button variant="outline" size="lg" asChild>
