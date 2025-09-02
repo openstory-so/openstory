@@ -86,7 +86,7 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
       dispatch({ type: "MARK_STEP_COMPLETED", payload: 2 });
       onNext();
     }
-  }, [state.sequence?.frames.length, dispatch, onNext]);
+  }, [state.sequence?.frames?.length, dispatch, onNext]);
 
   const canGenerate = React.useMemo(() => {
     return (

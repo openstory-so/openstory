@@ -1,6 +1,8 @@
 import * as React from "react";
 import {
   enhanceScript,
+  type FrameGenerationResult,
+  generateFrames,
   type ScriptEnhancementResult,
   type ScriptValidationResult,
   validateScript,
@@ -108,14 +110,48 @@ export const ScriptStep: React.FC<ScriptStepProps> = ({
     }
   }, [state.sequence?.script, dispatch]);
 
-  const handleNext = React.useCallback(() => {
-    if (!state.sequence) return;
+  const handleNext = React.useCallback(async () => {
+    if (!state.sequence || !state.sequence.styleId) return;
 
     // Mark step 1 as completed
     dispatch({ type: "MARK_STEP_COMPLETED", payload: 1 });
 
     // Proceed to next step
     onNext();
+
+    // Auto-generate storyboard
+    setTimeout(async () => {
+      // Re-check sequence still exists after timeout
+      if (!state.sequence || !state.sequence.styleId) return;
+
+      const { script, styleId, id } = state.sequence;
+      dispatch({ type: "START_STORYBOARD_GENERATION" });
+
+      try {
+        const result: FrameGenerationResult = await generateFrames(
+          script,
+          styleId,
+          id,
+        );
+
+        if (result.success) {
+          dispatch({
+            type: "COMPLETE_STORYBOARD_GENERATION",
+            payload: result.frames,
+          });
+        } else {
+          dispatch({
+            type: "FAIL_STORYBOARD_GENERATION",
+            payload: result.error || "Failed to generate storyboard",
+          });
+        }
+      } catch (_error) {
+        dispatch({
+          type: "FAIL_STORYBOARD_GENERATION",
+          payload: "Failed to generate storyboard",
+        });
+      }
+    }, 100); // Small delay to ensure step transition completes first
   }, [state.sequence, dispatch, onNext]);
 
   const canProceed = React.useMemo(() => {
