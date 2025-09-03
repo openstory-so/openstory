@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { use, useCallback, useEffect } from "react";
+import { use, useCallback, useState } from "react";
 import { PageContainer } from "@/components/layout";
 import { StepNavigation } from "@/components/sequence-flow/step-navigation";
 import { StoryboardStep } from "@/components/sequence-flow/storyboard-step";
@@ -10,8 +10,8 @@ import {
   PageHeader,
   PageHeading,
 } from "@/components/typography";
+import { useSequence, useUpdateSequence } from "@/hooks/use-sequences";
 import { useUser } from "@/hooks/use-user";
-import { useSequenceFlowReducer } from "@/reducers/sequence-flow-reducer";
 
 export const dynamic = "force-dynamic";
 
@@ -24,41 +24,28 @@ interface StoryboardPageProps {
 export default function StoryboardPage({ params }: StoryboardPageProps) {
   const { id: sequenceId } = use(params);
   const router = useRouter();
-  const { data } = useUser();
-  const user = data?.user;
+  const { data: userData } = useUser();
+  const _user = userData?.user;
 
-  const [state, dispatch] = useSequenceFlowReducer({
-    user: user
-      ? {
-          id: user.id,
-          sessionId: `session_${user.id}`,
-          createdAt: user.created_at || new Date().toISOString(),
-          expiresAt: new Date(
-            Date.now() + 7 * 24 * 60 * 60 * 1000,
-          ).toISOString(),
-        }
-      : null,
-    currentStep: 2,
-    completedSteps: new Set([1]),
-  });
+  // Load the sequence data
+  const { data: sequence, isLoading } = useSequence(sequenceId);
+  const updateSequence = useUpdateSequence();
 
-  // Load sequence data if needed
-  useEffect(() => {
-    // In a real app, we'd load the sequence from the API
-    // For now, we'll assume the sequence is already in state
-    if (!state.sequence && sequenceId) {
-      // TODO: Load sequence from API
-      console.log("Loading sequence:", sequenceId);
-    }
-  }, [sequenceId, state.sequence]);
+  // Local state for generation
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generationError, setGenerationError] = useState<string | null>(null);
+
+  // Completed steps based on what's in the sequence
+  const completedSteps = new Set([1]); // Script is always completed to get here
+  if (sequence?.frames && sequence.frames.length > 0) {
+    completedSteps.add(2);
+  }
 
   const handleNext = useCallback(() => {
-    // Navigate to motion page
     router.push(`/sequences/${sequenceId}/motion`);
   }, [sequenceId, router]);
 
   const handlePrevious = useCallback(() => {
-    // Navigate back to script editing
     router.push(`/sequences/new`);
   }, [router]);
 
@@ -72,14 +59,34 @@ export default function StoryboardPage({ params }: StoryboardPageProps) {
           // Already on storyboard page
           break;
         case 3:
-          if (state.completedSteps.has(2)) {
+          if (completedSteps.has(2)) {
             router.push(`/sequences/${sequenceId}/motion`);
           }
           break;
       }
     },
-    [sequenceId, router, state.completedSteps],
+    [sequenceId, router, completedSteps],
   );
+
+  if (isLoading) {
+    return (
+      <PageContainer maxWidth="narrow" data-testid="storyboard-page">
+        <PageHeader>
+          <PageHeading>Loading sequence...</PageHeading>
+        </PageHeader>
+      </PageContainer>
+    );
+  }
+
+  if (!sequence) {
+    return (
+      <PageContainer maxWidth="narrow" data-testid="storyboard-page">
+        <PageHeader>
+          <PageHeading>Sequence not found</PageHeading>
+        </PageHeader>
+      </PageContainer>
+    );
+  }
 
   return (
     <PageContainer maxWidth="narrow" data-testid="storyboard-page">
@@ -92,13 +99,37 @@ export default function StoryboardPage({ params }: StoryboardPageProps) {
 
       <StepNavigation
         currentStep={2}
-        completedSteps={state.completedSteps}
+        completedSteps={completedSteps}
         onStepClick={handleStepClick}
       />
 
       <StoryboardStep
-        state={state}
-        dispatch={dispatch}
+        sequence={sequence}
+        isGenerating={isGenerating}
+        generationError={generationError}
+        onGenerationStart={() => {
+          setIsGenerating(true);
+          setGenerationError(null);
+        }}
+        onGenerationComplete={(frames) => {
+          setIsGenerating(false);
+          // Update the sequence with new frames
+          updateSequence.mutate({
+            id: sequenceId,
+            frames,
+          });
+        }}
+        onGenerationError={(error) => {
+          setIsGenerating(false);
+          setGenerationError(error);
+        }}
+        onFrameReorder={(frames) => {
+          // Update the sequence with reordered frames
+          updateSequence.mutate({
+            id: sequenceId,
+            frames,
+          });
+        }}
         onNext={handleNext}
         onPrevious={handlePrevious}
       />

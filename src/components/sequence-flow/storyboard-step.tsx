@@ -3,103 +3,115 @@ import { useCallback, useMemo, useState } from "react";
 import {
   type FrameGenerationResult,
   generateFrames,
-} from "@/app/actions/anonymous-flow/index.mock";
+} from "@/app/actions/sequence";
 import { StoryboardFrame } from "@/components/sequence/storyboard-frame";
 import { SectionHeading } from "@/components/typography";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import type {
-  SequenceFlowAction,
-  SequenceFlowState,
-} from "@/reducers/sequence-flow-reducer";
+import type { Database } from "@/types/database";
+
+type Sequence = Database["public"]["Tables"]["sequences"]["Row"];
+type Frame = Database["public"]["Tables"]["frames"]["Row"];
 
 interface StoryboardStepProps {
-  state: SequenceFlowState;
-  dispatch: React.Dispatch<SequenceFlowAction>;
+  sequence: Sequence;
+  isGenerating: boolean;
+  generationError: string | null;
+  onGenerationStart: () => void;
+  onGenerationComplete: (frames: Frame[]) => void;
+  onGenerationError: (error: string) => void;
+  onFrameReorder: (frames: Frame[]) => void;
   onNext: () => void;
   onPrevious: () => void;
 }
 
 export const StoryboardStep: React.FC<StoryboardStepProps> = ({
-  state,
-  dispatch,
+  sequence,
+  isGenerating,
+  generationError,
+  onGenerationStart,
+  onGenerationComplete,
+  onGenerationError,
+  onFrameReorder,
   onNext,
   onPrevious,
 }) => {
-  const [generationError, setGenerationError] = useState<string | null>(null);
+  const [currentOperation, setCurrentOperation] = useState<string | null>(null);
+
+  const frames = sequence.frames || [];
+  const hasFrames = frames.length > 0;
+  const styleId = sequence.style_id;
 
   const handleGenerateStoryboard = useCallback(async () => {
-    if (!state.sequence || !state.sequence.styleId) return;
+    if (!sequence.script || !styleId) return;
 
-    dispatch({ type: "START_STORYBOARD_GENERATION" });
-    setGenerationError(null);
+    onGenerationStart();
+    setCurrentOperation("Analyzing script...");
 
     try {
       const result: FrameGenerationResult = await generateFrames(
-        state.sequence.script,
-        state.sequence.styleId,
-        state.sequence.id,
+        sequence.script,
+        styleId,
+        sequence.id,
       );
 
       if (result.success) {
-        dispatch({
-          type: "COMPLETE_STORYBOARD_GENERATION",
-          payload: result.frames,
-        });
+        onGenerationComplete(result.frames);
       } else {
-        dispatch({
-          type: "FAIL_STORYBOARD_GENERATION",
-          payload: result.error || "Failed to generate storyboard",
-        });
-        setGenerationError(result.error || "Failed to generate storyboard");
+        onGenerationError(result.error || "Failed to generate storyboard");
       }
     } catch (error) {
       const errorMessage =
         error instanceof Error
           ? error.message
           : "Unexpected error during generation";
-      dispatch({ type: "FAIL_STORYBOARD_GENERATION", payload: errorMessage });
-      setGenerationError(errorMessage);
+      onGenerationError(errorMessage);
+    } finally {
+      setCurrentOperation(null);
     }
-  }, [state.sequence, dispatch]);
-
-  const _handleRegenerateFrame = useCallback(
-    async (_frameId: string) => {
-      // For now, just regenerate the whole storyboard
-      // In a real implementation, this would regenerate just the specific frame
-      await handleGenerateStoryboard();
-    },
-    [handleGenerateStoryboard],
-  );
+  }, [
+    sequence,
+    styleId,
+    onGenerationStart,
+    onGenerationComplete,
+    onGenerationError,
+  ]);
 
   const handleFrameReorder = useCallback(
     (fromIndex: number, toIndex: number) => {
-      dispatch({ type: "REORDER_FRAMES", payload: { fromIndex, toIndex } });
+      const newFrames = [...frames];
+      const [removed] = newFrames.splice(fromIndex, 1);
+      newFrames.splice(toIndex, 0, removed);
+
+      // Update order_index for all frames
+      const updatedFrames = newFrames.map((frame, index) => ({
+        ...frame,
+        order_index: index,
+      }));
+
+      onFrameReorder(updatedFrames);
     },
-    [dispatch],
+    [frames, onFrameReorder],
   );
 
   const handleNext = useCallback(() => {
-    if ((state.sequence?.frames?.length || 0) > 0) {
-      // Mark step 2 as completed
-      dispatch({ type: "MARK_STEP_COMPLETED", payload: 2 });
+    if (hasFrames) {
       onNext();
     }
-  }, [state.sequence?.frames?.length, dispatch, onNext]);
+  }, [hasFrames, onNext]);
 
   const canGenerate = useMemo(() => {
     return (
-      state.sequence &&
-      state.sequence.script.trim().length >= 10 &&
-      state.sequence.styleId &&
-      !state.generation.isGeneratingStoryboard
+      sequence.script &&
+      sequence.script.trim().length >= 10 &&
+      styleId &&
+      !isGenerating
     );
-  }, [state.sequence, state.generation.isGeneratingStoryboard]);
+  }, [sequence.script, styleId, isGenerating]);
 
-  const hasFrames = (state.sequence?.frames?.length || 0) > 0;
-  const canProceed = hasFrames && !state.generation.isGeneratingStoryboard;
+  const canProceed = hasFrames && !isGenerating;
 
-  if (!state.sequence) {
+  if (!sequence) {
     return (
       <div className="flex items-center justify-center py-8">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
@@ -133,9 +145,7 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
                 size="lg"
                 data-testid="generate-storyboard-button"
               >
-                {state.generation.isGeneratingStoryboard
-                  ? "Generating..."
-                  : "Generate Storyboard"}
+                {isGenerating ? "Generating..." : "Generate Storyboard"}
               </Button>
             </div>
           </div>
@@ -160,16 +170,16 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
       )}
 
       {/* Loading State */}
-      {state.generation.isGeneratingStoryboard && (
+      {isGenerating && (
         <div className="space-y-4">
           <div className="flex items-center justify-center py-8">
             <div className="text-center space-y-4">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto" />
               <div className="space-y-2">
                 <div className="font-medium">Generating Your Storyboard</div>
-                {state.generation.currentOperation && (
+                {currentOperation && (
                   <div className="text-sm text-muted-foreground">
-                    {state.generation.currentOperation}
+                    {currentOperation}
                   </div>
                 )}
               </div>
@@ -183,7 +193,7 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
         <div className="space-y-6">
           <div className="flex items-center justify-between">
             <div className="text-sm text-muted-foreground">
-              {state.sequence.frames.length} frames generated
+              {frames.length} frames generated
             </div>
 
             <Button
@@ -198,17 +208,16 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
           </div>
 
           <div className="grid gap-6 md:grid-cols-2">
-            {state.sequence.frames
+            {frames
               .sort((a, b) => a.order_index - b.order_index)
               .map((frame, index) => (
                 <StoryboardFrame
                   key={frame.id}
                   frame={frame}
                   onReorder={(frameId: string, newOrder: number) => {
-                    const currentIndex =
-                      state.sequence?.frames.findIndex(
-                        (f) => f.id === frameId,
-                      ) ?? -1;
+                    const currentIndex = frames.findIndex(
+                      (f) => f.id === frameId,
+                    );
                     if (currentIndex !== -1) {
                       handleFrameReorder(currentIndex, newOrder - 1); // Convert to 0-based index
                     }
@@ -218,13 +227,11 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
               ))}
           </div>
 
-          {state.generation.storyboardError && (
+          {generationError && (
             <Alert variant="destructive">
               <div className="space-y-2">
                 <div className="font-medium">Generation Error</div>
-                <div className="text-sm">
-                  {state.generation.storyboardError}
-                </div>
+                <div className="text-sm">{generationError}</div>
               </div>
             </Alert>
           )}

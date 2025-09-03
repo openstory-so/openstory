@@ -309,6 +309,7 @@ export type Database = {
           metadata: Json | null;
           script: string | null;
           status: Database["public"]["Enums"]["sequence_status"];
+          style_id: string | null;
           team_id: string;
           title: string;
           updated_at: string;
@@ -321,6 +322,7 @@ export type Database = {
           metadata?: Json | null;
           script?: string | null;
           status?: Database["public"]["Enums"]["sequence_status"];
+          style_id?: string | null;
           team_id: string;
           title: string;
           updated_at?: string;
@@ -333,6 +335,7 @@ export type Database = {
           metadata?: Json | null;
           script?: string | null;
           status?: Database["public"]["Enums"]["sequence_status"];
+          style_id?: string | null;
           team_id?: string;
           title?: string;
           updated_at?: string;
@@ -344,6 +347,13 @@ export type Database = {
             columns: ["created_by"];
             isOneToOne: false;
             referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "sequences_style_id_fkey";
+            columns: ["style_id"];
+            isOneToOne: false;
+            referencedRelation: "styles";
             referencedColumns: ["id"];
           },
           {
@@ -611,7 +621,6 @@ export type Database = {
         Row: {
           avatar_url: string | null;
           created_at: string;
-          email: string;
           full_name: string | null;
           id: string;
           updated_at: string;
@@ -619,7 +628,6 @@ export type Database = {
         Insert: {
           avatar_url?: string | null;
           created_at?: string;
-          email: string;
           full_name?: string | null;
           id: string;
           updated_at?: string;
@@ -627,7 +635,6 @@ export type Database = {
         Update: {
           avatar_url?: string | null;
           created_at?: string;
-          email?: string;
           full_name?: string | null;
           id?: string;
           updated_at?: string;

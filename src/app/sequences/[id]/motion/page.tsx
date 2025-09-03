@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { use, useCallback, useEffect } from "react";
+import { use, useCallback, useState } from "react";
 import { PageContainer } from "@/components/layout";
 import { MotionStep } from "@/components/sequence-flow/motion-step";
 import { StepNavigation } from "@/components/sequence-flow/step-navigation";
@@ -10,8 +10,8 @@ import {
   PageHeader,
   PageHeading,
 } from "@/components/typography";
+import { useSequence, useUpdateSequence } from "@/hooks/use-sequences";
 import { useUser } from "@/hooks/use-user";
-import { useSequenceFlowReducer } from "@/reducers/sequence-flow-reducer";
 
 export const dynamic = "force-dynamic";
 
@@ -24,36 +24,32 @@ interface MotionPageProps {
 export default function MotionPage({ params }: MotionPageProps) {
   const { id: sequenceId } = use(params);
   const router = useRouter();
-  const { data } = useUser();
-  const user = data?.user;
+  const { data: userData } = useUser();
+  const _user = userData?.user;
 
-  const [state, dispatch] = useSequenceFlowReducer({
-    user: user
-      ? {
-          id: user.id,
-          sessionId: `session_${user.id}`,
-          createdAt: user.created_at || new Date().toISOString(),
-          expiresAt: new Date(
-            Date.now() + 7 * 24 * 60 * 60 * 1000,
-          ).toISOString(),
-        }
-      : null,
-    currentStep: 3,
-    completedSteps: new Set([1, 2]),
-  });
+  // Load the sequence data
+  const { data: sequence, isLoading } = useSequence(sequenceId);
+  const updateSequence = useUpdateSequence();
 
-  // Load sequence data if needed
-  useEffect(() => {
-    // In a real app, we'd load the sequence from the API
-    // For now, we'll assume the sequence is already in state
-    if (!state.sequence && sequenceId) {
-      // TODO: Load sequence from API
-      console.log("Loading sequence:", sequenceId);
-    }
-  }, [sequenceId, state.sequence]);
+  // Local state for motion generation
+  const [generatingFrameIds, setGeneratingFrameIds] = useState<Set<string>>(
+    new Set(),
+  );
+  const [generationErrors, setGenerationErrors] = useState<Map<string, string>>(
+    new Map(),
+  );
+
+  // Completed steps based on what's in the sequence
+  const completedSteps = new Set([1, 2]); // Script and storyboard are completed to get here
+
+  // Check if any frames have motion
+  const hasMotion =
+    sequence?.frames?.some((frame) => frame.motion_url) || false;
+  if (hasMotion) {
+    completedSteps.add(3);
+  }
 
   const handlePrevious = useCallback(() => {
-    // Navigate back to storyboard
     router.push(`/sequences/${sequenceId}/storyboard`);
   }, [sequenceId, router]);
 
@@ -74,6 +70,26 @@ export default function MotionPage({ params }: MotionPageProps) {
     [sequenceId, router],
   );
 
+  if (isLoading) {
+    return (
+      <PageContainer maxWidth="narrow" data-testid="motion-page">
+        <PageHeader>
+          <PageHeading>Loading sequence...</PageHeading>
+        </PageHeader>
+      </PageContainer>
+    );
+  }
+
+  if (!sequence) {
+    return (
+      <PageContainer maxWidth="narrow" data-testid="motion-page">
+        <PageHeader>
+          <PageHeading>Sequence not found</PageHeading>
+        </PageHeader>
+      </PageContainer>
+    );
+  }
+
   return (
     <PageContainer maxWidth="narrow" data-testid="motion-page">
       <PageHeader>
@@ -86,13 +102,50 @@ export default function MotionPage({ params }: MotionPageProps) {
 
       <StepNavigation
         currentStep={3}
-        completedSteps={state.completedSteps}
+        completedSteps={completedSteps}
         onStepClick={handleStepClick}
       />
 
       <MotionStep
-        state={state}
-        dispatch={dispatch}
+        sequence={sequence}
+        generatingFrameIds={generatingFrameIds}
+        generationErrors={generationErrors}
+        onMotionGenerationStart={(frameId) => {
+          setGeneratingFrameIds((prev) => new Set([...prev, frameId]));
+          setGenerationErrors((prev) => {
+            const next = new Map(prev);
+            next.delete(frameId);
+            return next;
+          });
+        }}
+        onMotionGenerationComplete={(frameId, motionUrl) => {
+          setGeneratingFrameIds((prev) => {
+            const next = new Set(prev);
+            next.delete(frameId);
+            return next;
+          });
+
+          // Update the frame with motion URL
+          const updatedFrames =
+            sequence.frames?.map((frame) =>
+              frame.id === frameId
+                ? { ...frame, motion_url: motionUrl }
+                : frame,
+            ) || [];
+
+          updateSequence.mutate({
+            id: sequenceId,
+            frames: updatedFrames,
+          });
+        }}
+        onMotionGenerationError={(frameId, error) => {
+          setGeneratingFrameIds((prev) => {
+            const next = new Set(prev);
+            next.delete(frameId);
+            return next;
+          });
+          setGenerationErrors((prev) => new Map(prev).set(frameId, error));
+        }}
         onPrevious={handlePrevious}
       />
     </PageContainer>

@@ -45,7 +45,43 @@ export async function GET(request: NextRequest) {
       const authService = new AuthService();
 
       // For anonymous upgrade, we now use the native Supabase approach
-      // The linkIdentity mechanism handles this automatically during OTP verification
+      // Anonymous users already have:
+      // 1. A team (created when they became anonymous)
+      // 2. A user record (created when they became anonymous)
+      // 3. Team membership as owner (created when they became anonymous)
+      // Note: Email is stored only in auth.users, not in our users table
+
+      // Update the user profile data (not email, which is in auth.users)
+      const { error: userError } = await supabase
+        .from("users")
+        .upsert({
+          id: user.id,
+          full_name:
+            user.user_metadata?.full_name || user.email?.split("@")[0] || null,
+          avatar_url: user.user_metadata?.avatar_url || null,
+        })
+        .select()
+        .single();
+
+      if (userError && userError.code !== "42P01") {
+        // Ignore "relation does not exist" errors
+        console.error("Error updating user profile:", userError);
+      }
+
+      // Update team name to be more personalized if this is a user with email
+      if (user.email) {
+        const teamId = await authService.getCurrentUserTeamId();
+        if (teamId) {
+          const teamName = user.user_metadata?.full_name
+            ? `${user.user_metadata.full_name}'s Team`
+            : `${user.email.split("@")[0]}'s Team`;
+
+          await supabase
+            .from("teams")
+            .update({ name: teamName })
+            .eq("id", teamId);
+        }
+      }
 
       // Update user profile metadata if needed
       const profileUpdate = {

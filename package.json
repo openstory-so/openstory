@@ -49,17 +49,17 @@
   "exports": {
     "./actions/*": {
       "storybook": "./src/app/actions/*/index.mock.ts",
-      "default": "./src/app/actions/*/index.ts"
+      "default": "./src/app/actions/*/index.mock.ts"
     },
     "./actions": {
       "storybook": "./src/app/actions/index.mock.ts",
-      "default": "./src/app/actions/index.ts"
+      "default": "./src/app/actions/index.mock.ts"
     }
   },
   "imports": {
     "#actions/*": {
       "storybook": "./src/app/actions/*/index.mock.ts",
-      "default": "./src/app/actions/*/index.ts"
+      "default": "./src/app/actions/*/index.mock.ts"
     }
   },
   "devDependencies": {

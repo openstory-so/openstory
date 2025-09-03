@@ -2,12 +2,12 @@ import type * as React from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   enhanceScript,
-  type FrameGenerationResult,
   generateFrames,
   type ScriptEnhancementResult,
   type ScriptValidationResult,
+  saveSequence,
   validateScript,
-} from "@/app/actions/anonymous-flow/index.mock";
+} from "@/app/actions/sequence";
 import { ScriptEditor } from "@/components/sequence/script-editor";
 import { StyleSelector } from "@/components/sequence/style-selector";
 import { SectionHeading } from "@/components/typography";
@@ -114,45 +114,62 @@ export const ScriptStep: React.FC<ScriptStepProps> = ({
   const handleNext = useCallback(async () => {
     if (!state.sequence || !state.sequence.styleId) return;
 
-    // Mark step 1 as completed
-    dispatch({ type: "MARK_STEP_COMPLETED", payload: 1 });
+    const { script, styleId, name } = state.sequence;
 
-    // Proceed to next step
-    onNext();
+    // First save the sequence to database
+    dispatch({ type: "START_STORYBOARD_GENERATION" });
 
-    // Auto-generate storyboard
-    setTimeout(async () => {
-      // Re-check sequence still exists after timeout
-      if (!state.sequence || !state.sequence.styleId) return;
+    try {
+      // Save sequence to database
+      const saveResult = await saveSequence(script, styleId, undefined, name);
 
-      const { script, styleId, id } = state.sequence;
-      dispatch({ type: "START_STORYBOARD_GENERATION" });
+      if (!saveResult.success || !saveResult.sequence) {
+        throw new Error(saveResult.error || "Failed to save sequence");
+      }
 
-      try {
-        const result: FrameGenerationResult = await generateFrames(
-          script,
-          styleId,
-          id,
-        );
+      // Update local state with the saved sequence ID
+      dispatch({
+        type: "LOAD_SEQUENCE",
+        payload: {
+          ...state.sequence,
+          id: saveResult.sequence.id,
+        },
+      });
 
-        if (result.success) {
-          dispatch({
-            type: "COMPLETE_STORYBOARD_GENERATION",
-            payload: result.frames,
-          });
-        } else {
-          dispatch({
-            type: "FAIL_STORYBOARD_GENERATION",
-            payload: result.error || "Failed to generate storyboard",
-          });
-        }
-      } catch (_error) {
+      // Generate frames
+      const framesResult = await generateFrames(
+        script,
+        styleId,
+        saveResult.sequence.id,
+      );
+
+      if (framesResult.success && framesResult.frames) {
+        dispatch({
+          type: "COMPLETE_STORYBOARD_GENERATION",
+          payload: framesResult.frames,
+        });
+
+        // Mark step 1 as completed
+        dispatch({ type: "MARK_STEP_COMPLETED", payload: 1 });
+
+        // Proceed to next step
+        onNext();
+      } else {
         dispatch({
           type: "FAIL_STORYBOARD_GENERATION",
-          payload: "Failed to generate storyboard",
+          payload: framesResult.error || "Failed to generate storyboard",
         });
       }
-    }, 100); // Small delay to ensure step transition completes first
+    } catch (error) {
+      console.error("Error in handleNext:", error);
+      dispatch({
+        type: "FAIL_STORYBOARD_GENERATION",
+        payload:
+          error instanceof Error
+            ? error.message
+            : "Failed to generate storyboard",
+      });
+    }
   }, [state.sequence, dispatch, onNext]);
 
   const canProceed = useMemo(() => {

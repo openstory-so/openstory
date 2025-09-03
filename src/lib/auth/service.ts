@@ -32,6 +32,54 @@ export class AuthService {
       throw new Error("No user returned from anonymous sign-in");
     }
 
+    // Create a team for this anonymous user (same as regular users)
+    const teamSlug = `user-${data.user.id.substring(0, 8)}-${Date.now()}`;
+    const { data: team, error: teamError } = await supabase
+      .from("teams")
+      .insert({
+        name: "My Team", // Consistent naming with regular users
+        slug: teamSlug,
+      })
+      .select()
+      .single();
+
+    if (teamError) {
+      throw new Error(
+        `Failed to create team for anonymous user: ${teamError.message}`,
+      );
+    }
+
+    // Create user record for anonymous user (needed for team_members FK)
+    // No email needed - it's stored in auth.users
+    const { error: userError } = await supabase.from("users").insert({
+      id: data.user.id,
+      // Email is in auth.users, we only store additional profile data here
+    });
+
+    if (userError && userError.code !== "23505") {
+      // Ignore duplicate key errors
+      // Clean up team if user creation fails
+      await supabase.from("teams").delete().eq("id", team.id);
+      throw new Error(`Failed to create user record: ${userError.message}`);
+    }
+
+    // Add anonymous user as owner of their team (same as regular users)
+    const { error: memberError } = await supabase.from("team_members").insert({
+      user_id: data.user.id,
+      team_id: team.id,
+      role: "owner",
+    });
+
+    if (memberError && memberError.code !== "23505") {
+      // Ignore duplicate key errors
+      // Clean up if team member creation fails
+      await supabase.from("teams").delete().eq("id", team.id);
+      await supabase.from("users").delete().eq("id", data.user.id);
+      throw new Error(
+        `Failed to create team membership: ${memberError.message}`,
+      );
+    }
+
     // Create enhanced user profile
     const userProfile: UserProfile = {
       ...data.user,
@@ -41,6 +89,33 @@ export class AuthService {
     };
 
     return userProfile;
+  }
+
+  /**
+   * Get the current user's team ID
+   * All users (anonymous and registered) have teams stored the same way
+   */
+  async getCurrentUserTeamId(): Promise<string | null> {
+    const supabase = await this.getSupabase();
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    if (!session?.user) {
+      return null;
+    }
+
+    // All users have their team relationship in team_members table
+    // Get the team where they are the owner
+    const { data } = await supabase
+      .from("team_members")
+      .select("team_id")
+      .eq("user_id", session.user.id)
+      .eq("role", "owner")
+      .limit(1)
+      .single();
+
+    return data?.team_id || null;
   }
 
   /**
@@ -54,12 +129,31 @@ export class AuthService {
     // but the primary user creation should use Supabase native auth
     const sessionId = crypto.randomUUID();
 
+    const supabase = await this.getSupabase();
+
+    // Create a team for this session
+    const teamSlug = `anon-session-${sessionId.substring(0, 8)}-${Date.now()}`;
+    const { data: team, error: teamError } = await supabase
+      .from("teams")
+      .insert({
+        name: "Anonymous Team",
+        slug: teamSlug,
+      })
+      .select()
+      .single();
+
+    if (teamError) {
+      throw new Error(
+        `Failed to create team for anonymous session: ${teamError.message}`,
+      );
+    }
+
     const sessionData: AnonymousSessionInsert = {
       id: sessionId,
+      team_id: team.id,
       data: (initialData || {}) as Json,
     };
 
-    const supabase = await this.getSupabase();
     const { data, error } = await supabase
       .from("anonymous_sessions")
       .insert(sessionData)
@@ -67,6 +161,8 @@ export class AuthService {
       .single();
 
     if (error) {
+      // Clean up team if session creation fails
+      await supabase.from("teams").delete().eq("id", team.id);
       throw new Error(`Failed to create anonymous session: ${error.message}`);
     }
 
@@ -182,6 +278,9 @@ export class AuthService {
       if (error) {
         return { success: false, error: error.message };
       }
+
+      // The user already has their team and team membership from when they were created
+      // Email is stored in auth.users, not in our users table
 
       return { success: true };
     } catch (error) {

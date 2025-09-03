@@ -1,11 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type {
-  CreateSequenceInput,
-  UpdateSequenceInput,
-} from "#actions/sequence";
-
-// Import the actions (will resolve to mock in Storybook)
-const actions = import("#actions/sequence");
+import { getSequence } from "@/app/actions/sequences";
+import type { Frame, Sequence } from "@/types/database";
 
 // Query keys
 export const sequenceKeys = {
@@ -21,8 +16,9 @@ export function useSequences(teamId?: string) {
   return useQuery({
     queryKey: sequenceKeys.list(teamId),
     queryFn: async () => {
-      const { listSequences } = await actions;
-      return listSequences(teamId);
+      // For now, return empty array as we don't have a list endpoint yet
+      // This would be implemented when we have a list sequences API
+      return [] as Sequence[];
     },
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
@@ -33,8 +29,11 @@ export function useSequence(id: string) {
   return useQuery({
     queryKey: sequenceKeys.detail(id),
     queryFn: async () => {
-      const { getSequence } = await actions;
-      return getSequence(id);
+      const result = await getSequence(id);
+      if (result.success && result.sequence) {
+        return result.sequence;
+      }
+      throw new Error(result.error || "Failed to load sequence");
     },
     staleTime: 5 * 60 * 1000,
     enabled: !!id,
@@ -46,9 +45,22 @@ export function useCreateSequence() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (input: CreateSequenceInput) => {
-      const { createSequence } = await actions;
-      return createSequence(input);
+    mutationFn: async (input: {
+      script: string;
+      styleId: string | null;
+      name?: string;
+    }) => {
+      const { saveSequence } = await import("@/app/actions/sequences");
+      const result = await saveSequence(
+        input.script,
+        input.styleId,
+        undefined,
+        input.name,
+      );
+      if (result.success && result.sequence) {
+        return result.sequence;
+      }
+      throw new Error(result.error || "Failed to create sequence");
     },
     onSuccess: () => {
       // Invalidate and refetch sequences list
@@ -62,21 +74,29 @@ export function useUpdateSequence() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (input: UpdateSequenceInput) => {
-      const { updateSequence } = await actions;
-      return updateSequence(input);
+    mutationFn: async (input: {
+      id: string;
+      name?: string;
+      script?: string;
+      styleId?: string | null;
+      frames?: Frame[];
+    }) => {
+      const { saveSequence } = await import("@/app/actions/sequences");
+      const result = await saveSequence(
+        input.script || "",
+        input.styleId !== undefined ? input.styleId : null,
+        input.id,
+        input.name,
+      );
+      if (result.success && result.sequence) {
+        return result.sequence;
+      }
+      throw new Error(result.error || "Failed to update sequence");
     },
-    onSuccess: (data, _variables) => {
+    onSuccess: (data) => {
       // Update the specific sequence in cache
-      const result = data as unknown;
-      if (
-        result &&
-        typeof result === "object" &&
-        result !== null &&
-        "id" in result &&
-        typeof result.id === "string"
-      ) {
-        queryClient.setQueryData(sequenceKeys.detail(result.id), result);
+      if (data?.id) {
+        queryClient.setQueryData(sequenceKeys.detail(data.id), data);
       }
       // Invalidate lists to ensure consistency
       queryClient.invalidateQueries({ queryKey: sequenceKeys.lists() });
@@ -89,9 +109,9 @@ export function useDeleteSequence() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (id: string) => {
-      const { deleteSequence } = await actions;
-      return deleteSequence(id);
+    mutationFn: async (_id: string) => {
+      // Delete sequence API to be implemented
+      throw new Error("Delete sequence not yet implemented");
     },
     onSuccess: (_, id) => {
       // Remove from cache
@@ -107,11 +127,23 @@ export function useGenerateStoryboard() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (sequenceId: string) => {
-      const { generateStoryboard } = await actions;
-      return generateStoryboard(sequenceId);
+    mutationFn: async ({
+      sequenceId,
+      script,
+      styleId,
+    }: {
+      sequenceId: string;
+      script: string;
+      styleId: string;
+    }) => {
+      const { generateFrames } = await import("@/app/actions/sequences");
+      const result = await generateFrames(script, styleId, sequenceId);
+      if (result.success && result.frames) {
+        return result.frames;
+      }
+      throw new Error(result.error || "Failed to generate storyboard");
     },
-    onSuccess: (_, sequenceId) => {
+    onSuccess: (_, { sequenceId }) => {
       // Invalidate the sequence to get updated status
       queryClient.invalidateQueries({
         queryKey: sequenceKeys.detail(sequenceId),
