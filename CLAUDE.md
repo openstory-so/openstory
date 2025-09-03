@@ -6,37 +6,37 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Development
 ```bash
-pnpm dev              # Start development server with Turbopack
-pnpm build            # Build production app with Turbopack
-pnpm start            # Start production server
+bun dev              # Start development server with Turbopack
+bun build            # Build production app with Turbopack
+bun start            # Start production server
 ```
 
 ### Code Quality
 ```bash
-pnpm biome check .          # Run linter
-pnpm biome format .         # Format code
-pnpm biome check --write .  # Fix linting and formatting
+bun biome check .          # Run linter
+bun biome format .         # Format code
+bun biome check --write .  # Fix linting and formatting
 ```
 
 ### Supabase
 ```bash
-pnpx supabase start     # Start local Supabase
-pnpx supabase stop      # Stop local Supabase
-pnpx supabase db reset  # Reset database
-pnpx supabase status    # Check local services status
-pnpm supabase:types     # Generate TypeScript types from database
+bunx supabase start     # Start local Supabase
+bunx supabase stop      # Stop local Supabase
+bunx supabase db reset  # Reset database
+bunx supabase status    # Check local services status
+bun supabase:types     # Generate TypeScript types from database
 ```
 
 **Note**: Database types (`src/lib/gen.types.ts`) are auto-generated:
-- Generated automatically on `pnpm install` via postinstall hook
-- Can be manually regenerated with `pnpm supabase:types`
+- Generated automatically on `bun install` via postinstall hook
+- Can be manually regenerated with `bun supabase:types`
 - File is gitignored to ensure types always match local database schema
 - Types are generated from your local Supabase instance (must be running)
 - Use the convenience exports from `@/types/database` for cleaner imports
 
 ### TypeScript
 ```bash
-pnpm tsc --noEmit      # Type check without building
+bun tsc --noEmit      # Type check without building
 ```
 
 ## Project Architecture

@@ -11,7 +11,7 @@ echo -e "${GREEN}Setting up .env.development.local...${NC}"
 
 # Check if Supabase is running
 echo -e "${BLUE}Checking Supabase status...${NC}"
-SUPABASE_STATUS=$(pnpx supabase status 2>&1)
+SUPABASE_STATUS=$(bunx supabase status 2>&1)
 
 if echo "$SUPABASE_STATUS" | grep -q "supabase local development setup"; then
     echo -e "${GREEN}✓ Supabase is running${NC}"
@@ -24,13 +24,13 @@ if echo "$SUPABASE_STATUS" | grep -q "supabase local development setup"; then
     # Database URL is typically: postgresql://postgres:postgres@localhost:54322/postgres
     DATABASE_URL="postgresql://postgres:postgres@localhost:54322/postgres"
 else
-    echo -e "${RED}✗ Supabase is not running. Please run: pnpm supabase:start${NC}"
+    echo -e "${RED}✗ Supabase is not running. Please run: bun supabase:start${NC}"
     exit 1
 fi
 
 # Setup QStash for local development (using hardcoded user 1)
 echo -e "${BLUE}Setting up QStash for local development...${NC}"
-echo -e "${YELLOW}Make sure 'pnpm qstash:dev' is running in another terminal!${NC}"
+echo -e "${YELLOW}Make sure 'bun qstash:dev' is running in another terminal!${NC}"
 
 # Hardcoded credentials for user 1 from qstash dev server
 QSTASH_TOKEN="eyJVc2VySUQiOiJ1c2VyMSIsIlBhc3N3b3JkIjoicGFzc3dvcmQxIn0="
@@ -94,5 +94,5 @@ else
     echo "  App URL: http://localhost:3000"
 fi
 echo ""
-echo -e "${YELLOW}Remember to keep 'pnpm qstash:dev' running in another terminal!${NC}"
-echo -e "${GREEN}Setup complete! You can now run 'pnpm dev'${NC}"
+echo -e "${YELLOW}Remember to keep 'bun qstash:dev' running in another terminal!${NC}"
+echo -e "${GREEN}Setup complete! You can now run 'bun dev'${NC}"

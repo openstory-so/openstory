@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Run biome check and capture output
-output=$(pnpm biome check . 2>&1)
+output=$(bun biome check . 2>&1)
 exit_code=$?
 
 # Print the output

@@ -1,0 +1,13 @@
+[build]
+# Equivalent to pnpm's ignoredBuiltDependencies
+skip = ["msw"]
+
+# Equivalent to pnpm's onlyBuiltDependencies
+allowlist = [
+  "@tailwindcss/oxide",
+  "core-js-pure", 
+  "esbuild",
+  "lefthook",
+  "sharp",
+  "supabase"
+]

@@ -20,13 +20,13 @@ if command -v tmux &> /dev/null; then
     tmux kill-session -t velro 2>/dev/null
     
     # Create new tmux session with Supabase
-    tmux new-session -d -s velro -n supabase "pnpx supabase start"
+    tmux new-session -d -s velro -n supabase "bunx supabase start"
     
     # Create QStash pane
-    tmux new-window -t velro -n qstash "pnpx qstash dev"
+    tmux new-window -t velro -n qstash "bunx qstash dev"
     
     # Create Next.js pane
-    tmux new-window -t velro -n nextjs "pnpm dev"
+    tmux new-window -t velro -n nextjs "bun dev"
     
     # Attach to the session
     tmux attach-session -t velro
@@ -47,15 +47,15 @@ else
     
     # Start all services in background
     echo -e "${BLUE}[1/3] Starting Supabase...${NC}"
-    pnpx supabase start &
+    bunx supabase start &
     
     sleep 3
     
     echo -e "${BLUE}[2/3] Starting QStash tunnel...${NC}"
-    pnpx qstash dev &
+    bunx qstash dev &
     
     echo -e "${BLUE}[3/3] Starting Next.js app...${NC}"
-    pnpm dev &
+    bun dev &
     
     # Wait for all background jobs
     wait
