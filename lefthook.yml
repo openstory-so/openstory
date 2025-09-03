@@ -19,3 +19,8 @@ pre-commit:
     typecheck:
       glob: "*.{ts,tsx,mts,cts}"
       run: bun tsc --noEmit --skipLibCheck
+
+commit-msg:
+  commands:
+    add-issue-number:
+      run: scripts/add-issue-number.sh {1}
