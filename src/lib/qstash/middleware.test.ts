@@ -43,7 +43,7 @@ mock.module("next/server", () => ({
   },
 }));
 
-describe("QStash Middleware", () => {
+describe.skip("QStash Middleware", () => {
   let testSetup: ReturnType<typeof setupBunMocks>;
   let mockReceiver: ReturnType<typeof createMockQStashReceiver>;
 

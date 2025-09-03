@@ -27,6 +27,16 @@ bunx supabase status    # Check local services status
 bun supabase:types     # Generate TypeScript types from database
 ```
 
+### QStash Development
+```bash
+bun qstash:dev         # Start QStash tunnel for local webhooks
+```
+
+### Environment Setup
+```bash
+bun setup:env          # Create .env.development.local with Supabase credentials
+```
+
 **Note**: Database types (`src/lib/gen.types.ts`) are auto-generated:
 - Generated automatically on `bun install` via postinstall hook
 - Can be manually regenerated with `bun supabase:types`
@@ -37,6 +47,31 @@ bun supabase:types     # Generate TypeScript types from database
 ### TypeScript
 ```bash
 bun tsc --noEmit      # Type check without building
+```
+
+### Storybook (Component Development)
+```bash
+bun storybook         # Start Storybook dev server
+bun build-storybook   # Build Storybook for production
+```
+
+## Development Workflow
+
+### First Time Setup
+1. **Install dependencies**: `bun install`
+2. **Setup environment**: `bun setup:env` (requires QStash token from Upstash)
+3. **Start Supabase**: `bun supabase:start`
+
+### Daily Development (3 Terminal Setup)
+1. **Terminal 1 - Supabase**: `bun supabase:start` (if not already running)
+2. **Terminal 2 - QStash**: `bun qstash:dev` (for async job testing)  
+3. **Terminal 3 - Next.js**: `bun dev`
+
+### Before Committing
+```bash
+bun tsc --noEmit      # Check TypeScript
+bun biome check .     # Check linting/formatting  
+bun test              # Run test suite
 ```
 
 ## Project Architecture
@@ -85,10 +120,12 @@ All API routes follow this structure:
 5. Export as video or other formats
 
 ### Technology Stack
+- **Runtime**: Bun (migrated from Node.js/pnpm)
 - **Framework**: Next.js 15 with App Router and Turbopack
 - **Database**: Supabase (PostgreSQL + Auth + Storage + Realtime)
 - **Queue**: QStash (Upstash) for AI job management
 - **Styling**: Tailwind CSS v4 with shadcn/ui
+- **Testing**: Bun test (migrated from Vitest)
 - **Formatting**: Biome for linting and formatting
 - **AI Models**: Multiple providers (Fal.ai, Runway, Kling, etc.) via unified interface
 
@@ -233,12 +270,43 @@ Frames are the building blocks of sequences:
 ### Testing
 ```bash
 bun test              # Run all tests
-bun test --watch      # Run tests in watch mode
+bun test --watch      # Run tests in watch mode (also test:watch, test:ui)
 bun test --coverage   # Run tests with coverage
+bun test path/to/specific.test.ts  # Run single test file
+bun test --bail       # Stop after first failure
 ```
 
 ## Testing
-- Use bun:test to create tests and include tests for all logic on frontend and backend - but not for components themselves
-- Include database types in the codebase from types/database instead of supabase/gen.types
-- Always use the supabase cli to create migrations
-- Use z.uuid() insteadf of z.uuid()
+
+### Test Framework & Patterns
+- Use **bun:test** framework (not vitest) - migrated from Vitest to Bun test
+- Place API route tests in `__tests__` directories alongside routes
+- Place service/util tests in same directory as the module (e.g., `service.test.ts` next to `service.ts`)
+- Test business logic thoroughly, but avoid testing React components directly
+
+### Mock Management (Important for Bun)
+When mocking modules in Bun tests, avoid shared mock state between tests:
+```typescript
+// CORRECT - Fresh mock for each test
+const mockCreateClient = mock(() => ({ /* mock implementation */ }));
+mock.module("@supabase/supabase-js", () => ({
+  createClient: mockCreateClient,
+}));
+
+beforeEach(async () => {
+  mockCreateClient.mockClear(); // Clear call history
+  // Import modules after clearing mocks
+  const module = await import("./module-under-test");
+});
+```
+
+### Database Integration
+- Tests use mocked Supabase clients, not real database connections
+- Include database types from `@/types/database` (not `src/lib/supabase/gen.types.ts`)
+- Always use the Supabase CLI to create migrations
+- Use `z.uuid()` for UUID validation in schemas
+
+### QStash Integration Testing
+- QStash job tests mock the job manager and database operations
+- Test job lifecycle: creation → running → completed/failed
+- Mock external AI service calls to avoid real API usage during testing

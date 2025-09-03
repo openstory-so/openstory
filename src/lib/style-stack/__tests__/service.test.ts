@@ -509,12 +509,11 @@ describe("StyleStackService", () => {
         }),
       });
 
-      await expect(
-        styleService.deleteStyle(
-          "6de92947-647b-4c33-a6b8-1f8fed2787d1",
-          "1359a1a3-e189-448d-8451-734b4be680ec",
-        ),
-      ).resolves.not.toThrow();
+      const result = await styleService.deleteStyle(
+        "6de92947-647b-4c33-a6b8-1f8fed2787d1",
+        "1359a1a3-e189-448d-8451-734b4be680ec",
+      );
+      expect(result).toBeUndefined();
     });
 
     it("should not allow deletion of templates", async () => {
@@ -835,11 +834,10 @@ describe("StyleStackService", () => {
     it("should increment usage count via RPC", async () => {
       mockAdminClient.rpc.mockResolvedValue({ error: null });
 
-      await expect(
-        styleService.incrementUsageCount(
-          "6de92947-647b-4c33-a6b8-1f8fed2787d1",
-        ),
-      ).resolves.not.toThrow();
+      const result = await styleService.incrementUsageCount(
+        "6de92947-647b-4c33-a6b8-1f8fed2787d1",
+      );
+      expect(result).toBeUndefined();
 
       expect(mockAdminClient.rpc).toHaveBeenCalledWith(
         "increment_style_usage",
@@ -854,11 +852,10 @@ describe("StyleStackService", () => {
         error: { message: "RPC failed" },
       });
 
-      await expect(
-        styleService.incrementUsageCount(
-          "6de92947-647b-4c33-a6b8-1f8fed2787d1",
-        ),
-      ).resolves.not.toThrow();
+      const result = await styleService.incrementUsageCount(
+        "6de92947-647b-4c33-a6b8-1f8fed2787d1",
+      );
+      expect(result).toBeUndefined();
     });
   });
 });

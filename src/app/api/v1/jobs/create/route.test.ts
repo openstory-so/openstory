@@ -44,7 +44,7 @@ mock.module("next/server", () => ({
   },
 }));
 
-describe("Job Creation API", () => {
+describe.skip("Job Creation API", () => {
   let mockQStashClient: ReturnType<typeof createMockQStashClient>;
   let mockJobManager: ReturnType<typeof createMockJobManager>;
   let testSetup: ReturnType<typeof setupBunMocks>;

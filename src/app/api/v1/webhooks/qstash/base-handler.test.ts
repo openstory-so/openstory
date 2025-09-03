@@ -94,10 +94,11 @@ describe("BaseWebhookHandler", () => {
   });
 
   describe("processWebhook", () => {
-    const mockProcessor = mock();
+    let mockProcessor: any;
     let request: QStashVerifiedRequest;
 
     beforeEach(() => {
+      mockProcessor = mock();
       const requestBody = createTestJobPayload({
         jobId: testUUIDs.job1,
         type: "image",

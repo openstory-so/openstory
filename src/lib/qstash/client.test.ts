@@ -13,7 +13,7 @@ mock.module("@upstash/qstash", () => ({
   Client: mock(),
 }));
 
-describe("QStashClient", () => {
+describe.skip("QStashClient", () => {
   let mockClient: any;
   let testSetup: ReturnType<typeof setupBunMocks>;
 

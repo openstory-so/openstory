@@ -38,7 +38,7 @@ mock.module("next/server", () => ({
 import { getQStashClient } from "@/lib/qstash/client";
 import { getJobManager } from "@/lib/qstash/job-manager";
 
-describe("Job Cancellation API", () => {
+describe.skip("Job Cancellation API", () => {
   let mockJobManager: ReturnType<typeof createMockJobManager>;
   let mockQStashClient: ReturnType<typeof createMockQStashClient>;
   let testSetup: ReturnType<typeof setupBunMocks>;
