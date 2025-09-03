@@ -132,6 +132,10 @@ Frames are the building blocks of sequences:
 - Externalize functions rather and keep external functions _vanilla typescript_
 - Vanilla typescript is easier to test, and package for other uses
 
+### 1.5. Prefer SSR components
+
+- Prefer SSR components for most pages that don't have significant interactivity
+
 ### 2. Avoid using useEffect
 
 - Avoid using useEffect to fetch data or initialise state
@@ -229,6 +233,10 @@ Frames are the building blocks of sequences:
 - It's more efficient to export the component directly than to import a default
 - Avoid barrelled imports as much as possible _unless_ you are planning to package that library for others
 
+
+### 18. use useActionState for forms
+
+### 19. Don't add React. prefix. Import useEffect, useReducer, useCallback etc.
 
 ## Testing
 - Use vitest to create tests and include tests for all logic on frontend and backend - but not for components themselves
