@@ -1,15 +1,15 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import { createBrowserClient } from "./client";
 
 // Mock the Supabase createClient function
-vi.mock("@supabase/supabase-js", () => ({
-  createClient: vi.fn(() => ({
-    from: vi.fn(),
+mock.module("@supabase/supabase-js", () => ({
+  createClient: mock(() => ({
+    from: mock(),
     auth: {
-      getSession: vi.fn(),
+      getSession: mock(),
     },
     storage: {
-      from: vi.fn(),
+      from: mock(),
     },
   })),
 }));
@@ -24,7 +24,7 @@ describe("createBrowserClient", () => {
       NEXT_PUBLIC_SUPABASE_URL: "https://test.supabase.co",
       NEXT_PUBLIC_SUPABASE_ANON_KEY: "test-anon-key",
     };
-    vi.clearAllMocks();
+    mock.restore();
   });
 
   afterEach(() => {
@@ -85,7 +85,7 @@ describe("createBrowserClient", () => {
   describe("client configuration", () => {
     it("should create client with correct auth options", async () => {
       const { createClient } = await import("@supabase/supabase-js");
-      const mockedCreateClient = vi.mocked(createClient);
+      const mockedCreateClient = createClient as any;
 
       createBrowserClient();
 
@@ -104,7 +104,7 @@ describe("createBrowserClient", () => {
 
     it("should call createClient exactly once", async () => {
       const { createClient } = await import("@supabase/supabase-js");
-      const mockedCreateClient = vi.mocked(createClient);
+      const mockedCreateClient = createClient as any;
 
       createBrowserClient();
 
@@ -116,7 +116,7 @@ describe("createBrowserClient", () => {
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "custom-anon-key-123";
 
       const { createClient } = await import("@supabase/supabase-js");
-      const mockedCreateClient = vi.mocked(createClient);
+      const mockedCreateClient = createClient as any;
 
       createBrowserClient();
 
@@ -138,7 +138,7 @@ describe("createBrowserClient", () => {
       expect(client2).toBeDefined();
 
       const { createClient } = await import("@supabase/supabase-js");
-      const mockedCreateClient = vi.mocked(createClient);
+      const mockedCreateClient = createClient as any;
       expect(mockedCreateClient).toHaveBeenCalledTimes(2);
     });
   });

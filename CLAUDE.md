@@ -230,8 +230,15 @@ Frames are the building blocks of sequences:
 - Avoid barrelled imports as much as possible _unless_ you are planning to package that library for others
 
 
+### Testing
+```bash
+bun test              # Run all tests
+bun test --watch      # Run tests in watch mode
+bun test --coverage   # Run tests with coverage
+```
+
 ## Testing
-- Use vitest to create tests and include tests for all logic on frontend and backend - but not for components themselves
+- Use bun:test to create tests and include tests for all logic on frontend and backend - but not for components themselves
 - Include database types in the codebase from types/database instead of supabase/gen.types
 - Always use the supabase cli to create migrations
 - Use z.uuid() insteadf of z.uuid()

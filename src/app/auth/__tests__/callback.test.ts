@@ -1,34 +1,33 @@
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import { NextRequest, NextResponse } from "next/server";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GET } from "../callback/route";
 
 // Mock AuthService
-vi.mock("@/lib/auth/service", () => ({
-  AuthService: vi.fn().mockImplementation(() => ({
-    upgradeAnonymousSession: vi.fn(),
-    getUserProfile: vi.fn(),
-    upsertUserProfile: vi.fn(),
+mock.module("@/lib/auth/service", () => ({
+  AuthService: mock().mockImplementation(() => ({
+    upgradeAnonymousSession: mock(),
+    getUserProfile: mock(),
+    upsertUserProfile: mock(),
   })),
 }));
 
 // Mock Supabase client
-vi.mock("@/lib/supabase/server", () => ({
-  createServerClient: vi.fn(() => ({
+mock.module("@/lib/supabase/server", () => ({
+  createServerClient: mock(() => ({
     auth: {
-      exchangeCodeForSession: vi.fn(),
+      exchangeCodeForSession: mock(),
     },
   })),
 }));
 
 // Mock NextResponse.redirect
-vi.mock("next/server", async () => {
-  const actual =
-    await vi.importActual<typeof import("next/server")>("next/server");
+mock.module("next/server", () => {
   return {
-    ...actual,
+    NextRequest: class NextRequest {
+      constructor(public url: string) {}
+    },
     NextResponse: {
-      ...actual.NextResponse,
-      redirect: vi.fn((url: URL) => ({
+      redirect: mock((url: URL) => ({
         status: 302,
         headers: new Headers({
           Location: url.toString(),
@@ -43,29 +42,29 @@ describe("/auth/callback", () => {
   let mockSupabase: any;
 
   beforeEach(async () => {
-    vi.clearAllMocks();
+    mock.restore();
 
     mockAuthService = {
-      upgradeAnonymousSession: vi.fn(),
-      getUserProfile: vi.fn(),
-      upsertUserProfile: vi.fn(),
+      upgradeAnonymousSession: mock(),
+      getUserProfile: mock(),
+      upsertUserProfile: mock(),
     };
 
     mockSupabase = {
       auth: {
-        exchangeCodeForSession: vi.fn(),
+        exchangeCodeForSession: mock(),
       },
     };
 
     const { AuthService } = await import("@/lib/auth/service");
-    vi.mocked(AuthService).mockImplementation(() => mockAuthService as any);
+    (AuthService as any).mockImplementation(() => mockAuthService as any);
 
     const { createServerClient } = await import("@/lib/supabase/server");
-    vi.mocked(createServerClient).mockReturnValue(mockSupabase as any);
+    (createServerClient as any).mockReturnValue(mockSupabase as any);
   });
 
   afterEach(() => {
-    vi.clearAllMocks();
+    mock.restore();
   });
 
   describe("Successful authentication flow", () => {
@@ -108,7 +107,7 @@ describe("/auth/callback", () => {
       expect(mockAuthService.getUserProfile).toHaveBeenCalledWith("user-123");
       expect(mockAuthService.upsertUserProfile).not.toHaveBeenCalled();
       expect(NextResponse.redirect).toHaveBeenCalled();
-      const redirectCall = vi.mocked(NextResponse.redirect).mock.calls[0][0];
+      const redirectCall = (NextResponse.redirect as any).mock.calls[0][0];
       expect(redirectCall.toString()).toContain("/dashboard");
       expect(redirectCall.toString()).toContain("auth=success");
     });
@@ -155,7 +154,7 @@ describe("/auth/callback", () => {
         onboarding_completed: false,
       });
       expect(NextResponse.redirect).toHaveBeenCalled();
-      const redirectCall = vi.mocked(NextResponse.redirect).mock.calls[0][0];
+      const redirectCall = (NextResponse.redirect as any).mock.calls[0][0];
       expect(redirectCall.toString()).toContain("/dashboard");
       expect(redirectCall.toString()).toContain("auth=success");
     });
@@ -199,7 +198,7 @@ describe("/auth/callback", () => {
         "anon-session-123",
       );
       expect(NextResponse.redirect).toHaveBeenCalled();
-      const redirectCall = vi.mocked(NextResponse.redirect).mock.calls[0][0];
+      const redirectCall = (NextResponse.redirect as any).mock.calls[0][0];
       expect(redirectCall.toString()).toContain("/dashboard");
       expect(redirectCall.toString()).toContain("auth=success");
     });
@@ -232,7 +231,7 @@ describe("/auth/callback", () => {
       const _response = await GET(request);
 
       expect(NextResponse.redirect).toHaveBeenCalled();
-      const redirectCall = vi.mocked(NextResponse.redirect).mock.calls[0][0];
+      const redirectCall = (NextResponse.redirect as any).mock.calls[0][0];
       expect(redirectCall.toString()).toContain("/profile/settings");
       expect(redirectCall.toString()).toContain("auth=success");
     });
@@ -274,7 +273,7 @@ describe("/auth/callback", () => {
       );
       // Should still redirect successfully despite upgrade failure
       expect(NextResponse.redirect).toHaveBeenCalled();
-      const redirectCall = vi.mocked(NextResponse.redirect).mock.calls[0][0];
+      const redirectCall = (NextResponse.redirect as any).mock.calls[0][0];
       expect(redirectCall.toString()).toContain("/dashboard");
       expect(redirectCall.toString()).toContain("auth=success");
     });
@@ -294,7 +293,7 @@ describe("/auth/callback", () => {
       const _response = await GET(request);
 
       expect(NextResponse.redirect).toHaveBeenCalled();
-      const redirectCall = vi.mocked(NextResponse.redirect).mock.calls[0][0];
+      const redirectCall = (NextResponse.redirect as any).mock.calls[0][0];
       expect(redirectCall.toString()).toContain("/login");
       expect(redirectCall.toString()).toContain("error=Authentication");
     });
@@ -318,7 +317,7 @@ describe("/auth/callback", () => {
       const _response = await GET(request);
 
       expect(NextResponse.redirect).toHaveBeenCalled();
-      const redirectCall = vi.mocked(NextResponse.redirect).mock.calls[0][0];
+      const redirectCall = (NextResponse.redirect as any).mock.calls[0][0];
       expect(redirectCall.toString()).toContain("/login");
       expect(redirectCall.toString()).toContain("error=No%20user%20found");
     });
@@ -330,7 +329,7 @@ describe("/auth/callback", () => {
 
       expect(mockSupabase.auth.exchangeCodeForSession).not.toHaveBeenCalled();
       expect(NextResponse.redirect).toHaveBeenCalled();
-      const redirectCall = vi.mocked(NextResponse.redirect).mock.calls[0][0];
+      const redirectCall = (NextResponse.redirect as any).mock.calls[0][0];
       expect(redirectCall.toString()).toContain("/login");
       expect(redirectCall.toString()).toContain(
         "error=Invalid%20authentication%20request",
@@ -349,7 +348,7 @@ describe("/auth/callback", () => {
       const _response = await GET(request);
 
       expect(NextResponse.redirect).toHaveBeenCalled();
-      const redirectCall = vi.mocked(NextResponse.redirect).mock.calls[0][0];
+      const redirectCall = (NextResponse.redirect as any).mock.calls[0][0];
       expect(redirectCall.toString()).toContain("/login");
       expect(redirectCall.toString()).toContain(
         "error=Authentication%20failed",
@@ -382,7 +381,7 @@ describe("/auth/callback", () => {
       const _response = await GET(request);
 
       expect(NextResponse.redirect).toHaveBeenCalled();
-      const redirectCall = vi.mocked(NextResponse.redirect).mock.calls[0][0];
+      const redirectCall = (NextResponse.redirect as any).mock.calls[0][0];
       expect(redirectCall.toString()).toContain("/login");
       expect(redirectCall.toString()).toContain(
         "error=Authentication%20failed",
@@ -428,7 +427,7 @@ describe("/auth/callback", () => {
         onboarding_completed: false,
       });
       expect(NextResponse.redirect).toHaveBeenCalled();
-      const redirectCall = vi.mocked(NextResponse.redirect).mock.calls[0][0];
+      const redirectCall = (NextResponse.redirect as any).mock.calls[0][0];
       expect(redirectCall.toString()).toContain("/dashboard");
       expect(redirectCall.toString()).toContain("auth=success");
     });
@@ -479,7 +478,7 @@ describe("/auth/callback", () => {
         onboarding_completed: false,
       });
       expect(NextResponse.redirect).toHaveBeenCalled();
-      const redirectCall = vi.mocked(NextResponse.redirect).mock.calls[0][0];
+      const redirectCall = (NextResponse.redirect as any).mock.calls[0][0];
       expect(redirectCall.toString()).toContain("/dashboard");
       expect(redirectCall.toString()).toContain("auth=success");
     });
@@ -512,7 +511,7 @@ describe("/auth/callback", () => {
       const _response = await GET(request);
 
       expect(NextResponse.redirect).toHaveBeenCalled();
-      const redirectCall = vi.mocked(NextResponse.redirect).mock.calls[0][0];
+      const redirectCall = (NextResponse.redirect as any).mock.calls[0][0];
       expect(redirectCall.toString()).toContain("/profile/settings");
       expect(redirectCall.toString()).toContain("tab=security");
       expect(redirectCall.toString()).toContain("auth=success");

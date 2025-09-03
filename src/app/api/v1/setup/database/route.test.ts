@@ -1,52 +1,47 @@
+import { beforeEach, describe, expect, it, mock, spyOn } from "bun:test";
 import { NextRequest } from "next/server";
-import { beforeEach, describe, expect, it, vi } from "vitest";
 import { POST } from "./route";
 
 // Mock the Supabase admin client
 const mockSupabase = {
-  from: vi.fn(),
+  from: mock(() => {}),
   auth: {
     admin: {
-      createUser: vi.fn(),
+      createUser: mock(() => {}),
     },
   },
   storage: {
-    listBuckets: vi.fn(),
-    createBucket: vi.fn(),
+    listBuckets: mock(() => {}),
+    createBucket: mock(() => {}),
   },
 };
 
 // Mock the createAdminClient function
-vi.mock("@/lib/supabase/server", () => ({
-  createAdminClient: vi.fn(() => mockSupabase),
+mock.module("@/lib/supabase/server", () => ({
+  createAdminClient: mock(() => mockSupabase),
 }));
 
 // Mock NextResponse.json to return a testable object
-vi.mock("next/server", async () => {
-  const actual =
-    await vi.importActual<typeof import("next/server")>("next/server");
-  return {
-    ...actual,
-    NextResponse: {
-      ...actual.NextResponse,
-      json: vi.fn((body, init) => ({
-        json: async () => body,
-        status: init?.status || 200,
-        headers: new Headers(init?.headers),
-      })),
-    },
-  };
-});
+mock.module("next/server", () => ({
+  NextRequest,
+  NextResponse: {
+    json: mock((body, init) => ({
+      json: async () => body,
+      status: init?.status || 200,
+      headers: new Headers(init?.headers),
+    })),
+  },
+}));
 
 describe("POST /api/v1/setup/database", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    mock.restore();
 
     // Setup default mock behavior
     mockSupabase.from.mockReturnValue({
-      select: vi.fn().mockReturnThis(),
-      limit: vi.fn().mockReturnThis(),
-      insert: vi.fn().mockReturnThis(),
+      select: mock().mockReturnThis(),
+      limit: mock().mockReturnThis(),
+      insert: mock().mockReturnThis(),
       error: null,
       data: null,
     });
@@ -186,8 +181,8 @@ describe("POST /api/v1/setup/database", () => {
     it("should skip initialization if database already exists", async () => {
       // Mock existing teams table
       mockSupabase.from.mockReturnValue({
-        select: vi.fn().mockReturnThis(),
-        limit: vi.fn().mockReturnThis(),
+        select: mock().mockReturnThis(),
+        limit: mock().mockReturnThis(),
         error: null,
         data: [{ id: "existing-team" }],
       });
@@ -211,8 +206,8 @@ describe("POST /api/v1/setup/database", () => {
     it("should proceed with initialization if skipIfExists is false", async () => {
       // Mock existing teams table
       mockSupabase.from.mockReturnValue({
-        select: vi.fn().mockReturnThis(),
-        limit: vi.fn().mockReturnThis(),
+        select: mock().mockReturnThis(),
+        limit: mock().mockReturnThis(),
         error: null,
         data: [{ id: "existing-team" }],
       });
@@ -236,8 +231,8 @@ describe("POST /api/v1/setup/database", () => {
     it("should initialize if tables exist but are empty", async () => {
       // Mock empty teams table
       mockSupabase.from.mockReturnValue({
-        select: vi.fn().mockReturnThis(),
-        limit: vi.fn().mockReturnThis(),
+        select: mock().mockReturnThis(),
+        limit: mock().mockReturnThis(),
         error: null,
         data: [],
       });
@@ -326,14 +321,14 @@ describe("POST /api/v1/setup/database", () => {
       mockSupabase.from.mockImplementation((table) => {
         if (table === "users") {
           return {
-            insert: vi.fn().mockResolvedValue({
+            insert: mock().mockResolvedValue({
               error: { message: "Duplicate key" },
             }),
           };
         }
         return {
-          select: vi.fn().mockReturnThis(),
-          limit: vi.fn().mockReturnThis(),
+          select: mock().mockReturnThis(),
+          limit: mock().mockReturnThis(),
           error: null,
         };
       });
@@ -357,9 +352,9 @@ describe("POST /api/v1/setup/database", () => {
 
   describe("error handling", () => {
     it("should handle validation errors", async () => {
-      const consoleErrorSpy = vi
-        .spyOn(console, "error")
-        .mockImplementation(() => {});
+      const consoleErrorSpy = spyOn(console, "error").mockImplementation(
+        () => {},
+      );
 
       const request = new NextRequest(
         "http://localhost/api/v1/setup/database",
@@ -381,8 +376,8 @@ describe("POST /api/v1/setup/database", () => {
 
     it("should handle table check failures", async () => {
       mockSupabase.from.mockReturnValue({
-        select: vi.fn().mockReturnThis(),
-        limit: vi.fn().mockReturnThis(),
+        select: mock().mockReturnThis(),
+        limit: mock().mockReturnThis(),
         error: { message: "Connection failed" },
       });
 
@@ -457,9 +452,9 @@ describe("POST /api/v1/setup/database", () => {
     });
 
     it("should handle JSON parsing errors", async () => {
-      const consoleErrorSpy = vi
-        .spyOn(console, "error")
-        .mockImplementation(() => {});
+      const consoleErrorSpy = spyOn(console, "error").mockImplementation(
+        () => {},
+      );
 
       const request = new NextRequest(
         "http://localhost/api/v1/setup/database",

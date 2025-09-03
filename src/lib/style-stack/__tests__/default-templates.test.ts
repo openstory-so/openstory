@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, mock, spyOn } from "bun:test";
 import { StyleStackConfigSchema } from "../../schemas/style-stack";
 import {
   DEFAULT_STYLE_TEMPLATES,
@@ -179,11 +179,11 @@ describe("seedDefaultTemplates", () => {
 
   beforeEach(() => {
     mockSupabaseClient = {
-      from: vi.fn(() => ({
-        select: vi.fn().mockReturnThis(),
-        insert: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockReturnThis(),
-        single: vi.fn(),
+      from: mock(() => ({
+        select: mock().mockReturnThis(),
+        insert: mock().mockReturnThis(),
+        eq: mock().mockReturnThis(),
+        single: mock(),
       })),
     };
   });
@@ -191,9 +191,9 @@ describe("seedDefaultTemplates", () => {
   it("should create system team if it doesn't exist", async () => {
     // Mock team doesn't exist
     const mockTeamQuery = {
-      select: vi.fn().mockReturnValue({
-        eq: vi.fn().mockReturnValue({
-          single: vi.fn().mockResolvedValue({
+      select: mock().mockReturnValue({
+        eq: mock().mockReturnValue({
+          single: mock().mockResolvedValue({
             data: null,
             error: { code: "PGRST116" },
           }),
@@ -203,9 +203,9 @@ describe("seedDefaultTemplates", () => {
 
     // Mock team creation
     const mockTeamInsert = {
-      insert: vi.fn().mockReturnValue({
-        select: vi.fn().mockReturnValue({
-          single: vi.fn().mockResolvedValue({
+      insert: mock().mockReturnValue({
+        select: mock().mockReturnValue({
+          single: mock().mockResolvedValue({
             data: { id: "system-team-123" },
             error: null,
           }),
@@ -215,9 +215,9 @@ describe("seedDefaultTemplates", () => {
 
     // Mock existing templates check
     const mockTemplatesQuery = {
-      select: vi.fn().mockReturnValue({
-        eq: vi.fn().mockReturnValue({
-          eq: vi.fn().mockResolvedValue({
+      select: mock().mockReturnValue({
+        eq: mock().mockReturnValue({
+          eq: mock().mockResolvedValue({
             data: [],
             error: null,
           }),
@@ -227,7 +227,7 @@ describe("seedDefaultTemplates", () => {
 
     // Mock template insertion
     const mockTemplatesInsert = {
-      insert: vi.fn().mockResolvedValue({
+      insert: mock().mockResolvedValue({
         error: null,
       }),
     };
@@ -250,9 +250,9 @@ describe("seedDefaultTemplates", () => {
   it("should use existing system team", async () => {
     // Mock team exists
     const mockTeamQuery = {
-      select: vi.fn().mockReturnValue({
-        eq: vi.fn().mockReturnValue({
-          single: vi.fn().mockResolvedValue({
+      select: mock().mockReturnValue({
+        eq: mock().mockReturnValue({
+          single: mock().mockResolvedValue({
             data: { id: "existing-system-team" },
             error: null,
           }),
@@ -262,9 +262,9 @@ describe("seedDefaultTemplates", () => {
 
     // Mock existing templates check
     const mockTemplatesQuery = {
-      select: vi.fn().mockReturnValue({
-        eq: vi.fn().mockReturnValue({
-          eq: vi.fn().mockResolvedValue({
+      select: mock().mockReturnValue({
+        eq: mock().mockReturnValue({
+          eq: mock().mockResolvedValue({
             data: [],
             error: null,
           }),
@@ -274,7 +274,7 @@ describe("seedDefaultTemplates", () => {
 
     // Mock template insertion
     const mockTemplatesInsert = {
-      insert: vi.fn().mockResolvedValue({
+      insert: mock().mockResolvedValue({
         error: null,
       }),
     };
@@ -305,9 +305,9 @@ describe("seedDefaultTemplates", () => {
 
     // Mock team exists
     const mockTeamQuery = {
-      select: vi.fn().mockReturnValue({
-        eq: vi.fn().mockReturnValue({
-          single: vi.fn().mockResolvedValue({
+      select: mock().mockReturnValue({
+        eq: mock().mockReturnValue({
+          single: mock().mockResolvedValue({
             data: { id: "system-team-123" },
             error: null,
           }),
@@ -317,9 +317,9 @@ describe("seedDefaultTemplates", () => {
 
     // Mock existing templates
     const mockTemplatesQuery = {
-      select: vi.fn().mockReturnValue({
-        eq: vi.fn().mockReturnValue({
-          eq: vi.fn().mockResolvedValue({
+      select: mock().mockReturnValue({
+        eq: mock().mockReturnValue({
+          eq: mock().mockResolvedValue({
             data: existingTemplates,
             error: null,
           }),
@@ -329,7 +329,7 @@ describe("seedDefaultTemplates", () => {
 
     // Mock template insertion
     const mockTemplatesInsert = {
-      insert: vi.fn().mockResolvedValue({
+      insert: mock().mockResolvedValue({
         error: null,
       }),
     };
@@ -359,9 +359,9 @@ describe("seedDefaultTemplates", () => {
 
     // Mock team exists
     const mockTeamQuery = {
-      select: vi.fn().mockReturnValue({
-        eq: vi.fn().mockReturnValue({
-          single: vi.fn().mockResolvedValue({
+      select: mock().mockReturnValue({
+        eq: mock().mockReturnValue({
+          single: mock().mockResolvedValue({
             data: { id: "system-team-123" },
             error: null,
           }),
@@ -371,9 +371,9 @@ describe("seedDefaultTemplates", () => {
 
     // Mock all templates exist
     const mockTemplatesQuery = {
-      select: vi.fn().mockReturnValue({
-        eq: vi.fn().mockReturnValue({
-          eq: vi.fn().mockResolvedValue({
+      select: mock().mockReturnValue({
+        eq: mock().mockReturnValue({
+          eq: mock().mockResolvedValue({
             data: allTemplateNames,
             error: null,
           }),
@@ -385,7 +385,7 @@ describe("seedDefaultTemplates", () => {
       .mockReturnValueOnce(mockTeamQuery)
       .mockReturnValueOnce(mockTemplatesQuery);
 
-    const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const consoleSpy = spyOn(console, "log").mockImplementation(() => {});
 
     await seedDefaultTemplates(mockSupabaseClient);
 
@@ -398,9 +398,9 @@ describe("seedDefaultTemplates", () => {
   it("should handle errors during seeding", async () => {
     // Mock team query error
     const mockTeamQuery = {
-      select: vi.fn().mockReturnValue({
-        eq: vi.fn().mockReturnValue({
-          single: vi.fn().mockResolvedValue({
+      select: mock().mockReturnValue({
+        eq: mock().mockReturnValue({
+          single: mock().mockResolvedValue({
             data: null,
             error: { message: "Database error" },
           }),

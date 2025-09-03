@@ -1,21 +1,21 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import { createAdminClient, createServerClient } from "./server";
 
 // Mock the Supabase createClient function
-vi.mock("@supabase/supabase-js", () => ({
-  createClient: vi.fn(() => ({
-    from: vi.fn(),
+mock.module("@supabase/supabase-js", () => ({
+  createClient: mock(() => ({
+    from: mock(),
     auth: {
       admin: {
-        createUser: vi.fn(),
-        deleteUser: vi.fn(),
+        createUser: mock(),
+        deleteUser: mock(),
       },
-      getSession: vi.fn(),
+      getSession: mock(),
     },
     storage: {
-      from: vi.fn(),
-      listBuckets: vi.fn(),
-      createBucket: vi.fn(),
+      from: mock(),
+      listBuckets: mock(),
+      createBucket: mock(),
     },
   })),
 }));
@@ -30,7 +30,7 @@ describe("createServerClient", () => {
       NEXT_PUBLIC_SUPABASE_URL: "https://test.supabase.co",
       SUPABASE_SERVICE_ROLE_KEY: "test-service-role-key",
     };
-    vi.clearAllMocks();
+    mock.restore();
   });
 
   afterEach(() => {
@@ -102,7 +102,7 @@ describe("createServerClient", () => {
   describe("client configuration", () => {
     it("should create client with correct server-side auth options", async () => {
       const { createClient } = await import("@supabase/supabase-js");
-      const mockedCreateClient = vi.mocked(createClient);
+      const mockedCreateClient = createClient as any;
 
       createServerClient();
 
@@ -123,7 +123,7 @@ describe("createServerClient", () => {
 
     it("should disable session persistence for server-side usage", async () => {
       const { createClient } = await import("@supabase/supabase-js");
-      const mockedCreateClient = vi.mocked(createClient);
+      const mockedCreateClient = createClient as any;
 
       createServerClient();
 
@@ -134,7 +134,7 @@ describe("createServerClient", () => {
 
     it("should set database schema to public", async () => {
       const { createClient } = await import("@supabase/supabase-js");
-      const mockedCreateClient = vi.mocked(createClient);
+      const mockedCreateClient = createClient as any;
 
       createServerClient();
 
@@ -146,7 +146,7 @@ describe("createServerClient", () => {
       process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-key-secret";
 
       const { createClient } = await import("@supabase/supabase-js");
-      const mockedCreateClient = vi.mocked(createClient);
+      const mockedCreateClient = createClient as any;
 
       createServerClient();
 
@@ -168,7 +168,7 @@ describe("createServerClient", () => {
       expect(client2).toBeDefined();
 
       const { createClient } = await import("@supabase/supabase-js");
-      const mockedCreateClient = vi.mocked(createClient);
+      const mockedCreateClient = createClient as any;
       expect(mockedCreateClient).toHaveBeenCalledTimes(2);
     });
   });
@@ -220,7 +220,7 @@ describe("createAdminClient", () => {
       NEXT_PUBLIC_SUPABASE_URL: "https://test.supabase.co",
       SUPABASE_SERVICE_ROLE_KEY: "test-service-role-key",
     };
-    vi.clearAllMocks();
+    mock.restore();
   });
 
   afterEach(() => {
@@ -236,7 +236,7 @@ describe("createAdminClient", () => {
 
   it("should have same configuration as server client", async () => {
     const { createClient } = await import("@supabase/supabase-js");
-    const mockedCreateClient = vi.mocked(createClient);
+    const mockedCreateClient = createClient as any;
 
     const _serverClient = createServerClient();
     mockedCreateClient.mockClear();

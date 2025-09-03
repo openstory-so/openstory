@@ -1,29 +1,29 @@
+import { beforeEach, describe, expect, it, mock } from "bun:test";
 import { NextRequest } from "next/server";
-import { beforeEach, describe, expect, it, vi } from "vitest";
 import { GET, POST } from "./route";
 
 // Mock the Supabase admin client
 const mockSupabase = {
-  from: vi.fn(),
+  from: mock(),
   storage: {
-    listBuckets: vi.fn(),
+    listBuckets: mock(),
   },
 };
 
 // Mock the createAdminClient function
-vi.mock("@/lib/supabase/server", () => ({
-  createAdminClient: vi.fn(() => mockSupabase),
+mock.module("@/lib/supabase/server", () => ({
+  createAdminClient: mock(() => mockSupabase),
 }));
 
 // Mock NextResponse.json to return a testable object
-vi.mock("next/server", async () => {
+mock.module("next/server", async () => {
   const actual =
     await vi.importActual<typeof import("next/server")>("next/server");
   return {
     ...actual,
     NextResponse: {
       ...actual.NextResponse,
-      json: vi.fn((body, init) => ({
+      json: mock((body, init) => ({
         json: async () => body,
         status: init?.status || 200,
         headers: new Headers(init?.headers),
@@ -34,12 +34,12 @@ vi.mock("next/server", async () => {
 
 describe("GET /api/v1/setup/status", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    mock.restore();
 
     // Setup default mock behavior - no tables exist
     mockSupabase.from.mockReturnValue({
-      select: vi.fn().mockReturnThis(),
-      limit: vi.fn().mockReturnThis(),
+      select: mock().mockReturnThis(),
+      limit: mock().mockReturnThis(),
       error: { message: "relation does not exist" },
     });
 
@@ -54,8 +54,8 @@ describe("GET /api/v1/setup/status", () => {
     it("should return complete status when all tables and buckets exist", async () => {
       // Mock all tables exist
       mockSupabase.from.mockReturnValue({
-        select: vi.fn().mockReturnThis(),
-        limit: vi.fn().mockReturnThis(),
+        select: mock().mockReturnThis(),
+        limit: mock().mockReturnThis(),
         error: null,
         data: [],
       });
@@ -94,15 +94,15 @@ describe("GET /api/v1/setup/status", () => {
       mockSupabase.from.mockImplementation((table) => {
         if (["teams", "users", "sequences"].includes(table)) {
           return {
-            select: vi.fn().mockReturnThis(),
-            limit: vi.fn().mockReturnThis(),
+            select: mock().mockReturnThis(),
+            limit: mock().mockReturnThis(),
             error: null,
             data: [],
           };
         }
         return {
-          select: vi.fn().mockReturnThis(),
-          limit: vi.fn().mockReturnThis(),
+          select: mock().mockReturnThis(),
+          limit: mock().mockReturnThis(),
           error: { message: "relation does not exist" },
         };
       });
@@ -180,15 +180,15 @@ describe("GET /api/v1/setup/status", () => {
       mockSupabase.from.mockImplementation((table) => {
         if (["teams", "users"].includes(table)) {
           return {
-            select: vi.fn().mockReturnThis(),
-            limit: vi.fn().mockReturnThis(),
+            select: mock().mockReturnThis(),
+            limit: mock().mockReturnThis(),
             error: null,
             data: [],
           };
         }
         return {
-          select: vi.fn().mockReturnThis(),
-          limit: vi.fn().mockReturnThis(),
+          select: mock().mockReturnThis(),
+          limit: mock().mockReturnThis(),
           error: { message: "relation does not exist" },
         };
       });
@@ -333,8 +333,8 @@ describe("GET /api/v1/setup/status", () => {
     it("should correctly identify existing tables", async () => {
       mockSupabase.from.mockImplementation(() => {
         return {
-          select: vi.fn().mockReturnThis(),
-          limit: vi.fn().mockReturnThis(),
+          select: mock().mockReturnThis(),
+          limit: mock().mockReturnThis(),
           error: null, // No error means table exists
           data: [],
         };
@@ -352,8 +352,8 @@ describe("GET /api/v1/setup/status", () => {
 
     it("should handle tables with data", async () => {
       mockSupabase.from.mockReturnValue({
-        select: vi.fn().mockReturnThis(),
-        limit: vi.fn().mockReturnThis(),
+        select: mock().mockReturnThis(),
+        limit: mock().mockReturnThis(),
         error: null,
         data: [{ id: "some-id" }],
       });
@@ -369,8 +369,8 @@ describe("GET /api/v1/setup/status", () => {
 
     it("should handle specific error messages for missing tables", async () => {
       mockSupabase.from.mockReturnValue({
-        select: vi.fn().mockReturnThis(),
-        limit: vi.fn().mockReturnThis(),
+        select: mock().mockReturnThis(),
+        limit: mock().mockReturnThis(),
         error: { message: 'relation "public.teams" does not exist' },
       });
 
@@ -399,11 +399,11 @@ describe("GET /api/v1/setup/status", () => {
 
 describe("POST /api/v1/setup/status", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    mock.restore();
 
     mockSupabase.from.mockReturnValue({
-      select: vi.fn().mockReturnThis(),
-      limit: vi.fn().mockReturnThis(),
+      select: mock().mockReturnThis(),
+      limit: mock().mockReturnThis(),
       error: null,
       data: [],
     });

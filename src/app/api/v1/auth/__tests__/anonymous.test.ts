@@ -1,13 +1,13 @@
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import { NextRequest } from "next/server";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GET, PATCH, POST } from "../anonymous/route";
 
 // Mock AuthService
-vi.mock("@/lib/auth/service", () => ({
-  AuthService: vi.fn().mockImplementation(() => ({
-    createAnonymousSession: vi.fn(),
-    getAnonymousSession: vi.fn(),
-    updateAnonymousSession: vi.fn(),
+mock.module("@/lib/auth/service", () => ({
+  AuthService: mock().mockImplementation(() => ({
+    createAnonymousSession: mock(),
+    getAnonymousSession: mock(),
+    updateAnonymousSession: mock(),
   })),
 }));
 
@@ -15,20 +15,20 @@ describe("/api/v1/auth/anonymous", () => {
   let mockAuthService: any;
 
   beforeEach(async () => {
-    vi.clearAllMocks();
+    mock.restore();
 
     mockAuthService = {
-      createAnonymousSession: vi.fn(),
-      getAnonymousSession: vi.fn(),
-      updateAnonymousSession: vi.fn(),
+      createAnonymousSession: mock(),
+      getAnonymousSession: mock(),
+      updateAnonymousSession: mock(),
     };
 
     const { AuthService } = await import("@/lib/auth/service");
-    vi.mocked(AuthService).mockImplementation(() => mockAuthService as any);
+    (AuthService as any).mockImplementation(() => mockAuthService as any);
   });
 
   afterEach(() => {
-    vi.clearAllMocks();
+    mock.restore();
   });
 
   describe("POST /api/v1/auth/anonymous", () => {

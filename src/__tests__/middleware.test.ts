@@ -1,35 +1,43 @@
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  mock,
+  spyOn,
+} from "bun:test";
 import { NextRequest, NextResponse } from "next/server";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { middleware } from "../middleware";
 
 // Mock createMiddlewareClient
-vi.mock("@/lib/supabase/middleware", () => ({
-  createMiddlewareClient: vi.fn(),
+mock.module("@/lib/supabase/middleware", () => ({
+  createMiddlewareClient: mock(() => {}),
 }));
 
 // Mock console.error to avoid noise in test output
-const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+const consoleErrorSpy = spyOn(console, "error").mockImplementation(() => {});
 
 describe("middleware", () => {
   let mockSupabase: any;
 
   beforeEach(async () => {
-    vi.clearAllMocks();
+    mock.restore();
 
     mockSupabase = {
       auth: {
-        getSession: vi.fn(),
+        getSession: mock(() => {}),
       },
     };
 
     const { createMiddlewareClient } = await import(
       "@/lib/supabase/middleware"
     );
-    vi.mocked(createMiddlewareClient).mockReturnValue(mockSupabase as any);
+    (createMiddlewareClient as any).mockReturnValue(mockSupabase);
   });
 
   afterEach(() => {
-    vi.clearAllMocks();
+    mock.restore();
   });
 
   describe("Static files and Next.js internals", () => {
@@ -57,7 +65,7 @@ describe("middleware", () => {
       const imageExtensions = ["svg", "png", "jpg", "jpeg", "gif", "webp"];
 
       for (const ext of imageExtensions) {
-        vi.clearAllMocks();
+        mock.restore();
         const request = new NextRequest(
           `http://localhost:3000/assets/image.${ext}`,
         );

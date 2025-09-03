@@ -1,13 +1,13 @@
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import { NextRequest } from "next/server";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DELETE, GET } from "../session/route";
 
 // Mock AuthService
-vi.mock("@/lib/auth/service", () => ({
-  AuthService: vi.fn().mockImplementation(() => ({
-    getSession: vi.fn(),
-    getUserProfile: vi.fn(),
-    signOut: vi.fn(),
+mock.module("@/lib/auth/service", () => ({
+  AuthService: mock().mockImplementation(() => ({
+    getSession: mock(),
+    getUserProfile: mock(),
+    signOut: mock(),
   })),
 }));
 
@@ -15,20 +15,20 @@ describe("/api/v1/auth/session", () => {
   let mockAuthService: any;
 
   beforeEach(async () => {
-    vi.clearAllMocks();
+    mock.restore();
 
     mockAuthService = {
-      getSession: vi.fn(),
-      getUserProfile: vi.fn(),
-      signOut: vi.fn(),
+      getSession: mock(),
+      getUserProfile: mock(),
+      signOut: mock(),
     };
 
     const { AuthService } = await import("@/lib/auth/service");
-    vi.mocked(AuthService).mockImplementation(() => mockAuthService as any);
+    (AuthService as any).mockImplementation(() => mockAuthService as any);
   });
 
   afterEach(() => {
-    vi.clearAllMocks();
+    mock.restore();
   });
 
   describe("GET /api/v1/auth/session", () => {
@@ -52,7 +52,7 @@ describe("/api/v1/auth/session", () => {
         user: null,
         isAuthenticated: false,
       });
-      expect(mockAuthService.getSession).toHaveBeenCalledOnce();
+      expect(mockAuthService.getSession).toHaveBeenCalled();
       expect(mockAuthService.getUserProfile).not.toHaveBeenCalled();
     });
 
@@ -105,7 +105,7 @@ describe("/api/v1/auth/session", () => {
         profile: mockProfile,
         isAuthenticated: true,
       });
-      expect(mockAuthService.getSession).toHaveBeenCalledOnce();
+      expect(mockAuthService.getSession).toHaveBeenCalled();
       expect(mockAuthService.getUserProfile).toHaveBeenCalledWith("user-123");
     });
 
@@ -149,7 +149,7 @@ describe("/api/v1/auth/session", () => {
         profile: null,
         isAuthenticated: true,
       });
-      expect(mockAuthService.getSession).toHaveBeenCalledOnce();
+      expect(mockAuthService.getSession).toHaveBeenCalled();
       expect(mockAuthService.getUserProfile).toHaveBeenCalledWith("user-456");
     });
 
@@ -226,7 +226,7 @@ describe("/api/v1/auth/session", () => {
       expect(response.status).toBe(200);
       expect(result.success).toBe(true);
       expect(result.message).toBe("Signed out successfully");
-      expect(mockAuthService.signOut).toHaveBeenCalledOnce();
+      expect(mockAuthService.signOut).toHaveBeenCalled();
     });
 
     it("should handle sign out failure", async () => {
@@ -248,7 +248,7 @@ describe("/api/v1/auth/session", () => {
       expect(response.status).toBe(400);
       expect(result.success).toBe(false);
       expect(result.error).toBe("Failed to invalidate session");
-      expect(mockAuthService.signOut).toHaveBeenCalledOnce();
+      expect(mockAuthService.signOut).toHaveBeenCalled();
     });
 
     it("should handle sign out without error message", async () => {

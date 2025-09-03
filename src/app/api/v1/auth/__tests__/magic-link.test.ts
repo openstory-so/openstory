@@ -1,11 +1,11 @@
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import { NextRequest } from "next/server";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { POST } from "../magic-link/route";
 
 // Mock AuthService
-vi.mock("@/lib/auth/service", () => ({
-  AuthService: vi.fn().mockImplementation(() => ({
-    sendMagicLink: vi.fn(),
+mock.module("@/lib/auth/service", () => ({
+  AuthService: mock().mockImplementation(() => ({
+    sendMagicLink: mock(),
   })),
 }));
 
@@ -13,18 +13,18 @@ describe("/api/v1/auth/magic-link", () => {
   let mockAuthService: any;
 
   beforeEach(async () => {
-    vi.clearAllMocks();
+    mock.restore();
 
     mockAuthService = {
-      sendMagicLink: vi.fn(),
+      sendMagicLink: mock(),
     };
 
     const { AuthService } = await import("@/lib/auth/service");
-    vi.mocked(AuthService).mockImplementation(() => mockAuthService as any);
+    (AuthService as any).mockImplementation(() => mockAuthService as any);
   });
 
   afterEach(() => {
-    vi.clearAllMocks();
+    mock.restore();
   });
 
   describe("POST /api/v1/auth/magic-link", () => {

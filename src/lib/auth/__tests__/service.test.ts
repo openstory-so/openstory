@@ -1,18 +1,18 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import { AuthService } from "../service";
 
 // Mock the Supabase clients
-vi.mock("@/lib/supabase/server", () => ({
-  createServerClient: vi.fn(),
-  createAdminClient: vi.fn(),
+mock.module("@/lib/supabase/server", () => ({
+  createServerClient: mock(),
+  createAdminClient: mock(),
 }));
 
 // Mock crypto.randomUUID
-vi.mock("crypto", async (importOriginal) => {
+mock.module("crypto", async (importOriginal) => {
   const actual = (await importOriginal()) as Record<string, unknown>;
   return {
     ...actual,
-    randomUUID: vi.fn(() => "mock-uuid-123"),
+    randomUUID: mock(() => "mock-uuid-123"),
   };
 });
 
@@ -24,50 +24,50 @@ describe("AuthService", () => {
   beforeEach(async () => {
     // Create mock clients
     mockSupabase = {
-      from: vi.fn().mockReturnThis(),
-      insert: vi.fn().mockReturnThis(),
-      select: vi.fn().mockReturnThis(),
-      eq: vi.fn().mockReturnThis(),
-      gt: vi.fn().mockReturnThis(),
-      update: vi.fn().mockReturnThis(),
-      delete: vi.fn().mockReturnThis(),
-      upsert: vi.fn().mockReturnThis(),
-      single: vi.fn(),
-      rpc: vi.fn(),
+      from: mock().mockReturnThis(),
+      insert: mock().mockReturnThis(),
+      select: mock().mockReturnThis(),
+      eq: mock().mockReturnThis(),
+      gt: mock().mockReturnThis(),
+      update: mock().mockReturnThis(),
+      delete: mock().mockReturnThis(),
+      upsert: mock().mockReturnThis(),
+      single: mock(),
+      rpc: mock(),
       auth: {
-        signInWithOtp: vi.fn(),
-        getSession: vi.fn(),
-        signOut: vi.fn(),
+        signInWithOtp: mock(),
+        getSession: mock(),
+        signOut: mock(),
       },
     };
 
     mockAdminClient = {
-      from: vi.fn().mockReturnThis(),
-      upsert: vi.fn().mockReturnThis(),
-      delete: vi.fn().mockReturnThis(),
-      select: vi.fn().mockReturnThis(),
-      eq: vi.fn().mockReturnThis(),
-      single: vi.fn(),
-      rpc: vi.fn(),
+      from: mock().mockReturnThis(),
+      upsert: mock().mockReturnThis(),
+      delete: mock().mockReturnThis(),
+      select: mock().mockReturnThis(),
+      eq: mock().mockReturnThis(),
+      single: mock(),
+      rpc: mock(),
     };
 
     // Make sure delete chain works properly
     mockAdminClient.delete.mockReturnValue({
-      eq: vi.fn().mockResolvedValue({ data: null, error: null }),
+      eq: mock().mockResolvedValue({ data: null, error: null }),
     });
 
     // Mock the imports
     const { createServerClient, createAdminClient } = await import(
       "@/lib/supabase/server"
     );
-    vi.mocked(createServerClient).mockReturnValue(mockSupabase);
-    vi.mocked(createAdminClient).mockReturnValue(mockAdminClient);
+    mock.moduleed(createServerClient).mockReturnValue(mockSupabase);
+    mock.moduleed(createAdminClient).mockReturnValue(mockAdminClient);
 
     authService = new AuthService();
   });
 
   afterEach(() => {
-    vi.clearAllMocks();
+    mock.restore();
   });
 
   describe("createAnonymousSession", () => {
@@ -229,7 +229,7 @@ describe("AuthService", () => {
 
       // Mock session deletion - need to reset the chain for this specific test
       mockAdminClient.delete.mockReturnValueOnce({
-        eq: vi.fn().mockResolvedValue({ data: null, error: null }),
+        eq: mock().mockResolvedValue({ data: null, error: null }),
       });
 
       const result = await authService.upgradeAnonymousSession(
