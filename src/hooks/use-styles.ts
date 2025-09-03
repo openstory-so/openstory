@@ -23,8 +23,11 @@ export function useStyles(teamId?: string) {
   return useQuery<Style[]>({
     queryKey: styleKeys.list(teamId),
     queryFn: async () => {
-      // TODO: These actions are not yet implemented
-      return listStyles(teamId) as unknown as Style[];
+      const result = await listStyles();
+      if (result.success && result.styles) {
+        return result.styles;
+      }
+      throw new Error(result.error || "Failed to list styles");
     },
     staleTime: 10 * 60 * 1000, // 10 minutes (styles change less frequently)
   });
@@ -35,8 +38,11 @@ export function useStyle(id: string) {
   return useQuery<Style>({
     queryKey: styleKeys.detail(id),
     queryFn: async () => {
-      // TODO: This action is not yet implemented
-      return getStyle(id) as unknown as Style;
+      const result = await getStyle(id);
+      if (result.success && result.style) {
+        return result.style;
+      }
+      throw new Error(result.error || "Failed to get style");
     },
     staleTime: 10 * 60 * 1000,
     enabled: !!id,

@@ -13,7 +13,7 @@ import type {
 
 // Re-export the Database and Json types for infrastructure code
 // Note: Use specific table types (UserProfile, Team, etc.) instead of raw Database types in application code
-export type { Database, Json };
+export type { Json };
 
 export type DatabaseClient = SupabaseClient<Database>;
 

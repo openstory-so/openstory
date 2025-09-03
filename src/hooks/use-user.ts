@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { getCurrentUser } from "#actions/user";
 import type { UserProfile } from "@/types/database";
 
 interface UserData {
@@ -10,13 +11,11 @@ interface UserData {
 }
 
 async function fetchUser(): Promise<UserData> {
-  const response = await fetch("/api/v1/user");
-  const result = await response.json();
+  const result = await getCurrentUser();
 
   if (!result.success) {
-    // Don't throw for auth errors - the API will handle creating a new session
-    if (response.status === 401 || response.status === 403) {
-      // Return a default anonymous user state
+    // Don't throw for auth errors - return a default anonymous user state
+    if (result.error?.includes("auth") || result.error?.includes("session")) {
       return {
         user: {} as UserProfile,
         isAuthenticated: false,
@@ -24,6 +23,10 @@ async function fetchUser(): Promise<UserData> {
       };
     }
     throw new Error(result.error || "Failed to fetch user");
+  }
+
+  if (!result.data) {
+    throw new Error("No user data returned");
   }
 
   return result.data;

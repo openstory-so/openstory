@@ -98,10 +98,10 @@ export class AuthService {
   async getCurrentUserTeamId(): Promise<string | null> {
     const supabase = await this.getSupabase();
     const {
-      data: { session },
-    } = await supabase.auth.getSession();
+      data: { user },
+    } = await supabase.auth.getUser();
 
-    if (!session?.user) {
+    if (!user) {
       return null;
     }
 
@@ -110,7 +110,7 @@ export class AuthService {
     const { data } = await supabase
       .from("team_members")
       .select("team_id")
-      .eq("user_id", session.user.id)
+      .eq("user_id", user.id)
       .eq("role", "owner")
       .limit(1)
       .single();
@@ -255,15 +255,15 @@ export class AuthService {
     try {
       const supabase = await this.getSupabase();
 
-      // Get current session (should be anonymous)
+      // Get current user (should be anonymous)
       const {
-        data: { session },
-      } = await supabase.auth.getSession();
+        data: { user },
+      } = await supabase.auth.getUser();
 
-      if (!session?.user?.is_anonymous) {
+      if (!user?.is_anonymous) {
         return {
           success: false,
-          error: "No anonymous user session found",
+          error: "No anonymous user found",
         };
       }
 
@@ -351,20 +351,19 @@ export class AuthService {
     try {
       const supabase = await this.getSupabase();
       const {
-        data: { session },
-      } = await supabase.auth.getSession();
+        data: { user },
+      } = await supabase.auth.getUser();
 
-      if (!session?.user) {
+      if (!user) {
         return null;
       }
 
       // Create enhanced user profile
       const userProfile: UserProfile = {
-        ...session.user,
-        full_name: session.user.user_metadata?.full_name || null,
-        avatar_url: session.user.user_metadata?.avatar_url || null,
-        onboarding_completed:
-          session.user.user_metadata?.onboarding_completed || false,
+        ...user,
+        full_name: user.user_metadata?.full_name || null,
+        avatar_url: user.user_metadata?.avatar_url || null,
+        onboarding_completed: user.user_metadata?.onboarding_completed || false,
       };
 
       return userProfile;

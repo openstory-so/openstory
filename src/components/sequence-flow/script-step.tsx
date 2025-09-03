@@ -2,13 +2,12 @@ import type * as React from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { enhanceScript, validateScript } from "#actions/script";
 import { generateFrames, saveSequence } from "#actions/sequence";
-
+import { listStyles } from "#actions/styles";
 import { ScriptEditor } from "@/components/sequence/script-editor";
 import { StyleSelector } from "@/components/sequence/style-selector";
 import { SectionHeading } from "@/components/typography";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { generateMockStyles } from "@/lib/mocks/data-generators";
 import type {
   SequenceFlowAction,
   SequenceFlowState,
@@ -41,11 +40,16 @@ export const ScriptStep: React.FC<ScriptStepProps> = ({
     }
   }, [state.sequence, dispatch]);
 
-  // Load mock styles if not loaded
+  // Load styles from database
   useEffect(() => {
     if (state.availableStyles.length === 0) {
-      const mockStyles = generateMockStyles(6);
-      dispatch({ type: "SET_AVAILABLE_STYLES", payload: mockStyles });
+      const loadStyles = async () => {
+        const result = await listStyles();
+        if (result.success && result.styles) {
+          dispatch({ type: "SET_AVAILABLE_STYLES", payload: result.styles });
+        }
+      };
+      loadStyles();
     }
   }, [state.availableStyles.length, dispatch]);
 

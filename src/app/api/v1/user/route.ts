@@ -6,11 +6,11 @@ export async function GET() {
   try {
     const supabase = await createSessionAwareClient();
 
-    // Try to get the current session
+    // Get the authenticated user (verifies with Supabase Auth server)
     const {
-      data: { session },
+      data: { user },
       error: sessionError,
-    } = await supabase.auth.getSession();
+    } = await supabase.auth.getUser();
 
     // Handle refresh token errors
     if (sessionError) {
@@ -132,8 +132,8 @@ export async function GET() {
       );
     }
 
-    // If no session exists, create an anonymous user
-    if (!session?.user) {
+    // If no authenticated user exists, create an anonymous user
+    if (!user) {
       const { data, error: anonError } =
         await supabase.auth.signInAnonymously();
 
@@ -235,16 +235,84 @@ export async function GET() {
       });
     }
 
-    // We have a valid session
+    // We have a valid authenticated user
+    // First, ensure they have a team
+    const { data: teamMembership } = await supabase
+      .from("team_members")
+      .select("team_id")
+      .eq("user_id", user.id)
+      .eq("role", "owner")
+      .single();
+
+    if (!teamMembership) {
+      // User exists but has no team - create one for them
+      const teamSlug = `user-${user.id.substring(0, 8)}-${Date.now()}`;
+      const { data: team, error: teamError } = await supabase
+        .from("teams")
+        .insert({
+          name: "My Team",
+          slug: teamSlug,
+        })
+        .select()
+        .single();
+
+      if (teamError) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Failed to create team for existing user: ${teamError.message}`,
+          },
+          { status: 500 },
+        );
+      }
+
+      // Ensure user record exists in users table
+      const { error: userInsertError } = await supabase.from("users").insert({
+        id: user.id,
+      });
+
+      // Ignore duplicate key errors (user already exists)
+      if (userInsertError && userInsertError.code !== "23505") {
+        await supabase.from("teams").delete().eq("id", team.id);
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Failed to create user record: ${userInsertError.message}`,
+          },
+          { status: 500 },
+        );
+      }
+
+      // Add user as team owner
+      const { error: memberError } = await supabase
+        .from("team_members")
+        .insert({
+          user_id: user.id,
+          team_id: team.id,
+          role: "owner",
+        });
+
+      if (memberError) {
+        // Clean up team if membership creation fails
+        await supabase.from("teams").delete().eq("id", team.id);
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Failed to create team membership: ${memberError.message}`,
+          },
+          { status: 500 },
+        );
+      }
+    }
+
     const userProfile: UserProfile = {
-      ...session.user,
-      full_name: session.user.user_metadata?.full_name || null,
-      avatar_url: session.user.user_metadata?.avatar_url || null,
-      onboarding_completed:
-        session.user.user_metadata?.onboarding_completed || false,
+      ...user,
+      full_name: user.user_metadata?.full_name || null,
+      avatar_url: user.user_metadata?.avatar_url || null,
+      onboarding_completed: user.user_metadata?.onboarding_completed || false,
     };
 
-    const isAnonymous = session.user.is_anonymous === true;
+    const isAnonymous = user.is_anonymous === true;
 
     return NextResponse.json({
       success: true,

@@ -3,7 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { AuthService } from "@/lib/auth/service";
-import { createServerClient } from "@/lib/supabase/server";
+import {
+  createServerClient,
+  createSessionAwareClient,
+} from "@/lib/supabase/server";
 import type {
   Frame,
   FrameInsert,
@@ -38,7 +41,8 @@ export async function saveSequence(
   name?: string,
 ): Promise<{ success: boolean; sequence?: Sequence; error?: string }> {
   try {
-    const supabase = createServerClient();
+    // Use session-aware client to access the current user's session
+    const supabase = await createSessionAwareClient();
     const authService = new AuthService();
 
     if (sequenceId) {
@@ -65,13 +69,68 @@ export async function saveSequence(
         sequence: data,
       };
     } else {
-      // Create new sequence - get team_id from current user's session
-      const teamId = await authService.getCurrentUserTeamId();
+      // Create new sequence - get or create team_id for current user
+      let teamId = await authService.getCurrentUserTeamId();
 
       if (!teamId) {
-        throw new Error(
-          "No team found for current user. Please ensure you are logged in.",
-        );
+        // No team exists for this user - this can happen with anonymous users
+        // Get the current user to create a team for them
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+
+        if (!user) {
+          throw new Error(
+            "No authenticated user found. Please refresh the page to initialize your account.",
+          );
+        }
+
+        // Create a team for this user
+        const teamSlug = `user-${user.id.substring(0, 8)}-${Date.now()}`;
+        const { data: team, error: teamError } = await supabase
+          .from("teams")
+          .insert({
+            name: "My Team",
+            slug: teamSlug,
+          })
+          .select()
+          .single();
+
+        if (teamError) {
+          throw new Error(`Failed to create team: ${teamError.message}`);
+        }
+
+        // Create user record if doesn't exist
+        const { error: userInsertError } = await supabase.from("users").insert({
+          id: user.id,
+        });
+
+        // Ignore duplicate key errors
+        if (userInsertError && userInsertError.code !== "23505") {
+          await supabase.from("teams").delete().eq("id", team.id);
+          throw new Error(
+            `Failed to create user record: ${userInsertError.message}`,
+          );
+        }
+
+        // Add user as team owner
+        const { error: memberError } = await supabase
+          .from("team_members")
+          .insert({
+            user_id: user.id,
+            team_id: team.id,
+            role: "owner",
+          });
+
+        if (memberError && memberError.code !== "23505") {
+          // If not a duplicate key error, clean up and throw
+          await supabase.from("teams").delete().eq("id", team.id);
+          throw new Error(
+            `Failed to create team membership: ${memberError.message}`,
+          );
+        }
+
+        teamId = team.id;
       }
 
       const sequenceData: SequenceInsert = {
