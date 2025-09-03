@@ -1,13 +1,8 @@
 import type * as React from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  enhanceScript,
-  generateFrames,
-  type ScriptEnhancementResult,
-  type ScriptValidationResult,
-  saveSequence,
-  validateScript,
-} from "#actions/sequence";
+import { enhanceScript, validateScript } from "#actions/script";
+import { generateFrames, saveSequence } from "#actions/sequence";
+
 import { ScriptEditor } from "@/components/sequence/script-editor";
 import { StyleSelector } from "@/components/sequence/style-selector";
 import { SectionHeading } from "@/components/typography";
@@ -30,10 +25,12 @@ export const ScriptStep: React.FC<ScriptStepProps> = ({
   dispatch,
   onNext,
 }) => {
-  const [validationResult, setValidationResult] =
-    useState<ScriptValidationResult | null>(null);
-  const [enhancementResult, setEnhancementResult] =
-    useState<ScriptEnhancementResult | null>(null);
+  const [validationResult, setValidationResult] = useState<Awaited<
+    ReturnType<typeof validateScript>
+  > | null>(null);
+  const [enhancementResult, setEnhancementResult] = useState<Awaited<
+    ReturnType<typeof enhanceScript>
+  > | null>(null);
   const [isValidating, setIsValidating] = useState(false);
   const [isEnhancing, setIsEnhancing] = useState(false);
 

@@ -37,7 +37,7 @@ export const createBrowserClient = () => {
   const { NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY } =
     validateBrowserEnvironmentVariables();
 
-  return createClient<Database>(
+  const client = createClient<Database>(
     NEXT_PUBLIC_SUPABASE_URL,
     NEXT_PUBLIC_SUPABASE_ANON_KEY,
     {
@@ -48,4 +48,17 @@ export const createBrowserClient = () => {
       },
     },
   );
+
+  // Handle auth state changes including refresh token errors
+  client.auth.onAuthStateChange((event, session) => {
+    if (event === "TOKEN_REFRESHED" && !session) {
+      // Token refresh failed, clear invalid tokens
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("supabase.auth.token");
+        sessionStorage.removeItem("supabase.auth.token");
+      }
+    }
+  });
+
+  return client;
 };

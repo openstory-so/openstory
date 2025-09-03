@@ -82,18 +82,16 @@ export const generateMockFrame = (overrides?: Partial<Frame>): Frame => {
     sequence_id: faker.string.uuid(),
     order_index: faker.number.int({ min: 1, max: 10 }),
     description: faker.lorem.paragraph(),
-    thumbnail_url: `https://images.unsplash.com/photo-${faker.helpers.arrayElement(
-      [
-        "1478720568477-152d9b164e26", // Cinema scene
-        "1485846234645-a62644f84728", // Film production
-        "1524712245354-2c4e5e7121c0", // Cinematic landscape
-        "1536098561742-ca998e48cbcc", // Action scene
-        "1440404653325-ab127d49abc1", // Movie scene
-        "1514565131-fce0801e5785", // City skyline
-        "1506905925346-21bda4d32df4", // Mountain landscape
-        "1507003211169-0a1dd7228f2d", // Portrait
-      ],
-    )}?w=1920&h=1080&fit=crop`,
+    thumbnail_url: `https://picsum.photos/seed/${faker.helpers.arrayElement([
+      "1478720568477-152d9b164e26", // Cinema scene
+      "1485846234645-a62644f84728", // Film production
+      "1524712245354-2c4e5e7121c0", // Cinematic landscape
+      "1536098561742-ca998e48cbcc", // Action scene
+      "1440404653325-ab127d49abc1", // Movie scene
+      "1514565131-fce0801e5785", // City skyline
+      "1506905925346-21bda4d32df4", // Mountain landscape
+      "1507003211169-0a1dd7228f2d", // Portrait
+    ])}/1920/1080`,
     video_url: faker.datatype.boolean()
       ? `${faker.internet.url()}/video.mp4`
       : null,
@@ -139,22 +137,22 @@ export const generateMockStyle = (overrides?: Partial<Style>): Style => {
     id: faker.string.uuid(),
     name: faker.lorem.words(2),
     preview_url: faker.helpers.arrayElement([
-      "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=400&h=300&fit=crop", // Abstract gradient
-      "https://images.unsplash.com/photo-1579783902614-a3fb3927b6a5?w=400&h=300&fit=crop", // Colorful art
-      "https://images.unsplash.com/photo-1549490349-8643362247b5?w=400&h=300&fit=crop", // Neon lights
-      "https://images.unsplash.com/photo-1604076913837-52ab5629fba9?w=400&h=300&fit=crop", // Abstract waves
-      "https://images.unsplash.com/photo-1557672172-298e090bd0f1?w=400&h=300&fit=crop", // Watercolor splash
-      "https://images.unsplash.com/photo-1549887534-1541e9326642?w=400&h=300&fit=crop", // Dark abstract
-      "https://images.unsplash.com/photo-1567095761054-7a02e69e5c43?w=400&h=300&fit=crop", // Geometric abstract
-      "https://images.unsplash.com/photo-1604871000636-074fa5117945?w=400&h=300&fit=crop", // Paint texture
-      "https://images.unsplash.com/photo-1618005198919-d3d4b5a92ead?w=400&h=300&fit=crop", // Gradient mesh
-      "https://images.unsplash.com/photo-1563089145-599997674d42?w=400&h=300&fit=crop", // Digital abstract
-      "https://images.unsplash.com/photo-1558591710-4b4a1ae0f04d?w=400&h=300&fit=crop", // Smoke abstract
-      "https://images.unsplash.com/photo-1552083375-1447ce886485?w=400&h=300&fit=crop", // Color gradient
-      "https://images.unsplash.com/photo-1579783928621-7a13d66a62d1?w=400&h=300&fit=crop", // Paint strokes
-      "https://images.unsplash.com/photo-1569163139394-de4798aa62b6?w=400&h=300&fit=crop", // Fluid art
-      "https://images.unsplash.com/photo-1566041510394-cf7c8fe21800?w=400&h=300&fit=crop", // Marble texture
-      "https://images.unsplash.com/photo-1557682250-33bd709cbe85?w=400&h=300&fit=crop", // Purple gradient
+      "https://picsum.photos/seed/1618005182384-a83a8bd57fbe/400/300", // Abstract gradient
+      "https://picsum.photos/seed/1579783902614-a3fb3927b6a5/400/300", // Colorful art
+      "https://picsum.photos/seed/1549490349-8643362247b5/400/300", // Neon lights
+      "https://picsum.photos/seed/1604076913837-52ab5629fba9/400/300", // Abstract waves
+      "https://picsum.photos/seed/1557672172-298e090bd0f1/400/300", // Watercolor splash
+      "https://picsum.photos/seed/1549887534-1541e9326642/400/300", // Dark abstract
+      "https://picsum.photos/seed/1567095761054-7a02e69e5c43/400/300", // Geometric abstract
+      "https://picsum.photos/seed/1604871000636-074fa5117945/400/300", // Paint texture
+      "https://picsum.photos/seed/1618005198919-d3d4b5a92ead/400/300", // Gradient mesh
+      "https://picsum.photos/seed/1563089145-599997674d42/400/300", // Digital abstract
+      "https://picsum.photos/seed/1558591710-4b4a1ae0f04d/400/300", // Smoke abstract
+      "https://picsum.photos/seed/1552083375-1447ce886485/400/300", // Color gradient
+      "https://picsum.photos/seed/1579783928621-7a13d66a62d1/400/300", // Paint strokes
+      "https://picsum.photos/seed/1569163139394-de4798aa62b6/400/300", // Fluid art
+      "https://picsum.photos/seed/1566041510394-cf7c8fe21800/400/300", // Marble texture
+      "https://picsum.photos/seed/1557682250-33bd709cbe85/400/300", // Purple gradient
     ]),
     config: {
       colorPalette: faker.helpers.arrayElements(

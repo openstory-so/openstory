@@ -60,8 +60,7 @@ const sampleFrame = generateMockFrame({
   id: "motion-frame-1",
   order_index: 1,
   description: "A cinematic establishing shot of a cityscape at golden hour",
-  thumbnail_url:
-    "https://images.unsplash.com/photo-1514565131-fce0801e5785?w=640&h=360&fit=crop",
+  thumbnail_url: "https://picsum.photos/seed/1514565131-fce0801e5785/640/360",
   duration_ms: 5000,
 });
 
@@ -75,7 +74,7 @@ export const WithVideo: Story = {
     videoUrl: sampleVideoUrl,
     thumbnailUrl:
       sampleFrame.thumbnail_url ||
-      "https://images.unsplash.com/photo-1536240478700-b869070f9279?w=640&h=360&fit=crop",
+      "https://picsum.photos/seed/1536240478700-b869070f9279/640/360",
     duration: sampleFrame.duration_ms || undefined,
     frame: sampleFrame,
   },
@@ -87,7 +86,7 @@ export const ThumbnailOnly: Story = {
     // No videoUrl provided
     thumbnailUrl:
       sampleFrame.thumbnail_url ||
-      "https://images.unsplash.com/photo-1536240478700-b869070f9279?w=640&h=360&fit=crop",
+      "https://picsum.photos/seed/1536240478700-b869070f9279/640/360",
     duration: sampleFrame.duration_ms || undefined,
     frame: sampleFrame,
   },
@@ -99,7 +98,7 @@ export const Loading: Story = {
     videoUrl: sampleVideoUrl,
     thumbnailUrl:
       sampleFrame.thumbnail_url ||
-      "https://images.unsplash.com/photo-1536240478700-b869070f9279?w=640&h=360&fit=crop",
+      "https://picsum.photos/seed/1536240478700-b869070f9279/640/360",
     duration: sampleFrame.duration_ms || undefined,
     frame: sampleFrame,
     loading: true,
@@ -112,7 +111,7 @@ export const AutoPlay: Story = {
     videoUrl: sampleVideoUrl,
     thumbnailUrl:
       sampleFrame.thumbnail_url ||
-      "https://images.unsplash.com/photo-1536240478700-b869070f9279?w=640&h=360&fit=crop",
+      "https://picsum.photos/seed/1536240478700-b869070f9279/640/360",
     duration: sampleFrame.duration_ms || undefined,
     frame: sampleFrame,
     autoPlay: true,
@@ -132,7 +131,7 @@ export const Unmuted: Story = {
     videoUrl: sampleVideoUrl,
     thumbnailUrl:
       sampleFrame.thumbnail_url ||
-      "https://images.unsplash.com/photo-1536240478700-b869070f9279?w=640&h=360&fit=crop",
+      "https://picsum.photos/seed/1536240478700-b869070f9279/640/360",
     duration: sampleFrame.duration_ms || undefined,
     frame: sampleFrame,
     muted: false,
@@ -144,14 +143,14 @@ export const Frame2: Story = {
   args: {
     videoUrl: sampleVideoUrl,
     thumbnailUrl:
-      "https://images.unsplash.com/photo-1594736797933-d0501ba2fe65?w=640&h=360&fit=crop",
+      "https://picsum.photos/seed/1594736797933-d0501ba2fe65/640/360",
     duration: 8500,
     frame: generateMockFrame({
       id: "motion-frame-2",
       order_index: 2,
       description: "Close-up character dialogue scene",
       thumbnail_url:
-        "https://images.unsplash.com/photo-1594736797933-d0501ba2fe65?w=640&h=360&fit=crop",
+        "https://picsum.photos/seed/1594736797933-d0501ba2fe65/640/360",
       duration_ms: 8500,
     }),
   },
@@ -160,15 +159,14 @@ export const Frame2: Story = {
 export const Frame3: Story = {
   args: {
     videoUrl: sampleVideoUrl,
-    thumbnailUrl:
-      "https://images.unsplash.com/photo-1553095066-5014bc7b7f2d?w=640&h=360&fit=crop",
+    thumbnailUrl: "https://picsum.photos/seed/1553095066-5014bc7b7f2d/640/360",
     duration: 3200,
     frame: generateMockFrame({
       id: "motion-frame-3",
       order_index: 3,
       description: "Action sequence with dynamic movement",
       thumbnail_url:
-        "https://images.unsplash.com/photo-1553095066-5014bc7b7f2d?w=640&h=360&fit=crop",
+        "https://picsum.photos/seed/1553095066-5014bc7b7f2d/640/360",
       duration_ms: 3200,
     }),
   },
@@ -179,14 +177,14 @@ export const LongDuration: Story = {
   args: {
     videoUrl: sampleVideoUrl,
     thumbnailUrl:
-      "https://images.unsplash.com/photo-1478720568477-152d9b164e26?w=640&h=360&fit=crop",
+      "https://picsum.photos/seed/1478720568477-152d9b164e26/640/360",
     duration: 15000,
     frame: generateMockFrame({
       id: "long-motion-frame",
       order_index: 5,
       description: "Extended scene with multiple story beats",
       thumbnail_url:
-        "https://images.unsplash.com/photo-1478720568477-152d9b164e26?w=640&h=360&fit=crop",
+        "https://picsum.photos/seed/1478720568477-152d9b164e26/640/360",
       duration_ms: 15000,
     }),
   },
@@ -211,7 +209,7 @@ const MultiplePreviewsTemplate: Story = {
         order_index: 1,
         description: "Opening landscape shot",
         thumbnail_url:
-          "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=640&h=360&fit=crop",
+          "https://picsum.photos/seed/1506905925346-21bda4d32df4/640/360",
         duration_ms: 4000,
       }),
       generateMockFrame({
@@ -219,7 +217,7 @@ const MultiplePreviewsTemplate: Story = {
         order_index: 2,
         description: "Character introduction",
         thumbnail_url:
-          "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=640&h=360&fit=crop",
+          "https://picsum.photos/seed/1507003211169-0a1dd7228f2d/640/360",
         duration_ms: 6000,
       }),
       generateMockFrame({
@@ -227,7 +225,7 @@ const MultiplePreviewsTemplate: Story = {
         order_index: 3,
         description: "Action sequence",
         thumbnail_url:
-          "https://images.unsplash.com/photo-1536098561742-ca998e48cbcc?w=640&h=360&fit=crop",
+          "https://picsum.photos/seed/1536098561742-ca998e48cbcc/640/360",
         duration_ms: 3500,
       }),
       generateMockFrame({
@@ -235,7 +233,7 @@ const MultiplePreviewsTemplate: Story = {
         order_index: 4,
         description: "Dialogue scene",
         thumbnail_url:
-          "https://images.unsplash.com/photo-1524712245354-2c4e5e7121c0?w=640&h=360&fit=crop",
+          "https://picsum.photos/seed/1524712245354-2c4e5e7121c0/640/360",
         duration_ms: 8000,
       }),
     ];
@@ -250,7 +248,7 @@ const MultiplePreviewsTemplate: Story = {
             videoUrl={index % 2 === 0 ? sampleVideoUrl : undefined}
             thumbnailUrl={
               frame.thumbnail_url ||
-              "https://images.unsplash.com/photo-1536240478700-b869070f9279?w=640&h=360&fit=crop"
+              "https://picsum.photos/seed/1536240478700-b869070f9279/640/360"
             }
             duration={frame.duration_ms || undefined}
             frame={frame}
@@ -280,7 +278,7 @@ export const Interactive: Story = {
     videoUrl: sampleVideoUrl,
     thumbnailUrl:
       sampleFrame.thumbnail_url ||
-      "https://images.unsplash.com/photo-1536240478700-b869070f9279?w=640&h=360&fit=crop",
+      "https://picsum.photos/seed/1536240478700-b869070f9279/640/360",
     duration: sampleFrame.duration_ms || undefined,
     frame: sampleFrame,
   },
@@ -307,7 +305,7 @@ export const LoadingStates: Story = {
         <h3 className="text-sm font-medium">Video Loading</h3>
         <MotionPreview
           videoUrl={sampleVideoUrl}
-          thumbnailUrl="https://images.unsplash.com/photo-1440404653325-ab127d49abc1?w=640&h=360&fit=crop"
+          thumbnailUrl="https://picsum.photos/seed/1440404653325-ab127d49abc1/640/360"
           duration={5000}
           frame={generateMockFrame({ order_index: 1 })}
           loading={true}
@@ -317,7 +315,7 @@ export const LoadingStates: Story = {
       <div className="space-y-2">
         <h3 className="text-sm font-medium">No Video</h3>
         <MotionPreview
-          thumbnailUrl="https://images.unsplash.com/photo-1485846234645-a62644f84728?w=640&h=360&fit=crop"
+          thumbnailUrl="https://picsum.photos/seed/1485846234645-a62644f84728/640/360"
           duration={5000}
           frame={generateMockFrame({ order_index: 2 })}
         />
@@ -362,7 +360,7 @@ export const Responsive: Story = {
     videoUrl: sampleVideoUrl,
     thumbnailUrl:
       sampleFrame.thumbnail_url ||
-      "https://images.unsplash.com/photo-1536240478700-b869070f9279?w=640&h=360&fit=crop",
+      "https://picsum.photos/seed/1536240478700-b869070f9279/640/360",
     duration: sampleFrame.duration_ms || undefined,
     frame: sampleFrame,
   },

@@ -11,20 +11,6 @@ import type {
   SequenceInsert,
 } from "@/types/database";
 
-// Re-export validation types from mock for backward compatibility
-export type {
-  FrameGenerationResult,
-  MotionGenerationResult,
-  ScriptEnhancementResult,
-  ScriptValidationResult,
-} from "#actions/anonymous-flow";
-
-// Re-export mock functions for validation and enhancement (still using mocks for these)
-export {
-  enhanceScript,
-  validateScript,
-} from "#actions/anonymous-flow";
-
 // Schema definitions
 const createSequenceSchema = z.object({
   name: z.string().min(1).max(100),

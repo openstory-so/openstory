@@ -54,7 +54,7 @@ const sampleFrame = generateMockFrame({
   description:
     "A hero shot of the main character standing on a cliff overlooking the ocean at sunset. The warm golden light illuminates their face as they contemplate their next move.",
   thumbnail_url:
-    "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=400&h=225&fit=crop",
+    "https://picsum.photos/seed/1506905925346-21bda4d32df4/400/225",
   duration_ms: 5000,
 });
 
@@ -64,7 +64,7 @@ const frameWithVideo = generateMockFrame({
   description:
     "Close-up of hands typing rapidly on a keyboard in a dimly lit room.",
   thumbnail_url:
-    "https://images.unsplash.com/photo-1515378791036-0648a3ef77b2?w=400&h=225&fit=crop",
+    "https://picsum.photos/seed/1515378791036-0648a3ef77b2/400/225",
   video_url: "https://example.com/video.mp4",
   duration_ms: 3500,
 });
@@ -74,8 +74,7 @@ const longDescriptionFrame = generateMockFrame({
   order_index: 3,
   description:
     "An extremely long description that should be truncated when displayed in the component. This text goes on and on to demonstrate how the component handles overflow text by adding ellipsis after a certain character limit to maintain clean visual appearance.",
-  thumbnail_url:
-    "https://images.unsplash.com/photo-1550745165-9bc0b252726f?w=400&h=225&fit=crop",
+  thumbnail_url: "https://picsum.photos/seed/1550745165-9bc0b252726f/400/225",
   duration_ms: 7500,
 });
 
@@ -144,14 +143,14 @@ const MultipleFramesTemplate: Story = {
         order_index: 1,
         description: "Opening scene with dramatic landscape",
         thumbnail_url:
-          "https://images.unsplash.com/photo-1519904981063-b0cf448d479e?w=400&h=225&fit=crop",
+          "https://picsum.photos/seed/1519904981063-b0cf448d479e/400/225",
       }),
       generateMockFrame({
         id: "frame-2",
         order_index: 2,
         description: "Character introduction with close-up shot",
         thumbnail_url:
-          "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&h=225&fit=crop",
+          "https://picsum.photos/seed/1507003211169-0a1dd7228f2d/400/225",
         video_url: "https://example.com/video2.mp4",
       }),
       generateMockFrame({
@@ -159,7 +158,7 @@ const MultipleFramesTemplate: Story = {
         order_index: 3,
         description: "Action sequence in urban environment",
         thumbnail_url:
-          "https://images.unsplash.com/photo-1536098561742-ca998e48cbcc?w=400&h=225&fit=crop",
+          "https://picsum.photos/seed/1536098561742-ca998e48cbcc/400/225",
       }),
     ];
 
@@ -226,7 +225,7 @@ export const PortraitImage: Story = {
       order_index: 5,
       description: "Portrait orientation shot for mobile-first content",
       thumbnail_url:
-        "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=400&h=600&fit=crop",
+        "https://picsum.photos/seed/1544005313-94ddf0286df2/400/600",
     }),
   },
 };
@@ -239,7 +238,7 @@ export const MinimalData: Story = {
       order_index: 1,
       description: "Basic frame",
       thumbnail_url:
-        "https://images.unsplash.com/photo-1485846234645-a62644f84728?w=400&h=225&fit=crop",
+        "https://picsum.photos/seed/1485846234645-a62644f84728/400/225",
       duration_ms: undefined, // No duration
     }),
   },

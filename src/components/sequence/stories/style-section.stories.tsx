@@ -8,7 +8,7 @@ const mockStyles: Style[] = [
     id: "style-1",
     name: "Cinematic Drama",
     preview_url:
-      "https://images.unsplash.com/photo-1440404653325-ab127d49abc1?w=400&h=300&fit=crop",
+      "https://picsum.photos/seed/1440404653325-ab127d49abc1/400/300",
     config: {
       artStyle: "Cinematic",
       colorPalette: ["#1a1a1a", "#d4af37", "#8b4513", "#2c2c2c"],
@@ -30,7 +30,7 @@ const mockStyles: Style[] = [
     id: "style-2",
     name: "Animated Adventure",
     preview_url:
-      "https://images.unsplash.com/photo-1578662996442-48f60103fc96?w=400&h=300&fit=crop",
+      "https://picsum.photos/seed/1578662996442-48f60103fc96/400/300",
     config: {
       artStyle: "Animation",
       colorPalette: ["#ff6b35", "#f7931e", "#1f4e79", "#85c7de"],
@@ -52,7 +52,7 @@ const mockStyles: Style[] = [
     id: "style-3",
     name: "Film Noir",
     preview_url:
-      "https://images.unsplash.com/photo-1485846234645-a62644f84728?w=400&h=300&fit=crop",
+      "https://picsum.photos/seed/1485846234645-a62644f84728/400/300",
     config: {
       artStyle: "Film Noir",
       colorPalette: ["#000000", "#ffffff", "#404040", "#808080"],
