@@ -1,5 +1,12 @@
 import { faker } from "@faker-js/faker";
-import type { Frame, Job, Sequence, Style, Team, User } from "@/types/database";
+import type {
+  Frame,
+  Job,
+  Sequence,
+  Style,
+  Team,
+  UserProfile,
+} from "@/types/database";
 
 // Set consistent seed for reproducible mock data
 faker.seed(123);
@@ -227,12 +234,32 @@ export const generateMockTeam = (overrides?: Partial<Team>): Team => {
   };
 };
 
-export const generateMockUser = (overrides?: Partial<User>): User => {
+export const generateMockUser = (
+  overrides?: Partial<UserProfile>,
+): UserProfile => {
   return {
     id: faker.string.uuid(),
+    aud: "authenticated",
+    role: "authenticated",
     email: faker.internet.email(),
+    phone: undefined,
+    email_confirmed_at: faker.date.past().toISOString(),
+    phone_confirmed_at: undefined,
+    confirmation_sent_at: faker.date.past().toISOString(),
+    confirmed_at: faker.date.past().toISOString(),
+    recovery_sent_at: undefined,
+    last_sign_in_at: faker.date.recent().toISOString(),
+    app_metadata: {},
+    user_metadata: {
+      full_name: faker.person.fullName(),
+      avatar_url: faker.image.avatar(),
+    },
+    identities: [],
+    is_anonymous: false,
+    factors: [],
     full_name: faker.person.fullName(),
     avatar_url: faker.image.avatar(),
+    onboarding_completed: faker.datatype.boolean(),
     created_at: faker.date.past().toISOString(),
     updated_at: faker.date.recent().toISOString(),
     ...overrides,
@@ -268,6 +295,6 @@ export const generateMockTeams = (count: number = 3): Team[] => {
   return Array.from({ length: count }, () => generateMockTeam());
 };
 
-export const generateMockUsers = (count: number = 5): User[] => {
+export const generateMockUsers = (count: number = 5): UserProfile[] => {
   return Array.from({ length: count }, () => generateMockUser());
 };

@@ -49,7 +49,7 @@ src/
 
 ### State Structure
 ```typescript
-interface AnonymousFlowState {
+interface StoryboardFlowState {
   currentStep: 1 | 2 | 3
   user: {
     id: string // Simulated anonymous user ID
@@ -363,7 +363,7 @@ interface LocalStorageData {
 
 ### Reducer Actions
 ```typescript
-type AnonymousFlowAction =
+type StoryboardFlowAction =
   | { type: 'SET_ANONYMOUS_USER'; payload: AnonymousUser }
   | { type: 'SET_SEQUENCE'; payload: Sequence }
   | { type: 'UPDATE_SCRIPT'; payload: string }

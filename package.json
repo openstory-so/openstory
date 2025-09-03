@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "pnpm supabase:types && next dev --turbopack",
-    "build": "next build --turbopack",
+    "build": "next build",
     "start": "next start",
     "lint": "biome check --write .",
     "lint:check": "biome check .",

@@ -20,7 +20,7 @@ import {
   type UpdateStyleInput,
   UpdateStyleSchema,
 } from "@/lib/schemas/style-stack";
-import { createAdminClient, createServerClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/server";
 import type { Json, Style, StyleInsert, StyleUpdate } from "@/types/database";
 
 export interface StyleWithAdaptations extends Style {
@@ -42,9 +42,13 @@ export interface PaginatedStyles {
 }
 
 export class StyleStackService {
-  private supabase = createServerClient();
   private adminClient = createAdminClient();
   private authService = new AuthService();
+
+  // Use admin client for most operations, session-aware client for auth-specific needs
+  private get supabase() {
+    return this.adminClient;
+  }
 
   /**
    * Create a new style for a team

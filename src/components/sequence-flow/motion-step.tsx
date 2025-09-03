@@ -1,4 +1,5 @@
-import * as React from "react";
+import type React from "react";
+import { useCallback, useState } from "react";
 import {
   generateBatchMotion,
   generateFrameMotion,
@@ -9,18 +10,14 @@ import { SectionHeading } from "@/components/typography";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  useAnonymousSession,
-  useUpgradePrompts,
-} from "@/hooks/use-anonymous-session";
 import type {
-  AnonymousFlowAction,
-  AnonymousFlowState,
-} from "@/reducers/anonymous-flow-reducer";
+  SequenceFlowAction,
+  SequenceFlowState,
+} from "@/reducers/sequence-flow-reducer";
 
 interface MotionStepProps {
-  state: AnonymousFlowState;
-  dispatch: React.Dispatch<AnonymousFlowAction>;
+  state: SequenceFlowState;
+  dispatch: React.Dispatch<SequenceFlowAction>;
   onPrevious: () => void;
 }
 
@@ -29,32 +26,11 @@ export const MotionStep: React.FC<MotionStepProps> = ({
   dispatch,
   onPrevious,
 }) => {
-  const { sessionData, upgradeToMagicLink } = useAnonymousSession();
-  const { shouldShowUpgradePrompt } = useUpgradePrompts(sessionData);
+  const [generatingFrameIds, setGeneratingFrameIds] = useState<Set<string>>(
+    new Set(),
+  );
 
-  const [generatingFrameIds, setGeneratingFrameIds] = React.useState<
-    Set<string>
-  >(new Set());
-  const [showUpgradeDialog, setShowUpgradeDialog] = React.useState(false);
-  const [upgradeEmail, setUpgradeEmail] = React.useState("");
-  const [isUpgrading, setIsUpgrading] = React.useState(false);
-
-  // Show upgrade prompt after generating motion
-  React.useEffect(() => {
-    if (shouldShowUpgradePrompt("motion_generated") && !showUpgradeDialog) {
-      const hasMotion = state.sequence?.frames.some((frame) => frame.video_url);
-      if (hasMotion) {
-        dispatch({ type: "SET_SHOW_UPGRADE_PROMPT", payload: true });
-      }
-    }
-  }, [
-    state.sequence?.frames,
-    shouldShowUpgradePrompt,
-    showUpgradeDialog,
-    dispatch,
-  ]);
-
-  const handleGenerateFrameMotion = React.useCallback(
+  const handleGenerateFrameMotion = useCallback(
     async (frameId: string) => {
       if (!state.sequence || !state.sequence.styleId) return;
 
@@ -99,7 +75,7 @@ export const MotionStep: React.FC<MotionStepProps> = ({
     [state.sequence, dispatch],
   );
 
-  const handleGenerateAllMotion = React.useCallback(async () => {
+  const handleGenerateAllMotion = useCallback(async () => {
     if (!state.sequence || !state.sequence.styleId) return;
 
     const framesToGenerate = state.sequence.frames.filter(
@@ -143,28 +119,6 @@ export const MotionStep: React.FC<MotionStepProps> = ({
       dispatch({ type: "SET_CURRENT_OPERATION", payload: null });
     }
   }, [state.sequence, dispatch]);
-
-  const handleUpgradeAccount = React.useCallback(async () => {
-    if (!upgradeEmail.trim()) return;
-
-    setIsUpgrading(true);
-    try {
-      const result = await upgradeToMagicLink(upgradeEmail);
-      if (result.success) {
-        setShowUpgradeDialog(false);
-        // Show success message
-        alert(
-          "Magic link sent! Check your email to complete account creation.",
-        );
-      } else {
-        alert(result.error || "Failed to send magic link");
-      }
-    } catch (_error) {
-      alert("Failed to upgrade account");
-    } finally {
-      setIsUpgrading(false);
-    }
-  }, [upgradeEmail, upgradeToMagicLink]);
 
   const framesWithMotion =
     state.sequence?.frames.filter((frame) => frame.video_url) || [];
@@ -310,91 +264,6 @@ export const MotionStep: React.FC<MotionStepProps> = ({
             <div className="text-sm">{state.generation.motionError}</div>
           </div>
         </Alert>
-      )}
-
-      {/* Upgrade Prompt */}
-      {state.ui.showUpgradePrompt && hasAnyMotion && !showUpgradeDialog && (
-        <Alert>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <div className="font-medium">🎉 Great work!</div>
-              <div className="text-sm">
-                You've created {framesWithMotion.length} motion video
-                {framesWithMotion.length !== 1 ? "s" : ""}! Want to save your
-                work and unlock more features?
-              </div>
-            </div>
-
-            <div className="flex gap-2">
-              <Button
-                size="sm"
-                onClick={() => setShowUpgradeDialog(true)}
-                data-testid="show-upgrade-dialog-button"
-              >
-                Create Free Account
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() =>
-                  dispatch({ type: "SET_SHOW_UPGRADE_PROMPT", payload: false })
-                }
-              >
-                Maybe Later
-              </Button>
-            </div>
-          </div>
-        </Alert>
-      )}
-
-      {/* Upgrade Dialog (simplified inline version) */}
-      {showUpgradeDialog && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Create Your Free Account</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <div className="text-sm text-muted-foreground">
-                Enter your email to save your work and unlock additional
-                features:
-              </div>
-              <ul className="text-sm list-disc list-inside space-y-1">
-                <li>Save and restore your sequences</li>
-                <li>Higher quality exports</li>
-                <li>More style options</li>
-                <li>Team collaboration</li>
-              </ul>
-            </div>
-
-            <div className="space-y-2">
-              <input
-                type="email"
-                placeholder="Enter your email"
-                value={upgradeEmail}
-                onChange={(e) => setUpgradeEmail(e.target.value)}
-                className="w-full px-3 py-2 border rounded-md"
-                data-testid="upgrade-email-input"
-              />
-
-              <div className="flex gap-2">
-                <Button
-                  onClick={handleUpgradeAccount}
-                  disabled={!upgradeEmail.trim() || isUpgrading}
-                  data-testid="upgrade-account-button"
-                >
-                  {isUpgrading ? "Sending..." : "Send Magic Link"}
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => setShowUpgradeDialog(false)}
-                >
-                  Cancel
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
       )}
 
       {/* Completion Status */}

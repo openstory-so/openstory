@@ -4,7 +4,6 @@ import { AuthService } from "@/lib/auth/service";
 
 const sendMagicLinkSchema = z.object({
   email: z.string().email("Valid email is required"),
-  anonymousId: z.string().optional(),
   redirectTo: z.string().url().optional(),
 });
 
@@ -17,15 +16,11 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
 
     // Validate input
-    const { email, anonymousId, redirectTo } = sendMagicLinkSchema.parse(body);
+    const { email, redirectTo } = sendMagicLinkSchema.parse(body);
 
     // Send magic link
     const authService = new AuthService();
-    const result = await authService.sendMagicLink(
-      email,
-      anonymousId,
-      redirectTo,
-    );
+    const result = await authService.sendMagicLink(email, redirectTo);
 
     if (!result || !result.success) {
       return NextResponse.json(

@@ -1,4 +1,5 @@
-import * as React from "react";
+import type * as React from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   type FrameGenerationResult,
   generateFrames,
@@ -8,13 +9,13 @@ import { SectionHeading } from "@/components/typography";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import type {
-  AnonymousFlowAction,
-  AnonymousFlowState,
-} from "@/reducers/anonymous-flow-reducer";
+  SequenceFlowAction,
+  SequenceFlowState,
+} from "@/reducers/sequence-flow-reducer";
 
 interface StoryboardStepProps {
-  state: AnonymousFlowState;
-  dispatch: React.Dispatch<AnonymousFlowAction>;
+  state: SequenceFlowState;
+  dispatch: React.Dispatch<SequenceFlowAction>;
   onNext: () => void;
   onPrevious: () => void;
 }
@@ -25,11 +26,9 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
   onNext,
   onPrevious,
 }) => {
-  const [generationError, setGenerationError] = React.useState<string | null>(
-    null,
-  );
+  const [generationError, setGenerationError] = useState<string | null>(null);
 
-  const handleGenerateStoryboard = React.useCallback(async () => {
+  const handleGenerateStoryboard = useCallback(async () => {
     if (!state.sequence || !state.sequence.styleId) return;
 
     dispatch({ type: "START_STORYBOARD_GENERATION" });
@@ -64,7 +63,7 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
     }
   }, [state.sequence, dispatch]);
 
-  const _handleRegenerateFrame = React.useCallback(
+  const _handleRegenerateFrame = useCallback(
     async (_frameId: string) => {
       // For now, just regenerate the whole storyboard
       // In a real implementation, this would regenerate just the specific frame
@@ -73,14 +72,14 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
     [handleGenerateStoryboard],
   );
 
-  const handleFrameReorder = React.useCallback(
+  const handleFrameReorder = useCallback(
     (fromIndex: number, toIndex: number) => {
       dispatch({ type: "REORDER_FRAMES", payload: { fromIndex, toIndex } });
     },
     [dispatch],
   );
 
-  const handleNext = React.useCallback(() => {
+  const handleNext = useCallback(() => {
     if ((state.sequence?.frames?.length || 0) > 0) {
       // Mark step 2 as completed
       dispatch({ type: "MARK_STEP_COMPLETED", payload: 2 });
@@ -88,7 +87,7 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
     }
   }, [state.sequence?.frames?.length, dispatch, onNext]);
 
-  const canGenerate = React.useMemo(() => {
+  const canGenerate = useMemo(() => {
     return (
       state.sequence &&
       state.sequence.script.trim().length >= 10 &&

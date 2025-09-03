@@ -1,6 +1,7 @@
 import { Maximize2, Pause, Play, Volume2, VolumeX } from "lucide-react";
 import Image from "next/image";
-import * as React from "react";
+import type * as React from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -31,15 +32,15 @@ export const MotionPreview: React.FC<MotionPreviewProps> = ({
   muted = true,
   loading = false,
 }) => {
-  const videoRef = React.useRef<HTMLVideoElement>(null);
-  const [isPlaying, setIsPlaying] = React.useState(false);
-  const [isMuted, setIsMuted] = React.useState(muted);
-  const [currentTime, setCurrentTime] = React.useState(0);
-  const [videoDuration, setVideoDuration] = React.useState(0);
-  const [_isFullscreen, setIsFullscreen] = React.useState(false);
-  const [showControls, setShowControls] = React.useState(false);
-  const [imageLoading, setImageLoading] = React.useState(true);
-  const [imageError, setImageError] = React.useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [isMuted, setIsMuted] = useState(muted);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [videoDuration, setVideoDuration] = useState(0);
+  const [_isFullscreen, setIsFullscreen] = useState(false);
+  const [showControls, setShowControls] = useState(false);
+  const [imageLoading, setImageLoading] = useState(true);
+  const [imageError, setImageError] = useState(false);
 
   const hasVideo = Boolean(videoUrl);
 
@@ -72,7 +73,7 @@ export const MotionPreview: React.FC<MotionPreviewProps> = ({
   };
 
   // Control handlers
-  const togglePlay = React.useCallback(() => {
+  const togglePlay = useCallback(() => {
     if (!videoRef.current || !hasVideo) return;
 
     if (isPlaying) {
@@ -82,7 +83,7 @@ export const MotionPreview: React.FC<MotionPreviewProps> = ({
     }
   }, [isPlaying, hasVideo]);
 
-  const toggleMute = React.useCallback(() => {
+  const toggleMute = useCallback(() => {
     if (!videoRef.current) return;
 
     const newMuted = !isMuted;
@@ -103,7 +104,7 @@ export const MotionPreview: React.FC<MotionPreviewProps> = ({
     onSeek?.(seekTime);
   };
 
-  const toggleFullscreen = React.useCallback(async () => {
+  const toggleFullscreen = useCallback(async () => {
     if (!videoRef.current) return;
 
     try {
@@ -118,7 +119,7 @@ export const MotionPreview: React.FC<MotionPreviewProps> = ({
       console.error("Fullscreen error:", error);
     }
   }, []);
-  const handleKeyPress = React.useCallback(
+  const handleKeyPress = useCallback(
     (e: KeyboardEvent) => {
       if (e.target !== document.body) return; // Only handle when not in input fields
 
@@ -142,13 +143,13 @@ export const MotionPreview: React.FC<MotionPreviewProps> = ({
   );
 
   // Keyboard shortcuts
-  React.useEffect(() => {
+  useEffect(() => {
     document.addEventListener("keydown", handleKeyPress);
     return () => document.removeEventListener("keydown", handleKeyPress);
   }, [handleKeyPress]);
 
   // Handle fullscreen change
-  React.useEffect(() => {
+  useEffect(() => {
     const handleFullscreenChange = () => {
       setIsFullscreen(Boolean(document.fullscreenElement));
     };

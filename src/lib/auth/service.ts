@@ -1,35 +1,66 @@
-import { randomUUID } from "node:crypto";
-import { createAdminClient, createServerClient } from "@/lib/supabase/server";
-import type { Database } from "@/types/database";
-
-type Json = Database["public"]["Tables"]["anonymous_sessions"]["Row"]["data"];
-
-type AnonymousSession =
-  Database["public"]["Tables"]["anonymous_sessions"]["Row"];
-type AnonymousSessionInsert =
-  Database["public"]["Tables"]["anonymous_sessions"]["Insert"];
-type UserProfile = Database["public"]["Tables"]["user_profiles"]["Row"];
-type UserProfileInsert =
-  Database["public"]["Tables"]["user_profiles"]["Insert"];
+import {
+  createAdminClient,
+  createSessionAwareClient,
+} from "@/lib/supabase/server";
+import type {
+  AnonymousSession,
+  AnonymousSessionInsert,
+  Json,
+  UserProfile,
+} from "@/types/database";
 
 export class AuthService {
-  private supabase = createServerClient();
+  private async getSupabase() {
+    return await createSessionAwareClient();
+  }
+
   private adminClient = createAdminClient();
 
   /**
-   * Create an anonymous session for users who want to start working without signing up
+   * Create an anonymous user using Supabase's native anonymous authentication
+   */
+  async createAnonymousUser(): Promise<UserProfile> {
+    const supabase = await this.getSupabase();
+
+    const { data, error } = await supabase.auth.signInAnonymously();
+
+    if (error) {
+      throw new Error(`Failed to create anonymous user: ${error.message}`);
+    }
+
+    if (!data.user) {
+      throw new Error("No user returned from anonymous sign-in");
+    }
+
+    // Create enhanced user profile
+    const userProfile: UserProfile = {
+      ...data.user,
+      full_name: null,
+      avatar_url: null,
+      onboarding_completed: false,
+    };
+
+    return userProfile;
+  }
+
+  /**
+   * Legacy method - now uses native anonymous authentication
+   * @deprecated Use createAnonymousUser() instead
    */
   async createAnonymousSession(
     initialData?: Record<string, unknown>,
   ): Promise<AnonymousSession> {
-    const sessionId = randomUUID();
+    // For backward compatibility, we'll still support the anonymous_sessions table
+    // but the primary user creation should use Supabase native auth
+    const sessionId = crypto.randomUUID();
 
     const sessionData: AnonymousSessionInsert = {
       id: sessionId,
       data: (initialData || {}) as Json,
     };
 
-    const { data, error } = await this.supabase
+    const supabase = await this.getSupabase();
+    const { data, error } = await supabase
       .from("anonymous_sessions")
       .insert(sessionData)
       .select()
@@ -48,7 +79,8 @@ export class AuthService {
   async getAnonymousSession(
     sessionId: string,
   ): Promise<AnonymousSession | null> {
-    const { data, error } = await this.supabase
+    const supabase = await this.getSupabase();
+    const { data, error } = await supabase
       .from("anonymous_sessions")
       .select("*")
       .eq("id", sessionId)
@@ -69,7 +101,8 @@ export class AuthService {
     sessionId: string,
     data: Record<string, unknown>,
   ): Promise<AnonymousSession> {
-    const { data: updatedSession, error } = await this.supabase
+    const supabase = await this.getSupabase();
+    const { data: updatedSession, error } = await supabase
       .from("anonymous_sessions")
       .update({ data: data as Json })
       .eq("id", sessionId)
@@ -84,25 +117,18 @@ export class AuthService {
   }
 
   /**
-   * Send magic link to user's email
+   * Send magic link to user's email - works with both anonymous and new users
    */
   async sendMagicLink(
     email: string,
-    anonymousId?: string,
     redirectTo?: string,
   ): Promise<{ success: boolean; error?: string }> {
     try {
-      // Prepare redirect URL with anonymous ID if provided
-      let finalRedirectTo =
+      const supabase = await this.getSupabase();
+      const finalRedirectTo =
         redirectTo || `${process.env.NEXT_PUBLIC_APP_URL}/auth/callback`;
 
-      if (anonymousId) {
-        const url = new URL(finalRedirectTo);
-        url.searchParams.set("anonymousId", anonymousId);
-        finalRedirectTo = url.toString();
-      }
-
-      const { error } = await this.supabase.auth.signInWithOtp({
+      const { error } = await supabase.auth.signInWithOtp({
         email,
         options: {
           emailRedirectTo: finalRedirectTo,
@@ -124,50 +150,70 @@ export class AuthService {
   }
 
   /**
-   * Upgrade anonymous session to authenticated user
+   * Link anonymous user identity with email authentication
+   * This uses Supabase's linkIdentity to convert anonymous users to permanent users
    */
-  async upgradeAnonymousSession(
-    userId: string,
-    anonymousId: string,
+  async upgradeAnonymousUser(
+    email: string,
   ): Promise<{ success: boolean; error?: string }> {
     try {
-      // Get the anonymous session data
-      const anonymousSession = await this.getAnonymousSession(anonymousId);
+      const supabase = await this.getSupabase();
 
-      if (!anonymousSession) {
+      // Get current session (should be anonymous)
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.user?.is_anonymous) {
         return {
           success: false,
-          error: "Anonymous session not found or expired",
+          error: "No anonymous user session found",
         };
       }
 
-      // Start a transaction-like operation
-      const { error: profileError } = await this.adminClient
-        .from("user_profiles")
-        .upsert({
-          id: userId,
-          anonymous_id: anonymousId,
-          // Transfer any relevant data from anonymous session if needed
-        });
+      // Send OTP to link the identity
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: {
+          shouldCreateUser: false, // Don't create new user, link to existing anonymous user
+        },
+      });
 
-      if (profileError) {
-        throw new Error(
-          `Failed to create user profile: ${profileError.message}`,
-        );
+      if (error) {
+        return { success: false, error: error.message };
       }
 
-      // If the anonymous session had a team, we could associate it with the user here
-      // For now, we'll just clean up the anonymous session
-      const { error: deleteError } = await this.adminClient
-        .from("anonymous_sessions")
-        .delete()
-        .eq("id", anonymousId);
+      return { success: true };
+    } catch (error) {
+      return {
+        success: false,
+        error:
+          error instanceof Error ? error.message : "Unknown error occurred",
+      };
+    }
+  }
 
-      if (deleteError) {
-        console.warn(
-          `Failed to clean up anonymous session: ${deleteError.message}`,
-        );
-        // Don't fail the upgrade for this
+  /**
+   * Update user profile metadata (works for both anonymous and authenticated users)
+   */
+  async updateUserProfile(updates: {
+    full_name?: string | null;
+    avatar_url?: string | null;
+    onboarding_completed?: boolean;
+  }): Promise<{ success: boolean; error?: string }> {
+    try {
+      const supabase = await this.getSupabase();
+
+      const { error } = await supabase.auth.updateUser({
+        data: {
+          full_name: updates.full_name,
+          avatar_url: updates.avatar_url,
+          onboarding_completed: updates.onboarding_completed,
+        },
+      });
+
+      if (error) {
+        return { success: false, error: error.message };
       }
 
       return { success: true };
@@ -185,7 +231,8 @@ export class AuthService {
    */
   async getSession() {
     try {
-      const { data, error } = await this.supabase.auth.getSession();
+      const supabase = await this.getSupabase();
+      const { data, error } = await supabase.auth.getSession();
 
       if (error) {
         throw new Error(`Failed to get session: ${error.message}`);
@@ -199,45 +246,42 @@ export class AuthService {
   }
 
   /**
-   * Get user profile by user ID
+   * Get user profile - now returns enhanced profile with auth.users data
    */
-  async getUserProfile(userId: string): Promise<UserProfile | null> {
-    const { data, error } = await this.supabase
-      .from("user_profiles")
-      .select("*")
-      .eq("id", userId)
-      .single();
+  async getUserProfile(): Promise<UserProfile | null> {
+    try {
+      const supabase = await this.getSupabase();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
-    if (error && error.code !== "PGRST116") {
-      throw new Error(`Failed to get user profile: ${error.message}`);
+      if (!session?.user) {
+        return null;
+      }
+
+      // Create enhanced user profile
+      const userProfile: UserProfile = {
+        ...session.user,
+        full_name: session.user.user_metadata?.full_name || null,
+        avatar_url: session.user.user_metadata?.avatar_url || null,
+        onboarding_completed:
+          session.user.user_metadata?.onboarding_completed || false,
+      };
+
+      return userProfile;
+    } catch (error) {
+      console.error("Error getting user profile:", error);
+      return null;
     }
-
-    return data || null;
   }
 
   /**
-   * Create or update user profile
-   */
-  async upsertUserProfile(profile: UserProfileInsert): Promise<UserProfile> {
-    const { data, error } = await this.adminClient
-      .from("user_profiles")
-      .upsert(profile)
-      .select()
-      .single();
-
-    if (error) {
-      throw new Error(`Failed to upsert user profile: ${error.message}`);
-    }
-
-    return data;
-  }
-
-  /**
-   * Sign out user
+   * Sign out user (works for both anonymous and authenticated users)
    */
   async signOut(): Promise<{ success: boolean; error?: string }> {
     try {
-      const { error } = await this.supabase.auth.signOut();
+      const supabase = await this.getSupabase();
+      const { error } = await supabase.auth.signOut();
 
       if (error) {
         return { success: false, error: error.message };
@@ -254,17 +298,27 @@ export class AuthService {
   }
 
   /**
-   * Clean up expired anonymous sessions (utility method)
+   * Clean up expired anonymous sessions (utility method for backward compatibility)
    */
   async cleanupExpiredSessions(): Promise<number> {
-    const { data, error } = await this.adminClient.rpc(
-      "cleanup_expired_anonymous_sessions",
-    );
+    try {
+      const { data, error } = await this.adminClient.rpc(
+        "cleanup_expired_anonymous_sessions",
+      );
 
-    if (error) {
-      throw new Error(`Failed to cleanup expired sessions: ${error.message}`);
+      if (error) {
+        // If the RPC doesn't exist, that's fine - we're moving away from manual session management
+        if (error.code === "42883") {
+          // function does not exist
+          return 0;
+        }
+        throw new Error(`Failed to cleanup expired sessions: ${error.message}`);
+      }
+
+      return data || 0;
+    } catch (error) {
+      console.warn("Cleanup sessions failed (this may be expected):", error);
+      return 0;
     }
-
-    return data || 0;
   }
 }

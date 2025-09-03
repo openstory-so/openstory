@@ -22,7 +22,7 @@ export async function GET(_request: NextRequest) {
     }
 
     // Get user profile if session exists
-    const userProfile = await authService.getUserProfile(session.user.id);
+    const userProfile = await authService.getUserProfile();
 
     return NextResponse.json({
       success: true,

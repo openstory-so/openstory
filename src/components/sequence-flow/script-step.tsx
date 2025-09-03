@@ -1,4 +1,5 @@
-import * as React from "react";
+import type * as React from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   enhanceScript,
   type FrameGenerationResult,
@@ -14,13 +15,13 @@ import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { generateMockStyles } from "@/lib/mocks/data-generators";
 import type {
-  AnonymousFlowAction,
-  AnonymousFlowState,
-} from "@/reducers/anonymous-flow-reducer";
+  SequenceFlowAction,
+  SequenceFlowState,
+} from "@/reducers/sequence-flow-reducer";
 
 interface ScriptStepProps {
-  state: AnonymousFlowState;
-  dispatch: React.Dispatch<AnonymousFlowAction>;
+  state: SequenceFlowState;
+  dispatch: React.Dispatch<SequenceFlowAction>;
   onNext: () => void;
 }
 
@@ -30,21 +31,21 @@ export const ScriptStep: React.FC<ScriptStepProps> = ({
   onNext,
 }) => {
   const [validationResult, setValidationResult] =
-    React.useState<ScriptValidationResult | null>(null);
+    useState<ScriptValidationResult | null>(null);
   const [enhancementResult, setEnhancementResult] =
-    React.useState<ScriptEnhancementResult | null>(null);
-  const [isValidating, setIsValidating] = React.useState(false);
-  const [isEnhancing, setIsEnhancing] = React.useState(false);
+    useState<ScriptEnhancementResult | null>(null);
+  const [isValidating, setIsValidating] = useState(false);
+  const [isEnhancing, setIsEnhancing] = useState(false);
 
   // Initialize sequence if not exists
-  React.useEffect(() => {
+  useEffect(() => {
     if (!state.sequence) {
       dispatch({ type: "INITIALIZE_SEQUENCE", payload: {} });
     }
   }, [state.sequence, dispatch]);
 
   // Load mock styles if not loaded
-  React.useEffect(() => {
+  useEffect(() => {
     if (state.availableStyles.length === 0) {
       const mockStyles = generateMockStyles(6);
       dispatch({ type: "SET_AVAILABLE_STYLES", payload: mockStyles });
@@ -52,7 +53,7 @@ export const ScriptStep: React.FC<ScriptStepProps> = ({
   }, [state.availableStyles.length, dispatch]);
 
   // Auto-validate script on changes (debounced)
-  React.useEffect(() => {
+  useEffect(() => {
     if (!state.sequence?.script) {
       setValidationResult(null);
       return;
@@ -73,7 +74,7 @@ export const ScriptStep: React.FC<ScriptStepProps> = ({
     return () => clearTimeout(timeoutId);
   }, [state.sequence?.script]);
 
-  const handleScriptChange = React.useCallback(
+  const handleScriptChange = useCallback(
     (value: string) => {
       dispatch({ type: "UPDATE_SEQUENCE_SCRIPT", payload: value });
       // Clear previous enhancement when script changes
@@ -82,14 +83,14 @@ export const ScriptStep: React.FC<ScriptStepProps> = ({
     [dispatch],
   );
 
-  const handleStyleSelect = React.useCallback(
+  const handleStyleSelect = useCallback(
     (styleId: string) => {
       dispatch({ type: "SET_SEQUENCE_STYLE", payload: styleId });
     },
     [dispatch],
   );
 
-  const handleEnhanceScript = React.useCallback(async () => {
+  const handleEnhanceScript = useCallback(async () => {
     if (!state.sequence?.script) return;
 
     setIsEnhancing(true);
@@ -110,7 +111,7 @@ export const ScriptStep: React.FC<ScriptStepProps> = ({
     }
   }, [state.sequence?.script, dispatch]);
 
-  const handleNext = React.useCallback(async () => {
+  const handleNext = useCallback(async () => {
     if (!state.sequence || !state.sequence.styleId) return;
 
     // Mark step 1 as completed
@@ -154,7 +155,7 @@ export const ScriptStep: React.FC<ScriptStepProps> = ({
     }, 100); // Small delay to ensure step transition completes first
   }, [state.sequence, dispatch, onNext]);
 
-  const canProceed = React.useMemo(() => {
+  const canProceed = useMemo(() => {
     if (!state.sequence) return false;
     return (
       state.sequence.script.trim().length >= 10 &&

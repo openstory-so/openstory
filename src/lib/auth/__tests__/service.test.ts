@@ -206,7 +206,7 @@ describe("AuthService", () => {
     });
   });
 
-  describe("upgradeAnonymousSession", () => {
+  describe("upgradeAnonymousUser", () => {
     it("should upgrade anonymous session successfully", async () => {
       const mockSession = {
         id: "anonymous-123",
@@ -232,10 +232,7 @@ describe("AuthService", () => {
         eq: vi.fn().mockResolvedValue({ data: null, error: null }),
       });
 
-      const result = await authService.upgradeAnonymousSession(
-        "user-123",
-        "anonymous-123",
-      );
+      const result = await authService.upgradeAnonymousUser("test@example.com");
 
       expect(mockAdminClient.from).toHaveBeenCalledWith("user_profiles");
       expect(mockAdminClient.upsert).toHaveBeenCalledWith({
@@ -252,10 +249,7 @@ describe("AuthService", () => {
         error: { code: "PGRST116" },
       });
 
-      const result = await authService.upgradeAnonymousSession(
-        "user-123",
-        "nonexistent",
-      );
+      const result = await authService.upgradeAnonymousUser("test@example.com");
 
       expect(result).toEqual({
         success: false,

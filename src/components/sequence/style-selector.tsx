@@ -1,5 +1,6 @@
 import Image from "next/image";
-import * as React from "react";
+import type * as React from "react";
+import { useCallback } from "react";
 import { GalleryIcon } from "@/components/icons/gallery-icon";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -27,13 +28,13 @@ const StyleCard: React.FC<StyleCardProps> = ({
   onSelect,
   disabled = false,
 }) => {
-  const handleClick = React.useCallback(() => {
+  const handleClick = useCallback(() => {
     if (!disabled) {
       onSelect(style.id);
     }
   }, [style.id, onSelect, disabled]);
 
-  const handleKeyDown = React.useCallback(
+  const handleKeyDown = useCallback(
     (event: React.KeyboardEvent) => {
       if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();

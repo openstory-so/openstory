@@ -40,8 +40,8 @@ export interface UIState {
   hasUnsavedChanges: boolean;
 }
 
-// Main state shape for anonymous flow
-export interface AnonymousFlowState {
+// Main state shape for sequence flow
+export interface SequenceFlowState {
   currentStep: 1 | 2 | 3;
   completedSteps: Set<number>;
   user: AnonymousUser | null;
@@ -52,7 +52,7 @@ export interface AnonymousFlowState {
 }
 
 // Action types for the reducer
-export type AnonymousFlowAction =
+export type SequenceFlowAction =
   // Step navigation
   | { type: "SET_CURRENT_STEP"; payload: 1 | 2 | 3 }
   | { type: "MARK_STEP_COMPLETED"; payload: number }
@@ -100,10 +100,10 @@ export type AnonymousFlowAction =
 
   // Bulk operations
   | { type: "RESET_FLOW" }
-  | { type: "SYNC_FROM_LOCALSTORAGE"; payload: Partial<AnonymousFlowState> };
+  | { type: "SYNC_FROM_LOCALSTORAGE"; payload: Partial<SequenceFlowState> };
 
 // Initial state
-export const initialAnonymousFlowState: AnonymousFlowState = {
+export const initialSequenceFlowState: SequenceFlowState = {
   currentStep: 1,
   completedSteps: new Set(),
   user: null,
@@ -139,10 +139,10 @@ function createMockSequence(name?: string, script?: string): MockSequence {
 }
 
 // Main reducer function
-export function anonymousFlowReducer(
-  state: AnonymousFlowState,
-  action: AnonymousFlowAction,
-): AnonymousFlowState {
+export function sequenceFlowReducer(
+  state: SequenceFlowState,
+  action: SequenceFlowAction,
+): SequenceFlowState {
   switch (action.type) {
     // Step navigation
     case "SET_CURRENT_STEP":
@@ -494,7 +494,7 @@ export function anonymousFlowReducer(
     // Bulk operations
     case "RESET_FLOW":
       return {
-        ...initialAnonymousFlowState,
+        ...initialSequenceFlowState,
         user: state.user, // Preserve user
       };
 
@@ -509,21 +509,21 @@ export function anonymousFlowReducer(
   }
 }
 
-// Custom hook for using the anonymous flow reducer
-export function useAnonymousFlowReducer(
-  initialOverrides?: Partial<AnonymousFlowState>,
+// Custom hook for using the sequence flow reducer
+export function useSequenceFlowReducer(
+  initialOverrides?: Partial<SequenceFlowState>,
 ) {
   const initialState = {
-    ...initialAnonymousFlowState,
+    ...initialSequenceFlowState,
     ...initialOverrides,
   };
 
-  return useReducer(anonymousFlowReducer, initialState);
+  return useReducer(sequenceFlowReducer, initialState);
 }
 
 // Validation helpers
-export function validateAnonymousFlow(
-  state: AnonymousFlowState,
+export function validateSequenceFlow(
+  state: SequenceFlowState,
 ): UIState["validationErrors"] {
   const errors: UIState["validationErrors"] = {};
 
@@ -549,7 +549,7 @@ export function validateAnonymousFlow(
 }
 
 // Helper to check if current step is valid
-export function canProceedToNextStep(state: AnonymousFlowState): boolean {
+export function canProceedToNextStep(state: SequenceFlowState): boolean {
   if (!state.sequence) return false;
 
   switch (state.currentStep) {
@@ -568,7 +568,7 @@ export function canProceedToNextStep(state: AnonymousFlowState): boolean {
 }
 
 // Helper to check if storyboard can be generated
-export function canGenerateStoryboard(state: AnonymousFlowState): boolean {
+export function canGenerateStoryboard(state: SequenceFlowState): boolean {
   if (!state.sequence) return false;
 
   return (
@@ -580,7 +580,7 @@ export function canGenerateStoryboard(state: AnonymousFlowState): boolean {
 
 // Helper to check if motion can be generated for a frame
 export function canGenerateMotion(
-  state: AnonymousFlowState,
+  state: SequenceFlowState,
   frameId?: string,
 ): boolean {
   if (!state.sequence || state.generation.isGeneratingMotion) return false;

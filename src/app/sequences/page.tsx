@@ -9,7 +9,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 
-export const SequencesPage: React.FC = () => {
+export default function SequencesPage() {
   return (
     <PageContainer>
       <PageHeader
@@ -38,6 +38,4 @@ export const SequencesPage: React.FC = () => {
       />
     </PageContainer>
   );
-};
-
-export default SequencesPage;
+}

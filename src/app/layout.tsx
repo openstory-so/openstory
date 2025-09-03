@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { AppLayout } from "@/components/layout";
+import { Providers } from "@/components/providers";
 import "./global.css";
 
 export const metadata: Metadata = {
@@ -8,18 +9,18 @@ export const metadata: Metadata = {
     "Transform scripts into consistent, styled video productions using multiple AI models.",
 };
 
-interface RootLayoutProps {
+export default function RootLayout({
+  children,
+}: {
   children: React.ReactNode;
-}
-
-export const RootLayout: React.FC<RootLayoutProps> = ({ children }) => {
+}) {
   return (
     <html lang="en">
       <body>
-        <AppLayout>{children}</AppLayout>
+        <Providers>
+          <AppLayout>{children}</AppLayout>
+        </Providers>
       </body>
     </html>
   );
-};
-
-export default RootLayout;
+}

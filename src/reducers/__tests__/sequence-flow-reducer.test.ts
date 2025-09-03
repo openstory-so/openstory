@@ -1,18 +1,18 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import type { Frame } from "@/types/database";
 import {
-  type AnonymousFlowState,
   type AnonymousUser,
-  anonymousFlowReducer,
   canGenerateMotion,
   canGenerateStoryboard,
   canProceedToNextStep,
-  initialAnonymousFlowState,
+  initialSequenceFlowState,
   type MockSequence,
-  validateAnonymousFlow,
-} from "../anonymous-flow-reducer";
+  type SequenceFlowState,
+  sequenceFlowReducer,
+  validateSequenceFlow,
+} from "../sequence-flow-reducer";
 
-describe("anonymousFlowReducer", () => {
+describe("sequenceFlowReducer", () => {
   const mockUser: AnonymousUser = {
     id: "anon_123",
     sessionId: "session_123",
@@ -46,7 +46,7 @@ describe("anonymousFlowReducer", () => {
 
   describe("Step Navigation", () => {
     it("should set current step", () => {
-      const state = anonymousFlowReducer(initialAnonymousFlowState, {
+      const state = sequenceFlowReducer(initialSequenceFlowState, {
         type: "SET_CURRENT_STEP",
         payload: 2,
       });
@@ -54,7 +54,7 @@ describe("anonymousFlowReducer", () => {
     });
 
     it("should mark step as completed", () => {
-      const state = anonymousFlowReducer(initialAnonymousFlowState, {
+      const state = sequenceFlowReducer(initialSequenceFlowState, {
         type: "MARK_STEP_COMPLETED",
         payload: 1,
       });
@@ -62,15 +62,15 @@ describe("anonymousFlowReducer", () => {
     });
 
     it("should reset completed steps", () => {
-      let state = anonymousFlowReducer(initialAnonymousFlowState, {
+      let state = sequenceFlowReducer(initialSequenceFlowState, {
         type: "MARK_STEP_COMPLETED",
         payload: 1,
       });
-      state = anonymousFlowReducer(state, {
+      state = sequenceFlowReducer(state, {
         type: "MARK_STEP_COMPLETED",
         payload: 2,
       });
-      state = anonymousFlowReducer(state, {
+      state = sequenceFlowReducer(state, {
         type: "RESET_COMPLETED_STEPS",
       });
       expect(state.completedSteps.size).toBe(0);
@@ -79,7 +79,7 @@ describe("anonymousFlowReducer", () => {
 
   describe("User Management", () => {
     it("should set user", () => {
-      const state = anonymousFlowReducer(initialAnonymousFlowState, {
+      const state = sequenceFlowReducer(initialSequenceFlowState, {
         type: "SET_USER",
         payload: mockUser,
       });
@@ -87,11 +87,11 @@ describe("anonymousFlowReducer", () => {
     });
 
     it("should clear user", () => {
-      let state = anonymousFlowReducer(initialAnonymousFlowState, {
+      let state = sequenceFlowReducer(initialSequenceFlowState, {
         type: "SET_USER",
         payload: mockUser,
       });
-      state = anonymousFlowReducer(state, {
+      state = sequenceFlowReducer(state, {
         type: "CLEAR_USER",
       });
       expect(state.user).toBeNull();
@@ -100,7 +100,7 @@ describe("anonymousFlowReducer", () => {
 
   describe("Sequence Management", () => {
     it("should initialize sequence with defaults", () => {
-      const state = anonymousFlowReducer(initialAnonymousFlowState, {
+      const state = sequenceFlowReducer(initialSequenceFlowState, {
         type: "INITIALIZE_SEQUENCE",
         payload: {},
       });
@@ -111,7 +111,7 @@ describe("anonymousFlowReducer", () => {
     });
 
     it("should initialize sequence with custom values", () => {
-      const state = anonymousFlowReducer(initialAnonymousFlowState, {
+      const state = sequenceFlowReducer(initialSequenceFlowState, {
         type: "INITIALIZE_SEQUENCE",
         payload: { name: "My Story", script: "Once upon a time..." },
       });
@@ -120,11 +120,11 @@ describe("anonymousFlowReducer", () => {
     });
 
     it("should update sequence name", () => {
-      let state = anonymousFlowReducer(initialAnonymousFlowState, {
+      let state = sequenceFlowReducer(initialSequenceFlowState, {
         type: "INITIALIZE_SEQUENCE",
         payload: {},
       });
-      state = anonymousFlowReducer(state, {
+      state = sequenceFlowReducer(state, {
         type: "UPDATE_SEQUENCE_NAME",
         payload: "New Name",
       });
@@ -133,11 +133,11 @@ describe("anonymousFlowReducer", () => {
     });
 
     it("should update sequence script", () => {
-      let state = anonymousFlowReducer(initialAnonymousFlowState, {
+      let state = sequenceFlowReducer(initialSequenceFlowState, {
         type: "INITIALIZE_SEQUENCE",
         payload: {},
       });
-      state = anonymousFlowReducer(state, {
+      state = sequenceFlowReducer(state, {
         type: "UPDATE_SEQUENCE_SCRIPT",
         payload: "Updated script content",
       });
@@ -146,11 +146,11 @@ describe("anonymousFlowReducer", () => {
     });
 
     it("should set sequence style", () => {
-      let state = anonymousFlowReducer(initialAnonymousFlowState, {
+      let state = sequenceFlowReducer(initialSequenceFlowState, {
         type: "INITIALIZE_SEQUENCE",
         payload: {},
       });
-      state = anonymousFlowReducer(state, {
+      state = sequenceFlowReducer(state, {
         type: "SET_SEQUENCE_STYLE",
         payload: "style_456",
       });
@@ -159,7 +159,7 @@ describe("anonymousFlowReducer", () => {
     });
 
     it("should load existing sequence", () => {
-      const state = anonymousFlowReducer(initialAnonymousFlowState, {
+      const state = sequenceFlowReducer(initialSequenceFlowState, {
         type: "LOAD_SEQUENCE",
         payload: mockSequence,
       });
@@ -169,10 +169,10 @@ describe("anonymousFlowReducer", () => {
   });
 
   describe("Frame Management", () => {
-    let stateWithSequence: AnonymousFlowState;
+    let stateWithSequence: SequenceFlowState;
 
     beforeEach(() => {
-      stateWithSequence = anonymousFlowReducer(initialAnonymousFlowState, {
+      stateWithSequence = sequenceFlowReducer(initialSequenceFlowState, {
         type: "LOAD_SEQUENCE",
         payload: mockSequence,
       });
@@ -180,7 +180,7 @@ describe("anonymousFlowReducer", () => {
 
     it("should set frames", () => {
       const frames = [mockFrame];
-      const state = anonymousFlowReducer(stateWithSequence, {
+      const state = sequenceFlowReducer(stateWithSequence, {
         type: "SET_FRAMES",
         payload: frames,
       });
@@ -188,7 +188,7 @@ describe("anonymousFlowReducer", () => {
     });
 
     it("should add frame", () => {
-      const state = anonymousFlowReducer(stateWithSequence, {
+      const state = sequenceFlowReducer(stateWithSequence, {
         type: "ADD_FRAME",
         payload: mockFrame,
       });
@@ -196,11 +196,11 @@ describe("anonymousFlowReducer", () => {
     });
 
     it("should update frame", () => {
-      let state = anonymousFlowReducer(stateWithSequence, {
+      let state = sequenceFlowReducer(stateWithSequence, {
         type: "ADD_FRAME",
         payload: mockFrame,
       });
-      state = anonymousFlowReducer(state, {
+      state = sequenceFlowReducer(state, {
         type: "UPDATE_FRAME",
         payload: {
           id: mockFrame.id,
@@ -211,11 +211,11 @@ describe("anonymousFlowReducer", () => {
     });
 
     it("should remove frame", () => {
-      let state = anonymousFlowReducer(stateWithSequence, {
+      let state = sequenceFlowReducer(stateWithSequence, {
         type: "ADD_FRAME",
         payload: mockFrame,
       });
-      state = anonymousFlowReducer(state, {
+      state = sequenceFlowReducer(state, {
         type: "REMOVE_FRAME",
         payload: mockFrame.id,
       });
@@ -227,12 +227,12 @@ describe("anonymousFlowReducer", () => {
       const frame2 = { ...mockFrame, id: "frame_2", order_index: 2 };
       const frame3 = { ...mockFrame, id: "frame_3", order_index: 3 };
 
-      let state = anonymousFlowReducer(stateWithSequence, {
+      let state = sequenceFlowReducer(stateWithSequence, {
         type: "SET_FRAMES",
         payload: [frame1, frame2, frame3],
       });
 
-      state = anonymousFlowReducer(state, {
+      state = sequenceFlowReducer(state, {
         type: "REORDER_FRAMES",
         payload: { fromIndex: 2, toIndex: 0 },
       });
@@ -247,17 +247,17 @@ describe("anonymousFlowReducer", () => {
   });
 
   describe("Generation Management", () => {
-    let stateWithSequence: AnonymousFlowState;
+    let stateWithSequence: SequenceFlowState;
 
     beforeEach(() => {
-      stateWithSequence = anonymousFlowReducer(initialAnonymousFlowState, {
+      stateWithSequence = sequenceFlowReducer(initialSequenceFlowState, {
         type: "LOAD_SEQUENCE",
         payload: mockSequence,
       });
     });
 
     it("should start storyboard generation", () => {
-      const state = anonymousFlowReducer(stateWithSequence, {
+      const state = sequenceFlowReducer(stateWithSequence, {
         type: "START_STORYBOARD_GENERATION",
       });
       expect(state.generation.isGeneratingStoryboard).toBe(true);
@@ -270,7 +270,7 @@ describe("anonymousFlowReducer", () => {
 
     it("should complete storyboard generation", () => {
       const frames = [mockFrame];
-      const state = anonymousFlowReducer(stateWithSequence, {
+      const state = sequenceFlowReducer(stateWithSequence, {
         type: "COMPLETE_STORYBOARD_GENERATION",
         payload: frames,
       });
@@ -280,7 +280,7 @@ describe("anonymousFlowReducer", () => {
     });
 
     it("should handle storyboard generation failure", () => {
-      const state = anonymousFlowReducer(stateWithSequence, {
+      const state = sequenceFlowReducer(stateWithSequence, {
         type: "FAIL_STORYBOARD_GENERATION",
         payload: "Generation failed",
       });
@@ -290,7 +290,7 @@ describe("anonymousFlowReducer", () => {
     });
 
     it("should start motion generation", () => {
-      const state = anonymousFlowReducer(stateWithSequence, {
+      const state = sequenceFlowReducer(stateWithSequence, {
         type: "START_MOTION_GENERATION",
         payload: "frame_123",
       });
@@ -299,11 +299,11 @@ describe("anonymousFlowReducer", () => {
     });
 
     it("should complete motion generation", () => {
-      let state = anonymousFlowReducer(stateWithSequence, {
+      let state = sequenceFlowReducer(stateWithSequence, {
         type: "ADD_FRAME",
         payload: mockFrame,
       });
-      state = anonymousFlowReducer(state, {
+      state = sequenceFlowReducer(state, {
         type: "COMPLETE_MOTION_GENERATION",
         payload: {
           frameId: mockFrame.id,
@@ -320,7 +320,7 @@ describe("anonymousFlowReducer", () => {
   describe("UI Management", () => {
     it("should set validation errors", () => {
       const errors = { script: "Script too short", style: "Style required" };
-      const state = anonymousFlowReducer(initialAnonymousFlowState, {
+      const state = sequenceFlowReducer(initialSequenceFlowState, {
         type: "SET_VALIDATION_ERRORS",
         payload: errors,
       });
@@ -328,18 +328,18 @@ describe("anonymousFlowReducer", () => {
     });
 
     it("should clear validation errors", () => {
-      let state = anonymousFlowReducer(initialAnonymousFlowState, {
+      let state = sequenceFlowReducer(initialSequenceFlowState, {
         type: "SET_VALIDATION_ERRORS",
         payload: { script: "Error" },
       });
-      state = anonymousFlowReducer(state, {
+      state = sequenceFlowReducer(state, {
         type: "CLEAR_VALIDATION_ERRORS",
       });
       expect(state.ui.validationErrors).toEqual({});
     });
 
     it("should set upgrade prompt visibility", () => {
-      const state = anonymousFlowReducer(initialAnonymousFlowState, {
+      const state = sequenceFlowReducer(initialSequenceFlowState, {
         type: "SET_SHOW_UPGRADE_PROMPT",
         payload: true,
       });
@@ -349,15 +349,15 @@ describe("anonymousFlowReducer", () => {
 
   describe("Bulk Operations", () => {
     it("should reset flow but preserve user", () => {
-      let state = anonymousFlowReducer(initialAnonymousFlowState, {
+      let state = sequenceFlowReducer(initialSequenceFlowState, {
         type: "SET_USER",
         payload: mockUser,
       });
-      state = anonymousFlowReducer(state, {
+      state = sequenceFlowReducer(state, {
         type: "LOAD_SEQUENCE",
         payload: mockSequence,
       });
-      state = anonymousFlowReducer(state, {
+      state = sequenceFlowReducer(state, {
         type: "RESET_FLOW",
       });
       expect(state.user).toEqual(mockUser);
@@ -370,7 +370,7 @@ describe("anonymousFlowReducer", () => {
         currentStep: 2 as const,
         sequence: mockSequence,
       };
-      const state = anonymousFlowReducer(initialAnonymousFlowState, {
+      const state = sequenceFlowReducer(initialSequenceFlowState, {
         type: "SYNC_FROM_LOCALSTORAGE",
         payload: partialState,
       });
@@ -381,10 +381,10 @@ describe("anonymousFlowReducer", () => {
 });
 
 describe("Validation Helpers", () => {
-  describe("validateAnonymousFlow", () => {
+  describe("validateSequenceFlow", () => {
     it("should return no errors for valid state", () => {
-      const state: AnonymousFlowState = {
-        ...initialAnonymousFlowState,
+      const state: SequenceFlowState = {
+        ...initialSequenceFlowState,
         currentStep: 2,
         sequence: {
           id: "seq_123",
@@ -397,13 +397,13 @@ describe("Validation Helpers", () => {
           updatedAt: new Date().toISOString(),
         },
       };
-      const errors = validateAnonymousFlow(state);
+      const errors = validateSequenceFlow(state);
       expect(errors).toEqual({});
     });
 
     it("should validate empty script", () => {
-      const state: AnonymousFlowState = {
-        ...initialAnonymousFlowState,
+      const state: SequenceFlowState = {
+        ...initialSequenceFlowState,
         sequence: {
           id: "seq_123",
           name: "Test",
@@ -415,13 +415,13 @@ describe("Validation Helpers", () => {
           updatedAt: new Date().toISOString(),
         },
       };
-      const errors = validateAnonymousFlow(state);
+      const errors = validateSequenceFlow(state);
       expect(errors.script).toBe("Script is required to generate storyboard");
     });
 
     it("should validate short script", () => {
-      const state: AnonymousFlowState = {
-        ...initialAnonymousFlowState,
+      const state: SequenceFlowState = {
+        ...initialSequenceFlowState,
         sequence: {
           id: "seq_123",
           name: "Test",
@@ -433,13 +433,13 @@ describe("Validation Helpers", () => {
           updatedAt: new Date().toISOString(),
         },
       };
-      const errors = validateAnonymousFlow(state);
+      const errors = validateSequenceFlow(state);
       expect(errors.script).toBe("Script must be at least 10 characters");
     });
 
     it("should validate missing style on step 2", () => {
-      const state: AnonymousFlowState = {
-        ...initialAnonymousFlowState,
+      const state: SequenceFlowState = {
+        ...initialSequenceFlowState,
         currentStep: 2,
         sequence: {
           id: "seq_123",
@@ -452,15 +452,15 @@ describe("Validation Helpers", () => {
           updatedAt: new Date().toISOString(),
         },
       };
-      const errors = validateAnonymousFlow(state);
+      const errors = validateSequenceFlow(state);
       expect(errors.style).toBe("Please select a visual style");
     });
   });
 
   describe("canProceedToNextStep", () => {
     it("should allow proceeding from step 1 with valid script", () => {
-      const state: AnonymousFlowState = {
-        ...initialAnonymousFlowState,
+      const state: SequenceFlowState = {
+        ...initialSequenceFlowState,
         currentStep: 1,
         sequence: {
           id: "seq_123",
@@ -477,8 +477,8 @@ describe("Validation Helpers", () => {
     });
 
     it("should not allow proceeding from step 1 with invalid script", () => {
-      const state: AnonymousFlowState = {
-        ...initialAnonymousFlowState,
+      const state: SequenceFlowState = {
+        ...initialSequenceFlowState,
         currentStep: 1,
         sequence: {
           id: "seq_123",
@@ -495,8 +495,8 @@ describe("Validation Helpers", () => {
     });
 
     it("should allow proceeding from step 2 with frames", () => {
-      const state: AnonymousFlowState = {
-        ...initialAnonymousFlowState,
+      const state: SequenceFlowState = {
+        ...initialSequenceFlowState,
         currentStep: 2,
         sequence: {
           id: "seq_123",
@@ -528,8 +528,8 @@ describe("Validation Helpers", () => {
 
   describe("canGenerateStoryboard", () => {
     it("should allow generation with valid script and style", () => {
-      const state: AnonymousFlowState = {
-        ...initialAnonymousFlowState,
+      const state: SequenceFlowState = {
+        ...initialSequenceFlowState,
         sequence: {
           id: "seq_123",
           name: "Test",
@@ -545,8 +545,8 @@ describe("Validation Helpers", () => {
     });
 
     it("should not allow generation without style", () => {
-      const state: AnonymousFlowState = {
-        ...initialAnonymousFlowState,
+      const state: SequenceFlowState = {
+        ...initialSequenceFlowState,
         sequence: {
           id: "seq_123",
           name: "Test",
@@ -562,8 +562,8 @@ describe("Validation Helpers", () => {
     });
 
     it("should not allow generation while already generating", () => {
-      const state: AnonymousFlowState = {
-        ...initialAnonymousFlowState,
+      const state: SequenceFlowState = {
+        ...initialSequenceFlowState,
         sequence: {
           id: "seq_123",
           name: "Test",
@@ -575,7 +575,7 @@ describe("Validation Helpers", () => {
           updatedAt: new Date().toISOString(),
         },
         generation: {
-          ...initialAnonymousFlowState.generation,
+          ...initialSequenceFlowState.generation,
           isGeneratingStoryboard: true,
         },
       };
@@ -584,8 +584,8 @@ describe("Validation Helpers", () => {
   });
 
   describe("canGenerateMotion", () => {
-    const stateWithFrames: AnonymousFlowState = {
-      ...initialAnonymousFlowState,
+    const stateWithFrames: SequenceFlowState = {
+      ...initialSequenceFlowState,
       sequence: {
         id: "seq_123",
         name: "Test",

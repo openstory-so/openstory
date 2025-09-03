@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/nextjs";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { NewSequencePage } from "./page";
+import NewSequencePage from "./page";
 
 // Create a new QueryClient for each story to avoid state leakage
 const createQueryClient = () =>

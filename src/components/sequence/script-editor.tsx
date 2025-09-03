@@ -1,4 +1,5 @@
-import * as React from "react";
+import type * as React from "react";
+import { useCallback } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
@@ -21,7 +22,7 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
   disabled = false,
   showCharacterCount = true,
 }) => {
-  const handleChange = React.useCallback(
+  const handleChange = useCallback(
     (event: React.ChangeEvent<HTMLTextAreaElement>) => {
       const newValue = event.target.value;
       if (maxLength && newValue.length <= maxLength) {
