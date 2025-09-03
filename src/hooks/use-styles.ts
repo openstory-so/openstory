@@ -7,6 +7,7 @@ import {
   listStyles,
   updateStyle,
 } from "@/app/actions/styles";
+import type { Style } from "@/types/database";
 
 // Query keys
 export const styleKeys = {
@@ -19,10 +20,11 @@ export const styleKeys = {
 
 // Hook for listing styles
 export function useStyles(teamId?: string) {
-  return useQuery({
+  return useQuery<Style[]>({
     queryKey: styleKeys.list(teamId),
     queryFn: async () => {
-      return listStyles(teamId);
+      // TODO: These actions are not yet implemented
+      return listStyles(teamId) as unknown as Style[];
     },
     staleTime: 10 * 60 * 1000, // 10 minutes (styles change less frequently)
   });
@@ -30,10 +32,11 @@ export function useStyles(teamId?: string) {
 
 // Hook for getting single style
 export function useStyle(id: string) {
-  return useQuery({
+  return useQuery<Style>({
     queryKey: styleKeys.detail(id),
     queryFn: async () => {
-      return getStyle(id);
+      // TODO: This action is not yet implemented
+      return getStyle(id) as unknown as Style;
     },
     staleTime: 10 * 60 * 1000,
     enabled: !!id,
@@ -44,7 +47,7 @@ export function useStyle(id: string) {
 export function useCreateStyle() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutation<unknown, Error, CreateStyleInput>({
     mutationFn: async (input: CreateStyleInput) => {
       return createStyle(input);
     },
@@ -58,7 +61,14 @@ export function useCreateStyle() {
 export function useUpdateStyle() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutation<
+    unknown,
+    Error,
+    {
+      id: string;
+      input: Partial<CreateStyleInput>;
+    }
+  >({
     mutationFn: async ({
       id,
       input,
@@ -88,7 +98,7 @@ export function useUpdateStyle() {
 export function useDeleteStyle() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutation<void, Error, string>({
     mutationFn: async (id: string) => {
       return deleteStyle(id);
     },

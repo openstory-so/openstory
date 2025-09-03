@@ -57,7 +57,7 @@ export function useFrame(frameId: string) {
 export function useCreateFrame() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutation<Frame, Error, CreateFrameInput>({
     mutationFn: async (input: CreateFrameInput) => {
       const result = await createFrame(input);
       if (result.success && result.frame) {
@@ -80,7 +80,7 @@ export function useCreateFrame() {
 export function useUpdateFrame() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutation<Frame, Error, UpdateFrameInput>({
     mutationFn: async (input: UpdateFrameInput) => {
       const result = await updateFrame(input);
       if (result.success && result.frame) {
@@ -107,7 +107,7 @@ export function useUpdateFrame() {
 export function useDeleteFrame() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutation<{ frameId: string; sequenceId?: string }, Error, string>({
     mutationFn: async (frameId: string) => {
       // First get the frame to know its sequence_id
       const frameData = queryClient.getQueryData<Frame>(
@@ -136,7 +136,15 @@ export function useDeleteFrame() {
 export function useReorderFrames() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutation<
+    { sequenceId: string },
+    Error,
+    {
+      sequenceId: string;
+      frameOrders: Array<{ id: string; order_index: number }>;
+    },
+    { previousFrames: Frame[] | undefined; sequenceId: string }
+  >({
     mutationFn: async ({
       sequenceId,
       frameOrders,
@@ -199,7 +207,14 @@ export function useReorderFrames() {
 export function useBulkCreateFrames() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutation<
+    Frame[],
+    Error,
+    {
+      sequenceId: string;
+      frames: Omit<CreateFrameInput, "sequence_id">[];
+    }
+  >({
     mutationFn: async ({
       sequenceId,
       frames,
@@ -226,7 +241,7 @@ export function useBulkCreateFrames() {
 export function useDeleteFramesBySequence() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutation<string, Error, string>({
     mutationFn: async (sequenceId: string) => {
       const result = await deleteFramesBySequence(sequenceId);
       if (result.success) {

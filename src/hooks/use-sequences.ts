@@ -4,7 +4,7 @@ import {
   getSequence,
   saveSequence,
 } from "@/app/actions/sequence";
-import type { Sequence } from "@/types/database";
+import type { Frame, Sequence } from "@/types/database";
 
 // Query keys
 export const sequenceKeys = {
@@ -50,7 +50,15 @@ export function useSequence(id: string) {
 export function useCreateSequence() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutation<
+    Sequence,
+    Error,
+    {
+      script: string;
+      styleId: string | null;
+      name?: string;
+    }
+  >({
     mutationFn: async (input: {
       script: string;
       styleId: string | null;
@@ -78,7 +86,16 @@ export function useCreateSequence() {
 export function useUpdateSequence() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutation<
+    Sequence,
+    Error,
+    {
+      id: string;
+      name?: string;
+      script?: string;
+      styleId?: string | null;
+    }
+  >({
     mutationFn: async (input: {
       id: string;
       name?: string;
@@ -111,7 +128,7 @@ export function useUpdateSequence() {
 export function useDeleteSequence() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutation<void, Error, string>({
     mutationFn: async (_id: string) => {
       // Delete sequence API to be implemented
       throw new Error("Delete sequence not yet implemented");
@@ -129,7 +146,15 @@ export function useDeleteSequence() {
 export function useGenerateStoryboard() {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutation<
+    Frame[],
+    Error,
+    {
+      sequenceId: string;
+      script: string;
+      styleId: string;
+    }
+  >({
     mutationFn: async ({
       sequenceId,
       script,
