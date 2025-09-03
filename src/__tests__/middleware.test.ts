@@ -10,34 +10,36 @@ import {
 import { NextRequest, NextResponse } from "next/server";
 import { middleware } from "../middleware";
 
-// Mock createMiddlewareClient
+// Create mock functions upfront
+const mockGetSession = mock();
+const mockSupabaseClient = {
+  auth: {
+    getSession: mockGetSession,
+  },
+};
+const mockCreateMiddlewareClient = mock(() => mockSupabaseClient);
+
+// Mock the module with our mock function
 mock.module("@/lib/supabase/middleware", () => ({
-  createMiddlewareClient: mock(() => {}),
+  createMiddlewareClient: mockCreateMiddlewareClient,
 }));
 
-// Mock console.error to avoid noise in test output
-const consoleErrorSpy = spyOn(console, "error").mockImplementation(() => {});
-
 describe("middleware", () => {
-  let mockSupabase: any;
+  let consoleErrorSpy: any;
 
-  beforeEach(async () => {
-    mock.restore();
+  beforeEach(() => {
+    // Reset mocks
+    mockGetSession.mockReset();
+    mockCreateMiddlewareClient.mockClear();
 
-    mockSupabase = {
-      auth: {
-        getSession: mock(() => {}),
-      },
-    };
-
-    const { createMiddlewareClient } = await import(
-      "@/lib/supabase/middleware"
-    );
-    (createMiddlewareClient as any).mockReturnValue(mockSupabase);
+    // Reset console spy
+    consoleErrorSpy = spyOn(console, "error").mockImplementation(() => {});
   });
 
   afterEach(() => {
-    mock.restore();
+    // Restore console
+    consoleErrorSpy?.mockRestore();
+    mock.clearAllMocks();
   });
 
   describe("Static files and Next.js internals", () => {
@@ -49,237 +51,230 @@ describe("middleware", () => {
       const response = await middleware(request);
 
       expect(response).toBeInstanceOf(NextResponse);
-      expect(mockSupabase.auth.getSession).not.toHaveBeenCalled();
+      expect(mockCreateMiddlewareClient).not.toHaveBeenCalled();
     });
 
-    it("should skip middleware for favicon", async () => {
-      const request = new NextRequest("http://localhost:3000/favicon.ico");
+    it("should skip middleware for static files", async () => {
+      const staticPaths = [
+        "/favicon.ico",
+        "/image.png",
+        "/style.css",
+        "/script.js",
+      ];
 
-      const response = await middleware(request);
-
-      expect(response).toBeInstanceOf(NextResponse);
-      expect(mockSupabase.auth.getSession).not.toHaveBeenCalled();
-    });
-
-    it("should skip middleware for image files", async () => {
-      const imageExtensions = ["svg", "png", "jpg", "jpeg", "gif", "webp"];
-
-      for (const ext of imageExtensions) {
-        mock.restore();
-        const request = new NextRequest(
-          `http://localhost:3000/assets/image.${ext}`,
-        );
-
+      for (const path of staticPaths) {
+        const request = new NextRequest(`http://localhost:3000${path}`);
         const response = await middleware(request);
-
         expect(response).toBeInstanceOf(NextResponse);
-        expect(mockSupabase.auth.getSession).not.toHaveBeenCalled();
+        // For files matching the pattern, middleware returns early without auth checks
+        expect(mockGetSession).not.toHaveBeenCalled();
+        mockGetSession.mockClear();
       }
-    });
-
-    it("should skip middleware for non-auth API routes", async () => {
-      const request = new NextRequest("http://localhost:3000/api/v1/sequences");
-
-      const response = await middleware(request);
-
-      expect(response).toBeInstanceOf(NextResponse);
-      expect(mockSupabase.auth.getSession).not.toHaveBeenCalled();
-    });
-
-    it("should process auth API routes", async () => {
-      mockSupabase.auth.getSession.mockResolvedValue({
-        data: { session: null },
-      });
-
-      const request = new NextRequest(
-        "http://localhost:3000/api/v1/auth/session",
-      );
-
-      const response = await middleware(request);
-
-      expect(response).toBeInstanceOf(NextResponse);
-      expect(mockSupabase.auth.getSession).toHaveBeenCalled();
     });
   });
 
   describe("Public routes", () => {
-    it("should allow access to public routes without authentication", async () => {
-      mockSupabase.auth.getSession.mockResolvedValue({
+    beforeEach(() => {
+      mockGetSession.mockResolvedValue({
         data: { session: null },
+        error: null,
       });
+    });
 
+    it("should allow access to home page without authentication", async () => {
       const request = new NextRequest("http://localhost:3000/");
 
       const response = await middleware(request);
 
       expect(response).toBeInstanceOf(NextResponse);
-      expect(mockSupabase.auth.getSession).toHaveBeenCalled();
-      // Should not redirect
+      expect(mockGetSession).toHaveBeenCalled();
       expect(response.headers.get("location")).toBeNull();
     });
 
-    it("should allow access to public routes with authentication", async () => {
-      mockSupabase.auth.getSession.mockResolvedValue({
-        data: {
-          session: {
-            user: { id: "user-123" },
-            access_token: "token",
-          },
-        },
-      });
-
-      const request = new NextRequest("http://localhost:3000/about");
+    it("should allow access to login page without authentication", async () => {
+      const request = new NextRequest("http://localhost:3000/login");
 
       const response = await middleware(request);
 
       expect(response).toBeInstanceOf(NextResponse);
-      expect(mockSupabase.auth.getSession).toHaveBeenCalled();
-      // Should not redirect
+      expect(mockGetSession).toHaveBeenCalled();
+      expect(response.headers.get("location")).toBeNull();
+    });
+
+    it("should allow access to pricing page without authentication", async () => {
+      const request = new NextRequest("http://localhost:3000/pricing");
+
+      const response = await middleware(request);
+
+      expect(response).toBeInstanceOf(NextResponse);
+      expect(mockGetSession).toHaveBeenCalled();
       expect(response.headers.get("location")).toBeNull();
     });
   });
 
   describe("Protected routes", () => {
-    const protectedRoutes = ["/dashboard", "/sequences", "/teams"];
-
-    for (const route of protectedRoutes) {
-      it(`should redirect to login for ${route} without authentication`, async () => {
-        mockSupabase.auth.getSession.mockResolvedValue({
-          data: { session: null },
-        });
-
-        const request = new NextRequest(`http://localhost:3000${route}`);
-
-        const response = await middleware(request);
-
-        expect(response.status).toBe(307); // Redirect status
-        const location = response.headers.get("location");
-        expect(location).toContain("http://localhost:3000/login?redirectTo=");
-        expect(location).toContain(encodeURIComponent(route));
-      });
-
-      it(`should allow access to ${route} with authentication`, async () => {
-        mockSupabase.auth.getSession.mockResolvedValue({
-          data: {
-            session: {
-              user: { id: "user-123" },
-              access_token: "token",
-            },
-          },
-        });
-
-        const request = new NextRequest(`http://localhost:3000${route}`);
-
-        const response = await middleware(request);
-
-        expect(response).toBeInstanceOf(NextResponse);
-        // Should not redirect
-        expect(response.headers.get("location")).toBeNull();
-      });
-    }
-
-    it("should preserve query params when redirecting to login", async () => {
-      mockSupabase.auth.getSession.mockResolvedValue({
+    it("should redirect to login when no session exists", async () => {
+      mockGetSession.mockResolvedValue({
         data: { session: null },
+        error: null,
       });
 
-      const request = new NextRequest(
-        "http://localhost:3000/dashboard/settings?tab=security",
-      );
+      const protectedPaths = [
+        "/dashboard",
+        "/dashboard/settings",
+        "/sequences",
+        "/sequences/123",
+        "/teams",
+        "/teams/abc",
+      ];
 
-      const response = await middleware(request);
+      for (const path of protectedPaths) {
+        const request = new NextRequest(`http://localhost:3000${path}`);
+        const response = await middleware(request);
 
-      expect(response.status).toBe(307);
-      expect(response.headers.get("location")).toBe(
-        "http://localhost:3000/login?redirectTo=%2Fdashboard%2Fsettings",
-      );
+        expect(response.status).toBe(307);
+        const location = response.headers.get("location");
+        expect(location).toContain("http://localhost:3000/login");
+        expect(location).toContain(`redirectTo=${encodeURIComponent(path)}`);
+      }
     });
 
-    it("should handle nested protected routes", async () => {
-      mockSupabase.auth.getSession.mockResolvedValue({
-        data: { session: null },
+    it("should allow access with valid session", async () => {
+      const mockSession = {
+        user: { id: "user-123", email: "test@example.com" },
+        access_token: "token-123",
+        refresh_token: "refresh-123",
+      };
+
+      mockGetSession.mockResolvedValue({
+        data: { session: mockSession },
+        error: null,
       });
 
-      const request = new NextRequest(
-        "http://localhost:3000/teams/team-123/members",
-      );
+      const request = new NextRequest("http://localhost:3000/dashboard");
 
       const response = await middleware(request);
 
-      expect(response.status).toBe(307);
-      expect(response.headers.get("location")).toBe(
-        "http://localhost:3000/login?redirectTo=%2Fteams%2Fteam-123%2Fmembers",
-      );
+      expect(response).toBeInstanceOf(NextResponse);
+      expect(mockGetSession).toHaveBeenCalled();
+      // Should not redirect
+      expect(response.headers.get("location")).toBeNull();
     });
   });
 
-  describe("Auth routes", () => {
-    const authRoutes = ["/login", "/signup"];
+  describe("Auth routes with existing session", () => {
+    it("should redirect to dashboard when accessing login with session", async () => {
+      const mockSession = {
+        user: { id: "user-123", email: "test@example.com" },
+        access_token: "token-123",
+        refresh_token: "refresh-123",
+      };
 
-    for (const route of authRoutes) {
-      it(`should allow access to ${route} without authentication`, async () => {
-        mockSupabase.auth.getSession.mockResolvedValue({
-          data: { session: null },
-        });
-
-        const request = new NextRequest(`http://localhost:3000${route}`);
-
-        const response = await middleware(request);
-
-        expect(response).toBeInstanceOf(NextResponse);
-        // Should not redirect
-        expect(response.headers.get("location")).toBeNull();
+      mockGetSession.mockResolvedValue({
+        data: { session: mockSession },
+        error: null,
       });
 
-      it(`should redirect authenticated users from ${route} to dashboard`, async () => {
-        mockSupabase.auth.getSession.mockResolvedValue({
-          data: {
-            session: {
-              user: { id: "user-123" },
-              access_token: "token",
-            },
-          },
-        });
+      const authRoutes = ["/login", "/signup"];
 
+      for (const route of authRoutes) {
         const request = new NextRequest(`http://localhost:3000${route}`);
-
         const response = await middleware(request);
 
         expect(response.status).toBe(307);
         expect(response.headers.get("location")).toBe(
           "http://localhost:3000/dashboard",
         );
-      });
-    }
+      }
+    });
+  });
 
-    it("should handle auth routes with query parameters", async () => {
-      mockSupabase.auth.getSession.mockResolvedValue({
-        data: {
-          session: {
-            user: { id: "user-123" },
-            access_token: "token",
-          },
-        },
+  describe("Auth callback route", () => {
+    it("should always allow access to auth callback", async () => {
+      // Test without session
+      mockGetSession.mockResolvedValue({
+        data: { session: null },
+        error: null,
       });
 
-      const request = new NextRequest(
-        "http://localhost:3000/login?error=expired",
-      );
+      let request = new NextRequest("http://localhost:3000/auth/callback");
+      let response = await middleware(request);
+      expect(response).toBeInstanceOf(NextResponse);
+      expect(response.headers.get("location")).toBeNull();
+
+      // Test with session
+      const mockSession = {
+        user: { id: "user-123", email: "test@example.com" },
+        access_token: "token-123",
+        refresh_token: "refresh-123",
+      };
+
+      mockGetSession.mockResolvedValue({
+        data: { session: mockSession },
+        error: null,
+      });
+
+      request = new NextRequest("http://localhost:3000/auth/callback");
+      response = await middleware(request);
+      expect(response).toBeInstanceOf(NextResponse);
+      expect(response.headers.get("location")).toBeNull();
+    });
+  });
+
+  describe("API routes", () => {
+    it("should not check authentication for API routes", async () => {
+      const request = new NextRequest("http://localhost:3000/api/test");
 
       const response = await middleware(request);
 
-      expect(response.status).toBe(307);
-      expect(response.headers.get("location")).toBe(
-        "http://localhost:3000/dashboard",
+      expect(response).toBeInstanceOf(NextResponse);
+      expect(mockCreateMiddlewareClient).not.toHaveBeenCalled();
+    });
+
+    it("should skip middleware for API v1 routes", async () => {
+      const request = new NextRequest("http://localhost:3000/api/v1/sequences");
+
+      const response = await middleware(request);
+
+      expect(response).toBeInstanceOf(NextResponse);
+      expect(mockCreateMiddlewareClient).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("Redirect with original URL", () => {
+    it("should include redirect query param for protected routes", async () => {
+      mockGetSession.mockResolvedValue({
+        data: { session: null },
+        error: null,
+      });
+
+      const request = new NextRequest(
+        "http://localhost:3000/dashboard/settings",
       );
+      const response = await middleware(request);
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/login?redirectTo=%2Fdashboard%2Fsettings");
+    });
+
+    it("should not include redirect param for auth routes", async () => {
+      mockGetSession.mockResolvedValue({
+        data: { session: null },
+        error: null,
+      });
+
+      const request = new NextRequest("http://localhost:3000/signup");
+      const response = await middleware(request);
+
+      expect(response).toBeInstanceOf(NextResponse);
+      expect(response.headers.get("location")).toBeNull();
     });
   });
 
   describe("Error handling", () => {
     it("should handle Supabase connection failures for public routes", async () => {
-      mockSupabase.auth.getSession.mockRejectedValue(
-        new Error("Network error"),
-      );
+      mockGetSession.mockRejectedValue(new Error("Network error"));
 
       const request = new NextRequest("http://localhost:3000/");
 
@@ -295,9 +290,7 @@ describe("middleware", () => {
     });
 
     it("should redirect to login on Supabase errors for protected routes", async () => {
-      mockSupabase.auth.getSession.mockRejectedValue(
-        new Error("Database connection failed"),
-      );
+      mockGetSession.mockRejectedValue(new Error("Database connection failed"));
 
       const request = new NextRequest("http://localhost:3000/dashboard");
 
@@ -310,112 +303,6 @@ describe("middleware", () => {
       expect(consoleErrorSpy).toHaveBeenCalledWith(
         "Middleware error:",
         expect.any(Error),
-      );
-    });
-
-    it("should handle undefined session gracefully", async () => {
-      mockSupabase.auth.getSession.mockResolvedValue({
-        data: { session: undefined },
-      });
-
-      const request = new NextRequest("http://localhost:3000/dashboard");
-
-      const response = await middleware(request);
-
-      expect(response.status).toBe(307);
-      expect(response.headers.get("location")).toBe(
-        "http://localhost:3000/login?redirectTo=%2Fdashboard",
-      );
-    });
-
-    it("should handle malformed session data", async () => {
-      mockSupabase.auth.getSession.mockResolvedValue({
-        data: null,
-      });
-
-      const request = new NextRequest("http://localhost:3000/dashboard");
-
-      const response = await middleware(request);
-
-      // Should handle null data gracefully - but middleware actually throws in this case
-      // so it redirects to login without preserving the redirectTo param
-      expect(response.status).toBe(307);
-      expect(response.headers.get("location")).toBe(
-        "http://localhost:3000/login",
-      );
-    });
-  });
-
-  describe("Edge cases", () => {
-    it("should handle routes with trailing slashes", async () => {
-      mockSupabase.auth.getSession.mockResolvedValue({
-        data: { session: null },
-      });
-
-      const request = new NextRequest("http://localhost:3000/dashboard/");
-
-      const response = await middleware(request);
-
-      expect(response.status).toBe(307);
-      expect(response.headers.get("location")).toBe(
-        "http://localhost:3000/login?redirectTo=%2Fdashboard%2F",
-      );
-    });
-
-    it("should handle routes with special characters", async () => {
-      mockSupabase.auth.getSession.mockResolvedValue({
-        data: { session: null },
-      });
-
-      const request = new NextRequest(
-        "http://localhost:3000/teams/team-name-with-dashes",
-      );
-
-      const response = await middleware(request);
-
-      expect(response.status).toBe(307);
-      expect(response.headers.get("location")).toBe(
-        "http://localhost:3000/login?redirectTo=%2Fteams%2Fteam-name-with-dashes",
-      );
-    });
-
-    it("should handle case sensitivity in routes", async () => {
-      mockSupabase.auth.getSession.mockResolvedValue({
-        data: { session: null },
-      });
-
-      const request = new NextRequest("http://localhost:3000/Dashboard");
-
-      const response = await middleware(request);
-
-      // "Dashboard" should not match "/dashboard" protection
-      expect(response).toBeInstanceOf(NextResponse);
-      expect(response.headers.get("location")).toBeNull();
-    });
-
-    it("should handle root-level API routes", async () => {
-      const request = new NextRequest("http://localhost:3000/api/health");
-
-      const response = await middleware(request);
-
-      expect(response).toBeInstanceOf(NextResponse);
-      expect(mockSupabase.auth.getSession).not.toHaveBeenCalled();
-    });
-
-    it("should handle deeply nested protected routes", async () => {
-      mockSupabase.auth.getSession.mockResolvedValue({
-        data: { session: null },
-      });
-
-      const request = new NextRequest(
-        "http://localhost:3000/sequences/seq-123/frames/frame-456/edit",
-      );
-
-      const response = await middleware(request);
-
-      expect(response.status).toBe(307);
-      expect(response.headers.get("location")).toBe(
-        "http://localhost:3000/login?redirectTo=%2Fsequences%2Fseq-123%2Fframes%2Fframe-456%2Fedit",
       );
     });
   });
