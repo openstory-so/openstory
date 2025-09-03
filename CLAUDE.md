@@ -74,6 +74,14 @@ bun biome check .     # Check linting/formatting
 bun test              # Run test suite
 ```
 
+**Automatic Issue Tagging**: When working on branches that start with an issue number (e.g., `54-feature-name`), commit messages are automatically tagged with the issue number. For example, a commit message "Fix bug in auth" on branch `54-pre-commit-issue` becomes "Fix bug in auth (#54)".
+
+This feature:
+- Only applies to branches starting with digits followed by a dash
+- Skips merge commits
+- Won't duplicate existing issue numbers in commit messages
+- Uses the lefthook commit-msg hook via `scripts/add-issue-number.sh`
+
 ## Project Architecture
 
 This is a Next.js 15 headless API application for AI-powered video sequence creation. The app transforms scripts into consistent, styled video productions using multiple AI models.
