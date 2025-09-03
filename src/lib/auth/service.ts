@@ -5,7 +5,7 @@ import {
 import type {
   AnonymousSession,
   AnonymousSessionInsert,
-  Json,
+  AnonymousSessionUpdate,
   UserProfile,
 } from "@/types/database";
 
@@ -151,7 +151,7 @@ export class AuthService {
     const sessionData: AnonymousSessionInsert = {
       id: sessionId,
       team_id: team.id,
-      data: (initialData || {}) as Json,
+      data: (initialData || {}) as AnonymousSessionInsert["data"],
     };
 
     const { data, error } = await supabase
@@ -200,7 +200,7 @@ export class AuthService {
     const supabase = await this.getSupabase();
     const { data: updatedSession, error } = await supabase
       .from("anonymous_sessions")
-      .update({ data: data as Json })
+      .update({ data: data as AnonymousSessionUpdate["data"] })
       .eq("id", sessionId)
       .select()
       .single();

@@ -6,7 +6,7 @@
 import { z } from "zod";
 import { DatabaseError, ValidationError, VelroError } from "@/lib/errors";
 import { createAdminClient } from "@/lib/supabase/server";
-import type { Database } from "@/types/database";
+import type { Job, JobInsert, JobUpdate } from "@/types/database";
 
 // Job status enum matching database
 export const JobStatus = {
@@ -49,12 +49,7 @@ export const updateJobSchema = z.object({
   completedAt: z.string().datetime().optional(),
 });
 
-// Database types
-type JobRow = Database["public"]["Tables"]["jobs"]["Row"];
-type JobInsert = Database["public"]["Tables"]["jobs"]["Insert"];
-type JobUpdate = Database["public"]["Tables"]["jobs"]["Update"];
-
-export interface JobWithEvents extends JobRow {
+export interface JobWithEvents extends Job {
   events?: JobEvent[];
 }
 
@@ -87,7 +82,7 @@ class JobManager {
   /**
    * Create a new job record in the database
    */
-  async createJob(params: CreateJobParams): Promise<JobRow> {
+  async createJob(params: CreateJobParams): Promise<Job> {
     try {
       console.log("[JobManager] Creating job", {
         type: params.type,
@@ -102,8 +97,7 @@ class JobManager {
       const jobData: JobInsert = {
         type: validatedParams.type,
         status: JobStatus.PENDING,
-        payload:
-          validatedParams.payload as Database["public"]["Tables"]["jobs"]["Insert"]["payload"],
+        payload: validatedParams.payload as JobInsert["payload"],
         user_id: validatedParams.userId || null,
         team_id: validatedParams.teamId || null,
         created_at: new Date().toISOString(),
@@ -219,7 +213,7 @@ class JobManager {
   /**
    * Update job status and metadata
    */
-  async updateJob(jobId: string, updates: UpdateJobParams): Promise<JobRow> {
+  async updateJob(jobId: string, updates: UpdateJobParams): Promise<Job> {
     try {
       console.log("[JobManager] Updating job", {
         jobId,
@@ -237,8 +231,7 @@ class JobManager {
       };
 
       if (validatedUpdates.result) {
-        jobUpdate.result =
-          validatedUpdates.result as Database["public"]["Tables"]["jobs"]["Update"]["result"];
+        jobUpdate.result = validatedUpdates.result as JobUpdate["result"];
       }
 
       if (validatedUpdates.error) {
@@ -308,7 +301,7 @@ class JobManager {
   /**
    * Cancel a job (mark as cancelled)
    */
-  async cancelJob(jobId: string): Promise<JobRow> {
+  async cancelJob(jobId: string): Promise<Job> {
     console.log("[JobManager] Cancelling job", { jobId });
 
     return this.updateJob(jobId, {
@@ -320,7 +313,7 @@ class JobManager {
   /**
    * Mark job as started
    */
-  async startJob(jobId: string): Promise<JobRow> {
+  async startJob(jobId: string): Promise<Job> {
     console.log("[JobManager] Starting job", { jobId });
 
     return this.updateJob(jobId, {
@@ -335,7 +328,7 @@ class JobManager {
   async completeJob(
     jobId: string,
     result: Record<string, unknown>,
-  ): Promise<JobRow> {
+  ): Promise<Job> {
     console.log("[JobManager] Completing job", { jobId, hasResult: !!result });
 
     return this.updateJob(jobId, {
@@ -348,7 +341,7 @@ class JobManager {
   /**
    * Mark job as failed with error
    */
-  async failJob(jobId: string, error: string): Promise<JobRow> {
+  async failJob(jobId: string, error: string): Promise<Job> {
     console.log("[JobManager] Failing job", { jobId, error });
 
     return this.updateJob(jobId, {
@@ -369,7 +362,7 @@ class JobManager {
       teamId?: string;
       userId?: string;
     },
-  ): Promise<JobRow[]> {
+  ): Promise<Job[]> {
     try {
       console.log("[JobManager] Getting jobs by status", {
         status,

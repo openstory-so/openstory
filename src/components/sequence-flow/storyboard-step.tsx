@@ -1,24 +1,19 @@
 import type * as React from "react";
 import { useCallback, useMemo, useState } from "react";
-import {
-  type FrameGenerationResult,
-  generateFrames,
-} from "@/app/actions/sequence";
+import { generateFrames } from "@/app/actions/sequence";
 import { StoryboardFrame } from "@/components/sequence/storyboard-frame";
 import { SectionHeading } from "@/components/typography";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import type { Database } from "@/types/database";
-
-type Sequence = Database["public"]["Tables"]["sequences"]["Row"];
-type Frame = Database["public"]["Tables"]["frames"]["Row"];
+import type { Frame, Sequence } from "@/types/database";
 
 interface StoryboardStepProps {
   sequence: Sequence;
+  frames: Frame[];
   isGenerating: boolean;
   generationError: string | null;
   onGenerationStart: () => void;
-  onGenerationComplete: (frames: Frame[]) => void;
+  onGenerationComplete: () => void;
   onGenerationError: (error: string) => void;
   onFrameReorder: (frames: Frame[]) => void;
   onNext: () => void;
@@ -27,6 +22,7 @@ interface StoryboardStepProps {
 
 export const StoryboardStep: React.FC<StoryboardStepProps> = ({
   sequence,
+  frames,
   isGenerating,
   generationError,
   onGenerationStart,
@@ -37,8 +33,6 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
   onPrevious,
 }) => {
   const [currentOperation, setCurrentOperation] = useState<string | null>(null);
-
-  const frames = sequence.frames || [];
   const hasFrames = frames.length > 0;
   const styleId = sequence.style_id;
 
@@ -49,14 +43,14 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
     setCurrentOperation("Analyzing script...");
 
     try {
-      const result: FrameGenerationResult = await generateFrames(
+      const result = await generateFrames(
         sequence.script,
         styleId,
         sequence.id,
       );
 
-      if (result.success) {
-        onGenerationComplete(result.frames);
+      if (result.success && result.frames) {
+        onGenerationComplete();
       } else {
         onGenerationError(result.error || "Failed to generate storyboard");
       }
@@ -209,14 +203,14 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
 
           <div className="grid gap-6 md:grid-cols-2">
             {frames
-              .sort((a, b) => a.order_index - b.order_index)
-              .map((frame, index) => (
+              .sort((a: Frame, b: Frame) => a.order_index - b.order_index)
+              .map((frame: Frame, index: number) => (
                 <StoryboardFrame
                   key={frame.id}
                   frame={frame}
                   onReorder={(frameId: string, newOrder: number) => {
                     const currentIndex = frames.findIndex(
-                      (f) => f.id === frameId,
+                      (f: Frame) => f.id === frameId,
                     );
                     if (currentIndex !== -1) {
                       handleFrameReorder(currentIndex, newOrder - 1); // Convert to 0-based index

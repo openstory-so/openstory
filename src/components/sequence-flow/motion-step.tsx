@@ -6,12 +6,11 @@ import { SectionHeading } from "@/components/typography";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import type { Database } from "@/types/database";
-
-type Sequence = Database["public"]["Tables"]["sequences"]["Row"];
+import type { Frame, Sequence } from "@/types/database";
 
 interface MotionStepProps {
   sequence: Sequence;
+  frames: Frame[];
   generatingFrameIds: Set<string>;
   generationErrors: Map<string, string>;
   onMotionGenerationStart: (frameId: string) => void;
@@ -22,6 +21,7 @@ interface MotionStepProps {
 
 export const MotionStep: React.FC<MotionStepProps> = ({
   sequence,
+  frames,
   generatingFrameIds,
   generationErrors,
   onMotionGenerationStart,
@@ -30,15 +30,13 @@ export const MotionStep: React.FC<MotionStepProps> = ({
   onPrevious,
 }) => {
   const [currentOperation, setCurrentOperation] = useState<string | null>(null);
-
-  const frames = sequence.frames || [];
   const styleId = sequence.style_id;
 
   const handleGenerateFrameMotion = useCallback(
     async (frameId: string) => {
       if (!styleId) return;
 
-      const frame = frames.find((f) => f.id === frameId);
+      const frame = frames.find((f: Frame) => f.id === frameId);
       if (!frame) return;
 
       onMotionGenerationStart(frameId);
@@ -78,7 +76,7 @@ export const MotionStep: React.FC<MotionStepProps> = ({
   const handleGenerateAllMotion = useCallback(async () => {
     if (!styleId) return;
 
-    const framesToGenerate = frames.filter((frame) => !frame.motion_url);
+    const framesToGenerate = frames.filter((frame: Frame) => !frame.video_url);
     if (framesToGenerate.length === 0) return;
 
     setCurrentOperation("Generating motion for all frames...");
@@ -136,8 +134,8 @@ export const MotionStep: React.FC<MotionStepProps> = ({
     onMotionGenerationError,
   ]);
 
-  const framesWithMotion = frames.filter((frame) => frame.motion_url);
-  const framesWithoutMotion = frames.filter((frame) => !frame.motion_url);
+  const framesWithMotion = frames.filter((frame: Frame) => frame.video_url);
+  const framesWithoutMotion = frames.filter((frame: Frame) => !frame.video_url);
   const totalFrames = frames.length;
 
   const hasAnyMotion = framesWithMotion.length > 0;
@@ -221,8 +219,8 @@ export const MotionStep: React.FC<MotionStepProps> = ({
       {/* Frame Motion List */}
       <div className="space-y-6">
         {frames
-          .sort((a, b) => a.order_index - b.order_index)
-          .map((frame, index) => {
+          .sort((a: Frame, b: Frame) => a.order_index - b.order_index)
+          .map((frame: Frame, index: number) => {
             const isGenerating = generatingFrameIds.has(frame.id);
             const error = generationErrors.get(frame.id);
 
@@ -231,14 +229,14 @@ export const MotionStep: React.FC<MotionStepProps> = ({
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-medium">Frame {index + 1}</span>
                   <span className="text-xs text-muted-foreground">
-                    {frame.motion_url ? "✓ Motion generated" : "No motion"}
+                    {frame.video_url ? "✓ Motion generated" : "No motion"}
                   </span>
                 </div>
 
                 <div className="space-y-4">
                   <MotionPreview
                     frame={frame}
-                    videoUrl={frame.motion_url || undefined}
+                    videoUrl={frame.video_url || undefined}
                     thumbnailUrl={frame.thumbnail_url || ""}
                     duration={frame.duration_ms || undefined}
                     loading={isGenerating}
@@ -251,7 +249,7 @@ export const MotionStep: React.FC<MotionStepProps> = ({
                     </Alert>
                   )}
 
-                  {!frame.motion_url && (
+                  {!frame.video_url && (
                     <Button
                       onClick={() => handleGenerateFrameMotion(frame.id)}
                       disabled={isGenerating}
@@ -261,7 +259,7 @@ export const MotionStep: React.FC<MotionStepProps> = ({
                     </Button>
                   )}
 
-                  {frame.motion_url && (
+                  {frame.video_url && (
                     <Button
                       variant="outline"
                       onClick={() => handleGenerateFrameMotion(frame.id)}

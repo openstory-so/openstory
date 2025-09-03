@@ -10,7 +10,8 @@ import {
   PageHeader,
   PageHeading,
 } from "@/components/typography";
-import { useSequence, useUpdateSequence } from "@/hooks/use-sequences";
+import { useFramesBySequence, useReorderFrames } from "@/hooks/use-frames";
+import { useSequence } from "@/hooks/use-sequences";
 import { useUser } from "@/hooks/use-user";
 
 export const dynamic = "force-dynamic";
@@ -28,8 +29,12 @@ export default function StoryboardPage({ params }: StoryboardPageProps) {
   const _user = userData?.user;
 
   // Load the sequence data
-  const { data: sequence, isLoading } = useSequence(sequenceId);
-  const updateSequence = useUpdateSequence();
+  const { data: sequence, isLoading: isLoadingSequence } =
+    useSequence(sequenceId);
+  const { data: frames = [], isLoading: isLoadingFrames } =
+    useFramesBySequence(sequenceId);
+  const reorderFrames = useReorderFrames();
+  const isLoading = isLoadingSequence || isLoadingFrames;
 
   // Local state for generation
   const [isGenerating, setIsGenerating] = useState(false);
@@ -37,7 +42,7 @@ export default function StoryboardPage({ params }: StoryboardPageProps) {
 
   // Completed steps based on what's in the sequence
   const completedSteps = new Set([1]); // Script is always completed to get here
-  if (sequence?.frames && sequence.frames.length > 0) {
+  if (frames.length > 0) {
     completedSteps.add(2);
   }
 
@@ -105,30 +110,29 @@ export default function StoryboardPage({ params }: StoryboardPageProps) {
 
       <StoryboardStep
         sequence={sequence}
+        frames={frames}
         isGenerating={isGenerating}
         generationError={generationError}
         onGenerationStart={() => {
           setIsGenerating(true);
           setGenerationError(null);
         }}
-        onGenerationComplete={(frames) => {
+        onGenerationComplete={() => {
           setIsGenerating(false);
-          // Update the sequence with new frames
-          updateSequence.mutate({
-            id: sequenceId,
-            frames,
-          });
+          // Frames are already saved in the database by generateFrames
+          // The useFramesBySequence hook will automatically refetch
         }}
         onGenerationError={(error) => {
           setIsGenerating(false);
           setGenerationError(error);
         }}
-        onFrameReorder={(frames) => {
-          // Update the sequence with reordered frames
-          updateSequence.mutate({
-            id: sequenceId,
-            frames,
-          });
+        onFrameReorder={(reorderedFrames) => {
+          // Create the new order mapping
+          const frameOrders = reorderedFrames.map((frame, index) => ({
+            id: frame.id,
+            order_index: index + 1,
+          }));
+          reorderFrames.mutate({ sequenceId, frameOrders });
         }}
         onNext={handleNext}
         onPrevious={handlePrevious}

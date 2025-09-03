@@ -10,7 +10,8 @@ import {
   PageHeader,
   PageHeading,
 } from "@/components/typography";
-import { useSequence, useUpdateSequence } from "@/hooks/use-sequences";
+import { useFramesBySequence } from "@/hooks/use-frames";
+import { useSequence } from "@/hooks/use-sequences";
 import { useUser } from "@/hooks/use-user";
 
 export const dynamic = "force-dynamic";
@@ -28,8 +29,11 @@ export default function MotionPage({ params }: MotionPageProps) {
   const _user = userData?.user;
 
   // Load the sequence data
-  const { data: sequence, isLoading } = useSequence(sequenceId);
-  const updateSequence = useUpdateSequence();
+  const { data: sequence, isLoading: isLoadingSequence } =
+    useSequence(sequenceId);
+  const { data: frames = [], isLoading: isLoadingFrames } =
+    useFramesBySequence(sequenceId);
+  const isLoading = isLoadingSequence || isLoadingFrames;
 
   // Local state for motion generation
   const [generatingFrameIds, setGeneratingFrameIds] = useState<Set<string>>(
@@ -43,8 +47,7 @@ export default function MotionPage({ params }: MotionPageProps) {
   const completedSteps = new Set([1, 2]); // Script and storyboard are completed to get here
 
   // Check if any frames have motion
-  const hasMotion =
-    sequence?.frames?.some((frame) => frame.motion_url) || false;
+  const hasMotion = frames.some((frame) => frame.video_url);
   if (hasMotion) {
     completedSteps.add(3);
   }
@@ -108,6 +111,7 @@ export default function MotionPage({ params }: MotionPageProps) {
 
       <MotionStep
         sequence={sequence}
+        frames={frames}
         generatingFrameIds={generatingFrameIds}
         generationErrors={generationErrors}
         onMotionGenerationStart={(frameId) => {
@@ -118,25 +122,15 @@ export default function MotionPage({ params }: MotionPageProps) {
             return next;
           });
         }}
-        onMotionGenerationComplete={(frameId, motionUrl) => {
+        onMotionGenerationComplete={(frameId) => {
           setGeneratingFrameIds((prev) => {
             const next = new Set(prev);
             next.delete(frameId);
             return next;
           });
 
-          // Update the frame with motion URL
-          const updatedFrames =
-            sequence.frames?.map((frame) =>
-              frame.id === frameId
-                ? { ...frame, motion_url: motionUrl }
-                : frame,
-            ) || [];
-
-          updateSequence.mutate({
-            id: sequenceId,
-            frames: updatedFrames,
-          });
+          // Note: The frame will be updated in the database by generateFrameMotion
+          // The useFramesBySequence hook will automatically refetch
         }}
         onMotionGenerationError={(frameId, error) => {
           setGeneratingFrameIds((prev) => {

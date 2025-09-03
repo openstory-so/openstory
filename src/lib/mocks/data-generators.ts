@@ -51,6 +51,7 @@ export const generateMockSequence = (
       "archived",
     ]),
     team_id: faker.string.uuid(),
+    style_id: faker.datatype.boolean() ? faker.string.uuid() : null,
     created_at: faker.date.past().toISOString(),
     updated_at: faker.date.recent().toISOString(),
     created_by: faker.string.uuid(),

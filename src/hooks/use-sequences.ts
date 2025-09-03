@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { getSequence } from "@/app/actions/sequences";
+import { getSequence } from "@/app/actions/sequence";
 import type { Frame, Sequence } from "@/types/database";
 
 // Query keys
@@ -13,7 +13,7 @@ export const sequenceKeys = {
 
 // Hook for listing sequences
 export function useSequences(teamId?: string) {
-  return useQuery({
+  return useQuery<Sequence[]>({
     queryKey: sequenceKeys.list(teamId),
     queryFn: async () => {
       // For now, return empty array as we don't have a list endpoint yet
@@ -26,7 +26,7 @@ export function useSequences(teamId?: string) {
 
 // Hook for getting single sequence
 export function useSequence(id: string) {
-  return useQuery({
+  return useQuery<Sequence & { frames: Frame[] }>({
     queryKey: sequenceKeys.detail(id),
     queryFn: async () => {
       const result = await getSequence(id);
@@ -50,7 +50,7 @@ export function useCreateSequence() {
       styleId: string | null;
       name?: string;
     }) => {
-      const { saveSequence } = await import("@/app/actions/sequences");
+      const { saveSequence } = await import("@/app/actions/sequence");
       const result = await saveSequence(
         input.script,
         input.styleId,
@@ -81,7 +81,7 @@ export function useUpdateSequence() {
       styleId?: string | null;
       frames?: Frame[];
     }) => {
-      const { saveSequence } = await import("@/app/actions/sequences");
+      const { saveSequence } = await import("@/app/actions/sequence");
       const result = await saveSequence(
         input.script || "",
         input.styleId !== undefined ? input.styleId : null,
@@ -136,7 +136,7 @@ export function useGenerateStoryboard() {
       script: string;
       styleId: string;
     }) => {
-      const { generateFrames } = await import("@/app/actions/sequences");
+      const { generateFrames } = await import("@/app/actions/sequence");
       const result = await generateFrames(script, styleId, sequenceId);
       if (result.success && result.frames) {
         return result.frames;

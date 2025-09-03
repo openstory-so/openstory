@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { CreateStyleInput } from "#actions/styles";
+import type { CreateStyleInput } from "@/app/actions/styles";
 
 // Import the actions (will resolve to mock in Storybook)
-const actions = import("#actions/styles");
+const actions = import("@/app/actions/styles");
 
 // Query keys
 export const styleKeys = {
