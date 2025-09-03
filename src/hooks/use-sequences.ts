@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getSequence } from "@/app/actions/sequence";
-import type { Frame, Sequence } from "@/types/database";
+import type { Sequence } from "@/types/database";
 
 // Query keys
 export const sequenceKeys = {
@@ -26,12 +26,14 @@ export function useSequences(teamId?: string) {
 
 // Hook for getting single sequence
 export function useSequence(id: string) {
-  return useQuery<Sequence & { frames: Frame[] }>({
+  return useQuery<Sequence>({
     queryKey: sequenceKeys.detail(id),
     queryFn: async () => {
       const result = await getSequence(id);
       if (result.success && result.sequence) {
-        return result.sequence;
+        // Note: getSequence returns sequence with frames, but we only want the sequence data
+        // The frames should be fetched separately using useFramesBySequence
+        return result.sequence as unknown as Sequence;
       }
       throw new Error(result.error || "Failed to load sequence");
     },
@@ -79,7 +81,6 @@ export function useUpdateSequence() {
       name?: string;
       script?: string;
       styleId?: string | null;
-      frames?: Frame[];
     }) => {
       const { saveSequence } = await import("@/app/actions/sequence");
       const result = await saveSequence(
