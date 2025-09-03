@@ -5,6 +5,7 @@ const mockCreateClient = mock(() => ({
   from: mock(),
   auth: {
     getSession: mock(),
+    onAuthStateChange: mock(),
   },
   storage: {
     from: mock(),

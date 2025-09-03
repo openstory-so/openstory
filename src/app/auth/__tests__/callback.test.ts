@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 const mockUpgradeAnonymousSession = mock();
 const mockGetUserProfile = mock();
 const mockUpsertUserProfile = mock();
+const mockUpdateUserProfile = mock();
+const mockGetCurrentUserTeamId = mock();
 const mockExchangeCodeForSession = mock();
 const mockRedirect = mock();
 
@@ -13,6 +15,8 @@ mock.module("@/lib/auth/service", () => ({
     upgradeAnonymousSession: mockUpgradeAnonymousSession,
     getUserProfile: mockGetUserProfile,
     upsertUserProfile: mockUpsertUserProfile,
+    updateUserProfile: mockUpdateUserProfile,
+    getCurrentUserTeamId: mockGetCurrentUserTeamId,
   })),
 }));
 
@@ -21,6 +25,21 @@ mock.module("@/lib/supabase/server", () => ({
     auth: {
       exchangeCodeForSession: mockExchangeCodeForSession,
     },
+  })),
+  createSessionAwareClient: mock(async () => ({
+    auth: {
+      exchangeCodeForSession: mockExchangeCodeForSession,
+    },
+    from: mock(() => ({
+      upsert: mock(() => ({
+        select: mock(() => ({
+          single: mock(() => ({ error: null })),
+        })),
+      })),
+      update: mock(() => ({
+        eq: mock(() => ({ error: null })),
+      })),
+    })),
   })),
 }));
 
@@ -53,6 +72,8 @@ describe("/auth/callback", () => {
     mockUpgradeAnonymousSession.mockClear();
     mockGetUserProfile.mockClear();
     mockUpsertUserProfile.mockClear();
+    mockUpdateUserProfile.mockClear();
+    mockGetCurrentUserTeamId.mockClear();
     mockExchangeCodeForSession.mockClear();
     mockRedirect.mockClear();
 
@@ -63,6 +84,10 @@ describe("/auth/callback", () => {
         Location: url.toString(),
       }),
     }));
+
+    // Set default return values
+    mockGetCurrentUserTeamId.mockResolvedValue("team-123");
+    mockUpdateUserProfile.mockResolvedValue({ success: true });
   });
 
   afterEach(() => {
@@ -70,6 +95,8 @@ describe("/auth/callback", () => {
     mockUpgradeAnonymousSession.mockClear();
     mockGetUserProfile.mockClear();
     mockUpsertUserProfile.mockClear();
+    mockUpdateUserProfile.mockClear();
+    mockGetCurrentUserTeamId.mockClear();
     mockExchangeCodeForSession.mockClear();
     mockRedirect.mockClear();
   });
@@ -109,8 +136,7 @@ describe("/auth/callback", () => {
       const _response = await GET(request);
 
       expect(mockExchangeCodeForSession).toHaveBeenCalledWith("test-code");
-      expect(mockGetUserProfile).toHaveBeenCalledWith("user-123");
-      expect(mockUpsertUserProfile).not.toHaveBeenCalled();
+      expect(mockUpdateUserProfile).toHaveBeenCalled();
       expect(mockRedirect).toHaveBeenCalled();
       const redirectCall = mockRedirect.mock.calls[0][0];
       expect(redirectCall.toString()).toContain("/dashboard");
@@ -123,7 +149,10 @@ describe("/auth/callback", () => {
           user: {
             id: "new-user-456",
             email: "newuser@example.com",
-            user_metadata: {},
+            user_metadata: {
+              full_name: "New User",
+              avatar_url: "https://example.com/new-avatar.jpg",
+            },
           },
         },
       };
@@ -148,12 +177,9 @@ describe("/auth/callback", () => {
 
       const _response = await GET(request);
 
-      expect(mockGetUserProfile).toHaveBeenCalledWith("new-user-456");
-      expect(mockUpsertUserProfile).toHaveBeenCalledWith({
-        id: "new-user-456",
-        anonymous_id: null,
-        full_name: "newuser",
-        avatar_url: null,
+      expect(mockUpdateUserProfile).toHaveBeenCalledWith({
+        full_name: "New User",
+        avatar_url: "https://example.com/new-avatar.jpg",
         onboarding_completed: false,
       });
       expect(mockRedirect).toHaveBeenCalled();
@@ -196,10 +222,8 @@ describe("/auth/callback", () => {
 
       const _response = await GET(request);
 
-      expect(mockUpgradeAnonymousSession).toHaveBeenCalledWith(
-        "user-789",
-        "anon-session-123",
-      );
+      // Anonymous upgrade is now handled by native Supabase approach
+      // No explicit upgradeAnonymousSession call is made
       expect(mockRedirect).toHaveBeenCalled();
       const redirectCall = mockRedirect.mock.calls[0][0];
       expect(redirectCall.toString()).toContain("/dashboard");
@@ -270,11 +294,8 @@ describe("/auth/callback", () => {
 
       const _response = await GET(request);
 
-      expect(mockUpgradeAnonymousSession).toHaveBeenCalledWith(
-        "user-fail-upgrade",
-        "anon-fail-123",
-      );
-      // Should still redirect successfully despite upgrade failure
+      // Anonymous upgrade is now handled by native Supabase approach
+      // Should still redirect successfully
       expect(mockRedirect).toHaveBeenCalled();
       const redirectCall = mockRedirect.mock.calls[0][0];
       expect(redirectCall.toString()).toContain("/dashboard");
@@ -373,7 +394,7 @@ describe("/auth/callback", () => {
         error: null,
       });
       mockGetUserProfile.mockResolvedValue(null);
-      mockUpsertUserProfile.mockRejectedValue(new Error("Database error"));
+      mockUpdateUserProfile.mockRejectedValue(new Error("Database error"));
 
       const request = new MockNextRequest(
         "http://localhost:3000/auth/callback?code=profile-error-code",
@@ -381,6 +402,7 @@ describe("/auth/callback", () => {
 
       const _response = await GET(request);
 
+      // When updateUserProfile fails, it should redirect to login with error
       expect(mockRedirect).toHaveBeenCalled();
       const redirectCall = mockRedirect.mock.calls[0][0];
       expect(redirectCall.toString()).toContain("/login");
@@ -420,9 +442,7 @@ describe("/auth/callback", () => {
 
       const _response = await GET(request);
 
-      expect(mockUpsertUserProfile).toHaveBeenCalledWith({
-        id: "minimal-user",
-        anonymous_id: null,
+      expect(mockUpdateUserProfile).toHaveBeenCalledWith({
         full_name: "minimal",
         avatar_url: null,
         onboarding_completed: false,
@@ -467,13 +487,8 @@ describe("/auth/callback", () => {
 
       const _response = await GET(request);
 
-      expect(mockUpgradeAnonymousSession).toHaveBeenCalledWith(
-        "no-email-user",
-        "anon-no-email",
-      );
-      expect(mockUpsertUserProfile).toHaveBeenCalledWith({
-        id: "no-email-user",
-        anonymous_id: "anon-no-email",
+      // Anonymous upgrade is now handled by native Supabase approach
+      expect(mockUpdateUserProfile).toHaveBeenCalledWith({
         full_name: "No Email User",
         avatar_url: null,
         onboarding_completed: false,
