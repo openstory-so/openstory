@@ -38,25 +38,25 @@ describe("POST /api/v1/setup/database", () => {
     mock.restore();
 
     // Setup default mock behavior
-    mockSupabase.from.mockReturnValue({
+    (mockSupabase.from as any).mockReturnValue({
       select: mock().mockReturnThis(),
       limit: mock().mockReturnThis(),
       insert: mock().mockReturnThis(),
       error: null,
       data: null,
-    });
+    } as any);
 
-    mockSupabase.storage.listBuckets.mockResolvedValue({
+    (mockSupabase.storage.listBuckets as any).mockResolvedValue({
       data: [],
       error: null,
     });
 
-    mockSupabase.storage.createBucket.mockResolvedValue({
+    (mockSupabase.storage.createBucket as any).mockResolvedValue({
       data: { id: "test-bucket" },
       error: null,
     });
 
-    mockSupabase.auth.admin.createUser.mockResolvedValue({
+    (mockSupabase.auth.admin.createUser as any).mockResolvedValue({
       data: { user: { id: "test-user-id" } },
       error: null,
     });
@@ -180,12 +180,12 @@ describe("POST /api/v1/setup/database", () => {
   describe("skipIfExists option", () => {
     it("should skip initialization if database already exists", async () => {
       // Mock existing teams table
-      mockSupabase.from.mockReturnValue({
+      (mockSupabase.from as any).mockReturnValue({
         select: mock().mockReturnThis(),
         limit: mock().mockReturnThis(),
         error: null,
         data: [{ id: "existing-team" }],
-      });
+      } as any);
 
       const request = new NextRequest(
         "http://localhost/api/v1/setup/database",
@@ -205,12 +205,12 @@ describe("POST /api/v1/setup/database", () => {
 
     it("should proceed with initialization if skipIfExists is false", async () => {
       // Mock existing teams table
-      mockSupabase.from.mockReturnValue({
+      (mockSupabase.from as any).mockReturnValue({
         select: mock().mockReturnThis(),
         limit: mock().mockReturnThis(),
         error: null,
         data: [{ id: "existing-team" }],
-      });
+      } as any);
 
       const request = new NextRequest(
         "http://localhost/api/v1/setup/database",
@@ -230,12 +230,12 @@ describe("POST /api/v1/setup/database", () => {
 
     it("should initialize if tables exist but are empty", async () => {
       // Mock empty teams table
-      mockSupabase.from.mockReturnValue({
+      (mockSupabase.from as any).mockReturnValue({
         select: mock().mockReturnThis(),
         limit: mock().mockReturnThis(),
         error: null,
         data: [],
-      });
+      } as any);
 
       const request = new NextRequest(
         "http://localhost/api/v1/setup/database",
@@ -290,7 +290,7 @@ describe("POST /api/v1/setup/database", () => {
     });
 
     it("should handle auth user creation failure gracefully", async () => {
-      mockSupabase.auth.admin.createUser.mockResolvedValue({
+      (mockSupabase.auth.admin.createUser as any).mockResolvedValue({
         data: null,
         error: { message: "User already exists" },
       });
@@ -313,12 +313,12 @@ describe("POST /api/v1/setup/database", () => {
     });
 
     it("should handle database user creation failure", async () => {
-      mockSupabase.auth.admin.createUser.mockResolvedValue({
+      (mockSupabase.auth.admin.createUser as any).mockResolvedValue({
         data: { user: { id: "test-user-id" } },
         error: null,
       });
 
-      mockSupabase.from.mockImplementation((table) => {
+      (mockSupabase.from as any).mockImplementation((table: string) => {
         if (table === "users") {
           return {
             insert: mock().mockResolvedValue({
@@ -375,11 +375,11 @@ describe("POST /api/v1/setup/database", () => {
     });
 
     it("should handle table check failures", async () => {
-      mockSupabase.from.mockReturnValue({
+      (mockSupabase.from as any).mockReturnValue({
         select: mock().mockReturnThis(),
         limit: mock().mockReturnThis(),
         error: { message: "Connection failed" },
-      });
+      } as any);
 
       const request = new NextRequest(
         "http://localhost/api/v1/setup/database",
@@ -398,7 +398,7 @@ describe("POST /api/v1/setup/database", () => {
     });
 
     it("should handle storage bucket listing failure", async () => {
-      mockSupabase.storage.listBuckets.mockResolvedValue({
+      (mockSupabase.storage.listBuckets as any).mockResolvedValue({
         data: null,
         error: { message: "Storage service unavailable" },
       });
@@ -421,18 +421,20 @@ describe("POST /api/v1/setup/database", () => {
     });
 
     it("should handle individual bucket creation failures", async () => {
-      mockSupabase.storage.createBucket.mockImplementation((bucket) => {
-        if (bucket === "thumbnails") {
+      (mockSupabase.storage.createBucket as any).mockImplementation(
+        (bucket: string) => {
+          if (bucket === "thumbnails") {
+            return Promise.resolve({
+              data: null,
+              error: { message: "Bucket already exists" },
+            });
+          }
           return Promise.resolve({
-            data: null,
-            error: { message: "Bucket already exists" },
+            data: { id: bucket },
+            error: null,
           });
-        }
-        return Promise.resolve({
-          data: { id: bucket },
-          error: null,
-        });
-      });
+        },
+      );
 
       const request = new NextRequest(
         "http://localhost/api/v1/setup/database",
@@ -503,7 +505,7 @@ describe("POST /api/v1/setup/database", () => {
 
   describe("partial success scenarios", () => {
     it("should report partial success when some buckets exist", async () => {
-      mockSupabase.storage.listBuckets.mockResolvedValue({
+      (mockSupabase.storage.listBuckets as any).mockResolvedValue({
         data: [
           { id: "thumbnails", name: "thumbnails" },
           { id: "videos", name: "videos" },

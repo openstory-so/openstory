@@ -8,13 +8,9 @@ mock.module("@/lib/supabase/server", () => ({
 }));
 
 // Mock crypto.randomUUID
-mock.module("crypto", async (importOriginal) => {
-  const actual = (await importOriginal()) as Record<string, unknown>;
-  return {
-    ...actual,
-    randomUUID: mock(() => "mock-uuid-123"),
-  };
-});
+mock.module("crypto", () => ({
+  randomUUID: mock(() => "mock-uuid-123"),
+}));
 
 describe("AuthService", () => {
   let authService: AuthService;
@@ -60,8 +56,8 @@ describe("AuthService", () => {
     const { createServerClient, createAdminClient } = await import(
       "@/lib/supabase/server"
     );
-    mock.moduleed(createServerClient).mockReturnValue(mockSupabase);
-    mock.moduleed(createAdminClient).mockReturnValue(mockAdminClient);
+    (createServerClient as any).mockReturnValue(mockSupabase);
+    (createAdminClient as any).mockReturnValue(mockAdminClient);
 
     authService = new AuthService();
   });
@@ -114,6 +110,7 @@ describe("AuthService", () => {
         data: {},
         expires_at: "2023-12-31T23:59:59Z",
         team_id: null,
+        created_at: "2023-01-01T00:00:00Z",
       };
 
       mockSupabase.single.mockResolvedValue({
@@ -268,8 +265,11 @@ describe("AuthService", () => {
     it("should get current session successfully", async () => {
       const mockSession = {
         access_token: "token-123",
+        refresh_token: "refresh-123",
+        expires_in: 3600,
+        token_type: "bearer",
         user: { id: "user-123", email: "user@example.com" },
-      };
+      } as any;
 
       mockSupabase.auth.getSession.mockResolvedValue({
         data: { session: mockSession },

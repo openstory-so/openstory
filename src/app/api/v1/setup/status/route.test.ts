@@ -16,21 +16,16 @@ mock.module("@/lib/supabase/server", () => ({
 }));
 
 // Mock NextResponse.json to return a testable object
-mock.module("next/server", async () => {
-  const actual =
-    await vi.importActual<typeof import("next/server")>("next/server");
-  return {
-    ...actual,
-    NextResponse: {
-      ...actual.NextResponse,
-      json: mock((body, init) => ({
-        json: async () => body,
-        status: init?.status || 200,
-        headers: new Headers(init?.headers),
-      })),
-    },
-  };
-});
+mock.module("next/server", () => ({
+  NextRequest,
+  NextResponse: {
+    json: mock((body, init) => ({
+      json: async () => body,
+      status: init?.status || 200,
+      headers: new Headers(init?.headers),
+    })),
+  },
+}));
 
 describe("GET /api/v1/setup/status", () => {
   beforeEach(() => {

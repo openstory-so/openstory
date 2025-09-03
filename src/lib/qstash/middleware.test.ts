@@ -2,7 +2,15 @@
  * Unit tests for QStash signature verification middleware
  */
 
-import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  mock,
+  spyOn,
+} from "bun:test";
 import { Receiver } from "@upstash/qstash";
 import { type NextRequest, NextResponse } from "next/server";
 import { ConfigurationError, VelroError } from "@/lib/errors";
@@ -409,7 +417,7 @@ describe("QStash Middleware", () => {
 
   describe("logQStashRequest", () => {
     it("should log request details with metadata", () => {
-      const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      const consoleSpy = spyOn(console, "log").mockImplementation(() => {});
 
       const mockRequest = createTestWebhookRequest({
         url: "https://example.com/webhook",
