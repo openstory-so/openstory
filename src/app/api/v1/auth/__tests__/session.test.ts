@@ -2,29 +2,30 @@ import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import { NextRequest } from "next/server";
 import { DELETE, GET } from "../session/route";
 
-// Mock AuthService
+// Create mock functions first
+const mockGetSession = mock();
+const mockGetUserProfile = mock();
+const mockSignOut = mock();
+
+// Create the mock AuthService constructor
+const MockAuthService = mock(() => ({
+  getSession: mockGetSession,
+  getUserProfile: mockGetUserProfile,
+  signOut: mockSignOut,
+}));
+
+// Mock the module with our mock functions
 mock.module("@/lib/auth/service", () => ({
-  AuthService: mock().mockImplementation(() => ({
-    getSession: mock(),
-    getUserProfile: mock(),
-    signOut: mock(),
-  })),
+  AuthService: MockAuthService,
 }));
 
 describe("/api/v1/auth/session", () => {
-  let mockAuthService: any;
-
-  beforeEach(async () => {
-    mock.restore();
-
-    mockAuthService = {
-      getSession: mock(),
-      getUserProfile: mock(),
-      signOut: mock(),
-    };
-
-    const { AuthService } = await import("@/lib/auth/service");
-    (AuthService as any).mockImplementation(() => mockAuthService as any);
+  beforeEach(() => {
+    // Reset all mocks before each test
+    mockGetSession.mockReset();
+    mockGetUserProfile.mockReset();
+    mockSignOut.mockReset();
+    MockAuthService.mockClear();
   });
 
   afterEach(() => {
@@ -33,7 +34,7 @@ describe("/api/v1/auth/session", () => {
 
   describe("GET /api/v1/auth/session", () => {
     it("should return null session for unauthenticated users", async () => {
-      mockAuthService.getSession.mockResolvedValue(null);
+      mockGetSession.mockResolvedValue(null);
 
       const request = new NextRequest(
         "http://localhost:3000/api/v1/auth/session",
@@ -52,8 +53,8 @@ describe("/api/v1/auth/session", () => {
         user: null,
         isAuthenticated: false,
       });
-      expect(mockAuthService.getSession).toHaveBeenCalled();
-      expect(mockAuthService.getUserProfile).not.toHaveBeenCalled();
+      expect(mockGetSession).toHaveBeenCalled();
+      expect(mockGetUserProfile).not.toHaveBeenCalled();
     });
 
     it("should return session and profile for authenticated users", async () => {
@@ -80,8 +81,8 @@ describe("/api/v1/auth/session", () => {
         updated_at: "2023-01-01T00:00:00Z",
       };
 
-      mockAuthService.getSession.mockResolvedValue(mockSession);
-      mockAuthService.getUserProfile.mockResolvedValue(mockProfile);
+      mockGetSession.mockResolvedValue(mockSession);
+      mockGetUserProfile.mockResolvedValue(mockProfile);
 
       const request = new NextRequest(
         "http://localhost:3000/api/v1/auth/session",
@@ -105,8 +106,8 @@ describe("/api/v1/auth/session", () => {
         profile: mockProfile,
         isAuthenticated: true,
       });
-      expect(mockAuthService.getSession).toHaveBeenCalled();
-      expect(mockAuthService.getUserProfile).toHaveBeenCalledWith("user-123");
+      expect(mockGetSession).toHaveBeenCalled();
+      expect(mockGetUserProfile).toHaveBeenCalledWith("user-123");
     });
 
     it("should handle missing user profile gracefully", async () => {
@@ -124,8 +125,8 @@ describe("/api/v1/auth/session", () => {
         },
       };
 
-      mockAuthService.getSession.mockResolvedValue(mockSession);
-      mockAuthService.getUserProfile.mockResolvedValue(null);
+      mockGetSession.mockResolvedValue(mockSession);
+      mockGetUserProfile.mockResolvedValue(null);
 
       const request = new NextRequest(
         "http://localhost:3000/api/v1/auth/session",
@@ -149,14 +150,12 @@ describe("/api/v1/auth/session", () => {
         profile: null,
         isAuthenticated: true,
       });
-      expect(mockAuthService.getSession).toHaveBeenCalled();
-      expect(mockAuthService.getUserProfile).toHaveBeenCalledWith("user-456");
+      expect(mockGetSession).toHaveBeenCalled();
+      expect(mockGetUserProfile).toHaveBeenCalledWith("user-456");
     });
 
     it("should handle getSession errors", async () => {
-      mockAuthService.getSession.mockRejectedValue(
-        new Error("Database connection failed"),
-      );
+      mockGetSession.mockRejectedValue(new Error("Database connection failed"));
 
       const request = new NextRequest(
         "http://localhost:3000/api/v1/auth/session",
@@ -188,10 +187,8 @@ describe("/api/v1/auth/session", () => {
         },
       };
 
-      mockAuthService.getSession.mockResolvedValue(mockSession);
-      mockAuthService.getUserProfile.mockRejectedValue(
-        new Error("Profile fetch failed"),
-      );
+      mockGetSession.mockResolvedValue(mockSession);
+      mockGetUserProfile.mockRejectedValue(new Error("Profile fetch failed"));
 
       const request = new NextRequest(
         "http://localhost:3000/api/v1/auth/session",
@@ -211,7 +208,7 @@ describe("/api/v1/auth/session", () => {
 
   describe("DELETE /api/v1/auth/session", () => {
     it("should sign out successfully", async () => {
-      mockAuthService.signOut.mockResolvedValue({ success: true });
+      mockSignOut.mockResolvedValue({ success: true });
 
       const request = new NextRequest(
         "http://localhost:3000/api/v1/auth/session",
@@ -226,11 +223,11 @@ describe("/api/v1/auth/session", () => {
       expect(response.status).toBe(200);
       expect(result.success).toBe(true);
       expect(result.message).toBe("Signed out successfully");
-      expect(mockAuthService.signOut).toHaveBeenCalled();
+      expect(mockSignOut).toHaveBeenCalled();
     });
 
     it("should handle sign out failure", async () => {
-      mockAuthService.signOut.mockResolvedValue({
+      mockSignOut.mockResolvedValue({
         success: false,
         error: "Failed to invalidate session",
       });
@@ -248,11 +245,11 @@ describe("/api/v1/auth/session", () => {
       expect(response.status).toBe(400);
       expect(result.success).toBe(false);
       expect(result.error).toBe("Failed to invalidate session");
-      expect(mockAuthService.signOut).toHaveBeenCalled();
+      expect(mockSignOut).toHaveBeenCalled();
     });
 
     it("should handle sign out without error message", async () => {
-      mockAuthService.signOut.mockResolvedValue({
+      mockSignOut.mockResolvedValue({
         success: false,
       });
 
@@ -272,9 +269,7 @@ describe("/api/v1/auth/session", () => {
     });
 
     it("should handle sign out exceptions", async () => {
-      mockAuthService.signOut.mockRejectedValue(
-        new Error("Network error occurred"),
-      );
+      mockSignOut.mockRejectedValue(new Error("Network error occurred"));
 
       const request = new NextRequest(
         "http://localhost:3000/api/v1/auth/session",
@@ -292,7 +287,7 @@ describe("/api/v1/auth/session", () => {
     });
 
     it("should handle non-Error exceptions", async () => {
-      mockAuthService.signOut.mockRejectedValue("Unknown error");
+      mockSignOut.mockRejectedValue("Unknown error");
 
       const request = new NextRequest(
         "http://localhost:3000/api/v1/auth/session",
@@ -321,8 +316,8 @@ describe("/api/v1/auth/session", () => {
         },
       };
 
-      mockAuthService.getSession.mockResolvedValue(mockSession);
-      mockAuthService.getUserProfile.mockResolvedValue(null);
+      mockGetSession.mockResolvedValue(mockSession);
+      mockGetUserProfile.mockResolvedValue(null);
 
       const request = new NextRequest(
         "http://localhost:3000/api/v1/auth/session",
@@ -350,8 +345,8 @@ describe("/api/v1/auth/session", () => {
         },
       };
 
-      mockAuthService.getSession.mockResolvedValue(mockSession);
-      mockAuthService.getUserProfile.mockResolvedValue(null);
+      mockGetSession.mockResolvedValue(mockSession);
+      mockGetUserProfile.mockResolvedValue(null);
 
       const request = new NextRequest(
         "http://localhost:3000/api/v1/auth/session",

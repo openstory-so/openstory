@@ -1,0 +1,170 @@
+---
+globs: *.test.ts
+alwaysApply: false
+---
+## Cursor/Claude Rules for Bun Test Mocking
+
+### Rule 1: Use `mock.module() ` for Module-Level Mocking
+When mocking entire modules, use `mock.module(path, callback) ` [(1) ](<https://bun.com/docs/test/mocks>) :
+
+```typescript
+import { test, expect, mock } from "bun:test";
+
+mock.module("./module", () => {
+  return {
+    foo: "bar",
+  };
+}) ;
+
+test("mock.module", async () => {
+  const esm = await import("./module") ;
+  expect(esm.foo) .toBe("bar") ;
+  const cjs = require("./module") ;
+  expect(cjs.foo) .toBe("bar") ;
+}) ;
+```
+
+
+### Rule 2: Use `spyOn() ` for Individual Function Mocking
+To mock specific functions from imported modules, use `spyOn() ` with `mockImplementation() ` , [(2) ](<https://bun.com/guides/test/spy-on>) :
+
+```typescript
+import { test, expect, spyOn } from "bun:test";
+
+const ringo = {
+  name: "Ringo",
+  sayHi() {
+    console.log(`Hello I'm ${this.name}`) ;
+  },
+};
+
+const spy = spyOn(ringo, "sayHi") ;
+
+test("spyon", () => {
+  expect(spy) .toHaveBeenCalledTimes(0) ;
+  ringo.sayHi() ;
+  expect(spy) .toHaveBeenCalledTimes(1) ;
+}) ;
+```
+
+
+### Rule 3: Mock Return Values Using Mock Methods
+For mocking return values, use the mock function methods [(1) ](<https://bun.com/docs/test/mocks>) :
+
+```typescript
+import { mock } from "bun:test";
+
+const random = mock((multiplier: number) => multiplier * Math.random() ) ;
+random(2) ;
+random(10) ;
+
+random.mock.calls;
+// [[ 2 ], [ 10 ]]
+
+random.mock.results;
+// [
+//   { type: "return", value: 0.6533907460954099 },
+//   { type: "return", value: 0.6452713933037312 }
+// ]
+```
+
+
+### Rule 4: Use Jest-Compatible Syntax
+Bun supports Jest-compatible mocking syntax :
+```typescript
+import { test, expect, jest } from "bun:test";
+
+const random = jest.fn(() => Math.random() ) ;
+
+test("random", async () => {
+  const val = random() ;
+  expect(val) .toBeGreaterThan(0) ;
+  expect(random) .toHaveBeenCalled() ;
+  expect(random) .toHaveBeenCalledTimes(1) ;
+}) ;
+```
+
+
+### Rule 5: Mock Fetch Using `spyOn` (Community Solution)
+For mocking `fetch`, use `spyOn` on the global object [(3) ](<https://github.com/oven-sh/bun/discussions/11169>) :
+
+```typescript
+const mockGetExample: typeof fetch = async (url, opts) => {
+  expect(url) .toBe('<https://example.com')>
+  expect(opts?.method) .toBe('GET')
+
+  return new Response(`{"success":true}`)
+}
+
+const spyFetch = spyOn(globalThis, 'fetch')
+
+beforeEach(() => {
+  spyFetch.mockReset()
+})
+
+afterAll(() => {
+  spyFetch.mockRestore()
+})
+
+test('fetches example.com', () => {
+  spyFetch.mockImplementation(mockGetExample)
+  // ... test code
+```
+
+
+### Rule 6: Handle Module Mock Restoration Issues
+Be aware that `mock.restore() ` has known issues with module mocks [(4) ](<https://github.com/oven-sh/bun/issues/7823>) . Use manual cleanup as a workaround:
+
+```typescript
+// Workaround for module mock restoration
+beforeEach(() => {
+  // Store original module before mocking
+  const original = await import('./module') ;
+  // Apply mock
+  mock.module('./module', () => ({ ...mockImplementation }) ) ;
+  
+  // Manual restore in afterEach
+  afterEach(() => {
+    mock.module('./module', () => original) ;
+  }) ;
+}) ;
+```
+
+
+### Rule 7: Use Preload for Early Module Mocking
+If you need to mock modules before they're imported, use `--preload` [(1) ](<https://bun.com/docs/test/mocks>) :
+
+```typescript
+// my-preload.ts
+import { mock } from "bun:test";
+
+mock.module("./module", () => {
+  return {
+    foo: "bar",
+  };
+}) ;
+```
+
+Then run: `bun test --preload ./my-preload`
+
+### Rule 8: Clear Mocks Between Tests
+Use `mock.clearAllMocks() ` to reset mock state :
+
+```typescript
+import { expect, mock, test } from "bun:test";
+
+const random1 = mock(() => Math.random() ) ;
+const random2 = mock(() => Math.random() ) ;
+
+test("clearing all mocks", () => {
+  random1() ;
+  random2() ;
+  expect(random1) .toHaveBeenCalledTimes(1) ;
+  expect(random2) .toHaveBeenCalledTimes(1) ;
+  
+  mock.clearAllMocks() ;
+  
+  expect(random1) .toHaveBeenCalledTimes(0) ;
+  expect(random2) .toHaveBeenCalledTimes(0) ;
+}) ;
+```
