@@ -1,8 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { CreateStyleInput } from "@/app/actions/styles";
-
-// Import the actions (will resolve to mock in Storybook)
-const actions = import("@/app/actions/styles");
+import {
+  type CreateStyleInput,
+  createStyle,
+  deleteStyle,
+  getStyle,
+  listStyles,
+  updateStyle,
+} from "@/app/actions/styles";
 
 // Query keys
 export const styleKeys = {
@@ -18,7 +22,6 @@ export function useStyles(teamId?: string) {
   return useQuery({
     queryKey: styleKeys.list(teamId),
     queryFn: async () => {
-      const { listStyles } = await actions;
       return listStyles(teamId);
     },
     staleTime: 10 * 60 * 1000, // 10 minutes (styles change less frequently)
@@ -30,7 +33,6 @@ export function useStyle(id: string) {
   return useQuery({
     queryKey: styleKeys.detail(id),
     queryFn: async () => {
-      const { getStyle } = await actions;
       return getStyle(id);
     },
     staleTime: 10 * 60 * 1000,
@@ -44,7 +46,6 @@ export function useCreateStyle() {
 
   return useMutation({
     mutationFn: async (input: CreateStyleInput) => {
-      const { createStyle } = await actions;
       return createStyle(input);
     },
     onSuccess: () => {
@@ -65,7 +66,6 @@ export function useUpdateStyle() {
       id: string;
       input: Partial<CreateStyleInput>;
     }) => {
-      const { updateStyle } = await actions;
       return updateStyle(id, input);
     },
     onSuccess: (data, _variables) => {
@@ -90,7 +90,6 @@ export function useDeleteStyle() {
 
   return useMutation({
     mutationFn: async (id: string) => {
-      const { deleteStyle } = await actions;
       return deleteStyle(id);
     },
     onSuccess: (_, id) => {

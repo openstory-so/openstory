@@ -1,5 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { getSequence } from "@/app/actions/sequence";
+import {
+  generateFrames,
+  getSequence,
+  saveSequence,
+} from "@/app/actions/sequence";
 import type { Sequence } from "@/types/database";
 
 // Query keys
@@ -52,7 +56,6 @@ export function useCreateSequence() {
       styleId: string | null;
       name?: string;
     }) => {
-      const { saveSequence } = await import("@/app/actions/sequence");
       const result = await saveSequence(
         input.script,
         input.styleId,
@@ -82,7 +85,6 @@ export function useUpdateSequence() {
       script?: string;
       styleId?: string | null;
     }) => {
-      const { saveSequence } = await import("@/app/actions/sequence");
       const result = await saveSequence(
         input.script || "",
         input.styleId !== undefined ? input.styleId : null,
@@ -137,7 +139,6 @@ export function useGenerateStoryboard() {
       script: string;
       styleId: string;
     }) => {
-      const { generateFrames } = await import("@/app/actions/sequence");
       const result = await generateFrames(script, styleId, sequenceId);
       if (result.success && result.frames) {
         return result.frames;
