@@ -2,6 +2,8 @@
 
 import { z } from "zod";
 
+export * from "./index.mock";
+
 // Schema definitions
 
 const createStyleSchema = z.object({
@@ -20,6 +22,7 @@ const createStyleSchema = z.object({
 
 export type CreateStyleInput = z.infer<typeof createStyleSchema>;
 
+/*
 // Server actions
 export async function createStyle(_input: CreateStyleInput) {
   // TODO: Implement actual database operations
@@ -48,3 +51,4 @@ export async function listStyles(_teamId?: string) {
   // TODO: Implement actual database operations
   throw new Error("Not implemented - use mock in Storybook");
 }
+*/

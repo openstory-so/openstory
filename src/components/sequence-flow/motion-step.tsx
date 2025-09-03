@@ -1,6 +1,6 @@
 import type React from "react";
 import { useCallback, useState } from "react";
-import { generateFrameMotion } from "@/app/actions/sequence";
+import { generateFrameMotion } from "#actions/sequence";
 import { MotionPreview } from "@/components/sequence/motion-preview";
 import { SectionHeading } from "@/components/typography";
 import { Alert } from "@/components/ui/alert";

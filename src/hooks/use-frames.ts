@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { CreateFrameInput, UpdateFrameInput } from "@/app/actions/frames";
+import type { CreateFrameInput, UpdateFrameInput } from "#actions/frames";
 import {
   bulkCreateFrames,
   createFrame,
@@ -9,7 +9,7 @@ import {
   getFramesBySequence,
   reorderFrames,
   updateFrame,
-} from "@/app/actions/frames";
+} from "#actions/frames";
 import type { Frame } from "@/types/database";
 
 // Query keys

@@ -7,7 +7,7 @@ import {
   type ScriptValidationResult,
   saveSequence,
   validateScript,
-} from "@/app/actions/sequence";
+} from "#actions/sequence";
 import { ScriptEditor } from "@/components/sequence/script-editor";
 import { StyleSelector } from "@/components/sequence/style-selector";
 import { SectionHeading } from "@/components/typography";
@@ -249,7 +249,7 @@ export const ScriptStep: React.FC<ScriptStepProps> = ({
                 <div className="space-y-1">
                   <div className="font-medium">Considerations:</div>
                   <ul className="text-sm list-disc list-inside space-y-1">
-                    {validationResult.warnings.map((warning) => (
+                    {validationResult.warnings.map((warning: string) => (
                       <li key={warning}>{warning}</li>
                     ))}
                   </ul>
@@ -262,7 +262,7 @@ export const ScriptStep: React.FC<ScriptStepProps> = ({
                 <div className="space-y-1">
                   <div className="font-medium">Suggestions:</div>
                   <ul className="text-sm list-disc list-inside space-y-1">
-                    {validationResult.suggestions.map((suggestion) => (
+                    {validationResult.suggestions.map((suggestion: string) => (
                       <li key={suggestion}>{suggestion}</li>
                     ))}
                   </ul>
@@ -281,7 +281,7 @@ export const ScriptStep: React.FC<ScriptStepProps> = ({
                 Applied {enhancementResult.improvements.length} improvements:
               </div>
               <ul className="text-sm list-disc list-inside space-y-1">
-                {enhancementResult.improvements.map((improvement) => (
+                {enhancementResult.improvements.map((improvement: string) => (
                   <li key={improvement}>{improvement}</li>
                 ))}
               </ul>

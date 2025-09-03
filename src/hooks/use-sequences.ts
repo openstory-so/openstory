@@ -1,9 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  generateFrames,
-  getSequence,
-  saveSequence,
-} from "@/app/actions/sequence";
+import { generateFrames, getSequence, saveSequence } from "#actions/sequence";
 import type { Frame, Sequence } from "@/types/database";
 
 // Query keys

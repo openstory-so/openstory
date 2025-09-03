@@ -1,6 +1,6 @@
 import type * as React from "react";
 import { useCallback, useMemo, useState } from "react";
-import { generateFrames } from "@/app/actions/sequence";
+import { generateFrames } from "#actions/sequence";
 import { StoryboardFrame } from "@/components/sequence/storyboard-frame";
 import { SectionHeading } from "@/components/typography";
 import { Alert } from "@/components/ui/alert";

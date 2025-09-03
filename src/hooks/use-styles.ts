@@ -6,7 +6,7 @@ import {
   getStyle,
   listStyles,
   updateStyle,
-} from "@/app/actions/styles";
+} from "#actions/styles";
 import type { Style } from "@/types/database";
 
 // Query keys
@@ -100,7 +100,7 @@ export function useDeleteStyle() {
 
   return useMutation<void, Error, string>({
     mutationFn: async (id: string) => {
-      return deleteStyle(id);
+      await deleteStyle(id);
     },
     onSuccess: (_, id) => {
       queryClient.removeQueries({ queryKey: styleKeys.detail(id) });

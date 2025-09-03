@@ -17,13 +17,13 @@ export type {
   MotionGenerationResult,
   ScriptEnhancementResult,
   ScriptValidationResult,
-} from "@/app/actions/anonymous-flow/index.mock";
+} from "#actions/anonymous-flow";
 
 // Re-export mock functions for validation and enhancement (still using mocks for these)
 export {
   enhanceScript,
   validateScript,
-} from "@/app/actions/anonymous-flow/index.mock";
+} from "#actions/anonymous-flow";
 
 // Schema definitions
 const createSequenceSchema = z.object({
@@ -135,7 +135,7 @@ export async function generateFrames(
     // First, use the mock function to generate frame data
     // In production, this would call an AI service
     const { generateFrames: generateMockFrames } = await import(
-      "@/app/actions/anonymous-flow/index.mock"
+      "#actions/anonymous-flow"
     );
     const mockResult = await generateMockFrames(script, styleId, sequenceId);
 
@@ -199,7 +199,7 @@ export async function generateFrameMotion(
     // Use mock function to generate video URL
     // In production, this would call an AI video service
     const { generateFrameMotion: generateMockMotion } = await import(
-      "@/app/actions/anonymous-flow/index.mock"
+      "#actions/anonymous-flow"
     );
     const mockResult = await generateMockMotion(
       frameId,
