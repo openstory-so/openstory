@@ -5,22 +5,22 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 ### Prerequisites
 
 - Node.js 18+
-- pnpm (`npm install -g pnpm`)
+- bun (`npm install -g bun`)
 
 ### Development Setup
 
 1. **Install dependencies:**
 ```bash
-pnpm install
+bun install
 ```
 
 2. **Start Supabase and configure environment:**
 ```bash
 # Terminal 1: Start Supabase
-pnpm supabase:start
+bun supabase:start
 
 # Wait for it to fully start, then in a new terminal:
-pnpm setup:env
+bun setup:env
 ```
 This will create `.env.development.local` with your local Supabase credentials.
 You'll need to provide your QStash token from https://console.upstash.com/qstash
@@ -29,19 +29,19 @@ You'll need to provide your QStash token from https://console.upstash.com/qstash
 
 **Terminal 1 - Supabase (Database & Auth)**
 ```bash
-pnpm supabase:start
+bun supabase:start
 ```
 (Skip if already running from step 2)
 
 **Terminal 2 - QStash Tunnel (Job Queue)**
 ```bash
-pnpm qstash:dev
+bun qstash:dev
 ```
 This creates a tunnel for QStash to reach your local API endpoints.
 
 **Terminal 3 - Next.js App**
 ```bash
-pnpm dev
+bun dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
@@ -49,7 +49,7 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 ### Stopping Services
 
 - Stop Next.js and QStash: Press `Ctrl+C` in their terminals
-- Stop Supabase: Run `pnpm supabase:stop`
+- Stop Supabase: Run `bun supabase:stop`
 
 You can start editing the page by modifying `app/route.ts`. The page auto-updates as you edit the file.
 

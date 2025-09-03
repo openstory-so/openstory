@@ -1,36 +1,48 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createAdminClient, createServerClient } from "./server";
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 
-// Mock the Supabase createClient function
-vi.mock("@supabase/supabase-js", () => ({
-  createClient: vi.fn(() => ({
-    from: vi.fn(),
-    auth: {
-      admin: {
-        createUser: vi.fn(),
-        deleteUser: vi.fn(),
-      },
-      getSession: vi.fn(),
+// Mock the Supabase createClient function once
+const mockCreateClient = mock(() => ({
+  from: mock(),
+  auth: {
+    admin: {
+      createUser: mock(),
+      deleteUser: mock(),
     },
-    storage: {
-      from: vi.fn(),
-      listBuckets: vi.fn(),
-      createBucket: vi.fn(),
-    },
-  })),
+    getSession: mock(),
+  },
+  storage: {
+    from: mock(),
+    listBuckets: mock(),
+    createBucket: mock(),
+  },
+}));
+
+mock.module("@supabase/supabase-js", () => ({
+  createClient: mockCreateClient,
 }));
 
 describe("createServerClient", () => {
   const originalEnv = process.env;
 
-  beforeEach(() => {
+  // Import dynamically in each test to ensure clean mocks
+  let createServerClient: any;
+  let _createAdminClient: any;
+
+  beforeEach(async () => {
     // Reset environment variables to test defaults
     process.env = {
       ...originalEnv,
       NEXT_PUBLIC_SUPABASE_URL: "https://test.supabase.co",
       SUPABASE_SERVICE_ROLE_KEY: "test-service-role-key",
     };
-    vi.clearAllMocks();
+
+    // Clear mock call history
+    mockCreateClient.mockClear();
+
+    // Import after setting up environment
+    const module = await import("./server");
+    createServerClient = module.createServerClient;
+    _createAdminClient = module.createAdminClient;
   });
 
   afterEach(() => {
@@ -102,7 +114,7 @@ describe("createServerClient", () => {
   describe("client configuration", () => {
     it("should create client with correct server-side auth options", async () => {
       const { createClient } = await import("@supabase/supabase-js");
-      const mockedCreateClient = vi.mocked(createClient);
+      const mockedCreateClient = createClient as any;
 
       createServerClient();
 
@@ -123,7 +135,7 @@ describe("createServerClient", () => {
 
     it("should disable session persistence for server-side usage", async () => {
       const { createClient } = await import("@supabase/supabase-js");
-      const mockedCreateClient = vi.mocked(createClient);
+      const mockedCreateClient = createClient as any;
 
       createServerClient();
 
@@ -134,7 +146,7 @@ describe("createServerClient", () => {
 
     it("should set database schema to public", async () => {
       const { createClient } = await import("@supabase/supabase-js");
-      const mockedCreateClient = vi.mocked(createClient);
+      const mockedCreateClient = createClient as any;
 
       createServerClient();
 
@@ -146,7 +158,7 @@ describe("createServerClient", () => {
       process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-key-secret";
 
       const { createClient } = await import("@supabase/supabase-js");
-      const mockedCreateClient = vi.mocked(createClient);
+      const mockedCreateClient = createClient as any;
 
       createServerClient();
 
@@ -159,7 +171,7 @@ describe("createServerClient", () => {
   });
 
   describe("multiple client creation", () => {
-    it("should create new client instance each time", async () => {
+    it("should create new client instance each time", () => {
       const client1 = createServerClient();
       const client2 = createServerClient();
 
@@ -167,9 +179,7 @@ describe("createServerClient", () => {
       expect(client1).toBeDefined();
       expect(client2).toBeDefined();
 
-      const { createClient } = await import("@supabase/supabase-js");
-      const mockedCreateClient = vi.mocked(createClient);
-      expect(mockedCreateClient).toHaveBeenCalledTimes(2);
+      expect(mockCreateClient).toHaveBeenCalledTimes(2);
     });
   });
 
@@ -213,14 +223,25 @@ describe("createServerClient", () => {
 describe("createAdminClient", () => {
   const originalEnv = process.env;
 
-  beforeEach(() => {
+  // Import dynamically in each test to ensure clean mocks
+  let createServerClient: any;
+  let createAdminClient: any;
+
+  beforeEach(async () => {
     // Reset environment variables to test defaults
     process.env = {
       ...originalEnv,
       NEXT_PUBLIC_SUPABASE_URL: "https://test.supabase.co",
       SUPABASE_SERVICE_ROLE_KEY: "test-service-role-key",
     };
-    vi.clearAllMocks();
+
+    // Clear mock call history
+    mockCreateClient.mockClear();
+
+    // Import after setting up environment
+    const module = await import("./server");
+    createServerClient = module.createServerClient;
+    createAdminClient = module.createAdminClient;
   });
 
   afterEach(() => {
@@ -234,17 +255,14 @@ describe("createAdminClient", () => {
     expect(adminClient.auth).toBeDefined();
   });
 
-  it("should have same configuration as server client", async () => {
-    const { createClient } = await import("@supabase/supabase-js");
-    const mockedCreateClient = vi.mocked(createClient);
-
+  it("should have same configuration as server client", () => {
     const _serverClient = createServerClient();
-    mockedCreateClient.mockClear();
+    mockCreateClient.mockClear();
 
     const _adminClient = createAdminClient();
 
     // Both should call createClient with same parameters
-    expect(mockedCreateClient).toHaveBeenCalledWith(
+    expect(mockCreateClient).toHaveBeenCalledWith(
       "https://test.supabase.co",
       "test-service-role-key",
       {

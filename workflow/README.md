@@ -140,16 +140,16 @@ Access the dashboard at http://localhost:3001 to:
 
 ```bash
 # Install dependencies
-pnpm install
+bun install
 
 # Run tests
-pnpm test
+bun test
 
 # Start in development mode
-pnpm dev
+bun dev
 
 # Build for production
-pnpm build
+bun build
 ```
 
 ## Manual Claude Launch

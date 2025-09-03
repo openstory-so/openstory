@@ -13,21 +13,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: pnpm/action-setup@v4
+      - uses: oven-sh/setup-bun@v2
         with:
-          version: 10
-          run_install: true
+          bun-version: latest
 
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: bun install
 
       - name: Run type checking
-        run: pnpm tsc --noEmit
+        run: bun tsc --noEmit
 
       - name: Run linting
-        run: pnpm biome check .
+        run: bun biome check .
 
       - name: Run tests
-        run: pnpm test -- run
+        run: bun test

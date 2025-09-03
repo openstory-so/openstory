@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, mock } from "bun:test";
 import {
   ConfigurationError,
   ConnectionError,
@@ -165,7 +165,7 @@ describe("handleApiError", () => {
 
 describe("withRetry", () => {
   it("should succeed on first attempt", async () => {
-    const operation = vi.fn().mockResolvedValue("success");
+    const operation = mock().mockResolvedValue("success");
     const result = await withRetry(operation, {
       attempts: 3,
       delayMs: 100,
@@ -176,8 +176,7 @@ describe("withRetry", () => {
   });
 
   it("should retry on failure and eventually succeed", async () => {
-    const operation = vi
-      .fn()
+    const operation = mock()
       .mockRejectedValueOnce(new Error("Fail 1"))
       .mockRejectedValueOnce(new Error("Fail 2"))
       .mockResolvedValue("success");
@@ -193,7 +192,7 @@ describe("withRetry", () => {
 
   it("should throw after all attempts fail", async () => {
     const error = new Error("Persistent failure");
-    const operation = vi.fn().mockRejectedValue(error);
+    const operation = mock().mockRejectedValue(error);
 
     await expect(
       withRetry(operation, {
@@ -206,8 +205,7 @@ describe("withRetry", () => {
   });
 
   it("should apply backoff multiplier", async () => {
-    const operation = vi
-      .fn()
+    const operation = mock()
       .mockRejectedValueOnce(new Error("Fail 1"))
       .mockRejectedValueOnce(new Error("Fail 2"))
       .mockResolvedValue("success");
@@ -229,8 +227,7 @@ describe("withRetry", () => {
     const retryableError = new Error("Retryable");
     const nonRetryableError = new Error("Do not retry");
 
-    const operation = vi
-      .fn()
+    const operation = mock()
       .mockRejectedValueOnce(retryableError)
       .mockRejectedValueOnce(nonRetryableError);
 
@@ -250,7 +247,7 @@ describe("withRetry", () => {
 
   it("should not retry when shouldRetry returns false on first attempt", async () => {
     const error = new Error("Non-retryable");
-    const operation = vi.fn().mockRejectedValue(error);
+    const operation = mock().mockRejectedValue(error);
 
     await expect(
       withRetry(operation, {
@@ -264,8 +261,7 @@ describe("withRetry", () => {
   });
 
   it("should use default backoff multiplier of 1.5", async () => {
-    const operation = vi
-      .fn()
+    const operation = mock()
       .mockRejectedValueOnce(new Error("Fail"))
       .mockResolvedValue("success");
 

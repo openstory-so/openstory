@@ -1,71 +1,77 @@
-import { NextRequest, NextResponse } from "next/server";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
+
+// Create mock functions at module level
+const mockUpgradeAnonymousSession = mock();
+const mockGetUserProfile = mock();
+const mockUpsertUserProfile = mock();
+const mockExchangeCodeForSession = mock();
+const mockRedirect = mock();
+
+// Set up module mocks before any imports
+mock.module("@/lib/auth/service", () => ({
+  AuthService: mock(() => ({
+    upgradeAnonymousSession: mockUpgradeAnonymousSession,
+    getUserProfile: mockGetUserProfile,
+    upsertUserProfile: mockUpsertUserProfile,
+  })),
+}));
+
+mock.module("@/lib/supabase/server", () => ({
+  createServerClient: mock(() => ({
+    auth: {
+      exchangeCodeForSession: mockExchangeCodeForSession,
+    },
+  })),
+}));
+
+mock.module("next/server", () => ({
+  NextRequest: class NextRequest {
+    url: string;
+    constructor(url: string) {
+      this.url = url;
+    }
+  },
+  NextResponse: {
+    redirect: mockRedirect,
+  },
+}));
+
+// Create a reference to NextRequest class for use in tests
+class MockNextRequest {
+  url: string;
+  constructor(url: string) {
+    this.url = url;
+  }
+}
+
+// Import the route handler after mocks are set up
 import { GET } from "../callback/route";
 
-// Mock AuthService
-vi.mock("@/lib/auth/service", () => ({
-  AuthService: vi.fn().mockImplementation(() => ({
-    upgradeAnonymousSession: vi.fn(),
-    getUserProfile: vi.fn(),
-    upsertUserProfile: vi.fn(),
-  })),
-}));
-
-// Mock Supabase client
-vi.mock("@/lib/supabase/server", () => ({
-  createServerClient: vi.fn(() => ({
-    auth: {
-      exchangeCodeForSession: vi.fn(),
-    },
-  })),
-}));
-
-// Mock NextResponse.redirect
-vi.mock("next/server", async () => {
-  const actual =
-    await vi.importActual<typeof import("next/server")>("next/server");
-  return {
-    ...actual,
-    NextResponse: {
-      ...actual.NextResponse,
-      redirect: vi.fn((url: URL) => ({
-        status: 302,
-        headers: new Headers({
-          Location: url.toString(),
-        }),
-      })),
-    },
-  };
-});
-
 describe("/auth/callback", () => {
-  let mockAuthService: any;
-  let mockSupabase: any;
+  beforeEach(() => {
+    // Clear all mock calls and implementations
+    mockUpgradeAnonymousSession.mockClear();
+    mockGetUserProfile.mockClear();
+    mockUpsertUserProfile.mockClear();
+    mockExchangeCodeForSession.mockClear();
+    mockRedirect.mockClear();
 
-  beforeEach(async () => {
-    vi.clearAllMocks();
-
-    mockAuthService = {
-      upgradeAnonymousSession: vi.fn(),
-      getUserProfile: vi.fn(),
-      upsertUserProfile: vi.fn(),
-    };
-
-    mockSupabase = {
-      auth: {
-        exchangeCodeForSession: vi.fn(),
-      },
-    };
-
-    const { AuthService } = await import("@/lib/auth/service");
-    vi.mocked(AuthService).mockImplementation(() => mockAuthService as any);
-
-    const { createServerClient } = await import("@/lib/supabase/server");
-    vi.mocked(createServerClient).mockReturnValue(mockSupabase as any);
+    // Set default redirect behavior
+    mockRedirect.mockImplementation((url: URL) => ({
+      status: 302,
+      headers: new Headers({
+        Location: url.toString(),
+      }),
+    }));
   });
 
   afterEach(() => {
-    vi.clearAllMocks();
+    // Clear mocks after each test
+    mockUpgradeAnonymousSession.mockClear();
+    mockGetUserProfile.mockClear();
+    mockUpsertUserProfile.mockClear();
+    mockExchangeCodeForSession.mockClear();
+    mockRedirect.mockClear();
   });
 
   describe("Successful authentication flow", () => {
@@ -90,25 +96,23 @@ describe("/auth/callback", () => {
         onboarding_completed: true,
       };
 
-      mockSupabase.auth.exchangeCodeForSession.mockResolvedValue({
+      mockExchangeCodeForSession.mockResolvedValue({
         data: mockSession,
         error: null,
       });
-      mockAuthService.getUserProfile.mockResolvedValue(mockProfile);
+      mockGetUserProfile.mockResolvedValue(mockProfile);
 
-      const request = new NextRequest(
+      const request = new MockNextRequest(
         "http://localhost:3000/auth/callback?code=test-code",
-      );
+      ) as any;
 
       const _response = await GET(request);
 
-      expect(mockSupabase.auth.exchangeCodeForSession).toHaveBeenCalledWith(
-        "test-code",
-      );
-      expect(mockAuthService.getUserProfile).toHaveBeenCalledWith("user-123");
-      expect(mockAuthService.upsertUserProfile).not.toHaveBeenCalled();
-      expect(NextResponse.redirect).toHaveBeenCalled();
-      const redirectCall = vi.mocked(NextResponse.redirect).mock.calls[0][0];
+      expect(mockExchangeCodeForSession).toHaveBeenCalledWith("test-code");
+      expect(mockGetUserProfile).toHaveBeenCalledWith("user-123");
+      expect(mockUpsertUserProfile).not.toHaveBeenCalled();
+      expect(mockRedirect).toHaveBeenCalled();
+      const redirectCall = mockRedirect.mock.calls[0][0];
       expect(redirectCall.toString()).toContain("/dashboard");
       expect(redirectCall.toString()).toContain("auth=success");
     });
@@ -131,31 +135,29 @@ describe("/auth/callback", () => {
         onboarding_completed: false,
       };
 
-      mockSupabase.auth.exchangeCodeForSession.mockResolvedValue({
+      mockExchangeCodeForSession.mockResolvedValue({
         data: mockSession,
         error: null,
       });
-      mockAuthService.getUserProfile.mockResolvedValue(null);
-      mockAuthService.upsertUserProfile.mockResolvedValue(mockNewProfile);
+      mockGetUserProfile.mockResolvedValue(null);
+      mockUpsertUserProfile.mockResolvedValue(mockNewProfile);
 
-      const request = new NextRequest(
+      const request = new MockNextRequest(
         "http://localhost:3000/auth/callback?code=new-user-code",
-      );
+      ) as any;
 
       const _response = await GET(request);
 
-      expect(mockAuthService.getUserProfile).toHaveBeenCalledWith(
-        "new-user-456",
-      );
-      expect(mockAuthService.upsertUserProfile).toHaveBeenCalledWith({
+      expect(mockGetUserProfile).toHaveBeenCalledWith("new-user-456");
+      expect(mockUpsertUserProfile).toHaveBeenCalledWith({
         id: "new-user-456",
         anonymous_id: null,
         full_name: "newuser",
         avatar_url: null,
         onboarding_completed: false,
       });
-      expect(NextResponse.redirect).toHaveBeenCalled();
-      const redirectCall = vi.mocked(NextResponse.redirect).mock.calls[0][0];
+      expect(mockRedirect).toHaveBeenCalled();
+      const redirectCall = mockRedirect.mock.calls[0][0];
       expect(redirectCall.toString()).toContain("/dashboard");
       expect(redirectCall.toString()).toContain("auth=success");
     });
@@ -179,27 +181,27 @@ describe("/auth/callback", () => {
         onboarding_completed: false,
       };
 
-      mockSupabase.auth.exchangeCodeForSession.mockResolvedValue({
+      mockExchangeCodeForSession.mockResolvedValue({
         data: mockSession,
         error: null,
       });
-      mockAuthService.getUserProfile.mockResolvedValue(mockProfile);
-      mockAuthService.upgradeAnonymousSession.mockResolvedValue({
+      mockGetUserProfile.mockResolvedValue(mockProfile);
+      mockUpgradeAnonymousSession.mockResolvedValue({
         success: true,
       });
 
-      const request = new NextRequest(
+      const request = new MockNextRequest(
         "http://localhost:3000/auth/callback?code=upgrade-code&anonymousId=anon-session-123",
-      );
+      ) as any;
 
       const _response = await GET(request);
 
-      expect(mockAuthService.upgradeAnonymousSession).toHaveBeenCalledWith(
+      expect(mockUpgradeAnonymousSession).toHaveBeenCalledWith(
         "user-789",
         "anon-session-123",
       );
-      expect(NextResponse.redirect).toHaveBeenCalled();
-      const redirectCall = vi.mocked(NextResponse.redirect).mock.calls[0][0];
+      expect(mockRedirect).toHaveBeenCalled();
+      const redirectCall = mockRedirect.mock.calls[0][0];
       expect(redirectCall.toString()).toContain("/dashboard");
       expect(redirectCall.toString()).toContain("auth=success");
     });
@@ -219,20 +221,20 @@ describe("/auth/callback", () => {
         full_name: "Redirect User",
       };
 
-      mockSupabase.auth.exchangeCodeForSession.mockResolvedValue({
+      mockExchangeCodeForSession.mockResolvedValue({
         data: mockSession,
         error: null,
       });
-      mockAuthService.getUserProfile.mockResolvedValue(mockProfile);
+      mockGetUserProfile.mockResolvedValue(mockProfile);
 
-      const request = new NextRequest(
+      const request = new MockNextRequest(
         "http://localhost:3000/auth/callback?code=redirect-code&redirectTo=/profile/settings",
-      );
+      ) as any;
 
       const _response = await GET(request);
 
-      expect(NextResponse.redirect).toHaveBeenCalled();
-      const redirectCall = vi.mocked(NextResponse.redirect).mock.calls[0][0];
+      expect(mockRedirect).toHaveBeenCalled();
+      const redirectCall = mockRedirect.mock.calls[0][0];
       expect(redirectCall.toString()).toContain("/profile/settings");
       expect(redirectCall.toString()).toContain("auth=success");
     });
@@ -252,29 +254,29 @@ describe("/auth/callback", () => {
         full_name: "Fail Upgrade User",
       };
 
-      mockSupabase.auth.exchangeCodeForSession.mockResolvedValue({
+      mockExchangeCodeForSession.mockResolvedValue({
         data: mockSession,
         error: null,
       });
-      mockAuthService.getUserProfile.mockResolvedValue(mockProfile);
-      mockAuthService.upgradeAnonymousSession.mockResolvedValue({
+      mockGetUserProfile.mockResolvedValue(mockProfile);
+      mockUpgradeAnonymousSession.mockResolvedValue({
         success: false,
         error: "Failed to transfer data",
       });
 
-      const request = new NextRequest(
+      const request = new MockNextRequest(
         "http://localhost:3000/auth/callback?code=fail-upgrade-code&anonymousId=anon-fail-123",
-      );
+      ) as any;
 
       const _response = await GET(request);
 
-      expect(mockAuthService.upgradeAnonymousSession).toHaveBeenCalledWith(
+      expect(mockUpgradeAnonymousSession).toHaveBeenCalledWith(
         "user-fail-upgrade",
         "anon-fail-123",
       );
       // Should still redirect successfully despite upgrade failure
-      expect(NextResponse.redirect).toHaveBeenCalled();
-      const redirectCall = vi.mocked(NextResponse.redirect).mock.calls[0][0];
+      expect(mockRedirect).toHaveBeenCalled();
+      const redirectCall = mockRedirect.mock.calls[0][0];
       expect(redirectCall.toString()).toContain("/dashboard");
       expect(redirectCall.toString()).toContain("auth=success");
     });
@@ -282,19 +284,19 @@ describe("/auth/callback", () => {
 
   describe("Error handling", () => {
     it("should redirect to login with error when code exchange fails", async () => {
-      mockSupabase.auth.exchangeCodeForSession.mockResolvedValue({
+      mockExchangeCodeForSession.mockResolvedValue({
         data: null,
         error: { message: "Invalid or expired code" },
       });
 
-      const request = new NextRequest(
+      const request = new MockNextRequest(
         "http://localhost:3000/auth/callback?code=invalid-code",
-      );
+      ) as any;
 
       const _response = await GET(request);
 
-      expect(NextResponse.redirect).toHaveBeenCalled();
-      const redirectCall = vi.mocked(NextResponse.redirect).mock.calls[0][0];
+      expect(mockRedirect).toHaveBeenCalled();
+      const redirectCall = mockRedirect.mock.calls[0][0];
       expect(redirectCall.toString()).toContain("/login");
       expect(redirectCall.toString()).toContain("error=Authentication");
     });
@@ -306,31 +308,33 @@ describe("/auth/callback", () => {
         },
       };
 
-      mockSupabase.auth.exchangeCodeForSession.mockResolvedValue({
+      mockExchangeCodeForSession.mockResolvedValue({
         data: mockSession,
         error: null,
       });
 
-      const request = new NextRequest(
+      const request = new MockNextRequest(
         "http://localhost:3000/auth/callback?code=no-user-code",
-      );
+      ) as any;
 
       const _response = await GET(request);
 
-      expect(NextResponse.redirect).toHaveBeenCalled();
-      const redirectCall = vi.mocked(NextResponse.redirect).mock.calls[0][0];
+      expect(mockRedirect).toHaveBeenCalled();
+      const redirectCall = mockRedirect.mock.calls[0][0];
       expect(redirectCall.toString()).toContain("/login");
       expect(redirectCall.toString()).toContain("error=No%20user%20found");
     });
 
     it("should handle missing code parameter", async () => {
-      const request = new NextRequest("http://localhost:3000/auth/callback");
+      const request = new MockNextRequest(
+        "http://localhost:3000/auth/callback",
+      ) as any;
 
       const _response = await GET(request);
 
-      expect(mockSupabase.auth.exchangeCodeForSession).not.toHaveBeenCalled();
-      expect(NextResponse.redirect).toHaveBeenCalled();
-      const redirectCall = vi.mocked(NextResponse.redirect).mock.calls[0][0];
+      expect(mockExchangeCodeForSession).not.toHaveBeenCalled();
+      expect(mockRedirect).toHaveBeenCalled();
+      const redirectCall = mockRedirect.mock.calls[0][0];
       expect(redirectCall.toString()).toContain("/login");
       expect(redirectCall.toString()).toContain(
         "error=Invalid%20authentication%20request",
@@ -338,18 +342,16 @@ describe("/auth/callback", () => {
     });
 
     it("should handle exceptions during authentication process", async () => {
-      mockSupabase.auth.exchangeCodeForSession.mockRejectedValue(
-        new Error("Network error"),
-      );
+      mockExchangeCodeForSession.mockRejectedValue(new Error("Network error"));
 
-      const request = new NextRequest(
+      const request = new MockNextRequest(
         "http://localhost:3000/auth/callback?code=error-code",
-      );
+      ) as any;
 
       const _response = await GET(request);
 
-      expect(NextResponse.redirect).toHaveBeenCalled();
-      const redirectCall = vi.mocked(NextResponse.redirect).mock.calls[0][0];
+      expect(mockRedirect).toHaveBeenCalled();
+      const redirectCall = mockRedirect.mock.calls[0][0];
       expect(redirectCall.toString()).toContain("/login");
       expect(redirectCall.toString()).toContain(
         "error=Authentication%20failed",
@@ -366,23 +368,21 @@ describe("/auth/callback", () => {
         },
       };
 
-      mockSupabase.auth.exchangeCodeForSession.mockResolvedValue({
+      mockExchangeCodeForSession.mockResolvedValue({
         data: mockSession,
         error: null,
       });
-      mockAuthService.getUserProfile.mockResolvedValue(null);
-      mockAuthService.upsertUserProfile.mockRejectedValue(
-        new Error("Database error"),
-      );
+      mockGetUserProfile.mockResolvedValue(null);
+      mockUpsertUserProfile.mockRejectedValue(new Error("Database error"));
 
-      const request = new NextRequest(
+      const request = new MockNextRequest(
         "http://localhost:3000/auth/callback?code=profile-error-code",
-      );
+      ) as any;
 
       const _response = await GET(request);
 
-      expect(NextResponse.redirect).toHaveBeenCalled();
-      const redirectCall = vi.mocked(NextResponse.redirect).mock.calls[0][0];
+      expect(mockRedirect).toHaveBeenCalled();
+      const redirectCall = mockRedirect.mock.calls[0][0];
       expect(redirectCall.toString()).toContain("/login");
       expect(redirectCall.toString()).toContain(
         "error=Authentication%20failed",
@@ -402,33 +402,33 @@ describe("/auth/callback", () => {
         },
       };
 
-      mockSupabase.auth.exchangeCodeForSession.mockResolvedValue({
+      mockExchangeCodeForSession.mockResolvedValue({
         data: mockSession,
         error: null,
       });
-      mockAuthService.getUserProfile.mockResolvedValue(null);
-      mockAuthService.upsertUserProfile.mockResolvedValue({
+      mockGetUserProfile.mockResolvedValue(null);
+      mockUpsertUserProfile.mockResolvedValue({
         id: "minimal-user",
         full_name: "minimal",
         avatar_url: null,
         onboarding_completed: false,
       });
 
-      const request = new NextRequest(
+      const request = new MockNextRequest(
         "http://localhost:3000/auth/callback?code=minimal-code",
-      );
+      ) as any;
 
       const _response = await GET(request);
 
-      expect(mockAuthService.upsertUserProfile).toHaveBeenCalledWith({
+      expect(mockUpsertUserProfile).toHaveBeenCalledWith({
         id: "minimal-user",
         anonymous_id: null,
         full_name: "minimal",
         avatar_url: null,
         onboarding_completed: false,
       });
-      expect(NextResponse.redirect).toHaveBeenCalled();
-      const redirectCall = vi.mocked(NextResponse.redirect).mock.calls[0][0];
+      expect(mockRedirect).toHaveBeenCalled();
+      const redirectCall = mockRedirect.mock.calls[0][0];
       expect(redirectCall.toString()).toContain("/dashboard");
       expect(redirectCall.toString()).toContain("auth=success");
     });
@@ -446,40 +446,40 @@ describe("/auth/callback", () => {
         },
       };
 
-      mockSupabase.auth.exchangeCodeForSession.mockResolvedValue({
+      mockExchangeCodeForSession.mockResolvedValue({
         data: mockSession,
         error: null,
       });
-      mockAuthService.getUserProfile.mockResolvedValue(null);
-      mockAuthService.upgradeAnonymousSession.mockResolvedValue({
+      mockGetUserProfile.mockResolvedValue(null);
+      mockUpgradeAnonymousSession.mockResolvedValue({
         success: true,
       });
-      mockAuthService.upsertUserProfile.mockResolvedValue({
+      mockUpsertUserProfile.mockResolvedValue({
         id: "no-email-user",
         full_name: "No Email User",
         avatar_url: null,
         onboarding_completed: false,
       });
 
-      const request = new NextRequest(
+      const request = new MockNextRequest(
         "http://localhost:3000/auth/callback?code=no-email-code&anonymousId=anon-no-email",
-      );
+      ) as any;
 
       const _response = await GET(request);
 
-      expect(mockAuthService.upgradeAnonymousSession).toHaveBeenCalledWith(
+      expect(mockUpgradeAnonymousSession).toHaveBeenCalledWith(
         "no-email-user",
         "anon-no-email",
       );
-      expect(mockAuthService.upsertUserProfile).toHaveBeenCalledWith({
+      expect(mockUpsertUserProfile).toHaveBeenCalledWith({
         id: "no-email-user",
         anonymous_id: "anon-no-email",
         full_name: "No Email User",
         avatar_url: null,
         onboarding_completed: false,
       });
-      expect(NextResponse.redirect).toHaveBeenCalled();
-      const redirectCall = vi.mocked(NextResponse.redirect).mock.calls[0][0];
+      expect(mockRedirect).toHaveBeenCalled();
+      const redirectCall = mockRedirect.mock.calls[0][0];
       expect(redirectCall.toString()).toContain("/dashboard");
       expect(redirectCall.toString()).toContain("auth=success");
     });
@@ -499,20 +499,20 @@ describe("/auth/callback", () => {
         full_name: "Encoded User",
       };
 
-      mockSupabase.auth.exchangeCodeForSession.mockResolvedValue({
+      mockExchangeCodeForSession.mockResolvedValue({
         data: mockSession,
         error: null,
       });
-      mockAuthService.getUserProfile.mockResolvedValue(mockProfile);
+      mockGetUserProfile.mockResolvedValue(mockProfile);
 
-      const request = new NextRequest(
+      const request = new MockNextRequest(
         "http://localhost:3000/auth/callback?code=encoded-code&redirectTo=%2Fprofile%2Fsettings%3Ftab%3Dsecurity",
-      );
+      ) as any;
 
       const _response = await GET(request);
 
-      expect(NextResponse.redirect).toHaveBeenCalled();
-      const redirectCall = vi.mocked(NextResponse.redirect).mock.calls[0][0];
+      expect(mockRedirect).toHaveBeenCalled();
+      const redirectCall = mockRedirect.mock.calls[0][0];
       expect(redirectCall.toString()).toContain("/profile/settings");
       expect(redirectCall.toString()).toContain("tab=security");
       expect(redirectCall.toString()).toContain("auth=success");

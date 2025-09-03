@@ -1,51 +1,51 @@
-import { beforeEach, describe, expect, it, type Mock, vi } from "vitest";
+import { beforeEach, describe, expect, it, mock } from "bun:test";
 import type { StyleStackConfig } from "../../schemas/style-stack";
 import { StyleStackService } from "../service";
 
 // Mock the dependencies
-vi.mock("@/lib/supabase/server", () => ({
-  createServerClient: vi.fn(() => mockSupabaseClient),
-  createAdminClient: vi.fn(() => mockAdminClient),
+mock.module("@/lib/supabase/server", () => ({
+  createServerClient: mock(() => mockSupabaseClient),
+  createAdminClient: mock(() => mockAdminClient),
 }));
 
-vi.mock("@/lib/auth/service", () => ({
-  AuthService: vi.fn(() => mockAuthService),
+mock.module("@/lib/auth/service", () => ({
+  AuthService: mock(() => mockAuthService),
 }));
 
 // Create mock clients
 const mockSupabaseClient = {
-  from: vi.fn(() => ({
-    select: vi.fn().mockReturnThis(),
-    insert: vi.fn().mockReturnThis(),
-    update: vi.fn().mockReturnThis(),
-    delete: vi.fn().mockReturnThis(),
-    eq: vi.fn().mockReturnThis(),
-    in: vi.fn().mockReturnThis(),
-    contains: vi.fn().mockReturnThis(),
-    or: vi.fn().mockReturnThis(),
-    order: vi.fn().mockReturnThis(),
-    range: vi.fn().mockReturnThis(),
-    limit: vi.fn().mockReturnThis(),
-    single: vi.fn(),
-    gt: vi.fn().mockReturnThis(),
+  from: mock(() => ({
+    select: mock().mockReturnThis(),
+    insert: mock().mockReturnThis(),
+    update: mock().mockReturnThis(),
+    delete: mock().mockReturnThis(),
+    eq: mock().mockReturnThis(),
+    in: mock().mockReturnThis(),
+    contains: mock().mockReturnThis(),
+    or: mock().mockReturnThis(),
+    order: mock().mockReturnThis(),
+    range: mock().mockReturnThis(),
+    limit: mock().mockReturnThis(),
+    single: mock(),
+    gt: mock().mockReturnThis(),
   })),
-  rpc: vi.fn(),
+  rpc: mock(),
 };
 
 const mockAdminClient = {
-  from: vi.fn(() => ({
-    select: vi.fn().mockReturnThis(),
-    insert: vi.fn().mockReturnThis(),
-    update: vi.fn().mockReturnThis(),
-    delete: vi.fn().mockReturnThis(),
-    eq: vi.fn().mockReturnThis(),
-    single: vi.fn(),
+  from: mock(() => ({
+    select: mock().mockReturnThis(),
+    insert: mock().mockReturnThis(),
+    update: mock().mockReturnThis(),
+    delete: mock().mockReturnThis(),
+    eq: mock().mockReturnThis(),
+    single: mock(),
   })),
-  rpc: vi.fn(),
+  rpc: mock(),
 };
 
 const mockAuthService = {
-  getSession: vi.fn(),
+  getSession: mock(),
 };
 
 // Test data
@@ -102,23 +102,23 @@ describe("StyleStackService", () => {
   let styleService: StyleStackService;
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    mock.restore();
 
     // Reset the mock implementation to default for each test
-    (mockSupabaseClient.from as Mock).mockReturnValue({
-      select: vi.fn().mockReturnThis(),
-      insert: vi.fn().mockReturnThis(),
-      update: vi.fn().mockReturnThis(),
-      delete: vi.fn().mockReturnThis(),
-      eq: vi.fn().mockReturnThis(),
-      in: vi.fn().mockReturnThis(),
-      contains: vi.fn().mockReturnThis(),
-      or: vi.fn().mockReturnThis(),
-      order: vi.fn().mockReturnThis(),
-      range: vi.fn().mockReturnThis(),
-      limit: vi.fn().mockReturnThis(),
-      single: vi.fn(),
-      gt: vi.fn().mockReturnThis(),
+    (mockSupabaseClient.from as any).mockReturnValue({
+      select: mock().mockReturnThis(),
+      insert: mock().mockReturnThis(),
+      update: mock().mockReturnThis(),
+      delete: mock().mockReturnThis(),
+      eq: mock().mockReturnThis(),
+      in: mock().mockReturnThis(),
+      contains: mock().mockReturnThis(),
+      or: mock().mockReturnThis(),
+      order: mock().mockReturnThis(),
+      range: mock().mockReturnThis(),
+      limit: mock().mockReturnThis(),
+      single: mock(),
+      gt: mock().mockReturnThis(),
     });
 
     styleService = new StyleStackService();
@@ -131,11 +131,11 @@ describe("StyleStackService", () => {
         user: mockUser,
       });
 
-      (mockSupabaseClient.from as Mock).mockReturnValue({
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            limit: vi.fn().mockReturnValue({
-              single: vi.fn().mockResolvedValue({
+      (mockSupabaseClient.from as any).mockReturnValue({
+        select: mock().mockReturnValue({
+          eq: mock().mockReturnValue({
+            limit: mock().mockReturnValue({
+              single: mock().mockResolvedValue({
                 data: { team_id: "17b89066-9c5b-4132-9067-fa5ea7af2e9c" },
                 error: null,
               }),
@@ -144,10 +144,10 @@ describe("StyleStackService", () => {
         }),
       });
 
-      (mockAdminClient.from as Mock).mockReturnValue({
-        insert: vi.fn().mockReturnValue({
-          select: vi.fn().mockReturnValue({
-            single: vi.fn().mockResolvedValue({
+      (mockAdminClient.from as any).mockReturnValue({
+        insert: mock().mockReturnValue({
+          select: mock().mockReturnValue({
+            single: mock().mockResolvedValue({
               data: mockStyle,
               error: null,
             }),
@@ -178,11 +178,11 @@ describe("StyleStackService", () => {
         user: mockUser,
       });
 
-      (mockSupabaseClient.from as Mock).mockReturnValue({
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            limit: vi.fn().mockReturnValue({
-              single: vi.fn().mockResolvedValue({
+      (mockSupabaseClient.from as any).mockReturnValue({
+        select: mock().mockReturnValue({
+          eq: mock().mockReturnValue({
+            limit: mock().mockReturnValue({
+              single: mock().mockResolvedValue({
                 data: null,
                 error: { message: "No team found" },
               }),
@@ -222,12 +222,12 @@ describe("StyleStackService", () => {
     it("should return paginated team styles", async () => {
       const mockStyles = [mockStyle];
 
-      (mockSupabaseClient.from as Mock).mockReturnValue({
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            order: vi.fn().mockReturnValue({
-              order: vi.fn().mockReturnValue({
-                range: vi.fn().mockResolvedValue({
+      (mockSupabaseClient.from as any).mockReturnValue({
+        select: mock().mockReturnValue({
+          eq: mock().mockReturnValue({
+            order: mock().mockReturnValue({
+              order: mock().mockReturnValue({
+                range: mock().mockResolvedValue({
                   data: mockStyles,
                   error: null,
                   count: 1,
@@ -257,19 +257,19 @@ describe("StyleStackService", () => {
 
     it("should apply filters correctly", async () => {
       const mockQuery = {
-        select: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockReturnThis(),
-        contains: vi.fn().mockReturnThis(),
-        or: vi.fn().mockReturnThis(),
-        order: vi.fn().mockReturnThis(),
-        range: vi.fn().mockResolvedValue({
+        select: mock().mockReturnThis(),
+        eq: mock().mockReturnThis(),
+        contains: mock().mockReturnThis(),
+        or: mock().mockReturnThis(),
+        order: mock().mockReturnThis(),
+        range: mock().mockResolvedValue({
           data: [],
           error: null,
           count: 0,
         }),
       };
 
-      (mockSupabaseClient.from as Mock).mockReturnValue(mockQuery);
+      (mockSupabaseClient.from as any).mockReturnValue(mockQuery);
 
       const input = {
         team_id: "17b89066-9c5b-4132-9067-fa5ea7af2e9c",
@@ -298,10 +298,10 @@ describe("StyleStackService", () => {
 
   describe("getStyleById", () => {
     it("should return style by ID", async () => {
-      (mockSupabaseClient.from as Mock).mockReturnValue({
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            single: vi.fn().mockResolvedValue({
+      (mockSupabaseClient.from as any).mockReturnValue({
+        select: mock().mockReturnValue({
+          eq: mock().mockReturnValue({
+            single: mock().mockResolvedValue({
               data: mockStyle,
               error: null,
             }),
@@ -316,10 +316,10 @@ describe("StyleStackService", () => {
     });
 
     it("should return null if style not found", async () => {
-      (mockSupabaseClient.from as Mock).mockReturnValue({
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            single: vi.fn().mockResolvedValue({
+      (mockSupabaseClient.from as any).mockReturnValue({
+        select: mock().mockReturnValue({
+          eq: mock().mockReturnValue({
+            single: mock().mockResolvedValue({
               data: null,
               error: { code: "PGRST116" },
             }),
@@ -346,9 +346,9 @@ describe("StyleStackService", () => {
 
       // Mock the first call for the style
       const mockStyleQuery = {
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            single: vi.fn().mockResolvedValue({
+        select: mock().mockReturnValue({
+          eq: mock().mockReturnValue({
+            single: mock().mockResolvedValue({
               data: mockStyle,
               error: null,
             }),
@@ -358,15 +358,15 @@ describe("StyleStackService", () => {
 
       // Mock the second call for adaptations
       const mockAdaptationsQuery = {
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockResolvedValue({
+        select: mock().mockReturnValue({
+          eq: mock().mockResolvedValue({
             data: mockAdaptations,
             error: null,
           }),
         }),
       };
 
-      (mockSupabaseClient.from as Mock)
+      (mockSupabaseClient.from as any)
         .mockReturnValueOnce(mockStyleQuery)
         .mockReturnValueOnce(mockAdaptationsQuery);
 
@@ -386,11 +386,11 @@ describe("StyleStackService", () => {
   describe("updateStyle", () => {
     it("should update style successfully", async () => {
       // Mock getting existing style
-      (mockSupabaseClient.from as Mock)
+      (mockSupabaseClient.from as any)
         .mockReturnValueOnce({
-          select: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({
-              single: vi.fn().mockResolvedValue({
+          select: mock().mockReturnValue({
+            eq: mock().mockReturnValue({
+              single: mock().mockResolvedValue({
                 data: mockStyle,
                 error: null,
               }),
@@ -398,10 +398,10 @@ describe("StyleStackService", () => {
           }),
         })
         .mockReturnValueOnce({
-          select: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({
-              eq: vi.fn().mockReturnValue({
-                single: vi.fn().mockResolvedValue({
+          select: mock().mockReturnValue({
+            eq: mock().mockReturnValue({
+              eq: mock().mockReturnValue({
+                single: mock().mockResolvedValue({
                   data: { role: "owner" },
                   error: null,
                 }),
@@ -411,11 +411,11 @@ describe("StyleStackService", () => {
         });
 
       const updatedStyle = { ...mockStyle, name: "Updated Style" };
-      (mockAdminClient.from as Mock).mockReturnValue({
-        update: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            select: vi.fn().mockReturnValue({
-              single: vi.fn().mockResolvedValue({
+      (mockAdminClient.from as any).mockReturnValue({
+        update: mock().mockReturnValue({
+          eq: mock().mockReturnValue({
+            select: mock().mockReturnValue({
+              single: mock().mockResolvedValue({
                 data: updatedStyle,
                 error: null,
               }),
@@ -439,11 +439,11 @@ describe("StyleStackService", () => {
 
     it("should throw error if user unauthorized", async () => {
       // Mock getting existing style
-      (mockSupabaseClient.from as Mock)
+      (mockSupabaseClient.from as any)
         .mockReturnValueOnce({
-          select: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({
-              single: vi.fn().mockResolvedValue({
+          select: mock().mockReturnValue({
+            eq: mock().mockReturnValue({
+              single: mock().mockResolvedValue({
                 data: mockStyle,
                 error: null,
               }),
@@ -451,10 +451,10 @@ describe("StyleStackService", () => {
           }),
         })
         .mockReturnValueOnce({
-          select: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({
-              eq: vi.fn().mockReturnValue({
-                single: vi.fn().mockResolvedValue({
+          select: mock().mockReturnValue({
+            eq: mock().mockReturnValue({
+              eq: mock().mockReturnValue({
+                single: mock().mockResolvedValue({
                   data: null,
                   error: { message: "Not found" },
                 }),
@@ -477,11 +477,11 @@ describe("StyleStackService", () => {
   describe("deleteStyle", () => {
     it("should delete style successfully", async () => {
       // Mock getting existing style
-      (mockSupabaseClient.from as Mock)
+      (mockSupabaseClient.from as any)
         .mockReturnValueOnce({
-          select: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({
-              single: vi.fn().mockResolvedValue({
+          select: mock().mockReturnValue({
+            eq: mock().mockReturnValue({
+              single: mock().mockResolvedValue({
                 data: mockStyle,
                 error: null,
               }),
@@ -489,10 +489,10 @@ describe("StyleStackService", () => {
           }),
         })
         .mockReturnValueOnce({
-          select: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({
-              eq: vi.fn().mockReturnValue({
-                single: vi.fn().mockResolvedValue({
+          select: mock().mockReturnValue({
+            eq: mock().mockReturnValue({
+              eq: mock().mockReturnValue({
+                single: mock().mockResolvedValue({
                   data: { role: "owner" },
                   error: null,
                 }),
@@ -501,31 +501,30 @@ describe("StyleStackService", () => {
           }),
         });
 
-      (mockAdminClient.from as Mock).mockReturnValue({
-        delete: vi.fn().mockReturnValue({
-          eq: vi.fn().mockResolvedValue({
+      (mockAdminClient.from as any).mockReturnValue({
+        delete: mock().mockReturnValue({
+          eq: mock().mockResolvedValue({
             error: null,
           }),
         }),
       });
 
-      await expect(
-        styleService.deleteStyle(
-          "6de92947-647b-4c33-a6b8-1f8fed2787d1",
-          "1359a1a3-e189-448d-8451-734b4be680ec",
-        ),
-      ).resolves.not.toThrow();
+      const result = await styleService.deleteStyle(
+        "6de92947-647b-4c33-a6b8-1f8fed2787d1",
+        "1359a1a3-e189-448d-8451-734b4be680ec",
+      );
+      expect(result).toBeUndefined();
     });
 
     it("should not allow deletion of templates", async () => {
       const templateStyle = { ...mockStyle, is_template: true };
 
       // Mock getting existing style
-      (mockSupabaseClient.from as Mock)
+      (mockSupabaseClient.from as any)
         .mockReturnValueOnce({
-          select: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({
-              single: vi.fn().mockResolvedValue({
+          select: mock().mockReturnValue({
+            eq: mock().mockReturnValue({
+              single: mock().mockResolvedValue({
                 data: templateStyle,
                 error: null,
               }),
@@ -533,10 +532,10 @@ describe("StyleStackService", () => {
           }),
         })
         .mockReturnValueOnce({
-          select: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({
-              eq: vi.fn().mockReturnValue({
-                single: vi.fn().mockResolvedValue({
+          select: mock().mockReturnValue({
+            eq: mock().mockReturnValue({
+              eq: mock().mockReturnValue({
+                single: mock().mockResolvedValue({
                   data: { role: "owner" },
                   error: null,
                 }),
@@ -561,16 +560,16 @@ describe("StyleStackService", () => {
       // Create a counter to track how many times from() is called
       let fromCallCount = 0;
 
-      (mockSupabaseClient.from as Mock).mockImplementation(
+      (mockSupabaseClient.from as any).mockImplementation(
         (tableName: string) => {
           fromCallCount++;
 
           if (fromCallCount === 1 && tableName === "styles") {
             // First call: getting original style
             return {
-              select: vi.fn().mockReturnThis(),
-              eq: vi.fn().mockReturnThis(),
-              single: vi.fn().mockResolvedValue({
+              select: mock().mockReturnThis(),
+              eq: mock().mockReturnThis(),
+              single: mock().mockResolvedValue({
                 data: publicStyle,
                 error: null,
               }),
@@ -578,8 +577,8 @@ describe("StyleStackService", () => {
           } else if (fromCallCount === 2 && tableName === "style_adaptations") {
             // Second call: getting style adaptations (from getStyleById with include_adaptations)
             return {
-              select: vi.fn().mockReturnThis(),
-              eq: vi.fn().mockResolvedValue({
+              select: mock().mockReturnThis(),
+              eq: mock().mockResolvedValue({
                 data: [],
                 error: null,
               }),
@@ -587,10 +586,10 @@ describe("StyleStackService", () => {
           } else if (fromCallCount === 3 && tableName === "team_members") {
             // Third call: getting user's team (with limit method)
             const queryObj: any = {};
-            queryObj.select = vi.fn(() => queryObj);
-            queryObj.eq = vi.fn(() => queryObj);
-            queryObj.limit = vi.fn(() => queryObj);
-            queryObj.single = vi.fn().mockResolvedValue({
+            queryObj.select = mock(() => queryObj);
+            queryObj.eq = mock(() => queryObj);
+            queryObj.limit = mock(() => queryObj);
+            queryObj.single = mock().mockResolvedValue({
               data: { team_id: "080c66c9-0797-4611-9227-21a0d57ab694" },
               error: null,
             });
@@ -598,10 +597,10 @@ describe("StyleStackService", () => {
           }
           // Return a default mock for any unexpected calls
           const defaultMock: any = {};
-          defaultMock.select = vi.fn(() => defaultMock);
-          defaultMock.eq = vi.fn(() => defaultMock);
-          defaultMock.limit = vi.fn(() => defaultMock);
-          defaultMock.single = vi.fn().mockResolvedValue({
+          defaultMock.select = mock(() => defaultMock);
+          defaultMock.eq = mock(() => defaultMock);
+          defaultMock.limit = mock(() => defaultMock);
+          defaultMock.single = mock().mockResolvedValue({
             data: null,
             error: { message: "Unexpected call" },
           });
@@ -617,10 +616,10 @@ describe("StyleStackService", () => {
         parent_id: "6de92947-647b-4c33-a6b8-1f8fed2787d1",
       };
 
-      (mockAdminClient.from as Mock).mockReturnValue({
-        insert: vi.fn().mockReturnValue({
-          select: vi.fn().mockReturnValue({
-            single: vi.fn().mockResolvedValue({
+      (mockAdminClient.from as any).mockReturnValue({
+        insert: mock().mockReturnValue({
+          select: mock().mockReturnValue({
+            single: mock().mockResolvedValue({
               data: duplicatedStyle,
               error: null,
             }),
@@ -647,16 +646,16 @@ describe("StyleStackService", () => {
       // Create a counter to track how many times from() is called
       let fromCallCount = 0;
 
-      (mockSupabaseClient.from as Mock).mockImplementation(
+      (mockSupabaseClient.from as any).mockImplementation(
         (tableName: string) => {
           fromCallCount++;
 
           if (fromCallCount === 1 && tableName === "styles") {
             // First call: getting original style
             return {
-              select: vi.fn().mockReturnThis(),
-              eq: vi.fn().mockReturnThis(),
-              single: vi.fn().mockResolvedValue({
+              select: mock().mockReturnThis(),
+              eq: mock().mockReturnThis(),
+              single: mock().mockResolvedValue({
                 data: privateStyle,
                 error: null,
               }),
@@ -664,8 +663,8 @@ describe("StyleStackService", () => {
           } else if (fromCallCount === 2 && tableName === "style_adaptations") {
             // Second call: getting style adaptations (from getStyleById with include_adaptations)
             return {
-              select: vi.fn().mockReturnThis(),
-              eq: vi.fn().mockResolvedValue({
+              select: mock().mockReturnThis(),
+              eq: mock().mockResolvedValue({
                 data: [],
                 error: null,
               }),
@@ -673,9 +672,9 @@ describe("StyleStackService", () => {
           } else if (fromCallCount === 3 && tableName === "team_members") {
             // Third call: checking team membership (with two eq() calls)
             const queryObj: any = {};
-            queryObj.select = vi.fn(() => queryObj);
-            queryObj.eq = vi.fn(() => queryObj);
-            queryObj.single = vi.fn().mockResolvedValue({
+            queryObj.select = mock(() => queryObj);
+            queryObj.eq = mock(() => queryObj);
+            queryObj.single = mock().mockResolvedValue({
               data: null,
               error: { message: "Not found" },
             });
@@ -683,10 +682,10 @@ describe("StyleStackService", () => {
           }
           // Return a default mock for any unexpected calls
           const defaultMock: any = {};
-          defaultMock.select = vi.fn(() => defaultMock);
-          defaultMock.eq = vi.fn(() => defaultMock);
-          defaultMock.limit = vi.fn(() => defaultMock);
-          defaultMock.single = vi.fn().mockResolvedValue({
+          defaultMock.select = mock(() => defaultMock);
+          defaultMock.eq = mock(() => defaultMock);
+          defaultMock.limit = mock(() => defaultMock);
+          defaultMock.single = mock().mockResolvedValue({
             data: null,
             error: { message: "Unexpected call" },
           });
@@ -713,16 +712,16 @@ describe("StyleStackService", () => {
       // Create a counter to track how many times from() is called
       let fromCallCount = 0;
 
-      (mockSupabaseClient.from as Mock).mockImplementation(
+      (mockSupabaseClient.from as any).mockImplementation(
         (tableName: string) => {
           fromCallCount++;
 
           if (fromCallCount === 1 && tableName === "styles") {
             // First call: getting original style
             return {
-              select: vi.fn().mockReturnThis(),
-              eq: vi.fn().mockReturnThis(),
-              single: vi.fn().mockResolvedValue({
+              select: mock().mockReturnThis(),
+              eq: mock().mockReturnThis(),
+              single: mock().mockResolvedValue({
                 data: privateStyle,
                 error: null,
               }),
@@ -730,8 +729,8 @@ describe("StyleStackService", () => {
           } else if (fromCallCount === 2 && tableName === "style_adaptations") {
             // Second call: getting style adaptations (from getStyleById with include_adaptations)
             return {
-              select: vi.fn().mockReturnThis(),
-              eq: vi.fn().mockResolvedValue({
+              select: mock().mockReturnThis(),
+              eq: mock().mockResolvedValue({
                 data: [],
                 error: null,
               }),
@@ -739,9 +738,9 @@ describe("StyleStackService", () => {
           } else if (fromCallCount === 3 && tableName === "team_members") {
             // Third call: checking team membership (user is a member)
             const queryObj: any = {};
-            queryObj.select = vi.fn(() => queryObj);
-            queryObj.eq = vi.fn(() => queryObj);
-            queryObj.single = vi.fn().mockResolvedValue({
+            queryObj.select = mock(() => queryObj);
+            queryObj.eq = mock(() => queryObj);
+            queryObj.single = mock().mockResolvedValue({
               data: { role: "member" },
               error: null,
             });
@@ -749,10 +748,10 @@ describe("StyleStackService", () => {
           } else if (fromCallCount === 4 && tableName === "team_members") {
             // Fourth call: getting user's team
             const queryObj: any = {};
-            queryObj.select = vi.fn(() => queryObj);
-            queryObj.eq = vi.fn(() => queryObj);
-            queryObj.limit = vi.fn(() => queryObj);
-            queryObj.single = vi.fn().mockResolvedValue({
+            queryObj.select = mock(() => queryObj);
+            queryObj.eq = mock(() => queryObj);
+            queryObj.limit = mock(() => queryObj);
+            queryObj.single = mock().mockResolvedValue({
               data: { team_id: "080c66c9-0797-4611-9227-21a0d57ab694" },
               error: null,
             });
@@ -760,10 +759,10 @@ describe("StyleStackService", () => {
           }
           // Return a default mock for any unexpected calls
           const defaultMock: any = {};
-          defaultMock.select = vi.fn(() => defaultMock);
-          defaultMock.eq = vi.fn(() => defaultMock);
-          defaultMock.limit = vi.fn(() => defaultMock);
-          defaultMock.single = vi.fn().mockResolvedValue({
+          defaultMock.select = mock(() => defaultMock);
+          defaultMock.eq = mock(() => defaultMock);
+          defaultMock.limit = mock(() => defaultMock);
+          defaultMock.single = mock().mockResolvedValue({
             data: null,
             error: { message: "Unexpected call" },
           });
@@ -779,10 +778,10 @@ describe("StyleStackService", () => {
         parent_id: "6de92947-647b-4c33-a6b8-1f8fed2787d1",
       };
 
-      (mockAdminClient.from as Mock).mockReturnValue({
-        insert: vi.fn().mockReturnValue({
-          select: vi.fn().mockReturnValue({
-            single: vi.fn().mockResolvedValue({
+      (mockAdminClient.from as any).mockReturnValue({
+        insert: mock().mockReturnValue({
+          select: mock().mockReturnValue({
+            single: mock().mockResolvedValue({
               data: duplicatedStyle,
               error: null,
             }),
@@ -810,12 +809,12 @@ describe("StyleStackService", () => {
         { ...mockStyle, is_template: true, is_public: true },
       ];
 
-      (mockSupabaseClient.from as Mock).mockReturnValue({
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({
-              order: vi.fn().mockReturnValue({
-                order: vi.fn().mockResolvedValue({
+      (mockSupabaseClient.from as any).mockReturnValue({
+        select: mock().mockReturnValue({
+          eq: mock().mockReturnValue({
+            eq: mock().mockReturnValue({
+              order: mock().mockReturnValue({
+                order: mock().mockResolvedValue({
                   data: mockTemplates,
                   error: null,
                 }),
@@ -835,11 +834,10 @@ describe("StyleStackService", () => {
     it("should increment usage count via RPC", async () => {
       mockAdminClient.rpc.mockResolvedValue({ error: null });
 
-      await expect(
-        styleService.incrementUsageCount(
-          "6de92947-647b-4c33-a6b8-1f8fed2787d1",
-        ),
-      ).resolves.not.toThrow();
+      const result = await styleService.incrementUsageCount(
+        "6de92947-647b-4c33-a6b8-1f8fed2787d1",
+      );
+      expect(result).toBeUndefined();
 
       expect(mockAdminClient.rpc).toHaveBeenCalledWith(
         "increment_style_usage",
@@ -854,11 +852,10 @@ describe("StyleStackService", () => {
         error: { message: "RPC failed" },
       });
 
-      await expect(
-        styleService.incrementUsageCount(
-          "6de92947-647b-4c33-a6b8-1f8fed2787d1",
-        ),
-      ).resolves.not.toThrow();
+      const result = await styleService.incrementUsageCount(
+        "6de92947-647b-4c33-a6b8-1f8fed2787d1",
+      );
+      expect(result).toBeUndefined();
     });
   });
 });

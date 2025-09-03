@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "bun:test";
 import type { StyleStackConfig } from "../../schemas/style-stack";
 import {
   FluxProAdapter,

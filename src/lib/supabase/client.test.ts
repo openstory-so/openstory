@@ -1,30 +1,40 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createBrowserClient } from "./client";
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 
-// Mock the Supabase createClient function
-vi.mock("@supabase/supabase-js", () => ({
-  createClient: vi.fn(() => ({
-    from: vi.fn(),
-    auth: {
-      getSession: vi.fn(),
-    },
-    storage: {
-      from: vi.fn(),
-    },
-  })),
+// Mock the Supabase createClient function once
+const mockCreateClient = mock(() => ({
+  from: mock(),
+  auth: {
+    getSession: mock(),
+  },
+  storage: {
+    from: mock(),
+  },
+}));
+
+mock.module("@supabase/supabase-js", () => ({
+  createClient: mockCreateClient,
 }));
 
 describe("createBrowserClient", () => {
   const originalEnv = process.env;
 
-  beforeEach(() => {
+  // Import dynamically in each test to ensure clean mocks
+  let createBrowserClient: any;
+
+  beforeEach(async () => {
     // Reset environment variables to test defaults
     process.env = {
       ...originalEnv,
       NEXT_PUBLIC_SUPABASE_URL: "https://test.supabase.co",
       NEXT_PUBLIC_SUPABASE_ANON_KEY: "test-anon-key",
     };
-    vi.clearAllMocks();
+
+    // Clear mock call history
+    mockCreateClient.mockClear();
+
+    // Import after setting up environment
+    const module = await import("./client");
+    createBrowserClient = module.createBrowserClient;
   });
 
   afterEach(() => {
@@ -83,13 +93,10 @@ describe("createBrowserClient", () => {
   });
 
   describe("client configuration", () => {
-    it("should create client with correct auth options", async () => {
-      const { createClient } = await import("@supabase/supabase-js");
-      const mockedCreateClient = vi.mocked(createClient);
-
+    it("should create client with correct auth options", () => {
       createBrowserClient();
 
-      expect(mockedCreateClient).toHaveBeenCalledWith(
+      expect(mockCreateClient).toHaveBeenCalledWith(
         "https://test.supabase.co",
         "test-anon-key",
         {
@@ -102,25 +109,19 @@ describe("createBrowserClient", () => {
       );
     });
 
-    it("should call createClient exactly once", async () => {
-      const { createClient } = await import("@supabase/supabase-js");
-      const mockedCreateClient = vi.mocked(createClient);
-
+    it("should call createClient exactly once", () => {
       createBrowserClient();
 
-      expect(mockedCreateClient).toHaveBeenCalledTimes(1);
+      expect(mockCreateClient).toHaveBeenCalledTimes(1);
     });
 
-    it("should use the exact environment variable values", async () => {
+    it("should use the exact environment variable values", () => {
       process.env.NEXT_PUBLIC_SUPABASE_URL = "https://custom.supabase.co";
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "custom-anon-key-123";
 
-      const { createClient } = await import("@supabase/supabase-js");
-      const mockedCreateClient = vi.mocked(createClient);
-
       createBrowserClient();
 
-      expect(mockedCreateClient).toHaveBeenCalledWith(
+      expect(mockCreateClient).toHaveBeenCalledWith(
         "https://custom.supabase.co",
         "custom-anon-key-123",
         expect.any(Object),
@@ -129,7 +130,7 @@ describe("createBrowserClient", () => {
   });
 
   describe("multiple client creation", () => {
-    it("should create new client instance each time", async () => {
+    it("should create new client instance each time", () => {
       const client1 = createBrowserClient();
       const client2 = createBrowserClient();
 
@@ -137,9 +138,7 @@ describe("createBrowserClient", () => {
       expect(client1).toBeDefined();
       expect(client2).toBeDefined();
 
-      const { createClient } = await import("@supabase/supabase-js");
-      const mockedCreateClient = vi.mocked(createClient);
-      expect(mockedCreateClient).toHaveBeenCalledTimes(2);
+      expect(mockCreateClient).toHaveBeenCalledTimes(2);
     });
   });
 

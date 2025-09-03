@@ -3,7 +3,7 @@
  * Provides mocks, fixtures, and test helpers for unit testing
  */
 
-import { expect, vi } from "vitest";
+import { expect, mock } from "bun:test";
 import type { VelroError } from "@/lib/errors";
 import type { Job } from "@/types/database";
 import type { JobPayload, QStashResponse } from "./client";
@@ -12,24 +12,24 @@ import type { JobPayload, QStashResponse } from "./client";
  * Mock QStash client for testing
  */
 export const createMockQStashClient = () => ({
-  publishMessage: vi.fn().mockResolvedValue({
+  publishMessage: mock().mockResolvedValue({
     messageId: "msg_test123456789",
     deduplicated: false,
   } as QStashResponse),
-  publishImageJob: vi.fn().mockResolvedValue({
+  publishImageJob: mock().mockResolvedValue({
     messageId: "msg_image123456789",
     deduplicated: false,
   } as QStashResponse),
-  publishVideoJob: vi.fn().mockResolvedValue({
+  publishVideoJob: mock().mockResolvedValue({
     messageId: "msg_video123456789",
     deduplicated: false,
   } as QStashResponse),
-  publishScriptJob: vi.fn().mockResolvedValue({
+  publishScriptJob: mock().mockResolvedValue({
     messageId: "msg_script123456789",
     deduplicated: false,
   } as QStashResponse),
-  cancelMessage: vi.fn().mockResolvedValue(undefined),
-  getMessage: vi.fn().mockResolvedValue({
+  cancelMessage: mock().mockResolvedValue(undefined),
+  getMessage: mock().mockResolvedValue({
     messageId: "msg_test123456789",
     url: "https://example.com/webhook",
     body: "test body",
@@ -43,22 +43,22 @@ export const createMockSupabaseClient = () => {
   // Create a proper mock chain that can be awaited
   const createQueryChain = () => {
     const chain = {
-      select: vi.fn().mockReturnThis(),
-      insert: vi.fn().mockReturnThis(),
-      update: vi.fn().mockReturnThis(),
-      delete: vi.fn().mockReturnThis(),
-      eq: vi.fn().mockReturnThis(),
-      single: vi.fn().mockReturnThis(),
-      limit: vi.fn().mockReturnThis(),
-      order: vi.fn().mockReturnThis(),
-      range: vi.fn().mockReturnThis(),
+      select: mock().mockReturnThis(),
+      insert: mock().mockReturnThis(),
+      update: mock().mockReturnThis(),
+      delete: mock().mockReturnThis(),
+      eq: mock().mockReturnThis(),
+      single: mock().mockReturnThis(),
+      limit: mock().mockReturnThis(),
+      order: mock().mockReturnThis(),
+      range: mock().mockReturnThis(),
       // biome-ignore lint/suspicious/noThenProperty: Required for thenable mock
-      then: vi.fn().mockReturnThis(),
+      then: mock().mockReturnThis(),
     };
 
     // Make the chain thenable - biome wants this as a property
     // biome-ignore lint/suspicious/noThenProperty: Required for thenable mock
-    chain.then = vi.fn((onResolve) => {
+    chain.then = mock((onResolve) => {
       const defaultResult = { data: [], error: null };
       return Promise.resolve(defaultResult).then(onResolve);
     });
@@ -69,7 +69,7 @@ export const createMockSupabaseClient = () => {
   const chainMock = createQueryChain();
 
   return {
-    from: vi.fn(() => chainMock),
+    from: mock(() => chainMock),
     mockHelpers: {
       mockSelect: chainMock.select,
       mockInsert: chainMock.insert,
@@ -88,21 +88,21 @@ export const createMockSupabaseClient = () => {
  * Mock QStash Receiver for signature verification testing
  */
 export const createMockQStashReceiver = (shouldVerify = true) => ({
-  verify: vi.fn().mockResolvedValue(shouldVerify),
+  verify: mock().mockResolvedValue(shouldVerify),
 });
 
 /**
  * Mock Job Manager for testing
  */
 export const createMockJobManager = () => ({
-  createJob: vi.fn(),
-  getJob: vi.fn(),
-  updateJob: vi.fn(),
-  cancelJob: vi.fn(),
-  startJob: vi.fn(),
-  completeJob: vi.fn(),
-  failJob: vi.fn(),
-  getJobsByStatus: vi.fn(),
+  createJob: mock(),
+  getJob: mock(),
+  updateJob: mock(),
+  cancelJob: mock(),
+  startJob: mock(),
+  completeJob: mock(),
+  failJob: mock(),
+  getJobsByStatus: mock(),
 });
 
 /**
@@ -177,10 +177,10 @@ export const createTestWebhookRequest = (
 
   return {
     headers: new Headers(headers),
-    json: vi.fn().mockResolvedValue(overrides?.body || defaultBody),
-    text: vi
-      .fn()
-      .mockResolvedValue(JSON.stringify(overrides?.body || defaultBody)),
+    json: mock().mockResolvedValue(overrides?.body || defaultBody),
+    text: mock().mockResolvedValue(
+      JSON.stringify(overrides?.body || defaultBody),
+    ),
     url: overrides?.url || "https://example.com/api/v1/webhooks/qstash/image",
     method: overrides?.method || "POST",
   };
@@ -294,13 +294,13 @@ export const createMockNextRequest = (options?: {
     method: options?.method || "POST",
     url: url.toString(),
     headers: new Headers(options?.headers || {}),
-    json: vi.fn().mockResolvedValue(options?.body || {}),
-    text: vi.fn().mockResolvedValue(JSON.stringify(options?.body || {})),
+    json: mock().mockResolvedValue(options?.body || {}),
+    text: mock().mockResolvedValue(JSON.stringify(options?.body || {})),
   };
 };
 
 export const createMockNextResponse = () => ({
-  json: vi.fn().mockImplementation((data) => ({
+  json: mock().mockImplementation((data) => ({
     ok: true,
     status: 200,
     json: () => Promise.resolve(data),
@@ -308,21 +308,15 @@ export const createMockNextResponse = () => ({
 });
 
 /**
- * Vitest test setup helper
+ * Bun test setup helper
  */
-export const setupVitestMocks = () => {
-  // Mock console methods to avoid noise in tests
-  vi.spyOn(console, "log").mockImplementation(() => {});
-  vi.spyOn(console, "info").mockImplementation(() => {});
-  vi.spyOn(console, "warn").mockImplementation(() => {});
-  vi.spyOn(console, "error").mockImplementation(() => {});
-
+export const setupBunMocks = () => {
   // Setup test environment
   setupTestEnv();
 
   return {
     restoreConsole: () => {
-      vi.restoreAllMocks();
+      // No-op for now
     },
     cleanupEnv: cleanupTestEnv,
   };

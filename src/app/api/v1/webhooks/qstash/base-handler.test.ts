@@ -2,27 +2,27 @@
  * Unit tests for base webhook handler
  */
 
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import { NextResponse } from "next/server";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ValidationError, VelroError } from "@/lib/errors";
 import type { QStashVerifiedRequest } from "@/lib/qstash/middleware";
 import {
   createMockJobManager,
   createTestJobPayload,
   createTestJobRow,
-  setupVitestMocks,
+  setupBunMocks,
   testUUIDs,
 } from "@/lib/qstash/test-utils";
 import { BaseWebhookHandler } from "./base-handler";
 
 // Mock dependencies
-vi.mock("@/lib/qstash/job-manager", () => ({
-  getJobManager: vi.fn(),
+mock.module("@/lib/qstash/job-manager", () => ({
+  getJobManager: mock(),
 }));
 
-vi.mock("next/server", () => ({
+mock.module("next/server", () => ({
   NextResponse: {
-    json: vi.fn().mockImplementation((data, options) => ({
+    json: mock().mockImplementation((data, options) => ({
       ok: true,
       status: options?.status || 200,
       json: () => Promise.resolve(data),
@@ -37,26 +37,26 @@ import { getJobManager } from "@/lib/qstash/job-manager";
 describe("BaseWebhookHandler", () => {
   let handler: BaseWebhookHandler;
   let mockJobManager: ReturnType<typeof createMockJobManager>;
-  let testSetup: ReturnType<typeof setupVitestMocks>;
+  let testSetup: ReturnType<typeof setupBunMocks>;
 
   beforeEach(() => {
-    testSetup = setupVitestMocks();
+    testSetup = setupBunMocks();
     mockJobManager = createMockJobManager();
-    vi.mocked(getJobManager).mockReturnValue(mockJobManager as any);
+    (getJobManager as any).mockReturnValue(mockJobManager as any);
     handler = new BaseWebhookHandler();
   });
 
   afterEach(() => {
     testSetup.restoreConsole();
     testSetup.cleanupEnv();
-    vi.clearAllMocks();
+    mock.restore();
   });
 
   describe("parseRequest", () => {
     it("should parse valid webhook request", async () => {
       const requestBody = createTestJobPayload({ type: "image" });
       const request = {
-        json: vi.fn().mockResolvedValue(requestBody),
+        json: mock().mockResolvedValue(requestBody),
         url: "https://example.com/webhook",
         qstashMessageId: "msg_test123",
       } as unknown as QStashVerifiedRequest;
@@ -72,7 +72,7 @@ describe("BaseWebhookHandler", () => {
         type: "unknown-type",
       };
       const request = {
-        json: vi.fn().mockResolvedValue(invalidBody),
+        json: mock().mockResolvedValue(invalidBody),
         url: "https://example.com/webhook",
       } as unknown as QStashVerifiedRequest;
 
@@ -83,7 +83,7 @@ describe("BaseWebhookHandler", () => {
 
     it("should handle JSON syntax errors", async () => {
       const request = {
-        json: vi.fn().mockRejectedValue(new SyntaxError("Unexpected token")),
+        json: mock().mockRejectedValue(new SyntaxError("Unexpected token")),
         url: "https://example.com/webhook",
       } as unknown as QStashVerifiedRequest;
 
@@ -94,16 +94,17 @@ describe("BaseWebhookHandler", () => {
   });
 
   describe("processWebhook", () => {
-    const mockProcessor = vi.fn();
+    let mockProcessor: any;
     let request: QStashVerifiedRequest;
 
     beforeEach(() => {
+      mockProcessor = mock();
       const requestBody = createTestJobPayload({
         jobId: testUUIDs.job1,
         type: "image",
       });
       request = {
-        json: vi.fn().mockResolvedValue(requestBody),
+        json: mock().mockResolvedValue(requestBody),
         url: "https://example.com/webhook",
         qstashMessageId: "msg_test123",
         qstashRetryCount: 0,

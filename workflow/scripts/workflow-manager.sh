@@ -196,8 +196,8 @@ setup_worktree_environment() {
     fi
     
     # Install dependencies
-    log "Installing dependencies with pnpm..."
-    (cd "$worktree_path" && pnpm install) || {
+    log "Installing dependencies with bun..."
+    (cd "$worktree_path" && bun install) || {
         error "Failed to install dependencies, but continuing..."
     }
     
@@ -344,9 +344,9 @@ EOF
     cat >> "$instructions_file" << 'EOF'
 
 ### 3. Testing and Validation
-- Run tests: `pnpm test`
-- Check types: `pnpm tsc --noEmit`
-- Lint code: `pnpx @biomejs/biome check --write .`
+- Run tests: `bun test`
+- Check types: `bun tsc --noEmit`
+- Lint code: `bunx @biomejs/biome check --write .`
 
 ### 4. Commit Guidelines
 - Make frequent, descriptive commits
@@ -370,9 +370,9 @@ gh pr create \
 - [ ] PR created with proper description
 
 ## Available Commands
-- `pnpm dev` - Start development server
-- `pnpm test` - Run tests
-- `pnpm build` - Build the project
+- `bun dev` - Start development server
+- `bun test` - Run tests
+- `bun build` - Build the project
 - `gh issue view ISSUE_NUM` - View issue details
 - `gh pr create` - Create pull request
 - `gh pr checks` - View PR checks status
