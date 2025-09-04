@@ -57,6 +57,11 @@ export interface ScriptEnhancementResult {
 // Initialize OpenRouter client (lazy initialization to support testing)
 let openrouter: OpenAI | null = null;
 
+// Export for testing purposes
+export const resetOpenRouterClient = () => {
+  openrouter = null;
+};
+
 function getOpenRouterClient(): OpenAI {
   if (!openrouter) {
     openrouter = new OpenAI({

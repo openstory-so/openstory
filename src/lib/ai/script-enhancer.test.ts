@@ -30,6 +30,9 @@ The coffee shop hums with quiet energy: the espresso machine's gentle hiss, dist
   },
 });
 
+// Reset mock before each describe block
+mockChatCompletionsCreate.mockClear();
+
 mock.module("openai", () => {
   return {
     default: class MockOpenAI {
@@ -43,7 +46,11 @@ mock.module("openai", () => {
 });
 
 // Import the module after mocking
-import { enhanceScript, scriptEnhancementRateLimiter } from "./script-enhancer";
+import {
+  enhanceScript,
+  resetOpenRouterClient,
+  scriptEnhancementRateLimiter,
+} from "./script-enhancer";
 
 // Mock environment variable
 const _originalEnv = process.env.OPENROUTER_KEY;
@@ -52,6 +59,36 @@ describe("Script Enhancer", () => {
   beforeEach(() => {
     mockChatCompletionsCreate.mockClear();
     process.env.OPENROUTER_KEY = "test-api-key";
+
+    // Reset the OpenAI client instance by clearing it
+    resetOpenRouterClient();
+
+    // Reset to default mock response
+    mockChatCompletionsCreate.mockResolvedValue({
+      choices: [
+        {
+          message: {
+            content: `FADE IN: A bustling coffee shop filled with morning rush. The warm amber light filters through large windows, casting gentle shadows across weathered wooden tables. SARAH, 28, determined writer with tired but focused eyes, sits at a corner table by the window. Her fingers dance across the laptop keyboard with practiced urgency.
+
+CLOSE-UP: Her laptop screen reflects her concentrated expression, text cascading down the document. The camera slowly PULLS BACK through the window glass, revealing the city awakening outside - early commuters hurrying past, steam rising from manholes, the first golden hour of dawn painting the streetscape.
+
+The coffee shop hums with quiet energy: the espresso machine's gentle hiss, distant conversations mixing with soft jazz, the rustle of newspapers. Sarah pauses, taking a sip of her coffee, steam curling upward as she gazes out at the city, finding inspiration in its rhythm.
+
+\`\`\`json
+{
+  "recommended_style_stack": "a24-dreamy-1",
+  "reasoning": "Intimate coffee shop setting with warm amber lighting, soft focus elements, and contemplative mood suggests A24's dreamy warm aesthetic with muted tones and emotional undertones."
+}
+\`\`\``,
+          },
+        },
+      ],
+      usage: {
+        prompt_tokens: 150,
+        completion_tokens: 200,
+        total_tokens: 350,
+      },
+    });
   });
 
   // Clean up in beforeEach instead since Bun test doesn't have afterEach

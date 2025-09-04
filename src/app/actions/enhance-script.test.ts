@@ -3,13 +3,15 @@ import { enhanceScript, enhanceScriptDirect } from "./enhance-script";
 
 // Mock the AI service with proper typing
 const mockEnhanceScriptService = mock() as Mock<() => Promise<any>>;
+const mockRateLimiter = {
+  isAllowed: mock(() => true) as Mock<() => boolean>,
+  getRemainingTime: mock(() => 0) as Mock<() => number>,
+};
 
 mock.module("@/lib/ai/script-enhancer", () => ({
   enhanceScript: mockEnhanceScriptService,
-  scriptEnhancementRateLimiter: {
-    isAllowed: mock(() => true) as Mock<() => boolean>,
-    getRemainingTime: mock(() => 0) as Mock<() => number>,
-  },
+  scriptEnhancementRateLimiter: mockRateLimiter,
+  resetOpenRouterClient: mock(() => {}) as Mock<() => void>,
 }));
 
 // Mock Next.js headers with proper typing
@@ -22,7 +24,7 @@ mock.module("next/headers", () => ({
 }));
 
 describe("Enhance Script Server Actions", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     mockEnhanceScriptService.mockClear();
     mockHeaders.mockClear();
 
@@ -34,6 +36,12 @@ describe("Enhance Script Server Actions", () => {
     }) as Mock<(name: string) => string | null>;
 
     mockHeaders.mockReturnValue({ get: mockGetHeader });
+
+    // Reset rate limiter mocks
+    mockRateLimiter.isAllowed.mockClear();
+    mockRateLimiter.getRemainingTime.mockClear();
+    mockRateLimiter.isAllowed.mockReturnValue(true);
+    mockRateLimiter.getRemainingTime.mockReturnValue(0);
 
     // Reset to successful response
     mockEnhanceScriptService.mockResolvedValue({
@@ -205,11 +213,8 @@ describe("Enhance Script Server Actions", () => {
   describe("Rate Limiting", () => {
     it("should handle rate limiting", async () => {
       // Mock rate limiter to reject request
-      const { scriptEnhancementRateLimiter } = await import(
-        "@/lib/ai/script-enhancer"
-      );
-      scriptEnhancementRateLimiter.isAllowed = mock(() => false);
-      scriptEnhancementRateLimiter.getRemainingTime = mock(() => 45000); // 45 seconds
+      mockRateLimiter.isAllowed.mockReturnValue(false);
+      mockRateLimiter.getRemainingTime.mockReturnValue(45000); // 45 seconds
 
       const formData = new FormData();
       formData.append("script", "A person sits in a coffee shop writing");
@@ -237,12 +242,7 @@ describe("Enhance Script Server Actions", () => {
       await enhanceScript(formData);
 
       // The rate limiter should have been called with the first IP
-      const { scriptEnhancementRateLimiter } = await import(
-        "@/lib/ai/script-enhancer"
-      );
-      expect(scriptEnhancementRateLimiter.isAllowed).toHaveBeenCalledWith(
-        "10.0.0.1",
-      );
+      expect(mockRateLimiter.isAllowed).toHaveBeenCalledWith("10.0.0.1");
     });
 
     it("should fall back to x-real-ip header", async () => {
@@ -258,12 +258,7 @@ describe("Enhance Script Server Actions", () => {
 
       await enhanceScript(formData);
 
-      const { scriptEnhancementRateLimiter } = await import(
-        "@/lib/ai/script-enhancer"
-      );
-      expect(scriptEnhancementRateLimiter.isAllowed).toHaveBeenCalledWith(
-        "10.0.0.2",
-      );
+      expect(mockRateLimiter.isAllowed).toHaveBeenCalledWith("10.0.0.2");
     });
 
     it("should use anonymous as fallback IP", async () => {
@@ -277,12 +272,7 @@ describe("Enhance Script Server Actions", () => {
 
       await enhanceScript(formData);
 
-      const { scriptEnhancementRateLimiter } = await import(
-        "@/lib/ai/script-enhancer"
-      );
-      expect(scriptEnhancementRateLimiter.isAllowed).toHaveBeenCalledWith(
-        "anonymous",
-      );
+      expect(mockRateLimiter.isAllowed).toHaveBeenCalledWith("anonymous");
     });
   });
 

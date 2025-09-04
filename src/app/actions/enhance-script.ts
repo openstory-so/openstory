@@ -71,10 +71,7 @@ export async function enhanceScript(
     const processedData = {
       script,
       targetDuration: targetDurationStr ? Number(targetDurationStr) : undefined,
-      tone:
-        tone && ["dramatic", "comedic", "documentary", "action"].includes(tone)
-          ? (tone as "dramatic" | "comedic" | "documentary" | "action")
-          : undefined,
+      tone: tone || undefined,
       style: style || undefined,
     };
 
