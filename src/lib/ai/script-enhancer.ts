@@ -15,12 +15,15 @@ const EnhanceScriptOptionsSchema = z.object({
   style: z.string().optional(),
 });
 
-// Output validation schema
+// Output validation schema for the new format
+const StyleStackRecommendationSchema = z.object({
+  recommended_style_stack: z.string(),
+  reasoning: z.string(),
+});
+
 const EnhancedScriptSchema = z.object({
   enhanced_script: z.string(),
-  improvements_made: z.array(z.string()),
-  estimated_duration: z.number(),
-  scene_count: z.number(),
+  style_stack_recommendation: StyleStackRecommendationSchema,
 });
 
 export interface EnhanceScriptOptions {
@@ -30,11 +33,14 @@ export interface EnhanceScriptOptions {
   style?: string; // Optional style context
 }
 
+export interface StyleStackRecommendation {
+  recommended_style_stack: string;
+  reasoning: string;
+}
+
 export interface EnhancedScript {
   enhanced_script: string;
-  improvements_made: string[];
-  estimated_duration: number;
-  scene_count: number;
+  style_stack_recommendation: StyleStackRecommendation;
 }
 
 export interface ScriptEnhancementResult {
@@ -61,35 +67,91 @@ function getOpenRouterClient(): OpenAI {
   return openrouter;
 }
 
-// System prompt for script enhancement
-const createSystemPrompt = (options: EnhanceScriptOptions): string => {
-  const { targetDuration = 30, tone = "dramatic", style } = options;
+// System prompt for script enhancement - exact prompt from GitHub issue
+const VELRO_SCRIPT_ENHANCER_PROMPT = `You are Velro's AI Script Enhancer.
 
-  return `You are a professional screenwriter specializing in short-form video content. Your task is to enhance user-provided text into a compelling ${targetDuration}-second film script.
+Your role is to transform very short, vague, or incomplete user-provided scripts into highly detailed, cinematic sequences suitable for Velro's storyboard generation pipeline.
 
-Guidelines:
-- Target exactly ${targetDuration} seconds of screen time (approximately ${Math.floor(targetDuration * 2.5)} - ${Math.ceil(targetDuration * 3.3)} words)
-- Create clear visual scenes with specific actions and descriptions
-- Include emotional hooks and story beats appropriate for ${tone} tone
-- Maintain the core message/theme from the original input
-- Structure with proper scene transitions
-- Focus on visual storytelling that works well for AI-generated imagery
-- Include specific details about lighting, camera angles, and visual composition
-${style ? `- Incorporate elements that complement the "${style}" visual style` : ""}
+You must act as a **story analyst, cinematographer, and visual director combined**.
 
-You must respond with a valid JSON object in the following format:
+Your objectives:
+1. **Enhance minimal inputs** into vivid, emotionally engaging scenes.
+2. **Infer cinematic pacing** and structure actions into logical beats.
+3. Integrate **camera language** (shot types, framing, movement) even when not explicitly requested.
+4. Automatically suggest an appropriate **Velro style stack** based on tone and context.
+5. Output a **detailed cinematic script** plus a structured JSON summary containing the recommended style stack.
+
+---
+
+## **Core Rules**
+
+### **A. Story Expansion**
+- If the user provides fewer than ~25 words, assume the script is **incomplete** and enhance it.
+- Preserve the **intent and meaning** but add:
+    - Atmospheric details (lighting, sound, textures, props).
+    - Character expressions, subtle behaviours, and emotional undertones.
+    - Dialogue snippets where natural, but avoid overloading.
+    - Environmental cues that create immersion.
+
+### **B. Cinematic Language**
+Always embed implicit camera direction:
+- **Shot Types:** Wide establishing, medium tracking, close-up, insert, over-the-shoulder, two-shot, extreme close-up.
+- **Camera Movement:** Static, handheld, dolly, tracking, crane, whip-pan, Steadicam.
+- **Depth & Composition:** Mention shallow DOF, anamorphic flares, wides, or compressed depth when relevant.
+- **Lighting Cues:** Practical sources, rim separation, key/fill ratios, colour temperature.
+
+### **C. Velro Style Stack Mapping**
+At the end of the enhanced script, infer which Velro cinematic style stack fits best:
+- **A24 Dreamy Warm** → soft, nostalgic, intimate, muted tones.
+- **Villeneuve Earthy Futurism** → grand scale, surreal tension, minimalistic palettes.
+- **Fincher Neo-Noir** → cold, precise, clinical, high-contrast.
+- **Pixar Brighter Worlds** → colourful, vibrant, animated tone.
+- **Tarantino Reds & Chaos** → explosive, chaotic, bold saturation.
+
+Default to **A24 Dreamy Warm** if uncertain.
+
+### **D. Scene Pacing**
+- Split the sequence into **visual beats** when necessary.
+- Each beat should represent a potential storyboard frame or cluster.
+- Assume these will later feed into Velro's storyboard chunking engine.
+
+### **E. Environmental Enrichment**
+Always enhance realism with:
+- Ambient sounds
+- Background details
+- Light behaviour
+- Emotional undertones
+- Colours and textures
+
+---
+
+## **Output Format**
+
+**CRITICAL: OUTPUT ONLY THE ENHANCED SCRIPT AND JSON. NO PREAMBLE, NO INTRODUCTION, NO EXPLANATIONS.**
+
+### **1. Enhanced Cinematic Script**
+Start immediately with the enhanced screenplay. Begin directly with "FADE IN:" or the first scene element. Do not include any introductory text, explanations, or commentary.
+
+### **2. Style Stack Recommendation**
+After the script, provide a **JSON block**:
+\`\`\`json
 {
-  "enhanced_script": "The enhanced script text",
-  "improvements_made": ["List of specific improvements made"],
-  "estimated_duration": number_of_seconds,
-  "scene_count": number_of_distinct_scenes
+  "recommended_style_stack": "a24-dreamy-1",
+  "reasoning": "Intimate lighting, muted tones, emotional tension, and soft tungsten glows suggest A24's dreamy warm style."
 }
+\`\`\`
 
-Focus on creating scripts that are:
-1. Visually compelling and specific
-2. Emotionally engaging within the time constraint
-3. Technically feasible for AI video generation
-4. Structurally sound with clear beginning, middle, and end`;
+Key Requirements
+• Output ONLY the enhanced script followed by the JSON block
+• DO NOT include any preamble, introduction, or explanation before the script
+• Begin immediately with the screenplay content
+• Always produce richly visual outputs
+• Keep the script natural and cinematic
+• Always provide a recommended Velro style stack in JSON
+• Ensure outputs are storyboard-friendly and ready for downstream generation`;
+
+const createSystemPrompt = (): string => {
+  return VELRO_SCRIPT_ENHANCER_PROMPT;
 };
 
 // Create user prompt
@@ -100,6 +162,77 @@ const createUserPrompt = (originalScript: string): string => {
 
 Transform it into a professional, visually detailed script that tells a complete story within the target duration.`;
 };
+
+// Parse the enhanced script response which contains both script text and JSON metadata
+function parseEnhancedScriptResponse(response: string): {
+  enhancedScript: string;
+  styleRecommendation: StyleStackRecommendation;
+} {
+  // Look for JSON block in the response
+  const jsonRegex = /```json\s*\n([\s\S]*?)\n\s*```/;
+  const jsonMatch = response.match(jsonRegex);
+
+  if (!jsonMatch) {
+    throw new Error("No JSON metadata found in AI response");
+  }
+
+  let styleRecommendation: StyleStackRecommendation;
+  try {
+    const jsonData = JSON.parse(jsonMatch[1]);
+    styleRecommendation = StyleStackRecommendationSchema.parse(jsonData);
+  } catch (parseError) {
+    throw new Error(`Failed to parse style recommendation JSON: ${parseError}`);
+  }
+
+  // Extract the enhanced script text (everything before the JSON block)
+  const scriptEndIndex = response.indexOf(jsonMatch[0]);
+  let enhancedScript = response.substring(0, scriptEndIndex).trim();
+
+  if (!enhancedScript) {
+    throw new Error("No enhanced script text found in AI response");
+  }
+
+  // Remove any preamble text that might precede the actual script
+  // Look for common screenplay starting patterns (allowing for line breaks and whitespace)
+  const scriptStartPatterns = [
+    /FADE IN:/i,
+    /INT\./i,
+    /EXT\./i,
+    /OVER BLACK:/i,
+    /TITLE CARD:/i,
+    /CLOSE-UP:/i,
+    /WIDE SHOT:/i,
+    /ESTABLISHING SHOT:/i,
+  ];
+
+  // Find the first occurrence of any screenplay pattern
+  let scriptStartIndex = -1;
+  for (const pattern of scriptStartPatterns) {
+    const match = enhancedScript.search(pattern);
+    if (match !== -1) {
+      if (scriptStartIndex === -1 || match < scriptStartIndex) {
+        scriptStartIndex = match;
+      }
+    }
+  }
+
+  // If we found a screenplay pattern, strip everything before it
+  if (scriptStartIndex > 0) {
+    enhancedScript = enhancedScript.substring(scriptStartIndex).trim();
+  }
+
+  // Final check to ensure we have content
+  if (!enhancedScript) {
+    throw new Error(
+      "No enhanced script text found in AI response after preamble removal",
+    );
+  }
+
+  return {
+    enhancedScript,
+    styleRecommendation,
+  };
+}
 
 export async function enhanceScript(
   options: EnhanceScriptOptions,
@@ -114,7 +247,7 @@ export async function enhanceScript(
     }
 
     // Create prompts
-    const systemPrompt = createSystemPrompt(validatedOptions);
+    const systemPrompt = createSystemPrompt();
     const userPrompt = createUserPrompt(validatedOptions.originalScript);
 
     // Make API call to OpenRouter
@@ -131,9 +264,8 @@ export async function enhanceScript(
           content: userPrompt,
         },
       ],
-      max_tokens: 1000,
+      max_tokens: 1500,
       temperature: 0.7,
-      response_format: { type: "json_object" },
     });
 
     const response = completion.choices[0]?.message?.content;
@@ -142,16 +274,18 @@ export async function enhanceScript(
       throw new Error("No response received from AI service");
     }
 
-    // Parse the JSON response
-    let parsedResponse: unknown;
-    try {
-      parsedResponse = JSON.parse(response);
-    } catch (parseError) {
-      throw new Error(`Failed to parse AI response as JSON: ${parseError}`);
-    }
+    // Parse the response which contains enhanced script text and JSON metadata
+    const { enhancedScript, styleRecommendation } =
+      parseEnhancedScriptResponse(response);
 
-    // Validate the parsed response structure
-    const validatedResponse = EnhancedScriptSchema.parse(parsedResponse);
+    // Create the structured response
+    const validatedResponse: EnhancedScript = {
+      enhanced_script: enhancedScript,
+      style_stack_recommendation: styleRecommendation,
+    };
+
+    // Validate the response structure
+    EnhancedScriptSchema.parse(validatedResponse);
 
     // Extract token usage information
     const tokenUsage = completion.usage

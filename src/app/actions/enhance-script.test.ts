@@ -1,38 +1,21 @@
-import { beforeEach, describe, expect, it, mock } from "bun:test";
+import { beforeEach, describe, expect, it, type Mock, mock } from "bun:test";
 import { enhanceScript, enhanceScriptDirect } from "./enhance-script";
 
-// Mock the AI service
-const mockEnhanceScriptService = mock(() => ({
-  success: true,
-  data: {
-    enhanced_script: "Enhanced script content",
-    improvements_made: ["Added details", "Improved structure"],
-    estimated_duration: 30,
-    scene_count: 2,
-  },
-  tokenUsage: {
-    promptTokens: 100,
-    completionTokens: 50,
-    totalTokens: 150,
-  },
-}));
+// Mock the AI service with proper typing
+const mockEnhanceScriptService = mock() as Mock<() => Promise<any>>;
 
 mock.module("@/lib/ai/script-enhancer", () => ({
   enhanceScript: mockEnhanceScriptService,
   scriptEnhancementRateLimiter: {
-    isAllowed: mock(() => true),
-    getRemainingTime: mock(() => 0),
+    isAllowed: mock(() => true) as Mock<() => boolean>,
+    getRemainingTime: mock(() => 0) as Mock<() => number>,
   },
 }));
 
-// Mock Next.js headers
-const mockHeaders = mock(() => ({
-  get: mock((name: string) => {
-    if (name === "x-forwarded-for") return "192.168.1.1";
-    if (name === "x-real-ip") return "192.168.1.1";
-    return null;
-  }),
-}));
+// Mock Next.js headers with proper typing
+const mockHeaders = mock() as Mock<
+  () => { get: Mock<(name: string) => string | null> }
+>;
 
 mock.module("next/headers", () => ({
   headers: mockHeaders,
@@ -43,14 +26,25 @@ describe("Enhance Script Server Actions", () => {
     mockEnhanceScriptService.mockClear();
     mockHeaders.mockClear();
 
+    // Set up default header mock implementation
+    const mockGetHeader = mock((name: string) => {
+      if (name === "x-forwarded-for") return "192.168.1.1";
+      if (name === "x-real-ip") return "192.168.1.1";
+      return null;
+    }) as Mock<(name: string) => string | null>;
+
+    mockHeaders.mockReturnValue({ get: mockGetHeader });
+
     // Reset to successful response
     mockEnhanceScriptService.mockResolvedValue({
       success: true,
       data: {
         enhanced_script: "Enhanced script content",
-        improvements_made: ["Added details", "Improved structure"],
-        estimated_duration: 30,
-        scene_count: 2,
+        style_stack_recommendation: {
+          recommended_style_stack: "a24-dreamy-1",
+          reasoning:
+            "Intimate setting with warm lighting suggests A24's dreamy aesthetic.",
+        },
       },
       tokenUsage: {
         promptTokens: 100,
@@ -72,12 +66,11 @@ describe("Enhance Script Server Actions", () => {
       expect(result.success).toBe(true);
       expect(result.originalScript).toBe("A person sits in a coffee shop");
       expect(result.enhancedScript).toBe("Enhanced script content");
-      expect(result.improvements).toEqual([
-        "Added details",
-        "Improved structure",
-      ]);
-      expect(result.estimatedDuration).toBe(30);
-      expect(result.sceneCount).toBe(2);
+      expect(result.styleStackRecommendation).toEqual({
+        recommended_style_stack: "a24-dreamy-1",
+        reasoning:
+          "Intimate setting with warm lighting suggests A24's dreamy aesthetic.",
+      });
       expect(result.rateLimitInfo?.isRateLimited).toBe(false);
     });
 
@@ -234,7 +227,7 @@ describe("Enhance Script Server Actions", () => {
       const mockGetHeader = mock((name: string) => {
         if (name === "x-forwarded-for") return "10.0.0.1,192.168.1.1";
         return null;
-      });
+      }) as Mock<(name: string) => string | null>;
 
       mockHeaders.mockReturnValueOnce({ get: mockGetHeader });
 
@@ -256,7 +249,7 @@ describe("Enhance Script Server Actions", () => {
       const mockGetHeader = mock((name: string) => {
         if (name === "x-real-ip") return "10.0.0.2";
         return null;
-      });
+      }) as Mock<(name: string) => string | null>;
 
       mockHeaders.mockReturnValueOnce({ get: mockGetHeader });
 
@@ -274,7 +267,9 @@ describe("Enhance Script Server Actions", () => {
     });
 
     it("should use anonymous as fallback IP", async () => {
-      const mockGetHeader = mock(() => null);
+      const mockGetHeader = mock(() => null) as Mock<
+        (name: string) => string | null
+      >;
       mockHeaders.mockReturnValueOnce({ get: mockGetHeader });
 
       const formData = new FormData();

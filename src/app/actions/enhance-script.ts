@@ -23,9 +23,10 @@ export interface ScriptEnhancementResult {
   success: boolean;
   originalScript?: string;
   enhancedScript?: string;
-  improvements?: string[];
-  estimatedDuration?: number;
-  sceneCount?: number;
+  styleStackRecommendation?: {
+    recommended_style_stack: string;
+    reasoning: string;
+  };
   error?: string;
   rateLimitInfo?: {
     isRateLimited: boolean;
@@ -121,9 +122,7 @@ export async function enhanceScript(
       success: true,
       originalScript: validatedData.script,
       enhancedScript: result.data.enhanced_script,
-      improvements: result.data.improvements_made,
-      estimatedDuration: result.data.estimated_duration,
-      sceneCount: result.data.scene_count,
+      styleStackRecommendation: result.data.style_stack_recommendation,
       rateLimitInfo: {
         isRateLimited: false,
       },

@@ -27,11 +27,22 @@ export async function enhanceScript(originalScript: string): Promise<{
       };
     }
 
+    // Convert styleStackRecommendation to improvements format for backwards compatibility
+    const improvements: string[] = [];
+    if (result.styleStackRecommendation) {
+      improvements.push(
+        `Style Stack: ${result.styleStackRecommendation.recommended_style_stack}`,
+      );
+      improvements.push(
+        `Reasoning: ${result.styleStackRecommendation.reasoning}`,
+      );
+    }
+
     return {
       success: true,
       originalScript,
       enhancedScript: result.enhancedScript || originalScript,
-      improvements: result.improvements || [],
+      improvements,
     };
   } catch (error) {
     console.error("Script enhancement failed:", error);
