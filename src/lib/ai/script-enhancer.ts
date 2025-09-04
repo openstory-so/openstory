@@ -54,7 +54,7 @@ let openrouter: OpenAI | null = null;
 function getOpenRouterClient(): OpenAI {
   if (!openrouter) {
     openrouter = new OpenAI({
-      apiKey: process.env.OPENROUTER_API_KEY || "test-key",
+      apiKey: process.env.OPENROUTER_KEY || "test-key",
       baseURL: "https://openrouter.ai/api/v1",
     });
   }
@@ -109,7 +109,7 @@ export async function enhanceScript(
     const validatedOptions = EnhanceScriptOptionsSchema.parse(options);
 
     // Check if OpenRouter API key is configured
-    if (!process.env.OPENROUTER_API_KEY) {
+    if (!process.env.OPENROUTER_KEY) {
       throw new Error("OpenRouter API key not configured");
     }
 
