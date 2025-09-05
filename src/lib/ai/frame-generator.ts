@@ -30,8 +30,6 @@ export interface FrameDescriptionResult {
     metadata: {
       scene: number;
       scriptChunk: string;
-      scriptStart: number; // Position within the scene
-      scriptEnd: number; // Position within the scene
       shotType?: string;
       sceneType?: string;
       sceneIntensity?: number;
@@ -104,8 +102,6 @@ export async function generateFrameDescriptions(
         metadata: {
           scene: sceneIndex,
           scriptChunk: frameScriptChunk,
-          scriptStart: frameScriptStart,
-          scriptEnd: frameScriptEnd,
           shotType,
           sceneType: scene.type,
           sceneIntensity: scene.intensity,

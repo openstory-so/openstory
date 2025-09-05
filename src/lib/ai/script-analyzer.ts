@@ -72,37 +72,41 @@ export async function analyzeScriptForFrames(
 Script:
 ${script}
 
-Divide this script into meaningful scenes. Each scene should represent a distinct part of the narrative.
+Your task: Extract meaningful chunks of the script text for each scene.
+
+For video scripts that have marked sections (like [0-3s] Hook, [4-10s] Setup, etc.), use those as your scene boundaries.
+For scripts without clear markings, divide into logical narrative sections.
 
 For each scene:
-1. Extract the EXACT text from the script that belongs to that scene
-2. Include ALL the text - don't skip anything
-3. The scenes together should contain the ENTIRE script with no gaps or overlaps
+1. Copy the COMPLETE text content from that section of the script
+2. Include dialogue, stage directions, everything in that section
+3. Make sure each scene has substantial content (not just a few words)
 
 Return JSON with this structure:
 {
   "scenes": [
     {
-      "scriptContent": "The exact script text for this scene (copy directly from the script)",
-      "description": "Brief description of what happens in this scene",
+      "scriptContent": "The complete text from this section, including dialogue and stage directions",
+      "description": "What happens in this scene",
       "duration": 10000,
       "type": "dialogue",
       "intensity": 5
     }
   ],
-  "characters": ["Character names found in script"],
-  "settings": ["Locations mentioned"],
+  "characters": ["Character names"],
+  "settings": ["Locations"],
   "themes": ["Main themes"],
   "totalDuration": 30000
 }
 
-IMPORTANT:
-- scriptContent must be the EXACT text from the script for that scene
-- All scenes combined must equal the complete original script
-- Aim for 3-5 scenes total
-- Each scene should be roughly equal in length
+IMPORTANT RULES:
+- scriptContent should be the COMPLETE text from that scene section
+- Include stage directions in parentheses, dialogue, everything
+- If the script has sections like [0-3s] Hook, extract everything from that section
+- Each scene should have meaningful content (aim for 100-500 characters per scene)
+- Combine very short sections if needed to create substantial scenes
 
-Respond with ONLY valid JSON, no markdown or explanations.`,
+Respond with ONLY valid JSON.`,
       ),
     ],
     temperature: 0.1, // Very low temperature for consistent structured output

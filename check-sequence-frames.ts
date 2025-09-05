@@ -50,9 +50,9 @@ async function checkSequenceFrames() {
 
     const metadata = frame.metadata as Record<string, unknown>;
     if (metadata) {
-      console.log("Metadata scriptStart:", metadata.scriptStart);
-      console.log("Metadata scriptEnd:", metadata.scriptEnd);
       const scriptChunk = metadata.scriptChunk as string | undefined;
+      console.log("Metadata scene:", metadata.scene);
+      console.log("Metadata shotType:", metadata.shotType);
       console.log("Metadata scriptChunk length:", scriptChunk?.length || 0);
       console.log(
         "Metadata scriptChunk preview:",

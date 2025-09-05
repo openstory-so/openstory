@@ -40,10 +40,7 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
 
   // Check if frames are being generated based on sequence status
   const metadata = sequence?.metadata as FrameGenerationMetadata | null;
-  const sequenceGenerating =
-    sequence?.status === "processing" ||
-    metadata?.frameGeneration?.status === "processing" ||
-    metadata?.frameGeneration?.status === "generating_thumbnails";
+  const sequenceGenerating = sequence?.status === "processing";
 
   // Check for active frame generation job as fallback
   const { data: activeJob } = useActiveFrameGeneration(sequenceId);
