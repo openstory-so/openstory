@@ -11,11 +11,11 @@ import { createServerClient } from "@/lib/supabase/server";
 
 export async function GET(
   _request: Request,
-  { params }: { params: { sequenceId: string } },
+  { params }: { params: Promise<{ sequenceId: string }> },
 ) {
   try {
     const supabase = createServerClient();
-    const sequenceId = params.sequenceId;
+    const { sequenceId } = await params;
 
     // Validate UUID
     const uuidSchema = z.string().uuid();
@@ -125,6 +125,10 @@ export async function GET(
       frames: frameStatuses,
     });
   } catch (error) {
-    return handleApiError(error);
+    const velroError = handleApiError(error);
+    return NextResponse.json(
+      { error: velroError.message },
+      { status: velroError.statusCode },
+    );
   }
 }

@@ -19,11 +19,11 @@ const requestSchema = z.object({
 
 export async function POST(
   request: Request,
-  { params }: { params: { frameId: string } },
+  { params }: { params: Promise<{ frameId: string }> },
 ) {
   try {
     const supabase = createServerClient();
-    const frameId = params.frameId;
+    const { frameId } = await params;
 
     // Validate UUID
     const uuidSchema = z.string().uuid();
@@ -65,18 +65,22 @@ export async function POST(
       { status: 200 },
     );
   } catch (error) {
-    return handleApiError(error);
+    const velroError = handleApiError(error);
+    return NextResponse.json(
+      { error: velroError.message },
+      { status: velroError.statusCode },
+    );
   }
 }
 
 // GET endpoint to check motion generation status
 export async function GET(
   _request: Request,
-  { params }: { params: { frameId: string } },
+  { params }: { params: Promise<{ frameId: string }> },
 ) {
   try {
     const supabase = createServerClient();
-    const frameId = params.frameId;
+    const { frameId } = await params;
 
     // Validate UUID
     const uuidSchema = z.string().uuid();
@@ -122,6 +126,10 @@ export async function GET(
       motionModel,
     });
   } catch (error) {
-    return handleApiError(error);
+    const velroError = handleApiError(error);
+    return NextResponse.json(
+      { error: velroError.message },
+      { status: velroError.statusCode },
+    );
   }
 }

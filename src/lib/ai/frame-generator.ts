@@ -6,13 +6,13 @@
 import type { Json } from "@/types/database";
 
 export interface GenerateFrameDescriptionsParams {
-  script: string;
   scriptAnalysis: {
     scenes: Array<{
-      start: number;
-      end: number;
+      scriptContent: string; // The actual script text for this scene
       description: string;
       duration?: number;
+      type?: string;
+      intensity?: number;
     }>;
     characters?: string[];
     settings?: string[];
@@ -30,9 +30,11 @@ export interface FrameDescriptionResult {
     metadata: {
       scene: number;
       scriptChunk: string;
-      scriptStart: number;
-      scriptEnd: number;
+      scriptStart: number; // Position within the scene
+      scriptEnd: number; // Position within the scene
       shotType?: string;
+      sceneType?: string;
+      sceneIntensity?: number;
       characters?: string[];
       settings?: string[];
     };
@@ -47,12 +49,7 @@ export interface FrameDescriptionResult {
 export async function generateFrameDescriptions(
   params: GenerateFrameDescriptionsParams,
 ): Promise<FrameDescriptionResult> {
-  const { script, scriptAnalysis, framesPerScene = 5 } = params;
-
-  console.log("[FrameGenerator] Generating frames from script chunks", {
-    scenes: scriptAnalysis.scenes.length,
-    framesPerScene,
-  });
+  const { scriptAnalysis, framesPerScene = 5 } = params;
 
   const frames: FrameDescriptionResult["frames"] = [];
   let orderIndex = 0;
@@ -65,19 +62,30 @@ export async function generateFrameDescriptions(
     sceneIndex++
   ) {
     const scene = scriptAnalysis.scenes[sceneIndex];
-    const sceneDuration = scene.duration || 5000; // Default 5 seconds per scene
+    const sceneScript = scene.scriptContent || "";
+    const sceneDuration = scene.duration || 10000; // Default 10 seconds per scene
     const frameDuration = sceneDuration / framesPerScene;
 
-    // Calculate script chunks for each frame in the scene
-    const scriptLength = scene.end - scene.start;
-    const chunkSize = Math.ceil(scriptLength / framesPerScene);
+    // Divide the scene script into chunks for frames
+    const chunkSize = Math.ceil(sceneScript.length / framesPerScene);
 
     // Generate frames for this scene
     for (let frameIndex = 0; frameIndex < framesPerScene; frameIndex++) {
-      // Calculate script chunk positions for this frame
-      const frameScriptStart = scene.start + frameIndex * chunkSize;
-      const frameScriptEnd = Math.min(frameScriptStart + chunkSize, scene.end);
-      const frameScriptChunk = script.slice(frameScriptStart, frameScriptEnd);
+      // Extract script chunk for this frame
+      const frameScriptStart = frameIndex * chunkSize;
+      const frameScriptEnd = Math.min(
+        frameScriptStart + chunkSize,
+        sceneScript.length,
+      );
+      const frameScriptChunk = sceneScript.slice(
+        frameScriptStart,
+        frameScriptEnd,
+      );
+
+      // Skip empty chunks
+      if (!frameScriptChunk || frameScriptChunk.trim().length === 0) {
+        continue;
+      }
 
       // Define basic shot types that cycle through frames
       const shotTypes = [
@@ -99,6 +107,8 @@ export async function generateFrameDescriptions(
           scriptStart: frameScriptStart,
           scriptEnd: frameScriptEnd,
           shotType,
+          sceneType: scene.type,
+          sceneIntensity: scene.intensity,
           characters: scriptAnalysis.characters?.slice(0, 2),
           settings: scriptAnalysis.settings?.slice(0, 1),
         },

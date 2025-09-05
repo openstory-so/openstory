@@ -36,18 +36,6 @@ export async function verifyQStashSignature(
   }
 
   try {
-    console.log("[QStash Middleware] Verifying signature", {
-      url: request.url,
-      method: request.method,
-      hasCurrentKey: !!currentSigningKey,
-      hasNextKey: !!nextSigningKey,
-      headers: Object.fromEntries(
-        Array.from(request.headers.entries()).filter(([key]) =>
-          key.toLowerCase().startsWith("upstash-"),
-        ),
-      ),
-    });
-
     // Create receiver with signing keys
     const receiver = new Receiver({
       currentSigningKey,
@@ -92,13 +80,6 @@ export async function verifyQStashSignature(
         },
       );
     }
-
-    console.log("[QStash Middleware] Signature verified successfully", {
-      url: request.url,
-      messageId,
-      scheduleId,
-      retryCount: retryCount ? Number.parseInt(retryCount, 10) : 0,
-    });
 
     // Create a new request with the body (since we consumed it)
     const enhancedRequest = new Request(request.url, {
@@ -237,15 +218,16 @@ export function isQStashRequest(request: NextRequest): boolean {
  */
 export function logQStashRequest(
   request: NextRequest,
-  context?: Record<string, unknown>,
+  _context?: Record<string, unknown>,
 ) {
-  const metadata = extractQStashMetadata(request);
+  const _metadata = extractQStashMetadata(request);
 
-  console.log("[QStash Request]", {
-    url: request.url,
-    method: request.method,
-    ...metadata,
-    isQStashRequest: isQStashRequest(request),
-    ...context,
-  });
+  // QStash request logging disabled for production
+  // const requestInfo = {
+  //   url: request.url,
+  //   method: request.method,
+  //   ...metadata,
+  //   isQStashRequest: isQStashRequest(request),
+  //   ...context,
+  // });
 }

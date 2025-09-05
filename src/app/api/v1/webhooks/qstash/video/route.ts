@@ -18,18 +18,9 @@ import { BaseWebhookHandler, type JobProcessor } from "../base-handler";
  */
 const processVideoGeneration: JobProcessor = async (
   payload: JobPayload,
-  metadata,
+  _metadata,
 ): Promise<Record<string, unknown>> => {
-  const { jobId, data, userId, teamId } = payload;
-
-  console.log("[VideoWebhook] Processing video generation with FAL", {
-    jobId,
-    userId,
-    teamId,
-    messageId: metadata.messageId,
-    retryCount: metadata.retryCount,
-    hasData: !!data,
-  });
+  const { data } = payload;
 
   // Type assertion for video data
   const videoData = data as {
@@ -48,7 +39,6 @@ const processVideoGeneration: JobProcessor = async (
     // Handle image upload if base64 data is provided
     let imageUrl = videoData.image_url;
     if (videoData.image_data && !imageUrl) {
-      console.log("[VideoWebhook] Uploading image to FAL");
       const imageBuffer = Buffer.from(videoData.image_data, "base64");
       imageUrl = await uploadToFal(imageBuffer, "frame.jpg");
     }
@@ -65,12 +55,6 @@ const processVideoGeneration: JobProcessor = async (
     }
 
     // Generate video using FAL
-    console.log("[VideoWebhook] Calling FAL API", {
-      model,
-      hasPrompt: !!videoData.prompt,
-      hasImage: !!imageUrl,
-    });
-
     const falResponse = await generateVideo({
       model: FAL_VIDEO_MODELS[model],
       prompt: videoData.prompt,
@@ -84,7 +68,6 @@ const processVideoGeneration: JobProcessor = async (
     let thumbnailUrl: string | undefined;
     if (videoData.prompt && !imageUrl) {
       // Generate a thumbnail image from the prompt
-      console.log("[VideoWebhook] Generating thumbnail");
       const thumbnailResponse = await generateImage({
         prompt: videoData.prompt,
         image_size:
@@ -118,13 +101,6 @@ const processVideoGeneration: JobProcessor = async (
       },
     };
 
-    console.log("[VideoWebhook] Video generation completed", {
-      jobId,
-      videoUrl: falResponse.video.url,
-      fileSize: falResponse.video.file_size,
-      inferenceTime: falResponse.timings?.inference,
-    });
-
     return result;
   } catch (error) {
     console.error("[VideoWebhook] Video generation failed", error);
@@ -147,11 +123,6 @@ const processVideoGeneration: JobProcessor = async (
       },
     };
 
-    console.log("[VideoWebhook] Using fallback video", {
-      jobId,
-      error: fallbackResult.metadata.error,
-    });
-
     return fallbackResult;
   }
 };
@@ -165,12 +136,6 @@ const videoWebhookHandler = new BaseWebhookHandler();
  * POST handler for video generation webhooks
  */
 export const POST = withQStashVerification(async (request) => {
-  console.log("[VideoWebhook] Received video generation webhook", {
-    url: request.url,
-    messageId: request.qstashMessageId,
-    retryCount: request.qstashRetryCount,
-  });
-
   return videoWebhookHandler.processWebhook(request, processVideoGeneration);
 });
 

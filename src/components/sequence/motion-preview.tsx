@@ -9,7 +9,7 @@ import type { Frame } from "@/types/database";
 
 interface MotionPreviewProps {
   videoUrl?: string;
-  thumbnailUrl: string;
+  thumbnailUrl?: string;
   duration?: number;
   frame: Frame;
   onPlay?: () => void;
@@ -43,6 +43,7 @@ export const MotionPreview: React.FC<MotionPreviewProps> = ({
   const [imageError, setImageError] = useState(false);
 
   const hasVideo = Boolean(videoUrl);
+  const hasThumbnail = Boolean(thumbnailUrl && thumbnailUrl.trim() !== "");
 
   // Handle video events
   const handlePlay = () => {
@@ -185,25 +186,33 @@ export const MotionPreview: React.FC<MotionPreviewProps> = ({
             {imageLoading && (
               <div className="bg-muted animate-pulse absolute inset-0" />
             )}
-            {imageError ? (
+            {!hasThumbnail ? (
+              <div className="bg-muted flex h-full w-full items-center justify-center">
+                <span className="text-muted-foreground text-sm">
+                  No preview available
+                </span>
+              </div>
+            ) : imageError ? (
               <div className="bg-muted flex h-full w-full items-center justify-center">
                 <span className="text-muted-foreground text-sm">
                   Failed to load image
                 </span>
               </div>
             ) : (
-              <Image
-                src={thumbnailUrl}
-                alt={`Frame ${frame.order_index} preview`}
-                className={cn(
-                  "h-full w-full object-cover transition-opacity duration-300",
-                  imageLoading ? "opacity-0" : "opacity-100",
-                )}
-                onLoad={handleImageLoad}
-                onError={handleImageError}
-                width={1920}
-                height={1080}
-              />
+              thumbnailUrl && (
+                <Image
+                  src={thumbnailUrl}
+                  alt={`Frame ${frame.order_index} preview`}
+                  className={cn(
+                    "h-full w-full object-cover transition-opacity duration-300",
+                    imageLoading ? "opacity-0" : "opacity-100",
+                  )}
+                  onLoad={handleImageLoad}
+                  onError={handleImageError}
+                  width={1920}
+                  height={1080}
+                />
+              )
             )}
 
             {/* No motion indicator */}
@@ -248,7 +257,7 @@ export const MotionPreview: React.FC<MotionPreviewProps> = ({
           <video
             ref={videoRef}
             className="h-full w-full object-cover"
-            poster={thumbnailUrl}
+            poster={hasThumbnail && thumbnailUrl ? thumbnailUrl : undefined}
             muted={isMuted}
             autoPlay={autoPlay}
             onPlay={handlePlay}

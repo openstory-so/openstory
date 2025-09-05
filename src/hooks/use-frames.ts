@@ -36,6 +36,7 @@ export function useFramesBySequence(
   sequenceId: string,
   options?: {
     refetchInterval?: number | false;
+    staleTime?: number;
   },
 ) {
   return useQuery<Frame[]>({
@@ -47,9 +48,11 @@ export function useFramesBySequence(
       }
       throw new Error(result.error || "Failed to load frames");
     },
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    staleTime: options?.staleTime ?? 1000, // Default to 1 second for better responsiveness
     enabled: !!sequenceId,
     refetchInterval: options?.refetchInterval,
+    refetchOnMount: "always", // Always refetch on mount to ensure fresh data
+    refetchOnWindowFocus: true, // Refetch when window regains focus
   });
 }
 
@@ -465,12 +468,12 @@ export function useFramePreviewStatus(frames: Frame[]) {
     return frames.filter((frame) => {
       if (frame.thumbnail_url) return false; // Already has preview
 
-      // Check if frame was created recently (within last 10 minutes)
+      // Check if frame was created recently (within last 2 minutes for faster timeout)
       const createdAt = new Date(frame.created_at).getTime();
       const now = Date.now();
-      const tenMinutesAgo = now - 10 * 60 * 1000;
+      const twoMinutesAgo = now - 2 * 60 * 1000;
 
-      return createdAt > tenMinutesAgo;
+      return createdAt > twoMinutesAgo;
     });
   }, [frames]);
 
@@ -478,7 +481,8 @@ export function useFramePreviewStatus(frames: Frame[]) {
   const { data: refreshedFrames = frames } = useFramesBySequence(
     frames.length > 0 ? frames[0].sequence_id : "",
     {
-      refetchInterval: framesNeedingPreviews.length > 0 ? 3000 : false,
+      refetchInterval: framesNeedingPreviews.length > 0 ? 2000 : false, // Faster refresh
+      staleTime: 500, // Shorter stale time for preview updates
     },
   );
 
@@ -491,8 +495,17 @@ export function useFramePreviewStatus(frames: Frame[]) {
 
     refreshedFrames.forEach((frame) => {
       const hasPreview = !!frame.thumbnail_url;
-      const isGenerating =
-        framesNeedingPreviews.some((f) => f.id === frame.id) && !hasPreview;
+
+      // Check if this frame should show as generating
+      let isGenerating = false;
+      if (!hasPreview) {
+        const createdAt = new Date(frame.created_at).getTime();
+        const now = Date.now();
+        const twoMinutesAgo = now - 2 * 60 * 1000;
+
+        // Only show as generating if created recently
+        isGenerating = createdAt > twoMinutesAgo;
+      }
 
       statusMap.set(frame.id, {
         isGenerating,
@@ -501,5 +514,5 @@ export function useFramePreviewStatus(frames: Frame[]) {
     });
 
     return statusMap;
-  }, [refreshedFrames, framesNeedingPreviews]);
+  }, [refreshedFrames]);
 }

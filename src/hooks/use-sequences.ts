@@ -25,7 +25,13 @@ export function useSequences(teamId?: string) {
 }
 
 // Hook for getting single sequence
-export function useSequence(id: string) {
+export function useSequence(
+  id: string,
+  options?: {
+    refetchInterval?: number | false;
+    staleTime?: number;
+  },
+) {
   return useQuery<Sequence>({
     queryKey: sequenceKeys.detail(id),
     queryFn: async () => {
@@ -37,8 +43,11 @@ export function useSequence(id: string) {
       }
       throw new Error(result.error || "Failed to load sequence");
     },
-    staleTime: 5 * 60 * 1000,
+    staleTime: options?.staleTime ?? 1000, // Default to 1 second for better responsiveness
     enabled: !!id,
+    refetchInterval: options?.refetchInterval,
+    refetchOnMount: "always", // Always refetch on mount to ensure fresh data
+    refetchOnWindowFocus: true, // Refetch when window regains focus
   });
 }
 

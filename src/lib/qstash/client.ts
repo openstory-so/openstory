@@ -46,10 +46,7 @@ class QStashClient {
     this.client = new Client({ token });
     this.baseWebhookUrl = `${apiUrl}/api/v1/webhooks/qstash`;
 
-    console.log("[QStash] Client initialized", {
-      baseWebhookUrl: this.baseWebhookUrl,
-      hasToken: !!token,
-    });
+    // Client initialized successfully
   }
 
   /**
@@ -57,13 +54,6 @@ class QStashClient {
    */
   async publishMessage(message: QStashMessage): Promise<QStashResponse> {
     try {
-      console.log("[QStash] Publishing message", {
-        url: message.url,
-        hasBody: !!message.body,
-        delay: message.delay,
-        deduplicationId: message.deduplicationId,
-      });
-
       const response = await this.client.publishJSON({
         url: message.url,
         body: message.body,
@@ -84,11 +74,6 @@ class QStashClient {
         messageId: response.messageId,
         deduplicated: response.deduplicated,
       };
-
-      console.log("[QStash] Message published successfully", {
-        messageId: result.messageId,
-        deduplicated: result.deduplicated,
-      });
 
       return result;
     } catch (error) {
@@ -220,11 +205,7 @@ class QStashClient {
    */
   async cancelMessage(messageId: string): Promise<void> {
     try {
-      console.log("[QStash] Cancelling message", { messageId });
-
       await this.client.messages.delete(messageId);
-
-      console.log("[QStash] Message cancelled successfully", { messageId });
     } catch (error) {
       console.error("[QStash] Failed to cancel message", {
         error: error instanceof Error ? error.message : "Unknown error",
@@ -254,11 +235,7 @@ class QStashClient {
    */
   async getMessage(messageId: string): Promise<unknown> {
     try {
-      console.log("[QStash] Getting message details", { messageId });
-
       const message = await this.client.messages.get(messageId);
-
-      console.log("[QStash] Message retrieved successfully", { messageId });
 
       return message;
     } catch (error) {

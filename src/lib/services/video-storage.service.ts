@@ -32,11 +32,6 @@ export async function uploadVideoToStorage(
     // Construct storage path
     const storagePath = `teams/${teamId}/sequences/${sequenceId}/frames/${frameId}/motion.mp4`;
 
-    console.log("[Video Storage] Downloading video from URL", {
-      videoUrl,
-      storagePath,
-    });
-
     // Download video from URL
     const response = await fetch(videoUrl);
 
@@ -47,11 +42,6 @@ export async function uploadVideoToStorage(
     const videoBlob = await response.blob();
     const videoBuffer = await videoBlob.arrayBuffer();
     const videoData = new Uint8Array(videoBuffer);
-
-    console.log("[Video Storage] Uploading to Supabase Storage", {
-      path: storagePath,
-      size: videoData.byteLength,
-    });
 
     // Upload to Supabase Storage
     const { error } = await supabase.storage
@@ -69,11 +59,6 @@ export async function uploadVideoToStorage(
     const {
       data: { publicUrl },
     } = supabase.storage.from("videos").getPublicUrl(storagePath);
-
-    console.log("[Video Storage] Upload successful", {
-      path: storagePath,
-      publicUrl,
-    });
 
     return {
       success: true,
@@ -136,8 +121,6 @@ export async function deleteVideoFromStorage(
     if (error) {
       throw new Error(`Failed to delete video: ${error.message}`);
     }
-
-    console.log("[Video Storage] Video deleted", { path });
 
     return { success: true };
   } catch (error) {

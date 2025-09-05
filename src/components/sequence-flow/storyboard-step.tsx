@@ -1,11 +1,8 @@
 import type * as React from "react";
 import { useCallback, useMemo, useState } from "react";
 import { generateFrames } from "#actions/sequence";
-import {
-  FrameSkeleton,
-  FrameSkeletonGrid,
-} from "@/components/sequence/frame-skeleton";
-import { StoryboardFrame } from "@/components/sequence/storyboard-frame";
+import { StoryboardFrameSkeletonWithScript } from "@/components/sequence/storyboard-frame-skeleton-with-script";
+import { StoryboardFrameWithScript } from "@/components/sequence/storyboard-frame-with-script";
 import { SectionHeading } from "@/components/typography";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -13,10 +10,17 @@ import {
   useActiveFrameGeneration,
   useFramePreviewStatus,
   useFramesBySequence,
-  useReorderFrames,
 } from "@/hooks/use-frames";
 import { useSequence } from "@/hooks/use-sequences";
 import type { Frame } from "@/types/database";
+
+interface FrameGenerationMetadata {
+  frameGeneration?: {
+    status?: string;
+    expectedFrameCount?: number;
+    completedFrameCount?: number;
+  };
+}
 
 interface StoryboardStepProps {
   sequenceId: string;
@@ -29,15 +33,34 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
   onNext,
   onPrevious,
 }) => {
-  // Load the sequence data
-  const { data: sequence } = useSequence(sequenceId);
+  // Load the sequence data with polling
+  const { data: sequence } = useSequence(sequenceId, {
+    refetchInterval: 2000, // Poll sequence status
+  });
 
-  // Check for active frame generation job
+  // Check if frames are being generated based on sequence status
+  const metadata = sequence?.metadata as FrameGenerationMetadata | null;
+  const sequenceGenerating =
+    sequence?.status === "processing" ||
+    metadata?.frameGeneration?.status === "processing" ||
+    metadata?.frameGeneration?.status === "generating_thumbnails";
+
+  // Check for active frame generation job as fallback
   const { data: activeJob } = useActiveFrameGeneration(sequenceId);
-  const isBackgroundGenerating =
+  const jobGenerating =
     activeJob?.status === "running" || activeJob?.status === "pending";
-  const expectedFrameCount = activeJob?.framesProgress?.total || 3;
-  const completedFrames = activeJob?.framesProgress?.completed || 0;
+
+  const isBackgroundGenerating = sequenceGenerating || jobGenerating;
+
+  // Get expected frame count from sequence metadata or job
+  const expectedFrameCount =
+    metadata?.frameGeneration?.expectedFrameCount ||
+    activeJob?.framesProgress?.total ||
+    3;
+  const completedFrames =
+    metadata?.frameGeneration?.completedFrameCount ||
+    activeJob?.framesProgress?.completed ||
+    0;
 
   // Load frames with auto-refresh when generating
   const { data: frames = [] } = useFramesBySequence(sequenceId, {
@@ -47,8 +70,6 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
 
   // Track preview generation status for all frames
   const framePreviewStatus = useFramePreviewStatus(frames);
-
-  const reorderFrames = useReorderFrames();
 
   // Local state for generation
   const [generationError, setGenerationError] = useState<string | null>(null);
@@ -64,7 +85,7 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
     try {
       const result = await generateFrames(sequenceId);
 
-      if (result.success && result.frames) {
+      if (!result.success) {
         setGenerationError(result.error || "Failed to generate storyboard");
       }
     } catch (error) {
@@ -76,25 +97,6 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
       setGenerationError(errorMessage);
     }
   }, [sequence, styleId, sequenceId]);
-
-  // Frame reordering
-  const handleFrameReorder = useCallback(
-    (fromIndex: number, toIndex: number) => {
-      const newFrames = [...frames];
-      const [removed] = newFrames.splice(fromIndex, 1);
-      newFrames.splice(toIndex, 0, removed);
-
-      // Create the new order mapping
-      const frameOrders = newFrames.map((frame, index) => ({
-        id: frame.id,
-        order_index: index + 1,
-      }));
-
-      // Reorder frames
-      reorderFrames.mutate({ sequenceId, frameOrders });
-    },
-    [frames, reorderFrames, sequenceId],
-  );
 
   // Next button
   const handleNext = useCallback(() => {
@@ -146,7 +148,16 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
               </div>
             )}
           </div>
-          <FrameSkeletonGrid count={expectedFrameCount} isGenerating={true} />
+          <div className="space-y-6">
+            {Array.from({ length: expectedFrameCount }).map((_, index) => (
+              <StoryboardFrameSkeletonWithScript
+                // biome-ignore lint/suspicious/noArrayIndexKey: skeleton placeholders are static
+                key={`initial-skeleton-${index}`}
+                index={index}
+                isGenerating={true}
+              />
+            ))}
+          </div>
         </div>
       )}
 
@@ -171,26 +182,30 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
             </Button>
           </div>
 
-          <div className="grid gap-6 md:grid-cols-2">
+          {/* Single column layout with script on left, frame on right */}
+          <div className="space-y-6">
             {/* Show existing frames */}
             {frames
               .sort((a: Frame, b: Frame) => a.order_index - b.order_index)
-              .map((frame: Frame, index: number) => {
+              .map((frame: Frame) => {
                 const previewStatus = framePreviewStatus.get(frame.id);
                 return (
-                  <StoryboardFrame
+                  <StoryboardFrameWithScript
                     key={frame.id}
                     frame={frame}
                     isGeneratingPreview={previewStatus?.isGenerating || false}
-                    onReorder={(frameId: string, newOrder: number) => {
-                      const currentIndex = frames.findIndex(
-                        (f: Frame) => f.id === frameId,
-                      );
-                      if (currentIndex !== -1) {
-                        handleFrameReorder(currentIndex, newOrder - 1); // Convert to 0-based index
-                      }
+                    onEdit={(frameId) => {
+                      // TODO: Implement edit functionality
+                      console.log("Edit frame:", frameId);
                     }}
-                    data-testid={`storyboard-frame-${index}`}
+                    onDelete={(frameId) => {
+                      // TODO: Implement delete functionality
+                      console.log("Delete frame:", frameId);
+                    }}
+                    onRegenerate={(frameId) => {
+                      // TODO: Implement regenerate functionality
+                      console.log("Regenerate frame:", frameId);
+                    }}
                   />
                 );
               })}
@@ -200,7 +215,7 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
               frames.length < expectedFrameCount &&
               Array.from({ length: expectedFrameCount - frames.length }).map(
                 (_, index) => (
-                  <FrameSkeleton
+                  <StoryboardFrameSkeletonWithScript
                     key={`pending-frame-${frames.length + index}`}
                     index={frames.length + index}
                     isGenerating={true}

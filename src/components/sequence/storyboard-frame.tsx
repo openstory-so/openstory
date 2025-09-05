@@ -127,7 +127,7 @@ export const StoryboardFrame: React.FC<StoryboardFrameProps> = ({
           {...attributes}
           {...listeners}
         >
-          {frame.order_index}
+          {frame.order_index + 1}
         </div>
       )}
 
@@ -136,7 +136,7 @@ export const StoryboardFrame: React.FC<StoryboardFrameProps> = ({
         {frame.thumbnail_url ? (
           <Image
             src={frame.thumbnail_url}
-            alt={`Frame ${frame.order_index} preview`}
+            alt={`Frame ${frame.order_index + 1} preview`}
             className={cn(frameImageVariants())}
             width={1920}
             height={1080}

@@ -110,11 +110,6 @@ export async function callOpenRouter(
     const data = await response.json();
     const validated = openRouterResponseSchema.parse(data);
 
-    console.log("[OpenRouter] Request successful", {
-      model: params.model,
-      tokens: validated.usage?.total_tokens,
-    });
-
     return validated;
   } catch (error) {
     console.error("[OpenRouter] Request failed:", error);

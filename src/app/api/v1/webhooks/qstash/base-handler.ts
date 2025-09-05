@@ -59,22 +59,7 @@ export class BaseWebhookHandler {
     try {
       const body = await request.json();
 
-      console.log("[BaseWebhookHandler] Parsing request", {
-        url: request.url,
-        messageId: request.qstashMessageId,
-        hasBody: !!body,
-        bodyType: typeof body,
-      });
-
       const parsedBody = webhookRequestSchema.parse(body);
-
-      console.log("[BaseWebhookHandler] Request parsed successfully", {
-        jobId: parsedBody.jobId,
-        type: parsedBody.type,
-        hasData: !!parsedBody.data,
-        userId: parsedBody.userId,
-        teamId: parsedBody.teamId,
-      });
 
       return parsedBody;
     } catch (error) {
@@ -126,15 +111,6 @@ export class BaseWebhookHandler {
       webhookRequest = await this.parseRequest(request);
       const { jobId, type, data, userId, teamId } = webhookRequest;
 
-      console.log("[BaseWebhookHandler] Starting webhook processing", {
-        jobId,
-        type,
-        messageId: request.qstashMessageId,
-        retryCount: request.qstashRetryCount,
-        userId,
-        teamId,
-      });
-
       // Check if job exists and get current status
       const existingJob = await this.jobManager.getJob(jobId);
 
@@ -161,11 +137,6 @@ export class BaseWebhookHandler {
         existingJob.status === "completed" ||
         existingJob.status === "cancelled"
       ) {
-        console.log("[BaseWebhookHandler] Job already finalized", {
-          jobId,
-          currentStatus: existingJob.status,
-        });
-
         return NextResponse.json({
           success: true,
           jobId,
@@ -191,12 +162,6 @@ export class BaseWebhookHandler {
       } as JobPayload;
 
       // Process the job
-      console.log("[BaseWebhookHandler] Processing job", {
-        jobId,
-        type,
-        processingStartTime: new Date().toISOString(),
-      });
-
       const result = await processor(jobPayload, {
         messageId: request.qstashMessageId,
         retryCount: request.qstashRetryCount,
@@ -204,15 +169,6 @@ export class BaseWebhookHandler {
 
       // Mark job as completed
       await this.jobManager.completeJob(jobId, result);
-
-      const processingTime = Date.now() - startTime;
-
-      console.log("[BaseWebhookHandler] Job completed successfully", {
-        jobId,
-        type,
-        processingTimeMs: processingTime,
-        hasResult: !!result,
-      });
 
       const response: WebhookResponse = {
         success: true,

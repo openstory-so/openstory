@@ -77,12 +77,6 @@ const processFrameGeneration: JobProcessor = async (
     throw new Error(result.error || "Frame generation failed");
   }
 
-  console.log("[Frames Webhook] Frame generation completed", {
-    jobId,
-    sequenceId: data.sequenceId,
-    frameCount: result.frameCount,
-  });
-
   // Return a simple result object for job tracking
   return {
     sequenceId: data.sequenceId,

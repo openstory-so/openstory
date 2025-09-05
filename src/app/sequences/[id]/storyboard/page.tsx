@@ -13,7 +13,16 @@ import {
   useActiveFrameGeneration,
   useFramesBySequence,
 } from "@/hooks/use-frames";
+import { useSequence } from "@/hooks/use-sequences";
 import { useUser } from "@/hooks/use-user";
+
+interface FrameGenerationMetadata {
+  frameGeneration?: {
+    status?: string;
+    expectedFrameCount?: number;
+    completedFrameCount?: number;
+  };
+}
 
 interface StoryboardPageProps {
   params: Promise<{
@@ -28,15 +37,30 @@ export default function StoryboardPage({ params }: StoryboardPageProps) {
   // Verify session
   useUser();
 
-  // Check for active frame generation job
-  const { data: activeJob } = useActiveFrameGeneration(sequenceId);
+  // Load sequence to check status
+  const { data: sequence } = useSequence(sequenceId, {
+    refetchInterval: 2000, // Poll sequence status
+  });
+
+  // Check if frames are being generated based on sequence status
+  const metadata = sequence?.metadata as FrameGenerationMetadata | null;
   const isBackgroundGenerating =
+    sequence?.status === "processing" ||
+    metadata?.frameGeneration?.status === "processing" ||
+    metadata?.frameGeneration?.status === "generating_thumbnails";
+
+  // Check for active frame generation job as fallback
+  const { data: activeJob } = useActiveFrameGeneration(sequenceId);
+  const isJobGenerating =
     activeJob?.status === "running" || activeJob?.status === "pending";
+
+  // Consider generating if either sequence status or job indicates generation
+  const isGenerating = isBackgroundGenerating || isJobGenerating;
 
   // Load frames with auto-refresh when generating
   const { data: frames = [] } = useFramesBySequence(sequenceId, {
     // Refetch every 2 seconds when frames are being generated
-    refetchInterval: isBackgroundGenerating ? 2000 : false,
+    refetchInterval: isGenerating ? 2000 : false,
   });
 
   // Completed steps based on what's in the sequence

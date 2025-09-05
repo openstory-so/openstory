@@ -16,13 +16,8 @@ import {
 const sceneAnalysisSchema = z.object({
   scenes: z.array(
     z.object({
-      start: z.coerce.number().refine((val) => !Number.isNaN(val), {
-        message: "Start position must be a valid number",
-      }),
-      end: z.coerce.number().refine((val) => !Number.isNaN(val), {
-        message: "End position must be a valid number",
-      }),
-      description: z.string(),
+      scriptContent: z.string(), // The actual script text for this scene
+      description: z.string(), // Brief description of what happens
       duration: z.coerce
         .number()
         .refine((val) => !Number.isNaN(val), {
@@ -58,13 +53,8 @@ export type SceneAnalysis = z.infer<typeof sceneAnalysisSchema>;
  */
 export async function analyzeScriptForFrames(
   script: string,
-  aiProvider?: "openai" | "anthropic" | "openrouter",
+  _aiProvider?: "openai" | "anthropic" | "openrouter",
 ): Promise<SceneAnalysis> {
-  console.log("[ScriptAnalyzer] Analyzing script", {
-    scriptLength: script.length,
-    aiProvider: aiProvider || "openrouter",
-  });
-
   if (!process.env.OPENROUTER_KEY) {
     throw new Error("OPENROUTER_KEY is not set");
   }
@@ -74,36 +64,49 @@ export async function analyzeScriptForFrames(
     model: RECOMMENDED_MODELS.structured,
     messages: [
       systemMessage(
-        "You are a professional script analyst. Analyze scripts to identify scene boundaries and extract key information. You must respond with ONLY valid JSON data - no additional text, explanations, or markdown formatting. All numeric values must be actual numbers, not strings.",
+        "You are a professional script analyst. Divide scripts into logical scenes for storyboard generation. You must respond with ONLY valid JSON data - no additional text, explanations, or markdown formatting. All numeric values must be actual numbers, not strings.",
       ),
       userMessage(
-        `Analyze this script and identify scene boundaries:\n\n${script.slice(
-          0,
-          3000,
-        )}${script.length > 3000 ? "..." : ""}\n\nRespond with ONLY this JSON structure (no markdown code blocks, no additional text):\n${JSON.stringify(
-          {
-            scenes: [
-              {
-                start: 0,
-                end: 100,
-                description: "brief scene description",
-                duration: 5000,
-                type: "action",
-                intensity: 5,
-              },
-            ],
-            characters: ["Character Name"],
-            settings: ["Location Name"],
-            themes: ["Theme"],
-            totalDuration: 30000,
-          },
-          null,
-          2,
-        )}\n\nIMPORTANT: start/end are character positions (numbers), duration/totalDuration are milliseconds (numbers), intensity is 1-10 (number). Use actual numbers, not strings.`,
+        `Analyze this script and divide it into 3-5 logical scenes for storyboard generation.
+
+Script:
+${script}
+
+Divide this script into meaningful scenes. Each scene should represent a distinct part of the narrative.
+
+For each scene:
+1. Extract the EXACT text from the script that belongs to that scene
+2. Include ALL the text - don't skip anything
+3. The scenes together should contain the ENTIRE script with no gaps or overlaps
+
+Return JSON with this structure:
+{
+  "scenes": [
+    {
+      "scriptContent": "The exact script text for this scene (copy directly from the script)",
+      "description": "Brief description of what happens in this scene",
+      "duration": 10000,
+      "type": "dialogue",
+      "intensity": 5
+    }
+  ],
+  "characters": ["Character names found in script"],
+  "settings": ["Locations mentioned"],
+  "themes": ["Main themes"],
+  "totalDuration": 30000
+}
+
+IMPORTANT:
+- scriptContent must be the EXACT text from the script for that scene
+- All scenes combined must equal the complete original script
+- Aim for 3-5 scenes total
+- Each scene should be roughly equal in length
+
+Respond with ONLY valid JSON, no markdown or explanations.`,
       ),
     ],
-    temperature: 0.3, // Lower temperature for more consistent structured output
-    max_tokens: 1000,
+    temperature: 0.1, // Very low temperature for consistent structured output
+    max_tokens: 2000, // Increased to handle full script analysis
   });
 
   const content = response.choices[0].message.content;

@@ -231,12 +231,6 @@ export async function generateVideo(
   }
 
   try {
-    console.log("[FAL] Generating video", {
-      model,
-      hasPrompt: !!params.prompt,
-      hasImage: !!params.image_url,
-    });
-
     const result = await submitAndPoll<FalVideoResponse>(
       model,
       requestData,
@@ -244,12 +238,6 @@ export async function generateVideo(
     );
 
     const validated = falVideoResponseSchema.parse(result);
-
-    console.log("[FAL] Video generation successful", {
-      url: validated.video.url,
-      size: validated.video.file_size,
-      inference_time: validated.timings?.inference,
-    });
 
     return validated;
   } catch (error) {
@@ -289,26 +277,13 @@ export async function generateImage(
   if (params.seed !== undefined) requestData.seed = params.seed;
 
   try {
-    console.log("[FAL] Generating image", {
-      model,
-      prompt: params.prompt.slice(0, 100),
-    });
-
     const result = await submitAndPoll<FalImageResponse>(
       model,
       requestData,
       apiKey,
     );
 
-    // Log the actual response for debugging
-    console.log("[FAL] Raw API response:", JSON.stringify(result, null, 2));
-
     const validated = falImageResponseSchema.parse(result);
-
-    console.log("[FAL] Image generation successful", {
-      count: validated.images.length,
-      inference_time: validated.timings?.inference,
-    });
 
     return validated;
   } catch (error) {

@@ -20,11 +20,11 @@ const requestSchema = z.object({
 
 export async function POST(
   request: Request,
-  { params }: { params: { sequenceId: string } },
+  { params }: { params: Promise<{ sequenceId: string }> },
 ) {
   try {
     const supabase = createServerClient();
-    const sequenceId = params.sequenceId;
+    const { sequenceId } = await params;
 
     // Validate UUID
     const uuidSchema = z.string().uuid();
@@ -116,6 +116,10 @@ export async function POST(
       message: `Motion generation started for ${jobs.length} frames`,
     });
   } catch (error) {
-    return handleApiError(error);
+    const velroError = handleApiError(error);
+    return NextResponse.json(
+      { error: velroError.message },
+      { status: velroError.statusCode },
+    );
   }
 }

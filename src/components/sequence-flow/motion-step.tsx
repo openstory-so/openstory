@@ -245,7 +245,7 @@ export const MotionStep: React.FC<MotionStepProps> = ({
                   <MotionPreview
                     frame={frame}
                     videoUrl={frame.video_url || undefined}
-                    thumbnailUrl={frame.thumbnail_url || ""}
+                    thumbnailUrl={frame.thumbnail_url || undefined}
                     duration={frame.duration_ms || undefined}
                     loading={isGenerating}
                     data-testid={`motion-preview-${index}`}

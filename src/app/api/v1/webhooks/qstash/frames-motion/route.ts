@@ -16,7 +16,7 @@ import { BaseWebhookHandler, type JobProcessor } from "../base-handler";
  */
 const processMotionGeneration: JobProcessor = async (
   payload: JobPayload,
-  metadata,
+  _metadata,
 ): Promise<Record<string, unknown>> => {
   const jobManager = getJobManager();
   const supabase = createAdminClient();
@@ -24,15 +24,6 @@ const processMotionGeneration: JobProcessor = async (
   // Type assertion for motion generation payload
   const motionPayload = payload as MotionGenerationPayload;
   const { jobId, data } = motionPayload;
-
-  console.log("[Motion Webhook] Processing job:", {
-    jobId,
-    frameId: data.frameId,
-    sequenceId: data.sequenceId,
-    model: data.model,
-    messageId: metadata.messageId,
-    retryCount: metadata.retryCount,
-  });
 
   // Get stored job for authorization
   const storedJob = await jobManager.getJob(jobId);
@@ -73,7 +64,6 @@ const processMotionGeneration: JobProcessor = async (
 
   try {
     // Generate motion using Fal.ai
-    console.log("[Motion Webhook] Generating motion with Fal.ai");
     const videoResult = await generateMotionForFrame({
       imageUrl: data.thumbnailUrl,
       prompt: data.prompt,
@@ -88,10 +78,6 @@ const processMotionGeneration: JobProcessor = async (
       throw new Error(videoResult.error || "Motion generation failed");
     }
 
-    console.log(
-      "[Motion Webhook] Motion generated successfully, uploading to storage",
-    );
-
     // Upload video to Supabase Storage
     const storageResult = await uploadVideoToStorage({
       videoUrl: videoResult.videoUrl,
@@ -103,8 +89,6 @@ const processMotionGeneration: JobProcessor = async (
     if (!storageResult.success || !storageResult.url) {
       throw new Error(storageResult.error || "Failed to upload video");
     }
-
-    console.log("[Motion Webhook] Video uploaded successfully, updating frame");
 
     // Update frame with video URL
     const { error: updateError } = await supabase
@@ -127,12 +111,6 @@ const processMotionGeneration: JobProcessor = async (
     if (updateError) {
       throw new Error(`Failed to update frame: ${updateError.message}`);
     }
-
-    console.log("[Motion Webhook] Frame updated with video URL", {
-      jobId,
-      frameId: data.frameId,
-      videoUrl: storageResult.url,
-    });
 
     // Return result for job tracking
     return {

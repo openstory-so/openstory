@@ -200,6 +200,23 @@ export const ImageError: Story = {
   },
 };
 
+// No thumbnail provided (empty or undefined)
+export const NoThumbnail: Story = {
+  args: {
+    // No videoUrl, no thumbnail
+    thumbnailUrl: undefined,
+    duration: sampleFrame.duration_ms || undefined,
+    frame: sampleFrame,
+  },
+  parameters: {
+    docs: {
+      description: {
+        story: "Frame without a thumbnail shows a proper placeholder UI.",
+      },
+    },
+  },
+};
+
 // Multiple previews in a grid
 const MultiplePreviewsTemplate: Story = {
   render: (args: React.ComponentProps<typeof MotionPreview>) => {
@@ -327,6 +344,24 @@ export const LoadingStates: Story = {
           thumbnailUrl="https://broken-url.com/image.jpg"
           duration={5000}
           frame={generateMockFrame({ order_index: 3 })}
+        />
+      </div>
+
+      <div className="space-y-2">
+        <h3 className="text-sm font-medium">No Thumbnail</h3>
+        <MotionPreview
+          thumbnailUrl={undefined}
+          duration={5000}
+          frame={generateMockFrame({ order_index: 4 })}
+        />
+      </div>
+
+      <div className="space-y-2">
+        <h3 className="text-sm font-medium">Empty Thumbnail</h3>
+        <MotionPreview
+          thumbnailUrl=""
+          duration={5000}
+          frame={generateMockFrame({ order_index: 5 })}
         />
       </div>
     </div>

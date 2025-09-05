@@ -13,18 +13,9 @@ import { BaseWebhookHandler, type JobProcessor } from "../base-handler";
  */
 const processScriptAnalysis: JobProcessor = async (
   payload: JobPayload,
-  metadata,
+  _metadata,
 ): Promise<Record<string, unknown>> => {
-  const { jobId, data, userId, teamId } = payload;
-
-  console.log("[ScriptWebhook] Processing script analysis", {
-    jobId,
-    userId,
-    teamId,
-    messageId: metadata.messageId,
-    retryCount: metadata.retryCount,
-    hasData: !!data,
-  });
+  const { data } = payload;
 
   // Simulate script analysis processing
   // In a real implementation, this would:
@@ -112,14 +103,6 @@ const processScriptAnalysis: JobProcessor = async (
     },
   };
 
-  console.log("[ScriptWebhook] Script analysis completed", {
-    jobId,
-    totalFrames: result.analysis.totalFrames,
-    sceneCount: result.analysis.scenes.length,
-    characterCount: result.analysis.characters.length,
-    estimatedDuration: result.analysis.estimatedDuration,
-  });
-
   return result;
 };
 
@@ -132,12 +115,6 @@ const scriptWebhookHandler = new BaseWebhookHandler();
  * POST handler for script analysis webhooks
  */
 export const POST = withQStashVerification(async (request) => {
-  console.log("[ScriptWebhook] Received script analysis webhook", {
-    url: request.url,
-    messageId: request.qstashMessageId,
-    retryCount: request.qstashRetryCount,
-  });
-
   return scriptWebhookHandler.processWebhook(request, processScriptAnalysis);
 });
 

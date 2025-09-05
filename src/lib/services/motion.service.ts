@@ -137,14 +137,6 @@ export async function generateMotionForFrame(
     );
     const motionBucket = options.motionBucket || 127; // 1-255, higher = more motion
 
-    console.log("[Motion Service] Generating motion", {
-      model: modelConfig.model,
-      imageUrl: options.imageUrl,
-      duration,
-      fps,
-      motionBucket,
-    });
-
     // Import Fal.ai client dynamically to avoid initialization issues
     const { fal } = await import("@/lib/ai/fal-client");
 
@@ -213,11 +205,6 @@ export async function generateMotionForFrame(
       console.error("[Motion Service] No video URL in result:", result);
       throw new Error("No video URL returned from motion generation");
     }
-
-    console.log("[Motion Service] Motion generated successfully", {
-      model: modelKey,
-      videoUrl,
-    });
 
     return {
       success: true,

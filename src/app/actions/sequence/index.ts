@@ -9,6 +9,14 @@ import {
 } from "@/lib/supabase/server";
 import type { Frame, Sequence, SequenceInsert } from "@/types/database";
 
+// Helper function to revalidate all sequence-related pages
+function revalidateSequencePages(sequenceId: string): void {
+  revalidatePath(`/sequences/${sequenceId}`);
+  revalidatePath(`/sequences/${sequenceId}/script`);
+  revalidatePath(`/sequences/${sequenceId}/storyboard`);
+  revalidatePath(`/sequences/${sequenceId}/motion`);
+}
+
 // Schema definitions
 const createSequenceSchema = z.object({
   name: z.string().min(1).max(100),
@@ -281,7 +289,7 @@ export async function generateFrameMotion(
       throw new Error(error.message);
     }
 
-    revalidatePath(`/sequences/${data.sequence_id}`);
+    revalidateSequencePages(data.sequence_id);
     return {
       success: true,
       videoUrl: mockResult.videoUrl,
