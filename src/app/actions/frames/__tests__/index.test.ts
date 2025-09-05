@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { Sequence, Style } from "@/types/database";
 
 // Mock dependencies
@@ -187,34 +187,33 @@ const mockGenerateFrameDescriptions = mock(async () => ({
   frameCount: 4,
 }));
 
-// Mock modules
-mock.module("@/lib/supabase/server", () => ({
-  createServerClient: mockCreateServerClient,
-}));
-
-mock.module("@/lib/qstash/job-manager", () => ({
-  getJobManager: () => mockJobManager,
-}));
-
-mock.module("@/lib/qstash/client", () => ({
-  getQStashClient: () => mockQStashClient,
-}));
-
-mock.module("@/lib/ai/script-analyzer", () => ({
-  analyzeScriptForFrames: mockAnalyzeScript,
-}));
-
-mock.module("@/lib/ai/frame-generator", () => ({
-  generateFrameDescriptions: mockGenerateFrameDescriptions,
-}));
-
-// Mock revalidatePath
-mock.module("next/cache", () => ({
-  revalidatePath: mock(() => {}),
-}));
-
 describe("Frame Generation Optimization", () => {
   beforeEach(() => {
+    // Set up all module mocks inside beforeEach
+    mock.module("@/lib/supabase/server", () => ({
+      createServerClient: mockCreateServerClient,
+    }));
+
+    mock.module("@/lib/qstash/job-manager", () => ({
+      getJobManager: () => mockJobManager,
+    }));
+
+    mock.module("@/lib/qstash/client", () => ({
+      getQStashClient: () => mockQStashClient,
+    }));
+
+    mock.module("@/lib/ai/script-analyzer", () => ({
+      analyzeScriptForFrames: mockAnalyzeScript,
+    }));
+
+    mock.module("@/lib/ai/frame-generator", () => ({
+      generateFrameDescriptions: mockGenerateFrameDescriptions,
+    }));
+
+    // Mock revalidatePath
+    mock.module("next/cache", () => ({
+      revalidatePath: mock(() => {}),
+    }));
     // Clear all mocks
     mockCreateServerClient.mockClear();
     mockJobManager.createJob.mockClear();
@@ -320,5 +319,10 @@ describe("Frame Generation Optimization", () => {
     // The delete operation should have been called
     // We verify frames were created which implies delete was attempted if regenerateAll was true
     expect(mockCreateServerClient).toHaveBeenCalled();
+  });
+
+  afterEach(() => {
+    // Restore all mocks after each test
+    mock.restore();
   });
 });

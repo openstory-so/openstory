@@ -2,7 +2,16 @@
  * Tests for motion generation service
  */
 
-import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  mock,
+} from "bun:test";
 import type { Json } from "@/types/database";
 import {
   estimateMotionGeneration,
@@ -11,7 +20,7 @@ import {
   selectMotionModel,
 } from "./motion.service";
 
-// Mock the Fal.ai client
+// Mock the module once at the top level
 mock.module("@/lib/ai/fal-client", () => ({
   fal: {
     run: mock(),
@@ -19,19 +28,22 @@ mock.module("@/lib/ai/fal-client", () => ({
 }));
 
 describe("Motion Service", () => {
-  beforeEach(() => {
-    // Clear all mocks before each test
+  beforeEach(async () => {
+    // Clear mocks before each test
+    const { fal } = await import("@/lib/ai/fal-client");
+    (fal.run as any).mockClear();
   });
 
   afterEach(() => {
+    // Restore mocks after each test
     mock.restore();
   });
 
   describe("generateMotionForFrame", () => {
     it("should generate motion with SVD-LCM model", async () => {
-      const { fal } = await import("@/lib/ai/fal-client");
       const mockVideoUrl = "https://example.com/generated-video.mp4";
 
+      const { fal } = await import("@/lib/ai/fal-client");
       (fal.run as any).mockResolvedValue({
         video: {
           url: mockVideoUrl,
@@ -68,9 +80,9 @@ describe("Motion Service", () => {
     });
 
     it("should generate motion with Stable Video model", async () => {
-      const { fal } = await import("@/lib/ai/fal-client");
       const mockVideoUrl = "https://example.com/stable-video.mp4";
 
+      const { fal } = await import("@/lib/ai/fal-client");
       (fal.run as any).mockResolvedValue({
         video: {
           url: mockVideoUrl,
@@ -92,9 +104,9 @@ describe("Motion Service", () => {
     });
 
     it("should generate motion with AnimateDiff model", async () => {
-      const { fal } = await import("@/lib/ai/fal-client");
       const mockVideoUrl = "https://example.com/animatediff-video.mp4";
 
+      const { fal } = await import("@/lib/ai/fal-client");
       (fal.run as any).mockResolvedValue({
         video: {
           url: mockVideoUrl,
@@ -155,9 +167,10 @@ describe("Motion Service", () => {
 
       expect(animateDiffCall).toBeDefined();
       const prompt = animateDiffCall[1].input.prompt;
-      expect(prompt).toContain("dynamic camera movement");
-      expect(prompt).toContain("energetic motion");
-      expect(prompt).toContain("professional cinematography");
+      // The enhanced prompt should be a complete concatenation
+      expect(prompt).toBe(
+        "Character movement, dynamic camera movement, fast-paced action, energetic motion, quick cuts, maintain visual consistency, smooth transitions, professional cinematography",
+      );
     });
 
     it("should handle generation failure", async () => {

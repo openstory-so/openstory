@@ -1,4 +1,12 @@
-import { beforeEach, describe, expect, it, type Mock, mock } from "bun:test";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  type Mock,
+  mock,
+} from "bun:test";
 import { enhanceScript, enhanceScriptDirect } from "./enhance-script";
 
 // Mock the AI service with proper typing
@@ -8,32 +16,23 @@ const mockRateLimiter = {
   getRemainingTime: mock(() => 0) as Mock<() => number>,
 };
 
-// Only mock when this test is running - use a conditional mock
-const originalModule = (() => {
-  try {
-    return require("@/lib/ai/script-enhancer");
-  } catch {
-    return {};
-  }
-})();
-
-mock.module("@/lib/ai/script-enhancer", () => ({
-  ...originalModule,
-  enhanceScript: mockEnhanceScriptService,
-  scriptEnhancementRateLimiter: mockRateLimiter,
-}));
-
 // Mock Next.js headers with proper typing
 const mockHeaders = mock() as Mock<
   () => { get: Mock<(name: string) => string | null> }
 >;
 
-mock.module("next/headers", () => ({
-  headers: mockHeaders,
-}));
-
 describe("Enhance Script Server Actions", () => {
   beforeEach(async () => {
+    // Set up mocks inside beforeEach
+    mock.module("@/lib/ai/script-enhancer", () => ({
+      enhanceScript: mockEnhanceScriptService,
+      scriptEnhancementRateLimiter: mockRateLimiter,
+    }));
+
+    mock.module("next/headers", () => ({
+      headers: mockHeaders,
+    }));
+
     mockEnhanceScriptService.mockClear();
     mockHeaders.mockClear();
 
@@ -371,5 +370,10 @@ describe("Enhance Script Server Actions", () => {
       expect(result.success).toBe(true);
       expect(mockEnhanceScriptService).toHaveBeenCalled();
     });
+  });
+
+  afterEach(() => {
+    // Restore all mocks after each test
+    mock.restore();
   });
 });

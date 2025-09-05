@@ -151,7 +151,7 @@ describe("Motion Generation Webhook", () => {
     const responseData = await response.json();
 
     // Verify response
-    expect(response.status).toBe(200);
+    expect(responseData.status).toBe("completed");
     expect(responseData.success).toBe(true);
     expect(responseData.jobId).toBe(testUUIDs.job1);
 
@@ -161,6 +161,8 @@ describe("Motion Generation Webhook", () => {
       model: "svd-lcm",
       duration: 2,
       fps: 7,
+      motionBucket: 127,
+      prompt: undefined,
       styleStack: {
         genre: "action",
         mood: "exciting",
@@ -255,9 +257,13 @@ describe("Motion Generation Webhook", () => {
 
     // Import and call the handler
     const { POST } = await import("./route");
+    const response = await POST(request);
+    const responseData = await response.json();
 
-    // Expect the handler to throw an error
-    await expect(POST(request)).rejects.toThrow("Motion generation API error");
+    // Verify error response
+    expect(responseData.success).toBe(false);
+    expect(responseData.status).toBe("failed");
+    expect(responseData.error).toContain("Motion generation API error");
 
     // Verify frame metadata was updated with failure status
     const updateCalls = mockSupabase.from.mock.calls.filter(
@@ -320,10 +326,13 @@ describe("Motion Generation Webhook", () => {
 
     // Import and call the handler
     const { POST } = await import("./route");
+    const response = await POST(request);
+    const responseData = await response.json();
 
-    await expect(POST(request)).rejects.toThrow(
-      "Unauthorized: Team ID mismatch",
-    );
+    // Verify error response for unauthorized access
+    expect(responseData.success).toBe(false);
+    expect(responseData.status).toBe("failed");
+    expect(responseData.error).toBe("Unauthorized: Team ID mismatch");
   });
 
   it("should handle missing frame", async () => {
@@ -373,9 +382,12 @@ describe("Motion Generation Webhook", () => {
 
     // Import and call the handler
     const { POST } = await import("./route");
+    const response = await POST(request);
+    const responseData = await response.json();
 
-    await expect(POST(request)).rejects.toThrow(
-      `Frame not found: ${testUUIDs.frame1}`,
-    );
+    // Verify error response for missing frame
+    expect(responseData.success).toBe(false);
+    expect(responseData.status).toBe("failed");
+    expect(responseData.error).toBe(`Frame not found: ${testUUIDs.frame1}`);
   });
 });
