@@ -299,9 +299,27 @@ export async function generateImage(
 function getMockVideoResponse(
   params: FalVideoGenerationParams,
 ): FalVideoResponse {
+  // Use different sample videos based on a simple hash of the prompt/image
+  const sampleVideos = [
+    "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+    "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
+    "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+    "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
+    "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4",
+    "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4",
+    "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4",
+  ];
+
+  // Pick a video based on the input to get some variety
+  const hashStr = params.prompt || params.image_url || "";
+  const hashCode = hashStr
+    .split("")
+    .reduce((acc, char) => acc + char.charCodeAt(0), 0);
+  const videoIndex = Math.abs(hashCode) % sampleVideos.length;
+
   return {
     video: {
-      url: "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+      url: sampleVideos[videoIndex],
       content_type: "video/mp4",
       file_name: "generated_video.mp4",
       file_size: 5510872,

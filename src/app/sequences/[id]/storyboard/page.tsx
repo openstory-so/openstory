@@ -69,10 +69,6 @@ export default function StoryboardPage({ params }: StoryboardPageProps) {
     completedSteps.add(2);
   }
 
-  const handleNext = useCallback(() => {
-    router.push(`/sequences/${sequenceId}/motion`);
-  }, [sequenceId, router]);
-
   const handlePrevious = useCallback(() => {
     router.push(`/sequences/${sequenceId}/script`);
   }, [sequenceId, router]);
@@ -92,11 +88,7 @@ export default function StoryboardPage({ params }: StoryboardPageProps) {
         completedSteps={completedSteps}
       />
 
-      <StoryboardStep
-        sequenceId={sequenceId}
-        onNext={handleNext}
-        onPrevious={handlePrevious}
-      />
+      <StoryboardStep sequenceId={sequenceId} onPrevious={handlePrevious} />
     </PageContainer>
   );
 }

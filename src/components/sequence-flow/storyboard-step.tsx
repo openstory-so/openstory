@@ -6,6 +6,7 @@ import { StoryboardFrameWithScript } from "@/components/sequence/storyboard-fram
 import { SectionHeading } from "@/components/typography";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   useActiveFrameGeneration,
   useFramePreviewStatus,
@@ -24,13 +25,11 @@ interface FrameGenerationMetadata {
 
 interface StoryboardStepProps {
   sequenceId: string;
-  onNext: () => void;
   onPrevious: () => void;
 }
 
 export const StoryboardStep: React.FC<StoryboardStepProps> = ({
   sequenceId,
-  onNext,
   onPrevious,
 }) => {
   // Load the sequence data with polling
@@ -60,10 +59,13 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
     0;
 
   // Load frames with auto-refresh when generating
-  const { data: frames = [] } = useFramesBySequence(sequenceId, {
-    // Refetch every 2 seconds when frames are being generated
-    refetchInterval: isBackgroundGenerating ? 2000 : false,
-  });
+  const { data: frames = [], refetch: refetchFrames } = useFramesBySequence(
+    sequenceId,
+    {
+      // Refetch every 2 seconds when frames are being generated
+      refetchInterval: isBackgroundGenerating ? 2000 : false,
+    },
+  );
 
   // Track preview generation status for all frames
   const framePreviewStatus = useFramePreviewStatus(frames);
@@ -73,6 +75,13 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
 
   const hasFrames = frames.length > 0;
   const styleId = sequence?.style_id;
+
+  // Count frames with motion
+  const framesWithMotion = frames.filter((frame: Frame) => frame.video_url);
+  const totalFrames = frames.length;
+  const _hasAnyMotion = framesWithMotion.length > 0;
+  const allFramesHaveMotion =
+    totalFrames > 0 && framesWithMotion.length === totalFrames;
 
   const handleGenerateStoryboard = useCallback(async () => {
     if (!sequence?.script || !styleId) return;
@@ -95,12 +104,22 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
     }
   }, [sequence, styleId, sequenceId]);
 
-  // Next button
+  // Next button - now goes to the next sequence step (removed motion page)
   const handleNext = useCallback(() => {
     if (hasFrames) {
-      onNext();
+      // Could navigate to an export or final step
+      console.log("Sequence complete with motion!");
     }
-  }, [hasFrames, onNext]);
+  }, [hasFrames]);
+
+  // Handle frame updates (e.g., after motion generation)
+  const handleFrameUpdate = useCallback(
+    async (_updatedFrame: Frame) => {
+      // Trigger a refetch to update the frames list
+      await refetchFrames();
+    },
+    [refetchFrames],
+  );
 
   const canGenerate = useMemo(() => {
     return (
@@ -125,12 +144,38 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
     <div className="space-y-8" data-testid="storyboard-step">
       {/* Header */}
       <div className="space-y-2">
-        <SectionHeading>Storyboard</SectionHeading>
+        <SectionHeading>Storyboard & Motion</SectionHeading>
         <p className="text-muted-foreground">
-          Generate visual frames from your script. Each frame represents a key
-          moment in your story.
+          Generate visual frames from your script and add motion to bring them
+          to life. Each frame represents a key moment in your story.
         </p>
       </div>
+
+      {/* Motion Progress Card - shown when frames exist */}
+      {hasFrames && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Motion Progress</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="font-medium">
+                  {framesWithMotion.length} of {totalFrames} frames have motion
+                </div>
+                <div className="text-sm text-muted-foreground">
+                  {totalFrames - framesWithMotion.length} frames remaining
+                </div>
+              </div>
+              {allFramesHaveMotion && (
+                <div className="text-sm text-green-600 font-medium">
+                  ✓ All frames have motion
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Show skeleton loaders when frames are being generated in background */}
       {isBackgroundGenerating && !hasFrames && (
@@ -190,7 +235,9 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
                   <StoryboardFrameWithScript
                     key={frame.id}
                     frame={frame}
+                    styleId={styleId || undefined}
                     isGeneratingPreview={previewStatus?.isGenerating || false}
+                    onFrameUpdate={handleFrameUpdate}
                     onEdit={(frameId) => {
                       // TODO: Implement edit functionality
                       console.log("Edit frame:", frameId);
@@ -242,14 +289,14 @@ export const StoryboardStep: React.FC<StoryboardStepProps> = ({
           ← Back to Script
         </Button>
 
-        {hasFrames && (
+        {hasFrames && allFramesHaveMotion && (
           <Button
             onClick={handleNext}
             disabled={!canProceed}
             size="lg"
-            data-testid="next-to-motion-button"
+            data-testid="finish-sequence-button"
           >
-            Add Motion →
+            Finish Sequence →
           </Button>
         )}
       </div>

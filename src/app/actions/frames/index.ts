@@ -12,7 +12,6 @@ function revalidateSequencePages(sequenceId: string): void {
   revalidatePath(`/sequences/${sequenceId}`);
   revalidatePath(`/sequences/${sequenceId}/script`);
   revalidatePath(`/sequences/${sequenceId}/storyboard`);
-  revalidatePath(`/sequences/${sequenceId}/motion`);
 }
 
 // Schema definitions

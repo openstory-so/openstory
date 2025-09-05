@@ -6,13 +6,13 @@ import { cn } from "@/lib/utils";
 
 interface StepNavigationProps {
   sequenceId: string;
-  currentStep: 1 | 2 | 3;
+  currentStep: 1 | 2;
   completedSteps: Set<number>;
   className?: string;
 }
 
 interface StepConfig {
-  number: 1 | 2 | 3;
+  number: 1 | 2;
   title: string;
   description: string;
 }
@@ -25,13 +25,8 @@ const STEPS: StepConfig[] = [
   },
   {
     number: 2,
-    title: "Storyboard",
-    description: "Generate frames",
-  },
-  {
-    number: 3,
-    title: "Motion",
-    description: "Add movement",
+    title: "Storyboard & Motion",
+    description: "Generate frames and add motion",
   },
 ];
 
@@ -59,14 +54,11 @@ export const StepNavigation: React.FC<StepNavigationProps> = ({
     // Allow clicking on step 2 if step 1 is completed
     if (stepNumber === 2 && completedSteps.has(1)) return true;
 
-    // Allow clicking on step 3 if step 2 is completed
-    if (stepNumber === 3 && completedSteps.has(2)) return true;
-
     return false;
   };
 
   const handleStepClick = useCallback(
-    (step: 1 | 2 | 3) => {
+    (step: 1 | 2) => {
       if (step === currentStep) return;
       switch (step) {
         case 1:
@@ -75,11 +67,6 @@ export const StepNavigation: React.FC<StepNavigationProps> = ({
         case 2:
           if (completedSteps.has(1)) {
             router.push(`/sequences/${sequenceId}/storyboard`);
-          }
-          break;
-        case 3:
-          if (completedSteps.has(2)) {
-            router.push(`/sequences/${sequenceId}/motion`);
           }
           break;
       }

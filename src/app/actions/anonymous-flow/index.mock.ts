@@ -164,22 +164,23 @@ export async function generateFrameMotion(
     };
   }
 
-  // Generate mock video URL
-  // In a real implementation, this would be a signed URL to the generated video
-  const videoCategories = [
-    "ocean-waves",
-    "city-traffic",
-    "clouds-moving",
-    "forest-wind",
-    "fire-flames",
-    "water-flow",
-    "abstract-motion",
-    "particles",
+  // Generate mock video URL using real sample videos
+  // These are actual working video URLs for testing
+  const sampleVideos = [
+    "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+    "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
+    "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+    "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
+    "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4",
+    "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4",
+    "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4",
+    "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4",
+    "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/SubaruOutbackOnStreetAndDirt.mp4",
+    "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4",
   ];
 
-  const category = faker.helpers.arrayElement(videoCategories);
-  const videoId = faker.string.alphanumeric(8);
-  const videoUrl = `https://sample-videos.com/zip/10/mp4/SampleVideo_${category}_${videoId}.mp4`;
+  // Select a random video from the list
+  const videoUrl = faker.helpers.arrayElement(sampleVideos);
 
   const duration = faker.number.int({ min: 3000, max: 8000 }); // 3-8 seconds
 

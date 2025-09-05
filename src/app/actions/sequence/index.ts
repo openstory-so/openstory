@@ -7,14 +7,13 @@ import {
   createServerClient,
   createSessionAwareClient,
 } from "@/lib/supabase/server";
-import type { Frame, Sequence, SequenceInsert } from "@/types/database";
+import type { Frame, Json, Sequence, SequenceInsert } from "@/types/database";
 
 // Helper function to revalidate all sequence-related pages
 function revalidateSequencePages(sequenceId: string): void {
   revalidatePath(`/sequences/${sequenceId}`);
   revalidatePath(`/sequences/${sequenceId}/script`);
   revalidatePath(`/sequences/${sequenceId}/storyboard`);
-  revalidatePath(`/sequences/${sequenceId}/motion`);
 }
 
 // Schema definitions
@@ -255,30 +254,146 @@ export async function generateFrameMotion(
   try {
     const supabase = createServerClient();
 
-    // Use mock function to generate video URL
-    // In production, this would call an AI video service
-    const { generateFrameMotion: generateMockMotion } = await import(
-      "#actions/anonymous-flow"
-    );
-    const mockResult = await generateMockMotion(
-      frameId,
-      frameDescription,
-      styleId,
-    );
+    // Get the frame with sequence info to get team_id
+    const { data: frame, error: frameError } = await supabase
+      .from("frames")
+      .select("*, sequences!inner(style_id, team_id)")
+      .eq("id", frameId)
+      .single();
 
-    if (!mockResult.success) {
-      throw new Error(mockResult.error || "Failed to generate motion");
+    if (frameError || !frame) {
+      throw new Error("Frame not found");
     }
 
-    // Update frame with video URL
+    if (!frame.thumbnail_url) {
+      throw new Error(
+        "Frame must have a thumbnail image before generating motion",
+      );
+    }
+
+    const teamId = frame.sequences.team_id;
+    const sequenceId = frame.sequence_id;
+
+    // Get style stack from the style
+    const { data: style } = await supabase
+      .from("styles")
+      .select("config")
+      .eq("id", styleId)
+      .single();
+
+    // Use the real motion service
+    const { generateMotionForFrame } = await import(
+      "@/lib/services/motion.service"
+    );
+
+    const result = await generateMotionForFrame({
+      imageUrl: frame.thumbnail_url,
+      prompt: frameDescription,
+      model: "svd-lcm", // Start with fast model
+      styleStack: style?.config || undefined,
+      duration: 3, // 3 second videos
+      fps: 14,
+      motionBucket: 127, // Medium motion
+    });
+
+    let finalVideoUrl: string;
+    let videoStoragePath: string | undefined;
+
+    if (!result.success || !result.videoUrl) {
+      // Fallback to mock for development if Fal.ai fails
+      console.warn(
+        "[generateFrameMotion] Real motion generation failed, using mock",
+        result.error,
+      );
+      const { generateFrameMotion: generateMockMotion } = await import(
+        "#actions/anonymous-flow"
+      );
+      const mockResult = await generateMockMotion(
+        frameId,
+        frameDescription,
+        styleId,
+      );
+
+      if (!mockResult.success) {
+        throw new Error(mockResult.error || "Failed to generate motion");
+      }
+
+      finalVideoUrl = mockResult.videoUrl;
+
+      // Update frame with mock video URL
+      const { data, error } = await supabase
+        .from("frames")
+        .update({
+          video_url: mockResult.videoUrl,
+          duration_ms: mockResult.duration,
+          metadata: {
+            ...(frame.metadata as object),
+            motionGenerated: true,
+            motionModel: "mock",
+            motionDuration: mockResult.duration,
+            videoStoragePath: null, // Mock videos aren't stored
+          },
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", frameId)
+        .select()
+        .single();
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      revalidateSequencePages(data.sequence_id);
+      return {
+        success: true,
+        videoUrl: mockResult.videoUrl,
+        duration: mockResult.duration,
+      };
+    }
+
+    // Store the FAL video in Supabase Storage for permanent access
+    const { uploadVideoToStorage } = await import(
+      "@/lib/services/video-storage.service"
+    );
+
+    const storageResult = await uploadVideoToStorage({
+      videoUrl: result.videoUrl,
+      teamId,
+      sequenceId,
+      frameId,
+    });
+
+    if (storageResult.success && storageResult.url) {
+      finalVideoUrl = storageResult.url;
+      videoStoragePath = storageResult.path;
+      console.log(
+        "[generateFrameMotion] Video stored in Supabase:",
+        videoStoragePath,
+      );
+    } else {
+      // If storage fails, use the temporary FAL URL
+      console.warn(
+        "[generateFrameMotion] Failed to store video, using FAL URL:",
+        storageResult.error,
+      );
+      finalVideoUrl = result.videoUrl;
+    }
+
+    // Update frame with the stored video URL
     const { data, error } = await supabase
       .from("frames")
       .update({
-        video_url: mockResult.videoUrl,
+        video_url: finalVideoUrl,
+        duration_ms: ((result.metadata?.duration as number) || 3) * 1000,
         metadata: {
+          ...(frame.metadata as object),
           motionGenerated: true,
-          motionDuration: mockResult.duration,
-        },
+          motionModel: (result.metadata?.model as string) || "svd-lcm",
+          motionMetadata: result.metadata as Json | undefined,
+          videoStoragePath,
+          videoStoredAt: videoStoragePath ? new Date().toISOString() : null,
+          falVideoUrl: result.videoUrl, // Keep original FAL URL for reference
+        } as Json,
         updated_at: new Date().toISOString(),
       })
       .eq("id", frameId)
@@ -292,8 +407,8 @@ export async function generateFrameMotion(
     revalidateSequencePages(data.sequence_id);
     return {
       success: true,
-      videoUrl: mockResult.videoUrl,
-      duration: mockResult.duration,
+      videoUrl: finalVideoUrl,
+      duration: ((result.metadata?.duration as number) || 3) * 1000,
     };
   } catch (error) {
     console.error("Error generating motion:", error);

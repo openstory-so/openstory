@@ -1,14 +1,20 @@
+import { Play, Video } from "lucide-react";
 import Image from "next/image";
 import type * as React from "react";
+import { useCallback, useRef, useState } from "react";
+import { generateFrameMotion } from "#actions/sequence";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import type { Frame } from "@/types/database";
 
 interface StoryboardFrameWithScriptProps {
   frame: Frame;
   isGeneratingPreview?: boolean;
+  styleId?: string;
   onEdit?: (frameId: string) => void;
   onDelete?: (frameId: string) => void;
   onRegenerate?: (frameId: string) => void;
+  onFrameUpdate?: (frame: Frame) => void;
 }
 
 export const StoryboardFrameWithScript: React.FC<
@@ -16,14 +22,115 @@ export const StoryboardFrameWithScript: React.FC<
 > = ({
   frame,
   isGeneratingPreview = false,
+  styleId,
   onEdit,
   onDelete,
   onRegenerate,
+  onFrameUpdate,
 }) => {
   // Extract script chunk from metadata or use description
   const metadata = frame.metadata as Record<string, unknown> | null;
   const scriptChunk = metadata?.scriptChunk as string | undefined;
   const displayScript = scriptChunk || frame.description;
+
+  // Video playback state
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [showVideo, setShowVideo] = useState(false);
+  const [isGeneratingMotion, setIsGeneratingMotion] = useState(false);
+  const [motionError, setMotionError] = useState<string | null>(null);
+
+  const hasVideo = Boolean(frame.video_url);
+  const hasThumbnail = Boolean(frame.thumbnail_url);
+
+  // Handle video playback
+  const handlePlay = useCallback(() => {
+    console.log("[handlePlay] Called", {
+      hasVideo,
+      showVideo,
+      isPlaying,
+      videoUrl: frame.video_url,
+    });
+
+    if (!hasVideo) {
+      console.log("[handlePlay] No video URL");
+      return;
+    }
+
+    if (!showVideo) {
+      console.log("[handlePlay] Showing video element");
+      setShowVideo(true);
+      // Wait for video to be rendered before playing
+      setTimeout(() => {
+        if (videoRef.current) {
+          console.log("[handlePlay] Playing video");
+          videoRef.current.play().catch((err) => {
+            console.error("[handlePlay] Error playing video:", err);
+          });
+          setIsPlaying(true);
+        } else {
+          console.error("[handlePlay] Video ref is null after timeout");
+        }
+      }, 100);
+    } else if (isPlaying) {
+      console.log("[handlePlay] Pausing video");
+      videoRef.current?.pause();
+      setIsPlaying(false);
+    } else {
+      console.log("[handlePlay] Resuming video");
+      videoRef.current?.play().catch((err) => {
+        console.error("[handlePlay] Error resuming video:", err);
+      });
+      setIsPlaying(true);
+    }
+  }, [hasVideo, showVideo, isPlaying, frame.video_url]);
+
+  // Handle video ended
+  const handleVideoEnded = useCallback(() => {
+    setIsPlaying(false);
+    // Keep showing video so user can replay
+  }, []);
+
+  // Generate motion for the frame
+  const handleGenerateMotion = useCallback(async () => {
+    if (!styleId) {
+      setMotionError("Style ID is required for motion generation");
+      return;
+    }
+
+    setIsGeneratingMotion(true);
+    setMotionError(null);
+
+    try {
+      const result = await generateFrameMotion(
+        frame.id,
+        displayScript || `Frame ${frame.order_index + 1}`,
+        styleId,
+      );
+
+      if (result.success && result.videoUrl) {
+        // Update the frame with the new video URL
+        const updatedFrame = {
+          ...frame,
+          video_url: result.videoUrl,
+          duration_ms: result.duration
+            ? result.duration * 1000
+            : frame.duration_ms,
+        };
+        onFrameUpdate?.(updatedFrame);
+      } else {
+        setMotionError(result.error || "Failed to generate motion");
+      }
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Unexpected error during motion generation";
+      setMotionError(errorMessage);
+    } finally {
+      setIsGeneratingMotion(false);
+    }
+  }, [frame, displayScript, styleId, onFrameUpdate]);
 
   return (
     <div
@@ -61,36 +168,131 @@ export const StoryboardFrameWithScript: React.FC<
           Generated Frame
         </div>
 
-        {/* Frame image */}
+        {/* Frame image/video */}
         <div className="relative aspect-video w-full overflow-hidden rounded-md bg-muted">
-          {frame.thumbnail_url ? (
+          {/* Video element (hidden when not playing) */}
+          {hasVideo && showVideo && (
+            <video
+              ref={videoRef}
+              className="absolute inset-0 h-full w-full object-cover z-10"
+              src={frame.video_url || ""}
+              poster={
+                hasThumbnail ? frame.thumbnail_url || undefined : undefined
+              }
+              onEnded={handleVideoEnded}
+              onPause={() => setIsPlaying(false)}
+              onPlay={() => setIsPlaying(true)}
+              onError={(e) => {
+                console.error("[Video] Error loading video:", e);
+                console.error("[Video] URL:", frame.video_url);
+              }}
+              onLoadedMetadata={() => {
+                console.log(
+                  "[Video] Metadata loaded for frame",
+                  frame.order_index,
+                );
+              }}
+              controls={false}
+              playsInline
+              muted
+            />
+          )}
+
+          {/* Thumbnail image (shown when video not playing) */}
+          {(!showVideo || !hasVideo) && hasThumbnail ? (
             <Image
-              src={frame.thumbnail_url}
+              src={frame.thumbnail_url || ""}
               alt={`Frame ${frame.order_index + 1} preview`}
               className="h-full w-full object-cover"
               width={1920}
               height={1080}
             />
           ) : (
-            <div className="flex h-full w-full items-center justify-center bg-muted">
-              {isGeneratingPreview ? (
-                <div className="flex flex-col items-center gap-2">
-                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" />
-                  <span className="text-xs text-muted-foreground">
-                    Generating preview...
+            !showVideo &&
+            !hasThumbnail && (
+              <div className="flex h-full w-full items-center justify-center bg-muted">
+                {isGeneratingPreview ? (
+                  <div className="flex flex-col items-center gap-2">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" />
+                    <span className="text-xs text-muted-foreground">
+                      Generating preview...
+                    </span>
+                  </div>
+                ) : (
+                  <span className="text-sm text-muted-foreground">
+                    No preview available
                   </span>
-                </div>
-              ) : (
-                <span className="text-sm text-muted-foreground">
-                  No preview available
-                </span>
+                )}
+              </div>
+            )
+          )}
+
+          {/* Play button overlay */}
+          {hasVideo && (
+            <Button
+              variant="secondary"
+              size="icon"
+              className={cn(
+                "absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-20",
+                "h-12 w-12 rounded-full bg-black/60 text-white",
+                "transition-opacity hover:bg-black/80",
+                isPlaying ? "opacity-0 pointer-events-none" : "opacity-100",
               )}
+              onClick={handlePlay}
+            >
+              <Play className="h-5 w-5 ml-0.5" />
+            </Button>
+          )}
+
+          {/* Motion generation status */}
+          {isGeneratingMotion && (
+            <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-30">
+              <div className="flex flex-col items-center gap-2 text-white">
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white" />
+                <span className="text-xs">Generating motion...</span>
+              </div>
+            </div>
+          )}
+
+          {/* Video indicator badge */}
+          {hasVideo && (
+            <div className="absolute top-2 right-2 z-15">
+              <div className="bg-black/60 text-white flex items-center gap-1 rounded px-1.5 py-0.5 backdrop-blur-sm">
+                <Video className="h-3 w-3" />
+                <span className="text-xs font-medium">Motion</span>
+              </div>
             </div>
           )}
         </div>
 
+        {/* Motion error */}
+        {motionError && (
+          <div className="text-xs text-destructive mt-1">{motionError}</div>
+        )}
+
         {/* Action buttons - shown on hover */}
         <div className="flex gap-2 opacity-0 transition-opacity group-hover:opacity-100">
+          {!hasVideo && styleId && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleGenerateMotion}
+              disabled={isGeneratingMotion}
+              className="flex-1"
+            >
+              {isGeneratingMotion ? "Generating..." : "Generate Motion"}
+            </Button>
+          )}
+          {hasVideo && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handlePlay}
+              className="flex-1"
+            >
+              {isPlaying ? "Pause" : "Play Video"}
+            </Button>
+          )}
           {onRegenerate && (
             <Button
               size="sm"
@@ -98,7 +300,7 @@ export const StoryboardFrameWithScript: React.FC<
               onClick={() => onRegenerate(frame.id)}
               className="flex-1"
             >
-              Regenerate
+              Regenerate Frame
             </Button>
           )}
           {onEdit && (
