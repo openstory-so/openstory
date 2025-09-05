@@ -17,7 +17,8 @@ export const webhookRequestSchema = z.object({
     .literal("image")
     .or(z.literal("video"))
     .or(z.literal("script"))
-    .or(z.literal("frame_generation")),
+    .or(z.literal("frame_generation"))
+    .or(z.literal("motion")),
   data: z.record(z.string(), z.unknown()),
   userId: z.uuid().optional(),
   teamId: z.uuid().optional(),

@@ -25,6 +25,7 @@ export const JobType = {
   VIDEO: "video",
   SCRIPT: "script",
   FRAME_GENERATION: "frame_generation",
+  MOTION: "motion",
 } as const;
 
 export type JobTypeType = (typeof JobType)[keyof typeof JobType];
@@ -35,7 +36,8 @@ export const createJobSchema = z.object({
     .literal("image")
     .or(z.literal("video"))
     .or(z.literal("script"))
-    .or(z.literal("frame_generation")),
+    .or(z.literal("frame_generation"))
+    .or(z.literal("motion")),
   payload: z.record(z.string(), z.unknown()),
   userId: z.uuid().optional(),
   teamId: z.uuid().optional(),

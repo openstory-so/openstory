@@ -51,11 +51,20 @@ const regenerateFrameSchema = z.object({
   regenerateThumbnail: z.boolean().optional(),
 });
 
+const generateMotionSchema = z.object({
+  frameId: z.string().uuid(),
+  model: z.enum(["svd-lcm", "stable-video", "animatediff"]).optional(),
+  duration: z.number().min(1).max(10).optional(),
+  fps: z.number().min(7).max(30).optional(),
+  motionBucket: z.number().min(1).max(255).optional(),
+});
+
 export type CreateFrameInput = z.infer<typeof createFrameSchema>;
 export type UpdateFrameInput = z.infer<typeof updateFrameSchema>;
 export type DeleteFrameInput = z.infer<typeof deleteFrameSchema>;
 export type GenerateFramesInput = z.infer<typeof generateFramesSchema>;
 export type RegenerateFrameInput = z.infer<typeof regenerateFrameSchema>;
+export type GenerateMotionInput = z.infer<typeof generateMotionSchema>;
 
 /**
  * Create a new frame for a sequence
@@ -866,6 +875,136 @@ export async function getActiveFrameGenerationJob(sequenceId: string): Promise<{
       success: false,
       error:
         error instanceof Error ? error.message : "Failed to get active job",
+    };
+  }
+}
+
+/**
+ * Generate motion (video) for a frame from its thumbnail
+ */
+export async function generateMotionAction(
+  input: GenerateMotionInput,
+): Promise<{
+  success: boolean;
+  jobId?: string;
+  message?: string;
+  error?: string;
+}> {
+  try {
+    const validated = generateMotionSchema.parse(input);
+    const supabase = createServerClient();
+
+    // Get the frame with sequence info
+    const { data: frame, error: frameError } = await supabase
+      .from("frames")
+      .select("*, sequences!inner(id, team_id, script, style_id, styles(*))")
+      .eq("id", validated.frameId)
+      .single();
+
+    if (frameError || !frame) {
+      throw new Error("Frame not found");
+    }
+
+    // Validate frame has thumbnail
+    if (!frame.thumbnail_url) {
+      throw new Error("Frame must have a thumbnail before generating motion");
+    }
+
+    // Get the current user
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    // Verify user has access (through team membership)
+    if (user) {
+      const { data: member } = await supabase
+        .from("team_members")
+        .select("id")
+        .eq("team_id", frame.sequences.team_id)
+        .eq("user_id", user.id)
+        .single();
+
+      if (!member) {
+        throw new Error(
+          "You don't have permission to generate motion for this frame",
+        );
+      }
+    }
+
+    // Create a job for motion generation
+    const jobManager = getJobManager();
+    const job = await jobManager.createJob({
+      type: "motion",
+      payload: {
+        frameId: validated.frameId,
+        sequenceId: frame.sequence_id,
+        thumbnailUrl: frame.thumbnail_url,
+        prompt: frame.description,
+        model: validated.model,
+        duration: validated.duration,
+        fps: validated.fps,
+        motionBucket: validated.motionBucket,
+      },
+      userId: user?.id,
+      teamId: frame.sequences.team_id,
+    });
+
+    // Queue the motion generation job
+    const qstashClient = getQStashClient();
+    const motionPayload = {
+      jobId: job.id,
+      type: "motion" as const,
+      userId: user?.id,
+      teamId: frame.sequences.team_id,
+      data: {
+        frameId: validated.frameId,
+        sequenceId: frame.sequence_id,
+        thumbnailUrl: frame.thumbnail_url,
+        prompt: frame.description || undefined,
+        model: validated.model || "svd-lcm", // Default to fast model
+        duration: validated.duration || 2,
+        fps: validated.fps || 7,
+        motionBucket: validated.motionBucket || 127,
+      },
+    };
+
+    const response = await qstashClient.publishMotionJob(motionPayload, {
+      delay: 0, // Process immediately
+    });
+
+    console.log("[generateMotionAction] Motion job queued", {
+      frameId: validated.frameId,
+      jobId: job.id,
+      messageId: response.messageId,
+    });
+
+    // Update frame metadata with motion generation status
+    await supabase
+      .from("frames")
+      .update({
+        metadata: {
+          ...(frame.metadata as Record<string, unknown>),
+          motionJobId: job.id,
+          motionStatus: "generating",
+          motionModel: validated.model || "svd-lcm",
+        } as Json,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", validated.frameId);
+
+    revalidatePath(`/sequences/${frame.sequence_id}`);
+
+    return {
+      success: true,
+      jobId: job.id,
+      message: "Motion generation started successfully",
+    };
+  } catch (error) {
+    console.error("Error generating motion:", error);
+    return {
+      success: false,
+      error:
+        error instanceof Error ? error.message : "Failed to generate motion",
     };
   }
 }

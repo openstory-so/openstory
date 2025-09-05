@@ -7,6 +7,7 @@ import { expect, mock } from "bun:test";
 import type { VelroError } from "@/lib/errors";
 import type { Job } from "@/types/database";
 import type { JobPayload, QStashResponse } from "./client";
+import type { MotionGenerationPayload } from "./types";
 
 /**
  * Mock QStash client for testing
@@ -123,6 +124,24 @@ export const createTestJobPayload = (
     userId: "550e8400-e29b-41d4-a716-446655440011",
     teamId: "550e8400-e29b-41d4-a716-446655440021",
   };
+
+  // Handle different payload types
+  if (overrides?.type === "motion") {
+    const motionOverrides = overrides as Partial<MotionGenerationPayload>;
+    return {
+      jobId: motionOverrides.jobId || base.jobId,
+      type: "motion" as const,
+      data: {
+        frameId: "550e8400-e29b-41d4-a716-446655440030",
+        sequenceId: "550e8400-e29b-41d4-a716-446655440031",
+        thumbnailUrl: "https://example.com/thumbnail.jpg",
+        model: "svd-lcm",
+        ...(motionOverrides.data || {}),
+      },
+      userId: motionOverrides.userId || base.userId,
+      teamId: motionOverrides.teamId || base.teamId,
+    } as JobPayload;
+  }
 
   // Type assertion to handle discriminated union
   return { ...base, ...overrides } as JobPayload;

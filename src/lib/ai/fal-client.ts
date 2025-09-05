@@ -364,6 +364,26 @@ function getMockImageResponse(
 }
 
 /**
+ * FAL client for direct API calls
+ * Used when we need more control over specific model parameters
+ */
+export const fal = {
+  async run(
+    model: string,
+    params: { input: Record<string, unknown> },
+  ): Promise<unknown> {
+    const apiKey = process.env.FAL_KEY;
+
+    if (!apiKey) {
+      console.warn("[FAL] No API key found, returning mock response");
+      return getMockVideoResponse({});
+    }
+
+    return submitAndPoll(model, params.input, apiKey);
+  },
+};
+
+/**
  * Upload a file to FAL for use in generation
  */
 export async function uploadToFal(

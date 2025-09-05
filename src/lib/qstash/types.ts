@@ -4,12 +4,13 @@
 
 import type { Json } from "@/types/database";
 
-// Extend job types to include frame generation
+// Extend job types to include frame generation and motion
 export const JobType = {
   IMAGE: "image",
   VIDEO: "video",
   SCRIPT: "script",
   FRAME_GENERATION: "frame_generation",
+  MOTION: "motion",
 } as const;
 
 export type JobTypeType = (typeof JobType)[keyof typeof JobType];
@@ -83,12 +84,28 @@ export interface FrameGenerationPayload extends BaseJobPayload {
   };
 }
 
+// Motion generation payload for image-to-video
+export interface MotionGenerationPayload extends BaseJobPayload {
+  type: "motion";
+  data: {
+    frameId: string;
+    sequenceId: string;
+    thumbnailUrl: string;
+    prompt?: string;
+    model?: "svd-lcm" | "stable-video" | "animatediff"; // Model strategy
+    duration?: number; // Duration in seconds
+    fps?: number; // Frames per second
+    motionBucket?: number; // Motion intensity (1-255)
+  };
+}
+
 // Union type for all job payloads
 export type JobPayload =
   | ScriptAnalysisPayload
   | ImageGenerationPayload
   | VideoGenerationPayload
-  | FrameGenerationPayload;
+  | FrameGenerationPayload
+  | MotionGenerationPayload;
 
 // Frame generation result
 export interface FrameGenerationResult {

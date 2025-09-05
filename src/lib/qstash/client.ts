@@ -196,6 +196,26 @@ class QStashClient {
   }
 
   /**
+   * Publish a motion generation job (image-to-video)
+   */
+  async publishMotionJob(
+    payload: JobPayload,
+    options?: {
+      delay?: number;
+      deduplicationId?: string;
+    },
+  ): Promise<QStashResponse> {
+    return this.publishMessage({
+      url: `${this.baseWebhookUrl}/frames-motion`,
+      body: payload,
+      delay: options?.delay,
+      deduplicationId: options?.deduplicationId ?? payload.jobId,
+      contentBasedDeduplication: false,
+      retries: 3,
+    });
+  }
+
+  /**
    * Cancel a message (if it hasn't been processed yet)
    */
   async cancelMessage(messageId: string): Promise<void> {
