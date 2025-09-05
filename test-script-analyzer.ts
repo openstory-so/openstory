@@ -43,7 +43,6 @@ async function test() {
     // Now generate frames
     const frameDescriptions = await generateFrameDescriptions({
       scriptAnalysis: analysis,
-      framesPerScene: 1, // One frame per scene for testing
     });
 
     console.log("\n=== Frame Descriptions ===");

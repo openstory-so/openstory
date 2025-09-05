@@ -514,7 +514,6 @@ export async function generateFramesAction(
     const frameDescriptions = await generateFrameDescriptions({
       scriptAnalysis,
       styleStack: styleStack as Json | undefined,
-      framesPerScene: validated.options?.framesPerScene ?? 5,
       aiProvider: validated.options?.aiProvider,
     });
 

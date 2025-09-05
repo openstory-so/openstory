@@ -67,28 +67,27 @@ export async function analyzeScriptForFrames(
         "You are a professional script analyst. Divide scripts into logical scenes for storyboard generation. You must respond with ONLY valid JSON data - no additional text, explanations, or markdown formatting. All numeric values must be actual numbers, not strings.",
       ),
       userMessage(
-        `Analyze this script and divide it into 3-5 logical scenes for storyboard generation.
+        `Analyze this script and divide it into logical scenes for storyboard generation.
 
 Script:
 ${script}
 
-Your task: Extract meaningful chunks of the script text for each scene.
+Your task: Extract complete sections from the script, preserving ALL content.
 
-For video scripts that have marked sections (like [0-3s] Hook, [4-10s] Setup, etc.), use those as your scene boundaries.
-For scripts without clear markings, divide into logical narrative sections.
-
-For each scene:
-1. Copy the COMPLETE text content from that section of the script
-2. Include dialogue, stage directions, everything in that section
-3. Make sure each scene has substantial content (not just a few words)
+For video scripts with marked sections (like ### [0-3s] Hook), use those EXACT sections as scenes.
+For each marked section, include:
+- The section header (if present)
+- ALL stage directions (text in parentheses/italics)
+- ALL dialogue
+- Everything between one section header and the next
 
 Return JSON with this structure:
 {
   "scenes": [
     {
-      "scriptContent": "The complete text from this section, including dialogue and stage directions",
-      "description": "What happens in this scene",
-      "duration": 10000,
+      "scriptContent": "*(Stage direction)* Complete dialogue and all text from this section",
+      "description": "Brief summary",
+      "duration": 3000,
       "type": "dialogue",
       "intensity": 5
     }
@@ -99,12 +98,11 @@ Return JSON with this structure:
   "totalDuration": 30000
 }
 
-IMPORTANT RULES:
-- scriptContent should be the COMPLETE text from that scene section
-- Include stage directions in parentheses, dialogue, everything
-- If the script has sections like [0-3s] Hook, extract everything from that section
-- Each scene should have meaningful content (aim for 100-500 characters per scene)
-- Combine very short sections if needed to create substantial scenes
+CRITICAL: 
+- Extract EVERYTHING between section markers, including stage directions like *(Playful tone, pet visible)*
+- scriptContent must include both the stage directions AND the dialogue
+- Don't just extract dialogue - get the FULL section content
+- If you see "*(Animated, gesturing to pet)*" followed by dialogue, include BOTH
 
 Respond with ONLY valid JSON.`,
       ),
