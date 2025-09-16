@@ -289,7 +289,7 @@ export async function generateFrameMotion(
     const result = await generateMotionForFrame({
       imageUrl: frame.thumbnail_url,
       prompt: frameDescription,
-      model: "svd-lcm", // Start with fast model
+      model: "seedance", // Start with fast model
       styleStack: style?.config || undefined,
       duration: 3, // 3 second videos
       fps: 14,

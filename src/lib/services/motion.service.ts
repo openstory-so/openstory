@@ -22,6 +22,7 @@ export const MOTION_MODELS = {
   },
   "stable-video": {
     provider: "fal",
+    // TODO: fix this, there is currently no model with this name
     model: "fal-ai/stable-video-diffusion",
     name: "Balanced Motion (Stable Video)",
     duration: 15, // seconds to generate
@@ -45,6 +46,21 @@ export const MOTION_MODELS = {
     maxDuration: 8,
     minFps: 15,
     maxFps: 30,
+  },
+  seedance: {
+    provider: "fal",
+    model: "fal-ai/bytedance/seedance/v1/pro/image-to-video",
+    name: "Seedance Pro (ByteDance)",
+    duration: 60, // seconds to generate (estimate for high quality)
+    cost: 1.0, // per generation (estimate - check actual pricing)
+    quality: "premium",
+    defaultDuration: 5, // Default from API docs
+    defaultFps: 24, // Standard video FPS
+    maxDuration: 12, // Max from API docs
+    minFps: 24,
+    maxFps: 24, // Fixed FPS for Seedance
+    resolution: "1080p", // Default from API
+    aspectRatio: "auto", // Default from API
   },
 } as const;
 
@@ -189,6 +205,22 @@ export async function generateMotionForFrame(
             guidance_scale: 7.5,
             num_inference_steps: 25,
             seed: Math.floor(Math.random() * 1000000),
+          },
+        });
+        break;
+      }
+
+      case "seedance": {
+        result = await fal.run(modelConfig.model, {
+          input: {
+            prompt: enhancedPrompt,
+            image_url: options.imageUrl,
+            aspect_ratio: "auto", // or calculate from image
+            resolution: "1080p", // Default from API
+            duration: duration.toString(), // Convert to string as per API
+            camera_fixed: false, // Allow camera movement
+            seed: Math.floor(Math.random() * 1000000),
+            enable_safety_checker: true, // Default from API
           },
         });
         break;
