@@ -43,6 +43,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^0.544.0",
+    "motion": "^12.23.22",
     "next": "15.5.2",
     "openai": "^5.19.1",
     "postcss": "^8.5.6",
