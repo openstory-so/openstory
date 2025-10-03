@@ -1,10 +1,9 @@
+import { Check, Loader, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { Check, Loader, SendHorizonal, X } from "lucide-react";
 import * as React from "react";
-
+import { BrainIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { BrainIcon } from "@/components/icons";
 
 const useStatus = ({
   resloveTo,
@@ -26,7 +25,7 @@ const useStatus = ({
       setTimeout(() => {
         setStatus("idle");
       }, 1500);
-    } catch (error) {
+    } catch (_error) {
       setStatus("error");
       setTimeout(() => {
         setStatus("idle");
@@ -56,11 +55,11 @@ export const EnhancingButton: React.FC<
   return (
     <Button
       ref={ref}
-      disabled={status == "loading"}
+      disabled={status === "loading"}
       onClick={onSubmit}
       {...props}
       variant={status === "error" ? "destructive" : "default"}
-      className={cn("w-[6rem] flex items-center justify-center", className)}
+      className={cn("w-32", className)}
     >
       <AnimatePresence mode="wait">
         {status === "idle" && (

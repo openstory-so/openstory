@@ -1,12 +1,12 @@
 "use client";
-import { EnhancingButton } from "@/app/(new-prompt)/components/enhancing-button";
-import { ArrowIcon, BrainIcon } from "@/components/icons";
-import { Button } from "@/components/ui/button";
 import { useState } from "react";
+import { EnhancingButton } from "@/app/(new-prompt)/components/enhancing-button";
+import { ArrowIcon } from "@/components/icons";
+import { Button } from "@/components/ui/button";
 
 export function NewPromptInput() {
   const [inputText, setInputText] = useState(
-    "Wide shot from ground-level POV. West Texas desert landscape, 6PM golden hour ending, desaturated yellows and teals color grade, psychological thriller atmosphere. Rust-colored 1990s Chevrolet pickup truck emerges through heat shimmer distortion, headlights cutting through golden dusk. Man early 40s with faded blue work shirt rolled sleeves, worn jeans, brown cowboy boots, weathered cowboy hat, stubbled jaw, driving the truck. Young woman mid-20s with torn white tank top, khaki hiking shorts, brown hiking boots covered in red dust, long dark tangled dusty hair, sun-burned skin, lying on ground in foreground. Massive dust cloud trails vehicle.\n\nFincher's locked-off tripod composition, perfectly symmetrical with truck centered on horizon line. Viper FilmStream digital clarity showing every dust mote in volumetric lighting. Extreme depth of field from sharp foreground pebbles to sharp truck details 200 feet away. Color grade pushing warm tones to sickly yellow while shadows shift cyan."
+    "Wide shot from ground-level POV. West Texas desert landscape, 6PM golden hour ending, desaturated yellows and teals color grade, psychological thriller atmosphere. Rust-colored 1990s Chevrolet pickup truck emerges through heat shimmer distortion, headlights cutting through golden dusk. Man early 40s with faded blue work shirt rolled sleeves, worn jeans, brown cowboy boots, weathered cowboy hat, stubbled jaw, driving the truck. Young woman mid-20s with torn white tank top, khaki hiking shorts, brown hiking boots covered in red dust, long dark tangled dusty hair, sun-burned skin, lying on ground in foreground. Massive dust cloud trails vehicle.\n\nFincher's locked-off tripod composition, perfectly symmetrical with truck centered on horizon line. Viper FilmStream digital clarity showing every dust mote in volumetric lighting. Extreme depth of field from sharp foreground pebbles to sharp truck details 200 feet away. Color grade pushing warm tones to sickly yellow while shadows shift cyan.",
   );
   const [currentPhrase, _setCurrentPhrase] = useState(1);
   const totalPhrases = 3;
