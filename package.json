@@ -27,6 +27,7 @@
     "build-storybook": "storybook build"
   },
   "dependencies": {
+    "@base-ui-components/react": "^1.0.0-beta.4",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
@@ -41,7 +42,7 @@
     "@upstash/qstash": "^2.8.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "lucide-react": "^0.542.0",
+    "lucide-react": "^0.544.0",
     "next": "15.5.2",
     "openai": "^5.19.1",
     "postcss": "^8.5.6",
