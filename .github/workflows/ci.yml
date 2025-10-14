@@ -3,8 +3,14 @@ name: CI
 on:
   push:
     branches: [main]
+    paths:
+      - 'apps/frontend/**'
+      - '.github/workflows/ci.yml'
   pull_request:
     branches: [main]
+    paths:
+      - 'apps/frontend/**'
+      - '.github/workflows/ci.yml'
 
 jobs:
   test:
@@ -25,10 +31,13 @@ jobs:
         run: bun install
 
       - name: Run type checking
+        working-directory: apps/frontend
         run: bun tsc --noEmit
 
       - name: Run linting
+        working-directory: apps/frontend
         run: bun biome check .
 
       - name: Run tests
+        working-directory: apps/frontend
         run: bun test
