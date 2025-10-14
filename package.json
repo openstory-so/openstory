@@ -1,13 +1,13 @@
 {
-	"name": "velro",
-	"version": "0.1.0",
-	"private": true,
-	"workspaces": [
-		"apps/*"
-	],
-	"scripts": {
-		"dev:frontend": "bun run --filter frontend dev",
-		"build:frontend": "bun run --filter frontend build",
-		"start:frontend ": "bun run --filter frontend start"
-	}
+  "name": "velro",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev:frontend": "bun run --filter frontend dev",
+    "build:frontend": "bun run --filter frontend build",
+    "start:frontend ": "bun run --filter frontend start"
+  }
 }
