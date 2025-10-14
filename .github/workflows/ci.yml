@@ -6,11 +6,13 @@ on:
     paths:
       - 'apps/frontend/**'
       - '.github/workflows/ci.yml'
+      - 'package.json'
   pull_request:
     branches: [main]
     paths:
       - 'apps/frontend/**'
       - '.github/workflows/ci.yml'
+      - 'package.json'
 
 jobs:
   test:
@@ -28,6 +30,7 @@ jobs:
           node-version: 22
 
       - name: Install dependencies
+        working-directory: apps/frontend
         run: bun install
 
       - name: Run type checking
