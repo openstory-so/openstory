@@ -12,8 +12,8 @@
     "setup:frontend": "bun run --filter frontend setup:env",
     "supabase:start": "bunx supabase start",
     "supabase:stop": "bunx supabase stop",
-    "supabase:types": "bunx supabase gen types typescript --local > src/lib/supabase/gen.types.ts && biome check --write src/lib/supabase/gen.types.ts",
-    "supabase:types:ci": "test -n \"$POSTGRES_URL\" && bunx supabase gen types typescript --db-url \"$POSTGRES_URL\" > src/lib/supabase/gen.types.ts && biome check --write src/lib/supabase/gen.types.ts",
+    "supabase:types": "bunx supabase gen types typescript --local > apps/frontend/src/lib/supabase/gen.types.ts && biome check --write apps/frontend/src/lib/supabase/gen.types.ts",
+    "supabase:types:ci": "test -n \"$POSTGRES_URL\" && bunx supabase gen types typescript --db-url \"$POSTGRES_URL\" > apps/frontend/src/lib/supabase/gen.types.ts && biome check --write apps/frontend/src/lib/supabase/gen.types.ts",
     "qstash:dev": "echo \"you need to use npx\" && npx @upstash/qstash-cli dev",
     "workflow:assign": "./workflow/scripts/workflow-manager.sh assign",
     "workflow:orchestrator": "./workflow/scripts/orchestrator.sh"
