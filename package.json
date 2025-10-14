@@ -8,7 +8,7 @@
   "scripts": {
     "dev:frontend": "bun run --filter frontend dev",
     "build:frontend": "bun run --filter frontend build",
-    "start:frontend ": "bun run --filter frontend start",
+    "start:frontend": "bun run --filter frontend start",
     "setup:frontend": "bun run --filter frontend setup:env",
     "supabase:start": "bunx supabase start",
     "supabase:stop": "bunx supabase stop",
