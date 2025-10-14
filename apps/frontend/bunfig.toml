@@ -16,16 +16,6 @@ allowlist = [
 # Test configuration for bun test
 root = "./src"
 preload = ["./src/test/setup.ts"]
-timeout = 20000
-
-# Test patterns
-include = ["**/*.{test,spec}.{js,ts,jsx,tsx}"]
-exclude = [
-  "node_modules/**",
-  ".next/**",
-  "**/*.stories.{js,jsx,ts,tsx}",
-  "src/test/**"
-]
 
 # Coverage configuration (currently basic support in bun test)
 # More coverage options to be added as bun evolves
