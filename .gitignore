@@ -60,3 +60,5 @@ storybook-static
 
 # conductor
 .conductor/
+
+.augment

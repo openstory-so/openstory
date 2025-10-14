@@ -17,5 +17,8 @@
     "qstash:dev": "echo \"you need to use npx\" && npx @upstash/qstash-cli dev",
     "workflow:assign": "./workflow/scripts/workflow-manager.sh assign",
     "workflow:orchestrator": "./workflow/scripts/orchestrator.sh"
+  },
+  "dependencies": {
+    "@elysiajs/openapi": "^1.4.11"
   }
 }
