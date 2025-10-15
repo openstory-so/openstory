@@ -8,7 +8,7 @@ import { createClient } from "@supabase/supabase-js";
 // Create Supabase client for Storage only (not for auth or database)
 const supabase = createClient(
   process.env.SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
 );
 
 export interface UploadOptions {
@@ -30,18 +30,16 @@ export interface StorageResult {
  * Upload a file to Supabase Storage
  */
 export async function uploadToStorage(
-  options: UploadOptions
+  options: UploadOptions,
 ): Promise<StorageResult> {
   try {
     const { bucket, path, file, contentType, upsert = true } = options;
 
     // Upload to Supabase Storage
-    const { error } = await supabase.storage
-      .from(bucket)
-      .upload(path, file, {
-        contentType,
-        upsert,
-      });
+    const { error } = await supabase.storage.from(bucket).upload(path, file, {
+      contentType,
+      upsert,
+    });
 
     if (error) {
       throw new Error(`Storage upload failed: ${error.message}`);
@@ -104,8 +102,7 @@ export async function uploadImageFromUrl(params: {
     console.error("[Storage] Image upload from URL failed:", error);
     return {
       success: false,
-      error:
-        error instanceof Error ? error.message : "Failed to upload image",
+      error: error instanceof Error ? error.message : "Failed to upload image",
     };
   }
 }
@@ -148,8 +145,7 @@ export async function uploadVideoFromUrl(params: {
     console.error("[Storage] Video upload from URL failed:", error);
     return {
       success: false,
-      error:
-        error instanceof Error ? error.message : "Failed to upload video",
+      error: error instanceof Error ? error.message : "Failed to upload video",
     };
   }
 }
@@ -160,7 +156,7 @@ export async function uploadVideoFromUrl(params: {
 export async function getSignedUrl(
   bucket: string,
   path: string,
-  expiresIn: number = 3600 // 1 hour default
+  expiresIn: number = 3600, // 1 hour default
 ): Promise<StorageResult> {
   try {
     const { data, error } = await supabase.storage
@@ -191,7 +187,7 @@ export async function getSignedUrl(
  */
 export async function deleteFromStorage(
   bucket: string,
-  path: string
+  path: string,
 ): Promise<StorageResult> {
   try {
     const { error } = await supabase.storage.from(bucket).remove([path]);
@@ -212,4 +208,3 @@ export async function deleteFromStorage(
     };
   }
 }
-

@@ -1,5 +1,14 @@
-import { pgTable, uuid, varchar, text, timestamp, jsonb, boolean, index } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
+import {
+  boolean,
+  index,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+  varchar,
+} from "drizzle-orm/pg-core";
 import { teams } from "./teams";
 import { users } from "./users";
 
@@ -18,14 +27,20 @@ export const styles = pgTable(
     configJson: jsonb("config_json").default({}).notNull(),
     isPublic: boolean("is_public").default(false),
     previewUrl: text("preview_url"),
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
-    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    createdBy: uuid("created_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
   },
   (table) => ({
     teamIdIdx: index("idx_styles_team_id").on(table.teamId),
     isPublicIdx: index("idx_styles_is_public").on(table.isPublic),
-  })
+  }),
 );
 
 /**
@@ -47,4 +62,3 @@ export const stylesRelations = relations(styles, ({ one }) => ({
  */
 export type Style = typeof styles.$inferSelect;
 export type NewStyle = typeof styles.$inferInsert;
-

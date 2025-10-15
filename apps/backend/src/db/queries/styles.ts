@@ -1,7 +1,7 @@
-import { eq, and, or, desc } from "drizzle-orm";
+import { and, desc, eq, or } from "drizzle-orm";
 import { db } from "@/db";
-import { styles } from "@/db/schema";
 import type { NewStyle } from "@/db/schema";
+import { styles } from "@/db/schema";
 
 /**
  * Style query helpers
@@ -77,10 +77,12 @@ export async function deleteStyle(styleId: string) {
 /**
  * Check if style belongs to team
  */
-export async function isTeamStyle(styleId: string, teamId: string): Promise<boolean> {
+export async function isTeamStyle(
+  styleId: string,
+  teamId: string,
+): Promise<boolean> {
   const style = await db.query.styles.findFirst({
     where: and(eq(styles.id, styleId), eq(styles.teamId, teamId)),
   });
   return !!style;
 }
-

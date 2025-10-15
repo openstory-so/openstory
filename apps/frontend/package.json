@@ -75,7 +75,7 @@
     }
   },
   "devDependencies": {
-    "@biomejs/biome": "2.2.2",
+    "@biomejs/biome": "catalog:lint",
     "@chromatic-com/storybook": "^4.1.1",
     "@faker-js/faker": "^10.0.0",
     "@storybook/addon-a11y": "^9.1.3",

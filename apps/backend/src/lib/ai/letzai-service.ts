@@ -4,9 +4,9 @@
  * database logging, usage tracking, and cost calculation
  */
 
+import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { letzaiRequests } from "@/db/schema/ai-requests";
-import { eq, and } from "drizzle-orm";
 
 // LetzAI API configuration
 const LETZAI_API_URL = "https://api.letz.ai";
@@ -66,9 +66,7 @@ export class LetzAIService {
   constructor() {
     const apiKey = process.env.LETZAI_API_KEY;
     if (!apiKey) {
-      throw new Error(
-        "LETZAI_API_KEY environment variable is required"
-      );
+      throw new Error("LETZAI_API_KEY environment variable is required");
     }
     this.apiKey = apiKey;
   }
@@ -78,7 +76,7 @@ export class LetzAIService {
    */
   async generateImage(
     params: LetzAIImageRequest,
-    options?: LetzAIRequestOptions
+    options?: LetzAIRequestOptions,
   ): Promise<LetzAIServiceResponse<LetzAIImageResponse>> {
     return this.executeRequest({
       endpoint: "/images",
@@ -116,7 +114,7 @@ export class LetzAIService {
       // Execute the actual API request
       const result = await this.makeApiRequest(
         request.endpoint,
-        request.parameters
+        request.parameters,
       );
 
       const latencyMs = Date.now() - startTime;
@@ -131,14 +129,14 @@ export class LetzAIService {
           latencyMs,
           costCredits: cost.toString(),
         })
-        .where(eq(letzaiRequests.id, dbRecord!.id));
+        .where(eq(letzaiRequests.id, dbRecord?.id));
 
       return {
         success: true,
         data: result,
         latencyMs,
         cost,
-        requestId: dbRecord!.id,
+        requestId: dbRecord?.id,
       };
     } catch (error) {
       const latencyMs = Date.now() - startTime;
@@ -153,7 +151,7 @@ export class LetzAIService {
           error: errorMessage,
           latencyMs,
         })
-        .where(eq(letzaiRequests.id, dbRecord!.id));
+        .where(eq(letzaiRequests.id, dbRecord?.id));
 
       console.error("[LetzAI] Request failed:", error);
 
@@ -161,7 +159,7 @@ export class LetzAIService {
         success: false,
         error: errorMessage,
         latencyMs,
-        requestId: dbRecord!.id,
+        requestId: dbRecord?.id,
       };
     }
   }
@@ -171,7 +169,7 @@ export class LetzAIService {
    */
   private async makeApiRequest(
     endpoint: string,
-    params: Record<string, unknown>
+    params: Record<string, unknown>,
   ): Promise<unknown> {
     // Submit job to LetzAI
     const submitResponse = await fetch(`${LETZAI_API_URL}${endpoint}`, {
@@ -200,7 +198,7 @@ export class LetzAIService {
    */
   private async pollForCompletion(
     endpoint: string,
-    jobId: string
+    jobId: string,
   ): Promise<unknown> {
     const maxAttempts = 60; // 3 minutes max (60 * 3s)
     let attempts = 0;
@@ -212,7 +210,7 @@ export class LetzAIService {
           headers: {
             Authorization: `Bearer ${this.apiKey}`,
           },
-        }
+        },
       );
 
       if (!statusResponse.ok) {
@@ -299,10 +297,7 @@ export class LetzAIService {
   /**
    * Get usage statistics for a team or user
    */
-  async getUsageStats(params: {
-    teamId?: string;
-    userId?: string;
-  }): Promise<{
+  async getUsageStats(params: { teamId?: string; userId?: string }): Promise<{
     totalRequests: number;
     completedRequests: number;
     failedRequests: number;
@@ -321,18 +316,28 @@ export class LetzAIService {
     }
 
     // Execute query
-    const requests = conditions.length > 0
-      ? await db.select().from(letzaiRequests).where(and(...conditions))
-      : await db.select().from(letzaiRequests);
+    const requests =
+      conditions.length > 0
+        ? await db
+            .select()
+            .from(letzaiRequests)
+            .where(and(...conditions))
+        : await db.select().from(letzaiRequests);
 
     // Calculate statistics
     const totalRequests = requests.length;
     const completedRequests = requests.filter(
-      (r) => r.status === "completed"
+      (r) => r.status === "completed",
     ).length;
     const failedRequests = requests.filter((r) => r.status === "failed").length;
-    const totalCost = requests.reduce((sum, r) => sum + (Number(r.costCredits) || 0), 0);
-    const totalLatency = requests.reduce((sum, r) => sum + (r.latencyMs || 0), 0);
+    const totalCost = requests.reduce(
+      (sum, r) => sum + (Number(r.costCredits) || 0),
+      0,
+    );
+    const totalLatency = requests.reduce(
+      (sum, r) => sum + (r.latencyMs || 0),
+      0,
+    );
     const averageLatency = totalRequests > 0 ? totalLatency / totalRequests : 0;
 
     return {
@@ -357,4 +362,3 @@ export function getLetzAIService(): LetzAIService {
   }
   return letzaiServiceInstance;
 }
-

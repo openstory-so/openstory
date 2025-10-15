@@ -37,4 +37,3 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
       },
     };
   });
-

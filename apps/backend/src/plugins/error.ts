@@ -7,7 +7,7 @@ export class VelroError extends Error {
   constructor(
     message: string,
     public statusCode: number = 500,
-    public code?: string
+    public code?: string,
   ) {
     super(message);
     this.name = "VelroError";
@@ -119,11 +119,12 @@ export const errorPlugin = new Elysia({ name: "error" }).onError(
         message:
           process.env.NODE_ENV === "production"
             ? "Internal server error"
-            : error instanceof Error ? error.message : "Unknown error",
+            : error instanceof Error
+              ? error.message
+              : "Unknown error",
         code: "INTERNAL_ERROR",
         statusCode: 500,
       },
     };
-  }
+  },
 );
-

@@ -3,17 +3,17 @@
  * API endpoints for frame management
  */
 
+import { type } from "arktype";
 import { Elysia, t } from "elysia";
 import { requireAuth } from "@/plugins/auth";
-import { FrameService } from "@/services/frames";
 import {
-  createFrameSchema,
-  updateFrameSchema,
-  reorderFramesSchema,
   type CreateFrameInput,
+  createFrameSchema,
+  reorderFramesSchema,
   type UpdateFrameInput,
+  updateFrameSchema,
 } from "@/schemas/frames";
-import { type } from "arktype";
+import { FrameService } from "@/services/frames";
 
 /**
  * Frame routes plugin
@@ -46,7 +46,7 @@ export const frameRoutes = new Elysia({ prefix: "/frames" })
       query: t.Object({
         sequenceId: t.String(),
       }),
-    }
+    },
   )
 
   // POST /frames - Create a new frame
@@ -84,7 +84,7 @@ export const frameRoutes = new Elysia({ prefix: "/frames" })
         durationMs: t.Optional(t.Number()),
         metadata: t.Optional(t.Any()),
       }),
-    }
+    },
   )
 
   // GET /frames/:id - Get frame by ID
@@ -132,7 +132,7 @@ export const frameRoutes = new Elysia({ prefix: "/frames" })
         durationMs: t.Optional(t.Union([t.Number(), t.Null()])),
         metadata: t.Optional(t.Any()),
       }),
-    }
+    },
   )
 
   // DELETE /frames/:id - Delete frame
@@ -172,11 +172,7 @@ export const frameRoutes = new Elysia({ prefix: "/frames" })
         };
       }
 
-      const result = await FrameService.reorder(
-        sequenceId,
-        { frameIds },
-        user
-      );
+      const result = await FrameService.reorder(sequenceId, { frameIds }, user);
 
       return {
         success: true,
@@ -188,6 +184,5 @@ export const frameRoutes = new Elysia({ prefix: "/frames" })
         sequenceId: t.String(),
         frameIds: t.Array(t.String()),
       }),
-    }
+    },
   );
-

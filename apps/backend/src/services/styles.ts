@@ -4,17 +4,17 @@
  */
 
 import {
+  createStyle,
+  deleteStyle,
+  getPublicStyles,
   getStyleById,
   getTeamStyles,
-  getPublicStyles,
-  createStyle,
   updateStyle,
-  deleteStyle,
 } from "@/db/queries/styles";
-import { requireTeamMember } from "@/lib/auth/rbac";
 import type { User } from "@/lib/auth/config";
+import { requireTeamMember } from "@/lib/auth/rbac";
+import { AuthorizationError, NotFoundError } from "@/plugins/error";
 import type { CreateStyleInput, UpdateStyleInput } from "@/schemas/styles";
-import { NotFoundError, AuthorizationError } from "@/plugins/error";
 
 export class StyleService {
   /**
@@ -35,7 +35,9 @@ export class StyleService {
 
     // Private styles require team membership
     if (!user) {
-      throw new AuthorizationError("Authentication required to access private styles");
+      throw new AuthorizationError(
+        "Authentication required to access private styles",
+      );
     }
 
     await requireTeamMember(user, style.teamId);
@@ -66,11 +68,7 @@ export class StyleService {
    * Create a new style
    * Requires team membership
    */
-  static async create(
-    teamId: string,
-    input: CreateStyleInput,
-    user: User
-  ) {
+  static async create(teamId: string, input: CreateStyleInput, user: User) {
     // Check team membership
     await requireTeamMember(user, teamId);
 
@@ -90,11 +88,7 @@ export class StyleService {
    * Update a style
    * Requires team membership
    */
-  static async update(
-    styleId: string,
-    input: UpdateStyleInput,
-    user: User
-  ) {
+  static async update(styleId: string, input: UpdateStyleInput, user: User) {
     // Get style and check ownership
     const style = await getStyleById(styleId);
 
@@ -136,4 +130,3 @@ export class StyleService {
     return { success: true };
   }
 }
-

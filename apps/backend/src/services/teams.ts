@@ -4,32 +4,32 @@
  */
 
 import {
-  getTeamById,
-  getUserTeams,
-  createTeam,
-  updateTeam,
-  deleteTeam,
   addTeamMember,
-  removeTeamMember,
-  getTeamMember,
-  updateTeamMemberRole,
+  createTeam,
   createTeamInvitation,
+  deleteTeam,
+  getTeamById,
   getTeamInvitations,
+  getTeamMember,
+  getUserTeams,
+  removeTeamMember,
+  updateTeam,
+  updateTeamMemberRole,
 } from "@/db/queries/teams";
+import type { User } from "@/lib/auth/config";
 import {
-  requireTeamMember,
   requireTeamAdmin,
+  requireTeamMember,
   requireTeamOwner,
 } from "@/lib/auth/rbac";
-import type { User } from "@/lib/auth/config";
+import { ConflictError, NotFoundError } from "@/plugins/error";
 import type {
-  CreateTeamInput,
-  UpdateTeamInput,
   AddTeamMemberInput,
-  UpdateTeamMemberRoleInput,
+  CreateTeamInput,
   CreateTeamInvitationInput,
+  UpdateTeamInput,
+  UpdateTeamMemberRoleInput,
 } from "@/schemas/teams";
-import { NotFoundError, ConflictError } from "@/plugins/error";
 
 export class TeamService {
   /**
@@ -119,7 +119,7 @@ export class TeamService {
   static async addMember(
     teamId: string,
     input: AddTeamMemberInput,
-    user: User
+    user: User,
   ) {
     // Check team admin role
     await requireTeamAdmin(user, teamId);
@@ -144,11 +144,7 @@ export class TeamService {
    * Remove a member from a team
    * Requires team admin role
    */
-  static async removeMember(
-    teamId: string,
-    userId: string,
-    user: User
-  ) {
+  static async removeMember(teamId: string, userId: string, user: User) {
     // Check team admin role
     await requireTeamAdmin(user, teamId);
 
@@ -171,7 +167,7 @@ export class TeamService {
     teamId: string,
     userId: string,
     input: UpdateTeamMemberRoleInput,
-    user: User
+    user: User,
   ) {
     // Check team admin role
     await requireTeamAdmin(user, teamId);
@@ -194,7 +190,7 @@ export class TeamService {
   static async createInvitation(
     teamId: string,
     input: CreateTeamInvitationInput,
-    user: User
+    user: User,
   ) {
     // Check team admin role
     await requireTeamAdmin(user, teamId);
@@ -209,7 +205,8 @@ export class TeamService {
       role: input.role,
       invitedBy: user.id,
       token,
-      expiresAt: input.expiresAt || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+      expiresAt:
+        input.expiresAt || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
     });
 
     return invitation;
@@ -226,4 +223,3 @@ export class TeamService {
     return await getTeamInvitations(teamId);
   }
 }
-

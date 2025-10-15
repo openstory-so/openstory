@@ -35,7 +35,6 @@ export const loggingPlugin = new Elysia({ name: "logging" })
   .onAfterHandle(({ request, set }) => {
     const duration = Date.now() - ((set as any).startTime ?? Date.now());
     logger.info(
-      `← ${request.method} ${request.url} - ${set.status ?? 200} (${duration}ms)`
+      `← ${request.method} ${request.url} - ${set.status ?? 200} (${duration}ms)`,
     );
   });
-

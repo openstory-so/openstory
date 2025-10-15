@@ -1,19 +1,19 @@
+import { relations } from "drizzle-orm";
 import {
+  index,
+  integer,
+  jsonb,
   pgTable,
-  uuid,
-  varchar,
   text,
   timestamp,
-  jsonb,
-  integer,
-  index,
   unique,
+  uuid,
+  varchar,
 } from "drizzle-orm/pg-core";
-import { relations } from "drizzle-orm";
 import { sequenceStatusEnum } from "./enums";
+import { styles } from "./styles";
 import { teams } from "./teams";
 import { users } from "./users";
-import { styles } from "./styles";
 
 /**
  * Sequences table
@@ -29,18 +29,28 @@ export const sequences = pgTable(
     title: varchar("title", { length: 500 }).notNull(),
     script: text("script"),
     status: sequenceStatusEnum("status").notNull().default("draft"),
-    styleId: uuid("style_id").references(() => styles.id, { onDelete: "set null" }),
+    styleId: uuid("style_id").references(() => styles.id, {
+      onDelete: "set null",
+    }),
     metadata: jsonb("metadata").default({}).notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
-    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
-    updatedBy: uuid("updated_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    createdBy: uuid("created_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    updatedBy: uuid("updated_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
   },
   (table) => ({
     teamIdIdx: index("idx_sequences_team_id").on(table.teamId),
     statusIdx: index("idx_sequences_status").on(table.status),
     createdAtIdx: index("idx_sequences_created_at").on(table.createdAt),
-  })
+  }),
 );
 
 /**
@@ -60,17 +70,21 @@ export const frames = pgTable(
     thumbnailUrl: text("thumbnail_url"),
     videoUrl: text("video_url"),
     metadata: jsonb("metadata").default({}).notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
   },
   (table) => ({
     sequenceIdIdx: index("idx_frames_sequence_id").on(table.sequenceId),
     orderIdx: index("idx_frames_order").on(table.sequenceId, table.orderIndex),
     uniqueOrder: unique("frames_sequence_id_order_index_key").on(
       table.sequenceId,
-      table.orderIndex
+      table.orderIndex,
     ),
-  })
+  }),
 );
 
 /**
@@ -111,4 +125,3 @@ export type NewSequence = typeof sequences.$inferInsert;
 
 export type Frame = typeof frames.$inferSelect;
 export type NewFrame = typeof frames.$inferInsert;
-

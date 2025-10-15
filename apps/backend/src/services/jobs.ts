@@ -3,13 +3,13 @@
  * Business logic for async job management via Temporal
  */
 
+import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { jobs } from "@/db/schema/jobs";
-import { getTemporalClient } from "@/lib/temporal";
-import { eq, and, desc } from "drizzle-orm";
 import type { User } from "@/lib/auth";
-import { VelroError } from "@/plugins/error";
 import { canAccessTeam } from "@/lib/auth/rbac";
+import { getTemporalClient } from "@/lib/temporal";
+import { VelroError } from "@/plugins/error";
 
 /**
  * Jobs service class
@@ -34,7 +34,7 @@ export class JobsService {
       loraUrl?: string;
       loraScale?: number;
     },
-    user: User
+    user: User,
   ) {
     // Check team access
     const hasAccess = await canAccessTeam(user, params.teamId);
@@ -57,7 +57,7 @@ export class JobsService {
     // Start Temporal workflow
     const temporalClient = getTemporalClient();
     const { workflowId, runId } = await temporalClient.startFrameGeneration({
-      jobId: job!.id,
+      jobId: job?.id,
       ...params,
       userId: user.id,
     });
@@ -69,7 +69,7 @@ export class JobsService {
         workflowId,
         runId,
       })
-      .where(eq(jobs.id, job!.id));
+      .where(eq(jobs.id, job?.id));
 
     return {
       ...job,
@@ -96,7 +96,7 @@ export class JobsService {
       loraUrl?: string;
       loraScale?: number;
     },
-    user: User
+    user: User,
   ) {
     // Check team access
     const hasAccess = await canAccessTeam(user, params.teamId);
@@ -119,7 +119,7 @@ export class JobsService {
     // Start Temporal workflow
     const temporalClient = getTemporalClient();
     const { workflowId, runId } = await temporalClient.startMotionGeneration({
-      jobId: job!.id,
+      jobId: job?.id,
       ...params,
       userId: user.id,
     });
@@ -131,7 +131,7 @@ export class JobsService {
         workflowId,
         runId,
       })
-      .where(eq(jobs.id, job!.id));
+      .where(eq(jobs.id, job?.id));
 
     return {
       ...job,
@@ -150,7 +150,7 @@ export class JobsService {
       script: string;
       framesPerScene?: number;
     },
-    user: User
+    user: User,
   ) {
     // Check team access
     const hasAccess = await canAccessTeam(user, params.teamId);
@@ -173,7 +173,7 @@ export class JobsService {
     // Start Temporal workflow
     const temporalClient = getTemporalClient();
     const { workflowId, runId } = await temporalClient.startScriptAnalysis({
-      jobId: job!.id,
+      jobId: job?.id,
       ...params,
       userId: user.id,
     });
@@ -185,7 +185,7 @@ export class JobsService {
         workflowId,
         runId,
       })
-      .where(eq(jobs.id, job!.id));
+      .where(eq(jobs.id, job?.id));
 
     return {
       ...job,
@@ -228,7 +228,7 @@ export class JobsService {
       limit?: number;
       offset?: number;
     },
-    user: User
+    user: User,
   ) {
     // Check team access
     const hasAccess = await canAccessTeam(user, params.teamId);
@@ -263,10 +263,14 @@ export class JobsService {
    * Cancel job
    */
   static async cancelJob(jobId: string, user: User) {
-    const job = await this.getJob(jobId, user);
+    const job = await JobsService.getJob(jobId, user);
 
     if (job.status === "completed" || job.status === "failed") {
-      throw new VelroError("Cannot cancel completed or failed job", 400, "BAD_REQUEST");
+      throw new VelroError(
+        "Cannot cancel completed or failed job",
+        400,
+        "BAD_REQUEST",
+      );
     }
 
     // Cancel Temporal workflow
@@ -287,4 +291,3 @@ export class JobsService {
     return { success: true };
   }
 }
-

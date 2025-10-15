@@ -62,4 +62,3 @@ export const letzaiRequestStatusEnum = pgEnum("letzai_request_status", [
   "completed",
   "failed",
 ]);
-

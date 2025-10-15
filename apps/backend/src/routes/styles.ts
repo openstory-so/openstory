@@ -3,16 +3,16 @@
  * API endpoints for Style Stack management
  */
 
-import { Elysia, t } from "elysia";
-import { requireAuth, authPlugin } from "@/plugins/auth";
-import { StyleService } from "@/services/styles";
-import {
-  createStyleSchema,
-  updateStyleSchema,
-  type CreateStyleInput,
-  type UpdateStyleInput,
-} from "@/schemas/styles";
 import { type } from "arktype";
+import { Elysia, t } from "elysia";
+import { authPlugin, requireAuth } from "@/plugins/auth";
+import {
+  type CreateStyleInput,
+  createStyleSchema,
+  type UpdateStyleInput,
+  updateStyleSchema,
+} from "@/schemas/styles";
+import { StyleService } from "@/services/styles";
 
 /**
  * Style routes plugin
@@ -57,7 +57,7 @@ export const styleRoutes = new Elysia({ prefix: "/styles" })
       query: t.Object({
         teamId: t.String(),
       }),
-    }
+    },
   )
 
   // POST /styles - Create a new style
@@ -102,7 +102,7 @@ export const styleRoutes = new Elysia({ prefix: "/styles" })
         isPublic: t.Optional(t.Boolean()),
         metadata: t.Optional(t.Any()),
       }),
-    }
+    },
   )
 
   // GET /styles/:id - Get style by ID
@@ -148,7 +148,7 @@ export const styleRoutes = new Elysia({ prefix: "/styles" })
         isPublic: t.Optional(t.Boolean()),
         metadata: t.Optional(t.Any()),
       }),
-    }
+    },
   )
 
   // DELETE /styles/:id - Delete style
@@ -161,4 +161,3 @@ export const styleRoutes = new Elysia({ prefix: "/styles" })
       data: result,
     };
   });
-

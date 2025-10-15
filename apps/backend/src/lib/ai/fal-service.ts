@@ -5,11 +5,11 @@
  */
 
 import { createFalClient } from "@fal-ai/client";
+import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { falRequests } from "@/db/schema/ai-requests";
 import type { FalImageModel, FalVideoModel } from "./models";
 import { MODEL_PRICING } from "./models";
-import { eq, and } from "drizzle-orm";
 
 // Fal.ai client configuration
 const falClient = createFalClient({
@@ -45,7 +45,7 @@ export class FalService {
   async generateImage(
     model: FalImageModel,
     params: Record<string, unknown>,
-    options?: FalRequestOptions
+    options?: FalRequestOptions,
   ): Promise<FalServiceResponse> {
     return this.executeRequest({
       model,
@@ -60,7 +60,7 @@ export class FalService {
   async generateVideo(
     model: FalVideoModel,
     params: Record<string, unknown>,
-    options?: FalRequestOptions
+    options?: FalRequestOptions,
   ): Promise<FalServiceResponse> {
     return this.executeRequest({
       model,
@@ -98,7 +98,7 @@ export class FalService {
       // Execute the actual API request with retry logic
       const result = await this.makeApiRequest(
         request.model,
-        request.parameters
+        request.parameters,
       );
 
       const latencyMs = Date.now() - startTime;
@@ -113,14 +113,14 @@ export class FalService {
           latencyMs,
           costCredits: cost.toString(),
         })
-        .where(eq(falRequests.id, dbRecord!.id));
+        .where(eq(falRequests.id, dbRecord?.id));
 
       return {
         success: true,
         data: result,
         latencyMs,
         cost,
-        requestId: dbRecord!.id,
+        requestId: dbRecord?.id,
       };
     } catch (error) {
       const latencyMs = Date.now() - startTime;
@@ -135,7 +135,7 @@ export class FalService {
           error: errorMessage,
           latencyMs,
         })
-        .where(eq(falRequests.id, dbRecord!.id));
+        .where(eq(falRequests.id, dbRecord?.id));
 
       console.error("[Fal.ai] Request failed:", error);
 
@@ -143,7 +143,7 @@ export class FalService {
         success: false,
         error: errorMessage,
         latencyMs,
-        requestId: dbRecord!.id,
+        requestId: dbRecord?.id,
       };
     }
   }
@@ -153,7 +153,7 @@ export class FalService {
    */
   private async makeApiRequest(
     model: string,
-    params: Record<string, unknown>
+    params: Record<string, unknown>,
   ): Promise<unknown> {
     const maxRetries = 3;
     let lastError: Error | null = null;
@@ -176,7 +176,7 @@ export class FalService {
 
         // Wait before retrying (exponential backoff)
         if (attempt < maxRetries - 1) {
-          const delayMs = 1000 * Math.pow(2, attempt);
+          const delayMs = 1000 * 2 ** attempt;
           await new Promise((resolve) => setTimeout(resolve, delayMs));
         }
       }
@@ -279,18 +279,28 @@ export class FalService {
     }
 
     // Execute query
-    const requests = conditions.length > 0
-      ? await db.select().from(falRequests).where(and(...conditions))
-      : await db.select().from(falRequests);
+    const requests =
+      conditions.length > 0
+        ? await db
+            .select()
+            .from(falRequests)
+            .where(and(...conditions))
+        : await db.select().from(falRequests);
 
     // Calculate statistics
     const totalRequests = requests.length;
     const completedRequests = requests.filter(
-      (r) => r.status === "completed"
+      (r) => r.status === "completed",
     ).length;
     const failedRequests = requests.filter((r) => r.status === "failed").length;
-    const totalCost = requests.reduce((sum, r) => sum + (Number(r.costCredits) || 0), 0);
-    const totalLatency = requests.reduce((sum, r) => sum + (r.latencyMs || 0), 0);
+    const totalCost = requests.reduce(
+      (sum, r) => sum + (Number(r.costCredits) || 0),
+      0,
+    );
+    const totalLatency = requests.reduce(
+      (sum, r) => sum + (r.latencyMs || 0),
+      0,
+    );
     const averageLatency = totalRequests > 0 ? totalLatency / totalRequests : 0;
 
     return {
@@ -315,4 +325,3 @@ export function getFalService(): FalService {
   }
   return falServiceInstance;
 }
-

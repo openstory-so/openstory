@@ -3,15 +3,13 @@
   "workspaces": {
     "": {
       "name": "velro",
-      "dependencies": {
-        "@elysiajs/openapi": "^1.4.11",
-      },
     },
     "apps/backend": {
       "name": "backend",
       "version": "0.1.0",
       "dependencies": {
         "@elysiajs/cors": "^1.2.1",
+        "@elysiajs/openapi": "^1.4.11",
         "@elysiajs/swagger": "^1.2.1",
         "@supabase/supabase-js": "^2.56.0",
         "@temporalio/activity": "^1.13.1",
@@ -25,7 +23,7 @@
         "postgres": "^3.4.5",
       },
       "devDependencies": {
-        "@biomejs/biome": "2.2.2",
+        "@biomejs/biome": "catalog:lint",
         "@temporalio/testing": "^1.12.3",
         "@types/bun": "latest",
         "drizzle-kit": "^0.30.1",
@@ -72,7 +70,7 @@
         "zod": "^4.1.5",
       },
       "devDependencies": {
-        "@biomejs/biome": "2.2.2",
+        "@biomejs/biome": "catalog:lint",
         "@chromatic-com/storybook": "^4.1.1",
         "@faker-js/faker": "^10.0.0",
         "@storybook/addon-a11y": "^9.1.3",
@@ -100,6 +98,11 @@
         "tw-animate-css": "^1.3.7",
         "typescript": "^5",
       },
+    },
+  },
+  "catalogs": {
+    "lint": {
+      "@biomejs/biome": "2.2.2",
     },
   },
   "packages": {

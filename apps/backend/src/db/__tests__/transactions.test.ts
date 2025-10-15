@@ -1,13 +1,12 @@
-import { describe, test, expect, afterAll } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
 import { closeDatabase } from "@/db";
-import {
-  withTransaction,
-  createTeamWithOwner,
-  bulkCreateFrames,
-} from "@/db/transactions";
+import { createSequence, getSequenceFrames } from "@/db/queries/sequences";
 import { getTeamById, getTeamMember } from "@/db/queries/teams";
-import { getSequenceFrames } from "@/db/queries/sequences";
-import { createSequence } from "@/db/queries/sequences";
+import {
+  bulkCreateFrames,
+  createTeamWithOwner,
+  withTransaction,
+} from "@/db/transactions";
 
 describe("Database Transactions", () => {
   afterAll(async () => {
@@ -63,7 +62,7 @@ describe("Database Transactions", () => {
         name: "Team with Owner",
         slug,
       },
-      testUserId
+      testUserId,
     );
 
     expect(team).toBeDefined();
@@ -82,7 +81,7 @@ describe("Database Transactions", () => {
         name: "Bulk Frames Test Team",
         slug: `bulk-frames-${Date.now()}`,
       },
-      "00000000-0000-0000-0000-000000000003"
+      "00000000-0000-0000-0000-000000000003",
     );
 
     const sequence = await createSequence({
@@ -110,4 +109,3 @@ describe("Database Transactions", () => {
     expect(sequenceFrames.length).toBe(3);
   });
 });
-

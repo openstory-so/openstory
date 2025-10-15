@@ -4,12 +4,12 @@
  */
 
 import { Context } from "@temporalio/activity";
+import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { jobs } from "@/db/schema/jobs";
 import { frames } from "@/db/schema/sequences";
 import { getFalService, getOpenRouterService } from "@/lib/ai";
 import { uploadImageFromUrl, uploadVideoFromUrl } from "@/lib/storage/supabase";
-import { eq } from "drizzle-orm";
 
 /**
  * Activity: Update job status
@@ -94,7 +94,7 @@ export async function generateImage(params: {
       userId: params.userId,
       teamId: params.teamId,
       jobId: params.jobId,
-    }
+    },
   );
 
   if (!result.success || !result.data) {
@@ -161,7 +161,7 @@ export async function generateVideo(params: {
       userId: params.userId,
       teamId: params.teamId,
       jobId: params.jobId,
-    }
+    },
   );
 
   if (!result.success || !result.data) {
@@ -219,7 +219,7 @@ export async function analyzeScript(params: {
   }
 
   Context.current().log.info(
-    `Script analyzed: ${result.data.scenes.length} scenes`
+    `Script analyzed: ${result.data.scenes.length} scenes`,
   );
 
   return {
@@ -300,4 +300,3 @@ export async function updateFrame(params: {
 
   Context.current().log.info(`Frame ${frameId} updated`);
 }
-

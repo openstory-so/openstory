@@ -68,5 +68,7 @@
   "[jsonc]": {
     "editor.defaultFormatter": "biomejs.biome"
   },
-  "task.problemMatchers.neverPrompt": false
+  "task.problemMatchers.neverPrompt": false,
+  "biome.requireConfiguration": true,
+  "biome.suggestInstallingGlobally": true
 }

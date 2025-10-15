@@ -3,7 +3,7 @@
  * Provides typed methods for starting workflows
  */
 
-import { WorkflowClient } from "@temporalio/client";
+import type { WorkflowClient } from "@temporalio/client";
 import { createTemporalClient, getTaskQueue } from "./config";
 import {
   frameGenerationWorkflow,
@@ -184,4 +184,3 @@ export function getTemporalClient(): TemporalClientService {
   }
   return temporalClientInstance;
 }
-

@@ -42,7 +42,7 @@ export const userRoutes = new Elysia({ prefix: "/users" })
         avatarUrl: t.Optional(t.Union([t.String(), t.Null()])),
         onboardingCompleted: t.Optional(t.Boolean()),
       }),
-    }
+    },
   )
 
   // GET /users/:id - Get user by ID
@@ -55,4 +55,3 @@ export const userRoutes = new Elysia({ prefix: "/users" })
       data: profile,
     };
   });
-

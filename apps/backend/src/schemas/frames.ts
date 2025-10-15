@@ -9,9 +9,9 @@ import { type } from "arktype";
  * Create frame request
  */
 export const createFrameSchema = type({
-  "sequenceId": "string",
-  "description": "string",
-  "orderIndex": "number",
+  sequenceId: "string",
+  description: "string",
+  orderIndex: "number",
   "thumbnailUrl?": "string",
   "videoUrl?": "string",
   "durationMs?": "number",
@@ -38,7 +38,7 @@ export type UpdateFrameInput = typeof updateFrameSchema.infer;
  * Reorder frames request
  */
 export const reorderFramesSchema = type({
-  "frameIds": "string[]",
+  frameIds: "string[]",
 });
 
 export type ReorderFramesInput = typeof reorderFramesSchema.infer;
@@ -82,17 +82,16 @@ export type GenerateMotionInput = typeof generateMotionSchema.infer;
  * Frame response
  */
 export const frameResponseSchema = type({
-  "id": "string",
-  "sequenceId": "string",
-  "description": "string",
-  "orderIndex": "number",
-  "thumbnailUrl": "string|null",
-  "videoUrl": "string|null",
-  "durationMs": "number",
-  "metadata": "unknown",
-  "createdAt": "Date",
-  "updatedAt": "Date",
+  id: "string",
+  sequenceId: "string",
+  description: "string",
+  orderIndex: "number",
+  thumbnailUrl: "string|null",
+  videoUrl: "string|null",
+  durationMs: "number",
+  metadata: "unknown",
+  createdAt: "Date",
+  updatedAt: "Date",
 });
 
 export type FrameResponse = typeof frameResponseSchema.infer;
-

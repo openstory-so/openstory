@@ -4,23 +4,23 @@
  */
 
 import {
-  getFrameById,
-  getSequenceFrames,
   createFrame,
-  updateFrame,
   deleteFrame,
-  reorderFrames,
+  getFrameById,
   getNextFrameOrderIndex,
+  getSequenceById,
+  getSequenceFrames,
+  reorderFrames,
+  updateFrame,
 } from "@/db/queries/sequences";
-import { getSequenceById } from "@/db/queries/sequences";
-import { requireTeamMember } from "@/lib/auth/rbac";
 import type { User } from "@/lib/auth/config";
+import { requireTeamMember } from "@/lib/auth/rbac";
+import { NotFoundError } from "@/plugins/error";
 import type {
   CreateFrameInput,
-  UpdateFrameInput,
   ReorderFramesInput,
+  UpdateFrameInput,
 } from "@/schemas/frames";
-import { NotFoundError } from "@/plugins/error";
 
 export class FrameService {
   /**
@@ -162,7 +162,7 @@ export class FrameService {
   static async reorder(
     sequenceId: string,
     input: ReorderFramesInput,
-    user: User
+    user: User,
   ) {
     // Get sequence and check ownership
     const sequence = await getSequenceById(sequenceId);
@@ -180,4 +180,3 @@ export class FrameService {
     return { success: true };
   }
 }
-

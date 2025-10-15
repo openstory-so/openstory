@@ -1,7 +1,7 @@
-import { eq, and, desc, asc } from "drizzle-orm";
+import { and, asc, desc, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { sequences, frames } from "@/db/schema";
-import type { NewSequence, NewFrame } from "@/db/schema";
+import type { NewFrame, NewSequence } from "@/db/schema";
+import { frames, sequences } from "@/db/schema";
 
 /**
  * Sequence query helpers
@@ -51,7 +51,10 @@ export async function createSequence(data: NewSequence) {
 /**
  * Update sequence
  */
-export async function updateSequence(sequenceId: string, data: Partial<NewSequence>) {
+export async function updateSequence(
+  sequenceId: string,
+  data: Partial<NewSequence>,
+) {
   const [sequence] = await db
     .update(sequences)
     .set({ ...data, updatedAt: new Date() })
@@ -132,7 +135,7 @@ export async function reorderFrames(sequenceId: string, frameIds: string[]) {
     db
       .update(frames)
       .set({ orderIndex: index, updatedAt: new Date() })
-      .where(and(eq(frames.id, frameId), eq(frames.sequenceId, sequenceId)))
+      .where(and(eq(frames.id, frameId), eq(frames.sequenceId, sequenceId))),
   );
 
   // Execute all updates in parallel
@@ -142,13 +145,14 @@ export async function reorderFrames(sequenceId: string, frameIds: string[]) {
 /**
  * Get next available order index for a sequence
  */
-export async function getNextFrameOrderIndex(sequenceId: string): Promise<number> {
+export async function getNextFrameOrderIndex(
+  sequenceId: string,
+): Promise<number> {
   const sequenceFrames = await db.query.frames.findMany({
     where: eq(frames.sequenceId, sequenceId),
     orderBy: [desc(frames.orderIndex)],
     limit: 1,
   });
 
-  return sequenceFrames.length > 0 ? sequenceFrames[0]!.orderIndex + 1 : 0;
+  return sequenceFrames.length > 0 ? sequenceFrames[0]?.orderIndex + 1 : 0;
 }
-

@@ -3,7 +3,7 @@
  * Extracts session from cookies and adds user/session to context
  */
 
-import { Elysia, type Context } from "elysia";
+import { type Context, Elysia } from "elysia";
 import { auth, type User } from "@/lib/auth/config";
 import { AuthenticationError } from "./error";
 
@@ -60,7 +60,7 @@ export const authPlugin = new Elysia({ name: "auth" }).derive(
         session: null,
       };
     }
-  }
+  },
 );
 
 /**
@@ -101,10 +101,9 @@ export const requireAuthenticatedUser = new Elysia({
 
     if (user?.isAnonymous) {
       throw new AuthenticationError(
-        "This action requires a registered account. Please sign up or log in."
+        "This action requires a registered account. Please sign up or log in.",
       );
     }
 
     return { user };
   });
-

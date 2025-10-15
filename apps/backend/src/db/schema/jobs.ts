@@ -3,18 +3,18 @@
  * Tracks async job execution via Temporal workflows
  */
 
+import { relations } from "drizzle-orm";
 import {
+  index,
+  jsonb,
   pgTable,
-  uuid,
   text,
   timestamp,
-  jsonb,
-  index,
+  uuid,
 } from "drizzle-orm/pg-core";
-import { relations } from "drizzle-orm";
+import { jobStatusEnum, jobTypeEnum } from "./enums";
 import { teams } from "./teams";
 import { users } from "./users";
-import { jobStatusEnum, jobTypeEnum } from "./enums";
 
 /**
  * Jobs table
@@ -25,7 +25,9 @@ export const jobs = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     teamId: uuid("team_id").references(() => teams.id, { onDelete: "cascade" }),
-    userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+    userId: uuid("user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
     type: jobTypeEnum("type").notNull(),
     status: jobStatusEnum("status").notNull().default("pending"),
     payload: jsonb("payload").default({}).notNull(),
@@ -50,7 +52,7 @@ export const jobs = pgTable(
     typeIdx: index("idx_jobs_type").on(table.type),
     createdAtIdx: index("idx_jobs_created_at").on(table.createdAt),
     workflowIdIdx: index("idx_jobs_workflow_id").on(table.workflowId),
-  })
+  }),
 );
 
 /**
@@ -66,4 +68,3 @@ export const jobsRelations = relations(jobs, ({ one }) => ({
     references: [users.id],
   }),
 }));
-

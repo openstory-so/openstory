@@ -19,7 +19,8 @@ export const FAL_IMAGE_MODELS = {
   sdxl_lightning: "fal-ai/fast-lightning-sdxl",
 } as const;
 
-export type FalImageModel = (typeof FAL_IMAGE_MODELS)[keyof typeof FAL_IMAGE_MODELS];
+export type FalImageModel =
+  (typeof FAL_IMAGE_MODELS)[keyof typeof FAL_IMAGE_MODELS];
 
 // Fal.ai Video Models
 export const FAL_VIDEO_MODELS = {
@@ -41,7 +42,8 @@ export const FAL_VIDEO_MODELS = {
   svd_lcm: "fal-ai/fast-svd-lcm",
 } as const;
 
-export type FalVideoModel = (typeof FAL_VIDEO_MODELS)[keyof typeof FAL_VIDEO_MODELS];
+export type FalVideoModel =
+  (typeof FAL_VIDEO_MODELS)[keyof typeof FAL_VIDEO_MODELS];
 
 // LetzAI Modes
 export const LETZAI_MODES = {
@@ -70,7 +72,8 @@ export const OPENROUTER_MODELS = {
   llama3_8b: "meta-llama/llama-3-8b-instruct",
 } as const;
 
-export type OpenRouterModel = (typeof OPENROUTER_MODELS)[keyof typeof OPENROUTER_MODELS];
+export type OpenRouterModel =
+  (typeof OPENROUTER_MODELS)[keyof typeof OPENROUTER_MODELS];
 
 // Model pricing (in credits per request)
 export const MODEL_PRICING = {
@@ -113,7 +116,10 @@ export interface ModelCapabilities {
   supportsUpscaling: boolean;
 }
 
-export const IMAGE_MODEL_CAPABILITIES: Record<FalImageModel, ModelCapabilities> = {
+export const IMAGE_MODEL_CAPABILITIES: Record<
+  FalImageModel,
+  ModelCapabilities
+> = {
   [FAL_IMAGE_MODELS.flux_pro]: {
     maxWidth: 2048,
     maxHeight: 2048,
@@ -180,7 +186,10 @@ export interface VideoModelCapabilities {
   supportsMotionControl: boolean;
 }
 
-export const VIDEO_MODEL_CAPABILITIES: Record<FalVideoModel, VideoModelCapabilities> = {
+export const VIDEO_MODEL_CAPABILITIES: Record<
+  FalVideoModel,
+  VideoModelCapabilities
+> = {
   [FAL_VIDEO_MODELS.veo3]: {
     maxDuration: 10,
     maxFPS: 30,
@@ -224,4 +233,3 @@ export const VIDEO_MODEL_CAPABILITIES: Record<FalVideoModel, VideoModelCapabilit
     supportsMotionControl: true,
   },
 };
-

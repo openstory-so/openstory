@@ -10,6 +10,9 @@
     "build:frontend": "bun run --filter frontend build",
     "start:frontend": "bun run --filter frontend start",
     "setup:frontend": "bun run --filter frontend setup:env",
+    "lint": "biome check .",
+    "lint:fix": "bunx biome check --write --unsafe .",
+    "lint:check": "biome check .",
     "supabase:start": "bunx supabase start",
     "supabase:stop": "bunx supabase stop",
     "supabase:types": "bunx supabase gen types typescript --local > apps/frontend/src/lib/supabase/gen.types.ts && biome check --write apps/frontend/src/lib/supabase/gen.types.ts",
@@ -18,7 +21,9 @@
     "workflow:assign": "./workflow/scripts/workflow-manager.sh assign",
     "workflow:orchestrator": "./workflow/scripts/orchestrator.sh"
   },
-  "dependencies": {
-    "@elysiajs/openapi": "^1.4.11"
+  "catalogs": {
+    "lint": {
+      "@biomejs/biome": "2.2.2"
+    }
   }
 }

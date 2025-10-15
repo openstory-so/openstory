@@ -1,6 +1,6 @@
-import { db } from "@/db";
 import type { PgTransaction } from "drizzle-orm/pg-core";
 import type { PostgresJsQueryResultHKT } from "drizzle-orm/postgres-js";
+import { db } from "@/db";
 
 /**
  * Transaction utilities
@@ -28,7 +28,7 @@ export type Transaction = PgTransaction<
  * });
  */
 export async function withTransaction<T>(
-  callback: (tx: Transaction) => Promise<T>
+  callback: (tx: Transaction) => Promise<T>,
 ): Promise<T> {
   return await db.transaction(callback);
 }
@@ -38,7 +38,7 @@ export async function withTransaction<T>(
  */
 export async function createTeamWithOwner(
   teamData: { name: string; slug: string },
-  userId: string
+  userId: string,
 ) {
   return await withTransaction(async (tx) => {
     const { teams, teamMembers } = await import("@/db/schema");
@@ -48,7 +48,7 @@ export async function createTeamWithOwner(
 
     // Add user as owner
     await tx.insert(teamMembers).values({
-      teamId: team!.id,
+      teamId: team?.id,
       userId,
       role: "owner",
     });
@@ -63,7 +63,7 @@ export async function createTeamWithOwner(
 export async function transferTeamOwnership(
   teamId: string,
   currentOwnerId: string,
-  newOwnerId: string
+  newOwnerId: string,
 ) {
   return await withTransaction(async (tx) => {
     const { teamMembers } = await import("@/db/schema");
@@ -73,13 +73,20 @@ export async function transferTeamOwnership(
     await tx
       .update(teamMembers)
       .set({ role: "admin" })
-      .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.userId, currentOwnerId)));
+      .where(
+        and(
+          eq(teamMembers.teamId, teamId),
+          eq(teamMembers.userId, currentOwnerId),
+        ),
+      );
 
     // Upgrade new owner
     await tx
       .update(teamMembers)
       .set({ role: "owner" })
-      .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.userId, newOwnerId)));
+      .where(
+        and(eq(teamMembers.teamId, teamId), eq(teamMembers.userId, newOwnerId)),
+      );
   });
 }
 
@@ -90,7 +97,7 @@ export async function acceptInvitationAndAddMember(
   invitationId: string,
   teamId: string,
   userId: string,
-  role: "owner" | "admin" | "member" | "viewer"
+  role: "owner" | "admin" | "member" | "viewer",
 ) {
   return await withTransaction(async (tx) => {
     const { teamInvitations, teamMembers } = await import("@/db/schema");
@@ -142,7 +149,7 @@ export async function deleteSequenceWithCleanup(sequenceId: string) {
  */
 export async function bulkCreateFrames(
   sequenceId: string,
-  frameDescriptions: string[]
+  frameDescriptions: string[],
 ) {
   return await withTransaction(async (tx) => {
     const { frames } = await import("@/db/schema");
@@ -158,4 +165,3 @@ export async function bulkCreateFrames(
     return await tx.insert(frames).values(frameData).returning();
   });
 }
-

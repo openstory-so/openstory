@@ -1,9 +1,16 @@
-import { pgTable, uuid, varchar, timestamp, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
+import {
+  index,
+  pgTable,
+  timestamp,
+  uniqueIndex,
+  uuid,
+  varchar,
+} from "drizzle-orm/pg-core";
 import { teamMemberRoleEnum } from "./enums";
-import { users } from "./users";
 import { sequences } from "./sequences";
 import { styles } from "./styles";
+import { users } from "./users";
 
 /**
  * Teams table
@@ -15,12 +22,16 @@ export const teams = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     name: varchar("name", { length: 255 }).notNull(),
     slug: varchar("slug", { length: 255 }).notNull().unique(),
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
   },
   (table) => ({
     slugIdx: index("idx_teams_slug").on(table.slug),
-  })
+  }),
 );
 
 /**
@@ -37,7 +48,9 @@ export const teamMembers = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     role: teamMemberRoleEnum("role").notNull().default("member"),
-    joinedAt: timestamp("joined_at", { withTimezone: true }).defaultNow().notNull(),
+    joinedAt: timestamp("joined_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
   },
   (table) => ({
     pk: {
@@ -46,7 +59,7 @@ export const teamMembers = pgTable(
     },
     userIdIdx: index("idx_team_members_user_id").on(table.userId),
     teamIdIdx: index("idx_team_members_team_id").on(table.teamId),
-  })
+  }),
 );
 
 /**
@@ -68,8 +81,12 @@ export const teamInvitations = pgTable(
     status: varchar("status", { length: 50 }).notNull().default("pending"),
     token: varchar("token", { length: 255 }).notNull().unique(),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
     acceptedAt: timestamp("accepted_at", { withTimezone: true }),
     declinedAt: timestamp("declined_at", { withTimezone: true }),
   },
@@ -81,9 +98,9 @@ export const teamInvitations = pgTable(
     expiresAtIdx: index("idx_team_invitations_expires_at").on(table.expiresAt),
     uniquePendingIdx: uniqueIndex("idx_team_invitations_unique_pending").on(
       table.teamId,
-      table.email
+      table.email,
     ),
-  })
+  }),
 );
 
 /**
@@ -107,16 +124,19 @@ export const teamMembersRelations = relations(teamMembers, ({ one }) => ({
   }),
 }));
 
-export const teamInvitationsRelations = relations(teamInvitations, ({ one }) => ({
-  team: one(teams, {
-    fields: [teamInvitations.teamId],
-    references: [teams.id],
+export const teamInvitationsRelations = relations(
+  teamInvitations,
+  ({ one }) => ({
+    team: one(teams, {
+      fields: [teamInvitations.teamId],
+      references: [teams.id],
+    }),
+    inviter: one(users, {
+      fields: [teamInvitations.invitedBy],
+      references: [users.id],
+    }),
   }),
-  inviter: one(users, {
-    fields: [teamInvitations.invitedBy],
-    references: [users.id],
-  }),
-}));
+);
 
 /**
  * Type exports for use in application code
@@ -129,4 +149,3 @@ export type NewTeamMember = typeof teamMembers.$inferInsert;
 
 export type TeamInvitation = typeof teamInvitations.$inferSelect;
 export type NewTeamInvitation = typeof teamInvitations.$inferInsert;
-

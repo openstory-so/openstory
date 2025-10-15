@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { users, betterAuthUser } from "@/db/schema";
 import type { NewUser } from "@/db/schema";
+import { betterAuthUser, users } from "@/db/schema";
 
 /**
  * User query helpers
@@ -78,4 +78,3 @@ export async function isAnonymousUser(userId: string): Promise<boolean> {
   });
   return user?.isAnonymous ?? false;
 }
-

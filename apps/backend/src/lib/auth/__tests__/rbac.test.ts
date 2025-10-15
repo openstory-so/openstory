@@ -1,18 +1,17 @@
-import { describe, test, expect, beforeAll, afterAll } from "bun:test";
-import { db, closeDatabase } from "@/db";
-import { createTeamWithOwner } from "@/db/transactions";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { closeDatabase, db } from "@/db";
 import { addTeamMember } from "@/db/queries/teams";
-import {
-  hasRole,
-  getUserTeamRole,
-  isTeamMember,
-  requireTeamMember,
-  requireTeamAdmin,
-  requireTeamOwner,
-  type TeamRole,
-} from "../rbac";
+import { createTeamWithOwner } from "@/db/transactions";
 import { AuthorizationError } from "@/plugins/error";
 import type { User } from "../config";
+import {
+  getUserTeamRole,
+  hasRole,
+  isTeamMember,
+  requireTeamAdmin,
+  requireTeamMember,
+  requireTeamOwner,
+} from "../rbac";
 
 describe("RBAC Utilities", () => {
   let testTeamId: string;
@@ -36,7 +35,7 @@ describe("RBAC Utilities", () => {
         name: "RBAC Test Team",
         slug: `rbac-test-${Date.now()}`,
       },
-      ownerUserId
+      ownerUserId,
     );
 
     testTeamId = team.id;
@@ -136,13 +135,15 @@ describe("RBAC Utilities", () => {
 
     test("should throw AuthorizationError for non-members", async () => {
       const mockUser = { id: nonMemberUserId } as User;
-      
+
       try {
         await requireTeamMember(mockUser, testTeamId);
         expect(true).toBe(false); // Should not reach here
       } catch (error) {
         expect(error).toBeInstanceOf(AuthorizationError);
-        expect((error as AuthorizationError).message).toContain("do not have access");
+        expect((error as AuthorizationError).message).toContain(
+          "do not have access",
+        );
       }
     });
   });
@@ -162,19 +163,21 @@ describe("RBAC Utilities", () => {
 
     test("should deny member", async () => {
       const mockUser = { id: memberUserId } as User;
-      
+
       try {
         await requireTeamAdmin(mockUser, testTeamId);
         expect(true).toBe(false); // Should not reach here
       } catch (error) {
         expect(error).toBeInstanceOf(AuthorizationError);
-        expect((error as AuthorizationError).message).toContain("requires admin");
+        expect((error as AuthorizationError).message).toContain(
+          "requires admin",
+        );
       }
     });
 
     test("should deny viewer", async () => {
       const mockUser = { id: viewerUserId } as User;
-      
+
       try {
         await requireTeamAdmin(mockUser, testTeamId);
         expect(true).toBe(false); // Should not reach here
@@ -193,19 +196,21 @@ describe("RBAC Utilities", () => {
 
     test("should deny admin", async () => {
       const mockUser = { id: adminUserId } as User;
-      
+
       try {
         await requireTeamOwner(mockUser, testTeamId);
         expect(true).toBe(false); // Should not reach here
       } catch (error) {
         expect(error).toBeInstanceOf(AuthorizationError);
-        expect((error as AuthorizationError).message).toContain("requires owner");
+        expect((error as AuthorizationError).message).toContain(
+          "requires owner",
+        );
       }
     });
 
     test("should deny member", async () => {
       const mockUser = { id: memberUserId } as User;
-      
+
       try {
         await requireTeamOwner(mockUser, testTeamId);
         expect(true).toBe(false); // Should not reach here
@@ -215,4 +220,3 @@ describe("RBAC Utilities", () => {
     });
   });
 });
-

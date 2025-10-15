@@ -3,20 +3,20 @@
  * API endpoints for async job management via Temporal
  */
 
+import { type } from "arktype";
 import { Elysia, t } from "elysia";
 import { requireAuth } from "@/plugins/auth";
-import { JobsService } from "@/services/jobs";
 import {
-  createFrameGenerationJobSchema,
-  createMotionGenerationJobSchema,
-  createScriptAnalysisJobSchema,
-  listJobsQuerySchema,
   type CreateFrameGenerationJobInput,
   type CreateMotionGenerationJobInput,
   type CreateScriptAnalysisJobInput,
+  createFrameGenerationJobSchema,
+  createMotionGenerationJobSchema,
+  createScriptAnalysisJobSchema,
   type ListJobsQuery,
+  listJobsQuerySchema,
 } from "@/schemas/jobs";
-import { type } from "arktype";
+import { JobsService } from "@/services/jobs";
 
 /**
  * Jobs routes plugin
@@ -66,7 +66,7 @@ export const jobsRoutes = new Elysia({ prefix: "/jobs" })
         loraUrl: t.Optional(t.String()),
         loraScale: t.Optional(t.Number()),
       }),
-    }
+    },
   )
 
   // POST /jobs/motion-generation - Create motion generation job
@@ -110,7 +110,7 @@ export const jobsRoutes = new Elysia({ prefix: "/jobs" })
         loraUrl: t.Optional(t.String()),
         loraScale: t.Optional(t.Number()),
       }),
-    }
+    },
   )
 
   // POST /jobs/script-analysis - Create script analysis job
@@ -146,7 +146,7 @@ export const jobsRoutes = new Elysia({ prefix: "/jobs" })
         script: t.String(),
         framesPerScene: t.Optional(t.Number()),
       }),
-    }
+    },
   )
 
   // GET /jobs/:id - Get job by ID
@@ -165,7 +165,7 @@ export const jobsRoutes = new Elysia({ prefix: "/jobs" })
       params: t.Object({
         id: t.String(),
       }),
-    }
+    },
   )
 
   // GET /jobs - List jobs for a team
@@ -202,7 +202,7 @@ export const jobsRoutes = new Elysia({ prefix: "/jobs" })
         limit: t.Optional(t.Number()),
         offset: t.Optional(t.Number()),
       }),
-    }
+    },
   )
 
   // DELETE /jobs/:id - Cancel job
@@ -218,6 +218,5 @@ export const jobsRoutes = new Elysia({ prefix: "/jobs" })
       params: t.Object({
         id: t.String(),
       }),
-    }
+    },
   );
-

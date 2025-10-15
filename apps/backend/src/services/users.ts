@@ -3,13 +3,9 @@
  * Business logic for user operations
  */
 
-import {
-  getUserById,
-  updateUser,
-  isAnonymousUser,
-} from "@/db/queries/users";
+import { getUserById, isAnonymousUser, updateUser } from "@/db/queries/users";
 import type { User } from "@/lib/auth/config";
-import { NotFoundError, AuthorizationError } from "@/plugins/error";
+import { AuthorizationError, NotFoundError } from "@/plugins/error";
 
 export interface UpdateUserInput {
   fullName?: string;
@@ -60,7 +56,11 @@ export class UserService {
    * Update user profile
    * Users can only update their own profile
    */
-  static async update(userId: string, input: UpdateUserInput, currentUser: User) {
+  static async update(
+    userId: string,
+    input: UpdateUserInput,
+    currentUser: User,
+  ) {
     // Users can only update their own profile
     if (userId !== currentUser.id) {
       throw new AuthorizationError("You can only update your own profile");
@@ -75,4 +75,3 @@ export class UserService {
     return updated;
   }
 }
-

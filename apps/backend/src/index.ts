@@ -1,19 +1,18 @@
-import { Elysia } from "elysia";
 import { cors } from "@elysiajs/cors";
+import { fromTypes, openapi } from "@elysiajs/openapi";
+import { Elysia } from "elysia";
 // Plugins
 import { errorPlugin } from "@/plugins/error";
 import { loggingPlugin } from "@/plugins/logging";
-
+import { aiRoutes } from "@/routes/ai";
 // Routes
 import { authRoutes } from "@/routes/auth";
-import { sequenceRoutes } from "@/routes/sequences";
 import { frameRoutes } from "@/routes/frames";
+import { jobsRoutes } from "@/routes/jobs";
+import { sequenceRoutes } from "@/routes/sequences";
 import { styleRoutes } from "@/routes/styles";
 import { teamRoutes } from "@/routes/teams";
 import { userRoutes } from "@/routes/users";
-import { aiRoutes } from "@/routes/ai";
-import { jobsRoutes } from "@/routes/jobs";
-import { openapi, fromTypes } from '@elysiajs/openapi'
 
 const app = new Elysia()
   // Core plugins
@@ -21,12 +20,12 @@ const app = new Elysia()
     cors({
       origin: process.env.CORS_ORIGIN ?? "http://localhost:3000",
       credentials: true,
-    })
+    }),
   )
   .use(
-   openapi({
-			references: fromTypes()
-		})
+    openapi({
+      references: fromTypes(),
+    }),
   )
   .use(loggingPlugin)
   .use(errorPlugin)
@@ -51,8 +50,10 @@ const app = new Elysia()
   .listen(process.env.PORT ?? 3030);
 
 console.log(
-  `🦊 Elysia is running at ${app.server?.hostname}:${app.server?.port}`
+  `🦊 Elysia is running at ${app.server?.hostname}:${app.server?.port}`,
 );
-console.log(`📚 OpenAPI docs at http://${app.server?.hostname}:${app.server?.port}/openapi`);
+console.log(
+  `📚 OpenAPI docs at http://${app.server?.hostname}:${app.server?.port}/openapi`,
+);
 
 export type App = typeof app;

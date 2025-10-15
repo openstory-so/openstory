@@ -3,22 +3,22 @@
  * API endpoints for team management
  */
 
+import { type } from "arktype";
 import { Elysia, t } from "elysia";
 import { requireAuth } from "@/plugins/auth";
-import { TeamService } from "@/services/teams";
-import { type } from "arktype";
 import {
-  createTeamSchema,
-  updateTeamSchema,
-  addTeamMemberSchema,
-  updateTeamMemberRoleSchema,
-  createTeamInvitationSchema,
-  type CreateTeamInput,
-  type UpdateTeamInput,
   type AddTeamMemberInput,
-  type UpdateTeamMemberRoleInput,
+  addTeamMemberSchema,
+  type CreateTeamInput,
   type CreateTeamInvitationInput,
+  createTeamInvitationSchema,
+  createTeamSchema,
+  type UpdateTeamInput,
+  type UpdateTeamMemberRoleInput,
+  updateTeamMemberRoleSchema,
+  updateTeamSchema,
 } from "@/schemas/teams";
+import { TeamService } from "@/services/teams";
 
 /**
  * Team routes plugin
@@ -67,7 +67,7 @@ export const teamRoutes = new Elysia({ prefix: "/teams" })
         name: t.String(),
         slug: t.String(),
       }),
-    }
+    },
   )
 
   // GET /teams/:id - Get team by ID
@@ -111,7 +111,7 @@ export const teamRoutes = new Elysia({ prefix: "/teams" })
         name: t.Optional(t.String()),
         slug: t.Optional(t.String()),
       }),
-    }
+    },
   )
 
   // DELETE /teams/:id - Delete team
@@ -155,7 +155,7 @@ export const teamRoutes = new Elysia({ prefix: "/teams" })
         userId: t.String(),
         role: t.String(),
       }),
-    }
+    },
   )
 
   // DELETE /teams/:id/members/:userId - Remove a member from the team
@@ -164,7 +164,7 @@ export const teamRoutes = new Elysia({ prefix: "/teams" })
     const result = await TeamService.removeMember(
       params.id,
       params.userId,
-      user
+      user,
     );
 
     return {
@@ -195,7 +195,7 @@ export const teamRoutes = new Elysia({ prefix: "/teams" })
         params.id,
         params.userId,
         input,
-        user
+        user,
       );
 
       return {
@@ -207,7 +207,7 @@ export const teamRoutes = new Elysia({ prefix: "/teams" })
       body: t.Object({
         role: t.String(),
       }),
-    }
+    },
   )
 
   // POST /teams/:id/invitations - Create a team invitation
@@ -231,7 +231,7 @@ export const teamRoutes = new Elysia({ prefix: "/teams" })
       const invitation = await TeamService.createInvitation(
         params.id,
         input,
-        user
+        user,
       );
 
       return {
@@ -245,7 +245,7 @@ export const teamRoutes = new Elysia({ prefix: "/teams" })
         role: t.String(),
         expiresAt: t.Optional(t.Date()),
       }),
-    }
+    },
   )
 
   // GET /teams/:id/invitations - List team invitations
@@ -258,4 +258,3 @@ export const teamRoutes = new Elysia({ prefix: "/teams" })
       data: invitations,
     };
   });
-

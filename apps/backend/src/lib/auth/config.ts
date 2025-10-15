@@ -94,7 +94,7 @@ export const auth = betterAuth({
           // Transfer anonymous user data to authenticated account
           const result = await transferAnonymousUserData(
             anonymousUser.user.id,
-            newUser.user.id
+            newUser.user.id,
           );
 
           // Log successful migration with details
@@ -107,7 +107,7 @@ export const auth = betterAuth({
         } catch (error) {
           console.error(
             "[BetterAuth] Failed to link anonymous account:",
-            error
+            error,
           );
           throw error;
         }
@@ -153,4 +153,3 @@ export type User = typeof auth.$Infer.Session.user & {
   teamSlug?: string | null;
   isAnonymous?: boolean | null; // From BetterAuth anonymous plugin
 };
-

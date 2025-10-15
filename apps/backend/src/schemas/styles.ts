@@ -9,8 +9,8 @@ import { type } from "arktype";
  * Create style request
  */
 export const createStyleSchema = type({
-  "name": "string",
-  "configJson": "unknown", // JSON object for Style Stack configuration
+  name: "string",
+  configJson: "unknown", // JSON object for Style Stack configuration
   "isPublic?": "boolean",
   "metadata?": "unknown",
 });
@@ -45,16 +45,15 @@ export type GetStylesQuery = typeof getStylesQuerySchema.infer;
  * Style response
  */
 export const styleResponseSchema = type({
-  "id": "string",
-  "teamId": "string",
-  "name": "string",
-  "configJson": "unknown",
-  "isPublic": "boolean",
-  "metadata": "unknown",
-  "createdAt": "Date",
-  "updatedAt": "Date",
-  "createdBy": "string|null",
+  id: "string",
+  teamId: "string",
+  name: "string",
+  configJson: "unknown",
+  isPublic: "boolean",
+  metadata: "unknown",
+  createdAt: "Date",
+  updatedAt: "Date",
+  createdBy: "string|null",
 });
 
 export type StyleResponse = typeof styleResponseSchema.infer;
-

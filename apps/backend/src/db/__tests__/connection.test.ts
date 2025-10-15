@@ -1,5 +1,5 @@
-import { describe, test, expect, beforeAll, afterAll } from "bun:test";
-import { db, testConnection, closeDatabase } from "@/db";
+import { afterAll, describe, expect, test } from "bun:test";
+import { closeDatabase, db, testConnection } from "@/db";
 
 describe("Database Connection", () => {
   afterAll(async () => {
@@ -26,4 +26,3 @@ describe("Database Connection", () => {
     expect(db.query.styles).toBeDefined();
   });
 });
-

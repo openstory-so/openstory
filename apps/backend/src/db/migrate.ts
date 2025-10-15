@@ -31,4 +31,3 @@ async function runMigrations() {
 }
 
 runMigrations();
-

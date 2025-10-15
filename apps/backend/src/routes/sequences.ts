@@ -3,16 +3,16 @@
  * API endpoints for sequence management
  */
 
+import { type } from "arktype";
 import { Elysia, t } from "elysia";
 import { requireAuth } from "@/plugins/auth";
-import { SequenceService } from "@/services/sequences";
 import {
-  createSequenceSchema,
-  updateSequenceSchema,
   type CreateSequenceInput,
+  createSequenceSchema,
   type UpdateSequenceInput,
+  updateSequenceSchema,
 } from "@/schemas/sequences";
-import { type } from "arktype";
+import { SequenceService } from "@/services/sequences";
 
 /**
  * Sequence routes plugin
@@ -45,7 +45,7 @@ export const sequenceRoutes = new Elysia({ prefix: "/sequences" })
       query: t.Object({
         teamId: t.String(),
       }),
-    }
+    },
   )
 
   // POST /sequences - Create a new sequence
@@ -90,7 +90,7 @@ export const sequenceRoutes = new Elysia({ prefix: "/sequences" })
         styleId: t.Optional(t.String()),
         metadata: t.Optional(t.Any()),
       }),
-    }
+    },
   )
 
   // GET /sequences/:id - Get sequence by ID
@@ -137,7 +137,7 @@ export const sequenceRoutes = new Elysia({ prefix: "/sequences" })
         styleId: t.Optional(t.Union([t.String(), t.Null()])),
         metadata: t.Optional(t.Any()),
       }),
-    }
+    },
   )
 
   // DELETE /sequences/:id - Delete sequence
@@ -150,4 +150,3 @@ export const sequenceRoutes = new Elysia({ prefix: "/sequences" })
       data: result,
     };
   });
-

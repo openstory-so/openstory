@@ -31,7 +31,7 @@ export async function createTemporalClient(): Promise<WorkflowClient> {
     throw new VelroError(
       `Failed to connect to Temporal server: ${error instanceof Error ? error.message : "Unknown error"}`,
       500,
-      "TEMPORAL_CONNECTION_ERROR"
+      "TEMPORAL_CONNECTION_ERROR",
     );
   }
 }
@@ -58,7 +58,7 @@ export async function createTemporalWorker(): Promise<Worker> {
     throw new VelroError(
       `Failed to create Temporal worker: ${error instanceof Error ? error.message : "Unknown error"}`,
       500,
-      "TEMPORAL_WORKER_ERROR"
+      "TEMPORAL_WORKER_ERROR",
     );
   }
 }
@@ -76,4 +76,3 @@ export function getTaskQueue(): string {
 export function getNamespace(): string {
   return TEMPORAL_NAMESPACE;
 }
-

@@ -3,7 +3,7 @@
  * Transfers data from anonymous users to authenticated accounts
  */
 
-import { eq, and } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { sequences, styles, teamMembers, teams } from "@/db/schema";
 import { withTransaction } from "@/db/transactions";
 
@@ -20,7 +20,7 @@ export interface AnonymousMigrationResult {
  */
 export async function transferAnonymousUserData(
   anonymousUserId: string,
-  authenticatedUserId: string
+  authenticatedUserId: string,
 ): Promise<AnonymousMigrationResult> {
   return await withTransaction(async (tx) => {
     // 1. Get anonymous user's team
@@ -76,8 +76,8 @@ export async function transferAnonymousUserData(
         .where(
           and(
             eq(teamMembers.teamId, anonymousTeamId),
-            eq(teamMembers.userId, anonymousUserId)
-          )
+            eq(teamMembers.userId, anonymousUserId),
+          ),
         );
     }
 
@@ -135,4 +135,3 @@ export async function transferAnonymousUserData(
     };
   });
 }
-

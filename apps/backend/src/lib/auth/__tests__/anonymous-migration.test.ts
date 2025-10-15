@@ -1,9 +1,9 @@
-import { describe, test, expect, beforeAll, afterAll } from "bun:test";
-import { db, closeDatabase } from "@/db";
-import { createTeamWithOwner } from "@/db/transactions";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { closeDatabase, db } from "@/db";
 import { createSequence } from "@/db/queries/sequences";
 import { createStyle } from "@/db/queries/styles";
 import { getTeamById } from "@/db/queries/teams";
+import { createTeamWithOwner } from "@/db/transactions";
 import { transferAnonymousUserData } from "../anonymous-migration";
 
 describe("Anonymous User Migration", () => {
@@ -22,7 +22,7 @@ describe("Anonymous User Migration", () => {
         name: "Anonymous User Team",
         slug: `anon-team-${Date.now()}`,
       },
-      anonymousUserId
+      anonymousUserId,
     );
 
     anonymousTeamId = anonymousTeam.id;
@@ -59,7 +59,7 @@ describe("Anonymous User Migration", () => {
     test("should transfer team ownership", async () => {
       const result = await transferAnonymousUserData(
         anonymousUserId,
-        authenticatedUserId
+        authenticatedUserId,
       );
 
       expect(result.migrationType).toBe("transfer");
@@ -87,7 +87,7 @@ describe("Anonymous User Migration", () => {
           name: "Anon Team 2",
           slug: `anon-team-2-${Date.now()}`,
         },
-        newAnonymousUserId
+        newAnonymousUserId,
       );
 
       await createSequence({
@@ -102,13 +102,13 @@ describe("Anonymous User Migration", () => {
           name: "Auth Team",
           slug: `auth-team-${Date.now()}`,
         },
-        newAuthenticatedUserId
+        newAuthenticatedUserId,
       );
 
       // Perform migration
       const result = await transferAnonymousUserData(
         newAnonymousUserId,
-        newAuthenticatedUserId
+        newAuthenticatedUserId,
       );
 
       expect(result.migrationType).toBe("merge");
@@ -125,4 +125,3 @@ describe("Anonymous User Migration", () => {
     });
   });
 });
-

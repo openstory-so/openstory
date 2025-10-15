@@ -3,8 +3,7 @@
  * Centralized exports for all AI services
  */
 
-export * from "./models";
 export * from "./fal-service";
 export * from "./letzai-service";
+export * from "./models";
 export * from "./openrouter-service";
-

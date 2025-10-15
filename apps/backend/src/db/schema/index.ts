@@ -3,24 +3,29 @@
  * Centralized export of all Drizzle schema definitions
  */
 
+export * from "./ai-requests";
 // Enums
 export * from "./enums";
-
-// Tables
-export * from "./users";
-export * from "./teams";
+export * from "./jobs";
 export * from "./sequences";
 export * from "./styles";
-export * from "./ai-requests";
-export * from "./jobs";
+export * from "./teams";
+// Tables
+export * from "./users";
 
-// Re-export all tables for Drizzle migrations
-import { users, betterAuthUser, betterAuthSession, betterAuthAccount, betterAuthVerification } from "./users";
-import { teams, teamMembers, teamInvitations } from "./teams";
-import { sequences, frames } from "./sequences";
-import { styles } from "./styles";
 import { falRequests, letzaiRequests } from "./ai-requests";
 import { jobs } from "./jobs";
+import { frames, sequences } from "./sequences";
+import { styles } from "./styles";
+import { teamInvitations, teamMembers, teams } from "./teams";
+// Re-export all tables for Drizzle migrations
+import {
+  betterAuthAccount,
+  betterAuthSession,
+  betterAuthUser,
+  betterAuthVerification,
+  users,
+} from "./users";
 
 export const schema = {
   // Users & Auth
@@ -49,4 +54,3 @@ export const schema = {
   // Jobs
   jobs,
 };
-

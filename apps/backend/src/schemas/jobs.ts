@@ -8,11 +8,11 @@ import { type } from "arktype";
  * Create frame generation job
  */
 export const createFrameGenerationJobSchema = type({
-  "frameId": "string",
-  "sequenceId": "string",
-  "teamId": "string",
-  "model": "string",
-  "prompt": "string",
+  frameId: "string",
+  sequenceId: "string",
+  teamId: "string",
+  model: "string",
+  prompt: "string",
   "width?": "number",
   "height?": "number",
   "negativePrompt?": "string<=1000",
@@ -30,11 +30,11 @@ export type CreateFrameGenerationJobInput =
  * Create motion generation job
  */
 export const createMotionGenerationJobSchema = type({
-  "frameId": "string",
-  "sequenceId": "string",
-  "teamId": "string",
-  "model": "string",
-  "imageUrl": "string",
+  frameId: "string",
+  sequenceId: "string",
+  teamId: "string",
+  model: "string",
+  imageUrl: "string",
   "prompt?": "string",
   "duration?": "number",
   "fps?": "number",
@@ -51,9 +51,9 @@ export type CreateMotionGenerationJobInput =
  * Create script analysis job
  */
 export const createScriptAnalysisJobSchema = type({
-  "sequenceId": "string",
-  "teamId": "string",
-  "script": "string",
+  sequenceId: "string",
+  teamId: "string",
+  script: "string",
   "framesPerScene?": "number",
 });
 
@@ -64,7 +64,7 @@ export type CreateScriptAnalysisJobInput =
  * List jobs query
  */
 export const listJobsQuerySchema = type({
-  "teamId": "string",
+  teamId: "string",
   "type?": "string",
   "status?": "string",
   "limit?": "number",
@@ -72,4 +72,3 @@ export const listJobsQuerySchema = type({
 });
 
 export type ListJobsQuery = typeof listJobsQuerySchema.infer;
-

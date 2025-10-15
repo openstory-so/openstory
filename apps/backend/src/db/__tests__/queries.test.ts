@@ -1,29 +1,27 @@
-import { describe, test, expect, beforeAll, afterAll, beforeEach } from "bun:test";
-import { db, closeDatabase } from "@/db";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { closeDatabase, db } from "@/db";
+import {
+  createFrame,
+  createSequence,
+  getSequenceById,
+  getSequenceFrames,
+} from "@/db/queries/sequences";
+import { createStyle, getStyleById } from "@/db/queries/styles";
 import {
   createTeam,
   getTeamById,
   getTeamBySlug,
   updateTeam,
-  addTeamMember,
-  getTeamMember,
 } from "@/db/queries/teams";
-import {
-  createSequence,
-  getSequenceById,
-  createFrame,
-  getSequenceFrames,
-} from "@/db/queries/sequences";
-import { createStyle, getStyleById } from "@/db/queries/styles";
 
 describe("Database Queries", () => {
   let testTeamId: string;
-  let testUserId: string;
+  let _testUserId: string;
 
   beforeAll(async () => {
     // Create a test user (assuming BetterAuth user exists)
     // In real tests, you'd create this via BetterAuth
-    testUserId = "00000000-0000-0000-0000-000000000001";
+    _testUserId = "00000000-0000-0000-0000-000000000001";
   });
 
   afterAll(async () => {
@@ -159,4 +157,3 @@ describe("Database Queries", () => {
     });
   });
 });
-

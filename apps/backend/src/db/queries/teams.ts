@@ -1,7 +1,7 @@
-import { eq, and, desc } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { teams, teamMembers, teamInvitations } from "@/db/schema";
-import type { NewTeam, NewTeamMember, NewTeamInvitation } from "@/db/schema";
+import type { NewTeam, NewTeamInvitation, NewTeamMember } from "@/db/schema";
+import { teamInvitations, teamMembers, teams } from "@/db/schema";
 
 /**
  * Team query helpers
@@ -107,7 +107,7 @@ export async function getTeamMember(teamId: string, userId: string) {
 export async function updateTeamMemberRole(
   teamId: string,
   userId: string,
-  role: "owner" | "admin" | "member" | "viewer"
+  role: "owner" | "admin" | "member" | "viewer",
 ) {
   const [member] = await db
     .update(teamMembers)
@@ -121,7 +121,10 @@ export async function updateTeamMemberRole(
  * Create team invitation
  */
 export async function createTeamInvitation(data: NewTeamInvitation) {
-  const [invitation] = await db.insert(teamInvitations).values(data).returning();
+  const [invitation] = await db
+    .insert(teamInvitations)
+    .values(data)
+    .returning();
   return invitation;
 }
 
@@ -130,7 +133,10 @@ export async function createTeamInvitation(data: NewTeamInvitation) {
  */
 export async function getTeamInvitations(teamId: string) {
   return await db.query.teamInvitations.findMany({
-    where: and(eq(teamInvitations.teamId, teamId), eq(teamInvitations.status, "pending")),
+    where: and(
+      eq(teamInvitations.teamId, teamId),
+      eq(teamInvitations.status, "pending"),
+    ),
     orderBy: [desc(teamInvitations.createdAt)],
   });
 }
@@ -179,4 +185,3 @@ export async function declineInvitation(invitationId: string) {
     .returning();
   return invitation;
 }
-

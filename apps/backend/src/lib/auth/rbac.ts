@@ -3,8 +3,8 @@
  * Team-based authorization helpers
  */
 
+import { and, eq } from "drizzle-orm";
 import { Elysia } from "elysia";
-import { eq, and } from "drizzle-orm";
 import { db } from "@/db";
 import { teamMembers } from "@/db/schema";
 import { requireAuth } from "@/plugins/auth";
@@ -31,7 +31,7 @@ export function hasRole(userRole: TeamRole, requiredRole: TeamRole): boolean {
  */
 export async function getUserTeamRole(
   userId: string,
-  teamId: string
+  teamId: string,
 ): Promise<TeamRole | null> {
   const membership = await db.query.teamMembers.findFirst({
     where: and(eq(teamMembers.userId, userId), eq(teamMembers.teamId, teamId)),
@@ -45,7 +45,7 @@ export async function getUserTeamRole(
  */
 export async function isTeamMember(
   userId: string,
-  teamId: string
+  teamId: string,
 ): Promise<boolean> {
   const role = await getUserTeamRole(userId, teamId);
   return role !== null;
@@ -56,7 +56,7 @@ export async function isTeamMember(
  */
 export async function canAccessTeam(
   user: User,
-  teamId: string
+  teamId: string,
 ): Promise<boolean> {
   return isTeamMember(user.id, teamId);
 }
@@ -67,7 +67,7 @@ export async function canAccessTeam(
  */
 export async function requireTeamMember(
   user: User,
-  teamId: string
+  teamId: string,
 ): Promise<TeamRole> {
   const role = await getUserTeamRole(user.id, teamId);
 
@@ -85,13 +85,13 @@ export async function requireTeamMember(
 export async function requireTeamRole(
   user: User,
   teamId: string,
-  requiredRole: TeamRole
+  requiredRole: TeamRole,
 ): Promise<TeamRole> {
   const userRole = await requireTeamMember(user, teamId);
 
   if (!hasRole(userRole, requiredRole)) {
     throw new AuthorizationError(
-      `This action requires ${requiredRole} role or higher`
+      `This action requires ${requiredRole} role or higher`,
     );
   }
 
@@ -103,7 +103,7 @@ export async function requireTeamRole(
  */
 export async function requireTeamAdmin(
   user: User,
-  teamId: string
+  teamId: string,
 ): Promise<TeamRole> {
   return await requireTeamRole(user, teamId, "admin");
 }
@@ -113,7 +113,7 @@ export async function requireTeamAdmin(
  */
 export async function requireTeamOwner(
   user: User,
-  teamId: string
+  teamId: string,
 ): Promise<TeamRole> {
   return await requireTeamRole(user, teamId, "owner");
 }
@@ -187,4 +187,3 @@ export const requireTeamOwnerPlugin = new Elysia({
       teamRole: role,
     };
   });
-

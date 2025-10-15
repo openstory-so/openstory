@@ -4,16 +4,19 @@
  */
 
 import {
+  createSequence,
+  deleteSequence,
   getSequenceById,
   getTeamSequences,
-  createSequence,
   updateSequence,
-  deleteSequence,
 } from "@/db/queries/sequences";
-import { requireTeamMember, requireTeamAdmin } from "@/lib/auth/rbac";
 import type { User } from "@/lib/auth/config";
-import type { CreateSequenceInput, UpdateSequenceInput } from "@/schemas/sequences";
+import { requireTeamAdmin, requireTeamMember } from "@/lib/auth/rbac";
 import { NotFoundError } from "@/plugins/error";
+import type {
+  CreateSequenceInput,
+  UpdateSequenceInput,
+} from "@/schemas/sequences";
 
 export class SequenceService {
   /**
@@ -48,11 +51,7 @@ export class SequenceService {
    * Create a new sequence
    * Requires team membership
    */
-  static async create(
-    teamId: string,
-    input: CreateSequenceInput,
-    user: User
-  ) {
+  static async create(teamId: string, input: CreateSequenceInput, user: User) {
     // Check team membership
     await requireTeamMember(user, teamId);
 
@@ -78,7 +77,7 @@ export class SequenceService {
   static async update(
     sequenceId: string,
     input: UpdateSequenceInput,
-    user: User
+    user: User,
   ) {
     // Get sequence and check ownership
     const sequence = await getSequenceById(sequenceId);
@@ -124,4 +123,3 @@ export class SequenceService {
     return { success: true };
   }
 }
-

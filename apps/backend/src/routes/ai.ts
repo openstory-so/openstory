@@ -3,24 +3,24 @@
  * API endpoints for AI image/video generation and script analysis
  */
 
+import { type } from "arktype";
 import { Elysia, t } from "elysia";
-import { requireAuth } from "@/plugins/auth";
 import {
+  FAL_IMAGE_MODELS,
   getFalService,
   getLetzAIService,
   getOpenRouterService,
-  FAL_IMAGE_MODELS,
 } from "@/lib/ai";
-import { type } from "arktype";
+import { requireAuth } from "@/plugins/auth";
 import {
-  generateImageSchema,
-  generateVideoSchema,
+  type AnalyzeScriptInput,
   analyzeScriptSchema,
-  generateFrameDescriptionSchema,
+  type GenerateFrameDescriptionInput,
   type GenerateImageInput,
   type GenerateVideoInput,
-  type AnalyzeScriptInput,
-  type GenerateFrameDescriptionInput,
+  generateFrameDescriptionSchema,
+  generateImageSchema,
+  generateVideoSchema,
 } from "@/schemas/ai";
 
 /**
@@ -50,7 +50,7 @@ export const aiRoutes = new Elysia({ prefix: "/ai" })
 
       // Determine which service to use based on model
       const isFalModel = Object.values(FAL_IMAGE_MODELS).includes(
-        input.model as any
+        input.model as any,
       );
 
       if (isFalModel) {
@@ -75,7 +75,7 @@ export const aiRoutes = new Elysia({ prefix: "/ai" })
           {
             userId: user.id,
             teamId: body.teamId,
-          }
+          },
         );
 
         return result;
@@ -96,7 +96,7 @@ export const aiRoutes = new Elysia({ prefix: "/ai" })
           {
             userId: user.id,
             teamId: body.teamId,
-          }
+          },
         );
 
         return result;
@@ -116,7 +116,7 @@ export const aiRoutes = new Elysia({ prefix: "/ai" })
         loraUrl: t.Optional(t.String()),
         loraScale: t.Optional(t.Number()),
       }),
-    }
+    },
   )
 
   // POST /ai/generate-video - Generate video using Fal.ai
@@ -156,7 +156,7 @@ export const aiRoutes = new Elysia({ prefix: "/ai" })
         {
           userId: user.id,
           teamId: body.teamId,
-        }
+        },
       );
 
       return result;
@@ -174,7 +174,7 @@ export const aiRoutes = new Elysia({ prefix: "/ai" })
         loraUrl: t.Optional(t.String()),
         loraScale: t.Optional(t.Number()),
       }),
-    }
+    },
   )
 
   // POST /ai/analyze-script - Analyze script and extract scenes/frames
@@ -211,7 +211,7 @@ export const aiRoutes = new Elysia({ prefix: "/ai" })
         framesPerScene: t.Optional(t.Number()),
         model: t.Optional(t.String()),
       }),
-    }
+    },
   )
 
   // POST /ai/generate-frame-description - Generate frame description
@@ -250,7 +250,7 @@ export const aiRoutes = new Elysia({ prefix: "/ai" })
         totalFrames: t.Number(),
         model: t.Optional(t.String()),
       }),
-    }
+    },
   )
 
   // GET /ai/health - Check AI services health
@@ -324,6 +324,5 @@ export const aiRoutes = new Elysia({ prefix: "/ai" })
         teamId: t.Optional(t.String()),
         service: t.Optional(t.String()),
       }),
-    }
+    },
   );
-

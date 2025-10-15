@@ -70,9 +70,7 @@ export class OpenRouterService {
   constructor() {
     const apiKey = process.env.OPENROUTER_KEY;
     if (!apiKey) {
-      throw new Error(
-        "OPENROUTER_KEY environment variable is required"
-      );
+      throw new Error("OPENROUTER_KEY environment variable is required");
     }
     this.apiKey = apiKey;
   }
@@ -81,7 +79,7 @@ export class OpenRouterService {
    * Make a request to OpenRouter API
    */
   async chat(
-    params: OpenRouterRequestParams
+    params: OpenRouterRequestParams,
   ): Promise<OpenRouterServiceResponse<OpenRouterResponse>> {
     const startTime = Date.now();
 
@@ -221,7 +219,7 @@ Return your analysis as a JSON object with this structure:
         cost: result.cost,
         tokensUsed: result.tokensUsed,
       };
-    } catch (error) {
+    } catch (_error) {
       return {
         success: false,
         error: "Failed to parse script analysis response",
@@ -277,7 +275,7 @@ Keep it concise but descriptive (2-3 sentences).`;
    */
   private calculateCost(
     model: OpenRouterModel,
-    usage: { prompt_tokens: number; completion_tokens: number }
+    usage: { prompt_tokens: number; completion_tokens: number },
   ): number {
     const pricePerMillion =
       MODEL_PRICING[model as keyof typeof MODEL_PRICING] || 0;
@@ -333,4 +331,3 @@ export function getOpenRouterService(): OpenRouterService {
   }
   return openRouterServiceInstance;
 }
-
