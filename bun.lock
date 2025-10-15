@@ -11,6 +11,7 @@
         "@elysiajs/cors": "^1.2.1",
         "@elysiajs/openapi": "^1.4.11",
         "@elysiajs/swagger": "^1.2.1",
+        "@fal-ai/client": "^1.6.2",
         "@supabase/supabase-js": "^2.56.0",
         "@temporalio/activity": "^1.13.1",
         "@temporalio/client": "^1.13.1",
