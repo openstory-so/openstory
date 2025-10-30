@@ -43,9 +43,9 @@ export const auth = betterAuth({
   baseURL: requiredEnvVars.BETTER_AUTH_URL,
 
   // Trusted origins for CSRF protection
-  // Uses project-specific wildcards to allow all Vercel deployments
-  // while blocking requests from other Vercel users' deployments
+  // Production uses custom domain, previews use Vercel URLs
   trustedOrigins: [
+    'https://app.velro.ai', // Production custom domain
     'https://velro-*.vercel.app', // Production deployments
     'https://velro-git-*.vercel.app', // Branch preview deployments
     ...(process.env.NODE_ENV === 'development'
@@ -94,13 +94,16 @@ export const auth = betterAuth({
   },
 
   // Social providers
+  // Google OAuth only enabled in production and local development
+  // Preview branches use email/password or anonymous mode
   socialProviders: {
     google: {
       clientId: process.env.GOOGLE_CLIENT_ID || '',
       clientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
-      enabled: !!(
-        process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET
-      ),
+      enabled:
+        !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) &&
+        (process.env.VERCEL_ENV === 'production' ||
+          process.env.NODE_ENV === 'development'),
     },
   },
 
