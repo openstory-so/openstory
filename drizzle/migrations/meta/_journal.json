@@ -64,6 +64,13 @@
       "when": 1762296285452,
       "tag": "0008_misty_vapor",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1730842800000,
+      "tag": "0009_move_pg_trgm_to_extensions_schema",
+      "breakpoints": false
     }
   ]
 }
