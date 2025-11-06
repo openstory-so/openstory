@@ -15,8 +15,8 @@ import { createWorkflow } from '@upstash/workflow/nextjs';
 import { generateMotionForFrame } from '@/lib/services/motion.service';
 
 import { DEFAULT_VIDEO_MODEL } from '@/lib/ai/models';
-import { eq } from 'drizzle-orm';
 import { getImageUrlForApi } from '@/lib/utils/environment';
+import { eq } from 'drizzle-orm';
 
 /**
  * Motion generation workflow
@@ -202,6 +202,12 @@ export const generateMotionWorkflow = createWorkflow(
   {
     retries: 3,
     retryDelay: 'pow(2, retried) * 1000', // 1s, 2s, 4s, 8s
+    flowControl: {
+      key: 'fal-requests', // Shared key for both image & motion
+      parallelism: process.env.FAL_CONCURRENCY_LIMIT
+        ? parseInt(process.env.FAL_CONCURRENCY_LIMIT)
+        : 10,
+    },
     failureFunction: async ({ context, failResponse }) => {
       const input = context.requestPayload;
 
