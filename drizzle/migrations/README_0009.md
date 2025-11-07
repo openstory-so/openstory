@@ -7,19 +7,24 @@ This migration moves the `pg_trgm` (PostgreSQL trigram) extension from the `publ
 ## Why This Change?
 
 ### Security & Organization
+
 - **Isolates extensions**: Keeps system extensions separate from user data
 - **Best Practice**: Follows PostgreSQL recommendations for extension management
 - **Maintainability**: Makes it clear which schemas contain extensions vs. application data
 
 ### What is pg_trgm?
+
 The trigram extension provides:
+
 - **Fuzzy text search**: Find "cyberpunk" when searching "cyber punk"
 - **Fast pattern matching**: LIKE queries with wildcards run much faster
 - **Similarity searches**: Used for autocomplete and search-as-you-type
 - **Typo-tolerant searches**: Finds close matches even with spelling errors
 
 ### Current Usage
+
 Used in `styles` table for fast name searching:
+
 ```typescript
 // src/lib/db/schema/libraries.ts:92-95
 index('idx_styles_name_gin').using(
@@ -38,7 +43,9 @@ index('idx_styles_name_gin').using(
 ## Important Notes
 
 ### Search Path
+
 The migration updates the database search path:
+
 ```sql
 ALTER DATABASE postgres SET search_path TO public, extensions;
 ```
@@ -46,7 +53,9 @@ ALTER DATABASE postgres SET search_path TO public, extensions;
 This ensures that pg_trgm operators (like `gin_trgm_ops`) work without schema qualification.
 
 ### Existing Indexes
+
 The GIN index on `styles.name` continues to work without changes because:
+
 - The operators are resolved via the search_path
 - Index definitions don't need schema prefixes
 - No application code changes required
@@ -54,6 +63,7 @@ The GIN index on `styles.name` continues to work without changes because:
 ## Running This Migration
 
 ### Local Development
+
 ```bash
 # Start local Supabase
 bun supabase:start
@@ -63,7 +73,9 @@ bun db:migrate
 ```
 
 ### Production
+
 This migration will be applied automatically when deployed, but verify:
+
 1. The `extensions` schema is created
 2. The search_path includes `extensions`
 3. Text search on styles still works
@@ -97,6 +109,7 @@ WHERE name ILIKE '%cyber%';
 ## Rollback
 
 If needed, to rollback:
+
 ```sql
 DROP EXTENSION IF EXISTS pg_trgm;
 CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA public;
