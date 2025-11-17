@@ -21,6 +21,7 @@
     "db:studio": "bun --env-file=.env.local --env-file=.env.development.local drizzle-kit studio",
     "db:check": "bun --bun drizzle-kit check",
     "db:seed": "bun --bun scripts/seed.ts",
+    "r2:migrate:storage": "bun --bun scripts/migrate-supabase-to-r2.ts",
     "supabase:start": "bunx supabase start",
     "supabase:stop": "bunx supabase stop",
     "supabase:types": "bunx supabase gen types typescript --local > src/lib/supabase/gen.types.ts && bunx prettier --write src/lib/supabase/gen.types.ts",
