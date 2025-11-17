@@ -22,6 +22,7 @@
     "db:check": "bun --bun drizzle-kit check",
     "db:seed": "bun --bun scripts/seed.ts",
     "r2:migrate:storage": "bun --bun scripts/migrate-supabase-to-r2.ts --bucket videos",
+    "r2:migrate:db": "bun --bun scripts/update-database-urls.ts",
     "supabase:start": "bunx supabase start",
     "supabase:stop": "bunx supabase stop",
     "supabase:types": "bunx supabase gen types typescript --local > src/lib/supabase/gen.types.ts && bunx prettier --write src/lib/supabase/gen.types.ts",

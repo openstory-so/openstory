@@ -14,34 +14,35 @@
  *   bun scripts/update-database-urls.ts --cleanup              # Clean up old URLs
  */
 
-import { createClient } from '@supabase/supabase-js';
+import { drizzle } from 'drizzle-orm/postgres-js';
+import { eq } from 'drizzle-orm';
+import postgres from 'postgres';
+import { schema } from '../src/lib/db/schema';
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+// Load POSTGRES_URL from environment
+const POSTGRES_URL = process.env.POSTGRES_URL;
 
-if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
-  console.error('❌ Missing Supabase credentials');
-  console.error(
-    'Required: NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY'
-  );
+if (!POSTGRES_URL) {
+  console.error('❌ Missing POSTGRES_URL environment variable');
   process.exit(1);
 }
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+// Create database connection for script
+const sql = postgres(POSTGRES_URL, {
+  max: 1,
+  ssl: 'require',
+});
 
-type FrameRow = {
-  id: string;
-  thumbnail_url: string | null;
-  thumbnail_path: string | null;
-  video_url: string | null;
-  video_path: string | null;
-};
+const db = drizzle(sql, {
+  schema,
+  casing: 'snake_case',
+});
 
 type FrameUpdate = {
-  thumbnail_path?: string | null;
-  video_path?: string | null;
-  thumbnail_url?: string | null;
-  video_url?: string | null;
+  thumbnailPath?: string | null;
+  videoPath?: string | null;
+  thumbnailUrl?: string | null;
+  videoUrl?: string | null;
 };
 
 type UpdateStats = {
@@ -90,71 +91,65 @@ async function updateFramePaths(
 ): Promise<{ updated: number; errors: number }> {
   console.log('\n📦 Processing frames...');
 
-  const { data: frames, error: fetchError } = await supabase
-    .from('frames')
-    .select('id, thumbnail_url, thumbnail_path, video_url, video_path');
-
-  if (fetchError) {
-    throw new Error(`Failed to fetch frames: ${fetchError.message}`);
-  }
-
-  if (!frames) {
-    throw new Error('No frames data returned');
-  }
+  const frames = await db.query.frames.findMany({
+    columns: {
+      id: true,
+      thumbnailUrl: true,
+      thumbnailPath: true,
+      videoUrl: true,
+      videoPath: true,
+    },
+  });
 
   let updated = 0;
   let errors = 0;
 
-  for (const frame of frames as FrameRow[]) {
+  for (const frame of frames) {
     const updates: FrameUpdate = {};
     let needsUpdate = false;
 
     // Extract thumbnail path from Supabase URL if missing
-    if (frame.thumbnail_url && !frame.thumbnail_path) {
-      const path = extractPathFromSupabaseUrl(
-        frame.thumbnail_url,
-        'thumbnails'
-      );
+    if (frame.thumbnailUrl && !frame.thumbnailPath) {
+      const path = extractPathFromSupabaseUrl(frame.thumbnailUrl, 'thumbnails');
       if (path) {
-        updates.thumbnail_path = path;
+        updates.thumbnailPath = path;
         needsUpdate = true;
         console.log(`  [${frame.id}] Will populate thumbnail_path: ${path}`);
       } else {
         console.warn(
-          `  [${frame.id}] ⚠️  Could not extract thumbnail path from: ${frame.thumbnail_url}`
+          `  [${frame.id}] ⚠️  Could not extract thumbnail path from: ${frame.thumbnailUrl}`
         );
         errors++;
       }
     }
 
     // Extract video path from Supabase URL if missing
-    if (frame.video_url && !frame.video_path) {
-      const path = extractPathFromSupabaseUrl(frame.video_url, 'videos');
+    if (frame.videoUrl && !frame.videoPath) {
+      const path = extractPathFromSupabaseUrl(frame.videoUrl, 'videos');
       if (path) {
-        updates.video_path = path;
+        updates.videoPath = path;
         needsUpdate = true;
         console.log(`  [${frame.id}] Will populate video_path: ${path}`);
       } else {
         console.warn(
-          `  [${frame.id}] ⚠️  Could not extract video path from: ${frame.video_url}`
+          `  [${frame.id}] ⚠️  Could not extract video path from: ${frame.videoUrl}`
         );
         errors++;
       }
     }
 
     if (needsUpdate && !dryRun) {
-      const { error: updateError } = await supabase
-        .from('frames')
-        .update(updates)
-        .eq('id', frame.id);
-
-      if (updateError) {
+      try {
+        await db
+          .update(schema.frames)
+          .set(updates)
+          .where(eq(schema.frames.id, frame.id));
+        updated++;
+      } catch (error) {
         console.error(
-          `  [${frame.id}] ❌ Update failed: ${updateError.message}`
+          `  [${frame.id}] ❌ Update failed: ${error instanceof Error ? error.message : 'Unknown error'}`
         );
         errors++;
-      } else {
-        updated++;
       }
     } else if (needsUpdate && dryRun) {
       updated++;
@@ -179,52 +174,49 @@ async function cleanupSupabaseUrls(
 ): Promise<{ updated: number; errors: number }> {
   console.log('\n🧹 Cleaning up Supabase URLs...');
 
-  const { data: frames, error: fetchError } = await supabase
-    .from('frames')
-    .select('id, thumbnail_url, thumbnail_path, video_url, video_path');
-
-  if (fetchError) {
-    throw new Error(`Failed to fetch frames: ${fetchError.message}`);
-  }
-
-  if (!frames) {
-    throw new Error('No frames data returned');
-  }
+  const frames = await db.query.frames.findMany({
+    columns: {
+      id: true,
+      thumbnailUrl: true,
+      thumbnailPath: true,
+      videoUrl: true,
+      videoPath: true,
+    },
+  });
 
   let updated = 0;
   let errors = 0;
 
-  for (const frame of frames as FrameRow[]) {
+  for (const frame of frames) {
     const updates: FrameUpdate = {};
     let needsUpdate = false;
 
     // Clear Supabase thumbnail URLs if path exists (path is source of truth)
-    if (isSupabaseUrl(frame.thumbnail_url) && frame.thumbnail_path) {
-      updates.thumbnail_url = null;
+    if (isSupabaseUrl(frame.thumbnailUrl) && frame.thumbnailPath) {
+      updates.thumbnailUrl = null;
       needsUpdate = true;
       console.log(`  [${frame.id}] Will clear thumbnail_url (path exists)`);
     }
 
     // Clear Supabase video URLs if path exists
-    if (isSupabaseUrl(frame.video_url) && frame.video_path) {
-      updates.video_url = null;
+    if (isSupabaseUrl(frame.videoUrl) && frame.videoPath) {
+      updates.videoUrl = null;
       needsUpdate = true;
       console.log(`  [${frame.id}] Will clear video_url (path exists)`);
     }
 
     if (needsUpdate && !dryRun) {
-      const { error: updateError } = await supabase
-        .from('frames')
-        .update(updates)
-        .eq('id', frame.id);
-
-      if (updateError) {
+      try {
+        await db
+          .update(schema.frames)
+          .set(updates)
+          .where(eq(schema.frames.id, frame.id));
+        updated++;
+      } catch (error) {
         console.error(
-          `  [${frame.id}] ❌ Update failed: ${updateError.message}`
+          `  [${frame.id}] ❌ Update failed: ${error instanceof Error ? error.message : 'Unknown error'}`
         );
         errors++;
-      } else {
-        updated++;
       }
     } else if (needsUpdate && dryRun) {
       updated++;
@@ -311,7 +303,6 @@ Workflow:
 
   console.log('🔄 Database URL Update Script');
   console.log('==============================\n');
-  console.log(`Environment: ${SUPABASE_URL}`);
   console.log(`Mode: ${dryRun ? 'DRY RUN' : 'LIVE UPDATE'}`);
   console.log(`Operation: ${cleanup ? 'CLEANUP URLs' : 'POPULATE PATHS'}`);
 
@@ -382,6 +373,8 @@ Workflow:
   } catch (error) {
     console.error('\n❌ Migration failed:', error);
     process.exit(1);
+  } finally {
+    await sql.end();
   }
 }
 

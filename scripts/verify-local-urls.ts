@@ -1,38 +1,68 @@
 #!/usr/bin/env bun
 /**
- * Production URL Verification Script
+ * Local Database URL Verification Script
  *
- * Audits the production database to identify:
- * - Frames with/without storage paths
- * - Supabase Storage URLs that need migration
- * - Library resources (styles, characters, vfx, audio) with Supabase URLs
+ * Same as verify-production-urls.ts but connects to local Supabase instance
  *
  * Usage:
- *   bun scripts/verify-production-urls.ts
+ *   bun scripts/verify-local-urls.ts
  */
 
-import { drizzle } from 'drizzle-orm/postgres-js';
-import postgres from 'postgres';
-import { schema } from '../src/lib/db/schema';
+import { createClient } from '@supabase/supabase-js';
+import { execSync } from 'child_process';
 
-// Load POSTGRES_URL from environment
-const POSTGRES_URL = process.env.POSTGRES_URL;
+// Get local Supabase credentials
+const LOCAL_URL = 'http://127.0.0.1:54321';
 
-if (!POSTGRES_URL) {
-  console.error('❌ Missing POSTGRES_URL environment variable');
+// Local Supabase uses a well-known service role key for development
+// This is the standard key used by all local Supabase instances
+const SERVICE_ROLE_KEY =
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU';
+
+// Verify local Supabase is running
+try {
+  execSync('bunx supabase status', { encoding: 'utf-8', stdio: 'pipe' });
+} catch (error) {
+  console.error('❌ Error: Local Supabase is not running');
+  console.error('Start it with: bunx supabase start');
   process.exit(1);
 }
 
-// Create database connection for script
-const sql = postgres(POSTGRES_URL, {
-  max: 1,
-  ssl: 'require',
-});
+const supabase = createClient(LOCAL_URL, SERVICE_ROLE_KEY);
 
-const db = drizzle(sql, {
-  schema,
-  casing: 'snake_case',
-});
+type FrameRow = {
+  id: string;
+  thumbnail_url: string | null;
+  thumbnail_path: string | null;
+  video_url: string | null;
+  video_path: string | null;
+};
+
+type StyleRow = {
+  id: string;
+  preview_url: string | null;
+};
+
+type CharacterRow = {
+  id: string;
+  lora_url: string | null;
+  preview_url: string | null;
+};
+
+type VfxRow = {
+  id: string;
+  preview_url: string | null;
+};
+
+type AudioRow = {
+  id: string;
+  file_url: string | null;
+};
+
+type UserRow = {
+  id: string;
+  image: string | null;
+};
 
 type VerificationReport = {
   frames: {
@@ -82,15 +112,17 @@ function isSupabaseUrl(url: string | null): boolean {
 async function verifyFrames() {
   console.log('\n📊 Analyzing frames table...');
 
-  const frames = await db.query.frames.findMany({
-    columns: {
-      id: true,
-      thumbnailUrl: true,
-      thumbnailPath: true,
-      videoUrl: true,
-      videoPath: true,
-    },
-  });
+  const { data: frames, error } = await supabase
+    .from('frames')
+    .select('id, thumbnail_url, thumbnail_path, video_url, video_path');
+
+  if (error) {
+    throw new Error(`Failed to fetch frames: ${error.message}`);
+  }
+
+  if (!frames) {
+    throw new Error('No frames data returned');
+  }
 
   const stats = {
     total: frames.length,
@@ -103,18 +135,18 @@ async function verifyFrames() {
     missingPaths: 0,
   };
 
-  for (const frame of frames) {
-    if (frame.videoPath) stats.withVideoPath++;
-    if (frame.thumbnailPath) stats.withThumbnailPath++;
-    if (frame.videoUrl) stats.withVideoUrl++;
-    if (frame.thumbnailUrl) stats.withThumbnailUrl++;
-    if (isSupabaseUrl(frame.videoUrl)) stats.supabaseVideoUrls++;
-    if (isSupabaseUrl(frame.thumbnailUrl)) stats.supabaseThumbnailUrls++;
+  for (const frame of frames as FrameRow[]) {
+    if (frame.video_path) stats.withVideoPath++;
+    if (frame.thumbnail_path) stats.withThumbnailPath++;
+    if (frame.video_url) stats.withVideoUrl++;
+    if (frame.thumbnail_url) stats.withThumbnailUrl++;
+    if (isSupabaseUrl(frame.video_url)) stats.supabaseVideoUrls++;
+    if (isSupabaseUrl(frame.thumbnail_url)) stats.supabaseThumbnailUrls++;
 
     // Missing paths but has URLs (needs migration)
     if (
-      (frame.videoUrl && !frame.videoPath) ||
-      (frame.thumbnailUrl && !frame.thumbnailPath)
+      (frame.video_url && !frame.video_path) ||
+      (frame.thumbnail_url && !frame.thumbnail_path)
     ) {
       stats.missingPaths++;
     }
@@ -137,17 +169,24 @@ async function verifyFrames() {
 async function verifyStyles() {
   console.log('\n📊 Analyzing styles table...');
 
-  const styles = await db.query.styles.findMany({
-    columns: {
-      id: true,
-      previewUrl: true,
-    },
-  });
+  const { data: styles, error } = await supabase
+    .from('styles')
+    .select('id, preview_url');
+
+  if (error) {
+    throw new Error(`Failed to fetch styles: ${error.message}`);
+  }
+
+  if (!styles) {
+    throw new Error('No styles data returned');
+  }
+
+  const typedStyles = styles as StyleRow[];
 
   const stats = {
-    total: styles.length,
-    withPreviewUrl: styles.filter((s) => s.previewUrl).length,
-    supabasePreviewUrls: styles.filter((s) => isSupabaseUrl(s.previewUrl))
+    total: typedStyles.length,
+    withPreviewUrl: typedStyles.filter((s) => s.preview_url).length,
+    supabasePreviewUrls: typedStyles.filter((s) => isSupabaseUrl(s.preview_url))
       .length,
   };
 
@@ -161,21 +200,29 @@ async function verifyStyles() {
 async function verifyCharacters() {
   console.log('\n📊 Analyzing characters table...');
 
-  const characters = await db.query.characters.findMany({
-    columns: {
-      id: true,
-      loraUrl: true,
-      previewUrl: true,
-    },
-  });
+  const { data: characters, error } = await supabase
+    .from('characters')
+    .select('id, lora_url, preview_url');
+
+  if (error) {
+    throw new Error(`Failed to fetch characters: ${error.message}`);
+  }
+
+  if (!characters) {
+    throw new Error('No characters data returned');
+  }
+
+  const typedCharacters = characters as CharacterRow[];
 
   const stats = {
-    total: characters.length,
-    withLoraUrl: characters.filter((c) => c.loraUrl).length,
-    withPreviewUrl: characters.filter((c) => c.previewUrl).length,
-    supabaseLoraUrls: characters.filter((c) => isSupabaseUrl(c.loraUrl)).length,
-    supabasePreviewUrls: characters.filter((c) => isSupabaseUrl(c.previewUrl))
+    total: typedCharacters.length,
+    withLoraUrl: typedCharacters.filter((c) => c.lora_url).length,
+    withPreviewUrl: typedCharacters.filter((c) => c.preview_url).length,
+    supabaseLoraUrls: typedCharacters.filter((c) => isSupabaseUrl(c.lora_url))
       .length,
+    supabasePreviewUrls: typedCharacters.filter((c) =>
+      isSupabaseUrl(c.preview_url)
+    ).length,
   };
 
   console.log(`  Total characters: ${stats.total}`);
@@ -190,17 +237,25 @@ async function verifyCharacters() {
 async function verifyVfx() {
   console.log('\n📊 Analyzing vfx table...');
 
-  const vfx = await db.query.vfx.findMany({
-    columns: {
-      id: true,
-      previewUrl: true,
-    },
-  });
+  const { data: vfx, error } = await supabase
+    .from('vfx')
+    .select('id, preview_url');
+
+  if (error) {
+    throw new Error(`Failed to fetch vfx: ${error.message}`);
+  }
+
+  if (!vfx) {
+    throw new Error('No vfx data returned');
+  }
+
+  const typedVfx = vfx as VfxRow[];
 
   const stats = {
-    total: vfx.length,
-    withPreviewUrl: vfx.filter((v) => v.previewUrl).length,
-    supabasePreviewUrls: vfx.filter((v) => isSupabaseUrl(v.previewUrl)).length,
+    total: typedVfx.length,
+    withPreviewUrl: typedVfx.filter((v) => v.preview_url).length,
+    supabasePreviewUrls: typedVfx.filter((v) => isSupabaseUrl(v.preview_url))
+      .length,
   };
 
   console.log(`  Total vfx: ${stats.total}`);
@@ -213,17 +268,25 @@ async function verifyVfx() {
 async function verifyAudio() {
   console.log('\n📊 Analyzing audio table...');
 
-  const audio = await db.query.audio.findMany({
-    columns: {
-      id: true,
-      fileUrl: true,
-    },
-  });
+  const { data: audio, error } = await supabase
+    .from('audio')
+    .select('id, file_url');
+
+  if (error) {
+    throw new Error(`Failed to fetch audio: ${error.message}`);
+  }
+
+  if (!audio) {
+    throw new Error('No audio data returned');
+  }
+
+  const typedAudio = audio as AudioRow[];
 
   const stats = {
-    total: audio.length,
-    withFileUrl: audio.filter((a) => a.fileUrl).length,
-    supabaseFileUrls: audio.filter((a) => isSupabaseUrl(a.fileUrl)).length,
+    total: typedAudio.length,
+    withFileUrl: typedAudio.filter((a) => a.file_url).length,
+    supabaseFileUrls: typedAudio.filter((a) => isSupabaseUrl(a.file_url))
+      .length,
   };
 
   console.log(`  Total audio: ${stats.total}`);
@@ -236,17 +299,24 @@ async function verifyAudio() {
 async function verifyUsers() {
   console.log('\n📊 Analyzing user table...');
 
-  const users = await db.query.user.findMany({
-    columns: {
-      id: true,
-      image: true,
-    },
-  });
+  const { data: users, error } = await supabase
+    .from('user')
+    .select('id, image');
+
+  if (error) {
+    throw new Error(`Failed to fetch users: ${error.message}`);
+  }
+
+  if (!users) {
+    throw new Error('No users data returned');
+  }
+
+  const typedUsers = users as UserRow[];
 
   const stats = {
-    total: users.length,
-    withImage: users.filter((u) => u.image).length,
-    supabaseImages: users.filter((u) => isSupabaseUrl(u.image)).length,
+    total: typedUsers.length,
+    withImage: typedUsers.filter((u) => u.image).length,
+    supabaseImages: typedUsers.filter((u) => isSupabaseUrl(u.image)).length,
   };
 
   console.log(`  Total users: ${stats.total}`);
@@ -258,7 +328,7 @@ async function verifyUsers() {
 
 function printSummary(report: VerificationReport) {
   console.log('\n' + '='.repeat(60));
-  console.log('📋 MIGRATION SUMMARY');
+  console.log('📋 MIGRATION SUMMARY (LOCAL DATABASE)');
   console.log('='.repeat(60));
 
   const totalSupabaseUrls =
@@ -288,11 +358,13 @@ function printSummary(report: VerificationReport) {
   );
 
   if (report.frames.missingPaths > 0) {
-    console.log('\n⚡ RECOMMENDATION:');
+    console.log('\n⚡ NEXT STEP:');
+    console.log('   Test the database URL update script on local database');
     console.log(
-      '   Run the database URL update script to populate missing paths'
+      '   Command: NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321 \\'
     );
-    console.log('   Command: bun scripts/update-database-urls.ts --dry-run');
+    console.log(`            SUPABASE_SERVICE_ROLE_KEY=${SERVICE_ROLE_KEY} \\`);
+    console.log('            bun scripts/update-database-urls.ts --dry-run');
   } else if (totalSupabaseUrls > 0) {
     console.log('\n✅ GOOD NEWS:');
     console.log('   All frames have storage paths populated!');
@@ -300,9 +372,13 @@ function printSummary(report: VerificationReport) {
       '   Old Supabase URLs will be ignored - signed URLs regenerate from paths'
     );
     console.log('\n💡 OPTIONAL:');
-    console.log('   You can clean up old Supabase URLs if desired');
+    console.log('   You can test the cleanup script on local database');
     console.log(
-      '   Command: bun scripts/update-database-urls.ts --cleanup --dry-run'
+      '   Command: NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321 \\'
+    );
+    console.log(`            SUPABASE_SERVICE_ROLE_KEY=${SERVICE_ROLE_KEY} \\`);
+    console.log(
+      '            bun scripts/update-database-urls.ts --cleanup --dry-run'
     );
   } else {
     console.log('\n✅ ALL CLEAR:');
@@ -313,8 +389,9 @@ function printSummary(report: VerificationReport) {
 }
 
 async function main() {
-  console.log('🔍 Production URL Verification Script');
-  console.log('=====================================\n');
+  console.log('🔍 Local Database URL Verification Script');
+  console.log('=========================================\n');
+  console.log(`Local Supabase URL: ${LOCAL_URL}`);
 
   try {
     const report: VerificationReport = {
@@ -329,9 +406,8 @@ async function main() {
     printSummary(report);
   } catch (error) {
     console.error('\n❌ Verification failed:', error);
+    console.error('\nMake sure local Supabase is running: bunx supabase start');
     process.exit(1);
-  } finally {
-    await sql.end();
   }
 }
 
