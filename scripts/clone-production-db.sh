@@ -20,7 +20,9 @@ echo ""
 
 # Load environment variables
 if [ -f .env.development.local ]; then
-  export $(grep -v '^#' .env.development.local | xargs)
+  set -a  # Automatically export all variables
+  source .env.development.local
+  set +a  # Stop automatically exporting
 else
   echo "❌ Error: .env.development.local not found"
   echo "Run: bun setup:env"
@@ -28,9 +30,22 @@ else
 fi
 
 # Verify required variables
-if [ -z "$NEXT_PUBLIC_SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
-  echo "❌ Error: Missing Supabase credentials"
-  echo "Required: NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY"
+MISSING_VARS=()
+if [ -z "$NEXT_PUBLIC_SUPABASE_URL" ]; then
+  MISSING_VARS+=("NEXT_PUBLIC_SUPABASE_URL")
+fi
+if [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
+  MISSING_VARS+=("SUPABASE_SERVICE_ROLE_KEY")
+fi
+
+if [ ${#MISSING_VARS[@]} -gt 0 ]; then
+  echo "❌ Error: Missing required environment variables:"
+  for var in "${MISSING_VARS[@]}"; do
+    echo "  - $var"
+  done
+  echo ""
+  echo "Make sure these are set in .env.development.local"
+  echo "Run: bun setup:env"
   exit 1
 fi
 
