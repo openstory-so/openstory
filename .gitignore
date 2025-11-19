@@ -69,3 +69,6 @@ storybook-static
 
 # conductor
 .conductor/
+
+# opennext
+.opennext/*
