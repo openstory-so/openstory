@@ -24,8 +24,6 @@ const llmMetadataSchema = z.object({
   prompt: z
     .object({
       name: z.string(),
-      version: z.number(),
-      isFallback: z.boolean(),
     })
     .optional(),
   tags: z.array(z.string()).optional(),

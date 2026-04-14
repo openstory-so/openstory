@@ -1,33 +1,58 @@
 /**
  * Tracing initialization and workflow trace recording.
- * Uses standard OpenTelemetry with pluggable exporters:
- * - Langfuse (LangfuseSpanProcessor) — optional
- * - PostHog (PostHogTraceExporter) — optional
+ * Uses standard OpenTelemetry with pluggable OTLP exporters:
+ * - Langfuse — optional (OTLP endpoint with Basic auth)
+ * - PostHog — optional (OTLP endpoint with Bearer auth)
  * Any OTel-compatible backend can be added as another span processor.
  */
 
 import { getEnv } from '#env';
-import { LangfuseSpanProcessor } from '@langfuse/otel';
+import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
 import { NodeSDK } from '@opentelemetry/sdk-node';
-import { PostHogTraceExporter } from '@posthog/ai/otel';
-import type { SpanProcessor } from '@opentelemetry/sdk-trace-base';
+import type {
+  ReadableSpan,
+  SpanExporter,
+  SpanProcessor,
+} from '@opentelemetry/sdk-trace-base';
+import type { ExportResult } from '@opentelemetry/core';
 
 import { endSpanSuccess, startGenAISpan, withTraceContext } from './tracer';
+
+/**
+ * Wraps a SpanExporter to only forward spans with gen_ai.* attributes.
+ */
+class GenAISpanExporter implements SpanExporter {
+  constructor(private readonly inner: SpanExporter) {}
+
+  export(
+    spans: ReadableSpan[],
+    resultCallback: (result: ExportResult) => void
+  ): void {
+    const filtered = spans.filter((s) => s.attributes['gen_ai.operation.name']);
+    if (filtered.length === 0) {
+      resultCallback({ code: 0 });
+      return;
+    }
+    this.inner.export(filtered, resultCallback);
+  }
+
+  shutdown(): Promise<void> {
+    return this.inner.shutdown();
+  }
+
+  forceFlush(): Promise<void> {
+    return this.inner.forceFlush ? this.inner.forceFlush() : Promise.resolve();
+  }
+}
 
 const processors: SpanProcessor[] = [];
 let sdk: NodeSDK | null = null;
 
-/** Whether Langfuse is enabled — derived from both keys being set. */
+/** Whether Langfuse tracing is enabled — derived from both keys being set. */
 export function isLangfuseEnabled(): boolean {
   const env = getEnv();
   return !!env.LANGFUSE_PUBLIC_KEY && !!env.LANGFUSE_SECRET_KEY;
-}
-
-/** Whether Langfuse prompt management is enabled (fetch prompts from Langfuse API). */
-export function isLangfusePromptsEnabled(): boolean {
-  const env = getEnv();
-  return isLangfuseEnabled() && env.LANGFUSE_PROMPTS_ENABLED === 'true';
 }
 
 /**
@@ -38,30 +63,45 @@ export function isLangfusePromptsEnabled(): boolean {
 export function initTracing(): void {
   const env = getEnv();
 
-  // Langfuse exporter
+  // Langfuse exporter (standard OTLP with Basic auth)
   const langfusePublicKey = env.LANGFUSE_PUBLIC_KEY;
   const langfuseSecretKey = env.LANGFUSE_SECRET_KEY;
 
   if (langfusePublicKey && langfuseSecretKey) {
+    const baseUrl = env.LANGFUSE_BASE_URL ?? 'https://cloud.langfuse.com';
+    const langfuseHeaders: Record<string, string> = {
+      Authorization: `Basic ${btoa(`${langfusePublicKey}:${langfuseSecretKey}`)}`,
+      'x-langfuse-ingestion-version': '4',
+    };
+    if (env.LANGFUSE_TRACING_ENVIRONMENT) {
+      langfuseHeaders['x-langfuse-trace-environment'] =
+        env.LANGFUSE_TRACING_ENVIRONMENT;
+    }
     processors.push(
-      new LangfuseSpanProcessor({
-        publicKey: langfusePublicKey,
-        secretKey: langfuseSecretKey,
-        baseUrl: env.LANGFUSE_BASE_URL ?? 'https://cloud.langfuse.com',
-        exportMode: 'batched',
-      })
+      new BatchSpanProcessor(
+        new GenAISpanExporter(
+          new OTLPTraceExporter({
+            url: `${baseUrl}/api/public/otel`,
+            headers: langfuseHeaders,
+          })
+        )
+      )
     );
-    console.log('[Tracing] Langfuse exporter enabled');
+    console.log('[Tracing] Langfuse exporter enabled (gen_ai spans only)');
   }
 
-  // PostHog exporter
+  // PostHog exporter (standard OTLP with Bearer auth)
+  // Always use the direct PostHog host for server-side OTLP — the reverse proxy
+  // (VITE_PUBLIC_POSTHOG_HOST) is for client-side analytics and may not handle /i/v0/ai/otel.
   const posthogToken = env.VITE_PUBLIC_POSTHOG_PROJECT_TOKEN;
 
   if (posthogToken) {
-    const host = env.VITE_PUBLIC_POSTHOG_HOST || 'https://us.i.posthog.com';
     processors.push(
       new BatchSpanProcessor(
-        new PostHogTraceExporter({ apiKey: posthogToken, host })
+        new OTLPTraceExporter({
+          url: 'https://us.i.posthog.com/i/v0/ai/otel',
+          headers: { Authorization: `Bearer ${posthogToken}` },
+        })
       )
     );
     console.log('[Tracing] PostHog exporter enabled');
@@ -92,7 +132,7 @@ export async function flushTracing(): Promise<void> {
  * @param traceName - Name for the trace (e.g., 'analyzeScriptWorkflow')
  * @param input - Input data that was passed to the workflow
  * @param output - Output data produced by the workflow
- * @param sequenceId - Used as the Langfuse sessionId to group traces
+ * @param sequenceId - Used as the session ID to group traces
  * @param userId - Optional user ID for user attribution
  * @param model - Optional model name
  * @param startTime - Optional start time for the trace
@@ -135,14 +175,3 @@ export async function recordWorkflowTrace<TOutput>(
     }
   );
 }
-
-/**
- * Prompt reference for Langfuse trace linking.
- * Compatible with TextPromptClient and ChatPromptClient from @langfuse/client.
- * Must include at minimum: name, version, isFallback (additional properties allowed).
- */
-export type PromptReference = {
-  name: string;
-  version: number;
-  isFallback: boolean;
-};

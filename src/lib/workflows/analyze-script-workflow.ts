@@ -5,7 +5,7 @@
 
 import { sanitizeScriptContent } from '@/lib/ai/prompt-validation';
 import type { Scene } from '@/lib/ai/scene-analysis.schema';
-import { recordWorkflowTrace } from '@/lib/observability/langfuse';
+import { recordWorkflowTrace } from '@/lib/observability/tracing';
 import { getGenerationChannel } from '@/lib/realtime';
 import { WorkflowValidationError } from '@/lib/workflow/errors';
 import { buildWorkflowLabel } from '@/lib/workflow/labels';

@@ -142,7 +142,6 @@ function writeEnvFile(vars: Map<string, string>) {
         'LANGFUSE_PUBLIC_KEY',
         'LANGFUSE_SECRET_KEY',
         'LANGFUSE_BASE_URL',
-        'LANGFUSE_PROMPTS_ENABLED',
         'LANGFUSE_TRACING_ENVIRONMENT',
       ],
     },
@@ -233,7 +232,6 @@ const PR_PREVIEW_SECRETS_BASE = [
   'FAL_CONCURRENCY_LIMIT',
   'FAL_KEY',
   'LANGFUSE_BASE_URL',
-  'LANGFUSE_PROMPTS_ENABLED',
   'LANGFUSE_PUBLIC_KEY',
   'LANGFUSE_SECRET_KEY',
   'LANGFUSE_TRACING_ENVIRONMENT',
@@ -2338,44 +2336,6 @@ async function main() {
       }
     } else {
       p.log.success('LANGFUSE_TRACING_ENVIRONMENT — already configured');
-    }
-
-    if (!vars.has('LANGFUSE_PROMPTS_ENABLED')) {
-      const enablePrompts = checkCancel(
-        await p.confirm({
-          message:
-            'Fetch prompts from Langfuse API? (If no, prompts are served from git)',
-          initialValue: false,
-        })
-      );
-      vars.set('LANGFUSE_PROMPTS_ENABLED', enablePrompts ? 'true' : 'false');
-      saveProgress();
-    } else {
-      p.log.success('LANGFUSE_PROMPTS_ENABLED — already configured');
-    }
-
-    const uploadPrompts = checkCancel(
-      await p.confirm({
-        message: 'Upload all prompts to Langfuse now?',
-        initialValue: true,
-      })
-    );
-
-    if (uploadPrompts) {
-      const promptSpinner = p.spinner();
-      promptSpinner.start('Uploading prompts to Langfuse');
-      try {
-        execFileSync('bun', ['scripts/upload-all-prompts.ts'], {
-          stdio: 'pipe',
-          cwd: process.cwd(),
-        });
-        promptSpinner.stop('Prompts uploaded to Langfuse');
-      } catch {
-        promptSpinner.stop('Prompt upload failed');
-        p.log.warn(
-          'You can retry later with: bun scripts/upload-all-prompts.ts'
-        );
-      }
     }
   }
 

@@ -42,13 +42,13 @@ export type LLMRequestParams = {
   presence_penalty?: number;
   stream?: boolean;
   provider?: ProviderPreference;
-  /** Observation name for Langfuse (forwarded via AI event bridge) */
+  /** Observation name (forwarded via AI event bridge) */
   observationName?: string;
-  /** Prompt reference for Langfuse trace linking */
-  prompt?: { name: string; version: number; isFallback: boolean };
-  /** Tags for Langfuse filtering */
+  /** Prompt name for trace linking */
+  prompt?: { name: string };
+  /** Trace tags */
   tags?: string[];
-  /** Additional metadata for Langfuse */
+  /** Additional metadata */
   metadata?: Record<string, unknown>;
   responseSchema?: z.ZodTypeAny;
   apiKey?: string;
@@ -257,8 +257,7 @@ export async function callChat<TSchema extends z.ZodType>(
     ...config.additionalMetadata,
   };
 
-  // Step 1: Prepare -- fetch prompt and emit phase start
-  // Prompt is the Langfuse prompt reference, messages is the compiled messages
+  // Step 1: Prepare — fetch prompt
   const { prompt, messages } = await getChatPrompt(promptName, promptVariables);
 
   // Step 2: Durable LLM call (QStash retries step delivery on failure)
@@ -304,7 +303,7 @@ export async function callChat<TSchema extends z.ZodType>(
 
   console.log(`[LLM:${name}] Call succeeded`);
 
-  // Deduct LLM credits (cost tracked via Langfuse; adapter doesn't expose per-call usage)
+  // Deduct LLM credits (adapter doesn't expose per-call usage)
   // TODO: Add cost calculation
   await deductWorkflowCredits({
     scopedDb: scopedDb,

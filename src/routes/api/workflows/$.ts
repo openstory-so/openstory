@@ -5,7 +5,7 @@
 
 import { initAIEventBridge } from '@/lib/observability/ai-event-bridge';
 import { withApiLogging } from '@/lib/observability/api-logger';
-import { flushTracing, initTracing } from '@/lib/observability/langfuse';
+import { flushTracing, initTracing } from '@/lib/observability/tracing';
 import {
   initMemoryProfiler,
   recordMemorySample,

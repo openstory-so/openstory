@@ -19,13 +19,13 @@ type GenAISpanAttrs = {
   provider?: string;
   operation?: string;
   input?: unknown;
-  /** Langfuse session grouping */
+  /** Session grouping (Langfuse) */
   sessionId?: string;
-  /** Langfuse user attribution */
+  /** User attribution (Langfuse + PostHog) */
   userId?: string;
-  /** Langfuse prompt reference */
-  prompt?: { name: string; version: number; isFallback: boolean };
-  /** Langfuse tags */
+  /** Prompt name for trace linking */
+  prompt?: { name: string };
+  /** Trace tags (used by Langfuse) */
   tags?: string[];
   /** Extra metadata */
   metadata?: Record<string, unknown>;
@@ -50,12 +50,13 @@ export function startGenAISpan(name: string, attrs: GenAISpanAttrs): Span {
         ...(attrs.input !== undefined
           ? { 'gen_ai.input.messages': JSON.stringify(attrs.input) }
           : {}),
-        // Langfuse-specific attributes for session/user/prompt linking
         ...(attrs.sessionId && { 'langfuse.session.id': attrs.sessionId }),
-        ...(attrs.userId && { 'langfuse.user.id': attrs.userId }),
+        ...(attrs.userId && {
+          'langfuse.user.id': attrs.userId,
+          posthog_distinct_id: attrs.userId,
+        }),
         ...(attrs.prompt && {
           'langfuse.observation.prompt.name': attrs.prompt.name,
-          'langfuse.observation.prompt.version': attrs.prompt.version,
         }),
         ...(attrs.tags && { 'langfuse.trace.tags': attrs.tags }),
         ...(attrs.metadata && {
@@ -112,7 +113,7 @@ export function endSpanError(span: Span, error: unknown) {
 }
 
 /**
- * Run a function within a trace context that sets Langfuse session/user attributes.
+ * Run a function within a trace context that sets session/user attributes.
  * Child spans created inside the callback inherit this context.
  */
 export function withTraceContext<T>(
@@ -122,7 +123,10 @@ export function withTraceContext<T>(
   const rootSpan = tracer.startSpan('trace-context', {
     attributes: {
       ...(attrs.sessionId && { 'langfuse.session.id': attrs.sessionId }),
-      ...(attrs.userId && { 'langfuse.user.id': attrs.userId }),
+      ...(attrs.userId && {
+        'langfuse.user.id': attrs.userId,
+        posthog_distinct_id: attrs.userId,
+      }),
       ...(attrs.tags && { 'langfuse.trace.tags': attrs.tags }),
     },
   });
