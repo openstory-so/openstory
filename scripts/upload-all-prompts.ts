@@ -9,11 +9,32 @@
  * to be set in .env.local or environment.
  */
 
-import { LangfuseClient } from '@langfuse/client';
+import { LangfuseClient, type ChatPromptClient } from '@langfuse/client';
 import {
   WORKFLOW_CHAT_PROMPTS,
   WORKFLOW_TEXT_PROMPTS,
+  type ChatMessage,
 } from '../src/lib/prompts/workflow-prompts';
+
+// ── Helpers ───────────────────────────────────────────────────────────
+
+function normalizeText(s: string): string {
+  return s.trim();
+}
+
+function chatMessagesEqual(
+  local: ChatMessage[],
+  remote: ChatPromptClient['prompt']
+): boolean {
+  const normalizedLocal = local.map((m) => ({
+    role: m.role,
+    content: normalizeText(m.content),
+  }));
+  const normalizedRemote = remote
+    .filter((m): m is ChatMessage => 'role' in m && 'content' in m)
+    .map((m) => ({ role: m.role, content: normalizeText(m.content) }));
+  return JSON.stringify(normalizedLocal) === JSON.stringify(normalizedRemote);
+}
 
 // ── Upload logic ──────────────────────────────────────────────────────
 
@@ -25,15 +46,34 @@ async function main() {
   const total = textNames.length + chatNames.length;
 
   console.log(
-    `Uploading ${total} prompts (${textNames.length} text + ${chatNames.length} chat)\n`
+    `Checking ${total} prompts (${textNames.length} text + ${chatNames.length} chat)\n`
   );
 
-  let success = 0;
+  let uploaded = 0;
+  let skipped = 0;
   let failed = 0;
 
   // Upload text prompts
   for (const name of textNames) {
     try {
+      // Check if content has changed before uploading
+      try {
+        const remote = await langfuse.prompt.get(name, {
+          type: 'text',
+          cacheTtlSeconds: 0,
+        });
+        if (
+          normalizeText(remote.prompt) ===
+          normalizeText(WORKFLOW_TEXT_PROMPTS[name])
+        ) {
+          console.log(`  [skip] ${name} (unchanged)`);
+          skipped++;
+          continue;
+        }
+      } catch {
+        // Prompt doesn't exist in Langfuse yet — upload it
+      }
+
       await langfuse.prompt.create({
         name,
         type: 'text',
@@ -41,7 +81,7 @@ async function main() {
         labels: ['production'],
       });
       console.log(`  [text] ${name}`);
-      success++;
+      uploaded++;
     } catch (error) {
       console.error(
         `  [FAIL] ${name}: ${error instanceof Error ? error.message : String(error)}`
@@ -53,6 +93,21 @@ async function main() {
   // Upload chat prompts
   for (const name of chatNames) {
     try {
+      // Check if content has changed before uploading
+      try {
+        const remote = await langfuse.prompt.get(name, {
+          type: 'chat',
+          cacheTtlSeconds: 0,
+        });
+        if (chatMessagesEqual(WORKFLOW_CHAT_PROMPTS[name], remote.prompt)) {
+          console.log(`  [skip] ${name} (unchanged)`);
+          skipped++;
+          continue;
+        }
+      } catch {
+        // Prompt doesn't exist in Langfuse yet — upload it
+      }
+
       await langfuse.prompt.create({
         name,
         type: 'chat',
@@ -60,7 +115,7 @@ async function main() {
         labels: ['production'],
       });
       console.log(`  [chat] ${name}`);
-      success++;
+      uploaded++;
     } catch (error) {
       console.error(
         `  [FAIL] ${name}: ${error instanceof Error ? error.message : String(error)}`
@@ -69,7 +124,9 @@ async function main() {
     }
   }
 
-  console.log(`\nDone: ${success} uploaded, ${failed} failed (${total} total)`);
+  console.log(
+    `\nDone: ${uploaded} uploaded, ${skipped} unchanged, ${failed} failed (${total} total)`
+  );
 
   if (failed > 0) {
     process.exit(1);

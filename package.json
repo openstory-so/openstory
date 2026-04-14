@@ -33,6 +33,7 @@
     "setup:stg": "npx tsx scripts/setup.ts --pr-preview",
     "setup:previews": "bun scripts/generate-style-previews.ts && bun scripts/upload-style-previews-to-r2.ts",
     "upload:prompts": "bun --bun scripts/upload-all-prompts.ts",
+    "check:prompts": "bun --bun scripts/check-prompts.ts",
     "dev": "bun run --parallel dev:db stripe:dev qstash:dev",
     "dev:db": "bun --bun --sequential db:migrate:local db:seed:local dev:e2e",
     "dev:e2e": "bun --bun vite dev",
