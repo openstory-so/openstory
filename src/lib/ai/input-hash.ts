@@ -61,7 +61,7 @@ function canonicalize(
 
 const encoder = new TextEncoder();
 
-async function sha256Hex(input: unknown): Promise<string> {
+export async function sha256Hex(input: unknown): Promise<string> {
   const json = JSON.stringify(canonicalize(input));
   const digest = await crypto.subtle.digest('SHA-256', encoder.encode(json));
   const bytes = new Uint8Array(digest);

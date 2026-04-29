@@ -188,8 +188,37 @@ export interface CharacterSheetWorkflowInput extends SequenceWorkflowContext {
 }
 
 /**
+ * Per-frame snapshot DTO for `regenerateFramesWorkflow`. The hashes are
+ * snapshot-time `input_hash` values from the referenced sheets/library rows;
+ * `null` means the row predated hash tracking and is treated as
+ * "unknown, never stale" rather than forcing a false-positive divergence.
+ */
+export type RegenerateFrameSnapshot = {
+  frameId: string;
+  /** Visual prompt frozen at trigger time. */
+  imagePrompt: string;
+  /** Sorted character-sheet input_hashes referenced by this frame. */
+  characterSheetHashes: string[];
+  /** Sorted location-sheet input_hashes referenced by this frame. */
+  locationSheetHashes: string[];
+  /** Reference image descriptions used for image generation. */
+  characterRefs: ReferenceImageDescription[];
+  locationRefs: ReferenceImageDescription[];
+  /**
+   * Per-frame hash of `(prompt, model, aspect, characterSheetHashes,
+   * locationSheetHashes)`. Stored on the artifact row at write time and
+   * compared to a freshly recomputed hash to detect divergence.
+   */
+  snapshotInputHash: string;
+};
+
+/**
  * Regenerate frames workflow input
- * Bulk regenerates images for frames containing specific characters after recast
+ * Bulk regenerates images for frames containing specific characters after recast.
+ *
+ * Carries an inlined snapshot per frame (resolved at trigger time) so the
+ * workflow does not read live mutable state inside `context.run`. See
+ * docs/architecture/workflow-snapshots-and-content-hash-staleness.md.
  */
 export interface RegenerateFramesWorkflowInput extends SequenceWorkflowContext {
   /** Frame IDs to regenerate */
@@ -198,6 +227,16 @@ export interface RegenerateFramesWorkflowInput extends SequenceWorkflowContext {
   triggeringCharacterId: string;
   /** Image model to use */
   imageModel?: TextToImageModel;
+  /** Aspect ratio (frozen at trigger time, replaces a live sequence read). */
+  aspectRatio: AspectRatio;
+  /** Per-frame inlined snapshot DTOs. */
+  frameSnapshots: RegenerateFrameSnapshot[];
+  /**
+   * Hash over the full inlined DTO. The workflow validates this against a
+   * recompute at start (tamper check) via `createScopedWorkflow`'s snapshot
+   * extension.
+   */
+  snapshotInputHash: string;
 }
 
 /**
