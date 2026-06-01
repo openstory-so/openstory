@@ -108,6 +108,23 @@ export function createSequenceVariantsMethods(db: Database) {
         .where(eq(sequenceMusicVariants.sequenceId, sequenceId));
     },
 
+    /**
+     * Distinct audio models that have a primary (non-divergent) variant for
+     * this sequence (#546). Drives the header audio-model dropdown.
+     */
+    listMusicModels: async (sequenceId: string): Promise<string[]> => {
+      const result = await db
+        .selectDistinct({ model: sequenceMusicVariants.model })
+        .from(sequenceMusicVariants)
+        .where(
+          and(
+            eq(sequenceMusicVariants.sequenceId, sequenceId),
+            sql`${sequenceMusicVariants.divergedAt} IS NULL`
+          )
+        );
+      return result.map((r) => r.model);
+    },
+
     getMusicPrimary,
     upsertMusicPrimary,
     insertDivergentMusic,

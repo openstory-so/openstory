@@ -3,6 +3,7 @@ import {
   DEFAULT_MUSIC_MODEL,
   DEFAULT_VIDEO_MODEL,
   isValidAudioModel,
+  safeAudioModel,
   safeImageToVideoModel,
   safeTextToImageModel,
 } from '@/lib/ai/models';
@@ -10,6 +11,7 @@ import {
   DEFAULT_ANALYSIS_MODEL,
   getAnalysisModelById,
 } from '@/lib/ai/models.config';
+import { resolveAudioModels } from '@/lib/ai/resolve-audio-models';
 import { resolveImageModels } from '@/lib/ai/resolve-image-models';
 import { resolveVideoModels } from '@/lib/ai/resolve-video-models';
 import { requireTeamMemberAccess } from '@/lib/auth/action-utils';
@@ -75,6 +77,7 @@ export const createSequenceFn = createServerFn({ method: 'POST' })
       autoGenerateMotion = false,
       autoGenerateMusic = true,
       musicModel,
+      audioModels: audioModelsInput,
       suggestedTalentIds,
       suggestedLocationIds,
       elementUploads,
@@ -121,6 +124,23 @@ export const createSequenceFn = createServerFn({ method: 'POST' })
       );
     }
 
+    // Validate and resolve audio models (sequence-level, mirrors the pattern).
+    const validatedAudioModels = audioModelsInput?.map((m) =>
+      safeAudioModel(m, DEFAULT_MUSIC_MODEL)
+    );
+    const audioModels = resolveAudioModels(
+      validatedAudioModels,
+      musicModel && isValidAudioModel(musicModel)
+        ? safeAudioModel(musicModel, DEFAULT_MUSIC_MODEL)
+        : undefined
+    );
+    const [primaryAudioModel] = audioModels;
+    if (!primaryAudioModel) {
+      throw new Error(
+        'Expected resolveAudioModels to return at least one model'
+      );
+    }
+
     if (!styleId || !aspectRatio) {
       throw new Error('Style ID and aspect ratio are required');
     }
@@ -134,6 +154,11 @@ export const createSequenceFn = createServerFn({ method: 'POST' })
         autoGenerateMotion,
         videoModel: primaryVideoModel,
         videoModelCount: videoModels.length,
+        // Music only actually generates when motion is also on (it spawns from
+        // inside motion-batch), so don't charge for music tracks that won't run.
+        autoGenerateMusic: autoGenerateMotion && autoGenerateMusic,
+        audioModel: primaryAudioModel,
+        audioModelCount: audioModels.length,
       }),
       {
         providers: ['fal', 'openrouter'],
@@ -147,12 +172,9 @@ export const createSequenceFn = createServerFn({ method: 'POST' })
         // into auto-generation. Otherwise the sequence ends up with a "ghost"
         // model preference the user never picked, which surfaces stale values
         // in the header chip and batch footer. Tracked in #714.
-        const persistedMusicModel =
-          autoGenerateMusic && musicModel && isValidAudioModel(musicModel)
-            ? musicModel
-            : autoGenerateMusic
-              ? DEFAULT_MUSIC_MODEL
-              : undefined;
+        const persistedMusicModel = autoGenerateMusic
+          ? primaryAudioModel
+          : undefined;
 
         const sequence = await context.scopedDb.sequences.create({
           title: data.title || 'Untitled Sequence',
@@ -216,10 +238,8 @@ export const createSequenceFn = createServerFn({ method: 'POST' })
           },
           autoGenerateMotion,
           autoGenerateMusic,
-          musicModel:
-            musicModel && isValidAudioModel(musicModel)
-              ? musicModel
-              : undefined,
+          musicModel: autoGenerateMusic ? primaryAudioModel : undefined,
+          audioModels: autoGenerateMusic ? audioModels : undefined,
           suggestedTalentIds,
           suggestedLocationIds,
         };
@@ -442,6 +462,27 @@ export function buildSceneSummaries(frames: Frame[]): MusicSceneSummary[] {
  * Trigger sequence-level music generation.
  * Uses pre-generated prompt/tags when available, otherwise builds from frame audio specs.
  */
+/**
+ * Distinct audio models that have generated a track for this sequence (#546).
+ * Drives the header audio-model dropdown.
+ */
+export const getSequenceAudioModelsFn = createServerFn({ method: 'GET' })
+  .middleware([sequenceAccessMiddleware])
+  .handler(async ({ context }) => {
+    return context.scopedDb.sequenceVariants.listMusicModels(
+      context.sequence.id
+    );
+  });
+
+/** All music variant rows for a sequence (#546). */
+export const getSequenceAudioVariantsFn = createServerFn({ method: 'GET' })
+  .middleware([sequenceAccessMiddleware])
+  .handler(async ({ context }) => {
+    return context.scopedDb.sequenceVariants.listMusicBySequence(
+      context.sequence.id
+    );
+  });
+
 export const generateMusicFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
   .inputValidator(

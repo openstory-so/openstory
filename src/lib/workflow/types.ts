@@ -128,6 +128,8 @@ export interface StoryboardWorkflowInput extends SequenceWorkflowContext {
   autoGenerateMotion?: boolean;
   autoGenerateMusic?: boolean;
   musicModel?: keyof typeof AUDIO_MODELS;
+  /** Multiple audio models for variant generation (first is primary) */
+  audioModels?: (keyof typeof AUDIO_MODELS)[];
   /** Talent IDs suggested by user for AI-assisted casting */
   suggestedTalentIds?: string[];
   /** Location IDs suggested by user for visual consistency */
@@ -152,6 +154,8 @@ export interface AnalyzeScriptWorkflowInput extends SequenceWorkflowContext {
   autoGenerateMotion?: boolean;
   autoGenerateMusic?: boolean;
   musicModel?: keyof typeof AUDIO_MODELS;
+  /** Multiple audio models for variant generation (first is primary) */
+  audioModels?: (keyof typeof AUDIO_MODELS)[];
   /** Talent IDs suggested by user for AI-assisted casting */
   suggestedTalentIds?: string[];
   /** Location IDs suggested by user for visual consistency */
@@ -758,6 +762,14 @@ export interface BatchMotionMusicWorkflowInput extends SequenceWorkflowContext {
     duration: number;
     model?: keyof typeof AUDIO_MODELS;
   };
+  /**
+   * Audio models to generate for the sequence (#546). First is primary (its
+   * track also lands on the live `sequences.music*` columns); the rest are
+   * alternates stored as separate primary rows in `sequence_music_variants`
+   * keyed by (sequenceId, model). When absent, falls back to `music.model`
+   * (single-model behaviour). Each model reuses `music.prompt/tags/duration`.
+   */
+  audioModels?: (keyof typeof AUDIO_MODELS)[];
 }
 
 /**

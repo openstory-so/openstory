@@ -231,6 +231,22 @@ export function updateQueryCacheFromEvent(
               : old
         );
       }
+      // Refresh per-model audio data so the header model dropdown and the
+      // music-tab track switcher stay current (#546). Audio is sequence-level
+      // (sequence_music_variants), so these are separate queries from the frame
+      // image/video variant ones.
+      if (status === 'completed' || status === 'failed') {
+        debouncedInvalidate(
+          queryClient,
+          ['sequence-audio-variants', sequenceId],
+          `audio-variants:${sequenceId}`
+        );
+        debouncedInvalidate(
+          queryClient,
+          ['sequence-audio-models', sequenceId],
+          `audio-models:${sequenceId}`
+        );
+      }
       break;
     }
 

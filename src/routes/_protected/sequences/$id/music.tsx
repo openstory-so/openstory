@@ -5,8 +5,13 @@ import {
   regenerateMusicPromptFn,
 } from '@/functions/prompt-variants';
 import { generateMusicFn } from '@/functions/sequences';
+import { useActiveAudioModel } from '@/hooks/use-active-audio-model';
 import { useFramesBySequence } from '@/hooks/use-frames';
-import { useSequence, sequenceKeys } from '@/hooks/use-sequences';
+import {
+  useSequence,
+  useSequenceAudioVariants,
+  sequenceKeys,
+} from '@/hooks/use-sequences';
 import {
   useDiscardSequenceMusicVariant,
   usePromoteSequenceMusicVariant,
@@ -35,6 +40,31 @@ function MusicPage() {
   const { data: frames } = useFramesBySequence(sequenceId, {
     refetchInterval: false,
   });
+  // Resolve the music tab through the viewer's active audio model (#546). When
+  // a model is pinned in the header, play that model's primary track instead
+  // of the live `sequences.music*` primary; "Mixed" (null) keeps the primary.
+  const { activeAudioModel } = useActiveAudioModel(sequenceId);
+  const { data: audioVariants } = useSequenceAudioVariants(sequenceId);
+  const resolvedSequence = useMemo<Sequence | undefined>(() => {
+    if (!sequence || !activeAudioModel || !audioVariants) return sequence;
+    // Player-only remap (mirrors scenes-view's playerFrames): swap ONLY the
+    // playback URL to the pinned model's completed track. Status / error /
+    // prompt / tags stay sourced from the live sequence so a regeneration of
+    // the pinned model still surfaces the generating spinner + failure UI and
+    // never clobbers an in-progress prompt edit. Only swap while the live track
+    // is completed — never mask a live generating/failed state.
+    if (sequence.musicStatus !== 'completed') return sequence;
+    const variant = audioVariants.find(
+      (v) =>
+        v.model === activeAudioModel &&
+        v.divergedAt === null &&
+        v.discardedAt === null &&
+        v.status === 'completed' &&
+        v.url
+    );
+    if (!variant?.url) return sequence;
+    return { ...sequence, musicUrl: variant.url };
+  }, [sequence, activeAudioModel, audioVariants]);
   const queryClient = useQueryClient();
   const posthog = usePostHog();
 
@@ -204,7 +234,7 @@ function MusicPage() {
     <div className="flex-1 overflow-auto p-4">
       <div className="max-w-4xl mx-auto">
         <MusicView
-          sequence={sequence}
+          sequence={resolvedSequence ?? sequence}
           videoDuration={videoDuration}
           onGenerateMusic={(args) => generateMusic.mutate(args)}
           isGeneratingMusic={generateMusic.isPending}

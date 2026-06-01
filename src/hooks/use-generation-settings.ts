@@ -36,6 +36,7 @@ type GenerationSettings = {
   videoModels: ImageToVideoModel[];
   autoGenerateMotion: boolean;
   musicModel: AudioModel;
+  audioModels: AudioModel[];
   autoGenerateMusic: boolean;
 };
 
@@ -48,6 +49,7 @@ const DEFAULT_SETTINGS: GenerationSettings = {
   videoModels: [DEFAULT_VIDEO_MODEL],
   autoGenerateMotion: false,
   musicModel: DEFAULT_MUSIC_MODEL,
+  audioModels: [DEFAULT_MUSIC_MODEL],
   autoGenerateMusic: false,
 };
 
@@ -158,6 +160,15 @@ function loadSettings(): GenerationSettings {
         ? parsed.musicModel
         : DEFAULT_MUSIC_MODEL;
 
+    // Load audioModels array, falling back to [musicModel] for backward compat.
+    const audioModels =
+      'audioModels' in parsed &&
+      Array.isArray(parsed.audioModels) &&
+      parsed.audioModels.length > 0 &&
+      parsed.audioModels.every(isValidAudioModel)
+        ? parsed.audioModels
+        : [musicModel];
+
     const autoGenerateMusic =
       'autoGenerateMusic' in parsed &&
       typeof parsed.autoGenerateMusic === 'boolean'
@@ -173,6 +184,7 @@ function loadSettings(): GenerationSettings {
       videoModels,
       autoGenerateMotion,
       musicModel,
+      audioModels,
       autoGenerateMusic,
     };
   } catch (error) {

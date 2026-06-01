@@ -1,11 +1,6 @@
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import {
-  AUDIO_MODELS,
-  IMAGE_MODELS,
-  isValidAudioModel,
-  isValidTextToImageModel,
-} from '@/lib/ai/models';
+import { IMAGE_MODELS, isValidTextToImageModel } from '@/lib/ai/models';
 import { getAnalysisModelById } from '@/lib/ai/models.config';
 
 export const ModelBadge = ({ model }: { model?: string }) => {
@@ -65,21 +60,6 @@ export const ImageModelBadge = ({
   return (
     <Badge variant="secondary" className="text-xs">
       {formatImageModels(allModels)}
-    </Badge>
-  );
-};
-
-export const MusicModelBadge = ({ model }: { model?: string }) => {
-  if (!model) {
-    return <Skeleton className="w-[100px] h-[20px]" />;
-  }
-
-  const modelConfig = isValidAudioModel(model)
-    ? AUDIO_MODELS[model]
-    : undefined;
-  return (
-    <Badge variant="secondary" className="text-xs">
-      {modelConfig?.name || model}
     </Badge>
   );
 };

@@ -25,6 +25,7 @@
  * `motion-batch` (Phase 5 motion + music + merge tree). */
 
 import { sanitizeScriptContent } from '@/lib/ai/prompt-validation';
+import { resolveAudioModels } from '@/lib/ai/resolve-audio-models';
 import { resolveImageModels } from '@/lib/ai/resolve-image-models';
 import { resolveVideoModels } from '@/lib/ai/resolve-video-models';
 import type { Scene } from '@/lib/ai/scene-analysis.schema';
@@ -98,12 +99,14 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
       autoGenerateMotion = false,
       autoGenerateMusic = false,
       musicModel,
+      audioModels: audioModelsInput,
       suggestedTalentIds,
       suggestedLocationIds,
     } = input;
 
     const imageModels = resolveImageModels(imageModelsInput, imageModel);
     const videoModels = resolveVideoModels(videoModelsInput, videoModel);
+    const audioModels = resolveAudioModels(audioModelsInput, musicModel);
     // First selected model is primary: it drives the legacy `frames.video*`
     // columns and the model-aware duration snapping; the rest are alternates.
     const primaryVideoModel = videoModels[0] ?? videoModel;
@@ -645,6 +648,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
           includeMusic: shouldGenerateMusic,
           frames: batchFrames,
           videoModels,
+          audioModels: shouldGenerateMusic ? audioModels : undefined,
           music: shouldGenerateMusic
             ? {
                 prompt: musicPrompt,

@@ -102,6 +102,7 @@ export const promoteSequenceMusicVariantFn = createServerFn({ method: 'POST' })
         'generation.audio:progress',
         {
           status: 'completed',
+          model: variant.model,
           ...(updatedSequence.musicUrl
             ? { audioUrl: updatedSequence.musicUrl }
             : {}),

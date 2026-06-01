@@ -144,6 +144,10 @@ export const realtimeSchema = {
       frameId: z.string().optional(),
       status: z.enum(['pending', 'generating', 'completed', 'failed']),
       audioUrl: z.string().optional(),
+      // Which audio model produced this update. Optional for backward compat
+      // with emitters that predate multi-model audio (#546); the model-aware
+      // cache invalidation and the music-view track switcher key off it.
+      model: z.string().optional(),
     }),
 
     // Character sheet generation progress (during recasting)

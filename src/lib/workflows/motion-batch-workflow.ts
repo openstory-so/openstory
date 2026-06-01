@@ -22,6 +22,7 @@
  *     so a single bad frame doesn't kill the rest of the batch. */
 
 import { DEFAULT_VIDEO_MODEL, type ImageToVideoModel } from '@/lib/ai/models';
+import { resolveAudioModels } from '@/lib/ai/resolve-audio-models';
 import type { ScopedDb } from '@/lib/db/scoped';
 import { assembleMotionPrompt } from '@/lib/motion/assemble-motion-prompt';
 import { getGenerationChannel } from '@/lib/realtime';
@@ -147,31 +148,49 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
       );
     });
 
-    const musicAwait =
+    // Multi-model audio (#546): one MUSIC_WORKFLOW child per selected model,
+    // each reusing the same prompt/tags/duration and writing its own primary
+    // row in sequence_music_variants (keyed by (sequenceId, model)). Falls back
+    // to the single `music.model` when no audioModels were threaded through.
+    const audioModels =
+      includeMusic && input.music
+        ? resolveAudioModels(input.audioModels, input.music.model)
+        : [];
+
+    const musicJobs =
       includeMusic && input.music && musicBinding
-        ? spawnAndAwaitChild<MusicWorkflowInput, MusicWorkflowResult>(step, {
-            binding: musicBinding,
-            parentBindingName: 'MOTION_BATCH_WORKFLOW',
-            parentInstanceId,
-            childId: `music:${sequenceId}`,
-            childPayload: {
-              userId: input.userId,
-              teamId: input.teamId,
-              sequenceId,
-              prompt: input.music.prompt,
-              tags: input.music.tags,
-              duration: input.music.duration,
-              model: input.music.model,
-            },
-            spawnStepName: 'spawn-music',
-            awaitStepName: 'await-music',
-            timeout: '30 minutes',
-          })
-        : null;
+        ? audioModels.map((model) => ({ model }))
+        : [];
+
+    const musicAwaits = musicJobs.map(({ model }, index) => {
+      // input.music is narrowed truthy by musicJobs construction above.
+      const music = input.music;
+      if (!music || !musicBinding) {
+        throw new WorkflowValidationError('music config missing for batch');
+      }
+      return spawnAndAwaitChild<MusicWorkflowInput, MusicWorkflowResult>(step, {
+        binding: musicBinding,
+        parentBindingName: 'MOTION_BATCH_WORKFLOW',
+        parentInstanceId,
+        childId: `music:${sequenceId}:${model}`,
+        childPayload: {
+          userId: input.userId,
+          teamId: input.teamId,
+          sequenceId,
+          prompt: music.prompt,
+          tags: music.tags,
+          duration: music.duration,
+          model,
+        },
+        spawnStepName: `spawn-music-${index}-${model}`,
+        awaitStepName: `await-music-${index}-${model}`,
+        timeout: '30 minutes',
+      });
+    });
 
     const motionResults = await Promise.allSettled(motionAwaits);
-    const musicResult = musicAwait
-      ? await Promise.allSettled([musicAwait])
+    const musicResults = musicAwaits.length
+      ? await Promise.allSettled(musicAwaits)
       : null;
 
     // Log per-frame motion failures for visibility; we don't throw here — the
@@ -191,15 +210,17 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
         );
       }
     }
-    if (musicResult) {
-      const [m] = musicResult;
-      if (m.status === 'rejected') {
-        logger.warn(
-          `[MotionBatchWorkflow:cf] Music generation failed for sequence ${sequenceId}:`,
-          {
-            err: m.reason,
-          }
-        );
+    if (musicResults) {
+      for (let i = 0; i < musicResults.length; i++) {
+        const m = musicResults[i];
+        if (m?.status === 'rejected') {
+          logger.warn(
+            `[MotionBatchWorkflow:cf] Music generation failed for sequence ${sequenceId} model ${musicJobs[i]?.model ?? '(unknown)'}:`,
+            {
+              err: m.reason,
+            }
+          );
+        }
       }
     }
 

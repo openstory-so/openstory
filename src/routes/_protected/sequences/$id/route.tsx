@@ -1,9 +1,6 @@
 import { RouteErrorFallback } from '@/components/error/route-error-fallback';
-import {
-  ImageModelBadge,
-  ModelBadge,
-  MusicModelBadge,
-} from '@/components/model/model-badge';
+import { ImageModelBadge, ModelBadge } from '@/components/model/model-badge';
+import { SequenceAudioModelSelector } from '@/components/model/sequence-audio-model-selector';
 import { SequenceVideoModelSelector } from '@/components/model/sequence-video-model-selector';
 import { getSequenceImageModelsFn } from '@/functions/frames';
 import { frameKeys } from '@/hooks/use-frames';
@@ -98,7 +95,10 @@ function SequenceLayout() {
               sequenceId={sequenceId}
               sequenceVideoModel={sequence?.videoModel}
             />
-            <MusicModelBadge model={sequence?.musicModel ?? undefined} />
+            <SequenceAudioModelSelector
+              sequenceId={sequenceId}
+              sequenceMusicModel={sequence?.musicModel}
+            />
           </div>
         </PageHeader>
         <SequenceTabs sequenceId={sequenceId} />

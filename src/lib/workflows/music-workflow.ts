@@ -59,6 +59,7 @@ export class MusicWorkflow extends OpenStoryWorkflowEntrypoint<MusicWorkflowInpu
           'generation.audio:progress',
           {
             status: 'generating',
+            model,
           }
         );
       });
@@ -178,6 +179,7 @@ export class MusicWorkflow extends OpenStoryWorkflowEntrypoint<MusicWorkflowInpu
           const channel = getGenerationChannel(sequenceId);
           await channel.emit('generation.audio:progress', {
             status: 'completed',
+            model,
             ...(status?.musicUrl ? { audioUrl: status.musicUrl } : {}),
           });
           await channel.emit('generation.stale:detected', {
@@ -206,6 +208,7 @@ export class MusicWorkflow extends OpenStoryWorkflowEntrypoint<MusicWorkflowInpu
             {
               status: 'completed',
               audioUrl: audioUrl,
+              model,
             }
           );
         });
@@ -227,6 +230,7 @@ export class MusicWorkflow extends OpenStoryWorkflowEntrypoint<MusicWorkflowInpu
     scopedDb: ScopedDb;
   }): Promise<void> {
     const input = event.payload;
+    const model = input.model || DEFAULT_MUSIC_MODEL;
     if (input.sequenceId) {
       const failSeq = scopedDb.sequence(input.sequenceId);
 
@@ -238,7 +242,7 @@ export class MusicWorkflow extends OpenStoryWorkflowEntrypoint<MusicWorkflowInpu
       try {
         await getGenerationChannel(input.sequenceId).emit(
           'generation.audio:progress',
-          { status: 'failed' }
+          { status: 'failed', model }
         );
       } catch (emitError) {
         logger.error(

@@ -4,10 +4,16 @@
  * All functions return Microdollars for exact arithmetic.
  */
 
-import { calculateImageCost, calculateVideoCost } from '@/lib/ai/fal-cost';
 import {
+  calculateAudioCost,
+  calculateImageCost,
+  calculateVideoCost,
+} from '@/lib/ai/fal-cost';
+import {
+  AUDIO_MODELS,
   IMAGE_MODELS,
   IMAGE_TO_VIDEO_MODELS,
+  type AudioModel,
   type TextToImageModel,
   type ImageToVideoModel,
   videoModelSupportsAudio,
@@ -65,6 +71,20 @@ export function estimateVideoCost(
 }
 
 /**
+ * Estimate the raw cost (before markup) of generating one music track.
+ * Internal — used by `estimateStoryboardCost`'s music component.
+ */
+function estimateAudioCost(
+  model: AudioModel,
+  durationSeconds: number
+): Microdollars {
+  return calculateAudioCost({
+    endpointId: AUDIO_MODELS[model].id,
+    durationSeconds,
+  });
+}
+
+/**
  * Rough estimate of LLM cost per call for pre-flight credit checks.
  * Based on average token usage for script analysis calls.
  * Only used for client-side gate affordability checks, not actual deduction.
@@ -94,10 +114,17 @@ export function estimateStoryboardCost(opts: {
   /** Number of video models selected (multiplies per-frame motion cost) */
   videoModelCount?: number;
   videoDurationSeconds?: number;
+  autoGenerateMusic?: boolean;
+  audioModel?: AudioModel;
+  /** Number of audio models selected (multiplies per-sequence music cost) */
+  audioModelCount?: number;
+  /** Total sequence duration in seconds (one music track spans the sequence) */
+  audioDurationSeconds?: number;
 }): Microdollars {
   const sceneCount = opts.estimatedSceneCount ?? DEFAULT_ESTIMATED_SCENE_COUNT;
   const imageModelCount = opts.imageModelCount ?? 1;
   const videoModelCount = opts.videoModelCount ?? 1;
+  const audioModelCount = opts.audioModelCount ?? 1;
 
   // LLM calls: script analysis + character bible + location bible (~3 calls)
   const llmCost = estimateLLMCost(3);
@@ -127,6 +154,16 @@ export function estimateStoryboardCost(opts: {
     totalCost = addMicros(
       totalCost,
       multiplyMicros(perFrameMotion, sceneCount * videoModelCount)
+    );
+  }
+
+  // Optional music generation — one track per sequence per audio model.
+  if (opts.autoGenerateMusic && opts.audioModel) {
+    const audioDuration = opts.audioDurationSeconds ?? sceneCount * 5;
+    const perTrackMusic = estimateAudioCost(opts.audioModel, audioDuration);
+    totalCost = addMicros(
+      totalCost,
+      multiplyMicros(perTrackMusic, audioModelCount)
     );
   }
 

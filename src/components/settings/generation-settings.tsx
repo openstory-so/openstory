@@ -7,7 +7,10 @@ import {
   MotionModelMultiSelector,
   MotionModelSelector,
 } from '@/components/model/motion-model-selector';
-import { MusicModelSelector } from '@/components/model/music-model-selector';
+import {
+  MusicModelMultiSelector,
+  MusicModelSelector,
+} from '@/components/model/music-model-selector';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import {
@@ -18,6 +21,7 @@ import {
 import { Separator } from '@/components/ui/separator';
 import {
   DEFAULT_IMAGE_MODEL,
+  DEFAULT_MUSIC_MODEL,
   DEFAULT_VIDEO_MODEL,
   type AudioModel,
   type ImageToVideoModel,
@@ -65,14 +69,14 @@ type GenerationSettingsProps = {
   imageModels: TextToImageModel[];
   videoModels: ImageToVideoModel[];
   autoGenerateMotion?: boolean;
-  musicModel?: AudioModel;
+  audioModels?: AudioModel[];
   autoGenerateMusic?: boolean;
   onAspectRatioChange: (value: AspectRatio) => void;
   onAnalysisModelsChange: (value: AnalysisModelId[]) => void;
   onImageModelsChange: (value: TextToImageModel[]) => void;
   onVideoModelsChange: (value: ImageToVideoModel[]) => void;
   onAutoGenerateMotionChange?: (value: boolean) => void;
-  onMusicModelChange?: (value: AudioModel) => void;
+  onAudioModelsChange?: (value: AudioModel[]) => void;
   onAutoGenerateMusicChange?: (value: boolean) => void;
   disabled?: boolean;
   singleSelectAnalysis?: boolean;
@@ -80,6 +84,8 @@ type GenerationSettingsProps = {
   singleSelectImage?: boolean;
   /** Use single-select for motion model (e.g. in regeneration context) */
   singleSelectMotion?: boolean;
+  /** Use single-select for music model (e.g. in regeneration context) */
+  singleSelectMusic?: boolean;
   /** Current style category, used to show/hide style-restricted motion models */
   styleCategory?: string;
   /** Current style name, used in recommendation tooltips */
@@ -105,19 +111,20 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
   imageModels,
   videoModels,
   autoGenerateMotion = false,
-  musicModel,
+  audioModels,
   autoGenerateMusic = false,
   onAspectRatioChange,
   onAnalysisModelsChange,
   onImageModelsChange,
   onVideoModelsChange,
   onAutoGenerateMotionChange,
-  onMusicModelChange,
+  onAudioModelsChange,
   onAutoGenerateMusicChange,
   disabled = false,
   singleSelectAnalysis = false,
   singleSelectImage = false,
   singleSelectMotion = false,
+  singleSelectMusic = false,
   styleCategory,
   styleName,
   recommendedImageModel,
@@ -252,13 +259,15 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
             )}
           </section>
 
-          {onAutoGenerateMusicChange && onMusicModelChange && musicModel && (
+          {onAutoGenerateMusicChange && onAudioModelsChange && audioModels && (
             <>
               <Separator />
 
               {/* Music Model Section */}
               <section className="flex flex-col gap-2">
-                <h3 className="text-sm font-medium text-foreground">Music</h3>
+                <h3 className="text-sm font-medium text-foreground">
+                  Music Model{!singleSelectMusic && 's'}
+                </h3>
                 <AutoToggle
                   id="auto-generate-music"
                   label="Auto-generate music"
@@ -266,11 +275,19 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
                   onChange={onAutoGenerateMusicChange}
                   disabled={disabled}
                 />
-                <MusicModelSelector
-                  selectedModel={musicModel}
-                  onModelChange={onMusicModelChange}
-                  disabled={disabled || !autoGenerateMusic}
-                />
+                {singleSelectMusic ? (
+                  <MusicModelSelector
+                    selectedModel={audioModels[0] ?? DEFAULT_MUSIC_MODEL}
+                    onModelChange={(model) => onAudioModelsChange([model])}
+                    disabled={disabled || !autoGenerateMusic}
+                  />
+                ) : (
+                  <MusicModelMultiSelector
+                    selectedModels={audioModels}
+                    onModelsChange={onAudioModelsChange}
+                    disabled={disabled || !autoGenerateMusic}
+                  />
+                )}
               </section>
             </>
           )}

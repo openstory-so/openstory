@@ -138,7 +138,7 @@ export const ScriptView: FC<{
     imageModels: TextToImageModel[];
     videoModels: ImageToVideoModel[];
     autoGenerateMotion: boolean;
-    musicModel: AudioModel;
+    audioModels: AudioModel[];
     autoGenerateMusic: boolean;
   }>(() => ({
     analysisModels: sequenceAnalysisModels,
@@ -152,10 +152,10 @@ export const ScriptView: FC<{
         ? [safeImageToVideoModel(sequence.videoModel, DEFAULT_VIDEO_MODEL)]
         : savedSettings.videoModels,
     autoGenerateMotion: isEditing ? false : savedSettings.autoGenerateMotion,
-    musicModel:
+    audioModels:
       isEditing && sequence.musicModel
-        ? safeAudioModel(sequence.musicModel, DEFAULT_MUSIC_MODEL)
-        : savedSettings.musicModel,
+        ? [safeAudioModel(sequence.musicModel, DEFAULT_MUSIC_MODEL)]
+        : savedSettings.audioModels,
     autoGenerateMusic: isEditing ? false : savedSettings.autoGenerateMusic,
   }));
   const {
@@ -164,7 +164,7 @@ export const ScriptView: FC<{
     imageModels,
     videoModels,
     autoGenerateMotion,
-    musicModel,
+    audioModels,
     autoGenerateMusic,
   } = genSettings;
   const updateGen = <K extends keyof typeof genSettings>(
@@ -302,7 +302,7 @@ export const ScriptView: FC<{
         imageModels: savedSettings.imageModels,
         videoModels: savedSettings.videoModels,
         autoGenerateMotion: savedSettings.autoGenerateMotion,
-        musicModel: savedSettings.musicModel,
+        audioModels: savedSettings.audioModels,
         autoGenerateMusic: savedSettings.autoGenerateMusic,
       });
       hasSyncedRef.current = true;
@@ -497,6 +497,7 @@ export const ScriptView: FC<{
       aspect_ratio: aspectRatio,
       image_models: imageModels,
       video_models: videoModels,
+      audio_models: audioModels,
       auto_generate_motion: autoGenerateMotion,
       auto_generate_music: autoGenerateMusic,
       analysis_model_count: analysisModels.length,
@@ -515,7 +516,8 @@ export const ScriptView: FC<{
         videoModel: videoModels[0] ?? DEFAULT_VIDEO_MODEL,
         autoGenerateMotion,
         autoGenerateMusic,
-        musicModel,
+        musicModel: audioModels[0] ?? DEFAULT_MUSIC_MODEL,
+        audioModels,
         suggestedTalentIds:
           selectedTalentIds.length > 0 ? selectedTalentIds : undefined,
         suggestedLocationIds:
@@ -697,7 +699,7 @@ export const ScriptView: FC<{
             imageModels={imageModels}
             videoModels={videoModels}
             autoGenerateMotion={autoGenerateMotion}
-            musicModel={musicModel}
+            audioModels={audioModels}
             autoGenerateMusic={autoGenerateMusic}
             onAspectRatioChange={(v) => updateGen('aspectRatio', v)}
             onAnalysisModelsChange={(v) => updateGen('analysisModels', v)}
@@ -706,7 +708,7 @@ export const ScriptView: FC<{
             onAutoGenerateMotionChange={(v) =>
               updateGen('autoGenerateMotion', v)
             }
-            onMusicModelChange={(v) => updateGen('musicModel', v)}
+            onAudioModelsChange={(v) => updateGen('audioModels', v)}
             onAutoGenerateMusicChange={(v) => updateGen('autoGenerateMusic', v)}
             disabled={loading}
             styleCategory={styleCategory}

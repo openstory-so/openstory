@@ -1,9 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import type { TextToImageModel, ImageToVideoModel } from '@/lib/ai/models';
+import {
+  DEFAULT_MUSIC_MODEL,
+  type AudioModel,
+  type TextToImageModel,
+  type ImageToVideoModel,
+} from '@/lib/ai/models';
 import { estimateStoryboardCost } from './cost-estimation';
 
 const IMAGE_MODEL: TextToImageModel = 'nano_banana_2';
 const VIDEO_MODEL: ImageToVideoModel = 'kling_v3_pro';
+const AUDIO_MODEL: AudioModel = DEFAULT_MUSIC_MODEL;
 
 const base = {
   imageModel: IMAGE_MODEL,
@@ -44,6 +50,31 @@ describe('estimateStoryboardCost', () => {
     // motion cost — the invariant the credit pre-flight relies on.
     const perModelMotionCost = oneModel - noMotion;
     expect(twoModels - oneModel).toBe(perModelMotionCost);
+    expect(twoModels).toBeGreaterThanOrEqual(oneModel);
+  });
+
+  it('multiplies the per-sequence music cost by audioModelCount', () => {
+    const noMusic = Number(
+      estimateStoryboardCost({ ...base, autoGenerateMusic: false })
+    );
+    const oneModel = Number(
+      estimateStoryboardCost({
+        ...base,
+        autoGenerateMusic: true,
+        audioModel: AUDIO_MODEL,
+        audioModelCount: 1,
+      })
+    );
+    const twoModels = Number(
+      estimateStoryboardCost({
+        ...base,
+        autoGenerateMusic: true,
+        audioModel: AUDIO_MODEL,
+        audioModelCount: 2,
+      })
+    );
+    const perModelMusicCost = oneModel - noMusic;
+    expect(twoModels - oneModel).toBe(perModelMusicCost);
     expect(twoModels).toBeGreaterThanOrEqual(oneModel);
   });
 

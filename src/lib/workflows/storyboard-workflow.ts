@@ -196,6 +196,7 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
         autoGenerateMotion: input.autoGenerateMotion ?? false,
         autoGenerateMusic: input.autoGenerateMusic ?? false,
         musicModel: input.musicModel,
+        audioModels: input.audioModels,
         suggestedTalentIds: input.suggestedTalentIds,
         suggestedLocationIds: input.suggestedLocationIds,
       },

@@ -1,11 +1,14 @@
 import {
   archiveSequenceFn,
   createSequenceFn,
+  getSequenceAudioModelsFn,
+  getSequenceAudioVariantsFn,
   getSequenceFn,
   getSequencesFn,
   updateSequenceFn,
 } from '@/functions/sequences';
 import { DEFAULT_ANALYSIS_MODEL } from '@/lib/ai/models.config';
+import type { SequenceMusicVariant } from '@/lib/db/schema';
 import {
   type CreateSequenceInput,
   type UpdateSequenceInput,
@@ -25,6 +28,35 @@ export const sequenceKeys = {
   details: () => [...sequenceKeys.all, 'detail'] as const,
   detail: (id?: string) => [...sequenceKeys.details(), id] as const,
 };
+
+// Distinct audio models that have generated a track for this sequence (#546).
+// Drives the header audio-model dropdown. The realtime audio:progress handler
+// invalidates `['sequence-audio-models', sequenceId]`, matching this key.
+export function useSequenceAudioModels(sequenceId?: string) {
+  return useQuery<string[]>({
+    queryKey: ['sequence-audio-models', sequenceId ?? ''],
+    queryFn: async () => {
+      if (!sequenceId) throw new Error('sequenceId is required');
+      return getSequenceAudioModelsFn({ data: { sequenceId } });
+    },
+    enabled: !!sequenceId,
+    staleTime: 30_000,
+  });
+}
+
+// All music variant rows for a sequence (#546). Used by the music tab to
+// resolve playback through the active model's track.
+export function useSequenceAudioVariants(sequenceId?: string) {
+  return useQuery<SequenceMusicVariant[]>({
+    queryKey: ['sequence-audio-variants', sequenceId ?? ''],
+    queryFn: async () => {
+      if (!sequenceId) throw new Error('sequenceId is required');
+      return getSequenceAudioVariantsFn({ data: { sequenceId } });
+    },
+    enabled: !!sequenceId,
+    staleTime: 30_000,
+  });
+}
 
 // Hook for listing sequences
 export function useSequences(teamId?: string) {
@@ -84,9 +116,14 @@ export function useCreateSequence() {
           aspectRatio: input.aspectRatio,
           imageModels: input.imageModels,
           videoModel: input.videoModel,
+          // Forward the multi-model arrays — without these the server only ever
+          // sees the singular primary and resolveVideoModels/resolveAudioModels
+          // collapse the user's selection to one model (#545/#546).
+          videoModels: input.videoModels,
           autoGenerateMotion: input.autoGenerateMotion,
           autoGenerateMusic: input.autoGenerateMusic,
           musicModel: input.musicModel,
+          audioModels: input.audioModels,
           suggestedTalentIds: input.suggestedTalentIds,
           suggestedLocationIds: input.suggestedLocationIds,
           elementUploads: input.elementUploads,

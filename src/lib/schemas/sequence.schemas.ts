@@ -106,12 +106,22 @@ export const createSequenceSchema = createInsertSchema(sequences, {
     autoGenerateMotion: z.boolean().default(false).optional(),
     // Auto-generate music flag (UI-only, not stored in DB)
     autoGenerateMusic: z.boolean().default(false).optional(),
-    // Music model selection (model key, not full ID)
+    // Music model selection (model key, not full ID) — primary / first of audioModels
     musicModel: z
       .string()
       .refine((val) => validAudioModelKeys.includes(val), {
         message: 'Invalid music model',
       })
+      .optional(),
+    // Multiple audio models for variant generation (first is primary). Optional
+    // (music is opt-in via autoGenerateMusic); when present must be non-empty.
+    audioModels: z
+      .array(
+        z.string().refine((val) => validAudioModelKeys.includes(val), {
+          message: 'Invalid audio model',
+        })
+      )
+      .min(1, 'At least one audio model must be selected')
       .optional(),
     // Suggested talent IDs for AI-assisted casting during generation
     suggestedTalentIds: z.array(z.string()).optional(),
