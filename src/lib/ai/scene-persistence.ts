@@ -23,9 +23,12 @@
 import { DEFAULT_IMAGE_MODEL } from '@/lib/ai/models';
 import type { DbSceneId, NewScene, NewShot } from '@/lib/db/schema';
 import type { StyleConfig } from '@/lib/db/schema/libraries';
+import { getLogger } from '@/lib/observability/logger';
 import type { Scene } from './scene-analysis.schema';
 import { deriveShotScenes } from './shot-list.derive';
 import type { SceneWithShots } from './shot-list.schema';
+
+const logger = getLogger(['openstory', 'ai', 'scene-persistence']);
 
 /**
  * Live cap on shots PERSISTED per scene (#910 / #953).
@@ -120,6 +123,18 @@ export function buildShotInsertsForScene({
     ACTIVE_MAX_SHOTS_PER_SCENE
   );
   const shotCount = derived.length;
+
+  // The script `extract` is the renderable text the visual/image chain keys
+  // off. The schema permits an empty string, so surface it rather than letting
+  // a contentless shot render silently (#954 review). Blank still persists — an
+  // empty description is a valid, if degraded, state — but it is now traceable.
+  if (!scene.originalScript.extract.trim()) {
+    logger.warn('Analysis scene has a blank script extract', {
+      sequenceId,
+      sceneId,
+      analysisSceneId: scene.sceneId,
+    });
+  }
 
   return derived.map((shot, i) => {
     const metadata: Scene = {

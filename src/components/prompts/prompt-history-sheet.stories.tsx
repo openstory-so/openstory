@@ -33,7 +33,7 @@ const Demo: React.FC<{ mode: 'visual' | 'motion' | 'music' }> = ({ mode }) => {
           onOpenChange={setOpen}
           mode={mode}
           sequenceId="seq-1"
-          shotId="frame-1"
+          shotId="shot-1"
           currentText="Wide cinematic shot of a coffee shop, warm sunlight, steam rising."
         />
       )}

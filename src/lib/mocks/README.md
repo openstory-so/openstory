@@ -30,7 +30,7 @@ Generates an HLS playlist with 5 mock scenes:
 export const MyStory: Story = {
   args: {
     sequenceId: 'demo-sequence-123', // Any ID works
-    frames: mockFrames,
+    shots: mockShots,
   },
 };
 ```

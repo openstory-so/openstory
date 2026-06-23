@@ -38,6 +38,7 @@ import { WorkflowValidationError } from '@/lib/workflow/errors';
 import { NonRetryableError } from 'cloudflare:workflows';
 import {
   groupShotsForRender,
+  motionBatchTotalFailureMessage,
   type RenderShot,
 } from '@/lib/workflows/motion-batch-jobs';
 import type {
@@ -356,13 +357,12 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
     // immediately — re-running deterministic failures (content rejections, a
     // model outage) would just burn the budget again. Partial success is fine:
     // the rendered clips are usable and each failed shot already shows its row.
-    const motionReady = motionResults.filter(
-      (r) => r.status === 'fulfilled'
-    ).length;
-    if (motionAwaits.length > 0 && motionReady === 0) {
-      throw new NonRetryableError(
-        `All ${motionAwaits.length} motion clip(s) failed for sequence ${sequenceId}; no video was produced.`
-      );
+    const totalFailure = motionBatchTotalFailureMessage(
+      sequenceId,
+      motionResults
+    );
+    if (totalFailure) {
+      throw new NonRetryableError(totalFailure);
     }
 
     // Playback and the final MP4 are produced client-side by

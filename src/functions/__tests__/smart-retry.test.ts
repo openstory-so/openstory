@@ -87,9 +87,9 @@ function makeSequence(overrides: Partial<Sequence> = {}): Sequence {
   };
 }
 
-function makeFrame(overrides: Partial<Shot> = {}): Shot {
+function makeShot(overrides: Partial<Shot> = {}): Shot {
   return {
-    id: 'frame-1',
+    id: 'shot-1',
     sequenceId: 'seq_1',
     sceneId: null,
     shotNumber: null,
@@ -221,7 +221,7 @@ describe('executeSmartRetry — partial retry status reset', () => {
     resetMocks();
     // A failed image with no prompt anywhere (imagePrompt, metadata,
     // description all empty) is detected as a failure but can't be retried.
-    const frame = makeFrame({
+    const frame = makeShot({
       thumbnailStatus: 'failed',
       imagePrompt: null,
       metadata: null,
@@ -238,7 +238,7 @@ describe('executeSmartRetry — partial retry status reset', () => {
 
   test('retried images → triggers /image per frame and clears the failed flag', async () => {
     resetMocks();
-    const frame = makeFrame({
+    const frame = makeShot({
       thumbnailStatus: 'failed',
       imagePrompt: 'A cinematic shot of the lab',
     });
@@ -250,7 +250,7 @@ describe('executeSmartRetry — partial retry status reset', () => {
     expect(triggerWorkflowMock).toHaveBeenCalledWith(
       '/image',
       expect.objectContaining({
-        shotId: 'frame-1',
+        shotId: 'shot-1',
         prompt: 'A cinematic shot of the lab',
         sequenceId: 'seq_1',
       }),
@@ -268,13 +268,13 @@ describe('executeSmartRetry — partial retry status reset', () => {
     // The counting regression #839's review flagged: reporting
     // failedImageFrames.length would claim "2 image(s)" here even though
     // only one frame is actually retriable.
-    const retriable = makeFrame({
-      id: 'frame-1',
+    const retriable = makeShot({
+      id: 'shot-1',
       thumbnailStatus: 'failed',
       imagePrompt: 'A cinematic shot of the lab',
     });
-    const skipped = makeFrame({
-      id: 'frame-2',
+    const skipped = makeShot({
+      id: 'shot-2',
       orderIndex: 1,
       thumbnailStatus: 'failed',
       imagePrompt: null,
@@ -291,7 +291,7 @@ describe('executeSmartRetry — partial retry status reset', () => {
     expect(triggerWorkflowMock).toHaveBeenCalledTimes(1);
     expect(triggerWorkflowMock).toHaveBeenCalledWith(
       '/image',
-      expect.objectContaining({ shotId: 'frame-1' }),
+      expect.objectContaining({ shotId: 'shot-1' }),
       expect.objectContaining({ label: expect.any(String) })
     );
     expect(result).toEqual({
@@ -303,7 +303,7 @@ describe('executeSmartRetry — partial retry status reset', () => {
 
   test('failed motion → triggers /motion with image url, prompt and duration', async () => {
     resetMocks();
-    const frame = makeFrame({
+    const frame = makeShot({
       videoStatus: 'failed',
       thumbnailStatus: 'completed',
       thumbnailUrl: 'https://cdn/thumb.jpg',
@@ -318,7 +318,7 @@ describe('executeSmartRetry — partial retry status reset', () => {
     expect(triggerWorkflowMock).toHaveBeenCalledWith(
       '/motion',
       expect.objectContaining({
-        shotId: 'frame-1',
+        shotId: 'shot-1',
         sequenceId: 'seq_1',
         imageUrl: 'https://cdn/thumb.jpg',
         prompt: 'slow pan across the lab',
@@ -335,7 +335,7 @@ describe('executeSmartRetry — partial retry status reset', () => {
 
   test('sequence not marked failed → no status write after retrying', async () => {
     resetMocks();
-    const frame = makeFrame({
+    const frame = makeShot({
       thumbnailStatus: 'failed',
       imagePrompt: 'A cinematic shot of the lab',
     });
@@ -353,7 +353,7 @@ describe('executeSmartRetry — partial retry status reset', () => {
     resetMocks();
     const { context } = makeContext(
       makeSequence({ status: 'completed', statusError: null }),
-      [makeFrame()]
+      [makeShot()]
     );
 
     await expect(executeSmartRetry(context)).rejects.toThrow(

@@ -30,9 +30,9 @@ const build = (
   origin = TEST_ORIGIN
 ) => buildSequenceStateRaw(deps, sequence, origin);
 
-function makeFrame(overrides: Partial<Shot> = {}): Shot {
+function makeShot(overrides: Partial<Shot> = {}): Shot {
   return {
-    id: 'frame-1',
+    id: 'shot-1',
     sequenceId: 'seq-1',
     sceneId: null,
     shotNumber: null,
@@ -163,13 +163,13 @@ describe('buildSequenceState', () => {
 
   it('derives per-frame image/video status and counts, ordered by index', async () => {
     const frames = [
-      makeFrame({
+      makeShot({
         id: 'f2',
         orderIndex: 1,
         videoUrl: 'https://cdn/v2.mp4',
         videoStatus: 'completed',
       }),
-      makeFrame({
+      makeShot({
         id: 'f1',
         orderIndex: 0,
         thumbnailUrl: 'https://cdn/t1.png',
@@ -205,7 +205,7 @@ describe('buildSequenceState', () => {
   it('treats a preview thumbnail as an available image', async () => {
     const state = await build(
       depsWithShots([
-        makeFrame({
+        makeShot({
           thumbnailUrl: null,
           previewThumbnailUrl: 'https://cdn/p.png',
         }),
@@ -221,8 +221,8 @@ describe('buildSequenceState', () => {
   it('counts failed videos so a terminal-but-partial result is legible', async () => {
     const state = await build(
       depsWithShots([
-        makeFrame({ id: 'f1', videoStatus: 'failed' }),
-        makeFrame({
+        makeShot({ id: 'f1', videoStatus: 'failed' }),
+        makeShot({
           id: 'f2',
           orderIndex: 1,
           videoStatus: 'completed',
@@ -245,7 +245,7 @@ describe('buildSequenceState', () => {
     // off-origin clients a usable absolute URL.
     const state = await build(
       depsWithShots([
-        makeFrame({
+        makeShot({
           id: 'f1',
           thumbnailUrl: '/r2/thumbnails/team/t1.png',
           videoStatus: 'completed',
@@ -276,7 +276,7 @@ describe('buildSequenceState', () => {
   it('passes through already-absolute (external / legacy) media URLs', async () => {
     const state = await build(
       depsWithShots([
-        makeFrame({
+        makeShot({
           videoStatus: 'completed',
           videoUrl: 'https://v3.fal.media/files/b/abc/out.mp4',
         }),
@@ -351,13 +351,13 @@ describe('sequenceStateCursor', () => {
     );
     // an image becomes ready
     expect(
-      await cursorFor([makeFrame({ thumbnailUrl: 'https://cdn/t.png' })], {})
+      await cursorFor([makeShot({ thumbnailUrl: 'https://cdn/t.png' })], {})
     ).not.toBe(baseline);
     // a video becomes ready
     expect(
       await cursorFor(
         [
-          makeFrame({
+          makeShot({
             videoStatus: 'completed',
             videoUrl: 'https://cdn/v.mp4',
           }),
@@ -366,8 +366,8 @@ describe('sequenceStateCursor', () => {
       )
     ).not.toBe(baseline);
     // a video fails — must wake the poll, not stall it until the deadline
-    expect(
-      await cursorFor([makeFrame({ videoStatus: 'failed' })], {})
-    ).not.toBe(baseline);
+    expect(await cursorFor([makeShot({ videoStatus: 'failed' })], {})).not.toBe(
+      baseline
+    );
   });
 });

@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { type ImageToVideoModel } from '@/lib/ai/models';
-import { groupShotsForRender, type RenderShot } from './motion-batch-jobs';
+import {
+  groupShotsForRender,
+  motionBatchTotalFailureMessage,
+  type RenderShot,
+} from './motion-batch-jobs';
+
+const settled = (
+  statuses: Array<'fulfilled' | 'rejected'>
+): Array<{ status: 'fulfilled' | 'rejected' }> =>
+  statuses.map((status) => ({ status }));
 
 type Shot = { shotId: string; model?: ImageToVideoModel };
 
@@ -90,5 +99,42 @@ describe('groupShotsForRender', () => {
       u.strategy === 'multi-shot' ? u.sceneDbId : null
     );
     expect(sceneIds).toEqual(['sceneB', 'sceneA']);
+  });
+});
+
+describe('motionBatchTotalFailureMessage', () => {
+  it('flags total failure when every motion clip rejected', () => {
+    const msg = motionBatchTotalFailureMessage(
+      'seq1',
+      settled(['rejected', 'rejected', 'rejected'])
+    );
+    expect(msg).toBe(
+      'All 3 motion clip(s) failed for sequence seq1; no video was produced.'
+    );
+  });
+
+  it('returns null on partial success (at least one clip rendered)', () => {
+    expect(
+      motionBatchTotalFailureMessage('seq1', settled(['rejected', 'fulfilled']))
+    ).toBeNull();
+  });
+
+  it('returns null when all clips succeeded', () => {
+    expect(
+      motionBatchTotalFailureMessage(
+        'seq1',
+        settled(['fulfilled', 'fulfilled'])
+      )
+    ).toBeNull();
+  });
+
+  it('returns null when there was no motion work to do (music-only / empty batch)', () => {
+    expect(motionBatchTotalFailureMessage('seq1', [])).toBeNull();
+  });
+
+  it('flags total failure for a single expected clip that rejected', () => {
+    expect(motionBatchTotalFailureMessage('seq1', settled(['rejected']))).toBe(
+      'All 1 motion clip(s) failed for sequence seq1; no video was produced.'
+    );
   });
 });

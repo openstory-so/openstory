@@ -3,9 +3,9 @@ import { analyzeFailures } from './failure-analysis';
 import type { Shot } from '@/lib/db/schema/shots';
 import type { Sequence } from '@/lib/db/schema/sequences';
 
-function makeFrame(overrides: Partial<Shot> = {}): Shot {
+function makeShot(overrides: Partial<Shot> = {}): Shot {
   return {
-    id: 'frame-1',
+    id: 'shot-1',
     sequenceId: 'seq-1',
     sceneId: null,
     shotNumber: null,
@@ -95,7 +95,7 @@ function makeSequence(overrides: Partial<Sequence> = {}): Sequence {
 
 describe('analyzeFailures', () => {
   test('no failures returns empty summary', () => {
-    const frames = [makeFrame(), makeFrame({ id: 'frame-2', orderIndex: 1 })];
+    const frames = [makeShot(), makeShot({ id: 'shot-2', orderIndex: 1 })];
     const sequence = makeSequence();
 
     const result = analyzeFailures(frames, sequence);
@@ -118,12 +118,12 @@ describe('analyzeFailures', () => {
 
   test('image-only failures', () => {
     const frames = [
-      makeFrame({
+      makeShot({
         thumbnailStatus: 'failed',
         thumbnailUrl: null,
         thumbnailError: 'Model timeout',
       }),
-      makeFrame({ id: 'frame-2', orderIndex: 1 }),
+      makeShot({ id: 'shot-2', orderIndex: 1 }),
     ];
     const sequence = makeSequence({ status: 'failed' });
 
@@ -144,12 +144,12 @@ describe('analyzeFailures', () => {
 
   test('motion-only failures', () => {
     const frames = [
-      makeFrame({
+      makeShot({
         videoStatus: 'failed',
         videoUrl: null,
         videoError: 'Generation timeout',
       }),
-      makeFrame({ id: 'frame-2', orderIndex: 1 }),
+      makeShot({ id: 'shot-2', orderIndex: 1 }),
     ];
     const sequence = makeSequence({ status: 'failed' });
 
@@ -164,7 +164,7 @@ describe('analyzeFailures', () => {
   });
 
   test('music-only failure', () => {
-    const frames = [makeFrame()];
+    const frames = [makeShot()];
     const sequence = makeSequence({
       status: 'failed',
       musicStatus: 'failed',
@@ -183,13 +183,13 @@ describe('analyzeFailures', () => {
 
   test('mixed failures (image + motion)', () => {
     const frames = [
-      makeFrame({
+      makeShot({
         thumbnailStatus: 'failed',
         thumbnailUrl: null,
         thumbnailError: 'Image error',
       }),
-      makeFrame({
-        id: 'frame-2',
+      makeShot({
+        id: 'shot-2',
         orderIndex: 1,
         videoStatus: 'failed',
         videoError: 'Motion error',
@@ -207,7 +207,7 @@ describe('analyzeFailures', () => {
 
   test('motion failed but no thumbnail skips motion retry', () => {
     const frames = [
-      makeFrame({
+      makeShot({
         thumbnailUrl: null,
         thumbnailStatus: 'failed',
         videoStatus: 'failed',
@@ -226,7 +226,7 @@ describe('analyzeFailures', () => {
 
   test('missing motion prompts requires full retry', () => {
     const frames = [
-      makeFrame({
+      makeShot({
         thumbnailStatus: 'completed',
         motionPrompt: null,
         videoStatus: 'pending',
@@ -245,7 +245,7 @@ describe('analyzeFailures', () => {
   });
 
   test('missing music prompt does not require full retry', () => {
-    const frames = [makeFrame()];
+    const frames = [makeShot()];
     const sequence = makeSequence({
       status: 'failed',
       musicPrompt: null,
@@ -264,7 +264,7 @@ describe('analyzeFailures', () => {
   });
 
   test('completed sequence with no failures', () => {
-    const frames = [makeFrame()];
+    const frames = [makeShot()];
     const sequence = makeSequence({ status: 'completed' });
 
     const result = analyzeFailures(frames, sequence);

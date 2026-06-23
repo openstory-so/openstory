@@ -3,8 +3,8 @@ import type { Meta, StoryObj } from '@storybook/react';
 import { fn } from 'storybook/test';
 import { SceneScriptPrompts, type TabValue } from './scene-script-prompts';
 
-const mockFrame = {
-  id: 'frame-1',
+const mockShot = {
+  id: 'shot-1',
   sequenceId: 'seq-1',
   sceneId: null,
   shotNumber: null,
@@ -12,7 +12,7 @@ const mockFrame = {
   description: 'A bustling coffee shop interior during morning rush hour',
   durationMs: 3000,
   thumbnailUrl: 'https://picsum.photos/seed/coffee/320/180',
-  thumbnailPath: 'teams/mock/sequences/mock/frames/frame-1/thumbnail.jpg',
+  thumbnailPath: 'teams/mock/sequences/mock/shots/shot-1/thumbnail.jpg',
   variantImageUrl: null,
   variantImageStatus: 'pending',
   variantWorkflowRunId: null,
@@ -159,7 +159,7 @@ type Story = StoryObj<typeof SceneScriptPrompts>;
 
 export const Default: Story = {
   args: {
-    frame: mockFrame,
+    frame: mockShot,
   },
 };
 
@@ -172,7 +172,7 @@ export const Loading: Story = {
 export const PartiallyLoaded: Story = {
   args: {
     frame: {
-      ...mockFrame,
+      ...mockShot,
       metadata: null,
     },
   },
@@ -181,10 +181,10 @@ export const PartiallyLoaded: Story = {
 export const LongScript: Story = {
   args: {
     frame: {
-      ...mockFrame,
+      ...mockShot,
       durationMs: 8500,
       metadata: {
-        ...mockFrame.metadata,
+        ...mockShot.metadata,
         originalScript: {
           extract: `INT. COFFEE SHOP - MORNING
 
@@ -212,9 +212,9 @@ Sarah doesn't respond, too absorbed in her work. The barista shrugs and sets the
 export const LongPrompts: Story = {
   args: {
     frame: {
-      ...mockFrame,
+      ...mockShot,
       metadata: {
-        ...mockFrame.metadata,
+        ...mockShot.metadata,
         prompts: {
           visual: {
             fullPrompt:
@@ -266,10 +266,10 @@ export const LongPrompts: Story = {
 export const ShortScript: Story = {
   args: {
     frame: {
-      ...mockFrame,
+      ...mockShot,
       durationMs: 1500,
       metadata: {
-        ...mockFrame.metadata,
+        ...mockShot.metadata,
         originalScript: {
           extract: 'INT. COFFEE SHOP - MORNING\n\nSARAH types on laptop.',
           dialogue: [],
@@ -282,7 +282,7 @@ export const ShortScript: Story = {
 export const NoDuration: Story = {
   args: {
     frame: {
-      ...mockFrame,
+      ...mockShot,
       durationMs: null,
     },
   },

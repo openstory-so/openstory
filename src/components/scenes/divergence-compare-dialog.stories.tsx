@@ -4,8 +4,8 @@ import { DivergenceCompareDialog } from './divergence-compare-dialog';
 
 const NOW = new Date('2026-04-29T00:00:00Z');
 
-const baseFrame: Shot = {
-  id: 'frame-1',
+const baseShot: Shot = {
+  id: 'shot-1',
   sequenceId: 'seq-1',
   sceneId: null,
   shotNumber: null,
@@ -59,7 +59,7 @@ function makeVariant(
 ): ShotVariant {
   return {
     id: 'variant-1',
-    shotId: 'frame-1',
+    shotId: 'shot-1',
     sequenceId: 'seq-1',
     model: 'nano_banana_2',
     url: 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee',
@@ -97,7 +97,7 @@ export const ThumbnailVariant: Story = {
   args: {
     open: true,
     onOpenChange: () => {},
-    frame: baseFrame,
+    frame: baseShot,
     variant: makeVariant({ variantType: 'image' }),
     onPromote: () => {},
     onDiscard: () => {},
@@ -113,7 +113,7 @@ export const VideoVariant: Story = {
     open: true,
     onOpenChange: () => {},
     frame: {
-      ...baseFrame,
+      ...baseShot,
       videoUrl: 'https://www.w3schools.com/html/mov_bbb.mp4',
     },
     variant: makeVariant({
@@ -129,7 +129,7 @@ export const AudioVariant: Story = {
   args: {
     open: true,
     onOpenChange: () => {},
-    frame: baseFrame,
+    frame: baseShot,
     variant: makeVariant({
       variantType: 'audio',
       url: 'https://www.w3schools.com/html/horse.ogg',

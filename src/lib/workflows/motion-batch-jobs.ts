@@ -93,3 +93,28 @@ export function groupShotsForRender<F>(
 
   return units;
 }
+
+/**
+ * Total-failure guard for the batch (#910 / #954).
+ *
+ * This workflow is the only place a TOTAL motion failure becomes a loud signal
+ * (playback + the final MP4 are produced client-side, so there is no
+ * server-side merge step to notice zero output). The contract:
+ *   - clips expected but NONE rendered → return a message; the caller throws a
+ *     `NonRetryableError` so the analyze pipeline reports failure, not success.
+ *   - partial success → `null`; the rendered clips are usable and each failed
+ *     shot already shows its own `shot_variants.status='failed'` row.
+ *   - no motion work at all (music-only / empty batch) → `null`.
+ *
+ * Pulled out of the workflow body so the threshold is unit-testable without a
+ * `WorkflowEntrypoint`. Pass the settled results verbatim.
+ */
+export function motionBatchTotalFailureMessage(
+  sequenceId: string,
+  motionResults: ReadonlyArray<{ status: 'fulfilled' | 'rejected' }>
+): string | null {
+  if (motionResults.length === 0) return null;
+  const ready = motionResults.filter((r) => r.status === 'fulfilled').length;
+  if (ready > 0) return null;
+  return `All ${motionResults.length} motion clip(s) failed for sequence ${sequenceId}; no video was produced.`;
+}

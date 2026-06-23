@@ -2,8 +2,8 @@ import type { Shot } from '@/types/database';
 import type { Meta, StoryObj } from '@storybook/react';
 import { SceneListItem } from './scene-list-item';
 
-const mockFrame: Shot = {
-  id: 'frame-1',
+const mockShot: Shot = {
+  id: 'shot-1',
   sequenceId: 'seq-1',
   sceneId: null,
   shotNumber: null,
@@ -11,7 +11,7 @@ const mockFrame: Shot = {
   description: 'A bustling coffee shop interior during morning rush hour',
   durationMs: 3000,
   thumbnailUrl: 'https://picsum.photos/seed/coffee/320/180',
-  thumbnailPath: 'teams/mock/sequences/mock/frames/frame-1/thumbnail.jpg',
+  thumbnailPath: 'teams/mock/sequences/mock/shots/shot-1/thumbnail.jpg',
   variantImageUrl: null,
   variantImageStatus: 'pending',
   variantWorkflowRunId: null,
@@ -150,7 +150,7 @@ type Story = StoryObj<typeof SceneListItem>;
 
 export const Inactive: Story = {
   args: {
-    frame: mockFrame,
+    frame: mockShot,
     isActive: false,
     isCompleted: false,
   },
@@ -158,7 +158,7 @@ export const Inactive: Story = {
 
 export const Active: Story = {
   args: {
-    frame: mockFrame,
+    frame: mockShot,
     isActive: true,
     isCompleted: false,
   },
@@ -166,7 +166,7 @@ export const Active: Story = {
 
 export const Completed: Story = {
   args: {
-    frame: mockFrame,
+    frame: mockShot,
     isActive: false,
     isCompleted: true,
   },
@@ -174,7 +174,7 @@ export const Completed: Story = {
 
 export const ActiveAndCompleted: Story = {
   args: {
-    frame: mockFrame,
+    frame: mockShot,
     isActive: true,
     isCompleted: true,
   },
@@ -183,7 +183,7 @@ export const ActiveAndCompleted: Story = {
 export const Generating: Story = {
   args: {
     frame: {
-      ...mockFrame,
+      ...mockShot,
       thumbnailUrl: null,
       thumbnailStatus: 'generating',
     },
@@ -195,7 +195,7 @@ export const Generating: Story = {
 export const GeneratingActive: Story = {
   args: {
     frame: {
-      ...mockFrame,
+      ...mockShot,
       thumbnailUrl: null,
       thumbnailStatus: 'generating',
     },
@@ -207,7 +207,7 @@ export const GeneratingActive: Story = {
 export const Failed: Story = {
   args: {
     frame: {
-      ...mockFrame,
+      ...mockShot,
       thumbnailUrl: null,
       thumbnailStatus: 'failed',
       thumbnailError: 'Generation timeout',
@@ -220,23 +220,23 @@ export const Failed: Story = {
 export const LongTitle: Story = {
   args: {
     frame: {
-      ...mockFrame,
+      ...mockShot,
       metadata: {
-        sceneId: mockFrame.metadata?.sceneId ?? '',
-        sceneNumber: mockFrame.metadata?.sceneNumber ?? 1,
-        originalScript: mockFrame.metadata?.originalScript ?? {
+        sceneId: mockShot.metadata?.sceneId ?? '',
+        sceneNumber: mockShot.metadata?.sceneNumber ?? 1,
+        originalScript: mockShot.metadata?.originalScript ?? {
           extract: '',
           dialogue: [],
         },
         metadata: {
           title:
             'An Extremely Long Scene Title That Should Wrap Properly Without Breaking Layout',
-          durationSeconds: mockFrame.metadata?.metadata?.durationSeconds ?? 3,
-          location: mockFrame.metadata?.metadata?.location ?? '',
-          timeOfDay: mockFrame.metadata?.metadata?.timeOfDay ?? '',
-          storyBeat: mockFrame.metadata?.metadata?.storyBeat ?? '',
+          durationSeconds: mockShot.metadata?.metadata?.durationSeconds ?? 3,
+          location: mockShot.metadata?.metadata?.location ?? '',
+          timeOfDay: mockShot.metadata?.metadata?.timeOfDay ?? '',
+          storyBeat: mockShot.metadata?.metadata?.storyBeat ?? '',
         },
-        prompts: mockFrame.metadata?.prompts ?? {
+        prompts: mockShot.metadata?.prompts ?? {
           visual: {
             fullPrompt: '',
             negativePrompt: '',
@@ -277,20 +277,20 @@ export const LongTitle: Story = {
             },
           },
         },
-        audioDesign: mockFrame.metadata?.audioDesign ?? {
+        audioDesign: mockShot.metadata?.audioDesign ?? {
           music: { presence: 'none', style: '', mood: '', rationale: '' },
           soundEffects: [],
           dialogue: { presence: false, lines: [] },
           ambient: { roomTone: '', atmosphere: '' },
         },
-        continuity: mockFrame.metadata?.continuity ?? {
+        continuity: mockShot.metadata?.continuity ?? {
           characterTags: [],
           environmentTag: '',
           colorPalette: '',
           lightingSetup: '',
           styleTag: '',
         },
-        sourceImageUrl: mockFrame.metadata?.sourceImageUrl ?? '',
+        sourceImageUrl: mockShot.metadata?.sourceImageUrl ?? '',
       } satisfies Shot['metadata'],
     },
     isActive: false,
@@ -301,26 +301,26 @@ export const LongTitle: Story = {
 export const LongScript: Story = {
   args: {
     frame: {
-      ...mockFrame,
+      ...mockShot,
       metadata: {
-        sceneId: mockFrame.metadata?.sceneId ?? '',
-        sceneNumber: mockFrame.metadata?.sceneNumber ?? 1,
+        sceneId: mockShot.metadata?.sceneId ?? '',
+        sceneNumber: mockShot.metadata?.sceneNumber ?? 1,
         originalScript: {
-          ...(mockFrame.metadata?.originalScript ?? {
+          ...(mockShot.metadata?.originalScript ?? {
             extract: '',
             dialogue: [],
           }),
           extract:
             'INT. COFFEE SHOP - MORNING\n\nSARAH sits at a corner table, typing furiously on her laptop. Steam rises from her untouched latte. The morning sun streams through large windows, casting long shadows across the wooden floor. Other patrons bustle about, ordering drinks and chatting, creating a backdrop of ambient noise that Sarah tries to tune out.',
         },
-        metadata: mockFrame.metadata?.metadata ?? {
+        metadata: mockShot.metadata?.metadata ?? {
           title: '',
           durationSeconds: 3,
           location: '',
           timeOfDay: '',
           storyBeat: '',
         },
-        prompts: mockFrame.metadata?.prompts ?? {
+        prompts: mockShot.metadata?.prompts ?? {
           visual: {
             fullPrompt: '',
             negativePrompt: '',
@@ -361,20 +361,20 @@ export const LongScript: Story = {
             },
           },
         },
-        audioDesign: mockFrame.metadata?.audioDesign ?? {
+        audioDesign: mockShot.metadata?.audioDesign ?? {
           music: { presence: 'none', style: '', mood: '', rationale: '' },
           soundEffects: [],
           dialogue: { presence: false, lines: [] },
           ambient: { roomTone: '', atmosphere: '' },
         },
-        continuity: mockFrame.metadata?.continuity ?? {
+        continuity: mockShot.metadata?.continuity ?? {
           characterTags: [],
           environmentTag: '',
           colorPalette: '',
           lightingSetup: '',
           styleTag: '',
         },
-        sourceImageUrl: mockFrame.metadata?.sourceImageUrl ?? '',
+        sourceImageUrl: mockShot.metadata?.sourceImageUrl ?? '',
       } satisfies Shot['metadata'],
     },
     isActive: false,

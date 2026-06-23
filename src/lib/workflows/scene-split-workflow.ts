@@ -494,6 +494,15 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
           streamResult.analysisScenes
         );
         const sceneRows = await scopedDb.scenes.createBulk(sceneInserts);
+        // createBulk is 1:1 with its inserts, which are 1:1 with analysisScenes.
+        // A shortfall means a partial DB write — fail loudly rather than silently
+        // dropping a scene's entire shot set (missing storyboard content, no trace).
+        if (sceneRows.length !== sceneInserts.length) {
+          throw new NonRetryableError(
+            `Scene persistence count mismatch for sequence ${sequenceId}: ` +
+              `expected ${sceneInserts.length} scene rows, got ${sceneRows.length}`
+          );
+        }
 
         let orderIndex = 0;
         for (const [
@@ -501,7 +510,13 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
           analysisScene,
         ] of streamResult.analysisScenes.entries()) {
           const sceneRow = sceneRows[sceneIndex];
-          if (!sceneRow) continue;
+          if (!sceneRow) {
+            // Unreachable given the count guard above; throw to satisfy
+            // narrowing and never silently skip a scene.
+            throw new NonRetryableError(
+              `Missing persisted scene row at index ${sceneIndex} for sequence ${sequenceId}`
+            );
+          }
 
           const inserts = buildShotInsertsForScene({
             sequenceId,

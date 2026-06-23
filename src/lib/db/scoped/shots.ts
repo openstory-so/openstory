@@ -210,15 +210,20 @@ export function createShotsMethods(db: Database) {
     },
 
     reorder: async (
-      _sequenceId: string,
+      sequenceId: string,
       shotOrders: Array<{ id: string; order_index: number }>
     ): Promise<void> => {
       if (shotOrders.length === 0) return;
+      // Scope every update to the sequence so a caller can't stamp orderIndex on
+      // shots in another sequence/team by passing arbitrary ids (the access
+      // middleware only validates `sequenceId`, not the shot ids in the body).
       const [first, ...rest] = shotOrders.map((shotOrder) =>
         db
           .update(shots)
           .set({ orderIndex: shotOrder.order_index, updatedAt: new Date() })
-          .where(eq(shots.id, shotOrder.id))
+          .where(
+            and(eq(shots.id, shotOrder.id), eq(shots.sequenceId, sequenceId))
+          )
       );
       if (!first) return;
       await db.batch([first, ...rest]);
