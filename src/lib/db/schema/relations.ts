@@ -53,10 +53,12 @@ export const relations = defineRelations(schema, (r) => ({
     style: r.one.styles({ from: r.sequences.styleId, to: r.styles.id }),
     scenes: r.many.scenes(),
     shots: r.many.shots(),
+    frames: r.many.frames(),
+    events: r.many.sequenceEvents(),
     characters: r.many.characters(),
     locations: r.many.sequenceLocations(),
     elements: r.many.sequenceElements(),
-    musicPromptVariants: r.many.sequenceMusicPromptVariants(),
+    musicPromptVersions: r.many.sequenceMusicPromptVersions(),
   },
 
   // ---- Scenes ----
@@ -78,8 +80,23 @@ export const relations = defineRelations(schema, (r) => ({
       from: r.shots.sceneId,
       to: r.scenes.id,
     }),
+    frames: r.many.frames(),
     variants: r.many.shotVariants(),
-    promptVariants: r.many.shotPromptVariants(),
+    promptVersions: r.many.shotPromptVersions(),
+  },
+
+  // ---- Frames ----
+  frames: {
+    shot: r.one.shots({
+      from: r.frames.shotId,
+      to: r.shots.id,
+    }),
+    sequence: r.one.sequences({
+      from: r.frames.sequenceId,
+      to: r.sequences.id,
+    }),
+    variants: r.many.frameVariants(),
+    promptVersions: r.many.framePromptVersions(),
   },
 
   // ---- Shot Variants ----
@@ -94,26 +111,62 @@ export const relations = defineRelations(schema, (r) => ({
     }),
   },
 
-  // ---- Shot Prompt Variants ----
-  shotPromptVariants: {
+  // ---- Frame Variants ----
+  frameVariants: {
+    frame: r.one.frames({
+      from: r.frameVariants.frameId,
+      to: r.frames.id,
+    }),
+    sequence: r.one.sequences({
+      from: r.frameVariants.sequenceId,
+      to: r.sequences.id,
+    }),
+  },
+
+  // ---- Shot Prompt Versions ----
+  shotPromptVersions: {
     shot: r.one.shots({
-      from: r.shotPromptVariants.shotId,
+      from: r.shotPromptVersions.shotId,
       to: r.shots.id,
     }),
     createdByUser: r.one.user({
-      from: r.shotPromptVariants.createdBy,
+      from: r.shotPromptVersions.createdBy,
       to: r.user.id,
     }),
   },
 
-  // ---- Sequence Music Prompt Variants ----
-  sequenceMusicPromptVariants: {
+  // ---- Frame Prompt Versions ----
+  framePromptVersions: {
+    frame: r.one.frames({
+      from: r.framePromptVersions.frameId,
+      to: r.frames.id,
+    }),
+    createdByUser: r.one.user({
+      from: r.framePromptVersions.createdBy,
+      to: r.user.id,
+    }),
+  },
+
+  // ---- Sequence Events ----
+  sequenceEvents: {
     sequence: r.one.sequences({
-      from: r.sequenceMusicPromptVariants.sequenceId,
+      from: r.sequenceEvents.sequenceId,
+      to: r.sequences.id,
+    }),
+    actor: r.one.user({
+      from: r.sequenceEvents.actorId,
+      to: r.user.id,
+    }),
+  },
+
+  // ---- Sequence Music Prompt Versions ----
+  sequenceMusicPromptVersions: {
+    sequence: r.one.sequences({
+      from: r.sequenceMusicPromptVersions.sequenceId,
       to: r.sequences.id,
     }),
     createdByUser: r.one.user({
-      from: r.sequenceMusicPromptVariants.createdBy,
+      from: r.sequenceMusicPromptVersions.createdBy,
       to: r.user.id,
     }),
   },

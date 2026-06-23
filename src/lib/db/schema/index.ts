@@ -16,7 +16,15 @@ import { dbSceneId, scenes } from './scenes';
 
 import { shots } from './shots';
 
+import { frames } from './frames';
+
 import { shotVariants } from './shot-variants';
+
+import { frameVariants } from './frame-variants';
+
+import { framePromptVersions } from './frame-prompt-versions';
+
+import { sequenceEvents } from './sequence-events';
 
 import { characterSheetVariants } from './character-sheet-variants';
 
@@ -24,9 +32,9 @@ import { locationSheetVariants } from './location-sheet-variants';
 
 import { talentSheetVariants } from './talent-sheet-variants';
 
-import { shotPromptVariants } from './shot-prompt-variants';
+import { shotPromptVersions } from './shot-prompt-versions';
 
-import { sequenceMusicPromptVariants } from './sequence-music-prompt-variants';
+import { sequenceMusicPromptVersions } from './sequence-music-prompt-versions';
 
 import { sequenceMusicVariants } from './sequence-music-variants';
 import { sequenceExports } from './sequence-exports';
@@ -85,15 +93,53 @@ export { dbSceneId, scenes };
 
 export type { DbSceneId, NewScene, SceneRow } from './scenes';
 
-// Shots
+// Shots (the VIDEO unit — a continuous take)
 export { shots };
 
 export type { NewShot, Shot } from './shots';
 
-// Shot Variants
+// Frames (the IMAGE unit — still keyframes within a shot)
+export { frames };
+
+export { FRAME_ROLES, FRAME_SOURCES } from './frames';
+
+export type { Frame, NewFrame, FrameRole, FrameSource } from './frames';
+
+// Shot Variants (per-model video/audio outputs)
 export { shotVariants };
 
 export type { ShotVariant, NewShotVariant } from './shot-variants';
+
+// Frame Variants (flat still-image versions; variant = model|framing axis)
+export { frameVariants };
+
+export { FRAME_VARIANT_KINDS } from './frame-variants';
+
+export type {
+  FrameVariant,
+  NewFrameVariant,
+  FrameVariantKind,
+} from './frame-variants';
+
+// Frame Prompt Versions (visual/image prompt history)
+export { framePromptVersions };
+
+export type {
+  FramePromptVersion,
+  PromptVersionSource,
+} from './frame-prompt-versions';
+
+// Sequence Events (append-only cross-sequence activity log)
+export { sequenceEvents };
+
+export { SEQUENCE_EVENT_TARGET_TYPES } from './sequence-events';
+
+export type {
+  SequenceEvent,
+  NewSequenceEvent,
+  SequenceEventTargetType,
+  SequenceEventData,
+} from './sequence-events';
 
 // Sheet Variants (Stage 2: divergent character/location/talent sheet outputs)
 export { characterSheetVariants };
@@ -118,22 +164,21 @@ export type {
   TalentSheetVariant,
 } from './talent-sheet-variants';
 
-// Shot Prompt Variants (visual/motion prompt history)
-export { shotPromptVariants };
+// Shot Prompt Versions (motion prompt history)
+export { shotPromptVersions };
 
-export { FRAME_PROMPT_TYPES } from './shot-prompt-variants';
+export { SHOT_PROMPT_TYPES } from './shot-prompt-versions';
 
 export type {
-  FramePromptType,
-  ShotPromptVariant,
-  ShotPromptVariantComponents,
-  PromptVariantSource,
-} from './shot-prompt-variants';
+  ShotPromptType,
+  ShotPromptVersion,
+  ShotPromptVersionComponents,
+} from './shot-prompt-versions';
 
-// Sequence Music Prompt Variants (music prompt history)
-export { sequenceMusicPromptVariants };
+// Sequence Music Prompt Versions (music prompt history)
+export { sequenceMusicPromptVersions };
 
-export type { SequenceMusicPromptVariant } from './sequence-music-prompt-variants';
+export type { SequenceMusicPromptVersion } from './sequence-music-prompt-versions';
 
 // Sequence-level variants (music)
 export { sequenceMusicVariants };
@@ -253,12 +298,16 @@ export const schema = {
   sequences,
   scenes,
   shots,
+  frames,
   shotVariants,
+  frameVariants,
   characterSheetVariants,
   locationSheetVariants,
   talentSheetVariants,
-  shotPromptVariants,
-  sequenceMusicPromptVariants,
+  shotPromptVersions,
+  framePromptVersions,
+  sequenceEvents,
+  sequenceMusicPromptVersions,
   sequenceMusicVariants,
   sequenceExports,
 

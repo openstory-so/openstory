@@ -1,9 +1,16 @@
 /**
  * Shots Schema
- * Individual shots within a sequence
+ * Individual shots within a sequence — the unit of VIDEO (a continuous take).
+ *
+ * Each shot carries the motion prompt, the rendered video/audio, and the Scene
+ * analysis data (`metadata`). The shot's still keyframe(s) — the image surface —
+ * live in the `frames` table (a shot owns 1..N frames), and motion is generated
+ * from the shot's primary frame. See #911 scene/shot/frame split.
+ *
+ * @see src/lib/db/schema/frames.ts for the per-shot still keyframes
+ * @see src/lib/ai/scene-analysis.schema.ts for the Scene metadata structure
  */
 
-import { DEFAULT_IMAGE_MODEL } from '@/lib/ai/models';
 import type { Scene } from '@/lib/ai/scene-analysis.schema';
 import { type InferInsertModel, type InferSelectModel } from 'drizzle-orm';
 import {
@@ -27,14 +34,10 @@ type FrameGenerationStatus = (typeof FRAME_GENERATION_STATUSES)[number];
 
 /**
  * Shots table
- * Individual shots within a sequence
- *
- * Each shot represents one scene from script analysis and stores:
- * - Visual content (thumbnailUrl for image, videoUrl for motion)
- * - Scene data in metadata field (populated progressively across 5 phases)
- * - Generation tracking information
- *
- * @see src/lib/ai/scene-analysis.schema.ts for Scene structure
+ * Individual shots within a sequence. Each shot represents one shot from script
+ * analysis and stores motion/video/audio artifacts plus Scene data in
+ * `metadata` (populated progressively across analysis phases). The image
+ * surface lives in `frames`.
  */
 export const shots = snakeCase.table(
   'shots',
@@ -56,37 +59,19 @@ export const shots = snakeCase.table(
     orderIndex: integer().notNull(),
     description: text(),
     durationMs: integer().default(3000),
-    thumbnailUrl: text(),
-    previewThumbnailUrl: text(), // Fast preview CDN URL (not stored in R2; URL may expire but column persists)
-    thumbnailPath: text(), // R2 storage path (not signed URL)
-    variantImageUrl: text(), // R2 storage path (not signed URL)
-    variantImageStatus: text()
-      .$type<FrameGenerationStatus>()
-      .default('pending'),
-    variantWorkflowRunId: text(),
-    variantImageGeneratedAt: integer({
-      mode: 'timestamp',
-    }),
-    variantImageError: text(),
+    // Video/motion artifact.
     videoUrl: text(),
     videoPath: text(), // R2 storage path (not signed URL)
-    // Thumbnail generation status tracking
-    thumbnailStatus: text().$type<FrameGenerationStatus>().default('pending'),
-    thumbnailWorkflowRunId: text(),
-    thumbnailGeneratedAt: integer({
-      mode: 'timestamp',
-    }),
-    thumbnailError: text(),
-    imageModel: text({ length: 100 }).default(DEFAULT_IMAGE_MODEL).notNull(), // Model used for image generation
-    imagePrompt: text(), // User-updated image prompt (overrides AI-generated prompt from metadata)
-    // Video/motion generation status tracking
     videoStatus: text().$type<FrameGenerationStatus>().default('pending'),
     videoWorkflowRunId: text(),
     videoGeneratedAt: integer({
       mode: 'timestamp',
     }),
     videoError: text(),
-    motionPrompt: text(), // User-updated motion prompt (overrides AI-generated prompt from metadata)
+    motionPrompt: text(), // Mirror of the selected motion-prompt version's text (read-path convenience)
+    // Soft pointer → shot_prompt_versions.id (plain column, no FK — versions are
+    // soft-deleted; repointed in app code). Selecting/reverting = repoint.
+    selectedMotionPromptVersionId: text(),
     motionModel: text({ length: 100 }), // Model used for motion/video generation (nullable - inherits from sequence if not set)
     // Audio/music generation status tracking
     audioUrl: text(),
@@ -101,21 +86,16 @@ export const shots = snakeCase.table(
     // SHA-256 of the inputs that produced each artifact; null when the
     // artifact has never been generated. See
     // docs/architecture/workflow-snapshots-and-content-hash-staleness.md.
-    thumbnailInputHash: text(),
-    variantImageInputHash: text(),
     videoInputHash: text(),
     audioInputHash: text(),
-    // SHA-256 of the upstream context that produced the cached visual / motion
-    // prompt (scene metadata + style config + character/location bible +
-    // analysis model). When upstream context changes, the prompt itself is
-    // flagged stale independently of the rendered image. Null when no AI
-    // prompt has been generated yet, or when the most recent variant was a
-    // user-edit (which has no upstream input surface).
-    visualPromptInputHash: text(),
+    // SHA-256 of the upstream context that produced the cached motion prompt.
+    // When upstream context changes, the prompt is flagged stale independently
+    // of the rendered video. Null when no AI prompt has been generated yet, or
+    // when the most recent variant was a user-edit.
     motionPromptInputHash: text(),
     /**
      * Stores Scene data at various stages of progressive analysis.
-     * Fields are populated progressively across 5 phases.
+     * Fields are populated progressively across analysis phases.
      * @see src/lib/ai/scene-analysis.schema.ts for Scene structure
      */
     metadata: text({ mode: 'json' }).$type<Scene>(),
@@ -128,10 +108,10 @@ export const shots = snakeCase.table(
   },
   (table) => [
     // Compound index for efficient ordering queries
-    index('idx_frames_order').on(table.sequenceId, table.orderIndex),
-    index('idx_frames_sequence_id').on(table.sequenceId),
+    index('idx_shots_order').on(table.sequenceId, table.orderIndex),
+    index('idx_shots_sequence_id').on(table.sequenceId),
     // Unique constraint: one shot per sequence/order combination
-    uniqueIndex('frames_sequence_id_order_index_key').on(
+    uniqueIndex('shots_sequence_id_order_index_key').on(
       table.sequenceId,
       table.orderIndex
     ),

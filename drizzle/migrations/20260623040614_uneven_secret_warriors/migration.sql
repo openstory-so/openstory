@@ -1,0 +1,1 @@
+ALTER TABLE `shots` ADD `selected_motion_prompt_version_id` text;

@@ -1,8 +1,9 @@
 /**
  * Shot Variants Schema
- * Stores per-model generation outputs for shots.
- * Each shot can have multiple variants (one per model per type),
- * enabling users to compare outputs from different AI models.
+ * Stores per-model generation outputs for shots — video and audio only.
+ * Each shot can have multiple variants (one per model per type), enabling users
+ * to compare outputs from different AI models. Still-image variants live in
+ * `frame_variants` (a shot's image surface moved to `frames`; #911).
  */
 
 import { sql, type InferInsertModel, type InferSelectModel } from 'drizzle-orm';
@@ -20,7 +21,7 @@ import { sequences } from './sequences';
 
 type FrameGenerationStatus = (typeof FRAME_GENERATION_STATUSES)[number];
 
-export const VARIANT_TYPES = ['image', 'video', 'audio'] as const;
+export const VARIANT_TYPES = ['video', 'audio'] as const;
 export type VariantType = (typeof VARIANT_TYPES)[number];
 
 export const shotVariants = snakeCase.table(
@@ -45,12 +46,6 @@ export const shotVariants = snakeCase.table(
     url: text(),
     storagePath: text(),
     previewUrl: text(),
-
-    // Shot variant (3x3 grid image generated from this model's output)
-    shotVariantUrl: text(),
-    shotVariantPath: text(),
-    shotVariantStatus: text().$type<FrameGenerationStatus>().default('pending'),
-    shotVariantWorkflowRunId: text(),
 
     // Generation tracking
     status: text().$type<FrameGenerationStatus>().default('pending').notNull(),
@@ -82,14 +77,13 @@ export const shotVariants = snakeCase.table(
       .notNull(),
   },
   (table) => [
-    index('idx_frame_variants_frame_type').on(table.shotId, table.variantType),
-    index('idx_frame_variants_sequence_type').on(
+    index('idx_shot_variants_shot_type').on(table.shotId, table.variantType),
+    index('idx_shot_variants_sequence_type').on(
       table.sequenceId,
       table.variantType
     ),
     // Primary slot: at most one non-divergent row per (shot, type, model).
-    // image-workflow's speculative upsert and convergent reconcile both write here.
-    uniqueIndex('frame_variants_primary_key')
+    uniqueIndex('shot_variants_primary_key')
       .on(table.shotId, table.variantType, table.model)
       .where(sql`${table.divergedAt} IS NULL`),
     // Divergent alternates: distinguished by input_hash, so multiple
@@ -97,7 +91,7 @@ export const shotVariants = snakeCase.table(
     // Invariant (enforced in the scoped methods): a primary variant —
     // divergedAt IS NULL — must never have discardedAt set; discardedAt is
     // the user-dismissal marker for divergent alternates only.
-    uniqueIndex('frame_variants_divergent_key')
+    uniqueIndex('shot_variants_divergent_key')
       .on(table.shotId, table.variantType, table.model, table.inputHash)
       .where(sql`${table.divergedAt} IS NOT NULL`),
   ]
