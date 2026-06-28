@@ -4,10 +4,6 @@
  * `Authorization: Key` rewrite fal requires (its OpenRouter endpoint rejects
  * the SDK's hardcoded `Bearer` with 401), aimock's OPENROUTER_BASE_URL
  * precedence for e2e hermeticity, and the platform-key fallback order.
- *
- * The metadata-stripping behavior of the WireSafe wrapper is covered
- * separately in create-adapter.wire-metadata.test.ts (it needs the real
- * @tanstack/ai-openrouter module, which is mocked out here).
  */
 
 import type { HTTPClient } from '@openrouter/sdk/lib/http';
@@ -42,20 +38,30 @@ type AdapterConfig = {
   httpClient?: HTTPClient;
 };
 
-// Capture constructor args instead of building real adapters (createAdapter
-// instantiates a subclass of OpenRouterTextAdapter, so the constructor is the
-// single point every code path funnels through). The real HTTPClient stays
-// unmocked so the beforeRequest hook is exercised for real.
+// Capture constructor args instead of building real adapters. The real
+// HTTPClient stays unmocked so the beforeRequest hook is exercised for real.
 const constructed: Array<{ config: AdapterConfig; model: string }> = [];
-class CaptureAdapter {
-  constructor(config: AdapterConfig, model: string) {
-    constructed.push({ config, model });
-  }
+function captureConstruct(config: AdapterConfig, model: string) {
+  constructed.push({ config, model });
 }
 const getOpenRouterApiKeyFromEnvMock = vi.fn(() => 'env-fallback-key');
+type AdapterOptions = Omit<AdapterConfig, 'apiKey'>;
 vi.doMock('@tanstack/ai-openrouter', () => ({
-  OpenRouterTextAdapter: CaptureAdapter,
-  openRouterText: vi.fn(),
+  createOpenRouterText: (
+    model: string,
+    apiKey: string,
+    config: AdapterOptions
+  ) => {
+    captureConstruct({ ...config, apiKey }, model);
+    return {};
+  },
+  openRouterText: (model: string, config: AdapterOptions) => {
+    captureConstruct(
+      { ...config, apiKey: getOpenRouterApiKeyFromEnvMock() },
+      model
+    );
+    return {};
+  },
   getOpenRouterApiKeyFromEnv: getOpenRouterApiKeyFromEnvMock,
 }));
 
