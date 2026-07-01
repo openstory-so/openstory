@@ -18,6 +18,7 @@
  *   bun scripts/verify-fal-costs.ts --compare            # fetch usage for existing results
  */
 
+import { createProxiedFalClient } from '@/lib/ai/fal-config';
 import { estimateFalCost } from '@/lib/ai/fal-cost';
 import {
   AUDIO_MODELS,
@@ -29,7 +30,6 @@ import {
 import { buildModelInput } from '@/lib/motion/build-model-input';
 import { snapDuration } from '@/lib/motion/motion-generation';
 import { typedEntries } from '@/lib/utils/typed-object';
-import { createFalClient } from '@fal-ai/client';
 import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
@@ -68,8 +68,8 @@ const compareOnly = args.includes('--compare');
 const imageUrlIdx = args.indexOf('--image-url');
 const testImageUrl = imageUrlIdx >= 0 ? args[imageUrlIdx + 1] : undefined;
 
-const falLow = createFalClient({ credentials: FAL_KEY_LOW });
-const falHigh = createFalClient({ credentials: FAL_KEY_HIGH });
+const falLow = createProxiedFalClient({ credentials: FAL_KEY_LOW });
+const falHigh = createProxiedFalClient({ credentials: FAL_KEY_HIGH });
 
 // ============================================================================
 // Types

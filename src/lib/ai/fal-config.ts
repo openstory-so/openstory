@@ -1,4 +1,4 @@
-import { fal, type RequestMiddleware } from '@fal-ai/client';
+import { createFalClient, fal, type RequestMiddleware } from '@fal-ai/client';
 
 const FAL_HOSTS = new Set([
   'fal.run',
@@ -50,10 +50,9 @@ function composeMiddleware(
  *
  * The `@tanstack/ai-fal` adapters call `fal.config({ credentials })` on the
  * singleton and would otherwise wipe any `requestMiddleware` we set, so we
- * monkey-patch `fal.config` to compose ours back in. Note: callers that build
- * a per-request client via `@fal-ai/client`'s `createFalClient(...)` get an
- * independent client whose config closure this monkey-patch can't touch —
- * those bypass the proxy.
+ * monkey-patch `fal.config` to compose ours back in. Per-request clients that
+ * need the same routing should use `createProxiedFalClient(...)`; direct
+ * `@fal-ai/client` clients intentionally bypass this singleton patch.
  */
 export function configureFalProxyFromEnv(): void {
   if (configured) return;
@@ -74,4 +73,26 @@ export function configureFalProxyFromEnv(): void {
     });
   };
   fal.config({});
+}
+
+/**
+ * Creates a per-request fal client that also respects FAL_PROXY_URL.
+ *
+ * Use this for script/tooling clients with their own credentials. Some runtime
+ * storage shims intentionally use the upstream client directly because fal
+ * storage-initiate calls should not be recorded by aimock.
+ */
+export function createProxiedFalClient(
+  config: NonNullable<Parameters<typeof createFalClient>[0]>
+): ReturnType<typeof createFalClient> {
+  const proxyUrl = process.env.FAL_PROXY_URL;
+  if (!proxyUrl) return createFalClient(config);
+
+  return createFalClient({
+    ...config,
+    requestMiddleware: composeMiddleware(
+      buildProxyMiddleware(proxyUrl),
+      config.requestMiddleware
+    ),
+  });
 }
