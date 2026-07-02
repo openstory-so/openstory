@@ -214,6 +214,47 @@ export const setSequenceMusicFn = createServerFn({ method: 'POST' })
   });
 
 // ============================================================================
+// Set Sequence Default Models (#986)
+// ============================================================================
+
+const updateSequenceModelsInputSchema = z.object({
+  sequenceId: ulidSchema,
+  imageModel: z.string().min(1).optional(),
+  videoModel: z.string().min(1).optional(),
+});
+
+/**
+ * Persist the sequence's default image/video model — what scenes with no
+ * override inherit (#909). The inspector edits this at sequence scope (#986).
+ *
+ * Deliberately separate from {@link updateSequenceFn}: that path force-defaults
+ * `aspectRatio` and runs regeneration/credit logic. This is a minimal
+ * preference write with no side effects, mirroring {@link setSequenceMusicFn}.
+ */
+export const updateSequenceModelsFn = createServerFn({ method: 'POST' })
+  .middleware([sequenceAccessMiddleware])
+  .inputValidator(zodValidator(updateSequenceModelsInputSchema))
+  .handler(async ({ data, context }) => {
+    if (
+      data.imageModel !== undefined &&
+      !isValidTextToImageModel(data.imageModel)
+    ) {
+      throw new Error('Invalid image model');
+    }
+    if (
+      data.videoModel !== undefined &&
+      !isValidImageToVideoModel(data.videoModel)
+    ) {
+      throw new Error('Invalid video model');
+    }
+    return await context.scopedDb.sequences.update({
+      id: data.sequenceId,
+      ...(data.imageModel !== undefined ? { imageModel: data.imageModel } : {}),
+      ...(data.videoModel !== undefined ? { videoModel: data.videoModel } : {}),
+    });
+  });
+
+// ============================================================================
 // Retry Failed Storyboard
 // ============================================================================
 

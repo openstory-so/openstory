@@ -7,15 +7,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  FileText,
-  Film,
-  Grid3X3,
-  ImagePlus,
-  MapPin,
-  Music,
-  Users,
-} from 'lucide-react';
+import { FileText, Grid3X3 } from 'lucide-react';
 
 type SequenceTabsProps = {
   sequenceId: string;
@@ -33,6 +25,9 @@ export function getDefaultSequenceTabPath(sequenceId: string): string {
   return `/sequences/${sequenceId}/script`;
 }
 
+// Cast/Locations/Elements/Music became selection-scoped inspector facets and
+// Theatre folded into the Scenes canvas (#986) — the tab bar is just the two
+// primary surfaces now. The old index routes stay as deep-link targets.
 function useSequenceTabItems(sequenceId: string): TabItem[] {
   return [
     {
@@ -44,31 +39,6 @@ function useSequenceTabItems(sequenceId: string): TabItem[] {
       label: 'Scenes',
       href: `/sequences/${sequenceId}/scenes`,
       icon: <Grid3X3 className="h-4 w-4" />,
-    },
-    {
-      label: 'Cast',
-      href: `/sequences/${sequenceId}/cast`,
-      icon: <Users className="h-4 w-4" />,
-    },
-    {
-      label: 'Locations',
-      href: `/sequences/${sequenceId}/locations`,
-      icon: <MapPin className="h-4 w-4" />,
-    },
-    {
-      label: 'Elements',
-      href: `/sequences/${sequenceId}/elements`,
-      icon: <ImagePlus className="h-4 w-4" />,
-    },
-    {
-      label: 'Music',
-      href: `/sequences/${sequenceId}/music`,
-      icon: <Music className="h-4 w-4" />,
-    },
-    {
-      label: 'Theatre',
-      href: `/sequences/${sequenceId}/theatre`,
-      icon: <Film className="h-4 w-4" />,
     },
   ];
 }

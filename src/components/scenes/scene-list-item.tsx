@@ -18,6 +18,8 @@ type SceneListItemProps = {
   shot?: ShotWithImage | undefined;
   aspectRatio: AspectRatio;
   isActive?: boolean;
+  /** Shot is under the playhead during scene/sequence playback (#986). */
+  isPlaying?: boolean;
   isCompleted?: boolean;
   onSelect?: () => void;
   variant?: 'stacked' | 'horizontal' | 'responsive';
@@ -40,6 +42,7 @@ const SceneListItemComponent: React.FC<SceneListItemProps> = ({
   shot,
   aspectRatio,
   isActive = false,
+  isPlaying = false,
   isCompleted = false,
   onSelect,
   variant = 'responsive',
@@ -79,6 +82,7 @@ const SceneListItemComponent: React.FC<SceneListItemProps> = ({
         '@container/scene relative transition-all',
         isSkeleton ? 'pointer-events-none' : 'cursor-pointer',
         isActive ? 'border-primary bg-primary/5' : 'hover:bg-muted/50',
+        isPlaying && 'ring-2 ring-primary/60',
         variant === 'responsive' && '@[280px]/scene:py-3',
         variant === 'horizontal' && 'py-3',
         'py-3'
@@ -204,6 +208,7 @@ const areEqual = (
   if (
     prevProps.aspectRatio !== nextProps.aspectRatio ||
     prevProps.isActive !== nextProps.isActive ||
+    prevProps.isPlaying !== nextProps.isPlaying ||
     prevProps.isCompleted !== nextProps.isCompleted ||
     prevProps.variant !== nextProps.variant ||
     prevProps.isRegeneratingImage !== nextProps.isRegeneratingImage ||

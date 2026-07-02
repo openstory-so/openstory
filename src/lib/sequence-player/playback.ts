@@ -67,6 +67,14 @@ export type SequencePlayerMeta = {
   displayHeight: number;
   hasAudio: boolean;
   /**
+   * Cumulative scene start offsets (seconds), in playback order. Drives the
+   * playhead↔selection link (#986): the UI maps the current time to the
+   * playing scene and can seek to a scene's start.
+   */
+  sceneOffsetsSeconds: number[];
+  /** Per-scene durations (seconds), in playback order. */
+  sceneDurationsSeconds: number[];
+  /**
    * True when the scenes resolve to more than one distinct native resolution.
    * Playback is normalized to a common target regardless, but the UI should
    * warn the user that mixing models produced inconsistent sizes (#791).
@@ -213,6 +221,8 @@ export class SequencePlayerEngine {
       displayWidth: videoMeta.displayWidth,
       displayHeight: videoMeta.displayHeight,
       hasAudio,
+      sceneOffsetsSeconds: videoMeta.sceneOffsetsSeconds,
+      sceneDurationsSeconds: videoMeta.sceneDurationsSeconds,
       hasMixedResolutions: videoMeta.hasMixedResolutions,
       hasMixedAspectRatios: videoMeta.hasMixedAspectRatios,
       resolutionsLabel: videoMeta.resolutionsLabel,

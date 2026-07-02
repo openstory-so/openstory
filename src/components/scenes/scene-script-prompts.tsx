@@ -66,9 +66,6 @@ import { CopyIcon, History, Loader2, Minimize2, RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { ShotStalenessBanners } from './shot-staleness-banners';
-import { SceneCastTab } from './scene-cast-tab';
-import { SceneElementsTab } from './scene-elements-tab';
-import { SceneLocationTab } from './scene-location-tab';
 import { SceneScriptTab } from './scene-script-tab';
 import { VariantSelector } from './variant-selector';
 
@@ -76,14 +73,13 @@ import { getLogger } from '@/lib/observability/logger';
 
 const logger = getLogger(['openstory', 'ui', 'scenes', 'scene-script-prompts']);
 
+// Cast/Location/Elements left this panel for the selection-scoped inspector
+// facets (#986) — this panel is now purely the shot's prompt/variant editor.
 export type TabValue =
   | 'script'
   | 'image-prompt'
   | 'motion-prompt'
-  | 'scene-variants'
-  | 'cast'
-  | 'location'
-  | 'elements';
+  | 'scene-variants';
 
 function isInsufficientCreditsError(error: unknown): boolean {
   if (error instanceof Error) {
@@ -100,10 +96,7 @@ function isValidTabValue(value: string): value is TabValue {
     value === 'script' ||
     value === 'image-prompt' ||
     value === 'motion-prompt' ||
-    value === 'scene-variants' ||
-    value === 'cast' ||
-    value === 'location' ||
-    value === 'elements'
+    value === 'scene-variants'
   );
 }
 
@@ -998,9 +991,6 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
           <SelectContent>
             <SelectItem value="scene-variants">Variants</SelectItem>
             <SelectItem value="script">Script</SelectItem>
-            <SelectItem value="cast">Cast</SelectItem>
-            <SelectItem value="location">Location</SelectItem>
-            <SelectItem value="elements">Elements</SelectItem>
             <SelectItem value="image-prompt">Image</SelectItem>
             <SelectItem value="motion-prompt">Motion</SelectItem>
           </SelectContent>
@@ -1011,9 +1001,6 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
       <TabsList className="hidden md:flex">
         <TabsTrigger value="scene-variants">Variants</TabsTrigger>
         <TabsTrigger value="script">Script</TabsTrigger>
-        <TabsTrigger value="cast">Cast</TabsTrigger>
-        <TabsTrigger value="location">Location</TabsTrigger>
-        <TabsTrigger value="elements">Elements</TabsTrigger>
         <TabsTrigger value="image-prompt" className="gap-1.5">
           Image
           {staleness?.visualPrompt === 'stale' && (
@@ -1615,18 +1602,6 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
                 : 'Generate Scene Variants'}
           </Button>
         </div>
-      </TabsContent>
-
-      <TabsContent value="cast">
-        <SceneCastTab shot={shot} sequenceId={sequenceId} />
-      </TabsContent>
-
-      <TabsContent value="location">
-        <SceneLocationTab shot={shot} sequenceId={sequenceId} />
-      </TabsContent>
-
-      <TabsContent value="elements">
-        <SceneElementsTab shot={shot} sequenceId={sequenceId} />
       </TabsContent>
 
       <BillingGateDialog {...falGateProps} stripeEnabled={stripeEnabled} />

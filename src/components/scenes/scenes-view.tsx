@@ -1,15 +1,28 @@
 import { GenerationProgressBanner } from '@/components/generation/generation-progress-banner';
 import { MotionProgressBanner } from '@/components/generation/motion-progress-banner';
 import { type ModelGenerationStatus } from '@/components/model/base-model-selector';
-import { ScenePlayer } from '@/components/motion/scene-player';
 import { DivergenceCompareDialog } from '@/components/scenes/divergence-compare-dialog';
 import { MobileSceneDrawer } from '@/components/scenes/mobile-scene-drawer';
 import type { BatchGenerateMotionArgs } from '@/components/scenes/scene-list';
-import { SceneList } from '@/components/scenes/scene-list';
+import { SceneCommandPalette } from '@/components/scenes/scene-command-palette';
 import {
   SceneScriptPrompts,
   type TabValue,
 } from '@/components/scenes/scene-script-prompts';
+import { SceneSpine } from '@/components/scenes/scene-spine';
+import {
+  ScopeInspector,
+  type FacetValue,
+} from '@/components/scenes/scope-inspector';
+import { SequenceCanvas } from '@/components/scenes/sequence-canvas';
+import { type SequencePlayerControls } from '@/components/theatre/sequence-player';
+import { useScenesKeyboard } from '@/hooks/use-scenes-keyboard';
+import {
+  scopeOf,
+  selectionTags,
+  selectShot,
+  type SceneSelection,
+} from '@/lib/scenes/selection';
 import { FailureSummaryBanner } from '@/components/sequence/failure-summary-banner';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { batchGenerateMotionFn } from '@/functions/motion-functions';
@@ -20,7 +33,11 @@ import { useActiveImageModel } from '@/hooks/use-active-image-model';
 import { useActiveVideoModel } from '@/hooks/use-active-video-model';
 import { BILLING_BALANCE_KEY } from '@/hooks/use-billing-balance';
 import { useScenesBySequence, useUpdateSceneModel } from '@/hooks/use-scenes';
-import { sequenceKeys, useSequence } from '@/hooks/use-sequences';
+import {
+  sequenceKeys,
+  useSequence,
+  useUpdateSequenceModels,
+} from '@/hooks/use-sequences';
 import {
   shotKeys,
   useDiscardVariant,
@@ -61,8 +78,8 @@ import { useStaleDetected } from '@/lib/realtime/use-stale-detected';
 import type { Sequence } from '@/types/database';
 import { usePostHog } from '@posthog/react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from '@tanstack/react-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { getRouteApi, useNavigate } from '@tanstack/react-router';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
 /**
@@ -202,13 +219,72 @@ function isInsufficientCreditsError(error: unknown): boolean {
   );
 }
 
+const routeApi = getRouteApi('/_app/sequences/$id/scenes');
+
 export const ScenesView: React.FC<ScenesViewProps> = ({ sequenceId }) => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const posthog = usePostHog();
 
-  const [selectedShotId, setSelectedShotId] = useState<string | undefined>();
-  const [selectedTab, setSelectedTab] = useState<TabValue>('scene-variants');
+  // Selection is the scope control (#986), carried in the URL so back/forward
+  // and shared links restore the exact editing context.
+  const search = routeApi.useSearch();
+  const routeNavigate = routeApi.useNavigate();
+  const selection = useMemo<SceneSelection>(
+    () => ({ sceneIds: search.scenes ?? [], shotId: search.shot }),
+    [search.scenes, search.shot]
+  );
+  const selectedTab: TabValue = search.tab ?? 'scene-variants';
+  const facet: FacetValue = search.facet ?? 'cast';
+
+  const setSelection = useCallback(
+    (next: SceneSelection, opts?: { replace?: boolean }) => {
+      void routeNavigate({
+        search: (prev) => ({
+          ...prev,
+          scenes: next.sceneIds.length > 0 ? next.sceneIds : undefined,
+          shot: next.shotId,
+        }),
+        replace: opts?.replace ?? false,
+      });
+    },
+    [routeNavigate]
+  );
+  // Keyboard steps replace the history entry — arrowing through 30 shots
+  // shouldn't take 30 Back presses to escape.
+  const setSelectionReplace = useCallback(
+    (next: SceneSelection) => setSelection(next, { replace: true }),
+    [setSelection]
+  );
+  const setSelectedTab = useCallback(
+    (tab: TabValue) => {
+      void routeNavigate({
+        search: (prev) => ({ ...prev, tab }),
+        replace: true,
+      });
+    },
+    [routeNavigate]
+  );
+  const setFacet = useCallback(
+    (next: FacetValue) => {
+      void routeNavigate({
+        search: (prev) => ({ ...prev, facet: next }),
+        replace: true,
+      });
+    },
+    [routeNavigate]
+  );
+  const handleSelectShot = useCallback(
+    (shotId: string) => setSelection(selectShot(shotId)),
+    [setSelection]
+  );
+
+  // Playhead↔selection link (#986): the shot under the playhead during
+  // scene/sequence playback, highlighted in spine + filmstrip.
+  const [playingShotId, setPlayingShotId] = useState<string | null>(null);
+  const playerControlsRef = useRef<SequencePlayerControls | null>(null);
+  const canvasContainerRef = useRef<HTMLDivElement | null>(null);
+  const [paletteOpen, setPaletteOpen] = useState(false);
 
   const [regeneratingImages, setRegeneratingImages] = useState<Set<string>>(
     () => new Set()
@@ -441,10 +517,18 @@ export const ScenesView: React.FC<ScenesViewProps> = ({ sequenceId }) => {
     [sequenceId, promoteVariant]
   );
 
-  const curSelectedShotId = selectedShotId || shots?.[0]?.id;
+  // Shot scope only — the whole-sequence/scene scopes have no "current shot";
+  // the canvas and inspector derive their content from the selection instead.
+  const curSelectedShotId = selection.shotId;
   const selectedShot = useMemo(
     () => shots?.find((shot) => shot.id === curSelectedShotId),
     [shots, curSelectedShotId]
+  );
+
+  // Selection-derived facet tags (null = whole sequence, no filter).
+  const tags = useMemo(
+    () => selectionTags(selection, shots ?? []),
+    [selection, shots]
   );
 
   // Scenes group the shots and own model selection (#909). The selected shot's
@@ -525,6 +609,70 @@ export const ScenesView: React.FC<ScenesViewProps> = ({ sequenceId }) => {
     },
     [selectedScene, sequenceId, updateSceneModel]
   );
+
+  // Palette "Set Look/Motion" — applies at the current scope: sequence scope
+  // edits the default, scene scope edits every selected scene, shot scope
+  // edits the shot's scene (#909 keeps overrides scene-level).
+  const updateSequenceModels = useUpdateSequenceModels(sequenceId);
+  const scopedSceneIds = useMemo(() => {
+    const scope = scopeOf(selection);
+    if (scope === 'scene') return selection.sceneIds;
+    if (scope === 'shot' && selectedShot?.sceneId)
+      return [selectedShot.sceneId];
+    return [];
+  }, [selection, selectedShot]);
+  const paletteSetImageModel = useCallback(
+    (model: TextToImageModel) => {
+      if (scopedSceneIds.length === 0) {
+        updateSequenceModels.mutate({ imageModel: model });
+        return;
+      }
+      for (const sceneId of scopedSceneIds) {
+        updateSceneModel.mutate({ sequenceId, sceneId, imageModel: model });
+      }
+    },
+    [scopedSceneIds, sequenceId, updateSceneModel, updateSequenceModels]
+  );
+  const paletteSetVideoModel = useCallback(
+    (model: ImageToVideoModel) => {
+      if (scopedSceneIds.length === 0) {
+        updateSequenceModels.mutate({ videoModel: model });
+        return;
+      }
+      for (const sceneId of scopedSceneIds) {
+        updateSceneModel.mutate({ sequenceId, sceneId, videoModel: model });
+      }
+    },
+    [scopedSceneIds, sequenceId, updateSceneModel, updateSequenceModels]
+  );
+
+  // Space plays/pauses whatever the canvas shows: the stitched player exposes
+  // imperative controls; the single-shot player is a native <video>, reached
+  // via the canvas container.
+  const handleTogglePlay = useCallback(() => {
+    if (playerControlsRef.current) {
+      playerControlsRef.current.togglePlay();
+      return;
+    }
+    const video = canvasContainerRef.current?.querySelector('video');
+    if (!video) return;
+    if (video.paused) void video.play();
+    else video.pause();
+  }, []);
+
+  const openPalette = useCallback(() => setPaletteOpen(true), []);
+  useScenesKeyboard({
+    shots,
+    selection,
+    onSelectionChange: setSelectionReplace,
+    onTogglePlay: handleTogglePlay,
+    onOpenPalette: openPalette,
+  });
+
+  // The playhead highlight only exists during multi-shot playback.
+  useEffect(() => {
+    if (selection.shotId) setPlayingShotId(null);
+  }, [selection.shotId]);
 
   // In-flight retry state (#882) for the selected shot. Image retry matters
   // before the thumbnail exists; video retry after — the image entry is cleared
@@ -976,13 +1124,16 @@ export const ScenesView: React.FC<ScenesViewProps> = ({ sequenceId }) => {
       )}
 
       <div className="flex flex-1 min-h-0">
-        {/* Desktop: Scene List sidebar */}
+        {/* Desktop: spine (grouped, multi-selectable) */}
         <div className="hidden md:block pl-4 py-4">
-          <SceneList
+          <SceneSpine
             shots={shots}
-            selectedShotId={curSelectedShotId}
+            scenes={scenes}
+            sequence={sequence}
             aspectRatio={aspectRatio}
-            onSelectShot={setSelectedShotId}
+            selection={selection}
+            onSelectionChange={setSelection}
+            playingShotId={playingShotId}
             regeneratingImages={regeneratingImages}
             regeneratingMotion={regeneratingMotion}
             onBatchGenerateMotion={handleBatchMotionGeneration}
@@ -1004,7 +1155,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({ sequenceId }) => {
             shots={shots}
             selectedShotId={curSelectedShotId}
             aspectRatio={aspectRatio}
-            onSelectShot={setSelectedShotId}
+            onSelectShot={handleSelectShot}
             regeneratingImages={regeneratingImages}
             regeneratingMotion={regeneratingMotion}
             onBatchGenerateMotion={handleBatchMotionGeneration}
@@ -1016,65 +1167,104 @@ export const ScenesView: React.FC<ScenesViewProps> = ({ sequenceId }) => {
           />
         </div>
 
-        {/* Main content area */}
-        <ScrollArea className="flex-1 px-4 md:px-8 gap-8 flex flex-col pb-20 md:pb-0 pt-4">
-          <div className="flex flex-1 min-h-0 justify-center pb-8">
-            <ScenePlayer
+        {/* Center: adaptive canvas + shot panel (shot scope only) */}
+        <ScrollArea className="flex-1 px-4 md:px-6 gap-8 flex flex-col pb-20 md:pb-0 pt-4">
+          <div
+            ref={canvasContainerRef}
+            className="flex flex-1 min-h-0 justify-center pb-8"
+          >
+            <SequenceCanvas
+              sequence={sequence}
               shots={playerShots}
-              selectedShotId={curSelectedShotId}
+              selection={selection}
+              onSelectShot={handleSelectShot}
               aspectRatio={aspectRatio}
-              onSelectShot={setSelectedShotId}
-              selectedTab={selectedTab}
-              overrideImageUrl={previewVariantUrl}
-              overrideVideoUrl={previewVariantVideoUrl}
-              badgeMessage={playerBadgeMessage}
-              modelMismatchLabel={
-                selectedTab === 'scene-variants' &&
-                activeImageModelLabel &&
-                curSelectedShotId &&
-                shotsMissingActiveImage.has(curSelectedShotId)
-                  ? `Not generated with ${activeImageModelLabel}`
-                  : null
-              }
-              progressMessage={
-                generationState.phases.find((p) => p.status === 'active')
-                  ?.phaseName
-              }
-              retry={selectedShotRetry}
               posterUrl={sequence?.posterUrl ?? undefined}
-              className={PLAYER_MAX_H}
-              wrapperClassName={PLAYER_MAX_W_BY_RATIO[aspectRatio]}
+              playingShotId={playingShotId}
+              onPlayingShotChange={setPlayingShotId}
+              controlsRef={playerControlsRef}
+              shotPlayerProps={{
+                selectedTab,
+                overrideImageUrl: previewVariantUrl,
+                overrideVideoUrl: previewVariantVideoUrl,
+                badgeMessage: playerBadgeMessage,
+                modelMismatchLabel:
+                  selectedTab === 'scene-variants' &&
+                  activeImageModelLabel &&
+                  curSelectedShotId &&
+                  shotsMissingActiveImage.has(curSelectedShotId)
+                    ? `Not generated with ${activeImageModelLabel}`
+                    : null,
+                progressMessage: generationState.phases.find(
+                  (p) => p.status === 'active'
+                )?.phaseName,
+                retry: selectedShotRetry,
+                className: PLAYER_MAX_H,
+                wrapperClassName: PLAYER_MAX_W_BY_RATIO[aspectRatio],
+              }}
             />
           </div>
-          <SceneScriptPrompts
-            shot={selectedShot}
+          {selectedShot && (
+            <SceneScriptPrompts
+              shot={selectedShot}
+              sequenceId={sequenceId}
+              selectedTab={selectedTab}
+              onTabChange={setSelectedTab}
+              regeneratingImages={regeneratingImages}
+              regeneratingMotion={regeneratingMotion}
+              regeneratingSceneVariants={regeneratingSceneVariants}
+              onRegenerateStart={handleRegenerateStart}
+              aspectRatio={aspectRatio}
+              variantForSelectedModel={variantForSelectedModel}
+              videoVariantForSelectedModel={videoVariantForSelectedModel}
+              sceneImageModel={sceneImageModel}
+              sceneVideoModel={sceneVideoModel}
+              imageModelStatuses={sceneImageModelStatuses}
+              videoModelStatuses={sceneVideoModelStatuses}
+              onImageModelChange={handleSceneImageModelChange}
+              onVideoModelChange={handleSceneVideoModelChange}
+              styleCategory={styleCategory}
+              styleName={styleName}
+              recommendedImageModel={recommendedImageModel}
+              recommendedVideoModel={recommendedVideoModel}
+              shotDivergentVariants={divergentVariants?.filter(
+                (v) => v.shotId === curSelectedShotId
+              )}
+              onCompareDivergent={(variant) => setCompareVariant(variant)}
+            />
+          )}
+        </ScrollArea>
+
+        {/* Desktop: faceted inspector */}
+        <div className="hidden lg:block w-[340px] xl:w-[400px] shrink-0 pr-4 py-4">
+          <ScopeInspector
             sequenceId={sequenceId}
-            selectedTab={selectedTab}
-            onTabChange={setSelectedTab}
-            regeneratingImages={regeneratingImages}
-            regeneratingMotion={regeneratingMotion}
-            regeneratingSceneVariants={regeneratingSceneVariants}
-            onRegenerateStart={handleRegenerateStart}
+            sequence={sequence}
+            shots={shots}
+            selection={selection}
+            onSelectionChange={setSelection}
+            tags={tags}
+            facet={facet}
+            onFacetChange={setFacet}
             aspectRatio={aspectRatio}
-            variantForSelectedModel={variantForSelectedModel}
-            videoVariantForSelectedModel={videoVariantForSelectedModel}
-            sceneImageModel={sceneImageModel}
-            sceneVideoModel={sceneVideoModel}
-            imageModelStatuses={sceneImageModelStatuses}
-            videoModelStatuses={sceneVideoModelStatuses}
-            onImageModelChange={handleSceneImageModelChange}
-            onVideoModelChange={handleSceneVideoModelChange}
             styleCategory={styleCategory}
             styleName={styleName}
             recommendedImageModel={recommendedImageModel}
             recommendedVideoModel={recommendedVideoModel}
-            shotDivergentVariants={divergentVariants?.filter(
-              (v) => v.shotId === curSelectedShotId
-            )}
-            onCompareDivergent={(variant) => setCompareVariant(variant)}
           />
-        </ScrollArea>
+        </div>
       </div>
+
+      <SceneCommandPalette
+        open={paletteOpen}
+        onOpenChange={setPaletteOpen}
+        shots={shots}
+        scenes={scenes}
+        onSelectionChange={setSelection}
+        onFacetChange={setFacet}
+        onSetImageModel={paletteSetImageModel}
+        onSetVideoModel={paletteSetVideoModel}
+      />
 
       {compareVariant &&
         (() => {

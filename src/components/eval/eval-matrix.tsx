@@ -80,8 +80,9 @@ export const EvalMatrix: React.FC<EvalMatrixProps> = ({
   const handleOpenTheatre = (sequenceIndex: number) => {
     const sequence = sequences[sequenceIndex];
     if (!sequence) return;
+    // Whole-sequence playback is the Scenes editor's nothing-selected state (#986).
     void navigate({
-      to: '/sequences/$id/theatre',
+      to: '/sequences/$id/scenes',
       params: { id: sequence.id },
     });
   };

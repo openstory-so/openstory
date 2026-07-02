@@ -1,19 +1,21 @@
 /**
- * Scene Cast Tab
- * Displays characters appearing in the current shot with a cinematic/editorial design
+ * Cast facet (#986)
+ * Selection-scoped character list: `characterTags: null` shows the whole
+ * sequence's cast (nothing selected), a tag set shows the union for the
+ * selected scene(s)/shot. Cards deep-link to the existing edit pages.
  */
 
 import { Skeleton } from '@/components/ui/skeleton';
 import { useSequenceCharacters } from '@/hooks/use-sequence-characters';
 import type { Character } from '@/lib/db/schema';
 import { matchCharactersToScene } from '@/lib/workflows/scene-matching';
-import type { Shot } from '@/types/database';
 import { Link } from '@tanstack/react-router';
 import { Film, User } from 'lucide-react';
 
 type SceneCastTabProps = {
-  shot?: Shot;
   sequenceId: string;
+  /** Selection-derived character tags; `null` = no filter (whole sequence). */
+  characterTags: string[] | null;
 };
 
 type CastCardProps = {
@@ -88,39 +90,40 @@ const CastCardSkeleton: React.FC = () => (
 );
 
 export const SceneCastTab: React.FC<SceneCastTabProps> = ({
-  shot,
   sequenceId,
+  characterTags,
 }) => {
   const { data: characters, isLoading } = useSequenceCharacters(sequenceId);
 
-  // Get character tags from shot metadata
-  const characterTags = shot?.metadata?.continuity?.characterTags ?? [];
-
-  // Match characters to this shot
-  const shotCast = characters
-    ? matchCharactersToScene(characters, characterTags)
-    : [];
+  const scopedCast = !characters
+    ? []
+    : characterTags === null
+      ? characters
+      : matchCharactersToScene(characters, characterTags);
 
   // Loading state
   if (isLoading) {
     return (
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-        <CastCardSkeleton />
+      <div className="grid grid-cols-2 gap-4">
         <CastCardSkeleton />
         <CastCardSkeleton />
       </div>
     );
   }
 
-  // Empty state - no characters in this scene
-  if (shotCast.length === 0) {
+  // Empty state - no characters in this selection
+  if (scopedCast.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-12 text-center">
         <div className="rounded-full bg-muted p-4 mb-4">
           <Film className="h-8 w-8 text-muted-foreground/50" />
         </div>
-        <p className="text-sm text-muted-foreground">No cast in this scene</p>
-        {characterTags.length > 0 && (
+        <p className="text-sm text-muted-foreground">
+          {characterTags === null
+            ? 'No cast in this sequence'
+            : 'No cast in this selection'}
+        </p>
+        {characterTags !== null && characterTags.length > 0 && (
           <p className="mt-2 text-xs text-muted-foreground/70">
             {characterTags.length} character tag
             {characterTags.length > 1 ? 's' : ''} found but no matches
@@ -132,18 +135,16 @@ export const SceneCastTab: React.FC<SceneCastTabProps> = ({
 
   return (
     <div className="space-y-4">
-      {/* Scene cast header */}
       <div className="flex items-center gap-2 text-xs text-muted-foreground uppercase tracking-wider">
-        <span>Scene Cast</span>
+        <span>Cast</span>
         <span className="text-muted-foreground/50">·</span>
         <span>
-          {shotCast.length} character{shotCast.length > 1 ? 's' : ''}
+          {scopedCast.length} character{scopedCast.length > 1 ? 's' : ''}
         </span>
       </div>
 
-      {/* Cast grid */}
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-        {shotCast.map((character) => (
+      <div className="grid grid-cols-2 gap-4">
+        {scopedCast.map((character) => (
           <CastCard
             key={character.id}
             character={character}

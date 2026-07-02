@@ -35,6 +35,19 @@ import {
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
+/**
+ * Imperative handle for the canvas/spine to drive playback (#986): the spine
+ * seeks by shot, the keyboard grammar's Space toggles play. Exposed via the
+ * `controlsRef` prop rather than events so callers can act at interaction
+ * time without re-rendering the player.
+ */
+export type SequencePlayerControls = {
+  /** Seek to the start of the Nth scene (playback order). */
+  seekToScene: (index: number) => void;
+  togglePlay: () => void;
+  isPlaying: () => boolean;
+};
+
 type SequencePlayerProps = {
   scenes: SceneInput[];
   musicUrl: string | null;
@@ -51,6 +64,14 @@ type SequencePlayerProps = {
   className?: string;
   /** Slot rendered as an overlay (top-right) — e.g. the Share dropdown. */
   overlayActions?: React.ReactNode;
+  /**
+   * Fired when the playhead crosses into a different scene (#986) — lets the
+   * spine/filmstrip highlight the shot that is actually playing. Reports -1
+   * before metadata is ready.
+   */
+  onActiveSceneChange?: (index: number) => void;
+  /** Receives the imperative playback controls; nulled on unmount. */
+  controlsRef?: React.RefObject<SequencePlayerControls | null>;
 };
 
 export const SequencePlayer: React.FC<SequencePlayerProps> = ({
@@ -62,9 +83,15 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
   aspectRatio,
   className,
   overlayActions,
+  onActiveSceneChange,
+  controlsRef,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const engineRef = useRef<SequencePlayerEngine | null>(null);
+  const activeSceneRef = useRef(-1);
+  // Mirrors the `meta` state for the imperative controls, which must read the
+  // latest offsets without re-registering on every prepare.
+  const metaRef = useRef<SequencePlayerMeta | null>(null);
 
   const [meta, setMeta] = useState<SequencePlayerMeta | null>(null);
   const [playing, setPlaying] = useState(false);
@@ -80,6 +107,13 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
       setError('No scenes ready to play yet.');
       return;
     }
+
+    // Re-preparing for a different playback set (#986: selection re-scopes
+    // the player) must not leave the previous run's clock/meta on screen.
+    setMeta(null);
+    setPlaying(false);
+    setCurrentTime(0);
+    activeSceneRef.current = -1;
 
     let cancelled = false;
     const engine = new SequencePlayerEngine({
@@ -104,6 +138,7 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
       .prepare()
       .then((m) => {
         if (cancelled) return;
+        metaRef.current = m;
         setMeta(m);
       })
       .catch((err: unknown) => {
@@ -115,6 +150,8 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
       cancelled = true;
       engine.dispose();
       engineRef.current = null;
+      metaRef.current = null;
+      activeSceneRef.current = -1;
     };
     // The scene list/music identity drives the engine lifecycle; volume/muted/
     // musicEnabled are pushed through setters below (toggling music must not
@@ -133,6 +170,49 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
   useEffect(() => {
     engineRef.current?.setMusicEnabled(musicEnabled);
   }, [musicEnabled]);
+
+  // Map the playhead to the scene it's inside and report crossings (#986).
+  useEffect(() => {
+    if (!onActiveSceneChange) return;
+    const offsets = meta?.sceneOffsetsSeconds ?? [];
+    let index = -1;
+    for (let i = offsets.length - 1; i >= 0; i--) {
+      const offset = offsets[i];
+      if (offset !== undefined && currentTime >= offset) {
+        index = i;
+        break;
+      }
+    }
+    if (index !== activeSceneRef.current) {
+      activeSceneRef.current = index;
+      onActiveSceneChange(index);
+    }
+  }, [currentTime, meta, onActiveSceneChange]);
+
+  useEffect(() => {
+    if (!controlsRef) return;
+    controlsRef.current = {
+      seekToScene: (index: number) => {
+        const engine = engineRef.current;
+        const offset = metaRef.current?.sceneOffsetsSeconds[index];
+        if (engine && offset !== undefined) void engine.seek(offset);
+      },
+      togglePlay: () => {
+        const engine = engineRef.current;
+        if (!engine) return;
+        if (engine.isPlaying()) {
+          engine.pause();
+          setPlaying(false);
+        } else {
+          void engine.play().then(() => setPlaying(true));
+        }
+      },
+      isPlaying: () => engineRef.current?.isPlaying() ?? false,
+    };
+    return () => {
+      controlsRef.current = null;
+    };
+  }, [controlsRef]);
 
   const togglePlay = () => {
     const engine = engineRef.current;

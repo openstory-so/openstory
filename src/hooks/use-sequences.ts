@@ -7,6 +7,7 @@ import {
   getSequencesFn,
   setSequenceModelFn,
   setSequenceMusicFn,
+  updateSequenceModelsFn,
   type AddModelResult,
 } from '@/functions/sequences';
 import { DEFAULT_ANALYSIS_MODEL } from '@/lib/ai/models.config';
@@ -222,6 +223,47 @@ export function useCreateSequence() {
  * Optimistically patches the sequence detail cache so the live player's music
  * gain and the next export react instantly; rolls back if the write fails.
  */
+/**
+ * Persist the sequence's default image/video model (#986) — what scenes with
+ * no override inherit. Optimistically patches the sequence detail so the
+ * inspector's model bar reflects the choice immediately.
+ */
+export function useUpdateSequenceModels(sequenceId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation<
+    Sequence,
+    Error,
+    { imageModel?: string; videoModel?: string },
+    { previous?: Sequence }
+  >({
+    mutationFn: (input) =>
+      updateSequenceModelsFn({ data: { sequenceId, ...input } }),
+    onMutate: async (input) => {
+      const key = sequenceKeys.detail(sequenceId);
+      await queryClient.cancelQueries({ queryKey: key });
+      const previous = queryClient.getQueryData<Sequence>(key);
+      queryClient.setQueryData<Sequence>(key, (old) =>
+        old ? { ...old, ...input } : old
+      );
+      return { previous };
+    },
+    onError: (error, _input, ctx) => {
+      if (ctx?.previous) {
+        queryClient.setQueryData(sequenceKeys.detail(sequenceId), ctx.previous);
+      }
+      toast.error('Failed to update the sequence default model', {
+        description: error instanceof Error ? error.message : 'Unknown error',
+      });
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({
+        queryKey: sequenceKeys.detail(sequenceId),
+      });
+    },
+  });
+}
+
 export function useSetSequenceMusic(sequenceId: string) {
   const queryClient = useQueryClient();
   const posthog = usePostHog();
