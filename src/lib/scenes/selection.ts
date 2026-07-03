@@ -139,6 +139,22 @@ export function toggleScene(
 }
 
 /**
+ * Click on the spine's "Scenes" header: toggle between every scene selected
+ * and none (whole-sequence scope). Partial selections resolve to "all".
+ */
+export function toggleAllScenes(
+  selection: SceneSelection,
+  shots: SelectableShot[]
+): SceneSelection {
+  const all = orderedSceneIds(shots);
+  const allSelected =
+    all.length > 0 &&
+    !selection.shotId &&
+    all.every((id) => selection.sceneIds.includes(id));
+  return allSelected ? EMPTY_SELECTION : { sceneIds: all };
+}
+
+/**
  * Shift-click on a scene header: contiguous range from the selection's anchor
  * (its first scene) to the target, in spine order. With no anchor this is a
  * plain scene selection.

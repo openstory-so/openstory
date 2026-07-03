@@ -280,7 +280,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({ sequenceId }) => {
   );
 
   // Playhead↔selection link (#986): the shot under the playhead during
-  // scene/sequence playback, highlighted in spine + filmstrip.
+  // scene/sequence playback, highlighted in the player's filmstrip.
   const [playingShotId, setPlayingShotId] = useState<string | null>(null);
   const playerControlsRef = useRef<SequencePlayerControls | null>(null);
   const canvasContainerRef = useRef<HTMLDivElement | null>(null);
@@ -1133,7 +1133,6 @@ export const ScenesView: React.FC<ScenesViewProps> = ({ sequenceId }) => {
             aspectRatio={aspectRatio}
             selection={selection}
             onSelectionChange={setSelection}
-            playingShotId={playingShotId}
             regeneratingImages={regeneratingImages}
             regeneratingMotion={regeneratingMotion}
             onBatchGenerateMotion={handleBatchMotionGeneration}

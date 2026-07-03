@@ -12,6 +12,7 @@ import {
   shotsInSelection,
   stepScene,
   stepShot,
+  toggleAllScenes,
   toggleScene,
   zoomOut,
   type SelectableShot,
@@ -217,5 +218,23 @@ describe('selection transitions', () => {
 
   it('orderedSceneIds preserves spine order and dedupes', () => {
     expect(orderedSceneIds(shots)).toEqual(['sceneA', 'sceneB']);
+  });
+
+  it('toggleAllScenes toggles between all scenes and none', () => {
+    const all = toggleAllScenes(EMPTY_SELECTION, shots);
+    expect(all.sceneIds).toEqual(['sceneA', 'sceneB']);
+    expect(toggleAllScenes(all, shots)).toEqual(EMPTY_SELECTION);
+    // Partial selections resolve to "all", not "none".
+    expect(toggleAllScenes(selectScene('sceneA'), shots).sceneIds).toEqual([
+      'sceneA',
+      'sceneB',
+    ]);
+    // Shot scope resolves to "all" too — a shot is not "everything selected".
+    expect(toggleAllScenes(selectShot('shot1'), shots).sceneIds).toEqual([
+      'sceneA',
+      'sceneB',
+    ]);
+    // No shots → nothing to select.
+    expect(toggleAllScenes(EMPTY_SELECTION, [])).toEqual(EMPTY_SELECTION);
   });
 });

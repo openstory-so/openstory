@@ -148,7 +148,6 @@ export const Inactive: Story = {
   args: {
     shot: mockShot,
     isActive: false,
-    isCompleted: false,
   },
 };
 
@@ -156,23 +155,40 @@ export const Active: Story = {
   args: {
     shot: mockShot,
     isActive: true,
-    isCompleted: false,
   },
 };
 
-export const Completed: Story = {
+/** Play badge on the thumbnail: the shot has a completed video. */
+export const MotionReady: Story = {
   args: {
-    shot: mockShot,
+    shot: {
+      ...mockShot,
+      videoUrl: 'https://example.com/video.mp4',
+      videoStatus: 'completed',
+    },
     isActive: false,
-    isCompleted: true,
   },
 };
 
-export const ActiveAndCompleted: Story = {
+/** Pulsing play badge while motion generates. */
+export const MotionGenerating: Story = {
   args: {
-    shot: mockShot,
+    shot: {
+      ...mockShot,
+      videoStatus: 'generating',
+    },
+    isActive: false,
+  },
+};
+
+export const ActiveAndMotionReady: Story = {
+  args: {
+    shot: {
+      ...mockShot,
+      videoUrl: 'https://example.com/video.mp4',
+      videoStatus: 'completed',
+    },
     isActive: true,
-    isCompleted: true,
   },
 };
 
@@ -184,7 +200,6 @@ export const Generating: Story = {
       thumbnailStatus: 'generating',
     },
     isActive: false,
-    isCompleted: false,
   },
 };
 
@@ -196,7 +211,6 @@ export const GeneratingActive: Story = {
       thumbnailStatus: 'generating',
     },
     isActive: true,
-    isCompleted: false,
   },
 };
 
@@ -209,7 +223,6 @@ export const Failed: Story = {
       thumbnailError: 'Generation timeout',
     },
     isActive: false,
-    isCompleted: false,
   },
 };
 
@@ -249,7 +262,6 @@ export const LongTitle: Story = {
       } satisfies Shot['metadata'],
     },
     isActive: false,
-    isCompleted: false,
   },
 };
 
@@ -292,6 +304,5 @@ export const LongScript: Story = {
       } satisfies Shot['metadata'],
     },
     isActive: false,
-    isCompleted: false,
   },
 };

@@ -4,9 +4,10 @@
  * Shots grouped under their scene headers; selection is the scope control:
  * click a scene header = scene scope, click a shot = shot scope,
  * cmd/ctrl-click = toggle a scene into the multi-selection, shift-click =
- * contiguous scene range. The header row ("Scenes") clears back to
- * whole-sequence scope. During playback the playing shot is highlighted and
- * clicking any shot jumps the playhead there (wired by the parent).
+ * contiguous scene range. The header row ("Scenes") toggles all scenes
+ * selected ↔ none. During playback clicking any shot jumps the playhead
+ * there (wired by the parent); the playhead itself is only marked in the
+ * player's filmstrip.
  */
 
 import {
@@ -32,6 +33,7 @@ import {
   rangeSelectScenes,
   selectScene,
   selectShot,
+  toggleAllScenes,
   toggleScene,
   type SceneSelection,
 } from '@/lib/scenes/selection';
@@ -48,8 +50,6 @@ type SceneSpineProps = {
   aspectRatio: AspectRatio;
   selection: SceneSelection;
   onSelectionChange: (next: SceneSelection) => void;
-  /** Shot currently under the playhead (scene/sequence playback), if any. */
-  playingShotId?: string | null;
   regeneratingImages: Set<string>;
   regeneratingMotion: Set<string>;
   onBatchGenerateMotion?: (args: BatchGenerateMotionArgs) => Promise<void>;
@@ -61,9 +61,6 @@ type SceneSpineProps = {
   modelMissingShotIds?: Set<string>;
   modelMissingLabel?: string | null;
 };
-
-const isCompleted = (shot: ShotWithImage) =>
-  shot.thumbnailStatus === 'completed' && shot.videoStatus === 'completed';
 
 type SceneGroup = {
   sceneId: string | null;
@@ -87,7 +84,6 @@ const SceneSpineComponent: React.FC<SceneSpineProps> = ({
   aspectRatio,
   selection,
   onSelectionChange,
-  playingShotId,
   regeneratingImages,
   regeneratingMotion,
   onBatchGenerateMotion,
@@ -174,8 +170,6 @@ const SceneSpineComponent: React.FC<SceneSpineProps> = ({
         shot={shot}
         aspectRatio={aspectRatio}
         isActive={shot.id === selection.shotId}
-        isPlaying={shot.id === playingShotId}
-        isCompleted={isCompleted(shot)}
         onSelect={() => onSelectionChange(selectShot(shot.id))}
         isRegeneratingImage={regeneratingImages.has(shot.id)}
         isRegeneratingMotion={regeneratingMotion.has(shot.id)}
@@ -193,7 +187,8 @@ const SceneSpineComponent: React.FC<SceneSpineProps> = ({
 
   return (
     <div className="flex h-full w-[280px] xl:w-[320px] flex-col rounded-lg border bg-background">
-      {/* Header — clicking it clears back to whole-sequence scope. */}
+      {/* Header — clicking it toggles all scenes selected ↔ none (Esc always
+          clears back to whole-sequence scope). */}
       <div className="flex items-center justify-between border-b px-4 py-2">
         <Button
           variant="ghost"
@@ -204,8 +199,10 @@ const SceneSpineComponent: React.FC<SceneSpineProps> = ({
               ? 'text-foreground'
               : 'text-muted-foreground'
           )}
-          onClick={() => onSelectionChange({ sceneIds: [] })}
-          title="Show the whole sequence (Esc)"
+          onClick={() =>
+            onSelectionChange(toggleAllScenes(selection, shots ?? []))
+          }
+          title="Select all scenes · click again to clear (Esc)"
         >
           Scenes
         </Button>
@@ -225,7 +222,6 @@ const SceneSpineComponent: React.FC<SceneSpineProps> = ({
                 shot={undefined}
                 aspectRatio={aspectRatio}
                 isActive={false}
-                isCompleted={false}
               />
             ))}
 

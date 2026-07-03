@@ -1,3 +1,4 @@
+import { BackButton } from '@/components/layout/back-button';
 import { SheetComparisonDialog } from '@/components/sheets/sheet-comparison-dialog';
 import { SheetStalenessBanners } from '@/components/sheets/sheet-staleness-banners';
 import { Button } from '@/components/ui/button';
@@ -23,7 +24,7 @@ import { useSheetStaleDetected } from '@/lib/realtime/use-sheet-stale-detected';
 import { cn } from '@/lib/utils';
 import { useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import { ArrowLeft, Loader2, MapPin, RefreshCw, Sparkles } from 'lucide-react';
+import { Loader2, MapPin, RefreshCw, Sparkles } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { LocationPickerDialog } from './location-picker-dialog';
@@ -288,13 +289,11 @@ export const LocationDetailView: React.FC<LocationDetailViewProps> = ({
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
       {/* Header with back button */}
       <div className="flex shrink-0 items-center gap-3 border-b px-4 py-3">
-        <Link
-          to="/sequences/$id/locations"
-          params={{ id: sequenceId }}
-          className="flex h-8 w-8 items-center justify-center rounded-md hover:bg-muted"
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </Link>
+        <BackButton
+          fallbackTo="/sequences/$id/locations"
+          sequenceId={sequenceId}
+          label="Back"
+        />
         <h1 className="text-lg font-semibold">{location.name}</h1>
       </div>
 

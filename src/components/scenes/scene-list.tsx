@@ -38,9 +38,6 @@ type SceneListProps = {
   modelMissingLabel?: string | null;
 };
 
-const isCompleted = (shot: ShotWithImage) =>
-  shot.thumbnailStatus === 'completed' && shot.videoStatus === 'completed';
-
 const SceneListComponent: React.FC<SceneListProps> = ({
   shots,
   selectedShotId,
@@ -76,7 +73,6 @@ const SceneListComponent: React.FC<SceneListProps> = ({
         shot={shot}
         aspectRatio={aspectRatio}
         isActive={shot.id === selectedShotId}
-        isCompleted={isCompleted(shot)}
         onSelect={() => onSelectShot(shot.id)}
         isRegeneratingImage={regeneratingImages.has(shot.id)}
         isRegeneratingMotion={regeneratingMotion.has(shot.id)}
@@ -111,7 +107,6 @@ const SceneListComponent: React.FC<SceneListProps> = ({
                 shot={undefined}
                 aspectRatio={aspectRatio}
                 isActive={false}
-                isCompleted={false}
               />
             ))}
 

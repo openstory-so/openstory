@@ -34,12 +34,6 @@ type MobileSceneDrawerProps = {
   initialMusicModel?: AudioModel;
 };
 
-const isCompleted = (shot: ShotWithImage) => {
-  return (
-    shot.thumbnailStatus === 'completed' && shot.videoStatus === 'completed'
-  );
-};
-
 export const MobileSceneDrawer: React.FC<MobileSceneDrawerProps> = ({
   shots,
   selectedShotId,
@@ -179,7 +173,6 @@ export const MobileSceneDrawer: React.FC<MobileSceneDrawerProps> = ({
                     shot={undefined}
                     aspectRatio={aspectRatio}
                     isActive={false}
-                    isCompleted={false}
                     onSelect={() => {}}
                   />
                 ))}
@@ -190,7 +183,6 @@ export const MobileSceneDrawer: React.FC<MobileSceneDrawerProps> = ({
                   shot={shot}
                   aspectRatio={aspectRatio}
                   isActive={shot.id === selectedShotId}
-                  isCompleted={isCompleted(shot)}
                   onSelect={() => handleSelectShot(shot.id)}
                   isRegeneratingImage={regeneratingImages.has(shot.id)}
                   isRegeneratingMotion={regeneratingMotion.has(shot.id)}
