@@ -26,6 +26,7 @@ import { falImage } from '@tanstack/ai-fal';
 import { getLogger } from '@/lib/observability/logger';
 
 const logger = getLogger(['openstory', 'image', 'image-generation']);
+const IMAGE_GENERATION_TIMEOUT_MS = 10 * 60 * 1000;
 
 export type ImageGenerationParams = {
   model: TextToImageModel;
@@ -95,9 +96,33 @@ function imageSizeToAspectRatio(imageSize: ImageSize): string {
   return ASPECT_RATIO_MAP[imageSize];
 }
 
+function createTimeoutFetch(timeoutMs: number): typeof fetch {
+  return async (input, init) => {
+    const controller = new AbortController();
+    const parentSignal = init?.signal;
+    const abortFromParent = () => controller.abort(parentSignal?.reason);
+    parentSignal?.addEventListener('abort', abortFromParent, { once: true });
+    const timeout = setTimeout(
+      () => controller.abort(new Error('Image generation request timed out')),
+      timeoutMs
+    );
+
+    try {
+      return await fetch(input, { ...init, signal: controller.signal });
+    } finally {
+      clearTimeout(timeout);
+      parentSignal?.removeEventListener('abort', abortFromParent);
+    }
+  };
+}
+
 function createFalAdapter(modelId: string, falApiKey?: string) {
   const key = falApiKey ?? getEnv().FAL_KEY;
-  return key ? falImage(modelId, { apiKey: key }) : falImage(modelId);
+  const config = {
+    fetch: createTimeoutFetch(IMAGE_GENERATION_TIMEOUT_MS),
+    ...(key ? { apiKey: key } : {}),
+  };
+  return falImage(modelId, config);
 }
 
 function truncatePromptForModel(
