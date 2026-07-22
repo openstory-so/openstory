@@ -1,16 +1,16 @@
 /**
- * Audio decode/resample/mix helpers for the server export.
+ * Audio decode helpers for the server export.
  *
- * The browser export mixes music + per-scene dialogue in an `OfflineAudioContext`
- * (which resamples for free). Node has no Web Audio, so we decode each track to
- * planar f32 PCM via mediabunny's `AudioSampleSink`, resample to a common rate
- * with linear interpolation, downmix to stereo, and sum at scene offsets.
- *
- * Linear resampling is a deliberate simplification vs. the browser's native
- * resampler; it is transparent for the background-music + dialogue beds we mix.
+ * The actual mixing — resampling every input to a common rate, downmixing to
+ * stereo, applying per-track gain, offsetting per-scene dialogue, and summing —
+ * is done by mediabunny's `AudioMixer` (see `export.ts`), which reuses the same
+ * high-quality resampler as the rest of the library. What remains here is the
+ * OpenStory-specific decode we still need for loudness measurement (mediabunny
+ * has no LUFS), plus a small bridge that wraps already-decoded PCM back into an
+ * `AudioSample` so the music can be measured and mixed from a single decode.
  */
 
-import { AudioSampleSink, type InputAudioTrack } from 'mediabunny';
+import { AudioSample, AudioSampleSink, type InputAudioTrack } from 'mediabunny';
 
 export const TARGET_SAMPLE_RATE = 48_000;
 export const TARGET_CHANNELS = 2;
@@ -61,82 +61,33 @@ export async function decodeTrackToChannels(
   return { channels, sampleRate };
 }
 
-/** Linear-interpolation resample of a single channel. */
-export function resampleChannel(
-  src: Float32Array,
-  srcRate: number,
-  dstRate: number
-): Float32Array {
-  if (srcRate === dstRate || src.length === 0) return src;
-  const ratio = dstRate / srcRate;
-  const outLength = Math.max(1, Math.round(src.length * ratio));
-  const out = new Float32Array(outLength);
-  const lastIndex = src.length - 1;
-  for (let i = 0; i < outLength; i++) {
-    const srcPos = i / ratio;
-    const i0 = Math.floor(srcPos);
-    const i1 = Math.min(i0 + 1, lastIndex);
-    const frac = srcPos - i0;
-    out[i] = (src[i0] ?? 0) * (1 - frac) + (src[i1] ?? 0) * frac;
-  }
-  return out;
-}
-
 /**
- * Resample to {@link TARGET_SAMPLE_RATE} and downmix to a stereo pair. Mono is
- * duplicated to both channels; >2 channels keep the first two (L/R).
+ * Wrap already-decoded planar PCM as a single interleaved `AudioSample` at its
+ * native rate, so it can be fed straight into an `AudioMixer` (which resamples
+ * and downmixes it). This lets us measure a track's loudness and mix it from a
+ * single decode. Returns `null` for empty input.
  */
-export function toStereoTarget(
-  decoded: DecodedAudio
-): [Float32Array, Float32Array] {
+export function decodedToSample(decoded: DecodedAudio): AudioSample | null {
   const { channels, sampleRate } = decoded;
-  if (channels.length === 0) {
-    return [new Float32Array(0), new Float32Array(0)];
+  const numberOfChannels = channels.length;
+  const frames = channels[0]?.length ?? 0;
+  if (numberOfChannels === 0 || sampleRate === 0 || frames === 0) {
+    return null;
   }
-  const resampled = channels.map((ch) =>
-    resampleChannel(ch, sampleRate, TARGET_SAMPLE_RATE)
-  );
-  const left = resampled[0] ?? new Float32Array(0);
-  const right = resampled.length === 1 ? left : (resampled[1] ?? left);
-  return [left, right];
-}
 
-/** Add a stereo source into the mix buffers starting at `startFrame`. */
-export function mixInto(
-  mix: { left: Float32Array; right: Float32Array },
-  source: [Float32Array, Float32Array],
-  startFrame: number
-): void {
-  const [srcL, srcR] = source;
-  const total = mix.left.length;
-  const n = srcL.length;
-  for (let i = 0; i < n; i++) {
-    const dst = startFrame + i;
-    if (dst < 0) continue;
-    if (dst >= total) break;
-    mix.left[dst] = (mix.left[dst] ?? 0) + (srcL[i] ?? 0);
-    mix.right[dst] = (mix.right[dst] ?? 0) + (srcR[i] ?? 0);
-  }
-}
-
-/**
- * Interleave a stereo mix into chunked `Float32Array`s of `framesPerChunk`
- * frames, yielding `{ data, frameOffset }` ready to wrap in an `AudioSample`.
- * `frameOffset` is the chunk's start frame index; the caller divides by the
- * sample rate to get the `AudioSample` timestamp in seconds.
- */
-export function* interleaveChunks(
-  mix: { left: Float32Array; right: Float32Array },
-  framesPerChunk: number
-): Generator<{ data: Float32Array; frameOffset: number }> {
-  const totalFrames = mix.left.length;
-  for (let start = 0; start < totalFrames; start += framesPerChunk) {
-    const frames = Math.min(framesPerChunk, totalFrames - start);
-    const data = new Float32Array(frames * TARGET_CHANNELS);
+  const data = new Float32Array(frames * numberOfChannels);
+  for (let ch = 0; ch < numberOfChannels; ch++) {
+    const src = channels[ch] ?? new Float32Array(0);
     for (let i = 0; i < frames; i++) {
-      data[i * 2] = mix.left[start + i] ?? 0;
-      data[i * 2 + 1] = mix.right[start + i] ?? 0;
+      data[i * numberOfChannels + ch] = src[i] ?? 0;
     }
-    yield { data, frameOffset: start };
   }
+
+  return new AudioSample({
+    data,
+    format: 'f32',
+    numberOfChannels,
+    sampleRate,
+    timestamp: 0,
+  });
 }

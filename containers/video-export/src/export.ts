@@ -11,7 +11,7 @@
 
 import {
   ALL_FORMATS,
-  AudioSample,
+  AudioMixer,
   AudioSampleSource,
   BufferTarget,
   EncodedPacket,
@@ -28,13 +28,10 @@ import {
   TARGET_CHANNELS,
   TARGET_SAMPLE_RATE,
   decodeTrackToChannels,
-  interleaveChunks,
-  mixInto,
-  toStereoTarget,
+  decodedToSample,
 } from './audio.js';
 import {
   DEFAULT_MUSIC_LOUDNESS_LUFS,
-  applyGain,
   gainToTarget,
   integratedLoudnessLUFS,
 } from './loudness.js';
@@ -42,7 +39,6 @@ import type { ExportJob, ExportResultMeta } from './types.js';
 
 const MAX_TOTAL_DURATION_SECONDS = 10 * 60;
 const AAC_BITRATE = 192_000;
-const AUDIO_CHUNK_FRAMES = 1024;
 
 export type ExportOutput = {
   buffer: Uint8Array;
@@ -215,16 +211,14 @@ export async function exportSequence(job: ExportJob): Promise<ExportOutput> {
       }
     }
 
-    // AUDIO — decode + mix music and dialogue, encode one AAC track.
+    // AUDIO — mix music + per-scene dialogue into one AAC track. The mixer does
+    // the resampling, downmixing, gain, offsetting, and summing; we only decode
+    // the music once here to measure its loudness (mediabunny has no LUFS).
     if (audioSource) {
-      const totalFrames = Math.max(
-        1,
-        Math.ceil(totalDurationSeconds * TARGET_SAMPLE_RATE)
-      );
-      const mix = {
-        left: new Float32Array(totalFrames),
-        right: new Float32Array(totalFrames),
-      };
+      const mixer = new AudioMixer({
+        sampleRate: TARGET_SAMPLE_RATE,
+        numberOfChannels: TARGET_CHANNELS,
+      });
 
       if (job.musicUrl) {
         const musicInput = new Input({
@@ -234,20 +228,30 @@ export async function exportSequence(job: ExportJob): Promise<ExportOutput> {
         try {
           const musicTrack = await musicInput.getPrimaryAudioTrack();
           if (musicTrack) {
-            const decoded = await decodeTrackToChannels(musicTrack);
-            const gainLinear =
+            const presetGainDb =
               job.musicLoudnessGainDb !== null &&
               Number.isFinite(job.musicLoudnessGainDb)
-                ? Math.pow(10, job.musicLoudnessGainDb / 20)
-                : gainToTarget(
-                    integratedLoudnessLUFS(
-                      decoded.channels,
-                      decoded.sampleRate
-                    ),
-                    DEFAULT_MUSIC_LOUDNESS_LUFS
-                  );
-            applyGain(decoded.channels, gainLinear);
-            mixInto(mix, toStereoTarget(decoded), 0);
+                ? job.musicLoudnessGainDb
+                : null;
+
+            if (presetGainDb !== null) {
+              // Gain known upfront: mix straight from the track (chunked decode).
+              await mixer.add(musicTrack, {
+                gain: Math.pow(10, presetGainDb / 20),
+              });
+            } else {
+              // Decode once to measure loudness, then mix from that same decode.
+              const decoded = await decodeTrackToChannels(musicTrack);
+              const gainLinear = gainToTarget(
+                integratedLoudnessLUFS(decoded.channels, decoded.sampleRate),
+                DEFAULT_MUSIC_LOUDNESS_LUFS
+              );
+              const musicSample = decodedToSample(decoded);
+              if (musicSample) {
+                await mixer.add([musicSample], { gain: gainLinear });
+                musicSample.close();
+              }
+            }
           }
         } finally {
           musicInput.dispose();
@@ -255,27 +259,29 @@ export async function exportSequence(job: ExportJob): Promise<ExportOutput> {
       }
 
       for (const probe of sceneAudio) {
-        const decoded = await decodeTrackToChannels(probe.audioTrack!);
-        const startFrame = Math.max(
-          0,
-          Math.floor(probe.offsetSeconds * TARGET_SAMPLE_RATE)
-        );
-        mixInto(mix, toStereoTarget(decoded), startFrame);
+        await mixer.add(probe.audioTrack!, { start: probe.offsetSeconds });
       }
 
-      for (const { data, frameOffset } of interleaveChunks(
-        mix,
-        AUDIO_CHUNK_FRAMES
-      )) {
-        const sample = new AudioSample({
-          data,
-          format: 'f32',
-          numberOfChannels: TARGET_CHANNELS,
-          sampleRate: TARGET_SAMPLE_RATE,
-          timestamp: frameOffset / TARGET_SAMPLE_RATE,
-        });
-        await audioSource.add(sample);
-        sample.close();
+      // Cap the mix to the video's duration so a longer music track can't tail
+      // past the last frame.
+      const maxFrames = Math.ceil(totalDurationSeconds * TARGET_SAMPLE_RATE);
+      let emittedFrames = 0;
+      for await (const sample of mixer.samples()) {
+        if (emittedFrames >= maxFrames) {
+          sample.close();
+          break;
+        }
+
+        let toAdd = sample;
+        if (emittedFrames + sample.numberOfFrames > maxFrames) {
+          const trimmed = sample.trim(0, maxFrames - emittedFrames);
+          sample.close();
+          toAdd = trimmed;
+        }
+
+        await audioSource.add(toAdd);
+        emittedFrames += toAdd.numberOfFrames;
+        toAdd.close();
       }
     }
 
