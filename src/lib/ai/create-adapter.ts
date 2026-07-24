@@ -78,6 +78,10 @@ export const CATALOG_LAG_MODELS = [
     input: ['text', 'image'],
     features: ['reasoning', 'structured_outputs'],
   }),
+  createModel('anthropic/claude-opus-5', {
+    input: ['text', 'image'],
+    features: ['reasoning', 'structured_outputs'],
+  }),
 ] as const;
 
 const openRouterTextExtended = extendAdapter(

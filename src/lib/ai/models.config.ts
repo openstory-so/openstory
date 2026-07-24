@@ -49,8 +49,8 @@ export const SCRIPT_ANALYSIS_MODELS = [
     description: 'Lowest hallucination rate, flagship agentic model',
   },
   {
-    id: 'anthropic/claude-opus-4.8',
-    name: 'Claude Opus 4.8',
+    id: 'anthropic/claude-opus-5',
+    name: 'Claude Opus 5',
     provider: 'Anthropic',
     license: 'proprietary' as const,
     qualityRank: 5,
