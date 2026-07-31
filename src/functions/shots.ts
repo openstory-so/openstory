@@ -1,4 +1,12 @@
-import { IMAGE_MODELS, isValidTextToImageModel } from '@/lib/ai/models';
+import {
+  DEFAULT_IMAGE_MODEL,
+  IMAGE_MODELS,
+  isValidTextToImageModel,
+  safeTextToImageModel,
+} from '@/lib/ai/models';
+import { estimateImageCost } from '@/lib/billing/cost-estimation';
+import { requireCredits } from '@/lib/billing/preflight';
+import { getWorkflowRunOutcome } from '@/lib/workflow/run-outcome';
 import type { ShotVariant, NewShot } from '@/lib/db/schema';
 import {
   computeShotStaleness,
@@ -29,6 +37,9 @@ import {
   resolveSceneForShot,
 } from '@/lib/scenes/scene-script';
 import { rescanContinuityFromPrompt } from '@/lib/scenes/rescan-continuity-from-prompt';
+import { triggerWorkflow } from '@/lib/workflow/client';
+import { buildWorkflowLabel } from '@/lib/workflow/labels';
+import type { UpdateStaleShotsWorkflowInput } from '@/lib/workflow/types';
 import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
@@ -655,6 +666,105 @@ export const getShotStalenessBatchFn = createServerFn({ method: 'GET' })
       })
     );
     return typedFromEntries(entries);
+  });
+
+/**
+ * "Update all" (#1077): enqueue the durable `UpdateStaleShotsWorkflow` for a
+ * shot / scene / the whole sequence. The workflow recomputes staleness
+ * server-side and regenerates only the artifacts that read stale right now —
+ * no cascade into artifacts a regeneration outdates, and video never
+ * auto-renders — so the payload is just the scope. Returns the run id;
+ * progress surfaces through the staleness indicators as artifacts land.
+ *
+ * Preflights credits before enqueuing. Inside the workflow an out-of-credits
+ * failure can only land in the run result, where it reads as "nothing
+ * happened" — throwing here is the one point where the client still gets an
+ * `InsufficientCreditsError` and can open the billing dialog.
+ */
+export const updateStaleShotsFn = createServerFn({ method: 'POST' })
+  .middleware([sequenceAccessMiddleware])
+  .inputValidator(
+    zodValidator(
+      z.object({
+        sequenceId: ulidSchema,
+        sceneId: ulidSchema.optional(),
+        shotId: ulidSchema.optional(),
+      })
+    )
+  )
+  .handler(async ({ data, context }) => {
+    const { sequence, teamId, user, scopedDb } = context;
+    // The plan isn't known yet, so this can't be the exact cost — it's a
+    // floor: a run that can't afford even one image should never start.
+    await requireCredits(
+      scopedDb,
+      estimateImageCost(
+        safeTextToImageModel(sequence.imageModel, DEFAULT_IMAGE_MODEL),
+        sequence.aspectRatio,
+        1
+      ),
+      { errorMessage: 'Insufficient credits to update out-of-date shots' }
+    );
+    const workflowRunId = await triggerWorkflow<UpdateStaleShotsWorkflowInput>(
+      '/update-stale-shots',
+      {
+        userId: user.id,
+        teamId,
+        sequenceId: sequence.id,
+        sceneId: data.sceneId,
+        shotId: data.shotId,
+      },
+      { label: buildWorkflowLabel(sequence.id) }
+    );
+    return { workflowRunId };
+  });
+
+/**
+ * Shape of `UpdateStaleShotsWorkflow`'s return value. Parsed rather than cast:
+ * it crosses the Cloudflare Workflows boundary as `unknown`, and a run from a
+ * previously-deployed version of the workflow can legitimately not match.
+ */
+const updateStaleShotsResultSchema = z.object({
+  totalShots: z.number(),
+  visualPrompts: z.number(),
+  motionPrompts: z.number(),
+  images: z.number(),
+  failures: z.array(
+    z.object({ shotId: z.string(), stage: z.string(), error: z.string() })
+  ),
+  skipped: z.array(z.object({ shotId: z.string(), reason: z.string() })),
+});
+
+/**
+ * Terminal outcome of an "Update all" run (#1077).
+ *
+ * The workflow isolates failures per shot so one bad shot never blocks its
+ * peers — which means a run can finish `complete` having regenerated nothing.
+ * Without this endpoint that result is written to a log nobody reads and the
+ * user just watches a spinner stop. The client polls this and reports what
+ * actually happened.
+ */
+export const getUpdateStaleShotsRunFn = createServerFn({ method: 'GET' })
+  .middleware([sequenceAccessMiddleware])
+  .inputValidator(
+    zodValidator(
+      z.object({ sequenceId: ulidSchema, workflowRunId: z.string().min(1) })
+    )
+  )
+  .handler(async ({ data }) => {
+    const outcome = await getWorkflowRunOutcome(data.workflowRunId);
+    if (outcome.state !== 'complete') return outcome;
+    const parsed = updateStaleShotsResultSchema.safeParse(outcome.output);
+    // A complete run whose output we can't read is not a failure to report as
+    // one — fall back to 'unknown' so the UI defers to the staleness map.
+    if (!parsed.success) {
+      logger.error(
+        `getUpdateStaleShotsRunFn: unrecognised output for ${data.workflowRunId}`,
+        { issues: parsed.error.issues }
+      );
+      return { state: 'unknown' as const };
+    }
+    return { state: 'complete' as const, result: parsed.data };
   });
 
 /**

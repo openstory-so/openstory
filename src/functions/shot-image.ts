@@ -4,73 +4,38 @@ import {
   safeImageToVideoModel,
   safeTextToImageModel,
 } from '@/lib/ai/models';
-import {
-  resolveImageModel,
-  resolveUpscaleModel,
-} from '@/lib/ai/resolve-asset-models';
+import { resolveUpscaleModel } from '@/lib/ai/resolve-asset-models';
 import {
   estimateImageCost,
   estimateStoryboardCost,
 } from '@/lib/billing/cost-estimation';
 import { requireCredits } from '@/lib/billing/preflight';
-import {
-  aspectRatioToImageSize,
-  getVariantGridConfig,
-} from '@/lib/constants/aspect-ratios';
-import { type SequenceLocation } from '@/lib/db/schema';
-import { locationMatchesTag } from '@/lib/db/scoped/sequence-locations';
+import { getVariantGridConfig } from '@/lib/constants/aspect-ratios';
 import { cropTileFromGrid } from '@/lib/image/image-crop';
 import { buildCharacterReferenceImages } from '@/lib/prompts/character-prompt';
-import { buildElementReferenceImages } from '@/lib/prompts/element-prompt';
-import { buildLocationReferenceImages } from '@/lib/prompts/location-prompt';
-import type { ReferenceImageDescription } from '@/lib/prompts/reference-image-prompt';
 import {
   generateVariantSchema,
   regenerateShotSchema,
 } from '@/lib/schemas/shot.schemas';
 import { ulidSchema } from '@/lib/schemas/id.schemas';
 import { rescanContinuityFromPrompt } from '@/lib/scenes/rescan-continuity-from-prompt';
+import {
+  getSceneLocationReferenceImages,
+  prepareShotImageWorkflowInput,
+} from '@/lib/shots/shot-image-input';
 import { triggerWorkflow } from '@/lib/workflow/client';
 import { triggerStoryboard } from '@/lib/workflow/launchers';
 import { buildWorkflowLabel } from '@/lib/workflow/labels';
 import type {
-  ShotImageSceneSnapshot,
-  ImageWorkflowInput,
   StoryboardWorkflowInput,
   ShotVariantWorkflowInput,
   UpscaleShotVariantWorkflowInput,
 } from '@/lib/workflow/types';
-import {
-  matchCharactersToScene,
-  matchElementsToScene,
-  matchLocationsToScene,
-} from '@/lib/workflows/scene-matching';
-import { computeShotImageSceneHash } from '@/lib/workflows/sheet-snapshots';
+import { matchCharactersToScene } from '@/lib/workflows/scene-matching';
 import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
 import { shotAccessMiddleware, sequenceAccessMiddleware } from './middleware';
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/** Match locations by environmentTag or scene location and return reference images. */
-function getSceneLocationReferenceImages(
-  allLocations: SequenceLocation[],
-  environmentTag: string,
-  sceneLocation?: string
-): ReferenceImageDescription[] {
-  if (!environmentTag && !sceneLocation) return [];
-
-  const matchedLocations = allLocations.filter(
-    (loc) =>
-      (environmentTag && locationMatchesTag(loc, environmentTag)) ||
-      (sceneLocation && locationMatchesTag(loc, sceneLocation))
-  );
-
-  return buildLocationReferenceImages(matchedLocations);
-}
 
 // ---------------------------------------------------------------------------
 // Generate Shots (Storyboard Workflow)
@@ -144,141 +109,40 @@ export const generateShotImageFn = createServerFn({ method: 'POST' })
       script,
     } = context;
 
-    // Priority: provided > stored anchor-frame mirror (#989/#713) > description.
-    // The visual prompt lives solely on `frame.imagePrompt` now (the old
-    // `metadata.prompts.visual` fallback is gone).
-    const prompt = data.prompt || frame.imagePrompt || shot.description;
-
-    if (!prompt) {
-      throw new Error('Shot has no prompt or description to regenerate from');
-    }
-
     // Auto-link any element/cast/location tags the user mentioned in their
     // edited prompt before computing reference attachment, so a freshly-
     // mentioned LOGO gets its reference image attached to THIS regeneration.
     // updateShotFn does the same rescan, but the UI never calls it — the
     // regenerate buttons are the only persistence path for prompts today.
     const userEditedPrompt = data.prompt !== undefined;
+    let shotForInput = shot;
     const baseContinuity = shot.metadata?.continuity;
-    let continuity = baseContinuity;
-    if (userEditedPrompt && shot.metadata && baseContinuity) {
+    if (userEditedPrompt && data.prompt && shot.metadata && baseContinuity) {
       const rescan = await rescanContinuityFromPrompt({
         scopedDb: context.scopedDb,
         sequenceId: sequence.id,
         existing: baseContinuity,
-        promptText: prompt,
+        promptText: data.prompt,
       });
       if (rescan.changed) {
-        continuity = rescan.continuity;
-        await context.scopedDb.shots.update(shot.id, {
-          metadata: { ...shot.metadata, continuity: rescan.continuity },
-        });
+        const metadata = { ...shot.metadata, continuity: rescan.continuity };
+        await context.scopedDb.shots.update(shot.id, { metadata });
+        shotForInput = { ...shot, metadata };
       }
     }
 
-    const allCharacters = await context.scopedDb.characters.listWithSheets(
-      sequence.id
-    );
-    const matchedCharacters = matchCharactersToScene(
-      allCharacters,
-      continuity?.characterTags ?? []
-    );
-    const characterReferences =
-      buildCharacterReferenceImages(matchedCharacters);
-
-    const allLocations =
-      await context.scopedDb.sequenceLocations.listWithReferences(sequence.id);
-    const matchedLocations = matchLocationsToScene(
-      allLocations,
-      continuity?.environmentTag ?? '',
-      shot.metadata?.metadata?.location ?? ''
-    );
-    const locationReferences = getSceneLocationReferenceImages(
-      allLocations,
-      continuity?.environmentTag ?? '',
-      shot.metadata?.metadata?.location ?? ''
-    );
-
-    const allElements = await context.scopedDb.sequenceElements.list(
-      sequence.id
-    );
-    const matchedElements = matchElementsToScene(
-      allElements,
-      continuity?.elementTags ?? [],
-      script?.extract ?? resolvedScene?.originalScript.extract ?? ''
-    );
-    const elementReferences = buildElementReferenceImages(matchedElements);
-
-    // Model identity lives on the version that produced the still (#1066): an
-    // explicit per-request model wins (one-off variant generation), else the
-    // model of a failed attempt still awaiting retry, else the frame's
-    // currently selected version, then the sequence default.
-    const [selectedVersion, lastFailed] = await Promise.all([
-      context.scopedDb.frameVariants.getSelected(frame.id),
-      context.scopedDb.frameVariants.getLastFailed(frame.id),
-    ]);
-    const model = resolveImageModel({
-      explicit: data.model,
-      lastFailedAttemptModel: lastFailed?.model,
-      selectedVersionModel: selectedVersion?.model,
-      sequenceModel: sequence.imageModel,
-    });
-
-    await requireCredits(
-      context.scopedDb,
-      estimateImageCost(model, sequence.aspectRatio, 1),
-      { errorMessage: 'Insufficient credits for image generation' }
-    );
-
-    // Build a per-scene snapshot so the image workflow records a non-null
-    // `thumbnailInputHash`. Without this the convergent write path stores
-    // `null`, and the staleness check loses the ability to flip back to
-    // 'stale' on a future prompt regenerate. The sceneId fallback covers
-    // legacy shots generated before scene metadata was attached.
-    const sortedHashes = (
-      values: ReadonlyArray<string | null | undefined>
-    ): string[] =>
-      values
-        .filter((v): v is string => typeof v === 'string' && v.length > 0)
-        .sort();
-    const sceneSnapshot: ShotImageSceneSnapshot = {
-      sceneId: shot.metadata?.sceneId ?? shot.id,
-      visualPrompt: prompt,
-      characterSheetHashes: sortedHashes(
-        matchedCharacters.map((c) => c.sheetInputHash)
-      ),
-      locationSheetHashes: sortedHashes(
-        matchedLocations.map((l) => l.referenceInputHash)
-      ),
-      elementReferenceHashes: sortedHashes(
-        matchedElements.map((e) => e.imageUrl)
-      ),
-    };
-    const snapshotInputHash = await computeShotImageSceneHash(
-      sceneSnapshot,
-      model,
-      sequence.aspectRatio
-    );
-
-    const workflowInput: ImageWorkflowInput = {
+    const workflowInput = await prepareShotImageWorkflowInput({
+      scopedDb: context.scopedDb,
+      sequence,
+      shot: shotForInput,
+      frame,
+      scriptExtract:
+        script?.extract ?? resolvedScene?.originalScript.extract ?? '',
       userId: user.id,
-      teamId: sequence.teamId,
-      prompt,
-      model,
-      imageSize: aspectRatioToImageSize(sequence.aspectRatio),
-      numImages: 1,
-      shotId: shot.id,
-      sequenceId: sequence.id,
-      aspectRatio: sequence.aspectRatio,
-      sceneSnapshot,
-      snapshotInputHash,
-      referenceImages: [
-        ...characterReferences,
-        ...locationReferences,
-        ...elementReferences,
-      ],
+      promptOverride: data.prompt,
+      modelOverride: data.model,
       userEditedPrompt,
-    };
+    });
 
     const workflowRunId = await triggerWorkflow('/image', workflowInput, {
       deduplicationId: `image-${shot.id}-${Date.now()}`,

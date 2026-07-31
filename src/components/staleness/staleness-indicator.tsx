@@ -60,8 +60,8 @@ type StalenessIndicatorProps = StalenessIndicatorBaseProps &
         // Quiet one-line summary (#1077): amber dot + muted message + an
         // optional text action. Staleness is a routine editing state, not a
         // failure — no fill, no triangle. Omit `onRegenerate` for a purely
-        // informational line: the shot-scope summary does this, because each
-        // artifact carries its own Regenerate control on its tab.
+        // informational line; the shot-scope summary passes one to drive
+        // "Update all" for that shot (#1085).
         density: 'status-line';
         onRegenerate?: () => void;
         /** Defaults to "Out of date since your last edit". */

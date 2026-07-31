@@ -1,6 +1,7 @@
 import { Button } from '@/components/ui/button';
 import { type ShotStaleness, shotIsStale } from '@/hooks/use-shot-staleness';
 import type { ShotWithImage } from '@/lib/shots/shot-with-image';
+import { Loader2 } from 'lucide-react';
 
 type SceneStaleShotsProps = {
   /** The in-scope shots (a scene's, or the whole sequence's), in order. */
@@ -14,6 +15,9 @@ type SceneStaleShotsProps = {
   stalenessFailed?: boolean;
   /** Same handler the left rail uses — lands at shot scope. */
   onSelectShot: (shotId: string) => void;
+  /** Regenerate every artifact that is stale right now across these shots. */
+  onUpdateAll?: () => void;
+  isUpdating?: boolean;
 };
 
 /**
@@ -28,6 +32,8 @@ export const SceneStaleShots: React.FC<SceneStaleShotsProps> = ({
   staleness,
   stalenessFailed = false,
   onSelectShot,
+  onUpdateAll,
+  isUpdating = false,
 }) => {
   if (stalenessFailed) {
     return (
@@ -75,6 +81,29 @@ export const SceneStaleShots: React.FC<SceneStaleShotsProps> = ({
           </Button>
         );
       })}
+      {onUpdateAll && (
+        <>
+          <span aria-hidden="true">·</span>
+          <Button
+            type="button"
+            variant="link"
+            size="sm"
+            className="h-auto p-0 text-xs"
+            onClick={onUpdateAll}
+            disabled={isUpdating}
+            aria-busy={isUpdating}
+            aria-label="Update all out-of-date shots"
+          >
+            {isUpdating && (
+              <Loader2
+                aria-hidden="true"
+                className="mr-1 h-3 w-3 animate-spin motion-reduce:animate-none"
+              />
+            )}
+            {isUpdating ? 'Updating…' : 'Update all'}
+          </Button>
+        </>
+      )}
     </div>
   );
 };

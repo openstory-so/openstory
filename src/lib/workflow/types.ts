@@ -353,6 +353,21 @@ export type RegenerateShotSnapshot = {
  * workflow does not read live mutable state inside `context.run`. See
  * docs/architecture/workflow-snapshots-and-content-hash-staleness.md.
  */
+/**
+ * "Update all" (#1077): regenerate every stale artifact in scope, in
+ * dependency order (prompt → image per shot). The payload is deliberately
+ * tiny — the workflow's `compute-plan` step recomputes staleness from live
+ * scoped state at run start and persists the plan as its durable step result,
+ * so the target set is authoritative and immune to a stale client cache.
+ */
+export interface UpdateStaleShotsWorkflowInput extends SequenceWorkflowContext {
+  sequenceId: string;
+  /** Limit to one scene's shots (scene-scope Update all). */
+  sceneId?: string;
+  /** Limit to a single shot (shot-scope Update all). */
+  shotId?: string;
+}
+
 export interface RegenerateShotsWorkflowInput extends SequenceWorkflowContext {
   /** Shot IDs to regenerate */
   shotIds: string[];

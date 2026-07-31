@@ -79,6 +79,7 @@ export { FramePromptBatchWorkflow } from '@/lib/workflows/frame-prompt-batch-wor
 export { MotionPromptBatchWorkflow } from '@/lib/workflows/motion-prompt-batch-workflow';
 export { MotionMusicPromptsWorkflow } from '@/lib/workflows/motion-music-prompts-workflow';
 export { RegenerateShotsWorkflow } from '@/lib/workflows/regenerate-shots-workflow';
+export { UpdateStaleShotsWorkflow } from '@/lib/workflows/update-stale-shots-workflow';
 export { RecastLocationWorkflow } from '@/lib/workflows/recast-location-workflow';
 export { ReplaceElementWorkflow } from '@/lib/workflows/replace-element-workflow';
 export { SceneSplitWorkflow } from '@/lib/workflows/scene-split-workflow';

@@ -1,7 +1,8 @@
 /**
- * Per-shot staleness computation (#1077) — backs the `getShotStaleness*`
- * server fns. Each value is computed by re-deriving the current input hash
- * from live scoped state and comparing it to the stored `*_input_hash`.
+ * Per-shot staleness computation (#1077) — shared by the `getShotStaleness*`
+ * server fns and `UpdateStaleShotsWorkflow` (#1085). Each value is computed by
+ * re-deriving the current input hash from live scoped state and comparing it
+ * to the stored `*_input_hash`.
  */
 
 import { DEFAULT_IMAGE_MODEL, safeTextToImageModel } from '@/lib/ai/models';

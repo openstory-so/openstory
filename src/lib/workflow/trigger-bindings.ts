@@ -45,6 +45,7 @@ const TRIGGER_TO_BINDING: Record<string, keyof CloudflareEnv> = {
   'motion-prompts-batch': 'MOTION_PROMPT_BATCH_WORKFLOW',
   'motion-music-prompts': 'MOTION_MUSIC_PROMPTS_WORKFLOW',
   'regenerate-shots': 'REGENERATE_SHOTS_WORKFLOW',
+  'update-stale-shots': 'UPDATE_STALE_SHOTS_WORKFLOW',
   'recast-location': 'RECAST_LOCATION_WORKFLOW',
   'replace-element': 'REPLACE_ELEMENT_WORKFLOW',
   'scene-split': 'SCENE_SPLIT_WORKFLOW',
