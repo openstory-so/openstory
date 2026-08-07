@@ -8,7 +8,7 @@ import { resolveMotionEndpoint } from './resolve-motion-endpoint';
 describe('resolveMotionEndpoint', () => {
   it('routes Seedance to reference-to-video when refs are present', () => {
     expect(resolveMotionEndpoint('seedance_v2', true)).toEqual({
-      endpointId: 'bytedance/seedance-2.0/enterprise/v2/reference-to-video',
+      endpointId: 'bytedance/seedance-2.5/reference-to-video',
       usesReferenceEndpoint: true,
       referenceConfig: MOTION_REFERENCE_ENDPOINTS.seedance_v2,
     });

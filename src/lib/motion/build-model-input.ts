@@ -120,7 +120,7 @@ ${outputPrompt}`);
 /** Output of a reference-to-video transform (the endpoints in
  *  `MOTION_REFERENCE_ENDPOINTS`). */
 type ReferenceVideoOutput = z.output<
-  (typeof MOTION_TRANSFORMS)['bytedance/seedance-2.0/enterprise/v2/reference-to-video']
+  (typeof MOTION_TRANSFORMS)['bytedance/seedance-2.5/reference-to-video']
 >;
 
 /**

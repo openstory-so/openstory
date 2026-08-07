@@ -42,7 +42,7 @@ export const TEST_FAL_PRICING: Record<string, EffectiveFalPricing> = {
     unit: 'units',
     typicalUnitsPerCall: 1,
   },
-  'bytedance/seedance-2.0/enterprise/v2/image-to-video': {
+  'bytedance/seedance-2.5/image-to-video': {
     unitPrice: micros(14_000),
     unit: 'units',
   },

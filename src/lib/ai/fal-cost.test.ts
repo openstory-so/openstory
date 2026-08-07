@@ -22,7 +22,7 @@ const PRICING: Record<string, EffectiveFalPricing> = {
     unit: 'units',
     typicalUnitsPerCall: 1,
   },
-  'bytedance/seedance-2.0/enterprise/v2/image-to-video': {
+  'bytedance/seedance-2.5/image-to-video': {
     unitPrice: micros(14_000),
     unit: 'units',
   },
@@ -69,7 +69,7 @@ describe('falCostFromUnits', () => {
   test('per-token: seedance bills 1000-token units at $0.014', async () => {
     expect(
       await falCostFromUnits(
-        'bytedance/seedance-2.0/enterprise/v2/image-to-video',
+        'bytedance/seedance-2.5/image-to-video',
         108,
         PRICING
       )
@@ -206,7 +206,7 @@ describe('estimateFalCost', () => {
   test('tokens estimate from resolution (parametric, not historical)', () => {
     expect(
       estimateFalCost(
-        'bytedance/seedance-2.0/enterprise/v2/image-to-video',
+        'bytedance/seedance-2.5/image-to-video',
         { durationSeconds: 5, resolution: '720p' },
         PRICING
       )

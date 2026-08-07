@@ -79,8 +79,8 @@ export const IMAGE_TO_VIDEO_MODELS = {
     performance: { estimatedGenerationTime: 15, quality: 'best' as const },
   },
   seedance_v2: {
-    id: 'bytedance/seedance-2.0/enterprise/v2/image-to-video',
-    name: 'Seedance 2.0',
+    id: 'bytedance/seedance-2.5/image-to-video',
+    name: 'Seedance 2.5',
     provider: 'ByteDance',
     license: 'proprietary' as const,
     qualityRank: 2,
@@ -546,7 +546,7 @@ export const MOTION_REFERENCE_ENDPOINTS: Partial<
   Record<ImageToVideoModel, MotionReferenceEndpointConfig>
 > = {
   seedance_v2: {
-    endpointId: 'bytedance/seedance-2.0/enterprise/v2/reference-to-video',
+    endpointId: 'bytedance/seedance-2.5/reference-to-video',
     tag: (position) => `@Image${position}`,
     maxImages: 9,
   },
