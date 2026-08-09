@@ -56,6 +56,7 @@ function makeCharacter(overrides: Partial<Character> = {}): Character {
     firstMentionLine: null,
     firstMentionText: null,
     firstMentionSceneId: null,
+    deletedAt: null,
     createdAt: NOW,
     updatedAt: NOW,
   };
@@ -71,6 +72,7 @@ function makeShot(overrides: Partial<Shot> = {}): Shot {
     durationMs: 3000,
     selectedMotionPromptVersionId: null,
     renderSegmentId: null,
+    deletedAt: null,
     createdAt: NOW,
     updatedAt: NOW,
   };
@@ -115,6 +117,7 @@ function makeElement(
     firstMentionSceneId: null,
     firstMentionText: null,
     firstMentionLine: null,
+    deletedAt: null,
     createdAt: NOW,
     updatedAt: NOW,
   };

@@ -30,6 +30,7 @@ function makeShot(overrides: Partial<Shot> = {}): Shot {
     durationMs: 3000,
     selectedMotionPromptVersionId: null,
     renderSegmentId: null,
+    deletedAt: null,
     createdAt: NOW,
     updatedAt: NOW,
     ...overrides,

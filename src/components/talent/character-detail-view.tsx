@@ -1,8 +1,10 @@
+import { UploadMediaButton } from '@/components/scenes/upload-media-button';
 import { SheetComparisonDialog } from '@/components/sheets/sheet-comparison-dialog';
 import { SheetStalenessBanners } from '@/components/sheets/sheet-staleness-banners';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useUploadCharacterSheet } from '@/hooks/use-media-upload';
 import {
   characterSheetVariantKeys,
   useCharacterDivergentVariants,
@@ -11,28 +13,42 @@ import {
   useUndiscardCharacterSheetVariant,
 } from '@/hooks/use-character-sheet-variants';
 import {
+  restoreSequenceCharacter,
   sequenceCharacterKeys,
   useAddCharacterToLibrary,
   useShotIdsForCharacter,
   useRecastCharacter,
   useSequenceCharacters,
+  useSoftDeleteSequenceCharacter,
 } from '@/hooks/use-sequence-characters';
 import type { CharacterSheetVariant, TalentWithSheets } from '@/lib/db/schema';
+import { errorMessage } from '@/lib/errors';
 import { useRealtime } from '@/lib/realtime/client';
 import { useSheetStaleDetected } from '@/lib/realtime/use-sheet-stale-detected';
-import { cn } from '@/lib/utils';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { useQueryClient } from '@tanstack/react-query';
-import { Link } from '@tanstack/react-router';
+import { Link, useNavigate } from '@tanstack/react-router';
 import {
   ArrowLeft,
   Library,
   Loader2,
   RefreshCw,
   Sparkles,
+  Trash2,
   User,
 } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
 import { toast } from 'sonner';
+import { CharacterBibleForm } from './character-bible-form';
 import { RecastConfirmDialog } from './recast-confirm-dialog';
 import { TalentPickerDialog } from './talent-picker-dialog';
 import { AppImage } from '@/components/ui/app-image';
@@ -40,25 +56,6 @@ import { AppImage } from '@/components/ui/app-image';
 type CharacterDetailViewProps = {
   sequenceId: string;
   characterId: string;
-};
-
-type DetailRowProps = {
-  label: string;
-  value: string | number | undefined | null;
-  className?: string;
-};
-
-const DetailRow: React.FC<DetailRowProps> = ({ label, value, className }) => {
-  if (!value) return null;
-
-  return (
-    <div className={cn('space-y-1', className)}>
-      <dt className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-        {label}
-      </dt>
-      <dd className="text-sm leading-relaxed">{value}</dd>
-    </div>
-  );
 };
 
 export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
@@ -74,6 +71,50 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
   const addToLibrary = useAddCharacterToLibrary();
   const recastCharacter = useRecastCharacter();
   const { data: shotData } = useShotIdsForCharacter(sequenceId, characterId);
+  const navigate = useNavigate();
+  const softDelete = useSoftDeleteSequenceCharacter();
+  const uploadSheet = useUploadCharacterSheet();
+  const [isRemoveConfirmOpen, setIsRemoveConfirmOpen] = useState(false);
+
+  // Soft-remove (#1108 Phase 2): navigate back to the cast list, leave a
+  // 60s undo toast. The undo closure survives this component's unmount —
+  // restoreSequenceCharacter works on the app-level query client.
+  const handleRemove = useCallback(
+    (name: string) => {
+      softDelete.mutate(
+        { sequenceId, characterId },
+        {
+          onSuccess: () => {
+            setIsRemoveConfirmOpen(false);
+            void navigate({
+              to: '/sequences/$id/cast',
+              params: { id: sequenceId },
+            });
+            toast(`Removed ${name}`, {
+              duration: 60_000,
+              action: {
+                label: 'Undo',
+                onClick: () =>
+                  void restoreSequenceCharacter(queryClient, {
+                    sequenceId,
+                    characterId,
+                  }).catch((error: Error) =>
+                    toast.error('Failed to restore character', {
+                      description: errorMessage(error),
+                    })
+                  ),
+              },
+            });
+          },
+          onError: (error) =>
+            toast.error('Failed to remove character', {
+              description: errorMessage(error),
+            }),
+        }
+      );
+    },
+    [softDelete, sequenceId, characterId, navigate, queryClient]
+  );
 
   // Dialog states
   const [isPickerOpen, setIsPickerOpen] = useState(false);
@@ -366,7 +407,64 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
               )}
               {isSheetGenerating ? 'Regenerating…' : 'Recast'}
             </Button>
+            {/* Manual sheet inject (#1108 Phase 4) — sequence-side mirror of
+                the library manual_upload source; no generation triggered. */}
+            <UploadMediaButton
+              label="Upload Sheet"
+              pendingLabel="Uploading…"
+              accept="image/*"
+              isPending={uploadSheet.isPending}
+              disabled={isSheetGenerating}
+              onFile={(file) =>
+                uploadSheet.mutate(
+                  { file, sequenceId, characterId },
+                  {
+                    onSuccess: () => toast.success('Character sheet uploaded'),
+                    onError: (error) =>
+                      toast.error('Sheet upload failed', {
+                        description: errorMessage(error),
+                      }),
+                  }
+                )
+              }
+              className="flex-1"
+            />
+            <Button
+              variant="outline"
+              className="text-destructive hover:text-destructive"
+              onClick={() => setIsRemoveConfirmOpen(true)}
+              disabled={softDelete.isPending}
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              {softDelete.isPending ? 'Removing…' : 'Remove'}
+            </Button>
           </div>
+
+          <AlertDialog
+            open={isRemoveConfirmOpen}
+            onOpenChange={setIsRemoveConfirmOpen}
+          >
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>
+                  Remove {character.name} from this sequence?
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  The character is hidden from the cast and prompt context. You
+                  can undo from the toast right after removing.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  disabled={softDelete.isPending}
+                  onClick={() => handleRemove(character.name)}
+                >
+                  {softDelete.isPending ? 'Removing…' : 'Remove'}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
 
           {/* Talent picker dialog */}
           <TalentPickerDialog
@@ -417,59 +515,42 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
             )}
           </div>
 
-          {/* Character details */}
-          <dl className="space-y-4">
-            {/* Basic info */}
-            <div className="grid grid-cols-2 gap-4">
-              <DetailRow label="Age" value={character.age} />
-              <DetailRow label="Gender" value={character.gender} />
+          {/* Editable character bible (#1108 Phase 2). Keyed by id so
+              switching characters reseeds the uncontrolled inputs. */}
+          <CharacterBibleForm
+            key={character.id}
+            sequenceId={sequenceId}
+            character={character}
+          />
+
+          {/* First mention (read-only script provenance) */}
+          {character.firstMentionSceneId && (
+            <div className="space-y-1 rounded-lg bg-muted/50 p-3">
+              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                First Appears
+              </p>
+              <p className="text-sm">
+                Scene {character.firstMentionSceneId}
+                {character.firstMentionLine &&
+                  `, Line ${character.firstMentionLine}`}
+              </p>
+              {character.firstMentionText && (
+                <p className="mt-2 border-l-2 border-muted-foreground/30 pl-3 text-xs italic text-muted-foreground">
+                  "{character.firstMentionText}"
+                </p>
+              )}
             </div>
+          )}
 
-            <DetailRow label="Ethnicity" value={character.ethnicity} />
-
-            <DetailRow
-              label="Physical Description"
-              value={character.physicalDescription}
-            />
-
-            <DetailRow
-              label="Standard Clothing"
-              value={character.standardClothing}
-            />
-
-            <DetailRow
-              label="Distinguishing Features"
-              value={character.distinguishingFeatures}
-            />
-
-            {/* First mention */}
-            {character.firstMentionSceneId && (
-              <div className="space-y-1 rounded-lg bg-muted/50 p-3">
-                <dt className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                  First Appears
-                </dt>
-                <dd className="text-sm">
-                  Scene {character.firstMentionSceneId}
-                  {character.firstMentionLine &&
-                    `, Line ${character.firstMentionLine}`}
-                </dd>
-                {character.firstMentionText && (
-                  <dd className="mt-2 border-l-2 border-muted-foreground/30 pl-3 text-xs italic text-muted-foreground">
-                    "{character.firstMentionText}"
-                  </dd>
-                )}
-              </div>
-            )}
-
-            {/* Consistency tag */}
-            {character.consistencyTag && (
-              <div className="pt-2">
-                <span className="rounded bg-muted px-2 py-1 font-mono text-xs text-muted-foreground">
-                  {character.consistencyTag}
-                </span>
-              </div>
-            )}
-          </dl>
+          {/* Consistency tag — read-only: renaming it would orphan the scene
+              continuity tags that reference it. */}
+          {character.consistencyTag && (
+            <div className="pt-2">
+              <span className="rounded bg-muted px-2 py-1 font-mono text-xs text-muted-foreground">
+                {character.consistencyTag}
+              </span>
+            </div>
+          )}
         </div>
       </ScrollArea>
 

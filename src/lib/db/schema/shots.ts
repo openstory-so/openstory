@@ -69,6 +69,12 @@ export const shots = snakeCase.table(
     // A shot owns no audio columns (#1067): per-shot audio was never built —
     // music is sequence-level (`sequences.music*`) and dialogue rides inside
     // the video.
+    // Soft-delete (#1108 Phase 1, undoable): excluded from default lists /
+    // staleness plans / export / theatre, but the row, its frames, versions
+    // and hashes are all retained for a lossless restore. `shotNumber` keeps
+    // its slot (the partial unique index spans deleted rows, so nothing can
+    // steal it); reorder renumbers deleted rows into the tail band.
+    deletedAt: integer({ mode: 'timestamp' }),
     createdAt: integer({ mode: 'timestamp' })
       .$defaultFn(() => new Date())
       .notNull(),

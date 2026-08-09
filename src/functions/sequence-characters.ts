@@ -8,7 +8,9 @@ import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
 
 import { safeTextToImageModel } from '@/lib/ai/models';
+import { generateId } from '@/lib/db/id';
 import { StyleConfigSchema } from '@/lib/db/schema';
+import type { CharacterBibleUpdate } from '@/lib/db/scoped/characters';
 import { buildCastingAttributes } from '@/lib/prompts/character-prompt';
 import { getGenerationChannel } from '@/lib/realtime';
 import { ulidSchema } from '@/lib/schemas/id.schemas';
@@ -17,6 +19,7 @@ import { buildWorkflowLabel } from '@/lib/workflow/labels';
 import type { RecastCharacterWorkflowInput } from '@/lib/workflow/types';
 import { buildRecastRegenerateSnapshots } from '@/lib/workflows/recast-snapshot';
 
+import { NotFoundError } from '@/lib/errors';
 import { authWithTeamMiddleware, sequenceAccessMiddleware } from './middleware';
 
 /**
@@ -39,6 +42,149 @@ export const getSequenceCharactersFn = createServerFn({ method: 'GET' })
   .middleware([sequenceAccessMiddleware])
   .handler(async ({ context }) => {
     return context.scopedDb.characters.listWithTalent(context.sequence.id);
+  });
+
+// ============================================================================
+// Manual character CRUD (#1108 Phase 2)
+// ============================================================================
+
+/** `''` / whitespace clears a nullable bible field; otherwise trimmed text. */
+const bibleField = z
+  .string()
+  .max(2000)
+  .transform((v) => {
+    const trimmed = v.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  });
+
+const characterBibleFieldsSchema = z.object({
+  age: bibleField.optional(),
+  gender: bibleField.optional(),
+  ethnicity: bibleField.optional(),
+  physicalDescription: bibleField.optional(),
+  standardClothing: bibleField.optional(),
+  distinguishingFeatures: bibleField.optional(),
+  consistencyTag: bibleField.optional(),
+});
+
+/** Lowercase, underscore-joined identity token derived from a display name. */
+function slugifyTag(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+/**
+ * Create a character by hand (no storyboard run) — starts sheet-less
+ * (`sheetStatus: 'pending'`); the sheet comes later via the existing recast /
+ * sheet workflows. `characterId` is minted fresh so the manual row can never
+ * collide with (or resurrect) a script-extracted one on the
+ * `(sequenceId, characterId)` unique index.
+ */
+export const createSequenceCharacterFn = createServerFn({ method: 'POST' })
+  .middleware([sequenceAccessMiddleware])
+  .inputValidator(
+    zodValidator(
+      characterBibleFieldsSchema.extend({
+        sequenceId: ulidSchema,
+        name: z.string().trim().min(1).max(255),
+      })
+    )
+  )
+  .handler(async ({ context, data }) => {
+    const { sequenceId, name, ...bible } = data;
+    const characterId = `char_${generateId().toLowerCase()}`;
+    const character = await context.scopedDb.characters.create({
+      sequenceId,
+      characterId,
+      name,
+      ...bible,
+      consistencyTag:
+        bible.consistencyTag ?? `${characterId}: ${slugifyTag(name)}`,
+      sheetStatus: 'pending',
+    });
+    await context.scopedDb.sequenceEvents.record({
+      sequenceId,
+      actorId: context.user.id,
+      kind: 'character.created',
+      targetType: 'character',
+      targetId: character.id,
+      summary: `Added character ${name}`,
+      data: { name, characterId },
+    });
+    return character;
+  });
+
+/**
+ * Edit a character's bible fields. Only provided fields change; prompts and
+ * the character sheet that project them re-stale purely by hash derivation
+ * (no flag written). Casting stays on `recastCharacterFn`.
+ */
+export const updateSequenceCharacterFn = createServerFn({ method: 'POST' })
+  .middleware([sequenceAccessMiddleware])
+  .inputValidator(
+    zodValidator(
+      characterBibleFieldsSchema.extend({
+        sequenceId: ulidSchema,
+        characterId: ulidSchema,
+        name: z.string().trim().min(1).max(255).optional(),
+      })
+    )
+  )
+  .handler(async ({ context, data }) => {
+    const { sequenceId, characterId, ...fields } = data;
+    const existing = await context.scopedDb.characters.getById(characterId);
+    if (!existing || existing.sequenceId !== sequenceId) {
+      throw new NotFoundError('Character not found');
+    }
+    const update: CharacterBibleUpdate = fields;
+    return await context.scopedDb.characters.updateBible(characterId, update, {
+      actorId: context.user.id,
+    });
+  });
+
+const characterIdInput = z.object({
+  sequenceId: ulidSchema,
+  characterId: ulidSchema,
+});
+
+/**
+ * Soft-remove a character (undoable; toast Undo calls the restore fn). Scene
+ * continuity tags are NOT stripped — undo is lossless; prompts referencing
+ * the character read stale because the bible reads exclude deleted rows.
+ */
+export const softDeleteSequenceCharacterFn = createServerFn({ method: 'POST' })
+  .middleware([sequenceAccessMiddleware])
+  .inputValidator(zodValidator(characterIdInput))
+  .handler(async ({ context, data }) => {
+    const existing = await context.scopedDb.characters.getById(
+      data.characterId
+    );
+    if (!existing || existing.sequenceId !== data.sequenceId) {
+      throw new NotFoundError('Character not found');
+    }
+    const deletedAt = await context.scopedDb.characters.softDelete(
+      data.characterId,
+      { actorId: context.user.id }
+    );
+    return { characterId: data.characterId, deletedAt };
+  });
+
+/** Undo a character soft-delete. */
+export const restoreSequenceCharacterFn = createServerFn({ method: 'POST' })
+  .middleware([sequenceAccessMiddleware])
+  .inputValidator(zodValidator(characterIdInput))
+  .handler(async ({ context, data }) => {
+    const existing = await context.scopedDb.characters.getById(
+      data.characterId
+    );
+    if (!existing || existing.sequenceId !== data.sequenceId) {
+      throw new NotFoundError('Character not found');
+    }
+    return await context.scopedDb.characters.restore(data.characterId, {
+      actorId: context.user.id,
+    });
   });
 
 /** Get shot IDs for all shots containing a specific character */
@@ -66,7 +212,7 @@ export const recastCharacterFn = createServerFn({ method: 'POST' })
       data.characterId
     );
     if (!character) {
-      throw new Error('Character not found');
+      throw new NotFoundError('Character not found');
     }
 
     // Fetch the sequence's style for character sheet generation

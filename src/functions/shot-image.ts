@@ -30,6 +30,7 @@ import {
 import { triggerWorkflow } from '@/lib/workflow/client';
 import { triggerStoryboard } from '@/lib/workflow/launchers';
 import { buildWorkflowLabel } from '@/lib/workflow/labels';
+import type { FrameVariantKind } from '@/lib/db/schema/frame-variants';
 import type {
   StoryboardTriggerInput,
   ShotVariantWorkflowInput,
@@ -571,7 +572,7 @@ export const selectSegmentVideoVersionFn = createServerFn({ method: 'POST' })
 export type ShotImageVersionRow = {
   id: string;
   model: string;
-  kind: 'model';
+  kind: 'model' | 'upload';
   status: string;
   url: string | null;
   createdAt: Date;
@@ -598,10 +599,10 @@ const shotHistoryListInputSchema = z.object({
 
 /**
  * Append-only image generation history for a shot's anchor frame (#1070).
- * Newest first. Only `kind: 'model'` rows — framing rows are the 3x3 grid
- * sheet / tile picks used by the Frame variants picker, and preview rows are
- * the pre-prompt stand-in (#1101); neither is still history. Includes
- * in-flight / failed rows so the sheet can show progress and errors;
+ * Newest first. Only `kind: 'model'` and `kind: 'upload'` rows — framing rows
+ * are the 3×3 grid sheet / tile picks used by the Frame variants picker, and
+ * preview rows are the pre-prompt stand-in (#1101); neither is still history.
+ * Includes in-flight / failed rows so the sheet can show progress and errors;
  * discarded rows stay hidden (soft-hide is undoable elsewhere).
  */
 export const listShotImageVersionsFn = createServerFn({ method: 'GET' })
@@ -611,18 +612,21 @@ export const listShotImageVersionsFn = createServerFn({ method: 'GET' })
     const { frame, scopedDb } = context;
     const versions = await scopedDb.frameVariants.listByFrame(frame.id);
     // listByFrame is oldest-first (ULID asc); reverse for newest-first history.
-    return [...versions]
-      .reverse()
-      .filter((v) => v.kind === 'model')
-      .map((v) => ({
-        id: v.id,
-        model: v.model,
-        kind: 'model' as const,
-        status: v.status,
-        url: v.url,
-        createdAt: v.createdAt,
-        selected: v.id === frame.selectedImageVersionId,
-      }));
+    return [...versions].reverse().flatMap((v) =>
+      v.kind === 'model' || v.kind === 'upload'
+        ? [
+            {
+              id: v.id,
+              model: v.model,
+              kind: v.kind,
+              status: v.status,
+              url: v.url,
+              createdAt: v.createdAt,
+              selected: v.id === frame.selectedImageVersionId,
+            },
+          ]
+        : []
+    );
   });
 
 /**

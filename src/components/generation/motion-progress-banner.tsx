@@ -49,7 +49,12 @@ function getMotionBudget(sequence: Sequence, shotCount: number): number {
 }
 
 function isTerminal(status: string | null): boolean {
-  return status === 'completed' || status === 'failed';
+  // 'cancelled' (#1108) is terminal for video: without it, one cancelled shot
+  // keeps `allMotionDone` false forever and this banner never finishes.
+  // (Harmless for the `musicStatus` call below — music has no cancel.)
+  return (
+    status === 'completed' || status === 'failed' || status === 'cancelled'
+  );
 }
 
 function derivePhases(

@@ -209,7 +209,11 @@ function removeAllFromSet(prev: Set<string>, ids: string[]): Set<string> {
 }
 
 function isTerminalStatus(status: string | null): boolean {
-  return status === 'completed' || status === 'failed';
+  // 'cancelled' (#1108): a user cancel is terminal — it must clear the
+  // regenerating spinner like completed/failed do.
+  return (
+    status === 'completed' || status === 'failed' || status === 'cancelled'
+  );
 }
 
 export const ScenesView: React.FC<ScenesViewProps> = ({
@@ -1133,12 +1137,16 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
       musicModel,
       generateAudio,
     }: BatchGenerateMotionArgs) => {
-      // Optimistic: compute eligible shots locally (same filter as backend)
+      // Optimistic: compute eligible shots locally (same filter as backend).
+      // 'cancelled' is user-initiated (#1108 Phase 4): deliberately eligible
+      // for a user-driven batch generate, never auto-retried.
       const eligibleShotIds = (shots ?? [])
         .filter(
           (f) =>
             f.frame.imageStatus === 'completed' &&
-            (f.videoStatus === 'pending' || f.videoStatus === 'failed')
+            (f.videoStatus === 'pending' ||
+              f.videoStatus === 'failed' ||
+              f.videoStatus === 'cancelled')
         )
         .map((f) => f.id);
 
@@ -1269,6 +1277,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
       <div className="flex flex-1 min-h-0">
         <div className="hidden md:block shrink-0 pl-4 py-4">
           <SceneList
+            sequenceId={sequenceId}
             shots={shots}
             scenes={scenes}
             segments={segments}

@@ -113,6 +113,7 @@ function makeShot(
     durationMs: 3000,
     selectedMotionPromptVersionId: null,
     renderSegmentId: null,
+    deletedAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),
     ...params.shot,

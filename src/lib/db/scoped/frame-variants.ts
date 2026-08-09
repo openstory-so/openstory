@@ -21,12 +21,18 @@
  */
 
 import type { Database } from '@/lib/db/client';
+import { generateId } from '@/lib/db/id';
 import { framePromptVersions, frameVariants, frames } from '@/lib/db/schema';
-import type { FrameVariant, NewFrameVariant } from '@/lib/db/schema';
+import type {
+  FramePromptVersion,
+  FrameVariant,
+  NewFrameVariant,
+} from '@/lib/db/schema';
 import {
   type FrameVariantKind,
   isSelectableFrameVariantKind,
 } from '@/lib/db/schema/frame-variants';
+import { simpleHash } from '@/lib/utils/hash';
 import {
   and,
   asc,
@@ -216,6 +222,227 @@ export function createFrameVariantsMethods(db: Database) {
         );
       }
       return version;
+    },
+
+    /**
+     * Append a user-uploaded still as a completed `kind:'upload'` version
+     * (#1108 §4.3 B), committing the row and its `image.uploaded` event in one
+     * `db.batch()`. Selection is the caller's next step (`select`), so the
+     * upload lands in history exactly like a finished generation and the
+     * repoint keeps the setImageFromVariantFn semantics (mirror + event +
+     * pending-promote clear + prompt pairing).
+     *
+     * `inputHash` must be stamped from the CURRENT selected prompt + sheets
+     * (same builder as the image workflow — see §8 "hash stamp consistency"),
+     * or null when the frame has no prompt yet (staleness reads 'untracked').
+     */
+    appendUploadedVersion: async (input: {
+      frameId: string;
+      sequenceId: string;
+      model: string;
+      url: string;
+      storagePath: string;
+      inputHash: string | null;
+      /** Selected prompt version the hash was computed against, if any. */
+      promptVersionId: string | null;
+      /** Text of that prompt (for the promptHash pairing column). */
+      promptText: string | null;
+      actorId: string | null;
+    }): Promise<FrameVariant> => {
+      const versionId = generateId();
+      const [inserted] = await db.batch([
+        db
+          .insert(frameVariants)
+          .values({
+            id: versionId,
+            frameId: input.frameId,
+            sequenceId: input.sequenceId,
+            kind: 'upload',
+            model: input.model,
+            url: input.url,
+            storagePath: input.storagePath,
+            status: 'completed',
+            generatedAt: new Date(),
+            inputHash: input.inputHash,
+            promptHash: input.promptText ? simpleHash(input.promptText) : null,
+            promptVersionId: input.promptVersionId,
+          })
+          .returning(),
+        buildEventInsert(db, {
+          sequenceId: input.sequenceId,
+          actorId: input.actorId,
+          kind: 'image.uploaded',
+          targetType: 'frame',
+          targetId: input.frameId,
+          summary: 'Uploaded still image',
+          data: { versionId, promptVersionId: input.promptVersionId },
+        }),
+      ]);
+      const version = inserted[0];
+      if (!version) {
+        throw new Error(
+          `Failed to append uploaded frame variant for frame ${input.frameId}`
+        );
+      }
+      return version;
+    },
+
+    /**
+     * Atomic prompt + still replace (#1108 §4.3 C): append a `user-edit`
+     * prompt version AND a `kind:'upload'` image version whose `inputHash`
+     * was computed against the NEW prompt text, repoint BOTH selection
+     * pointers, and log the events — all in ONE `db.batch()`, so the image
+     * can never be observed stale relative to the prompt it was uploaded
+     * with. Video is "cleared" by derivation: the render manifest still
+     * references the previous frame version, so segment staleness flips.
+     *
+     * Mirrors the union of `framePromptVersions.write` (mirror + live-claim
+     * demotion — the explicit repoint revokes in-flight prompt claims' mirror
+     * rights, #1085) and `select` (image mirror + pending-promote clear).
+     */
+    replaceContent: async (input: {
+      frameId: string;
+      sequenceId: string;
+      actorId: string | null;
+      prompt: {
+        text: string;
+        /** Current upstream-context hash; null when uncomputable (matches saveShotPromptFn). */
+        inputHash: string | null;
+        analysisModel: string | null;
+        createdBy: string | null;
+      };
+      image: {
+        model: string;
+        url: string;
+        storagePath: string;
+        /** Hash computed from the NEW prompt text + current sheets. */
+        inputHash: string | null;
+      };
+    }): Promise<{
+      promptVersion: FramePromptVersion;
+      imageVersion: FrameVariant;
+    }> => {
+      const [frame] = await db
+        .select({
+          id: frames.id,
+          prevImageVersionId: frames.selectedImageVersionId,
+          prevPromptVersionId: frames.selectedImagePromptVersionId,
+        })
+        .from(frames)
+        .where(eq(frames.id, input.frameId));
+      if (!frame) {
+        throw new Error(`Frame ${input.frameId} not found`);
+      }
+
+      const promptVersionId = generateId();
+      const imageVersionId = generateId();
+      const now = new Date();
+
+      const [promptRows, imageRows] = await db.batch([
+        db
+          .insert(framePromptVersions)
+          .values({
+            id: promptVersionId,
+            frameId: input.frameId,
+            text: input.prompt.text,
+            source: 'user-edit',
+            status: 'completed',
+            inputHash: input.prompt.inputHash,
+            analysisModel: input.prompt.analysisModel,
+            createdBy: input.prompt.createdBy,
+          })
+          .returning(),
+        db
+          .insert(frameVariants)
+          .values({
+            id: imageVersionId,
+            frameId: input.frameId,
+            sequenceId: input.sequenceId,
+            kind: 'upload',
+            model: input.image.model,
+            url: input.image.url,
+            storagePath: input.image.storagePath,
+            status: 'completed',
+            generatedAt: now,
+            inputHash: input.image.inputHash,
+            promptHash: simpleHash(input.prompt.text),
+            promptVersionId,
+          })
+          .returning(),
+        db
+          .update(frames)
+          .set({
+            selectedImagePromptVersionId: promptVersionId,
+            selectedImageVersionId: imageVersionId,
+            imageStatus: 'completed',
+            imageError: null,
+            pendingPromoteVersionId: null,
+            updatedAt: now,
+          })
+          .where(eq(frames.id, input.frameId)),
+        db
+          .update(framePromptVersions)
+          .set({ pendingInputHash: null })
+          .where(
+            and(
+              eq(framePromptVersions.frameId, input.frameId),
+              inArray(framePromptVersions.status, [...LIVE_PENDING_STATUSES])
+            )
+          ),
+        buildEventInsert(db, {
+          sequenceId: input.sequenceId,
+          actorId: input.actorId,
+          kind: 'prompt.edited',
+          targetType: 'frame',
+          targetId: input.frameId,
+          summary: 'Replaced image prompt with upload',
+          data: {
+            versionId: promptVersionId,
+            prevVersionId: frame.prevPromptVersionId ?? null,
+            fromImageVersionId: imageVersionId,
+          },
+        }),
+        buildEventInsert(db, {
+          sequenceId: input.sequenceId,
+          actorId: input.actorId,
+          kind: 'image.uploaded',
+          targetType: 'frame',
+          targetId: input.frameId,
+          summary: 'Uploaded still image with new prompt',
+          data: {
+            versionId: imageVersionId,
+            prevVersionId: frame.prevImageVersionId ?? null,
+            promptVersionId,
+          },
+        }),
+        // The repoint above is a selection move, so it logs one too — the
+        // activity timeline reads pointer history off `image.selected`, and
+        // without it this path's move is invisible there (every other repoint
+        // goes through `select`, which emits it).
+        buildEventInsert(db, {
+          sequenceId: input.sequenceId,
+          actorId: input.actorId,
+          kind: 'image.selected',
+          targetType: 'frame',
+          targetId: input.frameId,
+          summary: 'Selected uploaded image',
+          data: {
+            versionId: imageVersionId,
+            model: input.image.model,
+            prevVersionId: frame.prevImageVersionId ?? null,
+            promptVersionId,
+            prevPromptVersionId: frame.prevPromptVersionId ?? null,
+          },
+        }),
+      ]);
+      const promptVersion = promptRows[0];
+      const imageVersion = imageRows[0];
+      if (!promptVersion || !imageVersion) {
+        throw new Error(
+          `Failed to replace content for frame ${input.frameId} (batch returned no rows)`
+        );
+      }
+      return { promptVersion, imageVersion };
     },
 
     /**

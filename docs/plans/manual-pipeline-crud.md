@@ -1,6 +1,9 @@
 # Manual Pipeline Driveability — Full CRUD + DAG Proof
 
-**Status:** analysis + plan only (no implementation yet)  
+**Status:** implemented on `1108-manual-pipeline-crud` — where this plan and
+`docs/architecture/manual-pipeline-crud.md` disagree (e.g. §4.2's "hard clear
+video to pending", written pre-#1067), the architecture doc describes what
+shipped and is authoritative.  
 **Goal:** Make every sequence-pipeline entity fully CRUD-able so filmmakers (and later API/MCP) can drive the whole pipeline manually, with correct downstream-only invalidation.
 
 ---
@@ -266,7 +269,7 @@ Treat **server functions as the contract** (API/MCP later wraps them). Group by 
 
 **UI:** left-rail add/reorder; delete → confirm → soft-delete + toast **Undo** (calls restore); scene title editable. Optional “Show deleted” later.
 
-**Invalidation:** script/title/metadata edits → prompts stale only. Pure reorder → no hash change. Soft-delete removes from plan/export without destroying hashes.
+**Invalidation:** script/title/metadata edits → prompts stale only. Pure reorder → no hash change for **visual/motion prompts** (hash v5 dropped `sceneNumber`). Deliberate exception: the **music prompt** hashes scene summaries in narrative order, so a scene reorder correctly re-stales it — a score follows the arc. Soft-delete removes from plan/export without destroying hashes.
 
 ### Phase 2 — Cast & location bible CRUD SF + UI
 

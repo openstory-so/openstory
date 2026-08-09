@@ -20,6 +20,7 @@ const mockShot: ShotView = toShotView(
     durationMs: 3000,
     selectedMotionPromptVersionId: null,
     renderSegmentId: null,
+    deletedAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),
   },
@@ -59,6 +60,7 @@ const mockScene: SceneWithScript = {
     ],
   },
   selectedScriptVersionId: null,
+  deletedAt: null,
   createdAt: new Date(),
   updatedAt: new Date(),
 };

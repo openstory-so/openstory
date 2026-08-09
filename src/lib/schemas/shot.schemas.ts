@@ -9,9 +9,14 @@ import { IMAGE_MODELS, IMAGE_TO_VIDEO_MODELS } from '@/lib/ai/models';
  */
 
 const createShotSchema = createInsertSchema(shots, {
-  durationMs: (schema) => schema.min(1),
+  // Optional on create: the column has a DB default (3000ms), and manual shot
+  // creation (#1108) sends only sceneId — the refinement alone made the key
+  // required, forcing every caller to restate the default.
+  durationMs: (schema) => schema.min(1).optional(),
 }).omit({
   id: true,
+  // Soft-delete is owned by the dedicated delete/restore fns, never an input.
+  deletedAt: true,
   createdAt: true,
   updatedAt: true,
 });
@@ -22,6 +27,7 @@ export const updateShotSchema = createUpdateSchema(shots, {
   .omit({
     id: true,
     sequenceId: true,
+    deletedAt: true,
     createdAt: true,
     updatedAt: true,
   })

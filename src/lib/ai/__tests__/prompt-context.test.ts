@@ -417,6 +417,7 @@ describe('casting round-trip — stamp matches verify (#867)', () => {
     sheetGeneratedAt: null,
     sheetError: null,
     sheetInputHash: null,
+    deletedAt: null,
     createdAt: new Date(0),
     updatedAt: new Date(0),
   });
@@ -525,6 +526,7 @@ describe('location/element bible round-trip — stamp matches verify (#867)', ()
     referenceGeneratedAt: null,
     referenceError: null,
     referenceInputHash: null,
+    deletedAt: null,
     createdAt: new Date(0),
     updatedAt: new Date(0),
   });
@@ -544,6 +546,7 @@ describe('location/element bible round-trip — stamp matches verify (#867)', ()
     firstMentionSceneId: e.firstMention.sceneId || null,
     firstMentionText: e.firstMention.text || null,
     firstMentionLine: e.firstMention.lineNumber || null,
+    deletedAt: null,
     createdAt: new Date(0),
     updatedAt: new Date(0),
   });

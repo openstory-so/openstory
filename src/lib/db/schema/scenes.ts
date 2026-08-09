@@ -88,6 +88,11 @@ export const scenes = snakeCase.table(
     // Resolution reads the selected version; see @/lib/ai/resolve-asset-models.
     // It also owns no video columns (#1067): a scene's render is tiled into
     // `render_segments` (#990), and each segment points at its `video_variants`.
+    // Soft-delete (#1108 Phase 1, undoable). Cascades softly to the scene's
+    // shots (same timestamp — restore uses the equality to bring back exactly
+    // the children this delete hid). `orderIndex` keeps its slot; reorder
+    // renumbers deleted rows into the tail band.
+    deletedAt: integer({ mode: 'timestamp' }),
     createdAt: integer({ mode: 'timestamp' })
       .$defaultFn(() => new Date())
       .notNull(),

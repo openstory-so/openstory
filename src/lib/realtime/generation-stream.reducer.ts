@@ -3,7 +3,14 @@
  * Handles events from the Upstash Realtime channel during storyboard generation.
  */
 
-type ShotStatus = 'pending' | 'generating' | 'completed' | 'failed';
+// 'cancelled' (#1108) is video-only in practice; it behaves as a terminal
+// status here (clears 'generating') like completed/failed.
+type ShotStatus =
+  | 'pending'
+  | 'generating'
+  | 'completed'
+  | 'failed'
+  | 'cancelled';
 
 type StreamingScene = {
   sceneId: string;

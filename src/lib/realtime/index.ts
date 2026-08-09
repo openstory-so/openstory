@@ -168,10 +168,18 @@ export const realtimeSchema = {
       variantImageUrl: z.string().optional(),
     }),
 
-    // Video generation progress
+    // Video generation progress. 'cancelled' (#1108): a user cancelled the
+    // in-flight render — terminal, neutral (no failure banner), never
+    // retriable.
     'video:progress': z.object({
       shotId: z.string(),
-      status: z.enum(['pending', 'generating', 'completed', 'failed']),
+      status: z.enum([
+        'pending',
+        'generating',
+        'completed',
+        'failed',
+        'cancelled',
+      ]),
       videoUrl: z.string().optional(),
       // In-flight retry state (#882) — see `image:progress` above. Emitted
       // before a retry attempt with `status` still `generating`.

@@ -30,6 +30,9 @@ export const SEQUENCE_EVENT_TARGET_TYPES = [
   'shot',
   'frame',
   'variant',
+  'character',
+  'location',
+  'element',
 ] as const;
 export type SequenceEventTargetType =
   (typeof SEQUENCE_EVENT_TARGET_TYPES)[number];

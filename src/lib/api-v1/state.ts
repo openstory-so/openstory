@@ -259,7 +259,16 @@ export async function buildSequenceState(
         url: share(imageUrl),
       },
       video: {
-        status: shot.videoStatus,
+        // The public doc never surfaces 'cancelled' (#1108) — mirroring the
+        // image side, where a cancel settles the frame back to
+        // completed/pending. A cancelled render means "nothing new happened":
+        // the selected video (if any) still stands.
+        status:
+          shot.videoStatus === 'cancelled'
+            ? shot.video?.url
+              ? 'completed'
+              : 'pending'
+            : shot.videoStatus,
         url: share(shot.video?.url ?? null),
       },
     };

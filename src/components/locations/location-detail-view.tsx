@@ -1,8 +1,10 @@
+import { UploadMediaButton } from '@/components/scenes/upload-media-button';
 import { SheetComparisonDialog } from '@/components/sheets/sheet-comparison-dialog';
 import { SheetStalenessBanners } from '@/components/sheets/sheet-staleness-banners';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useUploadLocationReference } from '@/hooks/use-media-upload';
 import {
   locationSheetVariantKeys,
   useDiscardSequenceLocationSheetVariant,
@@ -11,21 +13,41 @@ import {
   useUndiscardSequenceLocationSheetVariant,
 } from '@/hooks/use-location-sheet-variants';
 import {
+  restoreSequenceLocation,
   sequenceLocationKeys,
   type TeamLibraryLocation,
   useShotIdsForLocation,
   useRecastLocation,
   useSequenceLocations,
+  useSoftDeleteSequenceLocation,
 } from '@/hooks/use-sequence-locations';
 import type { LocationSheetVariant } from '@/lib/db/schema';
+import { errorMessage } from '@/lib/errors';
 import { useRealtime } from '@/lib/realtime/client';
 import { useSheetStaleDetected } from '@/lib/realtime/use-sheet-stale-detected';
-import { cn } from '@/lib/utils';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { useQueryClient } from '@tanstack/react-query';
-import { Link } from '@tanstack/react-router';
-import { ArrowLeft, Loader2, MapPin, RefreshCw, Sparkles } from 'lucide-react';
+import { Link, useNavigate } from '@tanstack/react-router';
+import {
+  ArrowLeft,
+  Loader2,
+  MapPin,
+  RefreshCw,
+  Sparkles,
+  Trash2,
+} from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
 import { toast } from 'sonner';
+import { LocationBibleForm } from './location-bible-form';
 import { LocationPickerDialog } from './location-picker-dialog';
 import { LocationRecastConfirmDialog } from './location-recast-confirm-dialog';
 import { AppImage } from '@/components/ui/app-image';
@@ -33,25 +55,6 @@ import { AppImage } from '@/components/ui/app-image';
 type LocationDetailViewProps = {
   sequenceId: string;
   locationId: string;
-};
-
-type DetailRowProps = {
-  label: string;
-  value: string | number | undefined | null;
-  className?: string;
-};
-
-const DetailRow: React.FC<DetailRowProps> = ({ label, value, className }) => {
-  if (!value) return null;
-
-  return (
-    <div className={cn('space-y-1', className)}>
-      <dt className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-        {label}
-      </dt>
-      <dd className="text-sm leading-relaxed">{value}</dd>
-    </div>
-  );
 };
 
 export const LocationDetailView: React.FC<LocationDetailViewProps> = ({
@@ -66,6 +69,49 @@ export const LocationDetailView: React.FC<LocationDetailViewProps> = ({
   } = useSequenceLocations(sequenceId);
   const recastLocation = useRecastLocation();
   const { data: shotData } = useShotIdsForLocation(sequenceId, locationId);
+  const navigate = useNavigate();
+  const softDelete = useSoftDeleteSequenceLocation();
+  const uploadReference = useUploadLocationReference();
+  const [isRemoveConfirmOpen, setIsRemoveConfirmOpen] = useState(false);
+
+  // Soft-remove (#1108 Phase 2): navigate back to the locations list, leave a
+  // 60s undo toast whose closure survives this component's unmount.
+  const handleRemove = useCallback(
+    (name: string) => {
+      softDelete.mutate(
+        { sequenceId, locationDbId: locationId },
+        {
+          onSuccess: () => {
+            setIsRemoveConfirmOpen(false);
+            void navigate({
+              to: '/sequences/$id/locations',
+              params: { id: sequenceId },
+            });
+            toast(`Removed ${name}`, {
+              duration: 60_000,
+              action: {
+                label: 'Undo',
+                onClick: () =>
+                  void restoreSequenceLocation(queryClient, {
+                    sequenceId,
+                    locationDbId: locationId,
+                  }).catch((error: Error) =>
+                    toast.error('Failed to restore location', {
+                      description: errorMessage(error),
+                    })
+                  ),
+              },
+            });
+          },
+          onError: (error) =>
+            toast.error('Failed to remove location', {
+              description: errorMessage(error),
+            }),
+        }
+      );
+    },
+    [softDelete, sequenceId, locationId, navigate, queryClient]
+  );
 
   // Dialog states for recasting
   const [isPickerOpen, setIsPickerOpen] = useState(false);
@@ -354,7 +400,64 @@ export const LocationDetailView: React.FC<LocationDetailViewProps> = ({
               )}
               {isSheetGenerating ? 'Regenerating...' : 'Update Reference'}
             </Button>
+            {/* Manual reference inject (#1108 Phase 4) — no generation. */}
+            <UploadMediaButton
+              label="Upload Reference"
+              pendingLabel="Uploading…"
+              accept="image/*"
+              isPending={uploadReference.isPending}
+              disabled={isSheetGenerating}
+              onFile={(file) =>
+                uploadReference.mutate(
+                  { file, sequenceId, locationDbId: locationId },
+                  {
+                    onSuccess: () =>
+                      toast.success('Location reference uploaded'),
+                    onError: (error) =>
+                      toast.error('Reference upload failed', {
+                        description: errorMessage(error),
+                      }),
+                  }
+                )
+              }
+              className="flex-1"
+            />
+            <Button
+              variant="outline"
+              className="text-destructive hover:text-destructive"
+              onClick={() => setIsRemoveConfirmOpen(true)}
+              disabled={softDelete.isPending}
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              {softDelete.isPending ? 'Removing…' : 'Remove'}
+            </Button>
           </div>
+
+          <AlertDialog
+            open={isRemoveConfirmOpen}
+            onOpenChange={setIsRemoveConfirmOpen}
+          >
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>
+                  Remove {location.name} from this sequence?
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  The location is hidden from the sequence and prompt context.
+                  You can undo from the toast right after removing.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  disabled={softDelete.isPending}
+                  onClick={() => handleRemove(location.name)}
+                >
+                  {softDelete.isPending ? 'Removing…' : 'Remove'}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
 
           {/* Location picker dialog */}
           <LocationPickerDialog
@@ -400,68 +503,42 @@ export const LocationDetailView: React.FC<LocationDetailViewProps> = ({
             )}
           </div>
 
-          {/* Location details */}
-          <dl className="space-y-4">
-            {/* Basic info */}
-            <div className="grid grid-cols-2 gap-4">
-              <DetailRow
-                label="Type"
-                value={
-                  location.type === 'interior'
-                    ? 'Interior'
-                    : location.type === 'exterior'
-                      ? 'Exterior'
-                      : location.type === 'both'
-                        ? 'Interior/Exterior'
-                        : undefined
-                }
-              />
-              <DetailRow label="Time of Day" value={location.timeOfDay} />
+          {/* Editable location bible (#1108 Phase 2). Keyed by id so
+              switching locations reseeds the uncontrolled inputs. */}
+          <LocationBibleForm
+            key={location.id}
+            sequenceId={sequenceId}
+            location={location}
+          />
+
+          {/* First mention (read-only script provenance) */}
+          {location.firstMentionSceneId && (
+            <div className="space-y-1 rounded-lg bg-muted/50 p-3">
+              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                First Appears
+              </p>
+              <p className="text-sm">
+                Scene {location.firstMentionSceneId}
+                {location.firstMentionLine &&
+                  `, Line ${location.firstMentionLine}`}
+              </p>
+              {location.firstMentionText && (
+                <p className="mt-2 border-l-2 border-muted-foreground/30 pl-3 text-xs italic text-muted-foreground">
+                  "{location.firstMentionText}"
+                </p>
+              )}
             </div>
+          )}
 
-            <DetailRow label="Description" value={location.description} />
-
-            <DetailRow
-              label="Architectural Style"
-              value={location.architecturalStyle}
-            />
-
-            <DetailRow label="Key Features" value={location.keyFeatures} />
-
-            <DetailRow label="Color Palette" value={location.colorPalette} />
-
-            <DetailRow label="Lighting Setup" value={location.lightingSetup} />
-
-            <DetailRow label="Ambiance" value={location.ambiance} />
-
-            {/* First mention */}
-            {location.firstMentionSceneId && (
-              <div className="space-y-1 rounded-lg bg-muted/50 p-3">
-                <dt className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                  First Appears
-                </dt>
-                <dd className="text-sm">
-                  Scene {location.firstMentionSceneId}
-                  {location.firstMentionLine &&
-                    `, Line ${location.firstMentionLine}`}
-                </dd>
-                {location.firstMentionText && (
-                  <dd className="mt-2 border-l-2 border-muted-foreground/30 pl-3 text-xs italic text-muted-foreground">
-                    "{location.firstMentionText}"
-                  </dd>
-                )}
-              </div>
-            )}
-
-            {/* Consistency tag */}
-            {location.consistencyTag && (
-              <div className="pt-2">
-                <span className="rounded bg-muted px-2 py-1 font-mono text-xs text-muted-foreground">
-                  {location.consistencyTag}
-                </span>
-              </div>
-            )}
-          </dl>
+          {/* Consistency tag — read-only: renaming it would orphan the scene
+              continuity tags that reference it. */}
+          {location.consistencyTag && (
+            <div className="pt-2">
+              <span className="rounded bg-muted px-2 py-1 font-mono text-xs text-muted-foreground">
+                {location.consistencyTag}
+              </span>
+            </div>
+          )}
         </div>
       </ScrollArea>
 

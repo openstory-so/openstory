@@ -65,6 +65,11 @@ export const characters = snakeCase.table(
     sheetGeneratedAt: integer({ mode: 'timestamp' }),
     sheetError: text(),
     sheetInputHash: text(),
+    // Soft-remove from the sequence (#1108 Phase 2, undoable). Deleted rows
+    // are excluded from default lists / prompt-context bibles but keep their
+    // sheet + bible fields, so restore is lossless. Continuity tags on scenes
+    // are NOT stripped on delete (plan §1: leave tags + warning).
+    deletedAt: integer({ mode: 'timestamp' }),
     // Timestamps
     createdAt: integer({ mode: 'timestamp' })
       .$defaultFn(() => new Date())

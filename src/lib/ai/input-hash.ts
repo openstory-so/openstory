@@ -364,9 +364,13 @@ export type PromptSceneContextHashInput = {
  */
 function sceneInputContext(scene: Scene) {
   return {
-    // No `sceneId`: identity is not content. Hashing it made a prompt stale
-    // when a scene was re-analysed under a new id without its text changing.
-    sceneNumber: scene.sceneNumber,
+    // No `sceneId` and no `sceneNumber`: identity/position is not content.
+    // Hashing the id made a prompt stale when a scene was re-analysed under a
+    // new id without its text changing; hashing the number (= orderIndex + 1)
+    // made a pure scene REORDER flag every moved scene's prompts stale (#1108
+    // Phase 1 contract: reorder changes no hash). Position still reaches the
+    // LLM via the scene object and the neighbour scenes — a documented,
+    // deliberate under-hash (staleness doc §4.2).
     originalScript: scene.originalScript,
     metadata: scene.metadata
       ? {
@@ -446,11 +450,16 @@ function sortedBibles(input: PromptSceneContextHashInput) {
  * changes — bumping forces every previously-stored hash to diverge from the
  * freshly-computed one, which would normally surface to users as "stale"
  * banners on unchanged content. The staleness handlers short-circuit when
- * the stored hash is null, so the matching deploy step should null the
- * `*_prompt_input_hash` columns on `shots` / `sequences` so legacy rows
- * fall through that safe path until they're regenerated.
+ * the stored hash is null, so the matching deploy step must null the stored
+ * prompt hashes (`frame_prompt_versions.input_hash`,
+ * `shot_prompt_versions.input_hash`, `sequences.music_prompt_input_hash`) so
+ * legacy rows fall through that safe path ('untracked') until regenerated.
+ *
+ * v5 (#1108): dropped `sceneNumber` from the scene input surface — a pure
+ * scene reorder must not re-stale prompts. Nulling migration:
+ * 20260808041000_null_prompt_hashes_for_v5.
  */
-const PROMPT_INPUT_HASH_VERSION = 4;
+const PROMPT_INPUT_HASH_VERSION = 5;
 
 export function computeVisualPromptInputHash(
   input: PromptSceneContextHashInput

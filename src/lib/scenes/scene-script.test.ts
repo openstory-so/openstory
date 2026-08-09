@@ -28,6 +28,7 @@ const sceneRowFixture = (overrides: Partial<SceneRow> = {}): SceneRow => ({
   title: 'Office',
   continuity: null,
   selectedScriptVersionId: null,
+  deletedAt: null,
   createdAt: new Date(),
   updatedAt: new Date(),
   ...overrides,

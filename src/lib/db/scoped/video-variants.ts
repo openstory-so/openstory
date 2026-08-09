@@ -22,9 +22,14 @@
  */
 
 import type { Database } from '@/lib/db/client';
+import { generateId } from '@/lib/db/id';
 import { renderSegments, shots, videoVariants } from '@/lib/db/schema';
-import type { NewVideoVariant, VideoVariant } from '@/lib/db/schema';
-import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm';
+import type {
+  NewVideoVariant,
+  VideoManifest,
+  VideoVariant,
+} from '@/lib/db/schema';
+import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { buildRenderSegmentSelect } from './render-segments';
 import { buildEventInsert } from './sequence-events';
 
@@ -116,6 +121,64 @@ export function createVideoVariantsMethods(db: Database) {
     },
 
     /**
+     * Append a user-uploaded clip as a completed version (#1108 manual media
+     * inject), committing the row and its `video.uploaded` event in one
+     * `db.batch()`. `manifest` must snapshot the shot's CURRENT selected
+     * motion-prompt / frame-version pointers and `inputHash` must be the
+     * manifest hash — so a later prompt edit or still replace diverges the
+     * manifest and the upload correctly reads stale. Selection is the
+     * caller's next step (`select`).
+     */
+    appendUploadedVersion: async (input: {
+      renderSegmentId: string;
+      sequenceId: string;
+      /** The shot the user acted on — the event target. */
+      shotId: string;
+      model: string;
+      manifest: VideoManifest;
+      url: string;
+      storagePath: string;
+      inputHash: string | null;
+      actorId: string | null;
+    }): Promise<VideoVariant> => {
+      const versionId = generateId();
+      const [inserted] = await db.batch([
+        db
+          .insert(videoVariants)
+          .values({
+            id: versionId,
+            renderSegmentId: input.renderSegmentId,
+            sequenceId: input.sequenceId,
+            model: input.model,
+            manifest: input.manifest,
+            url: input.url,
+            storagePath: input.storagePath,
+            status: 'completed',
+            generatedAt: new Date(),
+            isPrimary: true,
+            inputHash: input.inputHash,
+          })
+          .returning(),
+        buildEventInsert(db, {
+          sequenceId: input.sequenceId,
+          actorId: input.actorId,
+          kind: 'video.uploaded',
+          targetType: 'shot',
+          targetId: input.shotId,
+          summary: 'Uploaded video',
+          data: { versionId, renderSegmentId: input.renderSegmentId },
+        }),
+      ]);
+      const version = inserted[0];
+      if (!version) {
+        throw new Error(
+          `Failed to append uploaded video variant for segment ${input.renderSegmentId}`
+        );
+      }
+      return version;
+    },
+
+    /**
      * Mark any still-'generating' version for a workflow run as failed. Used by
      * the motion workflow's `onFailure`, which only has the run id (not the
      * version id minted in the generating step). Mirrors
@@ -125,12 +188,16 @@ export function createVideoVariantsMethods(db: Database) {
       workflowRunId: string,
       error: string
     ): Promise<number> => {
-      // Returns the number of rows marked. A run that failed BEFORE
-      // `set-generating-status` appended its row (insufficient credits, "shot
-      // has no scene") matches nothing — and since #1067 phase 2d the version
-      // row is the ONLY record of a shot's video lifecycle, a silent 0 would
-      // leave the shot reading 'pending' forever. The caller records a
-      // terminal row instead; see `persistMotionFailure`.
+      // Returns the number of rows ACCOUNTED FOR: marked failed now, or
+      // already terminal (a user cancel, #1108 — the run's row is 'cancelled',
+      // not 'generating', and onFailure must NOT append a fresh 'failed' row
+      // that resurrects a failure banner over a deliberate cancel). A run that
+      // failed BEFORE `set-generating-status` appended its row (insufficient
+      // credits, "shot has no scene") has NO row at all — and since #1067
+      // phase 2d the version row is the ONLY record of a shot's video
+      // lifecycle, a silent 0 would leave the shot reading 'pending' forever.
+      // Only that truly-rowless case returns 0; the caller records a terminal
+      // row then; see `persistMotionFailure`.
       const rows = await db
         .update(videoVariants)
         .set({ status: 'failed', error, updatedAt: new Date() })
@@ -141,7 +208,93 @@ export function createVideoVariantsMethods(db: Database) {
           )
         )
         .returning({ id: videoVariants.id });
-      return rows.length;
+      if (rows.length > 0) return rows.length;
+      const [existing] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(videoVariants)
+        .where(eq(videoVariants.workflowRunId, workflowRunId));
+      return existing?.count ?? 0;
+    },
+
+    /**
+     * Status-guarded completion of an in-flight version (#1108 Phase 4, the
+     * motion twin of `frameVariants.completeIfLive`): a completion racing a
+     * user cancel must not resurrect the cancelled row. Returns null when the
+     * row went terminal meanwhile — the caller discards the render result.
+     */
+    completeIfLive: async (
+      versionId: string,
+      data: Partial<NewVideoVariant>
+    ): Promise<VideoVariant | null> => {
+      const [row] = await db
+        .update(videoVariants)
+        .set({ ...data, status: 'completed', updatedAt: new Date() })
+        .where(
+          and(
+            eq(videoVariants.id, versionId),
+            inArray(videoVariants.status, ['pending', 'generating'])
+          )
+        )
+        .returning();
+      return row ?? null;
+    },
+
+    /**
+     * User cancel of an in-flight render (#1108 Phase 4 — parity with the
+     * image claim cancel): guarded live → 'cancelled' flip (`error` carries
+     * the reason for display, matching `frameVariants.markTerminal`), the
+     * segment's auto-promote claim dropped when this row holds it, and a
+     * `video.cancelled` event — one batch. 'cancelled' is deliberately NOT
+     * 'failed': smart retry and the failure surfaces match 'failed' only, so
+     * a cancel is never auto-re-run and re-billed. Returns null when the row
+     * was already terminal (completion won the race; the caller reports
+     * not-cancelled).
+     */
+    markTerminal: async (
+      versionId: string,
+      opts: { error: string; actorId: string | null }
+    ): Promise<VideoVariant | null> => {
+      const [existing] = await db
+        .select()
+        .from(videoVariants)
+        .where(eq(videoVariants.id, versionId));
+      if (!existing) {
+        throw new Error(`VideoVariant ${versionId} not found`);
+      }
+      if (existing.status !== 'pending' && existing.status !== 'generating') {
+        return null;
+      }
+      const now = new Date();
+      const [updatedRows] = await db.batch([
+        db
+          .update(videoVariants)
+          .set({ status: 'cancelled', error: opts.error, updatedAt: now })
+          .where(
+            and(
+              eq(videoVariants.id, versionId),
+              inArray(videoVariants.status, ['pending', 'generating'])
+            )
+          )
+          .returning(),
+        db
+          .update(renderSegments)
+          .set({ pendingPromoteVersionId: null, updatedAt: now })
+          .where(
+            and(
+              eq(renderSegments.id, existing.renderSegmentId),
+              eq(renderSegments.pendingPromoteVersionId, versionId)
+            )
+          ),
+        buildEventInsert(db, {
+          sequenceId: existing.sequenceId,
+          actorId: opts.actorId,
+          kind: 'video.cancelled',
+          targetType: 'variant',
+          targetId: versionId,
+          data: { versionId, renderSegmentId: existing.renderSegmentId },
+        }),
+      ]);
+      return updatedRows[0] ?? null;
     },
 
     /** Update generation tracking on an in-flight version (status/url/error/…). */

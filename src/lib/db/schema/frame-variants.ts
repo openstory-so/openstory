@@ -17,6 +17,9 @@
  *                 before a prompt version exists, so it carries no
  *                 `promptVersionId` and is never selectable / promotable /
  *                 snapshotted into a render manifest.
+ *   - 'upload'  → a user-provided still (#1108 manual media inject); `model` is
+ *                 the `USER_UPLOAD_MODEL` sentinel, `inputHash` is stamped from
+ *                 the CURRENT prompt + sheets so later upstream edits re-stale it
  *
  * Versions are immutable once completed (we soft-hide with `discardedAt`, never
  * hard-delete), so other rows — e.g. a video render manifest — can reference a
@@ -47,7 +50,12 @@ const FRAME_VARIANT_STATUSES = [
 type FrameGenerationStatus = (typeof FRAME_VARIANT_STATUSES)[number];
 
 /** @public consumed from #988+ */
-export const FRAME_VARIANT_KINDS = ['model', 'framing', 'preview'] as const;
+export const FRAME_VARIANT_KINDS = [
+  'model',
+  'framing',
+  'preview',
+  'upload',
+] as const;
 export type FrameVariantKind = (typeof FRAME_VARIANT_KINDS)[number];
 
 /**
@@ -59,6 +67,7 @@ export type FrameVariantKind = (typeof FRAME_VARIANT_KINDS)[number];
 const SELECTABLE_FRAME_VARIANT_KINDS = [
   'model',
   'framing',
+  'upload',
 ] as const satisfies readonly FrameVariantKind[];
 
 export type SelectableFrameVariantKind =

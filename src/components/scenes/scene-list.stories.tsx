@@ -198,6 +198,7 @@ const psScene = (
   continuity: null,
   script: { extract, dialogue: [] },
   selectedScriptVersionId: null,
+  deletedAt: null,
   createdAt: PS_FIXED_DATE,
   updatedAt: PS_FIXED_DATE,
 });
@@ -214,6 +215,7 @@ const perSegmentScenes: SceneWithScript[] = [
 ];
 
 const defaultArgs = {
+  sequenceId: PS_SEQ,
   shots: [] as typeof mockShots,
   scenes: [],
   selection: { sceneIds: [] as string[] },

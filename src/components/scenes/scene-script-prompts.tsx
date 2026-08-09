@@ -20,10 +20,14 @@ import { MarkdownEditor } from '@/components/text-editor/markdown-editor';
 import { useSequenceMentionItems } from '@/hooks/use-mention-items';
 import { shortenPromptFn } from '@/functions/ai';
 import { generateShotImageFn } from '@/functions/shot-image';
-import { generateShotMotionFn } from '@/functions/motion-functions';
+import {
+  cancelVideoRenderFn,
+  generateShotMotionFn,
+} from '@/functions/motion-functions';
 import { regenerateShotPromptFn } from '@/functions/prompt-variants';
 import { BILLING_BALANCE_KEY } from '@/hooks/use-billing-balance';
 import { useFalBillingGate } from '@/hooks/use-billing-gate';
+import { segmentKeys } from '@/hooks/use-segments';
 import {
   shotKeys,
   useSelectSegmentVideoVersion,
@@ -34,6 +38,11 @@ import {
   SegmentVideoPanel,
   segmentPanelIsInformative,
 } from '@/components/scenes/segment-video-panel';
+import { UploadMediaButton } from '@/components/scenes/upload-media-button';
+import {
+  useReplaceFrameImage,
+  useReplaceShotVideo,
+} from '@/hooks/use-media-upload';
 import type { SequenceSegment } from '@/lib/scenes/scene-segments';
 import type { UpdateStaleDepth } from '@/lib/shots/update-stale-depth';
 import {
@@ -437,6 +446,8 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
   const setImageFromVariant = useSetImageFromVariant();
   const setVideoFromVariant = useSetVideoFromVariant();
   const selectSegmentVideoVersion = useSelectSegmentVideoVersion();
+  const replaceFrameImage = useReplaceFrameImage();
+  const replaceShotVideo = useReplaceShotVideo();
 
   const handleSelectSegmentVersion = useCallback(
     (versionId: string) => {
@@ -575,6 +586,44 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
         description: errorMessage(error),
       });
     },
+  });
+
+  // Cancel an in-flight render (#1108 Phase 4): flips the generating
+  // video_variants row terminal and terminates its single-artifact run — a
+  // finishing render can no longer resurrect it. Data-only; idempotent.
+  const cancelVideoRender = useMutation({
+    mutationFn: (versionId: string) => {
+      if (!shot?.id) throw new Error('shot required');
+      return cancelVideoRenderFn({
+        data: { sequenceId, shotId: shot.id, versionId },
+      });
+    },
+    onSuccess: async (result) => {
+      toast.success(
+        result.cancelled
+          ? 'Video generation cancelled'
+          : 'Video had already finished'
+      );
+      if (shot?.id) {
+        await queryClient.invalidateQueries({
+          queryKey: shotKeys.detail(shot.id),
+        });
+      }
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: shotKeys.list(sequenceId) }),
+        queryClient.invalidateQueries({
+          queryKey: ['sequence-video-variants', sequenceId],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: segmentKeys.list(sequenceId),
+        }),
+        queryClient.invalidateQueries({ queryKey: shotStalenessNamespace }),
+      ]);
+    },
+    onError: (error) =>
+      toast.error('Failed to cancel video', {
+        description: errorMessage(error),
+      }),
   });
 
   // Standalone Save: persist a hand-edited / shortened prompt as a `user-edit`
@@ -1337,6 +1386,54 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     shot?.videoStatus === 'generating' ||
     (shot?.id ? regeneratingMotion.has(shot.id) : false);
 
+  // Manual media inject (#1108 Phase 3). When the prompt editor holds an
+  // unsaved edit, the upload rides the atomic prompt+image server fn so the
+  // new still is stamped fresh against the new prompt text (§4.3 C); otherwise
+  // it's an image-only replace that leaves the prompt untouched.
+  const handleReplaceImageFile = useCallback(
+    (file: File) => {
+      if (!shot?.id || !shot.sequenceId) return;
+      const promptText = visualPromptDirty
+        ? editedImagePrompt.trim()
+        : undefined;
+      replaceFrameImage.mutate(
+        { file, sequenceId: shot.sequenceId, shotId: shot.id, promptText },
+        {
+          onSuccess: (result) => {
+            if (result.promptChanged) dirtyImageRef.current = false;
+            toast.success(
+              result.promptChanged
+                ? 'Image replaced and prompt saved'
+                : 'Image replaced'
+            );
+          },
+          onError: (error) =>
+            toast.error('Image upload failed', {
+              description: errorMessage(error),
+            }),
+        }
+      );
+    },
+    [shot, visualPromptDirty, editedImagePrompt, replaceFrameImage]
+  );
+
+  const handleReplaceVideoFile = useCallback(
+    (file: File) => {
+      if (!shot?.id || !shot.sequenceId) return;
+      replaceShotVideo.mutate(
+        { file, sequenceId: shot.sequenceId, shotId: shot.id },
+        {
+          onSuccess: () => toast.success('Video replaced'),
+          onError: (error) =>
+            toast.error('Video upload failed', {
+              description: errorMessage(error),
+            }),
+        }
+      );
+    },
+    [shot, replaceShotVideo]
+  );
+
   // Anything on this shot out of date? Drives the status line (#1077). The
   // per-prompt optimistic 'fresh' writes clear the relevant term the moment a
   // regenerate is clicked, so the line retracts as the update progresses.
@@ -1733,6 +1830,23 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
                   : 'Generate Image'}
             </Button>
           )}
+
+          {/* Manual still inject (#1108) — upload replaces the selected image;
+              a pending prompt edit is saved atomically with it (§4.3 C). */}
+          <UploadMediaButton
+            label="Replace Image"
+            pendingLabel="Uploading…"
+            accept="image/*"
+            isPending={replaceFrameImage.isPending}
+            disabled={!shot || isGenerating}
+            onFile={handleReplaceImageFile}
+            className="w-full"
+          />
+          {visualPromptDirty && (
+            <p className="text-xs text-muted-foreground">
+              Replacing the image will also save your edited prompt with it.
+            </p>
+          )}
         </div>
       </TabsContent>
 
@@ -2025,6 +2139,36 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
                   : 'Generate Motion'}
             </Button>
           )}
+
+          {/* Cancel the in-flight render (#1108 Phase 4). Needs the
+              generating version's id — the projected variant row carries it. */}
+          {videoVariantForSelectedModel?.status === 'generating' && (
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full"
+              disabled={cancelVideoRender.isPending}
+              onClick={() =>
+                cancelVideoRender.mutate(videoVariantForSelectedModel.id)
+              }
+            >
+              {cancelVideoRender.isPending
+                ? 'Cancelling…'
+                : 'Cancel Generation'}
+            </Button>
+          )}
+
+          {/* Manual clip inject (#1108) — upload appends + selects a video
+              version whose manifest snapshots the current pointers. */}
+          <UploadMediaButton
+            label="Replace Video"
+            pendingLabel="Uploading…"
+            accept="video/*"
+            isPending={replaceShotVideo.isPending}
+            disabled={!shot || isGeneratingMotion}
+            onFile={handleReplaceVideoFile}
+            className="w-full"
+          />
         </div>
       </TabsContent>
 

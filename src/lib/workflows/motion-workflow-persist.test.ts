@@ -35,6 +35,7 @@ const NOW = new Date('2026-06-02T00:00:00Z');
 
 type CallName =
   | 'videoVariants.update'
+  | 'videoVariants.completeIfLive'
   | 'videoVariants.select'
   | 'videoVariants.markFailedByWorkflowRun'
   | 'videoVariants.appendVersion'
@@ -56,6 +57,8 @@ function buildScopedDbSpy(
      * `set-generating-status` appended its version.
      */
     markFailedRows?: number;
+    /** Simulate a user cancel winning the race against completion (#1108). */
+    completionCancelled?: boolean;
   } = {}
 ): {
   scopedDb: PersistMotionScopedDb;
@@ -125,6 +128,12 @@ function buildScopedDbSpy(
         callOrder.push('videoVariants.update');
         versionUpdates.push({ id: versionId, data });
         return { id: versionId };
+      },
+      completeIfLive: async (versionId, data) => {
+        callOrder.push('videoVariants.completeIfLive');
+        versionUpdates.push({ id: versionId, data });
+        // Simulate a cancel that won the race when the test asks for it.
+        return opts.completionCancelled ? null : { id: versionId };
       },
       select: async (shotId, versionId, selectOpts) => {
         callOrder.push('videoVariants.select');
@@ -201,7 +210,7 @@ describe('persistMotionCompletion', () => {
 
     expect(outcome).toEqual({ status: 'completed', videoUrl: upload.url });
     expect(spy.callOrder).toEqual([
-      'videoVariants.update',
+      'videoVariants.completeIfLive',
       'sequenceEvents.record',
       'shots.getById',
       'renderSegments.getById',
@@ -209,12 +218,13 @@ describe('persistMotionCompletion', () => {
     ]);
 
     const [versionUpdate] = spy.versionUpdates;
-    if (!versionUpdate) throw new Error('expected videoVariants.update');
+    if (!versionUpdate)
+      throw new Error('expected videoVariants.completeIfLive');
     expect(versionUpdate.id).toBe('vv1');
+    // `status: 'completed'` is set by completeIfLive itself, not the data.
     expect(versionUpdate.data).toEqual({
       url: upload.url,
       storagePath: upload.path,
-      status: 'completed',
       generatedAt: NOW,
       error: null,
     });
@@ -236,6 +246,29 @@ describe('persistMotionCompletion', () => {
     ]);
   });
 
+  it('cancelled mid-render (#1108): the guarded completion no-ops — no event, no select, no emit', async () => {
+    const spy = buildScopedDbSpy({ completionCancelled: true });
+    const emits: Array<{ event: string; payload: MotionVideoProgressPayload }> =
+      [];
+
+    const outcome = await persistMotionCompletion({
+      scopedDb: spy.scopedDb,
+      ...completionArgs,
+      actorId: 'user1',
+      emit: async (event, payload) => {
+        emits.push({ event, payload });
+      },
+      now: () => NOW,
+    });
+
+    expect(outcome).toEqual({ status: 'cancelled' });
+    // The render result is discarded: nothing after the guarded write runs.
+    expect(spy.callOrder).toEqual(['videoVariants.completeIfLive']);
+    expect(spy.events).toEqual([]);
+    expect(spy.selects).toEqual([]);
+    expect(emits).toEqual([]);
+  });
+
   it('variant-only: finalizes the version + logs, but never repoints the shot', async () => {
     const spy = buildScopedDbSpy();
     const emits: MotionVideoProgressPayload[] = [];
@@ -253,7 +286,7 @@ describe('persistMotionCompletion', () => {
 
     expect(outcome).toEqual({ status: 'completed', videoUrl: upload.url });
     expect(spy.callOrder).toEqual([
-      'videoVariants.update',
+      'videoVariants.completeIfLive',
       'sequenceEvents.record',
     ]);
     expect(spy.selects).toEqual([]);
@@ -284,7 +317,7 @@ describe('persistMotionCompletion', () => {
 
     expect(outcome).toEqual({ status: 'shot-deleted' });
     expect(spy.callOrder).toEqual([
-      'videoVariants.update',
+      'videoVariants.completeIfLive',
       'sequenceEvents.record',
       'shots.getById',
     ]);

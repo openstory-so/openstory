@@ -103,6 +103,7 @@ function makeSceneRow(id: string, orderIndex: number): SceneRow {
     title: null,
     continuity: null,
     selectedScriptVersionId: null,
+    deletedAt: null,
     createdAt: now,
     updatedAt: now,
   };
