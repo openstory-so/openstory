@@ -35,6 +35,7 @@ import {
   inArray,
   isNotNull,
   isNull,
+  ne,
   or,
 } from 'drizzle-orm';
 import { LIVE_PENDING_STATUSES } from './frame-prompt-versions';
@@ -553,14 +554,19 @@ export function createFrameVariantsMethods(db: Database) {
      * Distinct `kind:'model'` model names that actually RENDERED something in a
      * sequence — this drives the user-facing image-model dropdown.
      *
-     * `url IS NOT NULL` is load-bearing, not tidiness (#1133). Without it the
-     * dropdown's correctness depends on the #1101 reclassify having caught
-     * every `flux_2_turbo` row, and it did not: 58 rows across 15 sequences are
-     * still `kind:'model'` because a frame selects them, which leaks the
-     * internal preview model into those sequences as a selectable option. A
-     * model whose only rows are empty husks produced nothing, so requiring an
-     * actual image fixes this for any hidden/internal model rather than
-     * depending on migration coverage.
+     * Excluding the husk shape is load-bearing, not tidiness (#1133). Without
+     * it the dropdown's correctness depends on the #1101 reclassify having
+     * caught every `flux_2_turbo` row, and it did not: 58 rows across 15
+     * sequences are still `kind:'model'` because a frame selects them, which
+     * leaks the internal preview model in as a selectable option.
+     *
+     * The predicate is `NOT (completed AND no url)` rather than the blunter
+     * `url IS NOT NULL`, which would also hide two kinds of row the user needs
+     * to see: an in-flight render (pending/generating has no url yet, so a
+     * model would vanish from the bar until its image landed) and a render
+     * whose attempts all failed (hiding it hides the failure). Measured against
+     * production, the narrow form removes the same 15 leaking sequences while
+     * losing 0 legitimate models; the blunt form also dropped 11.
      */
     listModelsForSequence: async (sequenceId: string): Promise<string[]> => {
       const rows = await db
@@ -570,7 +576,12 @@ export function createFrameVariantsMethods(db: Database) {
           and(
             eq(frameVariants.sequenceId, sequenceId),
             eq(frameVariants.kind, 'model'),
-            isNotNull(frameVariants.url),
+            // De Morgan of NOT (completed AND no url) — `status` is NOT NULL,
+            // so the inequality is safe without a null guard.
+            or(
+              ne(frameVariants.status, 'completed'),
+              isNotNull(frameVariants.url)
+            ),
             isNull(frameVariants.discardedAt)
           )
         );
