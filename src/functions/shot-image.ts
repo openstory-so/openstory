@@ -30,7 +30,6 @@ import {
 import { triggerWorkflow } from '@/lib/workflow/client';
 import { triggerStoryboard } from '@/lib/workflow/launchers';
 import { buildWorkflowLabel } from '@/lib/workflow/labels';
-import type { FrameVariantKind } from '@/lib/db/schema/frame-variants';
 import type {
   StoryboardTriggerInput,
   ShotVariantWorkflowInput,

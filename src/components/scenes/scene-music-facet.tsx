@@ -264,7 +264,7 @@ export const SceneMusicFacet: React.FC<SceneMusicFacetProps> = ({
         queryKey: sequenceKeys.detail(sequenceId),
       });
       await queryClient.invalidateQueries({
-        queryKey: musicPromptStalenessKey,
+        queryKey: stalenessKey,
       });
     },
     onError: (error) => {
