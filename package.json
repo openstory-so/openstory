@@ -101,7 +101,7 @@
     "@libsql/client": "^0.17.4",
     "@logtape/logtape": "^2.3.0",
     "@logtape/redaction": "^2.3.0",
-    "@openrouter/sdk": "0.13.20",
+    "@openrouter/sdk": "0.13.67",
     "@opentelemetry/api": "^1.9.1",
     "@opentelemetry/exporter-metrics-otlp-http": "^0.221.0",
     "@opentelemetry/exporter-trace-otlp-http": "^0.221.0",
