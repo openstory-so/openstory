@@ -236,7 +236,22 @@ frame.metadata = {
 
 Access via `frameService.getSceneData(frame)`, `getVisualPrompt(frame)`, `getMotionPrompt(frame)`, or directly: `frame.metadata.metadata.title`, `frame.metadata.prompts.visual.fullPrompt`. Storing the full scene lets us regenerate without re-analyzing the script and preserves variants for retries.
 
-## Native Grok (xAI)
+## Media vias: fal + BytePlus + xAI
+
+fal is the default **via** for every image / video / audio model. Catalog **vendor** is who trained the model (ByteDance, Kling, …). **Seedance (video) and Seedream (image) also have a native BytePlus Ark via (#1157)** — see below. Grok has a native xAI via. Everything after this paragraph in the fal section applies to the fal via only.
+
+### BytePlus Ark (Seedance + Seedream)
+
+Two vias, one catalog key. `IMAGE_TO_VIDEO_MODELS.seedance_v2` / `IMAGE_MODELS.seedream_v5` carry a `byteplusId` alongside their fal endpoint id. Claim is the Grok pattern: native model + live `ARK_API_KEY`, then **BytePlus when Ark is configured AND the team is not on its own fal key**. BYOK fal stays on fal. Sequences store the model _key_, never the endpoint.
+
+- **Platform key only.** `team_api_keys` stays `'openrouter' | 'fal'` — there is no BYOK for BytePlus.
+- **Ark is not fal-shaped**, so the fal codegen (`bun motion:codegen`, `MOTION_TRANSFORMS`) does not apply. Requests are built by `build-byteplus-video-request.ts` / `build-byteplus-image-request.ts`. Three traps those files exist to encode: Ark **rejects frame roles mixed with reference roles** (a shot with cast refs sends the still AS a reference, not a `first_frame`); Seedream's `2K` token is **square**, so non-square sizes must be spelled in pixels; and image `watermark` **defaults to true**.
+- **Pricing is a static card**, not `model_pricing` — BytePlus publishes no pricing API. `src/lib/ai/byteplus-pricing.ts` holds dated, advertised (NOT bill-verified) rates and is merged into the effective pricing map at read time, so a fresh deploy never bills $0. When Ark is configured, `applyBytePlusRouteAliases` points the fal endpoint ids at the Ark rate, which is why **no estimator or UI call site needs to know the via**. Video bills in tokens (÷1000 for the `1000 tokens` unit); images bill per image.
+- **Ark quotas are per-ACCOUNT** (shared by every team), where fal's are per-key — so the backpressure is 429 classification + exponential backoff in `byteplus-rate-limit.ts`, which deliberately does **not** consume the content-flag retry budget. Deliberately **not** a per-run fan-out cap: #1143 deleted that mechanism because it is per workflow RUN. Real admission control has to live where it can see the whole system. Every rejection emits a `byteplus_quota_backoff` PostHog event (`byteplus-observability.ts`) — un-deduped. Watch the `exhausted: true` rate: non-zero means it is time for a bounded queue in front of Ark (#891).
+- **Ark keys are region-scoped** and Seedance is served only from `ap-southeast`; an EU key fails at request time, not startup.
+- **E2E stays on fal.** `isBytePlusConfigured()` returns false under `E2E_TEST` unless `ARK_BASE_URL` is also set. Recording Ark fixtures needs a real Ark key.
+
+### Native Grok (xAI)
 
 Grok chat, image, and video go to `api.x.ai` via `@tanstack/ai-grok` instead of
 OpenRouter/fal when an xAI key resolves (team `xai` key → platform
@@ -253,7 +268,7 @@ keeps `llm-client`'s options object and the adapter agreeing on the route; and
 media job ids are via-scoped, so `MotionJobSubmission.via` pins polling to
 whoever the job was submitted to.
 
-## Fal.ai Integration
+### Fal.ai Integration
 
 **Always check `/llms.txt` before updating models.** Machine-readable, authoritative param specs:
 

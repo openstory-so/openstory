@@ -6,6 +6,10 @@
 import type { AnalysisModelId } from '@/lib/ai/models.config';
 import type { AspectRatio } from '@/lib/constants/aspect-ratios';
 import { MOTION_INPUT_SCHEMAS } from '@/lib/motion/endpoint-map';
+// Type-only: the Seedream adapter narrows `model` to a literal union, so the
+// catalog's `byteplusId` has to be that union rather than a bare string —
+// a retired id then fails typecheck instead of at request time (#1157).
+import type { BytePlusImageModel } from '@tanstack/ai-byteplus';
 import { z } from 'zod';
 
 import { getLogger } from '@/lib/observability/logger';
@@ -99,6 +103,11 @@ export const IMAGE_TO_VIDEO_MODELS = {
     qualityRank: 2,
     maxPromptLength: 4096,
     performance: { estimatedGenerationTime: 20, quality: 'best' as const },
+    // Native BytePlus Ark route (#1157). `dreamina-seedance-2-5-260628` is the
+    // newer flagship but answers 404 ModelNotOpen until it is activated in the
+    // Ark console, so the 2.0 id — which matches what the fal endpoint above
+    // proxies — is what ships.
+    byteplusId: 'dreamina-seedance-2-0-260128' as const,
   },
 } as const;
 
@@ -215,6 +224,10 @@ export const IMAGE_MODELS = {
     qualityRank: 10,
     description: 'Unified generation and editing',
     maxPromptLength: 2000,
+    // Native BytePlus Ark route (#1157). Ark carries reference images inline
+    // on the generation call, so this route has no separate edit endpoint —
+    // see EDIT_ENDPOINTS, which stays fal-only.
+    byteplusId: 'seedream-5-0-260128' as const,
   },
   flux_2_turbo: {
     id: 'fal-ai/flux-2/turbo' as const,
@@ -261,8 +274,30 @@ export function getImageModelById(id: string): ImageModelConfig | undefined {
   return Object.values(IMAGE_MODELS).find((model) => model.id === id);
 }
 
+/**
+ * The BytePlus Ark model id for a text-to-image model, or undefined when the
+ * model has no native Ark route and always goes through fal (#1157).
+ */
+export function getBytePlusImageModelId(
+  modelKey: TextToImageModel
+): BytePlusImageModel | undefined {
+  const config = IMAGE_MODELS[modelKey];
+  return 'byteplusId' in config ? config.byteplusId : undefined;
+}
+
 // Image to video model types
 export type ImageToVideoModel = keyof typeof IMAGE_TO_VIDEO_MODELS;
+
+/**
+ * The BytePlus Ark model id for a motion model, or undefined when the model
+ * has no native Ark route and always goes through fal (#1157).
+ */
+export function getBytePlusVideoModelId(
+  modelKey: ImageToVideoModel
+): string | undefined {
+  const config = IMAGE_TO_VIDEO_MODELS[modelKey];
+  return 'byteplusId' in config ? config.byteplusId : undefined;
+}
 
 export const DEFAULT_VIDEO_MODEL: ImageToVideoModel = 'seedance_v2';
 

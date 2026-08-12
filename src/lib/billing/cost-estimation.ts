@@ -135,6 +135,9 @@ export function estimateImageCost(
 ): Microdollars | null {
   const { width, height } = aspectRatioToDimensions(aspectRatio);
 
+  // Always the fal catalog id: when the platform routes this model to BytePlus
+  // Ark, the pricing map already aliases that id to the Ark rate (#1157), so
+  // no call site has to know the route.
   return estimateFalCost(
     (opts.edit ? getEditEndpoint(model) : null) ?? IMAGE_MODELS[model].id,
     {
@@ -174,6 +177,7 @@ export function estimateVideoCost(
     opts.hasReferenceImages === true
   );
   // Keep the catalog model id path when unresolved (tests / unknown keys).
+  // Both ids alias to the Ark rate when the platform routes there (#1157).
   const falEndpointId = endpointId || IMAGE_TO_VIDEO_MODELS[model].id;
   return estimateFalCost(
     falEndpointId,

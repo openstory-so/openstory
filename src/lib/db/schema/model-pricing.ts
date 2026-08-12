@@ -23,7 +23,12 @@ import {
 import { sql } from 'drizzle-orm';
 import { generateId } from '../id';
 
-export type ModelPricingProvider = 'fal' | 'openrouter';
+/**
+ * `'byteplus'` rows are written only by `model_usage_observations` — BytePlus
+ * publishes no pricing API, so its rates live in the static card in
+ * `src/lib/ai/byteplus-pricing.ts` rather than in `model_pricing` (#1157).
+ */
+export type ModelPricingProvider = 'fal' | 'openrouter' | 'byteplus';
 
 /**
  * The observed-units pair, shared by this table, the cron, and
