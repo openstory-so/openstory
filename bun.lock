@@ -26,9 +26,9 @@
         "@posthog/react": "^1.10.3",
         "@react-email/components": "^1.0.12",
         "@tailwindcss/typography": "^0.5.20",
-        "@tanstack/ai": "^0.44.0",
+        "@tanstack/ai": "^0.44.1",
         "@tanstack/ai-fal": "^0.10.0",
-        "@tanstack/ai-openrouter": "^0.16.0",
+        "@tanstack/ai-openrouter": "^0.17.0",
         "@tanstack/react-query": "^5.101.4",
         "@tanstack/react-router": "^1.170.25",
         "@tanstack/react-router-ssr-query": "^1.167.1",
@@ -1093,7 +1093,7 @@
 
     "@tailwindcss/vite": ["@tailwindcss/vite@4.3.3", "", { "dependencies": { "@tailwindcss/node": "4.3.3", "@tailwindcss/oxide": "4.3.3", "tailwindcss": "4.3.3" }, "peerDependencies": { "vite": "^5.2.0 || ^6 || ^7 || ^8" } }, "sha512-yYU8cogLeSh/ms2jh8Fj7jaba/EWa7Ja6GoUqYZaraEuCI5YS6ms6ObZgjjedm+jm6XZjdNRWBpPP6Z86oOxcw=="],
 
-    "@tanstack/ai": ["@tanstack/ai@0.44.0", "", { "dependencies": { "@ag-ui/core": "0.1.1-canary.beta.0", "@standard-schema/spec": "^1.1.0", "@tanstack/ai-event-client": "^0.8.0", "@tanstack/ai-utils": "^0.4.0", "partial-json": "^0.1.7" }, "peerDependencies": { "@opentelemetry/api": ">=1.9.0" }, "optionalPeers": ["@opentelemetry/api"] }, "sha512-tSHFNYg+x+SQeUUjIOqNmM0Y41+3Fw08LDE3A0vvN4+5O5EG/0SCLl6neCEsPuLPPKCHIJQIItWAfqQeQXR5qA=="],
+    "@tanstack/ai": ["@tanstack/ai@0.44.1", "", { "dependencies": { "@ag-ui/core": "0.1.1-canary.beta.0", "@standard-schema/spec": "^1.1.0", "@tanstack/ai-event-client": "^0.8.0", "@tanstack/ai-utils": "^0.4.0", "partial-json": "^0.1.7" }, "peerDependencies": { "@opentelemetry/api": ">=1.9.0" }, "optionalPeers": ["@opentelemetry/api"] }, "sha512-pF5JWRqz3qEcrcsJG76D8NEiv7dCaknPmL3HYbUrt2XJDxEbjkGgNDV+eQ9fmcBLqg7i66AjDjJlcSuREtJu/A=="],
 
     "@tanstack/ai-devtools-core": ["@tanstack/ai-devtools-core@0.5.2", "", { "dependencies": { "@tanstack/ai": "^0.44.0", "@tanstack/ai-event-client": "^0.8.0", "@tanstack/devtools-ui": "^0.5.1", "@tanstack/devtools-utils": "^0.4.0", "goober": "^2.1.18", "solid-js": "^1.9.10" } }, "sha512-8bGbMVM/V/Wfl6OpgzZ/6uYPxNifKM7Vi9WmOsBlI3Op0mz1AZPHXZOWFRfPM8YRS+gNIM7mLfKLmu0fRz5b5w=="],
 
@@ -1101,7 +1101,7 @@
 
     "@tanstack/ai-fal": ["@tanstack/ai-fal@0.10.0", "", { "dependencies": { "@fal-ai/client": "^1.10.1", "@tanstack/ai-utils": "^0.4.0" }, "peerDependencies": { "@tanstack/ai": "^0.44.0" } }, "sha512-0nP0hpSQImUEWTm0Kl69ca+tIWdMbSBD/q2V0y8vuzF27N5kCUIhchvNadjBtmktXfMJ6C1QjroN40UkVrGRgw=="],
 
-    "@tanstack/ai-openrouter": ["@tanstack/ai-openrouter@0.16.0", "", { "dependencies": { "@openrouter/sdk": "0.13.20", "@tanstack/ai-utils": "^0.4.0" }, "peerDependencies": { "@tanstack/ai": "^0.44.0" } }, "sha512-qjNPQSG3ZJIQGUEmAR5HGnVug6IiwtjfKKnuuGPh4kv8JwuMV/LpRIKpFkoJa5MA5tqKbWDPJAa8ODEi1ZdLDA=="],
+    "@tanstack/ai-openrouter": ["@tanstack/ai-openrouter@0.17.0", "", { "dependencies": { "@openrouter/sdk": "0.13.20", "@tanstack/ai-utils": "^0.4.0" }, "peerDependencies": { "@tanstack/ai": "^0.44.1" } }, "sha512-rD0lljULNKyfY2DIFdWt6tvNzS4tHXr0IqT/GJ7dSMuYpRBZy033RtMcVsZW5h1O0g+1N4UG4QycccL0Rj124Q=="],
 
     "@tanstack/ai-utils": ["@tanstack/ai-utils@0.4.0", "", {}, "sha512-xqvAgPJkIuGk1m+jZKyb7vBTQIaBmUD9EVzlPkDWWMp80n69uwL0TnBZCVk+OwL9goTQiFy648dnBfLsiJgl6A=="],
 
@@ -2868,6 +2868,8 @@
     "@tailwindcss/oxide-wasm32-wasi/tslib": ["tslib@2.8.1", "", { "bundled": true }, "sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w=="],
 
     "@tailwindcss/typography/postcss-selector-parser": ["postcss-selector-parser@6.0.10", "", { "dependencies": { "cssesc": "^3.0.0", "util-deprecate": "^1.0.2" } }, "sha512-IQ7TZdoaqbT+LCpShg46jnZVlhWD2w6iQYAcYXfHARZ7X1t/UGhhceQDs5X0cGqKvYlHNOuv7Oa1xmb0oQuA3w=="],
+
+    "@tanstack/ai-devtools-core/@tanstack/ai": ["@tanstack/ai@0.44.0", "", { "dependencies": { "@ag-ui/core": "0.1.1-canary.beta.0", "@standard-schema/spec": "^1.1.0", "@tanstack/ai-event-client": "^0.8.0", "@tanstack/ai-utils": "^0.4.0", "partial-json": "^0.1.7" }, "peerDependencies": { "@opentelemetry/api": ">=1.9.0" }, "optionalPeers": ["@opentelemetry/api"] }, "sha512-tSHFNYg+x+SQeUUjIOqNmM0Y41+3Fw08LDE3A0vvN4+5O5EG/0SCLl6neCEsPuLPPKCHIJQIItWAfqQeQXR5qA=="],
 
     "@tanstack/ai-event-client/@tanstack/devtools-event-client": ["@tanstack/devtools-event-client@0.4.3", "", { "bin": { "intent": "bin/intent.js" } }, "sha512-OZI6QyULw0FI0wjgmeYzCIfbgPsOEzwJtCpa69XrfLMtNXLGnz3d/dIabk7frg0TmHo+Ah49w5I4KC7Tufwsvw=="],
 
