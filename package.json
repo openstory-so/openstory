@@ -185,7 +185,7 @@
     "@vitejs/plugin-react": "^6.0.5",
     "chalk": "^6.0.0",
     "json5": "^2.2.3",
-    "knip": "^6.32.1",
+    "knip": "^6.32.2",
     "lefthook": "^2.1.10",
     "msw": "^2.15.0",
     "msw-storybook-addon": "^3.0.0",
