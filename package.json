@@ -161,7 +161,7 @@
   "devDependencies": {
     "@cf-wasm/photon": "^0.4.0",
     "@clack/prompts": "^1.7.0",
-    "@cloudflare/vite-plugin": "^1.51.2",
+    "@cloudflare/vite-plugin": "^1.52.1",
     "@copilotkit/aimock": "^1.38.0",
     "@faker-js/faker": "^10.6.0",
     "@logtape/pretty": "^2.3.1",
@@ -200,7 +200,7 @@
     "typescript": "^7.0.2",
     "vite": "^8.2.1",
     "vitest": "^4.1.10",
-    "wrangler": "^4.120.1"
+    "wrangler": "^4.123.0"
   },
   "overrides": {
     "@better-auth/core": "1.6.26",
