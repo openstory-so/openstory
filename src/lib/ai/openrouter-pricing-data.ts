@@ -51,10 +51,10 @@ export const OPENROUTER_PRICING: Record<string, OpenRouterPricing> = {
     promptPerMillionTokens: 0.26899999999999996,
     completionPerMillionTokens: 0.39999999999999997,
   },
-  'z-ai/glm-5.2': {
-    name: 'Z.ai: GLM 5.2',
-    promptPerMillionTokens: 0.9057999999999999,
-    completionPerMillionTokens: 2.8468,
+  'z-ai/glm-5.3': {
+    name: 'Z.ai: GLM 5.3',
+    promptPerMillionTokens: 1.4,
+    completionPerMillionTokens: 4.4,
   },
   'google/gemini-3.1-pro-preview': {
     name: 'Google: Gemini 3.1 Pro Preview',

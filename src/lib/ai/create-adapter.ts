@@ -78,6 +78,10 @@ export const CATALOG_LAG_MODELS = [
     input: ['text', 'image'],
     features: ['reasoning', 'structured_outputs'],
   }),
+  createModel('z-ai/glm-5.3', {
+    input: ['text'],
+    features: ['reasoning', 'structured_outputs'],
+  }),
 ] as const;
 
 const openRouterTextExtended = extendAdapter(

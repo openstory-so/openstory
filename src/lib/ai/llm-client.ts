@@ -234,7 +234,7 @@ const STRUCTURED_OUTPUT_MODELS = new Set([
   'x-ai/grok-4.20',
   'anthropic/claude-opus-4.8',
   'deepseek/deepseek-v3.2',
-  'z-ai/glm-5.2',
+  'z-ai/glm-5.3',
   'google/gemini-3.1-pro-preview',
   'openai/gpt-5.5',
   'google/gemini-3-flash-preview',

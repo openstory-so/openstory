@@ -80,13 +80,13 @@ export const SCRIPT_ANALYSIS_MODELS = [
     description: 'MIT license, MMLU 94.2, GPT-5 class reasoning',
   },
   {
-    id: 'z-ai/glm-5.2',
-    name: 'GLM-5.2',
+    id: 'z-ai/glm-5.3',
+    name: 'GLM-5.3',
     provider: 'Z.ai',
     license: 'open-source' as const,
     qualityRank: 8,
     contextWindow: 1_048_576,
-    // GLM-5.2 is text-only. Image-bearing calls (the vision-conditioned motion
+    // GLM-5.3 is text-only. Image-bearing calls (the vision-conditioned motion
     // path, #929) transparently route to `DEFAULT_VISION_MODEL` — see
     // `resolveVisionModel`. GLM's own vision sibling GLM-4.6V was tried (#942)
     // but can't do strict structured outputs, which the motion-prompt call
