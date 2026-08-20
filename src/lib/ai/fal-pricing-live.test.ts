@@ -125,8 +125,8 @@ describe('getEffectiveFalPricing', () => {
   it('keeps the static BytePlus rate card when the fal table is empty', async () => {
     const { getEffectiveFalPricing } = await loadWithRows([]);
     const map = await getEffectiveFalPricing();
-    expect(map['dreamina-seedance-2-0-260128']).toEqual({
-      unitPrice: 4300,
+    expect(map['dreamina-seedance-2-5-260628']).toEqual({
+      unitPrice: 10_700,
       unit: '1000 tokens',
     });
   });
@@ -139,9 +139,8 @@ describe('getEffectiveFalPricing', () => {
  * pre-flight number quotes a provider we are not billing.
  */
 describe('BytePlus route aliasing', () => {
-  const SEEDANCE_FAL = 'bytedance/seedance-2.0/enterprise/v2/image-to-video';
-  const SEEDANCE_REF =
-    'bytedance/seedance-2.0/enterprise/v2/reference-to-video';
+  const SEEDANCE_FAL = 'bytedance/seedance-2.5/image-to-video';
+  const SEEDANCE_REF = 'bytedance/seedance-2.5/reference-to-video';
   const SEEDREAM_FAL = 'fal-ai/bytedance/seedream/v5/lite/text-to-image';
 
   const falRows = [
@@ -166,7 +165,7 @@ describe('BytePlus route aliasing', () => {
       ARK_API_KEY: 'ark-test',
     });
     const map = await getEffectiveFalPricing();
-    expect(map[SEEDANCE_FAL]?.unitPrice).toBe(4300);
+    expect(map[SEEDANCE_FAL]?.unitPrice).toBe(10_700);
     expect(map[SEEDREAM_FAL]?.unitPrice).toBe(90_000);
   });
 
@@ -178,7 +177,7 @@ describe('BytePlus route aliasing', () => {
       ARK_API_KEY: 'ark-test',
     });
     expect((await getEffectiveFalPricing())[SEEDANCE_REF]?.unitPrice).toBe(
-      4300
+      10_700
     );
   });
 

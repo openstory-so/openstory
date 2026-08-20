@@ -24,7 +24,7 @@ describe('BYTEPLUS_RATE_CARD', () => {
   });
 
   it('denominates video per 1000 tokens so the tokens estimator applies', () => {
-    expect(BYTEPLUS_RATE_CARD['dreamina-seedance-2-0-260128']?.unit).toBe(
+    expect(BYTEPLUS_RATE_CARD['dreamina-seedance-2-5-260628']?.unit).toBe(
       '1000 tokens'
     );
   });

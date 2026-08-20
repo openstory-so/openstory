@@ -81,11 +81,11 @@ describe('resolveBatchShotVideoModel', () => {
 /** Unequal Seedance i2v vs ref rates so routing regressions fail the suite. */
 const seedanceUnequalPricing = {
   ...FAL_PRICING,
-  'bytedance/seedance-2.0/enterprise/v2/image-to-video': {
+  'bytedance/seedance-2.5/image-to-video': {
     unitPrice: micros(10_000),
     unit: 'units',
   },
-  'bytedance/seedance-2.0/enterprise/v2/reference-to-video': {
+  'bytedance/seedance-2.5/reference-to-video': {
     unitPrice: micros(20_000),
     unit: 'units',
   },

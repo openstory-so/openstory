@@ -96,18 +96,18 @@ export const IMAGE_TO_VIDEO_MODELS = {
     performance: { estimatedGenerationTime: 15, quality: 'best' as const },
   },
   seedance_v2: {
-    id: 'bytedance/seedance-2.0/enterprise/v2/image-to-video',
-    name: 'Seedance 2.0',
+    id: 'bytedance/seedance-2.5/image-to-video',
+    name: 'Seedance 2.5',
     vendor: 'ByteDance',
     license: 'proprietary' as const,
     qualityRank: 2,
     maxPromptLength: 4096,
     performance: { estimatedGenerationTime: 20, quality: 'best' as const },
-    // Native BytePlus Ark route (#1157). `dreamina-seedance-2-5-260628` is the
-    // newer flagship but answers 404 ModelNotOpen until it is activated in the
-    // Ark console, so the 2.0 id — which matches what the fal endpoint above
-    // proxies — is what ships.
-    byteplusId: 'dreamina-seedance-2-0-260128' as const,
+    // Native BytePlus Ark route (#1157). Must be activated in the Ark console
+    // first — an unopened model answers 404 ModelNotOpen at request time. The
+    // Ark route requests 720p (see BYTEPLUS_RESOLUTION); the rate card's
+    // $10.70/1M-token entry is exact for that tier only.
+    byteplusId: 'dreamina-seedance-2-5-260628' as const,
   },
 } as const;
 
@@ -649,7 +649,7 @@ export const MOTION_REFERENCE_ENDPOINTS: Partial<
   Record<ImageToVideoModel, MotionReferenceEndpointConfig>
 > = {
   seedance_v2: {
-    endpointId: 'bytedance/seedance-2.0/enterprise/v2/reference-to-video',
+    endpointId: 'bytedance/seedance-2.5/reference-to-video',
     tag: (position) => `@Image${position}`,
     maxImages: 9,
   },

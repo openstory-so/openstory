@@ -328,11 +328,11 @@ describe('estimateVideoCost endpoint routing', () => {
     // made this assertion tautological (#1140 review).
     const pricing = {
       ...FAL_PRICING,
-      'bytedance/seedance-2.0/enterprise/v2/image-to-video': {
+      'bytedance/seedance-2.5/image-to-video': {
         unitPrice: micros(10_000),
         unit: 'units',
       },
-      'bytedance/seedance-2.0/enterprise/v2/reference-to-video': {
+      'bytedance/seedance-2.5/reference-to-video': {
         unitPrice: micros(20_000),
         unit: 'units',
       },
@@ -354,11 +354,11 @@ describe('estimateVideoCost endpoint routing', () => {
   it('storyboard motion with Seedance tracks the ref endpoint rate', () => {
     const pricing = {
       ...FAL_PRICING,
-      'bytedance/seedance-2.0/enterprise/v2/image-to-video': {
+      'bytedance/seedance-2.5/image-to-video': {
         unitPrice: micros(10_000),
         unit: 'units',
       },
-      'bytedance/seedance-2.0/enterprise/v2/reference-to-video': {
+      'bytedance/seedance-2.5/reference-to-video': {
         unitPrice: micros(20_000),
         unit: 'units',
       },

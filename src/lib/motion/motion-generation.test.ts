@@ -83,7 +83,7 @@ describe('Motion Service', () => {
     it('should submit job with Seedance 2 model options', async () => {
       mockGenerateVideo.mockResolvedValue({
         jobId: 'test-seedance-request-id',
-        model: 'bytedance/seedance-2.0/enterprise/v2/image-to-video',
+        model: 'bytedance/seedance-2.5/image-to-video',
       });
 
       const result = await submitMotionJob({

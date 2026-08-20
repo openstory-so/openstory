@@ -1,0 +1,24 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use @Image1 as the starting frame.\nSteady handheld tracking backward holds @Image2 and @Image3 as they walk toward camera along the promenade. @Image3 stays beside her, board tucked under one arm, grin already on as she clocks the @Image4. @Image2 does not break stride, still looking over at her.\n\n@Image3 delivers the tease, mouth moving, a small tilt toward @Image2's face. @Image2 listens, tote swaying with each step, expression still settling.\n\nHair lifts in the sea breeze. Distant joggers keep coming up the path. Surf rolls beyond the rail.\n\nmorning surf beyond the rail, light coastal breeze, distant promenade foot traffic. footsteps on pale concrete, tote strap shifting on @Image2's shoulder, foam board tapping softly against @Image3 as she walks, joggers' footfalls approaching.\n\n@Image3 says \"You're going in with that on?\" in a amused teasing grin voice.\n\nNo BGM, no music. Generate only dialogue, environmental sounds, and action sounds. Single continuous shot, no cuts. Avoid jitter and bent limbs.",
+        "model": "bytedance/seedance-2.5/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://v3b.fal.media/files/b/0aa70c0f/vYXpxjf7hNnZ3bPI_KPjM_video.mp4",
+            "content_type": "video/mp4",
+            "file_name": "video.mp4",
+            "file_size": 2631688
+          },
+          "seed": 471512148
+        },
+        "status": 200,
+        "billableUnits": 108.9
+      }
+    }
+  ]
+}

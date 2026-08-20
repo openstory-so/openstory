@@ -31,7 +31,7 @@ const QUALITY_OVERRIDES: Partial<
  * Second lever against model-generated music (#1165) for the two endpoints
  * that expose `negative_prompt`; the in-prompt direction from
  * `assembleMotionPrompt` covers every audio-capable model, and is Seedance
- * 2.0's only lever since its schema has no negative prompt.
+ * 2.5's only lever since its schema has no negative prompt.
  *
  * Kling's `negative_prompt` defaults to 'blur, distort, and low quality' when
  * absent — supplying our own replaces it, so those terms are carried over.
@@ -115,7 +115,7 @@ export function buildModelInput<T extends ImageToVideoModel>(
 /** Output of a reference-to-video transform (the endpoints in
  *  `MOTION_REFERENCE_ENDPOINTS`). */
 type ReferenceVideoOutput = z.output<
-  (typeof MOTION_TRANSFORMS)['bytedance/seedance-2.0/enterprise/v2/reference-to-video']
+  (typeof MOTION_TRANSFORMS)['bytedance/seedance-2.5/reference-to-video']
 >;
 
 /**
@@ -126,7 +126,7 @@ type ReferenceVideoOutput = z.output<
  * fetchable ones first.
  *
  * When `resolveMotionEndpoint` routes to a dedicated reference-to-video
- * endpoint (currently Seedance 2.0 with cast/element refs), the still goes
+ * endpoint (currently Seedance 2.5 with cast/element refs), the still goes
  * first in `image_urls[]` with the sheets after it — there is no separate
  * start-frame `image_url` on that endpoint.
  */

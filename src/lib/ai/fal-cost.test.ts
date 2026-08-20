@@ -22,7 +22,7 @@ const PRICING: Record<string, EffectiveFalPricing> = {
     unit: 'units',
     typicalUnitsPerCall: 1,
   },
-  'bytedance/seedance-2.0/enterprise/v2/image-to-video': {
+  'bytedance/seedance-2.5/image-to-video': {
     unitPrice: micros(14_000),
     unit: 'units',
   },
@@ -69,7 +69,7 @@ describe('falCostFromUnits', () => {
   test('per-token: seedance bills 1000-token units at $0.014', async () => {
     expect(
       await falCostFromUnits(
-        'bytedance/seedance-2.0/enterprise/v2/image-to-video',
+        'bytedance/seedance-2.5/image-to-video',
         108,
         PRICING
       )
@@ -208,14 +208,14 @@ describe('estimateFalCost', () => {
     const expected720p = micros(1_587_600);
     expect(
       estimateFalCost(
-        'bytedance/seedance-2.0/enterprise/v2/image-to-video',
+        'bytedance/seedance-2.5/image-to-video',
         { durationSeconds: 5 },
         PRICING
       )
     ).toBe(expected720p);
     expect(
       estimateFalCost(
-        'bytedance/seedance-2.0/enterprise/v2/image-to-video',
+        'bytedance/seedance-2.5/image-to-video',
         { durationSeconds: 5, resolution: '720p' },
         PRICING
       )
@@ -226,14 +226,14 @@ describe('estimateFalCost', () => {
     // 1080p pixel area is 2.25× 720p → cost scales the same way
     const at1080 = Number(
       estimateFalCost(
-        'bytedance/seedance-2.0/enterprise/v2/image-to-video',
+        'bytedance/seedance-2.5/image-to-video',
         { durationSeconds: 5, resolution: '1080p' },
         PRICING
       )
     );
     const at720 = Number(
       estimateFalCost(
-        'bytedance/seedance-2.0/enterprise/v2/image-to-video',
+        'bytedance/seedance-2.5/image-to-video',
         { durationSeconds: 5, resolution: '720p' },
         PRICING
       )

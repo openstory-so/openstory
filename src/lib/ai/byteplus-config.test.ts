@@ -16,7 +16,7 @@ describe('resolveMediaRoute', () => {
   it('routes to fal when no Ark key is configured', () => {
     expect(
       resolveMediaRoute({
-        byteplusModelId: 'dreamina-seedance-2-0-260128',
+        byteplusModelId: 'dreamina-seedance-2-5-260628',
         usingOwnFalKey: false,
       })
     ).toBe('fal');
@@ -26,7 +26,7 @@ describe('resolveMediaRoute', () => {
     env.ARK_API_KEY = 'ark-test';
     expect(
       resolveMediaRoute({
-        byteplusModelId: 'dreamina-seedance-2-0-260128',
+        byteplusModelId: 'dreamina-seedance-2-5-260628',
         usingOwnFalKey: false,
       })
     ).toBe('byteplus');
@@ -46,7 +46,7 @@ describe('resolveMediaRoute', () => {
     env.ARK_API_KEY = 'ark-test';
     expect(
       resolveMediaRoute({
-        byteplusModelId: 'dreamina-seedance-2-0-260128',
+        byteplusModelId: 'dreamina-seedance-2-5-260628',
         usingOwnFalKey: true,
       })
     ).toBe('fal');

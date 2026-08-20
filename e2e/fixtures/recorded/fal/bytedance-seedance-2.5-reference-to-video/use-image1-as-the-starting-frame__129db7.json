@@ -1,0 +1,24 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use @Image1 as the starting frame.\nSteady handheld drift along the promenade. @Image2 bites down on the side of the dripping mango ice, then draws it back as juice beads at the corner of her mouth. She thumbs the juice away and slides her hand along the rail, taking a slow step forward.\n\nMelt keeps dripping from the ice. A light sea breeze lifts the open shirt. Waves roll beyond the rail.\n\nlate-afternoon Bondi promenade, rolling surf, distant walkers, light coastal breeze. crisp bite into ice, juice dripping from the stick, soft thumb wipe at the mouth, footstep on concrete, shirt fabric lifting in the breeze.\n\nNo BGM, no music. Generate only dialogue, environmental sounds, and action sounds. Single continuous shot, no cuts. Avoid jitter and bent limbs.\n\nReference images:\n@Image3: CORAL_LIPSTICK - A slim pocket-length lipstick tube — keep visually consistent throughout the shot.",
+        "model": "bytedance/seedance-2.5/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://v3b.fal.media/files/b/0aa70c12/cH_OlGho_xerMRm0fl2se_video.mp4",
+            "content_type": "video/mp4",
+            "file_name": "video.mp4",
+            "file_size": 2167926
+          },
+          "seed": 532819232
+        },
+        "status": 200,
+        "billableUnits": 108.9
+      }
+    }
+  ]
+}

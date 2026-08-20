@@ -20,7 +20,7 @@ const references = [
 describe('buildBytePlusVideoRequest', () => {
   it('uses the Ark model id, not the fal endpoint', () => {
     const request = buildBytePlusVideoRequest(base, 'seedance_v2');
-    expect(request.modelId).toBe('dreamina-seedance-2-0-260128');
+    expect(request.modelId).toBe('dreamina-seedance-2-5-260628');
   });
 
   it('renders size as the ratio_resolution template Ark expects', () => {
