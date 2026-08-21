@@ -341,14 +341,17 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
 
     const imageCostMicros = imageResult.metadata.cost ?? ZERO_MICROS;
     const { teamId, shotId, sequenceId } = input;
-    // Before the deduction guard — see recordFalUsageStep (#1069).
-    const falUsage = await recordFalUsageStep(
-      step,
-      scopedDb,
-      imageResult.metadata
-    );
+    // Native OpenAI images are billed at list prices, not fal units (#1168).
+    const falUsage =
+      imageResult.via === 'fal'
+        ? await recordFalUsageStep(step, scopedDb, imageResult.metadata)
+        : undefined;
 
-    if (imageCostMicros > 0 && teamId && !imageResult.metadata.usedOwnKey) {
+    if (
+      imageCostMicros > 0 &&
+      teamId &&
+      (!imageResult.metadata.usedOwnKey || imageResult.via === 'openai')
+    ) {
       await step.do('deduct-credits', async () => {
         await deductWorkflowCredits({
           scopedDb,
@@ -358,6 +361,9 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
           idempotencyKey: `${event.instanceId}:image`,
           metadata: {
             ...falUsage,
+            endpointId: imageResult.metadata.endpointId,
+            requestId: imageResult.metadata.requestId,
+            via: imageResult.via,
             model: prep.params.model,
             shotId: input.shotId,
             sequenceId: input.sequenceId,
@@ -532,9 +538,10 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
           assetKind: 'frame_variant',
           assetId: prep.versionId,
           storageKey: buildR2Key(STORAGE_BUCKETS.THUMBNAILS, upload.path),
-          provider: 'fal',
+          provider: imageResult.via,
           model: prep.params.model,
-          providerRequestId: falUsage?.requestId ?? null,
+          providerRequestId:
+            falUsage?.requestId ?? imageResult.metadata.requestId ?? null,
           workflowRunId: event.instanceId,
           prompt: prep.params.prompt,
           sequenceId,

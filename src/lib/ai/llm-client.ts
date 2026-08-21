@@ -22,6 +22,7 @@ import type { ProviderPreferences } from '@tanstack/ai-openrouter';
 import { webSearchTool } from '@tanstack/ai-openrouter/tools';
 import { z } from 'zod';
 import { aiDebugLogger } from './ai-debug-logger';
+import { openAiTextCostFromUsage } from './openai-cost';
 import { createAdapter, type LlmKeyInfo } from './create-adapter';
 
 import { getLogger } from '@/lib/observability/logger';
@@ -120,8 +121,13 @@ export function createUsageCapture(): {
  */
 export function llmCostFromUsage(
   usage: TokenUsage | undefined,
-  modelId: string
+  modelId: string,
+  via?: LlmKeyInfo['via']
 ): Microdollars {
+  if (via === 'openai') {
+    return openAiTextCostFromUsage(usage, modelId);
+  }
+
   if (usageHasCost(usage)) {
     return usdToMicros(usage.cost);
   }
@@ -129,7 +135,7 @@ export function llmCostFromUsage(
   reportMissingBillingCost({
     source: 'llm-cost-from-usage',
     modelId,
-    metadata: { usage },
+    metadata: { usage, via },
   });
   return ZERO_MICROS;
 }
@@ -326,6 +332,19 @@ function convertMessages(messages: ChatMessage[]): {
 // chat(). The public LLMRequestParams surface keeps its OpenAI-style
 // snake_case names; this is the single mapping point.
 function buildModelOptions(params: LLMRequestParams) {
+  if (params.apiKey?.via === 'openai') {
+    return {
+      ...(params.reasoning && {
+        reasoning: {
+          effort: params.reasoning.effort,
+        },
+      }),
+      max_output_tokens: params.max_tokens,
+      temperature: params.temperature,
+      top_p: params.top_p,
+    };
+  }
+
   // Azure-hosted Claude compiles strict structured-output schemas against a
   // much smaller grammar budget than Anthropic's own endpoint and rejects our
   // analysis schemas ("The compiled grammar is too large"). Keep Anthropic
@@ -350,6 +369,9 @@ function buildModelOptions(params: LLMRequestParams) {
  * (not an empty array) when no tool is requested so the option is omitted.
  */
 function buildTools(params: LLMRequestParams) {
+  // OpenRouter's web-search server tool is not valid on the native OpenAI
+  // adapter. Skip it — analysis still runs, just without search.
+  if (params.apiKey?.via === 'openai') return undefined;
   if (!params.webSearch) return undefined;
   const opts = params.webSearch === true ? {} : params.webSearch;
   return [
@@ -651,7 +673,9 @@ export async function* callLLMStream<T>(
     ...baseChatOptions(params),
     modelOptions: {
       ...buildModelOptions(params),
-      streamOptions: { includeUsage: true },
+      ...(params.apiKey?.via !== 'openai' && {
+        streamOptions: { includeUsage: true },
+      }),
     },
     middleware: [
       ...aiObservabilityMiddleware({

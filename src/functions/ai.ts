@@ -88,18 +88,20 @@ function enforceRateLimit(limiter: RateLimiter, key: string): void {
  * Check pre-flight billing and resolve the key for the LLM call.
  * `deduct` is undefined when billing is skipped — the team's own key pays,
  * either their OpenRouter key or their fal key routed through fal's
- * OpenRouter endpoint (issue #895).
+ * OpenRouter endpoint (issue #895). OpenAI-routed calls still debit
+ * OpenStory credits at list prices (#1168).
  */
 async function prepareBilling(
   scopedDb: ScopedDb,
   description: string,
+  model: string,
   metadata?: Record<string, unknown>
 ): Promise<{
   llmKey: ResolvedLlmKey;
   deduct?: (actualCost: Microdollars) => Promise<void>;
 }> {
-  const llmKey = await scopedDb.apiKeys.resolveLlmKey();
-  if (llmKey.source === 'team') return { llmKey };
+  const llmKey = await scopedDb.apiKeys.resolveLlmKey(model);
+  if (llmKey.source === 'team' && llmKey.via !== 'openai') return { llmKey };
 
   const estimatedCost = estimateLLMCost(1);
   const canAfford = await scopedDb.billing.hasEnoughCredits(estimatedCost);
@@ -146,6 +148,7 @@ export const shortenPromptFn = createServerFn({ method: 'POST' })
     const { llmKey, deduct } = await prepareBilling(
       context.scopedDb,
       `Prompt shortening (${RECOMMENDED_MODELS.fast})`,
+      RECOMMENDED_MODELS.fast,
       { model: RECOMMENDED_MODELS.fast }
     );
 
@@ -177,7 +180,7 @@ export const shortenPromptFn = createServerFn({ method: 'POST' })
       throw new Error('Shortened prompt is too short. Please try again.');
     }
 
-    await deduct?.(llmCostFromUsage(usage, model));
+    await deduct?.(llmCostFromUsage(usage, model, llmKey.via));
 
     return {
       originalPrompt: data.prompt,
@@ -234,6 +237,7 @@ export const estimateSceneDurationFn = createServerFn({ method: 'POST' })
     const { llmKey, deduct } = await prepareBilling(
       context.scopedDb,
       `Scene duration estimate (${analysisModel})`,
+      analysisModel,
       { model: analysisModel, shotId: context.shot.id }
     );
 
@@ -275,7 +279,7 @@ export const estimateSceneDurationFn = createServerFn({ method: 'POST' })
       throw new Error('No response received from AI service');
     }
 
-    await deduct?.(llmCostFromUsage(usage, analysisModel));
+    await deduct?.(llmCostFromUsage(usage, analysisModel, llmKey.via));
 
     return { durationSeconds: clampDuration(response.durationSeconds) };
   });
@@ -346,9 +350,16 @@ export async function* streamScriptEnhancement(
   data: EnhanceScriptInput,
   ctx: { scopedDb: ScopedDb; userId: string; teamId: string }
 ): AsyncGenerator<EnhanceChunk> {
+  const model =
+    data.analysisModel && isValidAnalysisModelId(data.analysisModel)
+      ? data.analysisModel
+      : RECOMMENDED_MODELS.creative;
+
   const { llmKey, deduct } = await prepareBilling(
     ctx.scopedDb,
-    'Script enhancement'
+    'Script enhancement',
+    model,
+    { model }
   );
 
   if (checkForInjectionAttempts(data.script)) {
@@ -364,11 +375,6 @@ export async function* streamScriptEnhancement(
     targetDuration: data.targetDuration,
     elements: elements.length > 0 ? elements : undefined,
   });
-
-  const model =
-    data.analysisModel && isValidAnalysisModelId(data.analysisModel)
-      ? data.analysisModel
-      : RECOMMENDED_MODELS.creative;
 
   const systemMessage = `${compiled}\n\nReturn ONLY the enhanced script text. No JSON, no markdown formatting, no explanations.`;
 
@@ -452,7 +458,7 @@ export async function* streamScriptEnhancement(
     if (chunk.done) usage = chunk.usage;
   }
 
-  await deduct?.(llmCostFromUsage(usage, model));
+  await deduct?.(llmCostFromUsage(usage, model, llmKey.via));
 }
 
 /**
@@ -626,6 +632,7 @@ export const recommendStylesForScriptFn = createServerFn({ method: 'POST' })
     const { llmKey, deduct } = await prepareBilling(
       context.scopedDb,
       `Style recommendation (${RECOMMENDED_MODELS.structured})`,
+      RECOMMENDED_MODELS.structured,
       { model: RECOMMENDED_MODELS.structured }
     );
 
@@ -664,7 +671,7 @@ Return up to ${limit} best-fit styles, strongest first.`;
       throw new Error('No response received from AI service');
     }
 
-    await deduct?.(llmCostFromUsage(usage, model));
+    await deduct?.(llmCostFromUsage(usage, model, llmKey.via));
 
     const recommendations = rankStyleRecommendations(
       result,

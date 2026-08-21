@@ -37,10 +37,14 @@ const testEnv: {
   API_KEY_ENCRYPTION_KEY: string;
   OPENROUTER_KEY: string | undefined;
   FAL_KEY: string | undefined;
+  OPENAI_API_KEY: string | undefined;
+  E2E_TEST: string | undefined;
 } = {
   API_KEY_ENCRYPTION_KEY: 'test-secret-for-api-keys-memoization',
   OPENROUTER_KEY: 'platform-openrouter-key',
   FAL_KEY: 'platform-fal-key',
+  OPENAI_API_KEY: 'platform-openai-key',
+  E2E_TEST: undefined,
 };
 
 vi.doMock('#env', () => ({
@@ -112,6 +116,8 @@ afterAll(() => {
 beforeEach(async () => {
   testEnv.OPENROUTER_KEY = 'platform-openrouter-key';
   testEnv.FAL_KEY = 'platform-fal-key';
+  testEnv.OPENAI_API_KEY = 'platform-openai-key';
+  testEnv.E2E_TEST = undefined;
   await seed();
 });
 
@@ -515,6 +521,43 @@ describe('resolveOptionalKey', () => {
     expect(await scope.resolveOptionalKey('fal')).toEqual({
       key: 'platform-fal-key',
       source: 'platform',
+    });
+  });
+});
+
+describe('OpenAI key resolution (issue #1168)', () => {
+  it('resolveKey falls back to OPENAI_API_KEY', async () => {
+    const scope = createApiKeysReadMethods(db, teamId);
+    expect(await scope.resolveKey('openai')).toEqual({
+      key: 'platform-openai-key',
+      source: 'platform',
+    });
+  });
+
+  it('resolveOptionalKey returns undefined when no OpenAI key exists', async () => {
+    testEnv.OPENAI_API_KEY = undefined;
+    const scope = createApiKeysReadMethods(db, teamId);
+    expect(await scope.resolveOptionalKey('openai')).toBeUndefined();
+  });
+
+  it('resolveLlmKey uses the team OpenAI key for openai/gpt-5.5', async () => {
+    const scope = createApiKeysMethods(db, teamId, userId);
+    await scope.saveKey({ provider: 'openai', apiKey: 'sk-team-openai' });
+    expect(await scope.resolveLlmKey('openai/gpt-5.5')).toEqual({
+      key: 'sk-team-openai',
+      source: 'team',
+      via: 'openai',
+    });
+  });
+
+  it('resolveLlmKey falls through to OpenRouter for non-OpenAI models', async () => {
+    const scope = createApiKeysMethods(db, teamId, userId);
+    await scope.saveKey({ provider: 'openai', apiKey: 'sk-team-openai' });
+    expect(await scope.resolveLlmKey('x-ai/grok-4.6')).toEqual({
+      key: 'platform-openrouter-key',
+      source: 'platform',
+      via: 'openrouter',
+      fallbackReason: undefined,
     });
   });
 });

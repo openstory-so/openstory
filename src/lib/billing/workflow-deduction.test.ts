@@ -80,6 +80,21 @@ describe('deductWorkflowCredits', () => {
     expect(deductCredits).not.toHaveBeenCalled();
   });
 
+  it('still charges when the team used its own OpenAI key (#1168)', async () => {
+    const { scopedDb, deductCredits } = makeScopedDb();
+
+    await deductWorkflowCreditsImpl({
+      scopedDb,
+      costMicros: micros(2_000_000),
+      usedOwnKey: true,
+      description: 'Image generation (gpt_image_2)',
+      idempotencyKey: 'env_image_abc123:openai',
+      metadata: { endpointId: 'gpt-image-2' },
+    });
+
+    expect(deductCredits).toHaveBeenCalledTimes(1);
+  });
+
   it('reports missing cost and skips deduction for zero cost', async () => {
     reportMissingBillingCost.mockClear();
     const { scopedDb, deductCredits } = makeScopedDb();

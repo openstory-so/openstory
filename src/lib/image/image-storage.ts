@@ -4,6 +4,7 @@
  */
 
 import { STORAGE_BUCKETS } from '@/lib/storage/buckets';
+import { uploadFile } from '#storage';
 import { uploadResponse } from '@/lib/storage/upload-response';
 import {
   getExtensionFromUrl,
@@ -38,6 +39,34 @@ async function uploadImageFromUrl(
   imageUrl: string,
   buildPath: (extension: string) => string
 ): Promise<StorageResult> {
+  if (imageUrl.startsWith('data:')) {
+    const match = /^data:([^;]+);base64,(.+)$/.exec(imageUrl);
+    if (!match?.[1] || !match[2]) {
+      throw new Error('Invalid data URL for image upload');
+    }
+    const contentType = match[1];
+    const extension = contentType.includes('png')
+      ? 'png'
+      : contentType.includes('webp')
+        ? 'webp'
+        : contentType.includes('jpeg') || contentType.includes('jpg')
+          ? 'jpg'
+          : 'png';
+    const binary = atob(match[2]);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    const storagePath = buildPath(extension);
+    const result = await uploadFile(
+      STORAGE_BUCKETS.THUMBNAILS,
+      storagePath,
+      bytes,
+      { contentType, upsert: true }
+    );
+    return { url: result.publicUrl, path: storagePath };
+  }
+
   // Download image from URL first to get content type
   const response = await fetch(imageUrl);
 

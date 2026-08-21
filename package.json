@@ -117,6 +117,7 @@
     "@tailwindcss/typography": "^0.5.20",
     "@tanstack/ai": "^0.44.1",
     "@tanstack/ai-fal": "^0.10.0",
+    "@tanstack/ai-openai": "0.19.0",
     "@tanstack/ai-openrouter": "^0.16.0",
     "@tanstack/highlight": "0.0.10",
     "@tanstack/markdown": "0.0.13",
@@ -207,6 +208,7 @@
   "overrides": {
     "@better-auth/core": "1.6.26",
     "@better-auth/utils": "0.4.2",
+    "@tanstack/openai-base": "0.9.12",
     "prosemirror-model": "1.25.11",
     "prosemirror-view": "1.42.2",
     "qs": "6.15.2",

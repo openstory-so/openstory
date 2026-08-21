@@ -14,15 +14,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const testEnv: {
   OPENROUTER_KEY: string | undefined;
   FAL_KEY: string | undefined;
+  OPENAI_API_KEY: string | undefined;
   OPENROUTER_BASE_URL: string | undefined;
   E2E_RECORD: string | undefined;
+  E2E_TEST: string | undefined;
   VITE_APP_URL: string;
   VITE_APP_NAME: string;
 } = {
   OPENROUTER_KEY: undefined,
   FAL_KEY: undefined,
+  OPENAI_API_KEY: undefined,
   OPENROUTER_BASE_URL: undefined,
   E2E_RECORD: undefined,
+  E2E_TEST: undefined,
   VITE_APP_URL: 'http://localhost:3000',
   VITE_APP_NAME: 'OpenStory',
 };
@@ -55,6 +59,19 @@ const openRouterTextMock = vi.fn((model: string, config: AdapterConfig) => {
   adapterCalls.push({ kind: 'env', model, config });
   return { kind: 'env-adapter' };
 });
+const createOpenaiChatMock = vi.fn((model: string, key: string) => {
+  adapterCalls.push({
+    kind: 'keyed',
+    model,
+    key,
+    config: { httpReferer: '', xTitle: '' },
+  });
+  return { kind: 'openai-adapter' };
+});
+vi.doMock('@tanstack/ai-openai', () => ({
+  createOpenaiChat: createOpenaiChatMock,
+}));
+
 vi.doMock('@tanstack/ai-openrouter', () => ({
   createOpenRouterText: createOpenRouterTextMock,
   openRouterText: openRouterTextMock,
@@ -62,7 +79,12 @@ vi.doMock('@tanstack/ai-openrouter', () => ({
 
 // Dynamic import so the mocks above apply — see CLAUDE.md module-mocking
 // pattern.
-const { createAdapter, getPlatformLlmKey } = await import('./create-adapter');
+const {
+  createAdapter,
+  getPlatformLlmKey,
+  getPlatformAnalysisKey,
+  openaiDirectAllowed,
+} = await import('./create-adapter');
 
 const MODEL = 'x-ai/grok-4.6';
 const FAL_URL = 'https://fal.run/openrouter/router/openai/v1';
@@ -97,11 +119,14 @@ async function sendThroughClient(
 beforeEach(() => {
   testEnv.OPENROUTER_KEY = undefined;
   testEnv.FAL_KEY = undefined;
+  testEnv.OPENAI_API_KEY = undefined;
   testEnv.OPENROUTER_BASE_URL = undefined;
   testEnv.E2E_RECORD = undefined;
+  testEnv.E2E_TEST = undefined;
   adapterCalls.length = 0;
   createOpenRouterTextMock.mockClear();
   openRouterTextMock.mockClear();
+  createOpenaiChatMock.mockClear();
 });
 
 afterEach(() => {
@@ -209,5 +234,39 @@ describe('getPlatformLlmKey', () => {
 
   it('returns undefined when neither key is configured', () => {
     expect(getPlatformLlmKey()).toBeUndefined();
+  });
+});
+
+describe('createAdapter OpenAI routing (issue #1168)', () => {
+  const OPENAI_MODEL = 'openai/gpt-5.5';
+
+  it('uses createOpenaiChat with the native model id when via is openai', () => {
+    createAdapter(OPENAI_MODEL, { key: 'sk-openai', via: 'openai' });
+
+    expect(createOpenaiChatMock).toHaveBeenCalledTimes(1);
+    expect(createOpenaiChatMock).toHaveBeenCalledWith('gpt-5.5', 'sk-openai');
+    expect(createOpenRouterTextMock).not.toHaveBeenCalled();
+  });
+
+  it('does not use OpenAI when E2E_TEST is set, even if OPENAI_API_KEY is present', () => {
+    testEnv.E2E_TEST = 'true';
+    testEnv.OPENAI_API_KEY = 'sk-openai';
+    expect(openaiDirectAllowed()).toBe(false);
+    expect(getPlatformAnalysisKey(OPENAI_MODEL)).toBeUndefined();
+  });
+
+  it('getPlatformAnalysisKey prefers OPENAI_API_KEY for OpenAI-branded models', () => {
+    testEnv.OPENAI_API_KEY = 'sk-openai';
+    testEnv.OPENROUTER_KEY = 'sk-or';
+    expect(getPlatformAnalysisKey(OPENAI_MODEL)).toStrictEqual({
+      key: 'sk-openai',
+      via: 'openai',
+      source: 'platform',
+    });
+    expect(getPlatformAnalysisKey('x-ai/grok-4.6')).toStrictEqual({
+      key: 'sk-or',
+      via: 'openrouter',
+      source: 'platform',
+    });
   });
 });
