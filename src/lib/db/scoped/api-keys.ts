@@ -7,7 +7,11 @@
 import { and, eq } from 'drizzle-orm';
 import type { Database } from '@/lib/db/client';
 import { getEnv } from '#env';
-import { getPlatformLlmKey } from '@/lib/ai/create-adapter';
+import {
+  getPlatformLlmKey,
+  isOpenAiAnalysisModel,
+  openaiDirectAllowed,
+} from '@/lib/ai/create-adapter';
 import {
   decryptApiKey,
   encryptApiKey,
@@ -41,8 +45,11 @@ export type ResolvedApiKey =
 // LLM-call key resolution. `via` says which API the call must be routed
 // through: 'openrouter' = OpenRouter directly (Bearer auth), 'fal' = fal's
 // OpenAI-compatible OpenRouter endpoint (`Key` auth) so a team with only a
-// fal key still covers LLM calls (issue #895).
-export type ResolvedLlmKey = ResolvedApiKey & { via: 'openrouter' | 'fal' };
+// fal key still covers LLM calls (issue #895), 'openai' = native OpenAI
+// for GPT-5.x when a key is present (#1168).
+export type ResolvedLlmKey = ResolvedApiKey & {
+  via: 'openrouter' | 'fal' | 'openai';
+};
 
 // The cached shape of a `team_api_keys` lookup. Holds the *encrypted* row
 // (ciphertext + invalid flag) only — never the decrypted key. `resolveKey`
@@ -279,6 +286,8 @@ export function createApiKeysReadMethods(db: Database, teamId: string) {
         return env.OPENROUTER_KEY || undefined;
       case 'fal':
         return env.FAL_KEY || undefined;
+      case 'openai':
+        return env.OPENAI_API_KEY || undefined;
       default: {
         const _exhaustive: never = provider;
         throw new Error(`Unknown provider: ${String(_exhaustive)}`);
@@ -331,6 +340,7 @@ export function createApiKeysReadMethods(db: Database, teamId: string) {
   }
 
   // Resolve the key for an LLM call. Preference order:
+  //   0. OpenAI-branded analysis models: team/platform OPENAI_API_KEY (#1168)
   //   1. team OpenRouter key (direct OpenRouter)
   //   2. team fal key (routed through fal's OpenRouter endpoint) — a fal-only
   //      team still covers LLM calls on their own key (issue #895)
@@ -338,7 +348,12 @@ export function createApiKeysReadMethods(db: Database, teamId: string) {
   // A skipped OpenRouter key that a working fal key supersedes returns
   // `source: 'team'` with no fallbackReason — the reason only surfaces when
   // resolution falls all the way through to the platform key.
-  async function resolveLlmKey(): Promise<ResolvedLlmKey> {
+  async function resolveLlmKey(modelId?: string): Promise<ResolvedLlmKey> {
+    if (modelId && openaiDirectAllowed() && isOpenAiAnalysisModel(modelId)) {
+      const openai = await resolveOptionalKey('openai');
+      if (openai) return { ...openai, via: 'openai' };
+    }
+
     let fallbackReason: string | undefined;
 
     const orLookup = await readKeyRowLogged('openrouter');
@@ -414,6 +429,18 @@ export function createApiKeysReadMethods(db: Database, teamId: string) {
         );
         if (response.status === 401) {
           return { valid: false, error: 'Invalid Fal.ai API key' };
+        }
+        return { valid: true };
+      }
+      case 'openai': {
+        const response = await fetch('https://api.openai.com/v1/models', {
+          headers: { Authorization: `Bearer ${apiKey}` },
+        });
+        if (response.status === 401 || response.status === 403) {
+          return { valid: false, error: 'Invalid OpenAI API key' };
+        }
+        if (!response.ok) {
+          return { valid: false, error: `OpenAI returned ${response.status}` };
         }
         return { valid: true };
       }

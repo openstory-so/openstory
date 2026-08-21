@@ -884,6 +884,21 @@ describe('llm-client', () => {
         )
       ).toBe(ZERO_MICROS);
     });
+
+    it('prices OpenAI-routed calls from list rates, not usage.cost', () => {
+      expect(
+        llmCostFromUsage(
+          {
+            promptTokens: 1_000_000,
+            completionTokens: 1_000_000,
+            totalTokens: 2_000_000,
+            cost: 99,
+          },
+          'openai/gpt-5.5',
+          'openai'
+        )
+      ).toBe(usdToMicros(35));
+    });
   });
 
   describe('preferUsage / createUsageCapture', () => {

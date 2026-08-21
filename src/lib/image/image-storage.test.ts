@@ -113,4 +113,22 @@ describe('uploadImageToStorage', () => {
       /^teams\/team_1\/sequences\/seq_1\/frames\/shot_1\/[0-9A-Z]+\.png$/
     );
   });
+
+  it('uploads a data URL without fetching', async () => {
+    const result = await uploadImageToStorage({
+      imageUrl: 'data:image/png;base64,AQID',
+      teamId: 'team_1',
+      sequenceId: 'seq_1',
+      shotId: 'shot_1',
+    });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(result.path).toMatch(/\.png$/);
+    expect(uploadFile).toHaveBeenCalledWith(
+      'thumbnails',
+      result.path,
+      expect.any(Uint8Array),
+      expect.objectContaining({ contentType: 'image/png' })
+    );
+  });
 });

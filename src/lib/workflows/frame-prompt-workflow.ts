@@ -147,14 +147,16 @@ export class FramePromptWorkflow extends OpenStoryWorkflowEntrypoint<FramePrompt
     // The key is resolved INSIDE this step (it reads — and can write — mutable
     // D1 state), and its non-secret `source` rides out on the step result so
     // the deduction bills the key this call actually used even on replay.
-    const { resultJson, costMicros, keySource } = await step.do(
+    const { resultJson, costMicros, keySource, keyVia } = await step.do(
       llmStepName,
       async (): Promise<{
         resultJson: string;
         costMicros: Microdollars;
         keySource: 'team' | 'platform';
+        keyVia: 'openrouter' | 'fal' | 'openai';
       }> => {
-        const llmKeyInfo = await scopedDb.credentials.resolveLlmKey();
+        const llmKeyInfo =
+          await scopedDb.credentials.resolveLlmKey(analysisModelId);
         const adapter = createAdapter(analysisModelId, llmKeyInfo);
         // Always stream structured output so OpenRouter attaches usage.cost
         // (TanStack/ai#1076). Optional channel emits for live UI deltas.
@@ -232,10 +234,18 @@ export class FramePromptWorkflow extends OpenStoryWorkflowEntrypoint<FramePrompt
             abortController,
             modelOptions: {
               ...reasoningOptions,
-              maxCompletionTokens: Math.floor(
-                getContextWindow(analysisModelId) * 0.5
-              ),
-              streamOptions: { includeUsage: true },
+              ...(llmKeyInfo.via === 'openai'
+                ? {
+                    max_output_tokens: Math.floor(
+                      getContextWindow(analysisModelId) * 0.5
+                    ),
+                  }
+                : {
+                    maxCompletionTokens: Math.floor(
+                      getContextWindow(analysisModelId) * 0.5
+                    ),
+                    streamOptions: { includeUsage: true },
+                  }),
             },
             outputSchema: visualPromptResultSchema,
             middleware: [
@@ -300,8 +310,13 @@ export class FramePromptWorkflow extends OpenStoryWorkflowEntrypoint<FramePrompt
               : visualPromptResultSchema.parse(JSON.parse(accumulated));
           return {
             resultJson: JSON.stringify(resultObject),
-            costMicros: llmCostFromUsage(usageCapture.get(), analysisModelId),
+            costMicros: llmCostFromUsage(
+              usageCapture.get(),
+              analysisModelId,
+              llmKeyInfo.via
+            ),
             keySource: llmKeyInfo.source,
+            keyVia: llmKeyInfo.via,
           };
         } finally {
           clearTimeout(timeout);
@@ -327,6 +342,7 @@ export class FramePromptWorkflow extends OpenStoryWorkflowEntrypoint<FramePrompt
           stepName: STEP_NAME,
           sequenceId,
           costMicros,
+          via: keyVia,
         },
       });
     });

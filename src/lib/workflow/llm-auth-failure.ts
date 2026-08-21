@@ -31,7 +31,11 @@ export async function handleLlmAuthFailure(
   if (llmKey?.source !== 'team') return undefined;
 
   await scopedDb.apiKeys.markKeyInvalid(llmKey.via, sanitizedError);
-  return llmKey.via === 'openrouter'
-    ? 'Your OpenRouter API key is invalid — update it in Settings.'
-    : 'Your fal.ai API key is invalid — update it in Settings.';
+  if (llmKey.via === 'openrouter') {
+    return 'Your OpenRouter API key is invalid — update it in Settings.';
+  }
+  if (llmKey.via === 'openai') {
+    return 'Your OpenAI API key is invalid — update it in Settings.';
+  }
+  return 'Your fal.ai API key is invalid — update it in Settings.';
 }

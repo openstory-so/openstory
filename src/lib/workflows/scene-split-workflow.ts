@@ -257,12 +257,14 @@ type StreamResult = {
    * instead of re-reading mutable key state mid-run.
    */
   llmKeySource: 'team' | 'platform';
+  llmKeyVia: 'openrouter' | 'fal' | 'openai';
 };
 
 /** Shape produced by the bibles step (post JSON round-trip). */
 type BiblesStepResult = SceneSplitBiblesResult & {
   llmCostMicros: Microdollars;
   llmKeySource: 'team' | 'platform';
+  llmKeyVia: 'openrouter' | 'fal' | 'openai';
 };
 
 async function reportDroppedBoundaries(
@@ -332,7 +334,7 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
           elements: elementsBlock,
         });
 
-        const llmKeyInfo = await scopedDb.credentials.resolveLlmKey();
+        const llmKeyInfo = await scopedDb.credentials.resolveLlmKey(modelId);
 
         logger.info(
           `[SceneSplitWorkflow:cf] [LLM:${LOG_NAME}] Starting streaming call`,
@@ -534,7 +536,11 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
         let assembled = assembleScenes(script, parsedResult, sceneIdFor);
         let resolvedTitle = parsedResult.projectMetadata.title;
         let finalBoundaries = parsedResult.boundaries;
-        let llmCostMicros = llmCostFromUsage(firstPass.usage, modelId);
+        let llmCostMicros = llmCostFromUsage(
+          firstPass.usage,
+          modelId,
+          llmKeyInfo.via
+        );
 
         if (
           isExcessivelyRepaired(
@@ -569,7 +575,7 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
           if (retryPass.parsed) {
             llmCostMicros = addMicros(
               llmCostMicros,
-              llmCostFromUsage(retryPass.usage, modelId)
+              llmCostFromUsage(retryPass.usage, modelId, llmKeyInfo.via)
             );
             const retryAssembled = assembleScenes(
               script,
@@ -654,6 +660,7 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
           offsets,
           llmCostMicros,
           llmKeySource: llmKeyInfo.source,
+          llmKeyVia: llmKeyInfo.via,
         };
         return JSON.stringify(streamResult);
       }
@@ -664,7 +671,7 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
         script: gutteredScript,
         elements: elementsBlock,
       });
-      const llmKeyInfo = await scopedDb.credentials.resolveLlmKey();
+      const llmKeyInfo = await scopedDb.credentials.resolveLlmKey(modelId);
 
       logger.info(
         `[SceneSplitWorkflow:cf] [LLM:${BIBLES_LOG_NAME}] Starting call`,
@@ -708,8 +715,9 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
 
       const result: BiblesStepResult = {
         ...parsed,
-        llmCostMicros: llmCostFromUsage(usage, modelId),
+        llmCostMicros: llmCostFromUsage(usage, modelId, llmKeyInfo.via),
         llmKeySource: llmKeyInfo.source,
+        llmKeyVia: llmKeyInfo.via,
       };
       return JSON.stringify(result);
     });
@@ -1035,6 +1043,7 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
           stepName: STEP_NAME,
           sequenceId,
           costMicros: streamResult.llmCostMicros,
+          via: streamResult.llmKeyVia,
         },
       });
     });
@@ -1052,6 +1061,7 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
           stepName: BIBLES_STEP_NAME,
           sequenceId,
           costMicros: biblesResult.llmCostMicros,
+          via: biblesResult.llmKeyVia,
         },
       });
     });

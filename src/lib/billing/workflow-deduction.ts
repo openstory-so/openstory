@@ -46,7 +46,12 @@ export async function deductWorkflowCredits(
   if (!opts.scopedDb) return;
   const { scopedDb } = opts;
 
-  if (opts.usedOwnKey) return;
+  // fal / OpenRouter BYOK skips our ledger. Direct OpenAI (`via: 'openai'`
+  // or endpoint `gpt-image-2`) still charges list prices (#1168).
+  const via = opts.metadata?.via;
+  const endpointId = opts.metadata?.endpointId;
+  const openaiDirect = via === 'openai' || endpointId === 'gpt-image-2';
+  if (opts.usedOwnKey && !openaiDirect) return;
 
   if (opts.costMicros <= 0) {
     reportMissingBillingCost({
@@ -144,10 +149,12 @@ export async function recordFalUsage(
     // median and sits on the estimate floor forever, while the refresh cron
     // reports a healthy `observedEndpoints` count. Silence here makes "cold"
     // and "broken" identical.
-    logger.warn('fal generation reported no usable unitsBilled — no sample', {
-      endpointId: usage.endpointId,
-      unitsBilled,
-    });
+    if (usage.endpointId !== 'gpt-image-2') {
+      logger.warn('fal generation reported no usable unitsBilled — no sample', {
+        endpointId: usage.endpointId,
+        unitsBilled,
+      });
+    }
     return;
   }
   await scopedDb.modelUsage.record({

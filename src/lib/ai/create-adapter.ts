@@ -1,14 +1,19 @@
 /**
- * Shared OpenRouter adapter factory
- * Creates TanStack AI adapters for OpenRouter models. Calls route either to
- * OpenRouter directly or through fal's OpenAI-compatible OpenRouter endpoint
- * (so a team with only a fal key still covers LLM calls — issue #895).
+ * Shared text-adapter factory.
+ *
+ * Default path: TanStack AI OpenRouter adapters, either against OpenRouter
+ * directly or fal's OpenAI-compatible OpenRouter endpoint (so a team with
+ * only a fal key still covers LLM calls — issue #895).
+ *
+ * OpenAI-branded analysis models (`openai/gpt-5.5`, …) use the native
+ * OpenAI adapter when a key is present (#1168).
  */
 
 import { getEnv } from '#env';
 import type { TextModel } from '@/lib/ai/models';
 import { HTTPClient } from '@openrouter/sdk/lib/http';
 import { createModel, extendAdapter } from '@tanstack/ai';
+import { createOpenaiChat } from '@tanstack/ai-openai';
 import { createOpenRouterText, openRouterText } from '@tanstack/ai-openrouter';
 
 import { getLogger } from '@/lib/observability/logger';
@@ -21,14 +26,27 @@ const logger = getLogger(['openstory', 'ai', 'create-adapter']);
  */
 const FAL_OPENROUTER_BASE_URL = 'https://fal.run/openrouter/router/openai/v1';
 
+const OPENAI_TEXT_MODELS = {
+  'openai/gpt-5.5': 'gpt-5.5',
+  'openai/gpt-5.4-mini': 'gpt-5.4-mini',
+  'openai/gpt-5.4-nano': 'gpt-5.4-nano',
+} as const;
+
+export function isOpenAiAnalysisModel(
+  modelId: string
+): modelId is keyof typeof OPENAI_TEXT_MODELS {
+  return modelId in OPENAI_TEXT_MODELS;
+}
+
 export type LlmKeyInfo = {
   key: string;
   /**
    * Which API the key belongs to: 'openrouter' calls OpenRouter directly
    * (Bearer auth), 'fal' routes through fal's OpenRouter endpoint (`Key`
-   * auth — fal rejects Bearer there).
+   * auth — fal rejects Bearer there), 'openai' uses TanStack `openaiText`
+   * against api.openai.com (#1168).
    */
-  via: 'openrouter' | 'fal';
+  via: 'openrouter' | 'fal' | 'openai';
 };
 
 // fal's endpoint authenticates with `Authorization: Key <FAL_KEY>` while the
@@ -59,6 +77,36 @@ export function getPlatformLlmKey():
     return { key: env.FAL_KEY, via: 'fal', source: 'platform' };
   }
   return undefined;
+}
+
+function getPlatformOpenAiKey():
+  | { key: string; via: 'openai'; source: 'platform' }
+  | undefined {
+  const key = getEnv().OPENAI_API_KEY;
+  if (!key) return undefined;
+  return { key, via: 'openai', source: 'platform' };
+}
+
+/**
+ * Direct OpenAI calls break e2e hermeticity (aimock only covers
+ * OpenRouter / fal). Keep those runs on the existing proxies.
+ */
+export function openaiDirectAllowed(): boolean {
+  return getEnv().E2E_TEST !== 'true';
+}
+
+/**
+ * Platform-only analysis key: OpenAI-branded models use OPENAI_API_KEY
+ * when present; everything else uses getPlatformLlmKey().
+ */
+export function getPlatformAnalysisKey(
+  model: TextModel
+): (LlmKeyInfo & { source: 'platform' }) | undefined {
+  if (openaiDirectAllowed() && isOpenAiAnalysisModel(model)) {
+    const openai = getPlatformOpenAiKey();
+    if (openai) return openai;
+  }
+  return getPlatformLlmKey();
 }
 
 let loggedRetryMode = false;
@@ -94,9 +142,19 @@ const createOpenRouterTextExtended = extendAdapter(
 // openrouter.ai and 401s at runtime, invisibly to the compiler.
 export function createAdapter(model: TextModel, keyInfo?: LlmKeyInfo) {
   const env = getEnv();
-  const resolved = keyInfo ?? getPlatformLlmKey();
+  const resolved = keyInfo ?? getPlatformAnalysisKey(model);
   const key = resolved?.key;
   const via = resolved?.via ?? 'openrouter';
+
+  if (via === 'openai') {
+    if (!isOpenAiAnalysisModel(model)) {
+      throw new Error(`OpenAI adapter cannot run non-OpenAI model ${model}`);
+    }
+    if (!key) {
+      throw new Error('OpenAI adapter requires an API key');
+    }
+    return createOpenaiChat(OPENAI_TEXT_MODELS[model], key);
+  }
 
   // During E2E recording, aimock proxies our OpenRouter calls upstream and
   // *buffers* the entire SSE response before relaying — see

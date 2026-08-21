@@ -208,7 +208,7 @@ export function toWorkflowScopedDb(scopedDb: ScopedDb): WorkflowScopedDb {
       resolveKey: (provider) => scopedDb.apiKeys.resolveKey(provider),
       resolveOptionalKey: (provider) =>
         scopedDb.apiKeys.resolveOptionalKey(provider),
-      resolveLlmKey: () => scopedDb.apiKeys.resolveLlmKey(),
+      resolveLlmKey: (modelId) => scopedDb.apiKeys.resolveLlmKey(modelId),
     },
     claims: scopedDb,
     liveRead: scopedDb,

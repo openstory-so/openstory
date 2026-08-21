@@ -8,7 +8,11 @@
  *     re-wraps at the runImpl boundary).
  */
 
-import { createAdapter, getPlatformLlmKey } from '@/lib/ai/create-adapter';
+import {
+  createAdapter,
+  getPlatformAnalysisKey,
+  type LlmKeyInfo,
+} from '@/lib/ai/create-adapter';
 import {
   createUsageCapture,
   extractRunError,
@@ -174,6 +178,21 @@ export type DurableStreamingLLMCallContext = DurableLLMCallContext & {
 };
 
 type LlmKeySource = 'team' | 'platform';
+type LlmKeyVia = LlmKeyInfo['via'];
+
+function nativeLlmModelOptions(
+  via: LlmKeyVia,
+  modelId: TextModel
+): Record<string, unknown> {
+  const maxTokens = Math.floor(getContextWindow(modelId) * 0.5);
+  if (via === 'openai') {
+    return { max_output_tokens: maxTokens };
+  }
+  return {
+    maxCompletionTokens: maxTokens,
+    streamOptions: { includeUsage: true },
+  };
+}
 
 /**
  * Resolve the key for the LLM call — the team's key via ScopedDb, or the
@@ -184,14 +203,17 @@ type LlmKeySource = 'team' | 'platform';
  * returns the non-secret `source`/`via` so the deduction bills exactly the key
  * the call was made with; the decrypted key never crosses a step boundary.
  */
-async function resolveCallKey(callContext: DurableLLMCallContext) {
+async function resolveCallKey(
+  callContext: DurableLLMCallContext,
+  modelId: TextModel
+) {
   if (callContext.scopedDb) {
-    return callContext.scopedDb.credentials.resolveLlmKey();
+    return callContext.scopedDb.credentials.resolveLlmKey(modelId);
   }
-  const platform = getPlatformLlmKey();
+  const platform = getPlatformAnalysisKey(modelId);
   if (!platform) {
     throw new NonRetryableError(
-      'No platform LLM key available (set OPENROUTER_KEY or FAL_KEY)',
+      'No platform LLM key available (set OPENAI_API_KEY, OPENROUTER_KEY, or FAL_KEY)',
       'WorkflowValidationError'
     );
   }
@@ -239,14 +261,15 @@ export async function durableLLMCallCf<TSchema extends z.ZodType>(
   // Rpc.Serializable<T> check passes regardless of the Zod-inferred shape, and
   // carries the provider-reported cost + resolved key source across the step
   // boundary for deduction.
-  const { jsonText, costMicros, keySource } = await step.do(
+  const { jsonText, costMicros, keySource, keyVia } = await step.do(
     name,
     async (): Promise<{
       jsonText: string;
       costMicros: Microdollars;
       keySource: LlmKeySource;
+      keyVia: LlmKeyVia;
     }> => {
-      const llmKeyInfo = await resolveCallKey(callContext);
+      const llmKeyInfo = await resolveCallKey(callContext, modelId);
       const adapter = createAdapter(modelId, llmKeyInfo);
 
       logger.info(`[LLM:${logName}:cf] Starting call`, {
@@ -290,8 +313,7 @@ export async function durableLLMCallCf<TSchema extends z.ZodType>(
           abortController,
           modelOptions: {
             ...reasoningModelOptions(config.reasoning),
-            maxCompletionTokens: Math.floor(getContextWindow(modelId) * 0.5),
-            streamOptions: { includeUsage: true },
+            ...nativeLlmModelOptions(llmKeyInfo.via, modelId),
           },
           middleware: [
             ...aiObservabilityMiddleware({
@@ -345,8 +367,13 @@ export async function durableLLMCallCf<TSchema extends z.ZodType>(
         // CF's Rpc.Serializable constraint on the Zod-inferred shape.
         return {
           jsonText: JSON.stringify(structuredObject),
-          costMicros: llmCostFromUsage(usageCapture.get(), modelId),
+          costMicros: llmCostFromUsage(
+            usageCapture.get(),
+            modelId,
+            llmKeyInfo.via
+          ),
           keySource: llmKeyInfo.source,
+          keyVia: llmKeyInfo.via,
         };
       } finally {
         clearTimeout(timeout);
@@ -370,6 +397,7 @@ export async function durableLLMCallCf<TSchema extends z.ZodType>(
           stepName: name,
           sequenceId: callContext.sequenceId,
           costMicros,
+          via: keyVia,
         },
       });
     });
@@ -419,14 +447,15 @@ export async function durableStreamingLLMCallCf<TSchema extends z.ZodType>(
     return { messages };
   });
 
-  const { jsonText, costMicros, keySource } = await step.do(
+  const { jsonText, costMicros, keySource, keyVia } = await step.do(
     `${name}-stream`,
     async (): Promise<{
       jsonText: string;
       costMicros: Microdollars;
       keySource: LlmKeySource;
+      keyVia: LlmKeyVia;
     }> => {
-      const llmKeyInfo = await resolveCallKey(callContext);
+      const llmKeyInfo = await resolveCallKey(callContext, modelId);
       const adapter = createAdapter(modelId, llmKeyInfo);
 
       logger.info(`[LLM:${logName}:cf] Starting streaming call`, {
@@ -480,8 +509,7 @@ export async function durableStreamingLLMCallCf<TSchema extends z.ZodType>(
         abortController,
         modelOptions: {
           ...reasoningModelOptions(config.reasoning),
-          maxCompletionTokens: Math.floor(getContextWindow(modelId) * 0.5),
-          streamOptions: { includeUsage: true },
+          ...nativeLlmModelOptions(llmKeyInfo.via, modelId),
         },
         middleware: [
           ...aiObservabilityMiddleware({
@@ -548,8 +576,13 @@ export async function durableStreamingLLMCallCf<TSchema extends z.ZodType>(
         logger.info(`[LLM:${logName}:cf] Streaming call succeeded`);
         return {
           jsonText: structuredJson,
-          costMicros: llmCostFromUsage(usageCapture.get(), modelId),
+          costMicros: llmCostFromUsage(
+            usageCapture.get(),
+            modelId,
+            llmKeyInfo.via
+          ),
           keySource: llmKeyInfo.source,
+          keyVia: llmKeyInfo.via,
         };
       } finally {
         clearTimeout(timeout);
@@ -573,6 +606,7 @@ export async function durableStreamingLLMCallCf<TSchema extends z.ZodType>(
           stepName: name,
           sequenceId: callContext.sequenceId,
           costMicros,
+          via: keyVia,
         },
       });
     });

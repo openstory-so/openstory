@@ -158,7 +158,6 @@ export async function submitMotionJob(
   let jobId: string;
   // Native PRs widen MediaVia; this switch is the seam (#1216).
   switch (endpoint.via) {
-    // oxlint-disable-next-line typescript/no-unnecessary-condition
     case 'fal': {
       // Bound submit so a hung fal connection fails the step (#826).
       const job = await generateVideo({
@@ -171,6 +170,8 @@ export async function submitMotionJob(
       jobId = job.jobId;
       break;
     }
+    case 'openai':
+      throw new Error('Motion is not served via OpenAI');
   }
 
   return {
@@ -202,7 +203,6 @@ export async function pollMotionJob(
 
   // Native PRs widen MediaVia; this switch is the seam (#1216).
   switch (via) {
-    // oxlint-disable-next-line typescript/no-unnecessary-condition
     case 'fal': {
       const key = await resolveFalMotionKey(scopedDb);
       // Bound a single status fetch — the workflow already budgets total poll
@@ -219,6 +219,8 @@ export async function pollMotionJob(
         jobId,
       });
     }
+    case 'openai':
+      throw new Error('Motion is not served via OpenAI');
   }
 }
 
@@ -229,7 +231,6 @@ export async function motionCostFromUsage(
 ) {
   // Native PRs widen MediaVia; this switch is the seam (#1216).
   switch (via) {
-    // oxlint-disable-next-line typescript/no-unnecessary-condition
     case 'fal': {
       const endpointId = resolveMotionEndpoint(
         ctx.modelKey,
@@ -242,6 +243,8 @@ export async function motionCostFromUsage(
         recordFalUsage: true,
       };
     }
+    case 'openai':
+      throw new Error('Motion is not served via OpenAI');
   }
 }
 

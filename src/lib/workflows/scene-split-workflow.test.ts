@@ -200,7 +200,7 @@ function makeScopedDb(): WorkflowScopedDb {
   const scopedDb = {
     credentials: {
       resolveLlmKey: () =>
-        Promise.resolve({ source: 'platform', via: 'env', key: 'k' }),
+        Promise.resolve({ source: 'platform', via: 'openrouter', key: 'k' }),
     },
     liveRead: {
       compliance: {
