@@ -329,6 +329,7 @@ export { creditBatches, teamBillingSettings };
 // Team API Keys
 export { teamApiKeys };
 
+export { API_KEY_PROVIDERS } from './team-api-keys';
 export type { ApiKeyProvider } from './team-api-keys';
 
 // Gift Tokens

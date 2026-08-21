@@ -272,19 +272,33 @@ export function createApiKeysReadMethods(db: Database, teamId: string) {
     }
   }
 
-  // Resolve the usable key for `provider`. The D1 lookup is memoized per scope;
-  // the decrypted key is produced fresh on every call (and is GC-eligible as
-  // soon as the caller is done), so plaintext is never retained in the cache.
-  async function resolveKey(provider: ApiKeyProvider): Promise<ResolvedApiKey> {
-    const platformFallback = (fallbackReason?: string): ResolvedApiKey => {
-      const env = getEnv();
-      const platformKey =
-        provider === 'openrouter' ? env.OPENROUTER_KEY : env.FAL_KEY;
-      if (!platformKey) {
-        throw new Error(`No API key available for provider: ${provider}`);
+  function platformKeyFor(provider: ApiKeyProvider): string | undefined {
+    const env = getEnv();
+    switch (provider) {
+      case 'openrouter':
+        return env.OPENROUTER_KEY || undefined;
+      case 'fal':
+        return env.FAL_KEY || undefined;
+      default: {
+        const _exhaustive: never = provider;
+        throw new Error(`Unknown provider: ${String(_exhaustive)}`);
       }
+    }
+  }
+
+  // Missing key is undefined, not an error: native-provider routing (#1216)
+  // uses this to skip to the next provider (usually fal). `resolveKey` wraps
+  // this and throws, which is what fal's always-claim path needs.
+  async function resolveOptionalKey(
+    provider: ApiKeyProvider
+  ): Promise<ResolvedApiKey | undefined> {
+    function platformFallback(
+      fallbackReason?: string
+    ): ResolvedApiKey | undefined {
+      const platformKey = platformKeyFor(provider);
+      if (!platformKey) return undefined;
       return { key: platformKey, source: 'platform', fallbackReason };
-    };
+    }
 
     const lookup = await readKeyRowLogged(provider);
 
@@ -303,6 +317,17 @@ export function createApiKeysReadMethods(db: Database, teamId: string) {
     const result = await decryptOrMarkInvalid(provider, lookup);
     if ('key' in result) return { key: result.key, source: 'team' };
     return platformFallback(result.skippedReason);
+  }
+
+  // Resolve the usable key for `provider`. The D1 lookup is memoized per scope;
+  // the decrypted key is produced fresh on every call (and is GC-eligible as
+  // soon as the caller is done), so plaintext is never retained in the cache.
+  async function resolveKey(provider: ApiKeyProvider): Promise<ResolvedApiKey> {
+    const resolved = await resolveOptionalKey(provider);
+    if (!resolved) {
+      throw new Error(`No API key available for provider: ${provider}`);
+    }
+    return resolved;
   }
 
   // Resolve the key for an LLM call. Preference order:
@@ -364,34 +389,39 @@ export function createApiKeysReadMethods(db: Database, teamId: string) {
     provider: ApiKeyProvider,
     apiKey: string
   ): Promise<{ valid: boolean; error?: string }> {
-    if (provider === 'openrouter') {
-      const response = await fetch('https://openrouter.ai/api/v1/auth/key', {
-        headers: { Authorization: `Bearer ${apiKey}` },
-      });
-      if (response.ok) return { valid: true };
-      return { valid: false, error: `OpenRouter returned ${response.status}` };
-    }
-
-    // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: literal comparison in if/else chain
-    if (provider === 'fal') {
-      const response = await fetch(
-        'https://queue.fal.run/fal-ai/flux/schnell',
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Key ${apiKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: '{}',
-        }
-      );
-      if (response.status === 401) {
-        return { valid: false, error: 'Invalid Fal.ai API key' };
+    switch (provider) {
+      case 'openrouter': {
+        const response = await fetch('https://openrouter.ai/api/v1/auth/key', {
+          headers: { Authorization: `Bearer ${apiKey}` },
+        });
+        if (response.ok) return { valid: true };
+        return {
+          valid: false,
+          error: `OpenRouter returned ${response.status}`,
+        };
       }
-      return { valid: true };
+      case 'fal': {
+        const response = await fetch(
+          'https://queue.fal.run/fal-ai/flux/schnell',
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Key ${apiKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: '{}',
+          }
+        );
+        if (response.status === 401) {
+          return { valid: false, error: 'Invalid Fal.ai API key' };
+        }
+        return { valid: true };
+      }
+      default: {
+        const _exhaustive: never = provider;
+        throw new Error(`Unknown provider: ${String(_exhaustive)}`);
+      }
     }
-
-    throw new Error(`Unknown provider`);
   }
 
   return {
@@ -400,6 +430,7 @@ export function createApiKeysReadMethods(db: Database, teamId: string) {
     hasUsableKey,
     hasInvalidKey,
     resolveKey,
+    resolveOptionalKey,
     resolveLlmKey,
     validateKey,
     invalidateResolveKeyCache,

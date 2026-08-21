@@ -533,6 +533,10 @@ const _claimsCannotFollowPointer: Has<
 /** `credentials` resolves a key … */
 const _credentialsResolve: Has<WorkflowScopedDb['credentials'], 'resolveKey'> =
   true;
+const _credentialsResolveOptional: Has<
+  WorkflowScopedDb['credentials'],
+  'resolveOptionalKey'
+> = true;
 /** … and exposes no data domain to read from. */
 const _credentialsHaveNoDomains: Has<
   WorkflowScopedDb['credentials'],
@@ -549,8 +553,9 @@ describe('workflows read no unsanctioned mutable DB state mid-run', () => {
       _claimsReachById,
       _claimsCannotFollowPointer,
       _credentialsResolve,
+      _credentialsResolveOptional,
       _credentialsHaveNoDomains,
-    ]).toEqual([false, true, true, false, true, false, true, false]);
+    ]).toEqual([false, true, true, false, true, false, true, true, false]);
   });
 
   const files = workflowSourceFiles();

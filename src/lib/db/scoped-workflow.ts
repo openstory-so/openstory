@@ -83,7 +83,10 @@ type WorkflowDomains = {
  * billing fact that gates a charge, so it lives under `liveRead.apiKeys`.
  */
 type WorkflowCredentials = Pick<ScopedDb, 'teamId' | 'userId'> &
-  Pick<ScopedDb['apiKeys'], 'resolveKey' | 'resolveLlmKey'>;
+  Pick<
+    ScopedDb['apiKeys'],
+    'resolveKey' | 'resolveOptionalKey' | 'resolveLlmKey'
+  >;
 
 /**
  * Hatch 2 — CLAIMS. Reads of append-only rows by an id the run already holds:
@@ -203,6 +206,8 @@ export function toWorkflowScopedDb(scopedDb: ScopedDb): WorkflowScopedDb {
       teamId: scopedDb.teamId,
       userId: scopedDb.userId,
       resolveKey: (provider) => scopedDb.apiKeys.resolveKey(provider),
+      resolveOptionalKey: (provider) =>
+        scopedDb.apiKeys.resolveOptionalKey(provider),
       resolveLlmKey: () => scopedDb.apiKeys.resolveLlmKey(),
     },
     claims: scopedDb,
@@ -212,10 +217,11 @@ export function toWorkflowScopedDb(scopedDb: ScopedDb): WorkflowScopedDb {
 }
 
 /**
- * What the fal generation helpers (`image-generation`, `motion-generation`,
- * `music-generation`) actually depend on: resolve a fal key, and know whose
- * run this is for observability. Nothing else — the shape is the argument that
- * these helpers cannot read a row. Satisfied by `scopedDb.credentials`.
+ * What the media generation helpers (`image-generation`, `motion-generation`,
+ * `music-generation`) actually depend on: resolve a fal key, look for an
+ * optional native-provider key (#1216), and know whose run this is for
+ * observability. Nothing else — the shape is the argument that these helpers
+ * cannot read a row. Satisfied by `scopedDb.credentials`.
  */
 export type FalCredentialScopedDb = Pick<ScopedDb, 'userId'> &
-  Pick<ScopedDb['apiKeys'], 'resolveKey'>;
+  Pick<ScopedDb['apiKeys'], 'resolveKey' | 'resolveOptionalKey'>;

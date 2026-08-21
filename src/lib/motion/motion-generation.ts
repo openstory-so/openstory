@@ -12,17 +12,23 @@ import {
 import type { Microdollars } from '@/lib/billing/money';
 import { type AspectRatio } from '@/lib/constants/aspect-ratios';
 import type { FalCredentialScopedDb } from '@/lib/db/scoped-workflow';
+import {
+  claimMotionProvider,
+  getMotionProvider,
+  type MotionProviderId,
+} from '@/lib/media-providers';
 import { MOTION_JSON_SCHEMAS } from '@/lib/motion/endpoint-map';
 import {
   getDurationValues,
   numericOf,
   snapTo,
 } from '@/lib/motion/motion-transform';
-import { generateVideo, getVideoJobStatus } from '@tanstack/ai';
-import { falVideo } from '@tanstack/ai-fal';
+import type { ReferenceImageDescription } from '@/lib/prompts/reference-image-prompt';
+import { getLogger } from '@/lib/observability/logger';
+import { buildModelInput } from './build-model-input';
 
 export type GenerateMotionOptions = {
-  scopedDb?: FalCredentialScopedDb; // scopedDb is used to resolve the API key for the motion generation with BYOK
+  scopedDb?: FalCredentialScopedDb;
   imageUrl: string;
   prompt: string;
   model?: ImageToVideoModel;
@@ -41,13 +47,6 @@ export type GenerateMotionOptions = {
    */
   referenceImages?: ReferenceImageDescription[];
 };
-
-import { ensureExternallyFetchableUrl } from '@/lib/storage/external-url';
-import type { ReferenceImageDescription } from '@/lib/prompts/reference-image-prompt';
-import { buildModelInput, buildMotionRequest } from './build-model-input';
-import { resolveMotionEndpoint } from './resolve-motion-endpoint';
-
-import { getLogger } from '@/lib/observability/logger';
 
 const logger = getLogger(['openstory', 'motion', 'motion-generation']);
 
@@ -71,6 +70,13 @@ export function snapDuration(
 export type MotionJobSubmission = {
   jobId: string;
   modelKey: ImageToVideoModel;
+  /**
+   * Who the job was submitted to. Job ids are provider-scoped, so polling MUST
+   * go back to the same provider — re-deciding at poll time would send a fal
+   * request id to another provider (or the reverse) if a key changed mid-run
+   * (#1216).
+   */
+  provider: MotionProviderId;
   usedOwnKey: boolean;
   submittedAt: number;
 };
@@ -83,94 +89,19 @@ export async function submitMotionJob(
   options: GenerateMotionOptions
 ): Promise<MotionJobSubmission> {
   const modelKey = options.model || DEFAULT_VIDEO_MODEL;
-  const modelConfig = IMAGE_TO_VIDEO_MODELS[modelKey];
-
-  // Resolve the API key for the motion generation with BYOK if available.
-  // Resolved BEFORE normalizing the image URL: the fal-storage upload below
-  // authenticates with this key, so on a BYOK-only deployment (no platform
-  // FAL_KEY) the platform key would be empty and the upload would fail with
-  // "Authorization header is required" before submission (#924).
-  const falApiKeyInfo = options.scopedDb
-    ? await options.scopedDb.resolveKey('fal')
-    : { key: getEnv().FAL_KEY, source: 'platform' as const };
-
-  // Locally-served /r2/ image URLs aren't reachable by real fal — swap them
-  // for a fal-storage upload first (no-op in prod and e2e replay).
-  const imageUrl = await ensureExternallyFetchableUrl(
-    options.imageUrl,
-    falApiKeyInfo.key
+  const { provider, key } = await claimMotionProvider(
+    modelKey,
+    options.scopedDb
   );
+  const { jobId } = await provider.submit({ ...options, model: modelKey }, key);
 
-  // Decide which endpoint this run submits to (#873). With cast/element refs,
-  // models that have a dedicated reference-to-video endpoint (Seedance) route
-  // there; everything else (incl. Kling, which carries refs inline as
-  // `elements`) stays on its image-to-video endpoint.
-  const hasReferenceImages = (options.referenceImages?.length ?? 0) > 0;
-  const endpoint = resolveMotionEndpoint(modelKey, hasReferenceImages);
-
-  // Reference images are emitted either inline (Kling's `elements`) or via the
-  // reference-to-video endpoint (Seedance). Both paths need externally-fetchable
-  // URLs — the same locally-served /r2/ swap imageUrl needs applies to the
-  // character sheets / element images. Models that don't emit refs keep the raw
-  // references: their URLs are never sent, but the builder still needs the
-  // tokens + descriptions to substitute entity tokens in the prompt.
-  const emitsReferences =
-    endpoint.usesReferenceEndpoint || modelKey === 'kling_v3_pro';
-  const referenceImages =
-    emitsReferences && options.referenceImages?.length
-      ? await Promise.all(
-          options.referenceImages.map(async (ref) => ({
-            ...ref,
-            referenceImageUrl: await ensureExternallyFetchableUrl(
-              ref.referenceImageUrl
-            ),
-          }))
-        )
-      : options.referenceImages;
-
-  // Prepare the model input — the reference-to-video endpoint has a different
-  // input shape (tagged image_urls[], no start-frame image_url). Shared with
-  // the scene editor's optimised-prompt preview via buildMotionRequest.
-  const optionsWithFetchableUrls = { ...options, imageUrl, referenceImages };
-  const modelInput = buildMotionRequest(
-    optionsWithFetchableUrls,
-    modelKey
-  ).input;
-
-  // Separate the prompt from the model options
-  const { prompt: optimisedPrompt, ...modelOptions } = modelInput;
-  if (typeof optimisedPrompt !== 'string') {
-    throw new Error('Truncated prompt is not a string');
-  }
-  // Log the submission details
-  logger.info(`Submitting job with model: ${modelConfig.id}`, {
-    provider: modelConfig.provider,
-    endpoint: endpoint.endpointId,
-    promptLength: optimisedPrompt.length,
-    modelOptions,
-  });
-
-  // Create the Tanstack AI adapter and submit the job
-  // Note this is typesafe - only options compatible with modelConfig.id are allowed
-  // Important: fal.ai supports string for model ids that the client doesn't know about - so most new models _aren't_ typesafe
-  // Bound submit so a hung fal connection fails the step (#826).
-  const job = await generateVideo({
-    adapter: falVideo(endpoint.endpointId, {
-      apiKey: falApiKeyInfo.key,
-    }),
-    prompt: optimisedPrompt,
-    modelOptions,
-    timeout: FAL_REQUEST_TIMEOUT_MS,
-    debug: false,
-  });
-
-  // Log the job submission details
-  logger.info(`Job submitted: ${job.jobId}`);
+  logger.info(`Job submitted: ${jobId}`);
 
   return {
-    jobId: job.jobId,
+    jobId,
     modelKey,
-    usedOwnKey: falApiKeyInfo.source === 'team',
+    provider: provider.id,
+    usedOwnKey: key.source === 'team',
     submittedAt: Date.now(),
   };
 }
@@ -178,29 +109,26 @@ export async function submitMotionJob(
 /**
  * Check the status of a submitted motion job.
  * Designed to be called from individual workflow steps.
+ *
+ * `provider` comes from the submission rather than being re-resolved: polling
+ * the wrong provider for a job id it never issued reads as a lost generation.
+ * Defaults to `'fal'` so in-flight runs from before this field existed keep
+ * polling fal — correct, since that is where they were submitted.
  */
 export async function pollMotionJob(
   jobId: string,
   modelKey: ImageToVideoModel,
-  scopedDb?: FalCredentialScopedDb
+  scopedDb?: FalCredentialScopedDb,
+  providerId: MotionProviderId = 'fal'
 ) {
-  const modelConfig = IMAGE_TO_VIDEO_MODELS[modelKey];
-
-  // Resolve the API key for the motion generation with BYOK if available
-  const falApiKeyInfo = scopedDb
-    ? await scopedDb.resolveKey('fal')
-    : { key: getEnv().FAL_KEY, source: 'platform' as const };
-
-  // Bound a single status fetch — the workflow already budgets total poll
-  // wall-clock across batches; this only prevents one hung HTTP call from
-  // freezing a poll step forever (#826).
-  return await getVideoJobStatus({
-    adapter: falVideo(modelConfig.id, {
-      apiKey: falApiKeyInfo.key,
-      fetch: createDeadlineFetch(FAL_REQUEST_TIMEOUT_MS, 'Motion job status'),
-    }),
-    jobId,
-  });
+  const provider = getMotionProvider(providerId);
+  const key = await provider.claim(modelKey, scopedDb);
+  if (!key) {
+    throw new Error(
+      `Motion job ${jobId} was submitted to ${provider.id} but no key is available to poll it`
+    );
+  }
+  return provider.poll(jobId, modelKey, key);
 }
 
 /**

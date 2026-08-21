@@ -8,9 +8,10 @@
 import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
+import { API_KEY_PROVIDERS } from '@/lib/db/schema';
 import { teamAdminAccessMiddleware } from './middleware';
 
-const providerSchema = z.enum(['openrouter', 'fal']);
+const providerSchema = z.enum(API_KEY_PROVIDERS);
 
 // ============================================================================
 // List API Keys

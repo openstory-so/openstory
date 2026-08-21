@@ -496,3 +496,25 @@ describe('hasUsableKey (billing gates must not count invalid keys)', () => {
     expect(await scope.hasUsableKey('openrouter')).toBe(false);
   });
 });
+
+describe('resolveOptionalKey', () => {
+  it('returns undefined instead of throwing when no key exists', async () => {
+    // Native-provider routing (#1216) asks "is there a key?" and falls
+    // through to fal when there isn't. `resolveKey` throws there.
+    testEnv.FAL_KEY = undefined;
+    const scope = createApiKeysReadMethods(db, teamId);
+
+    expect(await scope.resolveOptionalKey('fal')).toBeUndefined();
+    await expect(scope.resolveKey('fal')).rejects.toThrow(
+      /No API key available/
+    );
+  });
+
+  it('returns the platform key when one exists', async () => {
+    const scope = createApiKeysReadMethods(db, teamId);
+    expect(await scope.resolveOptionalKey('fal')).toEqual({
+      key: 'platform-fal-key',
+      source: 'platform',
+    });
+  });
+});

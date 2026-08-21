@@ -306,7 +306,7 @@ export type MediaGenerationRecord = AIObservabilityMeta & {
   /** Model id as submitted to the provider. */
   model: string;
   /** `gen_ai.system` — the provider the request was billed by. */
-  provider: 'fal';
+  provider: string;
   /** Media activity, mapped to the `gen_ai.operation.name` semconv value. */
   activity: MediaActivity;
   /**

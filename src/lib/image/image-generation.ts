@@ -1,26 +1,16 @@
 import { isContentRejectionError } from '@/lib/ai/content-rejection';
-import { falCostFromUnits } from '@/lib/ai/fal-cost';
 import { extractFalErrorMessage } from '@/lib/ai/fal-error';
 import { type Microdollars } from '@/lib/billing/money';
-import {
-  buildImageRequest,
-  type ImageGenerationParams,
-} from '@/lib/image/build-image-request';
-
-import { getEnv } from '#env';
-import { FAL_GENERATION_TIMEOUT_MS } from '@/lib/ai/fal-deadline-fetch';
 import type { FalCredentialScopedDb } from '@/lib/db/scoped-workflow';
+import type { ImageGenerationParams } from '@/lib/image/build-image-request';
+import {
+  claimImageProvider,
+  type ImageProviderId,
+} from '@/lib/media-providers';
 import {
   recordMediaGenerationSpan,
   type AIObservabilityMeta,
 } from '@/lib/observability/ai-otel';
-import { ensureExternallyFetchableUrls } from '@/lib/storage/external-url';
-import { generateImage } from '@tanstack/ai';
-import { falImage } from '@tanstack/ai-fal';
-
-import { getLogger } from '@/lib/observability/logger';
-
-const logger = getLogger(['openstory', 'image', 'image-generation']);
 
 export type { ImageGenerationParams } from '@/lib/image/build-image-request';
 
@@ -41,11 +31,11 @@ export type ImageGenerationResult = {
   parameters: ImageGenerationParams;
   generatedAt: string;
   processingTimeMs: number;
-  provider: 'fal';
+  provider: ImageProviderId;
   metadata: {
     prompt: string;
     model: string;
-    /** Fal endpoint actually submitted to (billing denominator). */
+    /** Provider endpoint actually submitted to (billing denominator). */
     endpointId: string;
     /** Fal-reported billed unit count. Recorded as a `model_usage_observations`
      * sample (the pricing cron's median reads that table, not the credit
@@ -65,12 +55,6 @@ export type ImageGenerationResult = {
   };
 };
 
-function createFalAdapter(modelId: string, falApiKey?: string) {
-  // Prefer an explicit key (BYOK / caller), then the platform FAL_KEY.
-  const key = falApiKey ?? getEnv().FAL_KEY;
-  return falImage(modelId, { apiKey: key });
-}
-
 export async function generateImageWithProvider(
   params: ImageGenerationParams,
   options?: ImageGenerationOptions
@@ -85,12 +69,21 @@ export async function generateImageWithProvider(
     userId: options?.observability?.userId ?? options?.scopedDb?.userId,
   };
 
+  // Claim out here, not inside generation, so the failure span can name
+  // the provider that actually rejected the call.
+  let providerId: ImageProviderId = 'fal';
+
   try {
-    const result = await generateImageInternal(params, options);
+    const { provider, key } = await claimImageProvider(
+      params.model,
+      options?.scopedDb
+    );
+    providerId = provider.id;
+    const result = await provider.generate(params, key, options);
     recordMediaGenerationSpan({
       ...attribution,
       model: params.model,
-      provider: 'fal',
+      provider: result.provider,
       activity: 'image',
       // Measured inside, so it excludes key resolution and the reference-URL
       // upload — the generation itself.
@@ -107,7 +100,7 @@ export async function generateImageWithProvider(
     recordMediaGenerationSpan({
       ...attribution,
       model: params.model,
-      provider: 'fal',
+      provider: providerId,
       activity: 'image',
       durationMs: Date.now() - startedAt,
       prompt: params.prompt,
@@ -123,116 +116,4 @@ export async function generateImageWithProvider(
     }
     throw error;
   }
-}
-// @TODO: TB Mar 2026 - this needs to be updated to be typesafe. Especially after the work put in on Tanstack AI to keep it safe
-async function generateImageInternal(
-  rawParams: ImageGenerationParams,
-  options?: ImageGenerationOptions
-): Promise<ImageGenerationResult> {
-  // Get the fal API key - byok or global. Resolved BEFORE normalizing
-  // reference URLs: the fal-storage upload below authenticates with this key,
-  // so on a BYOK-only deployment (no platform FAL_KEY) the platform key would
-  // be empty and the upload would fail with "Authorization header is required"
-  // before we ever reach generation (#924).
-  const falApiKeyInfo = options?.scopedDb
-    ? await options.scopedDb.resolveKey('fal')
-    : { key: getEnv().FAL_KEY, source: 'platform' as const };
-
-  // Locally-served /r2/ reference URLs aren't reachable by real fal — swap
-  // them for fal-storage uploads first (no-op in prod and e2e replay).
-  const params: ImageGenerationParams = rawParams.referenceImageUrls?.length
-    ? {
-        ...rawParams,
-        referenceImageUrls: await ensureExternallyFetchableUrls(
-          rawParams.referenceImageUrls,
-          falApiKeyInfo.key
-        ),
-      }
-    : rawParams;
-  const startTime = Date.now();
-
-  // The exact request fal receives — shared with the scene editor's
-  // optimised-prompt preview so the two can never drift.
-  const { endpointId: endpoint, input } = buildImageRequest(params);
-  const { prompt, ...modelOptions } = input;
-
-  const adapter = createFalAdapter(endpoint, falApiKeyInfo.key);
-
-  logger.info('generateImage request', {
-    data: JSON.stringify(
-      {
-        model: params.model,
-        endpoint,
-        keySource: falApiKeyInfo.source,
-        prompt,
-        modelOptions,
-        referenceImageUrls: params.referenceImageUrls ?? [],
-      },
-      null,
-      2
-    ),
-  });
-
-  // Bound so a hung fal.subscribe fails the workflow step and CF can retry
-  // (#826). Native activity `timeout` since @tanstack/ai@0.44 / ai-fal@0.10.
-  const result = await generateImage({
-    adapter,
-    prompt,
-    modelOptions,
-    timeout: FAL_GENERATION_TIMEOUT_MS,
-    debug: false,
-  });
-
-  logger.info('generateImage response', {
-    data: JSON.stringify(
-      {
-        model: params.model,
-        endpoint,
-        imageUrls: result.images.map((img) => img.url),
-      },
-      null,
-      2
-    ),
-  });
-
-  const imageUrls = result.images
-    .map((img) => img.url)
-    .filter((url): url is string => !!url);
-
-  if (imageUrls.length === 0) {
-    throw new Error('No images returned from generation');
-  }
-
-  const processingTimeMs = Date.now() - startTime;
-
-  // Exact cost from fal's reported billed units (resolution/style premiums are
-  // already baked into the count by fal).
-  const cost = await falCostFromUnits(endpoint, result.usage?.unitsBilled);
-
-  return {
-    imageUrls,
-    parameters: params,
-    generatedAt: new Date().toISOString(),
-    processingTimeMs,
-    provider: 'fal',
-    metadata: {
-      prompt: params.prompt,
-      model: params.model,
-      endpointId: endpoint,
-      unitsBilled: result.usage?.unitsBilled,
-      // What the call actually returned, not what it was asked for: the median
-      // divides `unitsBilled` by this, so a partial return (3 of 4 images)
-      // recorded as 4 biases the per-image figure LOW — the direction that
-      // under-gates, which is #1069's failure mode (#1069).
-      numImages: imageUrls.length || params.numImages,
-      dimensions: imageUrls.map(() => ({ width: 0, height: 0 })),
-      file_sizes: imageUrls.map(() => 0),
-      seed: params.seed,
-      cost,
-      // The adapter sets `id` to fal's request id — the join key to the
-      // billing-events record the hourly reconcile audits this charge against.
-      requestId: result.id,
-      usedOwnKey: falApiKeyInfo.source === 'team',
-    },
-  };
 }

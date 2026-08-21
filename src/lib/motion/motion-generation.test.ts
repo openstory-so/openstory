@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { mockGenerateVideo } from './__mocks__/fal-client.mock';
+import {
+  mockGenerateVideo,
+  mockGetVideoJobStatus,
+} from './__mocks__/fal-client.mock';
 
 // Mock DB + env so api-key resolution falls through to platform key
 vi.doMock('#db-client', () => ({
@@ -12,11 +15,12 @@ vi.doMock('#env', () => ({
   getEnv: () => ({ FAL_KEY: 'test-fal-key', OPENROUTER_KEY: 'test-or-key' }),
 }));
 
-const { submitMotionJob } = await import('./motion-generation');
+const { submitMotionJob, pollMotionJob } = await import('./motion-generation');
 
 describe('Motion Service', () => {
   beforeEach(() => {
     mockGenerateVideo.mockClear();
+    mockGetVideoJobStatus.mockClear();
   });
 
   describe('submitMotionJob', () => {
@@ -35,6 +39,7 @@ describe('Motion Service', () => {
 
       expect(result.jobId).toBe('test-kling-v3-request-id');
       expect(result.modelKey).toBe('kling_v3_pro');
+      expect(result.provider).toBe('fal');
       expect(result.usedOwnKey).toBe(false);
       expect(result.submittedAt).toBeGreaterThan(0);
 
@@ -115,6 +120,38 @@ describe('Motion Service', () => {
           }),
         })
       );
+    });
+  });
+
+  describe('pollMotionJob', () => {
+    it('polls fal by default so pre-#1216 submissions keep working', async () => {
+      mockGetVideoJobStatus.mockResolvedValue({
+        jobId: 'job-1',
+        status: 'completed',
+        url: 'https://example.com/video.mp4',
+        usage: { unitsBilled: 12 },
+      });
+
+      const result = await pollMotionJob('job-1', 'kling_v3_pro');
+
+      expect(result.status).toBe('completed');
+      expect(result.url).toBe('https://example.com/video.mp4');
+      expect(mockGetVideoJobStatus).toHaveBeenCalledWith(
+        expect.objectContaining({ jobId: 'job-1' })
+      );
+    });
+
+    it('throws on an unknown provider stamp', async () => {
+      await expect(
+        pollMotionJob(
+          'job-1',
+          'kling_v3_pro',
+          undefined,
+          // @ts-expect-error — the production union is only 'fal' until native
+          // modules land; this is the rollback/unknown-stamp path.
+          'xai'
+        )
+      ).rejects.toThrow('Unknown motion provider: xai');
     });
   });
 });
