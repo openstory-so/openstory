@@ -333,7 +333,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
     // Step 2: Prepare start image — use Cloudflare Image Resizing if Kling model and image exceeds 10MB
     const startImageUrl = await step.do('prepare-start-image', async () => {
       const modelConfig = IMAGE_TO_VIDEO_MODELS[model];
-      if (modelConfig.provider !== 'Kling') {
+      if (modelConfig.vendor !== 'Kling') {
         return input.imageUrl;
       }
 

@@ -21,11 +21,11 @@ import {
   type ImageToVideoModel,
   type MotionReferenceEndpointConfig,
 } from '@/lib/ai/models';
-import type { MediaVia } from '@/lib/media/via';
+import type { MediaVia } from '@/lib/ai/via';
 
 export type MotionEndpointResolution =
   | {
-      /** Pricing Via — which API this endpoint is called on. Lab is `model.provider`. */
+      /** Pricing Via — which API this endpoint is called on. Vendor is `model.vendor`. */
       via: MediaVia;
       endpointId: string;
       references: 'none' | 'inline';

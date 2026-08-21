@@ -36,7 +36,7 @@ export const IMAGE_TO_VIDEO_MODELS = {
   grok_imagine_video_1_5: {
     id: 'xai/grok-imagine-video/v1.5/image-to-video',
     name: 'Grok Imagine Video 1.5',
-    provider: 'Grok',
+    vendor: 'Grok',
     license: 'proprietary' as const,
     qualityRank: 1,
     maxPromptLength: 2500,
@@ -45,7 +45,7 @@ export const IMAGE_TO_VIDEO_MODELS = {
   ltx_2_3_pro: {
     id: 'fal-ai/ltx-2.3/image-to-video',
     name: 'LTX 2.3 Pro',
-    provider: 'Lightricks',
+    vendor: 'Lightricks',
     license: 'open-source' as const,
     qualityRank: 2,
     maxPromptLength: 2500,
@@ -54,7 +54,7 @@ export const IMAGE_TO_VIDEO_MODELS = {
   veo3_1: {
     id: 'fal-ai/veo3.1/image-to-video',
     name: 'Veo 3.1',
-    provider: 'Google',
+    vendor: 'Google',
     license: 'proprietary' as const,
     qualityRank: 2,
     maxPromptLength: 20000,
@@ -63,7 +63,7 @@ export const IMAGE_TO_VIDEO_MODELS = {
   kling_v3_pro: {
     id: 'fal-ai/kling-video/v3/pro/image-to-video',
     name: 'Kling v3 Pro',
-    provider: 'Kling',
+    vendor: 'Kling',
     license: 'proprietary' as const,
     qualityRank: 3,
     maxPromptLength: 2500,
@@ -72,7 +72,7 @@ export const IMAGE_TO_VIDEO_MODELS = {
   minimax_hailuo_02: {
     id: 'fal-ai/minimax/hailuo-2.3/pro/image-to-video',
     name: 'MiniMax Hailuo 2.3',
-    provider: 'MiniMax',
+    vendor: 'MiniMax',
     license: 'proprietary' as const,
     qualityRank: 5,
     maxPromptLength: 2500,
@@ -81,7 +81,7 @@ export const IMAGE_TO_VIDEO_MODELS = {
   seedance_v2: {
     id: 'bytedance/seedance-2.0/enterprise/v2/image-to-video',
     name: 'Seedance 2.0',
-    provider: 'ByteDance',
+    vendor: 'ByteDance',
     license: 'proprietary' as const,
     qualityRank: 2,
     maxPromptLength: 4096,
@@ -96,7 +96,7 @@ export const IMAGE_MODELS = {
   nano_banana_2: {
     id: 'fal-ai/nano-banana-2' as const,
     name: 'Nano Banana 2',
-    provider: 'Google',
+    vendor: 'Google',
     license: 'proprietary' as const,
     qualityRank: 1,
     description: "Google's latest fast image generation and editing model",
@@ -105,7 +105,7 @@ export const IMAGE_MODELS = {
   nano_banana_pro: {
     id: 'fal-ai/nano-banana-pro' as const,
     name: 'Nano Banana Pro',
-    provider: 'Google',
+    vendor: 'Google',
     license: 'proprietary' as const,
     qualityRank: 2,
     description: 'Enhanced realism and typography',
@@ -114,7 +114,7 @@ export const IMAGE_MODELS = {
   gpt_image_2: {
     id: 'openai/gpt-image-2' as const,
     name: 'GPT Image 2',
-    provider: 'OpenAI',
+    vendor: 'OpenAI',
     license: 'proprietary' as const,
     qualityRank: 2,
     description: 'Near-perfect text rendering, UI fidelity, up to 4K',
@@ -123,7 +123,7 @@ export const IMAGE_MODELS = {
   grok_imagine_image: {
     id: 'xai/grok-imagine-image/quality/text-to-image' as const,
     name: 'Grok Imagine Image Quality',
-    provider: 'Grok',
+    vendor: 'Grok',
     license: 'proprietary' as const,
     qualityRank: 3,
     description: 'High-quality aesthetic image generation with low censoring',
@@ -132,7 +132,7 @@ export const IMAGE_MODELS = {
   flux_2_max: {
     id: 'fal-ai/flux-2-max' as const,
     name: 'FLUX.2 Max',
-    provider: 'Black Forest Labs',
+    vendor: 'Black Forest Labs',
     license: 'proprietary' as const,
     qualityRank: 4,
     description: 'Exceptional realism, precision, and consistency',
@@ -141,7 +141,7 @@ export const IMAGE_MODELS = {
   phota: {
     id: 'fal-ai/phota' as const,
     name: 'Phota',
-    provider: 'Phota',
+    vendor: 'Phota',
     license: 'proprietary' as const,
     qualityRank: 5,
     description: 'Character consistency via profiles',
@@ -150,7 +150,7 @@ export const IMAGE_MODELS = {
   hunyuan_image_v3: {
     id: 'fal-ai/hunyuan-image/v3/text-to-image' as const,
     name: 'Hunyuan Image v3',
-    provider: 'Tencent',
+    vendor: 'Tencent',
     license: 'open-source' as const,
     qualityRank: 6,
     description: 'Open source with strong composition',
@@ -159,7 +159,7 @@ export const IMAGE_MODELS = {
   flux_2_dev: {
     id: 'fal-ai/flux-2' as const,
     name: 'FLUX.2 Dev',
-    provider: 'Black Forest Labs',
+    vendor: 'Black Forest Labs',
     license: 'open-source' as const,
     qualityRank: 7,
     description: '32B open weights with native editing',
@@ -168,7 +168,7 @@ export const IMAGE_MODELS = {
   qwen_image: {
     id: 'fal-ai/qwen-image-2/pro/text-to-image' as const,
     name: 'Qwen Image 2 Pro',
-    provider: 'Alibaba',
+    vendor: 'Alibaba',
     license: 'open-source' as const,
     qualityRank: 8,
     description: 'Apache 2.0, native 2K, text rendering, editing support',
@@ -177,7 +177,7 @@ export const IMAGE_MODELS = {
   hidream_i1: {
     id: 'fal-ai/hidream-i1-full' as const,
     name: 'HiDream I1',
-    provider: 'HiDream',
+    vendor: 'HiDream',
     license: 'open-source' as const,
     qualityRank: 9,
     description: 'MIT licensed, 17B parameters',
@@ -186,7 +186,7 @@ export const IMAGE_MODELS = {
   seedream_v5: {
     id: 'fal-ai/bytedance/seedream/v5/lite/text-to-image' as const,
     name: 'Seedream 5',
-    provider: 'ByteDance',
+    vendor: 'ByteDance',
     license: 'proprietary' as const,
     qualityRank: 10,
     description: 'Unified generation and editing',
@@ -195,7 +195,7 @@ export const IMAGE_MODELS = {
   flux_2_turbo: {
     id: 'fal-ai/flux-2/turbo' as const,
     name: 'FLUX.2 Turbo',
-    provider: 'Black Forest Labs',
+    vendor: 'Black Forest Labs',
     license: 'open-source' as const,
     qualityRank: 99,
     description: 'Ultra-fast preview generation',
@@ -389,7 +389,7 @@ export const AUDIO_MODELS = {
   elevenlabs_music: {
     id: 'fal-ai/elevenlabs/music' as const,
     name: 'ElevenLabs Music',
-    provider: 'ElevenLabs',
+    vendor: 'ElevenLabs',
     license: 'proprietary' as const,
     qualityRank: 1,
     type: 'music' as const,
@@ -408,7 +408,7 @@ export const AUDIO_MODELS = {
   ace_step_1_5: {
     id: 'fal-ai/ace-step-1.5' as const,
     name: 'ACE-Step 1.5',
-    provider: 'ACE Studio',
+    vendor: 'ACE Studio',
     license: 'open-source' as const,
     qualityRank: 2,
     type: 'music' as const,
@@ -428,7 +428,7 @@ export const AUDIO_MODELS = {
   ace_step: {
     id: 'fal-ai/ace-step/prompt-to-audio' as const,
     name: 'ACE-Step',
-    provider: 'ACE Studio',
+    vendor: 'ACE Studio',
     license: 'open-source' as const,
     qualityRank: 3,
     type: 'music' as const,

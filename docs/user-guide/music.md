@@ -41,7 +41,7 @@ If generation fails, the error message is displayed with a **Retry** button.
 
 ## Music Models
 
-| Model                | Provider   | Max Duration | Capabilities                         |
+| Model                | Vendor     | Max Duration | Capabilities                         |
 | -------------------- | ---------- | ------------ | ------------------------------------ |
 | **ElevenLabs Music** | ElevenLabs | 10 minutes   | Prompt-based, instrumental (default) |
 | **MiniMax Music v2** | MiniMax    | 5 minutes    | Prompt + lyrics, instrumental        |

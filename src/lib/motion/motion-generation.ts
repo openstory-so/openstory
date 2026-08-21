@@ -17,7 +17,7 @@ import type { Microdollars } from '@/lib/billing/money';
 import { type AspectRatio } from '@/lib/constants/aspect-ratios';
 import type { ResolvedApiKey } from '@/lib/db/scoped/api-keys';
 import type { CredentialScopedDb } from '@/lib/db/scoped-workflow';
-import { assertMediaVia, type MediaVia } from '@/lib/media/via';
+import { assertMediaVia, type MediaVia } from '@/lib/ai/via';
 import { MOTION_JSON_SCHEMAS } from '@/lib/motion/endpoint-map';
 import {
   getDurationValues,
@@ -80,7 +80,7 @@ export type MotionJobSubmission = {
    * Pricing Via — which API this job was submitted to. Job ids are via-scoped,
    * so polling MUST go back to the same via. Re-deciding from live keys would
    * send a fal request id to xAI (or the reverse) if a key changed mid-run
-   * (#1216). Lab is `IMAGE_TO_VIDEO_MODELS[model].provider`.
+   * (#1216). Vendor is `IMAGE_TO_VIDEO_MODELS[model].vendor`.
    */
   via: MediaVia;
   usedOwnKey: boolean;
@@ -259,7 +259,7 @@ export function calculateMotionMetadata(
   cost: Microdollars | null;
   duration: number;
   model: string;
-  provider: string;
+  vendor: string;
 } {
   const modelKey = options.model || DEFAULT_VIDEO_MODEL;
   const modelConfig = IMAGE_TO_VIDEO_MODELS[modelKey];
@@ -284,7 +284,7 @@ export function calculateMotionMetadata(
     cost,
     duration: validatedDuration,
     model: modelConfig.id,
-    provider: modelConfig.provider,
+    vendor: modelConfig.vendor,
   };
 }
 

@@ -347,7 +347,7 @@ function buildAudioInput(
   config: (typeof AUDIO_MODELS)[AudioModel],
   durationSeconds: number
 ): Record<string, unknown> {
-  if (config.provider === 'ElevenLabs') {
+  if (config.vendor === 'ElevenLabs') {
     return {
       prompt: TEST_AUDIO_PROMPT,
       music_length_ms: durationSeconds * 1000,

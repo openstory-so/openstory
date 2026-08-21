@@ -167,7 +167,7 @@ function PricingPage() {
                 <thead>
                   <tr className="border-b bg-muted/40">
                     <th className="px-4 py-3 font-medium">Model</th>
-                    <th className="px-4 py-3 font-medium">Lab</th>
+                    <th className="px-4 py-3 font-medium">Vendor</th>
                     <th className="px-4 py-3 font-medium">Via</th>
                     <th className="px-4 py-3 font-medium text-right">
                       Indicative rate
@@ -196,7 +196,7 @@ function PricingPage() {
                         )}
                       </td>
                       <td className="px-4 py-3 text-muted-foreground">
-                        {row.lab}
+                        {row.vendor}
                       </td>
                       <td className="px-4 py-3">
                         <a

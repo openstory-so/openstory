@@ -7,7 +7,7 @@ export const SCRIPT_ANALYSIS_MODELS = [
   {
     id: 'x-ai/grok-4.6',
     name: 'Grok 4.6',
-    provider: 'xAI',
+    vendor: 'xAI',
     license: 'proprietary' as const,
     qualityRank: 1,
     contextWindow: 500_000,
@@ -21,7 +21,7 @@ export const SCRIPT_ANALYSIS_MODELS = [
   {
     id: 'anthropic/claude-fable-5',
     name: 'Claude Fable 5',
-    provider: 'Anthropic',
+    vendor: 'Anthropic',
     license: 'proprietary' as const,
     qualityRank: 2,
     contextWindow: 1_000_000,
@@ -31,7 +31,7 @@ export const SCRIPT_ANALYSIS_MODELS = [
   {
     id: 'anthropic/claude-sonnet-5',
     name: 'Claude Sonnet 5',
-    provider: 'Anthropic',
+    vendor: 'Anthropic',
     license: 'proprietary' as const,
     qualityRank: 3,
     contextWindow: 1_000_000,
@@ -41,7 +41,7 @@ export const SCRIPT_ANALYSIS_MODELS = [
   {
     id: 'x-ai/grok-4.20',
     name: 'Grok 4.20',
-    provider: 'xAI',
+    vendor: 'xAI',
     license: 'proprietary' as const,
     qualityRank: 4,
     contextWindow: 2_000_000,
@@ -51,7 +51,7 @@ export const SCRIPT_ANALYSIS_MODELS = [
   {
     id: 'anthropic/claude-opus-4.8',
     name: 'Claude Opus 4.8',
-    provider: 'Anthropic',
+    vendor: 'Anthropic',
     license: 'proprietary' as const,
     qualityRank: 5,
     contextWindow: 1_000_000,
@@ -61,7 +61,7 @@ export const SCRIPT_ANALYSIS_MODELS = [
   {
     id: 'mistralai/mistral-small-2603',
     name: 'Mistral Small 4',
-    provider: 'Mistral',
+    vendor: 'Mistral',
     license: 'open-source' as const,
     qualityRank: 6,
     contextWindow: 262_144,
@@ -71,7 +71,7 @@ export const SCRIPT_ANALYSIS_MODELS = [
   {
     id: 'deepseek/deepseek-v3.2',
     name: 'DeepSeek V3.2',
-    provider: 'DeepSeek',
+    vendor: 'DeepSeek',
     license: 'open-source' as const,
     qualityRank: 7,
     contextWindow: 163_840,
@@ -82,7 +82,7 @@ export const SCRIPT_ANALYSIS_MODELS = [
   {
     id: 'z-ai/glm-5.2',
     name: 'GLM-5.2',
-    provider: 'Z.ai',
+    vendor: 'Z.ai',
     license: 'open-source' as const,
     qualityRank: 8,
     contextWindow: 1_048_576,
@@ -97,7 +97,7 @@ export const SCRIPT_ANALYSIS_MODELS = [
   {
     id: 'google/gemini-3.1-pro-preview',
     name: 'Gemini 3.1 Pro',
-    provider: 'Google',
+    vendor: 'Google',
     license: 'proprietary' as const,
     qualityRank: 9,
     contextWindow: 1_048_576,
@@ -107,7 +107,7 @@ export const SCRIPT_ANALYSIS_MODELS = [
   {
     id: 'openai/gpt-5.5',
     name: 'GPT-5.5',
-    provider: 'OpenAI',
+    vendor: 'OpenAI',
     license: 'proprietary' as const,
     qualityRank: 10,
     contextWindow: 1_050_000,
@@ -117,7 +117,7 @@ export const SCRIPT_ANALYSIS_MODELS = [
   {
     id: 'google/gemini-3-flash-preview',
     name: 'Gemini 3 Flash',
-    provider: 'Google',
+    vendor: 'Google',
     license: 'proprietary' as const,
     qualityRank: 11,
     contextWindow: 1_048_576,
@@ -127,7 +127,7 @@ export const SCRIPT_ANALYSIS_MODELS = [
   {
     id: 'openai/gpt-5.4-mini',
     name: 'GPT-5.4 Mini',
-    provider: 'OpenAI',
+    vendor: 'OpenAI',
     license: 'proprietary' as const,
     qualityRank: 12,
     contextWindow: 400_000,
@@ -137,7 +137,7 @@ export const SCRIPT_ANALYSIS_MODELS = [
   {
     id: 'bytedance-seed/seed-2.0-mini',
     name: 'Seed 2.0 Mini',
-    provider: 'ByteDance',
+    vendor: 'ByteDance',
     license: 'proprietary' as const,
     qualityRank: 13,
     contextWindow: 262_144,
@@ -147,7 +147,7 @@ export const SCRIPT_ANALYSIS_MODELS = [
   {
     id: 'openai/gpt-5.4-nano',
     name: 'GPT-5.4 Nano',
-    provider: 'OpenAI',
+    vendor: 'OpenAI',
     license: 'proprietary' as const,
     qualityRank: 14,
     contextWindow: 400_000,

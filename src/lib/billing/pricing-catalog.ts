@@ -3,7 +3,7 @@
  * Combines live fal pricing (`model_pricing`, passed in by the server
  * function) with OpenRouter LLM token rates.
  *
- * Columns use **lab** (who made the model) and **via** (which API we call).
+ * Columns use **vendor** (who made the model) and **via** (which API we call).
  * Price cells are starting points — full rules live on the via platform.
  */
 
@@ -26,7 +26,7 @@ type PricingVia = 'fal.ai' | 'OpenRouter';
 type PricingRow = {
   name: string;
   /** Who trained / owns the model (xAI, ByteDance, Google, …). */
-  lab: string;
+  vendor: string;
   /** Which API OpenStory calls for this model today. */
   via: PricingVia;
   /** Official pricing / model page on the via platform. */
@@ -152,13 +152,13 @@ export function buildPricingCatalog(opts: {
   const toFalRow = (model: {
     id: string;
     name: string;
-    provider: string;
+    vendor: string;
     license?: 'open-source' | 'proprietary';
   }): PricingRow => {
     const { price, detail } = formatFalPrice(falPricing, model.id);
     return {
       name: model.name,
-      lab: model.provider,
+      vendor: model.vendor,
       via: 'fal.ai',
       docsUrl: falDocsUrl(model.id),
       license: model.license,
@@ -181,7 +181,7 @@ export function buildPricingCatalog(opts: {
     const { price, detail } = formatLlmPrice(model.id);
     return {
       name: model.name,
-      lab: model.provider,
+      vendor: model.vendor,
       via: 'OpenRouter',
       docsUrl: openRouterDocsUrl(model.id),
       license: model.license,

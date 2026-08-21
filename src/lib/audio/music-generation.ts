@@ -46,7 +46,7 @@ export type MusicResult = {
   audioUrl?: string;
   metadata: {
     model: string;
-    provider: string;
+    vendor: string;
     /** Fal endpoint submitted to (billing denominator). */
     endpointId: string;
     /** Fal-reported billed unit count. Recorded as a `model_usage_observations`
@@ -202,7 +202,7 @@ async function callFalAudio(
     shape.duration ?? clampDuration(options.duration, modelConfig);
 
   logger.info(`Generating music with model: ${modelConfig.id}`, {
-    provider: modelConfig.provider,
+    vendor: modelConfig.vendor,
     promptLength: shape.prompt.length,
     duration: shape.duration ?? '(fixed by model)',
   });
@@ -240,7 +240,7 @@ async function callFalAudio(
     requestId: result.id,
     metadata: {
       model: modelConfig.id,
-      provider: modelConfig.provider,
+      vendor: modelConfig.vendor,
       endpointId: modelConfig.id,
       unitsBilled: result.usage?.unitsBilled,
       duration: billedDuration,

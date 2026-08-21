@@ -64,7 +64,7 @@ export function assembleMotionPrompt({
 }: AssembleOptions): string {
   const { dialogue, audio, fullPrompt } = motionPrompt;
   const supportsAudio = videoModelSupportsAudio(model);
-  const provider = IMAGE_TO_VIDEO_MODELS[model].provider;
+  const vendor = IMAGE_TO_VIDEO_MODELS[model].vendor;
 
   let assembled: string;
 
@@ -80,7 +80,7 @@ export function assembleMotionPrompt({
     const dialogueData = hasDialogue ? dialogue : undefined;
     const audioData = audio ?? undefined;
 
-    switch (provider) {
+    switch (vendor) {
       case 'Kling':
         assembled = buildKlingPrompt(fullPrompt, dialogueData, audioData);
         break;

@@ -11,7 +11,7 @@ OpenStory integrates with a wide range of AI models across four categories: scri
 
 These LLM models analyze your script, extract scenes, characters, and locations, and generate prompts. You can select multiple models to generate parallel sequences for comparison.
 
-| Model           | Provider  | Context Window | License                  |
+| Model           | Vendor    | Context Window | License                  |
 | --------------- | --------- | -------------- | ------------------------ |
 | Grok 4.5        | xAI       | 500K tokens    | Proprietary              |
 | Claude Fable 5  | Anthropic | 1M tokens      | Proprietary              |
@@ -32,7 +32,7 @@ These LLM models analyze your script, extract scenes, characters, and locations,
 
 These models create the visual images for each scene. You can select multiple models to generate variant images for comparison.
 
-| Model                      | Provider          | License                  | Notes                                     |
+| Model                      | Vendor            | License                  | Notes                                     |
 | -------------------------- | ----------------- | ------------------------ | ----------------------------------------- |
 | **Nano Banana 2**          | Google            | Proprietary              | Fast generation and editing (default)     |
 | Nano Banana Pro            | Google            | Proprietary              | Enhanced realism and typography           |
@@ -53,7 +53,7 @@ Most image models support **reference image editing** via dedicated edit endpoin
 
 These models animate still images into video clips.
 
-| Model              | Provider   | Est. Time | License     | Notes                 |
+| Model              | Vendor     | Est. Time | License     | Notes                 |
 | ------------------ | ---------- | --------- | ----------- | --------------------- |
 | **LTX 2.3 Pro**    | Lightricks | ~15s      | Open Source | Best quality ranking  |
 | Veo 3.1            | Google     | ~25s      | Proprietary | 20K max prompt length |
@@ -72,7 +72,7 @@ Some motion models can generate audio alongside video. OpenStory checks each mod
 
 ## Music & Audio Models
 
-| Model                | Provider   | Max Duration  | Type  | License     |
+| Model                | Vendor     | Max Duration  | Type  | License     |
 | -------------------- | ---------- | ------------- | ----- | ----------- |
 | **ElevenLabs Music** | ElevenLabs | 600s (10 min) | Music | Proprietary |
 | MiniMax Music v2     | MiniMax    | 300s (5 min)  | Music | Proprietary |

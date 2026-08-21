@@ -252,7 +252,7 @@ function buildFalModelOptions(
  * TanStack AI adapter call.
  */
 export function buildImageRequest(params: ImageGenerationParams): {
-  /** Pricing Via — which API this endpoint is called on. Lab is `model.provider`. */
+  /** Pricing Via — which API this endpoint is called on. Vendor is `model.vendor`. */
   via: 'fal';
   endpointId: string;
   input: { prompt: string } & Record<string, unknown>;

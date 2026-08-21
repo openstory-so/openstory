@@ -78,7 +78,7 @@ When multiple models are selected, the footer shows "N sequences will be created
 
 The AI model for generating scene images. You can select **multiple image models** to generate variant images across different providers. Available models include:
 
-| Model                      | Provider          | Notes                                                |
+| Model                      | Vendor            | Notes                                                |
 | -------------------------- | ----------------- | ---------------------------------------------------- |
 | Nano Banana 2              | Google            | Fast generation and editing (default)                |
 | Nano Banana Pro            | Google            | Enhanced realism and typography                      |
@@ -95,7 +95,7 @@ The AI model for generating scene images. You can select **multiple image models
 
 The AI model for image-to-video animation. Toggle **Auto-generate motion** to automatically create video clips for each scene after images are generated.
 
-| Model              | Provider   | Est. Time                    |
+| Model              | Vendor     | Est. Time                    |
 | ------------------ | ---------- | ---------------------------- |
 | LTX 2.3 Pro        | Lightricks | ~15s (open-source)           |
 | Veo 3.1            | Google     | ~25s                         |
@@ -108,7 +108,7 @@ The AI model for image-to-video animation. Toggle **Auto-generate motion** to au
 
 Toggle **Auto-generate music** to automatically create a soundtrack after scene generation. Choose from:
 
-| Model            | Provider   | Max Duration | Type                    |
+| Model            | Vendor     | Max Duration | Type                    |
 | ---------------- | ---------- | ------------ | ----------------------- |
 | ElevenLabs Music | ElevenLabs | 600s         | Music (default)         |
 | MiniMax Music v2 | MiniMax    | 300s         | Music (supports lyrics) |

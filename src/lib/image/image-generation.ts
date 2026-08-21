@@ -7,7 +7,7 @@ import { type Microdollars } from '@/lib/billing/money';
 import type { CredentialScopedDb } from '@/lib/db/scoped-workflow';
 import type { ImageGenerationParams } from '@/lib/image/build-image-request';
 import { buildImageRequest } from '@/lib/image/build-image-request';
-import type { MediaVia } from '@/lib/media/via';
+import type { MediaVia } from '@/lib/ai/via';
 import {
   recordMediaGenerationSpan,
   type AIObservabilityMeta,
@@ -35,7 +35,7 @@ export type ImageGenerationResult = {
   parameters: ImageGenerationParams;
   generatedAt: string;
   processingTimeMs: number;
-  /** Pricing Via — which API served this. Lab is `IMAGE_MODELS[model].provider`. */
+  /** Pricing Via — which API served this. Vendor is `IMAGE_MODELS[model].vendor`. */
   via: MediaVia;
   metadata: {
     prompt: string;
@@ -143,7 +143,7 @@ async function generateImageInternal(
 
   // The exact request fal receives — shared with the scene editor's
   // optimised-prompt preview so the two can never drift. `via` is stamped
-  // on the endpoint (pricing Via); lab is `IMAGE_MODELS[model].provider`.
+  // on the endpoint (pricing Via); vendor is `IMAGE_MODELS[model].vendor`.
   const { via, endpointId: endpoint, input } = buildImageRequest(params);
   const { prompt, ...modelOptions } = input;
 
