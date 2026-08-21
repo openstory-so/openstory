@@ -7,11 +7,7 @@
  * with correctly-typed duration values.
  */
 
-import {
-  IMAGE_TO_VIDEO_MODELS,
-  type ImageToVideoModel,
-  type MotionReferenceEndpointConfig,
-} from '@/lib/ai/models';
+import { IMAGE_TO_VIDEO_MODELS, type ImageToVideoModel } from '@/lib/ai/models';
 import type { z } from 'zod';
 import { buildKlingElementsInput } from './build-kling-elements';
 import { buildReferenceVideoPrompt } from './build-reference-video-prompt';
@@ -22,9 +18,6 @@ import {
 import { MOTION_TRANSFORMS, type MotionEndpointId } from './endpoint-map';
 import { resolveMotionEndpoint } from './resolve-motion-endpoint';
 import type { GenerateMotionOptions } from './motion-generation';
-import { getLogger } from '@/lib/observability/logger';
-
-const logger = getLogger(['openstory', 'motion', 'build-model-input']);
 
 /** Intentional deviations from API defaults */
 const QUALITY_OVERRIDES: Partial<
@@ -116,22 +109,6 @@ export function buildModelInput<T extends ImageToVideoModel>(
     }),
   }) as ModelOutputMap[T];
 
-  const outputPrompt =
-    'prompt' in result && typeof result.prompt === 'string'
-      ? result.prompt
-      : '';
-  const truncated = outputPrompt.length < prompt.length;
-
-  logger.info(
-    `model=${modelKey} inputLen=${prompt.length} outputLen=${outputPrompt.length} truncated=${truncated}`
-  );
-  if (truncated) {
-    logger.info(`INPUT prompt:
-${prompt}`);
-    logger.info(`OUTPUT prompt:
-${outputPrompt}`);
-  }
-
   return result;
 }
 
@@ -142,64 +119,16 @@ type ReferenceVideoOutput = z.output<
 >;
 
 /**
- * Build the request body for a reference-to-video endpoint (#873).
- *
- * Used when `resolveMotionEndpoint` routes a model with cast/element refs to
- * its dedicated reference endpoint (currently Seedance 2.0). The rendered
- * still goes first in `image_urls[]` with the cast/element sheets after it,
- * bound to prompt tokens via the endpoint's `tag` config — there is no
- * separate start-frame `image_url` on this endpoint (the transform drops
- * `imageUrl` since the schema has no image-url field).
- */
-export function buildReferenceVideoInput<T extends ImageToVideoModel>(
-  options: GenerateMotionOptions,
-  modelConfig: (typeof IMAGE_TO_VIDEO_MODELS)[T],
-  modelKey: T,
-  referenceConfig: MotionReferenceEndpointConfig
-): ReferenceVideoOutput {
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- guarded below: unregistered endpoints throw
-  const endpointId = referenceConfig.endpointId as MotionEndpointId;
-  const transform = MOTION_TRANSFORMS[endpointId];
-  // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- defensive guard for exhaustiveness
-  if (!transform) {
-    throw new Error(
-      `No motion transform registered for reference endpoint: ${endpointId}`
-    );
-  }
-
-  const { prompt, imageUrls } = buildReferenceVideoPrompt(
-    referenceConfig,
-    options.prompt,
-    options.imageUrl,
-    options.referenceImages ?? [],
-    modelConfig.maxPromptLength
-  );
-
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion safe to cast here because we know the transform is valid
-  const result = transform.parse({
-    prompt,
-    duration: options.duration,
-    aspectRatio: options.aspectRatio,
-    image_urls: imageUrls,
-    ...QUALITY_OVERRIDES[modelKey],
-    ...(options.generateAudio !== undefined && {
-      generate_audio: options.generateAudio,
-    }),
-  }) as ReferenceVideoOutput;
-
-  logger.info(
-    `model=${modelKey} endpoint=${endpointId} refImages=${imageUrls.length} promptLen=${prompt.length}`
-  );
-
-  return result;
-}
-
-/**
  * Resolve the endpoint and build the exact fal request body for a motion run
  * (#873). Shared by `submitMotionJob` and the scene editor's optimised-prompt
  * preview, so what the user sees is what fal receives — the only difference at
  * submit time is that locally-served `/r2/` URLs are swapped for externally
  * fetchable ones first.
+ *
+ * When `resolveMotionEndpoint` routes to a dedicated reference-to-video
+ * endpoint (currently Seedance 2.0 with cast/element refs), the still goes
+ * first in `image_urls[]` with the sheets after it — there is no separate
+ * start-frame `image_url` on that endpoint.
  */
 export function buildMotionRequest<T extends ImageToVideoModel>(
   options: GenerateMotionOptions,
@@ -213,13 +142,43 @@ export function buildMotionRequest<T extends ImageToVideoModel>(
     modelKey,
     (options.referenceImages?.length ?? 0) > 0
   );
-  const input = endpoint.usesReferenceEndpoint
-    ? buildReferenceVideoInput(
-        options,
-        modelConfig,
-        modelKey,
-        endpoint.referenceConfig
-      )
-    : buildModelInput(options, modelConfig, modelKey);
+
+  if (endpoint.references !== 'endpoint') {
+    return {
+      endpointId: endpoint.endpointId,
+      input: buildModelInput(options, modelConfig, modelKey),
+    };
+  }
+
+  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- guarded below: unregistered endpoints throw
+  const endpointId = endpoint.referenceConfig.endpointId as MotionEndpointId;
+  const transform = MOTION_TRANSFORMS[endpointId];
+  // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- defensive guard for exhaustiveness
+  if (!transform) {
+    throw new Error(
+      `No motion transform registered for reference endpoint: ${endpointId}`
+    );
+  }
+
+  const { prompt, imageUrls } = buildReferenceVideoPrompt(
+    endpoint.referenceConfig,
+    options.prompt,
+    options.imageUrl,
+    options.referenceImages ?? [],
+    modelConfig.maxPromptLength
+  );
+
+  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- transform is the reference-to-video schema
+  const input = transform.parse({
+    prompt,
+    duration: options.duration,
+    aspectRatio: options.aspectRatio,
+    image_urls: imageUrls,
+    ...QUALITY_OVERRIDES[modelKey],
+    ...(options.generateAudio !== undefined && {
+      generate_audio: options.generateAudio,
+    }),
+  }) as ReferenceVideoOutput;
+
   return { endpointId: endpoint.endpointId, input };
 }

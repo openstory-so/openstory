@@ -252,6 +252,8 @@ function buildFalModelOptions(
  * TanStack AI adapter call.
  */
 export function buildImageRequest(params: ImageGenerationParams): {
+  /** Pricing Via — which API this endpoint is called on. Lab is `model.provider`. */
+  via: 'fal';
   endpointId: string;
   input: { prompt: string } & Record<string, unknown>;
 } {
@@ -276,6 +278,7 @@ export function buildImageRequest(params: ImageGenerationParams): {
       : getTextToImageModelId(capped.model);
 
   return {
+    via: 'fal',
     endpointId,
     input: {
       prompt: truncatePromptForModel(capped.prompt, capped.model),

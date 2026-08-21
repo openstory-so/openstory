@@ -39,7 +39,7 @@ describe('Motion Service', () => {
 
       expect(result.jobId).toBe('test-kling-v3-request-id');
       expect(result.modelKey).toBe('kling_v3_pro');
-      expect(result.provider).toBe('fal');
+      expect(result.via).toBe('fal');
       expect(result.usedOwnKey).toBe(false);
       expect(result.submittedAt).toBeGreaterThan(0);
 
@@ -141,17 +141,10 @@ describe('Motion Service', () => {
       );
     });
 
-    it('throws on an unknown provider stamp', async () => {
+    it('throws on an unknown via stamp', async () => {
       await expect(
-        pollMotionJob(
-          'job-1',
-          'kling_v3_pro',
-          undefined,
-          // @ts-expect-error — the production union is only 'fal' until native
-          // modules land; this is the rollback/unknown-stamp path.
-          'xai'
-        )
-      ).rejects.toThrow('Unknown motion provider: xai');
+        pollMotionJob('job-1', 'kling_v3_pro', undefined, 'xai')
+      ).rejects.toThrow('Unknown media via: xai');
     });
   });
 });

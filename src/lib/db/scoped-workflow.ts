@@ -218,10 +218,10 @@ export function toWorkflowScopedDb(scopedDb: ScopedDb): WorkflowScopedDb {
 
 /**
  * What the media generation helpers (`image-generation`, `motion-generation`,
- * `music-generation`) actually depend on: resolve a fal key, look for an
- * optional native-provider key (#1216), and know whose run this is for
- * observability. Nothing else — the shape is the argument that these helpers
- * cannot read a row. Satisfied by `scopedDb.credentials`.
+ * `music-generation`) actually depend on: resolve a key (team or platform),
+ * look for an optional native-provider key (#1216), and know whose run this
+ * is for observability. Nothing else — the shape is the argument that these
+ * helpers cannot read a row. Satisfied by `scopedDb.credentials`.
  */
-export type FalCredentialScopedDb = Pick<ScopedDb, 'userId'> &
+export type CredentialScopedDb = Pick<ScopedDb, 'userId'> &
   Pick<ScopedDb['apiKeys'], 'resolveKey' | 'resolveOptionalKey'>;

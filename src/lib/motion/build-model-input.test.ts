@@ -1,18 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   IMAGE_TO_VIDEO_MODELS,
-  getMotionReferenceEndpoint,
   safeImageToVideoModel,
   type ImageToVideoModel,
 } from '../ai/models';
 import { typedEntries } from '../utils/typed-object';
-import { buildModelInput, buildReferenceVideoInput } from './build-model-input';
+import { buildModelInput, buildMotionRequest } from './build-model-input';
 import type { GenerateMotionOptions } from './motion-generation';
-
-const seedanceRefConfig = getMotionReferenceEndpoint('seedance_v2');
-if (!seedanceRefConfig) {
-  throw new Error('seedance_v2 must have a reference endpoint config');
-}
 
 const baseOptions: GenerateMotionOptions = {
   prompt: 'Camera dolly forward slowly',
@@ -291,7 +285,7 @@ describe('buildModelInput', () => {
     });
   });
 
-  describe('buildReferenceVideoInput (#873 Seedance reference-to-video)', () => {
+  describe('buildMotionRequest reference-to-video (#873 Seedance)', () => {
     const referenceImages = [
       {
         referenceImageUrl: 'https://example.com/jack-sheet.png',
@@ -305,13 +299,16 @@ describe('buildModelInput', () => {
       },
     ];
 
-    const buildRef = (overrides: Partial<GenerateMotionOptions> = {}) =>
-      buildReferenceVideoInput(
+    const buildRef = (overrides: Partial<GenerateMotionOptions> = {}) => {
+      const { input } = buildMotionRequest(
         { ...baseOptions, referenceImages, ...overrides },
-        IMAGE_TO_VIDEO_MODELS.seedance_v2,
-        'seedance_v2',
-        seedanceRefConfig
+        'seedance_v2'
       );
+      if (!('image_urls' in input)) {
+        throw new Error('expected Seedance reference-to-video input');
+      }
+      return input;
+    };
 
     it('puts the still as @Image1 in image_urls and omits image_url', () => {
       const result = buildRef();

@@ -583,6 +583,15 @@ export const MOTION_REFERENCE_ENDPOINTS: Partial<
 };
 
 /**
+ * Models that attach reference images on the normal image-to-video endpoint
+ * (Kling's `elements` field). Distinct from `MOTION_REFERENCE_ENDPOINTS`,
+ * which switch to a different endpoint.
+ */
+const MOTION_INLINE_REFERENCE_MODELS = {
+  kling_v3_pro: true,
+} as const satisfies Partial<Record<ImageToVideoModel, true>>;
+
+/**
  * Get the reference-to-video endpoint config for a motion model, if it has one.
  * @returns The endpoint config, or null if the model has no reference endpoint
  */
@@ -590,6 +599,10 @@ export function getMotionReferenceEndpoint(
   model: ImageToVideoModel
 ): MotionReferenceEndpointConfig | null {
   return MOTION_REFERENCE_ENDPOINTS[model] ?? null;
+}
+
+export function attachesInlineReferences(model: ImageToVideoModel): boolean {
+  return model in MOTION_INLINE_REFERENCE_MODELS;
 }
 
 /**

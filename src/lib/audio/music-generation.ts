@@ -8,7 +8,7 @@ import {
   type AudioModelConfig,
 } from '@/lib/ai/models';
 import { type Microdollars } from '@/lib/billing/money';
-import type { FalCredentialScopedDb } from '@/lib/db/scoped-workflow';
+import type { CredentialScopedDb } from '@/lib/db/scoped-workflow';
 import { isContentRejectionError } from '@/lib/ai/content-rejection';
 import { extractFalErrorMessage } from '@/lib/ai/fal-error';
 import {
@@ -23,7 +23,7 @@ import { getLogger } from '@/lib/observability/logger';
 const logger = getLogger(['openstory', 'audio', 'music-generation']);
 
 export type GenerateMusicOptions = {
-  scopedDb?: FalCredentialScopedDb;
+  scopedDb?: CredentialScopedDb;
   /** PostHog LLM-analytics metadata for the generation span. */
   observability?: AIObservabilityMeta;
   /** Style/mood prompt for the music (e.g., "tense orchestral, dark atmosphere") */
