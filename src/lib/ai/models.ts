@@ -285,6 +285,10 @@ export function getBytePlusImageModelId(
   return 'byteplusId' in config ? config.byteplusId : undefined;
 }
 
+export function isNativeBytePlusImageModel(model: TextToImageModel): boolean {
+  return getBytePlusImageModelId(model) !== undefined;
+}
+
 // Image to video model types
 export type ImageToVideoModel = keyof typeof IMAGE_TO_VIDEO_MODELS;
 
@@ -297,6 +301,10 @@ export function getBytePlusVideoModelId(
 ): string | undefined {
   const config = IMAGE_TO_VIDEO_MODELS[modelKey];
   return 'byteplusId' in config ? config.byteplusId : undefined;
+}
+
+export function isNativeBytePlusVideoModel(model: ImageToVideoModel): boolean {
+  return getBytePlusVideoModelId(model) !== undefined;
 }
 
 export const DEFAULT_VIDEO_MODEL: ImageToVideoModel = 'seedance_v2';

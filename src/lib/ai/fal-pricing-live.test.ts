@@ -130,6 +130,16 @@ describe('getEffectiveFalPricing', () => {
       unit: '1000 tokens',
     });
   });
+
+  it('reports when the newest row was fetched', async () => {
+    const older = new Date('2026-07-01T00:00:00Z');
+    const newer = new Date('2026-07-02T00:00:00Z');
+    const { getFalPricingUpdatedAt } = await loadWithRows([
+      row({ endpointId: 'a/b', fetchedAt: older }),
+      row({ endpointId: 'c/d', fetchedAt: newer }),
+    ]);
+    expect(await getFalPricingUpdatedAt()).toEqual(newer);
+  });
 });
 
 /**
@@ -181,7 +191,7 @@ describe('BytePlus route aliasing', () => {
     );
   });
 
-  it('leaves models with no BytePlus route on their fal rate', async () => {
+  it('leaves models with no BytePlus via on their fal rate', async () => {
     const { getEffectiveFalPricing } = await loadWithRows(
       [
         row({
@@ -193,15 +203,5 @@ describe('BytePlus route aliasing', () => {
     );
     const map = await getEffectiveFalPricing();
     expect(map['fal-ai/veo3.1/image-to-video']?.unitPrice).toBe(77);
-  });
-
-  it('reports when the newest row was fetched', async () => {
-    const older = new Date('2026-07-01T00:00:00Z');
-    const newer = new Date('2026-07-02T00:00:00Z');
-    const { getFalPricingUpdatedAt } = await loadWithRows([
-      row({ endpointId: 'a/b', fetchedAt: older }),
-      row({ endpointId: 'c/d', fetchedAt: newer }),
-    ]);
-    expect(await getFalPricingUpdatedAt()).toEqual(newer);
   });
 });

@@ -4,10 +4,10 @@ const env: Record<string, string | undefined> = {};
 
 vi.doMock('#env', () => ({ getEnv: () => env }));
 
-const { resolveMediaRoute, isBytePlusConfigured, arkAdapterConfig } =
+const { claimBytePlusVia, isBytePlusConfigured, arkAdapterConfig } =
   await import('./byteplus-config');
 
-describe('resolveMediaRoute', () => {
+describe('claimBytePlusVia', () => {
   beforeEach(() => {
     env.ARK_API_KEY = undefined;
     env.ARK_BASE_URL = undefined;
@@ -15,8 +15,8 @@ describe('resolveMediaRoute', () => {
 
   it('routes to fal when no Ark key is configured', () => {
     expect(
-      resolveMediaRoute({
-        byteplusModelId: 'dreamina-seedance-2-5-260628',
+      claimBytePlusVia({
+        native: true,
         usingOwnFalKey: false,
       })
     ).toBe('fal');
@@ -25,8 +25,8 @@ describe('resolveMediaRoute', () => {
   it('routes to byteplus when an Ark key is configured', () => {
     env.ARK_API_KEY = 'ark-test';
     expect(
-      resolveMediaRoute({
-        byteplusModelId: 'dreamina-seedance-2-5-260628',
+      claimBytePlusVia({
+        native: true,
         usingOwnFalKey: false,
       })
     ).toBe('byteplus');
@@ -34,9 +34,9 @@ describe('resolveMediaRoute', () => {
 
   it('routes to fal for a model with no BytePlus id, key or not', () => {
     env.ARK_API_KEY = 'ark-test';
-    expect(
-      resolveMediaRoute({ byteplusModelId: undefined, usingOwnFalKey: false })
-    ).toBe('fal');
+    expect(claimBytePlusVia({ native: false, usingOwnFalKey: false })).toBe(
+      'fal'
+    );
   });
 
   // The BYOK rule is a billing invariant, not a preference: a team on its own
@@ -45,8 +45,8 @@ describe('resolveMediaRoute', () => {
   it('keeps a BYOK team on fal even when Ark is configured', () => {
     env.ARK_API_KEY = 'ark-test';
     expect(
-      resolveMediaRoute({
-        byteplusModelId: 'dreamina-seedance-2-5-260628',
+      claimBytePlusVia({
+        native: true,
         usingOwnFalKey: true,
       })
     ).toBe('fal');
@@ -82,10 +82,11 @@ describe('arkAdapterConfig', () => {
   });
 
   it('omits baseURL so the adapter default applies', () => {
-    expect(arkAdapterConfig('ark-test', 1000)).toEqual({
-      apiKey: 'ark-test',
-      timeout: 1000,
-    });
+    const config = arkAdapterConfig('ark-test', 1000);
+    expect(config.apiKey).toBe('ark-test');
+    expect(config.timeout).toBe(1000);
+    expect(config.baseURL).toBeUndefined();
+    expect(config.fetch).toEqual(expect.any(Function));
   });
 
   it('passes ARK_BASE_URL through for e2e/proxy overrides', () => {

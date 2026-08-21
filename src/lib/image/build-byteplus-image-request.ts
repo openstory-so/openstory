@@ -60,9 +60,9 @@ export type BytePlusImageRequest = {
 /**
  * Build the Ark request for an image generation.
  *
- * @throws Error when the model has no BytePlus route — callers resolve the
- * route first (`resolveMediaRoute`), so reaching here without one is a bug
- * rather than a condition to fall back from silently.
+ * @throws Error when the model has no BytePlus via — callers claim the via
+ * first (`isNativeBytePlusImageModel` + `claimBytePlusVia`), so reaching
+ * here without one is a bug rather than a silent fallback.
  */
 export function buildBytePlusImageRequest(
   params: ImageGenerationParams

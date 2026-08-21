@@ -311,6 +311,17 @@ describe('recordFalUsage', () => {
     });
   });
 
+  it('does not file BytePlus Ark units as fal observations', async () => {
+    const { scopedDb, recordUsage } = makeScopedDb();
+
+    await recordFalUsageImpl(scopedDb, {
+      endpointId: 'dreamina-seedance-2-5-260628',
+      unitsBilled: 108,
+    });
+
+    expect(recordUsage).not.toHaveBeenCalled();
+  });
+
   it('skips samples with no unitsBilled rather than seeding the median with zeros', async () => {
     const { scopedDb, recordUsage } = makeScopedDb();
 

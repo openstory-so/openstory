@@ -226,8 +226,9 @@ export function toWorkflowScopedDb(scopedDb: ScopedDb): WorkflowScopedDb {
  * What the media generation helpers (`image-generation`, `motion-generation`,
  * `music-generation`) actually depend on: resolve a key (team or platform),
  * look for an optional native-provider key (#1216), and know whose run this
- * is for observability. Nothing else — the shape is the argument that these
- * helpers cannot read a row. Satisfied by `scopedDb.credentials`.
+ * is for observability. BytePlus Ark is platform-only — `ARK_API_KEY` comes
+ * from env, is not on `API_KEY_PROVIDERS`, and is never resolved here (#1157).
+ * Satisfied by `scopedDb.credentials`.
  */
 export type CredentialScopedDb = Pick<ScopedDb, 'userId'> &
   Pick<ScopedDb['apiKeys'], 'resolveKey' | 'resolveOptionalKey'>;

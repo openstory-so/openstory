@@ -12,6 +12,7 @@
  * need (#1069). Use `recordFalUsage` in its own workflow step instead.
  */
 
+import { isBytePlusPricedModel } from '@/lib/ai/byteplus-pricing';
 import {
   isNativeGrokImageEndpoint,
   NATIVE_GROK_VIDEO_MODEL,
@@ -200,11 +201,13 @@ export async function recordFalUsage(
   // Observations are platform-global telemetry with no teamId (see
   // model_usage_observations), but the write still needs a db handle.
   if (!scopedDb) return;
-  // Native xAI units are a different denomination — sampling them under the
-  // fal endpoint id would corrupt the median the pricing cron reads (#1167).
+  // Native xAI / Ark units are a different denomination — sampling them
+  // under a fal endpoint id would corrupt the median the pricing cron
+  // reads (#1167 / #1157 / #1069).
   if (
     isNativeGrokImageEndpoint(usage.endpointId) ||
-    usage.endpointId === NATIVE_GROK_VIDEO_MODEL
+    usage.endpointId === NATIVE_GROK_VIDEO_MODEL ||
+    isBytePlusPricedModel(usage.endpointId)
   ) {
     return;
   }

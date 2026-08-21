@@ -19,6 +19,7 @@ import { NATIVE_GROK_VIDEO_MODEL } from '@/lib/ai/grok-native';
 import {
   IMAGE_TO_VIDEO_MODELS,
   attachesInlineReferences,
+  getBytePlusVideoModelId,
   getMotionReferenceEndpoint,
   type ImageToVideoModel,
   type MotionReferenceEndpointConfig,
@@ -54,6 +55,20 @@ export function resolveMotionEndpoint(
     return {
       via: 'xai',
       endpointId: NATIVE_GROK_VIDEO_MODEL,
+      references: hasReferenceImages ? 'inline' : 'none',
+    };
+  }
+  if (via === 'byteplus') {
+    // Ark Seedance is one model id for i2v and r2v. Refs ride as
+    // `metadata.role: 'reference'` prompt parts — same mix-ban as Grok, so
+    // the still becomes the first reference when this is `'inline'`.
+    const endpointId = getBytePlusVideoModelId(modelKey);
+    if (!endpointId) {
+      throw new Error(`No BytePlus model id for motion model "${modelKey}"`);
+    }
+    return {
+      via: 'byteplus',
+      endpointId,
       references: hasReferenceImages ? 'inline' : 'none',
     };
   }

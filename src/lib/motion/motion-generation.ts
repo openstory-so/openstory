@@ -1,5 +1,13 @@
 import { getEnv } from '#env';
 import {
+  arkAdapterConfig,
+  claimBytePlusVia,
+  getArkApiKey,
+  isBytePlusConfigured,
+} from '@/lib/ai/byteplus-config';
+import { bytePlusVideoUnitsBilled } from '@/lib/ai/byteplus-pricing';
+import { withBytePlusQuotaRetry } from '@/lib/ai/byteplus-rate-limit';
+import {
   estimateFalCost,
   falCostFromUnits,
   type EffectiveFalPricing,
@@ -16,7 +24,9 @@ import {
 } from '@/lib/ai/grok-native';
 import {
   DEFAULT_VIDEO_MODEL,
+  getBytePlusVideoModelId,
   IMAGE_TO_VIDEO_MODELS,
+  isNativeBytePlusVideoModel,
   type ImageToVideoModel,
 } from '@/lib/ai/models';
 import { assertMediaVia, type MediaVia } from '@/lib/ai/via';
@@ -37,8 +47,10 @@ import {
   getVideoJobStatus,
   type TokenUsage,
 } from '@tanstack/ai';
+import { createBytePlusVideo } from '@tanstack/ai-byteplus';
 import { falVideo } from '@tanstack/ai-fal';
 import { createGrokVideo } from '@tanstack/ai-grok';
+import { buildBytePlusVideoRequest } from './build-byteplus-video-request';
 import { buildGrokVideoRequest } from './build-grok-video-request';
 import { buildModelInput, buildMotionRequest } from './build-model-input';
 import { resolveMotionEndpoint } from './resolve-motion-endpoint';
@@ -117,6 +129,14 @@ async function inlineGrokReferenceImages(
   );
 }
 
+async function resolveOptionalFalKey(
+  scopedDb?: CredentialScopedDb
+): Promise<ResolvedApiKey | undefined> {
+  if (scopedDb) return scopedDb.resolveOptionalKey('fal');
+  const platformKey = getEnv().FAL_KEY;
+  return platformKey ? { key: platformKey, source: 'platform' } : undefined;
+}
+
 /**
  * Submit a motion generation job without polling.
  * Returns the job ID so the workflow can poll with `context.sleep()` between steps.
@@ -126,15 +146,29 @@ export async function submitMotionJob(
 ): Promise<MotionJobSubmission> {
   const modelKey = options.model || DEFAULT_VIDEO_MODEL;
 
-  // Resolve via from keys FIRST for grok video models. Fal is the fallback
-  // and always claims. `resolveKey('fal')` throws with no fal key, so an
-  // xAI-only deployment must not reach it.
+  // Same order as Grok (#1167): native key first, fal is the fallback.
+  // `resolveKey('fal')` throws with no fal key, so an xAI-only deploy must
+  // not reach it. BytePlus is platform-only (no resolveOptionalKey('byteplus'))
+  // and yields to a BYOK fal team.
   const xaiKey = isNativeGrokVideoModel(modelKey)
     ? await resolveOptionalXaiKey(options.scopedDb)
     : undefined;
-  const via: MediaVia = xaiKey ? 'xai' : 'fal';
 
   const hasReferenceImages = (options.referenceImages?.length ?? 0) > 0;
+
+  let via: MediaVia;
+  if (xaiKey) {
+    via = 'xai';
+  } else if (isNativeBytePlusVideoModel(modelKey) && isBytePlusConfigured()) {
+    const falKey = await resolveOptionalFalKey(options.scopedDb);
+    via = claimBytePlusVia({
+      native: true,
+      usingOwnFalKey: falKey?.source === 'team',
+    });
+  } else {
+    via = 'fal';
+  }
+
   const endpoint = resolveMotionEndpoint(modelKey, hasReferenceImages, via);
 
   let jobId: string;
@@ -226,6 +260,40 @@ export async function submitMotionJob(
       usedOwnKey = key.source === 'team';
       break;
     }
+    case 'byteplus': {
+      const arkKey = getArkApiKey();
+      if (!arkKey) {
+        throw new Error('ARK_API_KEY is required for the BytePlus motion via');
+      }
+      // Same as Grok: inline /r2/ as data URI or CDN URL so this path
+      // needs no fal key. Ark fetches the URL itself.
+      const imageUrl = await toDataOrCdnUrl(options.imageUrl);
+      const referenceImages = await inlineGrokReferenceImages(
+        options.referenceImages
+      );
+      const request = buildBytePlusVideoRequest(
+        { ...options, imageUrl, referenceImages },
+        modelKey
+      );
+      const { apiKey, ...config } = arkAdapterConfig(
+        arkKey,
+        FAL_REQUEST_TIMEOUT_MS
+      );
+      const job = await withBytePlusQuotaRetry('motion submit', () =>
+        generateVideo({
+          adapter: createBytePlusVideo(endpoint.endpointId, apiKey, config),
+          prompt: request.prompt,
+          size: request.size,
+          ...(request.duration !== undefined && { duration: request.duration }),
+          modelOptions: request.modelOptions,
+          timeout: FAL_REQUEST_TIMEOUT_MS,
+          debug: false,
+        })
+      );
+      jobId = job.jobId;
+      usedOwnKey = false;
+      break;
+    }
   }
 
   return {
@@ -284,6 +352,28 @@ export async function pollMotionJob(
         jobId,
       });
     }
+    case 'byteplus': {
+      const arkKey = getArkApiKey();
+      if (!arkKey) {
+        throw new Error(
+          'ARK_API_KEY is required to poll a BytePlus motion job'
+        );
+      }
+      const modelId = getBytePlusVideoModelId(modelKey);
+      if (!modelId) {
+        throw new Error(`No BytePlus model id for motion model "${modelKey}"`);
+      }
+      const { apiKey, ...config } = arkAdapterConfig(
+        arkKey,
+        FAL_REQUEST_TIMEOUT_MS
+      );
+      return await withBytePlusQuotaRetry('motion poll', () =>
+        getVideoJobStatus({
+          adapter: createBytePlusVideo(modelId, apiKey, config),
+          jobId,
+        })
+      );
+    }
   }
 }
 
@@ -319,6 +409,21 @@ export async function motionCostFromUsage(
         unitsBilled: usage?.unitsBilled,
         cost: await falCostFromUnits(endpointId, usage?.unitsBilled),
         recordFalUsage: true,
+      };
+    }
+    case 'byteplus': {
+      const endpointId = getBytePlusVideoModelId(ctx.modelKey);
+      if (!endpointId) {
+        throw new Error(
+          `No BytePlus model id for motion model "${ctx.modelKey}"`
+        );
+      }
+      const unitsBilled = bytePlusVideoUnitsBilled(usage?.totalTokens);
+      return {
+        endpointId,
+        unitsBilled,
+        cost: await falCostFromUnits(endpointId, unitsBilled),
+        recordFalUsage: false,
       };
     }
   }

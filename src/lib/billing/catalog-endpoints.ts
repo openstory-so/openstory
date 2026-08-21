@@ -31,7 +31,7 @@ export function catalogFalEndpointIds(): string[] {
   }
   // Seedance (etc.) motion with cast/element refs bills on a separate endpoint.
   for (const config of Object.values(MOTION_REFERENCE_ENDPOINTS)) {
-    if (config) ids.add(config.endpointId);
+    ids.add(config.endpointId);
   }
   for (const model of Object.values(AUDIO_MODELS)) {
     ids.add(model.id);

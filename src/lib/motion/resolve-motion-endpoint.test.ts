@@ -58,4 +58,20 @@ describe('resolveMotionEndpoint', () => {
       references: 'none',
     });
   });
+
+  it('stamps Ark Seedance as via byteplus and marks refs as inline', () => {
+    expect(resolveMotionEndpoint('seedance_v2', true, 'byteplus')).toEqual({
+      via: 'byteplus',
+      endpointId: 'dreamina-seedance-2-5-260628',
+      references: 'inline',
+    });
+  });
+
+  it('stamps Ark Seedance with no refs as via byteplus', () => {
+    expect(resolveMotionEndpoint('seedance_v2', false, 'byteplus')).toEqual({
+      via: 'byteplus',
+      endpointId: 'dreamina-seedance-2-5-260628',
+      references: 'none',
+    });
+  });
 });

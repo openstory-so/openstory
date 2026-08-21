@@ -15,10 +15,16 @@ const testEnv: {
   FAL_KEY: string | undefined;
   OPENROUTER_KEY: string | undefined;
   XAI_API_KEY: string | undefined;
+  ARK_API_KEY: string | undefined;
+  ARK_BASE_URL: string | undefined;
+  E2E_TEST: string | undefined;
 } = {
   FAL_KEY: 'test-fal-key',
   OPENROUTER_KEY: 'test-or-key',
   XAI_API_KEY: undefined,
+  ARK_API_KEY: undefined,
+  ARK_BASE_URL: undefined,
+  E2E_TEST: undefined,
 };
 
 vi.doMock('#env', () => ({
@@ -44,6 +50,9 @@ describe('Motion Service', () => {
     mockCreateGrokVideo.mockClear();
     testEnv.XAI_API_KEY = undefined;
     testEnv.FAL_KEY = 'test-fal-key';
+    testEnv.ARK_API_KEY = undefined;
+    testEnv.ARK_BASE_URL = undefined;
+    testEnv.E2E_TEST = undefined;
   });
 
   describe('submitMotionJob', () => {
@@ -110,7 +119,7 @@ describe('Motion Service', () => {
     it('should handle submission failure', async () => {
       mockGenerateVideo.mockRejectedValue(new Error('API error'));
 
-      expect(
+      await expect(
         submitMotionJob({
           imageUrl: 'https://example.com/image.jpg',
           prompt: 'Test prompt',
@@ -143,6 +152,39 @@ describe('Motion Service', () => {
           }),
         })
       );
+    });
+
+    it('stamps via byteplus for Seedance when Ark is configured', async () => {
+      testEnv.ARK_API_KEY = 'ark-test';
+      mockGenerateVideo.mockResolvedValue({ jobId: 'ark-job-id' });
+
+      const result = await submitMotionJob({
+        imageUrl: 'https://example.com/image.jpg',
+        prompt: 'Dynamic action sequence',
+        model: 'seedance_v2',
+        duration: 5,
+      });
+
+      expect(result.via).toBe('byteplus');
+      expect(result.usedOwnKey).toBe(false);
+      expect(result.jobId).toBe('ark-job-id');
+    });
+
+    it('keeps Kling on fal even when Ark is configured', async () => {
+      testEnv.ARK_API_KEY = 'ark-test';
+      mockGenerateVideo.mockResolvedValue({
+        jobId: 'kling-job',
+        model: 'fal-ai/kling-video/v3/pro/image-to-video',
+      });
+
+      const result = await submitMotionJob({
+        imageUrl: 'https://example.com/image.jpg',
+        prompt: 'A person walking',
+        model: 'kling_v3_pro',
+        duration: 5,
+      });
+
+      expect(result.via).toBe('fal');
     });
   });
 
@@ -188,6 +230,28 @@ describe('Motion Service', () => {
 
       expect(result.status).toBe('completed');
       expect(mockCreateGrokVideo).toHaveBeenCalled();
+    });
+
+    it('polls the BytePlus via when the job was stamped byteplus', async () => {
+      testEnv.ARK_API_KEY = 'ark-test';
+      mockGetVideoJobStatus.mockResolvedValue({
+        jobId: 'ark-job-1',
+        status: 'completed',
+        url: 'https://example.com/video.mp4',
+        usage: { totalTokens: 108_000 },
+      });
+
+      const result = await pollMotionJob(
+        'ark-job-1',
+        'seedance_v2',
+        undefined,
+        'byteplus'
+      );
+
+      expect(result.status).toBe('completed');
+      expect(mockGetVideoJobStatus).toHaveBeenCalledWith(
+        expect.objectContaining({ jobId: 'ark-job-1' })
+      );
     });
   });
 
