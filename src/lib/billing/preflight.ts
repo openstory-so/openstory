@@ -22,6 +22,13 @@ export type PreflightScopedDb = {
 type Provider = 'fal' | 'openrouter';
 
 /**
+ * Keys that cover LLM calls without touching credits. fal routes LLM traffic
+ * through its OpenRouter endpoint (#895); LLMTR fronts most of the registry
+ * directly. Either one satisfies an `openrouter` requirement.
+ */
+const LLM_COVERAGE_PROVIDERS = ['fal', 'llmtr'] as const;
+
+/**
  * Verify a team can afford a generation before triggering it.
  * Skips the check entirely if the team has BYOK keys for all required providers.
  *
@@ -43,18 +50,20 @@ export async function requireCredits(
   const providers = opts.providers ?? ['fal'];
 
   // Check if team has all required BYOK keys (any missing = need credits).
-  // A fal key also satisfies the openrouter requirement: LLM calls route
-  // through fal's OpenRouter endpoint on the team's fal key (issue #895).
+  // A fal or LLMTR key also satisfies the openrouter requirement — see
+  // {@link LLM_COVERAGE_PROVIDERS}.
   // `hasUsableKey` (not `hasKey`): a key flagged invalid is skipped by
   // resolveKey/resolveLlmKey at call time — the platform key pays — so it
   // must not bypass the credit check here.
   const keyChecks = await Promise.all(
-    providers.map(
-      async (provider) =>
-        (await scopedDb.apiKeys.hasUsableKey(provider)) ||
-        (provider === 'openrouter' &&
-          (await scopedDb.apiKeys.hasUsableKey('fal')))
-    )
+    providers.map(async (provider) => {
+      if (await scopedDb.apiKeys.hasUsableKey(provider)) return true;
+      if (provider !== 'openrouter') return false;
+      const covers = await Promise.all(
+        LLM_COVERAGE_PROVIDERS.map((p) => scopedDb.apiKeys.hasUsableKey(p))
+      );
+      return covers.some(Boolean);
+    })
   );
   const hasAllKeys = keyChecks.every(Boolean);
 

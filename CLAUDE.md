@@ -253,6 +253,46 @@ keeps `llm-client`'s options object and the adapter agreeing on the route; and
 media job ids are via-scoped, so `MotionJobSubmission.via` pins polling to
 whoever the job was submitted to.
 
+## LLMTR Gateway
+
+LLMTR (llmtr.com) is a Turkey-hosted, OpenAI-compatible LLM gateway that fronts
+Anthropic / OpenAI / Google / xAI / DeepSeek plus models it hosts in Turkey.
+It speaks OpenRouter's wire format **and** serves an OpenRouter-shaped
+`/v1/models`, so the OpenRouter adapter drives it with nothing but a
+`serverURL` swap — the same trick #895 plays with fal's OpenRouter proxy. It is
+a BYOK provider like any other: **Settings → API Keys → LLMTR**, or a
+platform-wide `LLMTR_API_KEY`.
+
+`src/lib/ai/llmtr.ts` owns the two things that would otherwise break silently:
+
+- **Slug drift.** LLMTR namespaces some vendors differently (`xai/` not
+  `x-ai/`, `zai/` not `z-ai/`, `mistral/` not `mistralai/`), so every routable
+  model is spelled out in `LLMTR_TEXT_MODELS`. A registry id absent from that
+  map is **not routable** — resolution skips the LLMTR key for it and the call
+  goes to OpenRouter/fal, rather than guessing at a near neighbour. Three are
+  absent today: `claude-opus-5-fast`, `deepseek-v3.2`, `seed-2.0-mini`.
+  `LLMTR_ONLY_MODEL_IDS` (the renamed four) widens the OpenRouter adapter's
+  model union via `extendAdapter`; a renamed id necessarily loses that
+  catalog's per-model metadata, including the combined tools+schema fast path.
+- **Unaudited spend.** LLMTR reports token counts but no per-request `cost`,
+  so `llmCostFromUsage` needs the resolved `via` to know to price the call from
+  `LLMTR_TEXT_RATES` — without it the call bills $0. Same shape and same caveat
+  as Grok above: this spend bypasses `model_pricing` and the hourly fal
+  reconcile, so the #1069 drift detection covers none of it. Re-read
+  https://llmtr.com/v1/models when the registry changes or a vendor re-prices.
+
+Resolution order (`resolveLlmKey`): native xAI for Grok → **team LLMTR key
+when LLMTR carries the model** → team OpenRouter → team fal → platform
+(`LLMTR_API_KEY` for a carried model, else `OPENROUTER_KEY`, else `FAL_KEY`).
+A team that adds an LLMTR key chose that gateway deliberately, so it outranks
+their OpenRouter key. Two traps: key resolution and `createAdapter` must agree
+on routability (both ask `llmtrTextModel`), and `validateKey` cannot use
+`/v1/models` — it is public and answers 200 for a bogus key, so validation is a
+1-token completion on a $0 model.
+
+e2e never sets `LLMTR_API_KEY`, so fixtures keep exercising the OpenRouter/fal
+path unchanged.
+
 ## Fal.ai Integration
 
 **Always check `/llms.txt` before updating models.** Machine-readable, authoritative param specs:

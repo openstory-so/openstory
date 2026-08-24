@@ -38,11 +38,13 @@ const testEnv: {
   OPENROUTER_KEY: string | undefined;
   FAL_KEY: string | undefined;
   XAI_API_KEY: string | undefined;
+  LLMTR_API_KEY: string | undefined;
 } = {
   API_KEY_ENCRYPTION_KEY: 'test-secret-for-api-keys-memoization',
   OPENROUTER_KEY: 'platform-openrouter-key',
   FAL_KEY: 'platform-fal-key',
   XAI_API_KEY: undefined,
+  LLMTR_API_KEY: undefined,
 };
 
 vi.doMock('#env', () => ({
@@ -115,6 +117,7 @@ beforeEach(async () => {
   testEnv.OPENROUTER_KEY = 'platform-openrouter-key';
   testEnv.FAL_KEY = 'platform-fal-key';
   testEnv.XAI_API_KEY = undefined;
+  testEnv.LLMTR_API_KEY = undefined;
   await seed();
 });
 
@@ -473,6 +476,112 @@ describe('resolveLlmKey (issue #895 — fal key covers LLM calls)', () => {
 
     // openrouter row (miss) + fal row, each read once across all calls.
     expect(selects()).toBe(2);
+  });
+});
+
+describe('resolveLlmKey — LLMTR gateway', () => {
+  const CARRIED = 'anthropic/claude-sonnet-5';
+  const NOT_CARRIED = 'anthropic/claude-opus-5-fast';
+
+  it('prefers a team LLMTR key over the team OpenRouter key for a carried model', async () => {
+    const scope = createApiKeysMethods(db, teamId, userId);
+    await scope.saveKey({ provider: 'llmtr', apiKey: 'llmtr-team' });
+    await scope.saveKey({ provider: 'openrouter', apiKey: 'sk-or' });
+
+    // Adding an LLMTR key is a deliberate choice of gateway.
+    expect(await scope.resolveLlmKey(CARRIED)).toEqual({
+      key: 'llmtr-team',
+      source: 'team',
+      via: 'llmtr',
+    });
+  });
+
+  it('leaves a model LLMTR does not carry on the team OpenRouter key', async () => {
+    const scope = createApiKeysMethods(db, teamId, userId);
+    await scope.saveKey({ provider: 'llmtr', apiKey: 'llmtr-team' });
+    await scope.saveKey({ provider: 'openrouter', apiKey: 'sk-or' });
+
+    expect(await scope.resolveLlmKey(NOT_CARRIED)).toEqual({
+      key: 'sk-or',
+      source: 'team',
+      via: 'openrouter',
+    });
+  });
+
+  it('ignores an LLMTR key when the caller cannot name the model', async () => {
+    const scope = createApiKeysMethods(db, teamId, userId);
+    await scope.saveKey({ provider: 'llmtr', apiKey: 'llmtr-team' });
+    await scope.saveKey({ provider: 'openrouter', apiKey: 'sk-or' });
+
+    expect(await scope.resolveLlmKey()).toEqual({
+      key: 'sk-or',
+      source: 'team',
+      via: 'openrouter',
+    });
+  });
+
+  it('keeps xAI ahead of LLMTR for Grok models', async () => {
+    testEnv.XAI_API_KEY = 'platform-xai';
+    const scope = createApiKeysMethods(db, teamId, userId);
+    await scope.saveKey({ provider: 'llmtr', apiKey: 'llmtr-team' });
+
+    expect(await scope.resolveLlmKey('x-ai/grok-4.6')).toEqual({
+      key: 'platform-xai',
+      source: 'platform',
+      via: 'xai',
+    });
+  });
+
+  it('skips an invalid team LLMTR key and reports the reason on the fallback', async () => {
+    const scope = createApiKeysMethods(db, teamId, userId);
+    await scope.saveKey({ provider: 'llmtr', apiKey: 'llmtr-bad' });
+    await scope.markKeyInvalid('llmtr', 'llmtr rejected');
+
+    // The reason must be the LLMTR one — it is the key that was skipped
+    // first, so it is the one the team needs to hear about.
+    expect(await scope.resolveLlmKey(CARRIED)).toStrictEqual({
+      key: 'platform-openrouter-key',
+      source: 'platform',
+      via: 'openrouter',
+      fallbackReason: 'llmtr rejected',
+    });
+  });
+
+  it('falls back to a working team fal key when the LLMTR key is invalid', async () => {
+    const scope = createApiKeysMethods(db, teamId, userId);
+    await scope.saveKey({ provider: 'llmtr', apiKey: 'llmtr-bad' });
+    await scope.saveKey({ provider: 'fal', apiKey: 'sk-fal' });
+    await scope.markKeyInvalid('llmtr', 'llmtr rejected');
+
+    // A working team key supersedes the skip: no fallbackReason, because
+    // resolution never reached the platform key.
+    expect(await scope.resolveLlmKey(CARRIED)).toEqual({
+      key: 'sk-fal',
+      source: 'team',
+      via: 'fal',
+    });
+  });
+
+  it('uses the platform LLMTR key for a carried model when the team has none', async () => {
+    testEnv.LLMTR_API_KEY = 'platform-llmtr';
+    const scope = createApiKeysReadMethods(db, teamId);
+
+    expect(await scope.resolveLlmKey(CARRIED)).toStrictEqual({
+      key: 'platform-llmtr',
+      source: 'platform',
+      via: 'llmtr',
+      fallbackReason: undefined,
+    });
+  });
+
+  it('resolves the platform LLMTR key via resolveKey too', async () => {
+    testEnv.LLMTR_API_KEY = 'platform-llmtr';
+    const scope = createApiKeysReadMethods(db, teamId);
+
+    expect(await scope.resolveKey('llmtr')).toEqual({
+      key: 'platform-llmtr',
+      source: 'platform',
+    });
   });
 });
 

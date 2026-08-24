@@ -15,6 +15,7 @@ const testEnv: {
   OPENROUTER_KEY: string | undefined;
   FAL_KEY: string | undefined;
   XAI_API_KEY: string | undefined;
+  LLMTR_API_KEY: string | undefined;
   OPENROUTER_BASE_URL: string | undefined;
   XAI_BASE_URL: string | undefined;
   E2E_RECORD: string | undefined;
@@ -24,6 +25,7 @@ const testEnv: {
   OPENROUTER_KEY: undefined,
   FAL_KEY: undefined,
   XAI_API_KEY: undefined,
+  LLMTR_API_KEY: undefined,
   OPENROUTER_BASE_URL: undefined,
   XAI_BASE_URL: undefined,
   E2E_RECORD: undefined,
@@ -83,6 +85,7 @@ const { createAdapter, getPlatformLlmKey, resolveNativeGrokModel } =
 
 const MODEL = 'x-ai/grok-4.6';
 const FAL_URL = 'https://fal.run/openrouter/router/openai/v1';
+const LLMTR_URL = 'https://llmtr.com/v1';
 
 function lastCall(): AdapterCall {
   const call = adapterCalls.at(-1);
@@ -118,6 +121,7 @@ beforeEach(() => {
   testEnv.E2E_RECORD = undefined;
   testEnv.XAI_API_KEY = undefined;
   testEnv.XAI_BASE_URL = undefined;
+  testEnv.LLMTR_API_KEY = undefined;
   adapterCalls.length = 0;
   grokCalls.length = 0;
   createOpenRouterTextMock.mockClear();
@@ -127,6 +131,99 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+});
+
+describe('createAdapter LLMTR routing', () => {
+  it('routes via:"llmtr" to LLMTR, translating the model slug, on Bearer auth', () => {
+    createAdapter(MODEL, { key: 'llmtr-team', via: 'llmtr' });
+
+    const call = lastCall();
+    expect(call.kind).toBe('keyed');
+    if (call.kind !== 'keyed') throw new Error('expected keyed adapter');
+    expect(call.key).toBe('llmtr-team');
+    expect(call.config.serverURL).toBe(LLMTR_URL);
+    // LLMTR spells this vendor `xai/`; sending the OpenRouter slug 404s.
+    expect(call.model).toBe('xai/grok-4.6');
+    // Bearer is the SDK default — no header rewrite, unlike fal.
+    expect(call.config.httpClient).toBeUndefined();
+  });
+
+  it('keeps the id unchanged for a model LLMTR spells the same way', () => {
+    createAdapter('anthropic/claude-sonnet-5', {
+      key: 'llmtr-team',
+      via: 'llmtr',
+    });
+
+    const call = lastCall();
+    expect(call.model).toBe('anthropic/claude-sonnet-5');
+    expect(call.config.serverURL).toBe(LLMTR_URL);
+  });
+
+  it('falls through to OpenRouter for a model LLMTR does not carry', () => {
+    // Key resolution never sets via:"llmtr" for one of these, but if a future
+    // mapping gap let one through, OpenRouter must serve it rather than LLMTR
+    // 404ing on a model it has never heard of.
+    createAdapter('anthropic/claude-opus-5-fast', {
+      key: 'llmtr-team',
+      via: 'llmtr',
+    });
+
+    const call = lastCall();
+    expect(call.model).toBe('anthropic/claude-opus-5-fast');
+    expect(call.config.serverURL).toBeUndefined();
+  });
+
+  it('lets OPENROUTER_BASE_URL (aimock) win over the LLMTR URL', () => {
+    testEnv.OPENROUTER_BASE_URL = 'http://localhost:4010/v1';
+    createAdapter(MODEL, { key: 'llmtr-team', via: 'llmtr' });
+
+    expect(lastCall().config.serverURL).toBe('http://localhost:4010/v1');
+  });
+
+  it('prefers the platform LLMTR key over OPENROUTER_KEY for a carried model', () => {
+    testEnv.LLMTR_API_KEY = 'platform-llmtr';
+    testEnv.OPENROUTER_KEY = 'platform-or';
+
+    expect(getPlatformLlmKey('anthropic/claude-sonnet-5')).toEqual({
+      key: 'platform-llmtr',
+      via: 'llmtr',
+      source: 'platform',
+    });
+  });
+
+  it('leaves a model LLMTR does not carry on the platform OpenRouter key', () => {
+    testEnv.LLMTR_API_KEY = 'platform-llmtr';
+    testEnv.OPENROUTER_KEY = 'platform-or';
+
+    expect(getPlatformLlmKey('anthropic/claude-opus-5-fast')).toEqual({
+      key: 'platform-or',
+      via: 'openrouter',
+      source: 'platform',
+    });
+  });
+
+  it('keeps xAI first for Grok — first-party beats a gateway', () => {
+    testEnv.XAI_API_KEY = 'platform-xai';
+    testEnv.LLMTR_API_KEY = 'platform-llmtr';
+
+    expect(getPlatformLlmKey(MODEL)).toEqual({
+      key: 'platform-xai',
+      via: 'xai',
+      source: 'platform',
+    });
+  });
+
+  it('ignores LLMTR when the caller cannot name the model', () => {
+    // Without a model there is no way to know LLMTR carries it.
+    testEnv.LLMTR_API_KEY = 'platform-llmtr';
+    testEnv.OPENROUTER_KEY = 'platform-or';
+
+    expect(getPlatformLlmKey()).toEqual({
+      key: 'platform-or',
+      via: 'openrouter',
+      source: 'platform',
+    });
+  });
 });
 
 describe('createAdapter routing (issue #895)', () => {

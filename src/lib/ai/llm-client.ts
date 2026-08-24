@@ -26,6 +26,7 @@ import {
   grokTextCostFromUsage,
   nativeGrokTextModel,
 } from '@/lib/ai/grok-native';
+import { llmtrTextCostFromUsage } from '@/lib/ai/llmtr';
 import {
   isRegionBlockedLlmError,
   regionFallbackModel,
@@ -127,9 +128,13 @@ export function createUsageCapture(): {
 /**
  * Convert a completed LLM call's usage into a charge.
  *
- * Uses OpenRouter's per-request `cost` (USD) when present. xAI reports tokens
- * only, so a Grok model with no cost is by construction a native call (#1167)
- * and is priced from xAI's published rates. TRAP: that inference means an
+ * Uses OpenRouter's per-request `cost` (USD) when present. LLMTR and xAI
+ * report tokens only, so they are priced from their published rates instead.
+ *
+ * `via` disambiguates the two token-only routes, and must be the value the
+ * call actually resolved: a Grok model runs on either, and the rates are
+ * transcribed from different catalogs. Without it a Grok model with no cost is
+ * by construction a native xAI call (#1167). TRAP: that inference means an
  * OpenRouter Grok call that dropped `usage.cost` (TanStack/ai#1076) is priced
  * at xAI list rates instead of surfacing as a missing-cost report.
  *
@@ -137,10 +142,16 @@ export function createUsageCapture(): {
  */
 export function llmCostFromUsage(
   usage: TokenUsage | undefined,
-  modelId: string
+  modelId: string,
+  via?: LlmKeyInfo['via']
 ): Microdollars {
   if (usageHasCost(usage)) {
     return usdToMicros(usage.cost);
+  }
+
+  if (via === 'llmtr') {
+    const cost = llmtrTextCostFromUsage(usage, modelId);
+    if (cost !== undefined) return cost;
   }
 
   const nativeModel = nativeGrokTextModel(modelId);
@@ -152,7 +163,7 @@ export function llmCostFromUsage(
   reportMissingBillingCost({
     source: 'llm-cost-from-usage',
     modelId,
-    metadata: { usage },
+    metadata: { usage, via },
   });
   return ZERO_MICROS;
 }

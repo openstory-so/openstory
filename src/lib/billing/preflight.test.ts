@@ -2,7 +2,8 @@
  * requireCredits BYOK bypass — a fal key must satisfy the openrouter
  * requirement too, since LLM calls route through fal's OpenRouter endpoint
  * (issue #895). Regression: fal-only teams were blocked with "Insufficient
- * credits for script enhancement".
+ * credits for script enhancement". An LLMTR key covers the same requirement:
+ * it fronts most of the registry directly.
  */
 
 import { micros } from '@/lib/billing/money';
@@ -11,15 +12,17 @@ import { InsufficientCreditsError } from '@/lib/errors';
 import { describe, expect, it } from 'vitest';
 import { requireCredits } from './preflight';
 
+type StubProvider = 'fal' | 'openrouter' | 'llmtr';
+
 function fakeScopedDb(opts: {
-  keys: Array<'fal' | 'openrouter'>;
-  invalidKeys?: Array<'fal' | 'openrouter'>;
+  keys: Array<StubProvider>;
+  invalidKeys?: Array<StubProvider>;
   canAfford?: boolean;
 }): ScopedDb {
   // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- minimal stub of the two methods requireCredits touches
   return {
     apiKeys: {
-      hasUsableKey: (provider: 'fal' | 'openrouter') =>
+      hasUsableKey: (provider: StubProvider) =>
         Promise.resolve(
           opts.keys.includes(provider) && !opts.invalidKeys?.includes(provider)
         ),
@@ -85,6 +88,28 @@ describe('requireCredits BYOK coverage', () => {
     await expect(
       requireCredits(db, COST, { providers: ['openrouter'] })
     ).resolves.toBeUndefined();
+  });
+
+  it('passes with only an LLMTR key when openrouter is required', async () => {
+    const db = fakeScopedDb({ keys: ['llmtr'] });
+    await expect(
+      requireCredits(db, COST, { providers: ['openrouter'] })
+    ).resolves.toBeUndefined();
+  });
+
+  it('still requires credits for fal work when only an LLMTR key exists', async () => {
+    // LLMTR covers LLM calls, not image/video/audio — those are fal's.
+    const db = fakeScopedDb({ keys: ['llmtr'] });
+    await expect(
+      requireCredits(db, COST, { providers: ['fal', 'openrouter'] })
+    ).rejects.toThrow(InsufficientCreditsError);
+  });
+
+  it('does not let an invalid LLMTR key bypass the credit check', async () => {
+    const db = fakeScopedDb({ keys: ['llmtr'], invalidKeys: ['llmtr'] });
+    await expect(
+      requireCredits(db, COST, { providers: ['openrouter'] })
+    ).rejects.toThrow(InsufficientCreditsError);
   });
 
   it('defaults to requiring a fal key when providers is omitted', async () => {

@@ -1,10 +1,11 @@
 /**
  * Shared workflow-failure handling for LLM auth errors. LLM calls can run on
- * the team's OpenRouter key OR their fal key via fal's OpenRouter endpoint
- * (issue #895), so a 401 must be pinned on the key the run actually resolved
- * — not blindly on the OpenRouter key.
+ * the team's OpenRouter key, their fal key via fal's OpenRouter endpoint
+ * (issue #895), or their LLMTR key, so a 401 must be pinned on the key the run
+ * actually resolved — not blindly on the OpenRouter key.
  */
 
+import type { ResolvedLlmKey } from '@/lib/db/scoped/api-keys';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import { isLlmAuthError } from './sanitize-fail-response';
 
@@ -31,7 +32,12 @@ export async function handleLlmAuthFailure(
   if (llmKey?.source !== 'team') return undefined;
 
   await scopedDb.apiKeys.markKeyInvalid(llmKey.via, sanitizedError);
-  return llmKey.via === 'openrouter'
-    ? 'Your OpenRouter API key is invalid — update it in Settings.'
-    : 'Your fal.ai API key is invalid — update it in Settings.';
+  return `Your ${LLM_KEY_LABELS[llmKey.via]} API key is invalid — update it in Settings.`;
 }
+
+const LLM_KEY_LABELS: Record<ResolvedLlmKey['via'], string> = {
+  openrouter: 'OpenRouter',
+  fal: 'fal.ai',
+  xai: 'xAI',
+  llmtr: 'LLMTR',
+};

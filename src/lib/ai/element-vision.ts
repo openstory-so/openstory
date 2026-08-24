@@ -172,7 +172,11 @@ export async function describeElementImage(
   return {
     ...parsed,
     suggestedToken: normalizeSuggestedToken(parsed.suggestedToken),
-    costMicros: llmCostFromUsage(usageCapture.get(), ELEMENT_VISION_MODEL),
+    costMicros: llmCostFromUsage(
+      usageCapture.get(),
+      ELEMENT_VISION_MODEL,
+      input.llmKey?.via
+    ),
     usedOwnKey: input.llmKey?.source === 'team',
   };
 }

@@ -3,9 +3,9 @@
  *
  * Creates TanStack AI adapters for our chat models. Grok models go to xAI
  * directly when an xAI key is resolvable (issue #1167); everything else — and
- * Grok with no xAI key — goes to OpenRouter, either directly or through fal's
- * OpenAI-compatible OpenRouter endpoint (so a team with only a fal key still
- * covers LLM calls — issue #895).
+ * Grok with no xAI key — goes to OpenRouter, either directly, through the
+ * LLMTR gateway, or through fal's OpenAI-compatible OpenRouter endpoint (so a
+ * team with only a fal key still covers LLM calls — issue #895).
  */
 
 import { getEnv } from '#env';
@@ -13,6 +13,11 @@ import {
   nativeGrokTextModel,
   type NativeGrokTextModel,
 } from '@/lib/ai/grok-native';
+import {
+  LLMTR_BASE_URL,
+  LLMTR_ONLY_MODEL_IDS,
+  llmtrTextModel,
+} from '@/lib/ai/llmtr';
 import type { TextModel } from '@/lib/ai/models';
 import { workersSafeFetch } from '@/lib/ai/workers-safe-fetch';
 import { HTTPClient } from '@openrouter/sdk/lib/http';
@@ -36,9 +41,11 @@ export type LlmKeyInfo = {
    * Which API the key belongs to: 'openrouter' calls OpenRouter directly
    * (Bearer auth), 'fal' routes through fal's OpenRouter endpoint (`Key`
    * auth — fal rejects Bearer there), 'xai' calls xAI's own Responses API
-   * (Bearer auth, Grok models only — issue #1167).
+   * (Bearer auth, Grok models only — issue #1167), 'llmtr' calls the LLMTR
+   * gateway (Bearer auth, OpenRouter wire format, and only the models
+   * `LLMTR_TEXT_MODELS` maps).
    */
-  via: 'openrouter' | 'fal' | 'xai';
+  via: 'openrouter' | 'fal' | 'xai' | 'llmtr';
 };
 
 // fal's endpoint authenticates with `Authorization: Key <FAL_KEY>` while the
@@ -54,12 +61,15 @@ function falAuthHttpClient(falKey: string): HTTPClient {
 
 /**
  * Resolve the platform-level LLM key from env. A Grok model prefers
- * XAI_API_KEY (#1167); otherwise OPENROUTER_KEY, and with only FAL_KEY set LLM
- * calls route through fal's OpenRouter endpoint — the platform can run on a
- * single fal key (issue #895). Returns undefined when none is configured.
+ * XAI_API_KEY (#1167); a model LLMTR carries prefers LLMTR_API_KEY, so a
+ * deployment that sets it routes its LLM traffic through the Turkey-hosted
+ * gateway; otherwise OPENROUTER_KEY, and with only FAL_KEY set LLM calls route
+ * through fal's OpenRouter endpoint — the platform can run on a single fal key
+ * (issue #895). Returns undefined when none is configured.
  *
  * Omitting `model` keeps the OpenRouter-first order, which every model
- * supports — a caller that can't name the model can't promise it's a Grok one.
+ * supports — a caller that can't name the model can't promise it's a Grok one,
+ * nor that LLMTR carries it.
  */
 export function getPlatformLlmKey(
   model?: string
@@ -67,6 +77,9 @@ export function getPlatformLlmKey(
   const env = getEnv();
   if (model && nativeGrokTextModel(model) && env.XAI_API_KEY) {
     return { key: env.XAI_API_KEY, via: 'xai', source: 'platform' };
+  }
+  if (model && llmtrTextModel(model) && env.LLMTR_API_KEY) {
+    return { key: env.LLMTR_API_KEY, via: 'llmtr', source: 'platform' };
   }
   if (env.OPENROUTER_KEY) {
     return { key: env.OPENROUTER_KEY, via: 'openrouter', source: 'platform' };
@@ -113,6 +126,45 @@ const createGrokTextExtended = extendAdapter(
 );
 
 /**
+ * The LLMTR catalog ids that are not valid OpenRouter slugs (LLMTR namespaces
+ * these vendors differently — see `LLMTR_ONLY_MODEL_IDS`). Widening the
+ * factory with them is what lets the OpenRouter adapter drive LLMTR: same wire
+ * format, different base URL and model names. Capabilities are transcribed
+ * from LLMTR's own catalog.
+ *
+ * Only these four need declaring — the other eleven LLMTR mappings are
+ * identity, so the generated OpenRouter union already accepts them (and they
+ * keep its per-model metadata, e.g. the combined tools+schema fast path a
+ * renamed id necessarily loses).
+ */
+const LLMTR_CATALOG_MODELS = [
+  createModel('mistral/mistral-small-latest', {
+    input: ['text', 'image'],
+    features: ['structured_outputs'],
+  }),
+  createModel('xai/grok-4.6', {
+    input: ['text', 'image'],
+    features: ['reasoning', 'structured_outputs'],
+  }),
+  createModel('xai/grok-4.20-0309-reasoning', {
+    input: ['text'],
+    features: ['reasoning', 'structured_outputs'],
+  }),
+  createModel('zai/glm-5.2', {
+    input: ['text'],
+    features: ['reasoning', 'structured_outputs'],
+  }),
+] as const satisfies ReadonlyArray<{
+  name: (typeof LLMTR_ONLY_MODEL_IDS)[number];
+}>;
+
+/** OpenRouter's factory, widened to also accept the LLMTR-only ids above. */
+const createOpenRouterTextExtended = extendAdapter(
+  createOpenRouterText,
+  LLMTR_CATALOG_MODELS
+);
+
+/**
  * Whether a request goes to xAI directly, and under which model name. The
  * request body differs by route (xAI speaks the Responses API), so `llm-client`
  * asks this too rather than deciding for itself — that's what stops a
@@ -146,6 +198,14 @@ export function createAdapter(model: TextModel, keyInfo?: LlmKeyInfo) {
     });
   }
 
+  // LLMTR speaks OpenRouter's wire format, so the path below drives it with
+  // nothing but a base-URL swap — Bearer auth is the SDK default. What LLMTR
+  // does need is a model-name translation, because it namespaces some vendors
+  // differently. `via === 'llmtr'` is only ever set for a model
+  // `llmtrTextModel` maps (key resolution checks), so an unmapped model here
+  // would fall through to OpenRouter rather than 404 against LLMTR.
+  const llmtrModel = via === 'llmtr' ? llmtrTextModel(model) : undefined;
+
   // During E2E recording, aimock proxies our OpenRouter calls upstream and
   // *buffers* the entire SSE response before relaying — see
   // node_modules/@copilotkit/aimock/dist/recorder.js. That buffering window
@@ -164,11 +224,15 @@ export function createAdapter(model: TextModel, keyInfo?: LlmKeyInfo) {
     );
   }
 
-  // OPENROUTER_BASE_URL (aimock in e2e) wins over the fal proxy so tests stay
+  // OPENROUTER_BASE_URL (aimock in e2e) wins over both proxies so tests stay
   // hermetic regardless of which key the team resolved.
   const serverURL =
     env.OPENROUTER_BASE_URL ??
-    (via === 'fal' ? FAL_OPENROUTER_BASE_URL : undefined);
+    (via === 'fal'
+      ? FAL_OPENROUTER_BASE_URL
+      : llmtrModel
+        ? LLMTR_BASE_URL
+        : undefined);
 
   const config = {
     httpReferer: env.VITE_APP_URL || 'http://localhost:3000',
@@ -181,7 +245,10 @@ export function createAdapter(model: TextModel, keyInfo?: LlmKeyInfo) {
     }),
   };
 
+  // The extended factory is a strict superset of `createOpenRouterText`, so
+  // every non-LLMTR call goes through it unchanged; only the model name it is
+  // handed differs.
   return key
-    ? createOpenRouterText(model, key, config)
+    ? createOpenRouterTextExtended(llmtrModel ?? model, key, config)
     : openRouterText(model, config);
 }
