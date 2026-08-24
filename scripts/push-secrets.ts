@@ -59,7 +59,6 @@ const PUSHABLE_SECRETS = [
   'VITE_PUBLIC_POSTHOG_HOST',
   'VITE_PUBLIC_POSTHOG_PROJECT_TOKEN',
   'VITE_R2_PUBLIC_ASSETS_DOMAIN',
-  'XAI_API_KEY',
 ] as const;
 
 /** Doppler self-describing context — never Worker bindings. */

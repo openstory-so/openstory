@@ -119,8 +119,8 @@ const PARSE_COALESCE_CHARS = 256;
  * an entire LLM call, so every retry re-runs and re-bills a full generation.
  * Two retries still cover a genuinely transient provider error.
  *
- * Timeout is raised above the engine's 10-minute default (#1218). Grok 4.6
- * with reasoning can spend several minutes thinking before the first
+ * Timeout is raised above the engine's 10-minute default (#1218). Reasoning
+ * models can spend several minutes thinking before the first
  * boundary token; a dropped-quote repair retry is a second pass. 20
  * minutes covers one pass plus that retry. The previous 10-minute default
  * killed a usable first pass three times (and billed five generations)

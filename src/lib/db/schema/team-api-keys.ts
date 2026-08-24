@@ -20,7 +20,7 @@ import { generateId } from '../id';
 import { teams } from './teams';
 import { user } from './auth';
 
-export const API_KEY_PROVIDERS = ['openrouter', 'fal', 'xai'] as const;
+export const API_KEY_PROVIDERS = ['openrouter', 'fal'] as const;
 export type ApiKeyProvider = (typeof API_KEY_PROVIDERS)[number];
 
 const API_KEY_SOURCES = ['oauth', 'manual'] as const;

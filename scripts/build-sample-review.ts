@@ -7,7 +7,7 @@
  *   - that set's eval score (flash) + note
  *   - the enhanced script that produced it (<set>/<slug>/canonical.enhanced.txt)
  * plus the current brief, and for the current set the 4-judge scores
- * (flash / gemini-pro / grok / claude) from eval-judges/.
+ * (flash / gemini-pro / claude) from eval-judges/.
  *
  * The page lets you ✓/✗ each video; marks persist in localStorage so you can
  * walk the whole library and export the "redo" list.
@@ -160,16 +160,12 @@ function main(): void {
   // Scores are stored PER SET inside that set's own dir, so re-scoring one set
   // can never clobber another:
   //   flash:               <setdir>/eval-scores.json
-  //   gemini-pro/grok/…:   <setdir>/eval-judges/<judge>.json
+  //   gemini-pro/claude/…: <setdir>/eval-judges/<judge>.json
   const JUDGES: { judge: string; file: (dir: string) => string }[] = [
     { judge: 'flash', file: (d) => path.join(ROOT, d, 'eval-scores.json') },
     {
       judge: 'gemini-pro',
       file: (d) => path.join(ROOT, d, 'eval-judges', 'gemini-pro.json'),
-    },
-    {
-      judge: 'grok',
-      file: (d) => path.join(ROOT, d, 'eval-judges', 'grok.json'),
     },
     {
       judge: 'sonnet',
@@ -340,8 +336,8 @@ let filter = 'all', sortMode = 'cat';
 
 function curGrade(s) {
   const cur = s.cells.find(c => c.set === DATA.curLabel);
-  const g = cur && cur.judges ? cur.judges.find(j => j.judge === 'grok') : null;
-  return g && g.overall != null ? g.overall : (cur && cur.score != null ? cur.score : 99);
+  const score = cur ? cellScore(cur) : null;
+  return score ?? 99;
 }
 
 // A single comparable score for a cell: mean of its non-null judge overalls
@@ -467,7 +463,7 @@ for (const b of document.querySelectorAll('[data-filter]')) b.onclick = () => {
 };
 document.getElementById('sortBtn').onclick = (e) => {
   sortMode = sortMode === 'cat' ? 'grade' : 'cat';
-  e.target.textContent = 'Sort: ' + (sortMode === 'cat' ? 'category' : 'worst grok first');
+  e.target.textContent = 'Sort: ' + (sortMode === 'cat' ? 'category' : 'lowest score first');
   render();
 };
 document.getElementById('clearBtn').onclick = () => {

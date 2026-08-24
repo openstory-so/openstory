@@ -9,7 +9,7 @@
  * the anchor frame — not into `scene.metadata` (#713). Spawned per scene by
  * `FramePromptBatchWorkflow`. */
 
-import { createAdapter, resolveNativeGrokModel } from '@/lib/ai/create-adapter';
+import { createAdapter } from '@/lib/ai/create-adapter';
 import { computeVisualPromptInputHash } from '@/lib/ai/input-hash';
 import {
   createUsageCapture,
@@ -227,17 +227,11 @@ export class FramePromptWorkflow extends OpenStoryWorkflowEntrypoint<FramePrompt
           };
 
           const maxTokens = Math.floor(getContextWindow(analysisModelId) * 0.5);
-          const native = !!resolveNativeGrokModel(analysisModelId, llmKeyInfo);
-          const modelOptions = native
-            ? {
-                reasoning: { effort: PROMPT_REASONING.effort },
-                max_output_tokens: maxTokens,
-              }
-            : {
-                ...reasoningOptions,
-                maxCompletionTokens: maxTokens,
-                streamOptions: { includeUsage: true },
-              };
+          const modelOptions = {
+            ...reasoningOptions,
+            maxCompletionTokens: maxTokens,
+            streamOptions: { includeUsage: true },
+          };
 
           for await (const streamEvent of chat({
             adapter,

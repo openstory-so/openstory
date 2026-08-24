@@ -15,20 +15,6 @@ export const SCRIPT_ANALYSIS_MODELS = [
     description: 'Default analysis model; frontier reasoning and coding',
   },
   {
-    id: 'x-ai/grok-4.6',
-    name: 'Grok 4.6',
-    vendor: 'SpaceXAI',
-    license: 'proprietary' as const,
-    qualityRank: 1,
-    contextWindow: 500_000,
-    // Accepts image input — required so the motion-prompt pass can be
-    // conditioned on the rendered starting frame (#929). Conservative: only
-    // models known to accept image input are `true`; text-only models fall
-    // back to the text-only motion prompt path.
-    vision: true,
-    description: 'Frontier xAI reasoning model, xAI’s smartest, 500K context',
-  },
-  {
     id: 'anthropic/claude-fable-5',
     name: 'Claude Fable 5',
     vendor: 'Anthropic',
@@ -47,17 +33,6 @@ export const SCRIPT_ANALYSIS_MODELS = [
     contextWindow: 1_000_000,
     vision: true,
     description: 'State-of-the-art coding and structured output',
-  },
-  {
-    id: 'x-ai/grok-4.20',
-    name: 'Grok 4.20',
-    vendor: 'SpaceXAI',
-    license: 'proprietary' as const,
-    qualityRank: 4,
-    contextWindow: 2_000_000,
-    vision: true,
-    description: 'Lowest hallucination rate, flagship agentic model',
-    hidden: true,
   },
   {
     id: 'anthropic/claude-opus-5-fast',
@@ -284,11 +259,9 @@ export const DEFAULT_ANALYSIS_MODEL: AnalysisModelId =
   'anthropic/claude-opus-5';
 
 /**
- * Boundary-annotation scenes call only. Grok 4.6 + medium reasoning
- * spends minutes thinking before the first boundary token. Opus 5 Fast
- * split a prose product-ad in 2.4s (9 beats) and a 19-heading screenplay
- * in 4s with exact quotes. Bibles and later prompt calls keep the
- * sequence's analysis model.
+ * Boundary-annotation scenes call only. Opus 5 Fast split a prose product-ad
+ * in 2.4s (9 beats) and a 19-heading screenplay in 4s with exact quotes.
+ * Bibles and later prompt calls keep the sequence's analysis model.
  */
 export const SCENE_SPLIT_MODEL: AnalysisModelId =
   'anthropic/claude-opus-5-fast';

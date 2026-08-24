@@ -30,7 +30,7 @@ type FalPricingMap = Record<string, EffectiveFalPricing>;
 /**
  * Conservative per-call floor the credit gate assumes when a model has no
  * honest estimate. Over-gating slightly beats under-gating — the old
- * fabricated default gated Grok Imagine ~98× low (#1069). A model leaves the
+ * fabricated default could under-gate substantially (#1069). A model leaves the
  * floor once `MIN_OBSERVED_SAMPLES` generations are recorded AND the nightly
  * cron folds them into `model_pricing` (~5 generations + up to 24h).
  */

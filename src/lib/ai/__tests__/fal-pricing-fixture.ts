@@ -1,8 +1,6 @@
 /**
  * Test stand-in for the live `model_pricing` map, with realistic prices for
- * the endpoints unit tests exercise. Grok Imagine deliberately carries no
- * unit-count signal so the unknown-estimate (null → floor) path stays
- * covered.
+ * the endpoints unit tests exercise.
  */
 import type { EffectiveFalPricing } from '@/lib/ai/fal-pricing-live';
 import { micros } from '@/lib/billing/money';
@@ -18,10 +16,6 @@ export const TEST_FAL_PRICING: Record<string, EffectiveFalPricing> = {
     unitPrice: micros(1_000_000),
     unit: 'units',
     typicalUnitsPerCall: 0.22,
-  },
-  'xai/grok-imagine-image/v2.0/text-to-image': {
-    unitPrice: micros(170),
-    unit: 'compute seconds',
   },
   'fal-ai/flux-2-max': { unitPrice: micros(70_000), unit: 'megapixels' },
   // Video models
@@ -50,11 +44,6 @@ export const TEST_FAL_PRICING: Record<string, EffectiveFalPricing> = {
   'bytedance/seedance-2.0/enterprise/v2/reference-to-video': {
     unitPrice: micros(14_000),
     unit: 'units',
-  },
-  'xai/grok-imagine-video/v1.5/image-to-video': {
-    unitPrice: micros(50_000),
-    unit: 'videos',
-    typicalUnitsPerCall: 1,
   },
   // Audio models
   'fal-ai/elevenlabs/music': { unitPrice: micros(800_000), unit: 'minutes' },

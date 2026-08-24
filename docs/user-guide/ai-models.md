@@ -15,7 +15,6 @@ These LLM models analyze your script, extract scenes, characters, and locations,
 | ------------------ | --------- | -------------- | ------------------------- |
 | **Claude Opus 5**  | Anthropic | 1M tokens      | Proprietary (default)     |
 | Claude Opus 5 Fast | Anthropic | 1M tokens      | Proprietary (scene-split) |
-| Grok 4.5           | SpaceXAI  | 500K tokens    | Proprietary               |
 | Claude Fable 5     | Anthropic | 1M tokens      | Proprietary               |
 | Claude Sonnet 5    | Anthropic | 1M tokens      | Proprietary               |
 | Mistral Small 4    | Mistral   | 262K tokens    | Open Source (Apache 2.0)  |
@@ -32,19 +31,17 @@ These LLM models analyze your script, extract scenes, characters, and locations,
 
 These models create the visual images for each scene. You can select multiple models to generate variant images for comparison.
 
-| Model                      | Vendor            | License                  | Notes                                                |
-| -------------------------- | ----------------- | ------------------------ | ---------------------------------------------------- |
-| **Nano Banana 2**          | Google            | Proprietary              | Fast generation and editing (default)                |
-| Nano Banana Pro            | Google            | Proprietary              | Enhanced realism and typography                      |
-| Grok Imagine Image 2.0     | SpaceXAI          | Proprietary              | Newest Imagine image model, 1K/2K, edit up to 3 refs |
-| Grok Imagine Image Quality | SpaceXAI          | Proprietary              | Quality Mode — higher fidelity, stronger text        |
-| FLUX.2 Max                 | Black Forest Labs | Proprietary              | Exceptional realism                                  |
-| Phota                      | Phota             | Proprietary              | Character consistency via profiles                   |
-| Hunyuan Image v3           | Tencent           | Open Source              | Strong composition                                   |
-| FLUX.2 Dev                 | Black Forest Labs | Open Source              | 32B open weights with native editing                 |
-| Qwen Image 2 Pro           | Alibaba           | Open Source (Apache 2.0) | Native 2K, text rendering                            |
-| HiDream I1                 | HiDream           | Open Source (MIT)        | 17B parameters                                       |
-| Seedream 5                 | ByteDance         | Proprietary              | Unified generation and editing                       |
+| Model             | Vendor            | License                  | Notes                                 |
+| ----------------- | ----------------- | ------------------------ | ------------------------------------- |
+| **Nano Banana 2** | Google            | Proprietary              | Fast generation and editing (default) |
+| Nano Banana Pro   | Google            | Proprietary              | Enhanced realism and typography       |
+| FLUX.2 Max        | Black Forest Labs | Proprietary              | Exceptional realism                   |
+| Phota             | Phota             | Proprietary              | Character consistency via profiles    |
+| Hunyuan Image v3  | Tencent           | Open Source              | Strong composition                    |
+| FLUX.2 Dev        | Black Forest Labs | Open Source              | 32B open weights with native editing  |
+| Qwen Image 2 Pro  | Alibaba           | Open Source (Apache 2.0) | Native 2K, text rendering             |
+| HiDream I1        | HiDream           | Open Source (MIT)        | 17B parameters                        |
+| Seedream 5        | ByteDance         | Proprietary              | Unified generation and editing        |
 
 ### Edit Endpoints
 
@@ -54,14 +51,13 @@ Most image models support **reference image editing** via dedicated edit endpoin
 
 These models animate still images into video clips.
 
-| Model              | Vendor     | Est. Time | License     | Notes                 |
-| ------------------ | ---------- | --------- | ----------- | --------------------- |
-| **LTX 2.3 Pro**    | Lightricks | ~15s      | Open Source | Best quality ranking  |
-| Veo 3.1            | Google     | ~25s      | Proprietary | 20K max prompt length |
-| Kling v3 Pro       | Kling      | ~20s      | Proprietary |                       |
-| Grok Imagine Video | SpaceXAI   | ~20s      | Proprietary |                       |
-| MiniMax Hailuo 02  | MiniMax    | ~15s      | Proprietary |                       |
-| **Seedance 2.0**   | ByteDance  | ~15s      | Proprietary | Default; native audio |
+| Model             | Vendor     | Est. Time | License     | Notes                 |
+| ----------------- | ---------- | --------- | ----------- | --------------------- |
+| **LTX 2.3 Pro**   | Lightricks | ~15s      | Open Source | Best quality ranking  |
+| Veo 3.1           | Google     | ~25s      | Proprietary | 20K max prompt length |
+| Kling v3 Pro      | Kling      | ~20s      | Proprietary |                       |
+| MiniMax Hailuo 02 | MiniMax    | ~15s      | Proprietary |                       |
+| **Seedance 2.0**  | ByteDance  | ~15s      | Proprietary | Default; native audio |
 
 ### Aspect Ratio Compatibility
 

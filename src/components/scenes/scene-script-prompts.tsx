@@ -78,9 +78,7 @@ import {
   promptFromFalInput,
   type OptimisedPromptPreview,
 } from '@/components/scenes/optimised-prompt-panel';
-import { isNativeGrokVideoModel } from '@/lib/ai/grok-native';
 import { buildImageRequest } from '@/lib/image/build-image-request';
-import { buildGrokVideoRequest } from '@/lib/motion/build-grok-video-request';
 import { buildMotionRequest } from '@/lib/motion/build-model-input';
 import {
   buildMotionReferenceImages,
@@ -1083,9 +1081,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
   // submitMotionJob uses, including reference bindings. Other catalog
   // models are omitted (#1242): they inflate the inspector for picks the
   // user has not made. A transform rejection (e.g. no still yet) falls
-  // back to the plain-text assembled prompt at render. Grok native uses
-  // buildGrokVideoRequest so the panel shows <IMAGE_n> parts, not the fal
-  // i2v bag.
+  // back to the plain-text assembled prompt at render.
   const motionRequestPreview = useMemo((): OptimisedPromptPreview | null => {
     if (!shot) return null;
     const modelKey = effectiveMotionModel;
@@ -1123,28 +1119,6 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
         model: modelKey,
       });
       const imageUrl = absolutizeUrl(shot.image?.url ?? '');
-      if (isNativeGrokVideoModel(modelKey)) {
-        const request = buildGrokVideoRequest({
-          prompt: modelPrompt,
-          imageUrl,
-          duration,
-          aspectRatio,
-          referenceImages,
-          model: modelKey,
-        });
-        const textPart = request.input.prompt.find(
-          (part) => part.type === 'text'
-        );
-        const prompt = textPart?.content ?? modelPrompt;
-        return {
-          modelName: config.name,
-          endpointId: request.endpointId,
-          prompt,
-          json: JSON.stringify(request.input, null, 2),
-          promptLength: prompt.length,
-          maxPromptLength: config.maxPromptLength,
-        };
-      }
       const request = buildMotionRequest(
         {
           prompt: modelPrompt,

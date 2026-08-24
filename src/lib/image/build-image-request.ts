@@ -58,10 +58,6 @@ function imageSizeToAspectRatio(imageSize: ImageSize): AspectRatioValue {
   return ASPECT_RATIO_MAP[imageSize];
 }
 
-/** xAI's `aspectRatio_resolution` template, narrowed to the ratios we offer.
- *  Declared here, not imported, so this module stays adapter-free. */
-export type GrokImagineImageSize = `${AspectRatioValue}_${'1k' | '2k'}`;
-
 function truncatePromptForModel(
   prompt: string,
   model: TextToImageModel
@@ -161,24 +157,6 @@ function buildFalModelOptions(
         sync_mode: false,
       };
 
-    case 'grok_imagine_image':
-    case 'grok_imagine_image_quality':
-      return {
-        aspect_ratio: imageSizeToAspectRatio(
-          params.imageSize ?? DEFAULT_IMAGE_SIZE
-        ),
-        resolution: (params.resolution ?? '2K').toLowerCase(),
-        // 2.0 accepts low/medium; Quality Mode has no quality knob — the
-        // model *is* the higher-fidelity tier.
-        ...(params.model === 'grok_imagine_image' && { quality: 'medium' }),
-        ...(params.numImages !== undefined && { num_images: params.numImages }),
-        ...(params.outputFormat && { output_format: params.outputFormat }),
-        ...(params.referenceImageUrls?.length && {
-          image_urls: params.referenceImageUrls,
-        }),
-        sync_mode: false,
-      };
-
     case 'phota':
       return {
         aspect_ratio: imageSizeToAspectRatio(
@@ -253,35 +231,6 @@ function buildFalModelOptions(
       throw new Error(`Unsupported model: ${String(_exhaustive)}`);
     }
   }
-}
-
-/**
- * {@link buildImageRequest} for xAI-native Grok Imagine (#1167). Aspect-ratio
- * sized rather than pixel sized; the fal-only knobs (seed, inference steps,
- * safety tolerance, output format) have no Imagine counterpart and are dropped
- * rather than faked.
- */
-export function buildGrokImageRequest(params: ImageGenerationParams): {
-  prompt: string;
-  size: GrokImagineImageSize;
-  numImages: number;
-  referenceImageUrls: string[];
-} {
-  const aspectRatio = imageSizeToAspectRatio(
-    params.imageSize ?? DEFAULT_IMAGE_SIZE
-  );
-  // Imagine has no 4K tier — 4K lands on the highest it serves.
-  const resolution = params.resolution === '1K' ? '1k' : '2k';
-
-  return {
-    prompt: truncatePromptForModel(params.prompt, params.model),
-    size: `${aspectRatio}_${resolution}`,
-    numImages: params.numImages ?? 1,
-    referenceImageUrls: capReferenceImages(
-      params.model,
-      params.referenceImageUrls ?? []
-    ),
-  };
 }
 
 /**

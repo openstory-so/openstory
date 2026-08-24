@@ -17,12 +17,6 @@ export const OPENROUTER_PRICING: Record<string, OpenRouterPricing> = {
     completionPerMillionTokens: 25,
     webSearchPerQuery: 0.01,
   },
-  'x-ai/grok-4.6': {
-    name: 'SpaceXAI: Grok 4.6',
-    promptPerMillionTokens: 2,
-    completionPerMillionTokens: 6,
-    webSearchPerQuery: 0.005,
-  },
   'anthropic/claude-fable-5': {
     name: 'Anthropic: Claude Fable 5',
     promptPerMillionTokens: 10,
@@ -34,12 +28,6 @@ export const OPENROUTER_PRICING: Record<string, OpenRouterPricing> = {
     promptPerMillionTokens: 2,
     completionPerMillionTokens: 10,
     webSearchPerQuery: 0.01,
-  },
-  'x-ai/grok-4.20': {
-    name: 'SpaceXAI: Grok 4.20',
-    promptPerMillionTokens: 1.25,
-    completionPerMillionTokens: 2.5,
-    webSearchPerQuery: 0.005,
   },
   'anthropic/claude-opus-5-fast': {
     name: 'Claude Opus 5 (Fast)',

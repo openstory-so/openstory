@@ -66,7 +66,7 @@ const callConfig = {
   phase: { number: 3, name: 'Visual prompts' },
   promptName: 'phase/visual-prompt-scene-generation-chat',
   promptVariables: {},
-  modelId: 'x-ai/grok-4.6' as const,
+  modelId: 'openai/gpt-5.5' as const,
   responseSchema: schema,
 };
 
@@ -191,7 +191,7 @@ describe('durableStreamingLLMCallCf structured-output.complete', () => {
     mockChat.mockReturnValue(
       (async function* () {
         // Deltas assemble to MALFORMED JSON (missing closing quote — the
-        // Grok slip that motivated this): the event must win over the text.
+        // malformed response that motivated this): the event must win over text.
         yield {
           type: 'TEXT_MESSAGE_CONTENT',
           delta: '{"visual":{"fullPrompt":"A clean shot',

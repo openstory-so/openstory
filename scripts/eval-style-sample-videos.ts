@@ -7,7 +7,7 @@
  *      "is anything actually happening" signal. A near-static clip is the
  *      "boring sample" problem in numbers, before any API spend.
  *   2. A vision-LLM RUBRIC: samples N evenly-spaced frames and sends them to a
- *      Gemini/Grok vision model via OpenRouter with the style's intended look +
+ *      vision model via OpenRouter with the style's intended look +
  *      the brief, scoring style adherence, liveliness, character consistency
  *      (the #801 goal — same person across cuts), and coherence/artifacts.
  *
@@ -20,7 +20,7 @@
  *   …--filter <slug> | --model google/gemini-3.1-pro-preview | --frames 8 | --limit 5 | --motion-only
  *
  * Default model: google/gemini-3.5-flash (cheap, strong vision). Override with
- * --model (e.g. google/gemini-3.1-pro-preview, x-ai/grok-4.6).
+ * --model (e.g. google/gemini-3.1-pro-preview, openai/gpt-5.5).
  */
 
 import { execFile } from 'node:child_process';
@@ -451,7 +451,7 @@ async function main() {
   const errored = results.filter((r) => r.error).length;
   if (errored) console.log(`${errored} eval error(s).`);
 
-  // `--out` lets a judge write its own file (e.g. eval-scores-grok.json) so
+  // `--out` lets a judge write its own file (e.g. eval-scores-opus.json) so
   // re-scoring the same set with multiple models doesn't clobber.
   const outPath = flags.out
     ? path.resolve(process.cwd(), flags.out)

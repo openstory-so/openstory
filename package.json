@@ -119,7 +119,6 @@
     "@tailwindcss/typography": "^0.5.20",
     "@tanstack/ai": "^0.47.2",
     "@tanstack/ai-fal": "^0.12.0",
-    "@tanstack/ai-grok": "^0.16.2",
     "@tanstack/ai-openrouter": "^0.18.1",
     "@tanstack/highlight": "0.0.10",
     "@tanstack/markdown": "0.0.13",

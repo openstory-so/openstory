@@ -10,7 +10,7 @@
  * pre-flight credit gate. Preference order for the unit count (#1069):
  * our observed median (`MIN_OBSERVED_SAMPLES`+ generations), then fal's
  * historical estimate, then **null** ("unknown") — never a fabricated
- * default; a fixed one made Grok Imagine read ~98× cheap. Callers gate
+ * default, which can materially understate cost. Callers gate
  * conservatively / display nothing for null.
  */
 

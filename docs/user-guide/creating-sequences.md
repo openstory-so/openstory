@@ -70,7 +70,7 @@ Choose the output aspect ratio for all generated images and videos:
 
 ### Analysis Model
 
-The AI model used to analyze your script and break it into scenes. You can select **multiple models** to generate parallel sequences — one per model — for comparison. Available models include options from Anthropic, Google, OpenAI, xAI, Mistral, DeepSeek, and more.
+The AI model used to analyze your script and break it into scenes. You can select **multiple models** to generate parallel sequences — one per model — for comparison. Available models include options from Anthropic, Google, OpenAI, Mistral, DeepSeek, and more.
 
 When multiple models are selected, the footer shows "N sequences will be created" to confirm.
 
@@ -78,32 +78,29 @@ When multiple models are selected, the footer shows "N sequences will be created
 
 The AI model for generating scene images. You can select **multiple image models** to generate variant images across different providers. Available models include:
 
-| Model                      | Vendor            | Notes                                                |
-| -------------------------- | ----------------- | ---------------------------------------------------- |
-| Nano Banana 2              | Google            | Fast generation and editing (default)                |
-| Nano Banana Pro            | Google            | Enhanced realism and typography                      |
-| Grok Imagine Image 2.0     | SpaceXAI          | Newest Imagine image model, 1K/2K, edit up to 3 refs |
-| Grok Imagine Image Quality | SpaceXAI          | Quality Mode — higher fidelity, stronger text        |
-| FLUX.2 Max                 | Black Forest Labs | Exceptional realism and consistency                  |
-| Phota                      | Phota             | Character consistency via profiles                   |
-| Hunyuan Image v3           | Tencent           | Open source with strong composition                  |
-| FLUX.2 Dev                 | Black Forest Labs | Open source, 32B open weights                        |
-| Qwen Image 2 Pro           | Alibaba           | Apache 2.0, native 2K, text rendering                |
-| HiDream I1                 | HiDream           | MIT licensed, 17B parameters                         |
-| Seedream 5                 | ByteDance         | Unified generation and editing                       |
+| Model            | Vendor            | Notes                                 |
+| ---------------- | ----------------- | ------------------------------------- |
+| Nano Banana 2    | Google            | Fast generation and editing (default) |
+| Nano Banana Pro  | Google            | Enhanced realism and typography       |
+| FLUX.2 Max       | Black Forest Labs | Exceptional realism and consistency   |
+| Phota            | Phota             | Character consistency via profiles    |
+| Hunyuan Image v3 | Tencent           | Open source with strong composition   |
+| FLUX.2 Dev       | Black Forest Labs | Open source, 32B open weights         |
+| Qwen Image 2 Pro | Alibaba           | Apache 2.0, native 2K, text rendering |
+| HiDream I1       | HiDream           | MIT licensed, 17B parameters          |
+| Seedream 5       | ByteDance         | Unified generation and editing        |
 
 ### Motion Model
 
 The AI model for image-to-video animation. Toggle **Auto-generate motion** to automatically create video clips for each scene after images are generated.
 
-| Model              | Vendor     | Est. Time                    |
-| ------------------ | ---------- | ---------------------------- |
-| LTX 2.3 Pro        | Lightricks | ~15s (open-source)           |
-| Veo 3.1            | Google     | ~25s                         |
-| Kling v3 Pro       | Kling      | ~20s                         |
-| Grok Imagine Video | SpaceXAI   | ~20s                         |
-| MiniMax Hailuo 02  | MiniMax    | ~15s                         |
-| Seedance 2.0       | ByteDance  | ~15s (default; native audio) |
+| Model             | Vendor     | Est. Time                    |
+| ----------------- | ---------- | ---------------------------- |
+| LTX 2.3 Pro       | Lightricks | ~15s (open-source)           |
+| Veo 3.1           | Google     | ~25s                         |
+| Kling v3 Pro      | Kling      | ~20s                         |
+| MiniMax Hailuo 02 | MiniMax    | ~15s                         |
+| Seedance 2.0      | ByteDance  | ~15s (default; native audio) |
 
 ### Music Model
 

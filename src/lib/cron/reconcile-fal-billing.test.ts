@@ -78,7 +78,7 @@ describe('reconcileFalBilling', () => {
   function event(overrides: Partial<EventFixture> = {}): EventFixture {
     return {
       request_id: 'req-1',
-      endpoint_id: 'xai/grok-imagine',
+      endpoint_id: 'example/compute-image',
       timestamp: new Date().toISOString(),
       output_units: 7,
       unit_price: 0.01,
@@ -93,7 +93,7 @@ describe('reconcileFalBilling', () => {
   ): typeof modelPricing.$inferInsert {
     return {
       provider: 'fal',
-      endpointId: 'xai/grok-imagine',
+      endpointId: 'example/compute-image',
       unit: 'compute seconds',
       unitPriceMicros: 170,
       typicalUnitsPerCall: null,
@@ -120,7 +120,7 @@ describe('reconcileFalBilling', () => {
       metadata: {
         costMicros: opts.costMicros,
         requestId: opts.requestId,
-        endpointId: 'xai/grok-imagine',
+        endpointId: 'example/compute-image',
       },
     });
     return id;
@@ -145,7 +145,7 @@ describe('reconcileFalBilling', () => {
   });
 
   test('corrects a stale rate from the billed unit price and stamps rateVerifiedAt', async () => {
-    // The Grok shape: stored 170 micros/unit, bill says 10,000 micros/unit.
+    // The compute-second model shape: stored 170 micros/unit, bill says 10,000 micros/unit.
     await db.insert(modelPricing).values(pricingRow());
     const { reconcileFalBilling } = await load([event()]);
 

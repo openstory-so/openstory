@@ -33,7 +33,7 @@ const PRICING: Record<string, EffectiveFalPricing> = {
     unit: 'units',
     typicalUnitsPerCall: 0.22,
   },
-  'xai/grok-imagine-image/quality/text-to-image': {
+  'example/compute-image': {
     unitPrice: micros(170),
     unit: 'compute seconds',
   },
@@ -128,32 +128,24 @@ describe('estimateFalCost', () => {
   });
 
   test('compute-seconds with no unit-count signal is unknown, not a fabricated default', () => {
-    // The old DEFAULT_COMPUTE_SECONDS=3 made this read ~$0.001 when Grok
+    // The old DEFAULT_COMPUTE_SECONDS=3 made this read ~$0.001 when compute-second model
     // really bills ~294 compute-seconds (~$0.05) per image (#1069).
     expect(
-      estimateFalCost(
-        'xai/grok-imagine-image/quality/text-to-image',
-        { numImages: 2 },
-        PRICING
-      )
+      estimateFalCost('example/compute-image', { numImages: 2 }, PRICING)
     ).toBeNull();
   });
 
   test('compute-seconds uses observed median units when the live table has them', () => {
-    // ~294 compute-seconds/image at $0.00017 ≈ $0.05 — Grok's real price.
+    // ~294 compute-seconds/image at $0.00017 ≈ $0.05 — compute-second model's real price.
     const live = {
-      'xai/grok-imagine-image/quality/text-to-image': {
+      'example/compute-image': {
         unitPrice: micros(170),
         unit: 'compute seconds',
         observed: { medianUnits: 294, sampleCount: MIN_OBSERVED_SAMPLES },
       },
     };
     expect(
-      estimateFalCost(
-        'xai/grok-imagine-image/quality/text-to-image',
-        { numImages: 2 },
-        live
-      )
+      estimateFalCost('example/compute-image', { numImages: 2 }, live)
     ).toBe(micros(99_960));
   });
 
@@ -188,18 +180,14 @@ describe('estimateFalCost', () => {
 
   test('an under-sampled median on a compute-seconds model stays unknown', () => {
     const live = {
-      'xai/grok-imagine-image/quality/text-to-image': {
+      'example/compute-image': {
         unitPrice: micros(170),
         unit: 'compute seconds',
         observed: { medianUnits: 294, sampleCount: MIN_OBSERVED_SAMPLES - 1 },
       },
     };
     expect(
-      estimateFalCost(
-        'xai/grok-imagine-image/quality/text-to-image',
-        { numImages: 1 },
-        live
-      )
+      estimateFalCost('example/compute-image', { numImages: 1 }, live)
     ).toBeNull();
   });
 

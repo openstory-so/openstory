@@ -4,7 +4,7 @@
  * visual/motion/music aimock matchers in lockstep with slice-derived metadata.
  */
 
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
@@ -203,17 +203,6 @@ export function replayRecordedE2eScenes(): {
     locationBible,
     elementBible,
   };
-}
-
-export function loadOpenrouterStage(stage: string): FixtureFile[] {
-  const dir = resolve(OPENROUTER_DIR, stage);
-  return readdirSync(dir)
-    .filter((name) => name.endsWith('.json'))
-    .map((name) =>
-      fixtureFileSchema.parse(
-        parseJson(readFileSync(resolve(dir, name), 'utf8'))
-      )
-    );
 }
 
 export function extractTaggedJson<T>(

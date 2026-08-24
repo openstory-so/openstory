@@ -89,8 +89,7 @@ describe('createUserPrompt (issue #855)', () => {
       (style) => style.name === 'Product Ad'
     );
     if (!productAd) throw new Error('Product Ad template missing');
-    // Same brief as e2e/tests/full-sequence.spec.ts (city, not Bondi —
-    // Grok Imagine Quality rejects swimwear).
+    // Same brief as e2e/tests/full-sequence.spec.ts.
     const script = `CORAL — A CITY LAUNCH
 
 INT. DOWNTOWN APARTMENT BATHROOM - MORNING

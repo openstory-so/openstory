@@ -10,12 +10,10 @@
  *
  * `references` is how those images ride, if at all:
  *   - `endpoint` — dedicated reference-to-video endpoint (Seedance)
- *   - `inline` — URLs on the same generations call (Kling `elements`, Grok
- *     Imagine 1.5 native `reference`/`character` prompt parts)
+ *   - `inline` — URLs on the same generations call (Kling `elements`)
  *   - `none` — URLs are not sent; tokens become descriptions in the prompt
  */
 
-import { NATIVE_GROK_VIDEO_MODEL } from '@/lib/ai/grok-native';
 import {
   IMAGE_TO_VIDEO_MODELS,
   attachesInlineReferences,
@@ -42,21 +40,8 @@ export type MotionEndpointResolution =
 
 export function resolveMotionEndpoint(
   modelKey: ImageToVideoModel,
-  hasReferenceImages: boolean,
-  via: MediaVia = 'fal'
+  hasReferenceImages: boolean
 ): MotionEndpointResolution {
-  if (via === 'xai') {
-    // Imagine 1.5 reference-to-video rides the same `/videos/generations`
-    // endpoint as image-to-video: extra images go on the generateVideo prompt
-    // as `metadata.role: 'reference' | 'character'` parts. xAI forbids mixing
-    // a start frame with `reference_images`, so submit drops start_frame and
-    // sends the still as the first reference when this is `'inline'`.
-    return {
-      via: 'xai',
-      endpointId: NATIVE_GROK_VIDEO_MODEL,
-      references: hasReferenceImages ? 'inline' : 'none',
-    };
-  }
   if (hasReferenceImages) {
     const referenceConfig = getMotionReferenceEndpoint(modelKey);
     if (referenceConfig) {

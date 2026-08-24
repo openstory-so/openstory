@@ -97,7 +97,7 @@ describe('computeObservedUnits', () => {
   test('sees observations written now (cutoff units must match the column)', async () => {
     await db.insert(modelUsageObservations).values({
       provider: 'fal',
-      endpointId: 'xai/grok-imagine',
+      endpointId: 'example/compute-image',
       unitsBilled: 294,
       numImages: 1,
     });
@@ -107,7 +107,7 @@ describe('computeObservedUnits', () => {
     // `createdAt` is stored in seconds; comparing it against a millisecond
     // cutoff matched zero rows and pinned every model to the $0.10 floor.
     expect(samples).toBe(1);
-    expect(observed.get('xai/grok-imagine')).toEqual({
+    expect(observed.get('example/compute-image')).toEqual({
       medianUnits: 294,
       sampleCount: 1,
     });
@@ -539,19 +539,19 @@ describe('refreshFalPricing', () => {
   });
 
   test('billed usage rates override the pricing API', async () => {
-    // The Grok incident: pricing API reported "compute seconds" × $0.00017
+    // The compute-second model incident: pricing API reported "compute seconds" × $0.00017
     // while fal billed "units" × $0.01 — a ~59× under-charge. The bill wins.
     const { refreshFalPricing } = await load({
       prices: [
         {
-          endpointId: 'xai/grok-imagine',
+          endpointId: 'example/compute-image',
           unitPriceUsd: 0.00017,
           unit: 'compute seconds',
         },
       ],
       billed: [
         {
-          endpointId: 'xai/grok-imagine',
+          endpointId: 'example/compute-image',
           unit: 'units',
           unitPriceUsd: 0.01,
           costUsd: 0.4,
@@ -601,7 +601,7 @@ describe('refreshFalPricing', () => {
     // not overwrite the verified one.
     await db.insert(modelPricing).values(
       seedRow({
-        endpointId: 'xai/grok-imagine',
+        endpointId: 'example/compute-image',
         unit: 'units',
         unitPriceMicros: 10_000,
         typicalUnitsPerCall: null,
@@ -611,7 +611,7 @@ describe('refreshFalPricing', () => {
     const { refreshFalPricing } = await load({
       prices: [
         {
-          endpointId: 'xai/grok-imagine',
+          endpointId: 'example/compute-image',
           unitPriceUsd: 0.00017,
           unit: 'compute seconds',
         },
@@ -631,14 +631,14 @@ describe('refreshFalPricing', () => {
     const { refreshFalPricing } = await load({
       prices: [
         {
-          endpointId: 'xai/grok-imagine',
+          endpointId: 'example/compute-image',
           unitPriceUsd: 0.00017,
           unit: 'compute seconds',
         },
       ],
       billed: [
         {
-          endpointId: 'xai/grok-imagine',
+          endpointId: 'example/compute-image',
           unit: 'units',
           unitPriceUsd: 0.01,
           costUsd: 0.4,

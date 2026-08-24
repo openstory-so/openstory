@@ -196,9 +196,8 @@ export async function* streamScriptEnhancement(
     // recur.
     temperature: 0.7,
     ...(useWebSearch && { webSearch: true }),
-    // Always on at `low`. Omitting this on Grok 4.6 (the default) falls through
-    // to xAI's `high` — sending `low` is the fastest we can ask for. Workflows
-    // keep PROMPT_REASONING (`medium`); latency is hidden there.
+    // Always on at `low`; workflows keep PROMPT_REASONING (`medium`) because
+    // latency is hidden there.
     reasoning: ENHANCE_REASONING,
     observationName: 'script-enhance',
     tags: ['script-enhance', model],

@@ -38,24 +38,4 @@ describe('resolveMotionEndpoint', () => {
       references: 'none',
     });
   });
-
-  it('stamps xAI-native Grok as via xai and marks refs as inline', () => {
-    expect(
-      resolveMotionEndpoint('grok_imagine_video_1_5', true, 'xai')
-    ).toEqual({
-      via: 'xai',
-      endpointId: 'grok-imagine-video-1.5',
-      references: 'inline',
-    });
-  });
-
-  it('stamps xAI-native Grok with no refs as via xai', () => {
-    expect(
-      resolveMotionEndpoint('grok_imagine_video_1_5', false, 'xai')
-    ).toEqual({
-      via: 'xai',
-      endpointId: 'grok-imagine-video-1.5',
-      references: 'none',
-    });
-  });
 });

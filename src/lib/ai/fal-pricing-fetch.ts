@@ -222,10 +222,8 @@ type UsageEntry = {
 /**
  * The unit + unit_price fal actually billed per endpoint over the last
  * `days`, from the usage API — the bill itself, so it cannot disagree with
- * reality. The pricing API can: it reported Grok Imagine at
- * "compute seconds" × $0.00017 while fal billed "units" × $0.01 (~59× more),
- * which made `unitsBilled × unitPrice` charge ~nothing. The refresh overlays
- * these rates over the pricing API's answers.
+ * reality. Advertised pricing can use a different unit or rate and materially
+ * undercharge. The refresh overlays billed rates over the pricing API's answers.
  *
  * Only covers endpoints with usage in the window — exactly the ones we bill.
  * If one endpoint shows two units (fal re-denominated mid-window), the

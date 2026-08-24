@@ -263,11 +263,10 @@ describe('estimateStoryboardCost', () => {
 });
 
 /**
- * The unknown-estimate floor (#1069). Grok Imagine is a real, selectable model
- * whose compute-seconds endpoint has no fal historical estimate, so
- * `estimateFalCost` returns null for it until observations accumulate — the
- * floor IS its production credit gate. Every other test here uses a priced
- * model, so `gateEstimate`'s null branch would otherwise never execute.
+ * The unknown-estimate floor (#1069). An endpoint without a fal historical
+ * estimate returns null until observations accumulate, so the floor is its
+ * production credit gate. Every other test here uses a priced model, so
+ * `gateEstimate`'s null branch would otherwise never execute.
  */
 describe('estimateVideoCost endpoint routing', () => {
   it('prices Seedance reference-to-video higher when ref endpoint is more expensive', () => {
@@ -350,7 +349,7 @@ describe('estimateVideoCost endpoint routing', () => {
 });
 
 describe('gateEstimate', () => {
-  const UNPRICED: TextToImageModel = 'grok_imagine_image';
+  const UNPRICED: TextToImageModel = 'phota';
 
   it('returns the honest estimate untouched when one exists', () => {
     const honest = estimateImageCost(IMAGE_MODEL, '16:9', 1, {

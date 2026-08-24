@@ -19,7 +19,7 @@ describe('videoModelSupportsAudio', () => {
   });
 
   it('returns false for models without audio', () => {
-    expect(videoModelSupportsAudio('grok_imagine_video_1_5')).toBe(false);
+    expect(videoModelSupportsAudio('minimax_hailuo_02')).toBe(false);
   });
 });
 

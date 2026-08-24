@@ -25,7 +25,7 @@ type PricingVia = 'fal.ai' | 'OpenRouter';
 
 type PricingRow = {
   name: string;
-  /** Who trained / owns the model (xAI, ByteDance, Google, …). */
+  /** Who trained / owns the model (ByteDance, Google, …). */
   vendor: string;
   /** Which API OpenStory calls for this model today. */
   via: PricingVia;

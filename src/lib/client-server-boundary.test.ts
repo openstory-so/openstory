@@ -52,7 +52,6 @@ const SERVER_ONLY = [
   '#storage',
   '@tanstack/ai', // core: chat orchestrator + otel middleware — server-side only
   '@tanstack/ai-openrouter',
-  '@tanstack/ai-grok',
   '@tanstack/ai-fal',
   '@opentelemetry/',
   '@libsql/',

@@ -76,8 +76,6 @@ type ModelReport = {
 
 const ORG_PREFIXES = new Set([
   'fal-ai',
-  'xai',
-  'x-ai',
   'openai',
   'google',
   'anthropic',

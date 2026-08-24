@@ -164,14 +164,14 @@ describe('fetchFalBilledRates', () => {
   const USAGE_URL = 'https://api.fal.ai/v1/models/usage';
 
   it('returns the billed unit and price per endpoint', async () => {
-    // The whole point: the pricing API said Grok bills "compute seconds" ×
+    // The whole point: the pricing API said compute-second model bills "compute seconds" ×
     // $0.00017; the bill says "units" × $0.01. The bill wins.
     stubFetch((url) =>
       url.startsWith(USAGE_URL)
         ? json({
             summary: [
               {
-                endpoint_id: 'xai/grok-imagine-image/quality/text-to-image',
+                endpoint_id: 'example/compute-image',
                 unit: 'units',
                 unit_price: 0.01,
                 cost: 0.4,
@@ -184,7 +184,7 @@ describe('fetchFalBilledRates', () => {
     const rates = await fetchFalBilledRates('admin-key');
     expect(rates).toEqual([
       {
-        endpointId: 'xai/grok-imagine-image/quality/text-to-image',
+        endpointId: 'example/compute-image',
         unit: 'units',
         unitPriceUsd: 0.01,
         costUsd: 0.4,

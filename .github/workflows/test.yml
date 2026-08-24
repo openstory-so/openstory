@@ -160,8 +160,6 @@ jobs:
         run: |
           # No R2 creds or R2_PUBLIC_STORAGE_DOMAIN: e2e R2 is the local
           # Miniflare binding, with reads served by the worker's /r2/$ route.
-          # No XAI_API_KEY either — that would route Grok natively (#1167),
-          # past aimock, and no xAI fixtures are recorded. Keep it unset.
           cat > dist/server/.dev.vars <<EOF
           BETTER_AUTH_SECRET=$E2E_BETTER_AUTH_SECRET
           BETTER_AUTH_URL=http://localhost:3001
@@ -253,8 +251,6 @@ jobs:
         run: |
           # No R2 creds or R2_PUBLIC_STORAGE_DOMAIN: e2e R2 is the local
           # Miniflare binding, with reads served by the worker's /r2/$ route.
-          # No XAI_API_KEY either — that would route Grok natively (#1167),
-          # past aimock, and no xAI fixtures are recorded. Keep it unset.
           cat > dist/server/.dev.vars <<EOF
           BETTER_AUTH_SECRET=$E2E_BETTER_AUTH_SECRET
           BETTER_AUTH_URL=http://localhost:3001

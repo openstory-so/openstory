@@ -6,11 +6,11 @@ import {
   resolveMotionPromptFromVersion,
 } from './resolve-motion-prompt';
 
-// veo3_1 is audio-capable (Google → dialogue/audio enriched); grok is not
+// veo3_1 is audio-capable (Google → dialogue/audio enriched); Hailuo is not
 // (fullPrompt passes through untouched). Using both pins the model-specific
 // assembly branch vs. the bare passthrough.
 const AUDIO_MODEL = 'veo3_1' as const;
-const NON_AUDIO_MODEL = 'grok_imagine_video_1_5' as const;
+const NON_AUDIO_MODEL = 'minimax_hailuo_02' as const;
 
 const versionRow = {
   text: 'Slow dolly-in on the detective at her desk.',

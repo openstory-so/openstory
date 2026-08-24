@@ -178,14 +178,14 @@ describe('buildReferenceVideoPrompt (per-model config knobs)', () => {
     expect(result.prompt).not.toContain('<IMAGE_REF_4>');
   });
 
-  it('tags Grok Imagine 1.5 refs as <IMAGE_0>… in request order', () => {
-    const grokConfig: MotionReferenceEndpointConfig = {
-      endpointId: 'grok-imagine-video-1.5',
+  it('supports zero-based image tags in request order', () => {
+    const zeroBasedConfig: MotionReferenceEndpointConfig = {
+      endpointId: 'example/zero-based-video',
       tag: (position) => `<IMAGE_${position - 1}>`,
       maxImages: 7,
     };
     const result = buildReferenceVideoPrompt(
-      grokConfig,
+      zeroBasedConfig,
       'SCARLETT lifts the CORAL_LIPSTICK',
       STILL,
       [

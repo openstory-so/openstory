@@ -37,12 +37,10 @@ const testEnv: {
   API_KEY_ENCRYPTION_KEY: string;
   OPENROUTER_KEY: string | undefined;
   FAL_KEY: string | undefined;
-  XAI_API_KEY: string | undefined;
 } = {
   API_KEY_ENCRYPTION_KEY: 'test-secret-for-api-keys-memoization',
   OPENROUTER_KEY: 'platform-openrouter-key',
   FAL_KEY: 'platform-fal-key',
-  XAI_API_KEY: undefined,
 };
 
 vi.doMock('#env', () => ({
@@ -114,7 +112,6 @@ afterAll(() => {
 beforeEach(async () => {
   testEnv.OPENROUTER_KEY = 'platform-openrouter-key';
   testEnv.FAL_KEY = 'platform-fal-key';
-  testEnv.XAI_API_KEY = undefined;
   await seed();
 });
 
@@ -500,84 +497,15 @@ describe('hasUsableKey (billing gates must not count invalid keys)', () => {
   });
 });
 
-describe('native xAI key resolution (issue #1167)', () => {
-  it('prefers a team xAI key for a Grok model', async () => {
-    const scope = createApiKeysMethods(db, teamId, userId);
-    await scope.saveKey({ provider: 'openrouter', apiKey: 'sk-team-or' });
-    await scope.saveKey({ provider: 'xai', apiKey: 'xai-team' });
-
-    expect(await scope.resolveLlmKey('x-ai/grok-4.6')).toMatchObject({
-      key: 'xai-team',
-      source: 'team',
-      via: 'xai',
-    });
-  });
-
-  it('leaves non-Grok models on OpenRouter even with an xAI key stored', async () => {
-    const scope = createApiKeysMethods(db, teamId, userId);
-    await scope.saveKey({ provider: 'openrouter', apiKey: 'sk-team-or' });
-    await scope.saveKey({ provider: 'xai', apiKey: 'xai-team' });
-
-    expect(
-      await scope.resolveLlmKey('anthropic/claude-sonnet-5')
-    ).toMatchObject({ key: 'sk-team-or', via: 'openrouter' });
-  });
-
-  it('keeps the pre-#1167 behaviour when the caller names no model', async () => {
-    const scope = createApiKeysMethods(db, teamId, userId);
-    await scope.saveKey({ provider: 'xai', apiKey: 'xai-team' });
-
-    expect(await scope.resolveLlmKey()).toMatchObject({ via: 'openrouter' });
-  });
-
-  it('falls back to the platform XAI_API_KEY when the team has none', async () => {
-    testEnv.XAI_API_KEY = 'platform-xai';
-    const scope = createApiKeysReadMethods(db, teamId);
-
-    expect(await scope.resolveLlmKey('x-ai/grok-4.6')).toMatchObject({
-      key: 'platform-xai',
-      source: 'platform',
-      via: 'xai',
-    });
-  });
-
-  it('falls through to OpenRouter for a Grok model with no xAI key anywhere', async () => {
-    const scope = createApiKeysReadMethods(db, teamId);
-
-    expect(await scope.resolveLlmKey('x-ai/grok-4.6')).toMatchObject({
-      key: 'platform-openrouter-key',
-      via: 'openrouter',
-    });
-  });
-
-  it('skips an xAI key flagged invalid rather than sending it', async () => {
-    const scope = createApiKeysMethods(db, teamId, userId);
-    await scope.saveKey({ provider: 'xai', apiKey: 'xai-team' });
-    await scope.markKeyInvalid('xai', 'revoked');
-
-    expect(await scope.resolveLlmKey('x-ai/grok-4.6')).toMatchObject({
-      via: 'openrouter',
-    });
-  });
-});
-
 describe('resolveOptionalKey', () => {
   it('returns undefined instead of throwing when no key exists', async () => {
-    // Native-provider routing (#1216) asks "is there a key?" and falls
-    // through to fal when there isn't. `resolveKey` throws there.
+    // Optional provider routing asks "is there a key?" while `resolveKey`
+    // throws when none is configured.
     testEnv.FAL_KEY = undefined;
     const scope = createApiKeysReadMethods(db, teamId);
 
     expect(await scope.resolveOptionalKey('fal')).toBeUndefined();
     await expect(scope.resolveKey('fal')).rejects.toThrow(
-      /No API key available/
-    );
-  });
-
-  it('returns undefined for xai when neither team nor platform key exists', async () => {
-    const scope = createApiKeysReadMethods(db, teamId);
-    expect(await scope.resolveOptionalKey('xai')).toBeUndefined();
-    await expect(scope.resolveKey('xai')).rejects.toThrow(
       /No API key available/
     );
   });

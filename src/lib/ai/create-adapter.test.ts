@@ -14,18 +14,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const testEnv: {
   OPENROUTER_KEY: string | undefined;
   FAL_KEY: string | undefined;
-  XAI_API_KEY: string | undefined;
   OPENROUTER_BASE_URL: string | undefined;
-  XAI_BASE_URL: string | undefined;
   E2E_RECORD: string | undefined;
   VITE_APP_URL: string;
   VITE_APP_NAME: string;
 } = {
   OPENROUTER_KEY: undefined,
   FAL_KEY: undefined,
-  XAI_API_KEY: undefined,
   OPENROUTER_BASE_URL: undefined,
-  XAI_BASE_URL: undefined,
   E2E_RECORD: undefined,
   VITE_APP_URL: 'http://localhost:3000',
   VITE_APP_NAME: 'OpenStory',
@@ -64,24 +60,11 @@ vi.doMock('@tanstack/ai-openrouter', () => ({
   openRouterText: openRouterTextMock,
 }));
 
-type GrokCall = { model: string; key: string; config: { baseURL?: string } };
-const grokCalls: GrokCall[] = [];
-const createGrokTextMock = vi.fn(
-  (model: string, key: string, config: { baseURL?: string }) => {
-    grokCalls.push({ model, key, config });
-    return { kind: 'grok-adapter' };
-  }
-);
-vi.doMock('@tanstack/ai-grok', () => ({
-  createGrokText: createGrokTextMock,
-}));
-
 // Dynamic import so the mocks above apply — see CLAUDE.md module-mocking
 // pattern.
-const { createAdapter, getPlatformLlmKey, resolveNativeGrokModel } =
-  await import('./create-adapter');
+const { createAdapter, getPlatformLlmKey } = await import('./create-adapter');
 
-const MODEL = 'x-ai/grok-4.6';
+const MODEL = 'anthropic/claude-sonnet-5';
 const FAL_URL = 'https://fal.run/openrouter/router/openai/v1';
 
 function lastCall(): AdapterCall {
@@ -116,13 +99,9 @@ beforeEach(() => {
   testEnv.FAL_KEY = undefined;
   testEnv.OPENROUTER_BASE_URL = undefined;
   testEnv.E2E_RECORD = undefined;
-  testEnv.XAI_API_KEY = undefined;
-  testEnv.XAI_BASE_URL = undefined;
   adapterCalls.length = 0;
-  grokCalls.length = 0;
   createOpenRouterTextMock.mockClear();
   openRouterTextMock.mockClear();
-  createGrokTextMock.mockClear();
 });
 
 afterEach(() => {
@@ -230,100 +209,5 @@ describe('getPlatformLlmKey', () => {
 
   it('returns undefined when neither key is configured', () => {
     expect(getPlatformLlmKey()).toBeUndefined();
-  });
-});
-
-describe('native xAI routing (issue #1167)', () => {
-  it('sends a Grok model to xAI under its native model name', () => {
-    createAdapter(MODEL, { key: 'xai-team', via: 'xai' });
-
-    expect(grokCalls).toStrictEqual([
-      {
-        model: 'grok-4.6',
-        key: 'xai-team',
-        config: expect.objectContaining({ fetch: expect.any(Function) }),
-      },
-    ]);
-    // The OpenRouter factories must not also fire — a double-construct would
-    // mean the request shape and the adapter disagreed.
-    expect(createOpenRouterTextMock).not.toHaveBeenCalled();
-    expect(openRouterTextMock).not.toHaveBeenCalled();
-  });
-
-  it('maps grok-4.20 onto the reasoning build xAI actually serves', () => {
-    createAdapter('x-ai/grok-4.20', { key: 'xai-team', via: 'xai' });
-
-    expect(grokCalls.at(-1)?.model).toBe('grok-4.20-0309-reasoning');
-  });
-
-  it('keeps a non-Grok model on OpenRouter even when the key says xai', () => {
-    // Defence in depth: an xAI key is only ever resolved for a Grok model, so
-    // this pairing means something upstream is wrong. Sending Sonnet to xAI
-    // would 404 on a model it does not serve; OpenRouter still answers.
-    createAdapter('anthropic/claude-sonnet-5', {
-      key: 'xai-team',
-      via: 'xai',
-    });
-
-    expect(createGrokTextMock).not.toHaveBeenCalled();
-    expect(lastCall().kind).toBe('keyed');
-  });
-
-  it('falls back to OpenRouter for a Grok model with no xAI key', () => {
-    testEnv.OPENROUTER_KEY = 'platform-or';
-    createAdapter(MODEL);
-
-    expect(createGrokTextMock).not.toHaveBeenCalled();
-    const call = lastCall();
-    if (call.kind !== 'keyed') throw new Error('expected keyed adapter');
-    expect(call.key).toBe('platform-or');
-  });
-});
-
-describe('resolveNativeGrokModel', () => {
-  it('agrees with createAdapter about which route a request takes', () => {
-    expect(resolveNativeGrokModel(MODEL, { key: 'k', via: 'xai' })).toBe(
-      'grok-4.6'
-    );
-    expect(
-      resolveNativeGrokModel(MODEL, { key: 'k', via: 'openrouter' })
-    ).toBeUndefined();
-    expect(
-      resolveNativeGrokModel('openai/gpt-5.5', { key: 'k', via: 'xai' })
-    ).toBeUndefined();
-  });
-});
-
-describe('getPlatformLlmKey with XAI_API_KEY (issue #1167)', () => {
-  it('prefers xAI for a Grok model, over both OpenRouter and fal', () => {
-    testEnv.XAI_API_KEY = 'platform-xai';
-    testEnv.OPENROUTER_KEY = 'platform-or';
-    testEnv.FAL_KEY = 'platform-fal';
-
-    expect(getPlatformLlmKey(MODEL)).toStrictEqual({
-      key: 'platform-xai',
-      via: 'xai',
-      source: 'platform',
-    });
-  });
-
-  it('ignores XAI_API_KEY for a non-Grok model', () => {
-    testEnv.XAI_API_KEY = 'platform-xai';
-    testEnv.OPENROUTER_KEY = 'platform-or';
-
-    expect(getPlatformLlmKey('anthropic/claude-sonnet-5')).toStrictEqual({
-      key: 'platform-or',
-      via: 'openrouter',
-      source: 'platform',
-    });
-  });
-
-  it('ignores XAI_API_KEY when the caller names no model', () => {
-    // A caller that doesn't know the model can't promise it's a Grok one, so
-    // the key must stay on a route every model supports.
-    testEnv.XAI_API_KEY = 'platform-xai';
-    testEnv.OPENROUTER_KEY = 'platform-or';
-
-    expect(getPlatformLlmKey()?.via).toBe('openrouter');
   });
 });

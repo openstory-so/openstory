@@ -40,7 +40,7 @@
  *   --prompts-only      Generate + print the motion prompts, skip video (cheap
  *                       way to eyeball/tune liveliness before burning credits).
  *   --model=<key>       Override the video model for every style in this run
- *                       (e.g. --model=grok_imagine_video_1_5) — handy to retry a
+ *                       (e.g. --model=seedance_v2_fast) — handy to retry a
  *                       style whose still one model's content checker flags.
  *   --concurrency=N     Parallel styles in flight (default 4).
  *
@@ -459,15 +459,13 @@ async function generateClip(
     model,
     duration: DURATION_SECONDS,
     aspectRatio: ASPECT_RATIO,
-    // Square output: Seedance honours aspectRatio; Grok has no aspect_ratio
-    // param and inherits the (square) input still — the renders are square.
+    // Request square output for models that support the aspect ratio.
     generateAudio: false, // silent — no sound on hover clips
   });
 
   const deadline = Date.now() + MOTION_POLL_TIMEOUT_MS;
   while (Date.now() < deadline) {
-    // `job.via` (not the default): with XAI_API_KEY set, a Grok clip is
-    // submitted to xAI and its job id means nothing to fal.
+    // Poll through the provider stamped at submission time.
     const poll = await pollMotionJob(
       job.jobId,
       job.modelKey,

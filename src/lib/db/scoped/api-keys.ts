@@ -8,7 +8,6 @@ import { and, eq } from 'drizzle-orm';
 import type { Database } from '@/lib/db/client';
 import { getEnv } from '#env';
 import { getPlatformLlmKey } from '@/lib/ai/create-adapter';
-import { nativeGrokTextModel } from '@/lib/ai/grok-native';
 import {
   decryptApiKey,
   encryptApiKey,
@@ -42,10 +41,9 @@ export type ResolvedApiKey =
 // LLM-call key resolution. `via` says which API the call must be routed
 // through: 'openrouter' = OpenRouter directly (Bearer auth), 'fal' = fal's
 // OpenAI-compatible OpenRouter endpoint (`Key` auth) so a team with only a
-// fal key still covers LLM calls (issue #895), 'xai' = xAI's own Responses
-// API for Grok models (issue #1167).
+// fal key still covers LLM calls (issue #895).
 export type ResolvedLlmKey = ResolvedApiKey & {
-  via: 'openrouter' | 'fal' | 'xai';
+  via: 'openrouter' | 'fal';
 };
 
 // The cached shape of a `team_api_keys` lookup. Holds the *encrypted* row
@@ -283,8 +281,6 @@ export function createApiKeysReadMethods(db: Database, teamId: string) {
         return env.OPENROUTER_KEY || undefined;
       case 'fal':
         return env.FAL_KEY || undefined;
-      case 'xai':
-        return env.XAI_API_KEY || undefined;
       default: {
         const _exhaustive: never = provider;
         throw new Error(`Unknown provider: ${String(_exhaustive)}`);
@@ -337,8 +333,6 @@ export function createApiKeysReadMethods(db: Database, teamId: string) {
   }
 
   // Resolve the key for an LLM call. Preference order:
-  //   0. xAI key (team, else platform) when `model` is a Grok model — the
-  //      first-party API, no reseller in front of it (issue #1167)
   //   1. team OpenRouter key (direct OpenRouter)
   //   2. team fal key (routed through fal's OpenRouter endpoint) — a fal-only
   //      team still covers LLM calls on their own key (issue #895)
@@ -346,15 +340,8 @@ export function createApiKeysReadMethods(db: Database, teamId: string) {
   // A skipped OpenRouter key that a working fal key supersedes returns
   // `source: 'team'` with no fallbackReason — the reason only surfaces when
   // resolution falls all the way through to the platform key.
-  // Omitting `model` means no native routing — a caller that can't name the
-  // model can't promise it's a Grok one.
-  async function resolveLlmKey(model?: string): Promise<ResolvedLlmKey> {
+  async function resolveLlmKey(_model?: string): Promise<ResolvedLlmKey> {
     let fallbackReason: string | undefined;
-
-    if (model && nativeGrokTextModel(model)) {
-      const xai = await resolveOptionalKey('xai');
-      if (xai) return { ...xai, via: 'xai' };
-    }
 
     const orLookup = await readKeyRowLogged('openrouter');
     if (orLookup.found) {
@@ -431,14 +418,6 @@ export function createApiKeysReadMethods(db: Database, teamId: string) {
           return { valid: false, error: 'Invalid Fal.ai API key' };
         }
         return { valid: true };
-      }
-      case 'xai': {
-        // Key introspection: 200 live, 401/403 bad.
-        const response = await fetch('https://api.x.ai/v1/api-key', {
-          headers: { Authorization: `Bearer ${apiKey}` },
-        });
-        if (response.ok) return { valid: true };
-        return { valid: false, error: `xAI returned ${response.status}` };
       }
       default: {
         const _exhaustive: never = provider;

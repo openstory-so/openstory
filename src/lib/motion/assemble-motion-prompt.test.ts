@@ -288,21 +288,8 @@ describe('assembleMotionPrompt', () => {
   });
 
   // ---------------------------------------------------------------------------
-  // Non-audio models (Grok, MiniMax)
+  // Non-audio models
   // ---------------------------------------------------------------------------
-
-  describe('Grok Imagine Video 1.5 (no audio)', () => {
-    const model = 'grok_imagine_video_1_5';
-
-    it('returns fullPrompt for non-audio model', () => {
-      const result = assembleMotionPrompt({
-        motionPrompt: makeMotionPrompt(),
-        model,
-      });
-
-      expect(result).toBe(fullPromptText);
-    });
-  });
 
   describe('MiniMax Hailuo 2.3 (no audio)', () => {
     const model = 'minimax_hailuo_02';
@@ -392,7 +379,7 @@ describe('assembleMotionPrompt', () => {
     it('never adds a no-music direction to a model that generates no audio', () => {
       const result = assembleMotionPrompt({
         motionPrompt: makeMotionPrompt(),
-        model: 'grok_imagine_video_1_5',
+        model: 'minimax_hailuo_02',
       });
 
       expect(result).not.toContain('No BGM');

@@ -95,17 +95,6 @@ export async function ensureExternallyFetchableUrls(
 }
 
 /**
- * Fetchable image URL for a provider that accepts `data:` URIs (xAI's Imagine
- * API). Unlike {@link ensureExternallyFetchableUrl} this needs no fal key —
- * a deployment running Grok natively (#1167) may have no fal credentials.
- */
-export async function toDataOrCdnUrl(url: string): Promise<string> {
-  const source = await toVisionImageSource(url);
-  if (source.type === 'url') return source.value;
-  return `data:${source.mimeType};base64,${source.value}`;
-}
-
-/**
  * Vision-message image source for a storage URL.
  *
  * Prefer a URL OpenRouter can fetch: CDN absolute in production, fal-storage

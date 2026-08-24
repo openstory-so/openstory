@@ -102,14 +102,14 @@ export const sequences = snakeCase.table(
     // omitted imageModel, mirroring videoModel below.
     imageModel: text({ length: 100 }).default('nano_banana_2').notNull(),
     // SQL default is pinned to 'kling_v3_pro' to match every deployed DB's
-    // column default (#801 changed DEFAULT_VIDEO_MODEL to grok WITHOUT a
+    // column default (#801 changed DEFAULT_VIDEO_MODEL WITHOUT a
     // migration; SQLite can't ALTER a column default without a full table
     // rebuild, which CASCADE-deletes child rows on D1 — see CLAUDE.md). So
     // db:generate stays clean. The app must NOT rely on this default: the
     // scoped create (db/scoped/sequences.ts) substitutes DEFAULT_VIDEO_MODEL
     // for an omitted videoModel, and create-sequences always passes the
     // user's resolved selection. drizzle inlines `.default()` and ignores
-    // `$defaultFn` when both are set, so an app-level grok default can't live
+    // `$defaultFn` when both are set, so an app-level default can't live
     // here.
     videoModel: text({ length: 100 }).default('kling_v3_pro').notNull(),
     workflow: text({ length: 100 }),

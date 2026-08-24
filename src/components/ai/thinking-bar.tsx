@@ -18,9 +18,9 @@ import { useEffect, useState, type FC } from 'react';
  *
  * The transcript is **collapsed by default**, deliberately. Measured against
  * OpenRouter, both models we enhance with return a one-or-two-sentence summary
- * of their reasoning, not a live raw stream: ~100 chars for claude-sonnet-5
- * (arriving 0.6s before the answer) and ~200 for grok-4.6, whose summary
- * routinely opens with the first lines of the script it is about to write. So
+ * of their reasoning, not a live raw stream. The summary arrives shortly
+ * before the answer and routinely opens with the first lines of the script it
+ * is about to write. So
  * expanding by default buys a flash of text, a spoiler of the answer, and then
  * silence — worse than a clean status bar. Behind one click it is a genuinely
  * interesting look at the plan; in front of the user's face it is noise.

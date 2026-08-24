@@ -18,24 +18,15 @@ import {
   type DebugOption,
   type TokenUsage,
 } from '@tanstack/ai';
-import { grokWebSearchTool } from '@tanstack/ai-grok/tools';
 import type { ProviderPreferences } from '@tanstack/ai-openrouter';
 import { webSearchTool } from '@tanstack/ai-openrouter/tools';
 import { z } from 'zod';
-import {
-  grokTextCostFromUsage,
-  nativeGrokTextModel,
-} from '@/lib/ai/grok-native';
 import {
   isRegionBlockedLlmError,
   regionFallbackModel,
 } from '@/lib/ai/region-policy';
 import { aiDebugLogger } from './ai-debug-logger';
-import {
-  createAdapter,
-  resolveNativeGrokModel,
-  type LlmKeyInfo,
-} from './create-adapter';
+import { createAdapter, type LlmKeyInfo } from './create-adapter';
 
 import { getLogger } from '@/lib/observability/logger';
 
@@ -127,13 +118,8 @@ export function createUsageCapture(): {
 /**
  * Convert a completed LLM call's usage into a charge.
  *
- * Uses OpenRouter's per-request `cost` (USD) when present. xAI reports tokens
- * only, so a Grok model with no cost is by construction a native call (#1167)
- * and is priced from xAI's published rates. TRAP: that inference means an
- * OpenRouter Grok call that dropped `usage.cost` (TanStack/ai#1076) is priced
- * at xAI list rates instead of surfacing as a missing-cost report.
- *
- * Anything else missing a cost stays $0 + a report. Do not invent rates.
+ * Uses OpenRouter's per-request `cost` (USD) when present. Anything missing a
+ * cost stays $0 + a report. Do not invent rates.
  */
 export function llmCostFromUsage(
   usage: TokenUsage | undefined,
@@ -141,12 +127,6 @@ export function llmCostFromUsage(
 ): Microdollars {
   if (usageHasCost(usage)) {
     return usdToMicros(usage.cost);
-  }
-
-  const nativeModel = nativeGrokTextModel(modelId);
-  if (nativeModel) {
-    const cost = grokTextCostFromUsage(usage, nativeModel);
-    if (cost !== undefined) return cost;
   }
 
   reportMissingBillingCost({
@@ -251,10 +231,8 @@ export type LLMRequestParams<T = unknown> = {
  * https://openrouter.ai/docs/guides/features/structured-outputs
  */
 const STRUCTURED_OUTPUT_MODELS = new Set([
-  'x-ai/grok-4.6',
   'anthropic/claude-fable-5',
   'anthropic/claude-sonnet-5',
-  'x-ai/grok-4.20',
   'anthropic/claude-opus-5',
   'anthropic/claude-opus-5-fast',
   'anthropic/claude-opus-4.8',
@@ -302,7 +280,7 @@ export const PROMPT_REASONING = {
 
 /**
  * Reasoning for script enhancement. Always on at `low`: some providers
- * (Grok) cannot disable thinking, and omitting the param falls through to
+ * cannot disable thinking, and omitting the param falls through to
  * a high default — so sending `low` is the fastest we can ask for.
  * Workflows keep {@link PROMPT_REASONING} (`medium`); latency is hidden there.
  */
@@ -347,33 +325,6 @@ function convertMessages(messages: ChatMessage[]): {
   return { systemPrompts, messages: chatMessages };
 }
 
-/**
- * xAI's Responses API takes a different options object from OpenRouter's chat
- * shape: snake_case, `max_output_tokens`, no routing preferences, no
- * frequency/presence penalties, four-level reasoning effort.
- */
-function buildGrokModelOptions(params: LLMRequestParams) {
-  return {
-    ...(params.reasoning?.enabled !== false &&
-      params.reasoning && {
-        reasoning: { effort: toGrokReasoningEffort(params.reasoning.effort) },
-      }),
-    max_output_tokens: params.max_tokens,
-    temperature: params.temperature,
-    top_p: params.top_p,
-  };
-}
-
-/** Our five-level effort scale onto xAI's (no `minimal`; grok-4.6 has `xhigh`). */
-function toGrokReasoningEffort(
-  effort: NonNullable<LLMRequestParams['reasoning']>['effort']
-): 'low' | 'medium' | 'high' | 'xhigh' {
-  if (effort === 'minimal' || effort === 'low') return 'low';
-  if (effort === 'xhigh') return 'xhigh';
-  if (effort === 'high') return 'high';
-  return 'medium';
-}
-
 // Since @tanstack/ai 0.27, sampling options live in provider-native
 // modelOptions (camelCase, per the OpenRouter SDK) instead of the root of
 // chat(). The public LLMRequestParams surface keeps its OpenAI-style
@@ -401,13 +352,9 @@ function buildModelOptions(params: LLMRequestParams) {
  * Assemble the `tools` array for `chat()`. Currently only the provider's
  * web-search server tool, gated on `params.webSearch`. Returns `undefined`
  * (not an empty array) when no tool is requested so the option is omitted.
- *
- * xAI's web search is on/off — no engine/result-count/prompt knobs — so those
- * options are dropped on that route rather than failing the call.
  */
-function buildTools(params: LLMRequestParams, native: boolean) {
+function buildTools(params: LLMRequestParams) {
   if (!params.webSearch) return undefined;
-  if (native) return [grokWebSearchTool()];
   const opts = params.webSearch === true ? {} : params.webSearch;
   return [
     webSearchTool({
@@ -444,20 +391,14 @@ export function structuredOutputSchemaBytes(schema: z.ZodType): number {
   return JSON.stringify(converted).length;
 }
 
-/** `native` is returned rather than recomputed by callers so the adapter, the
- *  options object, and the tools can't disagree about the route. */
 function baseChatOptions(params: LLMRequestParams) {
   const { systemPrompts, messages } = convertMessages(params.messages);
-  const native = resolveNativeGrokModel(params.model, params.apiKey);
-  const tools = buildTools(params, !!native);
+  const tools = buildTools(params);
   return {
-    native,
     adapter: createAdapter(params.model, params.apiKey),
     messages,
     systemPrompts,
-    modelOptions: native
-      ? buildGrokModelOptions(params)
-      : buildModelOptions(params),
+    modelOptions: buildModelOptions(params),
     ...(tools && { tools }),
     debug: params.debug ?? false,
   };
@@ -754,15 +695,13 @@ async function* callLLMStreamOnce<T>(
   // `usage.cost` (non-stream structuredOutput drops it — TanStack/ai#1076).
   const usageCapture = createUsageCapture();
 
-  const { native, ...chatOptions } = baseChatOptions(params);
+  const chatOptions = baseChatOptions(params);
 
   const baseOptions = {
     ...chatOptions,
     modelOptions: {
       ...chatOptions.modelOptions,
-      // OpenRouter-only opt-in — xAI reports usage on every streamed response
-      // and rejects the option.
-      ...(native ? {} : { streamOptions: { includeUsage: true } }),
+      streamOptions: { includeUsage: true },
     },
     middleware: [
       ...aiObservabilityMiddleware({

@@ -3,32 +3,18 @@ import { isContentRejectionError } from '@/lib/ai/content-rejection';
 import { falCostFromUnits } from '@/lib/ai/fal-cost';
 import { FAL_GENERATION_TIMEOUT_MS } from '@/lib/ai/fal-deadline-fetch';
 import { extractFalErrorMessage } from '@/lib/ai/fal-error';
-import {
-  grokImageCost,
-  isNativeGrokImageModel,
-  nativeGrokImageModel,
-} from '@/lib/ai/grok-native';
 import type { MediaVia } from '@/lib/ai/via';
-import { workersSafeFetch } from '@/lib/ai/workers-safe-fetch';
 import { type Microdollars } from '@/lib/billing/money';
-import type { ResolvedApiKey } from '@/lib/db/scoped/api-keys';
 import type { CredentialScopedDb } from '@/lib/db/scoped-workflow';
 import type { ImageGenerationParams } from '@/lib/image/build-image-request';
-import {
-  buildGrokImageRequest,
-  buildImageRequest,
-} from '@/lib/image/build-image-request';
+import { buildImageRequest } from '@/lib/image/build-image-request';
 import {
   recordMediaGenerationSpan,
   type AIObservabilityMeta,
 } from '@/lib/observability/ai-otel';
-import {
-  ensureExternallyFetchableUrls,
-  toDataOrCdnUrl,
-} from '@/lib/storage/external-url';
+import { ensureExternallyFetchableUrls } from '@/lib/storage/external-url';
 import { generateImage } from '@tanstack/ai';
 import { falImage } from '@tanstack/ai-fal';
-import { createGrokImage } from '@tanstack/ai-grok';
 
 export type { ImageGenerationParams } from '@/lib/image/build-image-request';
 
@@ -88,15 +74,10 @@ export async function generateImageWithProvider(
     userId: options?.observability?.userId ?? options?.scopedDb?.userId,
   };
 
-  // Resolve via out here so the failure span names the API that rejected.
-  const xaiKey = isNativeGrokImageModel(params.model)
-    ? await resolveOptionalXaiKey(options?.scopedDb)
-    : undefined;
-  let via: MediaVia = xaiKey ? 'xai' : 'fal';
+  const via: MediaVia = 'fal';
 
   try {
-    const result = await generateImageInternal(params, options, xaiKey);
-    via = result.via;
+    const result = await generateImageInternal(params, options);
     recordMediaGenerationSpan({
       ...attribution,
       model: params.model,
@@ -135,20 +116,11 @@ export async function generateImageWithProvider(
   }
 }
 
-async function resolveOptionalXaiKey(
-  scopedDb?: CredentialScopedDb
-): Promise<ResolvedApiKey | undefined> {
-  if (scopedDb) return scopedDb.resolveOptionalKey('xai');
-  const platformKey = getEnv().XAI_API_KEY;
-  return platformKey ? { key: platformKey, source: 'platform' } : undefined;
-}
-
 async function generateImageInternal(
   rawParams: ImageGenerationParams,
-  options: ImageGenerationOptions | undefined,
-  xaiKey: ResolvedApiKey | undefined
+  options: ImageGenerationOptions | undefined
 ): Promise<ImageGenerationResult> {
-  const via: MediaVia = xaiKey ? 'xai' : 'fal';
+  const via: MediaVia = 'fal';
   const startTime = Date.now();
 
   let result: Awaited<ReturnType<typeof generateImage>>;
@@ -158,94 +130,41 @@ async function generateImageInternal(
   let unitsBilled: number | undefined;
   let cost: Microdollars | undefined;
 
-  switch (via) {
-    case 'xai': {
-      if (!xaiKey) {
-        throw new Error('xAI image via selected with no xAI key');
+  const key = options?.scopedDb
+    ? await options.scopedDb.resolveKey('fal')
+    : { key: getEnv().FAL_KEY, source: 'platform' as const };
+
+  // Locally-served /r2/ reference URLs aren't reachable by real fal — swap
+  // them for fal-storage uploads first (no-op in prod and e2e replay).
+  params = rawParams.referenceImageUrls?.length
+    ? {
+        ...rawParams,
+        referenceImageUrls: await ensureExternallyFetchableUrls(
+          rawParams.referenceImageUrls,
+          key.key
+        ),
       }
-      const nativeModel = nativeGrokImageModel(rawParams.model);
-      if (!nativeModel) {
-        throw new Error(
-          `xAI image via selected for a non-Grok model: ${rawParams.model}`
-        );
-      }
-      const grok = buildGrokImageRequest(rawParams);
-      const referenceParts = await Promise.all(
-        grok.referenceImageUrls.map(async (url) => ({
-          type: 'image' as const,
-          source: { type: 'url' as const, value: await toDataOrCdnUrl(url) },
-        }))
-      );
-      const env = getEnv();
-      const grokAdapter = {
-        fetch: workersSafeFetch,
-        ...(env.XAI_BASE_URL && { baseURL: env.XAI_BASE_URL }),
-      };
-      const prompt = referenceParts.length
-        ? [{ type: 'text' as const, content: grok.prompt }, ...referenceParts]
-        : grok.prompt;
-      result =
-        nativeModel === 'grok-imagine-image-2.0'
-          ? await generateImage({
-              adapter: createGrokImage(nativeModel, xaiKey.key, grokAdapter),
-              prompt,
-              size: grok.size,
-              numberOfImages: grok.numImages,
-              modelOptions: { quality: 'medium' },
-              timeout: FAL_GENERATION_TIMEOUT_MS,
-              debug: false,
-            })
-          : await generateImage({
-              adapter: createGrokImage(nativeModel, xaiKey.key, grokAdapter),
-              prompt,
-              size: grok.size,
-              numberOfImages: grok.numImages,
-              timeout: FAL_GENERATION_TIMEOUT_MS,
-              debug: false,
-            });
-      endpoint = nativeModel;
-      usedOwnKey = xaiKey.source === 'team';
-      break;
-    }
-    case 'fal': {
-      const key = options?.scopedDb
-        ? await options.scopedDb.resolveKey('fal')
-        : { key: getEnv().FAL_KEY, source: 'platform' as const };
+    : rawParams;
 
-      // Locally-served /r2/ reference URLs aren't reachable by real fal — swap
-      // them for fal-storage uploads first (no-op in prod and e2e replay).
-      params = rawParams.referenceImageUrls?.length
-        ? {
-            ...rawParams,
-            referenceImageUrls: await ensureExternallyFetchableUrls(
-              rawParams.referenceImageUrls,
-              key.key
-            ),
-          }
-        : rawParams;
+  // The exact request fal receives — shared with the scene editor's
+  // optimised-prompt preview so the two can never drift. `via` is stamped
+  // on the endpoint (pricing Via); vendor is `IMAGE_MODELS[model].vendor`.
+  const built = buildImageRequest(params);
+  const { prompt, ...modelOptions } = built.input;
+  endpoint = built.endpointId;
+  usedOwnKey = key.source === 'team';
 
-      // The exact request fal receives — shared with the scene editor's
-      // optimised-prompt preview so the two can never drift. `via` is stamped
-      // on the endpoint (pricing Via); vendor is `IMAGE_MODELS[model].vendor`.
-      const built = buildImageRequest(params);
-      const { prompt, ...modelOptions } = built.input;
-      endpoint = built.endpointId;
-      usedOwnKey = key.source === 'team';
-
-      // Bound so a hung fal.subscribe fails the workflow step and CF can retry
-      // (#826). Native activity `timeout` since @tanstack/ai@0.44 / ai-fal@0.10.
-      result = await generateImage({
-        adapter: falImage(endpoint, { apiKey: key.key }),
-        prompt,
-        modelOptions,
-        timeout: FAL_GENERATION_TIMEOUT_MS,
-        debug: false,
-      });
-      unitsBilled = result.usage?.unitsBilled;
-      cost = await falCostFromUnits(endpoint, unitsBilled);
-      break;
-    }
-  }
+  // Bound so a hung fal.subscribe fails the workflow step and CF can retry
+  // (#826). Native activity `timeout` since @tanstack/ai@0.44 / ai-fal@0.10.
+  result = await generateImage({
+    adapter: falImage(endpoint, { apiKey: key.key }),
+    prompt,
+    modelOptions,
+    timeout: FAL_GENERATION_TIMEOUT_MS,
+    debug: false,
+  });
+  unitsBilled = result.usage?.unitsBilled;
+  cost = await falCostFromUnits(endpoint, unitsBilled);
 
   const imageUrls = result.images
     .map((img) => img.url)
@@ -256,16 +175,6 @@ async function generateImageInternal(
   }
 
   const processingTimeMs = Date.now() - startTime;
-  if (via === 'xai') {
-    const nativeModel = nativeGrokImageModel(params.model);
-    if (!nativeModel) {
-      throw new Error(
-        `xAI image via selected for a non-Grok model: ${params.model}`
-      );
-    }
-    cost = grokImageCost(imageUrls.length, nativeModel);
-  }
-
   return {
     imageUrls,
     parameters: params,

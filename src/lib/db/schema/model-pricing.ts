@@ -56,7 +56,7 @@ export const modelPricing = snakeCase.table(
      * When this rate was last confirmed by BILLED data (usage/billing-events)
      * rather than the provider's advertised pricing API. Once set, an
      * advertised rate can never overwrite the row — the pricing API has
-     * mispriced endpoints ~59× (Grok, #1069); only newer billed data can.
+     * materially mispriced endpoints (#1069); only newer billed data can.
      */
     rateVerifiedAt: integer({ mode: 'timestamp' }),
     /** When the provider's pricing API was last fetched successfully. */

@@ -32,36 +32,6 @@ export const zQueueStatus = z.object({
 });
 
 /**
- * XAIImageToVideoV15Input
- *
- * ``grok-imagine-video-1.5`` image-to-video (no ``aspect_ratio``).
- *
- * Widens ``resolution`` to add the 1080p tier supported by the 1.5 model
- * (the standard model remains 480p/720p only).
- */
-export const zGrokImagineVideoV15ImageToVideoInput = z.object({
-    image_url: z.union([
-        z.string(),
-        z.string()
-    ]),
-    resolution: z.enum([
-        '480p',
-        '720p',
-        '1080p'
-    ]).register(z.globalRegistry, {
-        description: 'Resolution of the output video.'
-    }).optional().default('720p'),
-    duration: z.int().gte(1).lte(15).register(z.globalRegistry, {
-        description: 'Video duration in seconds.'
-    }).optional().default(6),
-    prompt: z.string().max(4096).register(z.globalRegistry, {
-        description: 'Text description of desired changes or motion in the video.'
-    })
-}).register(z.globalRegistry, {
-    description: '``grok-imagine-video-1.5`` image-to-video (no ``aspect_ratio``).\n\nWidens ``resolution`` to add the 1080p tier supported by the 1.5 model\n(the standard model remains 480p/720p only).'
-});
-
-/**
  * VideoFile
  */
 export const zVideoFile = z.object({
@@ -100,13 +70,6 @@ export const zVideoFile = z.object({
         z.number(),
         z.unknown()
     ]).optional()
-});
-
-/**
- * XAIImageToVideoOutput
- */
-export const zGrokImagineVideoV15ImageToVideoOutput = z.object({
-    video: zVideoFile
 });
 
 /**
@@ -530,58 +493,6 @@ export const zSeedance20EnterpriseV2ReferenceToVideoOutput = z.object({
         description: 'The seed used for generation.'
     })
 });
-
-export const zGetXaiGrokImagineVideoV15ImageToVideoRequestsByRequestIdStatusPath = z.object({
-    request_id: z.string().register(z.globalRegistry, {
-        description: 'Request ID'
-    })
-});
-
-export const zGetXaiGrokImagineVideoV15ImageToVideoRequestsByRequestIdStatusQuery = z.object({
-    logs: z.number().register(z.globalRegistry, {
-        description: 'Whether to include logs (`1`) in the response or not (`0`).'
-    }).optional()
-});
-
-/**
- * The request status.
- */
-export const zGetXaiGrokImagineVideoV15ImageToVideoRequestsByRequestIdStatusResponse = zQueueStatus;
-
-export const zPutXaiGrokImagineVideoV15ImageToVideoRequestsByRequestIdCancelPath = z.object({
-    request_id: z.string().register(z.globalRegistry, {
-        description: 'Request ID'
-    })
-});
-
-/**
- * The request was cancelled.
- */
-export const zPutXaiGrokImagineVideoV15ImageToVideoRequestsByRequestIdCancelResponse = z.object({
-    success: z.boolean().register(z.globalRegistry, {
-        description: 'Whether the request was cancelled successfully.'
-    }).optional()
-}).register(z.globalRegistry, {
-    description: 'The request was cancelled.'
-});
-
-export const zPostXaiGrokImagineVideoV15ImageToVideoBody = zGrokImagineVideoV15ImageToVideoInput;
-
-/**
- * The request status.
- */
-export const zPostXaiGrokImagineVideoV15ImageToVideoResponse = zQueueStatus;
-
-export const zGetXaiGrokImagineVideoV15ImageToVideoRequestsByRequestIdPath = z.object({
-    request_id: z.string().register(z.globalRegistry, {
-        description: 'Request ID'
-    })
-});
-
-/**
- * Result of the request.
- */
-export const zGetXaiGrokImagineVideoV15ImageToVideoRequestsByRequestIdResponse = zGrokImagineVideoV15ImageToVideoOutput;
 
 export const zGetFalAiLtx23ImageToVideoRequestsByRequestIdStatusPath = z.object({
     request_id: z.string().register(z.globalRegistry, {

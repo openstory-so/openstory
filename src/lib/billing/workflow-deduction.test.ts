@@ -183,21 +183,6 @@ describe('recordFalUsage', () => {
     expect(recordUsage).not.toHaveBeenCalled();
   });
 
-  it('skips native xAI Imagine image endpoints so they do not pollute fal medians', async () => {
-    const { scopedDb, recordUsage } = makeScopedDb();
-
-    await recordFalUsageImpl(scopedDb, {
-      endpointId: 'grok-imagine-image-2.0',
-      unitsBilled: 1,
-    });
-    await recordFalUsageImpl(scopedDb, {
-      endpointId: 'grok-imagine-image-quality',
-      unitsBilled: 1,
-    });
-
-    expect(recordUsage).not.toHaveBeenCalled();
-  });
-
   it('propagates a write failure so the caller’s step.do can retry it', async () => {
     // Swallowing this made the enclosing `step.do` always succeed, throwing
     // away the free retry it exists for. The step isolates the failure from

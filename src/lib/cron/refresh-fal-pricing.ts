@@ -293,10 +293,9 @@ export async function refreshFalPricing(
     .from(modelPricing)
     .where(eq(modelPricing.provider, 'fal'));
 
-  // Overlay the usage API's billed rates: the pricing API can disagree with
-  // what fal actually bills (Grok Imagine: "compute seconds" × $0.00017
-  // reported vs "units" × $0.01 billed — a ~59× under-charge), and the bill
-  // is the only source that cannot. Runs BEFORE the typical-units fetch so
+  // Overlay the usage API's billed rates: advertised pricing can disagree
+  // substantially with what fal actually bills, and the bill is the only
+  // authoritative source. Runs BEFORE the typical-units fetch so
   // its cost→units conversion divides by the real price.
   const verifiedNow = new Set<string>();
   if (billingKey) {

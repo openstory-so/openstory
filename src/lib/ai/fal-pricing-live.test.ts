@@ -99,14 +99,14 @@ describe('getEffectiveFalPricing', () => {
   it('carries the median and its sample count together', async () => {
     const { getEffectiveFalPricing } = await loadWithRows([
       row({
-        endpointId: 'xai/grok-imagine',
+        endpointId: 'example/compute-image',
         unit: 'compute seconds',
         observedMedianUnits: 294,
         observedSampleCount: 7,
       }),
     ]);
 
-    const pricing = (await getEffectiveFalPricing())['xai/grok-imagine'];
+    const pricing = (await getEffectiveFalPricing())['example/compute-image'];
     expect(pricing?.observed).toEqual({ medianUnits: 294, sampleCount: 7 });
   });
 

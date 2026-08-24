@@ -8,7 +8,7 @@
  * badly undercounts (e.g. 29 labeled scenes → ~8 by words → ~⅓ the real cost).
  */
 
-// Calibrated against a real-provider 11-scene run (2026-08-20, grok-4.6
+// Calibrated against a real-provider 11-scene run (2026-08-20,
 // analysis + seedance_v2 motion): phases measured 151s / 25s / 95s / 130s /
 // 328–487s. Phase 1's scene-split output scales with scene count (~13s/scene
 // observed); phases 3–4 are parallel per scene so only their slowest call

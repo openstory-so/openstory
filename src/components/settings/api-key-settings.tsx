@@ -15,7 +15,6 @@ import {
 } from '@/components/ui/card';
 import { FalLogo } from '@/components/icons/fal-logo';
 import { OpenRouterLogo } from '@/components/icons/openrouter-logo';
-import { XIcon } from '@/components/icons/x-icon';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
@@ -40,14 +39,13 @@ type ApiKeySettingsProps = {
   error?: string;
 };
 
-type ApiKeyProviderId = 'openrouter' | 'fal' | 'xai';
+type ApiKeyProviderId = 'openrouter' | 'fal';
 /** Providers whose key is pasted in — OpenRouter alone uses OAuth. */
 type ManualProvider = Exclude<ApiKeyProviderId, 'openrouter'>;
 
 const PROVIDER_LABELS: Record<ApiKeyProviderId, string> = {
   openrouter: 'OpenRouter',
   fal: 'fal.ai',
-  xai: 'xAI',
 };
 
 export function ApiKeySettings(props: ApiKeySettingsProps) {
@@ -198,7 +196,6 @@ function ApiKeySettingsContent({
 
   const openrouterKey = apiKeys?.find((k) => k.provider === 'openrouter');
   const falKey = apiKeys?.find((k) => k.provider === 'fal');
-  const xaiKey = apiKeys?.find((k) => k.provider === 'xai');
 
   // Re-validate stored team keys on mount so opening the settings page
   // refreshes their validity without waiting for the next workflow failure.
@@ -262,23 +259,6 @@ function ApiKeySettingsContent({
               saveKeyMutation.mutate({ provider: 'fal', apiKey })
             }
             onDelete={() => deleteMutation.mutate('fal')}
-            isSaving={saveKeyMutation.isPending}
-            isDeleting={deleteMutation.isPending}
-          />
-
-          <ManualKeyRow
-            provider="xai"
-            icon={<XIcon className="size-4" />}
-            blurb="Grok chat, images & video, billed by xAI directly."
-            placeholder="xai-..."
-            keyUrl="https://console.x.ai"
-            existingKey={xaiKey}
-            status={keyStatus?.xai}
-            isLoading={isLoading}
-            onSave={(apiKey) =>
-              saveKeyMutation.mutate({ provider: 'xai', apiKey })
-            }
-            onDelete={() => deleteMutation.mutate('xai')}
             isSaving={saveKeyMutation.isPending}
             isDeleting={deleteMutation.isPending}
           />
