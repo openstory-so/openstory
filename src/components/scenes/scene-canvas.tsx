@@ -2,6 +2,7 @@ import { ScenePlayer } from '@/components/motion/scene-player';
 import { CanvasMediaStage } from '@/components/scenes/canvas-media-stage';
 import { StartingFrameVariants } from '@/components/scenes/starting-frame-variants';
 import { SequencePlayer } from '@/components/theatre/sequence-player';
+import { PublishDialog } from '@/components/theatre/publish-dialog';
 import {
   useSequenceExport,
   type SequenceExportState,
@@ -25,7 +26,7 @@ import {
 } from '@/lib/scenes/scene-selection';
 import type { ShotView } from '@/lib/shots/shot-view';
 import type { Sequence } from '@/types/database';
-import { Download, Film, Link, Loader2 } from 'lucide-react';
+import { Download, Film, Link, Loader2, Send } from 'lucide-react';
 import { useMemo } from 'react';
 import type { ExportProgress } from '@/lib/sequence-player/export';
 
@@ -81,9 +82,10 @@ function formatExportProgress(progress: ExportProgress | null): string {
 }
 
 /**
- * Download + Share for the theatre. Both actions treat `sequence_exports` as
- * a content-addressed cache of what the user is looking at: a cached MP4 of
- * the current state is reused, otherwise a new export runs first (#1253).
+ * Download + Share + Publish for the theatre. All three treat
+ * `sequence_exports` as a content-addressed cache of what the user is looking
+ * at: a cached MP4 of the current state is reused, otherwise a new export runs
+ * first (#1253). Publish hands the export to Upload-Post (#1267).
  */
 const TheatreShareOverlay: React.FC<{
   sequenceExport: SequenceExportState;
@@ -142,6 +144,31 @@ const TheatreShareOverlay: React.FC<{
             : sequenceExport.freshExportUrl
               ? 'Copy video link'
               : 'Export and copy video link'}
+        </TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 bg-black/50 text-white hover:bg-black/70"
+            aria-label={running ? progressLabel : 'Publish to social media'}
+            aria-busy={running}
+            onClick={sequenceExport.publish}
+          >
+            {running ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Send className="h-4 w-4" />
+            )}
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>
+          {running
+            ? progressLabel
+            : sequenceExport.freshExportUrl
+              ? 'Publish to social media'
+              : 'Export and publish to social media'}
         </TooltipContent>
       </Tooltip>
     </>
@@ -307,6 +334,14 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
             <TheatreShareOverlay sequenceExport={sequenceExport} />
           ) : undefined
         }
+      />
+      <PublishDialog
+        open={sequenceExport.publishTarget !== null}
+        onClose={sequenceExport.closePublish}
+        sequenceId={sequence.id}
+        teamId={sequence.teamId}
+        exportId={sequenceExport.publishTarget?.exportId ?? ''}
+        defaultTitle={sequence.title}
       />
     </CanvasMediaStage>
   );

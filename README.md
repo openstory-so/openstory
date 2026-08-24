@@ -24,6 +24,7 @@ OpenStory takes a script and produces a sequence of AI-generated frames — imag
 - **AI image generation** — generate scene images via [Fal.ai](https://fal.ai) with multiple model options
 - **Image-to-video motion** — turn still frames into motion video clips
 - **Style consistency** — characters, locations, color palettes, and lighting carry across scenes automatically
+- **Publish to social** — post an exported sequence to TikTok, Instagram, YouTube, X, LinkedIn, Threads and more in one click via [Upload-Post](https://www.upload-post.com) (bring your own key)
 - **Team workspaces** (coming soon) — shared libraries of styles, characters, VFX, and audio
 - **Passkey authentication** — passwordless sign-in via Better Auth
 - **Edge deployment** — runs on Cloudflare Workers with global CDN

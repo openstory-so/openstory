@@ -102,16 +102,20 @@ export const checkApiKeyStatusFn = createServerFn({ method: 'GET' })
   .middleware([teamAdminAccessMiddleware])
   .validator(zodValidator(checkApiKeyStatusInputSchema))
   .handler(async ({ context }) => {
-    const [hasOpenRouter, hasFal, hasXai] = await Promise.all([
+    const [hasOpenRouter, hasFal, hasXai, hasUploadPost] = await Promise.all([
       context.scopedDb.apiKeys.hasKey('openrouter'),
       context.scopedDb.apiKeys.hasKey('fal'),
       context.scopedDb.apiKeys.hasKey('xai'),
+      context.scopedDb.apiKeys.hasKey('upload_post'),
     ]);
 
     return {
       openrouter: hasOpenRouter ? 'team' : 'platform',
       fal: hasFal ? 'team' : 'platform',
       xai: hasXai ? 'team' : 'platform',
+      // No platform fallback for social publishing (#1267): it's either the
+      // team's own Upload-Post account or nothing.
+      upload_post: hasUploadPost ? 'team' : 'none',
     } as const;
   });
 
