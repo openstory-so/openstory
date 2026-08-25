@@ -306,8 +306,9 @@ export function useSequenceExport(
       setPublishTarget({ exportId: freshExport.id, url: freshExport.url });
       return;
     }
+    if (!canExport) return;
     run('publish');
-  }, [freshExport, run]);
+  }, [freshExport, canExport, run]);
 
   const closePublish = useCallback(() => setPublishTarget(null), []);
 

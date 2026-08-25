@@ -115,6 +115,11 @@ const TheatreShareOverlay: React.FC<{
     (sequenceExport.freshExportUrl
       ? 'Copy video link'
       : 'Export and copy video link');
+  const publishLabel =
+    wait ??
+    (sequenceExport.freshExportUrl
+      ? 'Publish to social media'
+      : 'Export and publish to social media');
   return (
     <>
       <Tooltip>
@@ -166,28 +171,25 @@ const TheatreShareOverlay: React.FC<{
       </Tooltip>
       <Tooltip>
         <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 bg-black/50 text-white hover:bg-black/70"
-            aria-label={running ? progressLabel : 'Publish to social media'}
-            aria-busy={running}
-            onClick={sequenceExport.publish}
-          >
-            {running ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Send className="h-4 w-4" />
-            )}
-          </Button>
+          <span className="inline-flex">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 bg-black/50 text-white hover:bg-black/70"
+              aria-label={publishLabel}
+              aria-busy={running}
+              disabled={pending}
+              onClick={sequenceExport.publish}
+            >
+              {running ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4" />
+              )}
+            </Button>
+          </span>
         </TooltipTrigger>
-        <TooltipContent>
-          {running
-            ? progressLabel
-            : sequenceExport.freshExportUrl
-              ? 'Publish to social media'
-              : 'Export and publish to social media'}
-        </TooltipContent>
+        <TooltipContent>{publishLabel}</TooltipContent>
       </Tooltip>
     </>
   );

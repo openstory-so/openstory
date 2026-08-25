@@ -322,12 +322,14 @@ function PublishDialogBody({
             {publishMutation.isPending ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Publishing…
+                <span>Publishing…</span>
               </>
-            ) : platforms.length === 1 ? (
-              'Publish to 1 platform'
             ) : (
-              `Publish to ${platforms.length} platforms`
+              <span>
+                {platforms.length === 1
+                  ? 'Publish to 1 platform'
+                  : `Publish to ${platforms.length} platforms`}
+              </span>
             )}
           </Button>
         )}
