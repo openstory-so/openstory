@@ -9,6 +9,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const config: StorybookConfig = {
   stories: ['../src/**/*.stories.@(js|jsx|mjs|ts|tsx)'],
   addons: [
+    'msw-storybook-addon',
     '@storybook/addon-docs',
     '@storybook/addon-a11y',
     '@storybook/addon-themes',

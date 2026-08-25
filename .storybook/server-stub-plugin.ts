@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { Plugin } from 'vite';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -108,7 +108,7 @@ export function serverStubPlugin(): Plugin {
         .map((n) => `export const ${n} = stub;`)
         .join('\n');
       return [
-        `import { stub } from '${STUB_RUNTIME}';`,
+        `import { stub } from '${pathToFileURL(STUB_RUNTIME).href}';`,
         `export default stub;`,
         namedLines,
       ].join('\n');

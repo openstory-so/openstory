@@ -2,7 +2,8 @@ import { withThemeByClassName } from '@storybook/addon-themes';
 import type { Decorator, Preview } from '@storybook/react-vite';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { RealtimeProvider } from '../src/lib/realtime/client';
-import { initialize, mswLoader } from 'msw-storybook-addon';
+import { mswLoader } from 'msw-storybook-addon/csf3';
+import { setupWorker } from 'msw/browser';
 import { handlers } from '../src/lib/mocks/handlers';
 
 import '../src/styles/global.css';
@@ -12,9 +13,6 @@ import '../src/styles/global.css';
  * See https://github.com/mswjs/msw-storybook-addon#configuring-msw
  * to learn how to customize it
  */
-initialize({
-  onUnhandledRequest: 'bypass',
-});
 
 // Create a client for Storybook
 const queryClient = new QueryClient({
@@ -65,7 +63,13 @@ const preview: Preview = {
     },
   },
 
-  loaders: [mswLoader],
+  loaders: [
+    mswLoader(async () => {
+      const worker = setupWorker();
+      await worker.start({ onUnhandledRequest: 'bypass' });
+      return worker;
+    }),
+  ],
 
   decorators: [
     withProviders,
