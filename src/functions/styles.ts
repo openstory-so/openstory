@@ -14,7 +14,7 @@ import {
 import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
-import { authWithTeamMiddleware } from './middleware';
+import { authWithTeamMiddleware, sequenceAccessMiddleware } from './middleware';
 export { getPublicStylesFn } from './public-styles';
 
 // ============================================================================
@@ -47,21 +47,29 @@ const getStyleInputSchema = z.object({
 });
 
 /**
- * Get a single style by ID
- * @returns The style
+ * Get a single style by ID.
+ * @returns The style, or `null` when it is not visible to this team — a
+ * deleted / de-listed style still referenced by a persisted composer draft,
+ * or another team's automatic style (#1271). That is an outcome, not a
+ * failure: a throw here was retried by the query client and logged at error.
  */
 export const getStyleFn = createServerFn({ method: 'GET' })
   .middleware([authWithTeamMiddleware])
   .validator(zodValidator(getStyleInputSchema))
-  .handler(async ({ data, context }) => {
-    // Style lookup doesn't require team scoping (styles can be public)
-    const style = await context.scopedDb.styles.getById(data.styleId);
+  .handler(async ({ data, context }): Promise<Style | null> => {
+    return context.scopedDb.styles.getById(data.styleId);
+  });
 
-    if (!style) {
-      throw new Error('Style not found');
-    }
-
-    return style;
+/**
+ * The style a sequence was generated with, resolved in the sequence's own
+ * team scope — so an admin reviewing another team's sequence still sees its
+ * automatic style, which `getStyleFn` (viewer's team) hides (#1271). The id
+ * comes from the sequence row, never from the client.
+ */
+export const getSequenceStyleFn = createServerFn({ method: 'GET' })
+  .middleware([sequenceAccessMiddleware])
+  .handler(async ({ context }): Promise<Style | null> => {
+    return context.scopedDb.styles.getById(context.sequence.styleId);
   });
 
 // ============================================================================
@@ -100,7 +108,7 @@ export const updateStyleFn = createServerFn({ method: 'POST' })
     const style = await context.scopedDb.styles.update(styleId, updateData);
 
     if (!style) {
-      throw new Error(
+      throw new NotFoundError(
         'Style not found or you do not have permission to update it'
       );
     }
@@ -127,7 +135,7 @@ export const deleteStyleFn = createServerFn({ method: 'POST' })
     const style = await context.scopedDb.styles.getById(data.styleId);
 
     if (!style) {
-      throw new Error('Style not found');
+      throw new NotFoundError('Style not found');
     }
 
     await requireTeamAdminAccess(context.user.id, style.teamId);

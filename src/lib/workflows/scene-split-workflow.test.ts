@@ -16,7 +16,6 @@
  * always parsed.
  */
 
-import { migrateStyleConfigV1ToV2 } from '@/lib/style/style-config';
 import { SCENE_SPLIT_MODEL } from '@/lib/ai/models.config';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import type {
@@ -27,7 +26,6 @@ import type {
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import type { SceneSplittingScene } from '@/lib/ai/streaming-scene-parser';
 import type { SceneSplitWorkflowInput } from '@/lib/workflow/types';
-import type { StyleConfig } from '@/lib/db/schema';
 
 const triggerWorkflow =
   vi.fn<(path: string, body: unknown, options?: unknown) => Promise<string>>();
@@ -174,16 +172,6 @@ const BIBLES_RESULT = {
   elementBible: [],
 };
 
-const STYLE_CONFIG: StyleConfig = migrateStyleConfigV1ToV2({
-  mood: 'tense',
-  artStyle: 'photoreal',
-  lighting: 'hard key',
-  colorPalette: ['#101020'],
-  cameraWork: 'handheld',
-  referenceFilms: [],
-  colorGrading: 'cool shadows',
-});
-
 const INPUT: SceneSplitWorkflowInput = {
   userId: 'u1',
   teamId: 't1',
@@ -191,7 +179,6 @@ const INPUT: SceneSplitWorkflowInput = {
   script: SCRIPT,
   modelId: 'anthropic/claude-sonnet-5',
   promptName: 'scene-splitting',
-  styleConfig: STYLE_CONFIG,
   aspectRatio: '16:9',
   elements: [],
 };

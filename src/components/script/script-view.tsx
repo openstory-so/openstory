@@ -60,6 +60,7 @@ import { useSequenceLocations } from '@/hooks/use-sequence-locations';
 import { useCreateSequence } from '@/hooks/use-sequences';
 import { useRecommendedStyles, useStyle, useStyles } from '@/hooks/use-styles';
 import { AUTO_STYLE_ID } from '@/lib/style/auto-style';
+import { errorMessage } from '@/lib/errors';
 import { toEnhanceInputs } from '@/lib/ai/enhance-inputs';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -91,8 +92,8 @@ import {
   type AspectRatio,
 } from '@/lib/constants/aspect-ratios';
 import {
-  markPendingGenerate,
-  takePendingGenerate,
+  markPendingIntent,
+  takePendingIntent,
 } from '@/lib/generation/pending-generate';
 import { estimateSceneCount } from '@/lib/generation/time-estimate';
 import { replaceTokenInText } from '@/lib/sequence-elements/cascade-rename';
@@ -357,9 +358,13 @@ export const ScriptView: FC<{
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     if (!allowElementDrop || !hasDraggedImages(e)) return;
-    e.preventDefault();
     dragCounterRef.current = 0;
     setIsDraggingFiles(false);
+    // A nested dropzone (talent/location dialog, element popover) already took
+    // this drop — portals still bubble React events here, so don't add it as
+    // an element too (#1269).
+    if (e.defaultPrevented) return;
+    e.preventDefault();
     const snapshot = snapshotDataTransfer(e.dataTransfer);
     void extractImagesFromSnapshot(snapshot).then(({ files, failedUrls }) => {
       if (files.length > 0) {
@@ -796,9 +801,9 @@ export const ScriptView: FC<{
 
   // Style recommendations. We rank a *snapshot* of the script (not the live
   // value) so the LLM call only fires on an explicit trigger — the "Recommend
-  // styles" button or a completed enhance — and editing the script afterwards
-  // doesn't re-spend a call on every keystroke. Repeats are free (cached by
-  // script hash in useRecommendedStyles).
+  // styles" button (never automatically, #1279) — and editing the script
+  // afterwards doesn't re-spend a call on every keystroke. Repeats are free
+  // (cached by script hash in useRecommendedStyles).
   const [recommendScript, setRecommendScript] = useState<string | null>(null);
   const {
     data: recommendData,
@@ -919,7 +924,7 @@ export const ScriptView: FC<{
     // Remember the click too, so the resume effect below continues this exact
     // step (nudge, billing gate, generation) once sign-in completes (#1187).
     if (!requireAuth()) {
-      if (!isEditing) markPendingGenerate();
+      if (!isEditing) markPendingIntent('generate');
       return;
     }
 
@@ -952,7 +957,11 @@ export const ScriptView: FC<{
 
   const handleEnhance = async () => {
     // Enhancing runs an AI model on the server — gate it behind login too.
+    // Remember the click so post-auth resume continues Enhance, not Generate,
+    // and so we don't dump a first-time user on the empty sequences list
+    // (#1286).
     if (!requireAuth()) {
+      if (!isEditing) markPendingIntent('enhance');
       return;
     }
 
@@ -1019,19 +1028,9 @@ export const ScriptView: FC<{
       void queryClient.invalidateQueries({
         queryKey: [...BILLING_TRANSACTIONS_KEY],
       });
-      // Pre-warm the style shortlist off the freshly enhanced script so the
-      // picker is ready the moment the user looks for it.
-      // Billing is already gated above (handleEnhance returns early when
-      // needsBillingSetup), so reaching here means the recommend call can bill.
-      if (!abortController.signal.aborted && accumulated.trim().length >= 3) {
-        setRecommendScript(accumulated.trim());
-      }
     } catch (error) {
       if (!abortController.signal.aborted) {
-        setEnhance(
-          'error',
-          error instanceof Error ? error.message : 'Failed to enhance script'
-        );
+        setEnhance('error', errorMessage(error, 'Failed to enhance script'));
         setScript(previousScriptRef.current);
       }
     } finally {
@@ -1123,18 +1122,21 @@ export const ScriptView: FC<{
   const { blocking: welcomeCreditsBlocking } = useWelcomeCreditsGate();
   const handleSubmitRef = useRef(handleSubmit);
   handleSubmitRef.current = handleSubmit;
+  const handleEnhanceRef = useRef(handleEnhance);
+  handleEnhanceRef.current = handleEnhance;
   const resumeTriedRef = useRef(false);
   useEffect(() => {
     if (isEditing || loading || !isAuthenticated) return;
     if (resumeTriedRef.current) return;
-    if (!draftLoaded || !isFormValid || isSubmitting) return;
+    if (!draftLoaded || !isFormValid || isSubmitting || isEnhancing) return;
     // Let the welcome-credits moment finish first — its "Keep creating"
     // dismiss is what hands the flow back to us, instead of the nudge
     // stacking on top of the gift dialog.
     if (welcomeCreditsBlocking) return;
     resumeTriedRef.current = true;
-    if (!takePendingGenerate()) return;
-    void handleSubmitRef.current();
+    const intent = takePendingIntent();
+    if (intent === 'generate') void handleSubmitRef.current();
+    else if (intent === 'enhance') void handleEnhanceRef.current();
   }, [
     isEditing,
     loading,
@@ -1142,6 +1144,7 @@ export const ScriptView: FC<{
     draftLoaded,
     isFormValid,
     isSubmitting,
+    isEnhancing,
     welcomeCreditsBlocking,
   ]);
 
@@ -1697,7 +1700,7 @@ export const ScriptView: FC<{
               ) : (
                 <Shuffle className="size-3.5" />
               )}
-              Replace
+              <span>Replace</span>
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

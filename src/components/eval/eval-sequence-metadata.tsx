@@ -77,7 +77,8 @@ export const EvalSequenceMetadata: React.FC<EvalSequenceMetadataProps> = ({
       </div>
 
       <div className="text-xs text-muted-foreground">
-        {sequence.shots.length} scene{sequence.shots.length !== 1 ? 's' : ''}
+        {sequence.shots.length}{' '}
+        {sequence.shots.length === 1 ? 'scene' : 'scenes'}
       </div>
 
       <SequenceErrors sequence={sequence} />
@@ -134,7 +135,7 @@ const SequenceErrors: React.FC<{ sequence: SequenceWithShots }> = ({
     <div className="flex items-center gap-1 text-xs text-destructive">
       <AlertTriangle className="h-3 w-3 shrink-0" />
       <span>
-        {errorCount} error{errorCount !== 1 ? 's' : ''}
+        {errorCount} {errorCount === 1 ? 'error' : 'errors'}
       </span>
     </div>
   );

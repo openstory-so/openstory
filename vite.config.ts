@@ -10,8 +10,19 @@ import { defineConfig, type Plugin } from 'vite';
 import tailwindcss from '@tailwindcss/vite';
 import { devtools } from '@tanstack/devtools-vite';
 import viteReact from '@vitejs/plugin-react';
+import { worktreeAuthCookiePrefix } from './src/lib/auth/cookie-prefix';
 
 const isDev = process.env.NODE_ENV !== 'production';
+// Per-worktree auth cookie name (#1288). Set on process.env so Vite's usual
+// `import.meta.env.VITE_*` replacement ships it into the worker the same way
+// as VITE_APP_URL. Production builds leave it unset.
+if (isDev) {
+  // Always derive from cwd — a copied `.env.local` must not re-share a prefix.
+  process.env.VITE_AUTH_COOKIE_PREFIX = worktreeAuthCookiePrefix(process.cwd());
+}
+const authCookiePrefix = isDev
+  ? process.env.VITE_AUTH_COOKIE_PREFIX
+  : undefined;
 
 /**
  * Prints which wrangler.jsonc bindings are local vs REMOTE on dev startup.
@@ -66,6 +77,11 @@ function wranglerBindingsBanner(): Plugin {
             : `${DIM}local${RESET}   (Miniflare)`;
           process.stdout.write(
             `    ${kind} ${name.padEnd(nameWidth)}  →  ${status}\n`
+          );
+        }
+        if (authCookiePrefix) {
+          process.stdout.write(
+            `    AUTH ${'cookies'.padEnd(nameWidth)}  →  ${DIM}${authCookiePrefix}${RESET}  (per-worktree)\n`
           );
         }
         if (rows.some(([, , r]) => r)) {

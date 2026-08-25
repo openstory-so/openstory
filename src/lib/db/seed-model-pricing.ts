@@ -64,6 +64,7 @@ export const LOCAL_FAL_PRICING_SEED: Record<string, SeedPrice> = {
   'fal-ai/bytedance/seedream/v5/lite/edit': img(0.04),
   'fal-ai/flux-2/turbo': { unit: 'megapixels', unitPriceUsd: 0.01 },
   'fal-ai/flux-2/turbo/edit': { unit: 'megapixels', unitPriceUsd: 0.01 },
+  'fal-ai/krea-2/turbo': { unit: 'megapixels', unitPriceUsd: 0.008 },
   'xai/grok-imagine-video/v1.5/image-to-video': {
     unit: 'videos',
     unitPriceUsd: 0.05,

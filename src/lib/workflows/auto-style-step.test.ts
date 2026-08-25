@@ -7,6 +7,7 @@ import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import type { AutoStyleResponse } from '@/lib/style/auto-style';
 import type { WorkflowStep } from 'cloudflare:workers';
 import { describe, expect, it, vi } from 'vitest';
+import type { z } from 'zod';
 
 const durableLLMCallCf = vi.fn();
 vi.doMock('@/lib/workflows/llm-call-helper', () => ({ durableLLMCallCf }));
@@ -94,8 +95,30 @@ describe('deriveAutoStyle', () => {
       name: 'automatic-style',
       promptName: 'phase/automatic-style-chat',
       modelId: 'anthropic/claude-sonnet-5',
-      promptVariables: { script: 'INT. HALLWAY — NIGHT' },
+      promptVariables: {
+        script: 'INT. HALLWAY — NIGHT',
+        categories: expect.stringContaining('film, commercial'),
+        paces: expect.stringContaining('slow, measured'),
+      },
     });
+  });
+
+  it('saves an off-vocabulary category guess as film instead of failing the run (#1285)', async () => {
+    // durableLLMCallCf parses through `responseSchema` — mirror that here.
+    durableLLMCallCf.mockImplementationOnce(
+      async (_step: unknown, cfg: { responseSchema: z.ZodType }) =>
+        cfg.responseSchema.parse({ ...RESPONSE, category: 'documentary' })
+    );
+    emit.mockReset();
+    const { scopedDb, setGeneratedForSequence } = makeScopedDb(true);
+
+    await deriveAutoStyle(step, { scopedDb, ...PARAMS });
+
+    expect(setGeneratedForSequence).toHaveBeenCalledWith(
+      expect.objectContaining({
+        draft: expect.objectContaining({ category: 'film' }),
+      })
+    );
   });
 
   it('refuses to touch a row that is no longer bound to the sequence', async () => {

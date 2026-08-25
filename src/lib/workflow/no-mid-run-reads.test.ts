@@ -241,6 +241,13 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
       why: "The trigger's frame, confirmed to still exist and settled when a render is cancelled mid-flight.",
     },
   ],
+  'soften-image-prompt.ts': [
+    {
+      read: 'framePromptVersions.getByIdForFrame',
+      bucket: 'CLAIM-BY-ID',
+      why: 'The prompt version this run rendered from, named by the trigger snapshot — copied onto the softened row so staleness keeps the same upstream hash.',
+    },
+  ],
   'llm-call-helper.ts': [
     {
       read: 'resolveLlmKey',

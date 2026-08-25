@@ -26,3 +26,17 @@ describe('MarkdownEditor empty placeholder', () => {
     expect(html).not.toContain('A one-liner is enough');
   });
 });
+
+describe('MarkdownEditor scrolling', () => {
+  // #1281: a scroll container with overscroll-contain stops Chrome's wheel
+  // chaining even when it has nothing to scroll, which froze the panel behind
+  // every grow-with-content prompt editor. Only a height-bounded caller may
+  // opt the editor into scrolling.
+  it('is not a scroll container by default', () => {
+    const html = renderToStaticMarkup(
+      <MarkdownEditor value="" onValueChange={() => undefined} />
+    );
+    expect(html).not.toContain('overflow-y-auto');
+    expect(html).not.toContain('overscroll-contain');
+  });
+});

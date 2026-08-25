@@ -45,6 +45,8 @@ type VideoPlayerSurfaceProps = {
   onTimeUpdate?: (currentTime: number) => void;
   onPause?: () => void;
   onEnded?: () => void;
+  onPlay?: () => void;
+  onError?: (reason: string) => void;
 };
 
 const VideoPlayerInner: React.FC<VideoPlayerSurfaceProps> = ({
@@ -56,6 +58,8 @@ const VideoPlayerInner: React.FC<VideoPlayerSurfaceProps> = ({
   onTimeUpdate,
   onPause,
   onEnded,
+  onPlay,
+  onError,
 }) => {
   const media = useMedia();
   const callbacksRef = useRef({
@@ -63,8 +67,17 @@ const VideoPlayerInner: React.FC<VideoPlayerSurfaceProps> = ({
     onTimeUpdate,
     onPause,
     onEnded,
+    onPlay,
+    onError,
   });
-  callbacksRef.current = { onLoadedMetadata, onTimeUpdate, onPause, onEnded };
+  callbacksRef.current = {
+    onLoadedMetadata,
+    onTimeUpdate,
+    onPause,
+    onEnded,
+    onPlay,
+    onError,
+  };
 
   useEffect(() => {
     if (!media || !isVideoMedia(media)) return;
@@ -82,17 +95,36 @@ const VideoPlayerInner: React.FC<VideoPlayerSurfaceProps> = ({
     const handleEnded = () => {
       callbacksRef.current.onEnded?.();
     };
+    const handlePlay = () => {
+      callbacksRef.current.onPlay?.();
+    };
+    const handleError = () => {
+      const mediaError =
+        'error' in el
+          ? (el as { error?: { message?: string; code?: number } | null }).error
+          : null;
+      const reason = mediaError?.message
+        ? mediaError.message
+        : mediaError?.code
+          ? `media_error_${mediaError.code}`
+          : 'media_error';
+      callbacksRef.current.onError?.(reason);
+    };
 
     el.addEventListener('loadedmetadata', handleLoadedMetadata);
     el.addEventListener('timeupdate', handleTimeUpdate);
     el.addEventListener('pause', handlePause);
     el.addEventListener('ended', handleEnded);
+    el.addEventListener('play', handlePlay);
+    el.addEventListener('error', handleError);
 
     return () => {
       el.removeEventListener('loadedmetadata', handleLoadedMetadata);
       el.removeEventListener('timeupdate', handleTimeUpdate);
       el.removeEventListener('pause', handlePause);
       el.removeEventListener('ended', handleEnded);
+      el.removeEventListener('play', handlePlay);
+      el.removeEventListener('error', handleError);
     };
   }, [media]);
 

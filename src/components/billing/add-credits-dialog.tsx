@@ -244,7 +244,7 @@ export function AddCreditsDialog() {
             // silently pushes a returning customer back through Checkout.
             <p role="alert" className="text-xs text-destructive">
               Couldn&apos;t load your saved cards
-              {pmError instanceof Error ? `: ${pmError.message}` : ''}
+              {pmError instanceof Error && <span>: {pmError.message}</span>}
             </p>
           ) : pmLoading ? (
             <Skeleton className="h-9 w-full" />

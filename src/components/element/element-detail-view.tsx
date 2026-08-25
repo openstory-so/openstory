@@ -258,9 +258,9 @@ export const ElementDetailView: React.FC<ElementDetailViewProps> = ({
             <AlertDialogTitle>Delete {element.token}?</AlertDialogTitle>
             <AlertDialogDescription>
               This removes the reference image from the sequence.
-              {affectedShotCount > 0
-                ? ` ${affectedShotCount} shot${affectedShotCount === 1 ? '' : 's'} still mention it — those prompts will keep the token until you edit them.`
-                : ''}
+              {affectedShotCount > 0 && (
+                <span>{` ${affectedShotCount} shot${affectedShotCount === 1 ? '' : 's'} still mention it — those prompts will keep the token until you edit them.`}</span>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -272,14 +272,10 @@ export const ElementDetailView: React.FC<ElementDetailViewProps> = ({
               onClick={handleDelete}
               disabled={deleteElement.isPending}
             >
-              {deleteElement.isPending ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Deleting…
-                </>
-              ) : (
-                'Delete'
+              {deleteElement.isPending && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               )}
+              <span>{deleteElement.isPending ? 'Deleting…' : 'Delete'}</span>
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -213,6 +213,16 @@ export const IMAGE_MODELS = {
     maxPromptLength: 2000,
     hidden: true,
   },
+  krea_2_turbo: {
+    id: 'fal-ai/krea-2/turbo' as const,
+    name: 'Krea 2 Turbo',
+    vendor: 'Krea',
+    license: 'open-source' as const,
+    qualityRank: 99,
+    description: 'Ultra-fast animatic generation',
+    maxPromptLength: 2000,
+    hidden: true,
+  },
 } as const;
 
 // Text to image model types
@@ -222,8 +232,9 @@ type TextToImageModelId = ImageModelConfig['id'];
 
 export const DEFAULT_IMAGE_MODEL: TextToImageModel = 'gpt_image_2';
 
-/** Model used for fast preview image generation */
-export const PREVIEW_IMAGE_MODEL: TextToImageModel = 'flux_2_turbo';
+/** Model used for fast preview image generation. flux_2_turbo stays in the
+ *  registry because stored preview variants still reference it. */
+export const PREVIEW_IMAGE_MODEL: TextToImageModel = 'krea_2_turbo';
 
 // Helper to get model ID from key
 export function getTextToImageModelId(

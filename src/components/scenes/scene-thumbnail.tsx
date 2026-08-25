@@ -1,11 +1,15 @@
 import { BlobLoaderContainer } from '@/components/ui/blob-loader';
 import {
+  CONTENT_REJECTION_USER_TITLE,
+  isContentRejectionError,
+} from '@/lib/ai/content-rejection';
+import {
   type AspectRatio,
   getAspectRatioClassName,
 } from '@/lib/constants/aspect-ratios';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, Info } from 'lucide-react';
 import { AppImage } from '@/components/ui/app-image';
 import { memo } from 'react';
 import { hasUpscaleOverlay, UpscaleOverlay } from './upscale-overlay';
@@ -14,6 +18,8 @@ type SceneThumbnailProps = {
   thumbnailUrl?: string | null;
   previewThumbnailUrl?: string | null;
   thumbnailStatus?: 'pending' | 'generating' | 'completed' | 'failed';
+  /** Provider error for a failed still — content flags render as a warning. */
+  generationError?: string | null;
   alt: string;
   aspectRatio: AspectRatio;
   className?: string;
@@ -28,6 +34,7 @@ const SceneThumbnailComponent: React.FC<SceneThumbnailProps> = ({
   thumbnailUrl,
   previewThumbnailUrl,
   thumbnailStatus,
+  generationError,
   alt,
   aspectRatio,
   className,
@@ -89,15 +96,24 @@ const SceneThumbnailComponent: React.FC<SceneThumbnailProps> = ({
 
       {isPreview && (
         <span className="absolute top-1 right-1 rounded bg-background/80 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground backdrop-blur-sm">
-          Preview
+          Animatic
         </span>
       )}
 
       {isFailed && (
         <div className="absolute inset-0 flex items-center justify-center bg-muted">
-          <div className="flex flex-col items-center gap-2 text-muted-foreground">
-            <AlertCircle className="h-6 w-6" />
-            <span className="text-xs">Failed to generate</span>
+          <div className="flex flex-col items-center gap-2 px-2 text-center text-muted-foreground">
+            {isContentRejectionError(generationError) ? (
+              <>
+                <Info className="h-6 w-6" />
+                <span className="text-xs">{CONTENT_REJECTION_USER_TITLE}</span>
+              </>
+            ) : (
+              <>
+                <AlertCircle className="h-6 w-6" />
+                <span className="text-xs">Failed to generate</span>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -113,6 +129,7 @@ const areEqual = (
     prevProps.thumbnailUrl === nextProps.thumbnailUrl &&
     prevProps.previewThumbnailUrl === nextProps.previewThumbnailUrl &&
     prevProps.thumbnailStatus === nextProps.thumbnailStatus &&
+    prevProps.generationError === nextProps.generationError &&
     prevProps.alt === nextProps.alt &&
     prevProps.aspectRatio === nextProps.aspectRatio &&
     prevProps.className === nextProps.className &&

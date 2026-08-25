@@ -450,8 +450,9 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
                 </dt>
                 <dd className="text-sm">
                   Scene {character.firstMentionSceneId}
-                  {character.firstMentionLine &&
-                    `, Line ${character.firstMentionLine}`}
+                  {character.firstMentionLine && (
+                    <span>, Line {character.firstMentionLine}</span>
+                  )}
                 </dd>
                 {character.firstMentionText && (
                   <dd className="mt-2 border-l-2 border-muted-foreground/30 pl-3 text-xs italic text-muted-foreground">

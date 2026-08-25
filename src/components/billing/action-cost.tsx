@@ -80,7 +80,7 @@ export function ActionCost({
       ) : null}
       <span>
         ~{amount}
-        {exceedsBalance ? ' · over balance' : null}
+        {exceedsBalance && <span> · over balance</span>}
       </span>
     </span>
   );

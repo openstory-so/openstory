@@ -26,6 +26,10 @@ import { SIGNUP_GRANT_MICROS } from '@/lib/billing/constants';
 import { microsToDisplayUsd } from '@/lib/billing/money';
 import { createBillingMethods } from '@/lib/db/scoped/billing';
 import { sendOtpEmail } from '@/lib/services/email-service';
+import {
+  currentAuthCookiePrefix,
+  lastUsedLoginMethodCookieName,
+} from '@/lib/auth/cookie-prefix';
 import { DEV_OTP_CODE } from '@/lib/auth/dev-otp';
 import {
   isGoogleAuthConfigured,
@@ -91,6 +95,7 @@ let _authInstance: ReturnType<typeof createAuth> | undefined;
 /** `db` is injectable only for `bun auth:generate` (schema generation never queries). */
 export function createAuth(db: ReturnType<typeof getDb> = getDb()) {
   const runtimeEnv = getEnv();
+  const cookiePrefix = currentAuthCookiePrefix();
 
   return betterAuth({
     // Route Better Auth's own logs through LogTape so they land in the same
@@ -190,7 +195,9 @@ export function createAuth(db: ReturnType<typeof getDb> = getDb()) {
           }
         },
       }),
-      lastLoginMethod(),
+      lastLoginMethod({
+        cookieName: lastUsedLoginMethodCookieName(cookiePrefix),
+      }),
       passkeyPlugin(),
       // Device-code login for the public API (#1219, RFC 8628). The plugin
       // owns the code lifecycle; `src/lib/api-v1/device-auth.ts` wraps it to
@@ -330,6 +337,10 @@ export function createAuth(db: ReturnType<typeof getDb> = getDb()) {
 
     // Advanced configuration
     advanced: {
+      // Local worktrees share the localhost cookie jar across ports (#1288).
+      // Vite injects a per-cwd prefix in `vite serve`; production keeps
+      // Better Auth's default so existing sessions survive deploys.
+      cookiePrefix,
       database: {
         // Generate ULID for user IDs (time-ordered, better performance)
         generateId: () => generateId(),

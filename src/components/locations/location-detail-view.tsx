@@ -394,7 +394,7 @@ export const LocationDetailView: React.FC<LocationDetailViewProps> = ({
                   Used In
                 </p>
                 <p className="text-sm font-medium">
-                  {shotData.count} shot{shotData.count === 1 ? '' : 's'}
+                  {shotData.count} {shotData.count === 1 ? 'shot' : 'shots'}
                 </p>
               </div>
             )}
@@ -442,8 +442,9 @@ export const LocationDetailView: React.FC<LocationDetailViewProps> = ({
                 </dt>
                 <dd className="text-sm">
                   Scene {location.firstMentionSceneId}
-                  {location.firstMentionLine &&
-                    `, Line ${location.firstMentionLine}`}
+                  {location.firstMentionLine && (
+                    <span>, Line {location.firstMentionLine}</span>
+                  )}
                 </dd>
                 {location.firstMentionText && (
                   <dd className="mt-2 border-l-2 border-muted-foreground/30 pl-3 text-xs italic text-muted-foreground">

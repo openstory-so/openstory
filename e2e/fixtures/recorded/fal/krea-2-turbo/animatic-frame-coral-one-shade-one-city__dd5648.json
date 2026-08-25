@@ -1,0 +1,33 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Animatic frame. CORAL — ONE SHADE, ONE CITY\n\nA wry, kinetic sixty seconds. SCARLETT VEGA, 27, stand-up comic, has a nine-minute set at 9:40pm on the far side of the city. She has one lipstick, no mirror, and forty blocks. The film is not about applying it. It's about whether it survives the night.\n\n. Loose freehand black line drawing on plain flat white, quick gesture strokes, nothing ruled or geometric. Figures as a few flowing outline strokes with blank faces, the setting hinted with a handful of loose lines. No shading, no texture, no colour, no rendering, no realism, no detail. No text, no titles, no subtitles, no watermarks, no letters, no words, no signs, no UI elements.",
+        "model": "fal-ai/krea-2/turbo"
+      },
+      "response": {
+        "json": {
+          "images": [
+            {
+              "url": "https://v3b.fal.media/files/b/0aa74af2/e5timV6kMw-knMc6d5ImN_gKyKVpzB.png",
+              "content_type": "image/png",
+              "file_name": "e5timV6kMw-knMc6d5ImN_gKyKVpzB.png",
+              "file_size": null,
+              "width": 1024,
+              "height": 576
+            }
+          ],
+          "timings": {
+            "inference": 0.6134877740005322
+          },
+          "seed": 362274501,
+          "has_nsfw_concepts": [false],
+          "prompt": "Animatic frame. CORAL — ONE SHADE, ONE CITY\n\nA wry, kinetic sixty seconds. SCARLETT VEGA, 27, stand-up comic, has a nine-minute set at 9:40pm on the far side of the city. She has one lipstick, no mirror, and forty blocks. The film is not about applying it. It's about whether it survives the night.\n\n. Loose freehand black line drawing on plain flat white, quick gesture strokes, nothing ruled or geometric. Figures as a few flowing outline strokes with blank faces, the setting hinted with a handful of loose lines. No shading, no texture, no colour, no rendering, no realism, no detail. No text, no titles, no subtitles, no watermarks, no letters, no words, no signs, no UI elements."
+        },
+        "status": 200,
+        "billableUnits": 1
+      }
+    }
+  ]
+}

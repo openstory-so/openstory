@@ -22,16 +22,14 @@ import {
 } from '@/lib/billing/workflow-deduction';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import { generateId } from '@/lib/db/id';
-import {
-  generateImageWithProvider,
-  type ImageGenerationParams,
-} from '@/lib/image/image-generation';
+import type { ImageGenerationParams } from '@/lib/image/image-generation';
 import { buildLocationSheetPrompt } from '@/lib/prompts/location-prompt';
 import { recordProvenance } from '@/lib/compliance/provenance';
 import { getGenerationChannel } from '@/lib/realtime';
 import { STORAGE_BUCKETS } from '@/lib/storage/buckets';
 import { uploadResponse } from '@/lib/storage/upload-response';
 import { OpenStoryWorkflowEntrypoint } from '@/lib/workflow/base-workflow';
+import { generateImageSoftening } from '@/lib/workflows/content-soften';
 import { WorkflowValidationError } from '@/lib/workflow/errors';
 import type {
   LocationSheetWorkflowInput,
@@ -85,7 +83,7 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
     });
 
     // Step 1: Validate and build prompt
-    const generationParams: ImageGenerationParams = await step.do(
+    const builtParams: ImageGenerationParams = await step.do(
       'build-prompt',
       async () => {
         // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
@@ -129,16 +127,23 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
       }
     );
 
-    // Step 2: Generate the location reference image
-    const imageResult = await step.do('generate-reference-image', async () => {
-      logger.info(
-        `[LocationSheetWorkflow:cf] Generating reference for ${input.locationName} with model ${generationParams.model}`
-      );
-
-      return await generateImageWithProvider(generationParams, {
-        scopedDb: scopedDb.credentials,
-      });
+    // Step 2: Generate the location reference image — reseeds on a content
+    // flag, then one softened prompt (#1293).
+    const generation = await generateImageSoftening({
+      step,
+      scopedDb,
+      workflowRunId: event.instanceId,
+      userId: input.userId,
+      sequenceId: input.sequenceId,
+      kind: 'location-sheet',
+      logTag: '[LocationSheetWorkflow:cf]',
+      subject: `reference for ${input.locationName}`,
+      stepName: 'generate-reference-image',
+      params: builtParams,
+      meta: { locationDbId: input.locationDbId },
     });
+    const imageResult = generation.result;
+    const generationParams = generation.params;
 
     // Before the deduction guard — see recordFalUsageStep (#1069).
     const falUsage = await recordFalUsageStep(

@@ -102,7 +102,7 @@ const SceneGroupComponent: React.FC<SceneGroupProps> = ({
           <div className="flex items-center gap-2">
             <span className="truncate text-sm font-medium">{sceneLabel}</span>
             <span className="shrink-0 text-xs text-muted-foreground">
-              {shots.length} shot{shots.length === 1 ? '' : 's'}
+              {shots.length} {shots.length === 1 ? 'shot' : 'shots'}
             </span>
           </div>
         </button>

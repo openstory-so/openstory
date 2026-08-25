@@ -86,6 +86,15 @@ export const Failed: Story = {
   },
 };
 
+export const ContentBlocked: Story = {
+  args: {
+    thumbnailStatus: 'failed',
+    generationError:
+      'The content could not be processed because it contained material flagged by a content checker.',
+    alt: 'Scene 1',
+  },
+};
+
 export const CompletedWithDifferentImage: Story = {
   args: {
     thumbnailUrl: 'https://picsum.photos/seed/scene2/320/180',

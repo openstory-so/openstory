@@ -20,14 +20,7 @@ import { cn } from '@/lib/utils';
 import { copyTextToClipboard } from '@/lib/utils/clipboard';
 import type { ShotView } from '@/lib/shots/shot-view';
 import { AppImage } from '@/components/ui/app-image';
-import {
-  AlertCircle,
-  Download,
-  Link,
-  Loader2,
-  Share2,
-  VideoIcon,
-} from 'lucide-react';
+import { Download, Link, Loader2, Share2, VideoIcon } from 'lucide-react';
 import { useCallback, useState } from 'react';
 import { toast } from 'sonner';
 import { VideoPlayer } from './video-player';
@@ -372,19 +365,11 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
             </DropdownMenu>
           )}
 
-          {/* Error overlay */}
-          <div
-            className={cn(
-              'absolute inset-0 flex items-center justify-center pointer-events-none',
-              // Use semi-transparent overlay if image exists, solid bg if not
-              displayImage ? 'bg-muted/80' : 'bg-transparent'
-            )}
-          >
-            <div className="flex flex-col items-center gap-2 text-muted-foreground">
-              <AlertCircle className="h-8 w-8" />
-              <span className="text-sm">Failed to generate video</span>
-            </div>
-          </div>
+          <VideoStateOverlay
+            thumbnailUrl={displayImage}
+            videoStatus="failed"
+            videoError={currentShot.primaryVideo?.error ?? null}
+          />
           {frameOverlay}
         </div>
       ) : (
@@ -454,6 +439,9 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
             aspectRatio={aspectRatio}
             className="h-full w-full"
             autoPlay={shouldAutoPlay}
+            playSource="canvas"
+            sequenceId={currentShot.sequenceId}
+            shotId={currentShot.id}
             onTimeUpdate={onTimeUpdate}
             onPause={handlePause}
             onEnded={handleEnded}
@@ -464,6 +452,9 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
             videoStatus={
               isVariantVideoPreview ? 'completed' : currentShot.videoStatus
             }
+            imageStatus={currentShot.frame.imageStatus}
+            imageError={currentShot.frame.imageError}
+            videoError={currentShot.primaryVideo?.error ?? null}
             progressMessage={progressMessage}
             retry={retry}
           />
@@ -490,7 +481,7 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
           )}
           {isPreviewImage && !isVariantPreview && (
             <span className="absolute top-2 right-2 z-10 rounded bg-background/80 px-2 py-1 text-xs font-medium text-muted-foreground backdrop-blur-sm">
-              Preview
+              Animatic
             </span>
           )}
           {frameOverlay}

@@ -6,7 +6,7 @@ import {
 import { useScenesBySequence } from '@/hooks/use-scenes';
 import { useAddModelToSequence, useSequence } from '@/hooks/use-sequences';
 import { useShotsBySequence } from '@/hooks/use-shots';
-import { useStyle } from '@/hooks/use-styles';
+import { useSequenceStyle } from '@/hooks/use-styles';
 import {
   AUDIO_MODELS,
   IMAGE_MODELS,
@@ -56,7 +56,7 @@ export const AddModelMenuSection = ({
   const { data: shots } = useShotsBySequence(sequenceId);
   const { data: sceneRows } = useScenesBySequence(sequenceId);
   const { data: sequence } = useSequence(sequenceId);
-  const { data: style } = useStyle(sequence?.styleId ?? '');
+  const { data: style } = useSequenceStyle(sequenceId);
   const aspectRatio = sequence?.aspectRatio ?? DEFAULT_ASPECT_RATIO;
   // Style-category gating (mirrors motion-model-selector): a model declaring a
   // `requiredStyleCategory` (none currently declare one) is only offered when

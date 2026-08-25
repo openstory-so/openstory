@@ -130,7 +130,7 @@ export const SceneStaleShots: React.FC<SceneStaleShotsProps> = ({
                 className="mr-1 h-2.5 w-2.5 animate-spin motion-reduce:animate-none"
               />
             )}
-            Shot {number}
+            <span>Shot {number}</span>
           </Button>
         );
       })}

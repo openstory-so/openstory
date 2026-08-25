@@ -31,16 +31,15 @@ import {
 import { generateId } from '@/lib/db/id';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import type { SequenceElement, SequenceElementMinimal } from '@/lib/db/schema';
-import {
-  generateImageWithProvider,
-  type ImageGenerationParams,
-} from '@/lib/image/image-generation';
+import type { ImageGenerationParams } from '@/lib/image/image-generation';
 import { recordProvenance } from '@/lib/compliance/provenance';
 import { buildElementSheetPrompt } from '@/lib/prompts/element-prompt';
 import { rejectionReasonMessage } from '@/lib/workflows/replace-element-workflow';
 import { STORAGE_BUCKETS } from '@/lib/storage/buckets';
 import { uploadResponse } from '@/lib/storage/upload-response';
+import { contentRejectionSummary } from '@/lib/ai/content-rejection';
 import { OpenStoryWorkflowEntrypoint } from '@/lib/workflow/base-workflow';
+import { generateImageSoftening } from '@/lib/workflows/content-soften';
 import type {
   ElementSheetWorkflowInput,
   ElementSheetWorkflowResult,
@@ -94,20 +93,22 @@ export function collectElementResults(
   settled: Array<PromiseSettledResult<SequenceElementMinimal>>,
   entries: Array<Pick<ElementBibleEntry, 'token'>>
 ): SequenceElementMinimal[] {
-  const failures: string[] = [];
+  const failures: { name: string; reason: string }[] = [];
   const elements: SequenceElementMinimal[] = [];
   for (const [index, outcome] of settled.entries()) {
     if (outcome.status === 'rejected') {
-      failures.push(
-        `${entries[index]?.token ?? `index ${index}`}: ${rejectionReasonMessage(outcome.reason)}`
-      );
+      failures.push({
+        name: entries[index]?.token ?? `index ${index}`,
+        reason: rejectionReasonMessage(outcome.reason),
+      });
       continue;
     }
     elements.push(outcome.value);
   }
   if (failures.length > 0) {
     throw new Error(
-      `Element reference generation failed for ${failures.length}/${settled.length} element(s) — ${failures.join('; ')}`
+      contentRejectionSummary(failures) ??
+        `Element reference generation failed for ${failures.length}/${settled.length} element(s) — ${failures.map((f) => `${f.name}: ${f.reason}`).join('; ')}`
     );
   }
   return elements;
@@ -171,7 +172,7 @@ export class ElementSheetWorkflow extends OpenStoryWorkflowEntrypoint<ElementShe
           return existing;
         }
 
-        const generationParams: ImageGenerationParams = {
+        const builtParams: ImageGenerationParams = {
           model: imageModel,
           prompt: buildElementSheetPrompt(entry, styleConfig),
           // Square reference: the object fills the shot regardless of the
@@ -180,14 +181,22 @@ export class ElementSheetWorkflow extends OpenStoryWorkflowEntrypoint<ElementShe
           numImages: 1,
         };
 
-        const imageResult = await step.do(
-          `generate-element-image-${index}`,
-          async () => {
-            return await generateImageWithProvider(generationParams, {
-              scopedDb: scopedDb.credentials,
-            });
-          }
-        );
+        // Reseeds on a content flag, then one softened prompt (#1293).
+        const generation = await generateImageSoftening({
+          step,
+          scopedDb,
+          workflowRunId: event.instanceId,
+          userId: input.userId,
+          sequenceId,
+          kind: 'element-sheet',
+          logTag: '[ElementSheetWorkflow:cf]',
+          subject: `element ${entry.token}`,
+          stepName: `generate-element-image-${index}`,
+          params: builtParams,
+          meta: { elementId: entry.elementId },
+        });
+        const imageResult = generation.result;
+        const generationParams = generation.params;
 
         // Before the deduction guard — see recordFalUsageStep (#1069).
         const falUsage = await recordFalUsageStep(

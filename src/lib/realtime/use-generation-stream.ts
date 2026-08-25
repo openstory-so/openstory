@@ -12,6 +12,7 @@ import {
 import { updateQueryCacheFromEvent } from './query-cache-updater';
 
 import { getLogger } from '@/lib/observability/logger';
+import { toast } from 'sonner';
 
 const logger = getLogger(['openstory', 'realtime', 'use-generation-stream']);
 
@@ -273,6 +274,26 @@ export function useGenerationStream(
 
       // Update TanStack Query cache for data-related events
       updateQueryCacheFromEvent(queryClient, sequenceId, eventName, data);
+
+      // Live-only (history replay does not use this handler). Tell the user
+      // the still is being retried from a rewritten prompt, and that the
+      // original is still in Versions.
+      if (
+        eventName === 'generation.image:progress' &&
+        data.promptSoftened === true
+      ) {
+        toast.info('Prompt rewritten to pass a content checker', {
+          description: 'The original is kept in Versions.',
+        });
+      }
+      if (
+        eventName === 'generation.image:progress' &&
+        data.modelFallback === true
+      ) {
+        toast.info('Retrying on Grok Imagine after the content checker', {
+          description: 'The selected model is kept in Versions.',
+        });
+      }
 
       // Map event to typed action and dispatch
       const action = mapEventToAction(eventName, data);

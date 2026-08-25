@@ -675,11 +675,12 @@ describe('llm-client', () => {
         );
 
         expect(mockChat.mock.calls[0]?.[0]?.modelOptions.provider).toEqual({
+          requireParameters: true,
           ignore: ['azure'],
         });
       });
 
-      it('leaves non-Anthropic models unrestricted', async () => {
+      it('only requires parameter support for non-Anthropic models', async () => {
         mockChat.mockReturnValue(textStream());
 
         await drain(
@@ -689,12 +690,12 @@ describe('llm-client', () => {
           })
         );
 
-        expect(
-          mockChat.mock.calls[0]?.[0]?.modelOptions.provider
-        ).toBeUndefined();
+        expect(mockChat.mock.calls[0]?.[0]?.modelOptions.provider).toEqual({
+          requireParameters: true,
+        });
       });
 
-      it('caller-supplied provider preferences win', async () => {
+      it('caller-supplied provider preferences layer on top', async () => {
         mockChat.mockReturnValue(textStream());
 
         await drain(
@@ -706,6 +707,8 @@ describe('llm-client', () => {
         );
 
         expect(mockChat.mock.calls[0]?.[0]?.modelOptions.provider).toEqual({
+          requireParameters: true,
+          ignore: ['azure'],
           only: ['anthropic'],
         });
       });

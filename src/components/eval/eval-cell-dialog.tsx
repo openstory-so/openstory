@@ -317,6 +317,9 @@ export const EvalCellDialog: React.FC<EvalCellDialogProps> = ({
                     posterSrc={shot.image?.url}
                     aspectRatio={aspectRatio}
                     className="rounded-lg"
+                    playSource="modal"
+                    sequenceId={shot.sequenceId}
+                    shotId={shot.id}
                   />
                 </div>
               </div>

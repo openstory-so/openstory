@@ -55,6 +55,10 @@ const PROMPT_VARIANT_SOURCES = [
   'user-edit',
   'regenerated',
   'restored',
+  // Auto-rewritten after a provider content-checker rejection (#1272).
+  // Kept in lockstep with PromptVersionSource — visual history is listed
+  // through this union.
+  'softened',
 ] as const;
 export type PromptVariantSource = (typeof PROMPT_VARIANT_SOURCES)[number];
 

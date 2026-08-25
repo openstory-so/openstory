@@ -346,14 +346,20 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
         containerBaseClasses,
         'relative',
         disabled && disabledClasses,
-        // overscroll-contain: hitting the editor's scroll bounds must not
-        // chain the touch gesture into scrolling the page underneath.
-        'overflow-y-auto overscroll-contain',
+        // No overflow rule here: the editor grows with its content. A caller
+        // that bounds its height (the composer's ScriptEditor) makes it the
+        // scroller. Chrome stops wheel chaining at a scroll container with
+        // overscroll-contain even when it has nothing to scroll, so an
+        // unconditional `overflow-y-auto overscroll-contain` froze the panel
+        // behind every prompt editor on desktop (#1281).
         className
       )}
       aria-invalid={ariaInvalid}
       data-testid={dataTestId}
       data-slot="markdown-editor"
+      // Chrome auto-translate rewriting a contenteditable desyncs
+      // ProseMirror's view (#1283); the script is the user's own text anyway.
+      translate="no"
       data-markdown={value}
       // The ProseMirror node only spans its text, so the empty area below the
       // last line (the box's min-height) is otherwise a dead zone — clicking

@@ -322,9 +322,6 @@ export interface AnalyzeScriptWorkflowInput extends SequenceWorkflowContext {
 export type SceneSplitWorkflowInput = SequenceWorkflowContext & {
   promptName: string;
   modelId: AnalysisModelId;
-  /** Only styles the per-scene preview stills; absent while an automatic style
-   *  is still being derived alongside this run (#1213). */
-  styleConfig?: StyleConfig;
   aspectRatio: AspectRatio;
   script: string;
   /** User-uploaded elements to make the model aware of uppercase tokens */

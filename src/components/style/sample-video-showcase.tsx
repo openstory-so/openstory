@@ -138,6 +138,7 @@ export const SampleVideoCard: React.FC<{
             posterSrc={poster}
             aspectRatio={entry.aspectRatio}
             autoPlay
+            playSource="modal"
             className={cn(
               'mx-auto overflow-hidden rounded-lg',
               entry.aspectRatio === '9:16' && 'max-w-[42vh]',

@@ -15,6 +15,7 @@ import {
   addTalentDialog,
   attestAssetRights,
   attestPortraitRights,
+  dropNamedTalentImage,
   openAddTalentFromLibrary,
   openAddTalentFromSequence,
   submitAddTalent,
@@ -389,7 +390,10 @@ testWithUser.describe('Add Talent from new sequence page', () => {
       const { picker } = await openAddTalentFromSequence(page);
 
       await addTalentDialog(page).getByLabel('Name').fill(uniqueName);
-      await uploadNamedTalentImage(page, 'test-image.jpg');
+      // Drop (not browse) so the same image cannot also land in the composer's
+      // Elements dropzone underneath the dialog (#1269).
+      await dropNamedTalentImage(page, 'test-image.jpg');
+      await expect(page.getByText('Upload reference elements')).toHaveCount(0);
       await waitForSubjectKind(page, 'Human');
       await attestPortraitRights(page);
       await submitAddTalent(page);
@@ -403,6 +407,10 @@ testWithUser.describe('Add Talent from new sequence page', () => {
         picker.getByRole('button', { name: /^Cast 1 role$/i })
       ).toBeVisible();
       await expect(page.getByRole('link', { name: uniqueName })).toHaveCount(0);
+      await expect(
+        // CSS, not role: the picker dialog is still open so `main` is aria-hidden.
+        page.locator('main').locator('button', { hasText: 'Elements' })
+      ).toHaveText('Elements');
 
       await cleanupTalentByName(testUser.teamId, uniqueName);
     }

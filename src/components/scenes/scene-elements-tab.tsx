@@ -253,8 +253,8 @@ export const SceneElementsTab: React.FC<SceneElementsTabProps> = ({
         <span>{shotIds === null ? 'All Elements' : 'Elements'}</span>
         <span className="text-muted-foreground/50">·</span>
         <span>
-          {sceneElements.length} reference
-          {sceneElements.length > 1 ? 's' : ''}
+          {sceneElements.length}{' '}
+          {sceneElements.length === 1 ? 'reference' : 'references'}
         </span>
       </div>
 

@@ -43,8 +43,8 @@ export const RecastConfirmDialog: React.FC<RecastConfirmDialogProps> = ({
               <>
                 {' '}
                 <strong>
-                  {affectedShotCount} shot
-                  {affectedShotCount !== 1 ? 's' : ''}
+                  {affectedShotCount}{' '}
+                  {affectedShotCount === 1 ? 'shot' : 'shots'}
                 </strong>{' '}
                 containing this character will need to be regenerated.
               </>
@@ -54,14 +54,8 @@ export const RecastConfirmDialog: React.FC<RecastConfirmDialogProps> = ({
         <AlertDialogFooter>
           <AlertDialogCancel disabled={isLoading}>Cancel</AlertDialogCancel>
           <AlertDialogAction onClick={onConfirm} disabled={isLoading}>
-            {isLoading ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Recasting…
-              </>
-            ) : (
-              'Recast'
-            )}
+            {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            <span>{isLoading ? 'Recasting…' : 'Recast'}</span>
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

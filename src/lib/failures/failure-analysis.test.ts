@@ -167,6 +167,81 @@ describe('analyzeFailures', () => {
     expect(result.headline).toContain('full retry required');
   });
 
+  test('content-checker sequence error (no shots) is a warning, not a hard error', () => {
+    const sequence = makeSequence({
+      status: 'failed',
+      statusError: 'Blocked by the content checker',
+    });
+
+    const result = analyzeFailures([], sequence, SCENES);
+
+    expect(result.requiresFullRetry).toBe(true);
+    expect(result.tone).toBe('warning');
+    expect(result.headline).toBe(
+      "Script didn't pass the content checker \u2014 regenerate to retry"
+    );
+  });
+
+  test('names the blocked characters from a bible-level content rejection', () => {
+    const sequence = makeSequence({
+      status: 'failed',
+      statusError:
+        'Child workflow analyze-script:1 failed: Character sheet generation failed: Child workflow character-bible:1 failed: Blocked by the content checker: Ron Weasley, Hermione Granger, Harry Potter',
+    });
+
+    const result = analyzeFailures([], sequence, SCENES);
+
+    expect(result.tone).toBe('warning');
+    expect(result.headline).toBe(
+      "Ron Weasley, Hermione Granger and Harry Potter didn't pass the content checker \u2014 regenerate to retry"
+    );
+  });
+
+  test('content-checker image failures are a warning, not a hard error', () => {
+    const shots = [
+      makeShot({
+        frame: {
+          imageStatus: 'failed',
+          imageError:
+            'The content could not be processed because it contained material flagged by a content checker.',
+        },
+        sources: { image: null },
+      }),
+    ];
+    const sequence = makeSequence({ status: 'completed' });
+
+    const result = analyzeFailures(shots, sequence, SCENES);
+
+    expect(result.hasFailed).toBe(true);
+    expect(result.tone).toBe('warning');
+    expect(result.requiresFullRetry).toBe(false);
+    expect(result.headline).toContain("didn't pass the content checker");
+    expect(result.headline).not.toContain('failed');
+  });
+
+  test('mixed content-checker and infrastructure image failures stay an error', () => {
+    const shots = [
+      makeShot({
+        frame: {
+          imageStatus: 'failed',
+          imageError: 'material flagged by a content checker.',
+        },
+        sources: { image: null },
+      }),
+      makeShot({
+        shot: { id: 'shot-2' },
+        frame: { imageStatus: 'failed', imageError: 'Model timeout' },
+        sources: { image: null },
+      }),
+    ];
+    const sequence = makeSequence({ status: 'failed' });
+
+    const result = analyzeFailures(shots, sequence, SCENES);
+
+    expect(result.tone).toBe('error');
+    expect(result.headline).toContain('images failed');
+  });
+
   test('image-only failures', () => {
     const shots = [
       makeShot({
@@ -189,7 +264,32 @@ describe('analyzeFailures', () => {
     const [imageShot] = imageGroup.shots;
     if (!imageShot) throw new Error('test setup: image shot missing');
     expect(imageShot.error).toBe('Model timeout');
-    expect(result.headline).toContain('1 image failed');
+    expect(result.headline).toBe('1 of 2 clips ready \u00b7 1 image failed');
+  });
+
+  test('leads a single-image miss with how many clips are ready (#1286)', () => {
+    const shots = [
+      makeShot({ shot: { id: 'shot-1' } }),
+      makeShot({ shot: { id: 'shot-2' } }),
+      makeShot({ shot: { id: 'shot-3' } }),
+      makeShot({ shot: { id: 'shot-4' } }),
+      makeShot({ shot: { id: 'shot-5' } }),
+      makeShot({ shot: { id: 'shot-6' } }),
+      makeShot({
+        shot: { id: 'shot-7' },
+        frame: { imageStatus: 'failed', imageError: 'content flag' },
+        sources: { image: null },
+      }),
+    ];
+
+    const result = analyzeFailures(
+      shots,
+      makeSequence({ status: 'failed' }),
+      SCENES
+    );
+
+    expect(result.requiresFullRetry).toBe(false);
+    expect(result.headline).toBe('6 of 7 clips ready \u00b7 1 image failed');
   });
 
   test('motion-only failures', () => {

@@ -64,7 +64,7 @@ test.describe('Sequences', () => {
     expect(metrics.scrollTopAfter).toBeGreaterThan(100);
   });
 
-  test('composer starts empty with Automatic selected, not Action', async ({
+  test('composer starts empty with Match script selected, not Action', async ({
     page,
   }) => {
     await page.goto('/');
@@ -86,7 +86,7 @@ test.describe('Sequences', () => {
       page.getByText('Paste a screenplay, or a one-liner we can expand.')
     ).toBeVisible();
     const automatic = page.getByRole('button', {
-      name: 'Automatic style: derive a style from the script',
+      name: 'Match script: derive a style from the script',
     });
     await expect(automatic).toHaveAttribute('aria-pressed', 'true');
     await expect(
@@ -110,7 +110,7 @@ test.describe('Sequences', () => {
     await expect(generate).toBeEnabled();
   });
 
-  test('Try-this-style URL seeds the style sample, not Automatic', async ({
+  test('Try-this-style URL seeds the style sample, not Match script', async ({
     page,
   }) => {
     await page.goto('/?style=product-ad');
@@ -120,7 +120,7 @@ test.describe('Sequences', () => {
     ).toBeVisible({ timeout: 15_000 });
     await expect(
       page.getByRole('button', {
-        name: 'Automatic style: derive a style from the script',
+        name: 'Match script: derive a style from the script',
       })
     ).toHaveAttribute('aria-pressed', 'false');
     await expect(
@@ -144,7 +144,7 @@ test.describe('Sequences', () => {
     ).toBeVisible();
     await expect(
       page.getByRole('button', {
-        name: 'Automatic style: derive a style from the script',
+        name: 'Match script: derive a style from the script',
       })
     ).toHaveAttribute('aria-pressed', 'false');
   });

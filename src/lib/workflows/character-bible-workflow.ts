@@ -23,6 +23,7 @@ import type { CharacterMinimal, NewCharacter } from '@/lib/db/schema';
 import { buildCastingAttributes } from '@/lib/prompts/character-prompt';
 import { shouldReuseTalentSheet } from '@/lib/talent/reuse-talent-sheet';
 import { spawnAndAwaitChild } from '@/lib/workflow/await-child';
+import { contentRejectionSummary } from '@/lib/ai/content-rejection';
 import { OpenStoryWorkflowEntrypoint } from '@/lib/workflow/base-workflow';
 import { WorkflowValidationError } from '@/lib/workflow/errors';
 import type {
@@ -190,7 +191,7 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
     const settled = await Promise.allSettled(spawnPromises);
 
     const seqCharacters: CharacterMinimal[] = [];
-    const failures: string[] = [];
+    const failures: { name: string; reason: string }[] = [];
     for (const [index, outcome] of settled.entries()) {
       if (outcome.status === 'rejected') {
         // A reference sheet is what anchors a character's identity across cuts
@@ -216,7 +217,7 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
             err: outcome.reason,
           }
         );
-        failures.push(`${name} (${reason})`);
+        failures.push({ name, reason });
         continue;
       }
 
@@ -242,9 +243,12 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
       // (#939). This rejection propagates up through `spawnAndAwaitChild` to
       // analyze-script's `charSettled.status === 'rejected'` branch, which marks
       // the sequence `failed` with this message and emits `generation.failed`.
+      // Content-only failures collapse to the names so the banner can list
+      // who was blocked (#1293).
       throw new Error(
-        `Character sheet generation failed for ${failures.length} of ${settled.length} character(s); ` +
-          `stopping rather than rendering an unanchored sequence: ${failures.join('; ')}`
+        contentRejectionSummary(failures) ??
+          `Character sheet generation failed for ${failures.length} of ${settled.length} character(s); ` +
+            `stopping rather than rendering an unanchored sequence: ${failures.map((f) => `${f.name} (${f.reason})`).join('; ')}`
       );
     }
 

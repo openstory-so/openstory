@@ -117,6 +117,20 @@ function buildFalModelOptions(
         sync_mode: false,
       };
 
+    case 'krea_2_turbo':
+      return {
+        image_size: params.imageSize ?? DEFAULT_IMAGE_SIZE,
+        enable_safety_checker: true,
+        ...(params.seed !== undefined && { seed: params.seed }),
+        ...(params.numImages !== undefined && { num_images: params.numImages }),
+        ...(params.outputFormat && { output_format: params.outputFormat }),
+        ...(params.acceleration && { acceleration: params.acceleration }),
+        ...(params.enablePromptExpansion !== undefined && {
+          enable_prompt_expansion: params.enablePromptExpansion,
+        }),
+        sync_mode: false,
+      };
+
     case 'flux_2_max':
       return {
         image_size: params.imageSize ?? DEFAULT_IMAGE_SIZE,

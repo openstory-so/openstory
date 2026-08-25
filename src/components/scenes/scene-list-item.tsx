@@ -167,6 +167,7 @@ const SceneListItemComponent: React.FC<SceneListItemProps> = ({
                 thumbnailUrl={shot?.image?.url}
                 previewThumbnailUrl={shot?.previewThumbnailUrl}
                 thumbnailStatus={shot?.frame.imageStatus || undefined}
+                generationError={shot?.frame.imageError}
                 alt={title ?? 'Scene thumbnail'}
                 aspectRatio={aspectRatio}
                 className="w-full rounded-md"
@@ -277,6 +278,7 @@ const areEqual = (
     prevShot.image?.url !== nextShot.image?.url ||
     prevShot.previewThumbnailUrl !== nextShot.previewThumbnailUrl ||
     prevShot.frame.imageStatus !== nextShot.frame.imageStatus ||
+    prevShot.frame.imageError !== nextShot.frame.imageError ||
     prevShot.gridSheet?.url !== nextShot.gridSheet?.url ||
     prevShot.pendingUpscaleIndex !== nextShot.pendingUpscaleIndex ||
     prevShot.pendingUpscaleUrl !== nextShot.pendingUpscaleUrl

@@ -129,7 +129,8 @@ export const SceneCastTab: React.FC<SceneCastTabProps> = ({
         <span>{shotIds === null ? 'All Cast' : 'Cast'}</span>
         <span className="text-muted-foreground/50">·</span>
         <span>
-          {scopedCast.length} character{scopedCast.length > 1 ? 's' : ''}
+          {scopedCast.length}{' '}
+          {scopedCast.length === 1 ? 'character' : 'characters'}
         </span>
       </div>
 

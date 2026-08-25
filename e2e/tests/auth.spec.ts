@@ -87,6 +87,29 @@ baseTest.describe('Route Protection', () => {
   );
 
   baseTest(
+    'anonymous enhance is intercepted by the login dialog and keeps intent',
+    async ({ page }) => {
+      await page.goto('/');
+      await fillScriptEditor(
+        page,
+        'INT. KITCHEN - DAY\n\nA cat knocks a glass off the counter.'
+      );
+
+      await page.getByRole('button', { name: /Enhance Script/i }).click();
+      await expect(page.getByText('Target video duration')).toBeVisible();
+      await page.getByRole('button', { name: 'Enhance', exact: true }).click();
+
+      const dialog = page.getByRole('dialog', { name: 'Sign in to continue' });
+      await expect(dialog).toBeVisible();
+      await expect(page).toHaveURL('/');
+      const pending = await page.evaluate(() =>
+        localStorage.getItem('openstory:pending-generate')
+      );
+      expect(pending).toMatch(/^enhance:/);
+    }
+  );
+
+  baseTest(
     'account-bound routes redirect anonymous users to login',
     async ({ page }) => {
       // Settings is genuinely account-only — it redirects.

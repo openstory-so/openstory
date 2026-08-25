@@ -271,7 +271,7 @@ function ReportPage() {
             {mutation.isPending ? 'Submitting…' : 'Submit report'}
           </Button>
           <p aria-live="polite" className="text-sm text-muted-foreground">
-            {mutation.isPending ? 'Sending your report…' : null}
+            {mutation.isPending && <span>Sending your report…</span>}
           </p>
         </div>
       </form>

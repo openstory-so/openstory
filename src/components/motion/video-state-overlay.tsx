@@ -1,12 +1,21 @@
 import { BlobLoader } from '@/components/ui/blob-loader';
+import {
+  CONTENT_REJECTION_USER_HINT,
+  CONTENT_REJECTION_USER_TITLE,
+  isContentRejectionError,
+} from '@/lib/ai/content-rejection';
 import { cn } from '@/lib/utils';
-import { AlertCircle, Loader2 } from 'lucide-react';
+import { AlertCircle, Info, Loader2 } from 'lucide-react';
 
 type ShotStatus = 'pending' | 'generating' | 'completed' | 'failed' | null;
 
 type VideoStateOverlayProps = {
   thumbnailUrl?: string | null;
   videoStatus: ShotStatus;
+  /** Still-image lifecycle — a content-blocked still is a warning, not a crash. */
+  imageStatus?: ShotStatus;
+  imageError?: string | null;
+  videoError?: string | null;
   className?: string;
   progressMessage?: string;
   /**
@@ -22,13 +31,21 @@ type VideoStateOverlayProps = {
 export const VideoStateOverlay: React.FC<VideoStateOverlayProps> = ({
   thumbnailUrl,
   videoStatus,
+  imageStatus,
+  imageError,
+  videoError,
   className,
   progressMessage,
   retry,
 }) => {
   // Only show loader when there's no thumbnail image yet
   const hasNoThumbnail = !thumbnailUrl;
-  const hasFailed = videoStatus === 'failed';
+  const imageFailed = imageStatus === 'failed';
+  const videoFailed = videoStatus === 'failed';
+  const hasFailed = videoFailed || (imageFailed && hasNoThumbnail);
+  const contentBlocked =
+    (imageFailed && isContentRejectionError(imageError)) ||
+    (videoFailed && isContentRejectionError(videoError));
   const retryMessage = retry
     ? retry.maxAttempts
       ? `Retrying (${retry.attempt}/${retry.maxAttempts})…`
@@ -80,14 +97,25 @@ export const VideoStateOverlay: React.FC<VideoStateOverlayProps> = ({
           </>
         )}
 
-        {hasFailed && (
-          <>
-            <AlertCircle className="h-8 w-8 text-destructive" />
-            <p className="text-sm font-medium text-destructive">
-              Generation failed
-            </p>
-          </>
-        )}
+        {hasFailed &&
+          (contentBlocked ? (
+            <>
+              <Info className="h-8 w-8 text-muted-foreground" />
+              <p className="max-w-xs text-center text-sm font-medium">
+                {CONTENT_REJECTION_USER_TITLE}
+              </p>
+              <p className="max-w-xs text-center text-xs text-muted-foreground">
+                {CONTENT_REJECTION_USER_HINT}
+              </p>
+            </>
+          ) : (
+            <>
+              <AlertCircle className="h-8 w-8 text-destructive" />
+              <p className="text-sm font-medium text-destructive">
+                Generation failed
+              </p>
+            </>
+          ))}
       </div>
     </div>
   );

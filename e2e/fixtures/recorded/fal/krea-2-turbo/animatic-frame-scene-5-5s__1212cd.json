@@ -1,0 +1,33 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Animatic frame. Scene 5 — 5s\nEXT. DUMPLING WINDOW, SIDE STREET — EVENING\nHandheld macro at the counter: steam curling off a paper tray, chili oil bright red. She bites a dumpling in half, chews, dabs her mouth once with a thin napkin — and the napkin comes away clean. She raises an eyebrow at the lens.\n\n. Loose freehand black line drawing on plain flat white, quick gesture strokes, nothing ruled or geometric. Figures as a few flowing outline strokes with blank faces, the setting hinted with a handful of loose lines. No shading, no texture, no colour, no rendering, no realism, no detail. No text, no titles, no subtitles, no watermarks, no letters, no words, no signs, no UI elements.",
+        "model": "fal-ai/krea-2/turbo"
+      },
+      "response": {
+        "json": {
+          "images": [
+            {
+              "url": "https://v3b.fal.media/files/b/0aa74af2/dTVTl141tFB8qdRje9aFy_PfEeqamT.png",
+              "content_type": "image/png",
+              "file_name": "dTVTl141tFB8qdRje9aFy_PfEeqamT.png",
+              "file_size": null,
+              "width": 1024,
+              "height": 576
+            }
+          ],
+          "timings": {
+            "inference": 0.6140697720002208
+          },
+          "seed": 58385314,
+          "has_nsfw_concepts": [false],
+          "prompt": "Animatic frame. Scene 5 — 5s\nEXT. DUMPLING WINDOW, SIDE STREET — EVENING\nHandheld macro at the counter: steam curling off a paper tray, chili oil bright red. She bites a dumpling in half, chews, dabs her mouth once with a thin napkin — and the napkin comes away clean. She raises an eyebrow at the lens.\n\n. Loose freehand black line drawing on plain flat white, quick gesture strokes, nothing ruled or geometric. Figures as a few flowing outline strokes with blank faces, the setting hinted with a handful of loose lines. No shading, no texture, no colour, no rendering, no realism, no detail. No text, no titles, no subtitles, no watermarks, no letters, no words, no signs, no UI elements."
+        },
+        "status": 200,
+        "billableUnits": 1
+      }
+    }
+  ]
+}

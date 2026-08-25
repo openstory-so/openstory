@@ -4,7 +4,13 @@ import {
   getAspectRatioClassName,
   type AspectRatio,
 } from '@/lib/constants/aspect-ratios';
+import {
+  captureVideoPlay,
+  captureVideoPlayFailed,
+  type VideoPlaySource,
+} from '@/lib/observability/player-events';
 import { cn } from '@/lib/utils';
+import { usePostHog } from '@posthog/react';
 import { lazy, Suspense, useEffect, useState } from 'react';
 
 // Dynamic, and rendered only after mount — see video-player-surface.tsx. The
@@ -26,6 +32,11 @@ type VideoPlayerProps = {
   onTimeUpdate?: (currentTime: number) => void;
   onPause?: () => void;
   onEnded?: () => void;
+  onPlay?: () => void;
+  /** PostHog `video_play` / `video_play_failed` source. Omit to skip capture. */
+  playSource?: VideoPlaySource;
+  sequenceId?: string;
+  shotId?: string;
 };
 
 /**
@@ -75,8 +86,13 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   onTimeUpdate,
   onPause,
   onEnded,
+  onPlay,
+  playSource,
+  sequenceId,
+  shotId,
 }) => {
   const mounted = useMounted();
+  const posthog = usePostHog();
 
   // Show skeleton when there's no video source and no poster
   if (!src && !posterSrc) {
@@ -130,6 +146,26 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             onTimeUpdate={onTimeUpdate}
             onPause={onPause}
             onEnded={onEnded}
+            onPlay={() => {
+              onPlay?.();
+              if (playSource) {
+                captureVideoPlay(posthog, {
+                  source: playSource,
+                  sequence_id: sequenceId,
+                  shot_id: shotId,
+                });
+              }
+            }}
+            onError={(reason) => {
+              if (playSource) {
+                captureVideoPlayFailed(posthog, {
+                  source: playSource,
+                  reason,
+                  sequence_id: sequenceId,
+                  shot_id: shotId,
+                });
+              }
+            }}
           />
         </Suspense>
       ) : (

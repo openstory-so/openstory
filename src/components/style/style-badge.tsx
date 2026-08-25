@@ -10,7 +10,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { StyleDetailDialog } from '@/components/style/style-detail-dialog';
 import { PromoteStyleDialog } from '@/components/style/promote-style-dialog';
-import { useStyle, useStyles } from '@/hooks/use-styles';
+import { useSequenceStyle, useStyle, useStyles } from '@/hooks/use-styles';
 import { cn } from '@/lib/utils';
 import { ChevronDown, Info, Library, Wand2 } from 'lucide-react';
 
@@ -66,9 +66,14 @@ export const StyleBadge: React.FC<StyleBadgeProps> = ({
 }) => {
   const { data: styles } = useStyles();
   const listed = styleId ? styles?.find((s) => s.id === styleId) : undefined;
-  const { data: fetched } = useStyle(
-    styleId && styles && !listed ? styleId : ''
+  // Off-list style (an automatic one): resolve through the sequence when we
+  // have it so an admin's view of another team's sequence still gets a name.
+  const needsLookup = !!styleId && !!styles && !listed;
+  const { data: bySequence } = useSequenceStyle(
+    needsLookup && sequenceId ? sequenceId : ''
   );
+  const { data: byId } = useStyle(needsLookup && !sequenceId ? styleId : '');
+  const fetched = bySequence ?? byId;
   const [detailOpen, setDetailOpen] = useState(false);
   const [promoteOpen, setPromoteOpen] = useState(false);
 
@@ -99,14 +104,14 @@ export const StyleBadge: React.FC<StyleBadgeProps> = ({
           <button
             type="button"
             className="rounded-4xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            aria-label={`Automatic style: ${style.name}. Open style menu`}
+            aria-label={`Match script: ${style.name}. Open style menu`}
           >
             <Badge
               className={cn(
                 'flex items-center gap-1 text-xs',
                 getStyleBadgeColor(style.name)
               )}
-              title={`Automatic style: ${style.name}`}
+              title={`Match script: ${style.name}`}
             >
               <Wand2 className="size-3" aria-hidden />
               {stylePending ? 'Deriving style…' : style.name}

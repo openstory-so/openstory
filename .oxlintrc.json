@@ -8,6 +8,7 @@
     "jsx-a11y",
     "oxc"
   ],
+  "jsPlugins": ["./scripts/lint/no-loose-text.ts"],
   "categories": {
     "correctness": "error"
   },
@@ -30,6 +31,7 @@
     "eslint/no-console": "error",
     "unicorn/prefer-optional-catch-binding": "error",
     "react/rules-of-hooks": "error",
+    "openstory/no-loose-text": "error",
     "no-restricted-imports": [
       "error",
       {

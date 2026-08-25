@@ -26,7 +26,19 @@ import {
   type SequencePlayerMeta,
 } from '@/lib/sequence-player/playback';
 import type { SceneInput } from '@/lib/sequence-player/concatenated-video-source';
+import { scenePlaybackKey } from '@/lib/sequence-player/playback-scenes';
+import {
+  playAttemptUiState,
+  type PlayAttemptResult,
+} from '@/lib/sequence-player/play-attempt';
+import {
+  captureSequenceReadySeen,
+  captureVideoPlay,
+  captureVideoPlayFailed,
+  type VideoPlaySource,
+} from '@/lib/observability/player-events';
 import { cn } from '@/lib/utils';
+import { usePostHog } from '@posthog/react';
 import {
   AlertCircle,
   Music,
@@ -65,6 +77,9 @@ type SequencePlayerProps = {
    * `null` = no fresh export, stitch.
    */
   cachedVideoUrl: string | null | undefined;
+  /** PostHog `video_play` source. Theatre player on the scenes canvas. */
+  playSource?: VideoPlaySource;
+  sequenceId?: string;
 };
 
 export const SequencePlayer: React.FC<SequencePlayerProps> = ({
@@ -78,9 +93,15 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
   overlayActions,
   posterUrl,
   cachedVideoUrl,
+  playSource = 'theatre',
+  sequenceId,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const engineRef = useRef<SequencePlayerEngine | null>(null);
+  const posthog = usePostHog();
+  const readyKeyRef = useRef<string | null>(null);
+  const playEpochRef = useRef(0);
+  const scenesKey = scenePlaybackKey(scenes);
 
   const [meta, setMeta] = useState<SequencePlayerMeta | null>(null);
   const [playing, setPlaying] = useState(false);
@@ -90,12 +111,28 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
   const [muted, setMuted] = useState(false);
   const [loadedScenes, setLoadedScenes] = useState(0);
 
+  const markReady = (key: string) => {
+    if (!sequenceId || readyKeyRef.current === key) return;
+    readyKeyRef.current = key;
+    captureSequenceReadySeen(posthog, {
+      sequence_id: sequenceId,
+      scene_count: scenes.length,
+    });
+  };
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || cachedVideoUrl !== null) return;
     setMeta(null);
     setLoadedScenes(0);
     setError(null);
+    // Rebuild starts paused at 0:00. Do not auto-resume — play is a user
+    // gesture. Clearing `playing` avoids a Pause icon on an engine that is
+    // not playing. Bump the epoch so an in-flight play() from the old engine
+    // cannot set playing back to true.
+    playEpochRef.current += 1;
+    setPlaying(false);
+    setCurrentTime(0);
     if (scenes.length === 0) {
       setError('No scenes ready to play yet.');
       return;
@@ -128,6 +165,7 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
       .then((m) => {
         if (cancelled) return;
         setMeta(m);
+        markReady(`stitch:${scenesKey}`);
       })
       .catch((err: unknown) => {
         if (cancelled) return;
@@ -139,11 +177,17 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
       engine.dispose();
       engineRef.current = null;
     };
-    // The scene list/music identity drives the engine lifecycle; volume/muted/
-    // musicEnabled are pushed through setters below (toggling music must not
-    // re-prepare the engine, #834).
+    // `scenesKey` (URLs + order), not `scenes` identity — a same-URL refetch
+    // used to dispose the engine mid-play (#1284). musicUrl / loudness / cache
+    // still rebuild; volume/muted/musicEnabled go through setters (#834).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scenes, musicUrl, musicLoudnessGainDb, cachedVideoUrl]);
+  }, [scenesKey, musicUrl, musicLoudnessGainDb, cachedVideoUrl]);
+
+  useEffect(() => {
+    if (!cachedVideoUrl) return;
+    markReady(`cached:${cachedVideoUrl}`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cachedVideoUrl, sequenceId, scenesKey]);
 
   useEffect(() => {
     engineRef.current?.setVolume(volume);
@@ -157,28 +201,80 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
     engineRef.current?.setMusicEnabled(musicEnabled);
   }, [musicEnabled]);
 
+  const applyPlayResult = (epoch: number, result: PlayAttemptResult): void => {
+    if (epoch !== playEpochRef.current) return;
+    const ui = playAttemptUiState(result);
+    setPlaying(ui.playing);
+    if (ui.playing) {
+      captureVideoPlay(posthog, {
+        source: playSource,
+        sequence_id: sequenceId,
+      });
+      return;
+    }
+    if (ui.failureReason) {
+      captureVideoPlayFailed(posthog, {
+        source: playSource,
+        reason: ui.failureReason,
+        sequence_id: sequenceId,
+      });
+    }
+  };
+
   const togglePlay = () => {
     const engine = engineRef.current;
-    if (!engine) return;
+    if (!engine) {
+      captureVideoPlayFailed(posthog, {
+        source: playSource,
+        reason: 'no_engine',
+        sequence_id: sequenceId,
+      });
+      return;
+    }
     // Branch on React state, not engine.isPlaying(): the first play() waits on
     // background dialogue decode and the engine isn't "playing" until then.
     // Optimistic Pause during that wait; pause() cancels the pending play.
     if (playing) {
+      playEpochRef.current += 1;
       engine.pause();
       setPlaying(false);
-    } else {
-      setPlaying(true);
-      void engine
-        .play()
-        .then(() => setPlaying(engine.isPlaying()))
-        .catch(() => setPlaying(false));
+      return;
     }
+    const epoch = ++playEpochRef.current;
+    setPlaying(true);
+    void engine
+      .play()
+      .then((result) => applyPlayResult(epoch, result))
+      .catch((err: unknown) => {
+        if (epoch !== playEpochRef.current) return;
+        setPlaying(false);
+        captureVideoPlayFailed(posthog, {
+          source: playSource,
+          reason: err instanceof Error ? err.message : 'play_rejected',
+          sequence_id: sequenceId,
+        });
+      });
   };
 
   const seek = (seconds: number) => {
     const engine = engineRef.current;
     if (!engine) return;
-    void engine.seek(seconds);
+    const epoch = playEpochRef.current;
+    void engine
+      .seek(seconds)
+      .then((result) => {
+        if (result == null) return;
+        applyPlayResult(epoch, result);
+      })
+      .catch((err: unknown) => {
+        if (epoch !== playEpochRef.current) return;
+        setPlaying(false);
+        captureVideoPlayFailed(posthog, {
+          source: playSource,
+          reason: err instanceof Error ? err.message : 'play_rejected',
+          sequence_id: sequenceId,
+        });
+      });
   };
 
   if (cachedVideoUrl) {
@@ -200,6 +296,8 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
           posterSrc={posterUrl}
           aspectRatio={aspectRatio}
           className="absolute inset-0 h-full max-h-none w-full"
+          playSource={playSource}
+          sequenceId={sequenceId}
         />
         <div className="absolute top-2 right-2 z-10 flex items-center gap-2">
           {musicUrl && (

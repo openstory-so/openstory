@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   CONTENT_REJECTION_PATTERNS,
+  contentRejectionSubjects,
+  contentRejectionSummary,
   isContentRejectionError,
 } from './content-rejection';
 
@@ -22,6 +24,7 @@ describe('isContentRejectionError', () => {
       'material flagged by a content checker.',
       'The model did not generate the expected output for this prompt. It may contain unsafe content.',
       'Could not generate images with the given prompts and images. Please try again with different inputs.',
+      'Unexpected result from the model.',
       'Output audio has sensitive content.',
     ];
     for (const message of observed) {
@@ -76,5 +79,41 @@ describe('isContentRejectionError', () => {
 
   it('exposes a non-empty pattern list', () => {
     expect(CONTENT_REJECTION_PATTERNS.length).toBeGreaterThan(0);
+  });
+});
+
+describe('contentRejectionSummary / contentRejectionSubjects', () => {
+  it('collapses content-only failures to the names and reads them back (#1293)', () => {
+    const summary = contentRejectionSummary([
+      { name: 'Ron Weasley', reason: 'material flagged by a content checker.' },
+      {
+        name: 'Harry Potter',
+        reason: 'Character sheet rejected by content filter after 3 attempts',
+      },
+    ]);
+    expect(summary).toBe(
+      'Blocked by the content checker: Ron Weasley, Harry Potter'
+    );
+    expect(isContentRejectionError(summary)).toBe(true);
+    // Parents only prefix; the tail survives a 500-char truncation ellipsis.
+    expect(
+      contentRejectionSubjects(
+        `Child workflow analyze-script:1 failed: Character sheet generation failed: Child workflow character-bible:1 failed: ${summary}…`
+      )
+    ).toEqual(['Ron Weasley', 'Harry Potter']);
+  });
+
+  it('is null when any failure is not a content rejection', () => {
+    expect(
+      contentRejectionSummary([
+        {
+          name: 'Ron Weasley',
+          reason: 'material flagged by a content checker.',
+        },
+        { name: 'Harry Potter', reason: 'ECONNRESET' },
+      ])
+    ).toBeNull();
+    expect(contentRejectionSummary([])).toBeNull();
+    expect(contentRejectionSubjects('Generation failed')).toEqual([]);
   });
 });

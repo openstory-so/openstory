@@ -17,7 +17,7 @@ export const AUTO_STYLE_ID = 'auto';
 
 export const AUTO_STYLE_PLACEHOLDER_NAME = 'Automatic style';
 
-const STYLE_CATEGORIES = [
+export const STYLE_CATEGORIES = [
   'film',
   'commercial',
   'ecommerce',
@@ -47,11 +47,19 @@ const AUTO_STYLE_PLACEHOLDER_CONFIG: StyleConfig = {
  * `sceneDurationResponseSchema`). Bounds are applied in
  * {@link autoStyleDraftFromResponse}, which re-validates against the real
  * `StyleConfigSchema`.
+ *
+ * `category`/`pace` keep their `enum` (a hard constraint on strict routes —
+ * Anthropic supports `enum` + `default`) but `.catch()` to a default: this is
+ * a guess, and an off-vocabulary word from a non-enforcing route must never
+ * fail the run (#1285). The prompt lists both vocabularies as well.
  */
+/** Where a category guess lands when the model coins its own word. */
+export const DEFAULT_AUTO_STYLE_CATEGORY = 'film';
+
 export const autoStyleResponseSchema = z.object({
   name: z.string(),
   description: z.string(),
-  category: z.enum(STYLE_CATEGORIES),
+  category: z.enum(STYLE_CATEGORIES).catch(DEFAULT_AUTO_STYLE_CATEGORY),
   tags: z.array(z.string()),
   mood: z.string(),
   artStyle: z.string(),
@@ -61,7 +69,7 @@ export const autoStyleResponseSchema = z.object({
   colorGrading: z.string(),
   camera: z.string(),
   shots: z.string(),
-  pace: z.enum(STYLE_PACE_VALUES),
+  pace: z.enum(STYLE_PACE_VALUES).catch('measured'),
   /** 1 = stillness, 5 = kinetic chaos. */
   energy: z.number(),
   references: z.array(z.string()),

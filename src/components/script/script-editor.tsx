@@ -75,8 +75,11 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
           placeholder={placeholder}
           disabled={disabled}
           aria-invalid={hasError}
+          // This is the one height-bounded editor, so it owns the scrolling.
+          // overscroll-contain: hitting its scroll bounds must not chain the
+          // touch gesture into scrolling the page underneath.
           className={cn(
-            'min-h-[2lh] md:min-h-[4lh] flex-1 bg-transparent dark:bg-transparent border-none shadow-none focus-within:ring-0 focus-within:border-input pb-10',
+            'min-h-[2lh] md:min-h-[4lh] flex-1 overflow-y-auto overscroll-contain bg-transparent dark:bg-transparent border-none shadow-none focus-within:ring-0 focus-within:border-input pb-10',
             hasError && 'border-destructive focus-within:ring-destructive/20'
           )}
           data-testid="script-editor-textarea"

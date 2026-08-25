@@ -67,6 +67,10 @@ export type SequenceExportState = {
   publishTarget: PublishTarget | null;
   closePublish: () => void;
   abort: () => void;
+  clipsReady: number;
+  clipsTotal: number;
+  /** False until every shot has a clip. */
+  canExport: boolean;
 };
 
 export function useSequenceExport(
@@ -264,14 +268,20 @@ export function useSequenceExport(
     null;
   const freshExportUrl = freshExport?.url ?? null;
 
+  const shotList = shots ?? [];
+  const clipsTotal = shotList.length;
+  const clipsReady = shotList.filter((s) => Boolean(s.video?.url)).length;
+  const canExport = clipsTotal > 0 && clipsReady === clipsTotal;
+
   const download = useCallback(() => {
     if (freshExportUrl) {
       triggerDownload(freshExportUrl, sequence?.title);
       posthog.capture('video_downloaded', { sequence_id: sequenceId });
       return;
     }
+    if (!canExport) return;
     run('download');
-  }, [freshExportUrl, run, sequence?.title, sequenceId, posthog]);
+  }, [freshExportUrl, canExport, run, sequence?.title, sequenceId, posthog]);
 
   const copyLink = useCallback(() => {
     if (freshExportUrl) {
@@ -287,8 +297,9 @@ export function useSequenceExport(
       );
       return;
     }
+    if (!canExport) return;
     run('copy-link');
-  }, [freshExportUrl, run, sequenceId, posthog]);
+  }, [freshExportUrl, canExport, run, sequenceId, posthog]);
 
   const publish = useCallback(() => {
     if (freshExport) {
@@ -315,6 +326,9 @@ export function useSequenceExport(
     publishTarget,
     closePublish,
     abort,
+    clipsReady,
+    clipsTotal,
+    canExport,
   };
 }
 

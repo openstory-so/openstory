@@ -23,10 +23,7 @@ import {
 } from '@/lib/billing/workflow-deduction';
 import { generateId } from '@/lib/db/id';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
-import {
-  generateImageWithProvider,
-  type ImageGenerationParams,
-} from '@/lib/image/image-generation';
+import type { ImageGenerationParams } from '@/lib/image/image-generation';
 import { buildLibraryTalentSheetPrompt } from '@/lib/prompts/character-prompt';
 import { cropTalentSheetPortrait } from '@/lib/talent/crop-sheet-portrait';
 import { recordProvenance } from '@/lib/compliance/provenance';
@@ -35,6 +32,7 @@ import { STORAGE_BUCKETS } from '@/lib/storage/buckets';
 import { copyStoredImage } from '@/lib/storage/copy-stored-image';
 import { uploadResponse } from '@/lib/storage/upload-response';
 import { OpenStoryWorkflowEntrypoint } from '@/lib/workflow/base-workflow';
+import { generateImageSoftening } from '@/lib/workflows/content-soften';
 import { WorkflowValidationError } from '@/lib/workflow/errors';
 import type {
   LibraryTalentSheetWorkflowInput,
@@ -123,37 +121,40 @@ export class LibraryTalentSheetWorkflow extends OpenStoryWorkflowEntrypoint<Libr
       });
     } else {
       // Step 2: Generate the talent sheet image with references
-      const imageResult = await step.do('generate-sheet-image', async () => {
-        const model = input.imageModel ?? DEFAULT_IMAGE_MODEL;
-        const hasReferenceImages =
-          input.referenceImageUrls && input.referenceImageUrls.length > 0;
-        const prompt = buildLibraryTalentSheetPrompt(
+      const model = input.imageModel ?? DEFAULT_IMAGE_MODEL;
+      const hasReferenceImages =
+        input.referenceImageUrls && input.referenceImageUrls.length > 0;
+      const generationParams: ImageGenerationParams = {
+        model,
+        prompt: buildLibraryTalentSheetPrompt(
           input.talentName,
           input.talentDescription,
           hasReferenceImages
-        );
+        ),
+        imageSize: 'landscape_16_9',
+        numImages: 1,
+        resolution: '2K',
+      } satisfies ImageGenerationParams;
 
-        logger.info(
-          `[LibraryTalentSheetWorkflow:cf] Generating sheet with model ${model}${hasReferenceImages ? ' (with reference images)' : ' (text-to-image only)'}`
-        );
+      // Only include referenceImageUrls if provided
+      if (hasReferenceImages) {
+        generationParams.referenceImageUrls = input.referenceImageUrls;
+      }
 
-        const generationParams: ImageGenerationParams = {
-          model,
-          prompt,
-          imageSize: 'landscape_16_9',
-          numImages: 1,
-          resolution: '2K',
-        } satisfies ImageGenerationParams;
-
-        // Only include referenceImageUrls if provided
-        if (hasReferenceImages) {
-          generationParams.referenceImageUrls = input.referenceImageUrls;
-        }
-
-        return await generateImageWithProvider(generationParams, {
-          scopedDb: scopedDb.credentials,
-        });
+      // Reseeds on a content flag, then one softened prompt (#1293).
+      const generation = await generateImageSoftening({
+        step,
+        scopedDb,
+        workflowRunId: event.instanceId,
+        userId: input.userId,
+        kind: 'talent-sheet',
+        logTag: '[LibraryTalentSheetWorkflow:cf]',
+        subject: `sheet${hasReferenceImages ? ' (with reference images)' : ' (text-to-image only)'}`,
+        stepName: 'generate-sheet-image',
+        params: generationParams,
+        meta: { talentId: input.talentId },
       });
+      const imageResult = generation.result;
 
       // Before the deduction guard — see recordFalUsageStep (#1069).
       sheetUsage = await recordFalUsageStep(

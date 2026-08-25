@@ -3,6 +3,7 @@ import { sessionQueryOptions } from '@/lib/auth/session-query';
 import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { configureLogging } from '@/lib/observability/logger';
+import { flushReactErrors } from '@/lib/observability/react-errors';
 import { PostHogProvider } from '@posthog/react';
 import type { QueryClient } from '@tanstack/react-query';
 import { QueryClientProvider } from '@tanstack/react-query';
@@ -89,6 +90,7 @@ const ObservabilityProvider: FC<{
         api_host: apiHost,
         defaults: '2025-05-24',
         capture_exceptions: true,
+        loaded: flushReactErrors,
         debug: false,
         ...(user && {
           bootstrap: { distinctID: user.id, isIdentifiedID: true },

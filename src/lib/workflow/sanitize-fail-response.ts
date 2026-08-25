@@ -1,3 +1,5 @@
+import { errorMessage } from '@/lib/errors';
+
 const MAX_MESSAGE_LENGTH = 500;
 
 /** Known Cloudflare error codes mapped to human-readable messages */
@@ -46,7 +48,7 @@ export function sanitizeFailResponse(failResponse: unknown): string {
 function extractRawMessage(value: unknown): string {
   if (typeof value === 'string') return value;
   if (value == null) return '';
-  if (value instanceof Error) return value.message || value.toString();
+  if (value instanceof Error) return errorMessage(value) || value.toString();
   if (typeof value === 'number' || typeof value === 'boolean') {
     return String(value);
   }

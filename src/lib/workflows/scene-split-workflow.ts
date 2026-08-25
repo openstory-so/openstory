@@ -217,7 +217,7 @@ async function triggerPreviewImage({
         userId: input.userId,
         teamId: input.teamId,
         sequenceId,
-        prompt: buildPreviewPrompt(sceneText, input.styleConfig),
+        prompt: buildPreviewPrompt(sceneText),
         model: PREVIEW_IMAGE_MODEL,
         imageSize: aspectRatioToImageSize(input.aspectRatio),
         numImages: 1,

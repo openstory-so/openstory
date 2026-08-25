@@ -1,47 +1,64 @@
 /**
- * Pending-generate intent (#1187).
+ * Pending composer intent (#1187, #1286).
  *
- * When an anonymous visitor clicks Generate, the auth gate interrupts with
- * the sign-in dialog. Remember the click here (localStorage, next to the
- * draft it belongs with) so the composer can pick the flow back up — enhance
- * nudge, billing gate, generation — as soon as the user is signed in, whether
- * sign-in finished in-dialog (OTP) or via a full OAuth redirect. Short
- * expiry: resuming a minutes-old click is helpful, resuming a stale one fires
- * a generation the user no longer expects.
+ * When an anonymous visitor clicks Generate or Enhance Script, the auth gate
+ * interrupts with the sign-in dialog. Remember the click here so the composer
+ * can pick the flow back up after sign-in. Short expiry: a stale click must
+ * not fire a generation the user no longer expects.
  */
 const STORAGE_KEY = 'openstory:pending-generate';
 const EXPIRY_MS = 10 * 60 * 1000;
 
-export function markPendingGenerate(): void {
+export type PendingIntent = 'generate' | 'enhance';
+
+export function markPendingIntent(action: PendingIntent): void {
   if (typeof window === 'undefined') return;
   try {
-    localStorage.setItem(STORAGE_KEY, String(Date.now()));
+    localStorage.setItem(STORAGE_KEY, `${action}:${Date.now()}`);
   } catch {
-    // localStorage unavailable — the user just clicks Generate again.
+    // localStorage unavailable — the user just clicks again.
   }
 }
 
-/** Non-consuming peek. True when a fresh pending Generate click is stored —
- *  lets the welcome-credits dialog adapt its CTA without eating the intent. */
-export function hasPendingGenerate(): boolean {
-  if (typeof window === 'undefined') return false;
+function peek(): PendingIntent | null {
+  if (typeof window === 'undefined') return null;
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw === null) return false;
-    const at = Number(raw);
-    return Number.isFinite(at) && Date.now() - at <= EXPIRY_MS;
+    if (raw === null) return null;
+    // Legacy #1187: a bare timestamp meant Generate.
+    const asNum = Number(raw);
+    if (Number.isFinite(asNum)) {
+      return Date.now() - asNum <= EXPIRY_MS ? 'generate' : null;
+    }
+    const colon = raw.indexOf(':');
+    if (colon < 0) return null;
+    const action = raw.slice(0, colon);
+    const at = Number(raw.slice(colon + 1));
+    if (
+      (action === 'generate' || action === 'enhance') &&
+      Number.isFinite(at) &&
+      Date.now() - at <= EXPIRY_MS
+    ) {
+      return action;
+    }
+    return null;
   } catch {
-    return false;
+    return null;
   }
 }
 
-/** Read-and-clear. True when a fresh pending Generate click was stored. */
-export function takePendingGenerate(): boolean {
-  const pending = hasPendingGenerate();
+/** Non-consuming peek — welcome-credits CTA without eating the intent. */
+export function hasPendingGenerate(): boolean {
+  return peek() != null;
+}
+
+/** Read-and-clear. The action to resume, or null if nothing fresh is stored. */
+export function takePendingIntent(): PendingIntent | null {
+  const action = peek();
   try {
     localStorage.removeItem(STORAGE_KEY);
   } catch {
     // localStorage unavailable — nothing stored to clear.
   }
-  return pending;
+  return action;
 }

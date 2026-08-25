@@ -19,10 +19,7 @@ import {
   getVariantGridConfig,
 } from '@/lib/constants/aspect-ratios';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
-import {
-  generateImageWithProvider,
-  type ImageGenerationParams,
-} from '@/lib/image/image-generation';
+import type { ImageGenerationParams } from '@/lib/image/image-generation';
 import { recordProvenance } from '@/lib/compliance/provenance';
 import { uploadImageToStorage } from '@/lib/image/image-storage';
 import { r2KeyFromUrl } from '@/lib/storage/buckets';
@@ -33,6 +30,7 @@ import {
 import { getVariantImagePrompt } from '@/lib/prompts/variant-image';
 import { getGenerationChannel } from '@/lib/realtime';
 import { OpenStoryWorkflowEntrypoint } from '@/lib/workflow/base-workflow';
+import { generateImageSoftening } from '@/lib/workflows/content-soften';
 import { WorkflowValidationError } from '@/lib/workflow/errors';
 import type {
   ShotVariantWorkflowInput,
@@ -43,7 +41,13 @@ import { getLogger } from '@/lib/observability/logger';
 
 const logger = getLogger(['openstory', 'workflow', 'shot-variant']);
 
-type PrepResult = { params: ImageGenerationParams; versionId: string };
+type PrepResult = {
+  params: ImageGenerationParams;
+  versionId: string;
+  /** Authored grid prompt (pre-legend) — what a content soften rewrites. */
+  basePrompt: string;
+  references: ReferenceImageDescription[];
+};
 
 export class ShotVariantWorkflow extends OpenStoryWorkflowEntrypoint<ShotVariantWorkflowInput> {
   protected override async runImpl(
@@ -115,7 +119,12 @@ export class ShotVariantWorkflow extends OpenStoryWorkflowEntrypoint<ShotVariant
         // half of this guard already covers; resolving the anchor here instead
         // would re-read a pointer the spawn never saw.
         if (!input.shotId || !input.sequenceId || !input.frameId) {
-          return { params, versionId: '' };
+          return {
+            params,
+            versionId: '',
+            basePrompt,
+            references: allReferences,
+          };
         }
         // The trigger's frame (frame id ≠ shot id), checked for existence only.
         const frame = await scopedDb.liveRead.frames.getById(input.frameId);
@@ -144,7 +153,12 @@ export class ShotVariantWorkflow extends OpenStoryWorkflowEntrypoint<ShotVariant
           { shotId: input.shotId, status: 'generating' }
         );
 
-        return { params, versionId: version.id };
+        return {
+          params,
+          versionId: version.id,
+          basePrompt,
+          references: allReferences,
+        };
       }
     );
 
@@ -152,14 +166,36 @@ export class ShotVariantWorkflow extends OpenStoryWorkflowEntrypoint<ShotVariant
       return { variantImageUrl: '' };
     }
 
-    const imageResult = await step.do('generate-image', async () => {
-      logger.info(
-        `[ShotVariantWorkflow] Generating variant grid ${input.shotId} with model ${prep.params.model}`
-      );
-      return generateImageWithProvider(prep.params, {
-        scopedDb: scopedDb.credentials,
-      });
+    // Reseeds on a content flag, then one softened prompt rebuilt with the
+    // same reference legend (#1293).
+    const generation = await generateImageSoftening({
+      step,
+      scopedDb,
+      workflowRunId,
+      userId: input.userId,
+      sequenceId: input.sequenceId,
+      kind: 'variant-grid',
+      logTag: '[ShotVariantWorkflow]',
+      subject: `variant grid ${input.shotId}`,
+      stepName: 'generate-image',
+      params: prep.params,
+      prompt: prep.basePrompt,
+      rebuild: (nextPrompt, model) => {
+        const rebuilt = buildReferenceImagePrompt(
+          nextPrompt,
+          prep.references,
+          IMAGE_MODELS[model].maxPromptLength
+        );
+        return {
+          ...prep.params,
+          model,
+          prompt: rebuilt.prompt,
+          referenceImageUrls: rebuilt.referenceUrls,
+        };
+      },
+      meta: { shotId: input.shotId },
     });
+    const imageResult = generation.result;
 
     // Before the deduction guard — see recordFalUsageStep (#1069). Native
     // xAI images have no fal units; sampling them would corrupt fal medians.

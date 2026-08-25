@@ -78,6 +78,11 @@ import {
   promptFromFalInput,
   type OptimisedPromptPreview,
 } from '@/components/scenes/optimised-prompt-panel';
+import {
+  CONTENT_REJECTION_USER_HINT,
+  CONTENT_REJECTION_USER_TITLE,
+  isContentRejectionError,
+} from '@/lib/ai/content-rejection';
 import { isNativeGrokVideoModel } from '@/lib/ai/grok-native';
 import { buildImageRequest } from '@/lib/image/build-image-request';
 import { buildGrokVideoRequest } from '@/lib/motion/build-grok-video-request';
@@ -114,6 +119,16 @@ import { ShotDurationField } from './shot-duration-field';
 import { getLogger } from '@/lib/observability/logger';
 
 const logger = getLogger(['openstory', 'ui', 'scenes', 'scene-script-prompts']);
+
+function toastGenerationError(label: string, error: unknown) {
+  if (isContentRejectionError(error)) {
+    toast.info(CONTENT_REJECTION_USER_TITLE, {
+      description: CONTENT_REJECTION_USER_HINT,
+    });
+    return;
+  }
+  toast.error(label, { description: errorMessage(error) });
+}
 
 /** Inspector tab values ARE the URL facet tokens — one set, no mapping. */
 export type TabValue = SceneFacet;
@@ -856,9 +871,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
           queryKey: [...BILLING_BALANCE_KEY],
         });
       } else {
-        toast.error('Image generation failed', {
-          description: errorMessage(error),
-        });
+        toastGenerationError('Image generation failed', error);
       }
 
       // Rollback on error - set status to failed
@@ -947,9 +960,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
           queryKey: [...BILLING_BALANCE_KEY],
         });
       } else {
-        toast.error('Motion generation failed', {
-          description: errorMessage(error),
-        });
+        toastGenerationError('Motion generation failed', error);
       }
 
       // Rollback on error
@@ -1500,7 +1511,9 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
                     density="header-chip"
                     isRegenerating={visualBusy}
                     onRegenerate={() =>
-                      regeneratePromptMutation.mutate({ promptType: 'visual' })
+                      regeneratePromptMutation.mutate({
+                        promptType: 'visual',
+                      })
                     }
                   />
                 )}
@@ -1770,7 +1783,9 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
                     density="header-chip"
                     isRegenerating={motionBusy}
                     onRegenerate={() =>
-                      regeneratePromptMutation.mutate({ promptType: 'motion' })
+                      regeneratePromptMutation.mutate({
+                        promptType: 'motion',
+                      })
                     }
                   />
                 )}

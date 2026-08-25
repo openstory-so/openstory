@@ -74,6 +74,7 @@ const SOURCE_LABEL: Record<PromptVariantSource, string> = {
   'user-edit': 'You',
   regenerated: 'Regenerated',
   restored: 'Restored',
+  softened: 'Softened',
 };
 
 const SOURCE_VARIANT: Record<
@@ -84,6 +85,7 @@ const SOURCE_VARIANT: Record<
   'user-edit': 'default',
   regenerated: 'outline',
   restored: 'outline',
+  softened: 'outline',
 };
 
 const TITLE: Record<PromptHistoryMode, string> = {
@@ -351,7 +353,7 @@ const MediaHistoryList: React.FC<MediaHistoryListProps> = ({
                   {cancelling && (
                     <Loader2 className="mr-2 h-3 w-3 animate-spin motion-reduce:animate-none" />
                   )}
-                  Cancel
+                  <span>Cancel</span>
                 </Button>
               </div>
             )}
@@ -401,7 +403,7 @@ const MediaHistoryList: React.FC<MediaHistoryListProps> = ({
                       {selecting && (
                         <Loader2 className="mr-2 h-3 w-3 animate-spin" />
                       )}
-                      Use this version
+                      <span>Use this version</span>
                     </Button>
                   </div>
                 )}
@@ -532,7 +534,7 @@ const PromptHistoryList: React.FC<PromptHistoryListProps> = ({
                     {cancelling && (
                       <Loader2 className="mr-2 h-3 w-3 animate-spin motion-reduce:animate-none" />
                     )}
-                    Cancel
+                    <span>Cancel</span>
                   </Button>
                 </div>
               )}
@@ -574,6 +576,12 @@ const PromptHistoryList: React.FC<PromptHistoryListProps> = ({
                   {formatTimestamp(row.createdAt)}
                 </span>
               </div>
+              {row.source === 'softened' && (
+                <p className="text-xs text-muted-foreground">
+                  Rewritten to pass a content checker. The original is still in
+                  this list.
+                </p>
+              )}
               {row.createdByName && (
                 <span className="text-xs text-muted-foreground">
                   by {row.createdByName}
@@ -603,7 +611,7 @@ const PromptHistoryList: React.FC<PromptHistoryListProps> = ({
                       {restorePending && (
                         <Loader2 className="mr-2 h-3 w-3 animate-spin" />
                       )}
-                      Restore this version
+                      <span>Restore this version</span>
                     </Button>
                   </div>
                 )}
@@ -759,7 +767,7 @@ export const PromptHistorySheet: React.FC<PromptHistorySheetProps> = (
   const description = isMusic
     ? 'Append-only history. Restore writes a new entry without deleting anything.'
     : mode === 'visual'
-      ? 'Prompt edits and generated images. Selecting an image restores the still and the prompt that produced it (when linked).'
+      ? 'Prompt edits and generated images. Selecting an image restores the still and the prompt that produced it (when linked). A Softened version is an automatic rewrite to pass a content checker — the original stays here.'
       : 'Prompt edits and rendered videos. Selecting a video repoints playback without deleting anything.';
 
   return (

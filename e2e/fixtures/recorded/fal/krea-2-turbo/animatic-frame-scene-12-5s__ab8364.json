@@ -1,0 +1,33 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Animatic frame. Scene 12 — 5s\nINT. EMPTY STAGE, AFTER — NIGHT\nOverhead flat-lay on the scuffed black stage floor, single work light: the coral tube lying beside the crumpled napkin set list and a sweating water bottle. Her hand reaches in, drags the tube toward her, closes around it, and lifts it out of frame.. Loose freehand black line drawing on plain flat white, quick gesture strokes, nothing ruled or geometric. Figures as a few flowing outline strokes with blank faces, the setting hinted with a handful of loose lines. No shading, no texture, no colour, no rendering, no realism, no detail. No text, no titles, no subtitles, no watermarks, no letters, no words, no signs, no UI elements.",
+        "model": "fal-ai/krea-2/turbo"
+      },
+      "response": {
+        "json": {
+          "images": [
+            {
+              "url": "https://v3b.fal.media/files/b/0aa74af3/5Sp15W-MUXUYjp5SYCme-_oNKuqLeS.png",
+              "content_type": "image/png",
+              "file_name": "5Sp15W-MUXUYjp5SYCme-_oNKuqLeS.png",
+              "file_size": null,
+              "width": 1024,
+              "height": 576
+            }
+          ],
+          "timings": {
+            "inference": 0.613156131003052
+          },
+          "seed": 1611383455,
+          "has_nsfw_concepts": [false],
+          "prompt": "Animatic frame. Scene 12 — 5s\nINT. EMPTY STAGE, AFTER — NIGHT\nOverhead flat-lay on the scuffed black stage floor, single work light: the coral tube lying beside the crumpled napkin set list and a sweating water bottle. Her hand reaches in, drags the tube toward her, closes around it, and lifts it out of frame.. Loose freehand black line drawing on plain flat white, quick gesture strokes, nothing ruled or geometric. Figures as a few flowing outline strokes with blank faces, the setting hinted with a handful of loose lines. No shading, no texture, no colour, no rendering, no realism, no detail. No text, no titles, no subtitles, no watermarks, no letters, no words, no signs, no UI elements."
+        },
+        "status": 200,
+        "billableUnits": 1
+      }
+    }
+  ]
+}

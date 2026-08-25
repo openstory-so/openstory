@@ -204,7 +204,7 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
           {/* Image Model Section */}
           <section className="flex flex-col gap-2">
             <h3 className="text-sm font-medium text-foreground">
-              Image Model{!singleSelectImage && 's'}
+              {singleSelectImage ? 'Image Model' : 'Image Models'}
             </h3>
             {singleSelectImage ? (
               <ImageModelSelector
@@ -230,7 +230,7 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
           {/* Motion Model Section */}
           <section className="flex flex-col gap-2">
             <h3 className="text-sm font-medium text-foreground">
-              Motion Model{!singleSelectMotion && 's'}
+              {singleSelectMotion ? 'Motion Model' : 'Motion Models'}
             </h3>
             {onAutoGenerateMotionChange && (
               <AutoToggle
@@ -271,7 +271,7 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
               {/* Music Model Section */}
               <section className="flex flex-col gap-2">
                 <h3 className="text-sm font-medium text-foreground">
-                  Music Model{!singleSelectMusic && 's'}
+                  {singleSelectMusic ? 'Music Model' : 'Music Models'}
                 </h3>
                 <AutoToggle
                   id="auto-generate-music"

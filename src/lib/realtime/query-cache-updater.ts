@@ -162,6 +162,8 @@ export function updateQueryCacheFromEvent(
       // the alternate) and only refresh the per-model variant/model-list
       // queries below so the new model appears in the dropdown.
       const variantOnly = data.variantOnly === true;
+      const promptSoftened = data.promptSoftened === true;
+      const modelFallback = data.modelFallback === true;
       if (!variantOnly) {
         queryClient.setQueryData<ShotView[]>(shotKeys.list(sequenceId), (old) =>
           old?.map((f) =>
@@ -250,6 +252,40 @@ export function updateQueryCacheFromEvent(
             `image-versions:${shotId}`
           );
         }
+      }
+      // A softened prompt version just landed (#1272) — refresh visual history
+      // and the shot list so Versions / the current prompt pick it up before
+      // the still itself completes.
+      if (promptSoftened && shotId) {
+        debouncedInvalidate(
+          queryClient,
+          promptVariantKeys.shot('visual', shotId),
+          `prompt-variants:visual:${shotId}`
+        );
+        debouncedInvalidate(
+          queryClient,
+          shotKeys.list(sequenceId),
+          `shots:${sequenceId}`
+        );
+      }
+      // Fallback still is a new `kind: 'model'` row on Grok — refresh the
+      // model switcher / version history before it completes.
+      if (modelFallback && shotId) {
+        debouncedInvalidate(
+          queryClient,
+          ['sequence-image-variants', sequenceId],
+          `image-variants:${sequenceId}`
+        );
+        debouncedInvalidate(
+          queryClient,
+          ['sequence-image-models', sequenceId],
+          `image-models:${sequenceId}`
+        );
+        debouncedInvalidate(
+          queryClient,
+          shotKeys.imageVersions(shotId),
+          `image-versions:${shotId}`
+        );
       }
       break;
     }
@@ -442,6 +478,11 @@ export function updateQueryCacheFromEvent(
           `style:${styleId}`
         );
       }
+      debouncedInvalidate(
+        queryClient,
+        styleKeys.forSequence(sequenceId),
+        `style:sequence:${sequenceId}`
+      );
       // `sequence.styleConfig` flipping non-null is what ends the pending state.
       debouncedInvalidate(
         queryClient,
