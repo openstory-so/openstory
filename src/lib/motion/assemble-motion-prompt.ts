@@ -48,6 +48,12 @@ type AssembleOptions = {
    * "Avoid jitter and bent limbs.").
    */
   characterTags?: readonly string[];
+  /**
+   * The scene editor's "Include SFX & dialogue" toggle. Models with a
+   * `generate_audio` request field get it there; H3 Max has no field and
+   * always renders an audio track, so `false` is written into its prompt.
+   */
+  generateAudio?: boolean;
 };
 
 /**
@@ -61,6 +67,7 @@ export function assembleMotionPrompt({
   motionPrompt,
   model,
   characterTags,
+  generateAudio,
 }: AssembleOptions): string {
   const { dialogue, audio, fullPrompt } = motionPrompt;
   const supportsAudio = videoModelSupportsAudio(model);
@@ -93,7 +100,12 @@ export function assembleMotionPrompt({
         );
         break;
       case 'MiniMax':
-        assembled = buildMinimaxH3Prompt(fullPrompt, dialogueData, audioData);
+        assembled = buildMinimaxH3Prompt(
+          fullPrompt,
+          dialogueData,
+          audioData,
+          generateAudio
+        );
         break;
       case 'Google':
       default:
@@ -208,9 +220,18 @@ function buildSeedancePrompt(
 function buildMinimaxH3Prompt(
   fullPrompt: string,
   dialogue: MotionDialogue | undefined,
-  audio: MotionAudio | undefined
+  audio: MotionAudio | undefined,
+  generateAudio: boolean | undefined
 ): string {
   const parts = [fullPrompt];
+
+  // No API switch: "off" is a silent soundscape and no dialogue lines.
+  if (generateAudio === false) {
+    parts.push(
+      'overall_soundscape: Silent. No dialogue, no sound effects, no music.\nnon_diegetic_music: N/A'
+    );
+    return parts.join('\n\n');
+  }
 
   if (dialogue) {
     // ponytail: dialogue lines carry no language; assume English until the

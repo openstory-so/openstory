@@ -444,6 +444,12 @@ export interface MotionWorkflowInput extends SequenceWorkflowContext {
    */
   userEditProvenance?: UserEditProvenance;
   /**
+   * With `userEditProvenance`: the text the user typed, persisted as the
+   * `user-edit` version. `prompt` is that text after model assembly (dialogue
+   * tags, audio direction) — storing it would double-assemble on the next run.
+   */
+  userEditText?: string;
+  /**
    * Only meaningful when `userEditedPrompt`: the dialogue/audio direction of the
    * version being edited, captured at trigger time so the recorded user-edit
    * version carries it forward (audio-capable models still get enrichment after
@@ -1248,6 +1254,8 @@ export interface BatchMotionMusicWorkflowInput extends SequenceWorkflowContext {
     generateAudio?: boolean;
     /** See `MotionWorkflowInput.userEditProvenance`. */
     userEditProvenance?: UserEditProvenance;
+    /** See `MotionWorkflowInput.userEditText`. */
+    userEditText?: string;
     /** See `MotionWorkflowInput.sceneTitle`. */
     sceneTitle?: string;
     /** See `MotionWorkflowInput.sequenceTitle`. */

@@ -89,6 +89,7 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
             motionPrompt: shot.motionPrompt,
             model,
             characterTags: shot.characterTags,
+            generateAudio: shot.generateAudio,
           })
         : shot.prompt;
 
@@ -110,6 +111,7 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
         aspectRatio: shot.aspectRatio,
         generateAudio: shot.generateAudio,
         userEditProvenance: shot.userEditProvenance,
+        userEditText: shot.userEditText,
         sceneTitle: shot.sceneTitle,
         sequenceTitle: shot.sequenceTitle,
         priorMotion: shot.priorMotion,

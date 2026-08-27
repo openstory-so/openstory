@@ -279,15 +279,6 @@ export function videoModelSupportsAudio(modelKey: ImageToVideoModel): boolean {
   return 'generate_audio' in schemaOf(modelKey).shape;
 }
 
-/** Whether the request can switch audio off. H3 Max always generates audio
- *  (`supportsAudio: true` override, no `generate_audio` field), so the
- *  "Include SFX & dialogue" toggle would be a no-op there. */
-export function videoModelAudioToggleable(
-  modelKey: ImageToVideoModel
-): boolean {
-  return 'generate_audio' in schemaOf(modelKey).shape;
-}
-
 /**
  * Runtime validation: Check if a string is a valid TextToImageModel key
  * @param value - String value to validate

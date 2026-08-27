@@ -220,7 +220,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
           const written = await scopedDb.shotPromptVersions.write({
             shotId: input.shotId,
             promptType: 'motion',
-            text: input.prompt,
+            text: input.userEditText ?? input.prompt,
             dialogue: input.priorMotion?.dialogue ?? null,
             audio: input.priorMotion?.audio ?? null,
             source: 'user-edit',

@@ -348,6 +348,20 @@ describe('assembleMotionPrompt', () => {
       ).toBe(true);
     });
 
+    it('writes "off" into the prompt when generateAudio is false (no API field)', () => {
+      const result = assembleMotionPrompt({
+        motionPrompt: makeMotionPrompt(),
+        model,
+        generateAudio: false,
+      });
+
+      expect(result).not.toContain('<d>');
+      expect(result).toContain(
+        'overall_soundscape: Silent. No dialogue, no sound effects, no music.'
+      );
+      expect(result).toContain('non_diegetic_music: N/A');
+    });
+
     it('still switches music off when the scene has no dialogue or audio data', () => {
       const result = assembleMotionPrompt({
         motionPrompt: makeMotionPrompt({

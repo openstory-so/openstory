@@ -33,7 +33,11 @@ import { triggerWorkflow } from '@/lib/workflow/client';
 import { buildWorkflowLabel } from '@/lib/workflow/labels';
 import type { BatchMotionMusicWorkflowInput } from '@/lib/workflow/types';
 
-import { resolveMotionPromptFromVersion } from '@/lib/motion/resolve-motion-prompt';
+import {
+  motionPromptFromVersion,
+  resolveMotionPrompt,
+  resolveMotionPromptFromVersion,
+} from '@/lib/motion/resolve-motion-prompt';
 import { toShotView } from '@/lib/shots/shot-view';
 import { rescanContinuityFromPrompt } from '@/lib/scenes/rescan-continuity-from-prompt';
 import { buildUserEditProvenance } from '@/lib/prompts/user-edit-provenance';
@@ -83,16 +87,27 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
     const userEditedPrompt = Boolean(data.prompt);
     const selectedMotion =
       await context.scopedDb.shotPromptVersions.getSelectedMotion(shot.id);
-    const prompt =
-      data.prompt ||
-      resolveMotionPromptFromVersion(
-        selectedMotion,
-        {
-          characterTags: context.scene?.continuity?.characterTags,
-          description: context.scene?.originalScript.extract ?? null,
-        },
-        model
-      );
+    // An edit replaces the version's `fullPrompt`; model assembly (dialogue
+    // tags, audio direction, no-music) still goes on top — the same thing the
+    // editor's optimised-prompt preview shows. So what fal receives (`prompt`)
+    // and what is persisted as the user-edit version (`data.prompt`) differ.
+    const prompt = resolveMotionPrompt(
+      {
+        motionPrompt: data.prompt
+          ? {
+              fullPrompt: data.prompt,
+              dialogue: selectedMotion?.dialogue ?? null,
+              audio: selectedMotion?.audio ?? null,
+            }
+          : selectedMotion
+            ? motionPromptFromVersion(selectedMotion)
+            : null,
+        characterTags: context.scene?.continuity?.characterTags,
+        description: context.scene?.originalScript.extract ?? null,
+        generateAudio: data.generateAudio,
+      },
+      model
+    );
 
     // Auto-link any element/cast/location tags the user mentioned in their
     // edited motion prompt into the scene's continuity, so downstream
@@ -104,7 +119,7 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
         scopedDb: context.scopedDb,
         sequenceId: sequence.id,
         existing: effectiveContinuity,
-        promptText: prompt,
+        promptText: data.prompt ?? prompt,
       });
       if (rescan.changed && shot.sceneId) {
         effectiveContinuity = rescan.continuity;
@@ -168,7 +183,7 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
         // (#713/#991).
         const userEditProvenance = shouldRecordUserEdit({
           userEditedPrompt,
-          prompt,
+          prompt: data.prompt,
           currentPrompt: selectedMotion?.text ?? null,
         })
           ? await buildUserEditProvenance({
@@ -205,6 +220,7 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
               sceneTitle: context.scene?.metadata?.title,
               sequenceTitle: sequence.title,
               userEditProvenance,
+              userEditText: userEditProvenance ? data.prompt : undefined,
               priorMotion: userEditProvenance
                 ? {
                     dialogue: selectedMotion?.dialogue ?? null,
@@ -440,6 +456,7 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
                 {
                   characterTags: scene?.continuity?.characterTags,
                   description: scene?.originalScript.extract ?? null,
+                  generateAudio: data.generateAudio,
                 },
                 shotModel
               ),
