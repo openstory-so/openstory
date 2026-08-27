@@ -82,6 +82,9 @@ import {
 import { getMediaRoutesFn } from '@/functions/media-routes';
 import { getStorageDomainFn } from '@/functions/storage-config';
 import {
+  boundPromptImages,
+  imageUrlsFromFalInput,
+  imageUrlsFromPromptParts,
   OptimisedPromptPanel,
   promptFromFalInput,
   type OptimisedPromptPreview,
@@ -1193,6 +1196,10 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
           json: JSON.stringify(request.input, null, 2),
           promptLength: prompt.length,
           maxPromptLength: config.maxPromptLength,
+          images: boundPromptImages(
+            imageUrlsFromPromptParts(request.input.prompt),
+            (position) => `<IMAGE_${position - 1}>`
+          ),
         };
       }
       if (byteplusEnabled && getBytePlusVideoModelId(modelKey) !== undefined) {
@@ -1211,10 +1218,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
         );
         const { modelId, ...body } = ark;
         const textPart = ark.prompt.find((part) => part.type === 'text');
-        const prompt =
-          textPart && 'content' in textPart
-            ? String(textPart.content)
-            : modelPrompt;
+        const prompt = textPart?.content ?? modelPrompt;
         return {
           modelName: config.name,
           endpointId: modelId,
@@ -1222,6 +1226,10 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
           json: JSON.stringify(body, null, 2),
           promptLength: prompt.length,
           maxPromptLength: config.maxPromptLength,
+          images: boundPromptImages(
+            imageUrlsFromPromptParts(ark.prompt),
+            (position) => `@Image${position}`
+          ),
         };
       }
       const request = buildMotionRequest(
@@ -1244,6 +1252,10 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
         json: JSON.stringify(request.input, null, 2),
         promptLength: modelPrompt.length,
         maxPromptLength: config.maxPromptLength,
+        images: boundPromptImages(
+          imageUrlsFromFalInput(request.input),
+          (position) => `@Image${position}`
+        ),
       };
     } catch {
       return null;
@@ -1310,9 +1322,14 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
           json: JSON.stringify(body, null, 2),
           promptLength: enhancedPrompt.length,
           maxPromptLength: config.maxPromptLength,
+          images: boundPromptImages(
+            referenceUrls,
+            (position) => `Image ${position}`
+          ),
         };
       }
       const request = buildImageRequest(buildParams);
+      const falImageUrls = imageUrlsFromFalInput(request.input);
       return {
         modelName: config.name,
         endpointId: request.endpointId,
@@ -1320,6 +1337,10 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
         json: JSON.stringify(request.input, null, 2),
         promptLength: enhancedPrompt.length,
         maxPromptLength: config.maxPromptLength,
+        images: boundPromptImages(
+          falImageUrls.length > 0 ? falImageUrls : referenceUrls,
+          (position) => `Image ${position}`
+        ),
       };
     } catch {
       return null;

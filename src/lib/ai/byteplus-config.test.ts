@@ -4,13 +4,23 @@ const env: Record<string, string | undefined> = {};
 
 vi.doMock('#env', () => ({ getEnv: () => env }));
 
-const { claimBytePlusVia, isBytePlusConfigured, arkAdapterConfig } =
-  await import('./byteplus-config');
+const {
+  claimBytePlusVia,
+  isBytePlusConfigured,
+  isBytePlusAssetsConfigured,
+  bytePlusOpenApiConfig,
+  arkAdapterConfig,
+} = await import('./byteplus-config');
 
 describe('claimBytePlusVia', () => {
   beforeEach(() => {
     env.ARK_API_KEY = undefined;
     env.ARK_BASE_URL = undefined;
+    env.BYTEPLUS_ACCESS_KEY = undefined;
+    env.BYTEPLUS_SECRET_KEY = undefined;
+    env.BYTEPLUS_OPENAPI_HOST = undefined;
+    env.BYTEPLUS_ASSET_GROUP_ID = undefined;
+    env.E2E_TEST = undefined;
   });
 
   it('routes to fal when no Ark key is configured', () => {
@@ -73,6 +83,45 @@ describe('claimBytePlusVia', () => {
     env.ARK_BASE_URL = 'http://localhost:4010/ark';
     expect(isBytePlusConfigured()).toBe(true);
     env.E2E_TEST = undefined;
+  });
+});
+
+describe('isBytePlusAssetsConfigured', () => {
+  beforeEach(() => {
+    env.ARK_API_KEY = undefined;
+    env.ARK_BASE_URL = undefined;
+    env.BYTEPLUS_ACCESS_KEY = undefined;
+    env.BYTEPLUS_SECRET_KEY = undefined;
+    env.BYTEPLUS_OPENAPI_HOST = undefined;
+    env.BYTEPLUS_ASSET_GROUP_ID = undefined;
+    env.E2E_TEST = undefined;
+  });
+
+  it('is off without IAM keys', () => {
+    env.ARK_API_KEY = 'ark-test';
+    expect(isBytePlusAssetsConfigured()).toBe(false);
+    expect(bytePlusOpenApiConfig()).toBeUndefined();
+  });
+
+  it('is on when both IAM keys are set', () => {
+    env.BYTEPLUS_ACCESS_KEY = 'AKTEST';
+    env.BYTEPLUS_SECRET_KEY = 'sk-test';
+    env.BYTEPLUS_ASSET_GROUP_ID = 'group-1';
+    expect(isBytePlusAssetsConfigured()).toBe(true);
+    expect(bytePlusOpenApiConfig()).toMatchObject({
+      accessKey: 'AKTEST',
+      secretKey: 'sk-test',
+      groupId: 'group-1',
+    });
+  });
+
+  it('stays off under E2E_TEST unless a mock OpenAPI host is wired', () => {
+    env.BYTEPLUS_ACCESS_KEY = 'AKTEST';
+    env.BYTEPLUS_SECRET_KEY = 'sk-test';
+    env.E2E_TEST = 'true';
+    expect(isBytePlusAssetsConfigured()).toBe(false);
+    env.BYTEPLUS_OPENAPI_HOST = 'http://localhost:4010';
+    expect(isBytePlusAssetsConfigured()).toBe(true);
   });
 });
 

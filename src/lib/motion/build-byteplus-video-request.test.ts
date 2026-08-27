@@ -23,14 +23,20 @@ describe('buildBytePlusVideoRequest', () => {
     expect(request.modelId).toBe('dreamina-seedance-2-5-260628');
   });
 
-  it('renders size as the ratio_resolution template Ark expects', () => {
+  it('uses adaptive size so first-frame jobs follow the still', () => {
     expect(buildBytePlusVideoRequest(base, 'seedance_v2').size).toBe(
-      '16:9_720p'
+      'adaptive_720p'
     );
     expect(
       buildBytePlusVideoRequest({ ...base, aspectRatio: '9:16' }, 'seedance_v2')
         .size
-    ).toBe('9:16_720p');
+    ).toBe('adaptive_720p');
+    expect(
+      buildBytePlusVideoRequest(
+        { ...base, referenceImages: references },
+        'seedance_v2'
+      ).size
+    ).toBe('adaptive_720p');
   });
 
   it('pins the still as start_frame when there are no references', () => {
@@ -65,6 +71,7 @@ describe('buildBytePlusVideoRequest', () => {
     expect(images[0]?.source.value).toBe(base.imageUrl);
     const text = prompt.find((part) => part.type === 'text');
     expect(text?.content).toContain('@Image1');
+    expect(text?.content).not.toMatch(/(^|[^@])image1\b/);
   });
 
   it('binds a reference token to its image position', () => {
@@ -76,6 +83,19 @@ describe('buildBytePlusVideoRequest', () => {
     // The still is @Image1, so the first reference is @Image2.
     expect(text?.content).toContain('@Image2');
     expect(text?.content).not.toContain('SCARLETT');
+  });
+
+  it('does not append a Reference images legend', () => {
+    const { prompt } = buildBytePlusVideoRequest(
+      {
+        ...base,
+        prompt: 'A slow dolly in',
+        referenceImages: references,
+      },
+      'seedance_v2'
+    );
+    const text = prompt.find((part) => part.type === 'text');
+    expect(text?.content).not.toContain('Reference images:');
   });
 
   // Left implicit, Ark's own default would apply — and for images that default

@@ -15,19 +15,38 @@ import { getEnv } from '#env';
 import type { MediaVia } from '@/lib/ai/via';
 import { workersSafeFetch } from '@/lib/ai/workers-safe-fetch';
 
-/**
- * Ark data-plane base URL. The adapter defaults to the Asia-Pacific host;
- * `ARK_BASE_URL` overrides it so e2e can point at aimock. Ark keys are
- * region-isolated and Seedance is served only from `ap-southeast`, so an EU
- * key against the default host fails at request time, not at startup.
- */
-function getArkBaseUrl(): string | undefined {
-  return getEnv().ARK_BASE_URL || undefined;
+function optionalEnv(name: string): string | undefined {
+  const value = Reflect.get(getEnv(), name);
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
 }
 
 /** The platform Ark key, or undefined when BytePlus is not configured. */
 export function getArkApiKey(): string | undefined {
-  return getEnv().ARK_API_KEY || undefined;
+  return optionalEnv('ARK_API_KEY');
+}
+
+/**
+ * IAM AK/SK for the Ark control plane (Assets API). Distinct from
+ * `ARK_API_KEY` — CreateAsset rejects Bearer tokens.
+ */
+function getBytePlusAccessKey(): string | undefined {
+  return optionalEnv('BYTEPLUS_ACCESS_KEY');
+}
+
+function getBytePlusSecretKey(): string | undefined {
+  return optionalEnv('BYTEPLUS_SECRET_KEY');
+}
+
+function getBytePlusAssetGroupId(): string | undefined {
+  return optionalEnv('BYTEPLUS_ASSET_GROUP_ID');
+}
+
+function getArkBaseUrl(): string | undefined {
+  return optionalEnv('ARK_BASE_URL');
+}
+
+function getBytePlusOpenApiHost(): string | undefined {
+  return optionalEnv('BYTEPLUS_OPENAPI_HOST');
 }
 
 /**
@@ -44,7 +63,7 @@ export function getArkApiKey(): string | undefined {
 export function isBytePlusConfigured(): boolean {
   if (getArkApiKey() === undefined) return false;
   const env = getEnv();
-  if (env.E2E_TEST === 'true' && !env.ARK_BASE_URL) return false;
+  if (env.E2E_TEST === 'true' && !getArkBaseUrl()) return false;
   return true;
 }
 
@@ -60,6 +79,41 @@ export function claimBytePlusVia(options: {
   if (!options.native) return 'fal';
   if (options.usingOwnFalKey) return 'fal';
   return isBytePlusConfigured() ? 'byteplus' : 'fal';
+}
+
+/**
+ * True when we can call CreateAsset. Same e2e hermetic rule as the data
+ * plane: Playwright injects `.env.local`, so a laptop IAM key would hit
+ * real BytePlus unless a mock host is wired.
+ */
+export function isBytePlusAssetsConfigured(): boolean {
+  if (!getBytePlusAccessKey() || !getBytePlusSecretKey()) return false;
+  const env = getEnv();
+  if (env.E2E_TEST === 'true' && !getBytePlusOpenApiHost()) return false;
+  return true;
+}
+
+export function bytePlusOpenApiConfig():
+  | {
+      accessKey: string;
+      secretKey: string;
+      host?: string;
+      groupId?: string;
+    }
+  | undefined {
+  const accessKey = getBytePlusAccessKey();
+  const secretKey = getBytePlusSecretKey();
+  if (!accessKey || !secretKey || !isBytePlusAssetsConfigured()) {
+    return undefined;
+  }
+  const host = getBytePlusOpenApiHost();
+  const groupId = getBytePlusAssetGroupId();
+  return {
+    accessKey,
+    secretKey,
+    ...(host && { host }),
+    ...(groupId && { groupId }),
+  };
 }
 
 /**

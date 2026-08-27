@@ -111,7 +111,7 @@ export const StartingFrameVariants: React.FC<StartingFrameVariantsProps> = ({
         variant="ghost"
         size="sm"
         onClick={() => setOpen(true)}
-        className="absolute top-2 left-2 z-10 h-8 gap-1.5 bg-black/50 px-2 text-xs text-white hover:bg-black/70"
+        className="absolute top-2 left-2 z-20 h-8 gap-1.5 bg-black/50 px-2 text-xs text-white hover:bg-black/70"
         aria-label={isUpscaling ? 'Upscaling frame variant' : 'Frame variants'}
         aria-haspopup="dialog"
         aria-expanded={open}

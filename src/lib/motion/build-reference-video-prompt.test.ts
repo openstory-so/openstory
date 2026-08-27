@@ -76,6 +76,20 @@ describe('buildReferenceVideoPrompt (Seedance config)', () => {
     expect(result.prompt).toContain('@Image3: Jack - tall man');
   });
 
+  it('omits the legend when skipLegend is set', () => {
+    const result = buildReferenceVideoPrompt(
+      seedanceConfig,
+      'A slow dolly in',
+      STILL,
+      [ref('https://example.com/a.png', 'Alice - tall woman', 'Alice')],
+      undefined,
+      { skipLegend: true }
+    );
+    expect(result.prompt).not.toContain('Reference images:');
+    expect(result.prompt).not.toContain('@Image2:');
+    expect(result.imageUrls).toEqual([STILL, 'https://example.com/a.png']);
+  });
+
   it('falls back to a legend line for refs never mentioned in the prompt', () => {
     const result = buildReferenceVideoPrompt(
       seedanceConfig,

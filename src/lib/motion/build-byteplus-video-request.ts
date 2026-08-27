@@ -4,7 +4,8 @@
  *
  * Ark is not fal-shaped, so none of the fal codegen (`bun motion:codegen`,
  * `MOTION_TRANSFORMS`) applies: there is no endpoint id, `size` is a
- * `ratio_resolution` template rather than an `aspect_ratio` field, and images
+ * `ratio_resolution` template rather than an `aspect_ratio` field (and
+ * first-frame / first-last-frame jobs may only send `adaptive`), and images
  * ride as roled prompt parts instead of `image_url` / `image_urls[]`.
  *
  * The one constraint that shapes this file: **Ark rejects frame roles and
@@ -13,7 +14,9 @@
  * becomes the first `reference` image and the prompt declares it as the
  * opening frame, which is exactly what fal's `reference-to-video` endpoint
  * does for the same underlying model. That keeps one prompt-binding
- * implementation (`buildReferenceVideoPrompt`, `@ImageN`) across both routes.
+ * implementation (`buildReferenceVideoPrompt`) across both routes. Seedance
+ * 2.5 tags are `@Image1`/`@Image2` on fal and Ark. Ark does not want a
+ * trailing "Reference images:" legend.
  *
  * Client-safe: no env, no adapters.
  */
@@ -51,7 +54,7 @@ export type BytePlusVideoRequest = {
   /** BytePlus Ark model id (not a fal endpoint). */
   modelId: string;
   prompt: BytePlusPromptPart[];
-  /** `ratio_resolution` template, e.g. `16:9_720p`. */
+  /** `ratio_resolution` template. Frame jobs are `adaptive_720p`. */
   size: string;
   /** Whole seconds; the adapter snaps it into the model's range. */
   duration?: number;
@@ -93,7 +96,10 @@ export function buildBytePlusVideoRequest(
   const references = (options.referenceImages ?? []).filter(
     (ref) => ref.referenceImageUrl
   );
-  const size = `${options.aspectRatio ?? '16:9'}_${BYTEPLUS_RESOLUTION}`;
+  // Seedance 2.5 first-frame / first-last-frame rejects a concrete ratio
+  // (`9:16`, `16:9`, …). Output follows the first-frame still; `adaptive`
+  // is the only accepted value. Sequence motion always sends a still.
+  const size = `adaptive_${BYTEPLUS_RESOLUTION}`;
 
   const modelOptions: Record<string, unknown> = {
     // Ark defaults `watermark` to false for video, but state it: the flag is
@@ -135,7 +141,8 @@ export function buildBytePlusVideoRequest(
         options.prompt,
         options.imageUrl,
         references,
-        config.maxPromptLength
+        config.maxPromptLength,
+        { skipLegend: true }
       )
     : // A model with a BytePlus route but no reference-tag convention can't
       // bind images to prompt positions; inline the descriptions instead so

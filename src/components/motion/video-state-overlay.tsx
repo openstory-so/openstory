@@ -75,7 +75,9 @@ export const VideoStateOverlay: React.FC<VideoStateOverlayProps> = ({
   return (
     <div
       className={cn(
-        'absolute inset-0 z-10 flex items-center justify-center',
+        // pointer-events-none: the failed overlay is informational. Clicks
+        // must reach the start-frame share control (and the still itself).
+        'pointer-events-none absolute inset-0 z-10 flex items-center justify-center',
         className
       )}
       style={{

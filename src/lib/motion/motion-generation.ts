@@ -1,4 +1,5 @@
 import { getEnv } from '#env';
+import { toArkMediaUrl } from '@/lib/ai/byteplus-asset-ingest';
 import {
   arkAdapterConfig,
   claimBytePlusVia,
@@ -6,6 +7,11 @@ import {
   isBytePlusConfigured,
   loadBytePlusVideo,
 } from '@/lib/ai/byteplus-config';
+import { reportBytePlusPortraitFilterFallback } from '@/lib/ai/byteplus-observability';
+import {
+  BYTEPLUS_PORTRAIT_FILTER_NO_FAL_MESSAGE,
+  isBytePlusPortraitFilterError,
+} from '@/lib/ai/byteplus-portrait-filter';
 import { bytePlusVideoUnitsBilled } from '@/lib/ai/byteplus-pricing';
 import { withBytePlusQuotaRetry } from '@/lib/ai/byteplus-rate-limit';
 import {
@@ -137,6 +143,79 @@ async function resolveOptionalFalKey(
   return platformKey ? { key: platformKey, source: 'platform' } : undefined;
 }
 
+async function submitFalMotionJob(
+  options: GenerateMotionOptions,
+  modelKey: ImageToVideoModel
+): Promise<{ jobId: string; usedOwnKey: boolean }> {
+  const hasReferenceImages = (options.referenceImages?.length ?? 0) > 0;
+  const endpoint = resolveMotionEndpoint(modelKey, hasReferenceImages, 'fal');
+  const key = await resolveFalMotionKey(options.scopedDb);
+
+  // Locally-served /r2/ image URLs aren't reachable by real fal — swap them
+  // for a fal-storage upload first (no-op in prod and e2e replay).
+  const imageUrl = await ensureExternallyFetchableUrl(
+    options.imageUrl,
+    key.key
+  );
+
+  // Reference URLs only need to be fetchable when they go on the wire
+  // (`endpoint` or `inline`). Models with `references: 'none'` keep the raw
+  // URLs: they are never sent, but the builder still needs tokens +
+  // descriptions to substitute entity names in the prompt.
+  const referenceImages =
+    endpoint.references !== 'none' && options.referenceImages?.length
+      ? await Promise.all(
+          options.referenceImages.map(async (ref) => ({
+            ...ref,
+            referenceImageUrl: await ensureExternallyFetchableUrl(
+              ref.referenceImageUrl,
+              key.key
+            ),
+          }))
+        )
+      : options.referenceImages;
+
+  const optionsWithFetchableUrls = {
+    ...options,
+    imageUrl,
+    referenceImages,
+    model: modelKey,
+  };
+  const modelInput = buildMotionRequest(
+    optionsWithFetchableUrls,
+    modelKey
+  ).input;
+
+  const { prompt: optimisedPrompt, ...modelOptions } = modelInput;
+  if (typeof optimisedPrompt !== 'string') {
+    throw new Error('Truncated prompt is not a string');
+  }
+
+  const job = await generateVideo({
+    adapter: falVideo(endpoint.endpointId, { apiKey: key.key }),
+    prompt: optimisedPrompt,
+    modelOptions,
+    timeout: FAL_REQUEST_TIMEOUT_MS,
+    debug: false,
+  });
+  return { jobId: job.jobId, usedOwnKey: key.source === 'team' };
+}
+
+async function fallbackBytePlusPortraitFilterToFal(
+  error: unknown,
+  operation: string,
+  options: GenerateMotionOptions,
+  modelKey: ImageToVideoModel
+): Promise<{ jobId: string; usedOwnKey: boolean }> {
+  if (!isBytePlusPortraitFilterError(error)) throw error;
+  const falKey = await resolveOptionalFalKey(options.scopedDb);
+  if (!falKey) {
+    throw new Error(BYTEPLUS_PORTRAIT_FILTER_NO_FAL_MESSAGE);
+  }
+  reportBytePlusPortraitFilterFallback(operation);
+  return submitFalMotionJob(options, modelKey);
+}
+
 /**
  * Submit a motion generation job without polling.
  * Returns the job ID so the workflow can poll with `context.sleep()` between steps.
@@ -173,6 +252,7 @@ export async function submitMotionJob(
 
   let jobId: string;
   let usedOwnKey: boolean;
+  let stampedVia: MediaVia = endpoint.via;
 
   switch (endpoint.via) {
     case 'xai': {
@@ -206,58 +286,9 @@ export async function submitMotionJob(
       break;
     }
     case 'fal': {
-      const key = await resolveFalMotionKey(options.scopedDb);
-
-      // Locally-served /r2/ image URLs aren't reachable by real fal — swap them
-      // for a fal-storage upload first (no-op in prod and e2e replay).
-      const imageUrl = await ensureExternallyFetchableUrl(
-        options.imageUrl,
-        key.key
-      );
-
-      // Reference URLs only need to be fetchable when they go on the wire
-      // (`endpoint` or `inline`). Models with `references: 'none'` keep the raw
-      // URLs: they are never sent, but the builder still needs tokens +
-      // descriptions to substitute entity names in the prompt.
-      const referenceImages =
-        endpoint.references !== 'none' && options.referenceImages?.length
-          ? await Promise.all(
-              options.referenceImages.map(async (ref) => ({
-                ...ref,
-                referenceImageUrl: await ensureExternallyFetchableUrl(
-                  ref.referenceImageUrl,
-                  key.key
-                ),
-              }))
-            )
-          : options.referenceImages;
-
-      const optionsWithFetchableUrls = {
-        ...options,
-        imageUrl,
-        referenceImages,
-        model: modelKey,
-      };
-      const modelInput = buildMotionRequest(
-        optionsWithFetchableUrls,
-        modelKey
-      ).input;
-
-      const { prompt: optimisedPrompt, ...modelOptions } = modelInput;
-      if (typeof optimisedPrompt !== 'string') {
-        throw new Error('Truncated prompt is not a string');
-      }
-
-      // Bound submit so a hung fal connection fails the step (#826).
-      const job = await generateVideo({
-        adapter: falVideo(endpoint.endpointId, { apiKey: key.key }),
-        prompt: optimisedPrompt,
-        modelOptions,
-        timeout: FAL_REQUEST_TIMEOUT_MS,
-        debug: false,
-      });
-      jobId = job.jobId;
-      usedOwnKey = key.source === 'team';
+      const fal = await submitFalMotionJob(options, modelKey);
+      jobId = fal.jobId;
+      usedOwnKey = fal.usedOwnKey;
       break;
     }
     case 'byteplus': {
@@ -265,12 +296,27 @@ export async function submitMotionJob(
       if (!arkKey) {
         throw new Error('ARK_API_KEY is required for the BytePlus motion via');
       }
-      // Same as Grok: inline /r2/ as data URI or CDN URL so this path
-      // needs no fal key. Ark fetches the URL itself.
-      const imageUrl = await toDataOrCdnUrl(options.imageUrl);
-      const referenceImages = await inlineGrokReferenceImages(
-        options.referenceImages
+      // Every still Seedance sees — start frame and every reference — has
+      // to be `asset://`. A public URL of a photorealistic face (including
+      // a generated start frame) 400s as a possible real person.
+      const falKey = await resolveOptionalFalKey(options.scopedDb);
+      const imageUrl = await toArkMediaUrl(
+        options.imageUrl,
+        'Image',
+        falKey?.key
       );
+      const referenceImages = options.referenceImages?.length
+        ? await Promise.all(
+            options.referenceImages.map(async (ref) => ({
+              ...ref,
+              referenceImageUrl: await toArkMediaUrl(
+                ref.referenceImageUrl,
+                'Image',
+                falKey?.key
+              ),
+            }))
+          )
+        : options.referenceImages;
       const request = buildBytePlusVideoRequest(
         { ...options, imageUrl, referenceImages },
         modelKey
@@ -280,19 +326,33 @@ export async function submitMotionJob(
         FAL_REQUEST_TIMEOUT_MS
       );
       const createBytePlusVideo = await loadBytePlusVideo();
-      const job = await withBytePlusQuotaRetry('motion submit', () =>
-        generateVideo({
-          adapter: createBytePlusVideo(endpoint.endpointId, apiKey, config),
-          prompt: request.prompt,
-          size: request.size,
-          ...(request.duration !== undefined && { duration: request.duration }),
-          modelOptions: request.modelOptions,
-          timeout: FAL_REQUEST_TIMEOUT_MS,
-          debug: false,
-        })
-      );
-      jobId = job.jobId;
-      usedOwnKey = false;
+      try {
+        const job = await withBytePlusQuotaRetry('motion submit', () =>
+          generateVideo({
+            adapter: createBytePlusVideo(endpoint.endpointId, apiKey, config),
+            prompt: request.prompt,
+            size: request.size,
+            ...(request.duration !== undefined && {
+              duration: request.duration,
+            }),
+            modelOptions: request.modelOptions,
+            timeout: FAL_REQUEST_TIMEOUT_MS,
+            debug: false,
+          })
+        );
+        jobId = job.jobId;
+        usedOwnKey = false;
+      } catch (error) {
+        const fal = await fallbackBytePlusPortraitFilterToFal(
+          error,
+          'motion submit',
+          options,
+          modelKey
+        );
+        jobId = fal.jobId;
+        usedOwnKey = fal.usedOwnKey;
+        stampedVia = 'fal';
+      }
       break;
     }
   }
@@ -300,7 +360,7 @@ export async function submitMotionJob(
   return {
     jobId,
     modelKey,
-    via: endpoint.via,
+    via: stampedVia,
     usedOwnKey,
     submittedAt: Date.now(),
   };

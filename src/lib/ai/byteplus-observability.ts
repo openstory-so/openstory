@@ -21,7 +21,10 @@
  * whole system). Until then this stays report-only.
  */
 
+import { getLogger } from '@/lib/observability/logger';
 import { getPostHogClient } from '@/lib/posthog-server';
+
+const logger = getLogger(['openstory', 'ai', 'byteplus']);
 
 export type BytePlusQuotaBackoffContext = {
   /** Which call hit the quota — e.g. `motion submit`, `image generate`. */
@@ -55,5 +58,24 @@ export function reportBytePlusQuotaBackoff(
       ...(ctx.delayMs !== undefined && { delay_ms: ctx.delayMs }),
       exhausted: ctx.exhausted,
     },
+  });
+}
+
+const BYTEPLUS_PORTRAIT_FILTER_FALLBACK_EVENT =
+  'byteplus_portrait_filter_fallback';
+
+/**
+ * Ark refused a photorealistic still (`PrivacyInformation`) and we resubmitted
+ * on fal. Un-deduped: this is how often native Seedance is unusable for the
+ * product's actual shots (people), and the signal that the Assets API
+ * (`asset://`) is worth building.
+ */
+export function reportBytePlusPortraitFilterFallback(operation: string): void {
+  logger.warn(`Ark portrait filter; falling back to fal (${operation})`);
+  const posthog = getPostHogClient();
+  posthog?.capture({
+    distinctId: 'system',
+    event: BYTEPLUS_PORTRAIT_FILTER_FALLBACK_EVENT,
+    properties: { operation },
   });
 }
