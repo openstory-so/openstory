@@ -337,11 +337,11 @@ describe('estimateVideoCost endpoint routing', () => {
         unit: 'units',
       },
     };
-    const i2v = estimateVideoCost('seedance_v2', 5, {
+    const i2v = estimateVideoCost('seedance_v2_5', 5, {
       pricing,
       hasReferenceImages: false,
     });
-    const ref = estimateVideoCost('seedance_v2', 5, {
+    const ref = estimateVideoCost('seedance_v2_5', 5, {
       pricing,
       hasReferenceImages: true,
     });
@@ -375,12 +375,12 @@ describe('estimateVideoCost endpoint routing', () => {
         ...base,
         pricing,
         autoGenerateMotion: true,
-        videoModels: ['seedance_v2'],
+        videoModels: ['seedance_v2_5'],
         videoDurationSeconds: DURATION,
       })
     );
     const refPerShot = Number(
-      estimateVideoCost('seedance_v2', DURATION, {
+      estimateVideoCost('seedance_v2_5', DURATION, {
         pricing,
         hasReferenceImages: true,
       })

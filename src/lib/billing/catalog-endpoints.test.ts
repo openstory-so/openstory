@@ -10,5 +10,7 @@ describe('catalogFalEndpointIds', () => {
     const ids = catalogFalEndpointIds();
     expect(ids).toContain(IMAGE_TO_VIDEO_MODELS.seedance_v2.id);
     expect(ids).toContain(MOTION_REFERENCE_ENDPOINTS.seedance_v2?.endpointId);
+    expect(ids).toContain(IMAGE_TO_VIDEO_MODELS.seedance_v2_5.id);
+    expect(ids).toContain(MOTION_REFERENCE_ENDPOINTS.seedance_v2_5?.endpointId);
   });
 });

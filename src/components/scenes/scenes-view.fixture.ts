@@ -121,7 +121,7 @@ export const fixtureStyle: Style = {
     },
   ],
   recommendedImageModel: 'gpt_image_2',
-  recommendedVideoModel: 'seedance_v2',
+  recommendedVideoModel: 'seedance_v2_5',
   defaultAspectRatio: '9:16',
   useCases: ['product', 'social-vertical'],
 };

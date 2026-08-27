@@ -70,6 +70,7 @@ const generateMockShot = (overrides?: Partial<ShotView>): ShotView => {
       'veo3_1',
       'kling_v3_pro',
       'seedance_v2',
+      'seedance_v2_5',
     ]),
     manifest: [
       {

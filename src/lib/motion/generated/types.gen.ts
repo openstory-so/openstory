@@ -543,6 +543,79 @@ export type H3MaxImageToVideoOutput = {
 /**
  * Seedance2I2VInput
  */
+export type Seedance20EnterpriseV2ImageToVideoInput = {
+    /**
+     * Image Url
+     *
+     * The URL of the starting frame image to animate. Supported formats: JPEG, PNG, WebP. Max 30 MB.
+     */
+    image_url: string | Blob | File;
+    /**
+     * End User Id
+     *
+     * The unique user ID of the end user.
+     */
+    end_user_id?: string | unknown;
+    /**
+     * Bitrate Mode
+     *
+     * Output bitrate mode. 'high' requests a higher-quality, larger-file encode from the model; 'standard' uses the default bitrate.
+     */
+    bitrate_mode?: 'standard' | 'high';
+    /**
+     * Duration
+     *
+     * Duration of the video in seconds. Supports 4 to 15 seconds, or auto to let the model decide based on the prompt.
+     */
+    duration?: 'auto' | '4' | '5' | '6' | '7' | '8' | '9' | '10' | '11' | '12' | '13' | '14' | '15';
+    /**
+     * Generate Audio
+     *
+     * Whether to generate synchronized audio for the video, including sound effects, ambient sounds, and lip-synced speech. The cost of video generation is the same regardless of whether audio is generated or not.
+     */
+    generate_audio?: boolean;
+    /**
+     * Aspect Ratio
+     *
+     * The aspect ratio of the generated video. Use 16:9 for landscape, 9:16 for portrait/vertical, 1:1 for square, 21:9 for ultrawide cinematic, or auto to infer from the input image.
+     */
+    aspect_ratio?: 'auto' | '21:9' | '16:9' | '4:3' | '1:1' | '3:4' | '9:16';
+    /**
+     * Resolution
+     *
+     * Video resolution - 480p for faster generation, 720p for balance, 1080p for high quality, 4k for highest quality.
+     */
+    resolution?: '480p' | '720p' | '1080p' | '4k';
+    /**
+     * End Image Url
+     *
+     * The URL of the image to use as the last frame of the video. When provided, the generated video will transition from the starting image to this ending image. Supported formats: JPEG, PNG, WebP. Max 30 MB.
+     */
+    end_image_url?: string | unknown;
+    /**
+     * Prompt
+     *
+     * The text prompt describing the desired motion and action for the video.
+     */
+    prompt: string;
+};
+
+/**
+ * Seedance2VideoOutput
+ */
+export type Seedance20EnterpriseV2ImageToVideoOutput = {
+    video: File;
+    /**
+     * Seed
+     *
+     * The seed used for generation.
+     */
+    seed: number;
+};
+
+/**
+ * Seedance2I2VInput
+ */
 export type Seedance25ImageToVideoInput = {
     /**
      * Aspect Ratio
@@ -604,6 +677,85 @@ export type Seedance25ImageToVideoInput = {
  * Seedance2VideoOutput
  */
 export type Seedance25ImageToVideoOutput = {
+    video: File;
+    /**
+     * Seed
+     *
+     * The seed used for generation.
+     */
+    seed: number;
+};
+
+/**
+ * Seedance2R2VInput
+ */
+export type Seedance20EnterpriseV2ReferenceToVideoInput = {
+    /**
+     * Audio Urls
+     *
+     * Reference audio to guide video generation. Refer to them in the prompt as @Audio1, @Audio2, etc. Supported formats: MP3, WAV. Up to 3 files, combined duration must not exceed 15 seconds. Max 15 MB per file.If audio is provided, at least one reference image or video is required.
+     */
+    audio_urls?: Array<string>;
+    /**
+     * End User Id
+     *
+     * The unique user ID of the end user.
+     */
+    end_user_id?: string | unknown;
+    /**
+     * Image Urls
+     *
+     * Reference images to guide video generation. Refer to them in the prompt as @Image1, @Image2, etc. Supported formats: JPEG, PNG, WebP. Max 30 MB per image. Up to 9 images. Total files across all modalities must not exceed 12.
+     */
+    image_urls?: Array<string>;
+    /**
+     * Bitrate Mode
+     *
+     * Output bitrate mode. 'high' requests a higher-quality, larger-file encode from the model; 'standard' uses the default bitrate.
+     */
+    bitrate_mode?: 'standard' | 'high';
+    /**
+     * Duration
+     *
+     * Duration of the video in seconds. Supports 4 to 15 seconds, or auto to let the model decide based on the prompt.
+     */
+    duration?: 'auto' | '4' | '5' | '6' | '7' | '8' | '9' | '10' | '11' | '12' | '13' | '14' | '15';
+    /**
+     * Generate Audio
+     *
+     * Whether to generate synchronized audio for the video, including sound effects, ambient sounds, and lip-synced speech. The cost of video generation is the same regardless of whether audio is generated or not.
+     */
+    generate_audio?: boolean;
+    /**
+     * Aspect Ratio
+     *
+     * The aspect ratio of the generated video. Use 16:9 for landscape, 9:16 for portrait/vertical, 1:1 for square, 21:9 for ultrawide cinematic, or auto to let the model decide.
+     */
+    aspect_ratio?: 'auto' | '21:9' | '16:9' | '4:3' | '1:1' | '3:4' | '9:16';
+    /**
+     * Resolution
+     *
+     * Video resolution - 480p for faster generation, 720p for balance, 1080p for high quality, 4k for highest quality.
+     */
+    resolution?: '480p' | '720p' | '1080p' | '4k';
+    /**
+     * Prompt
+     *
+     * The text prompt used to generate the video.
+     */
+    prompt: string;
+    /**
+     * Video Urls
+     *
+     * Reference videos to guide video generation. Refer to them in the prompt as @Video1, @Video2, etc. Supported formats: MP4, MOV. Up to 3 videos, combined duration must be between 2 and 15 seconds, total size under 50 MB. Each video must be between ~480p (640x640) and ~720p (834x1112) in resolution.
+     */
+    video_urls?: Array<string>;
+};
+
+/**
+ * Seedance2VideoOutput
+ */
+export type Seedance20EnterpriseV2ReferenceToVideoOutput = {
     video: File;
     /**
      * Seed
@@ -1226,6 +1378,95 @@ export type GetMinimaxH3MaxImageToVideoRequestsByRequestIdResponses = {
 
 export type GetMinimaxH3MaxImageToVideoRequestsByRequestIdResponse = GetMinimaxH3MaxImageToVideoRequestsByRequestIdResponses[keyof GetMinimaxH3MaxImageToVideoRequestsByRequestIdResponses];
 
+export type GetBytedanceSeedance20EnterpriseV2ImageToVideoRequestsByRequestIdStatusData = {
+    body?: never;
+    path: {
+        /**
+         * Request ID
+         */
+        request_id: string;
+    };
+    query?: {
+        /**
+         * Whether to include logs (`1`) in the response or not (`0`).
+         */
+        logs?: number;
+    };
+    url: '/bytedance/seedance-2.0/enterprise/v2/image-to-video/requests/{request_id}/status';
+};
+
+export type GetBytedanceSeedance20EnterpriseV2ImageToVideoRequestsByRequestIdStatusResponses = {
+    /**
+     * The request status.
+     */
+    200: QueueStatus;
+};
+
+export type GetBytedanceSeedance20EnterpriseV2ImageToVideoRequestsByRequestIdStatusResponse = GetBytedanceSeedance20EnterpriseV2ImageToVideoRequestsByRequestIdStatusResponses[keyof GetBytedanceSeedance20EnterpriseV2ImageToVideoRequestsByRequestIdStatusResponses];
+
+export type PutBytedanceSeedance20EnterpriseV2ImageToVideoRequestsByRequestIdCancelData = {
+    body?: never;
+    path: {
+        /**
+         * Request ID
+         */
+        request_id: string;
+    };
+    query?: never;
+    url: '/bytedance/seedance-2.0/enterprise/v2/image-to-video/requests/{request_id}/cancel';
+};
+
+export type PutBytedanceSeedance20EnterpriseV2ImageToVideoRequestsByRequestIdCancelResponses = {
+    /**
+     * The request was cancelled.
+     */
+    200: {
+        /**
+         * Whether the request was cancelled successfully.
+         */
+        success?: boolean;
+    };
+};
+
+export type PutBytedanceSeedance20EnterpriseV2ImageToVideoRequestsByRequestIdCancelResponse = PutBytedanceSeedance20EnterpriseV2ImageToVideoRequestsByRequestIdCancelResponses[keyof PutBytedanceSeedance20EnterpriseV2ImageToVideoRequestsByRequestIdCancelResponses];
+
+export type PostBytedanceSeedance20EnterpriseV2ImageToVideoData = {
+    body: Seedance20EnterpriseV2ImageToVideoInput;
+    path?: never;
+    query?: never;
+    url: '/bytedance/seedance-2.0/enterprise/v2/image-to-video';
+};
+
+export type PostBytedanceSeedance20EnterpriseV2ImageToVideoResponses = {
+    /**
+     * The request status.
+     */
+    200: QueueStatus;
+};
+
+export type PostBytedanceSeedance20EnterpriseV2ImageToVideoResponse = PostBytedanceSeedance20EnterpriseV2ImageToVideoResponses[keyof PostBytedanceSeedance20EnterpriseV2ImageToVideoResponses];
+
+export type GetBytedanceSeedance20EnterpriseV2ImageToVideoRequestsByRequestIdData = {
+    body?: never;
+    path: {
+        /**
+         * Request ID
+         */
+        request_id: string;
+    };
+    query?: never;
+    url: '/bytedance/seedance-2.0/enterprise/v2/image-to-video/requests/{request_id}';
+};
+
+export type GetBytedanceSeedance20EnterpriseV2ImageToVideoRequestsByRequestIdResponses = {
+    /**
+     * Result of the request.
+     */
+    200: Seedance20EnterpriseV2ImageToVideoOutput;
+};
+
+export type GetBytedanceSeedance20EnterpriseV2ImageToVideoRequestsByRequestIdResponse = GetBytedanceSeedance20EnterpriseV2ImageToVideoRequestsByRequestIdResponses[keyof GetBytedanceSeedance20EnterpriseV2ImageToVideoRequestsByRequestIdResponses];
+
 export type GetBytedanceSeedance25ImageToVideoRequestsByRequestIdStatusData = {
     body?: never;
     path: {
@@ -1314,6 +1555,95 @@ export type GetBytedanceSeedance25ImageToVideoRequestsByRequestIdResponses = {
 };
 
 export type GetBytedanceSeedance25ImageToVideoRequestsByRequestIdResponse = GetBytedanceSeedance25ImageToVideoRequestsByRequestIdResponses[keyof GetBytedanceSeedance25ImageToVideoRequestsByRequestIdResponses];
+
+export type GetBytedanceSeedance20EnterpriseV2ReferenceToVideoRequestsByRequestIdStatusData = {
+    body?: never;
+    path: {
+        /**
+         * Request ID
+         */
+        request_id: string;
+    };
+    query?: {
+        /**
+         * Whether to include logs (`1`) in the response or not (`0`).
+         */
+        logs?: number;
+    };
+    url: '/bytedance/seedance-2.0/enterprise/v2/reference-to-video/requests/{request_id}/status';
+};
+
+export type GetBytedanceSeedance20EnterpriseV2ReferenceToVideoRequestsByRequestIdStatusResponses = {
+    /**
+     * The request status.
+     */
+    200: QueueStatus;
+};
+
+export type GetBytedanceSeedance20EnterpriseV2ReferenceToVideoRequestsByRequestIdStatusResponse = GetBytedanceSeedance20EnterpriseV2ReferenceToVideoRequestsByRequestIdStatusResponses[keyof GetBytedanceSeedance20EnterpriseV2ReferenceToVideoRequestsByRequestIdStatusResponses];
+
+export type PutBytedanceSeedance20EnterpriseV2ReferenceToVideoRequestsByRequestIdCancelData = {
+    body?: never;
+    path: {
+        /**
+         * Request ID
+         */
+        request_id: string;
+    };
+    query?: never;
+    url: '/bytedance/seedance-2.0/enterprise/v2/reference-to-video/requests/{request_id}/cancel';
+};
+
+export type PutBytedanceSeedance20EnterpriseV2ReferenceToVideoRequestsByRequestIdCancelResponses = {
+    /**
+     * The request was cancelled.
+     */
+    200: {
+        /**
+         * Whether the request was cancelled successfully.
+         */
+        success?: boolean;
+    };
+};
+
+export type PutBytedanceSeedance20EnterpriseV2ReferenceToVideoRequestsByRequestIdCancelResponse = PutBytedanceSeedance20EnterpriseV2ReferenceToVideoRequestsByRequestIdCancelResponses[keyof PutBytedanceSeedance20EnterpriseV2ReferenceToVideoRequestsByRequestIdCancelResponses];
+
+export type PostBytedanceSeedance20EnterpriseV2ReferenceToVideoData = {
+    body: Seedance20EnterpriseV2ReferenceToVideoInput;
+    path?: never;
+    query?: never;
+    url: '/bytedance/seedance-2.0/enterprise/v2/reference-to-video';
+};
+
+export type PostBytedanceSeedance20EnterpriseV2ReferenceToVideoResponses = {
+    /**
+     * The request status.
+     */
+    200: QueueStatus;
+};
+
+export type PostBytedanceSeedance20EnterpriseV2ReferenceToVideoResponse = PostBytedanceSeedance20EnterpriseV2ReferenceToVideoResponses[keyof PostBytedanceSeedance20EnterpriseV2ReferenceToVideoResponses];
+
+export type GetBytedanceSeedance20EnterpriseV2ReferenceToVideoRequestsByRequestIdData = {
+    body?: never;
+    path: {
+        /**
+         * Request ID
+         */
+        request_id: string;
+    };
+    query?: never;
+    url: '/bytedance/seedance-2.0/enterprise/v2/reference-to-video/requests/{request_id}';
+};
+
+export type GetBytedanceSeedance20EnterpriseV2ReferenceToVideoRequestsByRequestIdResponses = {
+    /**
+     * Result of the request.
+     */
+    200: Seedance20EnterpriseV2ReferenceToVideoOutput;
+};
+
+export type GetBytedanceSeedance20EnterpriseV2ReferenceToVideoRequestsByRequestIdResponse = GetBytedanceSeedance20EnterpriseV2ReferenceToVideoRequestsByRequestIdResponses[keyof GetBytedanceSeedance20EnterpriseV2ReferenceToVideoRequestsByRequestIdResponses];
 
 export type GetBytedanceSeedance25ReferenceToVideoRequestsByRequestIdStatusData = {
     body?: never;

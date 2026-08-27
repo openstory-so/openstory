@@ -61,7 +61,8 @@ These models animate still images into video clips.
 | Kling v3 Pro       | Kling      | ~20s      | Proprietary |                       |
 | Grok Imagine Video | SpaceXAI   | ~20s      | Proprietary |                       |
 | MiniMax Hailuo 02  | MiniMax    | ~15s      | Proprietary |                       |
-| **Seedance 2.0**   | ByteDance  | ~15s      | Proprietary | Default; native audio |
+| **Seedance 2.5**   | ByteDance  | ~20s      | Proprietary | Default; native audio |
+| Seedance 2.0       | ByteDance  | ~20s      | Proprietary | Native audio          |
 
 ### Aspect Ratio Compatibility
 

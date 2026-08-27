@@ -96,6 +96,15 @@ export const IMAGE_TO_VIDEO_MODELS = {
     performance: { estimatedGenerationTime: 15, quality: 'best' as const },
   },
   seedance_v2: {
+    id: 'bytedance/seedance-2.0/enterprise/v2/image-to-video',
+    name: 'Seedance 2.0',
+    vendor: 'ByteDance',
+    license: 'proprietary' as const,
+    qualityRank: 4,
+    maxPromptLength: 4096,
+    performance: { estimatedGenerationTime: 20, quality: 'best' as const },
+  },
+  seedance_v2_5: {
     id: 'bytedance/seedance-2.5/image-to-video',
     name: 'Seedance 2.5',
     vendor: 'ByteDance',
@@ -106,7 +115,8 @@ export const IMAGE_TO_VIDEO_MODELS = {
     // Native BytePlus Ark route (#1157). Must be activated in the Ark console
     // first — an unopened model answers 404 ModelNotOpen at request time. The
     // Ark route requests 720p (see BYTEPLUS_RESOLUTION); the rate card's
-    // $10.70/1M-token entry is exact for that tier only.
+    // $10.70/1M-token entry is exact for that tier only. fal has no
+    // enterprise 2.5 (those paths 404); public 2.5 is the fal via.
     byteplusId: 'dreamina-seedance-2-5-260628' as const,
   },
 } as const;
@@ -309,7 +319,7 @@ export function isNativeBytePlusVideoModel(model: ImageToVideoModel): boolean {
   return getBytePlusVideoModelId(model) !== undefined;
 }
 
-export const DEFAULT_VIDEO_MODEL: ImageToVideoModel = 'seedance_v2';
+export const DEFAULT_VIDEO_MODEL: ImageToVideoModel = 'seedance_v2_5';
 
 function schemaOf(modelKey: ImageToVideoModel) {
   return MOTION_INPUT_SCHEMAS[IMAGE_TO_VIDEO_MODELS[modelKey].id];
@@ -661,6 +671,11 @@ export const MOTION_REFERENCE_ENDPOINTS: Partial<
   Record<ImageToVideoModel, MotionReferenceEndpointConfig>
 > = {
   seedance_v2: {
+    endpointId: 'bytedance/seedance-2.0/enterprise/v2/reference-to-video',
+    tag: (position) => `@Image${position}`,
+    maxImages: 9,
+  },
+  seedance_v2_5: {
     endpointId: 'bytedance/seedance-2.5/reference-to-video',
     tag: (position) => `@Image${position}`,
     maxImages: 9,

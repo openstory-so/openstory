@@ -66,26 +66,24 @@ describe('submitStudioVideoJob', () => {
     testEnv.E2E_TEST = undefined;
   });
 
-  it('submits Seedance to the text-to-video endpoint with no image field', async () => {
+  it('submits Seedance 2.5 to the 2.5 text-to-video endpoint with no image field', async () => {
     mockGenerateVideo.mockResolvedValue({
       jobId: 't2v-seedance',
-      model: 'bytedance/seedance-2.0/enterprise/v2/text-to-video',
+      model: 'bytedance/seedance-2.5/text-to-video',
     });
 
     const result = await submitStudioVideoJob({
       prompt: 'A red fox turns toward camera',
-      model: 'seedance_v2',
+      model: 'seedance_v2_5',
       duration: 5,
       aspectRatio: '9:16',
     });
 
     expect(result.jobId).toBe('t2v-seedance');
     expect(result.via).toBe('fal');
-    expect(result.endpointId).toBe(
-      'bytedance/seedance-2.0/enterprise/v2/text-to-video'
-    );
+    expect(result.endpointId).toBe('bytedance/seedance-2.5/text-to-video');
     expect(mockFalVideo).toHaveBeenCalledWith(
-      'bytedance/seedance-2.0/enterprise/v2/text-to-video',
+      'bytedance/seedance-2.5/text-to-video',
       expect.objectContaining({ apiKey: 'test-fal-key' })
     );
     expect(mockGenerateVideo).toHaveBeenCalledWith(
@@ -156,7 +154,7 @@ describe('submitStudioVideoJob', () => {
 
     const result = await submitStudioVideoJob({
       prompt: 'A red fox turns toward camera',
-      model: 'seedance_v2',
+      model: 'seedance_v2_5',
       duration: 5,
       aspectRatio: '9:16',
     });
@@ -187,7 +185,7 @@ describe('submitStudioVideoJob', () => {
 
     const result = await submitStudioVideoJob({
       prompt: 'Camera pushes in',
-      model: 'seedance_v2',
+      model: 'seedance_v2_5',
       mode: 'frames',
       startImageUrl: 'https://example.com/start.jpg',
       duration: 5,
@@ -205,7 +203,7 @@ describe('submitStudioVideoJob', () => {
 
     const result = await submitStudioVideoJob({
       prompt: 'Camera pushes in',
-      model: 'seedance_v2',
+      model: 'seedance_v2_5',
       mode: 'frames',
       startImageUrl: 'https://example.com/start.jpg',
       endImageUrl: 'https://example.com/end.jpg',
@@ -238,7 +236,7 @@ describe('submitStudioVideoJob', () => {
 
     await submitStudioVideoJob({
       prompt: 'The fox walks',
-      model: 'seedance_v2',
+      model: 'seedance_v2_5',
       mode: 'reference',
       referenceImages: ['https://example.com/fox.jpg'],
       referenceVideos: ['https://example.com/clip.mp4'],
@@ -323,7 +321,7 @@ describe('studioVideoCostFromUsage', () => {
       {
         via: 'byteplus',
         endpointId: 'dreamina-seedance-2-5-260628',
-        modelKey: 'seedance_v2',
+        modelKey: 'seedance_v2_5',
       },
       { promptTokens: 0, completionTokens: 0, totalTokens: 108_000 }
     );

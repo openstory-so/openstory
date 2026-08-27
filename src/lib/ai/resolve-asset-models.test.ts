@@ -124,7 +124,9 @@ describe('resolveVideoModel', () => {
   });
 
   it('falls back to the app default when the sequence has not loaded', () => {
-    expect(resolveVideoModel({ sequenceModel: undefined })).toBe('seedance_v2');
+    expect(resolveVideoModel({ sequenceModel: undefined })).toBe(
+      'seedance_v2_5'
+    );
   });
 
   it('falls through to the NEXT tier when a tier is set but retired', () => {
@@ -142,7 +144,7 @@ describe('resolveVideoModel', () => {
         selectedVersionModel: 'bogus',
         sequenceModel: '',
       })
-    ).toBe('seedance_v2');
+    ).toBe('seedance_v2_5');
   });
 });
 

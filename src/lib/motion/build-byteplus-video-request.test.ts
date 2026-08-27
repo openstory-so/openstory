@@ -19,28 +19,30 @@ const references = [
 
 describe('buildBytePlusVideoRequest', () => {
   it('uses the Ark model id, not the fal endpoint', () => {
-    const request = buildBytePlusVideoRequest(base, 'seedance_v2');
+    const request = buildBytePlusVideoRequest(base, 'seedance_v2_5');
     expect(request.modelId).toBe('dreamina-seedance-2-5-260628');
   });
 
   it('uses adaptive size so first-frame jobs follow the still', () => {
-    expect(buildBytePlusVideoRequest(base, 'seedance_v2').size).toBe(
+    expect(buildBytePlusVideoRequest(base, 'seedance_v2_5').size).toBe(
       'adaptive_720p'
     );
     expect(
-      buildBytePlusVideoRequest({ ...base, aspectRatio: '9:16' }, 'seedance_v2')
-        .size
+      buildBytePlusVideoRequest(
+        { ...base, aspectRatio: '9:16' },
+        'seedance_v2_5'
+      ).size
     ).toBe('adaptive_720p');
     expect(
       buildBytePlusVideoRequest(
         { ...base, referenceImages: references },
-        'seedance_v2'
+        'seedance_v2_5'
       ).size
     ).toBe('adaptive_720p');
   });
 
   it('pins the still as start_frame when there are no references', () => {
-    const { prompt } = buildBytePlusVideoRequest(base, 'seedance_v2');
+    const { prompt } = buildBytePlusVideoRequest(base, 'seedance_v2_5');
     const images = prompt.filter((part) => part.type === 'image');
     expect(images).toHaveLength(1);
     expect(images[0]).toMatchObject({
@@ -54,7 +56,7 @@ describe('buildBytePlusVideoRequest', () => {
   it('sends every image as a reference role when references are present', () => {
     const { prompt } = buildBytePlusVideoRequest(
       { ...base, referenceImages: references },
-      'seedance_v2'
+      'seedance_v2_5'
     );
     const images = prompt.filter((part) => part.type === 'image');
     expect(images).toHaveLength(2);
@@ -65,7 +67,7 @@ describe('buildBytePlusVideoRequest', () => {
   it('leads the reference list with the still and declares it in the prompt', () => {
     const { prompt } = buildBytePlusVideoRequest(
       { ...base, referenceImages: references },
-      'seedance_v2'
+      'seedance_v2_5'
     );
     const images = prompt.filter((part) => part.type === 'image');
     expect(images[0]?.source.value).toBe(base.imageUrl);
@@ -77,7 +79,7 @@ describe('buildBytePlusVideoRequest', () => {
   it('binds a reference token to its image position', () => {
     const { prompt } = buildBytePlusVideoRequest(
       { ...base, referenceImages: references },
-      'seedance_v2'
+      'seedance_v2_5'
     );
     const text = prompt.find((part) => part.type === 'text');
     // The still is @Image1, so the first reference is @Image2.
@@ -92,7 +94,7 @@ describe('buildBytePlusVideoRequest', () => {
         prompt: 'A slow dolly in',
         referenceImages: references,
       },
-      'seedance_v2'
+      'seedance_v2_5'
     );
     const text = prompt.find((part) => part.type === 'text');
     expect(text?.content).not.toContain('Reference images:');
@@ -102,18 +104,18 @@ describe('buildBytePlusVideoRequest', () => {
   // is a burnt-in watermark. State it either way.
   it('always states watermark: false', () => {
     expect(
-      buildBytePlusVideoRequest(base, 'seedance_v2').modelOptions
+      buildBytePlusVideoRequest(base, 'seedance_v2_5').modelOptions
     ).toMatchObject({ watermark: false });
   });
 
   it('forwards generate_audio only when the caller set it', () => {
     expect(
-      buildBytePlusVideoRequest(base, 'seedance_v2').modelOptions
+      buildBytePlusVideoRequest(base, 'seedance_v2_5').modelOptions
     ).not.toHaveProperty('generate_audio');
     expect(
       buildBytePlusVideoRequest(
         { ...base, generateAudio: false },
-        'seedance_v2'
+        'seedance_v2_5'
       ).modelOptions
     ).toMatchObject({ generate_audio: false });
   });
@@ -127,7 +129,7 @@ describe('buildBytePlusVideoRequest', () => {
   it('truncates a prompt past the model limit', () => {
     const { prompt } = buildBytePlusVideoRequest(
       { ...base, prompt: 'x'.repeat(9000) },
-      'seedance_v2'
+      'seedance_v2_5'
     );
     const text = prompt.find((part) => part.type === 'text');
     expect(text?.content.length).toBe(4096);

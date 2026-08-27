@@ -25,6 +25,7 @@ const QUALITY_OVERRIDES: Partial<
 > = {
   veo3_1: { resolution: '1080p' },
   seedance_v2: { resolution: '720p' },
+  seedance_v2_5: { resolution: '720p' },
 };
 
 /**
@@ -114,9 +115,13 @@ export function buildModelInput<T extends ImageToVideoModel>(
 
 /** Output of a reference-to-video transform (the endpoints in
  *  `MOTION_REFERENCE_ENDPOINTS`). */
-type ReferenceVideoOutput = z.output<
-  (typeof MOTION_TRANSFORMS)['bytedance/seedance-2.5/reference-to-video']
->;
+type ReferenceVideoOutput =
+  | z.output<
+      (typeof MOTION_TRANSFORMS)['bytedance/seedance-2.5/reference-to-video']
+    >
+  | z.output<
+      (typeof MOTION_TRANSFORMS)['bytedance/seedance-2.0/enterprise/v2/reference-to-video']
+    >;
 
 /**
  * Resolve the endpoint and build the exact fal request body for a motion run
@@ -126,7 +131,7 @@ type ReferenceVideoOutput = z.output<
  * fetchable ones first.
  *
  * When `resolveMotionEndpoint` routes to a dedicated reference-to-video
- * endpoint (currently Seedance 2.5 with cast/element refs), the still goes
+ * endpoint (Seedance with cast/element refs), the still goes
  * first in `image_urls[]` with the sheets after it — there is no separate
  * start-frame `image_url` on that endpoint.
  */

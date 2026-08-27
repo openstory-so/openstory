@@ -96,7 +96,7 @@ describe('Motion Service', () => {
       );
     });
 
-    it('should submit job with Seedance 2 model options', async () => {
+    it('should submit job with Seedance 2.5 model options', async () => {
       mockGenerateVideo.mockResolvedValue({
         jobId: 'test-seedance-request-id',
         model: 'bytedance/seedance-2.5/image-to-video',
@@ -105,13 +105,13 @@ describe('Motion Service', () => {
       const result = await submitMotionJob({
         imageUrl: 'https://example.com/image.jpg',
         prompt: 'Dynamic action sequence',
-        model: 'seedance_v2',
+        model: 'seedance_v2_5',
         duration: 5,
         fps: 25,
       });
 
       expect(result.jobId).toBe('test-seedance-request-id');
-      expect(result.modelKey).toBe('seedance_v2');
+      expect(result.modelKey).toBe('seedance_v2_5');
 
       expect(mockGenerateVideo).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -168,7 +168,7 @@ describe('Motion Service', () => {
       const result = await submitMotionJob({
         imageUrl: 'https://example.com/image.jpg',
         prompt: 'Dynamic action sequence',
-        model: 'seedance_v2',
+        model: 'seedance_v2_5',
         duration: 5,
       });
 
@@ -184,7 +184,7 @@ describe('Motion Service', () => {
       await submitMotionJob({
         imageUrl: 'https://example.com/still.jpg',
         prompt: 'SCARLETT waves the LOGO',
-        model: 'seedance_v2',
+        model: 'seedance_v2_5',
         duration: 5,
         referenceImages: [
           {
@@ -242,7 +242,7 @@ describe('Motion Service', () => {
       const result = await submitMotionJob({
         imageUrl: 'https://example.com/image.jpg',
         prompt: 'Dynamic action sequence',
-        model: 'seedance_v2',
+        model: 'seedance_v2_5',
         duration: 5,
       });
 
@@ -264,7 +264,7 @@ describe('Motion Service', () => {
         submitMotionJob({
           imageUrl: 'https://example.com/image.jpg',
           prompt: 'Dynamic action sequence',
-          model: 'seedance_v2',
+          model: 'seedance_v2_5',
           duration: 5,
         })
       ).rejects.toThrow('InvalidParameter');
@@ -284,7 +284,7 @@ describe('Motion Service', () => {
         submitMotionJob({
           imageUrl: 'https://example.com/image.jpg',
           prompt: 'Dynamic action sequence',
-          model: 'seedance_v2',
+          model: 'seedance_v2_5',
           duration: 5,
         })
       ).rejects.toThrow(/asset:\/\//);
@@ -363,7 +363,7 @@ describe('Motion Service', () => {
 
       const result = await pollMotionJob(
         'ark-job-1',
-        'seedance_v2',
+        'seedance_v2_5',
         undefined,
         'byteplus'
       );

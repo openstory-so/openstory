@@ -138,28 +138,31 @@ describe('buildModelInput', () => {
     });
   });
 
-  describe('Seedance 2.0 (audio)', () => {
-    it('uses image_url', () => {
-      const result = build('seedance_v2');
-      expect(result).toHaveProperty('image_url', baseOptions.imageUrl);
-    });
+  describe.each(['seedance_v2', 'seedance_v2_5'] as const)(
+    '%s (audio)',
+    (model) => {
+      it('uses image_url', () => {
+        const result = build(model);
+        expect(result).toHaveProperty('image_url', baseOptions.imageUrl);
+      });
 
-    it('sets generate_audio to true from schema default', () => {
-      const result = build('seedance_v2');
-      expect(result.generate_audio).toBe(true);
-    });
+      it('sets generate_audio to true from schema default', () => {
+        const result = build(model);
+        expect(result.generate_audio).toBe(true);
+      });
 
-    // Seedance 2.0 has no negative_prompt field — its only music lever is the
-    // in-prompt constraint from assembleMotionPrompt (#1165).
-    it('sends no negative_prompt', () => {
-      expect(build('seedance_v2')).not.toHaveProperty('negative_prompt');
-    });
+      // Seedance has no negative_prompt field — its only music lever is the
+      // in-prompt constraint from assembleMotionPrompt (#1165).
+      it('sends no negative_prompt', () => {
+        expect(build(model)).not.toHaveProperty('negative_prompt');
+      });
 
-    it('forwards generate_audio=false when caller suppresses audio', () => {
-      const result = build('seedance_v2', { generateAudio: false });
-      expect(result.generate_audio).toBe(false);
-    });
-  });
+      it('forwards generate_audio=false when caller suppresses audio', () => {
+        const result = build(model, { generateAudio: false });
+        expect(result.generate_audio).toBe(false);
+      });
+    }
+  );
 
   describe('duration snapping (1–30s)', () => {
     const valid: Record<ImageToVideoModel, readonly (string | number)[]> = {
@@ -183,7 +186,8 @@ describe('buildModelInput', () => {
       ],
       veo3_1: ['4s', '6s', '8s'],
       ltx_2_3_pro: [6, 8, 10],
-      seedance_v2: Array.from({ length: 27 }, (_, i) => String(i + 4)),
+      seedance_v2: Array.from({ length: 12 }, (_, i) => String(i + 4)),
+      seedance_v2_5: Array.from({ length: 27 }, (_, i) => String(i + 4)),
       minimax_hailuo_02: [],
       minimax_h3_max: [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
     };
