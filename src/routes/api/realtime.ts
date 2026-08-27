@@ -21,6 +21,33 @@ import { authRequestMiddleware } from '@/functions/middleware';
 const MAX_CHANNELS = 64;
 /** Keepalive cadence for the merged stream. Sub-stream pings are filtered out. */
 const PING_INTERVAL_MS = 25_000;
+/** First pause before re-subscribing a dropped DO stream (#1332). */
+const RECONNECT_MIN_MS = 250;
+/** Cap so a crashing DO cannot tight-loop `/subscribe`. */
+const RECONNECT_MAX_MS = 5_000;
+
+function nextReconnectDelay(currentMs: number): number {
+  if (currentMs < RECONNECT_MIN_MS) return RECONNECT_MIN_MS;
+  return Math.min(currentMs * 2, RECONNECT_MAX_MS);
+}
+
+function waitForReconnect(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) {
+      reject(new DOMException('Aborted', 'AbortError'));
+      return;
+    }
+    const onAbort = (): void => {
+      clearTimeout(id);
+      reject(new DOMException('Aborted', 'AbortError'));
+    };
+    const id = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
+}
 
 /** A DO frame is `data: {json}\n\n`; system frames carry `type` and stop here. */
 function parseFrame(frame: string): unknown {
@@ -108,41 +135,65 @@ export const Route = createFileRoute('/api/realtime')({
           const reader = body.getReader();
           const decoder = new TextDecoder();
           let buffer = '';
-          let reading = true;
-          while (reading && !closed) {
-            const result = await reader.read();
-            if (result.done) {
-              reading = false;
-              continue;
-            }
-            buffer += decoder.decode(result.value, { stream: true });
+          try {
+            let reading = true;
+            while (reading && !closed) {
+              const result = await reader.read();
+              if (result.done) {
+                reading = false;
+                continue;
+              }
+              buffer += decoder.decode(result.value, { stream: true });
 
-            let boundary = buffer.indexOf('\n\n');
-            while (boundary !== -1) {
-              const payload = parseFrame(buffer.slice(0, boundary));
-              buffer = buffer.slice(boundary + 2);
-              // Each DO emits its own connected/ping frames; the merged stream
-              // publishes exactly one of each instead of N.
-              if (payload && !isSystemEvent(payload)) send(payload);
-              boundary = buffer.indexOf('\n\n');
+              let boundary = buffer.indexOf('\n\n');
+              while (boundary !== -1) {
+                const payload = parseFrame(buffer.slice(0, boundary));
+                buffer = buffer.slice(boundary + 2);
+                // Each DO emits its own connected/ping frames; the merged
+                // stream publishes exactly one of each instead of N.
+                if (payload && !isSystemEvent(payload)) send(payload);
+                boundary = buffer.indexOf('\n\n');
+              }
+            }
+          } finally {
+            try {
+              await reader.cancel();
+            } catch {
+              // already cancelled / released
             }
           }
         };
 
         const pump = async (channel: string): Promise<void> => {
-          // Re-subscribe if the DO drops this writer (slow-client overflow
-          // #1332, or a storage-timeout reset). The merged EventSource stays
-          // up so sibling channels keep flowing.
+          // Re-subscribe if this channel's DO stream ends (overflow close
+          // #1332, or an isolate reset). Live events only — missed frames
+          // are not replayed from `/history`. Sibling pumps keep the merged
+          // EventSource up. Errors and empty bodies retry with backoff so a
+          // reset cannot silently kill one multiplexed channel, and a billing
+          // burst cannot tight-loop `/subscribe`.
+          let delayMs = 0;
           while (!closed) {
-            const stub = namespace.get(namespace.idFromName(channel));
-            const response = await stub.fetch(
-              new Request(
-                `https://realtime.do/subscribe?channel=${encodeURIComponent(channel)}`,
-                { signal: abort.signal }
-              )
-            );
-            if (!response.body) return;
-            await drain(response.body);
+            try {
+              if (delayMs > 0) {
+                await waitForReconnect(delayMs, abort.signal);
+              }
+              const stub = namespace.get(namespace.idFromName(channel));
+              const response = await stub.fetch(
+                new Request(
+                  `https://realtime.do/subscribe?channel=${encodeURIComponent(channel)}`,
+                  { signal: abort.signal }
+                )
+              );
+              if (!response.body) {
+                delayMs = nextReconnectDelay(delayMs);
+                continue;
+              }
+              await drain(response.body);
+              delayMs = nextReconnectDelay(delayMs);
+            } catch {
+              if (abort.signal.aborted) return;
+              delayMs = nextReconnectDelay(delayMs);
+            }
           }
         };
 

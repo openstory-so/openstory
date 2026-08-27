@@ -17,13 +17,18 @@ import { getLogger } from '@/lib/observability/logger';
  *   fixes the reconnect loop the old request-isolate handler suffered (Workers
  *   don't hold an SSE stream open — see the kill-switch note that used to live
  *   in `providers.tsx`). Each subscriber is a pull-driven `ReadableStream` with
- *   a bounded pending queue: a stalled client is dropped rather than buffering
- *   unbounded chunks in the isolate (#1332). EventSource reconnects and replays
- *   from `/history`.
+ *   a bounded pending queue: a stalled `/subscribe` consumer is dropped rather
+ *   than buffering unbounded chunks in the isolate (#1332). The merged
+ *   `/api/realtime` pump re-subscribes that channel for live events only;
+ *   missed frames are not replayed. Browser EventSource reconnects the merged
+ *   stream if it dies. Progress replay is a separate `/history` fetch on page
+ *   refresh / hook remount.
  * - **History replay**: events are persisted in the DO's own SQLite storage so a
- *   page refresh mid-generation can replay progress (`/history`). `/emit` prunes
- *   to the row cap so a chatty channel never accumulates a mountain, and a
- *   periodic alarm TTL-deletes expired rows in PK-range batches (#1332).
+ *   page refresh mid-generation can replay progress (`/history`). `/emit` deletes
+ *   a PK prefix of at most `PRUNE_BATCH_ROWS` so one-row emits stay at the cap.
+ *   A periodic alarm TTL-deletes up to `PRUNE_BATCH_ROWS` expired rows (via
+ *   `events_ts`) and the same PK-prefix cap batch; leftovers reschedule in
+ *   `PRUNE_CATCHUP_MS` (#1332).
  *
  * The wire format is intentionally simple and fully owned in-repo (see
  * `client.tsx`): each SSE `data:` line is a JSON object — a user event
@@ -37,17 +42,18 @@ const HISTORY_EXPIRE_SECS = 60 * 60 * 24 * 30;
 /** Hard cap on stored rows per channel so a chatty channel can't grow without bound. */
 export const HISTORY_MAX_ROWS = 2000;
 /**
- * Per-subscriber SSE buffer. Cloudflare's `WritableStreamDefaultWriter.desiredSize`
- * is stubbed (always 1 / 0 / null), so this is the actual backpressure bound:
- * if a client doesn't pull, pending chunks pile up here and we drop them.
+ * Per-subscriber pending-chunk cap. We do not use a TransformStream writer:
+ * Workers stub `WritableStreamDefaultWriter.desiredSize` to 1/0/null, so it
+ * cannot bound memory. If pull() does not drain this queue, we close the
+ * subscriber rather than grow it.
  */
 export const SSE_MAX_BUFFERED_CHUNKS = 32;
 /** How often the prune alarm runs while a channel still has stored events. */
 const PRUNE_INTERVAL_MS = 60 * 60 * 1000;
 /** Catch-up cadence when a leftover mountain still exceeds the cap / TTL. */
-const PRUNE_CATCHUP_MS = 5_000;
+export const PRUNE_CATCHUP_MS = 5_000;
 /** Rows deleted per prune statement so one storage op cannot exceed the timeout. */
-const PRUNE_BATCH_ROWS = 1_000;
+export const PRUNE_BATCH_ROWS = 1_000;
 /** SSE keepalive cadence — keeps intermediaries from dropping an idle stream. */
 const PING_INTERVAL_MS = 25_000;
 
@@ -165,6 +171,14 @@ export class RealtimeChannel extends DurableObject {
 
     const readable = new ReadableStream<Uint8Array>({
       start: (controller) => {
+        if (subscriber.closed) {
+          try {
+            controller.close();
+          } catch {
+            // already closed
+          }
+          return;
+        }
         subscriber.controller = controller;
         this.subscribers.add(subscriber);
         this.enqueue(subscriber, this.shot({ type: 'connected', channel }));
@@ -173,21 +187,24 @@ export class RealtimeChannel extends DurableObject {
         }, PING_INTERVAL_MS);
       },
       pull: async (controller) => {
-        while (subscriber.pending.length === 0 && !subscriber.closed) {
+        for (;;) {
+          if (subscriber.closed) {
+            try {
+              controller.close();
+            } catch {
+              // already closed by dropSubscriber
+            }
+            return;
+          }
+          const chunk = subscriber.pending.shift();
+          if (chunk) {
+            controller.enqueue(chunk);
+            return;
+          }
           await new Promise<void>((resolve) => {
             subscriber.notify = resolve;
           });
         }
-        if (subscriber.closed) {
-          try {
-            controller.close();
-          } catch {
-            // already closed by dropSubscriber
-          }
-          return;
-        }
-        const chunk = subscriber.pending.shift();
-        if (chunk) controller.enqueue(chunk);
       },
       cancel: () => {
         this.dropSubscriber(subscriber, 'abort');
@@ -197,6 +214,9 @@ export class RealtimeChannel extends DurableObject {
     request.signal.addEventListener('abort', () => {
       this.dropSubscriber(subscriber, 'abort');
     });
+    if (request.signal.aborted) {
+      this.dropSubscriber(subscriber, 'abort');
+    }
 
     return new Response(readable, {
       headers: {
@@ -266,9 +286,11 @@ export class RealtimeChannel extends DurableObject {
   }
 
   /**
-   * PK-range delete of at most `PRUNE_BATCH_ROWS` oldest rows past the cap.
-   * `seq <= MAX(seq) - HISTORY_MAX_ROWS` is O(k) on the primary key; the old
-   * `seq NOT IN (ORDER BY seq DESC LIMIT n)` form is quadratic on SQLite.
+   * Deletes at most `PRUNE_BATCH_ROWS` oldest rows still past the cap:
+   * `seq <= MIN(seq) + k - 1` ANDed with `seq <= newest - HISTORY_MAX_ROWS`.
+   * That is a PK prefix of size k, so one storage op cannot exceed the DO
+   * timeout. The old `seq NOT IN (… ORDER BY seq DESC LIMIT n)` deleted the
+   * entire overflow in one statement.
    */
   private pruneCapBatch(newestSeq: number): void {
     const cutoff = this.capCutoff(newestSeq);
