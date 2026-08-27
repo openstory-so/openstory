@@ -129,30 +129,9 @@ export class FramePromptWorkflow extends OpenStoryWorkflowEntrypoint<FramePrompt
             ? JSON.stringify(sceneAfter, null, 2)
             : '(none)',
           scene: JSON.stringify(scene, null, 2),
-          // Identity comes from reference images (#1349): hand the LLM only
-          // the fields it may use, instead of the full entry plus a rule
-          // not to look at the rest. Locations keep their description — it
-          // IS the environment, and a location reference is optional.
-          characterBible: JSON.stringify(
-            narrowed.characterBible.map(
-              ({ name, standardClothing, distinguishingFeatures }) => ({
-                name,
-                standardClothing,
-                distinguishingFeatures,
-              })
-            ),
-            null,
-            2
-          ),
+          characterBible: JSON.stringify(narrowed.characterBible, null, 2),
           locationBible: JSON.stringify(narrowed.locationBible, null, 2),
-          elementBible: JSON.stringify(
-            narrowed.elementBible.map(({ token, firstMention }) => ({
-              token,
-              scriptMention: firstMention.text,
-            })),
-            null,
-            2
-          ),
+          elementBible: JSON.stringify(narrowed.elementBible, null, 2),
           styleConfig: JSON.stringify(styleConfig, null, 2),
           aspectRatio,
         }
