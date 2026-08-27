@@ -199,6 +199,7 @@ describe('buildModelInput', () => {
       ],
       minimax_hailuo_02: [],
       minimax_h3_max: [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+      gemini_omni_flash: [3, 4, 5, 6, 7, 8, 9, 10],
     };
 
     for (const [model, allowed] of typedEntries(valid)) {

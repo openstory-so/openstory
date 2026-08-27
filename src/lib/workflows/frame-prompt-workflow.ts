@@ -14,7 +14,11 @@ import {
   contentFilterLlmMessage,
   isContentFilterFinish,
 } from '@/lib/ai/content-rejection';
-import { createAdapter, resolveNativeGrokModel } from '@/lib/ai/create-adapter';
+import {
+  createAdapter,
+  resolveNativeGeminiModel,
+  resolveNativeGrokModel,
+} from '@/lib/ai/create-adapter';
 import { computeVisualPromptInputHash } from '@/lib/ai/input-hash';
 import {
   createUsageCapture,
@@ -22,6 +26,7 @@ import {
   llmCostFromUsage,
   PROMPT_REASONING,
   throwNotedRunError,
+  toGeminiThinkingLevel,
 } from '@/lib/ai/llm-client';
 import { getMaxOutputTokens } from '@/lib/ai/models.config';
 import { narrowShotPromptContext } from '@/lib/ai/prompt-context';
@@ -234,17 +239,28 @@ export class FramePromptWorkflow extends OpenStoryWorkflowEntrypoint<FramePrompt
           };
 
           const maxTokens = getMaxOutputTokens(analysisModelId);
-          const native = !!resolveNativeGrokModel(analysisModelId, llmKeyInfo);
-          const modelOptions = native
+          const modelOptions = resolveNativeGrokModel(
+            analysisModelId,
+            llmKeyInfo
+          )
             ? {
                 reasoning: { effort: PROMPT_REASONING.effort },
                 max_output_tokens: maxTokens,
               }
-            : {
-                ...reasoningOptions,
-                maxCompletionTokens: maxTokens,
-                streamOptions: { includeUsage: true },
-              };
+            : resolveNativeGeminiModel(analysisModelId, llmKeyInfo)
+              ? {
+                  thinkingConfig: {
+                    thinkingLevel: toGeminiThinkingLevel(
+                      PROMPT_REASONING.effort
+                    ),
+                  },
+                  maxOutputTokens: maxTokens,
+                }
+              : {
+                  ...reasoningOptions,
+                  maxCompletionTokens: maxTokens,
+                  streamOptions: { includeUsage: true },
+                };
 
           for await (const streamEvent of chat({
             adapter,

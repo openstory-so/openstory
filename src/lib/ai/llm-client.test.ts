@@ -24,13 +24,14 @@ vi.doMock('@tanstack/ai', () => ({
   chat: mockChat,
 }));
 
-// Mock create-adapter to avoid real adapter creation. `resolveNativeGrokModel`
-// returns undefined so these tests exercise the OpenRouter request shape;
-// native xAI routing has its own coverage in create-adapter.test.ts.
+// Mock create-adapter to avoid real adapter creation. The native resolvers
+// return undefined so these tests exercise the OpenRouter request shape;
+// native xAI/Google routing has its own coverage in create-adapter.test.ts.
 const mockCreateAdapter = vi.fn(() => ({ kind: 'text', name: 'mock' }));
 vi.doMock('./create-adapter', () => ({
   createAdapter: mockCreateAdapter,
   resolveNativeGrokModel: () => undefined,
+  resolveNativeGeminiModel: () => undefined,
 }));
 
 // Mock the PostHog OTel middleware factory — observability hints are
@@ -850,8 +851,10 @@ describe('llm-client', () => {
 
         const callArgs = mockChat.mock.calls[0]?.[0];
         if (!callArgs) throw new Error('expected mockChat to have been called');
+        // `enabled: true` is stripped: since @tanstack/ai-openrouter 0.19 the
+        // effort config itself is the opt-in, and `enabled` only carries the
+        // explicit `false` opt-out.
         expect(callArgs.modelOptions.reasoning).toEqual({
-          enabled: true,
           effort: 'medium',
         });
       });

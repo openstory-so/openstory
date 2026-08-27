@@ -60,6 +60,19 @@ export const IMAGE_TO_VIDEO_MODELS = {
     maxPromptLength: 20000,
     performance: { estimatedGenerationTime: 25, quality: 'best' as const },
   },
+  gemini_omni_flash: {
+    id: 'fal-ai/gemini-omni-flash/image-to-video',
+    name: 'Gemini Omni Flash',
+    vendor: 'Google',
+    license: 'proprietary' as const,
+    qualityRank: 2,
+    // Always generates synchronized audio (dialogue, ambience, score) with no
+    // API switch — neither the fal schemas nor the Interactions API expose a
+    // generate_audio toggle, so audio direction happens in-prompt.
+    supportsAudio: true,
+    maxPromptLength: 20000,
+    performance: { estimatedGenerationTime: 20, quality: 'best' as const },
+  },
   kling_v3_pro: {
     id: 'fal-ai/kling-video/v3/pro/image-to-video',
     name: 'Kling v3 Pro',
@@ -617,6 +630,13 @@ export const MOTION_REFERENCE_ENDPOINTS: Partial<
     endpointId: 'bytedance/seedance-2.0/enterprise/v2/reference-to-video',
     tag: (position) => `@Image${position}`,
     maxImages: 9,
+  },
+  gemini_omni_flash: {
+    endpointId: 'fal-ai/gemini-omni-flash/reference-to-video',
+    // Google numbers references from zero (Omni Flash prompt guide); the API
+    // caps a request at 7 reference images.
+    tag: (position) => `<IMAGE_REF_${position - 1}>`,
+    maxImages: 7,
   },
 };
 

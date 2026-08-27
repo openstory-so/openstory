@@ -434,7 +434,9 @@ async function generateMotionPrompt(
     systemPrompts,
     stream: false,
     modelOptions: {
-      reasoning: PROMPT_REASONING,
+      // `enabled: true` is no longer part of OpenRouter's reasoning options
+      // (sending the effort config IS the opt-in) — see buildModelOptions.
+      reasoning: { effort: PROMPT_REASONING.effort },
       maxCompletionTokens: Math.floor(getContextWindow(modelId) * 0.5),
     },
     outputSchema: motionPromptSchema,

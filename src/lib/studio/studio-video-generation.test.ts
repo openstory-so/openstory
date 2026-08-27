@@ -15,10 +15,12 @@ const testEnv: {
   FAL_KEY: string | undefined;
   OPENROUTER_KEY: string | undefined;
   XAI_API_KEY: string | undefined;
+  GEMINI_API_KEY: string | undefined;
 } = {
   FAL_KEY: 'test-fal-key',
   OPENROUTER_KEY: 'test-or-key',
   XAI_API_KEY: undefined,
+  GEMINI_API_KEY: undefined,
 };
 
 vi.doMock('#env', () => ({
@@ -34,6 +36,15 @@ vi.doMock('@tanstack/ai-grok', () => ({
   createGrokVideo: mockCreateGrokVideo,
 }));
 
+const mockCreateGeminiVideo = vi.fn(() => ({
+  kind: 'video',
+  name: 'gemini',
+  model: 'gemini-omni-flash-preview',
+}));
+vi.doMock('@tanstack/ai-gemini', () => ({
+  createGeminiVideo: mockCreateGeminiVideo,
+}));
+
 const { submitStudioVideoJob, pollStudioVideoJob } =
   await import('./studio-video-generation');
 
@@ -42,8 +53,10 @@ describe('submitStudioVideoJob', () => {
     mockGenerateVideo.mockClear();
     mockGetVideoJobStatus.mockClear();
     mockCreateGrokVideo.mockClear();
+    mockCreateGeminiVideo.mockClear();
     mockFalVideo.mockClear();
     testEnv.XAI_API_KEY = undefined;
+    testEnv.GEMINI_API_KEY = undefined;
     testEnv.FAL_KEY = 'test-fal-key';
   });
 
@@ -114,6 +127,52 @@ describe('submitStudioVideoJob', () => {
     );
   });
 
+  it('sends native Omni Flash a text prompt with the task pinned', async () => {
+    testEnv.GEMINI_API_KEY = 'platform-google';
+    mockGenerateVideo.mockResolvedValue({
+      jobId: 'google-t2v',
+      model: 'gemini-omni-flash-preview',
+    });
+
+    const result = await submitStudioVideoJob({
+      prompt: 'A red fox turns toward camera',
+      model: 'gemini_omni_flash',
+      duration: 5,
+      aspectRatio: '16:9',
+    });
+
+    expect(result.via).toBe('google');
+    expect(result.endpointId).toBe('gemini-omni-flash-preview');
+    expect(mockCreateGeminiVideo).toHaveBeenCalled();
+    expect(mockGenerateVideo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: 'A red fox turns toward camera',
+        duration: 5,
+        size: '16:9',
+        modelOptions: {
+          generation_config: { video_config: { task: 'text_to_video' } },
+        },
+      })
+    );
+  });
+
+  it('falls back to fal Omni Flash T2V when no Google key exists', async () => {
+    mockGenerateVideo.mockResolvedValue({
+      jobId: 'fal-omni-t2v',
+      model: 'fal-ai/gemini-omni-flash',
+    });
+
+    const result = await submitStudioVideoJob({
+      prompt: 'A red fox turns toward camera',
+      model: 'gemini_omni_flash',
+      duration: 5,
+    });
+
+    expect(result.via).toBe('fal');
+    expect(result.endpointId).toBe('fal-ai/gemini-omni-flash');
+    expect(mockCreateGeminiVideo).not.toHaveBeenCalled();
+  });
+
   it('falls back to fal Grok T2V when no xAI key exists', async () => {
     mockGenerateVideo.mockResolvedValue({
       jobId: 'fal-grok-t2v',
@@ -136,8 +195,10 @@ describe('pollStudioVideoJob', () => {
   beforeEach(() => {
     mockGetVideoJobStatus.mockClear();
     mockCreateGrokVideo.mockClear();
+    mockCreateGeminiVideo.mockClear();
     mockFalVideo.mockClear();
     testEnv.XAI_API_KEY = undefined;
+    testEnv.GEMINI_API_KEY = undefined;
     testEnv.FAL_KEY = 'test-fal-key';
   });
 

@@ -6,6 +6,8 @@ import { z } from 'zod';
 import { motionTransform } from './motion-transform';
 
 import {
+  zGeminiOmniFlashImageToVideoInput,
+  zGeminiOmniFlashReferenceToVideoInput,
   zGrokImagineVideoV15ImageToVideoInput,
   zH3MaxImageToVideoInput,
   zKlingVideoV3ProImageToVideoInput,
@@ -17,6 +19,8 @@ import {
 } from './generated/zod.gen';
 
 import {
+  GeminiOmniFlashImageToVideoInputSchema,
+  GeminiOmniFlashReferenceToVideoInputSchema,
   GrokImagineVideoV15ImageToVideoInputSchema,
   H3MaxImageToVideoInputSchema,
   KlingVideoV3ProImageToVideoInputSchema,
@@ -28,6 +32,8 @@ import {
 } from './generated/schemas.gen';
 
 export type MotionJSONSchema =
+  | typeof GeminiOmniFlashImageToVideoInputSchema
+  | typeof GeminiOmniFlashReferenceToVideoInputSchema
   | typeof GrokImagineVideoV15ImageToVideoInputSchema
   | typeof H3MaxImageToVideoInputSchema
   | typeof KlingVideoV3ProImageToVideoInputSchema
@@ -42,6 +48,9 @@ export const MOTION_INPUT_SCHEMAS = {
     zSeedance20EnterpriseV2ImageToVideoInput,
   'bytedance/seedance-2.0/enterprise/v2/reference-to-video':
     zSeedance20EnterpriseV2ReferenceToVideoInput,
+  'fal-ai/gemini-omni-flash/image-to-video': zGeminiOmniFlashImageToVideoInput,
+  'fal-ai/gemini-omni-flash/reference-to-video':
+    zGeminiOmniFlashReferenceToVideoInput,
   'fal-ai/kling-video/v3/pro/image-to-video': zKlingVideoV3ProImageToVideoInput,
   'fal-ai/ltx-2.3/image-to-video': zLtx23ImageToVideoInput,
   'fal-ai/minimax/hailuo-2.3/pro/image-to-video':
@@ -68,6 +77,10 @@ export const MOTION_JSON_SCHEMAS = {
     Seedance20EnterpriseV2ImageToVideoInputSchema,
   'bytedance/seedance-2.0/enterprise/v2/reference-to-video':
     Seedance20EnterpriseV2ReferenceToVideoInputSchema,
+  'fal-ai/gemini-omni-flash/image-to-video':
+    GeminiOmniFlashImageToVideoInputSchema,
+  'fal-ai/gemini-omni-flash/reference-to-video':
+    GeminiOmniFlashReferenceToVideoInputSchema,
   'fal-ai/kling-video/v3/pro/image-to-video':
     KlingVideoV3ProImageToVideoInputSchema,
   'fal-ai/ltx-2.3/image-to-video': Ltx23ImageToVideoInputSchema,
@@ -87,6 +100,14 @@ export const MOTION_TRANSFORMS = {
   'bytedance/seedance-2.0/enterprise/v2/reference-to-video': motionTransform(
     zSeedance20EnterpriseV2ReferenceToVideoInput,
     Seedance20EnterpriseV2ReferenceToVideoInputSchema
+  ),
+  'fal-ai/gemini-omni-flash/image-to-video': motionTransform(
+    zGeminiOmniFlashImageToVideoInput,
+    GeminiOmniFlashImageToVideoInputSchema
+  ),
+  'fal-ai/gemini-omni-flash/reference-to-video': motionTransform(
+    zGeminiOmniFlashReferenceToVideoInput,
+    GeminiOmniFlashReferenceToVideoInputSchema
   ),
   'fal-ai/kling-video/v3/pro/image-to-video': motionTransform(
     zKlingVideoV3ProImageToVideoInput,

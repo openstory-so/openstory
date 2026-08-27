@@ -11,6 +11,7 @@
 import {
   createAdapter,
   getPlatformLlmKey,
+  resolveNativeGeminiModel,
   resolveNativeGrokModel,
   type LlmKeyInfo,
 } from '@/lib/ai/create-adapter';
@@ -20,6 +21,7 @@ import {
   llmCostFromUsage,
   PROMPT_REASONING,
   throwNotedRunError,
+  toGeminiThinkingLevel,
 } from '@/lib/ai/llm-client';
 import type { TextModel } from '@/lib/ai/models';
 import {
@@ -158,22 +160,35 @@ function reasoningModelOptions(reasoning: boolean | undefined): {
   return reasoning ? { reasoning: PROMPT_REASONING } : {};
 }
 
-/** OpenRouter vs xAI Responses sampling options. xAI rejects `streamOptions`
- *  and uses `max_output_tokens`; omitting reasoning on grok-4.6 falls through
- *  to xAI's `high` default, so unrequested reasoning is sent as `low`. */
+/** OpenRouter vs xAI Responses vs Gemini sampling options. xAI and Google
+ *  reject `streamOptions`; xAI uses `max_output_tokens` and Gemini camelCase
+ *  `maxOutputTokens`. Omitting reasoning on grok-4.6 falls through to xAI's
+ *  `high` default, so unrequested reasoning is sent as `low`; Gemini's
+ *  unset `thinkingConfig` keeps the model's dynamic-thinking default. */
 function chatModelOptionsForCall(
   modelId: TextModel,
   llmKeyInfo: LlmKeyInfo,
   reasoning: boolean | undefined
 ) {
-  const native = !!resolveNativeGrokModel(modelId, llmKeyInfo);
   const maxTokens = getMaxOutputTokens(modelId);
-  if (native) {
+  if (resolveNativeGrokModel(modelId, llmKeyInfo)) {
     return {
       ...(reasoning
         ? { reasoning: { effort: PROMPT_REASONING.effort } }
         : { reasoning: { effort: 'low' as const } }),
       max_output_tokens: maxTokens,
+    };
+  }
+  if (resolveNativeGeminiModel(modelId, llmKeyInfo)) {
+    return {
+      ...(reasoning
+        ? {
+            thinkingConfig: {
+              thinkingLevel: toGeminiThinkingLevel(PROMPT_REASONING.effort),
+            },
+          }
+        : {}),
+      maxOutputTokens: maxTokens,
     };
   }
   return {

@@ -15,10 +15,12 @@ const testEnv: {
   FAL_KEY: string | undefined;
   OPENROUTER_KEY: string | undefined;
   XAI_API_KEY: string | undefined;
+  GEMINI_API_KEY: string | undefined;
 } = {
   FAL_KEY: 'test-fal-key',
   OPENROUTER_KEY: 'test-or-key',
   XAI_API_KEY: undefined,
+  GEMINI_API_KEY: undefined,
 };
 
 vi.doMock('#env', () => ({
@@ -34,6 +36,15 @@ vi.doMock('@tanstack/ai-grok', () => ({
   createGrokVideo: mockCreateGrokVideo,
 }));
 
+const mockCreateGeminiVideo = vi.fn(() => ({
+  kind: 'video',
+  name: 'gemini',
+  model: 'gemini-omni-flash-preview',
+}));
+vi.doMock('@tanstack/ai-gemini', () => ({
+  createGeminiVideo: mockCreateGeminiVideo,
+}));
+
 const { submitMotionJob, pollMotionJob, motionCostFromUsage } =
   await import('./motion-generation');
 
@@ -42,7 +53,9 @@ describe('Motion Service', () => {
     mockGenerateVideo.mockClear();
     mockGetVideoJobStatus.mockClear();
     mockCreateGrokVideo.mockClear();
+    mockCreateGeminiVideo.mockClear();
     testEnv.XAI_API_KEY = undefined;
+    testEnv.GEMINI_API_KEY = undefined;
     testEnv.FAL_KEY = 'test-fal-key';
   });
 
@@ -320,6 +333,153 @@ describe('Motion Service', () => {
     });
   });
 
+  describe('native Google submit', () => {
+    it('submits an Omni Flash clip to Google when a key is present', async () => {
+      testEnv.GEMINI_API_KEY = 'platform-google';
+      mockGenerateVideo.mockResolvedValue({
+        jobId: 'google-job-1',
+        model: 'gemini-omni-flash-preview',
+      });
+
+      const result = await submitMotionJob({
+        imageUrl: 'https://example.com/image.jpg',
+        prompt: 'A person walking',
+        model: 'gemini_omni_flash',
+        duration: 5,
+      });
+
+      expect(result.via).toBe('google');
+      expect(result.jobId).toBe('google-job-1');
+      expect(mockCreateGeminiVideo).toHaveBeenCalled();
+    });
+
+    it('falls back to fal for Omni Flash when no Google key exists', async () => {
+      mockGenerateVideo.mockResolvedValue({
+        jobId: 'fal-omni-job',
+        model: 'fal-ai/gemini-omni-flash/image-to-video',
+      });
+
+      const result = await submitMotionJob({
+        imageUrl: 'https://example.com/image.jpg',
+        prompt: 'A person walking',
+        model: 'gemini_omni_flash',
+        duration: 5,
+      });
+
+      expect(result.via).toBe('fal');
+      expect(mockCreateGeminiVideo).not.toHaveBeenCalled();
+    });
+
+    it('sends the still + prompt with the task pinned to image_to_video', async () => {
+      testEnv.GEMINI_API_KEY = 'platform-google';
+      mockGenerateVideo.mockResolvedValue({
+        jobId: 'google-job-frame',
+        model: 'gemini-omni-flash-preview',
+      });
+
+      await submitMotionJob({
+        imageUrl: 'https://example.com/image.jpg',
+        prompt: 'A person walking',
+        model: 'gemini_omni_flash',
+        duration: 5,
+      });
+
+      expect(mockGenerateVideo).toHaveBeenCalledWith(
+        expect.objectContaining({
+          prompt: [
+            {
+              type: 'image',
+              source: { type: 'url', value: 'https://example.com/image.jpg' },
+            },
+            { type: 'text', content: 'A person walking' },
+          ],
+          duration: 5,
+          modelOptions: {
+            generation_config: { video_config: { task: 'image_to_video' } },
+          },
+        })
+      );
+    });
+
+    it('tags library refs as <IMAGE_REF_n> and pins reference_to_video', async () => {
+      testEnv.GEMINI_API_KEY = 'platform-google';
+      mockGenerateVideo.mockResolvedValue({
+        jobId: 'google-job-refs',
+        model: 'gemini-omni-flash-preview',
+      });
+
+      await submitMotionJob({
+        imageUrl: 'https://example.com/still.jpg',
+        prompt: 'SCARLETT lifts the CORAL_LIPSTICK',
+        model: 'gemini_omni_flash',
+        duration: 5,
+        referenceImages: [
+          {
+            referenceImageUrl: 'https://example.com/scarlett.png',
+            description: 'Scarlett - athletic',
+            role: 'character',
+            token: 'SCARLETT',
+          },
+        ],
+      });
+
+      expect(mockGenerateVideo).toHaveBeenCalledWith(
+        expect.objectContaining({
+          prompt: [
+            {
+              type: 'image',
+              source: { type: 'url', value: 'https://example.com/still.jpg' },
+            },
+            {
+              type: 'image',
+              source: {
+                type: 'url',
+                value: 'https://example.com/scarlett.png',
+              },
+            },
+            {
+              type: 'text',
+              content: expect.stringMatching(
+                /Use <IMAGE_REF_0> as the starting frame\.\n<IMAGE_REF_1> lifts the/
+              ),
+            },
+          ],
+          modelOptions: {
+            generation_config: { video_config: { task: 'reference_to_video' } },
+          },
+        })
+      );
+    });
+  });
+
+  describe('pollMotionJob via google', () => {
+    it('polls Google when the submission stamped via google', async () => {
+      testEnv.GEMINI_API_KEY = 'platform-google';
+      mockGetVideoJobStatus.mockResolvedValue({
+        jobId: 'google-job',
+        status: 'completed',
+        url: 'data:video/mp4;base64,AAAA',
+        usage: { promptTokens: 0, completionTokens: 28_960, totalTokens: 0 },
+      });
+
+      const result = await pollMotionJob(
+        'google-job',
+        'gemini_omni_flash',
+        undefined,
+        'google'
+      );
+
+      expect(result.status).toBe('completed');
+      expect(mockCreateGeminiVideo).toHaveBeenCalled();
+    });
+
+    it('throws when a google-stamped job has no key to poll with', async () => {
+      await expect(
+        pollMotionJob('google-job', 'gemini_omni_flash', undefined, 'google')
+      ).rejects.toThrow(/no Google key is available/);
+    });
+  });
+
   describe('motionCostFromUsage', () => {
     it('uses xAI’s reported cost and skips fal usage sampling', async () => {
       const billing = await motionCostFromUsage(
@@ -330,6 +490,18 @@ describe('Motion Service', () => {
       expect(billing.cost).toBe(400_000);
       expect(billing.recordFalUsage).toBe(false);
       expect(billing.endpointId).toBe('grok-imagine-video-1.5');
+    });
+
+    it('prices Google video-output tokens and skips fal usage sampling', async () => {
+      // 5s of 720p video = 28,960 output tokens @ $17.50/1M = $0.5068.
+      const billing = await motionCostFromUsage(
+        'google',
+        { promptTokens: 120, completionTokens: 28_960, totalTokens: 29_080 },
+        { modelKey: 'gemini_omni_flash', hasReferenceImages: false }
+      );
+      expect(billing.cost).toBe(506_800);
+      expect(billing.recordFalUsage).toBe(false);
+      expect(billing.endpointId).toBe('gemini-omni-flash-preview');
     });
   });
 });

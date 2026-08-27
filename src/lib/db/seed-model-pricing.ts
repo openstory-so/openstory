@@ -83,6 +83,10 @@ export const LOCAL_FAL_PRICING_SEED: Record<string, SeedPrice> = {
   'fal-ai/veo3.1/image-to-video': { unit: 'seconds', unitPriceUsd: 0.4 },
   'fal-ai/veo3.1': { unit: 'seconds', unitPriceUsd: 0.4 },
   'fal-ai/veo3.1/reference-to-video': { unit: 'seconds', unitPriceUsd: 0.4 },
+  // fal lists Omni Flash at a flat $1/unit (one unit per generated video).
+  'fal-ai/gemini-omni-flash/image-to-video': units(1),
+  'fal-ai/gemini-omni-flash': units(1),
+  'fal-ai/gemini-omni-flash/reference-to-video': units(1),
   'fal-ai/kling-video/v3/pro/image-to-video': {
     unit: 'seconds',
     unitPriceUsd: 0.07,
