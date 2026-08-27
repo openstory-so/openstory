@@ -1,5 +1,3 @@
-import { Link } from '@tanstack/react-router';
-
 type RenderWaitCopyProps = {
   /** Whole minutes remaining, at least 1. */
   etaMinutes: number;
@@ -16,21 +14,7 @@ export const RenderWaitCopy: React.FC<RenderWaitCopyProps> = ({
   willEmail,
 }) => (
   <span>
-    {willEmail ? (
-      <span>
-        Rendering, about {etaMinutes} min. We&rsquo;ll email you when it&rsquo;s
-        ready. Meanwhile:{' '}
-        <Link to="/gallery" className="underline underline-offset-2">
-          watch a sample in this style
-        </Link>
-      </span>
-    ) : (
-      <span>
-        Rendering, about {etaMinutes} min. Meanwhile:{' '}
-        <Link to="/gallery" className="underline underline-offset-2">
-          watch a sample in this style
-        </Link>
-      </span>
-    )}
+    Rendering, about {etaMinutes} min.
+    {willEmail && <> We&rsquo;ll email you when it&rsquo;s ready.</>}
   </span>
 );

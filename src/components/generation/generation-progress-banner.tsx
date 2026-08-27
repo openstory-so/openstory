@@ -2,7 +2,6 @@ import {
   type BannerPhase,
   ProgressBanner,
 } from '@/components/generation/progress-banner';
-import { Link } from '@tanstack/react-router';
 import { PHASE_DESCRIPTIONS } from '@/lib/generation/phase-descriptions';
 import {
   estimateSceneCount,
@@ -83,21 +82,8 @@ export const GenerationProgressBanner: React.FC<
       onOpenChange={setIsOpen}
       leaveHint={
         willEmail ? (
-          <>
-            We&rsquo;ll email you when it&rsquo;s ready. Meanwhile:{' '}
-            <Link to="/gallery" className="underline underline-offset-2">
-              watch a sample in this style
-            </Link>
-          </>
-        ) : (
-          <>
-            Click around or create something else while you&rsquo;re waiting.
-            Meanwhile:{' '}
-            <Link to="/gallery" className="underline underline-offset-2">
-              watch a sample in this style
-            </Link>
-          </>
-        )
+          <>We&rsquo;ll email you when it&rsquo;s ready.</>
+        ) : undefined
       }
     />
   );
