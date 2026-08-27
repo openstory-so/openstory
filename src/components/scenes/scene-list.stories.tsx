@@ -214,6 +214,7 @@ const perSegmentScenes: SceneWithScript[] = [
 ];
 
 const defaultArgs = {
+  className: 'w-[360px]',
   shots: [] as typeof mockShots,
   scenes: [],
   selection: { sceneIds: [] as string[] },

@@ -9,7 +9,7 @@ import { CopyScriptButton } from '@/components/scenes/copy-script-button';
 import { SceneCanvas } from '@/components/scenes/scene-canvas';
 import { SceneScriptDocument } from '@/components/scenes/scene-script-document';
 import type { BatchGenerateMotionArgs } from '@/components/scenes/scene-list';
-import { SceneList } from '@/components/scenes/scene-list';
+import { SceneList, type SceneListProps } from '@/components/scenes/scene-list';
 import { SceneModelBar, scopeLabel } from '@/components/scenes/scene-model-bar';
 import {
   SceneScriptPrompts,
@@ -1323,6 +1323,34 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
   ]);
   const etaMinutes = Math.max(1, Math.round(remainingSeconds / 60));
 
+  // One prop bag for the desktop sidebar and the phone sheet — same list.
+  const sceneListProps: SceneListProps = {
+    shots,
+    scenes,
+    segments,
+    loadError: shotsError ?? scenesError,
+    segmentsError,
+    selection,
+    aspectRatio,
+    onSelectScene: handleSelectScene,
+    onClearSelection: handleClearSelection,
+    regeneratingImages,
+    regeneratingMotion,
+    onBatchGenerateMotion: handleBatchMotionGeneration,
+    musicPromptsReady,
+    hideBatchButton: phaseConfig.autoGenerateMotion && isGenerationActive,
+    divergentVariants,
+    onCompareDivergent: setCompareVariant,
+    initialMusicModel: sequenceMusicModel,
+    initialVideoModel: sequenceVideoModel,
+    styleCategory,
+    recommendedVideoModel,
+    styleName,
+    modelMissingShotIds: shotsMissingActiveImage,
+    modelMissingLabel: activeImageModelLabel,
+    staleShotIds: isGenerationActive ? undefined : staleShotIds,
+  };
+
   return (
     <div className="flex h-full flex-col">
       {/* Generation progress banner */}
@@ -1368,48 +1396,11 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
 
       <div className="flex flex-1 min-h-0">
         <div className="hidden min-h-0 md:block shrink-0 pl-4 py-4">
-          <SceneList
-            shots={shots}
-            scenes={scenes}
-            segments={segments}
-            loadError={shotsError ?? scenesError}
-            segmentsError={segmentsError}
-            selection={selection}
-            aspectRatio={aspectRatio}
-            onSelectScene={handleSelectScene}
-            onClearSelection={handleClearSelection}
-            regeneratingImages={regeneratingImages}
-            regeneratingMotion={regeneratingMotion}
-            onBatchGenerateMotion={handleBatchMotionGeneration}
-            musicPromptsReady={musicPromptsReady}
-            hideBatchButton={
-              phaseConfig.autoGenerateMotion && isGenerationActive
-            }
-            divergentVariants={divergentVariants}
-            onCompareDivergent={(variant) => setCompareVariant(variant)}
-            initialMusicModel={sequenceMusicModel}
-            initialVideoModel={sequenceVideoModel}
-            styleCategory={styleCategory}
-            recommendedVideoModel={recommendedVideoModel}
-            styleName={styleName}
-            modelMissingShotIds={shotsMissingActiveImage}
-            modelMissingLabel={activeImageModelLabel}
-            staleShotIds={isGenerationActive ? undefined : staleShotIds}
-          />
+          <SceneList {...sceneListProps} className="w-[280px] lg:w-[360px]" />
         </div>
 
         <div className="md:hidden">
-          <MobileSceneDrawer
-            shots={shots}
-            scenes={scenes}
-            selectedShotId={curSelectedShotId}
-            selectedSceneIds={selection.sceneIds}
-            aspectRatio={aspectRatio}
-            onSelectShot={handleSelectShot}
-            onFocusScene={handleFocusScene}
-            onClearSelection={handleClearSelection}
-            onWalkShot={handleWalkShot}
-          />
+          <MobileSceneDrawer {...sceneListProps} onWalkShot={handleWalkShot} />
         </div>
 
         <div className="flex flex-1 min-h-0 min-w-0 flex-col md:flex-row">

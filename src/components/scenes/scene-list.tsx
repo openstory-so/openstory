@@ -40,7 +40,7 @@ export type BatchGenerateMotionArgs = {
   generateAudio: boolean;
 };
 
-type SceneListProps = {
+export type SceneListProps = {
   shots?: ShotView[] | undefined;
   scenes?: SceneWithScript[] | undefined;
   /** Render segments (#986) — bracket the shots sharing one video per scene. */
@@ -71,6 +71,8 @@ type SceneListProps = {
   modelMissingLabel?: string | null;
   /** Shots with stale prompts/image in the in-focus scene (#1077) — amber dots. */
   staleShotIds?: Set<string>;
+  /** Sizing from the host — sidebar width on desktop, `w-full` in a sheet. */
+  className?: string;
 };
 
 const SceneListComponent: React.FC<SceneListProps> = ({
@@ -98,6 +100,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
   modelMissingShotIds,
   modelMissingLabel,
   staleShotIds,
+  className,
 }) => {
   const divergentByShotId = useMemo(() => {
     const map = new Map<string, ShotVariant>();
@@ -264,7 +267,12 @@ const SceneListComponent: React.FC<SceneListProps> = ({
   const isWholeSequence = selection.sceneIds.length === 0 && !selection.shotId;
 
   return (
-    <div className="flex h-full min-h-0 w-[280px] lg:w-[360px] flex-col overflow-hidden rounded-lg border bg-background">
+    <div
+      className={cn(
+        'flex h-full min-h-0 flex-col overflow-hidden rounded-lg border bg-background',
+        className
+      )}
+    >
       <div className="flex items-center justify-between border-b px-4 py-3">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
           Scenes
@@ -466,7 +474,9 @@ const areEqual = (
     prevProps.recommendedVideoModel !== nextProps.recommendedVideoModel ||
     prevProps.styleName !== nextProps.styleName ||
     prevProps.modelMissingLabel !== nextProps.modelMissingLabel ||
-    prevProps.modelMissingShotIds !== nextProps.modelMissingShotIds
+    prevProps.modelMissingShotIds !== nextProps.modelMissingShotIds ||
+    prevProps.staleShotIds !== nextProps.staleShotIds ||
+    prevProps.className !== nextProps.className
   ) {
     return false;
   }
