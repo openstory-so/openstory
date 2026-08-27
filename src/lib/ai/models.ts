@@ -84,6 +84,10 @@ export const IMAGE_TO_VIDEO_MODELS = {
     vendor: 'MiniMax',
     license: 'proprietary' as const,
     qualityRank: 4,
+    // Always generates audio (lip-synced dialogue, ambience, score) with no
+    // API switch — the schema has no generate_audio, so the builder must
+    // direct it in-prompt. See buildMinimaxH3Prompt.
+    supportsAudio: true,
     maxPromptLength: 2500,
     performance: { estimatedGenerationTime: 15, quality: 'best' as const },
   },
@@ -272,6 +276,15 @@ export function videoModelSupportsAudio(modelKey: ImageToVideoModel): boolean {
   const config = IMAGE_TO_VIDEO_MODELS[modelKey];
   if ('supportsAudio' in config && typeof config.supportsAudio === 'boolean')
     return config.supportsAudio;
+  return 'generate_audio' in schemaOf(modelKey).shape;
+}
+
+/** Whether the request can switch audio off. H3 Max always generates audio
+ *  (`supportsAudio: true` override, no `generate_audio` field), so the
+ *  "Include SFX & dialogue" toggle would be a no-op there. */
+export function videoModelAudioToggleable(
+  modelKey: ImageToVideoModel
+): boolean {
   return 'generate_audio' in schemaOf(modelKey).shape;
 }
 

@@ -64,6 +64,7 @@ import {
   getCompatibleModel,
   safeImageToVideoModel,
   safeTextToImageModel,
+  videoModelAudioToggleable,
   videoModelSupportsAudio,
   type ImageToVideoModel,
   type TextToImageModel,
@@ -1980,8 +1981,8 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
             />
           )}
 
-          {/* SFX/dialogue toggle — only for audio-capable models */}
-          {videoModelSupportsAudio(effectiveMotionModel) && (
+          {/* SFX/dialogue toggle — only where the request can switch audio off */}
+          {videoModelAudioToggleable(effectiveMotionModel) && (
             <label
               htmlFor="scene-generate-audio"
               className="flex items-center gap-2 text-sm text-muted-foreground"

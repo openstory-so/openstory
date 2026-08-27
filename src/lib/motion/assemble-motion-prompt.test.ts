@@ -317,6 +317,52 @@ describe('assembleMotionPrompt', () => {
     });
   });
 
+  describe('MiniMax H3 Max (audio, no API switch)', () => {
+    const model = 'minimax_h3_max';
+
+    it('tags dialogue as <d>[English] …</d> with speaker and tone in prose', () => {
+      const result = assembleMotionPrompt({
+        motionPrompt: makeMotionPrompt(),
+        model,
+      });
+
+      expect(result.startsWith(fullPromptText)).toBe(true);
+      expect(result).toContain(
+        'Sarah says in a firm commanding tone: <d>[English] We need to reconsider the entire approach.</d>'
+      );
+      expect(result).toContain(
+        "James says in a soft resigned tone: <d>[English] I couldn't agree more.</d>"
+      );
+    });
+
+    it('ends with the native soundscape section and non_diegetic_music: N/A', () => {
+      const result = assembleMotionPrompt({
+        motionPrompt: makeMotionPrompt(),
+        model,
+      });
+
+      expect(
+        result.endsWith(
+          'overall_soundscape: quiet office hum with keyboard clicks. chair scrape, paper rustling. No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\nnon_diegetic_music: N/A'
+        )
+      ).toBe(true);
+    });
+
+    it('still switches music off when the scene has no dialogue or audio data', () => {
+      const result = assembleMotionPrompt({
+        motionPrompt: makeMotionPrompt({
+          dialogue: undefined,
+          audio: undefined,
+        }),
+        model,
+      });
+
+      expect(result).not.toContain('<d>');
+      expect(result).toContain('overall_soundscape: No BGM, no music.');
+      expect(result).toContain('non_diegetic_music: N/A');
+    });
+  });
+
   // ---------------------------------------------------------------------------
   // Edge cases
   // ---------------------------------------------------------------------------
