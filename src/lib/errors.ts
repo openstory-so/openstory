@@ -166,6 +166,18 @@ export function isInsufficientCreditsError(error: unknown): boolean {
 }
 
 /**
+ * 401/403 — the caller lacks a session or permission. Structural (`statusCode`
+ * survives the server-fn boundary via the adapter below) so it also matches
+ * Better Auth's `APIError`. A retry cannot succeed; it only repeats the log
+ * line (#1333).
+ */
+export function isAuthError(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  const status = (error as { statusCode?: unknown }).statusCode;
+  return status === 401 || status === 403;
+}
+
+/**
  * Display text for an arbitrary thrown value. A Zod failure — a live
  * `ZodError`, or one that crossed the server-fn boundary as its JSON `message`
  * (#1285) — collapses to one `path: message` line per issue instead of the raw

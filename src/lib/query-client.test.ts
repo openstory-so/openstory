@@ -1,6 +1,7 @@
-import { MutationObserver } from '@tanstack/react-query';
+import { MutationObserver, type QueryClient } from '@tanstack/react-query';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { AccountRestrictedError, AuthenticationError } from './errors';
 import { makeQueryClient } from './query-client';
 
 describe('MutationCache', () => {
@@ -58,5 +59,38 @@ describe('MutationCache', () => {
       queryKey: ['categories', 'org-1'],
     });
     expect(spy).toHaveBeenNthCalledWith(2, { queryKey: ['items', 'org-1'] });
+  });
+});
+
+describe('query retry default', () => {
+  const retryOf = (qc: QueryClient) => {
+    const retry = qc.getDefaultOptions().queries?.retry;
+    if (typeof retry !== 'function') throw new Error('retry must be a fn');
+    return retry;
+  };
+
+  it('never retries a 401/403 (#1333)', () => {
+    const retry = retryOf(makeQueryClient());
+    expect(retry(0, new AuthenticationError('Authentication required'))).toBe(
+      false
+    );
+    expect(retry(0, new AccountRestrictedError())).toBe(false);
+  });
+
+  it('keeps RQ default of 0 retries on the server for other errors', () => {
+    const retry = retryOf(makeQueryClient());
+    expect(retry(0, new Error('boom'))).toBe(false);
+  });
+
+  it('keeps RQ default of 3 retries in the browser for other errors', async () => {
+    vi.stubGlobal('window', {});
+    vi.resetModules();
+    const { makeQueryClient: makeBrowserQueryClient } =
+      await import('./query-client');
+    vi.unstubAllGlobals();
+    const retry = retryOf(makeBrowserQueryClient());
+    expect(retry(0, new Error('boom'))).toBe(true);
+    expect(retry(2, new Error('boom'))).toBe(true);
+    expect(retry(3, new Error('boom'))).toBe(false);
   });
 });
