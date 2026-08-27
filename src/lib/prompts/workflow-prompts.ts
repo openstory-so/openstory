@@ -905,45 +905,28 @@ Respond with exactly {{numTalent}} matches.`,
   'phase/visual-prompt-scene-generation-chat': [
     {
       role: 'system',
-      content: `You write the image prompt for the first frame of a video shot. Output one dense paragraph of natural language; a reference image supplies each character's appearance.
+      content: `You write the prompt for the first frame of a video shot: one still that an image model renders and a video model then animates.
 
-### OUTPUT
-1. You are called via a structured output tool. Follow the provided schema exactly.
-2. Natural language only inside the prompt: no headers (e.g. "Subject:"), bullets, or labels.
-3. One paragraph, in this order: [medium/style] + [CHARACTER NAME IN CAPS + wardrobe] + [pose at the first instant] + [environment] + [lighting] + [camera angle/lens].
+### LENGTH
+80-120 words. One paragraph of plain sentences. No headers, bullets or labels. Every phrase must change the picture; cut adjectives that don't.
 
-### THE FIRST FRAME
-This still is the instant the shot begins, before the action in <CURRENT_SCENE> happens. Read the scene's action and <SCENE_AFTER> first, then stage the frame so that action can physically unfold from it:
-- Put everyone where the action actually happens. Someone about to dive through a wave is already waist-deep in the water, not on dry sand; someone about to open a door is within arm's reach of it.
-- Leave room for the action. The direction of travel is open, and its target (goal, doorway, ledge, the other character) is in frame or clearly implied by the eyeline.
-- Pose is potential energy: weight shifted, muscles loaded, mid-breath, eyes on the target. A still that implies the next second.
+### ORDER
+Shot size and lens. Who is in frame and what they are doing at this exact instant. Where they are. Light. Style.
 
-### PHYSICAL PLAUSIBILITY
-The frame must be photographable on a real set. Before writing, sanity-check scale, distance and mechanics:
-- Real-world scale between people, props and architecture: a football goal dwarfs the keeper, a doorway is taller than the person walking through it, a phone fits in a hand. When scale matters, state it relative to the character ("the crossbar well above his reach").
-- Contact and support: feet on ground that exists, hands on the object they hold, bodies supported by what they lean on. Water, sand, snow and stairs behave like themselves.
-- Distances and eyelines consistent with the action: a conversation across a table, a throw with its target in range.
-- The camera obeys physics too: a position that could exist in the space, a lens that gives the described framing.
-Never fix an impossible staging by changing the action; stage the scripted action plausibly.
+### STAGING
+The frame is the instant BEFORE the action in <CURRENT_SCENE>. Read that action and <SCENE_AFTER> first, then place subjects where the action physically happens (a wave-dive starts in the water, not on the sand) with room in frame for it to unfold: direction of travel open, its target in frame or on the eyeline. Pose is potential energy: weight shifted, eyes on the target.
+
+### PHYSICS
+The frame must be photographable on a real set. Real-world scale between people, props and buildings (a football goal dwarfs the keeper; a doorway is taller than the person). Feet on ground that exists, hands on the object held, bodies supported by what they lean on. Distances and eyelines that make the action possible. A camera position that could exist in the space. Stage the scripted action plausibly; never change it.
 
 ### CHARACTERS
-A reference image handles each character's face, hair, skin, build and body type. Do NOT describe appearance. Name them IN CAPS (e.g. "SERENA") and take ONLY their costume (standardClothing) and costume-relevant distinguishingFeatures from <CHARACTER_BIBLE>, unaltered.
+Name in CAPS plus costume from <CHARACTER_BIBLE> only. Never describe face, hair, skin, build, age or ethnicity: the reference image carries identity.
 
-### ENVIRONMENT, LIGHTING, STYLE
-Identity is already handled, so spend most of your words on atmosphere, lighting texture, depth of field and background detail. Apply <DIRECTOR_STYLE> to lens (e.g. "anamorphic flares"), film stock and palette. Compose for <ASPECT_RATIO>.
-
-### ELEMENTS (user-uploaded, referenced by UPPERCASE token)
-Reference images carry each element's complete visual identity; your text must not compete with them.
-- Include an element only if it is physically on-camera in this first instant (held, worn, on a screen in shot, mounted, on the desk, in the background). Exclude it if it is merely spoken about, implied, or belongs to a later beat.
-- When included, map it to its reference at the earliest natural mention: role-noun, then the EXACT token from <ELEMENT_BIBLE> in parentheses. "the screen shows (BONDI_SCREEN)", "wearing the logo from (BRAND_LOGO)", "holding the product from (HERO_PRODUCT)".
-- Describe only how it sits in the shot: held, mounted, angled toward camera, partially occluded, blurred in bokeh, glare or rim light on its surface.
-- NEVER describe an element's internal content (typography, colours, layout, UI parts, readable words, product or logo shape), NEVER invent text to appear on it, NEVER use the token as a brand name in prose or as anything readable in the scene. Only elements listed in <ELEMENT_BIBLE>.
+### ELEMENTS
+Include an element from <ELEMENT_BIBLE> only if it is on camera at this instant, not merely spoken about. Bind it by role noun then token in parentheses, e.g. "holding the product from (HERO_PRODUCT)", "the screen shows (BONDI_SCREEN)". Say where it sits in the shot, never what it looks like, never any text on it, and never use the token as a word in the scene.
 
 ### HARD RULES
-- No holograms, floating interfaces or HUDs. Technology is physical and grounded.
-- No text, signs, subtitles or dialogue (text on an uploaded element's reference is fine).
-- One shot, one coherent frame.
-- Zero memory: fully re-describe the setting and name every character present with their costume. Never refer to "the previous scene".`,
+No text, signs or subtitles. No holograms or floating UI. One coherent frame. Fully state the setting and everyone present; never refer to another scene. Apply <DIRECTOR_STYLE> to lens, stock and palette; compose for <ASPECT_RATIO>.`,
     },
     {
       role: 'user',
