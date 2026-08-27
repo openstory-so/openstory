@@ -25,9 +25,46 @@ import type { SequenceSegment } from '@/lib/scenes/scene-segments';
 import type { ShotView } from '@/lib/shots/shot-view';
 import { cn } from '@/lib/utils';
 import { Loader2, Video } from 'lucide-react';
-import { memo, useMemo, useRef, useState } from 'react';
+import { memo, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { SceneGroup } from './scene-group';
 import { SceneListItem } from './scene-list-item';
+
+/**
+ * Center `el` in the nearest Radix ScrollArea viewport. Returns false when
+ * the viewport has no height yet so the caller can retry after layout.
+ *
+ * Sets `scrollTop` on the viewport rather than calling `scrollIntoView`,
+ * which would also scroll the page behind a sheet.
+ */
+function scrollIntoScrollArea(el: HTMLElement): boolean {
+  const viewport = el.closest('[data-slot="scroll-area-viewport"]');
+  if (!(viewport instanceof HTMLElement) || viewport.clientHeight === 0) {
+    return false;
+  }
+  const y =
+    el.getBoundingClientRect().top -
+    viewport.getBoundingClientRect().top +
+    viewport.scrollTop;
+  viewport.scrollTop = Math.max(
+    0,
+    y - (viewport.clientHeight - el.offsetHeight) / 2
+  );
+  return true;
+}
+
+function selectedListNode(
+  root: HTMLElement,
+  shotId: string | undefined,
+  sceneId: string | undefined
+): HTMLElement | null {
+  if (shotId) {
+    const node = root.querySelector(`[data-shot-id="${CSS.escape(shotId)}"]`);
+    return node instanceof HTMLElement ? node : null;
+  }
+  if (!sceneId) return null;
+  const node = root.querySelector(`[data-scene-id="${CSS.escape(sceneId)}"]`);
+  return node instanceof HTMLElement ? node : null;
+}
 
 export type BatchGenerateMotionArgs = {
   includeMusic: boolean;
@@ -73,6 +110,8 @@ export type SceneListProps = {
   staleShotIds?: Set<string>;
   /** Sizing from the host — sidebar width on desktop, `w-full` in a sheet. */
   className?: string;
+  /** Scroll the selected shot/scene into view on mount (mobile sheet). */
+  scrollToSelection?: boolean;
 };
 
 const SceneListComponent: React.FC<SceneListProps> = ({
@@ -101,7 +140,9 @@ const SceneListComponent: React.FC<SceneListProps> = ({
   modelMissingLabel,
   staleShotIds,
   className,
+  scrollToSelection = false,
 }) => {
+  const rootRef = useRef<HTMLDivElement>(null);
   const divergentByShotId = useMemo(() => {
     const map = new Map<string, ShotVariant>();
     for (const v of divergentVariants ?? []) {
@@ -265,9 +306,34 @@ const SceneListComponent: React.FC<SceneListProps> = ({
   }, [segments]);
 
   const isWholeSequence = selection.sceneIds.length === 0 && !selection.shotId;
+  const selectedShotId = selection.shotId;
+  const selectedSceneId = selectedShotId ? undefined : selection.sceneIds[0];
+
+  useLayoutEffect(() => {
+    if (!scrollToSelection || isLoading) return;
+    const root = rootRef.current;
+    if (!root) return;
+
+    const target = selectedListNode(root, selectedShotId, selectedSceneId);
+    if (!target) {
+      const viewport = root.querySelector('[data-slot="scroll-area-viewport"]');
+      if (viewport instanceof HTMLElement) viewport.scrollTop = 0;
+      return;
+    }
+
+    let attempts = 0;
+    let frame = 0;
+    const tryScroll = () => {
+      if (scrollIntoScrollArea(target) || ++attempts > 20) return;
+      frame = requestAnimationFrame(tryScroll);
+    };
+    tryScroll();
+    return () => cancelAnimationFrame(frame);
+  }, [scrollToSelection, isLoading, selectedShotId, selectedSceneId]);
 
   return (
     <div
+      ref={rootRef}
       className={cn(
         'flex h-full min-h-0 flex-col overflow-hidden rounded-lg border bg-background',
         className

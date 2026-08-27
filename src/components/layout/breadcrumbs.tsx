@@ -71,14 +71,13 @@ export const Breadcrumbs: React.FC = () => {
   if (crumbs.length === 0) return null;
 
   return (
-    <Breadcrumb>
-      <BreadcrumbList>
+    <Breadcrumb className="min-w-0">
+      <BreadcrumbList className="flex-nowrap">
         {crumbs.map((crumb, i) => {
           const isLast = i === crumbs.length - 1;
-          const isFirst = i === 0;
-          // shadcn sidebar pattern: on small screens show only the current
-          // page (`hidden md:block` on ancestors). The long sequence title
-          // stays a middle crumb on desktop and line-clamps there.
+          // shadcn sidebar-07: hide ancestor crumbs on small screens, keep
+          // the current page. Long titles line-clamp instead of wrapping the
+          // header (which stretched the vertical separator).
           const hideOnMobile = !isLast && crumbs.length > 1;
           const labelText =
             typeof crumb.label === 'string' ? crumb.label : undefined;
@@ -87,11 +86,7 @@ export const Breadcrumbs: React.FC = () => {
               key={`${i}-${typeof crumb.label === 'string' ? crumb.label : ''}`}
             >
               <BreadcrumbItem
-                className={cn(
-                  hideOnMobile && 'hidden md:inline-flex',
-                  isFirst && 'md:shrink-0',
-                  isLast ? 'min-w-0 md:shrink-0' : 'md:min-w-0'
-                )}
+                className={cn(hideOnMobile && 'hidden md:block', 'min-w-0')}
               >
                 {isLast || !crumb.to ? (
                   <BreadcrumbPage className="line-clamp-1" title={labelText}>

@@ -1,27 +1,18 @@
-import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import type { SceneWithScript } from '@/hooks/use-scenes';
 import type { SceneSelection } from '@/lib/scenes/scene-selection';
-import { adjacentShotId } from '@/lib/scenes/shot-walk';
-import { ChevronLeft, ChevronRight, ChevronUp } from 'lucide-react';
+import { ChevronUp } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { SceneList, type SceneListProps } from './scene-list';
 import { SceneThumbnail } from './scene-thumbnail';
 
-type MobileSceneDrawerProps = SceneListProps & {
-  onWalkShot: (delta: -1 | 1) => void;
-};
-
 /**
- * Phone stand-in for the desktop sidebar: a bottom bar that walks shots
- * (prev/next) and names the selection, opening a sheet that hosts the very
- * same `SceneList` — scene groups, segment brackets, whole-sequence row,
- * batch footer — so the two surfaces can't drift.
+ * Phone stand-in for the desktop sidebar: a bottom bar that names the
+ * selection and opens a sheet hosting the same `SceneList` — scene groups,
+ * segment brackets, whole-sequence row, batch footer — so the two surfaces
+ * can't drift.
  */
-export const MobileSceneDrawer: React.FC<MobileSceneDrawerProps> = ({
-  onWalkShot,
-  ...listProps
-}) => {
+export const MobileSceneDrawer: React.FC<SceneListProps> = (listProps) => {
   const { shots, scenes, selection, aspectRatio } = listProps;
   const selectedShotId = selection.shotId;
   const selectedSceneIds = selection.sceneIds;
@@ -76,76 +67,33 @@ export const MobileSceneDrawer: React.FC<MobileSceneDrawerProps> = ({
     sceneShots.find((s) => s.image?.url || s.previewThumbnailUrl) ??
     shots?.find((s) => s.image?.url || s.previewThumbnailUrl);
 
-  const walkHit = (delta: -1 | 1) =>
-    adjacentShotId(
-      shots ?? [],
-      {
-        shotId: selectedShotId,
-        sceneIds: selectedSceneIds,
-      },
-      delta
-    );
-
-  const canPrev = walkHit(-1) != null;
-  const canNext = walkHit(1) != null;
-
-  const walk = (delta: -1 | 1) => {
-    if (walkHit(delta)) onWalkShot(delta);
-  };
-
   return (
     <>
-      <div
+      <button
+        type="button"
         data-testid="mobile-scene-nav"
-        className="fixed inset-x-0 bottom-0 z-40 flex items-center gap-1 border-t bg-background px-1 py-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))]"
+        className="fixed inset-x-0 bottom-0 z-40 flex min-h-11 items-center gap-3 border-t bg-background px-4 py-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+        aria-haspopup="dialog"
+        aria-expanded={jumpOpen}
+        aria-label={`${label}. Open scene list`}
+        onClick={() => setOpenFor(selection)}
       >
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="h-11 w-11 shrink-0"
-          disabled={!canPrev}
-          aria-label="Previous shot"
-          onClick={() => walk(-1)}
-        >
-          <ChevronLeft className="h-5 w-5" />
-        </Button>
-        <button
-          type="button"
-          className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-1 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-          aria-haspopup="dialog"
-          aria-expanded={jumpOpen}
-          aria-label={`${label}. Open scene list`}
-          onClick={() => setOpenFor(selection)}
-        >
-          <SceneThumbnail
-            thumbnailUrl={previewShot?.image?.url}
-            previewThumbnailUrl={previewShot?.previewThumbnailUrl}
-            thumbnailStatus={previewShot?.frame.imageStatus || undefined}
-            gridSheetUrl={previewShot?.gridSheet?.url}
-            pendingUpscaleIndex={previewShot?.pendingUpscaleIndex}
-            pendingUpscaleUrl={previewShot?.pendingUpscaleUrl}
-            alt={isSequence ? 'Sequence' : sceneTitle}
-            aspectRatio={aspectRatio}
-            className="aspect-square h-10 w-10 shrink-0 rounded"
-          />
-          <span className="min-w-0 flex-1 truncate text-sm font-medium">
-            {label}
-          </span>
-          <ChevronUp className="h-4 w-4 shrink-0 text-muted-foreground" />
-        </button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="h-11 w-11 shrink-0"
-          disabled={!canNext}
-          aria-label="Next shot"
-          onClick={() => walk(1)}
-        >
-          <ChevronRight className="h-5 w-5" />
-        </Button>
-      </div>
+        <SceneThumbnail
+          thumbnailUrl={previewShot?.image?.url}
+          previewThumbnailUrl={previewShot?.previewThumbnailUrl}
+          thumbnailStatus={previewShot?.frame.imageStatus || undefined}
+          gridSheetUrl={previewShot?.gridSheet?.url}
+          pendingUpscaleIndex={previewShot?.pendingUpscaleIndex}
+          pendingUpscaleUrl={previewShot?.pendingUpscaleUrl}
+          alt={isSequence ? 'Sequence' : sceneTitle}
+          aspectRatio={aspectRatio}
+          className="aspect-square h-10 w-10 shrink-0 rounded"
+        />
+        <span className="min-w-0 flex-1 truncate text-sm font-medium">
+          {label}
+        </span>
+        <ChevronUp className="h-4 w-4 shrink-0 text-muted-foreground" />
+      </button>
 
       <Sheet
         open={jumpOpen}
@@ -158,6 +106,7 @@ export const MobileSceneDrawer: React.FC<MobileSceneDrawerProps> = ({
           <SheetTitle className="sr-only">Scenes</SheetTitle>
           <SceneList
             {...listProps}
+            scrollToSelection
             className="min-h-0 w-full flex-1 rounded-none border-0"
           />
         </SheetContent>
