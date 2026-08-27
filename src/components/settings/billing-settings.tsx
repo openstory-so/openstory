@@ -263,7 +263,9 @@ export function BillingSettings({ success, canceled }: BillingSettingsProps) {
             description="Pay-as-you-go wallet for AI generation at provider cost"
             action={
               stripeEnabled ? (
-                <Button onClick={openAddCreditsDialog}>Add credits</Button>
+                <Button onClick={() => openAddCreditsDialog()}>
+                  Add credits
+                </Button>
               ) : undefined
             }
           />

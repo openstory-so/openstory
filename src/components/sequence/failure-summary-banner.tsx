@@ -135,7 +135,7 @@ export const FailureSummaryBanner: React.FC<FailureSummaryBannerProps> = ({
 
           {isCredits ? (
             <div className="mt-2 flex flex-wrap gap-2">
-              <Button size="sm" onClick={openAddCreditsDialog}>
+              <Button size="sm" onClick={() => openAddCreditsDialog()}>
                 <CreditCard />
                 Add credits
               </Button>
