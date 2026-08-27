@@ -10,7 +10,8 @@ import { createFileRoute, notFound, Outlet } from '@tanstack/react-router';
 
 function SequenceCrumbLabel({ id }: { id: string }) {
   const { data } = useSequence(id);
-  return <>{data?.title ?? '…'}</>;
+  const title = data?.title ?? '…';
+  return <span title={title}>{title}</span>;
 }
 
 export const Route = createFileRoute('/_app/sequences/$id')({

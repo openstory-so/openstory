@@ -285,6 +285,7 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
         ref={containerRef}
         data-testid="sequence-player"
         data-state="ready"
+        data-overlay-fullscreen=""
         className={cn(
           'relative w-full overflow-hidden rounded-lg bg-black',
           className,
@@ -464,17 +465,19 @@ const PlayerControls: React.FC<PlayerControlsProps> = ({
       <button
         type="button"
         aria-label="Seek"
-        className="group relative h-3 cursor-pointer rounded-full bg-white/20 md:h-2"
+        className="group relative flex min-h-11 cursor-pointer items-center md:h-2 md:min-h-0"
         onClick={(e) => {
           const rect = e.currentTarget.getBoundingClientRect();
           const fraction = (e.clientX - rect.left) / rect.width;
           onSeek(fraction * duration);
         }}
       >
-        <div
-          className="h-full rounded-full bg-white transition-[width] duration-75"
-          style={{ width: `${progress}%` }}
-        />
+        <div className="relative h-3 w-full rounded-full bg-white/20 md:h-2">
+          <div
+            className="h-full rounded-full bg-white transition-[width] duration-75"
+            style={{ width: `${progress}%` }}
+          />
+        </div>
       </button>
       <div className="flex items-center gap-3 text-white">
         <Button
@@ -509,8 +512,8 @@ const PlayerControls: React.FC<PlayerControlsProps> = ({
                 <Volume2 className="h-5 w-5 md:h-4 md:w-4" />
               )}
             </Button>
-            {/* Hardware buttons own volume on phones — the 20px-tall slider is
-                unusable there and steals row width from the seek bar. */}
+            {/* iOS/Android hardware volume owns loudness; a desktop-only range
+                just crowds the play/time/fullscreen row. */}
             <input
               type="range"
               min={0}

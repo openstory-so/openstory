@@ -10,7 +10,7 @@ import { defineConfig, type Plugin } from 'vite';
 import tailwindcss from '@tailwindcss/vite';
 import { devtools } from '@tanstack/devtools-vite';
 import viteReact from '@vitejs/plugin-react';
-import { worktreeAuthCookiePrefix } from './src/lib/auth/cookie-prefix';
+import { worktreeAuthCookiePrefix } from './src/lib/auth/cookie-prefix.ts';
 
 const isDev = process.env.NODE_ENV !== 'production';
 // Per-worktree auth cookie name (#1288). Set on process.env so Vite's usual

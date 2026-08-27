@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils';
 import { Maximize, Minimize } from 'lucide-react';
 
 type FullscreenButtonProps = {
-  /** The player container that goes fullscreen (must contain the media). */
+  /** Container to fullscreen. Needs a descendant `<video>` on iPhone. */
   targetRef: React.RefObject<HTMLElement | null>;
   className?: string;
 };
@@ -13,7 +13,8 @@ export const FullscreenButton: React.FC<FullscreenButtonProps> = ({
   targetRef,
   className,
 }) => {
-  const { isFullscreen, toggle } = useFullscreen(targetRef);
+  const { isFullscreen, supported, toggle } = useFullscreen(targetRef);
+  if (!supported) return null;
   return (
     <Button
       variant="ghost"

@@ -264,7 +264,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
   const isWholeSequence = selection.sceneIds.length === 0 && !selection.shotId;
 
   return (
-    <div className="flex h-full w-[280px] lg:w-[360px] flex-col rounded-lg border bg-background">
+    <div className="flex h-full min-h-0 w-[280px] lg:w-[360px] flex-col overflow-hidden rounded-lg border bg-background">
       <div className="flex items-center justify-between border-b px-4 py-3">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
           Scenes

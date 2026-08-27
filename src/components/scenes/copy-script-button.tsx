@@ -83,12 +83,16 @@ export const CopyScriptButton: React.FC<{ sequenceId: string }> = ({
       type="button"
       size="sm"
       variant="ghost"
+      className="h-11 px-2 md:h-8 md:px-2.5"
       disabled={!script}
       onClick={() => void handleCopy()}
       aria-label={announced}
     >
-      <Icon className={cn('mr-1.5 h-3.5 w-3.5', className)} />
-      <span aria-live="polite">{label}</span>
+      <Icon className={cn('h-4 w-4 md:mr-1.5 md:h-3.5 md:w-3.5', className)} />
+      <span className="sr-only" aria-live="polite">
+        {announced}
+      </span>
+      <span className="hidden md:inline">{label}</span>
     </Button>
   );
 };

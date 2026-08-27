@@ -1,91 +1,50 @@
-import { MotionModelSelector } from '@/components/model/motion-model-selector';
-import { MusicModelSelector } from '@/components/model/music-model-selector';
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Sheet,
   SheetContent,
-  SheetFooter,
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
 import type { SceneWithScript } from '@/hooks/use-scenes';
-import {
-  DEFAULT_MUSIC_MODEL,
-  DEFAULT_VIDEO_MODEL,
-  type AudioModel,
-  type ImageToVideoModel,
-} from '@/lib/ai/models';
 import type { AspectRatio } from '@/lib/constants/aspect-ratios';
+import { adjacentShotId } from '@/lib/scenes/shot-walk';
 import { cn } from '@/lib/utils';
 import type { ShotView } from '@/lib/shots/shot-view';
-import { ChevronUp, Loader2, Video } from 'lucide-react';
-import { useMemo, useRef, useState } from 'react';
-import type { BatchGenerateMotionArgs } from './scene-list';
+import { ChevronLeft, ChevronRight, ChevronUp } from 'lucide-react';
+import { useMemo, useState } from 'react';
 import { SceneListItem } from './scene-list-item';
 import { SceneThumbnail } from './scene-thumbnail';
 
 type MobileSceneDrawerProps = {
   shots?: ShotView[];
-  /** Scenes the shots belong to — they carry the number, title and script. */
   scenes?: SceneWithScript[];
   selectedShotId?: string;
+  selectedSceneIds: readonly string[];
   aspectRatio: AspectRatio;
-  regeneratingImages: Set<string>;
-  regeneratingMotion: Set<string>;
-  onBatchGenerateMotion?: (args: BatchGenerateMotionArgs) => Promise<void>;
-  musicPromptsReady: boolean;
-  /** Hide the batch motion button (e.g. while auto-generate motion is in flight). */
-  hideBatchButton?: boolean;
-  /** Initial music model for the batch selector (from `sequence.musicModel`). */
-  initialMusicModel?: AudioModel;
-  /** Initial video model for the batch selector (from `sequence.videoModel`). */
-  initialVideoModel?: ImageToVideoModel;
-  styleCategory?: string;
-  recommendedVideoModel?: string | null;
-  styleName?: string;
+  onSelectShot: (shotId: string) => void;
+  onFocusScene: (sceneId: string) => void;
+  onClearSelection: () => void;
+  onWalkShot: (delta: -1 | 1) => void;
+};
+
+type SceneGroup = {
+  scene: SceneWithScript;
+  shots: ShotView[];
 };
 
 export const MobileSceneDrawer: React.FC<MobileSceneDrawerProps> = ({
   shots,
   scenes,
   selectedShotId,
+  selectedSceneIds,
   aspectRatio,
-  regeneratingImages,
-  regeneratingMotion,
-  onBatchGenerateMotion,
-  musicPromptsReady,
-  hideBatchButton = false,
-  initialMusicModel,
-  initialVideoModel,
-  styleCategory,
-  recommendedVideoModel,
-  styleName,
+  onSelectShot,
+  onFocusScene,
+  onClearSelection,
+  onWalkShot,
 }) => {
-  const [isOpen, setIsOpen] = useState(false);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [includeMusic, setIncludeMusic] = useState(false);
-  const [generateAudio, setGenerateAudio] = useState(true);
-  const [musicModel, setMusicModel] = useState<AudioModel>(
-    initialMusicModel ?? DEFAULT_MUSIC_MODEL
-  );
-  const [videoModel, setVideoModel] = useState<ImageToVideoModel>(
-    initialVideoModel ?? DEFAULT_VIDEO_MODEL
-  );
-
-  const prevInitialMusicRef = useRef(initialMusicModel);
-  if (initialMusicModel && initialMusicModel !== prevInitialMusicRef.current) {
-    prevInitialMusicRef.current = initialMusicModel;
-    setMusicModel(initialMusicModel);
-  }
-  const prevInitialVideoRef = useRef(initialVideoModel);
-  if (initialVideoModel && initialVideoModel !== prevInitialVideoRef.current) {
-    prevInitialVideoRef.current = initialVideoModel;
-    setVideoModel(initialVideoModel);
-  }
-
-  const totalShots = shots?.length ?? 0;
+  const [jumpOpen, setJumpOpen] = useState(false);
+  const [drilledSceneId, setDrilledSceneId] = useState<string | null>(null);
 
   const scenesById = useMemo(() => {
     const map = new Map<string, SceneWithScript>();
@@ -93,215 +52,269 @@ export const MobileSceneDrawer: React.FC<MobileSceneDrawerProps> = ({
     return map;
   }, [scenes]);
 
-  // Get the currently selected shot
+  const grouped = useMemo((): SceneGroup[] => {
+    if (!scenes) return [];
+    const byScene = new Map<string, ShotView[]>();
+    for (const shot of shots ?? []) {
+      if (!shot.sceneId) continue;
+      const list = byScene.get(shot.sceneId) ?? [];
+      list.push(shot);
+      byScene.set(shot.sceneId, list);
+    }
+    return scenes.map((scene) => ({
+      scene,
+      shots: byScene.get(scene.id) ?? [],
+    }));
+  }, [scenes, shots]);
+
   const selectedShot = useMemo(
-    () => shots?.find((f) => f.id === selectedShotId),
+    () => shots?.find((s) => s.id === selectedShotId),
     [shots, selectedShotId]
   );
 
-  // Calculate eligible shots for motion generation
-  // Include 'generating' status to allow retrying stuck jobs
-  const eligibleShots = useMemo(() => {
-    if (!shots) return [];
-    return shots.filter(
-      (f) =>
-        (f.videoStatus === 'pending' ||
-          f.videoStatus === 'failed' ||
-          f.videoStatus === 'generating') &&
-        f.frame.imageStatus === 'completed'
+  const focusedSceneId =
+    selectedShot?.sceneId ??
+    (selectedSceneIds.length === 1 ? selectedSceneIds[0] : undefined);
+  const focusedScene = focusedSceneId
+    ? scenesById.get(focusedSceneId)
+    : undefined;
+  const sceneShots = useMemo(
+    () =>
+      focusedSceneId && shots
+        ? shots.filter((s) => s.sceneId === focusedSceneId)
+        : [],
+    [focusedSceneId, shots]
+  );
+
+  const sceneNumber = (focusedScene?.orderIndex ?? 0) + 1;
+  const sceneTitle = focusedScene?.title?.trim() || `Scene ${sceneNumber}`;
+  const shotOrdinal = selectedShot
+    ? sceneShots.findIndex((s) => s.id === selectedShot.id) + 1
+    : 0;
+  const isSequence = !selectedShotId && selectedSceneIds.length === 0;
+
+  const label = isSequence
+    ? 'All scenes'
+    : sceneShots.length > 1 && shotOrdinal > 0
+      ? `${sceneTitle} · Shot ${shotOrdinal} of ${sceneShots.length}`
+      : sceneTitle;
+
+  const previewShot =
+    selectedShot ??
+    sceneShots.find((s) => s.image?.url || s.previewThumbnailUrl) ??
+    shots?.find((s) => s.image?.url || s.previewThumbnailUrl);
+
+  const walkHit = (delta: -1 | 1) =>
+    adjacentShotId(
+      shots ?? [],
+      {
+        shotId: selectedShotId,
+        sceneIds: selectedSceneIds,
+      },
+      delta
     );
-  }, [shots]);
 
-  // The list item is a link; the drawer only has to get out of the way.
-  const handleSelectShot = () => setIsOpen(false);
+  const canPrev = walkHit(-1) != null;
+  const canNext = walkHit(1) != null;
 
-  // Check if all eligible shots have motion prompts ready
-  const motionPromptsReady = useMemo(() => {
-    if (!eligibleShots.length) return true;
-    return eligibleShots.every((f) => f.motionPrompt?.fullPrompt);
-  }, [eligibleShots]);
-
-  const handleGenerateMotion = async () => {
-    if (!onBatchGenerateMotion || eligibleShots.length === 0) return;
-
-    setIsGenerating(true);
-    try {
-      await onBatchGenerateMotion({
-        includeMusic,
-        musicModel,
-        videoModel,
-        generateAudio,
-      });
-    } finally {
-      setIsGenerating(false);
-    }
+  const walk = (delta: -1 | 1) => {
+    if (walkHit(delta)) onWalkShot(delta);
   };
 
-  // Extract scene info for the collapsed bar
-  const selectedScene = selectedShot?.sceneId
-    ? scenesById.get(selectedShot.sceneId)
-    : undefined;
-  const sceneNumber = (selectedScene?.orderIndex ?? 0) + 1;
-  const sceneTitle = selectedScene?.title?.trim() || `Scene ${sceneNumber}`;
+  const closeJump = () => {
+    setJumpOpen(false);
+    setDrilledSceneId(null);
+  };
 
-  const hasEligibleShots = eligibleShots.length > 0;
-  const isMotionInProgress = regeneratingMotion.size > 0;
-  const showFooter =
-    !hideBatchButton && hasEligibleShots && !isMotionInProgress;
-  const isButtonDisabled =
-    isGenerating ||
-    isMotionInProgress ||
-    eligibleShots.length === 0 ||
-    !motionPromptsReady ||
-    (includeMusic && !musicPromptsReady);
+  const drilled = drilledSceneId
+    ? grouped.find((g) => g.scene.id === drilledSceneId)
+    : undefined;
 
   return (
     <>
-      {/* Collapsed bar - fixed at bottom */}
-      <button
-        type="button"
-        onClick={() => setIsOpen(true)}
-        className={cn(
-          'fixed inset-x-0 bottom-0 z-40 flex items-center gap-3 border-t bg-background px-4 py-3',
-          'pb-[calc(0.75rem+env(safe-area-inset-bottom))]',
-          'active:bg-muted/50 transition-colors'
-        )}
+      <div
+        data-testid="mobile-scene-nav"
+        className="fixed inset-x-0 bottom-0 z-40 flex items-center gap-1 border-t bg-background px-1 py-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))]"
       >
-        <SceneThumbnail
-          thumbnailUrl={selectedShot?.image?.url}
-          previewThumbnailUrl={selectedShot?.previewThumbnailUrl}
-          thumbnailStatus={selectedShot?.frame.imageStatus || undefined}
-          gridSheetUrl={selectedShot?.gridSheet?.url}
-          pendingUpscaleIndex={selectedShot?.pendingUpscaleIndex}
-          pendingUpscaleUrl={selectedShot?.pendingUpscaleUrl}
-          alt={sceneTitle}
-          aspectRatio={aspectRatio}
-          className="h-10 w-10 shrink-0 rounded object-cover"
-        />
-        <span className="flex-1 truncate text-left text-sm font-medium">
-          {selectedShot ? sceneTitle : 'Select a scene'}
-        </span>
-        <ChevronUp className="h-5 w-5 shrink-0 text-muted-foreground" />
-      </button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-11 w-11 shrink-0"
+          disabled={!canPrev}
+          aria-label="Previous shot"
+          onClick={() => walk(-1)}
+        >
+          <ChevronLeft className="h-5 w-5" />
+        </Button>
+        <button
+          type="button"
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-1 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+          aria-haspopup="dialog"
+          aria-expanded={jumpOpen}
+          aria-label={`${label}. Open scene list`}
+          onClick={() => setJumpOpen(true)}
+        >
+          <SceneThumbnail
+            thumbnailUrl={previewShot?.image?.url}
+            previewThumbnailUrl={previewShot?.previewThumbnailUrl}
+            thumbnailStatus={previewShot?.frame.imageStatus || undefined}
+            gridSheetUrl={previewShot?.gridSheet?.url}
+            pendingUpscaleIndex={previewShot?.pendingUpscaleIndex}
+            pendingUpscaleUrl={previewShot?.pendingUpscaleUrl}
+            alt={isSequence ? 'Sequence' : sceneTitle}
+            aspectRatio={aspectRatio}
+            className="aspect-square h-10 w-10 shrink-0 rounded"
+          />
+          <span className="min-w-0 flex-1 truncate text-sm font-medium">
+            {label}
+          </span>
+          <ChevronUp className="h-4 w-4 shrink-0 text-muted-foreground" />
+        </button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-11 w-11 shrink-0"
+          disabled={!canNext}
+          aria-label="Next shot"
+          onClick={() => walk(1)}
+        >
+          <ChevronRight className="h-5 w-5" />
+        </Button>
+      </div>
 
-      {/* Expanded sheet */}
-      <Sheet open={isOpen} onOpenChange={setIsOpen}>
+      <Sheet
+        open={jumpOpen}
+        onOpenChange={(open) => {
+          setJumpOpen(open);
+          if (!open) setDrilledSceneId(null);
+        }}
+      >
         <SheetContent
           side="bottom"
-          className="flex h-[70vh] flex-col pb-[env(safe-area-inset-bottom)]"
+          className="flex max-h-[70dvh] min-h-0 flex-col overflow-hidden pb-[env(safe-area-inset-bottom)]"
         >
-          <SheetHeader>
-            <SheetTitle>
-              {shots?.length ?? 0} {shots?.length === 1 ? 'Scene' : 'Scenes'}
-            </SheetTitle>
+          <SheetHeader className="shrink-0">
+            {drilled ? (
+              <div className="flex items-center gap-1">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-11 w-11"
+                  aria-label="Back to scenes"
+                  onClick={() => setDrilledSceneId(null)}
+                >
+                  <ChevronLeft className="h-5 w-5" />
+                </Button>
+                <SheetTitle className="min-w-0 truncate">
+                  {drilled.scene.title?.trim() ||
+                    `Scene ${drilled.scene.orderIndex + 1}`}
+                </SheetTitle>
+              </div>
+            ) : (
+              <SheetTitle>
+                {grouped.length} {grouped.length === 1 ? 'Scene' : 'Scenes'}
+              </SheetTitle>
+            )}
           </SheetHeader>
 
-          <ScrollArea className="flex-1 min-h-0 -mx-4">
-            <div className="flex flex-col gap-3 px-4 py-2">
-              {(shots === undefined || shots.length === 0) &&
-                [1, 2, 3].map((i) => (
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4">
+            {drilled ? (
+              <div className="flex flex-col gap-3 py-2">
+                {drilled.shots.map((shot) => (
                   <SceneListItem
-                    key={`shot-skeleton-${i}`}
-                    shot={undefined}
+                    key={shot.id}
+                    shot={shot}
+                    scene={drilled.scene}
                     aspectRatio={aspectRatio}
-                    isActive={false}
-                    onSelect={() => {}}
+                    isActive={shot.id === selectedShotId}
+                    variant="horizontal"
+                    onSelect={() => {
+                      onSelectShot(shot.id);
+                      closeJump();
+                    }}
                   />
                 ))}
-
-              {shots?.map((shot) => (
-                <SceneListItem
-                  key={shot.id}
-                  shot={shot}
-                  scene={
-                    shot.sceneId ? scenesById.get(shot.sceneId) : undefined
-                  }
-                  aspectRatio={aspectRatio}
-                  isActive={shot.id === selectedShotId}
-                  onSelect={handleSelectShot}
-                  isRegeneratingImage={regeneratingImages.has(shot.id)}
-                  isRegeneratingMotion={regeneratingMotion.has(shot.id)}
-                />
-              ))}
-            </div>
-          </ScrollArea>
-
-          {showFooter && (
-            <SheetFooter className="border-t pt-4 px-4 flex-col items-stretch gap-3">
-              <MotionModelSelector
-                selectedModel={videoModel}
-                onModelChange={setVideoModel}
-                aspectRatio={aspectRatio}
-                styleCategory={styleCategory}
-                recommendedVideoModel={recommendedVideoModel}
-                styleName={styleName}
-                disabled={isGenerating || isMotionInProgress}
-              />
-              {includeMusic && (
-                <MusicModelSelector
-                  selectedModel={musicModel}
-                  onModelChange={setMusicModel}
-                  disabled={isGenerating || isMotionInProgress}
-                />
-              )}
-              <Button
-                variant="default"
-                onClick={() => void handleGenerateMotion()}
-                disabled={isButtonDisabled}
-              >
-                {isGenerating || isMotionInProgress ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Generating…
-                  </>
-                ) : !motionPromptsReady ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Writing motion prompts…
-                  </>
-                ) : includeMusic && !musicPromptsReady ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Composing music…
-                  </>
-                ) : (
-                  <>
-                    <Video className="mr-2 h-4 w-4" />
-                    Generate {eligibleShots.length} / {totalShots}{' '}
-                    {totalShots === 1 ? 'shot' : 'shots'}
-                  </>
-                )}
-              </Button>
-              <label className="flex items-center gap-2 text-sm text-muted-foreground justify-center">
-                <Checkbox
-                  checked={includeMusic}
-                  onCheckedChange={(checked) =>
-                    setIncludeMusic(checked === true)
-                  }
-                  disabled={!musicPromptsReady}
-                />
-                <span>
-                  Also generate music
-                  {!musicPromptsReady && (
-                    <span className="text-xs ml-1">(preparing…)</span>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2 py-2">
+                <button
+                  type="button"
+                  className={cn(
+                    'rounded-lg border px-3 py-3 text-left text-sm',
+                    isSequence
+                      ? 'border-primary bg-primary/5 font-medium'
+                      : 'hover:bg-muted/40'
                   )}
-                </span>
-              </label>
-              <label
-                htmlFor="mobile-batch-generate-audio"
-                className="flex items-center gap-2 text-sm text-muted-foreground justify-center"
-              >
-                <Checkbox
-                  id="mobile-batch-generate-audio"
-                  checked={generateAudio}
-                  onCheckedChange={(checked) =>
-                    setGenerateAudio(checked === true)
-                  }
-                />
-                <span>Include SFX &amp; dialogue (when supported)</span>
-              </label>
-            </SheetFooter>
-          )}
+                  onClick={() => {
+                    onClearSelection();
+                    closeJump();
+                  }}
+                >
+                  Whole sequence
+                </button>
+                {grouped.map(({ scene, shots: sceneShots }) => {
+                  const title =
+                    scene.title?.trim() || `Scene ${scene.orderIndex + 1}`;
+                  const still =
+                    sceneShots.find(
+                      (s) => s.image?.url || s.previewThumbnailUrl
+                    ) ?? sceneShots[0];
+                  const active =
+                    focusedSceneId === scene.id ||
+                    selectedSceneIds.includes(scene.id);
+                  const multi = sceneShots.length > 1;
+                  return (
+                    <button
+                      key={scene.id}
+                      type="button"
+                      className={cn(
+                        'flex items-center gap-3 rounded-lg border px-3 py-2 text-left',
+                        active
+                          ? 'border-primary bg-primary/5'
+                          : 'hover:bg-muted/40'
+                      )}
+                      onClick={() => {
+                        if (multi) {
+                          onFocusScene(scene.id);
+                          setDrilledSceneId(scene.id);
+                          return;
+                        }
+                        const only = sceneShots[0];
+                        if (only) onSelectShot(only.id);
+                        else onFocusScene(scene.id);
+                        closeJump();
+                      }}
+                    >
+                      <SceneThumbnail
+                        thumbnailUrl={still?.image?.url}
+                        previewThumbnailUrl={still?.previewThumbnailUrl}
+                        thumbnailStatus={still?.frame.imageStatus || undefined}
+                        alt={title}
+                        aspectRatio={aspectRatio}
+                        className="aspect-square h-12 w-12 shrink-0 rounded"
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-medium">
+                          {title}
+                        </span>
+                        {multi && (
+                          <span className="block text-xs text-muted-foreground">
+                            {sceneShots.length} shots
+                          </span>
+                        )}
+                      </span>
+                      {multi && (
+                        <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </SheetContent>
       </Sheet>
     </>

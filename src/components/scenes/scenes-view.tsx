@@ -25,6 +25,7 @@ import { useActiveImageModel } from '@/hooks/use-active-image-model';
 import { useActiveVideoModel } from '@/hooks/use-active-video-model';
 import { BILLING_BALANCE_KEY } from '@/hooks/use-billing-balance';
 import { useFalBillingGate } from '@/hooks/use-billing-gate';
+import { useHorizontalSwipe } from '@/hooks/use-horizontal-swipe';
 import { useSceneSelection } from '@/hooks/use-scene-selection';
 import { useSequenceSegments } from '@/hooks/use-segments';
 import { useScenesBySequence, type SceneWithScript } from '@/hooks/use-scenes';
@@ -34,6 +35,7 @@ import {
   useSequenceShotStaleness,
 } from '@/hooks/use-shot-staleness';
 import { errorMessage, isInsufficientCreditsError } from '@/lib/errors';
+import { adjacentShotId } from '@/lib/scenes/shot-walk';
 import { sequenceKeys, useSequence } from '@/hooks/use-sequences';
 import {
   shotKeys,
@@ -60,6 +62,8 @@ import {
   type TextToImageModel,
 } from '@/lib/ai/models';
 import {
+  clearSelection,
+  selectShot,
   selectionScope,
   selectionShots,
   type SceneFacet,
@@ -230,6 +234,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
 
   const {
     selection,
+    setSelection,
     handleSelectScene,
     handleFocusScene,
     handleSelectShot,
@@ -345,6 +350,19 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     shouldPoll ? { refetchInterval: 2000 } : undefined
   );
 
+  const handleWalkShot = useCallback(
+    (delta: -1 | 1) => {
+      const next = adjacentShotId(shots ?? [], selection, delta);
+      if (!next) return;
+      if (next.type === 'sequence') {
+        setSelection(clearSelection(), undefined, true);
+        return;
+      }
+      setSelection(selectShot(next.id), undefined, true);
+    },
+    [shots, selection, setSelection]
+  );
+
   // Progressive reveal (#1091): while the script is being split the canvas has
   // nothing to show, so the Script view is forced and the Canvas toggle stays
   // disabled. When the first shot preview lands the override drops away and —
@@ -355,6 +373,9 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     !isProcessing ||
     (shots?.some((s) => s.image?.url || s.previewThumbnailUrl) ?? false);
   const effectiveView = canvasReady ? view : 'script';
+  const canvasSwipe = useHorizontalSwipe(
+    effectiveView === 'canvas' ? handleWalkShot : undefined
+  );
 
   // Escape progressive zoom-out (#986):
   // 1) blur the focused editing field (exit typing)
@@ -1125,8 +1146,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
 
   const [isRetrying, setIsRetrying] = useState(false);
 
-  // Mobile-only: the inspector panel under the canvas starts collapsed so the
-  // video preview gets the vertical space; expanding it is one tap away.
+  // Mobile inspector starts collapsed so the canvas keeps the vertical space.
   const [mobileInspectorOpen, setMobileInspectorOpen] = useState(false);
 
   const failureSummary = useMemo(
@@ -1347,7 +1367,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
       )}
 
       <div className="flex flex-1 min-h-0">
-        <div className="hidden md:block shrink-0 pl-4 py-4">
+        <div className="hidden min-h-0 md:block shrink-0 pl-4 py-4">
           <SceneList
             shots={shots}
             scenes={scenes}
@@ -1383,19 +1403,12 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
             shots={shots}
             scenes={scenes}
             selectedShotId={curSelectedShotId}
+            selectedSceneIds={selection.sceneIds}
             aspectRatio={aspectRatio}
-            regeneratingImages={regeneratingImages}
-            regeneratingMotion={regeneratingMotion}
-            onBatchGenerateMotion={handleBatchMotionGeneration}
-            musicPromptsReady={musicPromptsReady}
-            hideBatchButton={
-              phaseConfig.autoGenerateMotion && isGenerationActive
-            }
-            initialMusicModel={sequenceMusicModel}
-            initialVideoModel={sequenceVideoModel}
-            styleCategory={styleCategory}
-            recommendedVideoModel={recommendedVideoModel}
-            styleName={styleName}
+            onSelectShot={handleSelectShot}
+            onFocusScene={handleFocusScene}
+            onClearSelection={handleClearSelection}
+            onWalkShot={handleWalkShot}
           />
         </div>
 
@@ -1411,160 +1424,83 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
                 ) : null
               }
             />
-            {effectiveView === 'script' ? (
-              <SceneScriptDocument
-                sequenceId={sequenceId}
-                scenes={scenes}
-                selectedSceneIds={selectedScenes.map((s) => s.id)}
-                onSelectScene={handleFocusScene}
-                splittingScript={isProcessing ? sequence.script : undefined}
-              />
-            ) : (
-              <SceneCanvas
-                selection={selection}
-                shots={shots}
-                scenes={scenes}
-                loadError={shotsError}
-                playerShots={playerShots}
-                sequence={sequence}
-                aspectRatio={aspectRatio}
-                selectedTab={effectiveTab}
-                overrideImageUrl={previewVariantUrl}
-                overrideVideoUrl={previewVariantVideoUrl}
-                badgeMessage={playerBadgeMessage}
-                modelMismatchLabel={
-                  effectiveTab === 'image-prompt' &&
-                  activeImageModelLabel &&
-                  curSelectedShotId &&
-                  shotsMissingActiveImage.has(curSelectedShotId)
-                    ? `Not generated with ${activeImageModelLabel}`
-                    : null
-                }
-                staleLabel={
-                  !isGenerationActive &&
-                  effectiveTab === 'image-prompt' &&
-                  curSelectedShotId &&
-                  !regeneratingImages.has(curSelectedShotId)
-                    ? scopeStaleness?.[curSelectedShotId]?.thumbnail === 'stale'
-                      ? 'Out of date'
-                      : scopeStaleness?.[curSelectedShotId]?.thumbnail ===
-                          'updating'
-                        ? 'Updating…'
-                        : null
-                    : null
-                }
-                progressMessage={
-                  isGenerationActive ? (
-                    <RenderWaitCopy
-                      etaMinutes={etaMinutes}
-                      willEmail={willEmail}
-                    />
-                  ) : (
-                    generationState.phases.find((p) => p.status === 'active')
-                      ?.phaseName
-                  )
-                }
-                retry={selectedShotRetry}
-                onSelectShot={handleSelectShot}
-                sceneImageModel={resolvedImageModel}
-                regeneratingSceneVariants={regeneratingSceneVariants}
-                onGenerateSceneVariantsStart={(id) =>
-                  handleRegenerateStart(id, 'scene-variants')
-                }
-                firstRunActive={isGenerationActive}
-              />
-            )}
+            <div
+              className="relative min-h-0 flex-1 touch-pan-y overflow-hidden"
+              {...canvasSwipe}
+            >
+              {effectiveView === 'script' ? (
+                <SceneScriptDocument
+                  sequenceId={sequenceId}
+                  scenes={scenes}
+                  selectedSceneIds={selectedScenes.map((s) => s.id)}
+                  onSelectScene={handleFocusScene}
+                  splittingScript={isProcessing ? sequence.script : undefined}
+                />
+              ) : (
+                <SceneCanvas
+                  selection={selection}
+                  shots={shots}
+                  scenes={scenes}
+                  loadError={shotsError}
+                  playerShots={playerShots}
+                  sequence={sequence}
+                  aspectRatio={aspectRatio}
+                  selectedTab={effectiveTab}
+                  overrideImageUrl={previewVariantUrl}
+                  overrideVideoUrl={previewVariantVideoUrl}
+                  badgeMessage={playerBadgeMessage}
+                  modelMismatchLabel={
+                    effectiveTab === 'image-prompt' &&
+                    activeImageModelLabel &&
+                    curSelectedShotId &&
+                    shotsMissingActiveImage.has(curSelectedShotId)
+                      ? `Not generated with ${activeImageModelLabel}`
+                      : null
+                  }
+                  staleLabel={
+                    !isGenerationActive &&
+                    effectiveTab === 'image-prompt' &&
+                    curSelectedShotId &&
+                    !regeneratingImages.has(curSelectedShotId)
+                      ? scopeStaleness?.[curSelectedShotId]?.thumbnail ===
+                        'stale'
+                        ? 'Out of date'
+                        : scopeStaleness?.[curSelectedShotId]?.thumbnail ===
+                            'updating'
+                          ? 'Updating…'
+                          : null
+                      : null
+                  }
+                  progressMessage={
+                    isGenerationActive ? (
+                      <RenderWaitCopy
+                        etaMinutes={etaMinutes}
+                        willEmail={willEmail}
+                      />
+                    ) : (
+                      generationState.phases.find((p) => p.status === 'active')
+                        ?.phaseName
+                    )
+                  }
+                  retry={selectedShotRetry}
+                  onSelectShot={handleSelectShot}
+                  sceneImageModel={resolvedImageModel}
+                  regeneratingSceneVariants={regeneratingSceneVariants}
+                  onGenerateSceneVariantsStart={(id) =>
+                    handleRegenerateStart(id, 'scene-variants')
+                  }
+                  firstRunActive={isGenerationActive}
+                />
+              )}
+            </div>
           </div>
 
           {/* Mirrors SceneList's inset card: outer div owns the padding, inner
               owns the rounded border — so both rails read as the same object. */}
-          <div className="hidden md:block shrink-0 pr-4 py-4">
-            <div className="flex h-full w-[380px] lg:w-[420px] flex-col rounded-lg border bg-background">
-              <SceneModelBar
-                scope={scope}
-                sequenceId={sequenceId}
-                resolvedSequenceImageModel={resolvedSequenceImageModel}
-                resolvedSequenceVideoModel={resolvedSequenceVideoModel}
-                styleId={sequence?.styleId ?? undefined}
-                stylePending={sequence?.styleConfig == null}
-                aspectRatio={aspectRatio}
-                analysisModel={sequence?.analysisModel ?? undefined}
-              />
-              <ScrollArea className="flex-1 min-h-0 px-4 pb-4">
-                <SceneScriptPrompts
-                  shot={selectedShot}
-                  sequenceId={sequenceId}
-                  selectedTab={effectiveTab}
-                  visibleTabs={visibleTabs}
-                  onTabChange={(tab) => {
-                    setSelectedTab(tab);
-                    setFacet(tab);
-                  }}
-                  regeneratingImages={regeneratingImages}
-                  regeneratingMotion={regeneratingMotion}
-                  onRegenerateStart={handleRegenerateStart}
-                  aspectRatio={aspectRatio}
-                  variantForSelectedModel={variantForSelectedModel}
-                  videoVariantForSelectedModel={videoVariantForSelectedModel}
-                  segment={selectedSegment}
-                  segmentSpanLabel={selectedSegmentSpanLabel}
-                  resolvedImageModel={resolvedImageModel}
-                  resolvedVideoModel={resolvedVideoModel}
-                  imageModelStatuses={sceneImageModelStatuses}
-                  videoModelStatuses={sceneVideoModelStatuses}
-                  onImageModelChange={handleImageModelChange}
-                  onVideoModelChange={handleVideoModelChange}
-                  styleName={styleName}
-                  recommendedImageModel={recommendedImageModel}
-                  recommendedVideoModel={recommendedVideoModel}
-                  styleCategory={styleCategory}
-                  shotDivergentVariants={divergentVariants?.filter(
-                    (v) => v.shotId === curSelectedShotId
-                  )}
-                  onCompareDivergent={(variant) => setCompareVariant(variant)}
-                  facetShotIds={facetShotIds}
-                  musicEditable={scope === 'sequence'}
-                  scene={scriptScene}
-                  scopeShots={scopeShots}
-                  scopeStaleness={scopeStaleness}
-                  scopeStalenessFailed={scopeStalenessFailed}
-                  onSelectShot={handleSelectShot}
-                />
-              </ScrollArea>
-            </div>
-          </div>
-
-          <div className="md:hidden shrink-0 border-t bg-background pb-20">
-            {/* Collapsed by default so the canvas keeps the vertical space —
-                on phones this panel used to claim up to 45vh unconditionally
-                and squeeze the video preview to a sliver. */}
-            <button
-              type="button"
-              className="flex min-h-11 w-full items-center justify-between px-4 py-2"
-              aria-expanded={mobileInspectorOpen}
-              aria-controls="mobile-scene-inspector"
-              onClick={() => setMobileInspectorOpen((open) => !open)}
-            >
-              <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                {scopeLabel[scope]}
-              </span>
-              <ChevronDown
-                className={cn(
-                  'h-4 w-4 text-muted-foreground transition-transform',
-                  mobileInspectorOpen && 'rotate-180'
-                )}
-              />
-            </button>
-            <div
-              id="mobile-scene-inspector"
-              className={cn(
-                'max-h-[40dvh]',
-                mobileInspectorOpen ? 'block' : 'hidden'
-              )}
-            >
-              <ScrollArea className="h-full max-h-[40dvh] px-4">
+          <div className="hidden min-h-0 md:block shrink-0 pr-4 py-4">
+            <div className="flex h-full min-h-0 w-[380px] lg:w-[420px] flex-col overflow-hidden rounded-lg border bg-background">
+              <ScrollArea className="h-full min-h-0">
                 <SceneModelBar
-                  hideHeader
                   scope={scope}
                   sequenceId={sequenceId}
                   resolvedSequenceImageModel={resolvedSequenceImageModel}
@@ -1574,46 +1510,126 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
                   aspectRatio={aspectRatio}
                   analysisModel={sequence?.analysisModel ?? undefined}
                 />
-                <SceneScriptPrompts
-                  shot={selectedShot}
-                  sequenceId={sequenceId}
-                  selectedTab={effectiveTab}
-                  visibleTabs={visibleTabs}
-                  onTabChange={(tab) => {
-                    setSelectedTab(tab);
-                    setFacet(tab);
-                  }}
-                  regeneratingImages={regeneratingImages}
-                  regeneratingMotion={regeneratingMotion}
-                  onRegenerateStart={handleRegenerateStart}
-                  aspectRatio={aspectRatio}
-                  variantForSelectedModel={variantForSelectedModel}
-                  videoVariantForSelectedModel={videoVariantForSelectedModel}
-                  segment={selectedSegment}
-                  segmentSpanLabel={selectedSegmentSpanLabel}
-                  resolvedImageModel={resolvedImageModel}
-                  resolvedVideoModel={resolvedVideoModel}
-                  imageModelStatuses={sceneImageModelStatuses}
-                  videoModelStatuses={sceneVideoModelStatuses}
-                  onImageModelChange={handleImageModelChange}
-                  onVideoModelChange={handleVideoModelChange}
-                  styleName={styleName}
-                  recommendedImageModel={recommendedImageModel}
-                  recommendedVideoModel={recommendedVideoModel}
-                  styleCategory={styleCategory}
-                  shotDivergentVariants={divergentVariants?.filter(
-                    (v) => v.shotId === curSelectedShotId
-                  )}
-                  onCompareDivergent={(variant) => setCompareVariant(variant)}
-                  facetShotIds={facetShotIds}
-                  musicEditable={scope === 'sequence'}
-                  scene={scriptScene}
-                  scopeShots={scopeShots}
-                  scopeStaleness={scopeStaleness}
-                  scopeStalenessFailed={scopeStalenessFailed}
-                  onSelectShot={handleSelectShot}
-                />
+                <div className="px-4 pb-4">
+                  <SceneScriptPrompts
+                    shot={selectedShot}
+                    sequenceId={sequenceId}
+                    selectedTab={effectiveTab}
+                    visibleTabs={visibleTabs}
+                    onTabChange={(tab) => {
+                      setSelectedTab(tab);
+                      setFacet(tab);
+                    }}
+                    regeneratingImages={regeneratingImages}
+                    regeneratingMotion={regeneratingMotion}
+                    onRegenerateStart={handleRegenerateStart}
+                    aspectRatio={aspectRatio}
+                    variantForSelectedModel={variantForSelectedModel}
+                    videoVariantForSelectedModel={videoVariantForSelectedModel}
+                    segment={selectedSegment}
+                    segmentSpanLabel={selectedSegmentSpanLabel}
+                    resolvedImageModel={resolvedImageModel}
+                    resolvedVideoModel={resolvedVideoModel}
+                    imageModelStatuses={sceneImageModelStatuses}
+                    videoModelStatuses={sceneVideoModelStatuses}
+                    onImageModelChange={handleImageModelChange}
+                    onVideoModelChange={handleVideoModelChange}
+                    styleName={styleName}
+                    recommendedImageModel={recommendedImageModel}
+                    recommendedVideoModel={recommendedVideoModel}
+                    styleCategory={styleCategory}
+                    shotDivergentVariants={divergentVariants?.filter(
+                      (v) => v.shotId === curSelectedShotId
+                    )}
+                    onCompareDivergent={(variant) => setCompareVariant(variant)}
+                    facetShotIds={facetShotIds}
+                    musicEditable={scope === 'sequence'}
+                    scene={scriptScene}
+                    scopeShots={scopeShots}
+                    scopeStaleness={scopeStaleness}
+                    scopeStalenessFailed={scopeStalenessFailed}
+                    onSelectShot={handleSelectShot}
+                  />
+                </div>
               </ScrollArea>
+            </div>
+          </div>
+
+          <div className="relative z-10 md:hidden shrink-0 border-t bg-background pb-20">
+            <button
+              type="button"
+              className="flex min-h-11 w-full items-center justify-between px-4 py-2 outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+              aria-expanded={mobileInspectorOpen}
+              aria-controls="mobile-scene-inspector"
+              onClick={() => setMobileInspectorOpen((open) => !open)}
+            >
+              <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                {scopeLabel[scope]}
+              </span>
+              <ChevronDown
+                className={cn(
+                  'h-4 w-4 text-muted-foreground transition-transform motion-reduce:transition-none',
+                  mobileInspectorOpen && 'rotate-180'
+                )}
+              />
+            </button>
+            <div
+              id="mobile-scene-inspector"
+              className={cn(
+                'max-h-[40dvh] overflow-y-auto overscroll-contain bg-background px-4',
+                mobileInspectorOpen ? 'block' : 'hidden'
+              )}
+            >
+              <SceneModelBar
+                hideHeader
+                scope={scope}
+                sequenceId={sequenceId}
+                resolvedSequenceImageModel={resolvedSequenceImageModel}
+                resolvedSequenceVideoModel={resolvedSequenceVideoModel}
+                styleId={sequence?.styleId ?? undefined}
+                stylePending={sequence?.styleConfig == null}
+                aspectRatio={aspectRatio}
+                analysisModel={sequence?.analysisModel ?? undefined}
+              />
+              <SceneScriptPrompts
+                shot={selectedShot}
+                sequenceId={sequenceId}
+                selectedTab={effectiveTab}
+                visibleTabs={visibleTabs}
+                onTabChange={(tab) => {
+                  setSelectedTab(tab);
+                  setFacet(tab);
+                }}
+                regeneratingImages={regeneratingImages}
+                regeneratingMotion={regeneratingMotion}
+                onRegenerateStart={handleRegenerateStart}
+                aspectRatio={aspectRatio}
+                variantForSelectedModel={variantForSelectedModel}
+                videoVariantForSelectedModel={videoVariantForSelectedModel}
+                segment={selectedSegment}
+                segmentSpanLabel={selectedSegmentSpanLabel}
+                resolvedImageModel={resolvedImageModel}
+                resolvedVideoModel={resolvedVideoModel}
+                imageModelStatuses={sceneImageModelStatuses}
+                videoModelStatuses={sceneVideoModelStatuses}
+                onImageModelChange={handleImageModelChange}
+                onVideoModelChange={handleVideoModelChange}
+                styleName={styleName}
+                recommendedImageModel={recommendedImageModel}
+                recommendedVideoModel={recommendedVideoModel}
+                styleCategory={styleCategory}
+                shotDivergentVariants={divergentVariants?.filter(
+                  (v) => v.shotId === curSelectedShotId
+                )}
+                onCompareDivergent={(variant) => setCompareVariant(variant)}
+                facetShotIds={facetShotIds}
+                musicEditable={scope === 'sequence'}
+                scene={scriptScene}
+                scopeShots={scopeShots}
+                scopeStaleness={scopeStaleness}
+                scopeStalenessFailed={scopeStalenessFailed}
+                onSelectShot={handleSelectShot}
+              />
             </div>
           </div>
         </div>

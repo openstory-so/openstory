@@ -384,13 +384,13 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
       ) : (
         <div
           ref={frameRef}
+          data-overlay-fullscreen=""
           className={cn(
             'relative w-full',
             getAspectRatioClassName(aspectRatio),
             className
           )}
         >
-          {/* Share dropdown + fullscreen */}
           <div className="absolute top-2 right-2 z-10 flex items-center gap-2">
             {(currentShot.image?.url || currentShot.video?.url) && (
               <DropdownMenu>

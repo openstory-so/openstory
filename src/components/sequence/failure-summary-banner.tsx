@@ -98,7 +98,9 @@ export const FailureSummaryBanner: React.FC<FailureSummaryBannerProps> = ({
           {isWarning && <p>{CONTENT_REJECTION_USER_HINT}</p>}
 
           {summary.groups.length === 0 && summary.error && !calm && (
-            <p className="mt-1 text-xs font-mono">{errorLabel(summary.error)}</p>
+            <p className="mt-1 text-xs font-mono">
+              {errorLabel(summary.error)}
+            </p>
           )}
 
           {summary.groups.length > 0 && !isCredits && (

@@ -59,8 +59,14 @@ export const CreditsShort: Story = {
 
 export const ContentChecker: Story = {
   args: { summary: contentSummary },
+  globals: {
+    viewport: { value: 'mobile1', isRotated: false },
+  },
 };
 
 export const GenerationFailed: Story = {
   args: { summary: failedSummary },
+  globals: {
+    viewport: { value: 'mobile1', isRotated: false },
+  },
 };

@@ -2,6 +2,11 @@
 @plugin '@tailwindcss/typography';
 @import 'tw-animate-css';
 @import '@videojs/react/video/minimal-skin.css';
+
+/* Overlay FullscreenButton is the 44px control; hide the skin's duplicate. */
+[data-overlay-fullscreen] .media-button--fullscreen {
+  display: none;
+}
 @import 'tw-animate-css';
 @import 'shadcn/tailwind.css';
 @import '@fontsource-variable/geist';

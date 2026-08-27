@@ -44,8 +44,8 @@ type SceneModelBarProps = {
   /** The LLM that analysed the script into scenes. Fixed post-analysis. */
   analysisModel?: string;
   /**
-   * Skip the scope header row — the mobile inspector's collapse bar already
-   * carries the same label, and the Esc hint means nothing without a keyboard.
+   * Omit the scope label / Esc hint (duplicate of the mobile collapse bar;
+   * Esc is meaningless on a phone).
    */
   hideHeader?: boolean;
 };

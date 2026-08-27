@@ -6,6 +6,7 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb';
+import { cn } from '@/lib/utils';
 import type { AnyRouteMatch } from '@tanstack/react-router';
 import { Link, useMatches } from '@tanstack/react-router';
 import { Fragment } from 'react';
@@ -74,20 +75,41 @@ export const Breadcrumbs: React.FC = () => {
       <BreadcrumbList>
         {crumbs.map((crumb, i) => {
           const isLast = i === crumbs.length - 1;
+          const isFirst = i === 0;
+          // shadcn sidebar pattern: on small screens show only the current
+          // page (`hidden md:block` on ancestors). The long sequence title
+          // stays a middle crumb on desktop and line-clamps there.
+          const hideOnMobile = !isLast && crumbs.length > 1;
+          const labelText =
+            typeof crumb.label === 'string' ? crumb.label : undefined;
           return (
             <Fragment
               key={`${i}-${typeof crumb.label === 'string' ? crumb.label : ''}`}
             >
-              <BreadcrumbItem>
+              <BreadcrumbItem
+                className={cn(
+                  hideOnMobile && 'hidden md:inline-flex',
+                  isFirst && 'md:shrink-0',
+                  isLast ? 'min-w-0 md:shrink-0' : 'md:min-w-0'
+                )}
+              >
                 {isLast || !crumb.to ? (
-                  <BreadcrumbPage>{crumb.label}</BreadcrumbPage>
+                  <BreadcrumbPage className="line-clamp-1" title={labelText}>
+                    {crumb.label}
+                  </BreadcrumbPage>
                 ) : (
-                  <BreadcrumbLink asChild>
-                    <Link to={crumb.to}>{crumb.label}</Link>
+                  <BreadcrumbLink asChild className="line-clamp-1">
+                    <Link to={crumb.to} title={labelText}>
+                      {crumb.label}
+                    </Link>
                   </BreadcrumbLink>
                 )}
               </BreadcrumbItem>
-              {!isLast && <BreadcrumbSeparator />}
+              {!isLast && (
+                <BreadcrumbSeparator
+                  className={hideOnMobile ? 'hidden md:block' : undefined}
+                />
+              )}
             </Fragment>
           );
         })}

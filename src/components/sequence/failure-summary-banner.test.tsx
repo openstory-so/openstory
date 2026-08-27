@@ -27,6 +27,16 @@ const creditsSummary: FailureSummary = {
   tone: 'credits',
 };
 
+const generationFailed: FailureSummary = {
+  requiresFullRetry: true,
+  headline: 'Generation failed — regenerate to retry',
+  groups: [],
+  totalFailures: 1,
+  hasFailed: true,
+  error: 'Workflow timed out while generating scene prompts',
+  tone: 'error',
+};
+
 describe('FailureSummaryBanner', () => {
   it('SSRs the content-checker title instead of Generation failed', () => {
     const html = renderToStaticMarkup(
@@ -64,5 +74,22 @@ describe('FailureSummaryBanner', () => {
     expect(html).not.toContain('Regenerate Sequence');
     expect(html).not.toContain('text-destructive');
     expect(html).not.toContain('font-mono');
+  });
+
+  it('SSRs error-tone retry while mobile starts collapsed', () => {
+    const html = renderToStaticMarkup(
+      <FailureSummaryBanner
+        summary={generationFailed}
+        onRetry={() => undefined}
+        onFullRetry={() => undefined}
+        isRetrying={false}
+      />
+    );
+
+    expect(html).toContain('Generation failed');
+    expect(html).toContain('Workflow timed out');
+    expect(html).toContain('Regenerate Sequence');
+    expect(html).toContain('Show details');
+    expect(html).toContain('aria-expanded="false"');
   });
 });
