@@ -1,5 +1,7 @@
 import { DurableObject } from 'cloudflare:workers';
 
+import { getLogger } from '@/lib/observability/logger';
+
 /**
  * Cloudflare-native realtime broker. One Durable Object instance per channel
  * (keyed by `idFromName(channel)`), replacing the previous Upstash
@@ -9,27 +11,43 @@ import { DurableObject } from 'cloudflare:workers';
  * - **Fan-out**: workers/workflows POST events to `/emit`; the DO broadcasts
  *   them to every connected SSE subscriber. Because a DO is a single addressable
  *   instance, all subscribers for a channel land on the same object, so an
- *   in-memory writer set is sufficient for cross-isolate fan-out (the emitter
+ *   in-memory subscriber set is sufficient for cross-isolate fan-out (the emitter
  *   runs in a Workflow isolate, the subscriber in a request isolate).
  * - **Long-lived SSE**: the DO holds each `/subscribe` stream open itself, which
  *   fixes the reconnect loop the old request-isolate handler suffered (Workers
  *   don't hold an SSE stream open — see the kill-switch note that used to live
- *   in `providers.tsx`).
+ *   in `providers.tsx`). Each subscriber is a pull-driven `ReadableStream` with
+ *   a bounded pending queue: a stalled client is dropped rather than buffering
+ *   unbounded chunks in the isolate (#1332). EventSource reconnects and replays
+ *   from `/history`.
  * - **History replay**: events are persisted in the DO's own SQLite storage so a
- *   page refresh mid-generation can replay progress (`/history`). A periodic
- *   alarm prunes rows past the TTL / row cap.
+ *   page refresh mid-generation can replay progress (`/history`). `/emit` prunes
+ *   to the row cap so a chatty channel never accumulates a mountain, and a
+ *   periodic alarm TTL-deletes expired rows in PK-range batches (#1332).
  *
  * The wire format is intentionally simple and fully owned in-repo (see
  * `client.tsx`): each SSE `data:` line is a JSON object — a user event
  * `{ id, event, channel, data }` or a system event `{ type: 'connected' | 'ping' }`.
  */
 
+const logger = getLogger(['openstory', 'realtime', 'channel']);
+
 /** Keep replayable history for 30 days (matches the old Redis stream expiry). */
 const HISTORY_EXPIRE_SECS = 60 * 60 * 24 * 30;
 /** Hard cap on stored rows per channel so a chatty channel can't grow without bound. */
-const HISTORY_MAX_ROWS = 2000;
+export const HISTORY_MAX_ROWS = 2000;
+/**
+ * Per-subscriber SSE buffer. Cloudflare's `WritableStreamDefaultWriter.desiredSize`
+ * is stubbed (always 1 / 0 / null), so this is the actual backpressure bound:
+ * if a client doesn't pull, pending chunks pile up here and we drop them.
+ */
+export const SSE_MAX_BUFFERED_CHUNKS = 32;
 /** How often the prune alarm runs while a channel still has stored events. */
 const PRUNE_INTERVAL_MS = 60 * 60 * 1000;
+/** Catch-up cadence when a leftover mountain still exceeds the cap / TTL. */
+const PRUNE_CATCHUP_MS = 5_000;
+/** Rows deleted per prune statement so one storage op cannot exceed the timeout. */
+const PRUNE_BATCH_ROWS = 1_000;
 /** SSE keepalive cadence — keeps intermediaries from dropping an idle stream. */
 const PING_INTERVAL_MS = 25_000;
 
@@ -47,8 +65,17 @@ export type ChannelHistoryMessage = {
   ts: number;
 };
 
+type Subscriber = {
+  channel: string;
+  pending: Uint8Array[];
+  controller: ReadableStreamDefaultController<Uint8Array> | null;
+  notify: (() => void) | null;
+  closed: boolean;
+  ping: ReturnType<typeof setInterval> | null;
+};
+
 export class RealtimeChannel extends DurableObject {
-  private readonly writers = new Set<WritableStreamDefaultWriter<Uint8Array>>();
+  private readonly subscribers = new Set<Subscriber>();
   private readonly encoder = new TextEncoder();
 
   constructor(ctx: DurableObjectState, env: Cloudflare.Env) {
@@ -61,6 +88,9 @@ export class RealtimeChannel extends DurableObject {
         data TEXT NOT NULL,
         ts INTEGER NOT NULL
       )`
+    );
+    this.ctx.storage.sql.exec(
+      'CREATE INDEX IF NOT EXISTS events_ts ON events(ts)'
     );
   }
 
@@ -96,7 +126,8 @@ export class RealtimeChannel extends DurableObject {
       .one();
     const id = String(row.seq);
 
-    await this.ensurePruneAlarm();
+    this.pruneCapBatch(row.seq);
+    await this.schedulePrune(this.stillOverCap(row.seq));
     this.broadcast({ id, event: body.event, channel, data: body.data });
 
     return new Response(null, { status: 204 });
@@ -123,29 +154,49 @@ export class RealtimeChannel extends DurableObject {
   }
 
   private handleSubscribe(request: Request, channel: string): Response {
-    const { readable, writable } = new TransformStream<
-      Uint8Array,
-      Uint8Array
-    >();
-    const writer = writable.getWriter();
-    this.writers.add(writer);
-
-    void writer
-      .write(this.shot({ type: 'connected', channel }))
-      .catch(() => this.dropWriter(writer));
-
-    const ping = setInterval(() => {
-      writer.write(this.shot({ type: 'ping' })).catch(() => {
-        clearInterval(ping);
-        this.dropWriter(writer);
-      });
-    }, PING_INTERVAL_MS);
-
-    const cleanup = () => {
-      clearInterval(ping);
-      this.dropWriter(writer);
+    const subscriber: Subscriber = {
+      channel,
+      pending: [],
+      controller: null,
+      notify: null,
+      closed: false,
+      ping: null,
     };
-    request.signal.addEventListener('abort', cleanup);
+
+    const readable = new ReadableStream<Uint8Array>({
+      start: (controller) => {
+        subscriber.controller = controller;
+        this.subscribers.add(subscriber);
+        this.enqueue(subscriber, this.shot({ type: 'connected', channel }));
+        subscriber.ping = setInterval(() => {
+          this.enqueue(subscriber, this.shot({ type: 'ping' }));
+        }, PING_INTERVAL_MS);
+      },
+      pull: async (controller) => {
+        while (subscriber.pending.length === 0 && !subscriber.closed) {
+          await new Promise<void>((resolve) => {
+            subscriber.notify = resolve;
+          });
+        }
+        if (subscriber.closed) {
+          try {
+            controller.close();
+          } catch {
+            // already closed by dropSubscriber
+          }
+          return;
+        }
+        const chunk = subscriber.pending.shift();
+        if (chunk) controller.enqueue(chunk);
+      },
+      cancel: () => {
+        this.dropSubscriber(subscriber, 'abort');
+      },
+    });
+
+    request.signal.addEventListener('abort', () => {
+      this.dropSubscriber(subscriber, 'abort');
+    });
 
     return new Response(readable, {
       headers: {
@@ -163,42 +214,122 @@ export class RealtimeChannel extends DurableObject {
     data: unknown;
   }): void {
     const shot = this.shot(event);
-    for (const writer of this.writers) {
-      writer.write(shot).catch(() => this.dropWriter(writer));
+    for (const subscriber of this.subscribers) {
+      this.enqueue(subscriber, shot);
     }
+  }
+
+  private enqueue(subscriber: Subscriber, chunk: Uint8Array): void {
+    if (subscriber.closed) return;
+    if (subscriber.pending.length >= SSE_MAX_BUFFERED_CHUNKS) {
+      this.dropSubscriber(subscriber, 'overflow');
+      return;
+    }
+    subscriber.pending.push(chunk);
+    subscriber.notify?.();
+    subscriber.notify = null;
+  }
+
+  private dropSubscriber(
+    subscriber: Subscriber,
+    reason: 'abort' | 'overflow'
+  ): void {
+    if (subscriber.closed) return;
+    subscriber.closed = true;
+    this.subscribers.delete(subscriber);
+    subscriber.pending.length = 0;
+    if (subscriber.ping !== null) {
+      clearInterval(subscriber.ping);
+      subscriber.ping = null;
+    }
+    if (reason === 'overflow') {
+      logger.warn('dropping slow SSE subscriber', {
+        channel: subscriber.channel,
+      });
+    }
+    try {
+      subscriber.controller?.close();
+    } catch {
+      // already closed
+    }
+    subscriber.controller = null;
+    subscriber.notify?.();
+    subscriber.notify = null;
   }
 
   private shot(payload: unknown): Uint8Array {
     return this.encoder.encode(`data: ${JSON.stringify(payload)}\n\n`);
   }
 
-  private dropWriter(writer: WritableStreamDefaultWriter<Uint8Array>): void {
-    if (!this.writers.delete(writer)) return;
-    writer.close().catch(() => {});
+  private capCutoff(newestSeq: number): number {
+    return newestSeq - HISTORY_MAX_ROWS;
   }
 
-  private async ensurePruneAlarm(): Promise<void> {
+  /**
+   * PK-range delete of at most `PRUNE_BATCH_ROWS` oldest rows past the cap.
+   * `seq <= MAX(seq) - HISTORY_MAX_ROWS` is O(k) on the primary key; the old
+   * `seq NOT IN (ORDER BY seq DESC LIMIT n)` form is quadratic on SQLite.
+   */
+  private pruneCapBatch(newestSeq: number): void {
+    const cutoff = this.capCutoff(newestSeq);
+    if (cutoff < 1) return;
+    this.ctx.storage.sql.exec(
+      `DELETE FROM events
+       WHERE seq <= ?
+         AND seq <= (SELECT MIN(seq) FROM events) + ? - 1`,
+      cutoff,
+      PRUNE_BATCH_ROWS
+    );
+  }
+
+  private stillOverCap(newestSeq: number): boolean {
+    const min = this.ctx.storage.sql
+      .exec<{ m: number | null }>('SELECT MIN(seq) AS m FROM events')
+      .one().m;
+    return min !== null && min <= this.capCutoff(newestSeq);
+  }
+
+  private pruneTtlBatch(cutoffTs: number): void {
+    this.ctx.storage.sql.exec(
+      `DELETE FROM events WHERE seq IN (
+        SELECT seq FROM events WHERE ts < ? ORDER BY seq LIMIT ?
+      )`,
+      cutoffTs,
+      PRUNE_BATCH_ROWS
+    );
+  }
+
+  private hasExpired(cutoffTs: number): boolean {
+    return (
+      this.ctx.storage.sql
+        .exec<{ seq: number }>(
+          'SELECT seq FROM events WHERE ts < ? LIMIT 1',
+          cutoffTs
+        )
+        .toArray().length > 0
+    );
+  }
+
+  private async schedulePrune(asap: boolean): Promise<void> {
     const existing = await this.ctx.storage.getAlarm();
-    if (existing === null) {
-      await this.ctx.storage.setAlarm(Date.now() + PRUNE_INTERVAL_MS);
+    const when = Date.now() + (asap ? PRUNE_CATCHUP_MS : PRUNE_INTERVAL_MS);
+    if (existing === null || (asap && existing > when)) {
+      await this.ctx.storage.setAlarm(when);
     }
   }
 
   override async alarm(): Promise<void> {
-    const cutoff = Date.now() - HISTORY_EXPIRE_SECS * 1000;
-    this.ctx.storage.sql.exec('DELETE FROM events WHERE ts < ?', cutoff);
-    this.ctx.storage.sql.exec(
-      `DELETE FROM events WHERE seq NOT IN (
-        SELECT seq FROM events ORDER BY seq DESC LIMIT ?
-      )`,
-      HISTORY_MAX_ROWS
-    );
+    const cutoffTs = Date.now() - HISTORY_EXPIRE_SECS * 1000;
+    this.pruneTtlBatch(cutoffTs);
 
-    const remaining = this.ctx.storage.sql
-      .exec<{ count: number }>('SELECT COUNT(*) AS count FROM events')
-      .one().count;
-    if (remaining > 0) {
-      await this.ctx.storage.setAlarm(Date.now() + PRUNE_INTERVAL_MS);
-    }
+    const newest = this.ctx.storage.sql
+      .exec<{ seq: number | null }>('SELECT MAX(seq) AS seq FROM events')
+      .one().seq;
+    if (newest === null) return;
+
+    this.pruneCapBatch(newest);
+
+    const more = this.hasExpired(cutoffTs) || this.stillOverCap(newest);
+    await this.schedulePrune(more);
   }
 }

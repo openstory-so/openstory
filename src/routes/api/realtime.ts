@@ -102,24 +102,20 @@ export const Route = createFileRoute('/api/realtime')({
 
         request.signal.addEventListener('abort', close);
 
-        const pump = async (channel: string): Promise<void> => {
-          const stub = namespace.get(namespace.idFromName(channel));
-          const response = await stub.fetch(
-            new Request(
-              `https://realtime.do/subscribe?channel=${encodeURIComponent(channel)}`,
-              { signal: abort.signal }
-            )
-          );
-          if (!response.body) return;
-
-          const reader = response.body.getReader();
+        const drain = async (
+          body: ReadableStream<Uint8Array>
+        ): Promise<void> => {
+          const reader = body.getReader();
           const decoder = new TextDecoder();
           let buffer = '';
-
-          while (!closed) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            buffer += decoder.decode(value, { stream: true });
+          let reading = true;
+          while (reading && !closed) {
+            const result = await reader.read();
+            if (result.done) {
+              reading = false;
+              continue;
+            }
+            buffer += decoder.decode(result.value, { stream: true });
 
             let boundary = buffer.indexOf('\n\n');
             while (boundary !== -1) {
@@ -130,6 +126,23 @@ export const Route = createFileRoute('/api/realtime')({
               if (payload && !isSystemEvent(payload)) send(payload);
               boundary = buffer.indexOf('\n\n');
             }
+          }
+        };
+
+        const pump = async (channel: string): Promise<void> => {
+          // Re-subscribe if the DO drops this writer (slow-client overflow
+          // #1332, or a storage-timeout reset). The merged EventSource stays
+          // up so sibling channels keep flowing.
+          while (!closed) {
+            const stub = namespace.get(namespace.idFromName(channel));
+            const response = await stub.fetch(
+              new Request(
+                `https://realtime.do/subscribe?channel=${encodeURIComponent(channel)}`,
+                { signal: abort.signal }
+              )
+            );
+            if (!response.body) return;
+            await drain(response.body);
           }
         };
 
