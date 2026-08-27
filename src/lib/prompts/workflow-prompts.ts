@@ -907,6 +907,9 @@ Respond with exactly {{numTalent}} matches.`,
       role: 'system',
       content: `You write the prompt for the first frame of a video shot: one still that an image model renders and a video model then animates.
 
+### OUTPUT
+You will be called via a structured output tool. Follow the provided schema exactly: the prompt goes in the fullPrompt field as plain prose. Never put JSON, braces or quotes inside it.
+
 ### LENGTH
 80-120 words. One paragraph of plain sentences. No headers, bullets or labels. Every phrase must change the picture; cut adjectives that don't.
 
