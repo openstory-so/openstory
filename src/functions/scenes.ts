@@ -5,6 +5,7 @@ import {
   loadSceneContextBySequence,
 } from '@/lib/scenes/scene-script';
 import { ulidSchema } from '@/lib/schemas/id.schemas';
+import { rescanContinuityFromPrompt } from '@/lib/scenes/rescan-continuity-from-prompt';
 import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
@@ -94,6 +95,27 @@ export const updateSceneScriptFn = createServerFn({ method: 'POST' })
         source: 'edit',
         createdBy: user.id,
       });
+
+      // Auto-link cast/element/location tags the user @-mentioned in the
+      // script into the scene's continuity (#1341) — the same additive rescan
+      // the shot-prompt paths run (#683). Continuity is what narrows the bible
+      // for prompt generation and picks reference images at render time, so
+      // without this an @-mentioned character never reaches the shot.
+      if (sceneRow.continuity) {
+        const rescan = await rescanContinuityFromPrompt({
+          scopedDb,
+          sequenceId: sequence.id,
+          existing: sceneRow.continuity,
+          promptText: data.extract,
+        });
+        if (rescan.changed) {
+          await scopedDb.scenes.update(
+            sceneId,
+            { continuity: rescan.continuity },
+            { throwOnMissing: false }
+          );
+        }
+      }
     }
 
     const refreshedScript =

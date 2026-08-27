@@ -48,7 +48,12 @@ import {
   shotStalenessUnknown,
   useShotStaleness,
 } from '@/hooks/use-shot-staleness';
-import { useSaveSceneScript, type SceneWithScript } from '@/hooks/use-scenes';
+import {
+  sceneKeys,
+  useSaveSceneScript,
+  type SceneWithScript,
+} from '@/hooks/use-scenes';
+import { sceneFacetKeys } from '@/hooks/use-scene-facets';
 import { useSaveShotPrompt } from '@/hooks/use-prompt-variants';
 import type { FrameVariant, ShotVariant } from '@/lib/db/schema';
 import {
@@ -807,6 +812,19 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     }
   }, [editedImagePrompt, imagePrompt, handleSaveVisualPrompt]);
 
+  // A regenerate with an edited prompt auto-links @-mentioned cast/elements/
+  // locations into the scene continuity server-side (#683); refetch the scene
+  // rows and the facet membership so the Cast tab reflects it (#1341).
+  const invalidateContinuity = useCallback(() => {
+    if (!shot?.sequenceId) return;
+    void queryClient.invalidateQueries({
+      queryKey: sceneKeys.list(shot.sequenceId),
+    });
+    void queryClient.invalidateQueries({
+      queryKey: sceneFacetKeys.maps(shot.sequenceId),
+    });
+  }, [shot?.sequenceId, queryClient]);
+
   const handleRegenerate = useCallback(async () => {
     if (!shot?.id || !shot.sequenceId) return;
 
@@ -864,6 +882,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
       // Don't invalidate immediately - let auto-polling pick up server updates
       // The optimistic update shows 'generating' instantly, and the workflow
       // will update the server status which auto-polling will detect
+      invalidateContinuity();
     } catch (error) {
       if (isInsufficientCreditsError(error)) {
         showFalGate();
@@ -887,6 +906,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     regenImageModel,
     editedImagePrompt,
     queryClient,
+    invalidateContinuity,
     onRegenerateStart,
     showFalGate,
   ]);
@@ -953,6 +973,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
       });
 
       // Don't invalidate immediately - let auto-polling pick up server updates
+      invalidateContinuity();
     } catch (error) {
       if (isInsufficientCreditsError(error)) {
         showFalGate();
@@ -977,6 +998,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     editedMotionPrompt,
     generateAudio,
     queryClient,
+    invalidateContinuity,
     onRegenerateStart,
     showFalGate,
   ]);
