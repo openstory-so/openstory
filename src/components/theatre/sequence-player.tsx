@@ -10,6 +10,7 @@
  */
 
 import { Button } from '@/components/ui/button';
+import { FullscreenButton } from '@/components/motion/fullscreen-button';
 import { VideoPlayer } from '@/components/motion/video-player';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
@@ -97,6 +98,7 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
   sequenceId,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const engineRef = useRef<SequencePlayerEngine | null>(null);
   const posthog = usePostHog();
   const readyKeyRef = useRef<string | null>(null);
@@ -280,6 +282,7 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
   if (cachedVideoUrl) {
     return (
       <div
+        ref={containerRef}
         data-testid="sequence-player"
         data-state="ready"
         className={cn(
@@ -308,6 +311,10 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
             />
           )}
           {overlayActions}
+          <FullscreenButton
+            targetRef={containerRef}
+            className="bg-black/50 hover:bg-black/70"
+          />
         </div>
       </div>
     );
@@ -334,6 +341,7 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
 
   return (
     <div
+      ref={containerRef}
       data-testid="sequence-player"
       data-state={meta ? 'ready' : 'loading'}
       className={cn(
@@ -415,6 +423,7 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
           onSeek={seek}
           onVolumeChange={setVolume}
           onToggleMute={() => setMuted((m) => !m)}
+          fullscreenButton={<FullscreenButton targetRef={containerRef} />}
         />
       )}
     </div>
@@ -432,6 +441,7 @@ type PlayerControlsProps = {
   onSeek: (seconds: number) => void;
   onVolumeChange: (v: number) => void;
   onToggleMute: () => void;
+  fullscreenButton?: React.ReactNode;
 };
 
 const PlayerControls: React.FC<PlayerControlsProps> = ({
@@ -445,6 +455,7 @@ const PlayerControls: React.FC<PlayerControlsProps> = ({
   onSeek,
   onVolumeChange,
   onToggleMute,
+  fullscreenButton,
 }) => {
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
@@ -453,7 +464,7 @@ const PlayerControls: React.FC<PlayerControlsProps> = ({
       <button
         type="button"
         aria-label="Seek"
-        className="group relative h-2 cursor-pointer rounded-full bg-white/20"
+        className="group relative h-3 cursor-pointer rounded-full bg-white/20 md:h-2"
         onClick={(e) => {
           const rect = e.currentTarget.getBoundingClientRect();
           const fraction = (e.clientX - rect.left) / rect.width;
@@ -469,14 +480,14 @@ const PlayerControls: React.FC<PlayerControlsProps> = ({
         <Button
           variant="ghost"
           size="icon"
-          className="h-8 w-8 text-white hover:bg-white/10 hover:text-white"
+          className="h-11 w-11 text-white hover:bg-white/10 hover:text-white md:h-8 md:w-8"
           onClick={onTogglePlay}
           aria-label={playing ? 'Pause' : 'Play'}
         >
           {playing ? (
-            <Pause className="h-4 w-4" />
+            <Pause className="h-5 w-5 md:h-4 md:w-4" />
           ) : (
-            <Play className="h-4 w-4" />
+            <Play className="h-5 w-5 md:h-4 md:w-4" />
           )}
         </Button>
         <span className="text-xs tabular-nums">
@@ -488,16 +499,18 @@ const PlayerControls: React.FC<PlayerControlsProps> = ({
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8 text-white hover:bg-white/10 hover:text-white"
+              className="h-11 w-11 text-white hover:bg-white/10 hover:text-white md:h-8 md:w-8"
               onClick={onToggleMute}
               aria-label={muted ? 'Unmute' : 'Mute'}
             >
               {muted ? (
-                <VolumeX className="h-4 w-4" />
+                <VolumeX className="h-5 w-5 md:h-4 md:w-4" />
               ) : (
-                <Volume2 className="h-4 w-4" />
+                <Volume2 className="h-5 w-5 md:h-4 md:w-4" />
               )}
             </Button>
+            {/* Hardware buttons own volume on phones — the 20px-tall slider is
+                unusable there and steals row width from the seek bar. */}
             <input
               type="range"
               min={0}
@@ -505,11 +518,12 @@ const PlayerControls: React.FC<PlayerControlsProps> = ({
               step={0.01}
               value={muted ? 0 : volume}
               onChange={(e) => onVolumeChange(Number(e.target.value))}
-              className="h-1 w-20 accent-white"
+              className="hidden h-1 w-20 accent-white md:block"
               aria-label="Volume"
             />
           </div>
         )}
+        {fullscreenButton}
       </div>
     </div>
   );
@@ -526,7 +540,7 @@ const MusicToggle: React.FC<{
         variant="ghost"
         size="icon"
         className={cn(
-          'h-8 w-8 text-white hover:bg-white/10 hover:text-white',
+          'h-11 w-11 text-white hover:bg-white/10 hover:text-white md:h-8 md:w-8',
           className
         )}
         onClick={onToggle}
@@ -534,7 +548,7 @@ const MusicToggle: React.FC<{
         aria-label={enabled ? 'Turn music off' : 'Turn music on'}
       >
         <span className="relative inline-flex">
-          <Music className="h-4 w-4" />
+          <Music className="h-5 w-5 md:h-4 md:w-4" />
           {!enabled && (
             <span
               aria-hidden

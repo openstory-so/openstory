@@ -10,7 +10,7 @@ import { SceneCanvas } from '@/components/scenes/scene-canvas';
 import { SceneScriptDocument } from '@/components/scenes/scene-script-document';
 import type { BatchGenerateMotionArgs } from '@/components/scenes/scene-list';
 import { SceneList } from '@/components/scenes/scene-list';
-import { SceneModelBar } from '@/components/scenes/scene-model-bar';
+import { SceneModelBar, scopeLabel } from '@/components/scenes/scene-model-bar';
 import {
   SceneScriptPrompts,
   tabsForScope,
@@ -78,6 +78,8 @@ import type { GenerationPhaseConfig } from '@/lib/realtime/generation-stream.red
 import { useGenerationStream } from '@/lib/realtime/use-generation-stream';
 import { useStaleDetected } from '@/lib/realtime/use-stale-detected';
 import type { Sequence } from '@/types/database';
+import { cn } from '@/lib/utils';
+import { ChevronDown } from 'lucide-react';
 import { usePostHog } from '@posthog/react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -1123,6 +1125,10 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
 
   const [isRetrying, setIsRetrying] = useState(false);
 
+  // Mobile-only: the inspector panel under the canvas starts collapsed so the
+  // video preview gets the vertical space; expanding it is one tap away.
+  const [mobileInspectorOpen, setMobileInspectorOpen] = useState(false);
+
   const failureSummary = useMemo(
     () => analyzeLoadedFailures(shots, sequence, scenesById),
     [shots, sequence, scenesById]
@@ -1528,58 +1534,87 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
             </div>
           </div>
 
-          <div className="md:hidden shrink-0 border-t bg-background pb-20 max-h-[45vh]">
-            <ScrollArea className="h-full px-4 pt-4 max-h-[45vh]">
-              <SceneModelBar
-                scope={scope}
-                sequenceId={sequenceId}
-                resolvedSequenceImageModel={resolvedSequenceImageModel}
-                resolvedSequenceVideoModel={resolvedSequenceVideoModel}
-                styleId={sequence?.styleId ?? undefined}
-                stylePending={sequence?.styleConfig == null}
-                aspectRatio={aspectRatio}
-                analysisModel={sequence?.analysisModel ?? undefined}
-              />
-              <SceneScriptPrompts
-                shot={selectedShot}
-                sequenceId={sequenceId}
-                selectedTab={effectiveTab}
-                visibleTabs={visibleTabs}
-                onTabChange={(tab) => {
-                  setSelectedTab(tab);
-                  setFacet(tab);
-                }}
-                regeneratingImages={regeneratingImages}
-                regeneratingMotion={regeneratingMotion}
-                onRegenerateStart={handleRegenerateStart}
-                aspectRatio={aspectRatio}
-                variantForSelectedModel={variantForSelectedModel}
-                videoVariantForSelectedModel={videoVariantForSelectedModel}
-                segment={selectedSegment}
-                segmentSpanLabel={selectedSegmentSpanLabel}
-                resolvedImageModel={resolvedImageModel}
-                resolvedVideoModel={resolvedVideoModel}
-                imageModelStatuses={sceneImageModelStatuses}
-                videoModelStatuses={sceneVideoModelStatuses}
-                onImageModelChange={handleImageModelChange}
-                onVideoModelChange={handleVideoModelChange}
-                styleName={styleName}
-                recommendedImageModel={recommendedImageModel}
-                recommendedVideoModel={recommendedVideoModel}
-                styleCategory={styleCategory}
-                shotDivergentVariants={divergentVariants?.filter(
-                  (v) => v.shotId === curSelectedShotId
+          <div className="md:hidden shrink-0 border-t bg-background pb-20">
+            {/* Collapsed by default so the canvas keeps the vertical space —
+                on phones this panel used to claim up to 45vh unconditionally
+                and squeeze the video preview to a sliver. */}
+            <button
+              type="button"
+              className="flex min-h-11 w-full items-center justify-between px-4 py-2"
+              aria-expanded={mobileInspectorOpen}
+              aria-controls="mobile-scene-inspector"
+              onClick={() => setMobileInspectorOpen((open) => !open)}
+            >
+              <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                {scopeLabel[scope]}
+              </span>
+              <ChevronDown
+                className={cn(
+                  'h-4 w-4 text-muted-foreground transition-transform',
+                  mobileInspectorOpen && 'rotate-180'
                 )}
-                onCompareDivergent={(variant) => setCompareVariant(variant)}
-                facetShotIds={facetShotIds}
-                musicEditable={scope === 'sequence'}
-                scene={scriptScene}
-                scopeShots={scopeShots}
-                scopeStaleness={scopeStaleness}
-                scopeStalenessFailed={scopeStalenessFailed}
-                onSelectShot={handleSelectShot}
               />
-            </ScrollArea>
+            </button>
+            <div
+              id="mobile-scene-inspector"
+              className={cn(
+                'max-h-[40dvh]',
+                mobileInspectorOpen ? 'block' : 'hidden'
+              )}
+            >
+              <ScrollArea className="h-full max-h-[40dvh] px-4">
+                <SceneModelBar
+                  hideHeader
+                  scope={scope}
+                  sequenceId={sequenceId}
+                  resolvedSequenceImageModel={resolvedSequenceImageModel}
+                  resolvedSequenceVideoModel={resolvedSequenceVideoModel}
+                  styleId={sequence?.styleId ?? undefined}
+                  stylePending={sequence?.styleConfig == null}
+                  aspectRatio={aspectRatio}
+                  analysisModel={sequence?.analysisModel ?? undefined}
+                />
+                <SceneScriptPrompts
+                  shot={selectedShot}
+                  sequenceId={sequenceId}
+                  selectedTab={effectiveTab}
+                  visibleTabs={visibleTabs}
+                  onTabChange={(tab) => {
+                    setSelectedTab(tab);
+                    setFacet(tab);
+                  }}
+                  regeneratingImages={regeneratingImages}
+                  regeneratingMotion={regeneratingMotion}
+                  onRegenerateStart={handleRegenerateStart}
+                  aspectRatio={aspectRatio}
+                  variantForSelectedModel={variantForSelectedModel}
+                  videoVariantForSelectedModel={videoVariantForSelectedModel}
+                  segment={selectedSegment}
+                  segmentSpanLabel={selectedSegmentSpanLabel}
+                  resolvedImageModel={resolvedImageModel}
+                  resolvedVideoModel={resolvedVideoModel}
+                  imageModelStatuses={sceneImageModelStatuses}
+                  videoModelStatuses={sceneVideoModelStatuses}
+                  onImageModelChange={handleImageModelChange}
+                  onVideoModelChange={handleVideoModelChange}
+                  styleName={styleName}
+                  recommendedImageModel={recommendedImageModel}
+                  recommendedVideoModel={recommendedVideoModel}
+                  styleCategory={styleCategory}
+                  shotDivergentVariants={divergentVariants?.filter(
+                    (v) => v.shotId === curSelectedShotId
+                  )}
+                  onCompareDivergent={(variant) => setCompareVariant(variant)}
+                  facetShotIds={facetShotIds}
+                  musicEditable={scope === 'sequence'}
+                  scene={scriptScene}
+                  scopeShots={scopeShots}
+                  scopeStaleness={scopeStaleness}
+                  scopeStalenessFailed={scopeStalenessFailed}
+                  onSelectShot={handleSelectShot}
+                />
+              </ScrollArea>
+            </div>
           </div>
         </div>
       </div>

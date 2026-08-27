@@ -21,8 +21,9 @@ import { copyTextToClipboard } from '@/lib/utils/clipboard';
 import type { ShotView } from '@/lib/shots/shot-view';
 import { AppImage } from '@/components/ui/app-image';
 import { Download, Link, Loader2, Share2, VideoIcon } from 'lucide-react';
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { FullscreenButton } from './fullscreen-button';
 import { VideoPlayer } from './video-player';
 import { VideoStateOverlay } from './video-state-overlay';
 
@@ -97,6 +98,7 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
   onEnded,
 }) => {
   const [shouldAutoPlay, setShouldAutoPlay] = useState(false);
+  const frameRef = useRef<HTMLDivElement | null>(null);
 
   const imageDimensions = aspectRatioToDimensions(aspectRatio);
   // Derive the current shot synchronously from selection — do NOT park the
@@ -357,10 +359,10 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="absolute top-2 right-2 z-10 h-8 w-8 bg-black/50 text-white hover:bg-black/70"
+                  className="absolute top-2 right-2 z-10 h-11 w-11 bg-black/50 text-white hover:bg-black/70 md:h-8 md:w-8"
                   aria-label="Share image"
                 >
-                  <Share2 className="h-4 w-4" />
+                  <Share2 className="h-5 w-5 md:h-4 md:w-4" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
@@ -381,47 +383,56 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
         </div>
       ) : (
         <div
+          ref={frameRef}
           className={cn(
             'relative w-full',
             getAspectRatioClassName(aspectRatio),
             className
           )}
         >
-          {/* Share dropdown */}
-          {(currentShot.image?.url || currentShot.video?.url) && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="absolute top-2 right-2 z-10 h-8 w-8 bg-black/50 text-white hover:bg-black/70"
-                  aria-label="Share"
-                >
-                  <Share2 className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                {currentShot.image?.url && (
-                  <DropdownMenuItem onClick={() => void handleCopyImageUrl()}>
-                    <Link className="h-4 w-4" />
-                    Copy start frame URL
-                  </DropdownMenuItem>
-                )}
-                {currentShot.video?.url && (
-                  <DropdownMenuItem onClick={() => void handleCopyVideoUrl()}>
-                    <VideoIcon className="h-4 w-4" />
-                    Copy segment URL
-                  </DropdownMenuItem>
-                )}
-                {hasCompletedVideo && downloadData?.downloadUrl && (
-                  <DropdownMenuItem onClick={handleDownloadVideo}>
-                    <Download className="h-4 w-4" />
-                    Download segment video
-                  </DropdownMenuItem>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
+          {/* Share dropdown + fullscreen */}
+          <div className="absolute top-2 right-2 z-10 flex items-center gap-2">
+            {(currentShot.image?.url || currentShot.video?.url) && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-11 w-11 bg-black/50 text-white hover:bg-black/70 md:h-8 md:w-8"
+                    aria-label="Share"
+                  >
+                    <Share2 className="h-5 w-5 md:h-4 md:w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  {currentShot.image?.url && (
+                    <DropdownMenuItem onClick={() => void handleCopyImageUrl()}>
+                      <Link className="h-4 w-4" />
+                      Copy start frame URL
+                    </DropdownMenuItem>
+                  )}
+                  {currentShot.video?.url && (
+                    <DropdownMenuItem onClick={() => void handleCopyVideoUrl()}>
+                      <VideoIcon className="h-4 w-4" />
+                      Copy segment URL
+                    </DropdownMenuItem>
+                  )}
+                  {hasCompletedVideo && downloadData?.downloadUrl && (
+                    <DropdownMenuItem onClick={handleDownloadVideo}>
+                      <Download className="h-4 w-4" />
+                      Download segment video
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+            {playbackVideoUrl && (
+              <FullscreenButton
+                targetRef={frameRef}
+                className="bg-black/50 hover:bg-black/70"
+              />
+            )}
+          </div>
           {/* Clickable overlay to open the displayed image in a new tab — only
               when the poster (image) is what's showing, i.e. there's no
               playable video. Keyed off `playbackVideoUrl` (and href = the

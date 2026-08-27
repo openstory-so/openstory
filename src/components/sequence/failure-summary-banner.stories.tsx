@@ -11,6 +11,7 @@ const meta: Meta<typeof FailureSummaryBanner> = {
   },
   args: {
     onRetry: () => undefined,
+    onFullRetry: () => undefined,
     isRetrying: false,
   },
 };

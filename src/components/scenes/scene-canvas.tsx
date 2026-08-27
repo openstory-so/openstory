@@ -122,7 +122,7 @@ const TheatreShareOverlay: React.FC<{
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8 bg-black/50 text-white hover:bg-black/70"
+              className="h-11 w-11 bg-black/50 text-white hover:bg-black/70 md:h-8 md:w-8"
               aria-label={downloadLabel}
               aria-busy={running}
               disabled={pending}
@@ -131,9 +131,9 @@ const TheatreShareOverlay: React.FC<{
               onClick={sequenceExport.download}
             >
               {running ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <Loader2 className="h-5 w-5 animate-spin md:h-4 md:w-4" />
               ) : (
-                <Download className="h-4 w-4" />
+                <Download className="h-5 w-5 md:h-4 md:w-4" />
               )}
             </Button>
           </span>
@@ -146,16 +146,16 @@ const TheatreShareOverlay: React.FC<{
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8 bg-black/50 text-white hover:bg-black/70"
+              className="h-11 w-11 bg-black/50 text-white hover:bg-black/70 md:h-8 md:w-8"
               aria-label={copyLabel}
               aria-busy={running}
               disabled={pending}
               onClick={sequenceExport.copyLink}
             >
               {running ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <Loader2 className="h-5 w-5 animate-spin md:h-4 md:w-4" />
               ) : (
-                <Link className="h-4 w-4" />
+                <Link className="h-5 w-5 md:h-4 md:w-4" />
               )}
             </Button>
           </span>

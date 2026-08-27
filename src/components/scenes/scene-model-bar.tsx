@@ -43,9 +43,14 @@ type SceneModelBarProps = {
   aspectRatio?: AspectRatio;
   /** The LLM that analysed the script into scenes. Fixed post-analysis. */
   analysisModel?: string;
+  /**
+   * Skip the scope header row — the mobile inspector's collapse bar already
+   * carries the same label, and the Esc hint means nothing without a keyboard.
+   */
+  hideHeader?: boolean;
 };
 
-const scopeLabel: Record<SelectionScope, string> = {
+export const scopeLabel: Record<SelectionScope, string> = {
   sequence: 'Sequence settings',
   scenes: 'Scene assets',
   shot: 'Shot assets',
@@ -70,23 +75,26 @@ export const SceneModelBar: React.FC<SceneModelBarProps> = ({
   stylePending,
   aspectRatio,
   analysisModel,
+  hideHeader = false,
 }) => {
   const showSequenceSettings = scope === 'sequence';
   const ratio = aspectRatio ? getAspectRatioData(aspectRatio) : undefined;
 
   return (
     <div className="space-y-3 px-4 py-3">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          {scopeLabel[scope]}
-        </span>
-        {/* Scope zoom-out affordance — Esc walks shot → scene → sequence. */}
-        {scope !== 'sequence' && (
-          <span className="flex shrink-0 items-center gap-1 text-[11px] text-muted-foreground">
-            <Kbd>esc</Kbd> up
+      {!hideHeader && (
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            {scopeLabel[scope]}
           </span>
-        )}
-      </div>
+          {/* Scope zoom-out affordance — Esc walks shot → scene → sequence. */}
+          {scope !== 'sequence' && (
+            <span className="flex shrink-0 items-center gap-1 text-[11px] text-muted-foreground">
+              <Kbd>esc</Kbd> up
+            </span>
+          )}
+        </div>
+      )}
       {showSequenceSettings && (
         <div className="space-y-2">
           <SettingRow label="Style">
