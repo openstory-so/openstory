@@ -44,7 +44,9 @@ export const getBillingGateStatusFn = createServerFn({ method: 'GET' })
       falKeyInvalid,
       balance: microsToUsd(funds.available),
       hasAutoTopUp:
-        billingSettings.autoTopUpEnabled && !!billingSettings.stripeCustomerId,
+        billingSettings.autoTopUpEnabled &&
+        !!billingSettings.stripeCustomerId &&
+        !billingSettings.autoTopUpFailedAt,
       stripeEnabled: isStripeEnabled(),
     };
   });

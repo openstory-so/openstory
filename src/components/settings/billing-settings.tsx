@@ -7,7 +7,7 @@
  */
 
 import { AutoTopUpDialog } from '@/components/billing/auto-topup-dialog';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -40,7 +40,13 @@ import { useShowCosts } from '@/hooks/use-show-costs';
 import { MIN_TOPUP_AMOUNT_USD } from '@/lib/billing/constants';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
-import { CreditCard, ExternalLink, RefreshCw, Wallet } from 'lucide-react';
+import {
+  AlertCircle,
+  CreditCard,
+  ExternalLink,
+  RefreshCw,
+  Wallet,
+} from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
@@ -317,7 +323,7 @@ export function BillingSettings({ success, canceled }: BillingSettingsProps) {
                 }
               />
             </CardHeader>
-            <CardContent>
+            <CardContent className="flex flex-col gap-3">
               {balanceLoading ? (
                 <Skeleton className="h-5 w-64" />
               ) : !balanceData?.hasPaymentMethod ? (
@@ -333,6 +339,16 @@ export function BillingSettings({ success, canceled }: BillingSettingsProps) {
                 </p>
               ) : (
                 <p className="text-sm text-muted-foreground">Off</p>
+              )}
+              {balanceData?.autoTopUp.lastFailure && (
+                <Alert variant="destructive">
+                  <AlertCircle />
+                  <AlertTitle>Auto top-up failed — update your card</AlertTitle>
+                  <AlertDescription>
+                    We paused auto-reload after your card was declined. Add a
+                    working payment method to resume.
+                  </AlertDescription>
+                </Alert>
               )}
             </CardContent>
           </Card>

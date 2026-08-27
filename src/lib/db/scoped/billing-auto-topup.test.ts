@@ -20,6 +20,7 @@ import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/libsql';
 import { migrate } from 'drizzle-orm/libsql/migrator';
 import * as realConstants from '@/lib/billing/constants';
+import { AUTO_TOPUP_DECLINE_COOLDOWN_MS } from '@/lib/billing/constants';
 import {
   afterAll,
   beforeAll,
@@ -31,25 +32,44 @@ import {
 } from 'vitest';
 
 const paymentIntentCreate = vi.fn();
+const customersRetrieve = vi.fn();
+const loggerError = vi.fn();
+const loggerDebug = vi.fn();
+const loggerInfo = vi.fn();
+const loggerWarn = vi.fn();
 
 vi.doMock('@/lib/billing/constants', () => ({
   ...realConstants,
   isStripeEnabled: () => true,
 }));
 
+vi.doMock('@/lib/observability/logger', () => ({
+  getLogger: () => ({
+    error: loggerError,
+    debug: loggerDebug,
+    info: loggerInfo,
+    warn: loggerWarn,
+  }),
+}));
+
 vi.doMock('@/lib/billing/stripe', () => ({
   getStripeOrThrow: () => ({
     customers: {
-      retrieve: vi.fn().mockResolvedValue({
-        deleted: false,
-        invoice_settings: { default_payment_method: 'pm_1' },
-      }),
+      retrieve: customersRetrieve,
     },
     paymentIntents: { create: paymentIntentCreate },
   }),
 }));
 
 const { createBillingMethods } = await import('./billing');
+
+function cardDeclinedError(declineCode = 'insufficient_funds') {
+  return Object.assign(new Error('Your card was declined.'), {
+    type: 'StripeCardError',
+    code: 'card_declined',
+    decline_code: declineCode,
+  });
+}
 
 let client: Client;
 let db: Database;
@@ -68,6 +88,10 @@ afterAll(() => {
 
 beforeEach(async () => {
   vi.clearAllMocks();
+  customersRetrieve.mockResolvedValue({
+    deleted: false,
+    invoice_settings: { default_payment_method: 'pm_1' },
+  });
   await db.delete(transactions);
   await db.delete(creditReservations);
   await db.delete(teamBillingSettings);
@@ -104,6 +128,14 @@ function balanceOf() {
     .from(credits)
     .where(eq(credits.teamId, teamId))
     .then(([row]) => row?.balance);
+}
+
+function settingsOf() {
+  return db
+    .select()
+    .from(teamBillingSettings)
+    .where(eq(teamBillingSettings.teamId, teamId))
+    .then(([row]) => row);
 }
 
 describe('maybeAutoTopUp', () => {
@@ -193,6 +225,155 @@ describe('maybeAutoTopUp', () => {
 
     expect(paymentIntentCreate).toHaveBeenCalledTimes(1);
     expect(await balanceOf()).toBe(3_000_000);
+  });
+
+  it('records a card decline and does not throw (#1334)', async () => {
+    await seedSettings({ balance: 3_000_000, thresholdMicros: 5_000_000 });
+    paymentIntentCreate.mockRejectedValue(
+      cardDeclinedError('insufficient_funds')
+    );
+
+    const billing = createBillingMethods(db, teamId, userId);
+    await expect(billing.checkAutoTopUp()).resolves.toBeUndefined();
+
+    expect(paymentIntentCreate).toHaveBeenCalledTimes(1);
+    expect(await balanceOf()).toBe(3_000_000);
+
+    const settings = await settingsOf();
+    expect(settings?.autoTopUpDeclineCode).toBe('insufficient_funds');
+    expect(settings?.autoTopUpFailedAt).toBeInstanceOf(Date);
+
+    expect(loggerError).toHaveBeenCalledWith(
+      'Auto top-up declined',
+      expect.objectContaining({
+        teamId,
+        declineCode: 'insufficient_funds',
+      })
+    );
+  });
+
+  it('skips further Stripe charges while the decline cooldown is active', async () => {
+    await seedSettings({ balance: 3_000_000, thresholdMicros: 5_000_000 });
+    paymentIntentCreate.mockRejectedValue(cardDeclinedError());
+
+    const billing = createBillingMethods(db, teamId, userId);
+    await billing.checkAutoTopUp();
+    await billing.checkAutoTopUp();
+    await billing.checkAutoTopUp();
+
+    expect(paymentIntentCreate).toHaveBeenCalledTimes(1);
+    expect(customersRetrieve).toHaveBeenCalledTimes(1);
+    expect(loggerDebug).toHaveBeenCalledWith(
+      'Auto top-up skipped: decline cooldown',
+      expect.objectContaining({ teamId })
+    );
+  });
+
+  it('retries after the decline cooldown expires', async () => {
+    await seedSettings({ balance: 3_000_000, thresholdMicros: 5_000_000 });
+    await db
+      .update(teamBillingSettings)
+      .set({
+        autoTopUpFailedAt: new Date(
+          Date.now() - AUTO_TOPUP_DECLINE_COOLDOWN_MS - 1_000
+        ),
+        autoTopUpDeclineCode: 'insufficient_funds',
+      })
+      .where(eq(teamBillingSettings.teamId, teamId));
+
+    paymentIntentCreate.mockResolvedValue({
+      id: 'pi_retry',
+      status: 'succeeded',
+      latest_charge: null,
+    });
+
+    const billing = createBillingMethods(db, teamId, userId);
+    await billing.checkAutoTopUp();
+
+    expect(paymentIntentCreate).toHaveBeenCalledTimes(1);
+    expect(await balanceOf()).toBe(103_000_000);
+    expect((await settingsOf())?.autoTopUpFailedAt).toBeNull();
+  });
+
+  it('retries immediately after a successful credit purchase clears the decline', async () => {
+    await seedSettings({ balance: 3_000_000, thresholdMicros: 5_000_000 });
+    await db
+      .update(teamBillingSettings)
+      .set({
+        autoTopUpFailedAt: new Date(),
+        autoTopUpDeclineCode: 'generic_decline',
+      })
+      .where(eq(teamBillingSettings.teamId, teamId));
+
+    paymentIntentCreate.mockResolvedValue({
+      id: 'pi_after_purchase',
+      status: 'succeeded',
+      latest_charge: null,
+    });
+
+    const billing = createBillingMethods(db, teamId, userId);
+    await billing.addCredits(micros(1_000_000), {
+      description: 'Top-up',
+    });
+
+    expect((await settingsOf())?.autoTopUpFailedAt).toBeNull();
+
+    await billing.checkAutoTopUp();
+    expect(paymentIntentCreate).toHaveBeenCalledTimes(1);
+  });
+
+  it('retries immediately after auto-top-up settings are saved', async () => {
+    await seedSettings({ balance: 3_000_000, thresholdMicros: 5_000_000 });
+    await db
+      .update(teamBillingSettings)
+      .set({
+        autoTopUpFailedAt: new Date(),
+        autoTopUpDeclineCode: 'card_declined',
+      })
+      .where(eq(teamBillingSettings.teamId, teamId));
+
+    paymentIntentCreate.mockResolvedValue({
+      id: 'pi_after_settings',
+      status: 'succeeded',
+      latest_charge: null,
+    });
+
+    const billing = createBillingMethods(db, teamId, userId);
+    await billing.updateAutoTopUpSettings({
+      enabled: true,
+      thresholdMicros: micros(5_000_000),
+      amountMicros: micros(100_000_000),
+    });
+
+    expect((await settingsOf())?.autoTopUpFailedAt).toBeNull();
+
+    await billing.checkAutoTopUp();
+    expect(paymentIntentCreate).toHaveBeenCalledTimes(1);
+  });
+
+  it('records a non-succeeded PaymentIntent as a decline and skips the next attempt', async () => {
+    await seedSettings({ balance: 3_000_000, thresholdMicros: 5_000_000 });
+    paymentIntentCreate.mockResolvedValue({
+      id: 'pi_sca',
+      status: 'requires_action',
+      latest_charge: null,
+    });
+
+    const billing = createBillingMethods(db, teamId, userId);
+    await billing.checkAutoTopUp();
+    await billing.checkAutoTopUp();
+
+    expect(paymentIntentCreate).toHaveBeenCalledTimes(1);
+    expect((await settingsOf())?.autoTopUpDeclineCode).toBe('requires_action');
+  });
+
+  it('still throws on a non-card Stripe failure so the caller can log it', async () => {
+    await seedSettings({ balance: 3_000_000, thresholdMicros: 5_000_000 });
+    paymentIntentCreate.mockRejectedValue(new Error('stripe is down'));
+
+    const billing = createBillingMethods(db, teamId, userId);
+    await expect(billing.checkAutoTopUp()).rejects.toThrow('stripe is down');
+    expect((await settingsOf())?.autoTopUpFailedAt).toBeNull();
   });
 });
 

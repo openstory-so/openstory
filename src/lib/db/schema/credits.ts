@@ -139,6 +139,13 @@ export const teamBillingSettings = snakeCase.table('team_billing_settings', {
   autoTopUpEnabled: integer({ mode: 'boolean' }).default(false).notNull(),
   autoTopUpThresholdMicros: integer().default(5_000_000),
   autoTopUpAmountMicros: integer().default(100_000_000),
+  /**
+   * Set when an off-session auto-top-up PaymentIntent is declined or
+   * otherwise does not succeed. `maybeAutoTopUp` skips a new charge while
+   * this is within `AUTO_TOPUP_DECLINE_COOLDOWN_MS` (#1334).
+   */
+  autoTopUpFailedAt: integer({ mode: 'timestamp' }),
+  autoTopUpDeclineCode: text(),
   updatedAt: integer({ mode: 'timestamp' })
     .$defaultFn(() => new Date())
     .notNull(),

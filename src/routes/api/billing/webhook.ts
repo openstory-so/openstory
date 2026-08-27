@@ -80,6 +80,10 @@ export const Route = createFileRoute('/api/billing/webhook')({
                     await stripe.customers.update(customerId, {
                       invoice_settings: { default_payment_method: pmId },
                     });
+                    // New default card — lift the decline cooldown so the
+                    // next reservation can auto-top-up instead of waiting
+                    // AUTO_TOPUP_DECLINE_COOLDOWN_MS (#1334).
+                    await scopedDb.billing.clearAutoTopUpFailure();
                   }
                 }
               } catch (err) {

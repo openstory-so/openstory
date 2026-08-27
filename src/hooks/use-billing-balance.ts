@@ -24,6 +24,7 @@ export function useBillingBalance() {
   const balance = query.data?.availableUsd ?? posted;
   const reserved = query.data?.reservedUsd ?? 0;
   const autoTopUp = query.data?.autoTopUp;
+  const lastFailure = autoTopUp?.lastFailure ?? null;
   const lowBalanceThreshold =
     autoTopUp?.enabled && autoTopUp.thresholdUsd != null
       ? autoTopUp.thresholdUsd
@@ -37,6 +38,7 @@ export function useBillingBalance() {
     teamId: query.data?.teamId,
     stripeEnabled: query.data?.stripeEnabled ?? false,
     hasUsedCredits: query.data?.hasUsedCredits ?? false,
+    lastFailure,
     isLowBalance:
       balance !== null && balance > 0 && balance <= lowBalanceThreshold,
     isZeroBalance: balance !== null && balance <= 0,

@@ -62,6 +62,23 @@ export const LOW_BALANCE_THRESHOLD_USD = 5;
 export const AUTO_TOPUP_COOLDOWN_MS = 60_000;
 
 /**
+ * After a hard card decline, skip further auto-top-up PaymentIntents for
+ * this long (#1334). Stripe returned `stripe-should-retry: false` on the
+ * incident charges; retrying on every reservation debit/capture hammered
+ * the same card 20 times in 8 minutes. A successful purchase, a settings
+ * save, or a new default payment method clears the marker immediately.
+ */
+export const AUTO_TOPUP_DECLINE_COOLDOWN_MS = 6 * 60 * 60 * 1000;
+
+export function isAutoTopUpDeclineCooldownActive(
+  failedAt: Date | null | undefined,
+  now = Date.now()
+): boolean {
+  if (!failedAt) return false;
+  return now - failedAt.getTime() < AUTO_TOPUP_DECLINE_COOLDOWN_MS;
+}
+
+/**
  * How long a run envelope stays in the available SUM (#1310).
  * Longer than AnalyzeScript's 90-minute image await plus 45-minute motion
  * await under burst, so in-flight capture still owns the row after
