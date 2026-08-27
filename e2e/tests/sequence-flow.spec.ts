@@ -194,17 +194,13 @@ testWithUser.describe('Variant Selection', () => {
 
     // Variants moved from a tab to a dialog opened from the canvas image (#986):
     // select the shot, then open the variants dialog from the starting frame.
-    // Heading + thumbnail are SSR markup, so their visibility says nothing
-    // about hydration; a click that lands before React attaches `onClick`
-    // silently no-ops and Frame variants never mounts (#1339). Selection is
-    // written to the URL by a client-side navigate, so `?shot=<id>` is the
-    // interactive signal — retry the click until it shows up.
-    await expect(async () => {
-      await shotThumbnail.click();
-      await expect(page).toHaveURL(new RegExp(`shot=${testShot.id}`), {
-        timeout: 1_000,
-      });
-    }).toPass({ timeout: 15_000 });
+    // The list item is a real <a href> (#1339), so the click lands whether or
+    // not React has hydrated; selection is URL state, so gate on `?shot=<id>`
+    // rather than on the SSR-visible thumbnail.
+    await page.getByRole('link', { name: 'Scene 1' }).click();
+    await expect(page).toHaveURL(new RegExp(`shot=${testShot.id}`), {
+      timeout: 15_000,
+    });
     const variantsButton = page.getByRole('button', {
       name: 'Frame variants',
     });

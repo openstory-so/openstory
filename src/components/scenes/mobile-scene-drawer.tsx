@@ -32,7 +32,6 @@ type MobileSceneDrawerProps = {
   scenes?: SceneWithScript[];
   selectedShotId?: string;
   aspectRatio: AspectRatio;
-  onSelectShot: (shotId: string) => void;
   regeneratingImages: Set<string>;
   regeneratingMotion: Set<string>;
   onBatchGenerateMotion?: (args: BatchGenerateMotionArgs) => Promise<void>;
@@ -53,7 +52,6 @@ export const MobileSceneDrawer: React.FC<MobileSceneDrawerProps> = ({
   scenes,
   selectedShotId,
   aspectRatio,
-  onSelectShot,
   regeneratingImages,
   regeneratingMotion,
   onBatchGenerateMotion,
@@ -114,10 +112,8 @@ export const MobileSceneDrawer: React.FC<MobileSceneDrawerProps> = ({
     );
   }, [shots]);
 
-  const handleSelectShot = (shotId: string) => {
-    onSelectShot(shotId);
-    setIsOpen(false);
-  };
+  // The list item is a link; the drawer only has to get out of the way.
+  const handleSelectShot = () => setIsOpen(false);
 
   // Check if all eligible shots have motion prompts ready
   const motionPromptsReady = useMemo(() => {
@@ -222,7 +218,7 @@ export const MobileSceneDrawer: React.FC<MobileSceneDrawerProps> = ({
                   }
                   aspectRatio={aspectRatio}
                   isActive={shot.id === selectedShotId}
-                  onSelect={() => handleSelectShot(shot.id)}
+                  onSelect={handleSelectShot}
                   isRegeneratingImage={regeneratingImages.has(shot.id)}
                   isRegeneratingMotion={regeneratingMotion.has(shot.id)}
                 />

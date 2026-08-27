@@ -1,6 +1,12 @@
 import { withThemeByClassName } from '@storybook/addon-themes';
 import type { Decorator, Preview } from '@storybook/react-vite';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRouter,
+  RouterProvider,
+} from '@tanstack/react-router';
 import { RealtimeProvider } from '../src/lib/realtime/client';
 import { mswLoader } from 'msw-storybook-addon/csf3';
 import { setupWorker } from 'msw/browser';
@@ -23,6 +29,16 @@ const queryClient = new QueryClient({
     },
   },
 });
+
+// Components render <Link> (e.g. SceneListItem), which needs a router context.
+// A root-only memory router is enough: links resolve, nothing navigates.
+const withRouter: Decorator = (Story) => {
+  const router = createRouter({
+    routeTree: createRootRoute({ component: () => <Story /> }),
+    history: createMemoryHistory({ initialEntries: ['/'] }),
+  });
+  return <RouterProvider router={router} />;
+};
 
 const withProviders: Decorator = (Story) => (
   <QueryClientProvider client={queryClient}>
@@ -73,6 +89,7 @@ const preview: Preview = {
 
   decorators: [
     withProviders,
+    withRouter,
     withThemeByClassName({
       themes: {
         light: '',

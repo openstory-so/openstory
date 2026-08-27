@@ -22,7 +22,6 @@ type SceneGroupProps = {
   selectedShotId?: string;
   aspectRatio: AspectRatio;
   onSelectScene: (sceneId: string, additive: boolean) => void;
-  onSelectShot: (shotId: string) => void;
   regeneratingImages: Set<string>;
   regeneratingMotion: Set<string>;
   divergentByShotId: Map<string, ShotVariant>;
@@ -41,7 +40,6 @@ const SceneGroupComponent: React.FC<SceneGroupProps> = ({
   selectedShotId,
   aspectRatio,
   onSelectScene,
-  onSelectShot,
   regeneratingImages,
   regeneratingMotion,
   divergentByShotId,
@@ -120,7 +118,6 @@ const SceneGroupComponent: React.FC<SceneGroupProps> = ({
                   scene={scene}
                   aspectRatio={aspectRatio}
                   isActive={shot.id === selectedShotId}
-                  onSelect={() => onSelectShot(shot.id)}
                   variant="horizontal"
                   isRegeneratingImage={regeneratingImages.has(shot.id)}
                   isRegeneratingMotion={regeneratingMotion.has(shot.id)}

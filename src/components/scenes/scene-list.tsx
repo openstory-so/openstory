@@ -52,7 +52,6 @@ type SceneListProps = {
   selection: SceneSelection;
   aspectRatio: AspectRatio;
   onSelectScene: (sceneId: string, additive: boolean) => void;
-  onSelectShot: (shotId: string) => void;
   onClearSelection: () => void;
   regeneratingImages: Set<string>;
   regeneratingMotion: Set<string>;
@@ -83,7 +82,6 @@ const SceneListComponent: React.FC<SceneListProps> = ({
   selection,
   aspectRatio,
   onSelectScene,
-  onSelectShot,
   onClearSelection,
   regeneratingImages,
   regeneratingMotion,
@@ -329,7 +327,6 @@ const SceneListComponent: React.FC<SceneListProps> = ({
               selectedShotId={selection.shotId}
               aspectRatio={aspectRatio}
               onSelectScene={onSelectScene}
-              onSelectShot={onSelectShot}
               regeneratingImages={regeneratingImages}
               regeneratingMotion={regeneratingMotion}
               divergentByShotId={divergentByShotId}
@@ -348,7 +345,6 @@ const SceneListComponent: React.FC<SceneListProps> = ({
                 shot={shot}
                 aspectRatio={aspectRatio}
                 isActive={shot.id === selection.shotId}
-                onSelect={() => onSelectShot(shot.id)}
                 variant="horizontal"
                 isRegeneratingImage={regeneratingImages.has(shot.id)}
                 isRegeneratingMotion={regeneratingMotion.has(shot.id)}
@@ -486,7 +482,6 @@ const areEqual = (
     prevProps.onBatchGenerateMotion !== nextProps.onBatchGenerateMotion ||
     prevProps.onCompareDivergent !== nextProps.onCompareDivergent ||
     prevProps.onSelectScene !== nextProps.onSelectScene ||
-    prevProps.onSelectShot !== nextProps.onSelectShot ||
     prevProps.onClearSelection !== nextProps.onClearSelection
   ) {
     return false;

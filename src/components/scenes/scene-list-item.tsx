@@ -11,6 +11,7 @@ import type { AspectRatio } from '@/lib/constants/aspect-ratios';
 import { cn } from '@/lib/utils';
 import { stripMarkdown } from '@/lib/utils/markdown-plain';
 import type { ShotView } from '@/lib/shots/shot-view';
+import { Link } from '@tanstack/react-router';
 import { Loader2, Play } from 'lucide-react';
 import { memo } from 'react';
 import { SceneThumbnail } from './scene-thumbnail';
@@ -21,6 +22,7 @@ type SceneListItemProps = {
   scene?: SceneWithScript | undefined;
   aspectRatio: AspectRatio;
   isActive?: boolean;
+  /** Fires after the click; navigation is the card's own link. */
   onSelect?: () => void;
   variant?: 'stacked' | 'horizontal' | 'responsive';
   isRegeneratingImage?: boolean;
@@ -76,9 +78,7 @@ const SceneListItemComponent: React.FC<SceneListItemProps> = ({
     ? undefined
     : stripMarkdown(scene?.script?.extract ?? '');
 
-  // Skeleton state (no shot): suppress click handling and pointer cursor so
-  // a click during the loading window does not invoke the (now-undefined)
-  // onSelect callback or appear interactive.
+  // Skeleton state (no shot): no link, no pointer cursor.
   const isSkeleton = !shot;
   return (
     <Card
@@ -92,8 +92,21 @@ const SceneListItemComponent: React.FC<SceneListItemProps> = ({
         variant === 'horizontal' && 'py-3',
         'py-3'
       )}
-      onClick={isSkeleton ? undefined : onSelect}
     >
+      {shot && (
+        // Stretched link: a real <a href> so the click works before hydration,
+        // from the keyboard, and with Cmd/middle-click (#1339). Selection is
+        // URL state (`?shot=`), so this is the same navigate `useSceneSelection`
+        // does. z-10 puts it above the thumbnail wrapper; the corner dot comes
+        // later in the DOM so it still wins.
+        <Link
+          from="/sequences/$id/scenes"
+          search={(prev) => ({ ...prev, scenes: undefined, shot: shot.id })}
+          aria-label={title}
+          className="absolute inset-0 z-10 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          onClick={onSelect}
+        />
+      )}
       {showDivergentDot && (
         <div
           className="absolute right-3 top-3 z-10"
