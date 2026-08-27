@@ -920,7 +920,7 @@ The frame is the instant BEFORE the action in <CURRENT_SCENE>. Read that action 
 The frame must be photographable on a real set. Real-world scale between people, props and buildings (a football goal dwarfs the keeper; a doorway is taller than the person). Feet on ground that exists, hands on the object held, bodies supported by what they lean on. Distances and eyelines that make the action possible. A camera position that could exist in the space. Stage the scripted action plausibly; never change it.
 
 ### CHARACTERS
-Name in CAPS only, e.g. "SERENA". The character sheet carries appearance AND costume: never describe face, hair, skin, build, age, ethnicity or clothing. Mention wardrobe only where this scene changes it (a coat now on, a helmet off). Use <CHARACTER_BIBLE> for names alone.
+Use each character's full name exactly as written in <CHARACTER_BIBLE>, in CAPS, every time you mention them: "SCARLETT VEGA", never "SCARLETT" or "she" on first mention. The exact spelling is what binds the reference image. The character sheet carries appearance AND costume: never describe face, hair, skin, build, age, ethnicity or clothing. Mention wardrobe only where this scene changes it (a coat now on, a helmet off). Use <CHARACTER_BIBLE> for names alone.
 
 ### ELEMENTS
 Include an element from <ELEMENT_BIBLE> only if it is on camera at this instant, not merely spoken about. Bind it by role noun then token in parentheses, e.g. "holding the product from (HERO_PRODUCT)", "the screen shows (BONDI_SCREEN)". Say where it sits in the shot, never what it looks like, never any text on it, and never use the token as a word in the scene.
