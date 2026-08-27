@@ -151,7 +151,7 @@ describe('getEffectiveFalPricing', () => {
 describe('BytePlus route aliasing', () => {
   const SEEDANCE_FAL = 'bytedance/seedance-2.5/image-to-video';
   const SEEDANCE_REF = 'bytedance/seedance-2.5/reference-to-video';
-  const SEEDREAM_FAL = 'fal-ai/bytedance/seedream/v5/lite/text-to-image';
+  const SEEDREAM_FAL = 'bytedance/seedream/v5/pro/text-to-image';
 
   const falRows = [
     row({ endpointId: SEEDANCE_FAL, unit: '1000 tokens', unitPriceMicros: 99 }),

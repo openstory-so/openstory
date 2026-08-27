@@ -32,16 +32,15 @@ import type { EffectiveFalPricing } from '@/lib/ai/fal-pricing-live';
  * Seedance endpoints it proxies, which is why `'1000 tokens'` here reuses the
  * existing `tokens` estimation strategy verbatim.
  *
- * Image bills per image. As of 2026-08-19 the official rate table no longer
- * lists `seedream-5-0-260128` at all — the two-tier pricing ($0.045 at or
- * below 2.61 megapixels, $0.09 above) is published for its `dola-…-pro`
- * sibling, with lite at $0.035 flat. We render at 2K, which straddles the
- * pro boundary (2048x1152 is 2.36MP → lower tier; a square 2K is 4.19MP →
- * higher). The card carries the HIGHER pro tier deliberately: an
- * over-estimate makes the credit gate slightly conservative, while an
- * under-estimate lets a team spend past its balance, which is the failure
- * mode #1069 exists to prevent. The invoice check (see header) is what
- * settles which rate our id actually bills at.
+ * Image bills per image. Seedream 5.0 Pro (`dola-seedream-5-0-pro-260628`)
+ * is two-tier: $0.045 at or below 2.36 megapixels, $0.09 above. We render
+ * at 2K, which straddles that boundary (2048x1152 is 2.36MP → lower tier;
+ * a square 2K is 4.19MP → higher). The card carries the HIGHER tier
+ * deliberately: an over-estimate makes the credit gate slightly
+ * conservative, while an under-estimate lets a team spend past its
+ * balance, which is the failure mode #1069 exists to prevent. Re-read
+ * **2026-08-27** when bumping lite → Pro. The invoice check (see header)
+ * is what settles which rate our id actually bills at.
  */
 export const BYTEPLUS_RATE_CARD: Record<string, EffectiveFalPricing> = {
   // Seedance 2.5 — $10.70 per 1M tokens for 480p/720p output without video
@@ -57,9 +56,9 @@ export const BYTEPLUS_RATE_CARD: Record<string, EffectiveFalPricing> = {
     unitPrice: micros(10_700),
     unit: '1000 tokens',
   },
-  // Seedream 5.0 — $0.09 per image above 2.36MP. Exactly one image per unit,
-  // so the per-call estimate is exact rather than a historical guess.
-  'seedream-5-0-260128': {
+  // Seedream 5.0 Pro — $0.09 per image above 2.36MP. Exactly one image per
+  // unit, so the per-call estimate is exact rather than a historical guess.
+  'dola-seedream-5-0-pro-260628': {
     unitPrice: micros(90_000),
     unit: 'images',
     typicalUnitsPerCall: 1,

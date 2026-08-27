@@ -52,7 +52,7 @@ export type BytePlusImageRequest = {
   prompt: BytePlusImagePromptPart[];
   /** `1K`/`2K`/`4K` token or explicit `WxH` pixels. */
   size: BytePlusImageSize;
-  /** Upper bound, not a count — Seedream has no `n` (see below). */
+  /** Unused on Pro — sequential/group generation is rejected. */
   numberOfImages?: number;
   modelOptions: Record<string, unknown>;
 };
@@ -78,9 +78,11 @@ export function buildBytePlusImageRequest(
       ? params.prompt
       : `${params.prompt.slice(0, maxPromptLength - 3)}...`;
 
+  // Pro accepts 1K / 2K only (no 4K token, unlike lite). A 4K ask snaps to
+  // the 2K pixel size for the aspect rather than sending a token Ark rejects.
   const size =
-    params.resolution === '1K' || params.resolution === '4K'
-      ? params.resolution
+    params.resolution === '1K'
+      ? '1K'
       : BYTEPLUS_IMAGE_DIMENSIONS[params.imageSize ?? DEFAULT_IMAGE_SIZE];
 
   return {
@@ -95,12 +97,8 @@ export function buildBytePlusImageRequest(
       ),
     ],
     size,
-    // `numberOfImages` maps onto Seedream's group-image mode, where the model
-    // decides how many the prompt warrants — asking for 4 can return 2. Only
-    // sent when we actually want more than one, so a single-image render never
-    // enters group mode.
-    ...(params.numImages !== undefined &&
-      params.numImages > 1 && { numberOfImages: params.numImages }),
+    // Seedream 5.0 Pro rejects sequential/group generation
+    // (`numberOfImages` / `sequential_image_generation`). One image per call.
     modelOptions: {
       watermark: false,
       ...(params.seed !== undefined && { seed: params.seed }),

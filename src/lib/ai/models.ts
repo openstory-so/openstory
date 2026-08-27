@@ -217,17 +217,19 @@ export const IMAGE_MODELS = {
     maxPromptLength: 2000,
   },
   seedream_v5: {
-    id: 'fal-ai/bytedance/seedream/v5/lite/text-to-image' as const,
-    name: 'Seedream 5',
+    id: 'bytedance/seedream/v5/pro/text-to-image' as const,
+    name: 'Seedream 5.0 Pro',
     vendor: 'ByteDance',
     license: 'proprietary' as const,
     qualityRank: 10,
-    description: 'Unified generation and editing',
+    description:
+      'Flagship generation and editing — dense layouts, native text, up to 10 refs',
     maxPromptLength: 2000,
     // Native BytePlus Ark route (#1157). Ark carries reference images inline
     // on the generation call, so this route has no separate edit endpoint —
-    // see EDIT_ENDPOINTS, which stays fal-only.
-    byteplusId: 'seedream-5-0-260128' as const,
+    // see EDIT_ENDPOINTS, which stays fal-only. Pro, not lite:
+    // dola-seedream-5-0-pro-260628. Lite is seedream-5-0-260128.
+    byteplusId: 'dola-seedream-5-0-pro-260628' as const,
   },
   flux_2_turbo: {
     id: 'fal-ai/flux-2/turbo' as const,
@@ -578,7 +580,7 @@ export const EDIT_ENDPOINTS: Partial<Record<TextToImageModel, string>> = {
   flux_2_dev: 'fal-ai/flux-2/edit',
   flux_2_turbo: 'fal-ai/flux-2/turbo/edit',
   qwen_image: 'fal-ai/qwen-image-2/pro/edit',
-  seedream_v5: 'fal-ai/bytedance/seedream/v5/lite/edit',
+  seedream_v5: 'bytedance/seedream/v5/pro/edit',
 };
 
 /**
@@ -598,6 +600,8 @@ const EDIT_REFERENCE_LIMITS: Partial<Record<TextToImageModel, number>> = {
   flux_2_turbo: 4,
   grok_imagine_image: 3,
   grok_imagine_image_quality: 3,
+  // Seedream 5.0 Pro: 10 on fal edit and on Ark. Lite was 14.
+  seedream_v5: 10,
 };
 
 /**

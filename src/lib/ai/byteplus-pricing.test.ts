@@ -32,9 +32,9 @@ describe('BYTEPLUS_RATE_CARD', () => {
   // `per_call` estimation returns null without a unit-count signal, which
   // gates on the $0.10 floor instead of the real price.
   it('gives the per-image model an exact units-per-call signal', () => {
-    expect(BYTEPLUS_RATE_CARD['seedream-5-0-260128']?.typicalUnitsPerCall).toBe(
-      1
-    );
+    expect(
+      BYTEPLUS_RATE_CARD['dola-seedream-5-0-pro-260628']?.typicalUnitsPerCall
+    ).toBe(1);
   });
 });
 

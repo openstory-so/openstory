@@ -44,7 +44,7 @@ These models create the visual images for each scene. You can select multiple mo
 | FLUX.2 Dev                 | Black Forest Labs | Open Source              | 32B open weights with native editing                 |
 | Qwen Image 2 Pro           | Alibaba           | Open Source (Apache 2.0) | Native 2K, text rendering                            |
 | HiDream I1                 | HiDream           | Open Source (MIT)        | 17B parameters                                       |
-| Seedream 5                 | ByteDance         | Proprietary              | Unified generation and editing                       |
+| Seedream 5.0 Pro           | ByteDance         | Proprietary              | Flagship generation and editing                      |
 
 ### Edit Endpoints
 

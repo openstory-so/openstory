@@ -9,7 +9,9 @@ const base: ImageGenerationParams = {
 
 describe('buildBytePlusImageRequest', () => {
   it('uses the Ark model id, not the fal endpoint', () => {
-    expect(buildBytePlusImageRequest(base).modelId).toBe('seedream-5-0-260128');
+    expect(buildBytePlusImageRequest(base).modelId).toBe(
+      'dola-seedream-5-0-pro-260628'
+    );
   });
 
   // The `2K` token is square, so a 16:9 shot asked for as `2K` comes back
@@ -30,9 +32,15 @@ describe('buildBytePlusImageRequest', () => {
     expect(buildBytePlusImageRequest(base).size).toBe('2048x1152');
   });
 
-  it('passes an explicit 1K/4K resolution through as a token', () => {
+  it('passes an explicit 1K resolution through as a token', () => {
+    expect(buildBytePlusImageRequest({ ...base, resolution: '1K' }).size).toBe(
+      '1K'
+    );
+  });
+
+  it('snaps 4K to the 2K pixel size — Pro has no 4K token', () => {
     expect(buildBytePlusImageRequest({ ...base, resolution: '4K' }).size).toBe(
-      '4K'
+      '2048x1152'
     );
   });
 
@@ -59,18 +67,11 @@ describe('buildBytePlusImageRequest', () => {
     });
   });
 
-  // Seedream has no `n`; more than one enters group mode where the model
-  // decides the count. A single render must not enter that mode at all.
-  it('omits numberOfImages for a single-image render', () => {
+  // Pro rejects sequential/group generation. Never send numberOfImages.
+  it('omits numberOfImages even when more than one is asked for', () => {
     expect(
-      buildBytePlusImageRequest({ ...base, numImages: 1 })
+      buildBytePlusImageRequest({ ...base, numImages: 4 })
     ).not.toHaveProperty('numberOfImages');
-  });
-
-  it('sets numberOfImages as an upper bound when more than one is asked for', () => {
-    expect(
-      buildBytePlusImageRequest({ ...base, numImages: 4 }).numberOfImages
-    ).toBe(4);
   });
 
   it('throws for a model with no BytePlus route rather than falling back silently', () => {
