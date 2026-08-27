@@ -289,62 +289,65 @@ describe('buildModelInput', () => {
     });
   });
 
-  describe('buildMotionRequest reference-to-video (#873 Seedance)', () => {
-    const referenceImages = [
-      {
-        referenceImageUrl: 'https://example.com/jack-sheet.png',
-        description: 'Jack - tall man with a scar',
-        role: 'character' as const,
-      },
-      {
-        referenceImageUrl: 'https://example.com/logo.png',
-        description: 'ACME_LOGO - red circular badge',
-        role: 'element' as const,
-      },
-    ];
+  describe.each(['seedance_v2', 'seedance_v2_5'] as const)(
+    'buildMotionRequest reference-to-video (#873 %s)',
+    (model) => {
+      const referenceImages = [
+        {
+          referenceImageUrl: 'https://example.com/jack-sheet.png',
+          description: 'Jack - tall man with a scar',
+          role: 'character' as const,
+        },
+        {
+          referenceImageUrl: 'https://example.com/logo.png',
+          description: 'ACME_LOGO - red circular badge',
+          role: 'element' as const,
+        },
+      ];
 
-    const buildRef = (overrides: Partial<GenerateMotionOptions> = {}) => {
-      const { input } = buildMotionRequest(
-        { ...baseOptions, referenceImages, ...overrides },
-        'seedance_v2'
-      );
-      if (!('image_urls' in input)) {
-        throw new Error('expected Seedance reference-to-video input');
-      }
-      return input;
-    };
+      const buildRef = (overrides: Partial<GenerateMotionOptions> = {}) => {
+        const { input } = buildMotionRequest(
+          { ...baseOptions, referenceImages, ...overrides },
+          model
+        );
+        if (!('image_urls' in input)) {
+          throw new Error('expected Seedance reference-to-video input');
+        }
+        return input;
+      };
 
-    it('puts the still as @Image1 in image_urls and omits image_url', () => {
-      const result = buildRef();
-      expect(result).not.toHaveProperty('image_url');
-      expect(result.image_urls).toEqual([
-        baseOptions.imageUrl,
-        'https://example.com/jack-sheet.png',
-        'https://example.com/logo.png',
-      ]);
-    });
+      it('puts the still as @Image1 in image_urls and omits image_url', () => {
+        const result = buildRef();
+        expect(result).not.toHaveProperty('image_url');
+        expect(result.image_urls).toEqual([
+          baseOptions.imageUrl,
+          'https://example.com/jack-sheet.png',
+          'https://example.com/logo.png',
+        ]);
+      });
 
-    it('declares the still as the starting frame and legends unmentioned refs', () => {
-      const result = buildRef();
-      expect(result.prompt).toContain(baseOptions.prompt);
-      expect(
-        typeof result.prompt === 'string' &&
-          result.prompt.startsWith('Use @Image1 as the starting frame.')
-      ).toBe(true);
-      expect(result.prompt).toContain('@Image2: Jack - tall man with a scar');
-      expect(result.prompt).toContain(
-        '@Image3: ACME_LOGO - red circular badge'
-      );
-    });
+      it('declares the still as the starting frame and legends unmentioned refs', () => {
+        const result = buildRef();
+        expect(result.prompt).toContain(baseOptions.prompt);
+        expect(
+          typeof result.prompt === 'string' &&
+            result.prompt.startsWith('Use @Image1 as the starting frame.')
+        ).toBe(true);
+        expect(result.prompt).toContain('@Image2: Jack - tall man with a scar');
+        expect(result.prompt).toContain(
+          '@Image3: ACME_LOGO - red circular badge'
+        );
+      });
 
-    it('applies the seedance resolution quality override', () => {
-      expect(buildRef().resolution).toBe('720p');
-    });
+      it('applies the seedance resolution quality override', () => {
+        expect(buildRef().resolution).toBe('720p');
+      });
 
-    it('forwards generate_audio=false when caller suppresses audio', () => {
-      expect(buildRef({ generateAudio: false }).generate_audio).toBe(false);
-    });
-  });
+      it('forwards generate_audio=false when caller suppresses audio', () => {
+        expect(buildRef({ generateAudio: false }).generate_audio).toBe(false);
+      });
+    }
+  );
 
   describe('common behavior', () => {
     it('always includes prompt', () => {
@@ -354,14 +357,20 @@ describe('buildModelInput', () => {
       }
     });
 
-    it('passes aspect_ratio from options', () => {
-      const result = build('seedance_v2', { aspectRatio: '9:16' });
-      expect(result.aspect_ratio).toBe('9:16');
-    });
+    it.each(['seedance_v2', 'seedance_v2_5'] as const)(
+      'passes aspect_ratio from options (%s)',
+      (model) => {
+        const result = build(model, { aspectRatio: '9:16' });
+        expect(result.aspect_ratio).toBe('9:16');
+      }
+    );
 
-    it('falls back to the schema default for aspect_ratio when not provided', () => {
-      const result = build('seedance_v2', { aspectRatio: undefined });
-      expect(result.aspect_ratio).toBe('auto');
-    });
+    it.each(['seedance_v2', 'seedance_v2_5'] as const)(
+      'falls back to the schema default for aspect_ratio when not provided (%s)',
+      (model) => {
+        const result = build(model, { aspectRatio: undefined });
+        expect(result.aspect_ratio).toBe('auto');
+      }
+    );
   });
 });

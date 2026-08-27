@@ -112,6 +112,10 @@ export const IMAGE_TO_VIDEO_MODELS = {
     qualityRank: 2,
     maxPromptLength: 4096,
     performance: { estimatedGenerationTime: 20, quality: 'best' as const },
+    // Hidden from sequence/studio pickers: public fal 2.5 400s photoreal
+    // faces without Ark `asset://` ingest, and we are not rolling Ark out.
+    // Catalog key stays so a later Ark enablement does not need a rename.
+    hidden: true,
     // Native BytePlus Ark route (#1157). Must be activated in the Ark console
     // first — an unopened model answers 404 ModelNotOpen at request time. The
     // Ark route requests 720p (see BYTEPLUS_RESOLUTION); the rate card's
@@ -319,7 +323,7 @@ export function isNativeBytePlusVideoModel(model: ImageToVideoModel): boolean {
   return getBytePlusVideoModelId(model) !== undefined;
 }
 
-export const DEFAULT_VIDEO_MODEL: ImageToVideoModel = 'seedance_v2_5';
+export const DEFAULT_VIDEO_MODEL: ImageToVideoModel = 'seedance_v2';
 
 function schemaOf(modelKey: ImageToVideoModel) {
   return MOTION_INPUT_SCHEMAS[IMAGE_TO_VIDEO_MODELS[modelKey].id];
@@ -441,6 +445,7 @@ function getModelsForAspectRatio(
   return Object.keys(IMAGE_TO_VIDEO_MODELS).filter(
     (key): key is ImageToVideoModel =>
       isValidImageToVideoModel(key) &&
+      !('hidden' in IMAGE_TO_VIDEO_MODELS[key]) &&
       isModelCompatibleWithAspectRatio(key, aspectRatio)
   );
 }

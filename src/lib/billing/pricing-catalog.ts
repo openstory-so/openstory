@@ -181,6 +181,7 @@ export function buildPricingCatalog(opts: {
     .sort((a, b) => a.qualityRank - b.qualityRank)
     .map(toFalRow);
   const videoRows = Object.values(IMAGE_TO_VIDEO_MODELS)
+    .filter((model) => !('hidden' in model && model.hidden))
     .sort((a, b) => a.qualityRank - b.qualityRank)
     .map(toFalRow);
   const audioRows = Object.values(AUDIO_MODELS)

@@ -29,7 +29,9 @@ describe('Seedance catalog split', () => {
     );
     expect(isNativeBytePlusVideoModel('seedance_v2_5')).toBe(true);
     expect(isNativeBytePlusVideoModel('seedance_v2')).toBe(false);
-    expect(DEFAULT_VIDEO_MODEL).toBe('seedance_v2_5');
+    expect(DEFAULT_VIDEO_MODEL).toBe('seedance_v2');
+    expect('hidden' in IMAGE_TO_VIDEO_MODELS.seedance_v2_5).toBe(true);
+    expect('hidden' in IMAGE_TO_VIDEO_MODELS.seedance_v2).toBe(false);
   });
 });
 
