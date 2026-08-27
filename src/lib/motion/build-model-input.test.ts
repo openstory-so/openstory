@@ -114,6 +114,18 @@ describe('buildModelInput', () => {
     });
   });
 
+  describe('MiniMax H3 Max', () => {
+    it('uses image_url and keeps fal defaults (768P, balanced expansion)', () => {
+      const result = build('minimax_h3_max');
+      expect(result).toHaveProperty('image_url', baseOptions.imageUrl);
+      expect(result.prompt).toBe(baseOptions.prompt);
+      expect(result).toMatchObject({
+        resolution: '768P',
+        prompt_expansion_mode: 'balanced',
+      });
+    });
+  });
+
   describe('LTX 2.3 Pro', () => {
     it('uses image_url', () => {
       const result = build('ltx_2_3_pro');
@@ -186,6 +198,7 @@ describe('buildModelInput', () => {
         '15',
       ],
       minimax_hailuo_02: [],
+      minimax_h3_max: [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
     };
 
     for (const [model, allowed] of typedEntries(valid)) {

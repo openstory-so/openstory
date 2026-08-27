@@ -30,6 +30,7 @@ describe('studioVideoEndpointId', () => {
       'fal-ai/veo3.1',
       'fal-ai/kling-video/v3/pro/text-to-video',
       'fal-ai/minimax/hailuo-2.3/pro/text-to-video',
+      'minimax/h3-max/text-to-video',
       'bytedance/seedance-2.0/enterprise/v2/text-to-video',
     ]);
     expect(ids.some((id) => id.includes('image-to-video'))).toBe(false);

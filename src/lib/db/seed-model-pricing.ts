@@ -97,6 +97,9 @@ export const LOCAL_FAL_PRICING_SEED: Record<string, SeedPrice> = {
   },
   'fal-ai/minimax/hailuo-2.3/pro/image-to-video': units(0.49),
   'fal-ai/minimax/hailuo-2.3/pro/text-to-video': units(0.49),
+  // 768P list rate; fal's launch promo (0.04) ends 2026-09-01.
+  'minimax/h3-max/image-to-video': { unit: 'seconds', unitPriceUsd: 0.08 },
+  'minimax/h3-max/text-to-video': { unit: 'seconds', unitPriceUsd: 0.08 },
   'bytedance/seedance-2.0/enterprise/v2/image-to-video': units(0.014),
   'bytedance/seedance-2.0/enterprise/v2/text-to-video': units(0.014),
   'bytedance/seedance-2.0/enterprise/v2/reference-to-video': units(0.014),

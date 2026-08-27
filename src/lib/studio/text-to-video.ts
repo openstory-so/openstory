@@ -6,7 +6,7 @@
  *   - `reference` — reference-to-video: up to N stills bound in the prompt as
  *                   `@Image1`…`@ImageN`
  *   - `frames`    — image-to-video: a start frame, plus an end frame where the
- *                   endpoint has `end_image_url` (Kling, LTX, Seedance)
+ *                   endpoint has `end_image_url` (Kling, LTX, Seedance, H3 Max)
  *
  * Client-safe: no env, no adapters.
  */
@@ -20,6 +20,7 @@ const STUDIO_TEXT_TO_VIDEO_ENDPOINTS = {
   veo3_1: 'fal-ai/veo3.1',
   kling_v3_pro: 'fal-ai/kling-video/v3/pro/text-to-video',
   minimax_hailuo_02: 'fal-ai/minimax/hailuo-2.3/pro/text-to-video',
+  minimax_h3_max: 'minimax/h3-max/text-to-video',
   seedance_v2: 'bytedance/seedance-2.0/enterprise/v2/text-to-video',
 } as const satisfies Record<ImageToVideoModel, string>;
 
@@ -33,6 +34,7 @@ const STUDIO_VIDEO_DURATIONS = {
   veo3_1: [4, 6, 8],
   kling_v3_pro: RANGE(3, 15),
   minimax_hailuo_02: [],
+  minimax_h3_max: RANGE(5, 15),
   seedance_v2: RANGE(4, 15),
 } as const satisfies Record<ImageToVideoModel, readonly number[]>;
 
@@ -43,6 +45,7 @@ const STUDIO_VIDEO_ASPECTS = {
   veo3_1: ['16:9', '9:16'],
   kling_v3_pro: ['16:9', '9:16', '1:1'],
   minimax_hailuo_02: [],
+  minimax_h3_max: ['16:9', '1:1', '9:16'],
   seedance_v2: ['16:9', '1:1', '9:16'],
 } as const satisfies Record<ImageToVideoModel, readonly AspectRatio[]>;
 
@@ -52,6 +55,7 @@ const STUDIO_VIDEO_HAS_AUDIO = {
   veo3_1: true,
   kling_v3_pro: true,
   minimax_hailuo_02: false,
+  minimax_h3_max: false,
   seedance_v2: true,
 } as const satisfies Record<ImageToVideoModel, boolean>;
 
@@ -76,7 +80,7 @@ type StudioReferenceEndpoint = {
 
 const atImage = (n: number): string => `@Image${n}`;
 
-/** Reference-to-video siblings. LTX and Hailuo have none. */
+/** Reference-to-video siblings. LTX, Hailuo and H3 Max have none. */
 const STUDIO_REFERENCE_ENDPOINTS: Partial<
   Record<ImageToVideoModel, StudioReferenceEndpoint>
 > = {
@@ -127,6 +131,7 @@ export function studioReferenceEndpoint(
 const STUDIO_END_FRAME_MODELS = {
   kling_v3_pro: true,
   ltx_2_3_pro: true,
+  minimax_h3_max: true,
   seedance_v2: true,
 } as const satisfies Partial<Record<ImageToVideoModel, true>>;
 
