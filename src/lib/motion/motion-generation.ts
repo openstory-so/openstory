@@ -4,6 +4,7 @@ import {
   claimBytePlusVia,
   getArkApiKey,
   isBytePlusConfigured,
+  loadBytePlusVideo,
 } from '@/lib/ai/byteplus-config';
 import { bytePlusVideoUnitsBilled } from '@/lib/ai/byteplus-pricing';
 import { withBytePlusQuotaRetry } from '@/lib/ai/byteplus-rate-limit';
@@ -47,7 +48,6 @@ import {
   getVideoJobStatus,
   type TokenUsage,
 } from '@tanstack/ai';
-import { createBytePlusVideo } from '@tanstack/ai-byteplus';
 import { falVideo } from '@tanstack/ai-fal';
 import { createGrokVideo } from '@tanstack/ai-grok';
 import { buildBytePlusVideoRequest } from './build-byteplus-video-request';
@@ -279,6 +279,7 @@ export async function submitMotionJob(
         arkKey,
         FAL_REQUEST_TIMEOUT_MS
       );
+      const createBytePlusVideo = await loadBytePlusVideo();
       const job = await withBytePlusQuotaRetry('motion submit', () =>
         generateVideo({
           adapter: createBytePlusVideo(endpoint.endpointId, apiKey, config),
@@ -367,6 +368,7 @@ export async function pollMotionJob(
         arkKey,
         FAL_REQUEST_TIMEOUT_MS
       );
+      const createBytePlusVideo = await loadBytePlusVideo();
       return await withBytePlusQuotaRetry('motion poll', () =>
         getVideoJobStatus({
           adapter: createBytePlusVideo(modelId, apiKey, config),

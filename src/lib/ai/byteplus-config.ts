@@ -85,3 +85,19 @@ export function arkAdapterConfig(
     ...(baseURL && { baseURL }),
   };
 }
+
+/**
+ * Lazy-load the Ark adapters. A static import of `@tanstack/ai-byteplus`
+ * from motion/image/studio generation is pulled in at Worker startup via
+ * the workflow graph in `src/server.ts` and was enough, stacked on Grok,
+ * to fail preview deploy with "Script startup exceeded CPU time limit".
+ */
+export async function loadBytePlusVideo() {
+  const { createBytePlusVideo } = await import('@tanstack/ai-byteplus');
+  return createBytePlusVideo;
+}
+
+export async function loadBytePlusImage() {
+  const { createBytePlusImage } = await import('@tanstack/ai-byteplus');
+  return createBytePlusImage;
+}

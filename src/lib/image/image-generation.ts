@@ -4,6 +4,7 @@ import {
   claimBytePlusVia,
   getArkApiKey,
   isBytePlusConfigured,
+  loadBytePlusImage,
 } from '@/lib/ai/byteplus-config';
 import { withBytePlusQuotaRetry } from '@/lib/ai/byteplus-rate-limit';
 import { isContentRejectionError } from '@/lib/ai/content-rejection';
@@ -36,7 +37,6 @@ import {
   toDataOrCdnUrl,
 } from '@/lib/storage/external-url';
 import { generateImage } from '@tanstack/ai';
-import { createBytePlusImage } from '@tanstack/ai-byteplus';
 import { falImage } from '@tanstack/ai-fal';
 import { createGrokImage } from '@tanstack/ai-grok';
 
@@ -296,6 +296,7 @@ async function generateImageInternal(
         arkKey,
         FAL_GENERATION_TIMEOUT_MS
       );
+      const createBytePlusImage = await loadBytePlusImage();
       result = await withBytePlusQuotaRetry('image generate', () =>
         generateImage({
           adapter: createBytePlusImage(request.modelId, apiKey, config),
