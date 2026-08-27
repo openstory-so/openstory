@@ -10,7 +10,6 @@
  */
 
 import { Button } from '@/components/ui/button';
-import { FullscreenButton } from '@/components/motion/fullscreen-button';
 import { VideoPlayer } from '@/components/motion/video-player';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
@@ -42,6 +41,8 @@ import { cn } from '@/lib/utils';
 import { usePostHog } from '@posthog/react';
 import {
   AlertCircle,
+  Maximize,
+  Minimize,
   Music,
   Pause,
   Play,
@@ -282,10 +283,8 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
   if (cachedVideoUrl) {
     return (
       <div
-        ref={containerRef}
         data-testid="sequence-player"
         data-state="ready"
-        data-overlay-fullscreen=""
         className={cn(
           'relative w-full overflow-hidden rounded-lg bg-black',
           className,
@@ -312,10 +311,6 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
             />
           )}
           {overlayActions}
-          <FullscreenButton
-            targetRef={containerRef}
-            className="bg-black/50 hover:bg-black/70"
-          />
         </div>
       </div>
     );
@@ -424,7 +419,7 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
           onSeek={seek}
           onVolumeChange={setVolume}
           onToggleMute={() => setMuted((m) => !m)}
-          fullscreenButton={<FullscreenButton targetRef={containerRef} />}
+          containerRef={containerRef}
         />
       )}
     </div>
@@ -442,7 +437,7 @@ type PlayerControlsProps = {
   onSeek: (seconds: number) => void;
   onVolumeChange: (v: number) => void;
   onToggleMute: () => void;
-  fullscreenButton?: React.ReactNode;
+  containerRef: React.RefObject<HTMLElement | null>;
 };
 
 const PlayerControls: React.FC<PlayerControlsProps> = ({
@@ -456,9 +451,19 @@ const PlayerControls: React.FC<PlayerControlsProps> = ({
   onSeek,
   onVolumeChange,
   onToggleMute,
-  fullscreenButton,
+  containerRef,
 }) => {
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [fullscreenEnabled, setFullscreenEnabled] = useState(false);
+
+  useEffect(() => {
+    setFullscreenEnabled(document.fullscreenEnabled);
+    const sync = () =>
+      setIsFullscreen(document.fullscreenElement === containerRef.current);
+    document.addEventListener('fullscreenchange', sync);
+    return () => document.removeEventListener('fullscreenchange', sync);
+  }, [containerRef]);
 
   return (
     <div className="absolute inset-x-0 bottom-0 flex flex-col gap-2 bg-gradient-to-t from-black/80 to-transparent p-3">
@@ -526,7 +531,29 @@ const PlayerControls: React.FC<PlayerControlsProps> = ({
             />
           </div>
         )}
-        {fullscreenButton}
+        {fullscreenEnabled && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-11 w-11 text-white hover:bg-white/10 hover:text-white md:h-8 md:w-8"
+            onClick={() => {
+              const el = containerRef.current;
+              if (!el) return;
+              if (document.fullscreenElement === el) {
+                void document.exitFullscreen();
+                return;
+              }
+              void el.requestFullscreen().catch(() => undefined);
+            }}
+            aria-label={isFullscreen ? 'Exit full screen' : 'Full screen'}
+          >
+            {isFullscreen ? (
+              <Minimize className="h-5 w-5 md:h-4 md:w-4" />
+            ) : (
+              <Maximize className="h-5 w-5 md:h-4 md:w-4" />
+            )}
+          </Button>
+        )}
       </div>
     </div>
   );

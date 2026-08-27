@@ -1489,11 +1489,34 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
             </div>
           </div>
 
-          {/* Mirrors SceneList's inset card: outer div owns the padding, inner
-              owns the rounded border — so both rails read as the same object. */}
-          <div className="hidden min-h-0 md:block shrink-0 pr-4 py-4">
-            <div className="flex h-full min-h-0 w-[380px] lg:w-[420px] flex-col overflow-hidden rounded-lg border bg-background">
-              <ScrollArea className="h-full min-h-0">
+          {/* One inspector: phone collapse bar + `hidden`/`md:flex`, desktop
+              card. Same CSS-visibility rule as the scene list, one tree. */}
+          <div className="relative z-10 shrink-0 border-t bg-background pb-20 md:min-h-0 md:border-0 md:bg-transparent md:pb-0 md:pr-4 md:py-4">
+            <button
+              type="button"
+              className="flex min-h-11 w-full items-center justify-between px-4 py-2 outline-none focus-visible:ring-3 focus-visible:ring-ring/50 md:hidden"
+              aria-expanded={mobileInspectorOpen}
+              aria-controls="scene-inspector"
+              onClick={() => setMobileInspectorOpen((open) => !open)}
+            >
+              <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                {scopeLabel[scope]}
+              </span>
+              <ChevronDown
+                className={cn(
+                  'h-4 w-4 text-muted-foreground transition-transform motion-reduce:transition-none',
+                  mobileInspectorOpen && 'rotate-180'
+                )}
+              />
+            </button>
+            <div
+              id="scene-inspector"
+              className={cn(
+                'md:flex md:h-full md:min-h-0 md:w-[380px] lg:w-[420px] md:flex-col md:overflow-hidden md:rounded-lg md:border md:bg-background',
+                mobileInspectorOpen ? 'block' : 'hidden'
+              )}
+            >
+              <ScrollArea className="h-full min-h-0 max-md:max-h-[40dvh]">
                 <SceneModelBar
                   scope={scope}
                   sequenceId={sequenceId}
@@ -1546,84 +1569,6 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
                   />
                 </div>
               </ScrollArea>
-            </div>
-          </div>
-
-          <div className="relative z-10 md:hidden shrink-0 border-t bg-background pb-20">
-            <button
-              type="button"
-              className="flex min-h-11 w-full items-center justify-between px-4 py-2 outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-              aria-expanded={mobileInspectorOpen}
-              aria-controls="mobile-scene-inspector"
-              onClick={() => setMobileInspectorOpen((open) => !open)}
-            >
-              <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                {scopeLabel[scope]}
-              </span>
-              <ChevronDown
-                className={cn(
-                  'h-4 w-4 text-muted-foreground transition-transform motion-reduce:transition-none',
-                  mobileInspectorOpen && 'rotate-180'
-                )}
-              />
-            </button>
-            <div
-              id="mobile-scene-inspector"
-              className={cn(
-                'max-h-[40dvh] overflow-y-auto overscroll-contain bg-background px-4',
-                mobileInspectorOpen ? 'block' : 'hidden'
-              )}
-            >
-              <SceneModelBar
-                hideHeader
-                scope={scope}
-                sequenceId={sequenceId}
-                resolvedSequenceImageModel={resolvedSequenceImageModel}
-                resolvedSequenceVideoModel={resolvedSequenceVideoModel}
-                styleId={sequence?.styleId ?? undefined}
-                stylePending={sequence?.styleConfig == null}
-                aspectRatio={aspectRatio}
-                analysisModel={sequence?.analysisModel ?? undefined}
-              />
-              <SceneScriptPrompts
-                shot={selectedShot}
-                sequenceId={sequenceId}
-                selectedTab={effectiveTab}
-                visibleTabs={visibleTabs}
-                onTabChange={(tab) => {
-                  setSelectedTab(tab);
-                  setFacet(tab);
-                }}
-                regeneratingImages={regeneratingImages}
-                regeneratingMotion={regeneratingMotion}
-                onRegenerateStart={handleRegenerateStart}
-                aspectRatio={aspectRatio}
-                variantForSelectedModel={variantForSelectedModel}
-                videoVariantForSelectedModel={videoVariantForSelectedModel}
-                segment={selectedSegment}
-                segmentSpanLabel={selectedSegmentSpanLabel}
-                resolvedImageModel={resolvedImageModel}
-                resolvedVideoModel={resolvedVideoModel}
-                imageModelStatuses={sceneImageModelStatuses}
-                videoModelStatuses={sceneVideoModelStatuses}
-                onImageModelChange={handleImageModelChange}
-                onVideoModelChange={handleVideoModelChange}
-                styleName={styleName}
-                recommendedImageModel={recommendedImageModel}
-                recommendedVideoModel={recommendedVideoModel}
-                styleCategory={styleCategory}
-                shotDivergentVariants={divergentVariants?.filter(
-                  (v) => v.shotId === curSelectedShotId
-                )}
-                onCompareDivergent={(variant) => setCompareVariant(variant)}
-                facetShotIds={facetShotIds}
-                musicEditable={scope === 'sequence'}
-                scene={scriptScene}
-                scopeShots={scopeShots}
-                scopeStaleness={scopeStaleness}
-                scopeStalenessFailed={scopeStalenessFailed}
-                onSelectShot={handleSelectShot}
-              />
             </div>
           </div>
         </div>

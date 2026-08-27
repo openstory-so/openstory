@@ -3,9 +3,13 @@
 @import 'tw-animate-css';
 @import '@videojs/react/video/minimal-skin.css';
 
-/* Overlay FullscreenButton is the 44px control; hide the skin's duplicate. */
-[data-overlay-fullscreen] .media-button--fullscreen {
-  display: none;
+/* Video.js icon controls (play/mute/fullscreen) are ~38px; mobile hit target is 44. */
+@media (max-width: 767px) {
+  .media-minimal-skin .media-button--icon {
+    width: 44px;
+    height: 44px;
+    min-height: 44px;
+  }
 }
 @import 'tw-animate-css';
 @import 'shadcn/tailwind.css';

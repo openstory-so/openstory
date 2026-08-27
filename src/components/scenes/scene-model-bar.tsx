@@ -43,11 +43,6 @@ type SceneModelBarProps = {
   aspectRatio?: AspectRatio;
   /** The LLM that analysed the script into scenes. Fixed post-analysis. */
   analysisModel?: string;
-  /**
-   * Omit the scope label / Esc hint (duplicate of the mobile collapse bar;
-   * Esc is meaningless on a phone).
-   */
-  hideHeader?: boolean;
 };
 
 export const scopeLabel: Record<SelectionScope, string> = {
@@ -75,26 +70,24 @@ export const SceneModelBar: React.FC<SceneModelBarProps> = ({
   stylePending,
   aspectRatio,
   analysisModel,
-  hideHeader = false,
 }) => {
   const showSequenceSettings = scope === 'sequence';
   const ratio = aspectRatio ? getAspectRatioData(aspectRatio) : undefined;
 
   return (
     <div className="space-y-3 px-4 py-3">
-      {!hideHeader && (
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            {scopeLabel[scope]}
+      {/* Hidden on phones — the collapse bar already names the scope. */}
+      <div className="hidden items-center justify-between gap-2 md:flex">
+        <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          {scopeLabel[scope]}
+        </span>
+        {/* Scope zoom-out affordance — Esc walks shot → scene → sequence. */}
+        {scope !== 'sequence' && (
+          <span className="flex shrink-0 items-center gap-1 text-[11px] text-muted-foreground">
+            <Kbd>esc</Kbd> up
           </span>
-          {/* Scope zoom-out affordance — Esc walks shot → scene → sequence. */}
-          {scope !== 'sequence' && (
-            <span className="flex shrink-0 items-center gap-1 text-[11px] text-muted-foreground">
-              <Kbd>esc</Kbd> up
-            </span>
-          )}
-        </div>
-      )}
+        )}
+      </div>
       {showSequenceSettings && (
         <div className="space-y-2">
           <SettingRow label="Style">
