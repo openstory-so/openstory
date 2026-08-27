@@ -2,7 +2,8 @@
  * Behavioural tests for `OpenStoryWorkflowEntrypoint.run()`'s failure
  * handling, added for issue #839 (June 6 mass-abort cascade):
  *
- *   1. Engine aborts ("Aborting engine: Grace period complete") are transient
+ *   1. Engine aborts ("Aborting engine: Grace period complete") and deploy
+ *      DO resets ("Durable Object reset because its code was updated", #1331) are transient
  *      — CF resumes the instance afterwards — so run() must rethrow WITHOUT
  *      invoking `onFailure` (which marks user-facing rows failed) or
  *      notifying the parent of failure. The same applies when the abort
@@ -59,6 +60,7 @@ const { OpenStoryWorkflowEntrypoint } = await import('./base-workflow');
 const IN_FINITE_STATE =
   '(instance.in_finite_state) Instance reached a finite state, cannot send events to it';
 const ENGINE_ABORT = 'Aborting engine: Grace period complete';
+const DO_RESET = 'Durable Object reset because its code was updated.';
 
 type TestPayload = UserWorkflowContext & {
   _parent?: {
@@ -123,20 +125,23 @@ function makeWorkflow(impl: () => Promise<unknown>) {
 }
 
 describe('OpenStoryWorkflowEntrypoint.run', () => {
-  test('engine abort: rethrows without onFailure or parent failure-notify', async () => {
-    notifyParent.mockReset();
-    notifyParentOfFailure.mockReset();
-    const { workflow, onFailure } = makeWorkflow(() =>
-      Promise.reject(new Error(ENGINE_ABORT))
-    );
+  test.each([ENGINE_ABORT, DO_RESET])(
+    'platform interruption "%s": rethrows without onFailure or parent failure-notify',
+    async (message) => {
+      notifyParent.mockReset();
+      notifyParentOfFailure.mockReset();
+      const { workflow, onFailure } = makeWorkflow(() =>
+        Promise.reject(new Error(message))
+      );
 
-    await expect(workflow.run(makeEvent(true), makeStep())).rejects.toThrow(
-      'Grace period complete'
-    );
+      await expect(workflow.run(makeEvent(true), makeStep())).rejects.toThrow(
+        message
+      );
 
-    expect(onFailure).not.toHaveBeenCalled();
-    expect(notifyParentOfFailure).not.toHaveBeenCalled();
-  });
+      expect(onFailure).not.toHaveBeenCalled();
+      expect(notifyParentOfFailure).not.toHaveBeenCalled();
+    }
+  );
 
   test('success with dead parent: returns the result instead of failing', async () => {
     notifyParent.mockReset();
