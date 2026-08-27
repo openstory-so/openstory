@@ -617,7 +617,7 @@ export const PreviewMode: Story = {
     docs: {
       description: {
         story:
-          'Shows preview mode where fast preview images are displayed while full-resolution thumbnails are still generating. Scenes 1-2 show the "Animatic" badge, Scene 3 has its final image ready (no badge).',
+          'Shows preview mode where fast preview images are displayed while full-resolution thumbnails are still generating. Scenes 1-2 show the "Storyboard" badge, Scene 3 has its final image ready (no badge).',
       },
     },
   },

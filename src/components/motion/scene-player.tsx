@@ -488,7 +488,7 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
           )}
           {isPreviewImage && !isVariantPreview && (
             <span className="absolute top-2 right-2 z-10 rounded bg-background/80 px-2 py-1 text-xs font-medium text-muted-foreground backdrop-blur-sm">
-              Animatic
+              Storyboard
             </span>
           )}
           {frameOverlay}

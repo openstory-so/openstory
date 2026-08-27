@@ -219,7 +219,7 @@ export const IMAGE_MODELS = {
     vendor: 'Krea',
     license: 'open-source' as const,
     qualityRank: 99,
-    description: 'Ultra-fast animatic generation',
+    description: 'Ultra-fast storyboard generation',
     maxPromptLength: 2000,
     hidden: true,
   },
