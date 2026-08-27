@@ -1132,7 +1132,11 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     setIsRetrying(true);
     try {
       const result = await smartRetryFn({ data: { sequenceId } });
-      toast.success(`Retrying: ${result.retriedItems.join(', ')}`);
+      toast.success(
+        result.retryType === 'full'
+          ? 'Continuing generation'
+          : `Retrying: ${result.retriedItems.join(', ')}`
+      );
       void queryClient.invalidateQueries({
         queryKey: ['sequence', sequenceId],
       });

@@ -48,6 +48,16 @@ describe('storyboard envelope wiring', () => {
     );
     expect(source).toMatch(/updateStatus\('failed'/);
     expect(source).toMatch(/NonRetryableError/);
+    expect(source).toMatch(/creditsShortStatusError/);
+  });
+
+  test('reservation:short does not toast as an error (#1328)', () => {
+    const source = readFileSync(
+      'src/lib/realtime/use-generation-stream.ts',
+      'utf8'
+    );
+    expect(source).not.toMatch(/toast\.error/);
+    expect(source).toMatch(/generation\.reservation:short/);
   });
 });
 

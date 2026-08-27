@@ -30,6 +30,7 @@ import { resolveImageModels } from '@/lib/ai/resolve-image-models';
 import { resolveVideoModels } from '@/lib/ai/resolve-video-models';
 import type { Scene } from '@/lib/ai/scene-analysis.schema';
 import { estimateStoryboardRenderCost } from '@/lib/billing/cost-estimation';
+import { creditsShortStatusError } from '@/lib/billing/credits-short';
 import { microsToUsd } from '@/lib/billing/money';
 import { gateStoryboardRenders } from '@/lib/billing/storyboard-render-gate';
 import { generateId } from '@/lib/db/id';
@@ -533,7 +534,10 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
     if (!renderGate.spawnRenders) {
       // Gate already zeroed leftover. Fail the sequence and throw so the
       // parent does not mark it completed with no stills.
-      const shortMessage = `Not enough credits to generate images for ${scenes.length} scenes. Add credits and retry.`;
+      const shortMessage = creditsShortStatusError({
+        sceneCount: scenes.length,
+        neededMicros: renderGate.neededMicros,
+      });
       await step.do('emit-reservation-short', async () => {
         if (!sequenceId) return;
         await scopedDb

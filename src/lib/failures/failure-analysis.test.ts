@@ -168,6 +168,50 @@ describe('analyzeFailures', () => {
     expect(result.headline).toContain('full retry required');
   });
 
+  test('reservation-short sequence error (no shots) is a credits prompt, not a hard error', () => {
+    const sequence = makeSequence({
+      status: 'failed',
+      statusError:
+        'Not enough credits to generate images for 11 scenes. Add $4.20 more, then continue.',
+    });
+
+    const result = analyzeFailures([], sequence, SCENES);
+
+    expect(result.requiresFullRetry).toBe(true);
+    expect(result.tone).toBe('credits');
+    expect(result.headline).toBe('Add credits to continue');
+    expect(result.headline).not.toContain('full retry required');
+    expect(result.headline).not.toContain('Generation failed');
+  });
+
+  test('reservation-short after scene-split (shots exist, no stills) is a credits prompt (#1328)', () => {
+    const shots = [
+      makeShot({
+        sources: {
+          motionPrompt: null,
+          video: null,
+          primaryVideo: render({ status: 'pending', url: null }),
+        },
+        frame: { imageStatus: 'pending' },
+      }),
+    ];
+    const sequence = makeSequence({
+      status: 'failed',
+      musicPrompt: null,
+      musicTags: null,
+      musicStatus: 'pending',
+      statusError:
+        'Not enough credits to generate images for 11 scenes. Add credits and retry.',
+    });
+
+    const result = analyzeFailures(shots, sequence, SCENES);
+
+    expect(result.requiresFullRetry).toBe(true);
+    expect(result.tone).toBe('credits');
+    expect(result.headline).toBe('Add credits to continue');
+    expect(result.groups).toHaveLength(0);
+  });
+
   test('content-checker sequence error (no shots) is a warning, not a hard error', () => {
     const sequence = makeSequence({
       status: 'failed',
@@ -474,6 +518,19 @@ describe('analyzeLoadedFailures', () => {
 
   test('returns null while the sequence is still loading', () => {
     expect(analyzeLoadedFailures([], undefined, SCENES)).toBeNull();
+  });
+
+  test('empty loaded shots still produce the credits-short banner', () => {
+    const sequence = makeSequence({
+      status: 'failed',
+      statusError:
+        'Not enough credits to generate images for 11 scenes. Add credits and retry.',
+    });
+
+    const result = analyzeLoadedFailures([], sequence, SCENES);
+
+    expect(result?.tone).toBe('credits');
+    expect(result?.headline).toBe('Add credits to continue');
   });
 
   test('empty loaded shots still produce the content-checker banner', () => {

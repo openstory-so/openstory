@@ -7,6 +7,10 @@ import {
   contentRejectionSubjects,
   isContentRejectionError,
 } from '@/lib/ai/content-rejection';
+import {
+  CREDITS_SHORT_TITLE,
+  isCreditsShortError,
+} from '@/lib/billing/credits-short';
 import type { SceneRow } from '@/lib/db/schema/scenes';
 import type { Shot } from '@/lib/db/schema/shots';
 import type { Sequence } from '@/lib/db/schema/sequences';
@@ -44,10 +48,11 @@ export type FailureSummary = {
   hasFailed: boolean;
   error?: string | null;
   /**
-   * Content-checker-only failures are a warning (edit script / prompt / retry),
-   * not a hard generation error. Mixed or infrastructure failures stay 'error'.
+   * Content-checker-only failures are a warning (edit script / prompt / retry).
+   * A reservation-short stop (#1328) is a credits prompt, not a generation
+   * error. Mixed or infrastructure failures stay 'error'.
    */
-  tone: 'error' | 'warning';
+  tone: 'error' | 'warning' | 'credits';
 };
 
 function sceneNumberOf(shot: Shot, scenesById: ScenesById): number {
@@ -69,9 +74,11 @@ function groupIsContentOnly(group: FailureGroup): boolean {
   return !!group.error && isContentRejectionError(group.error);
 }
 
-/** A sequence-level error is only a warning when it is a content rejection. */
+/** Sequence-level statusError → banner tone. Credits-short outranks a wrapped content-checker phrase. */
 function toneOf(error: string | null | undefined): FailureSummary['tone'] {
-  return error && isContentRejectionError(error) ? 'warning' : 'error';
+  if (error && isCreditsShortError(error)) return 'credits';
+  if (error && isContentRejectionError(error)) return 'warning';
+  return 'error';
 }
 
 const FULL_RETRY_HEADLINE = 'Generation failed \u2014 full retry required';
@@ -83,7 +90,9 @@ function listNames(names: string[]): string {
 }
 
 function fullRetryHeadline(error: string | null | undefined): string {
-  if (toneOf(error) !== 'warning') return FULL_RETRY_HEADLINE;
+  const tone = toneOf(error);
+  if (tone === 'credits') return CREDITS_SHORT_TITLE;
+  if (tone !== 'warning') return FULL_RETRY_HEADLINE;
   const subjects = contentRejectionSubjects(error ?? '');
   return `${subjects.length > 0 ? listNames(subjects) : 'Script'} didn't pass the content checker \u2014 regenerate to retry`;
 }

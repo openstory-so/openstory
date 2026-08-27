@@ -302,15 +302,8 @@ export function useGenerationStream(
           description: 'The selected model is kept in Versions.',
         });
       }
-      if (eventName === 'generation.reservation:short') {
-        const sceneCount = Number(data.sceneCount);
-        const neededUsd = Number(data.neededUsd);
-        toast.error('Not enough credits to generate images', {
-          description: Number.isFinite(neededUsd)
-            ? `Need $${neededUsd.toFixed(2)} more${Number.isFinite(sceneCount) ? ` for ${sceneCount} scenes` : ''}.`
-            : 'Add credits and retry.',
-        });
-      }
+      // reservation:short is a top-up prompt, not a failure toast (#1328).
+      // The scenes banner is the persistent CTA.
 
       // Map event to typed action and dispatch
       const action = mapEventToAction(eventName, data);
