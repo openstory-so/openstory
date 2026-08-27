@@ -1424,8 +1424,11 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
                 ) : null
               }
             />
+            {/* flex-col so SceneCanvas's flex-1 chain still stretches — in a
+                block parent the CanvasMediaStage size container computes 0
+                height and the whole canvas collapses. */}
             <div
-              className="relative min-h-0 flex-1 touch-pan-y overflow-hidden"
+              className="relative flex min-h-0 flex-1 flex-col touch-pan-y overflow-hidden"
               {...canvasSwipe}
             >
               {effectiveView === 'script' ? (
