@@ -11,10 +11,35 @@ vi.doMock('@/lib/posthog-server', () => ({
 }));
 
 const {
+  reportFlooredEstimate,
   reportMissingBillingCost,
   reportReservationShort,
   reportSkippedDeduction,
 } = await import('../billing-observability');
+
+describe('reportFlooredEstimate', () => {
+  it('captures a billing_estimate_floored event', () => {
+    capture.mockClear();
+
+    reportFlooredEstimate({
+      model: 'minimax_h3_max',
+      operation: 'storyboard:motion',
+      numCalls: 1,
+      floorMicros: 100_000,
+    });
+
+    expect(capture).toHaveBeenCalledWith({
+      distinctId: 'system',
+      event: 'billing_estimate_floored',
+      properties: {
+        model: 'minimax_h3_max',
+        operation: 'storyboard:motion',
+        num_calls: 1,
+        floor_micros: 100_000,
+      },
+    });
+  });
+});
 
 describe('reportMissingBillingCost', () => {
   it('logs and captures a billing_missing_cost event', () => {

@@ -251,6 +251,28 @@ describe('client/server import boundary', () => {
       expect(specs).not.toContain('@srv/types');
       expect(specs).toContain('@srv/mixed');
     });
+
+    test('createIsomorphicFn .server() import is dropped — the #1354 shape', () => {
+      const specs = clientRetainedImports(`
+        import { getPostHogClient } from '@/lib/posthog-server';
+        import { createIsomorphicFn } from '@tanstack/react-start';
+        export const capture = createIsomorphicFn()
+          .client(() => {})
+          .server((p) => { getPostHogClient()?.capture(p); });
+      `);
+      expect(specs).not.toContain('@/lib/posthog-server');
+      expect(specs).toContain('@tanstack/react-start');
+    });
+
+    test('billing-observability does not retain posthog-server on the client', () => {
+      const source = readFileSync(
+        join(SRC, 'src/lib/billing/billing-observability.ts'),
+        'utf8'
+      );
+      expect(clientRetainedImports(source)).not.toContain(
+        '@/lib/posthog-server'
+      );
+    });
   });
 
   test('no server-only module is reachable from client components/hooks/functions', () => {

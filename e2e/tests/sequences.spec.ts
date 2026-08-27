@@ -167,6 +167,45 @@ test.describe('Sequences', () => {
     await expect(generate).toBeEnabled();
   });
 
+  test('typing still works when motion/audio catalog pricing is missing', async ({
+    page,
+  }) => {
+    // #1354: Generate's ActionCost floors unpriced motion/audio. That used to
+    // call getPostHogClient() (createServerOnlyFn) on every keystroke.
+    await page.route('**/_serverFn/**', async (route) => {
+      const id = route.request().url().split('/_serverFn/')[1]?.split('?')[0];
+      let decoded = '';
+      try {
+        decoded = Buffer.from(id ?? '', 'base64url').toString();
+      } catch {
+        decoded = '';
+      }
+      if (!decoded.includes('getCatalogFalPricingFn')) {
+        await route.continue();
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          result: {
+            'openai/gpt-image-2': {
+              unitPriceMicros: 1_000_000,
+              unit: 'units',
+              typicalUnitsPerCall: 0.22,
+            },
+          },
+        }),
+      });
+    });
+
+    await page.goto('/');
+    await fillScriptEditor(page, 'A cat walks into a diner at dawn.');
+    await expect(
+      page.getByRole('button', { name: 'Generate', exact: true })
+    ).toBeEnabled();
+  });
+
   test('Try-this-style URL seeds the style sample, not Match script', async ({
     page,
   }) => {

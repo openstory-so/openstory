@@ -1,11 +1,33 @@
 /**
  * Observability for billing gaps — when a completed AI call reports no cost.
+ *
+ * PostHog capture goes through `createIsomorphicFn` so the Generate CTA can
+ * floor an unpriced motion/audio line on every keystroke without calling
+ * `getPostHogClient()` in the browser (#1354). That helper is
+ * `createServerOnlyFn` — the client stub throws
+ * `createServerOnlyFn() functions can only be called on the server!`.
+ * Server credit-gates still emit; the UI path is a no-op.
  */
 
 import { getPostHogClient } from '@/lib/posthog-server';
 import { getLogger } from '@/lib/observability/logger';
+import { createIsomorphicFn } from '@tanstack/react-start';
 
 const logger = getLogger(['openstory', 'billing', 'missing-cost']);
+
+type BillingCapture = {
+  distinctId: string;
+  event: string;
+  properties: Record<string, unknown>;
+};
+
+const captureBillingEvent = createIsomorphicFn()
+  .client((_payload: BillingCapture) => {
+    // Browser: posthog-node must not run. Server gates still capture.
+  })
+  .server((payload: BillingCapture) => {
+    getPostHogClient()?.capture(payload);
+  });
 
 export type MissingBillingCostContext = {
   source: string;
@@ -33,8 +55,7 @@ export type FlooredEstimateContext = {
  * anyone could count, and a floored gate is the same shape of unknown.
  */
 export function reportFlooredEstimate(ctx: FlooredEstimateContext): void {
-  const posthog = getPostHogClient();
-  posthog?.capture({
+  captureBillingEvent({
     distinctId: 'system',
     event: 'billing_estimate_floored',
     properties: {
@@ -62,8 +83,7 @@ export type BillingDriftContext = {
 export function reportBillingDrift(ctx: BillingDriftContext): void {
   logger.error('charge disagrees with fal billed cost', ctx);
 
-  const posthog = getPostHogClient();
-  posthog?.capture({
+  captureBillingEvent({
     distinctId: ctx.teamId,
     event: 'billing_drift',
     properties: {
@@ -104,8 +124,7 @@ export function reportReservationShort(ctx: ReservationShortContext): void {
     ctx
   );
 
-  const posthog = getPostHogClient();
-  posthog?.capture({
+  captureBillingEvent({
     distinctId: ctx.teamId ?? 'system',
     event: 'billing_reservation_short',
     properties: {
@@ -125,8 +144,7 @@ export function reportReservationShort(ctx: ReservationShortContext): void {
 export function reportSkippedDeduction(ctx: SkippedDeductionContext): void {
   logger.warn('Completed AI generation skipped deduction', ctx);
 
-  const posthog = getPostHogClient();
-  posthog?.capture({
+  captureBillingEvent({
     distinctId: ctx.teamId ?? 'system',
     event: 'billing_skipped_deduction',
     properties: {
@@ -143,8 +161,7 @@ export function reportSkippedDeduction(ctx: SkippedDeductionContext): void {
 export function reportMissingBillingCost(ctx: MissingBillingCostContext): void {
   logger.warn('Completed AI generation with no billable cost reported', ctx);
 
-  const posthog = getPostHogClient();
-  posthog?.capture({
+  captureBillingEvent({
     distinctId: ctx.teamId ?? 'system',
     event: 'billing_missing_cost',
     properties: {

@@ -55,6 +55,12 @@ export async function fillScriptEditor(
     script,
     { timeout: 5_000 }
   );
+  // React error boundaries swallow pageerror, so a throw during the
+  // composer's cost estimate (#1354) replaces the tree instead of failing
+  // the test. The heading is the error-boundary copy in __root.tsx.
+  await expect(
+    page.getByRole('heading', { name: 'Something went wrong' })
+  ).toHaveCount(0);
   return editor;
 }
 
