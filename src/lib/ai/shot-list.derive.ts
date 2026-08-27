@@ -76,10 +76,7 @@ function deriveVisualPrompt(
     ...sceneParts,
   ]);
 
-  return {
-    fullPrompt,
-    negativePrompt: '',
-  };
+  return { fullPrompt };
 }
 
 /**

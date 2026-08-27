@@ -162,9 +162,6 @@ const visualPromptSchema = z.object({
   fullPrompt: z.string().meta({
     description: 'Complete image generation prompt with all visual details',
   }),
-  negativePrompt: z
-    .string()
-    .meta({ description: 'Elements to avoid in the generated image' }),
 });
 
 // No longer part of `motionPromptSchema` (#1035): `assembleMotionPrompt` uses
