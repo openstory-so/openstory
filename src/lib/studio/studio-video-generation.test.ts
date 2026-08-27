@@ -15,10 +15,16 @@ const testEnv: {
   FAL_KEY: string | undefined;
   OPENROUTER_KEY: string | undefined;
   XAI_API_KEY: string | undefined;
+  ARK_API_KEY: string | undefined;
+  ARK_BASE_URL: string | undefined;
+  E2E_TEST: string | undefined;
 } = {
   FAL_KEY: 'test-fal-key',
   OPENROUTER_KEY: 'test-or-key',
   XAI_API_KEY: undefined,
+  ARK_API_KEY: undefined,
+  ARK_BASE_URL: undefined,
+  E2E_TEST: undefined,
 };
 
 vi.doMock('#env', () => ({
@@ -34,7 +40,16 @@ vi.doMock('@tanstack/ai-grok', () => ({
   createGrokVideo: mockCreateGrokVideo,
 }));
 
-const { submitStudioVideoJob, pollStudioVideoJob } =
+const mockCreateBytePlusVideo = vi.fn(() => ({
+  kind: 'video',
+  name: 'byteplus',
+  model: 'dreamina-seedance-2-5-260628',
+}));
+vi.doMock('@tanstack/ai-byteplus', () => ({
+  createBytePlusVideo: mockCreateBytePlusVideo,
+}));
+
+const { submitStudioVideoJob, pollStudioVideoJob, studioVideoCostFromUsage } =
   await import('./studio-video-generation');
 
 describe('submitStudioVideoJob', () => {
@@ -42,9 +57,13 @@ describe('submitStudioVideoJob', () => {
     mockGenerateVideo.mockClear();
     mockGetVideoJobStatus.mockClear();
     mockCreateGrokVideo.mockClear();
+    mockCreateBytePlusVideo.mockClear();
     mockFalVideo.mockClear();
     testEnv.XAI_API_KEY = undefined;
     testEnv.FAL_KEY = 'test-fal-key';
+    testEnv.ARK_API_KEY = undefined;
+    testEnv.ARK_BASE_URL = undefined;
+    testEnv.E2E_TEST = undefined;
   });
 
   it('submits Seedance to the text-to-video endpoint with no image field', async () => {
@@ -130,15 +149,108 @@ describe('submitStudioVideoJob', () => {
     expect(result.endpointId).toBe('xai/grok-imagine-video/v1.5/text-to-video');
     expect(mockCreateGrokVideo).not.toHaveBeenCalled();
   });
+
+  it('submits Seedance to Ark when configured', async () => {
+    testEnv.ARK_API_KEY = 'ark-test';
+    mockGenerateVideo.mockResolvedValue({ jobId: 'ark-t2v' });
+
+    const result = await submitStudioVideoJob({
+      prompt: 'A red fox turns toward camera',
+      model: 'seedance_v2',
+      duration: 5,
+      aspectRatio: '9:16',
+    });
+
+    expect(result.via).toBe('byteplus');
+    expect(result.usedOwnKey).toBe(false);
+    expect(result.endpointId).toBe('dreamina-seedance-2-5-260628');
+    expect(mockCreateBytePlusVideo).toHaveBeenCalled();
+    expect(mockFalVideo).not.toHaveBeenCalled();
+    expect(mockGenerateVideo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: 'A red fox turns toward camera',
+        duration: 5,
+        size: '9:16_720p',
+      })
+    );
+  });
+
+  it('sends studio frames to Ark as start_frame / end_frame', async () => {
+    testEnv.ARK_API_KEY = 'ark-test';
+    mockGenerateVideo.mockResolvedValue({ jobId: 'ark-frames' });
+
+    const result = await submitStudioVideoJob({
+      prompt: 'Camera pushes in',
+      model: 'seedance_v2',
+      mode: 'frames',
+      startImageUrl: 'https://example.com/start.jpg',
+      endImageUrl: 'https://example.com/end.jpg',
+      duration: 5,
+    });
+
+    expect(result.via).toBe('byteplus');
+    expect(mockGenerateVideo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: [
+          { type: 'text', content: expect.any(String) },
+          {
+            type: 'image',
+            source: { type: 'url', value: 'https://example.com/start.jpg' },
+            metadata: { role: 'start_frame' },
+          },
+          {
+            type: 'image',
+            source: { type: 'url', value: 'https://example.com/end.jpg' },
+            metadata: { role: 'end_frame' },
+          },
+        ],
+      })
+    );
+  });
+
+  it('sends studio references to Ark as reference roles, not frames', async () => {
+    testEnv.ARK_API_KEY = 'ark-test';
+    mockGenerateVideo.mockResolvedValue({ jobId: 'ark-refs' });
+
+    await submitStudioVideoJob({
+      prompt: 'The fox walks',
+      model: 'seedance_v2',
+      mode: 'reference',
+      referenceImages: ['https://example.com/fox.jpg'],
+      referenceVideos: ['https://example.com/clip.mp4'],
+      duration: 5,
+    });
+
+    expect(mockGenerateVideo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: [
+          { type: 'text', content: expect.any(String) },
+          {
+            type: 'image',
+            source: { type: 'url', value: 'https://example.com/fox.jpg' },
+            metadata: { role: 'reference' },
+          },
+          {
+            type: 'video',
+            source: { type: 'url', value: 'https://example.com/clip.mp4' },
+          },
+        ],
+      })
+    );
+  });
 });
 
 describe('pollStudioVideoJob', () => {
   beforeEach(() => {
     mockGetVideoJobStatus.mockClear();
     mockCreateGrokVideo.mockClear();
+    mockCreateBytePlusVideo.mockClear();
     mockFalVideo.mockClear();
     testEnv.XAI_API_KEY = undefined;
     testEnv.FAL_KEY = 'test-fal-key';
+    testEnv.ARK_API_KEY = undefined;
+    testEnv.ARK_BASE_URL = undefined;
+    testEnv.E2E_TEST = undefined;
   });
 
   it('polls the T2V endpoint the job was submitted to', async () => {
@@ -159,5 +271,40 @@ describe('pollStudioVideoJob', () => {
       'fal-ai/kling-video/v3/pro/text-to-video',
       expect.anything()
     );
+  });
+
+  it('polls Ark when the job was stamped byteplus', async () => {
+    testEnv.ARK_API_KEY = 'ark-test';
+    mockGetVideoJobStatus.mockResolvedValue({
+      jobId: 'ark-job',
+      status: 'completed',
+      url: 'https://example.com/video.mp4',
+    });
+
+    const result = await pollStudioVideoJob({
+      jobId: 'ark-job',
+      via: 'byteplus',
+      endpointId: 'dreamina-seedance-2-5-260628',
+    });
+
+    expect(result.status).toBe('completed');
+    expect(mockCreateBytePlusVideo).toHaveBeenCalled();
+    expect(mockFalVideo).not.toHaveBeenCalled();
+  });
+});
+
+describe('studioVideoCostFromUsage', () => {
+  it('bills Ark tokens and skips fal usage sampling', async () => {
+    const billing = await studioVideoCostFromUsage(
+      {
+        via: 'byteplus',
+        endpointId: 'dreamina-seedance-2-5-260628',
+        modelKey: 'seedance_v2',
+      },
+      { promptTokens: 0, completionTokens: 0, totalTokens: 108_000 }
+    );
+    expect(billing.unitsBilled).toBe(108);
+    expect(billing.recordFalUsage).toBe(false);
+    expect(billing.endpointId).toBe('dreamina-seedance-2-5-260628');
   });
 });

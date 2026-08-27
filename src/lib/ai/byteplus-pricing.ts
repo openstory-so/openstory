@@ -47,7 +47,9 @@ export const BYTEPLUS_RATE_CARD: Record<string, EffectiveFalPricing> = {
   // Seedance 2.5 — $10.70 per 1M tokens for 480p/720p output without video
   // input, confirmed against the official rate table + its worked example
   // (720p 16:9 5s = 108,000 tokens = $1.156). This is the EXACT rate for our
-  // requests: the builder pins 720p and we never send reference video. The
+  // requests: the sequence builder pins 720p. Studio reference-to-video can
+  // send clip/audio refs (a cheaper `$6.40/1M` tier with video input) — we
+  // keep the no-video-input rate so the credit gate over-estimates. The
   // other tiers are cheaper-or-different ($6.40/1M with video input;
   // $11.70/1M for 1080p) — revisit this entry if either the builder's
   // resolution or the reference modes change.
