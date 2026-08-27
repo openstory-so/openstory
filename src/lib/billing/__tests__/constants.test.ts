@@ -7,10 +7,8 @@ import {
 import { describe, expect, it } from 'vitest';
 import { TEST_FAL_PRICING as FAL_PRICING } from '@/lib/ai/__tests__/fal-pricing-fixture';
 import {
-  AUTO_TOPUP_DECLINE_COOLDOWN_MS,
   SIGNUP_GRANT_MICROS,
   formatPlatformFeePercent,
-  isAutoTopUpDeclineCooldownActive,
   platformFeeUsd,
   splitCheckoutAmounts,
   totalCheckoutCents,
@@ -63,23 +61,6 @@ describe('billing constants', () => {
     // $10.50 → 1050¢ × 7% = 73.5 → 74¢ fee → 1124¢
     expect(totalCheckoutCents(micros(10_500_000))).toBe(1_124);
     expect(Number.isInteger(totalCheckoutCents(micros(10_010_000)))).toBe(true);
-  });
-
-  it('treats a recent auto-top-up decline as in cooldown (#1334)', () => {
-    expect(AUTO_TOPUP_DECLINE_COOLDOWN_MS).toBe(6 * 60 * 60 * 1000);
-    expect(isAutoTopUpDeclineCooldownActive(null)).toBe(false);
-    expect(isAutoTopUpDeclineCooldownActive(undefined)).toBe(false);
-
-    const now = 1_000_000_000_000;
-    expect(isAutoTopUpDeclineCooldownActive(new Date(now - 60_000), now)).toBe(
-      true
-    );
-    expect(
-      isAutoTopUpDeclineCooldownActive(
-        new Date(now - AUTO_TOPUP_DECLINE_COOLDOWN_MS),
-        now
-      )
-    ).toBe(false);
   });
 
   /**

@@ -24,7 +24,7 @@ type BalanceQueryData = {
     enabled: boolean;
     thresholdUsd: number | null;
     amountUsd: number | null;
-    lastFailure: { at: string; declineCode: string | null } | null;
+    lastFailure: { at: string } | null;
   };
   hasPaymentMethod: boolean;
 };

@@ -5,21 +5,14 @@
 
 import { useEffect, useRef } from 'react';
 import { toast } from 'sonner';
-import { openAddCreditsDialog } from './use-add-credits-dialog';
 import { openBillingGate } from './use-billing-gate-dialog';
 import { useBillingBalance } from './use-billing-balance';
 
 export function useLowBalanceWarning() {
-  const {
-    balance,
-    isLowBalance,
-    isZeroBalance,
-    lowBalanceThreshold,
-    lastFailure,
-  } = useBillingBalance();
+  const { balance, isLowBalance, isZeroBalance, lowBalanceThreshold } =
+    useBillingBalance();
   const prevBalanceRef = useRef<number | null>(null);
   const hasWarnedRef = useRef(false);
-  const lastFailureToastKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (balance === null) return;
@@ -64,22 +57,4 @@ export function useLowBalanceWarning() {
       });
     }
   }, [balance, isLowBalance, isZeroBalance, lowBalanceThreshold]);
-
-  useEffect(() => {
-    if (!lastFailure) {
-      lastFailureToastKeyRef.current = null;
-      return;
-    }
-    if (lastFailureToastKeyRef.current === lastFailure.at) return;
-    lastFailureToastKeyRef.current = lastFailure.at;
-    toast.error('Auto top-up failed — update your card', {
-      description:
-        'We paused auto-reload after your card was declined. Update your payment method to resume.',
-      action: {
-        label: 'Update card',
-        onClick: openAddCreditsDialog,
-      },
-      duration: 10_000,
-    });
-  }, [lastFailure]);
 }

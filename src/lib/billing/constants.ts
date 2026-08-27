@@ -70,14 +70,6 @@ export const AUTO_TOPUP_COOLDOWN_MS = 60_000;
  */
 export const AUTO_TOPUP_DECLINE_COOLDOWN_MS = 6 * 60 * 60 * 1000;
 
-export function isAutoTopUpDeclineCooldownActive(
-  failedAt: Date | null | undefined,
-  now = Date.now()
-): boolean {
-  if (!failedAt) return false;
-  return now - failedAt.getTime() < AUTO_TOPUP_DECLINE_COOLDOWN_MS;
-}
-
 /**
  * How long a run envelope stays in the available SUM (#1310).
  * Longer than AnalyzeScript's 90-minute image await plus 45-minute motion

@@ -6,8 +6,8 @@
 
 import {
   AUTO_TOPUP_COOLDOWN_MS,
+  AUTO_TOPUP_DECLINE_COOLDOWN_MS,
   calculateExpiryDate,
-  isAutoTopUpDeclineCooldownActive,
   isStripeEnabled,
   MIN_TOPUP_AMOUNT_MICROS,
   RESERVATION_TTL_MS,
@@ -81,25 +81,15 @@ const logger = getLogger(['openstory', 'db', 'billing']);
  * scoped-db middleware, so a static `stripe` import would ship the Node
  * SDK to the browser (#1253).
  */
-function stripeErrorFields(err: unknown): {
-  type?: string;
-  code?: string;
-  declineCode?: string;
-} {
-  if (typeof err !== 'object' || err === null) return {};
-  return {
-    type: 'type' in err && typeof err.type === 'string' ? err.type : undefined,
-    code: 'code' in err && typeof err.code === 'string' ? err.code : undefined,
-    declineCode:
-      'decline_code' in err && typeof err.decline_code === 'string'
-        ? err.decline_code
-        : undefined,
-  };
-}
-
-function isHardAutoTopUpDecline(err: unknown): boolean {
-  const { type } = stripeErrorFields(err);
-  return type === 'StripeCardError' || type === 'card_error';
+function stripeDeclineCode(err: unknown): string | null {
+  if (typeof err !== 'object' || err === null || !('type' in err)) return null;
+  if (err.type !== 'StripeCardError' && err.type !== 'card_error') return null;
+  const declineCode =
+    'decline_code' in err && typeof err.decline_code === 'string'
+      ? err.decline_code
+      : null;
+  const code = 'code' in err && typeof err.code === 'string' ? err.code : null;
+  return declineCode ?? code ?? 'card_declined';
 }
 
 type TryDebitResult =
@@ -1273,7 +1263,11 @@ export function createBillingMethods(
       return;
     }
 
-    if (isAutoTopUpDeclineCooldownActive(settings.autoTopUpFailedAt)) {
+    if (
+      settings.autoTopUpFailedAt &&
+      Date.now() - settings.autoTopUpFailedAt.getTime() <
+        AUTO_TOPUP_DECLINE_COOLDOWN_MS
+    ) {
       logger.debug('Auto top-up skipped: decline cooldown', {
         teamId,
         declineCode: settings.autoTopUpDeclineCode,
@@ -1359,15 +1353,14 @@ export function createBillingMethods(
         },
       });
     } catch (err) {
-      if (isHardAutoTopUpDecline(err)) {
-        const { code, declineCode } = stripeErrorFields(err);
+      const declineCode = stripeDeclineCode(err);
+      if (declineCode) {
         logger.error('Auto top-up declined', {
           teamId,
-          code,
           declineCode,
           amountCents,
         });
-        await recordAutoTopUpFailure(declineCode ?? code ?? 'card_declined');
+        await recordAutoTopUpFailure(declineCode);
         return;
       }
       throw err;
