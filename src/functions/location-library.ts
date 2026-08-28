@@ -98,7 +98,7 @@ export const createLibraryLocationFn = createServerFn({ method: 'POST' })
     )
   )
   .handler(async ({ context, data }) => {
-    const newLocation = await createLibraryLocation(data, {
+    const { location: newLocation } = await createLibraryLocation(data, {
       scopedDb: context.scopedDb,
       user: context.user,
       teamId: context.teamId,
