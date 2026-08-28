@@ -7,9 +7,9 @@
  *
  * Scope is intentionally limited to the inputs that actually influence the
  * enhancement output today: style (→ its StyleConfig), aspect ratio, target
- * duration, and reference elements. Cast/locations don't feed the enhance prompt
- * yet, so they're not accepted here (vs. the create endpoint, which uses them for
- * generation).
+ * duration, video model (clip-grid constraint for scene labels), and reference
+ * elements. Cast/locations don't feed the enhance prompt yet, so they're not
+ * accepted here (vs. the create endpoint, which uses them for generation).
  *
  * This module is client-safe (zod only) so the discovery/OpenAPI documents can
  * import it without pulling in the server-only AI stack from `enhance.ts`.
@@ -52,6 +52,15 @@ export const apiEnhanceScriptSchema = z
         description:
           'Target video length in seconds (max 3 minutes); guides scene count and length of the enhanced script.',
         examples: [30],
+      }),
+    videoModel: z
+      .string()
+      .min(1)
+      .optional()
+      .meta({
+        description:
+          "Video (image-to-video) model catalog key. Scene duration labels are constrained to this model's clip grid (e.g. 6, 8 or 10 seconds for ltx_2_3_pro). Defaults to the platform default.",
+        examples: ['ltx_2_3_pro'],
       }),
 
     elements: z

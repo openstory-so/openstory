@@ -31,7 +31,7 @@ const REAL_FAL_CONTENT_FLAG_422 = {
 describe('extractFalErrorMessage', () => {
   it('reads the real fal content-flag 422 detail array (prod shape)', () => {
     expect(extractFalErrorMessage(withBody(REAL_FAL_CONTENT_FLAG_422))).toBe(
-      'The content could not be processed because it contained material flagged by a content checker.'
+      'body.prompt: The content could not be processed because it contained material flagged by a content checker.'
     );
   });
 

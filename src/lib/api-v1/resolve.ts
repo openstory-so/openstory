@@ -107,8 +107,8 @@ export async function resolveStyle(
 /**
  * Resolve a mixed list of talent items — reference strings (id|name) and inline
  * create objects — into a deduped list of talent ids for `suggestedTalentIds`.
- * Inline-create is delegated to `deps.createTalent` (which triggers sheet
- * generation); the storyboard workflow's `waitForTalentSheets` gate then waits.
+ * Inline creates matching an existing name (or a name already created in this
+ * list) reuse that id. New names are delegated to `deps.createTalent`.
  */
 export async function resolveTalentIds(
   deps: TalentResolveDeps,
@@ -118,20 +118,31 @@ export async function resolveTalentIds(
   const { refs, creates } = partition(items);
   const ids: string[] = [];
 
-  if (refs.length > 0) {
-    const all = await deps.talent.list();
-    for (const ref of refs) {
-      const match = all.find((t) => matchesRef(ref, t));
-      if (!match) {
-        throw new NotFoundError(`No character/talent found matching "${ref}".`);
-      }
-      ids.push(match.id);
+  const all = await deps.talent.list();
+  const seen = new Map<string, string>();
+  for (const talent of all) {
+    seen.set(talent.id, talent.id);
+    seen.set(slugify(talent.name), talent.id);
+  }
+
+  for (const ref of refs) {
+    const match = all.find((t) => matchesRef(ref, t));
+    if (!match) {
+      throw new NotFoundError(`No character/talent found matching "${ref}".`);
     }
+    ids.push(match.id);
+    seen.set(slugify(match.name), match.id);
   }
 
   for (const create of creates) {
+    const existingId = seen.get(slugify(create.name));
+    if (existingId) {
+      ids.push(existingId);
+      continue;
+    }
     const created = await deps.createTalent(create);
     ids.push(created.id);
+    seen.set(slugify(create.name), created.id);
   }
 
   return [...new Set(ids)];
@@ -150,20 +161,31 @@ export async function resolveLocationIds(
   const { refs, creates } = partition(items);
   const ids: string[] = [];
 
-  if (refs.length > 0) {
-    const all = await deps.locations.list();
-    for (const ref of refs) {
-      const match = all.find((l) => matchesRef(ref, l));
-      if (!match) {
-        throw new NotFoundError(`No location found matching "${ref}".`);
-      }
-      ids.push(match.id);
+  const all = await deps.locations.list();
+  const seen = new Map<string, string>();
+  for (const location of all) {
+    seen.set(location.id, location.id);
+    seen.set(slugify(location.name), location.id);
+  }
+
+  for (const ref of refs) {
+    const match = all.find((l) => matchesRef(ref, l));
+    if (!match) {
+      throw new NotFoundError(`No location found matching "${ref}".`);
     }
+    ids.push(match.id);
+    seen.set(slugify(match.name), match.id);
   }
 
   for (const create of creates) {
+    const existingId = seen.get(slugify(create.name));
+    if (existingId) {
+      ids.push(existingId);
+      continue;
+    }
     const created = await deps.createLocation(create);
     ids.push(created.id);
+    seen.set(slugify(create.name), created.id);
   }
 
   return [...new Set(ids)];
@@ -183,11 +205,16 @@ export async function ingestElements(
   if (!elements || elements.length === 0) return [];
 
   return Promise.all(
-    elements.map(async (el) => {
+    elements.map(async (el, index) => {
       const { tempPath, publicUrl, extension } = await ingestImageToTempBucket(
         el.url,
         STORAGE_BUCKETS.ELEMENTS,
-        teamId
+        teamId,
+        {
+          label: el.token
+            ? `Element "${el.token}"`
+            : `Element image #${index + 1}`,
+        }
       );
       return {
         // promote contract wants the bucket-prefixed `elements/` form.

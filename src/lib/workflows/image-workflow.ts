@@ -51,6 +51,13 @@ type ImageWorkflowResult = {
   shotId?: string;
   sequenceId?: string;
   /**
+   * The `frame_variants` version this still completed as. Parents pin the
+   * motion-batch payload off THIS id rather than re-reading the frame's
+   * selection pointer (#1380). Null when nothing was persisted (preview,
+   * cancelled claim, or a shotless ad-hoc run).
+   */
+  frameVersionId?: string | null;
+  /**
    * The render's claim was cancelled by the user (before or during the
    * render) and its result was discarded (#1085). Parents must treat this as
    * a stand-down, not a success (nothing landed) and not a failure (the user
@@ -297,6 +304,7 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
         imageUrl: '',
         shotId: input.shotId,
         sequenceId: input.sequenceId,
+        frameVersionId: null,
         cancelled: true,
       };
     }
@@ -352,6 +360,7 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
       throw new Error('Image generation did not return any image URLs');
     }
     let imageUrl: string = generatedImageUrl;
+    let frameVersionId: string | null = prep.versionId || null;
 
     if (imageUrl && shotId && sequenceId && teamId && !input.skipStorage) {
       const upload = await step.do('upload-image', async () => {
@@ -360,7 +369,11 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
 
       const writeResult = await step.do(
         'persist-result',
-        async (): Promise<{ imageUrl: string; cancelled?: boolean }> => {
+        async (): Promise<{
+          imageUrl: string;
+          cancelled?: boolean;
+          frameVersionId: string | null;
+        }> => {
           const promptHash = generation.prompt
             ? simpleHash(generation.prompt)
             : null;
@@ -374,7 +387,7 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
             logger.info(
               `[ImageWorkflow] Shot ${shotId} lost its anchor frame before select; skipping`
             );
-            return { imageUrl: upload.url };
+            return { imageUrl: upload.url, frameVersionId: null };
           }
 
           // Complete the in-flight version — status-guarded, so a user cancel
@@ -417,7 +430,11 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
                 versionId
               );
             }
-            return { imageUrl: upload.url, cancelled: true };
+            return {
+              imageUrl: upload.url,
+              cancelled: true,
+              frameVersionId: null,
+            };
           }
 
           await scopedDb.sequenceEvents.record({
@@ -441,7 +458,7 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
               model,
               variantOnly: true,
             });
-            return { imageUrl: upload.url };
+            return { imageUrl: upload.url, frameVersionId: versionId };
           }
 
           // Claim the promote in ONE conditional write: last kickoff / explicit
@@ -465,7 +482,7 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
               model,
             });
             logger.info(`[ImageWorkflow] Uploaded + selected: ${upload.path}`);
-            return { imageUrl: upload.url };
+            return { imageUrl: upload.url, frameVersionId: versionId };
           }
 
           // Not the promote target — finalize into history only. Reset in-flight
@@ -497,10 +514,11 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
           logger.info(
             `[ImageWorkflow] Uploaded unselected (pending promote moved): ${upload.path}`
           );
-          return { imageUrl: upload.url };
+          return { imageUrl: upload.url, frameVersionId: versionId };
         }
       );
       imageUrl = writeResult.imageUrl;
+      frameVersionId = writeResult.frameVersionId;
 
       // Provenance (#1180) — recorded before the cancel check on purpose: a
       // cancelled render still uploaded bytes to R2, so the object exists and
@@ -528,7 +546,13 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
       });
 
       if (writeResult.cancelled) {
-        return { imageUrl, shotId, sequenceId, cancelled: true };
+        return {
+          imageUrl,
+          shotId,
+          sequenceId,
+          frameVersionId: null,
+          cancelled: true,
+        };
       }
     } else if (imageUrl && shotId && input.skipStorage) {
       await step.do('record-preview-variant', async () => {
@@ -570,7 +594,7 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
       });
     }
 
-    return { imageUrl, shotId, sequenceId };
+    return { imageUrl, shotId, sequenceId, frameVersionId };
   }
 
   protected override async onFailure({

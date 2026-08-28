@@ -37,3 +37,12 @@ export function stripMarkdown(input: string): string {
 
   return out.trim();
 }
+
+/**
+ * Scene titles are labels, never markdown. Scripts are authored in a
+ * markdown editor, so a heading line (`## Office`, `**INT. KITCHEN**`)
+ * must not become the stored/shown title.
+ */
+export function plainSceneTitle(title: string | null | undefined): string {
+  return stripMarkdown(title ?? '');
+}

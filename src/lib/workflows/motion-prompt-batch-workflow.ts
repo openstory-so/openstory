@@ -12,7 +12,6 @@
  * parent still surfaces a terminal error, but only after every other sibling has
  * resolved one way or the other. */
 
-import type { MotionPrompt } from '@/lib/ai/scene-analysis.schema';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import { spawnAndAwaitChild } from '@/lib/workflow/await-child';
 import { OpenStoryWorkflowEntrypoint } from '@/lib/workflow/base-workflow';
@@ -21,16 +20,12 @@ import type {
   MotionPromptWorkflowInput,
   MotionPromptBatchWorkflowInput,
 } from '@/lib/workflow/types';
+import type { MotionPromptWorkflowResult } from '@/lib/workflows/motion-prompt-workflow';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { NonRetryableError } from 'cloudflare:workflows';
 import { getLogger } from '@/lib/observability/logger';
 
 const logger = getLogger(['openstory', 'workflow', 'motion-prompt-batch']);
-
-type MotionPromptWorkflowResult = {
-  sceneId: string;
-  motionPrompt: MotionPrompt;
-};
 
 type MotionPromptBatchWorkflowResult = MotionPromptWorkflowResult[];
 
@@ -180,6 +175,9 @@ export class MotionPromptBatchWorkflow extends OpenStoryWorkflowEntrypoint<Motio
     return results.map((result) => ({
       sceneId: result.sceneId,
       motionPrompt: result.motionPrompt,
+      // Threaded so analyze-script can pin the render off THIS id rather
+      // than re-reading the shot's selection pointer (#1380).
+      finalVersionId: result.finalVersionId ?? null,
     }));
   }
 

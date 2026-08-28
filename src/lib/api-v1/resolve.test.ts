@@ -198,6 +198,29 @@ describe('resolveTalentIds', () => {
     );
     expect(ids).toEqual(['t-ada']);
   });
+
+  it('reuses an existing talent by name instead of creating a duplicate', async () => {
+    const talent = [makeTalent({ id: 't-ada', name: 'Ada Lovelace' })];
+    const createTalent = vi.fn();
+    const ids = await resolveTalentIds(
+      { talent: { list: async () => talent }, createTalent },
+      [{ name: 'Ada Lovelace', isHuman: true }]
+    );
+    expect(ids).toEqual(['t-ada']);
+    expect(createTalent).not.toHaveBeenCalled();
+  });
+
+  it('creates only once when the same name is inlined twice', async () => {
+    const createTalent = vi.fn(async (input: { name: string }) => ({
+      id: `new-${input.name}`,
+    }));
+    const ids = await resolveTalentIds(
+      { talent: { list: async () => [] }, createTalent },
+      [{ name: 'Hero' }, { name: 'Hero' }]
+    );
+    expect(ids).toEqual(['new-Hero']);
+    expect(createTalent).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('resolveLocationIds', () => {
@@ -212,6 +235,17 @@ describe('resolveLocationIds', () => {
     );
     expect(ids).toEqual(['l-roof', 'new-Beach']);
     expect(createLocation).toHaveBeenCalledWith({ name: 'Beach' });
+  });
+
+  it('reuses an existing location by name instead of creating a duplicate', async () => {
+    const locations = [makeLocation({ id: 'l-roof', name: 'Rooftop Bar' })];
+    const createLocation = vi.fn();
+    const ids = await resolveLocationIds(
+      { locations: { list: async () => locations }, createLocation },
+      [{ name: 'Rooftop Bar' }]
+    );
+    expect(ids).toEqual(['l-roof']);
+    expect(createLocation).not.toHaveBeenCalled();
   });
 });
 

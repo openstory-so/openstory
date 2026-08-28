@@ -11,6 +11,7 @@ import {
   type AspectRatio,
 } from '@/lib/constants/aspect-ratios';
 import type { SelectionScope } from '@/lib/scenes/scene-selection';
+import { usePostHog } from '@posthog/react';
 import { Link } from '@tanstack/react-router';
 import { CopyPlus } from 'lucide-react';
 
@@ -71,6 +72,7 @@ export const SceneModelBar: React.FC<SceneModelBarProps> = ({
   aspectRatio,
   analysisModel,
 }) => {
+  const posthog = usePostHog();
   const showSequenceSettings = scope === 'sequence';
   const ratio = aspectRatio ? getAspectRatioData(aspectRatio) : undefined;
 
@@ -138,7 +140,16 @@ export const SceneModelBar: React.FC<SceneModelBarProps> = ({
               rather than being reproduced in a modal. */}
           {sequenceId && (
             <Button variant="outline" size="sm" className="w-full" asChild>
-              <Link to="/sequences/new" search={{ from: sequenceId }}>
+              <Link
+                to="/sequences/new"
+                search={{ from: sequenceId }}
+                onClick={() =>
+                  posthog.capture('make_another_clicked', {
+                    surface: 'generate_copy',
+                    sequence_id: sequenceId,
+                  })
+                }
+              >
                 <CopyPlus className="mr-2 h-3.5 w-3.5" />
                 Generate Copy…
               </Link>

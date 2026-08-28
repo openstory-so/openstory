@@ -6,9 +6,13 @@ import { buildReferenceVideoPrompt } from './build-reference-video-prompt';
 
 const STILL = 'https://example.com/still.png';
 
-const seedanceConfig = getMotionReferenceEndpoint('seedance_v2');
-if (!seedanceConfig) {
-  throw new Error('seedance_v2 must have a reference endpoint config');
+const seedanceV2Config = getMotionReferenceEndpoint('seedance_v2');
+if (!seedanceV2Config) {
+  throw new Error('seedance_v2 must have a 2.0 reference endpoint config');
+}
+const seedanceV25Config = getMotionReferenceEndpoint('seedance_v2_5');
+if (!seedanceV25Config) {
+  throw new Error('seedance_v2_5 must have a 2.5 reference endpoint config');
 }
 
 const ref = (
@@ -22,124 +26,148 @@ const ref = (
   token,
 });
 
-describe('buildReferenceVideoPrompt (Seedance config)', () => {
-  it('declares the still as the starting frame on the first line', () => {
-    const result = buildReferenceVideoPrompt(
-      seedanceConfig,
-      'A slow dolly in',
-      STILL,
-      []
-    );
-    expect(
-      result.prompt.startsWith('Use @Image1 as the starting frame.\n')
-    ).toBe(true);
-    expect(result.imageUrls).toEqual([STILL]);
-  });
+describe.each([
+  ['seedance_v2', seedanceV2Config] as const,
+  ['seedance_v2_5', seedanceV25Config] as const,
+])(
+  'buildReferenceVideoPrompt (%s)',
+  (_model, seedanceConfig: MotionReferenceEndpointConfig) => {
+    it('declares the still as the starting frame on the first line', () => {
+      const result = buildReferenceVideoPrompt(
+        seedanceConfig,
+        'A slow dolly in',
+        STILL,
+        []
+      );
+      expect(
+        result.prompt.startsWith('Use @Image1 as the starting frame.\n')
+      ).toBe(true);
+      expect(result.imageUrls).toEqual([STILL]);
+    });
 
-  it('binds mentioned tokens inline as @ImageN instead of a legend', () => {
-    const result = buildReferenceVideoPrompt(
-      seedanceConfig,
-      'ALICE turns toward the window as the CORAL_LIPSTICK glints',
-      STILL,
-      [
-        ref('https://example.com/a.png', 'Alice - tall woman', 'Alice'),
+    it('binds mentioned tokens inline as @ImageN instead of a legend', () => {
+      const result = buildReferenceVideoPrompt(
+        seedanceConfig,
+        'ALICE turns toward the window as the CORAL_LIPSTICK glints',
+        STILL,
+        [
+          ref('https://example.com/a.png', 'Alice - tall woman', 'Alice'),
+          ref(
+            'https://example.com/b.png',
+            'CORAL_LIPSTICK - a coral tube',
+            'CORAL_LIPSTICK'
+          ),
+        ]
+      );
+      expect(result.imageUrls).toEqual([
+        STILL,
+        'https://example.com/a.png',
+        'https://example.com/b.png',
+      ]);
+      expect(result.prompt).toContain(
+        '@Image2 turns toward the window as the @Image3 glints'
+      );
+      expect(result.prompt).not.toContain('Reference images:');
+    });
+
+    it('matches tokens case-insensitively and word-bounded', () => {
+      const result = buildReferenceVideoPrompt(
+        seedanceConfig,
+        'Scarlett adjusts her jacket',
+        STILL,
+        [
+          ref('https://example.com/a.png', 'Scarlett - athletic', 'Scarlett'),
+          ref('https://example.com/b.png', 'Jack - tall man', 'Jack'),
+        ]
+      );
+      // "Scarlett" bound inline; "jacket" must NOT match token "Jack".
+      expect(result.prompt).toContain('@Image2 adjusts her jacket');
+      expect(result.prompt).toContain('@Image3: Jack - tall man');
+    });
+
+    it('omits the legend when skipLegend is set', () => {
+      const result = buildReferenceVideoPrompt(
+        seedanceConfig,
+        'A slow dolly in',
+        STILL,
+        [ref('https://example.com/a.png', 'Alice - tall woman', 'Alice')],
+        undefined,
+        { skipLegend: true }
+      );
+      expect(result.prompt).not.toContain('Reference images:');
+      expect(result.prompt).not.toContain('@Image2:');
+      expect(result.imageUrls).toEqual([STILL, 'https://example.com/a.png']);
+    });
+
+    it('falls back to a legend line for refs never mentioned in the prompt', () => {
+      const result = buildReferenceVideoPrompt(
+        seedanceConfig,
+        'A slow dolly in',
+        STILL,
+        [ref('https://example.com/a.png', 'Alice - tall woman', 'Alice')]
+      );
+      expect(result.prompt).toContain('Reference images:');
+      expect(result.prompt).toContain(
+        '@Image2: Alice - tall woman — keep visually consistent throughout the shot.'
+      );
+    });
+
+    it('drops references with no URL', () => {
+      const result = buildReferenceVideoPrompt(
+        seedanceConfig,
+        'A slow dolly in',
+        STILL,
+        [
+          ref('', 'No image', 'GHOST'),
+          ref('https://example.com/b.png', 'Bob - short man', 'Bob'),
+        ]
+      );
+      expect(result.imageUrls).toEqual([STILL, 'https://example.com/b.png']);
+      expect(result.prompt).toContain('@Image2: Bob - short man');
+      expect(result.prompt).not.toContain('No image');
+    });
+
+    it('caps attached images at maxImages and substitutes overflow tokens with descriptions', () => {
+      const refs = Array.from({ length: 10 }, (_, i) =>
         ref(
-          'https://example.com/b.png',
-          'CORAL_LIPSTICK - a coral tube',
-          'CORAL_LIPSTICK'
-        ),
-      ]
-    );
-    expect(result.imageUrls).toEqual([
-      STILL,
-      'https://example.com/a.png',
-      'https://example.com/b.png',
-    ]);
-    expect(result.prompt).toContain(
-      '@Image2 turns toward the window as the @Image3 glints'
-    );
-    expect(result.prompt).not.toContain('Reference images:');
-  });
+          `https://example.com/${i}.png`,
+          `Ref ${i} - person ${i}`,
+          `REF_${i}`
+        )
+      );
+      const result = buildReferenceVideoPrompt(
+        seedanceConfig,
+        'REF_0 waves while REF_9 walks away',
+        STILL,
+        refs
+      );
+      // still + 8 refs = 9 images; REF_8 and REF_9 overflow.
+      expect(result.imageUrls).toHaveLength(9);
+      expect(result.imageUrls[0]).toBe(STILL);
+      // Attached + mentioned → inline tag; overflow + mentioned → description.
+      expect(result.prompt).toContain('@Image2 waves');
+      expect(result.prompt).toContain('Ref 9 (person 9) walks away');
+      expect(result.prompt).not.toContain('@Image10');
+    });
 
-  it('matches tokens case-insensitively and word-bounded', () => {
-    const result = buildReferenceVideoPrompt(
-      seedanceConfig,
-      'Scarlett adjusts her jacket',
-      STILL,
-      [
-        ref('https://example.com/a.png', 'Scarlett - athletic', 'Scarlett'),
-        ref('https://example.com/b.png', 'Jack - tall man', 'Jack'),
-      ]
-    );
-    // "Scarlett" bound inline; "jacket" must NOT match token "Jack".
-    expect(result.prompt).toContain('@Image2 adjusts her jacket');
-    expect(result.prompt).toContain('@Image3: Jack - tall man');
-  });
-
-  it('falls back to a legend line for refs never mentioned in the prompt', () => {
-    const result = buildReferenceVideoPrompt(
-      seedanceConfig,
-      'A slow dolly in',
-      STILL,
-      [ref('https://example.com/a.png', 'Alice - tall woman', 'Alice')]
-    );
-    expect(result.prompt).toContain('Reference images:');
-    expect(result.prompt).toContain(
-      '@Image2: Alice - tall woman — keep visually consistent throughout the shot.'
-    );
-  });
-
-  it('drops references with no URL', () => {
-    const result = buildReferenceVideoPrompt(
-      seedanceConfig,
-      'A slow dolly in',
-      STILL,
-      [
-        ref('', 'No image', 'GHOST'),
-        ref('https://example.com/b.png', 'Bob - short man', 'Bob'),
-      ]
-    );
-    expect(result.imageUrls).toEqual([STILL, 'https://example.com/b.png']);
-    expect(result.prompt).toContain('@Image2: Bob - short man');
-    expect(result.prompt).not.toContain('No image');
-  });
-
-  it('caps attached images at maxImages and substitutes overflow tokens with descriptions', () => {
-    const refs = Array.from({ length: 10 }, (_, i) =>
-      ref(`https://example.com/${i}.png`, `Ref ${i} - person ${i}`, `REF_${i}`)
-    );
-    const result = buildReferenceVideoPrompt(
-      seedanceConfig,
-      'REF_0 waves while REF_9 walks away',
-      STILL,
-      refs
-    );
-    // still + 8 refs = 9 images; REF_8 and REF_9 overflow.
-    expect(result.imageUrls).toHaveLength(9);
-    expect(result.imageUrls[0]).toBe(STILL);
-    // Attached + mentioned → inline tag; overflow + mentioned → description.
-    expect(result.prompt).toContain('@Image2 waves');
-    expect(result.prompt).toContain('Ref 9 (person 9) walks away');
-    expect(result.prompt).not.toContain('@Image10');
-  });
-
-  it('truncates the base prompt (never the legend or start line) to fit the limit', () => {
-    const longBase = 'x'.repeat(5000);
-    const result = buildReferenceVideoPrompt(
-      seedanceConfig,
-      longBase,
-      STILL,
-      [ref('https://example.com/a.png', 'Alice - tall woman', 'Alice')],
-      2500
-    );
-    expect(result.prompt.length).toBeLessThanOrEqual(2500);
-    expect(result.prompt.startsWith('Use @Image1 as the starting frame.')).toBe(
-      true
-    );
-    expect(result.prompt).toContain('@Image2: Alice - tall woman');
-    expect(result.prompt).toContain('...');
-  });
-});
+    it('truncates the base prompt (never the legend or start line) to fit the limit', () => {
+      const longBase = 'x'.repeat(5000);
+      const result = buildReferenceVideoPrompt(
+        seedanceConfig,
+        longBase,
+        STILL,
+        [ref('https://example.com/a.png', 'Alice - tall woman', 'Alice')],
+        2500
+      );
+      expect(result.prompt.length).toBeLessThanOrEqual(2500);
+      expect(
+        result.prompt.startsWith('Use @Image1 as the starting frame.')
+      ).toBe(true);
+      expect(result.prompt).toContain('@Image2: Alice - tall woman');
+      expect(result.prompt).toContain('...');
+    });
+  }
+);
 
 describe('buildReferenceVideoPrompt (per-model config knobs)', () => {
   // Gemini Omni Flash-style config: 0-indexed angle-bracket tags, tighter cap.

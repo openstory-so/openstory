@@ -15,6 +15,8 @@ import {
   zMinimaxHailuo23ProImageToVideoInput,
   zSeedance20EnterpriseV2ImageToVideoInput,
   zSeedance20EnterpriseV2ReferenceToVideoInput,
+  zSeedance25ImageToVideoInput,
+  zSeedance25ReferenceToVideoInput,
   zVeo31ImageToVideoInput,
 } from './generated/zod.gen';
 
@@ -28,6 +30,8 @@ import {
   MinimaxHailuo23ProImageToVideoInputSchema,
   Seedance20EnterpriseV2ImageToVideoInputSchema,
   Seedance20EnterpriseV2ReferenceToVideoInputSchema,
+  Seedance25ImageToVideoInputSchema,
+  Seedance25ReferenceToVideoInputSchema,
   Veo31ImageToVideoInputSchema,
 } from './generated/schemas.gen';
 
@@ -41,6 +45,8 @@ export type MotionJSONSchema =
   | typeof MinimaxHailuo23ProImageToVideoInputSchema
   | typeof Seedance20EnterpriseV2ImageToVideoInputSchema
   | typeof Seedance20EnterpriseV2ReferenceToVideoInputSchema
+  | typeof Seedance25ImageToVideoInputSchema
+  | typeof Seedance25ReferenceToVideoInputSchema
   | typeof Veo31ImageToVideoInputSchema;
 
 export const MOTION_INPUT_SCHEMAS = {
@@ -48,6 +54,8 @@ export const MOTION_INPUT_SCHEMAS = {
     zSeedance20EnterpriseV2ImageToVideoInput,
   'bytedance/seedance-2.0/enterprise/v2/reference-to-video':
     zSeedance20EnterpriseV2ReferenceToVideoInput,
+  'bytedance/seedance-2.5/image-to-video': zSeedance25ImageToVideoInput,
+  'bytedance/seedance-2.5/reference-to-video': zSeedance25ReferenceToVideoInput,
   'fal-ai/gemini-omni-flash/image-to-video': zGeminiOmniFlashImageToVideoInput,
   'fal-ai/gemini-omni-flash/reference-to-video':
     zGeminiOmniFlashReferenceToVideoInput,
@@ -77,6 +85,9 @@ export const MOTION_JSON_SCHEMAS = {
     Seedance20EnterpriseV2ImageToVideoInputSchema,
   'bytedance/seedance-2.0/enterprise/v2/reference-to-video':
     Seedance20EnterpriseV2ReferenceToVideoInputSchema,
+  'bytedance/seedance-2.5/image-to-video': Seedance25ImageToVideoInputSchema,
+  'bytedance/seedance-2.5/reference-to-video':
+    Seedance25ReferenceToVideoInputSchema,
   'fal-ai/gemini-omni-flash/image-to-video':
     GeminiOmniFlashImageToVideoInputSchema,
   'fal-ai/gemini-omni-flash/reference-to-video':
@@ -100,6 +111,14 @@ export const MOTION_TRANSFORMS = {
   'bytedance/seedance-2.0/enterprise/v2/reference-to-video': motionTransform(
     zSeedance20EnterpriseV2ReferenceToVideoInput,
     Seedance20EnterpriseV2ReferenceToVideoInputSchema
+  ),
+  'bytedance/seedance-2.5/image-to-video': motionTransform(
+    zSeedance25ImageToVideoInput,
+    Seedance25ImageToVideoInputSchema
+  ),
+  'bytedance/seedance-2.5/reference-to-video': motionTransform(
+    zSeedance25ReferenceToVideoInput,
+    Seedance25ReferenceToVideoInputSchema
   ),
   'fal-ai/gemini-omni-flash/image-to-video': motionTransform(
     zGeminiOmniFlashImageToVideoInput,

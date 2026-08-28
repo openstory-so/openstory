@@ -29,8 +29,14 @@ import { resolveShotDuration } from '@/lib/motion/resolve-shot-duration';
 import { generateMotionSchema } from '@/lib/schemas/shot.schemas';
 import { dbSceneId } from '@/lib/db/schema';
 import { ulidSchema } from '@/lib/schemas/id.schemas';
+import { NotFoundError } from '@/lib/errors';
+import { getLogger } from '@/lib/observability/logger';
+import { getGenerationChannel } from '@/lib/realtime';
 import { triggerWorkflow } from '@/lib/workflow/client';
 import { buildWorkflowLabel } from '@/lib/workflow/labels';
+import { terminateSingleArtifactRun } from '@/lib/workflow/run-outcome';
+
+const motionLogger = getLogger(['openstory', 'serverFn', 'motion']);
 import type { BatchMotionMusicWorkflowInput } from '@/lib/workflow/types';
 
 import {
@@ -319,12 +325,20 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
           ]
         : [];
     });
-    // Server determines eligible shots: still done, video pending/failed
+    // Server determines eligible shots: still done, video pending/failed/
+    // cancelled. 'cancelled' (#1108) belongs here because THIS is the
+    // user-driven batch — a cancel only excludes a shot from AUTO retry
+    // (smart retry, which matches 'failed' alone). The clients compute the
+    // same set optimistically (scenes-view, mobile-scene-drawer); leaving it
+    // out here made them disagree, so a cancelled shot showed an optimistic
+    // spinner the server then silently skipped.
     const eligibleShots = allShots.filter(
       (f) =>
         f.frame.imageStatus === 'completed' &&
         f.image?.url &&
-        (f.videoStatus === 'pending' || f.videoStatus === 'failed')
+        (f.videoStatus === 'pending' ||
+          f.videoStatus === 'failed' ||
+          f.videoStatus === 'cancelled')
     );
 
     if (eligibleShots.length === 0) {
@@ -497,4 +511,64 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
         };
       }
     );
+  });
+
+// ---------------------------------------------------------------------------
+// Cancel an in-flight video render (#1108 Phase 4 — parity with the image
+// claim cancel in cancelPendingArtifactFn).
+// ---------------------------------------------------------------------------
+
+const cancelVideoRenderInput = z.object({
+  sequenceId: ulidSchema,
+  shotId: ulidSchema,
+  versionId: ulidSchema,
+});
+
+/**
+ * Flip an in-flight `video_variants` row terminal (`status: 'cancelled'`,
+ * #1108 — deliberately NOT 'failed', so smart retry and the failure surfaces
+ * never re-run and re-bill a deliberate cancel). The completion write is
+ * status-guarded (`completeIfLive`), so a render that finishes after this
+ * discards its result instead of resurrecting the row.
+ *
+ * The realtime emit carries `status: 'cancelled'` (the `video:progress`
+ * schema was extended with it), so a second tab's cache converges on
+ * 'cancelled' directly — never a transient 'failed'.
+ *
+ * Data-only: the fal job itself is not terminated (spend was committed at
+ * submit; MotionWorkflow is not in the single-artifact terminate set), and
+ * `terminateSingleArtifactRun` no-ops safely if that ever changes.
+ * Idempotent — an already-terminal row reports `cancelled: false`.
+ */
+export const cancelVideoRenderFn = createServerFn({ method: 'POST' })
+  .middleware([shotAccessMiddleware])
+  .validator(zodValidator(cancelVideoRenderInput))
+  .handler(async ({ context, data }) => {
+    const { shot, scopedDb } = context;
+    const row = await scopedDb.videoVariants.getById(data.versionId);
+    if (!row || row.renderSegmentId !== shot.renderSegmentId) {
+      throw new NotFoundError('Video version not found for this shot');
+    }
+    const cancelled = await scopedDb.videoVariants.markTerminal(row.id, {
+      error: 'Cancelled by user',
+      actorId: context.user.id,
+    });
+    if (!cancelled) return { cancelled: false } as const;
+
+    await terminateSingleArtifactRun(row.workflowRunId);
+    try {
+      await getGenerationChannel(data.sequenceId).emit(
+        'generation.video:progress',
+        {
+          shotId: shot.id,
+          status: 'cancelled',
+          model: row.model,
+          variantOnly: !row.isPrimary,
+          error: 'Cancelled by user',
+        }
+      );
+    } catch (error) {
+      motionLogger.error('realtime emit failed', { err: error });
+    }
+    return { cancelled: true } as const;
   });

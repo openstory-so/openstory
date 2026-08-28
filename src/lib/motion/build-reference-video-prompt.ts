@@ -36,7 +36,8 @@ export function buildReferenceVideoPrompt(
   basePrompt: string,
   startImageUrl: string,
   references: ReferenceImageDescription[],
-  maxPromptLength?: number
+  maxPromptLength?: number,
+  options?: { skipLegend?: boolean }
 ): { prompt: string; imageUrls: string[] } {
   // The still always takes the first slot; cast/element refs fill the rest.
   const withUrls = references.filter((ref) => ref.referenceImageUrl);
@@ -69,13 +70,15 @@ export function buildReferenceVideoPrompt(
 
   // Legend fallback: attached refs whose token never appeared in the prompt
   // would otherwise be orphaned images.
-  const legendLines = usable
-    .map((ref, index) =>
-      mentioned[index]
-        ? null
-        : `${config.tag(index + 2)}: ${ref.description} — keep visually consistent throughout the shot.`
-    )
-    .filter((line) => line !== null);
+  const legendLines = options?.skipLegend
+    ? []
+    : usable
+        .map((ref, index) =>
+          mentioned[index]
+            ? null
+            : `${config.tag(index + 2)}: ${ref.description} — keep visually consistent throughout the shot.`
+        )
+        .filter((line) => line !== null);
 
   if (legendLines.length === 0) {
     return { prompt: body, imageUrls };

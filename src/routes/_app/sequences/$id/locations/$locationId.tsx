@@ -35,5 +35,11 @@ export const Route = createFileRoute(
 function LocationDetailPage() {
   const { id: sequenceId, locationId } = Route.useParams();
 
-  return <LocationDetailView sequenceId={sequenceId} locationId={locationId} />;
+  return (
+    <LocationDetailView
+      key={locationId}
+      sequenceId={sequenceId}
+      locationId={locationId}
+    />
+  );
 }

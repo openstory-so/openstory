@@ -6,7 +6,7 @@ import {
 } from '@/lib/ai/element-vision';
 import { reportMissingBillingCost } from '@/lib/billing/billing-observability';
 import { estimateLLMCost } from '@/lib/billing/cost-estimation';
-import { InsufficientCreditsError } from '@/lib/errors';
+import { InsufficientCreditsError, NotFoundError } from '@/lib/errors';
 import { generateId } from '@/lib/db/id';
 import { ulidSchema } from '@/lib/schemas/id.schemas';
 import { deriveTokenFromFilename } from '@/lib/sequence-elements/derive-token';
@@ -244,6 +244,12 @@ export const listSequenceElementsFn = createServerFn({ method: 'GET' })
     return context.scopedDb.sequenceElements.list(context.sequence.id);
   });
 
+/**
+ * Product delete is a SOFT delete since #1108 — the element vanishes from the
+ * grid and the prompt-context bibles but keeps its row + R2 bytes, so the
+ * toast Undo (`restoreSequenceElementFn`) is lossless. The hard scoped
+ * `delete` remains admin/GC only.
+ */
 export const deleteSequenceElementFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
   .validator(
@@ -254,10 +260,31 @@ export const deleteSequenceElementFn = createServerFn({ method: 'POST' })
       data.elementId
     );
     if (!element || element.sequenceId !== context.sequence.id) {
-      throw new Error('Element not found');
+      throw new NotFoundError('Element not found');
     }
-    await context.scopedDb.sequenceElements.delete(data.elementId);
-    return { success: true };
+    const deletedAt = await context.scopedDb.sequenceElements.softDelete(
+      data.elementId,
+      { actorId: context.user.id }
+    );
+    return { success: true, deletedAt };
+  });
+
+/** Undo an element soft-delete (toast Undo). */
+export const restoreSequenceElementFn = createServerFn({ method: 'POST' })
+  .middleware([sequenceAccessMiddleware])
+  .validator(
+    zodValidator(z.object({ sequenceId: ulidSchema, elementId: ulidSchema }))
+  )
+  .handler(async ({ context, data }) => {
+    const element = await context.scopedDb.sequenceElements.getById(
+      data.elementId
+    );
+    if (!element || element.sequenceId !== context.sequence.id) {
+      throw new NotFoundError('Element not found');
+    }
+    return await context.scopedDb.sequenceElements.restore(data.elementId, {
+      actorId: context.user.id,
+    });
   });
 
 export const renameSequenceElementTokenFn = createServerFn({ method: 'POST' })

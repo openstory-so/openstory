@@ -43,15 +43,37 @@ export const TEST_FAL_PRICING: Record<string, EffectiveFalPricing> = {
     typicalUnitsPerCall: 1,
   },
   'minimax/h3-max/image-to-video': {
-    unitPrice: micros(80_000),
+    unitPrice: micros(25_000),
     unit: 'seconds',
+    typicalUnitsPerCall: 8,
+  },
+  'minimax/h3-max/text-to-video': {
+    unitPrice: micros(25_000),
+    unit: 'seconds',
+    typicalUnitsPerCall: 8,
+  },
+  'bytedance/seedance-2.5/image-to-video': {
+    unitPrice: micros(14_000),
+    unit: 'units',
+  },
+  // Same unit rate as i2v today; listed so reference-route estimates resolve.
+  'bytedance/seedance-2.5/reference-to-video': {
+    unitPrice: micros(14_000),
+    unit: 'units',
+  },
+  'bytedance/seedance-2.5/text-to-video': {
+    unitPrice: micros(14_000),
+    unit: 'units',
   },
   'bytedance/seedance-2.0/enterprise/v2/image-to-video': {
     unitPrice: micros(14_000),
     unit: 'units',
   },
-  // Same unit rate as i2v today; listed so reference-route estimates resolve.
   'bytedance/seedance-2.0/enterprise/v2/reference-to-video': {
+    unitPrice: micros(14_000),
+    unit: 'units',
+  },
+  'bytedance/seedance-2.0/enterprise/v2/text-to-video': {
     unitPrice: micros(14_000),
     unit: 'units',
   },

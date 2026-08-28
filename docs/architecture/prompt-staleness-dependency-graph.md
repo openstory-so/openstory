@@ -121,9 +121,9 @@ stale."** Diamonds are inputs; rounded boxes are hashed artifacts.
 ```mermaid
 flowchart LR
     subgraph inputs["upstream inputs"]
-        scene{{"scene input surface<br/>sceneId · sceneNumber · originalScript<br/>· metadata title/location/timeOfDay/storyBeat"}}
+        scene{{"scene input surface<br/>originalScript<br/>· metadata location/timeOfDay/storyBeat"}}
         style{{"styleConfig"}}
-        cbible{{"character bible<br/>(name, age, physicalDescription,<br/>consistencyTag, …)"}}
+        cbible{{"character bible<br/>(age, physicalDescription, …)<br/>name is a display label"}}
         lbible{{"location bible"}}
         ebible{{"element bible"}}
         ar{{"aspectRatio"}}
@@ -640,8 +640,9 @@ Ordered by value / risk.
    _Single source of truth for the bible removes the asymmetry by construction._
 
 2. **Convert `sceneInputContext` to an allowlist (fixes B).** Hash only the genuine
-   pre-prompt scene inputs — `sceneId`, `sceneNumber`, `originalScript`, and
-   `metadata.{title, location, timeOfDay, storyBeat}` — so no future downstream
+   pre-prompt scene inputs — `originalScript` and
+   `metadata.{location, timeOfDay, storyBeat}` (no `sceneId`/`sceneNumber`/
+   `title`: identity and display labels) — so no future downstream
    field can poison the prompt hash. Backward-compatible: for a scene with none of
    `musicDesign`/`audioDesign`/`sourceImageUrl`, the allowlist output is identical
    to today's denylist output, so existing fresh hashes stay fresh.

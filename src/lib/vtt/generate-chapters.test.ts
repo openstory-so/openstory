@@ -14,6 +14,7 @@ const createTestShot = (overrides: Partial<Shot>): Shot => ({
   updatedAt: new Date(),
   selectedMotionPromptVersionId: null,
   renderSegmentId: null,
+  deletedAt: null,
   ...overrides,
 });
 

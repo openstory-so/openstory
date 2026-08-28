@@ -250,6 +250,64 @@ describe('createLibraryTalent', () => {
     );
   });
 
+  it('classifies every uploaded reference in one vision call', async () => {
+    await createLibraryTalent(
+      {
+        name: 'Sam',
+        isHuman: true,
+        referenceImageUrls: [
+          '/r2/talent/team-1/temp/a.png',
+          '/r2/talent/team-1/temp/b.png',
+          '/r2/talent/team-1/temp/c.png',
+        ],
+        portraitAttestation: {
+          statementVersion: 'v1',
+          authorizationBasis: 'self',
+        },
+      },
+      makeCtx()
+    );
+
+    expect(mockAnalyze).toHaveBeenCalledTimes(1);
+    expect(mockAnalyze).toHaveBeenCalledWith(
+      expect.objectContaining({
+        imageUrls: [
+          expect.stringContaining('/r2/talent/'),
+          expect.stringContaining('/r2/talent/'),
+          expect.stringContaining('/r2/talent/'),
+        ],
+      })
+    );
+  });
+
+  it('does not classify or enqueue when enqueueSheet is false', async () => {
+    const result = await createLibraryTalent(
+      {
+        name: 'Sam',
+        isHuman: true,
+        referenceImageUrls: [
+          '/r2/talent/team-1/temp/a.png',
+          '/r2/talent/team-1/temp/b.png',
+          '/r2/talent/team-1/temp/c.png',
+        ],
+        portraitAttestation: {
+          statementVersion: 'v1',
+          authorizationBasis: 'self',
+        },
+        enqueueSheet: false,
+      },
+      makeCtx()
+    );
+
+    expect(mockAnalyze).not.toHaveBeenCalled();
+    expect(mockTriggerWorkflow).not.toHaveBeenCalled();
+    expect(result.sheetWorkflowRunId).toBeNull();
+    expect(result.deferredSheet?.talentId).toBe('tal-1');
+    expect(result.deferredSheet?.workflowInput.referenceImageUrls).toHaveLength(
+      3
+    );
+  });
+
   it('records an asset attestation when the subject is not human', async () => {
     await createLibraryTalent(
       {

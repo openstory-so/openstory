@@ -25,6 +25,7 @@ import {
 } from '@/components/ui/popover';
 import { ElementTokenButton } from '@/components/element/element-token-button';
 import {
+  restoreSequenceElement,
   useDeleteSequenceElement,
   useRenameSequenceElementToken,
   useSequenceElements,
@@ -33,8 +34,10 @@ import {
   type DraftElementUpload,
 } from '@/hooks/use-sequence-elements';
 import type { SequenceElement } from '@/lib/db/schema';
+import { errorMessage } from '@/lib/errors';
 import { MAX_SEQUENCE_ELEMENTS } from '@/lib/sequence-elements/limits';
 import { cn } from '@/lib/utils';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   extractImagesFromSnapshot,
   snapshotDataTransfer,
@@ -162,6 +165,7 @@ export const ElementSelector: React.FC<ElementSelectorProps> = (props) => {
   const draftUpload = useUploadDraftElement();
   const sequenceUpload = useUploadElementToSequence();
   const deleteElement = useDeleteSequenceElement();
+  const queryClient = useQueryClient();
   const renameToken = useRenameSequenceElementToken();
   const { data: persistedElements = [] } = useSequenceElements(
     isPersisted ? sequenceId : undefined
@@ -387,12 +391,40 @@ export const ElementSelector: React.FC<ElementSelectorProps> = (props) => {
     ]
   );
 
+  // Soft-remove with a 60s undo toast (#1108 Phase 2). The undo closure
+  // survives this component's unmount — restoreSequenceElement works on the
+  // app-level query client, not a mutation observer.
   const removePersistedElement = useCallback(
     (element: SequenceElement) => {
       if (!isPersisted) return;
-      deleteElement.mutate({ elementId: element.id, sequenceId });
+      deleteElement.mutate(
+        { elementId: element.id, sequenceId },
+        {
+          onSuccess: () => {
+            toast(`Removed ${element.token}`, {
+              duration: 60_000,
+              action: {
+                label: 'Undo',
+                onClick: () =>
+                  void restoreSequenceElement(queryClient, {
+                    sequenceId,
+                    elementId: element.id,
+                  }).catch((error: Error) =>
+                    toast.error('Failed to restore element', {
+                      description: errorMessage(error),
+                    })
+                  ),
+              },
+            });
+          },
+          onError: (error) =>
+            toast.error('Failed to remove element', {
+              description: errorMessage(error),
+            }),
+        }
+      );
     },
-    [deleteElement, isPersisted, sequenceId]
+    [deleteElement, isPersisted, sequenceId, queryClient]
   );
 
   const removeDraftElement = useCallback(

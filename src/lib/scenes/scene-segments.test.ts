@@ -142,6 +142,20 @@ describe('isSelectedVersionStale', () => {
     ]);
     expect(isSelectedVersionStale(v, motion, frame)).toBe(true);
   });
+
+  it('treats a null-null manifest as unknown-not-stale, not born-stale (#1380)', () => {
+    // Storyboard auto-motion used to stamp both ids as null. Comparing that
+    // to the live selected still + prompt always diverged, so every clip
+    // showed Stale the moment it landed. Same contract as a legacy null hash.
+    const v = version('v1', 'seg', 'kling', [
+      {
+        shotId: 'shot-1',
+        motionPromptVersionId: null,
+        frameVersionId: null,
+      },
+    ]);
+    expect(isSelectedVersionStale(v, motion, frame)).toBe(false);
+  });
 });
 
 describe('assembleSequenceSegments', () => {

@@ -15,6 +15,14 @@ vi.doMock('@/lib/ai/prompt-context', () => ({ loadNarrowShotPromptContext }));
 vi.doMock('@/lib/ai/input-hash', () => ({
   computeVisualPromptInputHash,
   computeMotionPromptInputHash,
+  visualPromptInputHashMatches: vi.fn(
+    async (stored: string | null) =>
+      stored === (await computeVisualPromptInputHash())
+  ),
+  motionPromptInputHashMatches: vi.fn(
+    async (stored: string | null) =>
+      stored === (await computeMotionPromptInputHash())
+  ),
 }));
 
 const { computeShotStaleness } = await import('./shot-staleness');

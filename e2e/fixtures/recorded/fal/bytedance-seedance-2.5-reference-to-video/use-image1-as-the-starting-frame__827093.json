@@ -1,0 +1,24 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use @Image1 as the starting frame.\nSteady handheld drift inward toward @Image2. She finishes painting her mouth with the @Image3 in one unfussy pass, eyes on the side mirror, then presses her lips together and eases the tube a fraction away, left hand still braced on the open door.\n\nA light breeze lifts loose strands. Surf rolls beyond the rail.\n\ndistant Bondi surf, light morning wind across the car park. soft lipstick glide on lips, lips press together.\n\nNo BGM, no music. Generate only dialogue, environmental sounds, and action sounds. Single continuous shot, no cuts. Avoid jitter and bent limbs.",
+        "model": "bytedance/seedance-2.5/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://v3b.fal.media/files/b/0aa70c14/VSdDp6dJcKPcnKSKqjrMC_video.mp4",
+            "content_type": "video/mp4",
+            "file_name": "video.mp4",
+            "file_size": 2748257
+          },
+          "seed": 65683338
+        },
+        "status": 200,
+        "billableUnits": 130.5
+      }
+    }
+  ]
+}

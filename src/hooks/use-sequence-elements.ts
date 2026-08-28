@@ -8,11 +8,17 @@ import {
   presignElementUploadFn,
   renameSequenceElementTokenFn,
   replaceSequenceElementFn,
+  restoreSequenceElementFn,
 } from '@/functions/sequence-elements';
 import { putToR2 } from '@/lib/utils/upload';
 import { sceneKeys } from '@/hooks/use-scenes';
 import { shotStalenessNamespace } from '@/hooks/use-shot-staleness';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type QueryClient,
+} from '@tanstack/react-query';
 
 const sequenceElementKeys = {
   all: ['sequence-elements'] as const,
@@ -153,17 +159,46 @@ export function useUploadDraftElement() {
   });
 }
 
+/**
+ * Soft-delete (#1108 Phase 2) — the server sets `deletedAt`; undo via
+ * `restoreSequenceElement` from the toast. A removed element drops out of the
+ * prompt-reference context, so facet membership and staleness refresh too.
+ */
 export function useDeleteSequenceElement() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: { elementId: string; sequenceId: string }) =>
       deleteSequenceElementFn({ data }),
-    onSuccess: (_res, variables) => {
-      void queryClient.invalidateQueries({
-        queryKey: sequenceElementKeys.bySequence(variables.sequenceId),
-      });
-    },
+    onSuccess: (_res, variables) =>
+      invalidateElementMembership(queryClient, variables.sequenceId),
   });
+}
+
+/**
+ * Restore is a plain async, not a hook: it runs from undo-toast closures that
+ * outlive the removing component (see `restoreSequenceCharacter` for the full
+ * rationale). The app-level QueryClient stays valid.
+ */
+export async function restoreSequenceElement(
+  queryClient: QueryClient,
+  data: { sequenceId: string; elementId: string }
+): Promise<void> {
+  await restoreSequenceElementFn({ data });
+  invalidateElementMembership(queryClient, data.sequenceId);
+}
+
+function invalidateElementMembership(
+  queryClient: QueryClient,
+  sequenceId: string
+): void {
+  void queryClient.invalidateQueries({
+    queryKey: sequenceElementKeys.bySequence(sequenceId),
+  });
+  void queryClient.invalidateQueries({
+    queryKey: sequenceElementKeys.shotCountsBySequence(sequenceId),
+  });
+  void queryClient.invalidateQueries({ queryKey: ['scene-facets'] });
+  void queryClient.invalidateQueries({ queryKey: shotStalenessNamespace });
 }
 
 export function useRenameSequenceElementToken() {

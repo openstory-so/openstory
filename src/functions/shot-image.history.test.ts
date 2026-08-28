@@ -25,4 +25,10 @@ describe('isImageHistoryVersion', () => {
       isImageHistoryVersion({ kind: 'preview', sourceVariantId: null })
     ).toBe(false);
   });
+
+  it('keeps user-uploaded stills', () => {
+    expect(
+      isImageHistoryVersion({ kind: 'upload', sourceVariantId: null })
+    ).toBe(true);
+  });
 });

@@ -12,11 +12,13 @@
  * need (#1069). Use `recordFalUsage` in its own workflow step instead.
  */
 
+import { isBytePlusPricedModel } from '@/lib/ai/byteplus-pricing';
 import {
   isNativeGrokImageEndpoint,
   NATIVE_GROK_VIDEO_MODEL,
 } from '@/lib/ai/grok-native';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
+import type { ModelPricingProvider } from '@/lib/db/schema/model-pricing';
 import {
   reportMissingBillingCost,
   reportSkippedDeduction,
@@ -157,6 +159,17 @@ export type FalUsage = {
    * record, the per-request billed cost the hourly reconcile audits against.
    */
   requestId?: string;
+  /**
+   * Which API billed this (#1157). Observations are keyed by
+   * (provider, endpointId), so a BytePlus sample filed under 'fal' would
+   * pollute the fal endpoint's median with a different denomination.
+   *
+   * Named `billingProvider`, not `provider`: callers spread whole generation
+   * metadata objects in here, and those already carry a `provider` meaning the
+   * LAB ("ElevenLabs", "ByteDance"). A bare `provider` would capture it
+   * silently and file every music sample under a nonexistent provider.
+   */
+  billingProvider?: ModelPricingProvider;
 };
 
 /**
@@ -170,6 +183,7 @@ function falUsageMetadata(metadata: FalUsage): FalUsage {
     unitsBilled: metadata.unitsBilled,
     numImages: metadata.numImages,
     requestId: metadata.requestId,
+    billingProvider: metadata.billingProvider,
   };
 }
 
@@ -187,11 +201,13 @@ export async function recordFalUsage(
   // Observations are platform-global telemetry with no teamId (see
   // model_usage_observations), but the write still needs a db handle.
   if (!scopedDb) return;
-  // Native xAI units are a different denomination — sampling them under the
-  // fal endpoint id would corrupt the median the pricing cron reads (#1167).
+  // Native xAI / Ark units are a different denomination — sampling them
+  // under a fal endpoint id would corrupt the median the pricing cron
+  // reads (#1167 / #1157 / #1069).
   if (
     isNativeGrokImageEndpoint(usage.endpointId) ||
-    usage.endpointId === NATIVE_GROK_VIDEO_MODEL
+    usage.endpointId === NATIVE_GROK_VIDEO_MODEL ||
+    isBytePlusPricedModel(usage.endpointId)
   ) {
     return;
   }
@@ -212,7 +228,7 @@ export async function recordFalUsage(
     return;
   }
   await scopedDb.modelUsage.record({
-    provider: 'fal',
+    provider: usage.billingProvider ?? 'fal',
     endpointId: usage.endpointId,
     unitsBilled,
     numImages: usage.numImages,

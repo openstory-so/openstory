@@ -183,9 +183,10 @@ export function useSceneShotStaleness(args: {
 }
 
 /**
- * Sequence-wide staleness (#1077), keyed by shot id. Gated by `enabled` —
- * it recomputes hashes for every shot in the sequence, so callers only turn
- * it on while the sequence-scope panel is actually showing.
+ * Sequence-wide staleness (#1077), keyed by shot id. The scenes rail shows
+ * every shot, so the left-rail dots need every shot's verdict — not just
+ * the in-focus scene. `enabled` still lets a caller skip the hash recompute
+ * (tests, or a surface that isn't showing the rail).
  */
 export function useSequenceShotStaleness(args: {
   sequenceId: string;

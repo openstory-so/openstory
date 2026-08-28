@@ -39,6 +39,9 @@ function projectEntry(
     shotVariantPath: null,
     shotVariantStatus: 'pending',
     shotVariantWorkflowRunId: null,
+    // VERBATIM (#1108): 'cancelled' passes through — mapping it to 'failed'
+    // here would re-arm every retry/eligibility path that reads this
+    // projection, defeating the cancel.
     status: version.status,
     workflowRunId: version.workflowRunId,
     generatedAt: version.generatedAt,

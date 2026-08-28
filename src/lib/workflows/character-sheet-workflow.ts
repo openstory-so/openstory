@@ -112,7 +112,9 @@ async function persistReusedTalentSheet(params: {
   const snapshotInputHash = input.snapshotInputHash ?? null;
   const reconcileOutcome = await step.do(
     'reconcile-database',
-    async (): Promise<{ kind: 'convergent' } | { kind: 'divergent' }> => {
+    async (): Promise<
+      { kind: 'convergent'; versionId: string | null } | { kind: 'divergent' }
+    > => {
       const currentHash = snapshotInputHash
         ? await computeCharacterSheetHashCurrent(input, scopedDb.liveRead)
         : null;
@@ -130,13 +132,17 @@ async function persistReusedTalentSheet(params: {
         });
         return { kind: 'divergent' };
       }
-      await scopedDb.characters.updateSheet(
+      const character = await scopedDb.characters.updateSheet(
         characterDbId,
         storageResult.url,
         storageResult.path,
-        snapshotInputHash
+        snapshotInputHash,
+        { model: input.imageModel ?? DEFAULT_IMAGE_MODEL, workflowRunId }
       );
-      return { kind: 'convergent' };
+      return {
+        kind: 'convergent',
+        versionId: character.selectedSheetVersionId,
+      };
     }
   );
 
@@ -174,6 +180,10 @@ async function persistReusedTalentSheet(params: {
     sheetImageUrl: storageResult.url,
     sheetImagePath: storageResult.path,
     characterDbId,
+    sheetVersionId:
+      reconcileOutcome.kind === 'convergent'
+        ? reconcileOutcome.versionId
+        : null,
   };
 }
 
@@ -321,6 +331,7 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
     }
     let sheetImageUrl: string = initialSheetImageUrl;
     let sheetImagePath: string | undefined = undefined;
+    let sheetVersionId: string | null = null;
 
     if (input.characterDbId && input.teamId && input.sequenceId) {
       // Capture narrowed values so inner async closures see `string`, not
@@ -393,7 +404,10 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
       const snapshotInputHash = input.snapshotInputHash ?? null;
       const reconcileOutcome = await step.do(
         'reconcile-database',
-        async (): Promise<{ kind: 'convergent' } | { kind: 'divergent' }> => {
+        async (): Promise<
+          | { kind: 'convergent'; versionId: string | null }
+          | { kind: 'divergent' }
+        > => {
           logger.info(
             `[CharacterSheetWorkflow:cf] Updating database for ${input.characterName}`
           );
@@ -427,15 +441,22 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
             return { kind: 'divergent' };
           }
 
-          await scopedDb.characters.updateSheet(
+          const character = await scopedDb.characters.updateSheet(
             input.characterDbId,
             storageResult.url,
             storageResult.path,
-            snapshotInputHash
+            snapshotInputHash,
+            { model: generationParams.model, workflowRunId }
           );
-          return { kind: 'convergent' };
+          return {
+            kind: 'convergent',
+            versionId: character.selectedSheetVersionId,
+          };
         }
       );
+      if (reconcileOutcome.kind === 'convergent') {
+        sheetVersionId = reconcileOutcome.versionId;
+      }
 
       sheetImagePath = storageResult.path;
       sheetImageUrl = storageResult.url;
@@ -491,6 +512,7 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
       sheetImageUrl,
       sheetImagePath,
       characterDbId: input.characterDbId,
+      sheetVersionId,
     };
 
     return result;

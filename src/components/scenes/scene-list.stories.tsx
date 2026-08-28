@@ -198,6 +198,7 @@ const psScene = (
   continuity: null,
   script: { extract, dialogue: [] },
   selectedScriptVersionId: null,
+  deletedAt: null,
   createdAt: PS_FIXED_DATE,
   updatedAt: PS_FIXED_DATE,
 });
@@ -214,6 +215,7 @@ const perSegmentScenes: SceneWithScript[] = [
 ];
 
 const defaultArgs = {
+  sequenceId: PS_SEQ,
   className: 'w-[360px]',
   shots: [] as typeof mockShots,
   scenes: [],
@@ -221,6 +223,7 @@ const defaultArgs = {
   aspectRatio: DEFAULT_ASPECT_RATIO,
   sequenceModels: { imageModel: 'nano_banana', videoModel: 'veo3' },
   onSelectScene: () => console.log('onSelectScene'),
+  onSelectShot: (shotId: string) => console.log('onSelectShot', shotId),
   onClearSelection: () => console.log('onClearSelection'),
   regeneratingImages: new Set<string>(),
   regeneratingMotion: new Set<string>(),

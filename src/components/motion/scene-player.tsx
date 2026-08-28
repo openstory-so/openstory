@@ -17,9 +17,11 @@ import {
   getAspectRatioClassName,
 } from '@/lib/constants/aspect-ratios';
 import { cn } from '@/lib/utils';
+import { plainSceneTitle } from '@/lib/utils/markdown-plain';
 import { copyTextToClipboard } from '@/lib/utils/clipboard';
 import type { ShotView } from '@/lib/shots/shot-view';
 import { AppImage } from '@/components/ui/app-image';
+import { usePostHog } from '@posthog/react';
 import { Download, Link, Loader2, Share2, VideoIcon } from 'lucide-react';
 import { useCallback, useState } from 'react';
 import { toast } from 'sonner';
@@ -97,6 +99,7 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
   onEnded,
 }) => {
   const [shouldAutoPlay, setShouldAutoPlay] = useState(false);
+  const posthog = usePostHog();
 
   const imageDimensions = aspectRatioToDimensions(aspectRatio);
   // Derive the current shot synchronously from selection — do NOT park the
@@ -119,6 +122,11 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
 
   const handleCopyImageUrl = useCallback(async () => {
     if (!currentShot?.image?.url) return;
+    posthog.capture('share_clicked', {
+      surface: 'shot_image',
+      sequence_id: currentShot.sequenceId,
+      shot_id: currentShot.id,
+    });
     try {
       // Stored media URLs are origin-relative (#894) — absolutize against the
       // current origin so the copied link is usable when pasted elsewhere. The
@@ -133,10 +141,20 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
     } catch {
       toast.error('Failed to copy URL');
     }
-  }, [currentShot?.image?.url]);
+  }, [
+    currentShot?.image?.url,
+    currentShot?.sequenceId,
+    currentShot?.id,
+    posthog,
+  ]);
 
   const handleCopyVideoUrl = useCallback(async () => {
     if (!currentShot?.video?.url) return;
+    posthog.capture('share_clicked', {
+      surface: 'shot_video',
+      sequence_id: currentShot.sequenceId,
+      shot_id: currentShot.id,
+    });
     try {
       const absoluteUrl = new URL(currentShot.video.url, window.location.origin)
         .href;
@@ -148,7 +166,12 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
     } catch {
       toast.error('Failed to copy URL');
     }
-  }, [currentShot?.video?.url]);
+  }, [
+    currentShot?.video?.url,
+    currentShot?.sequenceId,
+    currentShot?.id,
+    posthog,
+  ]);
 
   // Check video status
   const hasCompletedVideo =
@@ -165,6 +188,11 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
 
   const handleDownloadVideo = useCallback(() => {
     if (!downloadData?.downloadUrl) return;
+    posthog.capture('export_clicked', {
+      surface: 'shot',
+      sequence_id: currentShot?.sequenceId,
+      shot_id: currentShot?.id,
+    });
     const a = document.createElement('a');
     a.href = downloadData.downloadUrl;
     a.download =
@@ -173,7 +201,7 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-  }, [downloadData, currentShot?.id]);
+  }, [downloadData, currentShot?.id, currentShot?.sequenceId, posthog]);
 
   // Handle video pause - disable autoplay when user manually pauses
   const handlePause = useCallback(() => {
@@ -289,7 +317,7 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
       ? currentShotIndex + 1
       : undefined;
   const title =
-    currentScene?.title?.trim() ||
+    plainSceneTitle(currentScene?.title) ||
     (sceneNumber ? `Scene ${sceneNumber}` : undefined);
 
   // Best available image: override (variant preview) → final thumbnail → fast preview → sequence poster
@@ -357,7 +385,7 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="absolute top-2 right-2 z-10 h-11 w-11 bg-black/50 text-white hover:bg-black/70 md:h-8 md:w-8"
+                  className="absolute top-2 right-2 z-20 h-11 w-11 bg-black/50 text-white hover:bg-black/70 md:h-8 md:w-8"
                   aria-label="Share image"
                 >
                   <Share2 className="h-5 w-5 md:h-4 md:w-4" />
@@ -393,7 +421,7 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="absolute top-2 right-2 z-10 h-11 w-11 bg-black/50 text-white hover:bg-black/70 md:h-8 md:w-8"
+                  className="absolute top-2 right-2 z-20 h-11 w-11 bg-black/50 text-white hover:bg-black/70 md:h-8 md:w-8"
                   aria-label="Share"
                 >
                   <Share2 className="h-5 w-5 md:h-4 md:w-4" />

@@ -69,6 +69,17 @@ function createSequencesReadMethods(db: Database, teamId: string) {
         .orderBy(desc(sequences.updatedAt));
     },
 
+    /** The team's archived sequences — the unarchive picker (#1108 Phase 4). */
+    listArchived: async (): Promise<Sequence[]> => {
+      return await db
+        .select()
+        .from(sequences)
+        .where(
+          and(eq(sequences.teamId, teamId), eq(sequences.status, 'archived'))
+        )
+        .orderBy(desc(sequences.updatedAt));
+    },
+
     /**
      * Keyset-paginated, most-recent-first page of the team's non-archived
      * sequences — backs the public `GET /api/v1/sequences` list. Ordered by
@@ -150,7 +161,9 @@ function createSequencesReadMethods(db: Database, teamId: string) {
             .where(
               and(
                 inArray(shots.sequenceId, batch),
-                eq(sequences.teamId, teamId)
+                eq(sequences.teamId, teamId),
+                // Soft-deleted shots stay out of list views (#1108).
+                isNull(shots.deletedAt)
               )
             )
             .orderBy(asc(shots.sequenceId), ...shotHierarchicalOrder)
@@ -225,7 +238,11 @@ function createSequencesReadMethods(db: Database, teamId: string) {
             .where(
               and(
                 inArray(shots.sequenceId, batch),
-                eq(sequences.teamId, teamId)
+                eq(sequences.teamId, teamId),
+                // Soft-deleted shots stay out of list counts (#1108). Twin of
+                // `listShotsByIds` — public `GET /api/v1/sequences` uses this
+                // path for `counts`.
+                isNull(shots.deletedAt)
               )
             )
         )

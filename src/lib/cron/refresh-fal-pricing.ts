@@ -32,11 +32,16 @@ import {
   fetchFalTypicalUnits,
   fetchFalUnitPrices,
 } from '@/lib/ai/fal-pricing-fetch';
+import {
+  FAL_TYPICAL_UNITS_PER_DEFAULT_CLIP,
+  FAL_UNVERIFIED_SIBLINGS,
+} from '@/lib/ai/fal-typical-units';
 import { usdToMicros } from '@/lib/billing/money';
 import {
   modelPricing,
   modelPricingHistory,
   modelUsageObservations,
+  transactions,
 } from '@/lib/db/schema';
 import type { ObservedUnits } from '@/lib/db/schema/model-pricing';
 import { getLogger } from '@/lib/observability/logger';
@@ -185,6 +190,200 @@ export async function computeObservedUnits(
     samples += units.length;
   }
   return { observed, samples };
+}
+
+/**
+ * Median unitsBilled from credit transactions, for endpoints whose
+ * observations table is empty. Same window as `computeObservedUnits`.
+ * Skips samples that already have an observation so we do not double-count.
+ */
+export async function computeLedgerObservedUnits(
+  db: ObservationReader
+): Promise<{ observed: ObservedUnitsByEndpoint; samples: number }> {
+  const cutoff = observationCutoff();
+  const rows = await db.all<{
+    endpoint_id: string;
+    units_billed: number;
+    num_images: number;
+  }>(sql`
+    SELECT endpoint_id, units_billed, num_images FROM (
+      SELECT
+        json_extract(${transactions.metadata}, '$.endpointId') AS endpoint_id,
+        json_extract(${transactions.metadata}, '$.unitsBilled') AS units_billed,
+        COALESCE(json_extract(${transactions.metadata}, '$.numImages'), 1)
+          AS num_images,
+        ROW_NUMBER() OVER (
+          PARTITION BY json_extract(${transactions.metadata}, '$.endpointId')
+          ORDER BY ${transactions.createdAt} DESC
+        ) AS rn
+      FROM ${transactions}
+      WHERE ${transactions.type} = 'credit_usage'
+        AND ${transactions.createdAt} > ${toEpochSeconds(cutoff)}
+        AND json_extract(${transactions.metadata}, '$.unitsBilled') IS NOT NULL
+        AND json_extract(${transactions.metadata}, '$.endpointId') IS NOT NULL
+        AND (
+          json_extract(${transactions.metadata}, '$.billingProvider') IS NULL
+          OR json_extract(${transactions.metadata}, '$.billingProvider') = 'fal'
+        )
+    ) WHERE rn <= ${OBSERVATIONS_PER_ENDPOINT}
+  `);
+
+  const byEndpoint = new Map<string, number[]>();
+  for (const row of rows) {
+    if (typeof row.endpoint_id !== 'string' || row.endpoint_id.length === 0) {
+      continue;
+    }
+    if (!Number.isFinite(row.units_billed) || row.units_billed <= 0) continue;
+    const images =
+      Number.isFinite(row.num_images) && row.num_images > 0
+        ? row.num_images
+        : 1;
+    const perImage = row.units_billed / images;
+    const list = byEndpoint.get(row.endpoint_id);
+    if (list) list.push(perImage);
+    else byEndpoint.set(row.endpoint_id, [perImage]);
+  }
+
+  const observed: ObservedUnitsByEndpoint = new Map();
+  let samples = 0;
+  for (const [endpointId, units] of byEndpoint) {
+    observed.set(endpointId, {
+      medianUnits: median(units),
+      sampleCount: units.length,
+    });
+    samples += units.length;
+  }
+  return { observed, samples };
+}
+
+/**
+ * Observed median: our usage samples first, then transaction metadata for
+ * endpoints that somehow missed an observation write (#1382).
+ */
+export async function collectObservedUnits(
+  db: ObservationReader
+): Promise<{ observed: ObservedUnitsByEndpoint; samples: number }> {
+  const fromObs = await computeObservedUnits(db);
+  const fromLedger = await computeLedgerObservedUnits(db);
+  for (const [endpointId, ledger] of fromLedger.observed) {
+    if (fromObs.observed.has(endpointId)) continue;
+    fromObs.observed.set(endpointId, ledger);
+    fromObs.samples += ledger.sampleCount;
+  }
+  return fromObs;
+}
+
+/**
+ * Patch `observed_median_units` (and a missing H3 Max typical) onto existing
+ * `model_pricing` rows. Used by the hourly reconcile so a day's samples do
+ * not wait until 03:17 UTC to feed the estimator.
+ */
+export async function writeObservedUnits(
+  db: PricingRefreshDb,
+  now: Date = new Date()
+): Promise<number> {
+  const { observed } = await collectObservedUnits(db);
+  const rows = await db
+    .select()
+    .from(modelPricing)
+    .where(eq(modelPricing.provider, 'fal'));
+  const rowsByEndpoint = new Map(rows.map((r) => [r.endpointId, r]));
+
+  let written = 0;
+  for (const [endpointId, obs] of observed) {
+    const row = rowsByEndpoint.get(endpointId);
+    if (!row) continue;
+    const fallbackTypical =
+      FAL_TYPICAL_UNITS_PER_DEFAULT_CLIP[endpointId] ?? null;
+    await db
+      .update(modelPricing)
+      .set({
+        observedMedianUnits: obs.medianUnits,
+        observedSampleCount: obs.sampleCount,
+        ...(row.typicalUnitsPerCall == null && fallbackTypical != null
+          ? { typicalUnitsPerCall: fallbackTypical }
+          : {}),
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(modelPricing.provider, 'fal'),
+          eq(modelPricing.endpointId, endpointId),
+          eq(modelPricing.unit, row.unit)
+        )
+      );
+    written++;
+  }
+
+  for (const [endpointId, typical] of Object.entries(
+    FAL_TYPICAL_UNITS_PER_DEFAULT_CLIP
+  )) {
+    const row = rowsByEndpoint.get(endpointId);
+    if (!row || row.typicalUnitsPerCall != null) continue;
+    if (observed.has(endpointId)) continue;
+    await db
+      .update(modelPricing)
+      .set({ typicalUnitsPerCall: typical, updatedAt: now })
+      .where(
+        and(
+          eq(modelPricing.provider, 'fal'),
+          eq(modelPricing.endpointId, endpointId),
+          eq(modelPricing.unit, row.unit)
+        )
+      );
+  }
+  return written;
+}
+
+/**
+ * Copy a bill-verified rate onto a sibling with no usage of its own
+ * (H3 Max t2v ← i2v, #1382). Stamps the target as verified so the advertised
+ * "compute seconds" lie cannot overwrite it on the next advertised fetch.
+ */
+function overlaySiblingBilledRates(
+  prices: FalUnitPrice[],
+  verifiedNow: Set<string>,
+  verifiedExisting: ReadonlySet<string> = new Set()
+): void {
+  const priceByEndpoint = new Map(prices.map((p) => [p.endpointId, p]));
+  for (const [target, source] of Object.entries(FAL_UNVERIFIED_SIBLINGS)) {
+    if (verifiedNow.has(target)) continue;
+    if (!verifiedNow.has(source) && !verifiedExisting.has(source)) continue;
+    const sourcePrice = priceByEndpoint.get(source);
+    if (!sourcePrice) continue;
+    const targetPrice = priceByEndpoint.get(target);
+    if (targetPrice) {
+      if (
+        targetPrice.unit !== sourcePrice.unit ||
+        targetPrice.unitPriceUsd !== sourcePrice.unitPriceUsd
+      ) {
+        logger.warn(
+          'unverified sibling inheriting billed rate from source endpoint',
+          {
+            target,
+            source,
+            from: {
+              unit: targetPrice.unit,
+              unitPriceUsd: targetPrice.unitPriceUsd,
+            },
+            to: {
+              unit: sourcePrice.unit,
+              unitPriceUsd: sourcePrice.unitPriceUsd,
+            },
+          }
+        );
+      }
+      targetPrice.unit = sourcePrice.unit;
+      targetPrice.unitPriceUsd = sourcePrice.unitPriceUsd;
+    } else {
+      prices.push({
+        endpointId: target,
+        unit: sourcePrice.unit,
+        unitPriceUsd: sourcePrice.unitPriceUsd,
+      });
+    }
+    verifiedNow.add(target);
+  }
 }
 
 function chunk<T>(items: T[], size: number): T[][] {
@@ -367,6 +566,14 @@ export async function refreshFalPricing(
     p.unitPriceUsd = verified.unitPriceMicros / 1_000_000;
   }
 
+  // Sibling copy after verified-existing preservation so t2v inherits i2v's
+  // bill-verified rate even when i2v's usage aged out of this run's overlay.
+  overlaySiblingBilledRates(
+    prices,
+    verifiedNow,
+    new Set(verifiedExisting.keys())
+  );
+
   // A used endpoint without a price would bill $0 after the sweep dropped its
   // row. Abort the whole run so yesterday's snapshot survives.
   const pricedIds = new Set(prices.map((p) => p.endpointId));
@@ -401,19 +608,22 @@ export async function refreshFalPricing(
   );
 
   await discardObservationsForRedenominatedEndpoints(db, existing, prices);
-  const { observed, samples } = await computeObservedUnits(db);
+  const { observed, samples } = await collectObservedUnits(db);
 
   const now = new Date();
   const snapshotRows = prices.map((p) => {
     const obs = observed.get(p.endpointId);
     const key = pricingKey(p);
     // A failed typical fetch carries the stored value forward — absence of an
-    // answer is not an answer of "none". A genuine no-history reply nulls it.
+    // answer is not an answer of "none". A genuine no-history reply uses the
+    // billed-units fallback (H3 Max 8/5s) when we have one, else nulls.
+    const fallbackTypical =
+      FAL_TYPICAL_UNITS_PER_DEFAULT_CLIP[p.endpointId] ?? null;
     const typical =
       typicalUnits.get(p.endpointId) ??
       (typicalDegraded || failedEndpoints.has(p.endpointId)
-        ? (existingTypicalByKey.get(key) ?? null)
-        : null);
+        ? (existingTypicalByKey.get(key) ?? fallbackTypical)
+        : fallbackTypical);
     return {
       provider: 'fal' as const,
       endpointId: p.endpointId,

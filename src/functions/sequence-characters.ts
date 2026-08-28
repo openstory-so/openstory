@@ -7,18 +7,32 @@ import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
 
-import { safeTextToImageModel } from '@/lib/ai/models';
+import { isValidTextToImageModel, safeTextToImageModel } from '@/lib/ai/models';
+import type { CharacterBibleUpdate } from '@/lib/db/scoped/characters';
 import { resolveSequenceStyleConfig } from '@/lib/style/style-config';
 import { buildCastingAttributes } from '@/lib/prompts/character-prompt';
 import { shouldReuseTalentSheet } from '@/lib/talent/reuse-talent-sheet';
 import { getGenerationChannel } from '@/lib/realtime';
+import {
+  bibleField,
+  identityToken,
+  nextIdentityToken,
+  slugifyTag,
+} from '@/lib/schemas/bible-field';
 import { ulidSchema } from '@/lib/schemas/id.schemas';
 import { triggerWorkflow } from '@/lib/workflow/client';
 import { buildWorkflowLabel } from '@/lib/workflow/labels';
 import type { RecastCharacterWorkflowInput } from '@/lib/workflow/types';
 import { buildRecastRegenerateSnapshots } from '@/lib/workflows/recast-snapshot';
+import { buildRegenerateCharacterSheetPayload } from '@/lib/sheets/character-sheet-trigger';
+import type { SheetStaleness } from '@/lib/sheets/sheet-staleness';
+import { characterSheetHashMatchesStored } from '@/lib/workflows/sheet-snapshots';
 
+import { NotFoundError } from '@/lib/errors';
+import { getLogger } from '@/lib/observability/logger';
 import { authWithTeamMiddleware, sequenceAccessMiddleware } from './middleware';
+
+const logger = getLogger(['openstory', 'serverFn', 'sequence-characters']);
 
 /**
  * Recast accepts talents owned by the requesting team OR public talents.
@@ -42,6 +56,144 @@ export const getSequenceCharactersFn = createServerFn({ method: 'GET' })
     return context.scopedDb.characters.listWithTalent(context.sequence.id);
   });
 
+// ============================================================================
+// Manual character CRUD (#1108 Phase 2)
+// ============================================================================
+
+const characterBibleFieldsSchema = z.object({
+  age: bibleField.optional(),
+  gender: bibleField.optional(),
+  ethnicity: bibleField.optional(),
+  physicalDescription: bibleField.optional(),
+  standardClothing: bibleField.optional(),
+  distinguishingFeatures: bibleField.optional(),
+  consistencyTag: bibleField.optional(),
+});
+
+/**
+ * Create a character by hand (no storyboard run) — starts sheet-less
+ * (`sheetStatus: 'pending'`); the sheet comes later via the existing recast /
+ * sheet workflows. `characterId` is a shortened name (`char_maya`) in the
+ * same family as script-extracted `char_001` / `char_girl_one`, uniqued
+ * against existing rows on the `(sequenceId, characterId)` index.
+ */
+export const createSequenceCharacterFn = createServerFn({ method: 'POST' })
+  .middleware([sequenceAccessMiddleware])
+  .validator(
+    zodValidator(
+      characterBibleFieldsSchema.extend({
+        sequenceId: ulidSchema,
+        name: z.string().trim().min(1).max(255),
+      })
+    )
+  )
+  .handler(async ({ context, data }) => {
+    const { sequenceId, name, ...bible } = data;
+    const base = identityToken('char', name);
+    const taken = new Set<string>();
+    let characterId = base;
+    // Unique index covers soft-deleted rows too.
+    while (
+      await context.scopedDb.characters.getByCharacterId(
+        sequenceId,
+        characterId
+      )
+    ) {
+      taken.add(characterId);
+      characterId = nextIdentityToken(base, taken);
+    }
+    const character = await context.scopedDb.characters.create({
+      sequenceId,
+      characterId,
+      name,
+      ...bible,
+      consistencyTag:
+        bible.consistencyTag ?? `${characterId}: ${slugifyTag(name)}`,
+      sheetStatus: 'pending',
+    });
+    await context.scopedDb.sequenceEvents.record({
+      sequenceId,
+      actorId: context.user.id,
+      kind: 'character.created',
+      targetType: 'character',
+      targetId: character.id,
+      summary: `Added character ${name}`,
+      data: { name, characterId },
+    });
+    return character;
+  });
+
+/**
+ * Edit a character's bible fields. Only provided fields change; prompts and
+ * the character sheet that project them re-stale purely by hash derivation
+ * (no flag written). Casting stays on `recastCharacterFn`.
+ */
+export const updateSequenceCharacterFn = createServerFn({ method: 'POST' })
+  .middleware([sequenceAccessMiddleware])
+  .validator(
+    zodValidator(
+      characterBibleFieldsSchema.extend({
+        sequenceId: ulidSchema,
+        characterId: ulidSchema,
+        name: z.string().trim().min(1).max(255).optional(),
+      })
+    )
+  )
+  .handler(async ({ context, data }) => {
+    const { sequenceId, characterId, ...fields } = data;
+    const existing = await context.scopedDb.characters.getById(characterId);
+    if (!existing || existing.sequenceId !== sequenceId) {
+      throw new NotFoundError('Character not found');
+    }
+    const update: CharacterBibleUpdate = fields;
+    return await context.scopedDb.characters.updateBible(characterId, update, {
+      actorId: context.user.id,
+    });
+  });
+
+const characterIdInput = z.object({
+  sequenceId: ulidSchema,
+  characterId: ulidSchema,
+});
+
+/**
+ * Soft-remove a character (undoable; toast Undo calls the restore fn). Scene
+ * continuity tags are NOT stripped — undo is lossless; prompts referencing
+ * the character read stale because the bible reads exclude deleted rows.
+ */
+export const softDeleteSequenceCharacterFn = createServerFn({ method: 'POST' })
+  .middleware([sequenceAccessMiddleware])
+  .validator(zodValidator(characterIdInput))
+  .handler(async ({ context, data }) => {
+    const existing = await context.scopedDb.characters.getById(
+      data.characterId
+    );
+    if (!existing || existing.sequenceId !== data.sequenceId) {
+      throw new NotFoundError('Character not found');
+    }
+    const deletedAt = await context.scopedDb.characters.softDelete(
+      data.characterId,
+      { actorId: context.user.id }
+    );
+    return { characterId: data.characterId, deletedAt };
+  });
+
+/** Undo a character soft-delete. */
+export const restoreSequenceCharacterFn = createServerFn({ method: 'POST' })
+  .middleware([sequenceAccessMiddleware])
+  .validator(zodValidator(characterIdInput))
+  .handler(async ({ context, data }) => {
+    const existing = await context.scopedDb.characters.getById(
+      data.characterId
+    );
+    if (!existing || existing.sequenceId !== data.sequenceId) {
+      throw new NotFoundError('Character not found');
+    }
+    return await context.scopedDb.characters.restore(data.characterId, {
+      actorId: context.user.id,
+    });
+  });
+
 /** Get shot IDs for all shots containing a specific character */
 export const getShotIdsForCharacterFn = createServerFn({ method: 'GET' })
   .middleware([sequenceAccessMiddleware])
@@ -52,6 +204,106 @@ export const getShotIdsForCharacterFn = createServerFn({ method: 'GET' })
       data.characterId
     );
     return { shotIds, count: shotIds.length };
+  });
+
+/**
+ * Regenerate the character sheet from the current bible. Does not recast
+ * talent, does not regenerate shots — stills go stale by derivation once
+ * the new version is selected.
+ */
+export const regenerateCharacterSheetFn = createServerFn({ method: 'POST' })
+  .middleware([sequenceAccessMiddleware])
+  .validator(
+    zodValidator(
+      characterIdInput.extend({
+        imageModel: z
+          .string()
+          .refine(isValidTextToImageModel, {
+            message: 'Invalid image model',
+          })
+          .optional(),
+      })
+    )
+  )
+  .handler(async ({ context, data }) => {
+    const character = await context.scopedDb.characters.getById(
+      data.characterId
+    );
+    if (!character || character.sequenceId !== data.sequenceId) {
+      throw new NotFoundError('Character not found');
+    }
+
+    const payload = await buildRegenerateCharacterSheetPayload({
+      scopedDb: context.scopedDb,
+      userId: context.user.id,
+      teamId: context.teamId,
+      sequence: context.sequence,
+      character,
+      imageModel: data.imageModel,
+    });
+
+    await context.scopedDb.characters.updateSheetStatus(
+      character.id,
+      'generating'
+    );
+    try {
+      await getGenerationChannel(character.sequenceId).emit(
+        'generation.character-sheet:progress',
+        { characterId: character.id, status: 'generating' }
+      );
+    } catch (error) {
+      logger.error('realtime emit failed', { err: error });
+    }
+
+    let workflowRunId: string;
+    try {
+      workflowRunId = await triggerWorkflow('/character-sheet', payload, {
+        label: buildWorkflowLabel(character.sequenceId),
+        // Explicit regen must not reuse the bible-child id
+        // `character-sheet:${id}` — that instance is already complete, and CF
+        // would no-op a second Generate (sheetStatus stuck at generating).
+        // Same pattern as generateTalentSheetFn: omit dedup so each click is a
+        // new run.
+      });
+    } catch (error) {
+      await context.scopedDb.characters.updateSheetStatus(
+        character.id,
+        'failed',
+        error instanceof Error ? error.message : String(error)
+      );
+      throw error;
+    }
+    return { characterId: character.id, workflowRunId };
+  });
+
+/** Live sheet staleness for the character detail banner. */
+export const getCharacterSheetStalenessFn = createServerFn({ method: 'GET' })
+  .middleware([sequenceAccessMiddleware])
+  .validator(zodValidator(characterIdInput))
+  .handler(async ({ context, data }): Promise<SheetStaleness> => {
+    const character = await context.scopedDb.characters.getById(
+      data.characterId
+    );
+    if (!character || character.sequenceId !== data.sequenceId) {
+      throw new NotFoundError('Character not found');
+    }
+    if (character.sheetStatus === 'generating') return 'generating';
+    if (character.sheetInputHash == null) return 'untracked';
+
+    const payload = await buildRegenerateCharacterSheetPayload({
+      scopedDb: context.scopedDb,
+      userId: context.user.id,
+      teamId: context.teamId,
+      sequence: context.sequence,
+      character,
+    });
+    if (!payload.snapshotInputHash) return 'untracked';
+    return (await characterSheetHashMatchesStored(
+      character.sheetInputHash,
+      payload
+    ))
+      ? 'fresh'
+      : 'stale';
   });
 
 /** Recast a character with different talent, triggering sheet regeneration */
@@ -67,7 +319,7 @@ export const recastCharacterFn = createServerFn({ method: 'POST' })
       data.characterId
     );
     if (!character) {
-      throw new Error('Character not found');
+      throw new NotFoundError('Character not found');
     }
 
     // Fetch the sequence's style for character sheet generation

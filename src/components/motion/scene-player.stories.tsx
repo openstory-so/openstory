@@ -74,6 +74,7 @@ const mockShot = (spec: {
       durationMs: 5000,
       selectedMotionPromptVersionId: null,
       renderSegmentId: null,
+      deletedAt: null,
       createdAt: now,
       updatedAt: now,
     },
@@ -104,6 +105,7 @@ const mockScene = (orderIndex: number, title: string): SceneWithScript => ({
   continuity: null,
   script: { extract: 'Sample scene text', dialogue: [] },
   selectedScriptVersionId: null,
+  deletedAt: null,
   createdAt: new Date(),
   updatedAt: new Date(),
 });

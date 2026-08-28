@@ -64,6 +64,14 @@ type MusicViewProps = {
    * route via `useSetSequenceMusic`.
    */
   onIncludeMusicChange?: (includeMusic: boolean) => void;
+  /**
+   * Persist a hand-edited music prompt after a track exists (#1108 Phase 4)
+   * WITHOUT regenerating; absent = the completed view stays read-only.
+   */
+  onSaveMusicPrompt?: (prompt: string) => void;
+  isSavingMusicPrompt?: boolean;
+  /** The saved prompt differs from the one the playing track was made with. */
+  promptEditedSinceTrack?: boolean;
 };
 
 type LoadingButtonProps = React.ComponentProps<typeof Button> & {
@@ -167,6 +175,9 @@ export const MusicView: React.FC<MusicViewProps> = ({
   onRegenerateMusicPrompt,
   isRegeneratingMusicPrompt,
   onIncludeMusicChange,
+  onSaveMusicPrompt,
+  isSavingMusicPrompt = false,
+  promptEditedSinceTrack = false,
 }) => {
   const { musicStatus, musicUrl, musicError, musicPrompt, musicTags } =
     sequence;
@@ -280,6 +291,7 @@ export const MusicView: React.FC<MusicViewProps> = ({
   );
 
   if (musicStatus === 'completed' && musicUrl) {
+    const promptDirty = editPrompt.trim() !== (musicPrompt ?? '').trim();
     return (
       <StatusPanel
         icon={<Volume2 className="h-10 w-10 text-muted-foreground" />}
@@ -303,7 +315,54 @@ export const MusicView: React.FC<MusicViewProps> = ({
           />
         </FormField>
 
-        <ReadOnlyField label="Prompt" value={musicPrompt ?? 'Missing prompt'} />
+        {/* Editable after the track exists (#1108 Phase 4): Save persists a
+            user-edit prompt version WITHOUT regenerating — the Regenerate
+            button below stays the explicit re-render path. */}
+        {onSaveMusicPrompt ? (
+          <FormField label="Prompt" htmlFor="music-prompt-completed">
+            <Textarea
+              id="music-prompt-completed"
+              value={editPrompt}
+              onChange={(e) => setEditPrompt(e.target.value)}
+              rows={4}
+              placeholder="Descriptive music prompt…"
+            />
+            {promptEditedSinceTrack && !promptDirty && (
+              <p className="text-xs text-muted-foreground">
+                Edited since this track was generated — Regenerate Music to hear
+                the new prompt.
+              </p>
+            )}
+            {promptDirty && (
+              <div className="flex justify-end gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setEditPrompt(musicPrompt ?? '')}
+                  disabled={isSavingMusicPrompt}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => onSaveMusicPrompt(editPrompt.trim())}
+                  disabled={
+                    isSavingMusicPrompt || editPrompt.trim().length === 0
+                  }
+                >
+                  {isSavingMusicPrompt ? 'Saving…' : 'Save'}
+                </Button>
+              </div>
+            )}
+          </FormField>
+        ) : (
+          <ReadOnlyField
+            label="Prompt"
+            value={musicPrompt ?? 'Missing prompt'}
+          />
+        )}
         <ReadOnlyField label="Tags" value={musicTags ?? 'Missing tags'} />
 
         {onIncludeMusicChange && (

@@ -27,10 +27,9 @@ type SheetStalenessBannersProps = {
 };
 
 /**
- * Sheet-shaped sibling of `shot-staleness-banners.tsx`. Same precedence
- * rules: divergent banner wins, staleness indicator otherwise. Stage 2 ships
- * the divergent path; the staleness path is wired but currently a no-op for
- * sheet entities since the live-hash recompute server fns aren't part of v1.
+ * Sheet-shaped sibling of the shot inspector banners. Same precedence:
+ * divergent banner wins, staleness indicator otherwise. Character/location
+ * detail pages pass `isStale` + `onRegenerate` from get*SheetStalenessFn.
  */
 export const SheetStalenessBanners: React.FC<SheetStalenessBannersProps> = ({
   entityType,

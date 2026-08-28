@@ -38,14 +38,22 @@ function asOptionalNumber(value: unknown): number | undefined {
   return typeof value === 'number' ? value : undefined;
 }
 
-type ShotStatus = 'pending' | 'generating' | 'completed' | 'failed';
+// 'cancelled' (#1108): a video cancel is terminal — storing it clears any
+// 'generating' overlay like the other terminal statuses do.
+type ShotStatus =
+  | 'pending'
+  | 'generating'
+  | 'completed'
+  | 'failed'
+  | 'cancelled';
 
 function asShotStatus(value: unknown): ShotStatus | undefined {
   if (
     value === 'pending' ||
     value === 'generating' ||
     value === 'completed' ||
-    value === 'failed'
+    value === 'failed' ||
+    value === 'cancelled'
   ) {
     return value;
   }
@@ -284,20 +292,18 @@ export function useGenerationStream(
       updateQueryCacheFromEvent(queryClient, sequenceId, eventName, data);
 
       // Live-only (history replay does not use this handler). Tell the user
-      // the still is being retried from a rewritten prompt, and that the
-      // original is still in Versions.
-      if (
-        eventName === 'generation.image:progress' &&
-        data.promptSoftened === true
-      ) {
+      // the still / clip is being retried from a rewritten prompt or on the
+      // fallback model, and that the original is still in Versions (#1272,
+      // motion in #1373).
+      const isMediaProgress =
+        eventName === 'generation.image:progress' ||
+        eventName === 'generation.video:progress';
+      if (isMediaProgress && data.promptSoftened === true) {
         toast.info('Prompt rewritten to pass a content checker', {
           description: 'The original is kept in Versions.',
         });
       }
-      if (
-        eventName === 'generation.image:progress' &&
-        data.modelFallback === true
-      ) {
+      if (isMediaProgress && data.modelFallback === true) {
         toast.info('Retrying on Grok Imagine after the content checker', {
           description: 'The selected model is kept in Versions.',
         });
@@ -360,6 +366,7 @@ export function useGenerationStream(
       'generation.talent:unmatched',
       'generation.location:matched',
       'generation.character-sheet:progress',
+      'generation.location-sheet:progress',
       'generation.poster:ready',
       'generation.style:ready',
       'generation.preview:replaced',

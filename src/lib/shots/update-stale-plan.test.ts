@@ -110,6 +110,9 @@ const realInputHash = await import('@/lib/ai/input-hash');
 vi.doMock('@/lib/ai/input-hash', () => ({
   ...realInputHash,
   computeMusicPromptInputHash: vi.fn(() => Promise.resolve('live-music-hash')),
+  musicPromptInputHashMatches: vi.fn((stored: string | null) =>
+    Promise.resolve(stored === 'live-music-hash')
+  ),
 }));
 
 const { computePlan, claimTargets } = await import('./update-stale-plan');

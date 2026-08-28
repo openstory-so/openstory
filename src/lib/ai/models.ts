@@ -6,6 +6,10 @@
 import type { AnalysisModelId } from '@/lib/ai/models.config';
 import type { AspectRatio } from '@/lib/constants/aspect-ratios';
 import { MOTION_INPUT_SCHEMAS } from '@/lib/motion/endpoint-map';
+// Type-only: the Seedream adapter narrows `model` to a literal union, so the
+// catalog's `byteplusId` has to be that union rather than a bare string —
+// a retired id then fails typecheck instead of at request time (#1157).
+import type { BytePlusImageModel } from '@tanstack/ai-byteplus';
 import { z } from 'zod';
 
 import { getLogger } from '@/lib/observability/logger';
@@ -46,7 +50,7 @@ export const IMAGE_TO_VIDEO_MODELS = {
     id: 'fal-ai/ltx-2.3/image-to-video',
     name: 'LTX 2.3 Pro',
     vendor: 'Lightricks',
-    license: 'open-source' as const,
+    license: 'open-weight' as const,
     qualityRank: 2,
     maxPromptLength: 2500,
     performance: { estimatedGenerationTime: 15, quality: 'best' as const },
@@ -109,9 +113,28 @@ export const IMAGE_TO_VIDEO_MODELS = {
     name: 'Seedance 2.0',
     vendor: 'ByteDance',
     license: 'proprietary' as const,
+    qualityRank: 4,
+    maxPromptLength: 4096,
+    performance: { estimatedGenerationTime: 20, quality: 'best' as const },
+  },
+  seedance_v2_5: {
+    id: 'bytedance/seedance-2.5/image-to-video',
+    name: 'Seedance 2.5',
+    vendor: 'ByteDance',
+    license: 'proprietary' as const,
     qualityRank: 2,
     maxPromptLength: 4096,
     performance: { estimatedGenerationTime: 20, quality: 'best' as const },
+    // Hidden from sequence/studio pickers: public fal 2.5 400s photoreal
+    // faces without Ark `asset://` ingest, and we are not rolling Ark out.
+    // Catalog key stays so a later Ark enablement does not need a rename.
+    hidden: true,
+    // Native BytePlus Ark route (#1157). Must be activated in the Ark console
+    // first — an unopened model answers 404 ModelNotOpen at request time. The
+    // Ark route requests 720p (see BYTEPLUS_RESOLUTION); the rate card's
+    // $10.70/1M-token entry is exact for that tier only. fal has no
+    // enterprise 2.5 (those paths 404); public 2.5 is the fal via.
+    byteplusId: 'dreamina-seedance-2-5-260628' as const,
   },
 } as const;
 
@@ -188,16 +211,16 @@ export const IMAGE_MODELS = {
     id: 'fal-ai/hunyuan-image/v3/text-to-image' as const,
     name: 'Hunyuan Image v3',
     vendor: 'Tencent',
-    license: 'open-source' as const,
+    license: 'open-weight' as const,
     qualityRank: 6,
-    description: 'Open source with strong composition',
+    description: 'Open weights, strong composition',
     maxPromptLength: 2000,
   },
   flux_2_dev: {
     id: 'fal-ai/flux-2' as const,
     name: 'FLUX.2 Dev',
     vendor: 'Black Forest Labs',
-    license: 'open-source' as const,
+    license: 'open-weight' as const,
     qualityRank: 7,
     description: '32B open weights with native editing',
     maxPromptLength: 2000,
@@ -206,7 +229,7 @@ export const IMAGE_MODELS = {
     id: 'fal-ai/qwen-image-2/pro/text-to-image' as const,
     name: 'Qwen Image 2 Pro',
     vendor: 'Alibaba',
-    license: 'open-source' as const,
+    license: 'open-weight' as const,
     qualityRank: 8,
     description: 'Apache 2.0, native 2K, text rendering, editing support',
     maxPromptLength: 2000,
@@ -215,25 +238,31 @@ export const IMAGE_MODELS = {
     id: 'fal-ai/hidream-i1-full' as const,
     name: 'HiDream I1',
     vendor: 'HiDream',
-    license: 'open-source' as const,
+    license: 'open-weight' as const,
     qualityRank: 9,
     description: 'MIT licensed, 17B parameters',
     maxPromptLength: 2000,
   },
   seedream_v5: {
-    id: 'fal-ai/bytedance/seedream/v5/lite/text-to-image' as const,
-    name: 'Seedream 5',
+    id: 'bytedance/seedream/v5/pro/text-to-image' as const,
+    name: 'Seedream 5.0 Pro',
     vendor: 'ByteDance',
     license: 'proprietary' as const,
     qualityRank: 10,
-    description: 'Unified generation and editing',
+    description:
+      'Flagship generation and editing — dense layouts, native text, up to 10 refs',
     maxPromptLength: 2000,
+    // Native BytePlus Ark route (#1157). Ark carries reference images inline
+    // on the generation call, so this route has no separate edit endpoint —
+    // see EDIT_ENDPOINTS, which stays fal-only. Pro, not lite:
+    // dola-seedream-5-0-pro-260628. Lite is seedream-5-0-260128.
+    byteplusId: 'dola-seedream-5-0-pro-260628' as const,
   },
   flux_2_turbo: {
     id: 'fal-ai/flux-2/turbo' as const,
     name: 'FLUX.2 Turbo',
     vendor: 'Black Forest Labs',
-    license: 'open-source' as const,
+    license: 'open-weight' as const,
     qualityRank: 99,
     description: 'Ultra-fast preview generation',
     maxPromptLength: 2000,
@@ -243,7 +272,7 @@ export const IMAGE_MODELS = {
     id: 'fal-ai/krea-2/turbo' as const,
     name: 'Krea 2 Turbo',
     vendor: 'Krea',
-    license: 'open-source' as const,
+    license: 'open-weight' as const,
     qualityRank: 99,
     description: 'Ultra-fast storyboard generation',
     maxPromptLength: 2000,
@@ -274,8 +303,38 @@ export function getImageModelById(id: string): ImageModelConfig | undefined {
   return Object.values(IMAGE_MODELS).find((model) => model.id === id);
 }
 
+/**
+ * The BytePlus Ark model id for a text-to-image model, or undefined when the
+ * model has no native Ark route and always goes through fal (#1157).
+ */
+export function getBytePlusImageModelId(
+  modelKey: TextToImageModel
+): BytePlusImageModel | undefined {
+  const config = IMAGE_MODELS[modelKey];
+  return 'byteplusId' in config ? config.byteplusId : undefined;
+}
+
+export function isNativeBytePlusImageModel(model: TextToImageModel): boolean {
+  return getBytePlusImageModelId(model) !== undefined;
+}
+
 // Image to video model types
 export type ImageToVideoModel = keyof typeof IMAGE_TO_VIDEO_MODELS;
+
+/**
+ * The BytePlus Ark model id for a motion model, or undefined when the model
+ * has no native Ark route and always goes through fal (#1157).
+ */
+export function getBytePlusVideoModelId(
+  modelKey: ImageToVideoModel
+): string | undefined {
+  const config = IMAGE_TO_VIDEO_MODELS[modelKey];
+  return 'byteplusId' in config ? config.byteplusId : undefined;
+}
+
+export function isNativeBytePlusVideoModel(model: ImageToVideoModel): boolean {
+  return getBytePlusVideoModelId(model) !== undefined;
+}
 
 export const DEFAULT_VIDEO_MODEL: ImageToVideoModel = 'seedance_v2';
 
@@ -399,6 +458,7 @@ function getModelsForAspectRatio(
   return Object.keys(IMAGE_TO_VIDEO_MODELS).filter(
     (key): key is ImageToVideoModel =>
       isValidImageToVideoModel(key) &&
+      !('hidden' in IMAGE_TO_VIDEO_MODELS[key]) &&
       isModelCompatibleWithAspectRatio(key, aspectRatio)
   );
 }
@@ -457,7 +517,7 @@ export const AUDIO_MODELS = {
     id: 'fal-ai/ace-step-1.5' as const,
     name: 'ACE-Step 1.5',
     vendor: 'ACE Studio',
-    license: 'open-source' as const,
+    license: 'open-weight' as const,
     qualityRank: 2,
     type: 'music' as const,
     capabilities: {
@@ -477,7 +537,7 @@ export const AUDIO_MODELS = {
     id: 'fal-ai/ace-step/prompt-to-audio' as const,
     name: 'ACE-Step',
     vendor: 'ACE Studio',
-    license: 'open-source' as const,
+    license: 'open-weight' as const,
     qualityRank: 3,
     type: 'music' as const,
     capabilities: {
@@ -548,7 +608,7 @@ export const EDIT_ENDPOINTS: Partial<Record<TextToImageModel, string>> = {
   flux_2_dev: 'fal-ai/flux-2/edit',
   flux_2_turbo: 'fal-ai/flux-2/turbo/edit',
   qwen_image: 'fal-ai/qwen-image-2/pro/edit',
-  seedream_v5: 'fal-ai/bytedance/seedream/v5/lite/edit',
+  seedream_v5: 'bytedance/seedream/v5/pro/edit',
 };
 
 /**
@@ -568,6 +628,8 @@ const EDIT_REFERENCE_LIMITS: Partial<Record<TextToImageModel, number>> = {
   flux_2_turbo: 4,
   grok_imagine_image: 3,
   grok_imagine_image_quality: 3,
+  // Seedream 5.0 Pro: 10 on fal edit and on Ark. Lite was 14.
+  seedream_v5: 10,
 };
 
 /**
@@ -628,6 +690,11 @@ export const MOTION_REFERENCE_ENDPOINTS: Partial<
 > = {
   seedance_v2: {
     endpointId: 'bytedance/seedance-2.0/enterprise/v2/reference-to-video',
+    tag: (position) => `@Image${position}`,
+    maxImages: 9,
+  },
+  seedance_v2_5: {
+    endpointId: 'bytedance/seedance-2.5/reference-to-video',
     tag: (position) => `@Image${position}`,
     maxImages: 9,
   },

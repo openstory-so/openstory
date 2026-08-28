@@ -36,6 +36,10 @@ function CharacterDetailPage() {
   const { id: sequenceId, characterId } = Route.useParams();
 
   return (
-    <CharacterDetailView sequenceId={sequenceId} characterId={characterId} />
+    <CharacterDetailView
+      key={characterId}
+      sequenceId={sequenceId}
+      characterId={characterId}
+    />
   );
 }

@@ -154,6 +154,7 @@ function makeShot({
     durationMs: 3000,
     selectedMotionPromptVersionId: null,
     renderSegmentId: null,
+    deletedAt: null,
     createdAt: NOW,
     updatedAt: NOW,
     ...overrides,
@@ -555,6 +556,32 @@ describe('executeSmartRetry — partial retry status reset', () => {
       retriedItems: ['1 motion video(s)'],
     });
     expect(updateStatus).toHaveBeenCalledWith('completed');
+  });
+
+  test('cancelled motion is NOT a failure — never selected for retry (#1108)', async () => {
+    resetMocks();
+    // Identical to the retriable failed-motion shape above except the status:
+    // a deliberate user cancel must not be re-run and re-billed by Retry
+    // failed. With nothing else failed, smart retry finds no work at all.
+    const shot = makeShot({
+      videoStatus: 'cancelled',
+      imageStatus: 'completed',
+      imageUrl: 'https://cdn/thumb.jpg',
+      motionPrompt: {
+        fullPrompt: 'slow pan across the lab',
+        dialogue: null,
+        audio: null,
+      },
+      durationMs: 5000,
+    });
+    const { context } = makeContext(
+      makeSequence({ status: 'completed', statusError: null }),
+      [shot]
+    );
+
+    await expect(executeSmartRetry(context)).rejects.toThrow();
+    expect(triggerWorkflowMock).not.toHaveBeenCalled();
+    expect(triggerStoryboardMock).not.toHaveBeenCalled();
   });
 
   test('sequence not marked failed → no status write after retrying', async () => {

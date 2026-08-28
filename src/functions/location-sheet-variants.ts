@@ -16,6 +16,60 @@ const variantInputSchema = z.object({
   variantId: ulidSchema,
 });
 
+const locationVersionsInput = z.object({
+  sequenceId: ulidSchema,
+  locationDbId: ulidSchema,
+});
+
+export const listLocationSheetVersionsFn = createServerFn({ method: 'GET' })
+  .middleware([sequenceAccessMiddleware])
+  .validator(zodValidator(locationVersionsInput))
+  .handler(async ({ context, data }) => {
+    const location = await context.scopedDb.sequenceLocations.getById(
+      data.locationDbId
+    );
+    if (!location || location.sequenceId !== context.sequence.id) {
+      throw new Error('Location not found in this sequence');
+    }
+    const rows =
+      await context.scopedDb.locationSheetVariants.listHistoryByParent(
+        'sequence_location',
+        location.id
+      );
+    return {
+      selectedReferenceVersionId: location.selectedReferenceVersionId,
+      versions: rows,
+    };
+  });
+
+export const selectLocationSheetVersionFn = createServerFn({ method: 'POST' })
+  .middleware([sequenceAccessMiddleware])
+  .validator(
+    zodValidator(locationVersionsInput.extend({ versionId: ulidSchema }))
+  )
+  .handler(async ({ context, data }) => {
+    const location = await context.scopedDb.sequenceLocations.getById(
+      data.locationDbId
+    );
+    if (!location || location.sequenceId !== context.sequence.id) {
+      throw new Error('Location not found in this sequence');
+    }
+    const version = await context.scopedDb.locationSheetVariants.select(
+      location.id,
+      data.versionId,
+      { actorId: context.user.id }
+    );
+    try {
+      await getGenerationChannel(context.sequence.id).emit(
+        'generation.location-sheet:progress',
+        { locationId: location.id, status: 'completed' }
+      );
+    } catch (error) {
+      logger.error('realtime emit failed', { err: error });
+    }
+    return { versionId: version.id, locationDbId: location.id };
+  });
+
 /**
  * List active divergent location-sheet alternates across all sequence
  * locations in this sequence. Drives the corner-dot indicator on location
@@ -62,15 +116,10 @@ export const promoteSequenceLocationSheetVariantFn = createServerFn({
       throw new Error('Sequence location not found in this sequence');
     }
 
-    await context.scopedDb.locationSheetVariants.promoteAtomically(
-      'sequence_location',
+    await context.scopedDb.locationSheetVariants.select(
       variant.parentId,
-      {
-        referenceImageUrl: variant.url,
-        referenceImagePath: variant.storagePath,
-        referenceInputHash: variant.inputHash,
-      },
-      variant.id
+      variant.id,
+      { actorId: context.user.id }
     );
 
     try {

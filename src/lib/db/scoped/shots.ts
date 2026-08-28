@@ -4,10 +4,11 @@
  */
 
 import type { Database } from '@/lib/db/client';
-import { frames, scenes, shots } from '@/lib/db/schema';
+import { dbSceneId, frames, scenes, shots } from '@/lib/db/schema';
 import type { NewFrame, Shot, NewShot } from '@/lib/db/schema';
 import type { Sequence } from '@/lib/db/schema/sequences';
-import { and, asc, desc, eq, gte, inArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
+import { buildEventInsert } from './sequence-events';
 
 /**
  * Every shot owns an anchor frame (orderIndex 0, role 'first') — the i2v anchor
@@ -122,6 +123,27 @@ export function createShotsMethods(db: Database) {
       return result[0] ?? null;
     },
 
+    /**
+     * How many shots a render segment covers. A degenerate per-shot segment
+     * covers 1; a scene render (#910) covers several, and a mutation that
+     * targets one shot but writes the SEGMENT's render (a manual clip upload)
+     * would silently replace its siblings' video. Callers guard on this.
+     */
+    countInRenderSegment: async (renderSegmentId: string): Promise<number> => {
+      // Live shots only: a soft-deleted sibling must not block a segment
+      // mutation it can no longer be affected by (#1108).
+      const [row] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(shots)
+        .where(
+          and(
+            eq(shots.renderSegmentId, renderSegmentId),
+            isNull(shots.deletedAt)
+          )
+        );
+      return row?.count ?? 0;
+    },
+
     listBySequence: async (
       sequenceId: string,
       options?: ShotFilters
@@ -133,7 +155,14 @@ export function createShotsMethods(db: Database) {
         offset,
       } = options ?? {};
 
-      const conditions = [eq(shots.sequenceId, sequenceId)];
+      // Default list excludes soft-deleted rows (#1108): the editor, prompt
+      // batches, staleness plans, smart retry, export and theatre all read
+      // through here. Id-addressed reads (getById/getByIds/getWithSequence)
+      // still return deleted rows so restore and admin paths work.
+      const conditions = [
+        eq(shots.sequenceId, sequenceId),
+        isNull(shots.deletedAt),
+      ];
       const orderFn = ascending ? asc : desc;
       const direction = ascending ? sql`ASC` : sql`DESC`;
 
@@ -205,6 +234,9 @@ export function createShotsMethods(db: Database) {
           targetWhere: sql`${shots.sceneId} IS NOT NULL`,
           set: {
             durationMs: sql.raw(`excluded."duration_ms"`),
+            // A re-analysis writing this slot revives a soft-deleted shot —
+            // the new split says the shot exists (#1108).
+            deletedAt: null,
             updatedAt: new Date(),
           },
         })
@@ -222,10 +254,203 @@ export function createShotsMethods(db: Database) {
       }
       return { ...shot, anchorFrameId };
     },
+    /** HARD delete — admin/GC and the storyboard wipe; the product Delete is
+     * {@link softDelete}. */
     delete: async (shotId: string): Promise<boolean> => {
       const result = await db.delete(shots).where(eq(shots.id, shotId));
       // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- DB result may be undefined at runtime
       return (result.rowsAffected ?? 0) > 0;
+    },
+
+    /**
+     * Soft-delete a shot (#1108 Phase 1, undoable): stamp `deletedAt` + a
+     * `shot.deleted` event (prevState for undo) in one batch. Frames,
+     * versions, segment and hashes are retained; `shotNumber` keeps its slot.
+     * Returns the timestamp for the toast Undo; idempotent.
+     */
+    softDelete: async (
+      shotId: string,
+      opts: { actorId: string | null }
+    ): Promise<Date> => {
+      const [existing] = await db
+        .select()
+        .from(shots)
+        .where(eq(shots.id, shotId));
+      if (!existing) {
+        throw new Error(`Shot ${shotId} not found`);
+      }
+      if (existing.deletedAt) return existing.deletedAt;
+      const deletedAt = new Date();
+      await db.batch([
+        db
+          .update(shots)
+          .set({ deletedAt, updatedAt: deletedAt })
+          .where(eq(shots.id, shotId)),
+        buildEventInsert(db, {
+          sequenceId: existing.sequenceId,
+          actorId: opts.actorId,
+          kind: 'shot.deleted',
+          targetType: 'shot',
+          targetId: shotId,
+          summary: 'Removed shot',
+          data: {
+            prevState: {
+              sceneId: existing.sceneId ?? null,
+              shotNumber: existing.shotNumber ?? null,
+            },
+          },
+        }),
+      ]);
+      return deletedAt;
+    },
+
+    /**
+     * Undo a shot soft-delete. Refuses while the parent scene is itself
+     * soft-deleted — a live shot inside a hidden scene is unrepresentable in
+     * every read path; restore the scene (which restores its shots) instead.
+     */
+    restore: async (
+      shotId: string,
+      opts: { actorId: string | null }
+    ): Promise<Shot> => {
+      const [existing] = await db
+        .select()
+        .from(shots)
+        .where(eq(shots.id, shotId));
+      if (!existing) {
+        throw new Error(`Shot ${shotId} not found`);
+      }
+      if (existing.sceneId) {
+        const [scene] = await db
+          .select({ deletedAt: scenes.deletedAt })
+          .from(scenes)
+          .where(eq(scenes.id, dbSceneId(existing.sceneId)));
+        if (scene?.deletedAt) {
+          throw new Error(
+            'Cannot restore a shot inside a deleted scene — restore the scene instead'
+          );
+        }
+      }
+      const now = new Date();
+      const [restoredRows] = await db.batch([
+        db
+          .update(shots)
+          .set({ deletedAt: null, updatedAt: now })
+          .where(eq(shots.id, shotId))
+          .returning(),
+        buildEventInsert(db, {
+          sequenceId: existing.sequenceId,
+          actorId: opts.actorId,
+          kind: 'shot.restored',
+          targetType: 'shot',
+          targetId: shotId,
+          data: { shotId },
+        }),
+      ]);
+      const restored = restoredRows[0];
+      if (!restored) {
+        throw new Error(`Shot ${shotId} disappeared during restore`);
+      }
+      return restored;
+    },
+
+    /**
+     * Highest `shotNumber` in a scene across ALL rows (deleted included —
+     * their slots stay reserved), or 0. Create appends at max + 1.
+     */
+    getMaxShotNumber: async (sceneId: string): Promise<number> => {
+      const [row] = await db
+        .select({ max: sql<number | null>`max(${shots.shotNumber})` })
+        .from(shots)
+        .where(eq(shots.sceneId, sceneId));
+      return row?.max ?? 0;
+    },
+
+    /**
+     * Reorder the LIVE shots of one scene (#1108 Phase 1). `orderedIds` must
+     * be exactly the scene's live shot ids in their new order; live rows get
+     * shotNumber 1..n and soft-deleted rows are renumbered after them
+     * (relative order kept) so `(sceneId, shotNumber)` can never collide with
+     * a hidden row. Two passes (negative park, then final) in ONE `db.batch()`
+     * + a `shots.reordered` event carrying the prior order. A pure reorder
+     * changes no content hash.
+     */
+    reorderInScene: async (
+      sceneId: string,
+      orderedIds: string[],
+      opts: { actorId: string | null }
+    ): Promise<void> => {
+      const allRows = await db
+        .select({
+          id: shots.id,
+          sequenceId: shots.sequenceId,
+          shotNumber: shots.shotNumber,
+          deletedAt: shots.deletedAt,
+        })
+        .from(shots)
+        .where(eq(shots.sceneId, sceneId))
+        .orderBy(asc(shots.shotNumber));
+      const liveIds = allRows.filter((r) => !r.deletedAt).map((r) => r.id);
+      if (
+        orderedIds.length !== liveIds.length ||
+        new Set(orderedIds).size !== orderedIds.length ||
+        !orderedIds.every((id) => liveIds.includes(id))
+      ) {
+        throw new Error(
+          'Reorder must list every live shot of the scene exactly once'
+        );
+      }
+      const sequenceId = allRows[0]?.sequenceId;
+      if (!sequenceId) return;
+      const deletedRows = allRows.filter((r) => r.deletedAt);
+      const finalOrder = [
+        ...orderedIds.map((id, i) => ({ id, shotNumber: i + 1 })),
+        ...deletedRows.map((r, i) => ({
+          id: r.id,
+          shotNumber: orderedIds.length + i + 1,
+        })),
+      ];
+      const changed = finalOrder.filter((f) => {
+        const current = allRows.find((r) => r.id === f.id);
+        return current?.shotNumber !== f.shotNumber;
+      });
+      if (changed.length === 0) return;
+
+      const now = new Date();
+      const park = finalOrder.map((f, i) =>
+        db
+          .update(shots)
+          .set({ shotNumber: -(i + 1), updatedAt: now })
+          .where(eq(shots.id, f.id))
+      );
+      const place = finalOrder.map((f) =>
+        db
+          .update(shots)
+          .set({ shotNumber: f.shotNumber, updatedAt: now })
+          .where(eq(shots.id, f.id))
+      );
+      // Event first so the batch tuple is statically non-empty; one
+      // transaction, so only park-before-place ordering matters.
+      await db.batch([
+        buildEventInsert(db, {
+          sequenceId,
+          actorId: opts.actorId,
+          kind: 'shots.reordered',
+          targetType: 'scene',
+          targetId: sceneId,
+          summary: 'Reordered shots',
+          data: {
+            prevState: {
+              order: allRows.map((r) => ({
+                shotId: r.id,
+                shotNumber: r.shotNumber,
+              })),
+            },
+          },
+        }),
+        ...park,
+        ...place,
+      ]);
     },
 
     deleteBySequence: async (sequenceId: string): Promise<number> => {
@@ -295,6 +520,7 @@ export function createShotsMethods(db: Database) {
             targetWhere: sql`${shots.sceneId} IS NOT NULL`,
             set: {
               durationMs: sql.raw(`excluded."duration_ms"`),
+              deletedAt: null,
               updatedAt: new Date(),
             },
           })

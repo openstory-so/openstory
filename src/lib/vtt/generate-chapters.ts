@@ -1,4 +1,5 @@
 import type { SceneRow } from '@/lib/db/schema';
+import { plainSceneTitle } from '@/lib/utils/markdown-plain';
 import type { Shot } from '@/types/database';
 
 /** A shot paired with the scene it belongs to (null when it has none). */
@@ -58,7 +59,7 @@ export function generateChaptersVTT(
     const endTime = cumulativeTime + duration;
 
     const sceneNumber = scene ? scene.orderIndex + 1 : i + 1;
-    const sceneTitle = scene?.title ?? `Scene ${i + 1}`;
+    const sceneTitle = plainSceneTitle(scene?.title) || `Scene ${i + 1}`;
 
     // Format: "Scene {number}: {title}"
     const chapterTitle = `Scene ${sceneNumber}: ${escapeVTTText(sceneTitle)}`;

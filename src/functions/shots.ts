@@ -35,6 +35,7 @@ import {
   updateShotSchema,
 } from '@/lib/schemas/shot.schemas';
 import { dbSceneId } from '@/lib/db/schema';
+import { NotFoundError } from '@/lib/errors';
 import { ulidSchema } from '@/lib/schemas/id.schemas';
 import { typedFromEntries } from '@/lib/utils/typed-object';
 import {
@@ -387,11 +388,44 @@ export const getSequenceSelectedModelsFn = createServerFn({ method: 'GET' })
     };
   });
 
+/** Live shot may only land in a live scene of this sequence. Exported for tests. */
+export function requireWritableScene(
+  scene: { sequenceId: string; deletedAt: Date | null } | null,
+  sequenceId: string
+): void {
+  if (!scene || scene.sequenceId !== sequenceId || scene.deletedAt !== null) {
+    throw new NotFoundError('Scene not found in this sequence');
+  }
+}
+
 export const createShotFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
   .validator(zodValidator(singleShotSchema.extend({ sequenceId: ulidSchema })))
   .handler(async ({ data, context }) => {
-    return context.scopedDb.shots.create(data);
+    if (data.sceneId) {
+      const scene = await context.scopedDb.scenes.getById(
+        dbSceneId(data.sceneId)
+      );
+      requireWritableScene(scene, context.sequence.id);
+    }
+    // Auto-number within the scene when the caller didn't pick a slot (#1108):
+    // max over ALL rows (deleted keep their slots) + 1, so a manual add never
+    // collides with the `(sceneId, shotNumber)` unique index.
+    const shotNumber =
+      data.shotNumber ??
+      (data.sceneId
+        ? (await context.scopedDb.shots.getMaxShotNumber(data.sceneId)) + 1
+        : null);
+    const shot = await context.scopedDb.shots.create({ ...data, shotNumber });
+    await context.scopedDb.sequenceEvents.record({
+      sequenceId: data.sequenceId,
+      actorId: context.user.id,
+      kind: 'shot.created',
+      targetType: 'shot',
+      targetId: shot.id,
+      data: { sceneId: shot.sceneId ?? null, shotNumber: shot.shotNumber },
+    });
+    return shot;
   });
 
 export const createShotsBulkFn = createServerFn({ method: 'POST' })
@@ -543,12 +577,67 @@ export const updateShotDurationFn = createServerFn({ method: 'POST' })
     return updated ?? shot;
   });
 
+/**
+ * Product delete is a SOFT delete since #1108 — the shot vanishes from the
+ * editor/plans/export but keeps its frames, versions and hashes for a
+ * lossless `restoreShotFn` (toast Undo). The hard scoped `delete` remains for
+ * the storyboard wipe and admin/GC.
+ */
 export const deleteShotFn = createServerFn({ method: 'POST' })
   .middleware([shotAccessMiddleware])
   .validator(zodValidator(shotIdInputSchema))
   .handler(async ({ data, context }) => {
-    await context.scopedDb.shots.delete(data.shotId);
-    return { success: true, sequenceId: data.sequenceId };
+    const deletedAt = await context.scopedDb.shots.softDelete(data.shotId, {
+      actorId: context.user.id,
+    });
+    return { success: true, sequenceId: data.sequenceId, deletedAt };
+  });
+
+/** Undo a shot soft-delete. Refuses while the parent scene is deleted. */
+export const restoreShotFn = createServerFn({ method: 'POST' })
+  .middleware([sequenceAccessMiddleware])
+  .validator(
+    zodValidator(z.object({ sequenceId: ulidSchema, shotId: ulidSchema }))
+  )
+  .handler(async ({ data, context }) => {
+    // sequenceAccessMiddleware (not shotAccessMiddleware): the shot-scoped
+    // middleware resolves scene context a hidden shot doesn't need, and this
+    // must work on exactly the rows the default reads hide.
+    const shot = await context.scopedDb.shots.getById(data.shotId);
+    if (!shot || shot.sequenceId !== context.sequence.id) {
+      throw new NotFoundError('Shot not found in this sequence');
+    }
+    return await context.scopedDb.shots.restore(data.shotId, {
+      actorId: context.user.id,
+    });
+  });
+
+/**
+ * Reorder the live shots of one scene; a pure reorder changes no content
+ * hash (position left the prompt-hash surface in v5).
+ */
+export const reorderShotsFn = createServerFn({ method: 'POST' })
+  .middleware([sequenceAccessMiddleware])
+  .validator(
+    zodValidator(
+      z.object({
+        sequenceId: ulidSchema,
+        sceneId: ulidSchema,
+        shotIds: z.array(ulidSchema).min(1),
+      })
+    )
+  )
+  .handler(async ({ data, context }) => {
+    const scene = await context.scopedDb.scenes.getById(
+      dbSceneId(data.sceneId)
+    );
+    if (!scene || scene.sequenceId !== context.sequence.id) {
+      throw new NotFoundError('Scene not found in this sequence');
+    }
+    await context.scopedDb.shots.reorderInScene(data.sceneId, data.shotIds, {
+      actorId: context.user.id,
+    });
+    return { success: true };
   });
 
 export const deleteShotsBySequenceFn = createServerFn({ method: 'POST' })

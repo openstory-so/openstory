@@ -216,7 +216,8 @@ export class RecastLocationWorkflow extends OpenStoryWorkflowEntrypoint<RecastLo
       input,
       {
         imageUrl: referenceImageUrl,
-        inputHash: sheetBody.snapshotInputHash ?? null,
+        inputHash:
+          sheetResult.sheetVersionId ?? sheetBody.snapshotInputHash ?? null,
       }
     );
 

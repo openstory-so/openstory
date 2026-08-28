@@ -1104,6 +1104,38 @@ describe("frameVariants kind: 'preview' (#1101)", () => {
     ]);
   });
 
+  it('still lists in-flight and all-failed models (#1133)', async () => {
+    const m = createFrameVariantsMethods(db);
+    // Neither has a url, so the blunt `url IS NOT NULL` filter would hide both:
+    // an in-flight render would drop out of the model bar until its image
+    // landed, and a model whose attempts all failed would hide the failure.
+    await db.insert(frameVariants).values([
+      {
+        id: 'inflight-row',
+        frameId,
+        sequenceId,
+        kind: 'model',
+        model: 'gpt_image_2',
+        status: 'generating',
+        url: null,
+      },
+      {
+        id: 'allfailed-row',
+        frameId,
+        sequenceId,
+        kind: 'model',
+        model: 'flux_2_dev',
+        status: 'failed',
+        url: null,
+      },
+    ]);
+
+    expect((await m.listModelsForSequence(sequenceId)).sort()).toEqual([
+      'flux_2_dev',
+      'gpt_image_2',
+    ]);
+  });
+
   it('orders by createdAt, so a non-ULID legacy id cannot win (#1132)', async () => {
     const m = createFrameVariantsMethods(db);
     const real = await m.recordPreview({

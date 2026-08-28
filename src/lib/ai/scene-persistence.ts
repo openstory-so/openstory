@@ -13,6 +13,7 @@
  */
 
 import type { DbSceneId, NewScene, SceneRow } from '@/lib/db/schema';
+import { plainSceneTitle } from '@/lib/utils/markdown-plain';
 import type { Scene } from './scene-analysis.schema';
 
 /**
@@ -36,7 +37,7 @@ export function buildSceneInsert(
     location: scene.metadata?.location ?? null,
     timeOfDay: scene.metadata?.timeOfDay ?? null,
     storyBeat: scene.metadata?.storyBeat ?? null,
-    title: scene.metadata?.title ?? null,
+    title: plainSceneTitle(scene.metadata?.title) || null,
     continuity: scene.continuity ?? null,
   };
 }

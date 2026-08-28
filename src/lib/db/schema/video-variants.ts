@@ -36,7 +36,15 @@ import { renderSegments } from './render-segments';
 import { sequences } from './sequences';
 import { SHOT_GENERATION_STATUSES } from './shots';
 
-type VideoGenerationStatus = (typeof SHOT_GENERATION_STATUSES)[number];
+// Video rows extend the shared generation statuses with 'cancelled' (#1108
+// Phase 4, mirroring frame_variants): a user cancel is deliberate abandonment,
+// distinct from 'failed' — smart retry and the failure surfaces match on
+// 'failed' only, so a cancel is never auto-re-run and re-billed.
+const VIDEO_VARIANT_STATUSES = [
+  ...SHOT_GENERATION_STATUSES,
+  'cancelled',
+] as const;
+type VideoGenerationStatus = (typeof VIDEO_VARIANT_STATUSES)[number];
 
 /**
  * One covered shot in a render's manifest — a snapshot of the inputs that shot

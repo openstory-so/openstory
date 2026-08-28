@@ -1,0 +1,24 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use @Image1 as the starting frame.\nStatic locked-off eye-level shot. The express train keeps blasting past behind SCARLETT on the right, its doors and windows strobing hard bands of light across her. She leans a fraction toward the moving steel, raised right hand touching her hair as she tries to catch her reflection, holds it a beat, then straightens, laughs and gives up with a small shrug, settling her weight and glancing straight into the lens.\n\nHer hair lifts and whips in the tunnel wind, jacket hem and tote strap swaying. Steam drifts from the tunnel mouth on the left; the strobing light flickers across the tiled columns.\n\nsubway platform roar, express train thundering past, tunnel wind rush, echoing station reverb. steel wheels shrieking on rails, gust of tunnel wind, brief exhaled laugh, boot scuff on platform tile.\n\nNo BGM, no music. Generate only dialogue, environmental sounds, and action sounds. Single continuous shot, no cuts. Avoid jitter and bent limbs.\n\nReference images:\n@Image2: SCARLETT VEGA — keep visually consistent throughout the shot.\n@Image3: CORAL_LIPSTICK - A squat — keep visually consistent throughout the shot.",
+        "model": "bytedance/seedance-2.0/enterprise/v2/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://v3b.fal.media/files/b/0aa74e9b/inutqIBALbw1-6OjjXqkB_video.mp4",
+            "content_type": "video/mp4",
+            "file_name": "video.mp4",
+            "file_size": 2167629
+          },
+          "seed": 267081767
+        },
+        "status": 200,
+        "billableUnits": 108.9
+      }
+    }
+  ]
+}

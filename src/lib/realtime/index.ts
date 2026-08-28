@@ -189,10 +189,18 @@ export const realtimeSchema = {
       variantImageUrl: z.string().optional(),
     }),
 
-    // Video generation progress
+    // Video generation progress. 'cancelled' (#1108): a user cancelled the
+    // in-flight render — terminal, neutral (no failure banner), never
+    // retriable.
     'video:progress': z.object({
       shotId: z.string(),
-      status: z.enum(['pending', 'generating', 'completed', 'failed']),
+      status: z.enum([
+        'pending',
+        'generating',
+        'completed',
+        'failed',
+        'cancelled',
+      ]),
       videoUrl: z.string().optional(),
       // In-flight retry state (#882) — see `image:progress` above. Emitted
       // before a retry attempt with `status` still `generating`.
@@ -212,6 +220,11 @@ export const realtimeSchema = {
       // Failure reason — carried on `failed` so the cache updater writes
       // `shots.videoError` live (see image:progress.error above). (#881)
       error: z.string().optional(),
+      // Content-checker rescue (#1373) — see image:progress above. Set on the
+      // retrying emit when this run appended a `softened` motion prompt
+      // version / swapped the clip to the fallback video model.
+      promptSoftened: z.boolean().optional(),
+      modelFallback: z.boolean().optional(),
     }),
 
     // Audio/music generation progress (shotId optional for sequence-level music)

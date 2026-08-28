@@ -72,6 +72,13 @@ export const sequenceLocations = snakeCase.table(
     }),
     referenceError: text(),
     referenceInputHash: text(),
+    // Soft pointer to the live `location_sheet_variants` row (#1108 sheet
+    // versions). No FK — same cycle-avoidance as frames.selectedImageVersionId.
+    selectedReferenceVersionId: text(),
+    // Soft-remove from the sequence (#1108 Phase 2, undoable). Mirrors
+    // `characters.deletedAt` — excluded from default lists / bibles, restore
+    // is lossless, scene continuity tags are not stripped.
+    deletedAt: integer({ mode: 'timestamp' }),
     // Timestamps
     createdAt: integer({ mode: 'timestamp' })
       .$defaultFn(() => new Date())
@@ -106,6 +113,7 @@ export type SequenceLocationMinimal = Pick<
   | 'referenceImageUrl'
   | 'referenceStatus'
   | 'referenceInputHash'
+  | 'selectedReferenceVersionId'
   | 'description'
   | 'consistencyTag'
 >;

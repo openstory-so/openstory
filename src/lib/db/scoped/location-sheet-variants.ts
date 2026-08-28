@@ -8,18 +8,21 @@
  */
 
 import type { Database } from '@/lib/db/client';
+import { generateId } from '@/lib/db/id';
 import type {
   LocationSheetVariant,
   LocationSheetVariantParentType,
   NewLocationSheetVariant,
+  SequenceLocation,
 } from '@/lib/db/schema';
 import {
   locationLibrary,
   locationSheetVariants,
   sequenceLocations,
 } from '@/lib/db/schema';
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { insertDivergentRaceTolerant } from './divergent-insert';
+import { buildEventInsert } from './sequence-events';
 
 type PromoteLocationUpdate = {
   referenceImageUrl: string | null;
@@ -110,6 +113,194 @@ export function createLocationSheetVariantsMethods(db: Database) {
         .from(locationSheetVariants)
         .where(eq(locationSheetVariants.id, variantId));
       return result[0] ?? null;
+    },
+
+    /** Completed, not discarded, oldest-first (left-to-right v1, v2, …). */
+    listHistoryByParent: async (
+      parentType: LocationSheetVariantParentType,
+      parentId: string
+    ): Promise<LocationSheetVariant[]> => {
+      return db
+        .select()
+        .from(locationSheetVariants)
+        .where(
+          and(
+            eq(locationSheetVariants.parentType, parentType),
+            eq(locationSheetVariants.parentId, parentId),
+            eq(locationSheetVariants.status, 'completed'),
+            isNull(locationSheetVariants.discardedAt)
+          )
+        )
+        .orderBy(
+          asc(locationSheetVariants.createdAt),
+          asc(locationSheetVariants.id)
+        );
+    },
+
+    /**
+     * Sequence-location only: append a completed version and select it.
+     * Library locations keep the overwrite `locationLibrary.updateReference`
+     * path — they are not in this versioning surface.
+     */
+    applyConvergent: async (args: {
+      locationDbId: string;
+      url: string;
+      storagePath: string;
+      inputHash: string | null;
+      model: string;
+      workflowRunId?: string | null;
+    }): Promise<{
+      location: SequenceLocation;
+      version: LocationSheetVariant;
+    }> => {
+      const {
+        locationDbId,
+        url,
+        storagePath,
+        inputHash,
+        model,
+        workflowRunId,
+      } = args;
+      const [existing] = await db
+        .select()
+        .from(sequenceLocations)
+        .where(eq(sequenceLocations.id, locationDbId));
+      if (!existing) {
+        throw new Error(`SequenceLocation ${locationDbId} not found`);
+      }
+
+      if (existing.referenceImageUrl && !existing.selectedReferenceVersionId) {
+        await db.insert(locationSheetVariants).values({
+          id: generateId(),
+          parentType: 'sequence_location',
+          parentId: locationDbId,
+          model: 'prior',
+          url: existing.referenceImageUrl,
+          storagePath: existing.referenceImagePath,
+          status: 'completed',
+          generatedAt: existing.referenceGeneratedAt ?? existing.updatedAt,
+          inputHash: existing.referenceInputHash,
+        });
+      }
+
+      const now = new Date();
+      const [version] = await db
+        .insert(locationSheetVariants)
+        .values({
+          id: generateId(),
+          parentType: 'sequence_location',
+          parentId: locationDbId,
+          model,
+          url,
+          storagePath,
+          status: 'completed',
+          workflowRunId: workflowRunId ?? null,
+          generatedAt: now,
+          inputHash,
+        })
+        .returning();
+      if (!version) {
+        throw new Error('Failed to insert location sheet version');
+      }
+
+      const [location] = await db
+        .update(sequenceLocations)
+        .set({
+          referenceImageUrl: url,
+          referenceImagePath: storagePath,
+          referenceStatus: 'completed',
+          referenceGeneratedAt: now,
+          referenceError: null,
+          referenceInputHash: inputHash,
+          selectedReferenceVersionId: version.id,
+          updatedAt: now,
+        })
+        .where(eq(sequenceLocations.id, locationDbId))
+        .returning();
+      if (!location) {
+        throw new Error(
+          `SequenceLocation ${locationDbId} disappeared during apply`
+        );
+      }
+      return { location, version };
+    },
+
+    select: async (
+      locationDbId: string,
+      versionId: string,
+      opts: { actorId: string | null }
+    ): Promise<LocationSheetVariant> => {
+      const [version] = await db
+        .select()
+        .from(locationSheetVariants)
+        .where(
+          and(
+            eq(locationSheetVariants.id, versionId),
+            eq(locationSheetVariants.parentType, 'sequence_location'),
+            eq(locationSheetVariants.parentId, locationDbId)
+          )
+        );
+      if (!version) {
+        throw new Error(
+          `LocationSheetVariant ${versionId} not found for location ${locationDbId}`
+        );
+      }
+      if (version.status !== 'completed' || !version.url) {
+        throw new Error(
+          `LocationSheetVariant ${versionId} is '${version.status}', not a completed image`
+        );
+      }
+      if (version.discardedAt) {
+        throw new Error(
+          `LocationSheetVariant ${versionId} is discarded — restore it first`
+        );
+      }
+
+      const [existing] = await db
+        .select()
+        .from(sequenceLocations)
+        .where(eq(sequenceLocations.id, locationDbId));
+      if (!existing) {
+        throw new Error(`SequenceLocation ${locationDbId} not found`);
+      }
+
+      const now = new Date();
+      await db.batch([
+        db
+          .update(sequenceLocations)
+          .set({
+            referenceImageUrl: version.url,
+            referenceImagePath: version.storagePath,
+            referenceStatus: 'completed',
+            referenceGeneratedAt: version.generatedAt ?? now,
+            referenceError: null,
+            referenceInputHash: version.inputHash,
+            selectedReferenceVersionId: version.id,
+            updatedAt: now,
+          })
+          .where(eq(sequenceLocations.id, locationDbId)),
+        db
+          .update(locationSheetVariants)
+          .set({ divergedAt: null, updatedAt: now })
+          .where(eq(locationSheetVariants.id, versionId)),
+        buildEventInsert(db, {
+          sequenceId: existing.sequenceId,
+          actorId: opts.actorId,
+          kind: 'sheet.selected',
+          targetType: 'location',
+          targetId: locationDbId,
+          summary: `Selected reference version for ${existing.name}`,
+          data: {
+            prevState: {
+              selectedReferenceVersionId: existing.selectedReferenceVersionId,
+              referenceImageUrl: existing.referenceImageUrl,
+              referenceInputHash: existing.referenceInputHash,
+            },
+            versionId,
+          },
+        }),
+      ]);
+      return { ...version, divergedAt: null };
     },
 
     insert: async (

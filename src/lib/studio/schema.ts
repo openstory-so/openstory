@@ -40,10 +40,15 @@ const imageModelKeySchema = z
     { message: 'Unknown image model' }
   );
 
+const visibleVideoModelKeys = Object.entries(IMAGE_TO_VIDEO_MODELS)
+  .filter(([, model]) => !('hidden' in model))
+  .map(([key]) => key);
+
 const videoModelKeySchema = z
   .string()
   .refine(
-    (value): value is ImageToVideoModel => isValidImageToVideoModel(value),
+    (value): value is ImageToVideoModel =>
+      isValidImageToVideoModel(value) && visibleVideoModelKeys.includes(value),
     { message: 'Unknown video model' }
   );
 

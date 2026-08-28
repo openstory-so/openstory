@@ -2,6 +2,9 @@ import {
   computeMotionPromptInputHash,
   computeMusicPromptInputHash,
   computeVisualPromptInputHash,
+  motionPromptInputHashMatches,
+  musicPromptInputHashMatches,
+  visualPromptInputHashMatches,
 } from '@/lib/ai/input-hash';
 import {
   DEFAULT_ANALYSIS_MODEL,
@@ -531,7 +534,12 @@ export const regenerateShotPromptFn = createServerFn({ method: 'POST' })
             ?.inputHash ?? null)
         : ((await scopedDb.shotPromptVersions.getSelectedMotion(shot.id))
             ?.inputHash ?? null);
-    if (!data.force && isPromptUpToDate(storedHash, liveHash)) {
+    if (
+      !data.force &&
+      (data.promptType === 'visual'
+        ? await visualPromptInputHashMatches(storedHash, narrowed)
+        : await motionPromptInputHashMatches(storedHash, narrowed))
+    ) {
       return {
         workflowRunId: null,
         alreadyUpToDate: true,
@@ -721,6 +729,59 @@ export const regenerateShotPromptFn = createServerFn({ method: 'POST' })
     } as const;
   });
 
+const saveMusicPromptInput = z.object({
+  sequenceId: ulidSchema,
+  prompt: z.string().trim().min(1).max(5000),
+  tags: z.string().trim().max(1000).optional(),
+});
+
+/**
+ * Persist a hand-edited music prompt WITHOUT regenerating the track (#1108
+ * Phase 4 — "editable after the track exists"). Appends a `user-edit`
+ * `sequence_music_prompt_versions` row and mirrors it onto
+ * `sequences.musicPrompt`/`musicTags` (the scoped write does both). A
+ * user-edit carries no upstream hash, so music-prompt staleness reads
+ * 'untracked' until the next AI regeneration — never falsely fresh or stale.
+ * The existing track keeps playing; whether it matches the new prompt is the
+ * user's call (Generate music re-renders on demand — no forced regen).
+ */
+export const saveMusicPromptFn = createServerFn({ method: 'POST' })
+  .middleware([sequenceAccessMiddleware])
+  .validator(zodValidator(saveMusicPromptInput))
+  .handler(async ({ context, data }) => {
+    const { sequence, scopedDb, user } = context;
+    const nextTags = data.tags ?? sequence.musicTags ?? null;
+    if (
+      data.prompt === (sequence.musicPrompt ?? '') &&
+      nextTags === (sequence.musicTags ?? null)
+    ) {
+      return { unchanged: true } as const;
+    }
+    const version = await scopedDb.sequenceMusicPromptVersions.write({
+      sequenceId: sequence.id,
+      prompt: data.prompt,
+      tags: nextTags,
+      source: 'user-edit',
+      createdBy: user.id,
+    });
+    await scopedDb.sequenceEvents.record({
+      sequenceId: sequence.id,
+      actorId: user.id,
+      kind: 'music-prompt.edited',
+      targetType: 'sequence',
+      targetId: sequence.id,
+      summary: 'Edited music prompt',
+      data: {
+        versionId: version.id,
+        prevState: {
+          prompt: sequence.musicPrompt ?? null,
+          tags: sequence.musicTags ?? null,
+        },
+      },
+    });
+    return { unchanged: false, versionId: version.id } as const;
+  });
+
 const sequenceRegenerateInput = z.object({ sequenceId: ulidSchema });
 
 export const regenerateMusicPromptFn = createServerFn({ method: 'POST' })
@@ -753,7 +814,12 @@ export const regenerateMusicPromptFn = createServerFn({ method: 'POST' })
       sceneSummaries,
       analysisModel: analysisModelId,
     });
-    if (isPromptUpToDate(sequence.musicPromptInputHash, liveHash)) {
+    if (
+      await musicPromptInputHashMatches(sequence.musicPromptInputHash, {
+        sceneSummaries,
+        analysisModel: analysisModelId,
+      })
+    ) {
       return { workflowRunId: null, alreadyUpToDate: true } as const;
     }
 
@@ -823,16 +889,13 @@ export const getMusicPromptStalenessFn = createServerFn({ method: 'GET' })
         getAnalysisModelById(sequence.analysisModel)?.id ??
         DEFAULT_ANALYSIS_MODEL;
 
-      const liveHash = await computeMusicPromptInputHash({
-        sceneSummaries,
-        analysisModel,
-      });
+      const musicUpToDate = await musicPromptInputHashMatches(
+        sequence.musicPromptInputHash,
+        { sceneSummaries, analysisModel }
+      );
 
       return {
-        musicPrompt:
-          liveHash !== sequence.musicPromptInputHash
-            ? ('stale' as const)
-            : ('fresh' as const),
+        musicPrompt: musicUpToDate ? ('fresh' as const) : ('stale' as const),
       };
     } catch (error) {
       // Hash uncomputable (e.g., scene metadata missing a required field).

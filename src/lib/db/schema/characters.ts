@@ -65,6 +65,16 @@ export const characters = snakeCase.table(
     sheetGeneratedAt: integer({ mode: 'timestamp' }),
     sheetError: text(),
     sheetInputHash: text(),
+    // Soft pointer to the live `character_sheet_variants` row (#1108 sheet
+    // versions). No FK — same cycle-avoidance as frames.selectedImageVersionId.
+    // Null on legacy rows that predate versioning; the live image still lives
+    // on sheetImageUrl as a denormalized mirror of the selected version.
+    selectedSheetVersionId: text(),
+    // Soft-remove from the sequence (#1108 Phase 2, undoable). Deleted rows
+    // are excluded from default lists / prompt-context bibles but keep their
+    // sheet + bible fields, so restore is lossless. Continuity tags on scenes
+    // are NOT stripped on delete (plan §1: leave tags + warning).
+    deletedAt: integer({ mode: 'timestamp' }),
     // Timestamps
     createdAt: integer({ mode: 'timestamp' })
       .$defaultFn(() => new Date())
@@ -96,6 +106,7 @@ export type CharacterMinimal = Pick<
   | 'sheetImageUrl'
   | 'sheetStatus'
   | 'sheetInputHash'
+  | 'selectedSheetVersionId'
   | 'physicalDescription'
   | 'consistencyTag'
 >;

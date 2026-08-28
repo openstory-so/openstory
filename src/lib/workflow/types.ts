@@ -880,6 +880,12 @@ export interface CharacterSheetWorkflowResult {
   characterDbId?: string;
   sheetImagePath?: string;
   /**
+   * The live `character_sheet_variants` row selected on a convergent write.
+   * Recast substitutes this into still hashes (version id is the sheet
+   * identity). Absent on divergent / first-gen-null-hash paths.
+   */
+  sheetVersionId?: string | null;
+  /**
    * The run diverged: `sheetImageUrl` is a parked variant and the character's
    * PRIMARY sheet is unchanged. Without this a parent cannot tell the two
    * paths apart — both return a URL in the same field — and would cascade
@@ -1008,6 +1014,8 @@ export interface LocationSheetWorkflowResult {
   referenceImageUrl: string;
   locationDbId?: string;
   referenceImagePath?: string;
+  /** Live `location_sheet_variants` id after a convergent write. */
+  sheetVersionId?: string | null;
   /**
    * The run diverged: `referenceImageUrl` is a parked variant and the
    * location's PRIMARY reference is unchanged. @see
@@ -1346,6 +1354,15 @@ export interface ShotImagesWorkflowResult {
    * wrong scene.
    */
   imageUrls: (string | null)[];
+  /**
+   * Primary `frame_variants` version id per scene, ALIGNED to `imageUrls`.
+   * Null slot = that scene's image failed. Threaded into the motion-batch
+   * payload so the clip's manifest names the still it actually rendered from
+   * (#1380). Optional only so an in-flight child from a pre-#1380 build
+   * (URLs only) still type-checks at the parent; treat a missing array as
+   * all-null.
+   */
+  frameVersionIds?: (string | null)[];
 }
 
 /**
@@ -1397,6 +1414,15 @@ export interface MotionMusicPromptsWorkflowResult {
    * by the per-scene child.
    */
   motionPromptsBySceneId: Record<string, MotionPrompt>;
+  /**
+   * The `shot_prompt_versions` id each per-scene child left live, keyed by
+   * `sceneId`. Analyze-script pins this onto the motion-batch payload so the
+   * clip's manifest names the prompt it rendered from (#1380). Null when the
+   * child persisted nothing (no shot, or the claim was cancelled). Optional
+   * only so an in-flight child from a pre-#1380 build still type-checks;
+   * treat a missing map as all-null.
+   */
+  motionPromptVersionIdsBySceneId?: Record<string, string | null>;
   musicPrompt: string;
   musicTags: string;
 }

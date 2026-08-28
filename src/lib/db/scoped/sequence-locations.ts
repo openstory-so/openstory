@@ -3,7 +3,7 @@
  * Location CRUD, reference images, and shot-location matching.
  */
 
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import type { Database } from '@/lib/db/client';
 import type {
   Shot,
@@ -16,6 +16,31 @@ import {
   loadSceneContextBySequenceFromDb,
   resolveSceneForShot,
 } from '@/lib/scenes/scene-script';
+import { typedEntries } from '@/lib/utils/typed-object';
+import { createLocationSheetVariantsMethods } from './location-sheet-variants';
+import { buildEventInsert } from './sequence-events';
+
+/**
+ * The user-editable location bible fields (#1108 Phase 2). Casting
+ * (`libraryLocationId`), reference output, and first-mention provenance are
+ * owned by dedicated paths. Edits re-stale the location sheet and the prompts
+ * that project them — purely by hash derivation.
+ */
+export type LocationBibleUpdate = Partial<
+  Pick<
+    SequenceLocation,
+    | 'name'
+    | 'type'
+    | 'timeOfDay'
+    | 'description'
+    | 'architecturalStyle'
+    | 'keyFeatures'
+    | 'colorPalette'
+    | 'lightingSetup'
+    | 'ambiance'
+    | 'consistencyTag'
+  >
+>;
 
 // ============================================================================
 // Pure utility functions (exported separately, not in factory)
@@ -95,11 +120,19 @@ export function createSequenceLocationsMethods(db: Database) {
       return result[0] ?? null;
     },
 
+    // Default lists exclude soft-deleted rows (#1108) — see the characters
+    // twin for rationale. Id-addressed reads (getById/getByIds) still return
+    // deleted rows so restore can reach them.
     list: async (sequenceId: string): Promise<SequenceLocation[]> => {
       return await db
         .select()
         .from(sequenceLocations)
-        .where(eq(sequenceLocations.sequenceId, sequenceId));
+        .where(
+          and(
+            eq(sequenceLocations.sequenceId, sequenceId),
+            isNull(sequenceLocations.deletedAt)
+          )
+        );
     },
 
     listWithReferences: async (
@@ -111,7 +144,8 @@ export function createSequenceLocationsMethods(db: Database) {
         .where(
           and(
             eq(sequenceLocations.sequenceId, sequenceId),
-            eq(sequenceLocations.referenceStatus, 'completed')
+            eq(sequenceLocations.referenceStatus, 'completed'),
+            isNull(sequenceLocations.deletedAt)
           )
         );
     },
@@ -146,6 +180,9 @@ export function createSequenceLocationsMethods(db: Database) {
             referenceImagePath: data.referenceImagePath,
             referenceStatus: data.referenceStatus,
             referenceGeneratedAt: data.referenceGeneratedAt,
+            // A re-analysis re-extracting a soft-deleted location revives it
+            // (#1108) — mirrors the characters upsert.
+            deletedAt: null,
             updatedAt: new Date(),
           },
         })
@@ -199,6 +236,7 @@ export function createSequenceLocationsMethods(db: Database) {
               firstMentionSceneId: sql.raw(`excluded."first_mention_scene_id"`),
               firstMentionText: sql.raw(`excluded."first_mention_text"`),
               firstMentionLine: sql.raw(`excluded."first_mention_line"`),
+              deletedAt: null,
               updatedAt: new Date(),
             },
           })
@@ -243,16 +281,20 @@ export function createSequenceLocationsMethods(db: Database) {
       id: string,
       imageUrl: string,
       imagePath: string,
-      inputHash: string | null = null
+      inputHash: string | null = null,
+      opts?: { model?: string; workflowRunId?: string | null }
     ): Promise<SequenceLocation> => {
-      return await update(id, {
-        referenceImageUrl: imageUrl,
-        referenceImagePath: imagePath,
-        referenceStatus: 'completed',
-        referenceGeneratedAt: new Date(),
-        referenceError: null,
-        referenceInputHash: inputHash,
+      const { location } = await createLocationSheetVariantsMethods(
+        db
+      ).applyConvergent({
+        locationDbId: id,
+        url: imageUrl,
+        storagePath: imagePath,
+        inputHash,
+        model: opts?.model ?? 'unknown',
+        workflowRunId: opts?.workflowRunId,
       });
+      return location;
     },
 
     /**
@@ -286,9 +328,127 @@ export function createSequenceLocationsMethods(db: Database) {
         .where(
           and(
             eq(sequenceLocations.sequenceId, sequenceId),
-            inArray(sequenceLocations.referenceStatus, ['pending', 'failed'])
+            inArray(sequenceLocations.referenceStatus, ['pending', 'failed']),
+            isNull(sequenceLocations.deletedAt)
           )
         );
+    },
+
+    /**
+     * User edit of the bible fields (#1108 Phase 2) — the locations twin of
+     * `characters.updateBible`: update + `location.updated` event (with prev
+     * values for undo/audit) in one batch; staleness flips by derivation.
+     */
+    updateBible: async (
+      id: string,
+      data: LocationBibleUpdate,
+      opts: { actorId: string | null }
+    ): Promise<SequenceLocation> => {
+      const [existing] = await db
+        .select()
+        .from(sequenceLocations)
+        .where(eq(sequenceLocations.id, id));
+      if (!existing) {
+        throw new Error(`SequenceLocation ${id} not found`);
+      }
+      const prev: Record<string, string | null> = {};
+      for (const [key, value] of typedEntries(data)) {
+        if (value === undefined) continue;
+        prev[key] = existing[key] ?? null;
+      }
+      const [updatedRows] = await db.batch([
+        db
+          .update(sequenceLocations)
+          .set({ ...data, updatedAt: new Date() })
+          .where(eq(sequenceLocations.id, id))
+          .returning(),
+        buildEventInsert(db, {
+          sequenceId: existing.sequenceId,
+          actorId: opts.actorId,
+          kind: 'location.updated',
+          targetType: 'location',
+          targetId: id,
+          summary: `Edited location ${data.name ?? existing.name}`,
+          data: { prevState: prev },
+        }),
+      ]);
+      const updated = updatedRows[0];
+      if (!updated) {
+        throw new Error(`SequenceLocation ${id} disappeared during update`);
+      }
+      return updated;
+    },
+
+    /**
+     * Soft-remove from the sequence (undoable) — the locations twin of
+     * `characters.softDelete`. Scene continuity tags are NOT touched.
+     * Returns the timestamp for the toast Undo; idempotent.
+     */
+    softDelete: async (
+      id: string,
+      opts: { actorId: string | null }
+    ): Promise<Date> => {
+      const [existing] = await db
+        .select()
+        .from(sequenceLocations)
+        .where(eq(sequenceLocations.id, id));
+      if (!existing) {
+        throw new Error(`SequenceLocation ${id} not found`);
+      }
+      if (existing.deletedAt) return existing.deletedAt;
+      const deletedAt = new Date();
+      await db.batch([
+        db
+          .update(sequenceLocations)
+          .set({ deletedAt, updatedAt: deletedAt })
+          .where(eq(sequenceLocations.id, id)),
+        buildEventInsert(db, {
+          sequenceId: existing.sequenceId,
+          actorId: opts.actorId,
+          kind: 'location.deleted',
+          targetType: 'location',
+          targetId: id,
+          summary: `Removed location ${existing.name}`,
+          data: { name: existing.name, locationId: existing.locationId },
+        }),
+      ]);
+      return deletedAt;
+    },
+
+    /** Undo a soft delete (clears `deletedAt`), with a matching event. */
+    restore: async (
+      id: string,
+      opts: { actorId: string | null }
+    ): Promise<SequenceLocation> => {
+      const [existing] = await db
+        .select()
+        .from(sequenceLocations)
+        .where(eq(sequenceLocations.id, id));
+      if (!existing) {
+        throw new Error(`SequenceLocation ${id} not found`);
+      }
+      const now = new Date();
+      const [restoredRows] = await db.batch([
+        db
+          .update(sequenceLocations)
+          .set({ deletedAt: null, updatedAt: now })
+          .where(eq(sequenceLocations.id, id))
+          .returning(),
+        buildEventInsert(db, {
+          sequenceId: existing.sequenceId,
+          actorId: opts.actorId,
+          kind: 'location.restored',
+          targetType: 'location',
+          targetId: id,
+          summary: `Restored location ${existing.name}`,
+          data: { name: existing.name },
+        }),
+      ]);
+      const restored = restoredRows[0];
+      if (!restored) {
+        throw new Error(`SequenceLocation ${id} disappeared during restore`);
+      }
+      return restored;
     },
 
     getShotsForLocation: async (
@@ -310,7 +470,9 @@ export function createSequenceLocationsMethods(db: Database) {
         db
           .select()
           .from(shots)
-          .where(eq(shots.sequenceId, sequenceId)) as Promise<Shot[]>,
+          .where(
+            and(eq(shots.sequenceId, sequenceId), isNull(shots.deletedAt))
+          ) as Promise<Shot[]>,
         loadSceneContextBySequenceFromDb(db, sequenceId),
       ]);
 
@@ -346,7 +508,9 @@ export function createSequenceLocationsMethods(db: Database) {
         db
           .select()
           .from(shots)
-          .where(eq(shots.sequenceId, sequenceId)) as Promise<Shot[]>,
+          .where(
+            and(eq(shots.sequenceId, sequenceId), isNull(shots.deletedAt))
+          ) as Promise<Shot[]>,
         loadSceneContextBySequenceFromDb(db, sequenceId),
       ]);
 
@@ -384,6 +548,7 @@ export function createSequenceLocationsMethods(db: Database) {
         .where(
           and(
             eq(sequences.teamId, teamId),
+            isNull(sequenceLocations.deletedAt),
             options?.completedOnly
               ? eq(sequenceLocations.referenceStatus, 'completed')
               : undefined,

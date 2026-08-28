@@ -52,10 +52,12 @@ function makeCharacter(overrides: Partial<Character> = {}): Character {
     sheetGeneratedAt: NOW,
     sheetError: null,
     sheetInputHash: 'jack-hash-v1',
+    selectedSheetVersionId: null,
     talentId: null,
     firstMentionLine: null,
     firstMentionText: null,
     firstMentionSceneId: null,
+    deletedAt: null,
     createdAt: NOW,
     updatedAt: NOW,
   };
@@ -71,6 +73,7 @@ function makeShot(overrides: Partial<Shot> = {}): Shot {
     durationMs: 3000,
     selectedMotionPromptVersionId: null,
     renderSegmentId: null,
+    deletedAt: null,
     createdAt: NOW,
     updatedAt: NOW,
   };
@@ -115,6 +118,7 @@ function makeElement(
     firstMentionSceneId: null,
     firstMentionText: null,
     firstMentionLine: null,
+    deletedAt: null,
     createdAt: NOW,
     updatedAt: NOW,
   };
@@ -175,6 +179,39 @@ describe('buildRegenerateShotSnapshot', () => {
     });
 
     expect(after.snapshotInputHash).not.toBe(before.snapshotInputHash);
+  });
+
+  it('prefers the selected sheet version id over the parent input hash', async () => {
+    const hashedByParent = await buildRegenerateShotSnapshot({
+      shot: makeShot(),
+      scene: makeScene(),
+      imagePrompt: DEFAULT_PROMPT,
+      characters: [makeCharacter({ sheetInputHash: 'jack-hash-v1' })],
+      locations: NO_LOCATIONS,
+      elements: NO_ELEMENTS,
+      imageModel: 'nano_banana_2',
+      aspectRatio: '16:9',
+    });
+    const hashedByVersion = await buildRegenerateShotSnapshot({
+      shot: makeShot(),
+      scene: makeScene(),
+      imagePrompt: DEFAULT_PROMPT,
+      characters: [
+        makeCharacter({
+          sheetInputHash: 'jack-hash-v1',
+          selectedSheetVersionId: 'version-ulid-2',
+        }),
+      ],
+      locations: NO_LOCATIONS,
+      elements: NO_ELEMENTS,
+      imageModel: 'nano_banana_2',
+      aspectRatio: '16:9',
+    });
+    expect(hashedByParent.characterSheetHashes).toEqual(['jack-hash-v1']);
+    expect(hashedByVersion.characterSheetHashes).toEqual(['version-ulid-2']);
+    expect(hashedByVersion.snapshotInputHash).not.toBe(
+      hashedByParent.snapshotInputHash
+    );
   });
 
   it('changes the snapshotInputHash when the imagePrompt changes', async () => {

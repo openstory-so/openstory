@@ -30,6 +30,7 @@ function makeShot(overrides: Partial<Shot> = {}): Shot {
     durationMs: 3000,
     selectedMotionPromptVersionId: null,
     renderSegmentId: null,
+    deletedAt: null,
     createdAt: NOW,
     updatedAt: NOW,
     ...overrides,
@@ -204,6 +205,7 @@ describe('buildShotImageWorkflowInput — reference images', () => {
       sheetImageUrl: 'https://cdn/jack-sheet.png',
       sheetStatus: 'completed',
       sheetInputHash: 'hash-jack',
+      selectedSheetVersionId: null,
       physicalDescription: 'tall',
       consistencyTag: null,
     };

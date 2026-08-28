@@ -13,6 +13,7 @@ import {
   teams,
   transactions,
 } from '@/lib/db/schema';
+import { modelUsageObservations } from '@/lib/db/schema/model-pricing';
 import { drizzle } from 'drizzle-orm/libsql';
 import { migrate } from 'drizzle-orm/libsql/migrator';
 
@@ -136,6 +137,7 @@ describe('reconcileFalBilling', () => {
     await db.delete(modelPricing);
     await db.delete(modelPricingHistory);
     await db.delete(transactions);
+    await db.delete(modelUsageObservations);
     vi.unstubAllGlobals();
   });
 
@@ -212,5 +214,65 @@ describe('reconcileFalBilling', () => {
     const summary = await reconcileFalBilling({ billingKey: 'admin' });
     expect(summary?.unmatchedEvents).toBe(1);
     expect(driftReports).toHaveLength(0);
+  });
+
+  test('writes observed_median_units from our own samples the same hour', async () => {
+    await db.insert(modelPricing).values(
+      pricingRow({
+        endpointId: 'minimax/h3-max/image-to-video',
+        unit: 'seconds',
+        unitPriceMicros: 25_000,
+      })
+    );
+    await db.insert(modelUsageObservations).values(
+      Array.from({ length: 6 }, (_, i) => ({
+        provider: 'fal' as const,
+        endpointId: 'minimax/h3-max/image-to-video',
+        unitsBilled: 8,
+        numImages: 1,
+        id: `obs-${i}`,
+      }))
+    );
+    const { reconcileFalBilling } = await load([]);
+
+    const summary = await reconcileFalBilling({ billingKey: 'admin' });
+
+    expect(summary?.observedEndpoints).toBe(1);
+    const [row] = await db.select().from(modelPricing);
+    expect(row?.observedMedianUnits).toBe(8);
+    expect(row?.observedSampleCount).toBe(6);
+    expect(row?.typicalUnitsPerCall).toBe(8);
+  });
+
+  test('t2v inherits i2v’s billed unit price when t2v has no events', async () => {
+    await db.insert(modelPricing).values([
+      pricingRow({
+        endpointId: 'minimax/h3-max/image-to-video',
+        unit: 'seconds',
+        unitPriceMicros: 25_000,
+      }),
+      pricingRow({
+        endpointId: 'minimax/h3-max/text-to-video',
+        unit: 'compute seconds',
+        unitPriceMicros: 170,
+      }),
+    ]);
+    const { reconcileFalBilling } = await load([
+      event({
+        endpoint_id: 'minimax/h3-max/image-to-video',
+        unit_price: 0.025,
+        output_units: 8,
+        cost_total: 0.2,
+        cost_estimate_nano_usd: 200_000_000,
+      }),
+    ]);
+
+    await reconcileFalBilling({ billingKey: 'admin' });
+
+    const t2v = (await db.select().from(modelPricing)).find(
+      (r) => r.endpointId === 'minimax/h3-max/text-to-video'
+    );
+    expect(t2v?.unitPriceMicros).toBe(25_000);
+    expect(t2v?.rateVerifiedAt).not.toBeNull();
   });
 });

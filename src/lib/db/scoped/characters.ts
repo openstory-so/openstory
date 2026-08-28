@@ -3,7 +3,7 @@
  * Character CRUD, sheet generation, talent assignment, and shot-character matching.
  */
 
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, isNull } from 'drizzle-orm';
 import type { Database } from '@/lib/db/client';
 import type {
   Character,
@@ -17,7 +17,30 @@ import {
   loadSceneContextBySequenceFromDb,
   resolveSceneForShot,
 } from '@/lib/scenes/scene-script';
+import { typedEntries } from '@/lib/utils/typed-object';
 import { matchCharacterToShotTags } from '@/lib/workflows/scene-matching';
+import { createCharacterSheetVariantsMethods } from './character-sheet-variants';
+import { buildEventInsert } from './sequence-events';
+
+/**
+ * The user-editable character bible fields (#1108 Phase 2). Everything else on
+ * the row (casting, sheet output, first-mention provenance) is owned by
+ * dedicated paths. Editing any of these re-stales the character sheet and the
+ * prompts that project them — purely by hash derivation.
+ */
+export type CharacterBibleUpdate = Partial<
+  Pick<
+    Character,
+    | 'name'
+    | 'age'
+    | 'gender'
+    | 'ethnicity'
+    | 'physicalDescription'
+    | 'standardClothing'
+    | 'distinguishingFeatures'
+    | 'consistencyTag'
+  >
+>;
 
 export function createCharactersMethods(db: Database) {
   // Private update helper used by updateSheetStatus and updateSheet
@@ -63,11 +86,20 @@ export function createCharactersMethods(db: Database) {
       return result[0] ?? null;
     },
 
+    // Default lists exclude soft-deleted rows (#1108): a deleted character
+    // must vanish from the cast facet, the prompt-context bibles, and the
+    // staleness verifies — all of which read through these methods. Restore
+    // (or an id-addressed getById) is the only way back.
     list: async (sequenceId: string): Promise<Character[]> => {
       return await db
         .select()
         .from(characters)
-        .where(eq(characters.sequenceId, sequenceId));
+        .where(
+          and(
+            eq(characters.sequenceId, sequenceId),
+            isNull(characters.deletedAt)
+          )
+        );
     },
 
     listWithTalent: async (
@@ -84,7 +116,12 @@ export function createCharactersMethods(db: Database) {
         })
         .from(characters)
         .leftJoin(talent, eq(characters.talentId, talent.id))
-        .where(eq(characters.sequenceId, sequenceId));
+        .where(
+          and(
+            eq(characters.sequenceId, sequenceId),
+            isNull(characters.deletedAt)
+          )
+        );
 
       return results.map((row) => ({
         ...row.character,
@@ -107,7 +144,8 @@ export function createCharactersMethods(db: Database) {
         .where(
           and(
             eq(characters.sequenceId, sequenceId),
-            eq(characters.sheetStatus, 'completed')
+            eq(characters.sheetStatus, 'completed'),
+            isNull(characters.deletedAt)
           )
         );
     },
@@ -132,6 +170,9 @@ export function createCharactersMethods(db: Database) {
             sheetStatus: data.sheetStatus,
             sheetGeneratedAt: data.sheetGeneratedAt,
             talentId: data.talentId,
+            // A re-analysis re-extracting a soft-deleted character revives it —
+            // the script says the character exists again (#1108).
+            deletedAt: null,
             updatedAt: new Date(),
           },
         })
@@ -189,20 +230,29 @@ export function createCharactersMethods(db: Database) {
       });
     },
 
+    /**
+     * Convergent sheet write: append a version and select it. `opts.model`
+     * labels the history row; defaults to `'unknown'` when the caller has
+     * no model (legacy tests).
+     */
     updateSheet: async (
       id: string,
       imageUrl: string,
       imagePath: string,
-      inputHash: string | null = null
+      inputHash: string | null = null,
+      opts?: { model?: string; workflowRunId?: string | null }
     ): Promise<Character> => {
-      return await update(id, {
-        sheetImageUrl: imageUrl,
-        sheetImagePath: imagePath,
-        sheetStatus: 'completed',
-        sheetGeneratedAt: new Date(),
-        sheetError: null,
-        sheetInputHash: inputHash,
+      const { character } = await createCharacterSheetVariantsMethods(
+        db
+      ).applyConvergent({
+        characterId: id,
+        url: imageUrl,
+        storagePath: imagePath,
+        inputHash,
+        model: opts?.model ?? 'unknown',
+        workflowRunId: opts?.workflowRunId,
       });
+      return character;
     },
 
     getNeedingSheets: async (sequenceId: string): Promise<Character[]> => {
@@ -212,9 +262,132 @@ export function createCharactersMethods(db: Database) {
         .where(
           and(
             eq(characters.sequenceId, sequenceId),
-            inArray(characters.sheetStatus, ['pending', 'failed'])
+            inArray(characters.sheetStatus, ['pending', 'failed']),
+            isNull(characters.deletedAt)
           )
         );
+    },
+
+    /**
+     * User edit of the bible fields (#1108 Phase 2), committing the update and
+     * a `character.updated` event (with the previous values of the changed
+     * fields, for undo/audit) in one `db.batch()`. Staleness follows purely by
+     * derivation: the sheet hash and the prompt hashes embed these fields, so
+     * verifies flip to 'stale' with no flag written here.
+     */
+    updateBible: async (
+      id: string,
+      data: CharacterBibleUpdate,
+      opts: { actorId: string | null }
+    ): Promise<Character> => {
+      const [existing] = await db
+        .select()
+        .from(characters)
+        .where(eq(characters.id, id));
+      if (!existing) {
+        throw new Error(`SequenceCharacter ${id} not found`);
+      }
+      const prev: Record<string, string | null> = {};
+      for (const [key, value] of typedEntries(data)) {
+        if (value === undefined) continue;
+        prev[key] = existing[key] ?? null;
+      }
+      const [updatedRows] = await db.batch([
+        db
+          .update(characters)
+          .set({ ...data, updatedAt: new Date() })
+          .where(eq(characters.id, id))
+          .returning(),
+        buildEventInsert(db, {
+          sequenceId: existing.sequenceId,
+          actorId: opts.actorId,
+          kind: 'character.updated',
+          targetType: 'character',
+          targetId: id,
+          summary: `Edited character ${data.name ?? existing.name}`,
+          data: { prevState: prev },
+        }),
+      ]);
+      const updated = updatedRows[0];
+      if (!updated) {
+        throw new Error(`SequenceCharacter ${id} disappeared during update`);
+      }
+      return updated;
+    },
+
+    /**
+     * Soft-remove from the sequence (undoable): stamp `deletedAt` + a
+     * `character.deleted` event in one batch. Scene continuity tags are NOT
+     * touched (plan §1 — lossless undo); prompts that referenced the character
+     * read stale by derivation because the bible reads above exclude the row.
+     * Returns the timestamp for the toast Undo. No-ops (returns the existing
+     * timestamp) when already deleted.
+     */
+    softDelete: async (
+      id: string,
+      opts: { actorId: string | null }
+    ): Promise<Date> => {
+      const [existing] = await db
+        .select()
+        .from(characters)
+        .where(eq(characters.id, id));
+      if (!existing) {
+        throw new Error(`SequenceCharacter ${id} not found`);
+      }
+      if (existing.deletedAt) return existing.deletedAt;
+      const deletedAt = new Date();
+      await db.batch([
+        db
+          .update(characters)
+          .set({ deletedAt, updatedAt: deletedAt })
+          .where(eq(characters.id, id)),
+        buildEventInsert(db, {
+          sequenceId: existing.sequenceId,
+          actorId: opts.actorId,
+          kind: 'character.deleted',
+          targetType: 'character',
+          targetId: id,
+          summary: `Removed character ${existing.name}`,
+          data: { name: existing.name, characterId: existing.characterId },
+        }),
+      ]);
+      return deletedAt;
+    },
+
+    /** Undo a soft delete (clears `deletedAt`), with a matching event. */
+    restore: async (
+      id: string,
+      opts: { actorId: string | null }
+    ): Promise<Character> => {
+      const [existing] = await db
+        .select()
+        .from(characters)
+        .where(eq(characters.id, id));
+      if (!existing) {
+        throw new Error(`SequenceCharacter ${id} not found`);
+      }
+      const now = new Date();
+      const [restoredRows] = await db.batch([
+        db
+          .update(characters)
+          .set({ deletedAt: null, updatedAt: now })
+          .where(eq(characters.id, id))
+          .returning(),
+        buildEventInsert(db, {
+          sequenceId: existing.sequenceId,
+          actorId: opts.actorId,
+          kind: 'character.restored',
+          targetType: 'character',
+          targetId: id,
+          summary: `Restored character ${existing.name}`,
+          data: { name: existing.name },
+        }),
+      ]);
+      const restored = restoredRows[0];
+      if (!restored) {
+        throw new Error(`SequenceCharacter ${id} disappeared during restore`);
+      }
+      return restored;
     },
 
     updateTalent: async (
@@ -269,7 +442,9 @@ export function createCharactersMethods(db: Database) {
         db
           .select()
           .from(shots)
-          .where(eq(shots.sequenceId, sequenceId)) as Promise<Shot[]>,
+          .where(
+            and(eq(shots.sequenceId, sequenceId), isNull(shots.deletedAt))
+          ) as Promise<Shot[]>,
         loadSceneContextBySequenceFromDb(db, sequenceId),
       ]);
 
@@ -299,7 +474,9 @@ export function createCharactersMethods(db: Database) {
         db
           .select()
           .from(shots)
-          .where(eq(shots.sequenceId, sequenceId)) as Promise<Shot[]>,
+          .where(
+            and(eq(shots.sequenceId, sequenceId), isNull(shots.deletedAt))
+          ) as Promise<Shot[]>,
         loadSceneContextBySequenceFromDb(db, sequenceId),
       ]);
 

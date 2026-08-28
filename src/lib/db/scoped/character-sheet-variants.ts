@@ -1,16 +1,19 @@
 /**
  * Scoped Character Sheet Variants Sub-module
- * CRUD for divergent character-sheet outputs (Stage 2 of workflow snapshots).
+ * Append-only sheet versions plus mid-flight divergence parking.
  */
 
 import type { Database } from '@/lib/db/client';
+import { generateId } from '@/lib/db/id';
 import type {
+  Character,
   CharacterSheetVariant,
   NewCharacterSheetVariant,
 } from '@/lib/db/schema';
 import { characterSheetVariants, characters } from '@/lib/db/schema';
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { insertDivergentRaceTolerant } from './divergent-insert';
+import { buildEventInsert } from './sequence-events';
 
 type PromoteCharacterUpdate = {
   sheetImageUrl: string | null;
@@ -27,6 +30,31 @@ export function createCharacterSheetVariantsMethods(db: Database) {
         .select()
         .from(characterSheetVariants)
         .where(eq(characterSheetVariants.characterId, characterId));
+    },
+
+    /**
+     * Selectable history: completed, not discarded, oldest-first so a
+     * left-to-right strip can label v1, v2, … from position (same as
+     * frame / video versions). Includes parked divergent rows so the user
+     * can pick one instead of promoting through the banner.
+     */
+    listHistoryByCharacter: async (
+      characterId: string
+    ): Promise<CharacterSheetVariant[]> => {
+      return db
+        .select()
+        .from(characterSheetVariants)
+        .where(
+          and(
+            eq(characterSheetVariants.characterId, characterId),
+            eq(characterSheetVariants.status, 'completed'),
+            isNull(characterSheetVariants.discardedAt)
+          )
+        )
+        .orderBy(
+          asc(characterSheetVariants.createdAt),
+          asc(characterSheetVariants.id)
+        );
     },
 
     listDivergentByCharacter: async (
@@ -93,6 +121,164 @@ export function createCharacterSheetVariantsMethods(db: Database) {
         .from(characterSheetVariants)
         .where(eq(characterSheetVariants.id, variantId));
       return result[0] ?? null;
+    },
+
+    /**
+     * Append a completed version and make it the live primary. If the parent
+     * still holds a pre-versioning image (no selection pointer), that image is
+     * snapshotted first so History can revert to it. Does not discard anything.
+     */
+    applyConvergent: async (args: {
+      characterId: string;
+      url: string;
+      storagePath: string;
+      /** Verify-mirrored current-inputs hash on parent and version row. */
+      inputHash: string | null;
+      model: string;
+      workflowRunId?: string | null;
+    }): Promise<{ character: Character; version: CharacterSheetVariant }> => {
+      const { characterId, url, storagePath, inputHash, model, workflowRunId } =
+        args;
+      const [existing] = await db
+        .select()
+        .from(characters)
+        .where(eq(characters.id, characterId));
+      if (!existing) {
+        throw new Error(`Character ${characterId} not found`);
+      }
+
+      if (existing.sheetImageUrl && !existing.selectedSheetVersionId) {
+        await db.insert(characterSheetVariants).values({
+          id: generateId(),
+          characterId,
+          model: 'prior',
+          url: existing.sheetImageUrl,
+          storagePath: existing.sheetImagePath,
+          status: 'completed',
+          generatedAt: existing.sheetGeneratedAt ?? existing.updatedAt,
+          inputHash: existing.sheetInputHash,
+        });
+      }
+
+      const now = new Date();
+      const [version] = await db
+        .insert(characterSheetVariants)
+        .values({
+          id: generateId(),
+          characterId,
+          model,
+          url,
+          storagePath,
+          status: 'completed',
+          workflowRunId: workflowRunId ?? null,
+          generatedAt: now,
+          inputHash,
+        })
+        .returning();
+      if (!version) {
+        throw new Error('Failed to insert character sheet version');
+      }
+
+      const [character] = await db
+        .update(characters)
+        .set({
+          sheetImageUrl: url,
+          sheetImagePath: storagePath,
+          sheetStatus: 'completed',
+          sheetGeneratedAt: now,
+          sheetError: null,
+          sheetInputHash: inputHash,
+          selectedSheetVersionId: version.id,
+          updatedAt: now,
+        })
+        .where(eq(characters.id, characterId))
+        .returning();
+      if (!character) {
+        throw new Error(`Character ${characterId} disappeared during apply`);
+      }
+      return { character, version };
+    },
+
+    /**
+     * Repoint the live sheet at an existing completed version. Mirrors url /
+     * path / hash onto the parent. A divergent row is unmarked so the banner
+     * clears. Previous pointer is recorded on the event for undo.
+     */
+    select: async (
+      characterId: string,
+      versionId: string,
+      opts: { actorId: string | null }
+    ): Promise<CharacterSheetVariant> => {
+      const [version] = await db
+        .select()
+        .from(characterSheetVariants)
+        .where(
+          and(
+            eq(characterSheetVariants.id, versionId),
+            eq(characterSheetVariants.characterId, characterId)
+          )
+        );
+      if (!version) {
+        throw new Error(
+          `CharacterSheetVariant ${versionId} not found for character ${characterId}`
+        );
+      }
+      if (version.status !== 'completed' || !version.url) {
+        throw new Error(
+          `CharacterSheetVariant ${versionId} is '${version.status}', not a completed image`
+        );
+      }
+      if (version.discardedAt) {
+        throw new Error(
+          `CharacterSheetVariant ${versionId} is discarded — restore it first`
+        );
+      }
+
+      const [existing] = await db
+        .select()
+        .from(characters)
+        .where(eq(characters.id, characterId));
+      if (!existing) {
+        throw new Error(`Character ${characterId} not found`);
+      }
+
+      const now = new Date();
+      await db.batch([
+        db
+          .update(characters)
+          .set({
+            sheetImageUrl: version.url,
+            sheetImagePath: version.storagePath,
+            sheetStatus: 'completed',
+            sheetGeneratedAt: version.generatedAt ?? now,
+            sheetError: null,
+            sheetInputHash: version.inputHash,
+            selectedSheetVersionId: version.id,
+            updatedAt: now,
+          })
+          .where(eq(characters.id, characterId)),
+        db
+          .update(characterSheetVariants)
+          .set({ divergedAt: null, updatedAt: now })
+          .where(eq(characterSheetVariants.id, versionId)),
+        buildEventInsert(db, {
+          sequenceId: existing.sequenceId,
+          actorId: opts.actorId,
+          kind: 'sheet.selected',
+          targetType: 'character',
+          targetId: characterId,
+          summary: `Selected sheet version for ${existing.name}`,
+          data: {
+            prevState: {
+              selectedSheetVersionId: existing.selectedSheetVersionId,
+              sheetImageUrl: existing.sheetImageUrl,
+              sheetInputHash: existing.sheetInputHash,
+            },
+            versionId,
+          },
+        }),
+      ]);
+      return { ...version, divergedAt: null };
     },
 
     insert: async (

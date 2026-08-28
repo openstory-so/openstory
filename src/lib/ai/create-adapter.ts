@@ -103,11 +103,12 @@ let loggedRetryMode = false;
  * entries with `createModel` from '@tanstack/ai':
  * `createModel('vendor/model-id', { input: [...], features: [...] })`.
  *
- * Empty after @tanstack/ai-openrouter@0.18.1 shipped Grok 4.6 and
- * Claude Opus 5 / Opus 5 Fast. Restore `extendAdapter` around the
- * factories when the next lag id lands.
  */
 export const CATALOG_LAG_MODELS = [] as const;
+
+// Empty after @tanstack/ai-openrouter@0.19.5 shipped z-ai/glm-5.3-flash.
+// Restore `extendAdapter` around the OpenRouter factories when the next lag
+// id lands.
 
 /** {@link CATALOG_LAG_MODELS} for the Grok adapter. Native `grok-4.6` is
  *  in the 0.16 catalog; `grok-4.20-0309-reasoning` is still lag-bridged.
@@ -183,6 +184,17 @@ export function createAdapter(model: TextModel, keyInfo?: LlmKeyInfo) {
         httpOptions: { baseUrl: env.GEMINI_BASE_URL },
       }),
     });
+  }
+
+  // A native-provider key on the OpenRouter branch is the #1358 mismatch:
+  // resolveLlmKey was asked for a Grok/Gemini model, then the call used a
+  // different one. OpenRouter answers that with "Missing Authentication
+  // header" (its text for any non-sk-or key). Throw so the next mismatch is
+  // a stack, not a 401 puzzle.
+  if (via === 'xai' || via === 'google') {
+    throw new Error(
+      `${via === 'xai' ? 'xAI' : 'Google'} key cannot be sent to OpenRouter (model '${model}'). Resolve the LLM key for the model being called, not a different analysis model.`
+    );
   }
 
   // During E2E recording, aimock proxies our OpenRouter calls upstream and

@@ -13,6 +13,7 @@ import type { Database } from '@/lib/db/client';
 import { generateId } from '@/lib/db/id';
 import { shots, sequences, styles, teams } from '@/lib/db/schema';
 import { relations } from '@/lib/db/schema/relations';
+import { eq } from 'drizzle-orm';
 import { type Client, createClient } from '@libsql/client';
 import { drizzle } from 'drizzle-orm/libsql';
 import { migrate } from 'drizzle-orm/libsql/migrator';
@@ -97,6 +98,31 @@ afterAll(() => {
 let styleId = '';
 beforeEach(async () => {
   styleId = await seed();
+});
+
+describe('listShotReadinessByIds', () => {
+  it('excludes soft-deleted shots from public list counts', async () => {
+    const seqIds = await seedSequences(styleId, 1);
+    const seqId = seqIds[0];
+    if (!seqId) throw new Error('test setup: expected a sequence id');
+    const methods = createSequencesMethods(db, teamId, generateId());
+
+    const before = await methods.listShotReadinessByIds([seqId]);
+    expect(before).toHaveLength(3);
+
+    const [toDelete] = await db
+      .select({ id: shots.id })
+      .from(shots)
+      .where(eq(shots.sequenceId, seqId));
+    if (!toDelete) throw new Error('test setup: expected a shot');
+    await db
+      .update(shots)
+      .set({ deletedAt: new Date() })
+      .where(eq(shots.id, toDelete.id));
+
+    const after = await methods.listShotReadinessByIds([seqId]);
+    expect(after).toHaveLength(2);
+  });
 });
 
 describe('listShotsByIds', () => {

@@ -11,7 +11,7 @@
  * materialised per shot at spawn time.
  */
 
-import { computeMusicPromptInputHash } from '@/lib/ai/input-hash';
+import { musicPromptInputHashMatches } from '@/lib/ai/input-hash';
 import {
   DEFAULT_ANALYSIS_MODEL,
   getAnalysisModelById,
@@ -674,11 +674,10 @@ async function computeMusicPlan(
       sequence.id
     );
     const analysisModel = latest?.analysisModel ?? analysisModelId;
-    const liveHash = await computeMusicPromptInputHash({
-      sceneSummaries,
-      analysisModel,
-    });
-    const regenPrompt = liveHash !== sequence.musicPromptInputHash;
+    const regenPrompt = !(await musicPromptInputHashMatches(
+      sequence.musicPromptInputHash,
+      { sceneSummaries, analysisModel }
+    ));
     return {
       regenPrompt,
       // Cascade-only: track follows its prompt. No track-level staleness today.

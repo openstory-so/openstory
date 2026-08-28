@@ -33,6 +33,7 @@ describe('studioVideoEndpointId', () => {
       'fal-ai/minimax/hailuo-2.3/pro/text-to-video',
       'minimax/h3-max/text-to-video',
       'bytedance/seedance-2.0/enterprise/v2/text-to-video',
+      'bytedance/seedance-2.5/text-to-video',
     ]);
     expect(ids.some((id) => id.includes('image-to-video'))).toBe(false);
     // Pricing refresh sees the reference siblings too.
@@ -108,6 +109,14 @@ describe('buildStudioVideoInput', () => {
       generate_audio: true,
       resolution: '720p',
     });
+    expect(
+      buildStudioVideoInput({ ...base, model: 'seedance_v2_5' }).modelOptions
+    ).toMatchObject({
+      duration: '5',
+      aspect_ratio: '16:9',
+      generate_audio: true,
+      resolution: '720p',
+    });
   });
 
   it('sends Grok fal T2V duration as an integer, with no generate_audio field', () => {
@@ -157,6 +166,7 @@ describe('studioVideoSupportsAudio', () => {
     expect(studioVideoSupportsAudio('ltx_2_3_pro')).toBe(true);
     expect(studioVideoSupportsAudio('veo3_1')).toBe(true);
     expect(studioVideoSupportsAudio('seedance_v2')).toBe(true);
+    expect(studioVideoSupportsAudio('seedance_v2_5')).toBe(true);
     expect(studioVideoSupportsAudio('grok_imagine_video_1_5')).toBe(false);
     expect(studioVideoSupportsAudio('minimax_hailuo_02')).toBe(false);
   });
@@ -196,6 +206,15 @@ describe('studioVideoEndpointId modes', () => {
   it('routes reference mode to the reference-to-video sibling', () => {
     expect(studioVideoEndpointId('seedance_v2', 'reference')).toBe(
       'bytedance/seedance-2.0/enterprise/v2/reference-to-video'
+    );
+    expect(studioVideoEndpointId('seedance_v2_5', 'text')).toBe(
+      'bytedance/seedance-2.5/text-to-video'
+    );
+    expect(studioVideoEndpointId('seedance_v2_5', 'reference')).toBe(
+      'bytedance/seedance-2.5/reference-to-video'
+    );
+    expect(studioVideoEndpointId('seedance_v2_5', 'frames')).toBe(
+      'bytedance/seedance-2.5/image-to-video'
     );
     expect(studioVideoEndpointId('kling_v3_pro', 'reference')).toBe(
       'fal-ai/kling-video/o3/pro/reference-to-video'

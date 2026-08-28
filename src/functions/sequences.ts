@@ -83,6 +83,14 @@ export const getSequencesFn = createServerFn({ method: 'GET' })
     return context.scopedDb.sequences.list();
   });
 
+/** Archived sequences for the unarchive picker (#1108 Phase 4) — the default
+ * list excludes them. */
+export const getArchivedSequencesFn = createServerFn({ method: 'GET' })
+  .middleware([authWithTeamMiddleware])
+  .handler(async ({ context }) => {
+    return context.scopedDb.sequences.listArchived();
+  });
+
 export const getSequenceFn = createServerFn({ method: 'GET' })
   .middleware([sequenceAccessMiddleware])
   .validator(zodValidator(z.object({ sequenceId: ulidSchema })))
@@ -254,6 +262,46 @@ export const setSequenceMusicFn = createServerFn({ method: 'POST' })
   });
 
 // ============================================================================
+// Rename (#1108 Phase 4)
+// ============================================================================
+
+const renameSequenceInputSchema = z.object({
+  sequenceId: ulidSchema,
+  title: z.string().trim().min(1).max(500),
+});
+
+/**
+ * Rename a sequence. Deliberately separate from {@link updateSequenceFn} for
+ * the same reason as {@link setSequenceMusicFn}: that path force-defaults
+ * `aspectRatio` and treats its mere presence as a regeneration trigger, so a
+ * title-only write through it would either reset a non-16:9 sequence's aspect
+ * ratio or charge credits and wipe the storyboard. Minimal write, no side
+ * effects beyond the event.
+ */
+export const renameSequenceFn = createServerFn({ method: 'POST' })
+  .middleware([sequenceAccessMiddleware])
+  .validator(zodValidator(renameSequenceInputSchema))
+  .handler(async ({ data, context }) => {
+    const prevTitle = context.sequence.title;
+    const sequence = await context.scopedDb.sequences.update({
+      id: data.sequenceId,
+      title: data.title,
+    });
+    if (data.title !== prevTitle) {
+      await context.scopedDb.sequenceEvents.record({
+        sequenceId: data.sequenceId,
+        actorId: context.user.id,
+        kind: 'sequence.renamed',
+        targetType: 'sequence',
+        targetId: data.sequenceId,
+        summary: `Renamed sequence to ${data.title}`,
+        data: { prevTitle },
+      });
+    }
+    return sequence;
+  });
+
+// ============================================================================
 // Retry Failed Storyboard
 // ============================================================================
 
@@ -324,15 +372,121 @@ export const retryStoryboardFn = createServerFn({ method: 'POST' })
     return { success: true };
   });
 
-/** Archive a sequence (hides from list, lets in-flight workflows finish) */
+/** Archive a sequence (hides from list, lets in-flight workflows finish).
+ * Records the prior status so {@link unarchiveSequenceFn} can restore it. */
 export const archiveSequenceFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
   .validator(zodValidator(z.object({ sequenceId: ulidSchema })))
   .handler(async ({ context }) => {
+    const prevStatus = context.sequence.status;
+    if (prevStatus === 'archived') return { success: true };
     await context.scopedDb
       .sequence(context.sequence.id)
       .updateStatus('archived');
+    await context.scopedDb.sequenceEvents.record({
+      sequenceId: context.sequence.id,
+      actorId: context.user.id,
+      kind: 'sequence.archived',
+      targetType: 'sequence',
+      targetId: context.sequence.id,
+      summary: `Archived ${context.sequence.title}`,
+      data: { prevState: { status: prevStatus } },
+    });
     return { success: true };
+  });
+
+/**
+ * Statuses an unarchive may restore verbatim. `'processing'` is deliberately
+ * NOT here: archiving lets the in-flight run finish, so by unarchive time the
+ * generation is over one way or the other, and re-asserting 'processing'
+ * makes the editor poll and show "Generating…" for a run that is not
+ * happening. The cron reconciler only heals such a row while its Cloudflare
+ * instance is still resolvable, so a long-archived sequence would stay stuck.
+ * A recorded 'processing' maps to {@link INTERRUPTED_STATUS} instead — the
+ * same honest, retryable state the reconciler writes for a dead run.
+ */
+const RESTORABLE_STATUSES = ['draft', 'completed', 'failed'] as const;
+type RestorableStatus = (typeof RESTORABLE_STATUSES)[number];
+function isRestorableStatus(value: string | null): value is RestorableStatus {
+  return (
+    value !== null && (RESTORABLE_STATUSES as readonly string[]).includes(value)
+  );
+}
+
+/** Maps a recorded archive prevStatus to the status unarchive should restore. */
+export function resolveUnarchiveRestore(args: {
+  recordedStatus: string | null;
+  hasShots: boolean;
+}): { status: RestorableStatus; interrupted: boolean } {
+  if (args.recordedStatus === 'processing') {
+    return { status: 'failed', interrupted: true };
+  }
+  if (isRestorableStatus(args.recordedStatus)) {
+    return { status: args.recordedStatus, interrupted: false };
+  }
+  return {
+    status: args.hasShots ? 'completed' : 'draft',
+    interrupted: false,
+  };
+}
+
+/** Mirrors `reconcileSequencesPass`'s wording for an interrupted run. */
+const INTERRUPTED_STATUS = {
+  status: 'failed' as const,
+  error: 'Generation was interrupted — use Retry to run it again.',
+};
+
+/**
+ * Undo an archive (#1108 Phase 4): restore the status the sequence had when
+ * it was archived (from the `sequence.archived` event's prevState). Sequences
+ * archived before that event existed fall back to a content-derived status —
+ * 'completed' when the sequence has shots, else 'draft'.
+ */
+export const unarchiveSequenceFn = createServerFn({ method: 'POST' })
+  .middleware([sequenceAccessMiddleware])
+  .validator(zodValidator(z.object({ sequenceId: ulidSchema })))
+  .handler(async ({ context }) => {
+    const { scopedDb, sequence, user } = context;
+    if (sequence.status !== 'archived') {
+      return { success: true, status: sequence.status };
+    }
+    const events = await scopedDb.sequenceEvents.listByTarget(
+      'sequence',
+      sequence.id
+    );
+    const archiveEvent = events.find((e) => e.kind === 'sequence.archived');
+    const recorded = archiveEvent?.data?.prevState;
+    const recordedStatus =
+      recorded !== null &&
+      recorded !== undefined &&
+      typeof recorded === 'object' &&
+      !Array.isArray(recorded) &&
+      typeof recorded.status === 'string'
+        ? recorded.status
+        : null;
+    // A run that was mid-flight at archive time is over by now — restore the
+    // interrupted state rather than a "Generating…" the user can't act on.
+    const hasShots =
+      (await scopedDb.shots.listBySequence(sequence.id, { limit: 1 })).length >
+      0;
+    const { status, interrupted } = resolveUnarchiveRestore({
+      recordedStatus,
+      hasShots,
+    });
+
+    await scopedDb
+      .sequence(sequence.id)
+      .updateStatus(status, interrupted ? INTERRUPTED_STATUS.error : null);
+    await scopedDb.sequenceEvents.record({
+      sequenceId: sequence.id,
+      actorId: user.id,
+      kind: 'sequence.unarchived',
+      targetType: 'sequence',
+      targetId: sequence.id,
+      summary: `Unarchived ${sequence.title}`,
+      data: { restoredStatus: status },
+    });
+    return { success: true, status };
   });
 
 /**

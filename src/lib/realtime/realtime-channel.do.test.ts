@@ -40,13 +40,6 @@ function numberField(row: unknown, key: string): number {
   return row[key];
 }
 
-function stringField(row: unknown, key: string): string {
-  if (!isRecord(row) || typeof row[key] !== 'string') {
-    throw new Error(`expected string ${key}`);
-  }
-  return row[key];
-}
-
 function requireValue<T>(value: T | undefined, label: string): T {
   if (value === undefined) throw new Error(`missing ${label}`);
   return value;
@@ -316,19 +309,9 @@ afterEach(() => {
 });
 
 describe('RealtimeChannel history cap (#1332)', () => {
-  it('creates an index on events(ts)', () => {
-    const { db, sqlStatements } = createHarness();
-    const indexes = db
-      .prepare(
-        `SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'events'`
-      )
-      .all();
-    const names = indexes.map((row) => stringField(row, 'name'));
-    expect(names).toContain('events_ts');
-    const created = sqlStatements.find((sql) =>
-      /CREATE INDEX IF NOT EXISTS events_ts/i.test(sql)
-    );
-    expect(created).toMatch(/ON events\s*\(\s*ts\s*\)/i);
+  it('creates no secondary index — every prune is a bounded PK-range op', () => {
+    const { sqlStatements } = createHarness();
+    expect(sqlStatements.some((sql) => /CREATE INDEX/i.test(sql))).toBe(false);
   });
 
   it('prunes oldest rows on emit so a chatty channel never exceeds the cap', async () => {
@@ -379,8 +362,14 @@ describe('RealtimeChannel history cap (#1332)', () => {
     await emit(harness.channel, { n: 'keep' });
     expect(eventCount(harness.db)).toBe(PRUNE_BATCH_ROWS + leftover + 1);
 
+    harness.sqlStatements.length = 0;
     await triggerAlarm(harness);
     expect(eventCount(harness.db)).toBe(leftover + 1);
+    const ttlDeletes = harness.sqlStatements.filter(
+      (sql) => /DELETE FROM events/i.test(sql) && /ts\s*</i.test(sql)
+    );
+    expect(ttlDeletes.length).toBeGreaterThan(0);
+    for (const sql of ttlDeletes) expect(sql).not.toMatch(/\bIN\s*\(/i);
     const messages = await history(harness.channel);
     expect(
       messages.some((msg) => {

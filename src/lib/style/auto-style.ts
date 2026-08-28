@@ -70,6 +70,21 @@ function firstProse(...candidates: unknown[]): string | undefined {
 }
 
 /**
+ * Non-enforcing routes emit `colorPalette` as a CSV or space-separated
+ * string (sequence 01M1352KQT8288MYT5THGKK8AX, Sonnet 5 via OpenRouter).
+ * Split it so the array schema can still parse. Arrays pass through.
+ */
+function coercePalette(value: unknown): unknown {
+  if (Array.isArray(value) || typeof value !== 'string') return value;
+  const trimmed = value.trim();
+  if (!trimmed) return [];
+  const parts = trimmed.includes(',')
+    ? trimmed.split(',')
+    : trimmed.split(/\s+/);
+  return parts.map((part) => part.trim()).filter(Boolean);
+}
+
+/**
  * Non-enforcing routes (OpenRouter→Opus 5, #1304) have emitted `look` /
  * `motion` prose instead of the flat recipe keys, or nested the fields
  * under objects with those names. Lift those into the flat fields so a
@@ -96,6 +111,7 @@ function coerceCollapsedAutoStyle(raw: unknown): unknown {
     lighting:
       firstProse(raw.lighting, lookObj?.lighting, lookProse) ??
       fallback.lighting,
+    colorPalette: coercePalette(raw.colorPalette ?? lookObj?.colorPalette),
     colorGrading:
       firstProse(raw.colorGrading, lookObj?.colorGrading, lookProse) ??
       fallback.colorGrading,
@@ -117,7 +133,10 @@ export const autoStyleResponseSchema = z.preprocess(
     artStyle: z.string(),
     medium: z.string(),
     lighting: z.string(),
-    colorPalette: z.array(z.string()),
+    colorPalette: z.array(z.string()).meta({
+      description:
+        'Array of 3–6 hex color strings (e.g. ["#0a0a14", "#e8322f"]), dominant first. Not a comma-separated string.',
+    }),
     colorGrading: z.string(),
     camera: z.string(),
     shots: z.string(),

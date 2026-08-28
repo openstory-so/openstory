@@ -100,7 +100,11 @@ function makeWorkflow(): Probe {
 const SCOPED_DB = {} as unknown as WorkflowScopedDb;
 
 const succeed = (sceneId: string) =>
-  Promise.resolve({ sceneId, motionPrompt: { fullPrompt: `move ${sceneId}` } });
+  Promise.resolve({
+    sceneId,
+    motionPrompt: { fullPrompt: `move ${sceneId}` },
+    finalVersionId: `mpv-${sceneId}`,
+  });
 
 describe('MotionPromptBatchWorkflow partial failures', () => {
   test('returns every prompt when all scenes succeed', async () => {
@@ -117,6 +121,13 @@ describe('MotionPromptBatchWorkflow partial failures', () => {
     );
 
     expect(result.map((r) => r.sceneId)).toEqual(SCENE_IDS);
+    // Parents pin the render off THIS id — stripping it is how storyboard
+    // clips were born with a null motionPromptVersionId (#1380).
+    expect(result.map((r) => r.finalVersionId)).toEqual([
+      'mpv-scene_1',
+      'mpv-scene_2',
+      'mpv-scene_3',
+    ]);
   });
 
   test('keeps the survivors when one scene fails', async () => {

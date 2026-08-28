@@ -1,6 +1,7 @@
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import type { SceneWithScript } from '@/hooks/use-scenes';
 import type { SceneSelection } from '@/lib/scenes/scene-selection';
+import { plainSceneTitle } from '@/lib/utils/markdown-plain';
 import { ChevronUp } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { SceneList, type SceneListProps } from './scene-list';
@@ -50,7 +51,8 @@ export const MobileSceneDrawer: React.FC<SceneListProps> = (listProps) => {
   );
 
   const sceneNumber = (focusedScene?.orderIndex ?? 0) + 1;
-  const sceneTitle = focusedScene?.title?.trim() || `Scene ${sceneNumber}`;
+  const sceneTitle =
+    plainSceneTitle(focusedScene?.title) || `Scene ${sceneNumber}`;
   const shotOrdinal = selectedShot
     ? sceneShots.findIndex((s) => s.id === selectedShot.id) + 1
     : 0;

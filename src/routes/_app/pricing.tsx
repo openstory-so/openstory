@@ -43,7 +43,7 @@ function PricingPage() {
   const feePercent = formatPlatformFeePercent();
   const chargeFor100 = (100 * (1 + PLATFORM_FEE_PERCENT)).toFixed(0);
   const onAddCredits = () => {
-    requireAuth(() => openAddCreditsDialog());
+    requireAuth(() => openAddCreditsDialog('pricing'));
   };
 
   return (
@@ -183,9 +183,9 @@ function PricingPage() {
                       <td className="px-4 py-3">
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="font-medium">{row.name}</span>
-                          {row.license === 'open-source' && (
+                          {row.license === 'open-weight' && (
                             <Badge variant="secondary" className="text-xs">
-                              Open source
+                              Open weight
                             </Badge>
                           )}
                         </div>

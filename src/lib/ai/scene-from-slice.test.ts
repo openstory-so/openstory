@@ -80,6 +80,19 @@ describe('parseSceneHeading', () => {
       timeOfDay: '',
     });
   });
+
+  it('strips markdown from a derived title', () => {
+    expect(parseSceneHeading('**INT. OFFICE - DAY**')).toEqual({
+      title: 'OFFICE',
+      location: 'INT. OFFICE - DAY',
+      timeOfDay: 'day',
+    });
+    expect(parseSceneHeading('## The Reveal')).toEqual({
+      title: 'The Reveal',
+      location: '',
+      timeOfDay: '',
+    });
+  });
 });
 
 describe('extractDialogueFromSlice', () => {

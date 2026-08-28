@@ -10,6 +10,8 @@ import { DEFAULT_IMAGE_MODEL, safeTextToImageModel } from '@/lib/ai/models';
 import {
   computeMotionPromptInputHash,
   computeVisualPromptInputHash,
+  motionPromptInputHashMatches,
+  visualPromptInputHashMatches,
 } from '@/lib/ai/input-hash';
 import {
   loadNarrowShotPromptContext,
@@ -274,7 +276,9 @@ export async function computeShotStaleness(args: {
         });
         const liveHash = await computeVisualPromptInputHash(ctx);
         liveHashes.visualPrompt = liveHash;
-        visualPrompt = liveHash !== referenceHash ? 'stale' : 'fresh';
+        visualPrompt = (await visualPromptInputHashMatches(referenceHash, ctx))
+          ? 'fresh'
+          : 'stale';
       }
     } catch (error) {
       // Context unavailable (e.g., style deleted mid-flight). Report
@@ -323,7 +327,9 @@ export async function computeShotStaleness(args: {
         });
         const liveHash = await computeMotionPromptInputHash(ctx);
         liveHashes.motionPrompt = liveHash;
-        motionPrompt = liveHash !== referenceHash ? 'stale' : 'fresh';
+        motionPrompt = (await motionPromptInputHashMatches(referenceHash, ctx))
+          ? 'fresh'
+          : 'stale';
       }
     } catch (error) {
       motionPrompt = 'unknown';

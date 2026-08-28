@@ -11,11 +11,13 @@
  */
 
 import {
+  characterSheetInputHashMatches,
   computeCharacterSheetInputHash,
   computeLibraryLocationReferenceInputHash,
   computeShotImageInputHash,
   computeLocationSheetInputHash,
   computeTalentSheetInputHash,
+  locationSheetInputHashMatches,
   sha256Hex,
   type CharacterBibleHashFields,
   type ShotImageHashInput,
@@ -133,14 +135,33 @@ function characterBibleFields(
  * inlines the upstream talent-sheet's `input_hash` so that a recast triggered
  * against a then-current talent sheet binds to that exact upstream version.
  */
+function characterSheetHashInput(
+  input: CharacterSheetWorkflowInput & { talentSheetInputHash?: string | null }
+) {
+  return {
+    characterBible: characterBibleFields(input.characterMetadata),
+    talentSheetHash: input.talentSheetInputHash ?? null,
+    imageModel: input.imageModel ?? DEFAULT_IMAGE_MODEL,
+  };
+}
+
 export async function computeCharacterSheetHashFromDto(
   input: CharacterSheetWorkflowInput & { talentSheetInputHash?: string | null }
 ): Promise<string> {
   return computeCharacterSheetInputHash({
-    characterBible: characterBibleFields(input.characterMetadata),
-    talentSheetHash: input.talentSheetInputHash ?? null,
+    ...characterSheetHashInput(input),
     styleConfigHash: await computeStyleConfigHash(input.styleConfig),
-    imageModel: input.imageModel ?? DEFAULT_IMAGE_MODEL,
+  });
+}
+
+/** Dual-hash verify against a stored sheet digest. */
+export async function characterSheetHashMatchesStored(
+  stored: string | null,
+  input: CharacterSheetWorkflowInput & { talentSheetInputHash?: string | null }
+): Promise<boolean> {
+  return characterSheetInputHashMatches(stored, {
+    ...characterSheetHashInput(input),
+    styleConfigHash: await computeStyleConfigHash(input.styleConfig),
   });
 }
 
@@ -176,16 +197,39 @@ function locationBibleFields(
  * inlines the parent library location's `reference_input_hash` if the sheet
  * was triggered with a library reference; otherwise `null`.
  */
+function locationSheetHashInput(
+  input: LocationSheetWorkflowInput & {
+    libraryLocationReferenceHash?: string | null;
+  }
+) {
+  return {
+    locationBible: locationBibleFields(input.locationMetadata),
+    libraryLocationReferenceHash: input.libraryLocationReferenceHash ?? null,
+    imageModel: input.imageModel ?? DEFAULT_IMAGE_MODEL,
+  };
+}
+
 export async function computeLocationSheetHashFromDto(
   input: LocationSheetWorkflowInput & {
     libraryLocationReferenceHash?: string | null;
   }
 ): Promise<string> {
   return computeLocationSheetInputHash({
-    locationBible: locationBibleFields(input.locationMetadata),
-    libraryLocationReferenceHash: input.libraryLocationReferenceHash ?? null,
+    ...locationSheetHashInput(input),
     styleConfigHash: await computeStyleConfigHash(input.styleConfig),
-    imageModel: input.imageModel ?? DEFAULT_IMAGE_MODEL,
+  });
+}
+
+/** Dual-hash verify against a stored location-sheet digest. */
+export async function locationSheetHashMatchesStored(
+  stored: string | null,
+  input: LocationSheetWorkflowInput & {
+    libraryLocationReferenceHash?: string | null;
+  }
+): Promise<boolean> {
+  return locationSheetInputHashMatches(stored, {
+    ...locationSheetHashInput(input),
+    styleConfigHash: await computeStyleConfigHash(input.styleConfig),
   });
 }
 
@@ -233,10 +277,9 @@ export async function computeLibraryTalentSheetHashCurrent(
   const talent = await scopedDb.talent.getWithRelations(input.talentId);
   // Fall back to the payload when the talent row vanished mid-flight — the
   // workflow will fail downstream on the missing record, but we shouldn't mask
-  // the divergence check with a noisy lookup error here. Name/description are
-  // re-read for the same reason the URLs are: a mid-run rename changes the
-  // identity the sheet was generated for, and hashing the payload copy would
-  // make that divergence unrepresentable.
+  // the divergence check with a noisy lookup error here. Description is
+  // re-read because a mid-run rewrite is a real input change; the display
+  // name is passed through but not hashed.
   const liveImageUrls =
     talent?.media
       .filter((m) => m.type === 'image')
@@ -313,8 +356,9 @@ function sortedRefHashes(values: Array<string | null | undefined>): string[] {
 /**
  * Match a scene's referenced characters / locations / elements from live DB
  * rows and resolve the three reference-hash sets that feed the shot-image
- * input hash: character `sheetInputHash`, location `referenceInputHash`, and
- * element `imageUrl`.
+ * input hash: the selected sheet version id when present (so a new sheet
+ * image re-stales stills even with identical bible inputs), else the parent
+ * `sheetInputHash` / `referenceInputHash`; plus element `imageUrl`.
  *
  * Element matching uses the still's visual prompt when `visualPrompt` is
  * passed (the same text the image model generated from). Scene extract /
@@ -376,10 +420,12 @@ export function resolveSceneShotImageReferences(params: {
     locations: matchedLocations,
     elements: matchedElements,
     characterSheetHashes: sortedRefHashes(
-      matchedCharacters.map((c) => c.sheetInputHash)
+      matchedCharacters.map((c) => c.selectedSheetVersionId ?? c.sheetInputHash)
     ),
     locationSheetHashes: sortedRefHashes(
-      matchedLocations.map((l) => l.referenceInputHash)
+      matchedLocations.map(
+        (l) => l.selectedReferenceVersionId ?? l.referenceInputHash
+      )
     ),
     elementReferenceHashes: sortedRefHashes(
       matchedElements.map((e) => e.imageUrl)

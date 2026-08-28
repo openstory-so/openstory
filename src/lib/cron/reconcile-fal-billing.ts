@@ -25,6 +25,7 @@ import {
   fetchFalBillingEvents,
 } from '@/lib/ai/fal-pricing-fetch';
 import { reportBillingDrift } from '@/lib/billing/billing-observability';
+import { FAL_UNVERIFIED_SIBLINGS } from '@/lib/ai/fal-typical-units';
 import { usdToMicros } from '@/lib/billing/money';
 import {
   modelPricing,
@@ -33,7 +34,10 @@ import {
 } from '@/lib/db/schema';
 import { getLogger } from '@/lib/observability/logger';
 import { and, eq, gte, lte } from 'drizzle-orm';
-import type { PricingRefreshDb } from './refresh-fal-pricing';
+import {
+  type PricingRefreshDb,
+  writeObservedUnits,
+} from './refresh-fal-pricing';
 
 const logger = getLogger(['openstory', 'cron', 'reconcile-fal-billing']);
 
@@ -55,6 +59,8 @@ export type FalBillingReconcileSummary = {
   matchedTransactions: number;
   drifts: number;
   rateCorrections: number;
+  /** Endpoints whose observed_median_units were patched from our samples. */
+  observedEndpoints: number;
   /** Events with no matching transaction (scripts, unpriced $0 charges…). */
   unmatchedEvents: number;
 };
@@ -90,14 +96,17 @@ export async function reconcileFalBilling(
     matchedTransactions: 0,
     drifts: 0,
     rateCorrections: 0,
+    observedEndpoints: 0,
     unmatchedEvents: 0,
   };
+
+  summary.rateCorrections = await correctRates(db, events, now);
+  summary.observedEndpoints = await writeObservedUnits(db, now);
+
   if (events.length === 0) {
     logger.info('fal billing reconcile: no events in window', { ...summary });
     return summary;
   }
-
-  summary.rateCorrections = await correctRates(db, events, now);
 
   // Join events to our usage transactions by the fal request id in metadata.
   // The transaction window is wider than the event window: a transaction is
@@ -221,6 +230,87 @@ async function correctRates(
       endpointId,
       unit: row.unit,
       unitPriceMicros: billedMicros,
+      recordedAt: now,
+    });
+    corrections++;
+  }
+
+  corrections += await copySiblingRates(
+    db,
+    latestByEndpoint,
+    rowsByEndpoint,
+    now
+  );
+  return corrections;
+}
+
+/**
+ * Stamp an unverified sibling (H3 Max t2v) with the source's billed unit
+ * price so it does not sit on fal's advertised compute-seconds lie (#1382).
+ * Unit re-denomination (PK includes unit) is left to the nightly snapshot.
+ */
+async function copySiblingRates(
+  db: PricingRefreshDb,
+  latestByEndpoint: Map<string, FalBillingEvent>,
+  rowsByEndpoint: Map<string, typeof modelPricing.$inferSelect>,
+  now: Date
+): Promise<number> {
+  let corrections = 0;
+  for (const [target, source] of Object.entries(FAL_UNVERIFIED_SIBLINGS)) {
+    if (latestByEndpoint.has(target)) continue;
+    const sourceEvent = latestByEndpoint.get(source);
+    const sourceRow = rowsByEndpoint.get(source);
+    const targetRow = rowsByEndpoint.get(target);
+    if (!targetRow) continue;
+    const sourceMicros = sourceEvent
+      ? usdToMicros(sourceEvent.unitPriceUsd)
+      : sourceRow?.rateVerifiedAt != null
+        ? sourceRow.unitPriceMicros
+        : undefined;
+    if (sourceMicros == null) continue;
+    if (targetRow.unitPriceMicros === sourceMicros) {
+      if (targetRow.rateVerifiedAt == null) {
+        await db
+          .update(modelPricing)
+          .set({ rateVerifiedAt: now, updatedAt: now })
+          .where(
+            and(
+              eq(modelPricing.provider, 'fal'),
+              eq(modelPricing.endpointId, target),
+              eq(modelPricing.unit, targetRow.unit)
+            )
+          );
+      }
+      continue;
+    }
+    logger.warn(
+      'unverified sibling inheriting billed rate from source endpoint',
+      {
+        target,
+        source,
+        storedMicros: targetRow.unitPriceMicros,
+        billedMicros: sourceMicros,
+      }
+    );
+    await db
+      .update(modelPricing)
+      .set({
+        unitPriceMicros: sourceMicros,
+        rateVerifiedAt: now,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(modelPricing.provider, 'fal'),
+          eq(modelPricing.endpointId, target),
+          eq(modelPricing.unit, targetRow.unit)
+        )
+      );
+    await db.insert(modelPricingHistory).values({
+      provider: 'fal',
+      endpointId: target,
+      unit: targetRow.unit,
+      unitPriceMicros: sourceMicros,
       recordedAt: now,
     });
     corrections++;

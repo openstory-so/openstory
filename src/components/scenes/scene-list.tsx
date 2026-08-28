@@ -4,6 +4,7 @@ import { MusicModelSelector } from '@/components/model/music-model-selector';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { useCreateScene, useReorderScenes } from '@/hooks/use-scene-structure';
 import {
   DEFAULT_MUSIC_MODEL,
   DEFAULT_VIDEO_MODEL,
@@ -19,13 +20,22 @@ import type { AspectRatio } from '@/lib/constants/aspect-ratios';
 import { useFalPricing } from '@/hooks/use-fal-pricing';
 import type { SceneWithScript } from '@/hooks/use-scenes';
 import type { ShotVariant } from '@/lib/db/schema';
+import { errorMessage } from '@/lib/errors';
 import { resolveShotDuration } from '@/lib/motion/resolve-shot-duration';
 import type { SceneSelection } from '@/lib/scenes/scene-selection';
 import type { SequenceSegment } from '@/lib/scenes/scene-segments';
 import type { ShotView } from '@/lib/shots/shot-view';
 import { cn } from '@/lib/utils';
-import { Loader2, Video } from 'lucide-react';
-import { memo, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Loader2, Plus, Video } from 'lucide-react';
+import {
+  memo,
+  useCallback,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import { toast } from 'sonner';
 import { SceneGroup } from './scene-group';
 import { SceneListItem } from './scene-list-item';
 
@@ -78,6 +88,7 @@ export type BatchGenerateMotionArgs = {
 };
 
 export type SceneListProps = {
+  sequenceId: string;
   shots?: ShotView[] | undefined;
   scenes?: SceneWithScript[] | undefined;
   /** Render segments (#986) — bracket the shots sharing one video per scene. */
@@ -89,6 +100,7 @@ export type SceneListProps = {
   selection: SceneSelection;
   aspectRatio: AspectRatio;
   onSelectScene: (sceneId: string, additive: boolean) => void;
+  onSelectShot: (shotId: string) => void;
   onClearSelection: () => void;
   regeneratingImages: Set<string>;
   regeneratingMotion: Set<string>;
@@ -106,7 +118,7 @@ export type SceneListProps = {
   styleName?: string;
   modelMissingShotIds?: Set<string>;
   modelMissingLabel?: string | null;
-  /** Shots with stale prompts/image in the in-focus scene (#1077) — amber dots. */
+  /** Shots with stale prompts/image (#1077) — amber dots on every rail thumbnail. */
   staleShotIds?: Set<string>;
   /** Sizing from the host — sidebar width on desktop, `w-full` in a sheet. */
   className?: string;
@@ -115,6 +127,7 @@ export type SceneListProps = {
 };
 
 const SceneListComponent: React.FC<SceneListProps> = ({
+  sequenceId,
   shots,
   scenes,
   segments,
@@ -123,6 +136,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
   selection,
   aspectRatio,
   onSelectScene,
+  onSelectShot,
   onClearSelection,
   regeneratingImages,
   regeneratingMotion,
@@ -154,6 +168,47 @@ const SceneListComponent: React.FC<SceneListProps> = ({
     return map;
   }, [divergentVariants]);
 
+  const createScene = useCreateScene(sequenceId);
+  const reorderScenes = useReorderScenes(sequenceId);
+
+  // Scene order lives in the scenes array; a ref keeps a stale closure in a
+  // memoized child operating on the CURRENT order (same pattern as shots).
+  const scenesRef = useRef(scenes);
+  scenesRef.current = scenes;
+  const handleMoveScene = useCallback(
+    (sceneId: SceneWithScript['id'], direction: 'up' | 'down') => {
+      const ids = (scenesRef.current ?? []).map((s) => s.id);
+      const index = ids.indexOf(sceneId);
+      const swapWith = direction === 'up' ? index - 1 : index + 1;
+      if (index < 0 || swapWith < 0 || swapWith >= ids.length) return;
+      const next = [...ids];
+      const a = next[index];
+      const b = next[swapWith];
+      if (a === undefined || b === undefined) return;
+      next[index] = b;
+      next[swapWith] = a;
+      reorderScenes.mutate(next, {
+        onError: (error) =>
+          toast.error('Failed to reorder scenes', {
+            description: errorMessage(error),
+          }),
+      });
+    },
+    [reorderScenes]
+  );
+
+  const handleAddScene = () => {
+    createScene.mutate(undefined, {
+      onSuccess: ({ scene }) => {
+        onSelectScene(scene.id, false);
+      },
+      onError: (error) =>
+        toast.error('Failed to add scene', {
+          description: errorMessage(error),
+        }),
+    });
+  };
+
   const [isGenerating, setIsGenerating] = useState(false);
   const [includeMusic, setIncludeMusic] = useState(true);
   const [generateAudio, setGenerateAudio] = useState(true);
@@ -179,12 +234,16 @@ const SceneListComponent: React.FC<SceneListProps> = ({
 
   const totalShots = shots?.length ?? 0;
 
-  // Shots that need to be kicked off (not already generating)
+  // Shots that need to be kicked off (not already generating). 'cancelled'
+  // is user-initiated (#1108 Phase 4): deliberately eligible for a
+  // user-driven batch generate, never auto-retried.
   const notStartedShots = useMemo(() => {
     if (!shots) return [];
     return shots.filter(
       (f) =>
-        (f.videoStatus === 'pending' || f.videoStatus === 'failed') &&
+        (f.videoStatus === 'pending' ||
+          f.videoStatus === 'failed' ||
+          f.videoStatus === 'cancelled') &&
         f.frame.imageStatus === 'completed'
     );
   }, [shots]);
@@ -391,16 +450,22 @@ const SceneListComponent: React.FC<SceneListProps> = ({
               <p className="text-sm text-muted-foreground">No scenes yet.</p>
             )}
 
-          {groupedScenes.map(({ scene, shots: sceneShots }) => (
+          {groupedScenes.map(({ scene, shots: sceneShots }, index) => (
             <SceneGroup
               key={scene.id}
               scene={scene}
               shots={sceneShots}
+              sequenceId={sequenceId}
               segmentsById={segmentsById}
               isSceneSelected={selection.sceneIds.includes(scene.id)}
               selectedShotId={selection.shotId}
               aspectRatio={aspectRatio}
               onSelectScene={onSelectScene}
+              onSelectShot={onSelectShot}
+              onClearSelection={onClearSelection}
+              isFirst={index === 0}
+              isLast={index === groupedScenes.length - 1}
+              onMoveScene={handleMoveScene}
               regeneratingImages={regeneratingImages}
               regeneratingMotion={regeneratingMotion}
               divergentByShotId={divergentByShotId}
@@ -435,6 +500,23 @@ const SceneListComponent: React.FC<SceneListProps> = ({
               />
             );
           })}
+
+          {!loadError && !isLoading && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleAddScene}
+              disabled={createScene.isPending}
+            >
+              {createScene.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Plus className="mr-2 h-4 w-4" />
+              )}
+              {createScene.isPending ? 'Adding scene…' : 'Add scene'}
+            </Button>
+          )}
         </div>
       </ScrollArea>
 
@@ -526,6 +608,7 @@ const areEqual = (
   nextProps: SceneListProps
 ): boolean => {
   if (
+    prevProps.sequenceId !== nextProps.sequenceId ||
     prevProps.selection !== nextProps.selection ||
     prevProps.scenes !== nextProps.scenes ||
     prevProps.segments !== nextProps.segments ||
@@ -558,6 +641,7 @@ const areEqual = (
     prevProps.onBatchGenerateMotion !== nextProps.onBatchGenerateMotion ||
     prevProps.onCompareDivergent !== nextProps.onCompareDivergent ||
     prevProps.onSelectScene !== nextProps.onSelectScene ||
+    prevProps.onSelectShot !== nextProps.onSelectShot ||
     prevProps.onClearSelection !== nextProps.onClearSelection
   ) {
     return false;

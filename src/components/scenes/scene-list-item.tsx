@@ -1,18 +1,33 @@
 import { DivergentAlternateBanner } from '@/components/staleness/divergent-alternate-banner';
+import { Button } from '@/components/ui/button';
 import {
   Card,
   CardDescription,
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { SceneWithScript } from '@/hooks/use-scenes';
 import type { AspectRatio } from '@/lib/constants/aspect-ratios';
 import { cn } from '@/lib/utils';
-import { stripMarkdown } from '@/lib/utils/markdown-plain';
+import { plainSceneTitle, stripMarkdown } from '@/lib/utils/markdown-plain';
 import type { ShotView } from '@/lib/shots/shot-view';
 import { Link } from '@tanstack/react-router';
-import { Loader2, Play } from 'lucide-react';
+import {
+  ArrowDown,
+  ArrowUp,
+  Loader2,
+  MoreVertical,
+  Play,
+  Trash2,
+} from 'lucide-react';
 import { memo } from 'react';
 import { SceneThumbnail } from './scene-thumbnail';
 
@@ -43,6 +58,10 @@ type SceneListItemProps = {
    * corner dot. Divergent alternates and the regen spinner take precedence.
    */
   isStale?: boolean;
+  /** Structure controls (#1108) — the shot menu renders when any is set. */
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
+  onRequestDelete?: () => void;
 };
 
 const SceneListItemComponent: React.FC<SceneListItemProps> = ({
@@ -59,7 +78,11 @@ const SceneListItemComponent: React.FC<SceneListItemProps> = ({
   modelMissing = false,
   modelMissingLabel,
   isStale = false,
+  onMoveUp,
+  onMoveDown,
+  onRequestDelete,
 }) => {
+  const hasShotMenu = !!(onMoveUp || onMoveDown || onRequestDelete);
   // Divergent alternate takes precedence: promoting it resolves staleness too.
   const showDivergentDot = !!divergentVariantId;
   // Motion state lives on the thumbnail as a play badge: solid = the shot has
@@ -73,7 +96,7 @@ const SceneListItemComponent: React.FC<SceneListItemProps> = ({
   const sceneNumber = (scene?.orderIndex ?? 0) + 1;
   const title = !shot
     ? undefined
-    : scene?.title?.trim() || `Scene ${sceneNumber}`;
+    : plainSceneTitle(scene?.title) || `Scene ${sceneNumber}`;
   const scriptPreview = !shot
     ? undefined
     : stripMarkdown(scene?.script?.extract ?? '');
@@ -85,7 +108,7 @@ const SceneListItemComponent: React.FC<SceneListItemProps> = ({
       data-testid="scene-list-item"
       data-shot-id={shot?.id}
       className={cn(
-        '@container/scene relative transition-all',
+        '@container/scene group/scene-item relative transition-all',
         isSkeleton ? 'pointer-events-none' : 'cursor-pointer',
         isActive ? 'border-primary bg-primary/5' : 'hover:bg-muted/50',
         variant === 'responsive' && '@[280px]/scene:py-3',
@@ -137,18 +160,6 @@ const SceneListItemComponent: React.FC<SceneListItemProps> = ({
           )}
         />
       )}
-      {!showDivergentDot && shot && !isRegeneratingImage && isStale && (
-        <span
-          className="absolute right-3 top-3 z-10"
-          title="Out of date since your last edit"
-        >
-          <span className="sr-only">Out of date since your last edit</span>
-          <span
-            aria-hidden="true"
-            className="block h-2 w-2 rounded-full bg-amber-500 ring-2 ring-amber-500/30"
-          />
-        </span>
-      )}
 
       <CardHeader>
         <div
@@ -188,6 +199,20 @@ const SceneListItemComponent: React.FC<SceneListItemProps> = ({
                 pendingUpscaleIndex={shot?.pendingUpscaleIndex}
                 pendingUpscaleUrl={shot?.pendingUpscaleUrl}
               />
+              {!showDivergentDot && shot && !isRegeneratingImage && isStale && (
+                <span
+                  className="pointer-events-none absolute top-1 right-1"
+                  title="Out of date since your last edit"
+                >
+                  <span className="sr-only">
+                    Out of date since your last edit
+                  </span>
+                  <span
+                    aria-hidden="true"
+                    className="block h-2 w-2 rounded-full bg-amber-500 ring-2 ring-amber-500/30"
+                  />
+                </span>
+              )}
               {(hasVideo || isGeneratingVideo) && (
                 <span
                   aria-label={
@@ -226,6 +251,53 @@ const SceneListItemComponent: React.FC<SceneListItemProps> = ({
           </div>
         </div>
       </CardHeader>
+
+      {hasShotMenu && shot && (
+        <div
+          className="absolute bottom-2 right-2 z-20"
+          // Halt propagation so opening the menu doesn't also follow the
+          // stretched card link (z-10) underneath.
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.stopPropagation()}
+          role="presentation"
+        >
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 opacity-0 transition-opacity focus-visible:opacity-100 group-hover/scene-item:opacity-100 data-[state=open]:opacity-100"
+                aria-label="Shot actions"
+              >
+                <MoreVertical className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem disabled={!onMoveUp} onClick={onMoveUp}>
+                <ArrowUp className="h-4 w-4" />
+                Move up
+              </DropdownMenuItem>
+              <DropdownMenuItem disabled={!onMoveDown} onClick={onMoveDown}>
+                <ArrowDown className="h-4 w-4" />
+                Move down
+              </DropdownMenuItem>
+              {onRequestDelete && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    variant="destructive"
+                    onClick={onRequestDelete}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Remove shot
+                  </DropdownMenuItem>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      )}
     </Card>
   );
 };
@@ -247,6 +319,16 @@ const areEqual = (
     prevProps.modelMissing !== nextProps.modelMissing ||
     prevProps.modelMissingLabel !== nextProps.modelMissingLabel ||
     prevProps.isStale !== nextProps.isStale
+  ) {
+    return false;
+  }
+
+  // Menu availability flips when a shot becomes first/last after a reorder —
+  // presence (not identity) is what the render reads.
+  if (
+    !!prevProps.onMoveUp !== !!nextProps.onMoveUp ||
+    !!prevProps.onMoveDown !== !!nextProps.onMoveDown ||
+    !!prevProps.onRequestDelete !== !!nextProps.onRequestDelete
   ) {
     return false;
   }

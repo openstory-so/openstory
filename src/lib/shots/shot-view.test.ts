@@ -33,6 +33,7 @@ function makeShot(): Shot {
     durationMs: 3000,
     selectedMotionPromptVersionId: null,
     renderSegmentId: 'seg-1',
+    deletedAt: null,
     createdAt: now,
     updatedAt: now,
   };

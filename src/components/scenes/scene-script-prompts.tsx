@@ -21,11 +21,15 @@ import { MarkdownEditor } from '@/components/text-editor/markdown-editor';
 import { useSequenceMentionItems } from '@/hooks/use-mention-items';
 import { shortenPromptFn } from '@/functions/ai';
 import { generateShotImageFn } from '@/functions/shot-image';
-import { generateShotMotionFn } from '@/functions/motion-functions';
+import {
+  cancelVideoRenderFn,
+  generateShotMotionFn,
+} from '@/functions/motion-functions';
 import { regenerateShotPromptFn } from '@/functions/prompt-variants';
 import { BILLING_BALANCE_KEY } from '@/hooks/use-billing-balance';
 import { useFalBillingGate } from '@/hooks/use-billing-gate';
 import { useFalPricing } from '@/hooks/use-fal-pricing';
+import { segmentKeys } from '@/hooks/use-segments';
 import {
   shotKeys,
   useSelectSegmentVideoVersion,
@@ -36,9 +40,15 @@ import {
   SegmentVideoPanel,
   segmentPanelIsInformative,
 } from '@/components/scenes/segment-video-panel';
+import { UploadMediaButton } from '@/components/scenes/upload-media-button';
+import {
+  useReplaceFrameImage,
+  useReplaceShotVideo,
+} from '@/hooks/use-media-upload';
 import type { SequenceSegment } from '@/lib/scenes/scene-segments';
 import type { UpdateStaleDepth } from '@/lib/shots/update-stale-depth';
 import { copyTextToClipboard } from '@/lib/utils/clipboard';
+import { isSetImageOffered } from '@/lib/shots/set-image-offer';
 import {
   type ShotStaleness,
   markArtifactFresh,
@@ -61,6 +71,8 @@ import {
   DEFAULT_VIDEO_MODEL,
   IMAGE_MODELS,
   IMAGE_TO_VIDEO_MODELS,
+  getBytePlusImageModelId,
+  getBytePlusVideoModelId,
   getCompatibleModel,
   safeImageToVideoModel,
   safeTextToImageModel,
@@ -77,8 +89,12 @@ import {
   DEFAULT_ASPECT_RATIO,
   type AspectRatio,
 } from '@/lib/constants/aspect-ratios';
+import { getMediaRoutesFn } from '@/functions/media-routes';
 import { getStorageDomainFn } from '@/functions/storage-config';
 import {
+  boundPromptImages,
+  imageUrlsFromFalInput,
+  imageUrlsFromPromptParts,
   OptimisedPromptPanel,
   promptFromFalInput,
   type OptimisedPromptPreview,
@@ -91,8 +107,10 @@ import {
 import { isNativeGeminiVideoModel } from '@/lib/ai/gemini-native';
 import { isNativeGrokVideoModel } from '@/lib/ai/grok-native';
 import { buildImageRequest } from '@/lib/image/build-image-request';
+import { buildBytePlusImageRequest } from '@/lib/image/build-byteplus-image-request';
 import { buildGeminiVideoRequest } from '@/lib/motion/build-gemini-video-request';
 import { buildGrokVideoRequest } from '@/lib/motion/build-grok-video-request';
+import { buildBytePlusVideoRequest } from '@/lib/motion/build-byteplus-video-request';
 import { buildMotionRequest } from '@/lib/motion/build-model-input';
 import {
   buildMotionReferenceImages,
@@ -381,6 +399,8 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
   const setImageFromVariant = useSetImageFromVariant();
   const setVideoFromVariant = useSetVideoFromVariant();
   const selectSegmentVideoVersion = useSelectSegmentVideoVersion();
+  const replaceFrameImage = useReplaceFrameImage();
+  const replaceShotVideo = useReplaceShotVideo();
 
   const handleSelectSegmentVersion = useCallback(
     (versionId: string) => {
@@ -519,6 +539,44 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
         description: errorMessage(error),
       });
     },
+  });
+
+  // Cancel an in-flight render (#1108 Phase 4): flips the generating
+  // video_variants row terminal and terminates its single-artifact run — a
+  // finishing render can no longer resurrect it. Data-only; idempotent.
+  const cancelVideoRender = useMutation({
+    mutationFn: (versionId: string) => {
+      if (!shot?.id) throw new Error('shot required');
+      return cancelVideoRenderFn({
+        data: { sequenceId, shotId: shot.id, versionId },
+      });
+    },
+    onSuccess: async (result) => {
+      toast.success(
+        result.cancelled
+          ? 'Video generation cancelled'
+          : 'Video had already finished'
+      );
+      if (shot?.id) {
+        await queryClient.invalidateQueries({
+          queryKey: shotKeys.detail(shot.id),
+        });
+      }
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: shotKeys.list(sequenceId) }),
+        queryClient.invalidateQueries({
+          queryKey: ['sequence-video-variants', sequenceId],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: segmentKeys.list(sequenceId),
+        }),
+        queryClient.invalidateQueries({ queryKey: shotStalenessNamespace }),
+      ]);
+    },
+    onError: (error) =>
+      toast.error('Failed to cancel video', {
+        description: errorMessage(error),
+      }),
   });
 
   // Standalone Save: persist a hand-edited / shortened prompt as a `user-edit`
@@ -712,13 +770,15 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     !!variantForSelectedModel.url;
   const variantIsGenerating = variantForSelectedModel?.status === 'generating';
   // Set Image only when the dropdown model differs from the model that
-  // produced the *current* primary still. Comparing URLs to the latest
-  // re-roll was wrong: same model + older selected version still showed Set
-  // Image, and a newer unselected re-roll looked "not current" (#1070).
-  const variantAlreadySet =
-    variantIsCompleted &&
-    !!shot?.image?.url &&
-    effectiveImageModel === imageModel;
+  // produced the *current* primary still. Uploads are already the selected
+  // version — offering Set Image would revert them to an older generation.
+  const offerSetImage = isSetImageOffered({
+    variantCompleted: variantIsCompleted,
+    currentImageUrl: shot?.image?.url,
+    currentKind: shot?.image?.kind,
+    currentModel: shot?.image?.model,
+    dropdownModel: effectiveImageModel,
+  });
 
   // Has the selected image model produced an image for this scene — drives
   // Generate vs Regenerate (mirror of videoModelGenerated). Variant row (any
@@ -1106,6 +1166,15 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
   });
   const storageDomain = storageConfig?.storageDomain ?? null;
 
+  // Which media route the platform is on (#1157) — decides whether the request
+  // preview below shows a fal body or an Ark one.
+  const { data: mediaRoutes } = useQuery({
+    queryKey: ['media-routes'],
+    queryFn: () => getMediaRoutesFn(),
+    staleTime: Infinity,
+  });
+  const byteplusEnabled = mediaRoutes?.byteplusEnabled ?? false;
+
   // Mirror of toCdnUrl for the client: absolutize only when the CDN domain
   // is configured, so prod previews show exactly what fal receives.
   const absolutizeUrl = useCallback(
@@ -1181,6 +1250,40 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
           json: JSON.stringify(request.input, null, 2),
           promptLength: prompt.length,
           maxPromptLength: config.maxPromptLength,
+          images: boundPromptImages(
+            imageUrlsFromPromptParts(request.input.prompt),
+            (position) => `<IMAGE_${position - 1}>`
+          ),
+        };
+      }
+      if (byteplusEnabled && getBytePlusVideoModelId(modelKey) !== undefined) {
+        const ark = buildBytePlusVideoRequest(
+          {
+            prompt: modelPrompt,
+            imageUrl,
+            duration,
+            aspectRatio,
+            generateAudio: videoModelSupportsAudio(modelKey)
+              ? generateAudio
+              : undefined,
+            referenceImages,
+          },
+          modelKey
+        );
+        const { modelId, ...body } = ark;
+        const textPart = ark.prompt.find((part) => part.type === 'text');
+        const prompt = textPart?.content ?? modelPrompt;
+        return {
+          modelName: config.name,
+          endpointId: modelId,
+          prompt,
+          json: JSON.stringify(body, null, 2),
+          promptLength: prompt.length,
+          maxPromptLength: config.maxPromptLength,
+          images: boundPromptImages(
+            imageUrlsFromPromptParts(ark.prompt),
+            (position) => `@Image${position}`
+          ),
         };
       }
       if (isNativeGeminiVideoModel(modelKey)) {
@@ -1203,6 +1306,10 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
           json: JSON.stringify(request.input, null, 2),
           promptLength: prompt.length,
           maxPromptLength: config.maxPromptLength,
+          images: boundPromptImages(
+            imageUrlsFromPromptParts(request.input.prompt),
+            (position) => `<IMAGE_REF_${position - 1}>`
+          ),
         };
       }
       const request = buildMotionRequest(
@@ -1225,6 +1332,10 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
         json: JSON.stringify(request.input, null, 2),
         promptLength: modelPrompt.length,
         maxPromptLength: config.maxPromptLength,
+        images: boundPromptImages(
+          imageUrlsFromFalInput(request.input),
+          (position) => `@Image${position}`
+        ),
       };
     } catch {
       return null;
@@ -1243,6 +1354,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     aspectRatio,
     generateAudio,
     absolutizeUrl,
+    byteplusEnabled,
   ]);
 
   // Exact fal request for the *selected* image model — same reference
@@ -1272,7 +1384,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
           referenceImages,
           config.maxPromptLength
         );
-      const request = buildImageRequest({
+      const buildParams = {
         model: modelKey,
         prompt: enhancedPrompt,
         imageSize: aspectRatio
@@ -1280,7 +1392,24 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
           : undefined,
         numImages: 1,
         referenceImageUrls: referenceUrls,
-      });
+      };
+      if (byteplusEnabled && getBytePlusImageModelId(modelKey) !== undefined) {
+        const { modelId, ...body } = buildBytePlusImageRequest(buildParams);
+        return {
+          modelName: config.name,
+          endpointId: modelId,
+          prompt: enhancedPrompt,
+          json: JSON.stringify(body, null, 2),
+          promptLength: enhancedPrompt.length,
+          maxPromptLength: config.maxPromptLength,
+          images: boundPromptImages(
+            referenceUrls,
+            (position) => `Image ${position}`
+          ),
+        };
+      }
+      const request = buildImageRequest(buildParams);
+      const falImageUrls = imageUrlsFromFalInput(request.input);
       return {
         modelName: config.name,
         endpointId: request.endpointId,
@@ -1288,6 +1417,10 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
         json: JSON.stringify(request.input, null, 2),
         promptLength: enhancedPrompt.length,
         maxPromptLength: config.maxPromptLength,
+        images: boundPromptImages(
+          falImageUrls.length > 0 ? falImageUrls : referenceUrls,
+          (position) => `Image ${position}`
+        ),
       };
     } catch {
       return null;
@@ -1303,6 +1436,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     mentionLocations,
     aspectRatio,
     absolutizeUrl,
+    byteplusEnabled,
   ]);
 
   // Has the *currently-selected* video model produced a video for this scene —
@@ -1375,6 +1509,66 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
   const isGeneratingMotion =
     shot?.videoStatus === 'generating' ||
     (shot?.id ? regeneratingMotion.has(shot.id) : false);
+
+  // Manual media inject (#1108 Phase 3). When the prompt editor holds an
+  // unsaved edit, the upload rides the atomic prompt+image server fn so the
+  // new still is stamped fresh against the new prompt text (§4.3 C); otherwise
+  // it's an image-only replace that leaves the prompt untouched.
+  const handleReplaceImageFile = useCallback(
+    (file: File) => {
+      if (!shot?.id || !shot.sequenceId) return;
+      const promptText = visualPromptDirty
+        ? editedImagePrompt.trim()
+        : undefined;
+      const ratio = aspectRatio ?? DEFAULT_ASPECT_RATIO;
+      replaceFrameImage.mutate(
+        {
+          file,
+          sequenceId: shot.sequenceId,
+          shotId: shot.id,
+          aspectRatio: ratio,
+          promptText,
+        },
+        {
+          onSuccess: (result) => {
+            if (result.promptChanged) dirtyImageRef.current = false;
+            toast.success(
+              result.promptChanged
+                ? 'Image replaced and prompt saved'
+                : 'Image replaced',
+              result.cropped
+                ? {
+                    description: `Cropped to ${ratio} so motion generation matches the sequence.`,
+                  }
+                : undefined
+            );
+          },
+          onError: (error) =>
+            toast.error('Image upload failed', {
+              description: errorMessage(error),
+            }),
+        }
+      );
+    },
+    [shot, visualPromptDirty, editedImagePrompt, replaceFrameImage, aspectRatio]
+  );
+
+  const handleReplaceVideoFile = useCallback(
+    (file: File) => {
+      if (!shot?.id || !shot.sequenceId) return;
+      replaceShotVideo.mutate(
+        { file, sequenceId: shot.sequenceId, shotId: shot.id },
+        {
+          onSuccess: () => toast.success('Video replaced'),
+          onError: (error) =>
+            toast.error('Video upload failed', {
+              description: errorMessage(error),
+            }),
+        }
+      );
+    },
+    [shot, replaceShotVideo]
+  );
 
   // Anything on this shot out of date? Drives the status line (#1077). The
   // per-prompt optimistic 'fresh' writes clear the relevant term the moment a
@@ -1742,7 +1936,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
           )}
 
           {/* Image action button — variant-aware */}
-          {variantIsCompleted && !variantAlreadySet ? (
+          {offerSetImage ? (
             <Button
               onClick={() => void handleSetImageFromVariant()}
               disabled={setImageFromVariant.isPending || !shot}
@@ -1778,6 +1972,28 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
               <ActionCost estimate={imageCostEstimate} />
             </div>
           )}
+
+          {/* Manual still inject (#1108) — upload replaces the selected image;
+              a pending prompt edit is saved atomically with it (§4.3 C). */}
+          <UploadMediaButton
+            label="Replace Image"
+            pendingLabel="Uploading…"
+            accept="image/*"
+            isPending={replaceFrameImage.isPending}
+            disabled={!shot || isGenerating}
+            onFile={handleReplaceImageFile}
+            className="w-full"
+          />
+          <p className="text-xs text-muted-foreground">
+            Off-ratio stills are cropped to{' '}
+            {aspectRatio ?? DEFAULT_ASPECT_RATIO} so video models get a matching
+            start frame.
+          </p>
+          {visualPromptDirty ? (
+            <p className="text-xs text-muted-foreground">
+              Replacing the image will also save your edited prompt with it.
+            </p>
+          ) : null}
         </div>
       </TabsContent>
 
@@ -2069,6 +2285,36 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
               <ActionCost estimate={motionCostEstimate} />
             </div>
           )}
+
+          {/* Cancel the in-flight render (#1108 Phase 4). Needs the
+              generating version's id — the projected variant row carries it. */}
+          {videoVariantForSelectedModel?.status === 'generating' && (
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full"
+              disabled={cancelVideoRender.isPending}
+              onClick={() =>
+                cancelVideoRender.mutate(videoVariantForSelectedModel.id)
+              }
+            >
+              {cancelVideoRender.isPending
+                ? 'Cancelling…'
+                : 'Cancel Generation'}
+            </Button>
+          )}
+
+          {/* Manual clip inject (#1108) — upload appends + selects a video
+              version whose manifest snapshots the current pointers. */}
+          <UploadMediaButton
+            label="Replace Video"
+            pendingLabel="Uploading…"
+            accept="video/*"
+            isPending={replaceShotVideo.isPending}
+            disabled={!shot || isGeneratingMotion}
+            onFile={handleReplaceVideoFile}
+            className="w-full"
+          />
         </div>
       </TabsContent>
 

@@ -1,5 +1,6 @@
 import type React from 'react';
 import { useMemo, useState } from 'react';
+import { ArchivedSequences } from '@/components/sequence/archived-sequences';
 import { EvalToolbar } from './eval-toolbar';
 import { EvalMatrix } from './eval-matrix';
 import { EvalSequencesMobile } from './eval-sequences-mobile';
@@ -310,6 +311,9 @@ export const EvalView: React.FC<EvalViewProps> = ({
           </div>
         </>
       )}
+      {/* Archived strip (#1108 Phase 4) — own-data only; renders nothing when
+          the team has no archived sequences. */}
+      {!supportMode && <ArchivedSequences />}
     </div>
   );
 };

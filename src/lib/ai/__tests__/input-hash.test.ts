@@ -8,17 +8,29 @@ import type {
 import type { StyleConfig } from '@/lib/db/schema';
 import type { MusicSceneSummary } from '@/lib/workflow/types';
 import {
+  characterSheetInputHashMatches,
   computeCharacterSheetInputHash,
+  computeCharacterSheetInputHashLegacy,
   computeShotAudioInputHash,
   computeShotImageInputHash,
   computeShotVideoInputHash,
   computeLibraryLocationReferenceInputHash,
   computeLocationSheetInputHash,
   computeMotionPromptInputHash,
+  computeMotionPromptInputHashV4,
   computeMusicPromptInputHash,
+  computeMusicPromptInputHashV4,
+  LEGACY_HASH_UNTIL,
+  libraryLocationReferenceInputHashMatches,
   computeSequenceMusicInputHash,
   computeTalentSheetInputHash,
+  computeTalentSheetInputHashLegacy,
   computeVisualPromptInputHash,
+  computeVisualPromptInputHashV4,
+  motionPromptInputHashMatches,
+  musicPromptInputHashMatches,
+  talentSheetInputHashMatches,
+  visualPromptInputHashMatches,
   type CharacterSheetHashInput,
   type ShotAudioHashInput,
   type ShotImageHashInput,
@@ -280,15 +292,42 @@ describe('computeCharacterSheetInputHash', () => {
     imageModel: 'flux-pro-v1.1',
   };
 
-  it('is stable and sensitive to bible field changes', async () => {
+  it('is stable and sensitive to visual bible field changes, not a rename', async () => {
     const a = await computeCharacterSheetInputHash(base);
     const same = await computeCharacterSheetInputHash({ ...base });
     const renamed = await computeCharacterSheetInputHash({
       ...base,
       characterBible: { ...base.characterBible, name: 'Detective Linda' },
     });
+    const look = await computeCharacterSheetInputHash({
+      ...base,
+      characterBible: {
+        ...base.characterBible,
+        physicalDescription: 'short, dark hair',
+      },
+    });
     expect(a).toBe(same);
-    expect(a).not.toBe(renamed);
+    expect(a).toBe(renamed);
+    expect(a).not.toBe(look);
+
+    const named = await computeCharacterSheetInputHashLegacy(base);
+    expect(named).not.toBe(a);
+    expect(await characterSheetInputHashMatches(named, base)).toBe(true);
+    expect(
+      await characterSheetInputHashMatches(a, {
+        ...base,
+        characterBible: { ...base.characterBible, name: 'Detective Linda' },
+      })
+    ).toBe(true);
+    expect(
+      await characterSheetInputHashMatches(named, {
+        ...base,
+        characterBible: {
+          ...base.characterBible,
+          physicalDescription: 'short, dark hair',
+        },
+      })
+    ).toBe(false);
   });
 
   it('reacts to talent hash, style config, and image model', async () => {
@@ -335,7 +374,10 @@ describe('computeLocationSheetInputHash', () => {
     const variants = await Promise.all([
       computeLocationSheetInputHash({
         ...base,
-        locationBible: { ...base.locationBible, name: 'Warehouse' },
+        locationBible: {
+          ...base.locationBible,
+          description: 'Warehouse, bare concrete',
+        },
       }),
       computeLocationSheetInputHash({
         ...base,
@@ -348,6 +390,15 @@ describe('computeLocationSheetInputHash', () => {
       computeLocationSheetInputHash({ ...base, imageModel: 'sdxl-v1' }),
     ]);
     expect(new Set([a, ...variants]).size).toBe(5);
+  });
+
+  it('a location rename does not change the sheet hash', async () => {
+    const a = await computeLocationSheetInputHash(base);
+    const renamed = await computeLocationSheetInputHash({
+      ...base,
+      locationBible: { ...base.locationBible, name: 'Warehouse' },
+    });
+    expect(renamed).toBe(a);
   });
 });
 
@@ -372,6 +423,15 @@ describe('computeLibraryLocationReferenceInputHash', () => {
     expect(ref).toBe(refSame);
     expect(ref).not.toBe(sheetEquivalent);
     expect(ref).not.toBe(refModel);
+    expect(await libraryLocationReferenceInputHashMatches(ref, base)).toBe(
+      true
+    );
+    expect(
+      await libraryLocationReferenceInputHashMatches(ref, {
+        ...base,
+        locationBible: { ...base.locationBible, description: 'changed' },
+      })
+    ).toBe(false);
   });
 });
 
@@ -391,12 +451,16 @@ describe('computeTalentSheetInputHash', () => {
     expect(a).toBe(b);
   });
 
-  it('reacts to talent fields, media set, and image model', async () => {
+  it('reacts to description, media set, and image model, not a rename', async () => {
     const a = await computeTalentSheetInputHash(base);
+    const renamed = await computeTalentSheetInputHash({
+      ...base,
+      talent: { ...base.talent, name: 'Other Talent' },
+    });
     const variants = await Promise.all([
       computeTalentSheetInputHash({
         ...base,
-        talent: { ...base.talent, name: 'Other Talent' },
+        talent: { ...base.talent, description: 'Full body reference' },
       }),
       computeTalentSheetInputHash({
         ...base,
@@ -404,7 +468,22 @@ describe('computeTalentSheetInputHash', () => {
       }),
       computeTalentSheetInputHash({ ...base, imageModel: 'sdxl-v1' }),
     ]);
+    expect(renamed).toBe(a);
     expect(new Set([a, ...variants]).size).toBe(4);
+  });
+
+  it('dual-hash verify accepts a pre-drop named talent digest of the same inputs', async () => {
+    const named = await computeTalentSheetInputHashLegacy(base);
+    const current = await computeTalentSheetInputHash(base);
+    expect(named).not.toBe(current);
+    expect(await talentSheetInputHashMatches(named, base)).toBe(true);
+    expect(await talentSheetInputHashMatches(current, base)).toBe(true);
+    expect(
+      await talentSheetInputHashMatches(named, {
+        ...base,
+        talent: { ...base.talent, description: 'changed' },
+      })
+    ).toBe(false);
   });
 });
 
@@ -683,6 +762,54 @@ describe('prompt input hashes', () => {
     expect(orderA).toBe(orderB);
   });
 
+  it('a scene-title rename does not change the visual prompt stamp', async () => {
+    const metadata = {
+      title: 'Opening',
+      durationSeconds: 5,
+      location: 'INT. STUDIO',
+      timeOfDay: 'night',
+      storyBeat: 'establish',
+    };
+    const a = await computeVisualPromptInputHash({
+      ...sceneCtx,
+      scene: { ...minimalScene, metadata },
+    });
+    const b = await computeVisualPromptInputHash({
+      ...sceneCtx,
+      scene: { ...minimalScene, metadata: { ...metadata, title: 'Renamed' } },
+    });
+    expect(a).toBe(b);
+  });
+
+  it('dual-hash verify accepts a v4 visual digest of the same inputs', async () => {
+    expect(LEGACY_HASH_UNTIL).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    const current = await computeVisualPromptInputHash(sceneCtx);
+    const v4 = await computeVisualPromptInputHashV4(sceneCtx);
+    expect(v4).not.toBe(current);
+    expect(await visualPromptInputHashMatches(current, sceneCtx)).toBe(true);
+    expect(await visualPromptInputHashMatches(v4, sceneCtx)).toBe(true);
+    expect(
+      await visualPromptInputHashMatches(v4, {
+        ...sceneCtx,
+        analysisModel: 'anthropic/claude-sonnet-4.6',
+      })
+    ).toBe(false);
+  });
+
+  it('dual-hash verify accepts a v4 motion digest of the same inputs', async () => {
+    const current = await computeMotionPromptInputHash(sceneCtx);
+    const v4 = await computeMotionPromptInputHashV4(sceneCtx);
+    expect(v4).not.toBe(current);
+    expect(await motionPromptInputHashMatches(current, sceneCtx)).toBe(true);
+    expect(await motionPromptInputHashMatches(v4, sceneCtx)).toBe(true);
+    expect(
+      await motionPromptInputHashMatches(v4, {
+        ...sceneCtx,
+        analysisModel: 'anthropic/claude-sonnet-4.6',
+      })
+    ).toBe(false);
+  });
+
   it('changing the analysis model changes the visual prompt hash', async () => {
     const a = await computeVisualPromptInputHash(sceneCtx);
     const b = await computeVisualPromptInputHash({
@@ -740,6 +867,34 @@ describe('prompt input hashes', () => {
     });
     expect(a).toBe(b);
     expect(a).not.toBe(c);
+  });
+
+  it('a scene-title rename does not change the music prompt stamp', async () => {
+    const a = await computeMusicPromptInputHash({
+      sceneSummaries: [baseSummary],
+      analysisModel: 'm',
+    });
+    const b = await computeMusicPromptInputHash({
+      sceneSummaries: [{ ...baseSummary, title: 'Renamed opening' }],
+      analysisModel: 'm',
+    });
+    expect(a).toBe(b);
+  });
+
+  it('dual-hash verify accepts a titled music digest of the same summaries', async () => {
+    const input = { sceneSummaries: [baseSummary], analysisModel: 'm' };
+    const current = await computeMusicPromptInputHash(input);
+    const v4 = await computeMusicPromptInputHashV4(input);
+    expect(v4).not.toBe(current);
+    expect(await musicPromptInputHashMatches(current, input)).toBe(true);
+    expect(await musicPromptInputHashMatches(v4, input)).toBe(true);
+    expect(await musicPromptInputHashMatches('deadbeef', input)).toBe(false);
+    expect(
+      await musicPromptInputHashMatches(v4, {
+        sceneSummaries: [{ ...baseSummary, storyBeat: 'Twist reveal' }],
+        analysisModel: 'm',
+      })
+    ).toBe(false);
   });
 
   it('hash excludes LLM output: same upstream context with different continuity hashes the same', async () => {

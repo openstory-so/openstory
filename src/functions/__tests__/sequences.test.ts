@@ -16,6 +16,7 @@ import {
   assertModelNotAlreadyAdded,
   buildAddAudioMusicInput,
   musicWithoutMotion,
+  resolveUnarchiveRestore,
   selectEligibleVideoShots,
 } from '@/functions/sequences';
 import { sumShotDurationsSeconds } from '@/lib/sequences/shot-durations';
@@ -43,6 +44,7 @@ function makeShot({
     durationMs: 3000,
     selectedMotionPromptVersionId: null,
     renderSegmentId: null,
+    deletedAt: null,
     createdAt: NOW,
     updatedAt: NOW,
     ...overrides,
@@ -257,5 +259,40 @@ describe('musicWithoutMotion (#823)', () => {
     expect(
       musicWithoutMotion({ autoGenerateMusic: false }, flags(true, false))
     ).toBe(false);
+  });
+});
+
+describe('resolveUnarchiveRestore', () => {
+  it('restores a recorded completed/failed/draft status verbatim', () => {
+    expect(
+      resolveUnarchiveRestore({ recordedStatus: 'completed', hasShots: false })
+    ).toEqual({ status: 'completed', interrupted: false });
+    expect(
+      resolveUnarchiveRestore({ recordedStatus: 'failed', hasShots: true })
+    ).toEqual({ status: 'failed', interrupted: false });
+    expect(
+      resolveUnarchiveRestore({ recordedStatus: 'draft', hasShots: false })
+    ).toEqual({ status: 'draft', interrupted: false });
+  });
+
+  it('maps a recorded processing status to interrupted failed', () => {
+    expect(
+      resolveUnarchiveRestore({
+        recordedStatus: 'processing',
+        hasShots: true,
+      })
+    ).toEqual({ status: 'failed', interrupted: true });
+  });
+
+  it('falls back to completed when the archive event is missing and shots exist', () => {
+    expect(
+      resolveUnarchiveRestore({ recordedStatus: null, hasShots: true })
+    ).toEqual({ status: 'completed', interrupted: false });
+  });
+
+  it('falls back to draft when the archive event is missing and there are no shots', () => {
+    expect(
+      resolveUnarchiveRestore({ recordedStatus: null, hasShots: false })
+    ).toEqual({ status: 'draft', interrupted: false });
   });
 });

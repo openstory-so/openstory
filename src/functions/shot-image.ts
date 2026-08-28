@@ -643,7 +643,9 @@ export function isImageHistoryVersion(v: {
   sourceVariantId?: string | null;
 }): boolean {
   return (
-    v.kind === 'model' || (v.kind === 'framing' && Boolean(v.sourceVariantId))
+    v.kind === 'model' ||
+    v.kind === 'upload' ||
+    (v.kind === 'framing' && Boolean(v.sourceVariantId))
   );
 }
 
@@ -655,7 +657,7 @@ export function isImageHistoryVersion(v: {
 export type ShotImageVersionRow = {
   id: string;
   model: string;
-  kind: 'model' | 'framing';
+  kind: 'model' | 'framing' | 'upload';
   status: string;
   url: string | null;
   createdAt: Date;
@@ -682,10 +684,11 @@ const shotHistoryListInputSchema = z.object({
 
 /**
  * Append-only image generation history for a shot's anchor frame (#1070).
- * Newest first. Model stills and framing tiles cropped from a grid sheet
- * (sourceVariantId set). Grid sheets themselves and preview rows (#1101)
- * stay out. Includes in-flight / failed rows so the sheet can show progress
- * and errors; discarded rows stay hidden (soft-hide is undoable elsewhere).
+ * Newest first. Model stills, user uploads (`kind: 'upload'`), and framing
+ * tiles cropped from a grid sheet (sourceVariantId set). Grid sheets
+ * themselves and preview rows (#1101) stay out. Includes in-flight / failed
+ * rows so the sheet can show progress and errors; discarded rows stay hidden
+ * (soft-hide is undoable elsewhere).
  */
 export const listShotImageVersionsFn = createServerFn({ method: 'GET' })
   .middleware([shotAccessMiddleware])
@@ -700,7 +703,12 @@ export const listShotImageVersionsFn = createServerFn({ method: 'GET' })
       .map((v) => ({
         id: v.id,
         model: v.model,
-        kind: v.kind === 'framing' ? ('framing' as const) : ('model' as const),
+        kind:
+          v.kind === 'framing'
+            ? ('framing' as const)
+            : v.kind === 'upload'
+              ? ('upload' as const)
+              : ('model' as const),
         status: v.status,
         url: v.url,
         createdAt: v.createdAt,

@@ -14,6 +14,7 @@ import { typedEntries } from '@/lib/utils/typed-object';
 import type { TokenUsage } from '@tanstack/ai';
 
 const NATIVE_TEXT_MODELS = {
+  'google/gemini-3.7-flash': 'gemini-3.7-flash',
   'google/gemini-3.1-pro-preview': 'gemini-3.1-pro-preview',
   'google/gemini-3-flash-preview': 'gemini-3-flash-preview',
 } as const satisfies Partial<Record<AnalysisModelId, string>>;
@@ -74,6 +75,15 @@ const TEXT_RATES: Record<
     output: 1.5,
     inputHigh: 0.25,
     outputHigh: 1.5,
+    highTierFrom: Number.POSITIVE_INFINITY,
+  },
+  // Introductory rate; Google lists $1.50/$7.50 from 2027-01-01. The
+  // model-freshness routine (or whoever lands past the expiry) bumps this.
+  'gemini-3.7-flash': {
+    input: 0.75,
+    output: 3.75,
+    inputHigh: 0.75,
+    outputHigh: 3.75,
     highTierFrom: Number.POSITIVE_INFINITY,
   },
 };

@@ -7,6 +7,18 @@
  */
 
 import { getDb } from '#db-client';
+import { isBytePlusConfigured } from '@/lib/ai/byteplus-config';
+import { BYTEPLUS_RATE_CARD } from '@/lib/ai/byteplus-pricing';
+import {
+  FAL_TYPICAL_UNITS_PER_DEFAULT_CLIP,
+  FAL_UNVERIFIED_SIBLINGS,
+} from '@/lib/ai/fal-typical-units';
+import {
+  IMAGE_MODELS,
+  IMAGE_TO_VIDEO_MODELS,
+  MOTION_REFERENCE_ENDPOINTS,
+} from '@/lib/ai/models';
+import { typedEntries } from '@/lib/utils/typed-object';
 import { micros, type Microdollars } from '@/lib/billing/money';
 import { modelPricing } from '@/lib/db/schema';
 import type { ObservedUnits } from '@/lib/db/schema/model-pricing';
@@ -66,7 +78,9 @@ export function buildFalPricingMap(
     map[row.endpointId] = {
       unitPrice: micros(row.unitPriceMicros),
       unit: row.unit,
-      typicalUnitsPerCall: row.typicalUnitsPerCall ?? undefined,
+      typicalUnitsPerCall:
+        row.typicalUnitsPerCall ??
+        FAL_TYPICAL_UNITS_PER_DEFAULT_CLIP[row.endpointId],
       // The DB CHECK keeps median and count consistent.
       ...(row.observedMedianUnits != null && {
         observed: {
@@ -98,8 +112,77 @@ async function load(): Promise<NonNullable<typeof cache>> {
   const updatedAt = rows.length
     ? new Date(Math.max(...rows.map((r) => r.fetchedAt.getTime())))
     : null;
-  cache = { at: Date.now(), map: buildFalPricingMap(rows), updatedAt };
+  // BytePlus rates are a static card, not cron-refreshed rows (#1157) — see
+  // byteplus-pricing.ts. Merged first so a `model_pricing` row for the same id
+  // (if the cron ever learns Ark) wins over the hand-maintained rate.
+  const map = { ...BYTEPLUS_RATE_CARD, ...buildFalPricingMap(rows) };
+  applyBytePlusRouteAliases(map);
+  applyUnverifiedSiblingRates(map);
+  cache = { at: Date.now(), map, updatedAt };
   return cache;
+}
+
+/**
+ * Point a repointed model's FAL endpoint id at its BytePlus rate (#1157).
+ *
+ * The route is a server fact, and this map is the one thing every consumer
+ * already reads — estimators, credit gates, the /pricing page, and the
+ * client's ActionCost payload. Aliasing here means none of them needs to know
+ * the route: looking up the fal id a catalog entry still carries yields the
+ * rate the generation will actually be billed at.
+ *
+ * The BytePlus id keeps its own entry, so the exact post-generation charge
+ * (which looks the id up directly) is unaffected either way.
+ */
+function applyBytePlusRouteAliases(
+  map: Record<string, EffectiveFalPricing>
+): void {
+  if (!isBytePlusConfigured()) return;
+
+  for (const model of Object.values(IMAGE_MODELS)) {
+    if (!('byteplusId' in model)) continue;
+    const rate = map[model.byteplusId];
+    if (rate) map[model.id] = rate;
+  }
+
+  for (const [modelKey, model] of typedEntries(IMAGE_TO_VIDEO_MODELS)) {
+    if (!('byteplusId' in model)) continue;
+    const rate = map[model.byteplusId];
+    if (!rate) continue;
+    map[model.id] = rate;
+    // Seedance with cast/element refs bills on a SEPARATE fal endpoint; on Ark
+    // it is the same model id, so that endpoint aliases too — otherwise a
+    // referenced shot silently quotes the fal rate.
+    const referenceEndpoint = MOTION_REFERENCE_ENDPOINTS[modelKey];
+    if (referenceEndpoint) map[referenceEndpoint.endpointId] = rate;
+  }
+}
+
+/**
+ * Point an unused sibling at the bill-verified source rate (#1382).
+ * MiniMax H3 Max t2v has the same advertised rates as i2v but no usage, so
+ * fal's pricing API still reports "compute seconds × $0.00017". Looking up
+ * the t2v id must yield the i2v billed rate or studio estimates are ~150× low.
+ */
+function applyUnverifiedSiblingRates(
+  map: Record<string, EffectiveFalPricing>
+): void {
+  for (const [target, source] of Object.entries(FAL_UNVERIFIED_SIBLINGS)) {
+    const sourceRate = map[source];
+    if (!sourceRate) continue;
+    const targetRate = map[target];
+    map[target] = {
+      unitPrice: sourceRate.unitPrice,
+      unit: sourceRate.unit,
+      typicalUnitsPerCall:
+        targetRate?.typicalUnitsPerCall ??
+        sourceRate.typicalUnitsPerCall ??
+        FAL_TYPICAL_UNITS_PER_DEFAULT_CLIP[target],
+      ...((targetRate?.observed ?? sourceRate.observed)
+        ? { observed: targetRate?.observed ?? sourceRate.observed }
+        : {}),
+    };
+  }
 }
 
 export async function getEffectiveFalPricing(): Promise<

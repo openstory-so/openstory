@@ -201,7 +201,7 @@ export const WelcomeCreditsProvider: React.FC<{ children: ReactNode }> = ({
                   className="sm:flex-1"
                   onClick={() => {
                     handleOpenChange(false);
-                    openAddCreditsDialog();
+                    openAddCreditsDialog('welcome_dialog');
                   }}
                 >
                   Buy more

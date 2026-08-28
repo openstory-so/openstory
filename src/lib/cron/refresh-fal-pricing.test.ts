@@ -31,13 +31,20 @@ import { createClient } from '@libsql/client';
 import { readFileSync } from 'node:fs';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import {
+  collectObservedUnits,
+  computeLedgerObservedUnits,
   computeObservedUnits,
   FAL_PRICING_CRON,
   HISTORY_CHUNK,
   OBSERVATIONS_PER_ENDPOINT,
   UPSERT_CHUNK,
 } from '@/lib/cron/refresh-fal-pricing';
-import { modelPricing, modelPricingHistory } from '@/lib/db/schema';
+import {
+  modelPricing,
+  modelPricingHistory,
+  teams,
+  transactions,
+} from '@/lib/db/schema';
 import { modelUsageObservations } from '@/lib/db/schema/model-pricing';
 import { eq, getTableColumns } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/libsql';
@@ -675,5 +682,120 @@ describe('refreshFalPricing', () => {
       'fal-ai/erroring',
       'fal-ai/flux-2',
     ]);
+  });
+
+  test('writes the H3 Max typical-units fallback when fal has no history', async () => {
+    const { refreshFalPricing } = await load({
+      prices: [
+        {
+          endpointId: 'minimax/h3-max/image-to-video',
+          unitPriceUsd: 0.025,
+          unit: 'seconds',
+        },
+      ],
+    });
+
+    await refreshFalPricing();
+
+    const [row] = await db.select().from(modelPricing);
+    expect(row?.typicalUnitsPerCall).toBe(8);
+  });
+
+  test('H3 Max t2v inherits i2v billed rate when t2v has no usage', async () => {
+    const { refreshFalPricing } = await load({
+      prices: [
+        {
+          endpointId: 'minimax/h3-max/image-to-video',
+          unitPriceUsd: 0.00017,
+          unit: 'compute seconds',
+        },
+        {
+          endpointId: 'minimax/h3-max/text-to-video',
+          unitPriceUsd: 0.00017,
+          unit: 'compute seconds',
+        },
+      ],
+      billed: [
+        {
+          endpointId: 'minimax/h3-max/image-to-video',
+          unit: 'seconds',
+          unitPriceUsd: 0.025,
+          costUsd: 1.2,
+        },
+      ],
+    });
+
+    await refreshFalPricing({ billingKey: 'admin-key' });
+
+    const rows = await db.select().from(modelPricing);
+    const t2v = rows.find(
+      (r) => r.endpointId === 'minimax/h3-max/text-to-video'
+    );
+    expect(t2v?.unit).toBe('seconds');
+    expect(t2v?.unitPriceMicros).toBe(25_000);
+    expect(t2v?.rateVerifiedAt).not.toBeNull();
+    expect(t2v?.typicalUnitsPerCall).toBe(8);
+  });
+});
+
+describe('computeLedgerObservedUnits', () => {
+  const client = createClient({ url: ':memory:' });
+  const db = drizzle({ client });
+
+  beforeEach(async () => {
+    await migrate(db, { migrationsFolder: './drizzle/migrations' });
+    await db
+      .insert(teams)
+      .values({ id: 'team-1', name: 't', slug: 'team-1-slug' })
+      .onConflictDoNothing();
+    await db.delete(transactions);
+    await db.delete(modelUsageObservations);
+  });
+
+  test('reads unitsBilled from transaction metadata when observations are empty', async () => {
+    await db.insert(transactions).values({
+      id: 'tx-1',
+      teamId: 'team-1',
+      type: 'credit_usage',
+      amount: -200_000,
+      balanceAfter: 0,
+      metadata: {
+        endpointId: 'minimax/h3-max/image-to-video',
+        unitsBilled: 8,
+      },
+    });
+
+    const { observed, samples } = await computeLedgerObservedUnits(db);
+    expect(samples).toBe(1);
+    expect(observed.get('minimax/h3-max/image-to-video')).toEqual({
+      medianUnits: 8,
+      sampleCount: 1,
+    });
+  });
+
+  test('observations outrank the ledger so a generation is not counted twice', async () => {
+    await db.insert(modelUsageObservations).values({
+      provider: 'fal',
+      endpointId: 'minimax/h3-max/image-to-video',
+      unitsBilled: 8,
+      numImages: 1,
+    });
+    await db.insert(transactions).values({
+      id: 'tx-1',
+      teamId: 'team-1',
+      type: 'credit_usage',
+      amount: -200_000,
+      balanceAfter: 0,
+      metadata: {
+        endpointId: 'minimax/h3-max/image-to-video',
+        unitsBilled: 99,
+      },
+    });
+
+    const { observed } = await collectObservedUnits(db);
+    expect(observed.get('minimax/h3-max/image-to-video')).toEqual({
+      medianUnits: 8,
+      sampleCount: 1,
+    });
   });
 });

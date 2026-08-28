@@ -28,6 +28,7 @@ const baseShot: ShotView = toShotView(
     durationMs: 3000,
     selectedMotionPromptVersionId: null,
     renderSegmentId: null,
+    deletedAt: null,
     createdAt: NOW,
     updatedAt: NOW,
   },

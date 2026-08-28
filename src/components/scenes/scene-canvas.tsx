@@ -1,5 +1,6 @@
 import { ScenePlayer } from '@/components/motion/scene-player';
 import { CanvasMediaStage } from '@/components/scenes/canvas-media-stage';
+import { ShotMediaDropZone } from '@/components/scenes/shot-media-drop-zone';
 import { StartingFrameVariants } from '@/components/scenes/starting-frame-variants';
 import { SequencePlayer } from '@/components/theatre/sequence-player';
 import {
@@ -238,27 +239,40 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
           onGenerateStart={() => onGenerateSceneVariantsStart?.(shotId)}
         />
       ) : undefined;
+    const player = (
+      <ScenePlayer
+        shots={playerShots}
+        scenes={scenes}
+        selectedShotId={selection.shotId}
+        aspectRatio={aspectRatio}
+        onSelectShot={onSelectShot}
+        selectedTab={selectedTab}
+        overrideImageUrl={overrideImageUrl}
+        overrideVideoUrl={overrideVideoUrl}
+        badgeMessage={badgeMessage}
+        modelMismatchLabel={modelMismatchLabel}
+        staleLabel={staleLabel}
+        progressMessage={progressMessage}
+        retry={retry}
+        posterUrl={sequence?.posterUrl ?? undefined}
+        className="h-full max-h-none w-full"
+        wrapperClassName="h-full w-full"
+        frameOverlay={frameOverlay}
+      />
+    );
     return (
       <CanvasMediaStage aspectRatio={aspectRatio}>
-        <ScenePlayer
-          shots={playerShots}
-          scenes={scenes}
-          selectedShotId={selection.shotId}
-          aspectRatio={aspectRatio}
-          onSelectShot={onSelectShot}
-          selectedTab={selectedTab}
-          overrideImageUrl={overrideImageUrl}
-          overrideVideoUrl={overrideVideoUrl}
-          badgeMessage={badgeMessage}
-          modelMismatchLabel={modelMismatchLabel}
-          staleLabel={staleLabel}
-          progressMessage={progressMessage}
-          retry={retry}
-          posterUrl={sequence?.posterUrl ?? undefined}
-          className="h-full max-h-none w-full"
-          wrapperClassName="h-full w-full"
-          frameOverlay={frameOverlay}
-        />
+        {selectedShot ? (
+          <ShotMediaDropZone
+            sequenceId={selectedShot.sequenceId}
+            shotId={shotId}
+            aspectRatio={aspectRatio}
+          >
+            {player}
+          </ShotMediaDropZone>
+        ) : (
+          player
+        )}
       </CanvasMediaStage>
     );
   }

@@ -1,13 +1,16 @@
 import {
   discardSequenceLocationSheetVariantFn,
   getSequenceLocationDivergentVariantsFn,
+  listLocationSheetVersionsFn,
   promoteSequenceLocationSheetVariantFn,
+  selectLocationSheetVersionFn,
   undiscardSequenceLocationSheetVariantFn,
 } from '@/functions/location-sheet-variants';
 import {
   libraryLocationKeys,
   sequenceLocationKeys,
 } from '@/hooks/use-sequence-locations';
+import { shotStalenessNamespace } from '@/hooks/use-shot-staleness';
 import type { LocationSheetVariant } from '@/lib/db/schema';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -15,7 +18,47 @@ export const locationSheetVariantKeys = {
   all: ['location-sheet-variants'] as const,
   divergentBySequence: (sequenceId: string) =>
     [...locationSheetVariantKeys.all, 'sequence', sequenceId] as const,
+  history: (sequenceId: string, locationDbId: string) =>
+    [
+      ...locationSheetVariantKeys.all,
+      'history',
+      sequenceId,
+      locationDbId,
+    ] as const,
 };
+
+export function useLocationSheetVersions(
+  sequenceId: string,
+  locationDbId: string
+) {
+  return useQuery({
+    queryKey: locationSheetVariantKeys.history(sequenceId, locationDbId),
+    queryFn: () =>
+      listLocationSheetVersionsFn({ data: { sequenceId, locationDbId } }),
+    enabled: !!sequenceId && !!locationDbId,
+    staleTime: 15_000,
+  });
+}
+
+export function useSelectLocationSheetVersion() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: {
+      sequenceId: string;
+      locationDbId: string;
+      versionId: string;
+    }) => selectLocationSheetVersionFn({ data: input }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: locationSheetVariantKeys.all,
+      });
+      void queryClient.invalidateQueries({
+        queryKey: sequenceLocationKeys.all,
+      });
+      void queryClient.invalidateQueries({ queryKey: shotStalenessNamespace });
+    },
+  });
+}
 
 /**
  * Active divergent variants for the sequence locations in a sequence. Drives

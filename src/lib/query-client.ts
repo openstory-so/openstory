@@ -34,7 +34,7 @@ export function makeQueryClient() {
         // Out of credits is a billing problem, not an error toast — open the
         // globally-mounted gate dialog instead (#1099).
         if (isInsufficientCreditsError(error)) {
-          openBillingGate();
+          openBillingGate('insufficient');
           return;
         }
         // Mutations that render their own inline error opt out, so a failure

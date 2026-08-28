@@ -594,4 +594,11 @@ describe('isStale', () => {
     );
     expect(await methods.isStale(legacy.id, 'anything')).toBe(false);
   });
+
+  it('treats a null live hash as unknown-not-stale (#1380)', async () => {
+    const hashed = await methods.appendVersion(
+      versionInput({ inputHash: 'h1' })
+    );
+    expect(await methods.isStale(hashed.id, null)).toBe(false);
+  });
 });

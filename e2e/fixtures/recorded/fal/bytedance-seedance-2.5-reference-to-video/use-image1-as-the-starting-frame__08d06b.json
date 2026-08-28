@@ -1,0 +1,24 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use @Image1 as the starting frame.\nHandheld camera holds at the top of the stairwell with natural micro-drift, easing back a step as SCARLETT climbs toward lens. From her mid-stride pose, SCARLETT pushes up the next tread, right hand sliding along the banister, tote swinging against her hip. She lifts her chin, holds a deadpan look straight into the lens for a beat, then breaks past camera left, brisk but controlled, jacket shoulders rolling with the step.\n\nWindow light slides across her face as she rises; dust drifts in the shaft, canvas tote and loose denim sleeves sway with the movement.\n\nquiet stairwell reverb, faint muffled street noise through old window glass. boot steps on wooden stairs, hand sliding on metal banister, canvas tote strap creak, fabric rustle of denim jacket.\n\nNo BGM, no music. Generate only dialogue, environmental sounds, and action sounds. Single continuous shot, no cuts. Avoid jitter and bent limbs.\n\nReference images:\n@Image2: SCARLETT VEGA — keep visually consistent throughout the shot.",
+        "model": "bytedance/seedance-2.0/enterprise/v2/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://v3b.fal.media/files/b/0aa74e98/wTW8LUHHGWVfOK_N0mk6Q_video.mp4",
+            "content_type": "video/mp4",
+            "file_name": "video.mp4",
+            "file_size": 1782439
+          },
+          "seed": 1069636421
+        },
+        "status": 200,
+        "billableUnits": 87.3
+      }
+    }
+  ]
+}

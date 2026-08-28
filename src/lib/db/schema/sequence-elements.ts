@@ -56,6 +56,10 @@ export const sequenceElements = snakeCase.table(
     firstMentionSceneId: text(),
     firstMentionText: text(),
     firstMentionLine: integer(),
+    // Soft-hide from the sequence (#1108 Phase 2, undoable). Excluded from
+    // default lists / element bibles; token uniqueness still counts deleted
+    // rows so a restore can never collide. R2 bytes are never deleted.
+    deletedAt: integer({ mode: 'timestamp' }),
     // Timestamps
     createdAt: integer({ mode: 'timestamp' })
       .$defaultFn(() => new Date())

@@ -145,6 +145,7 @@ export const fixtureScenes: SceneWithScript[] = [
       styleTag: 'macro_beauty_photography_luxurious',
     },
     selectedScriptVersionId: null,
+    deletedAt: null,
     script: {
       extract:
         'SCENE 1 — AWAKENING\nDURATION: ~5 SECONDS\n\nVISUAL:\nEXTREME MACRO. A single drop of luminous serum clings to the tip of a glass dropper, trembling almost imperceptibly. The background dissolves into a warm gradient wash — ivory (#F8E9DA) bleeding softly into the palest blush (#F4D5C5). The droplet catches a discreet edge light, igniting it from within like liquid amber. A gentle backlight halos the glass shaft, making the serum glow translucent gold.\n\nCAMERA:\nLocked probe-lens frame, positioned at eye level with the droplet. Ultra-slow-motion capture (120fps minimum). The drop releases — falling in a languid, weightless ribbon that stretches and narrows before vanishing below frame. The descent takes the full five seconds. Nothing rushes.\n\nSOUND:\nA single, resonant piano note. Low. Warm. It sustains beneath everything that follows.',
@@ -170,6 +171,7 @@ export const fixtureScenes: SceneWithScript[] = [
       styleTag: 'macro_beauty_photography',
     },
     selectedScriptVersionId: null,
+    deletedAt: null,
     script: {
       extract:
         'SCENE 2 — THE TEXTURE\nDURATION: ~6 SECONDS\n\nVISUAL:\nCUT TO: A smooth porcelain surface — bone white, flawless. A generous curl of rich cream product is dispensed from below frame, coiling slowly onto the surface in a perfect, sculptural spiral. The cream is the color of warm magnolia (#F4D5C5), dense and velvety. Soft key light rakes across it at a low angle, throwing the ridges and peaks of the swirl into exquisite relief. Every texture fold is visible — intimate, almost architectural.\n\nCAMERA:\nSlow macro push-in descending from directly above, rotating two degrees clockwise as it moves. The cream fills the frame until its surface texture becomes an abstract landscape — peaks and valleys of pure indulgence.\n\nSOUND:\nBeneath the piano, a barely-there atmospheric hum rises — the faintest suggestion of warmth and depth. No words yet.',
@@ -196,6 +198,7 @@ export const fixtureScenes: SceneWithScript[] = [
       styleTag: 'macro_beauty_photography',
     },
     selectedScriptVersionId: null,
+    deletedAt: null,
     script: {
       extract:
         'SCENE 3 — THE APPLICATION\nDURATION: ~7 SECONDS\n\nVISUAL:\nCUT TO: A close-up of a fingertip — skin rendered in extraordinary detail, every fine line and pore visible and celebrated. The pad of the finger presses gently into the cream. In slow motion, the product yields, blanching pale at the point of contact before spreading in a warm, even veil. The skin beneath flushes subtly — a living rose (#E2A8A1) bloom spreading outward from the touch.\n\nCAMERA:\nLow-angle macro, shooting almost parallel to the skin surface. A slight rotational drift — clockwise, imperceptibly slow — keeps the frame alive without distraction. The edge light catches the thin, luminous film of product on the skin, making it gleam like satin.\n\nSOUND:\nA second piano note joins the first — a soft, ascending interval. The atmosphere opens.',
@@ -222,6 +225,7 @@ export const fixtureScenes: SceneWithScript[] = [
       styleTag: 'macro_beauty_photography',
     },
     selectedScriptVersionId: null,
+    deletedAt: null,
     script: {
       extract:
         "SCENE 4 — THE LIP\nDURATION: ~6 SECONDS\n\nVISUAL:\nCUT TO: A lipstick bullet — deep, burnished brown-rose (#3D2A24) — gliding in slow motion across the inside of a wrist. The product lays down a ribbon of saturated color, impossibly smooth, the pigment rich and dimensional. The wrist skin is luminous, dewy, lit from behind so the fine hairs catch the light like a halo. The color ribbon glistens.\n\nCAMERA:\nProbe-lens angle, positioned low and slightly ahead of the lipstick's path — the bullet moves toward camera in extreme slow motion, the color trail blooming behind it. Rack focus from the bullet tip to the color ribbon as it settles.\n\nSOUND:\nA soft, breathy vocal note — wordless, feminine — rises and holds over the piano. The composition breathes.",
@@ -248,6 +252,7 @@ export const fixtureScenes: SceneWithScript[] = [
       styleTag: 'macro_beauty_photography_luxurious',
     },
     selectedScriptVersionId: null,
+    deletedAt: null,
     script: {
       extract:
         'SCENE 5 — THE REVEAL\nDURATION: ~6 SECONDS\n\nVISUAL:\nCUT TO: A vertical portrait, centered in frame. A face — eyes closed, skin luminous, lit by a single soft key and a whisper of backlight that rims the cheekbones in warm gold. The complexion is dewy, flushed, alive. Lashes rest against the cheek. Lips — the same deep rose — are parted very slightly. There is complete stillness. Then, slowly, the eyes open. The gaze is direct, unhurried, sovereign.\n\nCAMERA:\nSlow, barely perceptible push-in. Centered. The face fills the 9:16 frame from chin to crown — a living portrait.\n\nSOUND:\nThe piano and vocal resolve to a single, resonant chord. Silence at the edges.',
@@ -274,6 +279,7 @@ export const fixtureScenes: SceneWithScript[] = [
       styleTag: 'macro_beauty_photography',
     },
     selectedScriptVersionId: null,
+    deletedAt: null,
     script: {
       extract:
         "SCENE 6 — HERO PRODUCT\nDURATION: ~4 SECONDS\n\nVISUAL:\nCUT TO: The hero product — bottle, jar, or compact — centered on a pure warm-white (#FFFFFF) surface. Soft key light from the upper left. A discreet edge light on the right side traces the product's silhouette in gold. The background gradient shifts from ivory to the softest peach (#F8E9DA). The product sits still, perfect, inevitable.\n\nCAMERA:\nLocked frame. No movement. Let the product breathe.\n\nSOUND:\nSilence, then — a single clear piano note, like a signature.\n\nSUPER:\nBrand name. Clean serif. White. Centered.\nTagline fades in beneath — one line, unhurried.\n\nFADE TO WHITE.",
@@ -299,6 +305,7 @@ export const fixtureScenes: SceneWithScript[] = [
       styleTag: 'macro_beauty_photography',
     },
     selectedScriptVersionId: null,
+    deletedAt: null,
     script: {
       extract:
         'END CARD\nDURATION: ~1 SECOND\nBrand logo. White on warm ivory. Holds. Fades.',
@@ -345,6 +352,7 @@ const fixtureShotSources: FixtureShotSource[] = [
       durationMs: 4000,
       selectedMotionPromptVersionId: null,
       renderSegmentId: null,
+      deletedAt: null,
       createdAt: new Date('2026-06-02T00:11:09.000Z'),
       updatedAt: new Date('2026-06-02T00:19:03.000Z'),
     },
@@ -395,6 +403,7 @@ const fixtureShotSources: FixtureShotSource[] = [
       durationMs: 6000,
       selectedMotionPromptVersionId: null,
       renderSegmentId: null,
+      deletedAt: null,
       createdAt: new Date('2026-06-02T00:11:12.000Z'),
       updatedAt: new Date('2026-06-02T00:14:57.000Z'),
     },
@@ -445,6 +454,7 @@ const fixtureShotSources: FixtureShotSource[] = [
       durationMs: 7000,
       selectedMotionPromptVersionId: null,
       renderSegmentId: null,
+      deletedAt: null,
       createdAt: new Date('2026-06-02T00:11:14.000Z'),
       updatedAt: new Date('2026-06-02T00:15:17.000Z'),
     },
@@ -495,6 +505,7 @@ const fixtureShotSources: FixtureShotSource[] = [
       durationMs: 6000,
       selectedMotionPromptVersionId: null,
       renderSegmentId: null,
+      deletedAt: null,
       createdAt: new Date('2026-06-02T00:11:16.000Z'),
       updatedAt: new Date('2026-06-02T00:15:04.000Z'),
     },
@@ -545,6 +556,7 @@ const fixtureShotSources: FixtureShotSource[] = [
       durationMs: 6000,
       selectedMotionPromptVersionId: null,
       renderSegmentId: null,
+      deletedAt: null,
       createdAt: new Date('2026-06-02T00:11:18.000Z'),
       updatedAt: new Date('2026-06-02T00:15:18.000Z'),
     },
@@ -595,6 +607,7 @@ const fixtureShotSources: FixtureShotSource[] = [
       durationMs: 4000,
       selectedMotionPromptVersionId: null,
       renderSegmentId: null,
+      deletedAt: null,
       createdAt: new Date('2026-06-02T00:11:20.000Z'),
       updatedAt: new Date('2026-06-02T00:14:32.000Z'),
     },
@@ -645,6 +658,7 @@ const fixtureShotSources: FixtureShotSource[] = [
       durationMs: 3000,
       selectedMotionPromptVersionId: null,
       renderSegmentId: null,
+      deletedAt: null,
       createdAt: new Date('2026-06-02T00:11:20.000Z'),
       updatedAt: new Date('2026-06-02T00:14:18.000Z'),
     },

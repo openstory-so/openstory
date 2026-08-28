@@ -7,7 +7,15 @@ import {
 import { cn } from '@/lib/utils';
 import { AlertCircle, Info, Loader2 } from 'lucide-react';
 
-type ShotStatus = 'pending' | 'generating' | 'completed' | 'failed' | null;
+// 'cancelled' (#1108) renders like 'pending': no failure banner, no spinner —
+// a deliberate cancel is neutral, and any previously selected video plays.
+type ShotStatus =
+  | 'pending'
+  | 'generating'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+  | null;
 
 type VideoStateOverlayProps = {
   thumbnailUrl?: string | null;
@@ -75,7 +83,9 @@ export const VideoStateOverlay: React.FC<VideoStateOverlayProps> = ({
   return (
     <div
       className={cn(
-        'absolute inset-0 z-10 flex items-center justify-center',
+        // pointer-events-none: the failed overlay is informational. Clicks
+        // must reach the start-frame share control (and the still itself).
+        'pointer-events-none absolute inset-0 z-10 flex items-center justify-center',
         className
       )}
       style={{

@@ -2,6 +2,14 @@ import type React from 'react';
 import { AspectRatioIcon } from '@/components/icons/aspect-ratio-icon';
 import { ModelBadge } from '@/components/model/model-badge';
 import { StyleBadge } from '@/components/style/style-badge';
+import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { useArchiveSequence } from '@/hooks/use-sequences';
 import type { SequenceWithShots } from '@/hooks/use-sequences-with-shots';
 import { getImageModelById } from '@/lib/ai/models';
 import {
@@ -9,16 +17,20 @@ import {
   isCreditsShortError,
 } from '@/lib/billing/credits-short';
 import { getAspectRatioData } from '@/lib/constants/aspect-ratios';
+import { errorMessage } from '@/lib/errors';
 import { formatDistanceToNow } from '@/lib/format-date';
 import { Link } from '@tanstack/react-router';
 import {
   AlertTriangle,
+  Archive,
   Calendar,
   CreditCard,
   ImageIcon,
   Mail,
+  MoreVertical,
   User,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { getCreatorIdentity } from './creator-identity';
 
 type EvalSequenceMetadataProps = {
@@ -46,14 +58,17 @@ export const EvalSequenceMetadata: React.FC<EvalSequenceMetadataProps> = ({
           className="absolute top-2 right-2 inline-flex h-2 w-2 items-center justify-center rounded-full bg-sky-500 ring-2 ring-sky-500/30"
         />
       )}
-      <Link
-        to="/sequences/$id/scenes"
-        params={{ id: sequence.id }}
-        className="font-medium text-sm text-foreground line-clamp-2 hover:underline shrink-0 pr-4"
-        title={sequence.title || 'Untitled Sequence'}
-      >
-        {sequence.title || 'Untitled Sequence'}
-      </Link>
+      <div className="flex shrink-0 items-start gap-1">
+        <Link
+          to="/sequences/$id/scenes"
+          params={{ id: sequence.id }}
+          className="min-w-0 flex-1 font-medium text-sm text-foreground line-clamp-2 hover:underline"
+          title={sequence.title || 'Untitled Sequence'}
+        >
+          {sequence.title || 'Untitled Sequence'}
+        </Link>
+        <SequenceRowMenu sequence={sequence} />
+      </div>
 
       <CreatorIdentity sequence={sequence} />
 
@@ -94,6 +109,51 @@ export const EvalSequenceMetadata: React.FC<EvalSequenceMetadataProps> = ({
 
       <SequenceListStatus sequence={sequence} />
     </div>
+  );
+};
+
+/**
+ * Row actions (#1108 Phase 4). Archiving is the sequence-level soft delete
+ * (status flip, reversible from the Archived strip below the list).
+ */
+const SequenceRowMenu: React.FC<{ sequence: SequenceWithShots }> = ({
+  sequence,
+}) => {
+  const archive = useArchiveSequence();
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-6 w-6 shrink-0"
+          aria-label={`Actions for ${sequence.title || 'Untitled Sequence'}`}
+        >
+          <MoreVertical className="h-4 w-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem
+          disabled={archive.isPending}
+          onClick={() =>
+            archive.mutate(sequence.id, {
+              onSuccess: () =>
+                toast.success(`Archived ${sequence.title || 'sequence'}`, {
+                  description: 'Restore it from the Archived section below.',
+                }),
+              onError: (error) =>
+                toast.error('Failed to archive sequence', {
+                  description: errorMessage(error),
+                }),
+            })
+          }
+        >
+          <Archive className="h-4 w-4" />
+          {archive.isPending ? 'Archiving…' : 'Archive sequence'}
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 };
 

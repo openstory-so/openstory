@@ -137,10 +137,12 @@ export async function buildShotImageWorkflowInput(opts: {
     sceneId: opts.scene?.sceneId ?? shot.id,
     visualPrompt: prompt,
     characterSheetHashes: sortedHashes(
-      matchedCharacters.map((c) => c.sheetInputHash)
+      matchedCharacters.map((c) => c.selectedSheetVersionId ?? c.sheetInputHash)
     ),
     locationSheetHashes: sortedHashes(
-      matchedLocations.map((l) => l.referenceInputHash)
+      matchedLocations.map(
+        (l) => l.selectedReferenceVersionId ?? l.referenceInputHash
+      )
     ),
     elementReferenceHashes: sortedHashes(
       matchedElements.map((e) => e.imageUrl)

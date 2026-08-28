@@ -1,0 +1,24 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use @Image1 as the starting frame.\nSteady handheld drift in toward @Image2’s outstretched hand. From this reach, @Image2 snatches the tumbling @Image3 out of the air in one clean grab. The hair claw and grit drop onto the bonnet. She draws the tube in close, weight settling, then angles toward the driver’s side of the sedan.\n\nOcean swell rolls beyond the rail. A light breeze lifts her hair and the tote’s loose canvas. Fine sand sifts from her calves.\n\nearly-morning ocean swell beyond the rail, light coastal breeze, distant gulls. hair claw and grit landing on the metal bonnet, soft slap of the lipstick caught in her palm, canvas tote rustling in the breeze.\n\nNo BGM, no music. Generate only dialogue, environmental sounds, and action sounds. Single continuous shot, no cuts. Avoid jitter and bent limbs.",
+        "model": "bytedance/seedance-2.5/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://v3b.fal.media/files/b/0aa70c1e/YzZyKbbDkdPA_BaSAeP-4_video.mp4",
+            "content_type": "video/mp4",
+            "file_name": "video.mp4",
+            "file_size": 3095808
+          },
+          "seed": 470257454
+        },
+        "status": 200,
+        "billableUnits": 108.9
+      }
+    }
+  ]
+}

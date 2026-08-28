@@ -48,10 +48,12 @@ function makeCharacter(overrides: Partial<Character> = {}): Character {
     sheetGeneratedAt: NOW,
     sheetError: null,
     sheetInputHash: 'jack-hash-v1',
+    selectedSheetVersionId: null,
     talentId: null,
     firstMentionLine: null,
     firstMentionText: null,
     firstMentionSceneId: null,
+    deletedAt: null,
     createdAt: NOW,
     updatedAt: NOW,
   };
@@ -82,9 +84,11 @@ function makeLocation(
     referenceGeneratedAt: NOW,
     referenceError: null,
     referenceInputHash: 'docks-hash-v1',
+    selectedReferenceVersionId: null,
     firstMentionSceneId: null,
     firstMentionText: null,
     firstMentionLine: null,
+    deletedAt: null,
     createdAt: NOW,
     updatedAt: NOW,
   };
@@ -99,6 +103,7 @@ const SHOT: Shot = {
   durationMs: 3000,
   selectedMotionPromptVersionId: null,
   renderSegmentId: null,
+  deletedAt: null,
   createdAt: NOW,
   updatedAt: NOW,
 };

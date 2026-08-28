@@ -35,8 +35,6 @@ import { microsToUsd } from '@/lib/billing/money';
 import { gateStoryboardRenders } from '@/lib/billing/storyboard-render-gate';
 import { generateId } from '@/lib/db/id';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
-import { assembleMotionPrompt } from '@/lib/motion/assemble-motion-prompt';
-import { buildMotionReferenceImages } from '@/lib/motion/build-motion-references';
 import { buildCastCharacterBible } from '@/lib/prompts/character-prompt';
 import { getGenerationChannel } from '@/lib/realtime';
 import { spawnAndAwaitChild } from '@/lib/workflow/await-child';
@@ -66,6 +64,7 @@ import type {
   FramePromptBatchWorkflowResult,
 } from '@/lib/workflow/types';
 import { findMissingElementEntries } from '@/lib/workflows/element-sheet-workflow';
+import { buildStoryboardMotionBatchShots } from '@/lib/workflows/storyboard-motion-batch-shots';
 import {
   computeShotImagesHashFromDto,
   type ShotImageSceneSnapshot,
@@ -718,8 +717,14 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
     }
 
     const imageUrls = shotImagesSettled.value.imageUrls;
-    const { completeScenes, motionPromptsBySceneId, musicPrompt, musicTags } =
-      motionMusicSettled.value;
+    const frameVersionIds = shotImagesSettled.value.frameVersionIds ?? [];
+    const {
+      completeScenes,
+      motionPromptsBySceneId,
+      motionPromptVersionIdsBySceneId,
+      musicPrompt,
+      musicTags,
+    } = motionMusicSettled.value;
 
     // ----------------------------------------------------------------------
     // PHASE 5: motion (+ optional music + merge) batch — single child
@@ -742,59 +747,17 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
         totalDuration += scene.metadata?.durationSeconds || 5;
       }
 
-      const batchShots = completeScenes.flatMap((scene, index) => {
-        const matchedShot = shotMapping.find(
-          (f) => f.analysisSceneId === scene.sceneId
-        );
-        // The structured motion prompt is threaded in from the motion-prompt
-        // phase's return (#713/#991) — NOT re-read from the DB, which would be
-        // racy against concurrent append-only version writes.
-        // `imageUrls` is aligned to scene order; a null slot means that
-        // scene's image generation failed (the shot is already marked
-        // failed by the image workflow). Motion-prompt batch also skips
-        // those scenes (no starting frame). Skip rather than throwing —
-        // a missing still used to fail the whole storyboard.
-        const imageUrl = imageUrls[index];
-        if (!imageUrl) {
-          logger.warn(
-            `[AnalyzeScriptWorkflow:cf] Scene ${scene.sceneId} has no generated image (index ${index}); skipping its motion`
-          );
-          return [];
-        }
-
-        const motionPromptData = motionPromptsBySceneId[scene.sceneId];
-        if (!motionPromptData?.fullPrompt) {
-          throw new WorkflowValidationError(
-            `Scene ${scene.sceneId} has no motion prompt`
-          );
-        }
-
-        const characterTags = scene.continuity?.characterTags;
-
-        return {
-          shotId: matchedShot?.shotId ?? '',
-          imageUrl,
-          // Primary-model prompt (fallback / single-model). `motion-batch`
-          // re-assembles per model from `motionPrompt` for the alternates.
-          prompt: assembleMotionPrompt({
-            motionPrompt: motionPromptData,
-            model: primaryVideoModel,
-            characterTags,
-          }),
-          model: primaryVideoModel,
-          motionPrompt: motionPromptData,
-          characterTags,
-          duration: scene.metadata?.durationSeconds || 3,
-          aspectRatio,
-          // Cast/element refs so motion preserves identity across the clip
-          // (#873) — only Kling v3 Pro emits them. Same library + matcher the
-          // image step uses, so motion attaches the same references.
-          referenceImages: buildMotionReferenceImages({
-            scene,
-            characters: charactersWithSheets,
-            elements: allElements,
-          }),
-        };
+      const batchShots = buildStoryboardMotionBatchShots({
+        scenes: completeScenes,
+        shotMapping,
+        imageUrls,
+        frameVersionIds,
+        motionPromptsBySceneId,
+        motionPromptVersionIdsBySceneId: motionPromptVersionIdsBySceneId ?? {},
+        videoModel: primaryVideoModel,
+        aspectRatio,
+        characters: charactersWithSheets,
+        elements: allElements,
       });
 
       await step.do('phase-5-start', async () => {

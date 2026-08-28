@@ -322,8 +322,13 @@ testWithUser.describe('Character Recast', () => {
         timeout: 15000,
       });
 
-      // Click Recast button
-      const recastButton = page.getByRole('button', { name: 'Recast' });
+      // Click Recast button. `exact` so the rename-sequence control
+      // (aria-label includes the sequence title, which contains "Recast")
+      // is not a strict-mode match.
+      const recastButton = page.getByRole('button', {
+        name: 'Recast',
+        exact: true,
+      });
       await expect(recastButton).toBeVisible();
       await recastButton.click();
 
@@ -341,7 +346,7 @@ testWithUser.describe('Character Recast', () => {
       ).toBeVisible();
 
       // Confirm the recast
-      await page.getByRole('button', { name: 'Recast' }).click();
+      await page.getByRole('button', { name: 'Recast', exact: true }).click();
 
       // The confirmation dialog should close (loading state may briefly appear)
       // With mocks, the mutation should complete quickly

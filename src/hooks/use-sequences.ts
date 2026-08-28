@@ -1,11 +1,15 @@
 import {
   addModelToSequenceFn,
+  archiveSequenceFn,
   createSequenceFn,
+  getArchivedSequencesFn,
   getSequenceAudioVariantsFn,
   getSequenceFn,
   getSequencesFn,
+  renameSequenceFn,
   setSequenceModelFn,
   setSequenceMusicFn,
+  unarchiveSequenceFn,
   type AddModelResult,
 } from '@/functions/sequences';
 import { DEFAULT_ANALYSIS_MODEL } from '@/lib/ai/models.config';
@@ -222,6 +226,65 @@ export function useCreateSequence() {
     // #1259 — always tell the user why nothing happened.
     onError: (error) => {
       toast.error(error.message || 'Generation failed to start.');
+    },
+  });
+}
+
+/** Archived sequences for the team (#1108 Phase 4). */
+export function useArchivedSequences() {
+  return useQuery<Sequence[]>({
+    queryKey: ['archived-sequences'],
+    queryFn: () => getArchivedSequencesFn(),
+    staleTime: 60_000,
+  });
+}
+
+/** Archive (soft "delete" per plan) — undone via useUnarchiveSequence. */
+export function useArchiveSequence() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (sequenceId: string) =>
+      archiveSequenceFn({ data: { sequenceId } }),
+    onSuccess: () => invalidateSequenceLists(queryClient),
+  });
+}
+
+/** Restore an archived sequence to its recorded prior status. */
+export function useUnarchiveSequence() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (sequenceId: string) =>
+      unarchiveSequenceFn({ data: { sequenceId } }),
+    onSuccess: () => invalidateSequenceLists(queryClient),
+  });
+}
+
+function invalidateSequenceLists(
+  queryClient: ReturnType<typeof useQueryClient>
+): void {
+  void queryClient.invalidateQueries({ queryKey: sequenceKeys.lists() });
+  void queryClient.invalidateQueries({ queryKey: ['archived-sequences'] });
+  // The eval matrix joins shots per listed sequence — refresh its join too.
+  void queryClient.invalidateQueries({ queryKey: ['shots', 'by-sequences'] });
+}
+
+/**
+ * Rename a sequence (#1108 Phase 4) — title-only write via the dedicated
+ * `renameSequenceFn` (never `updateSequenceFn`, whose aspect-ratio handling
+ * makes it unsafe for partial writes). Refreshes the detail (breadcrumb +
+ * header) and the sequences list.
+ */
+export function useRenameSequence(sequenceId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (title: string) =>
+      renameSequenceFn({ data: { sequenceId, title } }),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(sequenceKeys.detail(sequenceId), updated);
+      void queryClient.invalidateQueries({
+        queryKey: sequenceKeys.detail(sequenceId),
+      });
+      void queryClient.invalidateQueries({ queryKey: sequenceKeys.lists() });
     },
   });
 }

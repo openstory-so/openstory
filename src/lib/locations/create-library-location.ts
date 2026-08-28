@@ -62,10 +62,39 @@ export type CreateLibraryLocationContext = {
   teamId: string;
 };
 
+export type CreateLibraryLocationOptions = {
+  /**
+   * When false, insert the location but do not trigger the billed sheet
+   * workflow. The caller enqueues {@link CreateLibraryLocationResult.sheetWorkflowInput}
+   * after the sequence exists.
+   * @default true
+   */
+  enqueueSheet?: boolean;
+};
+
+export type CreateLibraryLocationResult = {
+  location: LibraryLocation;
+  sheetWorkflowInput: LibraryLocationSheetWorkflowInput;
+};
+
+export async function enqueueLibraryLocationSheet(
+  workflowInput: LibraryLocationSheetWorkflowInput,
+  locationId: string
+): Promise<void> {
+  try {
+    await triggerWorkflow('/library-location-sheet', workflowInput, {
+      label: buildWorkflowLabel(locationId),
+    });
+  } catch (error) {
+    logger.error('Failed to trigger location sheet workflow:', { err: error });
+  }
+}
+
 export async function createLibraryLocation(
   input: CreateLibraryLocationInput,
-  ctx: CreateLibraryLocationContext
-): Promise<LibraryLocation> {
+  ctx: CreateLibraryLocationContext,
+  options?: CreateLibraryLocationOptions
+): Promise<CreateLibraryLocationResult> {
   const processedImages = await promoteLocationReferenceImages(
     input.referenceImageUrls ?? [],
     ctx.teamId
@@ -93,7 +122,8 @@ export async function createLibraryLocation(
     );
   }
 
-  // Always trigger sheet generation (works with or without reference images).
+  // Sheet generation works with or without reference images. The public API
+  // defers the trigger until the sequence exists (`enqueueSheet: false`).
   const workflowInput: LibraryLocationSheetWorkflowInput = {
     locationDbId: newLocation.id,
     locationName: input.name,
@@ -106,11 +136,10 @@ export async function createLibraryLocation(
   workflowInput.snapshotInputHash =
     await computeLibraryLocationSheetHashFromDto(workflowInput);
 
-  void triggerWorkflow('/library-location-sheet', workflowInput, {
-    label: buildWorkflowLabel(newLocation.id),
-  }).catch((error) => {
-    logger.error('Failed to trigger location sheet workflow:', { err: error });
-  });
+  if (options?.enqueueSheet !== false) {
+    // Dashboard create: fire-and-forget so the dialog can return immediately.
+    void enqueueLibraryLocationSheet(workflowInput, newLocation.id);
+  }
 
-  return newLocation;
+  return { location: newLocation, sheetWorkflowInput: workflowInput };
 }
