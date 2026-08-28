@@ -159,7 +159,7 @@ describe('OptimisedPromptPanel', () => {
         { label: '@Image2', url: 'https://cdn.example/cast.png' },
       ],
     });
-    expect(html).not.toContain('Copy @Image1 URL');
+    expect(html).not.toContain('Copy @Image1 image');
     expect(html).not.toContain('https://cdn.example/still.png');
   });
 
@@ -175,8 +175,8 @@ describe('OptimisedPromptPanel', () => {
       },
       { defaultOpen: true }
     );
-    expect(html).toContain('Copy @Image1 URL');
-    expect(html).toContain('Copy @Image2 URL');
+    expect(html).toContain('Copy @Image1 image');
+    expect(html).toContain('Copy @Image2 image');
     expect(html).toContain('https://cdn.example/still.png');
     expect(html).toContain('https://cdn.example/cast.png');
   });

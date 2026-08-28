@@ -24,7 +24,7 @@ const characterVersionsInput = z.object({
 /** Completed, non-discarded sheet versions for the history list. */
 export const listCharacterSheetVersionsFn = createServerFn({ method: 'GET' })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(zodValidator(characterVersionsInput))
+  .validator(zodValidator(characterVersionsInput))
   .handler(async ({ context, data }) => {
     const character = await context.scopedDb.characters.getById(
       data.characterId
@@ -44,7 +44,7 @@ export const listCharacterSheetVersionsFn = createServerFn({ method: 'GET' })
 
 export const selectCharacterSheetVersionFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(
+  .validator(
     zodValidator(characterVersionsInput.extend({ versionId: ulidSchema }))
   )
   .handler(async ({ context, data }) => {

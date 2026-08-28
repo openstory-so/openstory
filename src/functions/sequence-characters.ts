@@ -7,7 +7,7 @@ import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
 
-import { safeTextToImageModel } from '@/lib/ai/models';
+import { isValidTextToImageModel, safeTextToImageModel } from '@/lib/ai/models';
 import { generateId } from '@/lib/db/id';
 import type { CharacterBibleUpdate } from '@/lib/db/scoped/characters';
 import { resolveSequenceStyleConfig } from '@/lib/style/style-config';
@@ -25,7 +25,10 @@ import type { SheetStaleness } from '@/lib/sheets/sheet-staleness';
 import { characterSheetHashMatchesStored } from '@/lib/workflows/sheet-snapshots';
 
 import { NotFoundError } from '@/lib/errors';
+import { getLogger } from '@/lib/observability/logger';
 import { authWithTeamMiddleware, sequenceAccessMiddleware } from './middleware';
+
+const logger = getLogger(['openstory', 'serverFn', 'sequence-characters']);
 
 /**
  * Recast accepts talents owned by the requesting team OR public talents.
@@ -72,7 +75,7 @@ const characterBibleFieldsSchema = z.object({
  */
 export const createSequenceCharacterFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(
+  .validator(
     zodValidator(
       characterBibleFieldsSchema.extend({
         sequenceId: ulidSchema,
@@ -111,7 +114,7 @@ export const createSequenceCharacterFn = createServerFn({ method: 'POST' })
  */
 export const updateSequenceCharacterFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(
+  .validator(
     zodValidator(
       characterBibleFieldsSchema.extend({
         sequenceId: ulidSchema,
@@ -144,7 +147,7 @@ const characterIdInput = z.object({
  */
 export const softDeleteSequenceCharacterFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(zodValidator(characterIdInput))
+  .validator(zodValidator(characterIdInput))
   .handler(async ({ context, data }) => {
     const existing = await context.scopedDb.characters.getById(
       data.characterId
@@ -162,7 +165,7 @@ export const softDeleteSequenceCharacterFn = createServerFn({ method: 'POST' })
 /** Undo a character soft-delete. */
 export const restoreSequenceCharacterFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(zodValidator(characterIdInput))
+  .validator(zodValidator(characterIdInput))
   .handler(async ({ context, data }) => {
     const existing = await context.scopedDb.characters.getById(
       data.characterId
@@ -194,7 +197,18 @@ export const getShotIdsForCharacterFn = createServerFn({ method: 'GET' })
  */
 export const regenerateCharacterSheetFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(zodValidator(characterIdInput))
+  .validator(
+    zodValidator(
+      characterIdInput.extend({
+        imageModel: z
+          .string()
+          .refine(isValidTextToImageModel, {
+            message: 'Invalid image model',
+          })
+          .optional(),
+      })
+    )
+  )
   .handler(async ({ context, data }) => {
     const character = await context.scopedDb.characters.getById(
       data.characterId
@@ -209,32 +223,47 @@ export const regenerateCharacterSheetFn = createServerFn({ method: 'POST' })
       teamId: context.teamId,
       sequence: context.sequence,
       character,
+      imageModel: data.imageModel,
     });
 
     await context.scopedDb.characters.updateSheetStatus(
       character.id,
       'generating'
     );
-    await getGenerationChannel(character.sequenceId).emit(
-      'generation.character-sheet:progress',
-      { characterId: character.id, status: 'generating' }
-    );
+    try {
+      await getGenerationChannel(character.sequenceId).emit(
+        'generation.character-sheet:progress',
+        { characterId: character.id, status: 'generating' }
+      );
+    } catch (error) {
+      logger.error('realtime emit failed', { err: error });
+    }
 
-    const workflowRunId = await triggerWorkflow('/character-sheet', payload, {
-      label: buildWorkflowLabel(character.sequenceId),
-      // Explicit regen must not reuse the bible-child id
-      // `character-sheet:${id}` — that instance is already complete, and CF
-      // would no-op a second Generate (sheetStatus stuck at generating).
-      // Same pattern as generateTalentSheetFn: omit dedup so each click is a
-      // new run.
-    });
+    let workflowRunId: string;
+    try {
+      workflowRunId = await triggerWorkflow('/character-sheet', payload, {
+        label: buildWorkflowLabel(character.sequenceId),
+        // Explicit regen must not reuse the bible-child id
+        // `character-sheet:${id}` — that instance is already complete, and CF
+        // would no-op a second Generate (sheetStatus stuck at generating).
+        // Same pattern as generateTalentSheetFn: omit dedup so each click is a
+        // new run.
+      });
+    } catch (error) {
+      await context.scopedDb.characters.updateSheetStatus(
+        character.id,
+        'failed',
+        error instanceof Error ? error.message : String(error)
+      );
+      throw error;
+    }
     return { characterId: character.id, workflowRunId };
   });
 
 /** Live sheet staleness for the character detail banner. */
 export const getCharacterSheetStalenessFn = createServerFn({ method: 'GET' })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(zodValidator(characterIdInput))
+  .validator(zodValidator(characterIdInput))
   .handler(async ({ context, data }): Promise<SheetStaleness> => {
     const character = await context.scopedDb.characters.getById(
       data.characterId

@@ -845,10 +845,11 @@ describe('character sheet versions (append + select)', () => {
 
     const history = await methods.listHistoryByCharacter(characterId);
     expect(history).toHaveLength(2);
-    expect(
-      history.some((row) => row.url === 'https://example.com/old.png')
-    ).toBe(true);
-    expect(history.some((row) => row.id === version.id)).toBe(true);
+    expect(history.map((row) => row.url)).toEqual([
+      'https://example.com/old.png',
+      'https://example.com/new.png',
+    ]);
+    expect(history[1]?.id).toBe(version.id);
   });
 
   it('select repoints the parent without discarding the previous version', async () => {
@@ -876,10 +877,14 @@ describe('character sheet versions (append + select)', () => {
       .where(eq(characters.id, characterId));
     expect(after?.selectedSheetVersionId).toBe(first.version.id);
     expect(after?.sheetImageUrl).toBe('https://example.com/a.png');
-    expect(after?.sheetInputHash).toBe('hash-b');
+    expect(after?.sheetInputHash).toBe('hash-a');
 
     const history = await methods.listHistoryByCharacter(characterId);
     expect(history).toHaveLength(2);
+    expect(history.map((row) => row.id)).toEqual([
+      first.version.id,
+      second.version.id,
+    ]);
     expect(history.every((row) => row.discardedAt == null)).toBe(true);
   });
 });

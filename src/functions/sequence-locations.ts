@@ -1,5 +1,5 @@
 import { mediaUrlSchema } from '@/lib/schemas/media-url.schemas';
-import { safeTextToImageModel } from '@/lib/ai/models';
+import { isValidTextToImageModel, safeTextToImageModel } from '@/lib/ai/models';
 import { generateId } from '@/lib/db/id';
 import type { LocationBibleUpdate } from '@/lib/db/scoped/sequence-locations';
 import type { SheetStaleness } from '@/lib/sheets/sheet-staleness';
@@ -20,7 +20,10 @@ import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
 import { NotFoundError } from '@/lib/errors';
+import { getLogger } from '@/lib/observability/logger';
 import { authWithTeamMiddleware, sequenceAccessMiddleware } from './middleware';
+
+const logger = getLogger(['openstory', 'serverFn', 'sequence-locations']);
 
 export const getSequenceLocationsFn = createServerFn({ method: 'GET' })
   .middleware([sequenceAccessMiddleware])
@@ -53,7 +56,7 @@ const locationBibleFieldsSchema = z.object({
  */
 export const createSequenceLocationFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(
+  .validator(
     zodValidator(
       locationBibleFieldsSchema.extend({
         sequenceId: ulidSchema,
@@ -92,7 +95,7 @@ export const createSequenceLocationFn = createServerFn({ method: 'POST' })
  */
 export const updateSequenceLocationFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(
+  .validator(
     zodValidator(
       locationBibleFieldsSchema.extend({
         sequenceId: ulidSchema,
@@ -127,7 +130,7 @@ const locationIdInput = z.object({
  */
 export const softDeleteSequenceLocationFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(zodValidator(locationIdInput))
+  .validator(zodValidator(locationIdInput))
   .handler(async ({ context, data }) => {
     const existing = await context.scopedDb.sequenceLocations.getById(
       data.locationDbId
@@ -145,7 +148,7 @@ export const softDeleteSequenceLocationFn = createServerFn({ method: 'POST' })
 /** Undo a location soft-delete. */
 export const restoreSequenceLocationFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(zodValidator(locationIdInput))
+  .validator(zodValidator(locationIdInput))
   .handler(async ({ context, data }) => {
     const existing = await context.scopedDb.sequenceLocations.getById(
       data.locationDbId
@@ -191,7 +194,18 @@ const recastLocationInputSchema = z.object({
 
 export const regenerateLocationSheetFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(zodValidator(locationIdInput))
+  .validator(
+    zodValidator(
+      locationIdInput.extend({
+        imageModel: z
+          .string()
+          .refine(isValidTextToImageModel, {
+            message: 'Invalid image model',
+          })
+          .optional(),
+      })
+    )
+  )
   .handler(async ({ context, data }) => {
     const location = await context.scopedDb.sequenceLocations.getById(
       data.locationDbId
@@ -206,29 +220,44 @@ export const regenerateLocationSheetFn = createServerFn({ method: 'POST' })
       teamId: context.teamId,
       sequence: context.sequence,
       location,
+      imageModel: data.imageModel,
     });
 
     await context.scopedDb.sequenceLocations.updateReferenceStatus(
       location.id,
       'generating'
     );
-    await getGenerationChannel(location.sequenceId).emit(
-      'generation.location-sheet:progress',
-      { locationId: location.id, status: 'generating' }
-    );
+    try {
+      await getGenerationChannel(location.sequenceId).emit(
+        'generation.location-sheet:progress',
+        { locationId: location.id, status: 'generating' }
+      );
+    } catch (error) {
+      logger.error('realtime emit failed', { err: error });
+    }
 
-    const workflowRunId = await triggerWorkflow('/location-sheet', payload, {
-      label: buildWorkflowLabel(location.sequenceId),
-      // Explicit regen must not reuse the bible-child id
-      // `location-sheet:${id}` — that instance is already complete, and CF
-      // would no-op a second Generate. Same pattern as generateTalentSheetFn.
-    });
+    let workflowRunId: string;
+    try {
+      workflowRunId = await triggerWorkflow('/location-sheet', payload, {
+        label: buildWorkflowLabel(location.sequenceId),
+        // Explicit regen must not reuse the bible-child id
+        // `location-sheet:${id}` — that instance is already complete, and CF
+        // would no-op a second Generate. Same pattern as generateTalentSheetFn.
+      });
+    } catch (error) {
+      await context.scopedDb.sequenceLocations.updateReferenceStatus(
+        location.id,
+        'failed',
+        error instanceof Error ? error.message : String(error)
+      );
+      throw error;
+    }
     return { locationDbId: location.id, workflowRunId };
   });
 
 export const getLocationSheetStalenessFn = createServerFn({ method: 'GET' })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(zodValidator(locationIdInput))
+  .validator(zodValidator(locationIdInput))
   .handler(async ({ context, data }): Promise<SheetStaleness> => {
     const location = await context.scopedDb.sequenceLocations.getById(
       data.locationDbId

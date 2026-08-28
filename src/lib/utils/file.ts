@@ -28,6 +28,7 @@ export function getMimeTypeFromExtension(ext: string): string {
     mp3: 'audio/mpeg',
     wav: 'audio/wav',
     ogg: 'audio/ogg',
+    m4a: 'audio/mp4',
   };
   return mimeTypes[ext.toLowerCase()] || 'application/octet-stream';
 }

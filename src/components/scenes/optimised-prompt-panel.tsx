@@ -13,8 +13,10 @@ import {
 } from '@/components/ui/collapsible';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { cn } from '@/lib/utils';
+import { copyImageToClipboard } from '@/lib/utils/clipboard';
 import { ChevronRight, CopyIcon } from 'lucide-react';
 import { useState } from 'react';
+import { toast } from 'sonner';
 
 export type BoundPromptImage = {
   label: string;
@@ -209,12 +211,7 @@ export const OptimisedPromptPanel: React.FC<{
             </span>
           )}
           {preview.images && preview.images.length > 0 && (
-            <BoundImageStrip
-              images={preview.images}
-              copiedKey={copiedKey}
-              onCopy={onCopy}
-              idPrefix={idPrefix}
-            />
+            <BoundImageStrip images={preview.images} />
           )}
           {showingJson ? (
             <pre
@@ -244,55 +241,67 @@ export const OptimisedPromptPanel: React.FC<{
 
 const BoundImageStrip: React.FC<{
   images: BoundPromptImage[];
-  copiedKey: string | null;
-  onCopy: (text: string | undefined, key: string) => void;
-  idPrefix: string;
-}> = ({ images, copiedKey, onCopy, idPrefix }) => (
-  <ul
-    className="flex gap-2 overflow-x-auto"
-    aria-label="Bound reference images"
-  >
-    {images.map((image) => {
-      const copyKey = `${idPrefix}-${image.label}`;
-      const copied = copiedKey === copyKey;
-      return (
-        <li key={`${image.label}-${image.url}`} className="shrink-0">
-          <figure className="flex flex-col items-center gap-1">
-            <div className="relative size-16 overflow-hidden rounded-sm border bg-muted">
-              <AppImage
-                src={image.url}
-                alt=""
-                width={64}
-                height={64}
-                className="size-16 object-cover"
-              />
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="absolute top-0.5 right-0.5 h-6 w-6 bg-background/80"
-                onClick={() => onCopy(image.url, copyKey)}
-                aria-label={
-                  copied
-                    ? `Copied ${image.label} URL`
-                    : `Copy ${image.label} URL`
-                }
-              >
-                {copied ? (
-                  <span aria-hidden className="text-xs">
-                    ✓
-                  </span>
-                ) : (
-                  <CopyIcon className="h-3.5 w-3.5" />
-                )}
-              </Button>
-            </div>
-            <figcaption className="font-mono text-xs text-muted-foreground">
-              {image.label}
-            </figcaption>
-          </figure>
-        </li>
-      );
-    })}
-  </ul>
-);
+}> = ({ images }) => {
+  const [copiedLabel, setCopiedLabel] = useState<string | null>(null);
+
+  const handleCopyImage = async (image: BoundPromptImage) => {
+    if (!(await copyImageToClipboard(image.url))) {
+      toast.error('Failed to copy image', {
+        description:
+          'Your browser blocked clipboard access, or the image could not be fetched.',
+      });
+      return;
+    }
+    setCopiedLabel(image.label);
+    window.setTimeout(() => setCopiedLabel(null), 2000);
+  };
+
+  return (
+    <ul
+      className="flex gap-2 overflow-x-auto"
+      aria-label="Bound reference images"
+    >
+      {images.map((image) => {
+        const copied = copiedLabel === image.label;
+        return (
+          <li key={`${image.label}-${image.url}`} className="shrink-0">
+            <figure className="flex flex-col items-center gap-1">
+              <div className="relative size-16 overflow-hidden rounded-sm border bg-muted">
+                <AppImage
+                  src={image.url}
+                  alt=""
+                  width={64}
+                  height={64}
+                  className="size-16 object-cover"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute top-0.5 right-0.5 h-6 w-6 bg-background/80"
+                  onClick={() => void handleCopyImage(image)}
+                  aria-label={
+                    copied
+                      ? `Copied ${image.label}`
+                      : `Copy ${image.label} image`
+                  }
+                >
+                  {copied ? (
+                    <span aria-hidden className="text-xs">
+                      ✓
+                    </span>
+                  ) : (
+                    <CopyIcon className="h-3.5 w-3.5" />
+                  )}
+                </Button>
+              </div>
+              <figcaption className="font-mono text-xs text-muted-foreground">
+                {image.label}
+              </figcaption>
+            </figure>
+          </li>
+        );
+      })}
+    </ul>
+  );
+};

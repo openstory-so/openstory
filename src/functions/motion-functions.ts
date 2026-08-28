@@ -542,7 +542,7 @@ const cancelVideoRenderInput = z.object({
  */
 export const cancelVideoRenderFn = createServerFn({ method: 'POST' })
   .middleware([shotAccessMiddleware])
-  .inputValidator(zodValidator(cancelVideoRenderInput))
+  .validator(zodValidator(cancelVideoRenderInput))
   .handler(async ({ context, data }) => {
     const { shot, scopedDb } = context;
     const row = await scopedDb.videoVariants.getById(data.versionId);

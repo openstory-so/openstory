@@ -20,7 +20,7 @@ import {
   locationSheetVariants,
   sequenceLocations,
 } from '@/lib/db/schema';
-import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { insertDivergentRaceTolerant } from './divergent-insert';
 import { buildEventInsert } from './sequence-events';
 
@@ -115,6 +115,7 @@ export function createLocationSheetVariantsMethods(db: Database) {
       return result[0] ?? null;
     },
 
+    /** Completed, not discarded, oldest-first (left-to-right v1, v2, …). */
     listHistoryByParent: async (
       parentType: LocationSheetVariantParentType,
       parentId: string
@@ -130,7 +131,10 @@ export function createLocationSheetVariantsMethods(db: Database) {
             isNull(locationSheetVariants.discardedAt)
           )
         )
-        .orderBy(desc(locationSheetVariants.createdAt));
+        .orderBy(
+          asc(locationSheetVariants.createdAt),
+          asc(locationSheetVariants.id)
+        );
     },
 
     /**
@@ -270,6 +274,7 @@ export function createLocationSheetVariantsMethods(db: Database) {
             referenceStatus: 'completed',
             referenceGeneratedAt: version.generatedAt ?? now,
             referenceError: null,
+            referenceInputHash: version.inputHash,
             selectedReferenceVersionId: version.id,
             updatedAt: now,
           })

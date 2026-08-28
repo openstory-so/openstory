@@ -198,8 +198,8 @@ export async function persistMotionCompletion(opts: {
     now = () => new Date(),
   } = opts;
 
-  // Status-guarded (#1108 Phase 4): a user cancel flips the row to terminal
-  // 'failed' while the render is in flight; completing must not resurrect it.
+  // Status-guarded (#1108): a user cancel flips the row to terminal
+  // 'cancelled' while the render is in flight; completing must not resurrect it.
   const completed = await scopedDb.videoVariants.completeIfLive(
     videoVersionId,
     {

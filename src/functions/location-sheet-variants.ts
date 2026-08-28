@@ -23,7 +23,7 @@ const locationVersionsInput = z.object({
 
 export const listLocationSheetVersionsFn = createServerFn({ method: 'GET' })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(zodValidator(locationVersionsInput))
+  .validator(zodValidator(locationVersionsInput))
   .handler(async ({ context, data }) => {
     const location = await context.scopedDb.sequenceLocations.getById(
       data.locationDbId
@@ -44,7 +44,7 @@ export const listLocationSheetVersionsFn = createServerFn({ method: 'GET' })
 
 export const selectLocationSheetVersionFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(
+  .validator(
     zodValidator(locationVersionsInput.extend({ versionId: ulidSchema }))
   )
   .handler(async ({ context, data }) => {

@@ -19,6 +19,7 @@ import {
   computeMotionPromptInputHash,
   computeMotionPromptInputHashV4,
   computeMusicPromptInputHash,
+  computeMusicPromptInputHashV4,
   LEGACY_HASH_UNTIL,
   libraryLocationReferenceInputHashMatches,
   computeSequenceMusicInputHash,
@@ -883,10 +884,13 @@ describe('prompt input hashes', () => {
   it('dual-hash verify accepts a titled music digest of the same summaries', async () => {
     const input = { sceneSummaries: [baseSummary], analysisModel: 'm' };
     const current = await computeMusicPromptInputHash(input);
+    const v4 = await computeMusicPromptInputHashV4(input);
+    expect(v4).not.toBe(current);
     expect(await musicPromptInputHashMatches(current, input)).toBe(true);
+    expect(await musicPromptInputHashMatches(v4, input)).toBe(true);
     expect(await musicPromptInputHashMatches('deadbeef', input)).toBe(false);
     expect(
-      await musicPromptInputHashMatches(current, {
+      await musicPromptInputHashMatches(v4, {
         sceneSummaries: [{ ...baseSummary, storyBeat: 'Twist reveal' }],
         analysisModel: 'm',
       })

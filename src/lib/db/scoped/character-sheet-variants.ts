@@ -11,7 +11,7 @@ import type {
   NewCharacterSheetVariant,
 } from '@/lib/db/schema';
 import { characterSheetVariants, characters } from '@/lib/db/schema';
-import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { insertDivergentRaceTolerant } from './divergent-insert';
 import { buildEventInsert } from './sequence-events';
 
@@ -33,9 +33,10 @@ export function createCharacterSheetVariantsMethods(db: Database) {
     },
 
     /**
-     * Selectable history: completed, not discarded, newest first. Includes
-     * parked divergent rows so the user can pick one instead of promoting
-     * through the banner.
+     * Selectable history: completed, not discarded, oldest-first so a
+     * left-to-right strip can label v1, v2, … from position (same as
+     * frame / video versions). Includes parked divergent rows so the user
+     * can pick one instead of promoting through the banner.
      */
     listHistoryByCharacter: async (
       characterId: string
@@ -50,7 +51,10 @@ export function createCharacterSheetVariantsMethods(db: Database) {
             isNull(characterSheetVariants.discardedAt)
           )
         )
-        .orderBy(desc(characterSheetVariants.createdAt));
+        .orderBy(
+          asc(characterSheetVariants.createdAt),
+          asc(characterSheetVariants.id)
+        );
     },
 
     listDivergentByCharacter: async (
@@ -248,6 +252,7 @@ export function createCharacterSheetVariantsMethods(db: Database) {
             sheetStatus: 'completed',
             sheetGeneratedAt: version.generatedAt ?? now,
             sheetError: null,
+            sheetInputHash: version.inputHash,
             selectedSheetVersionId: version.id,
             updatedAt: now,
           })

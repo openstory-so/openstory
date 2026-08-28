@@ -24,7 +24,7 @@ import {
   computeLocationSheetInputHash,
   computeVisualPromptInputHash,
 } from '@/lib/ai/input-hash';
-import { DEFAULT_IMAGE_MODEL, safeTextToImageModel } from '@/lib/ai/models';
+import { resolveSheetImageModel } from '@/lib/sheets/sheet-image-model';
 import { StyleConfigSchema } from '@/lib/db/schema';
 import { NotFoundError } from '@/lib/errors';
 import { computeStyleConfigHash } from '@/lib/workflows/sheet-snapshots';
@@ -69,6 +69,17 @@ const logger = getLogger(['openstory', 'serverFn', 'media-upload']);
  * the serialization adapter to the client as a typed 400 instead of surfacing
  * as a 500 the user can't act on.
  */
+/** Exported for tests — a per-shot clip must not overwrite a multi-shot scene render. */
+export function assertSingleShotSegmentForVideoUpload(
+  shotsInSegment: number
+): void {
+  if (shotsInSegment > 1) {
+    throw new ValidationError(
+      'This shot shares a render with others in its scene; upload a clip for the whole scene instead of one shot'
+    );
+  }
+}
+
 function requireUploadedStoragePath(
   publicUrl: string,
   bucket: StorageBucket,
@@ -129,7 +140,7 @@ const shotPresignInput = z.object({
 
 export const presignFrameImageUploadFn = createServerFn({ method: 'POST' })
   .middleware([shotAccessMiddleware])
-  .inputValidator(zodValidator(shotPresignInput))
+  .validator(zodValidator(shotPresignInput))
   .handler(async ({ context, data }) => {
     // Same directory generated stills land in (uploadImageToStorage).
     return signedUpload(
@@ -142,7 +153,7 @@ export const presignFrameImageUploadFn = createServerFn({ method: 'POST' })
 
 export const presignShotVideoUploadFn = createServerFn({ method: 'POST' })
   .middleware([shotAccessMiddleware])
-  .inputValidator(zodValidator(shotPresignInput))
+  .validator(zodValidator(shotPresignInput))
   .handler(async ({ context, data }) => {
     return signedUpload(
       STORAGE_BUCKETS.VIDEOS,
@@ -154,7 +165,7 @@ export const presignShotVideoUploadFn = createServerFn({ method: 'POST' })
 
 export const presignSequenceMusicUploadFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(
+  .validator(
     zodValidator(
       z.object({ sequenceId: ulidSchema, filename: z.string().min(1) })
     )
@@ -293,7 +304,7 @@ const replaceFrameContentInput = z.object({
  */
 export const replaceFrameContentFn = createServerFn({ method: 'POST' })
   .middleware([shotAccessMiddleware])
-  .inputValidator(zodValidator(replaceFrameContentInput))
+  .validator(zodValidator(replaceFrameContentInput))
   .handler(async ({ context, data }) => {
     const { shot, frame, sequence, scene, scopedDb, user, teamId } = context;
 
@@ -402,6 +413,11 @@ export const replaceFrameContentFn = createServerFn({ method: 'POST' })
         },
       });
 
+    await emitUploadCompleted(sequence.id, 'image', {
+      shotId: shot.id,
+      ...(imageVersion.url ? { thumbnailUrl: imageVersion.url } : {}),
+    });
+
     return {
       shotId: shot.id,
       versionId: imageVersion.id,
@@ -436,7 +452,7 @@ const setShotVideoFromUploadInput = z.object({
  */
 export const setShotVideoFromUploadFn = createServerFn({ method: 'POST' })
   .middleware([shotAccessMiddleware])
-  .inputValidator(zodValidator(setShotVideoFromUploadInput))
+  .validator(zodValidator(setShotVideoFromUploadInput))
   .handler(async ({ context, data }) => {
     const { shot, frame, sequence, scopedDb, user, teamId } = context;
 
@@ -454,11 +470,7 @@ export const setShotVideoFromUploadFn = createServerFn({ method: 'POST' })
     // manifest we write only names this shot. Refuse rather than corrupt.
     const shotsInSegment =
       await scopedDb.shots.countInRenderSegment(renderSegmentId);
-    if (shotsInSegment > 1) {
-      throw new ValidationError(
-        'This shot shares a render with others in its scene; upload a clip for the whole scene instead of one shot'
-      );
-    }
+    assertSingleShotSegmentForVideoUpload(shotsInSegment);
 
     // Adopt the real duration BEFORE hashing: the manifest folds `durationMs`
     // in, so writing the shot afterwards would leave the clip instantly stale
@@ -538,7 +550,7 @@ const setSequenceMusicFromUploadInput = z.object({
  */
 export const setSequenceMusicFromUploadFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(zodValidator(setSequenceMusicFromUploadInput))
+  .validator(zodValidator(setSequenceMusicFromUploadInput))
   .handler(async ({ context, data }) => {
     const { sequence, scopedDb, user, teamId } = context;
 
@@ -617,7 +629,7 @@ const characterSheetPresignInput = z.object({
 
 export const presignCharacterSheetUploadFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(zodValidator(characterSheetPresignInput))
+  .validator(zodValidator(characterSheetPresignInput))
   .handler(async ({ context, data }) => {
     return signedUpload(
       STORAGE_BUCKETS.CHARACTERS,
@@ -628,12 +640,12 @@ export const presignCharacterSheetUploadFn = createServerFn({ method: 'POST' })
   });
 
 /**
- * Style-config hash + image model resolved the way the sheet workflows stamp
- * them, so a manual sheet's `sheetInputHash` equals what a verify recomputes
- * from current state — a later bible/style/model edit re-stales it (§4.4
- * stamp-for-tracking). Caveat (documented trade): with unchanged inputs the
- * hash VALUE is unchanged, so stills referencing the sheet do not auto-stale
- * from the upload alone — replacing stills is the user's next manual step.
+ * Style-config hash + image model resolved the way sheet verify does after
+ * this upload is selected. The new version's `model` is `user-upload` (not a
+ * t2i id), so verify skips it and falls through to the sequence default —
+ * hashing the upload against a prior generated model would look stale the
+ * moment the pointer moved. Stills re-stale because `applyConvergent`
+ * selects a new version id.
  */
 async function resolveSheetHashContext(
   scopedDb: ScopedDb,
@@ -648,7 +660,9 @@ async function resolveSheetHashContext(
   const styleConfig = style ? StyleConfigSchema.parse(style.config) : null;
   return {
     styleConfigHash: await computeStyleConfigHash(styleConfig),
-    imageModel: safeTextToImageModel(sequence.imageModel, DEFAULT_IMAGE_MODEL),
+    imageModel: resolveSheetImageModel({
+      sequenceImageModel: sequence.imageModel,
+    }),
   };
 }
 
@@ -659,14 +673,14 @@ const setCharacterSheetInput = z.object({
 });
 
 /**
- * Finalize an uploaded character sheet: write it onto the sequence character
- * (`sheetStatus: 'completed'`) with `sheetInputHash` stamped from the CURRENT
- * bible + talent sheet + style + model, and log a `sheet.uploaded` event.
- * No generation is triggered.
+ * Finalize an uploaded character sheet: append a completed version, select it,
+ * stamp parent + version with the CURRENT bible + talent sheet + style + model
+ * hash, and log a `sheet.uploaded` event. No generation is triggered. Stills
+ * re-stale because they hash the new selected version id.
  */
 export const setCharacterSheetFromUploadFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(zodValidator(setCharacterSheetInput))
+  .validator(zodValidator(setCharacterSheetInput))
   .handler(async ({ context, data }) => {
     const { scopedDb, sequence, user } = context;
     const storagePath = requireUploadedStoragePath(
@@ -729,6 +743,18 @@ export const setCharacterSheetFromUploadFn = createServerFn({ method: 'POST' })
       summary: `Uploaded sheet for ${character.name}`,
       data: { characterId: character.id, variantId: variant.id },
     });
+    try {
+      await getGenerationChannel(sequence.id).emit(
+        'generation.character-sheet:progress',
+        {
+          characterId: character.id,
+          status: 'completed',
+          sheetImageUrl: data.publicUrl,
+        }
+      );
+    } catch (error) {
+      logger.error('realtime emit failed', { err: error });
+    }
     return updated;
   });
 
@@ -740,7 +766,7 @@ const locationSheetPresignInput = z.object({
 
 export const presignLocationSheetUploadFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(zodValidator(locationSheetPresignInput))
+  .validator(zodValidator(locationSheetPresignInput))
   .handler(async ({ context, data }) => {
     return signedUpload(
       STORAGE_BUCKETS.LOCATIONS,
@@ -757,12 +783,13 @@ const setLocationSheetInput = z.object({
 });
 
 /**
- * Finalize an uploaded location reference — the locations twin of
- * `setCharacterSheetFromUploadFn`.
+ * Finalize an uploaded location reference: append a completed version, select
+ * it, stamp parent + version with the current bible + library ref + style +
+ * model hash. Stills re-stale via the new selected version id.
  */
 export const setLocationSheetFromUploadFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(zodValidator(setLocationSheetInput))
+  .validator(zodValidator(setLocationSheetInput))
   .handler(async ({ context, data }) => {
     const { scopedDb, sequence, user } = context;
     const storagePath = requireUploadedStoragePath(
@@ -816,5 +843,17 @@ export const setLocationSheetFromUploadFn = createServerFn({ method: 'POST' })
       summary: `Uploaded reference for ${location.name}`,
       data: { locationDbId: location.id, variantId: variant.id },
     });
+    try {
+      await getGenerationChannel(sequence.id).emit(
+        'generation.location-sheet:progress',
+        {
+          locationId: location.id,
+          status: 'completed',
+          referenceImageUrl: data.publicUrl,
+        }
+      );
+    } catch (error) {
+      logger.error('realtime emit failed', { err: error });
+    }
     return updated;
   });

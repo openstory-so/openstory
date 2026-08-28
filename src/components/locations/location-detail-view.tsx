@@ -1,3 +1,4 @@
+import { ImageModelSelector } from '@/components/model/image-model-selector';
 import { UploadMediaButton } from '@/components/scenes/upload-media-button';
 import { SheetComparisonDialog } from '@/components/sheets/sheet-comparison-dialog';
 import { SheetStalenessBanners } from '@/components/sheets/sheet-staleness-banners';
@@ -41,6 +42,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { useSequence } from '@/hooks/use-sequences';
+import type { TextToImageModel } from '@/lib/ai/models';
+import { resolveSheetImageModel } from '@/lib/sheets/sheet-image-model';
 import { useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { ArrowLeft, Loader2, MapPin, RefreshCw, Trash2 } from 'lucide-react';
@@ -68,6 +72,8 @@ export const LocationDetailView: React.FC<LocationDetailViewProps> = ({
   } = useSequenceLocations(sequenceId);
   const recastLocation = useRecastLocation();
   const regenerateSheet = useRegenerateLocationSheet();
+  const { data: sequence } = useSequence(sequenceId);
+  const [sheetModel, setSheetModel] = useState<TextToImageModel | null>(null);
   const { data: sheetStaleness } = useLocationSheetStaleness(
     sequenceId,
     locationId
@@ -272,10 +278,24 @@ export const LocationDetailView: React.FC<LocationDetailViewProps> = ({
   const sheetBusyLabel = hasPriorSheet
     ? 'Regenerating location reference…'
     : 'Generating location reference…';
+  const selectedSheetModel = resolveSheetImageModel({
+    explicit: sheetModel,
+    liveVersionModel: (versionHistory?.versions ?? []).find(
+      (row) =>
+        row.id ===
+        (versionHistory?.selectedReferenceVersionId ??
+          location?.selectedReferenceVersionId)
+    )?.model,
+    sequenceImageModel: sequence?.imageModel ?? null,
+  });
 
   const handleRegenerateSheet = useCallback(() => {
     regenerateSheet.mutate(
-      { sequenceId, locationDbId: locationId },
+      {
+        sequenceId,
+        locationDbId: locationId,
+        ...(sheetModel ? { imageModel: sheetModel } : {}),
+      },
       {
         onError: (error) =>
           toast.error('Failed to regenerate reference', {
@@ -283,7 +303,7 @@ export const LocationDetailView: React.FC<LocationDetailViewProps> = ({
           }),
       }
     );
-  }, [regenerateSheet, sequenceId, locationId]);
+  }, [regenerateSheet, sequenceId, locationId, sheetModel]);
 
   // Handle library location selection from picker
   const handleLibraryLocationSelect = (
@@ -413,40 +433,78 @@ export const LocationDetailView: React.FC<LocationDetailViewProps> = ({
                 )}
               </div>
 
-              <div className="relative aspect-video overflow-hidden rounded-lg bg-muted">
-                {location.referenceImageUrl ? (
-                  <AppImage
-                    src={location.referenceImageUrl}
-                    alt={location.name}
-                    width={640}
-                    height={360}
-                    className="h-full w-full object-cover"
-                  />
-                ) : isSheetGenerating ? (
-                  <div className="flex h-full w-full flex-col items-center justify-center gap-3">
-                    <Loader2 className="h-10 w-10 animate-spin text-muted-foreground" />
-                    <p className="text-sm text-muted-foreground">
-                      {sheetBusyLabel}
-                    </p>
-                  </div>
-                ) : (
-                  <div className="flex h-full w-full flex-col items-center justify-center gap-2">
-                    <MapPin className="h-16 w-16 text-muted-foreground/20" />
-                    <p className="text-sm text-muted-foreground">
-                      No reference yet
-                    </p>
-                  </div>
-                )}
-                {isSheetGenerating && location.referenceImageUrl ? (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-background/60">
-                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                    <p className="text-sm text-muted-foreground">
-                      {sheetBusyLabel}
-                    </p>
-                  </div>
-                ) : null}
+              <div className="flex flex-col gap-2">
+                <div className="relative aspect-video overflow-hidden rounded-lg bg-muted">
+                  {location.referenceImageUrl ? (
+                    <AppImage
+                      src={location.referenceImageUrl}
+                      alt={location.name}
+                      width={640}
+                      height={360}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : isSheetGenerating ? (
+                    <div className="flex h-full w-full flex-col items-center justify-center gap-3">
+                      <Loader2 className="h-10 w-10 animate-spin text-muted-foreground" />
+                      <p className="text-sm text-muted-foreground">
+                        {sheetBusyLabel}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="flex h-full w-full flex-col items-center justify-center gap-2">
+                      <MapPin className="h-16 w-16 text-muted-foreground/20" />
+                      <p className="text-sm text-muted-foreground">
+                        No reference yet
+                      </p>
+                    </div>
+                  )}
+                  {isSheetGenerating && location.referenceImageUrl ? (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-background/60">
+                      <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                      <p className="text-sm text-muted-foreground">
+                        {sheetBusyLabel}
+                      </p>
+                    </div>
+                  ) : null}
+                </div>
+                <SheetVersionStrip
+                  label="Versions"
+                  selectingId={
+                    selectVersion.isPending
+                      ? selectVersion.variables.versionId
+                      : null
+                  }
+                  onSelect={(versionId) =>
+                    selectVersion.mutate(
+                      { sequenceId, locationDbId: locationId, versionId },
+                      {
+                        onError: (error) =>
+                          toast.error('Failed to switch reference', {
+                            description: errorMessage(error),
+                          }),
+                      }
+                    )
+                  }
+                  versions={(versionHistory?.versions ?? []).map((row) => ({
+                    id: row.id,
+                    url: row.url,
+                    selected:
+                      row.id ===
+                      (versionHistory?.selectedReferenceVersionId ??
+                        location.selectedReferenceVersionId),
+                  }))}
+                />
               </div>
 
+              <ImageModelSelector
+                selectedModel={selectedSheetModel}
+                onModelChange={setSheetModel}
+                disabled={regenerateSheet.isPending || isSheetGenerating}
+              />
+              <p className="text-xs text-muted-foreground">
+                Used for this location's reference. Shot stills still follow the
+                sequence image model.
+              </p>
               <Button
                 onClick={handleRegenerateSheet}
                 disabled={regenerateSheet.isPending}
@@ -466,34 +524,6 @@ export const LocationDetailView: React.FC<LocationDetailViewProps> = ({
                       : 'Regenerate Reference'
                     : 'Generate Reference'}
               </Button>
-
-              <SheetVersionStrip
-                label="Versions"
-                selectingId={
-                  selectVersion.isPending
-                    ? selectVersion.variables.versionId
-                    : null
-                }
-                onSelect={(versionId) =>
-                  selectVersion.mutate(
-                    { sequenceId, locationDbId: locationId, versionId },
-                    {
-                      onError: (error) =>
-                        toast.error('Failed to switch reference', {
-                          description: errorMessage(error),
-                        }),
-                    }
-                  )
-                }
-                versions={(versionHistory?.versions ?? []).map((row) => ({
-                  id: row.id,
-                  url: row.url,
-                  selected:
-                    row.id ===
-                    (versionHistory?.selectedReferenceVersionId ??
-                      location.selectedReferenceVersionId),
-                }))}
-              />
 
               <div className="flex flex-wrap gap-2">
                 <Button

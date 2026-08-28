@@ -160,18 +160,6 @@ const SceneListItemComponent: React.FC<SceneListItemProps> = ({
           )}
         />
       )}
-      {!showDivergentDot && shot && !isRegeneratingImage && isStale && (
-        <span
-          className="absolute right-3 top-3 z-10"
-          title="Out of date since your last edit"
-        >
-          <span className="sr-only">Out of date since your last edit</span>
-          <span
-            aria-hidden="true"
-            className="block h-2 w-2 rounded-full bg-amber-500 ring-2 ring-amber-500/30"
-          />
-        </span>
-      )}
 
       <CardHeader>
         <div
@@ -211,6 +199,20 @@ const SceneListItemComponent: React.FC<SceneListItemProps> = ({
                 pendingUpscaleIndex={shot?.pendingUpscaleIndex}
                 pendingUpscaleUrl={shot?.pendingUpscaleUrl}
               />
+              {!showDivergentDot && shot && !isRegeneratingImage && isStale && (
+                <span
+                  className="pointer-events-none absolute top-1 right-1"
+                  title="Out of date since your last edit"
+                >
+                  <span className="sr-only">
+                    Out of date since your last edit
+                  </span>
+                  <span
+                    aria-hidden="true"
+                    className="block h-2 w-2 rounded-full bg-amber-500 ring-2 ring-amber-500/30"
+                  />
+                </span>
+              )}
               {(hasVideo || isGeneratingVideo) && (
                 <span
                   aria-label={

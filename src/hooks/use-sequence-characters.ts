@@ -151,8 +151,11 @@ export function useCharacterSheetStaleness(
 export function useRegenerateCharacterSheet() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (data: { sequenceId: string; characterId: string }) =>
-      regenerateCharacterSheetFn({ data }),
+    mutationFn: (data: {
+      sequenceId: string;
+      characterId: string;
+      imageModel?: string;
+    }) => regenerateCharacterSheetFn({ data }),
     onSuccess: () => {
       void queryClient.invalidateQueries({
         queryKey: sequenceCharacterKeys.all,

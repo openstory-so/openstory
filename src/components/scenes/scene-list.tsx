@@ -118,7 +118,7 @@ export type SceneListProps = {
   styleName?: string;
   modelMissingShotIds?: Set<string>;
   modelMissingLabel?: string | null;
-  /** Shots with stale prompts/image in the in-focus scene (#1077) — amber dots. */
+  /** Shots with stale prompts/image (#1077) — amber dots on every rail thumbnail. */
   staleShotIds?: Set<string>;
   /** Sizing from the host — sidebar width on desktop, `w-full` in a sheet. */
   className?: string;

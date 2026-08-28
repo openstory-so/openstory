@@ -2,9 +2,9 @@
  * Build a LocationSheetWorkflow payload from the live sequence-location row.
  */
 
-import { DEFAULT_IMAGE_MODEL, safeTextToImageModel } from '@/lib/ai/models';
 import type { SequenceLocation } from '@/lib/db/schema';
 import type { ScopedDb } from '@/lib/db/scoped';
+import { resolveSheetImageModel } from '@/lib/sheets/sheet-image-model';
 import { resolveSequenceStyleConfig } from '@/lib/style/style-config';
 import type { LocationSheetWorkflowInput } from '@/lib/workflow/types';
 import { computeLocationSheetHashFromDto } from '@/lib/workflows/sheet-snapshots';
@@ -54,6 +54,8 @@ export async function buildRegenerateLocationSheetPayload(params: {
     imageModel: string | null;
   };
   location: SequenceLocation;
+  /** Generate-time pick; omit to reuse the live version's model or the sequence default. */
+  imageModel?: string | null;
 }): Promise<LocationSheetWorkflowInput> {
   const { scopedDb, userId, teamId, sequence, location } = params;
   const style =
@@ -80,6 +82,12 @@ export async function buildRegenerateLocationSheetPayload(params: {
     libraryLocationReferenceHash = library?.referenceInputHash ?? null;
   }
 
+  const liveVersion = location.selectedReferenceVersionId
+    ? await scopedDb.locationSheetVariants.getById(
+        location.selectedReferenceVersionId
+      )
+    : null;
+
   const partial: LocationSheetWorkflowInput = {
     userId,
     teamId,
@@ -87,7 +95,11 @@ export async function buildRegenerateLocationSheetPayload(params: {
     locationDbId: location.id,
     locationName: location.name,
     locationMetadata: toLocationMetadata(location),
-    imageModel: safeTextToImageModel(sequence.imageModel, DEFAULT_IMAGE_MODEL),
+    imageModel: resolveSheetImageModel({
+      explicit: params.imageModel,
+      liveVersionModel: liveVersion?.model,
+      sequenceImageModel: sequence.imageModel,
+    }),
     referenceImageUrl,
     libraryLocationDescription,
     styleConfig,

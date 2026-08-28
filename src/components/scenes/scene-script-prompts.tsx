@@ -48,6 +48,7 @@ import {
 import type { SequenceSegment } from '@/lib/scenes/scene-segments';
 import type { UpdateStaleDepth } from '@/lib/shots/update-stale-depth';
 import { copyTextToClipboard } from '@/lib/utils/clipboard';
+import { isSetImageOffered } from '@/lib/shots/set-image-offer';
 import {
   type ShotStaleness,
   markArtifactFresh,
@@ -767,13 +768,15 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     !!variantForSelectedModel.url;
   const variantIsGenerating = variantForSelectedModel?.status === 'generating';
   // Set Image only when the dropdown model differs from the model that
-  // produced the *current* primary still. Comparing URLs to the latest
-  // re-roll was wrong: same model + older selected version still showed Set
-  // Image, and a newer unselected re-roll looked "not current" (#1070).
-  const variantAlreadySet =
-    variantIsCompleted &&
-    !!shot?.image?.url &&
-    effectiveImageModel === imageModel;
+  // produced the *current* primary still. Uploads are already the selected
+  // version — offering Set Image would revert them to an older generation.
+  const offerSetImage = isSetImageOffered({
+    variantCompleted: variantIsCompleted,
+    currentImageUrl: shot?.image?.url,
+    currentKind: shot?.image?.kind,
+    currentModel: shot?.image?.model,
+    dropdownModel: effectiveImageModel,
+  });
 
   // Has the selected image model produced an image for this scene — drives
   // Generate vs Regenerate (mirror of videoModelGenerated). Variant row (any
@@ -1489,15 +1492,27 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
       const promptText = visualPromptDirty
         ? editedImagePrompt.trim()
         : undefined;
+      const ratio = aspectRatio ?? DEFAULT_ASPECT_RATIO;
       replaceFrameImage.mutate(
-        { file, sequenceId: shot.sequenceId, shotId: shot.id, promptText },
+        {
+          file,
+          sequenceId: shot.sequenceId,
+          shotId: shot.id,
+          aspectRatio: ratio,
+          promptText,
+        },
         {
           onSuccess: (result) => {
             if (result.promptChanged) dirtyImageRef.current = false;
             toast.success(
               result.promptChanged
                 ? 'Image replaced and prompt saved'
-                : 'Image replaced'
+                : 'Image replaced',
+              result.cropped
+                ? {
+                    description: `Cropped to ${ratio} so motion generation matches the sequence.`,
+                  }
+                : undefined
             );
           },
           onError: (error) =>
@@ -1507,7 +1522,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
         }
       );
     },
-    [shot, visualPromptDirty, editedImagePrompt, replaceFrameImage]
+    [shot, visualPromptDirty, editedImagePrompt, replaceFrameImage, aspectRatio]
   );
 
   const handleReplaceVideoFile = useCallback(
@@ -1893,7 +1908,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
           )}
 
           {/* Image action button — variant-aware */}
-          {variantIsCompleted && !variantAlreadySet ? (
+          {offerSetImage ? (
             <Button
               onClick={() => void handleSetImageFromVariant()}
               disabled={setImageFromVariant.isPending || !shot}
@@ -1941,11 +1956,16 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
             onFile={handleReplaceImageFile}
             className="w-full"
           />
-          {visualPromptDirty && (
+          <p className="text-xs text-muted-foreground">
+            Off-ratio stills are cropped to{' '}
+            {aspectRatio ?? DEFAULT_ASPECT_RATIO} so video models get a matching
+            start frame.
+          </p>
+          {visualPromptDirty ? (
             <p className="text-xs text-muted-foreground">
               Replacing the image will also save your edited prompt with it.
             </p>
-          )}
+          ) : null}
         </div>
       </TabsContent>
 

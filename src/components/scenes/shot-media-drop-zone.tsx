@@ -2,6 +2,7 @@ import {
   useReplaceFrameImage,
   useReplaceShotVideo,
 } from '@/hooks/use-media-upload';
+import type { AspectRatio } from '@/lib/constants/aspect-ratios';
 import { errorMessage } from '@/lib/errors';
 import { Loader2, Upload } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
@@ -10,6 +11,7 @@ import { toast } from 'sonner';
 type ShotMediaDropZoneProps = {
   sequenceId: string;
   shotId: string;
+  aspectRatio: AspectRatio;
   children: ReactNode;
 };
 
@@ -22,6 +24,7 @@ type ShotMediaDropZoneProps = {
 export const ShotMediaDropZone: React.FC<ShotMediaDropZoneProps> = ({
   sequenceId,
   shotId,
+  aspectRatio,
   children,
 }) => {
   const [dragActive, setDragActive] = useState(false);
@@ -32,9 +35,17 @@ export const ShotMediaDropZone: React.FC<ShotMediaDropZoneProps> = ({
   const handleDrop = (file: File) => {
     if (file.type.startsWith('image/')) {
       replaceImage.mutate(
-        { file, sequenceId, shotId },
+        { file, sequenceId, shotId, aspectRatio },
         {
-          onSuccess: () => toast.success('Image replaced'),
+          onSuccess: (result) =>
+            toast.success(
+              'Image replaced',
+              result.cropped
+                ? {
+                    description: `Cropped to ${aspectRatio} so motion generation matches the sequence.`,
+                  }
+                : undefined
+            ),
           onError: (error) =>
             toast.error('Image upload failed', {
               description: errorMessage(error),

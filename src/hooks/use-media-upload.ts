@@ -28,6 +28,8 @@ import { sequenceKeys } from '@/hooks/use-sequences';
 import { shotStalenessNamespace } from '@/hooks/use-shot-staleness';
 import { shotKeys } from '@/hooks/use-shots';
 import { putToR2 } from '@/lib/utils/upload';
+import { fitImageFileToAspectRatio } from '@/lib/utils/fit-image-aspect';
+import type { AspectRatio } from '@/lib/constants/aspect-ratios';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 async function presignPut(
@@ -57,18 +59,23 @@ export function useReplaceFrameImage() {
       file: File;
       sequenceId: string;
       shotId: string;
+      aspectRatio: AspectRatio;
       promptText?: string;
       onProgress?: (percent: number) => void;
-    }): Promise<{ promptChanged: boolean }> => {
+    }): Promise<{ promptChanged: boolean; cropped: boolean }> => {
+      const fitted = await fitImageFileToAspectRatio(
+        input.file,
+        input.aspectRatio
+      );
       const publicUrl = await presignPut(
         presignFrameImageUploadFn({
           data: {
             sequenceId: input.sequenceId,
             shotId: input.shotId,
-            filename: input.file.name,
+            filename: fitted.file.name,
           },
         }),
-        input.file,
+        fitted.file,
         input.onProgress
       );
       const result = await replaceFrameContentFn({
@@ -81,7 +88,7 @@ export function useReplaceFrameImage() {
             : {}),
         },
       });
-      return { promptChanged: result.promptChanged };
+      return { promptChanged: result.promptChanged, cropped: fitted.cropped };
     },
     onSuccess: async (_result, { sequenceId, shotId }) => {
       // Same set useSelectFrameImageVersion refreshes: the selection repointed,
@@ -198,10 +205,9 @@ function readMediaDuration(
 }
 
 /**
- * Manual character-sheet upload (#1108 Phase 4) — the sequence-side mirror of
- * the library `manual_upload` source. Finalize stamps the sheet hash from
- * CURRENT bible/style/model state; stills referencing the sheet re-stale only
- * when those inputs move (documented server-side trade).
+ * Manual character-sheet upload — the sequence-side mirror of the library
+ * `manual_upload` source. Finalize stamps the current-inputs hash on parent
+ * and version; stills re-stale because the selected version id is new.
  */
 export function useUploadCharacterSheet() {
   const queryClient = useQueryClient();
@@ -237,7 +243,7 @@ export function useUploadCharacterSheet() {
           queryKey: sequenceCharacterKeys.list(sequenceId),
         }),
         queryClient.invalidateQueries({
-          queryKey: characterSheetVariantKeys.divergentBySequence(sequenceId),
+          queryKey: characterSheetVariantKeys.all,
         }),
         queryClient.invalidateQueries({ queryKey: shotStalenessNamespace }),
       ]);
@@ -280,7 +286,7 @@ export function useUploadLocationReference() {
           queryKey: sequenceLocationKeys.list(sequenceId),
         }),
         queryClient.invalidateQueries({
-          queryKey: locationSheetVariantKeys.divergentBySequence(sequenceId),
+          queryKey: locationSheetVariantKeys.all,
         }),
         queryClient.invalidateQueries({ queryKey: shotStalenessNamespace }),
       ]);

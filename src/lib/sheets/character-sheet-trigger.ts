@@ -4,9 +4,9 @@
  */
 
 import type { CharacterBibleEntry } from '@/lib/ai/scene-analysis.schema';
-import { DEFAULT_IMAGE_MODEL, safeTextToImageModel } from '@/lib/ai/models';
 import type { Character } from '@/lib/db/schema';
 import type { ScopedDb } from '@/lib/db/scoped';
+import { resolveSheetImageModel } from '@/lib/sheets/sheet-image-model';
 import { resolveSequenceStyleConfig } from '@/lib/style/style-config';
 import type { CharacterSheetWorkflowInput } from '@/lib/workflow/types';
 import { computeCharacterSheetHashFromDto } from '@/lib/workflows/sheet-snapshots';
@@ -36,6 +36,8 @@ export async function buildRegenerateCharacterSheetPayload(params: {
     imageModel: string | null;
   };
   character: Character;
+  /** Generate-time pick; omit to reuse the live version's model or the sequence default. */
+  imageModel?: string | null;
 }): Promise<CharacterSheetWorkflowInput> {
   const { scopedDb, userId, teamId, sequence, character } = params;
   const style =
@@ -65,6 +67,12 @@ export async function buildRegenerateCharacterSheetPayload(params: {
     talentSheetInputHash = defaultSheet?.inputHash ?? null;
   }
 
+  const liveVersion = character.selectedSheetVersionId
+    ? await scopedDb.characterSheetVariants.getById(
+        character.selectedSheetVersionId
+      )
+    : null;
+
   const partial: CharacterSheetWorkflowInput = {
     userId,
     teamId,
@@ -72,7 +80,11 @@ export async function buildRegenerateCharacterSheetPayload(params: {
     characterDbId: character.id,
     characterName: character.name,
     characterMetadata: toCharacterMetadata(character),
-    imageModel: safeTextToImageModel(sequence.imageModel, DEFAULT_IMAGE_MODEL),
+    imageModel: resolveSheetImageModel({
+      explicit: params.imageModel,
+      liveVersionModel: liveVersion?.model,
+      sequenceImageModel: sequence.imageModel,
+    }),
     referenceImageUrl,
     talentMetadata,
     talentDescription,

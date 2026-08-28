@@ -238,7 +238,11 @@ function createSequencesReadMethods(db: Database, teamId: string) {
             .where(
               and(
                 inArray(shots.sequenceId, batch),
-                eq(sequences.teamId, teamId)
+                eq(sequences.teamId, teamId),
+                // Soft-deleted shots stay out of list counts (#1108). Twin of
+                // `listShotsByIds` — public `GET /api/v1/sequences` uses this
+                // path for `counts`.
+                isNull(shots.deletedAt)
               )
             )
         )

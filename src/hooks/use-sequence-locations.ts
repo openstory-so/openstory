@@ -184,8 +184,11 @@ export function useLocationSheetStaleness(
 export function useRegenerateLocationSheet() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (data: { sequenceId: string; locationDbId: string }) =>
-      regenerateLocationSheetFn({ data }),
+    mutationFn: (data: {
+      sequenceId: string;
+      locationDbId: string;
+      imageModel?: string;
+    }) => regenerateLocationSheetFn({ data }),
     onSuccess: () => {
       void queryClient.invalidateQueries({
         queryKey: sequenceLocationKeys.all,

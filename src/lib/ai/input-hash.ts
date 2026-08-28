@@ -736,6 +736,13 @@ export function computeMusicPromptInputHash(
   return sha256Hex(musicPromptHashBody(input, 'current'));
 }
 
+/** v4 digest. Verify/tests only — delete after {@link LEGACY_HASH_UNTIL}. */
+export function computeMusicPromptInputHashV4(
+  input: MusicPromptInputHashInput
+): Promise<string> {
+  return sha256Hex(musicPromptHashBody(input, 'v4'));
+}
+
 export async function musicPromptInputHashMatches(
   stored: string | null,
   input: MusicPromptInputHashInput

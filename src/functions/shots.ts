@@ -388,10 +388,26 @@ export const getSequenceSelectedModelsFn = createServerFn({ method: 'GET' })
     };
   });
 
+/** Live shot may only land in a live scene of this sequence. Exported for tests. */
+export function requireWritableScene(
+  scene: { sequenceId: string; deletedAt: Date | null } | null,
+  sequenceId: string
+): void {
+  if (!scene || scene.sequenceId !== sequenceId || scene.deletedAt !== null) {
+    throw new NotFoundError('Scene not found in this sequence');
+  }
+}
+
 export const createShotFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
   .validator(zodValidator(singleShotSchema.extend({ sequenceId: ulidSchema })))
   .handler(async ({ data, context }) => {
+    if (data.sceneId) {
+      const scene = await context.scopedDb.scenes.getById(
+        dbSceneId(data.sceneId)
+      );
+      requireWritableScene(scene, context.sequence.id);
+    }
     // Auto-number within the scene when the caller didn't pick a slot (#1108):
     // max over ALL rows (deleted keep their slots) + 1, so a manual add never
     // collides with the `(sceneId, shotNumber)` unique index.
@@ -580,7 +596,7 @@ export const deleteShotFn = createServerFn({ method: 'POST' })
 /** Undo a shot soft-delete. Refuses while the parent scene is deleted. */
 export const restoreShotFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(
+  .validator(
     zodValidator(z.object({ sequenceId: ulidSchema, shotId: ulidSchema }))
   )
   .handler(async ({ data, context }) => {
@@ -602,7 +618,7 @@ export const restoreShotFn = createServerFn({ method: 'POST' })
  */
 export const reorderShotsFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(
+  .validator(
     zodValidator(
       z.object({
         sequenceId: ulidSchema,

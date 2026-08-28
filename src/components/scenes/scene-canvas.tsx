@@ -266,6 +266,7 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
           <ShotMediaDropZone
             sequenceId={selectedShot.sequenceId}
             shotId={shotId}
+            aspectRatio={aspectRatio}
           >
             {player}
           </ShotMediaDropZone>

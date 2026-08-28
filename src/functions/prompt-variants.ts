@@ -747,7 +747,7 @@ const saveMusicPromptInput = z.object({
  */
 export const saveMusicPromptFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(zodValidator(saveMusicPromptInput))
+  .validator(zodValidator(saveMusicPromptInput))
   .handler(async ({ context, data }) => {
     const { sequence, scopedDb, user } = context;
     const nextTags = data.tags ?? sequence.musicTags ?? null;

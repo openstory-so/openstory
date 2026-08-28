@@ -272,7 +272,7 @@ export const deleteSequenceElementFn = createServerFn({ method: 'POST' })
 /** Undo an element soft-delete (toast Undo). */
 export const restoreSequenceElementFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(
+  .validator(
     zodValidator(z.object({ sequenceId: ulidSchema, elementId: ulidSchema }))
   )
   .handler(async ({ context, data }) => {

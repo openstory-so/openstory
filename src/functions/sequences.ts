@@ -280,7 +280,7 @@ const renameSequenceInputSchema = z.object({
  */
 export const renameSequenceFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(zodValidator(renameSequenceInputSchema))
+  .validator(zodValidator(renameSequenceInputSchema))
   .handler(async ({ data, context }) => {
     const prevTitle = context.sequence.title;
     const sequence = await context.scopedDb.sequences.update({
@@ -413,6 +413,23 @@ function isRestorableStatus(value: string | null): value is RestorableStatus {
   );
 }
 
+/** Maps a recorded archive prevStatus to the status unarchive should restore. */
+export function resolveUnarchiveRestore(args: {
+  recordedStatus: string | null;
+  hasShots: boolean;
+}): { status: RestorableStatus; interrupted: boolean } {
+  if (args.recordedStatus === 'processing') {
+    return { status: 'failed', interrupted: true };
+  }
+  if (isRestorableStatus(args.recordedStatus)) {
+    return { status: args.recordedStatus, interrupted: false };
+  }
+  return {
+    status: args.hasShots ? 'completed' : 'draft',
+    interrupted: false,
+  };
+}
+
 /** Mirrors `reconcileSequencesPass`'s wording for an interrupted run. */
 const INTERRUPTED_STATUS = {
   status: 'failed' as const,
@@ -427,7 +444,7 @@ const INTERRUPTED_STATUS = {
  */
 export const unarchiveSequenceFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(zodValidator(z.object({ sequenceId: ulidSchema })))
+  .validator(zodValidator(z.object({ sequenceId: ulidSchema })))
   .handler(async ({ context }) => {
     const { scopedDb, sequence, user } = context;
     if (sequence.status !== 'archived') {
@@ -449,17 +466,13 @@ export const unarchiveSequenceFn = createServerFn({ method: 'POST' })
         : null;
     // A run that was mid-flight at archive time is over by now — restore the
     // interrupted state rather than a "Generating…" the user can't act on.
-    const interrupted = recordedStatus === 'processing';
-    const fallback =
+    const hasShots =
       (await scopedDb.shots.listBySequence(sequence.id, { limit: 1 })).length >
-      0
-        ? ('completed' as const)
-        : ('draft' as const);
-    const status = interrupted
-      ? INTERRUPTED_STATUS.status
-      : isRestorableStatus(recordedStatus)
-        ? recordedStatus
-        : fallback;
+      0;
+    const { status, interrupted } = resolveUnarchiveRestore({
+      recordedStatus,
+      hasShots,
+    });
 
     await scopedDb
       .sequence(sequence.id)

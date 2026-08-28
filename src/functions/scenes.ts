@@ -173,7 +173,7 @@ const sceneNarrativeFieldsSchema = z.object({
  */
 export const createSceneFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(
+  .validator(
     zodValidator(
       sceneNarrativeFieldsSchema.omit({ continuity: true }).extend({
         sequenceId: ulidSchema,
@@ -234,7 +234,7 @@ export const createSceneFn = createServerFn({ method: 'POST' })
  */
 export const updateSceneFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(
+  .validator(
     zodValidator(
       sceneNarrativeFieldsSchema.extend({
         sequenceId: ulidSchema,
@@ -283,7 +283,7 @@ export const updateSceneFn = createServerFn({ method: 'POST' })
 /** Reorder the live scenes; a pure reorder changes no content hash. */
 export const reorderScenesFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(
+  .validator(
     zodValidator(
       z.object({ sequenceId: ulidSchema, sceneIds: z.array(ulidSchema).min(1) })
     )
@@ -306,7 +306,7 @@ const sceneIdInput = z.object({ sequenceId: ulidSchema, sceneId: ulidSchema });
  */
 export const softDeleteSceneFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(zodValidator(sceneIdInput))
+  .validator(zodValidator(sceneIdInput))
   .handler(async ({ context, data }) => {
     const sceneId = dbSceneId(data.sceneId);
     const existing = await context.scopedDb.scenes.getById(sceneId);
@@ -322,7 +322,7 @@ export const softDeleteSceneFn = createServerFn({ method: 'POST' })
 /** Undo a scene soft-delete (restores the shots hidden by the same delete). */
 export const restoreSceneFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(
+  .validator(
     zodValidator(sceneIdInput.extend({ restoreShots: z.boolean().optional() }))
   )
   .handler(async ({ context, data }) => {

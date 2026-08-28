@@ -621,11 +621,30 @@ export function updateQueryCacheFromEvent(
       // Refresh the character list so the cast grid (TalentView) and the
       // per-scene cast (SceneCastTab) populate live instead of only after a
       // page refresh. Debounced because character-sheet:progress fires
-      // generating + completed for every character.
+      // generating + completed for every character. History keys too — the
+      // version strip is a separate query from the list.
       debouncedInvalidate(
         queryClient,
         sequenceCharacterKeys.list(sequenceId),
         `sequence-characters:${sequenceId}`
+      );
+      debouncedInvalidate(
+        queryClient,
+        characterSheetVariantKeys.all,
+        `character-sheet-variants:${sequenceId}`
+      );
+      break;
+
+    case 'generation.location-sheet:progress':
+      debouncedInvalidate(
+        queryClient,
+        sequenceLocationKeys.list(sequenceId),
+        `sequence-locations:${sequenceId}`
+      );
+      debouncedInvalidate(
+        queryClient,
+        locationSheetVariantKeys.all,
+        `location-sheet-variants:${sequenceId}`
       );
       break;
 
