@@ -341,9 +341,20 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
     if (!videoUrl || !succeededJob) {
       throw new NonRetryableError(
         clipContentRejectionMessage({
-          rejection: lastRejection ?? 'unknown rejection',
+          rejections: [lastRejection ?? 'unknown rejection'],
           models: [IMAGE_TO_VIDEO_MODELS[videoModel].name],
           softened: false,
+          // Text-to-video: no start still to regenerate — the only image
+          // input is an optional reference (#1373).
+          inputs: {
+            still: input.referenceImages.length
+              ? {
+                  name: 'a reference image',
+                  fix: 'Swap the reference image',
+                }
+              : undefined,
+            prompt: 'the prompt',
+          },
         }),
         'ContentRejectionExhausted'
       );

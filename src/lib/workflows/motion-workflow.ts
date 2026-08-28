@@ -379,6 +379,9 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
     // this into a billed cost + unit count below, switching on the job's via.
     let billedUsage: TokenUsage | undefined;
     let lastRejection: string | null = null;
+    // Every rejection in order: the rescue's may lack the `body.<field>`
+    // prefix the reseeds carried, so the final message classifies on all.
+    const rejections: string[] = [];
     // The job behind the clip that ultimately succeeded — its `submittedAt` /
     // `usedOwnKey` drive observation timing and credit deduction below.
     let succeededJob: Awaited<ReturnType<typeof submitMotionJob>> | null = null;
@@ -605,6 +608,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
 
       if (!submitOutcome.ok) {
         lastRejection = submitOutcome.rejection;
+        rejections.push(lastRejection);
         logger.warn(
           `[MotionWorkflow:cf] content-flag rejection on submit attempt ${attempt + 1}/${MAX_MOTION_ATTEMPTS} for shot ${input.shotId}: ${submitOutcome.rejection}`
         );
@@ -726,6 +730,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
 
       if (rejected) {
         lastRejection = rejected;
+        rejections.push(rejected);
         logger.warn(
           `[MotionWorkflow:cf] content-flag rejection on poll attempt ${attempt + 1}/${MAX_MOTION_ATTEMPTS} for shot ${input.shotId}: ${rejected}`
         );
@@ -761,7 +766,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
       );
       throw new NonRetryableError(
         clipContentRejectionMessage({
-          rejection: lastRejection ?? 'unknown rejection',
+          rejections: rejections.length ? rejections : ['unknown rejection'],
           models: triedModels.map((m) => IMAGE_TO_VIDEO_MODELS[m].name),
           softened,
         }),

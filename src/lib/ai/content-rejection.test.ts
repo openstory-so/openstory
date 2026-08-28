@@ -151,7 +151,7 @@ describe('flaggedInputs / clipContentRejectionMessage (#1373)', () => {
 
   it('tells the user what was rejected, by whom, and what to change', () => {
     const message = clipContentRejectionMessage({
-      rejection: both,
+      rejections: [both],
       models: ['LTX 2.3 Pro', 'Grok Imagine Video 1.5'],
       softened: true,
     });
@@ -162,7 +162,7 @@ describe('flaggedInputs / clipContentRejectionMessage (#1373)', () => {
 
     expect(
       clipContentRejectionMessage({
-        rejection: 'body.image_url: flagged by a content checker',
+        rejections: ['body.image_url: flagged by a content checker'],
         models: ['LTX 2.3 Pro'],
         softened: false,
       })
@@ -172,13 +172,51 @@ describe('flaggedInputs / clipContentRejectionMessage (#1373)', () => {
 
     expect(
       clipContentRejectionMessage({
-        rejection:
+        rejections: [
           'Could not generate images with the given prompts and images.',
+        ],
         models: ['Veo 3.1'],
         softened: true,
       })
     ).toBe(
       'Content checker rejected the clip (Veo 3.1; softened prompt also rejected). Rewrite the motion prompt or regenerate the still. (Could not generate images with the given prompts and images.)'
+    );
+  });
+
+  it('keeps what the first attempts named when the rescue rejection is unprefixed', () => {
+    expect(
+      clipContentRejectionMessage({
+        rejections: [both, both, both, 'unsafe content'],
+        models: ['LTX 2.3 Pro', 'Grok Imagine Video 1.5'],
+        softened: true,
+      })
+    ).toMatch(/^Content checker rejected the still and the prompt \(/);
+  });
+
+  it('names studio inputs — a reference image, or nothing but the prompt', () => {
+    expect(
+      clipContentRejectionMessage({
+        rejections: ['body.image_urls.0: flagged by a content checker'],
+        models: ['Seedance 2.5'],
+        softened: false,
+        inputs: {
+          still: { name: 'a reference image', fix: 'Swap the reference image' },
+          prompt: 'the prompt',
+        },
+      })
+    ).toBe(
+      'Content checker rejected a reference image (Seedance 2.5). Swap the reference image.'
+    );
+    // No reference image was sent, so there is nothing but the prompt to fix.
+    expect(
+      clipContentRejectionMessage({
+        rejections: ['flagged by a content checker'],
+        models: ['Seedance 2.5'],
+        softened: false,
+        inputs: { prompt: 'the prompt' },
+      })
+    ).toBe(
+      'Content checker rejected the clip (Seedance 2.5). Rewrite the prompt. (flagged by a content checker)'
     );
   });
 });

@@ -207,27 +207,48 @@ export function flaggedInputs(rejection: string): {
  * Keeps "content checker" so `isContentRejectionError` still classifies it.
  */
 export function clipContentRejectionMessage(args: {
-  rejection: string;
+  /**
+   * Every rejection seen, in order. Flags OR across them — the rescue attempt's
+   * (fallback-model) rejection may lack the `body.<field>` prefix the first
+   * attempts carried, and must not erase what they named. The last is quoted
+   * when nothing was named.
+   */
+  rejections: string[];
   /** Display names in the order tried, e.g. `['LTX 2.3 Pro', 'Grok …']`. */
   models: string[];
   softened: boolean;
+  /**
+   * What this caller's inputs are called. Default is image-to-video (a start
+   * still + motion prompt). Studio text-to-video has no still — pass its
+   * reference image when it has one, or no `still` at all.
+   */
+  inputs?: {
+    still?: { name: string; fix: string };
+    prompt: string;
+  };
 }): string {
-  const flags = flaggedInputs(args.rejection);
+  const flags = flaggedInputs(args.rejections.join('; '));
+  const still = args.inputs
+    ? args.inputs.still
+    : { name: 'the still', fix: 'Regenerate the still' };
+  const promptName = args.inputs?.prompt ?? 'the motion prompt';
+  const stillFlagged = flags.image && still !== undefined;
   const what =
-    flags.image && flags.prompt
-      ? 'the still and the prompt'
-      : flags.image
-        ? 'the still'
+    stillFlagged && flags.prompt
+      ? `${still.name} and the prompt`
+      : stillFlagged
+        ? still.name
         : flags.prompt
           ? 'the prompt'
           : flags.audio
             ? 'the audio'
             : 'the clip';
-  const hint = flags.image
-    ? `Regenerate the still${flags.prompt ? ' or rewrite the motion prompt' : ''}.`
+  const lower = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
+  const hint = stillFlagged
+    ? `${still.fix}${flags.prompt ? ` or rewrite ${promptName}` : ''}.`
     : flags.prompt
-      ? 'Rewrite the motion prompt.'
-      : `Rewrite the motion prompt or regenerate the still. (${args.rejection})`;
+      ? `Rewrite ${promptName}.`
+      : `Rewrite ${promptName}${still ? ` or ${lower(still.fix)}` : ''}. (${args.rejections.at(-1) ?? ''})`;
   const tried = [
     args.models.join(', then '),
     args.softened ? 'softened prompt also rejected' : null,
