@@ -458,7 +458,7 @@ function sortedBibles(input: PromptSceneContextHashInput) {
  *
  * v5 (#1108): dropped `sceneNumber` from the scene input surface — a pure
  * scene reorder must not re-stale prompts. Nulling migration:
- * 20260828024500_null_prompt_hashes_for_v5.
+ * 20260828031159_null_prompt_hashes_for_v5.
  */
 const PROMPT_INPUT_HASH_VERSION = 5;
 
