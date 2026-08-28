@@ -47,6 +47,12 @@ type WriteShotPromptVersionBase = {
   dialogue?: MotionDialogue | null;
   audio?: MotionAudio | null;
   createdBy?: string | null;
+  /**
+   * `false`: append to history only — the shot keeps its selected prompt.
+   * A variant-only render's content-checker rescue (#1373) writes its
+   * rewrite this way so an alternate model never moves the primary prompt.
+   */
+  select?: boolean;
 };
 
 /**
@@ -77,7 +83,10 @@ export type WriteShotPromptVersionInput = WriteShotPromptVersionBase &
         analysisModel: string | null;
       }
     | {
-        source: 'restored';
+        // `restored`: audit row for a repoint. `softened`: the content-checker
+        // rewrite the clip was re-rendered from (#1373); carries the rejected
+        // version's hash + model verbatim so staleness stays detectable.
+        source: 'restored' | 'softened';
         inputHash: string | null;
         analysisModel: string | null;
       }
@@ -219,6 +228,7 @@ export function createShotPromptVersionsMethods(db: Database) {
       if (!version) {
         throw new Error('Failed to insert shot prompt version');
       }
+      if (input.select === false) return version;
 
       // Mirror onto the shot AND repoint the selection at this version. The
       // `selectedMotionPromptVersionId` pointer was previously never set, so the

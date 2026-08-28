@@ -305,6 +305,8 @@ export function updateQueryCacheFromEvent(
       const videoUrl = getOptionalString(data, 'videoUrl');
       const status = data.status;
       const errorMessage = getOptionalString(data, 'error');
+      const promptSoftened = data.promptSoftened === true;
+      const modelFallback = data.modelFallback === true;
       // Variant-only (#547): an added (alternate) video model finished/failed —
       // its output belongs in `shot_variants`, NOT the live primary. Skip the
       // primary shots-list write (which would flip the displayed video to the
@@ -407,6 +409,39 @@ export function updateQueryCacheFromEvent(
           queryClient,
           segmentKeys.list(sequenceId),
           `segments:${sequenceId}`
+        );
+      }
+      // Content-checker rescue (#1373), mirroring the image handler: a
+      // softened motion prompt version repoints the shot's selection (primary
+      // render) or lands in its history (variant-only), and a fallback render
+      // moves the in-flight version to the Grok group.
+      if (promptSoftened && shotId) {
+        debouncedInvalidate(
+          queryClient,
+          promptVariantKeys.shot('motion', shotId),
+          `prompt-variants:motion:${shotId}`
+        );
+        debouncedInvalidate(
+          queryClient,
+          shotKeys.list(sequenceId),
+          `shots:${sequenceId}`
+        );
+      }
+      if (modelFallback && shotId) {
+        debouncedInvalidate(
+          queryClient,
+          ['sequence-video-variants', sequenceId],
+          `video-variants:${sequenceId}`
+        );
+        debouncedInvalidate(
+          queryClient,
+          ['sequence-video-models', sequenceId],
+          `video-models:${sequenceId}`
+        );
+        debouncedInvalidate(
+          queryClient,
+          shotKeys.videoVersions(shotId),
+          `video-versions:${shotId}`
         );
       }
       break;

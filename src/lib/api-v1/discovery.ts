@@ -43,9 +43,10 @@ List your sequences:
 Enhance only (no sequence):
   POST /api/v1/scripts/enhance to expand/polish a script without generating a
   video. Takes the enhancement-relevant inputs (style, aspectRatio, targetSeconds,
-  elements) and STREAMS the result back as Server-Sent Events: unnamed 'data:'
+  videoModel, elements) and STREAMS the result back as Server-Sent Events: unnamed 'data:'
   shots each carry { "delta": "..." }; a final 'event: done' shot carries the
-  full { "enhancedScript": "..." } plus a '_links' catalog whose
+  full { "enhancedScript": "..." } plus duration fit (snapped total vs target)
+  and a '_links' catalog whose
   'create-sequence' affordance embeds a ready-to-POST example body using the
   enhanced script (with enhance: "off"). Errors after streaming starts arrive
   as an 'event: error' shot.

@@ -39,7 +39,13 @@ type SequenceStateShot = {
   orderIndex: number;
   title: string | null;
   image: { status: ShotGenStatus; url: string | null };
-  video: { status: ShotGenStatus; url: string | null };
+  video: {
+    status: ShotGenStatus;
+    url: string | null;
+    /** Why the primary render failed — names the flagged input on a content
+     * check (#1373). Null unless `status` is "failed". */
+    error: string | null;
+  };
 };
 
 export type SequenceCounts = {
@@ -293,6 +299,10 @@ export async function buildSequenceState(
               : 'pending'
             : shot.videoStatus,
         url: share(shot.video?.url ?? null),
+        error:
+          shot.videoStatus === 'failed'
+            ? (shot.primaryVideo?.error ?? null)
+            : null,
       },
     };
   });

@@ -17,7 +17,13 @@ import {
   type EnhanceChunk,
   streamScriptEnhancement,
 } from '@/lib/ai/script-enhancement';
+import { assessDurationFit } from '@/lib/ai/enhance-duration';
 import { toEnhanceInputs } from '@/lib/ai/enhance-inputs';
+import {
+  DEFAULT_VIDEO_MODEL,
+  isValidImageToVideoModel,
+  type ImageToVideoModel,
+} from '@/lib/ai/models';
 import { aspectRatioSchema } from '@/lib/constants/aspect-ratios';
 import type { ScopedDb } from '@/lib/db/scoped';
 import { handleApiError } from '@/lib/errors';
@@ -55,6 +61,10 @@ export async function buildEnhanceGenerator(
   const data: EnhanceScriptInput = {
     script: input.script,
     targetDuration: input.targetSeconds,
+    videoModel:
+      input.videoModel && isValidImageToVideoModel(input.videoModel)
+        ? input.videoModel
+        : DEFAULT_VIDEO_MODEL,
     aspectRatio:
       input.aspectRatio ??
       (style
@@ -123,7 +133,8 @@ const SSE_HEADERS = {
  */
 export function enhanceSseResponse(
   first: IteratorResult<EnhanceChunk>,
-  rest: AsyncGenerator<EnhanceChunk>
+  rest: AsyncGenerator<EnhanceChunk>,
+  opts?: { targetSeconds: number; videoModel: ImageToVideoModel }
 ): Response {
   const encoder = new TextEncoder();
 
@@ -141,17 +152,33 @@ export function enhanceSseResponse(
       let full = '';
       // Reasoning chunks carry `delta: ''` and are dropped here: thinking is a
       // dashboard-stream affordance, not part of the documented v1 wire format.
-      const push = (delta: string) => {
-        if (!delta) return;
-        full += delta;
-        data({ delta });
+      const push = (chunk: EnhanceChunk) => {
+        if (chunk.replace) {
+          full = chunk.delta;
+          event('replace', { enhancedScript: full });
+          return;
+        }
+        if (!chunk.delta) return;
+        full += chunk.delta;
+        data({ delta: chunk.delta });
       };
 
       try {
-        if (!first.done) push(first.value.delta);
-        for await (const chunk of rest) push(chunk.delta);
+        if (!first.done) push(first.value);
+        for await (const chunk of rest) push(chunk);
         const enhancedScript = full.trim();
-        event('done', { enhancedScript, _links: doneLinks(enhancedScript) });
+        const duration = opts
+          ? assessDurationFit(
+              enhancedScript,
+              opts.targetSeconds,
+              opts.videoModel
+            )
+          : undefined;
+        event('done', {
+          enhancedScript,
+          ...(duration && duration.snappedSeconds != null ? { duration } : {}),
+          _links: doneLinks(enhancedScript),
+        });
       } catch (err) {
         const handled = handleApiError(err);
         // Headers are already committed, so this can't become a JSON 500 — but

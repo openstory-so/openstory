@@ -113,6 +113,19 @@ const genStatusObject: JsonObject = {
   required: ['status', 'url'],
   properties: { status: statusEnum(GEN_STATUSES), url: nullableString },
 };
+const videoStatusObject: JsonObject = {
+  type: 'object',
+  required: ['status', 'url', 'error'],
+  properties: {
+    status: statusEnum(GEN_STATUSES),
+    url: nullableString,
+    error: {
+      ...nullableString,
+      description:
+        'Why the primary render failed. On a content check this names the flagged input (the still, the prompt, or both) and the model that refused it. Null unless status is "failed".',
+    },
+  },
+};
 const countsObject: JsonObject = {
   type: 'object',
   required: ['shots', 'imagesReady', 'videosReady', 'videosFailed'],
@@ -430,7 +443,7 @@ export function buildOpenApiDocument(): JsonObject {
           tags: ['scripts'],
           summary: 'Enhance a script (streaming)',
           description:
-            'Enhance/expand a script WITHOUT creating a sequence, using the enhancement-relevant inputs (style, aspect ratio, target duration, elements). Streams the result as Server-Sent Events: unnamed `data:` shots each carry `{ "delta": "..." }`; a terminal `event: done` shot carries the full `{ "enhancedScript": "...", "_links": {...} }` — a HAL catalog whose `create-sequence` affordance embeds a ready-to-POST example body using the enhanced script. A failure after streaming starts arrives as an `event: error` shot `{ code, message }`. Pre-stream failures (invalid body, unresolvable style, billing) return the JSON error envelope instead.',
+            'Enhance/expand a script WITHOUT creating a sequence, using the enhancement-relevant inputs (style, aspect ratio, target duration, video model clip grid, elements). Streams the result as Server-Sent Events: unnamed `data:` shots each carry `{ "delta": "..." }`; a mid-stream `event: replace` shot may replace the accumulated script (duration correction); a terminal `event: done` shot carries the full `{ "enhancedScript": "...", "duration": {...}, "_links": {...} }` — `duration` reports labeled vs snapped totals and a `message` when the brief cannot fit the target on the selected model\'s clip grid. The `create-sequence` affordance embeds a ready-to-POST example body using the enhanced script. A failure after streaming starts arrives as an `event: error` shot `{ code, message }`. Pre-stream failures (invalid body, unresolvable style, billing) return the JSON error envelope instead.',
           requestBody: {
             required: true,
             content: {
@@ -734,7 +747,7 @@ export function buildOpenApiDocument(): JsonObject {
             orderIndex: { type: 'integer' },
             title: nullableString,
             image: genStatusObject,
-            video: genStatusObject,
+            video: videoStatusObject,
           },
         },
         SequenceState: {

@@ -19,14 +19,19 @@ import {
   RECOMMENDED_MODELS,
 } from '@/lib/ai/llm-client';
 import { isValidAnalysisModelId } from '@/lib/ai/models.config';
+import { DEFAULT_VIDEO_MODEL, isValidImageToVideoModel } from '@/lib/ai/models';
 import {
   checkForInjectionAttempts,
   sanitizeScriptContent,
 } from '@/lib/ai/prompt-validation';
+import {
+  type EnhanceChunk,
+  runEnhanceScriptTurns,
+} from '@/lib/ai/enhance-script-turns';
 import { createUserPrompt } from '@/lib/ai/script-enhancer';
 import { reportMissingBillingCost } from '@/lib/billing/billing-observability';
 import { estimateLLMCost } from '@/lib/billing/cost-estimation';
-import type { Microdollars } from '@/lib/billing/money';
+import { addMicros, ZERO_MICROS, type Microdollars } from '@/lib/billing/money';
 import type { ScopedDb } from '@/lib/db/scoped';
 import type { ResolvedLlmKey } from '@/lib/db/scoped/api-keys';
 import { InsufficientCreditsError } from '@/lib/errors';
@@ -38,6 +43,8 @@ import {
 } from '@/lib/prompts';
 import { toVisionImageSource } from '@/lib/storage/external-url';
 import { createServerOnlyFn } from '@tanstack/react-start';
+
+export type { EnhanceChunk } from '@/lib/ai/enhance-script-turns';
 
 const logger = getLogger(['openstory', 'serverFn', 'ai']);
 
@@ -88,18 +95,6 @@ export async function prepareBilling(
 }
 
 /**
- * One shot of an enhancement stream. Script text arrives as `delta`; the
- * model's reasoning, while its thinking pass runs, arrives as `reasoning` on
- * chunks whose `delta` is `''`.
- *
- * The two channels are kept in one stream so the UI can interleave them in
- * order, and split by field rather than by a tag so a consumer that only reads
- * `delta` — `enhanceScriptToString`, the API's SSE writer — needs no changes
- * and can never splice thinking into the script.
- */
-export type EnhanceChunk = { delta: string; reasoning?: string };
-
-/**
  * Core script-enhancement generator, shared by the streaming server function
  * (which yields deltas to the browser) and the public API's one-shot create
  * flow (which drains it to a full string). Single source of truth for billing,
@@ -108,6 +103,12 @@ export type EnhanceChunk = { delta: string; reasoning?: string };
  * Note: server-only. IP rate-limiting lives in the serverFn handler
  * (`enhanceScriptStreamFn`); the public API path is throttled by its per-key
  * rate limit instead.
+ *
+ * Script text arrives as `delta`; the model's reasoning arrives as `reasoning`
+ * on chunks whose `delta` is `''`. A duration-correction turn (or a clip-grid
+ * label rewrite) yields `{ replace: true }` with the full revised script so
+ * concatenating clients can reset. The last chunk may carry `duration` with
+ * the snapped-total / cannot-fit notice (#1374).
  */
 export async function* streamScriptEnhancement(
   data: EnhanceScriptInput,
@@ -117,6 +118,11 @@ export async function* streamScriptEnhancement(
     data.analysisModel && isValidAnalysisModelId(data.analysisModel)
       ? data.analysisModel
       : RECOMMENDED_MODELS.creative;
+  const videoModel =
+    data.videoModel && isValidImageToVideoModel(data.videoModel)
+      ? data.videoModel
+      : DEFAULT_VIDEO_MODEL;
+  const targetSeconds = data.targetDuration ?? 30;
 
   const { llmKey, deduct } = await prepareBilling(
     ctx.scopedDb,
@@ -134,7 +140,8 @@ export async function* streamScriptEnhancement(
   const userPrompt = createUserPrompt(sanitized, {
     style: data.style,
     aspectRatio: data.aspectRatio,
-    targetDuration: data.targetDuration,
+    targetDuration: targetSeconds,
+    videoModel,
     elements: elements.length > 0 ? elements : undefined,
   });
 
@@ -185,42 +192,52 @@ export async function* streamScriptEnhancement(
   // Gate it out of E2E entirely (record + replay): live search results would
   // make the recorded OpenRouter request/response non-deterministic.
   const useWebSearch = getEnv().E2E_TEST !== 'true';
-  let usage;
-  for await (const chunk of callLLMStream({
-    model,
-    messages,
-    // No max_tokens: every model routes through OpenRouter, which falls back
-    // to the model's own max output when the field is omitted — so long
-    // scripts use the full available output budget instead of an artificial
-    // cap, and the #915 truncation (seen when this was a flat 4000) can't
-    // recur.
-    temperature: 0.7,
-    ...(useWebSearch && { webSearch: true }),
-    // Always on at `low`. Omitting this on Grok 4.6 (the default) falls through
-    // to xAI's `high` — sending `low` is the fastest we can ask for. Workflows
-    // keep PROMPT_REASONING (`medium`); latency is hidden there.
-    reasoning: ENHANCE_REASONING,
-    observationName: 'script-enhance',
-    tags: ['script-enhance', model],
-    userId: ctx.userId,
-    apiKey: llmKey,
-    metadata: {
-      teamId: ctx.teamId,
-      elementCount: elements.length,
-      targetDuration: data.targetDuration,
-      aspectRatio: data.aspectRatio,
-    },
-  })) {
-    if (chunk.delta) {
-      yield { delta: chunk.delta };
+  let totalCost: Microdollars = ZERO_MICROS;
+
+  async function* generate(turnMessages: ChatMessage[]) {
+    for await (const chunk of callLLMStream({
+      model,
+      messages: turnMessages,
+      // No max_tokens: every model routes through OpenRouter, which falls back
+      // to the model's own max output when the field is omitted — so long
+      // scripts use the full available output budget instead of an artificial
+      // cap, and the #915 truncation (seen when this was a flat 4000) can't
+      // recur.
+      temperature: 0.7,
+      ...(useWebSearch && { webSearch: true }),
+      // Always on at `low`. Omitting this on Grok 4.6 (the default) falls through
+      // to xAI's `high` — sending `low` is the fastest we can ask for. Workflows
+      // keep PROMPT_REASONING (`medium`); latency is hidden there.
+      reasoning: ENHANCE_REASONING,
+      observationName: 'script-enhance',
+      tags: ['script-enhance', model],
+      userId: ctx.userId,
+      apiKey: llmKey,
+      metadata: {
+        teamId: ctx.teamId,
+        elementCount: elements.length,
+        targetDuration: targetSeconds,
+        aspectRatio: data.aspectRatio,
+        videoModel,
+      },
+    })) {
+      if (chunk.done) {
+        totalCost = addMicros(totalCost, llmCostFromUsage(chunk.usage, model));
+        continue;
+      }
+      if (chunk.delta) yield { delta: chunk.delta };
+      if (chunk.reasoning) yield { delta: '', reasoning: chunk.reasoning };
     }
-    if (!chunk.done && chunk.reasoning) {
-      yield { delta: '', reasoning: chunk.reasoning };
-    }
-    if (chunk.done) usage = chunk.usage;
   }
 
-  await deduct?.(llmCostFromUsage(usage, model));
+  yield* runEnhanceScriptTurns({
+    messages,
+    targetSeconds,
+    videoModel,
+    generate,
+  });
+
+  await deduct?.(totalCost);
 }
 
 /**
@@ -233,8 +250,9 @@ export const enhanceScriptToString = createServerOnlyFn(
     ctx: { scopedDb: ScopedDb; userId: string; teamId: string }
   ): Promise<string> => {
     let enhanced = '';
-    for await (const { delta } of streamScriptEnhancement(data, ctx)) {
-      enhanced += delta;
+    for await (const chunk of streamScriptEnhancement(data, ctx)) {
+      if (chunk.replace) enhanced = chunk.delta;
+      else enhanced += chunk.delta;
     }
     return enhanced.trim();
   }

@@ -259,8 +259,27 @@ describe('StudioGenerationWorkflow video', () => {
 
     await expect(
       makeWorkflow().runBody(makeEvent(VIDEO), makeStep(), scopedDb)
-    ).rejects.toThrow(/content filter after 3 attempts/);
+    ).rejects.toThrow(
+      /^Content checker rejected the clip \(Seedance 2\.0\)\. Rewrite the prompt\. \(/
+    );
     expect(mockDeductWorkflowCredits).not.toHaveBeenCalled();
+  });
+
+  it('names a flagged reference image instead of a still that does not exist (#1373)', async () => {
+    mockSubmit.mockRejectedValue(
+      new Error('body.image_urls.0: flagged by a content checker')
+    );
+    const { scopedDb } = makeScopedDb();
+
+    await expect(
+      makeWorkflow().runBody(
+        makeEvent({ ...VIDEO, referenceImages: ['https://x/ref.png'] }),
+        makeStep(),
+        scopedDb
+      )
+    ).rejects.toThrow(
+      'Content checker rejected a reference image (Seedance 2.0). Swap the reference image.'
+    );
   });
 });
 

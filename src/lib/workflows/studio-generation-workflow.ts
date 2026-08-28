@@ -17,9 +17,11 @@
 
 import {
   CONTENT_REJECTION_EVENT,
+  clipContentRejectionMessage,
   isContentRejectionError,
 } from '@/lib/ai/content-rejection';
 import { extractFalErrorMessage } from '@/lib/ai/fal-error';
+import { IMAGE_TO_VIDEO_MODELS } from '@/lib/ai/models';
 import { ZERO_MICROS } from '@/lib/billing/money';
 import {
   deductWorkflowCredits,
@@ -338,7 +340,22 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
 
     if (!videoUrl || !succeededJob) {
       throw new NonRetryableError(
-        `Video generation rejected by content filter after ${MAX_MOTION_ATTEMPTS} attempts: ${lastRejection ?? 'unknown rejection'}`,
+        clipContentRejectionMessage({
+          rejections: [lastRejection ?? 'unknown rejection'],
+          models: [IMAGE_TO_VIDEO_MODELS[videoModel].name],
+          softened: false,
+          // Text-to-video: no start still to regenerate — the only image
+          // input is an optional reference (#1373).
+          inputs: {
+            still: input.referenceImages.length
+              ? {
+                  name: 'a reference image',
+                  fix: 'Swap the reference image',
+                }
+              : undefined,
+            prompt: 'the prompt',
+          },
+        }),
         'ContentRejectionExhausted'
       );
     }

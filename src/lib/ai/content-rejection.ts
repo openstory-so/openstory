@@ -178,3 +178,82 @@ export function contentRejectionSubjects(error: string): string[] {
     .map((s) => s.trim())
     .filter(Boolean);
 }
+
+/**
+ * Which inputs a fal 422 named. `extractFalErrorMessage` prefixes each detail
+ * with its `loc` (`body.prompt: …; body.image_url: …`, #1373); a rejection
+ * without any prefix (Veo's "could not generate", BytePlus, aimock) classifies
+ * as nothing flagged and callers treat it as prompt-shaped.
+ */
+export function flaggedInputs(rejection: string): {
+  prompt: boolean;
+  image: boolean;
+  audio: boolean;
+} {
+  const fields = [...rejection.matchAll(/\bbody\.([\w.[\]]+):/g)].map(
+    (m) => m[1] ?? ''
+  );
+  return {
+    prompt: fields.some((f) => /prompt/i.test(f)),
+    image: fields.some((f) => /image|frame|element/i.test(f)),
+    audio: fields.some((f) => /audio/i.test(f)),
+  };
+}
+
+/**
+ * Terminal clip error once every remedy is spent. Names the flagged inputs and
+ * the models that refused them, then says what the user can change — a
+ * flagged still cannot be reseeded or softened away, only regenerated (#1373).
+ * Keeps "content checker" so `isContentRejectionError` still classifies it.
+ */
+export function clipContentRejectionMessage(args: {
+  /**
+   * Every rejection seen, in order. Flags OR across them — the rescue attempt's
+   * (fallback-model) rejection may lack the `body.<field>` prefix the first
+   * attempts carried, and must not erase what they named. The last is quoted
+   * when nothing was named.
+   */
+  rejections: string[];
+  /** Display names in the order tried, e.g. `['LTX 2.3 Pro', 'Grok …']`. */
+  models: string[];
+  softened: boolean;
+  /**
+   * What this caller's inputs are called. Default is image-to-video (a start
+   * still + motion prompt). Studio text-to-video has no still — pass its
+   * reference image when it has one, or no `still` at all.
+   */
+  inputs?: {
+    still?: { name: string; fix: string };
+    prompt: string;
+  };
+}): string {
+  const flags = flaggedInputs(args.rejections.join('; '));
+  const still = args.inputs
+    ? args.inputs.still
+    : { name: 'the still', fix: 'Regenerate the still' };
+  const promptName = args.inputs?.prompt ?? 'the motion prompt';
+  const stillFlagged = flags.image && still !== undefined;
+  const what =
+    stillFlagged && flags.prompt
+      ? `${still.name} and the prompt`
+      : stillFlagged
+        ? still.name
+        : flags.prompt
+          ? 'the prompt'
+          : flags.audio
+            ? 'the audio'
+            : 'the clip';
+  const lower = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
+  const hint = stillFlagged
+    ? `${still.fix}${flags.prompt ? ` or rewrite ${promptName}` : ''}.`
+    : flags.prompt
+      ? `Rewrite ${promptName}.`
+      : `Rewrite ${promptName}${still ? ` or ${lower(still.fix)}` : ''}. (${args.rejections.at(-1) ?? ''})`;
+  const tried = [
+    args.models.join(', then '),
+    args.softened ? 'softened prompt also rejected' : null,
+  ]
+    .filter(Boolean)
+    .join('; ');
+  return `Content checker rejected ${what} (${tried}). ${hint}`;
+}
