@@ -9,15 +9,21 @@
  * the anchor frame — not into `scene.metadata` (#713). Spawned per scene by
  * `FramePromptBatchWorkflow`. */
 
-import { createAdapter } from '@/lib/ai/create-adapter';
+import {
+  CONTENT_REJECTION_EVENT,
+  contentFilterLlmMessage,
+  isContentFilterFinish,
+} from '@/lib/ai/content-rejection';
+import { createAdapter, resolveNativeGrokModel } from '@/lib/ai/create-adapter';
 import { computeVisualPromptInputHash } from '@/lib/ai/input-hash';
 import {
+  createUsageCapture,
   extractRunError,
-  formatRunErrorMessage,
   llmCostFromUsage,
   PROMPT_REASONING,
+  throwNotedRunError,
 } from '@/lib/ai/llm-client';
-import { getContextWindow } from '@/lib/ai/models.config';
+import { getMaxOutputTokens } from '@/lib/ai/models.config';
 import { narrowShotPromptContext } from '@/lib/ai/prompt-context';
 import {
   type VisualPrompt,
@@ -35,8 +41,9 @@ import { getShotPromptChannel, getGenerationChannel } from '@/lib/realtime';
 import { OpenStoryWorkflowEntrypoint } from '@/lib/workflow/base-workflow';
 import { WorkflowValidationError } from '@/lib/workflow/errors';
 import type { FramePromptWorkflowInput } from '@/lib/workflow/types';
-import { chat, type TokenUsage } from '@tanstack/ai';
+import { chat } from '@tanstack/ai';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
+import { NonRetryableError } from 'cloudflare:workflows';
 
 const logger = getLogger(['openstory', 'workflow', 'frame-prompt']);
 
@@ -153,21 +160,15 @@ export class FramePromptWorkflow extends OpenStoryWorkflowEntrypoint<FramePrompt
         costMicros: Microdollars;
         keySource: 'team' | 'platform';
       }> => {
-        const llmKeyInfo = await scopedDb.credentials.resolveLlmKey();
+        const llmKeyInfo =
+          await scopedDb.credentials.resolveLlmKey(analysisModelId);
         const adapter = createAdapter(analysisModelId, llmKeyInfo);
-        let capturedUsage: TokenUsage | undefined;
-        const captureUsage = [
-          {
-            onFinish: (_ctx: unknown, info: { usage?: TokenUsage }) => {
-              capturedUsage = info.usage;
-            },
-          },
-        ];
+        // Always stream structured output so OpenRouter attaches usage.cost
+        // (TanStack/ai#1076). Optional channel emits for live UI deltas.
+        const usageCapture = createUsageCapture();
 
         logger.info(
-          `[FramePromptWorkflow:cf] [LLM:${LOG_NAME}] Starting${
-            streamConfig ? ' streaming' : ''
-          } call`,
+          `[FramePromptWorkflow:cf] [LLM:${LOG_NAME}] Starting streaming call`,
           {
             model: analysisModelId,
             keySource: llmKeyInfo.source,
@@ -210,51 +211,19 @@ export class FramePromptWorkflow extends OpenStoryWorkflowEntrypoint<FramePrompt
         const reasoningOptions = { reasoning: PROMPT_REASONING };
 
         try {
-          if (!streamConfig) {
-            const text = await chat({
-              adapter,
-              messages: chatMessages,
-              systemPrompts: systemPrompts,
-              outputSchema: visualPromptResultSchema,
-              stream: false,
-              abortController,
-              modelOptions: {
-                ...reasoningOptions,
-                maxCompletionTokens: Math.floor(
-                  getContextWindow(analysisModelId) * 0.5
-                ),
-              },
-              middleware: [
-                ...aiObservabilityMiddleware({
-                  observationName: LOG_NAME,
-                  tags: [...LOG_TAGS],
-                  metadata: logMetadata,
-                  sessionId: sequenceId,
-                  userId,
-                }),
-                ...captureUsage,
-              ],
-              debug: false,
-            });
-            logger.info(
-              `[FramePromptWorkflow:cf] [LLM:${LOG_NAME}] Call succeeded`
-            );
-            return {
-              resultJson: JSON.stringify(text),
-              costMicros: llmCostFromUsage(capturedUsage, analysisModelId),
-              keySource: llmKeyInfo.source,
-            };
-          }
-
-          // Streaming path — emit visible `fullPrompt` deltas while accumulating.
-          const channel = getShotPromptChannel(streamConfig.shotId);
+          const channel = streamConfig
+            ? getShotPromptChannel(streamConfig.shotId)
+            : null;
           let accumulated = '';
           let lastExtracted = '';
           let pendingDelta = '';
           let lastEmitAt = 0;
+          let structuredObject: unknown;
+          let runError = null;
+          let contentFiltered = false;
 
           const flushDelta = async () => {
-            if (!pendingDelta) return;
+            if (!channel || !streamConfig || !pendingDelta) return;
             const delta = pendingDelta;
             pendingDelta = '';
             lastEmitAt = Date.now();
@@ -264,70 +233,109 @@ export class FramePromptWorkflow extends OpenStoryWorkflowEntrypoint<FramePrompt
             });
           };
 
+          const maxTokens = getMaxOutputTokens(analysisModelId);
+          const native = !!resolveNativeGrokModel(analysisModelId, llmKeyInfo);
+          const modelOptions = native
+            ? {
+                reasoning: { effort: PROMPT_REASONING.effort },
+                max_output_tokens: maxTokens,
+              }
+            : {
+                ...reasoningOptions,
+                maxCompletionTokens: maxTokens,
+                streamOptions: { includeUsage: true },
+              };
+
           for await (const streamEvent of chat({
             adapter,
             messages: chatMessages,
             systemPrompts: systemPrompts,
             stream: true,
             abortController,
-            modelOptions: {
-              ...reasoningOptions,
-              maxCompletionTokens: Math.floor(
-                getContextWindow(analysisModelId) * 0.5
-              ),
-            },
+            modelOptions,
             outputSchema: visualPromptResultSchema,
             middleware: [
               ...aiObservabilityMiddleware({
                 observationName: LOG_NAME,
-                tags: [...LOG_TAGS_STREAM],
+                tags: streamConfig ? [...LOG_TAGS_STREAM] : [...LOG_TAGS],
                 metadata: logMetadata,
                 sessionId: sequenceId,
                 userId,
               }),
-              ...captureUsage,
+              ...usageCapture.middleware,
             ],
             debug: false,
           })) {
+            usageCapture.noteFromStreamEvent(streamEvent);
+            // A safety-classifier stop ends the run with `finishReason:
+            // 'content_filter'` and either no content or content cut
+            // mid-token. Note it here so the failure below is classified as a
+            // content rejection instead of an opaque parse error (#1304).
+            if (isContentFilterFinish(streamEvent)) {
+              contentFiltered = true;
+              continue;
+            }
+            const noted = extractRunError(streamEvent);
+            if (noted) {
+              runError ??= noted;
+              continue;
+            }
             if (
               streamEvent.type === 'TEXT_MESSAGE_CONTENT' &&
               typeof streamEvent.delta === 'string'
             ) {
               accumulated += streamEvent.delta;
-              const next = extractStreamingStringField(
-                accumulated,
-                'fullPrompt'
-              );
-              if (next.length > lastExtracted.length) {
-                pendingDelta += next.slice(lastExtracted.length);
-                lastExtracted = next;
-              }
-              if (
-                pendingDelta &&
-                Date.now() - lastEmitAt >= streamConfig.flushIntervalMs
-              ) {
-                await flushDelta();
+              if (streamConfig) {
+                const next = extractStreamingStringField(
+                  accumulated,
+                  'fullPrompt'
+                );
+                if (next.length > lastExtracted.length) {
+                  pendingDelta += next.slice(lastExtracted.length);
+                  lastExtracted = next;
+                }
+                if (
+                  pendingDelta &&
+                  Date.now() - lastEmitAt >= streamConfig.flushIntervalMs
+                ) {
+                  await flushDelta();
+                }
               }
               continue;
             }
-            const runError = extractRunError(streamEvent);
-            if (runError) {
-              logger.error(
-                `[FramePromptWorkflow:cf] [LLM:${LOG_NAME}] Streaming call RUN_ERROR`,
-                { runError: runError.event }
-              );
-              throw new Error(formatRunErrorMessage(runError));
+            if (
+              streamEvent.type === 'CUSTOM' &&
+              streamEvent.name === 'structured-output.complete'
+            ) {
+              structuredObject = streamEvent.value.object;
+              continue;
             }
+          }
+          throwNotedRunError(runError);
+          // A content filter is a property of the script, not a transient
+          // fault: every retry re-runs the same prompt and stops the same way.
+          // Fail fast and name the scene so the user can edit it, instead of
+          // burning five step retries (and their credits) on a certain loss.
+          if (contentFiltered && structuredObject === undefined) {
+            logger.warn(
+              `[FramePromptWorkflow:cf] [LLM:${LOG_NAME}] content filter stopped the run`,
+              { event: CONTENT_REJECTION_EVENT, sceneId: scene.sceneId }
+            );
+            throw new NonRetryableError(
+              contentFilterLlmMessage(`Scene ${scene.sceneNumber}`)
+            );
           }
           await flushDelta();
           logger.info(
             `[FramePromptWorkflow:cf] [LLM:${LOG_NAME}] Streaming call succeeded`
           );
+          const resultObject =
+            structuredObject !== undefined
+              ? visualPromptResultSchema.parse(structuredObject)
+              : visualPromptResultSchema.parse(JSON.parse(accumulated));
           return {
-            resultJson: JSON.stringify(
-              visualPromptResultSchema.parse(JSON.parse(accumulated))
-            ),
-            costMicros: llmCostFromUsage(capturedUsage, analysisModelId),
+            resultJson: JSON.stringify(resultObject),
+            costMicros: llmCostFromUsage(usageCapture.get(), analysisModelId),
             keySource: llmKeyInfo.source,
           };
         } finally {
@@ -347,6 +355,7 @@ export class FramePromptWorkflow extends OpenStoryWorkflowEntrypoint<FramePrompt
         usedOwnKey: keySource === 'team',
         description: `LLM analysis (${analysisModelId})`,
         idempotencyKey: `${event.instanceId}:llm-${STEP_NAME}`,
+        reservationId: input.reservationId,
         metadata: {
           model: analysisModelId,
           phase: PHASE.number,
@@ -405,7 +414,6 @@ export class FramePromptWorkflow extends OpenStoryWorkflowEntrypoint<FramePrompt
                 versionId: input.targetVersionId,
                 frameId,
                 text: result.visual.fullPrompt,
-                components: result.visual.components,
                 inputHash,
                 analysisModel: analysisModelId,
               });
@@ -423,7 +431,6 @@ export class FramePromptWorkflow extends OpenStoryWorkflowEntrypoint<FramePrompt
             const written = await scopedDb.framePromptVersions.writeAiVersion({
               frameId,
               text: result.visual.fullPrompt,
-              components: result.visual.components,
               inputHash,
               analysisModel: analysisModelId,
             });

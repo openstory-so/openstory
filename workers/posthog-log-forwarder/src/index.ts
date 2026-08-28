@@ -257,7 +257,7 @@ function tryParseLogTape(text: string): LogTapeShape | null {
   try {
     const parsed: unknown = JSON.parse(text);
     if (parsed && typeof parsed === 'object' && 'message' in parsed) {
-      return parsed as LogTapeShape;
+      return parsed;
     }
     return null;
   } catch {

@@ -36,7 +36,7 @@ export const IMAGE_TO_VIDEO_MODELS = {
   grok_imagine_video_1_5: {
     id: 'xai/grok-imagine-video/v1.5/image-to-video',
     name: 'Grok Imagine Video 1.5',
-    provider: 'Grok',
+    vendor: 'SpaceXAI',
     license: 'proprietary' as const,
     qualityRank: 1,
     maxPromptLength: 2500,
@@ -45,7 +45,7 @@ export const IMAGE_TO_VIDEO_MODELS = {
   ltx_2_3_pro: {
     id: 'fal-ai/ltx-2.3/image-to-video',
     name: 'LTX 2.3 Pro',
-    provider: 'Lightricks',
+    vendor: 'Lightricks',
     license: 'open-source' as const,
     qualityRank: 2,
     maxPromptLength: 2500,
@@ -54,7 +54,7 @@ export const IMAGE_TO_VIDEO_MODELS = {
   veo3_1: {
     id: 'fal-ai/veo3.1/image-to-video',
     name: 'Veo 3.1',
-    provider: 'Google',
+    vendor: 'Google',
     license: 'proprietary' as const,
     qualityRank: 2,
     maxPromptLength: 20000,
@@ -63,7 +63,7 @@ export const IMAGE_TO_VIDEO_MODELS = {
   kling_v3_pro: {
     id: 'fal-ai/kling-video/v3/pro/image-to-video',
     name: 'Kling v3 Pro',
-    provider: 'Kling',
+    vendor: 'Kling',
     license: 'proprietary' as const,
     qualityRank: 3,
     maxPromptLength: 2500,
@@ -72,16 +72,29 @@ export const IMAGE_TO_VIDEO_MODELS = {
   minimax_hailuo_02: {
     id: 'fal-ai/minimax/hailuo-2.3/pro/image-to-video',
     name: 'MiniMax Hailuo 2.3',
-    provider: 'MiniMax',
+    vendor: 'MiniMax',
     license: 'proprietary' as const,
     qualityRank: 5,
+    maxPromptLength: 2500,
+    performance: { estimatedGenerationTime: 15, quality: 'best' as const },
+  },
+  minimax_h3_max: {
+    id: 'minimax/h3-max/image-to-video',
+    name: 'MiniMax H3 Max',
+    vendor: 'MiniMax',
+    license: 'proprietary' as const,
+    qualityRank: 4,
+    // Always generates audio (lip-synced dialogue, ambience, score) with no
+    // API switch — the schema has no generate_audio, so the builder must
+    // direct it in-prompt. See buildMinimaxH3Prompt.
+    supportsAudio: true,
     maxPromptLength: 2500,
     performance: { estimatedGenerationTime: 15, quality: 'best' as const },
   },
   seedance_v2: {
     id: 'bytedance/seedance-2.0/enterprise/v2/image-to-video',
     name: 'Seedance 2.0',
-    provider: 'ByteDance',
+    vendor: 'ByteDance',
     license: 'proprietary' as const,
     qualityRank: 2,
     maxPromptLength: 4096,
@@ -96,7 +109,7 @@ export const IMAGE_MODELS = {
   nano_banana_2: {
     id: 'fal-ai/nano-banana-2' as const,
     name: 'Nano Banana 2',
-    provider: 'Google',
+    vendor: 'Google',
     license: 'proprietary' as const,
     qualityRank: 1,
     description: "Google's latest fast image generation and editing model",
@@ -105,7 +118,7 @@ export const IMAGE_MODELS = {
   nano_banana_pro: {
     id: 'fal-ai/nano-banana-pro' as const,
     name: 'Nano Banana Pro',
-    provider: 'Google',
+    vendor: 'Google',
     license: 'proprietary' as const,
     qualityRank: 2,
     description: 'Enhanced realism and typography',
@@ -114,25 +127,36 @@ export const IMAGE_MODELS = {
   gpt_image_2: {
     id: 'openai/gpt-image-2' as const,
     name: 'GPT Image 2',
-    provider: 'OpenAI',
+    vendor: 'OpenAI',
     license: 'proprietary' as const,
     qualityRank: 2,
     description: 'Near-perfect text rendering, UI fidelity, up to 4K',
     maxPromptLength: 32000,
   },
   grok_imagine_image: {
-    id: 'xai/grok-imagine-image/quality/text-to-image' as const,
-    name: 'Grok Imagine Image Quality',
-    provider: 'Grok',
+    id: 'xai/grok-imagine-image/v2.0/text-to-image' as const,
+    name: 'Grok Imagine Image 2.0',
+    vendor: 'SpaceXAI',
     license: 'proprietary' as const,
     qualityRank: 3,
-    description: 'High-quality aesthetic image generation with low censoring',
+    description:
+      'Newest Imagine image model — 1K/2K, quality medium, edit up to 3 refs',
+    maxPromptLength: 4000,
+  },
+  grok_imagine_image_quality: {
+    id: 'xai/grok-imagine-image/quality/text-to-image' as const,
+    name: 'Grok Imagine Image Quality',
+    vendor: 'SpaceXAI',
+    license: 'proprietary' as const,
+    qualityRank: 3,
+    description:
+      'Quality Mode — higher fidelity and stronger text rendering, edit up to 3 refs',
     maxPromptLength: 4000,
   },
   flux_2_max: {
     id: 'fal-ai/flux-2-max' as const,
     name: 'FLUX.2 Max',
-    provider: 'Black Forest Labs',
+    vendor: 'Black Forest Labs',
     license: 'proprietary' as const,
     qualityRank: 4,
     description: 'Exceptional realism, precision, and consistency',
@@ -141,7 +165,7 @@ export const IMAGE_MODELS = {
   phota: {
     id: 'fal-ai/phota' as const,
     name: 'Phota',
-    provider: 'Phota',
+    vendor: 'Phota',
     license: 'proprietary' as const,
     qualityRank: 5,
     description: 'Character consistency via profiles',
@@ -150,7 +174,7 @@ export const IMAGE_MODELS = {
   hunyuan_image_v3: {
     id: 'fal-ai/hunyuan-image/v3/text-to-image' as const,
     name: 'Hunyuan Image v3',
-    provider: 'Tencent',
+    vendor: 'Tencent',
     license: 'open-source' as const,
     qualityRank: 6,
     description: 'Open source with strong composition',
@@ -159,7 +183,7 @@ export const IMAGE_MODELS = {
   flux_2_dev: {
     id: 'fal-ai/flux-2' as const,
     name: 'FLUX.2 Dev',
-    provider: 'Black Forest Labs',
+    vendor: 'Black Forest Labs',
     license: 'open-source' as const,
     qualityRank: 7,
     description: '32B open weights with native editing',
@@ -168,7 +192,7 @@ export const IMAGE_MODELS = {
   qwen_image: {
     id: 'fal-ai/qwen-image-2/pro/text-to-image' as const,
     name: 'Qwen Image 2 Pro',
-    provider: 'Alibaba',
+    vendor: 'Alibaba',
     license: 'open-source' as const,
     qualityRank: 8,
     description: 'Apache 2.0, native 2K, text rendering, editing support',
@@ -177,7 +201,7 @@ export const IMAGE_MODELS = {
   hidream_i1: {
     id: 'fal-ai/hidream-i1-full' as const,
     name: 'HiDream I1',
-    provider: 'HiDream',
+    vendor: 'HiDream',
     license: 'open-source' as const,
     qualityRank: 9,
     description: 'MIT licensed, 17B parameters',
@@ -186,7 +210,7 @@ export const IMAGE_MODELS = {
   seedream_v5: {
     id: 'fal-ai/bytedance/seedream/v5/lite/text-to-image' as const,
     name: 'Seedream 5',
-    provider: 'ByteDance',
+    vendor: 'ByteDance',
     license: 'proprietary' as const,
     qualityRank: 10,
     description: 'Unified generation and editing',
@@ -195,10 +219,20 @@ export const IMAGE_MODELS = {
   flux_2_turbo: {
     id: 'fal-ai/flux-2/turbo' as const,
     name: 'FLUX.2 Turbo',
-    provider: 'Black Forest Labs',
+    vendor: 'Black Forest Labs',
     license: 'open-source' as const,
     qualityRank: 99,
     description: 'Ultra-fast preview generation',
+    maxPromptLength: 2000,
+    hidden: true,
+  },
+  krea_2_turbo: {
+    id: 'fal-ai/krea-2/turbo' as const,
+    name: 'Krea 2 Turbo',
+    vendor: 'Krea',
+    license: 'open-source' as const,
+    qualityRank: 99,
+    description: 'Ultra-fast storyboard generation',
     maxPromptLength: 2000,
     hidden: true,
   },
@@ -211,8 +245,9 @@ type TextToImageModelId = ImageModelConfig['id'];
 
 export const DEFAULT_IMAGE_MODEL: TextToImageModel = 'gpt_image_2';
 
-/** Model used for fast preview image generation */
-export const PREVIEW_IMAGE_MODEL: TextToImageModel = 'flux_2_turbo';
+/** Model used for fast preview image generation. flux_2_turbo stays in the
+ *  registry because stored preview variants still reference it. */
+export const PREVIEW_IMAGE_MODEL: TextToImageModel = 'krea_2_turbo';
 
 // Helper to get model ID from key
 export function getTextToImageModelId(
@@ -389,7 +424,7 @@ export const AUDIO_MODELS = {
   elevenlabs_music: {
     id: 'fal-ai/elevenlabs/music' as const,
     name: 'ElevenLabs Music',
-    provider: 'ElevenLabs',
+    vendor: 'ElevenLabs',
     license: 'proprietary' as const,
     qualityRank: 1,
     type: 'music' as const,
@@ -408,7 +443,7 @@ export const AUDIO_MODELS = {
   ace_step_1_5: {
     id: 'fal-ai/ace-step-1.5' as const,
     name: 'ACE-Step 1.5',
-    provider: 'ACE Studio',
+    vendor: 'ACE Studio',
     license: 'open-source' as const,
     qualityRank: 2,
     type: 'music' as const,
@@ -428,7 +463,7 @@ export const AUDIO_MODELS = {
   ace_step: {
     id: 'fal-ai/ace-step/prompt-to-audio' as const,
     name: 'ACE-Step',
-    provider: 'ACE Studio',
+    vendor: 'ACE Studio',
     license: 'open-source' as const,
     qualityRank: 3,
     type: 'music' as const,
@@ -492,7 +527,8 @@ export const EDIT_ENDPOINTS: Partial<Record<TextToImageModel, string>> = {
   nano_banana_2: 'fal-ai/nano-banana-2/edit',
   nano_banana_pro: 'fal-ai/nano-banana-pro/edit',
   gpt_image_2: 'openai/gpt-image-2/edit',
-  grok_imagine_image: 'xai/grok-imagine-image/quality/edit',
+  grok_imagine_image: 'xai/grok-imagine-image/v2.0/edit',
+  grok_imagine_image_quality: 'xai/grok-imagine-image/quality/edit',
   flux_2_max: 'fal-ai/flux-2-max/edit',
   phota: 'fal-ai/phota/edit',
   hunyuan_image_v3: 'fal-ai/hunyuan-image/v3/instruct/edit',
@@ -501,6 +537,38 @@ export const EDIT_ENDPOINTS: Partial<Record<TextToImageModel, string>> = {
   qwen_image: 'fal-ai/qwen-image-2/pro/edit',
   seedream_v5: 'fal-ai/bytedance/seedream/v5/lite/edit',
 };
+
+/**
+ * Per-model ceiling on `image_urls` for the edit endpoints above.
+ *
+ * fal enforces these server-side and REJECTS the request over the limit — it
+ * does not truncate, despite flux-2/turbo/edit's own schema claiming "if more
+ * are provided, only the first 4 will be used". A scene with a couple of
+ * characters in a location plus props clears 4 easily, so an uncapped send
+ * fails the shot outright ("Number of image URLs must be less than or equal
+ * to 4" — 11 of them in the #1143 load test).
+ *
+ * Absent = no known cap; send what we have.
+ */
+const EDIT_REFERENCE_LIMITS: Partial<Record<TextToImageModel, number>> = {
+  flux_2_dev: 4,
+  flux_2_turbo: 4,
+  grok_imagine_image: 3,
+  grok_imagine_image_quality: 3,
+};
+
+/**
+ * Trim reference images to what `model`'s edit endpoint accepts. References
+ * are ordered characters → locations → elements, so truncation drops the
+ * least identity-critical ones last.
+ */
+export function capReferenceImages<T>(
+  model: TextToImageModel,
+  references: T[]
+): T[] {
+  const limit = EDIT_REFERENCE_LIMITS[model];
+  return limit === undefined ? references : references.slice(0, limit);
+}
 
 /**
  * Get the edit endpoint for a model that supports reference images
@@ -553,6 +621,15 @@ export const MOTION_REFERENCE_ENDPOINTS: Partial<
 };
 
 /**
+ * Models that attach reference images on the normal image-to-video endpoint
+ * (Kling's `elements` field). Distinct from `MOTION_REFERENCE_ENDPOINTS`,
+ * which switch to a different endpoint.
+ */
+const MOTION_INLINE_REFERENCE_MODELS = {
+  kling_v3_pro: true,
+} as const satisfies Partial<Record<ImageToVideoModel, true>>;
+
+/**
  * Get the reference-to-video endpoint config for a motion model, if it has one.
  * @returns The endpoint config, or null if the model has no reference endpoint
  */
@@ -560,6 +637,10 @@ export function getMotionReferenceEndpoint(
   model: ImageToVideoModel
 ): MotionReferenceEndpointConfig | null {
   return MOTION_REFERENCE_ENDPOINTS[model] ?? null;
+}
+
+export function attachesInlineReferences(model: ImageToVideoModel): boolean {
+  return model in MOTION_INLINE_REFERENCE_MODELS;
 }
 
 /**

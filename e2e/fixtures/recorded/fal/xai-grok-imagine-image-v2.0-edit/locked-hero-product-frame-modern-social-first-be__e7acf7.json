@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Locked hero product frame, modern social-first beauty photography, shot slightly above eye level with direct on-camera flash: SCARLETT VEGA (Image 1), in a fitted black cotton turtleneck with sleeves pushed to the elbows, small gold hoop earrings and a thin silver ring on her right index finger, leans into frame from camera right, both hands cradling the upright lipstick tube from (CORAL_LIPSTICK (Image 2)) at the center of a bone-white kitchen counter, her fingers mid-twist on the ribbed base as the bullet rises, wrist rotating so she tilts the tube toward the lens like a piece of evidence, shoulders squared, breath held, deadpan raised-eyebrow look flicking straight into the camera. Around her the walk-up apartment kitchen counter is spare and curated: a folded paper napkin, two subway tokens, a cracked flip phone face-down, the edge of an oat-beige carton pushed just out of focus, crumbs catching light on the matte counter surface. Behind her, warm cream tile and a sliver of late-afternoon window blowing out to soft white, the flash flattening the foreground into crisp punchy contrast while the background falls a stop darker with a faint hard shadow ringing the tube's base. Glare skates across the polished gold seam and the wet-looking gloss of the flat-cut bullet, tiny specular highlight blooming on the pigment. High-key airy grade, crisp whites, warm natural skin, lifted shadows, single saturated coral accent against neutral bone and oat-beige. Shot on a 50mm prime at f/4, slight top-down tilt, shallow falloff at the frame edges, fine editorial digital grain, 16:9.\n\nReference images define identity — keep every referenced character, object, and location consistent with its reference image; never render a reference image itself as a separate panel or subject.",
+        "model": "xai/grok-imagine-image/v2.0/edit"
+      },
+      "response": {
+        "json": {
+          "images": [
+            {
+              "url": "https://v3b.fal.media/files/b/0aa74b15/bGgsXT11AxgktcvSejrmO_rHNNBDv8.jpg",
+              "content_type": "image/jpeg",
+              "file_name": "bGgsXT11AxgktcvSejrmO_rHNNBDv8.jpg",
+              "file_size": null,
+              "width": 2816,
+              "height": 1584
+            }
+          ],
+          "revised_prompt": null
+        },
+        "status": 200,
+        "billableUnits": 9
+      }
+    }
+  ]
+}

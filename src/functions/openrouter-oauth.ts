@@ -33,7 +33,7 @@ const initiateOAuthInputSchema = z.object({
  */
 export const initiateOpenRouterOAuthFn = createServerFn({ method: 'POST' })
   .middleware([teamAdminAccessMiddleware])
-  .inputValidator(zodValidator(initiateOAuthInputSchema))
+  .validator(zodValidator(initiateOAuthInputSchema))
   .handler(async ({ context }) => {
     const request = getRequest();
     const appUrl = getServerAppUrl(request);

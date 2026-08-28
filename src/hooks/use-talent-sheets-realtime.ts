@@ -2,18 +2,27 @@ import { getChannelHistoryFn } from '@/functions/realtime-history';
 import { useUser } from '@/hooks/use-user';
 import { useRealtime } from '@/lib/realtime/client';
 import { useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { talentKeys } from './use-talent';
+import {
+  activityFromProgress,
+  isSheetProgressStale,
+  parseSheetProgressActivity,
+  type SheetProgressActivity,
+} from '@/lib/talent/sheet-progress-copy';
 
 import { getLogger } from '@/lib/observability/logger';
 
 const logger = getLogger(['openstory', 'ui', 'use-talent-sheets-realtime']);
+
+type InFlight = { activity: SheetProgressActivity; since: number };
 
 type SheetProgressEvent = {
   event: string;
   data: {
     talentId: string;
     status: 'generating' | 'sheet_ready' | 'completed' | 'failed';
+    activity?: SheetProgressActivity;
     sheetId?: string;
     sheetImageUrl?: string;
     headshotImageUrl?: string;
@@ -21,68 +30,112 @@ type SheetProgressEvent = {
   };
 };
 
+function readInFlight(value: unknown): InFlight | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  if (!('activity' in value) || !('since' in value)) return undefined;
+  const activity = parseSheetProgressActivity(value.activity);
+  if (!activity || typeof value.since !== 'number') return undefined;
+  if (isSheetProgressStale(value.since)) return undefined;
+  return { activity, since: value.since };
+}
+
 /**
- * Hook for subscribing to real-time talent sheet generation events for multiple talent.
- * Tracks generating status for all provided talent IDs.
- * Replays channel history on mount for each talent to catch in-flight generations.
- *
- * @param talentIds - Array of talent IDs to subscribe to
- * @returns Map of talentId -> generating status
+ * Subscribe to talent-sheet generation for many ids (library grid).
+ * History is reconciled on every id set change so a `completed` event we
+ * missed (HMR, tab in background) cannot leave a tile spinning.
  */
 export function useTalentSheetsRealtime(talentIds: string[] = []) {
   const queryClient = useQueryClient();
   const { data: user } = useUser();
   const [generatingStatus, setGeneratingStatus] = useState<
-    Map<string, boolean>
+    Map<string, InFlight>
   >(new Map());
 
-  // Track which talent IDs we've already fetched history for
-  const checkedIds = useRef(new Set<string>());
-
-  // Build channels array: ['talent:id1', 'talent:id2', ...]
+  const idKey = talentIds.join(',');
   const channels = useMemo(
-    () => talentIds.map((id) => `talent:${id}`),
-    [talentIds]
+    () =>
+      idKey.length === 0 ? [] : idKey.split(',').map((id) => `talent:${id}`),
+    [idKey]
   );
 
-  // Replay channel history for newly added talent IDs
   useEffect(() => {
-    if (!user) return;
+    const ids = idKey.length === 0 ? [] : idKey.split(',');
+    if (!user || ids.length === 0) return;
+    let cancelled = false;
 
-    const newIds = talentIds.filter((id) => !checkedIds.current.has(id));
-    if (newIds.length === 0) return;
-
-    for (const id of newIds) {
-      checkedIds.current.add(id);
-
-      getChannelHistoryFn({ data: { channel: `talent:${id}` } })
+    for (const id of ids) {
+      void getChannelHistoryFn({ data: { channel: `talent:${id}` } })
         .then((events) => {
-          // Find the last status for this talent
-          let lastStatus: string | null = null;
+          if (cancelled) return;
+          let last: {
+            status: string;
+            activity?: SheetProgressActivity;
+            ts?: number;
+          } | null = null;
           for (const evt of events) {
             if (evt.event !== 'talent.sheet:progress') continue;
             try {
               const parsed = JSON.parse(evt.data);
               if (parsed.talentId !== id) continue;
-              lastStatus = parsed.status;
+              last = { ...parsed, ts: evt.ts };
             } catch {
               // skip
             }
           }
 
-          if (lastStatus === 'generating') {
-            setGeneratingStatus((prev) => {
+          const inFlight =
+            last &&
+            (last.status === 'generating' || last.status === 'sheet_ready') &&
+            !isSheetProgressStale(last.ts)
+              ? {
+                  activity: activityFromProgress(last),
+                  since: last.ts ?? Date.now(),
+                }
+              : undefined;
+
+          setGeneratingStatus((prev) => {
+            const current = prev.get(id);
+            if (!inFlight) {
+              if (!current) return prev;
               const next = new Map(prev);
-              next.set(id, true);
+              next.delete(id);
               return next;
-            });
-          }
+            }
+            const next = new Map(prev);
+            next.set(id, inFlight);
+            return next;
+          });
         })
         .catch((err: Error) => {
           logger.error(`Failed to fetch history for talent:${id}:`, { err });
         });
     }
-  }, [talentIds, user]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [idKey, user]);
+
+  useEffect(() => {
+    const tick = () => {
+      setGeneratingStatus((prev) => {
+        let changed = false;
+        const next = new Map<string, InFlight>();
+        for (const [id, value] of prev) {
+          const entry = readInFlight(value);
+          if (!entry) {
+            changed = true;
+            continue;
+          }
+          next.set(id, entry);
+        }
+        return changed ? next : prev;
+      });
+    };
+    tick();
+    const intervalId = window.setInterval(tick, 30_000);
+    return () => window.clearInterval(intervalId);
+  }, []);
 
   const handleEvent = useCallback(
     (event: SheetProgressEvent) => {
@@ -93,18 +146,20 @@ export function useTalentSheetsRealtime(talentIds: string[] = []) {
 
       switch (data.status) {
         case 'generating':
+        case 'sheet_ready':
           setGeneratingStatus((prev) => {
             const next = new Map(prev);
-            next.set(data.talentId, true);
+            next.set(data.talentId, {
+              activity: activityFromProgress(data),
+              since: Date.now(),
+            });
             return next;
           });
-          break;
-
-        case 'sheet_ready':
-          // Sheet image is ready but headshot still generating - refresh list to show sheet
-          void queryClient.invalidateQueries({
-            queryKey: talentKeys.lists(),
-          });
+          if (data.status === 'sheet_ready') {
+            void queryClient.invalidateQueries({
+              queryKey: talentKeys.lists(),
+            });
+          }
           break;
 
         case 'completed':
@@ -113,11 +168,9 @@ export function useTalentSheetsRealtime(talentIds: string[] = []) {
             next.delete(data.talentId);
             return next;
           });
-          // Invalidate queries to refresh sheets and headshot
           void queryClient.invalidateQueries({
             queryKey: talentKeys.detail(data.talentId),
           });
-          // Also invalidate list to show new headshot in talent grid
           void queryClient.invalidateQueries({
             queryKey: talentKeys.lists(),
           });
@@ -142,14 +195,20 @@ export function useTalentSheetsRealtime(talentIds: string[] = []) {
     enabled: talentIds.length > 0,
   });
 
-  // Helper to check if a specific talent is generating
   const isGenerating = useCallback(
-    (talentId: string) => generatingStatus.get(talentId) ?? false,
+    (talentId: string) => Boolean(readInFlight(generatingStatus.get(talentId))),
+    [generatingStatus]
+  );
+
+  const generatingActivity = useCallback(
+    (talentId: string) =>
+      readInFlight(generatingStatus.get(talentId))?.activity,
     [generatingStatus]
   );
 
   return {
     isGenerating,
+    generatingActivity,
     connectionStatus: status,
   };
 }

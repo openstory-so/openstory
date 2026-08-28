@@ -11,39 +11,40 @@ OpenStory integrates with a wide range of AI models across four categories: scri
 
 These LLM models analyze your script, extract scenes, characters, and locations, and generate prompts. You can select multiple models to generate parallel sequences for comparison.
 
-| Model           | Provider  | Context Window | License                  |
-| --------------- | --------- | -------------- | ------------------------ |
-| Grok 4.5        | xAI       | 500K tokens    | Proprietary              |
-| Claude Fable 5  | Anthropic | 1M tokens      | Proprietary              |
-| Claude Sonnet 5 | Anthropic | 1M tokens      | Proprietary              |
-| Grok 4.20       | xAI       | 2M tokens      | Proprietary              |
-| Claude Opus 4.8 | Anthropic | 1M tokens      | Proprietary              |
-| Mistral Small 4 | Mistral   | 262K tokens    | Open Source (Apache 2.0) |
-| DeepSeek V3.2   | DeepSeek  | 164K tokens    | Open Source (MIT)        |
-| GLM-5.2         | Z.ai      | 1M tokens      | Open Source (MIT)        |
-| Gemini 3.1 Pro  | Google    | 1M tokens      | Proprietary              |
-| GPT-5.5         | OpenAI    | 1M tokens      | Proprietary              |
-| Gemini 3 Flash  | Google    | 1M tokens      | Proprietary              |
-| GPT-5.4 Mini    | OpenAI    | 400K tokens    | Proprietary              |
-| Seed 2.0 Mini   | ByteDance | 262K tokens    | Proprietary              |
-| GPT-5.4 Nano    | OpenAI    | 400K tokens    | Proprietary              |
+| Model              | Vendor    | Context Window | License                   |
+| ------------------ | --------- | -------------- | ------------------------- |
+| **Claude Opus 5**  | Anthropic | 1M tokens      | Proprietary (default)     |
+| Claude Opus 5 Fast | Anthropic | 1M tokens      | Proprietary (scene-split) |
+| Grok 4.5           | SpaceXAI  | 500K tokens    | Proprietary               |
+| Claude Fable 5     | Anthropic | 1M tokens      | Proprietary               |
+| Claude Sonnet 5    | Anthropic | 1M tokens      | Proprietary               |
+| Mistral Small 4    | Mistral   | 262K tokens    | Open Source (Apache 2.0)  |
+| DeepSeek V3.2      | DeepSeek  | 164K tokens    | Open Source (MIT)         |
+| GLM-5.2            | Z.ai      | 1M tokens      | Open Source (MIT)         |
+| Gemini 3.1 Pro     | Google    | 1M tokens      | Proprietary               |
+| GPT-5.5            | OpenAI    | 1M tokens      | Proprietary               |
+| Gemini 3 Flash     | Google    | 1M tokens      | Proprietary               |
+| GPT-5.4 Mini       | OpenAI    | 400K tokens    | Proprietary               |
+| Seed 2.0 Mini      | ByteDance | 262K tokens    | Proprietary               |
+| GPT-5.4 Nano       | OpenAI    | 400K tokens    | Proprietary               |
 
 ## Image Generation Models
 
 These models create the visual images for each scene. You can select multiple models to generate variant images for comparison.
 
-| Model                      | Provider          | License                  | Notes                                     |
-| -------------------------- | ----------------- | ------------------------ | ----------------------------------------- |
-| **Nano Banana 2**          | Google            | Proprietary              | Fast generation and editing (default)     |
-| Nano Banana Pro            | Google            | Proprietary              | Enhanced realism and typography           |
-| Grok Imagine Image Quality | Grok              | Proprietary              | High-quality aesthetic with low censoring |
-| FLUX.2 Max                 | Black Forest Labs | Proprietary              | Exceptional realism                       |
-| Phota                      | Phota             | Proprietary              | Character consistency via profiles        |
-| Hunyuan Image v3           | Tencent           | Open Source              | Strong composition                        |
-| FLUX.2 Dev                 | Black Forest Labs | Open Source              | 32B open weights with native editing      |
-| Qwen Image 2 Pro           | Alibaba           | Open Source (Apache 2.0) | Native 2K, text rendering                 |
-| HiDream I1                 | HiDream           | Open Source (MIT)        | 17B parameters                            |
-| Seedream 5                 | ByteDance         | Proprietary              | Unified generation and editing            |
+| Model                      | Vendor            | License                  | Notes                                                |
+| -------------------------- | ----------------- | ------------------------ | ---------------------------------------------------- |
+| **Nano Banana 2**          | Google            | Proprietary              | Fast generation and editing (default)                |
+| Nano Banana Pro            | Google            | Proprietary              | Enhanced realism and typography                      |
+| Grok Imagine Image 2.0     | SpaceXAI          | Proprietary              | Newest Imagine image model, 1K/2K, edit up to 3 refs |
+| Grok Imagine Image Quality | SpaceXAI          | Proprietary              | Quality Mode — higher fidelity, stronger text        |
+| FLUX.2 Max                 | Black Forest Labs | Proprietary              | Exceptional realism                                  |
+| Phota                      | Phota             | Proprietary              | Character consistency via profiles                   |
+| Hunyuan Image v3           | Tencent           | Open Source              | Strong composition                                   |
+| FLUX.2 Dev                 | Black Forest Labs | Open Source              | 32B open weights with native editing                 |
+| Qwen Image 2 Pro           | Alibaba           | Open Source (Apache 2.0) | Native 2K, text rendering                            |
+| HiDream I1                 | HiDream           | Open Source (MIT)        | 17B parameters                                       |
+| Seedream 5                 | ByteDance         | Proprietary              | Unified generation and editing                       |
 
 ### Edit Endpoints
 
@@ -53,12 +54,12 @@ Most image models support **reference image editing** via dedicated edit endpoin
 
 These models animate still images into video clips.
 
-| Model              | Provider   | Est. Time | License     | Notes                 |
+| Model              | Vendor     | Est. Time | License     | Notes                 |
 | ------------------ | ---------- | --------- | ----------- | --------------------- |
 | **LTX 2.3 Pro**    | Lightricks | ~15s      | Open Source | Best quality ranking  |
 | Veo 3.1            | Google     | ~25s      | Proprietary | 20K max prompt length |
 | Kling v3 Pro       | Kling      | ~20s      | Proprietary |                       |
-| Grok Imagine Video | Grok       | ~20s      | Proprietary |                       |
+| Grok Imagine Video | SpaceXAI   | ~20s      | Proprietary |                       |
 | MiniMax Hailuo 02  | MiniMax    | ~15s      | Proprietary |                       |
 | **Seedance 2.0**   | ByteDance  | ~15s      | Proprietary | Default; native audio |
 
@@ -72,7 +73,7 @@ Some motion models can generate audio alongside video. OpenStory checks each mod
 
 ## Music & Audio Models
 
-| Model                | Provider   | Max Duration  | Type  | License     |
+| Model                | Vendor     | Max Duration  | Type  | License     |
 | -------------------- | ---------- | ------------- | ----- | ----------- |
 | **ElevenLabs Music** | ElevenLabs | 600s (10 min) | Music | Proprietary |
 | MiniMax Music v2     | MiniMax    | 300s (5 min)  | Music | Proprietary |

@@ -318,11 +318,12 @@ const SceneGroupComponent: React.FC<SceneGroupProps> = ({
             type="button"
             className="min-w-0 flex-1 space-y-1.5 text-left"
             onClick={handleSceneClick}
+            aria-label={sceneLabel}
           >
             <div className="flex items-center gap-2">
               <span className="truncate text-sm font-medium">{sceneLabel}</span>
               <span className="shrink-0 text-xs text-muted-foreground">
-                {shots.length} shot{shots.length === 1 ? '' : 's'}
+                {shots.length} {shots.length === 1 ? 'shot' : 'shots'}
               </span>
             </div>
           </button>
@@ -391,7 +392,6 @@ const SceneGroupComponent: React.FC<SceneGroupProps> = ({
                   scene={scene}
                   aspectRatio={aspectRatio}
                   isActive={shot.id === selectedShotId}
-                  onSelect={() => onSelectShot(shot.id)}
                   variant="horizontal"
                   isRegeneratingImage={regeneratingImages.has(shot.id)}
                   isRegeneratingMotion={regeneratingMotion.has(shot.id)}
@@ -472,10 +472,10 @@ const SceneGroupComponent: React.FC<SceneGroupProps> = ({
           <AlertDialogHeader>
             <AlertDialogTitle>Remove {sceneLabel}?</AlertDialogTitle>
             <AlertDialogDescription>
-              The scene and its {shots.length} shot
-              {shots.length === 1 ? '' : 's'} are hidden from the sequence,
-              playback and export. You can undo from the toast right after
-              removing.
+              The scene and its {shots.length}{' '}
+              {shots.length === 1 ? 'shot' : 'shots'} are hidden from the
+              sequence, playback and export. You can undo from the toast right
+              after removing.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

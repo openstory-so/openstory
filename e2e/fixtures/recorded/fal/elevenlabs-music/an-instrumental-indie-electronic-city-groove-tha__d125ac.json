@@ -1,0 +1,23 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "An instrumental indie-electronic city groove that starts crisp and playful with plucked synths and light percussion, then builds into a driving, bass-forward night pulse with gritty urban energy. It peaks triumphant under neon and spotlight before easing into a sparse, warm, satisfied outro.",
+        "model": "fal-ai/elevenlabs/music"
+      },
+      "response": {
+        "json": {
+          "audio": {
+            "url": "https://v3b.fal.media/files/b/0aa74e84/RBxnTBxZJth1FKiiuAgBD_music_generated.mp3",
+            "content_type": "audio/mpeg",
+            "file_name": "music_generated.mp3",
+            "file_size": 1057063
+          }
+        },
+        "status": 200,
+        "billableUnits": 2
+      }
+    }
+  ]
+}

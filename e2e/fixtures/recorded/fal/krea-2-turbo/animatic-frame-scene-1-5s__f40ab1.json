@@ -1,0 +1,33 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Animatic frame. Scene 1 — 5s\nINT. WALK-UP APARTMENT, KITCHEN COUNTER — LATE AFTERNOON\nOverhead flat-lay, locked, hard window light throwing clean shadows on a bone-white counter: a cracked flip phone, a folded set list on a napkin, two subway tokens, half a bagel, and a squat coral lipstick still sealed in its box. Scarlett's hand enters frame, thumbs the box open, and taps the tube out onto the counter, where it. Loose freehand black line drawing on plain flat white, quick gesture strokes, nothing ruled or geometric. Figures as a few flowing outline strokes with blank faces, the setting hinted with a handful of loose lines. No shading, no texture, no colour, no rendering, no realism, no detail. No text, no titles, no subtitles, no watermarks, no letters, no words, no signs, no UI elements.",
+        "model": "fal-ai/krea-2/turbo"
+      },
+      "response": {
+        "json": {
+          "images": [
+            {
+              "url": "https://v3b.fal.media/files/b/0aa74af2/jgg-Pqt6YSwDBfi-iCMQZ_cmiYqUDe.png",
+              "content_type": "image/png",
+              "file_name": "jgg-Pqt6YSwDBfi-iCMQZ_cmiYqUDe.png",
+              "file_size": null,
+              "width": 1024,
+              "height": 576
+            }
+          ],
+          "timings": {
+            "inference": 0.621101611002814
+          },
+          "seed": 139984577,
+          "has_nsfw_concepts": [false],
+          "prompt": "Animatic frame. Scene 1 — 5s\nINT. WALK-UP APARTMENT, KITCHEN COUNTER — LATE AFTERNOON\nOverhead flat-lay, locked, hard window light throwing clean shadows on a bone-white counter: a cracked flip phone, a folded set list on a napkin, two subway tokens, half a bagel, and a squat coral lipstick still sealed in its box. Scarlett's hand enters frame, thumbs the box open, and taps the tube out onto the counter, where it. Loose freehand black line drawing on plain flat white, quick gesture strokes, nothing ruled or geometric. Figures as a few flowing outline strokes with blank faces, the setting hinted with a handful of loose lines. No shading, no texture, no colour, no rendering, no realism, no detail. No text, no titles, no subtitles, no watermarks, no letters, no words, no signs, no UI elements."
+        },
+        "status": 200,
+        "billableUnits": 1
+      }
+    }
+  ]
+}

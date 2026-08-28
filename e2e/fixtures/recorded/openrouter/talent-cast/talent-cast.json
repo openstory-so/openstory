@@ -2,24 +2,20 @@
   "fixtures": [
     {
       "match": {
-        "userMessage": "Cast the following talent into character roles. The user specifically selected these 1 talent members.\n\nCHARACTERS (1 available):\n- Character ID: char_scarlett\n  Name: Scarlett\n  Age: 19\n  Gender: female\n  Ethnicity: Caucasian\n  Physical: 19-year-old young woman of average-to-tall height with a slender, sun-kissed athletic build. Long loose wavy sun-kissed blonde hair that moves freely in the wind with natural lighter highlights. Bright clear blue eyes, soft youthful facial features with a scattering of light freckles across the bridge of her nose and cheeks, warm golden-tan skin tone from beach exposure, full lips that take the coral shade vividly.\n\nTALENT TO CAST (1 selected by user):\n- Talent ID: 01KRMKES6TWAEC44S2S8PXZBM8\n  Name: Sienna Blake\n  Age: unspecified (infer from name if recognizable)\n  Gender: unspecified (infer from name if recognizable)\n  Ethnicity: unspecified\n  Physical/Description: Golden blonde, beach-tanned skin, effortless Bondi energy. Wide smile, freckles across the nose, the kind of face that sells skincare without trying. Perfect for product ads, lifestyle campaigns, and rom-com leads.\n\nREQUIREMENTS:\n- Match ALL 1 talent to characters (1 talent, 1 characters available)\n- Each talent gets exactly one character\n- Each character can only have one talent\n\n\nRespond with exactly 1 matches.",
-        "model": "x-ai/grok-4.5",
+        "userMessage": "Cast the following talent into character roles. The user specifically selected these 1 talent members.\n\nCHARACTERS (1 available):\n- Character ID: char_scarlett_vega\n  Name: SCARLETT VEGA\n  Age: 27\n  Gender: Female\n  Ethnicity: Latina\n  Physical: 5'6\", lean and wiry with a performer's restless energy. Shoulder-length dark brown hair with a loose natural wave, parted slightly off-center and often windblown. Warm olive-tan skin, dark brown almond-shaped eyes, thick unshaped brows, high cheekbones and a wide expressive mouth. Minimal makeup apart from a bold coral lip; a faint sheen of sweat at the temples under stage light.\n  Clothing: Fitted black cotton turtleneck with sleeves pushed up to the elbows, dark slim jeans, scuffed black ankle boots, and a slouchy dark denim/canvas jacket. Heavy natural-canvas tote bag slung over one shoulder.\n  Distinguishing features: Signature glossy coral lipstick that never smudges; small gold hoop earrings; a thin silver ring on the right index finger; a deadpan raised-eyebrow expression and habitual direct look into the lens.\n\nTALENT TO CAST (1 selected by user):\n- Talent ID: 01KRMKES6TWAEC44S2S8PXZBM8\n  Name: Sienna Blake\n  Age: unspecified (infer from name if recognizable)\n  Gender: unspecified (infer from name if recognizable)\n  Ethnicity: unspecified\n  Physical/Description: Golden blonde, beach-tanned skin, effortless Bondi energy. Wide smile, freckles across the nose, the kind of face that sells skincare without trying. Perfect for product ads, lifestyle campaigns, and rom-com leads.\n  Clothing: unspecified\n  Distinguishing features: unspecified\n\nREQUIREMENTS:\n- Match ALL 1 talent to characters (1 talent, 1 characters available)\n- Each talent gets exactly one character\n- Each character can only have one talent\n\n\nRespond with exactly 1 matches.",
+        "model": "anthropic/claude-opus-5",
         "turnIndex": 0,
         "hasToolResult": false
       },
       "response": {
-        "content": "{\"matches\":[{\"characterId\":\"char_scarlett\",\"talentId\":\"01KRMKES6TWAEC44S2S8PXZBM8\",\"confidence\":0.95,\"reason\":\"Sienna matches Scarlett closely in female appearance: golden/sun-kissed blonde hair, beach-tanned freckled skin, youthful facial features, and athletic lifestyle energy ideal for the 19-year-old lead role.\"}]}"
+        "content": "{\"matches\":[{\"characterId\":\"char_scarlett_vega\",\"talentId\":\"01KRMKES6TWAEC44S2S8PXZBM8\",\"confidence\":0.55,\"reason\":\"Sienna Blake reads as a young adult female performer, aligning with Scarlett's age range, gender, and lively expressive screen presence. Physical differences (golden blonde, beach-tanned vs. dark-haired Latina) can be bridged with hair color, styling, and makeup, and her rom-com lead energy suits a charismatic performer role.\"}]}"
       },
       "recordedTimings": {
-        "ttftMs": 815,
+        "ttftMs": 2379,
         "interChunkDelaysMs": [
-          314, 0, 0, 0, 0, 31, 0, 9, 282, 1, 10, 0, 0, 0, 0, 0, 0, 0, 1, 0, 5,
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-          0, 0, 0, 20, 0, 0, 40, 117, 0, 0, 38, 0, 34, 47, 0, 0, 0, 0, 0, 39, 0,
-          0, 1, 0, 38, 0, 0, 0, 42, 41, 0, 0, 40, 0, 0, 42, 44, 0, 120, 0, 0, 1,
-          0, 0, 1, 0, 43, 0, 10, 21, 0, 0
+          2, 0, 0, 0, 0, 463, 271, 418, 361, 342, 286, 424, 0, 0, 0
         ],
-        "totalDurationMs": 2255
+        "totalDurationMs": 4946
       },
       "metadata": {
         "systemHash": "b98a3bc5"

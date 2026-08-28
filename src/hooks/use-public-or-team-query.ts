@@ -10,7 +10,7 @@
  */
 
 import { useQuery, type QueryKey } from '@tanstack/react-query';
-import { useSession } from '@/lib/auth/client';
+import { useAuthSession } from '@/lib/auth/session-query';
 
 export function usePublicOrTeamQuery<T>(options: {
   teamKey: QueryKey;
@@ -20,7 +20,7 @@ export function usePublicOrTeamQuery<T>(options: {
   enabled?: boolean;
   staleTime?: number;
 }) {
-  const { data: session, isPending, error: sessionError } = useSession();
+  const { data: session, isPending, error: sessionError } = useAuthSession();
   const isAuthenticated = !!session;
 
   return useQuery<T>({

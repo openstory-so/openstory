@@ -23,6 +23,7 @@ import {
   FAL_BILLING_RECONCILE_CRON,
   reconcileFalBilling,
 } from '@/lib/cron/reconcile-fal-billing';
+import { ensureLocalModelPricingSeeded } from '@/lib/db/seed-model-pricing';
 import { ensureSystemTemplatesSeeded } from '@/lib/db/seed-system-templates';
 
 import { getLogger, toErrorPayload } from '@/lib/observability/logger';
@@ -40,13 +41,26 @@ const logger = getLogger(['openstory', 'server']);
 const SEED_RETRY_COOLDOWN_MS = 60_000;
 let seedPromise: Promise<void> | null = null;
 let seedRetryAt = 0;
-function ensureSeededOnce(db: D1Database): Promise<void> {
+function ensureSeededOnce(db: D1Database, e2eTest?: string): Promise<void> {
   if (seedPromise === null && Date.now() < seedRetryAt) {
     return Promise.resolve();
   }
-  seedPromise ??= ensureSystemTemplatesSeeded(drizzle(db), (message) =>
-    logger.info(`[seed] ${message}`)
-  ).catch((error) => {
+  seedPromise ??= (async () => {
+    const drizzleDb = drizzle(db);
+    await ensureSystemTemplatesSeeded(drizzleDb, (message) =>
+      logger.info(`[seed] ${message}`)
+    );
+    // Production pricing stays cron-only. Playwright never fires
+    // `scheduled()`, and workflow isolates never hit this fetch path, so
+    // e2e also seeds from `scripts/seed.ts --test` in start-webserver. This
+    // insert-if-missing pass is the safety net when that CLI seed and the
+    // worker D1 diverge.
+    if (e2eTest === 'true') {
+      await ensureLocalModelPricingSeeded(drizzleDb, (message) =>
+        logger.info(`[seed] ${message}`)
+      );
+    }
+  })().catch((error) => {
     seedPromise = null;
     seedRetryAt = Date.now() + SEED_RETRY_COOLDOWN_MS;
     // toErrorPayload preserves .cause — the raw D1 reason that a bare
@@ -95,6 +109,7 @@ export { StoryboardWorkflow } from '@/lib/workflows/storyboard-workflow';
 export { AnalyzeScriptWorkflow } from '@/lib/workflows/analyze-script-workflow';
 export { SequenceExportWorkflow } from '@/lib/workflows/sequence-export-workflow';
 export { AssetGenerationWorkflow } from '@/lib/workflows/asset-generation-workflow';
+export { StudioGenerationWorkflow } from '@/lib/workflows/studio-generation-workflow';
 
 // Realtime broker Durable Object. Re-exported so the binding's `class_name`
 // in wrangler.jsonc resolves in the Worker bundle (#802).
@@ -112,6 +127,7 @@ interface WorkerEnv {
   R2_PUBLIC_ASSETS_BUCKET: R2Bucket;
   R2_STORAGE_BUCKET: R2Bucket;
   REALTIME: DurableObjectNamespace;
+  E2E_TEST?: 'true';
 }
 
 const exportedHandler: ExportedHandler<WorkerEnv> = {
@@ -121,7 +137,7 @@ const exportedHandler: ExportedHandler<WorkerEnv> = {
     // Media serving (/r2/<key>) never needs templates — don't put the
     // seed check's D1 round trip in front of it on cold starts.
     if (!pathname.startsWith('/r2/')) {
-      await ensureSeededOnce(env.DB);
+      await ensureSeededOnce(env.DB, env.E2E_TEST);
     }
 
     // Markdown content negotiation for agents (#819): serve a real markdown

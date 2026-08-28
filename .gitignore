@@ -137,3 +137,6 @@ json/
 # `wrangler d1 export` dumps — ~100MB of production data, rehearsal-only
 /prod.sql
 /*.d1.sql
+
+# `bun auth:generate` output — port into src/lib/db/schema/auth.ts, never commit
+auth-schema.ts

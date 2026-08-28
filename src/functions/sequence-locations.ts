@@ -1,9 +1,10 @@
 import { mediaUrlSchema } from '@/lib/schemas/media-url.schemas';
 import { safeTextToImageModel } from '@/lib/ai/models';
 import { generateId } from '@/lib/db/id';
-import { type SequenceLocation, StyleConfigSchema } from '@/lib/db/schema';
+import { type SequenceLocation } from '@/lib/db/schema';
 import type { LocationBibleUpdate } from '@/lib/db/scoped/sequence-locations';
 import { ulidSchema } from '@/lib/schemas/id.schemas';
+import { resolveSequenceStyleConfig } from '@/lib/style/style-config';
 import { getGenerationChannel } from '@/lib/realtime';
 import { triggerWorkflow } from '@/lib/workflow/client';
 import { buildWorkflowLabel } from '@/lib/workflow/labels';
@@ -216,7 +217,7 @@ const getShotIdsForLocationInputSchema = z.object({
 
 export const getShotIdsForLocationFn = createServerFn({ method: 'GET' })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(zodValidator(getShotIdsForLocationInputSchema))
+  .validator(zodValidator(getShotIdsForLocationInputSchema))
   .handler(async ({ context, data }) => {
     const shotIds =
       await context.scopedDb.sequenceLocations.getShotIdsForLocation(
@@ -239,7 +240,7 @@ const recastLocationInputSchema = z.object({
  */
 export const recastLocationFn = createServerFn({ method: 'POST' })
   .middleware([authWithTeamMiddleware])
-  .inputValidator(zodValidator(recastLocationInputSchema))
+  .validator(zodValidator(recastLocationInputSchema))
   .handler(async ({ context, data }) => {
     const location = await context.scopedDb.sequenceLocations.getById(
       data.locationId
@@ -252,12 +253,17 @@ export const recastLocationFn = createServerFn({ method: 'POST' })
     const sequence = await context.scopedDb.sequences.getForUser({
       sequenceId: location.sequenceId,
     });
-    const style = sequence.styleId
-      ? await context.scopedDb.styles.getById(sequence.styleId)
-      : null;
-    const styleConfig = style
-      ? StyleConfigSchema.parse(style.config)
-      : undefined;
+    const style =
+      sequence.styleConfig == null && sequence.styleId
+        ? await context.scopedDb.styles.getById(sequence.styleId)
+        : null;
+    const styleConfig =
+      sequence.styleConfig != null || style
+        ? resolveSequenceStyleConfig({
+            snapshot: sequence.styleConfig,
+            live: style?.config,
+          })
+        : undefined;
 
     // Bind the sequence location to the library location it was recast from.
     // Without this the downstream divergence check resolves the OLD (usually

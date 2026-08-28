@@ -97,6 +97,7 @@ export class MotionPromptBatchWorkflow extends OpenStoryWorkflowEntrypoint<Motio
         const sceneAfter =
           sceneIndex < scenes.length - 1 ? scenes[sceneIndex + 1] : undefined;
         const childPayload: MotionPromptWorkflowInput = {
+          reservationId: input.reservationId,
           scene,
           sceneBefore,
           sceneAfter,
@@ -149,11 +150,29 @@ export class MotionPromptBatchWorkflow extends OpenStoryWorkflowEntrypoint<Motio
     }
 
     if (failures.length > 0) {
-      // Use a NonRetryableError here so CF doesn't retry the entire fan-out
-      // when a child has already exhausted its own retries. The base class
-      // will route this through onFailure + notifyParentOfFailure.
+      logger.warn(
+        `[MotionPromptBatchWorkflow:cf] Motion prompt generation failed for ${failures.length}/${scenes.length} scenes; continuing with ${results.length}: ${failures.join('; ')}`
+      );
+    }
+
+    // Only a batch where NOTHING succeeded is fatal.
+    //
+    // Failing the whole batch on any single failure discarded a sequence's
+    // entire render for one unanchorable scene — 17 of 18 shots rendered and
+    // paid for, thrown away because scene 17's image tripped a content checker
+    // (#1143). A shot without a motion prompt is simply a shot that can't be
+    // animated yet; the user can regenerate it.
+    //
+    // It also stranded a sibling: the caller runs this and the music prompt
+    // under one `Promise.all`, so throwing here rejected that immediately and
+    // left the still-running music child to finish into a parent already in a
+    // finite state.
+    if (results.length === 0 && scenes.length > 0) {
+      // NonRetryableError so CF doesn't retry the entire fan-out when every
+      // child has already exhausted its own retries. The base class routes
+      // this through onFailure + notifyParentOfFailure.
       throw new NonRetryableError(
-        `[MotionPromptBatchWorkflow:cf] Motion prompt generation failed for ${failures.length}/${scenes.length} scenes: ${failures.join('; ')}`,
+        `[MotionPromptBatchWorkflow:cf] Motion prompt generation failed for all ${scenes.length} scenes: ${failures.join('; ')}`,
         'MotionPromptFanOutError'
       );
     }

@@ -4,6 +4,7 @@ import {
   matchCharacterToShotTags,
   matchCharactersToScene,
   matchElementsToScene,
+  matchElementsToShotImage,
 } from './scene-matching';
 
 const elements: SequenceElementMinimal[] = [
@@ -198,5 +199,34 @@ describe('matchElementsToScene', () => {
       'displaying the BIG_CORP banner on the wall'
     );
     expect(result.map((e) => e.token)).toEqual(['BIG_CORP']);
+  });
+});
+
+describe('matchElementsToShotImage', () => {
+  it('matches the token in the visual prompt even when tags/extract do not', () => {
+    const result = matchElementsToShotImage(elements, {
+      visualPrompt: 'displaying the UI from (LOGO)',
+      elementTags: [],
+      sceneExtract: 'She talks about the product.',
+    });
+    expect(result.map((e) => e.token)).toEqual(['LOGO']);
+  });
+
+  it('ignores scene tags and extract when a visual prompt is present', () => {
+    const result = matchElementsToShotImage(elements, {
+      visualPrompt: 'Close-up of her face. No product in frame.',
+      elementTags: ['LOGO', 'BOTTLE'],
+      sceneExtract: 'She picks up the BOTTLE and the LOGO glows.',
+    });
+    expect(result).toEqual([]);
+  });
+
+  it('falls back to tags + extract when the visual prompt is empty', () => {
+    const result = matchElementsToShotImage(elements, {
+      visualPrompt: '   ',
+      elementTags: ['LOGO'],
+      sceneExtract: 'The BOTTLE sits on the counter.',
+    });
+    expect(result.map((e) => e.token).sort()).toEqual(['BOTTLE', 'LOGO']);
   });
 });

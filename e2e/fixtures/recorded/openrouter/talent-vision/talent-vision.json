@@ -1,0 +1,39 @@
+{
+  "_preserveOnRecord": true,
+  "_comment": "Hand-injected for #1248. Filename-specific fixtures MUST stay above the generic fallback: aimock is first-match-wins and the generic userMessage is an unanchored substring of every filename-tagged request. Client classify appends `Uploaded filename: <name>` so photo vs sheet vs creature can diverge; server-side create still sends the untagged prompt and hits the fallback.",
+  "fixtures": [
+    {
+      "match": {
+        "userMessage": "Analyze this talent reference: is the image already a character sheet? Describe the person.\nUploaded filename: character-sheet.jpg",
+        "model": "anthropic/claude-sonnet-5",
+        "turnIndex": 0,
+        "hasToolResult": false
+      },
+      "response": {
+        "content": "{\"isCharacterSheet\":true,\"subjectKind\":\"animated\",\"suggestedName\":\"Bolt\",\"description\":\"A stylized four-panel character sheet of a chrome robot with a round visor face, compact torso, and articulated joints. Typical finish is brushed metal with teal accent lights at the temples. No studio lighting or panel layout should be treated as part of the character.\",\"age\":\"\",\"gender\":\"\",\"ethnicity\":\"\",\"physicalDescription\":\"Round visor face, compact torso, articulated joints, chrome finish\",\"standardClothing\":\"Brushed metal plating with teal temple lights\",\"distinguishingFeatures\":\"Teal visor glow\"}"
+      }
+    },
+    {
+      "match": {
+        "userMessage": "Analyze this talent reference: is the image already a character sheet? Describe the person.\nUploaded filename: creature.jpg",
+        "model": "anthropic/claude-sonnet-5",
+        "turnIndex": 0,
+        "hasToolResult": false
+      },
+      "response": {
+        "content": "{\"isCharacterSheet\":false,\"subjectKind\":\"other\",\"suggestedName\":\"Moss\",\"description\":\"A small moss-covered forest spirit with lantern-like eyes, stubby limbs, and a cloak of ferns. Not a human likeness and not a cartoon character sheet; a single creature portrait on a woodland backdrop.\",\"age\":\"\",\"gender\":\"\",\"ethnicity\":\"\",\"physicalDescription\":\"Lantern eyes, stubby limbs, moss body\",\"standardClothing\":\"Cloak of ferns\",\"distinguishingFeatures\":\"Lantern-like eyes\"}"
+      }
+    },
+    {
+      "match": {
+        "userMessage": "Analyze this talent reference: is the image already a character sheet? Describe the person.",
+        "model": "anthropic/claude-sonnet-5",
+        "turnIndex": 0,
+        "hasToolResult": false
+      },
+      "response": {
+        "content": "{\"isCharacterSheet\":false,\"subjectKind\":\"human\",\"suggestedName\":\"Casey\",\"description\":\"An adult with short dark hair, a round face, and a neutral expression, wearing a plain dark shirt. Build is average. No visible tattoos, scars, or distinctive jewelry. Suitable as a generic library-talent reference photo rather than a multi-view character sheet.\",\"age\":\"adult\",\"gender\":\"\",\"ethnicity\":\"\",\"physicalDescription\":\"Short dark hair, round face, average build\",\"standardClothing\":\"Plain dark shirt\",\"distinguishingFeatures\":\"\"}"
+      }
+    }
+  ]
+}

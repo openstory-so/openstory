@@ -256,16 +256,23 @@ describe('buildRegenerateShotSnapshot', () => {
   // #867 (image): a shot that references a product element must hash that
   // element's reference — verify previously hard-coded `[]`, so every
   // element-bearing shot reported permanently stale.
+  //
+  // #1192: matching is the *visual prompt* (what the still was generated
+  // from), not scene-level extract/tags. Scene membership over-marks every
+  // shot in a scene, including ones that only mention the product in
+  // dialogue / never showed it.
   const sceneMentioning = (token: string): Scene =>
     makeScene({
       originalScript: { extract: `The ${token} sits here.`, dialogue: [] },
     });
+  const promptMentioning = (token: string): string =>
+    `Close-up of Jack holding the ${token} at the docks`;
 
   it('includes a referenced element’s reference hash in the snapshot', async () => {
     const snapshot = await buildRegenerateShotSnapshot({
       shot: makeShot(),
       scene: sceneMentioning('BOTTLE'),
-      imagePrompt: DEFAULT_PROMPT,
+      imagePrompt: promptMentioning('BOTTLE'),
       characters: [makeCharacter()],
       locations: NO_LOCATIONS,
       elements: [makeElement()],
@@ -277,11 +284,41 @@ describe('buildRegenerateShotSnapshot', () => {
     ]);
   });
 
+  it('includes an element named only in the visual prompt', async () => {
+    const snapshot = await buildRegenerateShotSnapshot({
+      shot: makeShot(),
+      scene: makeScene(),
+      imagePrompt: promptMentioning('BOTTLE'),
+      characters: [makeCharacter()],
+      locations: NO_LOCATIONS,
+      elements: [makeElement()],
+      imageModel: 'nano_banana_2',
+      aspectRatio: '16:9',
+    });
+    expect(snapshot.elementReferenceHashes).toEqual([
+      'https://example.com/bottle.png',
+    ]);
+  });
+
+  it('ignores an element that is only in the scene extract, not the visual prompt', async () => {
+    const snapshot = await buildRegenerateShotSnapshot({
+      shot: makeShot(),
+      scene: sceneMentioning('BOTTLE'),
+      imagePrompt: DEFAULT_PROMPT,
+      characters: [makeCharacter()],
+      locations: NO_LOCATIONS,
+      elements: [makeElement()],
+      imageModel: 'nano_banana_2',
+      aspectRatio: '16:9',
+    });
+    expect(snapshot.elementReferenceHashes).toEqual([]);
+  });
+
   it('changes the snapshotInputHash when a referenced element image changes', async () => {
     const opts = {
       shot: makeShot(),
       scene: sceneMentioning('BOTTLE'),
-      imagePrompt: DEFAULT_PROMPT,
+      imagePrompt: promptMentioning('BOTTLE'),
       characters: [makeCharacter()],
       locations: NO_LOCATIONS,
       imageModel: 'nano_banana_2' as const,

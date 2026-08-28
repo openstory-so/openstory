@@ -17,6 +17,7 @@ import type { SequenceMusicVariant } from '@/lib/db/schema';
 import type { VariantType } from '@/lib/db/schema/shot-variants';
 import { type CreateSequenceInput } from '@/lib/schemas/sequence.schemas';
 import type { Sequence } from '@/types/database';
+import { useAuthSession } from '@/lib/auth/session-query';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { usePostHog } from '@posthog/react';
 import { toast } from 'sonner';
@@ -129,14 +130,17 @@ export function useSetSequenceModel() {
   });
 }
 
-// Hook for listing sequences
+// Hook for listing sequences. The app shell is anonymous-browsable but the
+// fn requires auth, so don't fire (and error-log) it without a session (#1333).
 export function useSequences(teamId?: string) {
+  const { data: session } = useAuthSession();
   return useQuery<Sequence[]>({
     queryKey: sequenceKeys.list(teamId),
     queryFn: async () => {
       return getSequencesFn();
     },
     staleTime: 5 * 60 * 1000, // 5 minutes
+    enabled: !!session,
   });
 }
 
@@ -151,6 +155,7 @@ export function useSequence(
     staleTime?: number;
   }
 ) {
+  const { data: session } = useAuthSession();
   return useQuery<Sequence>({
     queryKey: sequenceKeys.detail(id),
     queryFn: async () => {
@@ -159,7 +164,7 @@ export function useSequence(
     },
     throwOnError: true,
     staleTime: options?.staleTime ?? 1000,
-    enabled: !!id,
+    enabled: !!id && !!session,
     refetchInterval: options?.refetchInterval ?? false,
     refetchOnMount: 'always',
     refetchOnWindowFocus: true,
@@ -195,6 +200,7 @@ export function useCreateSequence() {
           autoGenerateMusic: input.autoGenerateMusic,
           musicModel: input.musicModel,
           audioModels: input.audioModels,
+          targetDurationSeconds: input.targetDurationSeconds,
           suggestedTalentIds: input.suggestedTalentIds,
           suggestedLocationIds: input.suggestedLocationIds,
           elementUploads: input.elementUploads,
@@ -215,6 +221,11 @@ export function useCreateSequence() {
             err: error,
           });
         });
+    },
+    // A silent failure here is what produced 9 identical resubmissions in
+    // #1259 — always tell the user why nothing happened.
+    onError: (error) => {
+      toast.error(error.message || 'Generation failed to start.');
     },
   });
 }

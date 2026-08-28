@@ -93,6 +93,7 @@ export async function buildRegenerateShotSnapshot(params: {
   // here made every product-/location-bearing shot report stale. See #867.
   const refs = resolveSceneShotImageReferences({
     scene,
+    visualPrompt: effectivePrompt,
     characters,
     locations,
     elements,

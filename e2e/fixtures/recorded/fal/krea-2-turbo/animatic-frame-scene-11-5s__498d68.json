@@ -1,0 +1,33 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Animatic frame. Scene 11 — 5s\nINT. CLUB STAGE, TIGHT — CONTINUOUS\nPush-in close on her face, punchy flash-lit contrast. Sweat at her temple, spotlight hot on her cheek, the coral still exactly where it started. She wipes her mouth with the flat of her hand, checks the hand, finds nothing, and smirks straight into the lens.\n\n. Loose freehand black line drawing on plain flat white, quick gesture strokes, nothing ruled or geometric. Figures as a few flowing outline strokes with blank faces, the setting hinted with a handful of loose lines. No shading, no texture, no colour, no rendering, no realism, no detail. No text, no titles, no subtitles, no watermarks, no letters, no words, no signs, no UI elements.",
+        "model": "fal-ai/krea-2/turbo"
+      },
+      "response": {
+        "json": {
+          "images": [
+            {
+              "url": "https://v3b.fal.media/files/b/0aa74af3/f5MisEaUunfpisWVCqJYw_I4SoT4Gl.png",
+              "content_type": "image/png",
+              "file_name": "f5MisEaUunfpisWVCqJYw_I4SoT4Gl.png",
+              "file_size": null,
+              "width": 1024,
+              "height": 576
+            }
+          ],
+          "timings": {
+            "inference": 0.6181477069912944
+          },
+          "seed": 481617505,
+          "has_nsfw_concepts": [false],
+          "prompt": "Animatic frame. Scene 11 — 5s\nINT. CLUB STAGE, TIGHT — CONTINUOUS\nPush-in close on her face, punchy flash-lit contrast. Sweat at her temple, spotlight hot on her cheek, the coral still exactly where it started. She wipes her mouth with the flat of her hand, checks the hand, finds nothing, and smirks straight into the lens.\n\n. Loose freehand black line drawing on plain flat white, quick gesture strokes, nothing ruled or geometric. Figures as a few flowing outline strokes with blank faces, the setting hinted with a handful of loose lines. No shading, no texture, no colour, no rendering, no realism, no detail. No text, no titles, no subtitles, no watermarks, no letters, no words, no signs, no UI elements."
+        },
+        "status": 200,
+        "billableUnits": 1
+      }
+    }
+  ]
+}

@@ -1,6 +1,10 @@
+import { useState } from 'react';
 import { useAuthGate } from '@/components/auth/auth-gate-provider';
 import { routeParams } from '@/components/layout/breadcrumbs';
 import { EditTalentDialog } from '@/components/talent-library/edit-talent-dialog';
+import { PortraitAttestationFields } from '@/components/talent-library/portrait-attestation-fields';
+import { TalentMediaUpload } from '@/components/talent-library/talent-media-upload';
+import { statementFor } from '@/lib/compliance/attestations';
 import { PageContainer } from '@/components/layout/page-container';
 import { getCurrentUserProfileFn } from '@/functions/user';
 import { PageDescription } from '@/components/typography/page-description';
@@ -16,12 +20,14 @@ import {
   useSetDefaultSheet,
   useToggleTalentFavorite,
 } from '@/hooks/use-talent';
+import { sheetProgressCopy } from '@/lib/talent/sheet-progress-copy';
 import { cn } from '@/lib/utils';
 import { useQuery } from '@tanstack/react-query';
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import {
   ArrowLeft,
   ImageIcon,
+  Loader2,
   Pencil,
   Sparkles,
   Star,
@@ -63,6 +69,9 @@ function TalentDetailPage() {
   const deleteTalent = useDeleteTalent();
   const generateSheet = useGenerateTalentSheet();
   const setDefaultSheet = useSetDefaultSheet();
+  const [dropFiles, setDropFiles] = useState<File[]>([]);
+  const [attested, setAttested] = useState(false);
+  const [authorizationBasis, setAuthorizationBasis] = useState('');
 
   const canManageTalent = Boolean(
     isAuthenticated &&
@@ -77,12 +86,22 @@ function TalentDetailPage() {
     phase: generatingPhase,
     error: sheetError,
     startGenerating,
+    stopGenerating,
   } = useTalentSheetRealtime(canManageTalent ? id : undefined);
 
   const handleGenerateSheet = () => {
     if (!talent) return;
-    startGenerating(); // Show generating state immediately
-    generateSheet.mutate({ talentId: talent.id });
+    startGenerating();
+    generateSheet.mutate(
+      { talentId: talent.id },
+      {
+        onError: (error) => {
+          stopGenerating(
+            error instanceof Error ? error.message : 'Sheet generation failed'
+          );
+        },
+      }
+    );
   };
 
   const handleDelete = () => {
@@ -132,6 +151,14 @@ function TalentDetailPage() {
     );
   }
 
+  const uploadStatement = statementFor({
+    subjectType: 'talent',
+    depictsRealPerson: talent.isHuman === true,
+  });
+  const canUpload =
+    attested &&
+    (!uploadStatement.requiresBasis || authorizationBasis.trim().length > 0);
+
   return (
     <div className="h-full overflow-auto">
       <PageContainer>
@@ -150,7 +177,11 @@ function TalentDetailPage() {
                 <EditTalentDialog
                   talent={talent}
                   trigger={
-                    <Button variant="outline" size="icon">
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      aria-label="Edit talent"
+                    >
                       <Pencil className="h-4 w-4" />
                     </Button>
                   }
@@ -201,8 +232,7 @@ function TalentDetailPage() {
         </PageHeader>
 
         {/* Media Section */}
-        {/* eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime guard */}
-        {talent.media && talent.media.length > 0 && (
+        {talent.media.length > 0 && (
           <section>
             <h2 className="text-lg font-semibold mb-4">
               Reference Media ({talent.media.length})
@@ -236,71 +266,56 @@ function TalentDetailPage() {
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold flex items-center gap-2">
               <ImageIcon className="h-5 w-5" />
-              {/* eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime guard */}
-              Talent Sheets ({talent.sheets?.length ?? 0})
+              Talent Sheets ({talent.sheets.length})
             </h2>
-            {/* eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime guard */}
-            {talent.media &&
-              talent.media.filter((m) => m.type === 'image').length > 0 &&
-              canManageTalent && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleGenerateSheet}
-                  disabled={isGeneratingSheet}
-                >
-                  <Sparkles className="h-4 w-4 mr-2" />
-                  {isGeneratingSheet
-                    ? generatingPhase === 'portrait'
-                      ? 'Generating portrait…'
-                      : 'Generating sheet…'
-                    : 'Generate Sheet'}
-                </Button>
-              )}
+            {canManageTalent && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleGenerateSheet}
+                disabled={isGeneratingSheet}
+              >
+                <Sparkles className="h-4 w-4 mr-2" />
+                {isGeneratingSheet
+                  ? sheetProgressCopy(generatingPhase)
+                  : 'Generate Sheet'}
+              </Button>
+            )}
           </div>
 
           {/* eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime guard */}
-          {!talent.sheets || talent.sheets.length === 0 ? (
+          {sheetError ? (
+            <p className="text-destructive text-sm mb-3" role="alert">
+              {sheetError}
+            </p>
+          ) : null}
+          {isGeneratingSheet && talent.sheets.length === 0 ? (
+            <Card className="p-8 text-center">
+              <Loader2 className="h-12 w-12 mx-auto mb-4 animate-spin text-muted-foreground" />
+              <p className="text-muted-foreground">
+                {sheetProgressCopy(generatingPhase, 'long')}
+              </p>
+            </Card>
+          ) : talent.sheets.length === 0 ? (
             <Card className="p-8 text-center">
               <User className="h-12 w-12 mx-auto mb-4 text-muted-foreground/30" />
-              {/* eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime guard */}
-              {talent.media &&
-              talent.media.filter((m) => m.type === 'image').length > 0 &&
-              canManageTalent ? (
-                <div>
-                  <p className="text-muted-foreground mb-3">
-                    {isGeneratingSheet
-                      ? generatingPhase === 'portrait'
-                        ? 'Generating portrait from talent sheet…'
-                        : 'Generating talent sheet…'
-                      : 'No talent sheets yet. Generate one from your reference images.'}
-                  </p>
-                  {sheetError && (
-                    <p className="text-destructive text-sm mb-3">
-                      {sheetError}
-                    </p>
-                  )}
-                  <Button
-                    onClick={handleGenerateSheet}
-                    disabled={isGeneratingSheet}
-                  >
-                    <Sparkles className="h-4 w-4 mr-2" />
-                    {isGeneratingSheet
-                      ? generatingPhase === 'portrait'
-                        ? 'Generating portrait…'
-                        : 'Generating sheet…'
-                      : 'Generate Sheet'}
-                  </Button>
-                </div>
-              ) : (
-                <p className="text-muted-foreground">
-                  Upload reference images to generate a talent sheet, or sheets
-                  will be created when this talent is used in a sequence.
-                </p>
-              )}
+              <p className="text-muted-foreground mb-3">
+                No talent sheets yet. Drop a character sheet or generate one
+                from the name and description.
+              </p>
             </Card>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {isGeneratingSheet ? (
+                <Card className="overflow-hidden">
+                  <div className="aspect-video bg-muted flex flex-col items-center justify-center gap-3">
+                    <Loader2 className="h-10 w-10 animate-spin text-muted-foreground" />
+                    <p className="text-sm text-muted-foreground">
+                      {sheetProgressCopy(generatingPhase)}
+                    </p>
+                  </div>
+                </Card>
+              ) : null}
               {talent.sheets.map((sheet) => (
                 <Card
                   key={sheet.id}
@@ -373,6 +388,51 @@ function TalentDetailPage() {
             </div>
           )}
         </section>
+
+        {canManageTalent ? (
+          <section className="mb-8 flex flex-col gap-3">
+            <h2 className="text-lg font-semibold">Drop a sheet or photos</h2>
+            <p className="text-sm text-muted-foreground">
+              Drop a character sheet to use it as-is, or drop photos to generate
+              a sheet.
+            </p>
+            {dropFiles.length > 0 ? (
+              <PortraitAttestationFields
+                statement={uploadStatement}
+                attested={attested}
+                onAttestedChange={setAttested}
+                authorizationBasis={authorizationBasis}
+                onAuthorizationBasisChange={setAuthorizationBasis}
+              />
+            ) : null}
+            <TalentMediaUpload
+              files={dropFiles}
+              onFilesChange={(next) => {
+                setDropFiles(next);
+                if (next.length === 0) {
+                  setAttested(false);
+                  setAuthorizationBasis('');
+                }
+              }}
+              talentId={talent.id}
+              portraitAttestation={
+                canUpload
+                  ? {
+                      statementVersion: uploadStatement.version,
+                      authorizationBasis: uploadStatement.requiresBasis
+                        ? authorizationBasis.trim()
+                        : undefined,
+                    }
+                  : undefined
+              }
+              onComplete={() => {
+                setDropFiles([]);
+                setAttested(false);
+                setAuthorizationBasis('');
+              }}
+            />
+          </section>
+        ) : null}
       </PageContainer>
     </div>
   );

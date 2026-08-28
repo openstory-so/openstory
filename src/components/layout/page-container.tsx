@@ -7,7 +7,7 @@ const pageContainerVariants = cva('container mx-auto px-4', {
     padding: {
       compact: 'py-4',
       default: 'py-8',
-      spacious: 'py-12',
+      spacious: 'py-6 sm:py-12',
       none: '',
     },
     maxWidth: {

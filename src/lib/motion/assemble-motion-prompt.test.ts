@@ -6,24 +6,6 @@ import { assembleMotionPrompt } from './assemble-motion-prompt';
 // Test fixtures
 // ---------------------------------------------------------------------------
 
-const baseComponents: MotionPrompt['components'] = {
-  cameraMovement: 'slow dolly forward',
-  startPosition: 'medium shot of character at desk',
-  endPosition: 'close-up on character face',
-  durationSeconds: 8,
-  speed: 'slow',
-  smoothness: 'smooth',
-  subjectTracking: 'Maintains focus on character face',
-  equipment: 'Steadicam',
-};
-
-const baseParameters: MotionPrompt['parameters'] = {
-  durationSeconds: 8,
-  fps: 30,
-  motionAmount: 'medium',
-  cameraControl: { pan: 0, tilt: 0, zoom: 1.2, movement: 'forward' },
-};
-
 const dialogueWithTone: NonNullable<MotionPrompt['dialogue']> = {
   presence: true,
   lines: [
@@ -51,8 +33,6 @@ const fullPromptText =
 function makeMotionPrompt(overrides: Partial<MotionPrompt> = {}): MotionPrompt {
   return {
     fullPrompt: fullPromptText,
-    components: baseComponents,
-    parameters: baseParameters,
     dialogue: dialogueWithTone,
     audio: audioData,
     ...overrides,
@@ -124,15 +104,27 @@ describe('assembleMotionPrompt', () => {
       expect(result).toContain('Ambient sounds:');
     });
 
-    it('omits audio section when no audio data', () => {
+    it('omits ambient sounds when no audio data, keeps the no-music direction', () => {
       const result = assembleMotionPrompt({
         motionPrompt: makeMotionPrompt({ audio: undefined }),
         model,
       });
 
       expect(result).not.toContain('Ambient sounds:');
+      expect(result).toContain('No BGM, no music.');
       // Still has fullPrompt + dialogue
       expect(result).toContain('[Sarah');
+    });
+
+    it('suppresses model-generated music alongside the ambient sounds', () => {
+      const result = assembleMotionPrompt({
+        motionPrompt: makeMotionPrompt(),
+        model,
+      });
+
+      expect(result).toContain(
+        'Ambient sounds: quiet office hum with keyboard clicks. chair scrape, paper rustling. No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.'
+      );
     });
   });
 
@@ -175,13 +167,27 @@ describe('assembleMotionPrompt', () => {
       expect(result).toContain('chair scrape');
     });
 
-    it('omits Audio: section when no audio data', () => {
+    it('keeps an Audio: section carrying the no-music direction when no audio data', () => {
       const result = assembleMotionPrompt({
         motionPrompt: makeMotionPrompt({ audio: undefined }),
         model,
       });
 
-      expect(result).not.toContain('Audio:');
+      expect(result).toContain(
+        'Audio: No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.'
+      );
+      expect(result).not.toContain('quiet office hum');
+    });
+
+    it('suppresses model-generated music alongside the ambient and SFX', () => {
+      const result = assembleMotionPrompt({
+        motionPrompt: makeMotionPrompt(),
+        model,
+      });
+
+      expect(result).toContain(
+        'Audio: quiet office hum with keyboard clicks. chair scrape, paper rustling. No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.'
+      );
     });
 
     it('omits dialogue when not present', () => {
@@ -239,13 +245,15 @@ describe('assembleMotionPrompt', () => {
       );
     });
 
-    it('always appends the single-continuous-shot guard', () => {
+    it('always appends the no-music and single-continuous-shot guards', () => {
       const result = assembleMotionPrompt({
         motionPrompt: makeMotionPrompt(),
         model,
       });
 
-      expect(result).toContain('Single continuous shot, no cuts.');
+      expect(result).toContain(
+        'No BGM, no music. Generate only dialogue, environmental sounds, and action sounds. Single continuous shot, no cuts.'
+      );
     });
 
     it('adds the jitter guard only when the scene has characters', () => {
@@ -274,7 +282,7 @@ describe('assembleMotionPrompt', () => {
       });
 
       expect(result).toBe(
-        `${fullPromptText}\n\nSingle continuous shot, no cuts.`
+        `${fullPromptText}\n\nNo BGM, no music. Generate only dialogue, environmental sounds, and action sounds. Single continuous shot, no cuts.`
       );
     });
   });
@@ -306,6 +314,66 @@ describe('assembleMotionPrompt', () => {
       });
 
       expect(result).toBe(fullPromptText);
+    });
+  });
+
+  describe('MiniMax H3 Max (audio, no API switch)', () => {
+    const model = 'minimax_h3_max';
+
+    it('tags dialogue as <d>[English] …</d> with speaker and tone in prose', () => {
+      const result = assembleMotionPrompt({
+        motionPrompt: makeMotionPrompt(),
+        model,
+      });
+
+      expect(result.startsWith(fullPromptText)).toBe(true);
+      expect(result).toContain(
+        'Sarah says in a firm commanding tone: <d>[English] We need to reconsider the entire approach.</d>'
+      );
+      expect(result).toContain(
+        "James says in a soft resigned tone: <d>[English] I couldn't agree more.</d>"
+      );
+    });
+
+    it('ends with the native soundscape section and non_diegetic_music: N/A', () => {
+      const result = assembleMotionPrompt({
+        motionPrompt: makeMotionPrompt(),
+        model,
+      });
+
+      expect(
+        result.endsWith(
+          'overall_soundscape: quiet office hum with keyboard clicks. chair scrape, paper rustling. No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\nnon_diegetic_music: N/A'
+        )
+      ).toBe(true);
+    });
+
+    it('writes "off" into the prompt when generateAudio is false (no API field)', () => {
+      const result = assembleMotionPrompt({
+        motionPrompt: makeMotionPrompt(),
+        model,
+        generateAudio: false,
+      });
+
+      expect(result).not.toContain('<d>');
+      expect(result).toContain(
+        'overall_soundscape: Silent. No dialogue, no sound effects, no music.'
+      );
+      expect(result).toContain('non_diegetic_music: N/A');
+    });
+
+    it('still switches music off when the scene has no dialogue or audio data', () => {
+      const result = assembleMotionPrompt({
+        motionPrompt: makeMotionPrompt({
+          dialogue: undefined,
+          audio: undefined,
+        }),
+        model,
+      });
+
+      expect(result).not.toContain('<d>');
+      expect(result).toContain('overall_soundscape: No BGM, no music.');
+      expect(result).toContain('non_diegetic_music: N/A');
     });
   });
 
@@ -375,8 +443,19 @@ describe('assembleMotionPrompt', () => {
         model: 'veo3_1',
       });
 
-      // No Audio: section when both are empty
-      expect(result).not.toContain('Audio:');
+      // Audio: section carries only the no-music direction
+      expect(result).toContain(
+        'Audio: No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.'
+      );
+    });
+
+    it('never adds a no-music direction to a model that generates no audio', () => {
+      const result = assembleMotionPrompt({
+        motionPrompt: makeMotionPrompt(),
+        model: 'grok_imagine_video_1_5',
+      });
+
+      expect(result).not.toContain('No BGM');
     });
   });
 });

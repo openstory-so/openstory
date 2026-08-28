@@ -12,7 +12,13 @@ import { SHOT_GENERATION_STATUSES } from '@/lib/db/schema/shots';
 import type { Style } from '@/lib/db/schema/libraries';
 import type { MusicStatus, SequenceStatus } from '@/lib/db/schema/sequences';
 import { getLogger } from '@/lib/observability/logger';
-import { type ShotView, toShotView } from '@/lib/shots/shot-view';
+import {
+  readinessImageUrl,
+  readinessVideoStatus,
+  type ShotReadiness,
+  type ShotView,
+  toShotView,
+} from '@/lib/shots/shot-view';
 import { toShareableUrl } from '@/lib/storage/buckets';
 import type { Sequence } from '@/types/database';
 import { API_V1_BASE, type HalResource, waitLink, withLinks } from './hal';
@@ -95,23 +101,40 @@ export type SequenceState = SequenceSummary & {
 
 /** The image URL a shot exposes once its still is ready (else null). */
 function shotImageUrl(shot: ShotView): string | null {
-  // Readiness is signalled by the presence of a still URL: the selected
-  // variant's stored R2 url, else the fast preview variant's CDN url.
-  return shot.image?.url ?? shot.previewThumbnailUrl ?? null;
+  return readinessImageUrl({
+    selectedImageUrl: shot.image?.url ?? null,
+    previewImageUrl: shot.previewThumbnailUrl,
+  });
+}
+
+/** The readiness slice of an already-assembled view. */
+export function toShotReadiness(shot: ShotView): ShotReadiness {
+  return {
+    selectedImageUrl: shot.image?.url ?? null,
+    previewImageUrl: shot.previewThumbnailUrl,
+    hasSelectedVideo: shot.video !== null,
+    primaryVideoStatus: shot.primaryVideo?.status ?? null,
+  };
 }
 
 /**
  * Readiness tallies over a sequence's shots — the single source of truth for
  * the `counts` block shared by the status document and the list summary.
+ *
+ * Takes the narrow {@link ShotReadiness} rather than a full `ShotView` so the
+ * list page can count without materialising every shot's prompts and metadata
+ * (#1161). The status document, which needs the full views anyway, maps them
+ * through {@link toShotReadiness}.
  */
-export function summarizeShotCounts(shots: ShotView[]): SequenceCounts {
+export function summarizeShotCounts(shots: ShotReadiness[]): SequenceCounts {
   let imagesReady = 0;
   let videosReady = 0;
   let videosFailed = 0;
   for (const shot of shots) {
-    if (shotImageUrl(shot) !== null) imagesReady += 1;
-    if (shot.videoStatus === 'completed') videosReady += 1;
-    if (shot.videoStatus === 'failed') videosFailed += 1;
+    if (readinessImageUrl(shot) !== null) imagesReady += 1;
+    const videoStatus = readinessVideoStatus(shot);
+    if (videoStatus === 'completed') videosReady += 1;
+    if (videoStatus === 'failed') videosFailed += 1;
   }
   return { shots: shots.length, imagesReady, videosReady, videosFailed };
 }
@@ -278,7 +301,7 @@ export async function buildSequenceState(
     ...buildSequenceSummary({
       sequence,
       style,
-      counts: summarizeShotCounts(ordered),
+      counts: summarizeShotCounts(ordered.map(toShotReadiness)),
       origin,
     }),
     shots: stateShots,

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildMentionItems,
   filterMentionItems,
+  mentionInsertAttrs,
   SECTION_ORDER,
   type MentionCharacterInput,
   type MentionElementInput,
@@ -103,8 +104,14 @@ describe('buildMentionItems', () => {
     expect(items.find((i) => i.id === 'location:l1')?.tag).toBe('loc_001');
   });
 
-  it('orders elements before cast before locations in SECTION_ORDER', () => {
-    expect(SECTION_ORDER).toEqual(['elements', 'cast', 'locations']);
+  it('orders attached before elements, cast, locations, then library images', () => {
+    expect(SECTION_ORDER).toEqual([
+      'references',
+      'elements',
+      'cast',
+      'locations',
+      'images',
+    ]);
   });
 });
 
@@ -153,5 +160,53 @@ describe('filterMentionItems', () => {
     expect(
       filterMentionItems(legacyItems, 'RED HEX').map((i) => i.id)
     ).toContain('element:e5');
+  });
+});
+
+describe('mentionInsertAttrs', () => {
+  it('inserts the element token, not the dropdown row id', () => {
+    const items = buildMentionItems({
+      characters: [],
+      elements: [{ ...noopElement, token: 'BONDI_SCREEN' }],
+      locations: [],
+    });
+    const item = items.find((i) => i.id === 'element:e1');
+    expect(item).toBeDefined();
+    if (!item) throw new Error('expected element item');
+    expect(mentionInsertAttrs(item)).toEqual({
+      id: 'BONDI_SCREEN',
+      section: 'elements',
+      label: 'BONDI_SCREEN',
+    });
+  });
+
+  it('inserts the ALL-CAPS cast name, not character:<id>', () => {
+    const items = buildMentionItems({
+      characters: [noopCharacter],
+      elements: [],
+      locations: [],
+    });
+    const item = items.find((i) => i.id === 'character:c1');
+    expect(item).toBeDefined();
+    if (!item) throw new Error('expected cast item');
+    expect(mentionInsertAttrs(item)).toEqual({
+      id: 'JACK',
+      section: 'cast',
+      label: 'Jack',
+    });
+  });
+
+  it('passes through already-mapped attrs that have no tag field', () => {
+    expect(
+      mentionInsertAttrs({
+        id: 'BONDI_SCREEN',
+        section: 'elements',
+        label: 'BONDI_SCREEN',
+      })
+    ).toEqual({
+      id: 'BONDI_SCREEN',
+      section: 'elements',
+      label: 'BONDI_SCREEN',
+    });
   });
 });

@@ -157,6 +157,20 @@ export function styleCategoryLabel(
   );
 }
 
+/**
+ * The group key a style lands in after small-category collapse. Matches
+ * `groupStylesByCategory` so a composer filter and the browse-page sections
+ * agree on Specialized vs a named family.
+ */
+export function styleCategoryGroupKey(
+  style: Style,
+  catalogue: Style[]
+): string {
+  const rawKey = style.category ?? UNCATEGORIZED_KEY;
+  if (smallCategoryKeys(catalogue).has(rawKey)) return SPECIALIZED_CATEGORY;
+  return style.category ?? 'other';
+}
+
 export type StyleCategoryGroup = {
   category: string;
   label: string;

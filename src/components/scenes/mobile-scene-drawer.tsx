@@ -1,70 +1,28 @@
-import { MusicModelSelector } from '@/components/model/music-model-selector';
-import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import {
-  Sheet,
-  SheetContent,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import type { SceneWithScript } from '@/hooks/use-scenes';
-import { DEFAULT_MUSIC_MODEL, type AudioModel } from '@/lib/ai/models';
-import type { AspectRatio } from '@/lib/constants/aspect-ratios';
-import { cn } from '@/lib/utils';
-import type { ShotView } from '@/lib/shots/shot-view';
-import { ChevronUp, Loader2, Video } from 'lucide-react';
-import { useMemo, useRef, useState } from 'react';
-import type { BatchGenerateMotionArgs } from './scene-list';
-import { SceneListItem } from './scene-list-item';
+import type { SceneSelection } from '@/lib/scenes/scene-selection';
+import { ChevronUp } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { SceneList, type SceneListProps } from './scene-list';
 import { SceneThumbnail } from './scene-thumbnail';
 
-type MobileSceneDrawerProps = {
-  shots?: ShotView[];
-  /** Scenes the shots belong to — they carry the number, title and script. */
-  scenes?: SceneWithScript[];
-  selectedShotId?: string;
-  aspectRatio: AspectRatio;
-  onSelectShot: (shotId: string) => void;
-  regeneratingImages: Set<string>;
-  regeneratingMotion: Set<string>;
-  onBatchGenerateMotion?: (args: BatchGenerateMotionArgs) => Promise<void>;
-  musicPromptsReady: boolean;
-  /** Hide the batch motion button (e.g. while auto-generate motion is in flight). */
-  hideBatchButton?: boolean;
-  /** Initial music model for the batch selector (from `sequence.musicModel`). */
-  initialMusicModel?: AudioModel;
-};
+/**
+ * Phone stand-in for the desktop sidebar: a bottom bar that names the
+ * selection and opens a sheet hosting the same `SceneList` — scene groups,
+ * segment brackets, whole-sequence row, batch footer — so the two surfaces
+ * can't drift.
+ */
+export const MobileSceneDrawer: React.FC<SceneListProps> = (listProps) => {
+  const { shots, scenes, selection, aspectRatio } = listProps;
+  const selectedShotId = selection.shotId;
+  const selectedSceneIds = selection.sceneIds;
 
-export const MobileSceneDrawer: React.FC<MobileSceneDrawerProps> = ({
-  shots,
-  scenes,
-  selectedShotId,
-  aspectRatio,
-  onSelectShot,
-  regeneratingImages,
-  regeneratingMotion,
-  onBatchGenerateMotion,
-  musicPromptsReady,
-  hideBatchButton = false,
-  initialMusicModel,
-}) => {
-  const [isOpen, setIsOpen] = useState(false);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [includeMusic, setIncludeMusic] = useState(false);
-  const [generateAudio, setGenerateAudio] = useState(true);
-  const [musicModel, setMusicModel] = useState<AudioModel>(
-    initialMusicModel ?? DEFAULT_MUSIC_MODEL
-  );
-
-  const prevInitialMusicRef = useRef(initialMusicModel);
-  if (initialMusicModel && initialMusicModel !== prevInitialMusicRef.current) {
-    prevInitialMusicRef.current = initialMusicModel;
-    setMusicModel(initialMusicModel);
-  }
-
-  const totalShots = shots?.length ?? 0;
+  // The sheet is open *for* one selection. Every pick inside it is a
+  // navigation (shot cards are links, scene headers and "Whole sequence" call
+  // back), and `selection` is a new object after any of them — so the sheet
+  // closes itself without wiring a close into each row.
+  const [openFor, setOpenFor] = useState<SceneSelection | null>(null);
+  const jumpOpen = openFor === selection;
 
   const scenesById = useMemo(() => {
     const map = new Map<string, SceneWithScript>();
@@ -72,209 +30,85 @@ export const MobileSceneDrawer: React.FC<MobileSceneDrawerProps> = ({
     return map;
   }, [scenes]);
 
-  // Get the currently selected shot
   const selectedShot = useMemo(
-    () => shots?.find((f) => f.id === selectedShotId),
+    () => shots?.find((s) => s.id === selectedShotId),
     [shots, selectedShotId]
   );
 
-  // Calculate eligible shots for motion generation
-  // Include 'generating' status to allow retrying stuck jobs
-  const eligibleShots = useMemo(() => {
-    if (!shots) return [];
-    return shots.filter(
-      (f) =>
-        (f.videoStatus === 'pending' ||
-          f.videoStatus === 'failed' ||
-          f.videoStatus === 'generating') &&
-        f.frame.imageStatus === 'completed'
-    );
-  }, [shots]);
-
-  const handleSelectShot = (shotId: string) => {
-    onSelectShot(shotId);
-    setIsOpen(false);
-  };
-
-  // Check if all eligible shots have motion prompts ready
-  const motionPromptsReady = useMemo(() => {
-    if (!eligibleShots.length) return true;
-    return eligibleShots.every((f) => f.motionPrompt?.fullPrompt);
-  }, [eligibleShots]);
-
-  const handleGenerateMotion = async () => {
-    if (!onBatchGenerateMotion || eligibleShots.length === 0) return;
-
-    setIsGenerating(true);
-    try {
-      await onBatchGenerateMotion({
-        includeMusic,
-        musicModel,
-        generateAudio,
-      });
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
-  // Extract scene info for the collapsed bar
-  const selectedScene = selectedShot?.sceneId
-    ? scenesById.get(selectedShot.sceneId)
+  const focusedSceneId =
+    selectedShot?.sceneId ??
+    (selectedSceneIds.length === 1 ? selectedSceneIds[0] : undefined);
+  const focusedScene = focusedSceneId
+    ? scenesById.get(focusedSceneId)
     : undefined;
-  const sceneNumber = (selectedScene?.orderIndex ?? 0) + 1;
-  const sceneTitle = selectedScene?.title?.trim() || `Scene ${sceneNumber}`;
+  const sceneShots = useMemo(
+    () =>
+      focusedSceneId && shots
+        ? shots.filter((s) => s.sceneId === focusedSceneId)
+        : [],
+    [focusedSceneId, shots]
+  );
 
-  const hasEligibleShots = eligibleShots.length > 0;
-  const isMotionInProgress = regeneratingMotion.size > 0;
-  const showFooter =
-    !hideBatchButton && hasEligibleShots && !isMotionInProgress;
-  const isButtonDisabled =
-    isGenerating ||
-    isMotionInProgress ||
-    eligibleShots.length === 0 ||
-    !motionPromptsReady ||
-    (includeMusic && !musicPromptsReady);
+  const sceneNumber = (focusedScene?.orderIndex ?? 0) + 1;
+  const sceneTitle = focusedScene?.title?.trim() || `Scene ${sceneNumber}`;
+  const shotOrdinal = selectedShot
+    ? sceneShots.findIndex((s) => s.id === selectedShot.id) + 1
+    : 0;
+  const isSequence = !selectedShotId && selectedSceneIds.length === 0;
+
+  const label = isSequence
+    ? 'All scenes'
+    : sceneShots.length > 1 && shotOrdinal > 0
+      ? `${sceneTitle} · Shot ${shotOrdinal} of ${sceneShots.length}`
+      : sceneTitle;
+
+  const previewShot =
+    selectedShot ??
+    sceneShots.find((s) => s.image?.url || s.previewThumbnailUrl) ??
+    shots?.find((s) => s.image?.url || s.previewThumbnailUrl);
 
   return (
     <>
-      {/* Collapsed bar - fixed at bottom */}
       <button
         type="button"
-        onClick={() => setIsOpen(true)}
-        className={cn(
-          'fixed inset-x-0 bottom-0 z-40 flex items-center gap-3 border-t bg-background px-4 py-3',
-          'pb-[calc(0.75rem+env(safe-area-inset-bottom))]',
-          'active:bg-muted/50 transition-colors'
-        )}
+        data-testid="mobile-scene-nav"
+        className="fixed inset-x-0 bottom-0 z-40 flex min-h-11 items-center gap-3 border-t bg-background px-4 py-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+        aria-haspopup="dialog"
+        aria-expanded={jumpOpen}
+        aria-label={`${label}. Open scene list`}
+        onClick={() => setOpenFor(selection)}
       >
         <SceneThumbnail
-          thumbnailUrl={selectedShot?.image?.url}
-          previewThumbnailUrl={selectedShot?.previewThumbnailUrl}
-          thumbnailStatus={selectedShot?.frame.imageStatus || undefined}
-          alt={sceneTitle}
+          thumbnailUrl={previewShot?.image?.url}
+          previewThumbnailUrl={previewShot?.previewThumbnailUrl}
+          thumbnailStatus={previewShot?.frame.imageStatus || undefined}
+          gridSheetUrl={previewShot?.gridSheet?.url}
+          pendingUpscaleIndex={previewShot?.pendingUpscaleIndex}
+          pendingUpscaleUrl={previewShot?.pendingUpscaleUrl}
+          alt={isSequence ? 'Sequence' : sceneTitle}
           aspectRatio={aspectRatio}
-          className="h-10 w-10 shrink-0 rounded object-cover"
+          className="aspect-square h-10 w-10 shrink-0 rounded"
         />
-        <span className="flex-1 truncate text-left text-sm font-medium">
-          {selectedShot ? sceneTitle : 'Select a scene'}
+        <span className="min-w-0 flex-1 truncate text-sm font-medium">
+          {label}
         </span>
-        <ChevronUp className="h-5 w-5 shrink-0 text-muted-foreground" />
+        <ChevronUp className="h-4 w-4 shrink-0 text-muted-foreground" />
       </button>
 
-      {/* Expanded sheet */}
-      <Sheet open={isOpen} onOpenChange={setIsOpen}>
+      <Sheet
+        open={jumpOpen}
+        onOpenChange={(open) => setOpenFor(open ? selection : null)}
+      >
         <SheetContent
           side="bottom"
-          className="flex h-[70vh] flex-col pb-[env(safe-area-inset-bottom)]"
+          className="flex min-h-0 flex-col gap-0 overflow-hidden pb-[env(safe-area-inset-bottom)] data-[side=bottom]:h-[70dvh]"
         >
-          <SheetHeader>
-            <SheetTitle>
-              {shots?.length ?? 0} {shots?.length === 1 ? 'Scene' : 'Scenes'}
-            </SheetTitle>
-          </SheetHeader>
-
-          <ScrollArea className="flex-1 min-h-0 -mx-4">
-            <div className="flex flex-col gap-3 px-4 py-2">
-              {(shots === undefined || shots.length === 0) &&
-                [1, 2, 3].map((i) => (
-                  <SceneListItem
-                    key={`shot-skeleton-${i}`}
-                    shot={undefined}
-                    aspectRatio={aspectRatio}
-                    isActive={false}
-                    onSelect={() => {}}
-                  />
-                ))}
-
-              {shots?.map((shot) => (
-                <SceneListItem
-                  key={shot.id}
-                  shot={shot}
-                  scene={
-                    shot.sceneId ? scenesById.get(shot.sceneId) : undefined
-                  }
-                  aspectRatio={aspectRatio}
-                  isActive={shot.id === selectedShotId}
-                  onSelect={() => handleSelectShot(shot.id)}
-                  isRegeneratingImage={regeneratingImages.has(shot.id)}
-                  isRegeneratingMotion={regeneratingMotion.has(shot.id)}
-                />
-              ))}
-            </div>
-          </ScrollArea>
-
-          {showFooter && (
-            <SheetFooter className="border-t pt-4 px-4 flex-col items-stretch gap-3">
-              {includeMusic && (
-                <div className="flex flex-col gap-1">
-                  <span className="text-xs text-muted-foreground">
-                    Music model
-                  </span>
-                  <MusicModelSelector
-                    selectedModel={musicModel}
-                    onModelChange={setMusicModel}
-                    disabled={isGenerating || isMotionInProgress}
-                  />
-                </div>
-              )}
-              <Button
-                variant="default"
-                onClick={() => void handleGenerateMotion()}
-                disabled={isButtonDisabled}
-              >
-                {isGenerating || isMotionInProgress ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Generating…
-                  </>
-                ) : !motionPromptsReady ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Writing motion prompts…
-                  </>
-                ) : includeMusic && !musicPromptsReady ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Composing music…
-                  </>
-                ) : (
-                  <>
-                    <Video className="mr-2 h-4 w-4" />
-                    Generate {eligibleShots.length} / {totalShots}{' '}
-                    {totalShots === 1 ? 'shot' : 'shots'}
-                  </>
-                )}
-              </Button>
-              <label className="flex items-center gap-2 text-sm text-muted-foreground justify-center">
-                <Checkbox
-                  checked={includeMusic}
-                  onCheckedChange={(checked) =>
-                    setIncludeMusic(checked === true)
-                  }
-                  disabled={!musicPromptsReady}
-                />
-                <span>
-                  Also generate music
-                  {!musicPromptsReady && (
-                    <span className="text-xs ml-1">(preparing…)</span>
-                  )}
-                </span>
-              </label>
-              <label
-                htmlFor="mobile-batch-generate-audio"
-                className="flex items-center gap-2 text-sm text-muted-foreground justify-center"
-              >
-                <Checkbox
-                  id="mobile-batch-generate-audio"
-                  checked={generateAudio}
-                  onCheckedChange={(checked) =>
-                    setGenerateAudio(checked === true)
-                  }
-                />
-                <span>Include SFX &amp; dialogue (when supported)</span>
-              </label>
-            </SheetFooter>
-          )}
+          <SheetTitle className="sr-only">Scenes</SheetTitle>
+          <SceneList
+            {...listProps}
+            scrollToSelection
+            className="min-h-0 w-full flex-1 rounded-none border-0"
+          />
         </SheetContent>
       </Sheet>
     </>

@@ -43,7 +43,7 @@ export const getSequenceCharacterDivergentVariantsFn = createServerFn({
  */
 export const promoteCharacterSheetVariantFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(zodValidator(variantInputSchema))
+  .validator(zodValidator(variantInputSchema))
   .handler(async ({ data, context }) => {
     const variant = await context.scopedDb.characterSheetVariants.getById(
       data.variantId
@@ -95,7 +95,7 @@ export const promoteCharacterSheetVariantFn = createServerFn({ method: 'POST' })
 
 export const discardCharacterSheetVariantFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(zodValidator(variantInputSchema))
+  .validator(zodValidator(variantInputSchema))
   .handler(async ({ data, context }) => {
     const variant = await context.scopedDb.characterSheetVariants.getById(
       data.variantId
@@ -119,7 +119,7 @@ export const undiscardCharacterSheetVariantFn = createServerFn({
   method: 'POST',
 })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(zodValidator(variantInputSchema))
+  .validator(zodValidator(variantInputSchema))
   .handler(async ({ data, context }) => {
     const variant = await context.scopedDb.characterSheetVariants.getById(
       data.variantId

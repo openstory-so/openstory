@@ -111,6 +111,31 @@ export const passkey = snakeCase.table(
 );
 
 /**
+ * Better Auth `deviceAuthorization` plugin (#1219). Columns are exactly what
+ * `bun auth:generate` emits; the two indexes are ours (the plugin looks rows up
+ * by both codes).
+ */
+export const deviceCode = snakeCase.table(
+  'device_code',
+  {
+    id: text().primaryKey(),
+    deviceCode: text().notNull(),
+    userCode: text().notNull(),
+    userId: text(),
+    expiresAt: integer({ mode: 'timestamp_ms' }).notNull(),
+    status: text().notNull(),
+    lastPolledAt: integer({ mode: 'timestamp_ms' }),
+    pollingInterval: integer(),
+    clientId: text(),
+    scope: text(),
+  },
+  (table) => [
+    index('device_code_device_code_idx').on(table.deviceCode),
+    index('device_code_user_code_idx').on(table.userCode),
+  ]
+);
+
+/**
  * API keys for the public HTTP API, owned by Better Auth's `@better-auth/api-key`
  * plugin. Field names (JS keys) must match the plugin's schema exactly — the
  * Drizzle adapter resolves columns by property name (the `snakeCase` builder

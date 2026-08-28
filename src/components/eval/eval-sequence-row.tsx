@@ -45,8 +45,7 @@ export const EvalSequenceRow: React.FC<EvalSequenceRowProps> = ({
   onNavigateToCell,
   onOpenTheatre,
 }) => {
-  const aspectRatio: AspectRatio =
-    (sequence.aspectRatio as AspectRatio | null) ?? DEFAULT_ASPECT_RATIO;
+  const aspectRatio: AspectRatio = sequence.aspectRatio ?? DEFAULT_ASPECT_RATIO;
 
   const { data: scenes } = useScenesBySequence(sequence.id);
   const scenesById = useMemo(() => {

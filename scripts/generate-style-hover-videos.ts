@@ -72,11 +72,8 @@ import {
   type MotionPrompt,
 } from '@/lib/ai/scene-analysis.schema';
 import { assembleMotionPrompt } from '@/lib/motion/assemble-motion-prompt';
-import {
-  pollMotionJob,
-  snapDuration,
-  submitMotionJob,
-} from '@/lib/motion/motion-generation';
+import { pollMotionJob, submitMotionJob } from '@/lib/motion/motion-generation';
+import { snapDuration } from '@/lib/motion/snap-duration';
 import {
   getChatPrompt,
   type ChatMessage,
@@ -469,7 +466,14 @@ async function generateClip(
 
   const deadline = Date.now() + MOTION_POLL_TIMEOUT_MS;
   while (Date.now() < deadline) {
-    const poll = await pollMotionJob(job.jobId, job.modelKey);
+    // `job.via` (not the default): with XAI_API_KEY set, a Grok clip is
+    // submitted to xAI and its job id means nothing to fal.
+    const poll = await pollMotionJob(
+      job.jobId,
+      job.modelKey,
+      undefined,
+      job.via
+    );
     if (poll.status === 'completed') {
       if (poll.url) return poll.url;
       throw new Error(poll.error || 'Completed with no video URL');

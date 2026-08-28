@@ -17,7 +17,12 @@
 
 import { uploadFile } from '#storage';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
-import { STORAGE_BUCKETS, toShareableUrl } from '@/lib/storage/buckets';
+import {
+  buildR2Key,
+  STORAGE_BUCKETS,
+  toShareableUrl,
+} from '@/lib/storage/buckets';
+import { recordProvenance } from '@/lib/compliance/provenance';
 import { OpenStoryWorkflowEntrypoint } from '@/lib/workflow/base-workflow';
 import type {
   CloudflareEnv,
@@ -172,6 +177,26 @@ export class SequenceExportWorkflow extends OpenStoryWorkflowEntrypoint<Sequence
 
     await step.do('mark-export-ready', async () => {
       await scopedDb.sequenceExports.markReady(exportId, { durationSeconds });
+    });
+
+    // Provenance (#1180). The export is the artifact that actually leaves the
+    // platform — the URL a user shares — so it must be traceable even though no
+    // model produced it. `provider: 'openstory'` and the container's name as the
+    // "model" say exactly that: this file was stitched from assets that have
+    // provenance rows of their own, which the sequenceId links to.
+    await step.do('record-provenance', async () => {
+      await recordProvenance(scopedDb.provenance, {
+        teamId: event.payload.teamId,
+        userId: event.payload.userId,
+        assetKind: 'sequence_export',
+        assetId: exportId,
+        // Bucket-prefixed key so a pasted `/r2/videos/…` URL matches.
+        storageKey: buildR2Key(STORAGE_BUCKETS.VIDEOS, storagePath),
+        provider: 'openstory',
+        model: 'video-export-container',
+        workflowRunId: event.instanceId,
+        sequenceId: event.payload.sequenceId,
+      });
     });
 
     return { exportId, durationSeconds };

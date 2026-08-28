@@ -1,10 +1,10 @@
 import { createFileRoute, notFound } from '@tanstack/react-router';
 import { allDocs } from 'content-collections';
 import { MarkdownContent } from '@/components/docs/markdown';
-import { renderMarkdown } from '@/lib/docs/markdown';
+import { parseDocsMarkdown } from '@/lib/docs/markdown';
 
 export const Route = createFileRoute('/docs/$')({
-  loader: async ({ params }) => {
+  loader: ({ params }) => {
     const slug = params._splat;
     const doc = allDocs.find((d) => d.slug === slug);
 
@@ -12,13 +12,13 @@ export const Route = createFileRoute('/docs/$')({
       throw notFound();
     }
 
-    const { markup, headings } = await renderMarkdown(doc.body);
+    const { document, headings } = parseDocsMarkdown(doc.body);
 
     return {
       title: doc.title,
       description: doc.description,
       section: doc.section,
-      markup,
+      document,
       headings,
     };
   },
@@ -53,7 +53,7 @@ function DocsArticle() {
         <h1 className="mt-1 text-3xl font-bold tracking-tight">{data.title}</h1>
         <p className="mt-2 text-lg text-muted-foreground">{data.description}</p>
       </header>
-      <MarkdownContent markup={data.markup} />
+      <MarkdownContent document={data.document} />
     </article>
   );
 }

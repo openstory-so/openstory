@@ -15,6 +15,7 @@ import type { ShotView } from '@/lib/shots/shot-view';
 import { Grid2x2, Loader2 } from 'lucide-react';
 import { useCallback, useState } from 'react';
 import { toast } from 'sonner';
+import { hasUpscaleOverlay, UpscaleOverlay } from './upscale-overlay';
 import { VariantSelector } from './variant-selector';
 
 type StartingFrameVariantsProps = {
@@ -48,10 +49,17 @@ export const StartingFrameVariants: React.FC<StartingFrameVariantsProps> = ({
   const { needsBillingSetup: falNeedsBillingSetup, showGate: showFalGate } =
     useFalBillingGate();
 
-  const isGenerating =
+  const isGeneratingGrid =
     generating ||
     shot.gridSheet?.status === 'generating' ||
     generateVariants.isPending;
+  const upscalingIndex = shot.pendingUpscaleIndex;
+  const isUpscaling =
+    hasUpscaleOverlay({
+      gridUrl: shot.gridSheet?.url,
+      variantIndex: upscalingIndex,
+      cropUrl: shot.pendingUpscaleUrl,
+    }) || selectVariant.isPending;
 
   const handleGenerate = useCallback(async () => {
     onGenerateStart();
@@ -70,13 +78,16 @@ export const StartingFrameVariants: React.FC<StartingFrameVariantsProps> = ({
 
   const handleSelect = useCallback(
     async (index: number) => {
+      // Start the mutation first: onMutate writes the overlay synchronously.
+      // Then close. Closing before that await lets React paint the old still.
+      const run = selectVariant.mutateAsync({
+        sequenceId,
+        shotId: shot.id,
+        variantIndex: index,
+      });
+      setOpen(false);
       try {
-        await selectVariant.mutateAsync({
-          sequenceId,
-          shotId: shot.id,
-          variantIndex: index,
-        });
-        setOpen(false);
+        await run;
       } catch (error) {
         toast.error('Failed to select variant', {
           description: error instanceof Error ? error.message : 'Unknown error',
@@ -88,22 +99,34 @@ export const StartingFrameVariants: React.FC<StartingFrameVariantsProps> = ({
 
   return (
     <>
+      <UpscaleOverlay
+        aspectRatio={aspectRatio}
+        gridUrl={shot.gridSheet?.url}
+        variantIndex={upscalingIndex}
+        cropUrl={shot.pendingUpscaleUrl}
+        className="z-[6]"
+      />
       <Button
         type="button"
         variant="ghost"
         size="sm"
         onClick={() => setOpen(true)}
         className="absolute top-2 left-2 z-10 h-8 gap-1.5 bg-black/50 px-2 text-xs text-white hover:bg-black/70"
-        aria-label="Frame variants"
+        aria-label={isUpscaling ? 'Upscaling frame variant' : 'Frame variants'}
         aria-haspopup="dialog"
         aria-expanded={open}
+        aria-busy={isUpscaling || isGeneratingGrid}
       >
-        {isGenerating ? (
+        {isGeneratingGrid || isUpscaling ? (
           <Loader2 className="h-4 w-4 animate-spin" />
         ) : (
           <Grid2x2 className="h-4 w-4" />
         )}
-        Frame variants
+        {isUpscaling
+          ? 'Upscaling…'
+          : isGeneratingGrid
+            ? 'Generating…'
+            : 'Frame variants'}
       </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>
@@ -119,10 +142,10 @@ export const StartingFrameVariants: React.FC<StartingFrameVariantsProps> = ({
           {shot.gridSheet?.url ? (
             <VariantSelector
               variantImageUrl={shot.gridSheet.url}
-              selectedVariantIndex={null}
+              selectedVariantIndex={upscalingIndex}
               onVariantSelect={(index) => void handleSelect(index)}
-              loading={isGenerating || selectVariant.isPending}
-              disabled={isGenerating || selectVariant.isPending}
+              loading={isUpscaling}
+              disabled={isGeneratingGrid}
               aspectRatio={aspectRatio}
             />
           ) : (
@@ -141,13 +164,13 @@ export const StartingFrameVariants: React.FC<StartingFrameVariantsProps> = ({
                 }
                 void handleGenerate();
               }}
-              disabled={isGenerating}
+              disabled={isGeneratingGrid}
               className="w-full sm:w-auto"
             >
-              {isGenerating && (
+              {isGeneratingGrid && (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               )}
-              {isGenerating
+              {isGeneratingGrid
                 ? 'Generating…'
                 : shot.gridSheet?.url
                   ? 'Regenerate frame variants'

@@ -1,4 +1,5 @@
 import { NewSequencePage } from '@/components/script/new-sequence-page';
+import { publicStylesQueryOptions } from '@/lib/style/public-styles-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { z } from 'zod';
 
@@ -21,6 +22,8 @@ const searchSchema = z.object({
  */
 export const Route = createFileRoute('/_app/')({
   validateSearch: searchSchema,
+  loader: ({ context: { queryClient } }) =>
+    queryClient.ensureQueryData(publicStylesQueryOptions),
   component: HomePage,
 });
 

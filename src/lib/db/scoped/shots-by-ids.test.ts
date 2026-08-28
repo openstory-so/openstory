@@ -16,8 +16,17 @@ import { relations } from '@/lib/db/schema/relations';
 import { type Client, createClient } from '@libsql/client';
 import { drizzle } from 'drizzle-orm/libsql';
 import { migrate } from 'drizzle-orm/libsql/migrator';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 import { createSequencesMethods } from './sequences';
+import { createShotsMethods } from './shots';
 
 let client: Client;
 let db: Database;
@@ -158,5 +167,23 @@ describe('listShotsByIds', () => {
 
     expect(result).toHaveLength(2 * 3);
     expect(result.every((f) => f.sequenceId !== otherSeqId)).toBe(true);
+  });
+});
+
+describe('shots.getByIds (#1322)', () => {
+  it("chunks the id list under D1's 100-param ceiling and returns every row", async () => {
+    // 70 sequences × 3 shots = 210 ids → 3 batches of ≤90. libsql has no
+    // bound-param cap, so the spy is what pins the fan-out.
+    await seedSequences(styleId, 70);
+    const all = await db.select({ id: shots.id }).from(shots);
+    const ids = all.map((s) => s.id);
+    expect(ids).toHaveLength(210);
+
+    const select = vi.spyOn(db, 'select');
+    const rows = await createShotsMethods(db).getByIds(ids);
+    expect(rows).toHaveLength(210);
+    expect(new Set(rows.map((r) => r.id))).toEqual(new Set(ids));
+    expect(select).toHaveBeenCalledTimes(3);
+    select.mockRestore();
   });
 });

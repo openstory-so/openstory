@@ -10,38 +10,15 @@ import {
   replaceSequenceElementFn,
   restoreSequenceElementFn,
 } from '@/functions/sequence-elements';
-import { shotStalenessNamespace } from '@/hooks/use-shot-staleness';
-import type { SequenceElement } from '@/lib/db/schema';
-import type {
-  ReplaceElementCompletePayload,
-  ReplaceElementFailedPayload,
-  ReplaceElementStartPayload,
-} from '@/lib/realtime';
-import { useRealtime } from '@/lib/realtime/client';
 import { putToR2 } from '@/lib/utils/upload';
 import { sceneKeys } from '@/hooks/use-scenes';
+import { shotStalenessNamespace } from '@/hooks/use-shot-staleness';
 import {
   useMutation,
   useQuery,
   useQueryClient,
   type QueryClient,
 } from '@tanstack/react-query';
-import { useCallback, useState } from 'react';
-import { toast } from 'sonner';
-
-type ReplaceElementEvent =
-  | {
-      event: 'generation.replace-element:start';
-      data: ReplaceElementStartPayload;
-    }
-  | {
-      event: 'generation.replace-element:complete';
-      data: ReplaceElementCompletePayload;
-    }
-  | {
-      event: 'generation.replace-element:failed';
-      data: ReplaceElementFailedPayload;
-    };
 
 const sequenceElementKeys = {
   all: ['sequence-elements'] as const,
@@ -62,7 +39,7 @@ export function useSequenceElements(sequenceId: string | undefined) {
       listSequenceElementsFn({ data: { sequenceId: sequenceId ?? '' } }),
     enabled: Boolean(sequenceId),
     refetchInterval: (query) => {
-      const data = query.state.data as SequenceElement[] | undefined;
+      const data = query.state.data;
       if (!data) return false;
       const hasPending = data.some(
         (el) => el.visionStatus === 'pending' || el.visionStatus === 'analyzing'
@@ -224,12 +201,6 @@ function invalidateElementMembership(
   void queryClient.invalidateQueries({ queryKey: shotStalenessNamespace });
 }
 
-/**
- * @public Retained for re-wiring into the faceted Scenes element inspector
- * (#992). The old standalone element view was removed in #986; these
- * element-management hooks (rename/replace/progress/shot-counts) are kept so
- * the feature isn't lost before the new inspector adopts them.
- */
 export function useRenameSequenceElementToken() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -264,9 +235,6 @@ export function useRenameSequenceElementToken() {
 /**
  * Shot counts for *all* elements in a sequence, fetched in one query.
  * Use this from the elements grid to avoid the per-card N+1.
- *
- * @public Retained for re-wiring into the faceted Scenes element inspector
- * (#992) after the standalone element view was removed in #986.
  */
 export function useShotCountsForAllElements(sequenceId: string | undefined) {
   return useQuery({
@@ -281,111 +249,8 @@ export function useShotCountsForAllElements(sequenceId: string | undefined) {
 }
 
 /**
- * Subscribes to `replace-element:start|complete|failed` for one element so
- * the card can show a spinner across the whole flow (server-fn → :start →
- * vision → per-shot edits → :complete) and surface a final-state toast.
- *
- * Without this hook the card's `isReplacing` clears the moment vision flips
- * to `completed`, hiding the per-shot edit phase from the user — and any
- * post-vision failure becomes user-invisible.
- *
- * @public Retained for re-wiring into the faceted Scenes element inspector
- * (#992) after the standalone element view was removed in #986.
- */
-export function useReplaceElementProgress(
-  sequenceId: string | undefined,
-  elementId: string,
-  token: string
-): { editing: boolean } {
-  const queryClient = useQueryClient();
-  const [editing, setEditing] = useState(false);
-
-  const onData = useCallback(
-    (evt: ReplaceElementEvent) => {
-      if (evt.data.elementId !== elementId) return;
-
-      if (evt.event === 'generation.replace-element:start') {
-        setEditing(true);
-        return;
-      }
-
-      if (evt.event === 'generation.replace-element:complete') {
-        setEditing(false);
-        const {
-          successCount,
-          failedCount,
-          videoSuccessCount,
-          videoFailedCount,
-          renamedTo,
-        } = evt.data;
-        const displayName = renamedTo ?? token;
-        if (renamedTo && renamedTo !== token) {
-          toast.message(`Renamed ${token} → ${renamedTo}`);
-        }
-        if (failedCount > 0) {
-          toast.warning(
-            `${displayName}: ${successCount} edited, ${failedCount} failed`
-          );
-        } else if (successCount > 0) {
-          toast.success(
-            `${displayName}: edited ${successCount} shot${successCount === 1 ? '' : 's'}`
-          );
-        }
-        const vidSuccess = videoSuccessCount ?? 0;
-        const vidFailed = videoFailedCount ?? 0;
-        if (vidSuccess > 0 || vidFailed > 0) {
-          if (vidFailed > 0) {
-            toast.warning(
-              `${displayName} videos: ${vidSuccess} regenerated, ${vidFailed} failed`
-            );
-          } else {
-            toast.success(
-              `${displayName}: regenerated ${vidSuccess} video${vidSuccess === 1 ? '' : 's'}`
-            );
-          }
-        }
-        if (sequenceId) {
-          void queryClient.invalidateQueries({
-            queryKey: sequenceElementKeys.bySequence(sequenceId),
-          });
-        }
-        void queryClient.invalidateQueries({ queryKey: ['shots'] });
-        return;
-      }
-
-      setEditing(false);
-      toast.error(`Replace failed for ${token}`, {
-        description: evt.data.error,
-      });
-      if (sequenceId) {
-        void queryClient.invalidateQueries({
-          queryKey: sequenceElementKeys.bySequence(sequenceId),
-        });
-      }
-    },
-    [elementId, token, sequenceId, queryClient]
-  );
-
-  useRealtime({
-    channels: sequenceId ? [sequenceId] : [],
-    events: [
-      'generation.replace-element:start',
-      'generation.replace-element:complete',
-      'generation.replace-element:failed',
-    ] as const,
-    onData,
-    enabled: Boolean(sequenceId),
-  });
-
-  return { editing };
-}
-
-/**
- * Replace an element image: presign → R2 → finalize.
- * Triggers per-shot image edits via the replace-element workflow.
- *
- * @public Retained for re-wiring into the faceted Scenes element inspector
- * (#992) after the standalone element view was removed in #986.
+ * Replace an element image: presign → R2 → persist + vision.
+ * Affected shots are left stale for the user to update.
  */
 export function useReplaceSequenceElement() {
   const queryClient = useQueryClient();
@@ -431,6 +296,7 @@ export function useReplaceSequenceElement() {
         ),
       });
       void queryClient.invalidateQueries({ queryKey: ['shots'] });
+      void queryClient.invalidateQueries({ queryKey: shotStalenessNamespace });
     },
   });
 }

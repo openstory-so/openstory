@@ -41,3 +41,5 @@ Before filing a new issue, it's worth searching [existing issues](https://github
 ## Need Direct Support?
 
 For account-specific questions or anything you'd rather not discuss publicly, [contact us by email](/docs/support/contact-us) instead.
+
+To report generated content (likeness, impersonation, illegal material), use the [report form](/report) — not GitHub.

@@ -116,6 +116,7 @@ export class TalentMatchingWorkflow extends OpenStoryWorkflowEntrypoint<TalentMa
               userId: input.userId,
               workflowRunId: event.instanceId,
               scopedDb,
+              reservationId: input.reservationId,
             }
           )
         : { matches: [] as Array<{ characterId: string; talentId: string }> };
@@ -161,6 +162,7 @@ export class TalentMatchingWorkflow extends OpenStoryWorkflowEntrypoint<TalentMa
             talentName: talent.name,
             sheetImageUrl: talent.defaultSheet?.imageUrl ?? '',
             sheetMetadata: talent.defaultSheet?.metadata ?? undefined,
+            talentDescription: talent.description ?? undefined,
           });
         }
 

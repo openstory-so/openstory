@@ -5,7 +5,7 @@
 
 import { test as baseTest } from 'playwright/test';
 import { expect, test } from '../fixtures/auth.fixture';
-import { waitForScriptEditor } from '../fixtures/test-utils';
+import { fillScriptEditor, waitForScriptEditor } from '../fixtures/test-utils';
 
 // Route Protection Tests (no auth fixture needed)
 baseTest.describe('Route Protection', () => {
@@ -20,6 +20,28 @@ baseTest.describe('Route Protection', () => {
       await expect(
         page.getByRole('heading', { name: 'Tell your whole story' })
       ).toBeVisible();
+      await expect(
+        page.getByText(
+          'Create 5-minute AI films with consistent characters. Iterate until you nail it.'
+        )
+      ).toBeVisible();
+    }
+  );
+
+  baseTest(
+    'logged-out composer keeps a script box at 1280×720',
+    async ({ page }) => {
+      await page.setViewportSize({ width: 1280, height: 720 });
+      await page.goto('/');
+      await waitForScriptEditor(page);
+      const editor = page.locator('[data-slot="markdown-editor"]');
+      await expect(
+        page.getByText('Paste a screenplay, or a one-liner we can expand.')
+      ).toBeVisible();
+      const height = await editor.evaluate(
+        (el) => el.getBoundingClientRect().height
+      );
+      expect(height).toBeGreaterThan(48);
     }
   );
 
@@ -37,14 +59,38 @@ baseTest.describe('Route Protection', () => {
   );
 
   baseTest(
+    'anonymous visitor can open Images without being redirected',
+    async ({ page }) => {
+      await page.goto('/images');
+      await expect(page).toHaveURL(/\/images/);
+      await expect(page).not.toHaveURL(/\/login/);
+      await expect(
+        page.locator('[data-testid="studio-prompt"] .ProseMirror')
+      ).toBeVisible({ timeout: 15_000 });
+    }
+  );
+
+  baseTest(
+    'anonymous image generate is intercepted by the login dialog',
+    async ({ page }) => {
+      await page.goto('/images');
+      await fillScriptEditor(page, 'A red fox in fog at dawn');
+      await page.getByRole('button', { name: 'Generate image' }).click();
+      const dialog = page.getByRole('dialog', { name: 'Sign in to continue' });
+      await expect(dialog).toBeVisible();
+      await expect(page).toHaveURL(/\/images/);
+    }
+  );
+
+  baseTest(
     'anonymous generate is intercepted by the login dialog',
     async ({ page }) => {
       await page.goto('/');
 
       // Composing a draft is allowed while logged out… (the script input is a
       // TipTap contenteditable, not a <textarea>)
-      const scriptEditor = await waitForScriptEditor(page);
-      await scriptEditor.fill(
+      await fillScriptEditor(
+        page,
         'INT. KITCHEN - DAY\n\nA cat knocks a glass off the counter.'
       );
 
@@ -61,6 +107,29 @@ baseTest.describe('Route Protection', () => {
       await expect(dialog).toBeVisible();
       await expect(dialog.getByLabel('Email')).toBeVisible();
       await expect(page).toHaveURL('/');
+    }
+  );
+
+  baseTest(
+    'anonymous enhance is intercepted by the login dialog and keeps intent',
+    async ({ page }) => {
+      await page.goto('/');
+      await fillScriptEditor(
+        page,
+        'INT. KITCHEN - DAY\n\nA cat knocks a glass off the counter.'
+      );
+
+      await page.getByRole('button', { name: /Enhance Script/i }).click();
+      await expect(page.getByText('Target video duration')).toBeVisible();
+      await page.getByRole('button', { name: 'Enhance', exact: true }).click();
+
+      const dialog = page.getByRole('dialog', { name: 'Sign in to continue' });
+      await expect(dialog).toBeVisible();
+      await expect(page).toHaveURL('/');
+      const pending = await page.evaluate(() =>
+        localStorage.getItem('openstory:pending-generate')
+      );
+      expect(pending).toMatch(/^enhance:/);
     }
   );
 

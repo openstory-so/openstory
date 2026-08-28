@@ -10,7 +10,7 @@
  * the enhanced script when enhancement ran.
  */
 
-import { enhanceScriptToString } from '@/functions/ai';
+import { enhanceScriptToString } from '@/lib/ai/script-enhancement';
 import { toEnhanceInputs } from '@/lib/ai/enhance-inputs';
 import { isShortScript } from '@/lib/ai/should-enhance';
 import { DEFAULT_ASPECT_RATIO } from '@/lib/constants/aspect-ratios';
@@ -146,8 +146,8 @@ export async function runOneShotCreate(
     resolveTalentIds(
       {
         talent: ctx.scopedDb.talent,
-        createTalent: async (item) =>
-          createLibraryTalent(
+        createTalent: async (item) => {
+          const { talent } = await createLibraryTalent(
             {
               name: item.name,
               description: item.description,
@@ -157,9 +157,12 @@ export async function runOneShotCreate(
                 STORAGE_BUCKETS.TALENT,
                 ctx.teamId
               ),
+              portraitAttestation: item.portraitAttestation,
             },
             ctx
-          ),
+          );
+          return talent;
+        },
       },
       input.characters
     ),
@@ -201,6 +204,8 @@ export async function runOneShotCreate(
     autoGenerateMotion: input.motion,
     autoGenerateMusic: input.music,
     audioModels: input.audioModels,
+    // Same duration chip as Enhance / dashboard Generate ActionCost (#1140).
+    targetDurationSeconds: input.targetSeconds,
     suggestedTalentIds: suggestedTalentIds.length
       ? suggestedTalentIds
       : undefined,
@@ -211,7 +216,10 @@ export async function runOneShotCreate(
   });
 
   // 4. Run the shared create core (credits → fan-out → trigger storyboard).
-  const { entries } = await createSequences(parsed, ctx);
+  const { entries } = await createSequences(parsed, {
+    ...ctx,
+    notify: false,
+  });
 
   return {
     sequences: entries.map(({ sequence, workflowRunId }) => {

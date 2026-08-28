@@ -15,10 +15,11 @@
  *   3. Payload without a sequenceId → no DB access at all.
  */
 
+import { migrateStyleConfigV1ToV2 } from '@/lib/style/style-config';
 import { describe, expect, test, vi } from 'vitest';
 import { DEFAULT_IMAGE_MODEL, DEFAULT_VIDEO_MODEL } from '@/lib/ai/models';
 import { DEFAULT_ANALYSIS_MODEL } from '@/lib/ai/models.config';
-import type { WorkflowEvent } from 'cloudflare:workers';
+import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import type { StoryboardWorkflowInput } from '@/lib/workflow/types';
 
@@ -36,6 +37,16 @@ const emit = vi.fn();
 const getGenerationChannel = vi.fn(() => ({ emit }));
 vi.doMock('@/lib/realtime', () => ({ getGenerationChannel }));
 
+const spawnAndAwaitChild = vi.fn(async () => undefined);
+vi.doMock('@/lib/workflow/await-child', () => ({ spawnAndAwaitChild }));
+
+const notifySequenceReady = vi.fn(async () => 'sent');
+vi.doMock('@/lib/emails/notify-sequence-ready', () => ({
+  notifySequenceReady,
+  sequenceScenesUrl: (id: string) =>
+    `https://openstory.so/sequences/${id}/scenes`,
+}));
+
 // Dynamic import so the mocks above apply (vi.doMock is not hoisted).
 const { StoryboardWorkflow } = await import('./storyboard-workflow');
 
@@ -47,6 +58,14 @@ class TestableStoryboardWorkflow extends StoryboardWorkflow {
     scopedDb: WorkflowScopedDb;
   }): Promise<void> {
     return this.onFailure(failure);
+  }
+
+  invokeRunImpl(
+    event: Readonly<WorkflowEvent<StoryboardWorkflowInput>>,
+    step: WorkflowStep,
+    scopedDb: WorkflowScopedDb
+  ): Promise<void> {
+    return this.runImpl(event, step, scopedDb);
   }
 }
 
@@ -60,7 +79,8 @@ function makeWorkflow(): TestableStoryboardWorkflow {
 }
 
 function makeEvent(
-  sequenceId: string | undefined
+  sequenceId: string | undefined,
+  extras: Partial<Pick<StoryboardWorkflowInput, 'notify'>> = {}
 ): Readonly<WorkflowEvent<StoryboardWorkflowInput>> {
   const payload: StoryboardWorkflowInput = {
     userId: 'u1',
@@ -70,7 +90,7 @@ function makeEvent(
     script: 'INT. HALLWAY — NIGHT',
     aspectRatio: '16:9',
     musicPromptSource: 'ai-generated',
-    styleConfig: {
+    styleConfig: migrateStyleConfigV1ToV2({
       mood: 'tense and hopeful',
       artStyle: 'photoreal cinematic',
       lighting: 'hard key, deep shadows',
@@ -78,11 +98,14 @@ function makeEvent(
       cameraWork: 'handheld, tight lenses',
       referenceFilms: ['Children of Men'],
       colorGrading: 'cool shadows, warm highlights',
-    },
+    }),
     analysisModelId: DEFAULT_ANALYSIS_MODEL,
     imageModel: DEFAULT_IMAGE_MODEL,
     videoModel: DEFAULT_VIDEO_MODEL,
     elementIds: [],
+    ownerEmail: 'owner@example.com',
+    sequenceUrl: 'https://openstory.so/sequences/seq_1/scenes',
+    ...extras,
     options: {
       shotsPerScene: 3,
       generateThumbnails: true,
@@ -95,11 +118,12 @@ function makeEvent(
   return {
     payload,
     instanceId: 'storyboard_run_A',
+    workflowName: 'storyboard',
     timestamp: new Date(0),
-  } as unknown as Readonly<WorkflowEvent<StoryboardWorkflowInput>>;
+  };
 }
 
-function makeScopedDb(status: 'processing' | 'failed') {
+function makeScopedDb(status: 'processing' | 'failed' | 'completed') {
   const updateStatus = vi.fn();
   const getForUser = vi.fn(async () => ({ id: 'seq_1', status }));
   const stub = {
@@ -161,5 +185,103 @@ describe('StoryboardWorkflow.onFailure', () => {
     expect(getForUser).not.toHaveBeenCalled();
     expect(updateStatus).not.toHaveBeenCalled();
     expect(emit).not.toHaveBeenCalled();
+  });
+
+  test('completed sequence is not un-completed if a trailing step fails', async () => {
+    emit.mockReset();
+    const { scopedDb, updateStatus } = makeScopedDb('completed');
+
+    await makeWorkflow().invokeOnFailure({
+      event: makeEvent('seq_1'),
+      error: 'email-ready failed',
+      scopedDb,
+    });
+
+    expect(updateStatus).not.toHaveBeenCalled();
+    expect(emit).not.toHaveBeenCalled();
+  });
+});
+
+function makeStep() {
+  const names: string[] = [];
+  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal WorkflowStep stub: runImpl only uses `do`
+  const step = {
+    do: vi.fn((_name: string, fn: () => Promise<unknown>) => {
+      names.push(_name);
+      return fn();
+    }),
+  } as unknown as WorkflowStep;
+  return { step, names };
+}
+
+function makeRunImplDb() {
+  const updateStatus = vi.fn();
+  const deleteBySequence = vi.fn();
+  const getForUser = vi.fn(async () => ({ id: 'seq_1', status: 'processing' }));
+  const stub = {
+    liveRead: { sequences: { getForUser } },
+    sequence: vi.fn(() => ({ updateStatus })),
+    shots: { deleteBySequence },
+    credentials: {},
+    sequences: {},
+  };
+  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- stub covering only the runImpl surface
+  const scopedDb = stub as unknown as WorkflowScopedDb;
+  return { scopedDb, updateStatus, names: undefined as string[] | undefined };
+}
+
+describe('StoryboardWorkflow email-ready', () => {
+  test('runs the email-ready step after emit-complete', async () => {
+    notifySequenceReady.mockReset();
+    notifySequenceReady.mockResolvedValue('sent');
+    spawnAndAwaitChild.mockReset();
+    spawnAndAwaitChild.mockResolvedValue(undefined);
+    emit.mockReset();
+
+    const { scopedDb, updateStatus } = makeRunImplDb();
+    const { step, names } = makeStep();
+
+    await makeWorkflow().invokeRunImpl(makeEvent('seq_1'), step, scopedDb);
+
+    expect(names).toEqual(
+      expect.arrayContaining(['mark-completed', 'emit-complete', 'email-ready'])
+    );
+    expect(names.indexOf('emit-complete')).toBeGreaterThan(
+      names.indexOf('mark-completed')
+    );
+    expect(names.indexOf('email-ready')).toBeGreaterThan(
+      names.indexOf('emit-complete')
+    );
+    expect(updateStatus).toHaveBeenCalledWith('completed');
+    expect(notifySequenceReady).toHaveBeenCalledTimes(1);
+    expect(notifySequenceReady).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sequenceId: 'seq_1',
+        ownerEmail: 'owner@example.com',
+        title: 'The Long Walk',
+        userId: 'u1',
+      })
+    );
+  });
+
+  test('notify: false still runs the step; helper skips the send', async () => {
+    notifySequenceReady.mockReset();
+    notifySequenceReady.mockResolvedValue('skipped');
+    spawnAndAwaitChild.mockReset();
+    spawnAndAwaitChild.mockResolvedValue(undefined);
+
+    const { scopedDb } = makeRunImplDb();
+    const { step, names } = makeStep();
+
+    await makeWorkflow().invokeRunImpl(
+      makeEvent('seq_1', { notify: false }),
+      step,
+      scopedDb
+    );
+
+    expect(names).toContain('email-ready');
+    expect(notifySequenceReady).toHaveBeenCalledWith(
+      expect.objectContaining({ notify: false })
+    );
   });
 });

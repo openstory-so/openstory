@@ -29,9 +29,9 @@ import { generateId } from '../id';
 import { sequences } from './sequences';
 
 /**
- * Branded id for `scenes.id` (a ULID). Distinct from the LLM-assigned
- * `Scene.sceneId` string carried in analysis output (see `analysisSceneId` in
- * the ShotMapping type) — both are plain strings, so this brand exists for call
+ * Branded id for `scenes.id` (a ULID). Distinct from the server-minted
+ * analysis `Scene.sceneId` carried in scene-split output (see `analysisSceneId`
+ * in the ShotMapping type) — both are plain strings, so this brand exists for call
  * sites that want the compiler to keep the two apart. The `scenes.id` column is
  * `.$type<DbSceneId>()`, so `SceneRow.id` — and any relation query that reaches
  * a scene — carries the brand by inference. The scoped scene methods take it for

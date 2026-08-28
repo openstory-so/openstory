@@ -229,9 +229,11 @@ const mockTeamManagementCreateInvitation = vi.fn();
 vi.doMock('@/lib/db/scoped/team-management', () => ({
   createTeamManagementReadMethods: vi.fn(() => ({
     getMembers: mockTeamManagementGetMembers,
+    getMemberEmail: vi.fn(),
   })),
   createTeamManagementMethods: vi.fn(() => ({
     getMembers: mockTeamManagementGetMembers,
+    getMemberEmail: vi.fn(),
     createInvitation: mockTeamManagementCreateInvitation,
   })),
 }));

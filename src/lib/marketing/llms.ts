@@ -19,7 +19,7 @@ export function buildLlmsTxt(): string {
   lines.push(`> ${SITE_CONFIG.description}`);
   lines.push('');
   lines.push(
-    `${SITE_CONFIG.name} is an open source AI video production platform. Describe an idea or paste a script, and it builds scenes, casts characters, generates shots, and scores music — all from one interface. Multi-scene, fully exportable, and free to self-host.`
+    `${SITE_CONFIG.name} is an open source AI video production platform. Paste a script or a one-liner and it builds a multi-scene film with consistent characters and look — then you iterate until you nail it. Fully exportable, and free to self-host.`
   );
 
   lines.push('');

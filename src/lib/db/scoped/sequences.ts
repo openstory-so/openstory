@@ -3,6 +3,7 @@
  * Team-scoped sequence CRUD and per-sequence update methods.
  */
 
+import { DEFAULT_ANALYSIS_MODEL } from '@/lib/ai/models.config';
 import { DEFAULT_IMAGE_MODEL, DEFAULT_VIDEO_MODEL } from '@/lib/ai/models';
 import {
   type AspectRatio,
@@ -14,10 +15,26 @@ import {
   selectShotViewRows,
   shotHierarchicalOrder,
 } from './shot-view-query';
-import { sequences, shots } from '@/lib/db/schema';
+import {
+  frames,
+  frameVariants,
+  renderSegments,
+  sequences,
+  shots,
+  styles,
+  videoVariants,
+} from '@/lib/db/schema';
 import type { NewSequence, Sequence } from '@/lib/db/schema';
 import type { MusicStatus, SequenceStatus } from '@/lib/db/schema/sequences';
-import type { ShotView } from '@/lib/shots/shot-view';
+import { parseStyleConfig } from '@/lib/style/style-config';
+import type { ShotReadiness, ShotView } from '@/lib/shots/shot-view';
+import { getLatestPreviewByFrameIds } from './frame-variants';
+import { getPrimaryVideoByShotIds } from './video-variants';
+import {
+  buildEventInsert,
+  SETTINGS_CHANGED_EVENT,
+  SETTINGS_CHANGED_LABELS,
+} from './sequence-events';
 import { ValidationError } from '@/lib/errors';
 import { and, asc, desc, eq, inArray, isNull, lt, not, or } from 'drizzle-orm';
 
@@ -155,7 +172,116 @@ function createSequencesReadMethods(db: Database, teamId: string) {
       );
       return results.flat();
     },
+
+    /**
+     * Readiness-only twin of {@link listShotsByIds}, for callers that report
+     * `counts` and never touch a shot's content.
+     *
+     * `listShotsByIds` projects ~100 columns per shot — `shots.metadata`, the
+     * visual prompt, the motion prompt, both variant rows. `GET
+     * /api/v1/sequences` paged up to 100 sequences through it to compute four
+     * integers each, and the shots-per-sequence fan-out is unbounded, so the
+     * page's peak footprint had no ceiling — one of the reads that reached the
+     * 128 MB isolate limit (#1161). This selects the five scalars
+     * {@link ShotReadiness} is derived from instead.
+     *
+     * The two group-wise maxes ride the SAME helpers as the full view, so
+     * neither path can drift on which render counts as primary.
+     */
+    listShotReadinessByIds: async (
+      sequenceIds: string[]
+    ): Promise<Array<ShotReadiness & { sequenceId: string }>> => {
+      if (sequenceIds.length === 0) return [];
+      const batches: string[][] = [];
+      for (let i = 0; i < sequenceIds.length; i += SHOTS_BY_IDS_BATCH) {
+        batches.push(sequenceIds.slice(i, i + SHOTS_BY_IDS_BATCH));
+      }
+      const batched = await Promise.all(
+        batches.map((batch) =>
+          db
+            .select({
+              sequenceId: shots.sequenceId,
+              shotId: shots.id,
+              frameId: frames.id,
+              selectedImageUrl: frameVariants.url,
+              selectedVideoId: videoVariants.id,
+            })
+            .from(shots)
+            // teamId is filtered through the join, so caller-supplied ids from
+            // another team return nothing rather than leak.
+            .innerJoin(sequences, eq(shots.sequenceId, sequences.id))
+            // Same anchor-frame and selection joins as `selectShotViewRows`:
+            // all left, with `discardedAt` in the JOIN condition, so a shot
+            // with no frame or a discarded selection still counts as a shot.
+            .leftJoin(
+              frames,
+              and(eq(frames.shotId, shots.id), eq(frames.orderIndex, 0))
+            )
+            .leftJoin(
+              frameVariants,
+              and(
+                eq(frameVariants.id, frames.selectedImageVersionId),
+                isNull(frameVariants.discardedAt)
+              )
+            )
+            .leftJoin(
+              renderSegments,
+              eq(renderSegments.id, shots.renderSegmentId)
+            )
+            .leftJoin(
+              videoVariants,
+              and(
+                eq(videoVariants.id, renderSegments.selectedVideoVersionId),
+                isNull(videoVariants.discardedAt)
+              )
+            )
+            .where(
+              and(
+                inArray(shots.sequenceId, batch),
+                eq(sequences.teamId, teamId)
+              )
+            )
+        )
+      );
+      const rows = batched.flat();
+
+      const [primaryByShot, previewByFrame] = await Promise.all([
+        getPrimaryVideoByShotIds(
+          db,
+          rows.map((row) => row.shotId)
+        ),
+        getLatestPreviewByFrameIds(
+          db,
+          rows.flatMap((row) => (row.frameId ? [row.frameId] : []))
+        ),
+      ]);
+
+      return rows.map((row) => ({
+        sequenceId: row.sequenceId,
+        selectedImageUrl: row.selectedImageUrl ?? null,
+        previewImageUrl: row.frameId
+          ? (previewByFrame.get(row.frameId)?.url ?? null)
+          : null,
+        hasSelectedVideo: row.selectedVideoId !== null,
+        primaryVideoStatus: primaryByShot.get(row.shotId)?.status ?? null,
+      }));
+    },
   };
+}
+
+async function snapshotConfigForStyleId(
+  db: Database,
+  styleId: string
+): Promise<ReturnType<typeof parseStyleConfig>> {
+  const [style] = await db
+    .select({ config: styles.config })
+    .from(styles)
+    .where(eq(styles.id, styleId))
+    .limit(1);
+  if (!style) {
+    throw new ValidationError(`Style ${styleId} not found`);
+  }
+  return parseStyleConfig(style.config);
 }
 
 export function createSequencesMethods(
@@ -167,11 +293,20 @@ export function createSequencesMethods(
     ...createSequencesReadMethods(db, teamId),
 
     create: async (params: {
+      /** Pre-allocated id, for callers that bind rows to the sequence first. */
+      id?: string;
       title: string;
       script?: string | null;
       styleId: string;
+      /**
+       * Automatic style (#1213): the style row is a placeholder until the
+       * storyboard run derives the recipe, so no snapshot is taken here — a
+       * null `styleConfig` is what tells the launcher the derivation is still
+       * pending. The run writes the snapshot via `update({ styleId })`.
+       */
+      deferStyleSnapshot?: boolean;
       aspectRatio?: AspectRatio;
-      analysisModel: string;
+      analysisModel?: string;
       imageModel?: string;
       videoModel?: string;
       musicModel?: string;
@@ -180,19 +315,25 @@ export function createSequencesMethods(
       suggestedTalentIds?: string[];
       suggestedLocationIds?: string[];
     }): Promise<Sequence> => {
+      const styleConfig = params.deferStyleSnapshot
+        ? null
+        : await snapshotConfigForStyleId(db, params.styleId);
       const sequenceData: NewSequence = {
+        ...(params.id ? { id: params.id } : {}),
         teamId,
         createdBy: userId,
         updatedBy: userId,
         title: params.title,
         script: params.script,
         styleId: params.styleId,
+        styleConfig,
         aspectRatio: params.aspectRatio ?? DEFAULT_ASPECT_RATIO,
-        analysisModel: params.analysisModel,
-        // The sequences SQL column defaults are stale literals ('nano_banana_2'
-        // for image, 'kling_v3_pro' for video — see schema/sequences.ts) that
-        // can't be changed without a D1 table rebuild, so resolve the app's real
-        // default here instead of relying on the column default.
+        // The sequences SQL column defaults are stale literals
+        // ('anthropic/claude-haiku-4.5' for analysis, 'nano_banana_2' for
+        // image, 'kling_v3_pro' for video — see schema/sequences.ts) that
+        // can't be changed without a D1 table rebuild, so resolve the app's
+        // real defaults here instead of relying on the column default.
+        analysisModel: params.analysisModel ?? DEFAULT_ANALYSIS_MODEL,
         imageModel: params.imageModel ?? DEFAULT_IMAGE_MODEL,
         videoModel: params.videoModel ?? DEFAULT_VIDEO_MODEL,
         musicModel: params.musicModel,
@@ -243,6 +384,36 @@ export function createSequencesMethods(
       return claimed.length > 0;
     },
 
+    /**
+     * CAS-claim the ready-email slot (#1276). Returns true only for the first
+     * caller; later retries / smart-retry re-completes see false.
+     */
+    claimReadyEmailSend: async (sequenceId: string): Promise<boolean> => {
+      const claimed = await db
+        .update(sequences)
+        .set({ readyEmailSentAt: new Date(), updatedAt: new Date() })
+        .where(
+          and(
+            eq(sequences.id, sequenceId),
+            eq(sequences.teamId, teamId),
+            isNull(sequences.readyEmailSentAt)
+          )
+        )
+        .returning({ id: sequences.id });
+      return claimed.length > 0;
+    },
+
+    /**
+     * Drop the ready-email claim so a failed send can retry. Only the sender
+     * that just claimed should call this.
+     */
+    releaseReadyEmailSend: async (sequenceId: string): Promise<void> => {
+      await db
+        .update(sequences)
+        .set({ readyEmailSentAt: null, updatedAt: new Date() })
+        .where(and(eq(sequences.id, sequenceId), eq(sequences.teamId, teamId)));
+    },
+
     update: async (params: {
       id: string;
       title?: string;
@@ -267,9 +438,13 @@ export function createSequencesMethods(
       // particular is the generation-mutex column (#839), so a cross-team id
       // must never be able to stomp it.
       const { id, ...values } = params;
+      const styleConfig =
+        params.styleId !== undefined
+          ? await snapshotConfigForStyleId(db, params.styleId)
+          : undefined;
       const [data] = await db
         .update(sequences)
-        .set(values)
+        .set(styleConfig !== undefined ? { ...values, styleConfig } : values)
         .where(and(eq(sequences.id, id), eq(sequences.teamId, teamId)))
         .returning();
 
@@ -278,11 +453,57 @@ export function createSequencesMethods(
         throw new ValidationError('Sequence not found');
       }
 
+      // Date hash-bearing setting changes so staleness can name them (#1194);
+      // style is a snapshot, so no row timestamp says when it moved.
+      const fields = Object.keys(SETTINGS_CHANGED_LABELS).filter(
+        (f) => f in values
+      );
+      if (fields.length > 0) {
+        await buildEventInsert(db, {
+          sequenceId: id,
+          actorId: userId,
+          kind: SETTINGS_CHANGED_EVENT,
+          targetType: 'sequence',
+          targetId: id,
+          data: { fields },
+        });
+      }
+
       return data;
+    },
+
+    /**
+     * Snapshot an automatic style's derived recipe onto its sequence (#1213),
+     * but only while the sequence still points at that style — a library pick
+     * made mid-run must not be overwritten. Returns false when it no longer does.
+     */
+    snapshotAutoStyle: async (params: {
+      id: string;
+      styleId: string;
+    }): Promise<boolean> => {
+      const styleConfig = await snapshotConfigForStyleId(db, params.styleId);
+      const rows = await db
+        .update(sequences)
+        .set({ styleConfig, updatedAt: new Date() })
+        .where(
+          and(
+            eq(sequences.id, params.id),
+            eq(sequences.teamId, teamId),
+            eq(sequences.styleId, params.styleId)
+          )
+        )
+        .returning({ id: sequences.id });
+      return rows.length > 0;
     },
 
     delete: async (sequenceId: string): Promise<void> => {
       await db.delete(sequences).where(eq(sequences.id, sequenceId));
+      // An automatic style has no FK to its sequence (#1213); drop it here.
+      await db
+        .delete(styles)
+        .where(
+          and(eq(styles.sequenceId, sequenceId), eq(styles.teamId, teamId))
+        );
     },
 
     updateTitle: async (sequenceId: string, title: string): Promise<void> => {

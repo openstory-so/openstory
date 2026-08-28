@@ -71,6 +71,25 @@ function createTeamManagementReadMethods(db: Database, teamId: string) {
     }));
   }
 
+  /**
+   * Email for a team member, snapshotted onto workflow payloads at trigger
+   * time (#1276). Null if they left the team or have no address.
+   */
+  async function getMemberEmail(memberUserId: string): Promise<string | null> {
+    const [row] = await db
+      .select({ email: user.email })
+      .from(teamMembers)
+      .innerJoin(user, eq(teamMembers.userId, user.id))
+      .where(
+        and(
+          eq(teamMembers.teamId, teamId),
+          eq(teamMembers.userId, memberUserId)
+        )
+      )
+      .limit(1);
+    return row?.email ?? null;
+  }
+
   async function getInvitations(): Promise<Omit<TeamInvitation, 'token'>[]> {
     const invitations: Omit<TeamInvitation, 'token'>[] = await db
       .select({
@@ -161,6 +180,7 @@ function createTeamManagementReadMethods(db: Database, teamId: string) {
 
   return {
     getMembers,
+    getMemberEmail,
     getInvitations,
     acceptInvitation,
   };

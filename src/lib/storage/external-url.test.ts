@@ -205,20 +205,64 @@ describe('toVisionImageSource', () => {
     expect(readStorageObject).not.toHaveBeenCalled();
   });
 
-  it('inlines stored bytes as a base64 data part when serving locally', async () => {
+  it('uploads stored bytes to fal storage for local/record vision (fetchable URL)', async () => {
+    setEnv({ FAL_KEY: 'test-key' });
+    readStorageObject.mockResolvedValue({
+      bytes: PNG_BYTES,
+      contentType: 'image/jpeg',
+    });
+    falUpload.mockResolvedValue('https://v3.fal.media/files/b/abc/el.jpg');
+
+    await expect(
+      toVisionImageSource('/r2/elements/team/el.jpg')
+    ).resolves.toEqual({
+      type: 'url',
+      value: 'https://v3.fal.media/files/b/abc/el.jpg',
+    });
+  });
+
+  it('inlines stored bytes as a base64 data part when no fal key is available', async () => {
+    readStorageObject.mockResolvedValue({
+      bytes: PNG_BYTES,
+      contentType: 'image/png',
+    });
+
+    await expect(
+      toVisionImageSource('/r2/elements/team/el.png')
+    ).resolves.toEqual({
+      type: 'data',
+      value: Buffer.from(PNG_BYTES).toString('base64'),
+      mimeType: 'image/png',
+    });
+    expect(readStorageObject).toHaveBeenCalledWith('elements/team/el.png');
+    expect(falUpload).not.toHaveBeenCalled();
+  });
+
+  // #1218: the upscale path stored PNG bytes as `<ulid>.jpg` / `image/jpeg`.
+  // Declaring that type on the vision part makes Anthropic reject the call
+  // (HTTP 400; historically an empty completion after a billed reasoning pass).
+  it('declares the sniffed type, not the stored one, when R2 mislabels the bytes', async () => {
     readStorageObject.mockResolvedValue({
       bytes: PNG_BYTES,
       contentType: 'image/jpeg',
     });
 
     await expect(
-      toVisionImageSource('/r2/elements/team/el.jpg')
-    ).resolves.toEqual({
-      type: 'data',
-      value: Buffer.from(PNG_BYTES).toString('base64'),
-      mimeType: 'image/jpeg',
+      toVisionImageSource('/r2/thumbnails/team/shot.jpg')
+    ).resolves.toMatchObject({ type: 'data', mimeType: 'image/png' });
+  });
+
+  it('corrects the mislabelled type on the fal-storage upload too', async () => {
+    setEnv({ FAL_KEY: 'test-key' });
+    readStorageObject.mockResolvedValue({
+      bytes: PNG_BYTES,
+      contentType: 'image/jpeg',
     });
-    expect(readStorageObject).toHaveBeenCalledWith('elements/team/el.jpg');
+    falUpload.mockResolvedValue('https://v3.fal.media/files/b/abc/shot.jpg');
+
+    await toVisionImageSource('/r2/thumbnails/team/shot.jpg');
+
+    expect(falUpload.mock.calls[0]?.[0].type).toBe('image/png');
   });
 
   it('falls back to image/png when the stored object has no content type', async () => {

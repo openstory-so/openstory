@@ -20,6 +20,11 @@ export const Route = createFileRoute('/_app')({
         to: '/login',
       });
     }
+
+    // Route context is the Start/Better Auth pattern; the RQ seed above
+    // keeps shared hooks (useUser, useAuthSession) in sync without a
+    // second client fetch after hydration.
+    return { session };
   },
 });
 

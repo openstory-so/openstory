@@ -2,6 +2,7 @@
  * Tests for location prompt building functions
  */
 
+import { migrateStyleConfigV1ToV2 } from '@/lib/style/style-config';
 import { describe, expect, it } from 'vitest';
 import type { LocationBibleEntry } from '@/lib/ai/scene-analysis.schema';
 import type { SequenceLocationMinimal, StyleConfig } from '@/lib/db/schema';
@@ -138,7 +139,7 @@ describe('location-prompt', () => {
   });
 
   describe('buildLocationSheetPrompt with styleConfig', () => {
-    const animatedStyle: StyleConfig = {
+    const animatedStyle: StyleConfig = migrateStyleConfigV1ToV2({
       mood: 'Whimsical, playful, and colorful',
       artStyle:
         'Stylized 3D animation with exaggerated proportions and rich textures.',
@@ -154,7 +155,7 @@ describe('location-prompt', () => {
       ],
       colorGrading:
         'Saturated and warm with a slight bloom. Shadows are never pure black.',
-    };
+    });
 
     it('without styleConfig produces no style direction section', () => {
       const result = buildLocationSheetPrompt(mockLocationEntry);

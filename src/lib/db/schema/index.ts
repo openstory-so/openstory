@@ -6,7 +6,15 @@
  * (Drizzle Relations v2 — single consolidated definition, no per-table relations() calls).
  */
 
-import { account, apikey, passkey, session, user, verification } from './auth';
+import {
+  account,
+  apikey,
+  deviceCode,
+  passkey,
+  session,
+  user,
+  verification,
+} from './auth';
 
 import { teamInvitations, teamMembers, teams } from './teams';
 
@@ -68,6 +76,7 @@ import {
 
 import {
   creditBatches,
+  creditReservations,
   credits,
   teamBillingSettings,
   transactions,
@@ -89,8 +98,17 @@ import {
   modelUsageObservations,
 } from './model-pricing';
 
+// Compliance (#1180 — AIGC traceability, rights attestations, abuse
+// reports, enforcement)
+import {
+  contentProvenance,
+  contentReports,
+  enforcementActions,
+  uploadAttestations,
+} from './compliance';
+
 // Better Auth tables
-export { account, apikey, passkey, session, user, verification };
+export { account, apikey, deviceCode, passkey, session, user, verification };
 
 export type { User } from './auth';
 
@@ -305,7 +323,7 @@ export { audio, StyleConfigSchema, StyleSampleVideoSchema, styles, vfx };
 export type { Audio, NewStyle, Style, StyleConfig, Vfx } from './libraries';
 
 // Credits, Transactions, and Billing
-export { credits, transactions };
+export { creditReservations, credits, transactions };
 
 /**
  * drizzle-kit only diffs TOP-LEVEL exported tables — tables reachable only
@@ -320,6 +338,7 @@ export { creditBatches, teamBillingSettings };
 // Team API Keys
 export { teamApiKeys };
 
+export { API_KEY_PROVIDERS } from './team-api-keys';
 export type { ApiKeyProvider } from './team-api-keys';
 
 // Gift Tokens
@@ -344,8 +363,26 @@ export type {
   GeneratedAssetActivity,
   GeneratedAssetInput,
   GeneratedAssetOutput,
+  GeneratedAssetSource,
   JsonValue,
 } from './generated-assets';
+
+/**
+ * Compliance (#1180). Each table stays individually exported — drizzle-kit only
+ * diffs top-level exports, and a table reachable only through `schema` below is
+ * treated as deleted, which makes the next `db:generate` emit DROP TABLE for it
+ * (see the creditBatches note above). Consumers import these from
+ * `@/lib/db/schema/compliance` directly, so nothing in the app graph reads them
+ * from here.
+ *
+ * @public used by drizzle-kit generate, not the app graph
+ */
+export {
+  contentProvenance,
+  contentReports,
+  enforcementActions,
+  uploadAttestations,
+};
 
 /**
  * Complete schema object for Drizzle client initialization (tables only).
@@ -359,6 +396,7 @@ export const schema = {
   verification,
   passkey,
   apikey,
+  deviceCode,
 
   // Teams
   teams,
@@ -415,6 +453,7 @@ export const schema = {
   // Credits & Billing
   credits,
   creditBatches,
+  creditReservations,
   transactions,
   teamBillingSettings,
 
@@ -435,4 +474,10 @@ export const schema = {
   modelPricing,
   modelPricingHistory,
   modelUsageObservations,
+
+  // Compliance (#1180)
+  contentProvenance,
+  uploadAttestations,
+  contentReports,
+  enforcementActions,
 };

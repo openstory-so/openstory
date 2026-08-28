@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "9-panel cinematic storyboard sheet derived from Image 1. Mix Wide, Medium, and Tight shots of the same scene. No borders between panels.\n\nLayout: 3x3 grid (9 panels) in a 16:9 landscape image.\n\nScene: Modern social-first editorial lifestyle photograph, 16:9, of SCARLETT VEGA (Image 2) wearing a fitted black cotton turtleneck with sleeves pushed up to the elbows, dark slim jeans, scuffed black ankle boots, a slouchy dark denim-canvas jacket hanging off one shoulder, small gold hoop earrings and a thin silver ring on her right index finger, a heavy natural-canvas tote bag slung across one shoulder and pulled taut by her weight. She is caught mid-stride at the top of a narrow walk-up stairwell landing, one boot already lifting off the tread, torso twisted back toward the lens, chin slightly raised, one hand gripping the strap of the tote, the other hovering near the chipped painted banister, breath held, muscles tensed with the potential energy of someone forty blocks from where she needs to be, delivering a deadpan raised-eyebrow look straight into the camera. The environment is a cramped pre-war stairwell: bone-white plaster walls scuffed to oat-beige near the handrail, worn wood treads, a warm brass mailbox row half out of frame, a single tall window on the landing with old paint-flecked mullions. Hard late-afternoon window light rakes in from camera left, throwing crisp geometric shadow bars across the wall and her turtleneck, dust motes suspended in the beam, highlights slightly warm, shadows lifted and airy so nothing crushes to black. High-key clean color with true-to-life warm skin tones, crisp whites, deep black wardrobe, and one saturated coral accent glinting on her mouth as the only pop against neutrals. Shot on a 35mm lens, handheld with faint natural micro-movement, eye-level and a touch above, shallow depth of field with the stairwell falling into soft bokeh behind her, fine film grain, punchy editorial contrast, no heavy diffusion.\n\nEvery panel is a shot of the same scene as Image 1 — keep the characters, wardrobe, lighting, color grade, and texture consistent across all panels.\n\nNo text, dialogue bubbles, scene numbers, or watermarks.\n\nReference images define identity — keep every referenced character, object, and location consistent with its reference image; never render a reference image itself as a separate panel or subject.\nImage 1 (primary): Primary source scene — generate 9 variant shots from this image",
+        "model": "xai/grok-imagine-image/v2.0/edit"
+      },
+      "response": {
+        "json": {
+          "images": [
+            {
+              "url": "https://v3b.fal.media/files/b/0aa74b03/E-Z3HY_xvouh2pV9t_OO2_oWDCvAEq.jpg",
+              "content_type": "image/jpeg",
+              "file_name": "E-Z3HY_xvouh2pV9t_OO2_oWDCvAEq.jpg",
+              "file_size": null,
+              "width": 2816,
+              "height": 1584
+            }
+          ],
+          "revised_prompt": null
+        },
+        "status": 200,
+        "billableUnits": 9
+      }
+    }
+  ]
+}

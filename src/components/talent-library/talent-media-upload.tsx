@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { toast } from 'sonner';
 import { useAuthGate } from '@/components/auth/auth-gate-provider';
 import { Button } from '@/components/ui/button';
 import {
@@ -12,6 +13,7 @@ import {
   FileUploadTrigger,
   type FileUploadProps,
 } from '@/components/ui/file-upload';
+import { Badge } from '@/components/ui/badge';
 import { useUploadTalentMedia, useUploadTempMedia } from '@/hooks/use-talent';
 import { getFileKey } from '@/lib/utils/upload';
 import { Upload, X } from 'lucide-react';
@@ -23,8 +25,19 @@ type TalentMediaUploadProps = {
   onUploadedUrlsChange?: (urls: string[]) => void;
   /** If provided, uploads directly to this talent instead of temp storage */
   talentId?: string;
+  /** Required by finalize when uploading onto an existing talent. */
+  portraitAttestation?: {
+    statementVersion: string;
+    authorizationBasis?: string;
+  };
   /** Called when all uploads complete (for talentId mode) */
   onComplete?: () => void;
+  /** Called after each successful upload with the stored URL. */
+  onFileUploaded?: (file: File, url: string) => void;
+  /** File keys (see getFileKey) detected as an existing character sheet. */
+  sheetFileKeys?: ReadonlySet<string>;
+  /** File keys whose sheet-vs-photo classify is still in flight. */
+  checkingFileKeys?: ReadonlySet<string>;
   disabled?: boolean;
 };
 
@@ -33,15 +46,30 @@ export const TalentMediaUpload: React.FC<TalentMediaUploadProps> = ({
   onFilesChange,
   onUploadedUrlsChange,
   talentId,
+  portraitAttestation,
   onComplete,
+  onFileUploaded,
+  sheetFileKeys,
+  checkingFileKeys,
   disabled = false,
 }) => {
   const [uploadedUrlsMap, setUploadedUrlsMap] = useState<Map<string, string>>(
     new Map()
   );
+  const uploadedKeysRef = useRef(new Set<string>());
+  const pendingBatchesRef = useRef<
+    Array<{
+      files: File[];
+      onProgress: (file: File, percent: number) => void;
+      onSuccess: (file: File) => void;
+      onError: (file: File, error: Error) => void;
+    }>
+  >([]);
+  const flushingPendingRef = useRef(false);
   const { requireAuth } = useAuthGate();
   const uploadTempMedia = useUploadTempMedia();
   const uploadTalentMedia = useUploadTalentMedia();
+  const waitingForAttestation = Boolean(talentId) && !portraitAttestation;
 
   useEffect(() => {
     onUploadedUrlsChange?.(Array.from(uploadedUrlsMap.values()));
@@ -77,6 +105,15 @@ export const TalentMediaUpload: React.FC<TalentMediaUploadProps> = ({
         }
         return;
       }
+      if (waitingForAttestation) {
+        pendingBatchesRef.current.push({
+          files: newFiles,
+          onProgress,
+          onSuccess,
+          onError,
+        });
+        return;
+      }
       const uploadPromises = newFiles.map(async (file) => {
         try {
           const type = file.type.startsWith('video/')
@@ -84,12 +121,14 @@ export const TalentMediaUpload: React.FC<TalentMediaUploadProps> = ({
             : ('image' as const);
 
           if (talentId) {
-            await uploadTalentMedia.mutateAsync({
+            const result = await uploadTalentMedia.mutateAsync({
               talentId,
               file,
               type,
               onProgress: (percent) => onProgress(file, percent),
+              portraitAttestation,
             });
+            onFileUploaded?.(file, result.url);
           } else {
             const result = await uploadTempMedia.mutateAsync({
               file,
@@ -100,25 +139,79 @@ export const TalentMediaUpload: React.FC<TalentMediaUploadProps> = ({
             setUploadedUrlsMap((prev) =>
               new Map(prev).set(getFileKey(file), result.url)
             );
+            onFileUploaded?.(file, result.url);
           }
 
+          uploadedKeysRef.current.add(getFileKey(file));
           onProgress(file, 100);
           onSuccess(file);
         } catch (error) {
-          onError(
-            file,
-            error instanceof Error ? error : new Error('Upload failed')
-          );
+          const err =
+            error instanceof Error ? error : new Error('Upload failed');
+          onError(file, err);
+          throw err;
         }
       });
 
-      await Promise.all(uploadPromises);
+      const results = await Promise.allSettled(uploadPromises);
+      const failed = results.filter((r) => r.status === 'rejected');
+      if (failed.length > 0) {
+        toast.error(
+          failed.length === newFiles.length
+            ? 'Upload failed'
+            : `${failed.length} of ${newFiles.length} files failed to upload`
+        );
+        return;
+      }
       if (talentId) {
         onComplete?.();
       }
     },
-    [requireAuth, talentId, uploadTempMedia, uploadTalentMedia, onComplete]
+    [
+      requireAuth,
+      talentId,
+      portraitAttestation,
+      waitingForAttestation,
+      uploadTempMedia,
+      uploadTalentMedia,
+      onComplete,
+      onFileUploaded,
+    ]
   );
+
+  useEffect(() => {
+    if (files.length === 0) {
+      uploadedKeysRef.current.clear();
+      pendingBatchesRef.current = [];
+    }
+  }, [files.length]);
+
+  useEffect(() => {
+    if (waitingForAttestation || !talentId || !portraitAttestation) return;
+    if (flushingPendingRef.current) return;
+    const batches = pendingBatchesRef.current;
+    if (batches.length === 0) return;
+    pendingBatchesRef.current = [];
+    flushingPendingRef.current = true;
+    const currentKeys = new Set(files.map(getFileKey));
+    void (async () => {
+      try {
+        for (const batch of batches) {
+          const stillPresent = batch.files.filter((file) =>
+            currentKeys.has(getFileKey(file))
+          );
+          if (stillPresent.length === 0) continue;
+          await onUpload(stillPresent, {
+            onProgress: batch.onProgress,
+            onSuccess: batch.onSuccess,
+            onError: batch.onError,
+          });
+        }
+      } finally {
+        flushingPendingRef.current = false;
+      }
+    })();
+  }, [waitingForAttestation, talentId, portraitAttestation, files, onUpload]);
 
   return (
     <FileUpload
@@ -129,13 +222,7 @@ export const TalentMediaUpload: React.FC<TalentMediaUploadProps> = ({
       onValueChange={handleValueChange}
       onUpload={onUpload}
     >
-      <FileUploadDropzone
-        className="min-h-[120px] focus:border-ring/50 focus:bg-accent/30"
-        onClick={(e) => {
-          e.preventDefault();
-          e.currentTarget.focus();
-        }}
-      >
+      <FileUploadDropzone className="min-h-[120px] focus:border-ring/50 focus:bg-accent/30">
         <Upload className="h-8 w-8 text-muted-foreground/50" />
         <p className="text-sm font-medium">Drag & drop or paste</p>
         <FileUploadTrigger asChild>
@@ -168,6 +255,13 @@ export const TalentMediaUpload: React.FC<TalentMediaUploadProps> = ({
               }
             />
             <FileUploadItemProgress className="absolute bottom-0 left-0 right-0 h-1" />
+            {sheetFileKeys?.has(getFileKey(file)) ? (
+              <Badge className="absolute bottom-2 left-2">Sheet</Badge>
+            ) : checkingFileKeys?.has(getFileKey(file)) ? (
+              <Badge variant="secondary" className="absolute bottom-2 left-2">
+                Checking…
+              </Badge>
+            ) : null}
             <FileUploadItemDelete asChild>
               <Button
                 type="button"

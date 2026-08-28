@@ -55,12 +55,3 @@ export const UPDATE_STALE_DEPTH_LABELS: Record<UpdateStaleDepth, string> = {
   video: 'Prompts, images + videos',
   music: 'Everything, incl. music',
 };
-
-/** One-line consequence of each level, shown in the confirm dialog. */
-export const UPDATE_STALE_DEPTH_DESCRIPTIONS: Record<UpdateStaleDepth, string> =
-  {
-    prompts: 'Rewrites out-of-date prompts. Nothing is rendered.',
-    images: 'Also re-renders stills affected by prompt changes.',
-    video: 'Also re-renders existing videos whose inputs changed.',
-    music: 'Also refreshes the sequence music prompt and track.',
-  };

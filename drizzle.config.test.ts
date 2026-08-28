@@ -12,5 +12,4 @@ export default defineConfig({
     url: 'file:test.db',
   },
   verbose: true,
-  strict: true,
 });

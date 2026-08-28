@@ -32,7 +32,7 @@ import type {
 import { shouldRecordUserEdit } from '@/lib/workflows/user-edit-predicate';
 import {
   matchCharactersToScene,
-  matchElementsToScene,
+  matchElementsToShotImage,
   matchLocationsToScene,
 } from '@/lib/workflows/scene-matching';
 import { computeShotImageSceneHash } from '@/lib/workflows/sheet-snapshots';
@@ -85,7 +85,7 @@ export async function prepareShotImageWorkflowInput(args: {
   frame: Frame;
   /** The shot's scene, composed from `scenes` + its selected script version. */
   scene: Scene | null;
-  /** Selected scene-script extract, for element matching. */
+  /** Selected scene-script extract. Fallback prompt AND fallback element match when no visual prompt exists. */
   scriptExtract: string;
   userId: string;
   promptOverride?: string;
@@ -186,11 +186,11 @@ export async function prepareShotImageWorkflowInput(args: {
     scene?.metadata?.location ?? ''
   );
 
-  const matchedElements = matchElementsToScene(
-    allElements,
-    continuity?.elementTags ?? [],
-    scriptExtract
-  );
+  const matchedElements = matchElementsToShotImage(allElements, {
+    visualPrompt: prompt,
+    elementTags: continuity?.elementTags,
+    sceneExtract: scriptExtract,
+  });
   const elementReferences = buildElementReferenceImages(matchedElements);
 
   // Model identity lives on the version that produced the still (#1066): an

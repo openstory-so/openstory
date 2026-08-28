@@ -14,6 +14,7 @@ import {
   getVariantGridConfig,
   type AspectRatio,
 } from '@/lib/constants/aspect-ratios';
+import { tileBackgroundCss } from '@/lib/image/tile-crop';
 import { cn } from '@/lib/utils';
 import { Loader2 } from 'lucide-react';
 import { useCallback, useRef, useState, useEffect } from 'react';
@@ -79,19 +80,8 @@ export function VariantSelector({
   const gridConfig = getVariantGridConfig(aspectRatio);
   const { cols, rows, count } = gridConfig;
 
-  // Background size: scale by cols horizontally and rows vertically
-  const bgSize = `${cols * 100}% ${rows * 100}%`;
-
-  /** Crop position for one tile inside the variant sheet image. */
-  const tileBackgroundPosition = (index: number): string => {
-    const row = Math.floor(index / cols);
-    const col = index % cols;
-    // For 3x3: positions are 0%, 50%, 100% per axis
-    // For 3x1: col positions are 0%, 50%, 100%; row is always 0%
-    const bgPosX = cols > 1 ? `${(col / (cols - 1)) * 100}%` : '0%';
-    const bgPosY = rows > 1 ? `${(row / (rows - 1)) * 100}%` : '0%';
-    return `${bgPosX} ${bgPosY}`;
-  };
+  const tileCss = (index: number) =>
+    tileBackgroundCss({ index, gridCols: cols, gridRows: rows });
 
   if (!variantImageUrl) {
     return (
@@ -120,7 +110,7 @@ export function VariantSelector({
               type="button"
               onClick={() => handleTileClick(index)}
               tabIndex={index === focusableIndex ? 0 : -1}
-              disabled={disabled || loading}
+              disabled={disabled}
               className={cn(
                 'group relative rounded-lg overflow-hidden',
                 aspectRatioClass,
@@ -139,8 +129,7 @@ export function VariantSelector({
                 className="absolute inset-0"
                 style={{
                   backgroundImage: `url(${variantImageUrl})`,
-                  backgroundSize: bgSize,
-                  backgroundPosition: tileBackgroundPosition(index),
+                  ...tileCss(index),
                 }}
               />
 
@@ -181,8 +170,7 @@ export function VariantSelector({
               )}
               style={{
                 backgroundImage: `url(${variantImageUrl})`,
-                backgroundSize: bgSize,
-                backgroundPosition: tileBackgroundPosition(pendingVariantIndex),
+                ...tileCss(pendingVariantIndex),
               }}
             />
           )}

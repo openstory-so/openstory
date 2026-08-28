@@ -3,6 +3,7 @@ import {
   safeTextToImageModel,
   type TextToImageModel,
 } from '@/lib/ai/models';
+import { parseStyleConfig } from '@/lib/style/style-config';
 import { generateImageWithProvider } from '@/lib/image/image-generation';
 import { buildStyledImagePrompt } from '@/lib/style/style-image-prompt';
 import { styleSlug } from '@/lib/style/style-slug';
@@ -575,7 +576,10 @@ async function main() {
       // medium-named styles it makes the model render the artifact (a book, a
       // storyboard sheet) instead of a scene in that style. See
       // buildStyledImagePrompt.
-      const fullPrompt = buildStyledImagePrompt(scene.prompt, style.config);
+      const fullPrompt = buildStyledImagePrompt(
+        scene.prompt,
+        parseStyleConfig(style.config)
+      );
 
       allTasks.push({
         styleId: style.name, // Use name as ID since templates don't have database IDs

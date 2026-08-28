@@ -21,14 +21,14 @@ export const getBillingGateStatusFn = createServerFn({ method: 'GET' })
     // coverage in the billing gate — a key flagged invalid is skipped at call
     // time (the platform key pays), so it must not count as coverage.
     const [
-      balance,
+      funds,
       hasFalKey,
       hasOpenRouterKey,
       openRouterKeyInvalid,
       falKeyInvalid,
       billingSettings,
     ] = await Promise.all([
-      scopedDb.billing.getBalance(),
+      scopedDb.billing.getAvailable(),
       scopedDb.apiKeys.hasUsableKey('fal'),
       scopedDb.apiKeys.hasUsableKey('openrouter'),
       scopedDb.apiKeys.hasInvalidKey('openrouter'),
@@ -37,14 +37,16 @@ export const getBillingGateStatusFn = createServerFn({ method: 'GET' })
     ]);
 
     return {
-      hasCredits: balance > 0,
+      hasCredits: funds.available > 0,
       hasFalKey,
       hasOpenRouterKey,
       openRouterKeyInvalid,
       falKeyInvalid,
-      balance: microsToUsd(balance),
+      balance: microsToUsd(funds.available),
       hasAutoTopUp:
-        billingSettings.autoTopUpEnabled && !!billingSettings.stripeCustomerId,
+        billingSettings.autoTopUpEnabled &&
+        !!billingSettings.stripeCustomerId &&
+        !billingSettings.autoTopUpFailedAt,
       stripeEnabled: isStripeEnabled(),
     };
   });

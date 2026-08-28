@@ -43,7 +43,7 @@ import {
 import { closeBillingGate } from '@/hooks/use-billing-gate-dialog';
 import { BILLING_BALANCE_KEY } from '@/hooks/use-billing-balance';
 import { BILLING_GATE_KEY } from '@/hooks/use-billing-gate';
-import { useSession } from '@/lib/auth/client';
+import { useAuthSession } from '@/lib/auth/session-query';
 import {
   formatPlatformFeePercent,
   MAX_TOPUP_AMOUNT_USD,
@@ -67,7 +67,7 @@ function formatBrand(brand: string): string {
 
 export function AddCreditsDialog() {
   const open = useAddCreditsDialogOpen();
-  const { data: session } = useSession();
+  const { data: session } = useAuthSession();
   const queryClient = useQueryClient();
   const posthog = usePostHog();
 
@@ -244,7 +244,7 @@ export function AddCreditsDialog() {
             // silently pushes a returning customer back through Checkout.
             <p role="alert" className="text-xs text-destructive">
               Couldn&apos;t load your saved cards
-              {pmError instanceof Error ? `: ${pmError.message}` : ''}
+              {pmError instanceof Error && <span>: {pmError.message}</span>}
             </p>
           ) : pmLoading ? (
             <Skeleton className="h-9 w-full" />

@@ -25,8 +25,8 @@ export const OtpEmail: React.FC<OtpEmailProps> = ({ appName, otp }) => (
         Enter this code to sign in to your account:
       </Text>
 
-      <Section className="my-6 rounded-lg bg-gray-100 p-6">
-        <Text className="m-0 text-center font-mono text-4xl font-bold tracking-[8px] text-gray-900">
+      <Section className="my-6 rounded-lg bg-muted p-6">
+        <Text className="m-0 text-center font-mono text-4xl font-bold tracking-[8px] text-foreground">
           {otp}
         </Text>
       </Section>

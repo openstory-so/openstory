@@ -19,7 +19,7 @@ export const TEST_FAL_PRICING: Record<string, EffectiveFalPricing> = {
     unit: 'units',
     typicalUnitsPerCall: 0.22,
   },
-  'xai/grok-imagine-image/quality/text-to-image': {
+  'xai/grok-imagine-image/v2.0/text-to-image': {
     unitPrice: micros(170),
     unit: 'compute seconds',
   },
@@ -42,7 +42,16 @@ export const TEST_FAL_PRICING: Record<string, EffectiveFalPricing> = {
     unit: 'units',
     typicalUnitsPerCall: 1,
   },
+  'minimax/h3-max/image-to-video': {
+    unitPrice: micros(80_000),
+    unit: 'seconds',
+  },
   'bytedance/seedance-2.0/enterprise/v2/image-to-video': {
+    unitPrice: micros(14_000),
+    unit: 'units',
+  },
+  // Same unit rate as i2v today; listed so reference-route estimates resolve.
+  'bytedance/seedance-2.0/enterprise/v2/reference-to-video': {
     unitPrice: micros(14_000),
     unit: 'units',
   },

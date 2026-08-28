@@ -109,7 +109,7 @@ const shotListInput = z.object({
 
 export const listShotPromptVariantsFn = createServerFn({ method: 'GET' })
   .middleware([shotAccessMiddleware])
-  .inputValidator(zodValidator(shotListInput))
+  .validator(zodValidator(shotListInput))
   .handler(
     async ({ context, data }): Promise<ShotPromptVariantWithAuthor[]> => {
       // Visual prompt history moved to frame_prompt_versions (#989); motion
@@ -153,7 +153,7 @@ export const listSequenceMusicPromptVariantsFn = createServerFn({
   method: 'GET',
 })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(zodValidator(sequenceListInput))
+  .validator(zodValidator(sequenceListInput))
   .handler(
     async ({
       context,
@@ -182,7 +182,7 @@ const shotRestoreInput = z.object({
 
 export const restoreShotPromptVariantFn = createServerFn({ method: 'POST' })
   .middleware([shotAccessMiddleware])
-  .inputValidator(zodValidator(shotRestoreInput))
+  .validator(zodValidator(shotRestoreInput))
   .handler(async ({ context, data }) => {
     // Visual prompt history lives in frame_prompt_versions (#989); motion stays
     // on shot_prompt_versions. The caller says which — see `promptType` above.
@@ -248,7 +248,7 @@ export const restoreSequenceMusicPromptVariantFn = createServerFn({
   method: 'POST',
 })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(zodValidator(sequenceRestoreInput))
+  .validator(zodValidator(sequenceRestoreInput))
   .handler(async ({ context, data }) => {
     const chosen =
       await context.scopedDb.sequenceMusicPromptVersions.getByIdForSequence(
@@ -287,7 +287,7 @@ const shotSaveInput = z.object({
 
 export const saveShotPromptFn = createServerFn({ method: 'POST' })
   .middleware([shotAccessMiddleware])
-  .inputValidator(zodValidator(shotSaveInput))
+  .validator(zodValidator(shotSaveInput))
   .handler(async ({ context, data }) => {
     const { shot, frame, sequence, scopedDb, user, scene } = context;
     const text = data.text.trim();
@@ -420,7 +420,7 @@ async function settleFrameAfterImageCancel(
 
 export const cancelPendingArtifactFn = createServerFn({ method: 'POST' })
   .middleware([shotAccessMiddleware])
-  .inputValidator(zodValidator(cancelPendingInput))
+  .validator(zodValidator(cancelPendingInput))
   .handler(async ({ context, data }) => {
     const { scopedDb, frame, shot } = context;
 
@@ -492,7 +492,7 @@ const shotRegenerateInput = z.object({
 
 export const regenerateShotPromptFn = createServerFn({ method: 'POST' })
   .middleware([shotAccessMiddleware])
-  .inputValidator(zodValidator(shotRegenerateInput))
+  .validator(zodValidator(shotRegenerateInput))
   .handler(async ({ context, data }) => {
     const { shot, frame, sequence, scopedDb, user, teamId, scene } = context;
 
@@ -778,7 +778,7 @@ const sequenceRegenerateInput = z.object({ sequenceId: ulidSchema });
 
 export const regenerateMusicPromptFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(zodValidator(sequenceRegenerateInput))
+  .validator(zodValidator(sequenceRegenerateInput))
   .handler(async ({ context }) => {
     const { sequence, scopedDb, user, teamId } = context;
 
@@ -835,7 +835,7 @@ export const regenerateMusicPromptFn = createServerFn({ method: 'POST' })
 
 export const getMusicPromptStalenessFn = createServerFn({ method: 'GET' })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(zodValidator(sequenceListInput))
+  .validator(zodValidator(sequenceListInput))
   .handler(async ({ context }) => {
     const { sequence, scopedDb } = context;
 
@@ -913,7 +913,7 @@ export const getDivergentVariantPromptDiffFn = createServerFn({
   method: 'GET',
 })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(zodValidator(variantPromptDiffInput))
+  .validator(zodValidator(variantPromptDiffInput))
   .handler(async ({ context, data }): Promise<VariantPromptDiff> => {
     const variant = await context.scopedDb.shotVariants.getById(data.variantId);
     if (!variant) return null;

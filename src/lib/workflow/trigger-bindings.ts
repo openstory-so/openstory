@@ -53,6 +53,7 @@ const TRIGGER_TO_BINDING: Record<string, keyof CloudflareEnv> = {
   'analyze-script': 'ANALYZE_SCRIPT_WORKFLOW',
   'sequence-export': 'SEQUENCE_EXPORT_WORKFLOW',
   asset: 'ASSET_WORKFLOW',
+  studio: 'STUDIO_WORKFLOW',
 };
 
 export type CfTriggerResult = { workflowRunId: string };
@@ -141,9 +142,11 @@ export function getCfBindingForRunId(
  * that instance will never do the work, and pretending it was enqueued turns
  * a loud failure into a silent no-op. This matters because deduplication ids
  * are not always run-scoped: `shotPromptDedupId`/`musicPromptDedupId` are
- * stable across user requests, so a failed instance would otherwise pin every
- * retry to a dead id for CF's 30-day retention window. `unknown` is excluded
- * too — rethrow rather than trust an id we can't verify.
+ * stable across user requests. `unknown` is excluded too — rethrow rather than
+ * trust an id we can't verify.
+ *
+ * Excluded from reuse is not the same as terminal: see `triggerCfWorkflow` for
+ * what each excluded status does next.
  */
 const REUSABLE_INSTANCE_STATUSES: ReadonlySet<InstanceStatus['status']> =
   new Set([
@@ -154,6 +157,15 @@ const REUSABLE_INSTANCE_STATUSES: ReadonlySet<InstanceStatus['status']> =
     'waitingForPause',
     'complete',
   ]);
+
+/**
+ * How many instance ids one deduplication key may burn through. Each
+ * generation past the first is a fresh paid job, so the cap is what stops a
+ * deterministic failure (a prompt the content checker will always flag) from
+ * re-spawning until the step's retry budget runs out. Three = the original plus
+ * two retries, matching the reseed budget #881 uses on the render path.
+ */
+const MAX_TRIGGER_GENERATIONS = 3;
 
 /**
  * Status of an existing instance, or null when the lookup itself fails — the
@@ -178,8 +190,47 @@ async function getInstanceStatus<T>(
   }
 }
 
+async function createInstance<T extends Rpc.Serializable<T>>(
+  binding: Workflow<T>,
+  id: string,
+  body: T
+): Promise<CfTriggerResult> {
+  // The created WorkflowInstance is an RPC result; dispose it after reading
+  // its id so the runtime doesn't warn about an undisposed result.
+  const instance = await binding.create({ id, params: body });
+  try {
+    return { workflowRunId: instance.id };
+  } finally {
+    disposeRpcStub(instance);
+  }
+}
+
 /**
  * Trigger a workflow.
+ *
+ * With a `deduplicationId`, the id is deterministic and an
+ * `instance.already_exists` rejection is expected — typically a `step.do`
+ * replay re-running its closure. What happens next depends on the existing
+ * instance:
+ *
+ *   - alive or complete (REUSABLE_INSTANCE_STATUSES) → reuse its id. This is
+ *     the double-billing guard: a replay must not spawn a second paid job.
+ *   - `errored` → the id is a tombstone. The instance will never do the work,
+ *     and every retry of the calling step lands on the same corpse, so the
+ *     failure is permanently unretryable (#1149: one content-flagged preview
+ *     image took down whole sequences this way). Advance to the next
+ *     generation id and actually retry, up to MAX_TRIGGER_GENERATIONS.
+ *   - `terminated` → someone cancelled this run (`terminateSingleArtifactRun`,
+ *     #1085). Re-spawning would resurrect cancelled work, so it stays a
+ *     rethrow.
+ *   - `unknown`, or the status lookup itself failed → we cannot tell whether a
+ *     live instance is already doing this work. Rethrow rather than risk
+ *     paying for it twice.
+ *
+ * Generation probing is deterministic, so it stays replay-safe: a later attempt
+ * walks the same ids in the same order and stops at the first reusable one.
+ * The random-suffix path (no `deduplicationId`) can't collide legitimately, so
+ * it always rethrows.
  */
 export async function triggerCfWorkflow<T extends Rpc.Serializable<T>>({
   binding,
@@ -195,32 +246,37 @@ export async function triggerCfWorkflow<T extends Rpc.Serializable<T>>({
   deduplicationId?: string;
 }): Promise<CfTriggerResult> {
   const workflowName = normaliseTriggerPath(triggerPath);
-  const id = buildInstanceId({
-    env,
-    workflowName,
-    suffix: deduplicationId ?? `${Date.now()}-${crypto.randomUUID()}`,
-  });
 
-  try {
-    // The created WorkflowInstance is an RPC result; dispose it after reading
-    // its id so the runtime doesn't warn about an undisposed result.
-    const instance = await binding.create({ id, params: body });
+  if (!deduplicationId) {
+    return createInstance(
+      binding,
+      buildInstanceId({
+        env,
+        workflowName,
+        suffix: `${Date.now()}-${crypto.randomUUID()}`,
+      }),
+      body
+    );
+  }
+
+  let lastError: unknown;
+  for (
+    let generation = 1;
+    generation <= MAX_TRIGGER_GENERATIONS;
+    generation++
+  ) {
+    const id = buildInstanceId({
+      env,
+      workflowName,
+      suffix: deduplicationId,
+      generation,
+    });
     try {
-      return { workflowRunId: instance.id };
-    } finally {
-      disposeRpcStub(instance);
-    }
-  } catch (error) {
-    // A deterministic id (caller passed `deduplicationId`) hitting
-    // `instance.already_exists` usually means a prior attempt of this same
-    // logical trigger — typically a `step.do` replay — already created the
-    // instance, so the trigger should succeed instead of burning the step's
-    // retry budget on a permanent error. But only when the existing instance
-    // is verifiably alive or complete (see REUSABLE_INSTANCE_STATUSES):
-    // reusing an errored/terminated instance would silently report "enqueued"
-    // for work that will never happen. The random-suffix path can't collide
-    // legitimately, so it always rethrows.
-    if (deduplicationId && isInstanceAlreadyExistsError(error)) {
+      return await createInstance(binding, id, body);
+    } catch (error) {
+      if (!isInstanceAlreadyExistsError(error)) throw error;
+      lastError = error;
+
       const status = await getInstanceStatus(binding, id);
       if (status !== null && REUSABLE_INSTANCE_STATUSES.has(status)) {
         logger.info(
@@ -228,10 +284,20 @@ export async function triggerCfWorkflow<T extends Rpc.Serializable<T>>({
         );
         return { workflowRunId: id };
       }
+      if (status !== 'errored') {
+        logger.warn(
+          `[triggerCfWorkflow] ${id} already exists but is not reusable (status: ${status ?? 'unavailable'}); rethrowing for '${workflowName}'`
+        );
+        throw error;
+      }
       logger.warn(
-        `[triggerCfWorkflow] ${id} already exists but is not reusable (status: ${status ?? 'unavailable'}); rethrowing for '${workflowName}'`
+        `[triggerCfWorkflow] ${id} already exists and errored; advancing to generation ${generation + 1} for '${workflowName}'`
       );
     }
-    throw error;
   }
+
+  throw new Error(
+    `[triggerCfWorkflow] '${workflowName}' exhausted ${MAX_TRIGGER_GENERATIONS} instance generations for deduplication id '${deduplicationId}' — every one errored`,
+    { cause: lastError }
+  );
 }

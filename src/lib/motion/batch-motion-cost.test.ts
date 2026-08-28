@@ -5,8 +5,8 @@ import {
   resolveBatchShotVideoModel,
 } from './batch-motion-cost';
 import { estimateVideoCost, gateEstimate } from '@/lib/billing/cost-estimation';
-import { addMicros, ZERO_MICROS } from '@/lib/billing/money';
-import { snapDuration } from '@/lib/motion/motion-generation';
+import { addMicros, micros, ZERO_MICROS } from '@/lib/billing/money';
+import { snapDuration } from '@/lib/motion/snap-duration';
 
 const sequence = { videoModel: 'minimax_hailuo_02' };
 // `video_variants.model` of each shot's selected version (#1066).
@@ -78,7 +78,75 @@ describe('resolveBatchShotVideoModel', () => {
   });
 });
 
+/** Unequal Seedance i2v vs ref rates so routing regressions fail the suite. */
+const seedanceUnequalPricing = {
+  ...FAL_PRICING,
+  'bytedance/seedance-2.0/enterprise/v2/image-to-video': {
+    unitPrice: micros(10_000),
+    unit: 'units',
+  },
+  'bytedance/seedance-2.0/enterprise/v2/reference-to-video': {
+    unitPrice: micros(20_000),
+    unit: 'units',
+  },
+};
+
 describe('estimateBatchMotionCost', () => {
+  it('prices Seedance at reference-to-video when hasReferenceImages is true', () => {
+    const shots = [{ id: 'shot-a' }];
+    const seedanceOnly = {
+      selected: new Map([['shot-a', 'seedance_v2']]),
+      lastFailed: new Map<string, string>(),
+    };
+    const i2v = estimateBatchMotionCost(shots, seedanceOnly, sequence, {
+      pricing: seedanceUnequalPricing,
+      hasReferenceImages: false,
+    });
+    const ref = estimateBatchMotionCost(shots, seedanceOnly, sequence, {
+      pricing: seedanceUnequalPricing,
+      hasReferenceImages: true,
+    });
+    expect(Number(ref)).toBeGreaterThan(Number(i2v));
+  });
+
+  it('supports per-shot hasReferenceImages functions', () => {
+    const shots = [{ id: 'shot-a' }, { id: 'shot-b' }];
+    const seedanceBoth = {
+      selected: new Map([
+        ['shot-a', 'seedance_v2'],
+        ['shot-b', 'seedance_v2'],
+      ]),
+      lastFailed: new Map<string, string>(),
+    };
+    const mixed = estimateBatchMotionCost(shots, seedanceBoth, sequence, {
+      pricing: seedanceUnequalPricing,
+      hasReferenceImages: (shot) => shot.id === 'shot-a',
+    });
+    const bothI2v = estimateBatchMotionCost(shots, seedanceBoth, sequence, {
+      pricing: seedanceUnequalPricing,
+      hasReferenceImages: false,
+    });
+    const bothRef = estimateBatchMotionCost(shots, seedanceBoth, sequence, {
+      pricing: seedanceUnequalPricing,
+      hasReferenceImages: true,
+    });
+    expect(Number(mixed)).toBeGreaterThan(Number(bothI2v));
+    expect(Number(mixed)).toBeLessThan(Number(bothRef));
+  });
+
+  it('leaves Kling on i2v when hasReferenceImages is true', () => {
+    const shots = [{ id: 'shot-b' }];
+    const withRefs = estimateBatchMotionCost(shots, shotModels, sequence, {
+      pricing: FAL_PRICING,
+      hasReferenceImages: true,
+    });
+    const without = estimateBatchMotionCost(shots, shotModels, sequence, {
+      pricing: FAL_PRICING,
+      hasReferenceImages: false,
+    });
+    expect(withRefs).toEqual(without);
+  });
+
   it('sums per-shot cost across shots rendered by different (priced) models', () => {
     const shots = [{ id: 'shot-a' }, { id: 'shot-b' }];
     const expected = addMicros(

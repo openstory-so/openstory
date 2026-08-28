@@ -82,5 +82,4 @@ export default defineConfig({
     url: `file:${sqlitePath}`,
   },
   verbose: true,
-  strict: true,
 });

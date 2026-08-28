@@ -39,6 +39,14 @@ export function getEnvironmentSlug(env: { VITE_APP_URL?: string }): string {
  * suffix is collapsed to `-`, and the separator between envSlug /
  * workflowName / suffix is `_`.
  *
+ * `generation` (default 1) mints a *different* id for the same dedup key, so a
+ * trigger whose prior instance died can retry instead of colliding with its own
+ * corpse forever (#1149). Generation 1 is the bare id — existing instances keep
+ * their ids — and later generations append `_g<n>`. The tag is appended AFTER
+ * truncation reserves room for it: truncation cuts the suffix's tail, so a tag
+ * merely concatenated on could be sheared off and collapse two generations back
+ * into one id.
+ *
  * Truncates to 100 chars (CF limit). Truncation happens at the suffix
  * because the env slug + workflow name are needed for namespacing and the
  * suffix is the dedup key — if it gets cut, the worst case is two callers
@@ -48,20 +56,23 @@ export function buildInstanceId({
   env,
   workflowName,
   suffix,
+  generation = 1,
 }: {
   env: { VITE_APP_URL?: string };
   workflowName: string;
   suffix: string;
+  generation?: number;
 }): string {
   const envSlug = getEnvironmentSlug(env);
   const safeWorkflowName = workflowName.replace(/[^a-zA-Z0-9_-]+/g, '-');
   const prefix = `${envSlug}_${safeWorkflowName}_`;
-  const room = MAX_INSTANCE_ID_LENGTH - prefix.length;
+  const tag = generation > 1 ? `_g${generation}` : '';
+  const room = MAX_INSTANCE_ID_LENGTH - prefix.length - tag.length;
   if (room <= 0) {
     throw new Error(
       `Instance ID prefix '${prefix}' exceeds the ${MAX_INSTANCE_ID_LENGTH}-char limit; shorten the env slug or workflow name`
     );
   }
   const safeSuffix = suffix.replace(/[^a-zA-Z0-9_-]+/g, '-');
-  return `${prefix}${safeSuffix.slice(0, room)}`;
+  return `${prefix}${safeSuffix.slice(0, room)}${tag}`;
 }

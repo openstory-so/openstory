@@ -202,7 +202,7 @@ export const SheetComparisonDialog: React.FC<SheetComparisonDialogProps> = ({
             disabled={busy}
           >
             {isDiscarding && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Discard
+            <span>Discard</span>
           </Button>
           <Button
             type="button"

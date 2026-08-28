@@ -1,88 +1,67 @@
-import { Link } from '@tanstack/react-router';
-import type { DOMNode } from 'html-dom-parser';
-// Import the htmlparser2 server build directly instead of the bare
-// `html-dom-parser` entry (which html-react-parser's `parse()` uses).
-// Workerd's resolve conditions include `browser`, so the bare entry resolves
-// to the DOMParser client build — DOMParser doesn't exist in Workerd, the
-// first SSR `parse()` throws, React aborts the shell to client rendering,
-// and the docs ship an empty <body> (invisible to crawlers, #814). The
-// server build is pure JS, so it runs everywhere and the client parses
-// markup identically to the server (no hydration drift).
-import htmlToDOM from 'html-dom-parser/lib/server/html-to-dom';
+import { docsHighlightCss, highlightDocsCode } from '@/lib/docs/highlight';
+import { isInternalDocsHref, type MarkdownDocument } from '@/lib/docs/markdown';
+import { cn } from '@/lib/utils';
 import {
-  type HTMLReactParserOptions,
-  attributesToProps,
-  domToReact,
-} from 'html-react-parser';
+  Markdown,
+  type MarkdownComponentProps,
+  type MarkdownComponents,
+} from '@tanstack/markdown/react';
+import { Link } from '@tanstack/react-router';
 import { MermaidDiagram } from './mermaid-diagram';
 
 type MarkdownContentProps = {
-  markup: string;
+  document: MarkdownDocument;
   className?: string;
 };
 
-function isInternalLink(href: string): boolean {
-  return href.startsWith('/');
-}
-
-function childrenToDOMNodes(children: readonly unknown[]): DOMNode[] {
-  return children.filter(
-    (child): child is DOMNode =>
-      typeof child === 'object' &&
-      child !== null &&
-      'type' in child &&
-      typeof (child as { type: unknown }).type === 'string'
+function DocsLink({ href, children, ...props }: MarkdownComponentProps<'a'>) {
+  if (href && isInternalDocsHref(href)) {
+    return (
+      <Link to={href} {...props}>
+        {children}
+      </Link>
+    );
+  }
+  return (
+    <a href={href} {...props}>
+      {children}
+    </a>
   );
 }
 
-const parserOptions: HTMLReactParserOptions = {
-  replace(domNode) {
-    // Use a structural check rather than `instanceof Element` because
-    // duplicated domhandler module instances make the class identity
-    // unreliable, leaving `instanceof` false for real Element nodes.
-    if (domNode.type !== 'tag') return;
+function DocsImage({ alt = '', ...props }: MarkdownComponentProps<'img'>) {
+  return <img {...props} alt={alt} loading="lazy" />;
+}
 
-    // Render mermaid diagrams from server-emitted placeholders
-    if (domNode.name === 'div' && domNode.attribs.class === 'mermaid-diagram') {
-      const source = domNode.attribs['data-mermaid-source'] ?? '';
-      return <MermaidDiagram source={source} />;
-    }
+function DocsMermaid({ source }: { source?: string }) {
+  return <MermaidDiagram source={source ?? ''} />;
+}
 
-    // Replace internal <a> links with TanStack Router <Link>
-    if (domNode.name === 'a' && domNode.attribs.href) {
-      const href = domNode.attribs.href;
-      if (isInternalLink(href)) {
-        const props = attributesToProps(domNode.attribs);
-        return (
-          <Link to={href} {...props}>
-            {domToReact(childrenToDOMNodes(domNode.children), parserOptions)}
-          </Link>
-        );
-      }
-    }
-
-    // Add loading="lazy" to images, ensure alt is always set
-    if (domNode.name === 'img') {
-      const { alt = '', ...rest } = attributesToProps(
-        domNode.attribs
-      ) as React.ImgHTMLAttributes<HTMLImageElement>;
-      return <img {...rest} alt={alt} loading="lazy" />;
-    }
-  },
-};
+const components = {
+  a: DocsLink,
+  img: DocsImage,
+  'mermaid-diagram': DocsMermaid,
+} satisfies MarkdownComponents;
 
 export const MarkdownContent: React.FC<MarkdownContentProps> = ({
-  markup,
+  document,
   className,
 }) => {
   return (
-    <div className={`prose dark:prose-invert max-w-none ${className ?? ''}`}>
-      {domToReact(
-        // Matches html-react-parser's `parse()` defaults — it disables
-        // attribute lowercasing so e.g. SVG viewBox survives.
-        htmlToDOM(markup, { lowerCaseAttributeNames: false }),
-        parserOptions
+    <div
+      className={cn(
+        'prose dark:prose-invert markdown-renderer max-w-none',
+        className
       )}
+    >
+      <style>{docsHighlightCss}</style>
+      <Markdown
+        highlighter={highlightDocsCode}
+        headingAnchors={{ content: '#', className: 'heading-anchor' }}
+        components={components}
+      >
+        {document}
+      </Markdown>
     </div>
   );
 };

@@ -69,7 +69,7 @@ export const SceneScriptTab: React.FC<SceneScriptTabProps> = ({
             id="script-extract-input"
             value={currentScript}
             onValueChange={(value) => onEditedScriptChange(value)}
-            placeholder="Enter the script text for this scene…"
+            placeholder="Enter the script text for this scene… (type @ to insert elements, cast, locations)"
             className="min-h-[180px] pr-10"
             disabled={!sceneId || isSaving}
             mentionItems={mentionItems}

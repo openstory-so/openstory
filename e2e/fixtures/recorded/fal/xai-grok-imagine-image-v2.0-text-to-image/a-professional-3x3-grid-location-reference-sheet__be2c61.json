@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "A professional 3x3 grid location reference sheet for film production, showing 9 distinct views of the same location in consistent visual style.\n\n[LOCATION]:\nEXT. CROSSTOWN CROSSWALK — NIGHT - NIGHT\nType: Exterior\n\n[VISUAL DESCRIPTION]:\nA wide crosstown avenue crossing at night: yellow taxis stacked and idling nose-to-tail with headlights blooming, a striped crosswalk with a red countdown signal, steam from a manhole, and a wall of illuminated office tower glass glowing behind. Wet-slick asphalt catches reflected light.\n\n[ARCHITECTURAL STYLE]:\nMidtown commercial corridor — glass-and-steel office towers, standard traffic infrastructure\n\n[KEY FEATURES]:\nIdling yellow taxis, striped crosswalk, pedestrian countdown signal, glowing office glass, headlight flare\n\n[COLOR PALETTE]:\nTaxi yellow, deep navy-black, cool office-glass white, red signal accent, coral lip\n\n[LIGHTING]:\nMixed practical night sources — headlights, streetlamps, backlit office glass creating rim light; handheld wide\n\n[ATMOSPHERE]:\nUrgent, electric, race-against-the-clock nighttime city\n\n[STYLE DIRECTION]:\nRender this location in the following visual style:\nArt style: Modern social-first product photography with tactile, editorial energy. Products shown in real-life context -- hands opening packaging, fingers pressing textures, products on bathroom shelves, kitchen counters, rumpled linen. Close-up detail shots emphasize material and finish. Flat-lays with curated minimal arrangements. Color-matched backgrounds that complement the product. Every frame feels like something you would screenshot and save\nMood: Fresh, sensory, and effortlessly cool\nLighting direction: Bright natural window light with clean directional shadows. Direct on-camera flash for punchy editorial energy on select shots. No heavy diffusion -- let light feel real and immediate. Warm late-afternoon glow for lifestyle moments. High-key and airy overall with pops of contrast\nColor palette: #FFFFFF, #F0E6D3, #D4536D, #1A1A1A, #E8F4E8\nColor grading: Clean and bright with true-to-life color. Whites are crisp, skin tones warm and natural. Minimal processing -- the product looks like it does in your hand. Slight warmth in highlights, lifted shadows keeping everything airy. One accent color pops against neutral base\nCamera approach: Dynamic mix of handheld and locked shots with consistent energy. Handheld with natural micro-movement for lifestyle moments -- hands interacting, daily rituals, real context. Quick-cut to locked beauty frames for hero product shots. Macro details on textures and surfaces. Overhead flat-lays directly above. Eye-level and slightly above angles. Shallow depth of field on tactile details. Energetic pacing -- no lingering, every frame earns its time\nReference look: modern social-first skincare-brand content, dewy minimalist beauty-brand visual identity, sun-soaked lifestyle beauty campaigns, playful color-blocked skincare content.\nAll 9 panels must consistently reflect this style direction.\n[GRID LAYOUT - 3 rows × 3 columns, each panel 16:9 aspect ratio]:\n\nRow 1 - ESTABLISHING SHOTS:\n- Panel 1 (Top-Left): Wide exterior/approach view showing the location in context\n- Panel 2 (Top-Center): Main establishing shot - the primary view of the location\n- Panel 3 (Top-Right): Alternate angle establishing shot\n\nRow 2 - MEDIUM SHOTS:\n- Panel 4 (Middle-Left): Key interior/exterior area view\n- Panel 5 (Middle-Center): Central focal point of the location\n- Panel 6 (Middle-Right): Secondary important area\n\nRow 3 - DETAIL & ATMOSPHERE:\n- Panel 7 (Bottom-Left): Architectural or design details close-up\n- Panel 8 (Bottom-Center): Texture and material details\n- Panel 9 (Bottom-Right): Atmospheric/mood shot capturing the essence\n\n[TECHNICAL SPECIFICATIONS]:\n- All 9 panels must show the SAME location from different angles\n- Maintain absolute visual consistency across all panels (architecture, colors, materials, lighting)\n- Each panel is 16:9 landscape format\n- Cinematic film production quality\n- High r...",
+        "model": "xai/grok-imagine-image/v2.0/text-to-image"
+      },
+      "response": {
+        "json": {
+          "images": [
+            {
+              "url": "https://v3b.fal.media/files/b/0aa74b0e/pOdfm3AzqlgZU36CieXiB_eEGGPWvW.jpg",
+              "content_type": "image/jpeg",
+              "file_name": "pOdfm3AzqlgZU36CieXiB_eEGGPWvW.jpg",
+              "file_size": null,
+              "width": 2816,
+              "height": 1584
+            }
+          ],
+          "revised_prompt": null
+        },
+        "status": 200,
+        "billableUnits": 7
+      }
+    }
+  ]
+}

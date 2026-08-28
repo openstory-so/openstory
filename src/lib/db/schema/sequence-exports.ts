@@ -11,8 +11,11 @@
  * The "Download" UI surfaces the newest *ready* row (per sequence); the API
  * lists every status so a caller can poll progress.
  *
- * `sourceShotsHash` / `sourceMusicVariantId` are recorded so the UI can show
- * whether the most recent export is still in sync with current inputs.
+ * `sourceShotsHash` is a SHA-256 of the scene video URLs + effective music
+ * URL, computed by `useSequenceExport` (#1253). The latest `ready` row is
+ * reused as a cache — for direct download and native playback in
+ * `SequencePlayer` — only when it matches the current inputs.
+ * `sourceMusicVariantId` is reserved but currently never written.
  */
 
 import { sql, type InferInsertModel, type InferSelectModel } from 'drizzle-orm';
@@ -58,7 +61,7 @@ export const sequenceExports = snakeCase.table(
     // row. Null for browser exports.
     workflowRunId: text(),
 
-    // Inputs that produced this snapshot (for staleness display)
+    // Inputs that produced this snapshot (cache key, see useSequenceExport)
     sourceShotsHash: text(),
     sourceMusicVariantId: text(),
 

@@ -178,6 +178,26 @@ export function matchElementsToScene<T extends ElementMatchInput>(
   });
 }
 
+/** Prompt wins; else tags + extract. */
+export function matchElementsToShotImage<T extends ElementMatchInput>(
+  allElements: T[],
+  args: {
+    visualPrompt?: string | null;
+    elementTags?: string[] | null;
+    sceneExtract?: string | null;
+  }
+): T[] {
+  const prompt = (args.visualPrompt ?? '').trim();
+  if (prompt.length > 0) {
+    return matchElementsToScene(allElements, [], prompt);
+  }
+  return matchElementsToScene(
+    allElements,
+    args.elementTags ?? [],
+    args.sceneExtract ?? ''
+  );
+}
+
 function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

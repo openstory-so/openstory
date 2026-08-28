@@ -20,7 +20,10 @@ import {
   estimateBatchMotionCost,
   resolveBatchShotVideoModel,
 } from '@/lib/motion/batch-motion-cost';
-import { requireCredits } from '@/lib/billing/preflight';
+import {
+  releaseReservationOnThrow,
+  reserveRunCredits,
+} from '@/lib/billing/preflight';
 import { buildMotionReferenceImages } from '@/lib/motion/build-motion-references';
 import { resolveShotDuration } from '@/lib/motion/resolve-shot-duration';
 import { generateMotionSchema } from '@/lib/schemas/shot.schemas';
@@ -36,7 +39,11 @@ import { terminateSingleArtifactRun } from '@/lib/workflow/run-outcome';
 const motionLogger = getLogger(['openstory', 'serverFn', 'motion']);
 import type { BatchMotionMusicWorkflowInput } from '@/lib/workflow/types';
 
-import { resolveMotionPromptFromVersion } from '@/lib/motion/resolve-motion-prompt';
+import {
+  motionPromptFromVersion,
+  resolveMotionPrompt,
+  resolveMotionPromptFromVersion,
+} from '@/lib/motion/resolve-motion-prompt';
 import { toShotView } from '@/lib/shots/shot-view';
 import { rescanContinuityFromPrompt } from '@/lib/scenes/rescan-continuity-from-prompt';
 import { buildUserEditProvenance } from '@/lib/prompts/user-edit-provenance';
@@ -53,7 +60,7 @@ const generateMotionInputSchema = generateMotionSchema.extend({
 
 export const generateShotMotionFn = createServerFn({ method: 'POST' })
   .middleware([shotAccessMiddleware])
-  .inputValidator(zodValidator(generateMotionInputSchema))
+  .validator(zodValidator(generateMotionInputSchema))
   .handler(async ({ data, context }) => {
     const { shot, frame, sequence, teamId } = context;
 
@@ -86,16 +93,27 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
     const userEditedPrompt = Boolean(data.prompt);
     const selectedMotion =
       await context.scopedDb.shotPromptVersions.getSelectedMotion(shot.id);
-    const prompt =
-      data.prompt ||
-      resolveMotionPromptFromVersion(
-        selectedMotion,
-        {
-          characterTags: context.scene?.continuity?.characterTags,
-          description: context.scene?.originalScript.extract ?? null,
-        },
-        model
-      );
+    // An edit replaces the version's `fullPrompt`; model assembly (dialogue
+    // tags, audio direction, no-music) still goes on top — the same thing the
+    // editor's optimised-prompt preview shows. So what fal receives (`prompt`)
+    // and what is persisted as the user-edit version (`data.prompt`) differ.
+    const prompt = resolveMotionPrompt(
+      {
+        motionPrompt: data.prompt
+          ? {
+              fullPrompt: data.prompt,
+              dialogue: selectedMotion?.dialogue ?? null,
+              audio: selectedMotion?.audio ?? null,
+            }
+          : selectedMotion
+            ? motionPromptFromVersion(selectedMotion)
+            : null,
+        characterTags: context.scene?.continuity?.characterTags,
+        description: context.scene?.originalScript.extract ?? null,
+        generateAudio: data.generateAudio,
+      },
+      model
+    );
 
     // Auto-link any element/cast/location tags the user mentioned in their
     // edited motion prompt into the scene's continuity, so downstream
@@ -107,7 +125,7 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
         scopedDb: context.scopedDb,
         sequenceId: sequence.id,
         existing: effectiveContinuity,
-        promptText: prompt,
+        promptText: data.prompt ?? prompt,
       });
       if (rescan.changed && shot.sceneId) {
         effectiveContinuity = rescan.continuity;
@@ -146,80 +164,92 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
       model,
     });
 
-    await requireCredits(
+    const reservationId = await reserveRunCredits(
       context.scopedDb,
       gateEstimate(
         estimateVideoCost(model, duration, {
           pricing: await getEffectiveFalPricing(),
+          hasReferenceImages: referenceImages.length > 0,
         }),
         { model, operation: 'motion' }
       ),
-      { errorMessage: 'Insufficient credits for motion generation' }
-    );
-
-    // Both of these are snapshotted HERE rather than re-read in the workflow:
-    // that read would be racy against concurrent append-only version writes and
-    // replay-unsafe, since this very run repoints the selection pointer
-    // (#713/#991).
-    const userEditProvenance = shouldRecordUserEdit({
-      userEditedPrompt,
-      prompt,
-      currentPrompt: selectedMotion?.text ?? null,
-    })
-      ? await buildUserEditProvenance({
-          kind: 'motion',
-          scopedDb: context.scopedDb,
-          sequence,
-          scene: context.scene
-            ? { ...context.scene, continuity: effectiveContinuity }
-            : null,
-          startingFrameImageUrl: imageUrl,
-        })
-      : undefined;
-
-    const workflowInput: BatchMotionMusicWorkflowInput = {
-      userId: context.user.id,
-      teamId,
-      sequenceId: sequence.id,
-      includeMusic: false,
-      shots: [
-        {
-          shotId: shot.id,
-          sceneId: shot.sceneId,
-          imageUrl,
-          frameVersionId: selectedStill.id,
-          motionPromptVersionId: selectedMotion?.id ?? null,
-          prompt,
-          model,
-          duration,
-          fps: data.fps,
-          motionBucket: data.motionBucket,
-          aspectRatio: sequence.aspectRatio,
-          generateAudio: data.generateAudio,
-          sceneTitle: context.scene?.metadata?.title,
-          sequenceTitle: sequence.title,
-          userEditProvenance,
-          priorMotion: userEditProvenance
-            ? {
-                dialogue: selectedMotion?.dialogue ?? null,
-                audio: selectedMotion?.audio ?? null,
-              }
-            : undefined,
-          referenceImages,
-        },
-      ],
-    };
-
-    const workflowRunId = await triggerWorkflow(
-      '/motion-batch',
-      workflowInput,
       {
-        deduplicationId: `motion-batch-${shot.id}-${Date.now()}`,
-        label: buildWorkflowLabel(sequence.id),
+        errorMessage: 'Insufficient credits for motion generation',
+        sequenceId: sequence.id,
       }
     );
 
-    return { workflowRunId, shotId: shot.id };
+    return releaseReservationOnThrow(
+      context.scopedDb,
+      reservationId,
+      async () => {
+        // Both of these are snapshotted HERE rather than re-read in the workflow:
+        // that read would be racy against concurrent append-only version writes and
+        // replay-unsafe, since this very run repoints the selection pointer
+        // (#713/#991).
+        const userEditProvenance = shouldRecordUserEdit({
+          userEditedPrompt,
+          prompt: data.prompt,
+          currentPrompt: selectedMotion?.text ?? null,
+        })
+          ? await buildUserEditProvenance({
+              kind: 'motion',
+              scopedDb: context.scopedDb,
+              sequence,
+              scene: context.scene
+                ? { ...context.scene, continuity: effectiveContinuity }
+                : null,
+              startingFrameImageUrl: imageUrl,
+            })
+          : undefined;
+
+        const workflowInput: BatchMotionMusicWorkflowInput = {
+          userId: context.user.id,
+          teamId,
+          sequenceId: sequence.id,
+          reservationId,
+          includeMusic: false,
+          shots: [
+            {
+              shotId: shot.id,
+              sceneId: shot.sceneId,
+              imageUrl,
+              frameVersionId: selectedStill.id,
+              motionPromptVersionId: selectedMotion?.id ?? null,
+              prompt,
+              model,
+              duration,
+              fps: data.fps,
+              motionBucket: data.motionBucket,
+              aspectRatio: sequence.aspectRatio,
+              generateAudio: data.generateAudio,
+              sceneTitle: context.scene?.metadata?.title,
+              sequenceTitle: sequence.title,
+              userEditProvenance,
+              userEditText: userEditProvenance ? data.prompt : undefined,
+              priorMotion: userEditProvenance
+                ? {
+                    dialogue: selectedMotion?.dialogue ?? null,
+                    audio: selectedMotion?.audio ?? null,
+                  }
+                : undefined,
+              referenceImages,
+            },
+          ],
+        };
+
+        const workflowRunId = await triggerWorkflow(
+          '/motion-batch',
+          workflowInput,
+          {
+            deduplicationId: `motion-batch-${shot.id}-${Date.now()}`,
+            label: buildWorkflowLabel(sequence.id),
+          }
+        );
+
+        return { workflowRunId, shotId: shot.id };
+      }
+    );
   });
 
 // -- Batch Generate Motion for Sequence ----------------------------------
@@ -242,7 +272,7 @@ const batchGenerateMotionInputSchema = z.object({
 
 export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(zodValidator(batchGenerateMotionInputSchema))
+  .validator(zodValidator(batchGenerateMotionInputSchema))
   .handler(async ({ data, context }) => {
     const { sequence, teamId, user } = context;
 
@@ -328,6 +358,14 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
     const resolveShotVideoModel = (shot: (typeof allShots)[number]) =>
       resolveBatchShotVideoModel(shot, shotModels, sequence, data.model);
 
+    // Resolve cast/element reference images once for the whole batch (#873) —
+    // before credit pre-flight so Seedance prices the reference-to-video
+    // endpoint when refs will actually be sent.
+    const [characters, elements] = await Promise.all([
+      context.scopedDb.characters.listWithSheets(sequence.id),
+      context.scopedDb.sequenceElements.list(sequence.id),
+    ]);
+
     // Sum per-shot costs — shots may render with different (priced) models.
     const estimatedCost = estimateBatchMotionCost(
       eligibleShots,
@@ -337,125 +375,142 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
         explicitModel: data.model,
         duration: data.duration,
         pricing: await getEffectiveFalPricing(),
+        hasReferenceImages: (batchShot) => {
+          const shot = eligibleShots.find((s) => s.id === batchShot.id);
+          if (!shot) return false;
+          return (
+            buildMotionReferenceImages({
+              scene: sceneOf(shot),
+              characters,
+              elements,
+            }).length > 0
+          );
+        },
       }
     );
-
-    await requireCredits(context.scopedDb, estimatedCost, {
-      errorMessage: `Insufficient credits for batch motion generation (${eligibleShots.length} shots)`,
-    });
 
     const includeMusic =
       (data.includeMusic ?? false) && sequence.musicStatus !== 'generating';
-
-    // Persist the batch model picks so the sequence header chip, future batch
-    // sessions, and storyboard regen reflect what the user just chose.
-    const videoModelChanged = data.model && data.model !== sequence.videoModel;
-    const musicModelChanged =
-      includeMusic &&
-      data.musicModel &&
-      data.musicModel !== sequence.musicModel;
-    if (videoModelChanged || musicModelChanged) {
-      await context.scopedDb.sequences.update({
-        id: sequence.id,
-        ...(videoModelChanged ? { videoModel: data.model } : {}),
-        ...(musicModelChanged ? { musicModel: data.musicModel } : {}),
-      });
+    if (includeMusic && (!sequence.musicPrompt || !sequence.musicTags)) {
+      throw new Error('No music prompt or tags found');
     }
 
-    // Resolve cast/element reference images once for the whole batch (#873) —
-    // matched per frame below against each frame's continuity tags.
-    const [characters, elements] = await Promise.all([
-      context.scopedDb.characters.listWithSheets(sequence.id),
-      context.scopedDb.sequenceElements.list(sequence.id),
-    ]);
-
-    // Build music config if requested
-    let musicConfig: BatchMotionMusicWorkflowInput['music'];
-    if (includeMusic) {
-      if (!sequence.musicPrompt || !sequence.musicTags) {
-        throw new Error('No music prompt or tags found');
-      }
-
-      const totalDuration = allShots.reduce(
-        (sum, shot) => sum + (shot.durationMs ? shot.durationMs / 1000 : 10),
-        0
-      );
-
-      musicConfig = {
-        prompt: sequence.musicPrompt,
-        tags: sequence.musicTags,
-        duration: totalDuration || 30,
-        model: data.musicModel,
-      };
-    }
-
-    // Batch-load the selected motion prompt version for every eligible shot —
-    // the resolution source of truth (#713), replacing `metadata.prompts.motion`.
-    const selectedMotionByShot =
-      await context.scopedDb.shotPromptVersions.getSelectedMotionByShots(
-        eligibleShots.map((s) => s.id)
-      );
-
-    const workflowInput: BatchMotionMusicWorkflowInput = {
-      userId: user.id,
-      teamId,
-      sequenceId: sequence.id,
-      includeMusic,
-      shots: eligibleShots.map((shot) => {
-        const shotModel = resolveShotVideoModel(shot);
-        const scene = sceneOf(shot);
-        const selectedMotion = selectedMotionByShot.get(shot.id);
-        return {
-          shotId: shot.id,
-          sceneId: shot.sceneId,
-          imageUrl: shot.image?.url ?? '',
-          // The versions this clip renders from, pinned here so the render
-          // manifest can't name rows a concurrent edit repointed to.
-          frameVersionId: shot.image?.id ?? null,
-          motionPromptVersionId: selectedMotion?.id ?? null,
-          prompt: resolveMotionPromptFromVersion(
-            selectedMotion,
-            {
-              characterTags: scene?.continuity?.characterTags,
-              description: scene?.originalScript.extract ?? null,
-            },
-            shotModel
-          ),
-          model: shotModel,
-          sceneTitle: scene?.metadata?.title,
-          sequenceTitle: sequence.title,
-          duration:
-            data.duration ?? (shot.durationMs ? shot.durationMs / 1000 : 3),
-          fps: data.fps,
-          motionBucket: data.motionBucket,
-          aspectRatio: sequence.aspectRatio,
-          generateAudio: data.generateAudio,
-          referenceImages: buildMotionReferenceImages({
-            scene,
-            characters,
-            elements,
-          }),
-        };
-      }),
-      music: musicConfig,
-    };
-
-    const workflowRunId = await triggerWorkflow(
-      '/motion-batch',
-      workflowInput,
+    const reservationId = await reserveRunCredits(
+      context.scopedDb,
+      estimatedCost,
       {
-        deduplicationId: `motion-batch-${sequence.id}-${Date.now()}`,
-        label: buildWorkflowLabel(sequence.id),
+        errorMessage: `Insufficient credits for batch motion generation (${eligibleShots.length} shots)`,
+        sequenceId: sequence.id,
       }
     );
 
-    return {
-      sequenceId: sequence.id,
-      totalShots: allShots.length,
-      eligibleShots: eligibleShots.length,
-      workflowRunId,
-      includeMusic,
-    };
+    return releaseReservationOnThrow(
+      context.scopedDb,
+      reservationId,
+      async () => {
+        // Persist the batch model picks so the sequence header chip, future batch
+        // sessions, and storyboard regen reflect what the user just chose.
+        const videoModelChanged =
+          data.model && data.model !== sequence.videoModel;
+        const musicModelChanged =
+          includeMusic &&
+          data.musicModel &&
+          data.musicModel !== sequence.musicModel;
+        if (videoModelChanged || musicModelChanged) {
+          await context.scopedDb.sequences.update({
+            id: sequence.id,
+            ...(videoModelChanged ? { videoModel: data.model } : {}),
+            ...(musicModelChanged ? { musicModel: data.musicModel } : {}),
+          });
+        }
+
+        let musicConfig: BatchMotionMusicWorkflowInput['music'];
+        if (includeMusic && sequence.musicPrompt && sequence.musicTags) {
+          const totalDuration = allShots.reduce(
+            (sum, shot) =>
+              sum + (shot.durationMs ? shot.durationMs / 1000 : 10),
+            0
+          );
+
+          musicConfig = {
+            prompt: sequence.musicPrompt,
+            tags: sequence.musicTags,
+            duration: totalDuration || 30,
+            model: data.musicModel,
+          };
+        }
+
+        // Batch-load the selected motion prompt version for every eligible shot —
+        // the resolution source of truth (#713), replacing `metadata.prompts.motion`.
+        const selectedMotionByShot =
+          await context.scopedDb.shotPromptVersions.getSelectedMotionByShots(
+            eligibleShots.map((s) => s.id)
+          );
+
+        const workflowInput: BatchMotionMusicWorkflowInput = {
+          userId: user.id,
+          teamId,
+          sequenceId: sequence.id,
+          reservationId,
+          includeMusic,
+          shots: eligibleShots.map((shot) => {
+            const shotModel = resolveShotVideoModel(shot);
+            const scene = sceneOf(shot);
+            const selectedMotion = selectedMotionByShot.get(shot.id);
+            return {
+              shotId: shot.id,
+              sceneId: shot.sceneId,
+              imageUrl: shot.image?.url ?? '',
+              // The versions this clip renders from, pinned here so the render
+              // manifest can't name rows a concurrent edit repointed to.
+              frameVersionId: shot.image?.id ?? null,
+              motionPromptVersionId: selectedMotion?.id ?? null,
+              prompt: resolveMotionPromptFromVersion(
+                selectedMotion,
+                {
+                  characterTags: scene?.continuity?.characterTags,
+                  description: scene?.originalScript.extract ?? null,
+                  generateAudio: data.generateAudio,
+                },
+                shotModel
+              ),
+              model: shotModel,
+              sceneTitle: scene?.metadata?.title,
+              sequenceTitle: sequence.title,
+              duration:
+                data.duration ?? (shot.durationMs ? shot.durationMs / 1000 : 3),
+              fps: data.fps,
+              motionBucket: data.motionBucket,
+              aspectRatio: sequence.aspectRatio,
+              generateAudio: data.generateAudio,
+              referenceImages: buildMotionReferenceImages({
+                scene,
+                characters,
+                elements,
+              }),
+            };
+          }),
+          music: musicConfig,
+        };
+
+        const workflowRunId = await triggerWorkflow(
+          '/motion-batch',
+          workflowInput,
+          {
+            deduplicationId: `motion-batch-${sequence.id}-${Date.now()}`,
+            label: buildWorkflowLabel(sequence.id),
+          }
+        );
+
+        return {
+          sequenceId: sequence.id,
+          totalShots: allShots.length,
+          eligibleShots: eligibleShots.length,
+          workflowRunId,
+          includeMusic,
+        };
+      }
+    );
   });
 
 // ---------------------------------------------------------------------------

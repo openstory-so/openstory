@@ -16,7 +16,10 @@
  *     so the failure write itself benefits from retries + step durability.
  */
 
+import { getEnv } from '#env';
+import { getDb } from '#db-client';
 import { configureFalProxyFromEnv } from '@/lib/ai/fal-config';
+import { ensureLocalModelPricingSeeded } from '@/lib/db/seed-model-pricing';
 import { createScopedDb } from '@/lib/db/scoped';
 import {
   toWorkflowScopedDb,
@@ -45,6 +48,29 @@ import { flushAnalytics } from '@/lib/observability/flush-analytics';
 import { getLogger, serializeError } from '@/lib/observability/logger';
 
 const logger = getLogger(['openstory', 'workflow', 'cf', 'base']);
+
+async function zeroOwnedReservation(
+  payload: UserWorkflowContext,
+  scopedDb: WorkflowScopedDb
+): Promise<void> {
+  if (!payload.ownsReservation || !payload.reservationId) return;
+  try {
+    await scopedDb.billing.zeroReservation(payload.reservationId);
+  } catch (err) {
+    logger.error(
+      `[${payload.reservationId}] Failed to zero owned reservation:`,
+      { err }
+    );
+  }
+}
+
+let e2ePricingSeed: Promise<unknown> | null = null;
+
+async function ensureE2eModelPricing(): Promise<void> {
+  if (getEnv().E2E_TEST !== 'true') return;
+  e2ePricingSeed ??= ensureLocalModelPricingSeeded(getDb());
+  await e2ePricingSeed;
+}
 
 /**
  * Read the `_parent` notify hint a parent workflow injects via
@@ -121,6 +147,10 @@ export abstract class OpenStoryWorkflowEntrypoint<
     // hit real endpoints even in replay. Idempotent (module-flag guarded), so
     // running it per workflow invocation / retry is safe. See lib/ai/fal-config.
     configureFalProxyFromEnv();
+    // Workflow isolates never run the fetch handler's self-seed. Replay
+    // stills bill $0 (and spam `reportMissingBillingCost`) when this
+    // isolate's D1 has no `model_pricing` rows.
+    await ensureE2eModelPricing();
 
     // Pull the parent notify hint once — used on both success and failure
     // paths so a parent's `spawnAndAwaitChild` always sees a terminal event.
@@ -128,6 +158,7 @@ export abstract class OpenStoryWorkflowEntrypoint<
 
     try {
       const result = await this.runImpl(event, step, scopedDb);
+      await zeroOwnedReservation(event.payload, scopedDb);
 
       // Notify the parent on success (Pattern 3 fan-in). No-op for top-level
       // workflows that weren't spawned via spawnAndAwaitChild.
@@ -171,7 +202,7 @@ export abstract class OpenStoryWorkflowEntrypoint<
         err: serializeError(error),
       });
 
-      if (this.onFailure) {
+      if (this.onFailure || event.payload.ownsReservation) {
         // Wrap in step.do so cleanup retries on its own merits. The catch
         // sits OUTSIDE the step — catching inside would make the step
         // succeed on the first attempt and silently skip the engine's
@@ -182,6 +213,7 @@ export abstract class OpenStoryWorkflowEntrypoint<
         // persisted workflowRunId (see lib/cron/reconcile-all.ts).
         try {
           await step.do('emit-failure', async () => {
+            await zeroOwnedReservation(event.payload, scopedDb);
             await this.onFailure?.({ event, error: sanitized, scopedDb });
           });
         } catch (cleanupError) {

@@ -32,6 +32,10 @@ import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import { generateImageWithProvider } from '@/lib/image/image-generation';
 import { uploadPosterToStorage } from '@/lib/image/image-storage';
 import { buildPosterPrompt } from '@/lib/prompts/poster-prompt';
+import {
+  notifySequenceReady,
+  sequenceScenesUrl,
+} from '@/lib/emails/notify-sequence-ready';
 import { getGenerationChannel } from '@/lib/realtime';
 import { validateSequenceAuth } from '@/lib/workflow/auth';
 import { spawnAndAwaitChild } from '@/lib/workflow/await-child';
@@ -69,7 +73,6 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
       title,
       script,
       aspectRatio,
-      styleConfig,
       analysisModelId,
       imageModel,
       videoModel,
@@ -93,10 +96,17 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
       await seq.updateStatus('processing');
     });
 
+    // Pending automatic style (#1213): the poster renders from the script alone.
+    const styleConfig = input.pendingAutoStyleId
+      ? undefined
+      : input.styleConfig;
+
     // Generate a poster image from the script for the video player empty
     // state. Non-critical — failures are logged and swallowed so a poster
     // outage cannot block the storyboard. Mirrors the QStash original's
     // try/catch swallow inside the step.
+    let posterUrl: string | null = null;
+
     const posterResult = await step.do('generate-poster', async () => {
       try {
         const prompt = buildPosterPrompt(title, script, styleConfig);
@@ -139,13 +149,17 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
           }
         });
 
-        const posterUrl = storedPosterUrl ?? generatedPosterUrl;
+        const savedPosterUrl = storedPosterUrl ?? generatedPosterUrl;
+        posterUrl = savedPosterUrl;
 
         await step.do('save-poster', async () => {
-          await scopedDb.sequences.update({ id: sequenceId, posterUrl });
+          await scopedDb.sequences.update({
+            id: sequenceId,
+            posterUrl: savedPosterUrl,
+          });
           await getGenerationChannel(sequenceId).emit(
             'generation.poster:ready',
-            { posterUrl }
+            { posterUrl: savedPosterUrl }
           );
         });
 
@@ -164,6 +178,7 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
             usedOwnKey: posterResult.metadata.usedOwnKey,
             description: `Sequence poster (${PREVIEW_IMAGE_MODEL})`,
             idempotencyKey: `${event.instanceId}:poster`,
+            reservationId: input.reservationId,
             metadata: {
               ...posterUsage,
               model: PREVIEW_IMAGE_MODEL,
@@ -185,9 +200,11 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
         userId: input.userId,
         teamId: input.teamId,
         sequenceId,
+        reservationId: input.reservationId,
         script,
         aspectRatio,
-        styleConfig,
+        styleConfig: input.styleConfig,
+        pendingAutoStyleId: input.pendingAutoStyleId,
         analysisModelId,
         elementIds,
         musicPromptSource: input.musicPromptSource,
@@ -217,6 +234,13 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
       timeout: '6 hours',
     });
 
+    const reservationId = input.reservationId;
+    if (reservationId) {
+      await step.do('zero-reservation', async () => {
+        await scopedDb.billing.zeroReservation(reservationId);
+      });
+    }
+
     await step.do('mark-completed', async () => {
       await seq.updateStatus('completed');
     });
@@ -224,6 +248,20 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
     await step.do('emit-complete', async () => {
       await getGenerationChannel(sequenceId).emit('generation.complete', {
         sequenceId,
+      });
+    });
+
+    // After emit-complete: a send retry must not strand the player on processing.
+    await step.do('email-ready', async () => {
+      await notifySequenceReady({
+        scopedDb,
+        sequenceId,
+        ownerEmail: input.ownerEmail,
+        title,
+        sequenceUrl: input.sequenceUrl || sequenceScenesUrl(sequenceId),
+        posterUrl,
+        notify: input.notify,
+        userId,
       });
     });
   }
@@ -250,13 +288,27 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
     // sequence failed — its message ("Your OpenRouter API key is invalid…")
     // is more specific than the parent's wrapper ("Child workflow
     // analyze-script… failed: …").
-    const { sequenceId } = event.payload;
+    const { sequenceId, reservationId } = event.payload;
+    if (reservationId) {
+      try {
+        await scopedDb.billing.zeroReservation(reservationId);
+      } catch (releaseError) {
+        logger.error(
+          `[StoryboardWorkflow:cf] Failed to zero reservation ${reservationId}:`,
+          { err: releaseError }
+        );
+      }
+    }
     if (!sequenceId) return;
 
     const sequence = await scopedDb.liveRead.sequences.getForUser({
       sequenceId,
     });
-    if (sequence.status === 'failed') return;
+    // Trailing steps (email-ready) run AFTER mark-completed. A send failure
+    // must not un-complete a successful generation.
+    if (sequence.status === 'failed' || sequence.status === 'completed') {
+      return;
+    }
 
     await scopedDb.sequence(sequenceId).updateStatus('failed', error);
     await getGenerationChannel(sequenceId).emit('generation.failed', {

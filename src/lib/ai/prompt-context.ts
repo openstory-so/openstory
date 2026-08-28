@@ -16,7 +16,7 @@ import type {
 import type { ScopedDb } from '@/lib/db/scoped';
 import { ValidationError } from '@/lib/errors';
 import type { StyleConfig } from '@/lib/db/schema';
-import { StyleConfigSchema } from '@/lib/db/schema';
+import { resolveSequenceStyleConfig } from '@/lib/style/style-config';
 import {
   matchCharactersToScene,
   matchElementsToScene,
@@ -43,6 +43,8 @@ export type ShotPromptContext = {
 export type ShotPromptContextSequence = {
   id: string;
   styleId: string | null;
+  /** Sequence-owned recipe. Preferred over the live catalog row. */
+  styleConfig?: unknown;
   aspectRatio: string;
   analysisModel: string;
 };
@@ -58,7 +60,7 @@ export type ShotPromptContextRefs = {
     ReturnType<ScopedDb['sequenceLocations']['listWithReferences']>
   >;
   elements: Awaited<ReturnType<ScopedDb['sequenceElements']['list']>>;
-  style: Awaited<ReturnType<ScopedDb['styles']['getById']>>;
+  style: Awaited<ReturnType<ScopedDb['styles']['getById']>> | null;
 };
 
 export async function loadShotPromptContext(args: {
@@ -87,7 +89,8 @@ export async function loadShotPromptContext(args: {
     refs,
   } = args;
 
-  if (!sequence.styleId) {
+  const hasSnapshot = sequence.styleConfig != null;
+  if (!hasSnapshot && !sequence.styleId) {
     // All callers are trigger-side server fns; ValidationError rides the
     // serialization adapter to the client as a typed 400, not a 500.
     throw new ValidationError(
@@ -101,10 +104,12 @@ export async function loadShotPromptContext(args: {
         scopedDb.characters.listWithSheets(sequence.id),
         scopedDb.sequenceLocations.listWithReferences(sequence.id),
         scopedDb.sequenceElements.list(sequence.id),
-        scopedDb.styles.getById(sequence.styleId),
+        hasSnapshot || !sequence.styleId
+          ? Promise.resolve(null)
+          : scopedDb.styles.getById(sequence.styleId),
       ]);
 
-  if (!style) {
+  if (!hasSnapshot && !style) {
     throw new Error(`Style ${sequence.styleId} not found`);
   }
 
@@ -115,7 +120,10 @@ export async function loadShotPromptContext(args: {
 
   return {
     scene,
-    styleConfig: StyleConfigSchema.parse(style.config),
+    styleConfig: resolveSequenceStyleConfig({
+      snapshot: sequence.styleConfig,
+      live: style?.config,
+    }),
     characterBible: charactersToBible(characters),
     locationBible: sequenceLocationsToBible(locations),
     elementBible: sequenceElementsToBible(elements),

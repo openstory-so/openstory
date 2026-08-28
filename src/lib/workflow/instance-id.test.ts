@@ -89,6 +89,52 @@ describe('buildInstanceId', () => {
     expect(id.startsWith('openstory-so_image_')).toBe(true);
   });
 
+  // #1149: a dead instance must not pin its dedup key forever, so the trigger
+  // walks generations. Generation 1 has to stay byte-identical to the untagged
+  // id or every in-flight instance would be orphaned by the deploy.
+  test('generation 1 is the bare id (no tag)', () => {
+    const args = {
+      env: { VITE_APP_URL: 'https://openstory.so' },
+      workflowName: 'image',
+      suffix: 'preview-h4sh-shot7',
+    };
+    expect(buildInstanceId({ ...args, generation: 1 })).toBe(
+      buildInstanceId(args)
+    );
+  });
+
+  test('later generations append _g<n>', () => {
+    const args = {
+      env: { VITE_APP_URL: 'https://openstory.so' },
+      workflowName: 'image',
+      suffix: 'preview-h4sh-shot7',
+    };
+    expect(buildInstanceId({ ...args, generation: 2 })).toBe(
+      'openstory-so_image_preview-h4sh-shot7_g2'
+    );
+    expect(buildInstanceId({ ...args, generation: 3 })).toBe(
+      'openstory-so_image_preview-h4sh-shot7_g3'
+    );
+  });
+
+  // The tag is reserved for BEFORE the suffix is truncated. Appending it after
+  // a naive `slice(0, room)` would push the id over 100 chars — and clamping
+  // afterwards would shear the tag off, collapsing generation 2 onto
+  // generation 1's id and re-creating the tombstone this fixes.
+  test('a truncated suffix still yields a distinct, in-limit tagged id', () => {
+    const args = {
+      env: { VITE_APP_URL: 'https://openstory.so' },
+      workflowName: 'image',
+      suffix: 'x'.repeat(200),
+    };
+    const gen1 = buildInstanceId(args);
+    const gen2 = buildInstanceId({ ...args, generation: 2 });
+
+    expect(gen2.length).toBeLessThanOrEqual(100);
+    expect(gen2).not.toBe(gen1);
+    expect(gen2.endsWith('_g2')).toBe(true);
+  });
+
   test('throws when prefix alone exceeds the 100-char limit', () => {
     expect(() =>
       buildInstanceId({

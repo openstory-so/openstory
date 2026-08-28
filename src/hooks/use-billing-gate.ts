@@ -4,7 +4,7 @@
  */
 
 import { useQuery } from '@tanstack/react-query';
-import { useSession } from '@/lib/auth/client';
+import { useAuthSession } from '@/lib/auth/session-query';
 import { getBillingGateStatusFn } from '@/functions/billing-gate';
 import { openBillingGate } from './use-billing-gate-dialog';
 
@@ -22,7 +22,7 @@ type BillingGateStatus = {
 };
 
 export function useBillingGateQuery() {
-  const { data: session } = useSession();
+  const { data: session } = useAuthSession();
 
   return useQuery({
     queryKey: [...BILLING_GATE_KEY],

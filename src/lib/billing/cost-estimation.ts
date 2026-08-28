@@ -9,6 +9,7 @@
 
 import { estimateFalCost, type EffectiveFalPricing } from '@/lib/ai/fal-cost';
 import {
+  getEditEndpoint,
   AUDIO_MODELS,
   IMAGE_MODELS,
   IMAGE_TO_VIDEO_MODELS,
@@ -18,6 +19,11 @@ import {
 } from '@/lib/ai/models';
 import type { AspectRatio } from '@/lib/constants/aspect-ratios';
 import { aspectRatioToDimensions } from '@/lib/constants/aspect-ratios';
+import { resolveMotionEndpoint } from '@/lib/motion/resolve-motion-endpoint';
+import {
+  studioVideoEndpointId,
+  type StudioVideoMode,
+} from '@/lib/studio/text-to-video';
 import { getLogger } from '@/lib/observability/logger';
 import { reportFlooredEstimate } from './billing-observability';
 import { type Microdollars, addMicros, micros, multiplyMicros } from './money';
@@ -51,6 +57,7 @@ type GateOperation =
   | 'shot-variants'
   | 'smart-retry:image'
   | 'smart-retry:motion'
+  | 'smart-retry:music'
   | 'storyboard:character-sheets'
   | 'storyboard:location-sheets'
   | 'storyboard:motion'
@@ -58,7 +65,9 @@ type GateOperation =
   | 'storyboard:shot-images'
   | 'update-stale-shots'
   | 'update-stale-shots:video'
-  | 'variant-upscale';
+  | 'variant-upscale'
+  | 'studio-image'
+  | 'studio-video';
 
 /** Any model a fal estimate can be gated for. */
 type GateModel = TextToImageModel | ImageToVideoModel | AudioModel;
@@ -74,9 +83,15 @@ const reportedUnpriced = new Set<string>();
 
 /**
  * Resolve an estimate for the credit gate: the honest number when one exists,
- * otherwise the conservative floor per call. Display paths should NOT use
- * this — show nothing for null. The log dedupes per model+operation; the
- * PostHog event fires every time so the floor's frequency stays countable.
+ * otherwise the conservative floor per call.
+ *
+ * Prefer null for single-action UI labels (`estimateImageCost` / video / audio).
+ * `estimateStoryboardCost` intentionally floors components for credit gates
+ * and reuses that total for Generate's ActionCost — that dual use is the
+ * exception, not the rule (#1140).
+ *
+ * The log dedupes per model+operation; the PostHog event fires every time so
+ * the floor's frequency stays countable.
  */
 export function gateEstimate(
   estimate: Microdollars | null,
@@ -116,12 +131,12 @@ export function estimateImageCost(
   model: TextToImageModel,
   aspectRatio: AspectRatio,
   numImages: number,
-  opts: { pricing: FalPricingMap; resolution?: string }
+  opts: { pricing: FalPricingMap; resolution?: string; edit?: boolean }
 ): Microdollars | null {
   const { width, height } = aspectRatioToDimensions(aspectRatio);
 
   return estimateFalCost(
-    IMAGE_MODELS[model].id,
+    (opts.edit ? getEditEndpoint(model) : null) ?? IMAGE_MODELS[model].id,
     {
       numImages,
       widthPx: width,
@@ -134,18 +149,51 @@ export function estimateImageCost(
 
 /**
  * Estimate provider cost of generating video.
+ *
+ * Prices the **endpoint the run will actually hit** (#873 / #1140): when
+ * cast/element refs will be attached and the model has a dedicated
+ * reference-to-video endpoint (Seedance), use that row; otherwise the base
+ * image-to-video id. Duration + resolution still drive the unit formula —
+ * we do not invent a per-ref surcharge.
  */
 export function estimateVideoCost(
   model: ImageToVideoModel,
   durationSeconds: number,
-  opts: { pricing: FalPricingMap; resolution?: string }
+  opts: {
+    pricing: FalPricingMap;
+    resolution?: string;
+    /**
+     * True when cast/element (or other) reference images will be sent so
+     * `resolveMotionEndpoint` may route to reference-to-video.
+     */
+    hasReferenceImages?: boolean;
+  }
 ): Microdollars | null {
+  const { endpointId } = resolveMotionEndpoint(
+    model,
+    opts.hasReferenceImages === true
+  );
+  // Keep the catalog model id path when unresolved (tests / unknown keys).
+  const falEndpointId = endpointId || IMAGE_TO_VIDEO_MODELS[model].id;
   return estimateFalCost(
-    IMAGE_TO_VIDEO_MODELS[model].id,
+    falEndpointId,
     {
       durationSeconds,
       resolution: opts.resolution,
     },
+    opts.pricing
+  );
+}
+
+/** Pre-flight cost of a studio clip; `mode` picks the endpoint priced. */
+export function estimateStudioVideoCost(
+  model: ImageToVideoModel,
+  durationSeconds: number,
+  opts: { pricing: FalPricingMap; mode?: StudioVideoMode }
+): Microdollars | null {
+  return estimateFalCost(
+    studioVideoEndpointId(model, opts.mode),
+    { durationSeconds },
     opts.pricing
   );
 }
@@ -166,9 +214,9 @@ export function estimateAudioCost(
 }
 
 /**
- * Rough estimate of LLM cost per call for pre-flight credit checks.
- * Based on average token usage for script analysis calls.
- * Only used for client-side gate affordability checks, not actual deduction.
+ * Fixed pre-flight stand-in (~$0.02/call) for script-analysis LLM cost.
+ * Used by credit gates and ActionCost/storyboard estimates — never for actual
+ * deduction (that uses OpenRouter `usage.cost` via `llmCostFromUsage`).
  */
 const AVERAGE_LLM_COST_PER_CALL_MICROS = micros(20_000); // $0.02
 
@@ -176,22 +224,45 @@ export function estimateLLMCost(numCalls: number = 1): Microdollars {
   return multiplyMicros(AVERAGE_LLM_COST_PER_CALL_MICROS, numCalls);
 }
 
-/** Average scene count for a typical script (used when we can't know in advance) */
+/**
+ * Blind fallback when callers omit `estimatedSceneCount`. Prefer
+ * `estimateSceneCount(script, { targetDurationSeconds })` (or labeled Scene N
+ * headings after Enhance). Not the Enhance 30s product default (~5–6 shots).
+ */
 const DEFAULT_ESTIMATED_SCENE_COUNT = 8;
 
 /**
- * Estimate the total cost of a storyboard workflow.
- * Includes: LLM analysis, character/location sheet images, per-shot images,
- * and optionally per-shot motion generation.
- *
- * Gate-only: components with no honest estimate contribute the conservative
- * `UNKNOWN_ESTIMATE_FLOOR` per call rather than making the total null.
+ * How many character reference sheets to bill for a pre-flight estimate.
+ * Always charging 3 made a 1-scene Generate quote look absurd (sheets alone
+ * dominated). Scales gently with board size; caps at 3.
  */
-export function estimateStoryboardCost(opts: {
+export function estimateCharacterSheetCount(sceneCount: number): number {
+  const n = Math.max(1, Math.floor(sceneCount));
+  if (n <= 2) return 1;
+  if (n <= 5) return 2;
+  return 3;
+}
+
+/**
+ * How many location reference sheets to bill for a pre-flight estimate.
+ * Same rationale as {@link estimateCharacterSheetCount}.
+ */
+export function estimateLocationSheetCount(sceneCount: number): number {
+  const n = Math.max(1, Math.floor(sceneCount));
+  if (n <= 3) return 1;
+  if (n <= 8) return 2;
+  return 3;
+}
+
+export type StoryboardCostOpts = {
   imageModel: TextToImageModel;
   /** Number of image models selected (multiplies per-shot image cost) */
   imageModelCount?: number;
   aspectRatio: AspectRatio;
+  /**
+   * Expected still count (≈ scene count today). Prefer labeled Scene N
+   * headings from Enhance over word heuristics.
+   */
   estimatedSceneCount?: number;
   autoGenerateMotion?: boolean;
   /**
@@ -210,30 +281,21 @@ export function estimateStoryboardCost(opts: {
   audioDurationSeconds?: number;
   /** Live pricing map from `getEffectiveFalPricing()`. */
   pricing: FalPricingMap;
-}): Microdollars {
+};
+
+/**
+ * Stills + optional motion + optional music for an already-split board.
+ * Excludes LLM analysis and character/location sheets (those already ran).
+ * Used to grow the run envelope after scene-split (#1310).
+ */
+export function estimateStoryboardRenderCost(
+  opts: StoryboardCostOpts
+): Microdollars {
   const sceneCount = opts.estimatedSceneCount ?? DEFAULT_ESTIMATED_SCENE_COUNT;
   const imageModelCount = opts.imageModelCount ?? 1;
   const { pricing } = opts;
 
-  // LLM calls: script analysis + character bible + location bible (~3 calls)
-  const llmCost = estimateLLMCost(3);
-
-  // Character sheets (~3 characters on average, landscape_16_9)
-  const characterSheetCost = gateEstimate(
-    estimateImageCost(opts.imageModel, '16:9', 3, { pricing }),
-    { model: opts.imageModel, operation: 'storyboard:character-sheets' },
-    3
-  );
-
-  // Location sheets (~3 locations on average, landscape_16_9)
-  const locationSheetCost = gateEstimate(
-    estimateImageCost(opts.imageModel, '16:9', 3, { pricing }),
-    { model: opts.imageModel, operation: 'storyboard:location-sheets' },
-    3
-  );
-
-  // Per-shot images (multiplied by number of selected image models)
-  const shotCost = multiplyMicros(
+  let totalCost = multiplyMicros(
     gateEstimate(
       estimateImageCost(opts.imageModel, opts.aspectRatio, sceneCount, {
         pricing,
@@ -244,20 +306,14 @@ export function estimateStoryboardCost(opts: {
     imageModelCount
   );
 
-  let totalCost = addMicros(
-    addMicros(addMicros(llmCost, characterSheetCost), locationSheetCost),
-    shotCost
-  );
-
-  // Optional motion generation for all shots. Each selected video model
-  // produces its own video per shot, so sum each model's own per-shot cost
-  // (priced from its parameters) rather than scaling one model's rate by a
-  // count — a mixed selection has genuinely different per-model costs.
   if (opts.autoGenerateMotion && opts.videoModels?.length) {
     const duration = opts.videoDurationSeconds ?? 5;
     for (const model of opts.videoModels) {
       const perShotMotion = gateEstimate(
-        estimateVideoCost(model, duration, { pricing }),
+        estimateVideoCost(model, duration, {
+          pricing,
+          hasReferenceImages: true,
+        }),
         { model, operation: 'storyboard:motion' }
       );
       totalCost = addMicros(
@@ -267,10 +323,6 @@ export function estimateStoryboardCost(opts: {
     }
   }
 
-  // Optional music generation — one track per sequence per audio model. Sum
-  // each selected model's own cost (priced from its parameters) rather than
-  // scaling the primary's rate by a count — a mixed selection has genuinely
-  // different per-model costs (mirrors the per-model video costing above).
   if (opts.autoGenerateMusic && opts.audioModels?.length) {
     const audioDuration = opts.audioDurationSeconds ?? sceneCount * 5;
     for (const model of opts.audioModels) {
@@ -285,4 +337,53 @@ export function estimateStoryboardCost(opts: {
   }
 
   return totalCost;
+}
+
+/**
+ * Estimate the total cost of a storyboard workflow.
+ * Includes: LLM analysis, character/location sheet images, per-shot images,
+ * and optionally per-shot motion generation.
+ *
+ * `estimatedSceneCount` is treated as the number of **shot stills** to bill
+ * (today the pipeline is ~1 still per scene). Callers should pass
+ * `estimateSceneCount(script, { targetDurationSeconds })` so pre-Enhance
+ * duration chips and enhanced "Scene N — 5s" headings both count accurately
+ * (#1140). Prefer `estimateStoryboardPreflightCost` at server gates so
+ * motion/music flags stay aligned with Generate ActionCost.
+ *
+ * Always returns a number for gates: components with no honest estimate
+ * contribute `UNKNOWN_ESTIMATE_FLOOR` per call. Generate's ActionCost and
+ * film-cost showcase also use this total after an honest primary-image probe;
+ * unpriced motion/audio lines may still embed floors in that composite.
+ */
+export function estimateStoryboardCost(opts: StoryboardCostOpts): Microdollars {
+  const sceneCount = opts.estimatedSceneCount ?? DEFAULT_ESTIMATED_SCENE_COUNT;
+  const { pricing } = opts;
+  const characterSheets = estimateCharacterSheetCount(sceneCount);
+  const locationSheets = estimateLocationSheetCount(sceneCount);
+
+  const llmCost = estimateLLMCost(3);
+
+  const characterSheetCost = gateEstimate(
+    estimateImageCost(opts.imageModel, '16:9', characterSheets, { pricing }),
+    {
+      model: opts.imageModel,
+      operation: 'storyboard:character-sheets',
+    },
+    characterSheets
+  );
+
+  const locationSheetCost = gateEstimate(
+    estimateImageCost(opts.imageModel, '16:9', locationSheets, { pricing }),
+    {
+      model: opts.imageModel,
+      operation: 'storyboard:location-sheets',
+    },
+    locationSheets
+  );
+
+  return addMicros(
+    addMicros(addMicros(llmCost, characterSheetCost), locationSheetCost),
+    estimateStoryboardRenderCost(opts)
+  );
 }

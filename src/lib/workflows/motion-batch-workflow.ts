@@ -52,7 +52,7 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
     // Fan-out uses workflow bindings, not direct DB access; the merge steps
     // that read shots were removed (browser-side merge). Kept for signature
     // parity with the abstract runImpl.
-    _scopedDb: WorkflowScopedDb
+    scopedDb: WorkflowScopedDb
   ): Promise<MotionBatchWorkflowResult> {
     const input = event.payload;
     const parentInstanceId = event.instanceId;
@@ -89,6 +89,7 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
             motionPrompt: shot.motionPrompt,
             model,
             characterTags: shot.characterTags,
+            generateAudio: shot.generateAudio,
           })
         : shot.prompt;
 
@@ -110,6 +111,7 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
         aspectRatio: shot.aspectRatio,
         generateAudio: shot.generateAudio,
         userEditProvenance: shot.userEditProvenance,
+        userEditText: shot.userEditText,
         sceneTitle: shot.sceneTitle,
         sequenceTitle: shot.sequenceTitle,
         priorMotion: shot.priorMotion,
@@ -118,6 +120,7 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
         // Add-model (#547) batches generate alternates only — the child must
         // not write the legacy `shots.video*` columns.
         variantOnly: input.variantOnly,
+        reservationId: input.reservationId,
       };
 
       return spawnAndAwaitChild<MotionWorkflowInput, MotionWorkflowResult>(
@@ -178,6 +181,7 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
           // audioModels[0] is primary (resolveAudioModels preserves order +
           // dedupes); only it writes the live `sequences.music*` columns.
           isPrimary: index === 0,
+          reservationId: input.reservationId,
         },
         spawnStepName: `spawn-music-${index}-${model}`,
         awaitStepName: `await-music-${index}-${model}`,
@@ -229,18 +233,36 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
     // Playback and the final MP4 are produced client-side by
     // `<SequencePlayer>` / the Mediabunny browser export — there is no
     // server-side video merge step (parity with the QStash motion-batch).
+    const reservationId = input.reservationId;
+    if (reservationId) {
+      await step.do('zero-reservation', async () => {
+        await scopedDb.billing.zeroReservation(reservationId);
+      });
+    }
     return { sequenceId };
   }
 
   protected override async onFailure({
     event,
     error,
+    scopedDb,
   }: {
     event: Readonly<WorkflowEvent<BatchMotionMusicWorkflowInput>>;
     error: string;
     scopedDb: WorkflowScopedDb;
   }): Promise<void> {
     const input = event.payload;
+
+    if (input.reservationId) {
+      try {
+        await scopedDb.billing.zeroReservation(input.reservationId);
+      } catch (releaseError) {
+        logger.error(
+          `[MotionBatchWorkflow:cf] Failed to zero reservation ${input.reservationId}:`,
+          { err: releaseError }
+        );
+      }
+    }
 
     if (input.sequenceId) {
       try {

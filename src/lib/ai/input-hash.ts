@@ -320,6 +320,7 @@ import type {
 } from './scene-analysis.schema';
 import type { MusicSceneSummary } from '@/lib/workflow/types';
 import type { StyleConfig, VideoManifestEntry } from '@/lib/db/schema';
+import { styleConfigHashBody } from '@/lib/style/style-config';
 
 export type PromptSceneContextHashInput = {
   /**
@@ -457,7 +458,7 @@ function sortedBibles(input: PromptSceneContextHashInput) {
  *
  * v5 (#1108): dropped `sceneNumber` from the scene input surface — a pure
  * scene reorder must not re-stale prompts. Nulling migration:
- * 20260808041000_null_prompt_hashes_for_v5.
+ * 20260828024500_null_prompt_hashes_for_v5.
  */
 const PROMPT_INPUT_HASH_VERSION = 5;
 
@@ -469,7 +470,11 @@ export function computeVisualPromptInputHash(
     artifact: 'shot:visual-prompt',
     hashVersion: PROMPT_INPUT_HASH_VERSION,
     scene: sceneInputContext(input.scene),
-    styleConfig: input.styleConfig,
+    // Projected (not the raw blob) so the v2 config reshape and `version`
+    // cannot flip stored hashes. The projection keeps the legacy flat key
+    // names — a v2 config with no authored refinements hashes identically to
+    // its v1 row.
+    styleConfig: styleConfigHashBody(input.styleConfig),
     characterBible: bibles.characterBible.map(projectCharacterForPrompt),
     locationBible: bibles.locationBible.map(projectLocationForPrompt),
     elementBible: bibles.elementBible
@@ -488,7 +493,8 @@ export function computeMotionPromptInputHash(
     artifact: 'shot:motion-prompt',
     hashVersion: PROMPT_INPUT_HASH_VERSION,
     scene: sceneInputContext(input.scene),
-    styleConfig: input.styleConfig,
+    // Same projection as the visual hash — see the comment there.
+    styleConfig: styleConfigHashBody(input.styleConfig),
     characterBible: bibles.characterBible.map(projectCharacterForPrompt),
     locationBible: bibles.locationBible.map(projectLocationForPrompt),
     elementBible: bibles.elementBible

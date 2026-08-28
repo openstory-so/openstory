@@ -1,15 +1,24 @@
 /**
- * Image Cropping via Cloudflare Image Resizing
+ * Variant-sheet tile crop.
  *
- * Instead of downloading grid images and cropping with WASM in-process,
- * returns a `/cdn-cgi/image/trim=T;R;B;L/` URL. Cloudflare crops at the
- * edge when the downstream service (e.g. FAL nano_banana_2) fetches it.
+ * Production with a CDN domain: a `/cdn-cgi/image/trim=T;R;B;L/` URL.
+ * Cloudflare crops at the edge when fal fetches it — zero Worker memory.
  *
- * Requires Image Resizing enabled on the Cloudflare zone.
+ * Local / e2e-record / CDN-less deploys: no Image Resizing edge, so we crop
+ * in-process with `@cf-wasm/photon` and upload the tile to R2. E2e replay
+ * keeps the trim URL (aimock only string-matches and never fetches).
  */
 
-import { readStorageObject } from '#storage';
-import { r2KeyFromUrl, toCdnUrl } from '@/lib/storage/buckets';
+import { getEnv } from '#env';
+import { readStorageObject, uploadFile } from '#storage';
+import { generateId } from '@/lib/db/id';
+import {
+  STORAGE_BUCKETS,
+  isLocalStorageServing,
+  r2KeyFromUrl,
+  toCdnUrl,
+} from '@/lib/storage/buckets';
+import { tileCropRect } from './tile-crop';
 
 type CropTileOptions = {
   gridImageUrl: string;
@@ -17,10 +26,15 @@ type CropTileOptions = {
   col: number; // 1-based (1 = left column)
   gridCols?: number; // total columns in grid (default 3)
   gridRows?: number; // total rows in grid (default 3)
+  teamId: string;
+  sequenceId: string;
+  shotId: string;
 };
 
 type CropTileResult = {
   url: string;
+  /** R2 object key when we cropped in-process; empty for a trim URL. */
+  path: string;
 };
 
 type ImageDimensions = { width: number; height: number };
@@ -256,59 +270,140 @@ async function getImageDimensions(imageUrl: string): Promise<ImageDimensions> {
   return dims;
 }
 
+function isE2eReplay(): boolean {
+  const env = getEnv();
+  if (env.E2E_TEST !== 'true') return false;
+  const record = (env as Record<string, string | undefined>).E2E_RECORD;
+  return record !== '1';
+}
+
+/** True when fal cannot fetch a `/cdn-cgi/image/trim=` URL. */
+function shouldCropInProcess(): boolean {
+  return isLocalStorageServing() && !isE2eReplay();
+}
+
+async function readGridBytes(imageUrl: string): Promise<Uint8Array> {
+  const key = r2KeyFromUrl(imageUrl);
+  if (key !== null) {
+    const object = await readStorageObject(key);
+    if (!object) {
+      throw new Error(`Grid image not found in storage: ${key}`);
+    }
+    return object.bytes;
+  }
+  const response = await fetch(imageUrl);
+  if (!response.ok) {
+    throw new Error(
+      `Failed to fetch grid image ${imageUrl}: ${response.status}`
+    );
+  }
+  return new Uint8Array(await response.arrayBuffer());
+}
+
+async function cropTileInProcess(options: {
+  gridImageUrl: string;
+  row: number;
+  col: number;
+  gridCols: number;
+  gridRows: number;
+  teamId: string;
+  sequenceId: string;
+  shotId: string;
+}): Promise<CropTileResult> {
+  const {
+    gridImageUrl,
+    row,
+    col,
+    gridCols,
+    gridRows,
+    teamId,
+    sequenceId,
+    shotId,
+  } = options;
+  const bytes = await readGridBytes(gridImageUrl);
+  const { PhotonImage, crop } = await import('@cf-wasm/photon');
+  const input = PhotonImage.new_from_byteslice(bytes);
+  try {
+    const rect = tileCropRect({
+      gridWidth: input.get_width(),
+      gridHeight: input.get_height(),
+      row,
+      col,
+      gridCols,
+      gridRows,
+    });
+    const cropped = crop(input, rect.x1, rect.y1, rect.x2, rect.y2);
+    try {
+      const png = cropped.get_bytes();
+      const path = `teams/${teamId}/sequences/${sequenceId}/frames/${shotId}/variant-tile-${generateId()}.png`;
+      const uploaded = await uploadFile(STORAGE_BUCKETS.THUMBNAILS, path, png, {
+        contentType: 'image/png',
+      });
+      return { url: uploaded.publicUrl, path: uploaded.path };
+    } finally {
+      cropped.free();
+    }
+  } finally {
+    input.free();
+  }
+}
+
+function trimUrlFor(gridImageUrl: string, trim: string): string {
+  const cdnUrl = toCdnUrl(gridImageUrl);
+  if (cdnUrl) {
+    const parsed = new URL(cdnUrl);
+    return `${parsed.origin}/cdn-cgi/image/trim=${trim}${parsed.pathname}`;
+  }
+  if (gridImageUrl.startsWith('/')) {
+    return `/cdn-cgi/image/trim=${trim}${gridImageUrl}`;
+  }
+  const parsed = new URL(gridImageUrl);
+  return `${parsed.origin}/cdn-cgi/image/trim=${trim}${parsed.pathname}`;
+}
+
 /**
- * Crop a tile from a grid image using Cloudflare Image Resizing.
- * Returns a cdn-cgi/image/trim= URL instead of downloading and processing in-memory.
+ * Crop one cell out of a variant grid sheet.
  *
- * Reads actual image dimensions from the file header to calculate accurate
- * trim values, rather than assuming fixed tile sizes.
- *
- * KNOWN LIMITATION: with locally-served storage (no R2_PUBLIC_STORAGE_DOMAIN)
- * there is no Cloudflare edge, so the returned origin-relative trim URL won't
- * resolve when a real downstream service fetches it. E2E replay is unaffected
- * (aimock only string-matches); local dev / record runs of the variant-upscale
- * flow would need an Images-binding-based local crop if this becomes a problem.
+ * With a CDN domain: a trim URL (Cloudflare crops when fal fetches it).
+ * Locally (and on CDN-less deploys, and e2e record): photon crop + R2 upload
+ * so the returned URL is actually fetchable.
  */
 export async function cropTileFromGrid(
   options: CropTileOptions
 ): Promise<CropTileResult> {
-  const { gridImageUrl, row, col, gridCols = 3, gridRows = 3 } = options;
+  const {
+    gridImageUrl,
+    row,
+    col,
+    gridCols = 3,
+    gridRows = 3,
+    teamId,
+    sequenceId,
+    shotId,
+  } = options;
 
-  if (row < 1 || row > gridRows || col < 1 || col > gridCols) {
-    throw new Error(
-      `Invalid tile position: row ${row}, col ${col}. Must be 1-${gridRows} and 1-${gridCols}.`
-    );
+  if (shouldCropInProcess()) {
+    return cropTileInProcess({
+      gridImageUrl,
+      row,
+      col,
+      gridCols,
+      gridRows,
+      teamId,
+      sequenceId,
+      shotId,
+    });
   }
 
   const { width: gridWidth, height: gridHeight } =
     await getImageDimensions(gridImageUrl);
-
-  const tileWidth = Math.floor(gridWidth / gridCols);
-  const tileHeight = Math.floor(gridHeight / gridRows);
-
-  // Calculate trim values (pixels to remove from each edge)
-  const trimTop = tileHeight * (row - 1);
-  const trimRight = tileWidth * (gridCols - col);
-  const trimBottom = tileHeight * (gridRows - row);
-  const trimLeft = tileWidth * (col - 1);
-  const trim = `${trimTop};${trimRight};${trimBottom};${trimLeft}`;
-
-  // Stored URLs are origin-relative (#894). With a CDN domain configured the
-  // trim URL lives on that edge; without one it stays origin-relative — the
-  // browser can still render it, and the known limitation above applies for
-  // external fetchers.
-  const cdnUrl = toCdnUrl(gridImageUrl);
-  if (cdnUrl) {
-    const parsed = new URL(cdnUrl);
-    return {
-      url: `${parsed.origin}/cdn-cgi/image/trim=${trim}${parsed.pathname}`,
-    };
-  }
-  if (gridImageUrl.startsWith('/')) {
-    return { url: `/cdn-cgi/image/trim=${trim}${gridImageUrl}` };
-  }
-  const parsed = new URL(gridImageUrl);
-  return {
-    url: `${parsed.origin}/cdn-cgi/image/trim=${trim}${parsed.pathname}`,
-  };
+  const { trim } = tileCropRect({
+    gridWidth,
+    gridHeight,
+    row,
+    col,
+    gridCols,
+    gridRows,
+  });
+  return { url: trimUrlFor(gridImageUrl, trim), path: '' };
 }

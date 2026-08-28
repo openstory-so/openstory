@@ -28,6 +28,8 @@ import {
   BadgeDollarSign,
   Boxes,
   Clapperboard,
+  Film,
+  Images,
   LifeBuoy,
   Mail,
   MapPin,
@@ -41,13 +43,15 @@ import { UserSidebarFooter } from './user-sidebar-footer';
 
 const navLinks = [
   { to: '/sequences', label: 'Sequences', icon: Video },
+  { to: '/images', label: 'Images', icon: Images },
+  { to: '/videos', label: 'Videos', icon: Film },
+  ...(MODELS_ENABLED
+    ? [{ to: '/models', label: 'Models', icon: Boxes } as const]
+    : []),
   { to: '/styles', label: 'Styles', icon: Palette },
   { to: '/talent', label: 'Talent', icon: Users },
   { to: '/locations', label: 'Locations', icon: MapPin },
   { to: '/gallery', label: 'Gallery', icon: Clapperboard },
-  ...(MODELS_ENABLED
-    ? [{ to: '/models', label: 'Models', icon: Boxes } as const]
-    : []),
 ] as const;
 
 export function AppSidebar() {

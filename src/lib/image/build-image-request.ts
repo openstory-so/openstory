@@ -8,6 +8,7 @@
  */
 
 import {
+  capReferenceImages,
   getEditEndpoint,
   getTextToImageModelId,
   IMAGE_MODELS,
@@ -45,15 +46,21 @@ export type ImageGenerationParams = {
   referenceImageUrls?: string[];
 };
 
-const ASPECT_RATIO_MAP: Record<ImageSize, string> = {
+const ASPECT_RATIO_MAP = {
   square_hd: '1:1',
   portrait_16_9: '9:16',
   landscape_16_9: '16:9',
-};
+} as const satisfies Record<ImageSize, string>;
 
-function imageSizeToAspectRatio(imageSize: ImageSize): string {
+type AspectRatioValue = (typeof ASPECT_RATIO_MAP)[ImageSize];
+
+function imageSizeToAspectRatio(imageSize: ImageSize): AspectRatioValue {
   return ASPECT_RATIO_MAP[imageSize];
 }
+
+/** xAI's `aspectRatio_resolution` template, narrowed to the ratios we offer.
+ *  Declared here, not imported, so this module stays adapter-free. */
+export type GrokImagineImageSize = `${AspectRatioValue}_${'1k' | '2k'}`;
 
 function truncatePromptForModel(
   prompt: string,
@@ -100,6 +107,27 @@ function buildFalModelOptions(
         ...(params.seed !== undefined && { seed: params.seed }),
         ...(params.numImages !== undefined && { num_images: params.numImages }),
         ...(params.outputFormat && { output_format: params.outputFormat }),
+        // Reference images route this model to `fal-ai/flux-2/turbo/edit`
+        // (EDIT_ENDPOINTS), which requires `image_urls`. Omitting them sent an
+        // edit request with no images and fal rejected every one with a 422
+        // "Field required" — the only model in this switch that was missing it.
+        ...(params.referenceImageUrls?.length && {
+          image_urls: params.referenceImageUrls,
+        }),
+        sync_mode: false,
+      };
+
+    case 'krea_2_turbo':
+      return {
+        image_size: params.imageSize ?? DEFAULT_IMAGE_SIZE,
+        enable_safety_checker: true,
+        ...(params.seed !== undefined && { seed: params.seed }),
+        ...(params.numImages !== undefined && { num_images: params.numImages }),
+        ...(params.outputFormat && { output_format: params.outputFormat }),
+        ...(params.acceleration && { acceleration: params.acceleration }),
+        ...(params.enablePromptExpansion !== undefined && {
+          enable_prompt_expansion: params.enablePromptExpansion,
+        }),
         sync_mode: false,
       };
 
@@ -148,11 +176,15 @@ function buildFalModelOptions(
       };
 
     case 'grok_imagine_image':
+    case 'grok_imagine_image_quality':
       return {
         aspect_ratio: imageSizeToAspectRatio(
           params.imageSize ?? DEFAULT_IMAGE_SIZE
         ),
         resolution: (params.resolution ?? '2K').toLowerCase(),
+        // 2.0 accepts low/medium; Quality Mode has no quality knob — the
+        // model *is* the higher-fidelity tier.
+        ...(params.model === 'grok_imagine_image' && { quality: 'medium' }),
         ...(params.numImages !== undefined && { num_images: params.numImages }),
         ...(params.outputFormat && { output_format: params.outputFormat }),
         ...(params.referenceImageUrls?.length && {
@@ -167,7 +199,7 @@ function buildFalModelOptions(
           params.imageSize ?? DEFAULT_IMAGE_SIZE
         ),
         // Phota only accepts '1K' or '4K' — map anything else to '1K'
-        resolution: params.resolution === '4K' ? '4K' : ('1K' as '1K' | '4K'),
+        resolution: params.resolution === '4K' ? '4K' : '1K',
         ...(params.numImages !== undefined && { num_images: params.numImages }),
         ...(params.outputFormat && { output_format: params.outputFormat }),
         ...(params.referenceImageUrls?.length && {
@@ -238,26 +270,72 @@ function buildFalModelOptions(
 }
 
 /**
+ * {@link buildImageRequest} for xAI-native Grok Imagine (#1167). Aspect-ratio
+ * sized rather than pixel sized; the fal-only knobs (seed, inference steps,
+ * safety tolerance, output format) have no Imagine counterpart and are dropped
+ * rather than faked.
+ */
+export function buildGrokImageRequest(params: ImageGenerationParams): {
+  prompt: string;
+  size: GrokImagineImageSize;
+  numImages: number;
+  referenceImageUrls: string[];
+} {
+  const aspectRatio = imageSizeToAspectRatio(
+    params.imageSize ?? DEFAULT_IMAGE_SIZE
+  );
+  // Imagine has no 4K tier — 4K lands on the highest it serves.
+  const resolution = params.resolution === '1K' ? '1k' : '2k';
+
+  return {
+    prompt: truncatePromptForModel(params.prompt, params.model),
+    size: `${aspectRatio}_${resolution}`,
+    numImages: params.numImages ?? 1,
+    referenceImageUrls: capReferenceImages(
+      params.model,
+      params.referenceImageUrls ?? []
+    ),
+  };
+}
+
+/**
  * Resolve the endpoint and build the exact fal request body for an image
  * generation. `input` is the full request as fal sees it (prompt inline with
  * the model options); the submit path splits the prompt back out for the
  * TanStack AI adapter call.
  */
 export function buildImageRequest(params: ImageGenerationParams): {
+  /** Pricing Via — which API this endpoint is called on. Vendor is `model.vendor`. */
+  via: 'fal';
   endpointId: string;
   input: { prompt: string } & Record<string, unknown>;
 } {
-  const editEndpoint = getEditEndpoint(params.model);
+  // Capped once here rather than in each `case` of buildFalModelOptions —
+  // every model spreads `referenceImageUrls` itself, so a per-case cap is a
+  // rule each new model has to remember, and fal rejects the whole request
+  // when it's exceeded rather than truncating.
+  const capped: ImageGenerationParams = params.referenceImageUrls?.length
+    ? {
+        ...params,
+        referenceImageUrls: capReferenceImages(
+          params.model,
+          params.referenceImageUrls
+        ),
+      }
+    : params;
+
+  const editEndpoint = getEditEndpoint(capped.model);
   const endpointId =
-    editEndpoint && params.referenceImageUrls?.length
+    editEndpoint && capped.referenceImageUrls?.length
       ? editEndpoint
-      : getTextToImageModelId(params.model);
+      : getTextToImageModelId(capped.model);
 
   return {
+    via: 'fal',
     endpointId,
     input: {
-      prompt: truncatePromptForModel(params.prompt, params.model),
-      ...buildFalModelOptions(params),
+      prompt: truncatePromptForModel(capped.prompt, capped.model),
+      ...buildFalModelOptions(capped),
     },
   };
 }

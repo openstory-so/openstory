@@ -58,6 +58,25 @@ export function buildScriptBlocks(
     }));
 }
 
+/**
+ * The part of the full script no scene has claimed yet (#1225). Extracts are
+ * verbatim, in-order substrings of the script, so walk them forward and return
+ * what follows the last one. An extract that can't be located (edited after
+ * the split) is skipped rather than resetting the cursor.
+ */
+export function unsplitScriptTail(
+  script: string,
+  blocks: readonly Pick<ScriptBlock, 'extract'>[]
+): string {
+  let cursor = 0;
+  for (const { extract } of blocks) {
+    if (!extract) continue;
+    const at = script.indexOf(extract, cursor);
+    if (at !== -1) cursor = at + extract.length;
+  }
+  return script.slice(cursor).trim();
+}
+
 type SceneScriptBlockProps = {
   block: ScriptBlock;
   sequenceId: string;
@@ -162,7 +181,7 @@ const SceneScriptBlock: React.FC<SceneScriptBlockProps> = ({
         id={`scene-script-block-${block.sceneId}`}
         value={current}
         onValueChange={setDraft}
-        placeholder="Enter the script text for this scene…"
+        placeholder="Enter the script text for this scene… (type @ to insert elements, cast, locations)"
         className="min-h-[120px]"
         disabled={saveScript.isPending}
         mentionItems={mentionItems}
@@ -177,6 +196,9 @@ type SceneScriptDocumentProps = {
   /** Scene ids highlighted by the current selection. */
   selectedSceneIds: readonly string[];
   onSelectScene: (sceneId: string) => void;
+  /** The full script while it is still being split: the not-yet-split tail is
+   *  shown read-only below the scene blocks and shrinks as scenes land. */
+  splittingScript?: string | null;
 };
 
 export const SceneScriptDocument: React.FC<SceneScriptDocumentProps> = ({
@@ -184,8 +206,13 @@ export const SceneScriptDocument: React.FC<SceneScriptDocumentProps> = ({
   scenes,
   selectedSceneIds,
   onSelectScene,
+  splittingScript,
 }) => {
   const { items: mentionItems } = useSequenceMentionItems(sequenceId);
+  const blocks = scenes ? buildScriptBlocks(scenes) : [];
+  const tail = splittingScript
+    ? unsplitScriptTail(splittingScript, blocks)
+    : '';
 
   if (!scenes) {
     return (
@@ -197,10 +224,9 @@ export const SceneScriptDocument: React.FC<SceneScriptDocumentProps> = ({
     );
   }
 
-  const blocks = buildScriptBlocks(scenes);
   const selected = new Set(selectedSceneIds);
 
-  if (blocks.length === 0) {
+  if (blocks.length === 0 && !tail) {
     return (
       <div className="flex h-full items-center justify-center p-6">
         <p className="text-sm text-muted-foreground">
@@ -223,6 +249,21 @@ export const SceneScriptDocument: React.FC<SceneScriptDocumentProps> = ({
             mentionItems={mentionItems}
           />
         ))}
+        {tail && (
+          <section
+            aria-label="Script not yet split into scenes"
+            aria-busy="true"
+            className="flex flex-col gap-2 rounded-lg border border-dashed p-4"
+          >
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              Splitting into scenes…
+            </div>
+            <pre className="whitespace-pre-wrap font-sans text-sm text-muted-foreground">
+              {tail}
+            </pre>
+          </section>
+        )}
       </div>
     </ScrollArea>
   );

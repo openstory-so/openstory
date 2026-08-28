@@ -1,0 +1,23 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "A confident instrumental electronic groove that starts crisp and playful with plucked synths and snappy percussion, then builds into a driving nocturnal city pulse with bold bass and bright synth hooks. It peaks triumphant and electric under stage lights before dropping to a sparse, satisfied synth-and-piano outro.",
+        "model": "fal-ai/elevenlabs/music"
+      },
+      "response": {
+        "json": {
+          "audio": {
+            "url": "https://v3b.fal.media/files/b/0aa75347/BYJQidpd8xv-IAJ21-y4a_music_generated.mp3",
+            "content_type": "audio/mpeg",
+            "file_name": "music_generated.mp3",
+            "file_size": 1056645
+          }
+        },
+        "status": 200,
+        "billableUnits": 2
+      }
+    }
+  ]
+}

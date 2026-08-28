@@ -31,6 +31,7 @@ import {
   encodeCursor,
   parseLimitParam,
 } from './list';
+import { toShotReadiness } from './state';
 
 // toShareableUrl reads R2_PUBLIC_STORAGE_DOMAIN; pin local serving so the
 // origin-fallback assertions are environment-independent (see state.test.ts).
@@ -52,6 +53,7 @@ function makeSequence(overrides: Partial<Sequence> = {}): Sequence {
     createdBy: null,
     updatedBy: null,
     styleId: 'style-1',
+    styleConfig: null,
     aspectRatio: '16:9',
     analysisModel: 'anthropic/claude-haiku-4.5',
     analysisDurationMs: 0,
@@ -71,6 +73,7 @@ function makeSequence(overrides: Partial<Sequence> = {}): Sequence {
     statusError: null,
     workflowRunId: null,
     posterUrl: null,
+    readyEmailSentAt: null,
     autoGenerateMotion: false,
     autoGenerateMusic: false,
     suggestedTalentIds: null,
@@ -137,6 +140,7 @@ function makeStyle(overrides: Partial<Style> = {}): Style {
   return {
     id: 'style-1',
     teamId: 'team-1',
+    sequenceId: null,
     name: 'Cinematic Noir',
     description: null,
     config: {
@@ -174,9 +178,17 @@ function makeStyle(overrides: Partial<Style> = {}): Style {
  */
 function depsWithShots(shots: ShotView[], styles: Style[] = [makeStyle()]) {
   return {
-    // `listShotsByIds` hands back assembled views, so the page builder only
-    // groups them by sequence.
-    sequences: { listShotsByIds: async () => shots },
+    // The page builder reads readiness only (#1161). Fixtures stay full
+    // `ShotView`s and are projected through the same `toShotReadiness` the
+    // status document uses, so these assertions also pin the two paths to the
+    // same readiness derivation.
+    sequences: {
+      listShotReadinessByIds: async () =>
+        shots.map((shot) => ({
+          ...toShotReadiness(shot),
+          sequenceId: shot.sequenceId,
+        })),
+    },
     styles: { listByIds: async () => styles },
   };
 }

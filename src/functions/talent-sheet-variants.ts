@@ -37,7 +37,7 @@ export const getTeamTalentDivergentVariantsFn = createServerFn({
  */
 export const getTalentDivergentVariantsFn = createServerFn({ method: 'GET' })
   .middleware([authWithTeamMiddleware])
-  .inputValidator(zodValidator(z.object({ talentId: ulidSchema })))
+  .validator(zodValidator(z.object({ talentId: ulidSchema })))
   .handler(async ({ data, context }) => {
     const talent = await context.scopedDb.talent.getWithRelations(
       data.talentId
@@ -52,7 +52,7 @@ export const getTalentDivergentVariantsFn = createServerFn({ method: 'GET' })
 
 export const promoteTalentSheetVariantFn = createServerFn({ method: 'POST' })
   .middleware([authWithTeamMiddleware])
-  .inputValidator(zodValidator(variantInputSchema))
+  .validator(zodValidator(variantInputSchema))
   .handler(async ({ data, context }) => {
     const variant = await context.scopedDb.talentSheetVariants.getById(
       data.variantId
@@ -110,7 +110,7 @@ export const promoteTalentSheetVariantFn = createServerFn({ method: 'POST' })
 
 export const discardTalentSheetVariantFn = createServerFn({ method: 'POST' })
   .middleware([authWithTeamMiddleware])
-  .inputValidator(zodValidator(variantInputSchema))
+  .validator(zodValidator(variantInputSchema))
   .handler(async ({ data, context }) => {
     const variant = await context.scopedDb.talentSheetVariants.getById(
       data.variantId
@@ -136,7 +136,7 @@ export const discardTalentSheetVariantFn = createServerFn({ method: 'POST' })
 
 export const undiscardTalentSheetVariantFn = createServerFn({ method: 'POST' })
   .middleware([authWithTeamMiddleware])
-  .inputValidator(zodValidator(variantInputSchema))
+  .validator(zodValidator(variantInputSchema))
   .handler(async ({ data, context }) => {
     const variant = await context.scopedDb.talentSheetVariants.getById(
       data.variantId

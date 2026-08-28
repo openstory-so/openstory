@@ -19,6 +19,7 @@ import type { AspectRatio } from '@/lib/constants/aspect-ratios';
 import { cn } from '@/lib/utils';
 import { stripMarkdown } from '@/lib/utils/markdown-plain';
 import type { ShotView } from '@/lib/shots/shot-view';
+import { Link } from '@tanstack/react-router';
 import {
   ArrowDown,
   ArrowUp,
@@ -36,6 +37,7 @@ type SceneListItemProps = {
   scene?: SceneWithScript | undefined;
   aspectRatio: AspectRatio;
   isActive?: boolean;
+  /** Fires after the click; navigation is the card's own link. */
   onSelect?: () => void;
   variant?: 'stacked' | 'horizontal' | 'responsive';
   isRegeneratingImage?: boolean;
@@ -99,9 +101,7 @@ const SceneListItemComponent: React.FC<SceneListItemProps> = ({
     ? undefined
     : stripMarkdown(scene?.script?.extract ?? '');
 
-  // Skeleton state (no shot): suppress click handling and pointer cursor so
-  // a click during the loading window does not invoke the (now-undefined)
-  // onSelect callback or appear interactive.
+  // Skeleton state (no shot): no link, no pointer cursor.
   const isSkeleton = !shot;
   return (
     <Card
@@ -115,8 +115,21 @@ const SceneListItemComponent: React.FC<SceneListItemProps> = ({
         variant === 'horizontal' && 'py-3',
         'py-3'
       )}
-      onClick={isSkeleton ? undefined : onSelect}
     >
+      {shot && (
+        // Stretched link: a real <a href> so the click works before hydration,
+        // from the keyboard, and with Cmd/middle-click (#1339). Selection is
+        // URL state (`?shot=`), so this is the same navigate `useSceneSelection`
+        // does. z-10 puts it above the thumbnail wrapper; the corner dot comes
+        // later in the DOM so it still wins.
+        <Link
+          from="/sequences/$id/scenes"
+          search={(prev) => ({ ...prev, scenes: undefined, shot: shot.id })}
+          aria-label={title}
+          className="absolute inset-0 z-10 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          onClick={onSelect}
+        />
+      )}
       {showDivergentDot && (
         <div
           className="absolute right-3 top-3 z-10"
@@ -190,9 +203,13 @@ const SceneListItemComponent: React.FC<SceneListItemProps> = ({
                 thumbnailUrl={shot?.image?.url}
                 previewThumbnailUrl={shot?.previewThumbnailUrl}
                 thumbnailStatus={shot?.frame.imageStatus || undefined}
+                generationError={shot?.frame.imageError}
                 alt={title ?? 'Scene thumbnail'}
                 aspectRatio={aspectRatio}
                 className="w-full rounded-md"
+                gridSheetUrl={shot?.gridSheet?.url}
+                pendingUpscaleIndex={shot?.pendingUpscaleIndex}
+                pendingUpscaleUrl={shot?.pendingUpscaleUrl}
               />
               {(hasVideo || isGeneratingVideo) && (
                 <span
@@ -235,8 +252,9 @@ const SceneListItemComponent: React.FC<SceneListItemProps> = ({
 
       {hasShotMenu && shot && (
         <div
-          className="absolute bottom-2 right-2 z-10"
-          // Halt propagation so opening the menu doesn't also select the card.
+          className="absolute bottom-2 right-2 z-20"
+          // Halt propagation so opening the menu doesn't also follow the
+          // stretched card link (z-10) underneath.
           onClick={(e) => e.stopPropagation()}
           onKeyDown={(e) => e.stopPropagation()}
           role="presentation"
@@ -352,7 +370,11 @@ const areEqual = (
   if (
     prevShot.image?.url !== nextShot.image?.url ||
     prevShot.previewThumbnailUrl !== nextShot.previewThumbnailUrl ||
-    prevShot.frame.imageStatus !== nextShot.frame.imageStatus
+    prevShot.frame.imageStatus !== nextShot.frame.imageStatus ||
+    prevShot.frame.imageError !== nextShot.frame.imageError ||
+    prevShot.gridSheet?.url !== nextShot.gridSheet?.url ||
+    prevShot.pendingUpscaleIndex !== nextShot.pendingUpscaleIndex ||
+    prevShot.pendingUpscaleUrl !== nextShot.pendingUpscaleUrl
   ) {
     return false;
   }

@@ -59,7 +59,7 @@ export const getPublicLibraryLocationsFn = createServerFn({
 
 export const getLibraryLocationByIdFn = createServerFn({ method: 'GET' })
   .middleware([authWithTeamMiddleware])
-  .inputValidator(zodValidator(z.object({ locationId: ulidSchema })))
+  .validator(zodValidator(z.object({ locationId: ulidSchema })))
   .handler(async ({ context, data }) => {
     const location = await requireLocation(context.scopedDb, data.locationId);
 
@@ -75,7 +75,7 @@ export const getLibraryLocationByIdFn = createServerFn({ method: 'GET' })
 // Get Single Public ("system") library location — no auth, for anonymous visitors
 
 export const getPublicLibraryLocationByIdFn = createServerFn({ method: 'GET' })
-  .inputValidator(zodValidator(z.object({ locationId: ulidSchema })))
+  .validator(zodValidator(z.object({ locationId: ulidSchema })))
   .handler(async ({ data }) => {
     const location = await getPublicLibraryLocationById(data.locationId);
 
@@ -88,7 +88,7 @@ export const getPublicLibraryLocationByIdFn = createServerFn({ method: 'GET' })
 
 export const createLibraryLocationFn = createServerFn({ method: 'POST' })
   .middleware([authWithTeamMiddleware])
-  .inputValidator(
+  .validator(
     zodValidator(
       z.object({
         name: z.string().min(1).max(255),
@@ -108,7 +108,7 @@ export const createLibraryLocationFn = createServerFn({ method: 'POST' })
 
 export const updateLibraryLocationFn = createServerFn({ method: 'POST' })
   .middleware([authWithTeamMiddleware])
-  .inputValidator(
+  .validator(
     zodValidator(
       z.object({
         locationId: ulidSchema,
@@ -126,7 +126,7 @@ export const updateLibraryLocationFn = createServerFn({ method: 'POST' })
 
 export const deleteLibraryLocationFn = createServerFn({ method: 'POST' })
   .middleware([authWithTeamMiddleware])
-  .inputValidator(zodValidator(z.object({ locationId: ulidSchema })))
+  .validator(zodValidator(z.object({ locationId: ulidSchema })))
   .handler(async ({ context, data }) => {
     await requireLocation(context.scopedDb, data.locationId);
     await requireTeamAdminAccess(context.user.id, context.teamId);
@@ -136,7 +136,7 @@ export const deleteLibraryLocationFn = createServerFn({ method: 'POST' })
 
 export const presignLocationUploadFn = createServerFn({ method: 'POST' })
   .middleware([authWithTeamMiddleware])
-  .inputValidator(
+  .validator(
     zodValidator(
       z.object({
         filename: z.string().min(1),
@@ -166,7 +166,7 @@ export const presignLocationUploadFn = createServerFn({ method: 'POST' })
 
 export const finalizeLocationUploadFn = createServerFn({ method: 'POST' })
   .middleware([authWithTeamMiddleware])
-  .inputValidator(
+  .validator(
     zodValidator(
       z.object({
         locationId: ulidSchema,
@@ -192,7 +192,7 @@ export const finalizeLocationUploadFn = createServerFn({ method: 'POST' })
 
 export const addLocationSheetsFn = createServerFn({ method: 'POST' })
   .middleware([authWithTeamMiddleware])
-  .inputValidator(
+  .validator(
     zodValidator(
       z.object({
         locationId: ulidSchema,
@@ -282,7 +282,7 @@ export const addLocationSheetsFn = createServerFn({ method: 'POST' })
 
 export const deleteLocationSheetFn = createServerFn({ method: 'POST' })
   .middleware([authWithTeamMiddleware])
-  .inputValidator(zodValidator(z.object({ sheetId: ulidSchema })))
+  .validator(zodValidator(z.object({ sheetId: ulidSchema })))
   .handler(async ({ context, data }) => {
     const record = await context.scopedDb.locationSheets.getWithLocation(
       data.sheetId

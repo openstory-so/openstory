@@ -17,11 +17,14 @@ export const BILLING_TRANSACTIONS_KEY = ['billing-transactions'] as const;
 type BalanceQueryData = {
   teamId?: string;
   balance: number;
+  availableUsd?: number;
+  reservedUsd?: number;
   stripeEnabled: boolean;
   autoTopUp: {
     enabled: boolean;
     thresholdUsd: number | null;
     amountUsd: number | null;
+    lastFailure: { at: string } | null;
   };
   hasPaymentMethod: boolean;
 };
@@ -42,20 +45,30 @@ export function useBillingBalanceRealtime(
       data: {
         teamId: string;
         balanceUsd: number;
+        availableUsd?: number;
+        reservedUsd?: number;
         amountUsd: number;
-        transactionId: string;
-        type:
+        transactionId?: string;
+        type?:
           | 'credit_purchase'
           | 'credit_usage'
           | 'credit_refund'
           | 'credit_adjustment';
       };
     }) => {
-      const { balanceUsd } = msg.data;
+      const { balanceUsd, availableUsd, reservedUsd } = msg.data;
 
       queryClient.setQueryData<BalanceQueryData>(
         [...BILLING_BALANCE_KEY],
-        (prev) => (prev ? { ...prev, balance: balanceUsd } : prev)
+        (prev) =>
+          prev
+            ? {
+                ...prev,
+                balance: balanceUsd,
+                availableUsd: availableUsd ?? prev.availableUsd,
+                reservedUsd: reservedUsd ?? prev.reservedUsd,
+              }
+            : prev
       );
 
       void queryClient.invalidateQueries({

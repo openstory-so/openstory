@@ -1,4 +1,5 @@
 import { GenerationProgressBanner } from '@/components/generation/generation-progress-banner';
+import { RenderWaitCopy } from '@/components/generation/render-wait-copy';
 import { MotionProgressBanner } from '@/components/generation/motion-progress-banner';
 import { type ModelGenerationStatus } from '@/components/model/base-model-selector';
 import { DivergenceCompareDialog } from '@/components/scenes/divergence-compare-dialog';
@@ -8,8 +9,8 @@ import { CopyScriptButton } from '@/components/scenes/copy-script-button';
 import { SceneCanvas } from '@/components/scenes/scene-canvas';
 import { SceneScriptDocument } from '@/components/scenes/scene-script-document';
 import type { BatchGenerateMotionArgs } from '@/components/scenes/scene-list';
-import { SceneList } from '@/components/scenes/scene-list';
-import { SceneModelBar } from '@/components/scenes/scene-model-bar';
+import { SceneList, type SceneListProps } from '@/components/scenes/scene-list';
+import { SceneModelBar, scopeLabel } from '@/components/scenes/scene-model-bar';
 import {
   SceneScriptPrompts,
   tabsForScope,
@@ -24,6 +25,7 @@ import { useActiveImageModel } from '@/hooks/use-active-image-model';
 import { useActiveVideoModel } from '@/hooks/use-active-video-model';
 import { BILLING_BALANCE_KEY } from '@/hooks/use-billing-balance';
 import { useFalBillingGate } from '@/hooks/use-billing-gate';
+import { useHorizontalSwipe } from '@/hooks/use-horizontal-swipe';
 import { useSceneSelection } from '@/hooks/use-scene-selection';
 import { useSequenceSegments } from '@/hooks/use-segments';
 import { useScenesBySequence, type SceneWithScript } from '@/hooks/use-scenes';
@@ -33,6 +35,7 @@ import {
   useSequenceShotStaleness,
 } from '@/hooks/use-shot-staleness';
 import { errorMessage, isInsufficientCreditsError } from '@/lib/errors';
+import { adjacentShotId } from '@/lib/scenes/shot-walk';
 import { sequenceKeys, useSequence } from '@/hooks/use-sequences';
 import {
   shotKeys,
@@ -45,7 +48,7 @@ import {
   useShotsBySequence,
   useUndiscardVariant,
 } from '@/hooks/use-shots';
-import { useStyle } from '@/hooks/use-styles';
+import { useSequenceStyle } from '@/hooks/use-styles';
 import {
   DEFAULT_IMAGE_MODEL,
   DEFAULT_MUSIC_MODEL,
@@ -59,6 +62,8 @@ import {
   type TextToImageModel,
 } from '@/lib/ai/models';
 import {
+  clearSelection,
+  selectShot,
   selectionScope,
   selectionShots,
   type SceneFacet,
@@ -72,15 +77,21 @@ import {
 import { DEFAULT_ASPECT_RATIO } from '@/lib/constants/aspect-ratios';
 import type { FrameVariant, ShotVariant } from '@/lib/db/schema';
 import type { ShotView } from '@/lib/shots/shot-view';
-import { analyzeFailures } from '@/lib/failures/failure-analysis';
+import { analyzeLoadedFailures } from '@/lib/failures/failure-analysis';
 import type { GenerationPhaseConfig } from '@/lib/realtime/generation-stream.reducer';
 import { useGenerationStream } from '@/lib/realtime/use-generation-stream';
 import { useStaleDetected } from '@/lib/realtime/use-stale-detected';
 import type { Sequence } from '@/types/database';
+import { cn } from '@/lib/utils';
+import { ChevronDown } from 'lucide-react';
 import { usePostHog } from '@posthog/react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from '@tanstack/react-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+
+import {
+  estimateSceneCount,
+  estimateTotalSeconds,
+} from '@/lib/generation/time-estimate';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
 /**
@@ -221,13 +232,13 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
   search = {},
 }) => {
   const queryClient = useQueryClient();
-  const navigate = useNavigate();
   const posthog = usePostHog();
 
   const { showGate: showBillingGate } = useFalBillingGate();
 
   const {
     selection,
+    setSelection,
     handleSelectScene,
     handleFocusScene,
     handleSelectShot,
@@ -275,11 +286,35 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
   });
   const aspectRatio = sequence?.aspectRatio || DEFAULT_ASPECT_RATIO;
   const isProcessing = sequence?.status === 'processing';
-  const { data: style } = useStyle(sequence?.styleId ?? '');
+  const processingRef = useRef(isProcessing);
+  processingRef.current = isProcessing;
+  const leftCapturedRef = useRef(false);
+
+  useEffect(() => {
+    leftCapturedRef.current = false;
+  }, [sequenceId]);
+
+  useEffect(() => {
+    const captureLeave = () => {
+      if (!processingRef.current || leftCapturedRef.current) return;
+      leftCapturedRef.current = true;
+      posthog.capture('render_wait_left', { sequence_id: sequenceId });
+    };
+    window.addEventListener('pagehide', captureLeave);
+    return () => {
+      window.removeEventListener('pagehide', captureLeave);
+      captureLeave();
+    };
+  }, [sequenceId, posthog]);
+  const { data: style } = useSequenceStyle(sequenceId);
   const styleCategory = style?.category ?? undefined;
   const sequenceMusicModel = safeAudioModel(
     sequence?.musicModel,
     DEFAULT_MUSIC_MODEL
+  );
+  const sequenceVideoModel = safeImageToVideoModel(
+    sequence?.videoModel,
+    DEFAULT_VIDEO_MODEL
   );
   const styleName = style?.name ?? undefined;
   const recommendedImageModel = style?.recommendedImageModel ?? null;
@@ -319,6 +354,19 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     shouldPoll ? { refetchInterval: 2000 } : undefined
   );
 
+  const handleWalkShot = useCallback(
+    (delta: -1 | 1) => {
+      const next = adjacentShotId(shots ?? [], selection, delta);
+      if (!next) return;
+      if (next.type === 'sequence') {
+        setSelection(clearSelection(), undefined, true);
+        return;
+      }
+      setSelection(selectShot(next.id), undefined, true);
+    },
+    [shots, selection, setSelection]
+  );
+
   // Progressive reveal (#1091): while the script is being split the canvas has
   // nothing to show, so the Script view is forced and the Canvas toggle stays
   // disabled. When the first shot preview lands the override drops away and —
@@ -329,6 +377,9 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     !isProcessing ||
     (shots?.some((s) => s.image?.url || s.previewThumbnailUrl) ?? false);
   const effectiveView = canvasReady ? view : 'script';
+  const canvasSwipe = useHorizontalSwipe(
+    effectiveView === 'canvas' ? handleWalkShot : undefined
+  );
 
   // Escape progressive zoom-out (#986):
   // 1) blur the focused editing field (exit typing)
@@ -677,10 +728,14 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
   const staleShotIds = useMemo(() => {
     const set = new Set<string>();
     for (const [shotId, staleness] of Object.entries(scopeStaleness ?? {})) {
-      if (shotIsStale(staleness)) set.add(shotId);
+      const isStale =
+        effectiveTab === 'image-prompt'
+          ? staleness.thumbnail === 'stale'
+          : shotIsStale(staleness);
+      if (isStale) set.add(shotId);
     }
     return set;
-  }, [scopeStaleness]);
+  }, [effectiveTab, scopeStaleness]);
 
   // Model identity lives on the version that produced the asset (#1066), so the
   // tabs target whatever the selected shot's selected image/video version was
@@ -1095,21 +1150,23 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
 
   const [isRetrying, setIsRetrying] = useState(false);
 
+  // Mobile inspector starts collapsed so the canvas keeps the vertical space.
+  const [mobileInspectorOpen, setMobileInspectorOpen] = useState(false);
+
   const failureSummary = useMemo(
-    () =>
-      sequence ? analyzeFailures(shots ?? [], sequence, scenesById) : null,
+    () => analyzeLoadedFailures(shots, sequence, scenesById),
     [shots, sequence, scenesById]
   );
-
-  const handleFullRetry = useCallback(() => {
-    void navigate({ to: '/sequences/$id/script', params: { id: sequenceId } });
-  }, [sequenceId, navigate]);
 
   const handleSmartRetry = useCallback(async () => {
     setIsRetrying(true);
     try {
       const result = await smartRetryFn({ data: { sequenceId } });
-      toast.success(`Retrying: ${result.retriedItems.join(', ')}`);
+      toast.success(
+        result.retryType === 'full'
+          ? 'Continuing generation'
+          : `Retrying: ${result.retriedItems.join(', ')}`
+      );
       void queryClient.invalidateQueries({
         queryKey: ['sequence', sequenceId],
       });
@@ -1135,6 +1192,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     async ({
       includeMusic,
       musicModel,
+      videoModel,
       generateAudio,
     }: BatchGenerateMotionArgs) => {
       // Optimistic: compute eligible shots locally (same filter as backend).
@@ -1174,8 +1232,8 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
         sequence_id: sequenceId,
         include_music: includeMusic,
         eligible_shot_count: eligibleShotIds.length,
-        // Motion model is resolved per shot server-side, from each shot's
-        // selected video version (#1066).
+        // Explicit batch model overrides per-shot identity (#1066).
+        video_model: videoModel,
         music_model: includeMusic ? musicModel : undefined,
         generate_audio: generateAudio,
       });
@@ -1185,6 +1243,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
           data: {
             sequenceId,
             includeMusic,
+            model: videoModel,
             musicModel: includeMusic ? musicModel : undefined,
             generateAudio,
           },
@@ -1233,6 +1292,74 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
   // generationState.currentPhase here would let leftover phase events from
   // past runs hijack the UI back to the 5-stage banner.
   const isGenerationActive = isProcessing;
+  const willEmail = isGenerationActive && !sequence.readyEmailSentAt;
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const startTimeRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!isProcessing) {
+      startTimeRef.current = null;
+      setElapsedSeconds(0);
+      return;
+    }
+    startTimeRef.current = sequence.updatedAt.getTime();
+    const tick = () => {
+      const start = startTimeRef.current ?? Date.now();
+      setElapsedSeconds(Math.floor((Date.now() - start) / 1000));
+    };
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, [isProcessing, sequenceId, sequence?.updatedAt]);
+
+  const remainingSeconds = useMemo(() => {
+    const phase1Completed = generationState.phases[0]?.status === 'completed';
+    const sceneCount = phase1Completed ? generationState.scenes.length : 0;
+    return Math.max(
+      0,
+      estimateTotalSeconds(
+        sceneCount,
+        sequence?.script ? estimateSceneCount(sequence.script) : undefined,
+        generationState.phases.length
+      ) - elapsedSeconds
+    );
+  }, [
+    elapsedSeconds,
+    generationState.phases,
+    generationState.scenes.length,
+    sequence?.script,
+  ]);
+  const etaMinutes = Math.max(1, Math.round(remainingSeconds / 60));
+
+  // One prop bag for the desktop sidebar and the phone sheet — same list.
+  const sceneListProps: SceneListProps = {
+    sequenceId,
+    shots,
+    scenes,
+    segments,
+    loadError: shotsError ?? scenesError,
+    segmentsError,
+    selection,
+    aspectRatio,
+    onSelectScene: handleSelectScene,
+    onSelectShot: handleSelectShot,
+    onClearSelection: handleClearSelection,
+    regeneratingImages,
+    regeneratingMotion,
+    onBatchGenerateMotion: handleBatchMotionGeneration,
+    musicPromptsReady,
+    hideBatchButton: phaseConfig.autoGenerateMotion && isGenerationActive,
+    divergentVariants,
+    onCompareDivergent: setCompareVariant,
+    initialMusicModel: sequenceMusicModel,
+    initialVideoModel: sequenceVideoModel,
+    styleCategory,
+    recommendedVideoModel,
+    styleName,
+    modelMissingShotIds: shotsMissingActiveImage,
+    modelMissingLabel: activeImageModelLabel,
+    staleShotIds: isGenerationActive ? undefined : staleShotIds,
+  };
 
   return (
     <div className="flex h-full flex-col">
@@ -1244,6 +1371,8 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
             isProcessing={isProcessing}
             startedAt={sequence.updatedAt}
             script={sequence.script ?? undefined}
+            remainingSeconds={remainingSeconds}
+            willEmail={willEmail}
           />
         </div>
       )}
@@ -1264,62 +1393,24 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
           </div>
         )}
 
-      {/* Failure summary with smart retry */}
-      {failureSummary?.hasFailed && (
+      {/* Failure summary with smart retry — wait until the run finishes so a
+          single in-flight miss doesn't headline the first result (#1286). */}
+      {failureSummary?.hasFailed && !isGenerationActive && (
         <FailureSummaryBanner
           summary={failureSummary}
           onRetry={() => void handleSmartRetry()}
-          onFullRetry={handleFullRetry}
+          onFullRetry={() => void handleSmartRetry()}
           isRetrying={isRetrying}
         />
       )}
 
       <div className="flex flex-1 min-h-0">
-        <div className="hidden md:block shrink-0 pl-4 py-4">
-          <SceneList
-            sequenceId={sequenceId}
-            shots={shots}
-            scenes={scenes}
-            segments={segments}
-            loadError={shotsError ?? scenesError}
-            segmentsError={segmentsError}
-            selection={selection}
-            aspectRatio={aspectRatio}
-            onSelectScene={handleSelectScene}
-            onSelectShot={handleSelectShot}
-            onClearSelection={handleClearSelection}
-            regeneratingImages={regeneratingImages}
-            regeneratingMotion={regeneratingMotion}
-            onBatchGenerateMotion={handleBatchMotionGeneration}
-            musicPromptsReady={musicPromptsReady}
-            hideBatchButton={
-              phaseConfig.autoGenerateMotion && isGenerationActive
-            }
-            divergentVariants={divergentVariants}
-            onCompareDivergent={(variant) => setCompareVariant(variant)}
-            initialMusicModel={sequenceMusicModel}
-            modelMissingShotIds={shotsMissingActiveImage}
-            modelMissingLabel={activeImageModelLabel}
-            staleShotIds={staleShotIds}
-          />
+        <div className="hidden min-h-0 md:block shrink-0 pl-4 py-4">
+          <SceneList {...sceneListProps} className="w-[280px] lg:w-[360px]" />
         </div>
 
         <div className="md:hidden">
-          <MobileSceneDrawer
-            shots={shots}
-            scenes={scenes}
-            selectedShotId={curSelectedShotId}
-            aspectRatio={aspectRatio}
-            onSelectShot={handleSelectShot}
-            regeneratingImages={regeneratingImages}
-            regeneratingMotion={regeneratingMotion}
-            onBatchGenerateMotion={handleBatchMotionGeneration}
-            musicPromptsReady={musicPromptsReady}
-            hideBatchButton={
-              phaseConfig.autoGenerateMotion && isGenerationActive
-            }
-            initialMusicModel={sequenceMusicModel}
-          />
+          <MobileSceneDrawer {...sceneListProps} />
         </div>
 
         <div className="flex flex-1 min-h-0 min-w-0 flex-col md:flex-row">
@@ -1334,169 +1425,161 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
                 ) : null
               }
             />
-            {effectiveView === 'script' ? (
-              <SceneScriptDocument
-                sequenceId={sequenceId}
-                scenes={scenes}
-                selectedSceneIds={selectedScenes.map((s) => s.id)}
-                onSelectScene={handleFocusScene}
-              />
-            ) : (
-              <SceneCanvas
-                selection={selection}
-                shots={shots}
-                scenes={scenes}
-                loadError={shotsError}
-                playerShots={playerShots}
-                sequence={sequence}
-                aspectRatio={aspectRatio}
-                selectedTab={effectiveTab}
-                overrideImageUrl={previewVariantUrl}
-                overrideVideoUrl={previewVariantVideoUrl}
-                badgeMessage={playerBadgeMessage}
-                modelMismatchLabel={
-                  effectiveTab === 'image-prompt' &&
-                  activeImageModelLabel &&
-                  curSelectedShotId &&
-                  shotsMissingActiveImage.has(curSelectedShotId)
-                    ? `Not generated with ${activeImageModelLabel}`
-                    : null
-                }
-                staleLabel={
-                  effectiveTab === 'image-prompt' &&
-                  curSelectedShotId &&
-                  !regeneratingImages.has(curSelectedShotId)
-                    ? scopeStaleness?.[curSelectedShotId]?.thumbnail === 'stale'
-                      ? 'Out of date'
-                      : scopeStaleness?.[curSelectedShotId]?.thumbnail ===
-                          'updating'
-                        ? 'Updating…'
-                        : null
-                    : null
-                }
-                progressMessage={
-                  generationState.phases.find((p) => p.status === 'active')
-                    ?.phaseName
-                }
-                retry={selectedShotRetry}
-                onSelectShot={handleSelectShot}
-                sceneImageModel={resolvedImageModel}
-                regeneratingSceneVariants={regeneratingSceneVariants}
-                onGenerateSceneVariantsStart={(id) =>
-                  handleRegenerateStart(id, 'scene-variants')
-                }
-              />
-            )}
-          </div>
-
-          {/* Mirrors SceneList's inset card: outer div owns the padding, inner
-              owns the rounded border — so both rails read as the same object. */}
-          <div className="hidden md:block shrink-0 pr-4 py-4">
-            <div className="flex h-full w-[380px] lg:w-[420px] flex-col rounded-lg border bg-background">
-              <SceneModelBar
-                scope={scope}
-                sequenceId={sequenceId}
-                resolvedSequenceImageModel={resolvedSequenceImageModel}
-                resolvedSequenceVideoModel={resolvedSequenceVideoModel}
-                styleId={sequence?.styleId ?? undefined}
-                aspectRatio={aspectRatio}
-                analysisModel={sequence?.analysisModel ?? undefined}
-              />
-              <ScrollArea className="flex-1 min-h-0 px-4 pb-4">
-                <SceneScriptPrompts
-                  shot={selectedShot}
+            {/* flex-col so SceneCanvas's flex-1 chain still stretches — in a
+                block parent the CanvasMediaStage size container computes 0
+                height and the whole canvas collapses. */}
+            <div
+              className="relative flex min-h-0 flex-1 flex-col touch-pan-y overflow-hidden"
+              {...canvasSwipe}
+            >
+              {effectiveView === 'script' ? (
+                <SceneScriptDocument
                   sequenceId={sequenceId}
-                  selectedTab={effectiveTab}
-                  visibleTabs={visibleTabs}
-                  onTabChange={(tab) => {
-                    setSelectedTab(tab);
-                    setFacet(tab);
-                  }}
-                  regeneratingImages={regeneratingImages}
-                  regeneratingMotion={regeneratingMotion}
-                  onRegenerateStart={handleRegenerateStart}
-                  aspectRatio={aspectRatio}
-                  variantForSelectedModel={variantForSelectedModel}
-                  videoVariantForSelectedModel={videoVariantForSelectedModel}
-                  segment={selectedSegment}
-                  segmentSpanLabel={selectedSegmentSpanLabel}
-                  resolvedImageModel={resolvedImageModel}
-                  resolvedVideoModel={resolvedVideoModel}
-                  imageModelStatuses={sceneImageModelStatuses}
-                  videoModelStatuses={sceneVideoModelStatuses}
-                  onImageModelChange={handleImageModelChange}
-                  onVideoModelChange={handleVideoModelChange}
-                  styleName={styleName}
-                  recommendedImageModel={recommendedImageModel}
-                  recommendedVideoModel={recommendedVideoModel}
-                  styleCategory={styleCategory}
-                  shotDivergentVariants={divergentVariants?.filter(
-                    (v) => v.shotId === curSelectedShotId
-                  )}
-                  onCompareDivergent={(variant) => setCompareVariant(variant)}
-                  facetShotIds={facetShotIds}
-                  musicEditable={scope === 'sequence'}
-                  scene={scriptScene}
-                  scopeShots={scopeShots}
-                  scopeStaleness={scopeStaleness}
-                  scopeStalenessFailed={scopeStalenessFailed}
-                  onSelectShot={handleSelectShot}
+                  scenes={scenes}
+                  selectedSceneIds={selectedScenes.map((s) => s.id)}
+                  onSelectScene={handleFocusScene}
+                  splittingScript={isProcessing ? sequence.script : undefined}
                 />
-              </ScrollArea>
+              ) : (
+                <SceneCanvas
+                  selection={selection}
+                  shots={shots}
+                  scenes={scenes}
+                  loadError={shotsError}
+                  playerShots={playerShots}
+                  sequence={sequence}
+                  aspectRatio={aspectRatio}
+                  selectedTab={effectiveTab}
+                  overrideImageUrl={previewVariantUrl}
+                  overrideVideoUrl={previewVariantVideoUrl}
+                  badgeMessage={playerBadgeMessage}
+                  modelMismatchLabel={
+                    effectiveTab === 'image-prompt' &&
+                    activeImageModelLabel &&
+                    curSelectedShotId &&
+                    shotsMissingActiveImage.has(curSelectedShotId)
+                      ? `Not generated with ${activeImageModelLabel}`
+                      : null
+                  }
+                  staleLabel={
+                    !isGenerationActive &&
+                    effectiveTab === 'image-prompt' &&
+                    curSelectedShotId &&
+                    !regeneratingImages.has(curSelectedShotId)
+                      ? scopeStaleness?.[curSelectedShotId]?.thumbnail ===
+                        'stale'
+                        ? 'Out of date'
+                        : scopeStaleness?.[curSelectedShotId]?.thumbnail ===
+                            'updating'
+                          ? 'Updating…'
+                          : null
+                      : null
+                  }
+                  progressMessage={
+                    isGenerationActive ? (
+                      <RenderWaitCopy
+                        etaMinutes={etaMinutes}
+                        willEmail={willEmail}
+                      />
+                    ) : (
+                      generationState.phases.find((p) => p.status === 'active')
+                        ?.phaseName
+                    )
+                  }
+                  retry={selectedShotRetry}
+                  onSelectShot={handleSelectShot}
+                  sceneImageModel={resolvedImageModel}
+                  regeneratingSceneVariants={regeneratingSceneVariants}
+                  onGenerateSceneVariantsStart={(id) =>
+                    handleRegenerateStart(id, 'scene-variants')
+                  }
+                  firstRunActive={isGenerationActive}
+                />
+              )}
             </div>
           </div>
 
-          <div className="md:hidden shrink-0 border-t bg-background pb-20 max-h-[45vh]">
-            <ScrollArea className="h-full px-4 pt-4 max-h-[45vh]">
-              <SceneModelBar
-                scope={scope}
-                sequenceId={sequenceId}
-                resolvedSequenceImageModel={resolvedSequenceImageModel}
-                resolvedSequenceVideoModel={resolvedSequenceVideoModel}
-                styleId={sequence?.styleId ?? undefined}
-                aspectRatio={aspectRatio}
-                analysisModel={sequence?.analysisModel ?? undefined}
-              />
-              <SceneScriptPrompts
-                shot={selectedShot}
-                sequenceId={sequenceId}
-                selectedTab={effectiveTab}
-                visibleTabs={visibleTabs}
-                onTabChange={(tab) => {
-                  setSelectedTab(tab);
-                  setFacet(tab);
-                }}
-                regeneratingImages={regeneratingImages}
-                regeneratingMotion={regeneratingMotion}
-                onRegenerateStart={handleRegenerateStart}
-                aspectRatio={aspectRatio}
-                variantForSelectedModel={variantForSelectedModel}
-                videoVariantForSelectedModel={videoVariantForSelectedModel}
-                segment={selectedSegment}
-                segmentSpanLabel={selectedSegmentSpanLabel}
-                resolvedImageModel={resolvedImageModel}
-                resolvedVideoModel={resolvedVideoModel}
-                imageModelStatuses={sceneImageModelStatuses}
-                videoModelStatuses={sceneVideoModelStatuses}
-                onImageModelChange={handleImageModelChange}
-                onVideoModelChange={handleVideoModelChange}
-                styleName={styleName}
-                recommendedImageModel={recommendedImageModel}
-                recommendedVideoModel={recommendedVideoModel}
-                styleCategory={styleCategory}
-                shotDivergentVariants={divergentVariants?.filter(
-                  (v) => v.shotId === curSelectedShotId
+          {/* One inspector: phone collapse bar + `hidden`/`md:flex`, desktop
+              card. Same CSS-visibility rule as the scene list, one tree. */}
+          <div className="relative z-10 shrink-0 border-t bg-background pb-20 md:min-h-0 md:border-0 md:bg-transparent md:pb-0 md:pr-4 md:py-4">
+            <button
+              type="button"
+              className="flex min-h-11 w-full items-center justify-between px-4 py-2 outline-none focus-visible:ring-3 focus-visible:ring-ring/50 md:hidden"
+              aria-expanded={mobileInspectorOpen}
+              aria-controls="scene-inspector"
+              onClick={() => setMobileInspectorOpen((open) => !open)}
+            >
+              <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                {scopeLabel[scope]}
+              </span>
+              <ChevronDown
+                className={cn(
+                  'h-4 w-4 text-muted-foreground transition-transform motion-reduce:transition-none',
+                  mobileInspectorOpen && 'rotate-180'
                 )}
-                onCompareDivergent={(variant) => setCompareVariant(variant)}
-                facetShotIds={facetShotIds}
-                musicEditable={scope === 'sequence'}
-                scene={scriptScene}
-                scopeShots={scopeShots}
-                scopeStaleness={scopeStaleness}
-                scopeStalenessFailed={scopeStalenessFailed}
-                onSelectShot={handleSelectShot}
               />
-            </ScrollArea>
+            </button>
+            <div
+              id="scene-inspector"
+              className={cn(
+                'md:flex md:h-full md:min-h-0 md:w-[380px] lg:w-[420px] md:flex-col md:overflow-hidden md:rounded-lg md:border md:bg-background',
+                mobileInspectorOpen ? 'block' : 'hidden'
+              )}
+            >
+              <ScrollArea className="h-full min-h-0 max-md:max-h-[40dvh]">
+                <SceneModelBar
+                  scope={scope}
+                  sequenceId={sequenceId}
+                  resolvedSequenceImageModel={resolvedSequenceImageModel}
+                  resolvedSequenceVideoModel={resolvedSequenceVideoModel}
+                  styleId={sequence?.styleId ?? undefined}
+                  stylePending={sequence?.styleConfig == null}
+                  aspectRatio={aspectRatio}
+                  analysisModel={sequence?.analysisModel ?? undefined}
+                />
+                <div className="px-4 pb-4">
+                  <SceneScriptPrompts
+                    shot={selectedShot}
+                    sequenceId={sequenceId}
+                    selectedTab={effectiveTab}
+                    visibleTabs={visibleTabs}
+                    onTabChange={(tab) => {
+                      setSelectedTab(tab);
+                      setFacet(tab);
+                    }}
+                    regeneratingImages={regeneratingImages}
+                    regeneratingMotion={regeneratingMotion}
+                    onRegenerateStart={handleRegenerateStart}
+                    aspectRatio={aspectRatio}
+                    variantForSelectedModel={variantForSelectedModel}
+                    videoVariantForSelectedModel={videoVariantForSelectedModel}
+                    segment={selectedSegment}
+                    segmentSpanLabel={selectedSegmentSpanLabel}
+                    resolvedImageModel={resolvedImageModel}
+                    resolvedVideoModel={resolvedVideoModel}
+                    imageModelStatuses={sceneImageModelStatuses}
+                    videoModelStatuses={sceneVideoModelStatuses}
+                    onImageModelChange={handleImageModelChange}
+                    onVideoModelChange={handleVideoModelChange}
+                    styleName={styleName}
+                    recommendedImageModel={recommendedImageModel}
+                    recommendedVideoModel={recommendedVideoModel}
+                    styleCategory={styleCategory}
+                    shotDivergentVariants={divergentVariants?.filter(
+                      (v) => v.shotId === curSelectedShotId
+                    )}
+                    onCompareDivergent={(variant) => setCompareVariant(variant)}
+                    facetShotIds={facetShotIds}
+                    musicEditable={scope === 'sequence'}
+                    scene={scriptScene}
+                    scopeShots={scopeShots}
+                    scopeStaleness={scopeStaleness}
+                    scopeStalenessFailed={scopeStalenessFailed}
+                    onSelectShot={handleSelectShot}
+                  />
+                </div>
+              </ScrollArea>
+            </div>
           </div>
         </div>
       </div>

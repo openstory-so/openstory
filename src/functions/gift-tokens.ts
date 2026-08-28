@@ -12,7 +12,7 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 export const createGiftTokenFn = createServerFn({ method: 'POST' })
   .middleware([systemAdminMiddleware])
-  .inputValidator(
+  .validator(
     zodValidator(
       z.object({
         amountUsd: z.number().positive(),
@@ -39,7 +39,7 @@ export const createGiftTokenFn = createServerFn({ method: 'POST' })
 
 export const batchCreateGiftTokensFn = createServerFn({ method: 'POST' })
   .middleware([systemAdminMiddleware])
-  .inputValidator(
+  .validator(
     zodValidator(
       z.object({
         count: z.number().int().min(1).max(500),
@@ -70,7 +70,7 @@ export const batchCreateGiftTokensFn = createServerFn({ method: 'POST' })
 
 export const redeemGiftTokenFn = createServerFn({ method: 'POST' })
   .middleware([authWithTeamMiddleware])
-  .inputValidator(zodValidator(z.object({ code: z.string().min(1) })))
+  .validator(zodValidator(z.object({ code: z.string().min(1) })))
   .handler(async ({ context, data }) => {
     return context.scopedDb.billing.redeemGiftToken({
       code: data.code,

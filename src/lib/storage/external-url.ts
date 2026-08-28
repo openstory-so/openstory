@@ -31,6 +31,7 @@ import { getEnv } from '#env';
 // proxied clients as usual.
 import { createFalClient } from '@fal-ai/client';
 import { readStorageObject } from '#storage';
+import { sniffImageMimeType } from '@/lib/utils/file';
 import { r2KeyFromUrl, toCdnUrl } from './buckets';
 
 function isReplayMode(): boolean {
@@ -45,7 +46,17 @@ async function readStoredBytes(
   if (!object) {
     throw new Error(`Failed to read storage object ${key}: not found`);
   }
-  return object;
+  // Trust the bytes over the stored `contentType`. R2 rows carry whatever the
+  // uploader guessed from the source URL's extension, and the upscale path
+  // stored PNG bytes as `image/jpeg` — a mislabelled vision part makes
+  // Anthropic reject the request (HTTP 400 today; historically an empty
+  // completion after a billed reasoning pass, #1218). Both consumers below
+  // declare a type downstream (the inline data part, and the `File` handed to
+  // fal storage), so correcting it here covers already-stored objects.
+  const sniffed = sniffImageMimeType(object.bytes);
+  return sniffed && sniffed !== object.contentType
+    ? { ...object, contentType: sniffed }
+    : object;
 }
 
 /**
@@ -84,13 +95,31 @@ export async function ensureExternallyFetchableUrls(
 }
 
 /**
- * Vision-message image source for a storage URL: stored URLs become CDN
- * absolutes when a domain is configured, or inline base64 data parts when
- * served locally (OpenRouter can't fetch what only this machine can see);
- * public URLs stay URL-sourced.
+ * Fetchable image URL for a provider that accepts `data:` URIs (xAI's Imagine
+ * API). Unlike {@link ensureExternallyFetchableUrl} this needs no fal key —
+ * a deployment running Grok natively (#1167) may have no fal credentials.
+ */
+export async function toDataOrCdnUrl(url: string): Promise<string> {
+  const source = await toVisionImageSource(url);
+  if (source.type === 'url') return source.value;
+  return `data:${source.mimeType};base64,${source.value}`;
+}
+
+/**
+ * Vision-message image source for a storage URL.
+ *
+ * Prefer a URL OpenRouter can fetch: CDN absolute in production, fal-storage
+ * upload locally / during e2e record (same scratch path as fal model inputs).
+ * Not for correctness — a data part works once its declared type matches its
+ * bytes (see `readStoredBytes`) — but for payload size: upscaled stills run
+ * ~7MB, and inlining one as ~9.3MB of base64 pushed time-to-first-token from
+ * ~6s to ~30s per call, which a 14-scene record run pays 14 times over.
+ * Replay keeps the relative `/r2/` URL so aimock can string-match. No
+ * credentials → last-resort data part.
  */
 export async function toVisionImageSource(
-  url: string
+  url: string,
+  falApiKey?: string
 ): Promise<
   | { type: 'url'; value: string }
   | { type: 'data'; value: string; mimeType: string }
@@ -100,6 +129,15 @@ export async function toVisionImageSource(
   const cdnUrl = toCdnUrl(url);
   if (cdnUrl) return { type: 'url', value: cdnUrl };
   if (isReplayMode()) return { type: 'url', value: url };
+
+  const creds = falApiKey ?? getEnv().FAL_KEY;
+  if (creds) {
+    return {
+      type: 'url',
+      value: await ensureExternallyFetchableUrl(url, falApiKey),
+    };
+  }
+
   const { bytes, contentType } = await readStoredBytes(key);
   return {
     type: 'data',

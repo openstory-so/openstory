@@ -12,7 +12,7 @@
  *
  * Preview (prints, writes nothing):
  *   OPENROUTER_KEY=… bun --env-file=.env.admin scripts/generate-style-briefs.ts --category influencer
- *   …--filter "car-talk,podcast-clip" | --limit 10 | --model anthropic/claude-opus-4.8
+ *   …--filter "car-talk,podcast-clip" | --limit 10 | --model anthropic/claude-opus-5
  *
  * Commit (writes a generated Record<slug,brief> TS module):
  *   …scripts/generate-style-briefs.ts --out src/lib/style/style-briefs.generated.ts
@@ -58,7 +58,7 @@ function parseFlags(argv: string[]): Flags {
           .filter(Boolean)
       : null,
     limit: argv.includes('--limit') ? num('--limit', 0) || null : null,
-    model: valueAfter('--model') ?? 'anthropic/claude-opus-4.8',
+    model: valueAfter('--model') ?? 'anthropic/claude-opus-5',
     out: valueAfter('--out'),
     concurrency: num('--concurrency', 4),
   };
@@ -95,11 +95,11 @@ function styleBlock(style: StyleEntry): string {
     `Category: ${style.category ?? '—'}`,
     style.tags?.length ? `Tags: ${style.tags.join(', ')}` : '',
     style.useCases?.length ? `Use cases: ${style.useCases.join(', ')}` : '',
-    c ? `Mood: ${c.mood}` : '',
-    c ? `Art style / staging: ${c.artStyle}` : '',
-    c ? `Lighting: ${c.lighting}` : '',
-    c ? `Camera: ${c.cameraWork}` : '',
-    c ? `Color grading: ${c.colorGrading}` : '',
+    `Mood: ${c.look.mood}`,
+    `Art style / staging: ${c.look.artStyle}`,
+    `Lighting: ${c.look.lighting}`,
+    `Camera: ${c.motion.camera}`,
+    `Color grading: ${c.look.colorGrading}`,
   ]
     .filter(Boolean)
     .join('\n');

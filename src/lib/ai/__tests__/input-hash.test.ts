@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { migrateStyleConfigV1ToV2 } from '@/lib/style/style-config';
 import type {
   CharacterBibleEntry,
   LocationBibleEntry,
@@ -492,7 +493,7 @@ describe('prompt input hashes', () => {
     originalScript: { extract: '', dialogue: [] },
   };
 
-  const minimalStyle: StyleConfig = {
+  const minimalStyle: StyleConfig = migrateStyleConfigV1ToV2({
     mood: 'neutral',
     artStyle: 'cinematic',
     lighting: 'natural',
@@ -500,7 +501,7 @@ describe('prompt input hashes', () => {
     cameraWork: 'static',
     referenceFilms: [],
     colorGrading: 'neutral',
-  };
+  });
 
   const aliceCharacter: CharacterBibleEntry = {
     characterId: 'c1',

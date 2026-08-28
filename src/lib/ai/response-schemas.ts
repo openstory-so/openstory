@@ -9,13 +9,40 @@ import { z } from 'zod';
 
 import {
   characterBibleEntrySchema,
-  continuitySchema,
   elementBibleEntrySchema,
   locationBibleEntrySchema,
   musicDesignSchema,
   projectMetadataSchema,
-  sceneSchema,
 } from './scene-analysis.schema';
+
+/**
+ * Scene duration estimation (functions/ai.ts). Plain `z.number()` rather than
+ * `.int()` / `.min()` / `.max()` — Zod injects JS-safe-integer bounds for
+ * `.int()`, and Amazon Bedrock (one of the OpenRouter providers for Sonnet)
+ * rejects ANY `minimum`/`maximum` on integer types. Range + integer
+ * enforcement happen post-parse via clamp.
+ */
+export const sceneDurationResponseSchema = z.object({
+  durationSeconds: z.number(),
+});
+
+/**
+ * Style recommendation (functions/ai.ts). The model returns catalog INDICES,
+ * not style ids — ULIDs get mangled by the model, and an index maps back
+ * unambiguously. Catch-free with plain `z.number()` (no `.int()`/min/max —
+ * see sceneDurationResponseSchema). Integer + in-range enforcement for
+ * `index` happens post-parse in `rankStyleRecommendations`; `score` is used
+ * only for ordering, not bounded.
+ */
+export const styleRecommendationResponseSchema = z.object({
+  recommendations: z.array(
+    z.object({
+      index: z.number(),
+      score: z.number(),
+      reasoning: z.string(),
+    })
+  ),
+});
 
 /**
  * Talent Matching Response
@@ -46,47 +73,58 @@ export const locationMatchResponseSchema = z.object({
 });
 
 /**
- * Phase 1: Scene Splitting
+ * Phase 1: Scene Splitting (#1035 — two parallel calls).
+ *
+ * The old single mega-call compiled to an 8.2KB JSON-Schema grammar, which
+ * every Anthropic model rejects under native strict output (~3.6KB budget).
+ * It is replaced by two independent calls over the same script, run
+ * concurrently:
+ *
+ *   1. Scenes call — BOUNDARY ANNOTATION ONLY (#1218). The LLM never
+ *      re-emits script text or per-scene metadata: it returns
+ *      `{ hintLine, quote }` anchors against a line-gutter copy of the
+ *      script. `boundary-split.ts` slices the ORIGINAL script into
+ *      byte-verbatim adjacent extracts; title/location/dialogue/duration
+ *      are derived locally from each slice; continuity tags are assigned
+ *      from bibles ∩ slice after the join. Scene ids / numbers are minted
+ *      server-side.
+ *   2. Bibles call — character/location/element bibles only.
  */
-export const sceneSplittingResultSchema = z.object({
-  status: z
-    .enum(['success', 'error', 'rejected'])
-    .meta({ description: 'Processing status: success, error, or rejected' }),
-  projectMetadata: projectMetadataSchema.meta({
-    description: 'Project-level metadata extracted from script',
-  }),
-  scenes: z
-    .array(
-      sceneSchema
-        .pick({
-          sceneId: true,
-          sceneNumber: true,
-          originalScript: true,
-          metadata: true,
-        })
-        .required()
-        // Scene membership now lives upstream: scene-split, which already holds
-        // the full script + bibles, emits each scene's `continuity` so the
-        // visual-prompt LLM no longer has to derive it. Downstream prompt
-        // workflows narrow their bible inputs with this. See #867.
-        .extend({ continuity: continuitySchema })
-    )
-    .meta({ description: 'Array of scenes split from the script' }),
-  characterBible: z.array(characterBibleEntrySchema).meta({
+export const sceneBoundarySchema = z.object({
+  hintLine: z.number().meta({
     description:
-      'Character descriptions extracted from the script for visual consistency',
+      '1-based line number (from the numbered gutter) where the scene starts',
   }),
-  locationBible: z.array(locationBibleEntrySchema).meta({
+  quote: z.string().meta({
     description:
-      'Location descriptions extracted from the script for visual consistency',
-  }),
-  elementBible: z.array(elementBibleEntrySchema).meta({
-    description:
-      'Elements referenced in the script by UPPERCASE token — user-uploaded reference images plus detected recurring products/objects that need a consistent canonical look',
+      'Verbatim copy of the first 40-80 characters of the scene, exactly as they appear in the script (never include the line-number gutter)',
   }),
 });
 
-export type SceneSplittingResult = z.infer<typeof sceneSplittingResultSchema>;
+export const sceneSplitScenesResultSchema = z.object({
+  projectMetadata: projectMetadataSchema,
+  boundaries: z.array(sceneBoundarySchema).meta({
+    description:
+      'One entry per scene in script order; scene 1 starts at the top of the script and every scene runs until the next boundary',
+  }),
+});
+
+export type SceneSplitScenesResult = z.infer<
+  typeof sceneSplitScenesResultSchema
+>;
+
+export const sceneSplitBiblesResultSchema = z.object({
+  characterBible: z.array(characterBibleEntrySchema),
+  locationBible: z.array(locationBibleEntrySchema),
+  elementBible: z.array(elementBibleEntrySchema).meta({
+    description:
+      'Elements referenced by UPPERCASE token — user-uploaded reference images plus detected recurring products/objects needing a consistent canonical look',
+  }),
+});
+
+export type SceneSplitBiblesResult = z.infer<
+  typeof sceneSplitBiblesResultSchema
+>;
 
 /**
  * Music Design + Prompt Generation (combined Phase 7)

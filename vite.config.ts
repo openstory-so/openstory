@@ -1,5 +1,6 @@
 // vite.config.ts
 import { copyFileSync, readFileSync } from 'node:fs';
+import { parse as parseJsonc } from 'jsonc-parser';
 import { resolve } from 'node:path';
 import { cloudflare } from '@cloudflare/vite-plugin';
 import contentCollections from '@content-collections/vite';
@@ -9,8 +10,19 @@ import { defineConfig, type Plugin } from 'vite';
 import tailwindcss from '@tailwindcss/vite';
 import { devtools } from '@tanstack/devtools-vite';
 import viteReact from '@vitejs/plugin-react';
+import { worktreeAuthCookiePrefix } from './src/lib/auth/cookie-prefix.ts';
 
 const isDev = process.env.NODE_ENV !== 'production';
+// Per-worktree auth cookie name (#1288). Set on process.env so Vite's usual
+// `import.meta.env.VITE_*` replacement ships it into the worker the same way
+// as VITE_APP_URL. Production builds leave it unset.
+if (isDev) {
+  // Always derive from cwd — a copied `.env.local` must not re-share a prefix.
+  process.env.VITE_AUTH_COOKIE_PREFIX = worktreeAuthCookiePrefix(process.cwd());
+}
+const authCookiePrefix = isDev
+  ? process.env.VITE_AUTH_COOKIE_PREFIX
+  : undefined;
 
 /**
  * Prints which wrangler.jsonc bindings are local vs REMOTE on dev startup.
@@ -38,12 +50,9 @@ function wranglerBindingsBanner(): Plugin {
           resolve(import.meta.dirname, 'wrangler.jsonc'),
           'utf-8'
         );
-        // Strip line + block comments + trailing commas so JSON.parse accepts it.
-        const stripped = raw
-          .replace(/\/\*[\s\S]*?\*\//g, '')
-          .replace(/^\s*\/\/.*$/gm, '')
-          .replace(/,(\s*[}\]])/g, '$1');
-        const cfg: WranglerConfig = JSON.parse(stripped);
+        // Real JSONC parse: a regex stripper choked on `/*` inside a `//`
+        // comment (a glob like `/api/v1/device/*` swallowed the file).
+        const cfg: WranglerConfig = parseJsonc(raw);
 
         const rows: Array<[string, string, boolean]> = [];
         for (const b of cfg.d1_databases ?? [])
@@ -68,6 +77,11 @@ function wranglerBindingsBanner(): Plugin {
             : `${DIM}local${RESET}   (Miniflare)`;
           process.stdout.write(
             `    ${kind} ${name.padEnd(nameWidth)}  →  ${status}\n`
+          );
+        }
+        if (authCookiePrefix) {
+          process.stdout.write(
+            `    AUTH ${'cookies'.padEnd(nameWidth)}  →  ${DIM}${authCookiePrefix}${RESET}  (per-worktree)\n`
           );
         }
         if (rows.some(([, , r]) => r)) {
@@ -157,6 +171,15 @@ function envIcons(): Plugin {
 export default defineConfig({
   resolve: {
     tsconfigPaths: true,
+    // TipTap/ProseMirror use instanceof Node. Nested 1.25.7 copies next to
+    // @tiptap/pm's 1.25.11 make wrap/split (default paste) fail and log
+    // "prosemirror-model is loaded more than once".
+    dedupe: [
+      'prosemirror-model',
+      'prosemirror-state',
+      'prosemirror-view',
+      'prosemirror-transform',
+    ],
   },
   server: {
     port: 3000,

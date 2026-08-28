@@ -25,9 +25,10 @@ export type TransactionType = (typeof TRANSACTION_TYPES)[number];
  * deduction (see `deductCredits`), not derived from the ledger.
  *
  * The CHECK is the backstop under the application-level gates
- * (`requireCredits` before the work, `hasEnoughCredits` after it): if either
- * ever lets through a charge that would overdraw a team, the UPDATE fails
- * loudly instead of quietly going negative.
+ * (`requireCredits` / `createReservation` before the work): if a charge
+ * would overdraw posted balance, the UPDATE matches zero rows instead of
+ * going negative. Open holds reduce *available* (`balance − SUM(remaining
+ * WHERE expires_at > now())`), not posted balance (#1310).
  */
 export const credits = snakeCase.table(
   'credits',
@@ -85,6 +86,50 @@ export const transactions = snakeCase.table(
   ]
 );
 
+/**
+ * Run envelope (#1310). Holds are not ledger rows: available funds are
+ * `credits.balance − SUM(remaining WHERE remaining > 0 AND expires_at > now())`.
+ * Abandoned holds expire in the SUM with no UPDATE. Capture posts a new
+ * `credit_usage` transaction; leftover is zeroed when the run ends.
+ */
+export const creditReservations = snakeCase.table(
+  'credit_reservations',
+  {
+    id: text()
+      .$defaultFn(() => generateId())
+      .primaryKey()
+      .notNull(),
+    teamId: text()
+      .notNull()
+      .references(() => teams.id, { onDelete: 'cascade' }),
+    userId: text().references(() => user.id, {
+      onDelete: 'set null',
+    }),
+    sequenceId: text(),
+    originalAmount: integer().notNull(),
+    remainingAmount: integer().notNull(),
+    expiresAt: integer({ mode: 'timestamp' }).notNull(),
+    idempotencyKey: text().notNull(),
+    createdAt: integer({ mode: 'timestamp' })
+      .$defaultFn(() => new Date())
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex('idx_credit_reservations_team_idempotency_key').on(
+      table.teamId,
+      table.idempotencyKey
+    ),
+    index('idx_credit_reservations_team_expires').on(
+      table.teamId,
+      table.expiresAt
+    ),
+    check(
+      'non_negative_reservation_remaining',
+      sql`${table.remainingAmount} >= 0`
+    ),
+  ]
+);
+
 export const teamBillingSettings = snakeCase.table('team_billing_settings', {
   teamId: text()
     .primaryKey()
@@ -94,6 +139,13 @@ export const teamBillingSettings = snakeCase.table('team_billing_settings', {
   autoTopUpEnabled: integer({ mode: 'boolean' }).default(false).notNull(),
   autoTopUpThresholdMicros: integer().default(5_000_000),
   autoTopUpAmountMicros: integer().default(100_000_000),
+  /**
+   * Set when an off-session auto-top-up PaymentIntent is declined or
+   * otherwise does not succeed. `maybeAutoTopUp` skips a new charge while
+   * this is within `AUTO_TOPUP_DECLINE_COOLDOWN_MS` (#1334).
+   */
+  autoTopUpFailedAt: integer({ mode: 'timestamp' }),
+  autoTopUpDeclineCode: text(),
   updatedAt: integer({ mode: 'timestamp' })
     .$defaultFn(() => new Date())
     .notNull(),

@@ -73,6 +73,13 @@ export class ValidationError extends OpenStoryError {
   }
 }
 
+/** The write collides with an existing resource (e.g. a duplicate slug). */
+export class ConflictError extends OpenStoryError {
+  constructor(message: string, details?: Record<string, unknown>) {
+    super(message, 'CONFLICT', 409, details);
+  }
+}
+
 export class ConfigurationError extends OpenStoryError {
   constructor(message: string, details?: Record<string, unknown>) {
     super(message, 'CONFIGURATION_ERROR', 500, details);
@@ -110,6 +117,36 @@ export class InsufficientCreditsError extends OpenStoryError {
 }
 
 /**
+ * A live enforcement action blocks what the caller tried to do (#1180).
+ *
+ * 403, not 402: the account is not short of anything it can top up. `details`
+ * carries the action type and the user-facing notice so the client can explain
+ * the block and link to the appeal route instead of showing a bare error.
+ */
+export class AccountRestrictedError extends OpenStoryError {
+  constructor(
+    message: string = 'This account is restricted',
+    details?: Record<string, unknown>
+  ) {
+    super(message, 'ACCOUNT_RESTRICTED', 403, details);
+  }
+}
+
+/**
+ * A rights attestation is required for this upload and was not supplied
+ * (#1180). 400 rather than 403: the request itself is incomplete, and the fix
+ * is to resubmit with the attestation.
+ */
+export class AttestationRequiredError extends OpenStoryError {
+  constructor(
+    message: string = 'A rights attestation is required for this upload',
+    details?: Record<string, unknown>
+  ) {
+    super(message, 'ATTESTATION_REQUIRED', 400, details);
+  }
+}
+
+/**
  * Stable machine-readable code from a thrown value.
  *
  * Structural, not nominal: it reads a string `.code` off anything that has one
@@ -128,13 +165,48 @@ export function isInsufficientCreditsError(error: unknown): boolean {
   return errorCode(error) === 'INSUFFICIENT_CREDITS';
 }
 
-/** Display text for an arbitrary thrown value. */
+/**
+ * 401/403 — the caller lacks a session or permission. Structural (`statusCode`
+ * survives the server-fn boundary via the adapter below) so it also matches
+ * Better Auth's `APIError`. A retry cannot succeed; it only repeats the log
+ * line (#1333).
+ */
+export function isAuthError(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  const status = (error as { statusCode?: unknown }).statusCode;
+  return status === 401 || status === 403;
+}
+
+/**
+ * Display text for an arbitrary thrown value. A Zod failure — a live
+ * `ZodError`, or one that crossed the server-fn boundary as its JSON `message`
+ * (#1285) — collapses to one `path: message` line per issue instead of the raw
+ * issue array.
+ */
 export function errorMessage(
   error: unknown,
   fallback = 'Unknown error'
 ): string {
   if (!(error instanceof Error)) return fallback;
-  return error.message;
+  return zodIssuesLine(error.message) ?? error.message;
+}
+
+function zodIssuesLine(message: string): string | null {
+  if (!message.startsWith('[')) return null;
+  let issues: unknown;
+  try {
+    issues = JSON.parse(message);
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(issues) || issues.length === 0) return null;
+  const lines: string[] = [];
+  for (const issue of issues) {
+    if (!isRecord(issue) || typeof issue.message !== 'string') return null;
+    const path = Array.isArray(issue.path) ? issue.path.join('.') : '';
+    lines.push(path ? `${path}: ${issue.message}` : issue.message);
+  }
+  return lines.join('; ');
 }
 
 /**

@@ -17,8 +17,8 @@ import {
   buildAddAudioMusicInput,
   musicWithoutMotion,
   selectEligibleVideoShots,
-  sumShotDurationsSeconds,
 } from '@/functions/sequences';
+import { sumShotDurationsSeconds } from '@/lib/sequences/shot-durations';
 
 const NOW = new Date('2026-06-03T00:00:00.000Z');
 

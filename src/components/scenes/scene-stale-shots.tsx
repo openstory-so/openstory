@@ -13,6 +13,9 @@ import { useState } from 'react';
 type SceneStaleShotsProps = {
   /** The in-scope shots (a scene's, or the whole sequence's), in order. */
   shots: ShotView[];
+  /** Dry-run preview scope for the depth dialog (#1194). */
+  sequenceId: string;
+  sceneId?: string;
   /** Batched staleness for those shots, keyed by shot id (#1077). */
   staleness: Record<string, ShotStaleness> | undefined;
   /**
@@ -39,6 +42,8 @@ type SceneStaleShotsProps = {
  */
 export const SceneStaleShots: React.FC<SceneStaleShotsProps> = ({
   shots,
+  sequenceId,
+  sceneId,
   staleness,
   stalenessFailed = false,
   onSelectShot,
@@ -125,7 +130,7 @@ export const SceneStaleShots: React.FC<SceneStaleShotsProps> = ({
                 className="mr-1 h-2.5 w-2.5 animate-spin motion-reduce:animate-none"
               />
             )}
-            Shot {number}
+            <span>Shot {number}</span>
           </Button>
         );
       })}
@@ -153,6 +158,9 @@ export const SceneStaleShots: React.FC<SceneStaleShotsProps> = ({
           <UpdateAllDialog
             open={updateAllOpen}
             onOpenChange={setUpdateAllOpen}
+            staleShots={staleShots.flatMap((s) => staleness?.[s.id] ?? [])}
+            scope={{ sequenceId, sceneId }}
+            shotNumberById={numberByShotId}
             onConfirm={(depth: UpdateStaleDepth) => {
               setUpdateAllOpen(false);
               onUpdateAll(depth);

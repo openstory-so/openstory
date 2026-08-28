@@ -22,8 +22,22 @@ up. `https://openstory.so/llms.txt` also points here.
 
 ## Authentication
 
-Every endpoint except discovery requires an API key. Create one in the dashboard
-under **Settings → Developer**. Send it as either header:
+Every endpoint except discovery and the device-login pair requires an API key.
+Two ways to get one:
+
+- **Device-code login** (for agents/CLIs, no copy-pasting): `POST
+/api/v1/device/code` returns a `device_code`, a short `user_code`, and a
+  `verification_url`. Show the user the code and URL (or open
+  `verification_url_complete`), then `GET
+/api/v1/device/token?device_code=…&wait=60s` until it returns `200 { api_key,
+team }`. While the user decides you get `428 authorization_pending` (keep
+  polling; `?wait` blocks server-side), `429 slow_down` if you poll faster than
+  `interval` without `?wait`, `403 access_denied`, or `410 expired_token` (codes
+  last 10 minutes; start again). Both endpoints are rate limited per IP.
+- **Manually**: create a key in the dashboard under **Settings → Developer**.
+
+Either way the key is a normal key the user can revoke under Settings →
+Developer. Send it as either header:
 
 ```
 Authorization: Bearer <key>

@@ -47,6 +47,7 @@ const mockSequence: Sequence = {
   createdBy: 'user-1',
   updatedBy: 'user-1',
   styleId: 'style-1',
+  styleConfig: null,
   aspectRatio: '16:9',
   analysisModel: 'anthropic/claude-haiku-4.5',
   analysisDurationMs: 0,
@@ -64,6 +65,7 @@ const mockSequence: Sequence = {
   musicPromptInputHash: null,
   includeMusic: true,
   posterUrl: null,
+  readyEmailSentAt: null,
   autoGenerateMotion: false,
   autoGenerateMusic: false,
   suggestedTalentIds: null,
@@ -617,7 +619,7 @@ export const PreviewMode: Story = {
     docs: {
       description: {
         story:
-          'Shows preview mode where fast preview images are displayed while full-resolution thumbnails are still generating. Scenes 1-2 show the "Preview" badge, Scene 3 has its final image ready (no badge).',
+          'Shows preview mode where fast preview images are displayed while full-resolution thumbnails are still generating. Scenes 1-2 show the "Storyboard" badge, Scene 3 has its final image ready (no badge).',
       },
     },
   },

@@ -35,6 +35,23 @@ describe('isEngineAbortError', () => {
     );
   });
 
+  test('matches the deploy-time Durable Object reset (#1331)', () => {
+    expect(
+      isEngineAbortError(
+        new Error('Durable Object reset because its code was updated.')
+      )
+    ).toBe(true);
+    // ElementSheet aggregates per-entry rejections into one message; the
+    // reset phrase must still classify when it is buried in that summary.
+    expect(
+      isEngineAbortError(
+        new Error(
+          'Element reference generation failed for 1/1 element(s) — lantern: Durable Object reset because its code was updated.'
+        )
+      )
+    ).toBe(true);
+  });
+
   test('does not match unrelated errors that mention a grace period', () => {
     // A true positive skips onFailure and parent notification, so a bare
     // "grace period" token from another layer must never classify as an
@@ -45,6 +62,7 @@ describe('isEngineAbortError', () => {
     expect(
       isEngineAbortError(new Error('grace period: 30 days remaining'))
     ).toBe(false);
+    expect(isEngineAbortError(new Error('password reset failed'))).toBe(false);
   });
 
   test('does not match ordinary failures', () => {

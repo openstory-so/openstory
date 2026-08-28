@@ -13,6 +13,7 @@ import { getAspectRatioData } from '@/lib/constants/aspect-ratios';
 import { getAnalysisModelById } from '@/lib/ai/models.config';
 import { Link } from '@tanstack/react-router';
 import { ChevronRight, Mail, User } from 'lucide-react';
+import { SequenceListStatus } from './eval-sequence-metadata';
 import { getCreatorIdentity } from './creator-identity';
 
 // Strip cell height in px. Widths follow each sequence's aspect ratio so the
@@ -182,6 +183,7 @@ const MobileReelRow: React.FC<MobileReelRowProps> = ({
             {sequence.title || 'Untitled Sequence'}
           </Link>
           <CreatorIdentity sequence={sequence} />
+          <SequenceListStatus sequence={sequence} />
         </div>
         <div className="flex items-center gap-1 shrink-0">
           {hasVariants && (

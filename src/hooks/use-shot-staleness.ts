@@ -27,7 +27,10 @@ export type ShotArtifact = (typeof SHOT_ARTIFACTS)[number];
  * Client-facing staleness (wire shape). Server `ShotStalenessResult` also
  * carries `liveHashes` for enqueue paths; those never cross the wire.
  */
-export type ShotStaleness = Record<ShotArtifact, ArtifactStaleness>;
+export type ShotStaleness = Record<ShotArtifact, ArtifactStaleness> & {
+  /** Inputs edited since the stale artifacts were generated (#1194). */
+  causes: string[];
+};
 
 /** Which of the shot's artifacts are out of date, if any. */
 const staleArtifacts = (staleness: ShotStaleness | undefined): ShotArtifact[] =>

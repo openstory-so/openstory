@@ -22,6 +22,8 @@ import type { Database } from '@/lib/db/client';
 import { generateId } from '@/lib/db/id';
 import {
   dbSceneId,
+  framePromptVersions,
+  frames,
   sceneScriptVersions,
   scenes,
   shotPromptVersions,
@@ -98,6 +100,7 @@ async function insertSceneWithShot(args: {
   elementTags: string[];
   extract: string;
   motionPrompt?: string;
+  imagePrompt?: string;
 }) {
   const [scene] = await db
     .insert(scenes)
@@ -156,6 +159,32 @@ async function insertSceneWithShot(args: {
       .update(shots)
       .set({ selectedMotionPromptVersionId: version.id })
       .where(eq(shots.id, shot.id));
+  }
+  if (args.imagePrompt) {
+    const [frame] = await db
+      .insert(frames)
+      .values({
+        shotId: shot.id,
+        sequenceId,
+        orderIndex: 0,
+        role: 'first',
+      })
+      .returning();
+    if (!frame) throw new Error('test setup: frame insert returned nothing');
+    const [promptVersion] = await db
+      .insert(framePromptVersions)
+      .values({
+        frameId: frame.id,
+        text: args.imagePrompt,
+        source: 'ai-generated',
+      })
+      .returning();
+    if (!promptVersion)
+      throw new Error('test setup: image prompt insert returned nothing');
+    await db
+      .update(frames)
+      .set({ selectedImagePromptVersionId: promptVersion.id })
+      .where(eq(frames.id, frame.id));
   }
   return scene;
 }
@@ -242,6 +271,39 @@ describe('getShotCountsByElement', () => {
     expect(result[logo.id]?.shotCount).toBe(2);
     expect(result[bottle.id]?.shotCount).toBe(1);
     expect(result[orphan.id]?.shotCount).toBe(0);
+  });
+
+  it('counts by visual prompt when one exists, not scene tags', async () => {
+    const methods = createSequenceElementsMethods(db);
+    const [logo] = await db
+      .insert(sequenceElements)
+      .values({
+        sequenceId,
+        uploadedFilename: 'logo.png',
+        token: 'LOGO',
+        imageUrl: 'https://r2/logo.png',
+        imagePath: 'elements/x/logo.png',
+      })
+      .returning();
+    if (!logo) throw new Error('test setup: element insert returned nothing');
+
+    // Tagged + extract mention LOGO, but the still's prompt does not.
+    await insertSceneWithShot({
+      orderIndex: 0,
+      elementTags: ['LOGO'],
+      extract: 'The LOGO appears on screen.',
+      imagePrompt: 'Close-up of her face. No product in frame.',
+    });
+    // Untagged scene whose still actually names LOGO.
+    await insertSceneWithShot({
+      orderIndex: 1,
+      elementTags: [],
+      extract: 'No element here.',
+      imagePrompt: 'She holds the LOGO up to the light.',
+    });
+
+    const result = await methods.getShotCountsByElement(sequenceId);
+    expect(result[logo.id]?.shotCount).toBe(1);
   });
 });
 

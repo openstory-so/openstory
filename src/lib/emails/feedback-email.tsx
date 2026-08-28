@@ -3,7 +3,12 @@
  */
 
 import { Heading, Section, Text } from '@react-email/components';
-import { EmailLayout, headingClass, paragraphClass } from './email-layout';
+import {
+  detailRowClass,
+  EmailLayout,
+  headingClass,
+  paragraphClass,
+} from './email-layout';
 
 interface FeedbackEmailProps {
   appName: string;
@@ -13,8 +18,8 @@ interface FeedbackEmailProps {
   message: string;
 }
 
-const detailRowClass = 'm-0 text-sm leading-6 text-gray-700';
-const messageClass = 'm-0 whitespace-pre-wrap text-sm leading-6 text-gray-800';
+const messageClass =
+  'm-0 whitespace-pre-wrap text-sm leading-6 text-foreground';
 
 export const FeedbackEmail: React.FC<FeedbackEmailProps> = ({
   appName,
@@ -32,7 +37,7 @@ export const FeedbackEmail: React.FC<FeedbackEmailProps> = ({
         A user sent feedback from the app sidebar.
       </Text>
 
-      <Section className="my-6 rounded-lg bg-gray-100 p-6">
+      <Section className="my-6 rounded-lg bg-muted p-6">
         <Text className={detailRowClass}>
           <strong>Name:</strong> {userName || '—'}
         </Text>
@@ -44,7 +49,7 @@ export const FeedbackEmail: React.FC<FeedbackEmailProps> = ({
         </Text>
       </Section>
 
-      <Section className="my-6 rounded-lg border border-gray-200 p-6">
+      <Section className="my-6 rounded-lg border border-solid border-border p-6">
         <Text className={messageClass}>{message}</Text>
       </Section>
     </Section>

@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
+  analyzeTalentMediaFn,
   createTalentFn,
   deleteTalentFn,
   generateTalentSheetFn,
@@ -66,6 +67,16 @@ export function useTalentById(talentId: string) {
     teamFn: () => getTalentByIdFn({ data: { talentId } }),
     publicFn: () => getPublicTalentByIdFn({ data: { talentId } }),
     enabled: !!talentId,
+  });
+}
+
+/**
+ * Classify uploaded talent images and/or draft a description from them.
+ */
+export function useAnalyzeTalentMedia() {
+  return useMutation({
+    mutationFn: (input: { imageUrls: string[]; filenames?: string[] }) =>
+      analyzeTalentMediaFn({ data: input }),
   });
 }
 
@@ -150,6 +161,10 @@ export function useUploadTalentMedia() {
       type: 'image' | 'video' | 'recording';
       file: File;
       onProgress?: (percent: number) => void;
+      portraitAttestation?: {
+        statementVersion: string;
+        authorizationBasis?: string;
+      };
     }) => {
       const presign = await presignTalentUploadFn({
         data: {
@@ -173,6 +188,7 @@ export function useUploadTalentMedia() {
           mediaId: presign.mediaId,
           publicUrl: presign.publicUrl,
           path: presign.path,
+          portraitAttestation: data.portraitAttestation,
         },
       });
 
@@ -197,7 +213,7 @@ export function useUploadTempMedia() {
   return useMutation({
     mutationFn: async (data: {
       file: File;
-      type: 'image' | 'video';
+      type: 'image' | 'video' | 'recording';
       onProgress?: (percent: number) => void;
     }) => {
       const presign = await presignTalentUploadFn({
@@ -249,6 +265,11 @@ export function useGenerateTalentSheet() {
       // Optimistically update the query - the realtime hook will handle the actual update
       void queryClient.invalidateQueries({
         queryKey: talentKeys.detail(variables.talentId),
+      });
+    },
+    onError: (error) => {
+      toast.error('Could not start sheet generation', {
+        description: error instanceof Error ? error.message : 'Unknown error',
       });
     },
   });

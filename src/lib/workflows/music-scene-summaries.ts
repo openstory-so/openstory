@@ -1,6 +1,11 @@
 import type { Scene } from '@/lib/ai/scene-analysis.schema';
 import type { MusicSceneSummary } from '@/lib/workflow/types';
 
+type MusicSceneRow = {
+  sceneId: string;
+  musicDesign: NonNullable<Scene['musicDesign']>;
+};
+
 /**
  * Throws when `scene.metadata` is missing rather than `||`-defaulting to
  * placeholders. Defaulting would hash-alias corrupt scenes with real
@@ -33,5 +38,31 @@ export function buildMusicSceneSummaries(
       timeOfDay: scene.metadata.timeOfDay,
       visualSummary: visualSummaryBySceneId[scene.sceneId] ?? '',
     };
+  });
+}
+
+/**
+ * Pair per-scene music design onto analysis scenes by index.
+ *
+ * Scene ids are server-minted ULIDs; the music LLM is asked to echo them and
+ * routinely mangles them (and static e2e fixtures never can). The summaries
+ * we send are index-aligned with this array, so position is the contract.
+ * A length mismatch would silently attach another scene's cue — throw instead.
+ */
+export function joinMusicDesignByIndex(
+  scenes: readonly Scene[],
+  musicScenes: ReadonlyArray<MusicSceneRow>
+): Scene[] {
+  if (musicScenes.length !== scenes.length) {
+    throw new Error(
+      `Music design returned ${musicScenes.length} scene(s) but ${scenes.length} were sent; refusing to pair by position`
+    );
+  }
+  return scenes.map((scene, index) => {
+    const row = musicScenes[index];
+    if (!row) {
+      throw new Error(`Music design missing row at index ${index}`);
+    }
+    return { ...scene, musicDesign: row.musicDesign };
   });
 }

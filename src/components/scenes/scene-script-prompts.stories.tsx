@@ -168,6 +168,53 @@ export const LongPrompts: Story = {
   },
 };
 
+export const ImagePromptTab: Story = {
+  args: {
+    shot: {
+      ...mockShot,
+      imagePromptVersion: {
+        id: 'fpv-1',
+        frameId: anchorFrame.id,
+        text: 'Wide shot of Sarah at a sunlit coffee shop, typing furiously, steam rising from an untouched latte.',
+        components: null,
+        source: 'ai-generated',
+        inputHash: null,
+        analysisModel: null,
+        status: 'completed',
+        pendingInputHash: null,
+        workflowRunId: null,
+        createdAt: new Date(),
+        createdBy: null,
+      },
+    },
+    selectedTab: 'image-prompt',
+  },
+};
+
+export const MotionPromptTab: Story = {
+  args: {
+    shot: {
+      ...mockShot,
+      motionPrompt: {
+        fullPrompt:
+          'Slow push in as Sarah types; her eyes flick to the silenced phone.',
+        dialogue: {
+          presence: true,
+          lines: [
+            {
+              character: 'SARAH',
+              line: 'This deadline is going to kill me.',
+              tone: '',
+            },
+          ],
+        },
+        audio: null,
+      },
+    },
+    selectedTab: 'motion-prompt',
+  },
+};
+
 export const ShortScript: Story = {
   args: {
     shot: {

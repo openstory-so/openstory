@@ -17,8 +17,13 @@ import {
 } from '@/lib/shots/update-stale-depth';
 import { computePlan } from '@/lib/shots/update-stale-plan';
 import {
+  buildUpdateStalePreview,
+  type UpdateStalePreview,
+} from '@/lib/shots/update-stale-preview';
+import {
   toShotView,
   shotViewMissingFrame,
+  pendingUpscaleUrlFromVersion,
   type ShotGridSheet,
 } from '@/lib/shots/shot-view';
 import { getVideoDownloadUrl } from '@/lib/motion/video-storage';
@@ -78,12 +83,20 @@ export const getShotsFn = createServerFn({ method: 'GET' })
     // segment's selected `video_variants` row (#1067) — one batch read each, so
     // assembling the sequence stays O(1) queries.
     const shotIds = shotRows.map((s) => s.id);
+    const pendingPromoteIds = [
+      ...new Set(
+        anchorRows
+          .map((f) => f.pendingPromoteVersionId)
+          .filter((id): id is string => Boolean(id))
+      ),
+    ];
     const [
       selectedByFrame,
       previewByFrame,
       selectedPromptByFrame,
       selectedVideoByShot,
       primaryVideoByShot,
+      pendingById,
     ] = await Promise.all([
       scopedDb.frameVariants.getSelectedByFrameIds(anchorRows.map((f) => f.id)),
       // The pre-prompt stand-in is a `kind: 'preview'` row too (#1101) —
@@ -96,6 +109,7 @@ export const getShotsFn = createServerFn({ method: 'GET' })
       ),
       scopedDb.videoVariants.getSelectedByShotIds(shotIds),
       scopedDb.videoVariants.getPrimaryByShotIds(shotIds),
+      scopedDb.frameVariants.getByIds(pendingPromoteIds),
     ]);
     const anchorsByShot = new Map(anchorRows.map((f) => [f.shotId, f]));
     return shotRows.map((shot) => {
@@ -133,6 +147,11 @@ export const getShotsFn = createServerFn({ method: 'GET' })
         primaryVideo: primaryVideoByShot.get(shot.id) ?? null,
         gridSheet,
         motionPrompt,
+        pendingUpscaleUrl: pendingUpscaleUrlFromVersion(
+          frame.pendingPromoteVersionId
+            ? (pendingById.get(frame.pendingPromoteVersionId) ?? null)
+            : null
+        ),
       });
     });
   });
@@ -153,7 +172,7 @@ export const getShotsFn = createServerFn({ method: 'GET' })
  */
 export const getShotsForSequencesFn = createServerFn({ method: 'GET' })
   .middleware([authWithTeamMiddleware])
-  .inputValidator(
+  .validator(
     zodValidator(
       z.object({
         sequenceIds: z.array(ulidSchema).max(5000),
@@ -175,6 +194,7 @@ export const getShotFn = createServerFn({ method: 'GET' })
       imagePromptVersion,
       video,
       primaryVideo,
+      pendingPromote,
     ] = await Promise.all([
       context.scopedDb.frameVariants.getLatestGridSheet(context.frame.id),
       context.scopedDb.shotPromptVersions.getSelectedMotion(context.shot.id),
@@ -183,6 +203,11 @@ export const getShotFn = createServerFn({ method: 'GET' })
       context.scopedDb.framePromptVersions.getSelected(context.frame.id),
       context.scopedDb.videoVariants.getSelectedByShot(context.shot.id),
       context.scopedDb.videoVariants.getPrimaryByShot(context.shot.id),
+      context.frame.pendingPromoteVersionId
+        ? context.scopedDb.frameVariants.getById(
+            context.frame.pendingPromoteVersionId
+          )
+        : Promise.resolve(null),
     ]);
     return toShotView(context.shot, context.frame, {
       image,
@@ -194,6 +219,7 @@ export const getShotFn = createServerFn({ method: 'GET' })
       motionPrompt: selectedMotion
         ? motionPromptFromVersion(selectedMotion)
         : null,
+      pendingUpscaleUrl: pendingUpscaleUrlFromVersion(pendingPromote),
     });
   });
 
@@ -247,7 +273,7 @@ export const getDivergentVariantsFn = createServerFn({ method: 'GET' })
  */
 export const promoteVariantFn = createServerFn({ method: 'POST' })
   .middleware([shotAccessMiddleware])
-  .inputValidator(
+  .validator(
     zodValidator(
       z.object({
         sequenceId: ulidSchema,
@@ -264,7 +290,7 @@ export const promoteVariantFn = createServerFn({ method: 'POST' })
 
 export const discardVariantFn = createServerFn({ method: 'POST' })
   .middleware([shotAccessMiddleware])
-  .inputValidator(
+  .validator(
     zodValidator(
       z.object({
         sequenceId: ulidSchema,
@@ -284,7 +310,7 @@ export const discardVariantFn = createServerFn({ method: 'POST' })
 
 export const undiscardVariantFn = createServerFn({ method: 'POST' })
   .middleware([shotAccessMiddleware])
-  .inputValidator(
+  .validator(
     zodValidator(
       z.object({
         sequenceId: ulidSchema,
@@ -364,9 +390,7 @@ export const getSequenceSelectedModelsFn = createServerFn({ method: 'GET' })
 
 export const createShotFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(
-    zodValidator(singleShotSchema.extend({ sequenceId: ulidSchema }))
-  )
+  .validator(zodValidator(singleShotSchema.extend({ sequenceId: ulidSchema })))
   .handler(async ({ data, context }) => {
     // Auto-number within the scene when the caller didn't pick a slot (#1108):
     // max over ALL rows (deleted keep their slots) + 1, so a manual add never
@@ -390,7 +414,7 @@ export const createShotFn = createServerFn({ method: 'POST' })
 
 export const createShotsBulkFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(
+  .validator(
     zodValidator(
       z.object({
         sequenceId: ulidSchema,
@@ -408,7 +432,7 @@ export const createShotsBulkFn = createServerFn({ method: 'POST' })
 
 export const updateShotFn = createServerFn({ method: 'POST' })
   .middleware([shotAccessMiddleware])
-  .inputValidator(
+  .validator(
     zodValidator(
       updateShotSchema.extend({ sequenceId: ulidSchema, shotId: ulidSchema })
     )
@@ -528,7 +552,7 @@ const updateShotDurationSchema = z.object({
  */
 export const updateShotDurationFn = createServerFn({ method: 'POST' })
   .middleware([shotAccessMiddleware])
-  .inputValidator(zodValidator(updateShotDurationSchema))
+  .validator(zodValidator(updateShotDurationSchema))
   .handler(async ({ data, context }) => {
     const { shot, scopedDb } = context;
     const updated = await scopedDb.shots.update(shot.id, {
@@ -545,7 +569,7 @@ export const updateShotDurationFn = createServerFn({ method: 'POST' })
  */
 export const deleteShotFn = createServerFn({ method: 'POST' })
   .middleware([shotAccessMiddleware])
-  .inputValidator(zodValidator(shotIdInputSchema))
+  .validator(zodValidator(shotIdInputSchema))
   .handler(async ({ data, context }) => {
     const deletedAt = await context.scopedDb.shots.softDelete(data.shotId, {
       actorId: context.user.id,
@@ -615,7 +639,7 @@ export const deleteShotsBySequenceFn = createServerFn({ method: 'POST' })
  */
 export const getShotStalenessFn = createServerFn({ method: 'GET' })
   .middleware([shotAccessMiddleware])
-  .inputValidator(zodValidator(shotIdInputSchema))
+  .validator(zodValidator(shotIdInputSchema))
   .handler(async ({ context }) => {
     const { shot, frame, sequence, scopedDb, scene } = context;
     return toWireStaleness(
@@ -638,7 +662,8 @@ const toWireStaleness = ({
   thumbnail,
   visualPrompt,
   motionPrompt,
-}: ShotStalenessResult) => ({ thumbnail, visualPrompt, motionPrompt });
+  causes,
+}: ShotStalenessResult) => ({ thumbnail, visualPrompt, motionPrompt, causes });
 
 /**
  * Batched `getShotStalenessFn` (#1077): staleness for every shot in one scene
@@ -649,7 +674,7 @@ const toWireStaleness = ({
  */
 export const getShotStalenessBatchFn = createServerFn({ method: 'GET' })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(
+  .validator(
     zodValidator(
       z.object({ sequenceId: ulidSchema, sceneId: ulidSchema.optional() })
     )
@@ -760,7 +785,7 @@ export const getShotStalenessBatchFn = createServerFn({ method: 'GET' })
  */
 export const updateStaleShotsFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(
+  .validator(
     zodValidator(
       z.object({
         sequenceId: ulidSchema,
@@ -863,7 +888,7 @@ const updateStaleShotsResultSchema = z.object({
  */
 export const getUpdateStaleShotsRunFn = createServerFn({ method: 'GET' })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(
+  .validator(
     zodValidator(
       z.object({ sequenceId: ulidSchema, workflowRunId: z.string().min(1) })
     )
@@ -900,7 +925,7 @@ export const getUpdateStaleShotsRunFn = createServerFn({ method: 'GET' })
  */
 export const getShotDownloadUrlFn = createServerFn({ method: 'GET' })
   .middleware([shotAccessMiddleware])
-  .inputValidator(zodValidator(shotIdInputSchema))
+  .validator(zodValidator(shotIdInputSchema))
   .handler(async ({ context }) => {
     const { shot, scopedDb } = context;
 
@@ -920,4 +945,37 @@ export const getShotDownloadUrlFn = createServerFn({ method: 'GET' })
     const downloadUrl = await getVideoDownloadUrl(storagePath, filename, 3600);
 
     return { downloadUrl, filename };
+  });
+
+/**
+ * Dry-run "Update all" preview (#1194): the concrete cascade — which
+ * artifacts on which shots regenerate at each depth — plus cumulative cost
+ * estimates. Same `computePlan` the enqueue path freezes, at max depth, with
+ * no claims and no workflow: nothing is billed by looking.
+ */
+export const getUpdateStalePreviewFn = createServerFn({ method: 'GET' })
+  .middleware([sequenceAccessMiddleware])
+  .validator(
+    zodValidator(
+      z.object({
+        sequenceId: ulidSchema,
+        sceneId: ulidSchema.optional(),
+        shotId: ulidSchema.optional(),
+      })
+    )
+  )
+  .handler(async ({ data, context }): Promise<UpdateStalePreview> => {
+    const { sequence, scopedDb } = context;
+    const plan = await computePlan({
+      scopedDb,
+      sequenceId: sequence.id,
+      sceneId: data.sceneId,
+      shotId: data.shotId,
+      depth: 'music',
+    });
+    return buildUpdateStalePreview(
+      plan,
+      await getEffectiveFalPricing(),
+      sequence.musicModel
+    );
   });

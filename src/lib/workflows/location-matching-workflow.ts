@@ -122,6 +122,7 @@ export class LocationMatchingWorkflow extends OpenStoryWorkflowEntrypoint<Locati
               userId: input.userId,
               workflowRunId: event.instanceId,
               scopedDb,
+              reservationId: input.reservationId,
             }
           )
         : { matches: [] as LocationMatchEntry[] };

@@ -6,9 +6,9 @@
  * a flat, team-scoped asset. `input` snapshots exactly what the user submitted
  * (validated against the endpoint's live JSON Schema before the credit gate),
  * so a run can be inspected later without re-fetching the schema. `outputs`
- * are R2 uploads with origin-relative `/r2/<key>` URLs (#894). `costMicros`
- * is reserved for real charging (a follow-up PR) and stays null today —
- * completed runs currently deduct nothing.
+ * are R2 uploads with origin-relative `/r2/<key>` URLs (#894). Catalog runs
+ * (#458) still leave `costMicros` null. Studio runs (#1274) record the billed
+ * still/clip cost after `deductWorkflowCredits`.
  *
  * FKs deliberately use `onDelete: 'restrict'` — never CASCADE — because
  * `teams` / `user` are long-lived parent tables (see the D1 table-rebuild
@@ -48,6 +48,14 @@ export const GENERATED_ASSET_ACTIVITIES = ['image', 'video', 'audio'] as const;
 export type GeneratedAssetActivity =
   (typeof GENERATED_ASSET_ACTIVITIES)[number];
 
+/**
+ * Where the run was created. `catalog` is the flagged `/models` playground
+ * (#458). `studio` is the Images and Videos surface (#1274) that uses the
+ * same models as sequences.
+ */
+const GENERATED_ASSET_SOURCES = ['catalog', 'studio'] as const;
+export type GeneratedAssetSource = (typeof GENERATED_ASSET_SOURCES)[number];
+
 const GENERATED_ASSET_STATUSES = [
   'queued',
   'running',
@@ -76,6 +84,11 @@ export const generatedAssets = snakeCase.table(
     endpointId: text({ length: 200 }).notNull(),
     activity: text({ length: 20 }).$type<GeneratedAssetActivity>().notNull(),
     modelName: text({ length: 200 }).notNull(),
+    source: text({ length: 20 })
+      .$type<GeneratedAssetSource>()
+      .default('catalog')
+      .notNull(),
+    isFavorite: integer({ mode: 'boolean' }).default(false).notNull(),
 
     input: text({ mode: 'json' }).$type<GeneratedAssetInput>().notNull(),
 
@@ -100,6 +113,12 @@ export const generatedAssets = snakeCase.table(
     index('idx_generated_assets_team_endpoint').on(
       table.teamId,
       table.endpointId,
+      table.id
+    ),
+    // Studio library: team + source (catalog vs studio) + recency.
+    index('idx_generated_assets_team_source').on(
+      table.teamId,
+      table.source,
       table.id
     ),
   ]

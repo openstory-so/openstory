@@ -10,7 +10,7 @@
 import { expect } from 'playwright/test';
 import { test as testWithUser } from '../fixtures/auth.fixture';
 import { setupMockRoutes } from '../mocks/handlers';
-import { waitForScriptEditor } from '../fixtures/test-utils';
+import { fillScriptEditor } from '../fixtures/test-utils';
 import {
   createTestTalentSet,
   cleanupTalentById,
@@ -64,9 +64,6 @@ testWithUser.describe('Sequence Creation Flow', () => {
         page.getByRole('grid', { name: 'Style selection' })
       ).toBeVisible({ timeout: 15000 });
 
-      // Script input is now a TipTap-backed contenteditable, not a <textarea>.
-      // Playwright's .fill() works on contenteditable elements.
-      const scriptTextarea = await waitForScriptEditor(page);
       await expect(page).toHaveURL('/sequences/new');
 
       // Enter a simple test script
@@ -94,7 +91,7 @@ Here's your caffeine fix. How's it going?
       await firstStyle.click();
 
       // Now fill the editor - React is hydrated since style click worked
-      await scriptTextarea.fill(testScript);
+      await fillScriptEditor(page, testScript);
 
       // Wait for "Generate" button to become enabled - this proves:
       // 1. React hydration is complete (event handlers attached)
@@ -197,7 +194,13 @@ testWithUser.describe('Variant Selection', () => {
 
     // Variants moved from a tab to a dialog opened from the canvas image (#986):
     // select the shot, then open the variants dialog from the starting frame.
-    await shotThumbnail.click();
+    // The list item is a real <a href> (#1339), so the click lands whether or
+    // not React has hydrated; selection is URL state, so gate on `?shot=<id>`
+    // rather than on the SSR-visible thumbnail.
+    await page.getByRole('link', { name: 'Scene 1' }).click();
+    await expect(page).toHaveURL(new RegExp(`shot=${testShot.id}`), {
+      timeout: 15_000,
+    });
     const variantsButton = page.getByRole('button', {
       name: 'Frame variants',
     });
@@ -319,8 +322,13 @@ testWithUser.describe('Character Recast', () => {
         timeout: 15000,
       });
 
-      // Click Recast button
-      const recastButton = page.getByRole('button', { name: 'Recast' });
+      // Click Recast button. `exact` so the rename-sequence control
+      // (aria-label includes the sequence title, which contains "Recast")
+      // is not a strict-mode match.
+      const recastButton = page.getByRole('button', {
+        name: 'Recast',
+        exact: true,
+      });
       await expect(recastButton).toBeVisible();
       await recastButton.click();
 
@@ -338,7 +346,7 @@ testWithUser.describe('Character Recast', () => {
       ).toBeVisible();
 
       // Confirm the recast
-      await page.getByRole('button', { name: 'Recast' }).click();
+      await page.getByRole('button', { name: 'Recast', exact: true }).click();
 
       // The confirmation dialog should close (loading state may briefly appear)
       // With mocks, the mutation should complete quickly

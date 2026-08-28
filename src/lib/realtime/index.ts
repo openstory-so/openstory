@@ -2,6 +2,7 @@ import { getEnv } from '#env';
 import { z } from 'zod';
 
 import { getLogger } from '@/lib/observability/logger';
+import { sheetProgressActivitySchema } from '@/lib/talent/sheet-progress-copy';
 import type { ChannelHistoryMessage } from './realtime-channel.do';
 import type { EventData, EventPaths } from './shared-types';
 
@@ -20,6 +21,8 @@ export const realtimeSchema = {
     'sheet:progress': z.object({
       talentId: z.string(),
       status: z.enum(['generating', 'sheet_ready', 'completed', 'failed']),
+      /** What the run is actually doing. Omitted on older events → sheet. */
+      activity: sheetProgressActivitySchema.optional(),
       sheetId: z.string().optional(),
       sheetImageUrl: z.string().optional(),
       headshotImageUrl: z.string().optional(),
@@ -44,17 +47,27 @@ export const realtimeSchema = {
   billing: {
     'balance:updated': z.object({
       teamId: z.string(),
-      /** Post-mutation balance in USD. */
+      /** Posted ledger balance in USD. */
       balanceUsd: z.number(),
+      /**
+       * Spendable funds (posted minus unexpired holds). Additive so old
+       * clients keep using `balanceUsd` (#1310).
+       */
+      availableUsd: z.number().optional(),
+      /** Sum of unexpired reservation remaining. */
+      reservedUsd: z.number().optional(),
       /** Signed ledger amount in USD (negative for usage, positive for top-ups). */
       amountUsd: z.number(),
-      transactionId: z.string(),
-      type: z.enum([
-        'credit_purchase',
-        'credit_usage',
-        'credit_refund',
-        'credit_adjustment',
-      ]),
+      /** Absent on hold-only snapshots (create/grow/zero). */
+      transactionId: z.string().optional(),
+      type: z
+        .enum([
+          'credit_purchase',
+          'credit_usage',
+          'credit_refund',
+          'credit_adjustment',
+        ])
+        .optional(),
     }),
   },
 
@@ -154,6 +167,14 @@ export const realtimeSchema = {
       // it the FailureSummaryBanner only ever shows "Unknown error" until a
       // full refetch (#881).
       error: z.string().optional(),
+      // Set when this run just appended a `softened` prompt version (#1272).
+      // Invalidates visual history and toasts so the user knows the original
+      // is still in Versions.
+      promptSoftened: z.boolean().optional(),
+      // Set when this run swapped to Grok Imagine 2 after the selected model
+      // content-flagged (#1272). Invalidates the per-model variant list so the
+      // fallback still shows up, and toasts the swap.
+      modelFallback: z.boolean().optional(),
     }),
 
     // Fast preview shots replaced by AI-analyzed shots
@@ -314,6 +335,12 @@ export const realtimeSchema = {
       posterUrl: z.string(),
     }),
 
+    // Automatic style derived from the script and written to its row (#1213)
+    'style:ready': z.object({
+      styleId: z.string(),
+      name: z.string(),
+    }),
+
     // Divergence detected: a workflow finished but its inputs no longer match
     // the snapshot it was triggered from. The divergent result has been parked
     // (see workflow-snapshots-and-content-hash-staleness.md § "Divergence-on-completion")
@@ -381,6 +408,15 @@ export const realtimeSchema = {
     }),
     failed: z.object({
       message: z.string(),
+    }),
+    /**
+     * Scene-split found more work than the click envelope can grow to cover.
+     * Split/bibles/prompts stay; stills and motion do not spawn (#1310).
+     */
+    'reservation:short': z.object({
+      neededUsd: z.number(),
+      remainingUsd: z.number(),
+      sceneCount: z.number(),
     }),
     // Terminal events
     complete: z.object({

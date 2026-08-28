@@ -83,7 +83,10 @@ type WorkflowDomains = {
  * billing fact that gates a charge, so it lives under `liveRead.apiKeys`.
  */
 type WorkflowCredentials = Pick<ScopedDb, 'teamId' | 'userId'> &
-  Pick<ScopedDb['apiKeys'], 'resolveKey' | 'resolveLlmKey'>;
+  Pick<
+    ScopedDb['apiKeys'],
+    'resolveKey' | 'resolveOptionalKey' | 'resolveLlmKey'
+  >;
 
 /**
  * Hatch 2 — CLAIMS. Reads of append-only rows by an id the run already holds:
@@ -121,7 +124,10 @@ type WorkflowLiveReads = Pick<ScopedDb, 'teamId' | 'userId'> & {
   /** Whether the team owns a usable key — the BYOK half of a charge gate. */
   apiKeys: Pick<ScopedDb['apiKeys'], 'hasUsableKey'>;
   /** Balance at charge time (and the top-up it triggers) — the point is that it moved. */
-  billing: Pick<ScopedDb['billing'], 'hasEnoughCredits' | 'checkAutoTopUp'>;
+  billing: Pick<
+    ScopedDb['billing'],
+    'hasEnoughCredits' | 'checkAutoTopUp' | 'getBalance'
+  >;
   /** `getById`: divergence recompute. `listWithSheets`: live bibles for a re-render. */
   characters: Pick<ScopedDb['characters'], 'getById' | 'listWithSheets'>;
   /**
@@ -149,8 +155,11 @@ type WorkflowLiveReads = Pick<ScopedDb, 'teamId' | 'userId'> & {
   >;
   /** Existence guards, plus the music spawn-time billing guards (music has no claim rows). */
   sequences: Pick<ScopedDb['sequences'], 'getById' | 'getForUser'>;
-  /** Existence guards — "deleted mid-run" is a stand-down, not a failure. */
-  shots: Pick<ScopedDb['shots'], 'getById' | 'getByIds'>;
+  /**
+   * Existence guards, plus the ready-email clip/duration line (#1276) —
+   * those numbers are this run's own writes, not knowable at the trigger.
+   */
+  shots: Pick<ScopedDb['shots'], 'getById' | 'getByIds' | 'listBySequence'>;
   /** `getByIds`: wait-for-sheets polling. `getWithRelations`: divergence recompute. */
   talent: Pick<ScopedDb['talent'], 'getByIds' | 'getWithRelations'>;
   /** Spawn-time billing guards — video has no claim rows to hold the slot. */
@@ -158,6 +167,11 @@ type WorkflowLiveReads = Pick<ScopedDb, 'teamId' | 'userId'> & {
     ScopedDb['videoVariants'],
     'getSelectedByShot' | 'listBySegment'
   >;
+  /**
+   * Spawn-time enforcement — a ban applied after the parent started must
+   * stop work that has not started yet. Same class as a billing guard.
+   */
+  compliance: Pick<ScopedDb['compliance'], 'listEnforcementFor'>;
 };
 
 export type WorkflowScopedDb = WorkflowDomains & {
@@ -198,7 +212,9 @@ export function toWorkflowScopedDb(scopedDb: ScopedDb): WorkflowScopedDb {
       teamId: scopedDb.teamId,
       userId: scopedDb.userId,
       resolveKey: (provider) => scopedDb.apiKeys.resolveKey(provider),
-      resolveLlmKey: () => scopedDb.apiKeys.resolveLlmKey(),
+      resolveOptionalKey: (provider) =>
+        scopedDb.apiKeys.resolveOptionalKey(provider),
+      resolveLlmKey: (model) => scopedDb.apiKeys.resolveLlmKey(model),
     },
     claims: scopedDb,
     liveRead: scopedDb,
@@ -207,10 +223,11 @@ export function toWorkflowScopedDb(scopedDb: ScopedDb): WorkflowScopedDb {
 }
 
 /**
- * What the fal generation helpers (`image-generation`, `motion-generation`,
- * `music-generation`) actually depend on: resolve a fal key, and know whose
- * run this is for observability. Nothing else — the shape is the argument that
- * these helpers cannot read a row. Satisfied by `scopedDb.credentials`.
+ * What the media generation helpers (`image-generation`, `motion-generation`,
+ * `music-generation`) actually depend on: resolve a key (team or platform),
+ * look for an optional native-provider key (#1216), and know whose run this
+ * is for observability. Nothing else — the shape is the argument that these
+ * helpers cannot read a row. Satisfied by `scopedDb.credentials`.
  */
-export type FalCredentialScopedDb = Pick<ScopedDb, 'userId'> &
-  Pick<ScopedDb['apiKeys'], 'resolveKey'>;
+export type CredentialScopedDb = Pick<ScopedDb, 'userId'> &
+  Pick<ScopedDb['apiKeys'], 'resolveKey' | 'resolveOptionalKey'>;

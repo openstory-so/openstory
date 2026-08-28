@@ -1,5 +1,5 @@
 import type { ImageToVideoModel } from '../ai/models';
-import { snapDuration } from './motion-generation';
+import { snapDuration } from './snap-duration';
 
 export type ResolveShotDurationInput = {
   /** Caller-supplied override (e.g. `data.duration` from the API). Wins if defined. */

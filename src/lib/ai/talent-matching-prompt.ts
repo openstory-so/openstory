@@ -1,5 +1,13 @@
 import type { CharacterBibleEntry } from '@/lib/ai/scene-analysis.schema';
-import type { TalentWithSheets } from '@/lib/db/schema';
+
+type TalentMatchPromptRow = {
+  id: string;
+  name: string;
+  description: string | null;
+  defaultSheet: {
+    metadata?: CharacterBibleEntry | null;
+  } | null;
+};
 
 /**
  * Build prompt variables for the talent matching prompt.
@@ -7,7 +15,7 @@ import type { TalentWithSheets } from '@/lib/db/schema';
  */
 export function buildMatchingPromptVariables(
   characters: CharacterBibleEntry[],
-  talentList: TalentWithSheets[]
+  talentList: TalentMatchPromptRow[]
 ) {
   const charactersDescription = characters
     .map(
@@ -16,7 +24,9 @@ export function buildMatchingPromptVariables(
   Age: ${c.age}
   Gender: ${c.gender}
   Ethnicity: ${c.ethnicity}
-  Physical: ${c.physicalDescription}`
+  Physical: ${c.physicalDescription}
+  Clothing: ${c.standardClothing}
+  Distinguishing features: ${c.distinguishingFeatures}`
     )
     .join('\n\n');
 
@@ -30,7 +40,9 @@ export function buildMatchingPromptVariables(
   Age: ${metadata?.age ?? 'unspecified (infer from name if recognizable)'}
   Gender: ${metadata?.gender ?? 'unspecified (infer from name if recognizable)'}
   Ethnicity: ${metadata?.ethnicity ?? 'unspecified'}
-  Physical/Description: ${metadata?.physicalDescription ?? t.description ?? `${t.name} (use your knowledge of this person)`}`;
+  Physical/Description: ${metadata?.physicalDescription ?? t.description ?? `${t.name} (use your knowledge of this person)`}
+  Clothing: ${metadata?.standardClothing ?? 'unspecified'}
+  Distinguishing features: ${metadata?.distinguishingFeatures ?? 'unspecified'}`;
     })
     .join('\n\n');
 

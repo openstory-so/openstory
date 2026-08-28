@@ -17,46 +17,32 @@ import { z } from 'zod';
 // `.optional()`.
 //
 // Resilience for streaming partial-scene parsing lives in
-// `streaming-scene-parser.ts` (its own lenient schema), and frame.metadata is
-// stored as a `$type<Scene>()` cast (never re-parsed on read), so dropping
-// `.catch()` here does not weaken any DB-read path.
+// `streaming-scene-parser.ts` (settled-prefix `safeParse`, ignore the trailing
+// partial entry — not a second schema), and frame.metadata is stored as a
+// `$type<Scene>()` cast (never re-parsed on read), so dropping `.catch()` here
+// does not weaken any DB-read path.
 
 // ============================================================================
 // Character Bible Schemas
 // ============================================================================
 
+// Descriptions here count toward Anthropic's strict-output grammar budget
+// (#1035): keep only the constraint-bearing ones — the detailed field guidance
+// lives in the prompts (`workflow-prompts.ts`).
 export const characterBibleEntrySchema = z.object({
-  characterId: z.string().meta({
-    description:
-      'Unique identifier for cross-referencing this character across scenes',
-  }),
-  name: z
-    .string()
-    .meta({ description: 'Full character name as written in the script' }),
+  characterId: z.string(),
+  name: z.string(),
   age: z.string().meta({
     description: 'Age as number (e.g., 35) or range (e.g., "30s", "early 40s")',
   }),
-  gender: z
-    .string()
-    .meta({ description: 'Character gender for casting consistency' }),
-  ethnicity: z.string().meta({
-    description: 'Character ethnicity for accurate visual representation',
-  }),
-  physicalDescription: z.string().meta({
-    description:
-      'Detailed appearance: height, build, hair color, eye color, distinguishing features',
-  }),
-  standardClothing: z.string().meta({
-    description:
-      'Default outfit and clothing style for visual consistency across scenes',
-  }),
-  distinguishingFeatures: z.string().meta({
-    description:
-      'Unique visual markers: scars, tattoos, accessories, distinctive mannerisms',
-  }),
+  gender: z.string(),
+  ethnicity: z.string(),
+  physicalDescription: z.string(),
+  standardClothing: z.string(),
+  distinguishingFeatures: z.string(),
   consistencyTag: z.string().meta({
     description:
-      'Short prompt tag for image generation (e.g., "detective_sarah_blonde_30s")',
+      'Snake_case slug of the character name as written in the script (e.g., "detective_sarah"); optional descriptive context may follow the name slug',
   }),
 });
 
@@ -65,25 +51,29 @@ export const characterBibleEntrySchema = z.object({
 // products/objects that get an auto-generated reference image)
 // ============================================================================
 
+/**
+ * First appearance of a bible entry in the script. `sceneId` is NOT part of the
+ * LLM output (#1035: scene ids are minted server-side, and the bibles call runs
+ * in parallel with the scenes call) — the workflow derives the owning scene
+ * from `lineNumber` against the resolved boundary slices.
+ */
+const firstMentionSchema = z.object({
+  text: z.string(),
+  lineNumber: z
+    .number()
+    .meta({ description: '1-based line number from the script gutter' }),
+});
+
 export const elementBibleEntrySchema = z.object({
   token: z.string().meta({
     description:
       'Uppercase token used in the script to reference this element (e.g. "LOGO", "BOTTLE")',
   }),
-  description: z.string().meta({
-    description:
-      'Concise visual description of the element for prompt guidance',
-  }),
+  description: z.string(),
   consistencyTag: z.string().meta({
     description: 'Short slug tag for image generation (e.g. "red-hex-logo")',
   }),
-  firstMention: z
-    .object({
-      sceneId: z.string(),
-      text: z.string(),
-      lineNumber: z.number(),
-    })
-    .meta({ description: 'First appearance of this element in the script' }),
+  firstMention: firstMentionSchema,
 });
 
 // ============================================================================
@@ -91,81 +81,55 @@ export const elementBibleEntrySchema = z.object({
 // ============================================================================
 
 export const locationBibleEntrySchema = z.object({
-  locationId: z.string().meta({
-    description:
-      'Unique identifier for cross-referencing this location across scenes',
-  }),
+  locationId: z.string(),
   name: z.string().meta({
     description:
       'Location name as written in the script (e.g., "INT. OFFICE - DAY")',
   }),
-  type: z.enum(['interior', 'exterior', 'both']).meta({
-    description: 'Whether the location is interior, exterior, or both',
-  }),
-  timeOfDay: z.string().meta({
-    description: 'Default time of day: day, night, dusk, dawn, etc.',
-  }),
-  description: z.string().meta({
-    description:
-      'Detailed visual description of the location including layout, size, and atmosphere',
-  }),
-  architecturalStyle: z.string().meta({
-    description:
-      'Architectural or design style (e.g., "modern minimalist", "industrial loft", "Victorian")',
-  }),
-  keyFeatures: z.string().meta({
-    description:
-      'Notable visual elements that define this location (e.g., "large windows, exposed brick, vintage furniture")',
-  }),
-  colorPalette: z.string().meta({
-    description:
-      'Dominant colors and color scheme (e.g., "cool blues, steel grays, warm wood accents")',
-  }),
-  lightingSetup: z.string().meta({
-    description:
-      'Primary lighting characteristics (e.g., "harsh overhead fluorescent", "warm golden hour sunlight")',
-  }),
-  ambiance: z.string().meta({
-    description:
-      'Mood and atmosphere of the location (e.g., "tense corporate", "cozy intimate", "gritty urban")',
-  }),
+  type: z.enum(['interior', 'exterior', 'both']),
+  timeOfDay: z.string(),
+  description: z.string(),
+  architecturalStyle: z.string(),
+  keyFeatures: z.string(),
+  colorPalette: z.string(),
+  lightingSetup: z.string(),
+  ambiance: z.string(),
   consistencyTag: z.string().meta({
     description:
-      'Short prompt tag for image generation (e.g., "office_modern_steel_glass")',
+      'Short snake_case prompt tag for image generation (e.g., "office_modern_steel_glass")',
   }),
-  firstMention: z
-    .object({
-      sceneId: z
-        .string()
-        .meta({ description: 'Scene ID where location first appears' }),
-      text: z
-        .string()
-        .meta({ description: 'Original script text mentioning the location' }),
-      lineNumber: z.number().meta({ description: 'Line number in script' }),
-    })
-    .meta({ description: 'First appearance of this location in the script' }),
+  firstMention: firstMentionSchema,
 });
+
+/**
+ * `firstMention` as stored/consumed downstream: the LLM's `{ text, lineNumber }`
+ * plus the server-derived owning scene id (#1035 — the bibles call cannot know
+ * scene ids, which are minted server-side after boundary resolution).
+ */
+type FirstMentionWithScene = z.infer<typeof firstMentionSchema> & {
+  sceneId: string;
+};
 
 // ============================================================================
 // Project Metadata Schema
 // ============================================================================
 
+// Title-only (#1035): `aspectRatio` is a user setting and `generatedAt` was an
+// LLM-invented timestamp — neither was ever read.
 export const projectMetadataSchema = z.object({
   title: z
     .string()
     .meta({ description: 'Project title extracted from the script' }),
-  aspectRatio: z
-    .string()
-    .meta({ description: 'Video aspect ratio (e.g., "16:9", "9:16", "1:1")' }),
-  generatedAt: z
-    .string()
-    .meta({ description: 'ISO 8601 timestamp of generation' }),
 });
 
 // ============================================================================
 // Prompt Schemas
 // ============================================================================
 
+// No longer part of `visualPromptSchema` (#1035): the LLM composed these nine
+// fields per frame but nothing ever read them (`frame_prompt_versions` stored
+// them as history only). The schema survives solely to type old DB rows via
+// `VisualPromptComponents` — see `frame-prompt-versions.ts`'s `$type<>()`.
 const visualPromptComponentsSchema = z.object({
   sceneDescription: z
     .string()
@@ -198,14 +162,12 @@ const visualPromptSchema = z.object({
   fullPrompt: z.string().meta({
     description: 'Complete image generation prompt with all visual details',
   }),
-  negativePrompt: z
-    .string()
-    .meta({ description: 'Elements to avoid in the generated image' }),
-  components: visualPromptComponentsSchema.meta({
-    description: 'Structured breakdown of the visual prompt components',
-  }),
 });
 
+// No longer part of `motionPromptSchema` (#1035): `assembleMotionPrompt` uses
+// only `fullPrompt`/`dialogue`/`audio`, so the eight camera fields were pure
+// write-only output cost per shot. Kept solely to type old `shot_prompt_versions`
+// rows via `MotionPromptComponents`.
 const motionPromptComponentsSchema = z.object({
   cameraMovement: z.string().meta({
     description:
@@ -235,6 +197,9 @@ const motionPromptComponentsSchema = z.object({
   }),
 });
 
+// No longer part of `motionPromptSchema` (#1035): video-model params come from
+// `models.ts` config and duration from scene metadata; these were never read.
+// Kept solely to type old `shot_prompt_versions` rows via `MotionPromptParameters`.
 const motionPromptParametersSchema = z.object({
   durationSeconds: z
     .number()
@@ -255,11 +220,11 @@ const motionPromptParametersSchema = z.object({
     .meta({ description: 'Precise camera control parameters' }),
 });
 
-export const dialogueLineSchema = z.object({
+const dialogueLineSchema = z.object({
   character: z.string().meta({
     description: 'Character name speaking the line, or empty for narrator',
   }),
-  line: z.string().meta({ description: 'The spoken dialogue text' }),
+  line: z.string(),
   tone: z.string().meta({
     description:
       'Voice tone and emotion for delivery (e.g., "calm serious", "trembling frustrated", "whispered urgent")',
@@ -290,12 +255,6 @@ export const motionPromptSchema = z.object({
   fullPrompt: z.string().meta({
     description:
       'Complete motion prompt describing camera movement, action, and dialogue performance',
-  }),
-  components: motionPromptComponentsSchema.meta({
-    description: 'Structured breakdown of motion prompt components',
-  }),
-  parameters: motionPromptParametersSchema.meta({
-    description: 'Technical parameters for motion generation',
   }),
   // `.nullish()` (optional + nullable), not `.optional()`: under native strict
   // output the converter marks every property required and represents an
@@ -399,30 +358,25 @@ const audioDesignSchema = z.object({
 // Continuity Schema
 // ============================================================================
 
-export const continuitySchema = z.object({
+const continuitySchema = z.object({
   characterTags: z.array(z.string()).meta({
     description:
       "Snake_case slug of each character's name as written in the script (e.g., 'GIRL ONE' → 'girl_one'). Optional descriptive context may be appended after the name slug (e.g., 'girl_one_bathroom_morning'). One entry per character appearing in the scene.",
   }),
-  environmentTag: z
-    .string()
-    .meta({ description: 'Location/setting tag for environment consistency' }),
+  environmentTag: z.string().meta({
+    description:
+      'Snake_case tag matching the location bible consistencyTag format',
+  }),
   // `.nullish()` (not `.optional()`) so native strict output can emit `null`
   // when no elements are referenced; see the matching note on motion
   // dialogue/audio. Consumers already read this as `?.elementTags ?? []`.
   elementTags: z.array(z.string()).nullish().meta({
     description:
-      'UPPERCASE tokens for user-uploaded elements referenced in this scene (null when none)',
+      'UPPERCASE element tokens referenced in this scene (null when none)',
   }),
-  colorPalette: z
-    .string()
-    .meta({ description: 'Dominant colors for visual continuity' }),
-  lightingSetup: z.string().meta({
-    description: 'Lighting configuration for consistency across shots',
-  }),
-  styleTag: z
-    .string()
-    .meta({ description: 'Visual style reference for consistent look' }),
+  colorPalette: z.string(),
+  lightingSetup: z.string(),
+  styleTag: z.string(),
 });
 
 /**
@@ -459,12 +413,8 @@ export const sceneMetadataSchema = z.object({
   durationSeconds: z.number().meta({
     description: 'Estimated scene duration in seconds (typically 3-15)',
   }),
-  location: z
-    .string()
-    .meta({ description: 'Scene location (e.g., "INT. OFFICE - DAY")' }),
-  timeOfDay: z
-    .string()
-    .meta({ description: 'Time of day: day, night, dawn, dusk, etc.' }),
+  location: z.string(),
+  timeOfDay: z.string(),
   storyBeat: z
     .string()
     .meta({ description: 'Narrative purpose of this scene in the story' }),
@@ -474,7 +424,7 @@ export const sceneMetadataSchema = z.object({
 // Scene Schema
 // ============================================================================
 
-export const sceneSchema = z.object({
+const sceneSchema = z.object({
   sceneId: z
     .string()
     .meta({ description: 'Unique identifier for this scene (required)' }),
@@ -512,9 +462,6 @@ export const sceneSchema = z.object({
 // ============================================================================
 
 export const sceneAnalysisSchema = z.object({
-  status: z
-    .enum(['success', 'error', 'rejected'])
-    .meta({ description: 'Processing status: success, error, or rejected' }),
   projectMetadata: projectMetadataSchema.meta({
     description: 'Project-level metadata extracted from script',
   }),
@@ -540,8 +487,17 @@ export const sceneAnalysisSchema = z.object({
 export type SceneAnalysis = z.infer<typeof sceneAnalysisSchema>;
 export type Scene = z.infer<typeof sceneSchema>;
 export type CharacterBibleEntry = z.infer<typeof characterBibleEntrySchema>;
-export type LocationBibleEntry = z.infer<typeof locationBibleEntrySchema>;
-export type ElementBibleEntry = z.infer<typeof elementBibleEntrySchema>;
+// Bible entry types as consumed downstream: firstMention carries the
+// server-derived sceneId (see FirstMentionWithScene). The raw z.infer of the
+// entry schemas is the LLM wire shape only.
+export type LocationBibleEntry = Omit<
+  z.infer<typeof locationBibleEntrySchema>,
+  'firstMention'
+> & { firstMention: FirstMentionWithScene };
+export type ElementBibleEntry = Omit<
+  z.infer<typeof elementBibleEntrySchema>,
+  'firstMention'
+> & { firstMention: FirstMentionWithScene };
 export type VisualPrompt = z.infer<typeof visualPromptSchema>;
 export type VisualPromptComponents = z.infer<
   typeof visualPromptComponentsSchema
@@ -553,8 +509,8 @@ export type MotionAudio = NonNullable<MotionPrompt['audio']>;
  * The fields model-specific assembly (`assembleMotionPrompt`) actually consumes:
  * the narrative base plus the dialogue/audio direction appended for audio-capable
  * video models. This is what a `shot_prompt_versions` motion row reconstructs to
- * at resolution time (#713) — `components`/`parameters` are stored for history
- * but are not part of the rendered prompt.
+ * at resolution time (#713). Since #1035 the LLM emits nothing else, so this is
+ * the whole `MotionPrompt`; the alias survives for call sites that predate that.
  */
 export type AssemblableMotionPrompt = Pick<
   MotionPrompt,
@@ -568,3 +524,4 @@ export type MotionPromptParameters = z.infer<
 >;
 export type DialogueLine = z.infer<typeof dialogueLineSchema>;
 export type Continuity = z.infer<typeof continuitySchema>;
+export type SceneMetadata = z.infer<typeof sceneMetadataSchema>;

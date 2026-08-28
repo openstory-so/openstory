@@ -11,6 +11,12 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   resolve: {
     tsconfigPaths: true,
+    dedupe: [
+      'prosemirror-model',
+      'prosemirror-state',
+      'prosemirror-view',
+      'prosemirror-transform',
+    ],
     alias: {
       // `cloudflare:*` are Workerd-only virtual modules. Stub them so unit
       // tests that transitively import workflow entrypoint classes resolve in

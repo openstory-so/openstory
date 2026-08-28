@@ -17,7 +17,6 @@ describe('Scene Analysis Schema Validation', () => {
   });
 
   test('example has correct structure', () => {
-    expect(sceneAnalysisExample.status).toBe('success');
     expect(sceneAnalysisExample.scenes).toHaveLength(1);
     expect(sceneAnalysisExample.characterBible).toHaveLength(1);
     expect(sceneAnalysisExample.projectMetadata).toBeDefined();

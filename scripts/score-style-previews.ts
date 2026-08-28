@@ -26,6 +26,7 @@
  *   bun scripts/score-style-previews.ts --scene action        # only that scene
  *   bun scripts/score-style-previews.ts --model openai/gpt-5.5 --threshold 6.5
  */
+import { parseStyleConfig } from '@/lib/style/style-config';
 import type { TextModel } from '@/lib/ai/models';
 import { callLLM } from '@/lib/ai/llm-client';
 import {
@@ -116,11 +117,11 @@ function introText(name: string, c: StyleConfig, sceneOrder: string[]): string {
     `STYLE: ${name}`,
     '',
     'Intended look:',
-    `- Art style: ${c.artStyle}`,
-    `- Mood: ${c.mood}`,
-    `- Lighting: ${c.lighting}`,
-    `- Camera: ${c.cameraWork}`,
-    `- Color grading: ${c.colorGrading}`,
+    `- Art style: ${c.look.artStyle}`,
+    `- Mood: ${c.look.mood}`,
+    `- Lighting: ${c.look.lighting}`,
+    `- Camera: ${c.motion.camera}`,
+    `- Color grading: ${c.look.colorGrading}`,
     '',
     `The ${sceneOrder.length} candidate scene image(s) follow, in this order: ${sceneOrder
       .map((s, i) => `${i + 1}) ${s}`)
@@ -279,7 +280,12 @@ async function main() {
       inputs.push({ scene, file: path.join(PREVIEW_DIR, slug, file) });
     }
     if (inputs.length > 0) {
-      styleTasks.push({ name: style.name, slug, config: style.config, inputs });
+      styleTasks.push({
+        name: style.name,
+        slug,
+        config: parseStyleConfig(style.config),
+        inputs,
+      });
     }
   }
 

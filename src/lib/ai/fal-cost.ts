@@ -14,10 +14,12 @@
  * conservatively / display nothing for null.
  */
 
-import {
-  type EffectiveFalPricing,
-  getEffectiveFalPricing,
-} from '@/lib/ai/fal-pricing-live';
+// Type-only static import + dynamic import at the call site: a static value
+// import would put `fal-pricing-live` (and through it `#db-client` /
+// drizzle) in the client module graph — this module is reached from client
+// components via `cost-estimation.ts` (#1253). Client callers always pass
+// `pricingMap`, so the dynamic import only ever executes on the server.
+import type { EffectiveFalPricing } from '@/lib/ai/fal-pricing-live';
 import { reportMissingBillingCost } from '@/lib/billing/billing-observability';
 import {
   type Microdollars,
@@ -45,7 +47,15 @@ const TOKEN_RESOLUTION_DIMENSIONS: Record<
   '480p': { width: 854, height: 480 },
   '720p': { width: 1280, height: 720 },
   '1080p': { width: 1920, height: 1080 },
+  '4k': { width: 3840, height: 2160 },
 };
+
+/**
+ * fal Seedance (and similar token-billed video endpoints) default to 720p
+ * when the client omits `resolution`. Defaulting to 1080p here overstated
+ * pre-flight costs by ~2.2× (#1140).
+ */
+const DEFAULT_TOKEN_RESOLUTION = '720p';
 
 // ============================================================================
 // Actual cost (billing) — unitsBilled × unitPrice
@@ -60,6 +70,11 @@ const TOKEN_RESOLUTION_DIMENSIONS: Record<
  * and a rejection there discards a finished asset and pays fal again on the
  * retry. Tests pass `pricingMap` to skip D1.
  */
+async function loadLivePricing(): Promise<Record<string, EffectiveFalPricing>> {
+  const { getEffectiveFalPricing } = await import('@/lib/ai/fal-pricing-live');
+  return getEffectiveFalPricing();
+}
+
 export async function falCostFromUnits(
   endpointId: string,
   unitsBilled: number | undefined,
@@ -67,7 +82,7 @@ export async function falCostFromUnits(
 ): Promise<Microdollars> {
   let pricing: EffectiveFalPricing | undefined;
   try {
-    pricing = (pricingMap ?? (await getEffectiveFalPricing()))[endpointId];
+    pricing = (pricingMap ?? (await loadLivePricing()))[endpointId];
   } catch (err) {
     logger.error(`Failed to read live pricing for ${endpointId}`, {
       err,
@@ -227,14 +242,22 @@ export function estimateFalCost(
       return multiplyMicros(pricing.unitPrice, Math.ceil(duration / 60));
 
     case 'tokens': {
-      const dims = params.resolution
-        ? TOKEN_RESOLUTION_DIMENSIONS[params.resolution]
-        : undefined;
-      const w = params.widthPx ?? dims?.width ?? 1920;
-      const h = params.heightPx ?? dims?.height ?? 1080;
+      // fal: tokens = (h × w × duration × fps) / 1024, billed per 1000 tokens
+      // (Seedance docs). Prefer explicit width/height, else resolution tier,
+      // else the platform default (720p — not 1080p).
+      const tier =
+        params.resolution && TOKEN_RESOLUTION_DIMENSIONS[params.resolution]
+          ? params.resolution
+          : DEFAULT_TOKEN_RESOLUTION;
+      const dims = TOKEN_RESOLUTION_DIMENSIONS[tier] ?? {
+        width: 1280,
+        height: 720,
+      };
+      const w = params.widthPx ?? dims.width;
+      const h = params.heightPx ?? dims.height;
       const fps = params.fps ?? 24;
-      // fal derives tokens from pixels (≈ w·h·fps·sec / 1024) and prices per
-      // 1000-token unit; ~5% overhead on nominal shots.
+      // ~5% overhead vs the nominal formula — matches observed billable units
+      // slightly above the pure geometric product on real generations.
       const units = ((w * h * fps * duration) / 1024 / 1000) * 1.05;
       return multiplyMicros(pricing.unitPrice, units);
     }

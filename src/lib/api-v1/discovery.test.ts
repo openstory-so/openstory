@@ -6,6 +6,7 @@ import {
 } from './discovery';
 import { apiEnhanceScriptSchema } from './enhance-input-schema';
 import { apiCreateSequenceSchema } from './input-schema';
+import { apiCreateStyleSchema } from './style-input-schema';
 
 describe('buildRootDocument', () => {
   it('reads like MCP-style instructions and self-describes the API', () => {
@@ -17,6 +18,20 @@ describe('buildRootDocument', () => {
     expect(doc.instructions).toMatch(/Authorization: Bearer/);
     expect(doc.instructions).toMatch(/\?wait=/);
     expect(doc.instructions).toMatch(/_links/);
+    expect(doc.instructions).toMatch(/POST\s+\/api\/v1\/device\/code/);
+    expect(doc.instructions).toMatch(/428 authorization_pending/);
+  });
+
+  it('advertises style create/list/get with a parseable create example', () => {
+    const doc = buildRootDocument();
+    expect(doc.instructions).toMatch(/POST \/api\/v1\/styles/);
+    const create = doc._links['create-style'];
+    expect(create?.method).toBe('POST');
+    expect(() =>
+      apiCreateStyleSchema.parse(create?.examples?.[0])
+    ).not.toThrow();
+    expect(doc._links['list-styles']?.href).toBe('/api/v1/styles');
+    expect(doc._links.style?.templated).toBe(true);
   });
 
   it('embeds the request JSON Schema for tool callers', () => {
@@ -27,6 +42,10 @@ describe('buildRootDocument', () => {
   it('links every operation with a method (and write links with examples)', () => {
     const { _links } = buildRootDocument();
     expect(_links.self?.method).toBe('GET');
+    expect(_links['device-authorize']).toMatchObject({
+      method: 'POST',
+      href: '/api/v1/device/code',
+    });
     expect(_links['sequence-status']?.templated).toBe(true);
 
     const create = _links['create-sequence'];

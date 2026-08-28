@@ -40,7 +40,7 @@ export const promoteLibraryLocationSheetVariantFn = createServerFn({
   method: 'POST',
 })
   .middleware([authWithTeamMiddleware])
-  .inputValidator(zodValidator(variantInputSchema))
+  .validator(zodValidator(variantInputSchema))
   .handler(async ({ data, context }) => {
     const variant = await context.scopedDb.locationSheetVariants.getById(
       data.variantId
@@ -93,7 +93,7 @@ export const discardLibraryLocationSheetVariantFn = createServerFn({
   method: 'POST',
 })
   .middleware([authWithTeamMiddleware])
-  .inputValidator(zodValidator(variantInputSchema))
+  .validator(zodValidator(variantInputSchema))
   .handler(async ({ data, context }) => {
     const variant = await context.scopedDb.locationSheetVariants.getById(
       data.variantId
@@ -115,7 +115,7 @@ export const undiscardLibraryLocationSheetVariantFn = createServerFn({
   method: 'POST',
 })
   .middleware([authWithTeamMiddleware])
-  .inputValidator(zodValidator(variantInputSchema))
+  .validator(zodValidator(variantInputSchema))
   .handler(async ({ data, context }) => {
     const variant = await context.scopedDb.locationSheetVariants.getById(
       data.variantId

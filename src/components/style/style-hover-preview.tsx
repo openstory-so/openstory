@@ -6,6 +6,7 @@ import type { Style } from '@/types/database';
 import type { FC } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getStyleGradient } from './style-gradient';
+import { getConfigColorPalette } from '@/lib/style/style-config';
 
 type StyleHoverPreviewProps = {
   style: Style;
@@ -103,7 +104,9 @@ export const StyleHoverPreview: FC<StyleHoverPreviewProps> = ({
       ) : (
         <div
           className="h-full w-full"
-          style={{ background: getStyleGradient(style.config.colorPalette) }}
+          style={{
+            background: getStyleGradient(getConfigColorPalette(style.config)),
+          }}
         />
       )}
 

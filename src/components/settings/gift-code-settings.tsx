@@ -14,6 +14,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { triggerBalanceFlash } from '@/hooks/use-balance-flash';
 import { BILLING_BALANCE_KEY } from '@/hooks/use-billing-balance';
 import { BILLING_GATE_KEY } from '@/hooks/use-billing-gate';
+import { copyTextToClipboard } from '@/lib/utils/clipboard';
 import {
   batchCreateGiftTokensFn,
   createGiftTokenFn,
@@ -195,9 +196,15 @@ function BatchCreateCard() {
     });
   };
 
-  const handleCopyAll = () => {
+  const handleCopyAll = async () => {
     if (!createdCodes) return;
-    void navigator.clipboard.writeText(createdCodes.join('\n'));
+    if (!(await copyTextToClipboard(createdCodes.join('\n')))) {
+      toast.error('Failed to copy the codes', {
+        description:
+          'Your browser blocked clipboard access. Select the codes to copy them manually.',
+      });
+      return;
+    }
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -297,7 +304,7 @@ function BatchCreateCard() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={handleCopyAll}
+                onClick={() => void handleCopyAll()}
                 className="gap-1.5"
               >
                 {copied ? (
@@ -542,10 +549,14 @@ function GiftTokenRow({ token }: GiftTokenRowProps) {
           </span>
         </div>
         <p className="text-xs text-muted-foreground truncate">
-          {token.note ? `${token.note} · ` : ''}
-          {new Date(token.createdAt).toLocaleDateString()}
-          {token.expiresAt &&
-            ` · Expires ${new Date(token.expiresAt).toLocaleDateString()}`}
+          {[
+            token.note,
+            new Date(token.createdAt).toLocaleDateString(),
+            token.expiresAt &&
+              `Expires ${new Date(token.expiresAt).toLocaleDateString()}`,
+          ]
+            .filter(Boolean)
+            .join(' · ')}
         </p>
       </div>
       <div className="flex items-center gap-2 ml-4">
@@ -590,9 +601,12 @@ function StatusBadge({ status }: { status: string }) {
 function CopyLinkButton({ code }: { code: string }) {
   const [copied, setCopied] = useState(false);
 
-  const handleCopy = () => {
+  const handleCopy = async () => {
     const url = `${window.location.origin}/gift/${code}`;
-    void navigator.clipboard.writeText(url);
+    if (!(await copyTextToClipboard(url))) {
+      toast.error('Failed to copy the gift link');
+      return;
+    }
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -602,7 +616,7 @@ function CopyLinkButton({ code }: { code: string }) {
       variant="ghost"
       size="icon"
       className="h-8 w-8"
-      onClick={handleCopy}
+      onClick={() => void handleCopy()}
       aria-label="Copy gift link"
     >
       {copied ? (
@@ -617,8 +631,11 @@ function CopyLinkButton({ code }: { code: string }) {
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
 
-  const handleCopy = () => {
-    void navigator.clipboard.writeText(text);
+  const handleCopy = async () => {
+    if (!(await copyTextToClipboard(text))) {
+      toast.error('Failed to copy the code');
+      return;
+    }
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -628,7 +645,7 @@ function CopyButton({ text }: { text: string }) {
       variant="ghost"
       size="icon"
       className="h-8 w-8"
-      onClick={handleCopy}
+      onClick={() => void handleCopy()}
       aria-label="Copy code"
     >
       {copied ? (

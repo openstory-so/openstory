@@ -302,3 +302,41 @@ export function toErrorPayload(error: unknown): {
   }
   return { code: 'UNKNOWN', message: String(error) };
 }
+
+/**
+ * How much of any one error message a log BODY may carry. The ingest pipeline
+ * truncates a body at ~4,000 chars, so an oversized message doesn't just bloat
+ * the line — it evicts everything after it.
+ */
+const HEADLINE_MESSAGE_MAX = 400;
+
+/**
+ * The reason-first, length-capped headline for a log body.
+ *
+ * `DrizzleQueryError.message` is the entire SQL statement ("Failed query:
+ * select …") and the actual database reason lives on `.cause`. Interpolating
+ * the raw message into a log body therefore spends the whole 4,000-char budget
+ * on column names and truncates the one part that explains anything: a
+ * 104-column D1 rejection (#1135) logged 3,793 times as an unexplained
+ * "Failed query: select …", and the cause had to be recovered by re-running the
+ * query against production by hand.
+ *
+ * The full untruncated message and the whole cause chain still ship
+ * structurally under `{ err }` — this only governs the interpolated body.
+ */
+export function errorHeadline(payload: {
+  message: string;
+  cause?: SerializedError | string;
+}): string {
+  const causeMessage =
+    typeof payload.cause === 'string' ? payload.cause : payload.cause?.message;
+  const parts = causeMessage
+    ? // Cause first: it is the reason, and it is what survives truncation.
+      [causeMessage, payload.message]
+    : [payload.message];
+  return parts.map((part) => truncate(part, HEADLINE_MESSAGE_MAX)).join(' — ');
+}
+
+function truncate(value: string, max: number): string {
+  return value.length <= max ? value : `${value.slice(0, max)}…`;
+}

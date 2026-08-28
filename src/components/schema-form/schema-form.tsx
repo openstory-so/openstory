@@ -3,9 +3,9 @@
  *
  * Deterministic generative UI: every widget is picked from a closed shadcn
  * registry by the pure planner in widget-plan.ts (no LLM, no dynamic code).
- * The form is a controlled object value keyed by property name; omitted
- * optional fields stay absent from the value (they are never sent), and the
- * "+ field" chips add them seeded with their schema defaults.
+ * The form is a controlled object value keyed by property name. Prompt and
+ * other primary fields stay on the main surface; remaining optionals live
+ * under Advanced. Empty optional widgets omit the key (never sent).
  *
  * Client-side hints only — `createGeneratedAssetFn` re-validates against the
  * live schema server-side; `errors` carries its per-field messages back in.
@@ -35,12 +35,20 @@ import {
   matchVariant,
   orderedPropertyNames,
   parseJsonDraft,
+  partitionObjectFields,
   planWidget,
   resolveRef,
   schemaLabel,
   seedValue,
+  withOptionalField,
   type WidgetPlan,
 } from './widget-plan';
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible';
+import { ChevronDown } from 'lucide-react';
 
 /** Per-field server validation messages, keyed by dot path (`image_size.width`). */
 type SchemaFormErrors = Record<string, string>;
@@ -93,7 +101,7 @@ export const SchemaForm: FC<SchemaFormProps> = ({
 };
 
 // ---------------------------------------------------------------------------
-// Object level: ordered fields + optional-field chips
+// Object level: primary fields always visible, optionals under Advanced
 // ---------------------------------------------------------------------------
 
 function isRecord(
@@ -114,66 +122,59 @@ const ObjectFields: FC<{
 }> = ({ schema, root, value, onChange, depth, basePath, disabled, errors }) => {
   const properties = schema.properties ?? {};
   const required = new Set(schema.required ?? []);
-  const ordered = orderedPropertyNames(schema);
+  const { primary, advanced } =
+    depth === 0
+      ? partitionObjectFields(schema)
+      : { primary: orderedPropertyNames(schema), advanced: [] };
 
-  const present = ordered.filter((name) => required.has(name) || name in value);
-  const absent = ordered.filter(
-    (name) => !required.has(name) && !(name in value)
-  );
-
-  const setField = (name: string, next: JsonValue) => {
-    onChange({ ...value, [name]: next });
+  const setField = (name: string, next: JsonValue | undefined) => {
+    onChange(withOptionalField(value, name, next, required.has(name)));
   };
-  const dropField = (name: string) => {
-    const { [name]: _, ...rest } = value;
-    onChange(rest);
+
+  const renderField = (name: string) => {
+    const property = properties[name];
+    if (!property) return null;
+    const path = basePath ? `${basePath}.${name}` : name;
+    return (
+      <Field
+        key={name}
+        name={name}
+        path={path}
+        schema={property}
+        root={root}
+        value={value[name]}
+        onChange={(next) => setField(name, next)}
+        required={required.has(name)}
+        depth={depth}
+        disabled={disabled}
+        errors={errors}
+      />
+    );
   };
 
   return (
     <div className="flex flex-col gap-5">
-      {present.map((name) => {
-        const property = properties[name];
-        if (!property) return null;
-        const path = basePath ? `${basePath}.${name}` : name;
-        return (
-          <Field
-            key={name}
-            name={name}
-            path={path}
-            schema={property}
-            root={root}
-            value={value[name]}
-            onChange={(next) => setField(name, next)}
-            onRemove={required.has(name) ? undefined : () => dropField(name)}
-            required={required.has(name)}
-            depth={depth}
-            disabled={disabled}
-            errors={errors}
-          />
-        );
-      })}
-      {absent.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2">
-          {absent.map((name) => {
-            const property = properties[name];
-            if (!property) return null;
-            return (
-              <Button
-                key={name}
-                type="button"
-                variant="outline"
-                size="sm"
-                className="rounded-full"
-                disabled={disabled}
-                title={resolveRef(property, root).description}
-                onClick={() => setField(name, seedValue(property, root))}
-              >
-                <Plus aria-hidden="true" />
-                {name}
-              </Button>
-            );
-          })}
-        </div>
+      {primary.map(renderField)}
+      {advanced.length > 0 && (
+        <Collapsible>
+          <CollapsibleTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              className="w-fit gap-1 px-0 text-muted-foreground hover:text-foreground"
+              disabled={disabled}
+            >
+              Advanced
+              <ChevronDown
+                className="size-4 transition-transform [[data-state=open]_&]:rotate-180"
+                aria-hidden="true"
+              />
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="flex flex-col gap-5 pt-3">
+            {advanced.map(renderField)}
+          </CollapsibleContent>
+        </Collapsible>
       )}
     </div>
   );
@@ -189,8 +190,7 @@ const Field: FC<{
   schema: JsonSchema;
   root: JsonSchema;
   value: JsonValue | undefined;
-  onChange: (value: JsonValue) => void;
-  onRemove?: () => void;
+  onChange: (value: JsonValue | undefined) => void;
   required: boolean;
   depth: number;
   disabled: boolean;
@@ -202,7 +202,6 @@ const Field: FC<{
   root,
   value,
   onChange,
-  onRemove,
   required,
   depth,
   disabled,
@@ -232,20 +231,9 @@ const Field: FC<{
             id={id}
             value={value}
             onChange={onChange}
+            required={required}
             disabled={disabled}
           />
-        )}
-        {onRemove && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            aria-label={`Remove ${name}`}
-            disabled={disabled}
-            onClick={onRemove}
-          >
-            <X />
-          </Button>
         )}
       </div>
       {description && (
@@ -288,7 +276,7 @@ type WidgetProps = {
   schema: JsonSchema;
   root: JsonSchema;
   value: JsonValue | undefined;
-  onChange: (value: JsonValue) => void;
+  onChange: (value: JsonValue | undefined) => void;
   required: boolean;
   depth: number;
   disabled: boolean;
@@ -350,6 +338,10 @@ const EnumChips: FC<WidgetProps & { options: JsonValue[] }> = ({
       aria-labelledby={labelId}
       value={selected === -1 ? '' : String(selected)}
       onValueChange={(next) => {
+        if (next === '') {
+          onChange(undefined);
+          return;
+        }
         const option = options[Number(next)];
         if (option !== undefined) onChange(option);
       }}
@@ -373,23 +365,31 @@ const EnumSelect: FC<WidgetProps & { options: JsonValue[] }> = ({
   options,
   value,
   onChange,
+  required,
   disabled,
   id,
 }) => {
   const selected = options.findIndex((option) => option === value);
   return (
     <Select
-      value={selected === -1 ? undefined : String(selected)}
+      value={
+        selected === -1 ? (required ? undefined : 'omit') : String(selected)
+      }
       onValueChange={(next) => {
+        if (next === 'omit') {
+          onChange(undefined);
+          return;
+        }
         const option = options[Number(next)];
         if (option !== undefined) onChange(option);
       }}
       disabled={disabled}
     >
       <SelectTrigger id={id} className="w-full sm:max-w-xs">
-        <SelectValue placeholder="Choose…" />
+        <SelectValue placeholder={required ? 'Choose…' : 'Model default'} />
       </SelectTrigger>
       <SelectContent>
+        {!required && <SelectItem value="omit">Model default</SelectItem>}
         {options.map((option, index) => (
           <SelectItem key={optionLabel(option)} value={String(index)}>
             {optionLabel(option)}
@@ -403,13 +403,14 @@ const EnumSelect: FC<WidgetProps & { options: JsonValue[] }> = ({
 const BooleanControl: FC<{
   id: string;
   value: JsonValue | undefined;
-  onChange: (value: JsonValue) => void;
+  onChange: (value: JsonValue | undefined) => void;
+  required: boolean;
   disabled: boolean;
 }> = ({ id, value, onChange, disabled }) => (
   <Switch
     id={id}
     checked={value === true}
-    onCheckedChange={(checked) => onChange(checked)}
+    onCheckedChange={onChange}
     disabled={disabled}
   />
 );
@@ -419,7 +420,10 @@ const NumberControl: FC<
 > = ({ plan, value, onChange, required, disabled, id, labelId }) => {
   const current = typeof value === 'number' ? value : undefined;
   const parse = (text: string) => {
-    if (text.trim() === '') return;
+    if (text.trim() === '') {
+      onChange(undefined);
+      return;
+    }
     const parsed = plan.integer
       ? Number.parseInt(text, 10)
       : Number.parseFloat(text);
@@ -447,18 +451,20 @@ const NumberControl: FC<
   if (plan.slider && plan.min !== undefined && plan.max !== undefined) {
     return (
       <div className="flex items-center gap-4">
-        <Slider
-          aria-labelledby={labelId}
-          min={plan.min}
-          max={plan.max}
-          step={plan.step}
-          value={[current ?? plan.min]}
-          onValueChange={([next]) => {
-            if (next !== undefined) onChange(next);
-          }}
-          disabled={disabled}
-          className="max-w-xs"
-        />
+        {current !== undefined && (
+          <Slider
+            aria-labelledby={labelId}
+            min={plan.min}
+            max={plan.max}
+            step={plan.step}
+            value={[current]}
+            onValueChange={([next]) => {
+              if (next !== undefined) onChange(next);
+            }}
+            disabled={disabled}
+            className="max-w-xs"
+          />
+        )}
         {readout}
       </div>
     );
@@ -613,7 +619,10 @@ const ArrayControl: FC<WidgetProps & { items: JsonSchema }> = ({
               schema={resolvedItems}
               root={root}
               value={item}
-              onChange={(next) => setIndex(index, next)}
+              onChange={(next) => {
+                if (next === undefined) return;
+                setIndex(index, next);
+              }}
               required={false}
               depth={depth + 1}
               disabled={disabled}

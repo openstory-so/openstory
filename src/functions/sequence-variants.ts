@@ -86,7 +86,7 @@ export const getTeamDivergentSequenceVariantsFn = createServerFn({
 
 export const promoteSequenceMusicVariantFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(zodValidator(variantInputSchema))
+  .validator(zodValidator(variantInputSchema))
   .handler(async ({ data, context }) => {
     const { sequence, scopedDb } = context;
     const variant = await scopedDb.sequenceVariants.getMusicById(
@@ -132,7 +132,7 @@ const setMusicFromVariantInputSchema = z.object({
  */
 export const setMusicFromVariantFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(zodValidator(setMusicFromVariantInputSchema))
+  .validator(zodValidator(setMusicFromVariantInputSchema))
   .handler(async ({ data, context }) => {
     const { sequence, scopedDb } = context;
     const variants = await scopedDb.sequenceVariants.listMusicBySequence(
@@ -176,7 +176,7 @@ export const setMusicFromVariantFn = createServerFn({ method: 'POST' })
 
 export const discardSequenceMusicVariantFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(zodValidator(variantInputSchema))
+  .validator(zodValidator(variantInputSchema))
   .handler(async ({ data, context }) => {
     const variant = await context.scopedDb.sequenceVariants.getMusicById(
       data.variantId
@@ -193,7 +193,7 @@ export const undiscardSequenceMusicVariantFn = createServerFn({
   method: 'POST',
 })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(zodValidator(variantInputSchema))
+  .validator(zodValidator(variantInputSchema))
   .handler(async ({ data, context }) => {
     const variant = await context.scopedDb.sequenceVariants.getMusicById(
       data.variantId

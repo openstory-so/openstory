@@ -39,8 +39,8 @@ export const GenerationSettingsTrigger: FC<GenerationSettingsTriggerProps> = ({
       )}
       <span className="font-mono text-sm">{aspectRatio}</span>
       {autoLabels.length > 0 && (
-        <span className="text-xs text-muted-foreground">
-          Auto: {autoLabels.join(' + ')}
+        <span className="hidden sm:inline text-xs text-muted-foreground">
+          {autoLabels.join(' + ')}
         </span>
       )}
       <SlidersHorizontal className="size-3.5 text-muted-foreground" />

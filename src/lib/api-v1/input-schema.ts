@@ -10,6 +10,7 @@
  * without hand-writing the spec. Uses Zod 4 top-level formats (`z.url`, `z.int`).
  */
 
+import { portraitAttestationSchema } from '@/lib/compliance/likeness-upload';
 import { aspectRatioSchema } from '@/lib/constants/aspect-ratios';
 import { MUSIC_REQUIRES_MOTION_ERROR } from '@/lib/schemas/sequence.schemas';
 import { z } from 'zod';
@@ -38,6 +39,23 @@ const createCharacterSchema = z
       description: 'Whether the character is a human (vs creature/object).',
     }),
     referenceImageUrls,
+    portraitAttestation: portraitAttestationSchema.optional().meta({
+      description:
+        'Required when referenceImageUrls is set: portrait-rights statement version and authorization basis.',
+    }),
+  })
+  .superRefine((value, ctx) => {
+    if (
+      value.referenceImageUrls?.length &&
+      !value.portraitAttestation?.authorizationBasis.trim()
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['portraitAttestation'],
+        message:
+          'portraitAttestation is required when uploading reference images of a person.',
+      });
+    }
   })
   .meta({ id: 'CreateCharacter' });
 

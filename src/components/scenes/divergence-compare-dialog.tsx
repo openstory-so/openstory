@@ -193,7 +193,11 @@ export const DivergenceCompareDialog: React.FC<
             aria-live="polite"
           >
             Promote replaces the current {label}
-            {variant.variantType === 'image' && ' and clears the live video'}.
+            <span>
+              {variant.variantType === 'image'
+                ? ' and clears the live video.'
+                : '.'}
+            </span>{' '}
             Click Promote again to confirm.
           </div>
         )}
@@ -206,7 +210,7 @@ export const DivergenceCompareDialog: React.FC<
             disabled={busy}
           >
             {isDiscarding && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Discard
+            <span>Discard</span>
           </Button>
           <Button
             type="button"

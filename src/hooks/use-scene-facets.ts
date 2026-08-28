@@ -8,7 +8,7 @@
 import { getSceneFacetMapsFn } from '@/functions/scene-facets';
 import { useQuery } from '@tanstack/react-query';
 
-const sceneFacetKeys = {
+export const sceneFacetKeys = {
   all: ['scene-facets'] as const,
   maps: (sequenceId: string) =>
     [...sceneFacetKeys.all, 'maps', sequenceId] as const,

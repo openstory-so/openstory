@@ -5,16 +5,23 @@ import type { StaleDetectedPayload } from '@/lib/realtime';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useState } from 'react';
 import { talentKeys } from './use-talent';
+import {
+  activityFromProgress,
+  isSheetProgressStale,
+  SHEET_PROGRESS_STALE_MS,
+  type SheetProgressActivity,
+} from '@/lib/talent/sheet-progress-copy';
 
 import { getLogger } from '@/lib/observability/logger';
 
 const logger = getLogger(['openstory', 'ui', 'use-talent-realtime']);
 
-type GenerationPhase = 'sheet' | 'portrait';
+type GenerationPhase = SheetProgressActivity;
 
 type SheetProgressData = {
   talentId: string;
   status: 'generating' | 'sheet_ready' | 'completed' | 'failed';
+  activity?: SheetProgressActivity;
   sheetId?: string;
   sheetImageUrl?: string;
   headshotImageUrl?: string;
@@ -35,24 +42,31 @@ type TalentRealtimeEvent =
  * Returns the phase if generation is still in flight, null otherwise.
  */
 function resolveStatusFromHistory(
-  events: { event: string; data: string }[],
+  events: { event: string; data: string; ts?: number }[],
   talentId: string
 ): GenerationPhase | null {
-  let lastStatus: string | null = null;
+  let last: {
+    status: string;
+    activity?: SheetProgressActivity;
+    ts?: number;
+  } | null = null;
 
   for (const evt of events) {
     if (evt.event !== 'talent.sheet:progress') continue;
     try {
       const parsed = JSON.parse(evt.data);
       if (parsed.talentId !== talentId) continue;
-      lastStatus = parsed.status;
+      last = { ...parsed, ts: evt.ts };
     } catch {
       // skip unparseable events
     }
   }
 
-  if (lastStatus === 'generating') return 'sheet';
-  if (lastStatus === 'sheet_ready') return 'portrait';
+  if (!last) return null;
+  if (last.status === 'generating' || last.status === 'sheet_ready') {
+    if (isSheetProgressStale(last.ts)) return null;
+    return activityFromProgress(last);
+  }
   return null;
 }
 
@@ -98,6 +112,15 @@ export function useTalentSheetRealtime(talentId?: string) {
       });
   }, [talentId, queryClient, user]);
 
+  useEffect(() => {
+    if (!isGenerating) return;
+    const timeoutId = window.setTimeout(() => {
+      setIsGenerating(false);
+      setError('Sheet generation took too long. Try Generate Sheet again.');
+    }, SHEET_PROGRESS_STALE_MS);
+    return () => window.clearTimeout(timeoutId);
+  }, [isGenerating, phase]);
+
   const handleEvent = useCallback(
     (event: TalentRealtimeEvent) => {
       if (event.event === 'generation.stale:detected') {
@@ -127,7 +150,7 @@ export function useTalentSheetRealtime(talentId?: string) {
       switch (sheetData.status) {
         case 'generating':
           setIsGenerating(true);
-          setPhase('sheet');
+          setPhase(activityFromProgress(sheetData));
           setError(null);
           break;
 
@@ -171,10 +194,18 @@ export function useTalentSheetRealtime(talentId?: string) {
   });
 
   // Allow starting generation optimistically (before realtime event arrives)
-  const startGenerating = useCallback(() => {
-    setIsGenerating(true);
-    setPhase('sheet');
-    setError(null);
+  const startGenerating = useCallback(
+    (activity: SheetProgressActivity = 'sheet') => {
+      setIsGenerating(true);
+      setPhase(activity);
+      setError(null);
+    },
+    []
+  );
+
+  const stopGenerating = useCallback((message?: string) => {
+    setIsGenerating(false);
+    if (message) setError(message);
   }, []);
 
   return {
@@ -183,5 +214,6 @@ export function useTalentSheetRealtime(talentId?: string) {
     error,
     connectionStatus: status,
     startGenerating,
+    stopGenerating,
   };
 }

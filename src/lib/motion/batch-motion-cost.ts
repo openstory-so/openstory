@@ -16,7 +16,7 @@ import { resolveVideoModel } from '@/lib/ai/resolve-asset-models';
 import type { EffectiveFalPricing } from '@/lib/ai/fal-cost';
 import { estimateVideoCost, gateEstimate } from '@/lib/billing/cost-estimation';
 import { addMicros, ZERO_MICROS, type Microdollars } from '@/lib/billing/money';
-import { snapDuration } from '@/lib/motion/motion-generation';
+import { snapDuration } from '@/lib/motion/snap-duration';
 
 type BatchShot = { id: string };
 type SequenceModelFields = { videoModel: string | null | undefined };
@@ -62,6 +62,11 @@ export function estimateBatchMotionCost(
     pricing: Record<string, EffectiveFalPricing>;
     explicitModel?: ImageToVideoModel | null;
     duration?: number;
+    /**
+     * When true (or per-shot true), price the reference-to-video endpoint for
+     * models that route there with cast/element refs (#873).
+     */
+    hasReferenceImages?: boolean | ((shot: BatchShot) => boolean);
   }
 ): Microdollars {
   return shots.reduce((sum, shot) => {
@@ -71,11 +76,16 @@ export function estimateBatchMotionCost(
       sequence,
       opts.explicitModel
     );
+    const hasRefs =
+      typeof opts.hasReferenceImages === 'function'
+        ? opts.hasReferenceImages(shot)
+        : (opts.hasReferenceImages ?? false);
     return addMicros(
       sum,
       gateEstimate(
         estimateVideoCost(model, snapDuration(opts.duration, model), {
           pricing: opts.pricing,
+          hasReferenceImages: hasRefs,
         }),
         { model, operation: 'batch-motion' }
       )

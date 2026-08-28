@@ -7,12 +7,25 @@
 
 import { getDb } from '#db-client';
 import type { Sequence, User } from '@/lib/db/schema';
-import { sequences, teamMembers, teams, user } from '@/lib/db/schema';
+import {
+  deviceCode,
+  sequences,
+  teamMembers,
+  teams,
+  user,
+} from '@/lib/db/schema';
 import type { TeamMemberRole } from '@/lib/db/schema/teams';
 import { createAdminMethods } from '@/lib/db/scoped/admin';
 import { createApiKeysMethods } from '@/lib/db/scoped/api-keys';
 import { createBillingMethods } from '@/lib/db/scoped/billing';
 import { createCharacterSheetVariantsMethods } from '@/lib/db/scoped/character-sheet-variants';
+import {
+  createComplianceMethods,
+  createComplianceReadMethods,
+  createModerationMethods,
+  createProvenanceMethods,
+  createPublicReportIntake,
+} from '@/lib/db/scoped/compliance';
 import { createCharactersMethods } from '@/lib/db/scoped/characters';
 import { createFramePromptVersionsMethods } from '@/lib/db/scoped/frame-prompt-versions';
 import { createFrameVariantsMethods } from '@/lib/db/scoped/frame-variants';
@@ -54,13 +67,22 @@ import {
 } from '@/lib/db/scoped/talent';
 import { createTalentSheetVariantsMethods } from '@/lib/db/scoped/talent-sheet-variants';
 import { createTeamManagementMethods } from '@/lib/db/scoped/team-management';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, lt, sql } from 'drizzle-orm';
 
 import { getLogger } from '@/lib/observability/logger';
 
 const logger = getLogger(['openstory', 'db', 'scoped']);
 
 export type { UserActivityRow } from '@/lib/db/scoped/admin';
+
+/**
+ * Unscoped by nature (#1219): device codes belong to no team until approved,
+ * and Better Auth's plugin only deletes a code when someone polls it after
+ * expiry — never-polled codes would accumulate forever.
+ */
+export async function pruneExpiredDeviceCodes(): Promise<void> {
+  await getDb().delete(deviceCode).where(lt(deviceCode.expiresAt, new Date()));
+}
 
 /**
  * Resolve a user's default team (highest-role team).
@@ -331,6 +353,13 @@ export function createScopedDb(teamId: string, userId: string) {
     billing: createBillingMethods(db, teamId, userId),
     apiKeys: createApiKeysMethods(db, teamId, userId),
     teamManagement: createTeamManagementMethods(db, teamId, userId),
+
+    // Compliance (#1180). `provenance` is its own domain rather than a member
+    // of `compliance` because workflows must reach it and the workflow write
+    // surface only strips read methods at the top level — see the comment on
+    // createProvenanceMethods.
+    provenance: createProvenanceMethods(db, teamId, userId),
+    compliance: createComplianceMethods(db, teamId, userId),
   };
 }
 
@@ -341,5 +370,40 @@ export function createSystemAdminScopedDb() {
 
   return {
     admin: createAdminMethods(db),
+    // Cross-team moderation (#1180): the report queue, enforcement, and
+    // trace lookup. Only reachable through the system-admin scope, so a
+    // team-scoped caller cannot read another team's reports.
+    moderation: createModerationMethods(db),
   };
+}
+
+/**
+ * Enforcement rows for one user (#1180).
+ *
+ * Module-level and unscoped, like `resolveUserTeam` above, for the same reason:
+ * the generation gate runs before any team scope is meaningful, and an
+ * enforcement action follows the person rather than the workspace. Returns raw
+ * rows; interpretation lives in `@/lib/compliance/enforcement`.
+ */
+export async function loadComplianceRecords(
+  userId: string,
+  teamId?: string | null
+) {
+  const reads = createComplianceReadMethods(getDb());
+  const enforcement = await reads.listEnforcementFor(userId, teamId);
+  return { enforcement };
+}
+
+/**
+ * Accept an abuse report from an unauthenticated visitor.
+ *
+ * Module-level with no scope at all — the person whose likeness was misused has
+ * no account, and a takedown channel that requires one is not a takedown
+ * channel. Mirrors the `listPublic*` factories: the code path cannot express a
+ * team-scoped query.
+ */
+export async function submitPublicContentReport(
+  input: Parameters<ReturnType<typeof createPublicReportIntake>['submit']>[0]
+) {
+  return createPublicReportIntake(getDb()).submit(input);
 }

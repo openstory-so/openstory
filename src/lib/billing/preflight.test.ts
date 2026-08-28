@@ -8,8 +8,12 @@
 import { micros } from '@/lib/billing/money';
 import type { ScopedDb } from '@/lib/db/scoped';
 import { InsufficientCreditsError } from '@/lib/errors';
-import { describe, expect, it } from 'vitest';
-import { requireCredits } from './preflight';
+import { describe, expect, it, vi } from 'vitest';
+import {
+  releaseReservationOnThrow,
+  requireCredits,
+  reserveRunCredits,
+} from './preflight';
 
 function fakeScopedDb(opts: {
   keys: Array<'fal' | 'openrouter'>;
@@ -26,6 +30,17 @@ function fakeScopedDb(opts: {
     },
     billing: {
       hasEnoughCredits: () => Promise.resolve(opts.canAfford ?? false),
+      createReservation: () =>
+        Promise.resolve(
+          opts.canAfford
+            ? {
+                ok: true as const,
+                reservationId: 'res_1',
+                remaining: COST,
+                replay: false,
+              }
+            : { ok: false as const }
+        ),
     },
   } as unknown as ScopedDb;
 }
@@ -94,5 +109,72 @@ describe('requireCredits BYOK coverage', () => {
     await expect(
       requireCredits(fakeScopedDb({ keys: ['openrouter'] }), COST)
     ).rejects.toThrow(InsufficientCreditsError);
+  });
+});
+
+describe('reserveRunCredits', () => {
+  it('returns undefined for BYOK fal keys', async () => {
+    const db = fakeScopedDb({ keys: ['fal'] });
+    await expect(reserveRunCredits(db, COST)).resolves.toBeUndefined();
+  });
+
+  it('creates an envelope when the team can pay', async () => {
+    const db = fakeScopedDb({ keys: [], canAfford: true });
+    await expect(reserveRunCredits(db, COST)).resolves.toBe('res_1');
+  });
+
+  it('throws when available funds cannot cover the estimate', async () => {
+    const db = fakeScopedDb({ keys: [] });
+    await expect(reserveRunCredits(db, COST)).rejects.toThrow(
+      InsufficientCreditsError
+    );
+  });
+});
+
+describe('releaseReservationOnThrow', () => {
+  it('zeros the hold when the wrapped work throws', async () => {
+    const zeroReservation = vi.fn().mockResolvedValue(undefined);
+
+    await expect(
+      releaseReservationOnThrow(
+        { billing: { zeroReservation } },
+        'res_1',
+        async () => {
+          throw new Error('trigger failed');
+        }
+      )
+    ).rejects.toThrow('trigger failed');
+
+    expect(zeroReservation).toHaveBeenCalledWith('res_1');
+  });
+
+  it('leaves the hold when the wrapped work succeeds', async () => {
+    const zeroReservation = vi.fn().mockResolvedValue(undefined);
+
+    await expect(
+      releaseReservationOnThrow(
+        { billing: { zeroReservation } },
+        'res_1',
+        async () => 'ok'
+      )
+    ).resolves.toBe('ok');
+
+    expect(zeroReservation).not.toHaveBeenCalled();
+  });
+
+  it('still throws when there is no hold to release', async () => {
+    const zeroReservation = vi.fn();
+
+    await expect(
+      releaseReservationOnThrow(
+        { billing: { zeroReservation } },
+        undefined,
+        async () => {
+          throw new Error('trigger failed');
+        }
+      )
+    ).rejects.toThrow('trigger failed');
+
+    expect(zeroReservation).not.toHaveBeenCalled();
   });
 });

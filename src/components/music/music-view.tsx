@@ -1,3 +1,4 @@
+import { ActionCost } from '@/components/billing/action-cost';
 import { type ModelGenerationStatus } from '@/components/model/base-model-selector';
 import { MusicModelSelector } from '@/components/model/music-model-selector';
 import { PromptHistorySheet } from '@/components/prompts/prompt-history-sheet';
@@ -8,7 +9,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
+import { useFalPricing } from '@/hooks/use-fal-pricing';
 import { getAudioModelDurationLimits, type AudioModel } from '@/lib/ai/models';
+import { estimateAudioCost } from '@/lib/billing/cost-estimation';
 import type { Sequence } from '@/types/database';
 import {
   AlertCircle,
@@ -18,7 +21,7 @@ import {
   Music,
   Volume2,
 } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 
 type GenerateMusicArgs = {
   prompt?: string;
@@ -240,6 +243,14 @@ export const MusicView: React.FC<MusicViewProps> = ({
     editDuration ?? videoDuration ?? durationLimits.default;
   const durationExceedsMax = effectiveDuration > durationLimits.max;
 
+  const { pricing: falPricing } = useFalPricing();
+  const musicCostEstimate = useMemo(() => {
+    if (!falPricing) return null;
+    return estimateAudioCost(selectedModel, effectiveDuration, {
+      pricing: falPricing,
+    });
+  }, [falPricing, selectedModel, effectiveDuration]);
+
   function handleGenerate(): void {
     onGenerateMusic({
       prompt: editPrompt || undefined,
@@ -265,15 +276,18 @@ export const MusicView: React.FC<MusicViewProps> = ({
       Set Music
     </LoadingButton>
   ) : (
-    <LoadingButton
-      variant={selectedIsSet ? 'outline' : 'default'}
-      onClick={handleGenerate}
-      disabled={!editPrompt}
-      isLoading={isGeneratingMusic}
-      loadingText={selectedIsSet ? 'Regenerating…' : 'Generating…'}
-    >
-      {selectedIsSet ? 'Regenerate Music' : 'Generate Music'}
-    </LoadingButton>
+    <div className="flex flex-col gap-1">
+      <LoadingButton
+        variant={selectedIsSet ? 'outline' : 'default'}
+        onClick={handleGenerate}
+        disabled={!editPrompt}
+        isLoading={isGeneratingMusic}
+        loadingText={selectedIsSet ? 'Regenerating…' : 'Generating…'}
+      >
+        {selectedIsSet ? 'Regenerate Music' : 'Generate Music'}
+      </LoadingButton>
+      <ActionCost estimate={musicCostEstimate} />
+    </div>
   );
 
   if (musicStatus === 'completed' && musicUrl) {

@@ -20,7 +20,12 @@ export const FOUNDER_EMAIL = 'tom@openstory.so';
 export const SITE_CONFIG = {
   name: APP_NAME,
   description:
-    'Multi-scene AI video production. Open source and free to self-host.',
+    'Create 5-minute AI films with consistent characters. Iterate until you nail it. Open source and free to self-host.',
+  /** Logged-out homepage heading. */
+  tagline: 'Tell your whole story',
+  /** Logged-out homepage subtitle — what the product does. */
+  taglineSub:
+    'Create 5-minute AI films with consistent characters. Iterate until you nail it.',
   url: APP_URL,
   contactEmail: CONTACT_EMAIL,
   privacyEmail: PRIVACY_EMAIL,
@@ -41,7 +46,7 @@ export const TOP_TIER_FEATURES = [
   {
     title: 'From Idea to Finished Video',
     description:
-      'Describe what you want in a line or paste a full script. OpenStory breaks it into scenes, generates shots, and scores the music. A complete production pipeline, not a single-shot toy.',
+      'Describe what you want in a line or paste a full script. OpenStory breaks it into scenes, generates shots, and scores the music — a multi-scene film with consistent characters, not a single-shot toy.',
     image: `https://${VITE_R2_PUBLIC_ASSETS_DOMAIN}/images/marketing/14-fantasy-dragon.webp`,
   },
   {
@@ -56,7 +61,7 @@ export const TOP_TIER_FEATURES = [
   {
     title: 'Get The Shot You Want',
     description:
-      'Generate variations of any shot \u2014 different angles, lighting, compositions \u2014 until it\u2019s exactly right. Creative direction, not creative compromise.',
+      'Generate variations of any shot \u2014 different angles, lighting, compositions \u2014 and iterate the whole film until it\u2019s exactly right.',
     image: `https://${VITE_R2_PUBLIC_ASSETS_DOMAIN}/images/marketing/02-product-sneaker.webp`,
   },
   {
@@ -84,7 +89,7 @@ export const PROCESS_STEPS = [
     number: '01',
     title: 'Describe Your Idea',
     description:
-      'Start with a one-liner or a full script. OpenStory builds out scenes, assigns characters and locations, and prepares shot directions.',
+      'Start with a one-liner or a full script. OpenStory builds out scenes, assigns characters and locations, and prepares shot directions for a multi-scene film.',
   },
   {
     number: '02',
@@ -110,7 +115,7 @@ export const FAQ_ITEMS = [
   {
     question: 'What is OpenStory?',
     answer:
-      'OpenStory is an open source AI video production platform. Describe an idea or paste a script, and it builds scenes, casts characters, generates shots, and scores music\u2009\u2014\u2009all from one interface. Multi-scene, fully exportable, and free to self-host.',
+      'OpenStory is an open source AI video production platform. Paste a script or a one-liner and it builds a multi-scene film \u2014 consistent characters, locations, and look across every shot, up to around five minutes. Iterate on scenes until you nail it, then export. Free to self-host.',
   },
   {
     question: 'Do I need to write a full script?',

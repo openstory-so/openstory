@@ -1,11 +1,14 @@
 /**
- * Detect newer versions of the AI models (and AI SDK packages) we already use.
+ * Detect newer versions of the AI models we already use.
  *
- * Reads our four model registries plus the @tanstack/ai* deps in package.json,
- * then queries public, unauthenticated endpoints to find newer sibling versions:
+ * Reads our four model registries, then queries public, unauthenticated
+ * endpoints to find newer sibling versions:
  *   - fal.ai catalog      → https://fal.ai/api/models?keywords=…&category=…
  *   - OpenRouter catalog  → https://openrouter.ai/api/v1/models
- *   - npm registry        → https://registry.npmjs.org/<pkg>
+ *
+ * npm package updates (including our @tanstack/ai* deps) are intentionally NOT
+ * checked here — Dependabot owns dependency bumps. This routine is only about
+ * bumping model registry ids to a newer version of the same model.
  *
  * This is the deterministic backbone of the `update-model-versions` skill and
  * the daily "model freshness" routine. It only REPORTS candidates — deciding
@@ -34,8 +37,6 @@
  */
 
 import { execFile } from 'node:child_process';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { promisify } from 'node:util';
 
 import {
@@ -66,16 +67,6 @@ type ModelReport = {
   newer: Candidate[];
   /** All same-family siblings, for context (may include older/variants). */
   family: Candidate[];
-  error?: string;
-};
-
-type PackageReport = {
-  source: 'npm';
-  name: string;
-  currentRange: string;
-  currentResolved: string;
-  latest: string | null;
-  isOutdated: boolean;
   error?: string;
 };
 
@@ -401,56 +392,6 @@ async function checkTextModels(): Promise<ModelReport[]> {
 }
 
 // ---------------------------------------------------------------------------
-// npm package checks (@tanstack/ai*)
-// ---------------------------------------------------------------------------
-
-async function checkPackages(): Promise<PackageReport[]> {
-  const pkgPath = join(process.cwd(), 'package.json');
-  const pkg: {
-    dependencies?: Record<string, string>;
-    devDependencies?: Record<string, string>;
-  } = JSON.parse(readFileSync(pkgPath, 'utf8'));
-  const allDeps: Record<string, string> = {
-    ...pkg.dependencies,
-    ...pkg.devDependencies,
-  };
-  const targets = Object.keys(allDeps).filter((name) =>
-    name.startsWith('@tanstack/ai')
-  );
-
-  return Promise.all(
-    targets.map(async (name): Promise<PackageReport> => {
-      const range = allDeps[name] ?? '';
-      const resolved = range.replace(/^[\^~>=<\s]+/, '');
-      try {
-        const data = await fetchJson<{ 'dist-tags'?: { latest?: string } }>(
-          `https://registry.npmjs.org/${name}`
-        );
-        const latest = data['dist-tags']?.latest ?? null;
-        return {
-          source: 'npm',
-          name,
-          currentRange: range,
-          currentResolved: resolved,
-          latest,
-          isOutdated: latest != null && compareVersions(latest, resolved) > 0,
-        };
-      } catch (error) {
-        return {
-          source: 'npm',
-          name,
-          currentRange: range,
-          currentResolved: resolved,
-          latest: null,
-          isOutdated: false,
-          error: error instanceof Error ? error.message : String(error),
-        };
-      }
-    })
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
@@ -467,25 +408,20 @@ async function main() {
     ),
   ];
 
-  const [falReports, textReports, packageReports] = await Promise.all([
+  const [falReports, textReports] = await Promise.all([
     Promise.all(falChecks),
     checkTextModels(),
-    checkPackages(),
   ]);
 
   const modelReports = [...falReports, ...textReports];
   const modelsWithUpdates = modelReports.filter((r) => r.newer.length > 0);
-  const packagesWithUpdates = packageReports.filter((r) => r.isOutdated);
-  const hasUpdates =
-    modelsWithUpdates.length > 0 || packagesWithUpdates.length > 0;
+  const hasUpdates = modelsWithUpdates.length > 0;
 
   // A failed lookup is NOT "no update". Count failures so neither a human nor
   // automation can read a network/proxy outage as "all models current" — the
   // exact silent false-negative that hid behind `hasUpdates: false` when every
   // fetch errored. `ok: false` ⇒ the report is incomplete; exit non-zero too.
-  const errorCount =
-    modelReports.filter((r) => r.error).length +
-    packageReports.filter((r) => r.error).length;
+  const errorCount = modelReports.filter((r) => r.error).length;
   const ok = errorCount === 0;
   if (!ok) process.exitCode = 1;
 
@@ -497,7 +433,6 @@ async function main() {
           errorCount,
           hasUpdates,
           models: modelReports,
-          packages: packageReports,
         },
         null,
         2
@@ -506,12 +441,11 @@ async function main() {
     return;
   }
 
-  printReport(modelReports, packageReports, hasUpdates, errorCount);
+  printReport(modelReports, hasUpdates, errorCount);
 }
 
 function printReport(
   modelReports: ModelReport[],
-  packageReports: PackageReport[],
   hasUpdates: boolean,
   errorCount: number
 ) {
@@ -551,17 +485,6 @@ function printReport(
       }
     }
     console.log('');
-  }
-
-  console.log('## Packages (npm)');
-  for (const r of packageReports) {
-    if (r.error) {
-      console.log(`  ⚠️  ${r.name} — lookup failed: ${r.error}`);
-    } else if (r.isOutdated) {
-      console.log(`  🆕 ${r.name}: ${r.currentResolved} → ${r.latest}`);
-    } else {
-      console.log(`  ✅ ${r.name}: ${r.currentResolved} (latest ${r.latest})`);
-    }
   }
 
   if (errorCount > 0) {

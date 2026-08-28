@@ -39,12 +39,13 @@ type SceneModelBarProps = {
   resolvedSequenceImageModel: TextToImageModel;
   resolvedSequenceVideoModel: ImageToVideoModel;
   styleId?: string;
+  stylePending?: boolean;
   aspectRatio?: AspectRatio;
   /** The LLM that analysed the script into scenes. Fixed post-analysis. */
   analysisModel?: string;
 };
 
-const scopeLabel: Record<SelectionScope, string> = {
+export const scopeLabel: Record<SelectionScope, string> = {
   sequence: 'Sequence settings',
   scenes: 'Scene assets',
   shot: 'Shot assets',
@@ -66,6 +67,7 @@ export const SceneModelBar: React.FC<SceneModelBarProps> = ({
   resolvedSequenceImageModel,
   resolvedSequenceVideoModel,
   styleId,
+  stylePending,
   aspectRatio,
   analysisModel,
 }) => {
@@ -74,7 +76,8 @@ export const SceneModelBar: React.FC<SceneModelBarProps> = ({
 
   return (
     <div className="space-y-3 px-4 py-3">
-      <div className="flex items-center justify-between gap-2">
+      {/* Hidden on phones — the collapse bar already names the scope. */}
+      <div className="hidden items-center justify-between gap-2 md:flex">
         <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           {scopeLabel[scope]}
         </span>
@@ -88,7 +91,11 @@ export const SceneModelBar: React.FC<SceneModelBarProps> = ({
       {showSequenceSettings && (
         <div className="space-y-2">
           <SettingRow label="Style">
-            <StyleBadge styleId={styleId} />
+            <StyleBadge
+              styleId={styleId}
+              sequenceId={sequenceId}
+              stylePending={stylePending}
+            />
           </SettingRow>
           <SettingRow label="Aspect ratio">
             <span className="flex items-center gap-1.5">

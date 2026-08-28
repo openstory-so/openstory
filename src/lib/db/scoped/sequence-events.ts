@@ -112,3 +112,18 @@ export function createSequenceEventsMethods(db: Database) {
     },
   };
 }
+
+/**
+ * Event appended by `scopedDb.sequences.update` when a hash-bearing sequence
+ * setting changes (#1194). Style / aspect ratio / model switches leave no
+ * timestamp on any row (style is a snapshot), so this is the only way to date
+ * them for `findStalenessCauses`.
+ */
+export const SETTINGS_CHANGED_EVENT = 'sequence.settings-changed';
+
+export const SETTINGS_CHANGED_LABELS: Record<string, string> = {
+  styleId: 'Style',
+  aspectRatio: 'Aspect ratio',
+  imageModel: 'Image model',
+  analysisModel: 'Script model',
+};

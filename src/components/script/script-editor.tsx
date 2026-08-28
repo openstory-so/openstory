@@ -37,11 +37,9 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
 }) => {
   const handleChange = useCallback(
     (markdown: string) => {
-      if (!maxLength || markdown.length <= maxLength) {
-        onValueChange(markdown);
-      }
+      onValueChange(markdown);
     },
-    [onValueChange, maxLength]
+    [onValueChange]
   );
 
   const handleKeyDown = useCallback((event: KeyboardEvent) => {
@@ -61,7 +59,11 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
 
   return (
     <>
-      <div className="min-h-0 flex-1 flex flex-col overflow-hidden">
+      {/* 4 editor rows (24px line-height) + the editor's vertical padding —
+          the floor the flex layout can't crush the editor below. Phones get
+          min-h-20 so SSR (empty, no ProseMirror) matches the hydrated empty
+          height — min-h-16 was 12px short and jumped on mount (#1255). */}
+      <div className="min-h-20 md:min-h-28 flex-1 flex flex-col overflow-hidden">
         <MarkdownEditor
           scrollRef={ref}
           id="script"
@@ -73,8 +75,11 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
           placeholder={placeholder}
           disabled={disabled}
           aria-invalid={hasError}
+          // This is the one height-bounded editor, so it owns the scrolling.
+          // overscroll-contain: hitting its scroll bounds must not chain the
+          // touch gesture into scrolling the page underneath.
           className={cn(
-            'min-h-[4lh] flex-1 bg-transparent dark:bg-transparent border-none shadow-none focus-within:ring-0 focus-within:border-input overscroll-contain pb-10',
+            'min-h-[2lh] md:min-h-[4lh] flex-1 overflow-y-auto overscroll-contain bg-transparent dark:bg-transparent border-none shadow-none focus-within:ring-0 focus-within:border-input pb-10',
             hasError && 'border-destructive focus-within:ring-destructive/20'
           )}
           data-testid="script-editor-textarea"

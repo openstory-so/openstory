@@ -142,6 +142,7 @@ export class MotionPromptWorkflow extends OpenStoryWorkflowEntrypoint<MotionProm
         sequenceId,
         workflowRunId: event.instanceId,
         scopedDb,
+        reservationId: input.reservationId,
         shotPromptStream:
           input.emitStreaming && shotId
             ? { shotId, promptType: 'motion' }
@@ -186,8 +187,6 @@ export class MotionPromptWorkflow extends OpenStoryWorkflowEntrypoint<MotionProm
                 versionId: input.targetVersionId,
                 shotId,
                 text: motionPrompt.fullPrompt,
-                components: motionPrompt.components,
-                parameters: motionPrompt.parameters,
                 dialogue: motionPrompt.dialogue ?? null,
                 audio: motionPrompt.audio ?? null,
                 inputHash,
@@ -207,8 +206,6 @@ export class MotionPromptWorkflow extends OpenStoryWorkflowEntrypoint<MotionProm
             const written = await scopedDb.shotPromptVersions.writeAiVersion({
               shotId,
               text: motionPrompt.fullPrompt,
-              components: motionPrompt.components,
-              parameters: motionPrompt.parameters,
               dialogue: motionPrompt.dialogue ?? null,
               audio: motionPrompt.audio ?? null,
               inputHash,

@@ -27,6 +27,7 @@ import {
 } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
+import { copyTextToClipboard } from '@/lib/utils/clipboard';
 import {
   createPublicApiKeyFn,
   listPublicApiKeysFn,
@@ -151,7 +152,14 @@ function NewKeyReveal({
   const [copied, setCopied] = useState(false);
 
   const copy = async () => {
-    await navigator.clipboard.writeText(apiKey);
+    if (!(await copyTextToClipboard(apiKey))) {
+      // The key is shown exactly once, so a silent failure would lose it.
+      toast.error('Could not copy the key', {
+        description:
+          'Your browser blocked clipboard access. Select the key above and copy it manually before dismissing this.',
+      });
+      return;
+    }
     setCopied(true);
     toast.success('Copied to clipboard');
   };

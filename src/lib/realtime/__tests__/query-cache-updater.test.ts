@@ -127,6 +127,38 @@ describe('updateQueryCacheFromEvent — variant-only guard (#547)', () => {
       expect(invalidatedKeys).not.toContainEqual(shotKeys.list(SEQ));
     });
 
+    it('modelFallback invalidates model lists so the Grok still surfaces (#1272)', () => {
+      const invalidate = vi.spyOn(qc, 'invalidateQueries');
+
+      updateQueryCacheFromEvent(qc, SEQ, 'generation.image:progress', {
+        shotId: 'shot-1',
+        status: 'generating',
+        modelFallback: true,
+        model: 'grok_imagine_image',
+      });
+
+      vi.advanceTimersByTime(200);
+      const keys = invalidate.mock.calls.map((c) => c[0]?.queryKey);
+      expect(keys).toContainEqual(['sequence-image-variants', SEQ]);
+      expect(keys).toContainEqual(['sequence-image-models', SEQ]);
+      expect(keys).toContainEqual(shotKeys.imageVersions('shot-1'));
+    });
+
+    it('promptSoftened invalidates visual history so Versions shows the rewrite (#1272)', () => {
+      const invalidate = vi.spyOn(qc, 'invalidateQueries');
+
+      updateQueryCacheFromEvent(qc, SEQ, 'generation.image:progress', {
+        shotId: 'shot-1',
+        status: 'generating',
+        promptSoftened: true,
+      });
+
+      vi.advanceTimersByTime(200);
+      const keys = invalidate.mock.calls.map((c) => c[0]?.queryKey);
+      expect(keys).toContainEqual(promptVariantKeys.shot('visual', 'shot-1'));
+      expect(keys).toContainEqual(shotKeys.list(SEQ));
+    });
+
     it('primary completion (no variantOnly) still writes the thumbnail onto the shot', () => {
       updateQueryCacheFromEvent(qc, SEQ, 'generation.image:progress', {
         shotId: 'shot-1',
@@ -138,6 +170,26 @@ describe('updateQueryCacheFromEvent — variant-only guard (#547)', () => {
       const shot = getCachedShot(qc);
       expect(shot?.image?.url).toBe(NEW_URL);
       expect(shot?.frame.imageStatus).toBe('completed');
+    });
+
+    it('variant-only completion does not clear the upscale overlay', () => {
+      qc.setQueryData(
+        shotKeys.list(SEQ),
+        [makeShot()].map((s) => ({
+          ...s,
+          pendingUpscaleIndex: 4,
+          pendingUpscaleUrl: '/r2/thumbnails/crop.png',
+        }))
+      );
+      updateQueryCacheFromEvent(qc, SEQ, 'generation.image:progress', {
+        shotId: 'shot-1',
+        status: 'completed',
+        thumbnailUrl: NEW_URL,
+        variantOnly: true,
+      });
+      const shot = getCachedShot(qc);
+      expect(shot?.pendingUpscaleIndex).toBe(4);
+      expect(shot?.pendingUpscaleUrl).toBe('/r2/thumbnails/crop.png');
     });
 
     it('primary failure writes the reason onto frame.imageError so the banner shows it live (#881)', () => {
@@ -155,6 +207,28 @@ describe('updateQueryCacheFromEvent — variant-only guard (#547)', () => {
       const shot = getCachedShot(qc);
       expect(shot?.frame.imageStatus).toBe('failed');
       expect(shot?.frame.imageError).toBe('Blocked by content filter');
+    });
+
+    it('primary completion clears the persisted upscale overlay so it does not stick after SSE', () => {
+      qc.setQueryData(
+        shotKeys.list(SEQ),
+        [
+          makeShot({
+            frame: { imageStatus: 'generating' },
+            sources: { pendingUpscaleUrl: '/r2/thumbnails/crop.png' },
+          }),
+        ].map((s) => ({ ...s, pendingUpscaleIndex: 4 }))
+      );
+
+      updateQueryCacheFromEvent(qc, SEQ, 'generation.image:progress', {
+        shotId: 'shot-1',
+        status: 'completed',
+        thumbnailUrl: NEW_URL,
+      });
+
+      const shot = getCachedShot(qc);
+      expect(shot?.pendingUpscaleUrl).toBeNull();
+      expect(shot?.pendingUpscaleIndex).toBeNull();
     });
 
     it('a fresh generating attempt clears a stale frame.imageError', () => {

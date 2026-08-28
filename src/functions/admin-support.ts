@@ -6,7 +6,7 @@ import { systemAdminMiddleware } from './middleware';
 
 export const getAllAdminSequencesFn = createServerFn({ method: 'GET' })
   .middleware([systemAdminMiddleware])
-  .inputValidator(
+  .validator(
     zodValidator(
       z.object({
         limit: z.number().int().min(1).max(200).optional(),
@@ -21,7 +21,7 @@ export const getAllAdminSequencesFn = createServerFn({ method: 'GET' })
 
 export const getAdminShotsFn = createServerFn({ method: 'GET' })
   .middleware([systemAdminMiddleware])
-  .inputValidator(zodValidator(z.object({ sequenceId: ulidSchema })))
+  .validator(zodValidator(z.object({ sequenceId: ulidSchema })))
   .handler(async ({ context, data }) => {
     return context.adminScopedDb.admin.getShotsForSequence(data.sequenceId);
   });

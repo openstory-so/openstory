@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "9-panel cinematic storyboard sheet derived from Image 1. Mix Wide, Medium, and Tight shots of the same scene. No borders between panels.\n\nLayout: 3x3 grid (9 panels) in a 16:9 landscape image.\n\nScene: Modern social-first editorial product photography, overhead flat-lay shot from directly above, locked and perfectly level, 16:9 frame. A stretch of bone-white laminate kitchen counter in a cramped pre-war New York walk-up fills the frame, arranged with graphic minimal precision: a cracked flip phone closed shut, a paper napkin folded into a rough square with handwritten creases, two worn brass subway tokens, half a sesame bagel cut side up on wax paper, and the lipstick from (CORAL_LIPSTICK (Image 4)) lying on its side just tapped free of its small opened carton, the empty box lid flipped back beside it. SCARLETT VEGA (Image 2)'s hand and forearm enter from the right edge of frame, sleeve of her fitted black cotton turtleneck pushed up to the elbow, a thin silver ring on her index finger, fingers still hovering mid-motion just above the tube after releasing it, tendons taut, the gesture caught in the split second before the tube settles against the napkin. Hard directional late-afternoon window daylight rakes in from camera left, undiffused, carving crisp hard-edged shadows off the phone, the tokens, the carton and her fingers across the pale surface, warm cream and oat-beige tones lifted and airy against the bone white, with the single saturated coral accent as the only chromatic punch. Out-of-focus background elements crowd the far top edge of frame — an old enamel sink lip, a kettle, a chipped subway-tile backsplash — dissolved into soft bokeh. Shot on a fast prime, shallow depth of field on the tactile counter surface, macro-level texture on laminate grain and bagel crumb, crisp true-to-life color, minimal grade, lifted shadows, slight warmth in the highlights, glare catching the glossy surface of the tube.\n\nEvery panel is a shot of the same scene as Image 1 — keep the characters, wardrobe, lighting, color grade, and texture consistent across all panels.\n\nNo text, dialogue bubbles, scene numbers, or watermarks.\n\nReference images define identity — keep every referenced character, object, and location consistent with its reference image; never render a reference image itself as a separate panel or subject.\nImage 1 (primary): Primary source scene — generate 9 variant shots from this image\nImage 3 (location): INT. WALK-UP APARTMENT, KITCHEN COUNTER — LATE AFTERNOON - A cramped New York walk-up kitchen reduced",
+        "model": "xai/grok-imagine-image/quality/edit"
+      },
+      "response": {
+        "json": {
+          "images": [
+            {
+              "url": "https://v3b.fal.media/files/b/0aa74b0b/HLQ2SdQwKxMnT1VzD8L2p_9MwULEHr.jpg",
+              "content_type": "image/jpeg",
+              "file_name": "HLQ2SdQwKxMnT1VzD8L2p_9MwULEHr.jpg",
+              "file_size": null,
+              "width": 2816,
+              "height": 1584
+            }
+          ],
+          "revised_prompt": null
+        },
+        "status": 200,
+        "billableUnits": 10
+      }
+    }
+  ]
+}

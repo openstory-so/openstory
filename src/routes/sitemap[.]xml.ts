@@ -9,11 +9,14 @@ const SITEMAP_PAGES = [
   '/',
   '/login',
   '/sequences',
+  '/images',
+  '/videos',
   '/talent',
   '/locations',
   '/docs/faq',
   '/terms',
   '/privacy',
+  '/report',
 ] as const;
 
 function buildSitemap(): string {

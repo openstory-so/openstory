@@ -103,7 +103,7 @@ export const ShotMediaDropZone: React.FC<ShotMediaDropZoneProps> = ({
           while it is already in the DOM, so the visual overlay above cannot
           double as one. */}
       <span aria-live="polite" className="sr-only">
-        {uploading ? 'Uploading media…' : ''}
+        {uploading ? 'Uploading media…' : 'Ready to upload media'}
       </span>
     </div>
   );

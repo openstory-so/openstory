@@ -42,7 +42,7 @@ function TransactionRow({ tx }: { tx: TransactionData }) {
               : 'text-red-600 dark:text-red-400'
           }`}
         >
-          {tx.amount > 0 ? '+' : ''}${tx.amount.toFixed(2)}
+          {`${tx.amount > 0 ? '+' : ''}${tx.amount.toFixed(2)}`}
         </span>
         <Badge variant="outline" className="text-xs">
           ${tx.balanceAfter.toFixed(2)}

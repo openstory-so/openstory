@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Handheld tight over-the-shoulder cinematic frame, modern social-first beauty campaign photography, of SCARLETT VEGA (Image 1) in a fitted black cotton turtleneck with sleeves pushed up to the elbows, dark slim jeans, scuffed black ankle boots, a slouchy dark denim-canvas jacket half on, and a heavy natural-canvas tote slung over one shoulder, small gold hoop earrings and a thin silver ring on her right index finger; she is caught mid-motion, right hand raised holding the lipstick from (CORAL_LIPSTICK (Image 3)) uncapped and angled at her mouth having just finished a blind second stroke, lips pressed together, left forearm bracing the heavy painted apartment door as her shoulder shoves it open, weight already shifted forward onto her front boot, chin turned back toward the lens with a deadpan raised-eyebrow direct look. The setting is a narrow pre-war tenement entry hallway barely shoulder-width, scuffed eggshell plaster walls with layers of old paint and chipped millwork, a coat hook overloaded with straps and bags at frame edge, worn brown hardwood floor, the heavy door showing multiple deadbolts and a peephole, and conspicuously no mirror anywhere. Soft indirect warm spill from the kitchen window behind her lifts the shadows and rakes the wall texture while a cooler pale sliver of stairwell light cuts through the widening door gap across her cheek and the glossy cap of the tube. Bright true-to-life color, crisp whites, warm natural skin, lifted airy shadows, the coral accent popping against the neutral eggshell and black wardrobe. Shot on a 35mm lens at f/2, shallow depth of field with the hallway depth falling into gentle bokeh, natural handheld micro-shake, subtle motion blur on her hand, slight specular glare on the tube's polished metal seam, eye-level and marginally above, 16:9.\n\nReference images define identity — keep every referenced character, object, and location consistent with its reference image; never render a reference image itself as a separate panel or subject.\nImage 2 (location): INT. HALLWAY BY THE DOOR — CONTINUOUS - A narrow apartment entry hallway",
+        "model": "xai/grok-imagine-image/quality/edit"
+      },
+      "response": {
+        "json": {
+          "images": [
+            {
+              "url": "https://v3b.fal.media/files/b/0aa74b15/BijZc0rBfdKk-2QBaH3Pl_JOOXCu05.jpg",
+              "content_type": "image/jpeg",
+              "file_name": "BijZc0rBfdKk-2QBaH3Pl_JOOXCu05.jpg",
+              "file_size": null,
+              "width": 2816,
+              "height": 1584
+            }
+          ],
+          "revised_prompt": null
+        },
+        "status": 200,
+        "billableUnits": 10
+      }
+    }
+  ]
+}

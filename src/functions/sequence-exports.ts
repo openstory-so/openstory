@@ -41,7 +41,7 @@ export const requestSequenceExportUploadUrlFn = createServerFn({
   method: 'POST',
 })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(zodValidator(z.object({ sequenceId: ulidSchema })))
+  .validator(zodValidator(z.object({ sequenceId: ulidSchema })))
   .handler(async ({ context }) => {
     const path = buildExportPath(context.teamId, context.sequence.id);
     const upload = await getSignedUploadUrl(
@@ -59,7 +59,7 @@ export const requestSequenceExportUploadUrlFn = createServerFn({
 
 export const commitSequenceExportFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(
+  .validator(
     zodValidator(
       z.object({
         sequenceId: ulidSchema,
@@ -97,7 +97,7 @@ export const commitSequenceExportFn = createServerFn({ method: 'POST' })
 
 export const listSequenceExportsFn = createServerFn({ method: 'GET' })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(zodValidator(z.object({ sequenceId: ulidSchema })))
+  .validator(zodValidator(z.object({ sequenceId: ulidSchema })))
   .handler(async ({ context }) => {
     return await context.scopedDb.sequenceExports.listBySequence(
       context.sequence.id

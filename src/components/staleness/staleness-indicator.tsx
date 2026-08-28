@@ -8,6 +8,7 @@ import {
 } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { UpdateAllDialog } from '@/components/staleness/update-all-dialog';
+import type { ShotStaleness } from '@/hooks/use-shot-staleness';
 import type { UpdateStaleDepth } from '@/lib/shots/update-stale-depth';
 import { cn } from '@/lib/utils';
 
@@ -77,6 +78,14 @@ type StalenessIndicatorProps = StalenessIndicatorBaseProps &
         artifact?: StalenessArtifact;
         onRegenerate?: () => void;
         onRegenerateDepth?: (depth: UpdateStaleDepth) => void;
+        /** The shot's staleness — explains "what changed" in the depth dialog (#1194). */
+        staleness?: ShotStaleness;
+        /** Dry-run preview scope for the depth dialog (#1194). Required with `onRegenerateDepth`. */
+        updateAllScope?: {
+          sequenceId: string;
+          sceneId?: string;
+          shotId?: string;
+        };
         /** Defaults to "Out of date since your last edit". */
         message?: string;
         /** Defaults to "Update all". */
@@ -209,6 +218,8 @@ export const StalenessIndicator: React.FC<StalenessIndicatorProps> = (
             <UpdateAllDialog
               open={updateAllOpen}
               onOpenChange={setUpdateAllOpen}
+              staleShots={props.staleness ? [props.staleness] : []}
+              scope={props.updateAllScope ?? { sequenceId: '' }}
               onConfirm={(depth: UpdateStaleDepth) => {
                 setUpdateAllOpen(false);
                 props.onRegenerateDepth?.(depth);

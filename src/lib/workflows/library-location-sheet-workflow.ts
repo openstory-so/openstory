@@ -19,18 +19,17 @@ import {
 } from '@/lib/billing/workflow-deduction';
 import { generateId } from '@/lib/db/id';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
-import {
-  generateImageWithProvider,
-  type ImageGenerationParams,
-} from '@/lib/image/image-generation';
+import type { ImageGenerationParams } from '@/lib/image/image-generation';
 import {
   buildLibraryLocationSheetPrompt,
   buildLocationPreviewPrompt,
 } from '@/lib/prompts/location-prompt';
+import { recordProvenance } from '@/lib/compliance/provenance';
 import { getLocationChannel } from '@/lib/realtime';
 import { STORAGE_BUCKETS } from '@/lib/storage/buckets';
 import { uploadResponse } from '@/lib/storage/upload-response';
 import { OpenStoryWorkflowEntrypoint } from '@/lib/workflow/base-workflow';
+import { generateImageSoftening } from '@/lib/workflows/content-soften';
 import type {
   LibraryLocationSheetWorkflowInput,
   LibraryLocationSheetWorkflowResult,
@@ -92,16 +91,21 @@ export class LibraryLocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<Li
       }
     );
 
-    // Step 2: Generate the location sheet image
-    const imageResult = await step.do('generate-sheet-image', async () => {
-      logger.info(
-        `[LibraryLocationSheetWorkflow:cf] Generating 3x3 grid sheet for ${input.locationName} with model ${generationParams.model}`
-      );
-
-      return generateImageWithProvider(generationParams, {
-        scopedDb: scopedDb.credentials,
-      });
+    // Step 2: Generate the location sheet image — reseeds on a content flag,
+    // then one softened prompt (#1293).
+    const sheetGeneration = await generateImageSoftening({
+      step,
+      scopedDb,
+      workflowRunId: event.instanceId,
+      userId: input.userId,
+      kind: 'library-location-sheet',
+      logTag: '[LibraryLocationSheetWorkflow:cf]',
+      subject: `3x3 grid sheet for ${input.locationName}`,
+      stepName: 'generate-sheet-image',
+      params: generationParams,
+      meta: { locationDbId: input.locationDbId },
     });
+    const imageResult = sheetGeneration.result;
 
     // Before the deduction guard — see recordFalUsageStep (#1069).
     const sheetUsage = await recordFalUsageStep(
@@ -173,33 +177,34 @@ export class LibraryLocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<Li
 
     // Step 4: Generate preview establishing shot for card thumbnail
     const hasReferenceImages = input.referenceImageUrls.length > 0;
-    const previewResult = await step.do('generate-preview-image', async () => {
-      const model = input.imageModel ?? DEFAULT_IMAGE_MODEL;
-      const prompt = buildLocationPreviewPrompt(
+    const previewParams: ImageGenerationParams = {
+      model: input.imageModel ?? DEFAULT_IMAGE_MODEL,
+      prompt: buildLocationPreviewPrompt(
         input.locationName,
         input.locationDescription,
         hasReferenceImages
-      );
+      ),
+      imageSize: 'landscape_16_9',
+      numImages: 1,
+    } satisfies ImageGenerationParams;
 
-      logger.info(
-        `[LibraryLocationSheetWorkflow:cf] Generating preview establishing shot for ${input.locationName}`
-      );
+    if (hasReferenceImages) {
+      previewParams.referenceImageUrls = input.referenceImageUrls;
+    }
 
-      const previewParams: ImageGenerationParams = {
-        model,
-        prompt,
-        imageSize: 'landscape_16_9',
-        numImages: 1,
-      } satisfies ImageGenerationParams;
-
-      if (hasReferenceImages) {
-        previewParams.referenceImageUrls = input.referenceImageUrls;
-      }
-
-      return generateImageWithProvider(previewParams, {
-        scopedDb: scopedDb.credentials,
-      });
+    const previewGeneration = await generateImageSoftening({
+      step,
+      scopedDb,
+      workflowRunId: event.instanceId,
+      userId: input.userId,
+      kind: 'library-location-preview',
+      logTag: '[LibraryLocationSheetWorkflow:cf]',
+      subject: `preview establishing shot for ${input.locationName}`,
+      stepName: 'generate-preview-image',
+      params: previewParams,
+      meta: { locationDbId: input.locationDbId },
     });
+    const previewResult = previewGeneration.result;
 
     // Before the deduction guard — see recordFalUsageStep (#1069).
     const previewUsage = await recordFalUsageStep(
@@ -261,6 +266,46 @@ export class LibraryLocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<Li
         };
       }
     );
+
+    // Both the 3×3 grid and the preview land in R2. Record each: the grid is
+    // an intermediate but still shareable object; the preview is the live
+    // reference. Own steps so a retry of the publish step cannot double-insert.
+    await step.do('record-grid-provenance', async () => {
+      await recordProvenance(scopedDb.provenance, {
+        teamId: input.teamId,
+        userId: input.userId,
+        assetKind: 'location_sheet',
+        assetId: `${input.locationDbId}#grid`,
+        storageKey: storageResult.path,
+        provider: 'fal',
+        model: generationParams.model,
+        providerRequestId: sheetUsage.requestId ?? null,
+        workflowRunId: event.instanceId,
+        prompt: generationParams.prompt,
+        referenceImageCount: generationParams.referenceImageUrls?.length ?? 0,
+      });
+    });
+
+    await step.do('record-preview-provenance', async () => {
+      const hasReferenceImages = input.referenceImageUrls.length > 0;
+      await recordProvenance(scopedDb.provenance, {
+        teamId: input.teamId,
+        userId: input.userId,
+        assetKind: 'location_sheet',
+        assetId: input.locationDbId,
+        storageKey: previewStorageResult.path,
+        provider: 'fal',
+        model: input.imageModel ?? DEFAULT_IMAGE_MODEL,
+        providerRequestId: previewUsage.requestId ?? null,
+        workflowRunId: event.instanceId,
+        prompt: buildLocationPreviewPrompt(
+          input.locationName,
+          input.locationDescription,
+          hasReferenceImages
+        ),
+        referenceImageCount: input.referenceImageUrls.length,
+      });
+    });
 
     // Step 6: Publish the preview as the location's reference — the single
     // write that opens `waitForLocationReferences`' gate. Gated on divergence:

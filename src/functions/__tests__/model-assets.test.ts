@@ -31,6 +31,7 @@ let db: Database;
 const mockFetchModelInputSchema = vi.fn();
 const mockRequireCredits = vi.fn();
 const mockTriggerWorkflow = vi.fn();
+const mockRequireGenerationAllowed = vi.fn();
 
 vi.doMock('#db-client', () => ({ getDb: () => db }));
 vi.doMock('@/lib/models/schema-fetch', () => ({
@@ -42,11 +43,14 @@ vi.doMock('@/lib/billing/preflight', () => ({
 vi.doMock('@/lib/workflow/client', () => ({
   triggerWorkflow: mockTriggerWorkflow,
 }));
+vi.doMock('@/lib/compliance/generation-gate', () => ({
+  requireGenerationAllowed: mockRequireGenerationAllowed,
+}));
 
 // Dynamic imports so the mocks apply (static imports would be hoisted above
 // vi.doMock and bypass them).
 const { createGeneratedAsset, validateAssetInput } =
-  await import('../model-assets');
+  await import('@/lib/models/generated-assets');
 const { createScopedDb } = await import('@/lib/db/scoped');
 
 /** A realistic fal input schema slice (flux-style). */
@@ -76,6 +80,7 @@ beforeEach(async () => {
   mockFetchModelInputSchema.mockResolvedValue(FLUX_SCHEMA);
   mockRequireCredits.mockResolvedValue(undefined);
   mockTriggerWorkflow.mockResolvedValue('wf-run-1');
+  mockRequireGenerationAllowed.mockResolvedValue(undefined);
 });
 
 function createData(input: GeneratedAssetInput) {
@@ -140,6 +145,22 @@ describe('validateAssetInput', () => {
 });
 
 describe('createGeneratedAsset', () => {
+  it('rejects a restricted account BEFORE the credit gate, leaving no row', async () => {
+    const { AccountRestrictedError } = await import('@/lib/errors');
+    mockRequireGenerationAllowed.mockRejectedValue(
+      new AccountRestrictedError('paused')
+    );
+    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+
+    await expect(
+      createGeneratedAsset(scopedDb, createData({ prompt: 'ok' }))
+    ).rejects.toBeInstanceOf(AccountRestrictedError);
+
+    expect(mockRequireCredits).not.toHaveBeenCalled();
+    const rows = await db.select().from(generatedAssets);
+    expect(rows).toHaveLength(0);
+  });
+
   it('rejects invalid input BEFORE the credit gate, leaving no row', async () => {
     const scopedDb = createScopedDb(TEAM_ID, USER_ID);
 

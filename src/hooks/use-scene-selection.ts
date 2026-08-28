@@ -35,7 +35,7 @@ export function useSceneSelection({
   const view = search.view ?? DEFAULT_CANVAS_VIEW;
 
   const setSelection = useCallback(
-    (next: SceneSelection, facet?: SceneFacet) => {
+    (next: SceneSelection, facet?: SceneFacet, replace = false) => {
       void navigate({
         to: '/sequences/$id/scenes',
         params: { id: sequenceId },
@@ -44,7 +44,7 @@ export function useSceneSelection({
           facet ?? search.facet,
           search.view
         ) as Record<string, string | undefined>,
-        replace: false,
+        replace,
       });
     },
     [navigate, sequenceId, search.facet, search.view]

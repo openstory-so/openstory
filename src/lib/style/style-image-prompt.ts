@@ -28,16 +28,17 @@ export function buildStyledImagePrompt(
   scene: string,
   config: StyleConfig
 ): string {
+  const { look, motion, references } = config;
   return [
     `A single, full-frame cinematic still of the following scene, art-directed in the style described below: ${scene}`,
-    `Art Style: ${config.artStyle}`,
-    `Mood: ${config.mood}`,
-    `Lighting: ${config.lighting}`,
-    `Camera: ${config.cameraWork}`,
-    `Color Grading: ${config.colorGrading}`,
-    config.referenceFilms.length
-      ? `Inspired by: ${config.referenceFilms.join(', ')}`
-      : '',
+    `Art Style: ${look.artStyle}`,
+    look.medium ? `Medium: ${look.medium}` : '',
+    `Mood: ${look.mood}`,
+    `Lighting: ${look.lighting}`,
+    `Camera: ${motion.camera}`,
+    motion.shots ? `Shot selection: ${motion.shots}` : '',
+    `Color Grading: ${look.colorGrading}`,
+    references.length ? `Inspired by: ${references.join(', ')}` : '',
     STILL_NEGATIVE,
   ]
     .filter(Boolean)

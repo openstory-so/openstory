@@ -13,9 +13,9 @@
  * Anthropic's strict structured-output grammar caps a request at 16
  * union-typed parameters, and `convertSchemaToJsonSchema` compiles every
  * `.optional()` / `.catch()` / `.nullish()` field into a `["T","null"]` union
- * (an `anyOf` in the emitted JSON Schema). The existing
- * `sceneSplittingResultSchema` already carries optionals; nesting a rich
- * shots[] array inside it would blow that budget. This schema is authored
+ * (an `anyOf` in the emitted JSON Schema). The scene-split schemas already
+ * carry optionals; nesting a rich shots[] array inside them would blow that
+ * budget. This schema is authored
  * SEPARATELY and kept STRICTLY union-free — every field is required and
  * emptyable by convention ('' / [] / sensible scalar), with no Zod `.default()`,
  * so the model emits the empty value explicitly rather than the parser filling
@@ -232,14 +232,12 @@ export type SceneWithShots = z.infer<typeof sceneWithShotsSchema>;
 // ============================================================================
 
 /**
- * The full structured output of the shot-list analysis pass. Mirrors
- * `sceneSplittingResultSchema` but with scenes that own shot lists. Kept
- * union-free (see file header) to isolate the Anthropic 16-union budget.
+ * The full structured output of the shot-list analysis pass. Mirrors the
+ * pre-#1035 single-call scene-split result but with scenes that own shot
+ * lists. Kept union-free (see file header) to isolate the Anthropic 16-union
+ * budget.
  */
 export const sceneWithShotsResultSchema = z.object({
-  status: z
-    .enum(['success', 'error', 'rejected'])
-    .meta({ description: 'Processing status: success, error, or rejected' }),
   projectMetadata: projectMetadataSchema.meta({
     description: 'Project-level metadata extracted from the script',
   }),

@@ -15,7 +15,7 @@ flowchart TD
     Poster["<b>Generate Poster</b> · non-critical<br/>IN: title, script, styleConfig<br/>OUT: posterUrl on sequence"] --> SceneSplit
 
     subgraph "Phase 1 — Script Analysis · ~3min"
-        SceneSplit["<b>Scene Splitting</b> · LLM streaming · ~3min<br/>IN: script, aspectRatio, autoGenerateMotion<br/>OUT: scenes[], title, frameMapping[]<br/><i>frames + preview images created progressively</i>"]
+        SceneSplit["<b>Scene Splitting</b> · two parallel LLM calls · ~3min<br/>IN: script, aspectRatio, autoGenerateMotion<br/>OUT: scenes[], title, shotMapping[], bibles[]<br/><i>shots + preview images created progressively</i>"]
     end
 
     SceneSplit --> P2
@@ -165,19 +165,21 @@ Uses streaming LLM output to create frames progressively as scenes arrive, plus 
 
 **Steps:**
 
-1. **`scene-splitting-stream`** — Resolves the prompt template from the local registry, then streams the LLM response through `createStreamingSceneParser()`:
-   - Parses incremental JSON chunks via `partial-json`
-   - On each complete scene: calls `upsertFrame()` to create/update the frame in DB, emits `generation.scene:new` and `generation.frame:created`
-   - On title detection: updates the sequence title, emits `generation.updated`
-   - **Preview images:** After each scene completes, triggers an image workflow (fire-and-forget via `triggerWorkflow`) using `PREVIEW_IMAGE_MODEL` for instant visual feedback
-   - On `scene:updated` events: upserts frame with partial metadata as scenes stream in
-2. **`reconcile-frames`** — Bulk upserts all frames via `bulkInsertFrames()` for workflow replay safety — a Cloudflare Workflows body re-executes from the top on every step callback, so this is idempotent on `sequenceId + orderIndex` conflict. Also emits `frame:created` for any frames missed during streaming.
-3. **`deduct-llm-credits-scene-splitting`** — Credit deduction
+Since #1035 the split runs as **two parallel LLM calls** (sibling `step.do`s via `Promise.all`), both over the same line-gutter copy of the script, and the LLM never re-emits script text:
 
-- **Prompt:** `phase/scene-splitting-chat`
-- **Variables:** `{ aspectRatio, script }` (script is sanitized)
-- **Response schema:** `sceneSplittingResultSchema`
-- **Output:** `{ scenes[], title, frameMapping[] }` — `frameMapping` is an array of `{ sceneId, frameId }` used throughout remaining phases
+1. **`scene-splitting-stream`** — the scenes call, a **boundary-annotation** contract: the model returns `boundaries[] = { hintLine, quote }` plus index-aligned `sceneMeta[]`, and `boundary-split.ts` resolves each verbatim quote to a raw offset (exact → normalized → fuzzy, monotonic cursor) and slices the ORIGINAL script — extracts are byte-verbatim adjacent substrings (`concat(slices) === script`, asserted). The stream is fed through `createStreamingSceneParser()`:
+   - On each finalized boundary: persists the scene + 1:1 shot, emits `generation.scene:new` / `generation.shot:created`
+   - On title detection: updates the sequence title, emits `generation.updated`
+   - On `scene:updated` (a scene's `sceneMeta` entry settling): upserts the scene and triggers its preview image (fire-and-forget via `triggerWorkflow`, staggered off the meta stream so the boundary burst can't fan out all previews at once)
+   - Excessive anchor repairs → one retry with feedback; a second degraded result keeps the first-pass LLM scenes. Dropped boundaries are logged and emitted as a non-fatal `generation.error`
+2. **`scene-bibles`** — the bibles call: `{ characterBible[], locationBible[], elementBible[] }`. Location/element `firstMention` is `{ text, lineNumber }` on the wire; the owning scene id is derived server-side from the gutter line. After the join, scene continuity tags are canonicalized onto bible tags (`tag-reconcile.ts`) since two independent calls can disagree.
+3. **`reconcile-shots`** / **`persist-scenes`** — replay-safe bulk upserts of scenes + shot links (idempotent on `sequenceId + orderIndex`).
+4. **`deduct-llm-credits-scene-splitting`** / **`deduct-llm-credits-scene-bibles`** — one credit deduction per LLM call
+
+- **Prompts:** `phase/scene-splitting-boundaries-chat` + `phase/scene-bibles-chat`
+- **Variables:** `{ aspectRatio, script, elements }` (script is sanitized and line-guttered)
+- **Response schemas:** `sceneSplitScenesResultSchema` + `sceneSplitBiblesResultSchema` — both under the ~3KB Anthropic strict-output grammar budget enforced by `response-schema-budget.test.ts`
+- **Output:** `{ scenes[], title, shotMapping[], characterBible[], locationBible[], elementBible[] }` — `shotMapping` maps `analysisSceneId → shotId/frameId` used throughout remaining phases
 
 ### Phase 2: Casting Characters & Locations (Parallel Sub-Workflows)
 
@@ -193,9 +195,9 @@ flowchart LR
 
 **Talent Matching Workflow** (`src/lib/workflows/talent-matching-workflow.ts`):
 
-1. **Character extraction** — `durableLLMCallCf('character-extraction')` (`src/lib/workflows/llm-call-helper.ts`, wraps the LLM call in a `step.do`) with prompt `phase/character-extraction-chat`
-   - Input: `{ scenes }` (JSON-serialized)
-   - Output: `{ characterBible }` — array of characters with physical descriptions, clothing, consistency tags
+Bibles already exist from Phase 1. This workflow only matches.
+
+1. Uses `input.characterBible` from scene-split (no character-extraction LLM)
 2. **Talent matching** (skipped if no `suggestedTalentIds`):
    - Loads talent records from DB by IDs
    - LLM matches characters to talent
@@ -204,9 +206,7 @@ flowchart LR
 
 **Location Matching Workflow** (`src/lib/workflows/location-matching-workflow.ts`):
 
-1. **Location extraction** — `durableLLMCallCf('location-extraction')` with prompt `phase/location-extraction-chat`
-   - Input: `{ scenes }` (JSON-serialized)
-   - Output: `{ locationBible }` — array of locations with descriptions, architecture, color palettes
+1. Uses `input.locationBible` from scene-split (no location-extraction LLM)
 2. **Location matching** (skipped if no `suggestedLocationIds`):
    - Loads library locations from DB by IDs
    - LLM matches locations to library entries (requires confidence >= 0.5)
@@ -244,7 +244,7 @@ flowchart LR
 **Visual Prompt Workflow** (`src/lib/workflows/visual-prompt-workflow.ts`):
 
 - Delegates to `visualPromptSceneWorkflow` per scene (parallel via `spawnAndAwaitChild`)
-- Each scene gets an LLM call that generates a `fullPrompt`, `negativePrompt`, and `continuity` data (character tags, environment tag, color palette, lighting, style tag)
+- Each scene gets an LLM call that generates `fullPrompt` and `negativePrompt`. Scene `continuity` is authored in Phase 1 and is not re-emitted here.
 - Merges results back into scene objects
 
 ### Phase 4: Frame Images, then Motion/Music Prompts (Sequential)
@@ -309,9 +309,9 @@ Returns the `completeScenes` array.
 
 ```mermaid
 flowchart TD
-    P1["Phase 1: Scene Splitting"] -->|"sceneId, sceneNumber,<br/>originalScript (extract, dialogue),<br/>metadata (title, durationSeconds,<br/>location, timeOfDay, storyBeat)"| P2
-    P2["Phase 2: Casting Characters<br/>& Locations"] -->|"characterBible,<br/>locationBible<br/>(separate arrays)"| P3
-    P3["Phase 3: References &<br/>Prompts"] -->|"+ prompts.visual<br/>(fullPrompt, negativePrompt,<br/>components)<br/>+ continuity<br/>(characterTags, environmentTag,<br/>colorPalette, lightingSetup, styleTag)"| P4
+    P1["Phase 1: Scene Splitting"] -->|"sceneId, sceneNumber,<br/>originalScript (extract, dialogue),<br/>metadata, continuity,<br/>character/location/element bibles"| P2
+    P2["Phase 2: Casting Characters<br/>& Locations"] -->|"talent + library matches<br/>(bibles already from Phase 1)"| P3
+    P3["Phase 3: References &<br/>Prompts"] -->|"+ visual fullPrompt +<br/>negativePrompt (no components)"| P4
     P4["Phase 4: Images +<br/>Motion/Music Prompts"] -->|"Frames get thumbnailUrl +<br/>variants. Scenes get<br/>prompts.motion + musicDesign"| P5
     P5["Phase 5: Motion + Music<br/>Generation"] -->|"Sequence gets musicUrl,<br/>mergedVideoUrl, finalVideoUrl.<br/>Frames get videoUrl"| Final["Complete Scene"]
 
@@ -328,9 +328,9 @@ Each phase enriches the `Scene` object. The frame's `metadata` column is updated
 | `sceneNumber`    | Phase 1  | Required, 1-indexed                                                        |
 | `originalScript` | Phase 1  | `{ extract, dialogue }`                                                    |
 | `metadata`       | Phase 1  | `{ title, durationSeconds, location, timeOfDay, storyBeat }`               |
-| `prompts.visual` | Phase 3  | `{ fullPrompt, negativePrompt, components }`                               |
-| `continuity`     | Phase 3  | `{ characterTags, environmentTag, colorPalette, lightingSetup, styleTag }` |
-| `prompts.motion` | Phase 4  | `{ fullPrompt, components, parameters }`                                   |
+| `continuity`     | Phase 1  | `{ characterTags, environmentTag, colorPalette, lightingSetup, styleTag }` |
+| `prompts.visual` | Phase 3  | `{ fullPrompt, negativePrompt }` — `components` is no longer LLM output    |
+| `prompts.motion` | Phase 4  | `{ fullPrompt }` — `components`/`parameters` are no longer LLM output      |
 | `musicDesign`    | Phase 4  | `{ presence, style, mood, atmosphere }`                                    |
 | `sourceImageUrl` | Optional | URL of generated or uploaded source image                                  |
 
@@ -346,7 +346,7 @@ Events emitted via Upstash Realtime on a per-sequence channel (`getGenerationCha
 | `generation.scene:new`                | Phase 1 — progressively as scenes stream in       | `{ sceneId, sceneNumber, title, scriptExtract, durationSeconds }`     |
 | `generation.scene:updated`            | Phase 1 — as scene metadata updates during stream | `{ sceneId, sceneNumber, title, scriptExtract, durationSeconds }`     |
 | `generation.updated`                  | Phase 1 — after title detected in stream          | `{ title }`                                                           |
-| `generation.frame:created`            | Phase 1 — progressively as frames are upserted    | `{ frameId, sceneId, orderIndex }`                                    |
+| `generation.shot:created`             | Phase 1 — progressively as shots are upserted     | `{ shotId, sceneId, orderIndex }`                                     |
 | `generation.frame:updated`            | Phase 4 — after prompts written to DB             | `{ frameId, updateType, metadata }`                                   |
 | `generation.talent:matched`           | Phase 2 — when talent matched to characters       | `{ matches: [{ characterId, characterName, talentId, talentName }] }` |
 | `generation.talent:unmatched`         | Phase 2 — unused talent after matching            | `{ unusedTalentIds, unusedTalentNames }`                              |
@@ -411,13 +411,15 @@ Per-scene fan-out (image, variant, motion) uses `Promise.allSettled` over `spawn
 | `src/lib/workflows/llm-call-helper.ts`               | `durableLLMCallCf` / `durableStreamingLLMCallCf`                    |
 | `src/lib/workflows/storyboard-workflow.ts`           | Wrapper: verify, clear, poster, spawn analyze-script                |
 | `src/lib/workflows/analyze-script-workflow.ts`       | Core orchestration (phases 1-5)                                     |
-| `src/lib/workflows/scene-split-workflow.ts`          | Phase 1: streaming scene split + preview images                     |
-| `src/lib/ai/streaming-scene-parser.ts`               | Incremental JSON parser for streaming scene creation                |
+| `src/lib/workflows/scene-split-workflow.ts`          | Phase 1: two parallel LLM calls, boundary split + preview images    |
+| `src/lib/ai/boundary-split.ts`                       | Anchor resolution + verbatim script slicing                         |
+| `src/lib/ai/tag-reconcile.ts`                        | Canonicalize scene continuity tags onto bible tags after the join   |
+| `src/lib/ai/streaming-scene-parser.ts`               | Incremental JSON parser for the boundary-annotation stream          |
 | `src/lib/workflow/sanitize-fail-response.ts`         | Error message extraction + Cloudflare error-code mapping            |
 | `src/lib/db/helpers/frames.ts`                       | `upsertFrame()` / `bulkInsertFrames()` idempotent helpers           |
 | **Extraction + Matching**                            |                                                                     |
-| `src/lib/workflows/talent-matching-workflow.ts`      | Character extraction + talent matching sub-workflow                 |
-| `src/lib/workflows/location-matching-workflow.ts`    | Location extraction + location matching sub-workflow                |
+| `src/lib/workflows/talent-matching-workflow.ts`      | Talent matching against Phase 1 character bible                     |
+| `src/lib/workflows/location-matching-workflow.ts`    | Location matching against Phase 1 location bible                    |
 | **Reference Generation**                             |                                                                     |
 | `src/lib/workflows/character-bible-workflow.ts`      | Character sheet generation (parallel per character)                 |
 | `src/lib/workflows/character-sheet-workflow.ts`      | Single character sheet image generation                             |

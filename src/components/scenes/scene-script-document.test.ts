@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildScriptBlocks,
+  unsplitScriptTail,
   type ScriptBlockScene,
 } from './scene-script-document';
 import { dbSceneId } from '@/lib/db/schema';
@@ -41,5 +42,43 @@ describe('buildScriptBlocks', () => {
 
     expect(blocks).toHaveLength(1);
     expect(blocks[0]?.extract).toBe('');
+  });
+});
+
+describe('unsplitScriptTail', () => {
+  const script =
+    'INT. ONE\n\nfirst.\n\nEXT. TWO\n\nsecond.\n\nINT. THREE\n\nthird.';
+
+  it('returns the whole script before any scene lands', () => {
+    expect(unsplitScriptTail(script, [])).toBe(script);
+  });
+
+  it('shrinks to what follows the last split scene', () => {
+    expect(
+      unsplitScriptTail(script, [
+        { extract: 'INT. ONE\n\nfirst.' },
+        { extract: 'EXT. TWO\n\nsecond.' },
+      ])
+    ).toBe('INT. THREE\n\nthird.');
+  });
+
+  it('is empty once every scene is split', () => {
+    expect(
+      unsplitScriptTail(script, [
+        { extract: 'INT. ONE\n\nfirst.' },
+        { extract: 'EXT. TWO\n\nsecond.' },
+        { extract: 'INT. THREE\n\nthird.' },
+      ])
+    ).toBe('');
+  });
+
+  it('skips an extract it cannot find instead of resetting', () => {
+    expect(
+      unsplitScriptTail(script, [
+        { extract: 'INT. ONE\n\nfirst.' },
+        { extract: 'edited away' },
+        { extract: 'EXT. TWO\n\nsecond.' },
+      ])
+    ).toBe('INT. THREE\n\nthird.');
   });
 });

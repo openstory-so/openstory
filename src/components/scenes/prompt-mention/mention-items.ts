@@ -10,7 +10,24 @@ import type {
   SequenceLocation,
 } from '@/lib/db/schema';
 
-export type MentionSection = 'elements' | 'cast' | 'locations';
+/**
+ * `references` = stills, clips, and audio attached to a studio composer
+ * (pill `@ImageN` / `@VideoN` / `@AudioN`);
+ * `images` = the team's generated stills, offered so picking one attaches it.
+ */
+export type MentionSection =
+  | 'references'
+  | 'elements'
+  | 'cast'
+  | 'locations'
+  | 'images';
+
+/** Sections whose pill renders with a leading `@` (the tag has no CAPS form). */
+export function mentionShowsAt(section: MentionSection): boolean {
+  return (
+    section === 'locations' || section === 'references' || section === 'images'
+  );
+}
 
 /** Fields buildMentionItems actually consumes. */
 export type MentionCharacterInput = Pick<
@@ -141,14 +158,44 @@ export function filterMentionItems(
   return items.filter((item) => item.haystack.includes(q));
 }
 
+/**
+ * Attrs written onto the Tiptap mention node when a dropdown row is chosen.
+ *
+ * The suggestion plugin sometimes hands the command the raw `MentionItem`
+ * (`id` is `element:<ulid>` / `character:<ulid>`). Inserting that id produces
+ * a pill the continuity parser never recognises — selecting an element from
+ * the @ dropdown looks like a no-op. Prefer `tag` (the canonical token) when
+ * present; already-mapped `{ id, section, label }` attrs pass through.
+ */
+export function mentionInsertAttrs(item: {
+  id: string | null;
+  section: MentionSection | null;
+  label: string | null;
+  tag?: string;
+}): {
+  id: string | null;
+  section: MentionSection | null;
+  label: string | null;
+} {
+  return {
+    id: item.tag || item.id,
+    section: item.section,
+    label: item.label,
+  };
+}
+
 export const SECTION_LABELS: Record<MentionSection, string> = {
+  references: 'Attached',
   elements: 'Elements',
   cast: 'Cast',
   locations: 'Locations',
+  images: 'Images',
 };
 
 export const SECTION_ORDER: MentionSection[] = [
+  'references',
   'elements',
   'cast',
   'locations',
+  'images',
 ];

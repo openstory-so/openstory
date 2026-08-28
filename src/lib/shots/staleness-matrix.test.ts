@@ -207,13 +207,16 @@ describe('staleness matrix (§4.2 edge table)', () => {
 // ---------------------------------------------------------------------------
 
 const STYLE: StyleConfig = {
-  mood: 'neutral',
-  artStyle: 'cinematic',
-  lighting: 'natural',
-  colorPalette: ['neutral'],
-  cameraWork: 'static',
-  referenceFilms: [],
-  colorGrading: 'neutral',
+  version: 2,
+  look: {
+    mood: 'neutral',
+    artStyle: 'cinematic',
+    lighting: 'natural',
+    colorPalette: ['neutral'],
+    colorGrading: 'neutral',
+  },
+  motion: { camera: 'static' },
+  references: [],
 };
 
 const ALICE: CharacterBibleEntry = {

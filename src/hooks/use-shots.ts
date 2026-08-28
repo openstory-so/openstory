@@ -2,7 +2,11 @@ import type { Shot } from '@/types/database';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ShotVariant } from '@/lib/db/schema';
 import type { ImageVariantWithShot } from '@/lib/db/scoped/frame-variants';
-import type { ShotView } from '@/lib/shots/shot-view';
+import {
+  isBrowserDisplayableStillUrl,
+  shotAfterVariantSelect,
+  type ShotView,
+} from '@/lib/shots/shot-view';
 import {
   getShotsFn,
   getDivergentVariantsFn,
@@ -277,6 +281,8 @@ export function useGenerateVariants() {
             url: oldShot.gridSheet?.url ?? null,
             status: 'generating' as const,
           },
+          pendingUpscaleIndex: null,
+          pendingUpscaleUrl: null,
         };
       });
 
@@ -292,6 +298,8 @@ export function useGenerateVariants() {
                     url: f.gridSheet?.url ?? null,
                     status: 'generating' as const,
                   },
+                  pendingUpscaleIndex: null,
+                  pendingUpscaleUrl: null,
                 }
               : f
           );
@@ -317,65 +325,80 @@ export function useSelectVariant() {
   return useMutation<
     { shotId: string; thumbnailUrl: string; variantIndex: number },
     Error,
-    SelectVariantInput
+    SelectVariantInput,
+    {
+      previousDetail: ShotView | undefined;
+      previousList: ShotView[] | undefined;
+    }
   >({
-    mutationFn: async (input: SelectVariantInput) => {
-      const { sequenceId, shotId, variantIndex } = input;
+    mutationFn: async ({ sequenceId, shotId, variantIndex }) => {
       const result = await selectShotVariantFn({
-        data: {
-          sequenceId,
-          shotId,
-          variantIndex,
-        },
+        data: { sequenceId, shotId, variantIndex },
       });
-
       return {
         shotId: result.shotId,
         thumbnailUrl: result.thumbnailUrl,
         variantIndex: result.variantIndex,
       };
     },
-    onSuccess: async (data, { sequenceId, shotId }) => {
-      // Update shot queries with the new still. The url patch only applies when
-      // a selected variant row already exists — the refetch below fills in the
-      // row itself; the frame's status is what drives the visible transition.
-      queryClient.setQueryData<ShotView>(shotKeys.detail(shotId), (oldShot) => {
-        if (!oldShot) return oldShot;
-        return {
-          ...oldShot,
-          image: oldShot.image
-            ? { ...oldShot.image, url: data.thumbnailUrl }
-            : null,
-          // Upscale is running
-          frame: { ...oldShot.frame, imageStatus: 'generating' as const },
-        };
-      });
-
-      queryClient.setQueryData<ShotView[]>(
-        shotKeys.list(sequenceId),
-        (oldShots) => {
-          if (!oldShots) return oldShots;
-          return oldShots.map((f) =>
-            f.id === shotId
-              ? {
-                  ...f,
-                  image: f.image
-                    ? { ...f.image, url: data.thumbnailUrl }
-                    : null,
-                  frame: { ...f.frame, imageStatus: 'generating' as const },
-                }
-              : f
-          );
-        }
+    onMutate: async ({ sequenceId, shotId, variantIndex }) => {
+      const previousDetail = queryClient.getQueryData<ShotView>(
+        shotKeys.detail(shotId)
+      );
+      const previousList = queryClient.getQueryData<ShotView[]>(
+        shotKeys.list(sequenceId)
       );
 
-      // Invalidate queries to ensure consistency
-      await queryClient.invalidateQueries({
-        queryKey: shotKeys.detail(shotId),
-      });
+      // Write the overlay before any await so the dialog can close in the
+      // same tick without painting the previous still.
+      queryClient.setQueryData<ShotView>(shotKeys.detail(shotId), (old) =>
+        old ? shotAfterVariantSelect(old, undefined, variantIndex) : old
+      );
+      queryClient.setQueryData<ShotView[]>(shotKeys.list(sequenceId), (old) =>
+        old?.map((s) =>
+          s.id === shotId
+            ? shotAfterVariantSelect(s, undefined, variantIndex)
+            : s
+        )
+      );
 
-      await queryClient.invalidateQueries({
-        queryKey: shotKeys.list(sequenceId),
+      await queryClient.cancelQueries({ queryKey: shotKeys.detail(shotId) });
+      await queryClient.cancelQueries({ queryKey: shotKeys.list(sequenceId) });
+
+      return { previousDetail, previousList };
+    },
+    onError: (_error, { sequenceId, shotId }, context) => {
+      if (context?.previousDetail) {
+        queryClient.setQueryData(
+          shotKeys.detail(shotId),
+          context.previousDetail
+        );
+      }
+      if (context?.previousList) {
+        queryClient.setQueryData(
+          shotKeys.list(sequenceId),
+          context.previousList
+        );
+      }
+    },
+    onSuccess: (data, { sequenceId, shotId }) => {
+      // A `/cdn-cgi/image/trim=` URL 404s off the Cloudflare edge (#1193).
+      // Local photon crops and `/r2/` tiles are safe to show. Do not
+      // invalidate — a refetch would restore the previous still until the
+      // upscale SSE lands.
+      const nextUrl = isBrowserDisplayableStillUrl(data.thumbnailUrl)
+        ? data.thumbnailUrl
+        : undefined;
+      queryClient.setQueryData<ShotView>(shotKeys.detail(shotId), (old) =>
+        old ? shotAfterVariantSelect(old, nextUrl) : old
+      );
+      queryClient.setQueryData<ShotView[]>(shotKeys.list(sequenceId), (old) =>
+        old?.map((s) =>
+          s.id === shotId ? shotAfterVariantSelect(s, nextUrl) : s
+        )
+      );
+      void queryClient.invalidateQueries({
+        queryKey: shotKeys.imageVersions(shotId),
       });
     },
   });

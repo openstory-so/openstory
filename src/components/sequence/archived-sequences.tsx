@@ -44,7 +44,7 @@ export const ArchivedSequences: React.FC = () => {
           ) : (
             <ChevronRight className="h-4 w-4" />
           )}
-          Archived ({archived.length})
+          <span>Archived ({archived.length})</span>
         </Button>
       </CollapsibleTrigger>
       <CollapsibleContent>

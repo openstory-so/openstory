@@ -7,6 +7,10 @@
 import type { MentionSection } from '@/components/scenes/prompt-mention/mention-items';
 
 export const MENTION_SECTION_CLASS: Record<MentionSection, string> = {
+  references:
+    'bg-violet-500/10 text-violet-800 ring-violet-500/30 dark:text-violet-300',
+  images:
+    'bg-violet-500/10 text-violet-800 ring-violet-500/30 dark:text-violet-300',
   cast: 'bg-sky-500/10 text-sky-700 ring-sky-500/30 dark:text-sky-300',
   elements:
     'bg-amber-500/10 text-amber-800 ring-amber-500/30 dark:text-amber-300',

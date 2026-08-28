@@ -8,6 +8,7 @@ import { and, eq } from 'drizzle-orm';
 import type { Database } from '@/lib/db/client';
 import { getEnv } from '#env';
 import { getPlatformLlmKey } from '@/lib/ai/create-adapter';
+import { nativeGrokTextModel } from '@/lib/ai/grok-native';
 import {
   decryptApiKey,
   encryptApiKey,
@@ -41,8 +42,11 @@ export type ResolvedApiKey =
 // LLM-call key resolution. `via` says which API the call must be routed
 // through: 'openrouter' = OpenRouter directly (Bearer auth), 'fal' = fal's
 // OpenAI-compatible OpenRouter endpoint (`Key` auth) so a team with only a
-// fal key still covers LLM calls (issue #895).
-export type ResolvedLlmKey = ResolvedApiKey & { via: 'openrouter' | 'fal' };
+// fal key still covers LLM calls (issue #895), 'xai' = xAI's own Responses
+// API for Grok models (issue #1167).
+export type ResolvedLlmKey = ResolvedApiKey & {
+  via: 'openrouter' | 'fal' | 'xai';
+};
 
 // The cached shape of a `team_api_keys` lookup. Holds the *encrypted* row
 // (ciphertext + invalid flag) only — never the decrypted key. `resolveKey`
@@ -272,19 +276,35 @@ export function createApiKeysReadMethods(db: Database, teamId: string) {
     }
   }
 
-  // Resolve the usable key for `provider`. The D1 lookup is memoized per scope;
-  // the decrypted key is produced fresh on every call (and is GC-eligible as
-  // soon as the caller is done), so plaintext is never retained in the cache.
-  async function resolveKey(provider: ApiKeyProvider): Promise<ResolvedApiKey> {
-    const platformFallback = (fallbackReason?: string): ResolvedApiKey => {
-      const env = getEnv();
-      const platformKey =
-        provider === 'openrouter' ? env.OPENROUTER_KEY : env.FAL_KEY;
-      if (!platformKey) {
-        throw new Error(`No API key available for provider: ${provider}`);
+  function platformKeyFor(provider: ApiKeyProvider): string | undefined {
+    const env = getEnv();
+    switch (provider) {
+      case 'openrouter':
+        return env.OPENROUTER_KEY || undefined;
+      case 'fal':
+        return env.FAL_KEY || undefined;
+      case 'xai':
+        return env.XAI_API_KEY || undefined;
+      default: {
+        const _exhaustive: never = provider;
+        throw new Error(`Unknown provider: ${String(_exhaustive)}`);
       }
+    }
+  }
+
+  // Missing key is undefined, not an error: native-provider routing (#1216)
+  // uses this to skip to the next provider (usually fal). `resolveKey` wraps
+  // this and throws, which is what fal's always-claim path needs.
+  async function resolveOptionalKey(
+    provider: ApiKeyProvider
+  ): Promise<ResolvedApiKey | undefined> {
+    function platformFallback(
+      fallbackReason?: string
+    ): ResolvedApiKey | undefined {
+      const platformKey = platformKeyFor(provider);
+      if (!platformKey) return undefined;
       return { key: platformKey, source: 'platform', fallbackReason };
-    };
+    }
 
     const lookup = await readKeyRowLogged(provider);
 
@@ -305,7 +325,20 @@ export function createApiKeysReadMethods(db: Database, teamId: string) {
     return platformFallback(result.skippedReason);
   }
 
+  // Resolve the usable key for `provider`. The D1 lookup is memoized per scope;
+  // the decrypted key is produced fresh on every call (and is GC-eligible as
+  // soon as the caller is done), so plaintext is never retained in the cache.
+  async function resolveKey(provider: ApiKeyProvider): Promise<ResolvedApiKey> {
+    const resolved = await resolveOptionalKey(provider);
+    if (!resolved) {
+      throw new Error(`No API key available for provider: ${provider}`);
+    }
+    return resolved;
+  }
+
   // Resolve the key for an LLM call. Preference order:
+  //   0. xAI key (team, else platform) when `model` is a Grok model — the
+  //      first-party API, no reseller in front of it (issue #1167)
   //   1. team OpenRouter key (direct OpenRouter)
   //   2. team fal key (routed through fal's OpenRouter endpoint) — a fal-only
   //      team still covers LLM calls on their own key (issue #895)
@@ -313,8 +346,15 @@ export function createApiKeysReadMethods(db: Database, teamId: string) {
   // A skipped OpenRouter key that a working fal key supersedes returns
   // `source: 'team'` with no fallbackReason — the reason only surfaces when
   // resolution falls all the way through to the platform key.
-  async function resolveLlmKey(): Promise<ResolvedLlmKey> {
+  // Omitting `model` means no native routing — a caller that can't name the
+  // model can't promise it's a Grok one.
+  async function resolveLlmKey(model?: string): Promise<ResolvedLlmKey> {
     let fallbackReason: string | undefined;
+
+    if (model && nativeGrokTextModel(model)) {
+      const xai = await resolveOptionalKey('xai');
+      if (xai) return { ...xai, via: 'xai' };
+    }
 
     const orLookup = await readKeyRowLogged('openrouter');
     if (orLookup.found) {
@@ -364,34 +404,47 @@ export function createApiKeysReadMethods(db: Database, teamId: string) {
     provider: ApiKeyProvider,
     apiKey: string
   ): Promise<{ valid: boolean; error?: string }> {
-    if (provider === 'openrouter') {
-      const response = await fetch('https://openrouter.ai/api/v1/auth/key', {
-        headers: { Authorization: `Bearer ${apiKey}` },
-      });
-      if (response.ok) return { valid: true };
-      return { valid: false, error: `OpenRouter returned ${response.status}` };
-    }
-
-    // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: literal comparison in if/else chain
-    if (provider === 'fal') {
-      const response = await fetch(
-        'https://queue.fal.run/fal-ai/flux/schnell',
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Key ${apiKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: '{}',
-        }
-      );
-      if (response.status === 401) {
-        return { valid: false, error: 'Invalid Fal.ai API key' };
+    switch (provider) {
+      case 'openrouter': {
+        const response = await fetch('https://openrouter.ai/api/v1/auth/key', {
+          headers: { Authorization: `Bearer ${apiKey}` },
+        });
+        if (response.ok) return { valid: true };
+        return {
+          valid: false,
+          error: `OpenRouter returned ${response.status}`,
+        };
       }
-      return { valid: true };
+      case 'fal': {
+        const response = await fetch(
+          'https://queue.fal.run/fal-ai/flux/schnell',
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Key ${apiKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: '{}',
+          }
+        );
+        if (response.status === 401) {
+          return { valid: false, error: 'Invalid Fal.ai API key' };
+        }
+        return { valid: true };
+      }
+      case 'xai': {
+        // Key introspection: 200 live, 401/403 bad.
+        const response = await fetch('https://api.x.ai/v1/api-key', {
+          headers: { Authorization: `Bearer ${apiKey}` },
+        });
+        if (response.ok) return { valid: true };
+        return { valid: false, error: `xAI returned ${response.status}` };
+      }
+      default: {
+        const _exhaustive: never = provider;
+        throw new Error(`Unknown provider: ${String(_exhaustive)}`);
+      }
     }
-
-    throw new Error(`Unknown provider`);
   }
 
   return {
@@ -400,6 +453,7 @@ export function createApiKeysReadMethods(db: Database, teamId: string) {
     hasUsableKey,
     hasInvalidKey,
     resolveKey,
+    resolveOptionalKey,
     resolveLlmKey,
     validateKey,
     invalidateResolveKeyCache,

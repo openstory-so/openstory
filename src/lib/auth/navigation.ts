@@ -21,16 +21,47 @@ export function getRedirectFromParams(
     redirectTo = Array.isArray(value) ? (value[0] ?? null) : value;
   }
 
-  // Validate redirect URL to prevent open redirects
-  if (redirectTo) {
-    // Only allow relative URLs (starting with /)
-    if (redirectTo.startsWith('/') && !redirectTo.startsWith('//')) {
-      // Prevent redirecting back to auth pages
-      if (!redirectTo.startsWith('/login')) {
-        return redirectTo;
-      }
+  return sanitizeAuthRedirect(redirectTo);
+}
+
+/**
+ * Safe in-app path for post-login navigation / OAuth `callbackURL`.
+ *
+ * Better Auth rejects relative callbackURLs that include a hash fragment
+ * (`INVALID_CALLBACK_URL` → 403). Gallery "Try this style" links land on
+ * `/?style=<slug>#compose` — path + search seed the composer; `#compose` is
+ * only a scroll target and must not go to Google as the callback.
+ *
+ * Also reduces absolute URLs to path + search (origin discarded; only relative
+ * `/…` paths are kept) and blocks open redirects (never `/login…`).
+ */
+export function sanitizeAuthRedirect(
+  redirectTo: string | null | undefined
+): string {
+  if (!redirectTo) return '/';
+
+  let path = redirectTo.trim();
+  if (!path) return '/';
+
+  // Absolute URL → path + search only (drop origin and hash).
+  if (/^https?:\/\//i.test(path)) {
+    try {
+      const url = new URL(path);
+      path = `${url.pathname}${url.search}`;
+    } catch {
+      return '/';
     }
   }
 
-  return '/';
+  // Drop hash (#compose and friends) — better-auth's relative-path allowlist
+  // does not accept `#`.
+  const hashIdx = path.indexOf('#');
+  if (hashIdx >= 0) {
+    path = path.slice(0, hashIdx);
+  }
+
+  if (!path.startsWith('/') || path.startsWith('//')) return '/';
+  if (path.startsWith('/login')) return '/';
+
+  return path || '/';
 }

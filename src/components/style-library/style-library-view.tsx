@@ -19,7 +19,7 @@ import { filterStyles } from '@/lib/utils/style-filters';
 import type { Style } from '@/types/database';
 import { Search, X } from 'lucide-react';
 import type { ChangeEvent, FC } from 'react';
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StyleLibraryCard } from './style-library-card';
 
 type StyleLibraryViewProps = {
@@ -30,6 +30,9 @@ type StyleLibraryViewProps = {
    * default).
    */
   onUseStyle?: (styleId: string) => void;
+  /** Open scrolled to the category section containing this style — used by
+   *  the composer's browse dialog so the current pick's family is in view. */
+  initialStyleId?: string | null;
 };
 
 const CardGrid: FC<{ styles: Style[]; onSelect: (s: Style) => void }> = ({
@@ -64,6 +67,7 @@ const GridSkeleton: FC = () => (
 export const StyleLibraryView: FC<StyleLibraryViewProps> = ({
   styles,
   onUseStyle,
+  initialStyleId,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStyle, setSelectedStyle] = useState<Style | null>(null);
@@ -94,6 +98,21 @@ export const StyleLibraryView: FC<StyleLibraryViewProps> = ({
   const handleSearchChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
     setSearchQuery(e.target.value);
   }, []);
+
+  // Initial positioning only (once, instantly — not smooth): land on the
+  // section holding the current selection so its family is in view on open.
+  const initialScrollDoneRef = useRef(false);
+  useEffect(() => {
+    if (initialScrollDoneRef.current || !initialStyleId || isLoading) return;
+    initialScrollDoneRef.current = true;
+    const group = groups.find((g) =>
+      g.styles.some((s) => s.id === initialStyleId)
+    );
+    if (!group) return;
+    sectionRefs.current.get(group.category)?.scrollIntoView({
+      block: 'start',
+    });
+  }, [initialStyleId, isLoading, groups]);
 
   return (
     <div className="flex flex-col gap-6">

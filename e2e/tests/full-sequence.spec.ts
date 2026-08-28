@@ -34,7 +34,7 @@ import {
   getSystemTalentByName,
   type TestTalent,
 } from '../fixtures/talent.fixture';
-import { waitForScriptEditor } from '../fixtures/test-utils';
+import { fillScriptEditor, selectComposerStyle } from '../fixtures/test-utils';
 import { t } from '../recording-mode';
 
 const fullPipeline = process.env.PLAYWRIGHT_FULL_PIPELINE === 'true';
@@ -115,8 +115,9 @@ testWithUser.describe('Full Sequence Pipeline', () => {
   );
 
   // The full pipeline runs many workflow steps end-to-end (script → shots →
-  // motion → music). Each per-step poll below allows up to 10 minutes; the
-  // outer cap accommodates all three running near their limit plus setup.
+  // auto motion → music under product defaults #1140). Each per-step poll
+  // below allows up to 10 minutes; the outer cap accommodates all three
+  // running near their limit plus setup.
   testWithUser.setTimeout(1_800_000);
 
   let testTalents: TestTalent[] = [];
@@ -128,7 +129,7 @@ testWithUser.describe('Full Sequence Pipeline', () => {
     // Pull seeded system talent + locations rather than fabricating ones
     // with placeholder URLs — workflows need real R2 reference images for
     // character/location matching and sheet rendering. The seed runs in
-    // globalSetup (see e2e/global-setup.ts).
+    // e2e/start-webserver.ts before Workerd starts.
     testTalents = [
       await getSystemTalentByName('Sienna Blake'),
       await getSystemTalentByName('Jude Calloway'),
@@ -193,55 +194,46 @@ testWithUser.describe('Full Sequence Pipeline', () => {
       // 1. Open the new-sequence page.
       await page.goto('/sequences/new');
 
-      // 2. Select the first style tile. Target the tile by its accessible
-      // name (`Select <name> style`) and wait for it to exist — the grid
-      // container renders immediately (before styles load) and its only
-      // button is then the "View all" browse trigger, which would open the
-      // style dialog instead of selecting.
-      // Waiting for a real tile also confirms the styles query resolved and
-      // React has hydrated.
-      const firstStyle = page
-        .getByRole('grid', { name: 'Style selection' })
-        .getByRole('button', { name: /^Select .* style$/ })
-        .first();
-      await expect(firstStyle).toBeVisible({ timeout: 15_000 });
-      await firstStyle.click();
+      // 2. Recorded image/motion fixtures were captured against Product Ad.
+      // The composer now defaults to Film & Cinematic (#1180), so switch
+      // the row and pick that style by name — clicking `.first()` would
+      // land on Action and miss every fal fixture.
+      await selectComposerStyle(page, 'Product Ad', 'E-commerce');
 
-      // 3. Type a short script — a 30-second makeup ad.
+      // 3. Type a short script — a 30-second makeup ad. City, not beach:
+      // Grok Imagine Quality's checker rejects swimwear, so a Bondi/surf
+      // brief dies at still generation even when enhance is fine.
       const script = `
-CORAL — A SUMMER LAUNCH
+CORAL — A CITY LAUNCH
 
-Bondi Studio - Morning in front of her microphone
+INT. DOWNTOWN APARTMENT BATHROOM - MORNING
 
-Sunlight floods a white vanity. SCARLETT (19, blonde, sun-kissed),
-a Bondi influencer, unboxes a coral lipstick and turns it slowly
-to camera.
+Hard light off white tile. SCARLETT,
+a city influencer in a black turtleneck,
+unboxes a coral lipstick and turns it slowly to camera.
 
 SCARLETT (V.O.)
-One shade. One summer.
+One shade. One city.
 
 CLOSE ON THE TUBE — the coral bullet twists up and catches the
 light. Scarlett smiles at her reflection, the colour already hers.
 
-EXT. BONDI BEACH PROMENADE - CONTINUOUS
+EXT. DOWNTOWN SIDEWALK - CONTINUOUS
 
-Scarlett walks the promenade, blonde hair lifting in the breeze,
-surfers cresting behind her. She glances back at camera.
+Scarlett walks a crowded crosswalk, taxis stacked at the light,
+office glass behind her. She glances back at camera.
 
 SCARLETT (V.O.)
-Made for the water. Wear it everywhere.
+Made for the street. Wear it everywhere.
 
-EXT. BONDI BEACH - SHORELINE - CONTINUOUS
+EXT. ROOFTOP LEDGE - CONTINUOUS
 
-She laughs as a wave breaks at her feet. The lipstick lands
-beside the brand mark in the sand.
+She laughs as a train rattles past below. The lipstick lands
+beside the brand mark on the concrete ledge.
 
 SUPER:  CORAL.  OUT NOW.
       `.trim();
-      // Script input is now a TipTap-backed contenteditable, not a <textarea>.
-      // Playwright's .fill() works on contenteditable elements.
-      const scriptTextarea = await waitForScriptEditor(page);
-      await scriptTextarea.fill(script);
+      await fillScriptEditor(page, script);
 
       // 4. Enhance script (LLM streaming via aimock OpenRouter passthrough).
       await expect(
@@ -295,19 +287,23 @@ SUPER:  CORAL.  OUT NOW.
         resolve(import.meta.dirname, '../fixtures/broadcast-mic.jpg')
       );
 
-      // 7b. Switch image generation to Grok Imagine (quality). Its content
+      // 7b. Switch image generation to Grok Imagine 2.0. Its content
       // checker is far less likeness-strict than GPT Image 2's, which kept
       // rejecting talent-referenced beauty shots during fixture recording
       // (makeup on a referenced face = OpenAI's blocked likeness class).
+      // Replay is fal (e2e has no XAI_API_KEY), so aimock STRICT matches
+      // `e2e/fixtures/recorded/fal/xai-grok-imagine-image-v2.0-{text-to-image,edit}/`.
+      // Bumping IMAGE_MODELS.grok_imagine_image.id without cloning those
+      // folders 503s LocationSheetWorkflow with "No fixture matched".
       await page.getByRole('button', { name: 'Generation settings' }).click();
       await page.getByRole('button', { name: /^Image Models?:/ }).click();
       await page
-        .getByRole('menuitemcheckbox', { name: 'Grok Imagine Image Quality' })
+        .getByRole('menuitemcheckbox', { name: 'Grok Imagine Image 2.0' })
         .click();
       await page.keyboard.press('Escape'); // checkbox items keep the menu open
       await expect(
         page.getByRole('button', {
-          name: 'Image Models: Grok Imagine Image Quality',
+          name: 'Image Models: Grok Imagine Image 2.0',
         })
       ).toBeVisible();
       await page.keyboard.press('Escape'); // close the settings popover
@@ -365,18 +361,12 @@ SUPER:  CORAL.  OUT NOW.
         )
         .toBe(true);
 
-      // 10. Trigger motion generation, then wait on the DB for every shot's
-      //     video + the sequence music to complete. The scene-list footer
-      //     unmounts as soon as shots flip to `generating` (progress moves
-      //     to MotionProgressBanner), so "button gone" is not a completion
-      //     signal — only a start signal (#1072).
-      const motionButton = page
-        .getByRole('button', { name: /Generate \d+ ?\/ ?\d+ shots?/i })
-        .first();
-      await expect(motionButton).toBeVisible({ timeout: t(120_000) });
-      await expect(motionButton).toBeEnabled({ timeout: t(120_000) });
-      await motionButton.click();
-
+      // 10. Wait for auto motion + music to finish. Product defaults (#1140)
+      //     turn autoGenerateMotion + autoGenerateMusic ON, so Generate
+      //     already chains storyboard → motion batch → music — there is no
+      //     "Generate N / M shots" footer when every shot is already
+      //     generating or complete. Poll the DB only; the batch button is
+      //     for the manual (motion-off) path, not this aha flow.
       await expect
         .poll(
           async () => {

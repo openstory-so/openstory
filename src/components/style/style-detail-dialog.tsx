@@ -20,6 +20,10 @@ import {
   styleCategoryLabel,
   stylePreviewImageUrls,
 } from '@/lib/style/style-assets';
+import {
+  getConfigColorPalette,
+  getConfigDisplayFields,
+} from '@/lib/style/style-config';
 import { styleSlug } from '@/lib/style/style-slug';
 import type { Style } from '@/types/database';
 import { Link } from '@tanstack/react-router';
@@ -39,6 +43,15 @@ type StyleDetailDialogProps = {
    * would discard the current draft.
    */
   onUseStyle?: (styleId: string) => void;
+  /**
+   * When provided, the sample clips' "Try" buttons hand the style to the host
+   * composer (which swaps in its sample script, confirming first over user
+   * text) and close the dialog, instead of navigating to a fresh composer.
+   */
+  onTryStyle?: (styleId: string) => void;
+  /** Hide the "Use this style" CTA — for a sequence-bound automatic style
+   *  (#1213), which no other sequence can select until it is promoted. */
+  readOnly?: boolean;
 };
 
 /** A still that removes itself if the source 404s (some older styles render
@@ -69,7 +82,9 @@ const SampleClip: FC<{
   slug: string;
   label?: string;
   autoPlay?: boolean;
-}> = ({ src, poster, styleName, slug, label, autoPlay }) => (
+  /** In-composer Try: swap in this style's sample instead of navigating. */
+  onTry?: () => void;
+}> = ({ src, poster, styleName, slug, label, autoPlay, onTry }) => (
   <div className="flex flex-col gap-1">
     {label && (
       <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
@@ -89,22 +104,35 @@ const SampleClip: FC<{
           controls
           aria-label={`${styleName} ${label ?? 'sample'} video`}
         />
-        <Button
-          asChild
-          size="sm"
-          variant="secondary"
-          className="absolute right-2 top-2 gap-1.5 opacity-90 backdrop-blur-sm transition-opacity hover:opacity-100"
-        >
-          <Link
-            to="/"
-            search={{ style: slug }}
-            hash="compose"
+        {onTry ? (
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={onTry}
             aria-label={`Try the ${styleName} style`}
+            className="absolute right-2 top-2 gap-1.5 opacity-90 backdrop-blur-sm transition-opacity hover:opacity-100"
           >
             <Wand2 className="size-3.5" />
             Try
-          </Link>
-        </Button>
+          </Button>
+        ) : (
+          <Button
+            asChild
+            size="sm"
+            variant="secondary"
+            className="absolute right-2 top-2 gap-1.5 opacity-90 backdrop-blur-sm transition-opacity hover:opacity-100"
+          >
+            <Link
+              to="/"
+              search={{ style: slug }}
+              hash="compose"
+              aria-label={`Try the ${styleName} style`}
+            >
+              <Wand2 className="size-3.5" />
+              Try
+            </Link>
+          </Button>
+        )}
       </div>
     </div>
   </div>
@@ -131,6 +159,8 @@ export const StyleDetailDialog: FC<StyleDetailDialogProps> = ({
   open,
   onOpenChange,
   onUseStyle,
+  onTryStyle,
+  readOnly = false,
 }) => {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -146,6 +176,15 @@ export const StyleDetailDialog: FC<StyleDetailDialogProps> = ({
                   }
                 : undefined
             }
+            onTryStyle={
+              onTryStyle
+                ? () => {
+                    onTryStyle(style.id);
+                    onOpenChange(false);
+                  }
+                : undefined
+            }
+            readOnly={readOnly}
           />
         )}
       </DialogContent>
@@ -153,10 +192,12 @@ export const StyleDetailDialog: FC<StyleDetailDialogProps> = ({
   );
 };
 
-const StyleDetailContent: FC<{ style: Style; onUseStyle?: () => void }> = ({
-  style,
-  onUseStyle,
-}) => {
+const StyleDetailContent: FC<{
+  style: Style;
+  onUseStyle?: () => void;
+  onTryStyle?: () => void;
+  readOnly?: boolean;
+}> = ({ style, onUseStyle, onTryStyle, readOnly = false }) => {
   const canonicalUrl = styleCanonicalVideoUrl(style);
   const videoSrc = canonicalUrl ? optimizedVideoUrl(canonicalUrl) : null;
   const poster = canonicalUrl ? videoPosterUrl(canonicalUrl) : undefined;
@@ -165,15 +206,18 @@ const StyleDetailContent: FC<{ style: Style; onUseStyle?: () => void }> = ({
   const bespokePoster = bespokeUrl ? videoPosterUrl(bespokeUrl) : undefined;
   const slug = styleSlug(style.name);
   const stills = stylePreviewImageUrls(style);
-  const { config } = style;
+  // Total accessors: a malformed legacy row renders as empty fields, not a
+  // ZodError blanking the dialog.
+  const display = getConfigDisplayFields(style.config);
+  const palette = getConfigColorPalette(style.config);
   const tags = style.tags ?? [];
 
   const configRows: Array<{ label: string; value: string }> = [
-    { label: 'Mood', value: config.mood },
-    { label: 'Art style', value: config.artStyle },
-    { label: 'Lighting', value: config.lighting },
-    { label: 'Camera', value: config.cameraWork },
-    { label: 'Color grading', value: config.colorGrading },
+    { label: 'Mood', value: display.mood ?? '' },
+    { label: 'Art style', value: display.artStyle ?? '' },
+    { label: 'Lighting', value: display.lighting ?? '' },
+    { label: 'Camera', value: display.camera ?? '' },
+    { label: 'Color grading', value: display.colorGrading ?? '' },
   ].filter((row) => row.value.trim());
 
   return (
@@ -207,11 +251,12 @@ const StyleDetailContent: FC<{ style: Style; onUseStyle?: () => void }> = ({
               slug={slug}
               label={bespokeSrc ? 'Sample' : undefined}
               autoPlay
+              onTry={onTryStyle}
             />
           ) : (
             <div
               className="aspect-video w-full overflow-hidden rounded-lg border"
-              style={{ background: getStyleGradient(config.colorPalette) }}
+              style={{ background: getStyleGradient(palette) }}
             />
           )}
           {bespokeSrc && (
@@ -221,6 +266,7 @@ const StyleDetailContent: FC<{ style: Style; onUseStyle?: () => void }> = ({
               styleName={style.name}
               slug={slug}
               label="Showcase"
+              onTry={onTryStyle}
             />
           )}
 
@@ -239,13 +285,13 @@ const StyleDetailContent: FC<{ style: Style; onUseStyle?: () => void }> = ({
 
         {/* Visual config */}
         <div className="flex flex-col gap-4">
-          {config.colorPalette.length > 0 && (
+          {palette.length > 0 && (
             <div className="flex flex-col gap-1.5">
               <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                 Palette
               </span>
               <div className="flex flex-wrap gap-1.5">
-                {config.colorPalette.map((color) => (
+                {palette.map((color) => (
                   <span
                     key={color}
                     className="h-6 w-6 rounded-full border"
@@ -263,7 +309,7 @@ const StyleDetailContent: FC<{ style: Style; onUseStyle?: () => void }> = ({
             ))}
           </dl>
 
-          {config.referenceFilms.length > 0 && (
+          {display.references.length > 0 && (
             <>
               <Separator />
               <div className="flex flex-col gap-1.5">
@@ -271,7 +317,7 @@ const StyleDetailContent: FC<{ style: Style; onUseStyle?: () => void }> = ({
                   Reference films
                 </span>
                 <div className="flex flex-wrap gap-1.5">
-                  {config.referenceFilms.map((film) => (
+                  {display.references.map((film) => (
                     <Badge key={film} variant="outline">
                       {film}
                     </Badge>
@@ -305,7 +351,7 @@ const StyleDetailContent: FC<{ style: Style; onUseStyle?: () => void }> = ({
             from the video's "Try", which also seeds the sample brief. From the
             composer it selects in place (onUseStyle); from the styles page it
             navigates to a fresh composer seeded with this style. */}
-        {onUseStyle ? (
+        {readOnly ? null : onUseStyle ? (
           <Button
             onClick={onUseStyle}
             aria-label={`Use the ${style.name} style`}

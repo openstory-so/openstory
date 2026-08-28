@@ -4,6 +4,7 @@ import { Card } from '@/components/ui/card';
 import { useTalentSheetsRealtime } from '@/hooks/use-talent-sheets-realtime';
 import { useTeamTalentDivergentVariants } from '@/hooks/use-talent-sheet-variants';
 import type { TalentWithSheets } from '@/lib/db/schema';
+import { sheetProgressCopy } from '@/lib/talent/sheet-progress-copy';
 import type React from 'react';
 import { useMemo } from 'react';
 
@@ -20,7 +21,8 @@ export const TalentLibraryList: React.FC<TalentLibraryListProps> = ({
 }) => {
   // Subscribe to realtime events for all talent
   const talentIds = talent?.map((t) => t.id) ?? [];
-  const { isGenerating } = useTalentSheetsRealtime(talentIds);
+  const { isGenerating, generatingActivity } =
+    useTalentSheetsRealtime(talentIds);
 
   // Collapse divergent variants to one dot per talent (oldest divergence wins).
   const { data: divergentVariants } = useTeamTalentDivergentVariants();
@@ -80,7 +82,10 @@ export const TalentLibraryList: React.FC<TalentLibraryListProps> = ({
         <TalentLibraryCard
           key={t.id}
           talent={t}
-          isGenerating={isGenerating(t.id)}
+          isGenerating={isGenerating(t.id) && t.sheets.length === 0}
+          generatingLabel={sheetProgressCopy(
+            generatingActivity(t.id) ?? 'sheet'
+          )}
           divergentVariantId={divergentByTalentId.get(t.id)}
         />
       ))}

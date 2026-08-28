@@ -110,12 +110,22 @@ export type SceneAudioTrack = {
   track: InputAudioTrack;
 };
 
+type OpenedScene = {
+  input: Input;
+  videoTrack: InputVideoTrack;
+  audioTrack: InputAudioTrack | null;
+  duration: number;
+  dimensions: SceneDimensions;
+  codecProbe: SceneCodecProbe;
+};
+
 export class ConcatenatedVideoSource {
   private readonly scenes: SceneInput[];
   private inputs: Input[] = [];
   private videoTracks: InputVideoTrack[] = [];
   private audioTracks: Array<InputAudioTrack | null> = [];
   private meta: ConcatenatedVideoMeta | null = null;
+  private disposed = false;
 
   constructor(scenes: SceneInput[]) {
     if (scenes.length === 0) {
@@ -130,85 +140,43 @@ export class ConcatenatedVideoSource {
    * Open every scene's `Input`, probe duration + display dimensions, and build
    * the cumulative offset table. Must be called once before any iterator.
    */
-  async prepare(): Promise<ConcatenatedVideoMeta> {
+  async prepare(
+    onProgress?: (loadedScenes: number, totalScenes: number) => void
+  ): Promise<ConcatenatedVideoMeta> {
     if (this.meta) return this.meta;
 
-    const inputs: Input[] = [];
-    const videoTracks: InputVideoTrack[] = [];
-    const audioTracks: Array<InputAudioTrack | null> = [];
-    const sceneDurationsSeconds: number[] = [];
-    const sceneDimensions: SceneDimensions[] = [];
-    // Codec + decoder-config probes, fed to `canTransmuxScenes()` after the
-    // loop to decide the fast transmux path vs. decode→re-encode.
-    const codecProbes: SceneCodecProbe[] = [];
-
-    for (let i = 0; i < this.scenes.length; i++) {
-      const scene = this.scenes[i];
-      if (!scene) continue;
-      const input = new Input({
-        formats: ALL_FORMATS,
-        source: new UrlSource(addCorsCacheBuster(scene.videoUrl)),
-      });
-      const videoTrack = await input.getPrimaryVideoTrack();
-      if (!videoTrack) {
-        throw new Error(`Scene ${i} has no video track`);
-      }
-      if (!(await videoTrack.canDecode())) {
-        throw new Error(`Scene ${i} cannot be decoded by this browser`);
-      }
-      // Prefer container metadata — it's cheap and matches the player's
-      // perceived end. `computeDuration()` scans every packet and on Kling /
-      // ffmpeg-generated MP4s can over-report by ~2× when the timebase or
-      // edit-list isn't what it expects (#742).
-      const metaDuration = await input.getDurationFromMetadata([videoTrack], {
-        skipLiveWait: true,
-      });
-      const duration =
-        metaDuration ??
-        (await input.computeDuration([videoTrack], { skipLiveWait: true }));
-
-      // Probe EVERY scene's display dimensions — different models emit
-      // different sizes for the same aspect ratio (#791), so we can't assume
-      // scene 0 is representative. A failed probe (0/NaN) must not silently
-      // corrupt the target resolution downstream.
-      const width = await videoTrack.getDisplayWidth();
-      const height = await videoTrack.getDisplayHeight();
-      if (
-        !Number.isFinite(width) ||
-        !Number.isFinite(height) ||
-        width < 1 ||
-        height < 1
-      ) {
-        throw new Error(
-          `Scene ${i} reported invalid dimensions ${width}×${height}; cannot stitch.`
-        );
-      }
-      sceneDimensions.push({ width, height });
-
-      // Probe transmux-safety inputs; the verdict is computed once after the
-      // loop (see `canTransmuxScenes`) and stored on `meta.canTransmux`.
-      const codec = await videoTrack.getCodec();
-      const decoderConfig =
-        codec === 'avc' ? await videoTrack.getDecoderConfig() : null;
-      codecProbes.push({
-        codec,
-        descriptionHex: decoderConfig
-          ? decoderConfigDescriptionHex(decoderConfig)
-          : '',
-      });
-
-      // Embedded scene audio (dialogue / VO). Best-effort: scenes without an
-      // audio track or with an undecodable codec are silent; the rest are
-      // mixed by the player + export.
-      const audioTrack = await input.getPrimaryAudioTrack();
-      const usableAudio =
-        audioTrack && (await audioTrack.canDecode()) ? audioTrack : null;
-
-      inputs.push(input);
-      videoTracks.push(videoTrack);
-      audioTracks.push(usableAudio);
-      sceneDurationsSeconds.push(duration);
+    // Open every scene concurrently — on a slow connection the per-scene
+    // header fetch is latency-bound, so N sequential opens meant N round-trips
+    // before the first frame could show (#1253). Order is preserved by index.
+    let loaded = 0;
+    const settled = await Promise.allSettled(
+      this.scenes.map(async (scene, i) => {
+        const result = await this.openScene(scene, i);
+        onProgress?.(++loaded, this.scenes.length);
+        return result;
+      })
+    );
+    const opened: OpenedScene[] = [];
+    let failure: unknown = null;
+    for (const s of settled) {
+      if (s.status === 'fulfilled') opened.push(s.value);
+      else failure ??= s.reason;
     }
+    // Nothing is assigned to `this.inputs` until below, so a dispose() that
+    // ran mid-open couldn't reach these — release them here.
+    // oxlint-disable-next-line typescript/no-unnecessary-condition -- flips during the await
+    if (failure !== null || this.disposed) {
+      for (const o of opened) o.input.dispose();
+      throw failure ?? new Error('ConcatenatedVideoSource disposed');
+    }
+    const inputs = opened.map((o) => o.input);
+    const videoTracks = opened.map((o) => o.videoTrack);
+    const audioTracks = opened.map((o) => o.audioTrack);
+    const sceneDurationsSeconds = opened.map((o) => o.duration);
+    const sceneDimensions = opened.map((o) => o.dimensions);
+    // Codec + decoder-config probes, fed to `canTransmuxScenes()` to decide
+    // the fast transmux path vs. decode→re-encode.
+    const codecProbes = opened.map((o) => o.codecProbe);
 
     const sceneOffsetsSeconds: number[] = [];
     let acc = 0;
@@ -238,6 +206,85 @@ export class ConcatenatedVideoSource {
       canTransmux: canTransmuxScenes(codecProbes),
     };
     return this.meta;
+  }
+
+  private async openScene(scene: SceneInput, i: number): Promise<OpenedScene> {
+    const input = new Input({
+      formats: ALL_FORMATS,
+      source: new UrlSource(addCorsCacheBuster(scene.videoUrl)),
+    });
+    try {
+      return await this.probeScene(input, i);
+    } catch (err) {
+      input.dispose();
+      throw err;
+    }
+  }
+
+  private async probeScene(input: Input, i: number): Promise<OpenedScene> {
+    const videoTrack = await input.getPrimaryVideoTrack();
+    if (!videoTrack) {
+      throw new Error(`Scene ${i} has no video track`);
+    }
+    if (!(await videoTrack.canDecode())) {
+      throw new Error(`Scene ${i} cannot be decoded by this browser`);
+    }
+    // Prefer container metadata — it's cheap and matches the player's
+    // perceived end. `computeDuration()` scans every packet and on Kling /
+    // ffmpeg-generated MP4s can over-report by ~2× when the timebase or
+    // edit-list isn't what it expects (#742).
+    const metaDuration = await input.getDurationFromMetadata([videoTrack], {
+      skipLiveWait: true,
+    });
+    const duration =
+      metaDuration ??
+      (await input.computeDuration([videoTrack], { skipLiveWait: true }));
+
+    // Probe EVERY scene's display dimensions — different models emit
+    // different sizes for the same aspect ratio (#791), so we can't assume
+    // scene 0 is representative. A failed probe (0/NaN) must not silently
+    // corrupt the target resolution downstream.
+    const width = await videoTrack.getDisplayWidth();
+    const height = await videoTrack.getDisplayHeight();
+    if (
+      !Number.isFinite(width) ||
+      !Number.isFinite(height) ||
+      width < 1 ||
+      height < 1
+    ) {
+      throw new Error(
+        `Scene ${i} reported invalid dimensions ${width}×${height}; cannot stitch.`
+      );
+    }
+
+    // Probe transmux-safety inputs; the verdict is computed once in `prepare()`
+    // after every scene is open (see `canTransmuxScenes`) and stored on
+    // `meta.canTransmux`.
+    const codec = await videoTrack.getCodec();
+    const decoderConfig =
+      codec === 'avc' ? await videoTrack.getDecoderConfig() : null;
+    const codecProbe: SceneCodecProbe = {
+      codec,
+      descriptionHex: decoderConfig
+        ? decoderConfigDescriptionHex(decoderConfig)
+        : '',
+    };
+
+    // Embedded scene audio (dialogue / VO). Best-effort: scenes without an
+    // audio track or with an undecodable codec are silent; the rest are
+    // mixed by the player + export.
+    const audioTrack = await input.getPrimaryAudioTrack();
+    const usableAudio =
+      audioTrack && (await audioTrack.canDecode()) ? audioTrack : null;
+
+    return {
+      input,
+      videoTrack,
+      audioTrack: usableAudio,
+      duration,
+      dimensions: { width, height },
+      codecProbe,
+    };
   }
 
   getMeta(): ConcatenatedVideoMeta {
@@ -414,6 +461,7 @@ export class ConcatenatedVideoSource {
 
   /** Release every underlying `Input` — call when the source is no longer needed. */
   dispose(): void {
+    this.disposed = true;
     for (const input of this.inputs) input.dispose();
     this.inputs = [];
     this.videoTracks = [];

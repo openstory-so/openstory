@@ -23,7 +23,11 @@ import {
   useTalentDivergentVariants,
   useUndiscardTalentSheetVariant,
 } from '@/hooks/use-talent-sheet-variants';
-import { useUpdateTalent, useDeleteTalentMedia } from '@/hooks/use-talent';
+import {
+  useAnalyzeTalentMedia,
+  useUpdateTalent,
+  useDeleteTalentMedia,
+} from '@/hooks/use-talent';
 import { useSheetStaleDetected } from '@/lib/realtime/use-sheet-stale-detected';
 import { AddTalentMediaDialog } from './add-talent-media-dialog';
 import type {
@@ -32,7 +36,7 @@ import type {
   TalentSheet,
   TalentSheetVariant,
 } from '@/lib/db/schema';
-import { Pencil, Plus, X } from 'lucide-react';
+import { Pencil, Plus, Sparkles, X } from 'lucide-react';
 import { AppImage } from '@/components/ui/app-image';
 
 type TalentWithRelations = Talent & {
@@ -50,9 +54,11 @@ export const EditTalentDialog: React.FC<EditTalentDialogProps> = ({
   trigger,
 }) => {
   const [open, setOpen] = useState(false);
+  const [description, setDescription] = useState(talent.description ?? '');
 
   const updateTalent = useUpdateTalent();
   const deleteMedia = useDeleteTalentMedia();
+  const analyzeMedia = useAnalyzeTalentMedia();
 
   const { data: divergentVariants } = useTalentDivergentVariants(
     open ? talent.id : undefined
@@ -179,10 +185,16 @@ export const EditTalentDialog: React.FC<EditTalentDialogProps> = ({
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (next) setDescription(talent.description ?? '');
+      }}
+    >
       <DialogTrigger asChild>
         {trigger ?? (
-          <Button variant="outline" size="icon">
+          <Button variant="outline" size="icon" aria-label="Edit talent">
             <Pencil className="h-4 w-4" />
           </Button>
         )}
@@ -223,11 +235,51 @@ export const EditTalentDialog: React.FC<EditTalentDialogProps> = ({
             </div>
 
             <div className="flex flex-col gap-2">
-              <Label htmlFor="description">Description</Label>
+              <div className="flex items-center justify-between gap-2">
+                <Label htmlFor="description">Description</Label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={
+                    talent.media.filter((m) => m.type === 'image').length ===
+                      0 || analyzeMedia.isPending
+                  }
+                  onClick={() => {
+                    const urls = talent.media
+                      .filter((m) => m.type === 'image')
+                      .map((m) => m.url)
+                      .slice(0, 8);
+                    analyzeMedia.mutate(
+                      { imageUrls: urls },
+                      {
+                        onSuccess: (result) => {
+                          setDescription(result.description);
+                          toast.success('Description generated from photos');
+                        },
+                        onError: (error) => {
+                          toast.error('Could not generate description', {
+                            description:
+                              error instanceof Error
+                                ? error.message
+                                : 'Unknown error',
+                          });
+                        },
+                      }
+                    );
+                  }}
+                >
+                  <Sparkles className="h-4 w-4" />
+                  {analyzeMedia.isPending
+                    ? 'Generating…'
+                    : 'Generate from photos'}
+                </Button>
+              </div>
               <Textarea
                 id="description"
                 name="description"
-                defaultValue={talent.description ?? ''}
+                value={description}
+                onChange={(event) => setDescription(event.target.value)}
                 placeholder="Describe the talent's appearance, style…"
                 rows={3}
               />
@@ -277,6 +329,7 @@ export const EditTalentDialog: React.FC<EditTalentDialogProps> = ({
               )}
               <AddTalentMediaDialog
                 talentId={talent.id}
+                isHuman={talent.isHuman === true}
                 trigger={
                   <Button type="button" variant="outline" size="sm">
                     <Plus className="h-4 w-4 mr-2" />

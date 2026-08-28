@@ -1,33 +1,93 @@
+import { ActionCost } from '@/components/billing/action-cost';
+import { MotionModelSelector } from '@/components/model/motion-model-selector';
 import { MusicModelSelector } from '@/components/model/music-model-selector';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useCreateScene, useReorderScenes } from '@/hooks/use-scene-structure';
-import { DEFAULT_MUSIC_MODEL, type AudioModel } from '@/lib/ai/models';
+import {
+  DEFAULT_MUSIC_MODEL,
+  DEFAULT_VIDEO_MODEL,
+  type AudioModel,
+  type ImageToVideoModel,
+} from '@/lib/ai/models';
+import {
+  estimateAudioCost,
+  estimateVideoCost,
+} from '@/lib/billing/cost-estimation';
+import { addMicros, ZERO_MICROS, type Microdollars } from '@/lib/billing/money';
 import type { AspectRatio } from '@/lib/constants/aspect-ratios';
+import { useFalPricing } from '@/hooks/use-fal-pricing';
 import type { SceneWithScript } from '@/hooks/use-scenes';
 import type { ShotVariant } from '@/lib/db/schema';
 import { errorMessage } from '@/lib/errors';
+import { resolveShotDuration } from '@/lib/motion/resolve-shot-duration';
 import type { SceneSelection } from '@/lib/scenes/scene-selection';
 import type { SequenceSegment } from '@/lib/scenes/scene-segments';
 import type { ShotView } from '@/lib/shots/shot-view';
 import { cn } from '@/lib/utils';
 import { Loader2, Plus, Video } from 'lucide-react';
-import { memo, useCallback, useMemo, useRef, useState } from 'react';
+import {
+  memo,
+  useCallback,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { toast } from 'sonner';
 import { SceneGroup } from './scene-group';
 import { SceneListItem } from './scene-list-item';
 
+/**
+ * Center `el` in the nearest Radix ScrollArea viewport. Returns false when
+ * the viewport has no height yet so the caller can retry after layout.
+ *
+ * Sets `scrollTop` on the viewport rather than calling `scrollIntoView`,
+ * which would also scroll the page behind a sheet.
+ */
+function scrollIntoScrollArea(el: HTMLElement): boolean {
+  const viewport = el.closest('[data-slot="scroll-area-viewport"]');
+  if (!(viewport instanceof HTMLElement) || viewport.clientHeight === 0) {
+    return false;
+  }
+  const y =
+    el.getBoundingClientRect().top -
+    viewport.getBoundingClientRect().top +
+    viewport.scrollTop;
+  viewport.scrollTop = Math.max(
+    0,
+    y - (viewport.clientHeight - el.offsetHeight) / 2
+  );
+  return true;
+}
+
+function selectedListNode(
+  root: HTMLElement,
+  shotId: string | undefined,
+  sceneId: string | undefined
+): HTMLElement | null {
+  if (shotId) {
+    const node = root.querySelector(`[data-shot-id="${CSS.escape(shotId)}"]`);
+    return node instanceof HTMLElement ? node : null;
+  }
+  if (!sceneId) return null;
+  const node = root.querySelector(`[data-scene-id="${CSS.escape(sceneId)}"]`);
+  return node instanceof HTMLElement ? node : null;
+}
+
 export type BatchGenerateMotionArgs = {
   includeMusic: boolean;
   musicModel: AudioModel;
+  /** Batch override for every eligible shot (server `data.model`). */
+  videoModel: ImageToVideoModel;
   /** Lets the user suppress model-emitted audio (sfx/dialogue/ambient) for the
    *  batch. The flag is honored only by models that produce audio — non-audio
    *  models ignore it downstream during motion-prompt assembly. */
   generateAudio: boolean;
 };
 
-type SceneListProps = {
+export type SceneListProps = {
   sequenceId: string;
   shots?: ShotView[] | undefined;
   scenes?: SceneWithScript[] | undefined;
@@ -50,10 +110,20 @@ type SceneListProps = {
   divergentVariants?: ShotVariant[];
   onCompareDivergent?: (variant: ShotVariant) => void;
   initialMusicModel?: AudioModel;
+  /** Sequence default / last batch pick — seeds the motion model dropdown. */
+  initialVideoModel?: ImageToVideoModel;
+  /** Style-category gate for models that require a matching style. */
+  styleCategory?: string;
+  recommendedVideoModel?: string | null;
+  styleName?: string;
   modelMissingShotIds?: Set<string>;
   modelMissingLabel?: string | null;
   /** Shots with stale prompts/image in the in-focus scene (#1077) — amber dots. */
   staleShotIds?: Set<string>;
+  /** Sizing from the host — sidebar width on desktop, `w-full` in a sheet. */
+  className?: string;
+  /** Scroll the selected shot/scene into view on mount (mobile sheet). */
+  scrollToSelection?: boolean;
 };
 
 const SceneListComponent: React.FC<SceneListProps> = ({
@@ -76,10 +146,17 @@ const SceneListComponent: React.FC<SceneListProps> = ({
   divergentVariants,
   onCompareDivergent,
   initialMusicModel,
+  initialVideoModel,
+  styleCategory,
+  recommendedVideoModel,
+  styleName,
   modelMissingShotIds,
   modelMissingLabel,
   staleShotIds,
+  className,
+  scrollToSelection = false,
 }) => {
+  const rootRef = useRef<HTMLDivElement>(null);
   const divergentByShotId = useMemo(() => {
     const map = new Map<string, ShotVariant>();
     for (const v of divergentVariants ?? []) {
@@ -138,6 +215,9 @@ const SceneListComponent: React.FC<SceneListProps> = ({
   const [musicModel, setMusicModel] = useState<AudioModel>(
     initialMusicModel ?? DEFAULT_MUSIC_MODEL
   );
+  const [videoModel, setVideoModel] = useState<ImageToVideoModel>(
+    initialVideoModel ?? DEFAULT_VIDEO_MODEL
+  );
 
   // Sync local selection when the sequence's saved model changes from outside
   // (e.g. after generation completes and the workflow persists the new model).
@@ -145,6 +225,11 @@ const SceneListComponent: React.FC<SceneListProps> = ({
   if (initialMusicModel && initialMusicModel !== prevInitialMusicRef.current) {
     prevInitialMusicRef.current = initialMusicModel;
     setMusicModel(initialMusicModel);
+  }
+  const prevInitialVideoRef = useRef(initialVideoModel);
+  if (initialVideoModel && initialVideoModel !== prevInitialVideoRef.current) {
+    prevInitialVideoRef.current = initialVideoModel;
+    setVideoModel(initialVideoModel);
   }
 
   const totalShots = shots?.length ?? 0;
@@ -185,6 +270,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
       await onBatchGenerateMotion({
         includeMusic,
         musicModel,
+        videoModel,
         generateAudio,
       });
     } finally {
@@ -200,6 +286,49 @@ const SceneListComponent: React.FC<SceneListProps> = ({
     notStartedShots.length === 0 ||
     !motionPromptsReady ||
     (includeMusic && !musicPromptsReady);
+
+  // Batch cost = sum of per-shot motion at the selected video model
+  // (+ optional music track) (#1140). Matches server `data.model` override.
+  const { pricing: falPricing } = useFalPricing();
+  const batchCostEstimate = useMemo((): Microdollars | null => {
+    if (!falPricing || notStartedShots.length === 0) return null;
+    let total: Microdollars = ZERO_MICROS;
+    let anyHonest = false;
+    for (const shot of notStartedShots) {
+      const duration = resolveShotDuration({
+        durationMs: shot.durationMs,
+        model: videoModel,
+      });
+      // Sequences with completed stills almost always have cast/element refs
+      // by motion time; Seedance routes to reference-to-video when they do.
+      const perShot = estimateVideoCost(videoModel, duration, {
+        pricing: falPricing,
+        hasReferenceImages: true,
+      });
+      if (perShot === null) continue;
+      anyHonest = true;
+      total = addMicros(total, perShot);
+    }
+    if (includeMusic) {
+      const audioDuration = notStartedShots.reduce((sum, shot) => {
+        return (
+          sum +
+          resolveShotDuration({
+            durationMs: shot.durationMs,
+            model: videoModel,
+          })
+        );
+      }, 0);
+      const music = estimateAudioCost(musicModel, Math.max(audioDuration, 5), {
+        pricing: falPricing,
+      });
+      if (music !== null) {
+        anyHonest = true;
+        total = addMicros(total, music);
+      }
+    }
+    return anyHonest ? total : null;
+  }, [falPricing, notStartedShots, includeMusic, musicModel, videoModel]);
 
   const shotsBySceneId = useMemo(() => {
     const map = new Map<string, ShotView[]>();
@@ -236,9 +365,39 @@ const SceneListComponent: React.FC<SceneListProps> = ({
   }, [segments]);
 
   const isWholeSequence = selection.sceneIds.length === 0 && !selection.shotId;
+  const selectedShotId = selection.shotId;
+  const selectedSceneId = selectedShotId ? undefined : selection.sceneIds[0];
+
+  useLayoutEffect(() => {
+    if (!scrollToSelection || isLoading) return;
+    const root = rootRef.current;
+    if (!root) return;
+
+    const target = selectedListNode(root, selectedShotId, selectedSceneId);
+    if (!target) {
+      const viewport = root.querySelector('[data-slot="scroll-area-viewport"]');
+      if (viewport instanceof HTMLElement) viewport.scrollTop = 0;
+      return;
+    }
+
+    let attempts = 0;
+    let frame = 0;
+    const tryScroll = () => {
+      if (scrollIntoScrollArea(target) || ++attempts > 20) return;
+      frame = requestAnimationFrame(tryScroll);
+    };
+    tryScroll();
+    return () => cancelAnimationFrame(frame);
+  }, [scrollToSelection, isLoading, selectedShotId, selectedSceneId]);
 
   return (
-    <div className="flex h-full w-[280px] lg:w-[360px] flex-col rounded-lg border bg-background">
+    <div
+      ref={rootRef}
+      className={cn(
+        'flex h-full min-h-0 flex-col overflow-hidden rounded-lg border bg-background',
+        className
+      )}
+    >
       <div className="flex items-center justify-between border-b px-4 py-3">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
           Scenes
@@ -325,7 +484,6 @@ const SceneListComponent: React.FC<SceneListProps> = ({
                 shot={shot}
                 aspectRatio={aspectRatio}
                 isActive={shot.id === selection.shotId}
-                onSelect={() => onSelectShot(shot.id)}
                 variant="horizontal"
                 isRegeneratingImage={regeneratingImages.has(shot.id)}
                 isRegeneratingMotion={regeneratingMotion.has(shot.id)}
@@ -365,45 +523,54 @@ const SceneListComponent: React.FC<SceneListProps> = ({
       {/* Sticky footer with Generate Motion button */}
       {showButton && (
         <div className="sticky bottom-0 border-t bg-background p-4 flex flex-col gap-3">
+          <MotionModelSelector
+            selectedModel={videoModel}
+            onModelChange={setVideoModel}
+            aspectRatio={aspectRatio}
+            styleCategory={styleCategory}
+            recommendedVideoModel={recommendedVideoModel}
+            styleName={styleName}
+            disabled={isGenerating || isMotionInProgress}
+          />
           {includeMusic && (
-            <div className="flex flex-col gap-1">
-              <span className="text-xs text-muted-foreground">Music model</span>
-              <MusicModelSelector
-                selectedModel={musicModel}
-                onModelChange={setMusicModel}
-                disabled={isGenerating || isMotionInProgress}
-              />
-            </div>
+            <MusicModelSelector
+              selectedModel={musicModel}
+              onModelChange={setMusicModel}
+              disabled={isGenerating || isMotionInProgress}
+            />
           )}
-          <Button
-            variant="default"
-            className="w-full"
-            onClick={() => void handleGenerateMotion()}
-            disabled={isButtonDisabled}
-          >
-            {isGenerating ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Generating…
-              </>
-            ) : !motionPromptsReady ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Writing motion prompts…
-              </>
-            ) : includeMusic && !musicPromptsReady ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Composing music…
-              </>
-            ) : (
-              <>
-                <Video className="mr-2 h-4 w-4" />
-                Generate {notStartedShots.length} / {totalShots}{' '}
-                {totalShots === 1 ? 'shot' : 'shots'}
-              </>
-            )}
-          </Button>
+          <div className="flex flex-col gap-1">
+            <Button
+              variant="default"
+              className="w-full"
+              onClick={() => void handleGenerateMotion()}
+              disabled={isButtonDisabled}
+            >
+              {isGenerating ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Generating…
+                </>
+              ) : !motionPromptsReady ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Writing motion prompts…
+                </>
+              ) : includeMusic && !musicPromptsReady ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Composing music…
+                </>
+              ) : (
+                <>
+                  <Video className="mr-2 h-4 w-4" />
+                  Generate {notStartedShots.length} / {totalShots}{' '}
+                  {totalShots === 1 ? 'shot' : 'shots'}
+                </>
+              )}
+            </Button>
+            <ActionCost estimate={batchCostEstimate} />
+          </div>
           <label className="flex items-center gap-2 text-sm text-muted-foreground">
             <Checkbox
               checked={includeMusic}
@@ -451,8 +618,14 @@ const areEqual = (
     prevProps.musicPromptsReady !== nextProps.musicPromptsReady ||
     prevProps.hideBatchButton !== nextProps.hideBatchButton ||
     prevProps.initialMusicModel !== nextProps.initialMusicModel ||
+    prevProps.initialVideoModel !== nextProps.initialVideoModel ||
+    prevProps.styleCategory !== nextProps.styleCategory ||
+    prevProps.recommendedVideoModel !== nextProps.recommendedVideoModel ||
+    prevProps.styleName !== nextProps.styleName ||
     prevProps.modelMissingLabel !== nextProps.modelMissingLabel ||
-    prevProps.modelMissingShotIds !== nextProps.modelMissingShotIds
+    prevProps.modelMissingShotIds !== nextProps.modelMissingShotIds ||
+    prevProps.staleShotIds !== nextProps.staleShotIds ||
+    prevProps.className !== nextProps.className
   ) {
     return false;
   }

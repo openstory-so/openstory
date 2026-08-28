@@ -33,22 +33,6 @@ const baseScene = {
 
 const baseMotionPrompt = {
   fullPrompt: 'Slow dolly in.',
-  components: {
-    cameraMovement: 'dolly',
-    startPosition: '',
-    endPosition: '',
-    durationSeconds: 5,
-    speed: 'slow',
-    smoothness: 'smooth',
-    subjectTracking: '',
-    equipment: '',
-  },
-  parameters: {
-    durationSeconds: 5,
-    fps: 24,
-    motionAmount: 'low' as const,
-    cameraControl: { pan: 0, tilt: 0, zoom: 1, movement: 'dolly' },
-  },
   dialogue: null,
   audio: { ambientSound: 'quiet room', soundEffects: [] },
 } satisfies MotionPrompt;

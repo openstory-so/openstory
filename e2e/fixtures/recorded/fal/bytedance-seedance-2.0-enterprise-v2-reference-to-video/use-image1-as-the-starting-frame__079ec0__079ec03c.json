@@ -1,0 +1,24 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use @Image1 as the starting frame.\nHandheld camera holds tight on @Image2 with restless micro-drift, easing slightly inward down the aisle as the car lurches.\n\nFrom her braced pose, left hand gripping the pole, she steadies against the sway and presses the @Image3 to her lower lip, sweeping it across by feel while her eyes stay off-camera. The floor jolts; she absorbs it through her knee, finishes the sweep, caps the @Image3 against her palm and drops it into her jacket pocket in one continuous motion, then flicks a quick deadpan glance to lens.\n\nHair and the tote strap sway with the car's rocking, window blur streaking past, fluorescent tubes flickering faintly overhead.\n\nrumbling subway car interior, rails clattering, faint fluorescent hum. metal pole creak, lipstick cap click, train jolt and squeal, fabric rustle of jacket pocket.\n\nNo BGM, no music. Generate only dialogue, environmental sounds, and action sounds. Single continuous shot, no cuts. Avoid jitter and bent limbs.",
+        "model": "bytedance/seedance-2.0/enterprise/v2/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://v3b.fal.media/files/b/0aa74e97/oUiEXfs0XLiTtHvMnGErd_video.mp4",
+            "content_type": "video/mp4",
+            "file_name": "video.mp4",
+            "file_size": 2496945
+          },
+          "seed": 462165570
+        },
+        "status": 200,
+        "billableUnits": 108.9
+      }
+    }
+  ]
+}

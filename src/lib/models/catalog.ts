@@ -281,7 +281,7 @@ function parseSchemaResponse(body: string, endpointId: string): JsonSchema {
     );
   }
   // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- guarded to be a plain object; JsonSchema keywords are all optional
-  return schema as JsonSchema;
+  return schema;
 }
 
 function toCatalogModel(model: ApiModel): CatalogModel | null {

@@ -27,7 +27,10 @@ const sequenceStateSchema = z.object({
   id: z.string(),
   status: z.string(),
   statusError: z.string().nullish(),
-  frames: z.array(
+  // `shots`, not `frames` (#1067). The public API renamed both the array and
+  // its count; validating the old shape threw on every poll, which broke
+  // sample rendering end to end.
+  shots: z.array(
     z.object({
       id: z.string(),
       orderIndex: z.number(),
@@ -43,7 +46,7 @@ const sequenceStateSchema = z.object({
     })
   ),
   counts: z.object({
-    frames: z.number(),
+    shots: z.number(),
     imagesReady: z.number(),
     videosReady: z.number(),
     videosFailed: z.number(),
@@ -88,8 +91,8 @@ export type CreateSampleSequenceArgs = {
   videoModel: string;
   /**
    * Generate motion (image-to-video) for each frame. Defaults to `true`.
-   * Set `false` for an images-only render — frames are produced and reviewable,
-   * but no clips, so {@link orderedFrameVideos}/concat are skipped by callers.
+   * Set `false` for an images-only render — shots are produced and reviewable,
+   * but no clips, so {@link orderedShotVideos}/concat are skipped by callers.
    */
   motion?: boolean;
 };
@@ -181,7 +184,7 @@ export async function createSampleSequence(
 
 type SampleSequenceProgress = {
   status: string;
-  frames: number;
+  shots: number;
   imagesReady: number;
   videosReady: number;
   videosFailed: number;
@@ -192,13 +195,9 @@ function progressOf(state: SampleSequenceState): SampleSequenceProgress {
 }
 
 function progressKey(p: SampleSequenceProgress): string {
-  return [
-    p.status,
-    p.frames,
-    p.imagesReady,
-    p.videosReady,
-    p.videosFailed,
-  ].join('|');
+  return [p.status, p.shots, p.imagesReady, p.videosReady, p.videosFailed].join(
+    '|'
+  );
 }
 
 export type WaitForSampleSequenceArgs = {
@@ -272,9 +271,9 @@ export async function waitForSampleSequence(
 }
 
 function assertRenderComplete(state: SampleSequenceState): void {
-  const { frames, videosReady, videosFailed } = state.counts;
+  const { shots, videosReady, videosFailed } = state.counts;
   const everyClipReady =
-    frames > 0 && videosReady >= frames && videosFailed === 0;
+    shots > 0 && videosReady >= shots && videosFailed === 0;
 
   if (state.status !== 'completed') {
     // A sequence can end `failed` with every clip actually rendered — e.g. the
@@ -287,37 +286,37 @@ function assertRenderComplete(state: SampleSequenceState): void {
       `Sequence ${state.id} ended ${state.status}: ${state.statusError ?? 'no error detail'}`
     );
   }
-  if (frames === 0) {
-    throw new Error(`Sequence ${state.id} completed with no frames`);
+  if (shots === 0) {
+    throw new Error(`Sequence ${state.id} completed with no shots`);
   }
   if (!everyClipReady) {
     throw new Error(
-      `Sequence ${state.id} completed with ${videosReady}/${frames} videos ready ` +
+      `Sequence ${state.id} completed with ${videosReady}/${shots} videos ready ` +
         `(${videosFailed} failed) — a sample needs every clip`
     );
   }
 }
 
-/** Frames in playback order with their (required) video URLs. */
-export function orderedFrameVideos(state: SampleSequenceState): {
-  frameId: string;
+/** Shots in playback order with their (required) video URLs. */
+export function orderedShotVideos(state: SampleSequenceState): {
+  shotId: string;
   orderIndex: number;
   videoUrl: string;
   imageUrl: string | null;
 }[] {
-  return [...state.frames]
+  return [...state.shots]
     .sort((a, b) => a.orderIndex - b.orderIndex)
-    .map((frame) => {
-      if (!frame.video.url) {
+    .map((shot) => {
+      if (!shot.video.url) {
         throw new Error(
-          `Frame ${frame.id} of sequence ${state.id} has no video URL`
+          `Shot ${shot.id} of sequence ${state.id} has no video URL`
         );
       }
       return {
-        frameId: frame.id,
-        orderIndex: frame.orderIndex,
-        videoUrl: frame.video.url,
-        imageUrl: frame.image.url ?? null,
+        shotId: shot.id,
+        orderIndex: shot.orderIndex,
+        videoUrl: shot.video.url,
+        imageUrl: shot.image.url ?? null,
       };
     });
 }

@@ -27,7 +27,10 @@ function asStub<T>(stub: unknown): T {
   return stub as T;
 }
 
-const scene = asStub<Scene>({ sceneId: 'scene-1' });
+const scene = asStub<Scene>({
+  sceneId: 'scene-1',
+  originalScript: { extract: '', dialogue: [] },
+});
 const sequence = {
   id: 'seq-1',
   styleId: 'style-1',
@@ -254,6 +257,7 @@ describe('computeShotStaleness', () => {
       visualPrompt: 'generating',
       motionPrompt: 'generating',
       liveHashes: { thumbnail: null, visualPrompt: null, motionPrompt: null },
+      causes: [],
     });
     // Short-circuits before any work: the batch fn runs this for every shot in
     // the sequence, on the poll loop that runs hardest during generation.
@@ -294,4 +298,164 @@ describe('computeShotStaleness', () => {
       });
     }
   );
+
+  it('marks an untracked still stale when a named element was replaced after it (#1192)', async () => {
+    buildRegenerateShotSnapshot.mockResolvedValue({
+      snapshotInputHash: 'image-live',
+    });
+    loadNarrowShotPromptContext.mockResolvedValue({});
+    computeVisualPromptInputHash.mockResolvedValue('visual-stored');
+    computeMotionPromptInputHash.mockResolvedValue('motion-stored');
+
+    const still = asStub<FrameVariant>({
+      id: 'fv-1',
+      inputHash: null,
+      model: null,
+      url: 'https://example.com/still.png',
+      generatedAt: new Date('2026-08-23T00:37:00Z'),
+      createdAt: new Date('2026-08-23T00:36:00Z'),
+    });
+    const result = await computeShotStaleness({
+      scopedDb: makeScopedDb({
+        visualSelected: {
+          text: 'closing around the bottle from (DROPPER_BOTTLE)',
+          inputHash: null,
+        },
+      }),
+      sequence,
+      shot,
+      frame,
+      selectedImage: still,
+      scene,
+      refs: {
+        characters: [],
+        locations: [],
+        elements: [
+          asStub({
+            token: 'DROPPER_BOTTLE',
+            imageUrl: 'https://example.com/bottle-v2.png',
+            updatedAt: new Date('2026-08-23T01:32:00Z'),
+          }),
+        ],
+        style: null,
+      },
+    });
+
+    expect(result.thumbnail).toBe('stale');
+    expect(result.liveHashes.thumbnail).toBe('image-live');
+  });
+
+  it('leaves an untracked still untracked when the named element is older', async () => {
+    buildRegenerateShotSnapshot.mockResolvedValue({
+      snapshotInputHash: 'image-live',
+    });
+    loadNarrowShotPromptContext.mockResolvedValue({});
+    computeVisualPromptInputHash.mockResolvedValue('visual-stored');
+    computeMotionPromptInputHash.mockResolvedValue('motion-stored');
+
+    const still = asStub<FrameVariant>({
+      id: 'fv-1',
+      inputHash: null,
+      model: null,
+      url: 'https://example.com/still.png',
+      generatedAt: new Date('2026-08-23T01:40:00Z'),
+      createdAt: new Date('2026-08-23T01:39:00Z'),
+    });
+    const result = await computeShotStaleness({
+      scopedDb: makeScopedDb({
+        visualSelected: {
+          text: 'closing around the bottle from (DROPPER_BOTTLE)',
+          inputHash: null,
+        },
+      }),
+      sequence,
+      shot,
+      frame,
+      selectedImage: still,
+      scene,
+      refs: {
+        characters: [],
+        locations: [],
+        elements: [
+          asStub({
+            token: 'DROPPER_BOTTLE',
+            imageUrl: 'https://example.com/bottle-v2.png',
+            updatedAt: new Date('2026-08-23T01:32:00Z'),
+          }),
+        ],
+        style: null,
+      },
+    });
+
+    expect(result.thumbnail).toBe('untracked');
+  });
+});
+
+describe('staleness causes (#1194)', () => {
+  it('names inputs touched after the stale artifact was generated', async () => {
+    buildRegenerateShotSnapshot.mockResolvedValue({
+      snapshotInputHash: 'image-live',
+    });
+    loadNarrowShotPromptContext.mockResolvedValue({});
+    computeVisualPromptInputHash.mockResolvedValue('visual-stored');
+    computeMotionPromptInputHash.mockResolvedValue('motion-stored');
+
+    const generated = new Date('2026-01-01T00:00:00Z');
+    const before = new Date('2025-12-31T00:00:00Z');
+    const afterGen = new Date('2026-01-02T00:00:00Z');
+    const scopedDb = makeScopedDb({ motionSelectedHash: 'motion-stored' });
+    Object.assign(scopedDb, {
+      scenes: { getById: vi.fn().mockResolvedValue({ updatedAt: afterGen }) },
+      sceneScriptVersions: {
+        getSelected: vi.fn().mockResolvedValue({ createdAt: afterGen }),
+      },
+      sequenceEvents: {
+        listByTarget: vi.fn().mockResolvedValue([
+          {
+            kind: 'sequence.settings-changed',
+            createdAt: afterGen,
+            data: { fields: ['styleId'] },
+          },
+          {
+            kind: 'sequence.settings-changed',
+            createdAt: before,
+            data: { fields: ['aspectRatio'] },
+          },
+        ]),
+      },
+    });
+    const still = asStub<FrameVariant>({
+      id: 'fv-1',
+      inputHash: 'image-old',
+      model: null,
+      url: null,
+      generatedAt: generated,
+    });
+
+    const result = await computeShotStaleness({
+      scopedDb,
+      sequence,
+      shot: asStub<Shot>({ id: 'shot-1', sceneId: 'scene-1' }),
+      frame,
+      selectedImage: still,
+      scene,
+      refs: asStub({
+        characters: [
+          { name: 'Woman', updatedAt: afterGen, sheetGeneratedAt: null },
+          { name: 'Man', updatedAt: before, sheetGeneratedAt: before },
+        ],
+        locations: [{ name: 'Bathroom', updatedAt: before }],
+        elements: [{ token: 'BOTTLE', updatedAt: afterGen }],
+        style: null,
+      }),
+    });
+
+    expect(result.thumbnail).toBe('stale');
+    expect(result.causes).toEqual([
+      'Script',
+      'Style',
+      'Character "Woman"',
+      'Element BOTTLE',
+    ]);
+  });
 });

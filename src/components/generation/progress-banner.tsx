@@ -31,6 +31,8 @@ type ProgressBannerProps = {
   onExitComplete?: () => void;
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Replaces the default "you can leave" line under the phases. */
+  leaveHint?: React.ReactNode;
 };
 
 export const ProgressBanner: React.FC<ProgressBannerProps> = ({
@@ -45,6 +47,7 @@ export const ProgressBanner: React.FC<ProgressBannerProps> = ({
   onExitComplete,
   isOpen,
   onOpenChange,
+  leaveHint,
 }) => {
   const [isExiting, setIsExiting] = useState(false);
 
@@ -186,7 +189,12 @@ export const ProgressBanner: React.FC<ProgressBannerProps> = ({
 
             {/* "You can leave" message */}
             <p className="text-xs text-muted-foreground/50">
-              Click around or create something else while you&rsquo;re waiting
+              {leaveHint ?? (
+                <>
+                  Click around or create something else while you&rsquo;re
+                  waiting
+                </>
+              )}
             </p>
           </CardContent>
         </CollapsibleContent>

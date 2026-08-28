@@ -57,8 +57,8 @@ export function buildElementSheetPrompt(
 ): string {
   const styled = styleConfig
     ? {
-        environment: `Render in ${styleConfig.artStyle} style. Background: clean, seamless studio backdrop with no environmental detail — simple flat or gradient tone drawn from the style's color palette: ${styleConfig.colorPalette.join(', ')}. Color grading: ${styleConfig.colorGrading}.`,
-        lighting: `${styleConfig.lighting}. Even, controlled illumination that reveals true colors, materials, and surface finish.`,
+        environment: `Render in ${styleConfig.look.artStyle} style. Background: clean, seamless studio backdrop with no environmental detail — simple flat or gradient tone drawn from the style's color palette: ${styleConfig.look.colorPalette.join(', ')}. Color grading: ${styleConfig.look.colorGrading}.`,
+        lighting: `${styleConfig.look.lighting}. Even, controlled illumination that reveals true colors, materials, and surface finish.`,
       }
     : {
         environment:

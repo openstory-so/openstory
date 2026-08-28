@@ -27,7 +27,7 @@ import type {
 } from '@/lib/workflow/types';
 import {
   matchCharactersToScene,
-  matchElementsToScene,
+  matchElementsToShotImage,
   matchLocationsToScene,
 } from '@/lib/workflows/scene-matching';
 import { computeShotImageSceneHash } from '@/lib/workflows/sheet-snapshots';
@@ -126,11 +126,11 @@ export async function buildShotImageWorkflowInput(opts: {
     sceneLocation
   );
 
-  const matchedElements = matchElementsToScene(
-    elements,
-    continuity?.elementTags ?? [],
-    scriptExtract
-  );
+  const matchedElements = matchElementsToShotImage(elements, {
+    visualPrompt: prompt,
+    elementTags: continuity?.elementTags,
+    sceneExtract: scriptExtract,
+  });
   const elementReferences = buildElementReferenceImages(matchedElements);
 
   const sceneSnapshot: ShotImageSceneSnapshot = {

@@ -10,8 +10,12 @@ import { z } from 'zod';
  * Shared Zod schemas for style operations
  */
 
-const tagsSchema = z.array(z.string()).nullish();
-const useCasesSchema = z.array(z.string()).nullish();
+// Create defaults absent lists to [] so rows never carry null lists; update
+// keeps them optional (PATCH semantics) but never null.
+const tagsCreateSchema = z.array(z.string()).default([]);
+const useCasesCreateSchema = z.array(z.string()).default([]);
+const tagsUpdateSchema = z.array(z.string()).optional();
+const useCasesUpdateSchema = z.array(z.string()).optional();
 const sampleVideosSchema = z.array(StyleSampleVideoSchema).nullish();
 
 // Columns the client must never set. usageCount is server-managed (popularity
@@ -32,20 +36,31 @@ export const SERVER_MANAGED_STYLE_COLUMNS = {
   isPublic: true,
   isTemplate: true,
   sortOrder: true,
+  // Sequence binding is set by sequence creation and cleared by promotion.
+  sequenceId: true,
 } as const;
 
 export type ServerManagedStyleColumn =
   keyof typeof SERVER_MANAGED_STYLE_COLUMNS;
 
 export const createStyleSchema = createInsertSchema(styles, {
+  // New writes are always v2; stored v1 rows are read-tolerated, not written.
   config: () => StyleConfigSchema,
-  tags: () => tagsSchema,
-  useCases: () => useCasesSchema,
+  tags: () => tagsCreateSchema,
+  useCases: () => useCasesCreateSchema,
   sampleVideos: () => sampleVideosSchema,
-}).omit(SERVER_MANAGED_STYLE_COLUMNS);
+})
+  .omit(SERVER_MANAGED_STYLE_COLUMNS)
+  // Category drives recommendation briefs and library grouping — required on
+  // create (the DB column is nullable only for legacy rows). `.extend` because
+  // drizzle-zod keeps nullable columns optional even with a refinement.
+  .extend({ category: z.string().min(1) });
+// Config is whole-or-omitted on update: the aesthetic recipe is one atomic
+// value — partial patches could not maintain cross-field coherence.
 export const updateStyleSchema = createUpdateSchema(styles, {
   config: () => StyleConfigSchema.optional(),
-  tags: () => tagsSchema,
-  useCases: () => useCasesSchema,
+  category: () => z.string().min(1).optional(),
+  tags: () => tagsUpdateSchema,
+  useCases: () => useCasesUpdateSchema,
   sampleVideos: () => sampleVideosSchema,
 }).omit(SERVER_MANAGED_STYLE_COLUMNS);

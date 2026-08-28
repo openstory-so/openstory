@@ -4,17 +4,14 @@
  */
 
 import { useQuery } from '@tanstack/react-query';
-import { sessionQueryOptions } from '@/lib/auth/session-query';
+import { useAuthSession } from '@/lib/auth/session-query';
 import { LOW_BALANCE_THRESHOLD_USD } from '@/lib/billing/constants';
 import { getBillingBalanceFn } from '@/functions/billing';
 
 export const BILLING_BALANCE_KEY = ['billing-balance'] as const;
 
 export function useBillingBalance() {
-  // Same session cache as useUser / _app beforeLoad — not better-auth's
-  // useSession(), which can lag or stay empty while the RQ session is ready
-  // (that left WelcomeCreditsDialog stuck on !isFetched forever).
-  const { data: session } = useQuery(sessionQueryOptions);
+  const { data: session } = useAuthSession();
 
   const query = useQuery({
     queryKey: [...BILLING_BALANCE_KEY],
@@ -23,7 +20,9 @@ export function useBillingBalance() {
     enabled: !!session?.user,
   });
 
-  const balance = query.data?.balance ?? null;
+  const posted = query.data?.balance ?? null;
+  const balance = query.data?.availableUsd ?? posted;
+  const reserved = query.data?.reservedUsd ?? 0;
   const autoTopUp = query.data?.autoTopUp;
   const lowBalanceThreshold =
     autoTopUp?.enabled && autoTopUp.thresholdUsd != null
@@ -33,6 +32,8 @@ export function useBillingBalance() {
   return {
     ...query,
     balance,
+    posted,
+    reserved,
     teamId: query.data?.teamId,
     stripeEnabled: query.data?.stripeEnabled ?? false,
     hasUsedCredits: query.data?.hasUsedCredits ?? false,

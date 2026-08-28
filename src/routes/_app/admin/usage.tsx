@@ -344,6 +344,7 @@ const UserRow: React.FC<{ row: UserActivityRow }> = ({ row }) => {
 
   return (
     <tr className="border-b last:border-b-0 hover:bg-muted/30">
+      {/* oxlint-disable-next-line jsx-a11y/control-has-associated-label -- plain table cell, not a control (oxlint 1.78 false positive) */}
       <td className="px-4 py-3">
         <div className="flex flex-col">
           <span className="font-medium">{row.name}</span>
@@ -359,11 +360,9 @@ const UserRow: React.FC<{ row: UserActivityRow }> = ({ row }) => {
       <td className="px-4 py-3 text-muted-foreground">{row.teamName}</td>
       <td className="px-4 py-3 text-right tabular-nums">{row.sequenceCount}</td>
       <td className="px-4 py-3 text-right tabular-nums">
-        {row.failedCount > 0 ? (
-          <span className="text-destructive">{row.failedCount}</span>
-        ) : (
-          0
-        )}
+        <span className={row.failedCount > 0 ? 'text-destructive' : undefined}>
+          {row.failedCount}
+        </span>
       </td>
       <td className="px-4 py-3 text-right tabular-nums">
         {formatDuration(row.avgAnalysisDurationMs)}

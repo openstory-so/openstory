@@ -111,9 +111,9 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
   analysisModels,
   imageModels,
   videoModels,
-  autoGenerateMotion = false,
+  autoGenerateMotion = true,
   audioModels,
-  autoGenerateMusic = false,
+  autoGenerateMusic = true,
   onAspectRatioChange,
   onAnalysisModelsChange,
   onImageModelsChange,
@@ -148,8 +148,12 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
         </PopoverTrigger>
         {appliedFromStyle && onResetStyleDefaults && (
           <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 text-primary px-2 py-0.5 text-xs">
-            <span>From style</span>
-            <span aria-hidden="true" className="text-primary/40">
+            {/* Mobile: just "Reset" — the label + trigger don't fit one row. */}
+            <span className="hidden sm:inline">From style</span>
+            <span
+              aria-hidden="true"
+              className="hidden text-primary/40 sm:inline"
+            >
               ·
             </span>
             <Button
@@ -200,7 +204,7 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
           {/* Image Model Section */}
           <section className="flex flex-col gap-2">
             <h3 className="text-sm font-medium text-foreground">
-              Image Model{!singleSelectImage && 's'}
+              {singleSelectImage ? 'Image Model' : 'Image Models'}
             </h3>
             {singleSelectImage ? (
               <ImageModelSelector
@@ -226,7 +230,7 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
           {/* Motion Model Section */}
           <section className="flex flex-col gap-2">
             <h3 className="text-sm font-medium text-foreground">
-              Motion Model{!singleSelectMotion && 's'}
+              {singleSelectMotion ? 'Motion Model' : 'Motion Models'}
             </h3>
             {onAutoGenerateMotionChange && (
               <AutoToggle
@@ -267,7 +271,7 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
               {/* Music Model Section */}
               <section className="flex flex-col gap-2">
                 <h3 className="text-sm font-medium text-foreground">
-                  Music Model{!singleSelectMusic && 's'}
+                  {singleSelectMusic ? 'Music Model' : 'Music Models'}
                 </h3>
                 <AutoToggle
                   id="auto-generate-music"

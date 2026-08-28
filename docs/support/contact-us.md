@@ -24,6 +24,14 @@ To help us resolve your question quickly, please include:
 - The URL of the page where the issue happened
 - Your account email, if different from the address you're writing from
 
+## Report generated content
+
+If something generated on OpenStory uses a likeness without permission, impersonates someone, or otherwise violates the law or our Terms — including child sexual abuse material — use the public report form. No account is required:
+
+[openstory.so/report](/report)
+
+That form is the takedown channel. Do not file those reports as GitHub issues.
+
 ## Found a Bug?
 
 If you've spotted a bug or unexpected behavior, please [file an issue](/docs/support/file-an-issue) on GitHub so we can track and fix it.

@@ -22,11 +22,13 @@ import { AuthForm } from '@/components/auth/auth-form';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
 import { useUser } from '@/hooks/use-user';
 import { getAuthOptionsFn } from '@/functions/auth-options';
+import { sanitizeAuthRedirect } from '@/lib/auth/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { useRouterState } from '@tanstack/react-router';
 import {
@@ -90,8 +92,8 @@ export function AuthGateProvider({ children }: { children: ReactNode }) {
   const { data: user, error: sessionError } = useUser();
   // A failed session lookup must NOT be conflated with "anonymous" — rethrow
   // to the route errorComponent instead of silently popping the login dialog
-  // at a signed-in user whose session refetch blipped (see getSessionFn,
-  // which throws on lookup failure for exactly this reason).
+  // at a signed-in user whose session refetch blipped (`getSessionFn`
+  // throws on lookup failure for exactly this reason).
   if (sessionError) {
     throw new Error(`Failed to fetch session: ${sessionError.message}`, {
       cause: sessionError,
@@ -111,9 +113,12 @@ export function AuthGateProvider({ children }: { children: ReactNode }) {
   });
 
   // Return the visitor to wherever they were after signing in so their
-  // in-progress draft (persisted to localStorage) is restored.
+  // in-progress draft (persisted to localStorage) is restored. Strip the
+  // hash (#compose from "Try this style") — better-auth rejects it as an
+  // OAuth callbackURL. `?style=` is enough to re-seed the composer.
   const redirectTo = useRouterState({
-    select: (s) => s.location.href,
+    select: (s) =>
+      sanitizeAuthRedirect(`${s.location.pathname}${s.location.searchStr}`),
   });
 
   const openLogin = useCallback(() => setOpen(true), []);
@@ -142,6 +147,9 @@ export function AuthGateProvider({ children }: { children: ReactNode }) {
         <DialogContent className="sm:max-w-md border-none bg-transparent p-0 shadow-none [&>button]:hidden">
           <DialogHeader className="sr-only">
             <DialogTitle>Sign in to continue</DialogTitle>
+            <DialogDescription>
+              Sign in or create an account to continue this action.
+            </DialogDescription>
           </DialogHeader>
           <AuthForm redirectTo={redirectTo} authOptions={authOptions} />
         </DialogContent>

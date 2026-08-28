@@ -17,6 +17,52 @@ import type {
   VideoVariant,
 } from '@/lib/db/schema';
 
+/**
+ * The narrow slice of a shot's sources that readiness tallies are derived from
+ * — a still url and a video lifecycle, nothing else.
+ *
+ * Exists so a caller that only needs counts (`GET /api/v1/sequences`) can read
+ * five scalar columns instead of materialising a full {@link ShotView} per
+ * shot: the wide view carries `shots.metadata`, the visual prompt and the
+ * motion prompt, which together made listing a page of sequences approach the
+ * 128 MB isolate ceiling (#1161). The derivations below are shared with
+ * {@link toShotView}, so the two paths cannot report different readiness.
+ */
+export type ShotReadiness = {
+  /** `frame_variants.url` of the anchor frame's SELECTED image version. */
+  selectedImageUrl: string | null;
+  /** `frame_variants.url` of the anchor frame's newest `kind: 'preview'` row. */
+  previewImageUrl: string | null;
+  /** Whether `render_segments.selectedVideoVersionId` resolves to a version. */
+  hasSelectedVideo: boolean;
+  /** `status` of the newest non-`variantOnly` render, or null if none exists. */
+  primaryVideoStatus: VideoVariant['status'] | null;
+};
+
+/**
+ * The still url a shot exposes, or null while it has none: the selected
+ * variant's stored url, else the fast preview variant's CDN url.
+ */
+export function readinessImageUrl(
+  readiness: Pick<ShotReadiness, 'selectedImageUrl' | 'previewImageUrl'>
+): string | null {
+  return readiness.selectedImageUrl ?? readiness.previewImageUrl ?? null;
+}
+
+/**
+ * A shot's video status. The newest primary render's lifecycle wins; a shot
+ * with no primary render behind its selection reads `completed` (pre-#1067
+ * rows), and one with neither reads `pending` — see {@link ShotView.videoStatus}.
+ */
+export function readinessVideoStatus(
+  readiness: Pick<ShotReadiness, 'hasSelectedVideo' | 'primaryVideoStatus'>
+): VideoVariant['status'] {
+  return (
+    readiness.primaryVideoStatus ??
+    (readiness.hasSelectedVideo ? 'completed' : 'pending')
+  );
+}
+
 export type ShotGridSheet = {
   url: string | null;
   // Sourced from a `frame_variants` row, whose status union is wider than the
@@ -53,6 +99,13 @@ export type ShotViewSources = {
   primaryVideo: VideoVariant | null;
   gridSheet?: ShotGridSheet | null;
   motionPrompt?: AssemblableMotionPrompt | null;
+  /**
+   * In-flight variant upscale: the generating framing version the promote
+   * claim points at, when it already has a cropped-tile url (minted at
+   * click). Regular still gens are also `generating` with a null url, so
+   * the url is the discriminator.
+   */
+  pendingUpscaleUrl?: string | null;
 };
 
 export type ShotView = Shot & {
@@ -80,6 +133,13 @@ export type ShotView = Shot & {
   videoStatus: VideoVariant['status'];
   gridSheet: ShotGridSheet | null;
   motionPrompt: AssemblableMotionPrompt | null;
+  /** Cropped tile for an in-flight variant upscale, or null. */
+  pendingUpscaleUrl: string | null;
+  /**
+   * Client-only: grid-cell index for the CSS overlay while an upscale runs.
+   * Server assembly always sends null; optimistic select and SSE clear it.
+   */
+  pendingUpscaleIndex: number | null;
 };
 
 /**
@@ -136,8 +196,60 @@ export function toShotView(
     imagePromptVersion,
     video,
     primaryVideo,
-    videoStatus: primaryVideo?.status ?? (video ? 'completed' : 'pending'),
+    videoStatus: readinessVideoStatus({
+      hasSelectedVideo: video !== null,
+      primaryVideoStatus: primaryVideo?.status ?? null,
+    }),
     gridSheet: sources.gridSheet ?? null,
     motionPrompt: sources.motionPrompt ?? null,
+    pendingUpscaleUrl: sources.pendingUpscaleUrl ?? null,
+    pendingUpscaleIndex: null,
+  };
+}
+
+/** Crop url on a generating pending-promote version; otherwise null. */
+export function pendingUpscaleUrlFromVersion(
+  version: FrameVariant | null | undefined
+): string | null {
+  if (
+    !version ||
+    version.status !== 'generating' ||
+    !version.url ||
+    !isBrowserDisplayableStillUrl(version.url)
+  ) {
+    return null;
+  }
+  return version.url;
+}
+
+/**
+ * Trim URLs (`/cdn-cgi/image/trim=`) only resolve through a Cloudflare
+ * Image Resizing edge. Patching one into `image.url` is what #1193's broken
+ * preview was. `/r2/` and ordinary https URLs are safe to show.
+ */
+export function isBrowserDisplayableStillUrl(url: string): boolean {
+  return !url.includes('/cdn-cgi/image/');
+}
+
+/**
+ * Optimistic shot after the user picks a grid tile: keep the current still
+ * (or swap in a displayable crop), spin the frame, remember the cell index
+ * for the CSS overlay, and drop the old motion so the player doesn't keep
+ * playing the previous video over the new start frame.
+ */
+export function shotAfterVariantSelect(
+  shot: ShotView,
+  imageUrl?: string,
+  variantIndex?: number
+): ShotView {
+  return {
+    ...shot,
+    image:
+      imageUrl && shot.image ? { ...shot.image, url: imageUrl } : shot.image,
+    frame: { ...shot.frame, imageStatus: 'generating' },
+    pendingUpscaleUrl: imageUrl ?? shot.pendingUpscaleUrl ?? null,
+    pendingUpscaleIndex: variantIndex ?? shot.pendingUpscaleIndex ?? null,
+    video: null,
+    videoStatus: 'pending',
   };
 }

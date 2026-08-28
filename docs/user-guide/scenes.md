@@ -71,6 +71,7 @@ Full control over the scene's image generation:
 - **Editable prompt** — The full visual prompt used to generate the image. Edit it to refine the composition, lighting, or details.
 - **Character count** — Displayed in real-time as you edit
 - **Model selector** — Switch between image models for this specific scene
+- **Optimised prompt** — A collapsed panel for the currently selected model only. Expand it to read the assembled prompt (reference bindings included); toggle **JSON** to copy the exact request body.
 - **Shorten Prompt** — AI-powered prompt compression that preserves intent while reducing length. Shows the reduction percentage (e.g., "Prompt shortened by 35% (2400 to 1560 chars)")
 - **Generate Image** / **Regenerate Image** — Create a new image with the current prompt and model
 - **Set Image** — When previewing a variant from a different model, set it as the scene's primary image
@@ -82,7 +83,7 @@ Control over the scene's video generation:
 
 - **Editable prompt** — The motion direction prompt (camera movements, character actions). Edit to change the animation style.
 - **Model selector** — Switch between video models for this scene. Models are filtered by aspect ratio compatibility and style category.
-- **Optimised prompt preview** — Shows the fully assembled prompt that will be sent to the model, including dialogue and audio cues from the script. Displays character count against the model's maximum prompt length.
+- **Optimised prompt** — A collapsed panel for the currently selected model only. The header shows character count against that model's maximum prompt length (highlighted if over). Expand it to read the assembled prompt (dialogue, audio cues, reference bindings); toggle **JSON** to copy the exact request body.
 - **Generate Motion** / **Regenerate Motion** — Create a new video clip
 - **Copy Prompt** — Copy the assembled prompt to clipboard
 

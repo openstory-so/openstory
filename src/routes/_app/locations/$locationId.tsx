@@ -153,7 +153,11 @@ function LocationDetailPage() {
                 <EditLocationDialog
                   location={location}
                   trigger={
-                    <Button variant="outline" size="icon">
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      aria-label="Edit location"
+                    >
                       <Pencil className="h-4 w-4" />
                     </Button>
                   }

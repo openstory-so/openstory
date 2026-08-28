@@ -86,13 +86,16 @@ async function eventKinds(): Promise<string[]> {
 }
 
 const STYLE_CONFIG: StyleConfig = {
-  mood: 'neutral',
-  artStyle: 'cinematic',
-  lighting: 'natural',
-  colorPalette: ['#000', '#fff'],
-  cameraWork: 'static',
-  referenceFilms: [],
-  colorGrading: 'neutral',
+  version: 2,
+  look: {
+    mood: 'neutral',
+    artStyle: 'cinematic',
+    lighting: 'natural',
+    colorPalette: ['#000', '#fff'],
+    colorGrading: 'neutral',
+  },
+  motion: { camera: 'static' },
+  references: [],
 };
 
 const HASH_SCENE = {

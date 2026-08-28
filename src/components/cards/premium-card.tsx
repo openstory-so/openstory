@@ -12,7 +12,9 @@ function PremiumCard({
       data-slot="card"
       data-variant="premium"
       className={cn(
-        'relative flex flex-col gap-6 overflow-hidden rounded-xl border border-border/50 py-0 text-card-foreground shadow-2xl',
+        // Define --card-spacing so shadcn CardHeader/Content/Footer
+        // (px-(--card-spacing)) still pad when used outside ui/Card.
+        'relative flex flex-col gap-6 overflow-hidden rounded-xl border border-border/50 py-0 text-card-foreground shadow-2xl [--card-spacing:--spacing(4)]',
         'bg-gradient-to-br from-card-gradient-from via-card-gradient-via to-card-gradient-to',
         className
       )}

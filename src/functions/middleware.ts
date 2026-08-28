@@ -13,8 +13,6 @@ import type { Session, User } from '@/lib/auth/config';
 import { getAuth } from '@/lib/auth/config';
 import { isSystemAdmin, requireSystemAdmin } from '@/lib/auth/system-admin';
 import { APIError } from 'better-auth/api';
-import { isStripeEnabled } from '@/lib/billing/constants';
-import { getStripeOrThrow, getStripeWebhookSecret } from '@/lib/billing/stripe';
 import type { AspectRatio } from '@/lib/constants/aspect-ratios';
 import {
   createScopedDb,
@@ -25,8 +23,21 @@ import {
 } from '@/lib/db/scoped';
 import type { Scene } from '@/lib/ai/scene-analysis.schema';
 import { resolveSceneForShotFromDb } from '@/lib/scenes/scene-script';
-import { NotFoundError } from '@/lib/errors';
-import { getLogger, toErrorPayload } from '@/lib/observability/logger';
+import {
+  assertCanWrite,
+  restrictionNotice,
+} from '@/lib/compliance/enforcement';
+import { loadComplianceState } from '@/lib/compliance/generation-gate';
+import {
+  AccountRestrictedError,
+  AuthenticationError,
+  NotFoundError,
+} from '@/lib/errors';
+import {
+  errorHeadline,
+  getLogger,
+  toErrorPayload,
+} from '@/lib/observability/logger';
 import { ulidSchema } from '@/lib/schemas/id.schemas';
 import type { Frame } from '@/lib/db/schema';
 import type { SequenceStatus } from '@/lib/db/schema/sequences';
@@ -34,7 +45,6 @@ import type { Shot, Sequence } from '@/types/database';
 import { createMiddleware } from '@tanstack/react-start';
 import { getRequest } from '@tanstack/react-start/server';
 import { zodValidator } from '@tanstack/zod-adapter';
-import type Stripe from 'stripe';
 import { z } from 'zod';
 
 // ============================================================================
@@ -52,13 +62,6 @@ export type TeamContext = AuthContext & {
 };
 
 export type SystemAdminContext = TeamContext;
-
-export type StripeWebhookContext = {
-  stripeEvent: Stripe.Event | null;
-  scopedDb: ScopedDb | null;
-  teamId: string | null;
-  userId: string | null;
-};
 
 export type SequenceContext = TeamContext & {
   sequence: Sequence;
@@ -186,7 +189,10 @@ export const loggerMiddleware = createMiddleware({ type: 'function' }).server(
         fnName,
         durationMs,
         errCode: err.code,
-        errMessage: err.message,
+        // Reason-first and length-capped: a raw driver message (drizzle puts
+        // the whole SQL statement there) would otherwise fill the body's
+        // truncation budget and evict the cause — see errorHeadline (#1135).
+        errMessage: errorHeadline(err),
         err,
       };
       // Expected business rejections are outcomes, not failures: warn, so prod
@@ -322,6 +328,27 @@ export const authWithTeamRequestMiddleware = createMiddleware().server(
         );
       }
 
+      const compliance = await loadComplianceState(
+        session.user.id,
+        team.teamId
+      );
+      if (!compliance.enforcement.canAccess) {
+        throw authErrorResponse(
+          403,
+          'ACCOUNT_RESTRICTED',
+          restrictionNotice(compliance.enforcement) ??
+            'This account may not use the service'
+        );
+      }
+      if (request.method !== 'GET' && !compliance.enforcement.canWrite) {
+        throw authErrorResponse(
+          403,
+          'ACCOUNT_RESTRICTED',
+          restrictionNotice(compliance.enforcement) ??
+            'This account is read-only'
+        );
+      }
+
       return await next({
         context: {
           user: session.user,
@@ -337,98 +364,6 @@ export const authWithTeamRequestMiddleware = createMiddleware().server(
 );
 
 /**
- * Stripe webhook signature verification middleware — for use with server routes.
- * Verifies the stripe-signature header and passes the validated event via context.
- * When Stripe is disabled, passes stripeEvent: null so the handler can early-return.
- */
-export const stripeWebhookMiddleware = createMiddleware().server(
-  async ({ next, request }) => {
-    if (!isStripeEnabled()) {
-      return next({
-        context: {
-          stripeEvent: null as Stripe.Event | null,
-          scopedDb: null as ScopedDb | null,
-          teamId: null as string | null,
-          userId: null as string | null,
-        },
-      });
-    }
-
-    const stripe = getStripeOrThrow();
-    const webhookSecret = getStripeWebhookSecret();
-    if (!webhookSecret) {
-      throw Response.json(
-        { error: 'Webhook secret not configured' },
-        { status: 500 }
-      );
-    }
-
-    const body = await request.text();
-    const signature = request.headers.get('stripe-signature');
-    if (!signature) {
-      throw Response.json(
-        { error: 'Missing stripe-signature header' },
-        { status: 400 }
-      );
-    }
-
-    try {
-      const event = await stripe.webhooks.constructEventAsync(
-        body,
-        signature,
-        webhookSecret
-      );
-
-      const obj = event.data.object;
-
-      if (
-        !('metadata' in obj) ||
-        typeof obj.metadata !== 'object' ||
-        obj.metadata === null
-      ) {
-        throw Response.json(
-          { error: `Stripe event ${event.id} missing metadata` },
-          { status: 400 }
-        );
-      }
-      const metadata = obj.metadata;
-      if (!('teamId' in metadata && 'userId' in metadata)) {
-        throw Response.json(
-          {
-            error: `Stripe event ${event.id} missing teamId or userId in metadata`,
-          },
-          { status: 400 }
-        );
-      }
-
-      const teamId = metadata.teamId;
-      const userId = metadata.userId;
-      if (typeof teamId !== 'string' || typeof userId !== 'string') {
-        throw Response.json(
-          {
-            error: `Stripe event ${event.id} missing teamId or userId in metadata`,
-          },
-          { status: 400 }
-        );
-      }
-      return next({
-        context: {
-          stripeEvent: event,
-          scopedDb: createScopedDb(teamId, userId),
-          teamId,
-          userId,
-        },
-      });
-    } catch (error) {
-      // Metadata validation throws Response above; rethrow as-is. Anything
-      // else (signature verify failure, malformed body) is an invalid webhook.
-      if (error instanceof Response) throw error;
-      throw Response.json({ error: 'Invalid signature' }, { status: 400 });
-    }
-  }
-);
-
-/**
  * Basic auth middleware - requires authenticated user
  * Adds user and session to context
  */
@@ -439,7 +374,7 @@ export const authMiddleware = createMiddleware({ type: 'function' }).server(
     const session = await auth.api.getSession({ headers: request.headers });
 
     if (!session?.user) {
-      throw new Error('Authentication required');
+      throw new AuthenticationError('Authentication required');
     }
 
     return next({
@@ -482,6 +417,27 @@ export const authWithTeamMiddleware = createMiddleware({ type: 'function' })
       throw new Error('No team found for user');
     }
 
+    const compliance = await loadComplianceState(context.user.id, team.teamId);
+    if (!compliance.enforcement.canAccess) {
+      throw new AccountRestrictedError(
+        restrictionNotice(compliance.enforcement) ??
+          'This account may not use the service',
+        {
+          action: compliance.enforcement.mostSevere?.action,
+          reason: compliance.enforcement.mostSevere?.reason,
+          enforcementId: compliance.enforcement.mostSevere?.id,
+          appealPath: '/report',
+        }
+      );
+    }
+    // Server fns: GET stays readable under account_suspended; POST/PUT/etc.
+    // are writes. `getComplianceStatusFn` uses authMiddleware only so a
+    // terminated account can still see the restriction banner.
+    const request = getRequest();
+    if (request.method !== 'GET') {
+      assertCanWrite(compliance.enforcement);
+    }
+
     return next({
       context: {
         teamId: team.teamId,
@@ -520,7 +476,7 @@ export const systemAdminMiddleware = createMiddleware({ type: 'function' })
  */
 export const sequenceAccessMiddleware = createMiddleware({ type: 'function' })
   .middleware([authWithTeamMiddleware])
-  .inputValidator(zodValidator(z.looseObject({ sequenceId: ulidSchema })))
+  .validator(zodValidator(z.looseObject({ sequenceId: ulidSchema })))
   .server(async ({ next, context, data }) => {
     let sequence = await context.scopedDb.sequences.getById(data.sequenceId);
     let { teamId, scopedDb } = context;
@@ -553,7 +509,7 @@ export const sequenceAccessMiddleware = createMiddleware({ type: 'function' })
  */
 export const shotAccessMiddleware = createMiddleware({ type: 'function' })
   .middleware([authWithTeamMiddleware])
-  .inputValidator(
+  .validator(
     zodValidator(z.looseObject({ sequenceId: ulidSchema, shotId: ulidSchema }))
   )
   .server(async ({ next, context, data }) => {
@@ -617,7 +573,7 @@ export const shotAccessMiddleware = createMiddleware({ type: 'function' })
  */
 export const teamMemberAccessMiddleware = createMiddleware({ type: 'function' })
   .middleware([authWithTeamMiddleware])
-  .inputValidator(zodValidator(z.looseObject({ teamId: ulidSchema })))
+  .validator(zodValidator(z.looseObject({ teamId: ulidSchema })))
   .server(async ({ next, context, data }) => {
     if (data.teamId !== context.teamId) {
       await requireTeamMemberAccess(context.user.id, data.teamId);
@@ -641,7 +597,7 @@ export const teamMemberAccessMiddleware = createMiddleware({ type: 'function' })
  */
 export const teamAdminAccessMiddleware = createMiddleware({ type: 'function' })
   .middleware([authWithTeamMiddleware])
-  .inputValidator(zodValidator(z.looseObject({ teamId: ulidSchema })))
+  .validator(zodValidator(z.looseObject({ teamId: ulidSchema })))
   .server(async ({ next, context, data }) => {
     await requireTeamAdminAccess(context.user.id, data.teamId);
 
@@ -663,7 +619,7 @@ export const teamAdminAccessMiddleware = createMiddleware({ type: 'function' })
  */
 export const teamOwnerAccessMiddleware = createMiddleware({ type: 'function' })
   .middleware([authWithTeamMiddleware])
-  .inputValidator(zodValidator(z.looseObject({ teamId: ulidSchema })))
+  .validator(zodValidator(z.looseObject({ teamId: ulidSchema })))
   .server(async ({ next, context, data }) => {
     await requireTeamOwnerAccess(context.user.id, data.teamId);
 

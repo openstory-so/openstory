@@ -216,13 +216,14 @@ const perSegmentScenes: SceneWithScript[] = [
 
 const defaultArgs = {
   sequenceId: PS_SEQ,
+  className: 'w-[360px]',
   shots: [] as typeof mockShots,
   scenes: [],
   selection: { sceneIds: [] as string[] },
   aspectRatio: DEFAULT_ASPECT_RATIO,
   sequenceModels: { imageModel: 'nano_banana', videoModel: 'veo3' },
   onSelectScene: () => console.log('onSelectScene'),
-  onSelectShot: () => console.log('onSelectShot'),
+  onSelectShot: (shotId: string) => console.log('onSelectShot', shotId),
   onClearSelection: () => console.log('onClearSelection'),
   regeneratingImages: new Set<string>(),
   regeneratingMotion: new Set<string>(),

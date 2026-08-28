@@ -1,8 +1,8 @@
-import type { StyleConfig } from '@/lib/db/schema/libraries';
+import { migrateStyleConfigV1ToV2 } from '@/lib/style/style-config';
 import { describe, expect, it } from 'vitest';
 import { buildStyledImagePrompt } from './style-image-prompt';
 
-const config: StyleConfig = {
+const config = migrateStyleConfigV1ToV2({
   mood: 'playful',
   artStyle: 'layered paper pop-up cutouts',
   lighting: 'soft daylight',
@@ -10,7 +10,7 @@ const config: StyleConfig = {
   cameraWork: 'slow push-in',
   referenceFilms: ['handmade stop-motion clay shorts'],
   colorGrading: 'warm',
-};
+});
 
 describe('buildStyledImagePrompt', () => {
   it('puts the scene first as the subject and folds in the style config', () => {

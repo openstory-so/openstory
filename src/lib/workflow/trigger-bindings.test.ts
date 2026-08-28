@@ -9,13 +9,18 @@
  * multi-create step can never complete once one sibling fails (issue #846
  * RC3). But dedup ids are not always run-scoped (`shotPromptDedupId` is
  * stable across user requests), so the swallow is gated on the existing
- * instance's status: alive-or-complete reuses it; errored/terminated/unknown/
- * unverifiable rethrows so a dead instance can't masquerade as "enqueued".
+ * instance's status: alive-or-complete reuses it, while terminated/unknown/
+ * unverifiable rethrow so a dead instance can't masquerade as "enqueued".
  * The random-suffix path can't collide legitimately, so it keeps throwing.
+ *
+ * `errored` is the exception, and the second describe block below covers it:
+ * rethrowing there made the dedup id a permanent tombstone (#1149), so an
+ * errored instance now yields a fresh generation id instead.
  */
 
 import { describe, expect, test, vi } from 'vitest';
 import { triggerCfWorkflow, workflowNameFromRunId } from './trigger-bindings';
+import { buildInstanceId } from '@/lib/workflow/instance-id';
 import type { CloudflareEnv } from '@/lib/workflow/types';
 
 // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal env stub: triggerCfWorkflow only reads VITE_APP_URL (via buildInstanceId)
@@ -44,6 +49,30 @@ function harness(
       id,
       status: () => Promise.resolve({ status: existingInstanceStatus }),
     };
+  });
+  const bindingStub = { create, get };
+  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal Workflow binding stub exposing only create + get
+  const binding = bindingStub as unknown as Workflow<typeof body>;
+  return { binding, create, get };
+}
+
+/**
+ * Harness whose per-id behaviour is scripted: `statuses` maps an instance id to
+ * the status a lookup should report, and any id present there rejects `create`
+ * with `already_exists`. Ids absent from the map are created normally. Models
+ * the #1149 shape — one dead generation, a live next one.
+ */
+function scriptedHarness(statuses: Record<string, InstanceStatus['status']>) {
+  const create = vi.fn(async (opts: { id: string; params: unknown }) => {
+    if (opts.id in statuses) {
+      throw new Error('(instance.already_exists) Instance already exists');
+    }
+    return { id: opts.id };
+  });
+  const get = vi.fn(async (id: string) => {
+    const status = statuses[id];
+    if (!status) throw new Error('instance not found');
+    return { id, status: () => Promise.resolve({ status }) };
   });
   const bindingStub = { create, get };
   // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal Workflow binding stub exposing only create + get
@@ -182,12 +211,14 @@ describe('triggerCfWorkflow', () => {
   );
 
   // A request-stable dedup id (e.g. shotPromptDedupId) colliding with a
-  // FAILED prior instance must stay loud: returning the dead instance's id
+  // FAILED prior instance must never RESOLVE to the dead id: returning it
   // would clear staleness banners while no workflow ever runs (#846 review).
-  test.each(['errored', 'terminated', 'unknown'] as const)(
+  // `terminated` is a user cancellation (#1085) and `unknown` is unverifiable,
+  // so both stay hard rethrows — only `errored` earns a fresh generation.
+  test.each(['terminated', 'unknown'] as const)(
     'rethrows already_exists when the existing instance is %s',
     async (status) => {
-      const { binding } = harness(alreadyExists, status);
+      const { binding, create } = harness(alreadyExists, status);
 
       await expect(
         triggerCfWorkflow({
@@ -198,6 +229,7 @@ describe('triggerCfWorkflow', () => {
           deduplicationId: 'prompt-visual-f1-h4sh',
         })
       ).rejects.toThrow(/already exists/i);
+      expect(create).toHaveBeenCalledTimes(1);
     }
   );
 
@@ -237,5 +269,136 @@ describe('triggerCfWorkflow', () => {
         deduplicationId: 'preview-shot1-h4sh',
       })
     ).rejects.toThrow('network down');
+  });
+});
+
+/**
+ * #1149: an `errored` deduplicated instance is a tombstone. Every retry of the
+ * calling step re-derives the same id, collides with the dead instance, and
+ * rethrows — so the retry can never succeed and one content-flagged preview
+ * image permanently failed its whole sequence. A non-reusable-because-errored
+ * status must mint a FRESH instance id instead.
+ */
+describe('triggerCfWorkflow generation retry after an errored instance', () => {
+  const dedup = 'preview-16b99z-01KZQFJH8VB3VPCRJEM0P2ZYM4';
+  const gen1 = `openstory-so_image_${dedup}`;
+
+  test('an errored instance does not block its own retry: a fresh id is created', async () => {
+    const { binding, create } = scriptedHarness({ [gen1]: 'errored' });
+
+    const result = await triggerCfWorkflow({
+      binding,
+      triggerPath: '/image',
+      body,
+      env,
+      deduplicationId: dedup,
+    });
+
+    expect(result.workflowRunId).toBe(`${gen1}_g2`);
+    expect(create.mock.calls.map((c) => c[0].id)).toEqual([gen1, `${gen1}_g2`]);
+  });
+
+  test('the fresh generation carries the full payload', async () => {
+    const { binding, create } = scriptedHarness({ [gen1]: 'errored' });
+
+    await triggerCfWorkflow({
+      binding,
+      triggerPath: '/image',
+      body,
+      env,
+      deduplicationId: dedup,
+    });
+
+    expect(create.mock.calls[1]?.[0].params).toEqual(body);
+  });
+
+  // Replay safety: once generation 2 is live, a later attempt of the same step
+  // must land on it rather than spawn generation 3 — the double-billing guard
+  // has to survive the tombstone fix.
+  test.each(['running', 'complete'] as const)(
+    'reuses generation 2 when it is %s instead of spawning another paid job',
+    async (status) => {
+      const { binding, create } = scriptedHarness({
+        [gen1]: 'errored',
+        [`${gen1}_g2`]: status,
+      });
+
+      const result = await triggerCfWorkflow({
+        binding,
+        triggerPath: '/image',
+        body,
+        env,
+        deduplicationId: dedup,
+      });
+
+      expect(result.workflowRunId).toBe(`${gen1}_g2`);
+      // Two probes, zero successful creates — nothing new was paid for.
+      expect(create).toHaveBeenCalledTimes(2);
+    }
+  );
+
+  test('walks past several errored generations to the first free id', async () => {
+    const { binding } = scriptedHarness({
+      [gen1]: 'errored',
+      [`${gen1}_g2`]: 'errored',
+    });
+
+    const result = await triggerCfWorkflow({
+      binding,
+      triggerPath: '/image',
+      body,
+      env,
+      deduplicationId: dedup,
+    });
+
+    expect(result.workflowRunId).toBe(`${gen1}_g3`);
+  });
+
+  // The cap is what stops a deterministically-failing prompt (one the content
+  // checker will flag every time) from re-spawning paid jobs indefinitely.
+  test('fails loudly once every generation has errored', async () => {
+    const { binding, create } = scriptedHarness({
+      [gen1]: 'errored',
+      [`${gen1}_g2`]: 'errored',
+      [`${gen1}_g3`]: 'errored',
+    });
+
+    await expect(
+      triggerCfWorkflow({
+        binding,
+        triggerPath: '/image',
+        body,
+        env,
+        deduplicationId: dedup,
+      })
+    ).rejects.toThrow(/exhausted 3 instance generations/);
+    expect(create).toHaveBeenCalledTimes(3);
+  });
+
+  // A dedup id long enough to be truncated is where the generation tag could
+  // silently collapse back onto generation 1's id — the tag is appended after
+  // truncation reserves room, so the two must stay distinct AND under 100.
+  test('a truncated dedup id still yields a distinct, legal generation-2 id', async () => {
+    const longDedup = `preview-16b99z-${'x'.repeat(120)}`;
+    const longGen1 = buildInstanceId({
+      env,
+      workflowName: 'image',
+      suffix: longDedup,
+    });
+    const { binding, create } = scriptedHarness({ [longGen1]: 'errored' });
+
+    const result = await triggerCfWorkflow({
+      binding,
+      triggerPath: '/image',
+      body,
+      env,
+      deduplicationId: longDedup,
+    });
+
+    expect(result.workflowRunId).not.toBe(longGen1);
+    expect(create).toHaveBeenCalledTimes(2);
+    for (const call of create.mock.calls) {
+      expect(call[0].id.length).toBeLessThanOrEqual(100);
+    }
   });
 });

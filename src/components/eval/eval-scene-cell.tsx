@@ -163,6 +163,7 @@ export const EvalSceneCell: React.FC<EvalSceneCellProps> = ({
           type="button"
           className="border-b p-2 cursor-pointer hover:bg-muted/50 transition-colors h-full flex flex-col min-h-0 overflow-hidden w-full text-left appearance-none bg-transparent"
           onClick={handleClick}
+          aria-label={`Scene ${sceneNumber} script`}
         >
           <ScrollArea className="flex-1 w-full min-h-0">
             <p className="text-xs leading-relaxed whitespace-pre-wrap pr-2">
@@ -254,6 +255,7 @@ export const EvalSceneCell: React.FC<EvalSceneCellProps> = ({
           type="button"
           className="border-b p-2 cursor-pointer hover:bg-muted/50 transition-colors h-full flex flex-col min-h-0 overflow-hidden w-full text-left appearance-none bg-transparent"
           onClick={handleClick}
+          aria-label={`Scene ${sceneNumber} video`}
         >
           <div className="flex-1 flex items-center justify-center min-h-0">
             <video

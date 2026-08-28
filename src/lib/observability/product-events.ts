@@ -21,7 +21,8 @@ type ProductEventName =
   | 'sequence_generated'
   | 'founder_credits_requested'
   | 'credits_added'
-  | 'feedback_submitted';
+  | 'feedback_submitted'
+  | 'sequence_ready_email_sent';
 
 export type CaptureProductEventArgs = {
   distinctId: string;

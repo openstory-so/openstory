@@ -241,6 +241,13 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
       why: "The trigger's frame, confirmed to still exist and settled when a render is cancelled mid-flight.",
     },
   ],
+  'soften-image-prompt.ts': [
+    {
+      read: 'framePromptVersions.getByIdForFrame',
+      bucket: 'CLAIM-BY-ID',
+      why: 'The prompt version this run rendered from, named by the trigger snapshot — copied onto the softened row so staleness keeps the same upstream hash.',
+    },
+  ],
   'llm-call-helper.ts': [
     {
       read: 'resolveLlmKey',
@@ -336,11 +343,30 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
       why: 'Ids only — every field the fan-out needs comes from the trigger-time snapshot.',
     },
   ],
+  'regenerate-shots-workflow.ts': [
+    {
+      read: 'compliance.listEnforcementFor',
+      bucket: 'BILLING-GUARD',
+      why: 'Spawn-time enforcement: a ban applied after the parent started must stop work that has not started yet.',
+    },
+  ],
   'scene-split-workflow.ts': [
     {
       read: 'resolveLlmKey',
       bucket: 'CREDENTIAL',
       why: 'Resolved inside the step that spends it.',
+    },
+    {
+      read: 'compliance.listEnforcementFor',
+      bucket: 'BILLING-GUARD',
+      why: 'Spawn-time enforcement: a ban applied after the parent started must stop work that has not started yet.',
+    },
+  ],
+  'shot-images-workflow.ts': [
+    {
+      read: 'compliance.listEnforcementFor',
+      bucket: 'BILLING-GUARD',
+      why: 'Spawn-time enforcement: a ban applied after the parent started must stop work that has not started yet.',
     },
   ],
   'sheet-snapshots.ts': [
@@ -443,9 +469,14 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
   ],
   'upscale-shot-variant-workflow.ts': [
     {
+      read: 'frameVariants.getById',
+      bucket: 'CLAIM-BY-ID',
+      why: "This run's framing version, by the id snapshotted at click (complete that row, do not append another) and, on failure, the pending-promote claim to check this run still owns it before clearing (#1129).",
+    },
+    {
       read: 'frames.getById',
       bucket: 'EXISTENCE-GUARD',
-      why: "The trigger's frame, checked but never re-resolved, so the render step and the select step write to the same one.",
+      why: "The trigger's frame, checked but never re-resolved, so the render step and the promote step write to the same one. On the failure path it also yields the pending-promote claim id.",
     },
   ],
   'wait-for-sheets.ts': [
@@ -509,6 +540,10 @@ const _claimsCannotFollowPointer: Has<
 /** `credentials` resolves a key … */
 const _credentialsResolve: Has<WorkflowScopedDb['credentials'], 'resolveKey'> =
   true;
+const _credentialsResolveOptional: Has<
+  WorkflowScopedDb['credentials'],
+  'resolveOptionalKey'
+> = true;
 /** … and exposes no data domain to read from. */
 const _credentialsHaveNoDomains: Has<
   WorkflowScopedDb['credentials'],
@@ -525,8 +560,9 @@ describe('workflows read no unsanctioned mutable DB state mid-run', () => {
       _claimsReachById,
       _claimsCannotFollowPointer,
       _credentialsResolve,
+      _credentialsResolveOptional,
       _credentialsHaveNoDomains,
-    ]).toEqual([false, true, true, false, true, false, true, false]);
+    ]).toEqual([false, true, true, false, true, false, true, true, false]);
   });
 
   const files = workflowSourceFiles();

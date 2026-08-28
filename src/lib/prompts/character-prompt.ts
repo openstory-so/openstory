@@ -61,16 +61,16 @@ export const buildCharacterReferenceImages = (
 const formatStyleForSheet = (
   styleConfig: StyleConfig
 ): { environment: string; opticalSpecs: string; lighting: string } => {
-  const colorPaletteStr = styleConfig.colorPalette.join(', ');
+  const { look, motion, references } = styleConfig;
+  const colorPaletteStr = look.colorPalette.join(', ');
   const referencesStr =
-    styleConfig.referenceFilms.length > 0
-      ? ` Reference look: ${styleConfig.referenceFilms.join(', ')}.`
-      : '';
+    references.length > 0 ? ` Reference look: ${references.join(', ')}.` : '';
+  const mediumStr = look.medium ? ` Medium: ${look.medium}.` : '';
 
   return {
-    environment: `Render the character in ${styleConfig.artStyle} style. Background: clean, seamless studio backdrop with no environmental detail — simple flat or gradient tone using the style's color palette: ${colorPaletteStr}. Color grading: ${styleConfig.colorGrading}. Mood: ${styleConfig.mood}.${referencesStr} All visual interest comes from the character, not the environment.`,
-    opticalSpecs: `${styleConfig.artStyle} style rendering. Camera approach: ${styleConfig.cameraWork}. Maintain sharp focus and consistent character detail across all panels.`,
-    lighting: `${styleConfig.lighting}. The lighting should be consistent across all four panels and match the overall ${styleConfig.mood} mood.`,
+    environment: `Render the character in ${look.artStyle} style.${mediumStr} Background: clean, seamless studio backdrop with no environmental detail — simple flat or gradient tone using the style's color palette: ${colorPaletteStr}. Color grading: ${look.colorGrading}. Mood: ${look.mood}.${referencesStr} All visual interest comes from the character, not the environment.`,
+    opticalSpecs: `${look.artStyle} style rendering. Camera approach: ${motion.camera}. Maintain sharp focus and consistent character detail across all panels.`,
+    lighting: `${look.lighting}. The lighting should be consistent across all four panels and match the overall ${look.mood} mood.`,
   };
 };
 

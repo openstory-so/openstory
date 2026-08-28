@@ -17,6 +17,7 @@ const FRESH: ShotStalenessResult = {
   thumbnail: 'fresh',
   visualPrompt: 'fresh',
   motionPrompt: 'fresh',
+  causes: [],
   liveHashes: {
     thumbnail: 'live-thumb',
     visualPrompt: 'live-visual',

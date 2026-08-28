@@ -20,6 +20,7 @@
  */
 
 export const API_V1_BASE = '/api/v1';
+export const STYLES_PATH = `${API_V1_BASE}/styles`;
 
 type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 

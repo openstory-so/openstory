@@ -65,6 +65,10 @@ export type ShotWithAnchorFrame = Shot & { anchorFrameId: string };
 // well under D1's 100-bound-parameter ceiling (see `ensureAnchorFrames`).
 const ANCHOR_FRAMES_BATCH = 9;
 
+// One bound param per id; 90 keeps `getByIds` under D1's 100-bound-parameter
+// ceiling (#1322). libsql (unit tests) has no such cap.
+const SHOTS_BY_IDS_BATCH = 90;
+
 // No `hasVideo` filter: it had no callers, and its condition was inverted
 // (`hasVideo: true` pushed `video_url IS NULL`). Whether a shot has a video is
 // now a question about its render segment's selection pointer, not a shot
@@ -538,7 +542,16 @@ export function createShotsMethods(db: Database) {
 
     getByIds: async (shotIds: string[]): Promise<Shot[]> => {
       if (shotIds.length === 0) return [];
-      return await db.select().from(shots).where(inArray(shots.id, shotIds));
+      const rows: Shot[] = [];
+      for (let i = 0; i < shotIds.length; i += SHOTS_BY_IDS_BATCH) {
+        rows.push(
+          ...(await db
+            .select()
+            .from(shots)
+            .where(inArray(shots.id, shotIds.slice(i, i + SHOTS_BY_IDS_BATCH))))
+        );
+      }
+      return rows;
     },
 
     getWithSequence: async (

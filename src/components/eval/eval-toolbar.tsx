@@ -111,6 +111,7 @@ const ViewModeToggle: React.FC<ViewModeToggleProps> = ({
         }
       }}
       variant="outline"
+      spacing={0}
       className={iconOnly ? 'w-full' : undefined}
     >
       {VIEW_MODE_ITEMS.map(({ value, label, icon: Icon }) => (

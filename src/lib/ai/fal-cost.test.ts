@@ -203,14 +203,42 @@ describe('estimateFalCost', () => {
     ).toBeNull();
   });
 
-  test('tokens estimate from resolution (parametric, not historical)', () => {
+  test('tokens estimate uses 720p default (Seedance platform default, not 1080p)', () => {
+    // tokens = 1280×720×24×5 / 1024 = 108_000 → 108 × 1.05 units × $0.014
+    const expected720p = micros(1_587_600);
+    expect(
+      estimateFalCost(
+        'bytedance/seedance-2.0/enterprise/v2/image-to-video',
+        { durationSeconds: 5 },
+        PRICING
+      )
+    ).toBe(expected720p);
     expect(
       estimateFalCost(
         'bytedance/seedance-2.0/enterprise/v2/image-to-video',
         { durationSeconds: 5, resolution: '720p' },
         PRICING
       )
-    ).toBe(micros(1_587_600));
+    ).toBe(expected720p);
+  });
+
+  test('tokens estimate scales with explicit 1080p resolution', () => {
+    // 1080p pixel area is 2.25× 720p → cost scales the same way
+    const at1080 = Number(
+      estimateFalCost(
+        'bytedance/seedance-2.0/enterprise/v2/image-to-video',
+        { durationSeconds: 5, resolution: '1080p' },
+        PRICING
+      )
+    );
+    const at720 = Number(
+      estimateFalCost(
+        'bytedance/seedance-2.0/enterprise/v2/image-to-video',
+        { durationSeconds: 5, resolution: '720p' },
+        PRICING
+      )
+    );
+    expect(at1080 / at720).toBeCloseTo((1920 * 1080) / (1280 * 720), 5);
   });
 
   test('a catalog unit we have no strategy for estimates per call', () => {

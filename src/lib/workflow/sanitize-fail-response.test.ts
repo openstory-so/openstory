@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { describe, expect, test } from 'vitest';
 import { isLlmAuthError, sanitizeFailResponse } from './sanitize-fail-response';
 
@@ -102,5 +103,14 @@ describe('isLlmAuthError', () => {
     expect(isLlmAuthError('Request timed out')).toBe(false);
     expect(isLlmAuthError('500 Internal Server Error')).toBe(false);
     expect(isLlmAuthError('Rate limit exceeded')).toBe(false);
+  });
+});
+
+describe('sanitizeFailResponse with a ZodError', () => {
+  test('stores one line, not the raw issue array (#1285)', () => {
+    const error = z.enum(['film', 'tech']).safeParse('documentary').error;
+    expect(sanitizeFailResponse(error)).toBe(
+      'Invalid option: expected one of "film"|"tech"'
+    );
   });
 });

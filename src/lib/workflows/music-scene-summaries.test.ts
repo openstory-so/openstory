@@ -1,6 +1,9 @@
 import type { Scene } from '@/lib/ai/scene-analysis.schema';
 import { describe, expect, it } from 'vitest';
-import { buildMusicSceneSummaries } from './music-scene-summaries';
+import {
+  buildMusicSceneSummaries,
+  joinMusicDesignByIndex,
+} from './music-scene-summaries';
 
 const baseMetadata: NonNullable<Scene['metadata']> = {
   title: 'Title',
@@ -82,5 +85,46 @@ describe('buildMusicSceneSummaries', () => {
     });
     if (!summary) throw new Error('expected summary to be defined');
     expect(summary.visualSummary).toBe('tense corporate');
+  });
+});
+
+const musicA = {
+  presence: 'moderate' as const,
+  style: 'strings',
+  mood: 'tense',
+  atmosphere: 'office',
+};
+const musicB = {
+  presence: 'full' as const,
+  style: 'percussion',
+  mood: 'driving',
+  atmosphere: 'street',
+};
+
+describe('joinMusicDesignByIndex', () => {
+  it('pairs by index even when echoed sceneIds do not match', () => {
+    const scenes = [
+      sceneWithMetadata({ sceneId: 'ulid-a' }),
+      sceneWithMetadata({ sceneId: 'ulid-b', sceneNumber: 2 }),
+    ];
+    const joined = joinMusicDesignByIndex(scenes, [
+      { sceneId: 'mangled-or-fixture', musicDesign: musicA },
+      { sceneId: 'also-wrong', musicDesign: musicB },
+    ]);
+    expect(joined[0]?.musicDesign).toEqual(musicA);
+    expect(joined[1]?.musicDesign).toEqual(musicB);
+    expect(joined[0]?.sceneId).toBe('ulid-a');
+  });
+
+  it('throws when the music array length does not match the scene count', () => {
+    const scenes = [
+      sceneWithMetadata({ sceneId: 'ulid-a' }),
+      sceneWithMetadata({ sceneId: 'ulid-b', sceneNumber: 2 }),
+    ];
+    expect(() =>
+      joinMusicDesignByIndex(scenes, [
+        { sceneId: 'ulid-a', musicDesign: musicA },
+      ])
+    ).toThrow(/2 were sent/);
   });
 });

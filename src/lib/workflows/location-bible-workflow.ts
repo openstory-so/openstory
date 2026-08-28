@@ -156,6 +156,7 @@ export class LocationBibleWorkflow extends OpenStoryWorkflowEntrypoint<LocationB
           userId: input.userId,
           teamId,
           sequenceId,
+          reservationId: input.reservationId,
           locationDbId,
           locationName: location.name,
           locationMetadata: location,

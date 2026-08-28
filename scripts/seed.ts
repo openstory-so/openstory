@@ -16,6 +16,7 @@
  */
 
 import { createD1HttpClient } from '@/lib/db/client-d1-http';
+import { ensureLocalModelPricingSeeded } from '@/lib/db/seed-model-pricing';
 import {
   ensureSystemTemplatesSeeded,
   type SeedDb,
@@ -84,6 +85,12 @@ async function seed() {
   try {
     console.log(`🌱 Seeding database...${force ? ' (forced)' : ''}\n`);
     await ensureSystemTemplatesSeeded(db, console.log, { force });
+    // Pricing is cron-only in production. Local + Playwright never fire
+    // `scheduled()`, so fill `model_pricing` here — insert-if-missing, never
+    // overwrite a live `refresh-fal-pricing` snapshot. Skip `--d1`.
+    if (!d1) {
+      await ensureLocalModelPricingSeeded(db, console.log);
+    }
     console.log('🎉 Database seeded successfully!');
   } catch (error) {
     console.error('❌ Error seeding database:', error);

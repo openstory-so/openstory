@@ -13,9 +13,9 @@
  *   - Reads payload from `event.payload` instead of `context.requestPayload`
  *     and the workflow run id from `event.instanceId` instead of
  *     `context.workflowRunId`.
- *   - The Promise.all over `context.invoke('image', ...)` becomes
- *     wave-bounded (#1126) Pattern 3 `spawnAndAwaitChild` fan-out
- *     (`mapInWaves` + `await-child.ts`). Each child gets a deterministic
+ *   - The Promise.all over `context.invoke('image', ...)` becomes a
+ *     Pattern 3 `spawnAndAwaitChild` fan-out (`await-child.ts`), unbounded
+ *     since #1143. Each child gets a deterministic
  *     instance ID (`image:${sequenceId}:${shotId}`) and a unique event-type
  *     qualifier so siblings cannot match each other's completion events.
  *   - Calls the snapshot DTO computer (`computeRegenerateShotsBatchHash`)
@@ -31,7 +31,6 @@ import { WorkflowValidationError } from '@/lib/workflow/errors';
 import { buildWorkflowLabel } from '@/lib/workflow/labels';
 import { spawnAndAwaitChild } from '@/lib/workflow/await-child';
 import { OpenStoryWorkflowEntrypoint } from '@/lib/workflow/base-workflow';
-import { FANOUT_CONCURRENCY, mapInWaves } from '@/lib/workflow/map-in-waves';
 import type {
   ImageWorkflowInput,
   RegenerateShotsWorkflowInput,
@@ -46,6 +45,16 @@ import {
 import { getLogger } from '@/lib/observability/logger';
 
 const logger = getLogger(['openstory', 'workflow', 'regenerate-shots']);
+
+/**
+ * Concurrent fire-and-forget `/variant-image` creates.
+ *
+ * Kept when the image fan-out ceiling went away (#1143): these are
+ * `binding.create()` calls rather than awaited children, and Cloudflare rate
+ * limits instance creation at 100/second per workflow — so this bounds a
+ * documented platform limit, not isolate pressure.
+ */
+const VARIANT_TRIGGER_CONCURRENCY = 8;
 
 type ShotResult =
   | { shotId: string; success: true; imageUrl: string }
@@ -68,9 +77,7 @@ export class RegenerateShotsWorkflow extends OpenStoryWorkflowEntrypoint<Regener
   protected override async runImpl(
     event: Readonly<WorkflowEvent<RegenerateShotsWorkflowInput>>,
     step: WorkflowStep,
-    // The reconcile pass that used scopedDb is retired (#989): image-workflow now
-    // appends + selects each version itself.
-    _scopedDb: WorkflowScopedDb
+    scopedDb: WorkflowScopedDb
   ): Promise<RegenerateShotsResult> {
     const input = event.payload;
     const parentInstanceId = event.instanceId;
@@ -128,14 +135,12 @@ export class RegenerateShotsWorkflow extends OpenStoryWorkflowEntrypoint<Regener
     });
 
     // ============================================================
-    // PHASE: Per-shot image regeneration — Pattern 3 fan-out, wave-bounded
-    // (#1126) so large batches don't stampede Workflow isolates + D1.
-    // Within a wave: allSettled isolation; between waves: sequential.
+    // PHASE: Per-shot image regeneration — Pattern 3 fan-out, unbounded
+    // (#1143: the per-run ceiling measured no benefit and was never global).
+    // allSettled so one failing shot doesn't poison its peers.
     // ============================================================
-    const settled = await mapInWaves(
-      snapshots,
-      FANOUT_CONCURRENCY.image,
-      async (snapshot, shotIndex): Promise<ShotResult> => {
+    const settled = await Promise.allSettled(
+      snapshots.map(async (snapshot, shotIndex): Promise<ShotResult> => {
         if (!snapshot.imagePrompt) {
           // Per-shot failure — peer shots in the batch should still run.
           return {
@@ -204,10 +209,10 @@ export class RegenerateShotsWorkflow extends OpenStoryWorkflowEntrypoint<Regener
             error: `Image generation failed: ${reason}`,
           };
         }
-      }
+      })
     );
 
-    // mapInWaves is allSettled per wave; collect into ShotResult[] for reconcile.
+    // allSettled preserves input order; collect into ShotResult[] for reconcile.
     const imageResults: ShotResult[] = settled.map((outcome, i) => {
       if (outcome.status === 'fulfilled') return outcome.value;
       const snapshot = snapshots[i];
@@ -233,11 +238,14 @@ export class RegenerateShotsWorkflow extends OpenStoryWorkflowEntrypoint<Regener
 
     // Regenerate the 3×3 grid sheet for each (re)imaged shot — it is derived
     // from the primary still and would otherwise show the pre-recast subject.
-    // Fire-and-forget creates, wave-bounded (#1126). Use Promise.all within
-    // each wave (not allSettled) so a failed create fails the durable step
-    // and CF retries — mapInWaves would swallow partial failures.
+    // Fire-and-forget creates, wave-bounded. Promise.all within each wave (not
+    // allSettled) so a failed create fails the durable step and CF retries.
     await step.do('trigger-variant-regen', async () => {
-      const limit = FANOUT_CONCURRENCY.variantTrigger;
+      const enforcement = await scopedDb.liveRead.compliance.listEnforcementFor(
+        input.userId,
+        teamId
+      );
+      const limit = VARIANT_TRIGGER_CONCURRENCY;
       for (let i = 0; i < succeeded.length; i += limit) {
         const wave = succeeded.slice(i, i + limit);
         await Promise.all(
@@ -269,6 +277,7 @@ export class RegenerateShotsWorkflow extends OpenStoryWorkflowEntrypoint<Regener
                 label,
                 // Dedupe: a retry of this step.do mustn't re-fire variants.
                 deduplicationId: `variant-image-${result.shotId}-${imageModel}-${snapshot.snapshotInputHash.slice(0, 16)}`,
+                enforcement,
               }
             );
           })

@@ -7,9 +7,11 @@
  *   continuity + global timestamps).
  * - A music `Input` + `AudioBufferSink` mixed through a music-only `GainNode`
  *   that applies the variant's measured loudness gain.
- * - Per-scene dialogue audio decoded once in `prepare()` and scheduled as
- *   `AudioBufferSourceNode`s on `play()` / `seek()`, routed through a master
- *   gain node so dialogue is not attenuated by the music loudness gain.
+ * - Per-scene dialogue audio decoded in the background after `prepare()`
+ *   resolves (first frame first, #1253); `play()` awaits it, then clips are
+ *   scheduled as `AudioBufferSourceNode`s on `play()` / `seek()`, routed
+ *   through a master gain node so dialogue is not attenuated by the music
+ *   loudness gain.
  * - Codec gating up front via `prepare()`; throws so the React component can
  *   render a fallback CTA.
  *
@@ -34,7 +36,12 @@ import {
   type SceneInput,
 } from './concatenated-video-source';
 import { decodeAudioTrack } from './decode-audio-track';
+import {
+  forAwaitUntilDisposed,
+  isInputDisposedError,
+} from './disposed-iterator';
 import { computeMusicGain } from './music-gain';
+import { type PlayAttemptResult, settlePlayWait } from './play-attempt';
 
 import { getLogger } from '@/lib/observability/logger';
 
@@ -56,6 +63,8 @@ export type SequencePlayerOptions = {
    * `setMusicEnabled` without re-preparing the engine (#834). Defaults to true.
    */
   musicEnabled?: boolean;
+  /** Scene-open progress during `prepare()` — drives the loading label (#1253). */
+  onLoadProgress?: (loadedScenes: number, totalScenes: number) => void;
   onTimeUpdate?: (time: number) => void;
   onEnded?: () => void;
   onError?: (error: Error) => void;
@@ -101,10 +110,19 @@ export class SequencePlayerEngine {
   private musicTrack: InputAudioTrack | null = null;
   private audioSink: AudioBufferSink | null = null;
   private dialogueClips: DialogueClip[] = [];
+  /**
+   * Dialogue decoding runs off the critical path so the first frame + controls
+   * show as soon as the scene headers are open (#1253). `play()` awaits it.
+   */
+  private dialogueReady: Promise<void> = Promise.resolve();
 
   private meta: SequencePlayerMeta | null = null;
 
   private playing = false;
+  /** play() was called and is waiting on dialogue decode; pause() cancels it. */
+  private playRequested = false;
+  /** Bumped on each new play() so a stale await cannot steal the live request. */
+  private playGeneration = 0;
   private playbackTimeAtStart = 0;
   private audioContextStartTime: number | null = null;
 
@@ -147,7 +165,7 @@ export class SequencePlayerEngine {
    * an "Export to download" fallback CTA.
    */
   async prepare(): Promise<SequencePlayerMeta> {
-    const videoMeta = await this.videoSource.prepare();
+    const videoMeta = await this.videoSource.prepare(this.opts.onLoadProgress);
 
     let musicSampleRate: number | undefined;
     let hasAudio = false;
@@ -181,29 +199,8 @@ export class SequencePlayerEngine {
       this.audioSink = new AudioBufferSink(this.musicTrack);
     }
 
-    // Per-scene dialogue/VO lives in each scene video's embedded audio track.
-    // Decode upfront so play()/seek() can schedule against the AudioContext
-    // clock without async IO in the hot path. A single failing track shouldn't
-    // kill the whole player — log and stay silent for that scene.
-    const dialogueClips: DialogueClip[] = [];
-    for (const {
-      sceneIndex,
-      sceneOffsetSeconds,
-      track,
-    } of this.videoSource.getSceneAudioTracks()) {
-      try {
-        const buffer = await decodeAudioTrack(track);
-        if (!buffer) continue;
-        dialogueClips.push({ buffer, sceneOffsetSeconds });
-      } catch (err) {
-        logger.warn(
-          `SequencePlayerEngine: failed to decode embedded audio for scene ${sceneIndex}`,
-          { err }
-        );
-      }
-    }
-    this.dialogueClips = dialogueClips;
-    if (dialogueClips.length > 0) hasAudio = true;
+    const sceneAudioTracks = this.videoSource.getSceneAudioTracks();
+    if (sceneAudioTracks.length > 0) hasAudio = true;
 
     this.opts.canvas.width = videoMeta.displayWidth;
     this.opts.canvas.height = videoMeta.displayHeight;
@@ -220,6 +217,38 @@ export class SequencePlayerEngine {
 
     await this.primeFirstFrame();
     this.startRenderLoop();
+
+    // Per-scene dialogue/VO lives in each scene video's embedded audio track.
+    // Decode in the background so the first frame + controls show as soon as
+    // the headers are open. `play()` awaits `dialogueReady` before scheduling,
+    // so the first play may wait on this; after that, play()/seek() schedule
+    // against the AudioContext clock with no async IO. A single failing track
+    // shouldn't kill the whole player — log and stay silent for that scene.
+    this.dialogueReady = (async () => {
+      const dialogueClips: DialogueClip[] = [];
+      for (const {
+        sceneIndex,
+        sceneOffsetSeconds,
+        track,
+      } of sceneAudioTracks) {
+        if (this.disposed) return;
+        try {
+          const buffer = await decodeAudioTrack(track);
+          if (!buffer) continue;
+          dialogueClips.push({ buffer, sceneOffsetSeconds });
+        } catch (err) {
+          // dispose() tears the Inputs down under an in-flight decode; that
+          // rejection isn't a broken track.
+          // oxlint-disable-next-line typescript/no-unnecessary-condition -- flips during the await
+          if (this.disposed) return;
+          logger.warn(
+            `SequencePlayerEngine: failed to decode embedded audio for scene ${sceneIndex}`,
+            { err }
+          );
+        }
+      }
+      this.dialogueClips = dialogueClips;
+    })();
 
     return this.meta;
   }
@@ -250,17 +279,46 @@ export class SequencePlayerEngine {
     return this.playing;
   }
 
-  async play(): Promise<void> {
-    if (this.playing || !this.audioContext || !this.meta) return;
-
-    if (this.audioContext.state === 'suspended') {
-      await this.audioContext.resume();
+  async play(): Promise<PlayAttemptResult> {
+    if (this.disposed) return 'disposed';
+    if (this.playRequested || this.playing) return 'already-playing';
+    if (!this.audioContext || !this.meta) return 'not-ready';
+    const generation = ++this.playGeneration;
+    this.playRequested = true;
+    try {
+      if (this.audioContext.state === 'suspended') {
+        await this.audioContext.resume();
+      }
+      await this.dialogueReady;
+    } catch (err) {
+      if (generation === this.playGeneration) this.playRequested = false;
+      // oxlint-disable-next-line typescript/no-unnecessary-condition -- flips during the await
+      if (this.disposed && isInputDisposedError(err)) return 'disposed';
+      throw err;
     }
+    const settled = settlePlayWait({
+      attemptGeneration: generation,
+      currentGeneration: this.playGeneration,
+      playRequested: this.playRequested,
+      disposed: this.disposed,
+    });
+    if (settled === 'cancelled') {
+      // Stale attempts must not clear a newer play()'s playRequested.
+      if (generation === this.playGeneration) this.playRequested = false;
+      return 'cancelled';
+    }
+    if (settled === 'disposed') {
+      this.playRequested = false;
+      return 'disposed';
+    }
+    this.playRequested = false;
 
     if (this.playbackTimeAtStart >= this.meta.durationSeconds) {
       // Snap back to the start if we ran off the end
       this.playbackTimeAtStart = 0;
       await this.restartVideoIterator();
+      // oxlint-disable-next-line typescript/no-unnecessary-condition -- flips during the await
+      if (this.disposed) return 'disposed';
     }
 
     this.audioContextStartTime = this.audioContext.currentTime;
@@ -269,13 +327,20 @@ export class SequencePlayerEngine {
     if (this.audioSink) {
       void this.audioBufferIterator?.return();
       this.audioBufferIterator = this.audioSink.buffers(this.getPlaybackTime());
-      void this.runAudioIterator();
+      void this.runAudioIterator().catch((err: unknown) => {
+        if (this.disposed && isInputDisposedError(err)) return;
+        this.opts.onError?.(
+          err instanceof Error ? err : new Error(String(err))
+        );
+      });
     }
 
     this.scheduleDialogueClips();
+    return 'playing';
   }
 
   pause(): void {
+    this.playRequested = false;
     if (!this.playing) return;
     this.playbackTimeAtStart = this.getPlaybackTime();
     this.playing = false;
@@ -291,8 +356,8 @@ export class SequencePlayerEngine {
     this.queuedAudioNodes.clear();
   }
 
-  async seek(seconds: number): Promise<void> {
-    if (!this.meta) return;
+  async seek(seconds: number): Promise<PlayAttemptResult | null> {
+    if (!this.meta) return null;
     const wasPlaying = this.playing;
     if (wasPlaying) this.pause();
 
@@ -303,10 +368,13 @@ export class SequencePlayerEngine {
     this.opts.onTimeUpdate?.(this.playbackTimeAtStart);
 
     await this.restartVideoIterator();
+    // oxlint-disable-next-line typescript/no-unnecessary-condition -- flips during the await
+    if (this.disposed) return 'disposed';
 
     if (wasPlaying && this.playbackTimeAtStart < this.meta.durationSeconds) {
-      void this.play();
+      return this.play();
     }
+    return null;
   }
 
   setVolume(volume: number): void {
@@ -334,8 +402,13 @@ export class SequencePlayerEngine {
     this.disposed = true;
     this.pause();
     cancelAnimationFrame(this.rafHandle);
+    // Cancel iterators *before* disposing Inputs so the pending `for await`
+    // sees a generator return rather than an InputDisposedError. The iterator
+    // wrapper still swallows that error if the race lands the other way (#1284).
     void this.videoFrameIterator?.return();
     this.videoFrameIterator = null;
+    void this.audioBufferIterator?.return();
+    this.audioBufferIterator = null;
     this.videoSource.dispose();
     if (this.musicInput) {
       this.musicInput.dispose();
@@ -408,8 +481,15 @@ export class SequencePlayerEngine {
       this.playbackTimeAtStart,
       { poolSize: 2, fit: 'contain' }
     );
-    const first = (await this.videoFrameIterator.next()).value ?? null;
-    const second = (await this.videoFrameIterator.next()).value ?? null;
+    let first: WrappedCanvas | null;
+    let second: WrappedCanvas | null;
+    try {
+      first = (await this.videoFrameIterator.next()).value ?? null;
+      second = (await this.videoFrameIterator.next()).value ?? null;
+    } catch (err) {
+      if (this.disposed && isInputDisposedError(err)) return;
+      throw err;
+    }
     this.nextFrame = second;
     if (first) {
       this.drawFrame(first);
@@ -431,7 +511,12 @@ export class SequencePlayerEngine {
         if (this.nextFrame && this.nextFrame.timestamp <= playbackTime) {
           this.drawFrame(this.nextFrame);
           this.nextFrame = null;
-          void this.advanceFrame();
+          void this.advanceFrame().catch((err: unknown) => {
+            if (this.disposed && isInputDisposedError(err)) return;
+            this.opts.onError?.(
+              err instanceof Error ? err : new Error(String(err))
+            );
+          });
         }
         if (this.playing) {
           this.opts.onTimeUpdate?.(playbackTime);
@@ -452,7 +537,13 @@ export class SequencePlayerEngine {
     const currentAsyncId = this.asyncId;
     let iterator = this.videoFrameIterator;
     while (iterator) {
-      const newNextFrame = (await iterator.next()).value ?? null;
+      let newNextFrame: WrappedCanvas | null;
+      try {
+        newNextFrame = (await iterator.next()).value ?? null;
+      } catch (err) {
+        if (this.disposed && isInputDisposedError(err)) return;
+        throw err;
+      }
       if (currentAsyncId !== this.asyncId) return;
       if (!newNextFrame) {
         // Iterator naturally exhausted — treat that as end-of-sequence so we
@@ -490,44 +581,54 @@ export class SequencePlayerEngine {
     if (!this.audioBufferIterator || !this.audioContext || !this.musicGain) {
       return;
     }
-    for await (const { buffer, timestamp } of this.audioBufferIterator) {
-      if (this.disposed) return;
-      const startBaseline = this.audioContextStartTime;
-      if (startBaseline === null) return;
-      const node = this.audioContext.createBufferSource();
-      node.buffer = buffer;
-      node.connect(this.musicGain);
+    const iterator = this.audioBufferIterator;
+    const audioContext = this.audioContext;
+    const musicGain = this.musicGain;
+    await forAwaitUntilDisposed(
+      iterator,
+      () =>
+        this.disposed ||
+        this.audioBufferIterator !== iterator ||
+        this.audioContext !== audioContext,
+      async ({ buffer, timestamp }) => {
+        const startBaseline = this.audioContextStartTime;
+        if (startBaseline === null) return;
+        const node = audioContext.createBufferSource();
+        node.buffer = buffer;
+        node.connect(musicGain);
 
-      let startTimestamp = startBaseline + timestamp - this.playbackTimeAtStart;
-      startTimestamp =
-        Math.round(this.audioContext.sampleRate * startTimestamp) /
-        this.audioContext.sampleRate;
+        let startTimestamp =
+          startBaseline + timestamp - this.playbackTimeAtStart;
+        startTimestamp =
+          Math.round(audioContext.sampleRate * startTimestamp) /
+          audioContext.sampleRate;
 
-      if (startTimestamp >= this.audioContext.currentTime) {
-        node.start(startTimestamp);
-      } else {
-        node.start(
-          this.audioContext.currentTime,
-          this.audioContext.currentTime - startTimestamp
-        );
+        if (startTimestamp >= audioContext.currentTime) {
+          node.start(startTimestamp);
+        } else {
+          node.start(
+            audioContext.currentTime,
+            audioContext.currentTime - startTimestamp
+          );
+        }
+
+        this.queuedAudioNodes.add(node);
+        node.onended = () => {
+          this.queuedAudioNodes.delete(node);
+        };
+
+        // Throttle: don't get more than ~1s ahead of playback.
+        if (timestamp - this.getPlaybackTime() >= 1) {
+          await new Promise<void>((resolve) => {
+            const id = window.setInterval(() => {
+              if (this.disposed || timestamp - this.getPlaybackTime() < 1) {
+                clearInterval(id);
+                resolve();
+              }
+            }, 100);
+          });
+        }
       }
-
-      this.queuedAudioNodes.add(node);
-      node.onended = () => {
-        this.queuedAudioNodes.delete(node);
-      };
-
-      // Throttle: don't get more than ~1s ahead of playback.
-      if (timestamp - this.getPlaybackTime() >= 1) {
-        await new Promise<void>((resolve) => {
-          const id = window.setInterval(() => {
-            if (this.disposed || timestamp - this.getPlaybackTime() < 1) {
-              clearInterval(id);
-              resolve();
-            }
-          }, 100);
-        });
-      }
-    }
+    );
   }
 }

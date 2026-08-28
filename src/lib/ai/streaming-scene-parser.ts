@@ -1,90 +1,48 @@
 /**
- * Streaming Scene Parser
+ * Streaming boundary-scene parser (#1035 / #1218).
  *
- * Incrementally extracts complete scenes from a partial JSON stream.
- * Uses @tanstack/ai's parsePartialJSON to parse incomplete LLM output
- * and emits events as new scenes become fully parseable.
+ * Incrementally consumes the scenes-call output — `{ projectMetadata,
+ * boundaries[] }` — from a partial JSON stream. The LLM never authors
+ * script text or per-scene metadata: as soon as boundary k+1 has fully
+ * streamed, scene k is a local verbatim slice of the ORIGINAL script with
+ * heading/dialogue/duration derived from that slice (`scene-from-slice.ts`).
+ *
+ * Scene ids/numbers are minted here (server-side), never by the LLM.
  */
 
 import { parsePartialJSON } from '@tanstack/ai';
 import { z } from 'zod';
 import {
-  type CharacterBibleEntry,
-  characterBibleEntrySchema,
-  dialogueLineSchema,
-  type LocationBibleEntry,
-  locationBibleEntrySchema,
+  type BoundaryAnnotation,
+  resolveBoundaries,
+  sliceScenes,
+} from './boundary-split';
+import { sceneBoundarySchema } from './response-schemas';
+import {
+  buildSceneFromSlice,
+  inheritMissingLocation,
+} from './scene-from-slice';
+import type {
+  Continuity,
+  DialogueLine,
+  SceneMetadata,
 } from './scene-analysis.schema';
 
 /**
- * Lenient, default-filling scene schema for streaming completeness detection.
- *
- * The canonical scene-analysis schemas are now STRICT (no `.catch()`) so they
- * compile to a tight structured-output grammar (see the note in
- * `scene-analysis.schema.ts`). But this parser runs against PARTIAL mid-stream
- * JSON: it must accept a scene as soon as its `originalScript` / `metadata`
- * keys appear and COMPLETE the not-yet-streamed fields with defaults, so a
- * scene can be shown — and upserted as a full `Scene` — before its trailing
- * fields arrive. We therefore keep the lenient `.catch()` defaults LOCAL here
- * rather than re-introducing them into the strict schemas. The resulting
- * output type still matches `Scene` (every field present), so emitted scenes
- * remain assignable for `shots.upsert`.
- *
- * `originalScript` and `metadata` are required KEYS (a scene missing either is
- * "not complete yet"), but their contents are defaulted — matching the prior
- * `.catch()`-driven behaviour and the parser's tests.
+ * The per-scene shape the scene-split workflow persists and emits mid-stream.
+ * Matches the slice of `Scene` that `buildSceneInsert` + eventing consume.
  */
-const lenientOriginalScript = z.object({
-  extract: z.string().catch(''),
-  dialogue: z.array(dialogueLineSchema).catch([]),
-});
-
-const lenientMetadata = z.object({
-  title: z.string().catch('Untitled Scene'),
-  durationSeconds: z.number().catch(3),
-  location: z.string().catch(''),
-  timeOfDay: z.string().catch(''),
-  storyBeat: z.string().catch(''),
-});
-
-// Scene-split now emits `continuity` per scene (membership moved upstream, #867).
-// It often streams in after `originalScript`/`metadata`, so every field defaults
-// — a scene is still "complete enough" to preview before its continuity lands,
-// and the strict reconcile parse carries the final value onto the shot.
-const lenientContinuity = z
-  .object({
-    characterTags: z.array(z.string()).catch([]),
-    environmentTag: z.string().catch(''),
-    elementTags: z.array(z.string()).nullish().catch(null),
-    colorPalette: z.string().catch(''),
-    lightingSetup: z.string().catch(''),
-    styleTag: z.string().catch(''),
-  })
-  .catch({
-    characterTags: [],
-    environmentTag: '',
-    elementTags: null,
-    colorPalette: '',
-    lightingSetup: '',
-    styleTag: '',
-  });
-
-const sceneSplittingSceneSchema = z.object({
-  sceneId: z.string(),
-  sceneNumber: z.number(),
-  originalScript: lenientOriginalScript,
-  metadata: lenientMetadata,
-  continuity: lenientContinuity,
-});
-
-export type SceneSplittingScene = z.infer<typeof sceneSplittingSceneSchema>;
+export type SceneSplittingScene = {
+  sceneId: string;
+  sceneNumber: number;
+  originalScript: { extract: string; dialogue: DialogueLine[] };
+  metadata: SceneMetadata;
+  continuity: Continuity;
+};
 
 export type StreamedSceneEvent =
   | { type: 'title'; title: string }
-  | { type: 'scene'; scene: SceneSplittingScene; index: number }
-  | { type: 'scene:updated'; scene: SceneSplittingScene; index: number }
-  | { type: 'characterBible'; bible: CharacterBibleEntry[] }
-  | { type: 'locationBible'; bible: LocationBibleEntry[] };
+  | { type: 'scene'; scene: SceneSplittingScene; index: number };
 
 /**
  * Strip markdown code fences that some models wrap around JSON output.
@@ -99,40 +57,74 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 }
 
 /**
- * Parse each array element against `schema`, keeping only the ones that fully
- * validate. Used for mid-stream bible arrays where the trailing entry is often
- * still partial — we emit the entries that have completed so far.
+ * Assemble the final scene array from a complete scenes-call result: resolve
+ * boundaries, slice the script, derive local fields from each slice. Pure —
+ * the workflow uses it for the post-stream (and retry/fallback) build, with
+ * `sceneIdFor` reusing ids the streaming parser already minted so mid-stream
+ * rows and the final result agree.
  */
-function collectComplete<T>(items: unknown[], schema: z.ZodType<T>): T[] {
-  const out: T[] = [];
-  for (const item of items) {
-    const result = schema.safeParse(item);
-    if (result.success) out.push(result.data);
+export function assembleScenes(
+  script: string,
+  result: {
+    boundaries: BoundaryAnnotation[];
+  },
+  sceneIdFor: (index: number) => string
+): {
+  scenes: SceneSplittingScene[];
+  resolution: ReturnType<typeof resolveBoundaries>;
+  slices: string[];
+} {
+  const resolution = resolveBoundaries(script, result.boundaries);
+  const slices = sliceScenes(script, resolution.offsets);
+  const scenes = slices.map((slice, i) =>
+    buildSceneFromSlice(sceneIdFor(i), i, slice)
+  );
+  for (let i = 1; i < scenes.length; i++) {
+    const scene = scenes[i];
+    const previous = scenes[i - 1];
+    if (!scene) continue;
+    scenes[i] = inheritMissingLocation(scene, previous);
   }
-  return out;
+  return { scenes, resolution, slices };
 }
 
-export function createStreamingSceneParser() {
-  let lastEmittedSceneCount = 0;
+/**
+ * Create a parser bound to the raw script. `mintSceneId` is called once per
+ * scene index (inject `generateId` in production, a counter in tests).
+ *
+ * Boundary resolution is a pure function of (script, boundary prefix) with a
+ * monotonic cursor, so incremental resolution mid-stream and the workflow's
+ * final full-payload resolution agree on every prefix.
+ */
+export function createStreamingSceneParser(
+  script: string,
+  mintSceneId: () => string
+) {
   let titleEmitted = false;
-  let characterBibleEmitted = false;
-  let locationBibleEmitted = false;
-  let emittedTitles: Map<number, string> = new Map();
+  let emittedScenes = 0;
+  let previousEmitted: SceneSplittingScene | undefined;
+  const sceneIds = new Map<number, string>();
+
+  const idFor = (index: number): string => {
+    const existing = sceneIds.get(index);
+    if (existing !== undefined) return existing;
+    const id = mintSceneId();
+    sceneIds.set(index, id);
+    return id;
+  };
 
   return {
     /**
-     * Feed accumulated LLM text and get back any new events since last feed.
-     * Returns an empty array if no new scenes or title are available.
+     * Feed the full accumulated LLM text; returns events new since last feed.
+     * Pass `done: true` on the final feed so the last scene (whose end is the
+     * script end) is emitted.
      */
-    feed(accumulated: string): StreamedSceneEvent[] {
+    feed(accumulated: string, done = false): StreamedSceneEvent[] {
       const events: StreamedSceneEvent[] = [];
 
       const raw = parsePartialJSON(stripCodeFences(accumulated));
-      if (raw === undefined) return events;
-
       if (!isRecord(raw)) return events;
 
-      // Check for title
       if (!titleEmitted) {
         const pm = raw.projectMetadata;
         if (
@@ -145,75 +137,60 @@ export function createStreamingSceneParser() {
         }
       }
 
-      // Check for new complete scenes
-      const scenes = raw.scenes;
-      if (!Array.isArray(scenes)) return events;
-
-      // Check for updates to previously emitted scenes
-      for (let i = 0; i < lastEmittedSceneCount && i < scenes.length; i++) {
-        const result = sceneSplittingSceneSchema.safeParse(scenes[i]);
-        if (result.success) {
-          const currentTitle = result.data.metadata.title || '';
-          if (currentTitle !== emittedTitles.get(i)) {
-            emittedTitles.set(i, currentTitle);
-            events.push({
-              type: 'scene:updated',
-              scene: result.data,
-              index: i,
-            });
-          }
+      // A partially-streamed trailing array entry parses as a truncated
+      // object (parsePartialJSON completes a mid-string quote with partial
+      // content), so an entry has settled only once something follows it:
+      // a later entry, or the stream's end.
+      const settledPrefix = <T>(
+        value: unknown,
+        schema: z.ZodType<T>,
+        closed: boolean
+      ): T[] => {
+        if (!Array.isArray(value)) return [];
+        const settled = closed ? value.length : value.length - 1;
+        const out: T[] = [];
+        for (let i = 0; i < settled; i++) {
+          const parsed = schema.safeParse(value[i]);
+          if (!parsed.success) break;
+          out.push(parsed.data);
         }
-      }
+        return out;
+      };
 
-      for (let i = lastEmittedSceneCount; i < scenes.length; i++) {
-        const result = sceneSplittingSceneSchema.safeParse(scenes[i]);
-        if (result.success) {
-          emittedTitles.set(i, result.data.metadata.title || '');
-          events.push({ type: 'scene', scene: result.data, index: i });
-          lastEmittedSceneCount = i + 1;
-        } else {
-          // Stop at first incomplete scene — subsequent ones can't be complete yet
-          break;
-        }
-      }
+      const boundaries: BoundaryAnnotation[] = settledPrefix(
+        raw.boundaries,
+        sceneBoundarySchema,
+        done
+      );
 
-      // Check for character bible (streams after scenes). The canonical entry
-      // schema is strict, so we collect only the entries that have fully
-      // streamed (dropping a trailing partial one) rather than requiring the
-      // whole array to validate — this keeps the eager mid-stream emit.
-      if (!characterBibleEmitted && Array.isArray(raw.characterBible)) {
-        const complete = collectComplete(
-          raw.characterBible,
-          characterBibleEntrySchema
+      const resolution = resolveBoundaries(script, boundaries);
+      const slices = sliceScenes(script, resolution.offsets);
+      // Scene i ends where boundary i+1 begins. Once the stream is done,
+      // every scene's end is known (the last ends at script end).
+      const finalized = done ? slices.length : Math.max(0, slices.length - 1);
+
+      for (let i = emittedScenes; i < finalized; i++) {
+        const slice = slices[i];
+        if (slice === undefined) break;
+        const scene = inheritMissingLocation(
+          buildSceneFromSlice(idFor(i), i, slice),
+          previousEmitted
         );
-        if (complete.length > 0) {
-          characterBibleEmitted = true;
-          events.push({ type: 'characterBible', bible: complete });
-        }
-      }
-
-      // Check for location bible (streams after scenes)
-      if (!locationBibleEmitted && Array.isArray(raw.locationBible)) {
-        const complete = collectComplete(
-          raw.locationBible,
-          locationBibleEntrySchema
-        );
-        if (complete.length > 0) {
-          locationBibleEmitted = true;
-          events.push({ type: 'locationBible', bible: complete });
-        }
+        previousEmitted = scene;
+        events.push({
+          type: 'scene',
+          scene,
+          index: i,
+        });
+        emittedScenes = i + 1;
       }
 
       return events;
     },
 
-    /** Reset parser state (useful for testing). */
-    reset() {
-      lastEmittedSceneCount = 0;
-      titleEmitted = false;
-      characterBibleEmitted = false;
-      locationBibleEmitted = false;
-      emittedTitles = new Map();
+    /** Scene ids minted so far, keyed by scene index. */
+    mintedSceneIds(): ReadonlyMap<number, string> {
+      return sceneIds;
     },
   };
 }

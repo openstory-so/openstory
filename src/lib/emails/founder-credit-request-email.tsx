@@ -5,7 +5,12 @@
  */
 
 import { Heading, Section, Text } from '@react-email/components';
-import { EmailLayout, headingClass, paragraphClass } from './email-layout';
+import {
+  detailRowClass,
+  EmailLayout,
+  headingClass,
+  paragraphClass,
+} from './email-layout';
 
 interface FounderCreditRequestEmailProps {
   appName: string;
@@ -15,8 +20,6 @@ interface FounderCreditRequestEmailProps {
   balanceDisplay: string;
   message?: string;
 }
-
-const detailRowClass = 'm-0 text-sm leading-6 text-gray-700';
 
 export const FounderCreditRequestEmail: React.FC<
   FounderCreditRequestEmailProps
@@ -31,7 +34,7 @@ export const FounderCreditRequestEmail: React.FC<
         directly, or send a gift code.
       </Text>
 
-      <Section className="my-6 rounded-lg bg-gray-100 p-6">
+      <Section className="my-6 rounded-lg bg-muted p-6">
         <Text className={detailRowClass}>
           <strong>Name:</strong> {userName || '—'}
         </Text>
@@ -47,7 +50,7 @@ export const FounderCreditRequestEmail: React.FC<
       </Section>
 
       {message ? (
-        <Section className="my-6 rounded-lg bg-gray-100 p-6">
+        <Section className="my-6 rounded-lg bg-muted p-6">
           <Text className={detailRowClass}>
             <strong>Message:</strong>
           </Text>

@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { describe, expect, it } from 'vitest';
 // Static, not a dynamic import inside the test: pulling in the whole start
 // instance takes seconds under full-suite load and would blow the timeout.
@@ -274,5 +275,29 @@ describe('errorCode / isInsufficientCreditsError', () => {
     expect(errorMessage(new Error(ours.message))).toBe(
       'Insufficient credits for image'
     );
+  });
+});
+
+describe('errorMessage', () => {
+  // A raw Zod issue array reached users as `status_error` and the enhance
+  // banner (#1285) — both live ZodErrors and ones flattened to `message` by
+  // the server-fn boundary collapse to one line.
+  it('collapses Zod issues to one path: message line', () => {
+    const live = z
+      .object({ category: z.enum(['film', 'tech']), name: z.string().min(1) })
+      .safeParse({ category: 'documentary', name: '' }).error;
+    expect(live).toBeDefined();
+    expect(errorMessage(live)).toBe(
+      'category: Invalid option: expected one of "film"|"tech"; name: Too small: expected string to have >=1 characters'
+    );
+    expect(errorMessage(new Error(live?.message ?? ''))).toBe(
+      errorMessage(live)
+    );
+  });
+
+  it('leaves non-Zod messages alone, even bracketed ones', () => {
+    expect(errorMessage(new Error('[LLM] timed out'))).toBe('[LLM] timed out');
+    expect(errorMessage(new Error('[1, 2]'))).toBe('[1, 2]');
+    expect(errorMessage('nope', 'fallback')).toBe('fallback');
   });
 });

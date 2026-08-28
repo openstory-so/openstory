@@ -40,7 +40,8 @@ export const Route = createFileRoute('/gift/$code')({
     if (code.length !== 6) {
       throw redirect({ to: '/' });
     }
-    await queryClient.ensureQueryData(sessionQueryOptions);
+    const session = await queryClient.ensureQueryData(sessionQueryOptions);
+    return { session };
   },
   component: GiftCodePage,
 });

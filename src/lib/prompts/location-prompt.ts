@@ -78,21 +78,19 @@ export const buildPromptWithLocationReferences = (
  * Overlays the sequence's visual style on top of the location-specific attributes.
  */
 const formatStyleDirectionForLocation = (styleConfig: StyleConfig): string => {
-  const colorPaletteStr = styleConfig.colorPalette.join(', ');
+  const { look, motion, references } = styleConfig;
+  const colorPaletteStr = look.colorPalette.join(', ');
   const referencesStr =
-    styleConfig.referenceFilms.length > 0
-      ? `\nReference look: ${styleConfig.referenceFilms.join(', ')}.`
-      : '';
-
+    references.length > 0 ? `\nReference look: ${references.join(', ')}.` : '';
   return `
 [STYLE DIRECTION]:
 Render this location in the following visual style:
-Art style: ${styleConfig.artStyle}
-Mood: ${styleConfig.mood}
-Lighting direction: ${styleConfig.lighting}
+Art style: ${look.artStyle}
+Mood: ${look.mood}
+Lighting direction: ${look.lighting}
 Color palette: ${colorPaletteStr}
-Color grading: ${styleConfig.colorGrading}
-Camera approach: ${styleConfig.cameraWork}${referencesStr}
+Color grading: ${look.colorGrading}
+Camera approach: ${motion.camera}${referencesStr}
 All 9 panels must consistently reflect this style direction.`;
 };
 

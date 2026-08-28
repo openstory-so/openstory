@@ -1,11 +1,8 @@
 import type { SceneAnalysis } from './scene-analysis.schema';
 
 export const sceneAnalysisExample: SceneAnalysis = {
-  status: 'success',
   projectMetadata: {
     title: "Project title from script or 'Untitled'",
-    aspectRatio: '16:9',
-    generatedAt: 'ISO 8601 timestamp',
   },
 
   characterBible: [
@@ -36,7 +33,6 @@ export const sceneAnalysisExample: SceneAnalysis = {
       ambiance: 'Tense corporate',
       consistencyTag: 'office_modern_steel',
       firstMention: {
-        sceneId: 'scene_001',
         text: 'INT. OFFICE - DAY',
         lineNumber: 1,
       },

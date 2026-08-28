@@ -211,6 +211,95 @@ export function orderedPropertyNames(schema: JsonSchema): string[] {
   ];
 }
 
+/**
+ * Names that stay on the main form even when optional: the prompt, media
+ * URLs, and a handful of always-used generation knobs. Everything else
+ * optional goes under Advanced. Required fields are always primary.
+ */
+const PRIMARY_FIELD_NAME =
+  /^(prompt|text|negative_prompt|image_url|image_urls|image|end_image_url|start_image_url|video_url|audio_url|aspect_ratio|duration|num_images)$/i;
+
+function isPrimaryFieldName(name: string): boolean {
+  return PRIMARY_FIELD_NAME.test(name);
+}
+
+function primaryRank(name: string): number {
+  if (/^(prompt|text)$/i.test(name)) return 0;
+  if (/^negative_prompt$/i.test(name)) return 1;
+  if (
+    /^(image_url|image_urls|image|end_image_url|start_image_url|video_url|audio_url)$/i.test(
+      name
+    )
+  ) {
+    return 2;
+  }
+  if (/^(aspect_ratio|duration|num_images)$/i.test(name)) return 3;
+  return 4;
+}
+
+/** Split an object schema into always-visible vs Advanced optional fields. */
+export function partitionObjectFields(schema: JsonSchema): {
+  primary: string[];
+  advanced: string[];
+} {
+  const ordered = orderedPropertyNames(schema);
+  const required = new Set(schema.required ?? []);
+  const primary: string[] = [];
+  const advanced: string[] = [];
+  for (const name of ordered) {
+    if (required.has(name) || isPrimaryFieldName(name)) {
+      primary.push(name);
+    } else {
+      advanced.push(name);
+    }
+  }
+  primary.sort((a, b) => {
+    const rank = primaryRank(a) - primaryRank(b);
+    if (rank !== 0) return rank;
+    return ordered.indexOf(a) - ordered.indexOf(b);
+  });
+  return { primary, advanced };
+}
+
+/**
+ * Empty optional controls omit the key (fal treats omit ≠ default). A
+ * required field is never omitted here — the caller must keep it.
+ */
+export function isOmittedFormValue(value: JsonValue | undefined): boolean {
+  if (value === undefined || value === null) return true;
+  if (value === '') return true;
+  if (Array.isArray(value) && value.length === 0) return true;
+  if (
+    typeof value === 'object' &&
+    !Array.isArray(value) &&
+    Object.keys(value).length === 0
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Set or drop a field. Empty optional widgets never reach the payload;
+ * `undefined` drops the key whether or not the field is required.
+ */
+export function withOptionalField(
+  value: Record<string, JsonValue>,
+  name: string,
+  next: JsonValue | undefined,
+  required: boolean
+): Record<string, JsonValue> {
+  if (!required && isOmittedFormValue(next)) {
+    const { [name]: _dropped, ...rest } = value;
+    return rest;
+  }
+  if (next === undefined) {
+    const { [name]: _dropped, ...rest } = value;
+    return rest;
+  }
+  return { ...value, [name]: next };
+}
+
 // ---------------------------------------------------------------------------
 // Value seeding
 // ---------------------------------------------------------------------------
@@ -218,8 +307,7 @@ export function orderedPropertyNames(schema: JsonSchema): string[] {
 /**
  * Starter value for a schema: default → const → enum[0] → first variant →
  * type seed. Object seeds cover required properties only — optional fields
- * enter the value exclusively via the "+ field" chips so omitted optionals
- * are never sent.
+ * stay absent until the user fills them (empty = omit).
  */
 export function seedValue(
   schema: JsonSchema,

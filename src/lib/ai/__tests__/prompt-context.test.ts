@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { migrateStyleConfigV1ToV2 } from '@/lib/style/style-config';
 import { buildCastCharacterBible } from '@/lib/prompts/character-prompt';
 import type {
   Character,
@@ -23,7 +24,7 @@ import type {
   Scene,
 } from '../scene-analysis.schema';
 
-const style: StyleConfig = {
+const style: StyleConfig = migrateStyleConfigV1ToV2({
   mood: 'neutral',
   artStyle: 'cinematic',
   lighting: 'natural',
@@ -31,7 +32,7 @@ const style: StyleConfig = {
   cameraWork: 'static',
   referenceFilms: [],
   colorGrading: 'neutral',
-};
+});
 
 const alice: CharacterBibleEntry = {
   characterId: 'alice',

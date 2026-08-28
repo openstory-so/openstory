@@ -22,6 +22,7 @@ import {
   type LocationBibleHashFields,
 } from '@/lib/ai/input-hash';
 import { DEFAULT_IMAGE_MODEL } from '@/lib/ai/models';
+import { styleConfigHashBody } from '@/lib/style/style-config';
 import type { ScopedDb } from '@/lib/db/scoped';
 import type {
   CharacterMinimal,
@@ -39,7 +40,7 @@ import type {
 } from '@/lib/workflow/types';
 import {
   matchCharactersToScene,
-  matchElementsToScene,
+  matchElementsToShotImage,
   matchLocationsToScene,
 } from './scene-matching';
 
@@ -104,15 +105,11 @@ export async function computeStyleConfigHash(
   styleConfig: StyleConfig | null | undefined
 ): Promise<string> {
   if (!styleConfig) return 'no-style';
+  // styleConfigHashBody keeps the legacy flat key names, so hashes stored
+  // before the v2 reshape stay valid — see its doc comment.
   return sha256Hex({
     artifact: 'style-config',
-    mood: styleConfig.mood,
-    artStyle: styleConfig.artStyle,
-    lighting: styleConfig.lighting,
-    colorPalette: styleConfig.colorPalette,
-    cameraWork: styleConfig.cameraWork,
-    referenceFilms: styleConfig.referenceFilms,
-    colorGrading: styleConfig.colorGrading,
+    ...styleConfigHashBody(styleConfig),
   });
 }
 
@@ -207,7 +204,9 @@ export async function computeLocationSheetHashCurrent(
 /**
  * Library talent sheets are content-addressed by the inlined reference URLs:
  * talent media is append-only in practice, so the snapshot is the URL set
- * itself. We hash via `computeTalentSheetInputHash` keyed on those URLs as
+ * itself. Extra live URLs (photos dropped while a run is in flight) do not
+ * diverge: `Current` hashes the snapshot set when it is a subset of live
+ * media. We hash via `computeTalentSheetInputHash` keyed on those URLs as
  * the reference-media identity (no external `media_id` lookup required).
  */
 export async function computeLibraryTalentSheetHashFromDto(
@@ -238,13 +237,19 @@ export async function computeLibraryTalentSheetHashCurrent(
   // re-read for the same reason the URLs are: a mid-run rename changes the
   // identity the sheet was generated for, and hashing the payload copy would
   // make that divergence unrepresentable.
-  const currentImageUrls =
+  const liveImageUrls =
     talent?.media
       .filter((m) => m.type === 'image')
       .map((m) => m.url)
       .sort() ??
     input.referenceImageUrls ??
     [];
+  const snapshotUrls = input.referenceImageUrls ?? [];
+  const liveSet = new Set(liveImageUrls);
+  // Talent media is append-only. Extra live URLs must not park a generate-if-
+  // missing run as divergent (two photo finalizes, or photos dropped while a
+  // name-only sheet is in flight). Missing snapshot URLs still hash live.
+  const snapshotSubsetOfLive = snapshotUrls.every((url) => liveSet.has(url));
   return computeLibraryTalentSheetHashFromDto({
     ...input,
     talentName: talent?.name ?? input.talentName,
@@ -253,7 +258,7 @@ export async function computeLibraryTalentSheetHashCurrent(
     talentDescription: talent
       ? (talent.description ?? undefined)
       : input.talentDescription,
-    referenceImageUrls: currentImageUrls,
+    referenceImageUrls: snapshotSubsetOfLive ? snapshotUrls : liveImageUrls,
   });
 }
 
@@ -311,6 +316,10 @@ function sortedRefHashes(values: Array<string | null | undefined>): string[] {
  * input hash: character `sheetInputHash`, location `referenceInputHash`, and
  * element `imageUrl`.
  *
+ * Element matching uses the still's visual prompt when `visualPrompt` is
+ * passed (the same text the image model generated from). Scene extract /
+ * `elementTags` are the fallback only when no prompt exists.
+ *
  * Single source of truth so the image-generation trigger **stamp**
  * (`computeShotImageInputHash` via `prepareShotImageWorkflowInput`) and the staleness **verify**
  * (`buildRegenerateShotSnapshot`) cannot drift — drift on the element /
@@ -330,6 +339,12 @@ export function resolveSceneShotImageReferences(params: {
     metadata?: { location?: string } | null;
     originalScript?: { extract?: string } | null;
   } | null;
+  /**
+   * The still's visual prompt. When present, element matching uses this
+   * text (not scene extract / tags) so a replace only stales stills that
+   * actually named the element. See `matchElementsToShotImage`.
+   */
+  visualPrompt?: string | null;
   characters: CharacterMinimal[];
   locations: SequenceLocationMinimal[];
   elements: SequenceElementMinimal[];
@@ -341,7 +356,7 @@ export function resolveSceneShotImageReferences(params: {
   locationSheetHashes: string[];
   elementReferenceHashes: string[];
 } {
-  const { scene, characters, locations, elements } = params;
+  const { scene, visualPrompt, characters, locations, elements } = params;
   const matchedCharacters = matchCharactersToScene(
     characters,
     scene?.continuity?.characterTags ?? []
@@ -351,11 +366,11 @@ export function resolveSceneShotImageReferences(params: {
     scene?.continuity?.environmentTag ?? '',
     scene?.metadata?.location ?? ''
   );
-  const matchedElements = matchElementsToScene(
-    elements,
-    scene?.continuity?.elementTags ?? [],
-    scene?.originalScript?.extract ?? ''
-  );
+  const matchedElements = matchElementsToShotImage(elements, {
+    visualPrompt,
+    elementTags: scene?.continuity?.elementTags,
+    sceneExtract: scene?.originalScript?.extract,
+  });
   return {
     characters: matchedCharacters,
     locations: matchedLocations,

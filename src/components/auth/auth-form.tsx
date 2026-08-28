@@ -17,6 +17,7 @@ import { Label } from '@/components/ui/label';
 import type { AuthOptions } from '@/functions/auth-options';
 import { authClient } from '@/lib/auth/client';
 import { DEV_OTP_CODE } from '@/lib/auth/dev-otp';
+import { sanitizeAuthRedirect } from '@/lib/auth/navigation';
 import { usePostHog } from '@posthog/react';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
@@ -142,9 +143,11 @@ export function AuthForm({
     posthog.capture('user_google_sign_in_started');
 
     try {
+      // Strip #compose (and any other hash) — better-auth 403s hashy relative
+      // callbackURLs. Style seed lives in ?style= so the composer still restores.
       await authClient.signIn.social({
         provider: 'google',
-        callbackURL: redirectTo,
+        callbackURL: sanitizeAuthRedirect(redirectTo),
       });
     } catch (err) {
       logger.error('Google sign-in error:', { err });
@@ -275,6 +278,13 @@ export function AuthForm({
             className="underline underline-offset-4 hover:text-foreground"
           >
             Privacy&nbsp;Policy
+          </Link>
+          . Report generated content at{' '}
+          <Link
+            to="/report"
+            className="underline underline-offset-4 hover:text-foreground"
+          >
+            /report
           </Link>
           .
         </p>

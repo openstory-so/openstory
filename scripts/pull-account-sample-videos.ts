@@ -33,7 +33,7 @@ import path from 'node:path';
 import { z } from 'zod';
 import { concatClips, downloadTo } from './sample-media';
 import {
-  orderedFrameVideos,
+  orderedShotVideos,
   type SamplePipelineConfig,
   waitForSampleSequence,
 } from './sample-pipeline';
@@ -55,7 +55,7 @@ const listItemSchema = z.object({
   status: z.string(),
   style: z.object({ id: z.string(), name: z.string().nullable() }),
   counts: z.object({
-    frames: z.number(),
+    shots: z.number(),
     imagesReady: z.number(),
     videosReady: z.number(),
     videosFailed: z.number(),
@@ -129,10 +129,10 @@ async function listAllSequences(apiKey: string): Promise<SequenceListItem[]> {
   return all;
 }
 
-/** Every frame clip rendered — the bar a sample must clear. */
+/** Every shot clip rendered — the bar a sample must clear. */
 function isReady(item: SequenceListItem): boolean {
-  const { frames, videosReady, videosFailed } = item.counts;
-  return frames > 0 && videosReady >= frames && videosFailed === 0;
+  const { shots, videosReady, videosFailed } = item.counts;
+  return shots > 0 && videosReady >= shots && videosFailed === 0;
 }
 
 type StylePick = {
@@ -225,7 +225,7 @@ async function harvestPick(
     timeoutMs: 60_000,
     pollDelayMs: 0,
   });
-  const frames = orderedFrameVideos(state);
+  const frames = orderedShotVideos(state);
 
   const framesDir = path.join(styleDir, '_frames', 'pulled');
   await mkdir(framesDir, { recursive: true });
@@ -233,7 +233,7 @@ async function harvestPick(
     frames.map(async (frame, i) => {
       const clipPath = path.join(
         framesDir,
-        `${String(i + 1).padStart(2, '0')}-${frame.frameId}.mp4`
+        `${String(i + 1).padStart(2, '0')}-${frame.shotId}.mp4`
       );
       await downloadTo(frame.videoUrl, clipPath);
       return clipPath;
@@ -318,7 +318,7 @@ async function main() {
         : '';
     console.log(
       `• ${pick.slug} ← "${pick.chosen.title}" [${pick.chosen.status}] ` +
-        `${pick.chosen.counts.frames} clips, ${pick.chosen.createdAt}${note}`
+        `${pick.chosen.counts.shots} clips, ${pick.chosen.createdAt}${note}`
     );
   }
   if (noReady.length > 0) {

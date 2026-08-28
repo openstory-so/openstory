@@ -7,12 +7,16 @@ import {
 } from '@/lib/ai/models';
 import {
   estimateAudioCost,
+  estimateCharacterSheetCount,
   estimateImageCost,
   estimateLLMCost,
+  estimateLocationSheetCount,
   estimateStoryboardCost,
+  estimateStoryboardRenderCost,
   estimateVideoCost,
   gateEstimate,
 } from './cost-estimation';
+import { micros } from './money';
 
 const IMAGE_MODEL: TextToImageModel = 'nano_banana_2';
 const VIDEO_A: ImageToVideoModel = 'kling_v3_pro';
@@ -37,8 +41,13 @@ const base = {
 
 /** Per-shot motion cost a model contributes across the whole storyboard. */
 const motionContribution = (model: ImageToVideoModel) =>
-  Number(estimateVideoCost(model, DURATION, { pricing: FAL_PRICING })) *
-  SCENE_COUNT;
+  Number(
+    estimateVideoCost(model, DURATION, {
+      pricing: FAL_PRICING,
+      // Storyboard always prices with cast/location refs available.
+      hasReferenceImages: true,
+    })
+  ) * SCENE_COUNT;
 
 /**
  * Per-sequence music cost a single audio model adds to the storyboard.
@@ -55,7 +64,47 @@ const motionContribution = (model: ImageToVideoModel) =>
 const audioContribution = (model: AudioModel) =>
   Number(estimateAudioCost(model, SCENE_COUNT * 5, { pricing: FAL_PRICING }));
 
+describe('estimateCharacterSheetCount / estimateLocationSheetCount', () => {
+  it('scales sheet counts with board size instead of always billing 3+3', () => {
+    expect(estimateCharacterSheetCount(1)).toBe(1);
+    expect(estimateLocationSheetCount(1)).toBe(1);
+    expect(estimateCharacterSheetCount(6)).toBe(3);
+    expect(estimateLocationSheetCount(6)).toBe(2);
+    expect(estimateCharacterSheetCount(12)).toBe(3);
+    expect(estimateLocationSheetCount(12)).toBe(3);
+  });
+});
+
 describe('estimateStoryboardCost', () => {
+  it('does not pad a one-scene board with three cast and location sheets', () => {
+    const oneScene = Number(
+      estimateStoryboardCost({
+        ...base,
+        estimatedSceneCount: 1,
+        autoGenerateMotion: false,
+        autoGenerateMusic: false,
+      })
+    );
+    const sheetsIfAlwaysThree =
+      Number(
+        estimateImageCost(IMAGE_MODEL, '16:9', 3, { pricing: FAL_PRICING })
+      ) * 2;
+    const sheetsScaled =
+      Number(
+        estimateImageCost(IMAGE_MODEL, '16:9', 1, { pricing: FAL_PRICING })
+      ) * 2;
+    // Total for 1 scene stills-only = llm + 1 char + 1 loc + 1 shot.
+    // If we still billed 3+3 sheets, cost would jump by (3-1)+(3-1) sheet gens.
+    const oneShot = Number(
+      estimateImageCost(IMAGE_MODEL, base.aspectRatio, 1, {
+        pricing: FAL_PRICING,
+      })
+    );
+    const llm = Number(estimateLLMCost(3));
+    expect(oneScene).toBe(llm + sheetsScaled + oneShot);
+    expect(oneScene).toBeLessThan(llm + sheetsIfAlwaysThree + oneShot);
+  });
+
   it('adds exactly one extra per-shot image pass per image model', () => {
     const one = Number(estimateStoryboardCost({ ...base, imageModelCount: 1 }));
     const two = Number(estimateStoryboardCost({ ...base, imageModelCount: 2 }));
@@ -184,6 +233,58 @@ describe('estimateStoryboardCost', () => {
     ).toBe(noMusic);
   });
 
+  it('render cost is stills + motion + music, excluding analysis sheets and LLM', () => {
+    const total = Number(
+      estimateStoryboardCost({
+        ...base,
+        autoGenerateMotion: true,
+        videoModels: [VIDEO_A],
+        autoGenerateMusic: true,
+        audioModels: [AUDIO_A],
+      })
+    );
+    const render = Number(
+      estimateStoryboardRenderCost({
+        ...base,
+        autoGenerateMotion: true,
+        videoModels: [VIDEO_A],
+        autoGenerateMusic: true,
+        audioModels: [AUDIO_A],
+      })
+    );
+    const sheets =
+      Number(
+        estimateImageCost(
+          IMAGE_MODEL,
+          '16:9',
+          estimateCharacterSheetCount(SCENE_COUNT),
+          {
+            pricing: FAL_PRICING,
+          }
+        )
+      ) +
+      Number(
+        estimateImageCost(
+          IMAGE_MODEL,
+          '16:9',
+          estimateLocationSheetCount(SCENE_COUNT),
+          {
+            pricing: FAL_PRICING,
+          }
+        )
+      );
+    const analysis = Number(estimateLLMCost(3)) + sheets;
+    const stills = Number(
+      estimateImageCost(IMAGE_MODEL, base.aspectRatio, SCENE_COUNT, {
+        pricing: FAL_PRICING,
+      })
+    );
+    expect(render).toBe(
+      stills + motionContribution(VIDEO_A) + audioContribution(AUDIO_A)
+    );
+    expect(total).toBe(render + analysis);
+  });
+
   it('adds no motion cost when motion is off or no models are selected', () => {
     const noMotion = Number(
       estimateStoryboardCost({ ...base, autoGenerateMotion: false })
@@ -221,6 +322,86 @@ describe('estimateStoryboardCost', () => {
  * floor IS its production credit gate. Every other test here uses a priced
  * model, so `gateEstimate`'s null branch would otherwise never execute.
  */
+describe('estimateVideoCost endpoint routing', () => {
+  it('prices Seedance reference-to-video higher when ref endpoint is more expensive', () => {
+    // Unequal rates prove we hit resolveMotionEndpoint — equal fixture prices
+    // made this assertion tautological (#1140 review).
+    const pricing = {
+      ...FAL_PRICING,
+      'bytedance/seedance-2.0/enterprise/v2/image-to-video': {
+        unitPrice: micros(10_000),
+        unit: 'units',
+      },
+      'bytedance/seedance-2.0/enterprise/v2/reference-to-video': {
+        unitPrice: micros(20_000),
+        unit: 'units',
+      },
+    };
+    const i2v = estimateVideoCost('seedance_v2', 5, {
+      pricing,
+      hasReferenceImages: false,
+    });
+    const ref = estimateVideoCost('seedance_v2', 5, {
+      pricing,
+      hasReferenceImages: true,
+    });
+    expect(i2v).not.toBeNull();
+    expect(ref).not.toBeNull();
+    expect(ref).not.toBe(i2v);
+    expect(Number(ref)).toBeGreaterThan(Number(i2v));
+  });
+
+  it('storyboard motion with Seedance tracks the ref endpoint rate', () => {
+    const pricing = {
+      ...FAL_PRICING,
+      'bytedance/seedance-2.0/enterprise/v2/image-to-video': {
+        unitPrice: micros(10_000),
+        unit: 'units',
+      },
+      'bytedance/seedance-2.0/enterprise/v2/reference-to-video': {
+        unitPrice: micros(20_000),
+        unit: 'units',
+      },
+    };
+    const stillsOnly = Number(
+      estimateStoryboardCost({
+        ...base,
+        pricing,
+        autoGenerateMotion: false,
+      })
+    );
+    const withMotion = Number(
+      estimateStoryboardCost({
+        ...base,
+        pricing,
+        autoGenerateMotion: true,
+        videoModels: ['seedance_v2'],
+        videoDurationSeconds: DURATION,
+      })
+    );
+    const refPerShot = Number(
+      estimateVideoCost('seedance_v2', DURATION, {
+        pricing,
+        hasReferenceImages: true,
+      })
+    );
+    expect(withMotion - stillsOnly).toBe(refPerShot * SCENE_COUNT);
+  });
+
+  it('leaves Kling on image-to-video even with refs (inline elements path)', () => {
+    const withRefs = estimateVideoCost('kling_v3_pro', 5, {
+      pricing: FAL_PRICING,
+      hasReferenceImages: true,
+    });
+    const without = estimateVideoCost('kling_v3_pro', 5, {
+      pricing: FAL_PRICING,
+      hasReferenceImages: false,
+    });
+    expect(withRefs).toBe(without);
+    expect(withRefs).toBe(micros(5 * 70_000));
+  });
+});
+
 describe('gateEstimate', () => {
   const UNPRICED: TextToImageModel = 'grok_imagine_image';
 
@@ -254,12 +435,15 @@ describe('gateEstimate', () => {
   });
 
   it('keeps a storyboard total non-null and floored when the image model is unpriced', () => {
-    // Character sheets (3) + location sheets (3) + one image per scene, each
-    // gated at the floor, plus the flat LLM allowance.
+    // Character + location sheets (scaled by scene count) + one image per
+    // scene, each gated at the floor, plus the flat LLM allowance.
     const total = Number(
       estimateStoryboardCost({ ...base, imageModel: UNPRICED })
     );
-    const flooredImages = (3 + 3 + SCENE_COUNT) * 100_000;
+    const sheets =
+      estimateCharacterSheetCount(SCENE_COUNT) +
+      estimateLocationSheetCount(SCENE_COUNT);
+    const flooredImages = (sheets + SCENE_COUNT) * 100_000;
     const llm = Number(estimateLLMCost(3));
 
     expect(total).toBe(flooredImages + llm);

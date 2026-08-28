@@ -230,7 +230,7 @@ Grouped the way an API/MCP layer would wrap them. Auth: `shot…` fns use
   (`src/lib/ai/input-hash.ts` — the constant's doc comment is the procedure)
   AND a data migration nulling the stored hashes so legacy rows read
   'untracked' instead of universally 'stale'. Precedent:
-  `drizzle/migrations/20260808041000_null_prompt_hashes_for_v5`.
+  `drizzle/migrations/20260828024500_null_prompt_hashes_for_v5`.
 - **D1 schema changes: additive only.** All five #1108 migrations are plain
   `ALTER TABLE ADD COLUMN` or data-only — see CLAUDE.md "D1 table-rebuild
   trap" before touching schema; a rebuild fires `ON DELETE CASCADE` and

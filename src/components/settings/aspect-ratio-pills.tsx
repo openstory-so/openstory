@@ -56,6 +56,7 @@ export const AspectRatioPills: FC<AspectRatioPillsProps> = ({
           }
         }}
         variant="outline"
+        spacing={0}
         className="justify-start"
       >
         {ASPECT_RATIOS.map((ratio) => {

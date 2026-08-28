@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import { migrateStyleConfigV1ToV2 } from '@/lib/style/style-config';
 import type { StyleConfig } from '@/lib/db/schema/libraries';
 import { deriveMotionPrompt, deriveShots } from './shot-list.derive';
 import type { SceneWithShots } from './shot-list.schema';
 
-const styleConfig: StyleConfig = {
+const styleConfig: StyleConfig = migrateStyleConfigV1ToV2({
   mood: 'tense',
   artStyle: 'neo-noir cinematic',
   lighting: 'low key',
@@ -11,7 +12,7 @@ const styleConfig: StyleConfig = {
   cameraWork: 'handheld',
   referenceFilms: ['Blade Runner'],
   colorGrading: 'teal and orange',
-};
+});
 
 function makeScene(overrides: Partial<SceneWithShots> = {}): SceneWithShots {
   return {
@@ -104,10 +105,7 @@ describe('deriveShots — single source of truth', () => {
     expect(visual?.fullPrompt).toContain('wide');
     expect(visual?.fullPrompt).toContain('eye level');
     expect(visual?.fullPrompt).toContain('Sarah at the far end');
-    expect(visual?.components.subject).toBe(
-      'Sarah at the far end, hand on the wall'
-    );
-    expect(visual?.components.lighting).toBe('single overhead bulb');
+    expect(visual?.fullPrompt).toContain('single overhead bulb');
   });
 
   it('composes motion prompt from action + one camera move + sound cue', () => {
@@ -115,8 +113,6 @@ describe('deriveShots — single source of truth', () => {
     const motion = second?.motionPrompt;
     expect(motion?.fullPrompt).toContain('she turns the handle and pushes');
     expect(motion?.fullPrompt).toContain('gradual push-in');
-    expect(motion?.components.cameraMovement).toBe('push-in');
-    expect(motion?.components.speed).toBe('gradual');
     // Sound cue is carried into the audio channel for audio-capable models.
     expect(motion?.audio?.ambientSound).toBe('handle click, hinge creak');
   });
@@ -198,6 +194,6 @@ describe('deriveShots — single-shot regression', () => {
     });
     const derived = deriveShots(scene, styleConfig);
     expect(derived).toHaveLength(1);
-    expect(derived[0]?.motionPrompt.parameters.motionAmount).toBe('low');
+    expect(derived[0]?.motionPrompt.fullPrompt).toContain('slow static');
   });
 });

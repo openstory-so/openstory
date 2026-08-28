@@ -7,14 +7,7 @@ import {
 import { reportMissingBillingCost } from '@/lib/billing/billing-observability';
 import { estimateLLMCost } from '@/lib/billing/cost-estimation';
 import { InsufficientCreditsError, NotFoundError } from '@/lib/errors';
-import { DEFAULT_VIDEO_MODEL, safeImageToVideoModel } from '@/lib/ai/models';
-import { resolveMotionPromptFromVersion } from '@/lib/motion/resolve-motion-prompt';
-import {
-  loadSceneContextBySequence,
-  resolveSceneForShot,
-} from '@/lib/scenes/scene-script';
 import { generateId } from '@/lib/db/id';
-import { getGenerationChannel } from '@/lib/realtime';
 import { ulidSchema } from '@/lib/schemas/id.schemas';
 import { deriveTokenFromFilename } from '@/lib/sequence-elements/derive-token';
 import { STORAGE_BUCKETS } from '@/lib/storage/buckets';
@@ -24,19 +17,11 @@ import {
 } from '@/lib/utils/file';
 import { triggerWorkflow } from '@/lib/workflow/client';
 import { buildWorkflowLabel } from '@/lib/workflow/labels';
-import type {
-  ElementVisionWorkflowInput,
-  ReplaceElementShotSnapshot,
-  ReplaceElementWorkflowInput,
-} from '@/lib/workflow/types';
+import type { ElementVisionWorkflowInput } from '@/lib/workflow/types';
 import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
 import { authWithTeamMiddleware, sequenceAccessMiddleware } from './middleware';
-
-import { getLogger } from '@/lib/observability/logger';
-
-const logger = getLogger(['openstory', 'serverFn', 'sequence-elements']);
 
 /**
  * Sequence-element storage paths must live exactly under
@@ -82,7 +67,7 @@ async function triggerElementVision(params: {
 
 export const presignDraftElementUploadFn = createServerFn({ method: 'POST' })
   .middleware([authWithTeamMiddleware])
-  .inputValidator(zodValidator(z.object({ filename: z.string().min(1) })))
+  .validator(zodValidator(z.object({ filename: z.string().min(1) })))
   .handler(async ({ context, data }) => {
     const ext = getExtensionFromUrl(data.filename);
     const uploadId = generateId();
@@ -98,7 +83,7 @@ export const presignDraftElementUploadFn = createServerFn({ method: 'POST' })
 
 export const presignElementUploadFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(
+  .validator(
     zodValidator(
       z.object({
         sequenceId: ulidSchema,
@@ -132,7 +117,7 @@ export const presignElementUploadFn = createServerFn({ method: 'POST' })
 
 export const analyzeDraftElementFn = createServerFn({ method: 'POST' })
   .middleware([authWithTeamMiddleware])
-  .inputValidator(
+  .validator(
     zodValidator(
       z.object({
         publicUrl: mediaUrlSchema,
@@ -192,7 +177,7 @@ export const analyzeDraftElementFn = createServerFn({ method: 'POST' })
 
 export const finalizeElementUploadFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(
+  .validator(
     zodValidator(
       z.object({
         sequenceId: ulidSchema,
@@ -254,7 +239,7 @@ export const finalizeElementUploadFn = createServerFn({ method: 'POST' })
 
 export const listSequenceElementsFn = createServerFn({ method: 'GET' })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(zodValidator(z.object({ sequenceId: ulidSchema })))
+  .validator(zodValidator(z.object({ sequenceId: ulidSchema })))
   .handler(async ({ context }) => {
     return context.scopedDb.sequenceElements.list(context.sequence.id);
   });
@@ -267,7 +252,7 @@ export const listSequenceElementsFn = createServerFn({ method: 'GET' })
  */
 export const deleteSequenceElementFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(
+  .validator(
     zodValidator(z.object({ sequenceId: ulidSchema, elementId: ulidSchema }))
   )
   .handler(async ({ context, data }) => {
@@ -304,7 +289,7 @@ export const restoreSequenceElementFn = createServerFn({ method: 'POST' })
 
 export const renameSequenceElementTokenFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(
+  .validator(
     zodValidator(
       z.object({
         sequenceId: ulidSchema,
@@ -358,7 +343,7 @@ export const renameSequenceElementTokenFn = createServerFn({ method: 'POST' })
 /** Get shot IDs for all shots that reference an element by token */
 export const getShotIdsForElementFn = createServerFn({ method: 'GET' })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(
+  .validator(
     zodValidator(z.object({ sequenceId: ulidSchema, elementId: ulidSchema }))
   )
   .handler(async ({ context, data }) => {
@@ -376,7 +361,7 @@ export const getShotIdsForElementFn = createServerFn({ method: 'GET' })
  */
 export const getShotCountsByElementFn = createServerFn({ method: 'GET' })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(zodValidator(z.object({ sequenceId: ulidSchema })))
+  .validator(zodValidator(z.object({ sequenceId: ulidSchema })))
   .handler(async ({ context }) => {
     return await context.scopedDb.sequenceElements.getShotCountsByElement(
       context.sequence.id
@@ -384,14 +369,14 @@ export const getShotCountsByElementFn = createServerFn({ method: 'GET' })
   });
 
 /**
- * Replace an element's image. Persists the new image on the element row,
- * then triggers the `replace-element` workflow which re-runs vision on the
- * new image and edits each affected shot to swap the element while keeping
- * the rest of the shot intact.
+ * Replace an element's image. Persists the new image and re-runs vision.
+ * Affected shots are left stale — the user updates them from the inspector
+ * (edit vs regen is a per-shot choice; replace-time is the wrong moment to
+ * pick one for the whole sequence).
  */
 export const replaceSequenceElementFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(
+  .validator(
     zodValidator(
       z.object({
         sequenceId: ulidSchema,
@@ -414,10 +399,6 @@ export const replaceSequenceElementFn = createServerFn({ method: 'POST' })
       throw new Error('Element not found');
     }
 
-    const previousDescription = element.description;
-
-    // Update the element row with the new image. Reset vision so the UI
-    // surfaces "analyzing" while the workflow re-describes the new image.
     const updated = await context.scopedDb.sequenceElements.update(
       data.elementId,
       {
@@ -432,114 +413,25 @@ export const replaceSequenceElementFn = createServerFn({ method: 'POST' })
       }
     );
 
-    const affectedShotIds =
-      await context.scopedDb.sequenceElements.getShotIdsForElement(
-        context.sequence.id,
-        data.elementId
-      );
-
-    // Resolve the per-shot motion prompts AND source state HERE, before the
-    // workflow starts — workflows must not read the DB (a versioned,
-    // append-only store is racy to read mid-flight and non-deterministic on
-    // replay). This workflow's own children repoint the image/video selection
-    // pointers, so a re-read after partial fan-out would edit an
-    // already-edited still again. #713/#991.
-    const affectedShots =
-      await context.scopedDb.shots.getByIds(affectedShotIds);
-    const videoModel = safeImageToVideoModel(
-      context.sequence.videoModel,
-      DEFAULT_VIDEO_MODEL
-    );
-    const [selectedMotionByShot, sceneContext, anchorByShot, videoByShot] =
-      await Promise.all([
-        context.scopedDb.shotPromptVersions.getSelectedMotionByShots(
-          affectedShotIds
-        ),
-        loadSceneContextBySequence(context.scopedDb, context.sequence.id),
-        context.scopedDb.frames.getAnchorsByShots(affectedShotIds),
-        context.scopedDb.videoVariants.getSelectedByShotIds(affectedShotIds),
-      ]);
-    const selectedImageByFrame =
-      await context.scopedDb.frameVariants.getSelectedByFrameIds(
-        [...anchorByShot.values()].map((f) => f.id)
-      );
-
-    const motionPromptByShotId: Record<string, string> = {};
-    const shotSnapshotByShotId: Record<string, ReplaceElementShotSnapshot> = {};
-    for (const shot of affectedShots) {
-      const { scene } = resolveSceneForShot(shot, sceneContext);
-      motionPromptByShotId[shot.id] = resolveMotionPromptFromVersion(
-        selectedMotionByShot.get(shot.id),
-        {
-          characterTags: scene?.continuity?.characterTags,
-          description: scene?.originalScript.extract ?? null,
-        },
-        videoModel
-      );
-
-      const anchor = anchorByShot.get(shot.id);
-      const selectedImage = anchor
-        ? selectedImageByFrame.get(anchor.id)
-        : undefined;
-      shotSnapshotByShotId[shot.id] = {
-        frameId: anchor?.id ?? null,
-        sourceImageUrl: selectedImage?.url ?? null,
-        sourceModel: selectedImage?.model ?? null,
-        hasVideo: !!videoByShot.get(shot.id)?.url,
-        durationMs: shot.durationMs,
-      };
-    }
-
-    const workflowInput: ReplaceElementWorkflowInput = {
-      userId: context.user.id,
-      teamId: context.teamId,
-      sequenceId: context.sequence.id,
-      elementId: data.elementId,
-      token: updated.token,
-      previousDescription,
-      newImageUrl: data.publicUrl,
-      newFilename: data.filename,
-      affectedShotIds,
-      motionPromptByShotId,
-      shotSnapshotByShotId,
-      aspectRatio: context.sequence.aspectRatio,
-      videoModel,
-    };
-
-    // If the trigger throws, the row is stranded in `analyzing` — restore
-    // status and emit :failed so subscribers see a terminal lifecycle event.
-    // Each side effect is isolated so a Turso/Redis blip can't replace the
-    // original `err` with a downstream error the user can't act on.
-    let workflowRunId: string;
     try {
-      workflowRunId = await triggerWorkflow('/replace-element', workflowInput, {
-        label: buildWorkflowLabel(context.sequence.id),
+      await triggerElementVision({
+        elementId: updated.id,
+        sequenceId: context.sequence.id,
+        imageUrl: updated.imageUrl,
+        filename: updated.uploadedFilename,
+        token: updated.token,
+        teamId: context.teamId,
+        userId: context.user.id,
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
-      try {
-        await context.scopedDb.sequenceElements.updateVisionStatus(
-          data.elementId,
-          'failed',
-          message
-        );
-      } catch (e) {
-        logger.error('persist failed status threw:', { err: e });
-      }
-      try {
-        await getGenerationChannel(context.sequence.id).emit(
-          'generation.replace-element:failed',
-          { elementId: data.elementId, error: message }
-        );
-      } catch (e) {
-        logger.error('emit :failed threw:', { err: e });
-      }
+      await context.scopedDb.sequenceElements.updateVisionStatus(
+        data.elementId,
+        'failed',
+        message
+      );
       throw err;
     }
 
-    return {
-      element: updated,
-      affectedShotIds,
-      workflowRunId,
-    };
+    return { element: updated };
   });

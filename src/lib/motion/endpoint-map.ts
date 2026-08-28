@@ -7,6 +7,7 @@ import { motionTransform } from './motion-transform';
 
 import {
   zGrokImagineVideoV15ImageToVideoInput,
+  zH3MaxImageToVideoInput,
   zKlingVideoV3ProImageToVideoInput,
   zLtx23ImageToVideoInput,
   zMinimaxHailuo23ProImageToVideoInput,
@@ -17,6 +18,7 @@ import {
 
 import {
   GrokImagineVideoV15ImageToVideoInputSchema,
+  H3MaxImageToVideoInputSchema,
   KlingVideoV3ProImageToVideoInputSchema,
   Ltx23ImageToVideoInputSchema,
   MinimaxHailuo23ProImageToVideoInputSchema,
@@ -27,6 +29,7 @@ import {
 
 export type MotionJSONSchema =
   | typeof GrokImagineVideoV15ImageToVideoInputSchema
+  | typeof H3MaxImageToVideoInputSchema
   | typeof KlingVideoV3ProImageToVideoInputSchema
   | typeof Ltx23ImageToVideoInputSchema
   | typeof MinimaxHailuo23ProImageToVideoInputSchema
@@ -44,6 +47,7 @@ export const MOTION_INPUT_SCHEMAS = {
   'fal-ai/minimax/hailuo-2.3/pro/image-to-video':
     zMinimaxHailuo23ProImageToVideoInput,
   'fal-ai/veo3.1/image-to-video': zVeo31ImageToVideoInput,
+  'minimax/h3-max/image-to-video': zH3MaxImageToVideoInput,
   'xai/grok-imagine-video/v1.5/image-to-video':
     zGrokImagineVideoV15ImageToVideoInput,
 };
@@ -70,6 +74,7 @@ export const MOTION_JSON_SCHEMAS = {
   'fal-ai/minimax/hailuo-2.3/pro/image-to-video':
     MinimaxHailuo23ProImageToVideoInputSchema,
   'fal-ai/veo3.1/image-to-video': Veo31ImageToVideoInputSchema,
+  'minimax/h3-max/image-to-video': H3MaxImageToVideoInputSchema,
   'xai/grok-imagine-video/v1.5/image-to-video':
     GrokImagineVideoV15ImageToVideoInputSchema,
 } satisfies Record<MotionEndpointId, MotionJSONSchema>;
@@ -98,6 +103,10 @@ export const MOTION_TRANSFORMS = {
   'fal-ai/veo3.1/image-to-video': motionTransform(
     zVeo31ImageToVideoInput,
     Veo31ImageToVideoInputSchema
+  ),
+  'minimax/h3-max/image-to-video': motionTransform(
+    zH3MaxImageToVideoInput,
+    H3MaxImageToVideoInputSchema
   ),
   'xai/grok-imagine-video/v1.5/image-to-video': motionTransform(
     zGrokImagineVideoV15ImageToVideoInput,

@@ -15,6 +15,15 @@ export class WorkflowEntrypoint {
   }
 }
 
+export class DurableObject {
+  protected ctx: unknown;
+  protected env: unknown;
+  constructor(ctx?: unknown, env?: unknown) {
+    this.ctx = ctx;
+    this.env = env;
+  }
+}
+
 export const env: Record<string, unknown> = {};
 
 export function waitUntil(_promise: Promise<unknown>): void {}

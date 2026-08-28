@@ -19,7 +19,7 @@ export const Route = createFileRoute('/_auth')({
     }
 
     const authOptions = await getAuthOptionsFn();
-    return { authOptions };
+    return { session, authOptions };
   },
   component: AuthLayout,
 });

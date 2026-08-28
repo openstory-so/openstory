@@ -16,6 +16,11 @@ import { SHOT_GENERATION_STATUSES } from '@/lib/db/schema/shots';
 import { apiEnhanceScriptSchema } from './enhance-input-schema';
 import { API_V1_BASE } from './hal';
 import { apiCreateSequenceSchema } from './input-schema';
+import {
+  apiCreateStyleSchema,
+  EXAMPLE_CREATE_STYLE_BODY,
+} from './style-input-schema';
+import { styleDocumentSchema } from './styles';
 import { z, type ZodType } from 'zod';
 
 type JsonValue =
@@ -163,6 +168,15 @@ export function buildOpenApiDocument(): JsonObject {
   const { root: enhanceRequest, defs: enhanceDefs } = requestSchemas(
     apiEnhanceScriptSchema
   );
+  const { root: createStyleRequest, defs: styleDefs } =
+    requestSchemas(apiCreateStyleSchema);
+  // `_links` is tagged with the id of the hand-authored HalLinks component
+  // below, so Zod emits a $ref to it (its own stub def is overridden by spread order).
+  const { root: styleDoc, defs: styleDocDefs } = requestSchemas(
+    styleDocumentSchema.extend({
+      _links: z.record(z.string(), z.unknown()).meta({ id: 'HalLinks' }),
+    })
+  );
 
   const waitParam: JsonObject = {
     name: 'wait',
@@ -191,8 +205,10 @@ export function buildOpenApiDocument(): JsonObject {
     security: [{ bearerAuth: [] }, { apiKeyHeader: [] }],
     tags: [
       { name: 'discovery', description: 'Unauthenticated self-description.' },
+      { name: 'auth', description: 'Obtain an API key via device-code login.' },
       { name: 'sequences', description: 'Create and watch video sequences.' },
       { name: 'scripts', description: 'Enhance scripts without generating.' },
+      { name: 'styles', description: 'Create and browse team styles.' },
     ],
     paths: {
       [API_V1_BASE]: {
@@ -224,6 +240,111 @@ export function buildOpenApiDocument(): JsonObject {
               description: 'The OpenAPI document.',
               content: { 'application/json': { schema: { type: 'object' } } },
             },
+          },
+        },
+      },
+      [`${API_V1_BASE}/device/code`]: {
+        post: {
+          tags: ['auth'],
+          summary: 'Start a device-code login',
+          description:
+            'RFC 8628-style login for agents: returns a secret `device_code` to poll with and a short `user_code` the user enters at `verification_url` (or open `verification_url_complete`). Codes last 10 minutes. Unauthenticated and rate limited per IP.',
+          security: [],
+          responses: {
+            '201': {
+              description: 'A new device code.',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    required: [
+                      'device_code',
+                      'user_code',
+                      'verification_url',
+                      'verification_url_complete',
+                      'expires_in',
+                      'interval',
+                    ],
+                    properties: {
+                      device_code: { type: 'string' },
+                      user_code: { type: 'string' },
+                      verification_url: { type: 'string', format: 'uri' },
+                      verification_url_complete: {
+                        type: 'string',
+                        format: 'uri',
+                      },
+                      expires_in: { type: 'integer', description: 'Seconds.' },
+                      interval: {
+                        type: 'integer',
+                        description: 'Minimum seconds between bare polls.',
+                      },
+                      _links: { type: 'object' },
+                    },
+                  },
+                },
+              },
+            },
+            '429': errorResponse(
+              'Too many device-login requests from this IP.'
+            ),
+          },
+        },
+      },
+      [`${API_V1_BASE}/device/token`]: {
+        get: {
+          tags: ['auth'],
+          summary: 'Collect the API key for an approved device code',
+          description:
+            'Poll with the `device_code`. `?wait` holds the request open server-side (e.g. `60s`) so you need not sleep between polls; without it, respect `interval`. Returns the key exactly once — the code is consumed.',
+          security: [],
+          parameters: [
+            {
+              name: 'device_code',
+              in: 'query',
+              required: true,
+              schema: { type: 'string' },
+            },
+            {
+              name: 'wait',
+              in: 'query',
+              required: false,
+              description: 'Long-poll duration, e.g. `30s` or `60s`.',
+              schema: { type: 'string' },
+            },
+          ],
+          responses: {
+            '200': {
+              description: 'Approved. The key is shown only once.',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    required: ['api_key', 'team'],
+                    properties: {
+                      api_key: { type: 'string' },
+                      team: {
+                        type: 'object',
+                        required: ['id', 'name'],
+                        properties: {
+                          id: { type: 'string' },
+                          name: { type: 'string' },
+                        },
+                      },
+                      _links: { type: 'object' },
+                    },
+                  },
+                },
+              },
+            },
+            '400': errorResponse('Missing device_code or bad ?wait.'),
+            '403': errorResponse('access_denied — the user denied the login.'),
+            '410': errorResponse(
+              'expired_token — unknown, expired, or already-used code.'
+            ),
+            '428': errorResponse('authorization_pending — keep polling.'),
+            '429': errorResponse(
+              'slow_down (polled faster than `interval` without ?wait) or per-IP limit; honour Retry-After.'
+            ),
           },
         },
       },
@@ -335,6 +456,91 @@ export function buildOpenApiDocument(): JsonObject {
             '401': errorResponse('Missing or invalid API key.'),
             '403': errorResponse('No team associated with the key.'),
             '404': errorResponse('No style found matching the reference.'),
+            '429': errorResponse('Per-key rate limit exceeded (10 req/s).'),
+          },
+        },
+      },
+      [`${API_V1_BASE}/styles`]: {
+        get: {
+          tags: ['styles'],
+          summary: 'List styles',
+          description:
+            "Your team's library styles plus the public templates, as full documents. Sequence-bound automatic styles are excluded.",
+          responses: {
+            '200': {
+              description: 'The style documents.',
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/StyleListResult' },
+                },
+              },
+            },
+            '401': errorResponse('Missing or invalid API key.'),
+            '403': errorResponse('No team associated with the key.'),
+            '429': errorResponse('Per-key rate limit exceeded (10 req/s).'),
+          },
+        },
+        post: {
+          tags: ['styles'],
+          summary: 'Create a style',
+          description:
+            'Create a team-owned library style to pass as `style` when creating sequences. Send `name` and a complete v2 `config` (validated as-is; v1 is rejected). Public/template flags, usage counts and sequence binding are server-managed and cannot be set.',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/CreateStyleRequest' },
+                example: EXAMPLE_CREATE_STYLE_BODY,
+              },
+            },
+          },
+          responses: {
+            '201': {
+              description:
+                'The created style document, with a `create-sequence` link pre-filled with its id.',
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/StyleDocument' },
+                },
+              },
+            },
+            '400': errorResponse('Invalid JSON or request body.'),
+            '401': errorResponse('Missing or invalid API key.'),
+            '403': errorResponse('No team associated with the key.'),
+            '409': errorResponse(
+              "The name's URL slug collides with a style visible to this team."
+            ),
+            '429': errorResponse('Per-key rate limit exceeded (10 req/s).'),
+          },
+        },
+      },
+      [`${API_V1_BASE}/styles/{id}`]: {
+        get: {
+          tags: ['styles'],
+          summary: 'Get a style',
+          description:
+            'The full style document (incl. the v2 `config` recipe). Resolves your own library styles and public templates.',
+          parameters: [
+            {
+              name: 'id',
+              in: 'path',
+              required: true,
+              description: 'The style id (ULID).',
+              schema: { type: 'string' },
+            },
+          ],
+          responses: {
+            '200': {
+              description: 'The style document.',
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/StyleDocument' },
+                },
+              },
+            },
+            '401': errorResponse('Missing or invalid API key.'),
+            '403': errorResponse('No team associated with the key.'),
+            '404': errorResponse('Style not found.'),
             '429': errorResponse('Per-key rate limit exceeded (10 req/s).'),
           },
         },
@@ -469,6 +675,21 @@ export function buildOpenApiDocument(): JsonObject {
         ...defs,
         EnhanceScriptRequest: enhanceRequest,
         ...enhanceDefs,
+        CreateStyleRequest: createStyleRequest,
+        ...styleDefs,
+        ...styleDocDefs,
+        StyleDocument: styleDoc,
+        StyleListResult: {
+          type: 'object',
+          required: ['styles', '_links'],
+          properties: {
+            styles: {
+              type: 'array',
+              items: { $ref: '#/components/schemas/StyleDocument' },
+            },
+            _links: { $ref: '#/components/schemas/HalLinks' },
+          },
+        },
         HalLink: {
           type: 'object',
           required: ['href'],

@@ -24,5 +24,4 @@ export default defineConfig({
     token: process.env.CLOUDFLARE_API_TOKEN ?? '',
   },
   verbose: true,
-  strict: true,
 });

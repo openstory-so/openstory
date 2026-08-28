@@ -15,6 +15,7 @@ import { user } from './auth';
 // shots.ts imports sequences for foreign key reference
 import { styles } from './libraries';
 import { teams } from './teams';
+import type { StoredStyleConfig } from '@/lib/style/style-config';
 
 // Enum values as constants (SQLite doesn't have native enums)
 const SEQUENCE_STATUSES = [
@@ -73,12 +74,22 @@ export const sequences = snakeCase.table(
     styleId: text()
       .notNull()
       .references(() => styles.id, { onDelete: 'set null' }),
+    // Recipe this sequence was generated with. Copied from styles.config on
+    // create / style change so catalog edits cannot stale existing work.
+    // Nullable only for the ADD COLUMN + backfill window; new writes always set it.
+    styleConfig: text({ mode: 'json' }).$type<StoredStyleConfig>(),
     aspectRatio: text({ length: 10 })
       .$type<AspectRatio>()
       .default(DEFAULT_ASPECT_RATIO)
       .notNull(),
 
-    // TB-20260804: DB-Audit: I don't love that there's a default here and that it's a specific model identifier
+    // SQL default pinned to the literal 'anthropic/claude-haiku-4.5' to match
+    // every deployed DB's column default. DEFAULT_ANALYSIS_MODEL (see
+    // models.config.ts) must NOT be written here: SQLite can't ALTER a
+    // column default without a full table rebuild, which CASCADE-deletes
+    // child rows on D1 (#612). The scoped create (db/scoped/sequences.ts)
+    // substitutes DEFAULT_ANALYSIS_MODEL for an omitted analysisModel,
+    // mirroring imageModel / videoModel below.
     analysisModel: text({ length: 100 })
       .default('anthropic/claude-haiku-4.5')
       .notNull(),
@@ -130,6 +141,11 @@ export const sequences = snakeCase.table(
     // before that fix hold a provider CDN URL that may have expired, and fall
     // back to the player's empty state until the sequence regenerates.
     posterUrl: text(),
+
+    // Dedup for the "your video is ready" email (#1276). Conceptual key is
+    // `${sequenceId}:ready` — claimed with a CAS write so workflow step
+    // retries and smart-retry re-completes cannot double-send.
+    readyEmailSentAt: integer({ mode: 'timestamp' }),
 
     // Auto-generation flags (set at sequence creation, read by UI for phase display)
     // TB-20260804: DB-Audit: autoGenerateMotion and autoGenerateMusic should not be stored. They should be set when the workflow is initiated.

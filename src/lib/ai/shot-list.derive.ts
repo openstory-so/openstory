@@ -49,7 +49,7 @@ function sceneContextParts(
     // Cast membership is shared context; the per-shot subject state narrows it.
     continuity.characterTags.join(', '),
     // Style is the single look authored for the whole sequence.
-    styleConfig.artStyle,
+    styleConfig.look.artStyle,
     continuity.styleTag,
   ].filter((p): p is string => typeof p === 'string' && p.trim().length > 0);
 }
@@ -76,27 +76,7 @@ function deriveVisualPrompt(
     ...sceneParts,
   ]);
 
-  return {
-    fullPrompt,
-    negativePrompt: '',
-    components: {
-      sceneDescription: scene.metadata.storyBeat,
-      subject: framing.subjectStartState,
-      environment: joinParts([
-        scene.metadata.location,
-        scene.continuity.environmentTag,
-      ]),
-      lighting: scene.continuity.lightingSetup,
-      camera: joinParts([framing.shotSize, framing.angle]),
-      composition: framing.composition,
-      style: joinParts([styleConfig.artStyle, scene.continuity.styleTag]),
-      technical: '',
-      atmosphere: joinParts([
-        scene.metadata.timeOfDay,
-        scene.continuity.colorPalette,
-      ]),
-    },
-  };
+  return { fullPrompt };
 }
 
 /**
@@ -124,27 +104,6 @@ export function deriveMotionPrompt(
   // signal presence and the on-screen sound cue.
   return {
     fullPrompt,
-    components: {
-      cameraMovement: cameraMovement.move,
-      startPosition: shot.framing.subjectStartState,
-      endPosition: '',
-      durationSeconds: shot.durationSeconds,
-      speed: cameraMovement.pacing,
-      smoothness: 'smooth',
-      subjectTracking: '',
-      equipment: '',
-    },
-    parameters: {
-      durationSeconds: shot.durationSeconds,
-      fps: 24,
-      motionAmount: cameraMovement.move === 'static' ? 'low' : 'medium',
-      cameraControl: {
-        pan: 0,
-        tilt: 0,
-        zoom: 1,
-        movement: cameraMovement.move,
-      },
-    },
     dialogue: scene.dialoguePresent
       ? {
           presence: true,

@@ -23,11 +23,16 @@
  * including `scene-split` (LLM streaming wrapped in a single `step.do`) and
  * `motion-batch` (Phase 5 motion + music + merge tree). */
 
+import { getEffectiveFalPricing } from '@/lib/ai/fal-pricing-live';
 import { sanitizeScriptContent } from '@/lib/ai/prompt-validation';
 import { resolveAudioModels } from '@/lib/ai/resolve-audio-models';
 import { resolveImageModels } from '@/lib/ai/resolve-image-models';
 import { resolveVideoModels } from '@/lib/ai/resolve-video-models';
 import type { Scene } from '@/lib/ai/scene-analysis.schema';
+import { estimateStoryboardRenderCost } from '@/lib/billing/cost-estimation';
+import { creditsShortStatusError } from '@/lib/billing/credits-short';
+import { microsToUsd } from '@/lib/billing/money';
+import { gateStoryboardRenders } from '@/lib/billing/storyboard-render-gate';
 import { generateId } from '@/lib/db/id';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import { assembleMotionPrompt } from '@/lib/motion/assemble-motion-prompt';
@@ -66,6 +71,7 @@ import {
   type ShotImageSceneSnapshot,
   resolveSceneShotImageReferences,
 } from '@/lib/workflows/sheet-snapshots';
+import { deriveAutoStyle } from '@/lib/workflows/auto-style-step';
 import { waitForElementVision } from '@/lib/workflows/wait-for-sheets';
 import type {
   CharacterMinimal,
@@ -92,7 +98,8 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
       sequenceId,
       script,
       aspectRatio,
-      styleConfig,
+      styleConfig: inputStyleConfig,
+      pendingAutoStyleId,
       analysisModelId,
       elementIds,
       imageModel,
@@ -130,7 +137,9 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
     await step.do('phase-1-start', async () => {
       await getGenerationChannel(sequenceId).emit('generation.phase:start', {
         phase: 1,
-        phaseName: 'Analyzing script…',
+        phaseName: pendingAutoStyleId
+          ? 'Analyzing script & deriving a style…'
+          : 'Analyzing script…',
       });
     });
 
@@ -190,32 +199,54 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
       consistencyTag: el.consistencyTag,
     }));
 
-    const sceneSplitResult = await spawnAndAwaitChild<
-      SceneSplitWorkflowInput,
-      SceneSplitWorkflowResult
-    >(step, {
-      binding: this.env.SCENE_SPLIT_WORKFLOW,
-      parentBindingName: 'ANALYZE_SCRIPT_WORKFLOW',
-      parentInstanceId: event.instanceId,
-      childId: `scene-split:${sequenceId ?? 'no-seq'}`,
-      childPayload: {
-        userId: input.userId,
-        teamId: input.teamId,
-        sequenceId,
-        promptName: 'phase/scene-splitting-chat',
-        aspectRatio,
-        script: sanitizeScriptContent(script),
-        styleConfig,
-        modelId: analysisModelId,
-        elements: elementsMinimal,
-      },
-      spawnStepName: 'spawn-scene-split',
-      awaitStepName: 'await-scene-split',
-      // LLM-only child, but under a many-sequence burst the engine's notify
-      // delivery alone has been observed to lag >25 minutes — every await in
-      // this workflow carries explicit burst headroom.
-      timeout: '45 minutes',
-    });
+    if (pendingAutoStyleId && !sequenceId) {
+      throw new NonRetryableError(
+        'Automatic style requested without a sequence to bind it to'
+      );
+    }
+
+    // Automatic style (#1213): derived in parallel with scene-split, whose
+    // preview stills render style-free on an automatic run.
+    const [sceneSplitResult, styleConfig] = await Promise.all([
+      spawnAndAwaitChild<SceneSplitWorkflowInput, SceneSplitWorkflowResult>(
+        step,
+        {
+          binding: this.env.SCENE_SPLIT_WORKFLOW,
+          parentBindingName: 'ANALYZE_SCRIPT_WORKFLOW',
+          parentInstanceId: event.instanceId,
+          childId: `scene-split:${sequenceId ?? 'no-seq'}`,
+          childPayload: {
+            userId: input.userId,
+            teamId: input.teamId,
+            sequenceId,
+            reservationId: input.reservationId,
+            promptName: 'phase/scene-splitting-boundaries-chat',
+            aspectRatio,
+            script: sanitizeScriptContent(script),
+            modelId: analysisModelId,
+            elements: elementsMinimal,
+          },
+          spawnStepName: 'spawn-scene-split',
+          awaitStepName: 'await-scene-split',
+          // LLM-only child, but under a many-sequence burst the engine's notify
+          // delivery alone has been observed to lag >25 minutes — every await in
+          // this workflow carries explicit burst headroom.
+          timeout: '45 minutes',
+        }
+      ),
+      pendingAutoStyleId && sequenceId
+        ? deriveAutoStyle(step, {
+            scopedDb,
+            workflowRunId: parentInstanceId,
+            sequenceId,
+            styleId: pendingAutoStyleId,
+            script,
+            aspectRatio,
+            analysisModelId,
+            reservationId: input.reservationId,
+          })
+        : Promise.resolve(inputStyleConfig),
+    ]);
 
     const { scenes, shotMapping, characterBible, locationBible, elementBible } =
       sceneSplitResult;
@@ -236,6 +267,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
           sequenceId,
           userId: input.userId,
           teamId: input.teamId,
+          reservationId: input.reservationId,
           analysisModelId,
           suggestedTalentIds,
           suggestedTalent: input.suggestedTalent,
@@ -257,6 +289,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
           sequenceId,
           userId: input.userId,
           teamId: input.teamId,
+          reservationId: input.reservationId,
           analysisModelId,
           suggestedLocationIds,
           suggestedLocations: input.suggestedLocations,
@@ -336,6 +369,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
           userId: input.userId,
           teamId: input.teamId,
           sequenceId,
+          reservationId: input.reservationId,
           entries: missingElementEntries,
           imageModel,
           styleConfig,
@@ -359,6 +393,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
               sequenceId,
               userId: input.userId,
               teamId: input.teamId,
+              reservationId: input.reservationId,
               characterBible,
               talentMatches: talentCharacterMatches,
               imageModel,
@@ -385,6 +420,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
             sequenceId,
             userId: input.userId,
             teamId: input.teamId,
+            reservationId: input.reservationId,
             locationBible,
             libraryLocationMatches,
             // Use the sequence's image model for location sheets, mirroring
@@ -410,6 +446,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
             userId: input.userId,
             teamId: input.teamId,
             sequenceId,
+            reservationId: input.reservationId,
             scenes,
             aspectRatio,
             characterBible: castCharacterBible,
@@ -463,6 +500,69 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
     const generatedElements = elementSheetSettled.value;
     const allElements = [...elementsMinimal, ...generatedElements];
 
+    const totalDurationSeconds = scenes.reduce(
+      (sum, scene) => sum + (scene.metadata?.durationSeconds || 5),
+      0
+    );
+    const renderGate = await step.do('grow-reservation', async () => {
+      const remainingWork = estimateStoryboardRenderCost({
+        imageModel,
+        imageModelCount: imageModels.length,
+        aspectRatio,
+        estimatedSceneCount: scenes.length,
+        autoGenerateMotion,
+        videoModels: autoGenerateMotion ? videoModels : undefined,
+        videoDurationSeconds: Math.max(
+          5,
+          Math.round(totalDurationSeconds / Math.max(scenes.length, 1))
+        ),
+        autoGenerateMusic: autoGenerateMusic && autoGenerateMotion,
+        audioModels:
+          autoGenerateMusic && autoGenerateMotion ? audioModels : undefined,
+        audioDurationSeconds: totalDurationSeconds,
+        pricing: await getEffectiveFalPricing(),
+      });
+      return gateStoryboardRenders({
+        scopedDb,
+        reservationId: input.reservationId,
+        remainingWork,
+        sceneCount: scenes.length,
+        sequenceId,
+      });
+    });
+
+    if (!renderGate.spawnRenders) {
+      // Gate already zeroed leftover. Fail the sequence and throw so the
+      // parent does not mark it completed with no stills.
+      const shortMessage = creditsShortStatusError({
+        sceneCount: scenes.length,
+        neededMicros: renderGate.neededMicros,
+      });
+      await step.do('emit-reservation-short', async () => {
+        if (!sequenceId) return;
+        await scopedDb
+          .sequence(sequenceId)
+          .updateStatus('failed', shortMessage);
+        await getGenerationChannel(sequenceId).emit(
+          'generation.reservation:short',
+          {
+            neededUsd: microsToUsd(renderGate.neededMicros),
+            remainingUsd: microsToUsd(renderGate.remainingMicros),
+            sceneCount: scenes.length,
+          }
+        );
+      });
+      await step.do('record-analysis-duration', async () => {
+        if (sequenceId) {
+          await scopedDb.sequences.updateAnalysisDurationMs(
+            sequenceId,
+            Date.now() - startTime
+          );
+        }
+      });
+      throw new NonRetryableError(shortMessage);
+    }
+
     // ----------------------------------------------------------------------
     // PHASE 4: shot images + motion/music prompts in parallel
     // ----------------------------------------------------------------------
@@ -481,6 +581,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
       scenesWithVisualPrompts.map((scene) => {
         const refs = resolveSceneShotImageReferences({
           scene,
+          visualPrompt: visualPromptBySceneId[scene.sceneId] ?? '',
           characters: charactersWithSheets,
           locations: locationsWithSheets,
           elements: allElements,
@@ -498,6 +599,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
       userId: input.userId,
       teamId: input.teamId,
       sequenceId,
+      reservationId: input.reservationId,
       scenesWithVisualPrompts,
       charactersWithSheets,
       locationsWithSheets,
@@ -571,6 +673,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
           userId: input.userId,
           teamId: input.teamId,
           sequenceId,
+          reservationId: input.reservationId,
           scenesWithVisualPrompts,
           shotMapping,
           aspectRatio,
@@ -646,23 +749,24 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
         // The structured motion prompt is threaded in from the motion-prompt
         // phase's return (#713/#991) — NOT re-read from the DB, which would be
         // racy against concurrent append-only version writes.
-        const motionPromptData = motionPromptsBySceneId[scene.sceneId];
-        if (!motionPromptData?.fullPrompt) {
-          throw new WorkflowValidationError(
-            `Scene ${scene.sceneId} has no motion prompt`
-          );
-        }
-
         // `imageUrls` is aligned to scene order; a null slot means that
         // scene's image generation failed (the shot is already marked
-        // failed by the image workflow). Skip its motion rather than failing
-        // the whole sequence — the remaining shots' clips still render.
+        // failed by the image workflow). Motion-prompt batch also skips
+        // those scenes (no starting frame). Skip rather than throwing —
+        // a missing still used to fail the whole storyboard.
         const imageUrl = imageUrls[index];
         if (!imageUrl) {
           logger.warn(
             `[AnalyzeScriptWorkflow:cf] Scene ${scene.sceneId} has no generated image (index ${index}); skipping its motion`
           );
           return [];
+        }
+
+        const motionPromptData = motionPromptsBySceneId[scene.sceneId];
+        if (!motionPromptData?.fullPrompt) {
+          throw new WorkflowValidationError(
+            `Scene ${scene.sceneId} has no motion prompt`
+          );
         }
 
         const characterTags = scene.continuity?.characterTags;
@@ -711,6 +815,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
           userId: input.userId,
           teamId: input.teamId,
           sequenceId,
+          reservationId: input.reservationId,
           includeMusic: shouldGenerateMusic,
           shots: batchShots,
           videoModels,
@@ -745,7 +850,17 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
     error: string;
     scopedDb: WorkflowScopedDb;
   }): Promise<void> {
-    const { sequenceId } = event.payload;
+    const { sequenceId, reservationId } = event.payload;
+    if (reservationId) {
+      try {
+        await scopedDb.billing.zeroReservation(reservationId);
+      } catch (releaseError) {
+        logger.error(
+          `[AnalyzeScriptWorkflow:cf] Failed to zero reservation ${reservationId}:`,
+          { err: releaseError }
+        );
+      }
+    }
     if (!sequenceId) return;
 
     const sanitized = sanitizeFailResponse(error);

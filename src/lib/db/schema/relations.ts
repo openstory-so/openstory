@@ -341,6 +341,16 @@ export const relations = defineRelations(schema, (r) => ({
       to: r.transactions.id,
     }),
   },
+  creditReservations: {
+    team: r.one.teams({
+      from: r.creditReservations.teamId,
+      to: r.teams.id,
+    }),
+    user: r.one.user({
+      from: r.creditReservations.userId,
+      to: r.user.id,
+    }),
+  },
 
   // ---- Team API Keys ----
   teamApiKeys: {

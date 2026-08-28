@@ -8,46 +8,76 @@
  * scene actually has references AND the model has such an endpoint, route there;
  * otherwise stay on the normal image-to-video endpoint.
  *
- * Models that emit references inline on their normal endpoint (Kling v3 Pro's
- * `elements` field) are NOT in the reference-endpoint map, so they always
- * resolve to image-to-video here and attach refs in `buildModelInput` instead.
+ * `references` is how those images ride, if at all:
+ *   - `endpoint` — dedicated reference-to-video endpoint (Seedance)
+ *   - `inline` — URLs on the same generations call (Kling `elements`, Grok
+ *     Imagine 1.5 native `reference`/`character` prompt parts)
+ *   - `none` — URLs are not sent; tokens become descriptions in the prompt
  */
 
+import { NATIVE_GROK_VIDEO_MODEL } from '@/lib/ai/grok-native';
 import {
   IMAGE_TO_VIDEO_MODELS,
+  attachesInlineReferences,
   getMotionReferenceEndpoint,
   type ImageToVideoModel,
   type MotionReferenceEndpointConfig,
 } from '@/lib/ai/models';
+import type { MediaVia } from '@/lib/ai/via';
 
 export type MotionEndpointResolution =
   | {
-      /** The fal endpoint id to submit to (and key cost/transforms on). */
+      /** Pricing Via — which API this endpoint is called on. Vendor is `model.vendor`. */
+      via: MediaVia;
       endpointId: string;
-      usesReferenceEndpoint: false;
+      references: 'none' | 'inline';
     }
   | {
+      via: MediaVia;
       endpointId: string;
-      /** Routed to the model's dedicated reference-to-video endpoint. */
-      usesReferenceEndpoint: true;
+      references: 'endpoint';
       /** Tag syntax + image cap for binding refs into the prompt. */
       referenceConfig: MotionReferenceEndpointConfig;
     };
 
 export function resolveMotionEndpoint(
   modelKey: ImageToVideoModel,
-  hasReferenceImages: boolean
+  hasReferenceImages: boolean,
+  via: MediaVia = 'fal'
 ): MotionEndpointResolution {
-  const referenceConfig = getMotionReferenceEndpoint(modelKey);
-  if (hasReferenceImages && referenceConfig) {
+  if (via === 'xai') {
+    // Imagine 1.5 reference-to-video rides the same `/videos/generations`
+    // endpoint as image-to-video: extra images go on the generateVideo prompt
+    // as `metadata.role: 'reference' | 'character'` parts. xAI forbids mixing
+    // a start frame with `reference_images`, so submit drops start_frame and
+    // sends the still as the first reference when this is `'inline'`.
     return {
-      endpointId: referenceConfig.endpointId,
-      usesReferenceEndpoint: true,
-      referenceConfig,
+      via: 'xai',
+      endpointId: NATIVE_GROK_VIDEO_MODEL,
+      references: hasReferenceImages ? 'inline' : 'none',
     };
   }
+  if (hasReferenceImages) {
+    const referenceConfig = getMotionReferenceEndpoint(modelKey);
+    if (referenceConfig) {
+      return {
+        via: 'fal',
+        endpointId: referenceConfig.endpointId,
+        references: 'endpoint',
+        referenceConfig,
+      };
+    }
+    if (attachesInlineReferences(modelKey)) {
+      return {
+        via: 'fal',
+        endpointId: IMAGE_TO_VIDEO_MODELS[modelKey].id,
+        references: 'inline',
+      };
+    }
+  }
   return {
+    via: 'fal',
     endpointId: IMAGE_TO_VIDEO_MODELS[modelKey].id,
-    usesReferenceEndpoint: false,
+    references: 'none',
   };
 }

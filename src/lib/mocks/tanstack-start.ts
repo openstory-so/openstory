@@ -55,6 +55,10 @@ export function createMiddleware(_opts?: any) {
   return createBuilder();
 }
 
+export function createCsrfMiddleware(_opts?: any) {
+  return createBuilder();
+}
+
 // Re-export stubs for subpath imports (@tanstack/react-start/server)
 export function getRequest() {
   return new Request('http://localhost');

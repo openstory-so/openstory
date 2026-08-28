@@ -6,14 +6,26 @@
 import type { Database } from '@/lib/db/client';
 import type { NewStyle, Style } from '@/lib/db/schema';
 import { styles } from '@/lib/db/schema';
-import { ValidationError } from '@/lib/errors';
+import { ConflictError, ValidationError } from '@/lib/errors';
 import {
   SERVER_MANAGED_STYLE_COLUMNS,
   type ServerManagedStyleColumn,
 } from '@/lib/schemas/style.schemas';
 import { stripServerManagedColumns } from './server-managed';
 import { styleSlug } from '@/lib/style/style-slug';
-import { and, asc, desc, eq, inArray, ne, or, sql } from 'drizzle-orm';
+import type { AutoStyleDraft } from '@/lib/style/auto-style';
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  ne,
+  or,
+  sql,
+} from 'drizzle-orm';
 
 import { getLogger } from '@/lib/observability/logger';
 
@@ -28,6 +40,18 @@ type StylesListOptions = {
   orderBy?: 'popular' | 'sortOrder';
 };
 
+function boundRowsOwnedBy(teamId: string) {
+  return or(isNull(styles.sequenceId), eq(styles.teamId, teamId));
+}
+
+/** The team's library: own + public rows, never a sequence-bound one. */
+function libraryVisibleTo(teamId: string) {
+  return and(
+    or(eq(styles.teamId, teamId), eq(styles.isPublic, true)),
+    isNull(styles.sequenceId)
+  );
+}
+
 /**
  * A style's URL/asset slug is derived from its name (`styleSlug`) and is the key
  * the `?style=<slug>` composer prefill (and every style asset path) resolves on.
@@ -38,6 +62,9 @@ type StylesListOptions = {
  *
  * This guards against the future where teams can author styles; public styles
  * are seeded with already-unique names.
+ *
+ * Sequence-bound (automatic) styles are outside the library, so they neither
+ * need a unique slug nor count as a clash — until promotion, which checks here.
  */
 async function assertSlugAvailable(
   db: Database,
@@ -51,13 +78,13 @@ async function assertSlugAvailable(
     .from(styles)
     .where(
       and(
-        or(eq(styles.teamId, teamId), eq(styles.isPublic, true)),
+        libraryVisibleTo(teamId),
         excludeId ? ne(styles.id, excludeId) : undefined
       )
     );
   const clash = visible.find((s) => styleSlug(s.name) === slug);
   if (clash) {
-    throw new ValidationError(
+    throw new ConflictError(
       `A style named “${clash.name}” already exists, which would share the URL slug “${slug}”. Choose a more distinct name.`,
       { slug, conflictsWith: clash.name }
     );
@@ -75,15 +102,31 @@ function createStylesReadMethods(db: Database, teamId: string) {
       return await db
         .select()
         .from(styles)
-        .where(or(eq(styles.teamId, teamId), eq(styles.isPublic, true)))
+        .where(libraryVisibleTo(teamId))
         .orderBy(...order);
     },
 
+    /** The automatic style bound to one of this team's sequences, if any. */
+    getBoundToSequence: async (sequenceId: string): Promise<Style | null> => {
+      const result = await db
+        .select()
+        .from(styles)
+        .where(
+          and(eq(styles.sequenceId, sequenceId), eq(styles.teamId, teamId))
+        )
+        .limit(1);
+      return result[0] ?? null;
+    },
+
+    /**
+     * Library rows resolve by id alone (a sequence may reference a public
+     * style); a sequence-bound one is private to its team.
+     */
     getById: async (styleId: string): Promise<Style | null> => {
       const result = await db
         .select()
         .from(styles)
-        .where(eq(styles.id, styleId))
+        .where(and(eq(styles.id, styleId), boundRowsOwnedBy(teamId)))
         .limit(1);
       return result[0] ?? null;
     },
@@ -91,11 +134,10 @@ function createStylesReadMethods(db: Database, teamId: string) {
     /**
      * Batched style fetch by id — resolves the style rows referenced by a page
      * of sequences in one batched fetch (one query per ≤90-id chunk), backing
-     * the `style` block in the public `GET /api/v1/sequences` list. Like
-     * `getById`, it resolves by id alone (no team scope): the ids come from the
-     * team's own sequences, which reference their team's styles plus public
-     * ones. Duplicate ids collapse and order is not guaranteed — callers index
-     * the result by id, and an id that resolves to no row simply has no entry.
+     * the `style` block in the public `GET /api/v1/sequences` list. Same
+     * scoping as `getById`. Duplicate ids collapse and order is not
+     * guaranteed — callers index the result by id, and an id that resolves to
+     * no row simply has no entry.
      */
     listByIds: async (styleIds: string[]): Promise<Style[]> => {
       if (styleIds.length === 0) return [];
@@ -106,7 +148,10 @@ function createStylesReadMethods(db: Database, teamId: string) {
       }
       const results = await Promise.all(
         batches.map((batch) =>
-          db.select().from(styles).where(inArray(styles.id, batch))
+          db
+            .select()
+            .from(styles)
+            .where(and(inArray(styles.id, batch), boundRowsOwnedBy(teamId)))
         )
       );
       return results.flat();
@@ -125,7 +170,7 @@ export function createPublicStylesReadMethods(db: Database) {
       return await db
         .select()
         .from(styles)
-        .where(eq(styles.isPublic, true))
+        .where(and(eq(styles.isPublic, true), isNull(styles.sequenceId)))
         .orderBy(asc(styles.sortOrder), asc(styles.name));
     },
   };
@@ -182,6 +227,95 @@ export function createStylesMethods(
       await db
         .delete(styles)
         .where(and(eq(styles.id, styleId), eq(styles.teamId, teamId)));
+    },
+
+    /**
+     * Automatic style (#1213): a row bound to one sequence. Created at
+     * sequence creation with a placeholder recipe and filled in by the
+     * storyboard run's first step. Outside the library, so no slug check.
+     * Inserted before the sequence row exists (the id is pre-allocated) —
+     * safe only because `sequenceId` has no FK.
+     */
+    createForSequence: async (params: {
+      sequenceId: string;
+      draft: AutoStyleDraft;
+    }): Promise<Style> => {
+      const result = await db
+        .insert(styles)
+        .values({
+          ...params.draft,
+          sequenceId: params.sequenceId,
+          teamId,
+          createdBy: userId,
+        })
+        .returning();
+      const style = result[0];
+      if (!style) {
+        throw new Error(
+          `Failed to create automatic style for sequence ${params.sequenceId}`
+        );
+      }
+      return style;
+    },
+
+    /**
+     * Write the script-derived recipe onto a sequence-bound style. Scoped to
+     * the binding so a stale run can never rewrite a promoted (library) row.
+     * Returns false when the row is no longer bound to that sequence.
+     */
+    setGeneratedForSequence: async (params: {
+      styleId: string;
+      sequenceId: string;
+      draft: AutoStyleDraft;
+    }): Promise<boolean> => {
+      const rows = await db
+        .update(styles)
+        .set({ ...params.draft, updatedAt: new Date() })
+        .where(
+          and(
+            eq(styles.id, params.styleId),
+            eq(styles.sequenceId, params.sequenceId),
+            eq(styles.teamId, teamId)
+          )
+        )
+        .returning({ id: styles.id });
+      return rows.length > 0;
+    },
+
+    /**
+     * Promote a sequence-bound style into the team library: clears the
+     * binding under the library's slug-uniqueness rule. The sequence keeps
+     * pointing at the same row, so nothing downstream re-snapshots.
+     */
+    promoteToLibrary: async (params: {
+      styleId: string;
+      name: string;
+      previewUrl: string | null;
+    }): Promise<Style> => {
+      await assertSlugAvailable(db, teamId, params.name);
+      const rows = await db
+        .update(styles)
+        .set({
+          sequenceId: null,
+          name: params.name,
+          previewUrl: params.previewUrl,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(styles.id, params.styleId),
+            eq(styles.teamId, teamId),
+            isNotNull(styles.sequenceId)
+          )
+        )
+        .returning();
+      const style = rows[0];
+      if (!style) {
+        throw new ValidationError(
+          'Only an automatic style that is still bound to a sequence can be added to the library'
+        );
+      }
+      return style;
     },
 
     incrementUsage: async (styleId: string): Promise<void> => {

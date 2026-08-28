@@ -5,6 +5,7 @@ import {
   loadSceneContextBySequence,
 } from '@/lib/scenes/scene-script';
 import { ulidSchema } from '@/lib/schemas/id.schemas';
+import { rescanContinuityFromPrompt } from '@/lib/scenes/rescan-continuity-from-prompt';
 import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
@@ -30,7 +31,9 @@ export const getScenesFn = createServerFn({ method: 'GET' })
 // editor is a per-request choice that becomes durable when the version it
 // produces is selected; see `@/lib/ai/resolve-asset-models`.
 
-/** Composed sequence script from selected scene versions (#1030). */
+/** Composed sequence script from selected scene versions (#1030). Before the
+ *  split has seeded any versions (mid-analysis, #1225) fall back to the
+ *  original script so "Copy script" isn't dead until the scenes land. */
 export const getComposedScriptFn = createServerFn({ method: 'GET' })
   .middleware([sequenceAccessMiddleware])
   .handler(async ({ context }) => {
@@ -38,7 +41,7 @@ export const getComposedScriptFn = createServerFn({ method: 'GET' })
       context.scopedDb,
       context.sequence.id
     );
-    return { script: composed };
+    return { script: composed || (context.sequence.script ?? '') };
   });
 
 const updateSceneScriptSchema = z.object({
@@ -64,7 +67,7 @@ const updateSceneScriptSchema = z.object({
  */
 export const updateSceneScriptFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(zodValidator(updateSceneScriptSchema))
+  .validator(zodValidator(updateSceneScriptSchema))
   .handler(async ({ data, context }) => {
     const { sequence, scopedDb, user } = context;
 
@@ -96,6 +99,27 @@ export const updateSceneScriptFn = createServerFn({ method: 'POST' })
         source: 'edit',
         createdBy: user.id,
       });
+
+      // Auto-link cast/element/location tags the user @-mentioned in the
+      // script into the scene's continuity (#1341) — the same additive rescan
+      // the shot-prompt paths run (#683). Continuity is what narrows the bible
+      // for prompt generation and picks reference images at render time, so
+      // without this an @-mentioned character never reaches the shot.
+      if (sceneRow.continuity) {
+        const rescan = await rescanContinuityFromPrompt({
+          scopedDb,
+          sequenceId: sequence.id,
+          existing: sceneRow.continuity,
+          promptText: data.extract,
+        });
+        if (rescan.changed) {
+          await scopedDb.scenes.update(
+            sceneId,
+            { continuity: rescan.continuity },
+            { throwOnMissing: false }
+          );
+        }
+      }
     }
 
     const refreshedScript =

@@ -24,6 +24,10 @@
  * the create fn's `requireCredits` gate is the only billing control today.
  */
 
+import {
+  createDeadlineFetch,
+  FAL_REQUEST_TIMEOUT_MS,
+} from '@/lib/ai/fal-deadline-fetch';
 import { extractFalErrorMessage } from '@/lib/ai/fal-error';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import type {
@@ -32,6 +36,10 @@ import type {
   JsonValue,
 } from '@/lib/db/schema';
 import { getLogger } from '@/lib/observability/logger';
+import {
+  extractPromptForProvenance,
+  recordProvenance,
+} from '@/lib/compliance/provenance';
 import { STORAGE_BUCKETS, type StorageBucket } from '@/lib/storage/buckets';
 import { uploadResponse } from '@/lib/storage/upload-response';
 import { getMimeTypeFromExtension } from '@/lib/utils/file';
@@ -189,7 +197,16 @@ export type AssetPersistScopedDb = {
  */
 async function configureFalForTeam(scopedDb: WorkflowScopedDb): Promise<void> {
   const keyInfo = await scopedDb.credentials.resolveKey('fal');
-  fal.config({ credentials: keyInfo.key });
+  // Bound each queue HTTP call so a hung fal connection fails the step and
+  // can retry rather than stalling asset generation forever (#826). Total
+  // poll wall-clock is still controlled by the MAX_BATCHES loop above.
+  fal.config({
+    credentials: keyInfo.key,
+    fetch: createDeadlineFetch(
+      FAL_REQUEST_TIMEOUT_MS,
+      'Asset generation request'
+    ),
+  });
 }
 
 export class AssetGenerationWorkflow extends OpenStoryWorkflowEntrypoint<AssetGenerationWorkflowInput> {
@@ -281,8 +298,11 @@ export class AssetGenerationWorkflow extends OpenStoryWorkflowEntrypoint<AssetGe
       return refs;
     });
 
-    const outputs = await step.do('upload-outputs', async () => {
+    const uploadResult = await step.do('upload-outputs', async () => {
       const uploaded: GeneratedAssetOutput[] = [];
+      // Collected alongside the outputs (which store only public URLs) because
+      // provenance joins on the R2 key — see recordProvenance below.
+      const storageKeys: string[] = [];
       for (const [index, ref] of outputRefs.entries()) {
         const response = await fetch(ref.url);
         if (!response.ok) {
@@ -303,9 +323,12 @@ export class AssetGenerationWorkflow extends OpenStoryWorkflowEntrypoint<AssetGe
           { contentType }
         );
         uploaded.push({ url: result.publicUrl, contentType });
+        storageKeys.push(result.path);
       }
-      return uploaded;
+      return { outputs: uploaded, storageKeys };
     });
+
+    const { outputs, storageKeys } = uploadResult;
 
     await step.do('persist-result', async () => {
       await persistAssetCompletion({
@@ -313,6 +336,29 @@ export class AssetGenerationWorkflow extends OpenStoryWorkflowEntrypoint<AssetGe
         assetId,
         outputs,
       });
+    });
+
+    // Provenance (#1180) — one row per output file, since a single run can emit
+    // several and each is separately shareable. Direct model access reaches
+    // arbitrary endpoints, so this is the path where an unrecognized model can
+    // produce video: exactly the traffic that most needs to be traceable.
+    await step.do('record-provenance', async () => {
+      for (const [index, storageKey] of storageKeys.entries()) {
+        await recordProvenance(scopedDb.provenance, {
+          teamId,
+          userId: event.payload.userId,
+          assetKind: 'generated_asset',
+          // Suffixed so multiple outputs of one run don't collide on assetId
+          // while still resolving back to the `generated_assets` row.
+          assetId: storageKeys.length > 1 ? `${assetId}#${index}` : assetId,
+          storageKey,
+          provider: 'fal',
+          model: endpointId,
+          providerRequestId: requestId,
+          workflowRunId: event.instanceId,
+          prompt: extractPromptForProvenance(input),
+        });
+      }
     });
 
     logger.info(

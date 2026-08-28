@@ -3,10 +3,7 @@
  * POST /api/billing/webhook - Handle Stripe webhook events
  */
 
-import {
-  stripeWebhookMiddleware,
-  type StripeWebhookContext,
-} from '@/functions/middleware';
+import { stripeWebhookMiddleware } from '@/functions/stripe-webhook-middleware';
 import { microsToDisplayUsd, usdToMicros } from '@/lib/billing/money';
 import { getStripeOrThrow } from '@/lib/billing/stripe';
 import { getPostHogClient } from '@/lib/posthog-server';
@@ -21,11 +18,7 @@ export const Route = createFileRoute('/api/billing/webhook')({
     middleware: [stripeWebhookMiddleware],
     handlers: {
       POST: async ({ context }) => {
-        const {
-          stripeEvent: event,
-          scopedDb,
-          teamId,
-        } = context as StripeWebhookContext;
+        const { stripeEvent: event, scopedDb, teamId } = context;
         if (!event || !scopedDb) {
           return Response.json({ received: true }, { status: 200 });
         }
@@ -87,6 +80,10 @@ export const Route = createFileRoute('/api/billing/webhook')({
                     await stripe.customers.update(customerId, {
                       invoice_settings: { default_payment_method: pmId },
                     });
+                    // New default card — lift the decline cooldown so the
+                    // next reservation can auto-top-up instead of waiting
+                    // AUTO_TOPUP_DECLINE_COOLDOWN_MS (#1334).
+                    await scopedDb.billing.clearAutoTopUpFailure();
                   }
                 }
               } catch (err) {

@@ -4,28 +4,22 @@ import {
   getAspectRatioClassName,
   type AspectRatio,
 } from '@/lib/constants/aspect-ratios';
+import {
+  captureVideoPlay,
+  captureVideoPlayFailed,
+  type VideoPlaySource,
+} from '@/lib/observability/player-events';
 import { cn } from '@/lib/utils';
-import type { Media, Video as VideoMedia } from '@videojs/core';
-import { createPlayer, Poster, useMedia } from '@videojs/react';
-import { MinimalVideoSkin, Video, videoFeatures } from '@videojs/react/video';
-import { useEffect, useRef } from 'react';
+import { usePostHog } from '@posthog/react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 
-// useMedia() returns the base Media capability set; the <Video> component
-// renders an instance with the full Video capability set (seek/source/etc.).
-const isVideoMedia = (media: Media): media is VideoMedia =>
-  'duration' in media && 'currentTime' in media;
-
-// `createPlayer` constructs an AbortController, which the Cloudflare Workers
-// runtime only permits inside a request (i.e. during render), NOT at module /
-// global scope. Creating it at module scope crashes SSR ("Disallowed operation
-// … within global scope"). So build it lazily on first render and memoise it as
-// a singleton — the same request-scoped lazy-init pattern we use for the Drizzle
-// client and other Workers-sensitive resources. Video.js itself renders fine on
-// the server (markup now, interactivity after hydration); only this eager
-// construction was the problem.
-let playerSingleton: ReturnType<typeof createPlayer> | undefined;
-const getPlayer = () =>
-  (playerSingleton ??= createPlayer({ features: videoFeatures }));
+// Dynamic, and rendered only after mount — see video-player-surface.tsx. The
+// import must not be evaluated on the server: `@videojs/store` constructs an
+// AbortController at module scope, which Workerd rejects with "Disallowed
+// operation called within global scope" (#1139). `lazy()` alone is not enough,
+// because React invokes the loader during SSR too; the `mounted` gate below is
+// what actually keeps the server out of it.
+const VideoPlayerSurface = lazy(() => import('./video-player-surface'));
 
 type VideoPlayerProps = {
   src: string;
@@ -38,73 +32,48 @@ type VideoPlayerProps = {
   onTimeUpdate?: (currentTime: number) => void;
   onPause?: () => void;
   onEnded?: () => void;
+  onPlay?: () => void;
+  /** PostHog `video_play` / `video_play_failed` source. Omit to skip capture. */
+  playSource?: VideoPlaySource;
+  sequenceId?: string;
+  shotId?: string;
 };
 
-const VideoPlayerInner: React.FC<
-  Omit<VideoPlayerProps, 'aspectRatio' | 'className'>
-> = ({
-  src,
-  chaptersUrl,
-  posterSrc,
-  autoPlay = false,
-  onLoadedMetadata,
-  onTimeUpdate,
-  onPause,
-  onEnded,
-}) => {
-  const media = useMedia();
-  const callbacksRef = useRef({
-    onLoadedMetadata,
-    onTimeUpdate,
-    onPause,
-    onEnded,
-  });
-  callbacksRef.current = { onLoadedMetadata, onTimeUpdate, onPause, onEnded };
+/**
+ * True once the component has mounted in the browser. `useEffect` never runs
+ * during SSR, so this stays false on the server and through the hydration pass
+ * — which is the point: it keeps the Video.js chunk out of the server's
+ * evaluated module graph, and keeps the hydrated tree identical to the
+ * server-rendered one.
+ */
+function useMounted(): boolean {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  return mounted;
+}
 
-  useEffect(() => {
-    if (!media || !isVideoMedia(media)) return;
-    const el = media;
-
-    const handleLoadedMetadata = () => {
-      callbacksRef.current.onLoadedMetadata?.(el.duration);
-    };
-    const handleTimeUpdate = () => {
-      callbacksRef.current.onTimeUpdate?.(el.currentTime);
-    };
-    const handlePause = () => {
-      callbacksRef.current.onPause?.();
-    };
-    const handleEnded = () => {
-      callbacksRef.current.onEnded?.();
-    };
-
-    el.addEventListener('loadedmetadata', handleLoadedMetadata);
-    el.addEventListener('timeupdate', handleTimeUpdate);
-    el.addEventListener('pause', handlePause);
-    el.addEventListener('ended', handleEnded);
-
-    return () => {
-      el.removeEventListener('loadedmetadata', handleLoadedMetadata);
-      el.removeEventListener('timeupdate', handleTimeUpdate);
-      el.removeEventListener('pause', handlePause);
-      el.removeEventListener('ended', handleEnded);
-    };
-  }, [media]);
-
-  return (
-    <MinimalVideoSkin>
-      <Video
-        src={src || undefined}
-        playsInline
-        autoPlay={autoPlay}
-        preload="metadata"
-      >
-        {chaptersUrl && <track kind="chapters" src={chaptersUrl} default />}
-      </Video>
-      {posterSrc && <Poster src={posterSrc} alt="Video thumbnail" />}
-    </MinimalVideoSkin>
+/**
+ * Poster (or skeleton) sized to the player's box. Doubles as the SSR output and
+ * the lazy-load fallback, so the player swapping in cannot shift layout.
+ */
+const PlayerPlaceholder: React.FC<{
+  posterSrc?: string | null;
+  alt: string;
+}> = ({ posterSrc, alt }) =>
+  posterSrc ? (
+    <AppImage
+      // key forces a fresh image when the still changes so the browser never
+      // keeps the previous shot's decoded bitmap after a switch.
+      key={posterSrc}
+      src={posterSrc}
+      alt={alt}
+      width={1280}
+      height={720}
+      className="absolute inset-0 h-full w-full object-cover"
+    />
+  ) : (
+    <Skeleton className="absolute inset-0 h-full w-full" />
   );
-};
 
 export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   src,
@@ -117,7 +86,14 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   onTimeUpdate,
   onPause,
   onEnded,
+  onPlay,
+  playSource,
+  sequenceId,
+  shotId,
 }) => {
+  const mounted = useMounted();
+  const posthog = usePostHog();
+
   // Show skeleton when there's no video source and no poster
   if (!src && !posterSrc) {
     return (
@@ -142,21 +118,14 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           getAspectRatioClassName(aspectRatio)
         )}
       >
-        {/* key forces a fresh image when the still changes so the browser
-            never keeps the previous shot's decoded bitmap after a switch. */}
-        <AppImage
-          key={posterSrc}
-          src={posterSrc}
-          alt="Scene thumbnail"
-          width={1280}
-          height={720}
-          className="absolute inset-0 h-full w-full object-cover"
-        />
+        <PlayerPlaceholder posterSrc={posterSrc} alt="Scene thumbnail" />
       </div>
     );
   }
 
-  const Player = getPlayer();
+  const placeholder = (
+    <PlayerPlaceholder posterSrc={posterSrc} alt="Video thumbnail" />
+  );
 
   return (
     <div
@@ -166,18 +135,42 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         getAspectRatioClassName(aspectRatio)
       )}
     >
-      <Player.Provider>
-        <VideoPlayerInner
-          src={src}
-          chaptersUrl={chaptersUrl}
-          posterSrc={posterSrc}
-          autoPlay={autoPlay}
-          onLoadedMetadata={onLoadedMetadata}
-          onTimeUpdate={onTimeUpdate}
-          onPause={onPause}
-          onEnded={onEnded}
-        />
-      </Player.Provider>
+      {mounted ? (
+        <Suspense fallback={placeholder}>
+          <VideoPlayerSurface
+            src={src}
+            chaptersUrl={chaptersUrl}
+            posterSrc={posterSrc}
+            autoPlay={autoPlay}
+            onLoadedMetadata={onLoadedMetadata}
+            onTimeUpdate={onTimeUpdate}
+            onPause={onPause}
+            onEnded={onEnded}
+            onPlay={() => {
+              onPlay?.();
+              if (playSource) {
+                captureVideoPlay(posthog, {
+                  source: playSource,
+                  sequence_id: sequenceId,
+                  shot_id: shotId,
+                });
+              }
+            }}
+            onError={(reason) => {
+              if (playSource) {
+                captureVideoPlayFailed(posthog, {
+                  source: playSource,
+                  reason,
+                  sequence_id: sequenceId,
+                  shot_id: shotId,
+                });
+              }
+            }}
+          />
+        </Suspense>
+      ) : (
+        placeholder
+      )}
     </div>
   );
 };

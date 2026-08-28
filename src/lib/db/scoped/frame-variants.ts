@@ -132,6 +132,31 @@ const oldestFirst = [asc(frameVariants.createdAt), asc(frameVariants.id)];
 const PREVIEW_BY_FRAMES_BATCH = 90;
 
 /**
+ * Versions by id, keyed by `id`. Chunked under D1's 100-param ceiling — the
+ * shots list loads every in-flight pending-promote this way.
+ */
+export async function getFrameVariantsByIds(
+  db: Database,
+  versionIds: string[]
+): Promise<Map<string, FrameVariant>> {
+  if (versionIds.length === 0) return new Map();
+  const byId = new Map<string, FrameVariant>();
+  for (let i = 0; i < versionIds.length; i += PREVIEW_BY_FRAMES_BATCH) {
+    const rows = await db
+      .select()
+      .from(frameVariants)
+      .where(
+        inArray(
+          frameVariants.id,
+          versionIds.slice(i, i + PREVIEW_BY_FRAMES_BATCH)
+        )
+      );
+    for (const row of rows) byId.set(row.id, row);
+  }
+  return byId;
+}
+
+/**
  * Newest non-discarded `kind: 'preview'` version per frame (#1101), keyed by
  * frameId. Frames with no preview are absent, so `map.get(id) ?? null` matches
  * the single-frame read.
@@ -188,6 +213,8 @@ export function createFrameVariantsMethods(db: Database) {
       return result[0] ?? null;
     },
 
+    getByIds: (versionIds: string[]) => getFrameVariantsByIds(db, versionIds),
+
     /**
      * Append a new version row. Pure append — even when the inputs match an
      * existing version (a deliberate re-roll), a fresh row is created so the
@@ -195,11 +222,13 @@ export function createFrameVariantsMethods(db: Database) {
      *
      * The ONE exception is an in-flight append (`status: 'generating'` with a
      * `workflowRunId`): these are written inside multi-write workflow steps
-     * (image `set-generating-status`, upscale `upscale-image`), so a Cloudflare
-     * step retry after a partial failure would otherwise append a SECOND
-     * orphan 'generating' row for the same run. We make that idempotent on
-     * `(frameId, workflowRunId)` — re-rolls are unaffected because each carries
-     * a fresh `workflowRunId`; only a retry of the same run reuses its row.
+     * (image `set-generating-status`, legacy upscale payloads that mint in
+     * `upscale-image`), so a Cloudflare step retry after a partial failure
+     * would otherwise append a SECOND orphan 'generating' row for the same
+     * run. We make that idempotent on `(frameId, workflowRunId)` — re-rolls
+     * are unaffected because each carries a fresh `workflowRunId`; only a
+     * retry of the same run reuses its row. Current upscale triggers mint
+     * the version at click and pass `versionId`; they never hit this path.
      */
     appendVersion: async (data: NewFrameVariant): Promise<FrameVariant> => {
       if (data.status === 'generating' && data.workflowRunId) {
@@ -1003,17 +1032,27 @@ export function createFrameVariantsMethods(db: Database) {
       frameIds: string[]
     ): Promise<Map<string, FrameVariant>> => {
       if (frameIds.length === 0) return new Map();
-      const rows = await db
-        .select({ frameId: frames.id, version: frameVariants })
-        .from(frames)
-        .innerJoin(
-          frameVariants,
-          eq(frameVariants.id, frames.selectedImageVersionId)
-        )
-        .where(
-          and(inArray(frames.id, frameIds), isNull(frameVariants.discardedAt))
-        );
-      return new Map(rows.map((r) => [r.frameId, r.version]));
+      const byFrame = new Map<string, FrameVariant>();
+      for (let i = 0; i < frameIds.length; i += PREVIEW_BY_FRAMES_BATCH) {
+        const rows = await db
+          .select({ frameId: frames.id, version: frameVariants })
+          .from(frames)
+          .innerJoin(
+            frameVariants,
+            eq(frameVariants.id, frames.selectedImageVersionId)
+          )
+          .where(
+            and(
+              inArray(
+                frames.id,
+                frameIds.slice(i, i + PREVIEW_BY_FRAMES_BATCH)
+              ),
+              isNull(frameVariants.discardedAt)
+            )
+          );
+        for (const r of rows) byFrame.set(r.frameId, r.version);
+      }
+      return byFrame;
     },
 
     /**

@@ -6,8 +6,10 @@
 import { STORAGE_BUCKETS } from '@/lib/storage/buckets';
 import { uploadResponse } from '@/lib/storage/upload-response';
 import {
+  getExtensionFromMimeType,
   getExtensionFromUrl,
   getMimeTypeFromExtension,
+  sniffImageMimeType,
 } from '@/lib/utils/file';
 import { generateId } from '@/lib/db/id';
 
@@ -27,45 +29,48 @@ interface UploadPosterOptions {
 type StorageResult = {
   url: string;
   path: string;
+  contentType: string;
 };
 
 /**
- * Download an image from a (provider) URL and stream it into the thumbnails
- * bucket. `buildPath` receives the resolved file extension so callers own the
- * key layout without duplicating the extension sniffing below.
+ * Download an image from a (provider) URL into the thumbnails bucket.
+ * `buildPath` receives the resolved file extension so callers own the
+ * key layout without duplicating the type sniffing below.
  */
-async function uploadImageFromUrl(
+export async function uploadImageFromUrl(
   imageUrl: string,
   buildPath: (extension: string) => string
 ): Promise<StorageResult> {
-  // Download image from URL first to get content type
   const response = await fetch(imageUrl);
 
   if (!response.ok) {
     throw new Error(`Failed to download image: ${response.statusText}`);
   }
 
-  // Extract extension from URL or use response content-type
-  const urlExtension = getExtensionFromUrl(imageUrl);
-  const responseContentType = response.headers.get('content-type');
-
-  // Prefer URL extension, fallback to content-type detection
-  let extension = urlExtension;
-  if (urlExtension === 'jpg' && responseContentType) {
-    // If we defaulted to jpg, check if content-type suggests otherwise
-    if (responseContentType.includes('png')) extension = 'png';
-    else if (responseContentType.includes('webp')) extension = 'webp';
-    else if (responseContentType.includes('gif')) extension = 'gif';
-  }
+  // Magic bytes first: fal's upscale endpoints return extension-less URLs
+  // (so `getExtensionFromUrl` defaults to `jpg`) and sometimes a Content-Type
+  // that doesn't match the body. Storing PNG as `image/jpeg` makes Anthropic
+  // reject the vision part — 400 today, historically an empty completion after
+  // a billed reasoning pass (#1218). Header, then URL extension, only as
+  // fallback when the body isn't a recognised image.
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  const sniffed = sniffImageMimeType(bytes);
+  const headerType = response.headers.get('content-type');
+  const extension =
+    getExtensionFromMimeType(sniffed) ??
+    getExtensionFromMimeType(headerType) ??
+    getExtensionFromUrl(imageUrl);
+  const contentType = sniffed ?? getMimeTypeFromExtension(extension);
 
   const storagePath = buildPath(extension);
 
-  // Get proper MIME type for the extension
-  const contentType = getMimeTypeFromExtension(extension);
-
-  // Stream directly to R2 Storage (avoids buffering entire image in memory)
   const result = await uploadResponse(
-    response,
+    new Response(bytes, {
+      headers: {
+        'content-type': contentType,
+        'content-length': String(bytes.byteLength),
+      },
+    }),
     STORAGE_BUCKETS.THUMBNAILS,
     storagePath,
     {
@@ -76,6 +81,7 @@ async function uploadImageFromUrl(
   return {
     url: result.publicUrl,
     path: storagePath,
+    contentType,
   };
 }
 

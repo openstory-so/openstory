@@ -5,87 +5,132 @@
 
 export const SCRIPT_ANALYSIS_MODELS = [
   {
-    id: 'x-ai/grok-4.5',
-    name: 'Grok 4.5',
-    provider: 'xAI',
+    id: 'anthropic/claude-opus-5',
+    name: 'Claude Opus 5',
+    vendor: 'Anthropic',
+    license: 'proprietary' as const,
+    qualityRank: 1,
+    contextWindow: 1_000_000,
+    maxOutputTokens: 128_000,
+    vision: true,
+    description: 'Default analysis model; frontier reasoning and coding',
+  },
+  {
+    id: 'x-ai/grok-4.6',
+    name: 'Grok 4.6',
+    vendor: 'SpaceXAI',
     license: 'proprietary' as const,
     qualityRank: 1,
     contextWindow: 500_000,
+    maxOutputTokens: 450_000,
     // Accepts image input — required so the motion-prompt pass can be
     // conditioned on the rendered starting frame (#929). Conservative: only
     // models known to accept image input are `true`; text-only models fall
     // back to the text-only motion prompt path.
     vision: true,
-    description: 'Frontier xAI reasoning model with 500K context',
+    description: 'Frontier xAI reasoning model, xAI’s smartest, 500K context',
   },
   {
     id: 'anthropic/claude-fable-5',
     name: 'Claude Fable 5',
-    provider: 'Anthropic',
+    vendor: 'Anthropic',
     license: 'proprietary' as const,
     qualityRank: 2,
     contextWindow: 1_000_000,
+    maxOutputTokens: 128_000,
     vision: true,
     description: 'Most intelligent Anthropic model, new tier above Opus',
   },
   {
     id: 'anthropic/claude-sonnet-5',
     name: 'Claude Sonnet 5',
-    provider: 'Anthropic',
+    vendor: 'Anthropic',
     license: 'proprietary' as const,
     qualityRank: 3,
     contextWindow: 1_000_000,
+    maxOutputTokens: 128_000,
     vision: true,
     description: 'State-of-the-art coding and structured output',
   },
   {
     id: 'x-ai/grok-4.20',
     name: 'Grok 4.20',
-    provider: 'xAI',
+    vendor: 'SpaceXAI',
     license: 'proprietary' as const,
     qualityRank: 4,
     contextWindow: 2_000_000,
+    maxOutputTokens: 1_800_000,
     vision: true,
     description: 'Lowest hallucination rate, flagship agentic model',
+    hidden: true,
+  },
+  {
+    id: 'anthropic/claude-opus-5-fast',
+    name: 'Claude Opus 5 Fast',
+    vendor: 'Anthropic',
+    license: 'proprietary' as const,
+    qualityRank: 5,
+    contextWindow: 1_000_000,
+    maxOutputTokens: 128_000,
+    vision: true,
+    description: 'Opus 5 low-latency; used for scene-split',
   },
   {
     id: 'anthropic/claude-opus-4.8',
     name: 'Claude Opus 4.8',
-    provider: 'Anthropic',
+    vendor: 'Anthropic',
     license: 'proprietary' as const,
-    qualityRank: 5,
+    qualityRank: 6,
     contextWindow: 1_000_000,
+    maxOutputTokens: 128_000,
     vision: true,
     description: 'Frontier reasoning and coding',
+    hidden: true,
   },
   {
     id: 'mistralai/mistral-small-2603',
     name: 'Mistral Small 4',
-    provider: 'Mistral',
+    vendor: 'Mistral',
     license: 'open-source' as const,
-    qualityRank: 6,
+    qualityRank: 7,
     contextWindow: 262_144,
+    maxOutputTokens: 209_715,
     vision: true,
     description: 'Apache 2.0, 119B MoE, multimodal + agentic coding',
   },
   {
+    id: 'deepseek/deepseek-v4-pro-0813',
+    name: 'DeepSeek V4 Pro',
+    vendor: 'DeepSeek',
+    license: 'open-source' as const,
+    qualityRank: 8,
+    contextWindow: 1_048_576,
+    maxOutputTokens: 943_717,
+    // Text-only.
+    vision: false,
+    description: 'Open-weights frontier reasoning, 1M context',
+  },
+  {
     id: 'deepseek/deepseek-v3.2',
     name: 'DeepSeek V3.2',
-    provider: 'DeepSeek',
+    vendor: 'DeepSeek',
     license: 'open-source' as const,
-    qualityRank: 7,
+    qualityRank: 8,
     contextWindow: 163_840,
+    maxOutputTokens: 147_456,
     // Text-only.
     vision: false,
     description: 'MIT license, MMLU 94.2, GPT-5 class reasoning',
+    hidden: true,
   },
   {
     id: 'z-ai/glm-5.2',
     name: 'GLM-5.2',
-    provider: 'Z.ai',
+    vendor: 'Z.ai',
     license: 'open-source' as const,
-    qualityRank: 8,
+    qualityRank: 9,
     contextWindow: 1_048_576,
+    maxOutputTokens: 262_144,
     // GLM-5.2 is text-only. Image-bearing calls (the vision-conditioned motion
     // path, #929) transparently route to `DEFAULT_VISION_MODEL` — see
     // `resolveVisionModel`. GLM's own vision sibling GLM-4.6V was tried (#942)
@@ -97,60 +142,66 @@ export const SCRIPT_ANALYSIS_MODELS = [
   {
     id: 'google/gemini-3.1-pro-preview',
     name: 'Gemini 3.1 Pro',
-    provider: 'Google',
+    vendor: 'Google',
     license: 'proprietary' as const,
-    qualityRank: 9,
+    qualityRank: 10,
     contextWindow: 1_048_576,
+    maxOutputTokens: 65_536,
     vision: true,
     description: 'Frontier multimodal reasoning with 1M context',
   },
   {
     id: 'openai/gpt-5.5',
     name: 'GPT-5.5',
-    provider: 'OpenAI',
+    vendor: 'OpenAI',
     license: 'proprietary' as const,
-    qualityRank: 10,
+    qualityRank: 11,
     contextWindow: 1_050_000,
+    maxOutputTokens: 128_000,
     vision: true,
     description: 'Latest GPT-5 series with 1M context',
   },
   {
     id: 'google/gemini-3-flash-preview',
     name: 'Gemini 3 Flash',
-    provider: 'Google',
+    vendor: 'Google',
     license: 'proprietary' as const,
-    qualityRank: 11,
+    qualityRank: 12,
     contextWindow: 1_048_576,
+    maxOutputTokens: 65_536,
     vision: true,
     description: 'Fast multimodal with 1M context',
   },
   {
     id: 'openai/gpt-5.4-mini',
     name: 'GPT-5.4 Mini',
-    provider: 'OpenAI',
+    vendor: 'OpenAI',
     license: 'proprietary' as const,
-    qualityRank: 12,
+    qualityRank: 13,
     contextWindow: 400_000,
+    maxOutputTokens: 128_000,
     vision: true,
     description: 'Fast reasoning with configurable effort modes',
   },
   {
     id: 'bytedance-seed/seed-2.0-mini',
     name: 'Seed 2.0 Mini',
-    provider: 'ByteDance',
+    vendor: 'ByteDance',
     license: 'proprietary' as const,
-    qualityRank: 13,
+    qualityRank: 14,
     contextWindow: 262_144,
+    maxOutputTokens: 131_072,
     vision: true,
     description: 'Fast multimodal with 4 reasoning effort modes',
   },
   {
     id: 'openai/gpt-5.4-nano',
     name: 'GPT-5.4 Nano',
-    provider: 'OpenAI',
+    vendor: 'OpenAI',
     license: 'proprietary' as const,
-    qualityRank: 14,
+    qualityRank: 15,
     contextWindow: 400_000,
+    maxOutputTokens: 128_000,
     vision: true,
     description: 'Fastest and most cost-efficient GPT-5.4 variant',
   },
@@ -180,6 +231,16 @@ export function isValidAnalysisModelId(
   );
 }
 
+/** Retired ids stay in the registry for old sequences; they are not pickable. */
+export function isSelectableAnalysisModelId(
+  value: unknown
+): value is AnalysisModelId {
+  if (!isValidAnalysisModelId(value)) return false;
+  const model = getAnalysisModelById(value);
+  if (!model) return false;
+  return !('hidden' in model && model.hidden);
+}
+
 /**
  * Get all model IDs
  */
@@ -195,6 +256,34 @@ export const ANALYSIS_MODEL_IDS = getAllModelIds();
 export function getContextWindow(modelId: string): number {
   const model = SCRIPT_ANALYSIS_MODELS.find((m) => m.id === modelId);
   return model?.contextWindow ?? 128_000;
+}
+
+/**
+ * Conservative output ceiling for an unknown model — below every ceiling in
+ * the table, so a model we don't know can never be sent an over-limit budget.
+ */
+const DEFAULT_MAX_OUTPUT_TOKENS = 32_000;
+
+/**
+ * The output-token budget to send for a call, as a fraction of the context
+ * window but never above what the model can actually emit (#1308).
+ *
+ * Call sites used to send `getContextWindow(model) * 0.5` as `max_tokens`,
+ * which conflates two different limits: half of Opus 5's 1M context is
+ * 500,000, but its real completion ceiling is 128,000 — and half of Gemini's
+ * 1,048,576 is 8× its 65,536 ceiling. The fraction still expresses "leave
+ * room for the input"; the clamp keeps the request legal.
+ *
+ * Ceilings are `top_provider.max_completion_tokens` from OpenRouter's
+ * `/api/v1/models`, the same catalogue that serves the calls.
+ */
+export function getMaxOutputTokens(modelId: string, fraction = 0.5): number {
+  const model = SCRIPT_ANALYSIS_MODELS.find((m) => m.id === modelId);
+  const ceiling = model?.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS;
+  const budget = Math.floor(
+    (model?.contextWindow ?? 128_000) * Math.min(Math.max(fraction, 0), 1)
+  );
+  return Math.max(1, Math.min(budget, ceiling));
 }
 
 /**
@@ -236,7 +325,18 @@ export function resolveVisionModel(
 /**
  * Default model to use when none is specified
  */
-export const DEFAULT_ANALYSIS_MODEL: AnalysisModelId = 'x-ai/grok-4.5';
+export const DEFAULT_ANALYSIS_MODEL: AnalysisModelId =
+  'anthropic/claude-opus-5';
+
+/**
+ * Boundary-annotation scenes call only. Grok 4.6 + medium reasoning
+ * spends minutes thinking before the first boundary token. Opus 5 Fast
+ * split a prose product-ad in 2.4s (9 beats) and a 19-heading screenplay
+ * in 4s with exact quotes. Bibles and later prompt calls keep the
+ * sequence's analysis model.
+ */
+export const SCENE_SPLIT_MODEL: AnalysisModelId =
+  'anthropic/claude-opus-5-fast';
 
 /**
  * Image generation models are now in src/lib/ai/models.ts

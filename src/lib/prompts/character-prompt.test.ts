@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'vitest';
+import { migrateStyleConfigV1ToV2 } from '@/lib/style/style-config';
 import type { CharacterBibleEntry } from '@/lib/ai/scene-analysis.schema';
 import type { StyleConfig } from '@/lib/db/schema';
 import {
@@ -200,7 +201,7 @@ describe('buildCastCharacterBible', () => {
   });
 });
 
-const neoNoirStyle: StyleConfig = {
+const neoNoirStyle: StyleConfig = migrateStyleConfigV1ToV2({
   mood: 'Dark, brooding, and atmospheric',
   artStyle:
     'Neo-noir cinematic style with deep shadows and high contrast. Gritty urban realism with expressionist framing.',
@@ -216,7 +217,7 @@ const neoNoirStyle: StyleConfig = {
   ],
   colorGrading:
     'Desaturated with selective color pops. Teal and orange split toning with crushed blacks.',
-};
+});
 
 describe('buildCharacterSheetPrompt with styleConfig', () => {
   test('without styleConfig produces default studio prompt', () => {

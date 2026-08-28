@@ -4,21 +4,23 @@
  * `logger.{info,warn,error,debug}(...)` calls. The category path already
  * encodes this information, so the prefix is redundant noise.
  *
- * Conservative: only touches plain string literals and non-substitution
- * template literals (the parts before any `${...}`). Leaves complex templates
- * with the prefix intact for human review.
+ * Conservative: only touches plain string literals and simple template
+ * literals whose head starts with a `[Tag]` prefix. Leaves complex cases
+ * for human review.
  *
  * Examples:
  *   logger.error('[AuthForm] Send OTP failed', { err })
  *     -> logger.error('Send OTP failed', { err })
  *   logger.warn(`[Workflow:${name}] failed`, { err })
- *     -> logger.warn(`failed`, { err })  (interpolation moved out)
- *     -> reverted to original if the interpolation occurs INSIDE the bracket
+ *     -> logger.warn(`failed`, { err }) when the prefix fully occupies the head
+ *
+ * Implementation note: TypeScript 7 removed the classic `typescript` compiler
+ * API from the package entrypoint, so this codemod uses a targeted regex walk
+ * instead of the TS AST.
  */
 
 import { glob, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import ts from 'typescript';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 const SRC = path.join(ROOT, 'src');
@@ -26,67 +28,20 @@ const SRC = path.join(ROOT, 'src');
 const SKIP_FILE_RE =
   /(\.test\.ts|\.spec\.ts|\.stories\.tsx|\.gen\.ts|\/lib\/observability\/logger\.ts|\/lib\/mocks\/)/;
 
-const LOGGER_METHODS = new Set(['info', 'warn', 'error', 'debug']);
-const PREFIX_RE = /^\s*\[[^\]]+\]\s*/;
+// logger.<method>( <quote-or-backtick> [Tag...] remainder
+// Captures: 1=prefix through open paren, 2=quote style, 3=tag body, 4=rest of
+// first arg up to the matching closer (non-greedy, no unescaped closer).
+const LOGGER_PREFIX_RE =
+  /(\blogger\.(?:info|warn|error|debug)\s*\(\s*)(['"`])\s*\[([^\]]+)\]\s*/g;
 
 type Patch = { start: number; end: number; replacement: string };
 
-function visitCallExpressions(
-  sourceFile: ts.SourceFile,
-  visit: (call: ts.CallExpression) => void
-): void {
-  function walk(node: ts.Node): void {
-    if (ts.isCallExpression(node)) visit(node);
-    ts.forEachChild(node, walk);
-  }
-  walk(sourceFile);
-}
-
-function isLoggerMethodCall(call: ts.CallExpression): boolean {
-  const expr = call.expression;
-  if (!ts.isPropertyAccessExpression(expr)) return false;
-  if (!ts.isIdentifier(expr.expression)) return false;
-  const objName = expr.expression.text;
-  if (!/logger$/i.test(objName)) return false;
-  return LOGGER_METHODS.has(expr.name.text);
-}
-
-function stripFromStringLiteral(
-  node: ts.StringLiteral | ts.NoSubstitutionTemplateLiteral
-): string | null {
-  const text = node.text;
-  const stripped = text.replace(PREFIX_RE, '').trim();
-  if (stripped === text) return null;
-  if (stripped.length === 0) return null;
-  // Decide quote style based on original kind
-  if (ts.isStringLiteral(node)) {
-    return `'${escapeSingle(stripped)}'`;
-  }
-  return `\`${escapeBacktick(stripped)}\``;
-}
-
-function stripFromTemplateExpression(
-  node: ts.TemplateExpression
-): string | null {
-  const head = node.head.text;
-  const stripped = head.replace(PREFIX_RE, '');
-  if (stripped === head) return null;
-  // Reconstruct template with stripped head + original tails
-  let out = `\`${escapeBacktick(stripped)}`;
-  for (const span of node.templateSpans) {
-    const exprText = span.expression.getText();
-    const tail =
-      span.literal.kind === ts.SyntaxKind.TemplateMiddle
-        ? span.literal.text
-        : span.literal.text;
-    out += `\${${exprText}}${escapeBacktick(tail)}`;
-  }
-  out += '`';
-  return out;
-}
-
 function escapeSingle(input: string): string {
   return input.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
+function escapeDouble(input: string): string {
+  return input.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 }
 
 function escapeBacktick(input: string): string {
@@ -96,59 +51,97 @@ function escapeBacktick(input: string): string {
     .replace(/\$\{/g, '\\${');
 }
 
-async function processFile(filePath: string): Promise<number> {
-  const source = await readFile(filePath, 'utf8');
-  const sourceFile = ts.createSourceFile(
-    filePath,
-    source,
-    ts.ScriptTarget.ESNext,
-    true,
-    filePath.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS
-  );
+/**
+ * Find the end of a string/template literal starting at `openQuoteIndex`
+ * (the quote character). Returns the index of the closing quote, or -1.
+ */
+function findStringEnd(
+  source: string,
+  openQuoteIndex: number,
+  quote: string
+): number {
+  let i = openQuoteIndex + 1;
+  while (i < source.length) {
+    const ch = source[i];
+    if (ch === '\\') {
+      i += 2;
+      continue;
+    }
+    if (quote === '`' && ch === '$' && source[i + 1] === '{') {
+      // Skip ${...} expression (naive brace depth)
+      i += 2;
+      let depth = 1;
+      while (i < source.length && depth > 0) {
+        if (source[i] === '{') depth += 1;
+        else if (source[i] === '}') depth -= 1;
+        i += 1;
+      }
+      continue;
+    }
+    if (ch === quote) return i;
+    i += 1;
+  }
+  return -1;
+}
 
+function processSource(source: string): { out: string; patches: number } {
   const patches: Patch[] = [];
+  LOGGER_PREFIX_RE.lastIndex = 0;
+  let match: RegExpExecArray | null;
 
-  visitCallExpressions(sourceFile, (call) => {
-    if (!isLoggerMethodCall(call)) return;
-    const first = call.arguments[0];
-    if (!first) return;
+  while ((match = LOGGER_PREFIX_RE.exec(source)) !== null) {
+    const fullStart = match.index;
+    const callPrefix = match[1];
+    const quote = match[2];
+    if (callPrefix === undefined || quote === undefined) continue;
+    // Position of the opening quote in the source
+    const openQuoteIndex = fullStart + callPrefix.length;
+    const closeQuoteIndex = findStringEnd(source, openQuoteIndex, quote);
+    if (closeQuoteIndex < 0) continue;
 
-    if (
-      ts.isStringLiteral(first) ||
-      ts.isNoSubstitutionTemplateLiteral(first)
-    ) {
-      const replacement = stripFromStringLiteral(first);
-      if (replacement) {
-        patches.push({
-          start: first.getStart(sourceFile),
-          end: first.getEnd(),
-          replacement,
-        });
-      }
-      return;
-    }
+    // Content between quotes, with the [Tag] prefix already matched by the regex
+    const afterTagStart = match.index + match[0].length;
+    const rest = source.slice(afterTagStart, closeQuoteIndex);
+    const stripped = rest.trim();
+    if (stripped.length === 0) continue;
 
-    if (ts.isTemplateExpression(first)) {
-      const replacement = stripFromTemplateExpression(first);
-      if (replacement) {
-        patches.push({
-          start: first.getStart(sourceFile),
-          end: first.getEnd(),
-          replacement,
-        });
-      }
-    }
-  });
+    // If the tag contained `${` it may be an interpolating head like
+    // `[Workflow:${name}] failed` — rest is then `failed` after the `]` was
+    // consumed by the regex. That's the intended strip. If the remainder still
+    // starts with `[`, leave it alone (nested/weird).
+    if (stripped.startsWith('[')) continue;
 
-  if (patches.length === 0) return 0;
+    let literal: string;
+    if (quote === "'") literal = `'${escapeSingle(stripped)}'`;
+    else if (quote === '"') literal = `"${escapeDouble(stripped)}"`;
+    else literal = `\`${escapeBacktick(stripped)}\``;
+
+    patches.push({
+      start: openQuoteIndex,
+      end: closeQuoteIndex + 1,
+      replacement: literal,
+    });
+
+    // Advance past this match so we don't re-scan the replacement region
+    LOGGER_PREFIX_RE.lastIndex = closeQuoteIndex + 1;
+  }
+
+  if (patches.length === 0) return { out: source, patches: 0 };
 
   let out = source;
   patches.sort((a, b) => b.start - a.start);
   for (const p of patches) {
     out = out.slice(0, p.start) + p.replacement + out.slice(p.end);
   }
+  return { out, patches: patches.length };
+}
+
+async function processFile(filePath: string): Promise<number> {
+  const source = await readFile(filePath, 'utf8');
+  const { out, patches } = processSource(source);
+  if (patches === 0) return 0;
   await writeFile(filePath, out, 'utf8');
-  return patches.length;
+  return patches;
 }
 
 async function main(): Promise<void> {

@@ -116,13 +116,7 @@ export const LocationMediaUpload: React.FC<LocationMediaUploadProps> = ({
       onValueChange={handleValueChange}
       onUpload={onUpload}
     >
-      <FileUploadDropzone
-        className="min-h-[120px] focus:border-ring/50 focus:bg-accent/30"
-        onClick={(e) => {
-          e.preventDefault();
-          e.currentTarget.focus();
-        }}
-      >
+      <FileUploadDropzone className="min-h-[120px] focus:border-ring/50 focus:bg-accent/30">
         <Upload className="h-8 w-8 text-muted-foreground/50" />
         <p className="text-sm font-medium">Drag & drop or paste</p>
         <FileUploadTrigger asChild>
@@ -131,7 +125,7 @@ export const LocationMediaUpload: React.FC<LocationMediaUploadProps> = ({
           </Button>
         </FileUploadTrigger>
         <p className="text-xs text-muted-foreground">
-          Images{maxFiles > 1 ? ` (max ${maxFiles})` : ''}
+          {maxFiles > 1 ? `Images (max ${maxFiles})` : 'Images'}
         </p>
       </FileUploadDropzone>
 

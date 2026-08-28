@@ -12,6 +12,18 @@ import {
   type TestTalentWithMedia,
 } from '../fixtures/talent.fixture';
 import {
+  addTalentDialog,
+  attestAssetRights,
+  attestPortraitRights,
+  dropNamedTalentImage,
+  openAddTalentFromLibrary,
+  openAddTalentFromSequence,
+  submitAddTalent,
+  uniqueTalentName,
+  uploadNamedTalentImage,
+  waitForSubjectKind,
+} from '../fixtures/add-talent';
+import {
   waitForLibraryPageLoad,
   cleanupTalentByName,
   openLibraryCard,
@@ -107,49 +119,185 @@ testWithUser.describe('Add Talent with Reference Media', () => {
   );
 
   testWithUser(
-    'can create talent with reference media',
+    'can create talent from a photo and shows generating-sheet progress',
     async ({ page, testUser }) => {
-      const uniqueName = `E2E Test Actor With Media ${crypto.randomUUID().slice(0, 8)}`;
+      const uniqueName = uniqueTalentName('Photo');
+      const dialog = await openAddTalentFromLibrary(page);
 
-      await page.goto('/talent');
-      await waitForTalentPageLoad(page);
+      await dialog.getByLabel('Name').fill(uniqueName);
+      await uploadNamedTalentImage(page, 'test-image.jpg');
+      await waitForSubjectKind(page, 'Human');
+      await attestPortraitRights(page);
+      await submitAddTalent(page);
 
-      // Click Add Talent button
-      await page.getByRole('button', { name: 'Add Talent' }).first().click();
+      await expect(page.getByText('Generating talent sheet')).toBeVisible({
+        timeout: 10_000,
+      });
+      await expect(page.getByText(uniqueName)).toBeVisible({ timeout: 10_000 });
+      const card = page.getByRole('link', { name: uniqueName });
+      await expect(card.getByText('Human')).toBeVisible();
+      await expect(card.getByText('Generating sheet…')).toBeVisible();
 
-      // Fill in the form with unique name
-      await page.getByLabel('Name').fill(uniqueName);
-      await page.getByLabel('Description').fill('Actor with reference images');
-
-      // Upload a test image using the file input (exercises the upload UI path)
-      const fileChooserPromise = page.waitForEvent('filechooser');
-      await page.getByRole('button', { name: 'Browse files' }).click();
-      const fileChooser = await fileChooserPromise;
-
-      const testImagePath = path.join(
-        import.meta.dirname,
-        '../fixtures/test-image.jpg'
-      );
-      await fileChooser.setFiles(testImagePath);
-
-      await waitForUploadComplete(page);
-
-      // Submit the form (exercises the create path through the dialog)
-      await page.getByRole('button', { name: 'Add Talent' }).click();
-
-      // Wait for dialog to close
-      await expect(
-        page.getByRole('dialog', { name: 'Add Talent' })
-      ).not.toBeVisible({ timeout: 10000 });
-
-      // Note: We don't assert the item appears via this flow here.
-      // Full "talent ends up in library with media + sheet" behavior is
-      // covered by tests using createTestTalentWithMedia (the clean test API
-      // helper) + the edit/detail tests. Having the real createTalentFn grow
-      // E2E branches just to make this assertion pass was the wrong tradeoff.
-
-      // Clean up using the name we tried to create (best effort)
       await cleanupTalentByName(testUser.teamId, uniqueName);
+    }
+  );
+
+  testWithUser(
+    'detects an uploaded character sheet and shows creating-portrait progress',
+    async ({ page, testUser }) => {
+      const uniqueName = uniqueTalentName('Sheet');
+      const dialog = await openAddTalentFromLibrary(page);
+
+      await dialog.getByLabel('Name').fill(uniqueName);
+      await uploadNamedTalentImage(page, 'character-sheet.jpg');
+      await expect(dialog.getByText('Sheet', { exact: true })).toBeVisible({
+        timeout: 15_000,
+      });
+      await waitForSubjectKind(page, 'Animated');
+      await expect(
+        dialog.getByRole('checkbox', {
+          name: /hold the rights to this asset/i,
+        })
+      ).toBeVisible();
+      await expect(dialog.getByLabel('Basis for authorization')).toHaveCount(0);
+      await attestAssetRights(page);
+      await submitAddTalent(page);
+
+      await expect(
+        page.getByText('Creating portrait from the uploaded sheet')
+      ).toBeVisible({ timeout: 10_000 });
+      const card = page.getByRole('link', { name: uniqueName });
+      await expect(card).toBeVisible({ timeout: 10_000 });
+      await expect(card.getByText('AI', { exact: true })).toBeVisible();
+      await expect(card.getByText('Creating portrait…')).toBeVisible();
+
+      await cleanupTalentByName(testUser.teamId, uniqueName);
+    }
+  );
+
+  testWithUser(
+    'classifies a creature as Other and uses asset rights',
+    async ({ page, testUser }) => {
+      const uniqueName = uniqueTalentName('Creature');
+      const dialog = await openAddTalentFromLibrary(page);
+
+      await dialog.getByLabel('Name').fill(uniqueName);
+      await uploadNamedTalentImage(page, 'creature.jpg');
+      await waitForSubjectKind(page, 'Other');
+      await attestAssetRights(page);
+      await submitAddTalent(page);
+
+      const card = page.getByRole('link', { name: uniqueName });
+      await expect(card).toBeVisible({ timeout: 10_000 });
+      await expect(card.getByText('AI', { exact: true })).toBeVisible();
+      await expect(card.getByText('Human')).toHaveCount(0);
+
+      await cleanupTalentByName(testUser.teamId, uniqueName);
+    }
+  );
+
+  testWithUser(
+    'subject toggle overrides vision and swaps attestation',
+    async ({ page, testUser }) => {
+      const uniqueName = uniqueTalentName('Override');
+      const dialog = await openAddTalentFromLibrary(page);
+
+      await dialog.getByLabel('Name').fill(uniqueName);
+      await uploadNamedTalentImage(page, 'test-image.jpg');
+      await waitForSubjectKind(page, 'Human');
+      await expect(dialog.getByLabel('Basis for authorization')).toBeVisible();
+
+      await dialog.getByRole('radio', { name: 'Animated' }).click();
+      await expect(
+        dialog.getByRole('radio', { name: 'Animated' })
+      ).toBeChecked();
+      await expect(
+        dialog.getByRole('checkbox', {
+          name: /hold the rights to this asset/i,
+        })
+      ).toBeVisible();
+      await expect(dialog.getByLabel('Basis for authorization')).toHaveCount(0);
+
+      await attestAssetRights(page);
+      await submitAddTalent(page);
+
+      const card = page.getByRole('link', { name: uniqueName });
+      await expect(card).toBeVisible({ timeout: 10_000 });
+      await expect(card.getByText('AI', { exact: true })).toBeVisible();
+
+      await cleanupTalentByName(testUser.teamId, uniqueName);
+    }
+  );
+
+  testWithUser(
+    'Generate from photos fills description from vision',
+    async ({ page, testUser }) => {
+      const uniqueName = uniqueTalentName('Generate');
+      const dialog = await openAddTalentFromLibrary(page);
+
+      await dialog.getByLabel('Name').fill(uniqueName);
+      await uploadNamedTalentImage(page, 'character-sheet.jpg');
+      await waitForSubjectKind(page, 'Animated');
+
+      await dialog
+        .getByRole('button', { name: 'Generate from photos' })
+        .click();
+      await expect(dialog.getByLabel('Description')).toHaveValue(
+        /chrome robot/i,
+        { timeout: 15_000 }
+      );
+      await expect(
+        page.getByText('Description generated from photos')
+      ).toBeVisible();
+
+      await attestAssetRights(page);
+      await submitAddTalent(page);
+      await expect(page.getByText(uniqueName)).toBeVisible({ timeout: 10_000 });
+
+      await cleanupTalentByName(testUser.teamId, uniqueName);
+    }
+  );
+
+  testWithUser(
+    'blocks create until portrait rights are attested',
+    async ({ page }) => {
+      const uniqueName = uniqueTalentName('No Attest');
+      const dialog = await openAddTalentFromLibrary(page);
+
+      await dialog.getByLabel('Name').fill(uniqueName);
+      await uploadNamedTalentImage(page, 'test-image.jpg');
+      await waitForSubjectKind(page, 'Human');
+
+      await dialog.getByRole('button', { name: 'Add Talent' }).click();
+      await expect(dialog).toBeVisible();
+      await expect(
+        page.getByText(
+          'Confirm you have authorization for this person’s likeness'
+        )
+      ).toBeVisible({ timeout: 10_000 });
+    }
+  );
+
+  testWithUser(
+    'blocks a human photo without an authorization basis',
+    async ({ page }) => {
+      const uniqueName = uniqueTalentName('No Basis');
+      const dialog = await openAddTalentFromLibrary(page);
+
+      await dialog.getByLabel('Name').fill(uniqueName);
+      await uploadNamedTalentImage(page, 'test-image.jpg');
+      await waitForSubjectKind(page, 'Human');
+      await dialog
+        .getByRole('checkbox', { name: /authorization to use this person/i })
+        .check();
+
+      await dialog.getByRole('button', { name: 'Add Talent' }).click();
+      await expect(dialog).toBeVisible();
+      await expect(page.getByText('Add a basis for authorization')).toBeVisible(
+        {
+          timeout: 10_000,
+        }
+      );
     }
   );
 
@@ -206,6 +354,69 @@ testWithUser.describe('Add Talent with Reference Media', () => {
   });
 });
 
+// Same AddTalentDialog as the talent library, but the sequence composer
+// auto-selects the new row so the user does not have to find it in the picker.
+testWithUser.describe('Add Talent from new sequence page', () => {
+  testWithUser.beforeEach(async ({ page }) => {
+    await setupMockRoutes(page);
+  });
+
+  testWithUser(
+    'name-only create auto-selects the talent on the composer',
+    async ({ page, testUser }) => {
+      const uniqueName = uniqueTalentName('Seq Name');
+      const { picker } = await openAddTalentFromSequence(page);
+
+      await addTalentDialog(page).getByLabel('Name').fill(uniqueName);
+      await submitAddTalent(page);
+
+      await expect(page).toHaveURL(/\/sequences\/new/);
+      await expect(picker).toBeVisible();
+      await expect(picker.getByText(uniqueName)).toBeVisible({
+        timeout: 10_000,
+      });
+      await expect(
+        picker.getByRole('button', { name: /^Cast 1 role$/i })
+      ).toBeVisible();
+
+      await cleanupTalentByName(testUser.teamId, uniqueName);
+    }
+  );
+
+  testWithUser(
+    'photo create uses the same dialog and auto-selects the talent',
+    async ({ page, testUser }) => {
+      const uniqueName = uniqueTalentName('Seq Photo');
+      const { picker } = await openAddTalentFromSequence(page);
+
+      await addTalentDialog(page).getByLabel('Name').fill(uniqueName);
+      // Drop (not browse) so the same image cannot also land in the composer's
+      // Elements dropzone underneath the dialog (#1269).
+      await dropNamedTalentImage(page, 'test-image.jpg');
+      await expect(page.getByText('Upload reference elements')).toHaveCount(0);
+      await waitForSubjectKind(page, 'Human');
+      await attestPortraitRights(page);
+      await submitAddTalent(page);
+
+      await expect(page).toHaveURL(/\/sequences\/new/);
+      await expect(picker).toBeVisible();
+      await expect(picker.getByText(uniqueName)).toBeVisible({
+        timeout: 10_000,
+      });
+      await expect(
+        picker.getByRole('button', { name: /^Cast 1 role$/i })
+      ).toBeVisible();
+      await expect(page.getByRole('link', { name: uniqueName })).toHaveCount(0);
+      await expect(
+        // CSS, not role: the picker dialog is still open so `main` is aria-hidden.
+        page.locator('main').locator('button', { hasText: 'Elements' })
+      ).toHaveText('Elements');
+
+      await cleanupTalentByName(testUser.teamId, uniqueName);
+    }
+  );
+});
+
 // Tests that need testUser for creating test data
 // Each test creates its own data with unique names for parallel execution
 testWithUser.describe('Edit Talent with Reference Media', () => {
@@ -252,12 +463,10 @@ testWithUser.describe('Edit Talent with Reference Media', () => {
       // Click on the talent to view details
       await openLibraryCard(page, testTalent.name, TALENT_DETAIL_URL);
 
-      // Click the edit button (pencil icon)
-      await page
-        .getByRole('button', { name: /edit/i })
-        .or(page.locator('button:has(svg.lucide-pencil)'))
-        .first()
-        .click();
+      // Pencil trigger only — do NOT use name /edit/i. With "Show costs" on
+      // (#1140), the sidebar wallet button is labeled "Credit balance …" and
+      // "Credit" matches /edit/i, so .first() would open Add Credits instead.
+      await page.locator('button:has(svg.lucide-pencil)').first().click();
 
       // Edit dialog should open
       await expect(

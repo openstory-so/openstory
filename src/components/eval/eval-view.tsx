@@ -20,6 +20,10 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { VideoIcon } from 'lucide-react';
 import { Link } from '@tanstack/react-router';
 import type { AspectRatio } from '@/lib/constants/aspect-ratios';
+import type {
+  SequencesListPrefs,
+  SequencesListSearch,
+} from '@/lib/sequences/list-prefs';
 import { getCreatorIdentity } from './creator-identity';
 
 export type ViewMode = 'script' | 'prompts' | 'images' | 'motion';
@@ -59,34 +63,42 @@ export type SortCriteria = {
   direction: 'asc' | 'desc';
 };
 
-const defaultFilters: FilterState = {
-  search: '',
-  dateFrom: null,
-  dateTo: null,
-  analysisModel: null,
-  imageModel: null,
-  aspectRatio: null,
-  styleId: null,
-};
-
 type EvalViewProps = {
-  initialUserFilter?: string;
+  search: SequencesListSearch;
+  prefs: SequencesListPrefs;
+  setPrefs: (prefs: SequencesListPrefs) => void;
 };
 
-export const EvalView: React.FC<EvalViewProps> = ({ initialUserFilter }) => {
+export const EvalView: React.FC<EvalViewProps> = ({
+  search,
+  prefs,
+  setPrefs,
+}) => {
   const [viewMode, setViewMode] = useState<ViewMode>('prompts');
-  const [filters, setFilters] = useState<FilterState>(() =>
-    initialUserFilter
-      ? { ...defaultFilters, search: initialUserFilter }
-      : defaultFilters
-  );
   const [sortCriteria, setSortCriteria] = useState<SortCriteria[]>([
     { field: 'createdAt', direction: 'desc' },
   ]);
-  const [supportMode, setSupportMode] = useState(Boolean(initialUserFilter));
-  const [hideInternal, setHideInternal] = useState(false);
 
-  const { data: adminStatus } = useQuery({
+  const filters: FilterState = useMemo(
+    () => ({
+      search: prefs.search,
+      dateFrom: null,
+      dateTo: null,
+      analysisModel: prefs.analysisModel,
+      imageModel: prefs.imageModel,
+      aspectRatio: prefs.aspectRatio,
+      styleId: prefs.styleId,
+    }),
+    [
+      prefs.search,
+      prefs.analysisModel,
+      prefs.imageModel,
+      prefs.aspectRatio,
+      prefs.styleId,
+    ]
+  );
+
+  const { data: adminStatus, isLoading: adminStatusLoading } = useQuery({
     queryKey: ['system-admin-status'],
     queryFn: () => isSystemAdminFn(),
     staleTime: 5 * 60 * 1000,
@@ -97,6 +109,11 @@ export const EvalView: React.FC<EvalViewProps> = ({ initialUserFilter }) => {
     () => adminStatus?.internalDomains ?? [],
     [adminStatus?.internalDomains]
   );
+
+  // Admin query is gated on isAdmin so a remembered `support=true` cannot 403
+  // a non-admin. Stay in the loading skeleton until that check resolves.
+  const supportMode = isAdmin && prefs.supportMode;
+  const hideInternal = supportMode && prefs.hideInternal;
 
   const ownData = useSequencesWithShots();
   const adminData = useAdminAllSequencesWithShots(
@@ -118,7 +135,9 @@ export const EvalView: React.FC<EvalViewProps> = ({ initialUserFilter }) => {
   const sequences: SequenceWithShots[] = supportMode
     ? adminData.data
     : ownData.data;
-  const isLoading = supportMode ? adminData.isLoading : ownData.isLoading;
+  const isLoading =
+    (prefs.supportMode && adminStatusLoading) ||
+    (supportMode ? adminData.isLoading : ownData.isLoading);
   const shotsLoadingMap = supportMode
     ? adminData.shotsLoadingMap
     : ownData.shotsLoadingMap;
@@ -157,7 +176,7 @@ export const EvalView: React.FC<EvalViewProps> = ({ initialUserFilter }) => {
 
   // Deep link wins: when a specific user is requested, never hide them.
   const effectiveHideInternal =
-    hideInternal && !initialUserFilter && internalDomains.length > 0;
+    hideInternal && !search.user && internalDomains.length > 0;
 
   // Client-side filtering for both modes. In support mode the server also
   // filters by search so this is a no-op; keeping it for own-data mode.
@@ -206,17 +225,35 @@ export const EvalView: React.FC<EvalViewProps> = ({ initialUserFilter }) => {
         viewMode={viewMode}
         onViewModeChange={setViewMode}
         filters={filters}
-        onFiltersChange={setFilters}
+        onFiltersChange={(next) =>
+          setPrefs({
+            search: next.search,
+            analysisModel: next.analysisModel,
+            imageModel: next.imageModel,
+            aspectRatio: next.aspectRatio,
+            styleId: next.styleId,
+            supportMode: prefs.supportMode,
+            hideInternal: prefs.hideInternal,
+          })
+        }
         styleOptions={styleOptions}
         sortCriteria={sortCriteria}
         onSortChange={setSortCriteria}
         supportMode={supportMode}
         isAdmin={isAdmin}
-        onSupportModeChange={setSupportMode}
+        onSupportModeChange={(value) =>
+          setPrefs({
+            ...prefs,
+            supportMode: value,
+            hideInternal: value ? prefs.hideInternal : false,
+          })
+        }
         hideInternal={hideInternal}
-        onHideInternalChange={setHideInternal}
+        onHideInternalChange={(value) =>
+          setPrefs({ ...prefs, hideInternal: value })
+        }
         hideInternalAvailable={internalDomains.length > 0}
-        hideInternalLocked={Boolean(initialUserFilter)}
+        hideInternalLocked={Boolean(search.user)}
       />
       {isLoading ? (
         <Card className="flex-1 p-4">

@@ -11,8 +11,9 @@ import {
   type TextToImageModel,
 } from '@/lib/ai/models';
 import {
-  ANALYSIS_MODEL_IDS,
   DEFAULT_ANALYSIS_MODEL,
+  isSelectableAnalysisModelId,
+  isValidAnalysisModelId,
   type AnalysisModelId,
 } from '@/lib/ai/models.config';
 import {
@@ -25,7 +26,9 @@ import { getLogger } from '@/lib/observability/logger';
 
 const logger = getLogger(['openstory', 'ui', 'use-generation-settings']);
 
-const STORAGE_KEY = 'openstory:generation-settings:v2';
+// Bump when product defaults change so prior localStorage snapshots are ignored
+// (v2 → v3: motion + music on for the welcome short aha — #1140).
+const STORAGE_KEY = 'openstory:generation-settings:v3';
 
 type GenerationSettings = {
   aspectRatio: AspectRatio;
@@ -47,10 +50,12 @@ const DEFAULT_SETTINGS: GenerationSettings = {
   imageModels: [DEFAULT_IMAGE_MODEL],
   motionModel: DEFAULT_VIDEO_MODEL,
   videoModels: [DEFAULT_VIDEO_MODEL],
-  autoGenerateMotion: false,
+  // Motion + music on by default so the first Generate is a short film aha
+  // (welcome grant sized for a ~30s stills+motion+music board — #1140).
+  autoGenerateMotion: true,
   musicModel: DEFAULT_MUSIC_MODEL,
   audioModels: [DEFAULT_MUSIC_MODEL],
-  autoGenerateMusic: false,
+  autoGenerateMusic: true,
 };
 
 /**
@@ -71,8 +76,7 @@ function isValidAnalysisModels(value: unknown): value is AnalysisModelId[] {
     return false;
   }
   return value.every(
-    (id) =>
-      typeof id === 'string' && ANALYSIS_MODEL_IDS.some((model) => model === id)
+    (id) => typeof id === 'string' && isValidAnalysisModelId(id)
   );
 }
 
@@ -110,9 +114,13 @@ function loadSettings(): GenerationSettings {
       ? parsed.aspectRatio
       : DEFAULT_ASPECT_RATIO;
 
-    const analysisModels = isValidAnalysisModels(parsed.analysisModels)
-      ? parsed.analysisModels
-      : [DEFAULT_ANALYSIS_MODEL];
+    const storedAnalysisModels = isValidAnalysisModels(parsed.analysisModels)
+      ? parsed.analysisModels.filter(isSelectableAnalysisModelId)
+      : [];
+    const analysisModels =
+      storedAnalysisModels.length > 0
+        ? storedAnalysisModels
+        : [DEFAULT_ANALYSIS_MODEL];
 
     const imageModel = isValidTextToImageModel(parsed.imageModel)
       ? parsed.imageModel

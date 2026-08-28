@@ -2,7 +2,8 @@
  * Behavioural tests for `OpenStoryWorkflowEntrypoint.run()`'s failure
  * handling, added for issue #839 (June 6 mass-abort cascade):
  *
- *   1. Engine aborts ("Aborting engine: Grace period complete") are transient
+ *   1. Engine aborts ("Aborting engine: Grace period complete") and deploy
+ *      DO resets ("Durable Object reset because its code was updated", #1331) are transient
  *      — CF resumes the instance afterwards — so run() must rethrow WITHOUT
  *      invoking `onFailure` (which marks user-facing rows failed) or
  *      notifying the parent of failure. The same applies when the abort
@@ -24,8 +25,18 @@ import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import { WorkflowValidationError } from '@/lib/workflow/errors';
 import type { UserWorkflowContext } from '@/lib/workflow/types';
 
-const SCOPED_DB = { scoped: true };
+const zeroReservation = vi.fn(async () => undefined);
+const SCOPED_DB = { scoped: true, billing: { zeroReservation } };
 
+vi.doMock('#env', () => ({
+  getEnv: () => ({ E2E_TEST: undefined }),
+}));
+vi.doMock('#db-client', () => ({
+  getDb: vi.fn(),
+}));
+vi.doMock('@/lib/db/seed-model-pricing', () => ({
+  ensureLocalModelPricingSeeded: vi.fn(),
+}));
 vi.doMock('@/lib/db/scoped', () => ({
   createScopedDb: vi.fn(() => SCOPED_DB),
 }));
@@ -49,6 +60,7 @@ const { OpenStoryWorkflowEntrypoint } = await import('./base-workflow');
 const IN_FINITE_STATE =
   '(instance.in_finite_state) Instance reached a finite state, cannot send events to it';
 const ENGINE_ABORT = 'Aborting engine: Grace period complete';
+const DO_RESET = 'Durable Object reset because its code was updated.';
 
 type TestPayload = UserWorkflowContext & {
   _parent?: {
@@ -64,17 +76,22 @@ const PARENT_HINT = {
   eventType: 'done-child_01XYZ',
 };
 
-function makeEvent(withParent: boolean): Readonly<WorkflowEvent<TestPayload>> {
+function makeEvent(
+  withParent: boolean,
+  extra: Partial<TestPayload> = {}
+): Readonly<WorkflowEvent<TestPayload>> {
   // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal WorkflowEvent stub: run() only reads payload + instanceId
   return {
     payload: {
       userId: 'u1',
       teamId: 't1',
       ...(withParent ? { _parent: PARENT_HINT } : {}),
+      ...extra,
     },
     instanceId: 'child_run_A',
+    workflowName: 'child',
     timestamp: new Date(0),
-  } as unknown as Readonly<WorkflowEvent<TestPayload>>;
+  };
 }
 
 function makeStep(): WorkflowStep {
@@ -108,20 +125,23 @@ function makeWorkflow(impl: () => Promise<unknown>) {
 }
 
 describe('OpenStoryWorkflowEntrypoint.run', () => {
-  test('engine abort: rethrows without onFailure or parent failure-notify', async () => {
-    notifyParent.mockReset();
-    notifyParentOfFailure.mockReset();
-    const { workflow, onFailure } = makeWorkflow(() =>
-      Promise.reject(new Error(ENGINE_ABORT))
-    );
+  test.each([ENGINE_ABORT, DO_RESET])(
+    'platform interruption "%s": rethrows without onFailure or parent failure-notify',
+    async (message) => {
+      notifyParent.mockReset();
+      notifyParentOfFailure.mockReset();
+      const { workflow, onFailure } = makeWorkflow(() =>
+        Promise.reject(new Error(message))
+      );
 
-    await expect(workflow.run(makeEvent(true), makeStep())).rejects.toThrow(
-      'Grace period complete'
-    );
+      await expect(workflow.run(makeEvent(true), makeStep())).rejects.toThrow(
+        message
+      );
 
-    expect(onFailure).not.toHaveBeenCalled();
-    expect(notifyParentOfFailure).not.toHaveBeenCalled();
-  });
+      expect(onFailure).not.toHaveBeenCalled();
+      expect(notifyParentOfFailure).not.toHaveBeenCalled();
+    }
+  );
 
   test('success with dead parent: returns the result instead of failing', async () => {
     notifyParent.mockReset();
@@ -232,6 +252,47 @@ describe('OpenStoryWorkflowEntrypoint.run', () => {
       'ok'
     );
     expect(notifyParent).not.toHaveBeenCalled();
+  });
+
+  test('owned reservation is zeroed after a successful run', async () => {
+    zeroReservation.mockClear();
+    const { workflow } = makeWorkflow(() => Promise.resolve('ok'));
+
+    await workflow.run(
+      makeEvent(false, { reservationId: 'res_1', ownsReservation: true }),
+      makeStep()
+    );
+
+    expect(zeroReservation).toHaveBeenCalledWith('res_1');
+  });
+
+  test('owned reservation is zeroed when the run fails', async () => {
+    zeroReservation.mockClear();
+    notifyParentOfFailure.mockReset();
+    const { workflow } = makeWorkflow(() =>
+      Promise.reject(new Error('fal request failed'))
+    );
+
+    await expect(
+      workflow.run(
+        makeEvent(false, { reservationId: 'res_1', ownsReservation: true }),
+        makeStep()
+      )
+    ).rejects.toThrow('fal request failed');
+
+    expect(zeroReservation).toHaveBeenCalledWith('res_1');
+  });
+
+  test('shared child envelopes are not zeroed by the base class', async () => {
+    zeroReservation.mockClear();
+    const { workflow } = makeWorkflow(() => Promise.resolve('ok'));
+
+    await workflow.run(
+      makeEvent(false, { reservationId: 'res_parent' }),
+      makeStep()
+    );
+
+    expect(zeroReservation).not.toHaveBeenCalled();
   });
 
   // Workflows are where nearly every instrumented LLM/media call runs, and no

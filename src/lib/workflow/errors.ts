@@ -30,20 +30,24 @@ function errorMessage(error: unknown): string {
 }
 
 /**
- * True when the Workflows engine is shutting the instance down mid-run —
- * `Aborting engine: Grace period complete`. CF emits this when the engine
- * restarts (every Worker deploy produces a burst; platform-side restarts do
- * too) and then RESUMES the instance from its persisted step cache. It is a
- * transient interruption, not a workflow failure: the base class must not run
- * `onFailure` (which would mark user-facing rows failed) or notify the parent
- * of failure. Matched on message text — the thrown value's class isn't part
- * of the public API. See issue #839 (2026-06-06 mass-abort cascade).
+ * True when the platform is tearing the instance down mid-run — a transient
+ * interruption after which CF RESUMES the instance from its persisted step
+ * cache, not a workflow failure. Two spellings:
+ *   - `Aborting engine: Grace period complete` — engine restart (#839,
+ *     2026-06-06 mass-abort cascade).
+ *   - `Durable Object reset because its code was updated` — a Worker deploy
+ *     evicting the isolate under an in-flight step (#1331, 2026-08-26: 16
+ *     user-visible failures across 6 deploys).
+ * The base class must not run `onFailure` (which would mark user-facing rows
+ * failed) or notify the parent of failure. Matched on message text — the
+ * thrown value's class isn't part of the public API — and on the full phrase,
+ * because a true positive here skips onFailure AND parent notification, so an
+ * app error that merely mentions a grace period or a reset must never match.
  */
 export function isEngineAbortError(error: unknown): boolean {
-  // Matched on the full phrase, not a bare "grace period" token — a true
-  // positive here skips onFailure AND parent notification, so an app error
-  // that merely mentions a grace period must never be classified as one.
-  return /aborting engine|grace period complete/i.test(errorMessage(error));
+  return /aborting engine|grace period complete|reset because its code was updated/i.test(
+    errorMessage(error)
+  );
 }
 
 /**

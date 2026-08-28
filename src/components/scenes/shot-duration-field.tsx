@@ -39,7 +39,7 @@ import {
   type ImageToVideoModel,
 } from '@/lib/ai/models';
 import { MOTION_JSON_SCHEMAS } from '@/lib/motion/endpoint-map';
-import { snapDuration } from '@/lib/motion/motion-generation';
+import { snapDuration } from '@/lib/motion/snap-duration';
 import { getDurationValues, numericOf } from '@/lib/motion/motion-transform';
 import type { Shot } from '@/types/database';
 import { useMutation, useQueryClient } from '@tanstack/react-query';

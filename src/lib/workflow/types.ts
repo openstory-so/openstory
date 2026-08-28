@@ -60,6 +60,7 @@ import type {
 } from '@/lib/db/schema';
 import type { ReferenceImageDescription } from '@/lib/prompts/reference-image-prompt';
 import type { UpdateStalePlan } from '@/lib/shots/update-stale-plan';
+import type { StudioCreateInput } from '@/lib/studio/schema';
 import type { Json } from '@/types/database';
 import { z } from 'zod';
 import type { musicDesignResultSchema } from '../ai/response-schemas';
@@ -71,6 +72,18 @@ import type { musicDesignResultSchema } from '../ai/response-schemas';
 export interface UserWorkflowContext {
   userId: string;
   teamId: string;
+  /**
+   * Run envelope (#1310). Optional so in-flight instances without it still
+   * last-resort deduct. Children inherit this from the parent payload.
+   */
+  reservationId?: string;
+  /**
+   * This instance created a private envelope (add-model per shot, smart-retry
+   * leaf). The base class zeros leftover on success and failure. Leave unset
+   * on shared-envelope children so the base class does not zero; parents may
+   * still zero explicitly.
+   */
+  ownsReservation?: boolean;
 }
 
 export interface SequenceWorkflowContext extends UserWorkflowContext {
@@ -211,6 +224,14 @@ export interface StoryboardWorkflowInput extends SequenceWorkflowContext {
   script: string;
   aspectRatio: AspectRatio;
   styleConfig: StyleConfig;
+  /**
+   * Automatic style (#1213): set when the sequence's style is a placeholder
+   * bound to it whose recipe has not been derived yet. The poster renders
+   * style-free and analyze-script derives the recipe in parallel with
+   * scene-split, then uses it for every later phase. Absent once a snapshot
+   * exists (retries).
+   */
+  pendingAutoStyleId?: string;
   analysisModelId: AnalysisModelId;
   imageModel: TextToImageModel;
   videoModel: ImageToVideoModel;
@@ -250,6 +271,18 @@ export interface StoryboardWorkflowInput extends SequenceWorkflowContext {
   suggestedTalent?: SuggestedTalentSnapshot[];
   /** @see LocationMatchingWorkflowInput.suggestedLocations — resolved by the launcher. */
   suggestedLocations?: SuggestedLocationSnapshot[];
+  /**
+   * Owner's email at trigger time (#1276). Null when the triggering user has
+   * no address on the team — the ready-email step then no-ops.
+   */
+  ownerEmail?: string | null;
+  /** Absolute `/sequences/:id/scenes` URL, snapshotted with the app origin. */
+  sequenceUrl: string;
+  /**
+   * When false, skip the ready email. API-key `/api/v1` callers poll and
+   * don't want a mailbox ping. Default (undefined) is send.
+   */
+  notify?: boolean;
 }
 
 /**
@@ -270,6 +303,8 @@ export type StoryboardTriggerInput = Omit<
   | 'musicPromptSource'
   | 'suggestedTalent'
   | 'suggestedLocations'
+  | 'ownerEmail'
+  | 'sequenceUrl'
 >;
 
 /**
@@ -280,6 +315,8 @@ export interface AnalyzeScriptWorkflowInput extends SequenceWorkflowContext {
   script: string;
   aspectRatio: AspectRatio;
   styleConfig: StyleConfig;
+  /** @see StoryboardWorkflowInput.pendingAutoStyleId — derived here, in parallel with scene-split. */
+  pendingAutoStyleId?: string;
   analysisModelId: AnalysisModelId;
   imageModel: TextToImageModel;
   /** @see StoryboardWorkflowInput.elementIds — passed straight through. */
@@ -312,7 +349,6 @@ export interface AnalyzeScriptWorkflowInput extends SequenceWorkflowContext {
 export type SceneSplitWorkflowInput = SequenceWorkflowContext & {
   promptName: string;
   modelId: AnalysisModelId;
-  styleConfig: StyleConfig;
   aspectRatio: AspectRatio;
   script: string;
   /** User-uploaded elements to make the model aware of uppercase tokens */
@@ -408,6 +444,12 @@ export interface MotionWorkflowInput extends SequenceWorkflowContext {
    */
   userEditProvenance?: UserEditProvenance;
   /**
+   * With `userEditProvenance`: the text the user typed, persisted as the
+   * `user-edit` version. `prompt` is that text after model assembly (dialogue
+   * tags, audio direction) — storing it would double-assemble on the next run.
+   */
+  userEditText?: string;
+  /**
    * Only meaningful when `userEditedPrompt`: the dialogue/audio direction of the
    * version being edited, captured at trigger time so the recorded user-edit
    * version carries it forward (audio-capable models still get enrichment after
@@ -462,6 +504,12 @@ export interface CharacterSheetWorkflowInput extends SequenceWorkflowContext {
   talentMetadata?: CharacterBibleEntry;
   /** Talent description to include in prompt */
   talentDescription?: string;
+  /**
+   * When true, copy `referenceImageUrl` onto the character instead of
+   * generating a costumed sheet. Snapshotted at trigger time from
+   * `shouldReuseTalentSheet`.
+   */
+  reuseTalentSheet?: boolean;
   /** Sequence style config to apply to the character sheet */
   styleConfig?: StyleConfig;
   /**
@@ -598,6 +646,11 @@ export interface RecastCharacterWorkflowInput extends SequenceWorkflowContext {
   /** Talent description */
   talentDescription?: string;
   /**
+   * Copy the talent sheet onto the character instead of generating a
+   * costumed sheet. Threaded through to the character-sheet child.
+   */
+  reuseTalentSheet?: boolean;
+  /**
    * The upstream talent sheet's `input_hash`, resolved at trigger time. The
    * workflow used to re-derive this two DB reads deep, minutes later — a
    * different talent identity than the one the user recast to.
@@ -633,6 +686,8 @@ export type TalentCharacterMatch = {
   sheetImageUrl: string;
   /** Talent sheet metadata for appearance blending */
   sheetMetadata?: CharacterBibleEntry;
+  /** Talent library description, snapshotted at match time for reuse checks. */
+  talentDescription?: string;
 };
 
 /**
@@ -688,9 +743,9 @@ export interface CharacterBibleWorkflowInput extends SequenceWorkflowContext {
 }
 
 /**
- * Maps each analysis scene (the LLM-assigned `Scene.sceneId` string carried in
- * the analysis output) to the DB shot row created for it. `analysisSceneId` is
- * deliberately NOT the new `scenes.id` ULID (see DbSceneId in schema/scenes.ts)
+ * Maps each analysis scene (the server-minted `Scene.sceneId` ULID from
+ * scene-split) to the DB shot row created for it. `analysisSceneId` is
+ * deliberately NOT the `scenes.id` ULID (see DbSceneId in schema/scenes.ts)
  * — both are strings, so the distinct name guards against confusing them.
  *
  * `frameId` is the shot's anchor frame id, captured at shot-creation time in
@@ -859,6 +914,13 @@ export interface UpscaleShotVariantWorkflowInput extends SequenceWorkflowContext
   /** Location reference images for environment consistency during upscale */
   locationReferences?: ReferenceImageDescription[];
   /**
+   * Framing version minted at click (`selectShotVariantFn`) with the cropped
+   * tile as its url and `status: 'generating'`. The run completes THIS row
+   * rather than appending a second generating version — otherwise a refresh
+   * mid-upscale would load a url-less pending-promote and hide the overlay.
+   */
+  versionId?: string;
+  /**
    * The grid-sheet `frame_variants` version the tile was cropped from (#989).
    * Recorded as `frame_variants.sourceVariantId` on the upscaled framing version.
    */
@@ -894,6 +956,14 @@ export interface LibraryTalentSheetWorkflowInput extends UserWorkflowContext {
   imageModel?: TextToImageModel;
   /** Name for the generated sheet */
   sheetName?: string;
+  /**
+   * Existing character/talent sheet the user uploaded. When set, the
+   * workflow stores this image as the sheet instead of generating a new
+   * 4-panel, then crops the close-up panel as the portrait.
+   */
+  uploadedSheetUrl?: string;
+  /** Appearance metadata extracted from the uploaded sheet, when available. */
+  uploadedSheetMetadata?: CharacterBibleEntry;
   /** Hash over the inlined DTO; validated by the snapshot middleware. */
   snapshotInputHash?: string;
 }
@@ -1184,6 +1254,8 @@ export interface BatchMotionMusicWorkflowInput extends SequenceWorkflowContext {
     generateAudio?: boolean;
     /** See `MotionWorkflowInput.userEditProvenance`. */
     userEditProvenance?: UserEditProvenance;
+    /** See `MotionWorkflowInput.userEditText`. */
+    userEditText?: string;
     /** See `MotionWorkflowInput.sceneTitle`. */
     sceneTitle?: string;
     /** See `MotionWorkflowInput.sequenceTitle`. */
@@ -1357,14 +1429,10 @@ export interface ElementVisionWorkflowResult {
 }
 
 /**
- * Replace element workflow input
- * Orchestrates element image swap + per-shot image edits for affected shots.
+ * Replace element workflow input.
  *
- * Per-shot behaviour: invokes `image-workflow` with the existing shot
- * thumbnail as the PRIMARY SOURCE and the new element image as an ELEMENT REF.
- * The image edit endpoint swaps the element while preserving the rest of the
- * shot — this is by design for elements (vs cast/location which fully
- * regenerate the shot).
+ * Keep this payload. Replace currently persists + vision and leaves shots
+ * stale (#1192). A later "apply to shots" action should reuse this fan-out.
  */
 /**
  * Per-shot source state for `replaceElementWorkflow`, frozen at trigger time.
@@ -1442,6 +1510,17 @@ export interface AssetGenerationWorkflowInput extends UserWorkflowContext {
   activity: GeneratedAssetActivity;
   /** Schema-validated endpoint input, forwarded verbatim to fal. */
   input: GeneratedAssetInput;
+}
+
+/**
+ * Images and Videos (#1274). The validated create input rides along whole,
+ * so the run never re-reads the row and the `activity` discriminant keeps
+ * image/video fields where the types can prove them. Video `duration` is
+ * already snapped to the model's accepted seconds.
+ */
+export interface StudioGenerationWorkflowInput extends UserWorkflowContext {
+  assetId: string;
+  input: StudioCreateInput;
 }
 
 /**

@@ -2,11 +2,12 @@
 name: update-model-versions
 description: >
   Check whether newer versions of the AI models we already use (fal.ai image,
-  video/motion, audio; OpenRouter text) or our @tanstack/ai* packages have
-  shipped, and open a PR bumping any genuine successor. Use when asked to
-  "check for model updates", "are our models current", "bump models", or when
-  run by the daily model-freshness routine. Only bumps EXISTING models to a
-  newer version of the same model — it does not add net-new models.
+  video/motion, audio; OpenRouter text) have shipped, and open a PR bumping any
+  genuine successor. Use when asked to "check for model updates", "are our models
+  current", "bump models", or when run by the daily model-freshness routine.
+  Only bumps EXISTING models to a newer version of the same model — it does not
+  add net-new models. npm dependency bumps (including @tanstack/ai*) are out of
+  scope: Dependabot owns those.
 ---
 
 # Update model versions
@@ -19,21 +20,24 @@ Our model registries are the single source of truth:
 | Image (fal.ai)          | `src/lib/ai/models.ts`        | `IMAGE_MODELS`           |
 | Video / motion (fal.ai) | `src/lib/ai/models.ts`        | `IMAGE_TO_VIDEO_MODELS`  |
 | Audio (fal.ai)          | `src/lib/ai/models.ts`        | `AUDIO_MODELS`           |
-| AI SDK packages         | `package.json`                | `@tanstack/ai*`          |
 
 The goal each run: detect newer versions → verify each is a real successor →
 open a focused PR that bumps it → leave everything green.
+
+**npm dependencies are out of scope.** Bumping `@tanstack/ai*` (or any other npm
+package) is Dependabot's job, not this routine's — the detector no longer checks
+the npm registry. Don't open model-freshness PRs or issues for package versions.
 
 ## 1. Detect candidates
 
 ```bash
 bun models:check          # human-readable report
-bun models:check --json   # { ok, errorCount, hasUpdates, models[], packages[] }
+bun models:check --json   # { ok, errorCount, hasUpdates, models[] }
 ```
 
 `scripts/check-model-updates.ts` reads the registries and queries public,
-unauthenticated catalogs (fal.ai `/api/models`, OpenRouter `/api/v1/models`, npm
-registry). It is HTTP-only so it runs anywhere — no `FAL_KEY` or MCP needed.
+unauthenticated catalogs (fal.ai `/api/models`, OpenRouter `/api/v1/models`).
+It is HTTP-only so it runs anywhere — no `FAL_KEY` or MCP needed.
 Behind a proxy it routes through `curl` (Bun's fetch can't traverse a
 TLS-intercepting proxy), so `curl` must be on PATH in that case.
 
@@ -95,6 +99,16 @@ Per class, edit and follow through:
 - **Text** (`models.config.ts`): update `id`, `name`, `description`,
   `contextWindow`. If you bump `DEFAULT_ANALYSIS_MODEL`'s model, the constant
   references a key, so it's unaffected.
+  **Catalog-lag bridge:** the `@tanstack/ai-openrouter` adapter ships a codegen
+  snapshot of OpenRouter's model list that lags new releases, so a freshly
+  shipped id may not be in its typed union yet. When a text-model bump adopts an
+  id the installed catalog lacks, `bun typecheck` fails at the `createAdapter`
+  call sites — add a `createModel` entry for the id to `CATALOG_LAG_MODELS`
+  (`src/lib/ai/create-adapter.ts`) with the correct `input` modalities, plus
+  `features: ['reasoning', 'structured_outputs']` when the model supports them.
+  (The reverse — pruning a bridged id once the adapter package catches up — is
+  handled by Dependabot's package bump, guided by `catalog-lag.test.ts`, not by
+  this routine.)
 - **Image** (`models.ts` `IMAGE_MODELS`): update `id`, `name`, `description`,
   `maxPromptLength`. If the model has an `EDIT_ENDPOINTS` entry, update that
   endpoint id too. Confirm the new endpoint still supports the edit/reference
@@ -109,19 +123,6 @@ Per class, edit and follow through:
   (auto-generated). After any fal id change run **`bun scripts/update-fal-pricing.ts`**
   (needs `FAL_KEY`). If it can't run, add the new id's pricing manually via the
   override path documented in that script and flag it in the PR.
-- **Packages:** bump the `@tanstack/ai*` range in `package.json`, then
-  `bun install`. Skip major bumps (breaking) — open an issue for those instead.
-  **Catalog-lag prune (`@tanstack/ai-openrouter` bumps):** registry ids that
-  the adapter's generated model catalog doesn't know yet are bridged in
-  `CATALOG_LAG_MODELS` (`src/lib/ai/create-adapter.ts`). When a bump ships one
-  of those ids upstream, `bun typecheck` fails in
-  `src/lib/ai/catalog-lag.test.ts` naming the id — delete its entry from
-  `CATALOG_LAG_MODELS` in the same PR and note the prune in the PR body.
-  Conversely, when a text-model bump adopts an id the installed catalog lacks
-  (typecheck fails at the `createAdapter` call sites), add a `createModel`
-  entry for it to `CATALOG_LAG_MODELS` — correct `input` modalities, plus
-  `features: ['reasoning', 'structured_outputs']` when the model supports
-  them.
 
 ## 4. Quality gates (must pass before opening the PR)
 
@@ -145,7 +146,7 @@ gh pr create --title "chore(models): bump <name> <old> → <new>" --body "<body>
 ```
 
 PR body must include, per change: registry key, old id → new id, why it's a
-genuine successor, links (fal model page / OpenRouter / npm), pricing delta, and
+genuine successor, links (fal model page / OpenRouter), pricing delta, and
 which generated files / pricing were regenerated. End with: "🤖 Opened by the
 daily model-freshness routine (#792). Verify pricing & quality before merge."
 

@@ -60,7 +60,7 @@ import {
 import { calculateMotionMetadata } from '@/lib/motion/motion-generation';
 import {
   createSampleSequence,
-  orderedFrameVideos,
+  orderedShotVideos,
   waitForSampleSequence,
   type SamplePipelineConfig,
 } from './sample-pipeline';
@@ -345,21 +345,21 @@ async function renderJobViaPipeline(
 
   // Frames appear incrementally while scene-split streams, so track the
   // count delta rather than latching the first non-zero value.
-  let framesCounted = 0;
+  let shotsCounted = 0;
   let videosCounted = 0;
   const state = await waitForSampleSequence(api, {
     id,
     onProgress: (p) => {
-      if (p.frames > framesCounted) {
-        clipProgress.total += p.frames - framesCounted;
-        framesCounted = p.frames;
+      if (p.shots > shotsCounted) {
+        clipProgress.total += p.shots - shotsCounted;
+        shotsCounted = p.shots;
       }
       const newlyReady = Math.max(0, p.videosReady - videosCounted);
       videosCounted += newlyReady;
       clipProgress.done += newlyReady;
       console.log(
-        `   ⏳ ${job.slug}/${job.kind} [${p.status}] images ${p.imagesReady}/${p.frames}, ` +
-          `clips ${p.videosReady}/${p.frames}` +
+        `   ⏳ ${job.slug}/${job.kind} [${p.status}] images ${p.imagesReady}/${p.shots}, ` +
+          `clips ${p.videosReady}/${p.shots}` +
           (p.videosFailed > 0 ? `, ${p.videosFailed} FAILED` : '') +
           ` — ${clipProgress.done}/${clipProgress.total} clips overall`
       );
@@ -376,10 +376,10 @@ async function renderJobViaPipeline(
   }
 
   // Download per-frame clips (+ stills, review-only) in playback order.
-  const frames = orderedFrameVideos(state);
+  const frames = orderedShotVideos(state);
   return Promise.all(
     frames.map(async (frame, i) => {
-      const base = `${String(i + 1).padStart(2, '0')}-${frame.frameId}`;
+      const base = `${String(i + 1).padStart(2, '0')}-${frame.shotId}`;
       if (frame.imageUrl) {
         const ext = path.extname(new URL(frame.imageUrl).pathname) || '.webp';
         await downloadTo(frame.imageUrl, path.join(framesDir, base + ext));

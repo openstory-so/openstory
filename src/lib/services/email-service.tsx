@@ -7,10 +7,13 @@
 
 import { getEnv } from '#env';
 import { env as workerEnv } from 'cloudflare:workers';
+import { AbuseReportEmail } from '@/lib/emails/abuse-report-email';
 import { FeedbackEmail } from '@/lib/emails/feedback-email';
 import { FounderCreditRequestEmail } from '@/lib/emails/founder-credit-request-email';
 import { OtpEmail } from '@/lib/emails/otp-email';
+import { SequenceReadyEmail } from '@/lib/emails/sequence-ready-email';
 import { renderEmail } from '@/lib/emails/render-email';
+import { CONTACT_EMAIL } from '@/lib/marketing/constants';
 import { getLogger } from '@/lib/observability/logger';
 
 const logger = getLogger(['openstory', 'services', 'email-service']);
@@ -63,6 +66,7 @@ interface SendEmailParams {
   to: string;
   subject: string;
   body: React.ReactElement;
+  replyTo?: string;
 }
 
 /**
@@ -72,6 +76,7 @@ async function sendEmail({
   to,
   subject,
   body,
+  replyTo,
 }: SendEmailParams): Promise<{ success: boolean; error?: string }> {
   try {
     const { fromEmail, fromName } = getEmailConfig();
@@ -84,6 +89,7 @@ async function sendEmail({
       subject,
       html,
       text,
+      ...(replyTo ? { replyTo } : {}),
     });
 
     logger.info('Sent successfully:', { data: result.messageId });
@@ -134,6 +140,59 @@ export async function sendFounderCreditRequestEmail(params: {
         teamId={params.teamId}
         balanceDisplay={params.balanceDisplay}
         message={params.message}
+      />
+    ),
+  });
+}
+
+/** Queue watcher for `/report` intake. Lands on `ABUSE_REPORT_NOTIFY_EMAIL`. */
+export async function sendAbuseReportNotifyEmail(params: {
+  to: string;
+  reference: string;
+  reason: string;
+  targetType: string;
+  hasTrace: boolean;
+}): Promise<{ success: boolean; error?: string }> {
+  return sendEmail({
+    to: params.to,
+    subject: `[${params.reason}] content report ${params.reference}`,
+    body: (
+      <AbuseReportEmail
+        appName={getAppName()}
+        reference={params.reference}
+        reason={params.reason}
+        targetType={params.targetType}
+        hasTrace={params.hasTrace}
+      />
+    ),
+  });
+}
+
+/** "Your video is ready" — one per sequence, reply-to us (#1276). */
+export async function sendSequenceReadyEmail(params: {
+  to: string;
+  title: string;
+  watchUrl: string;
+  creditsUrl: string;
+  posterUrl?: string;
+  clipMeta?: string;
+  balanceDisplay: string;
+  typicalShortCostDisplay: string;
+}): Promise<{ success: boolean; error?: string }> {
+  return sendEmail({
+    to: params.to,
+    subject: `"${params.title}" is ready`,
+    replyTo: CONTACT_EMAIL,
+    body: (
+      <SequenceReadyEmail
+        appName={getAppName()}
+        title={params.title}
+        watchUrl={params.watchUrl}
+        creditsUrl={params.creditsUrl}
+        posterUrl={params.posterUrl}
+        clipMeta={params.clipMeta}
+        balanceDisplay={params.balanceDisplay}
+        typicalShortCostDisplay={params.typicalShortCostDisplay}
       />
     ),
   });

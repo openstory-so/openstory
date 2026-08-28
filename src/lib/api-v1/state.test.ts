@@ -130,6 +130,7 @@ function makeSequence(overrides: Partial<Sequence> = {}): Sequence {
     createdBy: null,
     updatedBy: null,
     styleId: 'style-1',
+    styleConfig: null,
     aspectRatio: '16:9',
     analysisModel: 'anthropic/claude-haiku-4.5',
     analysisDurationMs: 0,
@@ -149,6 +150,7 @@ function makeSequence(overrides: Partial<Sequence> = {}): Sequence {
     statusError: null,
     workflowRunId: null,
     posterUrl: null,
+    readyEmailSentAt: null,
     autoGenerateMotion: false,
     autoGenerateMusic: false,
     suggestedTalentIds: null,
@@ -161,6 +163,7 @@ function makeStyle(overrides: Partial<Style> = {}): Style {
   return {
     id: 'style-1',
     teamId: 'team-1',
+    sequenceId: null,
     name: 'Cinematic Noir',
     description: null,
     config: {

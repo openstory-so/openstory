@@ -3,6 +3,7 @@ import type { Style } from '@/types/database';
 import {
   groupStylesByCategory,
   styleCanonicalVideoUrl,
+  styleCategoryGroupKey,
   styleCategoryLabel,
   styleHoverVideoUrl,
   stylePreviewImageUrls,
@@ -13,6 +14,7 @@ function makeStyle(overrides: Partial<Style> = {}): Style {
   return {
     id: 'style_1',
     teamId: 'team_1',
+    sequenceId: null,
     name: 'Product Ad',
     description: 'A polished product spot.',
     config: {
@@ -41,7 +43,7 @@ function makeStyle(overrides: Partial<Style> = {}): Style {
     updatedAt: new Date('2026-01-01'),
     createdBy: null,
     ...overrides,
-  } as Style;
+  };
 }
 
 describe('styleHoverVideoUrl', () => {
@@ -128,6 +130,7 @@ describe('styleCategoryLabel', () => {
   it('maps known categories to friendly labels', () => {
     expect(styleCategoryLabel('ecommerce')).toBe('E-commerce');
     expect(styleCategoryLabel('influencer')).toBe('Influencer & UGC');
+    expect(styleCategoryLabel('film')).toBe('Film & Cinematic');
   });
 
   it('title-cases unknown categories and labels missing as Other', () => {
@@ -184,5 +187,27 @@ describe('groupStylesByCategory', () => {
       'Banana',
       'Cherry',
     ]);
+  });
+});
+
+describe('styleCategoryGroupKey', () => {
+  it('returns the raw category when the family is large enough', () => {
+    const catalogue = [...trio('film'), ...trio('ecommerce')];
+    expect(
+      styleCategoryGroupKey(makeStyle({ category: 'film' }), catalogue)
+    ).toBe('film');
+  });
+
+  it('collapses small families into Specialized', () => {
+    const catalogue = [
+      ...trio('film'),
+      makeStyle({ id: 'travel', category: 'travel' }),
+    ];
+    expect(
+      styleCategoryGroupKey(
+        makeStyle({ id: 'travel', category: 'travel' }),
+        catalogue
+      )
+    ).toBe('specialized');
   });
 });

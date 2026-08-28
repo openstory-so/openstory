@@ -14,9 +14,13 @@ export function apiJsonError(
   status: number,
   code: string,
   message: string,
-  details?: Record<string, unknown>
+  details?: Record<string, unknown>,
+  headers?: HeadersInit
 ): Response {
-  return Response.json({ error: { code, message, details } }, { status });
+  return Response.json(
+    { error: { code, message, details } },
+    { status, headers }
+  );
 }
 
 /**

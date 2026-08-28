@@ -166,6 +166,7 @@ export class RecastCharacterWorkflow extends OpenStoryWorkflowEntrypoint<RecastC
           referenceImageUrl: input.referenceImageUrl,
           talentMetadata: input.talentMetadata,
           talentDescription: input.talentDescription,
+          reuseTalentSheet: input.reuseTalentSheet,
           styleConfig: input.styleConfig,
           talentSheetInputHash: input.talentSheetInputHash,
         };

@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "A professional product reference photograph establishing the canonical look of a recurring object (coral-lipstick-oat-beige-tube).\n\n[SUBJECT]:\nA squat, wide lipstick tube roughly 55mm tall: a matte oat-beige (bone) cylindrical outer case with subtly softened square shoulders, a snug-fitting cap of the same finish, and a polished brushed-gold band at the seam. A small minimalist wordmark 'CORAL' is stamped in thin gold serif capitals on the cap face, with a single fine gold hairline ring below it. Twisting the ribbed base elevates a flat-cut, high-gloss bullet of saturated warm coral-orange pigment — clean edges, no bevel, wet-looking sheen. The base underside carries a tiny embossed shade code.\n\n[FRAMING]:\nThe object is the sole subject, centered, shown three-quarter angle at a scale that fills most of the frame. Every defining detail — shape, proportions, materials, colors, finish, and any text or branding on the object — must be clearly legible. No hands, no people, no props, no packaging unless it is part of the object itself.\n\n[ENVIRONMENT]:\nRender in Modern social-first product photography with tactile, editorial energy. Products shown in real-life context -- hands opening packaging, fingers pressing textures, products on bathroom shelves, kitchen counters, rumpled linen. Close-up detail shots emphasize material and finish. Flat-lays with curated minimal arrangements. Color-matched backgrounds that complement the product. Every frame feels like something you would screenshot and save style. Background: clean, seamless studio backdrop with no environmental detail — simple flat or gradient tone drawn from the style's color palette: #FFFFFF, #F0E6D3, #D4536D, #1A1A1A, #E8F4E8. Color grading: Clean and bright with true-to-life color. Whites are crisp, skin tones warm and natural. Minimal processing -- the product looks like it does in your hand. Slight warmth in highlights, lifted shadows keeping everything airy. One accent color pops against neutral base.\n\n[LIGHTING]:\nBright natural window light with clean directional shadows. Direct on-camera flash for punchy editorial energy on select shots. No heavy diffusion -- let light feel real and immediate. Warm late-afternoon glow for lifestyle moments. High-key and airy overall with pops of contrast. Even, controlled illumination that reveals true colors, materials, and surface finish.\n\n[MATERIALITY]:\nHyper-accurate rendering of all surfaces, textures, and micro-details. Tack-sharp focus across the entire object, deep depth of field, no lens distortion. This image is the single source of truth for the object's appearance.",
+        "model": "xai/grok-imagine-image/quality/text-to-image"
+      },
+      "response": {
+        "json": {
+          "images": [
+            {
+              "url": "https://v3b.fal.media/files/b/0aa74b0e/sgMTYyXeTB_GTC_EEzh50_GgdzecKR.jpg",
+              "content_type": "image/jpeg",
+              "file_name": "sgMTYyXeTB_GTC_EEzh50_GgdzecKR.jpg",
+              "file_size": null,
+              "width": 2048,
+              "height": 2048
+            }
+          ],
+          "revised_prompt": null
+        },
+        "status": 200,
+        "billableUnits": 7
+      }
+    }
+  ]
+}

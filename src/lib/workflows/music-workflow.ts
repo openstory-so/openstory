@@ -14,6 +14,8 @@
 import { computeSequenceMusicInputHash } from '@/lib/ai/input-hash';
 import { DEFAULT_MUSIC_MODEL } from '@/lib/ai/models';
 import { uploadAudioToStorage } from '@/lib/audio/audio-storage';
+import { recordProvenance } from '@/lib/compliance/provenance';
+import { buildR2Key, STORAGE_BUCKETS } from '@/lib/storage/buckets';
 import { generateMusic } from '@/lib/audio/music-generation';
 import { ZERO_MICROS } from '@/lib/billing/money';
 import {
@@ -126,6 +128,7 @@ export class MusicWorkflow extends OpenStoryWorkflowEntrypoint<MusicWorkflowInpu
           usedOwnKey: audioResult.metadata.usedOwnKey,
           description: `Music generation (${model})`,
           idempotencyKey: `${event.instanceId}:music`,
+          reservationId: input.reservationId,
           metadata: {
             ...falUsage,
             model,
@@ -181,6 +184,22 @@ export class MusicWorkflow extends OpenStoryWorkflowEntrypoint<MusicWorkflowInpu
           generatedAt: new Date(),
           error: null,
           inputHash,
+        });
+      });
+
+      await step.do('record-provenance', async () => {
+        await recordProvenance(scopedDb.provenance, {
+          teamId,
+          userId: input.userId,
+          assetKind: 'music_variant',
+          assetId: writeResult.variant.id,
+          storageKey: buildR2Key(STORAGE_BUCKETS.AUDIO, storageResult.path),
+          provider: 'fal',
+          model,
+          providerRequestId: falUsage?.requestId ?? null,
+          workflowRunId: event.instanceId,
+          prompt,
+          sequenceId,
         });
       });
 

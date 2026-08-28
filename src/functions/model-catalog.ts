@@ -31,7 +31,7 @@ const listCatalogModelFamiliesInputSchema = z.object({
  * @returns `{ families, nextCursor? }` — pass `nextCursor` back for more.
  */
 export const listCatalogModelFamiliesFn = createServerFn({ method: 'GET' })
-  .inputValidator(zodValidator(listCatalogModelFamiliesInputSchema.optional()))
+  .validator(zodValidator(listCatalogModelFamiliesInputSchema.optional()))
   .handler(async ({ data }) => {
     assertModelsEnabled();
     return listCatalogModelFamilies(data ?? {});
@@ -48,7 +48,7 @@ const getModelFamilyInputSchema = z.object({
  * switcher); null when the endpoint isn't in the catalog.
  */
 export const getModelFamilyFn = createServerFn({ method: 'GET' })
-  .inputValidator(zodValidator(getModelFamilyInputSchema))
+  .validator(zodValidator(getModelFamilyInputSchema))
   .handler(async ({ data }) => {
     assertModelsEnabled();
     return getModelFamily(data.endpointId, data.activity);
@@ -62,7 +62,7 @@ const getModelFamilyByPathInputSchema = z.object({
 
 /** A family by its id-path key (the family page); null when unknown. */
 export const getModelFamilyByPathFn = createServerFn({ method: 'GET' })
-  .inputValidator(zodValidator(getModelFamilyByPathInputSchema))
+  .validator(zodValidator(getModelFamilyByPathInputSchema))
   .handler(async ({ data }) => {
     assertModelsEnabled();
     return getModelFamilyByPath(data.family, data.activity);
@@ -79,7 +79,7 @@ const getModelDetailInputSchema = z.object({
  * @returns `{ model, inputSchema, outputSchema }`
  */
 export const getModelDetailFn = createServerFn({ method: 'GET' })
-  .inputValidator(zodValidator(getModelDetailInputSchema))
+  .validator(zodValidator(getModelDetailInputSchema))
   .handler(async ({ data }) => {
     assertModelsEnabled();
     return getModelDetail(data.endpointId, data.activity);

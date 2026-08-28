@@ -61,7 +61,7 @@ export type PublicApiKeySummary = {
  */
 export const createPublicApiKeyFn = createServerFn({ method: 'POST' })
   .middleware([authWithTeamMiddleware])
-  .inputValidator(zodValidator(createPublicApiKeySchema))
+  .validator(zodValidator(createPublicApiKeySchema))
   .handler(
     async ({
       data,
@@ -112,7 +112,7 @@ export const listPublicApiKeysFn = createServerFn({ method: 'GET' })
 /** Permanently revoke (delete) a public-API key the signed-in user owns. */
 export const revokePublicApiKeyFn = createServerFn({ method: 'POST' })
   .middleware([authWithTeamMiddleware])
-  .inputValidator(zodValidator(revokePublicApiKeySchema))
+  .validator(zodValidator(revokePublicApiKeySchema))
   .handler(async ({ data, context }): Promise<{ success: boolean }> => {
     const auth = getAuth();
     await auth.api.deleteApiKey({

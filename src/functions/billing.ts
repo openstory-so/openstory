@@ -17,7 +17,6 @@ import {
   microsToUsd,
   usdToMicros,
 } from '@/lib/billing/money';
-import { getStripeOrThrow } from '@/lib/billing/stripe';
 import type { TransactionType } from '@/lib/db/schema/credits';
 import { ValidationError } from '@/lib/errors';
 import { FOUNDER_EMAIL } from '@/lib/marketing/constants';
@@ -40,7 +39,7 @@ const checkoutInputSchema = z.object({
 
 export const createCheckoutSessionFn = createServerFn({ method: 'POST' })
   .middleware([authWithTeamMiddleware])
-  .inputValidator(zodValidator(checkoutInputSchema))
+  .validator(zodValidator(checkoutInputSchema))
   .handler(async ({ data, context }) => {
     if (!isStripeEnabled()) {
       throw new ValidationError('Stripe is not configured');
@@ -93,6 +92,8 @@ export const listPaymentMethodsFn = createServerFn({ method: 'GET' })
       const settings = await context.scopedDb.billing.getBillingSettings();
       if (!settings.stripeCustomerId) return { paymentMethods: [] };
 
+      // Dynamic import — keeps the Stripe Node SDK out of the client bundle (#1253).
+      const { getStripeOrThrow } = await import('@/lib/billing/stripe');
       const stripe = getStripeOrThrow();
       const [customer, methods] = await Promise.all([
         stripe.customers.retrieve(settings.stripeCustomerId),
@@ -148,7 +149,7 @@ const purchaseInputSchema = z.object({
  */
 export const purchaseCreditsFn = createServerFn({ method: 'POST' })
   .middleware([authWithTeamMiddleware])
-  .inputValidator(zodValidator(purchaseInputSchema))
+  .validator(zodValidator(purchaseInputSchema))
   .handler(async ({ data, context }) => {
     if (!isStripeEnabled()) {
       throw new ValidationError('Stripe is not configured');
@@ -163,6 +164,8 @@ export const purchaseCreditsFn = createServerFn({ method: 'POST' })
       );
     }
 
+    // Dynamic import — keeps the Stripe Node SDK out of the client bundle (#1253).
+    const { getStripeOrThrow } = await import('@/lib/billing/stripe');
     const stripe = getStripeOrThrow();
     const paymentMethod = await stripe.paymentMethods.retrieve(
       data.paymentMethodId
@@ -288,8 +291,8 @@ export const getBillingBalanceFn = createServerFn({ method: 'GET' })
   .handler(async ({ context }) => {
     const { scopedDb } = context;
 
-    const [balance, settings, usageHistory] = await Promise.all([
-      scopedDb.billing.getBalance(),
+    const [funds, settings, usageHistory] = await Promise.all([
+      scopedDb.billing.getAvailable(),
       scopedDb.billing.getBillingSettings(),
       // One credit_usage row is enough — drives welcome-credits suppression (#1096).
       scopedDb.billing.getTransactionHistory({
@@ -300,7 +303,9 @@ export const getBillingBalanceFn = createServerFn({ method: 'GET' })
 
     return {
       teamId: context.teamId,
-      balance: microsToUsd(balance),
+      balance: microsToUsd(funds.balance),
+      availableUsd: microsToUsd(funds.available),
+      reservedUsd: microsToUsd(funds.reserved),
       stripeEnabled: isStripeEnabled(),
       // D1 `count(*)` can arrive as a string — coerce. Prefer row presence too.
       hasUsedCredits:
@@ -312,6 +317,9 @@ export const getBillingBalanceFn = createServerFn({ method: 'GET' })
           : null,
         amountUsd: settings.autoTopUpAmountMicros
           ? microsToUsd(micros(settings.autoTopUpAmountMicros))
+          : null,
+        lastFailure: settings.autoTopUpFailedAt
+          ? { at: new Date(settings.autoTopUpFailedAt).toISOString() }
           : null,
       },
       hasPaymentMethod: !!settings.stripeCustomerId,
@@ -328,7 +336,7 @@ const founderCreditsInputSchema = z.object({
 
 export const requestFounderCreditsFn = createServerFn({ method: 'POST' })
   .middleware([authWithTeamMiddleware])
-  .inputValidator(zodValidator(founderCreditsInputSchema))
+  .validator(zodValidator(founderCreditsInputSchema))
   .handler(async ({ data, context }) => {
     const balance = await context.scopedDb.billing.getBalance();
     const balanceDisplay = microsToDisplayUsd(balance);
@@ -410,7 +418,7 @@ type Transaction = {
 
 export const getTransactionsFn = createServerFn({ method: 'GET' })
   .middleware([authWithTeamMiddleware])
-  .inputValidator(zodValidator(transactionsInputSchema))
+  .validator(zodValidator(transactionsInputSchema))
   .handler(
     async ({
       data,
@@ -457,7 +465,7 @@ const autoTopUpInputSchema = z.object({
 
 export const updateAutoTopUpFn = createServerFn({ method: 'POST' })
   .middleware([authWithTeamMiddleware])
-  .inputValidator(zodValidator(autoTopUpInputSchema))
+  .validator(zodValidator(autoTopUpInputSchema))
   .handler(async ({ data, context }) => {
     if (!isStripeEnabled()) {
       throw new ValidationError('Stripe is not configured');

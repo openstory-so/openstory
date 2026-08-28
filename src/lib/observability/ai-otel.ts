@@ -21,6 +21,7 @@
  */
 
 import type {
+  Attributes,
   AttributeValue,
   Histogram,
   Meter,
@@ -45,6 +46,8 @@ import {
 import {
   BasicTracerProvider,
   BatchSpanProcessor,
+  type ReadableSpan,
+  type SpanProcessor,
 } from '@opentelemetry/sdk-trace-base';
 import type { ChatMiddleware, GenerationMiddleware } from '@tanstack/ai';
 import { otelMiddleware } from '@tanstack/ai/middlewares/otel';
@@ -143,11 +146,13 @@ const getAITelemetry = createServerOnlyFn((): Telemetry | null => {
         const traceProvider = new BasicTracerProvider({
           resource: resourceFromAttributes({ 'service.name': SERVICE_NAME }),
           spanProcessors: [
-            new BatchSpanProcessor(
-              new OTLPTraceExporter({
-                url: `${origin}/i/v0/ai/otel`,
-                headers,
-              })
+            new PostHogAiContentSpanProcessor(
+              new BatchSpanProcessor(
+                new OTLPTraceExporter({
+                  url: `${origin}/i/v0/ai/otel`,
+                  headers,
+                })
+              )
             ),
           ],
         });
@@ -228,6 +233,174 @@ const RESERVED_ATTRIBUTE_KEYS = new Set([
   '$ai_tags',
 ]);
 
+type PostHogTextPart = { type: 'text'; text: string };
+type PostHogMessage = { role: string; content: PostHogTextPart[] };
+
+function readField(obj: object, key: string): unknown {
+  return Reflect.get(obj, key);
+}
+
+function textFromUnknown(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+  if (value == null) return '';
+  return JSON.stringify(value);
+}
+
+function textFromPart(part: unknown): string {
+  if (typeof part === 'string') return part;
+  if (!part || typeof part !== 'object') return textFromUnknown(part);
+  const text = readField(part, 'text');
+  if (typeof text === 'string') return text;
+  const content = readField(part, 'content');
+  if (typeof content === 'string') return content;
+  return JSON.stringify(part);
+}
+
+/**
+ * PostHog's generations UI reads `$ai_input` / `$ai_output_choices` as a list
+ * of `{ role, content: [{ type, text }] }`. TanStack's otel middleware emits
+ * `gen_ai.input.messages` as `[{ role, content: string }]`, and our media
+ * spans used to send a bare prompt/URL string — both parse as JSON but leave
+ * the Input/Output panes empty.
+ */
+export function postHogMessagesAttribute(
+  text: string | readonly string[],
+  role: 'user' | 'assistant'
+): string {
+  const texts = (typeof text === 'string' ? [text] : [...text]).filter(
+    (value) => value.length > 0
+  );
+  return JSON.stringify(
+    texts.map((value): PostHogMessage => ({
+      role,
+      content: [{ type: 'text', text: value }],
+    }))
+  );
+}
+
+function toPostHogMessage(
+  item: unknown,
+  fallbackRole: 'user' | 'assistant'
+): PostHogMessage {
+  if (typeof item === 'string') {
+    return {
+      role: fallbackRole,
+      content: [{ type: 'text', text: item }],
+    };
+  }
+  if (!item || typeof item !== 'object') {
+    return {
+      role: fallbackRole,
+      content: [{ type: 'text', text: textFromUnknown(item) }],
+    };
+  }
+  const roleValue = readField(item, 'role');
+  const role = typeof roleValue === 'string' ? roleValue : fallbackRole;
+  const asTextPart = (text: string): PostHogTextPart => ({
+    type: 'text',
+    text,
+  });
+  const content = readField(item, 'content');
+  if (Array.isArray(content)) {
+    return {
+      role,
+      content: content.map((part) => asTextPart(textFromPart(part))),
+    };
+  }
+  const parts = readField(item, 'parts');
+  if (Array.isArray(parts)) {
+    return {
+      role,
+      content: parts.map((part) => asTextPart(textFromPart(part))),
+    };
+  }
+  if (typeof content === 'string') {
+    return { role, content: [asTextPart(content)] };
+  }
+  return { role, content: [asTextPart(textFromUnknown(content ?? item))] };
+}
+
+function asPostHogMessagesJson(
+  raw: AttributeValue | undefined,
+  fallbackRole: 'user' | 'assistant'
+): string | undefined {
+  if (raw == null || raw === '') return undefined;
+  if (typeof raw !== 'string') {
+    return postHogMessagesAttribute(String(raw), fallbackRole);
+  }
+  const trimmed = raw.trim();
+  if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
+    try {
+      const parsed: unknown = JSON.parse(trimmed);
+      const list = Array.isArray(parsed) ? parsed : [parsed];
+      return JSON.stringify(
+        list.map((item) => toPostHogMessage(item, fallbackRole))
+      );
+    } catch {
+      // Fall through: treat as a prompt/URL string.
+    }
+  }
+  return postHogMessagesAttribute(raw, fallbackRole);
+}
+
+/**
+ * Rewrite span attributes so PostHog's OTLP mapper fills Input/Output.
+ * Mutates in place — `ReadableSpan.attributes` is the live object.
+ */
+export function normalizePostHogAiContent(attrs: Attributes): void {
+  const input = asPostHogMessagesJson(
+    attrs['gen_ai.input.messages'] ??
+      attrs['langfuse.observation.input'] ??
+      attrs['langfuse.trace.input'],
+    'user'
+  );
+  if (input) {
+    attrs['gen_ai.input.messages'] = input;
+    attrs['$ai_input'] = input;
+  }
+  const output = asPostHogMessagesJson(
+    attrs['gen_ai.output.messages'] ??
+      attrs['langfuse.observation.output'] ??
+      attrs['langfuse.trace.output'],
+    'assistant'
+  );
+  if (output) {
+    attrs['gen_ai.output.messages'] = output;
+    attrs['$ai_output_choices'] = output;
+  }
+}
+
+/**
+ * Runs just before the OTLP exporter so every AI span — TanStack chat
+ * iterations and our fal media bookkeeping — carries PostHog-shaped messages.
+ */
+class PostHogAiContentSpanProcessor implements SpanProcessor {
+  constructor(private readonly next: SpanProcessor) {}
+
+  onStart(
+    span: Parameters<SpanProcessor['onStart']>[0],
+    parentContext: Parameters<SpanProcessor['onStart']>[1]
+  ): void {
+    this.next.onStart(span, parentContext);
+  }
+
+  onEnd(span: ReadableSpan): void {
+    normalizePostHogAiContent(span.attributes);
+    this.next.onEnd(span);
+  }
+
+  shutdown(): Promise<void> {
+    return this.next.shutdown();
+  }
+
+  forceFlush(): Promise<void> {
+    return this.next.forceFlush();
+  }
+}
+
 function buildAttributes(
   meta: AIObservabilityMeta
 ): Record<string, AttributeValue> {
@@ -306,7 +479,7 @@ export type MediaGenerationRecord = AIObservabilityMeta & {
   /** Model id as submitted to the provider. */
   model: string;
   /** `gen_ai.system` — the provider the request was billed by. */
-  provider: 'fal';
+  provider: string;
   /** Media activity, mapped to the `gen_ai.operation.name` semconv value. */
   activity: MediaActivity;
   /**
@@ -414,9 +587,17 @@ function emitMediaGenerationSpan(record: MediaGenerationRecord): void {
         ...(record.usedOwnKey !== undefined && {
           'openstory.used_own_key': record.usedOwnKey,
         }),
-        ...(record.prompt && { 'gen_ai.input.messages': record.prompt }),
+        ...(record.prompt && {
+          'gen_ai.input.messages': postHogMessagesAttribute(
+            record.prompt,
+            'user'
+          ),
+        }),
         ...(outputUrls?.length && {
-          'gen_ai.output.messages': outputUrls.join('\n'),
+          'gen_ai.output.messages': postHogMessagesAttribute(
+            outputUrls,
+            'assistant'
+          ),
         }),
         ...(record.errorType && { 'error.type': record.errorType }),
         ...(record.errorMessage && { 'error.message': record.errorMessage }),

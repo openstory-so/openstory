@@ -7,6 +7,10 @@
 import type { Microdollars } from '@/lib/billing/money';
 import type { ScopedDb } from '@/lib/db/scoped';
 import { InsufficientCreditsError } from '@/lib/errors';
+import { generateId } from '@/lib/db/id';
+import { getLogger } from '@/lib/observability/logger';
+
+const logger = getLogger(['openstory', 'billing', 'preflight']);
 
 /**
  * The two live checks a preflight makes: whether the team can pay, and whether
@@ -17,6 +21,11 @@ import { InsufficientCreditsError } from '@/lib/errors';
 export type PreflightScopedDb = {
   apiKeys: Pick<ScopedDb['apiKeys'], 'hasUsableKey'>;
   billing: Pick<ScopedDb['billing'], 'hasEnoughCredits'>;
+};
+
+type ReservationPreflightScopedDb = {
+  apiKeys: Pick<ScopedDb['apiKeys'], 'hasUsableKey'>;
+  billing: Pick<ScopedDb['billing'], 'hasEnoughCredits' | 'createReservation'>;
 };
 
 type Provider = 'fal' | 'openrouter';
@@ -66,5 +75,74 @@ export async function requireCredits(
     throw new InsufficientCreditsError(
       opts.errorMessage ?? 'Insufficient credits'
     );
+  }
+}
+
+/**
+ * Create a run envelope instead of a read-only preflight. Returns undefined
+ * when BYOK skips the hold. Throws InsufficientCreditsError if available
+ * funds cannot cover the estimate.
+ */
+export async function reserveRunCredits(
+  scopedDb: ReservationPreflightScopedDb,
+  estimatedCostMicros: Microdollars,
+  opts: {
+    providers?: Provider[];
+    errorMessage?: string;
+    sequenceId?: string;
+    idempotencyKey?: string;
+  } = {}
+): Promise<string | undefined> {
+  const providers = opts.providers ?? ['fal'];
+  const keyChecks = await Promise.all(
+    providers.map(
+      async (provider) =>
+        (await scopedDb.apiKeys.hasUsableKey(provider)) ||
+        (provider === 'openrouter' &&
+          (await scopedDb.apiKeys.hasUsableKey('fal')))
+    )
+  );
+  if (keyChecks.every(Boolean)) return undefined;
+
+  const result = await scopedDb.billing.createReservation(estimatedCostMicros, {
+    idempotencyKey: opts.idempotencyKey ?? generateId(),
+    sequenceId: opts.sequenceId,
+  });
+  if (!result.ok) {
+    throw new InsufficientCreditsError(
+      opts.errorMessage ?? 'Insufficient credits'
+    );
+  }
+  return result.reservationId;
+}
+
+type ReservationReleaseDb = {
+  billing: Pick<ScopedDb['billing'], 'zeroReservation'>;
+};
+
+/**
+ * Zero this hold if work after `reserveRunCredits` throws. On success,
+ * leftover stays for the run to capture; release is the parent's
+ * success/`onFailure` path, not this helper.
+ */
+export async function releaseReservationOnThrow<T>(
+  scopedDb: ReservationReleaseDb,
+  reservationId: string | undefined,
+  work: () => Promise<T>
+): Promise<T> {
+  try {
+    return await work();
+  } catch (error) {
+    if (reservationId) {
+      try {
+        await scopedDb.billing.zeroReservation(reservationId);
+      } catch (releaseError) {
+        logger.error('Failed to zero reservation after trigger error', {
+          err: releaseError,
+          reservationId,
+        });
+      }
+    }
+    throw error;
   }
 }

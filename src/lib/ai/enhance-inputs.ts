@@ -6,7 +6,7 @@
  * safe to import from the client bundle.
  */
 import { getLogger } from '@/lib/observability/logger';
-import type { StyleConfig } from '@/lib/db/schema/libraries';
+import { parseStyleConfig, type StyleConfig } from '@/lib/style/style-config';
 
 const logger = getLogger(['openstory', 'ai', 'enhance-inputs']);
 
@@ -15,18 +15,25 @@ const logger = getLogger(['openstory', 'ai', 'enhance-inputs']);
  * identity that drives WHAT HAPPENS — name/category/tags decide whether "action"
  * gets a chase and "rom-com" gets a meet-cute, not just how the shot looks.
  * One cohesive narrowing of a `Style` row rather than two parallel bags.
+ *
+ * `config` is whole-or-absent (a parsed v2 `StyleConfig`, never partial) and
+ * `tags` is always an array, so consumers need no per-field or `?.length`
+ * guards on the core.
  */
 export type EnhanceStyle = {
-  config?: Partial<StyleConfig>;
+  config?: StyleConfig;
   name?: string;
   category?: string | null;
   description?: string | null;
-  tags?: string[] | null;
+  tags: string[];
 };
 
-/** A style row, narrowed to the fields the enhancer reads. */
+/**
+ * A style row, narrowed to the fields the enhancer reads. `config` is the raw
+ * stored blob (v1 or v2) — `toEnhanceInputs` up-converts it.
+ */
 type StyleLike = {
-  config?: Partial<StyleConfig> | null;
+  config?: unknown;
   name?: string | null;
   category?: string | null;
   description?: string | null;
@@ -99,11 +106,14 @@ export function toEnhanceInputs(args: {
   return {
     style: style
       ? {
-          config: style.config ?? undefined,
+          // Up-convert the stored blob here so everything downstream (wire
+          // schema, prompt builder) sees exactly one shape. Throws loudly on a
+          // corrupt blob — that's data corruption, not an input to tolerate.
+          config: style.config ? parseStyleConfig(style.config) : undefined,
           name: style.name ?? undefined,
-          category: style.category,
-          description: style.description,
-          tags: style.tags,
+          category: style.category ?? null,
+          description: style.description ?? null,
+          tags: style.tags ?? [],
         }
       : undefined,
     elements: mapped.length > 0 ? mapped : undefined,

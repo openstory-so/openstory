@@ -40,7 +40,7 @@ export const promoteSequenceLocationSheetVariantFn = createServerFn({
   method: 'POST',
 })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(zodValidator(variantInputSchema))
+  .validator(zodValidator(variantInputSchema))
   .handler(async ({ data, context }) => {
     const variant = await context.scopedDb.locationSheetVariants.getById(
       data.variantId
@@ -92,7 +92,7 @@ export const discardSequenceLocationSheetVariantFn = createServerFn({
   method: 'POST',
 })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(zodValidator(variantInputSchema))
+  .validator(zodValidator(variantInputSchema))
   .handler(async ({ data, context }) => {
     const variant = await context.scopedDb.locationSheetVariants.getById(
       data.variantId
@@ -116,7 +116,7 @@ export const undiscardSequenceLocationSheetVariantFn = createServerFn({
   method: 'POST',
 })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(zodValidator(variantInputSchema))
+  .validator(zodValidator(variantInputSchema))
   .handler(async ({ data, context }) => {
     const variant = await context.scopedDb.locationSheetVariants.getById(
       data.variantId

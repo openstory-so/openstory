@@ -6,15 +6,17 @@
  *
  *   resolve style → build EnhanceScriptInput → stream deltas as SSE
  *
- * Server-only (imports the AI stack via `@/functions/ai`); kept separate from
+ * Server-only (imports the AI stack via `@/lib/ai/script-enhancement`); kept
+ * separate from
  * `enhance-input-schema.ts` so discovery/OpenAPI can import the schema without
  * pulling this in.
  */
 
+import type { EnhanceScriptInput } from '@/functions/ai';
 import {
-  type EnhanceScriptInput,
+  type EnhanceChunk,
   streamScriptEnhancement,
-} from '@/functions/ai';
+} from '@/lib/ai/script-enhancement';
 import { toEnhanceInputs } from '@/lib/ai/enhance-inputs';
 import { aspectRatioSchema } from '@/lib/constants/aspect-ratios';
 import type { ScopedDb } from '@/lib/db/scoped';
@@ -45,7 +47,7 @@ export type EnhanceContext = {
 export async function buildEnhanceGenerator(
   input: ApiEnhanceScriptInput,
   ctx: EnhanceContext
-): Promise<AsyncGenerator<{ delta: string }>> {
+): Promise<AsyncGenerator<EnhanceChunk>> {
   const style = input.style
     ? await resolveStyle(ctx.scopedDb, input.style)
     : undefined;
@@ -120,8 +122,8 @@ const SSE_HEADERS = {
  * sent) becomes an `event: error` shot `{ code, message }`.
  */
 export function enhanceSseResponse(
-  first: IteratorResult<{ delta: string }>,
-  rest: AsyncGenerator<{ delta: string }>
+  first: IteratorResult<EnhanceChunk>,
+  rest: AsyncGenerator<EnhanceChunk>
 ): Response {
   const encoder = new TextEncoder();
 
@@ -137,6 +139,8 @@ export function enhanceSseResponse(
         );
 
       let full = '';
+      // Reasoning chunks carry `delta: ''` and are dropped here: thinking is a
+      // dashboard-stream affordance, not part of the documented v1 wire format.
       const push = (delta: string) => {
         if (!delta) return;
         full += delta;

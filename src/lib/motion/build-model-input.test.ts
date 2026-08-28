@@ -1,18 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   IMAGE_TO_VIDEO_MODELS,
-  getMotionReferenceEndpoint,
   safeImageToVideoModel,
   type ImageToVideoModel,
 } from '../ai/models';
 import { typedEntries } from '../utils/typed-object';
-import { buildModelInput, buildReferenceVideoInput } from './build-model-input';
+import { buildModelInput, buildMotionRequest } from './build-model-input';
 import type { GenerateMotionOptions } from './motion-generation';
-
-const seedanceRefConfig = getMotionReferenceEndpoint('seedance_v2');
-if (!seedanceRefConfig) {
-  throw new Error('seedance_v2 must have a reference endpoint config');
-}
 
 const baseOptions: GenerateMotionOptions = {
   prompt: 'Camera dolly forward slowly',
@@ -40,10 +34,19 @@ describe('buildModelInput', () => {
       expect(result).not.toHaveProperty('image_url');
     });
 
-    it('applies schema defaults for cfg_scale and negative_prompt', () => {
+    it('applies the schema default for cfg_scale', () => {
       const result = build('kling_v3_pro');
       expect(result.cfg_scale).toBe(0.5);
-      expect(result.negative_prompt).toBe('blur, distort, and low quality');
+    });
+
+    // Supplying a negative prompt replaces fal's default rather than extending
+    // it, so the quality terms have to be carried over alongside the music
+    // suppression (#1165).
+    it('suppresses music via negative_prompt, keeping the default quality terms', () => {
+      const result = build('kling_v3_pro');
+      expect(result.negative_prompt).toBe(
+        'blur, distort, and low quality, background music, musical score, soundtrack'
+      );
     });
 
     it('sets generate_audio to true from schema default', () => {
@@ -90,6 +93,13 @@ describe('buildModelInput', () => {
       const result = build('veo3_1');
       expect(result).toHaveProperty('image_url', baseOptions.imageUrl);
     });
+
+    it('suppresses music via negative_prompt', () => {
+      const result = build('veo3_1');
+      expect(result.negative_prompt).toBe(
+        'background music, musical score, soundtrack'
+      );
+    });
   });
 
   describe('MiniMax Hailuo 2.3', () => {
@@ -101,6 +111,18 @@ describe('buildModelInput', () => {
     it('includes prompt', () => {
       const result = build('minimax_hailuo_02');
       expect(result.prompt).toBe(baseOptions.prompt);
+    });
+  });
+
+  describe('MiniMax H3 Max', () => {
+    it('uses image_url and keeps fal defaults (768P, balanced expansion)', () => {
+      const result = build('minimax_h3_max');
+      expect(result).toHaveProperty('image_url', baseOptions.imageUrl);
+      expect(result.prompt).toBe(baseOptions.prompt);
+      expect(result).toMatchObject({
+        resolution: '768P',
+        prompt_expansion_mode: 'balanced',
+      });
     });
   });
 
@@ -125,6 +147,12 @@ describe('buildModelInput', () => {
     it('sets generate_audio to true from schema default', () => {
       const result = build('seedance_v2');
       expect(result.generate_audio).toBe(true);
+    });
+
+    // Seedance 2.0 has no negative_prompt field — its only music lever is the
+    // in-prompt constraint from assembleMotionPrompt (#1165).
+    it('sends no negative_prompt', () => {
+      expect(build('seedance_v2')).not.toHaveProperty('negative_prompt');
     });
 
     it('forwards generate_audio=false when caller suppresses audio', () => {
@@ -170,6 +198,7 @@ describe('buildModelInput', () => {
         '15',
       ],
       minimax_hailuo_02: [],
+      minimax_h3_max: [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
     };
 
     for (const [model, allowed] of typedEntries(valid)) {
@@ -269,7 +298,7 @@ describe('buildModelInput', () => {
     });
   });
 
-  describe('buildReferenceVideoInput (#873 Seedance reference-to-video)', () => {
+  describe('buildMotionRequest reference-to-video (#873 Seedance)', () => {
     const referenceImages = [
       {
         referenceImageUrl: 'https://example.com/jack-sheet.png',
@@ -283,13 +312,16 @@ describe('buildModelInput', () => {
       },
     ];
 
-    const buildRef = (overrides: Partial<GenerateMotionOptions> = {}) =>
-      buildReferenceVideoInput(
+    const buildRef = (overrides: Partial<GenerateMotionOptions> = {}) => {
+      const { input } = buildMotionRequest(
         { ...baseOptions, referenceImages, ...overrides },
-        IMAGE_TO_VIDEO_MODELS.seedance_v2,
-        'seedance_v2',
-        seedanceRefConfig
+        'seedance_v2'
       );
+      if (!('image_urls' in input)) {
+        throw new Error('expected Seedance reference-to-video input');
+      }
+      return input;
+    };
 
     it('puts the still as @Image1 in image_urls and omits image_url', () => {
       const result = buildRef();

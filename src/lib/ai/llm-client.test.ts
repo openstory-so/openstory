@@ -24,9 +24,13 @@ vi.doMock('@tanstack/ai', () => ({
   chat: mockChat,
 }));
 
-// Mock create-adapter to avoid real adapter creation
+// Mock create-adapter to avoid real adapter creation. `resolveNativeGrokModel`
+// returns undefined so these tests exercise the OpenRouter request shape;
+// native xAI routing has its own coverage in create-adapter.test.ts.
+const mockCreateAdapter = vi.fn(() => ({ kind: 'text', name: 'mock' }));
 vi.doMock('./create-adapter', () => ({
-  createAdapter: () => ({ kind: 'text', name: 'mock' }),
+  createAdapter: mockCreateAdapter,
+  resolveNativeGrokModel: () => undefined,
 }));
 
 // Mock the PostHog OTel middleware factory — observability hints are
@@ -43,8 +47,14 @@ vi.doMock('@/lib/observability/ai-otel', () => ({
 // Dynamic import so vi.doMock above is in effect when llm-client (and its
 // `./create-adapter` import) resolves. Static imports are hoisted above
 // vi.doMock and would bypass the mocks.
-const { callLLM, callLLMStream, llmCostFromUsage, RECOMMENDED_MODELS } =
-  await import('./llm-client');
+const {
+  callLLM,
+  callLLMStream,
+  createUsageCapture,
+  llmCostFromUsage,
+  preferUsage,
+  RECOMMENDED_MODELS,
+} = await import('./llm-client');
 const { DEFAULT_VISION_MODEL } = await import('./models.config');
 
 const usage = (cost?: number): TokenUsage => ({
@@ -57,6 +67,7 @@ const usage = (cost?: number): TokenUsage => ({
 describe('llm-client', () => {
   beforeEach(() => {
     mockChat.mockClear();
+    mockCreateAdapter.mockClear();
     mockAIObservabilityMiddleware.mockClear();
   });
 
@@ -145,11 +156,108 @@ describe('llm-client', () => {
       );
       const firstCall = mockChat.mock.calls[0];
       if (!firstCall) throw new Error('expected mockChat to have been called');
-      // The sentinel must come FIRST, ahead of the usage-capturing onFinish.
+      // The sentinel must come FIRST, ahead of the usage-capturing middleware.
       expect(firstCall[0].middleware).toEqual([
         otelSentinel,
-        { onFinish: expect.any(Function) },
+        {
+          onUsage: expect.any(Function),
+          onFinish: expect.any(Function),
+        },
       ]);
+    });
+
+    it('captures usage.cost from RUN_FINISHED stream events', async () => {
+      mockChat.mockReturnValue(
+        (async function* () {
+          yield { type: 'TEXT_MESSAGE_CONTENT', delta: 'hi' };
+          yield {
+            type: 'RUN_FINISHED',
+            usage: {
+              promptTokens: 10,
+              completionTokens: 5,
+              totalTokens: 15,
+              cost: 0.0042,
+            },
+          };
+        })()
+      );
+
+      let doneUsage: TokenUsage | undefined;
+      for await (const chunk of callLLMStream({
+        model: 'anthropic/claude-sonnet-5',
+        messages: [{ role: 'user', content: 'test' }],
+      })) {
+        if (chunk.done) doneUsage = chunk.usage;
+      }
+
+      expect(doneUsage?.cost).toBe(0.0042);
+      expect(llmCostFromUsage(doneUsage, 'anthropic/claude-sonnet-5')).toBe(
+        usdToMicros(0.0042)
+      );
+    });
+
+    it('always requests streamOptions.includeUsage (OpenRouter cost wiring)', async () => {
+      mockChat.mockReturnValue(
+        (async function* () {
+          yield { type: 'TEXT_MESSAGE_CONTENT', delta: 'ok' };
+        })()
+      );
+
+      for await (const _chunk of callLLMStream({
+        model: 'anthropic/claude-sonnet-5',
+        messages: [{ role: 'user', content: 'test' }],
+      })) {
+        // drain
+      }
+
+      const firstCall = mockChat.mock.calls[0];
+      if (!firstCall) throw new Error('expected mockChat to have been called');
+      expect(firstCall[0].stream).toBe(true);
+      expect(firstCall[0].modelOptions?.streamOptions?.includeUsage).toBe(true);
+    });
+
+    it('surfaces usage.cost on structured responseSchema streams from RUN_FINISHED', async () => {
+      const schema = z.object({ title: z.string() });
+      mockChat.mockReturnValue(
+        (async function* () {
+          yield {
+            type: 'CUSTOM',
+            name: 'structured-output.complete',
+            value: {
+              object: { title: 'Hello' },
+              raw: '{"title":"Hello"}',
+            },
+          };
+          yield {
+            type: 'RUN_FINISHED',
+            usage: {
+              promptTokens: 3,
+              completionTokens: 2,
+              totalTokens: 5,
+              cost: 0.0123,
+            },
+          };
+        })()
+      );
+
+      let doneUsage: TokenUsage | undefined;
+      let parsed: { title: string } | undefined;
+      for await (const chunk of callLLMStream({
+        model: 'anthropic/claude-sonnet-5',
+        messages: [{ role: 'user', content: 'test' }],
+        responseSchema: schema,
+      })) {
+        if (chunk.done) {
+          doneUsage = chunk.usage;
+          parsed = chunk.parsed;
+        }
+      }
+
+      expect(parsed).toEqual({ title: 'Hello' });
+      expect(doneUsage?.cost).toBe(0.0123);
+      expect(llmCostFromUsage(doneUsage, 'anthropic/claude-sonnet-5')).toBe(
+        usdToMicros(0.0123)
+      );
     });
 
     const drain = async (gen: AsyncIterable<unknown>) => {
@@ -177,6 +285,138 @@ describe('llm-client', () => {
       return expect(drain(generator)).rejects.toThrow(
         'LLM stream error: Connection lost'
       );
+    });
+
+    it('drains chat() after RUN_ERROR so otel onError can end the span', async () => {
+      let cancelled = false;
+      mockChat.mockReturnValue({
+        [Symbol.asyncIterator]() {
+          let i = 0;
+          const events = [
+            {
+              type: 'RUN_ERROR',
+              message: 'empty-response',
+              code: 'empty-response',
+            },
+          ];
+          return {
+            async next() {
+              if (i < events.length) {
+                return { value: events[i++], done: false as const };
+              }
+              return { done: true as const, value: undefined };
+            },
+            async return() {
+              cancelled = true;
+              return { done: true as const, value: undefined };
+            },
+          };
+        },
+      });
+
+      await expect(
+        drain(
+          callLLMStream({
+            model: 'anthropic/claude-sonnet-5',
+            messages: [{ role: 'user', content: 'test' }],
+          })
+        )
+      ).rejects.toThrow(/empty-response/);
+      expect(cancelled).toBe(false);
+    });
+
+    it('retries a region-blocked model with the DeepSeek fallback (#1259)', async () => {
+      mockChat
+        .mockReturnValueOnce(
+          (async function* () {
+            yield {
+              type: 'RUN_ERROR',
+              message: 'This model is not available in your region.',
+              model: 'anthropic/claude-opus-5-fast',
+            };
+          })()
+        )
+        .mockReturnValueOnce(
+          (async function* () {
+            yield { type: 'TEXT_MESSAGE_CONTENT', delta: 'fallback answer' };
+          })()
+        );
+
+      const result = await callLLM({
+        model: 'anthropic/claude-opus-5-fast',
+        messages: [{ role: 'user', content: 'test' }],
+      });
+
+      expect(result).toBe('fallback answer');
+      expect(mockChat).toHaveBeenCalledTimes(2);
+      expect(mockCreateAdapter).toHaveBeenNthCalledWith(
+        2,
+        'deepseek/deepseek-v4-pro-0813',
+        undefined
+      );
+    });
+
+    it('retries DeepSeek rejecting image input with the vision fallback (#1323)', async () => {
+      mockChat
+        .mockReturnValueOnce(
+          (async function* () {
+            yield {
+              type: 'RUN_ERROR',
+              message: 'No endpoints found that support image input',
+              model: 'deepseek/deepseek-v4-pro-0813',
+            };
+          })()
+        )
+        .mockReturnValueOnce(
+          (async function* () {
+            yield { type: 'TEXT_MESSAGE_CONTENT', delta: 'vision answer' };
+          })()
+        );
+
+      const result = await callLLM({
+        model: 'deepseek/deepseek-v4-pro-0813',
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', content: 'describe' },
+              {
+                type: 'image',
+                source: { type: 'url', value: 'https://cdn/el.png' },
+              },
+            ],
+          },
+        ],
+      });
+
+      expect(result).toBe('vision answer');
+      expect(mockCreateAdapter).toHaveBeenNthCalledWith(
+        2,
+        'mistralai/mistral-small-2603',
+        undefined
+      );
+    });
+
+    it('does not retry a region block after content was already yielded', async () => {
+      mockChat.mockReturnValueOnce(
+        (async function* () {
+          yield { type: 'TEXT_MESSAGE_CONTENT', delta: 'partial' };
+          yield {
+            type: 'RUN_ERROR',
+            message: 'This model is not available in your region.',
+          };
+        })()
+      );
+
+      await expect(
+        drain(
+          callLLMStream({
+            model: 'anthropic/claude-opus-5-fast',
+            messages: [{ role: 'user', content: 'test' }],
+          })
+        )
+      ).rejects.toThrow('not available in your region');
+      expect(mockChat).toHaveBeenCalledTimes(1);
     });
 
     it('preserves event.code in stream errors', () => {
@@ -424,100 +664,6 @@ describe('llm-client', () => {
       });
     });
 
-    describe('Anthropic large-schema json_object fallback', () => {
-      // A schema whose converted JSON exceeds ANTHROPIC_GRAMMAR_BUDGET_BYTES —
-      // Anthropic's grammar compiler rejects schemas this big, so the client
-      // must route it via json_object + schema-in-prompt instead.
-      const bigSchema = z.object(
-        Object.fromEntries(
-          Array.from({ length: 40 }, (_, i) => [
-            `field${i}`,
-            z
-              .string()
-              .optional()
-              .meta({ description: 'x'.repeat(60) }),
-          ])
-        )
-      );
-
-      it('routes big schemas on Anthropic models via json_object + prompt', async () => {
-        mockChat.mockReturnValue(
-          (async function* () {
-            yield { type: 'TEXT_MESSAGE_CONTENT', delta: '{"field0":' };
-            yield { type: 'TEXT_MESSAGE_CONTENT', delta: '"hi"}' };
-          })()
-        );
-
-        const chunks = [];
-        for await (const chunk of callLLMStream({
-          model: 'anthropic/claude-fable-5',
-          messages: [{ role: 'user', content: 'test' }],
-          responseSchema: bigSchema,
-        })) {
-          chunks.push(chunk);
-        }
-
-        const callArgs = mockChat.mock.calls[0]?.[0];
-        if (!callArgs) throw new Error('expected mockChat to have been called');
-        // No strict grammar on the wire…
-        expect(callArgs.outputSchema).toBeUndefined();
-        expect(callArgs.modelOptions.responseFormat).toEqual({
-          type: 'json_object',
-        });
-        // …the schema rides in the system prompt instead…
-        const lastPrompt = callArgs.systemPrompts.at(-1);
-        expect(lastPrompt).toContain('JSON Schema');
-        expect(lastPrompt).toContain('field39');
-        // …and the final text is validated into `parsed`.
-        const terminal = chunks.at(-1);
-        if (!terminal || !terminal.done) throw new Error('expected terminal');
-        expect(terminal.parsed).toEqual({ field0: 'hi' });
-      });
-
-      it('keeps big schemas on non-Anthropic models on the native path', async () => {
-        mockChat.mockReturnValue(
-          (async function* () {
-            yield {
-              type: 'CUSTOM',
-              name: 'structured-output.complete',
-              value: { object: { field0: 'hi' } },
-            };
-          })()
-        );
-
-        await drain(
-          callLLMStream({
-            model: 'x-ai/grok-4.5',
-            messages: [{ role: 'user', content: 'test' }],
-            responseSchema: bigSchema,
-          })
-        );
-
-        const callArgs = mockChat.mock.calls[0]?.[0];
-        if (!callArgs) throw new Error('expected mockChat to have been called');
-        expect(callArgs.outputSchema).toBe(bigSchema);
-        expect(callArgs.modelOptions.responseFormat).toBeUndefined();
-      });
-
-      it('fails loudly when the fallback text does not match the schema', () => {
-        // The old fallback was removed (#799) for silently dropping fields —
-        // the restored one must throw instead.
-        mockChat.mockReturnValue(
-          (async function* () {
-            yield { type: 'TEXT_MESSAGE_CONTENT', delta: '{"field0": 42}' };
-          })()
-        );
-
-        const generator = callLLMStream({
-          model: 'anthropic/claude-fable-5',
-          messages: [{ role: 'user', content: 'test' }],
-          responseSchema: bigSchema,
-        });
-
-        return expect(drain(generator)).rejects.toThrow();
-      });
-    });
-
     describe('structured-output model lockstep', () => {
       // DEFAULT_VISION_MODEL and every RECOMMENDED_MODELS entry get used with
       // responseSchema calls, which throw for models outside the
@@ -557,46 +703,17 @@ describe('llm-client', () => {
           yield { type: 'TEXT_MESSAGE_CONTENT', delta: 'hi' };
         })();
 
-      it('keeps Anthropic models off Azure by default', async () => {
-        // Azure-hosted Claude rejects our analysis schemas ("compiled grammar
-        // is too large"); Anthropic's own endpoint accepts them.
+      it("pins Anthropic models to Anthropic's own endpoint", async () => {
+        // Vertex advertises response_format without structured_outputs (#1285);
+        // Azure's grammar is too small. Pinning with `only` is what actually
+        // excludes them — requireParameters does not, and with Vertex off at
+        // the account it emptied the candidate set (#1302).
         mockChat.mockReturnValue(textStream());
 
         await drain(
           callLLMStream({
-            model: 'anthropic/claude-fable-5',
+            model: 'anthropic/claude-opus-5',
             messages: [{ role: 'user', content: 'test' }],
-          })
-        );
-
-        expect(mockChat.mock.calls[0]?.[0]?.modelOptions.provider).toEqual({
-          ignore: ['azure'],
-        });
-      });
-
-      it('leaves non-Anthropic models unrestricted', async () => {
-        mockChat.mockReturnValue(textStream());
-
-        await drain(
-          callLLMStream({
-            model: 'x-ai/grok-4.5',
-            messages: [{ role: 'user', content: 'test' }],
-          })
-        );
-
-        expect(
-          mockChat.mock.calls[0]?.[0]?.modelOptions.provider
-        ).toBeUndefined();
-      });
-
-      it('caller-supplied provider preferences win', async () => {
-        mockChat.mockReturnValue(textStream());
-
-        await drain(
-          callLLMStream({
-            model: 'anthropic/claude-sonnet-5',
-            messages: [{ role: 'user', content: 'test' }],
-            provider: { only: ['anthropic'] },
           })
         );
 
@@ -604,12 +721,62 @@ describe('llm-client', () => {
           only: ['anthropic'],
         });
       });
+
+      it('only requires parameter support for non-Anthropic models', async () => {
+        mockChat.mockReturnValue(textStream());
+
+        await drain(
+          callLLMStream({
+            model: 'x-ai/grok-4.6',
+            messages: [{ role: 'user', content: 'test' }],
+          })
+        );
+
+        expect(mockChat.mock.calls[0]?.[0]?.modelOptions.provider).toEqual({
+          requireParameters: true,
+        });
+      });
+
+      it('sends max_tokens, not max_completion_tokens, so requireParameters keeps DeepSeek routable', async () => {
+        // DeepSeek endpoints advertise `max_tokens` only; `max_completion_tokens`
+        // + requireParameters returned "No endpoints found" on the region fallback.
+        mockChat.mockReturnValue(textStream());
+
+        await drain(
+          callLLMStream({
+            model: 'deepseek/deepseek-v4-pro-0813',
+            max_tokens: 300,
+            messages: [{ role: 'user', content: 'test' }],
+          })
+        );
+
+        const options = mockChat.mock.calls[0]?.[0]?.modelOptions;
+        expect(options.maxTokens).toBe(300);
+        expect(options.maxCompletionTokens).toBeUndefined();
+      });
+
+      it('caller-supplied provider preferences layer on top', async () => {
+        mockChat.mockReturnValue(textStream());
+
+        await drain(
+          callLLMStream({
+            model: 'anthropic/claude-sonnet-5',
+            messages: [{ role: 'user', content: 'test' }],
+            provider: { allowFallbacks: false },
+          })
+        );
+
+        expect(mockChat.mock.calls[0]?.[0]?.modelOptions.provider).toEqual({
+          only: ['anthropic'],
+          allowFallbacks: false,
+        });
+      });
     });
 
     describe('reasoning', () => {
-      it('ignores REASONING_MESSAGE_CONTENT events (reasoning is not surfaced)', async () => {
-        // Reasoning is enabled for quality, but its tokens are scratch work —
-        // never accumulated into the answer or yielded to the caller.
+      it('surfaces REASONING_MESSAGE_CONTENT without letting it reach the answer', async () => {
+        // Reasoning tokens are scratch work — forwarded on their own channel so
+        // a streaming UI can show them, never accumulated into the answer.
         mockChat.mockReturnValue(
           (async function* () {
             yield { type: 'REASONING_MESSAGE_CONTENT', delta: 'let me think' };
@@ -620,6 +787,7 @@ describe('llm-client', () => {
         );
 
         const answer: string[] = [];
+        const thinking: string[] = [];
         let finalAccumulated = '';
         for await (const chunk of callLLMStream({
           model: 'anthropic/claude-sonnet-5',
@@ -627,11 +795,42 @@ describe('llm-client', () => {
           reasoning: { enabled: true, effort: 'medium' },
         })) {
           if (chunk.delta) answer.push(chunk.delta);
+          if (!chunk.done && chunk.reasoning) thinking.push(chunk.reasoning);
           finalAccumulated = chunk.accumulated;
         }
 
         expect(answer).toEqual(['Hello', ' World']);
+        expect(thinking).toEqual(['let me think', ' more']);
         expect(finalAccumulated).toBe('Hello World');
+      });
+
+      it('keeps reasoning out of `accumulated` as it streams', async () => {
+        // The guarantee the enhance UI leans on: a reasoning chunk must not move
+        // `accumulated`, or thinking would leak into the script mid-stream.
+        mockChat.mockReturnValue(
+          (async function* () {
+            yield { type: 'TEXT_MESSAGE_CONTENT', delta: 'INT. ' };
+            yield { type: 'REASONING_MESSAGE_CONTENT', delta: 'hmm' };
+            yield { type: 'TEXT_MESSAGE_CONTENT', delta: 'DOCK' };
+          })()
+        );
+
+        const seen: { delta: string; accumulated: string }[] = [];
+        for await (const chunk of callLLMStream({
+          model: 'anthropic/claude-sonnet-5',
+          messages: [{ role: 'user', content: 'test' }],
+          reasoning: { enabled: true, effort: 'medium' },
+        })) {
+          if (!chunk.done) {
+            seen.push({ delta: chunk.delta, accumulated: chunk.accumulated });
+          }
+        }
+
+        expect(seen).toEqual([
+          { delta: 'INT. ', accumulated: 'INT. ' },
+          { delta: '', accumulated: 'INT. ' },
+          { delta: 'DOCK', accumulated: 'INT. DOCK' },
+        ]);
       });
 
       it('forwards the reasoning config to chat modelOptions', async () => {
@@ -828,6 +1027,84 @@ describe('llm-client', () => {
 
     it('treats explicit zero cost as zero', () => {
       expect(llmCostFromUsage(usage(0), 'model')).toBe(ZERO_MICROS);
+    });
+
+    it('does not invent a charge from token counts alone', () => {
+      // Token-rate fallback was rejected — missing provider cost means $0.
+      expect(
+        llmCostFromUsage(
+          {
+            promptTokens: 1_000_000,
+            completionTokens: 500_000,
+            totalTokens: 1_500_000,
+          },
+          'anthropic/claude-sonnet-5'
+        )
+      ).toBe(ZERO_MICROS);
+    });
+
+    it('prices a Grok model from xAI’s published rates (issue #1167)', () => {
+      // xAI reports tokens but never a cost, so a Grok model arriving here
+      // without one is by construction a natively-routed call. $0 would be a
+      // silent revenue hole on every native render.
+      expect(
+        llmCostFromUsage(
+          {
+            promptTokens: 100_000,
+            completionTokens: 100_000,
+            totalTokens: 200_000,
+          },
+          'x-ai/grok-4.6'
+        )
+      ).toBe(800_000);
+    });
+
+    it('still prefers OpenRouter’s reported cost for a Grok model', () => {
+      // A Grok call that DID go through OpenRouter carries the real bill —
+      // the published-rate path must not override it.
+      expect(llmCostFromUsage(usage(0.0123), 'x-ai/grok-4.6')).toBe(
+        usdToMicros(0.0123)
+      );
+    });
+  });
+
+  describe('preferUsage / createUsageCapture', () => {
+    it('prefers a usage object that carries finite cost', () => {
+      const withCost = usage(0.01);
+      const tokensOnly = {
+        promptTokens: 1,
+        completionTokens: 2,
+        totalTokens: 3,
+      };
+      expect(preferUsage(tokensOnly, withCost)).toBe(withCost);
+      expect(preferUsage(withCost, tokensOnly)).toBe(withCost);
+      expect(preferUsage(undefined, tokensOnly)).toBe(tokensOnly);
+    });
+
+    it('merges onUsage, onFinish, and RUN_FINISHED', () => {
+      const capture = createUsageCapture();
+      capture.middleware[0]?.onUsage?.(null, {
+        promptTokens: 1,
+        completionTokens: 1,
+        totalTokens: 2,
+      });
+      capture.noteFromStreamEvent({
+        type: 'RUN_FINISHED',
+        usage: {
+          promptTokens: 10,
+          completionTokens: 5,
+          totalTokens: 15,
+          cost: 0.02,
+        },
+      });
+      capture.middleware[0]?.onFinish?.(null, {
+        usage: {
+          promptTokens: 99,
+          completionTokens: 99,
+          totalTokens: 198,
+        },
+      });
+      expect(capture.get()?.cost).toBe(0.02);
     });
   });
 });

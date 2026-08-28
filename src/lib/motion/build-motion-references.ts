@@ -27,6 +27,7 @@ import type { ReferenceImageDescription } from '@/lib/prompts/reference-image-pr
 import {
   matchCharactersToScene,
   matchElementsToScene,
+  matchElementsToShotImage,
   matchLocationsToScene,
 } from '@/lib/workflows/scene-matching';
 
@@ -71,11 +72,16 @@ export function buildMotionReferenceImages(params: {
  */
 export function buildShotImageReferenceImages(params: {
   scene: SceneReferenceInput;
+  /**
+   * The still's visual prompt. When present, element refs follow the
+   * prompt (same matcher as `/image` stamp + staleness verify).
+   */
+  visualPrompt?: string | null;
   characters: CharacterMinimal[];
   locations: SequenceLocationMinimal[];
   elements: SequenceElementMinimal[];
 }): ReferenceImageDescription[] {
-  const { scene, characters, locations, elements } = params;
+  const { scene, visualPrompt, characters, locations, elements } = params;
 
   const matchedCharacters = matchCharactersToScene(
     characters,
@@ -86,11 +92,11 @@ export function buildShotImageReferenceImages(params: {
     scene?.continuity?.environmentTag ?? '',
     scene?.metadata?.location ?? ''
   );
-  const matchedElements = matchElementsToScene(
-    elements,
-    scene?.continuity?.elementTags ?? [],
-    scene?.originalScript?.extract ?? ''
-  );
+  const matchedElements = matchElementsToShotImage(elements, {
+    visualPrompt,
+    elementTags: scene?.continuity?.elementTags,
+    sceneExtract: scene?.originalScript?.extract,
+  });
 
   return [
     ...buildCharacterReferenceImages(matchedCharacters),

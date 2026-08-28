@@ -177,4 +177,35 @@ describe('buildReferenceVideoPrompt (per-model config knobs)', () => {
     expect(result.prompt).toContain('<IMAGE_REF_3>: Ref 2 - person 2');
     expect(result.prompt).not.toContain('<IMAGE_REF_4>');
   });
+
+  it('tags Grok Imagine 1.5 refs as <IMAGE_0>… in request order', () => {
+    const grokConfig: MotionReferenceEndpointConfig = {
+      endpointId: 'grok-imagine-video-1.5',
+      tag: (position) => `<IMAGE_${position - 1}>`,
+      maxImages: 7,
+    };
+    const result = buildReferenceVideoPrompt(
+      grokConfig,
+      'SCARLETT lifts the CORAL_LIPSTICK',
+      STILL,
+      [
+        ref('https://example.com/a.png', 'Scarlett - athletic', 'SCARLETT'),
+        {
+          referenceImageUrl: 'https://example.com/b.png',
+          description: 'CORAL_LIPSTICK - a coral tube',
+          role: 'element',
+          token: 'CORAL_LIPSTICK',
+        },
+      ]
+    );
+    expect(
+      result.prompt.startsWith('Use <IMAGE_0> as the starting frame.')
+    ).toBe(true);
+    expect(result.prompt).toContain('<IMAGE_1> lifts the <IMAGE_2>');
+    expect(result.imageUrls).toEqual([
+      STILL,
+      'https://example.com/a.png',
+      'https://example.com/b.png',
+    ]);
+  });
 });

@@ -37,7 +37,11 @@ import {
   aspectRatioSchema,
   type AspectRatio,
 } from '../src/lib/constants/aspect-ratios';
-import { StyleConfigSchema } from '../src/lib/db/schema/libraries';
+import { z } from 'zod';
+import {
+  parseStyleConfig,
+  type StyleConfig,
+} from '../src/lib/style/style-config';
 import { triggerWorkflow } from '../src/lib/workflow/client';
 
 function printUsage() {
@@ -140,11 +144,20 @@ async function main() {
     process.exit(1);
   }
 
-  const styleResult = StyleConfigSchema.safeParse(styleConfig);
-  if (!styleResult.success) {
+  // Accepts both the legacy flat (v1) and grouped (v2) shapes on disk.
+  let parsedStyle: StyleConfig;
+  try {
+    parsedStyle = parseStyleConfig(styleConfig);
+  } catch (error) {
     console.error('Error: Invalid style config');
-    for (const issue of styleResult.error.issues) {
-      console.error(`  ${issue.path.join('.')}: ${issue.message}`);
+    if (error instanceof z.ZodError) {
+      for (const issue of error.issues) {
+        console.error(`  ${issue.path.join('.')}: ${issue.message}`);
+      }
+    } else {
+      console.error(
+        `  ${error instanceof Error ? error.message : String(error)}`
+      );
     }
     process.exit(1);
   }
@@ -182,7 +195,7 @@ async function main() {
       '/analyze-script',
       {
         script,
-        styleConfig: styleResult.data,
+        styleConfig: parsedStyle,
         aspectRatio,
         analysisModelId: analysisModel,
         imageModel: values['image-model'],

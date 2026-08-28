@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/card';
 import { FalLogo } from '@/components/icons/fal-logo';
 import { OpenRouterLogo } from '@/components/icons/openrouter-logo';
+import { XIcon } from '@/components/icons/x-icon';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
@@ -37,6 +38,16 @@ import { toast } from 'sonner';
 type ApiKeySettingsProps = {
   success?: string;
   error?: string;
+};
+
+type ApiKeyProviderId = 'openrouter' | 'fal' | 'xai';
+/** Providers whose key is pasted in — OpenRouter alone uses OAuth. */
+type ManualProvider = Exclude<ApiKeyProviderId, 'openrouter'>;
+
+const PROVIDER_LABELS: Record<ApiKeyProviderId, string> = {
+  openrouter: 'OpenRouter',
+  fal: 'fal.ai',
+  xai: 'xAI',
 };
 
 export function ApiKeySettings(props: ApiKeySettingsProps) {
@@ -76,7 +87,6 @@ function ApiKeySettingsContent({
 }: ApiKeySettingsProps & { teamId: string }) {
   const queryClient = useQueryClient();
   const posthog = usePostHog();
-  const [falKeyInput, setFalKeyInput] = useState('');
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
   const hasShownToastRef = useRef(false);
@@ -122,14 +132,18 @@ function ApiKeySettingsContent({
     void queryClient.invalidateQueries({ queryKey: [...BILLING_GATE_KEY] });
   };
 
-  const saveFalKeyMutation = useMutation({
-    mutationFn: (apiKey: string) =>
-      saveApiKeyFn({ data: { teamId, provider: 'fal', apiKey } }),
-    onSuccess: () => {
+  const saveKeyMutation = useMutation({
+    mutationFn: ({
+      provider,
+      apiKey,
+    }: {
+      provider: ManualProvider;
+      apiKey: string;
+    }) => saveApiKeyFn({ data: { teamId, provider, apiKey } }),
+    onSuccess: (_, { provider }) => {
       invalidateKeys();
-      setFalKeyInput('');
       setError(null);
-      posthog.capture('api_key_saved', { provider: 'fal' });
+      posthog.capture('api_key_saved', { provider });
     },
     onError: (err) => {
       setError(err instanceof Error ? err.message : 'Failed to save key');
@@ -137,7 +151,7 @@ function ApiKeySettingsContent({
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (provider: 'openrouter' | 'fal') =>
+    mutationFn: (provider: ApiKeyProviderId) =>
       deleteApiKeyFn({ data: { teamId, provider } }),
     onSuccess: (_, provider) => {
       invalidateKeys();
@@ -161,7 +175,7 @@ function ApiKeySettingsContent({
   });
 
   const revalidateMutation = useMutation({
-    mutationFn: (provider: 'openrouter' | 'fal') =>
+    mutationFn: (provider: ApiKeyProviderId) =>
       revalidateApiKeyFn({ data: { teamId, provider } }),
     onSuccess: (result, provider) => {
       // Only announce recovery — a key that was already valid (e.g. just
@@ -171,7 +185,7 @@ function ApiKeySettingsContent({
       invalidateKeys();
       if (result.valid && wasInvalid) {
         toast.success('Key re-validated', {
-          description: `Your ${provider === 'openrouter' ? 'OpenRouter' : 'Fal.ai'} key is valid again.`,
+          description: `Your ${PROVIDER_LABELS[provider]} key is valid again.`,
         });
       }
     },
@@ -184,6 +198,7 @@ function ApiKeySettingsContent({
 
   const openrouterKey = apiKeys?.find((k) => k.provider === 'openrouter');
   const falKey = apiKeys?.find((k) => k.provider === 'fal');
+  const xaiKey = apiKeys?.find((k) => k.provider === 'xai');
 
   // Re-validate stored team keys on mount so opening the settings page
   // refreshes their validity without waiting for the next workflow failure.
@@ -195,12 +210,6 @@ function ApiKeySettingsContent({
     revalidateMutation.mutate('openrouter');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openrouterKey?.id]);
-
-  const handleSaveFalKey = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (!falKeyInput.trim()) return;
-    saveFalKeyMutation.mutate(falKeyInput.trim());
-  };
 
   const successMessage =
     success === 'openrouter_connected'
@@ -240,83 +249,39 @@ function ApiKeySettingsContent({
         </CardHeader>
 
         <CardContent className="flex flex-col gap-3">
-          {/* fal.ai */}
-          <div className="flex flex-col gap-3 rounded-xl border p-4">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex min-w-0 items-center gap-3">
-                <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted">
-                  <FalLogo className="size-5" />
-                </div>
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-sm font-medium">fal.ai</h3>
-                    {isLoading ? (
-                      <Skeleton className="h-5 w-20" />
-                    ) : (
-                      <StatusBadge source={keyStatus?.fal} />
-                    )}
-                  </div>
-                  <p className="truncate text-xs text-muted-foreground">
-                    Images, video & audio. Covers script analysis too.
-                  </p>
-                </div>
-              </div>
-              {!isLoading && falKey && (
-                <div className="flex shrink-0 items-center gap-2">
-                  <span className="font-mono text-xs text-muted-foreground">
-                    ••••{falKey.keyHint}
-                  </span>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => deleteMutation.mutate('fal')}
-                    disabled={deleteMutation.isPending}
-                    aria-label="Delete Fal.ai key"
-                  >
-                    <Trash2 className="h-4 w-4 text-destructive" />
-                  </Button>
-                </div>
-              )}
-            </div>
+          <ManualKeyRow
+            provider="fal"
+            icon={<FalLogo className="size-5" />}
+            blurb="Images, video & audio. Covers script analysis too."
+            placeholder="fal_..."
+            keyUrl="https://fal.ai/dashboard/keys"
+            existingKey={falKey}
+            status={keyStatus?.fal}
+            isLoading={isLoading}
+            onSave={(apiKey) =>
+              saveKeyMutation.mutate({ provider: 'fal', apiKey })
+            }
+            onDelete={() => deleteMutation.mutate('fal')}
+            isSaving={saveKeyMutation.isPending}
+            isDeleting={deleteMutation.isPending}
+          />
 
-            {isLoading ? (
-              <Skeleton className="h-10 w-full" />
-            ) : (
-              !falKey && (
-                <div className="flex flex-col gap-2">
-                  <form onSubmit={handleSaveFalKey} className="flex gap-2">
-                    <Input
-                      name="falKey"
-                      type="password"
-                      placeholder="fal_..."
-                      value={falKeyInput}
-                      onChange={(e) => setFalKeyInput(e.target.value)}
-                      autoComplete="off"
-                      spellCheck={false}
-                      required
-                    />
-                    <Button
-                      type="submit"
-                      disabled={
-                        saveFalKeyMutation.isPending || !falKeyInput.trim()
-                      }
-                    >
-                      {saveFalKeyMutation.isPending ? 'Saving…' : 'Save'}
-                    </Button>
-                  </form>
-                  <a
-                    href="https://fal.ai/dashboard/keys"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 text-xs text-muted-foreground underline-offset-2 transition-colors hover:text-foreground hover:underline"
-                  >
-                    Get a key from fal.ai
-                    <ExternalLink className="size-3" />
-                  </a>
-                </div>
-              )
-            )}
-          </div>
+          <ManualKeyRow
+            provider="xai"
+            icon={<XIcon className="size-4" />}
+            blurb="Grok chat, images & video, billed by xAI directly."
+            placeholder="xai-..."
+            keyUrl="https://console.x.ai"
+            existingKey={xaiKey}
+            status={keyStatus?.xai}
+            isLoading={isLoading}
+            onSave={(apiKey) =>
+              saveKeyMutation.mutate({ provider: 'xai', apiKey })
+            }
+            onDelete={() => deleteMutation.mutate('xai')}
+            isSaving={saveKeyMutation.isPending}
+            isDeleting={deleteMutation.isPending}
+          />
 
           {/* OpenRouter */}
           <div
@@ -424,6 +389,125 @@ function ApiKeySettingsContent({
           </div>
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+/**
+ * A provider whose key is pasted in rather than connected over OAuth. Both of
+ * them render identically, so they share one row — OpenRouter keeps its own
+ * block because the OAuth handshake makes it a different interaction.
+ */
+type ManualKeyRowProps = {
+  provider: ManualProvider;
+  icon: React.ReactNode;
+  blurb: string;
+  placeholder: string;
+  keyUrl: string;
+  existingKey?: { keyHint: string };
+  status?: 'team' | 'platform';
+  isLoading: boolean;
+  onSave: (apiKey: string) => void;
+  onDelete: () => void;
+  isSaving: boolean;
+  isDeleting: boolean;
+};
+
+function ManualKeyRow({
+  provider,
+  icon,
+  blurb,
+  placeholder,
+  keyUrl,
+  existingKey,
+  status,
+  isLoading,
+  onSave,
+  onDelete,
+  isSaving,
+  isDeleting,
+}: ManualKeyRowProps) {
+  const [value, setValue] = useState('');
+  const label = PROVIDER_LABELS[provider];
+
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    onSave(trimmed);
+    setValue('');
+  };
+
+  return (
+    <div className="flex flex-col gap-3 rounded-xl border p-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted">
+            {icon}
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-medium">{label}</h3>
+              {isLoading ? (
+                <Skeleton className="h-5 w-20" />
+              ) : (
+                <StatusBadge source={status} />
+              )}
+            </div>
+            <p className="truncate text-xs text-muted-foreground">{blurb}</p>
+          </div>
+        </div>
+        {!isLoading && existingKey && (
+          <div className="flex shrink-0 items-center gap-2">
+            <span className="font-mono text-xs text-muted-foreground">
+              ••••{existingKey.keyHint}
+            </span>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onDelete}
+              disabled={isDeleting}
+              aria-label={`Delete ${label} key`}
+            >
+              <Trash2 className="h-4 w-4 text-destructive" />
+            </Button>
+          </div>
+        )}
+      </div>
+
+      {isLoading ? (
+        <Skeleton className="h-10 w-full" />
+      ) : (
+        !existingKey && (
+          <div className="flex flex-col gap-2">
+            <form onSubmit={handleSubmit} className="flex gap-2">
+              <Input
+                name={`${provider}Key`}
+                type="password"
+                placeholder={placeholder}
+                value={value}
+                onChange={(e) => setValue(e.target.value)}
+                autoComplete="off"
+                spellCheck={false}
+                aria-label={`${label} API key`}
+                required
+              />
+              <Button type="submit" disabled={isSaving || !value.trim()}>
+                {isSaving ? 'Saving…' : 'Save'}
+              </Button>
+            </form>
+            <a
+              href={keyUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-xs text-muted-foreground underline-offset-2 transition-colors hover:text-foreground hover:underline"
+            >
+              Get a key from {label}
+              <ExternalLink className="size-3" />
+            </a>
+          </div>
+        )
+      )}
     </div>
   );
 }

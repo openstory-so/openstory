@@ -1,0 +1,24 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use @Image1 as the starting frame.\nStatic lock-off from the back of the room, framing held exactly as is. SCARLETT lifts the mic off its stand with her right hand, brings it to her mouth and leans in, then the laugh takes her — head tipping back, mouth wide, shoulders shaking, free left hand slapping loosely against her thigh before she recovers and steadies the mic. Foreground audience heads rock and shoulders bounce with laughter at the candlelit tables.\n\nHard spotlight beams hold steady while dust drifts through the light shafts; candle flames flicker at the tables and the mic cable sways gently below her hand.\n\npacked small club room, warm audience laughter swelling and settling, low room hum. mic lifted from clip with a soft thunk, cable brushing the stand, scattered claps and table knocks, breathy laugh into the mic.\n\nNo BGM, no music. Generate only dialogue, environmental sounds, and action sounds. Single continuous shot, no cuts. Avoid jitter and bent limbs.\n\nReference images:\n@Image2: SCARLETT VEGA — keep visually consistent throughout the shot.\n@Image3: CORAL_LIPSTICK - A squat — keep visually consistent throughout the shot.",
+        "model": "bytedance/seedance-2.0/enterprise/v2/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://v3b.fal.media/files/b/0aa74e9d/-aNeGcgiqXW0wyCndy5kD_video.mp4",
+            "content_type": "video/mp4",
+            "file_name": "video.mp4",
+            "file_size": 1428829
+          },
+          "seed": 1709095351
+        },
+        "status": 200,
+        "billableUnits": 130.5
+      }
+    }
+  ]
+}

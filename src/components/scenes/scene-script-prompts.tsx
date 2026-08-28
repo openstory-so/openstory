@@ -1,4 +1,5 @@
 import { ThinkingBar } from '@/components/ai/thinking-bar';
+import { ActionCost } from '@/components/billing/action-cost';
 import { type ModelGenerationStatus } from '@/components/model/base-model-selector';
 import { ImageModelSelector } from '@/components/model/image-model-selector';
 import { MotionModelSelector } from '@/components/model/motion-model-selector';
@@ -27,6 +28,7 @@ import {
 import { regenerateShotPromptFn } from '@/functions/prompt-variants';
 import { BILLING_BALANCE_KEY } from '@/hooks/use-billing-balance';
 import { useFalBillingGate } from '@/hooks/use-billing-gate';
+import { useFalPricing } from '@/hooks/use-fal-pricing';
 import { segmentKeys } from '@/hooks/use-segments';
 import {
   shotKeys,
@@ -45,6 +47,7 @@ import {
 } from '@/hooks/use-media-upload';
 import type { SequenceSegment } from '@/lib/scenes/scene-segments';
 import type { UpdateStaleDepth } from '@/lib/shots/update-stale-depth';
+import { copyTextToClipboard } from '@/lib/utils/clipboard';
 import {
   type ShotStaleness,
   markArtifactFresh,
@@ -54,7 +57,12 @@ import {
   shotStalenessUnknown,
   useShotStaleness,
 } from '@/hooks/use-shot-staleness';
-import { useSaveSceneScript, type SceneWithScript } from '@/hooks/use-scenes';
+import {
+  sceneKeys,
+  useSaveSceneScript,
+  type SceneWithScript,
+} from '@/hooks/use-scenes';
+import { sceneFacetKeys } from '@/hooks/use-scene-facets';
 import { useSaveShotPrompt } from '@/hooks/use-prompt-variants';
 import type { FrameVariant, ShotVariant } from '@/lib/db/schema';
 import {
@@ -70,17 +78,28 @@ import {
   type TextToImageModel,
 } from '@/lib/ai/models';
 import {
+  estimateImageCost,
+  estimateVideoCost,
+} from '@/lib/billing/cost-estimation';
+import {
   aspectRatioToImageSize,
+  DEFAULT_ASPECT_RATIO,
   type AspectRatio,
 } from '@/lib/constants/aspect-ratios';
 import { getStorageDomainFn } from '@/functions/storage-config';
 import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from '@/components/ui/accordion';
+  OptimisedPromptPanel,
+  promptFromFalInput,
+  type OptimisedPromptPreview,
+} from '@/components/scenes/optimised-prompt-panel';
+import {
+  CONTENT_REJECTION_USER_HINT,
+  CONTENT_REJECTION_USER_TITLE,
+  isContentRejectionError,
+} from '@/lib/ai/content-rejection';
+import { isNativeGrokVideoModel } from '@/lib/ai/grok-native';
 import { buildImageRequest } from '@/lib/image/build-image-request';
+import { buildGrokVideoRequest } from '@/lib/motion/build-grok-video-request';
 import { buildMotionRequest } from '@/lib/motion/build-model-input';
 import {
   buildMotionReferenceImages,
@@ -89,7 +108,6 @@ import {
 import { buildReferenceImagePrompt } from '@/lib/prompts/reference-image-prompt';
 import { resolveMotionPrompt } from '@/lib/motion/resolve-motion-prompt';
 import { resolveShotDuration } from '@/lib/motion/resolve-shot-duration';
-import { typedEntries } from '@/lib/utils/typed-object';
 import type { AssemblableMotionPrompt } from '@/lib/ai/scene-analysis.schema';
 import { useShotPromptStream } from '@/lib/realtime/use-shot-prompt-stream';
 import type { ShotView } from '@/lib/shots/shot-view';
@@ -115,6 +133,16 @@ import { ShotDurationField } from './shot-duration-field';
 import { getLogger } from '@/lib/observability/logger';
 
 const logger = getLogger(['openstory', 'ui', 'scenes', 'scene-script-prompts']);
+
+function toastGenerationError(label: string, error: unknown) {
+  if (isContentRejectionError(error)) {
+    toast.info(CONTENT_REJECTION_USER_TITLE, {
+      description: CONTENT_REJECTION_USER_HINT,
+    });
+    return;
+  }
+  toast.error(label, { description: errorMessage(error) });
+}
 
 /** Inspector tab values ARE the URL facet tokens — one set, no mapping. */
 export type TabValue = SceneFacet;
@@ -187,92 +215,6 @@ const PromptCopyButton: React.FC<{
     )}
   </Button>
 );
-
-/** One model's exact fal request, ready for display. */
-type ModelRequestPreview = {
-  modelKey: string;
-  modelName: string;
-  endpointId: string;
-  json: string;
-  promptLength: number;
-  maxPromptLength: number;
-};
-
-/**
- * Per-model accordion of the exact fal request bodies — the selected model's
- * item is open by default; every entry is copyable. Shared by the image and
- * motion tabs.
- */
-const ModelRequestPreviews: React.FC<{
-  idPrefix: string;
-  requests: ModelRequestPreview[];
-  selectedModel: string;
-  copiedTab: string | null;
-  onCopy: (text: string | undefined, key: string) => void;
-  footnote?: string | null;
-}> = ({ idPrefix, requests, selectedModel, copiedTab, onCopy, footnote }) => {
-  // Selected model first so its open item sits at the top of the list.
-  const ordered = [...requests].sort(
-    (a, b) =>
-      Number(b.modelKey === selectedModel) -
-      Number(a.modelKey === selectedModel)
-  );
-  return (
-    <div className="space-y-1">
-      <Accordion
-        type="multiple"
-        defaultValue={[`${idPrefix}-${selectedModel}`]}
-        className="rounded-md border"
-      >
-        {ordered.map((req) => (
-          <AccordionItem
-            key={req.modelKey}
-            value={`${idPrefix}-${req.modelKey}`}
-            className="px-3"
-          >
-            <AccordionTrigger className="py-2 text-sm">
-              <span className="flex flex-1 items-center justify-between gap-2 pr-2">
-                <span>
-                  {req.modelName}
-                  {req.modelKey === selectedModel && (
-                    <span className="text-muted-foreground"> · selected</span>
-                  )}
-                </span>
-                <span
-                  className={`text-xs font-normal tabular-nums ${
-                    req.promptLength > req.maxPromptLength
-                      ? 'text-destructive font-medium'
-                      : 'text-muted-foreground'
-                  }`}
-                >
-                  {req.promptLength}&nbsp;/&nbsp;{req.maxPromptLength}
-                </span>
-              </span>
-            </AccordionTrigger>
-            <AccordionContent className="space-y-1 pb-3">
-              <div className="flex items-center justify-between">
-                <span className="font-mono text-xs text-muted-foreground">
-                  {req.endpointId}
-                </span>
-                <PromptCopyButton
-                  text={req.json}
-                  copyKey={`${idPrefix}-${req.modelKey}`}
-                  copiedTab={copiedTab}
-                  onCopy={onCopy}
-                  label={`Copy ${req.modelName} request JSON`}
-                />
-              </div>
-              <pre className="max-h-96 overflow-auto whitespace-pre-wrap rounded-md bg-muted/50 p-3 font-mono text-xs leading-relaxed text-foreground">
-                {req.json}
-              </pre>
-            </AccordionContent>
-          </AccordionItem>
-        ))}
-      </Accordion>
-      {footnote && <p className="text-xs text-muted-foreground">{footnote}</p>}
-    </div>
-  );
-};
 
 type SceneScriptPromptsProps = {
   shot?: ShotView | undefined;
@@ -403,8 +345,8 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
 
   // Image & motion regeneration state
   const [editPrompts, setEditPrompts] = useState({
-    imagePrompt: '' as string,
-    motionPrompt: '' as string,
+    imagePrompt: '',
+    motionPrompt: '',
   });
   const { imagePrompt: editedImagePrompt, motionPrompt: editedMotionPrompt } =
     editPrompts;
@@ -774,15 +716,16 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     async (text: string | undefined, tabName: string) => {
       if (!text) return;
 
-      try {
-        await navigator.clipboard.writeText(text);
-        setCopiedTab(tabName);
-        setTimeout(() => setCopiedTab(null), 2000);
-      } catch (error) {
+      if (!(await copyTextToClipboard(text))) {
         toast.error('Failed to copy', {
-          description: errorMessage(error),
+          id: 'copy-prompt-failed',
+          description:
+            'Your browser blocked clipboard access. Select the prompt text to copy it manually.',
         });
+        return;
       }
+      setCopiedTab(tabName);
+      setTimeout(() => setCopiedTab(null), 2000);
     },
     []
   );
@@ -918,6 +861,19 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     }
   }, [editedImagePrompt, imagePrompt, handleSaveVisualPrompt]);
 
+  // A regenerate with an edited prompt auto-links @-mentioned cast/elements/
+  // locations into the scene continuity server-side (#683); refetch the scene
+  // rows and the facet membership so the Cast tab reflects it (#1341).
+  const invalidateContinuity = useCallback(() => {
+    if (!shot?.sequenceId) return;
+    void queryClient.invalidateQueries({
+      queryKey: sceneKeys.list(shot.sequenceId),
+    });
+    void queryClient.invalidateQueries({
+      queryKey: sceneFacetKeys.maps(shot.sequenceId),
+    });
+  }, [shot?.sequenceId, queryClient]);
+
   const handleRegenerate = useCallback(async () => {
     if (!shot?.id || !shot.sequenceId) return;
 
@@ -975,6 +931,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
       // Don't invalidate immediately - let auto-polling pick up server updates
       // The optimistic update shows 'generating' instantly, and the workflow
       // will update the server status which auto-polling will detect
+      invalidateContinuity();
     } catch (error) {
       if (isInsufficientCreditsError(error)) {
         showFalGate();
@@ -982,9 +939,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
           queryKey: [...BILLING_BALANCE_KEY],
         });
       } else {
-        toast.error('Image generation failed', {
-          description: errorMessage(error),
-        });
+        toastGenerationError('Image generation failed', error);
       }
 
       // Rollback on error - set status to failed
@@ -1000,6 +955,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     regenImageModel,
     editedImagePrompt,
     queryClient,
+    invalidateContinuity,
     onRegenerateStart,
     showFalGate,
   ]);
@@ -1066,6 +1022,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
       });
 
       // Don't invalidate immediately - let auto-polling pick up server updates
+      invalidateContinuity();
     } catch (error) {
       if (isInsufficientCreditsError(error)) {
         showFalGate();
@@ -1073,9 +1030,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
           queryKey: [...BILLING_BALANCE_KEY],
         });
       } else {
-        toast.error('Motion generation failed', {
-          description: errorMessage(error),
-        });
+        toastGenerationError('Motion generation failed', error);
       }
 
       // Rollback on error
@@ -1092,6 +1047,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     editedMotionPrompt,
     generateAudio,
     queryClient,
+    invalidateContinuity,
     onRegenerateStart,
     showFalGate,
   ]);
@@ -1136,10 +1092,12 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
         motionPrompt: mp,
         characterTags,
         description: sceneDescription,
+        generateAudio,
       },
       effectiveMotionModel
     );
   }, [
+    generateAudio,
     editedMotionPrompt,
     rawMotionPrompt,
     shotMotionPrompt,
@@ -1148,7 +1106,41 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     effectiveMotionModel,
   ]);
 
-  const motionModel = effectiveMotionModel;
+  // Transparent pricing under Generate Image / Generate Motion (#1140).
+  const { pricing: falPricing } = useFalPricing();
+  const imageCostEstimate = useMemo(() => {
+    if (!falPricing) return null;
+    return estimateImageCost(
+      regenImageModel,
+      aspectRatio ?? DEFAULT_ASPECT_RATIO,
+      1,
+      { pricing: falPricing }
+    );
+  }, [falPricing, regenImageModel, aspectRatio]);
+  const motionCostEstimate = useMemo(() => {
+    if (!falPricing || !shot) return null;
+    const duration = resolveShotDuration({
+      durationMs: shot.durationMs,
+      model: effectiveMotionModel,
+    });
+    const hasReferenceImages =
+      buildMotionReferenceImages({
+        scene: sceneReference,
+        characters: mentionCharacters ?? [],
+        elements: mentionElements ?? [],
+      }).length > 0;
+    return estimateVideoCost(effectiveMotionModel, duration, {
+      pricing: falPricing,
+      hasReferenceImages,
+    });
+  }, [
+    falPricing,
+    shot,
+    effectiveMotionModel,
+    sceneReference,
+    mentionCharacters,
+    mentionElements,
+  ]);
 
   // CDN-backed deployments absolutize stored /r2/ URLs at submit (toCdnUrl) —
   // fetch the server-only domain once so the preview shows the same final
@@ -1171,15 +1163,17 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     [storageDomain]
   );
 
-  // The exact fal request per video model — same builder submitMotionJob
-  // uses, so the preview shows the real endpoint payload including reference
-  // bindings (@ImageN/@ElementN substitution, image_urls/elements arrays).
-  // The prompt is re-assembled per model (audio-capable models get
-  // dialogue/audio sections). A model whose transform rejects the draft input
-  // (e.g. no rendered still yet) is skipped — an empty list falls back to the
-  // plain-text assembled prompt.
-  const motionRequestPreviews = useMemo((): ModelRequestPreview[] => {
-    if (!shot) return [];
+  // Exact request for the *selected* video model — same builder
+  // submitMotionJob uses, including reference bindings. Other catalog
+  // models are omitted (#1242): they inflate the inspector for picks the
+  // user has not made. A transform rejection (e.g. no still yet) falls
+  // back to the plain-text assembled prompt at render. Grok native uses
+  // buildGrokVideoRequest so the panel shows <IMAGE_n> parts, not the fal
+  // i2v bag.
+  const motionRequestPreview = useMemo((): OptimisedPromptPreview | null => {
+    if (!shot) return null;
+    const modelKey = effectiveMotionModel;
+    const config = IMAGE_TO_VIDEO_MODELS[modelKey];
     const referenceImages = buildMotionReferenceImages({
       scene: sceneReference,
       characters: mentionCharacters ?? [],
@@ -1197,50 +1191,72 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
       : overrideText
         ? { fullPrompt: overrideText, dialogue: null, audio: null }
         : null;
-    return typedEntries(IMAGE_TO_VIDEO_MODELS).flatMap(([modelKey, config]) => {
-      try {
-        const modelPrompt = resolveMotionPrompt(
-          {
-            motionPrompt: mp,
-            characterTags,
-            description: sceneDescription,
-          },
-          modelKey
+    try {
+      const modelPrompt = resolveMotionPrompt(
+        {
+          motionPrompt: mp,
+          characterTags,
+          description: sceneDescription,
+          generateAudio,
+        },
+        modelKey
+      );
+      if (!modelPrompt) return null;
+      const duration = resolveShotDuration({
+        explicit: undefined,
+        durationMs: shot.durationMs,
+        model: modelKey,
+      });
+      const imageUrl = absolutizeUrl(shot.image?.url ?? '');
+      if (isNativeGrokVideoModel(modelKey)) {
+        const request = buildGrokVideoRequest({
+          prompt: modelPrompt,
+          imageUrl,
+          duration,
+          aspectRatio,
+          referenceImages,
+          model: modelKey,
+        });
+        const textPart = request.input.prompt.find(
+          (part) => part.type === 'text'
         );
-        if (!modelPrompt) return [];
-        const request = buildMotionRequest(
-          {
-            prompt: modelPrompt,
-            imageUrl: absolutizeUrl(shot.image?.url ?? ''),
-            duration: resolveShotDuration({
-              explicit: undefined,
-              durationMs: shot.durationMs,
-              model: modelKey,
-            }),
-            aspectRatio,
-            generateAudio: videoModelSupportsAudio(modelKey)
-              ? generateAudio
-              : undefined,
-            referenceImages,
-          },
-          modelKey
-        );
-        return [
-          {
-            modelKey,
-            modelName: config.name,
-            endpointId: request.endpointId,
-            json: JSON.stringify(request.input, null, 2),
-            promptLength: modelPrompt.length,
-            maxPromptLength: config.maxPromptLength,
-          },
-        ];
-      } catch {
-        return [];
+        const prompt = textPart?.content ?? modelPrompt;
+        return {
+          modelName: config.name,
+          endpointId: request.endpointId,
+          prompt,
+          json: JSON.stringify(request.input, null, 2),
+          promptLength: prompt.length,
+          maxPromptLength: config.maxPromptLength,
+        };
       }
-    });
+      const request = buildMotionRequest(
+        {
+          prompt: modelPrompt,
+          imageUrl,
+          duration,
+          aspectRatio,
+          generateAudio: videoModelSupportsAudio(modelKey)
+            ? generateAudio
+            : undefined,
+          referenceImages,
+        },
+        modelKey
+      );
+      return {
+        modelName: config.name,
+        endpointId: request.endpointId,
+        prompt: promptFromFalInput(request.input, modelPrompt),
+        json: JSON.stringify(request.input, null, 2),
+        promptLength: modelPrompt.length,
+        maxPromptLength: config.maxPromptLength,
+      };
+    } catch {
+      return null;
+    }
   }, [
     shot,
+    effectiveMotionModel,
     sceneReference,
     sceneDescription,
     mentionCharacters,
@@ -1254,16 +1270,19 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     absolutizeUrl,
   ]);
 
-  // The exact fal request per image model — same reference resolution the
-  // `/image` trigger uses (buildShotImageReferenceImages) and the same
-  // request assembly the workflow uses (buildReferenceImagePrompt +
-  // buildImageRequest), so the preview shows the real endpoint payload
-  // including inline (Image N) bindings and the ordered image_urls array.
-  const imageRequestPreviews = useMemo((): ModelRequestPreview[] => {
+  // Exact fal request for the *selected* image model — same reference
+  // resolution the `/image` trigger uses and the same request assembly the
+  // workflow uses, so the panel shows the real endpoint payload including
+  // inline (Image N) bindings. Hidden catalog models are skipped unless
+  // they are the current pick (preview turbo).
+  const imageRequestPreview = useMemo((): OptimisedPromptPreview | null => {
     const basePrompt = (editedImagePrompt || imagePrompt || '').trim();
-    if (!basePrompt || !shot) return [];
+    if (!basePrompt || !shot) return null;
+    const modelKey = effectiveImageModel;
+    const config = IMAGE_MODELS[modelKey];
     const referenceImages = buildShotImageReferenceImages({
       scene: sceneReference,
+      visualPrompt: basePrompt,
       characters: mentionCharacters ?? [],
       locations: mentionLocations ?? [],
       elements: mentionElements ?? [],
@@ -1271,42 +1290,38 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
       ...ref,
       referenceImageUrl: absolutizeUrl(ref.referenceImageUrl),
     }));
-    return typedEntries(IMAGE_MODELS).flatMap(([modelKey, config]) => {
-      if ('hidden' in config) return [];
-      try {
-        const { prompt: enhancedPrompt, referenceUrls } =
-          buildReferenceImagePrompt(
-            basePrompt,
-            referenceImages,
-            config.maxPromptLength
-          );
-        const request = buildImageRequest({
-          model: modelKey,
-          prompt: enhancedPrompt,
-          imageSize: aspectRatio
-            ? aspectRatioToImageSize(aspectRatio)
-            : undefined,
-          numImages: 1,
-          referenceImageUrls: referenceUrls,
-        });
-        return [
-          {
-            modelKey,
-            modelName: config.name,
-            endpointId: request.endpointId,
-            json: JSON.stringify(request.input, null, 2),
-            promptLength: enhancedPrompt.length,
-            maxPromptLength: config.maxPromptLength,
-          },
-        ];
-      } catch {
-        return [];
-      }
-    });
+    try {
+      const { prompt: enhancedPrompt, referenceUrls } =
+        buildReferenceImagePrompt(
+          basePrompt,
+          referenceImages,
+          config.maxPromptLength
+        );
+      const request = buildImageRequest({
+        model: modelKey,
+        prompt: enhancedPrompt,
+        imageSize: aspectRatio
+          ? aspectRatioToImageSize(aspectRatio)
+          : undefined,
+        numImages: 1,
+        referenceImageUrls: referenceUrls,
+      });
+      return {
+        modelName: config.name,
+        endpointId: request.endpointId,
+        prompt: promptFromFalInput(request.input, enhancedPrompt),
+        json: JSON.stringify(request.input, null, 2),
+        promptLength: enhancedPrompt.length,
+        maxPromptLength: config.maxPromptLength,
+      };
+    } catch {
+      return null;
+    }
   }, [
     editedImagePrompt,
     imagePrompt,
     shot,
+    effectiveImageModel,
     sceneReference,
     mentionCharacters,
     mentionElements,
@@ -1480,6 +1495,10 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
           // would just no-op against the dedup.
           isRegenerating={isUpdatingAll || !shotHasStale}
           onRegenerateDepth={shotHasStale ? handleUpdateAll : undefined}
+          staleness={staleness}
+          updateAllScope={
+            shot ? { sequenceId, shotId: shot.id } : { sequenceId }
+          }
         />
       )}
       {shotStaleUnknown && !shotHasStale && !shotHasUpdating && (
@@ -1497,6 +1516,8 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
       {!shot && scopeShots && onSelectShot && (
         <SceneStaleShots
           shots={scopeShots}
+          sequenceId={sequenceId}
+          sceneId={scriptSceneId}
           staleness={scopeStaleness}
           stalenessFailed={scopeStalenessFailed}
           onSelectShot={onSelectShot}
@@ -1612,7 +1633,9 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
                     density="header-chip"
                     isRegenerating={visualBusy}
                     onRegenerate={() =>
-                      regeneratePromptMutation.mutate({ promptType: 'visual' })
+                      regeneratePromptMutation.mutate({
+                        promptType: 'visual',
+                      })
                     }
                   />
                 )}
@@ -1709,25 +1732,20 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
             </p>
           </div>
 
-          {/* Optimised prompt previews — the exact fal request body per image
-              model, mirroring the /image workflow's reference resolution and
-              request assembly. */}
-          {imageRequestPreviews.length > 0 && (
-            <div className="space-y-2">
-              <span className="text-sm font-medium">Optimised prompts</span>
-              <ModelRequestPreviews
-                idPrefix="image-request"
-                requests={imageRequestPreviews}
-                selectedModel={effectiveImageModel}
-                copiedTab={copiedTab}
-                onCopy={(text, key) => void handleCopy(text, key)}
-                footnote={
-                  !storageDomain
-                    ? 'Relative /r2/ image URLs are made publicly fetchable at submit'
-                    : null
-                }
-              />
-            </div>
+          {/* Optimised prompt — selected image model only, collapsed
+              until the user wants the assembled payload (#1242). */}
+          {imageRequestPreview && (
+            <OptimisedPromptPanel
+              idPrefix="image-request"
+              preview={imageRequestPreview}
+              copiedKey={copiedTab}
+              onCopy={(text, key) => void handleCopy(text, key)}
+              footnote={
+                !storageDomain
+                  ? 'Relative /r2/ image URLs are made publicly fetchable at submit'
+                  : null
+              }
+            />
           )}
 
           {/* Shorten + History buttons */}
@@ -1809,26 +1827,29 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
               {setImageFromVariant.isPending ? 'Setting…' : 'Set Image'}
             </Button>
           ) : (
-            <Button
-              onClick={() => {
-                if (falNeedsBillingSetup) {
-                  showFalGate();
-                  return;
-                }
-                void handleRegenerate();
-              }}
-              disabled={isGenerating || variantIsGenerating || !shot}
-              className="w-full"
-            >
-              {(isGenerating || variantIsGenerating) && (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              )}
-              {isGenerating || variantIsGenerating
-                ? 'Generating…'
-                : imageModelGenerated
-                  ? 'Regenerate Image'
-                  : 'Generate Image'}
-            </Button>
+            <div className="flex flex-col gap-1">
+              <Button
+                onClick={() => {
+                  if (falNeedsBillingSetup) {
+                    showFalGate();
+                    return;
+                  }
+                  void handleRegenerate();
+                }}
+                disabled={isGenerating || variantIsGenerating || !shot}
+                className="w-full"
+              >
+                {(isGenerating || variantIsGenerating) && (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                )}
+                {isGenerating || variantIsGenerating
+                  ? 'Generating…'
+                  : imageModelGenerated
+                    ? 'Regenerate Image'
+                    : 'Generate Image'}
+              </Button>
+              <ActionCost estimate={imageCostEstimate} />
+            </div>
           )}
 
           {/* Manual still inject (#1108) — upload replaces the selected image;
@@ -1901,7 +1922,9 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
                     density="header-chip"
                     isRegenerating={motionBusy}
                     onRegenerate={() =>
-                      regeneratePromptMutation.mutate({ promptType: 'motion' })
+                      regeneratePromptMutation.mutate({
+                        promptType: 'motion',
+                      })
                     }
                   />
                 )}
@@ -1996,43 +2019,37 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
             </p>
           </div>
 
-          {/* Optimised prompt previews — the exact fal request body per video
-              model (incl. reference bindings) when they can be built, else
-              the assembled prompt text as the fallback. */}
-          {assembledPrompt &&
-            (motionRequestPreviews.length > 0 ||
-              assembledPrompt !== editedMotionPrompt) && (
-              <div className="space-y-2">
-                <span
-                  id="motion-assembled-prompt-heading"
-                  className="text-sm font-medium"
-                >
-                  Optimised prompts
-                </span>
-                {motionRequestPreviews.length > 0 ? (
-                  <ModelRequestPreviews
-                    idPrefix="motion-request"
-                    requests={motionRequestPreviews}
-                    selectedModel={motionModel}
-                    copiedTab={copiedTab}
-                    onCopy={(text, key) => void handleCopy(text, key)}
-                    footnote={
-                      !storageDomain
-                        ? 'Relative /r2/ image URLs are made publicly fetchable at submit'
-                        : null
-                    }
-                  />
-                ) : (
-                  <p
-                    id="motion-assembled-prompt-preview"
-                    aria-labelledby="motion-assembled-prompt-heading"
-                    className="whitespace-pre-wrap rounded-md border bg-muted/50 p-3 text-sm leading-relaxed text-foreground"
-                  >
-                    {assembledPrompt}
-                  </p>
-                )}
-              </div>
-            )}
+          {/* Optimised prompt — selected video model only (#1242). When
+              the request cannot be built (no still yet), fall back to the
+              assembled prompt text if it differs from the editable field. */}
+          {motionRequestPreview ? (
+            <OptimisedPromptPanel
+              idPrefix="motion-request"
+              preview={motionRequestPreview}
+              copiedKey={copiedTab}
+              onCopy={(text, key) => void handleCopy(text, key)}
+              footnote={
+                !storageDomain
+                  ? 'Relative /r2/ image URLs are made publicly fetchable at submit'
+                  : null
+              }
+            />
+          ) : assembledPrompt && assembledPrompt !== editedMotionPrompt ? (
+            <OptimisedPromptPanel
+              idPrefix="motion-assembled"
+              preview={{
+                modelName: IMAGE_TO_VIDEO_MODELS[effectiveMotionModel].name,
+                endpointId: IMAGE_TO_VIDEO_MODELS[effectiveMotionModel].id,
+                prompt: assembledPrompt,
+                json: null,
+                promptLength: assembledPrompt.length,
+                maxPromptLength:
+                  IMAGE_TO_VIDEO_MODELS[effectiveMotionModel].maxPromptLength,
+              }}
+              copiedKey={copiedTab}
+              onCopy={(text, key) => void handleCopy(text, key)}
+            />
+          ) : null}
 
           {/* History button */}
           <Button
@@ -2113,31 +2130,34 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
               {setVideoFromVariant.isPending ? 'Setting…' : 'Set Video'}
             </Button>
           ) : (
-            <Button
-              onClick={() => {
-                if (falNeedsBillingSetup) {
-                  showFalGate();
-                  return;
+            <div className="flex flex-col gap-1">
+              <Button
+                onClick={() => {
+                  if (falNeedsBillingSetup) {
+                    showFalGate();
+                    return;
+                  }
+                  void handleRegenerateMotion();
+                }}
+                disabled={
+                  isGenerating ||
+                  isGeneratingMotion ||
+                  videoVariantIsGenerating ||
+                  !shot
                 }
-                void handleRegenerateMotion();
-              }}
-              disabled={
-                isGenerating ||
-                isGeneratingMotion ||
-                videoVariantIsGenerating ||
-                !shot
-              }
-              className="w-full"
-            >
-              {(isGeneratingMotion || videoVariantIsGenerating) && (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              )}
-              {isGeneratingMotion || videoVariantIsGenerating
-                ? 'Generating…'
-                : videoModelGenerated
-                  ? 'Regenerate Motion'
-                  : 'Generate Motion'}
-            </Button>
+                className="w-full"
+              >
+                {(isGeneratingMotion || videoVariantIsGenerating) && (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                )}
+                {isGeneratingMotion || videoVariantIsGenerating
+                  ? 'Generating…'
+                  : videoModelGenerated
+                    ? 'Regenerate Motion'
+                    : 'Generate Motion'}
+              </Button>
+              <ActionCost estimate={motionCostEstimate} />
+            </div>
           )}
 
           {/* Cancel the in-flight render (#1108 Phase 4). Needs the

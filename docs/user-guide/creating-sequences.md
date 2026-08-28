@@ -20,7 +20,7 @@ The script editor accepts anything from a one-line idea to a full screenplay:
 - **One-liner or URL** — Type a brief concept like "A cat exploring a cyberpunk city at night" or paste a website URL. Use **Enhance Script** to expand it into a full screenplay.
 - **Full screenplay** — Paste a complete screenplay and click **Generate Sequence** directly.
 
-The editor shows a placeholder guiding you: _"A one-liner or website URL is all you need — click Enhance Script to do the rest. Or paste a full screenplay and generate directly."_
+The editor starts empty. Its placeholder reads: _"Paste a screenplay, or a one-liner we can expand."_
 
 ### Enhance Script
 
@@ -78,11 +78,12 @@ When multiple models are selected, the footer shows "N sequences will be created
 
 The AI model for generating scene images. You can select **multiple image models** to generate variant images across different providers. Available models include:
 
-| Model                      | Provider          | Notes                                                |
+| Model                      | Vendor            | Notes                                                |
 | -------------------------- | ----------------- | ---------------------------------------------------- |
 | Nano Banana 2              | Google            | Fast generation and editing (default)                |
 | Nano Banana Pro            | Google            | Enhanced realism and typography                      |
-| Grok Imagine Image Quality | Grok              | High-quality aesthetic generation with low censoring |
+| Grok Imagine Image 2.0     | SpaceXAI          | Newest Imagine image model, 1K/2K, edit up to 3 refs |
+| Grok Imagine Image Quality | SpaceXAI          | Quality Mode — higher fidelity, stronger text        |
 | FLUX.2 Max                 | Black Forest Labs | Exceptional realism and consistency                  |
 | Phota                      | Phota             | Character consistency via profiles                   |
 | Hunyuan Image v3           | Tencent           | Open source with strong composition                  |
@@ -95,12 +96,12 @@ The AI model for generating scene images. You can select **multiple image models
 
 The AI model for image-to-video animation. Toggle **Auto-generate motion** to automatically create video clips for each scene after images are generated.
 
-| Model              | Provider   | Est. Time                    |
+| Model              | Vendor     | Est. Time                    |
 | ------------------ | ---------- | ---------------------------- |
 | LTX 2.3 Pro        | Lightricks | ~15s (open-source)           |
 | Veo 3.1            | Google     | ~25s                         |
 | Kling v3 Pro       | Kling      | ~20s                         |
-| Grok Imagine Video | Grok       | ~20s                         |
+| Grok Imagine Video | SpaceXAI   | ~20s                         |
 | MiniMax Hailuo 02  | MiniMax    | ~15s                         |
 | Seedance 2.0       | ByteDance  | ~15s (default; native audio) |
 
@@ -108,7 +109,7 @@ The AI model for image-to-video animation. Toggle **Auto-generate motion** to au
 
 Toggle **Auto-generate music** to automatically create a soundtrack after scene generation. Choose from:
 
-| Model            | Provider   | Max Duration | Type                    |
+| Model            | Vendor     | Max Duration | Type                    |
 | ---------------- | ---------- | ------------ | ----------------------- |
 | ElevenLabs Music | ElevenLabs | 600s         | Music (default)         |
 | MiniMax Music v2 | MiniMax    | 300s         | Music (supports lyrics) |

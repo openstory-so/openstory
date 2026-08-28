@@ -1,6 +1,8 @@
 import HardBreak from '@tiptap/extension-hard-break';
 import { Placeholder } from '@tiptap/extensions/placeholder';
-import { type Editor, EditorContent, useEditor } from '@tiptap/react';
+import { EditorContent, useEditor, useEditorState } from '@tiptap/react';
+import { AllSelection } from '@tiptap/pm/state';
+import type { EditorView } from '@tiptap/pm/view';
 import StarterKit from '@tiptap/starter-kit';
 import {
   Markdown,
@@ -13,33 +15,74 @@ import { useEffect, useMemo, useRef } from 'react';
 import type { MentionOptions } from '@tiptap/extension-mention';
 import type { MentionItem } from '@/components/scenes/prompt-mention/mention-items';
 import { PromptMention } from './mention/mention-extension';
+import { createMentionSuggestion } from './mention/mention-suggestion';
+import { tagifyMarkdown } from './mention/tagify';
 
 type MentionConfigure = Partial<MentionOptions>;
 
-// markdown-it parses two trailing spaces + `\n` as a hard break, so converting
-// single newlines (but not paragraph-separating blank lines) keeps a pasted
-// multi-line screenplay block in one paragraph instead of shredding each line
-// into its own paragraph. Exported for unit testing.
-export const toHardBreakMarkdown = (text: string): string =>
-  text.replace(/(?<!\n)\n(?!\n)/g, '  \n');
+/**
+ * Collapse every line-break form to `\n`. Web/Docs/Word often put U+2028
+ * (LINE SEPARATOR) between lines — ProseMirror's default paste splitter only
+ * matches `\n` / `\r`, so those pastes looked empty or run-on.
+ */
+export const normalizeScreenplayNewlines = (text: string): string =>
+  text
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .replace(/[\u2028\u2029\u0085]/g, '\n');
 
-// Decide what to insert for a paste. The script editor must only ever ingest
-// markdown — never the arbitrary inline styling (fonts, colours, sizes) that
-// rich `text/html` clipboard payloads from Word / Google Docs / web pages
-// carry. When HTML is present we ignore it and insert the clipboard's
-// plain-text representation parsed as markdown; a plain-text-only paste returns
-// null so tiptap-markdown's own `clipboardTextParser` handles it. Exported for
-// unit testing.
-export const plainTextPasteAsMarkdown = (
-  html: string,
-  text: string
-): string | null => {
-  if (!html) return null; // plain text paste — handled as markdown already
-  if (!text) return null; // image-only / non-text paste — leave to default
-  return toHardBreakMarkdown(text);
+/**
+ * Playwright `.fill()` selects via `Range.selectNodeContents` on the
+ * contenteditable, then CDP `Input.insertText`. ProseMirror keeps its own
+ * selection and will still have a caret, so a naive insert appends onto the
+ * style sample instead of replacing it. True when the DOM range already
+ * covers the whole editor.
+ */
+const domSelectionCoversEditor = (view: EditorView): boolean => {
+  const { dom } = view;
+  const sel = dom.ownerDocument.getSelection();
+  if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return false;
+  const range = sel.getRangeAt(0);
+  const ancestor = range.commonAncestorContainer;
+  if (ancestor !== dom && !dom.contains(ancestor)) return false;
+  const whole = dom.ownerDocument.createRange();
+  whole.selectNodeContents(dom);
+  try {
+    return (
+      range.compareBoundaryPoints(Range.START_TO_START, whole) <= 0 &&
+      range.compareBoundaryPoints(Range.END_TO_END, whole) >= 0
+    );
+  } catch {
+    return false;
+  }
 };
-import { createMentionSuggestion } from './mention/mention-suggestion';
-import { tagifyMarkdown } from './mention/tagify';
+
+/**
+ * Playwright `.fill()` (and other `insertText` with embedded newlines) cannot
+ * put `\n` in a ProseMirror text node. Map each newline to a hard break so
+ * `getMarkdown()` round-trips the source script — including the recorded
+ * aimock enhance body. Paste is not handled here; ProseMirror owns that.
+ */
+const insertTextWithNewlines = (view: EditorView, text: string): boolean => {
+  const normalized = normalizeScreenplayNewlines(text);
+  const { schema } = view.state;
+  const hardBreak = schema.nodes.hardBreak;
+  if (!hardBreak) return false;
+  const nodes = normalized.split('\n').flatMap((line, i, lines) => {
+    const out = [];
+    if (line.length > 0) out.push(schema.text(line));
+    if (i < lines.length - 1) out.push(hardBreak.create());
+    return out;
+  });
+  if (nodes.length === 0) return true;
+  const { tr } = view.state;
+  if (view.state.selection.empty && domSelectionCoversEditor(view)) {
+    tr.setSelection(new AllSelection(tr.doc));
+  }
+  if (!tr.selection.empty) tr.deleteSelection();
+  view.dispatch(tr.insert(tr.selection.from, nodes).scrollIntoView());
+  return true;
+};
 
 declare module '@tiptap/core' {
   interface Storage {
@@ -98,6 +141,8 @@ type MarkdownEditorProps = {
    * later becomes a list, or the extension never registers.
    */
   mentionItems?: MentionItem[];
+  /** Map the chosen @ row to the item to insert (see `createMentionSuggestion`). */
+  onMentionSelect?: (item: MentionItem) => MentionItem;
 };
 
 const containerBaseClasses =
@@ -106,8 +151,11 @@ const containerBaseClasses =
 const disabledClasses =
   'cursor-not-allowed bg-input/50 opacity-50 dark:bg-input/80';
 
+// 16px base below md (prose-sm only from md up): an editable surface under
+// 16px makes iOS Safari auto-zoom on focus, and the zoomed page then pans
+// left/right on every tap. Mirrors the container's `text-base md:text-sm`.
 const proseClasses =
-  'prose prose-sm dark:prose-invert max-w-none w-full flex-1 focus:outline-none [&_p]:my-0 [&_p+p]:mt-2 [&_h1]:mt-2 [&_h1]:mb-1 [&_h2]:mt-2 [&_h2]:mb-1 [&_h3]:mt-2 [&_h3]:mb-1 [&_ul]:my-1 [&_ol]:my-1 [&_blockquote]:my-1 [&_pre]:my-1';
+  'prose md:prose-sm dark:prose-invert max-w-none w-full flex-1 focus:outline-none [&_p]:my-0 [&_p+p]:mt-2 [&_h1]:mt-2 [&_h1]:mb-1 [&_h2]:mt-2 [&_h2]:mb-1 [&_h3]:mt-2 [&_h3]:mb-1 [&_ul]:my-1 [&_ol]:my-1 [&_blockquote]:my-1 [&_pre]:my-1';
 
 const placeholderClasses =
   '[&_.is-editor-empty:first-child::before]:text-muted-foreground [&_.is-editor-empty:first-child::before]:content-[attr(data-placeholder)] [&_.is-editor-empty:first-child::before]:float-left [&_.is-editor-empty:first-child::before]:h-0 [&_.is-editor-empty:first-child::before]:pointer-events-none';
@@ -128,6 +176,7 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
   'aria-invalid': ariaInvalid,
   'data-testid': dataTestId,
   mentionItems,
+  onMentionSelect,
 }) => {
   // useEditor captures props at init. Bag the live onKeyDown in a ref so the
   // handler reads the freshest callback without needing to recreate the editor.
@@ -138,10 +187,6 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
   const onFocusRef = useRef(onFocus);
   onFocusRef.current = onFocus;
 
-  // handlePaste is captured at editor init (before `editor` is assigned), so it
-  // reads the live instance through this ref to insert markdown at the caret.
-  const editorRef = useRef<Editor | null>(null);
-
   // The suggestion plugin fires on every `@` keystroke; the items it pulls
   // must reflect the parent's latest list (it grows as the user adds cast /
   // elements / locations to the sequence) even though the editor's extensions
@@ -149,6 +194,8 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
   const mentionItemsRef = useRef<MentionItem[]>(mentionItems ?? []);
   mentionItemsRef.current = mentionItems ?? [];
   const hasMentions = mentionItems !== undefined;
+  const onMentionSelectRef = useRef(onMentionSelect);
+  onMentionSelectRef.current = onMentionSelect;
 
   // Signature changes when the set of available tags changes; drives the
   // "re-pill on items load" effect below.
@@ -173,11 +220,15 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
         html: hasMentions,
         linkify: true,
         breaks: true,
-        transformPastedText: true,
+        // Off: tiptap-markdown's clipboard parser uses `{ inline: true }`,
+        // which drops multi-line paste. Default ProseMirror paste is enough.
+        transformPastedText: false,
         transformCopiedText: true,
       }),
       Placeholder.configure({
-        placeholder: placeholder ?? '',
+        // Real HTML placeholder is rendered below so first paint (and LCP)
+        // does not wait for TipTap to hydrate a ::before (#1182).
+        placeholder: '',
         emptyEditorClass: 'is-editor-empty',
       }),
       // The Mention extension is generically typed for `MentionNodeAttrs`
@@ -189,7 +240,8 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
             PromptMention.configure({
               // oxlint-disable-next-line typescript/no-unsafe-type-assertion
               suggestion: createMentionSuggestion(
-                () => mentionItemsRef.current
+                () => mentionItemsRef.current,
+                () => onMentionSelectRef.current
               ) as MentionConfigure['suggestion'],
             }),
           ]
@@ -206,62 +258,32 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
         class: cn(proseClasses, placeholderClasses),
       },
       handleKeyDown: (_view, event) => onKeyDownRef.current?.(event) === true,
-      // Bulk inputs that carry embedded newlines (Playwright .fill, drag-drop
-      // of multi-line text, programmatic execCommand('insertText', …)) would
-      // otherwise split each line into a separate paragraph and shred
-      // screenplay structure. Intercept beforeinput and convert single \n
-      // into HardBreak nodes so the line layout survives the round-trip;
-      // getMarkdown() then emits each as a single \n (with breaks:true).
-      // Enter keypresses arrive as a separate inputType ('insertParagraph')
-      // and aren't touched here, so typing a new paragraph still works.
       handleDOMEvents: {
         beforeinput: (view, event) => {
           if (!(event instanceof InputEvent)) return false;
-          if (event.inputType !== 'insertText' || !event.data?.includes('\n')) {
+          const newlineInput =
+            event.inputType === 'insertLineBreak' ||
+            event.inputType === 'insertParagraph';
+          const data = newlineInput ? `\n${event.data ?? ''}` : event.data;
+          if (
+            (event.inputType !== 'insertText' &&
+              event.inputType !== 'insertReplacementText' &&
+              !newlineInput) ||
+            !data?.includes('\n')
+          ) {
             return false;
           }
-          const { schema, tr, selection } = view.state;
-          const hardBreak = schema.nodes.hardBreak;
-          if (!hardBreak) return false;
           event.preventDefault();
-          const parts = event.data.split('\n');
-          const nodes = parts.flatMap((part, i) => {
-            const out = [];
-            if (part.length > 0) out.push(schema.text(part));
-            if (i < parts.length - 1) out.push(hardBreak.create());
-            return out;
-          });
-          view.dispatch(tr.replaceWith(selection.from, selection.to, nodes));
-          return true;
+          return insertTextWithNewlines(view, data);
         },
       },
-      // Strip styling from rich (text/html) paste: insert only the plain-text
-      // representation, parsed as markdown, so the script never accepts fonts,
-      // colours, or other inline styling. Plain-text paste falls through to
-      // tiptap-markdown's clipboardTextParser (transformPastedText below).
-      handlePaste: (_view, event) => {
-        const clipboard = event.clipboardData;
-        if (!clipboard) return false;
-        const markdown = plainTextPasteAsMarkdown(
-          clipboard.getData('text/html'),
-          clipboard.getData('text/plain')
-        );
-        if (markdown === null) return false;
-        event.preventDefault();
-        editorRef.current?.commands.insertContent(markdown);
-        return true;
-      },
-      // Same treatment for actual plain-text paste — markdown-it parses two
-      // trailing spaces + \n as a hard break, so the pasted block stays in
-      // one paragraph instead of splitting.
-      transformPastedText: (text) => toHardBreakMarkdown(text),
+      transformPastedText: (text) => normalizeScreenplayNewlines(text),
     },
     onUpdate: ({ editor: e }) => {
       onValueChange(e.storage.markdown.getMarkdown());
     },
     onFocus: () => onFocusRef.current?.(),
   });
-  editorRef.current = editor;
 
   // Canonical Tiptap external-value sync (mirrors the Vue v-model example in
   // their docs): only setContent if the editor's current markdown differs
@@ -302,6 +324,16 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
     // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [editor, mentionItemsKey, hasMentions]);
 
+  // Emptiness must be transaction-reactive, not read off `editor` at render
+  // time: the value-sync effects above apply external content (seeded sample
+  // script, enhance output) with `emitUpdate: false` inside a rAF, which
+  // re-renders nothing — a render-time `editor.isEmpty` then stays stale and
+  // leaves the placeholder overlaid on the script (#1230).
+  const editorIsEmpty = useEditorState({
+    editor,
+    selector: (ctx) => ctx.editor?.isEmpty ?? null,
+  });
+
   // editable is captured at init; mirror prop changes through to the editor.
   useEffect(() => {
     if (!editor) return;
@@ -310,19 +342,65 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
   }, [editor, disabled]);
 
   return (
+    // Click-forwarder only: the editable ProseMirror surface inside carries
+    // the interaction semantics, and this div must keep aria-invalid for its
+    // error styling (so role="presentation" is not an option).
+    // oxlint-disable-next-line jsx-a11y/no-static-element-interactions
     <div
       ref={scrollRef}
       className={cn(
         containerBaseClasses,
+        'relative',
         disabled && disabledClasses,
-        'overflow-y-auto',
+        // No overflow rule here: the editor grows with its content. A caller
+        // that bounds its height (the composer's ScriptEditor) makes it the
+        // scroller. Chrome stops wheel chaining at a scroll container with
+        // overscroll-contain even when it has nothing to scroll, so an
+        // unconditional `overflow-y-auto overscroll-contain` froze the panel
+        // behind every prompt editor on desktop (#1281).
         className
       )}
       aria-invalid={ariaInvalid}
       data-testid={dataTestId}
       data-slot="markdown-editor"
+      // Chrome auto-translate rewriting a contenteditable desyncs
+      // ProseMirror's view (#1283); the script is the user's own text anyway.
+      translate="no"
+      data-markdown={value}
+      // The ProseMirror node only spans its text, so the empty area below the
+      // last line (the box's min-height) is otherwise a dead zone — clicking
+      // it should place the caret at the end, like a textarea. Scrollbar
+      // clicks (offsetX past clientWidth) must keep their native behaviour.
+      onMouseDown={(e) => {
+        if (!editor || disabled) return;
+        if (e.target instanceof Element && e.target.closest('.ProseMirror')) {
+          return;
+        }
+        if (e.nativeEvent.offsetX > e.currentTarget.clientWidth) return;
+        e.preventDefault();
+        editor.commands.focus('end');
+      }}
     >
-      <EditorContent editor={editor} className="w-full" />
+      {placeholder && (editorIsEmpty ?? !value) ? (
+        <p className="pointer-events-none absolute inset-x-0 top-0 px-2.5 py-2 text-base text-muted-foreground md:text-sm">
+          {placeholder}
+        </p>
+      ) : null}
+      {/* First-paint stand-in for seeded content (#1187): the editor only
+          renders after hydration (immediatelyRender: false), so a value
+          present at mount — the composer's sample script — would otherwise
+          pop in late and shift the page. Rendered in flow with the editor's
+          prose typography so the swap to the live editor holds height. */}
+      {!editor && value ? (
+        <div className={cn(proseClasses, 'whitespace-pre-wrap')}>{value}</div>
+      ) : null}
+      {/* Hidden while the stand-in shows — the container is a flex row, so an
+          empty pre-hydration EditorContent would otherwise share its width
+          and double the stand-in's wrapped lines. */}
+      <EditorContent
+        editor={editor}
+        className={cn('relative w-full', !editor && value && 'hidden')}
+      />
     </div>
   );
 };

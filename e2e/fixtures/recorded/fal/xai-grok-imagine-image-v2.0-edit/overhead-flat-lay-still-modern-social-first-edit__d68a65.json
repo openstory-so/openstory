@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Overhead flat-lay still, modern social-first editorial product photography, shot directly above a scuffed matte-black stage floor at night. Composed on the floor: the lipstick from (CORAL_LIPSTICK (Image 2)) lying on its side, a crumpled paper napkin scribbled and softened at the folds, and a half-empty plastic water bottle sweating condensation into a small ring of damp on the black wood. SCARLETT VEGA (Image 1)'s hand enters frame from the lower right, sleeve of a fitted black cotton turtleneck pushed up to the elbow, a thin silver ring on the index finger, fingers spread and just beginning to close as they drag the tube toward her across the gritty floor, tendons tensed, motion implied but the frame perfectly still. The floor surface shows tape residue, chalky scuff arcs from boot heels, dust and a strand of gaffer tape curling at the edge of frame; a coiled XLR cable and the base of a mic stand sit far in the corner shadow. Single dented metal work light rakes in from one side, hard directional beam creating one crisp long shadow off each object and a bright specular kick along the tube's polished band and glossy cap; deep unlit black falls off toward the frame edges, shadows lifted just enough to stay airy rather than murky. Clean true-to-life color, crisp warm highlights, one saturated warm accent popping against the neutral black and bone base. Locked overhead camera, 50mm macro-leaning lens, moderately shallow depth of field with the tube and hand tack-sharp and the bottle softening, 16:9.\n\nReference images define identity — keep every referenced character, object, and location consistent with its reference image; never render a reference image itself as a separate panel or subject.",
+        "model": "xai/grok-imagine-image/v2.0/edit"
+      },
+      "response": {
+        "json": {
+          "images": [
+            {
+              "url": "https://v3b.fal.media/files/b/0aa74b15/R94SjKrdoT7nEIQ4VJ3x-_OlU0uUXB.jpg",
+              "content_type": "image/jpeg",
+              "file_name": "R94SjKrdoT7nEIQ4VJ3x-_OlU0uUXB.jpg",
+              "file_size": null,
+              "width": 2816,
+              "height": 1584
+            }
+          ],
+          "revised_prompt": null
+        },
+        "status": 200,
+        "billableUnits": 9
+      }
+    }
+  ]
+}

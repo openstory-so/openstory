@@ -1,5 +1,5 @@
 import { openBillingGate } from '@/hooks/use-billing-gate-dialog';
-import { isInsufficientCreditsError } from '@/lib/errors';
+import { isAuthError, isInsufficientCreditsError } from '@/lib/errors';
 import { MutationCache, QueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
@@ -15,6 +15,8 @@ declare module '@tanstack/react-query' {
     };
   }
 }
+
+const MAX_QUERY_RETRIES = typeof window === 'undefined' ? 0 : 3;
 
 export function makeQueryClient() {
   let qc!: QueryClient;
@@ -44,6 +46,11 @@ export function makeQueryClient() {
     defaultOptions: {
       queries: {
         staleTime: 2 * 60 * 1000,
+        // RQ's own default is 3 retries in the browser, 0 on the server; keep
+        // that, but never retry a 401/403 — the session won't appear between
+        // attempts, and each attempt is another error-level log line (#1333).
+        retry: (failureCount, error) =>
+          !isAuthError(error) && failureCount < MAX_QUERY_RETRIES,
       },
     },
   });

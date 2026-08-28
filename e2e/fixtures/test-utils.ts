@@ -29,6 +29,76 @@ export async function waitForScriptEditor(page: Page): Promise<Locator> {
 }
 
 /**
+ * Replace the composer script with `script`.
+ *
+ * Do not use Playwright `.fill()` here. That does DOM `selectNodeContents`
+ * plus CDP `insertText`, which races ProseMirror's caret and can leave the
+ * style sample in React state — the enhance request then misses the recorded
+ * fixture and Stop hangs. TipTap's Mod-a is ProseMirror `AllSelection`, so
+ * the newline `beforeinput` handler deletes the whole doc first.
+ */
+export async function fillScriptEditor(
+  page: Page,
+  script: string
+): Promise<Locator> {
+  const editor = await waitForScriptEditor(page);
+  await editor.click();
+  await editor.press('ControlOrMeta+A');
+  await page.keyboard.insertText(script);
+  const firstLine =
+    script.split('\n').find((line) => line.trim().length > 0) ?? script;
+  await expect(editor).toContainText(firstLine, { timeout: 5_000 });
+  // React state (what enhance sends) lives on the wrapper. innerText can
+  // still show SHORELINE when the sample was prepended.
+  await expect(page.locator('[data-slot="markdown-editor"]')).toHaveAttribute(
+    'data-markdown',
+    script,
+    { timeout: 5_000 }
+  );
+  // React error boundaries swallow pageerror, so a throw during the
+  // composer's cost estimate (#1354) replaces the tree instead of failing
+  // the test. The heading is the error-boundary copy in __root.tsx.
+  await expect(
+    page.getByRole('heading', { name: 'Something went wrong' })
+  ).toHaveCount(0);
+  return editor;
+}
+
+/**
+ * Pick a named style on the composer strip.
+ *
+ * The row defaults to Film & Cinematic (#1180). Styles in another family
+ * need the category dropdown first — `family` is the radio label
+ * (e.g. "E-commerce").
+ */
+export async function selectComposerStyle(
+  page: Page,
+  styleName: string,
+  family?: string
+): Promise<void> {
+  if (family) {
+    await page.getByRole('button', { name: /^Style category:/ }).click();
+    await page.getByRole('menuitemradio', { name: family }).click();
+  }
+  // A selected tile relabels to "View <name> details" and clicking it opens
+  // the style dialog (#1187). The bare composer defaults to Automatic (#1255);
+  // category switches still pick the family's first style. So the target may
+  // already be selected: only click while it still offers Select.
+  const grid = page.getByRole('grid', { name: 'Style selection' });
+  const tile = grid.getByRole('button', { name: `Select ${styleName} style` });
+  const selectedTile = grid.getByRole('button', {
+    name: `View ${styleName} details`,
+  });
+  await expect(tile.or(selectedTile)).toBeVisible({
+    timeout: HYDRATION_TIMEOUT,
+  });
+  if (await tile.isVisible()) {
+    await tile.click();
+  }
+  await expect(selectedTile).toBeVisible();
+}
+
+/**
  * Wait until every file picked in an add/edit dialog has finished uploading.
  *
  * Order matters. The submit button is only disabled while
@@ -42,10 +112,15 @@ export async function waitForUploadComplete(
   page: Page,
   submitName = 'Add Talent'
 ): Promise<void> {
+  const dialog = page.getByRole('dialog', { name: submitName });
   await expect(
-    page.locator('[data-slot="file-upload-item"]').first()
+    dialog.locator('[data-slot="file-upload-item"]').first()
   ).toBeVisible();
-  await expect(page.getByRole('button', { name: submitName })).toBeEnabled({
+  // Scope to the open dialog: the page header still has an enabled
+  // "Add Talent" trigger, and during the PUT the dialog submit is
+  // relabeled "Uploading…". Waiting for the dialog's own submit name
+  // is what actually means the file landed.
+  await expect(dialog.getByRole('button', { name: submitName })).toBeEnabled({
     timeout: 15_000,
   });
 }

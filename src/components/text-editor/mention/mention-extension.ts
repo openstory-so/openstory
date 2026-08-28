@@ -18,7 +18,10 @@
  * over the bare stored slug).
  */
 
-import type { MentionSection } from '@/components/scenes/prompt-mention/mention-items';
+import {
+  mentionShowsAt,
+  type MentionSection,
+} from '@/components/scenes/prompt-mention/mention-items';
 import { Mention } from '@tiptap/extension-mention';
 import type { MarkdownNodeSpec } from 'tiptap-markdown';
 import {
@@ -52,7 +55,13 @@ function readPromptAttrs(attrs: Record<string, unknown>): PromptMentionAttrs {
 }
 
 function isMentionSection(value: string): value is MentionSection {
-  return value === 'cast' || value === 'elements' || value === 'locations';
+  return (
+    value === 'cast' ||
+    value === 'elements' ||
+    value === 'locations' ||
+    value === 'references' ||
+    value === 'images'
+  );
 }
 
 export const PromptMention = Mention.extend({
@@ -116,7 +125,9 @@ export const PromptMention = Mention.extend({
         ...(attrs.section ? { 'data-section': attrs.section } : {}),
         ...(attrs.label ? { 'data-label': attrs.label } : {}),
       },
-      attrs.section === 'locations' ? `@${attrs.id ?? ''}` : (attrs.id ?? ''),
+      attrs.section && mentionShowsAt(attrs.section)
+        ? `@${attrs.id ?? ''}`
+        : (attrs.id ?? ''),
     ];
   },
   renderText: ({ node }) => {

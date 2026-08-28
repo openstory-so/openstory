@@ -50,7 +50,7 @@ export type ChatMessage = {
 /**
  * Fetch a text prompt from the local registry.
  *
- * @param name - Prompt name (e.g., 'phase/scene-splitting')
+ * @param name - Prompt name (e.g., 'phase/scene-splitting-boundaries-chat')
  * @param variables - Optional variables to compile into the prompt
  * @returns The compiled prompt text
  */
@@ -72,7 +72,7 @@ export async function getPrompt(
 /**
  * Fetch a chat prompt from the local registry.
  *
- * @param name - Prompt name (e.g., 'phase/scene-splitting')
+ * @param name - Prompt name (e.g., 'phase/scene-splitting-boundaries-chat')
  * @param variables - Variables to compile into the prompt messages
  * @returns The compiled messages
  */

@@ -52,12 +52,9 @@ export type WriteFramePromptVersionInput = WriteFramePromptVersionBase &
         analysisModel: string;
       }
     | {
-        source: 'user-edit';
-        inputHash: string | null;
-        analysisModel: string | null;
-      }
-    | {
-        source: 'restored';
+        // Softened copies the rejected row's hash + model so staleness still
+        // tracks the same upstream context; null when the original had none.
+        source: 'user-edit' | 'restored' | 'softened';
         inputHash: string | null;
         analysisModel: string | null;
       }

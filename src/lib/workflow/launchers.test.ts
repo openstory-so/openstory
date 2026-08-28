@@ -11,6 +11,7 @@
  * step can re-derive it from a row the user edited in the meantime.
  */
 
+import { migrateStyleConfigV1ToV2 } from '@/lib/style/style-config';
 import { describe, expect, test, vi } from 'vitest';
 import { DEFAULT_IMAGE_MODEL, DEFAULT_VIDEO_MODEL } from '@/lib/ai/models';
 import { DEFAULT_ANALYSIS_MODEL } from '@/lib/ai/models.config';
@@ -49,7 +50,7 @@ const INPUT: StoryboardTriggerInput = {
   },
 };
 
-const STYLE_CONFIG: StyleConfig = {
+const STYLE_CONFIG: StyleConfig = migrateStyleConfigV1ToV2({
   mood: 'tense and hopeful',
   artStyle: 'photoreal cinematic',
   lighting: 'hard key, deep shadows',
@@ -57,14 +58,19 @@ const STYLE_CONFIG: StyleConfig = {
   cameraWork: 'handheld, tight lenses',
   referenceFilms: ['Children of Men'],
   colorGrading: 'cool shadows, warm highlights',
-};
+});
 
 function makeScopedDb(opts: {
   workflowRunId: string | null;
   claimSucceeds?: boolean;
   script?: string | null;
   styleId?: string | null;
-  style?: { config: StyleConfig } | null;
+  styleConfig?: StyleConfig | null;
+  style?: {
+    id?: string;
+    sequenceId?: string | null;
+    config: StyleConfig;
+  } | null;
   elementIds?: string[];
   talent?: Array<{ id: string; name: string; description: string | null }>;
   locations?: Array<{ id: string; name: string; description: string | null }>;
@@ -85,6 +91,7 @@ function makeScopedDb(opts: {
     script: opts.script === undefined ? 'INT. HALLWAY — NIGHT' : opts.script,
     aspectRatio: '16:9',
     styleId: opts.styleId === undefined ? 'style_1' : opts.styleId,
+    styleConfig: opts.styleConfig === undefined ? null : opts.styleConfig,
     analysisModel: 'invalid-model-id',
     imageModel: 'not-a-real-image-model',
     videoModel: 'not-a-real-video-model',
@@ -100,12 +107,14 @@ function makeScopedDb(opts: {
   );
   const getTalentByIds = vi.fn(async () => opts.talent ?? []);
   const getLocationsByIds = vi.fn(async () => opts.locations ?? []);
+  const getMemberEmail = vi.fn(async () => 'owner@example.com');
   const stub = {
     sequences: { getForUser, claimWorkflowSlot, update },
     styles: { getById: getStyleById },
     sequenceElements: { list: listElements },
     talent: { getByIds: getTalentByIds },
     locations: { getByIds: getLocationsByIds },
+    teamManagement: { getMemberEmail },
     sequence: () => ({ updateStatus }),
   };
   // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal ScopedDb stub exposing only what the launcher touches
@@ -213,7 +222,91 @@ describe('triggerStoryboard', () => {
       // Casting identity is snapshotted here too; INPUT suggests neither.
       suggestedTalent: [],
       suggestedLocations: [],
+      ownerEmail: 'owner@example.com',
+      sequenceUrl: expect.stringMatching(/\/sequences\/seq_1\/scenes$/),
     });
+  });
+
+  test('uses the sequence-owned style snapshot, not the live catalog row', async () => {
+    runStateResult = 'failed';
+    triggerWorkflowMock.mockReset();
+    triggerWorkflowMock.mockResolvedValue('run-1');
+    const snapshot = migrateStyleConfigV1ToV2({
+      mood: 'snapshotted mood on the sequence',
+      artStyle: 'photoreal cinematic',
+      lighting: 'hard key, deep shadows',
+      colorPalette: ['#101020', '#e0d0b0'],
+      cameraWork: 'handheld, tight lenses',
+      referenceFilms: ['Children of Men'],
+      colorGrading: 'cool shadows, warm highlights',
+    });
+    const { scopedDb, getStyleById } = makeScopedDb({
+      workflowRunId: null,
+      styleConfig: snapshot,
+      style: { config: STYLE_CONFIG },
+    });
+
+    await triggerStoryboard(scopedDb, INPUT);
+
+    expect(getStyleById).not.toHaveBeenCalled();
+    expect(triggerWorkflowMock.mock.calls[0]?.[1]).toMatchObject({
+      styleConfig: snapshot,
+    });
+  });
+
+  test('automatic style still a placeholder (no snapshot + row bound here) → pendingAutoStyleId on the payload', async () => {
+    runStateResult = 'failed';
+    triggerWorkflowMock.mockReset();
+    triggerWorkflowMock.mockResolvedValue('run-1');
+    const { scopedDb } = makeScopedDb({
+      workflowRunId: null,
+      styleId: 'style_auto',
+      styleConfig: null,
+      style: { id: 'style_auto', sequenceId: 'seq_1', config: STYLE_CONFIG },
+    });
+
+    await triggerStoryboard(scopedDb, INPUT);
+
+    expect(triggerWorkflowMock.mock.calls[0]?.[1]).toMatchObject({
+      pendingAutoStyleId: 'style_auto',
+      styleConfig: STYLE_CONFIG,
+    });
+  });
+
+  test('automatic style already derived (snapshot present) → no pendingAutoStyleId, so a retry never re-derives', async () => {
+    runStateResult = 'failed';
+    triggerWorkflowMock.mockReset();
+    triggerWorkflowMock.mockResolvedValue('run-1');
+    const { scopedDb } = makeScopedDb({
+      workflowRunId: null,
+      styleId: 'style_auto',
+      styleConfig: STYLE_CONFIG,
+      style: { id: 'style_auto', sequenceId: 'seq_1', config: STYLE_CONFIG },
+    });
+
+    await triggerStoryboard(scopedDb, INPUT);
+
+    const payload = triggerWorkflowMock.mock.calls[0]?.[1];
+    expect(payload).toMatchObject({ styleConfig: STYLE_CONFIG });
+    expect(payload).toHaveProperty('pendingAutoStyleId', undefined);
+  });
+
+  test('library style with no snapshot (pre-snapshot row) → no pendingAutoStyleId', async () => {
+    runStateResult = 'failed';
+    triggerWorkflowMock.mockReset();
+    triggerWorkflowMock.mockResolvedValue('run-1');
+    const { scopedDb } = makeScopedDb({
+      workflowRunId: null,
+      styleConfig: null,
+      style: { id: 'style_1', sequenceId: null, config: STYLE_CONFIG },
+    });
+
+    await triggerStoryboard(scopedDb, INPUT);
+
+    expect(triggerWorkflowMock.mock.calls[0]?.[1]).toHaveProperty(
+      'pendingAutoStyleId',
+      undefined
+    );
   });
 
   test('a sequence that already has a music prompt snapshots promptSource=regenerated', async () => {

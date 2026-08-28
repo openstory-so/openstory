@@ -19,11 +19,10 @@ import {
   getVariantGridConfig,
 } from '@/lib/constants/aspect-ratios';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
-import {
-  generateImageWithProvider,
-  type ImageGenerationParams,
-} from '@/lib/image/image-generation';
+import type { ImageGenerationParams } from '@/lib/image/image-generation';
+import { recordProvenance } from '@/lib/compliance/provenance';
 import { uploadImageToStorage } from '@/lib/image/image-storage';
+import { r2KeyFromUrl } from '@/lib/storage/buckets';
 import {
   buildReferenceImagePrompt,
   type ReferenceImageDescription,
@@ -31,6 +30,7 @@ import {
 import { getVariantImagePrompt } from '@/lib/prompts/variant-image';
 import { getGenerationChannel } from '@/lib/realtime';
 import { OpenStoryWorkflowEntrypoint } from '@/lib/workflow/base-workflow';
+import { generateImageSoftening } from '@/lib/workflows/content-soften';
 import { WorkflowValidationError } from '@/lib/workflow/errors';
 import type {
   ShotVariantWorkflowInput,
@@ -41,7 +41,13 @@ import { getLogger } from '@/lib/observability/logger';
 
 const logger = getLogger(['openstory', 'workflow', 'shot-variant']);
 
-type PrepResult = { params: ImageGenerationParams; versionId: string };
+type PrepResult = {
+  params: ImageGenerationParams;
+  versionId: string;
+  /** Authored grid prompt (pre-legend) — what a content soften rewrites. */
+  basePrompt: string;
+  references: ReferenceImageDescription[];
+};
 
 export class ShotVariantWorkflow extends OpenStoryWorkflowEntrypoint<ShotVariantWorkflowInput> {
   protected override async runImpl(
@@ -113,7 +119,12 @@ export class ShotVariantWorkflow extends OpenStoryWorkflowEntrypoint<ShotVariant
         // half of this guard already covers; resolving the anchor here instead
         // would re-read a pointer the spawn never saw.
         if (!input.shotId || !input.sequenceId || !input.frameId) {
-          return { params, versionId: '' };
+          return {
+            params,
+            versionId: '',
+            basePrompt,
+            references: allReferences,
+          };
         }
         // The trigger's frame (frame id ≠ shot id), checked for existence only.
         const frame = await scopedDb.liveRead.frames.getById(input.frameId);
@@ -142,7 +153,12 @@ export class ShotVariantWorkflow extends OpenStoryWorkflowEntrypoint<ShotVariant
           { shotId: input.shotId, status: 'generating' }
         );
 
-        return { params, versionId: version.id };
+        return {
+          params,
+          versionId: version.id,
+          basePrompt,
+          references: allReferences,
+        };
       }
     );
 
@@ -150,21 +166,43 @@ export class ShotVariantWorkflow extends OpenStoryWorkflowEntrypoint<ShotVariant
       return { variantImageUrl: '' };
     }
 
-    const imageResult = await step.do('generate-image', async () => {
-      logger.info(
-        `[ShotVariantWorkflow] Generating variant grid ${input.shotId} with model ${prep.params.model}`
-      );
-      return generateImageWithProvider(prep.params, {
-        scopedDb: scopedDb.credentials,
-      });
-    });
-
-    // Before the deduction guard — see recordFalUsageStep (#1069).
-    const falUsage = await recordFalUsageStep(
+    // Reseeds on a content flag, then one softened prompt rebuilt with the
+    // same reference legend (#1293).
+    const generation = await generateImageSoftening({
       step,
       scopedDb,
-      imageResult.metadata
-    );
+      workflowRunId,
+      userId: input.userId,
+      sequenceId: input.sequenceId,
+      kind: 'variant-grid',
+      logTag: '[ShotVariantWorkflow]',
+      subject: `variant grid ${input.shotId}`,
+      stepName: 'generate-image',
+      params: prep.params,
+      prompt: prep.basePrompt,
+      rebuild: (nextPrompt, model) => {
+        const rebuilt = buildReferenceImagePrompt(
+          nextPrompt,
+          prep.references,
+          IMAGE_MODELS[model].maxPromptLength
+        );
+        return {
+          ...prep.params,
+          model,
+          prompt: rebuilt.prompt,
+          referenceImageUrls: rebuilt.referenceUrls,
+        };
+      },
+      meta: { shotId: input.shotId },
+    });
+    const imageResult = generation.result;
+
+    // Before the deduction guard — see recordFalUsageStep (#1069). Native
+    // xAI images have no fal units; sampling them would corrupt fal medians.
+    const falUsage: { requestId?: string } =
+      imageResult.via === 'fal'
+        ? await recordFalUsageStep(step, scopedDb, imageResult.metadata)
+        : {};
 
     await step.do('deduct-credits', async () => {
       await deductWorkflowCredits({
@@ -230,6 +268,33 @@ export class ShotVariantWorkflow extends OpenStoryWorkflowEntrypoint<ShotVariant
       });
 
       if (uploadResult.url) imageUrl = uploadResult.url;
+
+      // Provenance (#1180). The 3×3 grid is a frame_variant (`kind: framing`)
+      // — not the retired `shot_variants` table. storageKey is derived from
+      // the cached upload URL so this step stays replay-safe if `upload-to-storage`
+      // already completed with `{ url }` only.
+      await step.do('record-provenance', async () => {
+        const storageKey = r2KeyFromUrl(uploadResult.url);
+        if (!storageKey) {
+          throw new Error(`Uploaded grid for ${prep.versionId} has no R2 key`);
+        }
+        await recordProvenance(scopedDb.provenance, {
+          teamId: input.teamId,
+          userId: input.userId,
+          assetKind: 'frame_variant',
+          assetId: prep.versionId,
+          storageKey,
+          provider: imageResult.via,
+          model: prep.params.model,
+          providerRequestId:
+            falUsage.requestId ?? imageResult.metadata.requestId ?? null,
+          workflowRunId,
+          prompt: prep.params.prompt,
+          sequenceId: input.sequenceId,
+          shotId: input.shotId,
+          referenceImageCount: prep.params.referenceImageUrls?.length ?? 0,
+        });
+      });
     }
 
     return { variantImageUrl: imageUrl };

@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "9-panel cinematic storyboard sheet derived from Image 1. Mix Wide, Medium, and Tight shots of the same scene. No borders between panels.\n\nLayout: 3x3 grid (9 panels) in a 16:9 landscape image.\n\nScene: Cinematic 16:9 editorial beauty-campaign still, handheld low-angle framing, gritty tactile realism. SCARLETT VEGA (Image 2) wears a fitted black cotton turtleneck with sleeves pushed up to her elbows, dark slim jeans, scuffed black ankle boots, and a slouchy dark denim-canvas jacket, a heavy natural-canvas tote bag slung over one shoulder, small gold hoop earrings and a thin silver ring on her right index finger. She stands mid-stride in a tight basement club back corridor, having just pulled the lipstick tube from her jacket pocket — she holds the product from (CORAL_LIPSTICK (Image 4)) low in her right hand, capped, angled slightly toward the lens and catching a hard specular kick of red light, giving it one dismissive downward glance with a deadpan raised eyebrow, no intention of reapplying, while her left forearm is already lifting to shove the heavy black stage curtain aside, the fabric beginning to swing and billow in a slow dark arc at the end of the passage. The corridor is exposed painted brick plastered with layers of peeling old flyers and taped set lists, black-painted pipes and conduit crowding the low ceiling just above her head, scuffed concrete floor gritty with dust and gaffer-tape scars, a scratched fire door and a stacked road case shoved against the wall in the background. A single red EXIT fixture just out of frame is the key, spilling crimson across the bricks with deep rapid falloff into near-black, a dirty amber bulb bleeding faintly from a doorway beyond, hot rim light along the ridge of her jacket shoulder and a crimson highlight on the tube's glossy surface. Shot low and close on a 28mm lens, slight upward tilt, natural handheld micro-shake, shallow depth of field with the curtain edge softening into bokeh, punchy contrast, crisp true-to-life skin warmth against the saturated red-and-black palette, fine 35mm grain.\n\nEvery panel is a shot of the same scene as Image 1 — keep the characters, wardrobe, lighting, color grade, and texture consistent across all panels.\n\nNo text, dialogue bubbles, scene numbers, or watermarks.\n\nReference images define identity — keep every referenced character, object, and location consistent with its reference image; never render a reference image itself as a separate panel or subject.\nImage 1 (primary): Primary source scene — generate 9 variant shots from this image\nImage 3 (location): INT. CLUB BACK CORRIDOR — NIGHT - A tight backstage corridor of exposed painted brick plastered with old flyers and taped set lists",
+        "model": "xai/grok-imagine-image/v2.0/edit"
+      },
+      "response": {
+        "json": {
+          "images": [
+            {
+              "url": "https://v3b.fal.media/files/b/0aa74b0d/JRycPt16eavTXrI2XmVEZ_DcaaFWiZ.jpg",
+              "content_type": "image/jpeg",
+              "file_name": "JRycPt16eavTXrI2XmVEZ_DcaaFWiZ.jpg",
+              "file_size": null,
+              "width": 2816,
+              "height": 1584
+            }
+          ],
+          "revised_prompt": null
+        },
+        "status": 200,
+        "billableUnits": 10
+      }
+    }
+  ]
+}

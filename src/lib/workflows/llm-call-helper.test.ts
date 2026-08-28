@@ -47,7 +47,9 @@ vi.doMock('@/lib/realtime', () => ({
   }),
 }));
 
-const { durableStreamingLLMCallCf } = await import('./llm-call-helper');
+const { durableLLMCallCf, durableStreamingLLMCallCf } =
+  await import('./llm-call-helper');
+const { usdToMicros, ZERO_MICROS } = await import('@/lib/billing/money');
 
 // Minimal WorkflowStep: run every step body immediately, no retries.
 // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal WorkflowStep stub: the helper only uses `do`
@@ -64,7 +66,7 @@ const callConfig = {
   phase: { number: 3, name: 'Visual prompts' },
   promptName: 'phase/visual-prompt-scene-generation-chat',
   promptVariables: {},
-  modelId: 'x-ai/grok-4.5' as const,
+  modelId: 'x-ai/grok-4.6' as const,
   responseSchema: schema,
 };
 
@@ -73,6 +75,115 @@ const callContext = {
   workflowRunId: 'wf-test',
   shotPromptStream: { shotId: 'shot-1', promptType: 'visual' as const },
 };
+
+/** Context without shot stream → durableLLMCallCf (non-UI stream drain). */
+const nonStreamContext = {
+  sequenceId: '01TESTSEQUENCE0000000000',
+  workflowRunId: 'wf-test',
+};
+
+describe('durableLLMCallCf usage cost capture', () => {
+  it('requests stream + includeUsage and bills usage.cost from RUN_FINISHED', async () => {
+    const validObject = { visual: { fullPrompt: 'A clean shot' } };
+    mockChat.mockReturnValue(
+      (async function* () {
+        yield {
+          type: 'CUSTOM',
+          name: 'structured-output.complete',
+          value: { object: validObject, raw: JSON.stringify(validObject) },
+        };
+        yield {
+          type: 'RUN_FINISHED',
+          usage: {
+            promptTokens: 10,
+            completionTokens: 5,
+            totalTokens: 15,
+            cost: 0.07,
+          },
+        };
+      })()
+    );
+
+    const result = await durableLLMCallCf(step, callConfig, nonStreamContext);
+    expect(result).toEqual(validObject);
+
+    const firstCall = mockChat.mock.calls[0];
+    if (!firstCall) throw new Error('expected mockChat to have been called');
+    expect(firstCall[0].stream).toBe(true);
+    expect(firstCall[0].modelOptions?.streamOptions?.includeUsage).toBe(true);
+  });
+
+  it('returns zero cost micros when usage.cost is missing', async () => {
+    const validObject = { visual: { fullPrompt: 'No cost' } };
+    mockChat.mockReturnValue(
+      (async function* () {
+        yield {
+          type: 'CUSTOM',
+          name: 'structured-output.complete',
+          value: { object: validObject, raw: JSON.stringify(validObject) },
+        };
+      })()
+    );
+
+    // Without scopedDb there is no deduct step; success proves the drain
+    // completed and missing cost did not throw.
+    await expect(
+      durableLLMCallCf(step, callConfig, nonStreamContext)
+    ).resolves.toEqual(validObject);
+    // Sanity: ZERO and a real cost micros stay distinct for callers.
+    expect(ZERO_MICROS).not.toBe(usdToMicros(0.07));
+  });
+
+  it('throws when no structured-output.complete event arrives', async () => {
+    mockChat.mockReturnValue(
+      (async function* () {
+        yield {
+          type: 'TEXT_MESSAGE_CONTENT',
+          delta: '{"visual":{"fullPrompt":"no event"}}',
+        };
+      })()
+    );
+
+    await expect(
+      durableLLMCallCf(step, callConfig, nonStreamContext)
+    ).rejects.toThrow(/structured-output\.complete/);
+  });
+
+  it('drains chat() after RUN_ERROR so otel onError can end the span', async () => {
+    let cancelled = false;
+    mockChat.mockReturnValue({
+      [Symbol.asyncIterator]() {
+        let i = 0;
+        const events = [
+          {
+            type: 'RUN_ERROR',
+            message:
+              'openrouter.structuredOutputStream: response contained no content',
+            code: 'empty-response',
+            model: 'anthropic/claude-opus-5',
+          },
+        ];
+        return {
+          async next() {
+            if (i < events.length) {
+              return { value: events[i++], done: false as const };
+            }
+            return { done: true as const, value: undefined };
+          },
+          async return() {
+            cancelled = true;
+            return { done: true as const, value: undefined };
+          },
+        };
+      },
+    });
+
+    await expect(
+      durableLLMCallCf(step, callConfig, nonStreamContext)
+    ).rejects.toThrow(/empty-response/);
+    expect(cancelled).toBe(false);
+  });
+});
 
 describe('durableStreamingLLMCallCf structured-output.complete', () => {
   it('prefers the validated object from the complete event over accumulated text', async () => {
@@ -102,7 +213,7 @@ describe('durableStreamingLLMCallCf structured-output.complete', () => {
     expect(result).toEqual(validObject);
   });
 
-  it('falls back to accumulated text when no complete event arrives', async () => {
+  it('throws when no structured-output.complete event arrives', async () => {
     const validJson = '{"visual":{"fullPrompt":"Fallback shot"}}';
     mockChat.mockReturnValue(
       (async function* () {
@@ -110,12 +221,9 @@ describe('durableStreamingLLMCallCf structured-output.complete', () => {
       })()
     );
 
-    const result = await durableStreamingLLMCallCf(
-      step,
-      callConfig,
-      callContext
-    );
-    expect(result).toEqual({ visual: { fullPrompt: 'Fallback shot' } });
+    await expect(
+      durableStreamingLLMCallCf(step, callConfig, callContext)
+    ).rejects.toThrow(/structured-output\.complete/);
   });
 
   it('still rejects when both the text is malformed and no event arrives', async () => {

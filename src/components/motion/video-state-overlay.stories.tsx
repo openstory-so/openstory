@@ -83,6 +83,24 @@ export const Completed: Story = {
   },
 };
 
+export const ContentBlockedStill: Story = {
+  args: {
+    thumbnailUrl: null,
+    videoStatus: 'pending',
+    imageStatus: 'failed',
+    imageError:
+      'The content could not be processed because it contained material flagged by a content checker.',
+  },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          'Content-checker rejection on the still (#1272). Warning copy — edit the script or prompt, or retry — not a hard generation error.',
+      },
+    },
+  },
+};
+
 export const RetryingImage: Story = {
   args: {
     thumbnailUrl: null,

@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'vitest';
+import { migrateStyleConfigV1ToV2 } from '@/lib/style/style-config';
 import type { ElementBibleEntry } from '@/lib/ai/scene-analysis.schema';
 import type { StyleConfig } from '@/lib/db/schema';
 import {
@@ -18,7 +19,7 @@ const entry: ElementBibleEntry = {
   },
 };
 
-const styleConfig: StyleConfig = {
+const styleConfig: StyleConfig = migrateStyleConfigV1ToV2({
   mood: 'sun-drenched optimism',
   artStyle: 'cinematic photorealism',
   lighting: 'warm golden-hour natural light',
@@ -26,7 +27,7 @@ const styleConfig: StyleConfig = {
   cameraWork: 'handheld intimate',
   referenceFilms: ['Call Me by Your Name'],
   colorGrading: 'warm highlights, soft teal shadows',
-};
+});
 
 describe('buildElementSheetPrompt', () => {
   test('embeds the bible description and consistency tag', () => {

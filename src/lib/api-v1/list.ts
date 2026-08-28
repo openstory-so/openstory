@@ -12,7 +12,7 @@
 import type { ScopedDb } from '@/lib/db/scoped';
 import type { Style } from '@/lib/db/schema/libraries';
 import { ValidationError } from '@/lib/errors';
-import type { ShotView } from '@/lib/shots/shot-view';
+import type { ShotReadiness } from '@/lib/shots/shot-view';
 import type { Sequence } from '@/types/database';
 import { createSequenceLink } from './discovery';
 import { API_V1_BASE, getLink, type HalResource, withLinks } from './hal';
@@ -77,7 +77,7 @@ export function decodeCursor(raw: string): SequenceCursor {
 
 function buildListItem(
   sequence: Sequence,
-  shots: ShotView[],
+  shots: ShotReadiness[],
   style: Style | null,
   origin: string
 ): HalResource<SequenceListItem> {
@@ -100,7 +100,7 @@ function buildListItem(
  */
 export async function buildSequenceListPage(params: {
   scopedDb: {
-    sequences: Pick<ScopedDb['sequences'], 'listShotsByIds'>;
+    sequences: Pick<ScopedDb['sequences'], 'listShotReadinessByIds'>;
     styles: Pick<ScopedDb['styles'], 'listByIds'>;
   };
   sequences: Sequence[];
@@ -113,16 +113,17 @@ export async function buildSequenceListPage(params: {
   // One batched shot fetch and one batched style fetch across the whole page,
   // rather than N round-trips per sequence.
   const [allShots, allStyles] = await Promise.all([
-    scopedDb.sequences.listShotsByIds(sequences.map((s) => s.id)),
+    // Readiness only, NOT the full `ShotView`: this document reports four
+    // integers per sequence, and materialising every shot's metadata and
+    // prompts to get them is what let a page of 100 sequences approach the
+    // 128 MB isolate ceiling (#1161).
+    scopedDb.sequences.listShotReadinessByIds(sequences.map((s) => s.id)),
     scopedDb.styles.listByIds(sequences.map((s) => s.styleId)),
   ]);
 
-  // `listShotsByIds` already assembles each shot's view (anchor frame + its
-  // selected versions), so these only need grouping by sequence. This used to
-  // re-fetch the anchors and re-assemble on top — a redundant round-trip that
-  // also silently DROPPED frameless shots, which the batch read deliberately
-  // keeps (`shotViewMissingFrame`).
-  const shotsById = new Map<string, ShotView[]>();
+  // Frameless shots are deliberately kept by the batch read (as they are by
+  // `shotViewMissingFrame` on the full path) — they still count as shots.
+  const shotsById = new Map<string, ShotReadiness[]>();
   for (const shot of allShots) {
     const bucket = shotsById.get(shot.sequenceId);
     if (bucket) bucket.push(shot);

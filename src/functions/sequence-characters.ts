@@ -9,9 +9,10 @@ import { z } from 'zod';
 
 import { safeTextToImageModel } from '@/lib/ai/models';
 import { generateId } from '@/lib/db/id';
-import { StyleConfigSchema } from '@/lib/db/schema';
 import type { CharacterBibleUpdate } from '@/lib/db/scoped/characters';
+import { resolveSequenceStyleConfig } from '@/lib/style/style-config';
 import { buildCastingAttributes } from '@/lib/prompts/character-prompt';
+import { shouldReuseTalentSheet } from '@/lib/talent/reuse-talent-sheet';
 import { getGenerationChannel } from '@/lib/realtime';
 import { ulidSchema } from '@/lib/schemas/id.schemas';
 import { triggerWorkflow } from '@/lib/workflow/client';
@@ -190,7 +191,7 @@ export const restoreSequenceCharacterFn = createServerFn({ method: 'POST' })
 /** Get shot IDs for all shots containing a specific character */
 export const getShotIdsForCharacterFn = createServerFn({ method: 'GET' })
   .middleware([sequenceAccessMiddleware])
-  .inputValidator(zodValidator(z.object({ characterId: z.string().min(1) })))
+  .validator(zodValidator(z.object({ characterId: z.string().min(1) })))
   .handler(async ({ context, data }) => {
     const shotIds = await context.scopedDb.characters.getShotIdsForCharacter(
       context.sequence.id,
@@ -202,7 +203,7 @@ export const getShotIdsForCharacterFn = createServerFn({ method: 'GET' })
 /** Recast a character with different talent, triggering sheet regeneration */
 export const recastCharacterFn = createServerFn({ method: 'POST' })
   .middleware([authWithTeamMiddleware])
-  .inputValidator(
+  .validator(
     zodValidator(
       z.object({ characterId: z.string().min(1), talentId: ulidSchema })
     )
@@ -219,12 +220,17 @@ export const recastCharacterFn = createServerFn({ method: 'POST' })
     const sequence = await context.scopedDb.sequences.getForUser({
       sequenceId: character.sequenceId,
     });
-    const style = sequence.styleId
-      ? await context.scopedDb.styles.getById(sequence.styleId)
-      : null;
-    const styleConfig = style
-      ? StyleConfigSchema.parse(style.config)
-      : undefined;
+    const style =
+      sequence.styleConfig == null && sequence.styleId
+        ? await context.scopedDb.styles.getById(sequence.styleId)
+        : null;
+    const styleConfig =
+      sequence.styleConfig != null || style
+        ? resolveSequenceStyleConfig({
+            snapshot: sequence.styleConfig,
+            live: style?.config,
+          })
+        : undefined;
 
     const talentWithSheets = await context.scopedDb.talent.getWithRelations(
       data.talentId
@@ -329,6 +335,17 @@ export const recastCharacterFn = createServerFn({ method: 'POST' })
       // person + "look exactly like" trips OpenAI's likeness moderation.
       talentDescription:
         `This character must exactly match the person shown in the reference image. ${talentWithSheets.description ?? ''}`.trim(),
+      reuseTalentSheet: Boolean(
+        defaultSheet?.imageUrl &&
+        shouldReuseTalentSheet({
+          characterClothing: character.standardClothing,
+          characterFeatures: character.distinguishingFeatures,
+          talentClothing: defaultSheet.metadata?.standardClothing,
+          talentFeatures: defaultSheet.metadata?.distinguishingFeatures,
+          talentPhysical: defaultSheet.metadata?.physicalDescription,
+          talentDescription: talentWithSheets.description,
+        })
+      ),
       imageModel,
       // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
       talentSheetInputHash: defaultSheet?.inputHash ?? null,

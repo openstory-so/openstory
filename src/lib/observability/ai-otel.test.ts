@@ -420,8 +420,18 @@ describe('recordMediaGenerationSpan', () => {
       // 350_000 microdollars → $0.35.
       'gen_ai.usage.cost': 0.35,
       'tanstack.ai.usage.units_billed': 5,
-      'gen_ai.input.messages': 'a cat on a skateboard',
-      'gen_ai.output.messages': 'https://cdn.test/video.mp4',
+      'gen_ai.input.messages': JSON.stringify([
+        {
+          role: 'user',
+          content: [{ type: 'text', text: 'a cat on a skateboard' }],
+        },
+      ]),
+      'gen_ai.output.messages': JSON.stringify([
+        {
+          role: 'assistant',
+          content: [{ type: 'text', text: 'https://cdn.test/video.mp4' }],
+        },
+      ]),
     });
     expect(mockSpan.setAttributes).toHaveBeenCalledWith({
       'posthog.distinct_id': 'user-1',
@@ -572,5 +582,85 @@ describe('recordMediaGenerationSpan', () => {
       'gen_ai.request.model': 'kling-v2.5',
       'error.type': 'provider_error',
     });
+  });
+});
+
+describe('normalizePostHogAiContent', () => {
+  it('rewrites TanStack {role, content: string} into PostHog content parts', async () => {
+    const { normalizePostHogAiContent } = await importAiOtel();
+    const attrs: Attributes = {
+      'gen_ai.input.messages': JSON.stringify([
+        { role: 'system', content: 'You are a motion prompt engineer' },
+        { role: 'user', content: 'Generate the motion prompt' },
+      ]),
+      'gen_ai.output.messages': JSON.stringify([
+        { role: 'assistant', content: '{"fullPrompt":"dolly in"}' },
+      ]),
+    };
+
+    normalizePostHogAiContent(attrs);
+
+    expect(JSON.parse(String(attrs['$ai_input']))).toEqual([
+      {
+        role: 'system',
+        content: [{ type: 'text', text: 'You are a motion prompt engineer' }],
+      },
+      {
+        role: 'user',
+        content: [{ type: 'text', text: 'Generate the motion prompt' }],
+      },
+    ]);
+    expect(JSON.parse(String(attrs['$ai_output_choices']))).toEqual([
+      {
+        role: 'assistant',
+        content: [{ type: 'text', text: '{"fullPrompt":"dolly in"}' }],
+      },
+    ]);
+    expect(attrs['gen_ai.input.messages']).toBe(attrs['$ai_input']);
+    expect(attrs['gen_ai.output.messages']).toBe(attrs['$ai_output_choices']);
+  });
+
+  it('wraps a bare prompt/URL string so media spans populate Input/Output', async () => {
+    const { normalizePostHogAiContent } = await importAiOtel();
+    const attrs: Attributes = {
+      'gen_ai.input.messages': 'a cat on a skateboard',
+      'gen_ai.output.messages': 'https://cdn.test/video.mp4',
+    };
+
+    normalizePostHogAiContent(attrs);
+
+    expect(JSON.parse(String(attrs['$ai_input']))).toEqual([
+      {
+        role: 'user',
+        content: [{ type: 'text', text: 'a cat on a skateboard' }],
+      },
+    ]);
+    expect(JSON.parse(String(attrs['$ai_output_choices']))).toEqual([
+      {
+        role: 'assistant',
+        content: [{ type: 'text', text: 'https://cdn.test/video.mp4' }],
+      },
+    ]);
+  });
+
+  it('lifts langfuse.observation.* onto gen_ai and $ai_* for the root span', async () => {
+    const { normalizePostHogAiContent } = await importAiOtel();
+    const attrs: Attributes = {
+      'langfuse.observation.input': JSON.stringify([
+        { role: 'user', content: 'hello' },
+      ]),
+      'langfuse.observation.output': JSON.stringify([
+        { role: 'assistant', content: 'world' },
+      ]),
+    };
+
+    normalizePostHogAiContent(attrs);
+
+    expect(JSON.parse(String(attrs['gen_ai.input.messages']))).toEqual([
+      { role: 'user', content: [{ type: 'text', text: 'hello' }] },
+    ]);
+    expect(JSON.parse(String(attrs['gen_ai.output.messages']))).toEqual([
+      { role: 'assistant', content: [{ type: 'text', text: 'world' }] },
+    ]);
   });
 });

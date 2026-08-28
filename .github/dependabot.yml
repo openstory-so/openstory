@@ -11,3 +11,77 @@ updates:
         patterns: ['*']
     commit-message:
       prefix: ci
+
+  # Root app (bun.lock). Weekly version updates keep the stack current between
+  # intentional upgrade PRs.
+  #
+  # Grouping is deliberately coarse — three PRs a week, not a dozen. Per-library
+  # groups (tanstack, radix, storybook, …) produced ~10 PRs every Monday, each
+  # one a full CI run and a separate review. Instead: routine minor/patch bumps
+  # ride together, split only by production vs development so a runtime-affecting
+  # PR is obvious at a glance, and majors are quarantined in their own PR so one
+  # breaking bump can never block the routine ones.
+  - package-ecosystem: bun
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      # Core + adapters share a peer chain (`ai-openrouter`/`ai-fal` peer on
+      # `@tanstack/ai`). First matching group wins, so this must sit above
+      # `production` / `development` or a weekly run will bump `ai` without
+      # the adapters and fail typecheck. Devtools rides along because
+      # `@tanstack/ai-devtools-core` also peers on `@tanstack/ai`.
+      tanstack-ai:
+        patterns:
+          - '@tanstack/ai'
+          - '@tanstack/ai-fal'
+          - '@tanstack/ai-openrouter'
+          - '@tanstack/react-ai-devtools'
+        update-types: ['minor', 'patch']
+      production:
+        dependency-type: production
+        update-types: ['minor', 'patch']
+      development:
+        dependency-type: development
+        update-types: ['minor', 'patch']
+      # Majors land together. Review or close as a batch — do the risky ones by
+      # hand rather than letting each open its own PR.
+      major-updates:
+        patterns: ['*']
+        update-types: ['major']
+    ignore:
+      # Engines pin Node 24; types for Node 26 would lie about the runtime.
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
+      # Hard-pinned to the exact version @tanstack/ai-openrouter depends on
+      # (0.13.20). Any other version installs a second nested copy of the SDK,
+      # and `createAdapter` then fails to typecheck: the two copies declare
+      # separate private fields on HTTPClient. Move this only in lockstep with
+      # an @tanstack/ai-openrouter bump.
+      - dependency-name: '@openrouter/sdk'
+      # Stay on drizzle 1.0 RC line; do not silently roll back to 0.x.
+      - dependency-name: 'drizzle-orm'
+        versions: ['<1.0.0-0']
+      - dependency-name: 'drizzle-kit'
+        versions: ['<1.0.0-0']
+
+  # Server-side export container (separate package.json + bun.lock).
+  - package-ecosystem: bun
+    directory: /containers/video-export
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      video-export:
+        patterns: ['*']
+    ignore:
+      # Dockerfile is node:22-bookworm-slim — keep types on the Node 22 line.
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']

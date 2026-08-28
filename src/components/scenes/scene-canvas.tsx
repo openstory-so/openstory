@@ -3,15 +3,17 @@ import { CanvasMediaStage } from '@/components/scenes/canvas-media-stage';
 import { ShotMediaDropZone } from '@/components/scenes/shot-media-drop-zone';
 import { StartingFrameVariants } from '@/components/scenes/starting-frame-variants';
 import { SequencePlayer } from '@/components/theatre/sequence-player';
-import { useSequenceExport } from '@/components/theatre/use-sequence-export';
-import { Button } from '@/components/ui/button';
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+  useSequenceExport,
+  type SequenceExportState,
+} from '@/components/theatre/use-sequence-export';
+import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import type { SceneWithScript } from '@/hooks/use-scenes';
 import { useSetSequenceMusic } from '@/hooks/use-sequences';
 import type { TabValue } from '@/components/scenes/scene-script-prompts';
@@ -24,11 +26,10 @@ import {
 } from '@/lib/scenes/scene-selection';
 import type { ShotView } from '@/lib/shots/shot-view';
 import type { Sequence } from '@/types/database';
-import { Download, Film, Link, Loader2, Share2 } from 'lucide-react';
-import { usePostHog } from '@posthog/react';
-import { useCallback, useMemo } from 'react';
-import { toast } from 'sonner';
+import { Download, Film, Link, Loader2 } from 'lucide-react';
+import { useMemo } from 'react';
 import type { ExportProgress } from '@/lib/sequence-player/export';
+import { toPlaybackScenes } from '@/lib/sequence-player/playback-scenes';
 
 type SceneCanvasProps = {
   selection: SceneSelection;
@@ -47,7 +48,7 @@ type SceneCanvasProps = {
   modelMismatchLabel?: string | null;
   /** Quiet stale chip for the displayed image (#1077). */
   staleLabel?: string | null;
-  progressMessage?: string;
+  progressMessage?: React.ReactNode;
   retry?: { attempt: number; maxAttempts?: number };
   onSelectShot?: (shotId: string) => void;
   /** Scene-level image model (#909) used to generate starting-frame variants. */
@@ -55,6 +56,11 @@ type SceneCanvasProps = {
   /** Shots with an in-flight scene-variants generation (#882). */
   regeneratingSceneVariants?: Set<string>;
   onGenerateSceneVariantsStart?: (shotId: string) => void;
+  /**
+   * First pipeline run still in flight — hide variants / stale chrome until
+   * the sequence has something to act on (#1286).
+   */
+  firstRunActive?: boolean;
 };
 
 function formatExportProgress(progress: ExportProgress | null): string {
@@ -81,76 +87,83 @@ function formatExportProgress(progress: ExportProgress | null): string {
   return `${label}…`;
 }
 
-const TheatreShareOverlay: React.FC<{ sequence: Sequence }> = ({
-  sequence,
-}) => {
-  const posthog = usePostHog();
-  const sequenceExport = useSequenceExport(sequence);
-  const shareUrl = sequenceExport.latestExportUrl;
-
-  const handleCopyShareUrl = useCallback(async () => {
-    if (!shareUrl) {
-      toast.error('Export an MP4 first to get a shareable URL.');
-      return;
-    }
-    try {
-      const absoluteUrl = new URL(shareUrl, window.location.origin).href;
-      await navigator.clipboard.writeText(absoluteUrl);
-      toast.success('Video URL copied');
-      posthog.capture('video_url_copied', { sequence_id: sequence.id });
-    } catch (err) {
-      toast.error('Failed to copy URL');
-      posthog.captureException(err);
-    }
-  }, [shareUrl, sequence.id, posthog]);
-
+/**
+ * Download + Share for the theatre. Both actions treat `sequence_exports` as
+ * a content-addressed cache of what the user is looking at: a cached MP4 of
+ * the current state is reused, otherwise a new export runs first (#1253).
+ */
+const TheatreShareOverlay: React.FC<{
+  sequenceExport: SequenceExportState;
+}> = ({ sequenceExport }) => {
+  const running = sequenceExport.isRunning;
+  const progressLabel = formatExportProgress(sequenceExport.progress);
+  const pending =
+    !running && !sequenceExport.canExport && !sequenceExport.freshExportUrl;
+  const wait = running
+    ? progressLabel
+    : pending
+      ? `Export · ${sequenceExport.clipsReady} of ${sequenceExport.clipsTotal} clips ready`
+      : null;
+  const downloadLabel =
+    wait ??
+    (sequenceExport.freshExportUrl
+      ? 'Download MP4'
+      : 'Export and download MP4');
+  const copyLabel =
+    wait ??
+    (sequenceExport.freshExportUrl
+      ? 'Copy video link'
+      : 'Export and copy video link');
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8 bg-black/50 text-white hover:bg-black/70"
-          aria-label="Share"
-        >
-          <Share2 className="h-4 w-4" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <DropdownMenuItem onClick={() => void handleCopyShareUrl()}>
-          <Link className="h-4 w-4" />
-          Copy latest export URL
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          onClick={sequenceExport.start}
-          disabled={sequenceExport.isRunning}
-        >
-          {sequenceExport.isRunning ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Download className="h-4 w-4" />
-          )}
-          {sequenceExport.isRunning
-            ? formatExportProgress(sequenceExport.progress)
-            : 'Export as MP4'}
-        </DropdownMenuItem>
-        {shareUrl && (
-          <DropdownMenuItem
-            onClick={() => {
-              const a = document.createElement('a');
-              a.href = shareUrl;
-              a.download = `${sequence.title || 'sequence'}_openstory.mp4`;
-              document.body.appendChild(a);
-              a.click();
-              document.body.removeChild(a);
-            }}
-          >
-            <Download className="h-4 w-4" />
-            Download last export
-          </DropdownMenuItem>
-        )}
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          {/* Span so a disabled button still shows the pending-count tooltip. */}
+          <span className="inline-flex">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-11 w-11 bg-black/50 text-white hover:bg-black/70 md:h-8 md:w-8"
+              aria-label={downloadLabel}
+              aria-busy={running}
+              disabled={pending}
+              // Stays enabled while running (the actions no-op) so the tooltip
+              // can show progress — disabled buttons emit no pointer events.
+              onClick={sequenceExport.download}
+            >
+              {running ? (
+                <Loader2 className="h-5 w-5 animate-spin md:h-4 md:w-4" />
+              ) : (
+                <Download className="h-5 w-5 md:h-4 md:w-4" />
+              )}
+            </Button>
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>{downloadLabel}</TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="inline-flex">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-11 w-11 bg-black/50 text-white hover:bg-black/70 md:h-8 md:w-8"
+              aria-label={copyLabel}
+              aria-busy={running}
+              disabled={pending}
+              onClick={sequenceExport.copyLink}
+            >
+              {running ? (
+                <Loader2 className="h-5 w-5 animate-spin md:h-4 md:w-4" />
+              ) : (
+                <Link className="h-5 w-5 md:h-4 md:w-4" />
+              )}
+            </Button>
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>{copyLabel}</TooltipContent>
+      </Tooltip>
+    </>
   );
 };
 
@@ -174,6 +187,7 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
   sceneImageModel,
   regeneratingSceneVariants,
   onGenerateSceneVariantsStart,
+  firstRunActive = false,
 }) => {
   const scope = selectionScope(selection);
   const scopedShots = useMemo(
@@ -181,14 +195,13 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
     [selection, shots]
   );
 
-  const playbackScenes = useMemo(() => {
-    return scopedShots
-      .map((f) => f.video?.url)
-      .filter((url): url is string => Boolean(url))
-      .map((videoUrl, orderIndex) => ({ orderIndex, videoUrl }));
-  }, [scopedShots]);
+  const playbackScenes = useMemo(
+    () => toPlaybackScenes(scopedShots),
+    [scopedShots]
+  );
 
   const setMusicEnabled = useSetSequenceMusic(sequence?.id ?? '');
+  const sequenceExport = useSequenceExport(sequence);
 
   if (loadError) {
     return (
@@ -214,8 +227,9 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
   if (scope === 'shot' && selection.shotId) {
     const shotId = selection.shotId;
     const selectedShot = shots.find((s) => s.id === shotId);
+    const stillUrl = selectedShot?.image?.url;
     const frameOverlay =
-      selectedShot && sceneImageModel ? (
+      selectedShot && sceneImageModel && stillUrl && !firstRunActive ? (
         <StartingFrameVariants
           shot={selectedShot}
           sequenceId={selectedShot.sequenceId}
@@ -311,9 +325,19 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
         onMusicEnabledChange={(enabled) => setMusicEnabled.mutate(enabled)}
         aspectRatio={aspectRatio}
         className="h-full max-h-none w-full"
+        playSource="theatre"
+        sequenceId={sequence.id}
+        posterUrl={scopedShots[0]?.image?.url ?? sequence.posterUrl}
+        cachedVideoUrl={
+          scope !== 'sequence'
+            ? null
+            : sequenceExport.isCacheResolved
+              ? sequenceExport.freshExportUrl
+              : undefined
+        }
         overlayActions={
           scope === 'sequence' ? (
-            <TheatreShareOverlay sequence={sequence} />
+            <TheatreShareOverlay sequenceExport={sequenceExport} />
           ) : undefined
         }
       />

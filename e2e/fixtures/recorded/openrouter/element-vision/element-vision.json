@@ -8,18 +8,18 @@
         "hasToolResult": false
       },
       "response": {
-        "content": "{\"description\":\"A large-diaphragm studio condenser microphone with a cylindrical champagne-silver metal body and a domed fine-mesh grille on top. The body bears an oval logo emblem near the top and text reading \\\"PHANTOM classic\\\" beneath it, with a smaller engraved serial marking \\\"Nr.1307\\\" near the base. The mic is cradled in a metal spider-style shock mount with curved silver arms and black rubber grips, mounted on a black stand with an adjustable knob. A round black pop filter mesh screen is attached above on a curved black gooseneck arm, angled toward the mic's capsule.\",\"consistencyTag\":\"silver-studio-condenser-microphone\",\"suggestedToken\":\"PHANTOM_CLASSIC_MIC\"}"
+        "content": "{\"description\":\"A cylindrical large-diaphragm studio microphone with a champagne/nickel-colored metal body. The upper half is a fine-mesh wire grille housing the capsule, transitioning to a smooth metal barrel below. Text engraved on the body reads a stylized logo (partially obscured), 'PHANTOM classic', and 'Nr.1307' near the base. The mic sits cradled in a spring-loaded elastic shock mount with silver metal arms and black elastic bands, attached to a black stand with a locking lever. A round black pop filter with a fine mesh screen and black rim hangs above/beside it on a curved black gooseneck arm.\",\"consistencyTag\":\"silver-studio-microphone-shockmount\",\"suggestedToken\":\"BROADCAST_MIC\"}"
       },
       "recordedTimings": {
-        "ttftMs": 3940,
+        "ttftMs": 3446,
         "interChunkDelaysMs": [
-          0, 0, 0, 0, 0, 0, 0, 1, 377, 368, 375, 358, 356, 365, 422, 308, 367,
-          499, 80, 43, 0, 0
+          0, 0, 0, 0, 0, 0, 0, 329, 188, 360, 165, 529, 0, 519, 7, 521, 26, 497,
+          54, 468, 193, 55, 1, 1
         ],
-        "totalDurationMs": 7859
+        "totalDurationMs": 7359
       },
       "metadata": {
-        "systemHash": "d7a7c7ae"
+        "systemHash": "441a992e"
       }
     }
   ]

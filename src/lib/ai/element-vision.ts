@@ -13,21 +13,26 @@ import {
 } from '@/lib/observability/ai-otel';
 import type { ChatMessage, ChatMessageImagePart } from '@/lib/prompts';
 import { toVisionImageSource } from '@/lib/storage/external-url';
-import { chat, type TokenUsage } from '@tanstack/ai';
+import { chat } from '@tanstack/ai';
 import { z } from 'zod';
 import { createAdapter } from './create-adapter';
-import { llmCostFromUsage } from './llm-client';
+import {
+  createUsageCapture,
+  extractRunError,
+  llmCostFromUsage,
+  throwNotedRunError,
+} from './llm-client';
 import { DEFAULT_VISION_MODEL } from './models.config';
 
 export const ELEMENT_VISION_MODEL = DEFAULT_VISION_MODEL;
 
-const responseSchema = z.object({
+export const elementVisionResponseSchema = z.object({
   description: z.string().min(1),
   consistencyTag: z.string().min(1),
   suggestedToken: z.string().min(1),
 });
 
-type ElementDescription = z.infer<typeof responseSchema>;
+type ElementDescription = z.infer<typeof elementVisionResponseSchema>;
 
 export type DescribeElementInput = {
   imageUrl: string;
@@ -113,34 +118,61 @@ export async function describeElementImage(
 
   const adapter = createAdapter(ELEMENT_VISION_MODEL, input.llmKey);
 
-  let capturedUsage: TokenUsage | undefined;
-  const result = await chat({
+  // Stream structured output so OpenRouter attaches usage.cost (TanStack/ai#1076).
+  const usageCapture = createUsageCapture();
+  let structuredObject: unknown;
+  let accumulated = '';
+  let runError = null;
+  for await (const event of chat({
     adapter,
     systemPrompts,
     messages: chatMessages,
-    stream: false,
-    modelOptions: { temperature: 0.3 },
-    outputSchema: responseSchema,
+    stream: true,
+    modelOptions: {
+      temperature: 0.3,
+      streamOptions: { includeUsage: true },
+    },
+    outputSchema: elementVisionResponseSchema,
     middleware: [
       ...aiObservabilityMiddleware({
         observationName: 'element-vision',
         tags: ['vision'],
         ...input.observability,
       }),
-      {
-        onFinish: (_ctx, info) => {
-          capturedUsage = info.usage;
-        },
-      },
+      ...usageCapture.middleware,
     ],
     debug: false,
-  });
+  })) {
+    usageCapture.noteFromStreamEvent(event);
+    const noted = extractRunError(event);
+    if (noted) {
+      runError ??= noted;
+      continue;
+    }
+    if (
+      event.type === 'TEXT_MESSAGE_CONTENT' &&
+      typeof event.delta === 'string'
+    ) {
+      accumulated += event.delta;
+      continue;
+    }
+    if (
+      event.type === 'CUSTOM' &&
+      event.name === 'structured-output.complete'
+    ) {
+      structuredObject = event.value.object;
+      continue;
+    }
+  }
+  throwNotedRunError(runError);
 
-  const parsed = responseSchema.parse(result);
+  const parsed = elementVisionResponseSchema.parse(
+    structuredObject !== undefined ? structuredObject : JSON.parse(accumulated)
+  );
   return {
     ...parsed,
     suggestedToken: normalizeSuggestedToken(parsed.suggestedToken),
-    costMicros: llmCostFromUsage(capturedUsage, ELEMENT_VISION_MODEL),
+    costMicros: llmCostFromUsage(usageCapture.get(), ELEMENT_VISION_MODEL),
     usedOwnKey: input.llmKey?.source === 'team',
   };
 }

@@ -245,17 +245,58 @@ describe('library-talent-sheet hash', () => {
     expect(a).toBe(b);
   });
 
-  it('diverges when DB has additional reference images', async () => {
+  it('stays convergent when live media is a superset of the snapshot URLs', async () => {
     const dtoHash = await computeLibraryTalentSheetHashFromDto(baseInput);
     const stub: TalentStub = {
       talent: {
         getWithRelations: async () => ({
           id: 'tal1',
+          name: 'Alice',
+          description: 'Lead actress',
           media: [
             { type: 'image', url: 'https://r2/a.png' },
             { type: 'image', url: 'https://r2/b.png' },
             { type: 'image', url: 'https://r2/c.png' },
           ],
+        }),
+      },
+    };
+    const currentHash = await computeLibraryTalentSheetHashCurrent(
+      baseInput,
+      asScopedDb(stub)
+    );
+    expect(dtoHash).toBe(currentHash);
+  });
+
+  it('stays convergent when a name-only snapshot gains photos mid-run', async () => {
+    const nameOnly = { ...baseInput, referenceImageUrls: [] };
+    const dtoHash = await computeLibraryTalentSheetHashFromDto(nameOnly);
+    const stub: TalentStub = {
+      talent: {
+        getWithRelations: async () => ({
+          id: 'tal1',
+          name: 'Alice',
+          description: 'Lead actress',
+          media: [{ type: 'image', url: 'https://r2/a.png' }],
+        }),
+      },
+    };
+    const currentHash = await computeLibraryTalentSheetHashCurrent(
+      nameOnly,
+      asScopedDb(stub)
+    );
+    expect(dtoHash).toBe(currentHash);
+  });
+
+  it('diverges when a snapshot reference URL is missing from live media', async () => {
+    const dtoHash = await computeLibraryTalentSheetHashFromDto(baseInput);
+    const stub: TalentStub = {
+      talent: {
+        getWithRelations: async () => ({
+          id: 'tal1',
+          name: 'Alice',
+          description: 'Lead actress',
+          media: [{ type: 'image', url: 'https://r2/a.png' }],
         }),
       },
     };
