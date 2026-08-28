@@ -68,6 +68,13 @@ updates:
         versions: ['<1.0.0-0']
       - dependency-name: 'drizzle-kit'
         versions: ['<1.0.0-0']
+      # Pinned to a nightly: every release imports typescript/lib/typescript.js,
+      # which TS 7 removed, and breaks `bun motion:codegen`. The nightly is cut
+      # from main after 0.97.3, so GHSA-hhx9-57xq-r5rw is already fixed (and the
+      # affected `buildClientParams` SDK template isn't generated here anyway —
+      # only the typescript/schemas/zod plugins run). Move only once a release
+      # drops the typescript runtime dep. See #1344, #1351.
+      - dependency-name: '@hey-api/openapi-ts'
 
   # Server-side export container (separate package.json + bun.lock).
   - package-ecosystem: bun
