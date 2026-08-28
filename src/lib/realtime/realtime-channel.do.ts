@@ -26,9 +26,12 @@ import { getLogger } from '@/lib/observability/logger';
  * - **History replay**: events are persisted in the DO's own SQLite storage so a
  *   page refresh mid-generation can replay progress (`/history`). `/emit` deletes
  *   a PK prefix of at most `PRUNE_BATCH_ROWS` so one-row emits stay at the cap.
- *   A periodic alarm TTL-deletes up to `PRUNE_BATCH_ROWS` expired rows (via
- *   `events_ts`) and the same PK-prefix cap batch; leftovers reschedule in
- *   `PRUNE_CATCHUP_MS` (#1332).
+ *   A periodic alarm TTL-deletes up to `PRUNE_BATCH_ROWS` expired rows and the
+ *   same PK-prefix cap batch; leftovers reschedule in `PRUNE_CATCHUP_MS`.
+ *   Every statement is a bounded PK-range op: `ts` is monotonic with `seq`, so
+ *   expired rows are always a PK prefix and no secondary index is needed — a
+ *   `CREATE INDEX` on a backlogged channel was itself enough to exceed the
+ *   storage timeout on every wake (#1332).
  *
  * The wire format is intentionally simple and fully owned in-repo (see
  * `client.tsx`): each SSE `data:` line is a JSON object — a user event
@@ -94,9 +97,6 @@ export class RealtimeChannel extends DurableObject {
         data TEXT NOT NULL,
         ts INTEGER NOT NULL
       )`
-    );
-    this.ctx.storage.sql.exec(
-      'CREATE INDEX IF NOT EXISTS events_ts ON events(ts)'
     );
   }
 
@@ -311,25 +311,27 @@ export class RealtimeChannel extends DurableObject {
     return min !== null && min <= this.capCutoff(newestSeq);
   }
 
+  /**
+   * Expired rows are the oldest rows, i.e. a PK prefix, so this is the same
+   * bounded `seq <= MIN(seq) + k - 1` shape as the cap batch. The old
+   * `seq IN (SELECT … WHERE ts < ? ORDER BY seq LIMIT k)` collected every
+   * expired row before sorting: O(expired), not O(k).
+   */
   private pruneTtlBatch(cutoffTs: number): void {
     this.ctx.storage.sql.exec(
-      `DELETE FROM events WHERE seq IN (
-        SELECT seq FROM events WHERE ts < ? ORDER BY seq LIMIT ?
-      )`,
+      `DELETE FROM events
+       WHERE ts < ?
+         AND seq <= (SELECT MIN(seq) FROM events) + ? - 1`,
       cutoffTs,
       PRUNE_BATCH_ROWS
     );
   }
 
   private hasExpired(cutoffTs: number): boolean {
-    return (
-      this.ctx.storage.sql
-        .exec<{ seq: number }>(
-          'SELECT seq FROM events WHERE ts < ? LIMIT 1',
-          cutoffTs
-        )
-        .toArray().length > 0
-    );
+    const oldest = this.ctx.storage.sql
+      .exec<{ ts: number }>('SELECT ts FROM events ORDER BY seq LIMIT 1')
+      .toArray()[0];
+    return oldest !== undefined && oldest.ts < cutoffTs;
   }
 
   private async schedulePrune(asap: boolean): Promise<void> {
