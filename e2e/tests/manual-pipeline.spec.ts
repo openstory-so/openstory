@@ -180,7 +180,9 @@ testWithUser.describe('Manual pipeline (no storyboard)', () => {
       await expect(page.locator('h1').filter({ hasText: 'Maya' })).toBeVisible({
         timeout: 15_000,
       });
-      await page.getByLabel('Age').fill('34');
+      // exact: "Age" is a substring of the sheet "Image Model" trigger
+      // ("Image Model: …").
+      await page.getByLabel('Age', { exact: true }).fill('34');
       await page.getByRole('button', { name: 'Save', exact: true }).click();
       await expect(page.getByText('Character saved')).toBeVisible({
         timeout: 10_000,
