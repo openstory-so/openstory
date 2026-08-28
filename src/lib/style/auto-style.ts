@@ -133,7 +133,10 @@ export const autoStyleResponseSchema = z.preprocess(
     artStyle: z.string(),
     medium: z.string(),
     lighting: z.string(),
-    colorPalette: z.array(z.string()),
+    colorPalette: z.array(z.string()).meta({
+      description:
+        'Array of 3–6 hex color strings (e.g. ["#0a0a14", "#e8322f"]), dominant first. Not a comma-separated string.',
+    }),
     colorGrading: z.string(),
     camera: z.string(),
     shots: z.string(),

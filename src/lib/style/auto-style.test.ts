@@ -294,6 +294,7 @@ describe('autoStyleResponseSchema collapsed look/motion (#1304)', () => {
     expect(json.properties?.colorPalette).toMatchObject({
       type: 'array',
       items: { type: 'string' },
+      description: expect.stringMatching(/array of 3–6 hex/i),
     });
     expect(json.required).toEqual(
       expect.arrayContaining([
