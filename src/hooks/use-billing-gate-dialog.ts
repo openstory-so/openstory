@@ -8,8 +8,13 @@
 
 import { createDialogStore } from './create-dialog-store';
 
-const store = createDialogStore();
+/** Why the gate opened — the `reason` on `billing_gate_shown` (#1301). */
+export type BillingGateReason = 'insufficient' | 'zero' | 'manual';
 
-export const openBillingGate = store.open;
+const store = createDialogStore<BillingGateReason>();
+
+export const openBillingGate = (reason: BillingGateReason = 'manual') =>
+  store.open(reason);
+export const getBillingGateReason = () => store.getPayload() ?? 'manual';
 export const closeBillingGate = store.close;
 export const useBillingGateDialogOpen = store.useIsOpen;

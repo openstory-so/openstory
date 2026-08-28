@@ -10,6 +10,8 @@ import { createDialogStore } from './create-dialog-store';
 
 const store = createDialogStore();
 
-export const openAddCreditsDialog = store.open;
+/** `surface` is where the user clicked — the `add_credits_clicked` property (#1301). */
+export const openAddCreditsDialog = (surface: string) => store.open(surface);
+export const getAddCreditsSurface = store.getPayload;
 export const closeAddCreditsDialog = store.close;
 export const useAddCreditsDialogOpen = store.useIsOpen;

@@ -43,7 +43,7 @@ function PricingPage() {
   const feePercent = formatPlatformFeePercent();
   const chargeFor100 = (100 * (1 + PLATFORM_FEE_PERCENT)).toFixed(0);
   const onAddCredits = () => {
-    requireAuth(() => openAddCreditsDialog());
+    requireAuth(() => openAddCreditsDialog('pricing'));
   };
 
   return (

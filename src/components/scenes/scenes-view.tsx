@@ -86,6 +86,9 @@ import { cn } from '@/lib/utils';
 import { ChevronDown } from 'lucide-react';
 import { usePostHog } from '@posthog/react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useRouter } from '@tanstack/react-router';
+import { getSequencesFn } from '@/functions/sequences';
+import { captureSequenceReadySeen } from '@/lib/observability/player-events';
 
 import {
   estimateSceneCount,
@@ -285,23 +288,62 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
   const processingRef = useRef(isProcessing);
   processingRef.current = isProcessing;
   const leftCapturedRef = useRef(false);
+  // Assigned after `remainingSeconds` is computed below; read at leave time.
+  const remainingRef = useRef(0);
+  const router = useRouter();
 
   useEffect(() => {
     leftCapturedRef.current = false;
   }, [sequenceId]);
 
   useEffect(() => {
-    const captureLeave = () => {
+    const captureLeave = (destination: string) => {
       if (!processingRef.current || leftCapturedRef.current) return;
       leftCapturedRef.current = true;
-      posthog.capture('render_wait_left', { sequence_id: sequenceId });
+      posthog.capture('render_wait_left', {
+        sequence_id: sequenceId,
+        seconds_remaining_estimate: remainingRef.current,
+        destination,
+      });
     };
-    window.addEventListener('pagehide', captureLeave);
+    const onPageHide = () => captureLeave('unload');
+    window.addEventListener('pagehide', onPageHide);
     return () => {
-      window.removeEventListener('pagehide', captureLeave);
-      captureLeave();
+      window.removeEventListener('pagehide', onPageHide);
+      // On unmount the router already points at where the user went.
+      captureLeave(router.latestLocation.pathname);
     };
-  }, [sequenceId, posthog]);
+  }, [sequenceId, posthog, router]);
+
+  // First sight of the finished video (#1301): the funnel step between
+  // sequence_generated and video_play. Once per sequence per mount.
+  const readySeenRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (sequence?.status !== 'completed' || readySeenRef.current === sequenceId)
+      return;
+    readySeenRef.current = sequenceId;
+    const createdAt = new Date(sequence.createdAt).getTime();
+    void queryClient
+      .fetchQuery({
+        queryKey: sequenceKeys.list(undefined),
+        queryFn: () => getSequencesFn(),
+        staleTime: 5 * 60 * 1000,
+      })
+      .then((list) => {
+        captureSequenceReadySeen(posthog, {
+          sequence_id: sequenceId,
+          first_sequence_for_team: list.every(
+            (s) =>
+              s.id === sequenceId ||
+              new Date(s.createdAt).getTime() >= createdAt
+          ),
+          seconds_since_generate: Math.round((Date.now() - createdAt) / 1000),
+        });
+      })
+      .catch(() => {
+        // Analytics only — never surface.
+      });
+  }, [sequence?.status, sequence?.createdAt, sequenceId, queryClient, posthog]);
   const { data: style } = useSequenceStyle(sequenceId);
   const styleCategory = style?.category ?? undefined;
   const sequenceMusicModel = safeAudioModel(
@@ -1169,7 +1211,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
       void queryClient.invalidateQueries({ queryKey: ['shots', sequenceId] });
     } catch (error) {
       if (isInsufficientCreditsError(error)) {
-        showBillingGate();
+        showBillingGate('insufficient');
         void queryClient.invalidateQueries({
           queryKey: BILLING_BALANCE_KEY,
         });
@@ -1263,7 +1305,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
         }
 
         if (isInsufficientCreditsError(error)) {
-          showBillingGate();
+          showBillingGate('insufficient');
           void queryClient.invalidateQueries({
             queryKey: BILLING_BALANCE_KEY,
           });
@@ -1321,6 +1363,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     generationState.scenes.length,
     sequence?.script,
   ]);
+  remainingRef.current = remainingSeconds;
   const etaMinutes = Math.max(1, Math.round(remainingSeconds / 60));
 
   // One prop bag for the desktop sidebar and the phone sheet — same list.

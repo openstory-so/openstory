@@ -22,6 +22,7 @@ import { FeedbackDialog } from '@/components/feedback/feedback-dialog';
 import { useLowBalanceWarning } from '@/hooks/use-low-balance-warning';
 import { MODELS_ENABLED } from '@/lib/flags';
 import { SITE_CONFIG } from '@/lib/marketing/constants';
+import { usePostHog } from '@posthog/react';
 import { Link, useRouterState } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import {
@@ -58,6 +59,7 @@ export function AppSidebar() {
   useLowBalanceWarning();
 
   const { isMobile, setOpenMobile } = useSidebar();
+  const posthog = usePostHog();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [feedbackOpen, setFeedbackOpen] = useState(false);
 
@@ -91,7 +93,14 @@ export function AppSidebar() {
                   {/* `/` is the free composer for everyone (#1104); the
                       signed-in alias `/sequences/new` is for copy/breadcrumb
                       entry points that require a session. */}
-                  <Link to="/">
+                  <Link
+                    to="/"
+                    onClick={() =>
+                      posthog.capture('make_another_clicked', {
+                        surface: 'sidebar',
+                      })
+                    }
+                  >
                     <Plus />
                     <span>New sequence</span>
                   </Link>

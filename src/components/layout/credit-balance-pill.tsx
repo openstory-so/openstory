@@ -98,7 +98,7 @@ export const CreditBalancePill: React.FC = () => {
         {/* Opens the add-credits modal, not the credits page (#1099) */}
         <SidebarMenuButton
           tooltip={tooltip}
-          onClick={openAddCreditsDialog}
+          onClick={() => openAddCreditsDialog('sidebar_pill')}
           aria-label={`Credit balance ${amount}. Add credits.`}
           className={cn(
             'animate-[balance-flash-in_300ms_ease-out_both]',

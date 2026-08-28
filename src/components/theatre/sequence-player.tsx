@@ -32,9 +32,11 @@ import {
   type PlayAttemptResult,
 } from '@/lib/sequence-player/play-attempt';
 import {
-  captureSequenceReadySeen,
   captureVideoPlay,
   captureVideoPlayFailed,
+  captureVideoWatched,
+  createPlaybackTracker,
+  type PlaybackTracker,
   type VideoPlaySource,
 } from '@/lib/observability/player-events';
 import { cn } from '@/lib/utils';
@@ -102,7 +104,6 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const engineRef = useRef<SequencePlayerEngine | null>(null);
   const posthog = usePostHog();
-  const readyKeyRef = useRef<string | null>(null);
   const playEpochRef = useRef(0);
   const scenesKey = scenePlaybackKey(scenes);
 
@@ -114,13 +115,23 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
   const [muted, setMuted] = useState(false);
   const [loadedScenes, setLoadedScenes] = useState(0);
 
-  const markReady = (key: string) => {
-    if (!sequenceId || readyKeyRef.current === key) return;
-    readyKeyRef.current = key;
-    captureSequenceReadySeen(posthog, {
-      sequence_id: sequenceId,
-      scene_count: scenes.length,
-    });
+  // video_watched / stalled-play analytics (#1301). Props via a ref so the
+  // one tracker instance reports the current sequence.
+  const eventPropsRef = useRef({ source: playSource, sequence_id: sequenceId });
+  eventPropsRef.current = { source: playSource, sequence_id: sequenceId };
+  const trackerRef = useRef<PlaybackTracker | null>(null);
+  trackerRef.current ??= createPlaybackTracker({
+    onStall: () =>
+      captureVideoPlayFailed(posthog, {
+        ...eventPropsRef.current,
+        reason: 'timeout',
+      }),
+  });
+  const tracker = trackerRef.current;
+  const flushWatched = (completed: boolean) => {
+    const watched = tracker.stop(completed);
+    if (!watched || (watched.seconds_watched === 0 && !completed)) return;
+    captureVideoWatched(posthog, { ...eventPropsRef.current, ...watched });
   };
 
   useEffect(() => {
@@ -152,10 +163,14 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
         if (!cancelled) setLoadedScenes(loaded);
       },
       onTimeUpdate: (t) => {
-        if (!cancelled) setCurrentTime(t);
+        if (cancelled) return;
+        setCurrentTime(t);
+        tracker.tick(t);
       },
       onEnded: () => {
-        if (!cancelled) setPlaying(false);
+        if (cancelled) return;
+        setPlaying(false);
+        flushWatched(true);
       },
       onError: (err) => {
         if (!cancelled) setError(err.message);
@@ -168,7 +183,7 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
       .then((m) => {
         if (cancelled) return;
         setMeta(m);
-        markReady(`stitch:${scenesKey}`);
+        tracker.setDuration(m.durationSeconds);
       })
       .catch((err: unknown) => {
         if (cancelled) return;
@@ -177,6 +192,7 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
 
     return () => {
       cancelled = true;
+      flushWatched(false);
       engine.dispose();
       engineRef.current = null;
     };
@@ -185,12 +201,6 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
     // still rebuild; volume/muted/musicEnabled go through setters (#834).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scenesKey, musicUrl, musicLoudnessGainDb, cachedVideoUrl]);
-
-  useEffect(() => {
-    if (!cachedVideoUrl) return;
-    markReady(`cached:${cachedVideoUrl}`);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cachedVideoUrl, sequenceId, scenesKey]);
 
   useEffect(() => {
     engineRef.current?.setVolume(volume);
@@ -209,12 +219,15 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
     const ui = playAttemptUiState(result);
     setPlaying(ui.playing);
     if (ui.playing) {
+      // A seek while playing resolves here too — don't restart the tracker.
+      if (!tracker.isActive()) tracker.start();
       captureVideoPlay(posthog, {
         source: playSource,
         sequence_id: sequenceId,
       });
       return;
     }
+    tracker.dispose();
     if (ui.failureReason) {
       captureVideoPlayFailed(posthog, {
         source: playSource,
@@ -241,6 +254,7 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
       playEpochRef.current += 1;
       engine.pause();
       setPlaying(false);
+      flushWatched(false);
       return;
     }
     const epoch = ++playEpochRef.current;

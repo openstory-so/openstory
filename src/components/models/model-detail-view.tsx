@@ -209,7 +209,7 @@ const ModelRunPanel: FC<{ detail: ModelDetail }> = ({ detail }) => {
     },
     onError: (error) => {
       if (isInsufficientCreditsError(error)) {
-        showBillingGate();
+        showBillingGate('insufficient');
         void queryClient.invalidateQueries({ queryKey: BILLING_BALANCE_KEY });
       }
     },
