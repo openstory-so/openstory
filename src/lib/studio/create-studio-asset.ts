@@ -35,6 +35,7 @@ import {
 } from '@/lib/studio/schema';
 import { snapStudioVideoDuration } from '@/lib/studio/text-to-video';
 import { triggerWorkflow } from '@/lib/workflow/client';
+import { captureProductEvent } from '@/lib/observability/product-events';
 import type { StudioGenerationWorkflowInput } from '@/lib/workflow/types';
 
 const logger = getLogger(['openstory', 'studio', 'create']);
@@ -227,6 +228,29 @@ export async function createStudioAssets(
     );
     throw error;
   }
+
+  // Server-side so the dashboard and the public API both count (#1378).
+  captureProductEvent({
+    distinctId: scopedDb.userId,
+    event: 'studio_generation_started',
+    properties: {
+      team_id: scopedDb.teamId,
+      activity: input.activity,
+      model: input.activity === 'image' ? input.imageModel : input.videoModel,
+      model_name: modelName,
+      count: input.count,
+      asset_ids: assets.map((a) => a.id),
+      aspect_ratio: input.aspectRatio,
+      reference_image_count: input.referenceImages.length,
+      ...(input.activity === 'video' && {
+        mode: input.mode,
+        duration: input.duration,
+        reference_video_count: input.referenceVideos.length,
+        reference_audio_count: input.referenceAudio.length,
+        has_start_frame: Boolean(input.startImageUrl),
+      }),
+    },
+  });
 
   return { assets };
 }
