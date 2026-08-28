@@ -551,8 +551,9 @@ export function createFrameVariantsMethods(db: Database) {
     },
 
     /**
-     * Distinct `kind:'model'` model names that actually RENDERED something in a
-     * sequence — this drives the user-facing image-model dropdown.
+     * Distinct `kind:'model'` model names ATTEMPTED in a sequence — in-flight,
+     * failed, cancelled, or rendered — this drives the user-facing image-model
+     * dropdown. Only the completed-without-image husk is excluded.
      *
      * Excluding the husk shape is load-bearing, not tidiness (#1133). Without
      * it the dropdown's correctness depends on the #1101 reclassify having
@@ -564,7 +565,9 @@ export function createFrameVariantsMethods(db: Database) {
      * `url IS NOT NULL`, which would also hide two kinds of row the user needs
      * to see: an in-flight render (pending/generating has no url yet, so a
      * model would vanish from the bar until its image landed) and a render
-     * whose attempts all failed (hiding it hides the failure). Measured against
+     * whose attempts all failed (hiding it hides the failure). `cancelled`
+     * (#1085, never attempted) passes for the same reason as `failed`: a
+     * terminal no-output state the user should see, not a husk. Measured against
      * production, the narrow form removes the same 15 leaking sequences while
      * losing 0 legitimate models; the blunt form also dropped 11.
      */
