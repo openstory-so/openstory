@@ -980,12 +980,12 @@ No text, signs or subtitles. No holograms or floating UI. One coherent frame. Fu
 
 You will be called via a structured output tool. Follow the provided schema exactly: every field below is its own top-level key. Do not nest fields, and do not collapse several of them into one paragraph.
 
-Still — what a single frame looks like (each its own string):
-- \`mood\`: the emotional register of the image
+Still — what a single frame looks like:
+- \`mood\`: the emotional register of the image (string)
 - \`artStyle\`: the visual language (e.g. photoreal live action, cel animation)
 - \`medium\`: capture/render medium (e.g. 35mm anamorphic, phone, CGI)
 - \`lighting\`: sources, direction, quality
-- \`colorPalette\`: 3–6 hex colors (e.g. "#0a0a14"), dominant first
+- \`colorPalette\`: array of 3–6 hex strings (e.g. ["#0a0a14", "#e8322f"]), dominant first — never a single comma-separated string
 - \`colorGrading\`: specific grading moves, not a mood adjective
 
 Camera and cutting — cannot be inferred from a still:
