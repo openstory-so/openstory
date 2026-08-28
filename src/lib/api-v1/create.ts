@@ -12,6 +12,7 @@
 
 import { enhanceScriptToString } from '@/lib/ai/script-enhancement';
 import { toEnhanceInputs } from '@/lib/ai/enhance-inputs';
+import { DEFAULT_VIDEO_MODEL, isValidImageToVideoModel } from '@/lib/ai/models';
 import { isShortScript } from '@/lib/ai/should-enhance';
 import { DEFAULT_ASPECT_RATIO } from '@/lib/constants/aspect-ratios';
 import type { ScopedDb } from '@/lib/db/scoped';
@@ -125,6 +126,9 @@ export async function runOneShotCreate(
       {
         script: input.script,
         targetDuration: input.targetSeconds,
+        videoModel:
+          input.videoModels?.find(isValidImageToVideoModel) ??
+          DEFAULT_VIDEO_MODEL,
         aspectRatio: input.aspectRatio,
         // Feed the enhancer the same style + element inputs the UI does.
         ...toEnhanceInputs({ style, elements: elementUploads }),

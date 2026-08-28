@@ -6,11 +6,13 @@
  * `autoGenerateMotion`, music only when motion+music are both on.
  */
 
+import { estimateMotionDurations } from '@/lib/ai/enhance-duration';
 import type { EffectiveFalPricing } from '@/lib/ai/fal-pricing-live';
-import type {
-  AudioModel,
-  ImageToVideoModel,
-  TextToImageModel,
+import {
+  DEFAULT_VIDEO_MODEL,
+  type AudioModel,
+  type ImageToVideoModel,
+  type TextToImageModel,
 } from '@/lib/ai/models';
 import type { AspectRatio } from '@/lib/constants/aspect-ratios';
 import { estimateStoryboardCost } from '@/lib/billing/cost-estimation';
@@ -50,14 +52,17 @@ export function estimateStoryboardPreflightCost(
     motionOn && opts.autoGenerateMusic && opts.audioModels?.length
   );
 
-  const videoDurationSeconds =
+  const primaryVideo = opts.videoModels?.[0] ?? DEFAULT_VIDEO_MODEL;
+  const motionDurations =
     motionOn &&
     opts.targetDurationSeconds != null &&
     opts.targetDurationSeconds > 0
-      ? Math.max(
-          5,
-          Math.round(opts.targetDurationSeconds / Math.max(sceneCount, 1))
-        )
+      ? estimateMotionDurations({
+          script: opts.script,
+          targetSeconds: opts.targetDurationSeconds,
+          sceneCount,
+          model: primaryVideo,
+        })
       : undefined;
 
   return estimateStoryboardCost({
@@ -67,15 +72,12 @@ export function estimateStoryboardPreflightCost(
     estimatedSceneCount: sceneCount,
     autoGenerateMotion: motionOn,
     videoModels: motionOn ? opts.videoModels : undefined,
-    videoDurationSeconds,
+    videoDurationSeconds: motionDurations?.perShotSeconds,
     autoGenerateMusic: musicOn,
     audioModels: musicOn ? opts.audioModels : undefined,
-    audioDurationSeconds:
-      musicOn &&
-      opts.targetDurationSeconds != null &&
-      opts.targetDurationSeconds > 0
-        ? opts.targetDurationSeconds
-        : undefined,
+    audioDurationSeconds: musicOn
+      ? (motionDurations?.totalSeconds ?? opts.targetDurationSeconds)
+      : undefined,
     pricing: opts.pricing,
   });
 }

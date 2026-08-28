@@ -56,6 +56,52 @@ describe('enhanceSseResponse', () => {
     ]);
   });
 
+  it('resets the accumulated script on a replace chunk and includes duration on done', async () => {
+    async function* gen(): AsyncGenerator<{
+      delta: string;
+      replace?: boolean;
+      duration?: {
+        targetSeconds: number;
+        labeledSeconds: number | null;
+        snappedSeconds: number | null;
+        sceneCount: number;
+        clipGrid: number[];
+        minAchievableSeconds: number | null;
+        fits: boolean;
+        message: string | null;
+      };
+    }> {
+      yield { delta: 'Scene 1 — 5s\nToo long.\n' };
+      yield { delta: 'Scene 1 — 6s\nJust right.', replace: true };
+      yield {
+        delta: '',
+        duration: {
+          targetSeconds: 6,
+          labeledSeconds: 6,
+          snappedSeconds: 6,
+          sceneCount: 1,
+          clipGrid: [6, 8, 10],
+          minAchievableSeconds: 6,
+          fits: true,
+          message: null,
+        },
+      };
+    }
+    const stream = gen();
+    const first = await stream.next();
+    const body = await readSse(enhanceSseResponse(first, stream));
+    expect(body).toContain('event: replace');
+    const doneShot = body
+      .split('\n\n')
+      .find((shot) => shot.startsWith('event: done'));
+    const donePayload = JSON.parse(
+      (doneShot ?? '').replace('event: done\ndata: ', '')
+    );
+    expect(donePayload.enhancedScript).toBe('Scene 1 — 6s\nJust right.');
+    expect(donePayload.duration.snappedSeconds).toBe(6);
+    expect(donePayload.duration.fits).toBe(true);
+  });
+
   it('emits an error shot when the generator fails mid-stream', async () => {
     const gen = deltas(['partial ', 'never'], 1); // yields one delta, then throws
     const first = await gen.next();

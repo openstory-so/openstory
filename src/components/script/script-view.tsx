@@ -14,6 +14,7 @@ import { GenerationSettings } from '@/components/settings/generation-settings';
 import { StyleCategorySelect } from '@/components/style/style-category-select';
 import { StyleSelector } from '@/components/style/style-selector';
 import { TalentSuggestionSelector } from '@/components/talent/talent-suggestion-selector';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -61,6 +62,13 @@ import { useCreateSequence } from '@/hooks/use-sequences';
 import { useRecommendedStyles, useStyle, useStyles } from '@/hooks/use-styles';
 import { AUTO_STYLE_ID } from '@/lib/style/auto-style';
 import { errorMessage } from '@/lib/errors';
+import {
+  assessDurationFit,
+  briefRequestsUnrenderableText,
+  estimateMotionDurations,
+  formatClipGrid,
+  TITLE_CARD_NOTE,
+} from '@/lib/ai/enhance-duration';
 import { toEnhanceInputs } from '@/lib/ai/enhance-inputs';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -73,6 +81,7 @@ import {
   safeAudioModel,
   safeImageToVideoModel,
   safeTextToImageModel,
+  videoModelDisplayName,
   type AudioModel,
   type ImageToVideoModel,
   type TextToImageModel,
@@ -122,6 +131,7 @@ import {
   Shuffle,
   Sparkles,
   Square,
+  TriangleAlert,
   Undo2,
   Library,
   Wand2,
@@ -148,6 +158,29 @@ const DURATION_PRESETS = [
  *  Keep this to ~1–2 lines so it fits the phone editor floor. */
 const COMPOSER_SCRIPT_PLACEHOLDER =
   'Paste a screenplay, or a one-liner we can expand.';
+
+function DurationFitHint({
+  targetDuration,
+  videoModel,
+  script,
+}: {
+  targetDuration: number;
+  videoModel: ImageToVideoModel;
+  script: string;
+}) {
+  const fit = assessDurationFit(script, targetDuration, videoModel);
+  const grid = formatClipGrid(fit.clipGrid);
+  const modelName = videoModelDisplayName(videoModel);
+  const snapped =
+    fit.snappedSeconds != null
+      ? ` This script renders at ${fit.snappedSeconds}s.`
+      : '';
+  return (
+    <p className="max-w-xs text-xs text-muted-foreground">
+      {`${modelName} clips: ${grid}.${snapped}`}
+    </p>
+  );
+}
 
 export const ScriptView: FC<{
   teamId?: string;
@@ -775,6 +808,7 @@ export const ScriptView: FC<{
   // reasoning delta would churn the editor with it.
   const [thinkingText, setThinkingText] = useState('');
   const [thinkingActive, setThinkingActive] = useState(false);
+  const [titleCardNote, setTitleCardNote] = useState(false);
 
   const [enhanceUI, setEnhanceUI] = useState({
     isEnhancing: false,
@@ -979,6 +1013,7 @@ export const ScriptView: FC<{
     setSampleStyleId(null);
     setThinkingText('');
     setThinkingActive(true);
+    setTitleCardNote(briefRequestsUnrenderableText(scriptValue));
     setEnhanceUI((s) => ({ ...s, isEnhancing: true, error: null }));
     previousScriptRef.current = scriptValue;
     setScript('');
@@ -1000,6 +1035,7 @@ export const ScriptView: FC<{
         data: {
           script: scriptValue,
           targetDuration,
+          videoModel: videoModels[0] ?? DEFAULT_VIDEO_MODEL,
           analysisModel: analysisModels[0],
           aspectRatio,
           ...toEnhanceInputs({
@@ -1011,6 +1047,12 @@ export const ScriptView: FC<{
         if (abortController.signal.aborted) break;
         if (chunk.reasoning) {
           setThinkingText((t) => t + chunk.reasoning);
+          continue;
+        }
+        if (chunk.replace) {
+          setThinkingActive(false);
+          accumulated = chunk.delta;
+          setScript(accumulated);
           continue;
         }
         if (!chunk.delta) continue;
@@ -1047,6 +1089,7 @@ export const ScriptView: FC<{
   const handleUndoEnhance = () => {
     setScript(previousScriptRef.current);
     setEnhance('canUndoEnhance', false);
+    setTitleCardNote(false);
   };
 
   useEffect(() => {
@@ -1149,6 +1192,14 @@ export const ScriptView: FC<{
   ]);
 
   const scriptValue = script ?? baseScript ?? '';
+  const primaryVideoModel = videoModels[0] ?? DEFAULT_VIDEO_MODEL;
+  const durationFit = assessDurationFit(
+    scriptValue,
+    targetDuration,
+    primaryVideoModel
+  );
+  const showTitleCardNote =
+    titleCardNote || briefRequestsUnrenderableText(scriptValue);
   const { ref: textareaRef } = useAutoScroll<HTMLDivElement>({
     enabled: isEnhancing,
     content: scriptValue,
@@ -1173,12 +1224,14 @@ export const ScriptView: FC<{
     const sceneCount = estimateSceneCount(scriptValue, {
       targetDurationSeconds: targetDuration,
     });
-    // Spread the Enhance target across shots for motion; music spans the full
-    // target. Avoids billing every shot at a flat 5s when the user picked 30s/1m.
-    const perShotDurationSeconds = Math.max(
-      5,
-      Math.round(targetDuration / Math.max(sceneCount, 1))
-    );
+    // Snap labeled clips (or the target spread) onto the primary video
+    // model's grid so the quote matches what will actually render (#1374).
+    const motionDurations = estimateMotionDurations({
+      script: scriptValue,
+      targetSeconds: targetDuration,
+      sceneCount,
+      model: videoModels[0] ?? DEFAULT_VIDEO_MODEL,
+    });
     return estimateStoryboardCost({
       imageModel: primaryImage,
       imageModelCount: Math.max(imageModels.length, 1),
@@ -1187,11 +1240,13 @@ export const ScriptView: FC<{
       autoGenerateMotion,
       videoModels: autoGenerateMotion ? videoModels : undefined,
       videoDurationSeconds: autoGenerateMotion
-        ? perShotDurationSeconds
+        ? motionDurations.perShotSeconds
         : undefined,
       autoGenerateMusic,
       audioModels: autoGenerateMusic ? audioModels : undefined,
-      audioDurationSeconds: autoGenerateMusic ? targetDuration : undefined,
+      audioDurationSeconds: autoGenerateMusic
+        ? motionDurations.totalSeconds
+        : undefined,
       pricing: falPricing,
     });
   }, [
@@ -1267,6 +1322,16 @@ export const ScriptView: FC<{
                   </ToggleGroupItem>
                 ))}
               </ToggleGroup>
+              <DurationFitHint
+                targetDuration={targetDuration}
+                videoModel={primaryVideoModel}
+                script={scriptValue}
+              />
+              {briefRequestsUnrenderableText(scriptValue) ? (
+                <p className="max-w-xs text-xs text-muted-foreground">
+                  {TITLE_CARD_NOTE}
+                </p>
+              ) : null}
               <Button
                 type="button"
                 size="sm"
@@ -1400,6 +1465,22 @@ export const ScriptView: FC<{
             text={thinkingText || undefined}
             className="shrink-0"
           />
+          {durationFit.message ? (
+            <Alert>
+              <TriangleAlert />
+              <AlertTitle>
+                This brief cannot fit {targetDuration}s on{' '}
+                {videoModelDisplayName(primaryVideoModel)}
+              </AlertTitle>
+              <AlertDescription>{durationFit.message}</AlertDescription>
+            </Alert>
+          ) : null}
+          {showTitleCardNote ? (
+            <Alert>
+              <AlertTitle>Text is not rendered</AlertTitle>
+              <AlertDescription>{TITLE_CARD_NOTE}</AlertDescription>
+            </Alert>
+          ) : null}
           {/* Label only while a sample is in the box — empty composers keep
               this row off so the placeholder is the instruction (#1255). */}
           {!isEditing && sampleStyleId ? (
@@ -1645,6 +1726,11 @@ export const ScriptView: FC<{
                 </ToggleGroupItem>
               ))}
             </ToggleGroup>
+            <DurationFitHint
+              targetDuration={targetDuration}
+              videoModel={primaryVideoModel}
+              script={scriptValue}
+            />
           </div>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>

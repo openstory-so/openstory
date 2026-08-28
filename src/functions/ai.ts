@@ -17,6 +17,7 @@ import {
   llmCostFromUsage,
   RECOMMENDED_MODELS,
 } from '@/lib/ai/llm-client';
+import { isValidImageToVideoModel } from '@/lib/ai/models';
 import { isValidAnalysisModelId } from '@/lib/ai/models.config';
 import { sanitizeScriptContent } from '@/lib/ai/prompt-validation';
 import {
@@ -247,6 +248,14 @@ const enhanceScriptInputSchema = z.object({
     .min(10, 'Script must be at least 10 characters')
     .max(50000, 'Script too long'),
   targetDuration: z.number().min(5).max(180).optional(),
+  // Catalog key of the selected video model — clip-grid constraint for labels
+  // (#1374). Optional; the enhancer defaults to DEFAULT_VIDEO_MODEL.
+  videoModel: z
+    .string()
+    .refine((val) => isValidImageToVideoModel(val), {
+      message: 'Invalid video model',
+    })
+    .optional(),
   // The chosen style, narrowed to what the enhancer reads: the aesthetic recipe
   // (`config`) drives the LOOK; name/category/tags drive WHAT HAPPENS. One
   // cohesive object — built by `toEnhanceInputs` so the UI and API match.
