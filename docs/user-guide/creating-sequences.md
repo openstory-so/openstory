@@ -86,8 +86,8 @@ The AI model for generating scene images. You can select **multiple image models
 | Grok Imagine Image Quality | SpaceXAI          | Quality Mode — higher fidelity, stronger text        |
 | FLUX.2 Max                 | Black Forest Labs | Exceptional realism and consistency                  |
 | Phota                      | Phota             | Character consistency via profiles                   |
-| Hunyuan Image v3           | Tencent           | Open source with strong composition                  |
-| FLUX.2 Dev                 | Black Forest Labs | Open source, 32B open weights                        |
+| Hunyuan Image v3           | Tencent           | Open weights with strong composition                 |
+| FLUX.2 Dev                 | Black Forest Labs | 32B open weights                                     |
 | Qwen Image 2 Pro           | Alibaba           | Apache 2.0, native 2K, text rendering                |
 | HiDream I1                 | HiDream           | MIT licensed, 17B parameters                         |
 | Seedream 5.0 Pro           | ByteDance         | Flagship generation and editing                      |
@@ -98,7 +98,7 @@ The AI model for image-to-video animation. Toggle **Auto-generate motion** to au
 
 | Model              | Vendor     | Est. Time                    |
 | ------------------ | ---------- | ---------------------------- |
-| LTX 2.3 Pro        | Lightricks | ~15s (open-source)           |
+| LTX 2.3 Pro        | Lightricks | ~15s (open weight)           |
 | Veo 3.1            | Google     | ~25s                         |
 | Kling v3 Pro       | Kling      | ~20s                         |
 | Grok Imagine Video | SpaceXAI   | ~20s                         |
@@ -113,7 +113,7 @@ Toggle **Auto-generate music** to automatically create a soundtrack after scene 
 | ---------------- | ---------- | ------------ | ----------------------- |
 | ElevenLabs Music | ElevenLabs | 600s         | Music (default)         |
 | MiniMax Music v2 | MiniMax    | 300s         | Music (supports lyrics) |
-| ACE-Step 1.5     | ACE Studio | 240s         | Music (open-source)     |
+| ACE-Step 1.5     | ACE Studio | 240s         | Music (open weight)     |
 | Lyria 2          | Google     | 30s          | Music                   |
 | MMAudio V2       | MMAudio    | 8s           | SFX (video-to-audio)    |
 | ElevenLabs SFX   | ElevenLabs | 22s          | Sound Effects           |

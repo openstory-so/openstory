@@ -13,20 +13,20 @@ These LLM models analyze your script, extract scenes, characters, and locations,
 
 | Model              | Vendor    | Context Window | License                   |
 | ------------------ | --------- | -------------- | ------------------------- |
+| Claude Fable 5     | Anthropic | 1M tokens      | Proprietary               |
 | **Claude Opus 5**  | Anthropic | 1M tokens      | Proprietary (default)     |
 | Claude Opus 5 Fast | Anthropic | 1M tokens      | Proprietary (scene-split) |
-| Grok 4.5           | SpaceXAI  | 500K tokens    | Proprietary               |
-| Claude Fable 5     | Anthropic | 1M tokens      | Proprietary               |
-| Claude Sonnet 5    | Anthropic | 1M tokens      | Proprietary               |
-| Mistral Small 4    | Mistral   | 262K tokens    | Open Source (Apache 2.0)  |
-| DeepSeek V3.2      | DeepSeek  | 164K tokens    | Open Source (MIT)         |
-| GLM-5.3 Flash      | Z.ai      | 1M tokens      | Open Source (MIT)         |
 | Gemini 3.1 Pro     | Google    | 1M tokens      | Proprietary               |
 | GPT-5.5            | OpenAI    | 1M tokens      | Proprietary               |
 | Gemini 3 Flash     | Google    | 1M tokens      | Proprietary               |
+| GLM-5.3 Flash      | Z.ai      | 1M tokens      | Open Weight (MIT)         |
+| DeepSeek V4 Pro    | DeepSeek  | 1M tokens      | Open Weight (MIT)         |
+| Claude Sonnet 5    | Anthropic | 1M tokens      | Proprietary               |
+| Grok 4.6           | SpaceXAI  | 500K tokens    | Proprietary               |
 | GPT-5.4 Mini       | OpenAI    | 400K tokens    | Proprietary               |
-| Seed 2.0 Mini      | ByteDance | 262K tokens    | Proprietary               |
 | GPT-5.4 Nano       | OpenAI    | 400K tokens    | Proprietary               |
+| Mistral Small 4    | Mistral   | 262K tokens    | Open Weight (Apache 2.0)  |
+| Seed 2.0 Mini      | ByteDance | 262K tokens    | Proprietary               |
 
 ## Image Generation Models
 
@@ -40,10 +40,10 @@ These models create the visual images for each scene. You can select multiple mo
 | Grok Imagine Image Quality | SpaceXAI          | Proprietary              | Quality Mode — higher fidelity, stronger text        |
 | FLUX.2 Max                 | Black Forest Labs | Proprietary              | Exceptional realism                                  |
 | Phota                      | Phota             | Proprietary              | Character consistency via profiles                   |
-| Hunyuan Image v3           | Tencent           | Open Source              | Strong composition                                   |
-| FLUX.2 Dev                 | Black Forest Labs | Open Source              | 32B open weights with native editing                 |
-| Qwen Image 2 Pro           | Alibaba           | Open Source (Apache 2.0) | Native 2K, text rendering                            |
-| HiDream I1                 | HiDream           | Open Source (MIT)        | 17B parameters                                       |
+| Hunyuan Image v3           | Tencent           | Open Weight              | Strong composition                                   |
+| FLUX.2 Dev                 | Black Forest Labs | Open Weight              | 32B open weights with native editing                 |
+| Qwen Image 2 Pro           | Alibaba           | Open Weight (Apache 2.0) | Native 2K, text rendering                            |
+| HiDream I1                 | HiDream           | Open Weight (MIT)        | 17B parameters                                       |
 | Seedream 5.0 Pro           | ByteDance         | Proprietary              | Flagship generation and editing                      |
 
 ### Edit Endpoints
@@ -56,7 +56,7 @@ These models animate still images into video clips.
 
 | Model              | Vendor     | Est. Time | License     | Notes                 |
 | ------------------ | ---------- | --------- | ----------- | --------------------- |
-| **LTX 2.3 Pro**    | Lightricks | ~15s      | Open Source | Best quality ranking  |
+| **LTX 2.3 Pro**    | Lightricks | ~15s      | Open Weight | Best quality ranking  |
 | Veo 3.1            | Google     | ~25s      | Proprietary | 20K max prompt length |
 | Kling v3 Pro       | Kling      | ~20s      | Proprietary |                       |
 | Grok Imagine Video | SpaceXAI   | ~20s      | Proprietary |                       |
@@ -77,9 +77,9 @@ Some motion models can generate audio alongside video. OpenStory checks each mod
 | -------------------- | ---------- | ------------- | ----- | ----------- |
 | **ElevenLabs Music** | ElevenLabs | 600s (10 min) | Music | Proprietary |
 | MiniMax Music v2     | MiniMax    | 300s (5 min)  | Music | Proprietary |
-| ACE-Step 1.5         | ACE Studio | 240s (4 min)  | Music | Open Source |
+| ACE-Step 1.5         | ACE Studio | 240s (4 min)  | Music | Open Weight |
 | Lyria 2              | Google     | 30s           | Music | Proprietary |
-| MMAudio V2           | MMAudio    | 8s            | SFX   | Open Source |
+| MMAudio V2           | MMAudio    | 8s            | SFX   | Open Weight |
 | ElevenLabs SFX       | ElevenLabs | 22s           | SFX   | Proprietary |
 
 ### Music vs. Sound Effects

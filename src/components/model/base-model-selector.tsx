@@ -42,7 +42,7 @@ type ModelItem = {
   id: string;
   name: string;
   group: string;
-  badge?: 'open-source' | 'proprietary';
+  badge?: 'open-weight' | 'proprietary';
   /** Show a "Recommended" badge with the given tooltip text */
   recommendedFor?: string;
   /**
@@ -276,9 +276,9 @@ export const BaseModelSelector: React.FC<BaseModelSelectorProps> = ({
                           </Tooltip>
                         </TooltipProvider>
                       )}
-                      {model.badge === 'open-source' && (
+                      {model.badge === 'open-weight' && (
                         <span className="shrink-0 rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-500">
-                          Open Source
+                          Open Weight
                         </span>
                       )}
                     </span>

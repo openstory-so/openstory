@@ -1,85 +1,78 @@
 /**
  * Registry of AI models available for script analysis.
- * Ordered by qualityRank (1 = best). Open-source models noted with license field.
+ * Ordered by qualityRank (1 = best), which follows the LMArena text
+ * leaderboard (arena.ai/leaderboard/text, snapshot 2026-08-27; best-scoring
+ * variant per model). Re-rank when bumping models. Open-weight models noted
+ * with license field.
  */
 
 export const SCRIPT_ANALYSIS_MODELS = [
-  {
-    id: 'anthropic/claude-opus-5',
-    name: 'Claude Opus 5',
-    vendor: 'Anthropic',
-    license: 'proprietary' as const,
-    qualityRank: 1,
-    contextWindow: 1_000_000,
-    maxOutputTokens: 128_000,
-    vision: true,
-    description: 'Default analysis model; frontier reasoning and coding',
-  },
-  {
-    id: 'x-ai/grok-4.6',
-    name: 'Grok 4.6',
-    vendor: 'SpaceXAI',
-    license: 'proprietary' as const,
-    qualityRank: 1,
-    contextWindow: 500_000,
-    maxOutputTokens: 450_000,
-    // Accepts image input — required so the motion-prompt pass can be
-    // conditioned on the rendered starting frame (#929). Conservative: only
-    // models known to accept image input are `true`; text-only models fall
-    // back to the text-only motion prompt path.
-    vision: true,
-    description: 'Frontier xAI reasoning model, xAI’s smartest, 500K context',
-  },
   {
     id: 'anthropic/claude-fable-5',
     name: 'Claude Fable 5',
     vendor: 'Anthropic',
     license: 'proprietary' as const,
-    qualityRank: 2,
+    // Arena 1507.
+    qualityRank: 1,
     contextWindow: 1_000_000,
     maxOutputTokens: 128_000,
     vision: true,
     description: 'Most intelligent Anthropic model, new tier above Opus',
   },
   {
-    id: 'anthropic/claude-sonnet-5',
-    name: 'Claude Sonnet 5',
+    id: 'anthropic/claude-opus-5',
+    name: 'Claude Opus 5',
     vendor: 'Anthropic',
     license: 'proprietary' as const,
-    qualityRank: 3,
+    // Arena 1492 (opus-5-high).
+    qualityRank: 2,
     contextWindow: 1_000_000,
     maxOutputTokens: 128_000,
     vision: true,
-    description: 'State-of-the-art coding and structured output',
-  },
-  {
-    id: 'x-ai/grok-4.20',
-    name: 'Grok 4.20',
-    vendor: 'SpaceXAI',
-    license: 'proprietary' as const,
-    qualityRank: 4,
-    contextWindow: 2_000_000,
-    maxOutputTokens: 1_800_000,
-    vision: true,
-    description: 'Lowest hallucination rate, flagship agentic model',
-    hidden: true,
+    description: 'Default analysis model; frontier reasoning and coding',
   },
   {
     id: 'anthropic/claude-opus-5-fast',
     name: 'Claude Opus 5 Fast',
     vendor: 'Anthropic',
     license: 'proprietary' as const,
-    qualityRank: 5,
+    // Not ranked separately — Opus 5 weights, faster output.
+    qualityRank: 3,
     contextWindow: 1_000_000,
     maxOutputTokens: 128_000,
     vision: true,
     description: 'Opus 5 low-latency; used for scene-split',
   },
   {
+    id: 'google/gemini-3.1-pro-preview',
+    name: 'Gemini 3.1 Pro',
+    vendor: 'Google',
+    license: 'proprietary' as const,
+    // Arena 1487.
+    qualityRank: 4,
+    contextWindow: 1_048_576,
+    maxOutputTokens: 65_536,
+    vision: true,
+    description: 'Frontier multimodal reasoning with 1M context',
+  },
+  {
+    id: 'openai/gpt-5.5',
+    name: 'GPT-5.5',
+    vendor: 'OpenAI',
+    license: 'proprietary' as const,
+    // Arena 1482 (gpt-5.5-high).
+    qualityRank: 5,
+    contextWindow: 1_050_000,
+    maxOutputTokens: 128_000,
+    vision: true,
+    description: 'Latest GPT-5 series with 1M context',
+  },
+  {
     id: 'anthropic/claude-opus-4.8',
     name: 'Claude Opus 4.8',
     vendor: 'Anthropic',
     license: 'proprietary' as const,
+    // Arena 1481 (opus-4-8-high).
     qualityRank: 6,
     contextWindow: 1_000_000,
     maxOutputTokens: 128_000,
@@ -88,46 +81,36 @@ export const SCRIPT_ANALYSIS_MODELS = [
     hidden: true,
   },
   {
-    id: 'mistralai/mistral-small-2603',
-    name: 'Mistral Small 4',
-    vendor: 'Mistral',
-    license: 'open-source' as const,
+    id: 'x-ai/grok-4.20',
+    name: 'Grok 4.20',
+    vendor: 'SpaceXAI',
+    license: 'proprietary' as const,
+    // Arena 1475 (grok-4.20-beta1).
     qualityRank: 7,
-    contextWindow: 262_144,
-    maxOutputTokens: 209_715,
+    contextWindow: 2_000_000,
+    maxOutputTokens: 1_800_000,
     vision: true,
-    description: 'Apache 2.0, 119B MoE, multimodal + agentic coding',
+    description: 'Lowest hallucination rate, flagship agentic model',
+    hidden: true,
   },
   {
-    id: 'deepseek/deepseek-v4-pro-0813',
-    name: 'DeepSeek V4 Pro',
-    vendor: 'DeepSeek',
-    license: 'open-source' as const,
+    id: 'google/gemini-3-flash-preview',
+    name: 'Gemini 3 Flash',
+    vendor: 'Google',
+    license: 'proprietary' as const,
+    // Arena 1474.
     qualityRank: 8,
     contextWindow: 1_048_576,
-    maxOutputTokens: 943_717,
-    // Text-only.
-    vision: false,
-    description: 'Open-weights frontier reasoning, 1M context',
-  },
-  {
-    id: 'deepseek/deepseek-v3.2',
-    name: 'DeepSeek V3.2',
-    vendor: 'DeepSeek',
-    license: 'open-source' as const,
-    qualityRank: 8,
-    contextWindow: 163_840,
-    maxOutputTokens: 147_456,
-    // Text-only.
-    vision: false,
-    description: 'MIT license, MMLU 94.2, GPT-5 class reasoning',
-    hidden: true,
+    maxOutputTokens: 65_536,
+    vision: true,
+    description: 'Fast multimodal with 1M context',
   },
   {
     id: 'z-ai/glm-5.3-flash',
     name: 'GLM-5.3 Flash',
     vendor: 'Z.ai',
-    license: 'open-source' as const,
+    license: 'open-weight' as const,
+    // Arena 1469 ±12 — only 2.4k votes, released 2026-08-26.
     qualityRank: 9,
     contextWindow: 1_048_576,
     maxOutputTokens: 131_072,
@@ -141,43 +124,52 @@ export const SCRIPT_ANALYSIS_MODELS = [
     description: 'Native multimodal, 1M context, long-horizon agents',
   },
   {
-    id: 'google/gemini-3.1-pro-preview',
-    name: 'Gemini 3.1 Pro',
-    vendor: 'Google',
-    license: 'proprietary' as const,
+    id: 'deepseek/deepseek-v4-pro-0813',
+    name: 'DeepSeek V4 Pro',
+    vendor: 'DeepSeek',
+    license: 'open-weight' as const,
+    // Arena 1462 (v4-pro-high).
     qualityRank: 10,
     contextWindow: 1_048_576,
-    maxOutputTokens: 65_536,
-    vision: true,
-    description: 'Frontier multimodal reasoning with 1M context',
+    maxOutputTokens: 943_717,
+    // Text-only.
+    vision: false,
+    description: 'Open-weights frontier reasoning, 1M context',
   },
   {
-    id: 'openai/gpt-5.5',
-    name: 'GPT-5.5',
-    vendor: 'OpenAI',
+    id: 'anthropic/claude-sonnet-5',
+    name: 'Claude Sonnet 5',
+    vendor: 'Anthropic',
     license: 'proprietary' as const,
+    // Arena 1461 (sonnet-5-high).
     qualityRank: 11,
-    contextWindow: 1_050_000,
+    contextWindow: 1_000_000,
     maxOutputTokens: 128_000,
     vision: true,
-    description: 'Latest GPT-5 series with 1M context',
+    description: 'State-of-the-art coding and structured output',
   },
   {
-    id: 'google/gemini-3-flash-preview',
-    name: 'Gemini 3 Flash',
-    vendor: 'Google',
+    id: 'x-ai/grok-4.6',
+    name: 'Grok 4.6',
+    vendor: 'SpaceXAI',
     license: 'proprietary' as const,
+    // Arena 1461 ±10 (grok-4.6-high) — only 3.5k votes, released 2026-08-12.
     qualityRank: 12,
-    contextWindow: 1_048_576,
-    maxOutputTokens: 65_536,
+    contextWindow: 500_000,
+    maxOutputTokens: 450_000,
+    // Accepts image input — required so the motion-prompt pass can be
+    // conditioned on the rendered starting frame (#929). Conservative: only
+    // models known to accept image input are `true`; text-only models fall
+    // back to the text-only motion prompt path.
     vision: true,
-    description: 'Fast multimodal with 1M context',
+    description: 'Frontier xAI reasoning model, xAI’s smartest, 500K context',
   },
   {
     id: 'openai/gpt-5.4-mini',
     name: 'GPT-5.4 Mini',
     vendor: 'OpenAI',
     license: 'proprietary' as const,
+    // Arena 1448 (gpt-5.4-mini-high).
     qualityRank: 13,
     contextWindow: 400_000,
     maxOutputTokens: 128_000,
@@ -185,26 +177,54 @@ export const SCRIPT_ANALYSIS_MODELS = [
     description: 'Fast reasoning with configurable effort modes',
   },
   {
-    id: 'bytedance-seed/seed-2.0-mini',
-    name: 'Seed 2.0 Mini',
-    vendor: 'ByteDance',
-    license: 'proprietary' as const,
+    id: 'deepseek/deepseek-v3.2',
+    name: 'DeepSeek V3.2',
+    vendor: 'DeepSeek',
+    license: 'open-weight' as const,
+    // Arena 1425.
     qualityRank: 14,
-    contextWindow: 262_144,
-    maxOutputTokens: 131_072,
-    vision: true,
-    description: 'Fast multimodal with 4 reasoning effort modes',
+    contextWindow: 163_840,
+    maxOutputTokens: 147_456,
+    // Text-only.
+    vision: false,
+    description: 'MIT license, MMLU 94.2, GPT-5 class reasoning',
+    hidden: true,
   },
   {
     id: 'openai/gpt-5.4-nano',
     name: 'GPT-5.4 Nano',
     vendor: 'OpenAI',
     license: 'proprietary' as const,
+    // Arena 1402 (gpt-5.4-nano-high).
     qualityRank: 15,
     contextWindow: 400_000,
     maxOutputTokens: 128_000,
     vision: true,
     description: 'Fastest and most cost-efficient GPT-5.4 variant',
+  },
+  {
+    id: 'mistralai/mistral-small-2603',
+    name: 'Mistral Small 4',
+    vendor: 'Mistral',
+    license: 'open-weight' as const,
+    // Not on the Arena board.
+    qualityRank: 16,
+    contextWindow: 262_144,
+    maxOutputTokens: 209_715,
+    vision: true,
+    description: 'Apache 2.0, 119B MoE, multimodal + agentic coding',
+  },
+  {
+    id: 'bytedance-seed/seed-2.0-mini',
+    name: 'Seed 2.0 Mini',
+    vendor: 'ByteDance',
+    license: 'proprietary' as const,
+    // Not on the Arena board (Seed 2.0 Pro is 1456).
+    qualityRank: 17,
+    contextWindow: 262_144,
+    maxOutputTokens: 131_072,
+    vision: true,
+    description: 'Fast multimodal with 4 reasoning effort modes',
   },
 ] as const;
 

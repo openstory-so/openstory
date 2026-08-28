@@ -31,7 +31,7 @@ type PricingRow = {
   via: PricingVia;
   /** Official pricing / model page on the via platform. */
   docsUrl: string;
-  license?: 'open-source' | 'proprietary';
+  license?: 'open-weight' | 'proprietary';
   /** Short indicative rate — not the full tariff. */
   price: string;
   detail?: string;
@@ -158,7 +158,7 @@ export function buildPricingCatalog(opts: {
     id: string;
     name: string;
     vendor: string;
-    license?: 'open-source' | 'proprietary';
+    license?: 'open-weight' | 'proprietary';
     byteplusId?: string;
   }): PricingRow => {
     const viaByteplus = opts.byteplusEnabled === true && !!model.byteplusId;
