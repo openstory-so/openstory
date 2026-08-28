@@ -23,52 +23,43 @@ const DURATION_SUM_TOLERANCE_RATIO = 0.1;
 /** Prompt-level self-check band (±2s in the eval that made the sum reliable). */
 const DURATION_PROMPT_TOLERANCE_SECONDS = 2;
 
-export type SceneCountRange = { min: number; max: number };
-
 export type DurationFit = {
-  targetSeconds: number;
-  labeledSeconds: number | null;
   snappedSeconds: number | null;
-  sceneCount: number;
   clipGrid: number[];
-  minAchievableSeconds: number | null;
-  /** False when labeled scene count × min clip overshoots the target. */
-  fits: boolean;
-  /** User-facing conflict, or null when the script can hit the target. */
+  /** Set only when scene count × min clip overshoots the target. */
   message: string | null;
 };
 
-function preferredSceneRange(targetSeconds: number): SceneCountRange {
-  if (targetSeconds <= 15) return { min: 2, max: 3 };
-  if (targetSeconds <= 30) return { min: 4, max: 6 };
-  if (targetSeconds <= 60) return { min: 8, max: 12 };
-  if (targetSeconds <= 120) return { min: 15, max: 20 };
-  return { min: 20, max: 30 };
+function preferredMinMax(targetSeconds: number): [number, number] {
+  if (targetSeconds <= 15) return [2, 3];
+  if (targetSeconds <= 30) return [4, 6];
+  if (targetSeconds <= 60) return [8, 12];
+  if (targetSeconds <= 120) return [15, 20];
+  return [20, 30];
 }
 
-export function sceneCountRange(
-  targetSeconds: number,
-  grid: number[]
-): SceneCountRange {
-  const preferred = preferredSceneRange(targetSeconds);
+/** Scene-count guidance, intersected with what the clip grid can actually hit. */
+export function sceneRangeText(targetSeconds: number, grid: number[]): string {
+  let [min, max] = preferredMinMax(targetSeconds);
   const minClip = grid[0];
   const maxClip = grid[grid.length - 1];
-  if (minClip === undefined || maxClip === undefined) return preferred;
-
-  const feasibleMin = Math.max(1, Math.ceil(targetSeconds / maxClip));
-  const feasibleMax = Math.max(
-    feasibleMin,
-    Math.floor(targetSeconds / minClip)
-  );
-  const min = Math.max(preferred.min, feasibleMin);
-  const max = Math.min(preferred.max, feasibleMax);
-  if (min <= max) return { min, max };
-  return { min: feasibleMin, max: feasibleMax };
-}
-
-export function formatSceneRange(range: SceneCountRange): string {
-  if (range.min === range.max) return `${range.min}`;
-  return `${range.min}-${range.max}`;
+  if (minClip !== undefined && maxClip !== undefined) {
+    const feasibleMin = Math.max(1, Math.ceil(targetSeconds / maxClip));
+    const feasibleMax = Math.max(
+      feasibleMin,
+      Math.floor(targetSeconds / minClip)
+    );
+    const lo = Math.max(min, feasibleMin);
+    const hi = Math.min(max, feasibleMax);
+    if (lo <= hi) {
+      min = lo;
+      max = hi;
+    } else {
+      min = feasibleMin;
+      max = feasibleMax;
+    }
+  }
+  return min === max ? `${min}` : `${min}-${max}`;
 }
 
 /** Human clip-grid phrase: "6, 8 or 10 seconds", "4–15 seconds". */
@@ -145,60 +136,6 @@ export function createTotalLineFilter(): {
   };
 }
 
-function snapToNearest(n: number, grid: number[]): number {
-  const first = grid[0];
-  if (first === undefined) return n;
-  return grid.reduce((best, v) =>
-    Math.abs(v - n) < Math.abs(best - n) ? v : best
-  );
-}
-
-/**
- * Snap each label onto `grid`, then walk individual clips one grid step at a
- * time toward `target` while each step reduces |sum − target|. Stops at the
- * closest achievable sum (e.g. 9×6s = 54s on LTX when the target is 30s).
- */
-export function rebalanceDurationsToGrid(
-  labels: number[],
-  grid: number[],
-  target: number
-): number[] {
-  if (labels.length === 0 || grid.length === 0) return labels;
-  const g = [...new Set(grid)].sort((a, b) => a - b);
-  const values = labels.map((v) => snapToNearest(v, g));
-
-  const sumOf = () => values.reduce((a, b) => a + b, 0);
-  const err = () => Math.abs(sumOf() - target);
-
-  const tryStep = (dir: -1 | 1): boolean => {
-    const order = values
-      .map((_, i) => i)
-      .sort((a, b) => {
-        const va = values[a] ?? 0;
-        const vb = values[b] ?? 0;
-        return dir === -1 ? vb - va : va - vb;
-      });
-    const before = err();
-    for (const i of order) {
-      const current = values[i];
-      if (current === undefined) continue;
-      const idx = g.indexOf(current);
-      const next = g[idx + dir];
-      if (next === undefined) continue;
-      values[i] = next;
-      if (err() < before) return true;
-      values[i] = current;
-    }
-    return false;
-  };
-
-  while (err() > 0) {
-    const dir: -1 | 1 = sumOf() > target ? -1 : 1;
-    if (!tryStep(dir)) break;
-  }
-  return values;
-}
-
 function rewriteSceneDurationLabels(
   script: string,
   durations: number[]
@@ -231,25 +168,14 @@ export function durationCorrectionNeeded(opts: {
   return offSum || offGrid;
 }
 
-/**
- * After the (possibly corrected) LLM pass: rewrite labels onto the model
- * grid when they are illegal or still far from the target. No-op when the
- * labels are already valid and within 10%, so recorded e2e scripts stay put.
- */
+/** Snap illegal labels onto the model grid. On-grid values are left alone. */
 export function maybeRewriteDurationLabels(
   script: string,
-  targetSeconds: number,
-  grid: number[]
+  model: ImageToVideoModel
 ): string {
   const labels = parseSceneDurationLabels(script);
-  if (labels.length === 0 || grid.length === 0) return script;
-  const onGrid = labels.every((s) => grid.includes(s));
-  const sum = labels.reduce((a, b) => a + b, 0);
-  const closeEnough =
-    Math.abs(sum - targetSeconds) <=
-    targetSeconds * DURATION_SUM_TOLERANCE_RATIO;
-  if (onGrid && closeEnough) return script;
-  const next = rebalanceDurationsToGrid(labels, grid, targetSeconds);
+  if (labels.length === 0) return script;
+  const next = labels.map((s) => snapDuration(s, model));
   if (next.every((v, i) => v === labels[i])) return script;
   return rewriteSceneDurationLabels(script, next);
 }
@@ -261,66 +187,24 @@ export function assessDurationFit(
 ): DurationFit {
   const clipGrid = durationGridForModel(model);
   const labels = parseSceneDurationLabels(script);
-  const sceneCount = labels.length;
   const minClip = clipGrid[0];
-  if (sceneCount === 0) {
-    return {
-      targetSeconds,
-      labeledSeconds: null,
-      snappedSeconds: null,
-      sceneCount: 0,
-      clipGrid,
-      minAchievableSeconds: minClip ?? null,
-      fits: true,
-      message: null,
-    };
+  if (labels.length === 0) {
+    return { snappedSeconds: null, clipGrid, message: null };
   }
 
-  const labeledSeconds = labels.reduce((a, b) => a + b, 0);
-  const snapped = rebalanceDurationsToGrid(labels, clipGrid, targetSeconds);
+  const snapped = labels.map((s) => snapDuration(s, model));
   const snappedSeconds = snapped.reduce((a, b) => a + b, 0);
-  const minAchievableSeconds =
-    minClip !== undefined ? sceneCount * minClip : snappedSeconds;
-  const overshoot =
-    minClip !== undefined && minAchievableSeconds > targetSeconds;
-  const farFromTarget =
-    Math.abs(snappedSeconds - targetSeconds) >
-    targetSeconds * DURATION_SUM_TOLERANCE_RATIO;
-  const fits = !overshoot && !farFromTarget;
-  const message = fits
-    ? null
-    : formatDurationConflict({
-        sceneCount,
-        minClip: minClip ?? 0,
-        minTotal: minAchievableSeconds,
-        targetSeconds,
-        snappedSeconds,
-      });
+  // Only "too many scenes for this model's shortest clip" — never "too few
+  // yet" (that fires on a half-streamed enhance and then vanishes).
+  const minTotal = minClip !== undefined ? labels.length * minClip : 0;
+  const message =
+    minClip !== undefined && minTotal > targetSeconds
+      ? `${labels.length} scenes at ≥${minClip}s clips is ≥${minTotal}s ` +
+        `(target ${targetSeconds}s). This video will be about ${snappedSeconds}s. ` +
+        `Shorten the brief, pick a model with shorter clips, or raise the target.`
+      : null;
 
-  return {
-    targetSeconds,
-    labeledSeconds,
-    snappedSeconds,
-    sceneCount,
-    clipGrid,
-    minAchievableSeconds,
-    fits,
-    message,
-  };
-}
-
-function formatDurationConflict(opts: {
-  sceneCount: number;
-  minClip: number;
-  minTotal: number;
-  targetSeconds: number;
-  snappedSeconds: number;
-}): string {
-  return (
-    `${opts.sceneCount} scenes at ≥${opts.minClip}s clips is ≥${opts.minTotal}s ` +
-    `(target ${opts.targetSeconds}s). This video will be about ${opts.snappedSeconds}s. ` +
-    `Shorten the brief, pick a model with shorter clips, or raise the target.`
-  );
+  return { snappedSeconds, clipGrid, message };
 }
 
 export function briefRequestsUnrenderableText(script: string): boolean {
@@ -342,22 +226,16 @@ function formatDuration(seconds: number): string {
 export function buildDurationPromptParagraph(opts: {
   targetSeconds: number;
   videoModel: ImageToVideoModel;
-  brief: string;
 }): string {
   const grid = durationGridForModel(opts.videoModel);
-  const range = sceneCountRange(opts.targetSeconds, grid);
-  const rangeText = formatSceneRange(range);
+  const rangeText = sceneRangeText(opts.targetSeconds, grid);
   const gridText = formatClipGrid(grid);
-  const titleNote = briefRequestsUnrenderableText(opts.brief)
-    ? ' This brief asks for a title card or on-screen text — do not write that card; substitute a final living beat with a real subject (text is not rendered).'
-    : ' If the brief asks for a title card, logo, SUPER, or on-screen text, do not write that card — the image model cannot render text. Substitute a final living beat with a real subject.';
-
   const clipRule =
     gridText.length > 0
       ? `Each scene is one video clip. Clip durations MUST be ${gridText} — those are the only lengths the selected video model can render.`
       : `Give each scene a realistic single-clip duration — most around 5 seconds, a few up to ~8 when the motion genuinely needs it.`;
 
-  return `Target video duration: ${formatDuration(opts.targetSeconds)} (about ${rangeText} scenes). ${clipRule} Label every scene (e.g. a "Scene 3 — ${grid[0] ?? 5}s" heading). The labels MUST add up to ${opts.targetSeconds} seconds (±${DURATION_PROMPT_TOLERANCE_SECONDS} seconds). Count the scenes, add the labels, and do not return until they sum to the target. Reach the target through the number of scenes, not by stretching illegal clip lengths.${titleNote} End with a single line: TOTAL: <sum>s`;
+  return `Target video duration: ${formatDuration(opts.targetSeconds)} (about ${rangeText} scenes). ${clipRule} Label every scene (e.g. a "Scene 3 — ${grid[0] ?? 5}s" heading). The labels MUST add up to ${opts.targetSeconds} seconds (±${DURATION_PROMPT_TOLERANCE_SECONDS} seconds). Count the scenes, add the labels, and do not return until they sum to the target. Reach the target through the number of scenes, not by stretching illegal clip lengths. If the brief asks for a title card, logo, SUPER, or on-screen text, do not write that card — the image model cannot render text. Substitute a final living beat with a real subject. End with a single line: TOTAL: <sum>s`;
 }
 
 export function buildDurationCorrectionPrompt(opts: {

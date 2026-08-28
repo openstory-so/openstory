@@ -808,7 +808,6 @@ export const ScriptView: FC<{
   // reasoning delta would churn the editor with it.
   const [thinkingText, setThinkingText] = useState('');
   const [thinkingActive, setThinkingActive] = useState(false);
-  const [titleCardNote, setTitleCardNote] = useState(false);
 
   const [enhanceUI, setEnhanceUI] = useState({
     isEnhancing: false,
@@ -1013,7 +1012,6 @@ export const ScriptView: FC<{
     setSampleStyleId(null);
     setThinkingText('');
     setThinkingActive(true);
-    setTitleCardNote(briefRequestsUnrenderableText(scriptValue));
     setEnhanceUI((s) => ({ ...s, isEnhancing: true, error: null }));
     previousScriptRef.current = scriptValue;
     setScript('');
@@ -1089,7 +1087,6 @@ export const ScriptView: FC<{
   const handleUndoEnhance = () => {
     setScript(previousScriptRef.current);
     setEnhance('canUndoEnhance', false);
-    setTitleCardNote(false);
   };
 
   useEffect(() => {
@@ -1198,8 +1195,6 @@ export const ScriptView: FC<{
     targetDuration,
     primaryVideoModel
   );
-  const showTitleCardNote =
-    titleCardNote || briefRequestsUnrenderableText(scriptValue);
   const { ref: textareaRef } = useAutoScroll<HTMLDivElement>({
     enabled: isEnhancing,
     content: scriptValue,
@@ -1465,7 +1460,7 @@ export const ScriptView: FC<{
             text={thinkingText || undefined}
             className="shrink-0"
           />
-          {durationFit.message ? (
+          {!isEnhancing && durationFit.message ? (
             <Alert>
               <TriangleAlert />
               <AlertTitle>
@@ -1473,12 +1468,6 @@ export const ScriptView: FC<{
                 {videoModelDisplayName(primaryVideoModel)}
               </AlertTitle>
               <AlertDescription>{durationFit.message}</AlertDescription>
-            </Alert>
-          ) : null}
-          {showTitleCardNote ? (
-            <Alert>
-              <AlertTitle>Text is not rendered</AlertTitle>
-              <AlertDescription>{TITLE_CARD_NOTE}</AlertDescription>
             </Alert>
           ) : null}
           {/* Label only while a sample is in the box — empty composers keep

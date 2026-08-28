@@ -8,7 +8,7 @@
  *
  * Usage:
  *   bun scripts/eval-enhance-duration.ts
- *   bun scripts/eval-enhance-duration.ts --variants total --runs 3
+ *   bun scripts/eval-enhance-duration.ts --runs 3
  *   bun scripts/eval-enhance-duration.ts --video-model ltx_2_3_pro
  *
  * Needs OPENROUTER_KEY. Report-only — never writes to the DB.
@@ -55,13 +55,6 @@ function parseArg(name: string): string | undefined {
 }
 
 const RUNS = Math.max(1, Number(parseArg('runs') ?? '3'));
-const VARIANT = parseArg('variants') ?? 'total';
-if (VARIANT !== 'total') {
-  console.error(
-    `Unknown --variants "${VARIANT}". The shipped prompt is the "total" variant (hard sum + TOTAL self-check + clip grid).`
-  );
-  process.exit(1);
-}
 const videoArg = parseArg('video-model') ?? DEFAULT_VIDEO_MODEL;
 if (!isValidImageToVideoModel(videoArg)) {
   console.error(`Invalid --video-model "${videoArg}"`);
@@ -102,7 +95,7 @@ const sums: number[] = [];
 let failed = 0;
 
 console.log(
-  `eval-enhance-duration  variant=${VARIANT}  runs=${RUNS}  target=${TARGET}s  model=${VIDEO_MODEL}`
+  `eval-enhance-duration  runs=${RUNS}  target=${TARGET}s  model=${VIDEO_MODEL}`
 );
 
 for (let i = 0; i < RUNS; i++) {

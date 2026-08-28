@@ -41,7 +41,6 @@ ${originalScript}
 ${buildDurationPromptParagraph({
   targetSeconds: durationSeconds,
   videoModel,
-  brief: originalScript,
 })}`,
   ];
 

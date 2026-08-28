@@ -17,9 +17,13 @@ import {
   type EnhanceChunk,
   streamScriptEnhancement,
 } from '@/lib/ai/script-enhancement';
-import type { DurationFit } from '@/lib/ai/enhance-duration';
+import { assessDurationFit } from '@/lib/ai/enhance-duration';
 import { toEnhanceInputs } from '@/lib/ai/enhance-inputs';
-import { DEFAULT_VIDEO_MODEL, isValidImageToVideoModel } from '@/lib/ai/models';
+import {
+  DEFAULT_VIDEO_MODEL,
+  isValidImageToVideoModel,
+  type ImageToVideoModel,
+} from '@/lib/ai/models';
 import { aspectRatioSchema } from '@/lib/constants/aspect-ratios';
 import type { ScopedDb } from '@/lib/db/scoped';
 import { handleApiError } from '@/lib/errors';
@@ -129,7 +133,8 @@ const SSE_HEADERS = {
  */
 export function enhanceSseResponse(
   first: IteratorResult<EnhanceChunk>,
-  rest: AsyncGenerator<EnhanceChunk>
+  rest: AsyncGenerator<EnhanceChunk>,
+  opts?: { targetSeconds: number; videoModel: ImageToVideoModel }
 ): Response {
   const encoder = new TextEncoder();
 
@@ -145,11 +150,9 @@ export function enhanceSseResponse(
         );
 
       let full = '';
-      let duration: DurationFit | undefined;
       // Reasoning chunks carry `delta: ''` and are dropped here: thinking is a
       // dashboard-stream affordance, not part of the documented v1 wire format.
       const push = (chunk: EnhanceChunk) => {
-        if (chunk.duration) duration = chunk.duration;
         if (chunk.replace) {
           full = chunk.delta;
           event('replace', { enhancedScript: full });
@@ -164,20 +167,16 @@ export function enhanceSseResponse(
         if (!first.done) push(first.value);
         for await (const chunk of rest) push(chunk);
         const enhancedScript = full.trim();
+        const duration = opts
+          ? assessDurationFit(
+              enhancedScript,
+              opts.targetSeconds,
+              opts.videoModel
+            )
+          : undefined;
         event('done', {
           enhancedScript,
-          ...(duration && {
-            duration: {
-              targetSeconds: duration.targetSeconds,
-              labeledSeconds: duration.labeledSeconds,
-              snappedSeconds: duration.snappedSeconds,
-              sceneCount: duration.sceneCount,
-              clipGrid: duration.clipGrid,
-              minAchievableSeconds: duration.minAchievableSeconds,
-              fits: duration.fits,
-              message: duration.message,
-            },
-          }),
+          ...(duration && duration.snappedSeconds != null ? { duration } : {}),
           _links: doneLinks(enhancedScript),
         });
       } catch (err) {

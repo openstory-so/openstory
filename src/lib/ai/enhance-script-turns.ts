@@ -5,14 +5,12 @@
  */
 
 import {
-  assessDurationFit,
   buildDurationCorrectionPrompt,
   createTotalLineFilter,
   durationCorrectionNeeded,
   maybeRewriteDurationLabels,
   parseSceneDurationLabels,
   stripTotalLine,
-  type DurationFit,
 } from '@/lib/ai/enhance-duration';
 import type { ImageToVideoModel } from '@/lib/ai/models';
 import { durationGridForModel } from '@/lib/motion/snap-duration';
@@ -23,8 +21,6 @@ type EnhanceTextDelta = { delta: string; reasoning?: string };
 export type EnhanceChunk = EnhanceTextDelta & {
   /** Replace the accumulated script (correction / label rewrite). */
   replace?: boolean;
-  /** Final duration assessment; `delta` is empty. */
-  duration?: DurationFit;
 };
 
 export type EnhanceGenerate = (
@@ -89,18 +85,8 @@ export async function* runEnhanceScriptTurns(opts: {
     );
   }
 
-  const rewritten = maybeRewriteDurationLabels(
-    script,
-    opts.targetSeconds,
-    grid
-  );
+  const rewritten = maybeRewriteDurationLabels(script, opts.videoModel);
   if (needsCorrection || rewritten !== first) {
     yield { delta: rewritten, replace: true };
-    script = rewritten;
   }
-
-  yield {
-    delta: '',
-    duration: assessDurationFit(script, opts.targetSeconds, opts.videoModel),
-  };
 }

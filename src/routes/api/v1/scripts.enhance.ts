@@ -20,6 +20,7 @@ import {
   enhanceSseResponse,
 } from '@/lib/api-v1/enhance';
 import { apiEnhanceScriptSchema } from '@/lib/api-v1/enhance-input-schema';
+import { DEFAULT_VIDEO_MODEL, isValidImageToVideoModel } from '@/lib/ai/models';
 import { apiJsonError, runApiV1Handler } from '@/lib/api-v1/errors';
 import { createFileRoute } from '@tanstack/react-router';
 
@@ -51,7 +52,13 @@ export const Route = createFileRoute('/api/v1/scripts/enhance')({
           // — billing, the LLM call — surface as a JSON error with the right
           // status before any SSE headers are committed.
           const first = await gen.next();
-          return enhanceSseResponse(first, gen);
+          return enhanceSseResponse(first, gen, {
+            targetSeconds: input.targetSeconds ?? 30,
+            videoModel:
+              input.videoModel && isValidImageToVideoModel(input.videoModel)
+                ? input.videoModel
+                : DEFAULT_VIDEO_MODEL,
+          });
         }),
     },
   },

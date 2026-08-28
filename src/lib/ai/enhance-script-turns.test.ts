@@ -34,32 +34,21 @@ async function drain(
   gen: AsyncGenerator<{
     delta: string;
     replace?: boolean;
-    duration?: {
-      fits: boolean;
-      snappedSeconds: number | null;
-      message: string | null;
-    };
   }>
 ) {
   let script = '';
-  let duration: {
-    fits: boolean;
-    snappedSeconds: number | null;
-    message: string | null;
-  } | null = null;
   for await (const chunk of gen) {
-    if (chunk.duration) duration = chunk.duration;
     if (chunk.replace) script = chunk.delta;
     else script += chunk.delta;
   }
-  return { script: script.trim(), duration };
+  return { script: script.trim() };
 }
 
 describe('runEnhanceScriptTurns', () => {
   it('streams an on-target LTX script and strips TOTAL without a second turn', async () => {
     const body = scriptFromLabels([6, 6, 6, 6, 6]);
     const generate = generateFrom([`${body}\nTOTAL: 30s`]);
-    const { script, duration } = await drain(
+    const { script } = await drain(
       runEnhanceScriptTurns({
         messages: [{ role: 'user', content: 'brief' }],
         targetSeconds: 30,
@@ -70,7 +59,6 @@ describe('runEnhanceScriptTurns', () => {
     expect(script).toBe(body);
     expect(script).not.toContain('TOTAL:');
     expect(sumSceneDurations(script)).toBe(30);
-    expect(duration?.fits).toBe(true);
   });
 
   it('sends a corrective turn when labels overshoot, then replaces', async () => {
@@ -82,7 +70,7 @@ describe('runEnhanceScriptTurns', () => {
       seen.push(messages);
       yield* inner(messages);
     };
-    const { script, duration } = await drain(
+    const { script } = await drain(
       runEnhanceScriptTurns({
         messages: [{ role: 'user', content: 'nine beats plus a title card' }],
         targetSeconds: 30,
@@ -98,7 +86,6 @@ describe('runEnhanceScriptTurns', () => {
     ).toContain('sum to 45s');
     expect(parseSceneDurationLabels(script)).toEqual([6, 6, 6, 6, 6]);
     expect(script).not.toContain('TOTAL:');
-    expect(duration?.fits).toBe(true);
   });
 
   it('corrects off-grid 5s labels on LTX even when they already sum to 30s', async () => {
