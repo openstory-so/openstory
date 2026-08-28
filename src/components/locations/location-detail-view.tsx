@@ -266,7 +266,12 @@ export const LocationDetailView: React.FC<LocationDetailViewProps> = ({
     regenerateSheet.isPending ||
     location?.referenceStatus === 'generating';
   const isSheetStale = sheetStaleness === 'stale';
-  const hasSheet = Boolean(location?.referenceImageUrl);
+  const hasPriorSheet = Boolean(
+    location?.referenceGeneratedAt || location?.selectedReferenceVersionId
+  );
+  const sheetBusyLabel = hasPriorSheet
+    ? 'Regenerating location reference…'
+    : 'Generating location reference…';
 
   const handleRegenerateSheet = useCallback(() => {
     regenerateSheet.mutate(
@@ -421,7 +426,7 @@ export const LocationDetailView: React.FC<LocationDetailViewProps> = ({
                   <div className="flex h-full w-full flex-col items-center justify-center gap-3">
                     <Loader2 className="h-10 w-10 animate-spin text-muted-foreground" />
                     <p className="text-sm text-muted-foreground">
-                      Generating location reference…
+                      {sheetBusyLabel}
                     </p>
                   </div>
                 ) : (
@@ -436,7 +441,7 @@ export const LocationDetailView: React.FC<LocationDetailViewProps> = ({
                   <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-background/60">
                     <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                     <p className="text-sm text-muted-foreground">
-                      Regenerating location reference…
+                      {sheetBusyLabel}
                     </p>
                   </div>
                 ) : null}
@@ -452,10 +457,10 @@ export const LocationDetailView: React.FC<LocationDetailViewProps> = ({
                   <RefreshCw className="mr-2 h-4 w-4" />
                 )}
                 {regenerateSheet.isPending
-                  ? hasSheet
+                  ? hasPriorSheet
                     ? 'Regenerating…'
                     : 'Generating…'
-                  : hasSheet
+                  : hasPriorSheet
                     ? isSheetGenerating
                       ? 'Generate again'
                       : 'Regenerate Reference'

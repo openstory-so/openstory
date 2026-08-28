@@ -276,7 +276,15 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
     regenerateSheet.isPending ||
     character?.sheetStatus === 'generating';
   const isSheetStale = sheetStaleness === 'stale';
-  const hasSheet = Boolean(character?.sheetImageUrl);
+  // A live URL can exist before the first sheet has ever completed (talent
+  // preview, in-flight copy). Generate vs regenerate follows whether a sheet
+  // has landed before — `sheetGeneratedAt` / selection pointer.
+  const hasPriorSheet = Boolean(
+    character?.sheetGeneratedAt || character?.selectedSheetVersionId
+  );
+  const sheetBusyLabel = hasPriorSheet
+    ? 'Regenerating character sheet…'
+    : 'Generating character sheet…';
 
   const handleRegenerateSheet = useCallback(() => {
     regenerateSheet.mutate(
@@ -422,7 +430,7 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
                   <div className="flex h-full w-full flex-col items-center justify-center gap-3">
                     <Loader2 className="h-10 w-10 animate-spin text-muted-foreground" />
                     <p className="text-sm text-muted-foreground">
-                      Generating character sheet…
+                      {sheetBusyLabel}
                     </p>
                   </div>
                 ) : (
@@ -437,7 +445,7 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
                   <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-background/60">
                     <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                     <p className="text-sm text-muted-foreground">
-                      Regenerating character sheet…
+                      {sheetBusyLabel}
                     </p>
                   </div>
                 ) : null}
@@ -453,10 +461,10 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
                   <RefreshCw className="mr-2 h-4 w-4" />
                 )}
                 {regenerateSheet.isPending
-                  ? hasSheet
+                  ? hasPriorSheet
                     ? 'Regenerating…'
                     : 'Generating…'
-                  : hasSheet
+                  : hasPriorSheet
                     ? isSheetGenerating
                       ? 'Generate again'
                       : 'Regenerate Sheet'
