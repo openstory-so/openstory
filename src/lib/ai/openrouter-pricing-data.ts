@@ -60,18 +60,18 @@ export const OPENROUTER_PRICING: Record<string, OpenRouterPricing> = {
   },
   'deepseek/deepseek-v4-pro-0813': {
     name: 'DeepSeek: DeepSeek V4 Pro 0813',
-    promptPerMillionTokens: 1.122,
-    completionPerMillionTokens: 3.366,
+    promptPerMillionTokens: 0.66,
+    completionPerMillionTokens: 1.9800000000000002,
   },
   'deepseek/deepseek-v3.2': {
     name: 'DeepSeek: DeepSeek V3.2',
     promptPerMillionTokens: 0.26,
     completionPerMillionTokens: 0.38,
   },
-  'z-ai/glm-5.2': {
-    name: 'Z.ai: GLM 5.2',
-    promptPerMillionTokens: 0.966,
-    completionPerMillionTokens: 3.036,
+  'z-ai/glm-5.3-flash': {
+    name: 'Z.ai: GLM 5.3 Flash',
+    promptPerMillionTokens: 0.075,
+    completionPerMillionTokens: 0.25,
   },
   'google/gemini-3.1-pro-preview': {
     name: 'Google: Gemini 3.1 Pro Preview',
@@ -110,4 +110,4 @@ export const OPENROUTER_PRICING: Record<string, OpenRouterPricing> = {
   },
 };
 
-export const OPENROUTER_PRICING_LAST_UPDATED = '2026-08-24T10:59:01.199Z';
+export const OPENROUTER_PRICING_LAST_UPDATED = '2026-08-28T05:36:43.128Z';

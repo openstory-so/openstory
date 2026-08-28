@@ -124,20 +124,21 @@ export const SCRIPT_ANALYSIS_MODELS = [
     hidden: true,
   },
   {
-    id: 'z-ai/glm-5.2',
-    name: 'GLM-5.2',
+    id: 'z-ai/glm-5.3-flash',
+    name: 'GLM-5.3 Flash',
     vendor: 'Z.ai',
     license: 'open-source' as const,
     qualityRank: 9,
     contextWindow: 1_048_576,
-    maxOutputTokens: 262_144,
-    // GLM-5.2 is text-only. Image-bearing calls (the vision-conditioned motion
-    // path, #929) transparently route to `DEFAULT_VISION_MODEL` — see
-    // `resolveVisionModel`. GLM's own vision sibling GLM-4.6V was tried (#942)
-    // but can't do strict structured outputs, which the motion-prompt call
-    // requires, so it failed; we fall back to the default vision model (#944).
-    vision: false,
-    description: 'Large-scale reasoning model, 1M context, long-horizon agents',
+    maxOutputTokens: 131_072,
+    // Replaced GLM-5.2 (#1367): GLM-5.3 proper has no OpenRouter endpoint with
+    // `structured_outputs`, so it can't run our schema calls at all. Flash is
+    // natively multimodal AND does strict structured outputs (verified live with
+    // an image attached), so unlike 5.2 + GLM-4.6V (#942/#944) it takes the
+    // vision-conditioned motion path (#929) itself — no DEFAULT_VISION_MODEL
+    // fallback.
+    vision: true,
+    description: 'Native multimodal, 1M context, long-horizon agents',
   },
   {
     id: 'google/gemini-3.1-pro-preview',
@@ -303,7 +304,8 @@ export function analysisModelSupportsVision(modelId: string): boolean {
  * rendered still (#929), so a text model selected for analysis still needs a
  * multimodal model for that one call. Sonnet is the default: it does vision +
  * strict structured outputs + reasoning, which the motion-prompt call requires
- * (GLM's vision siblings can't do strict structured outputs — see #942/#944).
+ * (GLM-4.6V couldn't — see #942/#944; GLM-5.3 Flash can, so it never falls
+ * back here).
  */
 export const DEFAULT_VISION_MODEL: AnalysisModelId =
   'anthropic/claude-sonnet-5';
