@@ -211,6 +211,7 @@ test.describe('Sequences', () => {
   });
 
   test('typed script survives a reload (#1384)', async ({ page }) => {
+    // Reload is the same restore path as OAuth/OTP remount (localStorage).
     const script = 'A cat walks into a diner at dawn.';
     await page.goto('/');
     await page.evaluate(() =>
