@@ -205,3 +205,48 @@ describe('BytePlus route aliasing', () => {
     expect(map['fal-ai/veo3.1/image-to-video']?.unitPrice).toBe(77);
   });
 });
+
+describe('H3 Max t2v sibling rate (#1382)', () => {
+  const I2V = 'minimax/h3-max/image-to-video';
+  const T2V = 'minimax/h3-max/text-to-video';
+
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
+  it('fills typical 8 when the i2v row has no fal history', async () => {
+    const { getEffectiveFalPricing } = await loadWithRows([
+      row({
+        endpointId: I2V,
+        unit: 'seconds',
+        unitPriceMicros: 25_000,
+        typicalUnitsPerCall: null,
+      }),
+    ]);
+    const pricing = (await getEffectiveFalPricing())[I2V];
+    expect(pricing?.typicalUnitsPerCall).toBe(8);
+  });
+
+  it('points t2v at i2v’s billed seconds rate instead of compute seconds', async () => {
+    const { getEffectiveFalPricing } = await loadWithRows([
+      row({
+        endpointId: I2V,
+        unit: 'seconds',
+        unitPriceMicros: 25_000,
+        typicalUnitsPerCall: 8,
+      }),
+      row({
+        endpointId: T2V,
+        unit: 'compute seconds',
+        unitPriceMicros: 170,
+        typicalUnitsPerCall: null,
+      }),
+    ]);
+    const map = await getEffectiveFalPricing();
+    expect(map[T2V]).toEqual({
+      unitPrice: micros(25_000),
+      unit: 'seconds',
+      typicalUnitsPerCall: 8,
+    });
+  });
+});

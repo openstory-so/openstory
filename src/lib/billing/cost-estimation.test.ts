@@ -13,6 +13,7 @@ import {
   estimateLocationSheetCount,
   estimateStoryboardCost,
   estimateStoryboardRenderCost,
+  estimateStudioVideoCost,
   estimateVideoCost,
   gateEstimate,
 } from './cost-estimation';
@@ -399,6 +400,18 @@ describe('estimateVideoCost endpoint routing', () => {
     });
     expect(withRefs).toBe(without);
     expect(withRefs).toBe(micros(5 * 70_000));
+  });
+
+  it('prices a 5s H3 Max clip at $0.20 (8 billed units, not duration)', () => {
+    expect(
+      estimateVideoCost('minimax_h3_max', 5, { pricing: FAL_PRICING })
+    ).toBe(micros(200_000));
+    expect(
+      estimateStudioVideoCost('minimax_h3_max', 5, {
+        pricing: FAL_PRICING,
+        mode: 'text',
+      })
+    ).toBe(micros(200_000));
   });
 });
 

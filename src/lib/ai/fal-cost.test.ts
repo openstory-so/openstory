@@ -117,6 +117,95 @@ describe('estimateFalCost', () => {
     ).toBe(usd(3.2));
   });
 
+  test('per-second still prefers requested duration over fal typical clip length', () => {
+    // fal's historical typical for Veo is an average duration, not a
+    // resolution multiplier. Using it would price a 4s clip as 8s.
+    const live = {
+      'fal-ai/veo3.1/image-to-video': {
+        unitPrice: usd(0.4),
+        unit: 'seconds',
+        typicalUnitsPerCall: 8,
+      },
+    };
+    expect(
+      estimateFalCost(
+        'fal-ai/veo3.1/image-to-video',
+        { durationSeconds: 4 },
+        live
+      )
+    ).toBe(usd(1.6));
+  });
+
+  test('H3 Max 5s clip estimates 8 units at the billed 480p-second rate', () => {
+    // 768P default bills 1.6× the stored $0.025 unit → 8 units × $0.025 = $0.20.
+    // Using duration (5) as units was 37% low (#1382).
+    const live = {
+      'minimax/h3-max/image-to-video': {
+        unitPrice: micros(25_000),
+        unit: 'seconds',
+      },
+    };
+    expect(
+      estimateFalCost(
+        'minimax/h3-max/image-to-video',
+        { durationSeconds: 5 },
+        live
+      )
+    ).toBe(usd(0.2));
+  });
+
+  test('H3 Max scales the 5s typical with requested duration', () => {
+    const live = {
+      'minimax/h3-max/image-to-video': {
+        unitPrice: micros(25_000),
+        unit: 'seconds',
+        typicalUnitsPerCall: 8,
+      },
+    };
+    expect(
+      estimateFalCost(
+        'minimax/h3-max/image-to-video',
+        { durationSeconds: 10 },
+        live
+      )
+    ).toBe(usd(0.4));
+  });
+
+  test('H3 Max observed median outranks duration for seconds-priced video', () => {
+    const live = {
+      'minimax/h3-max/image-to-video': {
+        unitPrice: micros(25_000),
+        unit: 'seconds',
+        observed: { medianUnits: 8, sampleCount: MIN_OBSERVED_SAMPLES },
+      },
+    };
+    expect(
+      estimateFalCost(
+        'minimax/h3-max/image-to-video',
+        { durationSeconds: 5 },
+        live
+      )
+    ).toBe(usd(0.2));
+  });
+
+  test('H3 Max t2v compute-seconds still has a unit-count signal', () => {
+    // Before the sibling alias copies i2v's verified rate, t2v sat on
+    // "compute seconds × $0.00017" and logged "No unit-count signal".
+    const live = {
+      'minimax/h3-max/text-to-video': {
+        unitPrice: micros(170),
+        unit: 'compute seconds',
+      },
+    };
+    expect(
+      estimateFalCost(
+        'minimax/h3-max/text-to-video',
+        { durationSeconds: 5 },
+        live
+      )
+    ).not.toBeNull();
+  });
+
   test('per-minute rounds up', () => {
     expect(
       estimateFalCost(

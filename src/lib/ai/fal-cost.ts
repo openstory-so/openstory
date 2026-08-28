@@ -9,9 +9,10 @@
  * `estimateFalCost` predicts a cost BEFORE a generation runs, for the
  * pre-flight credit gate. Preference order for the unit count (#1069):
  * our observed median (`MIN_OBSERVED_SAMPLES`+ generations), then fal's
- * historical estimate, then **null** ("unknown") — never a fabricated
- * default; a fixed one made Grok Imagine read ~98× cheap. Callers gate
- * conservatively / display nothing for null.
+ * historical estimate, then a billed-units fallback for endpoints whose
+ * "seconds" unit is not 1:1 with duration (H3 Max, #1382), then **null**
+ * ("unknown") — never a fabricated default; a fixed one made Grok Imagine
+ * read ~98× cheap. Callers gate conservatively / display nothing for null.
  */
 
 // Type-only static import + dynamic import at the call site: a static value
@@ -20,6 +21,10 @@
 // components via `cost-estimation.ts` (#1253). Client callers always pass
 // `pricingMap`, so the dynamic import only ever executes on the server.
 import type { EffectiveFalPricing } from '@/lib/ai/fal-pricing-live';
+import {
+  FAL_TYPICAL_UNITS_PER_DEFAULT_CLIP,
+  TYPICAL_VIDEO_CLIP_SECONDS,
+} from '@/lib/ai/fal-typical-units';
 import { reportMissingBillingCost } from '@/lib/billing/billing-observability';
 import {
   type Microdollars,
@@ -177,9 +182,31 @@ const isUsableCount = (n: number | undefined | null): n is number =>
 
 /**
  * Predicted unitsBilled for one call: our observed median first (once it has
- * `MIN_OBSERVED_SAMPLES` behind it), then fal's historical estimate.
+ * `MIN_OBSERVED_SAMPLES` behind it), then fal's historical estimate, then a
+ * known billed-units fallback (H3 Max 8 for a 5s clip — #1382).
  */
 export function knownUnitsPerCall(
+  pricing: EffectiveFalPricing,
+  endpointId?: string
+): number | undefined {
+  const { observed } = pricing;
+  if (
+    observed &&
+    observed.sampleCount >= MIN_OBSERVED_SAMPLES &&
+    isUsableCount(observed.medianUnits)
+  ) {
+    return observed.medianUnits;
+  }
+  if (isUsableCount(pricing.typicalUnitsPerCall)) {
+    return pricing.typicalUnitsPerCall;
+  }
+  const fallback = endpointId
+    ? FAL_TYPICAL_UNITS_PER_DEFAULT_CLIP[endpointId]
+    : undefined;
+  return isUsableCount(fallback) ? fallback : undefined;
+}
+
+function trustedObservedUnits(
   pricing: EffectiveFalPricing
 ): number | undefined {
   const { observed } = pricing;
@@ -190,9 +217,41 @@ export function knownUnitsPerCall(
   ) {
     return observed.medianUnits;
   }
-  return isUsableCount(pricing.typicalUnitsPerCall)
-    ? pricing.typicalUnitsPerCall
-    : undefined;
+  return undefined;
+}
+
+/**
+ * Predicted billable units for a seconds-priced video call.
+ *
+ * Wall-clock duration is 1:1 for models like Veo. H3 Max (and any endpoint
+ * in `FAL_TYPICAL_UNITS_PER_DEFAULT_CLIP`) bills more units than seconds —
+ * 768P is 1.6× the stored 480p unit — so observed/typical/fallback outranks
+ * duration and scales from a 5s default clip (#1382).
+ *
+ * Fal's historical `typicalUnitsPerCall` for ordinary per-second models is
+ * an average clip length and must not replace the requested duration.
+ */
+function predictedSecondUnits(
+  endpointId: string,
+  duration: number,
+  pricing: EffectiveFalPricing
+): number {
+  const observedUnits = trustedObservedUnits(pricing);
+  const fallback = FAL_TYPICAL_UNITS_PER_DEFAULT_CLIP[endpointId];
+
+  if (fallback != null) {
+    const known =
+      observedUnits ??
+      (isUsableCount(pricing.typicalUnitsPerCall)
+        ? pricing.typicalUnitsPerCall
+        : fallback);
+    return Math.max(duration, known * (duration / TYPICAL_VIDEO_CLIP_SECONDS));
+  }
+
+  if (observedUnits != null) {
+    return Math.max(duration, observedUnits);
+  }
+  return duration;
 }
 
 /**
@@ -221,7 +280,7 @@ export function estimateFalCost(
       // Covers flat rates, per-image "units" prices (gpt-image-2 bills ~0.22
       // units per image on a $1 unit), and compute-seconds models (~10 to
       // ~294 s/image across models — unknowable from request params).
-      const unitsPerCall = knownUnitsPerCall(pricing);
+      const unitsPerCall = knownUnitsPerCall(pricing, endpointId);
       if (unitsPerCall == null) {
         logger.error(
           `No unit-count signal for ${endpointId} (unit "${pricing.unit}") — ` +
@@ -240,7 +299,10 @@ export function estimateFalCost(
     }
 
     case 'seconds':
-      return multiplyMicros(pricing.unitPrice, duration);
+      return multiplyMicros(
+        pricing.unitPrice,
+        predictedSecondUnits(endpointId, duration, pricing)
+      );
 
     case 'minutes':
       return multiplyMicros(pricing.unitPrice, Math.ceil(duration / 60));

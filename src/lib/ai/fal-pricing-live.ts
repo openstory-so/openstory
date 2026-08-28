@@ -10,6 +10,10 @@ import { getDb } from '#db-client';
 import { isBytePlusConfigured } from '@/lib/ai/byteplus-config';
 import { BYTEPLUS_RATE_CARD } from '@/lib/ai/byteplus-pricing';
 import {
+  FAL_TYPICAL_UNITS_PER_DEFAULT_CLIP,
+  FAL_UNVERIFIED_SIBLINGS,
+} from '@/lib/ai/fal-typical-units';
+import {
   IMAGE_MODELS,
   IMAGE_TO_VIDEO_MODELS,
   MOTION_REFERENCE_ENDPOINTS,
@@ -74,7 +78,9 @@ export function buildFalPricingMap(
     map[row.endpointId] = {
       unitPrice: micros(row.unitPriceMicros),
       unit: row.unit,
-      typicalUnitsPerCall: row.typicalUnitsPerCall ?? undefined,
+      typicalUnitsPerCall:
+        row.typicalUnitsPerCall ??
+        FAL_TYPICAL_UNITS_PER_DEFAULT_CLIP[row.endpointId],
       // The DB CHECK keeps median and count consistent.
       ...(row.observedMedianUnits != null && {
         observed: {
@@ -111,6 +117,7 @@ async function load(): Promise<NonNullable<typeof cache>> {
   // (if the cron ever learns Ark) wins over the hand-maintained rate.
   const map = { ...BYTEPLUS_RATE_CARD, ...buildFalPricingMap(rows) };
   applyBytePlusRouteAliases(map);
+  applyUnverifiedSiblingRates(map);
   cache = { at: Date.now(), map, updatedAt };
   return cache;
 }
@@ -148,6 +155,33 @@ function applyBytePlusRouteAliases(
     // referenced shot silently quotes the fal rate.
     const referenceEndpoint = MOTION_REFERENCE_ENDPOINTS[modelKey];
     if (referenceEndpoint) map[referenceEndpoint.endpointId] = rate;
+  }
+}
+
+/**
+ * Point an unused sibling at the bill-verified source rate (#1382).
+ * MiniMax H3 Max t2v has the same advertised rates as i2v but no usage, so
+ * fal's pricing API still reports "compute seconds × $0.00017". Looking up
+ * the t2v id must yield the i2v billed rate or studio estimates are ~150× low.
+ */
+function applyUnverifiedSiblingRates(
+  map: Record<string, EffectiveFalPricing>
+): void {
+  for (const [target, source] of Object.entries(FAL_UNVERIFIED_SIBLINGS)) {
+    const sourceRate = map[source];
+    if (!sourceRate) continue;
+    const targetRate = map[target];
+    map[target] = {
+      unitPrice: sourceRate.unitPrice,
+      unit: sourceRate.unit,
+      typicalUnitsPerCall:
+        targetRate?.typicalUnitsPerCall ??
+        sourceRate.typicalUnitsPerCall ??
+        FAL_TYPICAL_UNITS_PER_DEFAULT_CLIP[target],
+      ...((targetRate?.observed ?? sourceRate.observed)
+        ? { observed: targetRate?.observed ?? sourceRate.observed }
+        : {}),
+    };
   }
 }
 

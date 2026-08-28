@@ -9,6 +9,7 @@
  */
 
 import { getFalEndpointIds } from '@/lib/ai/fal-endpoints';
+import { FAL_TYPICAL_UNITS_PER_DEFAULT_CLIP } from '@/lib/ai/fal-typical-units';
 import { usdToMicros } from '@/lib/billing/money';
 import { modelPricing } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
@@ -97,9 +98,20 @@ export const LOCAL_FAL_PRICING_SEED: Record<string, SeedPrice> = {
   },
   'fal-ai/minimax/hailuo-2.3/pro/image-to-video': units(0.49),
   'fal-ai/minimax/hailuo-2.3/pro/text-to-video': units(0.49),
-  // 768P list rate; fal's launch promo (0.04) ends 2026-09-01.
-  'minimax/h3-max/image-to-video': { unit: 'seconds', unitPriceUsd: 0.08 },
-  'minimax/h3-max/text-to-video': { unit: 'seconds', unitPriceUsd: 0.08 },
+  // Bill-verified unit is the 480p second ($0.025). 768P (our default) bills
+  // 8 units for a 5s clip — not 5 (#1382). Same advertised rates on t2v.
+  'minimax/h3-max/image-to-video': {
+    unit: 'seconds',
+    unitPriceUsd: 0.025,
+    typicalUnitsPerCall:
+      FAL_TYPICAL_UNITS_PER_DEFAULT_CLIP['minimax/h3-max/image-to-video'] ?? 8,
+  },
+  'minimax/h3-max/text-to-video': {
+    unit: 'seconds',
+    unitPriceUsd: 0.025,
+    typicalUnitsPerCall:
+      FAL_TYPICAL_UNITS_PER_DEFAULT_CLIP['minimax/h3-max/text-to-video'] ?? 8,
+  },
   // Seedance 2.5 (sequences + studio). Advertised fal unit is ~$0.014–0.021
   // per 1000 tokens; local seed is a floor until the pricing cron runs.
   'bytedance/seedance-2.5/image-to-video': units(0.014),
