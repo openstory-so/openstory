@@ -29,9 +29,7 @@ import { getLogger } from '@/lib/observability/logger';
  *   A periodic alarm TTL-deletes up to `PRUNE_BATCH_ROWS` expired rows and the
  *   same PK-prefix cap batch; leftovers reschedule in `PRUNE_CATCHUP_MS`.
  *   Every statement is a bounded PK-range op: `ts` is monotonic with `seq`, so
- *   expired rows are always a PK prefix and no secondary index is needed — a
- *   `CREATE INDEX` on a backlogged channel was itself enough to exceed the
- *   storage timeout on every wake (#1332).
+ *   expired rows are a PK prefix and no index is needed (#1332).
  *
  * The wire format is intentionally simple and fully owned in-repo (see
  * `client.tsx`): each SSE `data:` line is a JSON object — a user event
@@ -311,12 +309,6 @@ export class RealtimeChannel extends DurableObject {
     return min !== null && min <= this.capCutoff(newestSeq);
   }
 
-  /**
-   * Expired rows are the oldest rows, i.e. a PK prefix, so this is the same
-   * bounded `seq <= MIN(seq) + k - 1` shape as the cap batch. The old
-   * `seq IN (SELECT … WHERE ts < ? ORDER BY seq LIMIT k)` collected every
-   * expired row before sorting: O(expired), not O(k).
-   */
   private pruneTtlBatch(cutoffTs: number): void {
     this.ctx.storage.sql.exec(
       `DELETE FROM events
