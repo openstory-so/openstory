@@ -1,7 +1,5 @@
+import { BibleField } from '@/components/bible-field';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { useUpdateSequenceCharacter } from '@/hooks/use-sequence-characters';
 import type { Character } from '@/lib/db/schema';
 import { errorMessage } from '@/lib/errors';
@@ -18,38 +16,6 @@ const characterFormSchema = z.object({
   standardClothing: z.string().max(2000),
   distinguishingFeatures: z.string().max(2000),
 });
-
-const BibleField: React.FC<{
-  label: string;
-  name: string;
-  defaultValue: string | null;
-  textarea?: boolean;
-  required?: boolean;
-}> = ({ label, name, defaultValue, textarea, required }) => (
-  <div className="flex flex-col gap-1">
-    <Label
-      htmlFor={`character-${name}`}
-      className="text-xs font-medium uppercase tracking-wider text-muted-foreground"
-    >
-      {label}
-    </Label>
-    {textarea ? (
-      <Textarea
-        id={`character-${name}`}
-        name={name}
-        defaultValue={defaultValue ?? ''}
-        rows={3}
-      />
-    ) : (
-      <Input
-        id={`character-${name}`}
-        name={name}
-        defaultValue={defaultValue ?? ''}
-        required={required}
-      />
-    )}
-  </div>
-);
 
 /**
  * Editable character bible (#1108 Phase 2). Uncontrolled inputs seeded from
@@ -91,37 +57,48 @@ export const CharacterBibleForm: React.FC<{
   return (
     <form onSubmit={onSubmit} className="flex flex-col gap-4">
       <BibleField
+        idPrefix="character"
         label="Name"
         name="name"
         defaultValue={character.name}
         required
       />
       <div className="grid grid-cols-2 gap-4">
-        <BibleField label="Age" name="age" defaultValue={character.age} />
         <BibleField
+          idPrefix="character"
+          label="Age"
+          name="age"
+          defaultValue={character.age}
+        />
+        <BibleField
+          idPrefix="character"
           label="Gender"
           name="gender"
           defaultValue={character.gender}
         />
       </div>
       <BibleField
+        idPrefix="character"
         label="Ethnicity"
         name="ethnicity"
         defaultValue={character.ethnicity}
       />
       <BibleField
+        idPrefix="character"
         label="Physical Description"
         name="physicalDescription"
         defaultValue={character.physicalDescription}
         textarea
       />
       <BibleField
+        idPrefix="character"
         label="Standard Clothing"
         name="standardClothing"
         defaultValue={character.standardClothing}
         textarea
       />
       <BibleField
+        idPrefix="character"
         label="Distinguishing Features"
         name="distinguishingFeatures"
         defaultValue={character.distinguishingFeatures}

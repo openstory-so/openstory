@@ -286,7 +286,7 @@ Treat **server functions as the contract** (API/MCP later wraps them). Group by 
 
 **Critical new SFs:**
 
-- `uploadFrameImageFn` / `setFrameImageFromUploadFn` — presign or multipart (reuse `/api/storage` + element/talent patterns) → R2 thumbnails → append `frame_variants` (`kind: 'upload'`) → select → clear video
+- `replaceFrameContentFn` — presign or multipart (reuse `/api/storage` + element/talent patterns) → R2 thumbnails → append `frame_variants` (`kind: 'upload'`) → select → clear video (image-only when `promptText` is omitted)
 - `uploadShotVideoFn` — R2 videos → append `video_variants` with manifest snapshot of current prompt/frame pointers → select
 - Optional: `uploadSequenceMusicFn` for user score
 - **`replaceFrameContentFn`** (atomic prompt+image) implementing §4.3 C

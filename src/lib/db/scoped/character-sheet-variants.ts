@@ -128,25 +128,13 @@ export function createCharacterSheetVariantsMethods(db: Database) {
       characterId: string;
       url: string;
       storagePath: string;
-      /** Verify-mirrored current-inputs hash stamped on the parent. */
+      /** Verify-mirrored current-inputs hash on parent and version row. */
       inputHash: string | null;
-      /**
-       * Version-row identity. Uploads pass `upload:<path>` so re-uploads
-       * never collide; generated sheets reuse `inputHash`.
-       */
-      versionInputHash?: string | null;
       model: string;
       workflowRunId?: string | null;
     }): Promise<{ character: Character; version: CharacterSheetVariant }> => {
-      const {
-        characterId,
-        url,
-        storagePath,
-        inputHash,
-        versionInputHash,
-        model,
-        workflowRunId,
-      } = args;
+      const { characterId, url, storagePath, inputHash, model, workflowRunId } =
+        args;
       const [existing] = await db
         .select()
         .from(characters)
@@ -180,7 +168,7 @@ export function createCharacterSheetVariantsMethods(db: Database) {
           status: 'completed',
           workflowRunId: workflowRunId ?? null,
           generatedAt: now,
-          inputHash: versionInputHash ?? inputHash,
+          inputHash,
         })
         .returning();
       if (!version) {

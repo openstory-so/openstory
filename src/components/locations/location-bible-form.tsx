@@ -1,5 +1,5 @@
+import { BibleField } from '@/components/bible-field';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
   Select,
@@ -8,7 +8,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Textarea } from '@/components/ui/textarea';
 import { useUpdateSequenceLocation } from '@/hooks/use-sequence-locations';
 import type { SequenceLocation } from '@/lib/db/schema';
 import { errorMessage } from '@/lib/errors';
@@ -27,38 +26,6 @@ const locationFormSchema = z.object({
   lightingSetup: z.string().max(2000),
   ambiance: z.string().max(2000),
 });
-
-const BibleField: React.FC<{
-  label: string;
-  name: string;
-  defaultValue: string | null;
-  textarea?: boolean;
-  required?: boolean;
-}> = ({ label, name, defaultValue, textarea, required }) => (
-  <div className="flex flex-col gap-1">
-    <Label
-      htmlFor={`location-${name}`}
-      className="text-xs font-medium uppercase tracking-wider text-muted-foreground"
-    >
-      {label}
-    </Label>
-    {textarea ? (
-      <Textarea
-        id={`location-${name}`}
-        name={name}
-        defaultValue={defaultValue ?? ''}
-        rows={3}
-      />
-    ) : (
-      <Input
-        id={`location-${name}`}
-        name={name}
-        defaultValue={defaultValue ?? ''}
-        required={required}
-      />
-    )}
-  </div>
-);
 
 /**
  * Editable location bible (#1108 Phase 2). Uncontrolled inputs seeded from
@@ -100,6 +67,7 @@ export const LocationBibleForm: React.FC<{
   return (
     <form onSubmit={onSubmit} className="flex flex-col gap-4">
       <BibleField
+        idPrefix="location"
         label="Name"
         name="name"
         defaultValue={location.name}
@@ -132,39 +100,46 @@ export const LocationBibleForm: React.FC<{
           </Select>
         </div>
         <BibleField
+          idPrefix="location"
           label="Time of Day"
           name="timeOfDay"
           defaultValue={location.timeOfDay}
         />
       </div>
       <BibleField
+        idPrefix="location"
         label="Description"
         name="description"
         defaultValue={location.description}
         textarea
       />
       <BibleField
+        idPrefix="location"
         label="Architectural Style"
         name="architecturalStyle"
         defaultValue={location.architecturalStyle}
       />
       <BibleField
+        idPrefix="location"
         label="Key Features"
         name="keyFeatures"
         defaultValue={location.keyFeatures}
         textarea
       />
       <BibleField
+        idPrefix="location"
         label="Color Palette"
         name="colorPalette"
         defaultValue={location.colorPalette}
       />
       <BibleField
+        idPrefix="location"
         label="Lighting Setup"
         name="lightingSetup"
         defaultValue={location.lightingSetup}
       />
       <BibleField
+        idPrefix="location"
         label="Ambiance"
         name="ambiance"
         defaultValue={location.ambiance}

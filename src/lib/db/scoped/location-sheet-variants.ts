@@ -143,7 +143,6 @@ export function createLocationSheetVariantsMethods(db: Database) {
       url: string;
       storagePath: string;
       inputHash: string | null;
-      versionInputHash?: string | null;
       model: string;
       workflowRunId?: string | null;
     }): Promise<{
@@ -155,7 +154,6 @@ export function createLocationSheetVariantsMethods(db: Database) {
         url,
         storagePath,
         inputHash,
-        versionInputHash,
         model,
         workflowRunId,
       } = args;
@@ -194,7 +192,7 @@ export function createLocationSheetVariantsMethods(db: Database) {
           status: 'completed',
           workflowRunId: workflowRunId ?? null,
           generatedAt: now,
-          inputHash: versionInputHash ?? inputHash,
+          inputHash,
         })
         .returning();
       if (!version) {

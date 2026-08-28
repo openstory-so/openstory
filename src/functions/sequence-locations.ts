@@ -3,6 +3,7 @@ import { safeTextToImageModel } from '@/lib/ai/models';
 import { generateId } from '@/lib/db/id';
 import type { LocationBibleUpdate } from '@/lib/db/scoped/sequence-locations';
 import type { SheetStaleness } from '@/lib/sheets/sheet-staleness';
+import { bibleField, slugifyTag } from '@/lib/schemas/bible-field';
 import { ulidSchema } from '@/lib/schemas/id.schemas';
 import { resolveSequenceStyleConfig } from '@/lib/style/style-config';
 import { getGenerationChannel } from '@/lib/realtime';
@@ -31,15 +32,6 @@ export const getSequenceLocationsFn = createServerFn({ method: 'GET' })
 // Manual location CRUD (#1108 Phase 2)
 // ============================================================================
 
-/** `''` / whitespace clears a nullable bible field; otherwise trimmed text. */
-const bibleField = z
-  .string()
-  .max(2000)
-  .transform((v) => {
-    const trimmed = v.trim();
-    return trimmed.length > 0 ? trimmed : null;
-  });
-
 const locationBibleFieldsSchema = z.object({
   type: z.enum(['interior', 'exterior', 'both']).optional(),
   timeOfDay: bibleField.optional(),
@@ -51,14 +43,6 @@ const locationBibleFieldsSchema = z.object({
   ambiance: bibleField.optional(),
   consistencyTag: bibleField.optional(),
 });
-
-/** Lowercase, underscore-joined identity token derived from a display name. */
-function slugifyTag(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '');
-}
 
 /**
  * Create a location by hand (no storyboard run) — starts reference-less

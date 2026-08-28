@@ -102,6 +102,20 @@ function requireUploadExtension(
   return ext;
 }
 
+function signedUpload(
+  bucket: StorageBucket,
+  pathWithoutExt: string,
+  filename: string,
+  surface: UploadMediaSurface
+) {
+  const ext = requireUploadExtension(filename, surface);
+  return getSignedUploadUrl(
+    bucket,
+    `${pathWithoutExt}.${ext}`,
+    getMimeTypeFromExtension(ext)
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Presign — one per media surface; all write under the caller team's prefix
 // (`teams/<teamId>/…`), which `resolveUploadTarget` enforces at PUT time.
@@ -117,13 +131,12 @@ export const presignFrameImageUploadFn = createServerFn({ method: 'POST' })
   .middleware([shotAccessMiddleware])
   .inputValidator(zodValidator(shotPresignInput))
   .handler(async ({ context, data }) => {
-    const ext = requireUploadExtension(data.filename, 'image');
     // Same directory generated stills land in (uploadImageToStorage).
-    const storagePath = `teams/${context.teamId}/sequences/${context.sequence.id}/frames/${context.shot.id}/${generateId()}.${ext}`;
-    return getSignedUploadUrl(
+    return signedUpload(
       STORAGE_BUCKETS.THUMBNAILS,
-      storagePath,
-      getMimeTypeFromExtension(ext)
+      `teams/${context.teamId}/sequences/${context.sequence.id}/frames/${context.shot.id}/${generateId()}`,
+      data.filename,
+      'image'
     );
   });
 
@@ -131,12 +144,11 @@ export const presignShotVideoUploadFn = createServerFn({ method: 'POST' })
   .middleware([shotAccessMiddleware])
   .inputValidator(zodValidator(shotPresignInput))
   .handler(async ({ context, data }) => {
-    const ext = requireUploadExtension(data.filename, 'video');
-    const storagePath = `teams/${context.teamId}/sequences/${context.sequence.id}/frames/${context.shot.id}/${generateId()}.${ext}`;
-    return getSignedUploadUrl(
+    return signedUpload(
       STORAGE_BUCKETS.VIDEOS,
-      storagePath,
-      getMimeTypeFromExtension(ext)
+      `teams/${context.teamId}/sequences/${context.sequence.id}/frames/${context.shot.id}/${generateId()}`,
+      data.filename,
+      'video'
     );
   });
 
@@ -148,24 +160,18 @@ export const presignSequenceMusicUploadFn = createServerFn({ method: 'POST' })
     )
   )
   .handler(async ({ context, data }) => {
-    const ext = requireUploadExtension(data.filename, 'audio');
-    const storagePath = `teams/${context.teamId}/sequences/${context.sequence.id}/music/${generateId()}.${ext}`;
-    return getSignedUploadUrl(
+    return signedUpload(
       STORAGE_BUCKETS.AUDIO,
-      storagePath,
-      getMimeTypeFromExtension(ext)
+      `teams/${context.teamId}/sequences/${context.sequence.id}/music/${generateId()}`,
+      data.filename,
+      'audio'
     );
   });
 
 // ---------------------------------------------------------------------------
-// Still upload — §4.3 B (image-only replace)
+// Still upload — §4.3 B (image-only) is the unchanged-prompt branch of
+// `replaceFrameContentFn` below.
 // ---------------------------------------------------------------------------
-
-const setFrameImageFromUploadInput = z.object({
-  sequenceId: ulidSchema,
-  shotId: ulidSchema,
-  publicUrl: mediaUrlSchema,
-});
 
 /**
  * Broadcast a finished media write on the sequence's generation channel, the
@@ -193,9 +199,8 @@ async function emitUploadCompleted(
 }
 
 /**
- * The §4.3 B image-only replace, shared by `setFrameImageFromUploadFn` and the
- * unchanged-prompt branch of `replaceFrameContentFn` so the two cannot drift on
- * what "image-only" means.
+ * The §4.3 B image-only replace — used by the unchanged-prompt branch of
+ * `replaceFrameContentFn`.
  *
  * Appends a `frame_variants.kind:'upload'` version stamped against the CURRENT
  * selected visual prompt + sheets, then `select`s it — the exact repoint
@@ -260,45 +265,8 @@ async function appendUploadedStill(args: {
   };
 }
 
-/** Finalize an uploaded still as the frame's primary image (§4.3 B). */
-export const setFrameImageFromUploadFn = createServerFn({ method: 'POST' })
-  .middleware([shotAccessMiddleware])
-  .inputValidator(zodValidator(setFrameImageFromUploadInput))
-  .handler(async ({ context, data }) => {
-    const { shot, frame, sequence, scene, scopedDb, user, teamId } = context;
-
-    const storagePath = requireUploadedStoragePath(
-      data.publicUrl,
-      STORAGE_BUCKETS.THUMBNAILS,
-      teamId
-    );
-
-    const result = await appendUploadedStill({
-      scopedDb,
-      shotId: shot.id,
-      frameId: frame.id,
-      sequenceId: sequence.id,
-      scene,
-      aspectRatio: sequence.aspectRatio,
-      publicUrl: data.publicUrl,
-      storagePath,
-      actorId: user.id,
-    });
-
-    await emitUploadCompleted(sequence.id, 'image', {
-      shotId: shot.id,
-      ...(result.url ? { thumbnailUrl: result.url } : {}),
-    });
-
-    return {
-      shotId: shot.id,
-      versionId: result.versionId,
-      thumbnailUrl: result.url,
-    };
-  });
-
 // ---------------------------------------------------------------------------
-// Atomic prompt + still replace — §4.3 C
+// Atomic prompt + still replace — §4.3 C (image-only when prompt is unchanged)
 // ---------------------------------------------------------------------------
 
 const replaceFrameContentInput = z.object({
@@ -320,7 +288,8 @@ const replaceFrameContentInput = z.object({
  * reads stale by manifest derivation.
  *
  * With `promptText` absent (or identical to the current selection) this is the
- * image-only path B — the prompt is untouched.
+ * image-only path B — the prompt is untouched. There is no separate image-only
+ * server fn; this is both B and C.
  */
 export const replaceFrameContentFn = createServerFn({ method: 'POST' })
   .middleware([shotAccessMiddleware])
@@ -650,12 +619,11 @@ export const presignCharacterSheetUploadFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
   .inputValidator(zodValidator(characterSheetPresignInput))
   .handler(async ({ context, data }) => {
-    const ext = requireUploadExtension(data.filename, 'image');
-    const storagePath = `teams/${context.teamId}/sequences/${context.sequence.id}/characters/${data.characterId}/${generateId()}.${ext}`;
-    return getSignedUploadUrl(
+    return signedUpload(
       STORAGE_BUCKETS.CHARACTERS,
-      storagePath,
-      getMimeTypeFromExtension(ext)
+      `teams/${context.teamId}/sequences/${context.sequence.id}/characters/${data.characterId}/${generateId()}`,
+      data.filename,
+      'image'
     );
   });
 
@@ -740,18 +708,16 @@ export const setCharacterSheetFromUploadFn = createServerFn({ method: 'POST' })
       imageModel,
     });
 
-    // Append + select: the variant keeps `upload:<path>` as its own identity
-    // so re-uploads never collide; the parent is stamped with the current-
-    // inputs hash so later bible/style/model edits re-stale the sheet. The
-    // selected version id is what stills hash, so this upload re-stales
-    // dependent stills even when inputs didn't change.
+    // Append + select: parent + version share the current-inputs hash so later
+    // bible/style/model edits re-stale the sheet. The selected version id is
+    // what stills hash, so this upload re-stales dependent stills even when
+    // inputs didn't change.
     const { character: updated, version: variant } =
       await scopedDb.characterSheetVariants.applyConvergent({
         characterId: character.id,
         url: data.publicUrl,
         storagePath,
         inputHash,
-        versionInputHash: `upload:${storagePath}`,
         model: USER_UPLOAD_MODEL,
       });
     await scopedDb.sequenceEvents.record({
@@ -776,12 +742,11 @@ export const presignLocationSheetUploadFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
   .inputValidator(zodValidator(locationSheetPresignInput))
   .handler(async ({ context, data }) => {
-    const ext = requireUploadExtension(data.filename, 'image');
-    const storagePath = `teams/${context.teamId}/sequences/${context.sequence.id}/locations/${data.locationDbId}/${generateId()}.${ext}`;
-    return getSignedUploadUrl(
+    return signedUpload(
       STORAGE_BUCKETS.LOCATIONS,
-      storagePath,
-      getMimeTypeFromExtension(ext)
+      `teams/${context.teamId}/sequences/${context.sequence.id}/locations/${data.locationDbId}/${generateId()}`,
+      data.filename,
+      'image'
     );
   });
 
@@ -840,7 +805,6 @@ export const setLocationSheetFromUploadFn = createServerFn({ method: 'POST' })
         url: data.publicUrl,
         storagePath,
         inputHash,
-        versionInputHash: `upload:${storagePath}`,
         model: USER_UPLOAD_MODEL,
       });
     await scopedDb.sequenceEvents.record({

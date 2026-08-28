@@ -14,7 +14,6 @@ import {
   presignShotVideoUploadFn,
   replaceFrameContentFn,
   setCharacterSheetFromUploadFn,
-  setFrameImageFromUploadFn,
   setLocationSheetFromUploadFn,
   setSequenceMusicFromUploadFn,
   setShotVideoFromUploadFn,
@@ -30,6 +29,20 @@ import { shotStalenessNamespace } from '@/hooks/use-shot-staleness';
 import { shotKeys } from '@/hooks/use-shots';
 import { putToR2 } from '@/lib/utils/upload';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+
+async function presignPut(
+  presign: Promise<{
+    uploadUrl: string;
+    contentType: string;
+    publicUrl: string;
+  }>,
+  file: File,
+  onProgress?: (percent: number) => void
+): Promise<string> {
+  const signed = await presign;
+  await putToR2(signed.uploadUrl, file, signed.contentType, onProgress);
+  return signed.publicUrl;
+}
 
 /**
  * Replace a shot's still with an uploaded image. With `promptText` (an unsaved
@@ -47,38 +60,28 @@ export function useReplaceFrameImage() {
       promptText?: string;
       onProgress?: (percent: number) => void;
     }): Promise<{ promptChanged: boolean }> => {
-      const presign = await presignFrameImageUploadFn({
-        data: {
-          sequenceId: input.sequenceId,
-          shotId: input.shotId,
-          filename: input.file.name,
-        },
-      });
-      await putToR2(
-        presign.uploadUrl,
-        input.file,
-        presign.contentType,
-        input.onProgress
-      );
-      if (input.promptText !== undefined) {
-        const result = await replaceFrameContentFn({
+      const publicUrl = await presignPut(
+        presignFrameImageUploadFn({
           data: {
             sequenceId: input.sequenceId,
             shotId: input.shotId,
-            promptText: input.promptText,
-            publicUrl: presign.publicUrl,
+            filename: input.file.name,
           },
-        });
-        return { promptChanged: result.promptChanged };
-      }
-      await setFrameImageFromUploadFn({
+        }),
+        input.file,
+        input.onProgress
+      );
+      const result = await replaceFrameContentFn({
         data: {
           sequenceId: input.sequenceId,
           shotId: input.shotId,
-          publicUrl: presign.publicUrl,
+          publicUrl,
+          ...(input.promptText !== undefined
+            ? { promptText: input.promptText }
+            : {}),
         },
       });
-      return { promptChanged: false };
+      return { promptChanged: result.promptChanged };
     },
     onSuccess: async (_result, { sequenceId, shotId }) => {
       // Same set useSelectFrameImageVersion refreshes: the selection repointed,
@@ -118,17 +121,15 @@ export function useReplaceShotVideo() {
       shotId: string;
       onProgress?: (percent: number) => void;
     }) => {
-      const presign = await presignShotVideoUploadFn({
-        data: {
-          sequenceId: input.sequenceId,
-          shotId: input.shotId,
-          filename: input.file.name,
-        },
-      });
-      await putToR2(
-        presign.uploadUrl,
+      const publicUrl = await presignPut(
+        presignShotVideoUploadFn({
+          data: {
+            sequenceId: input.sequenceId,
+            shotId: input.shotId,
+            filename: input.file.name,
+          },
+        }),
         input.file,
-        presign.contentType,
         input.onProgress
       );
       // The clip's own length is what the shot now runs for — the server
@@ -139,7 +140,7 @@ export function useReplaceShotVideo() {
         data: {
           sequenceId: input.sequenceId,
           shotId: input.shotId,
-          publicUrl: presign.publicUrl,
+          publicUrl,
           durationSeconds,
         },
       });
@@ -211,24 +212,22 @@ export function useUploadCharacterSheet() {
       characterId: string;
       onProgress?: (percent: number) => void;
     }) => {
-      const presign = await presignCharacterSheetUploadFn({
-        data: {
-          sequenceId: input.sequenceId,
-          characterId: input.characterId,
-          filename: input.file.name,
-        },
-      });
-      await putToR2(
-        presign.uploadUrl,
+      const publicUrl = await presignPut(
+        presignCharacterSheetUploadFn({
+          data: {
+            sequenceId: input.sequenceId,
+            characterId: input.characterId,
+            filename: input.file.name,
+          },
+        }),
         input.file,
-        presign.contentType,
         input.onProgress
       );
       return setCharacterSheetFromUploadFn({
         data: {
           sequenceId: input.sequenceId,
           characterId: input.characterId,
-          publicUrl: presign.publicUrl,
+          publicUrl,
         },
       });
     },
@@ -256,24 +255,22 @@ export function useUploadLocationReference() {
       locationDbId: string;
       onProgress?: (percent: number) => void;
     }) => {
-      const presign = await presignLocationSheetUploadFn({
-        data: {
-          sequenceId: input.sequenceId,
-          locationDbId: input.locationDbId,
-          filename: input.file.name,
-        },
-      });
-      await putToR2(
-        presign.uploadUrl,
+      const publicUrl = await presignPut(
+        presignLocationSheetUploadFn({
+          data: {
+            sequenceId: input.sequenceId,
+            locationDbId: input.locationDbId,
+            filename: input.file.name,
+          },
+        }),
         input.file,
-        presign.contentType,
         input.onProgress
       );
       return setLocationSheetFromUploadFn({
         data: {
           sequenceId: input.sequenceId,
           locationDbId: input.locationDbId,
-          publicUrl: presign.publicUrl,
+          publicUrl,
         },
       });
     },
@@ -300,20 +297,18 @@ export function useUploadSequenceMusic() {
       sequenceId: string;
       onProgress?: (percent: number) => void;
     }) => {
-      const presign = await presignSequenceMusicUploadFn({
-        data: { sequenceId: input.sequenceId, filename: input.file.name },
-      });
-      await putToR2(
-        presign.uploadUrl,
+      const publicUrl = await presignPut(
+        presignSequenceMusicUploadFn({
+          data: { sequenceId: input.sequenceId, filename: input.file.name },
+        }),
         input.file,
-        presign.contentType,
         input.onProgress
       );
       const durationSeconds = await readMediaDuration(input.file, 'audio');
       return setSequenceMusicFromUploadFn({
         data: {
           sequenceId: input.sequenceId,
-          publicUrl: presign.publicUrl,
+          publicUrl,
           durationSeconds,
         },
       });

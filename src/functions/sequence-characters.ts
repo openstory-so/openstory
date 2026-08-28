@@ -14,6 +14,7 @@ import { resolveSequenceStyleConfig } from '@/lib/style/style-config';
 import { buildCastingAttributes } from '@/lib/prompts/character-prompt';
 import { shouldReuseTalentSheet } from '@/lib/talent/reuse-talent-sheet';
 import { getGenerationChannel } from '@/lib/realtime';
+import { bibleField, slugifyTag } from '@/lib/schemas/bible-field';
 import { ulidSchema } from '@/lib/schemas/id.schemas';
 import { triggerWorkflow } from '@/lib/workflow/client';
 import { buildWorkflowLabel } from '@/lib/workflow/labels';
@@ -52,15 +53,6 @@ export const getSequenceCharactersFn = createServerFn({ method: 'GET' })
 // Manual character CRUD (#1108 Phase 2)
 // ============================================================================
 
-/** `''` / whitespace clears a nullable bible field; otherwise trimmed text. */
-const bibleField = z
-  .string()
-  .max(2000)
-  .transform((v) => {
-    const trimmed = v.trim();
-    return trimmed.length > 0 ? trimmed : null;
-  });
-
 const characterBibleFieldsSchema = z.object({
   age: bibleField.optional(),
   gender: bibleField.optional(),
@@ -70,14 +62,6 @@ const characterBibleFieldsSchema = z.object({
   distinguishingFeatures: bibleField.optional(),
   consistencyTag: bibleField.optional(),
 });
-
-/** Lowercase, underscore-joined identity token derived from a display name. */
-function slugifyTag(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '');
-}
 
 /**
  * Create a character by hand (no storyboard run) — starts sheet-less
