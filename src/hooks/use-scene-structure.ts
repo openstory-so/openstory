@@ -73,9 +73,10 @@ export function useCreateShot(sequenceId: string) {
 }
 
 /**
- * Edit a scene's narrative fields. These sit in the prompt-hash scene
- * surface, so the shots' prompts re-stale by derivation — refresh the
- * staleness namespace for the dots.
+ * Edit a scene's narrative fields. Location / timeOfDay / storyBeat sit in
+ * the prompt-hash scene surface, so the shots' prompts re-stale by
+ * derivation — refresh the staleness namespace for the dots. Title is a
+ * display label and does not participate.
  */
 export function useUpdateScene(sequenceId: string) {
   const queryClient = useQueryClient();

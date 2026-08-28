@@ -232,6 +232,7 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
         sheetImageUrl: childResult.sheetImageUrl,
         sheetStatus: 'completed' as const,
         sheetInputHash: null,
+        selectedSheetVersionId: childResult.sheetVersionId ?? null,
         physicalDescription:
           castingAttrs?.physicalDescription ?? character.physicalDescription,
         consistencyTag:

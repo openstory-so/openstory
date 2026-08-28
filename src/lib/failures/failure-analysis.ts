@@ -15,6 +15,7 @@ import type { SceneRow } from '@/lib/db/schema/scenes';
 import type { Shot } from '@/lib/db/schema/shots';
 import type { Sequence } from '@/lib/db/schema/sequences';
 import type { ShotView } from '@/lib/shots/shot-view';
+import { plainSceneTitle } from '@/lib/utils/markdown-plain';
 
 /** Scene titles keyed by scene id — the label source for each failed shot. */
 type ScenesById = ReadonlyMap<string, Pick<SceneRow, 'title' | 'orderIndex'>>;
@@ -62,7 +63,9 @@ function sceneNumberOf(shot: Shot, scenesById: ScenesById): number {
 
 function getSceneTitle(shot: Shot, scenesById: ScenesById): string {
   const scene = shot.sceneId ? scenesById.get(shot.sceneId) : null;
-  return scene?.title || `Scene ${sceneNumberOf(shot, scenesById)}`;
+  return (
+    plainSceneTitle(scene?.title) || `Scene ${sceneNumberOf(shot, scenesById)}`
+  );
 }
 
 function groupIsContentOnly(group: FailureGroup): boolean {

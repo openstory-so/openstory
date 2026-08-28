@@ -23,6 +23,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useSequenceMentionItems } from '@/hooks/use-mention-items';
 import { useSaveSceneScript, type SceneWithScript } from '@/hooks/use-scenes';
 import { cn } from '@/lib/utils';
+import { plainSceneTitle } from '@/lib/utils/markdown-plain';
 import { Loader2 } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
@@ -53,7 +54,7 @@ export function buildScriptBlocks(
     .map((scene, index) => ({
       sceneId: scene.id,
       sceneNumber: index + 1,
-      title: scene.title ?? '',
+      title: plainSceneTitle(scene.title),
       extract: scene.script?.extract ?? '',
     }));
 }

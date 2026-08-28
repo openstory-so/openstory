@@ -205,6 +205,7 @@ describe('buildShotImageWorkflowInput — reference images', () => {
       sheetImageUrl: 'https://cdn/jack-sheet.png',
       sheetStatus: 'completed',
       sheetInputHash: 'hash-jack',
+      selectedSheetVersionId: null,
       physicalDescription: 'tall',
       consistencyTag: null,
     };

@@ -17,7 +17,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import type { SceneWithScript } from '@/hooks/use-scenes';
 import type { AspectRatio } from '@/lib/constants/aspect-ratios';
 import { cn } from '@/lib/utils';
-import { stripMarkdown } from '@/lib/utils/markdown-plain';
+import { plainSceneTitle, stripMarkdown } from '@/lib/utils/markdown-plain';
 import type { ShotView } from '@/lib/shots/shot-view';
 import { Link } from '@tanstack/react-router';
 import {
@@ -96,7 +96,7 @@ const SceneListItemComponent: React.FC<SceneListItemProps> = ({
   const sceneNumber = (scene?.orderIndex ?? 0) + 1;
   const title = !shot
     ? undefined
-    : scene?.title?.trim() || `Scene ${sceneNumber}`;
+    : plainSceneTitle(scene?.title) || `Scene ${sceneNumber}`;
   const scriptPreview = !shot
     ? undefined
     : stripMarkdown(scene?.script?.extract ?? '');

@@ -1,5 +1,6 @@
 import { dbSceneId } from '@/lib/db/schema';
 import { NotFoundError } from '@/lib/errors';
+import { plainSceneTitle } from '@/lib/utils/markdown-plain';
 import {
   composeSequenceScriptFromDb,
   loadSceneContextBySequence,
@@ -142,8 +143,17 @@ const narrativeField = z
     return trimmed.length > 0 ? trimmed : null;
   });
 
+/** Titles are labels: drop markdown sigils from the script editor. */
+const sceneTitleField = z
+  .string()
+  .max(2000)
+  .transform((v) => {
+    const plain = plainSceneTitle(v);
+    return plain.length > 0 ? plain : null;
+  });
+
 const sceneNarrativeFieldsSchema = z.object({
-  title: narrativeField.optional(),
+  title: sceneTitleField.optional(),
   location: narrativeField.optional(),
   timeOfDay: narrativeField.optional(),
   storyBeat: narrativeField.optional(),
@@ -218,8 +228,9 @@ export const createSceneFn = createServerFn({ method: 'POST' })
 /**
  * Edit a scene's narrative fields (title, location, timeOfDay, storyBeat,
  * continuity tags). Prompts of the scene's shots re-stale by hash derivation
- * (these fields are in the prompt-hash scene surface); a provided continuity
- * partial is merged over the existing object so untouched tag groups survive.
+ * (location/timeOfDay/storyBeat; title is a display label); a provided
+ * continuity partial is merged over the existing object so untouched tag
+ * groups survive.
  */
 export const updateSceneFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])

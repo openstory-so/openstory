@@ -17,6 +17,7 @@ import {
   getAspectRatioClassName,
 } from '@/lib/constants/aspect-ratios';
 import { cn } from '@/lib/utils';
+import { plainSceneTitle } from '@/lib/utils/markdown-plain';
 import { copyTextToClipboard } from '@/lib/utils/clipboard';
 import type { ShotView } from '@/lib/shots/shot-view';
 import { AppImage } from '@/components/ui/app-image';
@@ -289,7 +290,7 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
       ? currentShotIndex + 1
       : undefined;
   const title =
-    currentScene?.title?.trim() ||
+    plainSceneTitle(currentScene?.title) ||
     (sceneNumber ? `Scene ${sceneNumber}` : undefined);
 
   // Best available image: override (variant preview) → final thumbnail → fast preview → sequence poster

@@ -38,6 +38,7 @@ import {
 } from '@/lib/scenes/scene-segments';
 import type { ShotView } from '@/lib/shots/shot-view';
 import { cn } from '@/lib/utils';
+import { plainSceneTitle } from '@/lib/utils/markdown-plain';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   ArrowDown,
@@ -167,7 +168,7 @@ const SceneGroupComponent: React.FC<SceneGroupProps> = ({
 
   const sceneLabel = useMemo(() => {
     const index = scene.orderIndex + 1;
-    return scene.title?.trim() || `Scene ${index}`;
+    return plainSceneTitle(scene.title) || `Scene ${index}`;
   }, [scene.orderIndex, scene.title]);
 
   const handleSceneClick = (e: React.MouseEvent) => {
@@ -176,9 +177,9 @@ const SceneGroupComponent: React.FC<SceneGroupProps> = ({
 
   const commitTitle = () => {
     if (titleDraft === null) return;
-    const next = titleDraft.trim();
+    const next = plainSceneTitle(titleDraft);
     setTitleDraft(null);
-    if (next === (scene.title ?? '').trim()) return;
+    if (next === plainSceneTitle(scene.title)) return;
     updateScene.mutate(
       { sceneId: scene.id, title: next },
       {
@@ -341,7 +342,9 @@ const SceneGroupComponent: React.FC<SceneGroupProps> = ({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => setTitleDraft(scene.title ?? '')}>
+            <DropdownMenuItem
+              onClick={() => setTitleDraft(plainSceneTitle(scene.title))}
+            >
               <Pencil className="h-4 w-4" />
               Rename scene
             </DropdownMenuItem>

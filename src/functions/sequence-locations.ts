@@ -1,54 +1,25 @@
 import { mediaUrlSchema } from '@/lib/schemas/media-url.schemas';
 import { safeTextToImageModel } from '@/lib/ai/models';
 import { generateId } from '@/lib/db/id';
-import { type SequenceLocation } from '@/lib/db/schema';
 import type { LocationBibleUpdate } from '@/lib/db/scoped/sequence-locations';
+import type { SheetStaleness } from '@/lib/sheets/sheet-staleness';
 import { ulidSchema } from '@/lib/schemas/id.schemas';
 import { resolveSequenceStyleConfig } from '@/lib/style/style-config';
 import { getGenerationChannel } from '@/lib/realtime';
+import {
+  buildRegenerateLocationSheetPayload,
+  toLocationMetadata,
+} from '@/lib/sheets/location-sheet-trigger';
 import { triggerWorkflow } from '@/lib/workflow/client';
 import { buildWorkflowLabel } from '@/lib/workflow/labels';
 import type { RecastLocationWorkflowInput } from '@/lib/workflow/types';
 import { buildRecastRegenerateSnapshots } from '@/lib/workflows/recast-snapshot';
+import { locationSheetHashMatchesStored } from '@/lib/workflows/sheet-snapshots';
 import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
 import { NotFoundError } from '@/lib/errors';
 import { authWithTeamMiddleware, sequenceAccessMiddleware } from './middleware';
-
-/** Narrow DB text column to the typed union, defaulting to 'interior'. */
-function parseLocationType(
-  value: string | null
-): 'interior' | 'exterior' | 'both' {
-  if (value === 'interior' || value === 'exterior' || value === 'both') {
-    return value;
-  }
-  return 'interior';
-}
-
-/** Convert flat DB columns to the nested LocationBibleEntry shape. */
-function toLocationMetadata(
-  location: SequenceLocation
-): RecastLocationWorkflowInput['locationMetadata'] {
-  return {
-    locationId: location.locationId,
-    name: location.name,
-    type: parseLocationType(location.type),
-    timeOfDay: location.timeOfDay ?? '',
-    description: location.description ?? '',
-    architecturalStyle: location.architecturalStyle ?? '',
-    keyFeatures: location.keyFeatures ?? '',
-    colorPalette: location.colorPalette ?? '',
-    lightingSetup: location.lightingSetup ?? '',
-    ambiance: location.ambiance ?? '',
-    consistencyTag: location.consistencyTag ?? '',
-    firstMention: {
-      sceneId: location.firstMentionSceneId ?? '',
-      text: location.firstMentionText ?? '',
-      lineNumber: location.firstMentionLine ?? 0,
-    },
-  };
-}
 
 export const getSequenceLocationsFn = createServerFn({ method: 'GET' })
   .middleware([sequenceAccessMiddleware])
@@ -233,6 +204,72 @@ const recastLocationInputSchema = z.object({
   referenceImageUrl: mediaUrlSchema,
   description: z.string().optional(),
 });
+
+export const regenerateLocationSheetFn = createServerFn({ method: 'POST' })
+  .middleware([sequenceAccessMiddleware])
+  .inputValidator(zodValidator(locationIdInput))
+  .handler(async ({ context, data }) => {
+    const location = await context.scopedDb.sequenceLocations.getById(
+      data.locationDbId
+    );
+    if (!location || location.sequenceId !== data.sequenceId) {
+      throw new NotFoundError('Location not found');
+    }
+
+    const payload = await buildRegenerateLocationSheetPayload({
+      scopedDb: context.scopedDb,
+      userId: context.user.id,
+      teamId: context.teamId,
+      sequence: context.sequence,
+      location,
+    });
+
+    await context.scopedDb.sequenceLocations.updateReferenceStatus(
+      location.id,
+      'generating'
+    );
+    await getGenerationChannel(location.sequenceId).emit(
+      'generation.location-sheet:progress',
+      { locationId: location.id, status: 'generating' }
+    );
+
+    const workflowRunId = await triggerWorkflow('/location-sheet', payload, {
+      label: buildWorkflowLabel(location.sequenceId),
+      // Explicit regen must not reuse the bible-child id
+      // `location-sheet:${id}` — that instance is already complete, and CF
+      // would no-op a second Generate. Same pattern as generateTalentSheetFn.
+    });
+    return { locationDbId: location.id, workflowRunId };
+  });
+
+export const getLocationSheetStalenessFn = createServerFn({ method: 'GET' })
+  .middleware([sequenceAccessMiddleware])
+  .inputValidator(zodValidator(locationIdInput))
+  .handler(async ({ context, data }): Promise<SheetStaleness> => {
+    const location = await context.scopedDb.sequenceLocations.getById(
+      data.locationDbId
+    );
+    if (!location || location.sequenceId !== data.sequenceId) {
+      throw new NotFoundError('Location not found');
+    }
+    if (location.referenceStatus === 'generating') return 'generating';
+    if (location.referenceInputHash == null) return 'untracked';
+
+    const payload = await buildRegenerateLocationSheetPayload({
+      scopedDb: context.scopedDb,
+      userId: context.user.id,
+      teamId: context.teamId,
+      sequence: context.sequence,
+      location,
+    });
+    if (!payload.snapshotInputHash) return 'untracked';
+    return (await locationSheetHashMatchesStored(
+      location.referenceInputHash,
+      payload
+    ))
+      ? 'fresh'
+      : 'stale';
+  });
 
 /**
  * Recast a location with a library location reference.

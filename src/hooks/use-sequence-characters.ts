@@ -10,13 +10,16 @@ import {
 } from '@tanstack/react-query';
 import {
   createSequenceCharacterFn,
+  getCharacterSheetStalenessFn,
   getShotIdsForCharacterFn,
   getSequenceCharactersFn,
   recastCharacterFn,
+  regenerateCharacterSheetFn,
   restoreSequenceCharacterFn,
   softDeleteSequenceCharacterFn,
   updateSequenceCharacterFn,
 } from '@/functions/sequence-characters';
+import type { SheetStaleness } from '@/lib/sheets/sheet-staleness';
 import { addCharacterToLibraryFn } from '@/functions/talent';
 import { shotStalenessNamespace } from '@/hooks/use-shot-staleness';
 import type { CharacterWithTalent } from '@/lib/db/schema';
@@ -27,6 +30,13 @@ export const sequenceCharacterKeys = {
     [...sequenceCharacterKeys.all, 'list', sequenceId] as const,
   shotsForCharacter: (sequenceId: string, characterId: string) =>
     [...sequenceCharacterKeys.all, 'shots', sequenceId, characterId] as const,
+  sheetStaleness: (sequenceId: string, characterId: string) =>
+    [
+      ...sequenceCharacterKeys.all,
+      'sheet-staleness',
+      sequenceId,
+      characterId,
+    ] as const,
 };
 
 export function useSequenceCharacters(sequenceId: string) {
@@ -116,6 +126,39 @@ export function useUpdateSequenceCharacter() {
     onSuccess: (_character, { sequenceId }) => {
       void queryClient.invalidateQueries({
         queryKey: sequenceCharacterKeys.list(sequenceId),
+      });
+      void queryClient.invalidateQueries({ queryKey: shotStalenessNamespace });
+      void queryClient.invalidateQueries({
+        queryKey: sequenceCharacterKeys.all,
+      });
+    },
+  });
+}
+
+export function useCharacterSheetStaleness(
+  sequenceId: string,
+  characterId: string
+) {
+  return useQuery<SheetStaleness>({
+    queryKey: sequenceCharacterKeys.sheetStaleness(sequenceId, characterId),
+    queryFn: () =>
+      getCharacterSheetStalenessFn({ data: { sequenceId, characterId } }),
+    enabled: !!sequenceId && !!characterId,
+    staleTime: 15_000,
+  });
+}
+
+export function useRegenerateCharacterSheet() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { sequenceId: string; characterId: string }) =>
+      regenerateCharacterSheetFn({ data }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: sequenceCharacterKeys.all,
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ['character-sheet-variants'],
       });
       void queryClient.invalidateQueries({ queryKey: shotStalenessNamespace });
     },

@@ -880,6 +880,12 @@ export interface CharacterSheetWorkflowResult {
   characterDbId?: string;
   sheetImagePath?: string;
   /**
+   * The live `character_sheet_variants` row selected on a convergent write.
+   * Recast substitutes this into still hashes (version id is the sheet
+   * identity). Absent on divergent / first-gen-null-hash paths.
+   */
+  sheetVersionId?: string | null;
+  /**
    * The run diverged: `sheetImageUrl` is a parked variant and the character's
    * PRIMARY sheet is unchanged. Without this a parent cannot tell the two
    * paths apart — both return a URL in the same field — and would cascade
@@ -1008,6 +1014,8 @@ export interface LocationSheetWorkflowResult {
   referenceImageUrl: string;
   locationDbId?: string;
   referenceImagePath?: string;
+  /** Live `location_sheet_variants` id after a convergent write. */
+  sheetVersionId?: string | null;
   /**
    * The run diverged: `referenceImageUrl` is a parked variant and the
    * location's PRIMARY reference is unchanged. @see

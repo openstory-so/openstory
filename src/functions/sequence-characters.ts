@@ -19,6 +19,9 @@ import { triggerWorkflow } from '@/lib/workflow/client';
 import { buildWorkflowLabel } from '@/lib/workflow/labels';
 import type { RecastCharacterWorkflowInput } from '@/lib/workflow/types';
 import { buildRecastRegenerateSnapshots } from '@/lib/workflows/recast-snapshot';
+import { buildRegenerateCharacterSheetPayload } from '@/lib/sheets/character-sheet-trigger';
+import type { SheetStaleness } from '@/lib/sheets/sheet-staleness';
+import { characterSheetHashMatchesStored } from '@/lib/workflows/sheet-snapshots';
 
 import { NotFoundError } from '@/lib/errors';
 import { authWithTeamMiddleware, sequenceAccessMiddleware } from './middleware';
@@ -198,6 +201,80 @@ export const getShotIdsForCharacterFn = createServerFn({ method: 'GET' })
       data.characterId
     );
     return { shotIds, count: shotIds.length };
+  });
+
+/**
+ * Regenerate the character sheet from the current bible. Does not recast
+ * talent, does not regenerate shots — stills go stale by derivation once
+ * the new version is selected.
+ */
+export const regenerateCharacterSheetFn = createServerFn({ method: 'POST' })
+  .middleware([sequenceAccessMiddleware])
+  .inputValidator(zodValidator(characterIdInput))
+  .handler(async ({ context, data }) => {
+    const character = await context.scopedDb.characters.getById(
+      data.characterId
+    );
+    if (!character || character.sequenceId !== data.sequenceId) {
+      throw new NotFoundError('Character not found');
+    }
+
+    const payload = await buildRegenerateCharacterSheetPayload({
+      scopedDb: context.scopedDb,
+      userId: context.user.id,
+      teamId: context.teamId,
+      sequence: context.sequence,
+      character,
+    });
+
+    await context.scopedDb.characters.updateSheetStatus(
+      character.id,
+      'generating'
+    );
+    await getGenerationChannel(character.sequenceId).emit(
+      'generation.character-sheet:progress',
+      { characterId: character.id, status: 'generating' }
+    );
+
+    const workflowRunId = await triggerWorkflow('/character-sheet', payload, {
+      label: buildWorkflowLabel(character.sequenceId),
+      // Explicit regen must not reuse the bible-child id
+      // `character-sheet:${id}` — that instance is already complete, and CF
+      // would no-op a second Generate (sheetStatus stuck at generating).
+      // Same pattern as generateTalentSheetFn: omit dedup so each click is a
+      // new run.
+    });
+    return { characterId: character.id, workflowRunId };
+  });
+
+/** Live sheet staleness for the character detail banner. */
+export const getCharacterSheetStalenessFn = createServerFn({ method: 'GET' })
+  .middleware([sequenceAccessMiddleware])
+  .inputValidator(zodValidator(characterIdInput))
+  .handler(async ({ context, data }): Promise<SheetStaleness> => {
+    const character = await context.scopedDb.characters.getById(
+      data.characterId
+    );
+    if (!character || character.sequenceId !== data.sequenceId) {
+      throw new NotFoundError('Character not found');
+    }
+    if (character.sheetStatus === 'generating') return 'generating';
+    if (character.sheetInputHash == null) return 'untracked';
+
+    const payload = await buildRegenerateCharacterSheetPayload({
+      scopedDb: context.scopedDb,
+      userId: context.user.id,
+      teamId: context.teamId,
+      sequence: context.sequence,
+      character,
+    });
+    if (!payload.snapshotInputHash) return 'untracked';
+    return (await characterSheetHashMatchesStored(
+      character.sheetInputHash,
+      payload
+    ))
+      ? 'fresh'
+      : 'stale';
   });
 
 /** Recast a character with different talent, triggering sheet regeneration */

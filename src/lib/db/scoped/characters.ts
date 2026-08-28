@@ -19,6 +19,7 @@ import {
 } from '@/lib/scenes/scene-script';
 import { typedEntries } from '@/lib/utils/typed-object';
 import { matchCharacterToShotTags } from '@/lib/workflows/scene-matching';
+import { createCharacterSheetVariantsMethods } from './character-sheet-variants';
 import { buildEventInsert } from './sequence-events';
 
 /**
@@ -229,20 +230,29 @@ export function createCharactersMethods(db: Database) {
       });
     },
 
+    /**
+     * Convergent sheet write: append a version and select it. `opts.model`
+     * labels the history row; defaults to `'unknown'` when the caller has
+     * no model (legacy tests).
+     */
     updateSheet: async (
       id: string,
       imageUrl: string,
       imagePath: string,
-      inputHash: string | null = null
+      inputHash: string | null = null,
+      opts?: { model?: string; workflowRunId?: string | null }
     ): Promise<Character> => {
-      return await update(id, {
-        sheetImageUrl: imageUrl,
-        sheetImagePath: imagePath,
-        sheetStatus: 'completed',
-        sheetGeneratedAt: new Date(),
-        sheetError: null,
-        sheetInputHash: inputHash,
+      const { character } = await createCharacterSheetVariantsMethods(
+        db
+      ).applyConvergent({
+        characterId: id,
+        url: imageUrl,
+        storagePath: imagePath,
+        inputHash,
+        model: opts?.model ?? 'unknown',
+        workflowRunId: opts?.workflowRunId,
       });
+      return character;
     },
 
     getNeedingSheets: async (sequenceId: string): Promise<Character[]> => {

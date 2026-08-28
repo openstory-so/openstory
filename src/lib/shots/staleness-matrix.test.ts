@@ -151,6 +151,13 @@ const MATRIX: MatrixRow[] = [
     expected: { image: 'stale', video: 'fresh' },
   },
   {
+    // A new selected sheet version (regen/upload) is a new identity even when
+    // the parent input hash is unchanged.
+    mutation: 'character sheet version id changed',
+    apply: (s) => ({ ...s, characterSheetHashes: ['version-ulid-2'] }),
+    expected: { image: 'stale', video: 'fresh' },
+  },
+  {
     // Image model switch re-stales stills of that modality only.
     mutation: 'image model changed',
     apply: (s) => ({ ...s, imageModel: 'other_image_model' }),
@@ -339,6 +346,14 @@ const BIBLE_MATRIX: BibleMatrixRow[] = [
     expected: 'fresh',
   },
   {
+    mutation: "referenced character's name edited (display label, not hashed)",
+    apply: (s) => ({
+      ...s,
+      characterBible: [{ ...ALICE, name: 'Alicia' }],
+    }),
+    expected: 'fresh',
+  },
+  {
     // softDelete removes the row from the bible reads → narrowed set shrinks.
     mutation: 'referenced character soft-deleted',
     apply: (s) => ({ ...s, characterBible: [] }),
@@ -349,6 +364,14 @@ const BIBLE_MATRIX: BibleMatrixRow[] = [
     // edits nor its delete/restore can flag this scene's prompts.
     mutation: 'unreferenced character edited (bob, not in scene continuity)',
     apply: (s) => s,
+    expected: 'fresh',
+  },
+  {
+    mutation: "referenced location's name edited (display label, not hashed)",
+    apply: (s) => ({
+      ...s,
+      locationBible: [{ ...BEACH, name: 'The Shore' }],
+    }),
     expected: 'fresh',
   },
   {
@@ -402,6 +425,30 @@ describe('staleness matrix — cast/location bible mutations (§4.2, Phase 2)', 
     expect(withBobDeleted).toBe(withBob);
   });
 
+  it('a rename does not re-stale the character sheet (name is not hashed)', async () => {
+    const stamped = await sheetHash({
+      name: ALICE.name,
+      age: ALICE.age,
+      gender: ALICE.gender,
+      ethnicity: ALICE.ethnicity,
+      physicalDescription: ALICE.physicalDescription,
+      standardClothing: ALICE.standardClothing,
+      distinguishingFeatures: ALICE.distinguishingFeatures,
+      consistencyTag: ALICE.consistencyTag,
+    });
+    const renamed = await sheetHash({
+      name: 'Alicia',
+      age: ALICE.age,
+      gender: ALICE.gender,
+      ethnicity: ALICE.ethnicity,
+      physicalDescription: ALICE.physicalDescription,
+      standardClothing: ALICE.standardClothing,
+      distinguishingFeatures: ALICE.distinguishingFeatures,
+      consistencyTag: ALICE.consistencyTag,
+    });
+    expect(renamed).toBe(stamped);
+  });
+
   it('bible edit re-stales the character sheet (sheet hash embeds the bible fields)', async () => {
     const stamped = await sheetHash({
       name: ALICE.name,
@@ -450,12 +497,16 @@ describe('staleness matrix — structure mutations (§4.2, Phase 1)', () => {
     expect(after).toBe(before);
   });
 
-  it('scene title / location / timeOfDay / storyBeat edits re-stale prompts', async () => {
+  it('scene location / timeOfDay / storyBeat edits re-stale prompts; a title rename does not', async () => {
     const stamped = await hashScene(SCENE);
     const meta = SCENE.metadata;
     if (!meta) throw new Error('fixture scene must carry metadata');
+    const retitled = await hashScene({
+      ...SCENE,
+      metadata: { ...meta, title: 'New title' },
+    });
+    expect(retitled).toBe(stamped);
     for (const mutation of [
-      { ...meta, title: 'New title' },
       { ...meta, location: 'Harbor' },
       { ...meta, timeOfDay: 'night' },
       { ...meta, storyBeat: 'climax' },

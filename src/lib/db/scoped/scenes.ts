@@ -236,8 +236,8 @@ export function createScenesMethods(db: Database) {
      * User edit of the narrative fields (#1108 Phase 1): update + a
      * `scene.updated` event (with the previous values of the changed fields)
      * in one batch. Prompts of the scene's shots re-stale purely by hash
-     * derivation (title/location/timeOfDay/storyBeat are in the prompt-hash
-     * scene surface); nothing upstream is touched.
+     * derivation (location/timeOfDay/storyBeat are in the prompt-hash scene
+     * surface; title is a display label); nothing upstream is touched.
      */
     updateNarrative: async (
       sceneId: DbSceneId,

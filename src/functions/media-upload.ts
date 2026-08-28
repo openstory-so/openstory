@@ -740,39 +740,20 @@ export const setCharacterSheetFromUploadFn = createServerFn({ method: 'POST' })
       imageModel,
     });
 
-    // Append a variant row first, then promote it via the existing promote
-    // flow (copy onto `characters.sheet*` + soft-discard the variant) — the
-    // upload lands in sheet history exactly like a promoted divergent sheet.
-    // The VARIANT's own inputHash is content-addressed to this upload (the
-    // storage path embeds a fresh ULID, so re-uploads never collide on the
-    // divergent unique key); the CHARACTER is stamped with the current-inputs
-    // hash so later bible/style/model edits re-stale it.
-    const now = new Date();
-    const variant = await scopedDb.characterSheetVariants.insertDivergent({
-      characterId: character.id,
-      model: USER_UPLOAD_MODEL,
-      url: data.publicUrl,
-      storagePath,
-      status: 'completed',
-      generatedAt: now,
-      inputHash: `upload:${storagePath}`,
-      divergedAt: now,
-    });
-    await scopedDb.characterSheetVariants.promoteAtomically(
-      character.id,
-      {
-        sheetImageUrl: data.publicUrl,
-        sheetImagePath: storagePath,
-        sheetInputHash: inputHash,
-      },
-      variant.id
-    );
-    // Manual characters start sheet-less ('pending'); the promote writes only
-    // the image fields, so flip the lifecycle explicitly.
-    const updated = await scopedDb.characters.updateSheetStatus(
-      character.id,
-      'completed'
-    );
+    // Append + select: the variant keeps `upload:<path>` as its own identity
+    // so re-uploads never collide; the parent is stamped with the current-
+    // inputs hash so later bible/style/model edits re-stale the sheet. The
+    // selected version id is what stills hash, so this upload re-stales
+    // dependent stills even when inputs didn't change.
+    const { character: updated, version: variant } =
+      await scopedDb.characterSheetVariants.applyConvergent({
+        characterId: character.id,
+        url: data.publicUrl,
+        storagePath,
+        inputHash,
+        versionInputHash: `upload:${storagePath}`,
+        model: USER_UPLOAD_MODEL,
+      });
     await scopedDb.sequenceEvents.record({
       sequenceId: sequence.id,
       actorId: user.id,
@@ -853,33 +834,15 @@ export const setLocationSheetFromUploadFn = createServerFn({ method: 'POST' })
       imageModel,
     });
 
-    // Variant + promote, mirroring the character twin above.
-    const now = new Date();
-    const variant = await scopedDb.locationSheetVariants.insertDivergent({
-      parentType: 'sequence_location',
-      parentId: location.id,
-      model: USER_UPLOAD_MODEL,
-      url: data.publicUrl,
-      storagePath,
-      status: 'completed',
-      generatedAt: now,
-      inputHash: `upload:${storagePath}`,
-      divergedAt: now,
-    });
-    await scopedDb.locationSheetVariants.promoteAtomically(
-      'sequence_location',
-      location.id,
-      {
-        referenceImageUrl: data.publicUrl,
-        referenceImagePath: storagePath,
-        referenceInputHash: inputHash,
-      },
-      variant.id
-    );
-    const updated = await scopedDb.sequenceLocations.updateReferenceStatus(
-      location.id,
-      'completed'
-    );
+    const { location: updated, version: variant } =
+      await scopedDb.locationSheetVariants.applyConvergent({
+        locationDbId: location.id,
+        url: data.publicUrl,
+        storagePath,
+        inputHash,
+        versionInputHash: `upload:${storagePath}`,
+        model: USER_UPLOAD_MODEL,
+      });
     await scopedDb.sequenceEvents.record({
       sequenceId: sequence.id,
       actorId: user.id,

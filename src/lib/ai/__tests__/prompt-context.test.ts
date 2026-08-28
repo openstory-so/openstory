@@ -345,6 +345,32 @@ describe('prompt-driving projection (#867 §4.2)', () => {
     expect(after).toBe(before);
   });
 
+  it('a rename on a referenced location does NOT move the visual hash', async () => {
+    const before = await computeVisualPromptInputHash(
+      narrowShotPromptContext(baseCtx)
+    );
+    const after = await computeVisualPromptInputHash(
+      narrowShotPromptContext({
+        ...baseCtx,
+        locationBible: [{ ...beach, name: 'The Shore' }],
+      })
+    );
+    expect(after).toBe(before);
+  });
+
+  it('a rename on a referenced character does NOT move the visual hash', async () => {
+    const before = await computeVisualPromptInputHash(
+      narrowShotPromptContext(baseCtx)
+    );
+    const after = await computeVisualPromptInputHash(
+      narrowShotPromptContext({
+        ...baseCtx,
+        characterBible: [{ ...alice, name: 'Alicia' }],
+      })
+    );
+    expect(after).toBe(before);
+  });
+
   it('a physicalDescription change on a referenced character DOES move the visual hash', async () => {
     const before = await computeVisualPromptInputHash(
       narrowShotPromptContext(baseCtx)
@@ -418,6 +444,7 @@ describe('casting round-trip — stamp matches verify (#867)', () => {
     sheetGeneratedAt: null,
     sheetError: null,
     sheetInputHash: null,
+    selectedSheetVersionId: null,
     deletedAt: null,
     createdAt: new Date(0),
     updatedAt: new Date(0),
@@ -527,6 +554,7 @@ describe('location/element bible round-trip — stamp matches verify (#867)', ()
     referenceGeneratedAt: null,
     referenceError: null,
     referenceInputHash: null,
+    selectedReferenceVersionId: null,
     deletedAt: null,
     createdAt: new Date(0),
     updatedAt: new Date(0),

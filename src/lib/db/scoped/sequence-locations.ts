@@ -17,6 +17,7 @@ import {
   resolveSceneForShot,
 } from '@/lib/scenes/scene-script';
 import { typedEntries } from '@/lib/utils/typed-object';
+import { createLocationSheetVariantsMethods } from './location-sheet-variants';
 import { buildEventInsert } from './sequence-events';
 
 /**
@@ -280,16 +281,20 @@ export function createSequenceLocationsMethods(db: Database) {
       id: string,
       imageUrl: string,
       imagePath: string,
-      inputHash: string | null = null
+      inputHash: string | null = null,
+      opts?: { model?: string; workflowRunId?: string | null }
     ): Promise<SequenceLocation> => {
-      return await update(id, {
-        referenceImageUrl: imageUrl,
-        referenceImagePath: imagePath,
-        referenceStatus: 'completed',
-        referenceGeneratedAt: new Date(),
-        referenceError: null,
-        referenceInputHash: inputHash,
+      const { location } = await createLocationSheetVariantsMethods(
+        db
+      ).applyConvergent({
+        locationDbId: id,
+        url: imageUrl,
+        storagePath: imagePath,
+        inputHash,
+        model: opts?.model ?? 'unknown',
+        workflowRunId: opts?.workflowRunId,
       });
+      return location;
     },
 
     /**

@@ -13,11 +13,14 @@ import {
   getShotIdsForLocationFn,
   getSequenceLocationsFn,
   getTeamLocationsLibraryFn,
+  getLocationSheetStalenessFn,
   recastLocationFn,
+  regenerateLocationSheetFn,
   restoreSequenceLocationFn,
   softDeleteSequenceLocationFn,
   updateSequenceLocationFn,
 } from '@/functions/sequence-locations';
+import type { SheetStaleness } from '@/lib/sheets/sheet-staleness';
 import { shotStalenessNamespace } from '@/hooks/use-shot-staleness';
 import {
   getPublicLibraryLocationsFn,
@@ -40,6 +43,13 @@ export const sequenceLocationKeys = {
   shotsForLocation: (sequenceId: string, locationId: string) =>
     [...sequenceLocationKeys.all, 'shots', sequenceId, locationId] as const,
   teamLibrary: ['team-locations-library'] as const,
+  sheetStaleness: (sequenceId: string, locationDbId: string) =>
+    [
+      ...sequenceLocationKeys.all,
+      'sheet-staleness',
+      sequenceId,
+      locationDbId,
+    ] as const,
 };
 
 export const libraryLocationKeys = {
@@ -149,6 +159,39 @@ export function useUpdateSequenceLocation() {
     onSuccess: (_location, { sequenceId }) => {
       void queryClient.invalidateQueries({
         queryKey: sequenceLocationKeys.list(sequenceId),
+      });
+      void queryClient.invalidateQueries({ queryKey: shotStalenessNamespace });
+      void queryClient.invalidateQueries({
+        queryKey: sequenceLocationKeys.all,
+      });
+    },
+  });
+}
+
+export function useLocationSheetStaleness(
+  sequenceId: string,
+  locationDbId: string
+) {
+  return useQuery<SheetStaleness>({
+    queryKey: sequenceLocationKeys.sheetStaleness(sequenceId, locationDbId),
+    queryFn: () =>
+      getLocationSheetStalenessFn({ data: { sequenceId, locationDbId } }),
+    enabled: !!sequenceId && !!locationDbId,
+    staleTime: 15_000,
+  });
+}
+
+export function useRegenerateLocationSheet() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { sequenceId: string; locationDbId: string }) =>
+      regenerateLocationSheetFn({ data }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: sequenceLocationKeys.all,
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ['location-sheet-variants'],
       });
       void queryClient.invalidateQueries({ queryKey: shotStalenessNamespace });
     },

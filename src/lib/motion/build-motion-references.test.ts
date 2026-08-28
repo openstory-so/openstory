@@ -12,6 +12,7 @@ const character = (
   sheetImageUrl,
   sheetStatus: 'completed',
   sheetInputHash: 'hash',
+  selectedSheetVersionId: null,
   physicalDescription: `${name} is tall`,
   consistencyTag: name.toLowerCase(),
 });

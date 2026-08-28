@@ -49,6 +49,14 @@ describe('resolveSceneForShot', () => {
     expect(scene?.sceneNumber).toBe(1);
   });
 
+  it('strips markdown from the composed scene title', () => {
+    const { scene } = resolveSceneForShot(shot, {
+      scene: sceneRowFixture({ title: '**Office**' }),
+      script: null,
+    });
+    expect(scene?.metadata?.title).toBe('Office');
+  });
+
   it('derives durationSeconds from the shot, not a stored copy', () => {
     const { scene } = resolveSceneForShot(
       { ...shot, durationMs: 7500 },

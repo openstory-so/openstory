@@ -37,6 +37,7 @@ function makeCharacter(
     sheetImageUrl: null,
     sheetStatus: 'completed',
     sheetInputHash: null,
+    selectedSheetVersionId: null,
     physicalDescription: null,
     consistencyTag: null,
     ...overrides,

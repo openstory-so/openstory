@@ -42,6 +42,7 @@ export function reconstructRecordedFalEditPrompts(): RecordedFalEditPrompt[] {
     sheetImageUrl: `https://example.invalid/${entry.characterId}.png`,
     sheetStatus: 'completed' as const,
     sheetInputHash: null,
+    selectedSheetVersionId: null,
     physicalDescription: entry.physicalDescription,
   }));
   const locations = locationBible.map((entry) => ({
@@ -53,6 +54,7 @@ export function reconstructRecordedFalEditPrompts(): RecordedFalEditPrompt[] {
     referenceImageUrl: `https://example.invalid/${entry.locationId}.png`,
     referenceStatus: 'completed' as const,
     referenceInputHash: null,
+    selectedReferenceVersionId: null,
   }));
   const elements = elementBible.map((entry) => ({
     id: entry.token,

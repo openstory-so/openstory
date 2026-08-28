@@ -205,6 +205,7 @@ export class LocationBibleWorkflow extends OpenStoryWorkflowEntrypoint<LocationB
             referenceImageUrl: childResult.referenceImageUrl,
             referenceStatus: 'completed' as const,
             referenceInputHash: null,
+            selectedReferenceVersionId: childResult.sheetVersionId ?? null,
             // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
             description: location.description ?? null,
             // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
@@ -230,6 +231,7 @@ export class LocationBibleWorkflow extends OpenStoryWorkflowEntrypoint<LocationB
           referenceImageUrl: null,
           referenceStatus: 'failed' as const,
           referenceInputHash: null,
+          selectedReferenceVersionId: null,
           // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
           description: location.description ?? null,
           // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard

@@ -330,7 +330,7 @@ describe('library-talent-sheet hash', () => {
     expect(dtoHash).toBe(currentHash);
   });
 
-  it('diverges when the talent was renamed mid-run', async () => {
+  it('stays convergent when the talent was renamed mid-run', async () => {
     const dtoHash = await computeLibraryTalentSheetHashFromDto(baseInput);
     const stub: TalentStub = {
       talent: {
@@ -349,7 +349,7 @@ describe('library-talent-sheet hash', () => {
       baseInput,
       asScopedDb(stub)
     );
-    expect(dtoHash).not.toBe(currentHash);
+    expect(dtoHash).toBe(currentHash);
   });
 
   it('diverges when the talent description was cleared mid-run', async () => {
@@ -429,7 +429,7 @@ describe('library-location-sheet hash', () => {
     expect(a).toBe(b);
   });
 
-  it('diverges when the location was renamed mid-run', async () => {
+  it('stays convergent when the location was renamed mid-run', async () => {
     const dtoHash = await computeLibraryLocationSheetHashFromDto(baseInput);
     const stub: LibraryLocationStub = {
       locations: {
@@ -444,7 +444,7 @@ describe('library-location-sheet hash', () => {
       baseInput,
       asScopedDb(stub)
     );
-    expect(dtoHash).not.toBe(currentHash);
+    expect(dtoHash).toBe(currentHash);
   });
 
   it('diverges when the description was cleared mid-run', async () => {

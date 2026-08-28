@@ -76,9 +76,8 @@ export const locationSheetVariants = snakeCase.table(
       table.parentType,
       table.parentId
     ),
-    uniqueIndex('location_sheet_variants_primary_key')
-      .on(table.parentType, table.parentId, table.model)
-      .where(sql`${table.divergedAt} IS NULL`),
+    // One parked divergent per (parent, model, input hash). History rows
+    // (divergedAt IS NULL) are unrestricted so same-input re-rolls accumulate.
     uniqueIndex('location_sheet_variants_divergent_key')
       .on(table.parentType, table.parentId, table.model, table.inputHash)
       .where(sql`${table.divergedAt} IS NOT NULL`),

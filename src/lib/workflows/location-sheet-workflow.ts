@@ -178,6 +178,7 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
     }
     let referenceImageUrl: string = initialReferenceImageUrl;
     let referenceImagePath: string | undefined = undefined;
+    let sheetVersionId: string | null = null;
 
     if (input.locationDbId && input.teamId && input.sequenceId) {
       // Capture narrowed values so inner async closures see `string`, not
@@ -249,7 +250,10 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
       const snapshotInputHash = input.snapshotInputHash ?? null;
       const reconcileOutcome = await step.do(
         'reconcile-database',
-        async (): Promise<{ kind: 'convergent' } | { kind: 'divergent' }> => {
+        async (): Promise<
+          | { kind: 'convergent'; versionId: string | null }
+          | { kind: 'divergent' }
+        > => {
           logger.info(
             `[LocationSheetWorkflow:cf] Updating database for ${input.locationName}`
           );
@@ -286,15 +290,22 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
             return { kind: 'divergent' };
           }
 
-          await scopedDb.sequenceLocations.updateReference(
+          const location = await scopedDb.sequenceLocations.updateReference(
             locationDbId,
             storageResult.url,
             storageResult.path,
-            snapshotInputHash
+            snapshotInputHash,
+            { model: generationParams.model, workflowRunId }
           );
-          return { kind: 'convergent' };
+          return {
+            kind: 'convergent',
+            versionId: location.selectedReferenceVersionId,
+          };
         }
       );
+      if (reconcileOutcome.kind === 'convergent') {
+        sheetVersionId = reconcileOutcome.versionId;
+      }
 
       referenceImagePath = storageResult.path;
       referenceImageUrl = storageResult.url;
@@ -355,6 +366,7 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
       referenceImageUrl,
       referenceImagePath,
       locationDbId: input.locationDbId,
+      sheetVersionId,
     };
 
     return result;

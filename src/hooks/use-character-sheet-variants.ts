@@ -1,10 +1,13 @@
 import {
   discardCharacterSheetVariantFn,
   getSequenceCharacterDivergentVariantsFn,
+  listCharacterSheetVersionsFn,
   promoteCharacterSheetVariantFn,
+  selectCharacterSheetVersionFn,
   undiscardCharacterSheetVariantFn,
 } from '@/functions/character-sheet-variants';
 import { sequenceCharacterKeys } from '@/hooks/use-sequence-characters';
+import { shotStalenessNamespace } from '@/hooks/use-shot-staleness';
 import type { CharacterSheetVariant } from '@/lib/db/schema';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -12,6 +15,13 @@ export const characterSheetVariantKeys = {
   all: ['character-sheet-variants'] as const,
   divergentBySequence: (sequenceId: string) =>
     [...characterSheetVariantKeys.all, 'sequence', sequenceId] as const,
+  history: (sequenceId: string, characterId: string) =>
+    [
+      ...characterSheetVariantKeys.all,
+      'history',
+      sequenceId,
+      characterId,
+    ] as const,
 };
 
 /**
@@ -32,6 +42,39 @@ export function useCharacterDivergentVariants(
     enabled: !!sequenceId,
     staleTime: 30_000,
     refetchInterval: options?.refetchInterval ?? false,
+  });
+}
+
+export function useCharacterSheetVersions(
+  sequenceId: string,
+  characterId: string
+) {
+  return useQuery({
+    queryKey: characterSheetVariantKeys.history(sequenceId, characterId),
+    queryFn: () =>
+      listCharacterSheetVersionsFn({ data: { sequenceId, characterId } }),
+    enabled: !!sequenceId && !!characterId,
+    staleTime: 15_000,
+  });
+}
+
+export function useSelectCharacterSheetVersion() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: {
+      sequenceId: string;
+      characterId: string;
+      versionId: string;
+    }) => selectCharacterSheetVersionFn({ data: input }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: characterSheetVariantKeys.all,
+      });
+      void queryClient.invalidateQueries({
+        queryKey: sequenceCharacterKeys.all,
+      });
+      void queryClient.invalidateQueries({ queryKey: shotStalenessNamespace });
+    },
   });
 }
 

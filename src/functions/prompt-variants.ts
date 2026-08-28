@@ -2,6 +2,9 @@ import {
   computeMotionPromptInputHash,
   computeMusicPromptInputHash,
   computeVisualPromptInputHash,
+  motionPromptInputHashMatches,
+  musicPromptInputHashMatches,
+  visualPromptInputHashMatches,
 } from '@/lib/ai/input-hash';
 import {
   DEFAULT_ANALYSIS_MODEL,
@@ -531,7 +534,12 @@ export const regenerateShotPromptFn = createServerFn({ method: 'POST' })
             ?.inputHash ?? null)
         : ((await scopedDb.shotPromptVersions.getSelectedMotion(shot.id))
             ?.inputHash ?? null);
-    if (!data.force && isPromptUpToDate(storedHash, liveHash)) {
+    if (
+      !data.force &&
+      (data.promptType === 'visual'
+        ? await visualPromptInputHashMatches(storedHash, narrowed)
+        : await motionPromptInputHashMatches(storedHash, narrowed))
+    ) {
       return {
         workflowRunId: null,
         alreadyUpToDate: true,
@@ -806,7 +814,12 @@ export const regenerateMusicPromptFn = createServerFn({ method: 'POST' })
       sceneSummaries,
       analysisModel: analysisModelId,
     });
-    if (isPromptUpToDate(sequence.musicPromptInputHash, liveHash)) {
+    if (
+      await musicPromptInputHashMatches(sequence.musicPromptInputHash, {
+        sceneSummaries,
+        analysisModel: analysisModelId,
+      })
+    ) {
       return { workflowRunId: null, alreadyUpToDate: true } as const;
     }
 
@@ -876,16 +889,13 @@ export const getMusicPromptStalenessFn = createServerFn({ method: 'GET' })
         getAnalysisModelById(sequence.analysisModel)?.id ??
         DEFAULT_ANALYSIS_MODEL;
 
-      const liveHash = await computeMusicPromptInputHash({
-        sceneSummaries,
-        analysisModel,
-      });
+      const musicUpToDate = await musicPromptInputHashMatches(
+        sequence.musicPromptInputHash,
+        { sceneSummaries, analysisModel }
+      );
 
       return {
-        musicPrompt:
-          liveHash !== sequence.musicPromptInputHash
-            ? ('stale' as const)
-            : ('fresh' as const),
+        musicPrompt: musicUpToDate ? ('fresh' as const) : ('stale' as const),
       };
     } catch (error) {
       // Hash uncomputable (e.g., scene metadata missing a required field).

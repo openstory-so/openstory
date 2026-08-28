@@ -101,6 +101,7 @@ export async function buildRecastRegenerateSnapshots(params: {
             ...subject.character,
             sheetImageUrl: PENDING_SHEET_URL,
             sheetInputHash: PENDING_SHEET_HASH,
+            selectedSheetVersionId: null,
           },
         ]
       : characters;
@@ -112,6 +113,7 @@ export async function buildRecastRegenerateSnapshots(params: {
             ...subject.location,
             referenceImageUrl: PENDING_SHEET_URL,
             referenceInputHash: PENDING_SHEET_HASH,
+            selectedReferenceVersionId: null,
           },
         ]
       : locations;

@@ -817,3 +817,69 @@ describe('talent-sheet-variants promoteAtomically negative cases', () => {
     expect(sheet.inputHash).toBeNull();
   });
 });
+
+describe('character sheet versions (append + select)', () => {
+  it('applyConvergent snapshots the unversioned primary then selects the new row', async () => {
+    const methods = createCharacterSheetVariantsMethods(db);
+    await db
+      .update(characters)
+      .set({
+        sheetImageUrl: 'https://example.com/old.png',
+        sheetImagePath: '/old.png',
+        sheetInputHash: 'hash-old',
+        sheetStatus: 'completed',
+      })
+      .where(eq(characters.id, characterId));
+
+    const { character, version } = await methods.applyConvergent({
+      characterId,
+      url: 'https://example.com/new.png',
+      storagePath: '/new.png',
+      inputHash: 'hash-new',
+      model: 'nano_banana_2',
+    });
+
+    expect(character.sheetImageUrl).toBe('https://example.com/new.png');
+    expect(character.sheetInputHash).toBe('hash-new');
+    expect(character.selectedSheetVersionId).toBe(version.id);
+
+    const history = await methods.listHistoryByCharacter(characterId);
+    expect(history).toHaveLength(2);
+    expect(
+      history.some((row) => row.url === 'https://example.com/old.png')
+    ).toBe(true);
+    expect(history.some((row) => row.id === version.id)).toBe(true);
+  });
+
+  it('select repoints the parent without discarding the previous version', async () => {
+    const methods = createCharacterSheetVariantsMethods(db);
+    const first = await methods.applyConvergent({
+      characterId,
+      url: 'https://example.com/a.png',
+      storagePath: '/a.png',
+      inputHash: 'hash-a',
+      model: 'nano_banana_2',
+    });
+    const second = await methods.applyConvergent({
+      characterId,
+      url: 'https://example.com/b.png',
+      storagePath: '/b.png',
+      inputHash: 'hash-b',
+      model: 'nano_banana_2',
+    });
+    expect(second.character.selectedSheetVersionId).toBe(second.version.id);
+
+    await methods.select(characterId, first.version.id, { actorId: null });
+    const [after] = await db
+      .select()
+      .from(characters)
+      .where(eq(characters.id, characterId));
+    expect(after?.selectedSheetVersionId).toBe(first.version.id);
+    expect(after?.sheetImageUrl).toBe('https://example.com/a.png');
+    expect(after?.sheetInputHash).toBe('hash-b');
+
+    const history = await methods.listHistoryByCharacter(characterId);
+    expect(history).toHaveLength(2);
+    expect(history.every((row) => row.discardedAt == null)).toBe(true);
+  });
+});

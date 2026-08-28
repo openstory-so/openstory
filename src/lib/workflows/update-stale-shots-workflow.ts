@@ -45,7 +45,7 @@
  * are skipped, not rendered from stale inputs.
  */
 
-import { computeMusicPromptInputHash } from '@/lib/ai/input-hash';
+import { musicPromptInputHashMatches } from '@/lib/ai/input-hash';
 import { resolveVideoModel } from '@/lib/ai/resolve-asset-models';
 import type { Scene } from '@/lib/ai/scene-analysis.schema';
 import { getEffectiveFalPricing } from '@/lib/ai/fal-pricing-live';
@@ -1017,11 +1017,16 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
                       'WorkflowValidationError'
                     );
                   }
-                  const liveHash = await computeMusicPromptInputHash({
-                    sceneSummaries: music.sceneSummaries,
-                    analysisModel: music.analysisModelId,
-                  });
-                  if (liveHash === sequence.musicPromptInputHash) return null;
+                  if (
+                    await musicPromptInputHashMatches(
+                      sequence.musicPromptInputHash,
+                      {
+                        sceneSummaries: music.sceneSummaries,
+                        analysisModel: music.analysisModelId,
+                      }
+                    )
+                  )
+                    return null;
                   const payload: MusicPromptWorkflowInput = {
                     userId,
                     teamId,
