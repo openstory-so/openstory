@@ -44,16 +44,41 @@ export const SCRIPT_ANALYSIS_MODELS = [
     description: 'Opus 5 low-latency; used for scene-split',
   },
   {
+    id: 'google/gemini-3.7-flash',
+    name: 'Gemini 3.7 Flash',
+    vendor: 'Google',
+    license: 'proprietary' as const,
+    // Arena 1490 (gemini-3.7-flash-high).
+    qualityRank: 4,
+    contextWindow: 1_048_576,
+    maxOutputTokens: 65_536,
+    vision: true,
+    description: 'Fast multimodal with 1M context',
+  },
+  {
     id: 'google/gemini-3.1-pro-preview',
     name: 'Gemini 3.1 Pro',
     vendor: 'Google',
     license: 'proprietary' as const,
     // Arena 1487.
-    qualityRank: 4,
+    qualityRank: 5,
     contextWindow: 1_048_576,
     maxOutputTokens: 65_536,
     vision: true,
     description: 'Frontier multimodal reasoning with 1M context',
+  },
+  {
+    id: 'openai/gpt-5.6-sol',
+    name: 'GPT-5.6 Sol',
+    vendor: 'OpenAI',
+    license: 'proprietary' as const,
+    // Arena 1482 (gpt-5.6-sol-xhigh).
+    qualityRank: 6,
+    contextWindow: 1_050_000,
+    maxOutputTokens: 128_000,
+    vision: true,
+    description:
+      'GPT-5.6 flagship: complex reasoning and agentic work, 1M context',
   },
   {
     id: 'openai/gpt-5.5',
@@ -61,11 +86,13 @@ export const SCRIPT_ANALYSIS_MODELS = [
     vendor: 'OpenAI',
     license: 'proprietary' as const,
     // Arena 1482 (gpt-5.5-high).
-    qualityRank: 5,
+    qualityRank: 7,
     contextWindow: 1_050_000,
     maxOutputTokens: 128_000,
     vision: true,
     description: 'Latest GPT-5 series with 1M context',
+    // Retired 2026-08-28 for GPT-5.6 Sol; kept for sequences that stored it.
+    hidden: true,
   },
   {
     id: 'anthropic/claude-opus-4.8',
@@ -73,7 +100,7 @@ export const SCRIPT_ANALYSIS_MODELS = [
     vendor: 'Anthropic',
     license: 'proprietary' as const,
     // Arena 1481 (opus-4-8-high).
-    qualityRank: 6,
+    qualityRank: 8,
     contextWindow: 1_000_000,
     maxOutputTokens: 128_000,
     vision: true,
@@ -86,7 +113,7 @@ export const SCRIPT_ANALYSIS_MODELS = [
     vendor: 'SpaceXAI',
     license: 'proprietary' as const,
     // Arena 1475 (grok-4.20-beta1).
-    qualityRank: 7,
+    qualityRank: 9,
     contextWindow: 2_000_000,
     maxOutputTokens: 1_800_000,
     vision: true,
@@ -99,11 +126,13 @@ export const SCRIPT_ANALYSIS_MODELS = [
     vendor: 'Google',
     license: 'proprietary' as const,
     // Arena 1474.
-    qualityRank: 8,
+    qualityRank: 10,
     contextWindow: 1_048_576,
     maxOutputTokens: 65_536,
     vision: true,
     description: 'Fast multimodal with 1M context',
+    // Retired 2026-08-28 for Gemini 3.7 Flash; kept for sequences that stored it.
+    hidden: true,
   },
   {
     id: 'z-ai/glm-5.3-flash',
@@ -111,7 +140,7 @@ export const SCRIPT_ANALYSIS_MODELS = [
     vendor: 'Z.ai',
     license: 'open-weight' as const,
     // Arena 1469 ±12 — only 2.4k votes, released 2026-08-26.
-    qualityRank: 9,
+    qualityRank: 11,
     contextWindow: 1_048_576,
     maxOutputTokens: 131_072,
     // Replaced GLM-5.2 (#1367): GLM-5.3 proper has no OpenRouter endpoint with
@@ -124,12 +153,24 @@ export const SCRIPT_ANALYSIS_MODELS = [
     description: 'Native multimodal, 1M context, long-horizon agents',
   },
   {
+    id: 'openai/gpt-5.6-terra',
+    name: 'GPT-5.6 Terra',
+    vendor: 'OpenAI',
+    license: 'proprietary' as const,
+    // Arena 1466 (gpt-5.6-terra-xhigh).
+    qualityRank: 12,
+    contextWindow: 1_050_000,
+    maxOutputTokens: 128_000,
+    vision: true,
+    description: 'GPT-5.6 mid tier, between Sol and Luna',
+  },
+  {
     id: 'deepseek/deepseek-v4-pro-0813',
     name: 'DeepSeek V4 Pro',
     vendor: 'DeepSeek',
     license: 'open-weight' as const,
     // Arena 1462 (v4-pro-high).
-    qualityRank: 10,
+    qualityRank: 13,
     contextWindow: 1_048_576,
     maxOutputTokens: 943_717,
     // Text-only.
@@ -142,7 +183,7 @@ export const SCRIPT_ANALYSIS_MODELS = [
     vendor: 'Anthropic',
     license: 'proprietary' as const,
     // Arena 1461 (sonnet-5-high).
-    qualityRank: 11,
+    qualityRank: 14,
     contextWindow: 1_000_000,
     maxOutputTokens: 128_000,
     vision: true,
@@ -154,7 +195,7 @@ export const SCRIPT_ANALYSIS_MODELS = [
     vendor: 'SpaceXAI',
     license: 'proprietary' as const,
     // Arena 1461 ±10 (grok-4.6-high) — only 3.5k votes, released 2026-08-12.
-    qualityRank: 12,
+    qualityRank: 15,
     contextWindow: 500_000,
     maxOutputTokens: 450_000,
     // Accepts image input — required so the motion-prompt pass can be
@@ -165,16 +206,30 @@ export const SCRIPT_ANALYSIS_MODELS = [
     description: 'Frontier xAI reasoning model, xAI’s smartest, 500K context',
   },
   {
+    id: 'openai/gpt-5.6-luna',
+    name: 'GPT-5.6 Luna',
+    vendor: 'OpenAI',
+    license: 'proprietary' as const,
+    // Arena 1452 (gpt-5.6-luna-xhigh).
+    qualityRank: 16,
+    contextWindow: 1_050_000,
+    maxOutputTokens: 128_000,
+    vision: true,
+    description: 'GPT-5.6 fast, cost-efficient tier',
+  },
+  {
     id: 'openai/gpt-5.4-mini',
     name: 'GPT-5.4 Mini',
     vendor: 'OpenAI',
     license: 'proprietary' as const,
     // Arena 1448 (gpt-5.4-mini-high).
-    qualityRank: 13,
+    qualityRank: 17,
     contextWindow: 400_000,
     maxOutputTokens: 128_000,
     vision: true,
     description: 'Fast reasoning with configurable effort modes',
+    // Retired 2026-08-28 for GPT-5.6 Terra; kept for sequences that stored it.
+    hidden: true,
   },
   {
     id: 'deepseek/deepseek-v3.2',
@@ -182,7 +237,7 @@ export const SCRIPT_ANALYSIS_MODELS = [
     vendor: 'DeepSeek',
     license: 'open-weight' as const,
     // Arena 1425.
-    qualityRank: 14,
+    qualityRank: 18,
     contextWindow: 163_840,
     maxOutputTokens: 147_456,
     // Text-only.
@@ -196,11 +251,13 @@ export const SCRIPT_ANALYSIS_MODELS = [
     vendor: 'OpenAI',
     license: 'proprietary' as const,
     // Arena 1402 (gpt-5.4-nano-high).
-    qualityRank: 15,
+    qualityRank: 19,
     contextWindow: 400_000,
     maxOutputTokens: 128_000,
     vision: true,
     description: 'Fastest and most cost-efficient GPT-5.4 variant',
+    // Retired 2026-08-28 for GPT-5.6 Luna; kept for sequences that stored it.
+    hidden: true,
   },
   {
     id: 'mistralai/mistral-small-2603',
@@ -208,7 +265,7 @@ export const SCRIPT_ANALYSIS_MODELS = [
     vendor: 'Mistral',
     license: 'open-weight' as const,
     // Not on the Arena board.
-    qualityRank: 16,
+    qualityRank: 20,
     contextWindow: 262_144,
     maxOutputTokens: 209_715,
     vision: true,
@@ -220,7 +277,7 @@ export const SCRIPT_ANALYSIS_MODELS = [
     vendor: 'ByteDance',
     license: 'proprietary' as const,
     // Not on the Arena board (Seed 2.0 Pro is 1456).
-    qualityRank: 17,
+    qualityRank: 21,
     contextWindow: 262_144,
     maxOutputTokens: 131_072,
     vision: true,
@@ -345,10 +402,13 @@ export function resolveVisionModel(
   return DEFAULT_VISION_MODEL;
 }
 /**
- * Default model to use when none is specified
+ * Default model when none is specified: the top of the Arena board (#1367).
+ * Fable 5 is 2× Opus 5 per token ($10/$50 vs $5/$25 per M), so this is a
+ * deliberate quality-over-cost call. Existing users keep whatever their
+ * generation settings already store; only fresh settings pick this up.
  */
 export const DEFAULT_ANALYSIS_MODEL: AnalysisModelId =
-  'anthropic/claude-opus-5';
+  'anthropic/claude-fable-5';
 
 /**
  * Boundary-annotation scenes call only. Grok 4.6 + medium reasoning

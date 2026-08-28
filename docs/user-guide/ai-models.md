@@ -13,18 +13,18 @@ These LLM models analyze your script, extract scenes, characters, and locations,
 
 | Model              | Vendor    | Context Window | License                   |
 | ------------------ | --------- | -------------- | ------------------------- |
-| Claude Fable 5     | Anthropic | 1M tokens      | Proprietary               |
-| **Claude Opus 5**  | Anthropic | 1M tokens      | Proprietary (default)     |
+| **Claude Fable 5** | Anthropic | 1M tokens      | Proprietary (default)     |
+| Claude Opus 5      | Anthropic | 1M tokens      | Proprietary               |
 | Claude Opus 5 Fast | Anthropic | 1M tokens      | Proprietary (scene-split) |
+| Gemini 3.7 Flash   | Google    | 1M tokens      | Proprietary               |
 | Gemini 3.1 Pro     | Google    | 1M tokens      | Proprietary               |
-| GPT-5.5            | OpenAI    | 1M tokens      | Proprietary               |
-| Gemini 3 Flash     | Google    | 1M tokens      | Proprietary               |
+| GPT-5.6 Sol        | OpenAI    | 1M tokens      | Proprietary               |
 | GLM-5.3 Flash      | Z.ai      | 1M tokens      | Open Weight (MIT)         |
+| GPT-5.6 Terra      | OpenAI    | 1M tokens      | Proprietary               |
 | DeepSeek V4 Pro    | DeepSeek  | 1M tokens      | Open Weight (MIT)         |
 | Claude Sonnet 5    | Anthropic | 1M tokens      | Proprietary               |
 | Grok 4.6           | SpaceXAI  | 500K tokens    | Proprietary               |
-| GPT-5.4 Mini       | OpenAI    | 400K tokens    | Proprietary               |
-| GPT-5.4 Nano       | OpenAI    | 400K tokens    | Proprietary               |
+| GPT-5.6 Luna       | OpenAI    | 1M tokens      | Proprietary               |
 | Mistral Small 4    | Mistral   | 262K tokens    | Open Weight (Apache 2.0)  |
 | Seed 2.0 Mini      | ByteDance | 262K tokens    | Proprietary               |
 
