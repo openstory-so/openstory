@@ -506,6 +506,46 @@ describe('shot_prompt_variants helper', () => {
     expect(selected?.inputHash).toBe('context-hash-1');
   });
 
+  it('softened row with select:false (variant-only rescue) lands in history and leaves the selection alone (#1373)', async () => {
+    const methods = createShotPromptVersionsMethods(db);
+    const original = await methods.write({
+      shotId,
+      promptType: 'motion',
+      text: 'User prompt',
+      source: 'user-edit',
+      inputHash: 'context-hash-1',
+      analysisModel: 'anthropic/claude-haiku-4.5',
+    });
+
+    const softened = await methods.write({
+      shotId,
+      promptType: 'motion',
+      text: 'Softened prompt',
+      source: 'softened',
+      inputHash: original.inputHash,
+      analysisModel: original.analysisModel,
+      select: false,
+    });
+    expect(softened.id).not.toBe(original.id);
+    expect(softened.inputHash).toBe('context-hash-1');
+
+    const history = await methods.listByShot(shotId, 'motion');
+    expect(history.map((r) => r.source)).toEqual(['softened', 'user-edit']);
+    // An alternate model's rescue never moves the primary shot's prompt.
+    expect((await selectedMotionVersion())?.id).toBe(original.id);
+
+    // The default (primary render) selects the rewrite, as the image path does.
+    const selected = await methods.write({
+      shotId,
+      promptType: 'motion',
+      text: 'Softened prompt for the primary',
+      source: 'softened',
+      inputHash: original.inputHash,
+      analysisModel: original.analysisModel,
+    });
+    expect((await selectedMotionVersion())?.id).toBe(selected.id);
+  });
+
   it('restoring an AI prompt that is currently live still appends a restored row (audit trail)', async () => {
     // Without the partial-index `source != 'restored'` exclusion, this case
     // hit onConflictDoNothing and silently returned the original AI row.

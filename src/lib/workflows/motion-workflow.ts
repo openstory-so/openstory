@@ -390,6 +390,9 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
     let prompt = input.prompt;
     let activeModel = model;
     let softened = false;
+    // The manifest the in-flight version currently carries — repointed at the
+    // softened prompt version when the rescue rewrites it.
+    let renderManifest: VideoManifest | null = manifest ?? null;
     const triedModels: (typeof model)[] = [model];
     const maxAttempts = MAX_MOTION_ATTEMPTS + 1;
 
@@ -459,20 +462,30 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
           if (softened && input.shotId) {
             const shotId = input.shotId;
             const softenedText = prompt;
-            await step.do('write-softened-motion-prompt', async () => {
-              // ponytail: stored as the assembled text with no dialogue/audio
-              // so a later render does not re-append them; per-model
-              // re-assembly resumes once the user regenerates the prompt.
-              const version = await scopedDb.shotPromptVersions.write({
-                shotId,
-                promptType: 'motion',
-                text: softenedText,
-                source: 'softened',
-                inputHash: provenance.inputHash,
-                analysisModel: provenance.analysisModel,
-                createdBy: input.userId,
-              });
-              if (videoVersionId && manifest) {
+            renderManifest = await step.do(
+              'write-softened-motion-prompt',
+              async () => {
+                // A primary render selects the rewrite (the original stays
+                // in Versions), as the image softener does for the frame.
+                // A variant-only render appends to history only: an
+                // alternate model's rescue must not move the primary shot's
+                // prompt out from under the primary clip (which would then
+                // read stale). ponytail: `input.prompt` is already
+                // model-assembled (dialogue prose + audio trailer baked in),
+                // so this row gets null dialogue/audio — a later render from
+                // it appends the model trailer a second time. Structured
+                // assembly resumes once the user regenerates the prompt.
+                const version = await scopedDb.shotPromptVersions.write({
+                  shotId,
+                  promptType: 'motion',
+                  text: softenedText,
+                  source: 'softened',
+                  inputHash: provenance.inputHash,
+                  analysisModel: provenance.analysisModel,
+                  createdBy: input.userId,
+                  select: !input.variantOnly,
+                });
+                if (!videoVersionId || !manifest) return manifest ?? null;
                 const rescued = manifest.map((e) => ({
                   ...e,
                   motionPromptVersionId: version.id,
@@ -484,8 +497,9 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
                     model
                   ),
                 });
+                return rescued;
               }
-            });
+            );
           }
         }
         if (swapModel) {
@@ -503,14 +517,16 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
           if (videoVersionId) {
             const versionId = videoVersionId;
             // The in-flight version moves to the fallback model's group so the
-            // switcher shows what actually rendered; the hash follows.
+            // switcher shows what actually rendered; the hash follows — over
+            // the softened manifest when the prompt was rescued too.
+            const hashManifest = renderManifest;
             await step.do('switch-to-fallback-video-model', async () => {
               await scopedDb.videoVariants.update(versionId, {
                 model: MOTION_CONTENT_FALLBACK_MODEL,
-                ...(manifest
+                ...(hashManifest
                   ? {
                       inputHash: await computeVideoManifestInputHash(
-                        manifest,
+                        hashManifest,
                         MOTION_CONTENT_FALLBACK_MODEL
                       ),
                     }

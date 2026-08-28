@@ -390,8 +390,9 @@ export function updateQueryCacheFromEvent(
         );
       }
       // Content-checker rescue (#1373), mirroring the image handler: a
-      // softened motion prompt version repoints the shot's selection, and a
-      // fallback render moves the in-flight version to the Grok group.
+      // softened motion prompt version repoints the shot's selection (primary
+      // render) or lands in its history (variant-only), and a fallback render
+      // moves the in-flight version to the Grok group.
       if (promptSoftened && shotId) {
         debouncedInvalidate(
           queryClient,
