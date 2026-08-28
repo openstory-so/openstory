@@ -33,13 +33,14 @@ function row(overrides: Partial<Row> & Pick<Row, 'endpointId'>): Row {
 }
 
 /** Stubs the one query shape `getEffectiveFalPricing` issues. */
-async function loadWithRows(rows: Row[]) {
+async function loadWithRows(rows: Row[], env: Record<string, string> = {}) {
   vi.resetModules(); // the module caches its map per isolate
   vi.doMock('#db-client', () => ({
     getDb: () => ({
       select: () => ({ from: () => ({ where: () => Promise.resolve(rows) }) }),
     }),
   }));
+  vi.doMock('#env', () => ({ getEnv: () => env }));
   return await import('@/lib/ai/fal-pricing-live');
 }
 
@@ -110,11 +111,24 @@ describe('getEffectiveFalPricing', () => {
     expect(pricing?.observed).toEqual({ medianUnits: 294, sampleCount: 7 });
   });
 
-  it('returns an empty map (not a throw) when the table is empty', async () => {
+  it('returns no fal rows (not a throw) when the table is empty', async () => {
     // Local dev / fresh deploy before the first refresh: estimates gate on
     // the floor and billing reports $0 — visible, not fatal.
     const { getEffectiveFalPricing } = await loadWithRows([]);
-    expect(await getEffectiveFalPricing()).toEqual({});
+    const map = await getEffectiveFalPricing();
+    // The BytePlus card is static, so it survives an empty table by design
+    // (#1157) — that is the whole point of not seeding it into D1. Assert no
+    // FAL endpoint appears rather than no entry at all.
+    expect(Object.keys(map).filter((id) => id.includes('/'))).toEqual([]);
+  });
+
+  it('keeps the static BytePlus rate card when the fal table is empty', async () => {
+    const { getEffectiveFalPricing } = await loadWithRows([]);
+    const map = await getEffectiveFalPricing();
+    expect(map['dreamina-seedance-2-5-260628']).toEqual({
+      unitPrice: 10_700,
+      unit: '1000 tokens',
+    });
   });
 
   it('reports when the newest row was fetched', async () => {
@@ -125,5 +139,69 @@ describe('getEffectiveFalPricing', () => {
       row({ endpointId: 'c/d', fetchedAt: newer }),
     ]);
     expect(await getFalPricingUpdatedAt()).toEqual(newer);
+  });
+});
+
+/**
+ * Route aliasing (#1157). Every estimator and the client's ActionCost payload
+ * look a model up by its FAL catalog id, so when the platform routes that
+ * model to Ark the map has to answer with the Ark rate — otherwise every
+ * pre-flight number quotes a provider we are not billing.
+ */
+describe('BytePlus route aliasing', () => {
+  const SEEDANCE_FAL = 'bytedance/seedance-2.5/image-to-video';
+  const SEEDANCE_REF = 'bytedance/seedance-2.5/reference-to-video';
+  const SEEDREAM_FAL = 'bytedance/seedream/v5/pro/text-to-image';
+
+  const falRows = [
+    row({ endpointId: SEEDANCE_FAL, unit: '1000 tokens', unitPriceMicros: 99 }),
+    row({ endpointId: SEEDANCE_REF, unit: '1000 tokens', unitPriceMicros: 99 }),
+    row({ endpointId: SEEDREAM_FAL, unit: 'images', unitPriceMicros: 99 }),
+  ];
+
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
+  it('leaves fal rates alone when no Ark key is configured', async () => {
+    const { getEffectiveFalPricing } = await loadWithRows(falRows);
+    const map = await getEffectiveFalPricing();
+    expect(map[SEEDANCE_FAL]?.unitPrice).toBe(99);
+    expect(map[SEEDREAM_FAL]?.unitPrice).toBe(99);
+  });
+
+  it('points the fal ids at the Ark rate when Ark is configured', async () => {
+    const { getEffectiveFalPricing } = await loadWithRows(falRows, {
+      ARK_API_KEY: 'ark-test',
+    });
+    const map = await getEffectiveFalPricing();
+    expect(map[SEEDANCE_FAL]?.unitPrice).toBe(10_700);
+    expect(map[SEEDREAM_FAL]?.unitPrice).toBe(90_000);
+  });
+
+  // Seedance with cast/element refs bills on a separate fal endpoint; on Ark
+  // it is one model id, so this endpoint has to alias too or a referenced shot
+  // silently quotes the fal rate.
+  it('aliases the reference-to-video endpoint as well', async () => {
+    const { getEffectiveFalPricing } = await loadWithRows(falRows, {
+      ARK_API_KEY: 'ark-test',
+    });
+    expect((await getEffectiveFalPricing())[SEEDANCE_REF]?.unitPrice).toBe(
+      10_700
+    );
+  });
+
+  it('leaves models with no BytePlus via on their fal rate', async () => {
+    const { getEffectiveFalPricing } = await loadWithRows(
+      [
+        row({
+          endpointId: 'fal-ai/veo3.1/image-to-video',
+          unitPriceMicros: 77,
+        }),
+      ],
+      { ARK_API_KEY: 'ark-test' }
+    );
+    const map = await getEffectiveFalPricing();
+    expect(map['fal-ai/veo3.1/image-to-video']?.unitPrice).toBe(77);
   });
 });

@@ -82,7 +82,7 @@ function parseArg(name: string): string | undefined {
 }
 
 function resolveJudgeModel(): TextModel {
-  const m = parseArg('model') ?? 'google/gemini-3-flash-preview';
+  const m = parseArg('model') ?? 'google/gemini-3.7-flash';
   if (!isValidAnalysisModelId(m)) {
     console.error(
       `Invalid --model "${m}". Options:\n  ${ANALYSIS_MODEL_IDS.join('\n  ')}`

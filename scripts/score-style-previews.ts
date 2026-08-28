@@ -43,7 +43,7 @@ import path from 'node:path';
 import { z } from 'zod';
 
 const PREVIEW_DIR = path.join(process.cwd(), 'preview');
-const DEFAULT_MODEL = 'google/gemini-3-flash-preview';
+const DEFAULT_MODEL = 'google/gemini-3.7-flash';
 
 function parseArg(name: string): string | undefined {
   const pref = `--${name}=`;

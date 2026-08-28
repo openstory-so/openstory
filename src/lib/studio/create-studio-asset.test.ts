@@ -108,6 +108,17 @@ describe('studioCreateInputSchema', () => {
     expect(result.success).toBe(false);
   });
 
+  it('rejects hidden Seedance 2.5 — public fal 2.5 is not a studio option', () => {
+    const result = studioCreateInputSchema.safeParse({
+      activity: 'video',
+      prompt: 'the fox turns toward camera',
+      videoModel: 'seedance_v2_5',
+      aspectRatio: '9:16',
+      duration: 5,
+    });
+    expect(result.success).toBe(false);
+  });
+
   it('accepts a prompt-only video request without an image model', () => {
     const parsed = studioCreateInputSchema.parse({
       activity: 'video',

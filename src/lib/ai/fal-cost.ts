@@ -145,6 +145,10 @@ const ENDPOINT_STRATEGY: Record<string, EstimateStrategy> = {
   'fal-ai/ace-step-1.5': 'seconds',
   'bytedance/seedance-2.0/enterprise/v2/image-to-video': 'tokens',
   'bytedance/seedance-2.0/enterprise/v2/reference-to-video': 'tokens',
+  'bytedance/seedance-2.0/enterprise/v2/text-to-video': 'tokens',
+  'bytedance/seedance-2.5/image-to-video': 'tokens',
+  'bytedance/seedance-2.5/reference-to-video': 'tokens',
+  'bytedance/seedance-2.5/text-to-video': 'tokens',
 };
 
 /**

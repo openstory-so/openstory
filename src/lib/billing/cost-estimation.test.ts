@@ -328,20 +328,20 @@ describe('estimateVideoCost endpoint routing', () => {
     // made this assertion tautological (#1140 review).
     const pricing = {
       ...FAL_PRICING,
-      'bytedance/seedance-2.0/enterprise/v2/image-to-video': {
+      'bytedance/seedance-2.5/image-to-video': {
         unitPrice: micros(10_000),
         unit: 'units',
       },
-      'bytedance/seedance-2.0/enterprise/v2/reference-to-video': {
+      'bytedance/seedance-2.5/reference-to-video': {
         unitPrice: micros(20_000),
         unit: 'units',
       },
     };
-    const i2v = estimateVideoCost('seedance_v2', 5, {
+    const i2v = estimateVideoCost('seedance_v2_5', 5, {
       pricing,
       hasReferenceImages: false,
     });
-    const ref = estimateVideoCost('seedance_v2', 5, {
+    const ref = estimateVideoCost('seedance_v2_5', 5, {
       pricing,
       hasReferenceImages: true,
     });
@@ -354,11 +354,11 @@ describe('estimateVideoCost endpoint routing', () => {
   it('storyboard motion with Seedance tracks the ref endpoint rate', () => {
     const pricing = {
       ...FAL_PRICING,
-      'bytedance/seedance-2.0/enterprise/v2/image-to-video': {
+      'bytedance/seedance-2.5/image-to-video': {
         unitPrice: micros(10_000),
         unit: 'units',
       },
-      'bytedance/seedance-2.0/enterprise/v2/reference-to-video': {
+      'bytedance/seedance-2.5/reference-to-video': {
         unitPrice: micros(20_000),
         unit: 'units',
       },
@@ -375,12 +375,12 @@ describe('estimateVideoCost endpoint routing', () => {
         ...base,
         pricing,
         autoGenerateMotion: true,
-        videoModels: ['seedance_v2'],
+        videoModels: ['seedance_v2_5'],
         videoDurationSeconds: DURATION,
       })
     );
     const refPerShot = Number(
-      estimateVideoCost('seedance_v2', DURATION, {
+      estimateVideoCost('seedance_v2_5', DURATION, {
         pricing,
         hasReferenceImages: true,
       })

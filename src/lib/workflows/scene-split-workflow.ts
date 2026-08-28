@@ -340,7 +340,8 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
           script: gutteredScript,
         });
 
-        const llmKeyInfo = await scopedDb.credentials.resolveLlmKey(modelId);
+        const llmKeyInfo =
+          await scopedDb.credentials.resolveLlmKey(SCENE_SPLIT_MODEL);
 
         logger.info(
           `[SceneSplitWorkflow:cf] [LLM:${LOG_NAME}] Starting streaming call`,

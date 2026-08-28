@@ -54,7 +54,7 @@ import {
 
 /**
  * Multi-shot render ceiling. A scene must stay renderable as ONE call on a
- * capable model (Seedance 2.0 / Kling 3.0 cap at 15s), so the sum of its shot
+ * capable model (Seedance 2.0 / Kling cap at 15s; Seedance 2.5 allows 30s), so the sum of its shot
  * durations is capped here.
  */
 export const MAX_SCENE_DURATION_SECONDS = 15;

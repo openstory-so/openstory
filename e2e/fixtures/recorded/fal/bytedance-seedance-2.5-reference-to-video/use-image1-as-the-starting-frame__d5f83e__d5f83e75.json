@@ -1,0 +1,24 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use @Image1 as the starting frame.\nSlow dolly push-in on @Image2's face, tightening the frame under the hot spotlight. Continuing from the hand already at her mouth, she drags the flat of her hand sideways across her lips, then pulls it away and turns it over to inspect her palm and fingers. She finds nothing — a beat of deadpan surprise, one eyebrow lifting — then lowers the hand out of frame and smirks straight into the lens, chin dipping slightly. The coral lip stays perfectly intact.\n\nSweat glints at her temple, loose strands of hair shifting as she moves; faint dust motes drift through the hard spotlight beam against the deep black surround.\n\nclub room tone, scattered residual audience laughter fading, faint mic hum. soft skin-on-lip wipe, quiet exhale, fabric shift of sleeve.\n\nNo BGM, no music. Generate only dialogue, environmental sounds, and action sounds. Single continuous shot, no cuts. Avoid jitter and bent limbs.\n\nReference images:\n@Image3: CORAL_LIPSTICK - A squat — keep visually consistent throughout the shot.",
+        "model": "bytedance/seedance-2.0/enterprise/v2/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://v3b.fal.media/files/b/0aa74eac/IJOTZeaLuNrEzY3PaKUJG_video.mp4",
+            "content_type": "video/mp4",
+            "file_name": "video.mp4",
+            "file_size": 2274099
+          },
+          "seed": 872140392
+        },
+        "status": 200,
+        "billableUnits": 108.9
+      }
+    }
+  ]
+}

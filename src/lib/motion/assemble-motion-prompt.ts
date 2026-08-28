@@ -159,10 +159,10 @@ function formatKlingDialogue(lines: DialogueLine[]): string {
 }
 
 // ---------------------------------------------------------------------------
-// ByteDance Seedance 2.0: sound as natural prose woven into the prompt — no
-// labeled sections. One ambient sentence, SFX tied to on-screen actions,
+// ByteDance Seedance 2.0 / 2.5: sound as natural prose woven into the prompt
+// — no labeled sections. One ambient sentence, SFX tied to on-screen actions,
 // dialogue as `X says "…" in a [tone] voice` (lip-sync is weaker than
-// SFX/ambience, so dialogue stays concise). Seedance 2.0 has no
+// SFX/ambience, so dialogue stays concise). Neither version has
 // negative_prompt or camera_fixed parameters, so guards go in-prompt.
 // Guide: https://fal.ai/learn/devs/bytedance-seedance2-prompts
 // ---------------------------------------------------------------------------

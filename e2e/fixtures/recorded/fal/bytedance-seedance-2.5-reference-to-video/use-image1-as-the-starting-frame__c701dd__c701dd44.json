@@ -1,0 +1,24 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use @Image1 as the starting frame.\nHandheld camera drifts steadily right with natural micro-shake, following @Image2 as she continues down the last stoop steps two at a time and strides onto the sidewalk. Her trailing hand releases from the rail, the canvas tote swings against her hip, and she cuts between parked cars into the moving stream of pedestrians, glancing once toward the lens with a deadpan look before the crowd crosses frame.\n\nLow raking sun flares off a passing windshield, long shadows sweeping across the pavement as pedestrians blur past in the foreground. Loose hair lifts slightly, denim jacket shifting with each step; a dry leaf skitters on the concrete.\n\nbusy city street at golden hour, traffic hum, layered pedestrian chatter, distant car horns. boot heels on stone steps, tote bag strap creak and fabric swish, brisk footsteps on concrete, car passing close by.\n\nNo BGM, no music. Generate only dialogue, environmental sounds, and action sounds. Single continuous shot, no cuts. Avoid jitter and bent limbs.\n\nReference images:\n@Image3: CORAL_LIPSTICK - A squat — keep visually consistent throughout the shot.",
+        "model": "bytedance/seedance-2.0/enterprise/v2/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://v3b.fal.media/files/b/0aa74e98/N1Sew-zsjzDF5kM0zij0L_video.mp4",
+            "content_type": "video/mp4",
+            "file_name": "video.mp4",
+            "file_size": 2857618
+          },
+          "seed": 373552373
+        },
+        "status": 200,
+        "billableUnits": 108.9
+      }
+    }
+  ]
+}

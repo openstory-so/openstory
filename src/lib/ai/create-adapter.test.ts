@@ -256,17 +256,20 @@ describe('native xAI routing (issue #1167)', () => {
     expect(grokCalls.at(-1)?.model).toBe('grok-4.20-0309-reasoning');
   });
 
-  it('keeps a non-Grok model on OpenRouter even when the key says xai', () => {
-    // Defence in depth: an xAI key is only ever resolved for a Grok model, so
-    // this pairing means something upstream is wrong. Sending Sonnet to xAI
-    // would 404 on a model it does not serve; OpenRouter still answers.
-    createAdapter('anthropic/claude-sonnet-5', {
-      key: 'xai-team',
-      via: 'xai',
-    });
+  it('throws when a via:"xai" key is paired with a non-Grok model (#1358)', () => {
+    // Scene-split used to resolve the analysis-model (Grok) key and then call
+    // Opus Fast. OpenRouter answers that pairing with "Missing Authentication
+    // header" — its text for any non-sk-or key. Fail loudly instead.
+    expect(() =>
+      createAdapter('anthropic/claude-opus-5-fast', {
+        key: 'xai-team',
+        via: 'xai',
+      })
+    ).toThrow(/xAI key cannot be sent to OpenRouter/);
 
     expect(createGrokTextMock).not.toHaveBeenCalled();
-    expect(lastCall().kind).toBe('keyed');
+    expect(createOpenRouterTextMock).not.toHaveBeenCalled();
+    expect(openRouterTextMock).not.toHaveBeenCalled();
   });
 
   it('falls back to OpenRouter for a Grok model with no xAI key', () => {

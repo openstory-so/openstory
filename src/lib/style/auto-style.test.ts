@@ -198,6 +198,66 @@ describe('autoStyleResponseSchema collapsed look/motion (#1304)', () => {
     ).toBe(true);
   });
 
+  it('splits a comma-separated colorPalette string instead of failing the parse', () => {
+    // Captured 2026-08-28 from anthropic/claude-sonnet-5 via OpenRouter on
+    // sequence 01M1352KQT8288MYT5THGKK8AX (trace 73a15d673d005d7c8bd0e4a290c4af1c).
+    // The prompt listed colorPalette under "each its own string" with a single
+    // hex example, so Sonnet emitted a CSV instead of an array. Zod then
+    // threw `colorPalette: Invalid input: expected array, received string`.
+    const parsed = autoStyleResponseSchema.parse({
+      name: 'Quiet Doorstep Mourning',
+      description:
+        'A restrained 1957 period drama moment where grief passes silently between two people in a dim apartment doorway.',
+      mood: 'Restrained, quietly devastating grief held beneath a surface of formal politeness and unspoken history',
+      artStyle:
+        'Photoreal live-action period drama, understated and observational rather than theatrical',
+      medium:
+        '35mm spherical film emulation, shallow depth of field, fine natural grain',
+      lighting:
+        'Soft available light motivated from a hallway window and a single interior lamp',
+      colorPalette: '#2b241d, #4a3f33, #6e5c47, #8c7a63, #1d1a16, #a89b82',
+      colorGrading:
+        'Desaturated warm-neutral base with lifted blacks, muted highlights',
+      camera:
+        'Locked-off to near-static handheld with almost imperceptible drift',
+      shots:
+        'Doorway two-shot, close medium on Henri, settled interior two-shot',
+      pace: 'slow',
+      energy: 1,
+      category: 'film',
+      tags: ['period drama', 'restrained grief'],
+      references: [
+        'post-war European apartment interiors with worn wooden doorframes',
+      ],
+    });
+    expect(parsed.colorPalette).toEqual([
+      '#2b241d',
+      '#4a3f33',
+      '#6e5c47',
+      '#8c7a63',
+      '#1d1a16',
+      '#a89b82',
+    ]);
+    expect(
+      StyleConfigSchema.safeParse(autoStyleDraftFromResponse(parsed).config)
+        .success
+    ).toBe(true);
+  });
+
+  it('splits a space-separated colorPalette string', () => {
+    const parsed = autoStyleResponseSchema.parse({
+      name: 'Bare Bones',
+      description: 'Almost nothing.',
+      category: 'film',
+      tags: [],
+      colorPalette: '#0a0a14 #e8322f #2bd1ff',
+      energy: 3,
+      pace: 'measured',
+      references: [],
+    });
+    expect(parsed.colorPalette).toEqual(['#0a0a14', '#e8322f', '#2bd1ff']);
+  });
+
   it('lifts nested look/motion objects onto the flat fields', () => {
     const parsed = autoStyleResponseSchema.parse({
       name: 'Nested Noir',
@@ -231,12 +291,18 @@ describe('autoStyleResponseSchema collapsed look/motion (#1304)', () => {
     const json = z.toJSONSchema(autoStyleResponseSchema);
     expect(json.properties).not.toHaveProperty('look');
     expect(json.properties).not.toHaveProperty('motion');
+    expect(json.properties?.colorPalette).toMatchObject({
+      type: 'array',
+      items: { type: 'string' },
+      description: expect.stringMatching(/array of 3–6 hex/i),
+    });
     expect(json.required).toEqual(
       expect.arrayContaining([
         'mood',
         'artStyle',
         'medium',
         'lighting',
+        'colorPalette',
         'colorGrading',
         'camera',
         'shots',

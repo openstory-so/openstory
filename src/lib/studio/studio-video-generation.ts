@@ -5,6 +5,24 @@
  */
 
 import { getEnv } from '#env';
+import {
+  toArkFetchableUrl,
+  toArkMediaUrl,
+} from '@/lib/ai/byteplus-asset-ingest';
+import {
+  arkAdapterConfig,
+  claimBytePlusVia,
+  getArkApiKey,
+  isBytePlusConfigured,
+  loadBytePlusVideo,
+} from '@/lib/ai/byteplus-config';
+import { reportBytePlusPortraitFilterFallback } from '@/lib/ai/byteplus-observability';
+import {
+  BYTEPLUS_PORTRAIT_FILTER_NO_FAL_MESSAGE,
+  isBytePlusPortraitFilterError,
+} from '@/lib/ai/byteplus-portrait-filter';
+import { bytePlusVideoUnitsBilled } from '@/lib/ai/byteplus-pricing';
+import { withBytePlusQuotaRetry } from '@/lib/ai/byteplus-rate-limit';
 import { falCostFromUnits } from '@/lib/ai/fal-cost';
 import {
   createDeadlineFetch,
@@ -15,7 +33,12 @@ import {
   isNativeGrokVideoModel,
   NATIVE_GROK_VIDEO_MODEL,
 } from '@/lib/ai/grok-native';
-import { IMAGE_TO_VIDEO_MODELS, type ImageToVideoModel } from '@/lib/ai/models';
+import {
+  getBytePlusVideoModelId,
+  IMAGE_TO_VIDEO_MODELS,
+  isNativeBytePlusVideoModel,
+  type ImageToVideoModel,
+} from '@/lib/ai/models';
 import { assertMediaVia, type MediaVia } from '@/lib/ai/via';
 import { workersSafeFetch } from '@/lib/ai/workers-safe-fetch';
 import { reportMissingBillingCost } from '@/lib/billing/billing-observability';
@@ -79,6 +102,14 @@ async function resolveOptionalXaiKey(
 ): Promise<ResolvedApiKey | undefined> {
   if (scopedDb) return scopedDb.resolveOptionalKey('xai');
   const platformKey = getEnv().XAI_API_KEY;
+  return platformKey ? { key: platformKey, source: 'platform' } : undefined;
+}
+
+async function resolveOptionalFalKey(
+  scopedDb?: CredentialScopedDb
+): Promise<ResolvedApiKey | undefined> {
+  if (scopedDb) return scopedDb.resolveOptionalKey('fal');
+  const platformKey = getEnv().FAL_KEY;
   return platformKey ? { key: platformKey, source: 'platform' } : undefined;
 }
 
@@ -160,68 +191,11 @@ async function buildStudioImageModeInput(
   };
 }
 
-export async function submitStudioVideoJob(
-  options: StudioVideoJobOptions
+async function submitFalStudioVideoJob(
+  options: StudioVideoJobOptions,
+  modelKey: ImageToVideoModel,
+  mode: StudioVideoMode
 ): Promise<StudioVideoJobSubmission> {
-  const modelKey = options.model;
-  const mode = options.mode ?? 'text';
-  const size = options.aspectRatio
-    ? (`${options.aspectRatio}_720p` as const)
-    : undefined;
-  const xaiKey = isNativeGrokVideoModel(modelKey)
-    ? await resolveOptionalXaiKey(options.scopedDb)
-    : undefined;
-
-  // Native Grok takes stills as prompt image parts (`metadata.role`), the
-  // same payload the sequence path sends — references tagged `<IMAGE_n>`,
-  // or a start frame. Inlined as data URIs so no fal key is needed.
-  if (xaiKey && mode !== 'text') {
-    const built = buildStudioVideoInput({
-      prompt: tagStudioReferences(options.prompt, modelKey),
-      model: modelKey,
-      duration: options.duration,
-      aspectRatio: options.aspectRatio,
-    });
-    const images =
-      mode === 'reference'
-        ? (options.referenceImages ?? []).map((url) => ({
-            url,
-            role: 'reference' as const,
-          }))
-        : [options.startImageUrl].flatMap((url) =>
-            url ? [{ url, role: 'start_frame' as const }] : []
-          );
-    const parts = [
-      { type: 'text' as const, content: built.prompt },
-      ...(await Promise.all(
-        images.map(async (image) => ({
-          type: 'image' as const,
-          source: {
-            type: 'url' as const,
-            value: await toDataOrCdnUrl(image.url),
-          },
-          metadata: { role: image.role },
-        }))
-      )),
-    ];
-    const job = await generateVideo({
-      adapter: createNativeVideoAdapter(xaiKey.key),
-      prompt: parts,
-      duration: built.duration,
-      ...(size && { size }),
-      timeout: FAL_REQUEST_TIMEOUT_MS,
-      debug: false,
-    });
-    return {
-      jobId: job.jobId,
-      modelKey,
-      endpointId: NATIVE_GROK_VIDEO_MODEL,
-      via: 'xai',
-      usedOwnKey: xaiKey.source === 'team',
-    };
-  }
-
-  // Other image modes go to fal's reference / image-to-video siblings.
   if (mode !== 'text') {
     const key = await resolveFalKey(options.scopedDb);
     const { endpointId, built } = await buildStudioImageModeInput(
@@ -245,7 +219,6 @@ export async function submitStudioVideoJob(
       usedOwnKey: key.source === 'team',
     };
   }
-
   const built = buildStudioVideoInput({
     prompt: options.prompt,
     model: modelKey,
@@ -253,25 +226,6 @@ export async function submitStudioVideoJob(
     aspectRatio: options.aspectRatio,
     generateAudio: options.generateAudio,
   });
-
-  if (xaiKey) {
-    const job = await generateVideo({
-      adapter: createNativeVideoAdapter(xaiKey.key),
-      prompt: built.prompt,
-      duration: built.duration,
-      ...(size && { size }),
-      timeout: FAL_REQUEST_TIMEOUT_MS,
-      debug: false,
-    });
-    return {
-      jobId: job.jobId,
-      modelKey,
-      endpointId: NATIVE_GROK_VIDEO_MODEL,
-      via: 'xai',
-      usedOwnKey: xaiKey.source === 'team',
-    };
-  }
-
   const key = await resolveFalKey(options.scopedDb);
   const endpointId = studioVideoEndpointId(modelKey);
   const job = await generateVideo({
@@ -288,6 +242,263 @@ export async function submitStudioVideoJob(
     via: 'fal',
     usedOwnKey: key.source === 'team',
   };
+}
+
+async function fallbackStudioPortraitFilterToFal(
+  error: unknown,
+  options: StudioVideoJobOptions,
+  modelKey: ImageToVideoModel,
+  mode: StudioVideoMode
+): Promise<StudioVideoJobSubmission> {
+  if (!isBytePlusPortraitFilterError(error)) throw error;
+  const falKey = await resolveOptionalFalKey(options.scopedDb);
+  if (!falKey) {
+    throw new Error(BYTEPLUS_PORTRAIT_FILTER_NO_FAL_MESSAGE);
+  }
+  reportBytePlusPortraitFilterFallback('studio motion submit');
+  return submitFalStudioVideoJob(options, modelKey, mode);
+}
+
+async function urlPart(
+  url: string,
+  role: 'start_frame' | 'end_frame' | 'reference' | undefined,
+  falApiKey?: string
+) {
+  // Start frame, end frame, and reference stills all go through the
+  // virtual library. A public URL of a photorealistic face 400s.
+  const value = await toArkMediaUrl(url, 'Image', falApiKey);
+  return {
+    type: 'image' as const,
+    source: { type: 'url' as const, value },
+    ...(role && { metadata: { role } }),
+  };
+}
+
+async function buildStudioBytePlusPrompt(
+  options: StudioVideoJobOptions,
+  mode: StudioVideoMode,
+  promptText: string
+) {
+  if (mode === 'text') return promptText;
+  const falKey = await resolveOptionalFalKey(options.scopedDb);
+
+  if (mode === 'reference') {
+    const images = await Promise.all(
+      (options.referenceImages ?? []).map((url) =>
+        urlPart(url, 'reference', falKey?.key)
+      )
+    );
+    const videos = await Promise.all(
+      (options.referenceVideos ?? []).map(async (url) => ({
+        type: 'video' as const,
+        source: {
+          type: 'url' as const,
+          value: await toArkFetchableUrl(url, falKey?.key),
+        },
+      }))
+    );
+    const audios = await Promise.all(
+      (options.referenceAudio ?? []).map(async (url) => ({
+        type: 'audio' as const,
+        source: {
+          type: 'url' as const,
+          value: await toArkFetchableUrl(url, falKey?.key),
+        },
+      }))
+    );
+    return [
+      { type: 'text' as const, content: promptText },
+      ...images,
+      ...videos,
+      ...audios,
+    ];
+  }
+
+  // Frames: start_frame + optional last_frame. Mix-ban: no reference roles.
+  if (!options.startImageUrl) {
+    throw new Error('Studio image-to-video needs a start frame');
+  }
+  const frames = [
+    await urlPart(options.startImageUrl, 'start_frame', falKey?.key),
+  ];
+  if (options.endImageUrl) {
+    frames.push(await urlPart(options.endImageUrl, 'end_frame', falKey?.key));
+  }
+  return [{ type: 'text' as const, content: promptText }, ...frames];
+}
+
+export async function submitStudioVideoJob(
+  options: StudioVideoJobOptions
+): Promise<StudioVideoJobSubmission> {
+  const modelKey = options.model;
+  const mode = options.mode ?? 'text';
+  const grokSize = options.aspectRatio
+    ? (`${options.aspectRatio}_720p` as const)
+    : undefined;
+  // Seedance 2.5 first-frame / first-last-frame rejects a concrete ratio;
+  // output follows the first still. Text-to-video can still pick one.
+  const arkSize = mode === 'text' ? grokSize : ('adaptive_720p' as const);
+
+  // Same claim order as sequence motion: xAI, then Ark, then fal.
+  const xaiKey = isNativeGrokVideoModel(modelKey)
+    ? await resolveOptionalXaiKey(options.scopedDb)
+    : undefined;
+  let via: MediaVia;
+  if (xaiKey) {
+    via = 'xai';
+  } else if (isNativeBytePlusVideoModel(modelKey) && isBytePlusConfigured()) {
+    const falKey = await resolveOptionalFalKey(options.scopedDb);
+    via = claimBytePlusVia({
+      native: true,
+      usingOwnFalKey: falKey?.source === 'team',
+    });
+  } else {
+    via = 'fal';
+  }
+
+  switch (via) {
+    case 'xai': {
+      if (!xaiKey) {
+        throw new Error('xAI studio via selected with no xAI key');
+      }
+      // Native Grok takes stills as prompt image parts (`metadata.role`), the
+      // same payload the sequence path sends — references tagged `<IMAGE_n>`,
+      // or a start frame. Inlined as data URIs so no fal key is needed.
+      if (mode !== 'text') {
+        const built = buildStudioVideoInput({
+          prompt: tagStudioReferences(options.prompt, modelKey),
+          model: modelKey,
+          duration: options.duration,
+          aspectRatio: options.aspectRatio,
+        });
+        const images =
+          mode === 'reference'
+            ? (options.referenceImages ?? []).map((url) => ({
+                url,
+                role: 'reference' as const,
+              }))
+            : [options.startImageUrl].flatMap((url) =>
+                url ? [{ url, role: 'start_frame' as const }] : []
+              );
+        const parts = [
+          { type: 'text' as const, content: built.prompt },
+          ...(await Promise.all(
+            images.map(async (image) => ({
+              type: 'image' as const,
+              source: {
+                type: 'url' as const,
+                value: await toDataOrCdnUrl(image.url),
+              },
+              metadata: { role: image.role },
+            }))
+          )),
+        ];
+        const job = await generateVideo({
+          adapter: createNativeVideoAdapter(xaiKey.key),
+          prompt: parts,
+          duration: built.duration,
+          ...(grokSize && { size: grokSize }),
+          timeout: FAL_REQUEST_TIMEOUT_MS,
+          debug: false,
+        });
+        return {
+          jobId: job.jobId,
+          modelKey,
+          endpointId: NATIVE_GROK_VIDEO_MODEL,
+          via: 'xai',
+          usedOwnKey: xaiKey.source === 'team',
+        };
+      }
+      const built = buildStudioVideoInput({
+        prompt: options.prompt,
+        model: modelKey,
+        duration: options.duration,
+        aspectRatio: options.aspectRatio,
+        generateAudio: options.generateAudio,
+      });
+      const job = await generateVideo({
+        adapter: createNativeVideoAdapter(xaiKey.key),
+        prompt: built.prompt,
+        duration: built.duration,
+        ...(grokSize && { size: grokSize }),
+        timeout: FAL_REQUEST_TIMEOUT_MS,
+        debug: false,
+      });
+      return {
+        jobId: job.jobId,
+        modelKey,
+        endpointId: NATIVE_GROK_VIDEO_MODEL,
+        via: 'xai',
+        usedOwnKey: xaiKey.source === 'team',
+      };
+    }
+    case 'byteplus': {
+      const arkKey = getArkApiKey();
+      if (!arkKey) {
+        throw new Error('ARK_API_KEY is required for the BytePlus studio via');
+      }
+      const modelId = getBytePlusVideoModelId(modelKey);
+      if (!modelId) {
+        throw new Error(`No BytePlus model id for motion model "${modelKey}"`);
+      }
+      const promptText =
+        mode === 'reference'
+          ? tagStudioReferences(options.prompt, modelKey)
+          : options.prompt;
+      const built = buildStudioVideoInput({
+        prompt: promptText,
+        model: modelKey,
+        duration: options.duration,
+        aspectRatio: options.aspectRatio,
+        generateAudio: options.generateAudio,
+      });
+      const prompt = await buildStudioBytePlusPrompt(
+        options,
+        mode,
+        built.prompt
+      );
+      const { apiKey, ...config } = arkAdapterConfig(
+        arkKey,
+        FAL_REQUEST_TIMEOUT_MS
+      );
+      const createBytePlusVideo = await loadBytePlusVideo();
+      try {
+        const job = await withBytePlusQuotaRetry('studio motion submit', () =>
+          generateVideo({
+            adapter: createBytePlusVideo(modelId, apiKey, config),
+            prompt,
+            duration: built.duration,
+            ...(arkSize && { size: arkSize }),
+            modelOptions: {
+              watermark: false,
+              ...(options.generateAudio !== undefined && {
+                generate_audio: options.generateAudio,
+              }),
+            },
+            timeout: FAL_REQUEST_TIMEOUT_MS,
+            debug: false,
+          })
+        );
+        return {
+          jobId: job.jobId,
+          modelKey,
+          endpointId: modelId,
+          via: 'byteplus',
+          usedOwnKey: false,
+        };
+      } catch (error) {
+        return fallbackStudioPortraitFilterToFal(
+          error,
+          options,
+          modelKey,
+          mode
+        );
+      }
+    }
+    case 'fal': {
+      return submitFalStudioVideoJob(options, modelKey, mode);
+    }
+  }
 }
 
 export async function pollStudioVideoJob(
@@ -321,6 +532,25 @@ export async function pollStudioVideoJob(
         jobId: job.jobId,
       });
     }
+    case 'byteplus': {
+      const arkKey = getArkApiKey();
+      if (!arkKey) {
+        throw new Error(
+          `Studio video job ${job.jobId} was submitted to BytePlus but no ARK_API_KEY is available to poll it`
+        );
+      }
+      const { apiKey, ...config } = arkAdapterConfig(
+        arkKey,
+        FAL_REQUEST_TIMEOUT_MS
+      );
+      const createBytePlusVideo = await loadBytePlusVideo();
+      return withBytePlusQuotaRetry('studio motion poll', () =>
+        getVideoJobStatus({
+          adapter: createBytePlusVideo(job.endpointId, apiKey, config),
+          jobId: job.jobId,
+        })
+      );
+    }
   }
 }
 
@@ -351,6 +581,15 @@ export async function studioVideoCostFromUsage(
         unitsBilled: usage?.unitsBilled,
         cost: await falCostFromUnits(job.endpointId, usage?.unitsBilled),
         recordFalUsage: true,
+      };
+    }
+    case 'byteplus': {
+      const unitsBilled = bytePlusVideoUnitsBilled(usage?.totalTokens);
+      return {
+        endpointId: job.endpointId,
+        unitsBilled,
+        cost: await falCostFromUnits(job.endpointId, unitsBilled),
+        recordFalUsage: false,
       };
     }
   }

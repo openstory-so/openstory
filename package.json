@@ -118,6 +118,7 @@
     "@react-email/components": "^1.0.12",
     "@tailwindcss/typography": "^0.5.20",
     "@tanstack/ai": "^0.47.2",
+    "@tanstack/ai-byteplus": "^0.1.2",
     "@tanstack/ai-fal": "^0.12.0",
     "@tanstack/ai-grok": "^0.16.2",
     "@tanstack/ai-openrouter": "^0.18.1",

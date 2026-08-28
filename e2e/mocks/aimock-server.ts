@@ -299,11 +299,28 @@ function tolerantUserMessageRegex(userMessage: string): RegExp {
   return new RegExp(pattern);
 }
 
+// The OpenRouter fixtures were recorded when DEFAULT_ANALYSIS_MODEL was Opus 5
+// (#1367 moved the default to Fable 5). They are replay stubs, not quality
+// samples, so in replay they also answer for the current default rather than
+// forcing a full re-record (every fal fixture downstream is keyed on the LLM
+// output). Recording mode keeps the exact model so a re-record captures Fable.
+const FIXTURE_MODEL_ALIASES: Record<string, RegExp> = {
+  'anthropic/claude-opus-5': /^anthropic\/claude-(opus|fable)-5$/,
+};
+
 function tolerateRuntimeIds(fixtures: Fixture[]): Fixture[] {
   for (const fixture of fixtures) {
     const message = fixture.match.userMessage;
     if (typeof message === 'string') {
       fixture.match.userMessage = tolerantUserMessageRegex(message);
+    }
+    const model = fixture.match.model;
+    if (
+      !E2E_RECORDING &&
+      typeof model === 'string' &&
+      FIXTURE_MODEL_ALIASES[model]
+    ) {
+      fixture.match.model = FIXTURE_MODEL_ALIASES[model];
     }
   }
   return fixtures;

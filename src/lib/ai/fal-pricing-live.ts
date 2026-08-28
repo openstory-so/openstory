@@ -7,6 +7,14 @@
  */
 
 import { getDb } from '#db-client';
+import { isBytePlusConfigured } from '@/lib/ai/byteplus-config';
+import { BYTEPLUS_RATE_CARD } from '@/lib/ai/byteplus-pricing';
+import {
+  IMAGE_MODELS,
+  IMAGE_TO_VIDEO_MODELS,
+  MOTION_REFERENCE_ENDPOINTS,
+} from '@/lib/ai/models';
+import { typedEntries } from '@/lib/utils/typed-object';
 import { micros, type Microdollars } from '@/lib/billing/money';
 import { modelPricing } from '@/lib/db/schema';
 import type { ObservedUnits } from '@/lib/db/schema/model-pricing';
@@ -98,8 +106,49 @@ async function load(): Promise<NonNullable<typeof cache>> {
   const updatedAt = rows.length
     ? new Date(Math.max(...rows.map((r) => r.fetchedAt.getTime())))
     : null;
-  cache = { at: Date.now(), map: buildFalPricingMap(rows), updatedAt };
+  // BytePlus rates are a static card, not cron-refreshed rows (#1157) — see
+  // byteplus-pricing.ts. Merged first so a `model_pricing` row for the same id
+  // (if the cron ever learns Ark) wins over the hand-maintained rate.
+  const map = { ...BYTEPLUS_RATE_CARD, ...buildFalPricingMap(rows) };
+  applyBytePlusRouteAliases(map);
+  cache = { at: Date.now(), map, updatedAt };
   return cache;
+}
+
+/**
+ * Point a repointed model's FAL endpoint id at its BytePlus rate (#1157).
+ *
+ * The route is a server fact, and this map is the one thing every consumer
+ * already reads — estimators, credit gates, the /pricing page, and the
+ * client's ActionCost payload. Aliasing here means none of them needs to know
+ * the route: looking up the fal id a catalog entry still carries yields the
+ * rate the generation will actually be billed at.
+ *
+ * The BytePlus id keeps its own entry, so the exact post-generation charge
+ * (which looks the id up directly) is unaffected either way.
+ */
+function applyBytePlusRouteAliases(
+  map: Record<string, EffectiveFalPricing>
+): void {
+  if (!isBytePlusConfigured()) return;
+
+  for (const model of Object.values(IMAGE_MODELS)) {
+    if (!('byteplusId' in model)) continue;
+    const rate = map[model.byteplusId];
+    if (rate) map[model.id] = rate;
+  }
+
+  for (const [modelKey, model] of typedEntries(IMAGE_TO_VIDEO_MODELS)) {
+    if (!('byteplusId' in model)) continue;
+    const rate = map[model.byteplusId];
+    if (!rate) continue;
+    map[model.id] = rate;
+    // Seedance with cast/element refs bills on a SEPARATE fal endpoint; on Ark
+    // it is the same model id, so that endpoint aliases too — otherwise a
+    // referenced shot silently quotes the fal rate.
+    const referenceEndpoint = MOTION_REFERENCE_ENDPOINTS[modelKey];
+    if (referenceEndpoint) map[referenceEndpoint.endpointId] = rate;
+  }
 }
 
 export async function getEffectiveFalPricing(): Promise<

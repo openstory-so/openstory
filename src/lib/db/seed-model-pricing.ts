@@ -60,8 +60,8 @@ export const LOCAL_FAL_PRICING_SEED: Record<string, SeedPrice> = {
   'fal-ai/qwen-image-2/pro/text-to-image': img(0.04),
   'fal-ai/qwen-image-2/pro/edit': img(0.04),
   'fal-ai/hidream-i1-full': img(0.04),
-  'fal-ai/bytedance/seedream/v5/lite/text-to-image': img(0.04),
-  'fal-ai/bytedance/seedream/v5/lite/edit': img(0.04),
+  'bytedance/seedream/v5/pro/text-to-image': img(0.135),
+  'bytedance/seedream/v5/pro/edit': img(0.135),
   'fal-ai/flux-2/turbo': { unit: 'megapixels', unitPriceUsd: 0.01 },
   'fal-ai/flux-2/turbo/edit': { unit: 'megapixels', unitPriceUsd: 0.01 },
   'fal-ai/krea-2/turbo': { unit: 'megapixels', unitPriceUsd: 0.008 },
@@ -100,6 +100,12 @@ export const LOCAL_FAL_PRICING_SEED: Record<string, SeedPrice> = {
   // 768P list rate; fal's launch promo (0.04) ends 2026-09-01.
   'minimax/h3-max/image-to-video': { unit: 'seconds', unitPriceUsd: 0.08 },
   'minimax/h3-max/text-to-video': { unit: 'seconds', unitPriceUsd: 0.08 },
+  // Seedance 2.5 (sequences + studio). Advertised fal unit is ~$0.014–0.021
+  // per 1000 tokens; local seed is a floor until the pricing cron runs.
+  'bytedance/seedance-2.5/image-to-video': units(0.014),
+  'bytedance/seedance-2.5/reference-to-video': units(0.014),
+  'bytedance/seedance-2.5/text-to-video': units(0.014),
+  // Seedance 2.0 enterprise (fal only — no Ark via).
   'bytedance/seedance-2.0/enterprise/v2/image-to-video': units(0.014),
   'bytedance/seedance-2.0/enterprise/v2/text-to-video': units(0.014),
   'bytedance/seedance-2.0/enterprise/v2/reference-to-video': units(0.014),

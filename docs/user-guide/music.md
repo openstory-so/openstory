@@ -45,7 +45,7 @@ If generation fails, the error message is displayed with a **Retry** button.
 | -------------------- | ---------- | ------------ | ------------------------------------ |
 | **ElevenLabs Music** | ElevenLabs | 10 minutes   | Prompt-based, instrumental (default) |
 | **MiniMax Music v2** | MiniMax    | 5 minutes    | Prompt + lyrics, instrumental        |
-| **ACE-Step 1.5**     | ACE Studio | 4 minutes    | Open-source, prompt + lyrics         |
+| **ACE-Step 1.5**     | ACE Studio | 4 minutes    | Open weight, prompt + lyrics         |
 | **Lyria 2**          | Google     | 30 seconds   | Short-form, instrumental             |
 | **MMAudio V2**       | MMAudio    | 8 seconds    | Video-to-audio SFX                   |
 | **ElevenLabs SFX**   | ElevenLabs | 22 seconds   | Sound effects                        |

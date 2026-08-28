@@ -1,4 +1,7 @@
 import {
+  boundPromptImages,
+  imageUrlsFromFalInput,
+  imageUrlsFromPromptParts,
   OptimisedPromptPanel,
   promptFromFalInput,
   type OptimisedPromptPreview,
@@ -19,13 +22,17 @@ const selected: OptimisedPromptPreview = {
   maxPromptLength: 32000,
 };
 
-function renderPanel(preview: OptimisedPromptPreview) {
+function renderPanel(
+  preview: OptimisedPromptPreview,
+  options?: { defaultOpen?: boolean }
+) {
   return renderToStaticMarkup(
     <OptimisedPromptPanel
       preview={preview}
       copiedKey={null}
       onCopy={() => undefined}
       idPrefix="image-request"
+      defaultOpen={options?.defaultOpen}
     />
   );
 }
@@ -45,6 +52,61 @@ describe('promptFromFalInput', () => {
       'assembled'
     );
     expect(promptFromFalInput(null, 'assembled')).toBe('assembled');
+  });
+});
+
+describe('boundPromptImages', () => {
+  it('tags non-empty URLs in order', () => {
+    expect(
+      boundPromptImages(
+        ['https://cdn.example/a.png', '', 'https://cdn.example/b.png'],
+        (position) => `@Image${position}`
+      )
+    ).toEqual([
+      { label: '@Image1', url: 'https://cdn.example/a.png' },
+      { label: '@Image2', url: 'https://cdn.example/b.png' },
+    ]);
+  });
+});
+
+describe('imageUrlsFromFalInput', () => {
+  it('reads image_urls ahead of image_url', () => {
+    expect(
+      imageUrlsFromFalInput({
+        image_url: 'https://cdn.example/ignored.png',
+        image_urls: [
+          'https://cdn.example/still.png',
+          'https://cdn.example/cast.png',
+        ],
+      })
+    ).toEqual([
+      'https://cdn.example/still.png',
+      'https://cdn.example/cast.png',
+    ]);
+  });
+
+  it('falls back to image_url plus Kling elements', () => {
+    expect(
+      imageUrlsFromFalInput({
+        image_url: 'https://cdn.example/still.png',
+        elements: [{ frontal_image_url: 'https://cdn.example/cast.png' }],
+      })
+    ).toEqual([
+      'https://cdn.example/still.png',
+      'https://cdn.example/cast.png',
+    ]);
+  });
+});
+
+describe('imageUrlsFromPromptParts', () => {
+  it('keeps image parts in request order', () => {
+    expect(
+      imageUrlsFromPromptParts([
+        { type: 'text', content: 'go' },
+        { type: 'image', source: { type: 'url', value: 'https://a.png' } },
+        { type: 'image', source: { type: 'url', value: 'https://b.png' } },
+      ])
+    ).toEqual(['https://a.png', 'https://b.png']);
   });
 });
 
@@ -86,5 +148,36 @@ describe('OptimisedPromptPanel', () => {
     expect(html).not.toContain('Sarah types at a sunlit coffee shop');
     expect(html).not.toContain('Prompt');
     expect(html).not.toContain('JSON');
+  });
+
+  it('hides bound-image thumbnails while collapsed', () => {
+    const html = renderPanel({
+      ...selected,
+      modelName: 'Seedance 2.5',
+      images: [
+        { label: '@Image1', url: 'https://cdn.example/still.png' },
+        { label: '@Image2', url: 'https://cdn.example/cast.png' },
+      ],
+    });
+    expect(html).not.toContain('Copy @Image1 URL');
+    expect(html).not.toContain('https://cdn.example/still.png');
+  });
+
+  it('renders copyable bound-image thumbnails when expanded', () => {
+    const html = renderPanel(
+      {
+        ...selected,
+        modelName: 'Seedance 2.5',
+        images: [
+          { label: '@Image1', url: 'https://cdn.example/still.png' },
+          { label: '@Image2', url: 'https://cdn.example/cast.png' },
+        ],
+      },
+      { defaultOpen: true }
+    );
+    expect(html).toContain('Copy @Image1 URL');
+    expect(html).toContain('Copy @Image2 URL');
+    expect(html).toContain('https://cdn.example/still.png');
+    expect(html).toContain('https://cdn.example/cast.png');
   });
 });

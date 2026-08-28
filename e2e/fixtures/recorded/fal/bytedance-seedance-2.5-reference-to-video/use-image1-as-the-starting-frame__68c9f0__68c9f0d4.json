@@ -1,0 +1,24 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use @Image1 as the starting frame.\nHandheld low-angle camera holds tight with natural micro-sway, drifting in slightly as SCARLETT moves forward. From her downward glance, she gives the uncapped @Image3 one dismissive flick of the eyes, twists her wrist to lower it, and drops it into the canvas tote without reapplying. Her raised forearm pushes the heavy black curtain wider and she steps through past camera, shoulder leading.\n\nThe curtain lifts and swings behind her, folds rippling and settling; tote strap shifts against her shoulder, taped flyers flutter in the moving air as red exit-light spill slides across her face.\n\nmuffled club room noise and low crowd murmur behind brick walls, faint electrical hum. lipstick cap click and soft thud into canvas tote, heavy velvet curtain sweeping and rustling, boot steps on concrete floor.\n\nNo BGM, no music. Generate only dialogue, environmental sounds, and action sounds. Single continuous shot, no cuts. Avoid jitter and bent limbs.\n\nReference images:\n@Image2: SCARLETT VEGA — keep visually consistent throughout the shot.",
+        "model": "bytedance/seedance-2.0/enterprise/v2/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://v3b.fal.media/files/b/0aa74eae/VlSqECyHWjJNrn1vFaXcy_video.mp4",
+            "content_type": "video/mp4",
+            "file_name": "video.mp4",
+            "file_size": 2678687
+          },
+          "seed": 1299182461
+        },
+        "status": 200,
+        "billableUnits": 108.9
+      }
+    }
+  ]
+}

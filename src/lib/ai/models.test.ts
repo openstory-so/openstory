@@ -4,6 +4,8 @@ import {
   DEFAULT_VIDEO_MODEL,
   IMAGE_MODELS,
   IMAGE_TO_VIDEO_MODELS,
+  MOTION_REFERENCE_ENDPOINTS,
+  isNativeBytePlusVideoModel,
   isValidImageToVideoModel,
   isValidTextToImageModel,
   safeImageToVideoModel,
@@ -11,9 +13,32 @@ import {
   videoModelSupportsAudio,
 } from './models';
 
+describe('Seedance catalog split', () => {
+  it('sends 2.5 to 2.5 and 2.0 to 2.0 enterprise', () => {
+    expect(IMAGE_TO_VIDEO_MODELS.seedance_v2_5.id).toBe(
+      'bytedance/seedance-2.5/image-to-video'
+    );
+    expect(MOTION_REFERENCE_ENDPOINTS.seedance_v2_5?.endpointId).toBe(
+      'bytedance/seedance-2.5/reference-to-video'
+    );
+    expect(IMAGE_TO_VIDEO_MODELS.seedance_v2.id).toBe(
+      'bytedance/seedance-2.0/enterprise/v2/image-to-video'
+    );
+    expect(MOTION_REFERENCE_ENDPOINTS.seedance_v2?.endpointId).toBe(
+      'bytedance/seedance-2.0/enterprise/v2/reference-to-video'
+    );
+    expect(isNativeBytePlusVideoModel('seedance_v2_5')).toBe(true);
+    expect(isNativeBytePlusVideoModel('seedance_v2')).toBe(false);
+    expect(DEFAULT_VIDEO_MODEL).toBe('seedance_v2');
+    expect('hidden' in IMAGE_TO_VIDEO_MODELS.seedance_v2_5).toBe(true);
+    expect('hidden' in IMAGE_TO_VIDEO_MODELS.seedance_v2).toBe(false);
+  });
+});
+
 describe('videoModelSupportsAudio', () => {
   it('returns true for audio-capable video models', () => {
     expect(videoModelSupportsAudio('seedance_v2')).toBe(true);
+    expect(videoModelSupportsAudio('seedance_v2_5')).toBe(true);
     expect(videoModelSupportsAudio('kling_v3_pro')).toBe(true);
     expect(videoModelSupportsAudio('veo3_1')).toBe(true);
   });
@@ -48,6 +73,7 @@ describe('Model Validation', () => {
       expect(isValidImageToVideoModel('kling_v3_pro')).toBe(true);
       expect(isValidImageToVideoModel('veo3_1')).toBe(true);
       expect(isValidImageToVideoModel('seedance_v2')).toBe(true);
+      expect(isValidImageToVideoModel('seedance_v2_5')).toBe(true);
     });
 
     it('returns false for invalid model keys', () => {

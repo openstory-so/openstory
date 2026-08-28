@@ -249,7 +249,7 @@ export async function durableLLMCallCf<TSchema extends z.ZodType>(
 ): Promise<z.infer<TSchema>> {
   const { name, phase } = config;
   // Image-bearing calls on a text-only model transparently route to
-  // DEFAULT_VISION_MODEL (e.g. GLM-5.2 → Claude Sonnet, #944); everything else
+  // DEFAULT_VISION_MODEL (e.g. DeepSeek V3.2 → Claude Sonnet, #944); everything else
   // runs as chosen. The effective model drives the adapter, context window, and
   // cost; callers keep storing/hashing the requested model.
   const hasImageInput = (config.visionImageUrls?.length ?? 0) > 0;

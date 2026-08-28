@@ -91,11 +91,23 @@ let loggedRetryMode = false;
  * entries with `createModel` from '@tanstack/ai':
  * `createModel('vendor/model-id', { input: [...], features: [...] })`.
  *
- * Empty after @tanstack/ai-openrouter@0.18.1 shipped Grok 4.6 and
- * Claude Opus 5 / Opus 5 Fast. Restore `extendAdapter` around the
- * factories when the next lag id lands.
  */
-export const CATALOG_LAG_MODELS = [] as const;
+export const CATALOG_LAG_MODELS = [
+  // Released 2026-08-26; 0.18.1's catalog stops at z-ai/glm-5.3 (#1367).
+  createModel('z-ai/glm-5.3-flash', {
+    input: ['text', 'image'],
+    features: ['reasoning', 'structured_outputs'],
+  }),
+] as const;
+
+const openRouterTextExtended = extendAdapter(
+  openRouterText,
+  CATALOG_LAG_MODELS
+);
+const createOpenRouterTextExtended = extendAdapter(
+  createOpenRouterText,
+  CATALOG_LAG_MODELS
+);
 
 /** {@link CATALOG_LAG_MODELS} for the Grok adapter. Native `grok-4.6` is
  *  in the 0.16 catalog; `grok-4.20-0309-reasoning` is still lag-bridged.
@@ -146,6 +158,16 @@ export function createAdapter(model: TextModel, keyInfo?: LlmKeyInfo) {
     });
   }
 
+  // An xAI key on the OpenRouter branch is the #1358 mismatch: resolveLlmKey
+  // was asked for a Grok model, then the call used a different one. OpenRouter
+  // answers that with "Missing Authentication header" (its text for any
+  // non-sk-or key). Throw so the next mismatch is a stack, not a 401 puzzle.
+  if (via === 'xai') {
+    throw new Error(
+      `xAI key cannot be sent to OpenRouter (model '${model}'). Resolve the LLM key for the model being called, not a different analysis model.`
+    );
+  }
+
   // During E2E recording, aimock proxies our OpenRouter calls upstream and
   // *buffers* the entire SSE response before relaying — see
   // node_modules/@copilotkit/aimock/dist/recorder.js. That buffering window
@@ -182,6 +204,6 @@ export function createAdapter(model: TextModel, keyInfo?: LlmKeyInfo) {
   };
 
   return key
-    ? createOpenRouterText(model, key, config)
-    : openRouterText(model, config);
+    ? createOpenRouterTextExtended(model, key, config)
+    : openRouterTextExtended(model, config);
 }

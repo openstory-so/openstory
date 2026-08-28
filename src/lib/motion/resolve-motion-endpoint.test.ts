@@ -6,7 +6,7 @@ import {
 import { resolveMotionEndpoint } from './resolve-motion-endpoint';
 
 describe('resolveMotionEndpoint', () => {
-  it('routes Seedance to reference-to-video when refs are present', () => {
+  it('routes Seedance 2.0 to enterprise reference-to-video when refs are present', () => {
     expect(resolveMotionEndpoint('seedance_v2', true)).toEqual({
       via: 'fal',
       endpointId: 'bytedance/seedance-2.0/enterprise/v2/reference-to-video',
@@ -15,10 +15,27 @@ describe('resolveMotionEndpoint', () => {
     });
   });
 
-  it('keeps Seedance on image-to-video when there are no refs', () => {
+  it('keeps Seedance 2.0 on enterprise image-to-video when there are no refs', () => {
     expect(resolveMotionEndpoint('seedance_v2', false)).toEqual({
       via: 'fal',
       endpointId: IMAGE_TO_VIDEO_MODELS.seedance_v2.id,
+      references: 'none',
+    });
+  });
+
+  it('routes Seedance 2.5 to 2.5 reference-to-video when refs are present', () => {
+    expect(resolveMotionEndpoint('seedance_v2_5', true)).toEqual({
+      via: 'fal',
+      endpointId: 'bytedance/seedance-2.5/reference-to-video',
+      references: 'endpoint',
+      referenceConfig: MOTION_REFERENCE_ENDPOINTS.seedance_v2_5,
+    });
+  });
+
+  it('keeps Seedance 2.5 on 2.5 image-to-video when there are no refs', () => {
+    expect(resolveMotionEndpoint('seedance_v2_5', false)).toEqual({
+      via: 'fal',
+      endpointId: IMAGE_TO_VIDEO_MODELS.seedance_v2_5.id,
       references: 'none',
     });
   });
@@ -55,6 +72,22 @@ describe('resolveMotionEndpoint', () => {
     ).toEqual({
       via: 'xai',
       endpointId: 'grok-imagine-video-1.5',
+      references: 'none',
+    });
+  });
+
+  it('stamps Ark Seedance 2.5 as via byteplus and marks refs as inline', () => {
+    expect(resolveMotionEndpoint('seedance_v2_5', true, 'byteplus')).toEqual({
+      via: 'byteplus',
+      endpointId: 'dreamina-seedance-2-5-260628',
+      references: 'inline',
+    });
+  });
+
+  it('stamps Ark Seedance 2.5 with no refs as via byteplus', () => {
+    expect(resolveMotionEndpoint('seedance_v2_5', false, 'byteplus')).toEqual({
+      via: 'byteplus',
+      endpointId: 'dreamina-seedance-2-5-260628',
       references: 'none',
     });
   });

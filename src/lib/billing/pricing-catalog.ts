@@ -21,7 +21,7 @@ import {
 } from '@/lib/ai/openrouter-pricing-data';
 import { microsToUsd } from '@/lib/billing/money';
 
-type PricingVia = 'fal.ai' | 'OpenRouter';
+type PricingVia = 'fal.ai' | 'OpenRouter' | 'BytePlus';
 
 type PricingRow = {
   name: string;
@@ -31,7 +31,7 @@ type PricingRow = {
   via: PricingVia;
   /** Official pricing / model page on the via platform. */
   docsUrl: string;
-  license?: 'open-source' | 'proprietary';
+  license?: 'open-weight' | 'proprietary';
   /** Short indicative rate — not the full tariff. */
   price: string;
   detail?: string;
@@ -146,6 +146,11 @@ export function buildPricingCatalog(opts: {
   falPricing: Record<string, EffectiveFalPricing>;
   /** When the fal snapshot was last refreshed (null = never). */
   falUpdatedAt: Date | null;
+  /**
+   * True when `ARK_API_KEY` is configured, so Seedance/Seedream rows quote the
+   * BytePlus rate they will actually be billed at rather than fal's (#1157).
+   */
+  byteplusEnabled?: boolean;
 }): PricingCatalog {
   const { falPricing } = opts;
 
@@ -153,14 +158,19 @@ export function buildPricingCatalog(opts: {
     id: string;
     name: string;
     vendor: string;
-    license?: 'open-source' | 'proprietary';
+    license?: 'open-weight' | 'proprietary';
+    byteplusId?: string;
   }): PricingRow => {
-    const { price, detail } = formatFalPrice(falPricing, model.id);
+    const viaByteplus = opts.byteplusEnabled === true && !!model.byteplusId;
+    const pricingId = viaByteplus ? model.byteplusId : model.id;
+    const { price, detail } = formatFalPrice(falPricing, pricingId ?? model.id);
     return {
       name: model.name,
       vendor: model.vendor,
-      via: 'fal.ai',
-      docsUrl: falDocsUrl(model.id),
+      via: viaByteplus ? 'BytePlus' : 'fal.ai',
+      docsUrl: viaByteplus
+        ? 'https://docs.byteplus.com/en/docs/ModelArk/1544106'
+        : falDocsUrl(model.id),
       license: model.license,
       price,
       detail,
@@ -171,6 +181,7 @@ export function buildPricingCatalog(opts: {
     .sort((a, b) => a.qualityRank - b.qualityRank)
     .map(toFalRow);
   const videoRows = Object.values(IMAGE_TO_VIDEO_MODELS)
+    .filter((model) => !('hidden' in model && model.hidden))
     .sort((a, b) => a.qualityRank - b.qualityRank)
     .map(toFalRow);
   const audioRows = Object.values(AUDIO_MODELS)

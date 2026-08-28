@@ -1,0 +1,24 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use @Image1 as the starting frame.\nStatic lock-off. @Image2 yanks the shirt down off her head and over her shoulders. A hard on-camera flash pops as the fabric clears her face. She shakes her hair free of the collar; the shirt drops and settles over the wet rashie. Her right hand lowers with the @Image3 still in her grip.\n\nGentle surf washes the shoreline. Cotton billows then falls. Wet hair swings as she shakes it out.\n\nmorning surf rolling onto wet sand, distant beach hush. camera flash pop, cotton shirt rustling down over fabric, wet hair shake.\n\nNo BGM, no music. Generate only dialogue, environmental sounds, and action sounds. Single continuous shot, no cuts. Avoid jitter and bent limbs.",
+        "model": "bytedance/seedance-2.5/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://v3b.fal.media/files/b/0aa70c2d/GLlDYiC23EsMXy9N8IhxF_video.mp4",
+            "content_type": "video/mp4",
+            "file_name": "video.mp4",
+            "file_size": 1956712
+          },
+          "seed": 1549297425
+        },
+        "status": 200,
+        "billableUnits": 108.9
+      }
+    }
+  ]
+}

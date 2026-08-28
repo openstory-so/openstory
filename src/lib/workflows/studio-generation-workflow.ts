@@ -2,8 +2,8 @@
  * Images and Videos (#1274).
  *
  * Sequence models only — `generateImageWithProvider` for stills; for clips
- * `mode` picks the endpoint (see `text-to-video.ts`). Native Grok and billed
- * fal units work the same way as sequences.
+ * `mode` picks the endpoint (see `text-to-video.ts`). Native Grok, BytePlus
+ * Ark, and billed fal units work the same way as sequences.
  *
  *   1. set-running
  *   2. generate-image, or submit/poll video (retried on a content flag)

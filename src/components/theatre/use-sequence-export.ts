@@ -256,6 +256,10 @@ export function useSequenceExport(
   const canExport = clipsTotal > 0 && clipsReady === clipsTotal;
 
   const download = useCallback(() => {
+    posthog.capture('export_clicked', {
+      surface: 'theatre',
+      sequence_id: sequenceId,
+    });
     if (freshExportUrl) {
       triggerDownload(freshExportUrl, sequence?.title);
       posthog.capture('video_downloaded', { sequence_id: sequenceId });
@@ -266,6 +270,10 @@ export function useSequenceExport(
   }, [freshExportUrl, canExport, run, sequence?.title, sequenceId, posthog]);
 
   const copyLink = useCallback(() => {
+    posthog.capture('share_clicked', {
+      surface: 'theatre',
+      sequence_id: sequenceId,
+    });
     if (freshExportUrl) {
       void copyTextToClipboard(toShareableExportUrl(freshExportUrl)).then(
         (copied) => {

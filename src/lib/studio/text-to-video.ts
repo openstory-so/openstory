@@ -22,6 +22,7 @@ const STUDIO_TEXT_TO_VIDEO_ENDPOINTS = {
   minimax_hailuo_02: 'fal-ai/minimax/hailuo-2.3/pro/text-to-video',
   minimax_h3_max: 'minimax/h3-max/text-to-video',
   seedance_v2: 'bytedance/seedance-2.0/enterprise/v2/text-to-video',
+  seedance_v2_5: 'bytedance/seedance-2.5/text-to-video',
 } as const satisfies Record<ImageToVideoModel, string>;
 
 const RANGE = (min: number, max: number): readonly number[] =>
@@ -36,6 +37,7 @@ const STUDIO_VIDEO_DURATIONS = {
   minimax_hailuo_02: [],
   minimax_h3_max: RANGE(5, 15),
   seedance_v2: RANGE(4, 15),
+  seedance_v2_5: RANGE(4, 30),
 } as const satisfies Record<ImageToVideoModel, readonly number[]>;
 
 /** Of our `AspectRatio` set, the ones the T2V sibling accepts. */
@@ -47,6 +49,7 @@ const STUDIO_VIDEO_ASPECTS = {
   minimax_hailuo_02: [],
   minimax_h3_max: ['16:9', '1:1', '9:16'],
   seedance_v2: ['16:9', '1:1', '9:16'],
+  seedance_v2_5: ['16:9', '1:1', '9:16'],
 } as const satisfies Record<ImageToVideoModel, readonly AspectRatio[]>;
 
 const STUDIO_VIDEO_HAS_AUDIO = {
@@ -57,6 +60,7 @@ const STUDIO_VIDEO_HAS_AUDIO = {
   minimax_hailuo_02: false,
   minimax_h3_max: false,
   seedance_v2: true,
+  seedance_v2_5: true,
 } as const satisfies Record<ImageToVideoModel, boolean>;
 
 export const STUDIO_VIDEO_MODES = ['text', 'reference', 'frames'] as const;
@@ -86,6 +90,14 @@ const STUDIO_REFERENCE_ENDPOINTS: Partial<
 > = {
   seedance_v2: {
     endpointId: 'bytedance/seedance-2.0/enterprise/v2/reference-to-video',
+    imageField: 'image_urls',
+    imageTag: atImage,
+    maxImages: 9,
+    maxVideos: 3,
+    maxAudio: 3,
+  },
+  seedance_v2_5: {
+    endpointId: 'bytedance/seedance-2.5/reference-to-video',
     imageField: 'image_urls',
     imageTag: atImage,
     maxImages: 9,
@@ -133,6 +145,7 @@ const STUDIO_END_FRAME_MODELS = {
   ltx_2_3_pro: true,
   minimax_h3_max: true,
   seedance_v2: true,
+  seedance_v2_5: true,
 } as const satisfies Partial<Record<ImageToVideoModel, true>>;
 
 /** 0 when the model has no reference-to-video sibling. */
@@ -208,6 +221,7 @@ const STUDIO_VIDEO_RESOLUTION: Partial<Record<ImageToVideoModel, string>> = {
   grok_imagine_video_1_5: '720p',
   veo3_1: '1080p',
   seedance_v2: '720p',
+  seedance_v2_5: '720p',
 };
 
 export function studioVideoEndpointId(
@@ -267,6 +281,7 @@ function encodeDuration(
   switch (model) {
     case 'kling_v3_pro':
     case 'seedance_v2':
+    case 'seedance_v2_5':
       return String(seconds);
     case 'veo3_1':
       return `${seconds}s`;
