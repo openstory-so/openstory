@@ -18,7 +18,7 @@
  * */
 
 import { DEFAULT_VIDEO_MODEL } from '@/lib/ai/models';
-import type { MotionPrompt, Scene } from '@/lib/ai/scene-analysis.schema';
+import type { Scene } from '@/lib/ai/scene-analysis.schema';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import { snapDuration } from '@/lib/motion/snap-duration';
 import { reinforceInstrumentalTags } from '@/lib/prompts/music-prompt';
@@ -31,6 +31,7 @@ import type {
   MusicPromptWorkflowInput,
   MusicPromptWorkflowResult,
 } from '@/lib/workflow/types';
+import type { MotionPromptWorkflowResult } from '@/lib/workflows/motion-prompt-workflow';
 import {
   buildMusicSceneSummaries,
   joinMusicDesignByIndex,
@@ -40,7 +41,7 @@ import { getLogger } from '@/lib/observability/logger';
 
 const logger = getLogger(['openstory', 'workflow', 'motion-music-prompts']);
 
-type MotionPromptsResult = { sceneId: string; motionPrompt: MotionPrompt }[];
+type MotionPromptsResult = MotionPromptWorkflowResult[];
 
 export class MotionMusicPromptsWorkflow extends OpenStoryWorkflowEntrypoint<MotionMusicPromptsWorkflowInput> {
   protected override async runImpl(
@@ -185,12 +186,17 @@ export class MotionMusicPromptsWorkflow extends OpenStoryWorkflowEntrypoint<Moti
     // render batch rather than re-reading the racy `shot.motionPrompt` mirror /
     // selected-version pointer from the DB (#713/#991). The per-scene child has
     // already persisted them to `shot_prompt_versions`.
-    const motionPromptsBySceneId: Record<string, MotionPrompt> =
-      Object.fromEntries(motionPrompts.map((m) => [m.sceneId, m.motionPrompt]));
+    const motionPromptsBySceneId = Object.fromEntries(
+      motionPrompts.map((m) => [m.sceneId, m.motionPrompt])
+    );
+    const motionPromptVersionIdsBySceneId = Object.fromEntries(
+      motionPrompts.map((m) => [m.sceneId, m.finalVersionId ?? null])
+    );
 
     return {
       completeScenes,
       motionPromptsBySceneId,
+      motionPromptVersionIdsBySceneId,
       musicPrompt: musicDesign.prompt,
       musicTags: reinforceInstrumentalTags(musicDesign.tags),
     };

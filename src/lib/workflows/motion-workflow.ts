@@ -292,12 +292,21 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
               durationMs: duration * 1000,
             },
           ]);
+          const inputHash = await computeVideoManifestInputHash(
+            manifest,
+            model
+          );
+          if (inputHash == null && !input.variantOnly) {
+            logger.warn(
+              `[MotionWorkflow:cf] Shot ${input.shotId} primary render is missing pinned frameVersionId/motionPromptVersionId; storing a null hash so the clip is unknown-not-stale rather than born Stale (#1380)`
+            );
+          }
           const version = await scopedDb.videoVariants.appendVersion({
             renderSegmentId,
             sequenceId: input.sequenceId,
             model,
             manifest,
-            inputHash: await computeVideoManifestInputHash(manifest, model),
+            inputHash,
             status: 'generating',
             workflowRunId,
             isPrimary: !input.variantOnly,

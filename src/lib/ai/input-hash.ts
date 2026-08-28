@@ -162,7 +162,20 @@ export function computeShotVideoInputHash(
 export function computeVideoManifestInputHash(
   manifest: readonly VideoManifestEntry[],
   model: string
-): Promise<string> {
+): Promise<string | null> {
+  // A hash over null/null immediately diverges from a live hash built from
+  // the selected still + prompt — that's how storyboard clips were born
+  // Stale (#1380). Unknown provenance is a null hash, matching
+  // `videoVariants.isStale` for legacy rows (never stale).
+  if (
+    manifest.length > 0 &&
+    manifest.every(
+      (entry) =>
+        entry.motionPromptVersionId == null && entry.frameVersionId == null
+    )
+  ) {
+    return Promise.resolve(null);
+  }
   return sha256Hex({ artifact: 'video:manifest', model, manifest });
 }
 

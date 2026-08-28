@@ -146,7 +146,9 @@ function toVersion(v: SegmentVersionInput): SegmentVideoVersion {
  * stored references against the shots' *current* pointers (rather than rehashing)
  * is the derivation the schema doc calls out, and it sidesteps false positives
  * from non-referenced inputs like a re-snapped duration. A manifest entry whose
- * shot no longer exists (deleted/re-tiled) reads as stale, not fresh.
+ * shot no longer exists (deleted/re-tiled) reads as stale, not fresh. An entry
+ * with both version ids null is unknown provenance (legacy / unpinned trigger)
+ * and is not stale — same contract as a null `inputHash`.
  */
 export function isSelectedVersionStale(
   selected: SegmentVersionInput | undefined,
@@ -155,6 +157,12 @@ export function isSelectedVersionStale(
 ): boolean {
   if (!selected) return false;
   return selected.manifest.some((entry) => {
+    // Both ids null = unknown provenance (pre-#1380 storyboard clips, or a
+    // trigger that forgot to pin). Same contract as a legacy null hash:
+    // unknown is not stale, so a regression cannot mark every clip Stale.
+    if (entry.motionPromptVersionId == null && entry.frameVersionId == null) {
+      return false;
+    }
     const currentMotion = currentMotionByShot.get(entry.shotId) ?? null;
     const currentFrame = currentFrameByShot.get(entry.shotId) ?? null;
     return (

@@ -766,12 +766,14 @@ export function createVideoVariantsMethods(db: Database) {
 
     /**
      * Staleness of a single version: stored `inputHash` vs a fresh hash. Null
-     * stored hash (legacy / in-flight) is "unknown, not stale". Throws when the
-     * version is missing. Mirrors `frameVariants.isStale`.
+     * stored hash (legacy / in-flight) is "unknown, not stale". A null live
+     * hash (unpinned manifest, #1380) is the same: refuse to mark Stale when
+     * provenance was never recorded. Throws when the version is missing.
+     * Mirrors `frameVariants.isStale`.
      */
     isStale: async (
       versionId: string,
-      currentHash: string
+      currentHash: string | null
     ): Promise<boolean> => {
       const result = await db
         .select({ hash: videoVariants.inputHash })
@@ -782,7 +784,7 @@ export function createVideoVariantsMethods(db: Database) {
         throw new Error(`VideoVariant ${versionId} not found`);
       }
       const stored = row.hash;
-      if (stored === null) return false;
+      if (stored === null || currentHash === null) return false;
       return currentHash !== stored;
     },
 

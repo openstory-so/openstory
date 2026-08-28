@@ -75,7 +75,7 @@ function imageHash(state: PipelineState): Promise<string> {
   );
 }
 
-function videoHash(state: PipelineState): Promise<string> {
+function videoHash(state: PipelineState): Promise<string | null> {
   const manifest: VideoManifest = [
     {
       shotId: 'shot-1',

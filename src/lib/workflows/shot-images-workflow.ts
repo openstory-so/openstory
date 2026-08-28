@@ -79,6 +79,13 @@ type ImageChildResult = {
   imageUrl: string;
   shotId?: string;
   sequenceId?: string;
+  /** The `frame_variants` version this still completed as. Null when none. */
+  frameVersionId?: string | null;
+};
+
+type ShotImageJobResult = {
+  imageUrl: string;
+  frameVersionId: string | null;
 };
 
 /**
@@ -298,7 +305,7 @@ export class ShotImagesWorkflow extends OpenStoryWorkflowEntrypoint<ShotImagesWo
     const runImageJob = async (
       { scene, model }: (typeof jobs)[number],
       attempt: 'first' | 'retry'
-    ): Promise<string> => {
+    ): Promise<ShotImageJobResult> => {
       const context = sceneContexts.get(scene.sceneId);
       if (context === undefined) {
         throw new WorkflowValidationError(
@@ -418,12 +425,14 @@ export class ShotImagesWorkflow extends OpenStoryWorkflowEntrypoint<ShotImagesWo
         }
       );
 
-      return childOutput.imageUrl;
+      return {
+        imageUrl: childOutput.imageUrl,
+        frameVersionId: childOutput.frameVersionId ?? null,
+      };
     };
 
-    const jobResults: PromiseSettledResult<string>[] = await Promise.allSettled(
-      jobs.map((job) => runImageJob(job, 'first'))
-    );
+    const jobResults: PromiseSettledResult<ShotImageJobResult>[] =
+      await Promise.allSettled(jobs.map((job) => runImageJob(job, 'first')));
 
     // One failed primary of many is usually a transient content-flag or
     // timeout — retry it once silently so the scenes page doesn't open on
@@ -440,10 +449,10 @@ export class ShotImagesWorkflow extends OpenStoryWorkflowEntrypoint<ShotImagesWo
           `[ShotImagesWorkflow:cf] Silently retrying lone failed primary for scene ${retryJob.scene.sceneId} model ${retryJob.model}`
         );
         try {
-          const retriedUrl = await runImageJob(retryJob, 'retry');
+          const retried = await runImageJob(retryJob, 'retry');
           jobResults[retryIndex] = {
             status: 'fulfilled',
-            value: retriedUrl,
+            value: retried,
           };
         } catch (err) {
           jobResults[retryIndex] = { status: 'rejected', reason: err };
@@ -458,7 +467,7 @@ export class ShotImagesWorkflow extends OpenStoryWorkflowEntrypoint<ShotImagesWo
     // each scene's model sequence exactly.
     const modelResultsByScene = new Map<
       number,
-      PromiseSettledResult<string>[]
+      PromiseSettledResult<ShotImageJobResult>[]
     >();
     jobs.forEach((job, jobIndex) => {
       const result = jobResults[jobIndex];
@@ -473,7 +482,7 @@ export class ShotImagesWorkflow extends OpenStoryWorkflowEntrypoint<ShotImagesWo
     // for parity with the QStash original's `result.isFailed` check.
     // Sibling-model failures are logged but don't block — they're
     // alternates that enrich `shot_variants`, not the primary.
-    const sceneResults: PromiseSettledResult<string>[] =
+    const sceneResults: PromiseSettledResult<ShotImageJobResult>[] =
       scenesWithVisualPrompts.map((scene, sceneIndex) => {
         const modelResults = modelResultsByScene.get(sceneIndex) ?? [];
         const primary = modelResults[0];
@@ -517,7 +526,7 @@ export class ShotImagesWorkflow extends OpenStoryWorkflowEntrypoint<ShotImagesWo
     // with no visual prompt (or a deleted shot mid-flight) can't poison the
     // rest of the batch.
     const imageUrls: (string | null)[] = sceneResults.map((r, i) => {
-      if (r.status === 'fulfilled') return r.value;
+      if (r.status === 'fulfilled') return r.value.imageUrl;
       const scene = scenesWithVisualPrompts[i];
       logger.error(
         `[ShotImagesWorkflow:cf] Scene ${scene?.sceneId ?? '(unknown)'} failed: ${String(r.reason)}`,
@@ -527,8 +536,11 @@ export class ShotImagesWorkflow extends OpenStoryWorkflowEntrypoint<ShotImagesWo
       );
       return null;
     });
+    const frameVersionIds: (string | null)[] = sceneResults.map((r) =>
+      r.status === 'fulfilled' ? r.value.frameVersionId : null
+    );
 
-    return { imageUrls };
+    return { imageUrls, frameVersionIds };
   }
 
   protected override onFailure({

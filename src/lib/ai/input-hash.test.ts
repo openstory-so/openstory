@@ -40,6 +40,19 @@ describe('computeVideoManifestInputHash', () => {
     expect(newPrompt).not.toBe(base);
   });
 
+  it('returns null when every entry lacks pinned version ids (#1380)', async () => {
+    // A hash over null/null immediately diverges from a live hash built
+    // from the selected still + prompt — that's how storyboard clips were
+    // born Stale. Unknown provenance is a null hash (never stale), matching
+    // `videoVariants.isStale` for legacy rows.
+    expect(
+      await computeVideoManifestInputHash(
+        [entry({ motionPromptVersionId: null, frameVersionId: null })],
+        'veo3_1'
+      )
+    ).toBeNull();
+  });
+
   it('changes with the model and with shot order (ordered manifest)', async () => {
     const base = await computeVideoManifestInputHash([entry()], 'veo3_1');
     expect(
