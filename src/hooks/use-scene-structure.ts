@@ -36,19 +36,25 @@ function invalidateStructure(
   queryClient: QueryClient,
   sequenceId: string,
   opts: { staleness?: boolean } = {}
-): void {
-  void queryClient.invalidateQueries({ queryKey: sceneKeys.list(sequenceId) });
-  void queryClient.invalidateQueries({
-    queryKey: sceneKeys.composedScript(sequenceId),
-  });
-  void queryClient.invalidateQueries({ queryKey: shotKeys.list(sequenceId) });
-  void queryClient.invalidateQueries({
-    queryKey: segmentKeys.list(sequenceId),
-  });
-  void queryClient.invalidateQueries({ queryKey: ['scene-facets'] });
-  if (opts.staleness) {
-    void queryClient.invalidateQueries({ queryKey: shotStalenessNamespace });
-  }
+): Promise<unknown[]> {
+  return Promise.all([
+    queryClient.invalidateQueries({ queryKey: sceneKeys.list(sequenceId) }),
+    queryClient.invalidateQueries({
+      queryKey: sceneKeys.composedScript(sequenceId),
+    }),
+    queryClient.invalidateQueries({ queryKey: shotKeys.list(sequenceId) }),
+    queryClient.invalidateQueries({
+      queryKey: segmentKeys.list(sequenceId),
+    }),
+    queryClient.invalidateQueries({ queryKey: ['scene-facets'] }),
+    ...(opts.staleness
+      ? [
+          queryClient.invalidateQueries({
+            queryKey: shotStalenessNamespace,
+          }),
+        ]
+      : []),
+  ]);
 }
 
 /** Append a scene (with its first shot unless `withShot: false`). */
@@ -57,7 +63,20 @@ export function useCreateScene(sequenceId: string) {
   return useMutation({
     mutationFn: (input?: { title?: string; withShot?: boolean }) =>
       createSceneFn({ data: { sequenceId, ...input } }),
-    onSuccess: () => invalidateStructure(queryClient, sequenceId),
+    onSuccess: async ({ scene }) => {
+      // Paint the new scene before the refetch round-trip. Without this the
+      // rail stays on "No scenes yet" until list queries settle — e2e (and
+      // a slow D1) can miss the group entirely (#1108 flake, #1384).
+      queryClient.setQueryData<SceneWithScript[]>(
+        sceneKeys.list(sequenceId),
+        (old) => {
+          const next = old ?? [];
+          if (next.some((row) => row.id === scene.id)) return next;
+          return [...next, { ...scene, script: null }];
+        }
+      );
+      await invalidateStructure(queryClient, sequenceId);
+    },
   });
 }
 
@@ -208,7 +227,7 @@ export async function restoreScene(
   data: { sequenceId: string; sceneId: string }
 ): Promise<void> {
   await restoreSceneFn({ data });
-  invalidateStructure(queryClient, data.sequenceId, { staleness: true });
+  await invalidateStructure(queryClient, data.sequenceId, { staleness: true });
 }
 
 export async function restoreShot(
@@ -216,5 +235,5 @@ export async function restoreShot(
   data: { sequenceId: string; shotId: string }
 ): Promise<void> {
   await restoreShotFn({ data });
-  invalidateStructure(queryClient, data.sequenceId, { staleness: true });
+  await invalidateStructure(queryClient, data.sequenceId, { staleness: true });
 }
