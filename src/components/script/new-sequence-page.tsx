@@ -77,7 +77,8 @@ export function NewSequencePage({
   // resolved from the style here so the URL only needs the slug; settings
   // (models, aspect ratio) follow once the style is selected. Remounting the
   // composer (`key`) on a new seed lets the `initialScript`/`initialStyleId`
-  // props re-seed it — and take precedence over a stale draft (see ScriptView).
+  // props re-seed it. A leftover `?style=` after login restores the draft
+  // instead of that seed when the style matches (see ScriptView, #1384).
   const { data: styles } = useStyles();
 
   // The composer mirrors its style pick into `?style=` (see `handleStyleChange`
@@ -90,6 +91,17 @@ export function NewSequencePage({
   const seedRef = useRef<{ key: string; script?: string; styleId?: string }>({
     key: 'blank',
   });
+  // Login remounts the composer (logged-out chrome → signed-in chrome). Drop
+  // the frozen self-sync seed so the current URL is re-read — otherwise a
+  // Shuffle after Try keeps the original Try seed and login restores the
+  // wrong sample (#1384).
+  const userId = user?.id ?? null;
+  const prevUserIdRef = useRef(userId);
+  if (prevUserIdRef.current !== userId) {
+    prevUserIdRef.current = userId;
+    lastSelfSyncRef.current = null;
+    seedRef.current = { key: '' };
+  }
 
   const seedStyle = styleParam
     ? styles?.find((s) => styleSlug(s.name) === styleParam)

@@ -71,7 +71,10 @@ export async function createTestUser(
 /**
  * Clean up test user and related data
  */
-async function cleanupTestUser(userId: string, teamId: string): Promise<void> {
+export async function cleanupTestUser(
+  userId: string,
+  teamId: string
+): Promise<void> {
   // Cleanup via test API so the write happens inside the safe Worker Miniflare
   await fetch('http://localhost:3001/api/test/user', {
     method: 'DELETE',

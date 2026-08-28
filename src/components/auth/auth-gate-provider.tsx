@@ -115,7 +115,8 @@ export function AuthGateProvider({ children }: { children: ReactNode }) {
   // Return the visitor to wherever they were after signing in so their
   // in-progress draft (persisted to localStorage) is restored. Strip the
   // hash (#compose from "Try this style") — better-auth rejects it as an
-  // OAuth callbackURL. `?style=` is enough to re-seed the composer.
+  // OAuth callbackURL. Path + search keep the composer seed; the draft
+  // restores typed or shuffled text (#1384).
   const redirectTo = useRouterState({
     select: (s) =>
       sanitizeAuthRedirect(`${s.location.pathname}${s.location.searchStr}`),

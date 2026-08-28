@@ -4,8 +4,18 @@
  */
 
 import { test as baseTest } from 'playwright/test';
-import { expect, test } from '../fixtures/auth.fixture';
-import { fillScriptEditor, waitForScriptEditor } from '../fixtures/test-utils';
+import {
+  authenticateUser,
+  cleanupTestUser,
+  createTestUser,
+  expect,
+  test,
+} from '../fixtures/auth.fixture';
+import {
+  fillScriptEditor,
+  waitForScriptEditor,
+  waitForSequenceDraftScript,
+} from '../fixtures/test-utils';
 
 // Route Protection Tests (no auth fixture needed)
 baseTest.describe('Route Protection', () => {
@@ -79,6 +89,62 @@ baseTest.describe('Route Protection', () => {
       const dialog = page.getByRole('dialog', { name: 'Sign in to continue' });
       await expect(dialog).toBeVisible();
       await expect(page).toHaveURL(/\/images/);
+    }
+  );
+
+  baseTest(
+    'typed script survives signing in from the composer (#1384)',
+    async ({ page }) => {
+      const script =
+        'INT. KITCHEN - DAY\n\nA cat knocks a glass off the counter.';
+      const user = await createTestUser({ name: 'E2E Draft Restore' });
+      try {
+        await page.goto('/');
+        await fillScriptEditor(page, script);
+        await waitForSequenceDraftScript(page, script);
+
+        await authenticateUser(page, user.email);
+        await waitForScriptEditor(page);
+        await expect(
+          page.locator('[data-slot="markdown-editor"]')
+        ).toHaveAttribute('data-markdown', script, { timeout: 15_000 });
+      } finally {
+        await cleanupTestUser(user.id, user.teamId);
+      }
+    }
+  );
+
+  baseTest(
+    'shuffled sample survives signing in from the composer (#1384)',
+    async ({ page }) => {
+      const user = await createTestUser({ name: 'E2E Shuffle Restore' });
+      try {
+        await page.goto('/');
+        await waitForScriptEditor(page);
+        await expect(
+          page.getByRole('button', { name: 'Style category: Film & Cinematic' })
+        ).toBeVisible({ timeout: 15_000 });
+        await page.getByRole('button', { name: 'Shuffle' }).click();
+        const editor = page.locator('[data-slot="markdown-editor"]');
+        await expect(editor).not.toHaveAttribute('data-markdown', '', {
+          timeout: 15_000,
+        });
+        const shuffled = await editor.getAttribute('data-markdown');
+        if (!shuffled) {
+          throw new Error('Shuffle left the composer empty');
+        }
+        await waitForSequenceDraftScript(page, shuffled);
+
+        await authenticateUser(page, user.email);
+        await waitForScriptEditor(page);
+        await expect(
+          page.locator('[data-slot="markdown-editor"]')
+        ).toHaveAttribute('data-markdown', shuffled, {
+          timeout: 15_000,
+        });
+      } finally {
+        await cleanupTestUser(user.id, user.teamId);
+      }
     }
   );
 
