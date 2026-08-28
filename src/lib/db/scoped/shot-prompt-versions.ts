@@ -77,7 +77,10 @@ export type WriteShotPromptVersionInput = WriteShotPromptVersionBase &
         analysisModel: string | null;
       }
     | {
-        source: 'restored';
+        // `restored`: audit row for a repoint. `softened`: the content-checker
+        // rewrite motion re-rendered from (#1373); carries the rejected
+        // version's hash + model verbatim so staleness stays detectable.
+        source: 'restored' | 'softened';
         inputHash: string | null;
         analysisModel: string | null;
       }

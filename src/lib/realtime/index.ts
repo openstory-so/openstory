@@ -212,6 +212,11 @@ export const realtimeSchema = {
       // Failure reason — carried on `failed` so the cache updater writes
       // `shots.videoError` live (see image:progress.error above). (#881)
       error: z.string().optional(),
+      // Content-checker rescue (#1373) — see image:progress above. Set on the
+      // retrying emit when this run appended a `softened` motion prompt
+      // version / swapped the clip to the fallback video model.
+      promptSoftened: z.boolean().optional(),
+      modelFallback: z.boolean().optional(),
     }),
 
     // Audio/music generation progress (shotId optional for sequence-level music)

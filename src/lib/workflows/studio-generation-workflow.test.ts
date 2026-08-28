@@ -259,7 +259,7 @@ describe('StudioGenerationWorkflow video', () => {
 
     await expect(
       makeWorkflow().runBody(makeEvent(VIDEO), makeStep(), scopedDb)
-    ).rejects.toThrow(/content filter after 3 attempts/);
+    ).rejects.toThrow(/^Content checker rejected the clip \(Seedance/);
     expect(mockDeductWorkflowCredits).not.toHaveBeenCalled();
   });
 });

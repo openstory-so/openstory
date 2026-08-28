@@ -293,6 +293,11 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
       bucket: 'EXISTENCE-GUARD',
       why: 'Shot deleted mid-run is a stand-down, not a failure.',
     },
+    {
+      read: 'shotPromptVersions.getByIdForShot',
+      bucket: 'CLAIM-BY-ID',
+      why: 'The motion prompt version this clip renders from, named by the trigger snapshot — its hash + model are copied onto the softened row (#1373), as soften-image-prompt does for stills.',
+    },
   ],
   'recast-snapshot.ts': [
     {

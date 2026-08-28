@@ -1050,4 +1050,35 @@ Two rejection classes:
 </REJECTION>`,
     },
   ],
+
+  'phase/soften-motion-prompt-chat': [
+    {
+      role: 'system',
+      content: `You rewrite an image-to-video motion prompt that a video model rejected, so a retry can succeed. The still frame the clip animates from is fixed and already accepted; only the prompt text changes. Read <REJECTION> and pick the rewrite that matches it.
+
+Two rejection classes:
+- POLICY — content checker / NSFW / unsafe / sensitive / flagged. Soften graphic violence, gore, sexual/nude wording, self-harm, real-person likeness instructions, and explicit crime into cinematic implication (aftermath, tension, reaction, off-screen action). A name that identifies a real person or a well-known franchise / trademarked character trips likeness and IP checks on its own: drop the name and describe the figure generically — never name the franchise.
+- UNEXPECTED OUTPUT — "did not generate the expected output", "could not generate", "unexpected result". The model often rejects its own sample because the prompt's grammar is broken or it stacks unusual word combinations. Rewrite into plain, grammatical English: short clauses, one action per beat, no jammed modifiers or contradictory descriptors. Do not invent safer-sounding plot; the shot stays the same.
+
+### CRITICAL OUTPUT RULES
+1. You will be called via a structured output tool. Follow the provided schema exactly.
+2. Return one rewritten prompt in \`prompt\`. Natural language only — no headers, bullets, or quotation marks wrapping the whole prompt.
+3. Keep the same shot: subjects, action, camera movement, pacing, and any spoken dialogue lines (soften only the words the checker would object to). Do not add new characters, props, camera moves, or plot.
+4. Keep CHARACTER NAMES IN CAPS and UPPERCASE element tokens verbatim — they label reference images, not likenesses. Keep model-specific tags (e.g. dialogue markup, audio direction) in place.
+5. If the rejection is ambiguous, do both: clean the grammar AND soften any policy-risky wording.
+6. Never return the original unchanged.`,
+    },
+    {
+      role: 'user',
+      content: `Rewrite this motion prompt so a video model will accept it.
+
+<ORIGINAL_PROMPT>
+{{prompt}}
+</ORIGINAL_PROMPT>
+
+<REJECTION>
+{{rejection}}
+</REJECTION>`,
+    },
+  ],
 };

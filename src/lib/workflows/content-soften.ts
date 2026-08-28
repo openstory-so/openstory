@@ -25,7 +25,7 @@ import {
   isContentRejectionError,
 } from '@/lib/ai/content-rejection';
 import { extractFalErrorMessage } from '@/lib/ai/fal-error';
-import type { TextToImageModel } from '@/lib/ai/models';
+import type { ImageToVideoModel, TextToImageModel } from '@/lib/ai/models';
 import {
   DEFAULT_ANALYSIS_MODEL,
   type AnalysisModelId,
@@ -50,34 +50,67 @@ export const MAX_CONTENT_ATTEMPTS = 3;
 export const IMAGE_CONTENT_FALLBACK_MODEL: TextToImageModel =
   'grok_imagine_image';
 
+/**
+ * Video fallback when the STILL was flagged (#1373): checker strictness differs
+ * per vendor, and a flagged input image cannot be reseeded or softened away.
+ * Grok, as for images. Skipped when already this.
+ */
+export const MOTION_CONTENT_FALLBACK_MODEL: ImageToVideoModel =
+  'grok_imagine_video_1_5';
+
 /** Plain `z.string()` — no min/max (Bedrock rejects integer bounds). */
 export const softenImagePromptResponseSchema = z.object({
   prompt: z.string(),
 });
 
-export async function softenRejectedImagePrompt(
+export type SoftenRejectedPromptArgs = {
+  scopedDb: WorkflowScopedDb;
+  workflowRunId: string;
+  sequenceId?: string;
+  userId: string;
+  prompt: string;
+  rejection: string;
+  analysisModelId: AnalysisModelId;
+  shotId?: string;
+  model: string;
+  reservationId?: string;
+  /** Durable step name — must be unique per call within a run. */
+  name?: string;
+};
+
+export function softenRejectedImagePrompt(
   step: WorkflowStep,
-  args: {
-    scopedDb: WorkflowScopedDb;
-    workflowRunId: string;
-    sequenceId?: string;
-    userId: string;
-    prompt: string;
-    rejection: string;
-    analysisModelId: AnalysisModelId;
-    shotId?: string;
-    model: string;
-    reservationId?: string;
-    /** Durable step name — must be unique per call within a run. */
-    name?: string;
-  }
+  args: SoftenRejectedPromptArgs
+): Promise<string> {
+  return softenRejectedPrompt(step, {
+    ...args,
+    name: args.name ?? 'soften-image-prompt',
+    promptName: 'phase/soften-image-prompt-chat',
+  });
+}
+
+/** Same rewrite for an image-to-video prompt (#1373). */
+export function softenRejectedMotionPrompt(
+  step: WorkflowStep,
+  args: SoftenRejectedPromptArgs
+): Promise<string> {
+  return softenRejectedPrompt(step, {
+    ...args,
+    name: args.name ?? 'soften-motion-prompt',
+    promptName: 'phase/soften-motion-prompt-chat',
+  });
+}
+
+async function softenRejectedPrompt(
+  step: WorkflowStep,
+  args: SoftenRejectedPromptArgs & { name: string; promptName: string }
 ): Promise<string> {
   const response = await durableLLMCallCf(
     step,
     {
-      name: args.name ?? 'soften-image-prompt',
-      phase: { number: 4, name: 'Softening image prompt…' },
-      promptName: 'phase/soften-image-prompt-chat',
+      name: args.name,
+      phase: { number: 4, name: 'Softening prompt…' },
+      promptName: args.promptName,
       promptVariables: {
         prompt: args.prompt,
         rejection: args.rejection,

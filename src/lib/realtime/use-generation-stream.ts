@@ -284,20 +284,18 @@ export function useGenerationStream(
       updateQueryCacheFromEvent(queryClient, sequenceId, eventName, data);
 
       // Live-only (history replay does not use this handler). Tell the user
-      // the still is being retried from a rewritten prompt, and that the
-      // original is still in Versions.
-      if (
-        eventName === 'generation.image:progress' &&
-        data.promptSoftened === true
-      ) {
+      // the still / clip is being retried from a rewritten prompt or on the
+      // fallback model, and that the original is still in Versions (#1272,
+      // motion in #1373).
+      const isMediaProgress =
+        eventName === 'generation.image:progress' ||
+        eventName === 'generation.video:progress';
+      if (isMediaProgress && data.promptSoftened === true) {
         toast.info('Prompt rewritten to pass a content checker', {
           description: 'The original is kept in Versions.',
         });
       }
-      if (
-        eventName === 'generation.image:progress' &&
-        data.modelFallback === true
-      ) {
+      if (isMediaProgress && data.modelFallback === true) {
         toast.info('Retrying on Grok Imagine after the content checker', {
           description: 'The selected model is kept in Versions.',
         });

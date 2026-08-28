@@ -178,3 +178,61 @@ export function contentRejectionSubjects(error: string): string[] {
     .map((s) => s.trim())
     .filter(Boolean);
 }
+
+/**
+ * Which inputs a fal 422 named. `extractFalErrorMessage` prefixes each detail
+ * with its `loc` (`body.prompt: …; body.image_url: …`, #1373); a rejection
+ * without any prefix (Veo's "could not generate", BytePlus, aimock) classifies
+ * as nothing flagged and callers treat it as prompt-shaped.
+ */
+export function flaggedInputs(rejection: string): {
+  prompt: boolean;
+  image: boolean;
+  audio: boolean;
+} {
+  const fields = [...rejection.matchAll(/\bbody\.([\w.[\]]+):/g)].map(
+    (m) => m[1] ?? ''
+  );
+  return {
+    prompt: fields.some((f) => /prompt/i.test(f)),
+    image: fields.some((f) => /image|frame|element/i.test(f)),
+    audio: fields.some((f) => /audio/i.test(f)),
+  };
+}
+
+/**
+ * Terminal clip error once every remedy is spent. Names the flagged inputs and
+ * the models that refused them, then says what the user can change — a
+ * flagged still cannot be reseeded or softened away, only regenerated (#1373).
+ * Keeps "content checker" so `isContentRejectionError` still classifies it.
+ */
+export function clipContentRejectionMessage(args: {
+  rejection: string;
+  /** Display names in the order tried, e.g. `['LTX 2.3 Pro', 'Grok …']`. */
+  models: string[];
+  softened: boolean;
+}): string {
+  const flags = flaggedInputs(args.rejection);
+  const what =
+    flags.image && flags.prompt
+      ? 'the still and the prompt'
+      : flags.image
+        ? 'the still'
+        : flags.prompt
+          ? 'the prompt'
+          : flags.audio
+            ? 'the audio'
+            : 'the clip';
+  const hint = flags.image
+    ? `Regenerate the still${flags.prompt ? ' or rewrite the motion prompt' : ''}.`
+    : flags.prompt
+      ? 'Rewrite the motion prompt.'
+      : `Rewrite the motion prompt or regenerate the still. (${args.rejection})`;
+  const tried = [
+    args.models.join(', then '),
+    args.softened ? 'softened prompt also rejected' : null,
+  ]
+    .filter(Boolean)
+    .join('; ');
+  return `Content checker rejected ${what} (${tried}). ${hint}`;
+}

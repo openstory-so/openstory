@@ -113,6 +113,19 @@ const genStatusObject: JsonObject = {
   required: ['status', 'url'],
   properties: { status: statusEnum(GEN_STATUSES), url: nullableString },
 };
+const videoStatusObject: JsonObject = {
+  type: 'object',
+  required: ['status', 'url', 'error'],
+  properties: {
+    status: statusEnum(GEN_STATUSES),
+    url: nullableString,
+    error: {
+      ...nullableString,
+      description:
+        'Why the primary render failed. On a content check this names the flagged input (the still, the prompt, or both) and the model that refused it. Null unless status is "failed".',
+    },
+  },
+};
 const countsObject: JsonObject = {
   type: 'object',
   required: ['shots', 'imagesReady', 'videosReady', 'videosFailed'],
@@ -734,7 +747,7 @@ export function buildOpenApiDocument(): JsonObject {
             orderIndex: { type: 'integer' },
             title: nullableString,
             image: genStatusObject,
-            video: genStatusObject,
+            video: videoStatusObject,
           },
         },
         SequenceState: {
