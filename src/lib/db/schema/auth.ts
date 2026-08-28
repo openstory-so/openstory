@@ -1,5 +1,11 @@
 import { type InferSelectModel, sql } from 'drizzle-orm';
-import { index, integer, snakeCase, text } from 'drizzle-orm/sqlite-core';
+import {
+  index,
+  integer,
+  snakeCase,
+  text,
+  uniqueIndex,
+} from 'drizzle-orm/sqlite-core';
 
 export const user = snakeCase.table('user', {
   id: text().primaryKey(),
@@ -43,6 +49,11 @@ export const account = snakeCase.table(
   'account',
   {
     id: text().primaryKey(),
+    // Better Auth 1.7 keys accounts on (issuer, accountId). Required at write
+    // time by the plugin; left nullable in SQL so we can `ALTER TABLE ADD
+    // COLUMN` without rebuilding `account` (#612). Backfill existing rows
+    // before tightening to NOT NULL.
+    issuer: text(),
     accountId: text().notNull(),
     providerId: text().notNull(),
     userId: text()
@@ -66,7 +77,13 @@ export const account = snakeCase.table(
       .$onUpdate(() => /* @__PURE__ */ new Date())
       .notNull(),
   },
-  (table) => [index('account_userId_idx').on(table.userId)]
+  (table) => [
+    index('account_userId_idx').on(table.userId),
+    uniqueIndex('account_issuer_accountId_uidx').on(
+      table.issuer,
+      table.accountId
+    ),
+  ]
 );
 
 export const verification = snakeCase.table(
@@ -111,9 +128,9 @@ export const passkey = snakeCase.table(
 );
 
 /**
- * Better Auth `deviceAuthorization` plugin (#1219). Columns are exactly what
- * `bun auth:generate` emits; the two indexes are ours (the plugin looks rows up
- * by both codes).
+ * Better Auth `deviceAuthorization` plugin (#1219). Columns match the plugin
+ * schema; 1.7 requires unique indexes on both lookup codes (dedupe before
+ * applying the migration).
  */
 export const deviceCode = snakeCase.table(
   'device_code',
@@ -130,8 +147,8 @@ export const deviceCode = snakeCase.table(
     scope: text(),
   },
   (table) => [
-    index('device_code_device_code_idx').on(table.deviceCode),
-    index('device_code_user_code_idx').on(table.userCode),
+    uniqueIndex('device_code_deviceCode_uidx').on(table.deviceCode),
+    uniqueIndex('device_code_userCode_uidx').on(table.userCode),
   ]
 );
 
