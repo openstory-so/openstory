@@ -176,7 +176,7 @@
     "@storybook/react-vite": "^10.5.8",
     "@tailwindcss/vite": "^4.3.3",
     "@tanstack/devtools-vite": "^0.8.3",
-    "@tanstack/react-ai-devtools": "^0.2.70",
+    "@tanstack/react-ai-devtools": "^0.2.71",
     "@tanstack/react-devtools": "^0.10.10",
     "@tanstack/react-query-devtools": "^5.101.4",
     "@tanstack/react-router-devtools": "^1.167.1",
