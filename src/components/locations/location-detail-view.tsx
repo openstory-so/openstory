@@ -1,3 +1,4 @@
+import { ActionCost } from '@/components/billing/action-cost';
 import { ImageModelSelector } from '@/components/model/image-model-selector';
 import { UploadMediaButton } from '@/components/scenes/upload-media-button';
 import { SheetComparisonDialog } from '@/components/sheets/sheet-comparison-dialog';
@@ -42,8 +43,10 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { useFalPricing } from '@/hooks/use-fal-pricing';
 import { useSequence } from '@/hooks/use-sequences';
 import type { TextToImageModel } from '@/lib/ai/models';
+import { estimateImageCost } from '@/lib/billing/cost-estimation';
 import { resolveSheetImageModel } from '@/lib/sheets/sheet-image-model';
 import { useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
@@ -288,6 +291,14 @@ export const LocationDetailView: React.FC<LocationDetailViewProps> = ({
     )?.model,
     sequenceImageModel: sequence?.imageModel ?? null,
   });
+  const { pricing: falPricing } = useFalPricing();
+  const sheetCostEstimate = useMemo(() => {
+    if (!falPricing) return null;
+    return estimateImageCost(selectedSheetModel, '16:9', 1, {
+      pricing: falPricing,
+      edit: Boolean(location?.libraryLocationId),
+    });
+  }, [falPricing, selectedSheetModel, location?.libraryLocationId]);
 
   const handleRegenerateSheet = useCallback(() => {
     regenerateSheet.mutate(
@@ -505,25 +516,28 @@ export const LocationDetailView: React.FC<LocationDetailViewProps> = ({
                 Used for this location's reference. Shot stills still follow the
                 sequence image model.
               </p>
-              <Button
-                onClick={handleRegenerateSheet}
-                disabled={regenerateSheet.isPending}
-              >
-                {regenerateSheet.isPending ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <RefreshCw className="mr-2 h-4 w-4" />
-                )}
-                {regenerateSheet.isPending
-                  ? hasPriorSheet
-                    ? 'Regenerating…'
-                    : 'Generating…'
-                  : hasPriorSheet
-                    ? isSheetGenerating
-                      ? 'Generate again'
-                      : 'Regenerate Reference'
-                    : 'Generate Reference'}
-              </Button>
+              <div className="flex w-fit flex-col gap-1">
+                <Button
+                  onClick={handleRegenerateSheet}
+                  disabled={regenerateSheet.isPending}
+                >
+                  {regenerateSheet.isPending ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                  )}
+                  {regenerateSheet.isPending
+                    ? hasPriorSheet
+                      ? 'Regenerating…'
+                      : 'Generating…'
+                    : hasPriorSheet
+                      ? isSheetGenerating
+                        ? 'Generate again'
+                        : 'Regenerate Reference'
+                      : 'Generate Reference'}
+                </Button>
+                <ActionCost estimate={sheetCostEstimate} />
+              </div>
 
               <div className="flex flex-wrap gap-2">
                 <Button

@@ -1,9 +1,13 @@
 import { mediaUrlSchema } from '@/lib/schemas/media-url.schemas';
 import { isValidTextToImageModel, safeTextToImageModel } from '@/lib/ai/models';
-import { generateId } from '@/lib/db/id';
 import type { LocationBibleUpdate } from '@/lib/db/scoped/sequence-locations';
 import type { SheetStaleness } from '@/lib/sheets/sheet-staleness';
-import { bibleField, slugifyTag } from '@/lib/schemas/bible-field';
+import {
+  bibleField,
+  identityToken,
+  nextIdentityToken,
+  slugifyTag,
+} from '@/lib/schemas/bible-field';
 import { ulidSchema } from '@/lib/schemas/id.schemas';
 import { resolveSequenceStyleConfig } from '@/lib/style/style-config';
 import { getGenerationChannel } from '@/lib/realtime';
@@ -50,9 +54,9 @@ const locationBibleFieldsSchema = z.object({
 /**
  * Create a location by hand (no storyboard run) — starts reference-less
  * (`referenceStatus: 'pending'`); the reference image comes later via the
- * existing recast / sheet workflows. `locationId` is minted fresh so the
- * manual row can never collide with a script-extracted one on the
- * `(sequenceId, locationId)` unique index.
+ * existing recast / sheet workflows. `locationId` is a shortened name
+ * (`loc_office`) like script-extracted `loc_001`, uniqued against existing
+ * rows on the `(sequenceId, locationId)` index.
  */
 export const createSequenceLocationFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
@@ -66,7 +70,18 @@ export const createSequenceLocationFn = createServerFn({ method: 'POST' })
   )
   .handler(async ({ context, data }) => {
     const { sequenceId, name, ...bible } = data;
-    const locationId = `loc_${generateId().toLowerCase()}`;
+    const base = identityToken('loc', name);
+    const taken = new Set<string>();
+    let locationId = base;
+    while (
+      await context.scopedDb.sequenceLocations.getByLocationId(
+        sequenceId,
+        locationId
+      )
+    ) {
+      taken.add(locationId);
+      locationId = nextIdentityToken(base, taken);
+    }
     const location = await context.scopedDb.sequenceLocations.create({
       sequenceId,
       locationId,

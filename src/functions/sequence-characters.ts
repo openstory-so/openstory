@@ -8,13 +8,17 @@ import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
 
 import { isValidTextToImageModel, safeTextToImageModel } from '@/lib/ai/models';
-import { generateId } from '@/lib/db/id';
 import type { CharacterBibleUpdate } from '@/lib/db/scoped/characters';
 import { resolveSequenceStyleConfig } from '@/lib/style/style-config';
 import { buildCastingAttributes } from '@/lib/prompts/character-prompt';
 import { shouldReuseTalentSheet } from '@/lib/talent/reuse-talent-sheet';
 import { getGenerationChannel } from '@/lib/realtime';
-import { bibleField, slugifyTag } from '@/lib/schemas/bible-field';
+import {
+  bibleField,
+  identityToken,
+  nextIdentityToken,
+  slugifyTag,
+} from '@/lib/schemas/bible-field';
 import { ulidSchema } from '@/lib/schemas/id.schemas';
 import { triggerWorkflow } from '@/lib/workflow/client';
 import { buildWorkflowLabel } from '@/lib/workflow/labels';
@@ -69,9 +73,9 @@ const characterBibleFieldsSchema = z.object({
 /**
  * Create a character by hand (no storyboard run) — starts sheet-less
  * (`sheetStatus: 'pending'`); the sheet comes later via the existing recast /
- * sheet workflows. `characterId` is minted fresh so the manual row can never
- * collide with (or resurrect) a script-extracted one on the
- * `(sequenceId, characterId)` unique index.
+ * sheet workflows. `characterId` is a shortened name (`char_maya`) in the
+ * same family as script-extracted `char_001` / `char_girl_one`, uniqued
+ * against existing rows on the `(sequenceId, characterId)` index.
  */
 export const createSequenceCharacterFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
@@ -85,7 +89,19 @@ export const createSequenceCharacterFn = createServerFn({ method: 'POST' })
   )
   .handler(async ({ context, data }) => {
     const { sequenceId, name, ...bible } = data;
-    const characterId = `char_${generateId().toLowerCase()}`;
+    const base = identityToken('char', name);
+    const taken = new Set<string>();
+    let characterId = base;
+    // Unique index covers soft-deleted rows too.
+    while (
+      await context.scopedDb.characters.getByCharacterId(
+        sequenceId,
+        characterId
+      )
+    ) {
+      taken.add(characterId);
+      characterId = nextIdentityToken(base, taken);
+    }
     const character = await context.scopedDb.characters.create({
       sequenceId,
       characterId,

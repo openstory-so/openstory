@@ -1,3 +1,4 @@
+import { ActionCost } from '@/components/billing/action-cost';
 import { ImageModelSelector } from '@/components/model/image-model-selector';
 import { UploadMediaButton } from '@/components/scenes/upload-media-button';
 import { SheetComparisonDialog } from '@/components/sheets/sheet-comparison-dialog';
@@ -42,8 +43,10 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { useFalPricing } from '@/hooks/use-fal-pricing';
 import { useSequence } from '@/hooks/use-sequences';
 import type { TextToImageModel } from '@/lib/ai/models';
+import { estimateImageCost } from '@/lib/billing/cost-estimation';
 import { resolveSheetImageModel } from '@/lib/sheets/sheet-image-model';
 import { useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
@@ -52,7 +55,6 @@ import {
   Library,
   Loader2,
   RefreshCw,
-  Sparkles,
   Trash2,
   User,
 } from 'lucide-react';
@@ -301,6 +303,15 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
     )?.model,
     sequenceImageModel: sequence?.imageModel ?? null,
   });
+  const { pricing: falPricing } = useFalPricing();
+  const sheetCostEstimate = useMemo(() => {
+    if (!falPricing) return null;
+    return estimateImageCost(selectedSheetModel, '16:9', 1, {
+      pricing: falPricing,
+      // Talent refs go through the model's edit endpoint (same as the workflow).
+      edit: Boolean(character?.talentId),
+    });
+  }, [falPricing, selectedSheetModel, character?.talentId]);
 
   const handleRegenerateSheet = useCallback(() => {
     regenerateSheet.mutate(
@@ -509,25 +520,28 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
                 Used for this character's sheet. Shot stills still follow the
                 sequence image model.
               </p>
-              <Button
-                onClick={handleRegenerateSheet}
-                disabled={regenerateSheet.isPending}
-              >
-                {regenerateSheet.isPending ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <RefreshCw className="mr-2 h-4 w-4" />
-                )}
-                {regenerateSheet.isPending
-                  ? hasPriorSheet
-                    ? 'Regenerating…'
-                    : 'Generating…'
-                  : hasPriorSheet
-                    ? isSheetGenerating
-                      ? 'Generate again'
-                      : 'Regenerate Sheet'
-                    : 'Generate Sheet'}
-              </Button>
+              <div className="flex w-fit flex-col gap-1">
+                <Button
+                  onClick={handleRegenerateSheet}
+                  disabled={regenerateSheet.isPending}
+                >
+                  {regenerateSheet.isPending ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                  )}
+                  {regenerateSheet.isPending
+                    ? hasPriorSheet
+                      ? 'Regenerating…'
+                      : 'Generating…'
+                    : hasPriorSheet
+                      ? isSheetGenerating
+                        ? 'Generate again'
+                        : 'Regenerate Sheet'
+                      : 'Generate Sheet'}
+                </Button>
+                <ActionCost estimate={sheetCostEstimate} />
+              </div>
 
               <div className="flex flex-wrap gap-2">
                 {!character.talent && (
@@ -545,7 +559,7 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
                   onClick={() => setIsPickerOpen(true)}
                   disabled={isSheetGenerating}
                 >
-                  Recast
+                  {character.talent ? 'Recast' : 'Cast'}
                 </Button>
                 <UploadMediaButton
                   label="Upload Sheet"
@@ -578,34 +592,19 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
                 </Button>
               </div>
 
-              <div className="flex items-center gap-3 rounded-lg bg-muted/50 p-3">
-                {character.talent ? (
-                  <>
-                    <User className="h-5 w-5 text-muted-foreground" />
-                    <div className="flex-1 min-h-0 min-w-0">
-                      <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                        Cast
-                      </p>
-                      <p className="truncate text-sm font-medium">
-                        {character.talent.name}
-                      </p>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="h-5 w-5 text-muted-foreground" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                        Uncast
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        Recast to pick talent, or generate a sheet from the
-                        bible
-                      </p>
-                    </div>
-                  </>
-                )}
-              </div>
+              {character.talent ? (
+                <div className="flex items-center gap-3 rounded-lg bg-muted/50 p-3">
+                  <User className="h-5 w-5 text-muted-foreground" />
+                  <div className="flex-1 min-h-0 min-w-0">
+                    <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                      Cast
+                    </p>
+                    <p className="truncate text-sm font-medium">
+                      {character.talent.name}
+                    </p>
+                  </div>
+                </div>
+              ) : null}
             </div>
 
             <div className="flex flex-col gap-4">
@@ -682,6 +681,7 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
           onConfirm={handleRecastConfirm}
           characterName={character.name}
           talentName={selectedTalent.name}
+          replacingExisting={Boolean(character.talent)}
           affectedShotCount={shotData?.count ?? 0}
           isLoading={recastCharacter.isPending}
         />
