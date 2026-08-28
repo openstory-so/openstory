@@ -146,6 +146,16 @@ export function createAdapter(model: TextModel, keyInfo?: LlmKeyInfo) {
     });
   }
 
+  // An xAI key on the OpenRouter branch is the #1358 mismatch: resolveLlmKey
+  // was asked for a Grok model, then the call used a different one. OpenRouter
+  // answers that with "Missing Authentication header" (its text for any
+  // non-sk-or key). Throw so the next mismatch is a stack, not a 401 puzzle.
+  if (via === 'xai') {
+    throw new Error(
+      `xAI key cannot be sent to OpenRouter (model '${model}'). Resolve the LLM key for the model being called, not a different analysis model.`
+    );
+  }
+
   // During E2E recording, aimock proxies our OpenRouter calls upstream and
   // *buffers* the entire SSE response before relaying — see
   // node_modules/@copilotkit/aimock/dist/recorder.js. That buffering window
