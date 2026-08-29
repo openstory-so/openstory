@@ -433,11 +433,33 @@ describe('RealtimeChannel history cap (#1332)', () => {
     expect(numberField(seqs, 'min')).toBe(mountain - HISTORY_MAX_ROWS + 1);
   });
 
-  it('schedules a prune alarm on first emit', async () => {
-    const { channel, getAlarm } = createHarness();
-    expect(getAlarm()).toBeNull();
-    await emit(channel, { n: 1 });
-    expect(getAlarm()).toBeGreaterThan(Date.now());
+  it('schedules the prune alarm at the oldest row expiry, not hourly (#1388)', async () => {
+    const t0 = 1_700_000_000_000;
+    vi.spyOn(Date, 'now').mockReturnValue(t0);
+    const harness = createHarness();
+    expect(harness.getAlarm()).toBeNull();
+    await emit(harness.channel, { n: 1 });
+    expect(harness.getAlarm()).toBe(t0 + THIRTY_DAYS_MS);
+
+    // A later emit never pulls the alarm earlier; an idle alarm tick with
+    // nothing expired re-arms at the same expiry.
+    vi.spyOn(Date, 'now').mockReturnValue(t0 + 60_000);
+    await emit(harness.channel, { n: 2 });
+    expect(harness.getAlarm()).toBe(t0 + THIRTY_DAYS_MS);
+    await triggerAlarm(harness);
+    expect(eventCount(harness.db)).toBe(2);
+    expect(harness.getAlarm()).toBe(t0 + THIRTY_DAYS_MS);
+  });
+
+  it('does not re-arm the alarm once the table is empty', async () => {
+    const t0 = 1_700_000_000_000;
+    vi.spyOn(Date, 'now').mockReturnValue(t0);
+    const harness = createHarness();
+    await emit(harness.channel, { n: 1 });
+    vi.spyOn(Date, 'now').mockReturnValue(t0 + THIRTY_DAYS_MS + 1);
+    await triggerAlarm(harness);
+    expect(eventCount(harness.db)).toBe(0);
+    expect(harness.getAlarm()).toBeNull();
   });
 
   it('reschedules a catch-up alarm when a cap batch leaves the table over the cap', async () => {
