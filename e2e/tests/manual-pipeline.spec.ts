@@ -263,6 +263,18 @@ testWithUser.describe('Manual pipeline (no storyboard)', () => {
       await expect(
         sceneGroups.nth(1).getByRole('button', { name: /^Opening/ })
       ).toBeVisible();
+      // DB first — reload SSRs the scene list with staleTime 30s, so a
+      // reload before the reorder POST commits freezes Opening in slot 1
+      // for the rest of the assertion (#1384).
+      await expect
+        .poll(
+          async () => {
+            const shots = await getTestSequenceShots(testSequence.id);
+            return shots[1]?.thumbnailUrl ?? null;
+          },
+          { timeout: 20_000 }
+        )
+        .toBe(uploadedStillUrl);
 
       await page.reload();
       await expect(sceneGroups).toHaveCount(2, { timeout: 15_000 });

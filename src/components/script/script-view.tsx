@@ -489,6 +489,10 @@ export const ScriptView: FC<{
     const next = pickShuffleStyle(styles, styleId, Math.random);
     if (next) applySampleForStyle(next, 'sample_script_shuffled');
   };
+  // Signed-in `/` prefetches the *public* catalogue; useStyles then fetches
+  // the team list (a different query key). Until that lands, `styles` is []
+  // and Shuffle would no-op (#1384).
+  const canShuffle = pickShuffleStyle(styles, styleId, () => 0) != null;
   const handleTrySample = (tryStyleId: string) => {
     const style = styles.find((s) => s.id === tryStyleId);
     if (style) applySampleForStyle(style, 'sample_script_tried');
@@ -1550,7 +1554,9 @@ export const ScriptView: FC<{
                   variant="outline"
                   size="sm"
                   className="gap-1.5"
-                  disabled={loading || isEnhancing || isSubmitting}
+                  disabled={
+                    loading || isEnhancing || isSubmitting || !canShuffle
+                  }
                   onClick={requestShuffle}
                 >
                   <Shuffle className="size-3.5" />

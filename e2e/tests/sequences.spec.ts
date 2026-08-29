@@ -236,10 +236,14 @@ test.describe('Sequences', () => {
     );
     await page.reload();
     await waitForScriptEditor(page);
+    // Signed-in `/` hydrates the team style list after the public prefetch;
+    // Action tiles are the proof that Shuffle has a sample to pick (#1384).
     await expect(
-      page.getByRole('button', { name: 'Style category: Film & Cinematic' })
+      page.getByRole('button', { name: 'Select Action style' })
     ).toBeVisible({ timeout: 15_000 });
-    await page.getByRole('button', { name: 'Shuffle' }).click();
+    const shuffle = page.getByRole('button', { name: 'Shuffle' });
+    await expect(shuffle).toBeEnabled({ timeout: 15_000 });
+    await shuffle.click();
     const editor = page.locator('[data-slot="markdown-editor"]');
     await expect(editor).not.toHaveAttribute('data-markdown', '', {
       timeout: 15_000,
