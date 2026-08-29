@@ -23,13 +23,8 @@ export async function waitForSequenceDraftScript(
   await expect
     .poll(() =>
       page.evaluate((key) => {
-        const raw = localStorage.getItem(key);
-        if (!raw) return '';
         try {
-          const parsed: unknown = JSON.parse(raw);
-          if (typeof parsed !== 'object' || parsed === null) return '';
-          if (!('script' in parsed)) return '';
-          return typeof parsed.script === 'string' ? parsed.script : '';
+          return JSON.parse(localStorage.getItem(key) ?? '{}').script ?? '';
         } catch {
           return '';
         }

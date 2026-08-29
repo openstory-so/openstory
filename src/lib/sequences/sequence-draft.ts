@@ -32,54 +32,22 @@ const sequenceDraftSchema = z.object({
 
 export type SequenceDraft = z.infer<typeof sequenceDraftSchema>;
 
-export const EMPTY_SEQUENCE_DRAFT: SequenceDraft = {
-  script: '',
-  styleId: null,
-  sampleStyleId: null,
-  selectedTalentIds: [],
-  selectedLocationIds: [],
-  elementUploads: [],
-  savedAt: 0,
-};
+export const EMPTY_SEQUENCE_DRAFT: SequenceDraft = sequenceDraftSchema.parse(
+  {}
+);
 
 export type PersistableSequenceDraft = Omit<SequenceDraft, 'savedAt'>;
-
-export function persistableComposerDraft(input: {
-  script: string | null | undefined;
-  styleId: string | null;
-  sampleStyleId: string | null;
-  selectedTalentIds: string[];
-  selectedLocationIds: string[];
-  elementUploads: SequenceDraft['elementUploads'];
-}): PersistableSequenceDraft {
-  return {
-    script: input.script ?? '',
-    styleId: input.styleId,
-    sampleStyleId: input.sampleStyleId,
-    selectedTalentIds: input.selectedTalentIds,
-    selectedLocationIds: input.selectedLocationIds,
-    elementUploads: input.elementUploads,
-  };
-}
 
 /**
  * Restore the saved composer after reload / sign-in, unless the URL seed is
  * a Try / Use-this-style navigation to a different style.
  */
-export function shouldRestoreComposerDraft(opts: {
-  isEditing: boolean;
-  loading?: boolean;
-  draft: Pick<SequenceDraft, 'script' | 'styleId'>;
-  initialScript?: string;
-  initialStyleId?: string | null;
-}): boolean {
-  if (opts.isEditing || opts.loading) return false;
-  if (!opts.draft.script.trim()) return false;
-  if (
-    opts.initialStyleId &&
-    opts.draft.styleId &&
-    opts.initialStyleId !== opts.draft.styleId
-  ) {
+export function shouldRestoreComposerDraft(
+  draft: Pick<SequenceDraft, 'script' | 'styleId'>,
+  initialStyleId?: string | null
+): boolean {
+  if (!draft.script.trim()) return false;
+  if (initialStyleId && draft.styleId && initialStyleId !== draft.styleId) {
     return false;
   }
   return true;

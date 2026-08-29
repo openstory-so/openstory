@@ -3,6 +3,12 @@
  * login remount; a Try/Use-this-style seed for a different style still wins.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  SEQUENCE_DRAFT_STORAGE_KEY,
+  readSequenceDraft,
+  shouldRestoreComposerDraft,
+  writeSequenceDraft,
+} from './sequence-draft';
 
 const mem = new Map<string, string>();
 const localStorageMock = {
@@ -29,32 +35,7 @@ describe('sequence composer draft', () => {
     vi.unstubAllGlobals();
   });
 
-  it('persists a Shuffle/Try sample as the script, not as empty', async () => {
-    const { persistableComposerDraft } = await import('./sequence-draft');
-
-    expect(
-      persistableComposerDraft({
-        script: 'A neon diner at dawn.',
-        styleId: 'product-ad',
-        sampleStyleId: 'product-ad',
-        selectedTalentIds: [],
-        selectedLocationIds: [],
-        elementUploads: [],
-      })
-    ).toMatchObject({
-      script: 'A neon diner at dawn.',
-      styleId: 'product-ad',
-      sampleStyleId: 'product-ad',
-    });
-  });
-
-  it('round-trips sampleStyleId and accepts drafts saved before that field', async () => {
-    const {
-      SEQUENCE_DRAFT_STORAGE_KEY,
-      readSequenceDraft,
-      writeSequenceDraft,
-    } = await import('./sequence-draft');
-
+  it('round-trips sampleStyleId and accepts drafts saved before that field', () => {
     writeSequenceDraft({
       script: 'Shuffled brief',
       styleId: 'noir',
@@ -87,10 +68,7 @@ describe('sequence composer draft', () => {
     });
   });
 
-  it('drops an expired draft', async () => {
-    const { readSequenceDraft, writeSequenceDraft } =
-      await import('./sequence-draft');
-
+  it('drops an expired draft', () => {
     writeSequenceDraft({
       script: 'stale',
       styleId: 'auto',
@@ -105,69 +83,36 @@ describe('sequence composer draft', () => {
 });
 
 describe('shouldRestoreComposerDraft', () => {
-  it('restores typed text on a blank composer (login / reload)', async () => {
-    const { shouldRestoreComposerDraft } = await import('./sequence-draft');
-
+  it('restores typed text on a blank composer (login / reload)', () => {
     expect(
       shouldRestoreComposerDraft({
-        isEditing: false,
-        draft: { script: 'INT. KITCHEN - DAY', styleId: 'auto' },
+        script: 'INT. KITCHEN - DAY',
+        styleId: 'auto',
       })
     ).toBe(true);
   });
 
-  it('restores a shuffled sample after login when the URL still has that style', async () => {
-    const { shouldRestoreComposerDraft } = await import('./sequence-draft');
-
+  it('restores a shuffled sample after login when the URL still has that style', () => {
     expect(
-      shouldRestoreComposerDraft({
-        isEditing: false,
-        draft: { script: 'A neon diner at dawn.', styleId: 'product-ad' },
-        initialStyleId: 'product-ad',
-      })
+      shouldRestoreComposerDraft(
+        { script: 'A neon diner at dawn.', styleId: 'product-ad' },
+        'product-ad'
+      )
     ).toBe(true);
   });
 
-  it('restores edits over a Try seed for the same style', async () => {
-    const { shouldRestoreComposerDraft } = await import('./sequence-draft');
-
+  it('does not restore over a Try / Use-this-style seed for a different style', () => {
     expect(
-      shouldRestoreComposerDraft({
-        isEditing: false,
-        draft: { script: 'User rewrite of the sample', styleId: 'product-ad' },
-        initialScript: 'Original sample brief',
-        initialStyleId: 'product-ad',
-      })
-    ).toBe(true);
-  });
-
-  it('does not restore over a Try / Use-this-style seed for a different style', async () => {
-    const { shouldRestoreComposerDraft } = await import('./sequence-draft');
-
-    expect(
-      shouldRestoreComposerDraft({
-        isEditing: false,
-        draft: { script: 'Old diner draft', styleId: 'auto' },
-        initialScript: 'Product ad sample',
-        initialStyleId: 'product-ad',
-      })
+      shouldRestoreComposerDraft(
+        { script: 'Old diner draft', styleId: 'auto' },
+        'product-ad'
+      )
     ).toBe(false);
   });
 
-  it('does not restore an empty draft or while editing', async () => {
-    const { shouldRestoreComposerDraft } = await import('./sequence-draft');
-
-    expect(
-      shouldRestoreComposerDraft({
-        isEditing: false,
-        draft: { script: '   ', styleId: 'auto' },
-      })
-    ).toBe(false);
-    expect(
-      shouldRestoreComposerDraft({
-        isEditing: true,
-        draft: { script: 'INT. KITCHEN - DAY', styleId: 'auto' },
-      })
-    ).toBe(false);
+  it('does not restore an empty draft', () => {
+    expect(shouldRestoreComposerDraft({ script: '   ', styleId: 'auto' })).toBe(
+      false
+    );
   });
 });

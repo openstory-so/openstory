@@ -106,10 +106,7 @@ import {
 } from '@/lib/generation/pending-generate';
 import { estimateSceneCount } from '@/lib/generation/time-estimate';
 import { replaceTokenInText } from '@/lib/sequence-elements/cascade-rename';
-import {
-  persistableComposerDraft,
-  shouldRestoreComposerDraft,
-} from '@/lib/sequences/sequence-draft';
+import { shouldRestoreComposerDraft } from '@/lib/sequences/sequence-draft';
 import {
   pickShuffleStyle,
   sampleScriptForStyle,
@@ -592,15 +589,7 @@ export const ScriptView: FC<{
     if (!draftLoaded) return;
     if (hasSyncedDraftRef.current) return;
     hasSyncedDraftRef.current = true;
-    if (
-      !shouldRestoreComposerDraft({
-        isEditing,
-        loading,
-        draft,
-        initialScript,
-        initialStyleId,
-      })
-    ) {
+    if (!shouldRestoreComposerDraft(draft, initialStyleId)) {
       return;
     }
     skipPersistAfterRestoreRef.current = true;
@@ -622,7 +611,7 @@ export const ScriptView: FC<{
     if (draft.elementUploads.length > 0) {
       setDraftElements(draft.elementUploads);
     }
-  }, [isEditing, loading, draftLoaded, draft, initialScript, initialStyleId]);
+  }, [isEditing, loading, draftLoaded, draft, initialStyleId]);
 
   // While the sample is untouched, the script follows the style: picking a
   // different style (tile, category row, or Shuffle) swaps in that style's
@@ -681,16 +670,14 @@ export const ScriptView: FC<{
       skipPersistAfterRestoreRef.current = false;
       return;
     }
-    saveDraft(
-      persistableComposerDraft({
-        script,
-        styleId,
-        sampleStyleId,
-        selectedTalentIds,
-        selectedLocationIds,
-        elementUploads: draftElements,
-      })
-    );
+    saveDraft({
+      script: script ?? '',
+      styleId,
+      sampleStyleId,
+      selectedTalentIds,
+      selectedLocationIds,
+      elementUploads: draftElements,
+    });
   }, [
     isEditing,
     draftLoaded,
