@@ -27,6 +27,9 @@ describe('nativeGeminiTextModel', () => {
     expect(nativeGeminiTextModel('google/gemini-3-flash-preview')).toBe(
       'gemini-3-flash-preview'
     );
+    expect(nativeGeminiTextModel('google/gemini-3.7-flash')).toBe(
+      'gemini-3.7-flash'
+    );
   });
 
   it('returns undefined for every non-Gemini model', () => {
@@ -66,15 +69,15 @@ describe('geminiTextCostFromUsage', () => {
     expect(at).toBe(800_000);
   });
 
-  it('prices 3 Flash flat — it has no long-context tier', () => {
-    // 1M prompt @ $0.25/1M + 1M completion @ $1.50/1M = $1.75 exactly, even
+  it('prices 3 Flash at the published Standard list — it has no long-context tier', () => {
+    // 1M prompt @ $0.50/1M + 1M completion @ $3.00/1M = $3.50 exactly, even
     // though the prompt is far past where Pro's tier would have doubled it.
     expect(
       geminiTextCostFromUsage(
         usage(1_000_000, 1_000_000),
         'gemini-3-flash-preview'
       )
-    ).toBe(1_750_000);
+    ).toBe(3_500_000);
   });
 
   it('returns undefined when the adapter reported no usage at all', () => {

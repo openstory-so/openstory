@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ReferenceImageDescription } from '@/lib/prompts/reference-image-prompt';
-import {
-  buildGeminiVideoRequest,
-  clampGeminiVideoDuration,
-} from './build-gemini-video-request';
+import { buildGeminiVideoRequest } from './build-gemini-video-request';
 
 const STILL = 'https://example.com/still.jpg';
 
@@ -37,6 +34,12 @@ describe('buildGeminiVideoRequest', () => {
       size: '16:9',
       modelOptions: {
         generation_config: { video_config: { task: 'image_to_video' } },
+        response_format: {
+          type: 'video',
+          delivery: 'uri',
+          duration: '5s',
+          aspect_ratio: '16:9',
+        },
       },
     });
   });
@@ -84,6 +87,12 @@ describe('buildGeminiVideoRequest', () => {
     expect(input.size).toBe('9:16');
     expect(input.modelOptions).toEqual({
       generation_config: { video_config: { task: 'reference_to_video' } },
+      response_format: {
+        type: 'video',
+        delivery: 'uri',
+        duration: '6s',
+        aspect_ratio: '9:16',
+      },
     });
   });
 
@@ -98,21 +107,30 @@ describe('buildGeminiVideoRequest', () => {
     });
   });
 
-  it('omits size for aspect ratios Omni Flash cannot output', () => {
-    const { input } = buildGeminiVideoRequest({
-      prompt: 'A person walking',
-      imageUrl: STILL,
-      aspectRatio: '1:1',
-    });
-    expect(input.size).toBeUndefined();
+  it('rejects aspect ratios Omni Flash cannot output', () => {
+    expect(() =>
+      buildGeminiVideoRequest({
+        prompt: 'A person walking',
+        imageUrl: STILL,
+        aspectRatio: '1:1',
+      })
+    ).toThrow(/only outputs 16:9 or 9:16/);
   });
-});
 
-describe('clampGeminiVideoDuration', () => {
-  it('clamps into the 3–10s range and defaults to 8', () => {
-    expect(clampGeminiVideoDuration(undefined)).toBe(8);
-    expect(clampGeminiVideoDuration(1)).toBe(3);
-    expect(clampGeminiVideoDuration(15)).toBe(10);
-    expect(clampGeminiVideoDuration(6.5)).toBe(6.5);
+  it('snaps duration onto the Omni 3–10s grid', () => {
+    expect(
+      buildGeminiVideoRequest({
+        prompt: 'A person walking',
+        imageUrl: STILL,
+        duration: 1,
+      }).input.duration
+    ).toBe(3);
+    expect(
+      buildGeminiVideoRequest({
+        prompt: 'A person walking',
+        imageUrl: STILL,
+        duration: 15,
+      }).input.modelOptions.response_format.duration
+    ).toBe('10s');
   });
 });

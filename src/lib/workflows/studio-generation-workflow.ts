@@ -40,6 +40,7 @@ import {
 } from '@/lib/studio/studio-video-generation';
 import type { StudioCreateInput } from '@/lib/studio/schema';
 import { tagStudioReferences } from '@/lib/studio/text-to-video';
+import { videoUrlFitsWorkflowCheckpoint } from '@/lib/motion/video-storage';
 import { uploadStudioImage, uploadStudioVideo } from '@/lib/studio/upload';
 import { OpenStoryWorkflowEntrypoint } from '@/lib/workflow/base-workflow';
 import type { StudioGenerationWorkflowInput } from '@/lib/workflow/types';
@@ -291,9 +292,25 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
 
               if (pollResult.status === 'completed') {
                 if (pollResult.url) {
+                  let url = pollResult.url;
+                  if (!videoUrlFitsWorkflowCheckpoint(url)) {
+                    const googleKey =
+                      job.via === 'google'
+                        ? await scopedDb.credentials.resolveOptionalKey(
+                            'google'
+                          )
+                        : undefined;
+                    const stored = await uploadStudioVideo({
+                      videoUrl: url,
+                      teamId,
+                      assetId,
+                      googleApiKey: googleKey?.key,
+                    });
+                    url = stored.url;
+                  }
                   return {
                     kind: 'completed',
-                    url: pollResult.url,
+                    url,
                     usage: pollResult.usage,
                   };
                 }
@@ -399,10 +416,15 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
     }
 
     const videoUpload = await step.do('upload-video', async () => {
+      const googleKey =
+        job.via === 'google'
+          ? await scopedDb.credentials.resolveOptionalKey('google')
+          : undefined;
       return uploadStudioVideo({
         videoUrl,
         teamId,
         assetId,
+        googleApiKey: googleKey?.key,
       });
     });
 

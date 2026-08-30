@@ -48,6 +48,7 @@ vi.doMock('@/lib/motion/video-storage', () => ({
     url: '/r2/videos/a.mp4',
     path: 'a.mp4',
   }),
+  videoUrlFitsWorkflowCheckpoint: () => true,
 }));
 vi.doMock('@/lib/compliance/provenance', () => ({
   recordProvenance: vi.fn(async () => {}),

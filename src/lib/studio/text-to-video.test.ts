@@ -192,6 +192,9 @@ describe('reference tags', () => {
     expect(tagStudioReferences('Image2 at dusk', 'veo3_1')).toBe(
       'reference image 2 at dusk'
     );
+    expect(
+      tagStudioReferences('Image1 meets Image2', 'gemini_omni_flash')
+    ).toBe('<IMAGE_REF_0> meets <IMAGE_REF_1>');
   });
 
   it('drops the removed token and shifts later ones down', () => {

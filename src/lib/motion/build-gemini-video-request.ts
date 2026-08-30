@@ -17,6 +17,7 @@ import {
 import type { AspectRatio } from '@/lib/constants/aspect-ratios';
 import type { ReferenceImageDescription } from '@/lib/prompts/reference-image-prompt';
 import { buildReferenceVideoPrompt } from './build-reference-video-prompt';
+import { snapDuration } from './snap-duration';
 
 /**
  * Omni Flash reference-to-video: still first, then up to 6 library refs
@@ -42,20 +43,73 @@ type GeminiVideoPromptPart =
     };
 
 /** Omni Flash outputs only these two shapes (720p). */
-type GeminiVideoSize = '16:9' | '9:16';
+export type GeminiVideoSize = '16:9' | '9:16';
+
+export type GeminiVideoTask =
+  | 'image_to_video'
+  | 'reference_to_video'
+  | 'text_to_video';
+
+/**
+ * Ask the Interactions API to park the MP4 on the Files API. Inline
+ * base64 (`data:`) is the default and a 720p clip misses Cloudflare
+ * Workflows' 1 MiB `step.do` cap.
+ *
+ * The TanStack Gemini adapter overwrites `response_format` whenever
+ * `generateVideo` is passed top-level `duration` / `size`, so native
+ * submit must send duration and aspect HERE and omit those top-level
+ * fields.
+ */
+const GEMINI_VIDEO_URI_DELIVERY = 'uri' as const;
+
+function geminiVideoResponseFormat(
+  durationSeconds: number,
+  size?: GeminiVideoSize
+): {
+  type: 'video';
+  delivery: typeof GEMINI_VIDEO_URI_DELIVERY;
+  duration: string;
+  aspect_ratio?: GeminiVideoSize;
+} {
+  return {
+    type: 'video',
+    delivery: GEMINI_VIDEO_URI_DELIVERY,
+    duration: `${durationSeconds}s`,
+    ...(size && { aspect_ratio: size }),
+  };
+}
+
+type GeminiVideoModelOptions = {
+  generation_config: {
+    video_config: { task: GeminiVideoTask };
+  };
+  /**
+   * `delivery: "uri"` is load-bearing: the TanStack adapter overwrites
+   * `response_format` whenever generateVideo is passed top-level `duration`
+   * / `size`, so callers must send duration/aspect HERE and omit those
+   * top-level fields. Inline (`data:`) delivery blows the Workflows 1 MiB
+   * step-result cap.
+   */
+  response_format: ReturnType<typeof geminiVideoResponseFormat>;
+};
 
 type GeminiVideoRequestInput = {
   prompt: GeminiVideoPromptPart[];
   duration: number;
   size?: GeminiVideoSize;
-  /** Pins the Interactions task so image-to-video vs reference-to-video is
-   *  never left to the model's inference. */
-  modelOptions: {
-    generation_config: {
-      video_config: { task: 'image_to_video' | 'reference_to_video' };
-    };
-  };
+  modelOptions: GeminiVideoModelOptions;
 };
+
+export function geminiNativeModelOptions(
+  task: GeminiVideoTask,
+  durationSeconds: number,
+  size?: GeminiVideoSize
+): GeminiVideoModelOptions {
+  return {
+    generation_config: { video_config: { task } },
+    response_format: geminiVideoResponseFormat(durationSeconds, size),
+  };
+}
 
 /**
  * An image URL (or data URI) as a prompt image part. Interactions content
@@ -84,20 +138,14 @@ function geminiVideoPromptParts(
   return [...imageUrls.map(geminiImagePart), { type: 'text', content: text }];
 }
 
-function geminiVideoSize(
+export function geminiVideoSize(
   aspectRatio: AspectRatio | undefined
 ): GeminiVideoSize | undefined {
-  // Omni Flash outputs 16:9 or 9:16 only (720p); anything else falls back to
-  // the API default (16:9) by omitting the size.
-  return aspectRatio === '16:9' || aspectRatio === '9:16'
-    ? aspectRatio
-    : undefined;
-}
-
-/** Omni Flash accepts a continuous 3–10s range (fractional included). */
-export function clampGeminiVideoDuration(seconds: number | undefined): number {
-  if (seconds === undefined || !Number.isFinite(seconds)) return 8;
-  return Math.min(10, Math.max(3, seconds));
+  if (aspectRatio === undefined) return undefined;
+  if (aspectRatio === '16:9' || aspectRatio === '9:16') return aspectRatio;
+  throw new Error(
+    `Gemini Omni Flash only outputs 16:9 or 9:16 (got ${aspectRatio})`
+  );
 }
 
 export function buildGeminiVideoRequest(options: {
@@ -116,7 +164,7 @@ export function buildGeminiVideoRequest(options: {
   const attached = (options.referenceImages ?? []).filter(
     (ref) => ref.referenceImageUrl
   );
-  const duration = clampGeminiVideoDuration(options.duration);
+  const duration = snapDuration(options.duration, modelKey);
   const size = geminiVideoSize(options.aspectRatio);
 
   if (attached.length === 0) {
@@ -130,9 +178,11 @@ export function buildGeminiVideoRequest(options: {
         prompt: geminiVideoPromptParts(text, [options.imageUrl]),
         duration,
         ...(size && { size }),
-        modelOptions: {
-          generation_config: { video_config: { task: 'image_to_video' } },
-        },
+        modelOptions: geminiNativeModelOptions(
+          'image_to_video',
+          duration,
+          size
+        ),
       },
     };
   }
@@ -150,9 +200,11 @@ export function buildGeminiVideoRequest(options: {
       prompt: geminiVideoPromptParts(prompt, imageUrls),
       duration,
       ...(size && { size }),
-      modelOptions: {
-        generation_config: { video_config: { task: 'reference_to_video' } },
-      },
+      modelOptions: geminiNativeModelOptions(
+        'reference_to_video',
+        duration,
+        size
+      ),
     },
   };
 }

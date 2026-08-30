@@ -164,11 +164,97 @@ describe('submitStudioVideoJob', () => {
     expect(mockGenerateVideo).toHaveBeenCalledWith(
       expect.objectContaining({
         prompt: 'A red fox turns toward camera',
-        duration: 5,
-        size: '16:9',
         modelOptions: {
           generation_config: { video_config: { task: 'text_to_video' } },
+          response_format: {
+            type: 'video',
+            delivery: 'uri',
+            duration: '5s',
+            aspect_ratio: '16:9',
+          },
         },
+      })
+    );
+    expect(mockGenerateVideo.mock.calls.at(-1)?.[0].duration).toBeUndefined();
+    expect(mockGenerateVideo.mock.calls.at(-1)?.[0].size).toBeUndefined();
+  });
+
+  it('sends studio frames to Omni Flash as image_to_video with the still', async () => {
+    testEnv.GEMINI_API_KEY = 'platform-google';
+    mockGenerateVideo.mockResolvedValue({
+      jobId: 'google-frames',
+      model: 'gemini-omni-flash-preview',
+    });
+
+    const result = await submitStudioVideoJob({
+      prompt: 'Camera pushes in',
+      model: 'gemini_omni_flash',
+      mode: 'frames',
+      startImageUrl: 'https://example.com/start.jpg',
+      duration: 5,
+      aspectRatio: '16:9',
+    });
+
+    expect(result.via).toBe('google');
+    expect(mockGenerateVideo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: [
+          {
+            type: 'image',
+            source: { type: 'url', value: 'https://example.com/start.jpg' },
+          },
+          { type: 'text', content: expect.any(String) },
+        ],
+        modelOptions: expect.objectContaining({
+          generation_config: {
+            video_config: { task: 'image_to_video' },
+          },
+        }),
+      })
+    );
+  });
+
+  it('tags studio references as <IMAGE_REF_n> and pins reference_to_video', async () => {
+    testEnv.GEMINI_API_KEY = 'platform-google';
+    mockGenerateVideo.mockResolvedValue({
+      jobId: 'google-refs',
+      model: 'gemini-omni-flash-preview',
+    });
+
+    await submitStudioVideoJob({
+      prompt: 'Image1 walks past Image2',
+      model: 'gemini_omni_flash',
+      mode: 'reference',
+      referenceImages: [
+        'https://example.com/a.jpg',
+        'https://example.com/b.jpg',
+      ],
+      duration: 5,
+    });
+
+    expect(mockGenerateVideo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: [
+          {
+            type: 'image',
+            source: { type: 'url', value: 'https://example.com/a.jpg' },
+          },
+          {
+            type: 'image',
+            source: { type: 'url', value: 'https://example.com/b.jpg' },
+          },
+          {
+            type: 'text',
+            content: expect.stringMatching(
+              /<IMAGE_REF_0> walks past <IMAGE_REF_1>/
+            ),
+          },
+        ],
+        modelOptions: expect.objectContaining({
+          generation_config: {
+            video_config: { task: 'reference_to_video' },
+          },
+        }),
       })
     );
   });
@@ -374,6 +460,25 @@ describe('pollStudioVideoJob', () => {
     expect(mockCreateBytePlusVideo).toHaveBeenCalled();
     expect(mockFalVideo).not.toHaveBeenCalled();
   });
+
+  it('polls Google when the job was stamped google', async () => {
+    testEnv.GEMINI_API_KEY = 'platform-google';
+    mockGetVideoJobStatus.mockResolvedValue({
+      jobId: 'google-job',
+      status: 'completed',
+      url: 'data:video/mp4;base64,AAAA',
+    });
+
+    const result = await pollStudioVideoJob({
+      jobId: 'google-job',
+      via: 'google',
+      endpointId: 'gemini-omni-flash-preview',
+    });
+
+    expect(result.status).toBe('completed');
+    expect(mockCreateGeminiVideo).toHaveBeenCalled();
+    expect(mockFalVideo).not.toHaveBeenCalled();
+  });
 });
 
 describe('studioVideoCostFromUsage', () => {
@@ -389,5 +494,19 @@ describe('studioVideoCostFromUsage', () => {
     expect(billing.unitsBilled).toBe(108);
     expect(billing.recordFalUsage).toBe(false);
     expect(billing.endpointId).toBe('dreamina-seedance-2-5-260628');
+  });
+
+  it('prices Google video-output tokens and skips fal usage sampling', async () => {
+    const billing = await studioVideoCostFromUsage(
+      {
+        via: 'google',
+        endpointId: 'gemini-omni-flash-preview',
+        modelKey: 'gemini_omni_flash',
+      },
+      { promptTokens: 120, completionTokens: 28_960, totalTokens: 29_080 }
+    );
+    expect(billing.cost).toBe(506_800);
+    expect(billing.recordFalUsage).toBe(false);
+    expect(billing.endpointId).toBe('gemini-omni-flash-preview');
   });
 });

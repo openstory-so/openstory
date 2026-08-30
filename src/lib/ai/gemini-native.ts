@@ -71,10 +71,10 @@ const TEXT_RATES: Record<
     highTierFrom: 200_000,
   },
   'gemini-3-flash-preview': {
-    input: 0.25,
-    output: 1.5,
-    inputHigh: 0.25,
-    outputHigh: 1.5,
+    input: 0.5,
+    output: 3,
+    inputHigh: 0.5,
+    outputHigh: 3,
     highTierFrom: Number.POSITIVE_INFINITY,
   },
   // Introductory rate; Google lists $1.50/$7.50 from 2027-01-01. The

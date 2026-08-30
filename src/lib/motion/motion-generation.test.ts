@@ -577,12 +577,19 @@ describe('Motion Service', () => {
             },
             { type: 'text', content: 'A person walking' },
           ],
-          duration: 5,
           modelOptions: {
             generation_config: { video_config: { task: 'image_to_video' } },
+            response_format: {
+              type: 'video',
+              delivery: 'uri',
+              duration: '5s',
+            },
           },
         })
       );
+      // Top-level duration/size would make the adapter drop delivery:uri.
+      expect(mockGenerateVideo.mock.calls.at(-1)?.[0].duration).toBeUndefined();
+      expect(mockGenerateVideo.mock.calls.at(-1)?.[0].size).toBeUndefined();
     });
 
     it('tags library refs as <IMAGE_REF_n> and pins reference_to_video', async () => {
@@ -630,6 +637,11 @@ describe('Motion Service', () => {
           ],
           modelOptions: {
             generation_config: { video_config: { task: 'reference_to_video' } },
+            response_format: {
+              type: 'video',
+              delivery: 'uri',
+              duration: '5s',
+            },
           },
         })
       );

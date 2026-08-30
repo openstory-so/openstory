@@ -314,6 +314,14 @@ describe('native xAI routing (issue #1167)', () => {
 describe('native Google routing', () => {
   const GEMINI_MODEL = 'google/gemini-3.1-pro-preview';
 
+  it('maps gemini-3.7-flash onto the name Google serves', () => {
+    createAdapter('google/gemini-3.7-flash', {
+      key: 'google-team',
+      via: 'google',
+    });
+    expect(geminiCalls.at(-1)?.model).toBe('gemini-3.7-flash');
+  });
+
   it('sends a Gemini model to Google under its native model name', () => {
     createAdapter(GEMINI_MODEL, { key: 'google-team', via: 'google' });
 
