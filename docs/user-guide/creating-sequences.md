@@ -78,19 +78,22 @@ When multiple models are selected, the footer shows "N sequences will be created
 
 The AI model for generating scene images. You can select **multiple image models** to generate variant images across different providers. Available models include:
 
-| Model                      | Vendor            | Notes                                                |
-| -------------------------- | ----------------- | ---------------------------------------------------- |
-| Nano Banana 2              | Google            | Fast generation and editing (default)                |
-| Nano Banana Pro            | Google            | Enhanced realism and typography                      |
-| Grok Imagine Image 2.0     | SpaceXAI          | Newest Imagine image model, 1K/2K, edit up to 3 refs |
-| Grok Imagine Image Quality | SpaceXAI          | Quality Mode — higher fidelity, stronger text        |
-| FLUX.2 Max                 | Black Forest Labs | Exceptional realism and consistency                  |
-| Phota                      | Phota             | Character consistency via profiles                   |
-| Hunyuan Image v3           | Tencent           | Open weights with strong composition                 |
-| FLUX.2 Dev                 | Black Forest Labs | 32B open weights                                     |
-| Qwen Image 2 Pro           | Alibaba           | Apache 2.0, native 2K, text rendering                |
-| HiDream I1                 | HiDream           | MIT licensed, 17B parameters                         |
-| Seedream 5.0 Pro           | ByteDance         | Flagship generation and editing                      |
+| Model                      | Vendor            | Notes                                                     |
+| -------------------------- | ----------------- | --------------------------------------------------------- |
+| Nano Banana 2              | Google            | Fast generation and editing (default)                     |
+| Nano Banana Pro            | Google            | Enhanced realism and typography                           |
+| Nano Banana 2 Lite         | Google            | Fastest Google tier — ~4s, references, fixed 1K           |
+| Grok Imagine Image 2.0     | SpaceXAI          | Newest Imagine image model, 1K/2K, edit up to 3 refs      |
+| Grok Imagine Image Quality | SpaceXAI          | Quality Mode — higher fidelity, stronger text             |
+| FLUX.2 Max                 | Black Forest Labs | Exceptional realism and consistency                       |
+| Phota                      | Phota             | Character consistency via profiles                        |
+| Hunyuan Image v3           | Tencent           | Open weights with strong composition                      |
+| FLUX.2 Dev                 | Black Forest Labs | 32B open weights                                          |
+| Qwen Image 2 Pro           | Alibaba           | Apache 2.0, native 2K, text rendering                     |
+| HiDream I1                 | HiDream           | MIT licensed, 17B parameters                              |
+| Seedream 5.0 Pro           | ByteDance         | Flagship generation and editing                           |
+| FLUX.2 Flash               | Black Forest Labs | Cheapest distilled FLUX.2 — sub-second, edit up to 4 refs |
+| FLUX.2 Turbo               | Black Forest Labs | Distilled FLUX.2 — ~2s, edit up to 4 refs                 |
 
 ### Motion Model
 

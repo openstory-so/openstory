@@ -96,10 +96,27 @@ describe('studioCreateInputSchema', () => {
     const result = studioCreateInputSchema.safeParse({
       activity: 'image',
       prompt: 'a red fox',
-      imageModel: 'flux_2_turbo',
+      imageModel: 'krea_2_turbo',
       aspectRatio: '16:9',
     });
     expect(result.success).toBe(false);
+  });
+
+  it('accepts unhidden turbo image models that take references', () => {
+    for (const imageModel of [
+      'nano_banana_2_lite',
+      'flux_2_flash',
+      'flux_2_turbo',
+    ] as const) {
+      const parsed = studioCreateInputSchema.parse({
+        activity: 'image',
+        prompt: 'a red fox',
+        imageModel,
+        aspectRatio: '16:9',
+        referenceImages: ['https://example.com/ref.png'],
+      });
+      expect(parsed).toMatchObject({ activity: 'image', imageModel });
+    }
   });
 
   it('rejects a catalog-only endpoint that is not a sequence model', () => {
