@@ -79,8 +79,16 @@ testWithUser.describe('Manual pipeline (no storyboard)', () => {
       });
 
       // ---- 1. Add a scene (creates its first shot) ---------------------
-      await page.getByRole('button', { name: 'Add scene' }).click();
       const sceneGroups = page.locator('[data-testid="scene-group"]');
+      await page.getByRole('button', { name: 'Add scene' }).click();
+      // DB first — the rail used to stay on "No scenes yet" until list
+      // queries settled, which flakes under parallel D1 load (#1108/#1384).
+      await expect
+        .poll(
+          async () => (await getTestSequenceShots(testSequence.id)).length,
+          { timeout: 20_000 }
+        )
+        .toBeGreaterThan(0);
       await expect(sceneGroups).toHaveCount(1, { timeout: 15_000 });
       const shotCards = page.locator('[data-testid="scene-list-item"]');
       await expect(shotCards).toHaveCount(1, { timeout: 15_000 });
@@ -255,6 +263,18 @@ testWithUser.describe('Manual pipeline (no storyboard)', () => {
       await expect(
         sceneGroups.nth(1).getByRole('button', { name: /^Opening/ })
       ).toBeVisible();
+      // DB first — reload SSRs the scene list with staleTime 30s, so a
+      // reload before the reorder POST commits freezes Opening in slot 1
+      // for the rest of the assertion (#1384).
+      await expect
+        .poll(
+          async () => {
+            const shots = await getTestSequenceShots(testSequence.id);
+            return shots[1]?.thumbnailUrl ?? null;
+          },
+          { timeout: 20_000 }
+        )
+        .toBe(uploadedStillUrl);
 
       await page.reload();
       await expect(sceneGroups).toHaveCount(2, { timeout: 15_000 });

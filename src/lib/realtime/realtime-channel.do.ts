@@ -26,7 +26,7 @@ import { getLogger } from '@/lib/observability/logger';
  * - **History replay**: events are persisted in the DO's own SQLite storage so a
  *   page refresh mid-generation can replay progress (`/history`). `/emit` deletes
  *   a PK prefix of at most `PRUNE_BATCH_ROWS` so one-row emits stay at the cap.
- *   A periodic alarm TTL-deletes up to `PRUNE_BATCH_ROWS` expired rows and the
+ *   An alarm set for the oldest row's expiry TTL-deletes up to `PRUNE_BATCH_ROWS` expired rows and the
  *   same PK-prefix cap batch; leftovers reschedule in `PRUNE_CATCHUP_MS`.
  *   Every statement is a bounded PK-range op: `ts` is monotonic with `seq`, so
  *   expired rows are a PK prefix and no index is needed (#1332).
@@ -49,8 +49,6 @@ export const HISTORY_MAX_ROWS = 2000;
  * subscriber rather than grow it.
  */
 export const SSE_MAX_BUFFERED_CHUNKS = 32;
-/** How often the prune alarm runs while a channel still has stored events. */
-const PRUNE_INTERVAL_MS = 60 * 60 * 1000;
 /** Catch-up cadence when a leftover mountain still exceeds the cap / TTL. */
 export const PRUNE_CATCHUP_MS = 5_000;
 /** Rows deleted per prune statement so one storage op cannot exceed the timeout. */
@@ -302,10 +300,14 @@ export class RealtimeChannel extends DurableObject {
     );
   }
 
-  private stillOverCap(newestSeq: number): boolean {
-    const min = this.ctx.storage.sql
+  private minSeq(): number | null {
+    return this.ctx.storage.sql
       .exec<{ m: number | null }>('SELECT MIN(seq) AS m FROM events')
       .one().m;
+  }
+
+  private stillOverCap(newestSeq: number): boolean {
+    const min = this.minSeq();
     return min !== null && min <= this.capCutoff(newestSeq);
   }
 
@@ -319,17 +321,31 @@ export class RealtimeChannel extends DurableObject {
     );
   }
 
-  private hasExpired(cutoffTs: number): boolean {
-    const oldest = this.ctx.storage.sql
+  private oldestTs(): number | undefined {
+    return this.ctx.storage.sql
       .exec<{ ts: number }>('SELECT ts FROM events ORDER BY seq LIMIT 1')
-      .toArray()[0];
-    return oldest !== undefined && oldest.ts < cutoffTs;
+      .toArray()[0]?.ts;
   }
 
+  /**
+   * Next prune: `PRUNE_CATCHUP_MS` while a leftover still exceeds the cap /
+   * TTL, otherwise when the oldest row expires. Not hourly for 30 days on
+   * every channel that ever emitted (#1388) — those idle alarms were most of
+   * the DO storage-timeout noise. Nothing stored → nothing to schedule.
+   */
   private async schedulePrune(asap: boolean): Promise<void> {
     const existing = await this.ctx.storage.getAlarm();
-    const when = Date.now() + (asap ? PRUNE_CATCHUP_MS : PRUNE_INTERVAL_MS);
-    if (existing === null || (asap && existing > when)) {
+    // An existing alarm is already at or before the oldest row's expiry.
+    if (existing !== null && !asap) return;
+    let when: number;
+    if (asap) {
+      when = Date.now() + PRUNE_CATCHUP_MS;
+    } else {
+      const oldest = this.oldestTs();
+      if (oldest === undefined) return;
+      when = oldest + HISTORY_EXPIRE_SECS * 1000;
+    }
+    if (existing === null || existing > when) {
       await this.ctx.storage.setAlarm(when);
     }
   }
@@ -345,7 +361,19 @@ export class RealtimeChannel extends DurableObject {
 
     this.pruneCapBatch(newest);
 
-    const more = this.hasExpired(cutoffTs) || this.stillOverCap(newest);
-    await this.schedulePrune(more);
+    const oldest = this.oldestTs();
+    const min = this.minSeq();
+    const expired = oldest !== undefined && oldest < cutoffTs;
+    const overCap = min !== null && min <= this.capCutoff(newest);
+    // Only prefix deletes happen, so MAX - MIN + 1 is the row count without a
+    // COUNT(*) scan. `databaseSize` sizes the objects that hit the storage
+    // timeout (#1388).
+    logger.info('prune', {
+      rows: min === null ? 0 : newest - min + 1,
+      bytes: this.ctx.storage.sql.databaseSize,
+      expired,
+      overCap,
+    });
+    await this.schedulePrune(expired || overCap);
   }
 }

@@ -23,6 +23,7 @@ const mockReserveRunCredits = vi.fn();
 const mockTriggerWorkflow = vi.fn();
 const mockRequireGenerationAllowed = vi.fn();
 const mockGetEffectiveFalPricing = vi.fn();
+const mockCaptureProductEvent = vi.fn();
 
 vi.doMock('#db-client', () => ({ getDb: () => db }));
 vi.doMock('@/lib/billing/preflight', async (importOriginal) => {
@@ -45,6 +46,9 @@ vi.doMock('@/lib/workflow/client', () => ({
 }));
 vi.doMock('@/lib/compliance/generation-gate', () => ({
   requireGenerationAllowed: mockRequireGenerationAllowed,
+}));
+vi.doMock('@/lib/observability/product-events', () => ({
+  captureProductEvent: mockCaptureProductEvent,
 }));
 vi.doMock('@/lib/ai/fal-pricing-live', () => ({
   getEffectiveFalPricing: mockGetEffectiveFalPricing,
@@ -228,6 +232,20 @@ describe('createStudioAssets', () => {
         deduplicationId: expect.stringMatching(/^studio-/),
       })
     );
+
+    expect(mockCaptureProductEvent).toHaveBeenCalledTimes(1);
+    expect(mockCaptureProductEvent).toHaveBeenCalledWith({
+      distinctId: USER_ID,
+      event: 'studio_generation_started',
+      properties: expect.objectContaining({
+        team_id: TEAM_ID,
+        activity: 'image',
+        model: 'gpt_image_2',
+        count: 2,
+        asset_ids: result.assets.map((a) => a.id),
+        reference_image_count: 0,
+      }),
+    });
   });
 
   it('zeros earlier holds if a later reserve fails, leaving no row', async () => {

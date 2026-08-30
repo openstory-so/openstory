@@ -106,6 +106,7 @@ import {
 } from '@/lib/generation/pending-generate';
 import { estimateSceneCount } from '@/lib/generation/time-estimate';
 import { replaceTokenInText } from '@/lib/sequence-elements/cascade-rename';
+import { shouldRestoreComposerDraft } from '@/lib/sequences/sequence-draft';
 import {
   pickShuffleStyle,
   sampleScriptForStyle,
@@ -263,11 +264,11 @@ export const ScriptView: FC<{
 
   // Sample state (#1187): non-null while the editor shows an untouched sample
   // script for that style. While set, the script follows style picks (swapping
-  // to the new style's sample), Shuffle shows under the editor, Generate skips
-  // the enhance nudge, and the draft persists as empty (a pristine sample is
-  // not the user's work). Any user edit or enhance clears it. Only an explicit
-  // seed (`?style=` Try, Shuffle, style-detail Try) enters this state now —
-  // the bare composer does not auto-seed (#1255).
+  // to the new style's sample), Generate skips the enhance nudge, and the
+  // draft stores the sample so login/reload restore it (#1384). Any user edit
+  // or enhance clears it. Only an explicit seed (`?style=` Try, Shuffle,
+  // style-detail Try) enters this state now — the bare composer does not
+  // auto-seed (#1255).
   const [sampleStyleId, setSampleStyleId] = useState<string | null>(
     initialScriptIsSample && initialScript && initialStyleId
       ? initialStyleId
@@ -488,6 +489,10 @@ export const ScriptView: FC<{
     const next = pickShuffleStyle(styles, styleId, Math.random);
     if (next) applySampleForStyle(next, 'sample_script_shuffled');
   };
+  // Signed-in `/` prefetches the *public* catalogue; useStyles then fetches
+  // the team list (a different query key). Until that lands, `styles` is []
+  // and Shuffle would no-op (#1384).
+  const canShuffle = pickShuffleStyle(styles, styleId, () => 0) != null;
   const handleTrySample = (tryStyleId: string) => {
     const style = styles.find((s) => s.id === tryStyleId);
     if (style) applySampleForStyle(style, 'sample_script_tried');
@@ -574,40 +579,43 @@ export const ScriptView: FC<{
   const recommendedVideoModel = selectedStyle?.recommendedVideoModel ?? null;
   const recommendedAspectRatio = selectedStyle?.defaultAspectRatio ?? null;
 
-  // Sync draft state when creating new sequences (not editing). An explicit
-  // seed — a sample-style brief (`initialScript`) or just a chosen style
-  // (`initialStyleId`, the "Use this style" CTA) — is the user's just-now
-  // intent, so it wins; skip restoring the older saved draft over it.
+  // Sync draft state when creating new sequences (not editing). A Try /
+  // Use-this-style seed for a *different* style is just-now intent and wins;
+  // the same-style leftover `?style=` after login/reload restores the draft
+  // (typed text or Shuffle/Try sample) (#1384).
   const hasSyncedDraftRef = React.useRef(false);
+  const skipPersistAfterRestoreRef = React.useRef(false);
   useEffect(() => {
-    if (isEditing || loading || initialScript || initialStyleId) {
+    if (isEditing || loading) {
       hasSyncedDraftRef.current = false;
       return;
     }
     if (!draftLoaded) return;
-    if (!hasSyncedDraftRef.current && draft.script) {
-      setContentState((s) => ({
-        script: draft.script,
-        styleId: draft.styleId || s.styleId,
-      }));
-      // Restored text is the user's own work, not a sample.
-      setSampleStyleId(null);
-      setSelections((s) => ({
-        talentIds:
-          draft.selectedTalentIds.length > 0
-            ? draft.selectedTalentIds
-            : s.talentIds,
-        locationIds:
-          draft.selectedLocationIds.length > 0
-            ? draft.selectedLocationIds
-            : s.locationIds,
-      }));
-      if (draft.elementUploads.length > 0) {
-        setDraftElements(draft.elementUploads);
-      }
-      hasSyncedDraftRef.current = true;
+    if (hasSyncedDraftRef.current) return;
+    hasSyncedDraftRef.current = true;
+    if (!shouldRestoreComposerDraft(draft, initialStyleId)) {
+      return;
     }
-  }, [isEditing, loading, draftLoaded, draft, initialScript, initialStyleId]);
+    skipPersistAfterRestoreRef.current = true;
+    setContentState((s) => ({
+      script: draft.script,
+      styleId: draft.styleId || s.styleId,
+    }));
+    setSampleStyleId(draft.sampleStyleId);
+    setSelections((s) => ({
+      talentIds:
+        draft.selectedTalentIds.length > 0
+          ? draft.selectedTalentIds
+          : s.talentIds,
+      locationIds:
+        draft.selectedLocationIds.length > 0
+          ? draft.selectedLocationIds
+          : s.locationIds,
+    }));
+    if (draft.elementUploads.length > 0) {
+      setDraftElements(draft.elementUploads);
+    }
+  }, [isEditing, loading, draftLoaded, draft, initialStyleId]);
 
   // While the sample is untouched, the script follows the style: picking a
   // different style (tile, category row, or Shuffle) swaps in that style's
@@ -657,20 +665,23 @@ export const ScriptView: FC<{
     }
   }, [isEditing, settingsLoaded, genSettings, saveSettings]);
 
-  // Persist draft to localStorage when creating new sequences. An untouched
-  // sample (Shuffle / Try) is not the user's work — persist it as empty so a
-  // reload or sign-in restores the empty composer (placeholder + Automatic)
-  // instead of treating the sample as a draft.
+  // Persist draft to localStorage when creating new sequences. Shuffle/Try
+  // samples are user intent — store the text and sampleStyleId so login and
+  // reload restore the same composer (#1384).
   useEffect(() => {
-    if (!isEditing && draftLoaded) {
-      saveDraft({
-        script: sampleStyleId ? '' : (script ?? ''),
-        styleId,
-        selectedTalentIds,
-        selectedLocationIds,
-        elementUploads: draftElements,
-      });
+    if (isEditing || !draftLoaded || !hasSyncedDraftRef.current) return;
+    if (skipPersistAfterRestoreRef.current) {
+      skipPersistAfterRestoreRef.current = false;
+      return;
     }
+    saveDraft({
+      script: script ?? '',
+      styleId,
+      sampleStyleId,
+      selectedTalentIds,
+      selectedLocationIds,
+      elementUploads: draftElements,
+    });
   }, [
     isEditing,
     draftLoaded,
@@ -953,7 +964,8 @@ export const ScriptView: FC<{
     }
 
     // Anonymous visitors can compose a draft, but generating prompts a login.
-    // The draft is persisted to localStorage, so it's restored after sign-in.
+    // Typed text and Shuffle/Try samples persist to localStorage and restore
+    // after sign-in (#1384).
     // Remember the click too, so the resume effect below continues this exact
     // step (nudge, billing gate, generation) once sign-in completes (#1187).
     if (!requireAuth()) {
@@ -1542,7 +1554,9 @@ export const ScriptView: FC<{
                   variant="outline"
                   size="sm"
                   className="gap-1.5"
-                  disabled={loading || isEnhancing || isSubmitting}
+                  disabled={
+                    loading || isEnhancing || isSubmitting || !canShuffle
+                  }
                   onClick={requestShuffle}
                 >
                   <Shuffle className="size-3.5" />

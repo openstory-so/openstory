@@ -13,6 +13,25 @@ import { expect } from 'playwright/test';
  * heavy client chunk routinely takes longer than that.
  */
 const HYDRATION_TIMEOUT = 15_000;
+const SEQUENCE_DRAFT_KEY = 'openstory:sequence-draft:v1';
+
+/** Wait until the composer draft in localStorage has this script (#1384). */
+export async function waitForSequenceDraftScript(
+  page: Page,
+  expected: string
+): Promise<void> {
+  await expect
+    .poll(() =>
+      page.evaluate((key) => {
+        try {
+          return JSON.parse(localStorage.getItem(key) ?? '{}').script ?? '';
+        } catch {
+          return '';
+        }
+      }, SEQUENCE_DRAFT_KEY)
+    )
+    .toBe(expected);
+}
 
 /**
  * Resolve the composer's script input once it is actually usable.

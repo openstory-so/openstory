@@ -7,7 +7,11 @@
  */
 
 import { test, expect } from 'playwright/test';
-import { fillScriptEditor, waitForScriptEditor } from '../fixtures/test-utils';
+import {
+  fillScriptEditor,
+  waitForScriptEditor,
+  waitForSequenceDraftScript,
+} from '../fixtures/test-utils';
 
 test.describe('Sequences', () => {
   test('can access sequences list page', async ({ page }) => {
@@ -204,6 +208,58 @@ test.describe('Sequences', () => {
     await expect(
       page.getByRole('button', { name: 'Generate', exact: true })
     ).toBeEnabled();
+  });
+
+  test('typed script survives a reload (#1384)', async ({ page }) => {
+    // Reload is the same restore path as OAuth/OTP remount (localStorage).
+    const script = 'A cat walks into a diner at dawn.';
+    await page.goto('/');
+    await page.evaluate(() =>
+      localStorage.removeItem('openstory:sequence-draft:v1')
+    );
+    await page.reload();
+    await fillScriptEditor(page, script);
+    await waitForSequenceDraftScript(page, script);
+    await page.reload();
+    await waitForScriptEditor(page);
+    await expect(page.locator('[data-slot="markdown-editor"]')).toHaveAttribute(
+      'data-markdown',
+      script,
+      { timeout: 15_000 }
+    );
+  });
+
+  test('shuffled sample survives a reload (#1384)', async ({ page }) => {
+    await page.goto('/');
+    await page.evaluate(() =>
+      localStorage.removeItem('openstory:sequence-draft:v1')
+    );
+    await page.reload();
+    await waitForScriptEditor(page);
+    // Signed-in `/` hydrates the team style list after the public prefetch;
+    // Action tiles are the proof that Shuffle has a sample to pick (#1384).
+    await expect(
+      page.getByRole('button', { name: 'Select Action style' })
+    ).toBeVisible({ timeout: 15_000 });
+    const shuffle = page.getByRole('button', { name: 'Shuffle' });
+    await expect(shuffle).toBeEnabled({ timeout: 15_000 });
+    await shuffle.click();
+    const editor = page.locator('[data-slot="markdown-editor"]');
+    await expect(editor).not.toHaveAttribute('data-markdown', '', {
+      timeout: 15_000,
+    });
+    const shuffled = await editor.getAttribute('data-markdown');
+    if (!shuffled) {
+      throw new Error('Shuffle left the composer empty');
+    }
+    await waitForSequenceDraftScript(page, shuffled);
+    await page.reload();
+    await waitForScriptEditor(page);
+    await expect(page.locator('[data-slot="markdown-editor"]')).toHaveAttribute(
+      'data-markdown',
+      shuffled,
+      { timeout: 15_000 }
+    );
   });
 
   test('Try-this-style URL seeds the style sample, not Match script', async ({

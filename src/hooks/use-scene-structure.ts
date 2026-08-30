@@ -57,7 +57,20 @@ export function useCreateScene(sequenceId: string) {
   return useMutation({
     mutationFn: (input?: { title?: string; withShot?: boolean }) =>
       createSceneFn({ data: { sequenceId, ...input } }),
-    onSuccess: () => invalidateStructure(queryClient, sequenceId),
+    onSuccess: ({ scene }) => {
+      // Paint the new scene before the refetch round-trip. Without this the
+      // rail stays on "No scenes yet" until list queries settle — e2e (and
+      // a slow D1) can miss the group entirely (#1108 flake, #1384).
+      queryClient.setQueryData<SceneWithScript[]>(
+        sceneKeys.list(sequenceId),
+        (old) => {
+          const next = old ?? [];
+          if (next.some((row) => row.id === scene.id)) return next;
+          return [...next, { ...scene, script: null }];
+        }
+      );
+      invalidateStructure(queryClient, sequenceId);
+    },
   });
 }
 
