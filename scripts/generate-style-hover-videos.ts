@@ -72,6 +72,7 @@ import {
   type MotionPrompt,
 } from '@/lib/ai/scene-analysis.schema';
 import { assembleMotionPrompt } from '@/lib/motion/assemble-motion-prompt';
+import { fetchVideoForUpload } from '@/lib/motion/video-storage';
 import { pollMotionJob, submitMotionJob } from '@/lib/motion/motion-generation';
 import { snapDuration } from '@/lib/motion/snap-duration';
 import {
@@ -469,7 +470,8 @@ async function generateClip(
   const deadline = Date.now() + MOTION_POLL_TIMEOUT_MS;
   while (Date.now() < deadline) {
     // `job.via` (not the default): with XAI_API_KEY set, a Grok clip is
-    // submitted to xAI and its job id means nothing to fal.
+    // submitted to xAI and its job id means nothing to fal. Same for a
+    // Google-stamped Omni Flash job.
     const poll = await pollMotionJob(
       job.jobId,
       job.modelKey,
@@ -491,7 +493,9 @@ async function generateClip(
 }
 
 async function downloadVideo(url: string, outputPath: string): Promise<void> {
-  const response = await fetch(url);
+  const response = await fetchVideoForUpload(url, {
+    googleApiKey: process.env.GEMINI_API_KEY,
+  });
   if (!response.ok) {
     throw new Error(`Failed to download clip (${response.status}): ${url}`);
   }

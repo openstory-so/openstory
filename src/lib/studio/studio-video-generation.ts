@@ -73,9 +73,14 @@ import { falVideo } from '@tanstack/ai-fal';
 import { createGeminiVideo } from '@tanstack/ai-gemini';
 import { createGrokVideo } from '@tanstack/ai-grok';
 import {
-  clampGeminiVideoDuration,
   geminiImagePart,
+  geminiNativeModelOptions,
+  geminiVideoSize,
 } from '@/lib/motion/build-gemini-video-request';
+import {
+  getGeminiFileState,
+  isGeminiFilesVideoUrl,
+} from '@/lib/motion/video-storage';
 
 export type StudioVideoJobOptions = {
   scopedDb?: CredentialScopedDb;
@@ -374,12 +379,6 @@ export async function submitStudioVideoJob(
   const googleKey = isNativeGeminiVideoModel(modelKey)
     ? await resolveOptionalGoogleKey(options.scopedDb)
     : undefined;
-  // Omni Flash outputs 16:9 or 9:16 only; anything else falls back to the
-  // API default by omitting the size.
-  const geminiSize =
-    options.aspectRatio === '16:9' || options.aspectRatio === '9:16'
-      ? options.aspectRatio
-      : undefined;
   let via: MediaVia;
   if (xaiKey) {
     via = 'xai';
@@ -394,6 +393,9 @@ export async function submitStudioVideoJob(
   } else {
     via = 'fal';
   }
+
+  const geminiSize =
+    via === 'google' ? geminiVideoSize(options.aspectRatio) : undefined;
 
   switch (via) {
     case 'xai': {
@@ -503,18 +505,11 @@ export async function submitStudioVideoJob(
         const job = await generateVideo({
           adapter: createNativeGeminiVideoAdapter(googleKey.key),
           prompt: parts,
-          duration: clampGeminiVideoDuration(built.duration),
-          ...(geminiSize && { size: geminiSize }),
-          modelOptions: {
-            generation_config: {
-              video_config: {
-                task:
-                  mode === 'reference'
-                    ? 'reference_to_video'
-                    : 'image_to_video',
-              },
-            },
-          },
+          modelOptions: geminiNativeModelOptions(
+            mode === 'reference' ? 'reference_to_video' : 'image_to_video',
+            built.duration,
+            geminiSize
+          ),
           timeout: FAL_REQUEST_TIMEOUT_MS,
           debug: false,
         });
@@ -536,11 +531,11 @@ export async function submitStudioVideoJob(
       const job = await generateVideo({
         adapter: createNativeGeminiVideoAdapter(googleKey.key),
         prompt: built.prompt,
-        duration: clampGeminiVideoDuration(built.duration),
-        ...(geminiSize && { size: geminiSize }),
-        modelOptions: {
-          generation_config: { video_config: { task: 'text_to_video' } },
-        },
+        modelOptions: geminiNativeModelOptions(
+          'text_to_video',
+          built.duration,
+          geminiSize
+        ),
         timeout: FAL_REQUEST_TIMEOUT_MS,
         debug: false,
       });
@@ -659,10 +654,28 @@ export async function pollStudioVideoJob(
           `Studio video job ${job.jobId} was submitted to Google but no Google key is available to poll it`
         );
       }
-      return getVideoJobStatus({
+      const result = await getVideoJobStatus({
         adapter: createNativeGeminiVideoAdapter(key.key),
         jobId: job.jobId,
       });
+      if (
+        result.status === 'completed' &&
+        result.url &&
+        isGeminiFilesVideoUrl(result.url)
+      ) {
+        const fileState = await getGeminiFileState(result.url, key.key);
+        if (fileState === 'FAILED') {
+          return {
+            ...result,
+            status: 'failed' as const,
+            error: 'Gemini Files API marked the generated video as FAILED',
+          };
+        }
+        if (fileState !== 'ACTIVE') {
+          return { jobId: result.jobId, status: 'processing' as const };
+        }
+      }
+      return result;
     }
     case 'byteplus': {
       const arkKey = getArkApiKey();

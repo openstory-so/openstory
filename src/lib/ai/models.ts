@@ -70,10 +70,10 @@ export const IMAGE_TO_VIDEO_MODELS = {
     vendor: 'Google',
     license: 'proprietary' as const,
     qualityRank: 2,
-    // Always generates synchronized audio (dialogue, ambience, score) with no
-    // API switch — neither the fal schemas nor the Interactions API expose a
-    // generate_audio toggle, so audio direction happens in-prompt.
-    supportsAudio: true,
+    // Always generates synchronized audio (dialogue, ambience, score). Neither
+    // the fal schema nor the Interactions API expose a generate_audio toggle
+    // (`videoModelSupportsAudio` is false), so audio direction is in-prompt
+    // and the scene-editor SFX checkbox stays hidden.
     maxPromptLength: 20000,
     performance: { estimatedGenerationTime: 20, quality: 'best' as const },
   },

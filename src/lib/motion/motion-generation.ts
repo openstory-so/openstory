@@ -65,6 +65,10 @@ import { createGeminiVideo } from '@tanstack/ai-gemini';
 import { createGrokVideo } from '@tanstack/ai-grok';
 import { buildBytePlusVideoRequest } from './build-byteplus-video-request';
 import { buildGeminiVideoRequest } from './build-gemini-video-request';
+import {
+  getGeminiFileState,
+  isGeminiFilesVideoUrl,
+} from '@/lib/motion/video-storage';
 import { buildGrokVideoRequest } from './build-grok-video-request';
 import { buildModelInput, buildMotionRequest } from './build-model-input';
 import { resolveMotionEndpoint } from './resolve-motion-endpoint';
@@ -337,11 +341,13 @@ export async function submitMotionJob(
         referenceImages,
         model: modelKey,
       });
+      // Duration/size ride on `modelOptions.response_format` (with
+      // `delivery: "uri"`). Passing them as generateVideo top-level
+      // fields makes the adapter rebuild response_format without
+      // delivery, and Google inlines the MP4 as a data: URL.
       const job = await generateVideo({
         adapter: createNativeGeminiMotionAdapter(googleKey.key),
         prompt: input.prompt,
-        duration: input.duration,
-        ...(input.size && { size: input.size }),
         modelOptions: input.modelOptions,
         timeout: FAL_REQUEST_TIMEOUT_MS,
         debug: false,
@@ -469,10 +475,28 @@ export async function pollMotionJob(
           `Motion job ${jobId} was submitted to Google but no Google key is available to poll it`
         );
       }
-      return await getVideoJobStatus({
+      const result = await getVideoJobStatus({
         adapter: createNativeGeminiMotionAdapter(key.key),
         jobId,
       });
+      if (
+        result.status === 'completed' &&
+        result.url &&
+        isGeminiFilesVideoUrl(result.url)
+      ) {
+        const fileState = await getGeminiFileState(result.url, key.key);
+        if (fileState === 'FAILED') {
+          return {
+            ...result,
+            status: 'failed' as const,
+            error: 'Gemini Files API marked the generated video as FAILED',
+          };
+        }
+        if (fileState !== 'ACTIVE') {
+          return { jobId: result.jobId, status: 'processing' as const };
+        }
+      }
+      return result;
     }
     case 'fal': {
       const key = await resolveFalMotionKey(scopedDb);
