@@ -510,16 +510,19 @@ export const ScriptView: FC<{
   /**
    * "Try something random" on an empty composer (#1393): the enhancer invents
    * the script outright — in the selected style, or in any genre at all when
-   * Match script is selected — then generates it. Deliberately NOT seeded with
-   * a style sample: those are the Shuffle tour's canned briefs, and reusing one
-   * here would hand every "random" user the same handful of stories.
+   * Match script is selected. Deliberately NOT seeded with a style sample:
+   * those are the Shuffle tour's canned briefs, and reusing one here would
+   * hand every "random" user the same handful of stories.
+   *
+   * It stops there. The script lands in the editor for the user to read (and
+   * edit, or Undo) before they spend anything on generating it.
    */
   const generateRandomScript = () => {
     posthog.capture('empty_prompt_choice', {
       surface: 'script',
       choice: 'random',
     });
-    void handleEnhanceRef.current({ invent: true, thenGenerate: true });
+    void handleEnhanceRef.current({ invent: true });
   };
 
   const requestTryStyle = (tryStyleId: string) => {
@@ -916,16 +919,14 @@ export const ScriptView: FC<{
 
   const handleCancel = onCancel;
 
-  /** `enhancedScript` is text produced in the same tick (the random path
-   *  enhances, then generates), which this closure's state doesn't have. */
-  const executeRegeneration = (enhancedScript?: string) => {
+  const executeRegeneration = () => {
     // sequence_generated is captured server-side in createSequences (#1088)
     // so dashboard + public API both feed #product-alerts once.
     createSequenceMutation.mutate(
       {
         title: undefined,
         teamId,
-        script: enhancedScript ?? script ?? baseScript ?? '',
+        script: script ?? baseScript ?? '',
         styleId: styleId || sequence?.styleId || undefined,
         aspectRatio,
         analysisModels,
@@ -1033,15 +1034,9 @@ export const ScriptView: FC<{
 
   /**
    * `invent` writes a script from nothing (empty composer + "Try something
-   * random", #1393); `thenGenerate` carries straight on into generation once
-   * the stream finishes.
+   * random", #1393) rather than expanding what's in the editor.
    */
-  const handleEnhance = async (options?: {
-    /** Write from nothing rather than expanding what's in the editor. */
-    invent?: boolean;
-    /** Carry straight on into generation once the stream finishes. */
-    thenGenerate?: boolean;
-  }) => {
+  const handleEnhance = async (options?: { invent?: boolean }) => {
     // Enhancing runs an AI model on the server — gate it behind login too.
     // Remember the click so post-auth resume continues Enhance, not Generate,
     // and so we don't dump a first-time user on the empty sequences list
@@ -1115,9 +1110,6 @@ export const ScriptView: FC<{
         setScript(accumulated);
       }
       setEnhance('canUndoEnhance', true);
-      if (options?.thenGenerate && accumulated.trim()) {
-        executeRegeneration(accumulated);
-      }
       // Charge lands when the stream finishes — keep the credit chip in sync
       // even if the billing SSE is delayed or dropped on this request path.
       void queryClient.invalidateQueries({
@@ -1810,7 +1802,7 @@ export const ScriptView: FC<{
             <AlertDialogTitle>What should we make?</AlertDialogTitle>
             <AlertDialogDescription>
               Nothing is written yet. Type your own idea — or we'll write one
-              and generate it for you.
+              for you to look over.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

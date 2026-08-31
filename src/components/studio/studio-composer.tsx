@@ -618,9 +618,12 @@ export function StudioComposer({ activity }: StudioComposerProps) {
 
   /**
    * "Try something random": the draft flow invents the prompt — from whatever
-   * is attached, or from nothing at all — then generates it. Deliberately NOT
-   * seeded from the Shuffle pool: those are the canned tour prompts, and
-   * reusing one here would hand every "random" user the same dozen shots.
+   * is attached, or from nothing at all. Deliberately NOT seeded from the
+   * Shuffle pool: those are the canned tour prompts, and reusing one here
+   * would hand every "random" user the same dozen shots.
+   *
+   * It stops there. The prompt lands in the composer for the user to read and
+   * edit before they spend anything on generating it.
    */
   const generateRandom = () => {
     posthog.capture('empty_prompt_choice', {
@@ -628,12 +631,7 @@ export function StudioComposer({ activity }: StudioComposerProps) {
       activity,
       choice: 'random',
     });
-    applyDraft({
-      onDrafted: (next) => {
-        setEmptyPrompt(false);
-        generate(next);
-      },
-    });
+    applyDraft({ onDrafted: () => setEmptyPrompt(false) });
   };
 
   /**
@@ -729,11 +727,11 @@ export function StudioComposer({ activity }: StudioComposerProps) {
     setEndFrame(null);
   };
 
-  const buildInput = (promptText: string): StudioCreateInput => {
+  const buildInput = (): StudioCreateInput => {
     if (activity === 'video') {
       return {
         activity: 'video',
-        prompt: promptText,
+        prompt: trimmed,
         videoModel: compatibleVideoModel,
         aspectRatio,
         duration: snappedDuration,
@@ -752,20 +750,12 @@ export function StudioComposer({ activity }: StudioComposerProps) {
     }
     return {
       activity: 'image',
-      prompt: promptText,
+      prompt: trimmed,
       imageModel,
       aspectRatio,
       count,
       referenceImages: references.map((r) => r.url),
     };
-  };
-
-  const generate = (promptText: string) => {
-    create.mutate(buildInput(promptText), {
-      onError: (error) => {
-        if (isInsufficientCreditsError(error)) showGate();
-      },
-    });
   };
 
   const submit = () => {
@@ -780,7 +770,13 @@ export function StudioComposer({ activity }: StudioComposerProps) {
       if (requireAuth()) setEmptyPrompt(true);
       return;
     }
-    requireAuth(() => generate(trimmed));
+    requireAuth(() => {
+      create.mutate(buildInput(), {
+        onError: (error) => {
+          if (isInsufficientCreditsError(error)) showGate();
+        },
+      });
+    });
   };
 
   const submitLabel =
@@ -1235,7 +1231,7 @@ export function StudioComposer({ activity }: StudioComposerProps) {
             <AlertDialogTitle>What should we make?</AlertDialogTitle>
             <AlertDialogDescription>
               The prompt is empty. Describe the {isVideo ? 'shot' : 'still'} you
-              want, or we'll pick something for you.
+              want, or we'll write one for you to look over.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
