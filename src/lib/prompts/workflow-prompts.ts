@@ -323,6 +323,7 @@ This music is BACKGROUND UNDERSCORE for video. It must always be instrumental.
 - **Conflicting moods**: Identify the dominant arc, use transitional terms like "building, tense to triumphant"
 - **Short sequences (1-3 scenes)**: Be specific to the dominant mood
 - **Long sequences (10+ scenes)**: Focus on the overarching arc
+- **Exact scene count**: Return one scenes row per input scene, in the same order. Do not add, drop, split, or invent scenes.
 
 ## COMMON MISTAKES TO AVOID
 
@@ -334,6 +335,8 @@ This music is BACKGROUND UNDERSCORE for video. It must always be instrumental.
     {
       role: 'user',
       content: `Classify music design for each scene and generate a unified music prompt for the sequence.
+
+There are {{sceneCount}} scenes. Return exactly {{sceneCount}} rows in \`scenes\`, in this order.
 
 <SCENES>
 {{scenes}}

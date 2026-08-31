@@ -111,6 +111,33 @@ describe('durableLLMCallCf usage cost capture', () => {
     if (!firstCall) throw new Error('expected mockChat to have been called');
     expect(firstCall[0].stream).toBe(true);
     expect(firstCall[0].modelOptions?.streamOptions?.includeUsage).toBe(true);
+    expect(firstCall[0].modelOptions?.maxTokens).toBeDefined();
+    expect(firstCall[0].modelOptions?.maxCompletionTokens).toBeUndefined();
+  });
+
+  it('pins Luna to OpenAI and sends max_tokens, not max_completion_tokens', async () => {
+    mockChat.mockClear();
+    const validObject = { visual: { fullPrompt: 'A clean shot' } };
+    mockChat.mockReturnValue(
+      (async function* () {
+        yield {
+          type: 'CUSTOM',
+          name: 'structured-output.complete',
+          value: { object: validObject, raw: JSON.stringify(validObject) },
+        };
+      })()
+    );
+
+    await durableLLMCallCf(
+      step,
+      { ...callConfig, modelId: 'openai/gpt-5.6-luna' },
+      nonStreamContext
+    );
+
+    const options = mockChat.mock.calls[0]?.[0]?.modelOptions;
+    expect(options?.provider).toEqual({ only: ['openai'] });
+    expect(options?.maxTokens).toBeDefined();
+    expect(options?.maxCompletionTokens).toBeUndefined();
   });
 
   it('returns zero cost micros when usage.cost is missing', async () => {

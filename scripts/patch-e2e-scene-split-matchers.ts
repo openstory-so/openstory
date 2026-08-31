@@ -183,7 +183,10 @@ if (!musicFixture) throw new Error('No music-design fixture');
 const summaries = buildMusicSceneSummaries(scenes, visualSummaryBySceneId);
 const { messages: musicMessages } = await getChatPrompt(
   'phase/music-design-chat',
-  { scenes: JSON.stringify(summaries, null, 2) }
+  {
+    scenes: JSON.stringify(summaries, null, 2),
+    sceneCount: String(summaries.length),
+  }
 );
 const musicUser = musicMessages.find((m) => m.role === 'user');
 if (!musicUser || typeof musicUser.content !== 'string') {

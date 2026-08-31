@@ -116,7 +116,7 @@ describe('joinMusicDesignByIndex', () => {
     expect(joined[0]?.sceneId).toBe('ulid-a');
   });
 
-  it('throws when the music array length does not match the scene count', () => {
+  it('throws when the music array is shorter than the scene count', () => {
     const scenes = [
       sceneWithMetadata({ sceneId: 'ulid-a' }),
       sceneWithMetadata({ sceneId: 'ulid-b', sceneNumber: 2 }),
@@ -126,5 +126,20 @@ describe('joinMusicDesignByIndex', () => {
         { sceneId: 'ulid-a', musicDesign: musicA },
       ])
     ).toThrow(/2 were sent/);
+  });
+
+  it('drops extra trailing music rows rather than failing the sequence', () => {
+    const scenes = [
+      sceneWithMetadata({ sceneId: 'ulid-a' }),
+      sceneWithMetadata({ sceneId: 'ulid-b', sceneNumber: 2 }),
+    ];
+    const joined = joinMusicDesignByIndex(scenes, [
+      { sceneId: 'ulid-a', musicDesign: musicA },
+      { sceneId: 'ulid-b', musicDesign: musicB },
+      { sceneId: 'invented', musicDesign: musicA },
+    ]);
+    expect(joined).toHaveLength(2);
+    expect(joined[0]?.musicDesign).toEqual(musicA);
+    expect(joined[1]?.musicDesign).toEqual(musicB);
   });
 });

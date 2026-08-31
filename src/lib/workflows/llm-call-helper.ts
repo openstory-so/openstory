@@ -18,6 +18,7 @@ import {
   createUsageCapture,
   extractRunError,
   llmCostFromUsage,
+  openRouterProviderForModel,
   PROMPT_REASONING,
   throwNotedRunError,
 } from '@/lib/ai/llm-client';
@@ -161,7 +162,7 @@ function reasoningModelOptions(reasoning: boolean | undefined): {
 /** OpenRouter vs xAI Responses sampling options. xAI rejects `streamOptions`
  *  and uses `max_output_tokens`; omitting reasoning on grok-4.6 falls through
  *  to xAI's `high` default, so unrequested reasoning is sent as `low`. */
-function chatModelOptionsForCall(
+export function chatModelOptionsForCall(
   modelId: TextModel,
   llmKeyInfo: LlmKeyInfo,
   reasoning: boolean | undefined
@@ -177,8 +178,11 @@ function chatModelOptionsForCall(
     };
   }
   return {
+    provider: openRouterProviderForModel(modelId),
     ...reasoningModelOptions(reasoning),
-    maxCompletionTokens: maxTokens,
+    // Native OpenAI GPT-5 endpoints advertise `max_tokens`, not
+    // `max_completion_tokens` (Azure-only). Match llm-client.
+    maxTokens,
     streamOptions: { includeUsage: true },
   };
 }

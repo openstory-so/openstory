@@ -158,8 +158,8 @@ export class MotionMusicPromptsWorkflow extends OpenStoryWorkflowEntrypoint<Moti
 
     // Merge music design into scenes by index. The summaries we sent are
     // index-aligned; echoed ULIDs are not a reliable join key (same class
-    // as style recommendation moving to catalog indices). A length mismatch
-    // throws rather than attaching another scene's cue.
+    // as style recommendation moving to catalog indices). Extra LLM rows
+    // are dropped; a short list still throws.
     const completeScenes: Scene[] = await step.do(
       'merge-music-and-motion',
       () => {

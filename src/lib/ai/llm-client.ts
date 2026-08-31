@@ -378,38 +378,63 @@ function toGrokReasoningEffort(
   return 'medium';
 }
 
+/**
+ * GPT-5 chat models (Luna/Sol/Terra/…) advertise no `temperature` / `top_p`
+ * / penalty params on any OpenRouter endpoint. Sending them with
+ * `requireParameters: true` yields "No endpoints found that can handle the
+ * requested parameters". Image-variant GPT-5 ids still take sampling.
+ */
+function modelAllowsClassicSampling(model: string): boolean {
+  return !(model.startsWith('openai/gpt-5') && !model.includes('image'));
+}
+
+/**
+ * OpenRouter provider routing. Anthropic is pinned to Anthropic's own
+ * endpoint (Vertex advertises `response_format` without `structured_outputs`
+ * — #1285; Azure's grammar is too small). OpenAI is pinned to OpenAI's own
+ * endpoint because Azure GPT-5 hosts advertise `max_completion_tokens` while
+ * native OpenAI advertises `max_tokens` — `requireParameters` plus an
+ * ignored Azure host empties the candidate set (#1302). Everyone else keeps
+ * `requireParameters`. Caller-supplied preferences layer on top.
+ */
+export function openRouterProviderForModel(
+  model: string
+): Pick<ProviderPreferences, 'only' | 'requireParameters'> {
+  if (model.startsWith('anthropic/')) return { only: ['anthropic'] };
+  if (model.startsWith('openai/')) return { only: ['openai'] };
+  return { requireParameters: true };
+}
+
 // Since @tanstack/ai 0.27, sampling options live in provider-native
 // modelOptions (camelCase, per the OpenRouter SDK) instead of the root of
 // chat(). The public LLMRequestParams surface keeps its OpenAI-style
 // snake_case names; this is the single mapping point.
 function buildModelOptions(params: LLMRequestParams) {
-  // Anthropic models: pin to Anthropic's own endpoint. OpenRouter also hosts
-  // Claude on Google Vertex (advertises `response_format` but not
-  // `structured_outputs` — silent free-form JSON, #1285) and Azure (grammar
-  // too small for our schemas). `requireParameters: true` was meant to skip
-  // those hosts, but Vertex still matches on `response_format`, and once
-  // Vertex is disabled at the account the remaining filter
-  // (`requireParameters` + ignore azure) empties the candidate set (#1302:
-  // "No endpoints found that can handle the requested parameters").
-  // `only: ['anthropic']` is the actual selection; requireParameters stays
-  // for every other vendor. Caller-supplied preferences layer on top.
   const provider: ProviderPreferences = {
-    ...(params.model.startsWith('anthropic/')
-      ? { only: ['anthropic'] }
-      : { requireParameters: true }),
+    ...openRouterProviderForModel(params.model),
     ...params.provider,
   };
+  const allowSampling = modelAllowsClassicSampling(params.model);
   return {
     provider,
     ...(params.reasoning && { reasoning: params.reasoning }),
     // `maxTokens`, not `maxCompletionTokens`: DeepSeek endpoints advertise only
     // `max_tokens`, so `max_completion_tokens` + requireParameters empties the
-    // candidate set ("No endpoints found…") on the region fallback.
-    maxTokens: params.max_tokens,
-    temperature: params.temperature,
-    topP: params.top_p,
-    frequencyPenalty: params.frequency_penalty,
-    presencePenalty: params.presence_penalty,
+    // candidate set ("No endpoints found…") on the region fallback. Native
+    // OpenAI GPT-5 Luna is the same — Azure-only hosts take
+    // `max_completion_tokens`.
+    ...(params.max_tokens != null && { maxTokens: params.max_tokens }),
+    ...(allowSampling &&
+      params.temperature != null && { temperature: params.temperature }),
+    ...(allowSampling && params.top_p != null && { topP: params.top_p }),
+    ...(allowSampling &&
+      params.frequency_penalty != null && {
+        frequencyPenalty: params.frequency_penalty,
+      }),
+    ...(allowSampling &&
+      params.presence_penalty != null && {
+        presencePenalty: params.presence_penalty,
+      }),
   };
 }
 
