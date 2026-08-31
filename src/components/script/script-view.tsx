@@ -471,6 +471,8 @@ export const ScriptView: FC<{
   const [sampleReplaceConfirm, setSampleReplaceConfirm] = useState<
     { kind: 'shuffle' } | { kind: 'try'; styleId: string } | null
   >(null);
+  /** Generate was clicked with nothing written (#1393). */
+  const [emptyScript, setEmptyScript] = useState(false);
   const applySampleForStyle = (
     style: (typeof styles)[number],
     event: 'sample_script_shuffled' | 'sample_script_tried'
@@ -505,6 +507,28 @@ export const ScriptView: FC<{
     }
     handleShuffleSample();
   };
+  /**
+   * "Try something random" on an empty composer (#1393): a random style's
+   * sample seeds the enhance flow, which writes the real script and then
+   * generates it. The seed is what makes it random rather than the same
+   * cold-start script every time.
+   */
+  const generateRandomScript = () => {
+    const style = pickShuffleStyle(styles, styleId, Math.random);
+    const sample = style && sampleScriptForStyle(style);
+    if (!style || !sample) return;
+    posthog.capture('empty_prompt_choice', {
+      surface: 'script',
+      choice: 'random',
+    });
+    applySampleForStyle(style, 'sample_script_shuffled');
+    void handleEnhanceRef.current({
+      script: sample,
+      styleId: style.id,
+      thenGenerate: true,
+    });
+  };
+
   const requestTryStyle = (tryStyleId: string) => {
     if (hasOwnText()) {
       setSampleReplaceConfirm({ kind: 'try', styleId: tryStyleId });
@@ -899,15 +923,20 @@ export const ScriptView: FC<{
 
   const handleCancel = onCancel;
 
-  const executeRegeneration = () => {
+  /** `override` carries text/style produced in the same tick (the random
+   *  path enhances then generates), which this closure's state doesn't have. */
+  const executeRegeneration = (override?: {
+    script?: string;
+    styleId?: string;
+  }) => {
     // sequence_generated is captured server-side in createSequences (#1088)
     // so dashboard + public API both feed #product-alerts once.
     createSequenceMutation.mutate(
       {
         title: undefined,
         teamId,
-        script: script ?? baseScript ?? '',
-        styleId: styleId || sequence?.styleId || undefined,
+        script: override?.script ?? script ?? baseScript ?? '',
+        styleId: override?.styleId || styleId || sequence?.styleId || undefined,
         aspectRatio,
         analysisModels,
         imageModels,
@@ -951,15 +980,27 @@ export const ScriptView: FC<{
       event.preventDefault();
     }
 
-    // ⌘+Enter requestSubmit()s even while Generate is disabled. Empty is
-    // now the first-run default (#1255) — don't open login / the enhance
-    // nudge / a generate with no script.
     const scriptText = (script ?? baseScript ?? '').trim();
-    if (
-      !scriptText ||
-      !(styleId || sequence?.styleId) ||
-      analysisModels.length === 0
-    ) {
+    if (!(styleId || sequence?.styleId) || analysisModels.length === 0) return;
+
+    // Empty is the first-run default (#1255) and Generate stays live on it
+    // (#1393): logged out that click is worth a login prompt, logged in it
+    // asks what to make. Copying an existing sequence has nothing to offer.
+    if (!scriptText) {
+      if (isEditing) return;
+      posthog.capture('empty_prompt_generate_clicked', {
+        surface: 'script',
+        authenticated: isAuthenticated,
+      });
+      if (!requireAuth()) {
+        markPendingIntent('generate');
+        return;
+      }
+      if (needsBillingSetup) {
+        showGate();
+        return;
+      }
+      setEmptyScript(true);
       return;
     }
 
@@ -1000,7 +1041,16 @@ export const ScriptView: FC<{
   const previousScriptRef = useRef<string>('');
   const enhanceAbortRef = useRef<AbortController | null>(null);
 
-  const handleEnhance = async () => {
+  /**
+   * `options.script` / `options.styleId` enhance text that isn't in state yet
+   * (the random path seeds a sample in the same tick); `thenGenerate` carries
+   * straight on into generation once the stream finishes.
+   */
+  const handleEnhance = async (options?: {
+    script?: string;
+    styleId?: string;
+    thenGenerate?: boolean;
+  }) => {
     // Enhancing runs an AI model on the server — gate it behind login too.
     // Remember the click so post-auth resume continues Enhance, not Generate,
     // and so we don't dump a first-time user on the empty sequences list
@@ -1015,9 +1065,10 @@ export const ScriptView: FC<{
       return;
     }
 
+    const sourceScript = options?.script ?? scriptValue;
     posthog.capture('script_enhanced', {
       target_duration: targetDuration,
-      script_length: scriptValue.length,
+      script_length: sourceScript.length,
       aspect_ratio: aspectRatio,
     });
     // Enhancing rewrites the text — it stops being an untouched sample.
@@ -1025,14 +1076,16 @@ export const ScriptView: FC<{
     setThinkingText('');
     setThinkingActive(true);
     setEnhanceUI((s) => ({ ...s, isEnhancing: true, error: null }));
-    previousScriptRef.current = scriptValue;
+    previousScriptRef.current = sourceScript;
     setScript('');
 
     const abortController = new AbortController();
     enhanceAbortRef.current = abortController;
 
     try {
-      const selectedStyle = styles.find((s) => s.id === styleId);
+      const selectedStyle = styles.find(
+        (s) => s.id === (options?.styleId ?? styleId)
+      );
       // Create flow holds elements in local draft state; an existing sequence
       // holds them in the DB (loaded as `mentionElements`). Feed whichever
       // applies so enhance-on-existing-sequence ("Generate Copy") attaches the
@@ -1043,7 +1096,7 @@ export const ScriptView: FC<{
       let accumulated = '';
       for await (const chunk of await enhanceScriptStreamFn({
         data: {
-          script: scriptValue,
+          script: sourceScript,
           targetDuration,
           videoModel: videoModels[0] ?? DEFAULT_VIDEO_MODEL,
           analysisModel: analysisModels[0],
@@ -1072,6 +1125,12 @@ export const ScriptView: FC<{
         setScript(accumulated);
       }
       setEnhance('canUndoEnhance', true);
+      if (options?.thenGenerate && accumulated.trim()) {
+        executeRegeneration({
+          script: accumulated,
+          styleId: options.styleId,
+        });
+      }
       // Charge lands when the stream finishes — keep the credit chip in sync
       // even if the billing SSE is delayed or dropped on this request path.
       void queryClient.invalidateQueries({
@@ -1113,14 +1172,13 @@ export const ScriptView: FC<{
     return () => window.removeEventListener('keydown', handler);
   }, [isEnhancing]);
 
-  const isFormValid =
-    Boolean((script ?? baseScript ?? '').trim()) &&
-    Boolean(styleId || sequence?.styleId) &&
-    analysisModels.length > 0;
+  // Everything Generate needs except the script itself — an empty script is a
+  // live click that routes to login or "what should we make?" (#1393).
+  const isReady =
+    Boolean(styleId || sequence?.styleId) && analysisModels.length > 0;
 
   const isSubmitting = createSequenceMutation.isPending;
-  const isDisabled =
-    !isFormValid || isSubmitting || isEnhancing || isElementBusy;
+  const isDisabled = !isReady || isSubmitting || isEnhancing || isElementBusy;
 
   const isMobile = useIsMobile();
   const [referencesSheetOpen, setReferencesSheetOpen] = useState(false);
@@ -1180,7 +1238,7 @@ export const ScriptView: FC<{
   useEffect(() => {
     if (isEditing || loading || !isAuthenticated) return;
     if (resumeTriedRef.current) return;
-    if (!draftLoaded || !isFormValid || isSubmitting || isEnhancing) return;
+    if (!draftLoaded || !isReady || isSubmitting || isEnhancing) return;
     // Let the welcome-credits moment finish first — its "Keep creating"
     // dismiss is what hands the flow back to us, instead of the nudge
     // stacking on top of the gift dialog.
@@ -1194,7 +1252,7 @@ export const ScriptView: FC<{
     loading,
     isAuthenticated,
     draftLoaded,
-    isFormValid,
+    isReady,
     isSubmitting,
     isEnhancing,
     welcomeCreditsBlocking,
@@ -1755,6 +1813,39 @@ export const ScriptView: FC<{
             >
               <Sparkles className="size-3.5" />
               Enhance Script
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog open={emptyScript} onOpenChange={setEmptyScript}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>What should we make?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Nothing is written yet. Type your own idea — or we'll write one
+              and generate it for you.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={() =>
+                posthog.capture('empty_prompt_choice', {
+                  surface: 'script',
+                  choice: 'own_prompt',
+                })
+              }
+            >
+              I'll write it
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={!canShuffle}
+              onClick={() => {
+                setEmptyScript(false);
+                generateRandomScript();
+              }}
+            >
+              <Sparkles className="size-3.5" />
+              Try something random
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

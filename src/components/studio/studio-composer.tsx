@@ -587,7 +587,11 @@ export function StudioComposer({ activity }: StudioComposerProps) {
     (effectiveMode === 'reference' && draftSources.length > 0) ||
     (effectiveMode === 'frames' && startFrame !== null);
 
-  const applyDraft = () => {
+  const applyDraft = (options?: {
+    /** Intent to write from when the composer is empty. */
+    seed?: string;
+    onDrafted?: (next: string) => void;
+  }) => {
     draft.mutate(
       {
         activity,
@@ -597,18 +601,45 @@ export function StudioComposer({ activity }: StudioComposerProps) {
             : [],
         startImageUrl: mode === 'frames' ? startFrame?.url : undefined,
         endImageUrl: mode === 'frames' ? endFrame?.url : undefined,
-        currentPrompt: trimmed || undefined,
+        currentPrompt: trimmed || options?.seed,
       },
       {
         onSuccess: ({ prompt: next }) => {
           setPrompt(next);
           setLastShuffled(next);
+          options?.onDrafted?.(next);
         },
         onError: (error) => {
           if (isInsufficientCreditsError(error)) showGate();
         },
       }
     );
+  };
+
+  /**
+   * "Try something random": the draft flow writes the prompt — from a random
+   * seed out of the shuffle pool, plus whatever is attached — then generates
+   * it. The seed is what keeps an empty composer from drafting the same
+   * handful of clichés every time.
+   */
+  const generateRandom = () => {
+    posthog.capture('empty_prompt_choice', {
+      surface: 'studio',
+      activity,
+      choice: 'random',
+    });
+    applyDraft({
+      seed:
+        pickShufflePrompt(
+          studioShufflePrompts(activity),
+          prompt,
+          Math.random
+        ) ?? undefined,
+      onDrafted: (next) => {
+        setEmptyPrompt(false);
+        generate(next);
+      },
+    });
   };
 
   /**
@@ -747,6 +778,7 @@ export function StudioComposer({ activity }: StudioComposerProps) {
     if (!canSubmit) return;
     if (trimmed.length === 0) {
       posthog.capture('empty_prompt_generate_clicked', {
+        surface: 'studio',
         activity,
         authenticated: isAuthenticated,
       });
@@ -755,20 +787,6 @@ export function StudioComposer({ activity }: StudioComposerProps) {
       return;
     }
     requireAuth(() => generate(trimmed));
-  };
-
-  /** "Try something random": a sample prompt, generated straight away. */
-  const generateRandom = () => {
-    const next = pickShufflePrompt(
-      studioShufflePrompts(activity),
-      prompt,
-      Math.random
-    );
-    if (!next) return;
-    setPrompt(next);
-    setLastShuffled(next);
-    posthog.capture('empty_prompt_choice', { activity, choice: 'random' });
-    generate(next);
   };
 
   const submitLabel =
@@ -1138,7 +1156,7 @@ export function StudioComposer({ activity }: StudioComposerProps) {
             variant="ghost"
             size="sm"
             className="gap-1.5"
-            onClick={applyDraft}
+            onClick={() => applyDraft()}
             disabled={draft.isPending}
           >
             <Sparkles className="size-3.5" aria-hidden="true" />
@@ -1230,6 +1248,7 @@ export function StudioComposer({ activity }: StudioComposerProps) {
             <AlertDialogCancel
               onClick={() =>
                 posthog.capture('empty_prompt_choice', {
+                  surface: 'studio',
                   activity,
                   choice: 'own_prompt',
                 })
@@ -1237,9 +1256,17 @@ export function StudioComposer({ activity }: StudioComposerProps) {
             >
               I'll write it
             </AlertDialogCancel>
-            <AlertDialogAction onClick={generateRandom}>
-              <Shuffle className="size-3.5" />
-              Try something random
+            <AlertDialogAction
+              // Keep the dialog up while the draft streams — closing on click
+              // would leave the click with no visible effect for a second or two.
+              onClick={(event) => {
+                event.preventDefault();
+                generateRandom();
+              }}
+              disabled={draft.isPending}
+            >
+              <Sparkles className="size-3.5" />
+              {draft.isPending ? 'Writing a prompt…' : 'Try something random'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

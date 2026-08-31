@@ -157,11 +157,20 @@ test.describe('Sequences', () => {
       name: 'Generate',
       exact: true,
     });
-    await expect(generate).toBeDisabled();
-    // ⌘+Enter requestSubmit()s even while Generate is disabled.
+    // Generate stays live on an empty script (#1393): the click asks what to
+    // make rather than doing nothing.
+    await expect(generate).toBeEnabled();
     await page.locator('[data-slot="markdown-editor"] .ProseMirror').click();
     await page.keyboard.press('ControlOrMeta+Enter');
-    await expect(page.getByRole('alertdialog')).toHaveCount(0);
+    const emptyPrompt = page.getByRole('alertdialog', {
+      name: 'What should we make?',
+    });
+    await expect(emptyPrompt).toBeVisible();
+    await expect(
+      emptyPrompt.getByRole('button', { name: 'Try something random' })
+    ).toBeVisible();
+    await emptyPrompt.getByRole('button', { name: "I'll write it" }).click();
+    await expect(emptyPrompt).toBeHidden();
 
     await fillScriptEditor(page, 'A cat walks into a diner at dawn.');
     await expect(automatic).toHaveAttribute('aria-pressed', 'true');
