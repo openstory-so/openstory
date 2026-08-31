@@ -9,8 +9,9 @@
  *          the `ready` URL.
  *
  * Team-scoped via `authWithTeamRequestMiddleware`; a key only sees its own
- * team's sequences. The browser-side export (`use-sequence-export`) is
- * untouched — both producers write the same `sequence_exports` table.
+ * team's sequences. Both producers write the same `sequence_exports` table
+ * and the same `sourceShotsHash` (via `hashSequenceExportInputs`) so a
+ * server-rendered MP4 is reused by the theatre cache (#1406).
  */
 
 import { authWithTeamRequestMiddleware } from '@/functions/middleware';
@@ -30,6 +31,10 @@ import {
   getPublicUrl,
   toShareableUrl,
 } from '@/lib/storage/buckets';
+import {
+  effectiveExportMusicUrl,
+  hashSequenceExportInputs,
+} from '@/lib/sequence-player/source-shots-hash';
 import { triggerWorkflow } from '@/lib/workflow/client';
 import type { SequenceExportWorkflowInput } from '@/lib/workflow/types';
 import { createFileRoute } from '@tanstack/react-router';
@@ -168,12 +173,24 @@ export const Route = createFileRoute('/api/v1/sequences/$id/exports')({
           // leaves a row the stale sweep above can reconcile. `created: false`
           // means a concurrent POST won the one-processing-row race — coalesce
           // onto its row rather than starting a second workflow.
+          //
+          // Hash is computed here, not accepted from the client — a wrong
+          // client cache key would mark a stale MP4 as current (#1253 / #1406).
+          const musicUrl = effectiveExportMusicUrl(
+            sequence.includeMusic,
+            sequence.musicUrl
+          );
+          const sourceShotsHash = await hashSequenceExportInputs({
+            sceneUrls: scenes.map((s) => s.videoUrl),
+            musicUrl,
+          });
           const path = buildExportPath(context.teamId, params.id);
           const { row, created } =
             await context.scopedDb.sequenceExports.createProcessing({
               sequenceId: params.id,
               url: getPublicUrl(STORAGE_BUCKETS.VIDEOS, path),
               storagePath: path,
+              sourceShotsHash,
             });
           if (!created) {
             return Response.json(
@@ -195,10 +212,7 @@ export const Route = createFileRoute('/api/v1/sequences/$id/exports')({
                 exportId: row.id,
                 storagePath: path,
                 scenes,
-                musicUrl:
-                  sequence.includeMusic && sequence.musicUrl
-                    ? sequence.musicUrl
-                    : null,
+                musicUrl,
               }
             );
           await context.scopedDb.sequenceExports.setWorkflowRunId(

@@ -6,13 +6,14 @@
  *   3. PUT the resulting Blob to the reserved URL.
  *   4. Commit via `commitSequenceExportFn` (writes a new `sequence_exports` row).
  *
- * Every commit records `sourceShotsHash` — a SHA-256 of the scene video URLs
- * + the music choice — so `sequence_exports` is a content-addressed cache of
- * what the user is looking at (#1253). `freshExportUrl` is the cached MP4 for
- * the CURRENT state (or null), and both user actions go through the cache:
- * `download()` and `copyLink()` reuse a matching export, else export first and
- * then act. There is no "export" verb in the UI and no way to share a stale
- * cut.
+ * Every commit records `sourceShotsHash` — SHA-256 of `{sceneUrls, musicUrl}`
+ * via `hashSequenceExportInputs` — so `sequence_exports` is a content-
+ * addressed cache of what the user is looking at (#1253, #1406). The server
+ * export route writes the same hash, so an API-produced MP4 is reused here.
+ * `freshExportUrl` is the cached MP4 for the CURRENT state (or null), and
+ * both user actions go through the cache: `download()` and `copyLink()` reuse
+ * a matching export, else export first and then act. There is no "export"
+ * verb in the UI and no way to share a stale cut.
  */
 
 import {
@@ -21,7 +22,11 @@ import {
   requestSequenceExportUploadUrlFn,
 } from '@/functions/sequence-exports';
 import { useShotsBySequence } from '@/hooks/use-shots';
-import { sha256Hex } from '@/lib/compliance/hash';
+import {
+  effectiveExportMusicUrl,
+  hashSequenceExportInputs,
+  sequenceExportInputsKey,
+} from '@/lib/sequence-player/source-shots-hash';
 import { putToR2 } from '@/lib/utils/upload';
 import {
   exportSequence,
@@ -75,23 +80,37 @@ export function useSequenceExport(
     enabled: Boolean(sequence),
   });
 
-  const inputsKey = useMemo(() => {
+  const exportInputs = useMemo(() => {
     if (!sequence || !shots) return null;
-    const sceneUrls = shots.map((f) => f.video?.url ?? null);
-    if (sceneUrls.length === 0 || sceneUrls.some((u) => !u)) return null;
-    return JSON.stringify({
+    const sceneUrls: string[] = [];
+    for (const shot of shots) {
+      const url = shot.video?.url;
+      if (!url) return null;
+      sceneUrls.push(url);
+    }
+    if (sceneUrls.length === 0) return null;
+    return {
       sceneUrls,
-      musicUrl: sequence.includeMusic ? (sequence.musicUrl ?? null) : null,
-    });
+      musicUrl: effectiveExportMusicUrl(
+        sequence.includeMusic,
+        sequence.musicUrl
+      ),
+    };
   }, [sequence, shots]);
+  const inputsKey = exportInputs ? sequenceExportInputsKey(exportInputs) : null;
   const {
     data: inputsHash,
     error: inputsHashError,
     isLoading: hashLoading,
   } = useQuery({
     queryKey: ['sequence-export-inputs-hash', inputsKey],
-    queryFn: () => sha256Hex(inputsKey ?? ''),
-    enabled: inputsKey !== null,
+    queryFn: () => {
+      if (!exportInputs) {
+        throw new Error('Could not fingerprint the scenes for export.');
+      }
+      return hashSequenceExportInputs(exportInputs);
+    },
+    enabled: exportInputs !== null,
     staleTime: Infinity,
     retry: false,
   });

@@ -8,13 +8,13 @@
  *    which commits a finished `ready` row directly; and
  *  - the server-side (API) export workflow, which reserves a `processing` row
  *    up front and later flips it to `ready`/`failed`.
- * The "Download" UI surfaces the newest *ready* row (per sequence); the API
- * lists every status so a caller can poll progress.
+ * Theatre Download/Share reuse a row only when `sourceShotsHash` matches the
+ * current cut (`freshExportUrl` in `useSequenceExport`). The API lists every
+ * status so a caller can poll progress.
  *
- * `sourceShotsHash` is a SHA-256 of the scene video URLs + effective music
- * URL, computed by `useSequenceExport` (#1253). The latest `ready` row is
- * reused as a cache — for direct download and native playback in
- * `SequencePlayer` — only when it matches the current inputs.
+ * `sourceShotsHash` is SHA-256 of `{sceneUrls, musicUrl}`, computed by
+ * `hashSequenceExportInputs` and written by both producers (#1253, #1406).
+ * There is no "latest ready" fallback.
  * `sourceMusicVariantId` is reserved but currently never written.
  */
 
@@ -61,7 +61,7 @@ export const sequenceExports = snakeCase.table(
     // row. Null for browser exports.
     workflowRunId: text(),
 
-    // Inputs that produced this snapshot (cache key, see useSequenceExport)
+    // Inputs that produced this snapshot (cache key, see hashSequenceExportInputs)
     sourceShotsHash: text(),
     sourceMusicVariantId: text(),
 
