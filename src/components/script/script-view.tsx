@@ -10,6 +10,7 @@ import {
 import { GenerateSequenceIcon } from '@/components/icons/generate-sequence-icon';
 import { LocationSuggestionSelector } from '@/components/location-library/location-suggestion-selector';
 import { buildMentionItems } from '@/components/scenes/prompt-mention/mention-items';
+import { GenerationModeToggle } from '@/components/settings/generation-mode-toggle';
 import { GenerationSettings } from '@/components/settings/generation-settings';
 import { StyleCategorySelect } from '@/components/style/style-category-select';
 import { StyleSelector } from '@/components/style/style-selector';
@@ -86,6 +87,10 @@ import {
   type ImageToVideoModel,
   type TextToImageModel,
 } from '@/lib/ai/models';
+import {
+  applyGenerationMode,
+  type GenerationMode,
+} from '@/lib/ai/generation-mode';
 import {
   DEFAULT_ANALYSIS_MODEL,
   isValidAnalysisModelId,
@@ -313,6 +318,7 @@ export const ScriptView: FC<{
   }, [isEditing, sequence?.analysisModel, savedSettings.analysisModels]);
 
   const [genSettings, setGenSettings] = useState<{
+    generationMode: GenerationMode;
     analysisModels: AnalysisModelId[];
     aspectRatio: AspectRatio;
     imageModels: TextToImageModel[];
@@ -321,6 +327,7 @@ export const ScriptView: FC<{
     audioModels: AudioModel[];
     autoGenerateMusic: boolean;
   }>(() => ({
+    generationMode: savedSettings.generationMode,
     analysisModels: sequenceAnalysisModels,
     aspectRatio: isEditing ? sequence.aspectRatio : savedSettings.aspectRatio,
     imageModels:
@@ -339,6 +346,7 @@ export const ScriptView: FC<{
     autoGenerateMusic: isEditing ? false : savedSettings.autoGenerateMusic,
   }));
   const {
+    generationMode,
     analysisModels,
     aspectRatio,
     imageModels,
@@ -350,7 +358,13 @@ export const ScriptView: FC<{
   const updateGen = <K extends keyof typeof genSettings>(
     key: K,
     value: (typeof genSettings)[K]
-  ) => setGenSettings((s) => ({ ...s, [key]: value }));
+  ) =>
+    setGenSettings((s) =>
+      applyGenerationMode({ ...s, [key]: value }, s.generationMode)
+    );
+  const setGenerationMode = (mode: GenerationMode) => {
+    setGenSettings((s) => applyGenerationMode(s, mode));
+  };
   const [selections, setSelections] = useState({
     talentIds: sequence?.suggestedTalentIds ?? [],
     locationIds: sequence?.suggestedLocationIds ?? [],
@@ -645,6 +659,7 @@ export const ScriptView: FC<{
     // Sync once when creating new sequence
     if (!hasSyncedRef.current) {
       setGenSettings({
+        generationMode: savedSettings.generationMode,
         aspectRatio: savedSettings.aspectRatio,
         analysisModels: savedSettings.analysisModels,
         imageModels: savedSettings.imageModels,
@@ -769,7 +784,9 @@ export const ScriptView: FC<{
 
     if (!validImage && !validVideo && !validRatio) {
       if (baseline) {
-        setGenSettings((s) => ({ ...s, ...baseline }));
+        setGenSettings((s) =>
+          applyGenerationMode({ ...s, ...baseline }, s.generationMode)
+        );
       }
       styleApplySnapshotRef.current = null;
       setAppliedFromStyle(null);
@@ -783,12 +800,15 @@ export const ScriptView: FC<{
         videoModels: s.videoModels,
       };
       styleApplySnapshotRef.current = start;
-      return {
-        ...s,
-        aspectRatio: validRatio ?? start.aspectRatio,
-        imageModels: validImage ? [validImage] : start.imageModels,
-        videoModels: validVideo ? [validVideo] : start.videoModels,
-      };
+      return applyGenerationMode(
+        {
+          ...s,
+          aspectRatio: validRatio ?? start.aspectRatio,
+          imageModels: validImage ? [validImage] : start.imageModels,
+          videoModels: validVideo ? [validVideo] : start.videoModels,
+        },
+        s.generationMode
+      );
     });
     setAppliedFromStyle({
       styleId: id,
@@ -807,7 +827,9 @@ export const ScriptView: FC<{
   const resetStyleDefaults = () => {
     const snapshot = styleApplySnapshotRef.current;
     if (!snapshot) return;
-    setGenSettings((s) => ({ ...s, ...snapshot }));
+    setGenSettings((s) =>
+      applyGenerationMode({ ...s, ...snapshot }, s.generationMode)
+    );
     styleApplySnapshotRef.current = null;
     setAppliedFromStyle(null);
   };
@@ -1390,6 +1412,7 @@ export const ScriptView: FC<{
             settings trigger. */}
         <CardHeader className="shrink-0 flex flex-row items-center md:flex-col md:items-start lg:flex-row justify-between gap-3 px-6 py-4 border-b border-border/50 bg-card/40 short-h:py-2">
           <GenerationSettings
+            generationMode={generationMode}
             aspectRatio={aspectRatio}
             analysisModels={analysisModels}
             imageModels={imageModels}
@@ -1617,6 +1640,11 @@ export const ScriptView: FC<{
                     Cancel
                   </Button>
                 )}
+                <GenerationModeToggle
+                  value={generationMode}
+                  onChange={setGenerationMode}
+                  disabled={loading}
+                />
                 <Button
                   type="submit"
                   disabled={isDisabled}

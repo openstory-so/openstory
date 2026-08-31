@@ -14,6 +14,16 @@ export const TEST_FAL_PRICING: Record<string, EffectiveFalPricing> = {
     unit: 'images',
     typicalUnitsPerCall: 1.5,
   },
+  'google/nano-banana-2-lite': {
+    unitPrice: micros(40_000),
+    unit: 'images',
+    typicalUnitsPerCall: 1,
+  },
+  'google/nano-banana-lite/edit': {
+    unitPrice: micros(40_000),
+    unit: 'images',
+    typicalUnitsPerCall: 1,
+  },
   'openai/gpt-image-2': {
     unitPrice: micros(1_000_000),
     unit: 'units',

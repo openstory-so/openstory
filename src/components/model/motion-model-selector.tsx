@@ -21,6 +21,8 @@ type MotionModelFilterProps = {
   recommendedVideoModel?: string | null;
   /** Style name, used in the recommendation tooltip. */
   styleName?: string;
+  /** When set, only these keys appear (Turbo mode). */
+  allowedIds?: readonly ImageToVideoModel[];
 };
 
 /**
@@ -33,6 +35,7 @@ function useMotionModels({
   styleCategory,
   recommendedVideoModel,
   styleName,
+  allowedIds,
 }: MotionModelFilterProps) {
   return useMemo(
     () =>
@@ -40,6 +43,7 @@ function useMotionModels({
         .filter(([key, m]) => {
           if (!isValidImageToVideoModel(key)) return false;
           if ('hidden' in m) return false;
+          if (allowedIds && !allowedIds.includes(key)) return false;
           if (
             'requiredStyleCategory' in m &&
             m.requiredStyleCategory !== styleCategory
@@ -65,14 +69,15 @@ function useMotionModels({
             recommendedFor,
           };
         }),
-    [aspectRatio, styleCategory, recommendedVideoModel, styleName]
+    [aspectRatio, styleCategory, recommendedVideoModel, styleName, allowedIds]
   );
 }
 
 function useRecommendationStatus(
   recommendedVideoModel: string | null | undefined,
-  aspectRatio: AspectRatio | undefined
-): 'matched' | 'incompatible-ratio' | 'unknown' | 'none' {
+  aspectRatio: AspectRatio | undefined,
+  allowedIds?: readonly ImageToVideoModel[]
+): 'matched' | 'incompatible-ratio' | 'hidden-by-filter' | 'unknown' | 'none' {
   return useMemo(() => {
     if (!recommendedVideoModel) return 'none';
     if (!isValidImageToVideoModel(recommendedVideoModel)) return 'unknown';
@@ -82,8 +87,11 @@ function useRecommendationStatus(
     ) {
       return 'incompatible-ratio';
     }
+    if (allowedIds && !allowedIds.includes(recommendedVideoModel)) {
+      return 'hidden-by-filter';
+    }
     return 'matched';
-  }, [recommendedVideoModel, aspectRatio]);
+  }, [recommendedVideoModel, aspectRatio, allowedIds]);
 }
 
 function RecommendationHint({
@@ -91,7 +99,12 @@ function RecommendationHint({
   recommendedVideoModel,
   styleName,
 }: {
-  status: 'matched' | 'incompatible-ratio' | 'unknown' | 'none';
+  status:
+    | 'matched'
+    | 'incompatible-ratio'
+    | 'hidden-by-filter'
+    | 'unknown'
+    | 'none';
   recommendedVideoModel: string | null | undefined;
   styleName: string | undefined;
 }) {
@@ -117,6 +130,15 @@ function RecommendationHint({
       </p>
     );
   }
+  if (status === 'hidden-by-filter' && recommendedModelName) {
+    return (
+      <p className="text-[10px] text-muted-foreground">
+        {styleName ? `${styleName} recommends` : 'Recommended'}{' '}
+        <span className="font-medium">{recommendedModelName}</span>, but it's
+        not available in this selector.
+      </p>
+    );
+  }
   return null;
 }
 
@@ -137,12 +159,14 @@ export const MotionModelSelector: React.FC<MotionModelSelectorProps> = ({
   recommendedVideoModel,
   styleName,
   generatedStatuses,
+  allowedIds,
 }) => {
   const baseModels = useMotionModels({
     aspectRatio,
     styleCategory,
     recommendedVideoModel,
     styleName,
+    allowedIds,
   });
   const models = useMemo(
     () =>
@@ -154,7 +178,8 @@ export const MotionModelSelector: React.FC<MotionModelSelectorProps> = ({
   );
   const recommendationStatus = useRecommendationStatus(
     recommendedVideoModel,
-    aspectRatio
+    aspectRatio,
+    allowedIds
   );
 
   return (
@@ -198,16 +223,19 @@ export const MotionModelMultiSelector: React.FC<
   styleCategory,
   recommendedVideoModel,
   styleName,
+  allowedIds,
 }) => {
   const models = useMotionModels({
     aspectRatio,
     styleCategory,
     recommendedVideoModel,
     styleName,
+    allowedIds,
   });
   const recommendationStatus = useRecommendationStatus(
     recommendedVideoModel,
-    aspectRatio
+    aspectRatio,
+    allowedIds
   );
 
   return (

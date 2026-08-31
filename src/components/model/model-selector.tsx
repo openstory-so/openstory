@@ -20,6 +20,8 @@ type ModelSelectorProps = {
   onModelsChange: (models: AnalysisModelId[]) => void;
   disabled?: boolean;
   singleSelect?: boolean;
+  /** When set, only these ids appear (Turbo mode). */
+  allowedIds?: readonly AnalysisModelId[];
 };
 
 export const ModelSelector: React.FC<ModelSelectorProps> = ({
@@ -27,6 +29,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
   onModelsChange,
   disabled = false,
   singleSelect = false,
+  allowedIds,
 }) => {
   // Region-blocked vendors are hidden from the picker (#1259): a user in an
   // Anthropic-blocked country shouldn't be offered a model the server would
@@ -43,6 +46,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
       [...SCRIPT_ANALYSIS_MODELS]
         .filter((m) => isSelectableAnalysisModelId(m.id))
         .filter((m) => !isRegionBlockedModel(m.id, country))
+        .filter((m) => !allowedIds || allowedIds.includes(m.id))
         .sort((a, b) => a.qualityRank - b.qualityRank)
         .map((m) => ({
           id: m.id,
@@ -50,22 +54,40 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
           group: 'all',
           badge: m.license,
         })),
-    [country]
+    [country, allowedIds]
   );
 
   // Remap an already-selected blocked model (stored default, restored draft)
   // onto the region fallback so the selection matches what the list shows and
-  // what the server will actually run.
+  // what the server will actually run. Turbo `allowedIds` must stay in the
+  // set — DeepSeek is the region fallback but is not a turbo analysis model.
   useEffect(() => {
-    if (!country) return;
+    if (!country && !allowedIds) return;
     const remapped = [
-      ...new Set(selectedModels.map((m) => resolveModelForCountry(m, country))),
+      ...new Set(
+        selectedModels.map((m) => {
+          const resolved = country ? resolveModelForCountry(m, country) : m;
+          if (
+            allowedIds &&
+            allowedIds.length > 0 &&
+            !allowedIds.includes(resolved)
+          ) {
+            const first = allowedIds[0];
+            if (!first) return resolved;
+            return (
+              allowedIds.find((id) => !isRegionBlockedModel(id, country)) ??
+              first
+            );
+          }
+          return resolved;
+        })
+      ),
     ];
     const changed =
       remapped.length !== selectedModels.length ||
       remapped.some((m, i) => m !== selectedModels[i]);
     if (changed) onModelsChange(remapped);
-  }, [country, selectedModels, onModelsChange]);
+  }, [country, selectedModels, onModelsChange, allowedIds]);
 
   return (
     <BaseModelSelector

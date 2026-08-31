@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { TEST_FAL_PRICING as FAL_PRICING } from '@/lib/ai/__tests__/fal-pricing-fixture';
-import { DEFAULT_IMAGE_MODEL } from '@/lib/ai/models';
+import { TURBO_DEFAULT_IMAGE } from '@/lib/ai/generation-mode';
 import { SIGNUP_GRANT_MICROS } from '@/lib/billing/constants';
 import { buildFilmCostExamples } from './film-cost-examples';
 import { microsToUsd } from './money';
@@ -48,7 +48,7 @@ describe('buildFilmCostExamples', () => {
 
     expect(
       full.costMicros,
-      `with-motion-music ($${microsToUsd(full.costMicros).toFixed(2)} with ${DEFAULT_IMAGE_MODEL}) should fit in welcome grant ($${microsToUsd(SIGNUP_GRANT_MICROS)})`
+      `with-motion-music ($${microsToUsd(full.costMicros).toFixed(2)} with ${TURBO_DEFAULT_IMAGE}) should fit in welcome grant ($${microsToUsd(SIGNUP_GRANT_MICROS)})`
     ).toBeLessThanOrEqual(SIGNUP_GRANT_MICROS);
   });
 });

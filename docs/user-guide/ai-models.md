@@ -9,11 +9,12 @@ OpenStory integrates with a wide range of AI models across four categories: scri
 
 ## Script Analysis Models
 
-These LLM models analyze your script, extract scenes, characters, and locations, and generate prompts. You can select multiple models to generate parallel sequences for comparison.
+These LLM models analyze your script, extract scenes, characters, and locations, and generate prompts. You can select multiple models to generate parallel sequences for comparison. Next to **Generate**, **Turbo** is the default (Luna, Nano Banana 2 Lite, MiniMax H3 Max, ElevenLabs); **Quality** restores the full catalog.
 
 | Model              | Vendor    | Context Window | License                   |
 | ------------------ | --------- | -------------- | ------------------------- |
-| **Claude Fable 5** | Anthropic | 1M tokens      | Proprietary (default)     |
+| **GPT-5.6 Luna**   | OpenAI    | 1M tokens      | Proprietary (default)     |
+| Claude Fable 5     | Anthropic | 1M tokens      | Proprietary               |
 | Claude Opus 5      | Anthropic | 1M tokens      | Proprietary               |
 | Claude Opus 5 Fast | Anthropic | 1M tokens      | Proprietary (scene-split) |
 | Gemini 3.7 Flash   | Google    | 1M tokens      | Proprietary               |
@@ -24,7 +25,6 @@ These LLM models analyze your script, extract scenes, characters, and locations,
 | DeepSeek V4 Pro    | DeepSeek  | 1M tokens      | Open Weight (MIT)         |
 | Claude Sonnet 5    | Anthropic | 1M tokens      | Proprietary               |
 | Grok 4.6           | SpaceXAI  | 500K tokens    | Proprietary               |
-| GPT-5.6 Luna       | OpenAI    | 1M tokens      | Proprietary               |
 | Mistral Small 4    | Mistral   | 262K tokens    | Open Weight (Apache 2.0)  |
 | Seed 2.0 Mini      | ByteDance | 262K tokens    | Proprietary               |
 

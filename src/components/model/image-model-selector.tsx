@@ -148,6 +148,7 @@ type ImageModelMultiSelectorProps = {
   selectedModels: TextToImageModel[];
   onModelsChange: (models: TextToImageModel[]) => void;
   disabled?: boolean;
+  filterModels?: TextToImageModel[];
 } & RecommendationProps;
 
 export const ImageModelMultiSelector: React.FC<
@@ -158,11 +159,21 @@ export const ImageModelMultiSelector: React.FC<
   disabled = false,
   recommendedImageModel,
   styleName,
+  filterModels,
 }) => {
-  const models = useImageModels({ recommendedImageModel, styleName });
+  const allModels = useImageModels({ recommendedImageModel, styleName });
+  const models = useMemo(
+    () =>
+      filterModels
+        ? allModels.filter(
+            (m) => isValidTextToImageModel(m.id) && filterModels.includes(m.id)
+          )
+        : allModels,
+    [allModels, filterModels]
+  );
   const status = useMemo(
-    () => resolveRecommendation(recommendedImageModel, undefined),
-    [recommendedImageModel]
+    () => resolveRecommendation(recommendedImageModel, filterModels),
+    [recommendedImageModel, filterModels]
   );
 
   return (

@@ -147,6 +147,8 @@ Each style includes configuration for color palette, artistic direction, and ren
 
 ## The Generation Pipeline
 
+Next to **Generate**, a **Quality | Turbo** switch picks the model set. Turbo is the default (fastest models — GPT-5.6 Luna, Nano Banana 2 Lite, MiniMax H3 Max — and ElevenLabs for music). Quality restores the full catalog.
+
 When you click **Generate Sequence**, OpenStory runs an automated pipeline:
 
 1. **Script Analysis** — The AI model breaks your script into individual scenes with metadata (title, duration, location, time of day, story beat)

@@ -15,12 +15,14 @@
 
 import type { EffectiveFalPricing } from '@/lib/ai/fal-pricing-live';
 import {
-  DEFAULT_IMAGE_MODEL,
-  DEFAULT_MUSIC_MODEL,
-  DEFAULT_VIDEO_MODEL,
+  TURBO_DEFAULT_AUDIO,
+  TURBO_DEFAULT_IMAGE,
+  TURBO_DEFAULT_VIDEO,
+} from '@/lib/ai/generation-mode';
+import {
+  AUDIO_MODELS,
   IMAGE_MODELS,
   IMAGE_TO_VIDEO_MODELS,
-  AUDIO_MODELS,
 } from '@/lib/ai/models';
 import { DEFAULT_ASPECT_RATIO } from '@/lib/constants/aspect-ratios';
 import {
@@ -89,7 +91,7 @@ export function buildFilmCostExamples(
   // Without an honest default-image signal the showcase would either lie
   // (floor) or be empty — prefer hiding the section until pricing is loaded.
   const sampleImage = estimateImageCost(
-    DEFAULT_IMAGE_MODEL,
+    TURBO_DEFAULT_IMAGE,
     DEFAULT_ASPECT_RATIO,
     1,
     { pricing }
@@ -97,7 +99,7 @@ export function buildFilmCostExamples(
   if (sampleImage === null) return null;
 
   const imagesOnly = estimateStoryboardCost({
-    imageModel: DEFAULT_IMAGE_MODEL,
+    imageModel: TURBO_DEFAULT_IMAGE,
     aspectRatio: DEFAULT_ASPECT_RATIO,
     estimatedSceneCount: TYPICAL_SCENE_COUNT,
     autoGenerateMotion: false,
@@ -106,32 +108,32 @@ export function buildFilmCostExamples(
   });
 
   const withMotion = estimateStoryboardCost({
-    imageModel: DEFAULT_IMAGE_MODEL,
+    imageModel: TURBO_DEFAULT_IMAGE,
     aspectRatio: DEFAULT_ASPECT_RATIO,
     estimatedSceneCount: TYPICAL_SCENE_COUNT,
     autoGenerateMotion: true,
-    videoModels: [DEFAULT_VIDEO_MODEL],
+    videoModels: [TURBO_DEFAULT_VIDEO],
     videoDurationSeconds: TYPICAL_SHOT_DURATION_S,
     autoGenerateMusic: false,
     pricing,
   });
 
   const withMotionAndMusic = estimateStoryboardCost({
-    imageModel: DEFAULT_IMAGE_MODEL,
+    imageModel: TURBO_DEFAULT_IMAGE,
     aspectRatio: DEFAULT_ASPECT_RATIO,
     estimatedSceneCount: TYPICAL_SCENE_COUNT,
     autoGenerateMotion: true,
-    videoModels: [DEFAULT_VIDEO_MODEL],
+    videoModels: [TURBO_DEFAULT_VIDEO],
     videoDurationSeconds: TYPICAL_SHOT_DURATION_S,
     autoGenerateMusic: true,
-    audioModels: [DEFAULT_MUSIC_MODEL],
+    audioModels: [TURBO_DEFAULT_AUDIO],
     audioDurationSeconds: TARGET_DURATION_S,
     pricing,
   });
 
-  const imageName = IMAGE_MODELS[DEFAULT_IMAGE_MODEL].name;
-  const videoName = IMAGE_TO_VIDEO_MODELS[DEFAULT_VIDEO_MODEL].name;
-  const audioName = AUDIO_MODELS[DEFAULT_MUSIC_MODEL].name;
+  const imageName = IMAGE_MODELS[TURBO_DEFAULT_IMAGE].name;
+  const videoName = IMAGE_TO_VIDEO_MODELS[TURBO_DEFAULT_VIDEO].name;
+  const audioName = AUDIO_MODELS[TURBO_DEFAULT_AUDIO].name;
   const targetLabel = formatTargetLabel(TARGET_DURATION_S);
   const subtitle = `${targetLabel} target · defaults`;
   const characterSheets = estimateCharacterSheetCount(TYPICAL_SCENE_COUNT);

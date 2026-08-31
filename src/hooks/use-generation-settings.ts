@@ -11,6 +11,12 @@ import {
   type TextToImageModel,
 } from '@/lib/ai/models';
 import {
+  applyGenerationMode,
+  DEFAULT_GENERATION_MODE,
+  isGenerationMode,
+  type GenerationMode,
+} from '@/lib/ai/generation-mode';
+import {
   DEFAULT_ANALYSIS_MODEL,
   isSelectableAnalysisModelId,
   isValidAnalysisModelId,
@@ -27,10 +33,11 @@ import { getLogger } from '@/lib/observability/logger';
 const logger = getLogger(['openstory', 'ui', 'use-generation-settings']);
 
 // Bump when product defaults change so prior localStorage snapshots are ignored
-// (v2 → v3: motion + music on for the welcome short aha — #1140).
-const STORAGE_KEY = 'openstory:generation-settings:v3';
+// (v4 → v5: Turbo is the product default).
+const STORAGE_KEY = 'openstory:generation-settings:v5';
 
 type GenerationSettings = {
+  generationMode: GenerationMode;
   aspectRatio: AspectRatio;
   analysisModels: AnalysisModelId[];
   imageModel: TextToImageModel;
@@ -43,7 +50,29 @@ type GenerationSettings = {
   autoGenerateMusic: boolean;
 };
 
-const DEFAULT_SETTINGS: GenerationSettings = {
+function withMode(settings: GenerationSettings): GenerationSettings {
+  const lists = applyGenerationMode(
+    {
+      generationMode: settings.generationMode,
+      analysisModels: settings.analysisModels,
+      imageModels: settings.imageModels,
+      videoModels: settings.videoModels,
+      audioModels: settings.audioModels,
+      aspectRatio: settings.aspectRatio,
+    },
+    settings.generationMode
+  );
+  return {
+    ...settings,
+    ...lists,
+    imageModel: lists.imageModels[0] ?? settings.imageModel,
+    motionModel: lists.videoModels[0] ?? settings.motionModel,
+    musicModel: lists.audioModels[0] ?? settings.musicModel,
+  };
+}
+
+const DEFAULT_SETTINGS: GenerationSettings = withMode({
+  generationMode: DEFAULT_GENERATION_MODE,
   aspectRatio: DEFAULT_ASPECT_RATIO,
   analysisModels: [DEFAULT_ANALYSIS_MODEL],
   imageModel: DEFAULT_IMAGE_MODEL,
@@ -56,7 +85,7 @@ const DEFAULT_SETTINGS: GenerationSettings = {
   musicModel: DEFAULT_MUSIC_MODEL,
   audioModels: [DEFAULT_MUSIC_MODEL],
   autoGenerateMusic: true,
-};
+});
 
 /**
  * Validates aspect ratio value
@@ -183,7 +212,13 @@ function loadSettings(): GenerationSettings {
         ? parsed.autoGenerateMusic
         : false;
 
-    return {
+    const bag: Record<string, unknown> = parsed;
+    const generationMode = isGenerationMode(bag.generationMode)
+      ? bag.generationMode
+      : DEFAULT_GENERATION_MODE;
+
+    return withMode({
+      generationMode,
       aspectRatio,
       analysisModels,
       imageModel,
@@ -194,7 +229,7 @@ function loadSettings(): GenerationSettings {
       musicModel,
       audioModels,
       autoGenerateMusic,
-    };
+    });
   } catch (error) {
     logger.warn('Failed to load settings from localStorage:', { err: error });
     return DEFAULT_SETTINGS;
@@ -263,6 +298,8 @@ export function useGenerationSettings() {
           videoModels: compatibleVideoModels,
         };
       }
+
+      updated = withMode(updated);
 
       saveSettings(updated);
       return updated;

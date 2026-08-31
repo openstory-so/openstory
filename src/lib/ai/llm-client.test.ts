@@ -55,7 +55,8 @@ const {
   preferUsage,
   RECOMMENDED_MODELS,
 } = await import('./llm-client');
-const { DEFAULT_VISION_MODEL } = await import('./models.config');
+const { DEFAULT_ANALYSIS_MODEL, DEFAULT_VISION_MODEL } =
+  await import('./models.config');
 
 const usage = (cost?: number): TokenUsage => ({
   promptTokens: 0,
@@ -671,6 +672,7 @@ describe('llm-client', () => {
       // together on a model bump; this catches a bump that misses one.
       const lockstepModels = [
         ...new Set([
+          DEFAULT_ANALYSIS_MODEL,
           DEFAULT_VISION_MODEL,
           ...Object.values(RECOMMENDED_MODELS),
         ]),

@@ -194,6 +194,13 @@ testWithUser.describe('Full Sequence Pipeline', () => {
       // 1. Open the new-sequence page.
       await page.goto('/sequences/new');
 
+      // Product default is Turbo; recorded fal fixtures are Quality catalogs
+      // (style-applied Grok Imagine / Seedance). Pin Quality before style
+      // apply remaps those recommendations.
+      await page
+        .getByRole('radio', { name: 'Quality mode — full model catalog' })
+        .click();
+
       // 2. Recorded image/motion fixtures were captured against Product Ad.
       // The composer now defaults to Film & Cinematic (#1180), so switch
       // the row and pick that style by name — clicking `.first()` would
