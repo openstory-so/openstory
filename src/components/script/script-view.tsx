@@ -1288,8 +1288,14 @@ export const ScriptView: FC<{
 
   // Nothing written yet: Enhance writes the script instead of expanding one
   // (#1393), so it stays live at any length and says which job it is doing.
+  // "Draft" is the house word for it — the studio composer's equivalent is
+  // "Draft prompt" — and it keeps this distinct from Shuffle next door, which
+  // swaps in a canned sample rather than writing anything.
   const enhanceInvents = scriptValue.trim().length === 0;
-  const enhanceLabel = enhanceInvents ? 'Write a script' : 'Enhance Script';
+  const enhanceLabel = enhanceInvents ? 'Draft script' : 'Enhance Script';
+  // Match script (the default) passes no style to the enhancer, so the draft
+  // really is any genre at all.
+  const inventStyleName = styles.find((s) => s.id === styleId)?.name;
 
   const enhanceControls = (
     <>
@@ -1354,8 +1360,9 @@ export const ScriptView: FC<{
               </ToggleGroup>
               {enhanceInvents ? (
                 <p className="max-w-xs text-xs text-muted-foreground">
-                  Nothing written yet — we'll invent one that fits this style
-                  and length. Read it over before you generate.
+                  {inventStyleName
+                    ? `An original ${inventStyleName} script, yours to edit.`
+                    : 'An original script, any genre, yours to edit.'}
                 </p>
               ) : (
                 <DurationFitHint
@@ -1379,7 +1386,7 @@ export const ScriptView: FC<{
                 }}
               >
                 <Sparkles className="size-3.5" />
-                {enhanceInvents ? 'Write it' : 'Enhance'}
+                {enhanceInvents ? 'Draft it' : 'Enhance'}
               </Button>
             </div>
           </PopoverContent>

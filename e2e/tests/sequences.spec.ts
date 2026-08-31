@@ -160,8 +160,8 @@ test.describe('Sequences', () => {
     // Generate stays live on an empty script (#1393), and so does Enhance —
     // which writes the script from nothing rather than expanding one.
     await expect(generate).toBeEnabled();
-    const writeScript = page.getByRole('button', { name: 'Write a script' });
-    await expect(writeScript).toBeEnabled();
+    const draftScript = page.getByRole('button', { name: 'Draft script' });
+    await expect(draftScript).toBeEnabled();
 
     // Generating with nothing written hands over to Enhance: its popover
     // opens so the duration controls are in front of the user first. (⌘+Enter
@@ -169,7 +169,7 @@ test.describe('Sequences', () => {
     await page.locator('[data-slot="markdown-editor"] .ProseMirror').click();
     await page.keyboard.press('ControlOrMeta+Enter');
     await expect(page.getByText('Target video duration')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Write it' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Draft it' })).toBeVisible();
     await page.keyboard.press('Escape');
 
     await fillScriptEditor(page, 'A cat walks into a diner at dawn.');
