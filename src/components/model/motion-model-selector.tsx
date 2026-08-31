@@ -6,6 +6,7 @@ import {
   IMAGE_TO_VIDEO_MODELS,
   isModelCompatibleWithAspectRatio,
   isValidImageToVideoModel,
+  supportsReferenceOnlyMotion,
   type ImageToVideoModel,
 } from '@/lib/ai/models';
 import {
@@ -28,6 +29,13 @@ type MotionModelFilterProps = {
   styleName?: string;
   /** When set, only these keys appear (Turbo mode). */
   allowedIds?: readonly ImageToVideoModel[];
+  /**
+   * Reference-only mode: narrow the list to models that can render without a
+   * start frame. Filtering the options is what keeps the mode from failing at
+   * submit — the create schema rejects an incompatible selection, and a user
+   * should never be able to build one.
+   */
+  referenceOnly?: boolean;
 };
 
 /**
@@ -41,6 +49,7 @@ function useMotionModels({
   recommendedVideoModel,
   styleName,
   allowedIds,
+  referenceOnly,
 }: MotionModelFilterProps) {
   return useMemo(
     () =>
@@ -49,6 +58,7 @@ function useMotionModels({
           if (!isValidImageToVideoModel(key)) return false;
           if ('hidden' in m) return false;
           if (allowedIds && !allowedIds.includes(key)) return false;
+          if (referenceOnly && !supportsReferenceOnlyMotion(key)) return false;
           if (
             'requiredStyleCategory' in m &&
             m.requiredStyleCategory !== styleCategory
@@ -85,7 +95,14 @@ function useMotionModels({
             recommendedFor,
           };
         }),
-    [aspectRatio, styleCategory, recommendedVideoModel, styleName, allowedIds]
+    [
+      aspectRatio,
+      styleCategory,
+      recommendedVideoModel,
+      styleName,
+      allowedIds,
+      referenceOnly,
+    ]
   );
 }
 
@@ -174,6 +191,7 @@ export const MotionModelSelector: React.FC<MotionModelSelectorProps> = ({
   styleCategory,
   recommendedVideoModel,
   styleName,
+  referenceOnly,
   generatedStatuses,
   allowedIds,
 }) => {
@@ -183,6 +201,7 @@ export const MotionModelSelector: React.FC<MotionModelSelectorProps> = ({
     recommendedVideoModel,
     styleName,
     allowedIds,
+    referenceOnly,
   });
   const models = useMemo(
     () =>
@@ -240,6 +259,7 @@ export const MotionModelMultiSelector: React.FC<
   recommendedVideoModel,
   styleName,
   allowedIds,
+  referenceOnly,
 }) => {
   const models = useMotionModels({
     aspectRatio,
@@ -247,6 +267,7 @@ export const MotionModelMultiSelector: React.FC<
     recommendedVideoModel,
     styleName,
     allowedIds,
+    referenceOnly,
   });
   const recommendationStatus = useRecommendationStatus(
     recommendedVideoModel,

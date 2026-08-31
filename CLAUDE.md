@@ -211,6 +211,36 @@ Each surface is enumerated in `scoped-workflow.ts` and pinned by
 category doesn't match the hatch it came through. Full rationale:
 `docs/architecture/workflow-snapshots-and-content-hash-staleness.md`.
 
+## Reference-only motion (no start frames)
+
+`sequences.referenceOnly` renders each shot **straight to video** from the
+character / location / element reference sheets — the shot-images phase never
+runs. Off by default; only models with a fal `reference-to-video` route qualify
+(Seedance 2.0 / 2.5, `supportsReferenceOnlyMotion`), and `createSequenceSchema`
+validates **every** selected video model, not just the primary.
+
+The substance is the prompt. The image-to-video template's central rule is NO
+VISUAL REDUNDANCY — "the video model already sees these in the starting frame"
+— which inverts with no still: anything the prompt omits gets reinvented per
+shot. So reference-only has its own template
+(`phase/motion-prompt-reference-only-chat`) that composes the opening frame
+(framing, blocking, set, light, look, prop state) AND directs the motion, while
+still leaving identity to the bound sheets. It is also handed
+`<LOCATION_BIBLE>` / `<ELEMENT_BIBLE>`, which its sibling computes and silently
+drops. Two templates, not one conditional — they disagree on their most
+load-bearing rule.
+
+Gotchas: motion references gain the location sheet (ordered first — the budget
+is spent in order); `buildReferenceVideoPrompt` drops the "Use @Image1 as the
+starting frame" line and binds refs from slot 1; Ark `size` switches from
+`adaptive` to the sequence's ratio (nothing is left to adapt to, and a portrait
+sheet would silently render 9:16); billing prices the r2v endpoint. The mode
+folds into the motion-prompt hash **only when true**, so no stored digest moves
+— and it is REQUIRED on `ShotPromptContextSequence` because omitting it would
+make every reference-only prompt read stale forever, silently.
+
+Full rationale: `docs/architecture/reference-only-motion.md`.
+
 ## Frame System
 
 Frames are the core content unit — each represents one scene from script analysis.

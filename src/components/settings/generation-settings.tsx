@@ -23,6 +23,9 @@ import {
   DEFAULT_IMAGE_MODEL,
   DEFAULT_MUSIC_MODEL,
   DEFAULT_VIDEO_MODEL,
+  IMAGE_TO_VIDEO_MODELS,
+  referenceOnlyMotionModels,
+  supportsReferenceOnlyMotion,
   type AudioModel,
   type ImageToVideoModel,
   type TextToImageModel,
@@ -34,7 +37,7 @@ import {
   availableResolutions,
   resolutionCeilingNote,
 } from '@/lib/ai/resolution-support';
-import { useState, type FC } from 'react';
+import { useMemo, useState, type FC } from 'react';
 import { AspectRatioPills } from './aspect-ratio-pills';
 import { ResolutionPills } from './resolution-pills';
 import { GenerationSettingsTrigger } from './generation-settings-trigger';
@@ -76,6 +79,12 @@ type GenerationSettingsProps = {
   imageModels: TextToImageModel[];
   videoModels: ImageToVideoModel[];
   autoGenerateMotion?: boolean;
+  /**
+   * Reference-only: skip start-frame generation and render each shot straight
+   * to video from the cast / location / element sheets. Omit the change
+   * handler to hide the control (contexts that cannot switch mode).
+   */
+  referenceOnly?: boolean;
   audioModels?: AudioModel[];
   autoGenerateMusic?: boolean;
   onAspectRatioChange: (value: AspectRatio) => void;
@@ -84,6 +93,7 @@ type GenerationSettingsProps = {
   onImageModelsChange: (value: TextToImageModel[]) => void;
   onVideoModelsChange: (value: ImageToVideoModel[]) => void;
   onAutoGenerateMotionChange?: (value: boolean) => void;
+  onReferenceOnlyChange?: (value: boolean) => void;
   onAudioModelsChange?: (value: AudioModel[]) => void;
   onAutoGenerateMusicChange?: (value: boolean) => void;
   disabled?: boolean;
@@ -121,6 +131,7 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
   imageModels,
   videoModels,
   autoGenerateMotion = true,
+  referenceOnly = false,
   audioModels,
   autoGenerateMusic = true,
   onAspectRatioChange,
@@ -129,6 +140,7 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
   onImageModelsChange,
   onVideoModelsChange,
   onAutoGenerateMotionChange,
+  onReferenceOnlyChange,
   onAudioModelsChange,
   onAutoGenerateMusicChange,
   disabled = false,
@@ -151,6 +163,32 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
     imageModels,
     videoModels: autoGenerateMotion ? videoModels : [],
     aspectRatio,
+  };
+
+  const referenceOnlyModelNames = useMemo(
+    () =>
+      new Intl.ListFormat('en', { style: 'long', type: 'disjunction' }).format(
+        referenceOnlyMotionModels().map((m) => IMAGE_TO_VIDEO_MODELS[m].name)
+      ),
+    []
+  );
+
+  /**
+   * Turning the mode ON narrows the motion list, which can strand a selection
+   * the server would then reject at submit. Drop the models that cannot render
+   * without a start frame here, falling back to the first capable one so the
+   * selection is never empty — the user sees the change while the panel is
+   * open, rather than an error after pressing Generate.
+   */
+  const handleReferenceOnlyChange = (next: boolean) => {
+    onReferenceOnlyChange?.(next);
+    if (!next) return;
+    const capable = videoModels.filter(supportsReferenceOnlyMotion);
+    if (capable.length === videoModels.length) return;
+    const fallback = referenceOnlyMotionModels()[0];
+    onVideoModelsChange(
+      capable.length > 0 ? capable : fallback ? [fallback] : videoModels
+    );
   };
 
   return (
@@ -277,6 +315,23 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
                 disabled={disabled}
               />
             )}
+            {onReferenceOnlyChange && (
+              <AutoToggle
+                id="reference-only"
+                label="Skip start frames (reference-only)"
+                checked={referenceOnly}
+                onChange={handleReferenceOnlyChange}
+                disabled={disabled || !autoGenerateMotion}
+              />
+            )}
+            {onReferenceOnlyChange && referenceOnly && (
+              <p className="text-xs text-muted-foreground">
+                Each shot renders straight to video from the character, location
+                and element references — no still is generated first. Faster and
+                cheaper, with looser control over composition. Only{' '}
+                {referenceOnlyModelNames} can do this.
+              </p>
+            )}
             {singleSelectMotion ? (
               <MotionModelSelector
                 selectedModel={videoModels[0] ?? DEFAULT_VIDEO_MODEL}
@@ -286,6 +341,7 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
                 styleCategory={styleCategory}
                 recommendedVideoModel={recommendedVideoModel}
                 styleName={styleName}
+                referenceOnly={referenceOnly}
               />
             ) : (
               <MotionModelMultiSelector
@@ -296,6 +352,7 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
                 styleCategory={styleCategory}
                 recommendedVideoModel={recommendedVideoModel}
                 styleName={styleName}
+                referenceOnly={referenceOnly}
               />
             )}
           </section>

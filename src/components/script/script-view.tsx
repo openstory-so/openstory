@@ -333,6 +333,7 @@ export const ScriptView: FC<{
     imageModels: TextToImageModel[];
     videoModels: ImageToVideoModel[];
     autoGenerateMotion: boolean;
+    referenceOnly: boolean;
     audioModels: AudioModel[];
     autoGenerateMusic: boolean;
   }>(() => ({
@@ -349,6 +350,11 @@ export const ScriptView: FC<{
         ? [safeImageToVideoModel(sequence.videoModel, DEFAULT_VIDEO_MODEL)]
         : savedSettings.videoModels,
     autoGenerateMotion: isEditing ? false : savedSettings.autoGenerateMotion,
+    // Editing an existing sequence inherits its mode; a new one starts from
+    // the remembered setting.
+    referenceOnly: isEditing
+      ? sequence.referenceOnly
+      : savedSettings.referenceOnly,
     audioModels:
       isEditing && sequence.musicModel
         ? [safeAudioModel(sequence.musicModel, DEFAULT_MUSIC_MODEL)]
@@ -362,6 +368,7 @@ export const ScriptView: FC<{
     imageModels,
     videoModels,
     autoGenerateMotion,
+    referenceOnly,
     audioModels,
     autoGenerateMusic,
   } = genSettings;
@@ -691,6 +698,7 @@ export const ScriptView: FC<{
         imageModels: savedSettings.imageModels,
         videoModels: savedSettings.videoModels,
         autoGenerateMotion: savedSettings.autoGenerateMotion,
+        referenceOnly: savedSettings.referenceOnly,
         audioModels: savedSettings.audioModels,
         autoGenerateMusic: savedSettings.autoGenerateMusic,
       });
@@ -970,6 +978,7 @@ export const ScriptView: FC<{
         videoModels,
         videoModel: videoModels[0] ?? DEFAULT_VIDEO_MODEL,
         autoGenerateMotion,
+        referenceOnly,
         autoGenerateMusic,
         musicModel: audioModels[0] ?? DEFAULT_MUSIC_MODEL,
         audioModels,
@@ -1492,6 +1501,7 @@ export const ScriptView: FC<{
             imageModels={imageModels}
             videoModels={videoModels}
             autoGenerateMotion={autoGenerateMotion}
+            referenceOnly={referenceOnly}
             audioModels={audioModels}
             autoGenerateMusic={autoGenerateMusic}
             onAspectRatioChange={(v) => updateGen('aspectRatio', v)}
@@ -1502,6 +1512,7 @@ export const ScriptView: FC<{
             onAutoGenerateMotionChange={(v) =>
               updateGen('autoGenerateMotion', v)
             }
+            onReferenceOnlyChange={(v) => updateGen('referenceOnly', v)}
             onAudioModelsChange={(v) => updateGen('audioModels', v)}
             onAutoGenerateMusicChange={(v) => updateGen('autoGenerateMusic', v)}
             disabled={loading}

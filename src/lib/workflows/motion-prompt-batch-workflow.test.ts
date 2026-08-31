@@ -17,11 +17,22 @@
  */
 
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
-import type { MotionPromptBatchWorkflowInput } from '@/lib/workflow/types';
+import type {
+  MotionPromptBatchWorkflowInput,
+  MotionPromptWorkflowInput,
+} from '@/lib/workflow/types';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { describe, expect, test, vi } from 'vitest';
 
-const spawnAndAwaitChild = vi.fn();
+// Typed so `.mock.calls` yields the child payload rather than `any` — the
+// reference-only tests below assert on what each child was handed.
+const spawnAndAwaitChild =
+  vi.fn<
+    (
+      step: unknown,
+      args: { childId: string; childPayload: MotionPromptWorkflowInput }
+    ) => Promise<unknown>
+  >();
 vi.doMock('@/lib/workflow/await-child', () => ({ spawnAndAwaitChild }));
 
 const { MotionPromptBatchWorkflow } =
@@ -221,9 +232,7 @@ describe('MotionPromptBatchWorkflow reference-only', () => {
     await makeWorkflow().batch(event, makeStep(), SCOPED_DB);
 
     const payloads = spawnAndAwaitChild.mock.calls.map(
-      // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- mock call args
-      (call) =>
-        (call[1] as { childPayload: Record<string, unknown> }).childPayload
+      ([, args]) => args.childPayload
     );
     expect(payloads.every((p) => p.referenceOnly === true)).toBe(true);
     expect(payloads[0]?.visualPrompt).toBe('a wide of the dock');
