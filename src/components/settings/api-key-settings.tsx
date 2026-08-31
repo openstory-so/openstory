@@ -1,6 +1,7 @@
 /**
  * API Key Settings Component
- * Manages BYOK (Bring Your Own Key) for OpenRouter and Fal.ai
+ * Manages BYOK (Bring Your Own Key) for OpenRouter, Fal.ai, xAI and the
+ * Upload-Post key behind social publishing (#1267).
  */
 
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -15,6 +16,7 @@ import {
 } from '@/components/ui/card';
 import { FalLogo } from '@/components/icons/fal-logo';
 import { OpenRouterLogo } from '@/components/icons/openrouter-logo';
+import { UploadPostLogo } from '@/components/icons/upload-post-logo';
 import { XIcon } from '@/components/icons/x-icon';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -40,7 +42,7 @@ type ApiKeySettingsProps = {
   error?: string;
 };
 
-type ApiKeyProviderId = 'openrouter' | 'fal' | 'xai';
+type ApiKeyProviderId = 'openrouter' | 'fal' | 'xai' | 'upload_post';
 /** Providers whose key is pasted in — OpenRouter alone uses OAuth. */
 type ManualProvider = Exclude<ApiKeyProviderId, 'openrouter'>;
 
@@ -48,6 +50,7 @@ const PROVIDER_LABELS: Record<ApiKeyProviderId, string> = {
   openrouter: 'OpenRouter',
   fal: 'fal.ai',
   xai: 'xAI',
+  upload_post: 'Upload-Post',
 };
 
 export function ApiKeySettings(props: ApiKeySettingsProps) {
@@ -199,6 +202,7 @@ function ApiKeySettingsContent({
   const openrouterKey = apiKeys?.find((k) => k.provider === 'openrouter');
   const falKey = apiKeys?.find((k) => k.provider === 'fal');
   const xaiKey = apiKeys?.find((k) => k.provider === 'xai');
+  const uploadPostKey = apiKeys?.find((k) => k.provider === 'upload_post');
 
   // Re-validate stored team keys on mount so opening the settings page
   // refreshes their validity without waiting for the next workflow failure.
@@ -279,6 +283,23 @@ function ApiKeySettingsContent({
               saveKeyMutation.mutate({ provider: 'xai', apiKey })
             }
             onDelete={() => deleteMutation.mutate('xai')}
+            isSaving={saveKeyMutation.isPending}
+            isDeleting={deleteMutation.isPending}
+          />
+
+          <ManualKeyRow
+            provider="upload_post"
+            icon={<UploadPostLogo className="size-5" />}
+            blurb="Publish exports to TikTok, Instagram, YouTube, X & more from the theatre."
+            placeholder="Upload-Post API key"
+            keyUrl="https://app.upload-post.com/api-keys"
+            existingKey={uploadPostKey}
+            status={keyStatus?.upload_post}
+            isLoading={isLoading}
+            onSave={(apiKey) =>
+              saveKeyMutation.mutate({ provider: 'upload_post', apiKey })
+            }
+            onDelete={() => deleteMutation.mutate('upload_post')}
             isSaving={saveKeyMutation.isPending}
             isDeleting={deleteMutation.isPending}
           />
@@ -405,7 +426,7 @@ type ManualKeyRowProps = {
   placeholder: string;
   keyUrl: string;
   existingKey?: { keyHint: string };
-  status?: 'team' | 'platform';
+  status?: KeyStatusSource;
   isLoading: boolean;
   onSave: (apiKey: string) => void;
   onDelete: () => void;
@@ -512,11 +533,24 @@ function ManualKeyRow({
   );
 }
 
-function StatusBadge({ source }: { source?: 'team' | 'platform' }) {
+/**
+ * `none` is the no-platform-fallback case (Upload-Post): without a team key
+ * the feature is simply off, so "Platform key" would be a lie.
+ */
+type KeyStatusSource = 'team' | 'platform' | 'none';
+
+function StatusBadge({ source }: { source?: KeyStatusSource }) {
   if (source === 'team') {
     return (
       <Badge variant="default" className="text-xs">
         Your key
+      </Badge>
+    );
+  }
+  if (source === 'none') {
+    return (
+      <Badge variant="outline" className="text-xs">
+        Not connected
       </Badge>
     );
   }

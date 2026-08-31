@@ -15,6 +15,7 @@ import {
   getKeyHint,
 } from '@/lib/crypto/api-key-encryption';
 import { type ApiKeyProvider, teamApiKeys } from '@/lib/db/schema';
+import { validateUploadPostKey } from '@/lib/social/upload-post';
 
 import { getLogger, serializeError } from '@/lib/observability/logger';
 
@@ -285,6 +286,10 @@ export function createApiKeysReadMethods(db: Database, teamId: string) {
         return env.FAL_KEY || undefined;
       case 'xai':
         return env.XAI_API_KEY || undefined;
+      case 'upload_post':
+        // Social publishing (#1267) always posts to the team's OWN social
+        // accounts, so there is deliberately no platform-level fallback.
+        return undefined;
       default: {
         const _exhaustive: never = provider;
         throw new Error(`Unknown provider: ${String(_exhaustive)}`);
@@ -440,6 +445,8 @@ export function createApiKeysReadMethods(db: Database, teamId: string) {
         if (response.ok) return { valid: true };
         return { valid: false, error: `xAI returned ${response.status}` };
       }
+      case 'upload_post':
+        return validateUploadPostKey(apiKey);
       default: {
         const _exhaustive: never = provider;
         throw new Error(`Unknown provider: ${String(_exhaustive)}`);

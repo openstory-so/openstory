@@ -302,6 +302,15 @@ Exporting a sequence to one stitched MP4 exists in **two** places:
 - **v1 scope:** transmux-compatible (uniform AVC) sequences + music/dialogue mix. Mixed-resolution re-encode is rejected server-side (browser still handles it) — a follow-up.
 - **Local dev:** `bun dev:all` runs the export service (`dev:bunny`, host bun runtime — no Docker, `node-av`/FFmpeg works under bun) AND sets `VIDEO_EXPORT_DEV_URL=http://localhost:8080` (via `CLOUDFLARE_INCLUDE_PROCESS_ENV`, the same injection Playwright uses) so the workflow POSTs to it instead of the (production-only) container binding — a full local export loop, zero config. Plain `bun dev` doesn't set the var (prod uses the container); for a two-terminal `bun dev` + `bun dev:bunny` setup, set `VIDEO_EXPORT_DEV_URL` in `.env.local` yourself. The container uses **bun** as its package manager (`bun.lock`, `trustedDependencies: ["node-av"]`) but **Node** as the image runtime. Container details, contract, and Docker build/smoke-test: `containers/video-export/README.md`.
 
+## Publish to social (Upload-Post, #1267)
+
+The theatre's third overlay button posts the current export to social media through [Upload-Post](https://docs.upload-post.com). Pieces:
+
+- `team_api_keys` provider `upload_post` — BYOK like fal/xAI, validated against `GET /api/uploadposts/users`. **No platform fallback** (`platformKeyFor` returns `undefined`): without a team key the feature is off, `checkApiKeyStatusFn` reports `'none'`.
+- `src/lib/social/upload-post.ts` — the HTTP client (`Authorization: Apikey …`, never `Bearer`). `SOCIAL_PLATFORMS` is the allowlist the dialog offers; platforms that need extra params (Pinterest board, subreddit, …) are deliberately left out.
+- `src/functions/social-publish.ts` — list profiles, publish a `ready` `sequence_exports` row by URL (`async_upload=true`, `is_ai_generated=true`, `external_id=<exportId>`), poll status by `request_id`. The export URL is absolutized with `toShareableUrl` exactly like the server export workflow — in local dev that's `localhost`, which Upload-Post can't fetch, so publishing only works against a public `VITE_APP_URL`.
+- `useSequenceExport().publish()` reuses the content-addressed export cache (#1253) and opens `PublishDialog` (`src/components/theatre/publish-dialog.tsx`), which polls `getSocialPublishStatusFn` until every platform has reported.
+
 ---
 
 ## Database

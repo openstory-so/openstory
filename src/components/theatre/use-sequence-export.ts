@@ -10,9 +10,13 @@
  * + the music choice — so `sequence_exports` is a content-addressed cache of
  * what the user is looking at (#1253). `freshExportUrl` is the cached MP4 for
  * the CURRENT state (or null), and both user actions go through the cache:
- * `download()` and `copyLink()` reuse a matching export, else export first and
- * then act. There is no "export" verb in the UI and no way to share a stale
- * cut.
+ * `download()`, `copyLink()` and `publish()` reuse a matching export, else
+ * export first and then act. There is no "export" verb in the UI and no way to
+ * share a stale cut.
+ *
+ * `publish()` (#1267) doesn't act on the file itself: it resolves the export
+ * row and hands it to the publish dialog via `publishTarget`, which posts it
+ * to social media through Upload-Post.
  */
 
 import {
@@ -42,6 +46,10 @@ const sequenceExportKeys = {
 // spinning forever. Generous enough for a 5-min export on a slow connection.
 const UPLOAD_TIMEOUT_MS = 5 * 60 * 1000;
 
+type PublishTarget = { exportId: string; url: string };
+
+type ExportAction = 'download' | 'copy-link' | 'publish';
+
 export type SequenceExportState = {
   isRunning: boolean;
   progress: ExportProgress | null;
@@ -53,6 +61,11 @@ export type SequenceExportState = {
   download: () => void;
   /** Copy a shareable URL for the current state's MP4 — exports first if not cached. */
   copyLink: () => void;
+  /** Open the publish-to-social dialog for the current state's MP4 — exports first if not cached. */
+  publish: () => void;
+  /** The export the publish dialog is showing, or null when it's closed. */
+  publishTarget: PublishTarget | null;
+  closePublish: () => void;
   abort: () => void;
   clipsReady: number;
   clipsTotal: number;
@@ -98,6 +111,9 @@ export function useSequenceExport(
 
   const [isRunning, setIsRunning] = useState(false);
   const [progress, setProgress] = useState<ExportProgress | null>(null);
+  const [publishTarget, setPublishTarget] = useState<PublishTarget | null>(
+    null
+  );
   const abortRef = useRef<AbortController | null>(null);
 
   const exportMutation = useMutation({
@@ -106,7 +122,7 @@ export function useSequenceExport(
       andThen,
     }: {
       signal: AbortSignal;
-      andThen: 'download' | 'copy-link';
+      andThen: ExportAction;
     }) => {
       if (!sequence) throw new Error('No sequence selected.');
       if (!shots || shots.length === 0) {
@@ -183,9 +199,9 @@ export function useSequenceExport(
           sourceShotsHash: inputsHash,
         },
       });
-      return { reEncoded, url: committed.url, andThen };
+      return { reEncoded, url: committed.url, exportId: committed.id, andThen };
     },
-    onSuccess: ({ reEncoded, url, andThen }) => {
+    onSuccess: ({ reEncoded, url, exportId, andThen }) => {
       posthog.capture('sequence_export_completed', {
         sequence_id: sequenceId,
         re_encoded: reEncoded,
@@ -196,6 +212,8 @@ export function useSequenceExport(
       if (andThen === 'download') {
         toast.success('MP4 ready to download.');
         triggerDownload(url, sequence?.title);
+      } else if (andThen === 'publish') {
+        setPublishTarget({ exportId, url });
       } else {
         // The user gesture that started the export is long gone, so the
         // clipboard write may be blocked — the toast's action button gives
@@ -229,7 +247,7 @@ export function useSequenceExport(
   });
 
   const run = useCallback(
-    (andThen: 'download' | 'copy-link') => {
+    (andThen: ExportAction) => {
       if (isRunning) return;
       const controller = new AbortController();
       abortRef.current = controller;
@@ -245,10 +263,10 @@ export function useSequenceExport(
   // music toggle flips between two already-rendered MP4s instead of forcing
   // a re-stitch (#1253). listBySequence is newest-first, so ties prefer the
   // most recent file.
-  const freshExportUrl =
-    (inputsHash &&
-      exports?.find((e) => e.sourceShotsHash === inputsHash)?.url) ||
+  const freshExport =
+    (inputsHash && exports?.find((e) => e.sourceShotsHash === inputsHash)) ||
     null;
+  const freshExportUrl = freshExport?.url ?? null;
 
   const shotList = shots ?? [];
   const clipsTotal = shotList.length;
@@ -291,6 +309,17 @@ export function useSequenceExport(
     run('copy-link');
   }, [freshExportUrl, canExport, run, sequenceId, posthog]);
 
+  const publish = useCallback(() => {
+    if (freshExport) {
+      setPublishTarget({ exportId: freshExport.id, url: freshExport.url });
+      return;
+    }
+    if (!canExport) return;
+    run('publish');
+  }, [freshExport, canExport, run]);
+
+  const closePublish = useCallback(() => setPublishTarget(null), []);
+
   const abort = useCallback(() => {
     abortRef.current?.abort();
   }, []);
@@ -302,6 +331,9 @@ export function useSequenceExport(
     isCacheResolved: !exportsLoading && !hashLoading,
     download,
     copyLink,
+    publish,
+    publishTarget,
+    closePublish,
     abort,
     clipsReady,
     clipsTotal,
