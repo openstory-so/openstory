@@ -112,6 +112,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
       audioModels: audioModelsInput,
       suggestedTalentIds,
       suggestedLocationIds,
+      referenceOnly = false,
     } = input;
 
     const imageModels = resolveImageModels(imageModelsInput, imageModel);
@@ -570,7 +571,9 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
     await step.do('phase-4-start', async () => {
       await getGenerationChannel(sequenceId).emit('generation.phase:start', {
         phase: 4,
-        phaseName: 'Generating images…',
+        phaseName: referenceOnly
+          ? 'Writing shot prompts…'
+          : 'Generating images…',
       });
     });
 
@@ -628,28 +631,45 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
     // music artifact in exchange for image-grounded motion. Each child is
     // wrapped in `Promise.allSettled` so a rejection is captured (not thrown)
     // and surfaced together below after recording the analysis duration.
-    const [shotImagesSettled] = await Promise.allSettled([
-      spawnAndAwaitChild<ShotImagesWorkflowInput, ShotImagesWorkflowResult>(
-        step,
-        {
-          binding: this.env.SHOT_IMAGES_WORKFLOW,
-          parentBindingName: PARENT_BINDING_NAME,
-          parentInstanceId,
-          childId: `shot-images:${sequenceId ?? 'no-seq'}`,
-          childPayload: shotImagesPayload,
-          spawnStepName: 'spawn-shot-images',
-          awaitStepName: 'await-shot-images',
-          // Must exceed the child's own budget — under a many-sequence burst
-          // the image queue alone can outlast the 30-minute default.
-          timeout: '90 minutes',
-        }
-      ),
-    ]);
+    //
+    // REFERENCE-ONLY skips this phase outright: no still is rendered, so the
+    // reason motion waits on images disappears and with it the whole image
+    // pass. The visual prompts written in phase 3 are still generated (they
+    // are cheap text, they carry the staging the reference-only motion prompt
+    // opens on, and keeping them means toggling the mode off does not have to
+    // re-derive them) — only the rendering is skipped.
+    const shotImagesSettled: PromiseSettledResult<ShotImagesWorkflowResult> =
+      referenceOnly
+        ? {
+            status: 'fulfilled',
+            value: { imageUrls: [], frameVersionIds: [] },
+          }
+        : (
+            await Promise.allSettled([
+              spawnAndAwaitChild<
+                ShotImagesWorkflowInput,
+                ShotImagesWorkflowResult
+              >(step, {
+                binding: this.env.SHOT_IMAGES_WORKFLOW,
+                parentBindingName: PARENT_BINDING_NAME,
+                parentInstanceId,
+                childId: `shot-images:${sequenceId ?? 'no-seq'}`,
+                childPayload: shotImagesPayload,
+                spawnStepName: 'spawn-shot-images',
+                awaitStepName: 'await-shot-images',
+                // Must exceed the child's own budget — under a many-sequence
+                // burst the image queue alone can outlast the 30-minute
+                // default.
+                timeout: '90 minutes',
+              }),
+            ])
+          )[0];
 
     // Snapshot the rendered primary still per scene. `imageUrls` is aligned to
     // `scenesWithVisualPrompts` order (shot-images preserves slots, null for a
     // failed scene); a rejected batch → empty map → motion falls back to
-    // text-only (and the rejection is raised below regardless).
+    // text-only (and the rejection is raised below regardless). Reference-only
+    // leaves every entry null, which is what the mode means.
     const shotImageUrls =
       shotImagesSettled.status === 'fulfilled'
         ? shotImagesSettled.value.imageUrls
@@ -689,6 +709,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
           startingFrameImageUrls,
           visualSummaryBySceneId: visualPromptBySceneId,
           musicPromptSource: input.musicPromptSource,
+          referenceOnly,
         },
         spawnStepName: 'spawn-motion-music-prompts',
         awaitStepName: 'await-motion-music-prompts',
@@ -732,10 +753,13 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
     // ----------------------------------------------------------------------
     // PHASE 5: motion (+ optional music + merge) batch — single child
     // ----------------------------------------------------------------------
+    // Reference-only has no stills to require: the sheets and the prompt are
+    // the whole input, so the "at least one image rendered" gate would skip
+    // motion on every reference-only sequence.
     const shouldGenerateMotion =
       autoGenerateMotion &&
       primaryVideoModel &&
-      imageUrls.some((url) => url !== null);
+      (referenceOnly || imageUrls.some((url) => url !== null));
     const shouldGenerateMusic = Boolean(
       autoGenerateMusic &&
       sequenceId &&
@@ -762,6 +786,10 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
         resolution,
         characters: charactersWithSheets,
         elements: allElements,
+        // Reference-only motion attaches the location sheet too — with no
+        // still, it is the only thing establishing the set.
+        locations: locationsWithSheets,
+        referenceOnly,
       });
 
       await step.do('phase-5-start', async () => {

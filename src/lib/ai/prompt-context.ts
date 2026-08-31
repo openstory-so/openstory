@@ -38,6 +38,12 @@ export type ShotPromptContext = {
    * re-stales the motion prompt. Left undefined for visual-only sites.
    */
   startingFrameImageUrl?: string | null;
+  /**
+   * Reference-only mode. Only the motion-prompt hash consumes it: the mode
+   * selects a different LLM template, so the same scene produces a different
+   * prompt under it and a mode flip must re-stale what is stored.
+   */
+  referenceOnly?: boolean;
 };
 
 export type ShotPromptContextSequence = {
@@ -47,6 +53,15 @@ export type ShotPromptContextSequence = {
   styleConfig?: unknown;
   aspectRatio: string;
   analysisModel: string;
+  /**
+   * Reference-only mode. Read straight off the sequence row rather than passed
+   * as a separate argument, and REQUIRED rather than optional: the failure mode
+   * of omitting it is silent and permanent — the stamp would fold the flag in
+   * and the verify would not, so every reference-only motion prompt would read
+   * stale forever. Making it required turns that into a compile error at each
+   * call site instead.
+   */
+  referenceOnly: boolean;
 };
 
 /**
@@ -130,6 +145,7 @@ export async function loadShotPromptContext(args: {
     aspectRatio: sequence.aspectRatio,
     analysisModel,
     startingFrameImageUrl,
+    referenceOnly: sequence.referenceOnly,
   };
 }
 

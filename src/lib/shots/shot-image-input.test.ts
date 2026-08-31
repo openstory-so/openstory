@@ -66,6 +66,7 @@ function baseArgs(scopedDb: ReturnType<typeof makeScopedDb>['scopedDb']) {
       imageModel: DEFAULT_IMAGE_MODEL,
       styleId: null,
       analysisModel: 'anthropic/claude-haiku-4.5',
+      referenceOnly: false,
     },
     shot,
     frame,

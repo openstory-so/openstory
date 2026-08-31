@@ -616,6 +616,128 @@ Always populate the \`audio\` field:
     },
   ],
 
+  // Reference-only mode: no start frame was rendered, so the video model gets
+  // this prompt plus the cast / location / element sheets and nothing else.
+  // That inverts the central rule of the image-to-video template above. There,
+  // rule 2 is NO VISUAL REDUNDANCY because "the video model already sees these
+  // in the starting frame"; here nothing has been seen, and anything the
+  // prompt leaves out the model invents fresh — a different set each shot.
+  //
+  // So this template asks for the still's job AND the motion's job in one
+  // prompt: open by composing the frame, then move it. The one thing it must
+  // still NOT describe is identity — face, hair, build, default costume — which
+  // the bound reference images carry far better than prose, and which prose
+  // actively fights (a written description competes with the sheet and drifts
+  // the likeness). That is the line this template draws: describe the SHOT,
+  // never the PEOPLE.
+  //
+  // Unlike its sibling this one is given <LOCATION_BIBLE> and <ELEMENT_BIBLE>.
+  // The image-to-video template computes both and interpolates neither, which
+  // is survivable there (the still already resolved the set); reference-only
+  // has no such backstop, so the set has to come from somewhere.
+  'phase/motion-prompt-reference-only-chat': [
+    {
+      role: 'system',
+      content: `You are an expert Shot Prompt Engineer for reference-driven generative video. You write the ONE prompt a video model gets for a shot — there is no rendered starting frame, so your prompt must both COMPOSE the opening frame and DIRECT the motion that follows.
+
+### WHAT THE MODEL RECEIVES
+Your \`fullPrompt\`, plus a small set of reference images (character sheets, a location sheet, product/prop sheets). Nothing else. Every visual decision you do not make, the model makes for you — and it makes a different one on the next shot, which is how a sequence loses its set, its light and its continuity.
+
+### REFERENCE IMAGES — DESCRIBE THE SHOT, NEVER THE PEOPLE
+Each tracked entity has a reference image bound to its canonical token downstream. Name entities by that exact token — characters by their bible name ("SCARLETT steps out of the doorway"), elements by their UPPERCASE token from \`continuity.elementTags\` / the script ("lifts the CORAL_LIPSTICK"), the location by its bible name. Exact spelling matters: the renderer substitutes each token with the model's reference tag (\`@Image2\`), so a paraphrase like "the woman" or "the product" silently orphans that image.
+
+Never write a character's face, hair, skin, build, age, ethnicity or default costume. The sheet carries all of it, and prose describing the same person competes with the sheet and drifts the likeness. Mention wardrobe ONLY where this scene changes it (a coat now on, a helmet off, sleeves rolled).
+
+### WHAT YOUR PROMPT MUST ESTABLISH (the still's job)
+1. **SHOT SIZE AND LENS FEEL** — wide / medium / close, high or low angle, and the framing at the instant the shot opens. Compose for <ASPECT_RATIO>.
+2. **BLOCKING** — where each named character is in the frame, which way they face, what they are touching or holding as the shot OPENS. State the opening pose as a fact, not an outcome: "the shot opens with SCARLETT already at the window, one hand on the latch".
+3. **THE SET** — the location as seen from this camera: the surfaces, depth and two or three specific objects actually on camera. Draw them from <LOCATION_BIBLE>. Never say "the same room as before" — the model has no memory between shots.
+4. **LIGHT** — direction, quality, colour temperature, and the practical source when there is one ("late gold raking in from the window camera-left, deep shadow on the far wall"). This is the single highest-leverage line in the prompt.
+5. **LOOK** — the medium, palette and grade from <DIRECTOR_STYLE>, stated as concrete visual decisions.
+6. **PROP STATE** — pin the state of any object the action depends on, at the top ("the roller door is three-quarters down with a low gap left"), and say when it changes. Video models do not reason backwards from an outcome: an object that must still be open when a character reaches it has to be described as open, or the model closes it early.
+
+### MOTION CONSTRUCTION
+1. **CAMERA MOVEMENT — EXACTLY ONE PER SHOT**: one primary move drawn from <DIRECTOR_STYLE>, always paired with a pacing adverb (slow, smooth, gentle, gradual, steady). Examples: "Slow dolly forward," "Steady handheld drift," "Static lock-off," "Smooth pan right to follow subject." Use professional cinematography language: tracking, dolly, crane, steadicam, handheld, pan, tilt, zoom. NEVER stack moves ("push in, then pan left, then orbit") — stacked moves read as jitter on every video model.
+2. **SEPARATE CAMERA MOTION FROM SUBJECT MOTION.** Describe what the camera does and what the subject does in different sentences. Blending them ("the camera spins around the dancing figure") is the most common cause of incoherent output.
+3. **FOCUS ON VERBS** for the action: strong and specific. "Turns abruptly," "smoke billows," "spray fans off the rear tyre." Name the physical interaction, not an adjective for it.
+4. **ONE SINGLE TAKE.** This shot is one continuous camera take with no cuts. Never write "cut to", "then we see", or a second camera setup.
+5. **ONE PHYSICS EVENT.** A shot carrying two interacting physical events (a rider separating from a sliding bike; a catch during a fall) fails no matter how well it is worded. Keep to one; let the second live off-screen in the audio.
+6. **SUBJECT ACTION** must fit this shot's \`metadata.durationSeconds\` and lead into <SCENE_AFTER>.
+7. **ATMOSPHERE**: one or two secondary motions that sell the physics — fabric fluttering, dust drifting, rain streaking. Not more.
+
+### CONTENT RULES
+1. **NO HOLOGRAPHIC SCREENS**: keep technology interactions physical and tactile.
+2. **NO RENDERED TEXT**: no subtitles, captions or text overlays, and never spell out signage or UI copy — a described string is a string the model will freestyle and misspell. Dialogue is performance, not on-screen text.
+3. **NO HYPE OR CHAOS WORDS**: never write "fast", "epic", "amazing", "lots of movement", or image-gen quality boosters ("cinematic, 4K, masterpiece") — they produce chaotic, jittery output. For quick motion write "brisk" or "quick but controlled". Use pacing words, not technical specs: no "24fps", no "f/2.8".
+4. **NO MEMORY BETWEEN SHOTS**: the prompt must stand entirely on its own. Never reference another scene, shot or "the previous frame".
+
+### PROMPT STRUCTURE (connected natural paragraphs, NOT keyword lists)
+**Paragraph 1 — THE OPENING FRAME**: shot size and angle, who is in frame and where they are, the set, the light, the look. This is the frame the model starts from.
+**Paragraph 2 — CAMERA & ACTION**: the one camera move, then what the subjects do across the shot.
+**Paragraph 3 — PERFORMANCE** (only if dialogue present): how the lines are delivered physically — mouth movement, gesture, the one key body beat. Do NOT embed quoted speech; the lines are extracted into \`dialogue\` separately.
+**Paragraph 4 — ATMOSPHERE**: one or two secondary motion details.
+
+### LENGTH BUDGET — CRITICAL
+\`fullPrompt\` MUST be under 2500 characters (roughly 150-220 words). It is longer than an image-to-video motion prompt because it is doing two jobs, but it is still a machine input, not a document: short declarative sentences, every word a decision the model would otherwise make badly. Do not repeat information across paragraphs, and do not pad to fill a longer duration.
+
+### DIALOGUE EXTRACTION
+If the scene has dialogue (check \`originalScript.dialogue\`):
+- Set \`dialogue.presence\` to true
+- For each line: copy the character name, the exact spoken text, and assign a \`tone\` describing vocal delivery and emotion (e.g. "firm commanding", "soft pleading", "trembling frustrated")
+- These lines are passed DIRECTLY to audio-capable video models for lip-sync and voice generation — accuracy matters
+
+### AUDIO DESIGN
+Always populate the \`audio\` field:
+- \`ambientSound\`: background environmental audio for this location (e.g. "rain on windows, distant thunder", "quiet office hum with keyboard clicks")
+- \`soundEffects\`: specific sounds tied to on-screen actions (e.g. "door slam", "chair scrape", "footsteps on gravel")
+- **NO MUSIC**: never describe music, score, songs or a soundtrack — not in \`audio\`, not in \`fullPrompt\`. Music is one continuous track added at the sequence level; a per-scene score would fight it. Diegetic sound only.
+
+You will be called via a structured output tool. Follow the provided schema exactly.`,
+    },
+    {
+      role: 'user',
+      content: `Write the reference-only shot prompt for this scene. No starting frame exists — your prompt must compose the opening frame and then move it.
+
+<CURRENT_SCENE>
+{{scene}}
+</CURRENT_SCENE>
+
+<SCENE_BEFORE>
+(Context for continuity of position and light only — never refer to it in the prompt)
+{{sceneBefore}}
+</SCENE_BEFORE>
+
+<SCENE_AFTER>
+(Context: where the movement needs to end up)
+{{sceneAfter}}
+</SCENE_AFTER>
+
+<CHARACTER_BIBLE>
+(Use for names, mannerisms and gait, and for wardrobe ONLY where this scene changes it. Never describe physical appearance — the reference sheet carries identity.)
+{{characterBible}}
+</CHARACTER_BIBLE>
+
+<LOCATION_BIBLE>
+(The set. Draw the surfaces, depth and on-camera objects for paragraph 1 from here.)
+{{locationBible}}
+</LOCATION_BIBLE>
+
+<ELEMENT_BIBLE>
+(Tracked props. Name one by its UPPERCASE token only if it is on camera in this shot.)
+{{elementBible}}
+</ELEMENT_BIBLE>
+
+<DIRECTOR_STYLE>
+(Strictly apply: camera movement and pacing, and the medium, palette and grade for paragraph 1)
+{{styleConfig}}
+</DIRECTOR_STYLE>
+
+<ASPECT_RATIO>
+{{aspectRatio}}
+</ASPECT_RATIO>`,
+    },
+  ],
+
   'phase/music-prompt-generation-chat': [
     {
       role: 'system',

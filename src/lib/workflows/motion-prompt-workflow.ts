@@ -57,6 +57,8 @@ export class MotionPromptWorkflow extends OpenStoryWorkflowEntrypoint<MotionProm
       sequenceId,
       shotId,
       startingFrameImageUrl,
+      referenceOnly = false,
+      visualPrompt,
     } = input;
 
     // ============================================================
@@ -74,11 +76,24 @@ export class MotionPromptWorkflow extends OpenStoryWorkflowEntrypoint<MotionProm
     // time, and a concurrent re-render could swap `shot.thumbnailUrl` mid-run;
     // reading it here would condition the prompt on an image the trigger never
     // saw. Null/absent → no still, text-only path.
-    if (!startingFrameImageUrl) {
+    if (!startingFrameImageUrl && !referenceOnly) {
       logger.info(
         `[MotionPromptWorkflow:cf] No starting frame provided for ${scene.sceneId}; generating motion prompt without vision input`
       );
     }
+
+    // Reference-only sequences never render a still, so the image-to-video
+    // template's central instruction — "do not describe static details, the
+    // video model already sees them in the starting frame" — is exactly wrong
+    // here: nothing has been seen. The reference-only template asks the LLM to
+    // compose the opening frame in words AND direct the motion, while still
+    // leaving identity to the bound reference sheets. Two templates rather
+    // than one conditional block: the two jobs disagree on their most
+    // load-bearing rule, and a prompt that hedges between them gets both
+    // half-right.
+    const promptName = referenceOnly
+      ? ('phase/motion-prompt-reference-only-chat' as const)
+      : ('phase/motion-prompt-scene-generation-chat' as const);
 
     // Narrow the bibles to this scene's entities (via `scene.continuity`, set
     // by scene-split) before the LLM call, so the model and the staleness hash
@@ -92,13 +107,16 @@ export class MotionPromptWorkflow extends OpenStoryWorkflowEntrypoint<MotionProm
       aspectRatio,
       analysisModel: analysisModelId,
       startingFrameImageUrl: startingFrameImageUrl ?? null,
+      referenceOnly,
     });
 
     const promptVariables = {
       // Deterministic per input: the note states what IS attached, never a
       // hedged "when available". The pipeline path always has a still (the
       // batch workflow fails a scene without one); the text-only wording only
-      // appears for explicit user regenerates before any image exists.
+      // appears for explicit user regenerates before any image exists. The
+      // reference-only template does not interpolate this at all — it states
+      // the no-still premise in its own first line.
       startingFrameNote: startingFrameImageUrl
         ? 'The rendered starting frame is attached below as an image — animate strictly from it.'
         : 'No rendered starting frame exists yet — derive the motion strictly from the scene data below.',
@@ -106,7 +124,14 @@ export class MotionPromptWorkflow extends OpenStoryWorkflowEntrypoint<MotionProm
         ? JSON.stringify(sceneBefore, null, 2)
         : '(none)',
       sceneAfter: sceneAfter ? JSON.stringify(sceneAfter, null, 2) : '(none)',
-      scene: JSON.stringify(scene, null, 2),
+      // Reference-only has no image pass to consume the visual prompt, but the
+      // staging and framing it already worked out for this scene are exactly
+      // what paragraph 1 needs, so it rides in on the scene JSON.
+      scene: JSON.stringify(
+        referenceOnly && visualPrompt ? { ...scene, visualPrompt } : scene,
+        null,
+        2
+      ),
       characterBible: JSON.stringify(narrowed.characterBible, null, 2),
       locationBible: JSON.stringify(narrowed.locationBible, null, 2),
       elementBible: JSON.stringify(narrowed.elementBible, null, 2),
@@ -123,7 +148,7 @@ export class MotionPromptWorkflow extends OpenStoryWorkflowEntrypoint<MotionProm
       {
         name: 'motion-prompts',
         phase: { number: 5, name: 'Writing motion prompts…' },
-        promptName: 'phase/motion-prompt-scene-generation-chat',
+        promptName,
         promptVariables,
         modelId: analysisModelId,
         responseSchema: motionPromptSchema,

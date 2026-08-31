@@ -44,6 +44,7 @@ type ShotWithSequence = Shot & {
     | 'aspectRatio'
     | 'resolution'
     | 'analysisModel'
+    | 'referenceOnly'
   >;
 };
 
@@ -575,6 +576,9 @@ export function createShotsMethods(db: Database) {
               aspectRatio: true,
               resolution: true,
               analysisModel: true,
+              // Reference-only sequences never render a still, so the
+              // shot-scoped motion paths must not demand one.
+              referenceOnly: true,
             },
           },
         },

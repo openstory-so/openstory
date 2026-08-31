@@ -85,6 +85,8 @@ type PartialSequence = {
   aspectRatio: AspectRatio;
   resolution: Resolution;
   analysisModel: string;
+  /** Reference-only mode — see `sequences.referenceOnly`. */
+  referenceOnly: boolean;
 };
 
 export type ShotContext = TeamContext & {

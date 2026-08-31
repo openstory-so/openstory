@@ -695,6 +695,11 @@ export const regenerateShotPromptFn = createServerFn({ method: 'POST' })
                   scopedDb,
                   frame.id
                 ),
+                // The mode picks which motion-prompt template writes this
+                // version; the hash the bail check above computed folded it in
+                // through the sequence row, so it has to reach the child too or
+                // the stamp and the verify disagree.
+                referenceOnly: sequence.referenceOnly,
                 sceneBefore,
                 sceneAfter,
                 targetVersionId: claim.id,

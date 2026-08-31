@@ -150,6 +150,8 @@ export function buildModelInput<T extends ImageToVideoModel>(
   const result = transform.parse({
     prompt,
     duration: options.duration,
+    // Every endpoint reaching this builder requires a start frame;
+    // `buildMotionRequest` asserts one is present before calling in.
     imageUrl: options.imageUrl,
     aspectRatio: options.aspectRatio,
     ...QUALITY_OVERRIDES[modelKey],
@@ -190,7 +192,9 @@ type ReferenceVideoOutput =
  * When `resolveMotionEndpoint` routes to a dedicated reference-to-video
  * endpoint (Seedance / H3 Max with cast/element refs), the still goes
  * first in the image-list field with the sheets after it — there is no
- * separate start-frame `image_url` on that endpoint.
+ * separate start-frame `image_url` on that endpoint. In reference-only mode
+ * (`options.referenceOnly`) there is no still at all: the sheets fill that
+ * field from slot 1 and the prompt carries the composition.
  */
 export function buildMotionRequest<T extends ImageToVideoModel>(
   options: GenerateMotionOptions,
@@ -202,10 +206,21 @@ export function buildMotionRequest<T extends ImageToVideoModel>(
   const modelConfig = IMAGE_TO_VIDEO_MODELS[modelKey];
   const endpoint = resolveMotionEndpoint(
     modelKey,
-    (options.referenceImages?.length ?? 0) > 0
+    (options.referenceImages?.length ?? 0) > 0,
+    'fal',
+    options.referenceOnly ?? false
   );
 
   if (endpoint.references !== 'endpoint') {
+    if (!options.imageUrl) {
+      // Only reachable if a reference-only shot reached a non-reference route,
+      // which `resolveMotionEndpoint` already refuses to return. Assert it
+      // anyway so the failure names the cause rather than surfacing as a
+      // provider 422 on a missing `image_url`.
+      throw new Error(
+        `Motion model "${modelKey}" requires a start frame but none was provided`
+      );
+    }
     return {
       endpointId: endpoint.endpointId,
       input: buildModelInput(options, modelConfig, modelKey),
@@ -222,10 +237,20 @@ export function buildMotionRequest<T extends ImageToVideoModel>(
     );
   }
 
+  if (!options.imageUrl && !options.referenceOnly) {
+    // The reference-to-video endpoint accepts a request with no still, so a
+    // missing one here would silently render reference-only instead of
+    // failing — a shot whose image generation died would quietly come back as
+    // a different kind of clip. Only the explicit mode may omit the still.
+    throw new Error(
+      `Motion model "${modelKey}" was given no start frame outside reference-only mode`
+    );
+  }
+
   const { prompt, imageUrls } = buildReferenceVideoPrompt(
     endpoint.referenceConfig,
     options.prompt,
-    options.imageUrl,
+    options.imageUrl ?? null,
     options.referenceImages ?? [],
     modelConfig.maxPromptLength
   );
@@ -237,7 +262,10 @@ export function buildMotionRequest<T extends ImageToVideoModel>(
     prompt,
     duration: options.duration,
     aspectRatio: options.aspectRatio,
-    [imageField]: imageUrls,
+    // The image list is optional on the reference-to-video schema; a
+    // reference-only shot whose scene matched no cast, location or element
+    // sheets degenerates to pure text-to-video, which the endpoint serves.
+    ...(imageUrls.length > 0 && { [imageField]: imageUrls }),
     ...QUALITY_OVERRIDES[modelKey],
     ...resolutionOverride(endpointId, options.resolution),
     ...(options.generateAudio !== undefined && {

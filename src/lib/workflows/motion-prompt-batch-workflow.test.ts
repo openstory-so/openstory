@@ -59,9 +59,11 @@ function makeInput(): MotionPromptBatchWorkflowInput {
   };
 }
 
-function makeEvent(): Readonly<WorkflowEvent<MotionPromptBatchWorkflowInput>> {
+function makeEvent(
+  overrides: Partial<MotionPromptBatchWorkflowInput> = {}
+): Readonly<WorkflowEvent<MotionPromptBatchWorkflowInput>> {
   return {
-    payload: makeInput(),
+    payload: { ...makeInput(), ...overrides },
     instanceId: 'mpb_run_A',
     workflowName: 'motion-prompt-batch',
     timestamp: new Date(0),
@@ -160,5 +162,72 @@ describe('MotionPromptBatchWorkflow partial failures', () => {
     await expect(
       makeWorkflow().batch(makeEvent(), makeStep(), SCOPED_DB)
     ).rejects.toThrow(/failed for all 3 scenes/);
+  });
+});
+
+describe('MotionPromptBatchWorkflow reference-only', () => {
+  test('rejects a scene with no still on the image-to-video path', async () => {
+    spawnAndAwaitChild.mockReset();
+    spawnAndAwaitChild.mockImplementation(
+      (_step: unknown, args: { childId: string }) =>
+        succeed(args.childId.split(':').at(-1) ?? '')
+    );
+
+    const event = makeEvent({
+      startingFrameImageUrls: {
+        scene_1: 'https://example.com/scene_1.png',
+        scene_2: null,
+        scene_3: 'https://example.com/scene_3.png',
+      },
+    });
+
+    const result = await makeWorkflow().batch(event, makeStep(), SCOPED_DB);
+
+    expect(result.map((r) => r.sceneId)).toEqual(['scene_1', 'scene_3']);
+  });
+
+  test('fans out every scene when no stills exist by design', async () => {
+    spawnAndAwaitChild.mockReset();
+    spawnAndAwaitChild.mockImplementation(
+      (_step: unknown, args: { childId: string }) =>
+        succeed(args.childId.split(':').at(-1) ?? '')
+    );
+
+    const event = makeEvent({
+      startingFrameImageUrls: undefined,
+      referenceOnly: true,
+      visualPromptsBySceneId: { scene_1: 'a wide of the dock' },
+    });
+
+    const result = await makeWorkflow().batch(event, makeStep(), SCOPED_DB);
+
+    expect(result.map((r) => r.sceneId)).toEqual(SCENE_IDS);
+    expect(spawnAndAwaitChild).toHaveBeenCalledTimes(3);
+  });
+
+  test('passes the mode and the visual prompt down to each child', async () => {
+    spawnAndAwaitChild.mockReset();
+    spawnAndAwaitChild.mockImplementation(
+      (_step: unknown, args: { childId: string }) =>
+        succeed(args.childId.split(':').at(-1) ?? '')
+    );
+
+    const event = makeEvent({
+      startingFrameImageUrls: undefined,
+      referenceOnly: true,
+      visualPromptsBySceneId: { scene_1: 'a wide of the dock' },
+    });
+
+    await makeWorkflow().batch(event, makeStep(), SCOPED_DB);
+
+    const payloads = spawnAndAwaitChild.mock.calls.map(
+      // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- mock call args
+      (call) =>
+        (call[1] as { childPayload: Record<string, unknown> }).childPayload
+    );
+    expect(payloads.every((p) => p.referenceOnly === true)).toBe(true);
+    expect(payloads[0]?.visualPrompt).toBe('a wide of the dock');
+    // A scene without one passes null rather than leaking the key.
+    expect(payloads[1]?.visualPrompt).toBeNull();
   });
 });

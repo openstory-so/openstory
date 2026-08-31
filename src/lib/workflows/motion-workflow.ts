@@ -26,7 +26,11 @@ import {
 } from '@/lib/ai/content-rejection';
 import { extractFalErrorMessage } from '@/lib/ai/fal-error';
 import { computeVideoManifestInputHash } from '@/lib/ai/input-hash';
-import { DEFAULT_VIDEO_MODEL, IMAGE_TO_VIDEO_MODELS } from '@/lib/ai/models';
+import {
+  DEFAULT_VIDEO_MODEL,
+  IMAGE_TO_VIDEO_MODELS,
+  supportsReferenceOnlyMotion,
+} from '@/lib/ai/models';
 import {
   DEFAULT_ANALYSIS_MODEL,
   getAnalysisModelById,
@@ -137,10 +141,19 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
     const workflowRunId = event.instanceId;
     const model = input.model || DEFAULT_VIDEO_MODEL;
 
-    // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
-    if (!input.imageUrl?.trim()) {
+    // Reference-only shots have no still by design — the reference sheets and
+    // the prompt are the whole input. Every other shot must carry one.
+    if (!input.imageUrl?.trim() && !input.referenceOnly) {
       throw new WorkflowValidationError(
         'Thumbnail Path is required for motion generation'
+      );
+    }
+    if (input.referenceOnly && !supportsReferenceOnlyMotion(model)) {
+      // The reference-to-video route is what makes a start frame optional; a
+      // model without one cannot serve this shot at all. Fail before the
+      // credit check rather than burning a reservation on a doomed submit.
+      throw new WorkflowValidationError(
+        `Video model "${model}" cannot render reference-only shots (no reference-to-video route)`
       );
     }
 
@@ -166,6 +179,8 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
         const { cost: estimatedCost, duration } = calculateMotionMetadata(
           {
             imageUrl: input.imageUrl,
+            referenceOnly: input.referenceOnly,
+            referenceImages: input.referenceImages,
             prompt: input.prompt,
             model,
             duration: input.duration,
@@ -361,6 +376,11 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
 
     // Step 2: Prepare start image — use Cloudflare Image Resizing if Kling model and image exceeds 10MB
     const startImageUrl = await step.do('prepare-start-image', async () => {
+      // Reference-only has no still to prepare. (Kling is not reference-only
+      // capable anyway, but the null check has to come first regardless.)
+      if (!input.imageUrl) {
+        return undefined;
+      }
       const modelConfig = IMAGE_TO_VIDEO_MODELS[model];
       if (modelConfig.vendor !== 'Kling') {
         return input.imageUrl;
@@ -587,6 +607,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
         try {
           const job = await submitMotionJob({
             imageUrl: startImageUrl,
+            referenceOnly: input.referenceOnly,
             prompt,
             model: activeModel,
             duration: input.duration,
@@ -840,6 +861,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
       motionCostFromUsage(job.via, billedUsage, {
         modelKey: job.modelKey,
         hasReferenceImages: (input.referenceImages?.length ?? 0) > 0,
+        referenceOnly: input.referenceOnly ?? false,
       })
     );
     const actualCost = billing.cost;

@@ -769,6 +769,36 @@ export function attachesInlineReferences(model: ImageToVideoModel): boolean {
 }
 
 /**
+ * Can this model render a shot from reference images alone — no start frame?
+ *
+ * Reference-only mode (see `docs/architecture/reference-only-motion.md`) skips
+ * still generation entirely, so the model must have a route whose start frame
+ * is optional. That is exactly the `MOTION_REFERENCE_ENDPOINTS` set: fal's
+ * `reference-to-video` endpoints take an optional `image_urls[]` and have no
+ * `image_url` field at all, and the same models' BytePlus Ark route sends
+ * every image as a `reference` role (Ark's frame/reference mix-ban means the
+ * still was never a frame there either).
+ *
+ * Deliberately keyed on the MODEL, not the resolved via: the mode is chosen at
+ * sequence creation while the via is claimed per team at submit time, so a
+ * model that is reference-only-capable on one via and not another could not be
+ * gated honestly here. Kling is excluded — its `elements` ride on the
+ * image-to-video endpoint, which requires `image_url`. Grok Imagine is
+ * excluded for the same reason on its fal route: only the native xAI via
+ * accepts references without a start frame, and a team without an xAI key
+ * would fall through to an endpoint that cannot serve the request.
+ */
+export function supportsReferenceOnlyMotion(model: ImageToVideoModel): boolean {
+  return model in MOTION_REFERENCE_ENDPOINTS;
+}
+
+/** The reference-only-capable models, for UI copy and validation messages. */
+export function referenceOnlyMotionModels(): ImageToVideoModel[] {
+  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- keys of a Partial<Record<ImageToVideoModel, …>>
+  return Object.keys(MOTION_REFERENCE_ENDPOINTS) as ImageToVideoModel[];
+}
+
+/**
  * Check if a model supports reference images via an edit endpoint
  * @param model - The text-to-image model key
  * @returns true if the model has an edit endpoint for reference images

@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import type { CharacterMinimal, SequenceElementMinimal } from '@/lib/db/schema';
+import type {
+  CharacterMinimal,
+  SequenceElementMinimal,
+  SequenceLocationMinimal,
+} from '@/lib/db/schema';
 import {
   buildMotionReferenceImages,
   buildShotImageReferenceImages,
@@ -136,5 +140,67 @@ describe('buildShotImageReferenceImages', () => {
     expect(refs.map((r) => r.referenceImageUrl)).toEqual([
       'https://example.com/alice.png',
     ]);
+  });
+});
+
+const location = (
+  name: string,
+  referenceImageUrl: string
+): SequenceLocationMinimal => ({
+  id: `loc-${name}`,
+  locationId: name.toLowerCase(),
+  name,
+  referenceImageUrl,
+  referenceStatus: 'completed',
+  referenceInputHash: 'hash',
+  selectedReferenceVersionId: null,
+  description: `${name} description`,
+  consistencyTag: name.toLowerCase(),
+});
+
+describe('buildMotionReferenceImages — reference-only', () => {
+  const scene = {
+    continuity: { characterTags: ['Alice'], environmentTag: 'Rooftop' },
+    originalScript: { extract: '' },
+    metadata: { location: 'Rooftop' },
+  };
+  const characters = [character('Alice', 'https://example.com/alice.png')];
+  const locations = [location('Rooftop', 'https://example.com/rooftop.png')];
+
+  it('leaves locations out on the image-to-video path', () => {
+    const refs = buildMotionReferenceImages({
+      scene,
+      characters,
+      elements: [],
+      locations,
+    });
+
+    expect(refs.map((r) => r.role)).toEqual(['character']);
+  });
+
+  it('attaches the location sheet first when there is no still', () => {
+    const refs = buildMotionReferenceImages({
+      scene,
+      characters,
+      elements: [],
+      includeLocations: true,
+      locations,
+    });
+
+    // Location leads: the reference budget is spent in order, so the set
+    // should survive a cast that overflows it.
+    expect(refs.map((r) => r.role)).toEqual(['location', 'character']);
+    expect(refs[0]?.referenceImageUrl).toBe('https://example.com/rooftop.png');
+  });
+
+  it('is a no-op when the mode is on but no locations were loaded', () => {
+    const refs = buildMotionReferenceImages({
+      scene,
+      characters,
+      elements: [],
+      includeLocations: true,
+    });
+
+    expect(refs.map((r) => r.role)).toEqual(['character']);
   });
 });

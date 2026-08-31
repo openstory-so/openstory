@@ -86,6 +86,12 @@ export async function prepareShotImageWorkflowInput(args: {
     imageModel: string | null;
     styleId: string | null;
     analysisModel: string;
+    /**
+     * Carried only to satisfy `ShotPromptContextSequence` on the provenance
+     * hash below. The visual-prompt hash ignores it — this is the still's own
+     * prompt, which cannot depend on whether a still gets rendered.
+     */
+    referenceOnly: boolean;
   };
   shot: Shot;
   frame: Frame;

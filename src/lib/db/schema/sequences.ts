@@ -157,6 +157,15 @@ export const sequences = snakeCase.table(
     // retries and smart-retry re-completes cannot double-send.
     readyEmailSentAt: integer({ mode: 'timestamp' }),
 
+    // Reference-only mode: render each shot straight to video from the cast /
+    // location / element reference sheets, with no start-frame image pass at
+    // all. Additive ADD COLUMN with a SQL default so no table rebuild is
+    // needed (#612). Set at creation and never toggled mid-run — the
+    // storyboard trigger snapshots it onto the workflow payload, and every
+    // stored motion prompt's input hash folds it in, so flipping it re-stales
+    // the prompts rather than silently mixing two prompt styles.
+    referenceOnly: integer({ mode: 'boolean' }).default(false).notNull(),
+
     // Auto-generation flags (set at sequence creation, read by UI for phase display)
     // TB-20260804: DB-Audit: autoGenerateMotion and autoGenerateMusic should not be stored. They should be set when the workflow is initiated.
     autoGenerateMotion: integer({ mode: 'boolean' }).default(false).notNull(),

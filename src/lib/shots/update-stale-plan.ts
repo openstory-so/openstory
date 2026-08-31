@@ -200,6 +200,13 @@ type PlanSequence = {
   videoModel: string;
   styleId: string | null;
   analysisModel: string;
+  /**
+   * Reference-only mode, pinned with the rest of the plan: an update-stale run
+   * regenerates prompts, and the mode selects which motion-prompt template
+   * writes them. Re-reading it per stage would let a mid-run toggle produce a
+   * sequence with half its prompts in each style.
+   */
+  referenceOnly: boolean;
 };
 
 type PlanPromptContext = {
@@ -232,6 +239,7 @@ function toPlanSequence(sequence: Sequence): PlanSequence {
     videoModel: sequence.videoModel,
     styleId: sequence.styleId,
     analysisModel: sequence.analysisModel,
+    referenceOnly: sequence.referenceOnly,
   };
 }
 

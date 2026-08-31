@@ -76,7 +76,12 @@ import { resolveMotionEndpoint } from './resolve-motion-endpoint';
 
 export type GenerateMotionOptions = {
   scopedDb?: CredentialScopedDb;
-  imageUrl: string;
+  /**
+   * The rendered start frame. Absent only in reference-only mode, where no
+   * still was ever generated and the clip is driven by the prompt plus the
+   * cast/location/element sheets — see `referenceOnly` below.
+   */
+  imageUrl?: string;
   prompt: string;
   model?: ImageToVideoModel;
   duration?: number;
@@ -100,6 +105,14 @@ export type GenerateMotionOptions = {
    * substitute tokens with descriptions instead.
    */
   referenceImages?: ReferenceImageDescription[];
+  /**
+   * Reference-only mode: this shot has no start frame by design, not by
+   * failure. It forces the reference-to-video route (whose start frame is
+   * optional) even when the scene matched no sheets at all, and it is what
+   * keeps `@Image1` bound to a real reference instead of a nonexistent still.
+   * `imageUrl` must be absent whenever this is true.
+   */
+  referenceOnly?: boolean;
 };
 
 export type MotionJobSubmission = {
@@ -194,15 +207,19 @@ async function submitFalMotionJob(
   modelKey: ImageToVideoModel
 ): Promise<{ jobId: string; usedOwnKey: boolean; endpointId: string }> {
   const hasReferenceImages = (options.referenceImages?.length ?? 0) > 0;
-  const endpoint = resolveMotionEndpoint(modelKey, hasReferenceImages, 'fal');
+  const endpoint = resolveMotionEndpoint(
+    modelKey,
+    hasReferenceImages,
+    'fal',
+    options.referenceOnly ?? false
+  );
   const key = await resolveFalMotionKey(options.scopedDb);
 
   // Locally-served /r2/ image URLs aren't reachable by real fal — swap them
   // for a fal-storage upload first (no-op in prod and e2e replay).
-  const imageUrl = await ensureExternallyFetchableUrl(
-    options.imageUrl,
-    key.key
-  );
+  const imageUrl = options.imageUrl
+    ? await ensureExternallyFetchableUrl(options.imageUrl, key.key)
+    : undefined;
 
   // Reference URLs only need to be fetchable when they go on the wire
   // (`endpoint` or `inline`). Models with `references: 'none'` keep the raw
@@ -303,7 +320,12 @@ export async function submitMotionJob(
     via = 'fal';
   }
 
-  const endpoint = resolveMotionEndpoint(modelKey, hasReferenceImages, via);
+  const endpoint = resolveMotionEndpoint(
+    modelKey,
+    hasReferenceImages,
+    via,
+    options.referenceOnly ?? false
+  );
 
   let jobId: string;
   let usedOwnKey: boolean;
@@ -317,7 +339,9 @@ export async function submitMotionJob(
       }
       // Start frame and refs are inlined as data URIs so this path needs no
       // fal key. Same payload as the scene editor's Grok preview.
-      const imageUrl = await toDataOrCdnUrl(options.imageUrl);
+      const imageUrl = options.imageUrl
+        ? await toDataOrCdnUrl(options.imageUrl)
+        : undefined;
       const referenceImages = await inlineNativeReferenceImages(
         options.referenceImages
       );
@@ -391,11 +415,9 @@ export async function submitMotionJob(
       // to be `asset://`. A public URL of a photorealistic face (including
       // a generated start frame) 400s as a possible real person.
       const falKey = await resolveOptionalFalKey(options.scopedDb);
-      const imageUrl = await toArkMediaUrl(
-        options.imageUrl,
-        'Image',
-        falKey?.key
-      );
+      const imageUrl = options.imageUrl
+        ? await toArkMediaUrl(options.imageUrl, 'Image', falKey?.key)
+        : undefined;
       const referenceImages = options.referenceImages?.length
         ? await Promise.all(
             options.referenceImages.map(async (ref) => ({
@@ -567,7 +589,17 @@ export async function pollMotionJob(
 export async function motionCostFromUsage(
   via: MediaVia,
   usage: TokenUsage | undefined,
-  ctx: { modelKey: ImageToVideoModel; hasReferenceImages: boolean }
+  ctx: {
+    modelKey: ImageToVideoModel;
+    hasReferenceImages: boolean;
+    /**
+     * Reference-only shots route to the reference-to-video endpoint even with
+     * no matched sheets, so the charge must be priced against that endpoint —
+     * resolving without it would bill an image-to-video rate for a job that
+     * never ran there.
+     */
+    referenceOnly?: boolean;
+  }
 ) {
   switch (via) {
     case 'xai': {
@@ -607,7 +639,9 @@ export async function motionCostFromUsage(
     case 'fal': {
       const endpointId = resolveMotionEndpoint(
         ctx.modelKey,
-        ctx.hasReferenceImages
+        ctx.hasReferenceImages,
+        'fal',
+        ctx.referenceOnly ?? false
       ).endpointId;
       return {
         endpointId,

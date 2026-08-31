@@ -5,6 +5,8 @@ import {
   DEFAULT_VIDEO_MODEL,
   IMAGE_MODELS,
   IMAGE_TO_VIDEO_MODELS,
+  supportsReferenceOnlyMotion,
+  type ImageToVideoModel,
 } from '@/lib/ai/models';
 import {
   DEFAULT_ANALYSIS_MODEL,
@@ -35,6 +37,9 @@ const validAudioModelKeys = Object.keys(
 
 export const MUSIC_REQUIRES_MOTION_ERROR =
   'Music generation currently requires motion. Turn on motion or disable music.';
+
+export const REFERENCE_ONLY_MODEL_ERROR =
+  'Reference-only mode needs a video model with a reference-to-video route. Pick a Seedance model, or turn reference-only off.';
 
 export const createSequenceSchema = createInsertSchema(sequences, {
   title: (schema) => schema.min(1).optional(), // Optional - defaults to 'Untitled Sequence' in hook
@@ -116,6 +121,10 @@ export const createSequenceSchema = createInsertSchema(sequences, {
     // handler `= true` alone is not enough when the flag is omitted.
     autoGenerateMotion: z.boolean().default(true).optional(),
     autoGenerateMusic: z.boolean().default(true).optional(),
+    // Explicit default for the same reason as the flags above: the model
+    // refinement below and the create handler both read the parsed value, and
+    // leaving it `undefined` would make "off" indistinguishable from "unset".
+    referenceOnly: z.boolean().default(false).optional(),
     // Music model selection (model key, not full ID) — primary / first of audioModels
     musicModel: z
       .string()
@@ -164,7 +173,24 @@ export const createSequenceSchema = createInsertSchema(sequences, {
   .refine((data) => !data.autoGenerateMusic || data.autoGenerateMotion, {
     path: ['autoGenerateMusic'],
     message: MUSIC_REQUIRES_MOTION_ERROR,
-  });
+  })
+  // Reference-only has no start frame, so EVERY selected model must have a
+  // route whose start frame is optional — not just the primary. A variant
+  // model without one would fail every shot it was asked to render.
+  .refine(
+    (data) =>
+      !data.referenceOnly ||
+      data.videoModels.every(
+        (model) =>
+          validVideoModelKeys.includes(model) &&
+          // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- guarded by the key check above
+          supportsReferenceOnlyMotion(model as ImageToVideoModel)
+      ),
+    {
+      path: ['referenceOnly'],
+      message: REFERENCE_ONLY_MODEL_ERROR,
+    }
+  );
 
 export const updateSequenceSchema = createUpdateSchema(sequences, {
   title: (schema) => schema.min(1), // drizzle-zod auto-applies max from varchar(500)

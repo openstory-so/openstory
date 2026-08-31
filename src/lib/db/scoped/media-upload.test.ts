@@ -282,6 +282,7 @@ function stalenessArgs() {
       // verdicts, so the sequence must read as settled.
       status: 'completed' as const,
       analysisModel: 'test-model',
+      referenceOnly: false,
     },
   };
 }

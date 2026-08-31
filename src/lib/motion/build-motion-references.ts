@@ -6,9 +6,15 @@
  * (`buildFrameImageWorkflowInput` / `resolveSceneFrameImageReferences`) so
  * motion attaches the SAME cast/element refs the image step does — otherwise
  * characters and elements that look right in the start frame degrade across the
- * generated clip. Only characters and elements are resolved here (locations are
- * out of scope for #873); the result is consumed by `buildKlingElementsInput`
- * and only emitted for models that accept reference images (Kling v3 Pro).
+ * generated clip. The result is consumed by `buildKlingElementsInput` and
+ * `buildReferenceVideoPrompt`.
+ *
+ * LOCATIONS are excluded on the image-to-video path (out of scope for #873,
+ * and redundant there: the still already fixes the environment, so a location
+ * sheet only competes with it for reference slots). Reference-only mode has no
+ * still, which makes the location sheet the ONLY thing standing between the
+ * prompt's words and an invented set — so those callers pass
+ * `includeLocations` and the matched location sheets ride along.
  *
  * Accepts the structural scene shape both the strict `Scene` and the looser
  * `frame.metadata` satisfy, so the single-frame, batch, and full-pipeline
@@ -46,8 +52,15 @@ export function buildMotionReferenceImages(params: {
   scene: SceneReferenceInput;
   characters: CharacterMinimal[];
   elements: SequenceElementMinimal[];
+  /**
+   * Reference-only mode: also attach the scene's location sheet. With no start
+   * frame there is nothing else establishing the set, and the same matcher the
+   * image step uses (`matchLocationsToScene`) picks it.
+   */
+  includeLocations?: boolean;
+  locations?: SequenceLocationMinimal[];
 }): ReferenceImageDescription[] {
-  const { scene, characters, elements } = params;
+  const { scene, characters, elements, includeLocations, locations } = params;
 
   const matchedCharacters = matchCharactersToScene(
     characters,
@@ -58,8 +71,20 @@ export function buildMotionReferenceImages(params: {
     scene?.continuity?.elementTags ?? [],
     scene?.originalScript?.extract ?? ''
   );
+  const matchedLocations =
+    includeLocations && locations
+      ? matchLocationsToScene(
+          locations,
+          scene?.continuity?.environmentTag ?? '',
+          scene?.metadata?.location ?? ''
+        )
+      : [];
 
+  // Location first among the supporting refs: it is the widest establishing
+  // signal, and the reference budget is spent in order, so a scene with a big
+  // cast should lose a bit player before it loses its set.
   return [
+    ...buildLocationReferenceImages(matchedLocations),
     ...buildCharacterReferenceImages(matchedCharacters),
     ...buildElementReferenceImages(matchedElements),
   ];

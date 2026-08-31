@@ -66,6 +66,7 @@ export class MotionMusicPromptsWorkflow extends OpenStoryWorkflowEntrypoint<Moti
       shotMapping,
       startingFrameImageUrls,
       visualSummaryBySceneId,
+      referenceOnly = false,
     } = input;
 
     // Snap durations against the primary video model. The structured motion
@@ -123,6 +124,13 @@ export class MotionMusicPromptsWorkflow extends OpenStoryWorkflowEntrypoint<Moti
             analysisModelId,
             shotMapping,
             startingFrameImageUrls,
+            referenceOnly,
+            // The visual prompts are the music pass's scene grounding on every
+            // path; reference-only additionally hands them to the motion pass,
+            // which is the only consumer left once the image pass is skipped.
+            visualPromptsBySceneId: referenceOnly
+              ? visualSummaryBySceneId
+              : undefined,
           },
           spawnStepName: 'spawn-motion-prompts',
           awaitStepName: 'await-motion-prompts',

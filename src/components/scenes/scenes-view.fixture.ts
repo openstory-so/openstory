@@ -59,6 +59,7 @@ export const fixtureSequence: Sequence = {
   statusError: null,
   autoGenerateMotion: false,
   autoGenerateMusic: false,
+  referenceOnly: false,
   posterUrl: null,
   readyEmailSentAt: null,
   suggestedTalentIds: null,

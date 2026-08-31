@@ -144,3 +144,39 @@ describe('resolveMotionEndpoint', () => {
     );
   });
 });
+
+describe('reference-only', () => {
+  it('routes Seedance to reference-to-video even with no matched refs', () => {
+    expect(resolveMotionEndpoint('seedance_v2_5', false, 'fal', true)).toEqual({
+      via: 'fal',
+      endpointId: 'bytedance/seedance-2.5/reference-to-video',
+      references: 'endpoint',
+      referenceConfig: MOTION_REFERENCE_ENDPOINTS.seedance_v2_5,
+    });
+  });
+
+  it('refuses a model with no reference-to-video route', () => {
+    expect(() =>
+      resolveMotionEndpoint('kling_v3_pro', true, 'fal', true)
+    ).toThrow(/cannot render without a start frame/);
+    expect(() => resolveMotionEndpoint('veo3_1', false, 'fal', true)).toThrow(
+      /cannot render without a start frame/
+    );
+  });
+
+  it('marks refs inline on the native vias so no still is pinned as a frame', () => {
+    expect(
+      resolveMotionEndpoint('seedance_v2_5', false, 'byteplus', true)
+    ).toEqual({
+      via: 'byteplus',
+      endpointId: 'dreamina-seedance-2-5-260628',
+      references: 'inline',
+    });
+  });
+
+  it('leaves image-to-video resolution untouched when the flag is off', () => {
+    expect(resolveMotionEndpoint('seedance_v2_5', false, 'fal', false)).toEqual(
+      resolveMotionEndpoint('seedance_v2_5', false)
+    );
+  });
+});
