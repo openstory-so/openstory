@@ -15,7 +15,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
+} from '@/components/select';
 import { Textarea } from '@/components/ui/textarea';
 import { useCreateSequenceLocation } from '@/hooks/use-sequence-locations';
 import { errorMessage } from '@/lib/errors';

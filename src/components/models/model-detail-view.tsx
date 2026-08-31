@@ -32,7 +32,7 @@ import {
   SelectLabel,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
+} from '@/components/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   createGeneratedAssetFn,

@@ -6,95 +6,10 @@ import { Select as SelectPrimitive } from 'radix-ui';
 import { cn } from '@/lib/utils';
 import { ChevronDownIcon, CheckIcon, ChevronUpIcon } from 'lucide-react';
 
-/**
- * Radix Select portals the selected ItemText into an empty SelectValue
- * (`createPortal(children, valueNode)`). Select content also remounts between
- * a DocumentFragment (closed) and the live portal (open), so two ItemText
- * trees briefly own the same trigger node and React throws insertBefore /
- * removeChild — including when the page is not translated (#1396).
- *
- * Always passing children to Select.Value disables that portal. We mirror the
- * selected item's label ourselves and wrap ItemText in a span so leftover
- * text-node mutations cannot steal the fiber.
- */
-type SelectLabelRegistry = {
-  getValue: () => string | undefined;
-  getLabel: (value: string | undefined) => React.ReactNode | undefined;
-  register: (value: string, label: React.ReactNode) => void;
-  unregister: (value: string) => void;
-  subscribe: (listener: () => void) => () => void;
-};
-
-const SelectLabelRegistryContext =
-  React.createContext<SelectLabelRegistry | null>(null);
-
-export function resolveSelectValueDisplay(
-  explicitChildren: React.ReactNode | undefined,
-  registeredLabel: React.ReactNode | undefined
-): React.ReactNode {
-  if (explicitChildren !== undefined) return explicitChildren;
-  return registeredLabel ?? null;
-}
-
-export function wrapSelectItemLabel(children: React.ReactNode) {
-  return <span>{children}</span>;
-}
-
 function Select({
-  value,
-  defaultValue,
-  onValueChange,
   ...props
 }: React.ComponentProps<typeof SelectPrimitive.Root>) {
-  const [uncontrolled, setUncontrolled] = React.useState(defaultValue);
-  const currentValue = value !== undefined ? value : uncontrolled;
-  const valueRef = React.useRef(currentValue);
-  valueRef.current = currentValue;
-  const labelsRef = React.useRef(new Map<string, React.ReactNode>());
-  const listenersRef = React.useRef(new Set<() => void>());
-
-  const registry = React.useMemo<SelectLabelRegistry>(() => {
-    const notify = () => {
-      listenersRef.current.forEach((listener) => listener());
-    };
-    return {
-      getValue: () => valueRef.current,
-      getLabel: (itemValue) =>
-        itemValue == null ? undefined : labelsRef.current.get(itemValue),
-      register: (itemValue, label) => {
-        labelsRef.current.set(itemValue, label);
-        if (itemValue === valueRef.current) notify();
-      },
-      unregister: (itemValue) => {
-        labelsRef.current.delete(itemValue);
-      },
-      subscribe: (listener) => {
-        listenersRef.current.add(listener);
-        return () => {
-          listenersRef.current.delete(listener);
-        };
-      },
-    };
-  }, []);
-
-  React.useLayoutEffect(() => {
-    listenersRef.current.forEach((listener) => listener());
-  }, [currentValue]);
-
-  return (
-    <SelectLabelRegistryContext.Provider value={registry}>
-      <SelectPrimitive.Root
-        data-slot="select"
-        value={value}
-        defaultValue={defaultValue}
-        onValueChange={(next) => {
-          setUncontrolled(next);
-          onValueChange?.(next);
-        }}
-        {...props}
-      />
-    </SelectLabelRegistryContext.Provider>
-  );
+  return <SelectPrimitive.Root data-slot="select" {...props} />;
 }
 
 function SelectGroup({
@@ -111,28 +26,9 @@ function SelectGroup({
 }
 
 function SelectValue({
-  children,
-  placeholder,
   ...props
 }: React.ComponentProps<typeof SelectPrimitive.Value>) {
-  const registry = React.useContext(SelectLabelRegistryContext);
-  const [, rerender] = React.useReducer((count: number) => count + 1, 0);
-  React.useLayoutEffect(() => registry?.subscribe(rerender), [registry]);
-  const display = resolveSelectValueDisplay(
-    children,
-    registry ? registry.getLabel(registry.getValue()) : undefined
-  );
-  // `null` is still defined, so Radix sets valueNodeHasChildren and skips
-  // the ItemText → trigger portal that throws DOMException (#1396).
-  return (
-    <SelectPrimitive.Value
-      data-slot="select-value"
-      placeholder={placeholder}
-      {...props}
-    >
-      {display}
-    </SelectPrimitive.Value>
-  );
+  return <SelectPrimitive.Value data-slot="select-value" {...props} />;
 }
 
 function SelectTrigger({
@@ -215,15 +111,8 @@ function SelectLabel({
 function SelectItem({
   className,
   children,
-  value,
   ...props
 }: React.ComponentProps<typeof SelectPrimitive.Item>) {
-  const registry = React.useContext(SelectLabelRegistryContext);
-  React.useLayoutEffect(() => {
-    if (!registry || value == null) return;
-    registry.register(value, children);
-    return () => registry.unregister(value);
-  }, [registry, value, children]);
   return (
     <SelectPrimitive.Item
       data-slot="select-item"
@@ -231,7 +120,6 @@ function SelectItem({
         "relative flex w-full cursor-default items-center gap-1.5 rounded-md py-1 pr-8 pl-1.5 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground not-data-[variant=destructive]:focus:**:text-accent-foreground data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 *:[span]:last:flex *:[span]:last:items-center *:[span]:last:gap-2",
         className
       )}
-      value={value}
       {...props}
     >
       <span className="pointer-events-none absolute right-2 flex size-4 items-center justify-center">
@@ -239,9 +127,7 @@ function SelectItem({
           <CheckIcon className="pointer-events-none" />
         </SelectPrimitive.ItemIndicator>
       </span>
-      <SelectPrimitive.ItemText>
-        {wrapSelectItemLabel(children)}
-      </SelectPrimitive.ItemText>
+      <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
     </SelectPrimitive.Item>
   );
 }

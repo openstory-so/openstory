@@ -13,7 +13,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
+} from '@/components/select';
 import { VideoPlayer } from '@/components/motion/video-player';
 import { buildMentionItems } from '@/components/scenes/prompt-mention/mention-items';
 import { HighlightedPrompt } from '@/components/text-editor/mention/highlighted-prompt';

@@ -15,7 +15,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
+} from '@/components/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { MarkdownEditor } from '@/components/text-editor/markdown-editor';
 import { useSequenceMentionItems } from '@/hooks/use-mention-items';

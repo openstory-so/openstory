@@ -23,7 +23,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
+} from '@/components/select';
 import { Textarea } from '@/components/ui/textarea';
 import { submitContentReportFn } from '@/functions/content-reports';
 import { CONTENT_REPORT_REASONS } from '@/lib/db/schema/compliance';

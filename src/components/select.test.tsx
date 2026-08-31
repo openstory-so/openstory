@@ -6,7 +6,7 @@ import {
   SelectValue,
   resolveSelectValueDisplay,
   wrapSelectItemLabel,
-} from '@/components/ui/select';
+} from '@/components/select';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 

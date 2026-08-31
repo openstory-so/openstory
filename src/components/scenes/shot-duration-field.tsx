@@ -27,7 +27,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
+} from '@/components/select';
 import { estimateSceneDurationFn } from '@/functions/ai';
 import { updateShotDurationFn } from '@/functions/shots';
 import { sequenceKeys } from '@/hooks/use-sequences';

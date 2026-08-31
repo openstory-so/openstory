@@ -7,7 +7,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
+} from '@/components/select';
 import { useUpdateSequenceLocation } from '@/hooks/use-sequence-locations';
 import type { SequenceLocation } from '@/lib/db/schema';
 import { errorMessage } from '@/lib/errors';
