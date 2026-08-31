@@ -31,7 +31,7 @@
     "setup:prd": "bun scripts/setup.ts --prod",
     "setup:deploy": "bun scripts/setup.ts --deploy",
     "setup:stg": "bun scripts/setup.ts --pr-preview",
-    "secrets:pull": "bun scripts/pull-secrets.ts",
+    "secrets:pull": "doppler secrets download --project openstory --config dev --format env --no-file > .env.local.tmp && mv -f .env.local.tmp .env.local",
     "secrets:dev": "bun run secrets:pull",
     "secrets:push:prd": "bun scripts/push-secrets.ts --config prd --push",
     "secrets:check:prd": "bun scripts/push-secrets.ts --config prd",
