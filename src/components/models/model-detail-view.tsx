@@ -32,7 +32,7 @@ import {
   SelectLabel,
   SelectTrigger,
   SelectValue,
-} from '@/components/select';
+} from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   createGeneratedAssetFn,
@@ -399,13 +399,18 @@ const VariantSwitcher: FC<{ model: ModelDetail['model'] }> = ({ model }) => {
   return (
     <Select
       value={model.endpointId}
-      onValueChange={(endpointId) =>
+      items={[...versionGroups.values()].flat().map((variant) => ({
+        value: variant.endpointId,
+        label: variant.variantLabel || variant.displayName,
+      }))}
+      onValueChange={(endpointId) => {
+        if (endpointId == null) return;
         void navigate({
           to: '/models/$',
           params: { _splat: endpointId },
           search: { activity: model.activity },
-        })
-      }
+        });
+      }}
     >
       <SelectTrigger size="sm" aria-label="Switch variant" className="w-fit">
         <SelectValue>

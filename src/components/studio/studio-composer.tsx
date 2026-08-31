@@ -46,7 +46,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/select';
+} from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
@@ -909,6 +909,10 @@ export function StudioComposer({ activity }: StudioComposerProps) {
         {isVideo && (
           <Select
             value={mode}
+            items={(['text', 'reference', 'frames'] as const).map((value) => ({
+              value,
+              label: MODE_LABELS[value],
+            }))}
             onValueChange={(value) => {
               if (
                 value === 'text' ||

@@ -15,7 +15,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/select';
+} from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { MarkdownEditor } from '@/components/text-editor/markdown-editor';
 import { useSequenceMentionItems } from '@/hooks/use-mention-items';
@@ -1623,8 +1623,12 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
       <div className="md:hidden">
         <Select
           value={selectedTab}
+          items={visibleTabs.map((t) => ({
+            value: t.value,
+            label: t.label,
+          }))}
           onValueChange={(value) => {
-            if (isValidTabValue(value)) {
+            if (typeof value === 'string' && isValidTabValue(value)) {
               onTabChange(value);
             }
           }}

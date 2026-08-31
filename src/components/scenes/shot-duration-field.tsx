@@ -27,7 +27,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/select';
+} from '@/components/ui/select';
 import { estimateSceneDurationFn } from '@/functions/ai';
 import { updateShotDurationFn } from '@/functions/shots';
 import { sequenceKeys } from '@/hooks/use-sequences';
@@ -151,7 +151,14 @@ export const ShotDurationField: React.FC<ShotDurationFieldProps> = ({
       <div className="flex flex-wrap items-center gap-2">
         <Select
           value={String(currentSeconds)}
-          onValueChange={(value) => setEditedSeconds(Number(value))}
+          items={durationOptions.map((seconds) => ({
+            value: String(seconds),
+            label: `${seconds}s`,
+          }))}
+          onValueChange={(value) => {
+            if (value == null) return;
+            setEditedSeconds(Number(value));
+          }}
           disabled={!shot || busy}
         >
           <SelectTrigger id="shot-duration-input" className="w-32">

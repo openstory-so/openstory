@@ -9,7 +9,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/select';
+} from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
@@ -161,7 +161,14 @@ const FilterSelect: React.FC<FilterSelectProps> = ({
   triggerClassName,
 }) => {
   const select = (
-    <Select value={value} onValueChange={onValueChange}>
+    <Select
+      value={value}
+      items={options}
+      onValueChange={(next) => {
+        if (next == null) return;
+        onValueChange(next);
+      }}
+    >
       <SelectTrigger id={id} className={triggerClassName}>
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>
@@ -392,8 +399,12 @@ export const EvalToolbar: React.FC<EvalToolbarProps> = ({
                   <div className="flex items-center gap-2">
                     <Select
                       value={primarySort.field}
+                      items={getSortFieldOptions(sortCriteria, 0)}
                       onValueChange={(value) => {
-                        if (isValidSortField(value)) {
+                        if (
+                          typeof value === 'string' &&
+                          isValidSortField(value)
+                        ) {
                           updateSortField(0, value);
                         }
                       }}
@@ -603,8 +614,12 @@ export const EvalToolbar: React.FC<EvalToolbarProps> = ({
                 >
                   <Select
                     value={criteria.field}
+                    items={sortFieldOptions}
                     onValueChange={(value) => {
-                      if (isValidSortField(value)) {
+                      if (
+                        typeof value === 'string' &&
+                        isValidSortField(value)
+                      ) {
                         updateSortField(index, value);
                       }
                     }}

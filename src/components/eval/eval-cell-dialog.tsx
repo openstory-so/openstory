@@ -13,7 +13,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/select';
+} from '@/components/ui/select';
 import { VideoPlayer } from '@/components/motion/video-player';
 import { buildMentionItems } from '@/components/scenes/prompt-mention/mention-items';
 import { HighlightedPrompt } from '@/components/text-editor/mention/highlighted-prompt';
@@ -164,8 +164,16 @@ export const EvalCellDialog: React.FC<EvalCellDialogProps> = ({
           <div className="sm:hidden mb-4">
             <Select
               value={selectedTab}
+              items={[
+                { value: 'script', label: 'Script' },
+                { value: 'prompts', label: 'Prompts' },
+                { value: 'images', label: 'Image' },
+                { value: 'motion', label: 'Motion' },
+              ]}
               onValueChange={(value) => {
-                if (isDialogTab(value)) setSelectedTab(value);
+                if (typeof value === 'string' && isDialogTab(value)) {
+                  setSelectedTab(value);
+                }
               }}
             >
               <SelectTrigger>

@@ -15,7 +15,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/select';
+} from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { useCreateSequenceLocation } from '@/hooks/use-sequence-locations';
 import { errorMessage } from '@/lib/errors';
@@ -90,7 +90,15 @@ export const AddLocationDialog: React.FC<{ sequenceId: string }> = ({
           </div>
           <div className="flex flex-col gap-1">
             <Label htmlFor="new-location-type">Type</Label>
-            <Select name="type" defaultValue="interior">
+            <Select
+              name="type"
+              defaultValue="interior"
+              items={[
+                { value: 'interior', label: 'Interior' },
+                { value: 'exterior', label: 'Exterior' },
+                { value: 'both', label: 'Interior/Exterior' },
+              ]}
+            >
               <SelectTrigger id="new-location-type">
                 <SelectValue />
               </SelectTrigger>

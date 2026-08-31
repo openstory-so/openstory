@@ -7,7 +7,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/select';
+} from '@/components/ui/select';
 import { useUpdateSequenceLocation } from '@/hooks/use-sequence-locations';
 import type { SequenceLocation } from '@/lib/db/schema';
 import { errorMessage } from '@/lib/errors';
@@ -88,6 +88,11 @@ export const LocationBibleForm: React.FC<{
                 ? location.type
                 : 'interior'
             }
+            items={[
+              { value: 'interior', label: 'Interior' },
+              { value: 'exterior', label: 'Exterior' },
+              { value: 'both', label: 'Interior/Exterior' },
+            ]}
           >
             <SelectTrigger id="location-type">
               <SelectValue />

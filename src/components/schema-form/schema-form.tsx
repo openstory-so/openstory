@@ -21,7 +21,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/select';
+} from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -375,6 +375,13 @@ const EnumSelect: FC<WidgetProps & { options: JsonValue[] }> = ({
       value={
         selected === -1 ? (required ? undefined : 'omit') : String(selected)
       }
+      items={[
+        ...(!required ? [{ value: 'omit', label: 'Model default' }] : []),
+        ...options.map((option, index) => ({
+          value: String(index),
+          label: optionLabel(option),
+        })),
+      ]}
       onValueChange={(next) => {
         if (next === 'omit') {
           onChange(undefined);
