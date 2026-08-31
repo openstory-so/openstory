@@ -242,46 +242,56 @@ export const estimateSceneDurationFn = createServerFn({ method: 'POST' })
 
 // -- Enhance Script --
 
-const enhanceScriptInputSchema = z.object({
-  script: z
-    .string()
-    .min(10, 'Script must be at least 10 characters')
-    .max(50000, 'Script too long'),
-  targetDuration: z.number().min(5).max(180).optional(),
-  // Catalog key of the selected video model — clip-grid constraint for labels
-  // (#1374). Optional; the enhancer defaults to DEFAULT_VIDEO_MODEL.
-  videoModel: z
-    .string()
-    .refine((val) => isValidImageToVideoModel(val), {
-      message: 'Invalid video model',
-    })
-    .optional(),
-  // The chosen style, narrowed to what the enhancer reads: the aesthetic recipe
-  // (`config`) drives the LOOK; name/category/tags drive WHAT HAPPENS. One
-  // cohesive object — built by `toEnhanceInputs` so the UI and API match.
-  // Mirrors `EnhanceStyle`: config is whole-or-absent (parsed v2 — the client
-  // up-converts via `toEnhanceInputs`), tags always an array.
-  style: z
-    .object({
-      config: StyleConfigSchema.optional(),
-      name: z.string().optional(),
-      category: z.string().nullable().optional(),
-      description: z.string().nullable().optional(),
-      tags: z.array(z.string()).default([]),
-    })
-    .optional(),
-  analysisModel: z.string().optional(),
-  aspectRatio: aspectRatioSchema.optional(),
-  elements: z
-    .array(
-      z.object({
-        token: z.string().min(1),
-        description: z.string().nullable().optional(),
-        imageUrl: mediaUrlSchema,
+const enhanceScriptInputSchema = z
+  .object({
+    script: z.string().max(50000, 'Script too long'),
+    // Write from nothing (#1393): "Try something random" on an empty composer.
+    // The enhancer invents the idea (in the selected style, or in any genre when
+    // the style is Match script) instead of expanding one — which is why the
+    // 10-character floor below lifts only for this flag.
+    invent: z.boolean().optional(),
+    targetDuration: z.number().min(5).max(180).optional(),
+    // Catalog key of the selected video model — clip-grid constraint for labels
+    // (#1374). Optional; the enhancer defaults to DEFAULT_VIDEO_MODEL.
+    videoModel: z
+      .string()
+      .refine((val) => isValidImageToVideoModel(val), {
+        message: 'Invalid video model',
       })
-    )
-    .optional(),
-});
+      .optional(),
+    // The chosen style, narrowed to what the enhancer reads: the aesthetic recipe
+    // (`config`) drives the LOOK; name/category/tags drive WHAT HAPPENS. One
+    // cohesive object — built by `toEnhanceInputs` so the UI and API match.
+    // Mirrors `EnhanceStyle`: config is whole-or-absent (parsed v2 — the client
+    // up-converts via `toEnhanceInputs`), tags always an array.
+    style: z
+      .object({
+        config: StyleConfigSchema.optional(),
+        name: z.string().optional(),
+        category: z.string().nullable().optional(),
+        description: z.string().nullable().optional(),
+        tags: z.array(z.string()).default([]),
+      })
+      .optional(),
+    analysisModel: z.string().optional(),
+    aspectRatio: aspectRatioSchema.optional(),
+    elements: z
+      .array(
+        z.object({
+          token: z.string().min(1),
+          description: z.string().nullable().optional(),
+          imageUrl: mediaUrlSchema,
+        })
+      )
+      .optional(),
+  })
+  .refine(
+    (input) => input.invent === true || input.script.trim().length >= 10,
+    {
+      message: 'Script must be at least 10 characters',
+      path: ['script'],
+    }
+  );
 
 export type EnhanceScriptInput = z.infer<typeof enhanceScriptInputSchema>;
 

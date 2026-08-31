@@ -508,25 +508,18 @@ export const ScriptView: FC<{
     handleShuffleSample();
   };
   /**
-   * "Try something random" on an empty composer (#1393): a random style's
-   * sample seeds the enhance flow, which writes the real script and then
-   * generates it. The seed is what makes it random rather than the same
-   * cold-start script every time.
+   * "Try something random" on an empty composer (#1393): the enhancer invents
+   * the script outright — in the selected style, or in any genre at all when
+   * Match script is selected — then generates it. Deliberately NOT seeded with
+   * a style sample: those are the Shuffle tour's canned briefs, and reusing one
+   * here would hand every "random" user the same handful of stories.
    */
   const generateRandomScript = () => {
-    const style = pickShuffleStyle(styles, styleId, Math.random);
-    const sample = style && sampleScriptForStyle(style);
-    if (!style || !sample) return;
     posthog.capture('empty_prompt_choice', {
       surface: 'script',
       choice: 'random',
     });
-    applySampleForStyle(style, 'sample_script_shuffled');
-    void handleEnhanceRef.current({
-      script: sample,
-      styleId: style.id,
-      thenGenerate: true,
-    });
+    void handleEnhanceRef.current({ invent: true, thenGenerate: true });
   };
 
   const requestTryStyle = (tryStyleId: string) => {
@@ -923,20 +916,17 @@ export const ScriptView: FC<{
 
   const handleCancel = onCancel;
 
-  /** `override` carries text/style produced in the same tick (the random
-   *  path enhances then generates), which this closure's state doesn't have. */
-  const executeRegeneration = (override?: {
-    script?: string;
-    styleId?: string;
-  }) => {
+  /** `enhancedScript` is text produced in the same tick (the random path
+   *  enhances, then generates), which this closure's state doesn't have. */
+  const executeRegeneration = (enhancedScript?: string) => {
     // sequence_generated is captured server-side in createSequences (#1088)
     // so dashboard + public API both feed #product-alerts once.
     createSequenceMutation.mutate(
       {
         title: undefined,
         teamId,
-        script: override?.script ?? script ?? baseScript ?? '',
-        styleId: override?.styleId || styleId || sequence?.styleId || undefined,
+        script: enhancedScript ?? script ?? baseScript ?? '',
+        styleId: styleId || sequence?.styleId || undefined,
         aspectRatio,
         analysisModels,
         imageModels,
@@ -1042,13 +1032,14 @@ export const ScriptView: FC<{
   const enhanceAbortRef = useRef<AbortController | null>(null);
 
   /**
-   * `options.script` / `options.styleId` enhance text that isn't in state yet
-   * (the random path seeds a sample in the same tick); `thenGenerate` carries
-   * straight on into generation once the stream finishes.
+   * `invent` writes a script from nothing (empty composer + "Try something
+   * random", #1393); `thenGenerate` carries straight on into generation once
+   * the stream finishes.
    */
   const handleEnhance = async (options?: {
-    script?: string;
-    styleId?: string;
+    /** Write from nothing rather than expanding what's in the editor. */
+    invent?: boolean;
+    /** Carry straight on into generation once the stream finishes. */
     thenGenerate?: boolean;
   }) => {
     // Enhancing runs an AI model on the server — gate it behind login too.
@@ -1065,7 +1056,7 @@ export const ScriptView: FC<{
       return;
     }
 
-    const sourceScript = options?.script ?? scriptValue;
+    const sourceScript = options?.invent ? '' : scriptValue;
     posthog.capture('script_enhanced', {
       target_duration: targetDuration,
       script_length: sourceScript.length,
@@ -1083,9 +1074,7 @@ export const ScriptView: FC<{
     enhanceAbortRef.current = abortController;
 
     try {
-      const selectedStyle = styles.find(
-        (s) => s.id === (options?.styleId ?? styleId)
-      );
+      const selectedStyle = styles.find((s) => s.id === styleId);
       // Create flow holds elements in local draft state; an existing sequence
       // holds them in the DB (loaded as `mentionElements`). Feed whichever
       // applies so enhance-on-existing-sequence ("Generate Copy") attaches the
@@ -1097,6 +1086,7 @@ export const ScriptView: FC<{
       for await (const chunk of await enhanceScriptStreamFn({
         data: {
           script: sourceScript,
+          invent: options?.invent,
           targetDuration,
           videoModel: videoModels[0] ?? DEFAULT_VIDEO_MODEL,
           analysisModel: analysisModels[0],
@@ -1126,10 +1116,7 @@ export const ScriptView: FC<{
       }
       setEnhance('canUndoEnhance', true);
       if (options?.thenGenerate && accumulated.trim()) {
-        executeRegeneration({
-          script: accumulated,
-          styleId: options.styleId,
-        });
+        executeRegeneration(accumulated);
       }
       // Charge lands when the stream finishes — keep the credit chip in sync
       // even if the billing SSE is delayed or dropped on this request path.
@@ -1838,7 +1825,6 @@ export const ScriptView: FC<{
               I'll write it
             </AlertDialogCancel>
             <AlertDialogAction
-              disabled={!canShuffle}
               onClick={() => {
                 setEmptyScript(false);
                 generateRandomScript();

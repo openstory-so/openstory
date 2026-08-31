@@ -138,6 +138,7 @@ export async function* streamScriptEnhancement(
   const { compiled } = await getPrompt('script/enhance');
   const elements = data.elements ?? [];
   const userPrompt = createUserPrompt(sanitized, {
+    invent: data.invent,
     style: data.style,
     aspectRatio: data.aspectRatio,
     targetDuration: targetSeconds,

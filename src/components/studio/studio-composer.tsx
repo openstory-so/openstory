@@ -617,10 +617,10 @@ export function StudioComposer({ activity }: StudioComposerProps) {
   };
 
   /**
-   * "Try something random": the draft flow writes the prompt — from a random
-   * seed out of the shuffle pool, plus whatever is attached — then generates
-   * it. The seed is what keeps an empty composer from drafting the same
-   * handful of clichés every time.
+   * "Try something random": the draft flow invents the prompt — from whatever
+   * is attached, or from nothing at all — then generates it. Deliberately NOT
+   * seeded from the Shuffle pool: those are the canned tour prompts, and
+   * reusing one here would hand every "random" user the same dozen shots.
    */
   const generateRandom = () => {
     posthog.capture('empty_prompt_choice', {
@@ -629,12 +629,6 @@ export function StudioComposer({ activity }: StudioComposerProps) {
       choice: 'random',
     });
     applyDraft({
-      seed:
-        pickShufflePrompt(
-          studioShufflePrompts(activity),
-          prompt,
-          Math.random
-        ) ?? undefined,
       onDrafted: (next) => {
         setEmptyPrompt(false);
         generate(next);

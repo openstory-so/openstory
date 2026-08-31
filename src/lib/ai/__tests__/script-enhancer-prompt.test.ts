@@ -18,6 +18,16 @@ const NEO_NOIR_V1 = {
 };
 
 describe('createUserPrompt (issue #855)', () => {
+  it('invents instead of expanding when there is nothing to expand (#1393)', () => {
+    const prompt = createUserPrompt('', { invent: true, targetDuration: 15 });
+    // No <USER_SCRIPT> block: an "invent something" line inside those tags is
+    // narrative material by definition, so it would be written ABOUT, not
+    // followed.
+    expect(prompt).not.toContain('<USER_SCRIPT>');
+    expect(prompt).toContain('Invent an original short video');
+    expect(prompt).toContain('Target video duration: 15 seconds');
+  });
+
   it('carries the per-request payload (script, duration, injection guard)', () => {
     const prompt = createUserPrompt('a new product launch', {
       targetDuration: 15,
