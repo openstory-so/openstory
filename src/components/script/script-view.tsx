@@ -471,8 +471,6 @@ export const ScriptView: FC<{
   const [sampleReplaceConfirm, setSampleReplaceConfirm] = useState<
     { kind: 'shuffle' } | { kind: 'try'; styleId: string } | null
   >(null);
-  /** Generate was clicked with nothing written (#1393). */
-  const [emptyScript, setEmptyScript] = useState(false);
   const applySampleForStyle = (
     style: (typeof styles)[number],
     event: 'sample_script_shuffled' | 'sample_script_tried'
@@ -507,24 +505,6 @@ export const ScriptView: FC<{
     }
     handleShuffleSample();
   };
-  /**
-   * "Try something random" on an empty composer (#1393): the enhancer invents
-   * the script outright — in the selected style, or in any genre at all when
-   * Match script is selected. Deliberately NOT seeded with a style sample:
-   * those are the Shuffle tour's canned briefs, and reusing one here would
-   * hand every "random" user the same handful of stories.
-   *
-   * It stops there. The script lands in the editor for the user to read (and
-   * edit, or Undo) before they spend anything on generating it.
-   */
-  const generateRandomScript = () => {
-    posthog.capture('empty_prompt_choice', {
-      surface: 'script',
-      choice: 'random',
-    });
-    void handleEnhanceRef.current({ invent: true });
-  };
-
   const requestTryStyle = (tryStyleId: string) => {
     if (hasOwnText()) {
       setSampleReplaceConfirm({ kind: 'try', styleId: tryStyleId });
@@ -976,7 +956,9 @@ export const ScriptView: FC<{
 
     // Empty is the first-run default (#1255) and Generate stays live on it
     // (#1393): logged out that click is worth a login prompt, logged in it
-    // asks what to make. Copying an existing sequence has nothing to offer.
+    // hands over to Enhance — which writes a script from nothing — by opening
+    // its popover, so the duration controls are in front of the user before
+    // anything is written. Copying an existing sequence has nothing to offer.
     if (!scriptText) {
       if (isEditing) return;
       posthog.capture('empty_prompt_generate_clicked', {
@@ -987,11 +969,7 @@ export const ScriptView: FC<{
         markPendingIntent('generate');
         return;
       }
-      if (needsBillingSetup) {
-        showGate();
-        return;
-      }
-      setEmptyScript(true);
+      setEnhancePopoverOpen(true);
       return;
     }
 
@@ -1033,10 +1011,11 @@ export const ScriptView: FC<{
   const enhanceAbortRef = useRef<AbortController | null>(null);
 
   /**
-   * `invent` writes a script from nothing (empty composer + "Try something
-   * random", #1393) rather than expanding what's in the editor.
+   * Enhance, and — on an empty composer — write the script in the first place
+   * (#1393). One call either way: nothing to expand means invent, in the
+   * selected style or in any genre at all when Match script is selected.
    */
-  const handleEnhance = async (options?: { invent?: boolean }) => {
+  const handleEnhance = async () => {
     // Enhancing runs an AI model on the server — gate it behind login too.
     // Remember the click so post-auth resume continues Enhance, not Generate,
     // and so we don't dump a first-time user on the empty sequences list
@@ -1051,11 +1030,13 @@ export const ScriptView: FC<{
       return;
     }
 
-    const sourceScript = options?.invent ? '' : scriptValue;
+    const sourceScript = scriptValue.trim();
+    const invent = sourceScript.length === 0;
     posthog.capture('script_enhanced', {
       target_duration: targetDuration,
       script_length: sourceScript.length,
       aspect_ratio: aspectRatio,
+      invent,
     });
     // Enhancing rewrites the text — it stops being an untouched sample.
     setSampleStyleId(null);
@@ -1081,7 +1062,7 @@ export const ScriptView: FC<{
       for await (const chunk of await enhanceScriptStreamFn({
         data: {
           script: sourceScript,
-          invent: options?.invent,
+          invent,
           targetDuration,
           videoModel: videoModels[0] ?? DEFAULT_VIDEO_MODEL,
           analysisModel: analysisModels[0],
@@ -1305,6 +1286,11 @@ export const ScriptView: FC<{
     audioModels,
   ]);
 
+  // Nothing written yet: Enhance writes the script instead of expanding one
+  // (#1393), so it stays live at any length and says which job it is doing.
+  const enhanceInvents = scriptValue.trim().length === 0;
+  const enhanceLabel = enhanceInvents ? 'Write a script' : 'Enhance Script';
+
   const enhanceControls = (
     <>
       {canUndoEnhance && !isEnhancing && (
@@ -1341,10 +1327,10 @@ export const ScriptView: FC<{
               variant="outline"
               size="sm"
               className="gap-1.5"
-              disabled={!scriptValue || scriptValue.length < 10 || isSubmitting}
+              disabled={isSubmitting}
             >
               <Sparkles className="size-3.5 text-primary" />
-              Enhance Script
+              {enhanceLabel}
             </Button>
           </PopoverTrigger>
           <PopoverContent align="end" side="top" className="w-auto">
@@ -1366,11 +1352,18 @@ export const ScriptView: FC<{
                   </ToggleGroupItem>
                 ))}
               </ToggleGroup>
-              <DurationFitHint
-                targetDuration={targetDuration}
-                videoModel={primaryVideoModel}
-                script={scriptValue}
-              />
+              {enhanceInvents ? (
+                <p className="max-w-xs text-xs text-muted-foreground">
+                  Nothing written yet — we'll invent one that fits this style
+                  and length. Read it over before you generate.
+                </p>
+              ) : (
+                <DurationFitHint
+                  targetDuration={targetDuration}
+                  videoModel={primaryVideoModel}
+                  script={scriptValue}
+                />
+              )}
               {briefRequestsUnrenderableText(scriptValue) ? (
                 <p className="max-w-xs text-xs text-muted-foreground">
                   {TITLE_CARD_NOTE}
@@ -1386,7 +1379,7 @@ export const ScriptView: FC<{
                 }}
               >
                 <Sparkles className="size-3.5" />
-                Enhance
+                {enhanceInvents ? 'Write it' : 'Enhance'}
               </Button>
             </div>
           </PopoverContent>
@@ -1792,38 +1785,6 @@ export const ScriptView: FC<{
             >
               <Sparkles className="size-3.5" />
               Enhance Script
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-      <AlertDialog open={emptyScript} onOpenChange={setEmptyScript}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>What should we make?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Nothing is written yet. Type your own idea — or we'll write one
-              for you to look over.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel
-              onClick={() =>
-                posthog.capture('empty_prompt_choice', {
-                  surface: 'script',
-                  choice: 'own_prompt',
-                })
-              }
-            >
-              I'll write it
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                setEmptyScript(false);
-                generateRandomScript();
-              }}
-            >
-              <Sparkles className="size-3.5" />
-              Try something random
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
