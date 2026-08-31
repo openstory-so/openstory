@@ -109,6 +109,7 @@ import {
   toastDragImportCorsError,
 } from '@/lib/utils/drag-images';
 import { cn } from '@/lib/utils';
+import { usePostHog } from '@posthog/react';
 import {
   ArrowUp,
   AudioLines,
@@ -261,7 +262,8 @@ function AddTile({
 }
 
 export function StudioComposer({ activity }: StudioComposerProps) {
-  const { requireAuth } = useAuthGate();
+  const { requireAuth, isAuthenticated } = useAuthGate();
+  const posthog = usePostHog();
   const { showGate } = useFalBillingGate();
   const { pricing } = useFalPricing();
   const create = useCreateStudioAssets();
@@ -281,6 +283,7 @@ export function StudioComposer({ activity }: StudioComposerProps) {
   const [generateAudio, setGenerateAudio] = useState(true);
   const [lastShuffled, setLastShuffled] = useState<string | null>(null);
   const [replaceConfirm, setReplaceConfirm] = useState(false);
+  const [emptyPrompt, setEmptyPrompt] = useState(false);
 
   // Reference is the default: it is what the tiles, @ list and picker are for.
   const [mode, setMode] = useState<StudioVideoMode>('reference');
@@ -356,7 +359,10 @@ export function StudioComposer({ activity }: StudioComposerProps) {
     (effectiveMode === 'reference' &&
       references.length + videoRefs.length > 0) ||
     (effectiveMode === 'frames' && startFrame !== null);
-  const canSubmit = trimmed.length > 0 && modeReady && uploading === 0;
+  // Generate stays live on an empty prompt (#1393) — an empty click is the
+  // cheapest place to open the login dialog or offer a random prompt. Only
+  // an unready mode or an in-flight upload actually disables it.
+  const canSubmit = modeReady && uploading === 0;
 
   // --- references -----------------------------------------------------------
 
@@ -698,11 +704,11 @@ export function StudioComposer({ activity }: StudioComposerProps) {
     setEndFrame(null);
   };
 
-  const buildInput = (): StudioCreateInput => {
+  const buildInput = (promptText: string): StudioCreateInput => {
     if (activity === 'video') {
       return {
         activity: 'video',
-        prompt: trimmed,
+        prompt: promptText,
         videoModel: compatibleVideoModel,
         aspectRatio,
         duration: snappedDuration,
@@ -721,7 +727,7 @@ export function StudioComposer({ activity }: StudioComposerProps) {
     }
     return {
       activity: 'image',
-      prompt: trimmed,
+      prompt: promptText,
       imageModel,
       aspectRatio,
       count,
@@ -729,15 +735,40 @@ export function StudioComposer({ activity }: StudioComposerProps) {
     };
   };
 
+  const generate = (promptText: string) => {
+    create.mutate(buildInput(promptText), {
+      onError: (error) => {
+        if (isInsufficientCreditsError(error)) showGate();
+      },
+    });
+  };
+
   const submit = () => {
     if (!canSubmit) return;
-    requireAuth(() => {
-      create.mutate(buildInput(), {
-        onError: (error) => {
-          if (isInsufficientCreditsError(error)) showGate();
-        },
+    if (trimmed.length === 0) {
+      posthog.capture('empty_prompt_generate_clicked', {
+        activity,
+        authenticated: isAuthenticated,
       });
-    });
+      // Logged out: the login dialog is the ask. Logged in: pick a prompt.
+      if (requireAuth()) setEmptyPrompt(true);
+      return;
+    }
+    requireAuth(() => generate(trimmed));
+  };
+
+  /** "Try something random": a sample prompt, generated straight away. */
+  const generateRandom = () => {
+    const next = pickShufflePrompt(
+      studioShufflePrompts(activity),
+      prompt,
+      Math.random
+    );
+    if (!next) return;
+    setPrompt(next);
+    setLastShuffled(next);
+    posthog.capture('empty_prompt_choice', { activity, choice: 'random' });
+    generate(next);
   };
 
   const submitLabel =
@@ -1185,6 +1216,34 @@ export function StudioComposer({ activity }: StudioComposerProps) {
           if (picker) void uploadFiles(files, picker);
         }}
       />
+
+      <AlertDialog open={emptyPrompt} onOpenChange={setEmptyPrompt}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>What should we make?</AlertDialogTitle>
+            <AlertDialogDescription>
+              The prompt is empty. Describe the {isVideo ? 'shot' : 'still'} you
+              want, or we'll pick something for you.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={() =>
+                posthog.capture('empty_prompt_choice', {
+                  activity,
+                  choice: 'own_prompt',
+                })
+              }
+            >
+              I'll write it
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={generateRandom}>
+              <Shuffle className="size-3.5" />
+              Try something random
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={replaceConfirm} onOpenChange={setReplaceConfirm}>
         <AlertDialogContent>

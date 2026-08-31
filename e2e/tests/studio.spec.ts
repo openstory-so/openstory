@@ -75,6 +75,25 @@ test.describe('Images and Videos studio', () => {
     await expect(page).toHaveURL(/\/images/);
   });
 
+  test('empty-prompt Generate offers a random prompt (#1393)', async ({
+    page,
+  }) => {
+    await page.goto('/images');
+    await waitForComposer(page);
+    const generate = page.getByRole('button', { name: 'Generate image' });
+    await expect(generate).toBeEnabled();
+    await generate.click();
+    const dialog = page.getByRole('alertdialog', {
+      name: 'What should we make?',
+    });
+    await expect(dialog).toBeVisible();
+    await expect(
+      dialog.getByRole('button', { name: 'Try something random' })
+    ).toBeVisible();
+    await dialog.getByRole('button', { name: "I'll write it" }).click();
+    await expect(dialog).toBeHidden();
+  });
+
   test('Shuffle fills an empty image prompt', async ({ page }) => {
     await page.goto('/images');
     const editor = page.locator('[data-slot="markdown-editor"]');
