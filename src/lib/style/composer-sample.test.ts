@@ -30,11 +30,11 @@ describe('sampleScriptForStyle', () => {
     );
   });
 
-  // A style shipped without variants silently loses the Shuffle variety this
-  // is for — regenerate with `--variants 2` rather than deleting this.
+  // A style shipped without its variants silently loses the Shuffle variety
+  // this is for — regenerate with `--variants 5` rather than deleting this.
   it('has variants for every shipped style', () => {
     const thin = DEFAULT_STYLE_TEMPLATES.filter(
-      (style) => sampleScriptsForStyle(style).length < 3
+      (style) => sampleScriptsForStyle(style).length < 6
     ).map((style) => styleSlug(style.name));
     expect(thin).toEqual([]);
   });

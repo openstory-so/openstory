@@ -7,11 +7,13 @@
  * style-keyed brief corpus that seeds the showcase "Try" links, so a shuffled
  * sample and a "Try this style" click read identically.
  *
- * Each style now has more than one sample (#1393): the canonical brief — the
- * one the rendered sample video was made from, and the only one the `?style=`
- * seed uses, since that has to stay deterministic — plus the alternatives in
+ * Each style has six samples (#1393): the canonical brief — the one the
+ * rendered sample video was made from, and the only one the `?style=` seed
+ * uses, since that has to stay deterministic — plus five alternatives in
  * `STYLE_BRIEF_VARIANTS`. Shuffle picks among all of them, so touring the same
- * style twice doesn't show the same script twice.
+ * style twice doesn't show the same script twice. They are code, not data:
+ * resolved by style-name slug, so a team's own style still falls back to its
+ * category brief.
  */
 import { briefForStyle } from '@/lib/style/brief-for-style';
 import { STYLE_BRIEF_VARIANTS } from '@/lib/style/style-brief-variants.generated';

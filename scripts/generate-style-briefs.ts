@@ -132,7 +132,9 @@ async function generateBriefs(
     body: JSON.stringify({
       model,
       temperature: 0.7,
-      max_tokens: 1200,
+      // Scales with the ask: a truncated reply is unparseable JSON, which is
+      // how the odd style dropped out of a --variants run.
+      max_tokens: 800 + 400 * count,
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
         {
