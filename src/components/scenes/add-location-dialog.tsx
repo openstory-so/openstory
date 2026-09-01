@@ -90,7 +90,15 @@ export const AddLocationDialog: React.FC<{ sequenceId: string }> = ({
           </div>
           <div className="flex flex-col gap-1">
             <Label htmlFor="new-location-type">Type</Label>
-            <Select name="type" defaultValue="interior">
+            <Select
+              name="type"
+              defaultValue="interior"
+              items={{
+                interior: 'Interior',
+                exterior: 'Exterior',
+                both: 'Interior/Exterior',
+              }}
+            >
               <SelectTrigger id="new-location-type">
                 <SelectValue />
               </SelectTrigger>

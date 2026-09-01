@@ -370,11 +370,19 @@ const EnumSelect: FC<WidgetProps & { options: JsonValue[] }> = ({
   id,
 }) => {
   const selected = options.findIndex((option) => option === value);
+  const enumItems = [
+    ...(!required ? [{ value: 'omit', label: 'Model default' }] : []),
+    ...options.map((option, index) => ({
+      value: String(index),
+      label: optionLabel(option),
+    })),
+  ];
   return (
     <Select
       value={
         selected === -1 ? (required ? undefined : 'omit') : String(selected)
       }
+      items={enumItems}
       onValueChange={(next) => {
         if (next === 'omit') {
           onChange(undefined);
@@ -389,10 +397,9 @@ const EnumSelect: FC<WidgetProps & { options: JsonValue[] }> = ({
         <SelectValue placeholder={required ? 'Choose…' : 'Model default'} />
       </SelectTrigger>
       <SelectContent>
-        {!required && <SelectItem value="omit">Model default</SelectItem>}
-        {options.map((option, index) => (
-          <SelectItem key={optionLabel(option)} value={String(index)}>
-            {optionLabel(option)}
+        {enumItems.map((item) => (
+          <SelectItem key={item.value} value={item.value}>
+            {item.label}
           </SelectItem>
         ))}
       </SelectContent>

@@ -2,7 +2,7 @@
  * Email Service
  * Handles sending transactional emails via Cloudflare Email Service.
  * Templates are React components in src/lib/emails/ rendered to
- * email-safe HTML (and a plain-text version) by @react-email/render.
+ * email-safe HTML (and a plain-text version) by render-email.ts.
  */
 
 import { getEnv } from '#env';

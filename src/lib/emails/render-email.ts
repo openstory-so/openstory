@@ -8,8 +8,8 @@
  * runtime on deployed workers (#841). A static import of react-dom/server.edge
  * bundles correctly (TanStack Router's SSR uses the same pattern).
  *
- * The stream API (not renderToStaticMarkup) is required because react-email's
- * <Tailwind> component suspends while compiling classes to inline styles.
+ * Templates no longer suspend (inline styles, no `<Tailwind>`). The stream
+ * API is kept so the import of `react-dom/server.edge` stays static.
  */
 
 import { toPlainText } from '@react-email/components';

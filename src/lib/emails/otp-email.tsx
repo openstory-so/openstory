@@ -5,8 +5,9 @@
 import { Heading, Section, Text } from '@react-email/components';
 import {
   EmailLayout,
-  headingClass,
-  paragraphClass,
+  headingStyle,
+  mutedBoxStyle,
+  paragraphStyle,
   WarningBox,
 } from './email-layout';
 
@@ -15,20 +16,30 @@ interface OtpEmailProps {
   otp: string;
 }
 
+const otpStyle: React.CSSProperties = {
+  marginTop: 0,
+  marginBottom: 0,
+  textAlign: 'center',
+  fontFamily:
+    'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+  fontSize: 36,
+  fontWeight: 700,
+  letterSpacing: 8,
+  color: '#fafafa',
+};
+
 export const OtpEmail: React.FC<OtpEmailProps> = ({ appName, otp }) => (
   <EmailLayout appName={appName} preview={`Your sign-in code is ${otp}`}>
     <Section>
-      <Heading as="h2" className={headingClass}>
+      <Heading as="h2" style={headingStyle}>
         Your Sign-In Code
       </Heading>
-      <Text className={paragraphClass}>
+      <Text style={paragraphStyle}>
         Enter this code to sign in to your account:
       </Text>
 
-      <Section className="my-6 rounded-lg bg-muted p-6">
-        <Text className="m-0 text-center font-mono text-4xl font-bold tracking-[8px] text-foreground">
-          {otp}
-        </Text>
+      <Section style={mutedBoxStyle}>
+        <Text style={otpStyle}>{otp}</Text>
       </Section>
 
       <WarningBox title="This code expires in 5 minutes">

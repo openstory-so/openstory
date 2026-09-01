@@ -262,7 +262,15 @@ export function AddCreditsDialog() {
           ) : (
             <Select
               value={effectivePm}
+              items={[
+                ...paymentMethods.map((pm) => ({
+                  value: pm.id,
+                  label: `${formatBrand(pm.brand)} •••• ${pm.last4}`,
+                })),
+                { value: NEW_CARD, label: 'New card at checkout' },
+              ]}
               onValueChange={(value) => {
+                if (value == null) return;
                 setSelectedPm(value);
                 setError(null);
               }}

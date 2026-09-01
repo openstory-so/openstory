@@ -45,6 +45,7 @@ import {
 } from 'cloudflare:workers';
 import { NonRetryableError } from 'cloudflare:workflows';
 import { flushAnalytics } from '@/lib/observability/flush-analytics';
+import { captureProductEvent } from '@/lib/observability/product-events';
 import { getLogger, serializeError } from '@/lib/observability/logger';
 
 const logger = getLogger(['openstory', 'workflow', 'cf', 'base']);
@@ -90,6 +91,16 @@ function extractParentHint(payload: unknown): ParentNotifyHint | undefined {
     return hint;
   }
   return undefined;
+}
+
+/**
+ * `sequenceId` rides on most payloads (`SequenceWorkflowContext`) but not on
+ * the base contract, so read it defensively for the failure alert.
+ */
+function extractSequenceId(payload: UserWorkflowContext): string | undefined {
+  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- optional slot not part of the base payload type
+  const id = (payload as { sequenceId?: string }).sequenceId;
+  return typeof id === 'string' ? id : undefined;
 }
 
 export type OpenStoryFailureContext<T extends UserWorkflowContext> = {
@@ -200,6 +211,23 @@ export abstract class OpenStoryWorkflowEntrypoint<
       // error hasn't already crossed a CF step boundary (#864).
       logger.error(`[${this.constructor.name}] Failure: ${sanitized}`, {
         err: serializeError(error),
+      });
+
+      // Every user-visible generation failure funnels through this one catch,
+      // so this is the only place a "user hit an error" alert needs to fire
+      // (#1088 Slack destination). Emitted after the engine-abort guard above,
+      // so transient interruptions that resume don't page anyone. The `finally`
+      // below flushes it before the isolate is torn down.
+      captureProductEvent({
+        distinctId: event.payload.userId,
+        event: 'sequence_error',
+        properties: {
+          workflow: this.constructor.name,
+          error: sanitized,
+          sequence_id: extractSequenceId(event.payload) ?? null,
+          team_id: event.payload.teamId,
+          run_id: event.instanceId,
+        },
       });
 
       if (this.onFailure || event.payload.ownsReservation) {

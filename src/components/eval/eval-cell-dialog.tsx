@@ -46,6 +46,13 @@ function isDialogTab(value: string): value is DialogTab {
   );
 }
 
+const DIALOG_TABS = [
+  { value: 'script', label: 'Script' },
+  { value: 'prompts', label: 'Prompts' },
+  { value: 'images', label: 'Image' },
+  { value: 'motion', label: 'Motion' },
+] as const;
+
 type EvalCellDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -164,18 +171,20 @@ export const EvalCellDialog: React.FC<EvalCellDialogProps> = ({
           <div className="sm:hidden mb-4">
             <Select
               value={selectedTab}
+              items={DIALOG_TABS}
               onValueChange={(value) => {
-                if (isDialogTab(value)) setSelectedTab(value);
+                if (value && isDialogTab(value)) setSelectedTab(value);
               }}
             >
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="script">Script</SelectItem>
-                <SelectItem value="prompts">Prompts</SelectItem>
-                <SelectItem value="images">Image</SelectItem>
-                <SelectItem value="motion">Motion</SelectItem>
+                {DIALOG_TABS.map((tab) => (
+                  <SelectItem key={tab.value} value={tab.value}>
+                    {tab.label}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>

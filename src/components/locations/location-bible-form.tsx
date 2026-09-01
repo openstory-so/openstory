@@ -88,6 +88,11 @@ export const LocationBibleForm: React.FC<{
                 ? location.type
                 : 'interior'
             }
+            items={{
+              interior: 'Interior',
+              exterior: 'Exterior',
+              both: 'Interior/Exterior',
+            }}
           >
             <SelectTrigger id="location-type">
               <SelectValue />

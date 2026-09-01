@@ -54,6 +54,11 @@ vi.doMock('@/lib/workflow/await-child', async () => {
 const flushAnalytics = vi.fn(() => Promise.resolve());
 vi.doMock('@/lib/observability/flush-analytics', () => ({ flushAnalytics }));
 
+const captureProductEvent = vi.fn();
+vi.doMock('@/lib/observability/product-events', () => ({
+  captureProductEvent,
+}));
+
 // Dynamic import so the mocks above apply (vi.doMock is not hoisted).
 const { OpenStoryWorkflowEntrypoint } = await import('./base-workflow');
 
@@ -63,6 +68,7 @@ const ENGINE_ABORT = 'Aborting engine: Grace period complete';
 const DO_RESET = 'Durable Object reset because its code was updated.';
 
 type TestPayload = UserWorkflowContext & {
+  sequenceId?: string;
   _parent?: {
     bindingName: string;
     parentInstanceId: string;
@@ -142,6 +148,40 @@ describe('OpenStoryWorkflowEntrypoint.run', () => {
       expect(notifyParentOfFailure).not.toHaveBeenCalled();
     }
   );
+
+  describe('sequence_error alert (#1088 Slack destination)', () => {
+    test('a real failure emits it with the sequence id', async () => {
+      captureProductEvent.mockReset();
+      notifyParentOfFailure.mockResolvedValue(undefined);
+      const { workflow } = makeWorkflow(() =>
+        Promise.reject(new Error('fal request failed'))
+      );
+
+      await expect(
+        workflow.run(makeEvent(false, { sequenceId: 'seq_1' }), makeStep())
+      ).rejects.toThrow('fal request failed');
+
+      expect(captureProductEvent).toHaveBeenCalledTimes(1);
+      expect(captureProductEvent.mock.calls[0]?.[0]).toMatchObject({
+        distinctId: 'u1',
+        event: 'sequence_error',
+        properties: { sequence_id: 'seq_1', team_id: 't1' },
+      });
+    });
+
+    test('a transient engine abort does not (the instance resumes)', async () => {
+      captureProductEvent.mockReset();
+      const { workflow } = makeWorkflow(() =>
+        Promise.reject(new Error(ENGINE_ABORT))
+      );
+
+      await expect(workflow.run(makeEvent(false), makeStep())).rejects.toThrow(
+        ENGINE_ABORT
+      );
+
+      expect(captureProductEvent).not.toHaveBeenCalled();
+    });
+  });
 
   test('success with dead parent: returns the result instead of failing', async () => {
     notifyParent.mockReset();

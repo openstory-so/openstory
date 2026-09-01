@@ -10,7 +10,7 @@ import {
   Section,
   Text,
 } from '@react-email/components';
-import { EmailLayout, headingClass, paragraphClass } from './email-layout';
+import { EmailLayout, headingStyle, paragraphStyle } from './email-layout';
 
 export interface SequenceReadyEmailProps {
   appName: string;
@@ -22,6 +22,31 @@ export interface SequenceReadyEmailProps {
   balanceDisplay: string;
   typicalShortCostDisplay: string;
 }
+
+const posterStyle: React.CSSProperties = {
+  marginBottom: 24,
+  borderRadius: 8,
+};
+
+const watchButtonStyle: React.CSSProperties = {
+  marginTop: 16,
+  marginBottom: 16,
+  boxSizing: 'border-box',
+  display: 'inline-block',
+  borderRadius: 6,
+  backgroundColor: '#fafafa',
+  padding: '12px 24px',
+  textAlign: 'center',
+  fontSize: 16,
+  fontWeight: 700,
+  color: '#262626',
+  textDecoration: 'none',
+};
+
+const creditsLinkStyle: React.CSSProperties = {
+  color: '#fafafa',
+  textDecoration: 'underline',
+};
 
 export const SequenceReadyEmail: React.FC<SequenceReadyEmailProps> = ({
   appName,
@@ -39,21 +64,18 @@ export const SequenceReadyEmail: React.FC<SequenceReadyEmailProps> = ({
     footerNote="Questions? Reply to this email."
   >
     <Section>
-      <Heading as="h2" className={headingClass}>
+      <Heading as="h2" style={headingStyle}>
         {title} is ready
       </Heading>
       {posterUrl ? (
-        <Img src={posterUrl} width="536" alt="" className="mb-6 rounded-lg" />
+        <Img src={posterUrl} width="536" alt="" style={posterStyle} />
       ) : null}
-      {clipMeta ? <Text className={paragraphClass}>{clipMeta}</Text> : null}
-      <Button
-        href={watchUrl}
-        className="my-4 box-border inline-block rounded-md bg-primary px-6 py-3 text-center text-base font-bold text-primary-foreground no-underline"
-      >
+      {clipMeta ? <Text style={paragraphStyle}>{clipMeta}</Text> : null}
+      <Button href={watchUrl} style={watchButtonStyle}>
         Watch
       </Button>
-      <Text className={paragraphClass}>
-        <Link href={creditsUrl} className="text-foreground underline">
+      <Text style={paragraphStyle}>
+        <Link href={creditsUrl} style={creditsLinkStyle}>
           {balanceDisplay} left · another short is about{' '}
           {typicalShortCostDisplay}
         </Link>

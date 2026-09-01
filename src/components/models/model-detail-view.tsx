@@ -399,13 +399,14 @@ const VariantSwitcher: FC<{ model: ModelDetail['model'] }> = ({ model }) => {
   return (
     <Select
       value={model.endpointId}
-      onValueChange={(endpointId) =>
+      onValueChange={(endpointId) => {
+        if (endpointId == null) return;
         void navigate({
           to: '/models/$',
           params: { _splat: endpointId },
           search: { activity: model.activity },
-        })
-      }
+        });
+      }}
     >
       <SelectTrigger size="sm" aria-label="Switch variant" className="w-fit">
         <SelectValue>
