@@ -155,6 +155,26 @@ export function stopAtFromFlags(flags: {
 }
 
 /**
+ * Resolve how far a run should go. The explicit stop-at (this click, or the
+ * value snapshotted onto the sequence) wins. Flags are last-resort for rows
+ * that predate `generationStopAt` — they cannot express Script/Casting/
+ * References, so they must not override a stored stage.
+ */
+export function resolveStopAt(opts: {
+  stopAt?: GenerationStage | null;
+  generationStopAt?: GenerationStage | null;
+  autoGenerateMotion?: boolean;
+  autoGenerateMusic?: boolean;
+}): GenerationStage {
+  if (isGenerationStage(opts.stopAt)) return opts.stopAt;
+  if (isGenerationStage(opts.generationStopAt)) return opts.generationStopAt;
+  return stopAtFromFlags({
+    autoGenerateMotion: opts.autoGenerateMotion,
+    autoGenerateMusic: opts.autoGenerateMusic,
+  });
+}
+
+/**
  * Observable artifacts + the workflow's last completed stage. Artifact
  * flags win when they contradict `pipelineStage` (a crash after images
  * landed but before the stage write still looks like images).

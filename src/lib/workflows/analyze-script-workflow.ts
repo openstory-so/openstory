@@ -65,8 +65,8 @@ import type {
 } from '@/lib/workflow/types';
 import {
   GENERATION_STAGE_META,
+  resolveStopAt,
   shouldRunStage,
-  stopAtFromFlags,
   type GenerationCheckpoint,
   type GenerationStage,
 } from '@/lib/generation/pipeline';
@@ -123,8 +123,11 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
       suggestedLocationIds,
     } = input;
 
-    const stopAt: GenerationStage =
-      stopAtInput ?? stopAtFromFlags({ autoGenerateMotion, autoGenerateMusic });
+    const stopAt: GenerationStage = resolveStopAt({
+      stopAt: stopAtInput,
+      autoGenerateMotion,
+      autoGenerateMusic,
+    });
     const startFrom: GenerationStage = startFromInput ?? 'script';
     let checkpoint: GenerationCheckpoint | undefined = checkpointInput;
 
