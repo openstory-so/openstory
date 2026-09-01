@@ -18,6 +18,9 @@ export default {
     'src/lib/mocks/tanstack-start.ts',
     // Aliased for `cloudflare:workers` in .storybook/main.ts (string path).
     'src/lib/mocks/cloudflare-workers.ts',
+    // Aliased for @react-email/code-block in vite.config.ts (string path) to
+    // keep prismjs out of the worker's startup path.
+    'src/lib/emails/stubs/code-block.tsx',
   ],
   project: ['src/**/*.{ts,tsx}', 'scripts/**/*.ts'],
   ignore: [

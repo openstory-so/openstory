@@ -171,6 +171,16 @@ function envIcons(): Plugin {
 export default defineConfig({
   resolve: {
     tsconfigPaths: true,
+    alias: {
+      // @react-email/tailwind statically imports CodeBlock, dragging prismjs
+      // (every grammar, evaluated at module scope) into the worker's startup
+      // path — enough CPU to trip Cloudflare's startup validation (10021).
+      // No email renders <CodeBlock>; see the stub for details.
+      '@react-email/code-block': resolve(
+        import.meta.dirname,
+        'src/lib/emails/stubs/code-block.tsx'
+      ),
+    },
     // TipTap/ProseMirror use instanceof Node. Nested 1.25.7 copies next to
     // @tiptap/pm's 1.25.11 make wrap/split (default paste) fail and log
     // "prosemirror-model is loaded more than once".
