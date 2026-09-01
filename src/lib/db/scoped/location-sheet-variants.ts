@@ -141,6 +141,11 @@ export function createLocationSheetVariantsMethods(db: Database) {
      * Sequence-location only: append a completed version and select it.
      * Library locations keep the overwrite `locationLibrary.updateReference`
      * path — they are not in this versioning surface.
+     *
+     * No longer mirrors url / path / generatedAt / inputHash onto the parent —
+     * reads resolve those from the pointer (#1419). The old pre-versioning
+     * snapshot branch went with them: it captured an image that lived only in
+     * the mirror columns, and the #1419 backfill gave every such row a version.
      */
     applyConvergent: async (args: {
       locationDbId: string;
@@ -169,26 +174,6 @@ export function createLocationSheetVariantsMethods(db: Database) {
         throw new Error(`SequenceLocation ${locationDbId} not found`);
       }
 
-      if (existing.referenceImageUrl && !existing.selectedReferenceVersionId) {
-        // Keyed by the location's own ULID, matching the #1419 bulk backfill
-        // (20260901073039) — so whichever path snapshots the pre-versioning
-        // image first wins and History never shows the same reference twice.
-        await db
-          .insert(locationSheetVariants)
-          .values({
-            id: locationDbId,
-            parentType: 'sequence_location',
-            parentId: locationDbId,
-            model: 'prior',
-            url: existing.referenceImageUrl,
-            storagePath: existing.referenceImagePath,
-            status: 'completed',
-            generatedAt: existing.referenceGeneratedAt ?? existing.updatedAt,
-            inputHash: existing.referenceInputHash,
-          })
-          .onConflictDoNothing();
-      }
-
       const now = new Date();
       const [version] = await db
         .insert(locationSheetVariants)
@@ -212,12 +197,8 @@ export function createLocationSheetVariantsMethods(db: Database) {
       const [location] = await db
         .update(sequenceLocations)
         .set({
-          referenceImageUrl: url,
-          referenceImagePath: storagePath,
           referenceStatus: 'completed',
-          referenceGeneratedAt: now,
           referenceError: null,
-          referenceInputHash: inputHash,
           selectedReferenceVersionId: version.id,
           updatedAt: now,
         })
@@ -231,6 +212,12 @@ export function createLocationSheetVariantsMethods(db: Database) {
       return { location, version };
     },
 
+    /**
+     * Repoint the live reference at an existing completed version. Only moves
+     * the pointer — reads resolve url / path / hash from the version it names
+     * (#1419). A divergent row is unmarked so the banner clears. Previous
+     * pointer is recorded on the event for undo.
+     */
     select: async (
       locationDbId: string,
       versionId: string,
@@ -275,12 +262,8 @@ export function createLocationSheetVariantsMethods(db: Database) {
         db
           .update(sequenceLocations)
           .set({
-            referenceImageUrl: version.url,
-            referenceImagePath: version.storagePath,
             referenceStatus: 'completed',
-            referenceGeneratedAt: version.generatedAt ?? now,
             referenceError: null,
-            referenceInputHash: version.inputHash,
             selectedReferenceVersionId: version.id,
             updatedAt: now,
           })
@@ -299,8 +282,6 @@ export function createLocationSheetVariantsMethods(db: Database) {
           data: {
             prevState: {
               selectedReferenceVersionId: existing.selectedReferenceVersionId,
-              referenceImageUrl: existing.referenceImageUrl,
-              referenceInputHash: existing.referenceInputHash,
             },
             versionId,
           },

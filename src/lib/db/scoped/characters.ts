@@ -205,10 +205,12 @@ export function createCharactersMethods(db: Database) {
             standardClothing: data.standardClothing,
             distinguishingFeatures: data.distinguishingFeatures,
             consistencyTag: data.consistencyTag,
-            sheetImageUrl: data.sheetImageUrl,
-            sheetImagePath: data.sheetImagePath,
+            // Sheet OUTPUT is not re-written here (#1419). A re-analysis used
+            // to blank `sheetImageUrl` while leaving the version rows intact,
+            // so the character rendered sheet-less until it regenerated.
+            // `sheetStatus` stays: both callers pass an explicit lifecycle
+            // value ('generating' for re-analysis, 'pending' for a manual add).
             sheetStatus: data.sheetStatus,
-            sheetGeneratedAt: data.sheetGeneratedAt,
             talentId: data.talentId,
             // A re-analysis re-extracting a soft-deleted character revives it —
             // the script says the character exists again (#1108).
@@ -266,7 +268,6 @@ export function createCharactersMethods(db: Database) {
       return await update(id, {
         sheetStatus: status,
         sheetError: error ?? null,
-        ...(status === 'completed' && { sheetGeneratedAt: new Date() }),
       });
     },
 
@@ -442,23 +443,6 @@ export function createCharactersMethods(db: Database) {
       }
 
       return character;
-    },
-
-    isStale: async (
-      characterId: string,
-      currentHash: string
-    ): Promise<boolean> => {
-      const result = await db
-        .select({ hash: characters.sheetInputHash })
-        .from(characters)
-        .where(eq(characters.id, characterId));
-      const row = result[0];
-      if (!row) {
-        throw new Error(`Character ${characterId} not found`);
-      }
-      const stored = row.hash;
-      if (stored === null) return false;
-      return currentHash !== stored;
     },
 
     getShotsForCharacter: async (

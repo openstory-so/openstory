@@ -90,8 +90,6 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
             firstMentionSceneId: null,
             firstMentionText: null,
             firstMentionLine: null,
-            sheetImageUrl: null,
-            sheetImagePath: null,
             sheetStatus: 'generating' as const,
             talentId: talentMatch?.talentId ?? null,
           } satisfies NewCharacter);

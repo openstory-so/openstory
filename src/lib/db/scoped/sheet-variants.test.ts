@@ -36,6 +36,7 @@ import {
 import { relations } from '@/lib/db/schema/relations';
 import type { Database } from '@/lib/db/client';
 import { createCharacterSheetVariantsMethods } from './character-sheet-variants';
+import { createCharactersMethods } from './characters';
 import { createLocationSheetVariantsMethods } from './location-sheet-variants';
 import { createTalentSheetVariantsMethods } from './talent-sheet-variants';
 
@@ -819,17 +820,19 @@ describe('talent-sheet-variants promoteAtomically negative cases', () => {
 });
 
 describe('character sheet versions (append + select)', () => {
-  it('applyConvergent snapshots the unversioned primary then selects the new row', async () => {
+  it('applyConvergent appends a version and points at it, keeping history', async () => {
     const methods = createCharacterSheetVariantsMethods(db);
-    await db
-      .update(characters)
-      .set({
-        sheetImageUrl: 'https://example.com/old.png',
-        sheetImagePath: '/old.png',
-        sheetInputHash: 'hash-old',
-        sheetStatus: 'completed',
-      })
-      .where(eq(characters.id, characterId));
+    // The pre-versioning sheet, as the #1419 backfill left it: a 'prior'
+    // version keyed to the character's own id, with the pointer still null.
+    await db.insert(characterSheetVariants).values({
+      id: characterId,
+      characterId,
+      model: 'prior',
+      url: 'https://example.com/old.png',
+      storagePath: '/old.png',
+      status: 'completed',
+      inputHash: 'hash-old',
+    });
 
     const { character, version } = await methods.applyConvergent({
       characterId,
@@ -839,9 +842,12 @@ describe('character sheet versions (append + select)', () => {
       model: 'nano_banana_2',
     });
 
-    expect(character.sheetImageUrl).toBe('https://example.com/new.png');
-    expect(character.sheetInputHash).toBe('hash-new');
     expect(character.selectedSheetVersionId).toBe(version.id);
+    // The parent's mirror columns are no longer written (#1419) — the live
+    // sheet is whatever the pointer names.
+    const live = await createCharactersMethods(db).getById(characterId);
+    expect(live?.sheetImageUrl).toBe('https://example.com/new.png');
+    expect(live?.sheetInputHash).toBe('hash-new');
 
     const history = await methods.listHistoryByCharacter(characterId);
     expect(history).toHaveLength(2);
@@ -876,8 +882,10 @@ describe('character sheet versions (append + select)', () => {
       .from(characters)
       .where(eq(characters.id, characterId));
     expect(after?.selectedSheetVersionId).toBe(first.version.id);
-    expect(after?.sheetImageUrl).toBe('https://example.com/a.png');
-    expect(after?.sheetInputHash).toBe('hash-a');
+    // Reads follow the pointer, not a mirror column (#1419).
+    const live = await createCharactersMethods(db).getById(characterId);
+    expect(live?.sheetImageUrl).toBe('https://example.com/a.png');
+    expect(live?.sheetInputHash).toBe('hash-a');
 
     const history = await methods.listHistoryByCharacter(characterId);
     expect(history).toHaveLength(2);

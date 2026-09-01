@@ -124,9 +124,13 @@ export function createCharacterSheetVariantsMethods(db: Database) {
     },
 
     /**
-     * Append a completed version and make it the live primary. If the parent
-     * still holds a pre-versioning image (no selection pointer), that image is
-     * snapshotted first so History can revert to it. Does not discard anything.
+     * Append a completed version and make it the live primary. Does not
+     * discard anything, and no longer mirrors url / path / hash onto the
+     * parent — reads resolve those from the pointer (#1419).
+     *
+     * The old pre-versioning snapshot branch is gone with them: it existed to
+     * capture an image that lived only in the mirror columns, and the #1419
+     * backfill gave every such row a version of its own.
      */
     applyConvergent: async (args: {
       characterId: string;
@@ -145,25 +149,6 @@ export function createCharacterSheetVariantsMethods(db: Database) {
         .where(eq(characters.id, characterId));
       if (!existing) {
         throw new Error(`Character ${characterId} not found`);
-      }
-
-      if (existing.sheetImageUrl && !existing.selectedSheetVersionId) {
-        // Keyed by the character's own ULID, matching the #1419 bulk backfill
-        // (20260901073033) — so whichever path snapshots the pre-versioning
-        // image first wins and History never shows the same sheet twice.
-        await db
-          .insert(characterSheetVariants)
-          .values({
-            id: characterId,
-            characterId,
-            model: 'prior',
-            url: existing.sheetImageUrl,
-            storagePath: existing.sheetImagePath,
-            status: 'completed',
-            generatedAt: existing.sheetGeneratedAt ?? existing.updatedAt,
-            inputHash: existing.sheetInputHash,
-          })
-          .onConflictDoNothing();
       }
 
       const now = new Date();
@@ -188,12 +173,8 @@ export function createCharacterSheetVariantsMethods(db: Database) {
       const [character] = await db
         .update(characters)
         .set({
-          sheetImageUrl: url,
-          sheetImagePath: storagePath,
           sheetStatus: 'completed',
-          sheetGeneratedAt: now,
           sheetError: null,
-          sheetInputHash: inputHash,
           selectedSheetVersionId: version.id,
           updatedAt: now,
         })
@@ -206,9 +187,10 @@ export function createCharacterSheetVariantsMethods(db: Database) {
     },
 
     /**
-     * Repoint the live sheet at an existing completed version. Mirrors url /
-     * path / hash onto the parent. A divergent row is unmarked so the banner
-     * clears. Previous pointer is recorded on the event for undo.
+     * Repoint the live sheet at an existing completed version. Only moves the
+     * pointer — reads resolve url / path / hash from the version it names
+     * (#1419). A divergent row is unmarked so the banner clears. Previous
+     * pointer is recorded on the event for undo.
      */
     select: async (
       characterId: string,
@@ -253,12 +235,8 @@ export function createCharacterSheetVariantsMethods(db: Database) {
         db
           .update(characters)
           .set({
-            sheetImageUrl: version.url,
-            sheetImagePath: version.storagePath,
             sheetStatus: 'completed',
-            sheetGeneratedAt: version.generatedAt ?? now,
             sheetError: null,
-            sheetInputHash: version.inputHash,
             selectedSheetVersionId: version.id,
             updatedAt: now,
           })
@@ -277,8 +255,6 @@ export function createCharacterSheetVariantsMethods(db: Database) {
           data: {
             prevState: {
               selectedSheetVersionId: existing.selectedSheetVersionId,
-              sheetImageUrl: existing.sheetImageUrl,
-              sheetInputHash: existing.sheetInputHash,
             },
             versionId,
           },

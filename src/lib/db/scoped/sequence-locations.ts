@@ -206,10 +206,9 @@ export function createSequenceLocationsMethods(db: Database) {
             lightingSetup: data.lightingSetup,
             ambiance: data.ambiance,
             consistencyTag: data.consistencyTag,
-            referenceImageUrl: data.referenceImageUrl,
-            referenceImagePath: data.referenceImagePath,
+            // Reference OUTPUT is not re-written here — see the characters
+            // twin (#1419).
             referenceStatus: data.referenceStatus,
-            referenceGeneratedAt: data.referenceGeneratedAt,
             // A re-analysis re-extracting a soft-deleted location revives it
             // (#1108) — mirrors the characters upsert.
             deletedAt: null,
@@ -303,7 +302,6 @@ export function createSequenceLocationsMethods(db: Database) {
       return await update(id, {
         referenceStatus: status,
         referenceError: error ?? null,
-        ...(status === 'completed' && { referenceGeneratedAt: new Date() }),
       });
     },
 
@@ -325,28 +323,6 @@ export function createSequenceLocationsMethods(db: Database) {
         workflowRunId: opts?.workflowRunId,
       });
       return location;
-    },
-
-    /**
-     * True iff `currentHash` differs from the stored `referenceInputHash`.
-     * Returns false when no hash has been recorded yet (legacy artifact, no
-     * opinion). Mirrors `characters.isStale` and `locationLibrary.isStale`.
-     */
-    isStale: async (
-      locationId: string,
-      currentHash: string
-    ): Promise<boolean> => {
-      const result = await db
-        .select({ hash: sequenceLocations.referenceInputHash })
-        .from(sequenceLocations)
-        .where(eq(sequenceLocations.id, locationId));
-      const row = result[0];
-      if (!row) {
-        throw new Error(`SequenceLocation ${locationId} not found`);
-      }
-      const stored = row.hash;
-      if (stored === null) return false;
-      return currentHash !== stored;
     },
 
     getNeedingReferences: async (
