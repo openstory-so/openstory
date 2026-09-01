@@ -201,6 +201,7 @@ export const updateSequenceFn = createServerFn({ method: 'POST' })
           audioModels: [
             safeAudioModel(sequence.musicModel, DEFAULT_MUSIC_MODEL),
           ],
+          referenceOnly: sequence.referenceOnly,
           pricing: await getEffectiveFalPricing(),
         }),
         {
@@ -369,6 +370,7 @@ export const retryStoryboardFn = createServerFn({ method: 'POST' })
         ],
         autoGenerateMusic: sequence.autoGenerateMusic,
         audioModels: [safeAudioModel(sequence.musicModel, DEFAULT_MUSIC_MODEL)],
+        referenceOnly: sequence.referenceOnly,
         pricing: await getEffectiveFalPricing(),
       }),
       {

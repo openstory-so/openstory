@@ -316,6 +316,13 @@ export type StoryboardCostOpts = {
   audioModels?: AudioModel[];
   /** Total sequence duration in seconds (one music track spans the sequence) */
   audioDurationSeconds?: number;
+  /**
+   * Reference-only: no shot stills are rendered, so the image line is zero and
+   * motion prices on the reference-to-video route. Without it the quote — and
+   * the reservation built on it — bills a full set of images the mode never
+   * generates, which is most of what makes reference-only cheaper.
+   */
+  referenceOnly?: boolean;
   /** Live pricing map from `getEffectiveFalPricing()`. */
   pricing: FalPricingMap;
 };
@@ -332,17 +339,21 @@ export function estimateStoryboardRenderCost(
   const imageModelCount = opts.imageModelCount ?? 1;
   const { pricing } = opts;
 
-  let totalCost = multiplyMicros(
-    gateEstimate(
-      estimateImageCost(opts.imageModel, opts.aspectRatio, sceneCount, {
-        pricing,
-        resolution: opts.resolution,
-      }),
-      { model: opts.imageModel, operation: 'storyboard:shot-images' },
-      sceneCount
-    ),
-    imageModelCount
-  );
+  // Reference-only renders straight to video: the shot-images phase never
+  // spawns (see `analyze-script-workflow` phase 4), so there is nothing to bill.
+  let totalCost = opts.referenceOnly
+    ? micros(0)
+    : multiplyMicros(
+        gateEstimate(
+          estimateImageCost(opts.imageModel, opts.aspectRatio, sceneCount, {
+            pricing,
+            resolution: opts.resolution,
+          }),
+          { model: opts.imageModel, operation: 'storyboard:shot-images' },
+          sceneCount
+        ),
+        imageModelCount
+      );
 
   if (opts.autoGenerateMotion && opts.videoModels?.length) {
     const duration = opts.videoDurationSeconds ?? 5;
@@ -352,6 +363,7 @@ export function estimateStoryboardRenderCost(
           pricing,
           resolution: opts.resolution,
           hasReferenceImages: true,
+          referenceOnly: opts.referenceOnly,
         }),
         { model, operation: 'storyboard:motion' }
       );

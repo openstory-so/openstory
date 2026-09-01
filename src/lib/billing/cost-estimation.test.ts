@@ -234,6 +234,26 @@ describe('estimateStoryboardCost', () => {
     ).toBe(noMusic);
   });
 
+  it('drops the shot-stills line in reference-only', () => {
+    const opts = {
+      ...base,
+      autoGenerateMotion: true,
+      videoModels: [VIDEO_A],
+    };
+    const withStills = Number(estimateStoryboardRenderCost(opts));
+    const referenceOnly = Number(
+      estimateStoryboardRenderCost({ ...opts, referenceOnly: true })
+    );
+    const stills = Number(
+      estimateImageCost(IMAGE_MODEL, base.aspectRatio, SCENE_COUNT, {
+        pricing: FAL_PRICING,
+      })
+    );
+
+    expect(stills).toBeGreaterThan(0);
+    expect(referenceOnly).toBe(withStills - stills);
+  });
+
   it('render cost is stills + motion + music, excluding analysis sheets and LLM', () => {
     const total = Number(
       estimateStoryboardCost({

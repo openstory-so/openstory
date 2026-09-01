@@ -1347,6 +1347,7 @@ export const ScriptView: FC<{
         ? motionDurations.perShotSeconds
         : undefined,
       autoGenerateMusic,
+      referenceOnly,
       audioModels: autoGenerateMusic ? audioModels : undefined,
       audioDurationSeconds: autoGenerateMusic
         ? motionDurations.totalSeconds

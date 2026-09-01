@@ -513,6 +513,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
         resolution,
         estimatedSceneCount: scenes.length,
         autoGenerateMotion,
+        referenceOnly,
         videoModels: autoGenerateMotion ? videoModels : undefined,
         videoDurationSeconds: Math.max(
           5,

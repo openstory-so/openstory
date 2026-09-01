@@ -282,6 +282,7 @@ export const createSequences = createServerOnlyFn(
       videoModels,
       autoGenerateMusic,
       audioModels,
+      referenceOnly,
       // Align with Generate ActionCost (duration chip → scene count + clip length).
       targetDurationSeconds,
       pricing: await getEffectiveFalPricing(),
