@@ -11,8 +11,8 @@ export type OpenRouterPricing = {
 };
 
 export const OPENROUTER_PRICING: Record<string, OpenRouterPricing> = {
-  'anthropic/claude-fable-5': {
-    name: 'Anthropic: Claude Fable 5',
+  'anthropic/claude-fable-5.1': {
+    name: 'Anthropic: Claude Fable 5.1',
     promptPerMillionTokens: 10,
     completionPerMillionTokens: 50,
     webSearchPerQuery: 0.01,

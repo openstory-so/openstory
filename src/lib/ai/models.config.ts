@@ -8,8 +8,8 @@
 
 export const SCRIPT_ANALYSIS_MODELS = [
   {
-    id: 'anthropic/claude-fable-5',
-    name: 'Claude Fable 5',
+    id: 'anthropic/claude-fable-5.1',
+    name: 'Claude Fable 5.1',
     vendor: 'Anthropic',
     license: 'proprietary' as const,
     // Arena 1507.

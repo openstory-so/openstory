@@ -98,6 +98,11 @@ export const CATALOG_LAG_MODELS = [
     input: ['text', 'image'],
     features: ['reasoning', 'structured_outputs'],
   }),
+  // Fable 5.1 successor to Fable 5; not yet in the installed adapter catalog.
+  createModel('anthropic/claude-fable-5.1', {
+    input: ['text', 'image'],
+    features: ['reasoning', 'structured_outputs'],
+  }),
 ] as const;
 
 const openRouterTextExtended = extendAdapter(
