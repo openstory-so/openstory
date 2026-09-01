@@ -251,25 +251,46 @@ const motionAudioSchema = z.object({
   }),
 });
 
-export const motionPromptSchema = z.object({
-  fullPrompt: z.string().meta({
-    description:
-      'Complete motion prompt describing camera movement, action, and dialogue performance',
-  }),
-  // `.nullish()` (optional + nullable), not `.optional()`: under native strict
-  // output the converter marks every property required and represents an
-  // optional as `["T","null"]`, so the model emits `null` when there is no
-  // dialogue/audio — `.nullish()` parses that cleanly while still letting
-  // fixtures omit the field. Costs one union-typed param each (well under 16).
-  dialogue: dialogueSchema.nullish().meta({
-    description:
-      'Dialogue lines from the scene to inform audio/motion models (null when none)',
-  }),
-  audio: motionAudioSchema.nullish().meta({
-    description:
-      'Audio direction for models that generate sound alongside video (null when none)',
-  }),
-});
+const EMPTY_MOTION_DIALOGUE = { presence: false, lines: [] };
+const EMPTY_MOTION_AUDIO = { ambientSound: '', soundEffects: [] };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Fill omitted/null dialogue+audio so a non-enforcing route (or a fixture
+ * that skips the keys) still parses. `z.preprocess` is parse-only —
+ * `z.toJSONSchema` emits the inner object, so the provider schema stays
+ * required objects with `additionalProperties: false` (Anthropic rejects
+ * `.nullish()` anyOf branches that omit that flag).
+ */
+function coerceNullishMotionFields(raw: unknown): unknown {
+  if (!isRecord(raw)) return raw;
+  return {
+    ...raw,
+    dialogue: raw.dialogue ?? EMPTY_MOTION_DIALOGUE,
+    audio: raw.audio ?? EMPTY_MOTION_AUDIO,
+  };
+}
+
+export const motionPromptSchema = z.preprocess(
+  coerceNullishMotionFields,
+  z.object({
+    fullPrompt: z.string().meta({
+      description:
+        'Complete motion prompt describing camera movement, action, and dialogue performance',
+    }),
+    dialogue: dialogueSchema.meta({
+      description:
+        'Dialogue lines from the scene to inform audio/motion models. presence=false and lines=[] when none.',
+    }),
+    audio: motionAudioSchema.meta({
+      description:
+        'Audio direction for models that generate sound alongside video. Empty ambientSound/soundEffects when none.',
+    }),
+  })
+);
 
 // ============================================================================
 // Music Design Schema (replaces audioDesign for new shots)
@@ -368,8 +389,10 @@ const continuitySchema = z.object({
       'Snake_case tag matching the location bible consistencyTag format',
   }),
   // `.nullish()` (not `.optional()`) so native strict output can emit `null`
-  // when no elements are referenced; see the matching note on motion
-  // dialogue/audio. Consumers already read this as `?.elementTags ?? []`.
+  // when no elements are referenced. Consumers already read this as
+  // `?.elementTags ?? []`. Do not reuse this on a schema sent as
+  // `outputSchema`: TanStack's converter leaves `anyOf` object arms without
+  // `additionalProperties: false`, which Anthropic rejects.
   elementTags: z.array(z.string()).nullish().meta({
     description:
       'UPPERCASE element tokens referenced in this scene (null when none)',
@@ -503,19 +526,20 @@ export type VisualPromptComponents = z.infer<
   typeof visualPromptComponentsSchema
 >;
 export type MotionPrompt = z.infer<typeof motionPromptSchema>;
-export type MotionDialogue = NonNullable<MotionPrompt['dialogue']>;
-export type MotionAudio = NonNullable<MotionPrompt['audio']>;
+export type MotionDialogue = MotionPrompt['dialogue'];
+export type MotionAudio = MotionPrompt['audio'];
 /**
  * The fields model-specific assembly (`assembleMotionPrompt`) actually consumes:
  * the narrative base plus the dialogue/audio direction appended for audio-capable
  * video models. This is what a `shot_prompt_versions` motion row reconstructs to
- * at resolution time (#713). Since #1035 the LLM emits nothing else, so this is
- * the whole `MotionPrompt`; the alias survives for call sites that predate that.
+ * at resolution time (#713). Stored rows and UI overrides may still omit
+ * dialogue/audio (`null`); the LLM wire schema requires emptyable objects.
  */
-export type AssemblableMotionPrompt = Pick<
-  MotionPrompt,
-  'fullPrompt' | 'dialogue' | 'audio'
->;
+export type AssemblableMotionPrompt = {
+  fullPrompt: string;
+  dialogue?: MotionDialogue | null;
+  audio?: MotionAudio | null;
+};
 export type MotionPromptComponents = z.infer<
   typeof motionPromptComponentsSchema
 >;

@@ -21,7 +21,11 @@ function scene(sceneId: string, durationSeconds = 5): Scene {
   } as unknown as Scene;
 }
 
-const prompt = (fullPrompt: string): MotionPrompt => ({ fullPrompt });
+const prompt = (fullPrompt: string): MotionPrompt => ({
+  fullPrompt,
+  dialogue: { presence: false, lines: [] },
+  audio: { ambientSound: '', soundEffects: [] },
+});
 
 describe('buildStoryboardMotionBatchShots', () => {
   it('pins frameVersionId and motionPromptVersionId on each shot', () => {

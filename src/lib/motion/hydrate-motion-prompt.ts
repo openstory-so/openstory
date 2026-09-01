@@ -5,7 +5,7 @@ import type {
 } from '@/lib/ai/scene-analysis.schema';
 
 function hasDialogue(dialogue: MotionPrompt['dialogue']): boolean {
-  return Boolean(dialogue?.presence && dialogue.lines.length > 0);
+  return Boolean(dialogue.presence && dialogue.lines.length > 0);
 }
 
 /**
@@ -13,7 +13,7 @@ function hasDialogue(dialogue: MotionPrompt['dialogue']): boolean {
  *
  * The analysis pipeline sources dialogue from `originalScript.dialogue` (see
  * `deriveMotionPrompt` in shot-list.derive.ts). The motion-prompt LLM usually
- * extracts it too, but regenerate runs can return `dialogue: null` — hydrate
+ * extracts it too, but regenerate runs can return empty dialogue — hydrate
  * from the scene so audio-capable models still get lip-sync lines.
  */
 export function hydrateMotionPromptFromScene(

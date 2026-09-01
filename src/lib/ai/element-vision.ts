@@ -26,10 +26,15 @@ import { DEFAULT_VISION_MODEL } from './models.config';
 
 export const ELEMENT_VISION_MODEL = DEFAULT_VISION_MODEL;
 
+/**
+ * LLM wire shape. Plain `z.string()` — Anthropic rejects `minLength` /
+ * `maxLength` (#1410). Empty description/consistencyTag are rejected after
+ * parse in `describeElementImage`; empty `suggestedToken` becomes `ELEMENT`.
+ */
 export const elementVisionResponseSchema = z.object({
-  description: z.string().min(1),
-  consistencyTag: z.string().min(1),
-  suggestedToken: z.string().min(1),
+  description: z.string(),
+  consistencyTag: z.string(),
+  suggestedToken: z.string(),
 });
 
 type ElementDescription = z.infer<typeof elementVisionResponseSchema>;
@@ -169,8 +174,16 @@ export async function describeElementImage(
   const parsed = elementVisionResponseSchema.parse(
     structuredObject !== undefined ? structuredObject : JSON.parse(accumulated)
   );
+  const description = parsed.description.trim();
+  const consistencyTag = parsed.consistencyTag.trim();
+  if (!description || !consistencyTag) {
+    throw new Error(
+      'Element vision returned empty description or consistencyTag'
+    );
+  }
   return {
-    ...parsed,
+    description,
+    consistencyTag,
     suggestedToken: normalizeSuggestedToken(parsed.suggestedToken),
     costMicros: llmCostFromUsage(usageCapture.get(), ELEMENT_VISION_MODEL),
     usedOwnKey: input.llmKey?.source === 'team',

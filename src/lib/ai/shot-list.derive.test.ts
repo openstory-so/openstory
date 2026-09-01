@@ -114,7 +114,7 @@ describe('deriveShots — single source of truth', () => {
     expect(motion?.fullPrompt).toContain('she turns the handle and pushes');
     expect(motion?.fullPrompt).toContain('gradual push-in');
     // Sound cue is carried into the audio channel for audio-capable models.
-    expect(motion?.audio?.ambientSound).toBe('handle click, hinge creak');
+    expect(motion?.audio.ambientSound).toBe('handle click, hinge creak');
   });
 
   it('carries per-shot duration as durationMs', () => {
@@ -147,22 +147,22 @@ describe('deriveMotionPrompt — model-agnostic', () => {
     }
   });
 
-  it('signals dialogue presence and omits it when the scene is silent', () => {
+  it('signals dialogue presence and empties it when the scene is silent', () => {
     const silent = makeScene({ dialoguePresent: false });
     const motion = deriveMotionPrompt(silent, firstShot(silent));
-    expect(motion.dialogue).toBeNull();
+    expect(motion.dialogue).toEqual({ presence: false, lines: [] });
 
     const spoken = makeScene({ dialoguePresent: true });
     const m2 = deriveMotionPrompt(spoken, firstShot(spoken));
-    expect(m2.dialogue?.presence).toBe(true);
-    expect(m2.dialogue?.lines).toHaveLength(1);
+    expect(m2.dialogue.presence).toBe(true);
+    expect(m2.dialogue.lines).toHaveLength(1);
   });
 
-  it('omits audio when there is no sound cue', () => {
+  it('empties audio when there is no sound cue', () => {
     const scene = makeScene();
     const shot = { ...firstShot(scene), soundCue: '' };
     const motion = deriveMotionPrompt(scene, shot);
-    expect(motion.audio).toBeNull();
+    expect(motion.audio).toEqual({ ambientSound: '', soundEffects: [] });
   });
 });
 
