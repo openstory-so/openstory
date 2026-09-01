@@ -164,10 +164,7 @@ const FilterSelect: React.FC<FilterSelectProps> = ({
     <Select
       value={value}
       items={options}
-      onValueChange={(next) => {
-        if (next == null) return;
-        onValueChange(next);
-      }}
+      onValueChange={(next) => next && onValueChange(next)}
     >
       <SelectTrigger id={id} className={triggerClassName}>
         <SelectValue placeholder={placeholder} />
@@ -401,10 +398,7 @@ export const EvalToolbar: React.FC<EvalToolbarProps> = ({
                       value={primarySort.field}
                       items={getSortFieldOptions(sortCriteria, 0)}
                       onValueChange={(value) => {
-                        if (
-                          typeof value === 'string' &&
-                          isValidSortField(value)
-                        ) {
+                        if (value && isValidSortField(value)) {
                           updateSortField(0, value);
                         }
                       }}
@@ -616,10 +610,7 @@ export const EvalToolbar: React.FC<EvalToolbarProps> = ({
                     value={criteria.field}
                     items={sortFieldOptions}
                     onValueChange={(value) => {
-                      if (
-                        typeof value === 'string' &&
-                        isValidSortField(value)
-                      ) {
+                      if (value && isValidSortField(value)) {
                         updateSortField(index, value);
                       }
                     }}

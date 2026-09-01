@@ -77,6 +77,10 @@ export const ShotDurationField: React.FC<ShotDurationFieldProps> = ({
   const durationOptions = getDurationValues(
     MOTION_JSON_SCHEMAS[IMAGE_TO_VIDEO_MODELS[motionModel].id]
   ).map(numericOf);
+  const durationItems = durationOptions.map((seconds) => ({
+    value: String(seconds),
+    label: `${seconds}s`,
+  }));
   const snappedSavedSeconds = snapDuration(savedSeconds, motionModel);
   const currentSeconds = editedSeconds ?? snappedSavedSeconds;
   // Dirty means the USER changed it. A stored value outside the current model's
@@ -151,10 +155,7 @@ export const ShotDurationField: React.FC<ShotDurationFieldProps> = ({
       <div className="flex flex-wrap items-center gap-2">
         <Select
           value={String(currentSeconds)}
-          items={durationOptions.map((seconds) => ({
-            value: String(seconds),
-            label: `${seconds}s`,
-          }))}
+          items={durationItems}
           onValueChange={(value) => {
             if (value == null) return;
             setEditedSeconds(Number(value));
@@ -165,9 +166,9 @@ export const ShotDurationField: React.FC<ShotDurationFieldProps> = ({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {durationOptions.map((seconds) => (
-              <SelectItem key={seconds} value={String(seconds)}>
-                {seconds}s
+            {durationItems.map((item) => (
+              <SelectItem key={item.value} value={item.value}>
+                {item.label}
               </SelectItem>
             ))}
           </SelectContent>

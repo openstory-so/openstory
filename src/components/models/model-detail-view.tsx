@@ -399,10 +399,6 @@ const VariantSwitcher: FC<{ model: ModelDetail['model'] }> = ({ model }) => {
   return (
     <Select
       value={model.endpointId}
-      items={[...versionGroups.values()].flat().map((variant) => ({
-        value: variant.endpointId,
-        label: variant.variantLabel || variant.displayName,
-      }))}
       onValueChange={(endpointId) => {
         if (endpointId == null) return;
         void navigate({

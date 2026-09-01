@@ -1623,12 +1623,9 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
       <div className="md:hidden">
         <Select
           value={selectedTab}
-          items={visibleTabs.map((t) => ({
-            value: t.value,
-            label: t.label,
-          }))}
+          items={visibleTabs}
           onValueChange={(value) => {
-            if (typeof value === 'string' && isValidTabValue(value)) {
+            if (value && isValidTabValue(value)) {
               onTabChange(value);
             }
           }}

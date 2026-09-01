@@ -93,11 +93,11 @@ export const AddLocationDialog: React.FC<{ sequenceId: string }> = ({
             <Select
               name="type"
               defaultValue="interior"
-              items={[
-                { value: 'interior', label: 'Interior' },
-                { value: 'exterior', label: 'Exterior' },
-                { value: 'both', label: 'Interior/Exterior' },
-              ]}
+              items={{
+                interior: 'Interior',
+                exterior: 'Exterior',
+                both: 'Interior/Exterior',
+              }}
             >
               <SelectTrigger id="new-location-type">
                 <SelectValue />
