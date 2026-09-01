@@ -18,9 +18,10 @@ import {
   replayRecordedE2eScenes,
   visualPromptResponseSchema,
 } from '@/lib/ai/recorded-e2e-scenes';
+import { reconstructRecordedMusicDesignPrompt } from '@/lib/ai/recorded-e2e-music-prompt';
 import { getChatPrompt } from '@/lib/prompts';
 import { StyleConfigSchema } from '@/lib/style/style-config';
-import { buildMusicSceneSummaries } from '@/lib/workflows/music-scene-summaries';
+
 function listStage(stage: string): Array<{
   name: string;
   path: string;
@@ -180,20 +181,11 @@ const musicRaw = readFileSync(musicPath, 'utf8');
 const music = parseFixtureFile(musicRaw);
 const musicFixture = music.fixtures[0];
 if (!musicFixture) throw new Error('No music-design fixture');
-const summaries = buildMusicSceneSummaries(scenes, visualSummaryBySceneId);
-const { messages: musicMessages } = await getChatPrompt(
-  'phase/music-design-chat',
-  { scenes: JSON.stringify(summaries, null, 2) }
-);
-const musicUser = musicMessages.find((m) => m.role === 'user');
-if (!musicUser || typeof musicUser.content !== 'string') {
-  throw new Error('music-design: no user message');
-}
 patchUserMessage(
   musicPath,
   musicRaw,
   musicFixture.match.userMessage,
-  musicUser.content
+  await reconstructRecordedMusicDesignPrompt()
 );
 
 console.log(

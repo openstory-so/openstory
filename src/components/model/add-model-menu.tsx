@@ -16,6 +16,18 @@ import {
   isValidImageToVideoModel,
   isValidTextToImageModel,
 } from '@/lib/ai/models';
+import {
+  compareSelectorModels,
+  QUALITY_DEFAULT_AUDIO,
+  QUALITY_DEFAULT_IMAGE,
+  QUALITY_DEFAULT_VIDEO,
+  SELECTOR_GROUP_ORDER,
+  selectorGroup,
+  TURBO_AUDIO_MODELS,
+  TURBO_IMAGE_MODELS,
+  TURBO_VIDEO_MODELS,
+  type SelectorGroup,
+} from '@/lib/ai/generation-mode';
 import type { VariantType } from '@/lib/db/schema/shot-variants';
 import { DEFAULT_ASPECT_RATIO } from '@/lib/constants/aspect-ratios';
 import { useMemo } from 'react';
@@ -25,6 +37,7 @@ type Candidate = {
   key: string;
   name: string;
   scope: string;
+  group: SelectorGroup;
 };
 
 const scenes = (n: number) => `${n} scene${n === 1 ? '' : 's'}`;
@@ -79,13 +92,21 @@ export const AddModelMenuSection = ({
       return Object.keys(IMAGE_MODELS)
         .filter(isValidTextToImageModel)
         .filter((key) => !used.has(key) && !('hidden' in IMAGE_MODELS[key]))
-        .sort(
-          (a, b) => IMAGE_MODELS[a].qualityRank - IMAGE_MODELS[b].qualityRank
+        .sort((a, b) =>
+          compareSelectorModels(
+            a,
+            b,
+            TURBO_IMAGE_MODELS,
+            QUALITY_DEFAULT_IMAGE,
+            (id) =>
+              isValidTextToImageModel(id) ? IMAGE_MODELS[id].qualityRank : 99
+          )
         )
         .map((key) => ({
           key,
           name: IMAGE_MODELS[key].name,
           scope: count ? scenes(count) : 'all scenes',
+          group: selectorGroup(key, TURBO_IMAGE_MODELS),
         }));
     }
 
@@ -107,10 +128,17 @@ export const AddModelMenuSection = ({
             return false;
           return isModelCompatibleWithAspectRatio(key, aspectRatio);
         })
-        .sort(
-          (a, b) =>
-            IMAGE_TO_VIDEO_MODELS[a].qualityRank -
-            IMAGE_TO_VIDEO_MODELS[b].qualityRank
+        .sort((a, b) =>
+          compareSelectorModels(
+            a,
+            b,
+            TURBO_VIDEO_MODELS,
+            QUALITY_DEFAULT_VIDEO,
+            (id) =>
+              isValidImageToVideoModel(id)
+                ? IMAGE_TO_VIDEO_MODELS[id].qualityRank
+                : 99
+          )
         )
         .map((key) => ({
           key,
@@ -118,6 +146,7 @@ export const AddModelMenuSection = ({
           // Matches the image branch: before any still is rendered the scope is
           // every scene, not the literal zero that have one today.
           scope: count ? scenes(count) : 'all scenes',
+          group: selectorGroup(key, TURBO_VIDEO_MODELS),
         }));
     }
 
@@ -128,11 +157,20 @@ export const AddModelMenuSection = ({
         // oxlint-disable-next-line typescript/no-unnecessary-condition
         (key) => !used.has(key) && AUDIO_MODELS[key].type === 'music'
       )
-      .sort((a, b) => AUDIO_MODELS[a].qualityRank - AUDIO_MODELS[b].qualityRank)
+      .sort((a, b) =>
+        compareSelectorModels(
+          a,
+          b,
+          TURBO_AUDIO_MODELS,
+          QUALITY_DEFAULT_AUDIO,
+          (id) => (isValidAudioModel(id) ? AUDIO_MODELS[id].qualityRank : 99)
+        )
+      )
       .map((key) => ({
         key,
         name: AUDIO_MODELS[key].name,
         scope: '1 track',
+        group: selectorGroup(key, TURBO_AUDIO_MODELS),
       }));
   }, [variantType, usedModels, shots, sceneRows, aspectRatio, styleCategory]);
 
@@ -175,20 +213,34 @@ export const AddModelMenuSection = ({
       <DropdownMenuLabel className="text-[10px] text-muted-foreground uppercase tracking-wider font-normal">
         Add a model
       </DropdownMenuLabel>
-      {candidates.map((c) => (
-        <DropdownMenuItem
-          key={c.key}
-          disabled={addModel.isPending}
-          onSelect={(e) => {
-            e.preventDefault();
-            handleAdd(c);
-          }}
-          className="cursor-pointer flex flex-col items-start gap-0.5"
-        >
-          <span className="w-full truncate">{c.name}</span>
-          <span className="text-[10px] text-muted-foreground">{c.scope}</span>
-        </DropdownMenuItem>
-      ))}
+      {SELECTOR_GROUP_ORDER.map((group, groupIndex) => {
+        const groupCandidates = candidates.filter((c) => c.group === group);
+        if (groupCandidates.length === 0) return null;
+        return (
+          <div key={group}>
+            {groupIndex > 0 && <DropdownMenuSeparator />}
+            <DropdownMenuLabel className="text-[10px] text-muted-foreground uppercase tracking-wider font-normal">
+              {group === 'fast' ? 'Fast' : 'Quality'}
+            </DropdownMenuLabel>
+            {groupCandidates.map((c) => (
+              <DropdownMenuItem
+                key={c.key}
+                disabled={addModel.isPending}
+                onSelect={(e) => {
+                  e.preventDefault();
+                  handleAdd(c);
+                }}
+                className="cursor-pointer flex flex-col items-start gap-0.5"
+              >
+                <span className="w-full truncate">{c.name}</span>
+                <span className="text-[10px] text-muted-foreground">
+                  {c.scope}
+                </span>
+              </DropdownMenuItem>
+            ))}
+          </div>
+        );
+      })}
     </>
   );
 };

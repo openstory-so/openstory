@@ -15,6 +15,7 @@
 
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { convertSchemaToJsonSchema } from '@tanstack/ai';
 import { describe, expect, test } from 'vitest';
 import type { z } from 'zod';
 import { elementVisionResponseSchema } from './element-vision';
@@ -120,4 +121,114 @@ describe('structured-output schema budget', () => {
       `Schemas sent as structured output but not size-budgeted here: ${unmeasured.join(', ')}`
     ).toEqual([]);
   });
+
+  /**
+   * Anthropic structured-output JSON Schema limitations
+   * (https://platform.claude.com/docs/en/build-with-claude/structured-outputs#json-schema-limitations).
+   * A 400 here in prod is a silent OpenRouter fallback (#1410).
+   */
+  test.each(Object.entries(MEASURED_SCHEMAS))(
+    '%s complies with Anthropic JSON Schema limitations',
+    (name, schema) => {
+      const converted = convertSchemaToJsonSchema(schema, {
+        forStructuredOutput: true,
+      });
+      expect(
+        converted,
+        `${name} failed to convert to JSON Schema`
+      ).toBeDefined();
+      const violations = collectAnthropicViolations(converted, name);
+      expect(
+        violations,
+        `${name} is invalid for Anthropic structured output: ${violations.join('; ')}`
+      ).toEqual([]);
+    }
+  );
 });
+
+/** JSON Schema keys that are values, not nested schemas. */
+const NON_SCHEMA_KEYS = new Set([
+  'enum',
+  'const',
+  'required',
+  'type',
+  'description',
+  'title',
+  'default',
+  'examples',
+  'pattern',
+  'format',
+  'minimum',
+  'maximum',
+  'exclusiveMinimum',
+  'exclusiveMaximum',
+  'minLength',
+  'maxLength',
+  'minItems',
+  'maxItems',
+  'minProperties',
+  'maxProperties',
+  'uniqueItems',
+]);
+
+const UNSUPPORTED_CONSTRAINTS: Record<string, string> = {
+  minLength: 'string minLength is not supported',
+  maxLength: 'string maxLength is not supported',
+  minimum: 'numerical minimum is not supported',
+  maximum: 'numerical maximum is not supported',
+  exclusiveMinimum: 'exclusiveMinimum is not supported',
+  exclusiveMaximum: 'exclusiveMaximum is not supported',
+  multipleOf: 'multipleOf is not supported',
+  maxItems: 'array maxItems is not supported',
+  uniqueItems: 'uniqueItems is not supported',
+};
+
+function collectAnthropicViolations(node: unknown, path: string): string[] {
+  if (node === null || typeof node !== 'object') return [];
+  if (Array.isArray(node)) {
+    return node.flatMap((item, i) =>
+      collectAnthropicViolations(item, `${path}[${i}]`)
+    );
+  }
+  const type = 'type' in node ? node.type : undefined;
+  const enumValues = 'enum' in node ? node.enum : undefined;
+  const properties = 'properties' in node ? node.properties : undefined;
+  const additionalProperties =
+    'additionalProperties' in node ? node.additionalProperties : undefined;
+  const here: string[] = [];
+  if (Array.isArray(type)) {
+    here.push(
+      `${path}: type=${JSON.stringify(type)}` +
+        (Array.isArray(enumValues) ? ` enum=${JSON.stringify(enumValues)}` : '')
+    );
+  }
+  const isObject =
+    type === 'object' ||
+    (type === undefined &&
+      properties !== undefined &&
+      typeof properties === 'object' &&
+      properties !== null &&
+      !Array.isArray(properties));
+  if (isObject && additionalProperties !== false) {
+    here.push(
+      `${path}: object additionalProperties must be false (got ${JSON.stringify(additionalProperties)})`
+    );
+  }
+  for (const [key, label] of Object.entries(UNSUPPORTED_CONSTRAINTS)) {
+    if (Object.hasOwn(node, key)) {
+      const value = Object.entries(node).find(([k]) => k === key)?.[1];
+      here.push(`${path}: ${label} (${key}=${JSON.stringify(value)})`);
+    }
+  }
+  if ('minItems' in node && node.minItems !== 0 && node.minItems !== 1) {
+    here.push(
+      `${path}: minItems=${JSON.stringify(node.minItems)} (only 0 or 1 supported)`
+    );
+  }
+  const children = Object.entries(node).flatMap(([key, value]) =>
+    NON_SCHEMA_KEYS.has(key)
+      ? []
+      : collectAnthropicViolations(value, `${path}.${key}`)
+  );
+  return [...here, ...children];
+}

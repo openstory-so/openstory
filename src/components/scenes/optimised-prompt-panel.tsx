@@ -58,6 +58,8 @@ export function imageUrlsFromFalInput(input: unknown): string[] {
   };
   if (Array.isArray(input.image_urls)) {
     for (const url of input.image_urls) push(url);
+  } else if (Array.isArray(input.reference_image_urls)) {
+    for (const url of input.reference_image_urls) push(url);
   } else {
     push(input.image_url);
     push(input.start_image_url);

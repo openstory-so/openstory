@@ -22,11 +22,11 @@ export const PLATFORM_FEE_PERCENT = 0.07;
  * Free credit granted to every new team on signup, in USD.
  *
  * Must cover a typical first short with product defaults: Enhance 30s target
- * (~6 shots × 5s), stills + motion + music (DEFAULT_IMAGE_MODEL / video /
- * audio). Guarded by the signup-grant test in constants.test.ts. Preflight
- * uses fal historical typicalUnitsPerCall (not raw unitPrice alone) so
- * gpt-image-2 estimates ~$0.22/image, not $1 (#1062). Raised from $10 when
- * motion+music became the default aha path (#1140).
+ * (~6 shots × 5s), stills + motion + music (Turbo: Nano Banana 2 Lite /
+ * H3 Max / ElevenLabs). Guarded by the signup-grant test in
+ * constants.test.ts. Preflight uses fal historical typicalUnitsPerCall
+ * (not raw unitPrice alone). Raised from $10 when motion+music became the
+ * default aha path (#1140).
  */
 const SIGNUP_GRANT_USD = 20;
 

@@ -44,7 +44,7 @@ export const IMAGE_TO_VIDEO_MODELS = {
     license: 'proprietary' as const,
     qualityRank: 1,
     maxPromptLength: 2500,
-    performance: { estimatedGenerationTime: 20, quality: 'best' as const },
+    performance: { estimatedGenerationTime: 33, quality: 'best' as const },
   },
   ltx_2_3_pro: {
     id: 'fal-ai/ltx-2.3/image-to-video',
@@ -53,7 +53,7 @@ export const IMAGE_TO_VIDEO_MODELS = {
     license: 'open-weight' as const,
     qualityRank: 2,
     maxPromptLength: 2500,
-    performance: { estimatedGenerationTime: 15, quality: 'best' as const },
+    performance: { estimatedGenerationTime: 126, quality: 'best' as const },
   },
   veo3_1: {
     id: 'fal-ai/veo3.1/image-to-video',
@@ -62,7 +62,7 @@ export const IMAGE_TO_VIDEO_MODELS = {
     license: 'proprietary' as const,
     qualityRank: 2,
     maxPromptLength: 20000,
-    performance: { estimatedGenerationTime: 25, quality: 'best' as const },
+    performance: { estimatedGenerationTime: 147, quality: 'best' as const },
   },
   gemini_omni_flash: {
     id: 'fal-ai/gemini-omni-flash/image-to-video',
@@ -84,7 +84,7 @@ export const IMAGE_TO_VIDEO_MODELS = {
     license: 'proprietary' as const,
     qualityRank: 3,
     maxPromptLength: 2500,
-    performance: { estimatedGenerationTime: 20, quality: 'best' as const },
+    performance: { estimatedGenerationTime: 306, quality: 'best' as const },
   },
   minimax_hailuo_02: {
     id: 'fal-ai/minimax/hailuo-2.3/pro/image-to-video',
@@ -93,7 +93,7 @@ export const IMAGE_TO_VIDEO_MODELS = {
     license: 'proprietary' as const,
     qualityRank: 5,
     maxPromptLength: 2500,
-    performance: { estimatedGenerationTime: 15, quality: 'best' as const },
+    performance: { estimatedGenerationTime: 199, quality: 'best' as const },
   },
   minimax_h3_max: {
     id: 'minimax/h3-max/image-to-video',
@@ -106,7 +106,8 @@ export const IMAGE_TO_VIDEO_MODELS = {
     // direct it in-prompt. See buildMinimaxH3Prompt.
     supportsAudio: true,
     maxPromptLength: 2500,
-    performance: { estimatedGenerationTime: 15, quality: 'best' as const },
+    // PostHog p50 9.7s (n=74, 30d ending 2026-09-01).
+    performance: { estimatedGenerationTime: 10, quality: 'best' as const },
   },
   seedance_v2: {
     id: 'bytedance/seedance-2.0/enterprise/v2/image-to-video',
@@ -115,7 +116,7 @@ export const IMAGE_TO_VIDEO_MODELS = {
     license: 'proprietary' as const,
     qualityRank: 4,
     maxPromptLength: 4096,
-    performance: { estimatedGenerationTime: 20, quality: 'best' as const },
+    performance: { estimatedGenerationTime: 208, quality: 'best' as const },
   },
   seedance_v2_5: {
     id: 'bytedance/seedance-2.5/image-to-video',
@@ -124,7 +125,7 @@ export const IMAGE_TO_VIDEO_MODELS = {
     license: 'proprietary' as const,
     qualityRank: 2,
     maxPromptLength: 4096,
-    performance: { estimatedGenerationTime: 20, quality: 'best' as const },
+    performance: { estimatedGenerationTime: 208, quality: 'best' as const },
     // Hidden from sequence/studio pickers: public fal 2.5 400s photoreal
     // faces without Ark `asset://` ingest, and we are not rolling Ark out.
     // Catalog key stays so a later Ark enablement does not need a rename.
@@ -149,6 +150,16 @@ export const IMAGE_MODELS = {
     license: 'proprietary' as const,
     qualityRank: 1,
     description: "Google's latest fast image generation and editing model",
+    maxPromptLength: 50000,
+  },
+  nano_banana_2_lite: {
+    id: 'google/nano-banana-2-lite' as const,
+    name: 'Nano Banana 2 Lite',
+    vendor: 'Google',
+    license: 'proprietary' as const,
+    qualityRank: 3,
+    description:
+      'Fastest Google image model — ~4s, references, fixed 1K output',
     maxPromptLength: 50000,
   },
   nano_banana_pro: {
@@ -258,15 +269,23 @@ export const IMAGE_MODELS = {
     // dola-seedream-5-0-pro-260628. Lite is seedream-5-0-260128.
     byteplusId: 'dola-seedream-5-0-pro-260628' as const,
   },
+  flux_2_flash: {
+    id: 'fal-ai/flux-2/flash' as const,
+    name: 'FLUX.2 Flash',
+    vendor: 'Black Forest Labs',
+    license: 'open-weight' as const,
+    qualityRank: 11,
+    description: 'Cheapest distilled FLUX.2 — sub-second, edit up to 4 refs',
+    maxPromptLength: 2000,
+  },
   flux_2_turbo: {
     id: 'fal-ai/flux-2/turbo' as const,
     name: 'FLUX.2 Turbo',
     vendor: 'Black Forest Labs',
     license: 'open-weight' as const,
-    qualityRank: 99,
-    description: 'Ultra-fast preview generation',
+    qualityRank: 12,
+    description: 'Distilled FLUX.2 — ~2s, edit up to 4 refs',
     maxPromptLength: 2000,
-    hidden: true,
   },
   krea_2_turbo: {
     id: 'fal-ai/krea-2/turbo' as const,
@@ -287,8 +306,9 @@ type TextToImageModelId = ImageModelConfig['id'];
 
 export const DEFAULT_IMAGE_MODEL: TextToImageModel = 'gpt_image_2';
 
-/** Model used for fast preview image generation. flux_2_turbo stays in the
- *  registry because stored preview variants still reference it. */
+/** Model used for fast preview image generation. krea_2_turbo stays hidden
+ *  (no edit/reference endpoint). flux_2_turbo is a picker model; stored
+ *  preview variants may still name it. */
 export const PREVIEW_IMAGE_MODEL: TextToImageModel = 'krea_2_turbo';
 
 // Helper to get model ID from key
@@ -509,7 +529,7 @@ export const AUDIO_MODELS = {
       supportedFormats: ['mp3'],
     },
     performance: {
-      estimatedGenerationTime: 30,
+      estimatedGenerationTime: 10,
       quality: 'best',
     },
   },
@@ -529,7 +549,7 @@ export const AUDIO_MODELS = {
       supportedFormats: ['wav'],
     },
     performance: {
-      estimatedGenerationTime: 25,
+      estimatedGenerationTime: 33,
       quality: 'best',
     },
   },
@@ -549,7 +569,7 @@ export const AUDIO_MODELS = {
       supportedFormats: ['wav'],
     },
     performance: {
-      estimatedGenerationTime: 20,
+      estimatedGenerationTime: 33,
       quality: 'best',
     },
   },
@@ -598,6 +618,10 @@ export function safeAudioModel(
  */
 export const EDIT_ENDPOINTS: Partial<Record<TextToImageModel, string>> = {
   nano_banana_2: 'fal-ai/nano-banana-2/edit',
+  // T2I is `google/nano-banana-2-lite`; fal's documented edit sibling drops
+  // the `2` and carries the token pricing the `/2-lite/edit` catalog row
+  // advertises as $0 compute-seconds.
+  nano_banana_2_lite: 'google/nano-banana-lite/edit',
   nano_banana_pro: 'fal-ai/nano-banana-pro/edit',
   gpt_image_2: 'openai/gpt-image-2/edit',
   grok_imagine_image: 'xai/grok-imagine-image/v2.0/edit',
@@ -606,6 +630,7 @@ export const EDIT_ENDPOINTS: Partial<Record<TextToImageModel, string>> = {
   phota: 'fal-ai/phota/edit',
   hunyuan_image_v3: 'fal-ai/hunyuan-image/v3/instruct/edit',
   flux_2_dev: 'fal-ai/flux-2/edit',
+  flux_2_flash: 'fal-ai/flux-2/flash/edit',
   flux_2_turbo: 'fal-ai/flux-2/turbo/edit',
   qwen_image: 'fal-ai/qwen-image-2/pro/edit',
   seedream_v5: 'bytedance/seedream/v5/pro/edit',
@@ -625,6 +650,7 @@ export const EDIT_ENDPOINTS: Partial<Record<TextToImageModel, string>> = {
  */
 const EDIT_REFERENCE_LIMITS: Partial<Record<TextToImageModel, number>> = {
   flux_2_dev: 4,
+  flux_2_flash: 4,
   flux_2_turbo: 4,
   grok_imagine_image: 3,
   grok_imagine_image_quality: 3,
@@ -663,20 +689,25 @@ export type MotionReferenceEndpointConfig = {
   /** The fal reference-to-video endpoint id to submit to. */
   endpointId: string;
   /**
-   * Renders the prompt token bound to `image_urls[position - 1]` (position is
-   * 1-based) — e.g. `@Image1` for Seedance, `<IMAGE_REF_0>` for Gemini Omni
-   * Flash.
+   * Renders the prompt token bound to the image-list field at
+   * `position - 1` (1-based) — e.g. `@Image1` for Seedance, `Image 1`
+   * for H3 Max.
    */
   tag: (position: number) => string;
   /** Total images the endpoint accepts, including the rendered still. */
   maxImages: number;
+  /**
+   * Request field the stills go in. Seedance uses `image_urls`; H3 Max
+   * uses `reference_image_urls`. Defaults to `image_urls`.
+   */
+  imageField?: 'image_urls' | 'reference_image_urls';
 };
 
 /**
  * Map image-to-video models to a SEPARATE reference-to-video endpoint (#873).
  *
  * Some motion models accept cast/element reference images only on a dedicated
- * endpoint that takes `image_urls[]` (bound to prompt tokens — see
+ * endpoint that takes an image list (bound to prompt tokens — see
  * `MotionReferenceEndpointConfig.tag`) and has NO single start-frame
  * `image_url`. This is the motion analogue of `EDIT_ENDPOINTS` on the image
  * side: when a scene has references AND the model is listed here, motion
@@ -704,6 +735,13 @@ export const MOTION_REFERENCE_ENDPOINTS: Partial<
     // caps a request at 7 reference images.
     tag: (position) => `<IMAGE_REF_${position - 1}>`,
     maxImages: 7,
+  },
+  // Schema caps images at 9 (videos 3, audio 3; combined 12 files).
+  minimax_h3_max: {
+    endpointId: 'minimax/h3-max/reference-to-video',
+    tag: (position) => `Image ${position}`,
+    maxImages: 9,
+    imageField: 'reference_image_urls',
   },
 };
 

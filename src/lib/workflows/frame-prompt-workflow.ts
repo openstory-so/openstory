@@ -14,21 +14,15 @@ import {
   contentFilterLlmMessage,
   isContentFilterFinish,
 } from '@/lib/ai/content-rejection';
-import {
-  createAdapter,
-  resolveNativeGeminiModel,
-  resolveNativeGrokModel,
-} from '@/lib/ai/create-adapter';
+import { createAdapter } from '@/lib/ai/create-adapter';
 import { computeVisualPromptInputHash } from '@/lib/ai/input-hash';
 import {
   createUsageCapture,
   extractRunError,
   llmCostFromUsage,
-  PROMPT_REASONING,
   throwNotedRunError,
-  toGeminiThinkingLevel,
 } from '@/lib/ai/llm-client';
-import { getMaxOutputTokens } from '@/lib/ai/models.config';
+import { chatModelOptionsForCall } from '@/lib/workflows/llm-call-helper';
 import { narrowShotPromptContext } from '@/lib/ai/prompt-context';
 import {
   type VisualPrompt,
@@ -211,10 +205,6 @@ export class FramePromptWorkflow extends OpenStoryWorkflowEntrypoint<FramePrompt
         const abortController = new AbortController();
         const timeout = setTimeout(() => abortController.abort(), 300_000);
 
-        // Reasoning lifts prompt-generation quality. Enabled in E2E too — it's
-        // deterministic once recorded, so aimock records + replays it normally.
-        const reasoningOptions = { reasoning: PROMPT_REASONING };
-
         try {
           const channel = streamConfig
             ? getShotPromptChannel(streamConfig.shotId)
@@ -238,29 +228,11 @@ export class FramePromptWorkflow extends OpenStoryWorkflowEntrypoint<FramePrompt
             });
           };
 
-          const maxTokens = getMaxOutputTokens(analysisModelId);
-          const modelOptions = resolveNativeGrokModel(
+          const modelOptions = chatModelOptionsForCall(
             analysisModelId,
-            llmKeyInfo
-          )
-            ? {
-                reasoning: { effort: PROMPT_REASONING.effort },
-                max_output_tokens: maxTokens,
-              }
-            : resolveNativeGeminiModel(analysisModelId, llmKeyInfo)
-              ? {
-                  thinkingConfig: {
-                    thinkingLevel: toGeminiThinkingLevel(
-                      PROMPT_REASONING.effort
-                    ),
-                  },
-                  maxOutputTokens: maxTokens,
-                }
-              : {
-                  ...reasoningOptions,
-                  maxCompletionTokens: maxTokens,
-                  streamOptions: { includeUsage: true },
-                };
+            llmKeyInfo,
+            true
+          );
 
           for await (const streamEvent of chat({
             adapter,

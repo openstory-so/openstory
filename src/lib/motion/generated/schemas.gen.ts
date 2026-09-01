@@ -49,7 +49,23 @@ export const QueueStatusSchema = {
 } as const;
 
 export const GrokImagineVideoV15ImageToVideoInputSchema = {
+  type: 'object',
+  description: '``grok-imagine-video-1.5`` image-to-video (no ``aspect_ratio``).\n\nWidens ``resolution`` to add the 1080p tier supported by the 1.5 model\n(the standard model remains 480p/720p only).',
+  title: 'XAIImageToVideoV15Input',
+  required: [
+    'prompt',
+    'image_url'
+  ],
   properties: {
+    prompt: {
+      type: 'string',
+      maxLength: 4096,
+      title: 'Prompt',
+      description: 'Text description of desired changes or motion in the video.',
+      examples: [
+        'Medieval knight in ornate armor walking through a mystical forest, bioluminescent plants pulsing with light, ancient stone ruins overgrown with glowing vines, over-the-shoulder camera, dark fantasy aesthetic, volumetric fog and Lumen lighting'
+      ]
+    },
     image_url: {
       anyOf: [
         {
@@ -68,83 +84,83 @@ export const GrokImagineVideoV15ImageToVideoInputSchema = {
       ]
     },
     duration: {
-      title: 'Duration',
-      default: 6,
       type: 'integer',
-      maximum: 15,
       description: 'Video duration in seconds.',
+      maximum: 15,
+      default: 6,
+      title: 'Duration',
       minimum: 1
     },
     resolution: {
+      type: 'string',
       description: 'Resolution of the output video.',
+      title: 'Resolution',
       enum: [
         '480p',
         '720p',
         '1080p'
       ],
-      type: 'string',
-      default: '720p',
-      title: 'Resolution'
-    },
-    prompt: {
-      examples: [
-        'Medieval knight in ornate armor walking through a mystical forest, bioluminescent plants pulsing with light, ancient stone ruins overgrown with glowing vines, over-the-shoulder camera, dark fantasy aesthetic, volumetric fog and Lumen lighting'
-      ],
-      description: 'Text description of desired changes or motion in the video.',
-      title: 'Prompt',
-      type: 'string',
-      maxLength: 4096
+      default: '720p'
     }
   },
-  description: '``grok-imagine-video-1.5`` image-to-video (no ``aspect_ratio``).\n\nWidens ``resolution`` to add the 1080p tier supported by the 1.5 model\n(the standard model remains 480p/720p only).',
-  title: 'XAIImageToVideoV15Input',
-  type: 'object',
   'x-fal-order-properties': [
     'prompt',
     'duration',
     'resolution',
     'image_url'
-  ],
-  required: [
-    'prompt',
-    'image_url'
   ]
 } as const;
 
 export const GrokImagineVideoV15ImageToVideoOutputSchema = {
+  type: 'object',
+  required: [
+    'video'
+  ],
+  title: 'XAIImageToVideoOutput',
+  'x-fal-order-properties': [
+    'video'
+  ],
   properties: {
     video: {
       description: 'The generated video.',
       $ref: '#/components/schemas/VideoFile',
       examples: [
         {
-          height: 720,
           fps: 24,
-          duration: 6.041667,
-          file_name: '0Ci1dviuSnEyUZzBUq-_5_nu7MrAAa.mp4',
+          content_type: 'video/mp4',
           num_frames: 145,
-          width: 1280,
+          file_name: '0Ci1dviuSnEyUZzBUq-_5_nu7MrAAa.mp4',
+          duration: 6.041667,
           url: 'https://v3b.fal.media/files/b/0a8b90e0/0Ci1dviuSnEyUZzBUq-_5_nu7MrAAa.mp4',
-          content_type: 'video/mp4'
+          height: 720,
+          width: 1280
         }
       ]
     }
-  },
-  title: 'XAIImageToVideoOutput',
-  type: 'object',
-  'x-fal-order-properties': [
-    'video'
-  ],
-  required: [
-    'video'
-  ]
+  }
 } as const;
 
 export const VideoFileSchema = {
+  type: 'object',
+  required: [
+    'url'
+  ],
+  title: 'VideoFile',
+  'x-fal-order-properties': [
+    'url',
+    'content_type',
+    'file_name',
+    'file_size',
+    'width',
+    'height',
+    'fps',
+    'duration',
+    'num_frames'
+  ],
   properties: {
-    height: {
-      description: 'The height of the video',
-      title: 'Height',
+    width: {
+      title: 'Width',
+      description: 'The width of the video',
       anyOf: [
         {
           type: 'integer'
@@ -155,8 +171,8 @@ export const VideoFileSchema = {
       ]
     },
     fps: {
-      description: 'The FPS of the video',
       title: 'Fps',
+      description: 'The FPS of the video',
       anyOf: [
         {
           type: 'number'
@@ -166,12 +182,27 @@ export const VideoFileSchema = {
         }
       ]
     },
-    duration: {
-      description: 'The duration of the video',
-      title: 'Duration',
+    content_type: {
+      title: 'Content Type',
+      description: 'The mime type of the file.',
       anyOf: [
         {
-          type: 'number'
+          type: 'string'
+        },
+        {
+          type: 'null'
+        }
+      ],
+      examples: [
+        'image/png'
+      ]
+    },
+    num_frames: {
+      title: 'Num Frames',
+      description: 'The number of frames in the video',
+      anyOf: [
+        {
+          type: 'integer'
         },
         {
           type: 'null'
@@ -179,8 +210,8 @@ export const VideoFileSchema = {
       ]
     },
     file_name: {
-      description: 'The name of the file. It will be auto-generated if not provided.',
       title: 'File Name',
+      description: 'The name of the file. It will be auto-generated if not provided.',
       anyOf: [
         {
           type: 'string'
@@ -193,9 +224,26 @@ export const VideoFileSchema = {
         'z9RV14K95DvU.png'
       ]
     },
-    num_frames: {
-      description: 'The number of frames in the video',
-      title: 'Num Frames',
+    duration: {
+      title: 'Duration',
+      description: 'The duration of the video',
+      anyOf: [
+        {
+          type: 'number'
+        },
+        {
+          type: 'null'
+        }
+      ]
+    },
+    url: {
+      type: 'string',
+      description: 'The URL where the file can be downloaded from.',
+      title: 'Url'
+    },
+    height: {
+      title: 'Height',
+      description: 'The height of the video',
       anyOf: [
         {
           type: 'integer'
@@ -206,8 +254,8 @@ export const VideoFileSchema = {
       ]
     },
     file_size: {
-      description: 'The size of the file in bytes.',
       title: 'File Size',
+      description: 'The size of the file in bytes.',
       anyOf: [
         {
           type: 'integer'
@@ -219,156 +267,11 @@ export const VideoFileSchema = {
       examples: [
         4404019
       ]
-    },
-    width: {
-      description: 'The width of the video',
-      title: 'Width',
-      anyOf: [
-        {
-          type: 'integer'
-        },
-        {
-          type: 'null'
-        }
-      ]
-    },
-    url: {
-      description: 'The URL where the file can be downloaded from.',
-      title: 'Url',
-      type: 'string'
-    },
-    content_type: {
-      description: 'The mime type of the file.',
-      title: 'Content Type',
-      anyOf: [
-        {
-          type: 'string'
-        },
-        {
-          type: 'null'
-        }
-      ],
-      examples: [
-        'image/png'
-      ]
     }
-  },
-  title: 'VideoFile',
-  type: 'object',
-  'x-fal-order-properties': [
-    'url',
-    'content_type',
-    'file_name',
-    'file_size',
-    'width',
-    'height',
-    'fps',
-    'duration',
-    'num_frames'
-  ],
-  required: [
-    'url'
-  ]
+  }
 } as const;
 
 export const Ltx23ImageToVideoInputSchema = {
-  title: 'LTXV23ImageToVideoRequest',
-  properties: {
-    image_url: {
-      anyOf: [
-        {
-          type: 'string'
-        },
-        {
-          type: 'string',
-          format: 'binary'
-        }
-      ],
-      'x-fal-file-input': true,
-      examples: [
-        'https://v3b.fal.media/files/b/0a90dd31/uJG2pMMJMcnVeC4PmwnAF_image_004.png'
-      ],
-      title: 'Start Image URL',
-      description: 'The URL of the start image to use for the generated video.'
-    },
-    fps: {
-      description: 'The frames per second of the generated video',
-      title: 'Frames per Second',
-      default: 25,
-      enum: [
-        24,
-        25,
-        48,
-        50
-      ],
-      type: 'integer'
-    },
-    resolution: {
-      description: 'The resolution of the generated video',
-      title: 'Resolution',
-      default: '1080p',
-      enum: [
-        '1080p',
-        '1440p',
-        '2160p'
-      ],
-      type: 'string'
-    },
-    aspect_ratio: {
-      description: 'The aspect ratio of the generated video. If \'auto\', the aspect ratio will be determined automatically based on the input image.',
-      title: 'Aspect Ratio',
-      default: 'auto',
-      enum: [
-        'auto',
-        '16:9',
-        '9:16'
-      ],
-      type: 'string'
-    },
-    duration: {
-      description: 'The duration of the generated video in seconds',
-      title: 'Duration',
-      default: 6,
-      enum: [
-        6,
-        8,
-        10
-      ],
-      type: 'integer'
-    },
-    generate_audio: {
-      description: 'Whether to generate audio for the generated video',
-      title: 'Generate Audio',
-      default: true,
-      type: 'boolean'
-    },
-    prompt: {
-      examples: [
-        'Periscope-level shot from behind tall grass of two Maasai warriors mid-leap during an adumu jumping dance, bodies fully airborne against a golden savanna sunset, red shuka robes frozen in motion, dust kicked up from the earth catching backlight, 85mm f/1.4 isolating the pair from a blurred circle of onlookers, Steve McCurry meets Emmanuel Lubezki'
-      ],
-      title: 'Prompt',
-      description: 'The prompt to use for the generated video',
-      minLength: 1,
-      maxLength: 5000,
-      type: 'string'
-    },
-    end_image_url: {
-      anyOf: [
-        {
-          type: 'string'
-        },
-        {
-          type: 'null'
-        }
-      ],
-      title: 'End Image URL',
-      description: 'The URL of the end image to use for the generated video. When provided, generates a transition video between start and end frames.'
-    }
-  },
-  required: [
-    'prompt',
-    'image_url'
-  ],
   'x-fal-order-properties': [
     'image_url',
     'end_image_url',
@@ -379,46 +282,47 @@ export const Ltx23ImageToVideoInputSchema = {
     'fps',
     'generate_audio'
   ],
-  type: 'object'
-} as const;
-
-export const Ltx23ImageToVideoOutputSchema = {
-  title: 'LTXV23ImageToVideoResponse',
-  properties: {
-    video: {
-      examples: [
-        {
-          content_type: 'video/mp4',
-          url: 'https://v3b.fal.media/files/b/0a90dd31/VUCTD0YYJIp_K4qQkkneL_wMVDWNRn.mp4',
-          file_name: 'VUCTD0YYJIp_K4qQkkneL_wMVDWNRn.mp4'
-        }
-      ],
-      $ref: '#/components/schemas/VideoFile',
-      description: 'The generated video file'
-    }
-  },
+  title: 'LTXV23ImageToVideoRequest',
   required: [
-    'video'
+    'prompt',
+    'image_url'
   ],
-  'x-fal-order-properties': [
-    'video'
-  ],
-  type: 'object'
-} as const;
-
-export const Veo31ImageToVideoInputSchema = {
   properties: {
-    prompt: {
-      examples: [
-        'A monkey and polar bear host a casual podcast about AI inference, bringing their unique perspectives from different environments (tropical vs. arctic) to discuss how AI systems make decisions and process information.\nSample Dialogue:\nMonkey (Banana): "Welcome back to Bananas & Ice! I am Banana"\nPolar Bear (Ice): "And I\'m Ice!"'
-      ],
+    aspect_ratio: {
       type: 'string',
-      description: 'The text prompt describing the video you want to generate',
-      title: 'Prompt',
-      maxLength: 20000
+      description: 'The aspect ratio of the generated video. If \'auto\', the aspect ratio will be determined automatically based on the input image.',
+      default: 'auto',
+      title: 'Aspect Ratio',
+      enum: [
+        'auto',
+        '16:9',
+        '9:16'
+      ]
     },
-    negative_prompt: {
-      description: 'A negative prompt to guide the video generation.',
+    resolution: {
+      type: 'string',
+      description: 'The resolution of the generated video',
+      default: '1080p',
+      title: 'Resolution',
+      enum: [
+        '1080p',
+        '1440p',
+        '2160p'
+      ]
+    },
+    fps: {
+      type: 'integer',
+      description: 'The frames per second of the generated video',
+      default: 25,
+      title: 'Frames per Second',
+      enum: [
+        24,
+        25,
+        48,
+        50
+      ]
+    },
+    end_image_url: {
       anyOf: [
         {
           type: 'string'
@@ -427,58 +331,29 @@ export const Veo31ImageToVideoInputSchema = {
           type: 'null'
         }
       ],
-      title: 'Negative Prompt'
-    },
-    auto_fix: {
-      default: false,
-      type: 'boolean',
-      description: 'Whether to automatically attempt to fix prompts that fail content policy or other validation checks by rewriting them.',
-      title: 'Auto Fix'
-    },
-    seed: {
-      description: 'The seed for the random number generator.',
-      anyOf: [
-        {
-          type: 'integer'
-        },
-        {
-          type: 'null'
-        }
-      ],
-      title: 'Seed'
+      description: 'The URL of the end image to use for the generated video. When provided, generates a transition video between start and end frames.',
+      title: 'End Image URL'
     },
     duration: {
+      type: 'integer',
+      description: 'The duration of the generated video in seconds',
+      default: 6,
+      title: 'Duration',
       enum: [
-        '4s',
-        '6s',
-        '8s'
-      ],
-      default: '8s',
-      type: 'string',
-      description: 'The duration of the generated video.',
-      title: 'Duration'
+        6,
+        8,
+        10
+      ]
     },
-    resolution: {
-      enum: [
-        '720p',
-        '1080p',
-        '4k'
-      ],
-      default: '720p',
+    prompt: {
+      minLength: 1,
       type: 'string',
-      description: 'The resolution of the generated video.',
-      title: 'Resolution'
-    },
-    aspect_ratio: {
-      enum: [
-        'auto',
-        '16:9',
-        '9:16'
+      description: 'The prompt to use for the generated video',
+      title: 'Prompt',
+      examples: [
+        'Periscope-level shot from behind tall grass of two Maasai warriors mid-leap during an adumu jumping dance, bodies fully airborne against a golden savanna sunset, red shuka robes frozen in motion, dust kicked up from the earth catching backlight, 85mm f/1.4 isolating the pair from a blurred circle of onlookers, Steve McCurry meets Emmanuel Lubezki'
       ],
-      default: 'auto',
-      type: 'string',
-      description: 'The aspect ratio of the generated video. Only 16:9 and 9:16 are supported.',
-      title: 'Aspect Ratio'
+      maxLength: 5000
     },
     image_url: {
       anyOf: [
@@ -491,38 +366,49 @@ export const Veo31ImageToVideoInputSchema = {
         }
       ],
       'x-fal-file-input': true,
+      description: 'The URL of the start image to use for the generated video.',
+      title: 'Start Image URL',
       examples: [
-        'https://storage.googleapis.com/falserverless/example_inputs/veo31_i2v_input.jpg'
-      ],
-      description: 'URL of the input image to animate. Should be 720p or higher resolution in 16:9 or 9:16 aspect ratio. If the image is not in 16:9 or 9:16 aspect ratio, it will be cropped to fit.',
-      title: 'Image URL'
+        'https://v3b.fal.media/files/b/0a90dd31/uJG2pMMJMcnVeC4PmwnAF_image_004.png'
+      ]
     },
     generate_audio: {
+      description: 'Whether to generate audio for the generated video',
       default: true,
-      type: 'boolean',
-      description: 'Whether to generate audio for the video.',
-      title: 'Generate Audio'
-    },
-    safety_tolerance: {
-      enum: [
-        '1',
-        '2',
-        '3',
-        '4',
-        '5',
-        '6'
-      ],
-      default: '4',
-      type: 'string',
-      description: 'The safety tolerance level for content moderation. 1 is the most strict (blocks most content), 6 is the least strict.',
-      title: 'Safety Tolerance'
+      title: 'Generate Audio',
+      type: 'boolean'
     }
   },
-  type: 'object',
-  required: [
-    'prompt',
-    'image_url'
+  type: 'object'
+} as const;
+
+export const Ltx23ImageToVideoOutputSchema = {
+  'x-fal-order-properties': [
+    'video'
   ],
+  title: 'LTXV23ImageToVideoResponse',
+  required: [
+    'video'
+  ],
+  properties: {
+    video: {
+      $ref: '#/components/schemas/VideoFile',
+      description: 'The generated video file',
+      examples: [
+        {
+          content_type: 'video/mp4',
+          file_name: 'VUCTD0YYJIp_K4qQkkneL_wMVDWNRn.mp4',
+          url: 'https://v3b.fal.media/files/b/0a90dd31/VUCTD0YYJIp_K4qQkkneL_wMVDWNRn.mp4'
+        }
+      ]
+    }
+  },
+  type: 'object'
+} as const;
+
+export const Veo31ImageToVideoInputSchema = {
+  title: 'Veo31ImageToVideoInput',
+  type: 'object',
   'x-fal-order-properties': [
     'prompt',
     'aspect_ratio',
@@ -535,38 +421,59 @@ export const Veo31ImageToVideoInputSchema = {
     'safety_tolerance',
     'image_url'
   ],
-  title: 'Veo31ImageToVideoInput'
-} as const;
-
-export const Veo31ImageToVideoOutputSchema = {
   properties: {
-    video: {
+    prompt: {
+      title: 'Prompt',
       examples: [
-        {
-          url: 'https://storage.googleapis.com/falserverless/model_tests/gallery/veo3-1-i2v.mp4'
-        }
+        'A monkey and polar bear host a casual podcast about AI inference, bringing their unique perspectives from different environments (tropical vs. arctic) to discuss how AI systems make decisions and process information.\nSample Dialogue:\nMonkey (Banana): "Welcome back to Bananas & Ice! I am Banana"\nPolar Bear (Ice): "And I\'m Ice!"'
       ],
-      description: 'The generated video.',
-      $ref: '#/components/schemas/File'
-    }
-  },
-  type: 'object',
-  required: [
-    'video'
-  ],
-  'x-fal-order-properties': [
-    'video'
-  ],
-  title: 'Veo31ImageToVideoOutput'
-} as const;
-
-export const FileSchema = {
-  properties: {
-    content_type: {
-      examples: [
-        'image/png'
+      type: 'string',
+      description: 'The text prompt describing the video you want to generate',
+      maxLength: 20000
+    },
+    resolution: {
+      title: 'Resolution',
+      type: 'string',
+      description: 'The resolution of the generated video.',
+      default: '720p',
+      enum: [
+        '720p',
+        '1080p',
+        '4k'
+      ]
+    },
+    safety_tolerance: {
+      title: 'Safety Tolerance',
+      type: 'string',
+      enum: [
+        '1',
+        '2',
+        '3',
+        '4',
+        '5',
+        '6'
       ],
-      description: 'The mime type of the file.',
+      description: 'The safety tolerance level for content moderation. 1 is the most strict (blocks most content), 6 is the least strict.',
+      default: '4'
+    },
+    auto_fix: {
+      title: 'Auto Fix',
+      type: 'boolean',
+      description: 'Whether to automatically attempt to fix prompts that fail content policy or other validation checks by rewriting them.',
+      default: false
+    },
+    duration: {
+      title: 'Duration',
+      type: 'string',
+      description: 'The duration of the generated video.',
+      default: '8s',
+      enum: [
+        '4s',
+        '6s',
+        '8s'
+      ]
+    },
+    negative_prompt: {
       anyOf: [
         {
           type: 'string'
@@ -575,18 +482,21 @@ export const FileSchema = {
           type: 'null'
         }
       ],
-      title: 'Content Type'
+      description: 'A negative prompt to guide the video generation.',
+      title: 'Negative Prompt'
     },
-    url: {
+    aspect_ratio: {
+      title: 'Aspect Ratio',
       type: 'string',
-      description: 'The URL where the file can be downloaded from.',
-      title: 'Url'
-    },
-    file_size: {
-      examples: [
-        4404019
+      enum: [
+        'auto',
+        '16:9',
+        '9:16'
       ],
-      description: 'The size of the file in bytes.',
+      description: 'The aspect ratio of the generated video. Only 16:9 and 9:16 are supported.',
+      default: 'auto'
+    },
+    seed: {
       anyOf: [
         {
           type: 'integer'
@@ -595,13 +505,72 @@ export const FileSchema = {
           type: 'null'
         }
       ],
-      title: 'File Size'
+      description: 'The seed for the random number generator.',
+      title: 'Seed'
     },
-    file_name: {
-      examples: [
-        'z9RV14K95DvU.png'
+    image_url: {
+      anyOf: [
+        {
+          type: 'string'
+        },
+        {
+          type: 'string',
+          format: 'binary'
+        }
       ],
-      description: 'The name of the file. It will be auto-generated if not provided.',
+      'x-fal-file-input': true,
+      title: 'Image URL',
+      examples: [
+        'https://storage.googleapis.com/falserverless/example_inputs/veo31_i2v_input.jpg'
+      ],
+      description: 'URL of the input image to animate. Should be 720p or higher resolution in 16:9 or 9:16 aspect ratio. If the image is not in 16:9 or 9:16 aspect ratio, it will be cropped to fit.'
+    },
+    generate_audio: {
+      title: 'Generate Audio',
+      type: 'boolean',
+      description: 'Whether to generate audio for the video.',
+      default: true
+    }
+  },
+  required: [
+    'prompt',
+    'image_url'
+  ]
+} as const;
+
+export const Veo31ImageToVideoOutputSchema = {
+  title: 'Veo31ImageToVideoOutput',
+  type: 'object',
+  'x-fal-order-properties': [
+    'video'
+  ],
+  properties: {
+    video: {
+      examples: [
+        {
+          url: 'https://storage.googleapis.com/falserverless/model_tests/gallery/veo3-1-i2v.mp4'
+        }
+      ],
+      $ref: '#/components/schemas/File',
+      description: 'The generated video.'
+    }
+  },
+  required: [
+    'video'
+  ]
+} as const;
+
+export const FileSchema = {
+  title: 'File',
+  type: 'object',
+  'x-fal-order-properties': [
+    'url',
+    'content_type',
+    'file_name',
+    'file_size'
+  ],
+  properties: {
+    content_type: {
       anyOf: [
         {
           type: 'string'
@@ -610,24 +579,73 @@ export const FileSchema = {
           type: 'null'
         }
       ],
-      title: 'File Name'
+      examples: [
+        'image/png'
+      ],
+      title: 'Content Type',
+      description: 'The mime type of the file.'
+    },
+    file_size: {
+      anyOf: [
+        {
+          type: 'integer'
+        },
+        {
+          type: 'null'
+        }
+      ],
+      examples: [
+        4404019
+      ],
+      title: 'File Size',
+      description: 'The size of the file in bytes.'
+    },
+    url: {
+      title: 'Url',
+      type: 'string',
+      description: 'The URL where the file can be downloaded from.'
+    },
+    file_name: {
+      anyOf: [
+        {
+          type: 'string'
+        },
+        {
+          type: 'null'
+        }
+      ],
+      examples: [
+        'z9RV14K95DvU.png'
+      ],
+      title: 'File Name',
+      description: 'The name of the file. It will be auto-generated if not provided.'
     }
   },
-  type: 'object',
   required: [
     'url'
-  ],
-  'x-fal-order-properties': [
-    'url',
-    'content_type',
-    'file_name',
-    'file_size'
-  ],
-  title: 'File'
+  ]
 } as const;
 
 export const GeminiOmniFlashImageToVideoInputSchema = {
   properties: {
+    aspect_ratio: {
+      description: 'The aspect ratio of the generated video.',
+      type: 'string',
+      enum: [
+        '16:9',
+        '9:16'
+      ],
+      title: 'Aspect Ratio',
+      default: '16:9'
+    },
+    duration: {
+      maximum: 10,
+      type: 'integer',
+      description: 'The duration of the generated video, in seconds.',
+      title: 'Duration',
+      minimum: 3,
+      default: 8
+    },
     image_url: {
       anyOf: [
         {
@@ -640,40 +658,21 @@ export const GeminiOmniFlashImageToVideoInputSchema = {
       ],
       'x-fal-file-input': true,
       description: 'URL of the input image to animate.',
-      title: 'Image URL',
       examples: [
         'https://storage.googleapis.com/falserverless/example_inputs/dog.png'
-      ]
-    },
-    duration: {
-      default: 8,
-      description: 'The duration of the generated video, in seconds.',
-      type: 'integer',
-      maximum: 10,
-      title: 'Duration',
-      minimum: 3
+      ],
+      title: 'Image URL'
     },
     prompt: {
-      maxLength: 20000,
       description: 'The text prompt describing how the image should be animated.',
-      title: 'Prompt',
       type: 'string',
       examples: [
         'The dog turns its head and wags its tail in warm sunlight.'
-      ]
-    },
-    aspect_ratio: {
-      default: '16:9',
-      enum: [
-        '16:9',
-        '9:16'
       ],
-      type: 'string',
-      title: 'Aspect Ratio',
-      description: 'The aspect ratio of the generated video.'
+      title: 'Prompt',
+      maxLength: 20000
     }
   },
-  title: 'OmniFlashImageToVideoInput',
   type: 'object',
   'x-fal-order-properties': [
     'prompt',
@@ -681,6 +680,7 @@ export const GeminiOmniFlashImageToVideoInputSchema = {
     'aspect_ratio',
     'duration'
   ],
+  title: 'OmniFlashImageToVideoInput',
   required: [
     'prompt',
     'image_url'
@@ -694,54 +694,108 @@ export const GeminiOmniFlashImageToVideoOutputSchema = {
       $ref: '#/components/schemas/File'
     }
   },
-  title: 'OmniFlashImageToVideoOutput',
   type: 'object',
   'x-fal-order-properties': [
     'video'
   ],
+  title: 'OmniFlashImageToVideoOutput',
   required: [
     'video'
   ]
 } as const;
 
 export const KlingVideoV3ProImageToVideoInputSchema = {
-  type: 'object',
-  required: [
-    'start_image_url'
-  ],
   properties: {
-    end_image_url: {
+    start_image_url: {
       anyOf: [
         {
-          ui: {
-            field: 'image'
-          },
+          type: 'string'
+        },
+        {
           type: 'string',
-          limit_description: 'Max file size: 10.0MB, Min width: 300px, Min height: 300px, Min aspect ratio: 0.40, Max aspect ratio: 2.50, Timeout: 20.0s',
-          'x-fal': {
-            min_height: 300,
-            max_aspect_ratio: 2.5,
-            min_width: 300,
-            timeout: 20,
-            min_aspect_ratio: 0.4,
-            max_file_size: 10485760
+          format: 'binary'
+        }
+      ],
+      'x-fal-file-input': true,
+      description: 'URL of the image to be used for the video',
+      examples: [
+        'https://storage.googleapis.com/falserverless/example_inputs/kling-v3/pro-i2v/start_image.png'
+      ],
+      limit_description: 'Max file size: 10.0MB, Min width: 300px, Min height: 300px, Min aspect ratio: 0.40, Max aspect ratio: 2.50, Timeout: 20.0s',
+      title: 'Start Image Url',
+      'x-fal': {
+        max_file_size: 10485760,
+        min_height: 300,
+        timeout: 20,
+        max_aspect_ratio: 2.5,
+        min_width: 300,
+        min_aspect_ratio: 0.4
+      }
+    },
+    cfg_scale: {
+      maximum: 1,
+      minimum: 0,
+      type: 'number',
+      description: '\n            The CFG (Classifier Free Guidance) scale is a measure of how close you want\n            the model to stick to your prompt.\n        ',
+      title: 'Cfg Scale',
+      default: 0.5
+    },
+    negative_prompt: {
+      maxLength: 2500,
+      type: 'string',
+      title: 'Negative Prompt',
+      default: 'blur, distort, and low quality'
+    },
+    multi_prompt: {
+      description: 'List of prompts for multi-shot video generation. If provided, divides the video into multiple shots.',
+      anyOf: [
+        {
+          type: 'array',
+          items: {
+            $ref: '#/components/schemas/KlingV3MultiPromptElement'
           }
         },
         {
           type: 'null'
         }
       ],
-      title: 'End Image Url',
-      description: 'URL of the image to be used for the end of the video'
+      examples: [
+        null
+      ],
+      title: 'Multi Prompt'
+    },
+    generate_audio: {
+      description: 'Whether to generate native audio for the video. Supports Chinese and English voice output. Other languages are automatically translated to English. For English speech, use lowercase letters; for acronyms or proper nouns, use uppercase.',
+      type: 'boolean',
+      title: 'Generate Audio',
+      default: true
+    },
+    end_image_url: {
+      description: 'URL of the image to be used for the end of the video',
+      anyOf: [
+        {
+          ui: {
+            field: 'image'
+          },
+          type: 'string',
+          'x-fal': {
+            max_file_size: 10485760,
+            min_height: 300,
+            timeout: 20,
+            max_aspect_ratio: 2.5,
+            min_width: 300,
+            min_aspect_ratio: 0.4
+          },
+          limit_description: 'Max file size: 10.0MB, Min width: 300px, Min height: 300px, Min aspect ratio: 0.40, Max aspect ratio: 2.50, Timeout: 20.0s'
+        },
+        {
+          type: 'null'
+        }
+      ],
+      title: 'End Image Url'
     },
     duration: {
-      examples: [
-        '12'
-      ],
       description: 'The duration of the generated video in seconds',
-      type: 'string',
-      default: '5',
-      title: 'Duration',
       enum: [
         '3',
         '4',
@@ -756,54 +810,32 @@ export const KlingVideoV3ProImageToVideoInputSchema = {
         '13',
         '14',
         '15'
-      ]
+      ],
+      type: 'string',
+      examples: [
+        '12'
+      ],
+      title: 'Duration',
+      default: '5'
     },
-    start_image_url: {
+    prompt: {
+      description: 'Text prompt for video generation. Either prompt or multi_prompt must be provided, but not both.',
       anyOf: [
         {
+          maxLength: 2500,
           type: 'string'
         },
         {
-          type: 'string',
-          format: 'binary'
+          type: 'null'
         }
       ],
-      'x-fal-file-input': true,
       examples: [
-        'https://storage.googleapis.com/falserverless/example_inputs/kling-v3/pro-i2v/start_image.png'
+        'The craftsman slowly examines the bowl, turning it gently in his weathered hands. His eyes reflect years of wisdom. Subtle smile forms on his face. Dust particles drift in warm light. Breathing motion, blinking eyes.'
       ],
-      limit_description: 'Max file size: 10.0MB, Min width: 300px, Min height: 300px, Min aspect ratio: 0.40, Max aspect ratio: 2.50, Timeout: 20.0s',
-      'x-fal': {
-        min_height: 300,
-        max_aspect_ratio: 2.5,
-        min_width: 300,
-        timeout: 20,
-        min_aspect_ratio: 0.4,
-        max_file_size: 10485760
-      },
-      description: 'URL of the image to be used for the video',
-      title: 'Start Image Url'
-    },
-    negative_prompt: {
-      maxLength: 2500,
-      type: 'string',
-      default: 'blur, distort, and low quality',
-      title: 'Negative Prompt'
+      title: 'Prompt'
     },
     elements: {
-      examples: [
-        [
-          {
-            reference_image_urls: [
-              'https://v3b.fal.media/files/b/0a8cfd62/psPCmzrD1y9vDgdyNfKAL_glasses_back.png'
-            ],
-            frontal_image_url: 'https://v3b.fal.media/files/b/0a8cfd5f/-kZL-ha3Iuelku5IHXC-A_glasses.png'
-          },
-          {
-            video_url: 'https://v3b.fal.media/files/b/0a8cfd66/b03SOiQvKLlFx_jqdNZ9z_child_video.mp4'
-          }
-        ]
-      ],
+      description: 'Elements (characters/objects) to include in the video. Each example can either be an image set (frontal + reference images) or a video. Reference in prompt as @Element1, @Element2, etc.',
       anyOf: [
         {
           type: 'array',
@@ -815,69 +847,33 @@ export const KlingVideoV3ProImageToVideoInputSchema = {
           type: 'null'
         }
       ],
-      title: 'Elements',
-      description: 'Elements (characters/objects) to include in the video. Each example can either be an image set (frontal + reference images) or a video. Reference in prompt as @Element1, @Element2, etc.'
-    },
-    prompt: {
       examples: [
-        'The craftsman slowly examines the bowl, turning it gently in his weathered hands. His eyes reflect years of wisdom. Subtle smile forms on his face. Dust particles drift in warm light. Breathing motion, blinking eyes.'
-      ],
-      anyOf: [
-        {
-          maxLength: 2500,
-          type: 'string'
-        },
-        {
-          type: 'null'
-        }
-      ],
-      title: 'Prompt',
-      description: 'Text prompt for video generation. Either prompt or multi_prompt must be provided, but not both.'
-    },
-    multi_prompt: {
-      examples: [
-        null
-      ],
-      anyOf: [
-        {
-          type: 'array',
-          items: {
-            $ref: '#/components/schemas/KlingV3MultiPromptElement'
+        [
+          {
+            frontal_image_url: 'https://v3b.fal.media/files/b/0a8cfd5f/-kZL-ha3Iuelku5IHXC-A_glasses.png',
+            reference_image_urls: [
+              'https://v3b.fal.media/files/b/0a8cfd62/psPCmzrD1y9vDgdyNfKAL_glasses_back.png'
+            ]
+          },
+          {
+            video_url: 'https://v3b.fal.media/files/b/0a8cfd66/b03SOiQvKLlFx_jqdNZ9z_child_video.mp4'
           }
-        },
-        {
-          type: 'null'
-        }
+        ]
       ],
-      title: 'Multi Prompt',
-      description: 'List of prompts for multi-shot video generation. If provided, divides the video into multiple shots.'
-    },
-    generate_audio: {
-      type: 'boolean',
-      default: true,
-      title: 'Generate Audio',
-      description: 'Whether to generate native audio for the video. Supports Chinese and English voice output. Other languages are automatically translated to English. For English speech, use lowercase letters; for acronyms or proper nouns, use uppercase.'
+      title: 'Elements'
     },
     shot_type: {
       description: 'The type of multi-shot video generation. \'intelligent\' lets the model automatically determine shot structure.',
-      type: 'string',
-      default: 'customize',
-      title: 'Shot Type',
       enum: [
         'customize',
         'intelligent'
-      ]
-    },
-    cfg_scale: {
-      default: 0.5,
-      type: 'number',
-      minimum: 0,
-      maximum: 1,
-      title: 'Cfg Scale',
-      description: '\n            The CFG (Classifier Free Guidance) scale is a measure of how close you want\n            the model to stick to your prompt.\n        '
+      ],
+      type: 'string',
+      title: 'Shot Type',
+      default: 'customize'
     }
   },
-  title: 'ImageToVideoV3ProRequest',
+  type: 'object',
   'x-fal-order-properties': [
     'prompt',
     'multi_prompt',
@@ -889,155 +885,42 @@ export const KlingVideoV3ProImageToVideoInputSchema = {
     'shot_type',
     'negative_prompt',
     'cfg_scale'
+  ],
+  title: 'ImageToVideoV3ProRequest',
+  required: [
+    'start_image_url'
   ]
 } as const;
 
 export const KlingVideoV3ProImageToVideoOutputSchema = {
-  type: 'object',
-  required: [
-    'video'
-  ],
   properties: {
     video: {
+      description: 'The generated video',
       examples: [
         {
-          url: 'https://storage.googleapis.com/falserverless/example_outputs/kling-v3/pro-i2v/out.mp4',
-          file_name: 'out.mp4',
           content_type: 'video/mp4',
-          file_size: 8431922
+          file_size: 8431922,
+          file_name: 'out.mp4',
+          url: 'https://storage.googleapis.com/falserverless/example_outputs/kling-v3/pro-i2v/out.mp4'
         }
       ],
-      $ref: '#/components/schemas/File',
-      description: 'The generated video'
+      $ref: '#/components/schemas/File'
     }
   },
-  title: 'ImageToVideoV3ProOutput',
+  type: 'object',
   'x-fal-order-properties': [
     'video'
-  ]
-} as const;
-
-export const KlingV3ComboElementInputSchema = {
-  type: 'object',
-  properties: {
-    video_url: {
-      anyOf: [
-        {
-          ui: {
-            field: 'video'
-          },
-          type: 'string',
-          limit_description: 'Max file size: 200.0MB, Min width: 720px, Min height: 720px, Max width: 2160px, Max height: 2160px, Min duration: 3.0s, Max duration: 10.05s, Min FPS: 24.0, Max FPS: 60.0, Timeout: 30.0s',
-          'x-fal': {
-            min_fps: 24,
-            max_width: 2160,
-            min_width: 720,
-            min_height: 720,
-            max_fps: 60,
-            max_file_size: 209715200,
-            max_height: 2160,
-            min_duration: 3,
-            max_duration: 10.05,
-            timeout: 30
-          }
-        },
-        {
-          type: 'null'
-        }
-      ],
-      title: 'Video Url',
-      description: 'The video URL of the element. A request can only have one element with a video.'
-    },
-    reference_image_urls: {
-      anyOf: [
-        {
-          type: 'array',
-          items: {
-            ui: {
-              field: 'image'
-            },
-            type: 'string',
-            limit_description: 'Max file size: 10.0MB, Min width: 300px, Min height: 300px, Min aspect ratio: 0.40, Max aspect ratio: 2.50, Timeout: 20.0s',
-            'x-fal': {
-              min_height: 300,
-              max_aspect_ratio: 2.5,
-              min_width: 300,
-              timeout: 20,
-              min_aspect_ratio: 0.4,
-              max_file_size: 10485760
-            },
-            _fal_ui_field: 'image'
-          }
-        },
-        {
-          type: 'null'
-        }
-      ],
-      title: 'Reference Image Urls',
-      description: 'Additional reference images from different angles. 1-3 images supported. At least one image is required.'
-    },
-    voice_id: {
-      anyOf: [
-        {
-          type: 'string'
-        },
-        {
-          type: 'null'
-        }
-      ],
-      title: 'Voice Id',
-      description: 'The voice ID for this element. The voice will be binded to the element and references to this element will use the binded voice. Get voice IDs from the following endpoint: https://fal.ai/models/fal-ai/kling-video/create-voice'
-    },
-    frontal_image_url: {
-      anyOf: [
-        {
-          ui: {
-            field: 'image'
-          },
-          type: 'string',
-          limit_description: 'Max file size: 10.0MB, Min width: 300px, Min height: 300px, Min aspect ratio: 0.40, Max aspect ratio: 2.50, Timeout: 20.0s',
-          'x-fal': {
-            min_height: 300,
-            max_aspect_ratio: 2.5,
-            min_width: 300,
-            timeout: 20,
-            min_aspect_ratio: 0.4,
-            max_file_size: 10485760
-          }
-        },
-        {
-          type: 'null'
-        }
-      ],
-      title: 'Frontal Image Url',
-      description: 'The frontal image of the element (main view).'
-    }
-  },
-  title: 'KlingV3ComboElementInput',
-  'x-fal-order-properties': [
-    'frontal_image_url',
-    'reference_image_urls',
-    'video_url',
-    'voice_id'
+  ],
+  title: 'ImageToVideoV3ProOutput',
+  required: [
+    'video'
   ]
 } as const;
 
 export const KlingV3MultiPromptElementSchema = {
-  type: 'object',
-  required: [
-    'prompt'
-  ],
   properties: {
-    prompt: {
-      type: 'string',
-      title: 'Prompt',
-      description: 'The prompt for this shot.'
-    },
     duration: {
       description: 'The duration of this shot in seconds',
-      type: 'string',
-      default: '5',
-      title: 'Duration',
       enum: [
         '1',
         '2',
@@ -1054,39 +937,135 @@ export const KlingV3MultiPromptElementSchema = {
         '13',
         '14',
         '15'
-      ]
+      ],
+      type: 'string',
+      title: 'Duration',
+      default: '5'
+    },
+    prompt: {
+      description: 'The prompt for this shot.',
+      type: 'string',
+      title: 'Prompt'
     }
   },
-  title: 'KlingV3MultiPromptElement',
+  type: 'object',
   'x-fal-order-properties': [
     'prompt',
     'duration'
+  ],
+  title: 'KlingV3MultiPromptElement',
+  required: [
+    'prompt'
   ]
 } as const;
 
-export const MinimaxHailuo23ProImageToVideoInputSchema = {
-  type: 'object',
-  title: 'ProImageToVideoHailuo23Input',
-  required: [
-    'prompt',
-    'image_url'
-  ],
-  'x-fal-order-properties': [
-    'prompt',
-    'prompt_optimizer',
-    'image_url'
-  ],
+export const KlingV3ComboElementInputSchema = {
   properties: {
-    prompt: {
-      type: 'string',
-      title: 'Prompt',
-      examples: [
-        'The camera follows the mountain biker as they navigate a technical forest trail at high speed, wheels bouncing over roots and rocks. The rider approaches a jump, launching into the air with the bike, both rider and machine perfectly synchronized. They land smoothly and continue through tight turns, splashing through a stream crossing. Mud and water spray as the bike powers through challenging terrain. The atmosphere is wild and adventurous. Audio: Tires gripping dirt, gears shifting, heavy breathing, branches whipping past, and water splashing.'
+    frontal_image_url: {
+      description: 'The frontal image of the element (main view).',
+      anyOf: [
+        {
+          ui: {
+            field: 'image'
+          },
+          type: 'string',
+          'x-fal': {
+            max_file_size: 10485760,
+            min_height: 300,
+            timeout: 20,
+            max_aspect_ratio: 2.5,
+            min_width: 300,
+            min_aspect_ratio: 0.4
+          },
+          limit_description: 'Max file size: 10.0MB, Min width: 300px, Min height: 300px, Min aspect ratio: 0.40, Max aspect ratio: 2.50, Timeout: 20.0s'
+        },
+        {
+          type: 'null'
+        }
       ],
-      minLength: 1,
-      description: 'Text prompt for video generation',
-      maxLength: 2000
+      title: 'Frontal Image Url'
     },
+    reference_image_urls: {
+      description: 'Additional reference images from different angles. 1-3 images supported. At least one image is required.',
+      anyOf: [
+        {
+          type: 'array',
+          items: {
+            ui: {
+              field: 'image'
+            },
+            type: 'string',
+            'x-fal': {
+              max_file_size: 10485760,
+              min_height: 300,
+              timeout: 20,
+              max_aspect_ratio: 2.5,
+              min_width: 300,
+              min_aspect_ratio: 0.4
+            },
+            _fal_ui_field: 'image',
+            limit_description: 'Max file size: 10.0MB, Min width: 300px, Min height: 300px, Min aspect ratio: 0.40, Max aspect ratio: 2.50, Timeout: 20.0s'
+          }
+        },
+        {
+          type: 'null'
+        }
+      ],
+      title: 'Reference Image Urls'
+    },
+    video_url: {
+      description: 'The video URL of the element. A request can only have one element with a video.',
+      anyOf: [
+        {
+          ui: {
+            field: 'video'
+          },
+          type: 'string',
+          'x-fal': {
+            max_duration: 10.05,
+            max_width: 2160,
+            max_height: 2160,
+            min_fps: 24,
+            max_fps: 60,
+            timeout: 30,
+            max_file_size: 209715200,
+            min_duration: 3,
+            min_width: 720,
+            min_height: 720
+          },
+          limit_description: 'Max file size: 200.0MB, Min width: 720px, Min height: 720px, Max width: 2160px, Max height: 2160px, Min duration: 3.0s, Max duration: 10.05s, Min FPS: 24.0, Max FPS: 60.0, Timeout: 30.0s'
+        },
+        {
+          type: 'null'
+        }
+      ],
+      title: 'Video Url'
+    },
+    voice_id: {
+      description: 'The voice ID for this element. The voice will be binded to the element and references to this element will use the binded voice. Get voice IDs from the following endpoint: https://fal.ai/models/fal-ai/kling-video/create-voice',
+      anyOf: [
+        {
+          type: 'string'
+        },
+        {
+          type: 'null'
+        }
+      ],
+      title: 'Voice Id'
+    }
+  },
+  type: 'object',
+  'x-fal-order-properties': [
+    'frontal_image_url',
+    'reference_image_urls',
+    'video_url',
+    'voice_id'
+  ],
+  title: 'KlingV3ComboElementInput'
+} as const;
+
+export const MinimaxHailuo23ProImageToVideoInputSchema = {
+  properties: {
     image_url: {
       anyOf: [
         {
@@ -1098,51 +1077,67 @@ export const MinimaxHailuo23ProImageToVideoInputSchema = {
         }
       ],
       'x-fal-file-input': true,
-      title: 'Image Url',
+      description: 'URL of the image to use as the first frame',
       examples: [
         'https://storage.googleapis.com/falserverless/example_inputs/hailuo23/pro_i2v_in.jpg'
       ],
-      description: 'URL of the image to use as the first frame',
-      _fal_ui_field: 'image'
+      _fal_ui_field: 'image',
+      title: 'Image Url'
+    },
+    prompt: {
+      description: 'Text prompt for video generation',
+      type: 'string',
+      examples: [
+        'The camera follows the mountain biker as they navigate a technical forest trail at high speed, wheels bouncing over roots and rocks. The rider approaches a jump, launching into the air with the bike, both rider and machine perfectly synchronized. They land smoothly and continue through tight turns, splashing through a stream crossing. Mud and water spray as the bike powers through challenging terrain. The atmosphere is wild and adventurous. Audio: Tires gripping dirt, gears shifting, heavy breathing, branches whipping past, and water splashing.'
+      ],
+      title: 'Prompt',
+      minLength: 1,
+      maxLength: 2000
     },
     prompt_optimizer: {
+      description: 'Whether to use the model\'s prompt optimizer',
       type: 'boolean',
       title: 'Prompt Optimizer',
-      description: 'Whether to use the model\'s prompt optimizer',
       default: true
     }
-  }
+  },
+  type: 'object',
+  'x-fal-order-properties': [
+    'prompt',
+    'prompt_optimizer',
+    'image_url'
+  ],
+  title: 'ProImageToVideoHailuo23Input',
+  required: [
+    'prompt',
+    'image_url'
+  ]
 } as const;
 
 export const MinimaxHailuo23ProImageToVideoOutputSchema = {
-  type: 'object',
-  title: 'ProImageToVideoHailuo23Output',
-  required: [
-    'video'
-  ],
-  'x-fal-order-properties': [
-    'video'
-  ],
   properties: {
     video: {
+      description: 'The generated video',
       examples: [
         {
           url: 'https://storage.googleapis.com/falserverless/example_outputs/hailuo23/pro_i2v_out.mp4'
         }
       ],
-      description: 'The generated video',
       $ref: '#/components/schemas/File'
     }
-  }
+  },
+  type: 'object',
+  'x-fal-order-properties': [
+    'video'
+  ],
+  title: 'ProImageToVideoHailuo23Output',
+  required: [
+    'video'
+  ]
 } as const;
 
 export const H3MaxImageToVideoInputSchema = {
-  type: 'object',
   title: 'TurboImageToVideoHailuo03Input',
-  required: [
-    'prompt',
-    'prompt_expansion_mode'
-  ],
   'x-fal-order-properties': [
     'prompt',
     'duration',
@@ -1154,39 +1149,65 @@ export const H3MaxImageToVideoInputSchema = {
     'image_url',
     'end_image_url'
   ],
+  required: [
+    'prompt',
+    'prompt_expansion_mode'
+  ],
   properties: {
-    enable_safety_checker: {
-      type: 'boolean',
-      title: 'Enable Safety Checker',
-      description: 'If set to true, the safety checker will be enabled.',
-      default: true
+    prompt: {
+      description: 'Text prompt for video generation',
+      title: 'Prompt',
+      examples: [
+        'The camera slowly pulls back from the scene, revealing the full landscape as clouds drift overhead and light shifts across the terrain.'
+      ],
+      minLength: 1,
+      type: 'string',
+      maxLength: 50000
     },
     duration: {
-      type: 'integer',
+      description: 'The duration of the video in seconds.',
       title: 'Duration',
       minimum: 5,
+      default: 5,
       maximum: 15,
-      description: 'The duration of the video in seconds.',
-      default: 5
+      type: 'integer'
     },
     sync_mode: {
-      type: 'boolean',
-      title: 'Sync Mode',
       description: 'Return the generated video as base64 instead of a CDN URL.',
-      default: false
+      title: 'Sync Mode',
+      default: false,
+      type: 'boolean'
     },
-    resolution: {
-      type: 'string',
-      enum: [
-        '480P',
-        '768P'
+    enable_safety_checker: {
+      description: 'If set to true, the safety checker will be enabled.',
+      title: 'Enable Safety Checker',
+      default: true,
+      type: 'boolean'
+    },
+    end_image_url: {
+      description: 'Optional URL of the image to use as the last frame, for first-to-last keyframe generation.',
+      anyOf: [
+        {
+          type: 'string'
+        },
+        {
+          type: 'null'
+        }
       ],
-      title: 'Resolution',
-      description: 'The native generation resolution of the video.',
-      default: '768P'
+      title: 'End Image URL'
+    },
+    prompt_expansion_mode: {
+      description: 'How much effort to spend rewriting the prompt before generation. \'balanced\' returns in about a second. \'quality\' spends up to ~30s on a richer prompt.',
+      title: 'Prompt Expansion Mode',
+      examples: [
+        'balanced',
+        'quality'
+      ],
+      default: 'balanced',
+      type: 'string'
     },
     image_url: {
-      title: 'Image URL',
+      description: 'Optional URL of the image to use as the first frame. When provided, the output aspect ratio follows this image. When omitted, the request is handled as text-to-video (16:9 by default).',
       anyOf: [
         {
           type: 'string'
@@ -1198,43 +1219,10 @@ export const H3MaxImageToVideoInputSchema = {
       examples: [
         'https://storage.googleapis.com/falserverless/example_inputs/hailuo23/pro_i2v_in.jpg'
       ],
-      description: 'Optional URL of the image to use as the first frame. When provided, the output aspect ratio follows this image. When omitted, the request is handled as text-to-video (16:9 by default).'
-    },
-    end_image_url: {
-      title: 'End Image URL',
-      anyOf: [
-        {
-          type: 'string'
-        },
-        {
-          type: 'null'
-        }
-      ],
-      description: 'Optional URL of the image to use as the last frame, for first-to-last keyframe generation.'
-    },
-    prompt: {
-      type: 'string',
-      title: 'Prompt',
-      examples: [
-        'The camera slowly pulls back from the scene, revealing the full landscape as clouds drift overhead and light shifts across the terrain.'
-      ],
-      minLength: 1,
-      description: 'Text prompt for video generation',
-      maxLength: 50000
-    },
-    prompt_expansion_mode: {
-      type: 'string',
-      enum: [
-        'disabled',
-        'balanced',
-        'quality'
-      ],
-      title: 'Prompt Expansion Mode',
-      description: 'How much effort to spend rewriting the prompt before generation. \'disabled\' skips prompt expansion. \'balanced\' returns in about a second. \'quality\' spends up to ~30s on a richer prompt.',
-      default: 'balanced'
+      title: 'Image URL'
     },
     seed: {
-      title: 'Seed',
+      description: 'Random seed. A random seed is selected when omitted.',
       anyOf: [
         {
           type: 'integer'
@@ -1243,44 +1231,54 @@ export const H3MaxImageToVideoInputSchema = {
           type: 'null'
         }
       ],
-      description: 'Random seed. A random seed is selected when omitted.'
+      title: 'Seed'
+    },
+    resolution: {
+      description: 'The native generation resolution of the video.',
+      title: 'Resolution',
+      enum: [
+        '480P',
+        '768P'
+      ],
+      default: '768P',
+      type: 'string'
     }
-  }
+  },
+  type: 'object'
 } as const;
 
 export const H3MaxImageToVideoOutputSchema = {
-  type: 'object',
   title: 'TurboImageToVideoHailuo03Output',
-  required: [
-    'video'
-  ],
   'x-fal-order-properties': [
     'video',
     'expanded_prompt',
     'timings'
   ],
+  required: [
+    'video'
+  ],
   properties: {
+    video: {
+      description: 'The generated video',
+      $ref: '#/components/schemas/File'
+    },
     timings: {
-      title: 'Timings',
+      description: 'Timing breakdown in seconds. \'inference\' is the DiT denoising time on the GPU backend. Null on routes that do not report backend timings.',
       anyOf: [
         {
-          type: 'object',
           additionalProperties: {
             type: 'number'
-          }
+          },
+          type: 'object'
         },
         {
           type: 'null'
         }
       ],
-      description: 'Timing breakdown in seconds. \'inference\' is the DiT denoising time on the GPU backend. Null on routes that do not report backend timings.'
-    },
-    video: {
-      description: 'The generated video',
-      $ref: '#/components/schemas/File'
+      title: 'Timings'
     },
     expanded_prompt: {
-      title: 'Expanded Prompt',
+      description: 'The prompt after expansion, as sent to the model. Null when prompt expansion was disabled, left the prompt unchanged, or was performed internally by MiniMax\'s hosted API.',
       anyOf: [
         {
           type: 'string'
@@ -1289,18 +1287,13 @@ export const H3MaxImageToVideoOutputSchema = {
           type: 'null'
         }
       ],
-      description: 'The prompt after expansion, as sent to the model. Null when prompt expansion was disabled, left the prompt unchanged, or was performed internally by MiniMax\'s hosted API.'
+      title: 'Expanded Prompt'
     }
-  }
+  },
+  type: 'object'
 } as const;
 
 export const Seedance20EnterpriseV2ImageToVideoInputSchema = {
-  type: 'object',
-  title: 'Seedance2I2VInput',
-  required: [
-    'prompt',
-    'image_url'
-  ],
   'x-fal-order-properties': [
     'prompt',
     'image_url',
@@ -1312,39 +1305,60 @@ export const Seedance20EnterpriseV2ImageToVideoInputSchema = {
     'bitrate_mode',
     'end_user_id'
   ],
+  required: [
+    'prompt',
+    'image_url'
+  ],
+  title: 'Seedance2I2VInput',
   properties: {
-    duration: {
-      type: 'string',
-      enum: [
-        'auto',
-        '4',
-        '5',
-        '6',
-        '7',
-        '8',
-        '9',
-        '10',
-        '11',
-        '12',
-        '13',
-        '14',
-        '15'
-      ],
-      title: 'Duration',
-      description: 'Duration of the video in seconds. Supports 4 to 15 seconds, or auto to let the model decide based on the prompt.',
-      default: 'auto'
+    end_user_id: {
+      title: 'End User Id',
+      description: 'The unique user ID of the end user.',
+      anyOf: [
+        {
+          type: 'string'
+        },
+        {
+          type: 'null'
+        }
+      ]
     },
     resolution: {
-      type: 'string',
+      title: 'Resolution',
+      description: 'Video resolution - 480p for faster generation, 720p for balance, 1080p for high quality, 4k for highest quality.',
       enum: [
         '480p',
         '720p',
         '1080p',
         '4k'
       ],
-      title: 'Resolution',
-      description: 'Video resolution - 480p for faster generation, 720p for balance, 1080p for high quality, 4k for highest quality.',
-      default: '720p'
+      default: '720p',
+      type: 'string'
+    },
+    bitrate_mode: {
+      title: 'Bitrate Mode',
+      description: 'Output bitrate mode. \'high\' requests a higher-quality, larger-file encode from the model; \'standard\' uses the default bitrate.',
+      enum: [
+        'standard',
+        'high'
+      ],
+      examples: [
+        'standard'
+      ],
+      default: 'standard',
+      type: 'string'
+    },
+    end_image_url: {
+      title: 'End Image Url',
+      description: 'The URL of the image to use as the last frame of the video. When provided, the generated video will transition from the starting image to this ending image. Supported formats: JPEG, PNG, WebP. Max 30 MB.',
+      anyOf: [
+        {
+          type: 'string'
+        },
+        {
+          type: 'null'
+        }
+      ]
     },
     image_url: {
       anyOf: [
@@ -1358,45 +1372,35 @@ export const Seedance20EnterpriseV2ImageToVideoInputSchema = {
       ],
       'x-fal-file-input': true,
       title: 'Image Url',
+      description: 'The URL of the starting frame image to animate. Supported formats: JPEG, PNG, WebP. Max 30 MB.',
       examples: [
         'https://v3b.fal.media/files/b/0a8eba37/Cqg-4Uwzyz4DELfceT1CF_a17e588773ec45b1a9e6f100a787b80b.jpg'
-      ],
-      description: 'The URL of the starting frame image to animate. Supported formats: JPEG, PNG, WebP. Max 30 MB.'
+      ]
     },
-    end_image_url: {
-      title: 'End Image Url',
-      anyOf: [
-        {
-          type: 'string'
-        },
-        {
-          type: 'null'
-        }
+    duration: {
+      title: 'Duration',
+      description: 'Duration of the video in seconds. Supports 4 to 15 seconds, or auto to let the model decide based on the prompt.',
+      enum: [
+        'auto',
+        '4',
+        '5',
+        '6',
+        '7',
+        '8',
+        '9',
+        '10',
+        '11',
+        '12',
+        '13',
+        '14',
+        '15'
       ],
-      description: 'The URL of the image to use as the last frame of the video. When provided, the generated video will transition from the starting image to this ending image. Supported formats: JPEG, PNG, WebP. Max 30 MB.'
-    },
-    prompt: {
-      type: 'string',
-      title: 'Prompt',
-      examples: [
-        'An octopus finds a football in the ocean and excitedly calls its octopus friends to come and play. Cut scene to an octopus football game under the sea.'
-      ],
-      description: 'The text prompt describing the desired motion and action for the video.'
-    },
-    end_user_id: {
-      title: 'End User Id',
-      anyOf: [
-        {
-          type: 'string'
-        },
-        {
-          type: 'null'
-        }
-      ],
-      description: 'The unique user ID of the end user.'
+      default: 'auto',
+      type: 'string'
     },
     aspect_ratio: {
-      type: 'string',
+      title: 'Aspect Ratio',
+      description: 'The aspect ratio of the generated video. Use 16:9 for landscape, 9:16 for portrait/vertical, 1:1 for square, 21:9 for ultrawide cinematic, or auto to infer from the input image.',
       enum: [
         'auto',
         '21:9',
@@ -1406,71 +1410,65 @@ export const Seedance20EnterpriseV2ImageToVideoInputSchema = {
         '3:4',
         '9:16'
       ],
-      title: 'Aspect Ratio',
-      description: 'The aspect ratio of the generated video. Use 16:9 for landscape, 9:16 for portrait/vertical, 1:1 for square, 21:9 for ultrawide cinematic, or auto to infer from the input image.',
-      default: 'auto'
+      default: 'auto',
+      type: 'string'
     },
-    bitrate_mode: {
-      type: 'string',
-      enum: [
-        'standard',
-        'high'
-      ],
-      title: 'Bitrate Mode',
+    prompt: {
+      title: 'Prompt',
+      description: 'The text prompt describing the desired motion and action for the video.',
       examples: [
-        'standard'
+        'An octopus finds a football in the ocean and excitedly calls its octopus friends to come and play. Cut scene to an octopus football game under the sea.'
       ],
-      description: 'Output bitrate mode. \'high\' requests a higher-quality, larger-file encode from the model; \'standard\' uses the default bitrate.',
-      default: 'standard'
+      type: 'string'
     },
     generate_audio: {
-      type: 'boolean',
       title: 'Generate Audio',
       description: 'Whether to generate synchronized audio for the video, including sound effects, ambient sounds, and lip-synced speech. The cost of video generation is the same regardless of whether audio is generated or not.',
-      default: true
+      default: true,
+      type: 'boolean'
     }
-  }
+  },
+  type: 'object'
 } as const;
 
 export const Seedance20EnterpriseV2ImageToVideoOutputSchema = {
-  type: 'object',
-  title: 'Seedance2VideoOutput',
-  required: [
-    'video',
-    'seed'
-  ],
   'x-fal-order-properties': [
     'video',
     'seed'
   ],
+  required: [
+    'video',
+    'seed'
+  ],
+  title: 'Seedance2VideoOutput',
   properties: {
+    seed: {
+      title: 'Seed',
+      description: 'The seed used for generation.',
+      examples: [
+        42
+      ],
+      type: 'integer'
+    },
     video: {
+      description: 'The generated video file.',
       examples: [
         {
           url: 'https://storage.googleapis.com/falserverless/example_outputs/bytedance/seedance_2/output.mp4'
         }
       ],
-      description: 'The generated video file.',
       $ref: '#/components/schemas/File'
-    },
-    seed: {
-      type: 'integer',
-      title: 'Seed',
-      examples: [
-        42
-      ],
-      description: 'The seed used for generation.'
     }
-  }
+  },
+  type: 'object'
 } as const;
 
 export const Seedance25ImageToVideoInputSchema = {
-  type: 'object',
-  title: 'Seedance2I2VInput',
   required: [
     'prompt',
     'image_url'
   ],
+  title: 'Seedance2I2VInput',
   'x-fal-order-properties': [
     'prompt',
     'image_url',
@@ -1482,10 +1480,74 @@ export const Seedance25ImageToVideoInputSchema = {
     'bitrate_mode',
     'end_user_id'
   ],
+  type: 'object',
   properties: {
-    end_user_id: {
-      description: 'The unique user ID of the end user.',
-      title: 'End User Id',
+    duration: {
+      title: 'Duration',
+      type: 'string',
+      default: 'auto',
+      description: 'Duration of the video in seconds. Supports 4 to 30 seconds, or auto to let the model decide based on the prompt.',
+      enum: [
+        'auto',
+        '4',
+        '5',
+        '6',
+        '7',
+        '8',
+        '9',
+        '10',
+        '11',
+        '12',
+        '13',
+        '14',
+        '15',
+        '16',
+        '17',
+        '18',
+        '19',
+        '20',
+        '21',
+        '22',
+        '23',
+        '24',
+        '25',
+        '26',
+        '27',
+        '28',
+        '29',
+        '30'
+      ]
+    },
+    generate_audio: {
+      title: 'Generate Audio',
+      type: 'boolean',
+      default: true,
+      description: 'Whether to generate synchronized audio for the video, including sound effects, ambient sounds, and lip-synced speech. The cost of video generation is the same regardless of whether audio is generated or not.'
+    },
+    prompt: {
+      title: 'Prompt',
+      type: 'string',
+      description: 'The text prompt describing the desired motion and action for the video.',
+      examples: [
+        'An octopus finds a football in the ocean and excitedly calls its octopus friends to come and play. Cut scene to an octopus football game under the sea.'
+      ]
+    },
+    bitrate_mode: {
+      title: 'Bitrate Mode',
+      type: 'string',
+      default: 'standard',
+      examples: [
+        'standard'
+      ],
+      enum: [
+        'standard',
+        'high'
+      ],
+      description: 'Output bitrate mode. \'high\' requests a higher-quality, larger-file encode from the model; \'standard\' uses the default bitrate.'
+    },
+    end_image_url: {
+      title: 'End Image Url',
+      description: 'The URL of the image to use as the last frame of the video. When provided, the generated video will transition from the starting image to this ending image. Supported formats: JPEG, PNG, WebP. Max 30 MB.',
       anyOf: [
         {
           type: 'string'
@@ -1506,15 +1568,15 @@ export const Seedance25ImageToVideoInputSchema = {
         }
       ],
       'x-fal-file-input': true,
+      title: 'Image Url',
       description: 'The URL of the starting frame image to animate. Supported formats: JPEG, PNG, WebP. Max 30 MB.',
       examples: [
         'https://v3b.fal.media/files/b/0a8eba37/Cqg-4Uwzyz4DELfceT1CF_a17e588773ec45b1a9e6f100a787b80b.jpg'
-      ],
-      title: 'Image Url'
+      ]
     },
-    end_image_url: {
-      description: 'The URL of the image to use as the last frame of the video. When provided, the generated video will transition from the starting image to this ending image. Supported formats: JPEG, PNG, WebP. Max 30 MB.',
-      title: 'End Image Url',
+    end_user_id: {
+      title: 'End User Id',
+      description: 'The unique user ID of the end user.',
       anyOf: [
         {
           type: 'string'
@@ -1524,128 +1586,60 @@ export const Seedance25ImageToVideoInputSchema = {
         }
       ]
     },
+    aspect_ratio: {
+      title: 'Aspect Ratio',
+      const: 'auto',
+      type: 'string',
+      default: 'auto',
+      description: 'The aspect ratio of the generated video. Always "auto" for image-to-video'
+    },
     resolution: {
-      description: 'Video resolution - 480p for faster generation, 720p for balance, 1080p for high quality.',
+      title: 'Resolution',
       type: 'string',
       default: '720p',
-      title: 'Resolution',
+      description: 'Video resolution - 480p for faster generation, 720p for balance, 1080p for high quality.',
       enum: [
         '480p',
         '720p',
         '1080p'
       ]
-    },
-    bitrate_mode: {
-      description: 'Output bitrate mode. \'high\' requests a higher-quality, larger-file encode from the model; \'standard\' uses the default bitrate.',
-      type: 'string',
-      default: 'standard',
-      examples: [
-        'standard'
-      ],
-      enum: [
-        'standard',
-        'high'
-      ],
-      title: 'Bitrate Mode'
-    },
-    duration: {
-      description: 'Duration of the video in seconds. Supports 4 to 30 seconds, or auto to let the model decide based on the prompt.',
-      type: 'string',
-      default: 'auto',
-      title: 'Duration',
-      enum: [
-        'auto',
-        '4',
-        '5',
-        '6',
-        '7',
-        '8',
-        '9',
-        '10',
-        '11',
-        '12',
-        '13',
-        '14',
-        '15',
-        '16',
-        '17',
-        '18',
-        '19',
-        '20',
-        '21',
-        '22',
-        '23',
-        '24',
-        '25',
-        '26',
-        '27',
-        '28',
-        '29',
-        '30'
-      ]
-    },
-    prompt: {
-      description: 'The text prompt describing the desired motion and action for the video.',
-      type: 'string',
-      examples: [
-        'An octopus finds a football in the ocean and excitedly calls its octopus friends to come and play. Cut scene to an octopus football game under the sea.'
-      ],
-      title: 'Prompt'
-    },
-    generate_audio: {
-      description: 'Whether to generate synchronized audio for the video, including sound effects, ambient sounds, and lip-synced speech. The cost of video generation is the same regardless of whether audio is generated or not.',
-      type: 'boolean',
-      default: true,
-      title: 'Generate Audio'
-    },
-    aspect_ratio: {
-      description: 'The aspect ratio of the generated video. Always "auto" for image-to-video',
-      type: 'string',
-      const: 'auto',
-      title: 'Aspect Ratio',
-      default: 'auto'
     }
   }
 } as const;
 
 export const Seedance25ImageToVideoOutputSchema = {
-  type: 'object',
-  title: 'Seedance2VideoOutput',
   required: [
     'video',
     'seed'
   ],
+  title: 'Seedance2VideoOutput',
   'x-fal-order-properties': [
     'video',
     'seed'
   ],
+  type: 'object',
   properties: {
-    seed: {
-      description: 'The seed used for generation.',
-      type: 'integer',
-      examples: [
-        42
-      ],
-      title: 'Seed'
-    },
     video: {
+      $ref: '#/components/schemas/File',
       description: 'The generated video file.',
       examples: [
         {
           url: 'https://storage.googleapis.com/falserverless/example_outputs/bytedance/seedance_2/output.mp4'
         }
-      ],
-      $ref: '#/components/schemas/File'
+      ]
+    },
+    seed: {
+      title: 'Seed',
+      type: 'integer',
+      description: 'The seed used for generation.',
+      examples: [
+        42
+      ]
     }
   }
 } as const;
 
 export const Seedance20EnterpriseV2ReferenceToVideoInputSchema = {
-  type: 'object',
-  title: 'Seedance2R2VInput',
-  required: [
-    'prompt'
-  ],
   'x-fal-order-properties': [
     'prompt',
     'image_urls',
@@ -1658,9 +1652,62 @@ export const Seedance20EnterpriseV2ReferenceToVideoInputSchema = {
     'bitrate_mode',
     'end_user_id'
   ],
+  required: [
+    'prompt'
+  ],
+  title: 'Seedance2R2VInput',
   properties: {
+    video_urls: {
+      maxItems: 3,
+      title: 'Video Urls',
+      description: 'Reference videos to guide video generation. Refer to them in the prompt as @Video1, @Video2, etc. Supported formats: MP4, MOV. Up to 3 videos, combined duration must be between 2 and 15 seconds, total size under 50 MB. Each video must be between ~480p (640x640) and ~720p (834x1112) in resolution.',
+      items: {
+        _fal_ui_field: 'video',
+        type: 'string',
+        'x-fal-file-input': true
+      },
+      type: 'array'
+    },
+    end_user_id: {
+      title: 'End User Id',
+      description: 'The unique user ID of the end user.',
+      anyOf: [
+        {
+          type: 'string'
+        },
+        {
+          type: 'null'
+        }
+      ]
+    },
+    resolution: {
+      title: 'Resolution',
+      description: 'Video resolution - 480p for faster generation, 720p for balance, 1080p for high quality, 4k for highest quality.',
+      enum: [
+        '480p',
+        '720p',
+        '1080p',
+        '4k'
+      ],
+      default: '720p',
+      type: 'string'
+    },
+    bitrate_mode: {
+      title: 'Bitrate Mode',
+      description: 'Output bitrate mode. \'high\' requests a higher-quality, larger-file encode from the model; \'standard\' uses the default bitrate.',
+      enum: [
+        'standard',
+        'high'
+      ],
+      examples: [
+        'standard'
+      ],
+      default: 'standard',
+      type: 'string'
+    },
     duration: {
-      type: 'string',
+      title: 'Duration',
+      description: 'Duration of the video in seconds. Supports 4 to 15 seconds, or auto to let the model decide based on the prompt.',
       enum: [
         'auto',
         '4',
@@ -1676,44 +1723,38 @@ export const Seedance20EnterpriseV2ReferenceToVideoInputSchema = {
         '14',
         '15'
       ],
-      title: 'Duration',
-      description: 'Duration of the video in seconds. Supports 4 to 15 seconds, or auto to let the model decide based on the prompt.',
-      default: 'auto'
+      default: 'auto',
+      type: 'string'
     },
-    resolution: {
-      type: 'string',
-      enum: [
-        '480p',
-        '720p',
-        '1080p',
-        '4k'
-      ],
-      title: 'Resolution',
-      description: 'Video resolution - 480p for faster generation, 720p for balance, 1080p for high quality, 4k for highest quality.',
-      default: '720p'
-    },
-    prompt: {
-      type: 'string',
-      title: 'Prompt',
+    image_urls: {
+      maxItems: 9,
+      title: 'Image Urls',
+      description: 'Reference images to guide video generation. Refer to them in the prompt as @Image1, @Image2, etc. Supported formats: JPEG, PNG, WebP. Max 30 MB per image. Up to 9 images. Total files across all modalities must not exceed 12.',
       examples: [
-        'An octopus finds a football in the ocean and excitedly calls its octopus friends to come and play. Cut scene to an octopus football game under the sea.'
+        [
+          'https://v3b.fal.media/files/b/0a8eba37/Cqg-4Uwzyz4DELfceT1CF_a17e588773ec45b1a9e6f100a787b80b.jpg'
+        ]
       ],
-      description: 'The text prompt used to generate the video.'
+      items: {
+        type: 'string',
+        'x-fal-file-input': true
+      },
+      type: 'array'
     },
-    end_user_id: {
-      title: 'End User Id',
-      anyOf: [
-        {
-          type: 'string'
-        },
-        {
-          type: 'null'
-        }
-      ],
-      description: 'The unique user ID of the end user.'
+    audio_urls: {
+      maxItems: 3,
+      title: 'Audio Urls',
+      description: 'Reference audio to guide video generation. Refer to them in the prompt as @Audio1, @Audio2, etc. Supported formats: MP3, WAV. Up to 3 files, combined duration must not exceed 15 seconds. Max 15 MB per file.If audio is provided, at least one reference image or video is required.',
+      items: {
+        _fal_ui_field: 'audio',
+        type: 'string',
+        'x-fal-file-input': true
+      },
+      type: 'array'
     },
     aspect_ratio: {
-      type: 'string',
+      title: 'Aspect Ratio',
+      description: 'The aspect ratio of the generated video. Use 16:9 for landscape, 9:16 for portrait/vertical, 1:1 for square, 21:9 for ultrawide cinematic, or auto to let the model decide.',
       enum: [
         'auto',
         '21:9',
@@ -1723,107 +1764,64 @@ export const Seedance20EnterpriseV2ReferenceToVideoInputSchema = {
         '3:4',
         '9:16'
       ],
-      title: 'Aspect Ratio',
-      description: 'The aspect ratio of the generated video. Use 16:9 for landscape, 9:16 for portrait/vertical, 1:1 for square, 21:9 for ultrawide cinematic, or auto to let the model decide.',
-      default: 'auto'
+      default: 'auto',
+      type: 'string'
     },
-    bitrate_mode: {
-      type: 'string',
-      enum: [
-        'standard',
-        'high'
-      ],
-      title: 'Bitrate Mode',
+    prompt: {
+      title: 'Prompt',
+      description: 'The text prompt used to generate the video.',
       examples: [
-        'standard'
+        'An octopus finds a football in the ocean and excitedly calls its octopus friends to come and play. Cut scene to an octopus football game under the sea.'
       ],
-      description: 'Output bitrate mode. \'high\' requests a higher-quality, larger-file encode from the model; \'standard\' uses the default bitrate.',
-      default: 'standard'
-    },
-    video_urls: {
-      type: 'array',
-      title: 'Video Urls',
-      description: 'Reference videos to guide video generation. Refer to them in the prompt as @Video1, @Video2, etc. Supported formats: MP4, MOV. Up to 3 videos, combined duration must be between 2 and 15 seconds, total size under 50 MB. Each video must be between ~480p (640x640) and ~720p (834x1112) in resolution.',
-      maxItems: 3,
-      items: {
-        type: 'string',
-        _fal_ui_field: 'video',
-        'x-fal-file-input': true
-      }
-    },
-    image_urls: {
-      type: 'array',
-      title: 'Image Urls',
-      examples: [
-        [
-          'https://v3b.fal.media/files/b/0a8eba37/Cqg-4Uwzyz4DELfceT1CF_a17e588773ec45b1a9e6f100a787b80b.jpg'
-        ]
-      ],
-      description: 'Reference images to guide video generation. Refer to them in the prompt as @Image1, @Image2, etc. Supported formats: JPEG, PNG, WebP. Max 30 MB per image. Up to 9 images. Total files across all modalities must not exceed 12.',
-      maxItems: 9,
-      items: {
-        type: 'string',
-        'x-fal-file-input': true
-      }
-    },
-    audio_urls: {
-      type: 'array',
-      title: 'Audio Urls',
-      description: 'Reference audio to guide video generation. Refer to them in the prompt as @Audio1, @Audio2, etc. Supported formats: MP3, WAV. Up to 3 files, combined duration must not exceed 15 seconds. Max 15 MB per file.If audio is provided, at least one reference image or video is required.',
-      maxItems: 3,
-      items: {
-        type: 'string',
-        _fal_ui_field: 'audio',
-        'x-fal-file-input': true
-      }
+      type: 'string'
     },
     generate_audio: {
-      type: 'boolean',
       title: 'Generate Audio',
       description: 'Whether to generate synchronized audio for the video, including sound effects, ambient sounds, and lip-synced speech. The cost of video generation is the same regardless of whether audio is generated or not.',
-      default: true
+      default: true,
+      type: 'boolean'
     }
-  }
+  },
+  type: 'object'
 } as const;
 
 export const Seedance20EnterpriseV2ReferenceToVideoOutputSchema = {
-  type: 'object',
-  title: 'Seedance2VideoOutput',
-  required: [
-    'video',
-    'seed'
-  ],
   'x-fal-order-properties': [
     'video',
     'seed'
   ],
+  required: [
+    'video',
+    'seed'
+  ],
+  title: 'Seedance2VideoOutput',
   properties: {
+    seed: {
+      title: 'Seed',
+      description: 'The seed used for generation.',
+      examples: [
+        42
+      ],
+      type: 'integer'
+    },
     video: {
+      description: 'The generated video file.',
       examples: [
         {
           url: 'https://storage.googleapis.com/falserverless/example_outputs/bytedance/seedance_2/output.mp4'
         }
       ],
-      description: 'The generated video file.',
       $ref: '#/components/schemas/File'
-    },
-    seed: {
-      type: 'integer',
-      title: 'Seed',
-      examples: [
-        42
-      ],
-      description: 'The seed used for generation.'
     }
-  }
+  },
+  type: 'object'
 } as const;
 
 export const Seedance25ReferenceToVideoInputSchema = {
-  type: 'object',
-  title: 'Seedance2R2VInput',
   required: [
     'prompt'
   ],
+  title: 'Seedance2R2VInput',
   'x-fal-order-properties': [
     'prompt',
     'image_urls',
@@ -1836,82 +1834,23 @@ export const Seedance25ReferenceToVideoInputSchema = {
     'bitrate_mode',
     'end_user_id'
   ],
+  type: 'object',
   properties: {
-    end_user_id: {
-      description: 'The unique user ID of the end user.',
-      title: 'End User Id',
-      anyOf: [
-        {
-          type: 'string'
-        },
-        {
-          type: 'null'
-        }
-      ]
-    },
     audio_urls: {
+      title: 'Audio Urls',
+      type: 'array',
       description: 'Reference audio to guide video generation. Refer to them in the prompt as @Audio1, @Audio2, etc. Supported formats: MP3, WAV. Up to 10 files. Each file must be 1.8 to 30.2 seconds and no larger than 15 MB; combined duration must not exceed 30.2 seconds. If audio is provided, at least one reference image or video is required.',
-      type: 'array',
       items: {
-        type: 'string',
         _fal_ui_field: 'audio',
-        'x-fal-file-input': true
-      },
-      title: 'Audio Urls'
-    },
-    resolution: {
-      description: 'Video resolution - 480p for faster generation, 720p for balance, 1080p for high quality.',
-      type: 'string',
-      default: '720p',
-      title: 'Resolution',
-      enum: [
-        '480p',
-        '720p',
-        '1080p'
-      ]
-    },
-    video_urls: {
-      description: 'Reference videos to guide video generation. Refer to them in the prompt as @Video1, @Video2, etc. Supported formats: MP4, MOV. Up to 10 videos. Each video must be 1.8 to 30.2 seconds and no larger than 200 MB; combined duration must not exceed 30.2 seconds. Dimensions must be 300 to 6,000 pixels per side, aspect ratio 0.4 to 2.5, and frame rate 24 to 60 FPS.',
-      type: 'array',
-      items: {
-        type: 'string',
-        _fal_ui_field: 'video',
-        'x-fal-file-input': true
-      },
-      title: 'Video Urls'
-    },
-    bitrate_mode: {
-      description: 'Output bitrate mode. \'high\' requests a higher-quality, larger-file encode from the model; \'standard\' uses the default bitrate.',
-      type: 'string',
-      default: 'standard',
-      examples: [
-        'standard'
-      ],
-      enum: [
-        'standard',
-        'high'
-      ],
-      title: 'Bitrate Mode'
-    },
-    image_urls: {
-      description: 'Reference images to guide video generation. Refer to them in the prompt as @Image1, @Image2, etc. Supported formats: JPG, PNG, WebP, BMP, TIFF, GIF, HEIC, HEIF. Max 30 MB per image. Up to 30 images. Total files across all modalities must not exceed 50.',
-      type: 'array',
-      items: {
         type: 'string',
         'x-fal-file-input': true
-      },
-      title: 'Image Urls',
-      examples: [
-        [
-          'https://v3b.fal.media/files/b/0a8eba37/Cqg-4Uwzyz4DELfceT1CF_a17e588773ec45b1a9e6f100a787b80b.jpg'
-        ]
-      ]
+      }
     },
     duration: {
-      description: 'Duration of the video in seconds. Supports 4 to 30 seconds, or auto to let the model decide based on the prompt.',
+      title: 'Duration',
       type: 'string',
       default: 'auto',
-      title: 'Duration',
+      description: 'Duration of the video in seconds. Supports 4 to 30 seconds, or auto to let the model decide based on the prompt.',
       enum: [
         'auto',
         '4',
@@ -1943,25 +1882,60 @@ export const Seedance25ReferenceToVideoInputSchema = {
         '30'
       ]
     },
-    prompt: {
-      description: 'The text prompt used to generate the video.',
-      type: 'string',
-      examples: [
-        'An octopus finds a football in the ocean and excitedly calls its octopus friends to come and play. Cut scene to an octopus football game under the sea.'
-      ],
-      title: 'Prompt'
-    },
     generate_audio: {
-      description: 'Whether to generate synchronized audio for the video, including sound effects, ambient sounds, and lip-synced speech. The cost of video generation is the same regardless of whether audio is generated or not.',
+      title: 'Generate Audio',
       type: 'boolean',
       default: true,
-      title: 'Generate Audio'
+      description: 'Whether to generate synchronized audio for the video, including sound effects, ambient sounds, and lip-synced speech. The cost of video generation is the same regardless of whether audio is generated or not.'
+    },
+    prompt: {
+      title: 'Prompt',
+      type: 'string',
+      description: 'The text prompt used to generate the video.',
+      examples: [
+        'An octopus finds a football in the ocean and excitedly calls its octopus friends to come and play. Cut scene to an octopus football game under the sea.'
+      ]
+    },
+    bitrate_mode: {
+      title: 'Bitrate Mode',
+      type: 'string',
+      default: 'standard',
+      examples: [
+        'standard'
+      ],
+      enum: [
+        'standard',
+        'high'
+      ],
+      description: 'Output bitrate mode. \'high\' requests a higher-quality, larger-file encode from the model; \'standard\' uses the default bitrate.'
+    },
+    video_urls: {
+      title: 'Video Urls',
+      type: 'array',
+      description: 'Reference videos to guide video generation. Refer to them in the prompt as @Video1, @Video2, etc. Supported formats: MP4, MOV. Up to 10 videos. Each video must be 1.8 to 30.2 seconds and no larger than 200 MB; combined duration must not exceed 30.2 seconds. Dimensions must be 300 to 6,000 pixels per side, aspect ratio 0.4 to 2.5, and frame rate 24 to 60 FPS.',
+      items: {
+        _fal_ui_field: 'video',
+        type: 'string',
+        'x-fal-file-input': true
+      }
+    },
+    end_user_id: {
+      title: 'End User Id',
+      description: 'The unique user ID of the end user.',
+      anyOf: [
+        {
+          type: 'string'
+        },
+        {
+          type: 'null'
+        }
+      ]
     },
     aspect_ratio: {
-      description: 'The aspect ratio of the generated video. Use 16:9 for landscape, 9:16 for portrait/vertical, 1:1 for square, 21:9 for ultrawide cinematic, or auto to let the model decide.',
+      title: 'Aspect Ratio',
       type: 'string',
       default: 'auto',
-      title: 'Aspect Ratio',
+      description: 'The aspect ratio of the generated video. Use 16:9 for landscape, 9:16 for portrait/vertical, 1:1 for square, 21:9 for ultrawide cinematic, or auto to let the model decide.',
       enum: [
         'auto',
         '21:9',
@@ -1971,90 +1945,114 @@ export const Seedance25ReferenceToVideoInputSchema = {
         '3:4',
         '9:16'
       ]
+    },
+    image_urls: {
+      title: 'Image Urls',
+      type: 'array',
+      description: 'Reference images to guide video generation. Refer to them in the prompt as @Image1, @Image2, etc. Supported formats: JPG, PNG, WebP, BMP, TIFF, GIF, HEIC, HEIF. Max 30 MB per image. Up to 30 images. Total files across all modalities must not exceed 50.',
+      examples: [
+        [
+          'https://v3b.fal.media/files/b/0a8eba37/Cqg-4Uwzyz4DELfceT1CF_a17e588773ec45b1a9e6f100a787b80b.jpg'
+        ]
+      ],
+      items: {
+        type: 'string',
+        'x-fal-file-input': true
+      }
+    },
+    resolution: {
+      title: 'Resolution',
+      type: 'string',
+      default: '720p',
+      description: 'Video resolution - 480p for faster generation, 720p for balance, 1080p for high quality.',
+      enum: [
+        '480p',
+        '720p',
+        '1080p'
+      ]
     }
   }
 } as const;
 
 export const Seedance25ReferenceToVideoOutputSchema = {
-  type: 'object',
-  title: 'Seedance2VideoOutput',
   required: [
     'video',
     'seed'
   ],
+  title: 'Seedance2VideoOutput',
   'x-fal-order-properties': [
     'video',
     'seed'
   ],
+  type: 'object',
   properties: {
-    seed: {
-      description: 'The seed used for generation.',
-      type: 'integer',
-      examples: [
-        42
-      ],
-      title: 'Seed'
-    },
     video: {
+      $ref: '#/components/schemas/File',
       description: 'The generated video file.',
       examples: [
         {
           url: 'https://storage.googleapis.com/falserverless/example_outputs/bytedance/seedance_2/output.mp4'
         }
-      ],
-      $ref: '#/components/schemas/File'
+      ]
+    },
+    seed: {
+      title: 'Seed',
+      type: 'integer',
+      description: 'The seed used for generation.',
+      examples: [
+        42
+      ]
     }
   }
 } as const;
 
 export const GeminiOmniFlashReferenceToVideoInputSchema = {
   properties: {
-    prompt: {
-      maxLength: 20000,
-      description: 'The text prompt describing the video. You can bind reference images to roles inline using tags like ``<IMAGE_REF_0>`` (see the Omni Flash prompt guide).',
-      title: 'Prompt',
+    aspect_ratio: {
+      description: 'The aspect ratio of the generated video.',
       type: 'string',
-      examples: [
-        'A cat playfully batting at a ball of yarn in a sunlit living room.'
-      ]
-    },
-    duration: {
-      default: 8,
-      description: 'The duration of the generated video, in seconds.',
-      type: 'integer',
-      maximum: 10,
-      title: 'Duration',
-      minimum: 3
+      enum: [
+        '16:9',
+        '9:16'
+      ],
+      title: 'Aspect Ratio',
+      default: '16:9'
     },
     image_urls: {
-      description: 'URLs of the reference images to incorporate into the video.',
+      type: 'array',
       minItems: 1,
+      title: 'Image URLs',
+      items: {
+        type: 'string',
+        'x-fal-file-input': true
+      },
       examples: [
         [
           'https://storage.googleapis.com/falserverless/example_inputs/veo31-r2v-input-1.png',
           'https://storage.googleapis.com/falserverless/example_inputs/veo31-r2v-input-2.png'
         ]
       ],
-      title: 'Image URLs',
-      type: 'array',
-      maxItems: 10,
-      items: {
-        type: 'string',
-        'x-fal-file-input': true
-      }
+      description: 'URLs of the reference images to incorporate into the video.',
+      maxItems: 10
     },
-    aspect_ratio: {
-      default: '16:9',
-      enum: [
-        '16:9',
-        '9:16'
-      ],
+    duration: {
+      maximum: 10,
+      type: 'integer',
+      description: 'The duration of the generated video, in seconds.',
+      title: 'Duration',
+      minimum: 3,
+      default: 8
+    },
+    prompt: {
+      description: 'The text prompt describing the video. You can bind reference images to roles inline using tags like ``<IMAGE_REF_0>`` (see the Omni Flash prompt guide).',
       type: 'string',
-      title: 'Aspect Ratio',
-      description: 'The aspect ratio of the generated video.'
+      examples: [
+        'A cat playfully batting at a ball of yarn in a sunlit living room.'
+      ],
+      title: 'Prompt',
+      maxLength: 20000
     }
   },
-  title: 'OmniFlashReferenceToVideoInput',
   type: 'object',
   'x-fal-order-properties': [
     'prompt',
@@ -2062,6 +2060,7 @@ export const GeminiOmniFlashReferenceToVideoInputSchema = {
     'aspect_ratio',
     'duration'
   ],
+  title: 'OmniFlashReferenceToVideoInput',
   required: [
     'prompt',
     'image_urls'
@@ -2075,12 +2074,201 @@ export const GeminiOmniFlashReferenceToVideoOutputSchema = {
       $ref: '#/components/schemas/File'
     }
   },
-  title: 'OmniFlashReferenceToVideoOutput',
   type: 'object',
   'x-fal-order-properties': [
     'video'
   ],
+  title: 'OmniFlashReferenceToVideoOutput',
   required: [
     'video'
   ]
+} as const;
+
+export const H3MaxReferenceToVideoInputSchema = {
+  title: 'TurboReferenceToVideoHailuo03Input',
+  'x-fal-order-properties': [
+    'prompt',
+    'duration',
+    'resolution',
+    'seed',
+    'enable_safety_checker',
+    'sync_mode',
+    'prompt_expansion_mode',
+    'aspect_ratio',
+    'reference_image_urls',
+    'reference_video_urls',
+    'reference_audio_urls'
+  ],
+  required: [
+    'prompt',
+    'prompt_expansion_mode'
+  ],
+  properties: {
+    prompt: {
+      description: 'Text prompt for video generation. Refer to reference assets by their modality and order in the reference lists: Image 1, Image 2, Video 1, Audio 1, and so on.',
+      title: 'Prompt',
+      examples: [
+        'Image 1 is the female protagonist. Image 2 is her small dog. Keep the woman and dog consistent with their respective reference images while they walk together through a sunlit garden.'
+      ],
+      minLength: 1,
+      type: 'string',
+      maxLength: 50000
+    },
+    duration: {
+      description: 'The duration of the video in seconds.',
+      title: 'Duration',
+      minimum: 5,
+      default: 5,
+      maximum: 15,
+      type: 'integer'
+    },
+    sync_mode: {
+      description: 'Return the generated video as base64 instead of a CDN URL.',
+      title: 'Sync Mode',
+      default: false,
+      type: 'boolean'
+    },
+    aspect_ratio: {
+      description: 'The aspect ratio of the generated video.',
+      title: 'Aspect Ratio',
+      enum: [
+        'adaptive',
+        '21:9',
+        '16:9',
+        '4:3',
+        '1:1',
+        '3:4',
+        '9:16'
+      ],
+      default: 'adaptive',
+      type: 'string'
+    },
+    enable_safety_checker: {
+      description: 'If set to true, the safety checker will be enabled.',
+      title: 'Enable Safety Checker',
+      default: true,
+      type: 'boolean'
+    },
+    reference_image_urls: {
+      description: 'URLs of subject/style reference images, referenced in the prompt as Image 1, Image 2, and so on. Reference images, videos, and audio clips must add up to at most 12 files.',
+      title: 'Reference Image URLs',
+      examples: [
+        [
+          'https://storage.googleapis.com/falserverless/example_inputs/hailuo23/pro_i2v_in.jpg'
+        ]
+      ],
+      items: {
+        type: 'string',
+        'x-fal-file-input': true
+      },
+      maxItems: 9,
+      type: 'array'
+    },
+    prompt_expansion_mode: {
+      description: 'How much effort to spend rewriting the prompt before generation. \'balanced\' returns in about a second. \'quality\' spends up to ~30s on a richer prompt.',
+      title: 'Prompt Expansion Mode',
+      examples: [
+        'balanced',
+        'quality'
+      ],
+      default: 'balanced',
+      type: 'string'
+    },
+    reference_video_urls: {
+      description: 'URLs of motion/reference video clips (2-15 seconds each, combined duration at most 15 seconds), referenced in the prompt as Video 1, Video 2, and so on. Reference images, videos, and audio clips must add up to at most 12 files.',
+      title: 'Reference Video URLs',
+      items: {
+        type: 'string',
+        'x-fal-file-input': true
+      },
+      maxItems: 3,
+      type: 'array'
+    },
+    reference_audio_urls: {
+      description: 'URLs of reference audio clips (2-15 seconds each, combined duration at most 15 seconds), referenced in the prompt as Audio 1, Audio 2, and so on. Audio cannot be the only reference input; provide at least one reference image or video with it. Reference images, videos, and audio clips must add up to at most 12 files.',
+      title: 'Reference Audio URLs',
+      items: {
+        type: 'string',
+        'x-fal-file-input': true
+      },
+      maxItems: 3,
+      type: 'array'
+    },
+    seed: {
+      description: 'Random seed. A random seed is selected when omitted.',
+      anyOf: [
+        {
+          type: 'integer'
+        },
+        {
+          type: 'null'
+        }
+      ],
+      title: 'Seed'
+    },
+    resolution: {
+      description: 'The native generation resolution of the video.',
+      title: 'Resolution',
+      enum: [
+        '480P',
+        '768P'
+      ],
+      default: '768P',
+      type: 'string'
+    }
+  },
+  type: 'object'
+} as const;
+
+export const H3MaxReferenceToVideoOutputSchema = {
+  title: 'TurboReferenceToVideoHailuo03Output',
+  'x-fal-order-properties': [
+    'video',
+    'expanded_prompt',
+    'seed',
+    'timings'
+  ],
+  required: [
+    'video',
+    'seed'
+  ],
+  properties: {
+    video: {
+      description: 'The generated video',
+      $ref: '#/components/schemas/File'
+    },
+    seed: {
+      description: 'Base seed for reproducing the generation.',
+      title: 'Seed',
+      type: 'integer'
+    },
+    timings: {
+      description: 'Timing breakdown in seconds. \'inference\' is the DiT denoising time on the GPU backend. Null on routes that do not report backend timings.',
+      anyOf: [
+        {
+          additionalProperties: {
+            type: 'number'
+          },
+          type: 'object'
+        },
+        {
+          type: 'null'
+        }
+      ],
+      title: 'Timings'
+    },
+    expanded_prompt: {
+      description: 'The prompt after expansion, as sent to the model. Null when prompt expansion was disabled, left the prompt unchanged, or was performed internally by MiniMax\'s hosted API.',
+      anyOf: [
+        {
+          type: 'string'
+        },
+        {
+          type: 'null'
+        }
+      ],
+      title: 'Expanded Prompt'
+    }
+  },
+  type: 'object'
 } as const;

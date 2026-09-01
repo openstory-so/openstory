@@ -169,6 +169,27 @@ describe.each([
   }
 );
 
+describe('buildReferenceVideoPrompt (minimax_h3_max)', () => {
+  const h3Config = getMotionReferenceEndpoint('minimax_h3_max');
+  if (!h3Config) {
+    throw new Error('minimax_h3_max must have a reference endpoint config');
+  }
+
+  it('uses spaced Image N tokens, not @ImageN', () => {
+    const result = buildReferenceVideoPrompt(
+      h3Config,
+      'ALICE turns toward the window',
+      STILL,
+      [ref('https://example.com/a.png', 'Alice - tall woman', 'Alice')]
+    );
+    expect(
+      result.prompt.startsWith('Use Image 1 as the starting frame.\n')
+    ).toBe(true);
+    expect(result.prompt).toContain('Image 2 turns toward the window');
+    expect(result.prompt).not.toContain('@Image');
+  });
+});
+
 describe('buildReferenceVideoPrompt (per-model config knobs)', () => {
   // Gemini Omni Flash-style config: 0-indexed angle-bracket tags, tighter cap.
   const omniStyleConfig: MotionReferenceEndpointConfig = {

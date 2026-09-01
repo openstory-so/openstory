@@ -57,7 +57,8 @@ const {
   RECOMMENDED_MODELS,
   toGeminiThinkingLevel,
 } = await import('./llm-client');
-const { DEFAULT_VISION_MODEL } = await import('./models.config');
+const { DEFAULT_ANALYSIS_MODEL, DEFAULT_VISION_MODEL } =
+  await import('./models.config');
 
 const usage = (cost?: number): TokenUsage => ({
   promptTokens: 0,
@@ -673,6 +674,7 @@ describe('llm-client', () => {
       // together on a model bump; this catches a bump that misses one.
       const lockstepModels = [
         ...new Set([
+          DEFAULT_ANALYSIS_MODEL,
           DEFAULT_VISION_MODEL,
           ...Object.values(RECOMMENDED_MODELS),
         ]),
@@ -724,7 +726,7 @@ describe('llm-client', () => {
         });
       });
 
-      it('only requires parameter support for non-Anthropic models', async () => {
+      it('only requires parameter support for non-Anthropic, non-OpenAI models', async () => {
         mockChat.mockReturnValue(textStream());
 
         await drain(
@@ -737,6 +739,54 @@ describe('llm-client', () => {
         expect(mockChat.mock.calls[0]?.[0]?.modelOptions.provider).toEqual({
           requireParameters: true,
         });
+      });
+
+      it("pins OpenAI models to OpenAI's own endpoint", async () => {
+        // Azure GPT-5 hosts advertise max_completion_tokens; native OpenAI
+        // advertises max_tokens. Pinning avoids the #1302 empty-candidate
+        // trap until the native OpenAI via (#1168) ships.
+        mockChat.mockReturnValue(textStream());
+
+        await drain(
+          callLLMStream({
+            model: 'openai/gpt-5.6-luna',
+            messages: [{ role: 'user', content: 'test' }],
+          })
+        );
+
+        expect(mockChat.mock.calls[0]?.[0]?.modelOptions.provider).toEqual({
+          only: ['openai'],
+        });
+      });
+
+      it('drops temperature for GPT-5 chat models that advertise no sampling params', async () => {
+        mockChat.mockReturnValue(textStream());
+
+        await drain(
+          callLLMStream({
+            model: 'openai/gpt-5.6-luna',
+            messages: [{ role: 'user', content: 'test' }],
+            temperature: 0.7,
+          })
+        );
+
+        const options = mockChat.mock.calls[0]?.[0]?.modelOptions;
+        expect(options.temperature).toBeUndefined();
+        expect(options.topP).toBeUndefined();
+      });
+
+      it('keeps temperature for models that support classic sampling', async () => {
+        mockChat.mockReturnValue(textStream());
+
+        await drain(
+          callLLMStream({
+            model: 'anthropic/claude-sonnet-5',
+            messages: [{ role: 'user', content: 'test' }],
+            temperature: 0.7,
+          })
+        );
+
+        expect(mockChat.mock.calls[0]?.[0]?.modelOptions.temperature).toBe(0.7);
       });
 
       it('sends max_tokens, not max_completion_tokens, so requireParameters keeps DeepSeek routable', async () => {

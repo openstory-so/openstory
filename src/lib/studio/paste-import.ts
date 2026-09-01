@@ -11,7 +11,8 @@
  *     images, `@ElementN` → `ImageN`
  *   - `image_url` / `start_image_url` / `first_frame_url` → start frame
  *   - `end_image_url` / `last_frame_url` → end frame
- *   - `video_urls[]`, `audio_urls[]`
+ *   - `video_urls[]` / `reference_video_urls[]`, `audio_urls[]` /
+ *     `reference_audio_urls[]`
  */
 
 import { z } from 'zod';
@@ -34,6 +35,8 @@ const requestSchema = z.looseObject({
   reference_image_urls: urlList,
   video_urls: urlList,
   audio_urls: urlList,
+  reference_video_urls: urlList,
+  reference_audio_urls: urlList,
   elements: z
     .array(
       z.looseObject({
@@ -84,8 +87,10 @@ export function parseStudioPaste(text: string): StudioPasteImport | null {
     prompt = prompt.replace(/@?Element(\d+)\b/g, 'Image$1');
   }
 
-  // Pills store the bare token; the request carries `@ImageN`.
+  // Pills store the bare token; the request carries `@ImageN` (Seedance)
+  // or `Image N` (H3 Max).
   prompt = prompt.replace(/@(Image|Video|Audio)(\d+)/g, '$1$2');
+  prompt = prompt.replace(/\b(Image|Video|Audio) (\d+)\b/g, '$1$2');
 
   const startImageUrl =
     body.start_image_url ?? body.first_frame_url ?? body.image_url;
@@ -94,8 +99,8 @@ export function parseStudioPaste(text: string): StudioPasteImport | null {
   return {
     prompt,
     images: [...new Set(images)],
-    videos: body.video_urls ?? [],
-    audio: body.audio_urls ?? [],
+    videos: body.video_urls ?? body.reference_video_urls ?? [],
+    audio: body.audio_urls ?? body.reference_audio_urls ?? [],
     ...(startImageUrl && { startImageUrl }),
     ...(endImageUrl && { endImageUrl }),
   };

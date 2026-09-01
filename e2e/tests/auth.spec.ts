@@ -83,6 +83,38 @@ baseTest.describe('Route Protection', () => {
   );
 
   baseTest(
+    'anonymous empty-prompt generate opens the login dialog (#1393)',
+    async ({ page }) => {
+      await page.goto('/images');
+      await waitForScriptEditor(page);
+      const generate = page.getByRole('button', { name: 'Generate image' });
+      await expect(generate).toBeEnabled();
+      await generate.click();
+      await expect(
+        page.getByRole('dialog', { name: 'Sign in to continue' })
+      ).toBeVisible();
+    }
+  );
+
+  baseTest(
+    'anonymous empty-script generate opens the login dialog (#1393)',
+    async ({ page }) => {
+      await page.goto('/');
+      await waitForScriptEditor(page);
+      const generate = page.getByRole('button', {
+        name: 'Generate',
+        exact: true,
+      });
+      await expect(generate).toBeEnabled();
+      await generate.click();
+      await expect(
+        page.getByRole('dialog', { name: 'Sign in to continue' })
+      ).toBeVisible();
+      await expect(page).toHaveURL('/');
+    }
+  );
+
+  baseTest(
     'anonymous generate is intercepted by the login dialog',
     async ({ page }) => {
       await page.goto('/');

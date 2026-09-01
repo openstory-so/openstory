@@ -173,6 +173,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
             motionBucket: input.motionBucket,
             aspectRatio: input.aspectRatio,
             generateAudio: input.generateAudio,
+            referenceImages: input.referenceImages,
           },
           await getEffectiveFalPricing()
         );
@@ -649,7 +650,8 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
                   job.jobId,
                   job.modelKey,
                   scopedDb.credentials,
-                  job.via
+                  job.via,
+                  job.endpointId
                 );
               } catch (error) {
                 if (isContentRejectionError(error)) {

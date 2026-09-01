@@ -16,6 +16,22 @@ export const FAL_TYPICAL_UNITS_PER_DEFAULT_CLIP: Readonly<
 };
 
 /**
+ * Local-seed USD per default call for endpoints whose fal pricing API row
+ * is a catalog stub (unit `"units"` at $1, no typical, no observed samples).
+ * Used by `LOCAL_FAL_PRICING_SEED` only — never billing, never
+ * `estimateFalCost`, and never written to
+ * `model_pricing.typical_units_per_call`.
+ *
+ * Nano Banana 2 Lite is token-priced on fal ($37.50 / 1M image-output
+ * tokens; a 1K still is 1120 tokens → ~$0.042). $0.04 matches Google's
+ * published 1K still (~$0.034 at Google's $30/1M, fal is ~25% higher).
+ */
+export const FAL_ADVERTISED_CALL_USD = {
+  'google/nano-banana-2-lite': 0.04,
+  'google/nano-banana-lite/edit': 0.04,
+} as const satisfies Record<string, number>;
+
+/**
  * Sibling endpoints that share advertised (and, so far, billed) rates.
  * t2v has no usage of its own yet, so it inherits i2v's bill-verified rate
  * rather than sitting on fal's advertised "compute seconds × $0.00017".

@@ -3,13 +3,13 @@
  *
  * Most models have a single image-to-video endpoint (`modelConfig.id`). A few
  * accept cast/element reference images only on a SEPARATE reference-to-video
- * endpoint that takes `image_urls[]` bound to per-model prompt tokens and has
+ * endpoint that takes an image list bound to per-model prompt tokens and has
  * no single start-frame `image_url` — see `MOTION_REFERENCE_ENDPOINTS`. When a
  * scene actually has references AND the model has such an endpoint, route there;
  * otherwise stay on the normal image-to-video endpoint.
  *
  * `references` is how those images ride, if at all:
- *   - `endpoint` — dedicated reference-to-video endpoint (Seedance)
+ *   - `endpoint` — dedicated reference-to-video endpoint (Seedance, H3 Max)
  *   - `inline` — URLs on the same generations call (Kling `elements`, Grok
  *     Imagine 1.5 native `reference`/`character` prompt parts)
  *   - `none` — URLs are not sent; tokens become descriptions in the prompt

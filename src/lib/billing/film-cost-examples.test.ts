@@ -1,13 +1,24 @@
 import { describe, expect, it } from 'vitest';
 import { TEST_FAL_PRICING as FAL_PRICING } from '@/lib/ai/__tests__/fal-pricing-fixture';
-import { DEFAULT_IMAGE_MODEL } from '@/lib/ai/models';
+import { TURBO_DEFAULT_IMAGE } from '@/lib/ai/generation-mode';
 import { SIGNUP_GRANT_MICROS } from '@/lib/billing/constants';
 import { buildFilmCostExamples } from './film-cost-examples';
-import { microsToUsd } from './money';
+import { micros, microsToUsd } from './money';
 
 describe('buildFilmCostExamples', () => {
   it('returns null when the default image model has no pricing signal', () => {
     expect(buildFilmCostExamples({})).toBeNull();
+  });
+
+  it('hides the showcase when Lite only has fal’s $1/unit catalog stub', () => {
+    const stub = {
+      ...FAL_PRICING,
+      'google/nano-banana-2-lite': {
+        unitPrice: micros(1_000_000),
+        unit: 'units',
+      },
+    };
+    expect(buildFilmCostExamples(stub)).toBeNull();
   });
 
   it('builds three tiers for a 30s Enhance target, not an orphan 40s runtime', () => {
@@ -48,7 +59,7 @@ describe('buildFilmCostExamples', () => {
 
     expect(
       full.costMicros,
-      `with-motion-music ($${microsToUsd(full.costMicros).toFixed(2)} with ${DEFAULT_IMAGE_MODEL}) should fit in welcome grant ($${microsToUsd(SIGNUP_GRANT_MICROS)})`
+      `with-motion-music ($${microsToUsd(full.costMicros).toFixed(2)} with ${TURBO_DEFAULT_IMAGE}) should fit in welcome grant ($${microsToUsd(SIGNUP_GRANT_MICROS)})`
     ).toBeLessThanOrEqual(SIGNUP_GRANT_MICROS);
   });
 });

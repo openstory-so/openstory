@@ -24,6 +24,24 @@ describe('parseStudioPaste', () => {
     });
   });
 
+  it('reads an H3 Max reference request with spaced Image N tags', () => {
+    const result = parseStudioPaste(
+      JSON.stringify({
+        prompt:
+          'Image 1 is the lead. Video 1 is the walk cycle. Audio 1 is rain.',
+        reference_image_urls: ['https://x/ava.png'],
+        reference_video_urls: ['https://x/walk.mp4'],
+        reference_audio_urls: ['https://x/rain.mp3'],
+      })
+    );
+    expect(result).toEqual({
+      prompt: 'Image1 is the lead. Video1 is the walk cycle. Audio1 is rain.',
+      images: ['https://x/ava.png'],
+      videos: ['https://x/walk.mp4'],
+      audio: ['https://x/rain.mp3'],
+    });
+  });
+
   it('reads a Grok reference request with zero-based tags', () => {
     const result = parseStudioPaste(
       JSON.stringify({

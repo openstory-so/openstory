@@ -169,8 +169,12 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
           </span>
         )}
       </div>
-      <PopoverContent className="w-auto p-4" align="start">
-        <div className="flex flex-col gap-4">
+      <PopoverContent
+        align="start"
+        collisionPadding={12}
+        className="w-[min(22rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] overflow-x-hidden p-4"
+      >
+        <div className="flex min-w-0 flex-col gap-4">
           {/* Aspect Ratio Section */}
           <section className="flex flex-col gap-2">
             <h3 className="text-sm font-medium text-foreground">

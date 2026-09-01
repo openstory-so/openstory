@@ -14,6 +14,16 @@ export const TEST_FAL_PRICING: Record<string, EffectiveFalPricing> = {
     unit: 'images',
     typicalUnitsPerCall: 1.5,
   },
+  'google/nano-banana-2-lite': {
+    unitPrice: micros(40_000),
+    unit: 'images',
+    typicalUnitsPerCall: 1,
+  },
+  'google/nano-banana-lite/edit': {
+    unitPrice: micros(40_000),
+    unit: 'images',
+    typicalUnitsPerCall: 1,
+  },
   'openai/gpt-image-2': {
     unitPrice: micros(1_000_000),
     unit: 'units',
@@ -51,6 +61,10 @@ export const TEST_FAL_PRICING: Record<string, EffectiveFalPricing> = {
     unitPrice: micros(25_000),
     unit: 'seconds',
     typicalUnitsPerCall: 8,
+  },
+  'minimax/h3-max/reference-to-video': {
+    unitPrice: micros(80_000),
+    unit: 'seconds',
   },
   'bytedance/seedance-2.5/image-to-video': {
     unitPrice: micros(14_000),

@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { TEST_FAL_PRICING } from '@/lib/ai/__tests__/fal-pricing-fixture';
+import { micros } from '@/lib/billing/money';
 import {
+  mockFalVideo,
   mockGenerateVideo,
   mockGetVideoJobStatus,
 } from './__mocks__/fal-client.mock';
@@ -57,13 +60,18 @@ vi.doMock('@/lib/ai/byteplus-asset-ingest', () => ({
   toArkFetchableUrl: async (url: string) => url,
 }));
 
-const { submitMotionJob, pollMotionJob, motionCostFromUsage } =
-  await import('./motion-generation');
+const {
+  submitMotionJob,
+  pollMotionJob,
+  motionCostFromUsage,
+  calculateMotionMetadata,
+} = await import('./motion-generation');
 
 describe('Motion Service', () => {
   beforeEach(() => {
     mockGenerateVideo.mockClear();
     mockGetVideoJobStatus.mockClear();
+    mockFalVideo.mockClear();
     mockCreateGrokVideo.mockClear();
     mockCreateGeminiVideo.mockClear();
     mockToArkMediaUrl.mockClear();
@@ -319,6 +327,50 @@ describe('Motion Service', () => {
 
       expect(result.via).toBe('fal');
     });
+
+    it('stamps the H3 Max r2v endpoint when refs are attached', async () => {
+      mockGenerateVideo.mockResolvedValue({
+        jobId: 'h3-r2v-job',
+        model: 'minimax/h3-max/reference-to-video',
+      });
+
+      const result = await submitMotionJob({
+        imageUrl: 'https://example.com/still.jpg',
+        prompt: 'SCARLETT waves',
+        model: 'minimax_h3_max',
+        duration: 5,
+        referenceImages: [
+          {
+            referenceImageUrl: 'https://example.com/scarlett.png',
+            description: 'Scarlett',
+            role: 'character',
+            token: 'SCARLETT',
+          },
+        ],
+      });
+
+      expect(result.endpointId).toBe('minimax/h3-max/reference-to-video');
+      expect(mockFalVideo).toHaveBeenCalledWith(
+        'minimax/h3-max/reference-to-video',
+        expect.anything()
+      );
+    });
+
+    it('stamps the H3 Max i2v endpoint when there are no refs', async () => {
+      mockGenerateVideo.mockResolvedValue({
+        jobId: 'h3-i2v-job',
+        model: 'minimax/h3-max/image-to-video',
+      });
+
+      const result = await submitMotionJob({
+        imageUrl: 'https://example.com/still.jpg',
+        prompt: 'A person walking',
+        model: 'minimax_h3_max',
+        duration: 5,
+      });
+
+      expect(result.endpointId).toBe('minimax/h3-max/image-to-video');
+    });
   });
 
   describe('pollMotionJob', () => {
@@ -384,6 +436,42 @@ describe('Motion Service', () => {
       expect(result.status).toBe('completed');
       expect(mockGetVideoJobStatus).toHaveBeenCalledWith(
         expect.objectContaining({ jobId: 'ark-job-1' })
+      );
+    });
+
+    it('polls the stamped H3 Max r2v endpoint, not catalog i2v', async () => {
+      mockGetVideoJobStatus.mockResolvedValue({
+        jobId: 'h3-r2v-job',
+        status: 'completed',
+        url: 'https://example.com/video.mp4',
+      });
+
+      await pollMotionJob(
+        'h3-r2v-job',
+        'minimax_h3_max',
+        undefined,
+        'fal',
+        'minimax/h3-max/reference-to-video'
+      );
+
+      expect(mockFalVideo).toHaveBeenCalledWith(
+        'minimax/h3-max/reference-to-video',
+        expect.anything()
+      );
+    });
+
+    it('falls back to catalog i2v when endpointId is missing (pre-stamp jobs)', async () => {
+      mockGetVideoJobStatus.mockResolvedValue({
+        jobId: 'job-1',
+        status: 'completed',
+        url: 'https://example.com/video.mp4',
+      });
+
+      await pollMotionJob('job-1', 'minimax_h3_max');
+
+      expect(mockFalVideo).toHaveBeenCalledWith(
+        'minimax/h3-max/image-to-video',
+        expect.anything()
       );
     });
   });
@@ -673,6 +761,44 @@ describe('Motion Service', () => {
       await expect(
         pollMotionJob('google-job', 'gemini_omni_flash', undefined, 'google')
       ).rejects.toThrow(/no Google key is available/);
+    });
+  });
+
+  describe('calculateMotionMetadata', () => {
+    it('gates H3 Max without refs on the i2v row', () => {
+      const { cost, model } = calculateMotionMetadata(
+        {
+          imageUrl: 'https://example.com/still.jpg',
+          prompt: 'A person walking',
+          model: 'minimax_h3_max',
+          duration: 5,
+        },
+        TEST_FAL_PRICING
+      );
+      expect(model).toBe('minimax/h3-max/image-to-video');
+      expect(cost).toBe(micros(200_000));
+    });
+
+    it('gates H3 Max with refs on the r2v row, not i2v', () => {
+      const { cost, model } = calculateMotionMetadata(
+        {
+          imageUrl: 'https://example.com/still.jpg',
+          prompt: 'SCARLETT waves',
+          model: 'minimax_h3_max',
+          duration: 5,
+          referenceImages: [
+            {
+              referenceImageUrl: 'https://example.com/scarlett.png',
+              description: 'Scarlett',
+              role: 'character',
+              token: 'SCARLETT',
+            },
+          ],
+        },
+        TEST_FAL_PRICING
+      );
+      expect(model).toBe('minimax/h3-max/reference-to-video');
+      expect(cost).toBe(micros(400_000));
     });
   });
 

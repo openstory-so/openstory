@@ -7,19 +7,26 @@ import {
   type AnalysisModelId,
 } from '@/lib/ai/models.config';
 import {
+  compareSelectorModels,
+  QUALITY_DEFAULT_ANALYSIS,
+  SELECTOR_GROUP_ORDER,
+  selectorGroup,
+  TURBO_ANALYSIS_MODELS,
+} from '@/lib/ai/generation-mode';
+import {
   isRegionBlockedModel,
   resolveModelForCountry,
 } from '@/lib/ai/region-policy';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo } from 'react';
 
-const GROUP_ORDER = ['all'] as const;
-
 type ModelSelectorProps = {
   selectedModels: AnalysisModelId[];
   onModelsChange: (models: AnalysisModelId[]) => void;
   disabled?: boolean;
   singleSelect?: boolean;
+  /** When set, only these ids appear. */
+  allowedIds?: readonly AnalysisModelId[];
 };
 
 export const ModelSelector: React.FC<ModelSelectorProps> = ({
@@ -27,6 +34,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
   onModelsChange,
   disabled = false,
   singleSelect = false,
+  allowedIds,
 }) => {
   // Region-blocked vendors are hidden from the picker (#1259): a user in an
   // Anthropic-blocked country shouldn't be offered a model the server would
@@ -43,14 +51,25 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
       [...SCRIPT_ANALYSIS_MODELS]
         .filter((m) => isSelectableAnalysisModelId(m.id))
         .filter((m) => !isRegionBlockedModel(m.id, country))
-        .sort((a, b) => a.qualityRank - b.qualityRank)
+        .filter((m) => !allowedIds || allowedIds.includes(m.id))
+        .sort((a, b) =>
+          compareSelectorModels(
+            a.id,
+            b.id,
+            TURBO_ANALYSIS_MODELS,
+            QUALITY_DEFAULT_ANALYSIS,
+            (id) =>
+              SCRIPT_ANALYSIS_MODELS.find((model) => model.id === id)
+                ?.qualityRank ?? 99
+          )
+        )
         .map((m) => ({
           id: m.id,
           name: m.name,
-          group: 'all',
+          group: selectorGroup(m.id, TURBO_ANALYSIS_MODELS),
           badge: m.license,
         })),
-    [country]
+    [country, allowedIds]
   );
 
   // Remap an already-selected blocked model (stored default, restored draft)
@@ -71,7 +90,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
     <BaseModelSelector
       label="Analysis Model"
       models={models}
-      groupOrder={GROUP_ORDER}
+      groupOrder={SELECTOR_GROUP_ORDER}
       selectedIds={selectedModels}
       onSelectionChange={(ids) => {
         const validIds = ids.filter((id): id is AnalysisModelId =>

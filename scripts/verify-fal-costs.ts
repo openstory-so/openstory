@@ -189,6 +189,10 @@ function buildImageInput(
         resolution: isHighRes ? '4K' : '1K',
       };
 
+    case 'nano_banana_2_lite':
+      // Fixed 1K — no resolution knob.
+      return { ...base, aspect_ratio: '16:9' };
+
     // Grok Imagine — aspect_ratio only
     case 'grok_imagine_image':
     case 'grok_imagine_image_quality':

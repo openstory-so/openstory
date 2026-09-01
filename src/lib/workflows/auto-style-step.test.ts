@@ -136,8 +136,10 @@ describe('deriveAutoStyle', () => {
     );
   });
 
-  it('saves an off-vocabulary category guess as film instead of failing the run (#1285)', async () => {
+  it('rejects an off-vocabulary category at schema parse (#1410)', async () => {
     // durableLLMCallCf parses through `responseSchema` — mirror that here.
+    // `.catch()` on the enum is gone so Anthropic accepts the schema; an
+    // off-vocabulary word is now a parse failure, not a silent default.
     durableLLMCallCf.mockImplementationOnce(
       async (_step: unknown, cfg: { responseSchema: z.ZodType }) =>
         cfg.responseSchema.parse({ ...RESPONSE, category: 'documentary' })
@@ -145,13 +147,11 @@ describe('deriveAutoStyle', () => {
     emit.mockReset();
     const { scopedDb, setGeneratedForSequence } = makeScopedDb(true);
 
-    await deriveAutoStyle(step, { scopedDb, ...PARAMS });
-
-    expect(setGeneratedForSequence).toHaveBeenCalledWith(
-      expect.objectContaining({
-        draft: expect.objectContaining({ category: 'film' }),
-      })
-    );
+    await expect(
+      deriveAutoStyle(step, { scopedDb, ...PARAMS })
+    ).rejects.toThrow(/invalid option|unsalvageable/i);
+    expect(setGeneratedForSequence).not.toHaveBeenCalled();
+    expect(emit).not.toHaveBeenCalled();
   });
 
   it('refuses to touch a row that is no longer bound to the sequence', async () => {

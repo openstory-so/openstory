@@ -29,7 +29,7 @@ export const SCRIPT_ANALYSIS_MODELS = [
     contextWindow: 1_000_000,
     maxOutputTokens: 128_000,
     vision: true,
-    description: 'Default analysis model; frontier reasoning and coding',
+    description: 'Frontier reasoning and coding',
   },
   {
     id: 'anthropic/claude-opus-5-fast',
@@ -215,7 +215,7 @@ export const SCRIPT_ANALYSIS_MODELS = [
     contextWindow: 1_050_000,
     maxOutputTokens: 128_000,
     vision: true,
-    description: 'GPT-5.6 fast, cost-efficient tier',
+    description: 'GPT-5.6 fast, cost-efficient tier; default analysis model',
   },
   {
     id: 'openai/gpt-5.4-mini',
@@ -402,13 +402,13 @@ export function resolveVisionModel(
   return DEFAULT_VISION_MODEL;
 }
 /**
- * Default model when none is specified: the top of the Arena board (#1367).
- * Fable 5 is 2× Opus 5 per token ($10/$50 vs $5/$25 per M), so this is a
- * deliberate quality-over-cost call. Existing users keep whatever their
- * generation settings already store; only fresh settings pick this up.
+ * Default model when none is specified. Luna won the analysis speed/quality
+ * eval (pipeline 95.7 at ~$0.015 vs Fable 5 at $0.85) and is the Turbo
+ * analysis default. Quality mode selects Fable; both modes show the full
+ * picker, grouped Fast / Quality.
+ * Existing users keep whatever generation settings already store.
  */
-export const DEFAULT_ANALYSIS_MODEL: AnalysisModelId =
-  'anthropic/claude-fable-5';
+export const DEFAULT_ANALYSIS_MODEL: AnalysisModelId = 'openai/gpt-5.6-luna';
 
 /**
  * Boundary-annotation scenes call only. Grok 4.6 + medium reasoning

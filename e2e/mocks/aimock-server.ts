@@ -21,6 +21,7 @@ import {
   loadFixtureFile,
   type ChatCompletionRequest,
   type Fixture,
+  type JournalEntry,
 } from '@copilotkit/aimock';
 import { createHash } from 'node:crypto';
 import {
@@ -300,12 +301,13 @@ function tolerantUserMessageRegex(userMessage: string): RegExp {
 }
 
 // The OpenRouter fixtures were recorded when DEFAULT_ANALYSIS_MODEL was Opus 5
-// (#1367 moved the default to Fable 5). They are replay stubs, not quality
-// samples, so in replay they also answer for the current default rather than
-// forcing a full re-record (every fal fixture downstream is keyed on the LLM
-// output). Recording mode keeps the exact model so a re-record captures Fable.
+// (#1367 Fable 5, then Luna). They are replay stubs, not quality samples, so
+// in replay they also answer for the current default rather than forcing a
+// full re-record (every fal fixture downstream is keyed on the LLM output).
+// Recording mode keeps the exact model so a re-record captures Luna.
 const FIXTURE_MODEL_ALIASES: Record<string, RegExp> = {
-  'anthropic/claude-opus-5': /^anthropic\/claude-(opus|fable)-5$/,
+  'anthropic/claude-opus-5':
+    /^(anthropic\/claude-(opus|fable)-5|openai\/gpt-5\.6-luna)$/,
 };
 
 function tolerateRuntimeIds(fixtures: Fixture[]): Fixture[] {
@@ -336,6 +338,10 @@ export async function startAimockServer(): Promise<string> {
     // so leaving strict on during recording would 503 every fal call
     // instead of proxying upstream. Gate it on recording mode: strict for
     // CI replay, lenient while recording so the proxy/record path runs.
+    // 503 alone is not fail-fast: image/LLM workflows retry 503s as
+    // transient (content-soften 1/4, image 1/5), so Playwright would sit
+    // on the spec timeout. abortPlaywrightOnStrictMiss() kills the run
+    // on the first journaled miss.
     strict: !E2E_RECORDING,
     logLevel: 'info',
     // Recorded fixtures carry real streaming timings (ttft + inter-chunk
@@ -350,7 +356,7 @@ export async function startAimockServer(): Promise<string> {
     requestTransform: falRequestTransform,
     // Record only when E2E_RECORD=1 (real key from .env.local). Default is
     // strict replay against the recorded fixtures — CI runs without the flag
-    // so a missing fixture fails fast instead of proxying to live OpenRouter.
+    // so a missing fixture 503s instead of proxying to live OpenRouter.
     // Recordings land in `_unsorted/`; the record script sorts them into
     // stage subfolders post-run so they don't pollute the curated layout.
     ...(E2E_RECORDING && {
@@ -393,8 +399,57 @@ export async function startAimockServer(): Promise<string> {
   }
 
   const url = await mockServer.start();
+  // Replay only: a STRICT 503 is otherwise retried by workflows, so the
+  // spec keeps running. Kill Playwright on the first miss instead.
+  if (!E2E_RECORDING) abortPlaywrightOnStrictMiss(mockServer);
   console.log(`[e2e] aimock server started at ${url}`);
   return url;
+}
+
+function isStrictMiss(entry: JournalEntry): boolean {
+  return (
+    entry.body !== null &&
+    entry.response.fixture === null &&
+    entry.response.status === 503 &&
+    entry.response.source !== 'proxy' &&
+    entry.response.source !== 'internal'
+  );
+}
+
+// STRICT 503 is not enough: generate steps retry it. Hook the journal (same
+// process as the Playwright runner — globalSetup is in-process) and exit
+// on the first miss. A short debounce lets a parallel fan-out journal its
+// siblings so the unmatched dump covers the burst, not just the first POST.
+function abortPlaywrightOnStrictMiss(server: LLMock): void {
+  const journal = server.journal;
+  const originalAdd = journal.add.bind(journal);
+  let scheduled = false;
+  // Class method is on the prototype; an own-property wrapper shadows it
+  // for every handler that calls journal.add(entry).
+  journal.add = (entry: Parameters<typeof originalAdd>[0]) => {
+    const full = originalAdd(entry);
+    if (scheduled || !isStrictMiss(full)) return full;
+    scheduled = true;
+    setTimeout(() => {
+      try {
+        dumpUnmatchedRequests(server);
+      } catch (error) {
+        console.error('[e2e] Failed to dump unmatched aimock requests:', error);
+      }
+      console.error(
+        [
+          '',
+          '[e2e] FATAL: aimock STRICT miss — no fixture matched.',
+          `      ${full.method} ${full.path}`,
+          `      Dump: ${UNMATCHED_DUMP_PATH}`,
+          '      Re-record with: bun test:e2e:full:record',
+          '',
+        ].join('\n')
+      );
+      process.exit(1);
+    }, 50);
+    return full;
+  };
 }
 
 export async function stopAimockServer(): Promise<void> {

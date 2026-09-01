@@ -101,9 +101,16 @@ Every attached reference has a token. Refer to a reference ONLY by its bare toke
   }
 
   const intent = input.currentPrompt?.trim();
+  // Nothing attached and nothing typed: "Try something random" on an empty
+  // composer (#1393). There is no brief to follow, so ask for an invention
+  // outright rather than sending a bare "References:" header with no rows.
+  const fromNothing = lines.length === 0 && !intent;
   const userText = [
-    'References:',
-    ...lines,
+    ...(fromNothing
+      ? [
+          'Nothing is attached and nothing has been written. Invent the idea: pick a specific subject, place and moment you find interesting — an unexpected one, not the first cliché that comes to mind.',
+        ]
+      : ['References:', ...lines]),
     ...(frames.length > 0
       ? [
           'Describe the motion from the start frame' +

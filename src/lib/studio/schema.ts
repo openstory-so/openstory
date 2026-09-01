@@ -21,6 +21,7 @@ import { mediaUrlSchema } from '@/lib/schemas/media-url.schemas';
 import {
   STUDIO_VIDEO_MODES,
   studioAudioLimit,
+  studioCombinedRefCap,
   studioReferenceLimit,
   studioSupportsEndFrame,
   studioVideoEndpointId,
@@ -149,6 +150,18 @@ export const studioCreateInputSchema = z.discriminatedUnion('activity', [
             code: 'custom',
             path: ['referenceImages'],
             message: `Up to ${limit} reference images`,
+          });
+        }
+        const combinedCap = studioCombinedRefCap(input.videoModel);
+        const combined =
+          input.referenceImages.length +
+          input.referenceVideos.length +
+          input.referenceAudio.length;
+        if (combinedCap != null && combined > combinedCap) {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['referenceImages'],
+            message: `Up to ${combinedCap} reference files total`,
           });
         }
       }

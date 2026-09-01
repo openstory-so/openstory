@@ -78,45 +78,47 @@ When multiple models are selected, the footer shows "N sequences will be created
 
 The AI model for generating scene images. You can select **multiple image models** to generate variant images across different providers. Available models include:
 
-| Model                      | Vendor            | Notes                                                |
-| -------------------------- | ----------------- | ---------------------------------------------------- |
-| Nano Banana 2              | Google            | Fast generation and editing (default)                |
-| Nano Banana Pro            | Google            | Enhanced realism and typography                      |
-| Grok Imagine Image 2.0     | SpaceXAI          | Newest Imagine image model, 1K/2K, edit up to 3 refs |
-| Grok Imagine Image Quality | SpaceXAI          | Quality Mode — higher fidelity, stronger text        |
-| FLUX.2 Max                 | Black Forest Labs | Exceptional realism and consistency                  |
-| Phota                      | Phota             | Character consistency via profiles                   |
-| Hunyuan Image v3           | Tencent           | Open weights with strong composition                 |
-| FLUX.2 Dev                 | Black Forest Labs | 32B open weights                                     |
-| Qwen Image 2 Pro           | Alibaba           | Apache 2.0, native 2K, text rendering                |
-| HiDream I1                 | HiDream           | MIT licensed, 17B parameters                         |
-| Seedream 5.0 Pro           | ByteDance         | Flagship generation and editing                      |
+| Model                      | Vendor            | Notes                                                     |
+| -------------------------- | ----------------- | --------------------------------------------------------- |
+| Nano Banana 2 Lite         | Google            | Turbo default — fastest Google tier, references, fixed 1K |
+| GPT Image 2                | OpenAI            | Quality default — text rendering, UI fidelity, up to 4K   |
+| Nano Banana 2              | Google            | Fast generation and editing                               |
+| Nano Banana Pro            | Google            | Enhanced realism and typography                           |
+| Grok Imagine Image 2.0     | SpaceXAI          | Newest Imagine image model, 1K/2K, edit up to 3 refs      |
+| Grok Imagine Image Quality | SpaceXAI          | Quality Mode — higher fidelity, stronger text             |
+| FLUX.2 Max                 | Black Forest Labs | Exceptional realism and consistency                       |
+| Phota                      | Phota             | Character consistency via profiles                        |
+| Hunyuan Image v3           | Tencent           | Open weights with strong composition                      |
+| FLUX.2 Dev                 | Black Forest Labs | 32B open weights                                          |
+| Qwen Image 2 Pro           | Alibaba           | Apache 2.0, native 2K, text rendering                     |
+| HiDream I1                 | HiDream           | MIT licensed, 17B parameters                              |
+| Seedream 5.0 Pro           | ByteDance         | Flagship generation and editing                           |
+| FLUX.2 Flash               | Black Forest Labs | Cheapest distilled FLUX.2 — sub-second, edit up to 4 refs |
+| FLUX.2 Turbo               | Black Forest Labs | Distilled FLUX.2 — ~2s, edit up to 4 refs                 |
 
 ### Motion Model
 
 The AI model for image-to-video animation. Toggle **Auto-generate motion** to automatically create video clips for each scene after images are generated.
 
-| Model              | Vendor     | Est. Time                    |
-| ------------------ | ---------- | ---------------------------- |
-| LTX 2.3 Pro        | Lightricks | ~15s (open weight)           |
-| Veo 3.1            | Google     | ~25s                         |
-| Kling v3 Pro       | Kling      | ~20s                         |
-| Grok Imagine Video | SpaceXAI   | ~20s                         |
-| MiniMax Hailuo 02  | MiniMax    | ~15s                         |
-| Seedance 2.0       | ByteDance  | ~20s (default; native audio) |
+| Model                  | Vendor     | Est. Time                          |
+| ---------------------- | ---------- | ---------------------------------- |
+| MiniMax H3 Max         | MiniMax    | ~10s (Turbo default; native audio) |
+| Seedance 2.0           | ByteDance  | ~3.5 min (Quality default; audio)  |
+| Grok Imagine Video 1.5 | SpaceXAI   | ~30s                               |
+| LTX 2.3 Pro            | Lightricks | ~2 min (open weight)               |
+| Veo 3.1                | Google     | ~2.5 min                           |
+| MiniMax Hailuo 2.3     | MiniMax    | ~3 min                             |
+| Kling v3 Pro           | Kling      | ~5 min                             |
 
 ### Music Model
 
 Toggle **Auto-generate music** to automatically create a soundtrack after scene generation. Choose from:
 
-| Model            | Vendor     | Max Duration | Type                    |
-| ---------------- | ---------- | ------------ | ----------------------- |
-| ElevenLabs Music | ElevenLabs | 600s         | Music (default)         |
-| MiniMax Music v2 | MiniMax    | 300s         | Music (supports lyrics) |
-| ACE-Step 1.5     | ACE Studio | 240s         | Music (open weight)     |
-| Lyria 2          | Google     | 30s          | Music                   |
-| MMAudio V2       | MMAudio    | 8s           | SFX (video-to-audio)    |
-| ElevenLabs SFX   | ElevenLabs | 22s          | Sound Effects           |
+| Model            | Vendor     | Max Duration | Type            |
+| ---------------- | ---------- | ------------ | --------------- |
+| ElevenLabs Music | ElevenLabs | 600s         | Music (default) |
+| ACE-Step 1.5     | ACE Studio | 600s         | Music           |
+| ACE-Step         | ACE Studio | 240s         | Music           |
 
 ## Pre-Generation Options
 
@@ -143,6 +145,8 @@ Each style includes configuration for color palette, artistic direction, and ren
 - Camera and lighting defaults
 
 ## The Generation Pipeline
+
+Next to **Generate**, a **Quality | Turbo** switch picks the recommended default in each catalog (Turbo: Luna, Nano Banana 2 Lite, MiniMax H3 Max, ElevenLabs). Both modes show the full list, grouped Fast / Quality.
 
 When you click **Generate Sequence**, OpenStory runs an automated pipeline:
 

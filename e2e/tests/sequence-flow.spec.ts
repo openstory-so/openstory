@@ -201,11 +201,22 @@ testWithUser.describe('Variant Selection', () => {
     await expect(page).toHaveURL(new RegExp(`shot=${testShot.id}`), {
       timeout: 15_000,
     });
+    // `exact` so this never also matches the dialog's own "Regenerate frame
+    // variants" button.
     const variantsButton = page.getByRole('button', {
       name: 'Frame variants',
+      exact: true,
     });
     await expect(variantsButton).toBeVisible({ timeout: 10000 });
-    await variantsButton.click();
+    // Selecting the scene above is a real <a href> navigation, so this button
+    // renders server-side and stays inert until React hydrates it — a single
+    // click lands on nothing. Click until the dialog is actually up (the open
+    // dialog aria-hides the button, so ask the dialog, not the button).
+    const variantsDialog = page.getByRole('dialog', { name: 'Frame variants' });
+    await expect(async () => {
+      if (!(await variantsDialog.isVisible())) await variantsButton.click();
+      await expect(variantsDialog).toBeVisible({ timeout: 2000 });
+    }).toPass({ timeout: 20_000 });
 
     const variantGrid = page.getByRole('grid', { name: 'Variant selection' });
 

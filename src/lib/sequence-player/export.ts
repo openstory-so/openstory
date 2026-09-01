@@ -36,6 +36,7 @@ import {
   type SceneInput,
 } from './concatenated-video-source';
 import { decodeAudioTrack } from './decode-audio-track';
+import { assertEncoderSupport } from './encoder-support';
 
 import { getLogger } from '@/lib/observability/logger';
 
@@ -119,6 +120,18 @@ export async function exportSequence(
 
     const sceneAudioTracks = videoSource.getSceneAudioTracks();
     const hasAudio = Boolean(musicUrl) || sceneAudioTracks.length > 0;
+
+    // Earliest point at which both encoder needs are known, and still before
+    // any decode work — fail in a second rather than after a full pass (#1397).
+    await assertEncoderSupport({
+      audio: hasAudio,
+      video: !meta.canTransmux,
+      width: meta.displayWidth,
+      height: meta.displayHeight,
+      sampleRate: TARGET_SAMPLE_RATE,
+      numberOfChannels: TARGET_CHANNELS,
+      audioBitrate: AAC_BITRATE,
+    });
 
     const output = new Output({
       format: new Mp4OutputFormat({ fastStart: 'in-memory' }),

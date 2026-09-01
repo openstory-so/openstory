@@ -39,6 +39,47 @@ describe('buildImageRequest — edit endpoints carry their reference images', ()
    * image URLs must be less than or equal to 4" and fails the shot. A scene
    * with two characters, a location and a prop clears 4 without trying.
    */
+  it('omits resolution on Nano Banana 2 Lite (fixed 1K)', () => {
+    const generate = buildImageRequest({
+      model: 'nano_banana_2_lite',
+      prompt: 'a lighthouse at dusk',
+    });
+    expect(generate.endpointId).toBe('google/nano-banana-2-lite');
+    expect(generate.input).not.toHaveProperty('resolution');
+    expect(generate.input.aspect_ratio).toBe('16:9');
+
+    const edit = buildImageRequest({
+      model: 'nano_banana_2_lite',
+      prompt: 'a lighthouse at dusk',
+      referenceImageUrls: REFS,
+    });
+    expect(edit.endpointId).toBe('google/nano-banana-lite/edit');
+    expect(edit.input).not.toHaveProperty('resolution');
+    expect(edit.input.image_urls).toEqual(REFS);
+  });
+
+  it('routes FLUX.2 Flash to its edit endpoint and omits inference steps', () => {
+    const generate = buildImageRequest({
+      model: 'flux_2_flash',
+      prompt: 'a lighthouse at dusk',
+    });
+    expect(generate.endpointId).toBe('fal-ai/flux-2/flash');
+    expect(generate.input).not.toHaveProperty('num_inference_steps');
+
+    const many = Array.from(
+      { length: 6 },
+      (_, i) => `https://example.com/${i}.png`
+    );
+    const edit = buildImageRequest({
+      model: 'flux_2_flash',
+      prompt: 'a lighthouse at dusk',
+      referenceImageUrls: many,
+    });
+    expect(edit.endpointId).toBe('fal-ai/flux-2/flash/edit');
+    expect(edit.input.image_urls).toEqual(many.slice(0, 4));
+    expect(edit.input).not.toHaveProperty('num_inference_steps');
+  });
+
   it('caps reference images at the model limit', () => {
     const many = Array.from(
       { length: 7 },

@@ -34,7 +34,12 @@ import {
   getSystemTalentByName,
   type TestTalent,
 } from '../fixtures/talent.fixture';
-import { fillScriptEditor, selectComposerStyle } from '../fixtures/test-utils';
+import {
+  fillScriptEditor,
+  pinRecordedPipelineSettings,
+  selectComposerStyle,
+  selectRecordedPipelineModels,
+} from '../fixtures/test-utils';
 import { t } from '../recording-mode';
 
 const fullPipeline = process.env.PLAYWRIGHT_FULL_PIPELINE === 'true';
@@ -191,7 +196,9 @@ testWithUser.describe('Full Sequence Pipeline', () => {
         }
       });
 
-      // 1. Open the new-sequence page.
+      // 1. Open the new-sequence page. Pin Quality + recorded Grok/Seedance
+      // before first paint so Turbo (Lite / H3 Max) never hits aimock.
+      await pinRecordedPipelineSettings(page);
       await page.goto('/sequences/new');
 
       // 2. Recorded image/motion fixtures were captured against Product Ad.
@@ -287,26 +294,11 @@ SUPER:  CORAL.  OUT NOW.
         resolve(import.meta.dirname, '../fixtures/broadcast-mic.jpg')
       );
 
-      // 7b. Switch image generation to Grok Imagine 2.0. Its content
-      // checker is far less likeness-strict than GPT Image 2's, which kept
-      // rejecting talent-referenced beauty shots during fixture recording
-      // (makeup on a referenced face = OpenAI's blocked likeness class).
-      // Replay is fal (e2e has no XAI_API_KEY), so aimock STRICT matches
-      // `e2e/fixtures/recorded/fal/xai-grok-imagine-image-v2.0-{text-to-image,edit}/`.
-      // Bumping IMAGE_MODELS.grok_imagine_image.id without cloning those
-      // folders 503s LocationSheetWorkflow with "No fixture matched".
-      await page.getByRole('button', { name: 'Generation settings' }).click();
-      await page.getByRole('button', { name: /^Image Models?:/ }).click();
-      await page
-        .getByRole('menuitemcheckbox', { name: 'Grok Imagine Image 2.0' })
-        .click();
-      await page.keyboard.press('Escape'); // checkbox items keep the menu open
-      await expect(
-        page.getByRole('button', {
-          name: 'Image Models: Grok Imagine Image 2.0',
-        })
-      ).toBeVisible();
-      await page.keyboard.press('Escape'); // close the settings popover
+      // 7b. Quality + Grok Imagine 2.0 + Seedance 2.0. Style apply can
+      // remap recommendations; the recorded fal folders are those two
+      // endpoints (Grok 2.0 edit/t2i, Seedance 2.0 r2v). Turbo's Lite /
+      // H3 Max have no recordings.
+      await selectRecordedPipelineModels(page);
 
       // 8. Generate — should kick off the workflow chain and navigate.
       // Vision analysis (analyzeDraftElementFn) is the long pole here; it can

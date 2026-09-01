@@ -80,9 +80,8 @@ export function assembleMotionPrompt({
     assembled = fullPrompt;
   } else {
     // Audio-capable models: enrich fullPrompt with dialogue + audio sections.
-    // dialogue/audio are nullish on the schema (the model emits null when a
-    // scene has none — see scene-analysis.schema.ts), so normalize null →
-    // undefined for the builders.
+    // Stored rows and UI overrides may still be null; the LLM schema uses
+    // emptyable objects. Normalize null → undefined for the builders.
     const hasDialogue = dialogue?.presence && dialogue.lines.length > 0;
     const dialogueData = hasDialogue ? dialogue : undefined;
     const audioData = audio ?? undefined;

@@ -96,10 +96,27 @@ describe('studioCreateInputSchema', () => {
     const result = studioCreateInputSchema.safeParse({
       activity: 'image',
       prompt: 'a red fox',
-      imageModel: 'flux_2_turbo',
+      imageModel: 'krea_2_turbo',
       aspectRatio: '16:9',
     });
     expect(result.success).toBe(false);
+  });
+
+  it('accepts unhidden turbo image models that take references', () => {
+    for (const imageModel of [
+      'nano_banana_2_lite',
+      'flux_2_flash',
+      'flux_2_turbo',
+    ] as const) {
+      const parsed = studioCreateInputSchema.parse({
+        activity: 'image',
+        prompt: 'a red fox',
+        imageModel,
+        aspectRatio: '16:9',
+        referenceImages: ['https://example.com/ref.png'],
+      });
+      expect(parsed).toMatchObject({ activity: 'image', imageModel });
+    }
   });
 
   it('rejects a catalog-only endpoint that is not a sequence model', () => {
@@ -121,6 +138,39 @@ describe('studioCreateInputSchema', () => {
       duration: 5,
     });
     expect(result.success).toBe(false);
+  });
+
+  it('rejects H3 Max reference lists that exceed the combined 12-file cap', () => {
+    const urls = (n: number, kind: string) =>
+      Array.from(
+        { length: n },
+        (_, i) => `https://example.com/${kind}-${i}.bin`
+      );
+    const over = studioCreateInputSchema.safeParse({
+      activity: 'video',
+      prompt: 'the fox turns toward camera',
+      videoModel: 'minimax_h3_max',
+      aspectRatio: '16:9',
+      duration: 5,
+      mode: 'reference',
+      referenceImages: urls(9, 'img'),
+      referenceVideos: urls(3, 'vid'),
+      referenceAudio: urls(1, 'aud'),
+    });
+    expect(over.success).toBe(false);
+
+    const exact = studioCreateInputSchema.safeParse({
+      activity: 'video',
+      prompt: 'the fox turns toward camera',
+      videoModel: 'minimax_h3_max',
+      aspectRatio: '16:9',
+      duration: 5,
+      mode: 'reference',
+      referenceImages: urls(9, 'img'),
+      referenceVideos: urls(3, 'vid'),
+      referenceAudio: [],
+    });
+    expect(exact.success).toBe(true);
   });
 
   it('accepts a prompt-only video request without an image model', () => {

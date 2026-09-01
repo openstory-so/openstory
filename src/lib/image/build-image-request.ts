@@ -98,19 +98,24 @@ function buildFalModelOptions(
         sync_mode: false,
       };
 
+    case 'flux_2_flash':
     case 'flux_2_turbo':
       return {
         image_size: params.imageSize ?? DEFAULT_IMAGE_SIZE,
-        num_inference_steps: params.numInferenceSteps ?? 4,
+        // Turbo historically sent a 4-step default; Flash's schema has no
+        // steps knob. Only Turbo keeps the field.
+        ...(params.model === 'flux_2_turbo' && {
+          num_inference_steps: params.numInferenceSteps ?? 4,
+        }),
         guidance_scale: params.guidanceScale ?? 2.5,
         enable_safety_checker: true,
         ...(params.seed !== undefined && { seed: params.seed }),
         ...(params.numImages !== undefined && { num_images: params.numImages }),
         ...(params.outputFormat && { output_format: params.outputFormat }),
-        // Reference images route this model to `fal-ai/flux-2/turbo/edit`
-        // (EDIT_ENDPOINTS), which requires `image_urls`. Omitting them sent an
+        // Reference images route these models to `/flash/edit` or `/turbo/edit`
+        // (EDIT_ENDPOINTS), which require `image_urls`. Omitting them sent an
         // edit request with no images and fal rejected every one with a 422
-        // "Field required" — the only model in this switch that was missing it.
+        // "Field required".
         ...(params.referenceImageUrls?.length && {
           image_urls: params.referenceImageUrls,
         }),
@@ -149,11 +154,16 @@ function buildFalModelOptions(
 
     case 'nano_banana_pro':
     case 'nano_banana_2':
+    case 'nano_banana_2_lite':
       return {
         aspect_ratio: imageSizeToAspectRatio(
           params.imageSize ?? DEFAULT_IMAGE_SIZE
         ),
-        resolution: params.resolution ?? '2K',
+        // Lite is fixed 1K — the schema has no `resolution` field and 2K/4K
+        // would 422. Pro/2 keep the existing default.
+        ...(params.model !== 'nano_banana_2_lite' && {
+          resolution: params.resolution ?? '2K',
+        }),
         safety_tolerance: '6',
         ...(params.numImages !== undefined && { num_images: params.numImages }),
         ...(params.outputFormat && { output_format: params.outputFormat }),

@@ -2,13 +2,12 @@ import {
   type BannerPhase,
   ProgressBanner,
 } from '@/components/generation/progress-banner';
-import {
-  DEFAULT_VIDEO_MODEL,
-  IMAGE_TO_VIDEO_MODELS,
-  safeImageToVideoModel,
-} from '@/lib/ai/models';
 import type { ShotView } from '@/lib/shots/shot-view';
 import type { Sequence } from '@/lib/db/schema/sequences';
+import {
+  estimateMotionSeconds,
+  estimateMusicSeconds,
+} from '@/lib/generation/time-estimate';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 type MotionProgressBannerProps = {
@@ -27,26 +26,6 @@ type Phase = {
   budgetSeconds: number;
   description: string;
 };
-
-const MUSIC_BUDGET_SECONDS = 30;
-
-// Fal.ai queues shots with limited concurrency — observed ~2x overhead
-// vs model estimate (e.g. 9 shots × 15s model = 135s, actual ~300s).
-const QUEUE_OVERHEAD_FACTOR = 2;
-const MIN_MOTION_BUDGET_SECONDS = 210; // ~3.5 min floor — queue startup overhead
-
-function getMotionBudget(sequence: Sequence, shotCount: number): number {
-  const modelKey = safeImageToVideoModel(
-    sequence.videoModel,
-    DEFAULT_VIDEO_MODEL
-  );
-  const config = IMAGE_TO_VIDEO_MODELS[modelKey];
-  const perShot = config.performance.estimatedGenerationTime;
-  return Math.max(
-    perShot * shotCount * QUEUE_OVERHEAD_FACTOR,
-    MIN_MOTION_BUDGET_SECONDS
-  );
-}
 
 function isTerminal(status: string | null): boolean {
   // 'cancelled' (#1108) is terminal for video: without it, one cancelled shot
@@ -73,9 +52,9 @@ function derivePhases(
     ? 'completed'
     : 'active';
 
-  const motionBudget = getMotionBudget(sequence, shots.length);
+  const motionBudget = estimateMotionSeconds(sequence.videoModel, shots.length);
   const phase1Budget = includeMusic
-    ? Math.max(motionBudget, MUSIC_BUDGET_SECONDS)
+    ? Math.max(motionBudget, estimateMusicSeconds(sequence.musicModel))
     : motionBudget;
 
   return [

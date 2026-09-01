@@ -5,13 +5,45 @@ import {
   IMAGE_MODELS,
   IMAGE_TO_VIDEO_MODELS,
   MOTION_REFERENCE_ENDPOINTS,
+  capReferenceImages,
+  getEditEndpoint,
   isNativeBytePlusVideoModel,
   isValidImageToVideoModel,
   isValidTextToImageModel,
   safeImageToVideoModel,
   safeTextToImageModel,
+  supportsReferenceImages,
   videoModelSupportsAudio,
 } from './models';
+
+describe('turbo image models (#1390)', () => {
+  it('exposes Nano Banana 2 Lite, FLUX.2 Flash, and FLUX.2 Turbo in the picker', () => {
+    expect('hidden' in IMAGE_MODELS.nano_banana_2_lite).toBe(false);
+    expect('hidden' in IMAGE_MODELS.flux_2_flash).toBe(false);
+    expect('hidden' in IMAGE_MODELS.flux_2_turbo).toBe(false);
+    // Preview-only: no edit endpoint, stays off the picker.
+    expect('hidden' in IMAGE_MODELS.krea_2_turbo).toBe(true);
+  });
+
+  it('routes every turbo picker model through an edit endpoint that takes refs', () => {
+    expect(supportsReferenceImages('nano_banana_2_lite')).toBe(true);
+    expect(getEditEndpoint('nano_banana_2_lite')).toBe(
+      'google/nano-banana-lite/edit'
+    );
+    expect(supportsReferenceImages('flux_2_flash')).toBe(true);
+    expect(getEditEndpoint('flux_2_flash')).toBe('fal-ai/flux-2/flash/edit');
+    expect(supportsReferenceImages('flux_2_turbo')).toBe(true);
+    expect(getEditEndpoint('flux_2_turbo')).toBe('fal-ai/flux-2/turbo/edit');
+    expect(supportsReferenceImages('krea_2_turbo')).toBe(false);
+  });
+
+  it('caps Flash/Turbo refs at 4 and leaves Lite uncapped', () => {
+    const many = Array.from({ length: 8 }, (_, i) => i);
+    expect(capReferenceImages('flux_2_flash', many)).toHaveLength(4);
+    expect(capReferenceImages('flux_2_turbo', many)).toHaveLength(4);
+    expect(capReferenceImages('nano_banana_2_lite', many)).toHaveLength(8);
+  });
+});
 
 describe('Seedance catalog split', () => {
   it('sends 2.5 to 2.5 and 2.0 to 2.0 enterprise', () => {
@@ -26,6 +58,12 @@ describe('Seedance catalog split', () => {
     );
     expect(MOTION_REFERENCE_ENDPOINTS.seedance_v2?.endpointId).toBe(
       'bytedance/seedance-2.0/enterprise/v2/reference-to-video'
+    );
+    expect(MOTION_REFERENCE_ENDPOINTS.minimax_h3_max?.endpointId).toBe(
+      'minimax/h3-max/reference-to-video'
+    );
+    expect(MOTION_REFERENCE_ENDPOINTS.minimax_h3_max?.imageField).toBe(
+      'reference_image_urls'
     );
     expect(isNativeBytePlusVideoModel('seedance_v2_5')).toBe(true);
     expect(isNativeBytePlusVideoModel('seedance_v2')).toBe(false);

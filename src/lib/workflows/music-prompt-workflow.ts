@@ -51,6 +51,7 @@ export class MusicPromptWorkflow extends OpenStoryWorkflowEntrypoint<MusicPrompt
         promptName: 'phase/music-design-chat',
         promptVariables: {
           scenes: JSON.stringify(sceneSummaries, null, 2),
+          sceneCount: String(sceneSummaries.length),
         },
         modelId: analysisModelId,
         responseSchema: musicDesignResultSchema,

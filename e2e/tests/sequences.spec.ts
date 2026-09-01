@@ -157,11 +157,20 @@ test.describe('Sequences', () => {
       name: 'Generate',
       exact: true,
     });
-    await expect(generate).toBeDisabled();
-    // ⌘+Enter requestSubmit()s even while Generate is disabled.
+    // Generate stays live on an empty script (#1393), and so does Enhance —
+    // which writes the script from nothing rather than expanding one.
+    await expect(generate).toBeEnabled();
+    const draftScript = page.getByRole('button', { name: 'Draft script' });
+    await expect(draftScript).toBeEnabled();
+
+    // Generating with nothing written hands over to Enhance: its popover
+    // opens so the duration controls are in front of the user first. (⌘+Enter
+    // requestSubmit()s, the same path as clicking Generate.)
     await page.locator('[data-slot="markdown-editor"] .ProseMirror').click();
     await page.keyboard.press('ControlOrMeta+Enter');
-    await expect(page.getByRole('alertdialog')).toHaveCount(0);
+    await expect(page.getByText('Target video duration')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Draft it' })).toBeVisible();
+    await page.keyboard.press('Escape');
 
     await fillScriptEditor(page, 'A cat walks into a diner at dawn.');
     await expect(automatic).toHaveAttribute('aria-pressed', 'true');

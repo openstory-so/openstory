@@ -10,6 +10,7 @@ import {
 import { GenerateSequenceIcon } from '@/components/icons/generate-sequence-icon';
 import { LocationSuggestionSelector } from '@/components/location-library/location-suggestion-selector';
 import { buildMentionItems } from '@/components/scenes/prompt-mention/mention-items';
+import { GenerationModeToggle } from '@/components/settings/generation-mode-toggle';
 import { GenerationSettings } from '@/components/settings/generation-settings';
 import { StyleCategorySelect } from '@/components/style/style-category-select';
 import { StyleSelector } from '@/components/style/style-selector';
@@ -86,6 +87,12 @@ import {
   type ImageToVideoModel,
   type TextToImageModel,
 } from '@/lib/ai/models';
+import {
+  applyGenerationMode,
+  styleMayApplyImage,
+  styleMayApplyVideo,
+  type GenerationMode,
+} from '@/lib/ai/generation-mode';
 import {
   DEFAULT_ANALYSIS_MODEL,
   isValidAnalysisModelId,
@@ -313,6 +320,7 @@ export const ScriptView: FC<{
   }, [isEditing, sequence?.analysisModel, savedSettings.analysisModels]);
 
   const [genSettings, setGenSettings] = useState<{
+    generationMode: GenerationMode;
     analysisModels: AnalysisModelId[];
     aspectRatio: AspectRatio;
     imageModels: TextToImageModel[];
@@ -321,6 +329,7 @@ export const ScriptView: FC<{
     audioModels: AudioModel[];
     autoGenerateMusic: boolean;
   }>(() => ({
+    generationMode: savedSettings.generationMode,
     analysisModels: sequenceAnalysisModels,
     aspectRatio: isEditing ? sequence.aspectRatio : savedSettings.aspectRatio,
     imageModels:
@@ -339,6 +348,7 @@ export const ScriptView: FC<{
     autoGenerateMusic: isEditing ? false : savedSettings.autoGenerateMusic,
   }));
   const {
+    generationMode,
     analysisModels,
     aspectRatio,
     imageModels,
@@ -350,7 +360,13 @@ export const ScriptView: FC<{
   const updateGen = <K extends keyof typeof genSettings>(
     key: K,
     value: (typeof genSettings)[K]
-  ) => setGenSettings((s) => ({ ...s, [key]: value }));
+  ) =>
+    setGenSettings((s) =>
+      applyGenerationMode({ ...s, [key]: value }, s.generationMode)
+    );
+  const setGenerationMode = (mode: GenerationMode) => {
+    setGenSettings((s) => applyGenerationMode(s, mode));
+  };
   const [selections, setSelections] = useState({
     talentIds: sequence?.suggestedTalentIds ?? [],
     locationIds: sequence?.suggestedLocationIds ?? [],
@@ -645,6 +661,7 @@ export const ScriptView: FC<{
     // Sync once when creating new sequence
     if (!hasSyncedRef.current) {
       setGenSettings({
+        generationMode: savedSettings.generationMode,
         aspectRatio: savedSettings.aspectRatio,
         analysisModels: savedSettings.analysisModels,
         imageModels: savedSettings.imageModels,
@@ -745,12 +762,18 @@ export const ScriptView: FC<{
     const id = selectedStyle?.id;
     if (!id || id === lastAppliedStyleIdRef.current) return;
 
+    // Turbo: skip Quality-only recs so a style can't replace Lite/H3 Max
+    // with Grok/Seedance. Quality mode still applies the style's pick.
     const validImage =
-      recommendedImageModel && isValidTextToImageModel(recommendedImageModel)
+      recommendedImageModel &&
+      isValidTextToImageModel(recommendedImageModel) &&
+      styleMayApplyImage(generationMode, recommendedImageModel)
         ? recommendedImageModel
         : null;
     const validVideo =
-      recommendedVideoModel && isValidImageToVideoModel(recommendedVideoModel)
+      recommendedVideoModel &&
+      isValidImageToVideoModel(recommendedVideoModel) &&
+      styleMayApplyVideo(generationMode, recommendedVideoModel)
         ? recommendedVideoModel
         : null;
     const parsedRatio = recommendedAspectRatio
@@ -769,7 +792,9 @@ export const ScriptView: FC<{
 
     if (!validImage && !validVideo && !validRatio) {
       if (baseline) {
-        setGenSettings((s) => ({ ...s, ...baseline }));
+        setGenSettings((s) =>
+          applyGenerationMode({ ...s, ...baseline }, s.generationMode)
+        );
       }
       styleApplySnapshotRef.current = null;
       setAppliedFromStyle(null);
@@ -783,12 +808,15 @@ export const ScriptView: FC<{
         videoModels: s.videoModels,
       };
       styleApplySnapshotRef.current = start;
-      return {
-        ...s,
-        aspectRatio: validRatio ?? start.aspectRatio,
-        imageModels: validImage ? [validImage] : start.imageModels,
-        videoModels: validVideo ? [validVideo] : start.videoModels,
-      };
+      return applyGenerationMode(
+        {
+          ...s,
+          aspectRatio: validRatio ?? start.aspectRatio,
+          imageModels: validImage ? [validImage] : start.imageModels,
+          videoModels: validVideo ? [validVideo] : start.videoModels,
+        },
+        s.generationMode
+      );
     });
     setAppliedFromStyle({
       styleId: id,
@@ -802,12 +830,15 @@ export const ScriptView: FC<{
     recommendedImageModel,
     recommendedVideoModel,
     recommendedAspectRatio,
+    generationMode,
   ]);
 
   const resetStyleDefaults = () => {
     const snapshot = styleApplySnapshotRef.current;
     if (!snapshot) return;
-    setGenSettings((s) => ({ ...s, ...snapshot }));
+    setGenSettings((s) =>
+      applyGenerationMode({ ...s, ...snapshot }, s.generationMode)
+    );
     styleApplySnapshotRef.current = null;
     setAppliedFromStyle(null);
   };
@@ -951,15 +982,25 @@ export const ScriptView: FC<{
       event.preventDefault();
     }
 
-    // ⌘+Enter requestSubmit()s even while Generate is disabled. Empty is
-    // now the first-run default (#1255) — don't open login / the enhance
-    // nudge / a generate with no script.
     const scriptText = (script ?? baseScript ?? '').trim();
-    if (
-      !scriptText ||
-      !(styleId || sequence?.styleId) ||
-      analysisModels.length === 0
-    ) {
+    if (!(styleId || sequence?.styleId) || analysisModels.length === 0) return;
+
+    // Empty is the first-run default (#1255) and Generate stays live on it
+    // (#1393): logged out that click is worth a login prompt, logged in it
+    // hands over to Enhance — which writes a script from nothing — by opening
+    // its popover, so the duration controls are in front of the user before
+    // anything is written. Copying an existing sequence has nothing to offer.
+    if (!scriptText) {
+      if (isEditing) return;
+      posthog.capture('empty_prompt_generate_clicked', {
+        surface: 'script',
+        authenticated: isAuthenticated,
+      });
+      if (!requireAuth()) {
+        markPendingIntent('generate');
+        return;
+      }
+      setEnhancePopoverOpen(true);
       return;
     }
 
@@ -1000,6 +1041,11 @@ export const ScriptView: FC<{
   const previousScriptRef = useRef<string>('');
   const enhanceAbortRef = useRef<AbortController | null>(null);
 
+  /**
+   * Enhance, and — on an empty composer — write the script in the first place
+   * (#1393). One call either way: nothing to expand means invent, in the
+   * selected style or in any genre at all when Match script is selected.
+   */
   const handleEnhance = async () => {
     // Enhancing runs an AI model on the server — gate it behind login too.
     // Remember the click so post-auth resume continues Enhance, not Generate,
@@ -1015,17 +1061,20 @@ export const ScriptView: FC<{
       return;
     }
 
+    const sourceScript = scriptValue.trim();
+    const invent = sourceScript.length === 0;
     posthog.capture('script_enhanced', {
       target_duration: targetDuration,
-      script_length: scriptValue.length,
+      script_length: sourceScript.length,
       aspect_ratio: aspectRatio,
+      invent,
     });
     // Enhancing rewrites the text — it stops being an untouched sample.
     setSampleStyleId(null);
     setThinkingText('');
     setThinkingActive(true);
     setEnhanceUI((s) => ({ ...s, isEnhancing: true, error: null }));
-    previousScriptRef.current = scriptValue;
+    previousScriptRef.current = sourceScript;
     setScript('');
 
     const abortController = new AbortController();
@@ -1043,7 +1092,8 @@ export const ScriptView: FC<{
       let accumulated = '';
       for await (const chunk of await enhanceScriptStreamFn({
         data: {
-          script: scriptValue,
+          script: sourceScript,
+          invent,
           targetDuration,
           videoModel: videoModels[0] ?? DEFAULT_VIDEO_MODEL,
           analysisModel: analysisModels[0],
@@ -1113,14 +1163,13 @@ export const ScriptView: FC<{
     return () => window.removeEventListener('keydown', handler);
   }, [isEnhancing]);
 
-  const isFormValid =
-    Boolean((script ?? baseScript ?? '').trim()) &&
-    Boolean(styleId || sequence?.styleId) &&
-    analysisModels.length > 0;
+  // Everything Generate needs except the script itself — an empty script is a
+  // live click that routes to login or "what should we make?" (#1393).
+  const isReady =
+    Boolean(styleId || sequence?.styleId) && analysisModels.length > 0;
 
   const isSubmitting = createSequenceMutation.isPending;
-  const isDisabled =
-    !isFormValid || isSubmitting || isEnhancing || isElementBusy;
+  const isDisabled = !isReady || isSubmitting || isEnhancing || isElementBusy;
 
   const isMobile = useIsMobile();
   const [referencesSheetOpen, setReferencesSheetOpen] = useState(false);
@@ -1180,7 +1229,7 @@ export const ScriptView: FC<{
   useEffect(() => {
     if (isEditing || loading || !isAuthenticated) return;
     if (resumeTriedRef.current) return;
-    if (!draftLoaded || !isFormValid || isSubmitting || isEnhancing) return;
+    if (!draftLoaded || !isReady || isSubmitting || isEnhancing) return;
     // Let the welcome-credits moment finish first — its "Keep creating"
     // dismiss is what hands the flow back to us, instead of the nudge
     // stacking on top of the gift dialog.
@@ -1194,7 +1243,7 @@ export const ScriptView: FC<{
     loading,
     isAuthenticated,
     draftLoaded,
-    isFormValid,
+    isReady,
     isSubmitting,
     isEnhancing,
     welcomeCreditsBlocking,
@@ -1268,6 +1317,17 @@ export const ScriptView: FC<{
     audioModels,
   ]);
 
+  // Nothing written yet: Enhance writes the script instead of expanding one
+  // (#1393), so it stays live at any length and says which job it is doing.
+  // "Draft" is the house word for it — the studio composer's equivalent is
+  // "Draft prompt" — and it keeps this distinct from Shuffle next door, which
+  // swaps in a canned sample rather than writing anything.
+  const enhanceInvents = scriptValue.trim().length === 0;
+  const enhanceLabel = enhanceInvents ? 'Draft script' : 'Enhance Script';
+  // Match script (the default) passes no style to the enhancer, so the draft
+  // really is any genre at all.
+  const inventStyleName = styles.find((s) => s.id === styleId)?.name;
+
   const enhanceControls = (
     <>
       {canUndoEnhance && !isEnhancing && (
@@ -1304,10 +1364,10 @@ export const ScriptView: FC<{
               variant="outline"
               size="sm"
               className="gap-1.5"
-              disabled={!scriptValue || scriptValue.length < 10 || isSubmitting}
+              disabled={isSubmitting}
             >
               <Sparkles className="size-3.5 text-primary" />
-              Enhance Script
+              {enhanceLabel}
             </Button>
           </PopoverTrigger>
           <PopoverContent align="end" side="top" className="w-auto">
@@ -1329,11 +1389,19 @@ export const ScriptView: FC<{
                   </ToggleGroupItem>
                 ))}
               </ToggleGroup>
-              <DurationFitHint
-                targetDuration={targetDuration}
-                videoModel={primaryVideoModel}
-                script={scriptValue}
-              />
+              {enhanceInvents ? (
+                <p className="max-w-xs text-xs text-muted-foreground">
+                  {inventStyleName
+                    ? `An original ${inventStyleName} script, yours to edit.`
+                    : 'An original script, any genre, yours to edit.'}
+                </p>
+              ) : (
+                <DurationFitHint
+                  targetDuration={targetDuration}
+                  videoModel={primaryVideoModel}
+                  script={scriptValue}
+                />
+              )}
               {briefRequestsUnrenderableText(scriptValue) ? (
                 <p className="max-w-xs text-xs text-muted-foreground">
                   {TITLE_CARD_NOTE}
@@ -1349,7 +1417,7 @@ export const ScriptView: FC<{
                 }}
               >
                 <Sparkles className="size-3.5" />
-                Enhance
+                {enhanceInvents ? 'Draft it' : 'Enhance'}
               </Button>
             </div>
           </PopoverContent>
@@ -1617,6 +1685,11 @@ export const ScriptView: FC<{
                     Cancel
                   </Button>
                 )}
+                <GenerationModeToggle
+                  value={generationMode}
+                  onChange={setGenerationMode}
+                  disabled={loading}
+                />
                 <Button
                   type="submit"
                   disabled={isDisabled}

@@ -19,6 +19,7 @@ import {
   createUsageCapture,
   extractRunError,
   llmCostFromUsage,
+  openRouterProviderForModel,
   PROMPT_REASONING,
   throwNotedRunError,
   toGeminiThinkingLevel,
@@ -165,7 +166,7 @@ function reasoningModelOptions(reasoning: boolean | undefined): {
  *  `maxOutputTokens`. Omitting reasoning on grok-4.6 falls through to xAI's
  *  `high` default, so unrequested reasoning is sent as `low`; Gemini's
  *  unset `thinkingConfig` keeps the model's dynamic-thinking default. */
-function chatModelOptionsForCall(
+export function chatModelOptionsForCall(
   modelId: TextModel,
   llmKeyInfo: LlmKeyInfo,
   reasoning: boolean | undefined
@@ -192,8 +193,11 @@ function chatModelOptionsForCall(
     };
   }
   return {
+    provider: openRouterProviderForModel(modelId),
     ...reasoningModelOptions(reasoning),
-    maxCompletionTokens: maxTokens,
+    // Native OpenAI GPT-5 endpoints advertise `max_tokens`, not
+    // `max_completion_tokens` (Azure-only). Match llm-client.
+    maxTokens,
     streamOptions: { includeUsage: true },
   };
 }

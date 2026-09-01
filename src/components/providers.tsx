@@ -2,6 +2,7 @@ import { PostHogIdentify } from '@/components/observability/posthog-identify';
 import { sessionQueryOptions } from '@/lib/auth/session-query';
 import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { installChunkReload } from '@/lib/chunk-reload';
 import { configureLogging } from '@/lib/observability/logger';
 import { flushReactErrors } from '@/lib/observability/react-errors';
 import { PostHogProvider } from '@posthog/react';
@@ -11,6 +12,7 @@ import { RealtimeContext, RealtimeProvider } from '@/lib/realtime/client';
 import { lazy, useEffect, useState, type FC } from 'react';
 
 configureLogging();
+installChunkReload();
 
 // Wrap the entire lazy() in import.meta.env.DEV so Vite dead-code-eliminates
 // the dynamic imports before rollup tries to resolve them. This prevents
