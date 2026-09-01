@@ -123,14 +123,9 @@ export const getShotsFn = createServerFn({ method: 'GET' })
       // image surface (matching the sibling read paths in sequences/admin)
       // rather than silently dropping it from the scenes list.
       if (!frame) {
-        // Expected in reference-only: no still is rendered and the
-        // visual-prompt phase is skipped, so no anchor is materialized.
-        // Anywhere else it means the invariant broke.
-        if (!sequence.referenceOnly) {
-          logger.error(
-            `getShotsFn: shot ${shot.id} has no anchor frame after ensureAnchorFrames`
-          );
-        }
+        logger.error(
+          `getShotsFn: shot ${shot.id} has no anchor frame after ensureAnchorFrames`
+        );
         return shotViewMissingFrame(shot, {
           video: selectedVideoByShot.get(shot.id) ?? null,
           primaryVideo: primaryVideoByShot.get(shot.id) ?? null,
@@ -743,14 +738,12 @@ export const getShotStalenessBatchFn = createServerFn({ method: 'GET' })
         async (shot): Promise<[string, ReturnType<typeof toWireStaleness>]> => {
           const frame = anchorsByShot.get(shot.id);
           if (!frame) {
-            // ensureAnchorFrames guarantees an anchor outside reference-only
-            // (which materializes none); either way there is no image surface
-            // to compare, so report the shot untracked rather than dropping it.
-            if (!sequence.referenceOnly) {
-              logger.error(
-                `getShotStalenessBatchFn: shot ${shot.id} has no anchor frame`
-              );
-            }
+            // ensureAnchorFrames guarantees an anchor; if it's somehow absent
+            // we have no image surface to compare, so report the shot
+            // untracked rather than dropping it from the result.
+            logger.error(
+              `getShotStalenessBatchFn: shot ${shot.id} has no anchor frame`
+            );
             return [shot.id, toWireStaleness(UNTRACKED_STALENESS)];
           }
           const { scene } = resolveSceneForShot(shot, scriptBySceneId);

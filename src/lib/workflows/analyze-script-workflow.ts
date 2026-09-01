@@ -226,7 +226,6 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
             script: sanitizeScriptContent(script),
             modelId: analysisModelId,
             elements: elementsMinimal,
-            referenceOnly,
           },
           spawnStepName: 'spawn-scene-split',
           awaitStepName: 'await-scene-split',
@@ -382,12 +381,17 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
       return result.elements;
     };
 
-    // REFERENCE-ONLY skips the visual prompts outright — one LLM call per scene
-    // for a prompt nothing reads. No still is rendered from it, and the
+    // REFERENCE-ONLY skips the visual prompts: one LLM call per scene for a
+    // prompt nothing in this mode reads. No still is rendered from it, and the
     // reference-only motion template composes its own opening frame from the
-    // bibles (it is never handed the visual prompt; see
-    // `phase/motion-prompt-reference-only-chat`). The one consumer left is the
-    // music prompt's visual grounding, which falls back to `scene.metadata`.
+    // bibles — it is never handed the visual prompt (see
+    // `phase/motion-prompt-reference-only-chat`, whose inputs are the scene
+    // JSON and the bibles). The one consumer left is the music prompt's visual
+    // grounding, which falls back to `scene.metadata`.
+    //
+    // The anchor frame is still materialized and the per-scene storyboard
+    // preview still is untouched — the rail needs a thumbnail while the clip
+    // renders, and that preview is what fills it.
     const runVisualPrompts =
       async (): Promise<FramePromptBatchWorkflowResult> => {
         if (referenceOnly) {

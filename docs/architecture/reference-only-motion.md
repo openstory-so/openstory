@@ -73,24 +73,16 @@ half was wrong: the reference-only template is never handed the visual prompt.
 Its inputs are `<CURRENT_SCENE>` (the `Scene` JSON, whose `prompts` field was
 removed in #713), the three bibles, `<DIRECTOR_STYLE>` and `<ASPECT_RATIO>` —
 it composes the opening frame from the bibles itself, which is the reason it is
-a separate template at all. Nothing else read them either: no still is rendered
-from them, and the only live consumer was the music prompt's visual grounding,
-which falls back to `scene.metadata`. So it was one LLM call per scene for a
-cache. `visualPromptsBySceneId` comes back empty and the motion-prompt hash is
+a separate template at all. Nothing else read them: no still is rendered from
+them, and the only live consumer was the music prompt's visual grounding, which
+falls back to `scene.metadata`. So it was one LLM call per scene for a cache.
+`visualPromptsBySceneId` comes back empty and the motion-prompt hash is
 unaffected (it never included the visual prompt).
 
-`SceneSplitWorkflow` skips the decorative per-scene **preview still** for the
-same reason — it is a billed image generation standing in for a still that will
-never arrive.
-
-With neither writing to it, the **anchor frame is not materialized at all**:
-`ensureAnchorFrames` resolves `sequences.referenceOnly` itself rather than
-taking a caller flag, because every shot READ calls it and a creation-only flag
-would be undone by the next read. `ShotWithAnchorFrame.anchorFrameId` and
-`ShotMapping.frameId` are therefore nullable, and `shotViewMissingFrame` — which
-already existed for frameless shots — carries the read path. The alternative was
-a row whose `imageStatus` sat at its `'pending'` default forever, which the
-scene rail renders as a permanently spinning thumbnail.
+The anchor frame and the per-scene **storyboard preview still are kept**. The
+preview is what fills the scene rail while the clip renders — without it the
+rail has nothing to show until the video lands, and the anchor frame is where
+that preview variant hangs.
 
 `MotionPromptBatchWorkflow`'s "refusing to generate an unanchored motion
 prompt" guard is lifted, since in this mode a missing still is the design

@@ -162,48 +162,18 @@ describe('shots anchor-frame materialization', () => {
     // Simulate a generated image landing on the anchor between writes. The
     // still is a selected `frame_variants` row (#1067); the frame keeps the
     // pointer, so replay must not clear it.
-    const anchorFrameId = shot.anchorFrameId;
-    if (!anchorFrameId) throw new Error('expected an anchor frame');
     await db
       .update(frames)
       .set({ selectedImageVersionId: 'anchor-version-1' })
-      .where(eq(frames.id, anchorFrameId));
+      .where(eq(frames.id, shot.anchorFrameId));
 
     await methods.upsert({ sequenceId, sceneId, shotNumber: 1 });
 
     const [anchor] = await db
       .select()
       .from(frames)
-      .where(eq(frames.id, anchorFrameId));
+      .where(eq(frames.id, shot.anchorFrameId));
     expect(anchor?.selectedImageVersionId).toBe('anchor-version-1');
-  });
-
-  it('materializes no anchor frame for a reference-only sequence', async () => {
-    // The mode renders straight to video and skips the visual-prompt phase, so
-    // nothing is ever written to the anchor — and a materialized one reads as a
-    // still that is forever 'pending'. Resolved from the sequence rather than a
-    // caller flag: every shot READ calls ensureAnchorFrames, so a creation-only
-    // flag would be undone by the next read.
-    await db
-      .update(sequences)
-      .set({ referenceOnly: true })
-      .where(eq(sequences.id, sequenceId));
-
-    const methods = createShotsMethods(db);
-    const shot = await methods.upsert({ sequenceId, sceneId, shotNumber: 1 });
-
-    expect(shot.anchorFrameId).toBeNull();
-    const anchors = await db
-      .select()
-      .from(frames)
-      .where(eq(frames.shotId, shot.id));
-    expect(anchors).toEqual([]);
-
-    // A later read must not backfill one.
-    expect((await methods.ensureAnchorFrames([shot])).size).toBe(0);
-    expect(
-      await db.select().from(frames).where(eq(frames.shotId, shot.id))
-    ).toEqual([]);
   });
 });
 

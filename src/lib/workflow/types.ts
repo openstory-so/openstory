@@ -374,12 +374,6 @@ export type SceneSplitWorkflowInput = SequenceWorkflowContext & {
   script: string;
   /** User-uploaded elements to make the model aware of uppercase tokens */
   elements?: SequenceElementMinimal[];
-  /**
-   * Reference-only renders straight to video: no anchor frame is materialized
-   * and the decorative per-scene preview still is skipped — there is no still
-   * for it to stand in for, and it is a billed image generation per scene.
-   */
-  referenceOnly?: boolean;
 };
 
 export type SceneSplitWorkflowResult = {

@@ -214,12 +214,11 @@ category doesn't match the hatch it came through. Full rationale:
 ## Reference-only motion (no start frames)
 
 `sequences.referenceOnly` renders each shot **straight to video** from the
-character / location / element reference sheets. Nothing image-shaped runs
-per shot: the shot-images phase, the visual-prompt phase, and the decorative
-per-scene preview still are all skipped — so no anchor frame is materialized
-either (`anchorFrameId` / `ShotMapping.frameId` are nullable, and
-`ensureAnchorFrames` reads the mode off the sequence because every shot READ
-calls it). Off by default; only models with a fal `reference-to-video` route qualify
+character / location / element reference sheets — the shot-images phase never
+runs, and neither does the visual-prompt phase (the reference-only motion
+template composes its own opening frame from the bibles and is never handed
+one). The storyboard preview still is kept: it fills the scene rail while the
+clip renders. Off by default; only models with a fal `reference-to-video` route qualify
 (Seedance 2.0 / 2.5, H3 Max, `supportsReferenceOnlyMotion`), and `createSequenceSchema`
 validates **every** selected video model, not just the primary.
 
