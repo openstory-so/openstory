@@ -157,23 +157,19 @@ const PHASES = [
 ] as const;
 
 /**
- * Reference-only renders straight to video: phase 3 writes no visual prompts
- * and phase 4 renders no stills, so the default labels name work that never
- * happens — "Images" sitting on a step that only writes motion prompts reads
- * as a stalled image phase.
+ * Reference-only renders straight to video, so phase 4 — shot images — never
+ * runs, and its motion prompts are folded into phase 3 alongside the reference
+ * sheets. The step is DROPPED rather than relabelled: it has no work left of
+ * its own, and a chip that only ever waits is one the user watches for no
+ * reason. Phase 3's own label already reads "References & prompts", which is
+ * exactly what it now does.
  */
-const REFERENCE_ONLY_PHASE_LABELS: Record<
-  number,
-  { name: string; shortName: string }
-> = {
-  3: { name: 'Generating references\u2026', shortName: 'References' },
-  4: { name: 'Writing shot prompts\u2026', shortName: 'Prompts' },
-};
+const REFERENCE_ONLY_SKIPPED_PHASE = 4;
 
 export type GenerationPhaseConfig = {
   autoGenerateMotion: boolean;
   autoGenerateMusic: boolean;
-  /** Straight-to-video: no stills, and no visual prompts to write. */
+  /** Straight-to-video: no shot-images phase, so no phase 4 at all. */
   referenceOnly?: boolean;
 };
 
@@ -230,19 +226,14 @@ function updateShotRetries(
 export function createInitialState(
   config?: GenerationPhaseConfig
 ): GenerationStreamState {
-  const phases: GenerationPhase[] = PHASES.map((p, i) => {
-    const phase = i + 1;
-    const label =
-      (config?.referenceOnly
-        ? REFERENCE_ONLY_PHASE_LABELS[phase]
-        : undefined) ?? p;
-    return {
-      phase,
-      phaseName: label.name,
-      shortName: label.shortName,
-      status: 'pending' as const,
-    };
-  });
+  const phases: GenerationPhase[] = PHASES.map((p, i) => ({
+    phase: i + 1,
+    phaseName: p.name,
+    shortName: p.shortName,
+    status: 'pending' as const,
+  })).filter(
+    (p) => !(config?.referenceOnly && p.phase === REFERENCE_ONLY_SKIPPED_PHASE)
+  );
 
   if (config && (config.autoGenerateMotion || config.autoGenerateMusic)) {
     const label = getPhase5Label(config);

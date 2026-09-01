@@ -476,16 +476,17 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
         timeout: '60 minutes',
       });
 
-    // REFERENCE-ONLY runs the prompts ALONGSIDE the reference sheets. Phase 3
-    // produces sheets — images — and this child reads bible TEXT: the bibles
-    // are phase-1 output, casting resolved at the end of phase 2, and the
-    // visual prompts it would otherwise wait on are not written in this mode.
-    // The dependency it inherits from the image path is the rendered still
-    // (#929 conditions the motion prompt on the actual starting frame as
+    // REFERENCE-ONLY runs the prompts as PART of phase 3, next to the sheets.
+    // Phase 3 produces sheets — images — and this child reads bible TEXT: the
+    // bibles are phase-1 output, casting resolved at the end of phase 2, and
+    // the visual prompts it would otherwise wait on are not written in this
+    // mode. The dependency it inherits from the image path is the rendered
+    // still (#929 conditions the motion prompt on the actual starting frame as
     // vision input) — and there is no still here, so there is nothing to wait
-    // for. Started before phase 3 is awaited so the two overlap; `allSettled`
-    // never rejects, so holding the promise across the await is safe.
-    const earlyMotionMusic = referenceOnly
+    // for. Phase 4 then has no work of its own in this mode and is skipped
+    // entirely rather than left as a join: a progress step that only waits is
+    // a step the user watches for no reason.
+    const referenceOnlyPrompts = referenceOnly
       ? Promise.allSettled([
           runMotionMusicPrompts({
             scenesForPrompts: scenes,
@@ -503,10 +504,9 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
     await step.do('phase-3-start', async () => {
       await getGenerationChannel(sequenceId).emit('generation.phase:start', {
         phase: 3,
-        // Reference-only writes no visual prompts here — only the sheets.
-        phaseName: referenceOnly
-          ? 'Generating references…'
-          : 'Generating references & prompts…',
+        // Accurate in both modes: reference-only writes no VISUAL prompts here
+        // but does write its motion/music prompts alongside the sheets.
+        phaseName: 'Generating references & prompts…',
       });
     });
 
@@ -692,17 +692,26 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
     const generatedElements = elementSheetSettled.value;
     const allElements = [...elementsMinimal, ...generatedElements];
 
+    // Reference-only: the prompts are part of THIS phase, so they are awaited
+    // here. Null in every other mode, where they need phase 4's stills.
+    const referenceOnlyPromptsSettled = referenceOnlyPrompts
+      ? (await referenceOnlyPrompts)[0]
+      : null;
+
     // ----------------------------------------------------------------------
     // PHASE 4: shot images + motion/music prompts in parallel
     // ----------------------------------------------------------------------
-    await step.do('phase-4-start', async () => {
-      await getGenerationChannel(sequenceId).emit('generation.phase:start', {
-        phase: 4,
-        phaseName: referenceOnly
-          ? 'Writing shot prompts…'
-          : 'Generating images…',
+    // Reference-only has no phase 4: the stills are skipped and the prompts
+    // finished in phase 3, so it emits nothing and the progress rail runs
+    // Script → Casting → References → Music & Motion.
+    if (!referenceOnly) {
+      await step.do('phase-4-start', async () => {
+        await getGenerationChannel(sequenceId).emit('generation.phase:start', {
+          phase: 4,
+          phaseName: 'Generating images…',
+        });
       });
-    });
+    }
 
     // Build per-scene snapshots for shot-images divergence detection. Resolve
     // references through the SAME helper the image-gen stamp and staleness
@@ -807,16 +816,19 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
         ])
       );
 
-    // Already in flight since phase 3 when reference-only; otherwise it starts
-    // here, because it needs the stills phase 4 just rendered.
-    const [motionMusicSettled] = await (earlyMotionMusic ??
-      Promise.allSettled([
-        runMotionMusicPrompts({
-          scenesForPrompts: scenesWithVisualPrompts,
-          startingFrameImageUrls,
-          visualSummaryBySceneId: visualPromptBySceneId,
-        }),
-      ]));
+    // Settled back in phase 3 when reference-only; otherwise it starts here,
+    // because it needs the stills phase 4 just rendered.
+    const motionMusicSettled =
+      referenceOnlyPromptsSettled ??
+      (
+        await Promise.allSettled([
+          runMotionMusicPrompts({
+            scenesForPrompts: scenesWithVisualPrompts,
+            startingFrameImageUrls,
+            visualSummaryBySceneId: visualPromptBySceneId,
+          }),
+        ])
+      )[0];
 
     // Record analysis duration before raising failures (mirrors QStash).
     await step.do('record-analysis-duration', async () => {

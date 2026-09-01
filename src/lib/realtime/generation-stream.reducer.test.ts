@@ -160,35 +160,58 @@ describe('generationStreamReducer — shot retry tracking (#882)', () => {
   });
 });
 
-describe('phase labels in reference-only', () => {
+describe('progress phases in reference-only', () => {
   const shortNames = (config?: Parameters<typeof createInitialState>[0]) =>
     createInitialState(config).phases.map((p) => p.shortName);
 
-  it('names the still-less phases for the work they actually do', () => {
-    // Phase 4 renders no images in this mode — it writes motion prompts — and
-    // phase 3 writes no visual prompts, only the reference sheets. Leaving the
-    // default labels made the run look stuck on an image step that was never
-    // going to produce one.
+  it('drops the shot-images phase entirely', () => {
+    // Nothing is left in phase 4: the stills are skipped and the motion
+    // prompts finished back in phase 3. Relabelling it would leave a step the
+    // user watches while it does nothing; the workflow emits no phase-4 event
+    // at all, so the chip would sit pending until phase 5 swept it.
     expect(
       shortNames({
         autoGenerateMotion: true,
         autoGenerateMusic: true,
         referenceOnly: true,
       })
-    ).toEqual(['Script', 'Casting', 'References', 'Prompts', 'Music & Motion']);
+    ).toEqual(['Script', 'Casting', 'References', 'Music & Motion']);
 
     expect(
       createInitialState({
         autoGenerateMotion: true,
-        autoGenerateMusic: false,
+        autoGenerateMusic: true,
         referenceOnly: true,
-      }).phases.find((p) => p.phase === 3)?.phaseName
-    ).toBe('Generating references…');
+      }).phases.map((p) => p.phase)
+    ).toEqual([1, 2, 3, 5]);
   });
 
   it('leaves the image-rendering modes alone', () => {
     expect(
       shortNames({ autoGenerateMotion: true, autoGenerateMusic: true })
     ).toEqual(['Script', 'Casting', 'References', 'Images', 'Music & Motion']);
+  });
+
+  it('sweeps the earlier steps complete when phase 5 starts', () => {
+    // The rail has a gap where 4 would be; phase 5 arriving must still mark
+    // 1-3 completed rather than leaving them mid-flight.
+    const state = apply(
+      createInitialState({
+        autoGenerateMotion: true,
+        autoGenerateMusic: true,
+        referenceOnly: true,
+      }),
+      {
+        type: 'PHASE_START',
+        payload: { phase: 5, phaseName: 'Generating motion & music…' },
+      }
+    );
+
+    expect(state.phases.map((p) => p.status)).toEqual([
+      'completed',
+      'completed',
+      'completed',
+      'active',
+    ]);
   });
 });

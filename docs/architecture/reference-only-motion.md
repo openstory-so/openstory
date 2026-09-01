@@ -84,15 +84,22 @@ preview is what fills the scene rail while the clip renders — without it the
 rail has nothing to show until the video lands, and the anchor frame is where
 that preview variant hangs.
 
-**The motion/music prompts run alongside phase 3's sheets.** Phase 3 produces
-sheets — images — and the prompt child reads bible TEXT: the bibles come from
-scene-split, casting resolves at the end of phase 2, and there are no visual
-prompts to wait on. The one real dependency in the image path is the rendered
-still (#929 conditions the motion prompt on it as vision input), and there is
-no still here. Phase 4 becomes the await point rather than the start, so the
-progress rail keeps its shape; the phase-4 label reads "Prompts" instead of
-"Images" (`REFERENCE_ONLY_PHASE_LABELS`), since naming a step for a render it
-never performs reads as a stall.
+**The motion/music prompts run as part of phase 3, next to the sheets.** Phase
+3 produces sheets — images — and the prompt child reads bible TEXT: the bibles
+come from scene-split, casting resolves at the end of phase 2, and there are no
+visual prompts to wait on. The one real dependency in the image path is the
+rendered still (#929 conditions the motion prompt on it as vision input), and
+there is no still here.
+
+**So reference-only has no phase 4.** With the stills skipped and the prompts
+already settled, nothing is left for it to do but wait — and it does not even
+do that, since phase 3 awaits the prompts itself. The workflow emits no
+phase-4 event and `createInitialState` filters the chip out
+(`REFERENCE_ONLY_SKIPPED_PHASE`), so the rail runs **Script → Casting →
+References → Music & Motion**. Phase numbers keep their identity across the
+gap: `PHASE_START` for 5 marks every lower phase complete, so a missing 4
+changes nothing. Phase 3's existing label, "References & prompts", describes
+the merged step exactly.
 
 ## The reservation gate
 
