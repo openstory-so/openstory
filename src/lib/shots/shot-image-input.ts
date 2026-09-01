@@ -35,7 +35,7 @@ import type {
 } from '@/lib/workflow/types';
 import { shouldRecordUserEdit } from '@/lib/workflows/user-edit-predicate';
 import {
-  matchCharactersToScene,
+  matchCharactersToShotImage,
   matchElementsToShotImage,
   matchLocationsToScene,
 } from '@/lib/workflows/scene-matching';
@@ -173,10 +173,10 @@ export async function prepareShotImageWorkflowInput(args: {
         scopedDb.sequenceElements.list(sequence.id),
       ]);
 
-  const matchedCharacters = matchCharactersToScene(
-    allCharacters,
-    continuity?.characterTags ?? []
-  );
+  const matchedCharacters = matchCharactersToShotImage(allCharacters, {
+    characterTags: continuity?.characterTags,
+    visualPrompt: prompt,
+  });
   const characterReferences = buildCharacterReferenceImages(matchedCharacters);
 
   const matchedLocations = matchLocationsToScene(

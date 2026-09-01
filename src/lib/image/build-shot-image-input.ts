@@ -26,7 +26,7 @@ import type {
   ImageWorkflowInput,
 } from '@/lib/workflow/types';
 import {
-  matchCharactersToScene,
+  matchCharactersToShotImage,
   matchElementsToShotImage,
   matchLocationsToScene,
 } from '@/lib/workflows/scene-matching';
@@ -107,10 +107,10 @@ export async function buildShotImageWorkflowInput(opts: {
 
   const continuity = opts.continuity ?? opts.scene?.continuity;
 
-  const matchedCharacters = matchCharactersToScene(
-    characters,
-    continuity?.characterTags ?? []
-  );
+  const matchedCharacters = matchCharactersToShotImage(characters, {
+    characterTags: continuity?.characterTags,
+    visualPrompt: prompt,
+  });
   const characterReferences = buildCharacterReferenceImages(matchedCharacters);
 
   const environmentTag = continuity?.environmentTag ?? '';

@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { CharacterMinimal, SequenceElementMinimal } from '@/lib/db/schema';
-import { buildMotionReferenceImages } from './build-motion-references';
+import {
+  buildMotionReferenceImages,
+  buildShotImageReferenceImages,
+} from './build-motion-references';
 
 const character = (
   name: string,
@@ -91,5 +94,47 @@ describe('buildMotionReferenceImages', () => {
       elements: [element('LOGO', 'https://example.com/logo.png')],
     });
     expect(refs).toEqual([]);
+  });
+});
+
+describe('buildShotImageReferenceImages', () => {
+  it('attaches a character named in the visual prompt even with empty tags (#1432)', () => {
+    const refs = buildShotImageReferenceImages({
+      scene: {
+        continuity: { characterTags: [], elementTags: [], environmentTag: '' },
+        originalScript: { extract: '' },
+      },
+      visualPrompt: 'ALICE waits at the window.',
+      characters: [
+        character('Alice', 'https://example.com/alice.png'),
+        character('Bob', 'https://example.com/bob.png'),
+      ],
+      locations: [],
+      elements: [],
+    });
+    expect(refs.map((r) => r.referenceImageUrl)).toEqual([
+      'https://example.com/alice.png',
+    ]);
+    expect(refs[0]).toMatchObject({ role: 'character', token: 'Alice' });
+  });
+
+  it('still matches continuity tags when the prompt does not name the character', () => {
+    const refs = buildShotImageReferenceImages({
+      scene: {
+        continuity: {
+          characterTags: ['Alice'],
+          elementTags: [],
+          environmentTag: '',
+        },
+        originalScript: { extract: '' },
+      },
+      visualPrompt: 'A woman in a red coat waits at the window.',
+      characters: [character('Alice', 'https://example.com/alice.png')],
+      locations: [],
+      elements: [],
+    });
+    expect(refs.map((r) => r.referenceImageUrl)).toEqual([
+      'https://example.com/alice.png',
+    ]);
   });
 });

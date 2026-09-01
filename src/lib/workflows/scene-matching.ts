@@ -93,6 +93,90 @@ export function matchCharactersToScene<T extends CharacterMatchInput>(
   );
 }
 
+/**
+ * Strip `"char_001: jack-denim-jacket"` down to the slug half. Same split
+ * `extract-continuity-from-prompt` uses — kept local to avoid a cycle.
+ */
+function consistencyTagSlug(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const idx = raw.indexOf(':');
+  const slug = (idx >= 0 ? raw.slice(idx + 1) : raw).trim();
+  return slug.length > 0 ? slug : null;
+}
+
+function escapeForRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Whole-word match. Hyphen/underscore stay inside the token so
+ * `jack-denim-jacket` is one term. `caseSensitive` is for ALL-CAPS cast
+ * names (the deliberate `SCARLETT` mention, not lowercase prose).
+ */
+function tagMatchesText(
+  tag: string,
+  text: string,
+  caseSensitive = false
+): boolean {
+  if (!tag) return false;
+  const escaped = escapeForRegex(tag);
+  const re = new RegExp(
+    `(?:^|[^A-Za-z0-9_-])${escaped}(?:[^A-Za-z0-9_-]|$)`,
+    caseSensitive ? '' : 'i'
+  );
+  return re.test(text);
+}
+
+/**
+ * Did this visual prompt name the character the way prompts actually do
+ * (#1432)? ALL-CAPS name is case-sensitive (mirrors tagify / the continuity
+ * rescan); `characterId` and the consistencyTag slug are case-insensitive.
+ */
+export function characterMentionedInPrompt(
+  character: CharacterMatchInput,
+  prompt: string
+): boolean {
+  if (!prompt.trim()) return false;
+  const nameUpper = character.name.toUpperCase();
+  if (nameUpper.length > 0 && tagMatchesText(nameUpper, prompt, true)) {
+    return true;
+  }
+  if (tagMatchesText(character.characterId, prompt)) return true;
+  const slug = consistencyTagSlug(character.consistencyTag);
+  return slug != null && tagMatchesText(slug, prompt);
+}
+
+/**
+ * Characters whose sheets should attach to a still (#1432).
+ *
+ * Continuity tags stay the primary match (a tagged character may be described
+ * without an ALL-CAPS name). The visual prompt is additive: a regenerated
+ * prompt that names `SCARLETT` still attaches her sheet when tags are empty
+ * or stale — the same fallback `matchElementsToShotImage` already has for
+ * tokens. Update all's chained stills skip `rescanContinuityFromPrompt`, so
+ * this is the path that actually sends the refs.
+ */
+export function matchCharactersToShotImage<T extends CharacterMatchInput>(
+  allCharacters: T[],
+  args: {
+    characterTags?: string[] | null;
+    visualPrompt?: string | null;
+  }
+): T[] {
+  const tagged = matchCharactersToScene(
+    allCharacters,
+    args.characterTags ?? []
+  );
+  const prompt = (args.visualPrompt ?? '').trim();
+  if (!prompt) return tagged;
+
+  const seen = new Set(tagged.map((c) => c.characterId));
+  const extra = allCharacters.filter(
+    (c) => !seen.has(c.characterId) && characterMentionedInPrompt(c, prompt)
+  );
+  return extra.length === 0 ? tagged : [...tagged, ...extra];
+}
+
 type LocationMatchInput = Pick<
   SequenceLocationMinimal,
   'locationId' | 'name' | 'consistencyTag'

@@ -45,7 +45,7 @@ import type {
   ShotVariantWorkflowInput,
 } from '@/lib/workflow/types';
 import {
-  matchCharactersToScene,
+  matchCharactersToShotImage,
   matchElementsToShotImage,
   matchLocationsToScene,
 } from '@/lib/workflows/scene-matching';
@@ -170,10 +170,10 @@ export class ShotImagesWorkflow extends OpenStoryWorkflowEntrypoint<ShotImagesWo
           sceneCharacterMap: Object.fromEntries(
             scenesWithVisualPrompts.map((scene) => [
               scene.sceneId,
-              matchCharactersToScene(
-                charactersWithSheets,
-                scene.continuity?.characterTags || []
-              ),
+              matchCharactersToShotImage(charactersWithSheets, {
+                characterTags: scene.continuity?.characterTags,
+                visualPrompt: visualPromptBySceneId[scene.sceneId] ?? '',
+              }),
             ])
           ),
           sceneLocationMap: Object.fromEntries(
