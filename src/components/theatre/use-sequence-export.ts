@@ -44,8 +44,9 @@ const sequenceExportKeys = {
 };
 
 // Cap the upload PUT so a stalled R2 proxy surfaces an error toast instead of
-// spinning forever. Generous enough for a 5-min export on a slow connection.
-const UPLOAD_TIMEOUT_MS = 5 * 60 * 1000;
+// spinning forever. Generous enough for a 10-min export on a slow connection
+// (browser export's safety valve, matching server — #1430).
+const UPLOAD_TIMEOUT_MS = 10 * 60 * 1000;
 
 export type SequenceExportState = {
   isRunning: boolean;
