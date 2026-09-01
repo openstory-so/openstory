@@ -13,6 +13,7 @@ import {
   AUDIO_MODELS,
   IMAGE_MODELS,
   IMAGE_TO_VIDEO_MODELS,
+  supportsReferenceOnlyMotion,
   type AudioModel,
   type ImageToVideoModel,
   type TextToImageModel,
@@ -179,11 +180,24 @@ export function estimateVideoCost(
      * `resolveMotionEndpoint` may route to reference-to-video.
      */
     hasReferenceImages?: boolean;
+    /**
+     * Reference-only shots route to reference-to-video even when the scene
+     * matched no sheets at all, so the estimate has to be told: resolving on
+     * `hasReferenceImages` alone would price the image-to-video row for a job
+     * that never runs there.
+     */
+    referenceOnly?: boolean;
   }
 ): Microdollars | null {
   const { endpointId } = resolveMotionEndpoint(
     model,
-    opts.hasReferenceImages === true
+    opts.hasReferenceImages === true,
+    'fal',
+    // Gated on the model: `resolveMotionEndpoint` THROWS for reference-only on
+    // a model with no fal reference-to-video route, and an estimator must not.
+    // Grok reference-only is exactly that case — it runs on the native xAI via,
+    // whose cost is the flat per-second rate off `modelConfig.id` anyway.
+    opts.referenceOnly === true && supportsReferenceOnlyMotion(model)
   );
   // Keep the catalog model id path when unresolved (tests / unknown keys).
   // Both ids alias to the Ark rate when the platform routes there (#1157).

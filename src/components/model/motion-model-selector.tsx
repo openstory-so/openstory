@@ -6,7 +6,6 @@ import {
   IMAGE_TO_VIDEO_MODELS,
   isModelCompatibleWithAspectRatio,
   isValidImageToVideoModel,
-  supportsReferenceOnlyMotion,
   type ImageToVideoModel,
 } from '@/lib/ai/models';
 import {
@@ -16,6 +15,7 @@ import {
   selectorGroup,
   TURBO_VIDEO_MODELS,
 } from '@/lib/ai/generation-mode';
+import { useViaAvailability } from '@/hooks/use-via-availability';
 import type { AspectRatio } from '@/lib/constants/aspect-ratios';
 import { useMemo } from 'react';
 
@@ -51,6 +51,10 @@ function useMotionModels({
   allowedIds,
   referenceOnly,
 }: MotionModelFilterProps) {
+  // Resolved server-side per team and seeded by the `_app` route loader, so the
+  // list is right on first paint. Grok Imagine appears here only where an xAI
+  // key resolves — on fal its id is an image-to-video endpoint.
+  const { referenceOnlyModels } = useViaAvailability();
   return useMemo(
     () =>
       Object.entries(IMAGE_TO_VIDEO_MODELS)
@@ -58,7 +62,7 @@ function useMotionModels({
           if (!isValidImageToVideoModel(key)) return false;
           if ('hidden' in m) return false;
           if (allowedIds && !allowedIds.includes(key)) return false;
-          if (referenceOnly && !supportsReferenceOnlyMotion(key)) return false;
+          if (referenceOnly && !referenceOnlyModels.includes(key)) return false;
           if (
             'requiredStyleCategory' in m &&
             m.requiredStyleCategory !== styleCategory
@@ -102,6 +106,7 @@ function useMotionModels({
       styleName,
       allowedIds,
       referenceOnly,
+      referenceOnlyModels,
     ]
   );
 }

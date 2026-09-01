@@ -49,7 +49,6 @@ export class MotionPromptBatchWorkflow extends OpenStoryWorkflowEntrypoint<Motio
       sequenceId,
       startingFrameImageUrls,
       referenceOnly = false,
-      visualPromptsBySceneId,
     } = input;
 
     // ============================================================
@@ -117,9 +116,6 @@ export class MotionPromptBatchWorkflow extends OpenStoryWorkflowEntrypoint<Motio
           // never looked up inside the child workflow.
           startingFrameImageUrl,
           referenceOnly,
-          visualPrompt: referenceOnly
-            ? (visualPromptsBySceneId?.[scene.sceneId] ?? null)
-            : null,
         };
 
         return spawnAndAwaitChild<

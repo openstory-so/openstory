@@ -70,6 +70,8 @@ export function estimateBatchMotionCost(
      * models that route there with cast/element refs (#873).
      */
     hasReferenceImages?: boolean | ((shot: BatchShot) => boolean);
+    /** @see estimateVideoCost — reference-only always routes to r2v. */
+    referenceOnly?: boolean;
   }
 ): Microdollars {
   return shots.reduce((sum, shot) => {
@@ -90,6 +92,7 @@ export function estimateBatchMotionCost(
           pricing: opts.pricing,
           resolution: opts.resolution,
           hasReferenceImages: hasRefs,
+          referenceOnly: opts.referenceOnly,
         }),
         { model, operation: 'batch-motion' }
       )

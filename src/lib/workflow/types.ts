@@ -879,8 +879,6 @@ export interface MotionPromptBatchWorkflowInput extends SequenceWorkflowContext 
    * in this mode a missing still is the design, not a failed image.
    */
   referenceOnly?: boolean;
-  /** Scene's visual prompt, per `sceneId`. Reference-only runs only. */
-  visualPromptsBySceneId?: Record<string, string>;
 }
 
 export interface MotionPromptWorkflowInput extends SequenceWorkflowContext {
@@ -910,13 +908,6 @@ export interface MotionPromptWorkflowInput extends SequenceWorkflowContext {
    * merely absent `startingFrameImageUrl`, which means "no still YET".
    */
   referenceOnly?: boolean;
-  /**
-   * The scene's visual (still) prompt, threaded in only for reference-only
-   * runs. The image pass that would have consumed it is skipped, but the text
-   * still holds the staging and framing decisions the LLM already made for
-   * this scene, so it seeds paragraph 1 rather than being thrown away.
-   */
-  visualPrompt?: string | null;
   /** See {@link FramePromptWorkflowInput.emitStreaming}. */
   emitStreaming?: boolean;
   /**

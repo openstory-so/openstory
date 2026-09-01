@@ -5,7 +5,7 @@ import {
   DEFAULT_VIDEO_MODEL,
   IMAGE_MODELS,
   IMAGE_TO_VIDEO_MODELS,
-  supportsReferenceOnlyMotion,
+  referenceOnlyCapableWith,
   type ImageToVideoModel,
 } from '@/lib/ai/models';
 import {
@@ -39,7 +39,10 @@ export const MUSIC_REQUIRES_MOTION_ERROR =
   'Music generation currently requires motion. Turn on motion or disable music.';
 
 export const REFERENCE_ONLY_MODEL_ERROR =
-  'Reference-only mode needs a video model with a reference-to-video route. Pick a Seedance model, or turn reference-only off.';
+  'Reference-only mode needs a video model that can render without a start frame. Pick a Seedance model, or turn reference-only off.';
+
+export const REFERENCE_ONLY_REQUIRES_MOTION_ERROR =
+  'Reference-only mode renders straight to video, so it needs motion. Turn motion on, or turn reference-only off.';
 
 export const createSequenceSchema = createInsertSchema(sequences, {
   title: (schema) => schema.min(1).optional(), // Optional - defaults to 'Untitled Sequence' in hook
@@ -177,6 +180,11 @@ export const createSequenceSchema = createInsertSchema(sequences, {
   // Reference-only has no start frame, so EVERY selected model must have a
   // route whose start frame is optional — not just the primary. A variant
   // model without one would fail every shot it was asked to render.
+  //
+  // This schema is isomorphic and pure, so it cannot know which vias a team
+  // reaches. It asks the widest question — capable on SOME via — which rejects
+  // Kling / Veo / LTX always and lets Grok Imagine through; `createSequences`
+  // then re-asks it against the team's real keys via `canRenderReferenceOnly`.
   .refine(
     (data) =>
       !data.referenceOnly ||
@@ -184,13 +192,20 @@ export const createSequenceSchema = createInsertSchema(sequences, {
         (model) =>
           validVideoModelKeys.includes(model) &&
           // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- guarded by the key check above
-          supportsReferenceOnlyMotion(model as ImageToVideoModel)
+          referenceOnlyCapableWith(model as ImageToVideoModel, { xai: true })
       ),
     {
       path: ['referenceOnly'],
       message: REFERENCE_ONLY_MODEL_ERROR,
     }
-  );
+  )
+  // Reference-only skips the image pass; motion is the only thing left that
+  // renders. With motion off the sequence would complete having generated
+  // nothing at all, and report success doing it.
+  .refine((data) => !data.referenceOnly || data.autoGenerateMotion, {
+    path: ['referenceOnly'],
+    message: REFERENCE_ONLY_REQUIRES_MOTION_ERROR,
+  });
 
 export const updateSequenceSchema = createUpdateSchema(sequences, {
   title: (schema) => schema.min(1), // drizzle-zod auto-applies max from varchar(500)
@@ -219,6 +234,12 @@ export const updateSequenceSchema = createUpdateSchema(sequences, {
   updatedBy: true,
   workflow: true, // Set by workflow, not user
   workflowRunId: true, // Set at workflow trigger time, not user
+  // Set at creation only. Toggling it on an existing sequence bypasses the
+  // model refine below AND rewrites what every already-rendered shot means:
+  // on, the stills the user approved are silently dropped from the request
+  // while their prompts still assume one; off, no shot has a still and batch
+  // motion finds nothing eligible. Regenerate instead of toggling.
+  referenceOnly: true,
   // Copied from the style row on styleId change — clients send styleId only.
   styleConfig: true,
   // Music fields - managed by workflow, not user input

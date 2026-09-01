@@ -78,8 +78,6 @@ export type BytePlusVideoRequestOptions = {
   resolution?: Resolution;
   generateAudio?: boolean;
   referenceImages?: ReferenceImageDescription[];
-  /** No start frame was rendered — see `resolveMotionEndpoint`. */
-  referenceOnly?: boolean;
 };
 
 function truncate(prompt: string, maxLength: number): string {

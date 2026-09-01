@@ -24,8 +24,6 @@ import {
   DEFAULT_MUSIC_MODEL,
   DEFAULT_VIDEO_MODEL,
   IMAGE_TO_VIDEO_MODELS,
-  referenceOnlyMotionModels,
-  supportsReferenceOnlyMotion,
   type AudioModel,
   type ImageToVideoModel,
   type TextToImageModel,
@@ -38,6 +36,7 @@ import {
   resolutionCeilingNote,
 } from '@/lib/ai/resolution-support';
 import { useMemo, useState, type FC } from 'react';
+import { useViaAvailability } from '@/hooks/use-via-availability';
 import { AspectRatioPills } from './aspect-ratio-pills';
 import { ResolutionPills } from './resolution-pills';
 import { GenerationSettingsTrigger } from './generation-settings-trigger';
@@ -165,13 +164,26 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
     aspectRatio,
   };
 
+  // Per-team list from the `_app` loader, so the copy names the models this
+  // team can actually pick — Grok Imagine included when xAI is reachable.
+  const { referenceOnlyModels } = useViaAvailability();
   const referenceOnlyModelNames = useMemo(
     () =>
       new Intl.ListFormat('en', { style: 'long', type: 'disjunction' }).format(
-        referenceOnlyMotionModels().map((m) => IMAGE_TO_VIDEO_MODELS[m].name)
+        referenceOnlyModels.map((m) => IMAGE_TO_VIDEO_MODELS[m].name)
       ),
-    []
+    [referenceOnlyModels]
   );
+
+  /**
+   * Reference-only renders nothing without motion, and the server now rejects
+   * that pair. Turning motion off only *disabled* the reference-only toggle,
+   * leaving its `true` value to be submitted — so clear it here instead.
+   */
+  const handleAutoGenerateMotionChange = (next: boolean) => {
+    onAutoGenerateMotionChange?.(next);
+    if (!next && referenceOnly) onReferenceOnlyChange?.(false);
+  };
 
   /**
    * Turning the mode ON narrows the motion list, which can strand a selection
@@ -183,9 +195,9 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
   const handleReferenceOnlyChange = (next: boolean) => {
     onReferenceOnlyChange?.(next);
     if (!next) return;
-    const capable = videoModels.filter(supportsReferenceOnlyMotion);
+    const capable = videoModels.filter((m) => referenceOnlyModels.includes(m));
     if (capable.length === videoModels.length) return;
-    const fallback = referenceOnlyMotionModels()[0];
+    const fallback = referenceOnlyModels[0];
     onVideoModelsChange(
       capable.length > 0 ? capable : fallback ? [fallback] : videoModels
     );
@@ -311,7 +323,7 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
                 id="auto-generate-motion"
                 label="Auto-generate motion"
                 checked={autoGenerateMotion}
-                onChange={onAutoGenerateMotionChange}
+                onChange={handleAutoGenerateMotionChange}
                 disabled={disabled}
               />
             )}

@@ -207,7 +207,6 @@ describe('MotionPromptBatchWorkflow reference-only', () => {
     const event = makeEvent({
       startingFrameImageUrls: undefined,
       referenceOnly: true,
-      visualPromptsBySceneId: { scene_1: 'a wide of the dock' },
     });
 
     const result = await makeWorkflow().batch(event, makeStep(), SCOPED_DB);
@@ -216,7 +215,7 @@ describe('MotionPromptBatchWorkflow reference-only', () => {
     expect(spawnAndAwaitChild).toHaveBeenCalledTimes(3);
   });
 
-  test('passes the mode and the visual prompt down to each child', async () => {
+  test('passes the mode down to each child', async () => {
     spawnAndAwaitChild.mockReset();
     spawnAndAwaitChild.mockImplementation(
       (_step: unknown, args: { childId: string }) =>
@@ -226,7 +225,6 @@ describe('MotionPromptBatchWorkflow reference-only', () => {
     const event = makeEvent({
       startingFrameImageUrls: undefined,
       referenceOnly: true,
-      visualPromptsBySceneId: { scene_1: 'a wide of the dock' },
     });
 
     await makeWorkflow().batch(event, makeStep(), SCOPED_DB);
@@ -235,8 +233,5 @@ describe('MotionPromptBatchWorkflow reference-only', () => {
       ([, args]) => args.childPayload
     );
     expect(payloads.every((p) => p.referenceOnly === true)).toBe(true);
-    expect(payloads[0]?.visualPrompt).toBe('a wide of the dock');
-    // A scene without one passes null rather than leaking the key.
-    expect(payloads[1]?.visualPrompt).toBeNull();
   });
 });

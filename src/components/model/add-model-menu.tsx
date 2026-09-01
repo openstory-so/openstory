@@ -30,6 +30,7 @@ import {
 } from '@/lib/ai/generation-mode';
 import type { VariantType } from '@/lib/db/schema/shot-variants';
 import { DEFAULT_ASPECT_RATIO } from '@/lib/constants/aspect-ratios';
+import { useViaAvailability } from '@/hooks/use-via-availability';
 import { useMemo } from 'react';
 import { toast } from 'sonner';
 
@@ -71,6 +72,8 @@ export const AddModelMenuSection = ({
   const { data: sequence } = useSequence(sequenceId);
   const { data: style } = useSequenceStyle(sequenceId);
   const aspectRatio = sequence?.aspectRatio ?? DEFAULT_ASPECT_RATIO;
+  const referenceOnly = sequence?.referenceOnly ?? false;
+  const { referenceOnlyModels } = useViaAvailability();
   // Style-category gating (mirrors motion-model-selector): a model declaring a
   // `requiredStyleCategory` (none currently declare one) is only offered when
   // the sequence's style matches — otherwise it isn't a valid choice here.
@@ -111,14 +114,21 @@ export const AddModelMenuSection = ({
     }
 
     if (variantType === 'video') {
-      const count = shotList.filter(
-        (f) => f.frame.imageStatus === 'completed' && f.image?.url
+      const count = shotList.filter((f) =>
+        referenceOnly
+          ? true
+          : f.frame.imageStatus === 'completed' && f.image?.url
       ).length;
       return Object.keys(IMAGE_TO_VIDEO_MODELS)
         .filter(isValidImageToVideoModel)
         .filter((key) => {
           const model = IMAGE_TO_VIDEO_MODELS[key];
           if (used.has(key) || 'hidden' in model) return false;
+          // A reference-only sequence renders EVERY selected model with no
+          // start frame, so a model without a reference-to-video route would
+          // fail every shot it was added for — same rule the create schema
+          // applies to the initial selection.
+          if (referenceOnly && !referenceOnlyModels.includes(key)) return false;
           // Exclude models gated to a different style category (e.g. Seedance 2
           // is animation-only) — same rule as the motion-model selector.
           if (
@@ -172,7 +182,16 @@ export const AddModelMenuSection = ({
         scope: '1 track',
         group: selectorGroup(key, TURBO_AUDIO_MODELS),
       }));
-  }, [variantType, usedModels, shots, sceneRows, aspectRatio, styleCategory]);
+  }, [
+    variantType,
+    usedModels,
+    shots,
+    sceneRows,
+    aspectRatio,
+    styleCategory,
+    referenceOnly,
+    referenceOnlyModels,
+  ]);
 
   if (candidates.length === 0) return null;
 

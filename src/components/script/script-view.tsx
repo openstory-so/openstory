@@ -54,6 +54,7 @@ import { useGenerationSettings } from '@/hooks/use-generation-settings';
 import { useComposedScript } from '@/hooks/use-scenes';
 import { useSequenceCharacters } from '@/hooks/use-sequence-characters';
 import { useSequenceDraft } from '@/hooks/use-sequence-draft';
+import { useViaAvailability } from '@/hooks/use-via-availability';
 import {
   useSequenceElements,
   type DraftElementUpload,
@@ -314,6 +315,10 @@ export const ScriptView: FC<{
     saveDraft,
     clearDraft,
   } = useSequenceDraft();
+
+  // Which video models can render reference-only for this team — resolved
+  // server-side and seeded by the `_app` route loader.
+  const { referenceOnlyModels } = useViaAvailability();
 
   // Initialize with sequence values (if editing) or localStorage defaults (if creating)
   const sequenceAnalysisModels: AnalysisModelId[] = useMemo(() => {
@@ -802,10 +807,15 @@ export const ScriptView: FC<{
       styleMayApplyImage(generationMode, recommendedImageModel)
         ? recommendedImageModel
         : null;
+    // A style's recommendation is a preference; reference-only is a hard
+    // constraint. Two seeded styles recommend Grok Imagine, which has no fal
+    // reference-to-video route — applying it here would build a selection the
+    // create schema rejects at Generate, after the settings panel is closed.
     const validVideo =
       recommendedVideoModel &&
       isValidImageToVideoModel(recommendedVideoModel) &&
-      styleMayApplyVideo(generationMode, recommendedVideoModel)
+      styleMayApplyVideo(generationMode, recommendedVideoModel) &&
+      (!referenceOnly || referenceOnlyModels.includes(recommendedVideoModel))
         ? recommendedVideoModel
         : null;
     const parsedRatio = recommendedAspectRatio
@@ -861,6 +871,8 @@ export const ScriptView: FC<{
     selectedStyle?.name,
     recommendedImageModel,
     recommendedVideoModel,
+    referenceOnly,
+    referenceOnlyModels,
     recommendedAspectRatio,
     generationMode,
   ]);

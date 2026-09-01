@@ -103,7 +103,11 @@ request; Ark would size the clip from the first reference, so a portrait
 character sheet would silently render a 9:16 clip into a 16:9 sequence.
 
 Billing prices the reference-to-video endpoint the job actually hits, not the
-image-to-video row.
+image-to-video row — the post-hoc charge (`motionCostFromUsage`), the workflow
+estimate (`calculateMotionMetadata`), AND the pre-flight credit gates, which
+take `referenceOnly` through `estimateVideoCost`. A reference-only shot routes
+to r2v even having matched no sheets at all, so resolving on `hasReferenceImages`
+alone under-prices exactly the shots with the least to go on.
 
 `video_variants.manifest` records `frameVersionId: null`, which is already the
 documented encoding of "reference-driven shot with no dedicated first frame".
@@ -117,10 +121,27 @@ submit time, so a model that is capable on one via and not another could not be
 gated honestly.
 
 Kling is excluded — its `elements` ride on the image-to-video endpoint, which
-requires `image_url`. Grok Imagine is excluded for the same reason on its fal
-route: only the native xAI via accepts references without a start frame, and a
-team without an xAI key would fall through to an endpoint that cannot serve the
-request.
+requires `image_url`.
+
+**Grok Imagine 1.5 is not excluded because it lacks references — it has them.**
+`GROK_VIDEO_REFERENCE_CONFIG` binds up to 7, `resolveMotionEndpoint` returns
+`inline` for it, and `buildGrokVideoRequest` handles the no-still case. What it
+lacks is a _route_: its catalog id is
+`xai/grok-imagine-video/v1.5/image-to-video`, so only the native **xAI** via can
+serve a reference-only shot, and the via is claimed per team at submit time
+(team `xai` key → platform `XAI_API_KEY` → fal). A creation-time gate cannot
+know which way a given team will resolve months later, so it stays conservative.
+
+Where the via IS known, ask the honest question instead:
+`canRenderReferenceOnly(model, scopedDb)` in `motion-generation.ts` returns true
+for Grok whenever an xAI key resolves. `MotionWorkflow`'s entry guard and the
+content-flag rescue both use it, which is what lets Grok rescue a flagged
+reference-only shot rather than committing itself onto the row and then dying.
+
+Making Grok _selectable_ at creation is a separate decision: it needs a
+server-side "is xAI configured" signal reaching both the schema refine and the
+model selector, which `createSequenceSchema` (isomorphic, pure) does not have
+today.
 
 `createSequenceSchema` validates **every** selected video model, not just the
 primary: reference-only renders each of them, and a variant without a reference

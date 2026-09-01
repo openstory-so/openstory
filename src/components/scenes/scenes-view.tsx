@@ -78,7 +78,7 @@ import {
 import { DEFAULT_ASPECT_RATIO } from '@/lib/constants/aspect-ratios';
 import { isSetImageOffered } from '@/lib/shots/set-image-offer';
 import type { FrameVariant, ShotVariant } from '@/lib/db/schema';
-import type { ShotView } from '@/lib/shots/shot-view';
+import { isBatchMotionEligible, type ShotView } from '@/lib/shots/shot-view';
 import { analyzeLoadedFailures } from '@/lib/failures/failure-analysis';
 import type { GenerationPhaseConfig } from '@/lib/realtime/generation-stream.reducer';
 import { useGenerationStream } from '@/lib/realtime/use-generation-stream';
@@ -290,6 +290,9 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     },
   });
   const aspectRatio = sequence?.aspectRatio || DEFAULT_ASPECT_RATIO;
+  // No stills are ever rendered in this mode, so every motion-eligibility
+  // check has to stop requiring one (`isBatchMotionEligible`).
+  const referenceOnly = sequence?.referenceOnly ?? false;
   const isProcessing = sequence?.status === 'processing';
   const processingRef = useRef(isProcessing);
   processingRef.current = isProcessing;
@@ -1242,13 +1245,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
       // 'cancelled' is user-initiated (#1108 Phase 4): deliberately eligible
       // for a user-driven batch generate, never auto-retried.
       const eligibleShotIds = (shots ?? [])
-        .filter(
-          (f) =>
-            f.frame.imageStatus === 'completed' &&
-            (f.videoStatus === 'pending' ||
-              f.videoStatus === 'failed' ||
-              f.videoStatus === 'cancelled')
-        )
+        .filter((f) => isBatchMotionEligible(f, referenceOnly))
         .map((f) => f.id);
 
       setRegeneratingMotion((prev) => addAllToSet(prev, eligibleShotIds));
@@ -1323,7 +1320,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
         }
       }
     },
-    [sequenceId, shots, queryClient, posthog, showBillingGate]
+    [sequenceId, shots, referenceOnly, queryClient, posthog, showBillingGate]
   );
 
   const musicPromptsReady = !!(sequence?.musicPrompt && sequence.musicTags);
@@ -1431,6 +1428,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     initialMusicModel: sequenceMusicModel,
     initialVideoModel: sequenceVideoModel,
     styleCategory,
+    referenceOnly,
     recommendedVideoModel,
     styleName,
     modelMissingShotIds: shotsMissingActiveImage,

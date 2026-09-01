@@ -40,11 +40,14 @@ import {
   getBytePlusVideoModelId,
   IMAGE_TO_VIDEO_MODELS,
   isNativeBytePlusVideoModel,
+  referenceOnlyCapableWith,
+  supportsReferenceOnlyMotion,
   type ImageToVideoModel,
 } from '@/lib/ai/models';
 import { assertMediaVia, type MediaVia } from '@/lib/ai/via';
 import { workersSafeFetch } from '@/lib/ai/workers-safe-fetch';
 import { reportMissingBillingCost } from '@/lib/billing/billing-observability';
+import { getLogger } from '@/lib/observability/logger';
 import { ZERO_MICROS, type Microdollars } from '@/lib/billing/money';
 import { type AspectRatio } from '@/lib/constants/aspect-ratios';
 import type { Resolution } from '@/lib/constants/resolutions';
@@ -73,6 +76,8 @@ import {
 import { buildGrokVideoRequest } from './build-grok-video-request';
 import { buildMotionRequest } from './build-model-input';
 import { resolveMotionEndpoint } from './resolve-motion-endpoint';
+
+const logger = getLogger(['openstory', 'motion', 'generation']);
 
 export type GenerateMotionOptions = {
   scopedDb?: CredentialScopedDb;
@@ -161,6 +166,32 @@ async function resolveOptionalGoogleKey(
   if (scopedDb) return scopedDb.resolveOptionalKey('google');
   const platformKey = getEnv().GEMINI_API_KEY;
   return platformKey ? { key: platformKey, source: 'platform' } : undefined;
+}
+
+/**
+ * Can this model render a reference-only shot FOR THIS TEAM?
+ *
+ * `supportsReferenceOnlyMotion` is the creation-time gate and is keyed on the
+ * model alone, because the via is claimed per team at submit time and a
+ * sequence is configured long before that. Here the via IS knowable, so the
+ * answer can be the honest one — which matters for Grok Imagine: it accepts
+ * references with no start frame on the native xAI route (`resolveMotionEndpoint`
+ * already returns `inline` for it), but its fal id is
+ * `xai/grok-imagine-video/v1.5/image-to-video`, which requires `image_url`. So
+ * Grok can serve a reference-only shot exactly when an xAI key resolves.
+ *
+ * Use this wherever a model is chosen for an already-created reference-only
+ * shot (the content-flag rescue). Do NOT use it to gate sequence creation —
+ * a team's key can be revoked between the two.
+ */
+export async function canRenderReferenceOnly(
+  modelKey: ImageToVideoModel,
+  scopedDb?: CredentialScopedDb
+): Promise<boolean> {
+  if (supportsReferenceOnlyMotion(modelKey)) return true;
+  return referenceOnlyCapableWith(modelKey, {
+    xai: Boolean(await resolveOptionalXaiKey(scopedDb)),
+  });
 }
 
 function createNativeMotionAdapter(apiKey: string) {
@@ -326,6 +357,19 @@ export async function submitMotionJob(
     via,
     options.referenceOnly ?? false
   );
+
+  // Reference-only with nothing matched is not the mode — it is text-to-video
+  // at the reference-to-video price, with the character, set and continuity all
+  // reinvented for this one shot while every sibling shot binds its sheets.
+  // The request is still valid (the endpoint serves it), so this is a warning
+  // rather than a throw; without it the shot just comes back looking wrong and
+  // nothing anywhere says why.
+  if (options.referenceOnly && !hasReferenceImages) {
+    logger.warn(
+      'Reference-only motion job has no matched reference sheets; submitting as text-to-video',
+      { modelKey, via: endpoint.via }
+    );
+  }
 
   let jobId: string;
   let usedOwnKey: boolean;

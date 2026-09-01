@@ -477,7 +477,11 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
             // still mean that after the click pinned it.
             still = standing?.discardedAt ? null : standing;
           }
-          if (!still?.url) {
+          // Reference-only sequences never render a still, so demanding one
+          // here failed the whole update run — and a mode flip re-stales every
+          // motion prompt, which is exactly what sends a reference-only
+          // sequence down this path.
+          if (!still?.url && !plan.sequence.referenceOnly) {
             throw new NonRetryableError(
               `Shot ${target.shotId} has no rendered still to animate`,
               'WorkflowValidationError'
@@ -562,7 +566,10 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
           const diverged =
             !manifestEntry ||
             manifestEntry.motionPromptVersionId !== motionVersion.id ||
-            manifestEntry.frameVersionId !== still.id;
+            // Null on both sides in reference-only mode — the manifest's
+            // documented encoding of "no dedicated first frame", so it agrees
+            // with itself rather than reading as permanently diverged.
+            manifestEntry.frameVersionId !== (still?.id ?? null);
           if (!diverged) return null;
           // Selected-version model → sequence default. (The single-shot fn
           // also consults a last-failed attempt; irrelevant here — a video
@@ -590,6 +597,10 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
             scene,
             characters: renderRefs.characters,
             elements: renderRefs.elements,
+            // With no still the location sheet is the only thing establishing
+            // the set — and `renderRefs` already loaded it for the image stage.
+            includeLocations: plan.sequence.referenceOnly,
+            locations: renderRefs.locations,
           });
           const duration = resolveShotDuration({
             durationMs: target.durationMs,
@@ -624,8 +635,9 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
             sequenceId,
             shotId: shot.id,
             sceneId: shot.sceneId,
-            imageUrl: still.url,
-            frameVersionId: still.id,
+            imageUrl: still?.url ?? undefined,
+            referenceOnly: plan.sequence.referenceOnly,
+            frameVersionId: still?.id ?? null,
             motionPromptVersionId: motionVersion.id,
             prompt,
             model,

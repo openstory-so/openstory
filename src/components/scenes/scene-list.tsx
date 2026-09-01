@@ -25,7 +25,11 @@ import { errorMessage } from '@/lib/errors';
 import { resolveShotDuration } from '@/lib/motion/resolve-shot-duration';
 import type { SceneSelection } from '@/lib/scenes/scene-selection';
 import type { SequenceSegment } from '@/lib/scenes/scene-segments';
-import type { ShotView } from '@/lib/shots/shot-view';
+import {
+  isBatchMotionEligible,
+  isMotionGenerating,
+  type ShotView,
+} from '@/lib/shots/shot-view';
 import { cn } from '@/lib/utils';
 import { Loader2, Plus, Video } from 'lucide-react';
 import {
@@ -117,6 +121,11 @@ export type SceneListProps = {
   initialVideoModel?: ImageToVideoModel;
   /** Style-category gate for models that require a matching style. */
   styleCategory?: string;
+  /**
+   * Sequence renders straight to video with no stills, so shot eligibility
+   * cannot require one — see `isBatchMotionEligible`.
+   */
+  referenceOnly?: boolean;
   recommendedVideoModel?: string | null;
   styleName?: string;
   modelMissingShotIds?: Set<string>;
@@ -152,6 +161,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
   initialMusicModel,
   initialVideoModel,
   styleCategory,
+  referenceOnly = false,
   recommendedVideoModel,
   styleName,
   modelMissingShotIds,
@@ -243,22 +253,13 @@ const SceneListComponent: React.FC<SceneListProps> = ({
   // user-driven batch generate, never auto-retried.
   const notStartedShots = useMemo(() => {
     if (!shots) return [];
-    return shots.filter(
-      (f) =>
-        (f.videoStatus === 'pending' ||
-          f.videoStatus === 'failed' ||
-          f.videoStatus === 'cancelled') &&
-        f.frame.imageStatus === 'completed'
-    );
-  }, [shots]);
+    return shots.filter((f) => isBatchMotionEligible(f, referenceOnly));
+  }, [shots, referenceOnly]);
 
   const hasGeneratingShots = useMemo(() => {
     if (!shots) return false;
-    return shots.some(
-      (f) =>
-        f.videoStatus === 'generating' && f.frame.imageStatus === 'completed'
-    );
-  }, [shots]);
+    return shots.some((f) => isMotionGenerating(f, referenceOnly));
+  }, [shots, referenceOnly]);
 
   // Check if all eligible shots have motion prompts ready
   const motionPromptsReady = useMemo(() => {

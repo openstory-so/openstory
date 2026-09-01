@@ -225,10 +225,13 @@ describe('supportsReferenceOnlyMotion', () => {
     expect(supportsReferenceOnlyMotion('veo3_1')).toBe(false);
   });
 
-  it('includes both Seedance tiers', () => {
+  it('includes both Seedance tiers and H3 Max', () => {
     expect(supportsReferenceOnlyMotion('seedance_v2')).toBe(true);
     expect(supportsReferenceOnlyMotion('seedance_v2_5')).toBe(true);
+    // H3 Max's reference-to-video route requires only `prompt` — no still.
+    expect(supportsReferenceOnlyMotion('minimax_h3_max')).toBe(true);
     expect(referenceOnlyMotionModels().sort()).toEqual([
+      'minimax_h3_max',
       'seedance_v2',
       'seedance_v2_5',
     ]);

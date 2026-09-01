@@ -12,7 +12,8 @@ import type { Shot } from '@/lib/db/schema';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
 
-import { AUDIO_MODELS } from '@/lib/ai/models';
+import { AUDIO_MODELS, supportsReferenceOnlyMotion } from '@/lib/ai/models';
+import { REFERENCE_ONLY_MODEL_ERROR } from '@/lib/schemas/sequence.schemas';
 import { resolveVideoModel } from '@/lib/ai/resolve-asset-models';
 import { getEffectiveFalPricing } from '@/lib/ai/fal-pricing-live';
 import { estimateVideoCost, gateEstimate } from '@/lib/billing/cost-estimation';
@@ -44,7 +45,7 @@ import {
   resolveMotionPrompt,
   resolveMotionPromptFromVersion,
 } from '@/lib/motion/resolve-motion-prompt';
-import { toShotView } from '@/lib/shots/shot-view';
+import { isBatchMotionEligible, toShotView } from '@/lib/shots/shot-view';
 import { rescanContinuityFromPrompt } from '@/lib/scenes/rescan-continuity-from-prompt';
 import { buildUserEditProvenance } from '@/lib/prompts/user-edit-provenance';
 import { shouldRecordUserEdit } from '@/lib/workflows/user-edit-predicate';
@@ -90,6 +91,11 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
       selectedVersionModel: selectedVersion?.model,
       sequenceModel: sequence.videoModel,
     });
+    if (referenceOnly && !supportsReferenceOnlyMotion(model)) {
+      // `MotionWorkflow` rejects this too, but only after the reservation is
+      // held and the child is spawned. One 400 here beats a burnt reservation.
+      throw new Error(REFERENCE_ONLY_MODEL_ERROR);
+    }
 
     const userEditedPrompt = Boolean(data.prompt);
     const selectedMotion =
@@ -179,6 +185,7 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
           pricing: await getEffectiveFalPricing(),
           resolution: sequence.resolution,
           hasReferenceImages: referenceImages.length > 0,
+          referenceOnly,
         }),
         { model, operation: 'motion' }
       ),
@@ -346,13 +353,8 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
     // Reference-only sequences render no stills, so the still-done half of the
     // filter would exclude every shot; there the video status alone decides.
     const batchReferenceOnly = sequence.referenceOnly;
-    const eligibleShots = allShots.filter(
-      (f) =>
-        (batchReferenceOnly ||
-          (f.frame.imageStatus === 'completed' && f.image?.url)) &&
-        (f.videoStatus === 'pending' ||
-          f.videoStatus === 'failed' ||
-          f.videoStatus === 'cancelled')
+    const eligibleShots = allShots.filter((f) =>
+      isBatchMotionEligible(f, batchReferenceOnly)
     );
 
     if (eligibleShots.length === 0) {
@@ -384,6 +386,26 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
         : Promise.resolve([]),
     ]);
 
+    // Same pre-credit rejection as the single-shot path, but it matters more
+    // here: the reservation covers the whole batch, so one doomed model would
+    // burn credits for N shots to produce N workflow validation errors.
+    if (
+      batchReferenceOnly &&
+      eligibleShots.some(
+        (shot) =>
+          !supportsReferenceOnlyMotion(
+            resolveBatchShotVideoModel(
+              { id: shot.id },
+              shotModels,
+              sequence,
+              data.model
+            )
+          )
+      )
+    ) {
+      throw new Error(REFERENCE_ONLY_MODEL_ERROR);
+    }
+
     // Sum per-shot costs — shots may render with different (priced) models.
     const estimatedCost = estimateBatchMotionCost(
       eligibleShots,
@@ -394,6 +416,7 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
         duration: data.duration,
         pricing: await getEffectiveFalPricing(),
         resolution: sequence.resolution,
+        referenceOnly: batchReferenceOnly,
         hasReferenceImages: (batchShot) => {
           const shot = eligibleShots.find((s) => s.id === batchShot.id);
           if (!shot) return false;
@@ -402,6 +425,10 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
               scene: sceneOf(shot),
               characters,
               elements,
+              // Must match the set actually sent below, or a reference-only
+              // shot carried only by its location sheet estimates as ref-less.
+              includeLocations: batchReferenceOnly,
+              locations: batchLocations,
             }).length > 0
           );
         },

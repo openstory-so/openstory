@@ -58,7 +58,6 @@ export class MotionPromptWorkflow extends OpenStoryWorkflowEntrypoint<MotionProm
       shotId,
       startingFrameImageUrl,
       referenceOnly = false,
-      visualPrompt,
     } = input;
 
     // ============================================================
@@ -124,14 +123,7 @@ export class MotionPromptWorkflow extends OpenStoryWorkflowEntrypoint<MotionProm
         ? JSON.stringify(sceneBefore, null, 2)
         : '(none)',
       sceneAfter: sceneAfter ? JSON.stringify(sceneAfter, null, 2) : '(none)',
-      // Reference-only has no image pass to consume the visual prompt, but the
-      // staging and framing it already worked out for this scene are exactly
-      // what paragraph 1 needs, so it rides in on the scene JSON.
-      scene: JSON.stringify(
-        referenceOnly && visualPrompt ? { ...scene, visualPrompt } : scene,
-        null,
-        2
-      ),
+      scene: JSON.stringify(scene, null, 2),
       characterBible: JSON.stringify(narrowed.characterBible, null, 2),
       locationBible: JSON.stringify(narrowed.locationBible, null, 2),
       elementBible: JSON.stringify(narrowed.elementBible, null, 2),
