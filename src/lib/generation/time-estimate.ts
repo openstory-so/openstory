@@ -232,9 +232,9 @@ export function estimateRemainingSeconds(opts: {
 
 export function formatTimeRemaining(seconds: number): string {
   if (seconds <= 0) return 'Finishing up\u2026';
-  if (seconds < 60) return `${seconds}s remaining`;
+  if (seconds < 60) return `${seconds}s`;
   const minutes = Math.floor(seconds / 60);
   const secs = seconds % 60;
   const paddedSecs = secs.toString().padStart(2, '0');
-  return `${minutes}:${paddedSecs} remaining`;
+  return `${minutes}:${paddedSecs}`;
 }

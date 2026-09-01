@@ -80,7 +80,7 @@ export const MotionProgressBanner: React.FC<MotionProgressBannerProps> = ({
   startedAt,
   onComplete,
 }) => {
-  const [isOpen, setIsOpen] = useState(true);
+  const [isOpen, setIsOpen] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const startTimeRef = useRef(startedAt);
 

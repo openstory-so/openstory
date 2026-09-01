@@ -4,6 +4,7 @@ import {
   type GenerationStreamState,
 } from '@/lib/realtime/generation-stream.reducer';
 import type { Meta, StoryObj } from '@storybook/react';
+import { CanvasViewToggle } from '@/components/scenes/canvas-view-toggle';
 import { GenerationProgressBanner } from './generation-progress-banner';
 
 function makeState(
@@ -69,9 +70,14 @@ const meta: Meta<typeof GenerationProgressBanner> = {
     layout: 'padded',
   },
   decorators: [
+    // Shown where it actually lives: the Canvas/Script toolbar's leading slot.
     (Story) => (
       <div className="mx-auto max-w-6xl">
-        <Story />
+        <CanvasViewToggle
+          view="canvas"
+          onViewChange={() => {}}
+          leading={<Story />}
+        />
       </div>
     ),
   ],

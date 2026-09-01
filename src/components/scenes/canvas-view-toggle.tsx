@@ -20,6 +20,9 @@ type CanvasViewToggleProps = {
   /** View-scoped action in the right column. The 1fr / auto / 1fr grid keeps
    *  the toggle centred without overlapping this control on a narrow screen. */
   trailing?: React.ReactNode;
+  /** Left column — generation progress lives here so it costs no layout
+   *  shift: this row is already this tall whether or not it renders (#1427). */
+  leading?: React.ReactNode;
 };
 
 export const CanvasViewToggle: React.FC<CanvasViewToggleProps> = ({
@@ -27,9 +30,10 @@ export const CanvasViewToggle: React.FC<CanvasViewToggleProps> = ({
   onViewChange,
   canvasDisabled,
   trailing,
+  leading,
 }) => (
   <div className="grid shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 px-2 pt-4 md:px-4">
-    <div />
+    <div className="flex min-w-0 justify-start">{leading}</div>
     <ToggleGroup
       type="single"
       value={view}

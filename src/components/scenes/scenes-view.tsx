@@ -1382,6 +1382,30 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
   remainingRef.current = remainingSeconds;
   const etaMinutes = Math.max(1, Math.round(remainingSeconds / 60));
 
+  // Progress rides in the view-toggle row (#1427) — no layout shift, and it
+  // never sits on top of anything you might want to click.
+  const progressChip = isGenerationActive ? (
+    <GenerationProgressBanner
+      generationState={generationState}
+      isProcessing={isProcessing}
+      startedAt={sequence.updatedAt}
+      script={sequence.script ?? undefined}
+      remainingSeconds={remainingSeconds}
+      imageModel={sequence.imageModel}
+      videoModel={sequence.videoModel}
+      musicModel={sequence.musicModel}
+      willEmail={willEmail}
+    />
+  ) : motionBannerState !== null && sequence && shots ? (
+    <MotionProgressBanner
+      shots={shots}
+      sequence={sequence}
+      includeMusic={motionBannerState.includeMusic}
+      startedAt={motionBannerState.startedAt}
+      onComplete={resetGenerationStream}
+    />
+  ) : null;
+
   // One prop bag for the desktop sidebar and the phone sheet — same list.
   const sceneListProps: SceneListProps = {
     sequenceId,
@@ -1414,39 +1438,6 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
 
   return (
     <div className="flex h-full flex-col">
-      {/* Generation progress banner */}
-      {isGenerationActive && (
-        <div className="pl-4 pr-4 pt-4 md:pr-8">
-          <GenerationProgressBanner
-            generationState={generationState}
-            isProcessing={isProcessing}
-            startedAt={sequence.updatedAt}
-            script={sequence.script ?? undefined}
-            remainingSeconds={remainingSeconds}
-            imageModel={sequence.imageModel}
-            videoModel={sequence.videoModel}
-            musicModel={sequence.musicModel}
-            willEmail={willEmail}
-          />
-        </div>
-      )}
-
-      {/* Motion generation progress banner */}
-      {!isGenerationActive &&
-        motionBannerState !== null &&
-        sequence &&
-        shots && (
-          <div className="pl-4 pr-4 pt-4 md:pr-8">
-            <MotionProgressBanner
-              shots={shots}
-              sequence={sequence}
-              includeMusic={motionBannerState.includeMusic}
-              startedAt={motionBannerState.startedAt}
-              onComplete={resetGenerationStream}
-            />
-          </div>
-        )}
-
       {/* Failure summary with smart retry — wait until the run finishes so a
           single in-flight miss doesn't headline the first result (#1286). */}
       {failureSummary?.hasFailed && !isGenerationActive && (
@@ -1473,6 +1464,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
               view={effectiveView}
               onViewChange={setView}
               canvasDisabled={!canvasReady}
+              leading={progressChip}
               trailing={
                 effectiveView === 'script' ? (
                   <CopyScriptButton sequenceId={sequenceId} />
