@@ -17,6 +17,7 @@ import type { Scene } from '@/lib/ai/scene-analysis.schema';
 import type { Database } from '@/lib/db/client';
 import { generateId } from '@/lib/db/id';
 import {
+  characterSheetVariants,
   characters,
   framePromptVersions,
   frameVariants,
@@ -252,6 +253,16 @@ async function seedCharacterWithSheet(sheetInputHash: string) {
     })
     .returning();
   if (!row) throw new Error('test setup: character insert returned nothing');
+  // The live sheet is read from the version row, not the mirror (#1419) —
+  // keyed to the character's own id, the shape the backfill produced.
+  await db.insert(characterSheetVariants).values({
+    id: row.id,
+    characterId: row.id,
+    model: 'prior',
+    url: '/r2/characters/jack.png',
+    status: 'completed',
+    inputHash: sheetInputHash,
+  });
   return row;
 }
 
@@ -547,9 +558,9 @@ describe('§4.3 B — image-only upload (appendUploadedVersion + select)', () =>
     // "fresh" above is a real comparison and not a hash that ignores its
     // reference inputs.
     await db
-      .update(characters)
-      .set({ sheetInputHash: 'sheet-hash-2' })
-      .where(eq(characters.id, character.id));
+      .update(characterSheetVariants)
+      .set({ inputHash: 'sheet-hash-2' })
+      .where(eq(characterSheetVariants.id, character.id));
     expect(await verifyThumbnailStaleness(SCENE_WITH_REFS)).toBe('stale');
   });
 

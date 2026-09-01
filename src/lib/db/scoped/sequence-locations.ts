@@ -3,7 +3,7 @@
  * Location CRUD, reference images, and shot-location matching.
  */
 
-import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, eq, getTableColumns, inArray, isNull, sql } from 'drizzle-orm';
 import type { Database } from '@/lib/db/client';
 import type {
   Shot,
@@ -11,7 +11,12 @@ import type {
   ReferenceStatus,
   SequenceLocation,
 } from '@/lib/db/schema';
-import { shots, sequenceLocations, sequences } from '@/lib/db/schema';
+import {
+  locationSheetVariants,
+  shots,
+  sequenceLocations,
+  sequences,
+} from '@/lib/db/schema';
 import {
   loadSceneContextBySequenceFromDb,
   resolveSceneForShot,
@@ -75,6 +80,29 @@ export function locationMatchesTag(
 // Factory function
 // ============================================================================
 
+/**
+ * The location's live reference version (#1419 PR B) — the sequence-location
+ * twin of `characters.ts`'s `liveSheetVersionId`; see that file for why the
+ * pointer is deliberately left NULL on backfilled rows.
+ *
+ * Scoped to `parent_type = 'sequence_location'` because
+ * `location_sheet_variants` also services team-level `location_library` rows.
+ */
+const liveReferenceVersionId = sql`COALESCE(${sequenceLocations.selectedReferenceVersionId}, ${sequenceLocations.id})`;
+
+/**
+ * Location columns with the four reference mirrors resolved from that live
+ * version. `referenceStatus` / `referenceError` stay on the row — they are
+ * generation lifecycle, not version mirrors (see the characters twin).
+ */
+const locationsWithLiveReference = {
+  ...getTableColumns(sequenceLocations),
+  referenceImageUrl: locationSheetVariants.url,
+  referenceImagePath: locationSheetVariants.storagePath,
+  referenceGeneratedAt: locationSheetVariants.generatedAt,
+  referenceInputHash: locationSheetVariants.inputHash,
+};
+
 export function createSequenceLocationsMethods(db: Database) {
   // Private update helper
   const update = async (
@@ -95,12 +123,24 @@ export function createSequenceLocationsMethods(db: Database) {
     return location;
   };
 
+  /** `select(locationsWithLiveReference)` + the join it depends on. */
+  const selectWithLiveReference = () =>
+    db
+      .select(locationsWithLiveReference)
+      .from(sequenceLocations)
+      .leftJoin(
+        locationSheetVariants,
+        and(
+          eq(locationSheetVariants.parentType, 'sequence_location'),
+          eq(locationSheetVariants.id, liveReferenceVersionId)
+        )
+      );
+
   return {
     getById: async (id: string): Promise<SequenceLocation | null> => {
-      const result = await db
-        .select()
-        .from(sequenceLocations)
-        .where(eq(sequenceLocations.id, id));
+      const result = await selectWithLiveReference().where(
+        eq(sequenceLocations.id, id)
+      );
       return result[0] ?? null;
     },
 
@@ -108,15 +148,12 @@ export function createSequenceLocationsMethods(db: Database) {
       sequenceId: string,
       locationId: string
     ): Promise<SequenceLocation | null> => {
-      const result = await db
-        .select()
-        .from(sequenceLocations)
-        .where(
-          and(
-            eq(sequenceLocations.sequenceId, sequenceId),
-            eq(sequenceLocations.locationId, locationId)
-          )
-        );
+      const result = await selectWithLiveReference().where(
+        and(
+          eq(sequenceLocations.sequenceId, sequenceId),
+          eq(sequenceLocations.locationId, locationId)
+        )
+      );
       return result[0] ?? null;
     },
 
@@ -124,38 +161,31 @@ export function createSequenceLocationsMethods(db: Database) {
     // twin for rationale. Id-addressed reads (getById/getByIds) still return
     // deleted rows so restore can reach them.
     list: async (sequenceId: string): Promise<SequenceLocation[]> => {
-      return await db
-        .select()
-        .from(sequenceLocations)
-        .where(
-          and(
-            eq(sequenceLocations.sequenceId, sequenceId),
-            isNull(sequenceLocations.deletedAt)
-          )
-        );
+      return await selectWithLiveReference().where(
+        and(
+          eq(sequenceLocations.sequenceId, sequenceId),
+          isNull(sequenceLocations.deletedAt)
+        )
+      );
     },
 
     listWithReferences: async (
       sequenceId: string
     ): Promise<SequenceLocation[]> => {
-      return await db
-        .select()
-        .from(sequenceLocations)
-        .where(
-          and(
-            eq(sequenceLocations.sequenceId, sequenceId),
-            eq(sequenceLocations.referenceStatus, 'completed'),
-            isNull(sequenceLocations.deletedAt)
-          )
-        );
+      return await selectWithLiveReference().where(
+        and(
+          eq(sequenceLocations.sequenceId, sequenceId),
+          eq(sequenceLocations.referenceStatus, 'completed'),
+          isNull(sequenceLocations.deletedAt)
+        )
+      );
     },
 
     getByIds: async (ids: string[]): Promise<SequenceLocation[]> => {
       if (ids.length === 0) return [];
-      return await db
-        .select()
-        .from(sequenceLocations)
-        .where(inArray(sequenceLocations.id, ids));
+      return await selectWithLiveReference().where(
+        inArray(sequenceLocations.id, ids)
+      );
     },
 
     create: async (data: NewSequenceLocation): Promise<SequenceLocation> => {
@@ -322,16 +352,13 @@ export function createSequenceLocationsMethods(db: Database) {
     getNeedingReferences: async (
       sequenceId: string
     ): Promise<SequenceLocation[]> => {
-      return await db
-        .select()
-        .from(sequenceLocations)
-        .where(
-          and(
-            eq(sequenceLocations.sequenceId, sequenceId),
-            inArray(sequenceLocations.referenceStatus, ['pending', 'failed']),
-            isNull(sequenceLocations.deletedAt)
-          )
-        );
+      return await selectWithLiveReference().where(
+        and(
+          eq(sequenceLocations.sequenceId, sequenceId),
+          inArray(sequenceLocations.referenceStatus, ['pending', 'failed']),
+          isNull(sequenceLocations.deletedAt)
+        )
+      );
     },
 
     /**

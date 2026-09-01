@@ -3,7 +3,7 @@
  * Character CRUD, sheet generation, talent assignment, and shot-character matching.
  */
 
-import { and, eq, inArray, isNull } from 'drizzle-orm';
+import { and, eq, getTableColumns, inArray, isNull, sql } from 'drizzle-orm';
 import type { Database } from '@/lib/db/client';
 import type {
   Character,
@@ -12,7 +12,12 @@ import type {
   NewCharacter,
   SheetStatus,
 } from '@/lib/db/schema';
-import { characters, shots, talent } from '@/lib/db/schema';
+import {
+  characterSheetVariants,
+  characters,
+  shots,
+  talent,
+} from '@/lib/db/schema';
 import {
   loadSceneContextBySequenceFromDb,
   resolveSceneForShot,
@@ -42,7 +47,56 @@ export type CharacterBibleUpdate = Partial<
   >
 >;
 
+/**
+ * The character's live sheet version (#1419 PR B).
+ *
+ * The explicit selection when there is one, else the row the #1419 backfill
+ * keyed to the character's own id — the snapshot of the pre-versioning sheet
+ * that used to live in the mirror columns. Both branches are a primary-key
+ * lookup on `character_sheet_variants`.
+ *
+ * The pointer stays NULL on those legacy rows on purpose. It feeds the shot
+ * thumbnail hash as `selectedSheetVersionId ?? sheetInputHash`
+ * (`workflows/sheet-snapshots.ts`), so filling it would move the ingredient
+ * for ~1,600 characters and read every shot referencing one as stale. It gets
+ * set the first time anyone re-rolls or selects a version, through
+ * `applyConvergent` / `select` — so the NULL drains as characters are touched
+ * rather than being a permanent second class.
+ */
+const liveSheetVersionId = sql`COALESCE(${characters.selectedSheetVersionId}, ${characters.id})`;
+
+/**
+ * Character columns with the four sheet mirrors resolved from that live
+ * version instead of read off the row (#1419). Same field names, so callers
+ * are unchanged and PR C can drop the physical columns — at which point any
+ * call site still reading them off a raw `Character` fails to compile, which
+ * is how we find the ones that never came through here.
+ *
+ * `sheetStatus` and `sheetError` are NOT in this list. They are character-level
+ * generation lifecycle, not version mirrors: `generating` is stamped at trigger
+ * time and `failed` on workflow failure, both when no variant row exists to
+ * carry them. #1067 kept `frames.imageStatus` / `imageError` for the same
+ * reason.
+ */
+const charactersWithLiveSheet = {
+  ...getTableColumns(characters),
+  sheetImageUrl: characterSheetVariants.url,
+  sheetImagePath: characterSheetVariants.storagePath,
+  sheetGeneratedAt: characterSheetVariants.generatedAt,
+  sheetInputHash: characterSheetVariants.inputHash,
+};
+
 export function createCharactersMethods(db: Database) {
+  /** `select(charactersWithLiveSheet)` + the join it depends on. */
+  const selectWithLiveSheet = () =>
+    db
+      .select(charactersWithLiveSheet)
+      .from(characters)
+      .leftJoin(
+        characterSheetVariants,
+        eq(characterSheetVariants.id, liveSheetVersionId)
+      );
+
   // Private update helper used by updateSheetStatus and updateSheet
   const update = async (
     id: string,
@@ -63,10 +117,7 @@ export function createCharactersMethods(db: Database) {
 
   return {
     getById: async (id: string): Promise<Character | null> => {
-      const result = await db
-        .select()
-        .from(characters)
-        .where(eq(characters.id, id));
+      const result = await selectWithLiveSheet().where(eq(characters.id, id));
       return result[0] ?? null;
     },
 
@@ -74,15 +125,12 @@ export function createCharactersMethods(db: Database) {
       sequenceId: string,
       characterId: string
     ): Promise<Character | null> => {
-      const result = await db
-        .select()
-        .from(characters)
-        .where(
-          and(
-            eq(characters.sequenceId, sequenceId),
-            eq(characters.characterId, characterId)
-          )
-        );
+      const result = await selectWithLiveSheet().where(
+        and(
+          eq(characters.sequenceId, sequenceId),
+          eq(characters.characterId, characterId)
+        )
+      );
       return result[0] ?? null;
     },
 
@@ -91,15 +139,9 @@ export function createCharactersMethods(db: Database) {
     // staleness verifies — all of which read through these methods. Restore
     // (or an id-addressed getById) is the only way back.
     list: async (sequenceId: string): Promise<Character[]> => {
-      return await db
-        .select()
-        .from(characters)
-        .where(
-          and(
-            eq(characters.sequenceId, sequenceId),
-            isNull(characters.deletedAt)
-          )
-        );
+      return await selectWithLiveSheet().where(
+        and(eq(characters.sequenceId, sequenceId), isNull(characters.deletedAt))
+      );
     },
 
     listWithTalent: async (
@@ -107,7 +149,7 @@ export function createCharactersMethods(db: Database) {
     ): Promise<CharacterWithTalent[]> => {
       const results = await db
         .select({
-          character: characters,
+          character: charactersWithLiveSheet,
           talent: {
             id: talent.id,
             name: talent.name,
@@ -116,6 +158,10 @@ export function createCharactersMethods(db: Database) {
         })
         .from(characters)
         .leftJoin(talent, eq(characters.talentId, talent.id))
+        .leftJoin(
+          characterSheetVariants,
+          eq(characterSheetVariants.id, liveSheetVersionId)
+        )
         .where(
           and(
             eq(characters.sequenceId, sequenceId),
@@ -131,23 +177,17 @@ export function createCharactersMethods(db: Database) {
 
     getByIds: async (ids: string[]): Promise<Character[]> => {
       if (ids.length === 0) return [];
-      return await db
-        .select()
-        .from(characters)
-        .where(inArray(characters.id, ids));
+      return await selectWithLiveSheet().where(inArray(characters.id, ids));
     },
 
     listWithSheets: async (sequenceId: string): Promise<Character[]> => {
-      return await db
-        .select()
-        .from(characters)
-        .where(
-          and(
-            eq(characters.sequenceId, sequenceId),
-            eq(characters.sheetStatus, 'completed'),
-            isNull(characters.deletedAt)
-          )
-        );
+      return await selectWithLiveSheet().where(
+        and(
+          eq(characters.sequenceId, sequenceId),
+          eq(characters.sheetStatus, 'completed'),
+          isNull(characters.deletedAt)
+        )
+      );
     },
 
     create: async (data: NewCharacter): Promise<Character> => {
@@ -256,16 +296,13 @@ export function createCharactersMethods(db: Database) {
     },
 
     getNeedingSheets: async (sequenceId: string): Promise<Character[]> => {
-      return await db
-        .select()
-        .from(characters)
-        .where(
-          and(
-            eq(characters.sequenceId, sequenceId),
-            inArray(characters.sheetStatus, ['pending', 'failed']),
-            isNull(characters.deletedAt)
-          )
-        );
+      return await selectWithLiveSheet().where(
+        and(
+          eq(characters.sequenceId, sequenceId),
+          inArray(characters.sheetStatus, ['pending', 'failed']),
+          isNull(characters.deletedAt)
+        )
+      );
     },
 
     /**
