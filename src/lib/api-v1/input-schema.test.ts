@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { apiEnhanceScriptSchema } from './enhance-input-schema';
 import { apiCreateSequenceSchema } from './input-schema';
 
 describe('apiCreateSequenceSchema', () => {
@@ -116,5 +117,17 @@ describe('apiCreateSequenceSchema', () => {
     expect(
       apiCreateSequenceSchema.safeParse({ ...base, targetSeconds: 300 }).success
     ).toBe(true);
+  });
+});
+
+describe('apiEnhanceScriptSchema', () => {
+  it('bounds targetSeconds to 5–300, matching the 5m composer chip (#1423)', () => {
+    const base = { script: 'A lighthouse keeper befriends a stranded whale.' };
+    expect(
+      apiEnhanceScriptSchema.safeParse({ ...base, targetSeconds: 300 }).success
+    ).toBe(true);
+    expect(
+      apiEnhanceScriptSchema.safeParse({ ...base, targetSeconds: 301 }).success
+    ).toBe(false);
   });
 });

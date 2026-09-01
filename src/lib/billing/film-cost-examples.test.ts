@@ -26,7 +26,7 @@ describe('buildFilmCostExamples', () => {
     expect(result).not.toBeNull();
     if (!result) return;
 
-    // Align with composer duration chips (15 / 30 / 60 / 180) and default 30s.
+    // Align with composer duration chips (15 / 30 / 60 / 120 / 180 / 300) and default 30s.
     expect(result.targetDurationSeconds).toBe(30);
     expect(result.sceneCount * result.shotDurationSeconds).toBe(
       result.targetDurationSeconds

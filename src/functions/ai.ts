@@ -250,7 +250,7 @@ const enhanceScriptInputSchema = z
     // the style is Match script) instead of expanding one — which is why the
     // 10-character floor below lifts only for this flag.
     invent: z.boolean().optional(),
-    targetDuration: z.number().min(5).max(180).optional(),
+    targetDuration: z.number().min(5).max(300).optional(),
     // Catalog key of the selected video model — clip-grid constraint for labels
     // (#1374). Optional; the enhancer defaults to DEFAULT_VIDEO_MODEL.
     videoModel: z

@@ -131,10 +131,10 @@ export const createSequenceSchema = createInsertSchema(sequences, {
       )
       .min(1, 'At least one audio model must be selected')
       .optional(),
-    // Enhance / Generate duration chip (15 / 30 / 60 / 180). Pre-flight scene
+    // Enhance / Generate duration chip (15 / 30 / 60 / 120 / 180 / 300). Pre-flight scene
     // count + per-shot duration use this so client ActionCost and server
     // requireCredits stay aligned before Scene N headings exist (#1140).
-    targetDurationSeconds: z.number().min(5).max(180).optional(),
+    targetDurationSeconds: z.number().min(5).max(300).optional(),
     // Suggested talent IDs for AI-assisted casting during generation
     suggestedTalentIds: z.array(z.string()).optional(),
     // Suggested location IDs for visual consistency during generation

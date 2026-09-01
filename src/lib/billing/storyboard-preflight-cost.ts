@@ -30,7 +30,7 @@ export type StoryboardPreflightInput = {
   autoGenerateMusic?: boolean;
   audioModels?: AudioModel[];
   /**
-   * Enhance / Generate duration chip (15 / 30 / 60 / 180). Used for scene-count
+   * Enhance / Generate duration chip (15 / 30 / 60 / 120 / 180 / 300). Used for scene-count
    * pre-Enhance and for per-shot / music duration when motion or music is on.
    */
   targetDurationSeconds?: number;

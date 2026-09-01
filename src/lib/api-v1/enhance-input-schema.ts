@@ -46,11 +46,11 @@ export const apiEnhanceScriptSchema = z
     targetSeconds: z
       .int()
       .min(5)
-      .max(180)
+      .max(300)
       .optional()
       .meta({
         description:
-          'Target video length in seconds (max 3 minutes); guides scene count and length of the enhanced script.',
+          'Target video length in seconds (max 5 minutes); guides scene count and length of the enhanced script.',
         examples: [30],
       }),
     videoModel: z

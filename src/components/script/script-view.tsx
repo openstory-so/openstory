@@ -160,6 +160,7 @@ const DURATION_PRESETS = [
   { value: '60', label: '1m', seconds: 60 },
   { value: '120', label: '2m', seconds: 120 },
   { value: '180', label: '3m', seconds: 180 },
+  { value: '300', label: '5m', seconds: 300 },
 ] as const;
 
 /** Empty-composer copy (#1255): visible until the user types or shuffles.

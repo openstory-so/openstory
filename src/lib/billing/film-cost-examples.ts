@@ -35,7 +35,7 @@ import { microsToDisplayUsd, type Microdollars } from '@/lib/billing/money';
 import { SIGNUP_GRANT_MICROS } from '@/lib/billing/constants';
 
 /**
- * Composer default target duration (`script-view` duration chip: 15 / 30 / 60 / 180).
+ * Composer default target duration (`script-view` duration chip: 15 / 30 / 60 / 120 / 180 / 300).
  * Showcase totals use this runtime so pricing matches what users pick on Enhance.
  */
 const TARGET_DURATION_S = 30;

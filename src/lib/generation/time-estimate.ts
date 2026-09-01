@@ -116,7 +116,8 @@ export function estimateSceneCountFromDuration(
   if (targetDurationSeconds <= 30) return 5;
   if (targetDurationSeconds <= 60) return 10;
   if (targetDurationSeconds <= 120) return 18;
-  return 25;
+  if (targetDurationSeconds <= 180) return 25;
+  return 30;
 }
 
 function estimateSceneCountFromWords(script: string): number {
