@@ -129,7 +129,13 @@ export const ProgressBanner: React.FC<ProgressBannerProps> = ({
             )}
           />
         )}
-        <span className="relative hidden truncate sm:inline">{label}</span>
+        {/* Container query, not a breakpoint: the toolbar cell this sits in
+            narrows with the spine and inspector, not with the viewport. Below
+            ~15rem the name drops and the chip is spinner + ETA (~4rem), which
+            fits the tightest real cell. The name is always in the popover. */}
+        <span className="relative hidden truncate @[15rem]:inline">
+          {label}
+        </span>
         <span className="relative tabular-nums" aria-live="polite">
           {showCompleted && completedBadge ? (
             completedBadge
@@ -143,8 +149,9 @@ export const ProgressBanner: React.FC<ProgressBannerProps> = ({
         <span className="sr-only">Show {ariaPrefix.toLowerCase()} detail</span>
       </PopoverTrigger>
 
-      <PopoverContent align="start" className="gap-3">
-        <p className="font-medium text-foreground sm:hidden">{label}</p>
+      {/* Right-anchored trigger, so open leftwards from its right edge. */}
+      <PopoverContent align="end" className="gap-3">
+        <p className="font-medium text-foreground">{label}</p>
         <ol className="flex flex-col gap-1.5">
           {phases.map((phase) => (
             <li

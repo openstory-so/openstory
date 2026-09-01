@@ -1,6 +1,7 @@
 import { RouteErrorFallback } from '@/components/error/route-error-fallback';
 import { routeParams } from '@/components/layout/breadcrumbs';
 import { RenameSequenceButton } from '@/components/sequence/rename-sequence-button';
+import { SEQUENCE_HEADER_SLOT_ID } from '@/components/sequence/sequence-header-slot';
 import { getDefaultSequenceTabPath } from '@/components/sequence/sequence-tabs';
 import { getSequenceFn } from '@/functions/sequences';
 import { sequenceKeys, useSequence } from '@/hooks/use-sequences';
@@ -69,6 +70,16 @@ function SequenceLayout() {
               title={sequence.title}
             />
           )}
+          {/* Generation progress portals in here (#1427). The row is already
+              this tall with just the title in it, so progress costs no layout
+              shift and sits over nothing. `@container` so the chip can size
+              its label against the space it actually has, which requires the
+              slot be `flex-1` — a container sized by its own content could
+              never satisfy the query. */}
+          <div
+            id={SEQUENCE_HEADER_SLOT_ID}
+            className="@container flex min-w-0 flex-1 items-center justify-end pl-2"
+          />
         </div>
         {/* No Script | Scenes tab strip — those are lifecycle destinations,
             not peer pages. Pre-analysis lives at /script; analysed work at

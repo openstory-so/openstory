@@ -17,6 +17,7 @@ import {
   type TabValue,
 } from '@/components/scenes/scene-script-prompts';
 import { FailureSummaryBanner } from '@/components/sequence/failure-summary-banner';
+import { SequenceHeaderPortal } from '@/components/sequence/sequence-header-slot';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { batchGenerateMotionFn } from '@/functions/motion-functions';
 import { getDivergentVariantPromptDiffFn } from '@/functions/prompt-variants';
@@ -1438,6 +1439,10 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
 
   return (
     <div className="flex h-full flex-col">
+      {/* Progress rides in the sequence title row (#1427) — no layout shift,
+          and it never sits on top of anything you might want to click. */}
+      <SequenceHeaderPortal>{progressChip}</SequenceHeaderPortal>
+
       {/* Failure summary with smart retry — wait until the run finishes so a
           single in-flight miss doesn't headline the first result (#1286). */}
       {failureSummary?.hasFailed && !isGenerationActive && (
@@ -1464,7 +1469,6 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
               view={effectiveView}
               onViewChange={setView}
               canvasDisabled={!canvasReady}
-              leading={progressChip}
               trailing={
                 effectiveView === 'script' ? (
                   <CopyScriptButton sequenceId={sequenceId} />
