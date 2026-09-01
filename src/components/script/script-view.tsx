@@ -10,6 +10,7 @@ import {
 import { GenerateSequenceIcon } from '@/components/icons/generate-sequence-icon';
 import { LocationSuggestionSelector } from '@/components/location-library/location-suggestion-selector';
 import { buildMentionItems } from '@/components/scenes/prompt-mention/mention-items';
+import { GenerationStopAlert } from '@/components/generation/generation-stop-alert';
 import { GenerationModeToggle } from '@/components/settings/generation-mode-toggle';
 import { GenerationSettings } from '@/components/settings/generation-settings';
 import { StyleCategorySelect } from '@/components/style/style-category-select';
@@ -54,6 +55,7 @@ import { useGenerationSettings } from '@/hooks/use-generation-settings';
 import {
   DEFAULT_GENERATION_STOP_AT,
   flagsFromStopAt,
+  GENERATION_STAGE_META,
   type GenerationStage,
 } from '@/lib/generation/pipeline';
 import { useComposedScript } from '@/hooks/use-scenes';
@@ -900,7 +902,13 @@ export const ScriptView: FC<{
 
   const handleCancel = onCancel;
 
-  const executeRegeneration = () => {
+  const [showStopAlert, setShowStopAlert] = useState(false);
+  const [stopAlertMode, setStopAlertMode] = useState<'generate' | 'edit'>(
+    'generate'
+  );
+
+  const executeRegeneration = (runUntil: GenerationStage = stopAt) => {
+    const flags = flagsFromStopAt(runUntil);
     // sequence_generated is captured server-side in createSequences (#1088)
     // so dashboard + public API both feed #product-alerts once.
     createSequenceMutation.mutate(
@@ -914,9 +922,9 @@ export const ScriptView: FC<{
         imageModels,
         videoModels,
         videoModel: videoModels[0] ?? DEFAULT_VIDEO_MODEL,
-        stopAt,
-        autoGenerateMotion,
-        autoGenerateMusic,
+        stopAt: runUntil,
+        autoGenerateMotion: flags.autoGenerateMotion,
+        autoGenerateMusic: flags.autoGenerateMusic,
         musicModel: audioModels[0] ?? DEFAULT_MUSIC_MODEL,
         audioModels,
         targetDurationSeconds: targetDuration,
@@ -946,6 +954,15 @@ export const ScriptView: FC<{
         },
       }
     );
+  };
+
+  const requestGenerate = () => {
+    if (savedSettings.rememberStopAt) {
+      executeRegeneration(stopAt);
+      return;
+    }
+    setStopAlertMode('generate');
+    setShowStopAlert(true);
   };
 
   const handleSubmit = async (event?: React.FormEvent<HTMLFormElement>) => {
@@ -991,7 +1008,11 @@ export const ScriptView: FC<{
     }
 
     if (isEditing) {
-      setEnhance('showRegenerateConfirm', true);
+      if (savedSettings.rememberStopAt) {
+        setEnhance('showRegenerateConfirm', true);
+        return;
+      }
+      requestGenerate();
       return;
     }
 
@@ -1006,7 +1027,7 @@ export const ScriptView: FC<{
       return;
     }
 
-    executeRegeneration();
+    requestGenerate();
   };
 
   const previousScriptRef = useRef<string>('');
@@ -1435,13 +1456,11 @@ export const ScriptView: FC<{
             analysisModels={analysisModels}
             imageModels={imageModels}
             videoModels={videoModels}
-            stopAt={stopAt}
             audioModels={audioModels}
             onAspectRatioChange={(v) => updateGen('aspectRatio', v)}
             onAnalysisModelsChange={(v) => updateGen('analysisModels', v)}
             onImageModelsChange={(v) => updateGen('imageModels', v)}
             onVideoModelsChange={(v) => updateGen('videoModels', v)}
-            onStopAtChange={(v) => updateGen('stopAt', v)}
             onAudioModelsChange={(v) => updateGen('audioModels', v)}
             disabled={loading}
             styleCategory={styleCategory}
@@ -1695,6 +1714,18 @@ export const ScriptView: FC<{
                     ? '1 sequence will be created'
                     : `${analysisModels.length} sequences will be created`}
               </span>
+              {savedSettings.rememberStopAt && (
+                <button
+                  type="button"
+                  className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline sm:text-right"
+                  onClick={() => {
+                    setStopAlertMode('edit');
+                    setShowStopAlert(true);
+                  }}
+                >
+                  Until {GENERATION_STAGE_META[stopAt].shortName} · Change
+                </button>
+              )}
             </div>
           </div>
         </CardFooter>
@@ -1718,7 +1749,7 @@ export const ScriptView: FC<{
             <AlertDialogAction
               onClick={() => {
                 setEnhance('showRegenerateConfirm', false);
-                executeRegeneration();
+                requestGenerate();
               }}
             >
               Generate Copy
@@ -1782,7 +1813,7 @@ export const ScriptView: FC<{
               className={buttonVariants({ variant: 'secondary' })}
               onClick={() => {
                 setEnhance('showEnhanceNudge', false);
-                executeRegeneration();
+                requestGenerate();
               }}
             >
               Generate As-Is
@@ -1799,6 +1830,32 @@ export const ScriptView: FC<{
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <GenerationStopAlert
+        open={showStopAlert}
+        onOpenChange={setShowStopAlert}
+        stopAt={stopAt}
+        remember={savedSettings.rememberStopAt}
+        confirmLabel={
+          stopAlertMode === 'edit'
+            ? 'Save'
+            : isEditing
+              ? 'Generate Copy'
+              : 'Generate'
+        }
+        description={
+          isEditing
+            ? "A copy will be created from this script. Your original sequence won't change."
+            : undefined
+        }
+        onConfirm={({ stopAt: nextStopAt, remember }) => {
+          updateGen('stopAt', nextStopAt);
+          saveSettings({ stopAt: nextStopAt, rememberStopAt: remember });
+          setShowStopAlert(false);
+          if (stopAlertMode === 'generate') {
+            executeRegeneration(nextStopAt);
+          }
+        }}
+      />
       <AlertDialog
         open={sampleReplaceConfirm !== null}
         onOpenChange={(open) => {

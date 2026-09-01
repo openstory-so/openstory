@@ -52,6 +52,8 @@ type GenerationSettings = {
   motionModel: ImageToVideoModel;
   videoModels: ImageToVideoModel[];
   stopAt: GenerationStage;
+  /** Skip the Generate stop-at alert and reuse `stopAt`. */
+  rememberStopAt: boolean;
   musicModel: AudioModel;
   audioModels: AudioModel[];
 };
@@ -88,6 +90,7 @@ const DEFAULT_SETTINGS: GenerationSettings = withMode({
   // Motion + music on by default so the first Generate is a short film aha
   // (welcome grant sized for a ~30s stills+motion+music board — #1140).
   stopAt: DEFAULT_GENERATION_STOP_AT,
+  rememberStopAt: false,
   musicModel: TURBO_DEFAULT_AUDIO,
   audioModels: [TURBO_DEFAULT_AUDIO],
 });
@@ -207,6 +210,11 @@ function loadSettings(): GenerationSettings {
               : true,
         });
 
+    const rememberStopAt =
+      'rememberStopAt' in parsed && typeof parsed.rememberStopAt === 'boolean'
+        ? parsed.rememberStopAt
+        : false;
+
     const musicModel =
       'musicModel' in parsed && isValidAudioModel(parsed.musicModel)
         ? parsed.musicModel
@@ -235,6 +243,7 @@ function loadSettings(): GenerationSettings {
       motionModel,
       videoModels,
       stopAt,
+      rememberStopAt,
       musicModel,
       audioModels,
     });
