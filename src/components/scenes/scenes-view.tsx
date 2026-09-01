@@ -372,8 +372,13 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     () => ({
       autoGenerateMotion: sequence?.autoGenerateMotion ?? false,
       autoGenerateMusic: sequence?.autoGenerateMusic ?? false,
+      referenceOnly: sequence?.referenceOnly ?? false,
     }),
-    [sequence?.autoGenerateMotion, sequence?.autoGenerateMusic]
+    [
+      sequence?.autoGenerateMotion,
+      sequence?.autoGenerateMusic,
+      sequence?.referenceOnly,
+    ]
   );
 
   // Subscribe to real-time generation events when sequence is processing.

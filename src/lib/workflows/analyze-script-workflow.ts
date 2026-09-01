@@ -334,7 +334,10 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
     await step.do('phase-3-start', async () => {
       await getGenerationChannel(sequenceId).emit('generation.phase:start', {
         phase: 3,
-        phaseName: 'Generating references & prompts…',
+        // Reference-only writes no visual prompts here — only the sheets.
+        phaseName: referenceOnly
+          ? 'Generating references…'
+          : 'Generating references & prompts…',
       });
     });
 

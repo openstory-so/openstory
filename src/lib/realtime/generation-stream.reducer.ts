@@ -156,9 +156,25 @@ const PHASES = [
   { name: 'Generating images\u2026', shortName: 'Images' },
 ] as const;
 
+/**
+ * Reference-only renders straight to video: phase 3 writes no visual prompts
+ * and phase 4 renders no stills, so the default labels name work that never
+ * happens — "Images" sitting on a step that only writes motion prompts reads
+ * as a stalled image phase.
+ */
+const REFERENCE_ONLY_PHASE_LABELS: Record<
+  number,
+  { name: string; shortName: string }
+> = {
+  3: { name: 'Generating references\u2026', shortName: 'References' },
+  4: { name: 'Writing shot prompts\u2026', shortName: 'Prompts' },
+};
+
 export type GenerationPhaseConfig = {
   autoGenerateMotion: boolean;
   autoGenerateMusic: boolean;
+  /** Straight-to-video: no stills, and no visual prompts to write. */
+  referenceOnly?: boolean;
 };
 
 function getPhase5Label(config: GenerationPhaseConfig): {
@@ -214,12 +230,19 @@ function updateShotRetries(
 export function createInitialState(
   config?: GenerationPhaseConfig
 ): GenerationStreamState {
-  const phases: GenerationPhase[] = PHASES.map((p, i) => ({
-    phase: i + 1,
-    phaseName: p.name,
-    shortName: p.shortName,
-    status: 'pending' as const,
-  }));
+  const phases: GenerationPhase[] = PHASES.map((p, i) => {
+    const phase = i + 1;
+    const label =
+      (config?.referenceOnly
+        ? REFERENCE_ONLY_PHASE_LABELS[phase]
+        : undefined) ?? p;
+    return {
+      phase,
+      phaseName: label.name,
+      shortName: label.shortName,
+      status: 'pending' as const,
+    };
+  });
 
   if (config && (config.autoGenerateMotion || config.autoGenerateMusic)) {
     const label = getPhase5Label(config);

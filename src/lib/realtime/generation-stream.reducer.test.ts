@@ -159,3 +159,36 @@ describe('generationStreamReducer — shot retry tracking (#882)', () => {
     expect(cleared.shotRetries.size).toBe(0);
   });
 });
+
+describe('phase labels in reference-only', () => {
+  const shortNames = (config?: Parameters<typeof createInitialState>[0]) =>
+    createInitialState(config).phases.map((p) => p.shortName);
+
+  it('names the still-less phases for the work they actually do', () => {
+    // Phase 4 renders no images in this mode — it writes motion prompts — and
+    // phase 3 writes no visual prompts, only the reference sheets. Leaving the
+    // default labels made the run look stuck on an image step that was never
+    // going to produce one.
+    expect(
+      shortNames({
+        autoGenerateMotion: true,
+        autoGenerateMusic: true,
+        referenceOnly: true,
+      })
+    ).toEqual(['Script', 'Casting', 'References', 'Prompts', 'Music & Motion']);
+
+    expect(
+      createInitialState({
+        autoGenerateMotion: true,
+        autoGenerateMusic: false,
+        referenceOnly: true,
+      }).phases.find((p) => p.phase === 3)?.phaseName
+    ).toBe('Generating references…');
+  });
+
+  it('leaves the image-rendering modes alone', () => {
+    expect(
+      shortNames({ autoGenerateMotion: true, autoGenerateMusic: true })
+    ).toEqual(['Script', 'Casting', 'References', 'Images', 'Music & Motion']);
+  });
+});
