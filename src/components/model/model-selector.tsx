@@ -7,20 +7,25 @@ import {
   type AnalysisModelId,
 } from '@/lib/ai/models.config';
 import {
+  compareSelectorModels,
+  QUALITY_DEFAULT_ANALYSIS,
+  SELECTOR_GROUP_ORDER,
+  selectorGroup,
+  TURBO_ANALYSIS_MODELS,
+} from '@/lib/ai/generation-mode';
+import {
   isRegionBlockedModel,
   resolveModelForCountry,
 } from '@/lib/ai/region-policy';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo } from 'react';
 
-const GROUP_ORDER = ['all'] as const;
-
 type ModelSelectorProps = {
   selectedModels: AnalysisModelId[];
   onModelsChange: (models: AnalysisModelId[]) => void;
   disabled?: boolean;
   singleSelect?: boolean;
-  /** When set, only these ids appear (Turbo mode). */
+  /** When set, only these ids appear. */
   allowedIds?: readonly AnalysisModelId[];
 };
 
@@ -47,11 +52,21 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
         .filter((m) => isSelectableAnalysisModelId(m.id))
         .filter((m) => !isRegionBlockedModel(m.id, country))
         .filter((m) => !allowedIds || allowedIds.includes(m.id))
-        .sort((a, b) => a.qualityRank - b.qualityRank)
+        .sort((a, b) =>
+          compareSelectorModels(
+            a.id,
+            b.id,
+            TURBO_ANALYSIS_MODELS,
+            QUALITY_DEFAULT_ANALYSIS,
+            (id) =>
+              SCRIPT_ANALYSIS_MODELS.find((model) => model.id === id)
+                ?.qualityRank ?? 99
+          )
+        )
         .map((m) => ({
           id: m.id,
           name: m.name,
-          group: 'all',
+          group: selectorGroup(m.id, TURBO_ANALYSIS_MODELS),
           badge: m.license,
         })),
     [country, allowedIds]
@@ -59,41 +74,23 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
 
   // Remap an already-selected blocked model (stored default, restored draft)
   // onto the region fallback so the selection matches what the list shows and
-  // what the server will actually run. Turbo `allowedIds` must stay in the
-  // set — DeepSeek is the region fallback but is not a turbo analysis model.
+  // what the server will actually run.
   useEffect(() => {
-    if (!country && !allowedIds) return;
+    if (!country) return;
     const remapped = [
-      ...new Set(
-        selectedModels.map((m) => {
-          const resolved = country ? resolveModelForCountry(m, country) : m;
-          if (
-            allowedIds &&
-            allowedIds.length > 0 &&
-            !allowedIds.includes(resolved)
-          ) {
-            const first = allowedIds[0];
-            if (!first) return resolved;
-            return (
-              allowedIds.find((id) => !isRegionBlockedModel(id, country)) ??
-              first
-            );
-          }
-          return resolved;
-        })
-      ),
+      ...new Set(selectedModels.map((m) => resolveModelForCountry(m, country))),
     ];
     const changed =
       remapped.length !== selectedModels.length ||
       remapped.some((m, i) => m !== selectedModels[i]);
     if (changed) onModelsChange(remapped);
-  }, [country, selectedModels, onModelsChange, allowedIds]);
+  }, [country, selectedModels, onModelsChange]);
 
   return (
     <BaseModelSelector
       label="Analysis Model"
       models={models}
-      groupOrder={GROUP_ORDER}
+      groupOrder={SELECTOR_GROUP_ORDER}
       selectedIds={selectedModels}
       onSelectionChange={(ids) => {
         const validIds = ids.filter((id): id is AnalysisModelId =>

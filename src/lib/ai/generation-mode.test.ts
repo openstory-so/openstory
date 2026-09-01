@@ -10,13 +10,17 @@ import {
 import { isSelectableAnalysisModelId } from '@/lib/ai/models.config';
 import {
   applyGenerationMode,
-  constrainAnalysisModels,
-  constrainAudioModels,
-  constrainImageModels,
-  constrainVideoModels,
+  compareSelectorModels,
   DEFAULT_GENERATION_MODE,
+  defaultAnalysisModel,
+  defaultImageModel,
+  defaultVideoModel,
   isTurboImageModel,
   isTurboVideoModel,
+  QUALITY_DEFAULT_ANALYSIS,
+  QUALITY_DEFAULT_IMAGE,
+  QUALITY_DEFAULT_VIDEO,
+  selectorGroup,
   TURBO_ANALYSIS_MODELS,
   TURBO_AUDIO_MODELS,
   TURBO_DEFAULT_ANALYSIS,
@@ -27,47 +31,94 @@ import {
   TURBO_VIDEO_MODELS,
 } from './generation-mode';
 
-describe('constrainAnalysisModels', () => {
-  it('keeps a quality-catalog pick in quality mode', () => {
-    expect(
-      constrainAnalysisModels('quality', ['anthropic/claude-fable-5'])
-    ).toEqual(['anthropic/claude-fable-5']);
+const baseSettings = {
+  generationMode: 'quality' as const,
+  analysisModels: ['anthropic/claude-fable-5' as const],
+  imageModels: ['gpt_image_2' as const],
+  videoModels: ['seedance_v2' as const],
+  audioModels: ['elevenlabs_music' as const],
+  aspectRatio: '16:9' as const,
+};
+
+describe('applyGenerationMode', () => {
+  it('snaps every catalog to turbo defaults when entering turbo', () => {
+    const next = applyGenerationMode(baseSettings, 'turbo');
+    expect(next.generationMode).toBe('turbo');
+    expect(next.analysisModels).toEqual([TURBO_DEFAULT_ANALYSIS]);
+    expect(next.imageModels).toEqual([TURBO_DEFAULT_IMAGE]);
+    expect(next.videoModels).toEqual([TURBO_DEFAULT_VIDEO]);
+    expect(next.audioModels).toEqual([TURBO_DEFAULT_AUDIO]);
   });
 
-  it('remaps a quality-only analysis model to Luna in turbo', () => {
-    expect(
-      constrainAnalysisModels('turbo', ['anthropic/claude-fable-5'])
-    ).toEqual([TURBO_DEFAULT_ANALYSIS]);
+  it('snaps to quality defaults when entering quality', () => {
+    const next = applyGenerationMode(
+      { ...baseSettings, generationMode: 'turbo' },
+      'quality'
+    );
+    expect(next.analysisModels).toEqual([QUALITY_DEFAULT_ANALYSIS]);
+    expect(next.imageModels).toEqual([QUALITY_DEFAULT_IMAGE]);
+    expect(next.videoModels).toEqual([QUALITY_DEFAULT_VIDEO]);
   });
 
-  it('keeps Luna when switching to turbo', () => {
-    expect(constrainAnalysisModels('turbo', ['openai/gpt-5.6-luna'])).toEqual([
-      'openai/gpt-5.6-luna',
-    ]);
+  it('keeps a quality pick while staying in turbo', () => {
+    const next = applyGenerationMode(
+      {
+        ...baseSettings,
+        generationMode: 'turbo',
+        imageModels: ['gpt_image_2'],
+        videoModels: ['seedance_v2'],
+      },
+      'turbo'
+    );
+    expect(next.imageModels).toEqual(['gpt_image_2']);
+    expect(next.videoModels).toEqual(['seedance_v2']);
   });
 });
 
-describe('constrainImageModels', () => {
-  it('remaps GPT Image 2 to Nano Banana 2 Lite in turbo', () => {
-    expect(constrainImageModels('turbo', ['gpt_image_2'])).toEqual([
-      TURBO_DEFAULT_IMAGE,
-    ]);
+describe('mode defaults', () => {
+  it('turbo defaults are Lite / H3 Max / Luna', () => {
+    expect(defaultAnalysisModel('turbo')).toBe(TURBO_DEFAULT_ANALYSIS);
+    expect(defaultImageModel('turbo')).toBe(TURBO_DEFAULT_IMAGE);
+    expect(defaultVideoModel('turbo', '16:9')).toBe(TURBO_DEFAULT_VIDEO);
     expect(TURBO_DEFAULT_IMAGE).toBe('nano_banana_2_lite');
+    expect(TURBO_DEFAULT_VIDEO).toBe('minimax_h3_max');
   });
 
-  it('keeps Nano Banana 2 Lite in turbo', () => {
-    expect(constrainImageModels('turbo', ['nano_banana_2_lite'])).toEqual([
-      'nano_banana_2_lite',
-    ]);
+  it('quality defaults are Fable / GPT Image 2 / Seedance', () => {
+    expect(defaultAnalysisModel('quality')).toBe('anthropic/claude-fable-5');
+    expect(defaultImageModel('quality')).toBe('gpt_image_2');
+    expect(defaultVideoModel('quality', '16:9')).toBe('seedance_v2');
   });
 });
 
-describe('constrainVideoModels', () => {
-  it('remaps Seedance to H3 Max in turbo', () => {
-    expect(constrainVideoModels('turbo', ['seedance_v2'], '16:9')).toEqual([
-      TURBO_DEFAULT_VIDEO,
-    ]);
-    expect(TURBO_DEFAULT_VIDEO).toBe('minimax_h3_max');
+describe('selector grouping', () => {
+  it('puts Lite in Fast and GPT Image 2 in Quality', () => {
+    expect(selectorGroup('nano_banana_2_lite', TURBO_IMAGE_MODELS)).toBe(
+      'fast'
+    );
+    expect(selectorGroup('gpt_image_2', TURBO_IMAGE_MODELS)).toBe('quality');
+  });
+
+  it('orders Fast by turbo list, then Quality with the default first', () => {
+    const ids = [
+      'gpt_image_2',
+      'flux_2_flash',
+      'nano_banana_2_lite',
+      'seedream_v5',
+    ];
+    ids.sort((a, b) =>
+      compareSelectorModels(
+        a,
+        b,
+        TURBO_IMAGE_MODELS,
+        QUALITY_DEFAULT_IMAGE,
+        (id) =>
+          isValidTextToImageModel(id) ? IMAGE_MODELS[id].qualityRank : 99
+      )
+    );
+    expect(ids[0]).toBe('nano_banana_2_lite');
+    expect(ids[1]).toBe('flux_2_flash');
+    expect(ids[2]).toBe('gpt_image_2');
   });
 });
 
@@ -77,15 +128,6 @@ describe('isTurboImageModel / isTurboVideoModel', () => {
     expect(isTurboImageModel('gpt_image_2')).toBe(false);
     expect(isTurboVideoModel('minimax_h3_max')).toBe(true);
     expect(isTurboVideoModel('seedance_v2')).toBe(false);
-  });
-});
-
-describe('constrainAudioModels', () => {
-  it('keeps ElevenLabs in turbo', () => {
-    expect(constrainAudioModels('turbo', ['elevenlabs_music'])).toEqual([
-      TURBO_DEFAULT_AUDIO,
-    ]);
-    expect(TURBO_DEFAULT_AUDIO).toBe('elevenlabs_music');
   });
 });
 
@@ -112,26 +154,5 @@ describe('turbo catalogs', () => {
       expect(isValidAudioModel(id)).toBe(true);
       expect(AUDIO_MODELS[id].type).toBe('music');
     }
-  });
-});
-
-describe('applyGenerationMode', () => {
-  it('filters every catalog when entering turbo', () => {
-    const next = applyGenerationMode(
-      {
-        generationMode: 'quality',
-        analysisModels: ['anthropic/claude-fable-5'],
-        imageModels: ['gpt_image_2'],
-        videoModels: ['seedance_v2'],
-        audioModels: ['elevenlabs_music'],
-        aspectRatio: '16:9',
-      },
-      'turbo'
-    );
-    expect(next.generationMode).toBe('turbo');
-    expect(next.analysisModels).toEqual([TURBO_DEFAULT_ANALYSIS]);
-    expect(next.imageModels).toEqual([TURBO_DEFAULT_IMAGE]);
-    expect(next.videoModels).toEqual([TURBO_DEFAULT_VIDEO]);
-    expect(next.audioModels).toEqual([TURBO_DEFAULT_AUDIO]);
   });
 });

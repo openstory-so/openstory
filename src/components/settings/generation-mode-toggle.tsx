@@ -10,10 +10,9 @@ type GenerationModeToggleProps = {
 };
 
 /**
- * Quality | Turbo switch. Lives next to Generate: it's a generate-time
- * choice (like a model picker next to send), and the cost line under the
- * button updates with it. The generation-settings popover then shows only
- * the models that mode allows.
+ * Quality | Turbo switch. Lives next to Generate: it selects the
+ * recommended default in each catalog. Pickers still show the full list,
+ * grouped Fast / Quality.
  */
 export const GenerationModeToggle: FC<GenerationModeToggleProps> = ({
   value,
@@ -34,7 +33,7 @@ export const GenerationModeToggle: FC<GenerationModeToggleProps> = ({
   >
     <ToggleGroupItem
       value="quality"
-      aria-label="Quality mode — full model catalog"
+      aria-label="Quality mode — quality-recommended defaults"
       className="gap-1.5 px-2.5"
     >
       <Gauge className="size-3.5" />
@@ -42,7 +41,7 @@ export const GenerationModeToggle: FC<GenerationModeToggleProps> = ({
     </ToggleGroupItem>
     <ToggleGroupItem
       value="turbo"
-      aria-label="Turbo mode — fastest models only"
+      aria-label="Turbo mode — speed-recommended defaults"
       className="gap-1.5 px-2.5"
     >
       <Zap className="size-3.5" />

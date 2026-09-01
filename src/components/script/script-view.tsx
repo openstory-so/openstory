@@ -1412,7 +1412,6 @@ export const ScriptView: FC<{
             settings trigger. */}
         <CardHeader className="shrink-0 flex flex-row items-center md:flex-col md:items-start lg:flex-row justify-between gap-3 px-6 py-4 border-b border-border/50 bg-card/40 short-h:py-2">
           <GenerationSettings
-            generationMode={generationMode}
             aspectRatio={aspectRatio}
             analysisModels={analysisModels}
             imageModels={imageModels}

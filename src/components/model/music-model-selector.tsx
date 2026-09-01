@@ -7,9 +7,14 @@ import {
   isValidAudioModel,
   type AudioModel,
 } from '@/lib/ai/models';
+import {
+  compareSelectorModels,
+  QUALITY_DEFAULT_AUDIO,
+  SELECTOR_GROUP_ORDER,
+  selectorGroup,
+  TURBO_AUDIO_MODELS,
+} from '@/lib/ai/generation-mode';
 import { useMemo } from 'react';
-
-const GROUP_ORDER = ['all'] as const;
 
 // Shared option list — only music models (not SFX), sorted by quality.
 function useMusicModels(allowedIds?: readonly AudioModel[]) {
@@ -24,11 +29,19 @@ function useMusicModels(allowedIds?: readonly AudioModel[]) {
           // oxlint-disable-next-line typescript/no-unnecessary-condition
           return m.type === 'music';
         })
-        .sort(([, a], [, b]) => a.qualityRank - b.qualityRank)
+        .sort(([a], [b]) =>
+          compareSelectorModels(
+            a,
+            b,
+            TURBO_AUDIO_MODELS,
+            QUALITY_DEFAULT_AUDIO,
+            (id) => (isValidAudioModel(id) ? AUDIO_MODELS[id].qualityRank : 99)
+          )
+        )
         .map(([key, m]) => ({
           id: key,
           name: m.name,
-          group: 'all',
+          group: selectorGroup(key, TURBO_AUDIO_MODELS),
           badge: m.license,
         })),
     [allowedIds]
@@ -65,7 +78,7 @@ export const MusicModelSelector: React.FC<MusicModelSelectorProps> = ({
     <BaseModelSelector
       label="Music Model"
       models={models}
-      groupOrder={GROUP_ORDER}
+      groupOrder={SELECTOR_GROUP_ORDER}
       selectedIds={[selectedModel]}
       onSelectionChange={(ids) => {
         const firstId = ids[0];
@@ -95,7 +108,7 @@ export const MusicModelMultiSelector: React.FC<
     <BaseModelSelector
       label="Music Models"
       models={models}
-      groupOrder={GROUP_ORDER}
+      groupOrder={SELECTOR_GROUP_ORDER}
       selectedIds={selectedModels}
       onSelectionChange={(ids) => {
         const validIds = ids.filter(isValidAudioModel);

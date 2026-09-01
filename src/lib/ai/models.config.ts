@@ -404,7 +404,8 @@ export function resolveVisionModel(
 /**
  * Default model when none is specified. Luna won the analysis speed/quality
  * eval (pipeline 95.7 at ~$0.015 vs Fable 5 at $0.85) and is the Turbo
- * analysis default; Quality mode still offers Fable in the picker.
+ * analysis default. Quality mode selects Fable; both modes show the full
+ * picker, grouped Fast / Quality.
  * Existing users keep whatever generation settings already store.
  */
 export const DEFAULT_ANALYSIS_MODEL: AnalysisModelId = 'openai/gpt-5.6-luna';

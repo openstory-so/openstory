@@ -28,14 +28,6 @@ import {
   type TextToImageModel,
 } from '@/lib/ai/models';
 import type { AnalysisModelId } from '@/lib/ai/models.config';
-import {
-  DEFAULT_GENERATION_MODE,
-  TURBO_ANALYSIS_MODELS,
-  TURBO_AUDIO_MODELS,
-  TURBO_IMAGE_MODELS,
-  TURBO_VIDEO_MODELS,
-  type GenerationMode,
-} from '@/lib/ai/generation-mode';
 import type { AspectRatio } from '@/lib/constants/aspect-ratios';
 import { useState, type FC } from 'react';
 import { AspectRatioPills } from './aspect-ratio-pills';
@@ -72,7 +64,6 @@ const AutoToggle: FC<AutoToggleProps> = ({
 );
 
 type GenerationSettingsProps = {
-  generationMode?: GenerationMode;
   aspectRatio: AspectRatio;
   analysisModels: AnalysisModelId[];
   imageModels: TextToImageModel[];
@@ -116,7 +107,6 @@ type GenerationSettingsProps = {
 };
 
 export const GenerationSettings: FC<GenerationSettingsProps> = ({
-  generationMode = DEFAULT_GENERATION_MODE,
   aspectRatio,
   analysisModels,
   imageModels,
@@ -145,7 +135,6 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
   onResetStyleDefaults,
 }) => {
   const [open, setOpen] = useState(false);
-  const turbo = generationMode === 'turbo';
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -186,12 +175,6 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
         className="w-[min(22rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] overflow-x-hidden p-4"
       >
         <div className="flex min-w-0 flex-col gap-4">
-          {turbo ? (
-            <p className="text-xs text-muted-foreground">
-              Turbo — fastest models only. Switch to Quality next to Generate
-              for the full catalog.
-            </p>
-          ) : null}
           {/* Aspect Ratio Section */}
           <section className="flex flex-col gap-2">
             <h3 className="text-sm font-medium text-foreground">
@@ -217,7 +200,6 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
               onModelsChange={onAnalysisModelsChange}
               disabled={disabled}
               singleSelect={singleSelectAnalysis}
-              allowedIds={turbo ? TURBO_ANALYSIS_MODELS : undefined}
             />
           </section>
 
@@ -235,7 +217,6 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
                 disabled={disabled}
                 recommendedImageModel={recommendedImageModel}
                 styleName={styleName}
-                filterModels={turbo ? [...TURBO_IMAGE_MODELS] : undefined}
               />
             ) : (
               <ImageModelMultiSelector
@@ -244,7 +225,6 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
                 disabled={disabled}
                 recommendedImageModel={recommendedImageModel}
                 styleName={styleName}
-                filterModels={turbo ? [...TURBO_IMAGE_MODELS] : undefined}
               />
             )}
           </section>
@@ -274,7 +254,6 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
                 styleCategory={styleCategory}
                 recommendedVideoModel={recommendedVideoModel}
                 styleName={styleName}
-                allowedIds={turbo ? TURBO_VIDEO_MODELS : undefined}
               />
             ) : (
               <MotionModelMultiSelector
@@ -285,7 +264,6 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
                 styleCategory={styleCategory}
                 recommendedVideoModel={recommendedVideoModel}
                 styleName={styleName}
-                allowedIds={turbo ? TURBO_VIDEO_MODELS : undefined}
               />
             )}
           </section>
@@ -311,14 +289,12 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
                     selectedModel={audioModels[0] ?? DEFAULT_MUSIC_MODEL}
                     onModelChange={(model) => onAudioModelsChange([model])}
                     disabled={disabled || !autoGenerateMusic}
-                    allowedIds={turbo ? TURBO_AUDIO_MODELS : undefined}
                   />
                 ) : (
                   <MusicModelMultiSelector
                     selectedModels={audioModels}
                     onModelsChange={onAudioModelsChange}
                     disabled={disabled || !autoGenerateMusic}
-                    allowedIds={turbo ? TURBO_AUDIO_MODELS : undefined}
                   />
                 )}
               </section>

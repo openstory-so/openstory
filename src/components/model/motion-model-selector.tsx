@@ -8,10 +8,15 @@ import {
   isValidImageToVideoModel,
   type ImageToVideoModel,
 } from '@/lib/ai/models';
+import {
+  compareSelectorModels,
+  QUALITY_DEFAULT_VIDEO,
+  SELECTOR_GROUP_ORDER,
+  selectorGroup,
+  TURBO_VIDEO_MODELS,
+} from '@/lib/ai/generation-mode';
 import type { AspectRatio } from '@/lib/constants/aspect-ratios';
 import { useMemo } from 'react';
-
-const GROUP_ORDER = ['all'] as const;
 
 type MotionModelFilterProps = {
   aspectRatio?: AspectRatio;
@@ -53,7 +58,18 @@ function useMotionModels({
             ? isModelCompatibleWithAspectRatio(key, aspectRatio)
             : true;
         })
-        .sort(([, a], [, b]) => a.qualityRank - b.qualityRank)
+        .sort(([a], [b]) =>
+          compareSelectorModels(
+            a,
+            b,
+            TURBO_VIDEO_MODELS,
+            QUALITY_DEFAULT_VIDEO,
+            (id) =>
+              isValidImageToVideoModel(id)
+                ? IMAGE_TO_VIDEO_MODELS[id].qualityRank
+                : 99
+          )
+        )
         .map(([key, m]) => {
           const isRecommended = key === recommendedVideoModel;
           const recommendedFor = isRecommended
@@ -64,7 +80,7 @@ function useMotionModels({
           return {
             id: key,
             name: m.name,
-            group: 'all',
+            group: selectorGroup(key, TURBO_VIDEO_MODELS),
             badge: m.license,
             recommendedFor,
           };
@@ -187,7 +203,7 @@ export const MotionModelSelector: React.FC<MotionModelSelectorProps> = ({
       <BaseModelSelector
         label="Motion Model"
         models={models}
-        groupOrder={GROUP_ORDER}
+        groupOrder={SELECTOR_GROUP_ORDER}
         selectedIds={[selectedModel]}
         onSelectionChange={(ids) => {
           const firstId = ids[0];
@@ -243,7 +259,7 @@ export const MotionModelMultiSelector: React.FC<
       <BaseModelSelector
         label="Motion Models"
         models={models}
-        groupOrder={GROUP_ORDER}
+        groupOrder={SELECTOR_GROUP_ORDER}
         selectedIds={selectedModels}
         onSelectionChange={(ids) => {
           const validIds = ids.filter(isValidImageToVideoModel);

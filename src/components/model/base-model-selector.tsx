@@ -194,7 +194,9 @@ export const BaseModelSelector: React.FC<BaseModelSelectorProps> = ({
       .join(' ');
   };
 
-  const showGroupHeaders = groupOrder.length > 1;
+  const showGroupHeaders =
+    groupOrder.filter((key) => (groupedModels[key]?.length ?? 0) > 0).length >
+    1;
 
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>

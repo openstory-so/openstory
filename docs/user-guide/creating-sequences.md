@@ -146,7 +146,7 @@ Each style includes configuration for color palette, artistic direction, and ren
 
 ## The Generation Pipeline
 
-Next to **Generate**, a **Quality | Turbo** switch picks the model set. Turbo is the default (fastest models — GPT-5.6 Luna, Nano Banana 2 Lite, MiniMax H3 Max — and ElevenLabs for music). Quality restores the full catalog.
+Next to **Generate**, a **Quality | Turbo** switch picks the recommended default in each catalog (Turbo: Luna, Nano Banana 2 Lite, MiniMax H3 Max, ElevenLabs). Both modes show the full list, grouped Fast / Quality.
 
 When you click **Generate Sequence**, OpenStory runs an automated pipeline:
 

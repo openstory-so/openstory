@@ -157,7 +157,7 @@ export async function selectComposerStyle(
  */
 export async function selectRecordedPipelineModels(page: Page): Promise<void> {
   const quality = page.getByRole('radio', {
-    name: 'Quality mode — full model catalog',
+    name: 'Quality mode — quality-recommended defaults',
   });
   await expect(quality).toBeVisible({ timeout: HYDRATION_TIMEOUT });
   await quality.click();

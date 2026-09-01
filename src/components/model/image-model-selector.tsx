@@ -7,9 +7,14 @@ import {
   isValidTextToImageModel,
   type TextToImageModel,
 } from '@/lib/ai/models';
+import {
+  compareSelectorModels,
+  QUALITY_DEFAULT_IMAGE,
+  SELECTOR_GROUP_ORDER,
+  selectorGroup,
+  TURBO_IMAGE_MODELS,
+} from '@/lib/ai/generation-mode';
 import { useMemo } from 'react';
-
-const GROUP_ORDER = ['all'] as const;
 
 type RecommendationProps = {
   /** Style-recommended model key — renders a "Recommended" badge on the match. */
@@ -46,11 +51,20 @@ function useImageModels({
     () =>
       Object.entries(IMAGE_MODELS)
         .filter(([, m]) => !('hidden' in m))
-        .sort(([, a], [, b]) => a.qualityRank - b.qualityRank)
+        .sort(([a], [b]) =>
+          compareSelectorModels(
+            a,
+            b,
+            TURBO_IMAGE_MODELS,
+            QUALITY_DEFAULT_IMAGE,
+            (id) =>
+              isValidTextToImageModel(id) ? IMAGE_MODELS[id].qualityRank : 99
+          )
+        )
         .map(([key, m]) => ({
           id: key,
           name: m.name,
-          group: 'all',
+          group: selectorGroup(key, TURBO_IMAGE_MODELS),
           badge: m.license,
           recommendedFor:
             recommendedImageModel && key === recommendedImageModel
@@ -128,7 +142,7 @@ export const ImageModelSelector: React.FC<ImageModelSelectorProps> = ({
       <BaseModelSelector
         label="Image Model"
         models={models}
-        groupOrder={GROUP_ORDER}
+        groupOrder={SELECTOR_GROUP_ORDER}
         selectedIds={[selectedModel]}
         onSelectionChange={(ids) => {
           const firstId = ids[0];
@@ -181,7 +195,7 @@ export const ImageModelMultiSelector: React.FC<
       <BaseModelSelector
         label="Image Models"
         models={models}
-        groupOrder={GROUP_ORDER}
+        groupOrder={SELECTOR_GROUP_ORDER}
         selectedIds={selectedModels}
         onSelectionChange={(ids) => {
           const validIds = ids.filter(isValidTextToImageModel);

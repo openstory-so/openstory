@@ -9,7 +9,7 @@ OpenStory integrates with a wide range of AI models across four categories: scri
 
 ## Script Analysis Models
 
-These LLM models analyze your script, extract scenes, characters, and locations, and generate prompts. You can select multiple models to generate parallel sequences for comparison. Next to **Generate**, **Turbo** is the default (Luna, Nano Banana 2 Lite, MiniMax H3 Max, ElevenLabs); **Quality** restores the full catalog.
+These LLM models analyze your script, extract scenes, characters, and locations, and generate prompts. You can select multiple models to generate parallel sequences for comparison. Next to **Generate**, **Turbo** is the default (Luna, Nano Banana 2 Lite, MiniMax H3 Max, ElevenLabs). **Quality** selects the quality-ranked defaults. Both modes show the full catalog, grouped Fast / Quality.
 
 | Model              | Vendor    | Context Window | License                   |
 | ------------------ | --------- | -------------- | ------------------------- |

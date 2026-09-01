@@ -1,7 +1,4 @@
 import {
-  DEFAULT_IMAGE_MODEL,
-  DEFAULT_MUSIC_MODEL,
-  DEFAULT_VIDEO_MODEL,
   getCompatibleModel,
   isValidAudioModel,
   isValidImageToVideoModel,
@@ -14,10 +11,13 @@ import {
   applyGenerationMode,
   DEFAULT_GENERATION_MODE,
   isGenerationMode,
+  TURBO_DEFAULT_ANALYSIS,
+  TURBO_DEFAULT_AUDIO,
+  TURBO_DEFAULT_IMAGE,
+  TURBO_DEFAULT_VIDEO,
   type GenerationMode,
 } from '@/lib/ai/generation-mode';
 import {
-  DEFAULT_ANALYSIS_MODEL,
   isSelectableAnalysisModelId,
   isValidAnalysisModelId,
   type AnalysisModelId,
@@ -74,16 +74,16 @@ function withMode(settings: GenerationSettings): GenerationSettings {
 const DEFAULT_SETTINGS: GenerationSettings = withMode({
   generationMode: DEFAULT_GENERATION_MODE,
   aspectRatio: DEFAULT_ASPECT_RATIO,
-  analysisModels: [DEFAULT_ANALYSIS_MODEL],
-  imageModel: DEFAULT_IMAGE_MODEL,
-  imageModels: [DEFAULT_IMAGE_MODEL],
-  motionModel: DEFAULT_VIDEO_MODEL,
-  videoModels: [DEFAULT_VIDEO_MODEL],
+  analysisModels: [TURBO_DEFAULT_ANALYSIS],
+  imageModel: TURBO_DEFAULT_IMAGE,
+  imageModels: [TURBO_DEFAULT_IMAGE],
+  motionModel: TURBO_DEFAULT_VIDEO,
+  videoModels: [TURBO_DEFAULT_VIDEO],
   // Motion + music on by default so the first Generate is a short film aha
   // (welcome grant sized for a ~30s stills+motion+music board — #1140).
   autoGenerateMotion: true,
-  musicModel: DEFAULT_MUSIC_MODEL,
-  audioModels: [DEFAULT_MUSIC_MODEL],
+  musicModel: TURBO_DEFAULT_AUDIO,
+  audioModels: [TURBO_DEFAULT_AUDIO],
   autoGenerateMusic: true,
 });
 
@@ -149,11 +149,11 @@ function loadSettings(): GenerationSettings {
     const analysisModels =
       storedAnalysisModels.length > 0
         ? storedAnalysisModels
-        : [DEFAULT_ANALYSIS_MODEL];
+        : [TURBO_DEFAULT_ANALYSIS];
 
     const imageModel = isValidTextToImageModel(parsed.imageModel)
       ? parsed.imageModel
-      : DEFAULT_IMAGE_MODEL;
+      : TURBO_DEFAULT_IMAGE;
 
     // Load imageModels array, falling back to [imageModel] for backward compat
     const imageModels =
@@ -166,7 +166,7 @@ function loadSettings(): GenerationSettings {
 
     const rawMotionModel = isValidImageToVideoModel(parsed.motionModel)
       ? parsed.motionModel
-      : DEFAULT_VIDEO_MODEL;
+      : TURBO_DEFAULT_VIDEO;
 
     // Ensure motion model is compatible with aspect ratio
     const motionModel = getCompatibleModel(rawMotionModel, aspectRatio);
@@ -195,7 +195,7 @@ function loadSettings(): GenerationSettings {
     const musicModel =
       'musicModel' in parsed && isValidAudioModel(parsed.musicModel)
         ? parsed.musicModel
-        : DEFAULT_MUSIC_MODEL;
+        : TURBO_DEFAULT_AUDIO;
 
     // Load audioModels array, falling back to [musicModel] for backward compat.
     const audioModels =
