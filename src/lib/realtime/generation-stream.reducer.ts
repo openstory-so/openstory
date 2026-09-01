@@ -3,6 +3,14 @@
  * Handles events from the Upstash Realtime channel during storyboard generation.
  */
 
+import {
+  bannerStagesForStopAt,
+  GENERATION_STAGE_META,
+  isGenerationStage,
+  stopAtFromFlags,
+  type GenerationStage,
+} from '@/lib/generation/pipeline';
+
 // 'cancelled' (#1108) is video-only in practice; it behaves as a terminal
 // status here (clears 'generating') like completed/failed.
 type ShotStatus =
@@ -149,33 +157,21 @@ export type GenerationStreamAction =
   | { type: 'PREVIEW_REPLACED'; payload: { newSceneCount: number } }
   | { type: 'RESET' };
 
-const PHASES = [
-  { name: 'Analyzing script\u2026', shortName: 'Script' },
-  { name: 'Casting characters & locations\u2026', shortName: 'Casting' },
-  { name: 'Generating references & prompts\u2026', shortName: 'References' },
-  { name: 'Generating images\u2026', shortName: 'Images' },
-] as const;
-
 export type GenerationPhaseConfig = {
-  autoGenerateMotion: boolean;
-  autoGenerateMusic: boolean;
+  stopAt?: GenerationStage;
+  autoGenerateMotion?: boolean;
+  autoGenerateMusic?: boolean;
 };
 
-function getPhase5Label(config: GenerationPhaseConfig): {
-  name: string;
-  shortName: string;
-} {
-  const { autoGenerateMotion, autoGenerateMusic } = config;
-  if (autoGenerateMotion && autoGenerateMusic) {
-    return {
-      name: 'Generating motion & music\u2026',
-      shortName: 'Music & Motion',
-    };
+function resolveStopAt(config?: GenerationPhaseConfig): GenerationStage {
+  if (config?.stopAt && isGenerationStage(config.stopAt)) return config.stopAt;
+  if (config) {
+    return stopAtFromFlags({
+      autoGenerateMotion: config.autoGenerateMotion,
+      autoGenerateMusic: config.autoGenerateMusic,
+    });
   }
-  if (autoGenerateMotion) {
-    return { name: 'Generating motion\u2026', shortName: 'Motion' };
-  }
-  return { name: 'Generating music\u2026', shortName: 'Music' };
+  return 'images';
 }
 
 /**
@@ -214,22 +210,22 @@ function updateShotRetries(
 export function createInitialState(
   config?: GenerationPhaseConfig
 ): GenerationStreamState {
-  const phases: GenerationPhase[] = PHASES.map((p, i) => ({
-    phase: i + 1,
-    phaseName: p.name,
-    shortName: p.shortName,
-    status: 'pending' as const,
-  }));
-
-  if (config && (config.autoGenerateMotion || config.autoGenerateMusic)) {
-    const label = getPhase5Label(config);
-    phases.push({
-      phase: 5,
-      phaseName: label.name,
-      shortName: label.shortName,
-      status: 'pending',
-    });
-  }
+  const stopAt = resolveStopAt(config);
+  const combinedMusic = stopAt === 'music';
+  const phases: GenerationPhase[] = bannerStagesForStopAt(stopAt).map(
+    (stage) => {
+      const meta = GENERATION_STAGE_META[stage];
+      const isCombinedLast = combinedMusic && stage === 'motion';
+      return {
+        phase: meta.phase,
+        phaseName: isCombinedLast
+          ? 'Generating motion & music\u2026'
+          : meta.name,
+        shortName: isCombinedLast ? 'Music & Motion' : meta.shortName,
+        status: 'pending' as const,
+      };
+    }
+  );
 
   return {
     currentPhase: 0,

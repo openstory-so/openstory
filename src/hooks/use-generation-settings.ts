@@ -26,6 +26,12 @@ import {
   DEFAULT_ASPECT_RATIO,
   type AspectRatio,
 } from '@/lib/constants/aspect-ratios';
+import {
+  DEFAULT_GENERATION_STOP_AT,
+  isGenerationStage,
+  stopAtFromFlags,
+  type GenerationStage,
+} from '@/lib/generation/pipeline';
 import { useCallback, useEffect, useState } from 'react';
 
 import { getLogger } from '@/lib/observability/logger';
@@ -33,7 +39,8 @@ import { getLogger } from '@/lib/observability/logger';
 const logger = getLogger(['openstory', 'ui', 'use-generation-settings']);
 
 // Bump when product defaults change so prior localStorage snapshots are ignored
-// (v4 → v5: Turbo is the product default).
+// (v4 → v5: Turbo is the product default. Stop-at is migrated from
+// auto-generate flags when loading a v5 snapshot — #1408).
 const STORAGE_KEY = 'openstory:generation-settings:v5';
 
 type GenerationSettings = {
@@ -44,10 +51,9 @@ type GenerationSettings = {
   imageModels: TextToImageModel[];
   motionModel: ImageToVideoModel;
   videoModels: ImageToVideoModel[];
-  autoGenerateMotion: boolean;
+  stopAt: GenerationStage;
   musicModel: AudioModel;
   audioModels: AudioModel[];
-  autoGenerateMusic: boolean;
 };
 
 function withMode(settings: GenerationSettings): GenerationSettings {
@@ -81,10 +87,9 @@ const DEFAULT_SETTINGS: GenerationSettings = withMode({
   videoModels: [TURBO_DEFAULT_VIDEO],
   // Motion + music on by default so the first Generate is a short film aha
   // (welcome grant sized for a ~30s stills+motion+music board — #1140).
-  autoGenerateMotion: true,
+  stopAt: DEFAULT_GENERATION_STOP_AT,
   musicModel: TURBO_DEFAULT_AUDIO,
   audioModels: [TURBO_DEFAULT_AUDIO],
-  autoGenerateMusic: true,
 });
 
 /**
@@ -186,11 +191,21 @@ function loadSettings(): GenerationSettings {
       ...new Set(rawVideoModels.map((m) => getCompatibleModel(m, aspectRatio))),
     ];
 
-    const autoGenerateMotion =
-      'autoGenerateMotion' in parsed &&
-      typeof parsed.autoGenerateMotion === 'boolean'
-        ? parsed.autoGenerateMotion
-        : false;
+    const rawStopAt = 'stopAt' in parsed ? parsed.stopAt : undefined;
+    const stopAt = isGenerationStage(rawStopAt)
+      ? rawStopAt
+      : stopAtFromFlags({
+          autoGenerateMotion:
+            'autoGenerateMotion' in parsed &&
+            typeof parsed.autoGenerateMotion === 'boolean'
+              ? parsed.autoGenerateMotion
+              : true,
+          autoGenerateMusic:
+            'autoGenerateMusic' in parsed &&
+            typeof parsed.autoGenerateMusic === 'boolean'
+              ? parsed.autoGenerateMusic
+              : true,
+        });
 
     const musicModel =
       'musicModel' in parsed && isValidAudioModel(parsed.musicModel)
@@ -206,12 +221,6 @@ function loadSettings(): GenerationSettings {
         ? parsed.audioModels
         : [musicModel];
 
-    const autoGenerateMusic =
-      'autoGenerateMusic' in parsed &&
-      typeof parsed.autoGenerateMusic === 'boolean'
-        ? parsed.autoGenerateMusic
-        : false;
-
     const bag: Record<string, unknown> = parsed;
     const generationMode = isGenerationMode(bag.generationMode)
       ? bag.generationMode
@@ -225,10 +234,9 @@ function loadSettings(): GenerationSettings {
       imageModels,
       motionModel,
       videoModels,
-      autoGenerateMotion,
+      stopAt,
       musicModel,
       audioModels,
-      autoGenerateMusic,
     });
   } catch (error) {
     logger.warn('Failed to load settings from localStorage:', { err: error });

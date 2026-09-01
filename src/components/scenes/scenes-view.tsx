@@ -19,6 +19,12 @@ import {
 import { FailureSummaryBanner } from '@/components/sequence/failure-summary-banner';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { batchGenerateMotionFn } from '@/functions/motion-functions';
+import { continueGenerationFn, generateMusicFn } from '@/functions/sequences';
+import {
+  artifactsFromSequenceState,
+  nextActionFromArtifacts,
+  type GenerationStage,
+} from '@/lib/generation/pipeline';
 import { getDivergentVariantPromptDiffFn } from '@/functions/prompt-variants';
 import { smartRetryFn } from '@/functions/smart-retry';
 import { useActiveImageModel } from '@/hooks/use-active-image-model';
@@ -58,6 +64,7 @@ import {
   safeAudioModel,
   safeImageToVideoModel,
   safeTextToImageModel,
+  type AudioModel,
   type ImageToVideoModel,
   type TextToImageModel,
 } from '@/lib/ai/models';
@@ -360,16 +367,18 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     DEFAULT_VIDEO_MODEL
   );
   const styleName = style?.name ?? undefined;
-  const recommendedImageModel = style?.recommendedImageModel ?? null;
-  const recommendedVideoModel = style?.recommendedVideoModel ?? null;
-
   // Phase config from DB — set in stone when the workflow was triggered
   const phaseConfig = useMemo<GenerationPhaseConfig>(
     () => ({
+      stopAt: sequence?.generationStopAt ?? undefined,
       autoGenerateMotion: sequence?.autoGenerateMotion ?? false,
       autoGenerateMusic: sequence?.autoGenerateMusic ?? false,
     }),
-    [sequence?.autoGenerateMotion, sequence?.autoGenerateMusic]
+    [
+      sequence?.generationStopAt,
+      sequence?.autoGenerateMotion,
+      sequence?.autoGenerateMusic,
+    ]
   );
 
   // Subscribe to real-time generation events when sequence is processing.
@@ -1327,6 +1336,51 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
 
   const musicPromptsReady = !!(sequence?.musicPrompt && sequence.musicTags);
 
+  const nextStage = useMemo(
+    () =>
+      nextActionFromArtifacts(
+        artifactsFromSequenceState({
+          sceneCount: scenes?.length ?? 0,
+          shots: shots ?? [],
+          musicStatus: sequence?.musicStatus,
+          musicUrl: sequence?.musicUrl,
+          pipelineStage: sequence?.pipelineStage,
+        })
+      ),
+    [
+      scenes?.length,
+      shots,
+      sequence?.musicStatus,
+      sequence?.musicUrl,
+      sequence?.pipelineStage,
+    ]
+  );
+
+  const handleContinueGeneration = useCallback(
+    async (args: { startFrom: GenerationStage; stopAt: GenerationStage }) => {
+      await continueGenerationFn({
+        data: {
+          sequenceId,
+          startFrom: args.startFrom,
+          stopAt: args.stopAt,
+        },
+      });
+      void queryClient.invalidateQueries({
+        queryKey: sequenceKeys.detail(sequenceId),
+      });
+    },
+    [sequenceId, queryClient]
+  );
+
+  const handleGenerateMusic = useCallback(
+    async (model: AudioModel) => {
+      await generateMusicFn({
+        data: { sequenceId, model },
+      });
+    },
+    [sequenceId]
+  );
+
   // GenerationProgressBanner is owned by the script-analysis pipeline
   // (sequence.status === 'processing'). Standalone motion gen runs when the
   // sequence is already 'completed' / 'ready', so it must render via the
@@ -1398,6 +1452,9 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     regeneratingImages,
     regeneratingMotion,
     onBatchGenerateMotion: handleBatchMotionGeneration,
+    nextStage,
+    onContinueGeneration: handleContinueGeneration,
+    onGenerateMusic: handleGenerateMusic,
     musicPromptsReady,
     hideBatchButton: phaseConfig.autoGenerateMotion && isGenerationActive,
     divergentVariants,
@@ -1405,7 +1462,6 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     initialMusicModel: sequenceMusicModel,
     initialVideoModel: sequenceVideoModel,
     styleCategory,
-    recommendedVideoModel,
     styleName,
     modelMissingShotIds: shotsMissingActiveImage,
     modelMissingLabel: activeImageModelLabel,
@@ -1616,8 +1672,6 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
                     onImageModelChange={handleImageModelChange}
                     onVideoModelChange={handleVideoModelChange}
                     styleName={styleName}
-                    recommendedImageModel={recommendedImageModel}
-                    recommendedVideoModel={recommendedVideoModel}
                     styleCategory={styleCategory}
                     shotDivergentVariants={divergentVariants?.filter(
                       (v) => v.shotId === curSelectedShotId

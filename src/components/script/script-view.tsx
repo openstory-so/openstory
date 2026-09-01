@@ -51,6 +51,11 @@ import { BILLING_TRANSACTIONS_KEY } from '@/hooks/use-billing-balance-realtime';
 import { useBillingGate } from '@/hooks/use-billing-gate';
 import { useFalPricing } from '@/hooks/use-fal-pricing';
 import { useGenerationSettings } from '@/hooks/use-generation-settings';
+import {
+  DEFAULT_GENERATION_STOP_AT,
+  flagsFromStopAt,
+  type GenerationStage,
+} from '@/lib/generation/pipeline';
 import { useComposedScript } from '@/hooks/use-scenes';
 import { useSequenceCharacters } from '@/hooks/use-sequence-characters';
 import { useSequenceDraft } from '@/hooks/use-sequence-draft';
@@ -77,8 +82,6 @@ import {
   DEFAULT_MUSIC_MODEL,
   DEFAULT_VIDEO_MODEL,
   IMAGE_TO_VIDEO_MODELS,
-  isValidImageToVideoModel,
-  isValidTextToImageModel,
   safeAudioModel,
   safeImageToVideoModel,
   safeTextToImageModel,
@@ -89,8 +92,6 @@ import {
 } from '@/lib/ai/models';
 import {
   applyGenerationMode,
-  styleMayApplyImage,
-  styleMayApplyVideo,
   type GenerationMode,
 } from '@/lib/ai/generation-mode';
 import {
@@ -326,9 +327,8 @@ export const ScriptView: FC<{
     aspectRatio: AspectRatio;
     imageModels: TextToImageModel[];
     videoModels: ImageToVideoModel[];
-    autoGenerateMotion: boolean;
+    stopAt: GenerationStage;
     audioModels: AudioModel[];
-    autoGenerateMusic: boolean;
   }>(() => ({
     generationMode: savedSettings.generationMode,
     analysisModels: sequenceAnalysisModels,
@@ -341,12 +341,13 @@ export const ScriptView: FC<{
       isEditing && sequence.videoModel
         ? [safeImageToVideoModel(sequence.videoModel, DEFAULT_VIDEO_MODEL)]
         : savedSettings.videoModels,
-    autoGenerateMotion: isEditing ? false : savedSettings.autoGenerateMotion,
+    stopAt: isEditing
+      ? (sequence.generationStopAt ?? DEFAULT_GENERATION_STOP_AT)
+      : savedSettings.stopAt,
     audioModels:
       isEditing && sequence.musicModel
         ? [safeAudioModel(sequence.musicModel, DEFAULT_MUSIC_MODEL)]
         : savedSettings.audioModels,
-    autoGenerateMusic: isEditing ? false : savedSettings.autoGenerateMusic,
   }));
   const {
     generationMode,
@@ -354,10 +355,10 @@ export const ScriptView: FC<{
     aspectRatio,
     imageModels,
     videoModels,
-    autoGenerateMotion,
+    stopAt,
     audioModels,
-    autoGenerateMusic,
   } = genSettings;
+  const { autoGenerateMotion, autoGenerateMusic } = flagsFromStopAt(stopAt);
   const updateGen = <K extends keyof typeof genSettings>(
     key: K,
     value: (typeof genSettings)[K]
@@ -592,8 +593,6 @@ export const ScriptView: FC<{
     },
     []
   );
-  const recommendedImageModel = selectedStyle?.recommendedImageModel ?? null;
-  const recommendedVideoModel = selectedStyle?.recommendedVideoModel ?? null;
   const recommendedAspectRatio = selectedStyle?.defaultAspectRatio ?? null;
 
   // Sync draft state when creating new sequences (not editing). A Try /
@@ -667,9 +666,8 @@ export const ScriptView: FC<{
         analysisModels: savedSettings.analysisModels,
         imageModels: savedSettings.imageModels,
         videoModels: savedSettings.videoModels,
-        autoGenerateMotion: savedSettings.autoGenerateMotion,
+        stopAt: savedSettings.stopAt,
         audioModels: savedSettings.audioModels,
-        autoGenerateMusic: savedSettings.autoGenerateMusic,
       });
       hasSyncedRef.current = true;
     }
@@ -732,11 +730,9 @@ export const ScriptView: FC<{
     }
   }, [styleCategory, videoModels]);
 
-  // Auto-apply style recommendations on style change. Issue #716 originally
-  // said "suggest, never auto-change", but in practice most users never open
-  // the settings popover, so badges alone don't drive adoption of the
-  // recommended models. We override + show a "From {Style} · Reset" pill so
-  // the user can back out with a single click.
+  // Auto-apply the style's aspect ratio on style change. Styles do not
+  // recommend models (#1408) — only aspect ratio. A "From {Style} · Reset"
+  // pill lets the user back out with a single click.
   //
   // The seed value of `lastAppliedStyleIdRef` is the sequence's stored styleId
   // when editing (so we don't clobber existing values on mount) or null when
@@ -746,8 +742,6 @@ export const ScriptView: FC<{
   );
   const styleApplySnapshotRef = useRef<{
     aspectRatio: AspectRatio;
-    imageModels: TextToImageModel[];
-    videoModels: ImageToVideoModel[];
   } | null>(null);
   const [appliedFromStyle, setAppliedFromStyle] = useState<{
     styleId: string;
@@ -763,20 +757,6 @@ export const ScriptView: FC<{
     const id = selectedStyle?.id;
     if (!id || id === lastAppliedStyleIdRef.current) return;
 
-    // Turbo: skip Quality-only recs so a style can't replace Lite/H3 Max
-    // with Grok/Seedance. Quality mode still applies the style's pick.
-    const validImage =
-      recommendedImageModel &&
-      isValidTextToImageModel(recommendedImageModel) &&
-      styleMayApplyImage(generationMode, recommendedImageModel)
-        ? recommendedImageModel
-        : null;
-    const validVideo =
-      recommendedVideoModel &&
-      isValidImageToVideoModel(recommendedVideoModel) &&
-      styleMayApplyVideo(generationMode, recommendedVideoModel)
-        ? recommendedVideoModel
-        : null;
     const parsedRatio = recommendedAspectRatio
       ? aspectRatioSchema.safeParse(recommendedAspectRatio)
       : null;
@@ -787,11 +767,10 @@ export const ScriptView: FC<{
     // Always restore the existing snapshot first (if any) so chained style
     // switches measure against the user's pre-auto-apply baseline, never
     // against another style's applied values. Switching to a style with no
-    // recommendations therefore lands the user back on their baseline rather
-    // than stranding them on the previous style's recommendations.
+    // recommended ratio therefore lands the user back on their baseline.
     const baseline = styleApplySnapshotRef.current;
 
-    if (!validImage && !validVideo && !validRatio) {
+    if (!validRatio) {
       if (baseline) {
         setGenSettings((s) =>
           applyGenerationMode({ ...s, ...baseline }, s.generationMode)
@@ -803,18 +782,12 @@ export const ScriptView: FC<{
     }
 
     setGenSettings((s) => {
-      const start = baseline ?? {
-        aspectRatio: s.aspectRatio,
-        imageModels: s.imageModels,
-        videoModels: s.videoModels,
-      };
+      const start = baseline ?? { aspectRatio: s.aspectRatio };
       styleApplySnapshotRef.current = start;
       return applyGenerationMode(
         {
           ...s,
-          aspectRatio: validRatio ?? start.aspectRatio,
-          imageModels: validImage ? [validImage] : start.imageModels,
-          videoModels: validVideo ? [validVideo] : start.videoModels,
+          aspectRatio: validRatio,
         },
         s.generationMode
       );
@@ -828,10 +801,7 @@ export const ScriptView: FC<{
     settingsLoaded,
     selectedStyle?.id,
     selectedStyle?.name,
-    recommendedImageModel,
-    recommendedVideoModel,
     recommendedAspectRatio,
-    generationMode,
   ]);
 
   const resetStyleDefaults = () => {
@@ -945,6 +915,7 @@ export const ScriptView: FC<{
         imageModels,
         videoModels,
         videoModel: videoModels[0] ?? DEFAULT_VIDEO_MODEL,
+        stopAt,
         autoGenerateMotion,
         autoGenerateMusic,
         musicModel: audioModels[0] ?? DEFAULT_MUSIC_MODEL,
@@ -1294,6 +1265,7 @@ export const ScriptView: FC<{
       imageModelCount: Math.max(imageModels.length, 1),
       aspectRatio,
       estimatedSceneCount: sceneCount,
+      stopAt,
       autoGenerateMotion,
       videoModels: autoGenerateMotion ? videoModels : undefined,
       videoDurationSeconds: autoGenerateMotion
@@ -1312,6 +1284,7 @@ export const ScriptView: FC<{
     aspectRatio,
     scriptValue,
     targetDuration,
+    stopAt,
     autoGenerateMotion,
     videoModels,
     autoGenerateMusic,
@@ -1463,23 +1436,17 @@ export const ScriptView: FC<{
             analysisModels={analysisModels}
             imageModels={imageModels}
             videoModels={videoModels}
-            autoGenerateMotion={autoGenerateMotion}
+            stopAt={stopAt}
             audioModels={audioModels}
-            autoGenerateMusic={autoGenerateMusic}
             onAspectRatioChange={(v) => updateGen('aspectRatio', v)}
             onAnalysisModelsChange={(v) => updateGen('analysisModels', v)}
             onImageModelsChange={(v) => updateGen('imageModels', v)}
             onVideoModelsChange={(v) => updateGen('videoModels', v)}
-            onAutoGenerateMotionChange={(v) =>
-              updateGen('autoGenerateMotion', v)
-            }
+            onStopAtChange={(v) => updateGen('stopAt', v)}
             onAudioModelsChange={(v) => updateGen('audioModels', v)}
-            onAutoGenerateMusicChange={(v) => updateGen('autoGenerateMusic', v)}
             disabled={loading}
             styleCategory={styleCategory}
             styleName={styleName}
-            recommendedImageModel={recommendedImageModel}
-            recommendedVideoModel={recommendedVideoModel}
             recommendedAspectRatio={recommendedAspectRatio}
             appliedFromStyle={appliedFromStyle}
             onResetStyleDefaults={resetStyleDefaults}

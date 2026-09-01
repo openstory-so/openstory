@@ -45,6 +45,10 @@ import {
 import { triggerWorkflow } from '@/lib/workflow/client';
 import { buildWorkflowLabel } from '@/lib/workflow/labels';
 import { triggerStoryboard } from '@/lib/workflow/launchers';
+import {
+  flagsFromStopAt,
+  generationStageSchema,
+} from '@/lib/generation/pipeline';
 import type {
   BatchMotionMusicWorkflowInput,
   MusicWorkflowInput,
@@ -116,6 +120,84 @@ export const createSequenceFn = createServerFn({ method: 'POST' })
       teamId: context.teamId,
     });
     return sequences;
+  });
+
+/**
+ * Continue a stopped pipeline from the next DAG stage through `stopAt` (#1408).
+ * Does not wipe existing shots — storyboard runs in resume mode.
+ */
+export const continueGenerationFn = createServerFn({ method: 'POST' })
+  .middleware([sequenceAccessMiddleware])
+  .validator(
+    zodValidator(
+      z.object({
+        sequenceId: ulidSchema,
+        startFrom: generationStageSchema,
+        stopAt: generationStageSchema,
+      })
+    )
+  )
+  .handler(async ({ data, context }) => {
+    const { sequence } = context;
+    const { autoGenerateMotion, autoGenerateMusic } = flagsFromStopAt(
+      data.stopAt
+    );
+
+    const reservationId = await reserveRunCredits(
+      context.scopedDb,
+      estimateStoryboardPreflightCost({
+        script: sequence.script ?? '',
+        imageModel: safeTextToImageModel(
+          sequence.imageModel,
+          DEFAULT_IMAGE_MODEL
+        ),
+        aspectRatio: sequence.aspectRatio,
+        autoGenerateMotion,
+        stopAt: data.stopAt,
+        videoModels: [
+          safeImageToVideoModel(sequence.videoModel, DEFAULT_VIDEO_MODEL),
+        ],
+        autoGenerateMusic,
+        audioModels: [safeAudioModel(sequence.musicModel, DEFAULT_MUSIC_MODEL)],
+        pricing: await getEffectiveFalPricing(),
+      }),
+      {
+        providers: ['fal', 'openrouter'],
+        errorMessage: 'Insufficient credits to continue generation',
+        sequenceId: data.sequenceId,
+      }
+    );
+
+    await context.scopedDb.sequences.update({
+      id: data.sequenceId,
+      generationStopAt: data.stopAt,
+      autoGenerateMotion,
+      autoGenerateMusic,
+    });
+
+    return releaseReservationOnThrow(context.scopedDb, reservationId, () =>
+      triggerStoryboard(context.scopedDb, {
+        userId: context.user.id,
+        teamId: context.teamId,
+        sequenceId: data.sequenceId,
+        reservationId,
+        resume: true,
+        startFrom: data.startFrom,
+        stopAt: data.stopAt,
+        checkpoint: sequence.generationCheckpoint ?? undefined,
+        autoGenerateMotion,
+        autoGenerateMusic,
+        imageModels: [
+          safeTextToImageModel(sequence.imageModel, DEFAULT_IMAGE_MODEL),
+        ],
+        videoModels: [
+          safeImageToVideoModel(sequence.videoModel, DEFAULT_VIDEO_MODEL),
+        ],
+        musicModel: sequence.musicModel
+          ? safeAudioModel(sequence.musicModel, DEFAULT_MUSIC_MODEL)
+          : undefined,
+      })
+    );
   });
 
 /**
@@ -192,6 +274,7 @@ export const updateSequenceFn = createServerFn({ method: 'POST' })
           ),
           aspectRatio: sequence.aspectRatio,
           autoGenerateMotion: sequence.autoGenerateMotion,
+          stopAt: sequence.generationStopAt ?? undefined,
           videoModels: [
             safeImageToVideoModel(sequence.videoModel, DEFAULT_VIDEO_MODEL),
           ],
@@ -227,6 +310,7 @@ export const updateSequenceFn = createServerFn({ method: 'POST' })
           },
           autoGenerateMotion: sequence.autoGenerateMotion,
           autoGenerateMusic: sequence.autoGenerateMusic,
+          stopAt: sequence.generationStopAt ?? undefined,
         })
       );
     }
@@ -361,6 +445,7 @@ export const retryStoryboardFn = createServerFn({ method: 'POST' })
       },
       autoGenerateMotion: sequence.autoGenerateMotion,
       autoGenerateMusic: sequence.autoGenerateMusic,
+      stopAt: sequence.generationStopAt ?? undefined,
     };
 
     // Owns the generation mutex, the 'processing' status write, and the

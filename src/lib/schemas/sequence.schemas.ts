@@ -12,6 +12,12 @@ import {
 } from '@/lib/ai/models.config';
 import { aspectRatioSchema } from '@/lib/constants/aspect-ratios';
 import { sequences } from '@/lib/db/schema/sequences';
+import {
+  DEFAULT_GENERATION_STOP_AT,
+  flagsFromStopAt,
+  generationStageSchema,
+  stopAtFromFlags,
+} from '@/lib/generation/pipeline';
 import { ulidSchemaOptional } from '@/lib/schemas/id.schemas';
 import { createInsertSchema, createUpdateSchema } from 'drizzle-orm/zod';
 import { z } from 'zod';
@@ -64,6 +70,9 @@ export const createSequenceSchema = createInsertSchema(sequences, {
     musicModel: true,
     musicPrompt: true,
     musicTags: true,
+    generationStopAt: true,
+    pipelineStage: true,
+    generationCheckpoint: true,
   })
   .extend({
     // Accept array of models for multi-model sequence creation
@@ -108,12 +117,12 @@ export const createSequenceSchema = createInsertSchema(sequences, {
       )
       .min(1, 'At least one video model must be selected')
       .default([DEFAULT_VIDEO_MODEL]),
-    // Product default ON for the aha path (stills + motion + music). Callers
-    // that omit flags get true after parse — keep API v1 explicit if it must
-    // stay opt-in spend. Zod `.default()` runs before handler destructuring, so
-    // handler `= true` alone is not enough when the flag is omitted.
-    autoGenerateMotion: z.boolean().default(true).optional(),
-    autoGenerateMusic: z.boolean().default(true).optional(),
+    // How far the run should go (#1408). Default music = stills + motion +
+    // music (the aha path). Legacy auto-generate flags still parse and map
+    // onto a stop-at when `stopAt` is omitted.
+    stopAt: generationStageSchema.optional(),
+    autoGenerateMotion: z.boolean().optional(),
+    autoGenerateMusic: z.boolean().optional(),
     // Music model selection (model key, not full ID) — primary / first of audioModels
     musicModel: z
       .string()
@@ -159,9 +168,28 @@ export const createSequenceSchema = createInsertSchema(sequences, {
     // newly created sequence so the user doesn't have to re-upload references.
     sourceSequenceId: ulidSchemaOptional,
   })
-  .refine((data) => !data.autoGenerateMusic || data.autoGenerateMotion, {
-    path: ['autoGenerateMusic'],
-    message: MUSIC_REQUIRES_MOTION_ERROR,
+  .superRefine((data, ctx) => {
+    if (data.stopAt) return;
+    if (data.autoGenerateMusic && data.autoGenerateMotion === false) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['autoGenerateMusic'],
+        message: MUSIC_REQUIRES_MOTION_ERROR,
+      });
+    }
+  })
+  .transform((data) => {
+    const stopAt =
+      data.stopAt ??
+      (data.autoGenerateMotion === undefined &&
+      data.autoGenerateMusic === undefined
+        ? DEFAULT_GENERATION_STOP_AT
+        : stopAtFromFlags({
+            autoGenerateMotion: data.autoGenerateMotion ?? true,
+            autoGenerateMusic: data.autoGenerateMusic ?? true,
+          }));
+    const flags = flagsFromStopAt(stopAt);
+    return { ...data, stopAt, ...flags };
   });
 
 export const updateSequenceSchema = createUpdateSchema(sequences, {
@@ -201,6 +229,9 @@ export const updateSequenceSchema = createUpdateSchema(sequences, {
   musicModel: true,
   musicPrompt: true,
   musicTags: true,
+  generationStopAt: true,
+  pipelineStage: true,
+  generationCheckpoint: true,
 });
 
 export type CreateSequenceInput = z.infer<typeof createSequenceSchema>;
