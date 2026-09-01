@@ -1222,6 +1222,24 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
   // user has not made. A transform rejection (e.g. no still yet) falls
   // back to the plain-text assembled prompt at render. Grok native uses
   // buildGrokVideoRequest so the panel shows <IMAGE_n> parts, not the fal
+  // Per-shot "animate from the still, or straight from the sheets". Only the
+  // render changes: with a still the request carries it (and the model is told
+  // "Use @Image1 as the starting frame."); without one the sheets fill slot 1.
+  // The prompt text is untouched either way, so nothing re-stales.
+  const shotUsesStartFrame = shot
+    ? usesStartFrame(shot, { referenceOnly: sequenceReferenceOnly })
+    : !sequenceReferenceOnly;
+  const startFrameAvailable = !!shot && canUseStartFrame(shot);
+  const setUseStartFrame = useMutation({
+    mutationFn: (next: boolean) =>
+      setShotUseStartFrameFn({
+        data: { sequenceId, shotId: shot?.id ?? '', useStartFrame: next },
+      }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ['shots', sequenceId] }),
+    onError: (error: Error) => toast.error(error.message),
+  });
+
   // i2v bag.
   const motionRequestPreview = useMemo((): OptimisedPromptPreview | null => {
     if (!shot) return null;
@@ -1231,6 +1249,11 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
       scene: sceneReference,
       characters: mentionCharacters ?? [],
       elements: mentionElements ?? [],
+      // Must mirror the submit path or the preview shows the wrong slot
+      // numbers: without a still the location sheet is sent, and it goes FIRST,
+      // shifting every other reference down one.
+      includeLocations: !shotUsesStartFrame,
+      locations: mentionLocations ?? [],
     }).map((ref) => ({
       ...ref,
       referenceImageUrl: absolutizeUrl(ref.referenceImageUrl),
@@ -1260,7 +1283,13 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
         durationMs: shot.durationMs,
         model: modelKey,
       });
-      const imageUrl = absolutizeUrl(shot.image?.url ?? '');
+      // The whole point of this panel is that it shows what the model receives.
+      // Unticking "Use start frame" withholds the still at submit, so it has to
+      // be withheld here too — that is what drops the "Use @Image1 as the
+      // starting frame." line and rebinds references from slot 1.
+      const imageUrl = shotUsesStartFrame
+        ? absolutizeUrl(shot.image?.url ?? '')
+        : undefined;
       if (isNativeGrokVideoModel(modelKey)) {
         const request = buildGrokVideoRequest({
           prompt: modelPrompt,
@@ -1354,6 +1383,10 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
             ? generateAudio
             : undefined,
           referenceImages,
+          // Forces the reference-to-video route even when this scene matched
+          // no sheets — exactly as submit does, so the endpoint shown is the
+          // endpoint used.
+          referenceOnly: !shotUsesStartFrame,
         },
         modelKey
       );
@@ -1373,6 +1406,8 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
       return null;
     }
   }, [
+    mentionLocations,
+    shotUsesStartFrame,
     shot,
     effectiveMotionModel,
     sceneReference,
@@ -1534,24 +1569,6 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     dirtyMotionRef.current &&
     editedMotionPrompt.trim().length > 0 &&
     editedMotionPrompt.trim() !== rawMotionPrompt.trim();
-
-  // Per-shot "animate from the still, or straight from the sheets". Only the
-  // render changes: with a still the request carries it (and the model is told
-  // "Use @Image1 as the starting frame."); without one the sheets fill slot 1.
-  // The prompt text is untouched either way, so nothing re-stales.
-  const shotUsesStartFrame = shot
-    ? usesStartFrame(shot, { referenceOnly: sequenceReferenceOnly })
-    : !sequenceReferenceOnly;
-  const startFrameAvailable = !!shot && canUseStartFrame(shot);
-  const setUseStartFrame = useMutation({
-    mutationFn: (next: boolean) =>
-      setShotUseStartFrameFn({
-        data: { sequenceId, shotId: shot?.id ?? '', useStartFrame: next },
-      }),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ['shots', sequenceId] }),
-    onError: (error: Error) => toast.error(error.message),
-  });
 
   // "Regenerate" promises a previous version to replace. Reference-only skips
   // the visual-prompt phase entirely, so its shots reach this panel with no

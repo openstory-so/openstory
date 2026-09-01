@@ -1,3 +1,4 @@
+import { rendersReferenceOnly } from '@/lib/shots/use-start-frame';
 import {
   computeMotionPromptInputHash,
   computeMusicPromptInputHash,
@@ -109,6 +110,24 @@ const shotListInput = z.object({
   shotId: ulidSchema,
   promptType: promptTypeSchema,
 });
+
+/**
+ * The sequence as THIS shot's prompts see it.
+ *
+ * `referenceOnly` decides which motion-prompt template writes the version, and
+ * it is folded into the motion-prompt hash. A shot may now override the
+ * sequence (`shots.useStartFrame`), so every place that computes the hash, the
+ * bail check, and the workflow trigger must read the SAME resolved answer —
+ * the sequence row on its own would stamp one value and verify another, which
+ * is the #867 drift in a new costume. Same reason the still is withheld: a
+ * shot rendering reference-only must not hash a frame it will never animate.
+ */
+function shotPromptSequence<T extends { referenceOnly: boolean }>(
+  sequence: T,
+  shot: { useStartFrame?: boolean | null }
+): T {
+  return { ...sequence, referenceOnly: rendersReferenceOnly(shot, sequence) };
+}
 
 export const listShotPromptVariantsFn = createServerFn({ method: 'GET' })
   .middleware([shotAccessMiddleware])
@@ -325,10 +344,12 @@ export const saveShotPromptFn = createServerFn({ method: 'POST' })
       try {
         const ctx = await loadShotPromptContext({
           scopedDb,
-          sequence,
+          sequence: shotPromptSequence(sequence, shot),
           scene,
           // No-op for visual; the motion hash folds in the rendered still.
-          startingFrameImageUrl: await getFrameImageUrl(scopedDb, frame.id),
+          startingFrameImageUrl: rendersReferenceOnly(shot, sequence)
+            ? null
+            : await getFrameImageUrl(scopedDb, frame.id),
         });
         const narrowed = narrowShotPromptContext(ctx);
         inputHash =
@@ -503,15 +524,18 @@ export const regenerateShotPromptFn = createServerFn({ method: 'POST' })
       throw new Error('Shot has no scene metadata to regenerate from');
     }
 
+    const shotReferenceOnly = rendersReferenceOnly(shot, sequence);
     const ctx = await loadShotPromptContext({
       scopedDb,
-      sequence,
+      sequence: shotPromptSequence(sequence, shot),
       scene,
       // Motion prompts are conditioned on the rendered still (#929); feeding
       // its URL here keeps this regen-bail check in lockstep with the
       // generation-time stamp and the staleness verify. No-op for visual. The
       // still lives on the anchor frame's selected version now (#989/#1067).
-      startingFrameImageUrl: await getFrameImageUrl(scopedDb, frame.id),
+      startingFrameImageUrl: shotReferenceOnly
+        ? null
+        : await getFrameImageUrl(scopedDb, frame.id),
     });
 
     // Bail if the cached input hash already matches the live recompute —
@@ -691,15 +715,14 @@ export const regenerateShotPromptFn = createServerFn({ method: 'POST' })
               '/motion-prompt',
               {
                 ...commonInput,
-                startingFrameImageUrl: await getFrameImageUrl(
-                  scopedDb,
-                  frame.id
-                ),
+                startingFrameImageUrl: shotReferenceOnly
+                  ? null
+                  : await getFrameImageUrl(scopedDb, frame.id),
                 // The mode picks which motion-prompt template writes this
                 // version; the hash the bail check above computed folded it in
                 // through the sequence row, so it has to reach the child too or
                 // the stamp and the verify disagree.
-                referenceOnly: sequence.referenceOnly,
+                referenceOnly: shotReferenceOnly,
                 sceneBefore,
                 sceneAfter,
                 targetVersionId: claim.id,
