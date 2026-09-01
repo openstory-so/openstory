@@ -196,6 +196,10 @@ export function useCreateSequence() {
           // sees the singular primary and resolveVideoModels/resolveAudioModels
           // collapse the user's selection to one model (#545/#546).
           videoModels: input.videoModels,
+          // Explicit stop-at, not just the derived flags. Flags false/false
+          // collapse to Images, so omitting this makes Script/Casting/
+          // References keep generating stills (#1408).
+          stopAt: input.stopAt,
           autoGenerateMotion: input.autoGenerateMotion,
           autoGenerateMusic: input.autoGenerateMusic,
           musicModel: input.musicModel,

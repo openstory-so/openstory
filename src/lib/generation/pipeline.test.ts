@@ -3,6 +3,7 @@ import {
   actionLabelForStage,
   bannerStagesForStopAt,
   completedStageFromArtifacts,
+  continueStageFromState,
   DEFAULT_GENERATION_STOP_AT,
   flagsFromStopAt,
   GENERATION_STAGES,
@@ -191,6 +192,21 @@ describe('completedStageFromArtifacts / nextActionFromArtifacts', () => {
     expect(actionLabelForStage('images')).toBe('Generate Images');
     expect(actionLabelForStage('motion')).toBe('Generate Motion');
     expect(actionLabelForStage('references')).toBe('Generate References');
+  });
+
+  it('does not offer a continue action while the sequence is processing', () => {
+    const artifacts = {
+      ...empty,
+      hasScenes: true,
+      hasVisualPrompts: true,
+    };
+    expect(nextActionFromArtifacts(artifacts)).toBe('images');
+    expect(continueStageFromState({ isProcessing: true, artifacts })).toBe(
+      null
+    );
+    expect(continueStageFromState({ isProcessing: false, artifacts })).toBe(
+      'images'
+    );
   });
 
   it('folds music into the motion banner segment (they run as one child)', () => {

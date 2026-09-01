@@ -32,6 +32,20 @@ describe('createSequenceSchema', () => {
     }
   });
 
+  it('collapses motion-off flags to images when stopAt is omitted', () => {
+    const result = createSequenceSchema.safeParse({
+      script: 'A valid length script here.',
+      styleId: 'style_1',
+      aspectRatio: '16:9',
+      autoGenerateMotion: false,
+      autoGenerateMusic: false,
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.stopAt).toBe('images');
+    }
+  });
+
   it('accepts targetDurationSeconds for pre-flight scene count', () => {
     const result = createSequenceSchema.safeParse({
       script: 'A valid length script here.',
