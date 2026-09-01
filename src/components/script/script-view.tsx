@@ -55,8 +55,8 @@ import { useGenerationSettings } from '@/hooks/use-generation-settings';
 import {
   DEFAULT_GENERATION_STOP_AT,
   flagsFromStopAt,
-  GENERATION_STAGE_META,
   includesStage,
+  sliderStopLabel,
   type GenerationStage,
 } from '@/lib/generation/pipeline';
 import { useComposedScript } from '@/hooks/use-scenes';
@@ -1263,9 +1263,16 @@ export const ScriptView: FC<{
   const estimateForStopAt = useCallback(
     (runUntil: GenerationStage) => {
       if (!scriptValue.trim()) return null;
-      if (!falPricing) return null;
+      const needsMedia =
+        includesStage(runUntil, 'references') ||
+        includesStage(runUntil, 'images') ||
+        includesStage(runUntil, 'motion') ||
+        includesStage(runUntil, 'music');
+      if (needsMedia && !falPricing) return null;
       const primaryImage = imageModels[0] ?? DEFAULT_IMAGE_MODEL;
       if (
+        falPricing &&
+        includesStage(runUntil, 'images') &&
         estimateImageCost(primaryImage, aspectRatio, 1, {
           pricing: falPricing,
         }) === null
@@ -1299,7 +1306,7 @@ export const ScriptView: FC<{
         audioDurationSeconds: musicOn
           ? motionDurations.totalSeconds
           : undefined,
-        pricing: falPricing,
+        pricing: falPricing ?? {},
       });
     },
     [
@@ -1726,7 +1733,7 @@ export const ScriptView: FC<{
                     setShowStopAlert(true);
                   }}
                 >
-                  Until {GENERATION_STAGE_META[stopAt].shortName} · Change
+                  Until {sliderStopLabel(stopAt)} · Change
                 </button>
               )}
             </div>

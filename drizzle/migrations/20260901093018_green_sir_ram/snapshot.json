@@ -1,8 +1,8 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "ffac6391-a1e2-4999-8500-0000d3d5bc43",
-  "prevIds": ["ba0cb099-9818-4cf3-987a-61e3501d6fcf"],
+  "id": "d60b8b08-1a58-48a8-9d38-c08d8786ae6a",
+  "prevIds": ["6b683ce2-47b8-40fe-ba77-ca6d3f207ae3"],
   "ddl": [
     {
       "name": "account",
@@ -1000,41 +1000,11 @@
     },
     {
       "type": "text",
-      "notNull": false,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "sheet_image_url",
-      "entityType": "columns",
-      "table": "characters"
-    },
-    {
-      "type": "text",
-      "notNull": false,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "sheet_image_path",
-      "entityType": "columns",
-      "table": "characters"
-    },
-    {
-      "type": "text",
       "notNull": true,
       "autoincrement": false,
       "default": "'pending'",
       "generated": null,
       "name": "sheet_status",
-      "entityType": "columns",
-      "table": "characters"
-    },
-    {
-      "type": "integer",
-      "notNull": false,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "sheet_generated_at",
       "entityType": "columns",
       "table": "characters"
     },
@@ -1045,16 +1015,6 @@
       "default": null,
       "generated": null,
       "name": "sheet_error",
-      "entityType": "columns",
-      "table": "characters"
-    },
-    {
-      "type": "text",
-      "notNull": false,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "sheet_input_hash",
       "entityType": "columns",
       "table": "characters"
     },
@@ -4180,41 +4140,11 @@
     },
     {
       "type": "text",
-      "notNull": false,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "reference_image_url",
-      "entityType": "columns",
-      "table": "sequence_locations"
-    },
-    {
-      "type": "text",
-      "notNull": false,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "reference_image_path",
-      "entityType": "columns",
-      "table": "sequence_locations"
-    },
-    {
-      "type": "text",
       "notNull": true,
       "autoincrement": false,
       "default": "'pending'",
       "generated": null,
       "name": "reference_status",
-      "entityType": "columns",
-      "table": "sequence_locations"
-    },
-    {
-      "type": "integer",
-      "notNull": false,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "reference_generated_at",
       "entityType": "columns",
       "table": "sequence_locations"
     },
@@ -4225,16 +4155,6 @@
       "default": null,
       "generated": null,
       "name": "reference_error",
-      "entityType": "columns",
-      "table": "sequence_locations"
-    },
-    {
-      "type": "text",
-      "notNull": false,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "reference_input_hash",
       "entityType": "columns",
       "table": "sequence_locations"
     },

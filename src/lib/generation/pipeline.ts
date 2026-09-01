@@ -337,3 +337,37 @@ export function bannerStagesForStopAt(
     ? stages.filter((stage) => stage !== 'music')
     : stages;
 }
+
+/**
+ * Generate-dialog / continue-slider stops. Same five as a full-run banner —
+ * the last thumb is Music & Motion (`stopAt: 'music'`).
+ */
+export const SLIDER_STAGES: readonly GenerationStage[] =
+  bannerStagesForStopAt('music');
+
+export function sliderThumbIndex(stopAt: GenerationStage): number {
+  if (stopAt === 'music' || stopAt === 'motion') {
+    return SLIDER_STAGES.length - 1;
+  }
+  const index = SLIDER_STAGES.indexOf(stopAt);
+  return index < 0 ? 0 : index;
+}
+
+export function stopAtFromSliderIndex(index: number): GenerationStage {
+  const last = SLIDER_STAGES.length - 1;
+  const clamped = Math.max(0, Math.min(index, last));
+  const stage = SLIDER_STAGES[clamped] ?? 'script';
+  return stage === 'motion' ? 'music' : stage;
+}
+
+export function sliderStopLabel(stopAt: GenerationStage): string {
+  if (stopAt === 'music' || stopAt === 'motion') return 'Music & Motion';
+  return GENERATION_STAGE_META[stopAt].shortName;
+}
+
+export function sliderStopDescription(stopAt: GenerationStage): string {
+  if (stopAt === 'music' || stopAt === 'motion') {
+    return 'Generating motion video and music';
+  }
+  return GENERATION_STAGE_META[stopAt].description;
+}

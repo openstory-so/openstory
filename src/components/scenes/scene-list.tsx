@@ -739,7 +739,6 @@ const SceneListComponent: React.FC<SceneListProps> = ({
             onChange={setContinueStopAt}
             minStage={nextStage}
             disabled={isGenerating}
-            estimate={continueCostEstimate}
           />
           <Button
             variant="default"

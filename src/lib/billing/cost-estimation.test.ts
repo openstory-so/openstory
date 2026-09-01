@@ -112,6 +112,16 @@ describe('estimateStoryboardCost', () => {
     );
   });
 
+  it('stopAt casting is LLM-only even with no fal pricing', () => {
+    expect(
+      estimateStoryboardCost({
+        ...base,
+        stopAt: 'casting',
+        pricing: {},
+      })
+    ).toEqual(estimateLLMCost(3));
+  });
+
   it('stopAt music costs more than stopAt images', () => {
     const images = Number(
       estimateStoryboardCost({

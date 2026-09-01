@@ -3,6 +3,10 @@ import {
   actionLabelForStage,
   bannerStagesForStopAt,
   completedStageFromArtifacts,
+  SLIDER_STAGES,
+  sliderStopLabel,
+  sliderThumbIndex,
+  stopAtFromSliderIndex,
   continueStageFromState,
   DEFAULT_GENERATION_STOP_AT,
   flagsFromStopAt,
@@ -232,5 +236,20 @@ describe('completedStageFromArtifacts / nextActionFromArtifacts', () => {
       'images',
       'motion',
     ]);
+  });
+
+  it('slider folds music into the last stop (Music & Motion)', () => {
+    expect([...SLIDER_STAGES]).toEqual([
+      'script',
+      'casting',
+      'references',
+      'images',
+      'motion',
+    ]);
+    expect(stopAtFromSliderIndex(4)).toBe('music');
+    expect(sliderThumbIndex('music')).toBe(4);
+    expect(sliderThumbIndex('motion')).toBe(4);
+    expect(sliderStopLabel('music')).toBe('Music & Motion');
+    expect(sliderStopLabel('images')).toBe('Images');
   });
 });

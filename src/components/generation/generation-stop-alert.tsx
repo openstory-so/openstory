@@ -60,11 +60,7 @@ export const GenerationStopAlert: FC<GenerationStopAlertProps> = ({
               'The workflow stops at the stage you pick. You can generate the rest from the scene list.'}
           </AlertDialogDescription>
         </AlertDialogHeader>
-        <GenerationStopSlider
-          value={draftStopAt}
-          onChange={setDraftStopAt}
-          estimate={estimate}
-        />
+        <GenerationStopSlider value={draftStopAt} onChange={setDraftStopAt} />
         <div className="flex items-center gap-2">
           <Checkbox
             id="remember-generation-stop"
@@ -78,20 +74,18 @@ export const GenerationStopAlert: FC<GenerationStopAlertProps> = ({
             Remember my choice
           </Label>
         </div>
-        <AlertDialogFooter className="sm:items-end">
+        <div className="min-h-4 flex justify-end">
+          <ActionCost estimate={estimate} align="end" />
+        </div>
+        <AlertDialogFooter>
           <AlertDialogCancel>Cancel</AlertDialogCancel>
-          <div className="flex flex-col items-stretch gap-1 sm:items-end">
-            <AlertDialogAction
-              onClick={() =>
-                onConfirm({ stopAt: draftStopAt, remember: draftRemember })
-              }
-            >
-              {confirmLabel}
-            </AlertDialogAction>
-            <div className="min-h-4">
-              <ActionCost estimate={estimate} align="end" />
-            </div>
-          </div>
+          <AlertDialogAction
+            onClick={() =>
+              onConfirm({ stopAt: draftStopAt, remember: draftRemember })
+            }
+          >
+            {confirmLabel}
+          </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

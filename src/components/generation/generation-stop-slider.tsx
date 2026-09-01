@@ -1,10 +1,12 @@
-import { ActionCost } from '@/components/billing/action-cost';
 import {
   GENERATION_STAGE_META,
-  GENERATION_STAGES,
+  SLIDER_STAGES,
+  sliderStopDescription,
+  sliderStopLabel,
+  sliderThumbIndex,
+  stopAtFromSliderIndex,
 } from '@/lib/generation/pipeline';
 import type { GenerationStage } from '@/lib/generation/pipeline';
-import type { Microdollars } from '@/lib/billing/money';
 import { Slider } from '@/components/ui/slider';
 import { cn } from '@/lib/utils';
 import type { FC } from 'react';
@@ -15,11 +17,9 @@ type GenerationStopSliderProps = {
   /** Continue-from: the thumb cannot move earlier than this stage. */
   minStage?: GenerationStage;
   disabled?: boolean;
-  /** Cost of running through `value`. Updates as the thumb moves. */
-  estimate?: Microdollars | null;
 };
 
-const LAST_STOP = GENERATION_STAGES.length - 1;
+const LAST_STOP = SLIDER_STAGES.length - 1;
 
 function stopLabelPercent(index: number): number {
   return LAST_STOP === 0 ? 0 : (index / LAST_STOP) * 100;
@@ -30,16 +30,14 @@ export const GenerationStopSlider: FC<GenerationStopSliderProps> = ({
   onChange,
   minStage,
   disabled = false,
-  estimate,
 }) => {
-  const minIndex = minStage ? GENERATION_STAGES.indexOf(minStage) : 0;
-  const valueIndex = GENERATION_STAGES.indexOf(value);
-  const clampedIndex = Math.max(minIndex, valueIndex);
-  const selected = GENERATION_STAGES[clampedIndex] ?? 'script';
+  const minIndex = minStage ? sliderThumbIndex(minStage) : 0;
+  const clampedIndex = Math.max(minIndex, sliderThumbIndex(value));
+  const selected = stopAtFromSliderIndex(clampedIndex);
 
   return (
     <section
-      className="@container flex flex-col gap-3"
+      className="flex flex-col gap-3"
       aria-labelledby="generation-stop-label"
     >
       <div className="flex items-start justify-between gap-2">
@@ -49,12 +47,9 @@ export const GenerationStopSlider: FC<GenerationStopSliderProps> = ({
         >
           Run until
         </h3>
-        <div className="flex flex-col items-end gap-0.5">
-          <span className="text-sm text-muted-foreground">
-            {GENERATION_STAGE_META[selected].shortName}
-          </span>
-          <ActionCost estimate={estimate} align="end" />
-        </div>
+        <span className="text-sm text-muted-foreground">
+          {sliderStopLabel(selected)}
+        </span>
       </div>
       <Slider
         min={0}
@@ -65,8 +60,7 @@ export const GenerationStopSlider: FC<GenerationStopSliderProps> = ({
         onValueChange={(next) => {
           const index = next[0];
           if (index === undefined) return;
-          const stage = GENERATION_STAGES[Math.max(minIndex, index)];
-          if (stage) onChange(stage);
+          onChange(stopAtFromSliderIndex(Math.max(minIndex, index)));
         }}
         aria-label="How far generation should run"
       />
@@ -77,22 +71,26 @@ export const GenerationStopSlider: FC<GenerationStopSliderProps> = ({
       */}
       <div className="px-1.5" aria-hidden="true">
         <div className="relative h-5">
-          {GENERATION_STAGES.map((stage, index) => (
+          {SLIDER_STAGES.map((stage, index) => (
             <button
               key={stage}
               type="button"
               disabled={disabled || index < minIndex}
               onClick={() => {
                 if (index < minIndex) return;
-                onChange(stage);
+                onChange(stopAtFromSliderIndex(index));
               }}
               className={cn(
-                'absolute top-0 -translate-x-1/2 text-[11px] tracking-wide whitespace-nowrap',
+                'absolute top-0 text-[11px] tracking-wide whitespace-nowrap',
+                index === 0
+                  ? 'translate-x-0'
+                  : index === LAST_STOP
+                    ? '-translate-x-full'
+                    : '-translate-x-1/2',
                 index <= clampedIndex
                   ? 'font-medium text-foreground'
                   : 'text-muted-foreground/40',
-                index < minIndex && 'cursor-not-allowed opacity-50',
-                index !== clampedIndex && '@max-[17rem]:hidden'
+                index < minIndex && 'cursor-not-allowed opacity-50'
               )}
               style={{ left: `${stopLabelPercent(index)}%` }}
             >
@@ -102,7 +100,7 @@ export const GenerationStopSlider: FC<GenerationStopSliderProps> = ({
         </div>
       </div>
       <p className="text-xs text-muted-foreground">
-        {GENERATION_STAGE_META[selected].description}.
+        {sliderStopDescription(selected)}.
       </p>
     </section>
   );
