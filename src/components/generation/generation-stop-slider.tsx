@@ -1,8 +1,10 @@
+import { ActionCost } from '@/components/billing/action-cost';
 import {
   GENERATION_STAGE_META,
   GENERATION_STAGES,
 } from '@/lib/generation/pipeline';
 import type { GenerationStage } from '@/lib/generation/pipeline';
+import type { Microdollars } from '@/lib/billing/money';
 import { Slider } from '@/components/ui/slider';
 import { cn } from '@/lib/utils';
 import type { FC } from 'react';
@@ -13,6 +15,8 @@ type GenerationStopSliderProps = {
   /** Continue-from: the thumb cannot move earlier than this stage. */
   minStage?: GenerationStage;
   disabled?: boolean;
+  /** Cost of running through `value`. Updates as the thumb moves. */
+  estimate?: Microdollars | null;
 };
 
 const LAST_STOP = GENERATION_STAGES.length - 1;
@@ -26,6 +30,7 @@ export const GenerationStopSlider: FC<GenerationStopSliderProps> = ({
   onChange,
   minStage,
   disabled = false,
+  estimate,
 }) => {
   const minIndex = minStage ? GENERATION_STAGES.indexOf(minStage) : 0;
   const valueIndex = GENERATION_STAGES.indexOf(value);
@@ -37,16 +42,19 @@ export const GenerationStopSlider: FC<GenerationStopSliderProps> = ({
       className="@container flex flex-col gap-3"
       aria-labelledby="generation-stop-label"
     >
-      <div className="flex items-baseline justify-between gap-2">
+      <div className="flex items-start justify-between gap-2">
         <h3
           id="generation-stop-label"
           className="text-sm font-medium text-foreground"
         >
           Run until
         </h3>
-        <span className="text-sm text-muted-foreground">
-          {GENERATION_STAGE_META[selected].shortName}
-        </span>
+        <div className="flex flex-col items-end gap-0.5">
+          <span className="text-sm text-muted-foreground">
+            {GENERATION_STAGE_META[selected].shortName}
+          </span>
+          <ActionCost estimate={estimate} align="end" />
+        </div>
       </div>
       <Slider
         min={0}

@@ -8,17 +8,22 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   actionLabelForStage,
   DEFAULT_GENERATION_STOP_AT,
+  includesStage,
   type GenerationStage,
 } from '@/lib/generation/pipeline';
 import { useCreateScene, useReorderScenes } from '@/hooks/use-scene-structure';
 import {
+  DEFAULT_IMAGE_MODEL,
   DEFAULT_MUSIC_MODEL,
   DEFAULT_VIDEO_MODEL,
   type AudioModel,
   type ImageToVideoModel,
+  type TextToImageModel,
 } from '@/lib/ai/models';
 import {
   estimateAudioCost,
+  estimateImageCost,
+  estimateStoryboardCost,
   estimateVideoCost,
 } from '@/lib/billing/cost-estimation';
 import { addMicros, ZERO_MICROS, type Microdollars } from '@/lib/billing/money';
@@ -125,6 +130,8 @@ export type SceneListProps = {
   initialMusicModel?: AudioModel;
   /** Sequence default / last batch pick — seeds the motion model dropdown. */
   initialVideoModel?: ImageToVideoModel;
+  /** Sequence stills model — continue-from-DAG cost quotes. */
+  initialImageModel?: TextToImageModel;
   /** Style-category gate for models that require a matching style. */
   styleCategory?: string;
   styleName?: string;
@@ -162,6 +169,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
   onCompareDivergent,
   initialMusicModel,
   initialVideoModel,
+  initialImageModel,
   styleCategory,
   styleName,
   modelMissingShotIds,
@@ -384,6 +392,52 @@ const SceneListComponent: React.FC<SceneListProps> = ({
     }
     return anyHonest ? total : null;
   }, [falPricing, notStartedShots, includeMusic, musicModel, videoModel]);
+
+  const continueCostEstimate = useMemo((): Microdollars | null => {
+    if (!falPricing || !nextStage || !showContinueFooter) return null;
+    const imageModel = initialImageModel ?? DEFAULT_IMAGE_MODEL;
+    if (
+      estimateImageCost(imageModel, aspectRatio, 1, { pricing: falPricing }) ===
+      null
+    ) {
+      return null;
+    }
+    const sceneCount = Math.max(scenes?.length ?? shots?.length ?? 0, 1);
+    const motionOn = includesStage(continueStopAt, 'motion');
+    const musicOn = includesStage(continueStopAt, 'music');
+    const perShotSeconds =
+      shots && shots.length > 0
+        ? resolveShotDuration({
+            durationMs: shots[0]?.durationMs,
+            model: videoModel,
+          })
+        : 5;
+    return estimateStoryboardCost({
+      imageModel,
+      aspectRatio,
+      estimatedSceneCount: sceneCount,
+      startFrom: nextStage,
+      stopAt: continueStopAt,
+      autoGenerateMotion: motionOn,
+      videoModels: motionOn ? [videoModel] : undefined,
+      videoDurationSeconds: motionOn ? perShotSeconds : undefined,
+      autoGenerateMusic: musicOn,
+      audioModels: musicOn ? [musicModel] : undefined,
+      audioDurationSeconds: musicOn ? perShotSeconds * sceneCount : undefined,
+      pricing: falPricing,
+    });
+  }, [
+    falPricing,
+    nextStage,
+    showContinueFooter,
+    initialImageModel,
+    aspectRatio,
+    scenes?.length,
+    shots,
+    continueStopAt,
+    videoModel,
+    musicModel,
+  ]);
 
   const shotsBySceneId = useMemo(() => {
     const map = new Map<string, ShotView[]>();
@@ -659,6 +713,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
             onChange={setContinueStopAt}
             minStage={nextStage}
             disabled={isGenerating}
+            estimate={continueCostEstimate}
           />
           <Button
             variant="default"
@@ -678,6 +733,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
               </>
             )}
           </Button>
+          <ActionCost estimate={continueCostEstimate} />
         </div>
       )}
 
@@ -736,6 +792,7 @@ const areEqual = (
     prevProps.nextStage !== nextProps.nextStage ||
     prevProps.initialMusicModel !== nextProps.initialMusicModel ||
     prevProps.initialVideoModel !== nextProps.initialVideoModel ||
+    prevProps.initialImageModel !== nextProps.initialImageModel ||
     prevProps.styleCategory !== nextProps.styleCategory ||
     prevProps.styleName !== nextProps.styleName ||
     prevProps.modelMissingLabel !== nextProps.modelMissingLabel ||

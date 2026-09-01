@@ -1463,6 +1463,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     onCompareDivergent: setCompareVariant,
     initialMusicModel: sequenceMusicModel,
     initialVideoModel: sequenceVideoModel,
+    initialImageModel: resolvedSequenceImageModel,
     styleCategory,
     styleName,
     modelMissingShotIds: shotsMissingActiveImage,

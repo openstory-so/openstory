@@ -25,7 +25,11 @@ import {
   type StudioVideoMode,
 } from '@/lib/studio/text-to-video';
 import { getLogger } from '@/lib/observability/logger';
-import { includesStage, type GenerationStage } from '@/lib/generation/pipeline';
+import {
+  shouldRunStage,
+  stageIndex,
+  type GenerationStage,
+} from '@/lib/generation/pipeline';
 import { reportFlooredEstimate } from './billing-observability';
 import { type Microdollars, addMicros, micros, multiplyMicros } from './money';
 
@@ -272,6 +276,8 @@ export type StoryboardCostOpts = {
   autoGenerateMotion?: boolean;
   /** How far the run will go (#1408). Overrides auto-generate flags. */
   stopAt?: GenerationStage;
+  /** Continue-from: skip stages before this (#1408). */
+  startFrom?: GenerationStage;
   /**
    * Video models for per-shot motion (#545). Each is priced from its own
    * parameters — a uniform multiplier would mis-estimate a mixed selection.
@@ -290,6 +296,24 @@ export type StoryboardCostOpts = {
   pricing: FalPricingMap;
 };
 
+/** Whether this estimate's slice includes `stage`. */
+function estimateRunsStage(
+  opts: Pick<
+    StoryboardCostOpts,
+    'startFrom' | 'stopAt' | 'autoGenerateMotion' | 'autoGenerateMusic'
+  >,
+  stage: GenerationStage
+): boolean {
+  const startFrom = opts.startFrom ?? 'script';
+  if (opts.stopAt) {
+    return shouldRunStage(startFrom, opts.stopAt, stage);
+  }
+  if (stageIndex(stage) < stageIndex(startFrom)) return false;
+  if (stage === 'motion') return Boolean(opts.autoGenerateMotion);
+  if (stage === 'music') return Boolean(opts.autoGenerateMusic);
+  return true;
+}
+
 /**
  * Stills + optional motion + optional music for an already-split board.
  * Excludes LLM analysis and character/location sheets (those already ran).
@@ -301,26 +325,22 @@ export function estimateStoryboardRenderCost(
   const sceneCount = opts.estimatedSceneCount ?? DEFAULT_ESTIMATED_SCENE_COUNT;
   const imageModelCount = opts.imageModelCount ?? 1;
   const { pricing } = opts;
-  const stopAt = opts.stopAt;
-  if (stopAt && !includesStage(stopAt, 'images')) {
-    return micros(0);
+
+  let totalCost = micros(0);
+  if (estimateRunsStage(opts, 'images')) {
+    totalCost = multiplyMicros(
+      gateEstimate(
+        estimateImageCost(opts.imageModel, opts.aspectRatio, sceneCount, {
+          pricing,
+        }),
+        { model: opts.imageModel, operation: 'storyboard:shot-images' },
+        sceneCount
+      ),
+      imageModelCount
+    );
   }
 
-  let totalCost = multiplyMicros(
-    gateEstimate(
-      estimateImageCost(opts.imageModel, opts.aspectRatio, sceneCount, {
-        pricing,
-      }),
-      { model: opts.imageModel, operation: 'storyboard:shot-images' },
-      sceneCount
-    ),
-    imageModelCount
-  );
-
-  const motionOn = stopAt
-    ? includesStage(stopAt, 'motion')
-    : Boolean(opts.autoGenerateMotion);
-  if (motionOn && opts.videoModels?.length) {
+  if (estimateRunsStage(opts, 'motion') && opts.videoModels?.length) {
     const duration = opts.videoDurationSeconds ?? 5;
     for (const model of opts.videoModels) {
       const perShotMotion = gateEstimate(
@@ -337,10 +357,7 @@ export function estimateStoryboardRenderCost(
     }
   }
 
-  const musicOn = stopAt
-    ? includesStage(stopAt, 'music')
-    : Boolean(opts.autoGenerateMusic);
-  if (musicOn && opts.audioModels?.length) {
+  if (estimateRunsStage(opts, 'music') && opts.audioModels?.length) {
     const audioDuration = opts.audioDurationSeconds ?? sceneCount * 5;
     for (const model of opts.audioModels) {
       totalCost = addMicros(
@@ -376,37 +393,34 @@ export function estimateStoryboardRenderCost(
 export function estimateStoryboardCost(opts: StoryboardCostOpts): Microdollars {
   const sceneCount = opts.estimatedSceneCount ?? DEFAULT_ESTIMATED_SCENE_COUNT;
   const { pricing } = opts;
-  const stopAt = opts.stopAt;
   const characterSheets = estimateCharacterSheetCount(sceneCount);
   const locationSheets = estimateLocationSheetCount(sceneCount);
 
-  const llmCalls = stopAt && !includesStage(stopAt, 'casting') ? 1 : 3;
+  const llmCalls =
+    (estimateRunsStage(opts, 'script') ? 1 : 0) +
+    (estimateRunsStage(opts, 'casting') ? 2 : 0);
   const llmCost = estimateLLMCost(llmCalls);
 
-  if (stopAt && !includesStage(stopAt, 'references')) {
-    return llmCost;
+  let total = llmCost;
+  if (estimateRunsStage(opts, 'references')) {
+    const characterSheetCost = gateEstimate(
+      estimateImageCost(opts.imageModel, '16:9', characterSheets, { pricing }),
+      {
+        model: opts.imageModel,
+        operation: 'storyboard:character-sheets',
+      },
+      characterSheets
+    );
+    const locationSheetCost = gateEstimate(
+      estimateImageCost(opts.imageModel, '16:9', locationSheets, { pricing }),
+      {
+        model: opts.imageModel,
+        operation: 'storyboard:location-sheets',
+      },
+      locationSheets
+    );
+    total = addMicros(addMicros(total, characterSheetCost), locationSheetCost);
   }
 
-  const characterSheetCost = gateEstimate(
-    estimateImageCost(opts.imageModel, '16:9', characterSheets, { pricing }),
-    {
-      model: opts.imageModel,
-      operation: 'storyboard:character-sheets',
-    },
-    characterSheets
-  );
-
-  const locationSheetCost = gateEstimate(
-    estimateImageCost(opts.imageModel, '16:9', locationSheets, { pricing }),
-    {
-      model: opts.imageModel,
-      operation: 'storyboard:location-sheets',
-    },
-    locationSheets
-  );
-
-  return addMicros(
-    addMicros(addMicros(llmCost, characterSheetCost), locationSheetCost),
-    estimateStoryboardRenderCost({ ...opts, stopAt })
-  );
+  return addMicros(total, estimateStoryboardRenderCost(opts));
 }
