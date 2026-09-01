@@ -217,6 +217,19 @@ export function nextActionFromArtifacts(
   return nextStageAfter(completed);
 }
 
+/**
+ * Scene-list continue CTA. Null while a run is in flight: visual prompts
+ * stream in before references finishes, so a live DAG read would offer
+ * "Generate Images" mid-run (#1408).
+ */
+export function continueStageFromState(args: {
+  isProcessing: boolean;
+  artifacts: PipelineArtifacts;
+}): GenerationStage | null {
+  if (args.isProcessing) return null;
+  return nextActionFromArtifacts(args.artifacts);
+}
+
 export function actionLabelForStage(stage: GenerationStage): string {
   return GENERATION_STAGE_META[stage].actionLabel;
 }

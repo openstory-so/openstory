@@ -22,7 +22,7 @@ import { batchGenerateMotionFn } from '@/functions/motion-functions';
 import { continueGenerationFn, generateMusicFn } from '@/functions/sequences';
 import {
   artifactsFromSequenceState,
-  nextActionFromArtifacts,
+  continueStageFromState,
   type GenerationStage,
 } from '@/lib/generation/pipeline';
 import { getDivergentVariantPromptDiffFn } from '@/functions/prompt-variants';
@@ -1336,28 +1336,27 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
 
   const musicPromptsReady = !!(sequence?.musicPrompt && sequence.musicTags);
 
-  const nextStage = useMemo(() => {
-    // Visual prompts stream in before the references phase finishes, so a
-    // live DAG read would offer "Generate Images" mid-run. Wait until the
-    // sequence is no longer processing.
-    if (isProcessing) return null;
-    return nextActionFromArtifacts(
-      artifactsFromSequenceState({
-        sceneCount: scenes?.length ?? 0,
-        shots: shots ?? [],
-        musicStatus: sequence?.musicStatus,
-        musicUrl: sequence?.musicUrl,
-        pipelineStage: sequence?.pipelineStage,
-      })
-    );
-  }, [
-    isProcessing,
-    scenes?.length,
-    shots,
-    sequence?.musicStatus,
-    sequence?.musicUrl,
-    sequence?.pipelineStage,
-  ]);
+  const nextStage = useMemo(
+    () =>
+      continueStageFromState({
+        isProcessing,
+        artifacts: artifactsFromSequenceState({
+          sceneCount: scenes?.length ?? 0,
+          shots: shots ?? [],
+          musicStatus: sequence?.musicStatus,
+          musicUrl: sequence?.musicUrl,
+          pipelineStage: sequence?.pipelineStage,
+        }),
+      }),
+    [
+      isProcessing,
+      scenes?.length,
+      shots,
+      sequence?.musicStatus,
+      sequence?.musicUrl,
+      sequence?.pipelineStage,
+    ]
+  );
 
   const handleContinueGeneration = useCallback(
     async (args: { startFrom: GenerationStage; stopAt: GenerationStage }) => {
