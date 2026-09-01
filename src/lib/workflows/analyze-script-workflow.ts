@@ -250,53 +250,65 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
       );
     }
 
-    // Automatic style (#1213): derived in parallel with scene-split, whose
-    // preview stills render style-free on an automatic run.
     let sceneSplitResult: SceneSplitWorkflowResult;
-    let styleConfig = inputStyleConfig;
+
+    // Automatic style (#1213) runs alongside scene-split — preview stills
+    // render style-free on an automatic run — but it is a separate billed LLM
+    // call that fails on its own (a model that answers in prose). Two rules
+    // come out of that:
+    //
+    //  - It is started here and claimed AFTER the script checkpoint is
+    //    persisted. Awaiting both in one `Promise.all` threw the style failure
+    //    before the checkpoint was written, leaving scenes and shots in D1
+    //    with `generation_checkpoint` NULL — unresumable, so the only way
+    //    forward was paying for the split again (#1408).
+    //  - It is NOT gated on the script stage, because it reads the script and
+    //    nothing else. A continue that resumes after the style call failed
+    //    still has no recipe, and skipping it would render every image against
+    //    the placeholder. A style that already landed leaves a snapshot, which
+    //    clears `pendingAutoStyleId` at the trigger — so this never re-bills.
+    const stylePromise =
+      pendingAutoStyleId && sequenceId
+        ? deriveAutoStyle(step, {
+            scopedDb,
+            workflowRunId: parentInstanceId,
+            sequenceId,
+            styleId: pendingAutoStyleId,
+            script,
+            aspectRatio,
+            analysisModelId,
+            reservationId: input.reservationId,
+          })
+        : null;
+    stylePromise?.catch(() => {});
+
     if (shouldRunStage(startFrom, stopAt, 'script')) {
-      const [split, derivedStyle] = await Promise.all([
-        spawnAndAwaitChild<SceneSplitWorkflowInput, SceneSplitWorkflowResult>(
-          step,
-          {
-            binding: this.env.SCENE_SPLIT_WORKFLOW,
-            parentBindingName: 'ANALYZE_SCRIPT_WORKFLOW',
-            parentInstanceId: event.instanceId,
-            childId: `scene-split:${sequenceId ?? 'no-seq'}`,
-            childPayload: {
-              userId: input.userId,
-              teamId: input.teamId,
-              sequenceId,
-              reservationId: input.reservationId,
-              promptName: 'phase/scene-splitting-boundaries-chat',
-              aspectRatio,
-              script: sanitizeScriptContent(script),
-              modelId: analysisModelId,
-              elements: elementsMinimal,
-            },
-            spawnStepName: 'spawn-scene-split',
-            awaitStepName: 'await-scene-split',
-            // LLM-only child, but under a many-sequence burst the engine's notify
-            // delivery alone has been observed to lag >25 minutes — every await in
-            // this workflow carries explicit burst headroom.
-            timeout: '45 minutes',
-          }
-        ),
-        pendingAutoStyleId && sequenceId
-          ? deriveAutoStyle(step, {
-              scopedDb,
-              workflowRunId: parentInstanceId,
-              sequenceId,
-              styleId: pendingAutoStyleId,
-              script,
-              aspectRatio,
-              analysisModelId,
-              reservationId: input.reservationId,
-            })
-          : Promise.resolve(inputStyleConfig),
-      ]);
-      sceneSplitResult = split;
-      styleConfig = derivedStyle;
+      sceneSplitResult = await spawnAndAwaitChild<
+        SceneSplitWorkflowInput,
+        SceneSplitWorkflowResult
+      >(step, {
+        binding: this.env.SCENE_SPLIT_WORKFLOW,
+        parentBindingName: 'ANALYZE_SCRIPT_WORKFLOW',
+        parentInstanceId: event.instanceId,
+        childId: `scene-split:${sequenceId ?? 'no-seq'}`,
+        childPayload: {
+          userId: input.userId,
+          teamId: input.teamId,
+          sequenceId,
+          reservationId: input.reservationId,
+          promptName: 'phase/scene-splitting-boundaries-chat',
+          aspectRatio,
+          script: sanitizeScriptContent(script),
+          modelId: analysisModelId,
+          elements: elementsMinimal,
+        },
+        spawnStepName: 'spawn-scene-split',
+        awaitStepName: 'await-scene-split',
+        // LLM-only child, but under a many-sequence burst the engine's notify
+        // delivery alone has been observed to lag >25 minutes — every await in
+        // this workflow carries explicit burst headroom.
+        timeout: '45 minutes',
+      });
     } else {
       if (
         !checkpoint?.scenes ||
@@ -329,10 +341,15 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
         locationBible,
         elementBible,
       });
-      if (stopAt === 'script') {
-        await recordDuration('script');
-        return scenes;
-      }
+    }
+
+    // Claimed only now: the checkpoint above is durable, so a style failure
+    // fails a run the user can still continue.
+    const styleConfig = (await stylePromise) ?? inputStyleConfig;
+
+    if (shouldRunStage(startFrom, stopAt, 'script') && stopAt === 'script') {
+      await recordDuration('script');
+      return scenes;
     }
 
     // ----------------------------------------------------------------------

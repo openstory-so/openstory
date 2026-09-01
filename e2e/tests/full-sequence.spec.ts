@@ -307,6 +307,17 @@ SUPER:  CORAL.  OUT NOW.
         page.getByRole('button', { name: /^Generate$/i })
       ).toBeEnabled({ timeout: t(30_000) });
       await page.getByRole('button', { name: /^Generate$/i }).click();
+
+      // Generate opens the stop-at alert (#1408) rather than starting the run.
+      // Its default is the full pipeline ("Music & Motion"), which is what this
+      // spec asserts, so confirm without touching the slider. Scoped to the
+      // dialog because the confirm button is also called "Generate".
+      const stopAtAlert = page.getByRole('alertdialog');
+      await expect(
+        stopAtAlert.getByText('How far should this run?')
+      ).toBeVisible({ timeout: t(10_000) });
+      await stopAtAlert.getByRole('button', { name: /^Generate$/i }).click();
+
       // Generate kicks off the scene-split workflow before the redirect lands.
       await page.waitForURL(/\/sequences\/[^/]+\/scenes/, {
         timeout: t(30_000),

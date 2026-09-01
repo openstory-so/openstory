@@ -83,7 +83,10 @@ export const GENERATION_STAGE_META: Record<
     name: 'Generating music\u2026',
     shortName: 'Music',
     description: 'Generating the sequence music track',
-    actionLabel: 'Generate Music',
+    // The `music` stop runs motion AND music in one workflow child, which is
+    // why the slider calls it "Music & Motion". The button has to promise the
+    // same thing — "Generate Music" under-sold the whole motion pass (#1408).
+    actionLabel: 'Generate Motion & Music',
   },
 };
 

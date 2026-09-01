@@ -307,20 +307,37 @@ const SceneListComponent: React.FC<SceneListProps> = ({
     return notStartedShots.every((f) => f.motionPrompt?.fullPrompt);
   }, [notStartedShots]);
 
-  const handleGenerateMotion = async () => {
-    if (!onBatchGenerateMotion || notStartedShots.length === 0) return;
-
+  /**
+   * Run one footer action with the shared spinner. Each of these used to
+   * `try/finally` without a `catch`, so a rejected generate call reset the
+   * button and said nothing — the click read as a hang (#1408). Insufficient
+   * credits is the one failure the parent swallows (it opens the billing
+   * gate instead), so it never reaches here.
+   */
+  const runFooterAction = async (
+    label: string,
+    run: () => Promise<unknown>
+  ) => {
     setIsGenerating(true);
     try {
-      await onBatchGenerateMotion({
+      await run();
+    } catch (error) {
+      toast.error(label, { description: errorMessage(error) });
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleGenerateMotion = async () => {
+    if (!onBatchGenerateMotion || notStartedShots.length === 0) return;
+    await runFooterAction('Failed to generate motion', () =>
+      onBatchGenerateMotion({
         includeMusic,
         musicModel,
         videoModel,
         generateAudio,
-      });
-    } finally {
-      setIsGenerating(false);
-    }
+      })
+    );
   };
 
   const isMotionInProgress = regeneratingMotion.size > 0 || hasGeneratingShots;
@@ -342,25 +359,21 @@ const SceneListComponent: React.FC<SceneListProps> = ({
 
   const handleContinue = async () => {
     if (!onContinueGeneration || !nextStage) return;
-    setIsGenerating(true);
-    try {
-      await onContinueGeneration({
-        startFrom: nextStage,
-        stopAt: continueStopAt,
-      });
-    } finally {
-      setIsGenerating(false);
-    }
+    await runFooterAction(
+      `Failed to ${actionLabelForStage(continueStopAt).toLowerCase()}`,
+      () =>
+        onContinueGeneration({
+          startFrom: nextStage,
+          stopAt: continueStopAt,
+        })
+    );
   };
 
   const handleGenerateMusicClick = async () => {
     if (!onGenerateMusic) return;
-    setIsGenerating(true);
-    try {
-      await onGenerateMusic(musicModel);
-    } finally {
-      setIsGenerating(false);
-    }
+    await runFooterAction('Failed to generate music', () =>
+      onGenerateMusic(musicModel)
+    );
   };
   const isButtonDisabled =
     isGenerating ||

@@ -197,6 +197,8 @@ describe('completedStageFromArtifacts / nextActionFromArtifacts', () => {
     expect(actionLabelForStage('casting')).toBe('Cast Characters');
     expect(actionLabelForStage('images')).toBe('Generate Images');
     expect(actionLabelForStage('motion')).toBe('Generate Motion');
+    // The `music` stop runs motion too, so the verb must say both.
+    expect(actionLabelForStage('music')).toBe('Generate Motion & Music');
     expect(actionLabelForStage('references')).toBe('Generate References');
   });
 

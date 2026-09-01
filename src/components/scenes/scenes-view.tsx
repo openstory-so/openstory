@@ -1360,18 +1360,27 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
 
   const handleContinueGeneration = useCallback(
     async (args: { startFrom: GenerationStage; stopAt: GenerationStage }) => {
-      await continueGenerationFn({
-        data: {
-          sequenceId,
-          startFrom: args.startFrom,
-          stopAt: args.stopAt,
-        },
-      });
+      try {
+        await continueGenerationFn({
+          data: {
+            sequenceId,
+            startFrom: args.startFrom,
+            stopAt: args.stopAt,
+          },
+        });
+      } catch (error) {
+        // Continue reserves credits like any other run, so it hits the same
+        // gate as batch motion — show the gate, not a generic error toast.
+        if (!isInsufficientCreditsError(error)) throw error;
+        showBillingGate('insufficient');
+        void queryClient.invalidateQueries({ queryKey: BILLING_BALANCE_KEY });
+        return;
+      }
       void queryClient.invalidateQueries({
         queryKey: sequenceKeys.detail(sequenceId),
       });
     },
-    [sequenceId, queryClient]
+    [sequenceId, queryClient, showBillingGate]
   );
 
   const handleGenerateMusic = useCallback(
