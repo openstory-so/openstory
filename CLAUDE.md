@@ -314,9 +314,9 @@ bun db:migrate   # Apply migrations to local.db
 ```
 
 - Schema in `src/lib/db/schema/` (Drizzle auto-infers types).
-- **NEVER** hand-write migration SQL.
+- **NEVER** hand-write migration SQL. The one exception is a pure data backfill/repair, which has no schema diff so drizzle-kit cannot emit it: generate the empty file with `bun db:generate --custom --name=<name>`, write the SQL into it, and say so in a comment header. It must be a migration and not a script — PR previews and Deploy-button clones only ever run `wrangler d1 migrations apply`.
 - **NEVER hand-write Better Auth tables.** Adding/changing a Better Auth plugin → run `bun auth:generate` (Better Auth CLI against the real config via `src/lib/auth/cli-config.ts`; emits `auth-schema.ts` at the root), port the new table(s) verbatim into `src/lib/db/schema/auth.ts` (same `snakeCase.table` style as the neighbours), then `bun db:generate`. Field names/types must match the plugin exactly or the adapter silently breaks.
-- **ULID** primary keys (not UUID).
+- **ULIDs are the ONLY id format in the database.** Every id is an app-generated ULID from `generateId()` — never a UUID, never a slug, never `lower(hex(randomblob(16)))` or any other SQL-minted value. SQL cannot produce a ULID, so a migration that has to insert a row **reuses its parent row's ULID as the new id**. Ids only have to be unique within their own table; the same ULID appearing as a `characters.id` and as that character's `character_sheet_variants.id` is fine, and it makes the migration deterministic and replay-safe. See `20260901073033_backfill_character_sheet_variants`.
 - **Typed JSONB:** `frame.metadata` typed as `Scene`.
 
 ### wrangler.jsonc env layout — READ BEFORE TOUCHING

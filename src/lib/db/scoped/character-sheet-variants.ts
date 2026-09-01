@@ -148,16 +148,22 @@ export function createCharacterSheetVariantsMethods(db: Database) {
       }
 
       if (existing.sheetImageUrl && !existing.selectedSheetVersionId) {
-        await db.insert(characterSheetVariants).values({
-          id: generateId(),
-          characterId,
-          model: 'prior',
-          url: existing.sheetImageUrl,
-          storagePath: existing.sheetImagePath,
-          status: 'completed',
-          generatedAt: existing.sheetGeneratedAt ?? existing.updatedAt,
-          inputHash: existing.sheetInputHash,
-        });
+        // Keyed by the character's own ULID, matching the #1419 bulk backfill
+        // (20260901073033) — so whichever path snapshots the pre-versioning
+        // image first wins and History never shows the same sheet twice.
+        await db
+          .insert(characterSheetVariants)
+          .values({
+            id: characterId,
+            characterId,
+            model: 'prior',
+            url: existing.sheetImageUrl,
+            storagePath: existing.sheetImagePath,
+            status: 'completed',
+            generatedAt: existing.sheetGeneratedAt ?? existing.updatedAt,
+            inputHash: existing.sheetInputHash,
+          })
+          .onConflictDoNothing();
       }
 
       const now = new Date();

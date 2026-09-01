@@ -170,17 +170,23 @@ export function createLocationSheetVariantsMethods(db: Database) {
       }
 
       if (existing.referenceImageUrl && !existing.selectedReferenceVersionId) {
-        await db.insert(locationSheetVariants).values({
-          id: generateId(),
-          parentType: 'sequence_location',
-          parentId: locationDbId,
-          model: 'prior',
-          url: existing.referenceImageUrl,
-          storagePath: existing.referenceImagePath,
-          status: 'completed',
-          generatedAt: existing.referenceGeneratedAt ?? existing.updatedAt,
-          inputHash: existing.referenceInputHash,
-        });
+        // Keyed by the location's own ULID, matching the #1419 bulk backfill
+        // (20260901073039) — so whichever path snapshots the pre-versioning
+        // image first wins and History never shows the same reference twice.
+        await db
+          .insert(locationSheetVariants)
+          .values({
+            id: locationDbId,
+            parentType: 'sequence_location',
+            parentId: locationDbId,
+            model: 'prior',
+            url: existing.referenceImageUrl,
+            storagePath: existing.referenceImagePath,
+            status: 'completed',
+            generatedAt: existing.referenceGeneratedAt ?? existing.updatedAt,
+            inputHash: existing.referenceInputHash,
+          })
+          .onConflictDoNothing();
       }
 
       const now = new Date();
