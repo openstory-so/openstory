@@ -17,7 +17,11 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { migrateStyleConfigV1ToV2 } from '@/lib/style/style-config';
 import { DEFAULT_IMAGE_MODEL, DEFAULT_VIDEO_MODEL } from '@/lib/ai/models';
 import { DEFAULT_ANALYSIS_MODEL } from '@/lib/ai/models.config';
-import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
+import type {
+  WorkflowEvent,
+  WorkflowStep,
+  WorkflowStepConfig,
+} from 'cloudflare:workers';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import type {
   AnalyzeScriptWorkflowInput,
@@ -65,13 +69,25 @@ class TestableAnalyzeScriptWorkflow extends AnalyzeScriptWorkflow {
   }
 }
 
-/** Runs every `step.do` body inline — durability is CF's job, not the test's. */
+/**
+ * Runs every `step.do` body inline — durability is CF's job, not the test's.
+ *
+ * `do` is overloaded as `(name, callback)` and `(name, config, callback)`, so
+ * the body is always the last argument. Typing `rest` as the union lets
+ * `typeof` narrow to the callback with no assertion.
+ */
 function makeStep(): WorkflowStep {
+  const run = (
+    _name: string,
+    ...rest: Array<WorkflowStepConfig | (() => Promise<unknown>)>
+  ) => {
+    const body = rest.at(-1);
+    return typeof body === 'function'
+      ? body()
+      : Promise.reject(new Error('step.do called without a callback'));
+  };
   // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- only `do` is exercised
-  return {
-    do: (_name: string, ...rest: unknown[]) =>
-      (rest[rest.length - 1] as () => Promise<unknown>)(),
-  } as unknown as WorkflowStep;
+  return { do: run } as unknown as WorkflowStep;
 }
 
 type SequenceUpdate = Record<string, unknown>;
