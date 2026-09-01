@@ -42,7 +42,9 @@ type GeminiVideoPromptPart =
         | { type: 'data'; value: string; mimeType: string };
     };
 
-/** Omni Flash outputs only these two shapes (720p). */
+/** Omni Flash outputs only these two shapes. Resolution stays 720p unless
+ *  we pass a top-level `size` suffix (`16:9_1080p`); we don't, because that
+ *  makes the adapter rebuild `response_format` without `delivery: "uri"`. */
 export type GeminiVideoSize = '16:9' | '9:16';
 
 export type GeminiVideoTask =

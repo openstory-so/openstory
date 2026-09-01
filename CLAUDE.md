@@ -286,7 +286,7 @@ so those tables ARE the bill (like xAI, native spend is **unaudited** by the
 720p at the $17.50/1M video-output rate ≈ $0.10/s).
 
 Omni Flash serves image-to-video, reference-to-video, and text-to-video from
-ONE Interactions-API model (`gemini-omni-flash-preview`): images ride the
+ONE Interactions-API model (`gemini-omni-1.1-flash`): images ride the
 generateVideo prompt as content blocks bound in the prompt text by
 `<IMAGE_REF_n>` tags (0-based; ≤7 images; 3–10s; 16:9/9:16 only), and
 `buildGeminiVideoRequest` pins the task via

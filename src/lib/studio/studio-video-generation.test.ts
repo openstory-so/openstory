@@ -45,7 +45,7 @@ vi.doMock('@tanstack/ai-grok', () => ({
 const mockCreateGeminiVideo = vi.fn(() => ({
   kind: 'video',
   name: 'gemini',
-  model: 'gemini-omni-flash-preview',
+  model: 'gemini-omni-1.1-flash',
 }));
 vi.doMock('@tanstack/ai-gemini', () => ({
   createGeminiVideo: mockCreateGeminiVideo,
@@ -198,7 +198,7 @@ describe('submitStudioVideoJob', () => {
     testEnv.GEMINI_API_KEY = 'platform-google';
     mockGenerateVideo.mockResolvedValue({
       jobId: 'google-t2v',
-      model: 'gemini-omni-flash-preview',
+      model: 'gemini-omni-1.1-flash',
     });
 
     const result = await submitStudioVideoJob({
@@ -209,7 +209,7 @@ describe('submitStudioVideoJob', () => {
     });
 
     expect(result.via).toBe('google');
-    expect(result.endpointId).toBe('gemini-omni-flash-preview');
+    expect(result.endpointId).toBe('gemini-omni-1.1-flash');
     expect(mockCreateGeminiVideo).toHaveBeenCalled();
     expect(mockGenerateVideo).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -233,7 +233,7 @@ describe('submitStudioVideoJob', () => {
     testEnv.GEMINI_API_KEY = 'platform-google';
     mockGenerateVideo.mockResolvedValue({
       jobId: 'google-frames',
-      model: 'gemini-omni-flash-preview',
+      model: 'gemini-omni-1.1-flash',
     });
 
     const result = await submitStudioVideoJob({
@@ -268,7 +268,7 @@ describe('submitStudioVideoJob', () => {
     testEnv.GEMINI_API_KEY = 'platform-google';
     mockGenerateVideo.mockResolvedValue({
       jobId: 'google-refs',
-      model: 'gemini-omni-flash-preview',
+      model: 'gemini-omni-1.1-flash',
     });
 
     await submitStudioVideoJob({
@@ -522,7 +522,7 @@ describe('pollStudioVideoJob', () => {
     const result = await pollStudioVideoJob({
       jobId: 'google-job',
       via: 'google',
-      endpointId: 'gemini-omni-flash-preview',
+      endpointId: 'gemini-omni-1.1-flash',
     });
 
     expect(result.status).toBe('completed');
@@ -550,13 +550,13 @@ describe('studioVideoCostFromUsage', () => {
     const billing = await studioVideoCostFromUsage(
       {
         via: 'google',
-        endpointId: 'gemini-omni-flash-preview',
+        endpointId: 'gemini-omni-1.1-flash',
         modelKey: 'gemini_omni_flash',
       },
       { promptTokens: 120, completionTokens: 28_960, totalTokens: 29_080 }
     );
     expect(billing.cost).toBe(506_800);
     expect(billing.recordFalUsage).toBe(false);
-    expect(billing.endpointId).toBe('gemini-omni-flash-preview');
+    expect(billing.endpointId).toBe('gemini-omni-1.1-flash');
   });
 });
