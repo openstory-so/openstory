@@ -19,6 +19,7 @@ type ProductEventName =
   | 'user_signed_up'
   | 'user_signed_in'
   | 'sequence_generated'
+  | 'sequence_error'
   | 'founder_credits_requested'
   | 'credits_added'
   | 'feedback_submitted'
