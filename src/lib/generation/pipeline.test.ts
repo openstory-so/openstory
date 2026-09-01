@@ -189,6 +189,8 @@ describe('completedStageFromArtifacts / nextActionFromArtifacts', () => {
   });
 
   it('labels the continue button with the next stage verb', () => {
+    expect(actionLabelForStage('script')).toBe('Analyze Script');
+    expect(actionLabelForStage('casting')).toBe('Cast Characters');
     expect(actionLabelForStage('images')).toBe('Generate Images');
     expect(actionLabelForStage('motion')).toBe('Generate Motion');
     expect(actionLabelForStage('references')).toBe('Generate References');

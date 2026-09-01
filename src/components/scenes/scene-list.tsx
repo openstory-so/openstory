@@ -37,7 +37,15 @@ import type { SceneSelection } from '@/lib/scenes/scene-selection';
 import type { SequenceSegment } from '@/lib/scenes/scene-segments';
 import type { ShotView } from '@/lib/shots/shot-view';
 import { cn } from '@/lib/utils';
-import { Images, Loader2, Music, Plus, Video } from 'lucide-react';
+import {
+  FileText,
+  Images,
+  Loader2,
+  Music,
+  Plus,
+  Users,
+  Video,
+} from 'lucide-react';
 import {
   memo,
   useCallback,
@@ -50,6 +58,15 @@ import {
 import { toast } from 'sonner';
 import { SceneGroup } from './scene-group';
 import { SceneListItem } from './scene-list-item';
+
+const CONTINUE_ICON = {
+  script: FileText,
+  casting: Users,
+  references: Images,
+  images: Images,
+  motion: Video,
+  music: Music,
+} as const;
 
 /**
  * Center `el` in the nearest Radix ScrollArea viewport. Returns false when
@@ -320,6 +337,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
     nextStage !== 'motion' &&
     nextStage !== 'music' &&
     Boolean(onContinueGeneration);
+  const ContinueIcon = CONTINUE_ICON[continueStopAt];
   const showButton = showMotionFooter;
 
   const handleContinue = async () => {
@@ -394,11 +412,19 @@ const SceneListComponent: React.FC<SceneListProps> = ({
   }, [falPricing, notStartedShots, includeMusic, musicModel, videoModel]);
 
   const continueCostEstimate = useMemo((): Microdollars | null => {
-    if (!falPricing || !nextStage || !showContinueFooter) return null;
+    if (!nextStage || !showContinueFooter) return null;
+    const needsMedia =
+      includesStage(continueStopAt, 'references') ||
+      includesStage(continueStopAt, 'images') ||
+      includesStage(continueStopAt, 'motion') ||
+      includesStage(continueStopAt, 'music');
+    if (needsMedia && !falPricing) return null;
     const imageModel = initialImageModel ?? DEFAULT_IMAGE_MODEL;
     if (
+      falPricing &&
+      includesStage(continueStopAt, 'images') &&
       estimateImageCost(imageModel, aspectRatio, 1, { pricing: falPricing }) ===
-      null
+        null
     ) {
       return null;
     }
@@ -424,7 +450,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
       autoGenerateMusic: musicOn,
       audioModels: musicOn ? [musicModel] : undefined,
       audioDurationSeconds: musicOn ? perShotSeconds * sceneCount : undefined,
-      pricing: falPricing,
+      pricing: falPricing ?? {},
     });
   }, [
     falPricing,
@@ -728,7 +754,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
               </>
             ) : (
               <>
-                <Images className="mr-2 h-4 w-4" />
+                <ContinueIcon className="mr-2 h-4 w-4" />
                 {actionLabelForStage(continueStopAt)}
               </>
             )}

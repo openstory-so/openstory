@@ -48,14 +48,14 @@ export const GENERATION_STAGE_META: Record<
     name: 'Analyzing script\u2026',
     shortName: 'Script',
     description: 'Reading your script and breaking it into scenes',
-    actionLabel: 'Generate Script',
+    actionLabel: 'Analyze Script',
   },
   casting: {
     phase: 2,
     name: 'Casting characters & locations\u2026',
     shortName: 'Casting',
     description: 'Casting characters and matching locations',
-    actionLabel: 'Generate Casting',
+    actionLabel: 'Cast Characters',
   },
   references: {
     phase: 3,
