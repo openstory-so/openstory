@@ -53,7 +53,7 @@ export const TURBO_VIDEO_MODELS = [
   'grok_imagine_video_1_5',
 ] as const satisfies readonly ImageToVideoModel[];
 
-/** ElevenLabs stays the default; ACE-Step is available as a faster option. */
+/** ElevenLabs stays the default; ACE-Step / 1.5 remain pickable (cheaper, slower in our 30d samples). */
 export const TURBO_AUDIO_MODELS = [
   'elevenlabs_music',
   'ace_step',
@@ -64,6 +64,17 @@ export const TURBO_DEFAULT_ANALYSIS = 'openai/gpt-5.6-luna' as const;
 export const TURBO_DEFAULT_IMAGE = 'nano_banana_2_lite' as const;
 export const TURBO_DEFAULT_VIDEO = 'minimax_h3_max' as const;
 export const TURBO_DEFAULT_AUDIO = 'elevenlabs_music' as const;
+
+const TURBO_IMAGE_MODEL_SET = new Set<string>(TURBO_IMAGE_MODELS);
+const TURBO_VIDEO_MODEL_SET = new Set<string>(TURBO_VIDEO_MODELS);
+
+export function isTurboImageModel(model: string): boolean {
+  return TURBO_IMAGE_MODEL_SET.has(model);
+}
+
+export function isTurboVideoModel(model: string): boolean {
+  return TURBO_VIDEO_MODEL_SET.has(model);
+}
 
 export function isGenerationMode(value: unknown): value is GenerationMode {
   return (

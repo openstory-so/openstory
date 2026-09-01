@@ -1,5 +1,8 @@
 import type { Scene } from '@/lib/ai/scene-analysis.schema';
+import { getLogger } from '@/lib/observability/logger';
 import type { MusicSceneSummary } from '@/lib/workflow/types';
+
+const logger = getLogger(['openstory', 'workflow', 'music']);
 
 type MusicSceneRow = {
   sceneId: string;
@@ -60,6 +63,18 @@ export function joinMusicDesignByIndex(
   if (musicScenes.length < scenes.length) {
     throw new Error(
       `Music design returned ${musicScenes.length} scene(s) but ${scenes.length} were sent; refusing to pair by position`
+    );
+  }
+  if (musicScenes.length > scenes.length) {
+    logger.warn(
+      'Dropping extra music-design rows ({returned} returned, {sent} sent)',
+      {
+        sent: scenes.length,
+        returned: musicScenes.length,
+        extraSceneIds: musicScenes
+          .slice(scenes.length)
+          .map((row) => row.sceneId),
+      }
     );
   }
   return scenes.map((scene, index) => {

@@ -140,6 +140,39 @@ describe('studioCreateInputSchema', () => {
     expect(result.success).toBe(false);
   });
 
+  it('rejects H3 Max reference lists that exceed the combined 12-file cap', () => {
+    const urls = (n: number, kind: string) =>
+      Array.from(
+        { length: n },
+        (_, i) => `https://example.com/${kind}-${i}.bin`
+      );
+    const over = studioCreateInputSchema.safeParse({
+      activity: 'video',
+      prompt: 'the fox turns toward camera',
+      videoModel: 'minimax_h3_max',
+      aspectRatio: '16:9',
+      duration: 5,
+      mode: 'reference',
+      referenceImages: urls(9, 'img'),
+      referenceVideos: urls(3, 'vid'),
+      referenceAudio: urls(1, 'aud'),
+    });
+    expect(over.success).toBe(false);
+
+    const exact = studioCreateInputSchema.safeParse({
+      activity: 'video',
+      prompt: 'the fox turns toward camera',
+      videoModel: 'minimax_h3_max',
+      aspectRatio: '16:9',
+      duration: 5,
+      mode: 'reference',
+      referenceImages: urls(9, 'img'),
+      referenceVideos: urls(3, 'vid'),
+      referenceAudio: [],
+    });
+    expect(exact.success).toBe(true);
+  });
+
   it('accepts a prompt-only video request without an image model', () => {
     const parsed = studioCreateInputSchema.parse({
       activity: 'video',

@@ -62,6 +62,10 @@ export const TEST_FAL_PRICING: Record<string, EffectiveFalPricing> = {
     unit: 'seconds',
     typicalUnitsPerCall: 8,
   },
+  'minimax/h3-max/reference-to-video': {
+    unitPrice: micros(80_000),
+    unit: 'seconds',
+  },
   'bytedance/seedance-2.5/image-to-video': {
     unitPrice: micros(14_000),
     unit: 'units',

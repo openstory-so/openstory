@@ -155,8 +155,12 @@ async function buildStudioImageModeInput(
         modelOptions: {
           ...built.modelOptions,
           [reference.imageField]: imageUrls,
-          ...(videoUrls.length > 0 && { video_urls: videoUrls }),
-          ...(audioUrls.length > 0 && { audio_urls: audioUrls }),
+          ...(videoUrls.length > 0 && {
+            [reference.videoField ?? 'video_urls']: videoUrls,
+          }),
+          ...(audioUrls.length > 0 && {
+            [reference.audioField ?? 'audio_urls']: audioUrls,
+          }),
         },
       },
     };

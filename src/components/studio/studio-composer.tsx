@@ -92,6 +92,7 @@ import {
   renumberStudioReferences,
   snapStudioVideoDuration,
   studioAudioLimit,
+  studioCombinedRefCap,
   studioReferenceEndpoint,
   studioReferenceLimit,
   studioSupportsEndFrame,
@@ -312,6 +313,9 @@ export function StudioComposer({ activity }: StudioComposerProps) {
     : imageRefLimit;
   const videoRefLimit = isVideo ? studioVideoRefLimit(compatibleVideoModel) : 0;
   const audioLimit = isVideo ? studioAudioLimit(compatibleVideoModel) : 0;
+  const combinedRefCap = isVideo
+    ? studioCombinedRefCap(compatibleVideoModel)
+    : null;
   /** Whether this composer can attach anything at all. */
   const refsCapable = isVideo || imageRefLimit > 0;
   const endFrameCapable = studioSupportsEndFrame(compatibleVideoModel);
@@ -375,21 +379,35 @@ export function StudioComposer({ activity }: StudioComposerProps) {
     video: setVideoRefs,
     audio: setAudioRefs,
   };
-  const slots = useMemo<Record<StudioReferenceKind, number>>(
-    () => ({
-      image: Math.max(0, referenceLimit - references.length),
-      video: Math.max(0, videoRefLimit - videoRefs.length),
-      audio: Math.max(0, audioLimit - audioRefs.length),
-    }),
-    [
-      audioLimit,
-      audioRefs.length,
-      referenceLimit,
-      references.length,
-      videoRefLimit,
-      videoRefs.length,
-    ]
-  );
+  const slots = useMemo<Record<StudioReferenceKind, number>>(() => {
+    const used = references.length + videoRefs.length + audioRefs.length;
+    const combinedRemaining =
+      combinedRefCap == null
+        ? Number.POSITIVE_INFINITY
+        : Math.max(0, combinedRefCap - used);
+    return {
+      image: Math.min(
+        Math.max(0, referenceLimit - references.length),
+        combinedRemaining
+      ),
+      video: Math.min(
+        Math.max(0, videoRefLimit - videoRefs.length),
+        combinedRemaining
+      ),
+      audio: Math.min(
+        Math.max(0, audioLimit - audioRefs.length),
+        combinedRemaining
+      ),
+    };
+  }, [
+    audioLimit,
+    audioRefs.length,
+    combinedRefCap,
+    referenceLimit,
+    references.length,
+    videoRefLimit,
+    videoRefs.length,
+  ]);
 
   /** Append to the list for its kind; returns the new index, or -1 at cap. */
   const addReference = (reference: StudioReference): number => {
@@ -397,6 +415,11 @@ export function StudioComposer({ activity }: StudioComposerProps) {
     const index = counts[kind];
     if (index >= limits[kind]) {
       toast.error(`Up to ${limits[kind]} reference ${kind}s`);
+      return -1;
+    }
+    const used = counts.image + counts.video + counts.audio;
+    if (combinedRefCap != null && used >= combinedRefCap) {
+      toast.error(`Up to ${combinedRefCap} reference files total`);
       return -1;
     }
     setListFor[kind]((prev) => [...prev, reference]);
@@ -963,8 +986,9 @@ export function StudioComposer({ activity }: StudioComposerProps) {
             </Button>
           </PopoverTrigger>
           <PopoverContent
-            className="w-auto max-w-[calc(100vw-2rem)] p-4"
             align="start"
+            collisionPadding={12}
+            className="w-[min(22rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] overflow-x-hidden p-4"
           >
             <div className="flex flex-col gap-4">
               <section className="flex flex-col gap-2">

@@ -59,6 +59,12 @@ describe('Seedance catalog split', () => {
     expect(MOTION_REFERENCE_ENDPOINTS.seedance_v2?.endpointId).toBe(
       'bytedance/seedance-2.0/enterprise/v2/reference-to-video'
     );
+    expect(MOTION_REFERENCE_ENDPOINTS.minimax_h3_max?.endpointId).toBe(
+      'minimax/h3-max/reference-to-video'
+    );
+    expect(MOTION_REFERENCE_ENDPOINTS.minimax_h3_max?.imageField).toBe(
+      'reference_image_urls'
+    );
     expect(isNativeBytePlusVideoModel('seedance_v2_5')).toBe(true);
     expect(isNativeBytePlusVideoModel('seedance_v2')).toBe(false);
     expect(DEFAULT_VIDEO_MODEL).toBe('seedance_v2');

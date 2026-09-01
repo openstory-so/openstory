@@ -105,6 +105,56 @@ describe('submitStudioVideoJob', () => {
     );
   });
 
+  it('submits H3 Max reference mode to r2v with Image N tags', async () => {
+    mockGenerateVideo.mockResolvedValue({
+      jobId: 'h3-r2v',
+      model: 'minimax/h3-max/reference-to-video',
+    });
+
+    const result = await submitStudioVideoJob({
+      prompt: 'Image1 walks past Image2',
+      model: 'minimax_h3_max',
+      mode: 'reference',
+      referenceImages: [
+        'https://example.com/lead.png',
+        'https://example.com/dog.png',
+      ],
+      referenceVideos: ['https://example.com/walk.mp4'],
+      duration: 5,
+      aspectRatio: '16:9',
+    });
+
+    expect(result.endpointId).toBe('minimax/h3-max/reference-to-video');
+    expect(mockFalVideo).toHaveBeenCalledWith(
+      'minimax/h3-max/reference-to-video',
+      expect.objectContaining({ apiKey: 'test-fal-key' })
+    );
+    expect(mockGenerateVideo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: 'Image 1 walks past Image 2',
+        modelOptions: expect.objectContaining({
+          duration: 5,
+          aspect_ratio: '16:9',
+          resolution: '768P',
+          prompt_expansion_mode: 'balanced',
+          reference_image_urls: [
+            'https://example.com/lead.png',
+            'https://example.com/dog.png',
+          ],
+          reference_video_urls: ['https://example.com/walk.mp4'],
+        }),
+      })
+    );
+    expect(mockGenerateVideo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        modelOptions: expect.not.objectContaining({
+          image_urls: expect.anything(),
+          video_urls: expect.anything(),
+        }),
+      })
+    );
+  });
+
   it('sends native Grok a text prompt with no start frame', async () => {
     testEnv.XAI_API_KEY = 'platform-xai';
     mockGenerateVideo.mockResolvedValue({

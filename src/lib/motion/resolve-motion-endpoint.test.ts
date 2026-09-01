@@ -40,6 +40,23 @@ describe('resolveMotionEndpoint', () => {
     });
   });
 
+  it('routes H3 Max to reference-to-video when refs are present', () => {
+    expect(resolveMotionEndpoint('minimax_h3_max', true)).toEqual({
+      via: 'fal',
+      endpointId: 'minimax/h3-max/reference-to-video',
+      references: 'endpoint',
+      referenceConfig: MOTION_REFERENCE_ENDPOINTS.minimax_h3_max,
+    });
+  });
+
+  it('keeps H3 Max on image-to-video when there are no refs', () => {
+    expect(resolveMotionEndpoint('minimax_h3_max', false)).toEqual({
+      via: 'fal',
+      endpointId: IMAGE_TO_VIDEO_MODELS.minimax_h3_max.id,
+      references: 'none',
+    });
+  });
+
   it('keeps Kling on image-to-video and marks refs as inline', () => {
     expect(resolveMotionEndpoint('kling_v3_pro', true)).toEqual({
       via: 'fal',

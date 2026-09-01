@@ -44,7 +44,7 @@ export const IMAGE_TO_VIDEO_MODELS = {
     license: 'proprietary' as const,
     qualityRank: 1,
     maxPromptLength: 2500,
-    performance: { estimatedGenerationTime: 20, quality: 'best' as const },
+    performance: { estimatedGenerationTime: 33, quality: 'best' as const },
   },
   ltx_2_3_pro: {
     id: 'fal-ai/ltx-2.3/image-to-video',
@@ -53,7 +53,7 @@ export const IMAGE_TO_VIDEO_MODELS = {
     license: 'open-weight' as const,
     qualityRank: 2,
     maxPromptLength: 2500,
-    performance: { estimatedGenerationTime: 15, quality: 'best' as const },
+    performance: { estimatedGenerationTime: 126, quality: 'best' as const },
   },
   veo3_1: {
     id: 'fal-ai/veo3.1/image-to-video',
@@ -62,7 +62,7 @@ export const IMAGE_TO_VIDEO_MODELS = {
     license: 'proprietary' as const,
     qualityRank: 2,
     maxPromptLength: 20000,
-    performance: { estimatedGenerationTime: 25, quality: 'best' as const },
+    performance: { estimatedGenerationTime: 147, quality: 'best' as const },
   },
   kling_v3_pro: {
     id: 'fal-ai/kling-video/v3/pro/image-to-video',
@@ -71,7 +71,7 @@ export const IMAGE_TO_VIDEO_MODELS = {
     license: 'proprietary' as const,
     qualityRank: 3,
     maxPromptLength: 2500,
-    performance: { estimatedGenerationTime: 20, quality: 'best' as const },
+    performance: { estimatedGenerationTime: 306, quality: 'best' as const },
   },
   minimax_hailuo_02: {
     id: 'fal-ai/minimax/hailuo-2.3/pro/image-to-video',
@@ -80,7 +80,7 @@ export const IMAGE_TO_VIDEO_MODELS = {
     license: 'proprietary' as const,
     qualityRank: 5,
     maxPromptLength: 2500,
-    performance: { estimatedGenerationTime: 15, quality: 'best' as const },
+    performance: { estimatedGenerationTime: 199, quality: 'best' as const },
   },
   minimax_h3_max: {
     id: 'minimax/h3-max/image-to-video',
@@ -93,7 +93,8 @@ export const IMAGE_TO_VIDEO_MODELS = {
     // direct it in-prompt. See buildMinimaxH3Prompt.
     supportsAudio: true,
     maxPromptLength: 2500,
-    performance: { estimatedGenerationTime: 15, quality: 'best' as const },
+    // PostHog p50 9.7s (n=74, 30d ending 2026-09-01).
+    performance: { estimatedGenerationTime: 10, quality: 'best' as const },
   },
   seedance_v2: {
     id: 'bytedance/seedance-2.0/enterprise/v2/image-to-video',
@@ -102,7 +103,7 @@ export const IMAGE_TO_VIDEO_MODELS = {
     license: 'proprietary' as const,
     qualityRank: 4,
     maxPromptLength: 4096,
-    performance: { estimatedGenerationTime: 20, quality: 'best' as const },
+    performance: { estimatedGenerationTime: 208, quality: 'best' as const },
   },
   seedance_v2_5: {
     id: 'bytedance/seedance-2.5/image-to-video',
@@ -111,7 +112,7 @@ export const IMAGE_TO_VIDEO_MODELS = {
     license: 'proprietary' as const,
     qualityRank: 2,
     maxPromptLength: 4096,
-    performance: { estimatedGenerationTime: 20, quality: 'best' as const },
+    performance: { estimatedGenerationTime: 208, quality: 'best' as const },
     // Hidden from sequence/studio pickers: public fal 2.5 400s photoreal
     // faces without Ark `asset://` ingest, and we are not rolling Ark out.
     // Catalog key stays so a later Ark enablement does not need a rename.
@@ -515,7 +516,7 @@ export const AUDIO_MODELS = {
       supportedFormats: ['mp3'],
     },
     performance: {
-      estimatedGenerationTime: 30,
+      estimatedGenerationTime: 10,
       quality: 'best',
     },
   },
@@ -535,7 +536,7 @@ export const AUDIO_MODELS = {
       supportedFormats: ['wav'],
     },
     performance: {
-      estimatedGenerationTime: 25,
+      estimatedGenerationTime: 33,
       quality: 'best',
     },
   },
@@ -555,7 +556,7 @@ export const AUDIO_MODELS = {
       supportedFormats: ['wav'],
     },
     performance: {
-      estimatedGenerationTime: 20,
+      estimatedGenerationTime: 33,
       quality: 'best',
     },
   },
@@ -675,20 +676,25 @@ export type MotionReferenceEndpointConfig = {
   /** The fal reference-to-video endpoint id to submit to. */
   endpointId: string;
   /**
-   * Renders the prompt token bound to `image_urls[position - 1]` (position is
-   * 1-based) — e.g. `@Image1` for Seedance, `<IMAGE_REF_0>` for Gemini Omni
-   * Flash.
+   * Renders the prompt token bound to the image-list field at
+   * `position - 1` (1-based) — e.g. `@Image1` for Seedance, `Image 1`
+   * for H3 Max.
    */
   tag: (position: number) => string;
   /** Total images the endpoint accepts, including the rendered still. */
   maxImages: number;
+  /**
+   * Request field the stills go in. Seedance uses `image_urls`; H3 Max
+   * uses `reference_image_urls`. Defaults to `image_urls`.
+   */
+  imageField?: 'image_urls' | 'reference_image_urls';
 };
 
 /**
  * Map image-to-video models to a SEPARATE reference-to-video endpoint (#873).
  *
  * Some motion models accept cast/element reference images only on a dedicated
- * endpoint that takes `image_urls[]` (bound to prompt tokens — see
+ * endpoint that takes an image list (bound to prompt tokens — see
  * `MotionReferenceEndpointConfig.tag`) and has NO single start-frame
  * `image_url`. This is the motion analogue of `EDIT_ENDPOINTS` on the image
  * side: when a scene has references AND the model is listed here, motion
@@ -709,6 +715,13 @@ export const MOTION_REFERENCE_ENDPOINTS: Partial<
     endpointId: 'bytedance/seedance-2.5/reference-to-video',
     tag: (position) => `@Image${position}`,
     maxImages: 9,
+  },
+  // Schema caps images at 9 (videos 3, audio 3; combined 12 files).
+  minimax_h3_max: {
+    endpointId: 'minimax/h3-max/reference-to-video',
+    tag: (position) => `Image ${position}`,
+    maxImages: 9,
+    imageField: 'reference_image_urls',
   },
 };
 

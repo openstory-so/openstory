@@ -5,8 +5,8 @@
  * Unlike Kling (whose `elements` field rides on the normal image-to-video
  * endpoint), models in `MOTION_REFERENCE_ENDPOINTS` accept references only on
  * a separate reference-to-video endpoint that has NO start-frame `image_url`.
- * It takes an `image_urls[]` array whose entries are bound to prompt tokens —
- * Seedance's `@Image1…N`, Gemini Omni Flash's `<IMAGE_REF_0>…` — via the
+ * It takes an image list (`image_urls` or `reference_image_urls`) bound to
+ * prompt tokens — Seedance's `@Image1…N`, H3 Max's `Image 1…N` — via the
  * endpoint's `tag` config.
  *
  * Binding follows the vendors' own prompt examples: the FIRST line declares

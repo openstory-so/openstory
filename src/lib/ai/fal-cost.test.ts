@@ -216,6 +216,56 @@ describe('estimateFalCost', () => {
     ).toBe(usd(1.6));
   });
 
+  test('nano-banana-2-lite catalog stub is unknown, not advertised USD', () => {
+    // fal's pricing API lists Lite as "units" × $1 with no typicalUnits.
+    // Multiplying the stub quotes $1/still; substituting advertised $0.04
+    // under-gates ~25× vs a 1-unit bill. Null → gateEstimate $0.10 floor.
+    const live = {
+      'google/nano-banana-2-lite': {
+        unitPrice: micros(1_000_000),
+        unit: 'units',
+      },
+      'google/nano-banana-lite/edit': {
+        unitPrice: micros(1_000_000),
+        unit: 'units',
+      },
+    };
+    expect(
+      estimateFalCost('google/nano-banana-2-lite', { numImages: 1 }, live)
+    ).toBeNull();
+    expect(
+      estimateFalCost('google/nano-banana-lite/edit', { numImages: 1 }, live)
+    ).toBeNull();
+  });
+
+  test('lite observed median beats the catalog stub', () => {
+    const live = {
+      'google/nano-banana-2-lite': {
+        unitPrice: micros(1_000_000),
+        unit: 'units',
+        observed: { medianUnits: 0.05, sampleCount: MIN_OBSERVED_SAMPLES },
+      },
+    };
+    expect(
+      estimateFalCost('google/nano-banana-2-lite', { numImages: 1 }, live)
+    ).toBe(micros(50_000));
+  });
+
+  test('lite catalog stub does not change post-generation billing', async () => {
+    const live = {
+      'google/nano-banana-2-lite': {
+        unitPrice: micros(1_000_000),
+        unit: 'units',
+      },
+    };
+    expect(await falCostFromUnits('google/nano-banana-2-lite', 1, live)).toBe(
+      usd(1)
+    );
+    expect(
+      await falCostFromUnits('google/nano-banana-2-lite', 0.04, live)
+    ).toBe(usd(0.04));
+  });
+
   test('compute-seconds with no unit-count signal is unknown, not a fabricated default', () => {
     // The old DEFAULT_COMPUTE_SECONDS=3 made this read ~$0.001 when Grok
     // really bills ~294 compute-seconds (~$0.05) per image (#1069).

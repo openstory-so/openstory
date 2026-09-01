@@ -9,7 +9,10 @@
  */
 
 import { getFalEndpointIds } from '@/lib/ai/fal-endpoints';
-import { FAL_TYPICAL_UNITS_PER_DEFAULT_CLIP } from '@/lib/ai/fal-typical-units';
+import {
+  FAL_ADVERTISED_CALL_USD,
+  FAL_TYPICAL_UNITS_PER_DEFAULT_CLIP,
+} from '@/lib/ai/fal-typical-units';
 import { usdToMicros } from '@/lib/billing/money';
 import { modelPricing } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
@@ -42,6 +45,12 @@ const units = (unitPriceUsd: number, typicalUnitsPerCall = 1): SeedPrice => ({
 export const LOCAL_FAL_PRICING_SEED: Record<string, SeedPrice> = {
   'fal-ai/nano-banana-2': img(0.08, 1.5),
   'fal-ai/nano-banana-2/edit': img(0.08, 1.5),
+  'google/nano-banana-2-lite': img(
+    FAL_ADVERTISED_CALL_USD['google/nano-banana-2-lite']
+  ),
+  'google/nano-banana-lite/edit': img(
+    FAL_ADVERTISED_CALL_USD['google/nano-banana-lite/edit']
+  ),
   'fal-ai/nano-banana-pro': img(0.14, 1.5),
   'fal-ai/nano-banana-pro/edit': img(0.14, 1.5),
   'openai/gpt-image-2': units(1, 0.22),
@@ -63,6 +72,8 @@ export const LOCAL_FAL_PRICING_SEED: Record<string, SeedPrice> = {
   'fal-ai/hidream-i1-full': img(0.04),
   'bytedance/seedream/v5/pro/text-to-image': img(0.135),
   'bytedance/seedream/v5/pro/edit': img(0.135),
+  'fal-ai/flux-2/flash': { unit: 'megapixels', unitPriceUsd: 0.005 },
+  'fal-ai/flux-2/flash/edit': { unit: 'megapixels', unitPriceUsd: 0.005 },
   'fal-ai/flux-2/turbo': { unit: 'megapixels', unitPriceUsd: 0.01 },
   'fal-ai/flux-2/turbo/edit': { unit: 'megapixels', unitPriceUsd: 0.01 },
   'fal-ai/krea-2/turbo': { unit: 'megapixels', unitPriceUsd: 0.008 },
@@ -111,6 +122,12 @@ export const LOCAL_FAL_PRICING_SEED: Record<string, SeedPrice> = {
     unitPriceUsd: 0.025,
     typicalUnitsPerCall:
       FAL_TYPICAL_UNITS_PER_DEFAULT_CLIP['minimax/h3-max/text-to-video'] ?? 8,
+  },
+  // Advertised $0.08/s of output video (plus ref-token billing after four
+  // 1024² images — we do not invent a per-ref surcharge).
+  'minimax/h3-max/reference-to-video': {
+    unit: 'seconds',
+    unitPriceUsd: 0.08,
   },
   // Seedance 2.5 (sequences + studio). Advertised fal unit is ~$0.014–0.021
   // per 1000 tokens; local seed is a floor until the pricing cron runs.

@@ -209,7 +209,10 @@ export const BaseModelSelector: React.FC<BaseModelSelectorProps> = ({
           <ChevronDown className="ml-2 size-4 shrink-0" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent className="w-[300px] max-h-[400px] overflow-y-auto">
+      <DropdownMenuContent
+        collisionPadding={12}
+        className="w-[min(300px,calc(100vw-2rem))] max-h-[min(24rem,var(--radix-dropdown-menu-content-available-height,24rem))] overflow-y-auto"
+      >
         <div className="flex items-center justify-between px-2 py-1.5">
           <DropdownMenuLabel className="p-0 text-xs">{label}</DropdownMenuLabel>
           {multiSelect && (

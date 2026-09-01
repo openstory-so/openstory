@@ -15,6 +15,8 @@ import {
   constrainImageModels,
   constrainVideoModels,
   DEFAULT_GENERATION_MODE,
+  isTurboImageModel,
+  isTurboVideoModel,
   TURBO_ANALYSIS_MODELS,
   TURBO_AUDIO_MODELS,
   TURBO_DEFAULT_ANALYSIS,
@@ -66,6 +68,15 @@ describe('constrainVideoModels', () => {
       TURBO_DEFAULT_VIDEO,
     ]);
     expect(TURBO_DEFAULT_VIDEO).toBe('minimax_h3_max');
+  });
+});
+
+describe('isTurboImageModel / isTurboVideoModel', () => {
+  it('flags Lite and H3 Max, not GPT Image 2 or Seedance', () => {
+    expect(isTurboImageModel('nano_banana_2_lite')).toBe(true);
+    expect(isTurboImageModel('gpt_image_2')).toBe(false);
+    expect(isTurboVideoModel('minimax_h3_max')).toBe(true);
+    expect(isTurboVideoModel('seedance_v2')).toBe(false);
   });
 });
 

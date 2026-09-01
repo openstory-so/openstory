@@ -1,12 +1,6 @@
 import { AspectRatioIcon } from '@/components/icons/aspect-ratio-icon';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
-import {
   ASPECT_RATIOS,
   aspectRatioSchema,
   type AspectRatio,
@@ -20,9 +14,9 @@ function isValidAspectRatio(value: string): value is AspectRatio {
 type AspectRatioPillsProps = {
   value: AspectRatio;
   onChange: (value: AspectRatio) => void;
-  /** Style-recommended aspect ratio — renders a "Recommended" badge on the match. */
+  /** Style-recommended aspect ratio — caption under the one-line pills. */
   recommendedAspectRatio?: string | null;
-  /** Style name, used in the recommendation tooltip. */
+  /** Style name, used in the recommendation caption. */
   styleName?: string;
 };
 
@@ -32,21 +26,16 @@ export const AspectRatioPills: FC<AspectRatioPillsProps> = ({
   recommendedAspectRatio,
   styleName,
 }) => {
-  const tooltipText = styleName
-    ? `Recommended for ${styleName}`
-    : 'Recommended for this style';
-
-  // A recommendation that doesn't match any rendered pill (deprecated/typo
-  // ratio key in style data) would otherwise vanish with no signal — surface
-  // it inline so the user can still understand the intent.
+  const matchedRecommendation = ASPECT_RATIOS.find(
+    (r) => r.value === recommendedAspectRatio
+  );
   const unmatchedRecommendation =
-    recommendedAspectRatio &&
-    !ASPECT_RATIOS.some((r) => r.value === recommendedAspectRatio)
+    recommendedAspectRatio && !matchedRecommendation
       ? recommendedAspectRatio
       : null;
 
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex min-w-0 flex-col gap-1">
       <ToggleGroup
         type="single"
         value={value}
@@ -57,18 +46,15 @@ export const AspectRatioPills: FC<AspectRatioPillsProps> = ({
         }}
         variant="outline"
         spacing={0}
-        className="justify-start"
+        className="w-full min-w-0 flex-nowrap justify-start"
       >
         {ASPECT_RATIOS.map((ratio) => {
-          const isRecommended =
-            recommendedAspectRatio !== null &&
-            recommendedAspectRatio !== undefined &&
-            recommendedAspectRatio === ratio.value;
-          const item = (
+          const isRecommended = matchedRecommendation?.value === ratio.value;
+          return (
             <ToggleGroupItem
               key={ratio.value}
               value={ratio.value}
-              className="flex items-center gap-2 h-9 px-3"
+              className="flex h-9 min-w-0 flex-1 shrink items-center justify-center gap-2 px-2 sm:px-3"
               aria-label={`${ratio.label} aspect ratio${
                 isRecommended ? ' (recommended)' : ''
               }`}
@@ -79,31 +65,24 @@ export const AspectRatioPills: FC<AspectRatioPillsProps> = ({
                 size="sm"
               />
               <span className="font-mono text-xs">{ratio.label}</span>
-              {isRecommended && (
-                <span className="shrink-0 rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
-                  Recommended
-                </span>
-              )}
             </ToggleGroupItem>
-          );
-          if (!isRecommended) return item;
-          return (
-            <TooltipProvider key={ratio.value}>
-              <Tooltip>
-                <TooltipTrigger asChild>{item}</TooltipTrigger>
-                <TooltipContent>{tooltipText}</TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
           );
         })}
       </ToggleGroup>
-      {unmatchedRecommendation && (
-        <p className="text-[10px] text-muted-foreground">
+      {matchedRecommendation ? (
+        <p className="truncate text-[10px] text-muted-foreground">
+          {styleName
+            ? `${matchedRecommendation.label} recommended for ${styleName}`
+            : `${matchedRecommendation.label} recommended`}
+        </p>
+      ) : null}
+      {unmatchedRecommendation ? (
+        <p className="truncate text-[10px] text-muted-foreground">
           {styleName ? `${styleName} recommends` : 'Recommended'}{' '}
           <span className="font-medium">{unmatchedRecommendation}</span>, which
           isn't available here.
         </p>
-      )}
+      ) : null}
     </div>
   );
 };

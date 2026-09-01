@@ -74,17 +74,31 @@ type StudioReferenceEndpoint = {
   /** How the prompt names still N (1-based). */
   imageTag: (n: number) => string;
   maxImages: number;
-  /** Bound in the prompt as `@Video1`… (Seedance: MP4/MOV, 2–15s combined, ≤720p). */
+  /** Bound in the prompt as `@Video1`… unless `videoTag` overrides. */
   maxVideos: number;
-  /** Bound in the prompt as `@Audio1`… (Seedance: MP3/WAV, ≤15s combined). */
+  /** Bound in the prompt as `@Audio1`… unless `audioTag` overrides. */
   maxAudio: number;
+  /**
+   * Combined stills + clips + audio cap. Fal H3 Max r2v rejects more than
+   * 12 files even when each list is within its own max (9/3/3 = 15).
+   */
+  maxCombined?: number;
+  /** Request field for reference clips. Defaults to `video_urls`. */
+  videoField?: 'video_urls' | 'reference_video_urls';
+  /** Request field for reference audio. Defaults to `audio_urls`. */
+  audioField?: 'audio_urls' | 'reference_audio_urls';
+  videoTag?: (n: number) => string;
+  audioTag?: (n: number) => string;
   /** Shown when the reference sibling is a different Kling/Grok tier. */
   note?: string;
 };
 
 const atImage = (n: number): string => `@Image${n}`;
+const atVideo = (n: number): string => `@Video${n}`;
+const atAudio = (n: number): string => `@Audio${n}`;
+const h3Image = (n: number): string => `Image ${n}`;
 
-/** Reference-to-video siblings. LTX, Hailuo and H3 Max have none. */
+/** Reference-to-video siblings. LTX and Hailuo have none. */
 const STUDIO_REFERENCE_ENDPOINTS: Partial<
   Record<ImageToVideoModel, StudioReferenceEndpoint>
 > = {
@@ -131,6 +145,21 @@ const STUDIO_REFERENCE_ENDPOINTS: Partial<
     maxVideos: 0,
     maxAudio: 0,
   },
+  // Per-type 9/3/3; fal combined cap is 12 files. Filling every list (15)
+  // 422s — `maxCombined` is the real ceiling.
+  minimax_h3_max: {
+    endpointId: 'minimax/h3-max/reference-to-video',
+    imageField: 'reference_image_urls',
+    imageTag: h3Image,
+    videoField: 'reference_video_urls',
+    audioField: 'reference_audio_urls',
+    videoTag: (n) => `Video ${n}`,
+    audioTag: (n) => `Audio ${n}`,
+    maxImages: 9,
+    maxVideos: 3,
+    maxAudio: 3,
+    maxCombined: 12,
+  },
 };
 
 export function studioReferenceEndpoint(
@@ -163,6 +192,11 @@ export function studioAudioLimit(model: ImageToVideoModel): number {
   return STUDIO_REFERENCE_ENDPOINTS[model]?.maxAudio ?? 0;
 }
 
+/** Combined stills+clips+audio cap, or null when the endpoint has none. */
+export function studioCombinedRefCap(model: ImageToVideoModel): number | null {
+  return STUDIO_REFERENCE_ENDPOINTS[model]?.maxCombined ?? null;
+}
+
 export function studioSupportsEndFrame(model: ImageToVideoModel): boolean {
   return model in STUDIO_END_FRAME_MODELS;
 }
@@ -185,15 +219,18 @@ export function tagStudioReferences(
   prompt: string,
   model?: ImageToVideoModel
 ): string {
-  const imageTag = model
-    ? (STUDIO_REFERENCE_ENDPOINTS[model]?.imageTag ?? atImage)
-    : atImage;
+  const reference = model ? STUDIO_REFERENCE_ENDPOINTS[model] : undefined;
+  const imageTag = reference?.imageTag ?? atImage;
+  const videoTag = reference?.videoTag ?? atVideo;
+  const audioTag = reference?.audioTag ?? atAudio;
   return prompt.replace(
     /(^|[^A-Za-z0-9_@-])(Image|Video|Audio)(\d+)(?=[^A-Za-z0-9_-]|$)/g,
-    (_match, prefix: string, kind: string, digits: string) =>
-      kind === 'Image'
-        ? `${prefix}${imageTag(Number(digits))}`
-        : `${prefix}@${kind}${digits}`
+    (_match, prefix: string, kind: string, digits: string) => {
+      const n = Number(digits);
+      if (kind === 'Image') return `${prefix}${imageTag(n)}`;
+      if (kind === 'Video') return `${prefix}${videoTag(n)}`;
+      return `${prefix}${audioTag(n)}`;
+    }
   );
 }
 
@@ -222,6 +259,7 @@ const STUDIO_VIDEO_RESOLUTION: Partial<Record<ImageToVideoModel, string>> = {
   veo3_1: '1080p',
   seedance_v2: '720p',
   seedance_v2_5: '720p',
+  minimax_h3_max: '768P',
 };
 
 export function studioVideoEndpointId(
@@ -338,6 +376,10 @@ export function buildStudioVideoInput(
 
   const resolution = STUDIO_VIDEO_RESOLUTION[model];
   if (resolution) modelOptions.resolution = resolution;
+
+  if (model === 'minimax_h3_max') {
+    modelOptions.prompt_expansion_mode = 'balanced';
+  }
 
   return { prompt, duration, modelOptions };
 }

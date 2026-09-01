@@ -349,6 +349,62 @@ describe('buildModelInput', () => {
     }
   );
 
+  describe('buildMotionRequest reference-to-video (minimax_h3_max)', () => {
+    const referenceImages = [
+      {
+        referenceImageUrl: 'https://example.com/jack-sheet.png',
+        description: 'Jack - tall man with a scar',
+        role: 'character' as const,
+      },
+      {
+        referenceImageUrl: 'https://example.com/logo.png',
+        description: 'ACME_LOGO - red circular badge',
+        role: 'element' as const,
+      },
+    ];
+
+    const buildRef = (overrides: Partial<GenerateMotionOptions> = {}) => {
+      const { endpointId, input } = buildMotionRequest(
+        { ...baseOptions, referenceImages, ...overrides },
+        'minimax_h3_max'
+      );
+      if (!('reference_image_urls' in input)) {
+        throw new Error('expected H3 Max reference-to-video input');
+      }
+      return { endpointId, input };
+    };
+
+    it('routes to the r2v sibling and puts stills in reference_image_urls', () => {
+      const { endpointId, input } = buildRef();
+      expect(endpointId).toBe('minimax/h3-max/reference-to-video');
+      expect(input).not.toHaveProperty('image_url');
+      expect(input).not.toHaveProperty('image_urls');
+      expect(input.reference_image_urls).toEqual([
+        baseOptions.imageUrl,
+        'https://example.com/jack-sheet.png',
+        'https://example.com/logo.png',
+      ]);
+    });
+
+    it('declares the still as Image 1 and legends unmentioned refs', () => {
+      const { input } = buildRef();
+      expect(
+        typeof input.prompt === 'string' &&
+          input.prompt.startsWith('Use Image 1 as the starting frame.')
+      ).toBe(true);
+      expect(input.prompt).toContain('Image 2: Jack - tall man with a scar');
+      expect(input.prompt).toContain('Image 3: ACME_LOGO - red circular badge');
+    });
+
+    it('keeps 768P and balanced prompt expansion', () => {
+      const { input } = buildRef();
+      expect(input).toMatchObject({
+        resolution: '768P',
+        prompt_expansion_mode: 'balanced',
+      });
+    });
+  });
+
   describe('common behavior', () => {
     it('always includes prompt', () => {
       for (const key of Object.keys(IMAGE_TO_VIDEO_MODELS)) {

@@ -192,6 +192,7 @@ const BOTH = flagged('prompt', 'image_url');
 const job = () => ({
   jobId: 'job-1',
   modelKey: MODEL,
+  endpointId: IMAGE_TO_VIDEO_MODELS[MODEL].id,
   via: 'fal' as const,
   submittedAt: Date.now(),
   usedOwnKey: false,

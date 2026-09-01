@@ -85,6 +85,20 @@ describe('imageUrlsFromFalInput', () => {
     ]);
   });
 
+  it('reads reference_image_urls when image_urls is absent', () => {
+    expect(
+      imageUrlsFromFalInput({
+        reference_image_urls: [
+          'https://cdn.example/still.png',
+          'https://cdn.example/cast.png',
+        ],
+      })
+    ).toEqual([
+      'https://cdn.example/still.png',
+      'https://cdn.example/cast.png',
+    ]);
+  });
+
   it('falls back to image_url plus Kling elements', () => {
     expect(
       imageUrlsFromFalInput({

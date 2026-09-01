@@ -11,8 +11,9 @@
  * our observed median (`MIN_OBSERVED_SAMPLES`+ generations), then fal's
  * historical estimate, then a billed-units fallback for endpoints whose
  * "seconds" unit is not 1:1 with duration (H3 Max, #1382), then **null**
- * ("unknown") — never a fabricated default; a fixed one made Grok Imagine
- * read ~98× cheap. Callers gate conservatively / display nothing for null.
+ * ("unknown") — never a fabricated compute-seconds default or an advertised
+ * USD against a $1 catalog stub (Lite). Callers gate conservatively /
+ * display nothing for null.
  */
 
 // Type-only static import + dynamic import at the call site: a static value
@@ -281,14 +282,18 @@ export function estimateFalCost(
       // units per image on a $1 unit), and compute-seconds models (~10 to
       // ~294 s/image across models — unknowable from request params).
       const unitsPerCall = knownUnitsPerCall(pricing, endpointId);
-      if (unitsPerCall == null) {
-        logger.error(
-          `No unit-count signal for ${endpointId} (unit "${pricing.unit}") — ` +
-            'estimate unknown (returns once a generation records unitsBilled)'
-        );
-        return null;
+      if (unitsPerCall != null) {
+        return multiplyMicros(pricing.unitPrice, unitsPerCall * numImages);
       }
-      return multiplyMicros(pricing.unitPrice, unitsPerCall * numImages);
+      // Catalog stub (Lite: "units" × $1, no typical). Do not multiply the
+      // stub price and do not substitute advertised USD — billing still uses
+      // unitsBilled × live unitPrice, and a $0.04 gate against a $1 unit
+      // under-charges ~25×. Null → gateEstimate $0.10 floor (#1069).
+      logger.error(
+        `No unit-count signal for ${endpointId} (unit "${pricing.unit}") — ` +
+          'estimate unknown (returns once a generation records unitsBilled)'
+      );
+      return null;
     }
 
     case 'megapixels': {

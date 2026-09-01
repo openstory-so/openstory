@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import {
   countScriptSceneHeadings,
+  estimateMotionSeconds,
   estimateRemainingSeconds,
   estimateSceneCount,
   estimateSceneCountFromDuration,
@@ -103,12 +104,9 @@ describe('estimateSceneCountFromDuration', () => {
 });
 
 describe('estimateTotalSeconds', () => {
-  test('returns reasonable total for any scene count', () => {
-    const total = estimateTotalSeconds(6);
-    // All 5 phases (including optional motion/music), ~13min against real
-    // providers (calibrated on the 2026-08-20 11-scene record run)
-    expect(total).toBeGreaterThan(600);
-    expect(total).toBeLessThan(1000);
+  test('quality GPT Image 2 + Seedance is one parallel video wave', () => {
+    // 109+18+126+143+288 from PostHog p90s (30d ending 2026-09-01)
+    expect(estimateTotalSeconds(6)).toBe(684);
   });
 
   test('uses default scene count for 0', () => {
@@ -121,6 +119,35 @@ describe('estimateTotalSeconds', () => {
 
   test('ignores estimatedSceneCount when sceneCount > 0', () => {
     expect(estimateTotalSeconds(5, 10)).toBe(estimateTotalSeconds(5));
+  });
+
+  test('turbo Lite + H3 Max is ~2.5 min, not a Seedance-class 11 min', () => {
+    const quality = estimateTotalSeconds(5);
+    const turbo = estimateTotalSeconds(5, undefined, undefined, {
+      imageModel: 'nano_banana_2_lite',
+      videoModel: 'minimax_h3_max',
+    });
+    expect(quality).toBe(674);
+    expect(turbo).toBe(151);
+    expect(turbo).toBeLessThan(quality / 2);
+  });
+});
+
+describe('estimateMotionSeconds', () => {
+  test('Seedance 5 clips is one p90 wave, not the old 210s floor', () => {
+    expect(estimateMotionSeconds('seedance_v2', 5)).toBe(288);
+  });
+
+  test('Seedance 12 clips adds a second p50 wave', () => {
+    expect(estimateMotionSeconds('seedance_v2', 12)).toBe(496);
+  });
+
+  test('H3 Max 5 clips is ~10s p90, not a 3.5 min floor', () => {
+    expect(estimateMotionSeconds('minimax_h3_max', 5)).toBe(10);
+  });
+
+  test('Hailuo stays Seedance-class even though it is in the turbo picker', () => {
+    expect(estimateMotionSeconds('minimax_hailuo_02', 5)).toBe(228);
   });
 });
 

@@ -1,5 +1,5 @@
 /**
- * Fixed time estimates for generation phases based on scene count.
+ * Time estimates for generation phases based on scene count + selected models.
  * Used to show a countdown timer in the generation progress banner.
  *
  * Scene count also feeds pre-flight credit estimates (#1140). Prefer counting
@@ -8,19 +8,64 @@
  * badly undercounts (e.g. 29 labeled scenes → ~8 by words → ~⅓ the real cost).
  */
 
-// Calibrated against a real-provider 11-scene run (2026-08-20, grok-4.6
-// analysis + seedance_v2 motion): phases measured 151s / 25s / 95s / 130s /
-// 328–487s. Phase 1's scene-split output scales with scene count (~13s/scene
-// observed); phases 3–4 are parallel per scene so only their slowest call
-// paces them; phase 5's per-scene term tracks the completion tail widening as
-// the parallel clip batch grows.
-const PHASE_BUDGETS = [
-  { base: 30, perScene: 12 }, // 1. Script analysis (scene-split output scales with scenes)
-  { base: 20, perScene: 1 }, // 2. Casting (LLM input scales with scenes)
-  { base: 100, perScene: 0 }, // 3. Sheets + visual prompts (all parallel per scene)
-  { base: 135, perScene: 0 }, // 4. Images + motion/music prompts (images, then vision-conditioned motion prompts)
-  { base: 330, perScene: 15 }, // 5. Motion/music generation (optional; parallel, tail grows with batch size)
-] as const;
+import { isTurboImageModel } from '@/lib/ai/generation-mode';
+import {
+  ANALYSIS_FAST,
+  ANALYSIS_QUALITY,
+  CASTING_FAST,
+  CASTING_QUALITY,
+  FAL_MOTION_CONCURRENCY,
+  MOTION_PROMPT_P90_SECONDS,
+  VISUAL_PROMPT_P90_SECONDS,
+  audioWallClock,
+  imageWallClock,
+  videoWallClock,
+} from '@/lib/generation/measured-latency';
+
+type PhaseBudget = { base: number; perScene: number };
+
+export type TimeEstimateModels = {
+  imageModel?: string | null;
+  videoModel?: string | null;
+  musicModel?: string | null;
+};
+
+/**
+ * Parallel fal waves: one wave waits p90 of a single clip; each extra wave
+ * adds another p50. Concurrency 6 is the fit to Seedance 11-scene wall
+ * clocks (328–487s) vs p90 288s + p50 208s.
+ */
+export function estimateMotionSeconds(
+  videoModel: string | null | undefined,
+  shotCount: number
+): number {
+  const { p50, p90 } = videoWallClock(videoModel);
+  const n = Math.max(1, shotCount);
+  const waves = Math.ceil(n / FAL_MOTION_CONCURRENCY);
+  return Math.round(p90 + Math.max(0, waves - 1) * p50);
+}
+
+export function estimateMusicSeconds(musicModel?: string | null): number {
+  return audioWallClock(musicModel).p90;
+}
+
+function phaseBudgets(models?: TimeEstimateModels): readonly PhaseBudget[] {
+  const image = imageWallClock(models?.imageModel);
+  const fastAnalysis = Boolean(
+    models?.imageModel && isTurboImageModel(models.imageModel)
+  );
+  const analysis = fastAnalysis ? ANALYSIS_FAST : ANALYSIS_QUALITY;
+  const casting = fastAnalysis ? CASTING_FAST : CASTING_QUALITY;
+  const sheets = Math.max(VISUAL_PROMPT_P90_SECONDS, image.p90);
+  const stillsThenMotionPrompts = image.p90 + MOTION_PROMPT_P90_SECONDS;
+
+  return [
+    analysis,
+    casting,
+    { base: sheets, perScene: 0 },
+    { base: stillsThenMotionPrompts, perScene: 0 },
+  ];
+}
 
 const WORDS_PER_SCENE = 120;
 const MIN_SCENES = 1;
@@ -114,8 +159,28 @@ export function estimateSceneCount(
   return fromWords;
 }
 
-function phaseBudget(phaseIndex: number, sceneCount: number): number {
-  const budget = PHASE_BUDGETS[phaseIndex];
+const MOTION_PHASE_INDEX = 4;
+const PIPELINE_PHASE_COUNT = 5;
+
+function motionMusicSeconds(
+  sceneCount: number,
+  models?: TimeEstimateModels
+): number {
+  return Math.max(
+    estimateMotionSeconds(models?.videoModel, sceneCount),
+    estimateMusicSeconds(models?.musicModel)
+  );
+}
+
+function phaseBudget(
+  phaseIndex: number,
+  sceneCount: number,
+  models?: TimeEstimateModels
+): number {
+  if (phaseIndex === MOTION_PHASE_INDEX) {
+    return motionMusicSeconds(sceneCount, models);
+  }
+  const budget = phaseBudgets(models)[phaseIndex];
   if (!budget) return 0;
   return budget.base + budget.perScene * sceneCount;
 }
@@ -123,15 +188,15 @@ function phaseBudget(phaseIndex: number, sceneCount: number): number {
 export function estimateTotalSeconds(
   sceneCount: number,
   estimatedSceneCount?: number,
-  phaseCount: number = PHASE_BUDGETS.length
+  phaseCount?: number,
+  models?: TimeEstimateModels
 ): number {
+  const phases = phaseCount ?? PIPELINE_PHASE_COUNT;
   const fallback = estimatedSceneCount ?? DEFAULT_SCENE_COUNT;
   const scenes = sceneCount > 0 ? sceneCount : fallback;
   let total = 0;
-  for (let i = 0; i < Math.min(phaseCount, PHASE_BUDGETS.length); i++) {
-    const b = PHASE_BUDGETS[i];
-    if (!b) continue;
-    total += b.base + b.perScene * scenes;
+  for (let i = 0; i < phases; i++) {
+    total += phaseBudget(i, scenes, models);
   }
   return total;
 }
@@ -141,16 +206,23 @@ export function estimateRemainingSeconds(opts: {
   completedPhases: number[];
   elapsedSeconds: number;
   estimatedSceneCount?: number;
+  imageModel?: string | null;
+  videoModel?: string | null;
+  musicModel?: string | null;
 }): number {
+  const models = {
+    imageModel: opts.imageModel,
+    videoModel: opts.videoModel,
+    musicModel: opts.musicModel,
+  };
   const fallback = opts.estimatedSceneCount ?? DEFAULT_SCENE_COUNT;
   const scenes = opts.sceneCount > 0 ? opts.sceneCount : fallback;
   const completedSet = new Set(opts.completedPhases);
 
   let remaining = 0;
-  for (let i = 0; i < PHASE_BUDGETS.length; i++) {
-    const phaseNumber = i + 1;
-    if (!completedSet.has(phaseNumber)) {
-      remaining += phaseBudget(i, scenes);
+  for (let i = 0; i < PIPELINE_PHASE_COUNT; i++) {
+    if (!completedSet.has(i + 1)) {
+      remaining += phaseBudget(i, scenes, models);
     }
   }
 

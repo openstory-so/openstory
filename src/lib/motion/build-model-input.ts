@@ -26,6 +26,8 @@ const QUALITY_OVERRIDES: Partial<
   veo3_1: { resolution: '1080p' },
   seedance_v2: { resolution: '720p' },
   seedance_v2_5: { resolution: '720p' },
+  // Required on i2v and r2v; schema default is the same value.
+  minimax_h3_max: { prompt_expansion_mode: 'balanced' },
 };
 
 /**
@@ -121,7 +123,8 @@ type ReferenceVideoOutput =
     >
   | z.output<
       (typeof MOTION_TRANSFORMS)['bytedance/seedance-2.0/enterprise/v2/reference-to-video']
-    >;
+    >
+  | z.output<(typeof MOTION_TRANSFORMS)['minimax/h3-max/reference-to-video']>;
 
 /**
  * Resolve the endpoint and build the exact fal request body for a motion run
@@ -131,9 +134,9 @@ type ReferenceVideoOutput =
  * fetchable ones first.
  *
  * When `resolveMotionEndpoint` routes to a dedicated reference-to-video
- * endpoint (Seedance with cast/element refs), the still goes
- * first in `image_urls[]` with the sheets after it — there is no separate
- * start-frame `image_url` on that endpoint.
+ * endpoint (Seedance / H3 Max with cast/element refs), the still goes
+ * first in the image-list field with the sheets after it — there is no
+ * separate start-frame `image_url` on that endpoint.
  */
 export function buildMotionRequest<T extends ImageToVideoModel>(
   options: GenerateMotionOptions,
@@ -173,12 +176,14 @@ export function buildMotionRequest<T extends ImageToVideoModel>(
     modelConfig.maxPromptLength
   );
 
+  const imageField = endpoint.referenceConfig.imageField ?? 'image_urls';
+
   // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- transform is the reference-to-video schema
   const input = transform.parse({
     prompt,
     duration: options.duration,
     aspectRatio: options.aspectRatio,
-    image_urls: imageUrls,
+    [imageField]: imageUrls,
     ...QUALITY_OVERRIDES[modelKey],
     ...(options.generateAudio !== undefined && {
       generate_audio: options.generateAudio,

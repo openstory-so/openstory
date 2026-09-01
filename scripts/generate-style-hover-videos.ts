@@ -472,7 +472,8 @@ async function generateClip(
       job.jobId,
       job.modelKey,
       undefined,
-      job.via
+      job.via,
+      job.endpointId
     );
     if (poll.status === 'completed') {
       if (poll.url) return poll.url;

@@ -80,9 +80,10 @@ The AI model for generating scene images. You can select **multiple image models
 
 | Model                      | Vendor            | Notes                                                     |
 | -------------------------- | ----------------- | --------------------------------------------------------- |
-| Nano Banana 2              | Google            | Fast generation and editing (default)                     |
+| Nano Banana 2 Lite         | Google            | Turbo default — fastest Google tier, references, fixed 1K |
+| GPT Image 2                | OpenAI            | Quality default — text rendering, UI fidelity, up to 4K   |
+| Nano Banana 2              | Google            | Fast generation and editing                               |
 | Nano Banana Pro            | Google            | Enhanced realism and typography                           |
-| Nano Banana 2 Lite         | Google            | Fastest Google tier — ~4s, references, fixed 1K           |
 | Grok Imagine Image 2.0     | SpaceXAI          | Newest Imagine image model, 1K/2K, edit up to 3 refs      |
 | Grok Imagine Image Quality | SpaceXAI          | Quality Mode — higher fidelity, stronger text             |
 | FLUX.2 Max                 | Black Forest Labs | Exceptional realism and consistency                       |
@@ -99,27 +100,25 @@ The AI model for generating scene images. You can select **multiple image models
 
 The AI model for image-to-video animation. Toggle **Auto-generate motion** to automatically create video clips for each scene after images are generated.
 
-| Model              | Vendor     | Est. Time                    |
-| ------------------ | ---------- | ---------------------------- |
-| LTX 2.3 Pro        | Lightricks | ~15s (open weight)           |
-| Veo 3.1            | Google     | ~25s                         |
-| Kling v3 Pro       | Kling      | ~20s                         |
-| Grok Imagine Video | SpaceXAI   | ~20s                         |
-| MiniMax Hailuo 02  | MiniMax    | ~15s                         |
-| Seedance 2.0       | ByteDance  | ~20s (default; native audio) |
+| Model                  | Vendor     | Est. Time                          |
+| ---------------------- | ---------- | ---------------------------------- |
+| MiniMax H3 Max         | MiniMax    | ~10s (Turbo default; native audio) |
+| Seedance 2.0           | ByteDance  | ~3.5 min (Quality default; audio)  |
+| Grok Imagine Video 1.5 | SpaceXAI   | ~30s                               |
+| LTX 2.3 Pro            | Lightricks | ~2 min (open weight)               |
+| Veo 3.1                | Google     | ~2.5 min                           |
+| MiniMax Hailuo 2.3     | MiniMax    | ~3 min                             |
+| Kling v3 Pro           | Kling      | ~5 min                             |
 
 ### Music Model
 
 Toggle **Auto-generate music** to automatically create a soundtrack after scene generation. Choose from:
 
-| Model            | Vendor     | Max Duration | Type                    |
-| ---------------- | ---------- | ------------ | ----------------------- |
-| ElevenLabs Music | ElevenLabs | 600s         | Music (default)         |
-| MiniMax Music v2 | MiniMax    | 300s         | Music (supports lyrics) |
-| ACE-Step 1.5     | ACE Studio | 240s         | Music (open weight)     |
-| Lyria 2          | Google     | 30s          | Music                   |
-| MMAudio V2       | MMAudio    | 8s           | SFX (video-to-audio)    |
-| ElevenLabs SFX   | ElevenLabs | 22s          | Sound Effects           |
+| Model            | Vendor     | Max Duration | Type            |
+| ---------------- | ---------- | ------------ | --------------- |
+| ElevenLabs Music | ElevenLabs | 600s         | Music (default) |
+| ACE-Step 1.5     | ACE Studio | 600s         | Music           |
+| ACE-Step         | ACE Studio | 240s         | Music           |
 
 ## Pre-Generation Options
 

@@ -7,6 +7,7 @@ import {
   buildStudioVideoInput,
   renumberStudioReferences,
   snapStudioVideoDuration,
+  studioCombinedRefCap,
   studioSupportsEndFrame,
   studioSupportsMode,
   studioVideoEndpointId,
@@ -42,6 +43,7 @@ describe('studioVideoEndpointId', () => {
         'xai/grok-imagine-video/v1.5/reference-to-video',
         'fal-ai/veo3.1/reference-to-video',
         'fal-ai/kling-video/o3/pro/reference-to-video',
+        'minimax/h3-max/reference-to-video',
       ])
     );
   });
@@ -130,6 +132,17 @@ describe('buildStudioVideoInput', () => {
     expect(modelOptions).not.toHaveProperty('generate_audio');
   });
 
+  it('sends H3 Max duration, 768P, and balanced prompt expansion', () => {
+    expect(
+      buildStudioVideoInput({ ...base, model: 'minimax_h3_max' }).modelOptions
+    ).toMatchObject({
+      duration: 5,
+      aspect_ratio: '16:9',
+      resolution: '768P',
+      prompt_expansion_mode: 'balanced',
+    });
+  });
+
   it('sends Hailuo prompt only — that endpoint has no duration or aspect', () => {
     const { prompt, modelOptions } = buildStudioVideoInput({
       ...base,
@@ -190,6 +203,12 @@ describe('reference tags', () => {
     expect(tagStudioReferences('Image2 at dusk', 'veo3_1')).toBe(
       'reference image 2 at dusk'
     );
+    expect(
+      tagStudioReferences(
+        'Image1 walks with Video1 under Audio1',
+        'minimax_h3_max'
+      )
+    ).toBe('Image 1 walks with Video 1 under Audio 1');
   });
 
   it('drops the removed token and shifts later ones down', () => {
@@ -220,6 +239,12 @@ describe('studioVideoEndpointId modes', () => {
     expect(studioVideoEndpointId('grok_imagine_video_1_5', 'reference')).toBe(
       'xai/grok-imagine-video/v1.5/reference-to-video'
     );
+    expect(studioVideoEndpointId('minimax_h3_max', 'reference')).toBe(
+      'minimax/h3-max/reference-to-video'
+    );
+    expect(studioCombinedRefCap('minimax_h3_max')).toBe(12);
+    expect(studioCombinedRefCap('seedance_v2')).toBeNull();
+    expect(studioSupportsMode('minimax_h3_max', 'reference')).toBe(true);
     expect(() => studioVideoEndpointId('ltx_2_3_pro', 'reference')).toThrow();
     expect(studioSupportsMode('ltx_2_3_pro', 'reference')).toBe(false);
     expect(studioSupportsMode('minimax_hailuo_02', 'reference')).toBe(false);

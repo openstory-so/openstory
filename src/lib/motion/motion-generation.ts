@@ -58,7 +58,7 @@ import { falVideo } from '@tanstack/ai-fal';
 import { createGrokVideo } from '@tanstack/ai-grok';
 import { buildBytePlusVideoRequest } from './build-byteplus-video-request';
 import { buildGrokVideoRequest } from './build-grok-video-request';
-import { buildModelInput, buildMotionRequest } from './build-model-input';
+import { buildMotionRequest } from './build-model-input';
 import { resolveMotionEndpoint } from './resolve-motion-endpoint';
 
 export type GenerateMotionOptions = {
@@ -77,9 +77,10 @@ export type GenerateMotionOptions = {
   /**
    * Character + element reference images for identity consistency across the
    * clip (#873). Emitted when `resolveMotionEndpoint` says they go on the
-   * wire: Kling `elements`, Seedance `image_urls[]`, and Grok Imagine 1.5
-   * native `metadata.role: 'reference' | 'character'` prompt parts. Other
-   * models substitute tokens with descriptions instead.
+   * wire: Kling `elements`, Seedance `image_urls[]`, H3 Max
+   * `reference_image_urls[]`, and Grok Imagine 1.5 native
+   * `metadata.role: 'reference' | 'character'` prompt parts. Other models
+   * substitute tokens with descriptions instead.
    */
   referenceImages?: ReferenceImageDescription[];
 };
@@ -87,6 +88,13 @@ export type GenerateMotionOptions = {
 export type MotionJobSubmission = {
   jobId: string;
   modelKey: ImageToVideoModel;
+  /**
+   * Endpoint this job was submitted to. H3 Max with refs hits
+   * `minimax/h3-max/reference-to-video`, not the catalog i2v id — polling
+   * MUST use this stamp. Missing on in-flight runs from before the field:
+   * poll falls back to `IMAGE_TO_VIDEO_MODELS[model].id`.
+   */
+  endpointId: string;
   /**
    * Pricing Via — which API this job was submitted to. Job ids are via-scoped,
    * so polling MUST go back to the same via. Re-deciding from live keys would
@@ -146,7 +154,7 @@ async function resolveOptionalFalKey(
 async function submitFalMotionJob(
   options: GenerateMotionOptions,
   modelKey: ImageToVideoModel
-): Promise<{ jobId: string; usedOwnKey: boolean }> {
+): Promise<{ jobId: string; usedOwnKey: boolean; endpointId: string }> {
   const hasReferenceImages = (options.referenceImages?.length ?? 0) > 0;
   const endpoint = resolveMotionEndpoint(modelKey, hasReferenceImages, 'fal');
   const key = await resolveFalMotionKey(options.scopedDb);
@@ -198,7 +206,11 @@ async function submitFalMotionJob(
     timeout: FAL_REQUEST_TIMEOUT_MS,
     debug: false,
   });
-  return { jobId: job.jobId, usedOwnKey: key.source === 'team' };
+  return {
+    jobId: job.jobId,
+    usedOwnKey: key.source === 'team',
+    endpointId: endpoint.endpointId,
+  };
 }
 
 async function fallbackBytePlusPortraitFilterToFal(
@@ -206,7 +218,7 @@ async function fallbackBytePlusPortraitFilterToFal(
   operation: string,
   options: GenerateMotionOptions,
   modelKey: ImageToVideoModel
-): Promise<{ jobId: string; usedOwnKey: boolean }> {
+): Promise<{ jobId: string; usedOwnKey: boolean; endpointId: string }> {
   if (!isBytePlusPortraitFilterError(error)) throw error;
   const falKey = await resolveOptionalFalKey(options.scopedDb);
   if (!falKey) {
@@ -253,6 +265,7 @@ export async function submitMotionJob(
   let jobId: string;
   let usedOwnKey: boolean;
   let stampedVia: MediaVia = endpoint.via;
+  let stampedEndpointId = endpoint.endpointId;
 
   switch (endpoint.via) {
     case 'xai': {
@@ -289,6 +302,7 @@ export async function submitMotionJob(
       const fal = await submitFalMotionJob(options, modelKey);
       jobId = fal.jobId;
       usedOwnKey = fal.usedOwnKey;
+      stampedEndpointId = fal.endpointId;
       break;
     }
     case 'byteplus': {
@@ -352,6 +366,7 @@ export async function submitMotionJob(
         jobId = fal.jobId;
         usedOwnKey = fal.usedOwnKey;
         stampedVia = 'fal';
+        stampedEndpointId = fal.endpointId;
       }
       break;
     }
@@ -360,6 +375,7 @@ export async function submitMotionJob(
   return {
     jobId,
     modelKey,
+    endpointId: stampedEndpointId,
     via: stampedVia,
     usedOwnKey,
     submittedAt: Date.now(),
@@ -379,10 +395,12 @@ export async function pollMotionJob(
   jobId: string,
   modelKey: ImageToVideoModel,
   scopedDb?: CredentialScopedDb,
-  viaStamp: string = 'fal'
+  viaStamp: string = 'fal',
+  endpointId?: string
 ) {
   const via = assertMediaVia(viaStamp);
   const modelConfig = IMAGE_TO_VIDEO_MODELS[modelKey];
+  const falEndpointId = endpointId ?? modelConfig.id;
 
   switch (via) {
     case 'xai': {
@@ -403,7 +421,7 @@ export async function pollMotionJob(
       // wall-clock across batches; this only prevents one hung HTTP call from
       // freezing a poll step forever (#826).
       return await getVideoJobStatus({
-        adapter: falVideo(modelConfig.id, {
+        adapter: falVideo(falEndpointId, {
           apiKey: key.key,
           fetch: createDeadlineFetch(
             FAL_REQUEST_TIMEOUT_MS,
@@ -524,15 +542,14 @@ export function calculateMotionMetadata(
     };
   }
 
-  const providerInput = buildModelInput(options, modelConfig, modelKey);
+  const { endpointId, input } = buildMotionRequest(options, modelKey);
   const cost = estimateFalCost(
-    modelConfig.id,
+    endpointId,
     {
       durationSeconds: validatedDuration,
       resolution:
-        'resolution' in providerInput &&
-        typeof providerInput.resolution === 'string'
-          ? providerInput.resolution
+        'resolution' in input && typeof input.resolution === 'string'
+          ? input.resolution
           : undefined,
     },
     pricing
@@ -541,7 +558,7 @@ export function calculateMotionMetadata(
   return {
     cost,
     duration: validatedDuration,
-    model: modelConfig.id,
+    model: endpointId,
     vendor: modelConfig.vendor,
   };
 }

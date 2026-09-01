@@ -180,8 +180,12 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
           </span>
         )}
       </div>
-      <PopoverContent className="w-auto p-4" align="start">
-        <div className="flex flex-col gap-4">
+      <PopoverContent
+        align="start"
+        collisionPadding={12}
+        className="w-[min(22rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] overflow-x-hidden p-4"
+      >
+        <div className="flex min-w-0 flex-col gap-4">
           {turbo ? (
             <p className="text-xs text-muted-foreground">
               Turbo — fastest models only. Switch to Quality next to Generate

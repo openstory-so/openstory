@@ -17,6 +17,9 @@ type GenerationProgressBannerProps = {
   script?: string;
   /** When set, used instead of the banner's own elapsed-based remaining. */
   remainingSeconds?: number;
+  imageModel?: string | null;
+  videoModel?: string | null;
+  musicModel?: string | null;
   /** Show the ready-email promise in the leave hint. */
   willEmail?: boolean;
 };
@@ -29,6 +32,9 @@ export const GenerationProgressBanner: React.FC<
   startedAt,
   script,
   remainingSeconds,
+  imageModel,
+  videoModel,
+  musicModel,
   willEmail = false,
 }) => {
   const [isOpen, setIsOpen] = useState(true);
@@ -57,7 +63,8 @@ export const GenerationProgressBanner: React.FC<
       estimateTotalSeconds(
         sceneCount,
         estimatedSceneCount,
-        generationState.phases.length
+        generationState.phases.length,
+        { imageModel, videoModel, musicModel }
       ) - elapsedSeconds
     );
 

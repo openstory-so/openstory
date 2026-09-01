@@ -8,6 +8,7 @@ import { motionTransform } from './motion-transform';
 import {
   zGrokImagineVideoV15ImageToVideoInput,
   zH3MaxImageToVideoInput,
+  zH3MaxReferenceToVideoInput,
   zKlingVideoV3ProImageToVideoInput,
   zLtx23ImageToVideoInput,
   zMinimaxHailuo23ProImageToVideoInput,
@@ -21,6 +22,7 @@ import {
 import {
   GrokImagineVideoV15ImageToVideoInputSchema,
   H3MaxImageToVideoInputSchema,
+  H3MaxReferenceToVideoInputSchema,
   KlingVideoV3ProImageToVideoInputSchema,
   Ltx23ImageToVideoInputSchema,
   MinimaxHailuo23ProImageToVideoInputSchema,
@@ -34,6 +36,7 @@ import {
 export type MotionJSONSchema =
   | typeof GrokImagineVideoV15ImageToVideoInputSchema
   | typeof H3MaxImageToVideoInputSchema
+  | typeof H3MaxReferenceToVideoInputSchema
   | typeof KlingVideoV3ProImageToVideoInputSchema
   | typeof Ltx23ImageToVideoInputSchema
   | typeof MinimaxHailuo23ProImageToVideoInputSchema
@@ -56,6 +59,7 @@ export const MOTION_INPUT_SCHEMAS = {
     zMinimaxHailuo23ProImageToVideoInput,
   'fal-ai/veo3.1/image-to-video': zVeo31ImageToVideoInput,
   'minimax/h3-max/image-to-video': zH3MaxImageToVideoInput,
+  'minimax/h3-max/reference-to-video': zH3MaxReferenceToVideoInput,
   'xai/grok-imagine-video/v1.5/image-to-video':
     zGrokImagineVideoV15ImageToVideoInput,
 };
@@ -86,6 +90,7 @@ export const MOTION_JSON_SCHEMAS = {
     MinimaxHailuo23ProImageToVideoInputSchema,
   'fal-ai/veo3.1/image-to-video': Veo31ImageToVideoInputSchema,
   'minimax/h3-max/image-to-video': H3MaxImageToVideoInputSchema,
+  'minimax/h3-max/reference-to-video': H3MaxReferenceToVideoInputSchema,
   'xai/grok-imagine-video/v1.5/image-to-video':
     GrokImagineVideoV15ImageToVideoInputSchema,
 } satisfies Record<MotionEndpointId, MotionJSONSchema>;
@@ -126,6 +131,10 @@ export const MOTION_TRANSFORMS = {
   'minimax/h3-max/image-to-video': motionTransform(
     zH3MaxImageToVideoInput,
     H3MaxImageToVideoInputSchema
+  ),
+  'minimax/h3-max/reference-to-video': motionTransform(
+    zH3MaxReferenceToVideoInput,
+    H3MaxReferenceToVideoInputSchema
   ),
   'xai/grok-imagine-video/v1.5/image-to-video': motionTransform(
     zGrokImagineVideoV15ImageToVideoInput,

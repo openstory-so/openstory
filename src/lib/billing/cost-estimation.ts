@@ -155,9 +155,9 @@ export function estimateImageCost(
  *
  * Prices the **endpoint the run will actually hit** (#873 / #1140): when
  * cast/element refs will be attached and the model has a dedicated
- * reference-to-video endpoint (Seedance), use that row; otherwise the base
- * image-to-video id. Duration + resolution still drive the unit formula —
- * we do not invent a per-ref surcharge.
+ * reference-to-video endpoint (Seedance, H3 Max), use that row; otherwise
+ * the base image-to-video id. Duration + resolution still drive the unit
+ * formula — we do not invent a per-ref surcharge.
  */
 export function estimateVideoCost(
   model: ImageToVideoModel,

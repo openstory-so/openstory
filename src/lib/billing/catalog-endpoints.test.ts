@@ -14,6 +14,9 @@ describe('catalogFalEndpointIds', () => {
     expect(ids).toContain(MOTION_REFERENCE_ENDPOINTS.seedance_v2?.endpointId);
     expect(ids).toContain(IMAGE_TO_VIDEO_MODELS.seedance_v2_5.id);
     expect(ids).toContain(MOTION_REFERENCE_ENDPOINTS.seedance_v2_5?.endpointId);
+    expect(ids).toContain(
+      MOTION_REFERENCE_ENDPOINTS.minimax_h3_max?.endpointId
+    );
   });
 
   it('includes studio text/reference endpoints and edit siblings (#1388)', () => {

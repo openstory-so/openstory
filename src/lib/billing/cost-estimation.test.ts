@@ -413,6 +413,36 @@ describe('estimateVideoCost endpoint routing', () => {
       })
     ).toBe(micros(200_000));
   });
+
+  it('prices H3 Max reference-to-video at the advertised $0.08/s', () => {
+    expect(
+      estimateVideoCost('minimax_h3_max', 5, {
+        pricing: FAL_PRICING,
+        hasReferenceImages: true,
+      })
+    ).toBe(micros(400_000));
+    expect(
+      estimateStudioVideoCost('minimax_h3_max', 5, {
+        pricing: FAL_PRICING,
+        mode: 'reference',
+      })
+    ).toBe(micros(400_000));
+  });
+});
+
+describe('turbo default image (nano_banana_2_lite)', () => {
+  it('returns null on fal’s $1/unit catalog stub so the gate floors at $0.10', () => {
+    const stub = {
+      ...FAL_PRICING,
+      'google/nano-banana-2-lite': {
+        unitPrice: micros(1_000_000),
+        unit: 'units',
+      },
+    };
+    expect(
+      estimateImageCost('nano_banana_2_lite', '16:9', 1, { pricing: stub })
+    ).toBeNull();
+  });
 });
 
 describe('gateEstimate', () => {

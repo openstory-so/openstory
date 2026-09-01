@@ -217,7 +217,7 @@ export function orderedPropertyNames(schema: JsonSchema): string[] {
  * optional goes under Advanced. Required fields are always primary.
  */
 const PRIMARY_FIELD_NAME =
-  /^(prompt|text|negative_prompt|image_url|image_urls|image|end_image_url|start_image_url|video_url|audio_url|aspect_ratio|duration|num_images)$/i;
+  /^(prompt|text|negative_prompt|image_url|image_urls|reference_image_urls|image|end_image_url|start_image_url|video_url|video_urls|reference_video_urls|audio_url|audio_urls|reference_audio_urls|aspect_ratio|duration|num_images)$/i;
 
 function isPrimaryFieldName(name: string): boolean {
   return PRIMARY_FIELD_NAME.test(name);
@@ -227,7 +227,7 @@ function primaryRank(name: string): number {
   if (/^(prompt|text)$/i.test(name)) return 0;
   if (/^negative_prompt$/i.test(name)) return 1;
   if (
-    /^(image_url|image_urls|image|end_image_url|start_image_url|video_url|audio_url)$/i.test(
+    /^(image_url|image_urls|reference_image_urls|image|end_image_url|start_image_url|video_url|video_urls|reference_video_urls|audio_url|audio_urls|reference_audio_urls)$/i.test(
       name
     )
   ) {

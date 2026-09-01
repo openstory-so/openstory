@@ -1362,7 +1362,12 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
       estimateTotalSeconds(
         sceneCount,
         sequence?.script ? estimateSceneCount(sequence.script) : undefined,
-        generationState.phases.length
+        generationState.phases.length,
+        {
+          imageModel: sequence?.imageModel,
+          videoModel: sequence?.videoModel,
+          musicModel: sequence?.musicModel,
+        }
       ) - elapsedSeconds
     );
   }, [
@@ -1370,6 +1375,9 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     generationState.phases,
     generationState.scenes.length,
     sequence?.script,
+    sequence?.imageModel,
+    sequence?.videoModel,
+    sequence?.musicModel,
   ]);
   remainingRef.current = remainingSeconds;
   const etaMinutes = Math.max(1, Math.round(remainingSeconds / 60));
@@ -1415,6 +1423,9 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
             startedAt={sequence.updatedAt}
             script={sequence.script ?? undefined}
             remainingSeconds={remainingSeconds}
+            imageModel={sequence.imageModel}
+            videoModel={sequence.videoModel}
+            musicModel={sequence.musicModel}
             willEmail={willEmail}
           />
         </div>
