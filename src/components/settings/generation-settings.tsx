@@ -1,4 +1,3 @@
-import { GenerationStopSlider } from '@/components/generation/generation-stop-slider';
 import {
   ImageModelMultiSelector,
   ImageModelSelector,
@@ -29,11 +28,6 @@ import {
 } from '@/lib/ai/models';
 import type { AnalysisModelId } from '@/lib/ai/models.config';
 import type { AspectRatio } from '@/lib/constants/aspect-ratios';
-import {
-  DEFAULT_GENERATION_STOP_AT,
-  includesStage,
-  type GenerationStage,
-} from '@/lib/generation/pipeline';
 import { useState, type FC } from 'react';
 import { AspectRatioPills } from './aspect-ratio-pills';
 import { GenerationSettingsTrigger } from './generation-settings-trigger';
@@ -43,13 +37,11 @@ type GenerationSettingsProps = {
   analysisModels: AnalysisModelId[];
   imageModels: TextToImageModel[];
   videoModels: ImageToVideoModel[];
-  stopAt?: GenerationStage;
   audioModels?: AudioModel[];
   onAspectRatioChange: (value: AspectRatio) => void;
   onAnalysisModelsChange: (value: AnalysisModelId[]) => void;
   onImageModelsChange: (value: TextToImageModel[]) => void;
   onVideoModelsChange: (value: ImageToVideoModel[]) => void;
-  onStopAtChange?: (value: GenerationStage) => void;
   onAudioModelsChange?: (value: AudioModel[]) => void;
   disabled?: boolean;
   singleSelectAnalysis?: boolean;
@@ -80,13 +72,11 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
   analysisModels,
   imageModels,
   videoModels,
-  stopAt = DEFAULT_GENERATION_STOP_AT,
   audioModels,
   onAspectRatioChange,
   onAnalysisModelsChange,
   onImageModelsChange,
   onVideoModelsChange,
-  onStopAtChange,
   onAudioModelsChange,
   disabled = false,
   singleSelectAnalysis = false,
@@ -100,17 +90,12 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
   onResetStyleDefaults,
 }) => {
   const [open, setOpen] = useState(false);
-  const showMotion = includesStage(stopAt, 'motion');
-  const showMusic = includesStage(stopAt, 'music');
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <div className="flex items-center gap-2 flex-wrap">
         <PopoverTrigger asChild disabled={disabled}>
-          <GenerationSettingsTrigger
-            aspectRatio={aspectRatio}
-            stopAt={stopAt}
-          />
+          <GenerationSettingsTrigger aspectRatio={aspectRatio} />
         </PopoverTrigger>
         {appliedFromStyle && onResetStyleDefaults && (
           <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 text-primary px-2 py-0.5 text-xs">
@@ -141,17 +126,6 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
         className="w-[min(22rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] overflow-x-hidden p-4"
       >
         <div className="flex min-w-0 flex-col gap-4">
-          {onStopAtChange && (
-            <>
-              <GenerationStopSlider
-                value={stopAt}
-                onChange={onStopAtChange}
-                disabled={disabled}
-              />
-              <Separator />
-            </>
-          )}
-
           {/* Aspect Ratio Section */}
           <section className="flex flex-col gap-2">
             <h3 className="text-sm font-medium text-foreground">
@@ -213,7 +187,7 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
               <MotionModelSelector
                 selectedModel={videoModels[0] ?? DEFAULT_VIDEO_MODEL}
                 onModelChange={(model) => onVideoModelsChange([model])}
-                disabled={disabled || !showMotion}
+                disabled={disabled}
                 aspectRatio={aspectRatio}
                 styleCategory={styleCategory}
               />
@@ -221,7 +195,7 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
               <MotionModelMultiSelector
                 selectedModels={videoModels}
                 onModelsChange={onVideoModelsChange}
-                disabled={disabled || !showMotion}
+                disabled={disabled}
                 aspectRatio={aspectRatio}
                 styleCategory={styleCategory}
               />
@@ -241,13 +215,13 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
                   <MusicModelSelector
                     selectedModel={audioModels[0] ?? DEFAULT_MUSIC_MODEL}
                     onModelChange={(model) => onAudioModelsChange([model])}
-                    disabled={disabled || !showMusic}
+                    disabled={disabled}
                   />
                 ) : (
                   <MusicModelMultiSelector
                     selectedModels={audioModels}
                     onModelsChange={onAudioModelsChange}
-                    disabled={disabled || !showMusic}
+                    disabled={disabled}
                   />
                 )}
               </section>
