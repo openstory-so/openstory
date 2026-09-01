@@ -1,5 +1,6 @@
 import { useState, type ComponentProps } from 'react';
 import type { Meta, StoryObj } from '@storybook/react';
+import { micros } from '@/lib/billing/money';
 import { GenerationStopSlider } from './generation-stop-slider';
 import type { GenerationStage } from '@/lib/generation/pipeline';
 
@@ -25,7 +26,7 @@ export const DialogWidth: Story = {
   name: 'Generate dialog (~32rem)',
   render: () => (
     <div className="mx-auto w-full max-w-lg rounded-lg border p-6">
-      <StatefulSlider value="music" />
+      <StatefulSlider value="music" estimate={micros(2_400_000)} />
     </div>
   ),
 };
@@ -34,7 +35,7 @@ export const StopAtReferences: Story = {
   name: 'Stop at References',
   render: () => (
     <div className="mx-auto w-full max-w-lg rounded-lg border p-6">
-      <StatefulSlider value="references" />
+      <StatefulSlider value="references" estimate={micros(420_000)} />
     </div>
   ),
 };

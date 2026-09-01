@@ -56,6 +56,7 @@ import {
   DEFAULT_GENERATION_STOP_AT,
   flagsFromStopAt,
   GENERATION_STAGE_META,
+  includesStage,
   type GenerationStage,
 } from '@/lib/generation/pipeline';
 import { useComposedScript } from '@/hooks/use-scenes';
@@ -359,7 +360,6 @@ export const ScriptView: FC<{
     stopAt,
     audioModels,
   } = genSettings;
-  const { autoGenerateMotion, autoGenerateMusic } = flagsFromStopAt(stopAt);
   const updateGen = <K extends keyof typeof genSettings>(
     key: K,
     value: (typeof genSettings)[K]
@@ -1255,61 +1255,63 @@ export const ScriptView: FC<{
 
   // Transparent pricing under Generate (#1140). Honest estimate only —
   // null with no script (nothing to generate yet), or when the primary
-  // image model has no pricing signal.
+  // image model has no pricing signal. The Generate button always quotes
+  // the full pipeline (stills + motion + music); the stop-at alert quotes
+  // the selected slice.
   const { pricing: falPricing } = useFalPricing();
-  const storyboardCostEstimate = useMemo(() => {
-    if (!scriptValue.trim()) return null;
-    if (!falPricing) return null;
-    const primaryImage = imageModels[0] ?? DEFAULT_IMAGE_MODEL;
-    if (
-      estimateImageCost(primaryImage, aspectRatio, 1, {
+  const estimateForStopAt = useCallback(
+    (runUntil: GenerationStage) => {
+      if (!scriptValue.trim()) return null;
+      if (!falPricing) return null;
+      const primaryImage = imageModels[0] ?? DEFAULT_IMAGE_MODEL;
+      if (
+        estimateImageCost(primaryImage, aspectRatio, 1, {
+          pricing: falPricing,
+        }) === null
+      ) {
+        return null;
+      }
+      const sceneCount = estimateSceneCount(scriptValue, {
+        targetDurationSeconds: targetDuration,
+      });
+      const motionDurations = estimateMotionDurations({
+        script: scriptValue,
+        targetSeconds: targetDuration,
+        sceneCount,
+        model: videoModels[0] ?? DEFAULT_VIDEO_MODEL,
+      });
+      const motionOn = includesStage(runUntil, 'motion');
+      const musicOn = includesStage(runUntil, 'music');
+      return estimateStoryboardCost({
+        imageModel: primaryImage,
+        imageModelCount: Math.max(imageModels.length, 1),
+        aspectRatio,
+        estimatedSceneCount: sceneCount,
+        stopAt: runUntil,
+        autoGenerateMotion: motionOn,
+        videoModels: motionOn ? videoModels : undefined,
+        videoDurationSeconds: motionOn
+          ? motionDurations.perShotSeconds
+          : undefined,
+        autoGenerateMusic: musicOn,
+        audioModels: musicOn ? audioModels : undefined,
+        audioDurationSeconds: musicOn
+          ? motionDurations.totalSeconds
+          : undefined,
         pricing: falPricing,
-      }) === null
-    ) {
-      return null;
-    }
-    // Prefer Scene N headings after Enhance; else words + target duration.
-    const sceneCount = estimateSceneCount(scriptValue, {
-      targetDurationSeconds: targetDuration,
-    });
-    // Snap labeled clips (or the target spread) onto the primary video
-    // model's grid so the quote matches what will actually render (#1374).
-    const motionDurations = estimateMotionDurations({
-      script: scriptValue,
-      targetSeconds: targetDuration,
-      sceneCount,
-      model: videoModels[0] ?? DEFAULT_VIDEO_MODEL,
-    });
-    return estimateStoryboardCost({
-      imageModel: primaryImage,
-      imageModelCount: Math.max(imageModels.length, 1),
+      });
+    },
+    [
+      falPricing,
+      imageModels,
       aspectRatio,
-      estimatedSceneCount: sceneCount,
-      stopAt,
-      autoGenerateMotion,
-      videoModels: autoGenerateMotion ? videoModels : undefined,
-      videoDurationSeconds: autoGenerateMotion
-        ? motionDurations.perShotSeconds
-        : undefined,
-      autoGenerateMusic,
-      audioModels: autoGenerateMusic ? audioModels : undefined,
-      audioDurationSeconds: autoGenerateMusic
-        ? motionDurations.totalSeconds
-        : undefined,
-      pricing: falPricing,
-    });
-  }, [
-    falPricing,
-    imageModels,
-    aspectRatio,
-    scriptValue,
-    targetDuration,
-    stopAt,
-    autoGenerateMotion,
-    videoModels,
-    autoGenerateMusic,
-    audioModels,
-  ]);
+      scriptValue,
+      targetDuration,
+      videoModels,
+      audioModels,
+    ]
+  );
+  const storyboardCostEstimate = estimateForStopAt(DEFAULT_GENERATION_STOP_AT);
 
   // Nothing written yet: Enhance writes the script instead of expanding one
   // (#1393), so it stays live at any length and says which job it is doing.
@@ -1847,6 +1849,7 @@ export const ScriptView: FC<{
             ? "A copy will be created from this script. Your original sequence won't change."
             : undefined
         }
+        estimateForStopAt={estimateForStopAt}
         onConfirm={({ stopAt: nextStopAt, remember }) => {
           updateGen('stopAt', nextStopAt);
           saveSettings({ stopAt: nextStopAt, rememberStopAt: remember });

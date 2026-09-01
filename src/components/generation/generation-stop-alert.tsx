@@ -1,3 +1,4 @@
+import { ActionCost } from '@/components/billing/action-cost';
 import { GenerationStopSlider } from '@/components/generation/generation-stop-slider';
 import {
   AlertDialog,
@@ -11,6 +12,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
+import type { Microdollars } from '@/lib/billing/money';
 import { type GenerationStage } from '@/lib/generation/pipeline';
 import { useEffect, useState, type FC } from 'react';
 
@@ -23,6 +25,8 @@ type GenerationStopAlertProps = {
   /** Extra copy — e.g. Generate Copy warning. */
   description?: string;
   confirmLabel?: string;
+  /** Cost of a run that stops at the given stage. */
+  estimateForStopAt?: (stage: GenerationStage) => Microdollars | null;
 };
 
 export const GenerationStopAlert: FC<GenerationStopAlertProps> = ({
@@ -33,6 +37,7 @@ export const GenerationStopAlert: FC<GenerationStopAlertProps> = ({
   onConfirm,
   description,
   confirmLabel = 'Generate',
+  estimateForStopAt,
 }) => {
   const [draftStopAt, setDraftStopAt] = useState(stopAt);
   const [draftRemember, setDraftRemember] = useState(remember);
@@ -42,6 +47,8 @@ export const GenerationStopAlert: FC<GenerationStopAlertProps> = ({
     setDraftStopAt(stopAt);
     setDraftRemember(remember);
   }, [open, stopAt, remember]);
+
+  const estimate = estimateForStopAt?.(draftStopAt) ?? null;
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
@@ -53,7 +60,11 @@ export const GenerationStopAlert: FC<GenerationStopAlertProps> = ({
               'The workflow stops at the stage you pick. You can generate the rest from the scene list.'}
           </AlertDialogDescription>
         </AlertDialogHeader>
-        <GenerationStopSlider value={draftStopAt} onChange={setDraftStopAt} />
+        <GenerationStopSlider
+          value={draftStopAt}
+          onChange={setDraftStopAt}
+          estimate={estimate}
+        />
         <div className="flex items-center gap-2">
           <Checkbox
             id="remember-generation-stop"
@@ -67,15 +78,20 @@ export const GenerationStopAlert: FC<GenerationStopAlertProps> = ({
             Remember my choice
           </Label>
         </div>
-        <AlertDialogFooter>
+        <AlertDialogFooter className="sm:items-end">
           <AlertDialogCancel>Cancel</AlertDialogCancel>
-          <AlertDialogAction
-            onClick={() =>
-              onConfirm({ stopAt: draftStopAt, remember: draftRemember })
-            }
-          >
-            {confirmLabel}
-          </AlertDialogAction>
+          <div className="flex flex-col items-stretch gap-1 sm:items-end">
+            <AlertDialogAction
+              onClick={() =>
+                onConfirm({ stopAt: draftStopAt, remember: draftRemember })
+              }
+            >
+              {confirmLabel}
+            </AlertDialogAction>
+            <div className="min-h-4">
+              <ActionCost estimate={estimate} align="end" />
+            </div>
+          </div>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
