@@ -15,6 +15,7 @@
 
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { convertSchemaToJsonSchema } from '@tanstack/ai';
 import { describe, expect, test } from 'vitest';
 import type { z } from 'zod';
 import { elementVisionResponseSchema } from './element-vision';
@@ -120,4 +121,78 @@ describe('structured-output schema budget', () => {
       `Schemas sent as structured output but not size-budgeted here: ${unmeasured.join(', ')}`
     ).toEqual([]);
   });
+
+  /**
+   * Anthropic rejects `type: ["T","null"]` when the same node also carries
+   * `enum` (#1410). `.catch()` / `.default()` compile to that mismatch.
+   * Broader: any `type` array union in a strict-output schema is the same
+   * class of invalid grammar, so flag them all.
+   */
+  test.each(Object.entries(MEASURED_SCHEMAS))(
+    '%s has no type-array unions (Anthropic rejects enum + ["T","null"])',
+    (name, schema) => {
+      const converted = convertSchemaToJsonSchema(schema, {
+        forStructuredOutput: true,
+      });
+      expect(
+        converted,
+        `${name} failed to convert to JSON Schema`
+      ).toBeDefined();
+      const unions = collectTypeArrayUnions(converted, name);
+      expect(
+        unions,
+        `${name} converts to type-array unions Anthropic rejects: ${unions.join('; ')}`
+      ).toEqual([]);
+    }
+  );
 });
+
+/** JSON Schema keys that are values, not nested schemas. */
+const NON_SCHEMA_KEYS = new Set([
+  'enum',
+  'const',
+  'required',
+  'type',
+  'description',
+  'title',
+  'default',
+  'examples',
+  'pattern',
+  'format',
+  'minimum',
+  'maximum',
+  'exclusiveMinimum',
+  'exclusiveMaximum',
+  'minLength',
+  'maxLength',
+  'minItems',
+  'maxItems',
+  'minProperties',
+  'maxProperties',
+  'uniqueItems',
+]);
+
+function collectTypeArrayUnions(node: unknown, path: string): string[] {
+  if (node === null || typeof node !== 'object') return [];
+  if (Array.isArray(node)) {
+    return node.flatMap((item, i) =>
+      collectTypeArrayUnions(item, `${path}[${i}]`)
+    );
+  }
+  const type = 'type' in node ? node.type : undefined;
+  const enumValues = 'enum' in node ? node.enum : undefined;
+  const here = Array.isArray(type)
+    ? [
+        `${path}: type=${JSON.stringify(type)}` +
+          (Array.isArray(enumValues)
+            ? ` enum=${JSON.stringify(enumValues)}`
+            : ''),
+      ]
+    : [];
+  const children = Object.entries(node).flatMap(([key, value]) =>
+    NON_SCHEMA_KEYS.has(key)
+      ? []
+      : collectTypeArrayUnions(value, `${path}.${key}`)
+  );
+  return [...here, ...children];
+}

@@ -4,13 +4,14 @@ import { WORKFLOW_CHAT_PROMPTS } from '@/lib/prompts/workflow-prompts';
 import {
   AUTO_STYLE_PLACEHOLDER_NAME,
   DEFAULT_AUTO_STYLE_CATEGORY,
+  DEFAULT_AUTO_STYLE_PACE,
   STYLE_CATEGORIES,
   autoStyleResponseSchema,
   type AutoStyleResponse,
   autoStyleDraftFromResponse,
   placeholderAutoStyleDraft,
 } from './auto-style';
-import { StyleConfigSchema } from './style-config';
+import { STYLE_PACE_VALUES, StyleConfigSchema } from './style-config';
 
 const RESPONSE: AutoStyleResponse = {
   name: 'Rain-slick Neon Noir',
@@ -94,26 +95,41 @@ describe('placeholderAutoStyleDraft', () => {
   });
 });
 
-describe('autoStyleResponseSchema vocabulary guesses (#1285)', () => {
-  it('defaults an off-vocabulary category/pace instead of failing the parse', () => {
-    const parsed = autoStyleResponseSchema.parse({
+describe('autoStyleResponseSchema vocabulary (#1285, #1410)', () => {
+  it('rejects off-vocabulary category/pace at parse (no .catch() on the enum)', () => {
+    expect(() =>
+      autoStyleResponseSchema.parse({
+        ...RESPONSE,
+        category: 'Documentary',
+        pace: 'rapid',
+      })
+    ).toThrow();
+    expect(autoStyleResponseSchema.parse(RESPONSE).category).toBe('film');
+  });
+
+  it('defaults off-vocabulary category/pace in the draft, not the schema', () => {
+    const draft = autoStyleDraftFromResponse({
       ...RESPONSE,
       category: 'Documentary',
       pace: 'rapid',
     });
-    expect(parsed.category).toBe(DEFAULT_AUTO_STYLE_CATEGORY);
-    expect(parsed.pace).toBe('measured');
-    expect(autoStyleResponseSchema.parse(RESPONSE).category).toBe('film');
-    const draft = autoStyleDraftFromResponse(parsed);
+    expect(draft.category).toBe(DEFAULT_AUTO_STYLE_CATEGORY);
+    expect(draft.config.motion.pace).toBe(DEFAULT_AUTO_STYLE_PACE);
     expect(StyleConfigSchema.safeParse(draft.config).success).toBe(true);
   });
 
-  it('still sends the enum to the provider', () => {
+  it('still sends the enum to the provider without a default/null union', () => {
     const json = z.toJSONSchema(autoStyleResponseSchema);
     expect(json.properties?.category).toMatchObject({
+      type: 'string',
       enum: [...STYLE_CATEGORIES],
-      default: DEFAULT_AUTO_STYLE_CATEGORY,
     });
+    expect(json.properties?.category).not.toHaveProperty('default');
+    expect(json.properties?.pace).toMatchObject({
+      type: 'string',
+      enum: [...STYLE_PACE_VALUES],
+    });
+    expect(json.properties?.pace).not.toHaveProperty('default');
   });
 });
 

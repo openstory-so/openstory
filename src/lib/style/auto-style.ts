@@ -41,22 +41,11 @@ const AUTO_STYLE_PLACEHOLDER_CONFIG: StyleConfig = {
   references: [],
 };
 
-/**
- * LLM response shape. Plain strings/numbers only — Anthropic strict output
- * rejects string/array length bounds and integer min/max (see
- * `sceneDurationResponseSchema`). Bounds are applied in
- * {@link autoStyleDraftFromResponse}, which re-validates against the real
- * `StyleConfigSchema`.
- *
- * `category`/`pace` keep their `enum` (a hard constraint on strict routes —
- * Anthropic supports `enum` + `default`) but `.catch()` to a default: this is
- * a guess, and an off-vocabulary word from a non-enforcing route must never
- * fail the run (#1285). Missing recipe strings are filled from a collapsed
- * look/motion paragraph or the placeholder (#1304) if a non-enforcing
- * route still ignores the schema keys.
- */
-/** Where a category guess lands when the model coins its own word. */
+/** Draft-layer default when category is off-vocabulary (#1410). */
 export const DEFAULT_AUTO_STYLE_CATEGORY = 'film';
+
+/** Draft-layer default when pace is off-vocabulary (#1410). */
+export const DEFAULT_AUTO_STYLE_PACE = 'measured';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -122,12 +111,27 @@ function coerceCollapsedAutoStyle(raw: unknown): unknown {
   };
 }
 
+/**
+ * LLM response shape. Plain strings/numbers only — Anthropic strict output
+ * rejects string/array length bounds and integer min/max (see
+ * `sceneDurationResponseSchema`). Bounds are applied in
+ * {@link autoStyleDraftFromResponse}, which re-validates against the real
+ * `StyleConfigSchema`.
+ *
+ * `category`/`pace` keep their `enum` (a hard constraint on strict routes).
+ * Do not wrap them in `.catch()` / `.default()`: those compile to
+ * `type: ["string","null"]` while `enum` stays string-only, which Anthropic
+ * rejects (#1410). Defaults live in {@link autoStyleDraftFromResponse}.
+ * Missing recipe strings are filled from a collapsed look/motion paragraph
+ * or the placeholder (#1304) if a non-enforcing route still ignores the
+ * schema keys.
+ */
 export const autoStyleResponseSchema = z.preprocess(
   coerceCollapsedAutoStyle,
   z.object({
     name: z.string(),
     description: z.string(),
-    category: z.enum(STYLE_CATEGORIES).catch(DEFAULT_AUTO_STYLE_CATEGORY),
+    category: z.enum(STYLE_CATEGORIES),
     tags: z.array(z.string()),
     mood: z.string(),
     artStyle: z.string(),
@@ -140,7 +144,7 @@ export const autoStyleResponseSchema = z.preprocess(
     colorGrading: z.string(),
     camera: z.string(),
     shots: z.string(),
-    pace: z.enum(STYLE_PACE_VALUES).catch('measured'),
+    pace: z.enum(STYLE_PACE_VALUES),
     /** 1 = stillness, 5 = kinetic chaos. */
     energy: z.number(),
     references: z.array(z.string()),
@@ -181,18 +185,42 @@ function nonEmpty(values: string[], max: number): string[] {
     .slice(0, max);
 }
 
+function vocabOr<T extends string>(
+  value: string,
+  vocab: readonly T[],
+  fallback: T
+): T {
+  for (const item of vocab) {
+    if (item === value) return item;
+  }
+  return fallback;
+}
+
 /**
  * Coerce the free-form LLM answer into a valid `StyleConfig` + row fields.
  * Throws (ZodError) only if the model returned something unsalvageable, e.g.
  * an empty palette or name. The caller decides what that failure means.
  */
 export function autoStyleDraftFromResponse(
-  response: AutoStyleResponse
+  response: Omit<AutoStyleResponse, 'category' | 'pace'> & {
+    category: string;
+    pace: string;
+  }
 ): AutoStyleDraft {
   const name = z
     .string()
     .min(1)
     .parse(response.name.trim().slice(0, MAX_NAME_LENGTH));
+  const category = vocabOr(
+    response.category,
+    STYLE_CATEGORIES,
+    DEFAULT_AUTO_STYLE_CATEGORY
+  );
+  const pace = vocabOr(
+    response.pace,
+    STYLE_PACE_VALUES,
+    DEFAULT_AUTO_STYLE_PACE
+  );
   const config = StyleConfigSchema.parse({
     version: 2,
     look: {
@@ -206,7 +234,7 @@ export function autoStyleDraftFromResponse(
     motion: {
       camera: clampProse(response.camera),
       shots: response.shots.trim() ? clampProse(response.shots) : undefined,
-      pace: response.pace,
+      pace,
       energy: Math.min(5, Math.max(1, Math.round(response.energy))),
     },
     references: nonEmpty(response.references, 50),
@@ -215,7 +243,7 @@ export function autoStyleDraftFromResponse(
     name,
     description: response.description.trim() || null,
     config,
-    category: response.category,
+    category,
     tags: nonEmpty(response.tags, 10),
   };
 }
