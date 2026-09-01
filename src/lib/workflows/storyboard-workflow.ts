@@ -85,21 +85,33 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
         teamId: input.teamId,
         userId: input.userId,
         autoGenerateMotion: input.autoGenerateMotion,
+        stopAt: input.stopAt,
+        resume: input.resume,
       });
       validateSequenceAuth(input);
 
       // Throws if the sequence was deleted (or moved teams) since the trigger.
       await scopedDb.liveRead.sequences.getForUser({ sequenceId });
 
-      await scopedDb.shots.deleteBySequence(sequenceId);
+      if (!input.resume) {
+        await scopedDb.shots.deleteBySequence(sequenceId);
+      }
 
       await seq.updateStatus('processing');
+      if (input.stopAt) {
+        await scopedDb.sequences.update({
+          id: sequenceId,
+          generationStopAt: input.stopAt,
+        });
+      }
     });
 
     // Pending automatic style (#1213): the poster renders from the script alone.
+    // Continue-from-DAG skips the poster — the sequence already has one.
     const styleConfig = input.pendingAutoStyleId
       ? undefined
       : input.styleConfig;
+    const skipPoster = Boolean(input.resume);
 
     // Generate a poster image from the script for the video player empty
     // state. Non-critical — failures are logged and swallowed so a poster
@@ -107,24 +119,26 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
     // try/catch swallow inside the step.
     let posterUrl: string | null = null;
 
-    const posterResult = await step.do('generate-poster', async () => {
-      try {
-        const prompt = buildPosterPrompt(title, script, styleConfig);
-        return await generateImageWithProvider(
-          {
-            model: PREVIEW_IMAGE_MODEL,
-            prompt,
-            imageSize: aspectRatioToImageSize(aspectRatio),
-          },
-          { scopedDb: scopedDb.credentials }
-        );
-      } catch (error) {
-        logger.warn('[StoryboardWorkflow:cf] Poster generation failed:', {
-          err: error,
+    const posterResult = skipPoster
+      ? null
+      : await step.do('generate-poster', async () => {
+          try {
+            const prompt = buildPosterPrompt(title, script, styleConfig);
+            return await generateImageWithProvider(
+              {
+                model: PREVIEW_IMAGE_MODEL,
+                prompt,
+                imageSize: aspectRatioToImageSize(aspectRatio),
+              },
+              { scopedDb: scopedDb.credentials }
+            );
+          } catch (error) {
+            logger.warn('[StoryboardWorkflow:cf] Poster generation failed:', {
+              err: error,
+            });
+            return null;
+          }
         });
-        return null;
-      }
-    });
 
     if (posterResult) {
       const generatedPosterUrl = posterResult.imageUrls[0];
@@ -214,6 +228,9 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
         videoModels: input.videoModels ?? [videoModel],
         autoGenerateMotion: input.autoGenerateMotion ?? false,
         autoGenerateMusic: input.autoGenerateMusic ?? false,
+        stopAt: input.stopAt,
+        startFrom: input.startFrom,
+        checkpoint: input.checkpoint,
         musicModel: input.musicModel,
         audioModels: input.audioModels,
         suggestedTalentIds: input.suggestedTalentIds,

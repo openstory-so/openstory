@@ -223,7 +223,7 @@ function makeRunImplDb() {
     sequence: vi.fn(() => ({ updateStatus })),
     shots: { deleteBySequence },
     credentials: {},
-    sequences: {},
+    sequences: { update: vi.fn() },
   };
   // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- stub covering only the runImpl surface
   const scopedDb = stub as unknown as WorkflowScopedDb;

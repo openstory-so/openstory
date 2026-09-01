@@ -18,6 +18,7 @@ import type { AspectRatio } from '@/lib/constants/aspect-ratios';
 import { estimateStoryboardCost } from '@/lib/billing/cost-estimation';
 import type { Microdollars } from '@/lib/billing/money';
 import { estimateSceneCount } from '@/lib/generation/time-estimate';
+import { includesStage, type GenerationStage } from '@/lib/generation/pipeline';
 
 export type StoryboardPreflightInput = {
   script: string;
@@ -26,6 +27,7 @@ export type StoryboardPreflightInput = {
   imageModelCount?: number;
   aspectRatio: AspectRatio;
   autoGenerateMotion?: boolean;
+  stopAt?: GenerationStage;
   videoModels?: ImageToVideoModel[];
   autoGenerateMusic?: boolean;
   audioModels?: AudioModel[];
@@ -47,10 +49,12 @@ export function estimateStoryboardPreflightCost(
     targetDurationSeconds: opts.targetDurationSeconds,
   });
 
-  const motionOn = Boolean(opts.autoGenerateMotion && opts.videoModels?.length);
-  const musicOn = Boolean(
-    motionOn && opts.autoGenerateMusic && opts.audioModels?.length
-  );
+  const motionOn = opts.stopAt
+    ? includesStage(opts.stopAt, 'motion') && Boolean(opts.videoModels?.length)
+    : Boolean(opts.autoGenerateMotion && opts.videoModels?.length);
+  const musicOn = opts.stopAt
+    ? includesStage(opts.stopAt, 'music') && Boolean(opts.audioModels?.length)
+    : Boolean(motionOn && opts.autoGenerateMusic && opts.audioModels?.length);
 
   const primaryVideo = opts.videoModels?.[0] ?? DEFAULT_VIDEO_MODEL;
   const motionDurations =
@@ -71,6 +75,7 @@ export function estimateStoryboardPreflightCost(
     aspectRatio: opts.aspectRatio,
     estimatedSceneCount: sceneCount,
     autoGenerateMotion: motionOn,
+    stopAt: opts.stopAt,
     videoModels: motionOn ? opts.videoModels : undefined,
     videoDurationSeconds: motionDurations?.perShotSeconds,
     autoGenerateMusic: musicOn,

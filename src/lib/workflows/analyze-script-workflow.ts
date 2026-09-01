@@ -63,6 +63,13 @@ import type {
   FramePromptBatchWorkflowInput,
   FramePromptBatchWorkflowResult,
 } from '@/lib/workflow/types';
+import {
+  GENERATION_STAGE_META,
+  shouldRunStage,
+  stopAtFromFlags,
+  type GenerationCheckpoint,
+  type GenerationStage,
+} from '@/lib/generation/pipeline';
 import { findMissingElementEntries } from '@/lib/workflows/element-sheet-workflow';
 import { buildStoryboardMotionBatchShots } from '@/lib/workflows/storyboard-motion-batch-shots';
 import {
@@ -107,11 +114,19 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
       videoModels: videoModelsInput,
       autoGenerateMotion = false,
       autoGenerateMusic = false,
+      stopAt: stopAtInput,
+      startFrom: startFromInput,
+      checkpoint: checkpointInput,
       musicModel,
       audioModels: audioModelsInput,
       suggestedTalentIds,
       suggestedLocationIds,
     } = input;
+
+    const stopAt: GenerationStage =
+      stopAtInput ?? stopAtFromFlags({ autoGenerateMotion, autoGenerateMusic });
+    const startFrom: GenerationStage = startFromInput ?? 'script';
+    let checkpoint: GenerationCheckpoint | undefined = checkpointInput;
 
     const imageModels = resolveImageModels(imageModelsInput, imageModel);
     const videoModels = resolveVideoModels(videoModelsInput, videoModel);
@@ -130,17 +145,45 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
       Promise.resolve(Date.now())
     );
 
+    const persistProgress = async (next: GenerationCheckpoint) => {
+      checkpoint = next;
+      if (!sequenceId) return;
+      await step.do(`persist-pipeline-${next.completedStage}`, async () => {
+        await scopedDb.sequences.update({
+          id: sequenceId,
+          pipelineStage: next.completedStage,
+          generationCheckpoint: next,
+        });
+        await getGenerationChannel(sequenceId).emit(
+          'generation.phase:complete',
+          { phase: GENERATION_STAGE_META[next.completedStage].phase }
+        );
+      });
+    };
+
+    const recordDuration = async (stage: GenerationStage) => {
+      if (!sequenceId) return;
+      await step.do(`record-analysis-duration-${stage}`, async () => {
+        await scopedDb.sequences.updateAnalysisDurationMs(
+          sequenceId,
+          Date.now() - startTime
+        );
+      });
+    };
+
     // ----------------------------------------------------------------------
     // PHASE 1: scene-split (LLM stream → scenes/bibles/shotMapping)
     // ----------------------------------------------------------------------
-    await step.do('phase-1-start', async () => {
-      await getGenerationChannel(sequenceId).emit('generation.phase:start', {
-        phase: 1,
-        phaseName: pendingAutoStyleId
-          ? 'Analyzing script & deriving a style…'
-          : 'Analyzing script…',
+    if (shouldRunStage(startFrom, stopAt, 'script')) {
+      await step.do('phase-1-start', async () => {
+        await getGenerationChannel(sequenceId).emit('generation.phase:start', {
+          phase: 1,
+          phaseName: pendingAutoStyleId
+            ? 'Analyzing script & deriving a style…'
+            : 'Analyzing script…',
+        });
       });
-    });
+    }
 
     // Elements uploaded while creating this sequence kick off `/element-vision`
     // (fire-and-forget) which writes their description/consistencyTag. Scene-
@@ -206,112 +249,170 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
 
     // Automatic style (#1213): derived in parallel with scene-split, whose
     // preview stills render style-free on an automatic run.
-    const [sceneSplitResult, styleConfig] = await Promise.all([
-      spawnAndAwaitChild<SceneSplitWorkflowInput, SceneSplitWorkflowResult>(
-        step,
-        {
-          binding: this.env.SCENE_SPLIT_WORKFLOW,
-          parentBindingName: 'ANALYZE_SCRIPT_WORKFLOW',
-          parentInstanceId: event.instanceId,
-          childId: `scene-split:${sequenceId ?? 'no-seq'}`,
-          childPayload: {
-            userId: input.userId,
-            teamId: input.teamId,
-            sequenceId,
-            reservationId: input.reservationId,
-            promptName: 'phase/scene-splitting-boundaries-chat',
-            aspectRatio,
-            script: sanitizeScriptContent(script),
-            modelId: analysisModelId,
-            elements: elementsMinimal,
-          },
-          spawnStepName: 'spawn-scene-split',
-          awaitStepName: 'await-scene-split',
-          // LLM-only child, but under a many-sequence burst the engine's notify
-          // delivery alone has been observed to lag >25 minutes — every await in
-          // this workflow carries explicit burst headroom.
-          timeout: '45 minutes',
-        }
-      ),
-      pendingAutoStyleId && sequenceId
-        ? deriveAutoStyle(step, {
-            scopedDb,
-            workflowRunId: parentInstanceId,
-            sequenceId,
-            styleId: pendingAutoStyleId,
-            script,
-            aspectRatio,
-            analysisModelId,
-            reservationId: input.reservationId,
-          })
-        : Promise.resolve(inputStyleConfig),
-    ]);
+    let sceneSplitResult: SceneSplitWorkflowResult;
+    let styleConfig = inputStyleConfig;
+    if (shouldRunStage(startFrom, stopAt, 'script')) {
+      const [split, derivedStyle] = await Promise.all([
+        spawnAndAwaitChild<SceneSplitWorkflowInput, SceneSplitWorkflowResult>(
+          step,
+          {
+            binding: this.env.SCENE_SPLIT_WORKFLOW,
+            parentBindingName: 'ANALYZE_SCRIPT_WORKFLOW',
+            parentInstanceId: event.instanceId,
+            childId: `scene-split:${sequenceId ?? 'no-seq'}`,
+            childPayload: {
+              userId: input.userId,
+              teamId: input.teamId,
+              sequenceId,
+              reservationId: input.reservationId,
+              promptName: 'phase/scene-splitting-boundaries-chat',
+              aspectRatio,
+              script: sanitizeScriptContent(script),
+              modelId: analysisModelId,
+              elements: elementsMinimal,
+            },
+            spawnStepName: 'spawn-scene-split',
+            awaitStepName: 'await-scene-split',
+            // LLM-only child, but under a many-sequence burst the engine's notify
+            // delivery alone has been observed to lag >25 minutes — every await in
+            // this workflow carries explicit burst headroom.
+            timeout: '45 minutes',
+          }
+        ),
+        pendingAutoStyleId && sequenceId
+          ? deriveAutoStyle(step, {
+              scopedDb,
+              workflowRunId: parentInstanceId,
+              sequenceId,
+              styleId: pendingAutoStyleId,
+              script,
+              aspectRatio,
+              analysisModelId,
+              reservationId: input.reservationId,
+            })
+          : Promise.resolve(inputStyleConfig),
+      ]);
+      sceneSplitResult = split;
+      styleConfig = derivedStyle;
+    } else {
+      if (
+        !checkpoint?.scenes ||
+        !checkpoint.shotMapping ||
+        !checkpoint.characterBible
+      ) {
+        throw new WorkflowValidationError(
+          'Cannot continue generation: missing script checkpoint'
+        );
+      }
+      sceneSplitResult = {
+        scenes: checkpoint.scenes,
+        title: '',
+        shotMapping: checkpoint.shotMapping,
+        characterBible: checkpoint.characterBible,
+        locationBible: checkpoint.locationBible ?? [],
+        elementBible: checkpoint.elementBible ?? [],
+      };
+    }
 
     const { scenes, shotMapping, characterBible, locationBible, elementBible } =
       sceneSplitResult;
 
+    if (shouldRunStage(startFrom, stopAt, 'script')) {
+      await persistProgress({
+        completedStage: 'script',
+        scenes,
+        shotMapping,
+        characterBible,
+        locationBible,
+        elementBible,
+      });
+      if (stopAt === 'script') {
+        await recordDuration('script');
+        return scenes;
+      }
+    }
+
     // ----------------------------------------------------------------------
     // PHASE 2: talent + location matching in parallel
     // ----------------------------------------------------------------------
-    const [talentSettled, locationMatchSettled] = await Promise.allSettled([
-      spawnAndAwaitChild<
-        TalentMatchingWorkflowInput,
-        TalentMatchingWorkflowOutput
-      >(step, {
-        binding: this.env.TALENT_MATCHING_WORKFLOW,
-        parentBindingName: PARENT_BINDING_NAME,
-        parentInstanceId,
-        childId: `talent-matching:${sequenceId ?? 'no-seq'}`,
-        childPayload: {
-          sequenceId,
-          userId: input.userId,
-          teamId: input.teamId,
-          reservationId: input.reservationId,
-          analysisModelId,
-          suggestedTalentIds,
-          suggestedTalent: input.suggestedTalent,
-          characterBible,
-        },
-        spawnStepName: 'spawn-talent-matching',
-        awaitStepName: 'await-talent-matching',
-        timeout: '45 minutes',
-      }),
-      spawnAndAwaitChild<
-        LocationMatchingWorkflowInput,
-        LocationMatchingWorkflowOutput
-      >(step, {
-        binding: this.env.LOCATION_MATCHING_WORKFLOW,
-        parentBindingName: PARENT_BINDING_NAME,
-        parentInstanceId,
-        childId: `location-matching:${sequenceId ?? 'no-seq'}`,
-        childPayload: {
-          sequenceId,
-          userId: input.userId,
-          teamId: input.teamId,
-          reservationId: input.reservationId,
-          analysisModelId,
-          suggestedLocationIds,
-          suggestedLocations: input.suggestedLocations,
-          locationBible,
-        },
-        spawnStepName: 'spawn-location-matching',
-        awaitStepName: 'await-location-matching',
-        timeout: '45 minutes',
-      }),
-    ]);
+    if (shouldRunStage(startFrom, stopAt, 'casting')) {
+      await step.do('phase-2-start', async () => {
+        await getGenerationChannel(sequenceId).emit('generation.phase:start', {
+          phase: 2,
+          phaseName: 'Casting characters & locations…',
+        });
+      });
+    }
+    const matchingSettled = shouldRunStage(startFrom, stopAt, 'casting')
+      ? await Promise.allSettled([
+          spawnAndAwaitChild<
+            TalentMatchingWorkflowInput,
+            TalentMatchingWorkflowOutput
+          >(step, {
+            binding: this.env.TALENT_MATCHING_WORKFLOW,
+            parentBindingName: PARENT_BINDING_NAME,
+            parentInstanceId,
+            childId: `talent-matching:${sequenceId ?? 'no-seq'}`,
+            childPayload: {
+              sequenceId,
+              userId: input.userId,
+              teamId: input.teamId,
+              reservationId: input.reservationId,
+              analysisModelId,
+              suggestedTalentIds,
+              suggestedTalent: input.suggestedTalent,
+              characterBible,
+            },
+            spawnStepName: 'spawn-talent-matching',
+            awaitStepName: 'await-talent-matching',
+            timeout: '45 minutes',
+          }),
+          spawnAndAwaitChild<
+            LocationMatchingWorkflowInput,
+            LocationMatchingWorkflowOutput
+          >(step, {
+            binding: this.env.LOCATION_MATCHING_WORKFLOW,
+            parentBindingName: PARENT_BINDING_NAME,
+            parentInstanceId,
+            childId: `location-matching:${sequenceId ?? 'no-seq'}`,
+            childPayload: {
+              sequenceId,
+              userId: input.userId,
+              teamId: input.teamId,
+              reservationId: input.reservationId,
+              analysisModelId,
+              suggestedLocationIds,
+              suggestedLocations: input.suggestedLocations,
+              locationBible,
+            },
+            spawnStepName: 'spawn-location-matching',
+            awaitStepName: 'await-location-matching',
+            timeout: '45 minutes',
+          }),
+        ])
+      : null;
+    const talentSettled = matchingSettled?.[0];
+    const locationMatchSettled = matchingSettled?.[1];
 
-    if (talentSettled.status === 'rejected') {
-      throw new Error(
-        `Talent matching failed: ${String(talentSettled.reason)}`
-      );
+    let talentCharacterMatches: TalentMatchingWorkflowOutput['matches'];
+    let libraryLocationMatches: LocationMatchingWorkflowOutput['matches'];
+    if (talentSettled && locationMatchSettled) {
+      if (talentSettled.status === 'rejected') {
+        throw new Error(
+          `Talent matching failed: ${String(talentSettled.reason)}`
+        );
+      }
+      if (locationMatchSettled.status === 'rejected') {
+        throw new Error(
+          `Location matching failed: ${String(locationMatchSettled.reason)}`
+        );
+      }
+      talentCharacterMatches = talentSettled.value.matches;
+      libraryLocationMatches = locationMatchSettled.value.matches;
+    } else {
+      talentCharacterMatches = checkpoint?.talentMatches ?? [];
+      libraryLocationMatches = checkpoint?.locationMatches ?? [];
     }
-    if (locationMatchSettled.status === 'rejected') {
-      throw new Error(
-        `Location matching failed: ${String(locationMatchSettled.reason)}`
-      );
-    }
-    const { matches: talentCharacterMatches } = talentSettled.value;
-    const { matches: libraryLocationMatches } = locationMatchSettled.value;
 
     // Apply casting to the bible NOW, before prompt generation. Talent matching
     // (above) has resolved, so casting is known. Feeding the cast bible into the
@@ -326,15 +427,35 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
       talentCharacterMatches
     );
 
+    if (shouldRunStage(startFrom, stopAt, 'casting')) {
+      await persistProgress({
+        completedStage: 'casting',
+        scenes,
+        shotMapping,
+        characterBible,
+        locationBible,
+        elementBible,
+        talentMatches: talentCharacterMatches,
+        locationMatches: libraryLocationMatches,
+      });
+      if (stopAt === 'casting') {
+        await recordDuration('casting');
+        return scenes;
+      }
+    }
+
     // ----------------------------------------------------------------------
     // PHASE 3: character bible + location bible + visual prompts in parallel
     // ----------------------------------------------------------------------
-    await step.do('phase-3-start', async () => {
-      await getGenerationChannel(sequenceId).emit('generation.phase:start', {
-        phase: 3,
-        phaseName: 'Generating references & prompts…',
+    const runReferences = shouldRunStage(startFrom, stopAt, 'references');
+    if (runReferences) {
+      await step.do('phase-3-start', async () => {
+        await getGenerationChannel(sequenceId).emit('generation.phase:start', {
+          phase: 3,
+          phaseName: 'Generating references & prompts…',
+        });
       });
-    });
+    }
 
     // #835: element-bible entries the scene-split LLM detected (recurring
     // products/objects) that have no uploaded element row need an
@@ -379,125 +500,171 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
       return result.elements;
     };
 
-    const [charSettled, locationSettled, visualSettled, elementSheetSettled] =
-      await Promise.allSettled([
-        spawnAndAwaitChild<CharacterBibleWorkflowInput, CharacterMinimal[]>(
-          step,
-          {
-            binding: this.env.CHARACTER_BIBLE_WORKFLOW,
+    const referenceSettled = runReferences
+      ? await Promise.allSettled([
+          spawnAndAwaitChild<CharacterBibleWorkflowInput, CharacterMinimal[]>(
+            step,
+            {
+              binding: this.env.CHARACTER_BIBLE_WORKFLOW,
+              parentBindingName: PARENT_BINDING_NAME,
+              parentInstanceId,
+              childId: `character-bible:${sequenceId ?? 'no-seq'}`,
+              childPayload: {
+                sequenceId,
+                userId: input.userId,
+                teamId: input.teamId,
+                reservationId: input.reservationId,
+                characterBible,
+                talentMatches: talentCharacterMatches,
+                imageModel,
+                styleConfig,
+              },
+              spawnStepName: 'spawn-character-bible',
+              awaitStepName: 'await-character-bible',
+              // Must exceed the child's own await budget: the bible awaits each
+              // sheet grandchild for 30 minutes, plus notify lag under a burst
+              // (the June 7 run lost a sequence to the 30-minute default here
+              // when a finished child's notify took >25 minutes to deliver).
+              timeout: '60 minutes',
+            }
+          ),
+          spawnAndAwaitChild<
+            LocationBibleWorkflowInput,
+            SequenceLocationMinimal[]
+          >(step, {
+            binding: this.env.LOCATION_BIBLE_WORKFLOW,
             parentBindingName: PARENT_BINDING_NAME,
             parentInstanceId,
-            childId: `character-bible:${sequenceId ?? 'no-seq'}`,
+            childId: `location-bible:${sequenceId ?? 'no-seq'}`,
             childPayload: {
               sequenceId,
               userId: input.userId,
               teamId: input.teamId,
               reservationId: input.reservationId,
-              characterBible,
-              talentMatches: talentCharacterMatches,
+              locationBible,
+              libraryLocationMatches,
+              // Use the sequence's image model for location sheets, mirroring
+              // the character-bible payload above — omitting it silently fell
+              // back to DEFAULT_IMAGE_MODEL for every location reference.
               imageModel,
               styleConfig,
             },
-            spawnStepName: 'spawn-character-bible',
-            awaitStepName: 'await-character-bible',
-            // Must exceed the child's own await budget: the bible awaits each
-            // sheet grandchild for 30 minutes, plus notify lag under a burst
-            // (the June 7 run lost a sequence to the 30-minute default here
-            // when a finished child's notify took >25 minutes to deliver).
+            spawnStepName: 'spawn-location-bible',
+            awaitStepName: 'await-location-bible',
+            // See await-character-bible — same grandchild budget + notify lag.
             timeout: '60 minutes',
-          }
-        ),
-        spawnAndAwaitChild<
-          LocationBibleWorkflowInput,
-          SequenceLocationMinimal[]
-        >(step, {
-          binding: this.env.LOCATION_BIBLE_WORKFLOW,
-          parentBindingName: PARENT_BINDING_NAME,
-          parentInstanceId,
-          childId: `location-bible:${sequenceId ?? 'no-seq'}`,
-          childPayload: {
-            sequenceId,
-            userId: input.userId,
-            teamId: input.teamId,
-            reservationId: input.reservationId,
-            locationBible,
-            libraryLocationMatches,
-            // Use the sequence's image model for location sheets, mirroring
-            // the character-bible payload above — omitting it silently fell
-            // back to DEFAULT_IMAGE_MODEL for every location reference.
-            imageModel,
-            styleConfig,
-          },
-          spawnStepName: 'spawn-location-bible',
-          awaitStepName: 'await-location-bible',
-          // See await-character-bible — same grandchild budget + notify lag.
-          timeout: '60 minutes',
-        }),
-        spawnAndAwaitChild<
-          FramePromptBatchWorkflowInput,
-          FramePromptBatchWorkflowResult
-        >(step, {
-          binding: this.env.FRAME_PROMPT_BATCH_WORKFLOW,
-          parentBindingName: PARENT_BINDING_NAME,
-          parentInstanceId,
-          childId: `frame-prompts-batch:${sequenceId ?? 'no-seq'}`,
-          childPayload: {
-            userId: input.userId,
-            teamId: input.teamId,
-            sequenceId,
-            reservationId: input.reservationId,
-            scenes,
-            aspectRatio,
-            characterBible: castCharacterBible,
-            locationBible,
-            elementBible,
-            styleConfig,
-            analysisModelId,
-            shotMapping,
-          },
-          spawnStepName: 'spawn-visual-prompts',
-          awaitStepName: 'await-visual-prompts',
-          // See await-character-bible — same grandchild budget + notify lag.
-          timeout: '60 minutes',
-        }),
-        runElementSheets(),
-      ]);
+          }),
+          spawnAndAwaitChild<
+            FramePromptBatchWorkflowInput,
+            FramePromptBatchWorkflowResult
+          >(step, {
+            binding: this.env.FRAME_PROMPT_BATCH_WORKFLOW,
+            parentBindingName: PARENT_BINDING_NAME,
+            parentInstanceId,
+            childId: `frame-prompts-batch:${sequenceId ?? 'no-seq'}`,
+            childPayload: {
+              userId: input.userId,
+              teamId: input.teamId,
+              sequenceId,
+              reservationId: input.reservationId,
+              scenes,
+              aspectRatio,
+              characterBible: castCharacterBible,
+              locationBible,
+              elementBible,
+              styleConfig,
+              analysisModelId,
+              shotMapping,
+            },
+            spawnStepName: 'spawn-visual-prompts',
+            awaitStepName: 'await-visual-prompts',
+            // See await-character-bible — same grandchild budget + notify lag.
+            timeout: '60 minutes',
+          }),
+          runElementSheets(),
+        ])
+      : null;
+    const charSettled = referenceSettled?.[0];
+    const locationSettled = referenceSettled?.[1];
+    const visualSettled = referenceSettled?.[2];
+    const elementSheetSettled = referenceSettled?.[3];
 
-    if (charSettled.status === 'rejected') {
-      throw new Error(
-        `Character sheet generation failed: ${String(charSettled.reason)}`
-      );
-    }
-    if (locationSettled.status === 'rejected') {
-      throw new Error(
-        `Location sheet generation failed: ${String(locationSettled.reason)}`
-      );
-    }
-    if (visualSettled.status === 'rejected') {
-      throw new Error(
-        `Visual prompt generation failed: ${String(visualSettled.reason)}`
-      );
-    }
-    if (elementSheetSettled.status === 'rejected') {
-      throw new Error(
-        `Element reference generation failed: ${String(elementSheetSettled.reason)}`
-      );
+    if (runReferences) {
+      if (!charSettled || charSettled.status !== 'fulfilled') {
+        throw new Error(
+          `Character sheet generation failed: ${String(charSettled?.reason ?? 'missing result')}`
+        );
+      }
+      if (!locationSettled || locationSettled.status !== 'fulfilled') {
+        throw new Error(
+          `Location sheet generation failed: ${String(locationSettled?.reason ?? 'missing result')}`
+        );
+      }
+      if (!visualSettled || visualSettled.status !== 'fulfilled') {
+        throw new Error(
+          `Visual prompt generation failed: ${String(visualSettled?.reason ?? 'missing result')}`
+        );
+      }
+      if (!elementSheetSettled || elementSheetSettled.status !== 'fulfilled') {
+        throw new Error(
+          `Element reference generation failed: ${String(elementSheetSettled?.reason ?? 'missing result')}`
+        );
+      }
     }
 
-    const charactersWithSheets = charSettled.value;
-    const locationsWithSheets = locationSettled.value;
+    const charactersWithSheets =
+      charSettled?.status === 'fulfilled'
+        ? charSettled.value
+        : hydrateCharacters(checkpoint?.charactersWithSheets);
+    const locationsWithSheets =
+      locationSettled?.status === 'fulfilled'
+        ? locationSettled.value
+        : hydrateLocations(checkpoint?.locationsWithSheets);
     // The visual-prompt workflow returns the generated prompts in memory
     // (#713/#991): thread them straight to the next phase rather than re-reading
     // `frame.imagePrompt` from the DB — versions are append-only and a
     // concurrent run may have repointed the mirror, so a re-read would be racy.
-    const scenesWithVisualPrompts = visualSettled.value.scenes;
-    const visualPromptBySceneId: Record<string, string> = Object.fromEntries(
-      Object.entries(visualSettled.value.visualPromptsBySceneId).map(
-        ([sceneId, visual]) => [sceneId, visual.fullPrompt]
-      )
-    );
-    const generatedElements = elementSheetSettled.value;
-    const allElements = [...elementsMinimal, ...generatedElements];
+    const scenesWithVisualPrompts =
+      visualSettled?.status === 'fulfilled'
+        ? visualSettled.value.scenes
+        : (checkpoint?.scenesWithVisualPrompts ?? scenes);
+    const visualPromptBySceneId: Record<string, string> =
+      visualSettled?.status === 'fulfilled'
+        ? Object.fromEntries(
+            Object.entries(visualSettled.value.visualPromptsBySceneId).map(
+              ([sceneId, visual]) => [sceneId, visual.fullPrompt]
+            )
+          )
+        : (checkpoint?.visualPromptBySceneId ?? {});
+    const generatedElements =
+      elementSheetSettled?.status === 'fulfilled'
+        ? elementSheetSettled.value
+        : [];
+    const allElements = runReferences
+      ? [...elementsMinimal, ...generatedElements]
+      : [...elementsMinimal, ...hydrateElements(checkpoint?.allElements)];
+
+    if (shouldRunStage(startFrom, stopAt, 'references')) {
+      await persistProgress({
+        completedStage: 'references',
+        scenes,
+        shotMapping,
+        characterBible,
+        locationBible,
+        elementBible,
+        talentMatches: talentCharacterMatches,
+        locationMatches: libraryLocationMatches,
+        charactersWithSheets,
+        locationsWithSheets,
+        allElements,
+        visualPromptBySceneId,
+        scenesWithVisualPrompts,
+      });
+      if (stopAt === 'references') {
+        await recordDuration('references');
+        return scenesWithVisualPrompts;
+      }
+    }
 
     const totalDurationSeconds = scenes.reduce(
       (sum, scene) => sum + (scene.metadata?.durationSeconds || 5),
@@ -510,6 +677,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
         aspectRatio,
         estimatedSceneCount: scenes.length,
         autoGenerateMotion,
+        stopAt,
         videoModels: autoGenerateMotion ? videoModels : undefined,
         videoDurationSeconds: Math.max(
           5,
@@ -726,6 +894,14 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
       musicTags,
     } = motionMusicSettled.value;
 
+    await persistProgress({
+      ...(checkpoint ?? { completedStage: 'images' }),
+      completedStage: 'images',
+    });
+    if (stopAt === 'images') {
+      return completeScenes;
+    }
+
     // ----------------------------------------------------------------------
     // PHASE 5: motion (+ optional music + merge) batch — single child
     // ----------------------------------------------------------------------
@@ -799,6 +975,13 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
         // backlog under a many-sequence burst.
         timeout: '90 minutes',
       });
+
+      await persistProgress({
+        ...(checkpoint ?? {
+          completedStage: shouldGenerateMusic ? 'music' : 'motion',
+        }),
+        completedStage: shouldGenerateMusic ? 'music' : 'motion',
+      });
     }
 
     return completeScenes;
@@ -839,4 +1022,58 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
       message: userMessage,
     });
   }
+}
+
+function hydrateCharacters(
+  rows: GenerationCheckpoint['charactersWithSheets']
+): CharacterMinimal[] {
+  if (!rows) return [];
+  return rows.map((row) => ({
+    id: row.id,
+    characterId: row.characterId,
+    name: row.name,
+    sheetImageUrl: row.sheetImageUrl,
+    sheetStatus:
+      row.sheetStatus === 'generating' ||
+      row.sheetStatus === 'completed' ||
+      row.sheetStatus === 'failed'
+        ? row.sheetStatus
+        : 'pending',
+    sheetInputHash: row.sheetInputHash,
+    selectedSheetVersionId: row.selectedSheetVersionId,
+    physicalDescription: row.physicalDescription,
+    consistencyTag: row.consistencyTag,
+  }));
+}
+
+function hydrateLocations(
+  rows: GenerationCheckpoint['locationsWithSheets']
+): SequenceLocationMinimal[] {
+  if (!rows) return [];
+  return rows.map((row) => ({
+    id: row.id,
+    locationId: row.locationId,
+    name: row.name,
+    referenceImageUrl: row.referenceImageUrl,
+    referenceStatus: 'completed',
+    referenceInputHash: null,
+    selectedReferenceVersionId: null,
+    description: null,
+    consistencyTag: null,
+  }));
+}
+
+function hydrateElements(
+  rows: GenerationCheckpoint['allElements']
+): SequenceElementMinimal[] {
+  if (!rows) return [];
+  return rows
+    .map((row) => ({
+      id: row.id,
+      token: row.token,
+      description: row.description,
+      imageUrl: row.imageUrl,
+      consistencyTag: row.consistencyTag,
+    }))
+    .filter((row) => row.imageUrl.length > 0);
 }

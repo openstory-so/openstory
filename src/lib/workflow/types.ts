@@ -62,6 +62,10 @@ import type { ReferenceImageDescription } from '@/lib/prompts/reference-image-pr
 import type { UpdateStalePlan } from '@/lib/shots/update-stale-plan';
 import type { StudioCreateInput } from '@/lib/studio/schema';
 import type { Json } from '@/types/database';
+import type {
+  GenerationCheckpoint,
+  GenerationStage,
+} from '@/lib/generation/pipeline';
 import { z } from 'zod';
 import type { musicDesignResultSchema } from '../ai/response-schemas';
 
@@ -260,6 +264,16 @@ export interface StoryboardWorkflowInput extends SequenceWorkflowContext {
   videoModels?: ImageToVideoModel[];
   autoGenerateMotion?: boolean;
   autoGenerateMusic?: boolean;
+  /** How far this run should go (#1408). Overrides the auto-generate flags. */
+  stopAt?: GenerationStage;
+  /**
+   * Continue-from-DAG: skip earlier phases and hydrate from `checkpoint`.
+   * Storyboard must pass `resume: true` so it does not wipe existing shots.
+   */
+  startFrom?: GenerationStage;
+  checkpoint?: GenerationCheckpoint;
+  /** Skip poster + shot delete — this run continues an existing pipeline. */
+  resume?: boolean;
   musicModel?: keyof typeof AUDIO_MODELS;
   /** Multiple audio models for variant generation (first is primary) */
   audioModels?: (keyof typeof AUDIO_MODELS)[];
@@ -330,6 +344,9 @@ export interface AnalyzeScriptWorkflowInput extends SequenceWorkflowContext {
   videoModels?: ImageToVideoModel[];
   autoGenerateMotion?: boolean;
   autoGenerateMusic?: boolean;
+  stopAt?: GenerationStage;
+  startFrom?: GenerationStage;
+  checkpoint?: GenerationCheckpoint;
   musicModel?: keyof typeof AUDIO_MODELS;
   /** Multiple audio models for variant generation (first is primary) */
   audioModels?: (keyof typeof AUDIO_MODELS)[];

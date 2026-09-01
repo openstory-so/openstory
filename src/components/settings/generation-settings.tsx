@@ -1,3 +1,4 @@
+import { GenerationStopSlider } from '@/components/generation/generation-stop-slider';
 import {
   ImageModelMultiSelector,
   ImageModelSelector,
@@ -12,7 +13,6 @@ import {
   MusicModelSelector,
 } from '@/components/model/music-model-selector';
 import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
 import {
   Popover,
   PopoverContent,
@@ -29,55 +29,28 @@ import {
 } from '@/lib/ai/models';
 import type { AnalysisModelId } from '@/lib/ai/models.config';
 import type { AspectRatio } from '@/lib/constants/aspect-ratios';
+import {
+  DEFAULT_GENERATION_STOP_AT,
+  includesStage,
+  type GenerationStage,
+} from '@/lib/generation/pipeline';
 import { useState, type FC } from 'react';
 import { AspectRatioPills } from './aspect-ratio-pills';
 import { GenerationSettingsTrigger } from './generation-settings-trigger';
-
-type AutoToggleProps = {
-  id: string;
-  label: string;
-  checked: boolean;
-  onChange: (checked: boolean) => void;
-  disabled?: boolean;
-};
-
-const AutoToggle: FC<AutoToggleProps> = ({
-  id,
-  label,
-  checked,
-  onChange,
-  disabled,
-}) => (
-  <div className="flex items-center gap-2">
-    <input
-      type="checkbox"
-      id={id}
-      checked={checked}
-      onChange={(e) => onChange(e.target.checked)}
-      disabled={disabled}
-      className="h-4 w-4 rounded border-border text-primary focus:ring-2 focus:ring-primary focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-    />
-    <Label htmlFor={id} className="text-sm font-normal cursor-pointer">
-      {label}
-    </Label>
-  </div>
-);
 
 type GenerationSettingsProps = {
   aspectRatio: AspectRatio;
   analysisModels: AnalysisModelId[];
   imageModels: TextToImageModel[];
   videoModels: ImageToVideoModel[];
-  autoGenerateMotion?: boolean;
+  stopAt?: GenerationStage;
   audioModels?: AudioModel[];
-  autoGenerateMusic?: boolean;
   onAspectRatioChange: (value: AspectRatio) => void;
   onAnalysisModelsChange: (value: AnalysisModelId[]) => void;
   onImageModelsChange: (value: TextToImageModel[]) => void;
   onVideoModelsChange: (value: ImageToVideoModel[]) => void;
-  onAutoGenerateMotionChange?: (value: boolean) => void;
+  onStopAtChange?: (value: GenerationStage) => void;
   onAudioModelsChange?: (value: AudioModel[]) => void;
-  onAutoGenerateMusicChange?: (value: boolean) => void;
   disabled?: boolean;
   singleSelectAnalysis?: boolean;
   /** Use single-select for image model (e.g. in regeneration context) */
@@ -88,12 +61,8 @@ type GenerationSettingsProps = {
   singleSelectMusic?: boolean;
   /** Current style category, used to show/hide style-restricted motion models */
   styleCategory?: string;
-  /** Current style name, used in recommendation tooltips */
+  /** Current style name, used in aspect-ratio recommendation tooltips */
   styleName?: string;
-  /** Style-recommended image model — drives the "Recommended" badge */
-  recommendedImageModel?: string | null;
-  /** Style-recommended video model — drives the "Recommended" badge */
-  recommendedVideoModel?: string | null;
   /** Style-recommended aspect ratio — drives the "Recommended" badge */
   recommendedAspectRatio?: string | null;
   /**
@@ -111,16 +80,14 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
   analysisModels,
   imageModels,
   videoModels,
-  autoGenerateMotion = true,
+  stopAt = DEFAULT_GENERATION_STOP_AT,
   audioModels,
-  autoGenerateMusic = true,
   onAspectRatioChange,
   onAnalysisModelsChange,
   onImageModelsChange,
   onVideoModelsChange,
-  onAutoGenerateMotionChange,
+  onStopAtChange,
   onAudioModelsChange,
-  onAutoGenerateMusicChange,
   disabled = false,
   singleSelectAnalysis = false,
   singleSelectImage = false,
@@ -128,13 +95,13 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
   singleSelectMusic = false,
   styleCategory,
   styleName,
-  recommendedImageModel,
-  recommendedVideoModel,
   recommendedAspectRatio,
   appliedFromStyle,
   onResetStyleDefaults,
 }) => {
   const [open, setOpen] = useState(false);
+  const showMotion = includesStage(stopAt, 'motion');
+  const showMusic = includesStage(stopAt, 'music');
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -142,8 +109,7 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
         <PopoverTrigger asChild disabled={disabled}>
           <GenerationSettingsTrigger
             aspectRatio={aspectRatio}
-            autoGenerateMotion={autoGenerateMotion}
-            autoGenerateMusic={autoGenerateMusic}
+            stopAt={stopAt}
           />
         </PopoverTrigger>
         {appliedFromStyle && onResetStyleDefaults && (
@@ -175,6 +141,17 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
         className="w-[min(22rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] overflow-x-hidden p-4"
       >
         <div className="flex min-w-0 flex-col gap-4">
+          {onStopAtChange && (
+            <>
+              <GenerationStopSlider
+                value={stopAt}
+                onChange={onStopAtChange}
+                disabled={disabled}
+              />
+              <Separator />
+            </>
+          )}
+
           {/* Aspect Ratio Section */}
           <section className="flex flex-col gap-2">
             <h3 className="text-sm font-medium text-foreground">
@@ -215,16 +192,12 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
                 selectedModel={imageModels[0] ?? DEFAULT_IMAGE_MODEL}
                 onModelChange={(model) => onImageModelsChange([model])}
                 disabled={disabled}
-                recommendedImageModel={recommendedImageModel}
-                styleName={styleName}
               />
             ) : (
               <ImageModelMultiSelector
                 selectedModels={imageModels}
                 onModelsChange={onImageModelsChange}
                 disabled={disabled}
-                recommendedImageModel={recommendedImageModel}
-                styleName={styleName}
               />
             )}
           </section>
@@ -236,39 +209,26 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
             <h3 className="text-sm font-medium text-foreground">
               {singleSelectMotion ? 'Motion Model' : 'Motion Models'}
             </h3>
-            {onAutoGenerateMotionChange && (
-              <AutoToggle
-                id="auto-generate-motion"
-                label="Auto-generate motion"
-                checked={autoGenerateMotion}
-                onChange={onAutoGenerateMotionChange}
-                disabled={disabled}
-              />
-            )}
             {singleSelectMotion ? (
               <MotionModelSelector
                 selectedModel={videoModels[0] ?? DEFAULT_VIDEO_MODEL}
                 onModelChange={(model) => onVideoModelsChange([model])}
-                disabled={disabled || !autoGenerateMotion}
+                disabled={disabled || !showMotion}
                 aspectRatio={aspectRatio}
                 styleCategory={styleCategory}
-                recommendedVideoModel={recommendedVideoModel}
-                styleName={styleName}
               />
             ) : (
               <MotionModelMultiSelector
                 selectedModels={videoModels}
                 onModelsChange={onVideoModelsChange}
-                disabled={disabled || !autoGenerateMotion}
+                disabled={disabled || !showMotion}
                 aspectRatio={aspectRatio}
                 styleCategory={styleCategory}
-                recommendedVideoModel={recommendedVideoModel}
-                styleName={styleName}
               />
             )}
           </section>
 
-          {onAutoGenerateMusicChange && onAudioModelsChange && audioModels && (
+          {onAudioModelsChange && audioModels && (
             <>
               <Separator />
 
@@ -277,24 +237,17 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
                 <h3 className="text-sm font-medium text-foreground">
                   {singleSelectMusic ? 'Music Model' : 'Music Models'}
                 </h3>
-                <AutoToggle
-                  id="auto-generate-music"
-                  label="Auto-generate music"
-                  checked={autoGenerateMusic}
-                  onChange={onAutoGenerateMusicChange}
-                  disabled={disabled}
-                />
                 {singleSelectMusic ? (
                   <MusicModelSelector
                     selectedModel={audioModels[0] ?? DEFAULT_MUSIC_MODEL}
                     onModelChange={(model) => onAudioModelsChange([model])}
-                    disabled={disabled || !autoGenerateMusic}
+                    disabled={disabled || !showMusic}
                   />
                 ) : (
                   <MusicModelMultiSelector
                     selectedModels={audioModels}
                     onModelsChange={onAudioModelsChange}
-                    disabled={disabled || !autoGenerateMusic}
+                    disabled={disabled || !showMusic}
                   />
                 )}
               </section>

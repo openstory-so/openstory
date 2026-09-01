@@ -25,6 +25,7 @@ import {
   type StudioVideoMode,
 } from '@/lib/studio/text-to-video';
 import { getLogger } from '@/lib/observability/logger';
+import { includesStage, type GenerationStage } from '@/lib/generation/pipeline';
 import { reportFlooredEstimate } from './billing-observability';
 import { type Microdollars, addMicros, micros, multiplyMicros } from './money';
 
@@ -269,6 +270,8 @@ export type StoryboardCostOpts = {
    */
   estimatedSceneCount?: number;
   autoGenerateMotion?: boolean;
+  /** How far the run will go (#1408). Overrides auto-generate flags. */
+  stopAt?: GenerationStage;
   /**
    * Video models for per-shot motion (#545). Each is priced from its own
    * parameters — a uniform multiplier would mis-estimate a mixed selection.
@@ -298,6 +301,10 @@ export function estimateStoryboardRenderCost(
   const sceneCount = opts.estimatedSceneCount ?? DEFAULT_ESTIMATED_SCENE_COUNT;
   const imageModelCount = opts.imageModelCount ?? 1;
   const { pricing } = opts;
+  const stopAt = opts.stopAt;
+  if (stopAt && !includesStage(stopAt, 'images')) {
+    return micros(0);
+  }
 
   let totalCost = multiplyMicros(
     gateEstimate(
@@ -310,7 +317,10 @@ export function estimateStoryboardRenderCost(
     imageModelCount
   );
 
-  if (opts.autoGenerateMotion && opts.videoModels?.length) {
+  const motionOn = stopAt
+    ? includesStage(stopAt, 'motion')
+    : Boolean(opts.autoGenerateMotion);
+  if (motionOn && opts.videoModels?.length) {
     const duration = opts.videoDurationSeconds ?? 5;
     for (const model of opts.videoModels) {
       const perShotMotion = gateEstimate(
@@ -327,7 +337,10 @@ export function estimateStoryboardRenderCost(
     }
   }
 
-  if (opts.autoGenerateMusic && opts.audioModels?.length) {
+  const musicOn = stopAt
+    ? includesStage(stopAt, 'music')
+    : Boolean(opts.autoGenerateMusic);
+  if (musicOn && opts.audioModels?.length) {
     const audioDuration = opts.audioDurationSeconds ?? sceneCount * 5;
     for (const model of opts.audioModels) {
       totalCost = addMicros(
@@ -363,10 +376,16 @@ export function estimateStoryboardRenderCost(
 export function estimateStoryboardCost(opts: StoryboardCostOpts): Microdollars {
   const sceneCount = opts.estimatedSceneCount ?? DEFAULT_ESTIMATED_SCENE_COUNT;
   const { pricing } = opts;
+  const stopAt = opts.stopAt;
   const characterSheets = estimateCharacterSheetCount(sceneCount);
   const locationSheets = estimateLocationSheetCount(sceneCount);
 
-  const llmCost = estimateLLMCost(3);
+  const llmCalls = stopAt && !includesStage(stopAt, 'casting') ? 1 : 3;
+  const llmCost = estimateLLMCost(llmCalls);
+
+  if (stopAt && !includesStage(stopAt, 'references')) {
+    return llmCost;
+  }
 
   const characterSheetCost = gateEstimate(
     estimateImageCost(opts.imageModel, '16:9', characterSheets, { pricing }),
@@ -388,6 +407,6 @@ export function estimateStoryboardCost(opts: StoryboardCostOpts): Microdollars {
 
   return addMicros(
     addMicros(addMicros(llmCost, characterSheetCost), locationSheetCost),
-    estimateStoryboardRenderCost(opts)
+    estimateStoryboardRenderCost({ ...opts, stopAt })
   );
 }

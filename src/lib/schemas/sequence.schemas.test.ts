@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createSequenceSchema } from './sequence.schemas';
 
 describe('createSequenceSchema', () => {
-  it('defaults motion and music ON when omitted (product aha path)', () => {
+  it('defaults stop-at to music when omitted (product aha path)', () => {
     const result = createSequenceSchema.safeParse({
       script: 'A valid length script here.',
       styleId: 'style_1',
@@ -11,8 +11,24 @@ describe('createSequenceSchema', () => {
 
     expect(result.success).toBe(true);
     if (result.success) {
+      expect(result.data.stopAt).toBe('music');
       expect(result.data.autoGenerateMotion).toBe(true);
       expect(result.data.autoGenerateMusic).toBe(true);
+    }
+  });
+
+  it('maps stopAt onto the legacy auto-generate flags', () => {
+    const result = createSequenceSchema.safeParse({
+      script: 'A valid length script here.',
+      styleId: 'style_1',
+      aspectRatio: '16:9',
+      stopAt: 'references',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.stopAt).toBe('references');
+      expect(result.data.autoGenerateMotion).toBe(false);
+      expect(result.data.autoGenerateMusic).toBe(false);
     }
   });
 

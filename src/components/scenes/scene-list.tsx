@@ -1,9 +1,15 @@
 import { ActionCost } from '@/components/billing/action-cost';
+import { GenerationStopSlider } from '@/components/generation/generation-stop-slider';
 import { MotionModelSelector } from '@/components/model/motion-model-selector';
 import { MusicModelSelector } from '@/components/model/music-model-selector';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import {
+  actionLabelForStage,
+  DEFAULT_GENERATION_STOP_AT,
+  type GenerationStage,
+} from '@/lib/generation/pipeline';
 import { useCreateScene, useReorderScenes } from '@/hooks/use-scene-structure';
 import {
   DEFAULT_MUSIC_MODEL,
@@ -26,10 +32,11 @@ import type { SceneSelection } from '@/lib/scenes/scene-selection';
 import type { SequenceSegment } from '@/lib/scenes/scene-segments';
 import type { ShotView } from '@/lib/shots/shot-view';
 import { cn } from '@/lib/utils';
-import { Loader2, Plus, Video } from 'lucide-react';
+import { Images, Loader2, Music, Plus, Video } from 'lucide-react';
 import {
   memo,
   useCallback,
+  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -105,6 +112,12 @@ export type SceneListProps = {
   regeneratingImages: Set<string>;
   regeneratingMotion: Set<string>;
   onBatchGenerateMotion?: (args: BatchGenerateMotionArgs) => Promise<void>;
+  nextStage?: GenerationStage | null;
+  onContinueGeneration?: (args: {
+    startFrom: GenerationStage;
+    stopAt: GenerationStage;
+  }) => Promise<void>;
+  onGenerateMusic?: (model: AudioModel) => Promise<void>;
   musicPromptsReady: boolean;
   hideBatchButton?: boolean;
   divergentVariants?: ShotVariant[];
@@ -114,7 +127,6 @@ export type SceneListProps = {
   initialVideoModel?: ImageToVideoModel;
   /** Style-category gate for models that require a matching style. */
   styleCategory?: string;
-  recommendedVideoModel?: string | null;
   styleName?: string;
   modelMissingShotIds?: Set<string>;
   modelMissingLabel?: string | null;
@@ -141,6 +153,9 @@ const SceneListComponent: React.FC<SceneListProps> = ({
   regeneratingImages,
   regeneratingMotion,
   onBatchGenerateMotion,
+  nextStage = null,
+  onContinueGeneration,
+  onGenerateMusic,
   musicPromptsReady,
   hideBatchButton = false,
   divergentVariants,
@@ -148,7 +163,6 @@ const SceneListComponent: React.FC<SceneListProps> = ({
   initialMusicModel,
   initialVideoModel,
   styleCategory,
-  recommendedVideoModel,
   styleName,
   modelMissingShotIds,
   modelMissingLabel,
@@ -210,6 +224,12 @@ const SceneListComponent: React.FC<SceneListProps> = ({
   };
 
   const [isGenerating, setIsGenerating] = useState(false);
+  const [continueStopAt, setContinueStopAt] = useState<GenerationStage>(
+    nextStage ?? DEFAULT_GENERATION_STOP_AT
+  );
+  useEffect(() => {
+    if (nextStage) setContinueStopAt(nextStage);
+  }, [nextStage]);
   const [includeMusic, setIncludeMusic] = useState(true);
   const [generateAudio, setGenerateAudio] = useState(true);
   const [musicModel, setMusicModel] = useState<AudioModel>(
@@ -279,8 +299,43 @@ const SceneListComponent: React.FC<SceneListProps> = ({
   };
 
   const isMotionInProgress = regeneratingMotion.size > 0 || hasGeneratingShots;
-  const showButton =
-    !hideBatchButton && notStartedShots.length > 0 && !isMotionInProgress;
+  const showMotionFooter =
+    !hideBatchButton &&
+    !isMotionInProgress &&
+    (nextStage === 'motion' ||
+      (nextStage == null && notStartedShots.length > 0));
+  const showMusicFooter =
+    !hideBatchButton && nextStage === 'music' && Boolean(onGenerateMusic);
+  const showContinueFooter =
+    !hideBatchButton &&
+    Boolean(nextStage) &&
+    nextStage !== 'motion' &&
+    nextStage !== 'music' &&
+    Boolean(onContinueGeneration);
+  const showButton = showMotionFooter;
+
+  const handleContinue = async () => {
+    if (!onContinueGeneration || !nextStage) return;
+    setIsGenerating(true);
+    try {
+      await onContinueGeneration({
+        startFrom: nextStage,
+        stopAt: continueStopAt,
+      });
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleGenerateMusicClick = async () => {
+    if (!onGenerateMusic) return;
+    setIsGenerating(true);
+    try {
+      await onGenerateMusic(musicModel);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
   const isButtonDisabled =
     isGenerating ||
     notStartedShots.length === 0 ||
@@ -528,7 +583,6 @@ const SceneListComponent: React.FC<SceneListProps> = ({
             onModelChange={setVideoModel}
             aspectRatio={aspectRatio}
             styleCategory={styleCategory}
-            recommendedVideoModel={recommendedVideoModel}
             styleName={styleName}
             disabled={isGenerating || isMotionInProgress}
           />
@@ -597,6 +651,68 @@ const SceneListComponent: React.FC<SceneListProps> = ({
           </label>
         </div>
       )}
+
+      {showContinueFooter && nextStage && (
+        <div className="sticky bottom-0 border-t bg-background p-4 flex flex-col gap-3">
+          <GenerationStopSlider
+            value={continueStopAt}
+            onChange={setContinueStopAt}
+            minStage={nextStage}
+            disabled={isGenerating}
+          />
+          <Button
+            variant="default"
+            className="w-full"
+            onClick={() => void handleContinue()}
+            disabled={isGenerating}
+          >
+            {isGenerating ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Generating…
+              </>
+            ) : (
+              <>
+                <Images className="mr-2 h-4 w-4" />
+                {actionLabelForStage(continueStopAt)}
+              </>
+            )}
+          </Button>
+        </div>
+      )}
+
+      {showMusicFooter && (
+        <div className="sticky bottom-0 border-t bg-background p-4 flex flex-col gap-3">
+          <MusicModelSelector
+            selectedModel={musicModel}
+            onModelChange={setMusicModel}
+            disabled={isGenerating}
+          />
+          <Button
+            variant="default"
+            className="w-full"
+            onClick={() => void handleGenerateMusicClick()}
+            disabled={isGenerating || !musicPromptsReady}
+          >
+            {isGenerating ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Generating…
+              </>
+            ) : !musicPromptsReady ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Composing music…
+              </>
+            ) : (
+              <>
+                <Music className="mr-2 h-4 w-4" />
+                Generate Music
+              </>
+            )}
+          </Button>
+        </div>
+      )}
     </div>
   );
 };
@@ -617,10 +733,10 @@ const areEqual = (
     prevProps.aspectRatio !== nextProps.aspectRatio ||
     prevProps.musicPromptsReady !== nextProps.musicPromptsReady ||
     prevProps.hideBatchButton !== nextProps.hideBatchButton ||
+    prevProps.nextStage !== nextProps.nextStage ||
     prevProps.initialMusicModel !== nextProps.initialMusicModel ||
     prevProps.initialVideoModel !== nextProps.initialVideoModel ||
     prevProps.styleCategory !== nextProps.styleCategory ||
-    prevProps.recommendedVideoModel !== nextProps.recommendedVideoModel ||
     prevProps.styleName !== nextProps.styleName ||
     prevProps.modelMissingLabel !== nextProps.modelMissingLabel ||
     prevProps.modelMissingShotIds !== nextProps.modelMissingShotIds ||
@@ -639,6 +755,8 @@ const areEqual = (
 
   if (
     prevProps.onBatchGenerateMotion !== nextProps.onBatchGenerateMotion ||
+    prevProps.onContinueGeneration !== nextProps.onContinueGeneration ||
+    prevProps.onGenerateMusic !== nextProps.onGenerateMusic ||
     prevProps.onCompareDivergent !== nextProps.onCompareDivergent ||
     prevProps.onSelectScene !== nextProps.onSelectScene ||
     prevProps.onSelectShot !== nextProps.onSelectShot ||

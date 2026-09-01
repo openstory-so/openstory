@@ -68,6 +68,9 @@ const mockSequence: Sequence = {
   readyEmailSentAt: null,
   autoGenerateMotion: false,
   autoGenerateMusic: false,
+  generationStopAt: null,
+  pipelineStage: null,
+  generationCheckpoint: null,
   suggestedTalentIds: null,
   suggestedLocationIds: null,
 };
