@@ -14,6 +14,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { test as base, expect, type Page } from 'playwright/test';
 import { z } from 'zod';
+import { pinRecordedPipelineSettings } from './test-utils';
 
 const TestUserResponseSchema = z.object({
   id: z.string(),
@@ -102,26 +103,10 @@ export async function authenticateUser(
       'openstory:welcome-credits-dismissed-at',
       String(Date.now())
     );
-    // Replay fal fixtures were recorded on Quality catalogs (style-applied
-    // Grok Imagine / Seedance). Turbo is the product default; pin Quality
-    // so e2e does not need a full re-record.
-    localStorage.setItem(
-      'openstory:generation-settings:v5',
-      JSON.stringify({
-        generationMode: 'quality',
-        aspectRatio: '16:9',
-        analysisModels: ['openai/gpt-5.6-luna'],
-        imageModel: 'gpt_image_2',
-        imageModels: ['gpt_image_2'],
-        motionModel: 'seedance_v2',
-        videoModels: ['seedance_v2'],
-        autoGenerateMotion: true,
-        musicModel: 'elevenlabs_music',
-        audioModels: ['elevenlabs_music'],
-        autoGenerateMusic: true,
-      })
-    );
   });
+  // Replay fal fixtures were recorded on Quality + Grok Imagine 2.0 /
+  // Seedance 2.0. Turbo (Lite / H3 Max) is the product default.
+  await pinRecordedPipelineSettings(page);
 
   // Create OTP via test API (the route normalizes to the identifier
   // Better Auth's signIn.emailOtp will actually look up).
