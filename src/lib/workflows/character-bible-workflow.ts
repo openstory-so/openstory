@@ -21,7 +21,7 @@ import { generateId } from '@/lib/db/id';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import type { CharacterMinimal, NewCharacter } from '@/lib/db/schema';
 import { buildCastingAttributes } from '@/lib/prompts/character-prompt';
-import { shouldReuseTalentSheet } from '@/lib/talent/reuse-talent-sheet';
+import { reusesTalentSheet } from '@/lib/talent/reuse-talent-sheet';
 import { spawnAndAwaitChild } from '@/lib/workflow/await-child';
 import { contentRejectionSummary } from '@/lib/ai/content-rejection';
 import { OpenStoryWorkflowEntrypoint } from '@/lib/workflow/base-workflow';
@@ -132,17 +132,9 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
           })
         : null;
 
-      const reuseTalentSheet = Boolean(
-        talentMatch?.sheetImageUrl &&
-        shouldReuseTalentSheet({
-          characterClothing: character.standardClothing,
-          characterFeatures: character.distinguishingFeatures,
-          talentClothing: talentMatch.sheetMetadata?.standardClothing,
-          talentFeatures: talentMatch.sheetMetadata?.distinguishingFeatures,
-          talentPhysical: talentMatch.sheetMetadata?.physicalDescription,
-          talentDescription: talentMatch.talentDescription,
-        })
-      );
+      // Shared with the reservation gate, which counts the sheets that will
+      // actually be billed — see `reusesTalentSheet`.
+      const reuseTalentSheet = reusesTalentSheet(character, talentMatch);
 
       const childPayload: CharacterSheetWorkflowInput = {
         userId: input.userId,

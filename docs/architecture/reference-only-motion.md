@@ -84,6 +84,43 @@ preview is what fills the scene rail while the clip renders — without it the
 rail has nothing to show until the video lands, and the anchor frame is where
 that preview variant hangs.
 
+**The motion/music prompts run alongside phase 3's sheets.** Phase 3 produces
+sheets — images — and the prompt child reads bible TEXT: the bibles come from
+scene-split, casting resolves at the end of phase 2, and there are no visual
+prompts to wait on. The one real dependency in the image path is the rendered
+still (#929 conditions the motion prompt on it as vision input), and there is
+no still here. Phase 4 becomes the await point rather than the start, so the
+progress rail keeps its shape; the phase-4 label reads "Prompts" instead of
+"Images" (`REFERENCE_ONLY_PHASE_LABELS`), since naming a step for a render it
+never performs reads as a stall.
+
+## The reservation gate
+
+`grow-reservation` runs **after casting, before phase 3** — it used to sit
+after phase 3. Both positions are valid readings of the same comparison:
+
+```ts
+if (remainingWork <= peek.remaining) return { spawnRenders: true };
+```
+
+`peek.remaining` is a live balance. Downstream of phase 3 it has already lost
+the sheet spend, which is why `estimateStoryboardRenderCost` documents itself
+as excluding sheets — "those already ran". Upstream, that money is still in the
+reservation, so the sheet cost has to be added back or the gate over-approves
+and the board runs out mid-render.
+
+Adding it back is what `estimateReferenceSheetCost` is for, and moving up buys
+two things. A credits-short run now fails in seconds instead of after a full
+set of sheets is paid for. And the counts stop being guesses: pre-flight only
+has a script, so it uses the `estimate*SheetCount(sceneCount)` heuristics
+(capped at 3), while the in-run gate knows the bibles and the casting result —
+one sheet per bible entry, minus the characters whose matched talent sheet is
+reused. That reuse test is `reusesTalentSheet`, shared with
+`character-bible-workflow` so the gate cannot count a sheet the run does not
+generate; a reused sheet is a storage copy with no provider cost. Every
+location is billed either way — a library match supplies a reference image, but
+the styled sheet is still generated.
+
 `MotionPromptBatchWorkflow`'s "refusing to generate an unanchored motion
 prompt" guard is lifted, since in this mode a missing still is the design
 rather than a failed image.

@@ -62,6 +62,7 @@ type GateOperation =
   | 'smart-retry:motion'
   | 'smart-retry:music'
   | 'storyboard:character-sheets'
+  | 'storyboard:element-sheets'
   | 'storyboard:location-sheets'
   | 'storyboard:motion'
   | 'storyboard:music'
@@ -407,34 +408,57 @@ export function estimateStoryboardRenderCost(
  * film-cost showcase also use this total after an honest primary-image probe;
  * unpriced motion/audio lines may still embed floors in that composite.
  */
+/**
+ * Character + location + element reference sheets, priced per image.
+ *
+ * Two callers with very different information. Pre-flight only has the script,
+ * so it passes the `estimate*SheetCount(sceneCount)` heuristics. The in-run
+ * gate runs after casting, where the counts are FACTS — one sheet per bible
+ * entry, minus the characters whose matched talent sheet is reused (a storage
+ * copy, no generation) — so it passes those instead. Sheets are always square
+ * 16:9 regardless of the sequence's ratio.
+ */
+export function estimateReferenceSheetCost(opts: {
+  imageModel: TextToImageModel;
+  characterSheets: number;
+  locationSheets: number;
+  /** Auto-generated element references (#835). Zero at pre-flight: unknowable. */
+  elementSheets?: number;
+  pricing: FalPricingMap;
+}): Microdollars {
+  const { imageModel, pricing } = opts;
+  const line = (count: number, operation: GateOperation): Microdollars =>
+    count <= 0
+      ? micros(0)
+      : gateEstimate(
+          estimateImageCost(imageModel, '16:9', count, { pricing }),
+          { model: imageModel, operation },
+          count
+        );
+
+  return addMicros(
+    addMicros(
+      line(opts.characterSheets, 'storyboard:character-sheets'),
+      line(opts.locationSheets, 'storyboard:location-sheets')
+    ),
+    line(opts.elementSheets ?? 0, 'storyboard:element-sheets')
+  );
+}
+
 export function estimateStoryboardCost(opts: StoryboardCostOpts): Microdollars {
   const sceneCount = opts.estimatedSceneCount ?? DEFAULT_ESTIMATED_SCENE_COUNT;
   const { pricing } = opts;
-  const characterSheets = estimateCharacterSheetCount(sceneCount);
-  const locationSheets = estimateLocationSheetCount(sceneCount);
 
   const llmCost = estimateLLMCost(3);
-
-  const characterSheetCost = gateEstimate(
-    estimateImageCost(opts.imageModel, '16:9', characterSheets, { pricing }),
-    {
-      model: opts.imageModel,
-      operation: 'storyboard:character-sheets',
-    },
-    characterSheets
-  );
-
-  const locationSheetCost = gateEstimate(
-    estimateImageCost(opts.imageModel, '16:9', locationSheets, { pricing }),
-    {
-      model: opts.imageModel,
-      operation: 'storyboard:location-sheets',
-    },
-    locationSheets
-  );
+  const sheetCost = estimateReferenceSheetCost({
+    imageModel: opts.imageModel,
+    characterSheets: estimateCharacterSheetCount(sceneCount),
+    locationSheets: estimateLocationSheetCount(sceneCount),
+    pricing,
+  });
 
   return addMicros(
-    addMicros(addMicros(llmCost, characterSheetCost), locationSheetCost),
+    addMicros(llmCost, sheetCost),
     estimateStoryboardRenderCost(opts)
   );
 }

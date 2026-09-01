@@ -9,6 +9,7 @@ import {
   estimateAudioCost,
   estimateCharacterSheetCount,
   estimateImageCost,
+  estimateReferenceSheetCost,
   estimateLLMCost,
   estimateLocationSheetCount,
   estimateStoryboardCost,
@@ -575,5 +576,59 @@ describe('gateEstimate', () => {
     const llm = Number(estimateLLMCost(3));
 
     expect(total).toBe(flooredImages + llm);
+  });
+});
+
+describe('estimateReferenceSheetCost', () => {
+  const sheets = (count: number) =>
+    Number(
+      estimateImageCost(IMAGE_MODEL, '16:9', count, { pricing: FAL_PRICING })
+    );
+
+  it('prices character, location and element sheets as one image each', () => {
+    const cost = Number(
+      estimateReferenceSheetCost({
+        imageModel: IMAGE_MODEL,
+        characterSheets: 2,
+        locationSheets: 3,
+        elementSheets: 1,
+        pricing: FAL_PRICING,
+      })
+    );
+    expect(cost).toBe(sheets(2) + sheets(3) + sheets(1));
+  });
+
+  it('charges nothing for a count of zero', () => {
+    // The in-run gate reaches this whenever every cast character reuses a
+    // matched talent sheet — a storage copy, not a generation. A floored
+    // estimate here would over-reserve and could refuse an affordable run.
+    expect(
+      Number(
+        estimateReferenceSheetCost({
+          imageModel: IMAGE_MODEL,
+          characterSheets: 0,
+          locationSheets: 0,
+          elementSheets: 0,
+          pricing: FAL_PRICING,
+        })
+      )
+    ).toBe(0);
+  });
+
+  it('treats element sheets as optional', () => {
+    const withoutElements = estimateReferenceSheetCost({
+      imageModel: IMAGE_MODEL,
+      characterSheets: 1,
+      locationSheets: 1,
+      pricing: FAL_PRICING,
+    });
+    const withZeroElements = estimateReferenceSheetCost({
+      imageModel: IMAGE_MODEL,
+      characterSheets: 1,
+      locationSheets: 1,
+      elementSheets: 0,
+      pricing: FAL_PRICING,
+    });
+    expect(Number(withoutElements)).toBe(Number(withZeroElements));
   });
 });
