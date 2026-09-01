@@ -115,7 +115,11 @@ documented encoding of "reference-driven shot with no dedicated first frame".
 ## Model gating
 
 Only models in `MOTION_REFERENCE_ENDPOINTS` qualify — today Seedance 2.0 and
-2.5. `supportsReferenceOnlyMotion` is keyed on the MODEL, not the resolved via:
+2.5 and MiniMax H3 Max, whose `reference-to-video` route requires only a
+prompt and takes its images in `reference_image_urls` rather than `image_urls`
+(`imageField` on the endpoint config; every builder reads it, so a fourth model
+with a fourth field name needs no code).
+`supportsReferenceOnlyMotion` is keyed on the MODEL, not the resolved via:
 the mode is chosen at sequence creation while the via is claimed per team at
 submit time, so a model that is capable on one via and not another could not be
 gated honestly.
@@ -174,4 +178,4 @@ Reference-only is faster and cheaper — one generation per shot instead of two.
 What it gives up is control: with a still you can look at the composition,
 regenerate it, upscale it, or hand-pick a variant before any video spend. Here
 the first thing you see is the clip. It also narrows the usable motion models
-to the Seedance family. Off by default for both reasons.
+to those with a reference-to-video route. Off by default for both reasons.

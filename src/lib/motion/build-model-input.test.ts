@@ -482,6 +482,22 @@ describe('buildMotionRequest — reference-only', () => {
     expect(input.prompt).toContain('@Image1');
   });
 
+  it('binds refs from slot 1 on H3 Max, whose image field is its own', () => {
+    const { endpointId, input } = buildMotionRequest(
+      referenceOnlyOptions,
+      'minimax_h3_max'
+    );
+
+    expect(endpointId).toBe('minimax/h3-max/reference-to-video');
+    expect(input).not.toHaveProperty('image_url');
+    expect(input).not.toHaveProperty('image_urls');
+    expect(
+      'reference_image_urls' in input ? input.reference_image_urls : undefined
+    ).toEqual(['https://example.com/scarlett.png']);
+    expect(input.prompt).not.toContain('starting frame');
+    expect(input.prompt).toContain('Image 1');
+  });
+
   it('omits image_urls entirely when nothing matched', () => {
     const { input } = buildMotionRequest(
       { ...referenceOnlyOptions, referenceImages: [] },

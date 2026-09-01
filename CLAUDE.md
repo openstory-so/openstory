@@ -216,7 +216,7 @@ category doesn't match the hatch it came through. Full rationale:
 `sequences.referenceOnly` renders each shot **straight to video** from the
 character / location / element reference sheets — the shot-images phase never
 runs. Off by default; only models with a fal `reference-to-video` route qualify
-(Seedance 2.0 / 2.5, `supportsReferenceOnlyMotion`), and `createSequenceSchema`
+(Seedance 2.0 / 2.5, H3 Max, `supportsReferenceOnlyMotion`), and `createSequenceSchema`
 validates **every** selected video model, not just the primary.
 
 The substance is the prompt. The image-to-video template's central rule is NO
