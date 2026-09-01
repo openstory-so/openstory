@@ -4,7 +4,7 @@
  */
 
 import type { Database } from '@/lib/db/client';
-import { dbSceneId, frames, scenes, shots } from '@/lib/db/schema';
+import { dbSceneId, frames, scenes, sequences, shots } from '@/lib/db/schema';
 import type { NewFrame, Shot, NewShot } from '@/lib/db/schema';
 import type { Sequence } from '@/lib/db/schema/sequences';
 import { and, asc, desc, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
@@ -56,7 +56,12 @@ type ShotOrderBy = 'sceneOrder' | 'createdAt' | 'updatedAt';
  * (#991: no DB reads in workflows). It is a superset of `Shot`, so callers that
  * only need the shot fields are unaffected.
  */
-export type ShotWithAnchorFrame = Shot & { anchorFrameId: string };
+/**
+ * `anchorFrameId` is null for a reference-only shot: the mode renders straight
+ * to video and skips the visual-prompt phase, so nothing is ever written to an
+ * anchor frame and none is materialized. Every other mode always has one.
+ */
+export type ShotWithAnchorFrame = Shot & { anchorFrameId: string | null };
 
 // A shot owns no hashed artifact of its own any more: image staleness is
 // checked via `frameVariants.isStale` / `frames.isStale` (#989) and video
@@ -82,6 +87,24 @@ type ShotFilters = {
   offset?: number;
 };
 
+/**
+ * Which of these shots' sequences render reference-only. One indexed lookup
+ * over the distinct sequence ids (almost always exactly one).
+ */
+async function sequenceIdsRenderingReferenceOnly(
+  db: Database,
+  rows: ReadonlyArray<Pick<Shot, 'id' | 'sequenceId'>>
+): Promise<Set<string>> {
+  const sequenceIds = [...new Set(rows.map((r) => r.sequenceId))];
+  const found = await db
+    .select({ id: sequences.id })
+    .from(sequences)
+    .where(
+      and(inArray(sequences.id, sequenceIds), eq(sequences.referenceOnly, true))
+    );
+  return new Set(found.map((r) => r.id));
+}
+
 export function createShotsMethods(db: Database) {
   // Idempotently materialize the anchor frame for each created/upserted shot and
   // return each shot's anchor frame id keyed by shotId. A no-op `onConflictDoUpdate`
@@ -101,9 +124,23 @@ export function createShotsMethods(db: Database) {
     rows: ReadonlyArray<Pick<Shot, 'id' | 'sequenceId'>>
   ): Promise<Map<string, string>> => {
     if (rows.length === 0) return new Map();
+    // Reference-only sequences render straight to video: no still is generated
+    // and (since the visual-prompt phase is skipped too) nothing is ever
+    // written to the anchor frame. Resolved HERE rather than passed in by each
+    // caller because the backfill callers outnumber the creation ones — every
+    // shot read calls this, so a flag only the creation path knew would be
+    // undone by the next read.
+    const referenceOnlySequenceIds = await sequenceIdsRenderingReferenceOnly(
+      db,
+      rows
+    );
+    const needAnchor = rows.filter(
+      (r) => !referenceOnlySequenceIds.has(r.sequenceId)
+    );
+    if (needAnchor.length === 0) return new Map();
     const result = new Map<string, string>();
-    for (let i = 0; i < rows.length; i += ANCHOR_FRAMES_BATCH) {
-      const batch = rows.slice(i, i + ANCHOR_FRAMES_BATCH);
+    for (let i = 0; i < needAnchor.length; i += ANCHOR_FRAMES_BATCH) {
+      const batch = needAnchor.slice(i, i + ANCHOR_FRAMES_BATCH);
       const anchors = await db
         .insert(frames)
         .values(batch.map(anchorFrameValues))
@@ -248,12 +285,8 @@ export function createShotsMethods(db: Database) {
           `Failed to upsert shot for sequence ${data.sequenceId} scene ${data.sceneId} #${data.shotNumber}`
         );
       }
-      const anchorFrameId = (await ensureAnchorFrames([shot])).get(shot.id);
-      if (!anchorFrameId) {
-        throw new Error(
-          `Failed to materialize anchor frame for shot ${shot.id}`
-        );
-      }
+      const anchorFrameId =
+        (await ensureAnchorFrames([shot])).get(shot.id) ?? null;
       return { ...shot, anchorFrameId };
     },
     /** HARD delete — admin/GC and the storyboard wipe; the product Delete is
@@ -529,13 +562,10 @@ export function createShotsMethods(db: Database) {
           .returning();
         const anchors = await ensureAnchorFrames(batchResults);
         for (const shot of batchResults) {
-          const anchorFrameId = anchors.get(shot.id);
-          if (!anchorFrameId) {
-            throw new Error(
-              `Failed to materialize anchor frame for shot ${shot.id}`
-            );
-          }
-          results.push({ ...shot, anchorFrameId });
+          results.push({
+            ...shot,
+            anchorFrameId: anchors.get(shot.id) ?? null,
+          });
         }
       }
 

@@ -226,6 +226,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
             script: sanitizeScriptContent(script),
             modelId: analysisModelId,
             elements: elementsMinimal,
+            referenceOnly,
           },
           spawnStepName: 'spawn-scene-split',
           awaitStepName: 'await-scene-split',
@@ -381,6 +382,46 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
       return result.elements;
     };
 
+    // REFERENCE-ONLY skips the visual prompts outright — one LLM call per scene
+    // for a prompt nothing reads. No still is rendered from it, and the
+    // reference-only motion template composes its own opening frame from the
+    // bibles (it is never handed the visual prompt; see
+    // `phase/motion-prompt-reference-only-chat`). The one consumer left is the
+    // music prompt's visual grounding, which falls back to `scene.metadata`.
+    const runVisualPrompts =
+      async (): Promise<FramePromptBatchWorkflowResult> => {
+        if (referenceOnly) {
+          return { scenes, visualPromptsBySceneId: {} };
+        }
+        return spawnAndAwaitChild<
+          FramePromptBatchWorkflowInput,
+          FramePromptBatchWorkflowResult
+        >(step, {
+          binding: this.env.FRAME_PROMPT_BATCH_WORKFLOW,
+          parentBindingName: PARENT_BINDING_NAME,
+          parentInstanceId,
+          childId: `frame-prompts-batch:${sequenceId ?? 'no-seq'}`,
+          childPayload: {
+            userId: input.userId,
+            teamId: input.teamId,
+            sequenceId,
+            reservationId: input.reservationId,
+            scenes,
+            aspectRatio,
+            characterBible: castCharacterBible,
+            locationBible,
+            elementBible,
+            styleConfig,
+            analysisModelId,
+            shotMapping,
+          },
+          spawnStepName: 'spawn-visual-prompts',
+          awaitStepName: 'await-visual-prompts',
+          // See await-character-bible — same grandchild budget + notify lag.
+          timeout: '60 minutes',
+        });
+      };
+
     const [charSettled, locationSettled, visualSettled, elementSheetSettled] =
       await Promise.allSettled([
         spawnAndAwaitChild<CharacterBibleWorkflowInput, CharacterMinimal[]>(
@@ -435,33 +476,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
           // See await-character-bible — same grandchild budget + notify lag.
           timeout: '60 minutes',
         }),
-        spawnAndAwaitChild<
-          FramePromptBatchWorkflowInput,
-          FramePromptBatchWorkflowResult
-        >(step, {
-          binding: this.env.FRAME_PROMPT_BATCH_WORKFLOW,
-          parentBindingName: PARENT_BINDING_NAME,
-          parentInstanceId,
-          childId: `frame-prompts-batch:${sequenceId ?? 'no-seq'}`,
-          childPayload: {
-            userId: input.userId,
-            teamId: input.teamId,
-            sequenceId,
-            reservationId: input.reservationId,
-            scenes,
-            aspectRatio,
-            characterBible: castCharacterBible,
-            locationBible,
-            elementBible,
-            styleConfig,
-            analysisModelId,
-            shotMapping,
-          },
-          spawnStepName: 'spawn-visual-prompts',
-          awaitStepName: 'await-visual-prompts',
-          // See await-character-bible — same grandchild budget + notify lag.
-          timeout: '60 minutes',
-        }),
+        runVisualPrompts(),
         runElementSheets(),
       ]);
 

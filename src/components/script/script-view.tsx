@@ -1365,6 +1365,7 @@ export const ScriptView: FC<{
     videoModels,
     autoGenerateMusic,
     audioModels,
+    referenceOnly,
   ]);
 
   // Nothing written yet: Enhance writes the script instead of expanding one

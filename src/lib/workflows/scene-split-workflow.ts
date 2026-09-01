@@ -441,10 +441,12 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
                     ev.scene,
                     ev.index
                   );
-                  shotByIndex.set(ev.index, {
-                    id: shot.id,
-                    frameId: shot.anchorFrameId,
-                  });
+                  if (shot.anchorFrameId) {
+                    shotByIndex.set(ev.index, {
+                      id: shot.id,
+                      frameId: shot.anchorFrameId,
+                    });
+                  }
                   shotMapping.push({
                     analysisSceneId: ev.scene.sceneId,
                     shotId: shot.id,
@@ -470,7 +472,10 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
                       orderIndex: ev.index,
                     }
                   );
-                  if (!previewTriggered.has(ev.index)) {
+                  // No anchor frame in reference-only, and nothing for a
+                  // preview still to stand in for — the shot renders straight
+                  // to video. Skipping it saves a billed image per scene.
+                  if (shot.anchorFrameId && !previewTriggered.has(ev.index)) {
                     previewTriggered.add(ev.index);
                     await triggerPreviewImage({
                       input,

@@ -65,10 +65,32 @@ resolved the set. Here there is no such backstop.
 ## Pipeline changes
 
 `AnalyzeScriptWorkflow` phase 4 skips the shot-images child entirely and drops
-the `imageUrls.some(url => url !== null)` gate that guards phase 5. Visual
-prompts are still written in phase 3: they are cheap text, they carry staging
-the reference-only prompt opens on (threaded down as `visualPrompt`), and
-keeping them means toggling the mode off does not have to re-derive them.
+the `imageUrls.some(url => url !== null)` gate that guards phase 5.
+
+**Phase 3 skips the visual prompts too.** They looked cheap enough to keep — a
+mode-switch cache, and staging for the motion prompt to open on. The second
+half was wrong: the reference-only template is never handed the visual prompt.
+Its inputs are `<CURRENT_SCENE>` (the `Scene` JSON, whose `prompts` field was
+removed in #713), the three bibles, `<DIRECTOR_STYLE>` and `<ASPECT_RATIO>` —
+it composes the opening frame from the bibles itself, which is the reason it is
+a separate template at all. Nothing else read them either: no still is rendered
+from them, and the only live consumer was the music prompt's visual grounding,
+which falls back to `scene.metadata`. So it was one LLM call per scene for a
+cache. `visualPromptsBySceneId` comes back empty and the motion-prompt hash is
+unaffected (it never included the visual prompt).
+
+`SceneSplitWorkflow` skips the decorative per-scene **preview still** for the
+same reason — it is a billed image generation standing in for a still that will
+never arrive.
+
+With neither writing to it, the **anchor frame is not materialized at all**:
+`ensureAnchorFrames` resolves `sequences.referenceOnly` itself rather than
+taking a caller flag, because every shot READ calls it and a creation-only flag
+would be undone by the next read. `ShotWithAnchorFrame.anchorFrameId` and
+`ShotMapping.frameId` are therefore nullable, and `shotViewMissingFrame` — which
+already existed for frameless shots — carries the read path. The alternative was
+a row whose `imageStatus` sat at its `'pending'` default forever, which the
+scene rail renders as a permanently spinning thumbnail.
 
 `MotionPromptBatchWorkflow`'s "refusing to generate an unanchored motion
 prompt" guard is lifted, since in this mode a missing still is the design
