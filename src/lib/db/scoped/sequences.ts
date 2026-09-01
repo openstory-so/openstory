@@ -321,6 +321,8 @@ export function createSequencesMethods(
       musicModel?: string;
       autoGenerateMotion?: boolean;
       autoGenerateMusic?: boolean;
+      /** Straight-to-video: skip shot stills. See reference-only-motion.md. */
+      referenceOnly?: boolean;
       suggestedTalentIds?: string[];
       suggestedLocationIds?: string[];
     }): Promise<Sequence> => {
@@ -349,6 +351,7 @@ export function createSequencesMethods(
         musicModel: params.musicModel,
         autoGenerateMotion: params.autoGenerateMotion ?? false,
         autoGenerateMusic: params.autoGenerateMusic ?? false,
+        referenceOnly: params.referenceOnly ?? false,
         suggestedTalentIds: params.suggestedTalentIds ?? null,
         suggestedLocationIds: params.suggestedLocationIds ?? null,
         status: 'draft',

@@ -342,6 +342,7 @@ export const createSequences = createServerOnlyFn(
               musicModel: persistedMusicModel,
               autoGenerateMotion,
               autoGenerateMusic,
+              referenceOnly,
               suggestedTalentIds: suggestedTalentIds?.length
                 ? suggestedTalentIds
                 : undefined,
