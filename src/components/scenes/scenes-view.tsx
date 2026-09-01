@@ -1336,25 +1336,28 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
 
   const musicPromptsReady = !!(sequence?.musicPrompt && sequence.musicTags);
 
-  const nextStage = useMemo(
-    () =>
-      nextActionFromArtifacts(
-        artifactsFromSequenceState({
-          sceneCount: scenes?.length ?? 0,
-          shots: shots ?? [],
-          musicStatus: sequence?.musicStatus,
-          musicUrl: sequence?.musicUrl,
-          pipelineStage: sequence?.pipelineStage,
-        })
-      ),
-    [
-      scenes?.length,
-      shots,
-      sequence?.musicStatus,
-      sequence?.musicUrl,
-      sequence?.pipelineStage,
-    ]
-  );
+  const nextStage = useMemo(() => {
+    // Visual prompts stream in before the references phase finishes, so a
+    // live DAG read would offer "Generate Images" mid-run. Wait until the
+    // sequence is no longer processing.
+    if (isProcessing) return null;
+    return nextActionFromArtifacts(
+      artifactsFromSequenceState({
+        sceneCount: scenes?.length ?? 0,
+        shots: shots ?? [],
+        musicStatus: sequence?.musicStatus,
+        musicUrl: sequence?.musicUrl,
+        pipelineStage: sequence?.pipelineStage,
+      })
+    );
+  }, [
+    isProcessing,
+    scenes?.length,
+    shots,
+    sequence?.musicStatus,
+    sequence?.musicUrl,
+    sequence?.pipelineStage,
+  ]);
 
   const handleContinueGeneration = useCallback(
     async (args: { startFrom: GenerationStage; stopAt: GenerationStage }) => {
@@ -1456,7 +1459,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     onContinueGeneration: handleContinueGeneration,
     onGenerateMusic: handleGenerateMusic,
     musicPromptsReady,
-    hideBatchButton: phaseConfig.autoGenerateMotion && isGenerationActive,
+    hideBatchButton: isGenerationActive,
     divergentVariants,
     onCompareDivergent: setCompareVariant,
     initialMusicModel: sequenceMusicModel,

@@ -10,6 +10,7 @@ import {
   isGenerationStage,
   nextActionFromArtifacts,
   nextStageAfter,
+  resolveStopAt,
   shouldRunStage,
   stageIndex,
   stagesUpTo,
@@ -60,6 +61,29 @@ describe('generation pipeline stages', () => {
       autoGenerateMotion: false,
       autoGenerateMusic: false,
     });
+  });
+
+  it('prefers an explicit stop-at over auto-generate flags', () => {
+    expect(
+      resolveStopAt({
+        stopAt: 'references',
+        autoGenerateMotion: false,
+        autoGenerateMusic: false,
+      })
+    ).toBe('references');
+    expect(
+      resolveStopAt({
+        generationStopAt: 'casting',
+        autoGenerateMotion: false,
+        autoGenerateMusic: false,
+      })
+    ).toBe('casting');
+    expect(
+      resolveStopAt({
+        autoGenerateMotion: false,
+        autoGenerateMusic: false,
+      })
+    ).toBe('images');
   });
 
   it('maps legacy flags back onto a stop-at stage', () => {
