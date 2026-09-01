@@ -481,7 +481,10 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
           // here failed the whole update run — and a mode flip re-stales every
           // motion prompt, which is exactly what sends a reference-only
           // sequence down this path.
-          if (!still?.url && !plan.sequence.referenceOnly) {
+          // Per target, not per sequence: a shot may override the sequence's
+          // start-frame mode either way, and the plan froze that answer at
+          // click time.
+          if (!still?.url && target.usesStartFrame) {
             throw new NonRetryableError(
               `Shot ${target.shotId} has no rendered still to animate`,
               'WorkflowValidationError'
@@ -599,7 +602,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
             elements: renderRefs.elements,
             // With no still the location sheet is the only thing establishing
             // the set — and `renderRefs` already loaded it for the image stage.
-            includeLocations: plan.sequence.referenceOnly,
+            includeLocations: !target.usesStartFrame,
             locations: renderRefs.locations,
           });
           const duration = resolveShotDuration({
@@ -635,8 +638,10 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
             sequenceId,
             shotId: shot.id,
             sceneId: shot.sceneId,
-            imageUrl: still?.url ?? undefined,
-            referenceOnly: plan.sequence.referenceOnly,
+            imageUrl: target.usesStartFrame
+              ? (still?.url ?? undefined)
+              : undefined,
+            referenceOnly: !target.usesStartFrame,
             frameVersionId: still?.id ?? null,
             motionPromptVersionId: motionVersion.id,
             prompt,
@@ -897,8 +902,10 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
                     ...base,
                     sceneBefore: scenes.sceneBefore,
                     sceneAfter: scenes.sceneAfter,
-                    startingFrameImageUrl: startingFrameImageUrl ?? undefined,
-                    referenceOnly: plan.sequence.referenceOnly,
+                    startingFrameImageUrl: target.usesStartFrame
+                      ? (startingFrameImageUrl ?? undefined)
+                      : undefined,
+                    referenceOnly: !target.usesStartFrame,
                     targetVersionId: claims.motionVersionId ?? undefined,
                   },
                   spawnStepName: `spawn-motion-prompt-${target.shotId}`,

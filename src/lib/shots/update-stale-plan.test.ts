@@ -523,6 +523,7 @@ describe('claimTargets (#1085)', () => {
       beforeShotId: null,
       afterShotId: null,
       startingFrameImageUrl: null,
+      usesStartFrame: true,
       durationMs: null,
       standingImageVariantId: null,
       standingMotionVersionId: null,

@@ -10,6 +10,7 @@
  * body, which the compiler strips.
  */
 
+import { usesStartFrame } from '@/lib/shots/use-start-frame';
 import {
   loadSceneContextBySequence,
   resolveSceneForShot,
@@ -282,13 +283,18 @@ export async function executeSmartRetry(context: SmartRetryContext) {
   // every failed reference-only clip invisible to retry — and the empty result
   // reported "none of the failed items can be retried", pushing the user at a
   // full regeneration to recover clips that were retryable all along.
-  const referenceOnly = sequence.referenceOnly;
+  // Per shot: a shot can override the sequence's start-frame mode either way,
+  // so a retry has to re-ask rather than assume the sequence default.
+  const shotUsesStartFrame = (shot: { useStartFrame?: boolean | null }) =>
+    usesStartFrame(shot, sequence);
   const failedMotionShots = shotViews.filter(
     (f) =>
       f.videoStatus === 'failed' &&
-      (referenceOnly || f.image?.url) &&
+      (!shotUsesStartFrame(f) || f.image?.url) &&
       f.motionPrompt?.fullPrompt
   );
+  // Loaded once for the batch; `includeLocations` still decides per shot.
+  const anyReferenceOnly = shotViews.some((f) => !shotUsesStartFrame(f));
   const hasMusicFailure =
     sequence.musicStatus === 'failed' && sequence.musicPrompt;
 
@@ -369,7 +375,7 @@ export async function executeSmartRetry(context: SmartRetryContext) {
     // retry that forwarded none would silently resubmit as text-to-video —
     // different characters, different set, at the same price. Loaded once for
     // the whole batch; the image-to-video path keeps its existing behaviour.
-    const [motionCharacters, motionElements, motionLocations] = referenceOnly
+    const [motionCharacters, motionElements, motionLocations] = anyReferenceOnly
       ? await Promise.all([
           context.scopedDb.characters.listWithSheets(sequence.id),
           context.scopedDb.sequenceElements.list(sequence.id),
@@ -379,6 +385,7 @@ export async function executeSmartRetry(context: SmartRetryContext) {
     let triggeredMotion = 0;
     for (const shot of failedMotionShots) {
       const imageUrl = shot.image?.url;
+      const referenceOnly = !shotUsesStartFrame(shot);
       if (!imageUrl && !referenceOnly) continue;
 
       const shotVideoModel = videoModelFor(shot);
@@ -410,7 +417,7 @@ export async function executeSmartRetry(context: SmartRetryContext) {
         sequenceId: sequence.id,
         // Null only on the reference-only path — the `continue` above still
         // rejects a missing still everywhere else.
-        imageUrl: imageUrl ?? undefined,
+        imageUrl: referenceOnly ? undefined : (imageUrl ?? undefined),
         referenceOnly,
         ...(referenceOnly
           ? {

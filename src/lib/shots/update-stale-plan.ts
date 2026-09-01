@@ -11,6 +11,7 @@
  * materialised per shot at spawn time.
  */
 
+import { usesStartFrame } from '@/lib/shots/use-start-frame';
 import { musicPromptInputHashMatches } from '@/lib/ai/input-hash';
 import {
   DEFAULT_ANALYSIS_MODEL,
@@ -82,6 +83,13 @@ export type PlanTarget = {
   afterShotId: string | null;
   /** Frame image URL at plan time; image stage may produce a newer one later. */
   startingFrameImageUrl: string | null;
+  /**
+   * Does THIS shot animate from its still? Snapshotted per target rather than
+   * read off `plan.sequence`, because a shot can override the sequence
+   * (`shots.useStartFrame`). Frozen at click time like every other pointer
+   * here — a mid-run toggle must not send half the run down each route.
+   */
+  usesStartFrame: boolean;
   /** Clip length, snapped to the model at render time. */
   durationMs: number | null;
   /**
@@ -561,6 +569,7 @@ async function decideShotTarget(args: {
       afterShotId:
         flags.regenMotion && idx >= 0 ? (allShots[idx + 1]?.id ?? null) : null,
       startingFrameImageUrl: selectedImage?.url ?? null,
+      usesStartFrame: usesStartFrame(shot, sequence),
       durationMs: shot.durationMs,
       standingImageVariantId: selectedImage?.id ?? null,
       standingMotionVersionId: selectedMotionVersionId,
