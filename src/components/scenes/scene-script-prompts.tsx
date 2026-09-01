@@ -1527,6 +1527,14 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     editedMotionPrompt.trim().length > 0 &&
     editedMotionPrompt.trim() !== rawMotionPrompt.trim();
 
+  // "Regenerate" promises a previous version to replace. Reference-only skips
+  // the visual-prompt phase entirely, so its shots reach this panel with no
+  // image prompt ever written — and the button offering to redo one that does
+  // not exist is why it reads wrong. Keyed on the prompt itself rather than on
+  // the mode, so it is also right for a shot whose prompt generation failed.
+  const visualPromptAction = imagePrompt?.trim() ? 'Regenerate' : 'Generate';
+  const motionPromptAction = rawMotionPrompt.trim() ? 'Regenerate' : 'Generate';
+
   // Check if image is currently generating
   const isGenerating =
     shot?.frame.imageStatus === 'generating' ||
@@ -1959,14 +1967,16 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
             }
             disabled={!shot || isRegeneratingVisualPrompt}
             className="w-full"
-            aria-label="Regenerate visual prompt"
+            aria-label={`${visualPromptAction} visual prompt`}
           >
             {isRegeneratingVisualPrompt ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             ) : (
               <RefreshCw className="mr-2 h-4 w-4" />
             )}
-            {isRegeneratingVisualPrompt ? 'Regenerating…' : 'Regenerate Prompt'}
+            {isRegeneratingVisualPrompt
+              ? `${visualPromptAction}ing…`
+              : `${visualPromptAction} Prompt`}
           </Button>
 
           {divergentImageVariant && (
@@ -2261,14 +2271,16 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
             }
             disabled={!shot || isRegeneratingMotionPrompt}
             className="w-full"
-            aria-label="Regenerate motion prompt"
+            aria-label={`${motionPromptAction} motion prompt`}
           >
             {isRegeneratingMotionPrompt ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             ) : (
               <RefreshCw className="mr-2 h-4 w-4" />
             )}
-            {isRegeneratingMotionPrompt ? 'Regenerating…' : 'Regenerate Prompt'}
+            {isRegeneratingMotionPrompt
+              ? `${motionPromptAction}ing…`
+              : `${motionPromptAction} Prompt`}
           </Button>
 
           {divergentVideoVariant && (
