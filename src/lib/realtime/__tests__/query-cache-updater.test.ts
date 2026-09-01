@@ -54,6 +54,7 @@ function makeShot(
     sceneId: null,
     shotNumber: 1,
     durationMs: 3000,
+    useStartFrame: null,
     selectedMotionPromptVersionId: null,
     renderSegmentId: 'seg-1',
     deletedAt: null,

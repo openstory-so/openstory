@@ -20,6 +20,7 @@ const generateMockShot = (overrides?: Partial<ShotView>): ShotView => {
     sceneId: null,
     shotNumber: 1,
     durationMs: faker.number.int({ min: 3000, max: 10000 }),
+    useStartFrame: null,
     selectedMotionPromptVersionId: null,
     renderSegmentId: null,
     deletedAt: null,

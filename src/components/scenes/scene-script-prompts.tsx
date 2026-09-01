@@ -9,6 +9,8 @@ import { StalenessIndicator } from '@/components/staleness/staleness-indicator';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { setShotUseStartFrameFn } from '@/functions/shots';
+import { canUseStartFrame, usesStartFrame } from '@/lib/shots/use-start-frame';
 import {
   Select,
   SelectContent,
@@ -233,6 +235,11 @@ const PromptCopyButton: React.FC<{
 type SceneScriptPromptsProps = {
   shot?: ShotView | undefined;
   sequenceId: string;
+  /**
+   * Sequence default for "animate from a start frame". A shot may override it
+   * (`shots.useStartFrame`); the checkbox below shows the resolved answer.
+   */
+  sequenceReferenceOnly?: boolean;
   selectedTab: TabValue;
   /** Tabs to render for the current selection scope (#986). */
   visibleTabs: TabDescriptor[];
@@ -308,6 +315,7 @@ type SceneScriptPromptsProps = {
 export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
   shot,
   sequenceId,
+  sequenceReferenceOnly = false,
   selectedTab,
   visibleTabs,
   onTabChange,
@@ -1527,6 +1535,24 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     editedMotionPrompt.trim().length > 0 &&
     editedMotionPrompt.trim() !== rawMotionPrompt.trim();
 
+  // Per-shot "animate from the still, or straight from the sheets". Only the
+  // render changes: with a still the request carries it (and the model is told
+  // "Use @Image1 as the starting frame."); without one the sheets fill slot 1.
+  // The prompt text is untouched either way, so nothing re-stales.
+  const shotUsesStartFrame = shot
+    ? usesStartFrame(shot, { referenceOnly: sequenceReferenceOnly })
+    : !sequenceReferenceOnly;
+  const startFrameAvailable = !!shot && canUseStartFrame(shot);
+  const setUseStartFrame = useMutation({
+    mutationFn: (next: boolean) =>
+      setShotUseStartFrameFn({
+        data: { sequenceId, shotId: shot?.id ?? '', useStartFrame: next },
+      }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ['shots', sequenceId] }),
+    onError: (error: Error) => toast.error(error.message),
+  });
+
   // "Regenerate" promises a previous version to replace. Reference-only skips
   // the visual-prompt phase entirely, so its shots reach this panel with no
   // image prompt ever written — and the button offering to redo one that does
@@ -2309,6 +2335,38 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
               <span>Include SFX &amp; dialogue</span>
             </label>
           )}
+
+          {/* Start-frame switch. Unticked, the shot renders straight from its
+              reference sheets — the same thing the sequence-wide reference-only
+              setting does, decided per shot. Disabled without a still to point
+              at: ticking it must never trigger image generation. */}
+          <label
+            htmlFor="scene-use-start-frame"
+            className="flex items-center gap-2 text-sm text-muted-foreground"
+          >
+            <Checkbox
+              id="scene-use-start-frame"
+              checked={shotUsesStartFrame}
+              onCheckedChange={(checked) =>
+                setUseStartFrame.mutate(checked === true)
+              }
+              disabled={
+                !shot ||
+                setUseStartFrame.isPending ||
+                isGeneratingMotion ||
+                (!startFrameAvailable && !shotUsesStartFrame)
+              }
+            />
+            <span>
+              Use start frame
+              {!startFrameAvailable && !shotUsesStartFrame && (
+                <span className="text-muted-foreground/70">
+                  {' '}
+                  — generate one first
+                </span>
+              )}
+            </span>
+          </label>
 
           {/* Motion action button — variant-aware (#545), mirror of the image
               tab: when the picked model already has a completed video for this

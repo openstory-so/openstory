@@ -45,6 +45,7 @@ import {
   resolveMotionPrompt,
   resolveMotionPromptFromVersion,
 } from '@/lib/motion/resolve-motion-prompt';
+import { rendersReferenceOnly } from '@/lib/shots/use-start-frame';
 import { isBatchMotionEligible, toShotView } from '@/lib/shots/shot-view';
 import { rescanContinuityFromPrompt } from '@/lib/scenes/rescan-continuity-from-prompt';
 import { buildUserEditProvenance } from '@/lib/prompts/user-edit-provenance';
@@ -69,7 +70,10 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
     // Resolved as the whole row, not just the URL: the render manifest records
     // WHICH version the clip rendered from, and re-reading the pointer in the
     // workflow could name a different still than the one submitted.
-    const referenceOnly = sequence.referenceOnly;
+    // Per shot, falling back to the sequence default — the user can send one
+    // shot straight to video from references while its neighbours animate from
+    // their stills, and vice versa.
+    const referenceOnly = rendersReferenceOnly(shot, sequence);
     const selectedStill = referenceOnly
       ? null
       : await context.scopedDb.frameVariants.getSelected(frame.id);
@@ -352,10 +356,17 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
     // spinner the server then silently skipped.
     // Reference-only sequences render no stills, so the still-done half of the
     // filter would exclude every shot; there the video status alone decides.
-    const batchReferenceOnly = sequence.referenceOnly;
+    // Per shot now, not per sequence: a shot can override the sequence default
+    // either way, so eligibility, the still, the reference set and the price
+    // all have to be asked shot by shot.
+    const shotIsReferenceOnly = (shot: { useStartFrame?: boolean | null }) =>
+      rendersReferenceOnly(shot, sequence);
     const eligibleShots = allShots.filter((f) =>
-      isBatchMotionEligible(f, batchReferenceOnly)
+      isBatchMotionEligible(f, shotIsReferenceOnly(f))
     );
+    // Location sheets are loaded once for the batch, so ANY reference-only
+    // shot pulls them; `includeLocations` below still decides per shot.
+    const anyReferenceOnly = allShots.some(shotIsReferenceOnly);
 
     if (eligibleShots.length === 0) {
       throw new Error('No eligible shots for motion generation');
@@ -381,7 +392,7 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
       context.scopedDb.characters.listWithSheets(sequence.id),
       context.scopedDb.sequenceElements.list(sequence.id),
       // Reference-only only: with no still, the location sheet is the set.
-      batchReferenceOnly
+      anyReferenceOnly
         ? context.scopedDb.sequenceLocations.listWithReferences(sequence.id)
         : Promise.resolve([]),
     ]);
@@ -390,9 +401,9 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
     // here: the reservation covers the whole batch, so one doomed model would
     // burn credits for N shots to produce N workflow validation errors.
     if (
-      batchReferenceOnly &&
       eligibleShots.some(
         (shot) =>
+          shotIsReferenceOnly(shot) &&
           !supportsReferenceOnlyMotion(
             resolveBatchShotVideoModel(
               { id: shot.id },
@@ -416,7 +427,9 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
         duration: data.duration,
         pricing: await getEffectiveFalPricing(),
         resolution: sequence.resolution,
-        referenceOnly: batchReferenceOnly,
+        // Priced on the majority route; each shot's own reference set is
+        // still resolved per shot below.
+        referenceOnly: anyReferenceOnly,
         hasReferenceImages: (batchShot) => {
           const shot = eligibleShots.find((s) => s.id === batchShot.id);
           if (!shot) return false;
@@ -427,7 +440,7 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
               elements,
               // Must match the set actually sent below, or a reference-only
               // shot carried only by its location sheet estimates as ref-less.
-              includeLocations: batchReferenceOnly,
+              includeLocations: shotIsReferenceOnly(shot),
               locations: batchLocations,
             }).length > 0
           );
@@ -508,10 +521,10 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
               sceneId: shot.sceneId,
               // Reference-only carries no still; every other shot passed the
               // eligibility filter above, which requires one.
-              imageUrl: batchReferenceOnly
+              imageUrl: shotIsReferenceOnly(shot)
                 ? undefined
                 : (shot.image?.url ?? undefined),
-              referenceOnly: batchReferenceOnly,
+              referenceOnly: shotIsReferenceOnly(shot),
               // The versions this clip renders from, pinned here so the render
               // manifest can't name rows a concurrent edit repointed to.
               frameVersionId: shot.image?.id ?? null,
@@ -539,7 +552,7 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
                 scene,
                 characters,
                 elements,
-                includeLocations: batchReferenceOnly,
+                includeLocations: shotIsReferenceOnly(shot),
                 locations: batchLocations,
               }),
             };

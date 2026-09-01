@@ -50,6 +50,18 @@ export const shots = snakeCase.table(
     // target, which is what makes a workflow replay hit the same shot row.
     shotNumber: integer(),
     durationMs: integer().default(3000),
+    /**
+     * Per-shot override of "does this shot animate from a start frame".
+     * NULL = inherit the sequence (`!sequences.referenceOnly`), which is what
+     * every shot is until someone flips this one.
+     *
+     * At render time it decides exactly one thing: whether the rendered still
+     * is passed to `buildReferenceVideoPrompt` as `startImageUrl`. That in
+     * turn adds or drops the "Use @Image1 as the starting frame." line, shifts
+     * reference tags by a slot, and spends or frees one image slot. The prompt
+     * TEXT is the user's either way — this is not a prompt-style flag.
+     */
+    useStartFrame: integer({ mode: 'boolean' }),
     // A shot owns no video columns (#1067 phase 2d). The whole surface —
     // url/path/model/hash AND status/error/run id — is projected from the
     // segment's `video_variants` rows by `toShotView`. Rendering is

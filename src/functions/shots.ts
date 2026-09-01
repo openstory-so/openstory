@@ -548,6 +548,44 @@ export const updateShotFn = createServerFn({ method: 'POST' })
     return context.scopedDb.shots.update(shotId, shotUpdate);
   });
 
+const setShotUseStartFrameSchema = z.object({
+  sequenceId: ulidSchema,
+  shotId: ulidSchema,
+  /** null clears the override and returns the shot to the sequence default. */
+  useStartFrame: z.boolean().nullable(),
+});
+
+/**
+ * Does this shot animate from its rendered still, or straight from the
+ * reference sheets? A **render** parameter, not a prompt driver — the motion
+ * prompt is whatever text the user has; this decides only whether the still is
+ * handed to the model (which adds the "Use @Image1 as the starting frame."
+ * line and shifts reference slots). So it moves no prompt hash and re-stales
+ * nothing.
+ *
+ * Ticking it on requires a still to exist. The UI disables the box without
+ * one, and this refuses it too: a checkbox must never kick off image
+ * generation and spend money.
+ */
+export const setShotUseStartFrameFn = createServerFn({ method: 'POST' })
+  .middleware([shotAccessMiddleware])
+  .validator(zodValidator(setShotUseStartFrameSchema))
+  .handler(async ({ data, context }) => {
+    const { shot, frame, scopedDb } = context;
+    if (data.useStartFrame === true) {
+      const still = await scopedDb.frameVariants.getSelected(frame.id);
+      if (!still?.url) {
+        throw new ValidationError(
+          'This shot has no start frame yet. Generate one first.'
+        );
+      }
+    }
+    const updated = await scopedDb.shots.update(shot.id, {
+      useStartFrame: data.useStartFrame,
+    });
+    return updated ?? shot;
+  });
+
 const updateShotDurationSchema = z.object({
   sequenceId: ulidSchema,
   shotId: ulidSchema,

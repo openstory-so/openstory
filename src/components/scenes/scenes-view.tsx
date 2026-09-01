@@ -78,6 +78,7 @@ import {
 import { DEFAULT_ASPECT_RATIO } from '@/lib/constants/aspect-ratios';
 import { isSetImageOffered } from '@/lib/shots/set-image-offer';
 import type { FrameVariant, ShotVariant } from '@/lib/db/schema';
+import { rendersReferenceOnly } from '@/lib/shots/use-start-frame';
 import { isBatchMotionEligible, type ShotView } from '@/lib/shots/shot-view';
 import { analyzeLoadedFailures } from '@/lib/failures/failure-analysis';
 import type { GenerationPhaseConfig } from '@/lib/realtime/generation-stream.reducer';
@@ -1250,7 +1251,9 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
       // 'cancelled' is user-initiated (#1108 Phase 4): deliberately eligible
       // for a user-driven batch generate, never auto-retried.
       const eligibleShotIds = (shots ?? [])
-        .filter((f) => isBatchMotionEligible(f, referenceOnly))
+        .filter((f) =>
+          isBatchMotionEligible(f, rendersReferenceOnly(f, { referenceOnly }))
+        )
         .map((f) => f.id);
 
       setRegeneratingMotion((prev) => addAllToSet(prev, eligibleShotIds));
@@ -1597,6 +1600,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
                     shot={selectedShot}
                     sequenceId={sequenceId}
                     resolution={sequence?.resolution}
+                    sequenceReferenceOnly={referenceOnly}
                     selectedTab={effectiveTab}
                     visibleTabs={visibleTabs}
                     onTabChange={(tab) => {

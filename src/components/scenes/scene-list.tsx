@@ -25,6 +25,7 @@ import { errorMessage } from '@/lib/errors';
 import { resolveShotDuration } from '@/lib/motion/resolve-shot-duration';
 import type { SceneSelection } from '@/lib/scenes/scene-selection';
 import type { SequenceSegment } from '@/lib/scenes/scene-segments';
+import { rendersReferenceOnly } from '@/lib/shots/use-start-frame';
 import {
   isBatchMotionEligible,
   isMotionGenerating,
@@ -253,12 +254,16 @@ const SceneListComponent: React.FC<SceneListProps> = ({
   // user-driven batch generate, never auto-retried.
   const notStartedShots = useMemo(() => {
     if (!shots) return [];
-    return shots.filter((f) => isBatchMotionEligible(f, referenceOnly));
+    return shots.filter((f) =>
+      isBatchMotionEligible(f, rendersReferenceOnly(f, { referenceOnly }))
+    );
   }, [shots, referenceOnly]);
 
   const hasGeneratingShots = useMemo(() => {
     if (!shots) return false;
-    return shots.some((f) => isMotionGenerating(f, referenceOnly));
+    return shots.some((f) =>
+      isMotionGenerating(f, rendersReferenceOnly(f, { referenceOnly }))
+    );
   }, [shots, referenceOnly]);
 
   // Check if all eligible shots have motion prompts ready
