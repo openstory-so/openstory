@@ -476,28 +476,6 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
         timeout: '60 minutes',
       });
 
-    // REFERENCE-ONLY runs the prompts as PART of phase 3, next to the sheets.
-    // Phase 3 produces sheets — images — and this child reads bible TEXT: the
-    // bibles are phase-1 output, casting resolved at the end of phase 2, and
-    // the visual prompts it would otherwise wait on are not written in this
-    // mode. The dependency it inherits from the image path is the rendered
-    // still (#929 conditions the motion prompt on the actual starting frame as
-    // vision input) — and there is no still here, so there is nothing to wait
-    // for. Phase 4 then has no work of its own in this mode and is skipped
-    // entirely rather than left as a join: a progress step that only waits is
-    // a step the user watches for no reason.
-    const referenceOnlyPrompts = referenceOnly
-      ? Promise.allSettled([
-          runMotionMusicPrompts({
-            scenesForPrompts: scenes,
-            startingFrameImageUrls: Object.fromEntries(
-              scenes.map((scene) => [scene.sceneId, null])
-            ),
-            visualSummaryBySceneId: {},
-          }),
-        ])
-      : null;
-
     // ----------------------------------------------------------------------
     // PHASE 3: character bible + location bible + visual prompts in parallel
     // ----------------------------------------------------------------------
@@ -553,7 +531,11 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
       return result.elements;
     };
 
-    // REFERENCE-ONLY skips the visual prompts: one LLM call per scene for a
+    // The STILL's prompt (`frame_prompt_versions`) — named for the frame, not
+    // "visual", so it cannot be confused with the motion prompt below now that
+    // both run in this phase.
+    //
+    // REFERENCE-ONLY skips it: one LLM call per scene for a
     // prompt nothing in this mode reads. No still is rendered from it, and the
     // reference-only motion template composes its own opening frame from the
     // bibles — it is never handed the visual prompt (see
@@ -564,7 +546,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
     // The anchor frame is still materialized and the per-scene storyboard
     // preview still is untouched — the rail needs a thumbnail while the clip
     // renders, and that preview is what fills it.
-    const runVisualPrompts =
+    const runFramePrompts =
       async (): Promise<FramePromptBatchWorkflowResult> => {
         if (referenceOnly) {
           return { scenes, visualPromptsBySceneId: {} };
@@ -598,38 +580,42 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
         });
       };
 
-    const [charSettled, locationSettled, visualSettled, elementSheetSettled] =
-      await Promise.allSettled([
-        spawnAndAwaitChild<CharacterBibleWorkflowInput, CharacterMinimal[]>(
-          step,
-          {
-            binding: this.env.CHARACTER_BIBLE_WORKFLOW,
-            parentBindingName: PARENT_BINDING_NAME,
-            parentInstanceId,
-            childId: `character-bible:${sequenceId ?? 'no-seq'}`,
-            childPayload: {
-              sequenceId,
-              userId: input.userId,
-              teamId: input.teamId,
-              reservationId: input.reservationId,
-              characterBible,
-              talentMatches: talentCharacterMatches,
-              imageModel,
-              styleConfig,
-            },
-            spawnStepName: 'spawn-character-bible',
-            awaitStepName: 'await-character-bible',
-            // Must exceed the child's own await budget: the bible awaits each
-            // sheet grandchild for 30 minutes, plus notify lag under a burst
-            // (the June 7 run lost a sequence to the 30-minute default here
-            // when a finished child's notify took >25 minutes to deliver).
-            timeout: '60 minutes',
-          }
-        ),
-        spawnAndAwaitChild<
-          LocationBibleWorkflowInput,
-          SequenceLocationMinimal[]
-        >(step, {
+    const [
+      charSettled,
+      locationSettled,
+      framePromptsSettled,
+      elementSheetSettled,
+      referenceOnlyPromptsSettled,
+    ] = await Promise.allSettled([
+      spawnAndAwaitChild<CharacterBibleWorkflowInput, CharacterMinimal[]>(
+        step,
+        {
+          binding: this.env.CHARACTER_BIBLE_WORKFLOW,
+          parentBindingName: PARENT_BINDING_NAME,
+          parentInstanceId,
+          childId: `character-bible:${sequenceId ?? 'no-seq'}`,
+          childPayload: {
+            sequenceId,
+            userId: input.userId,
+            teamId: input.teamId,
+            reservationId: input.reservationId,
+            characterBible,
+            talentMatches: talentCharacterMatches,
+            imageModel,
+            styleConfig,
+          },
+          spawnStepName: 'spawn-character-bible',
+          awaitStepName: 'await-character-bible',
+          // Must exceed the child's own await budget: the bible awaits each
+          // sheet grandchild for 30 minutes, plus notify lag under a burst
+          // (the June 7 run lost a sequence to the 30-minute default here
+          // when a finished child's notify took >25 minutes to deliver).
+          timeout: '60 minutes',
+        }
+      ),
+      spawnAndAwaitChild<LocationBibleWorkflowInput, SequenceLocationMinimal[]>(
+        step,
+        {
           binding: this.env.LOCATION_BIBLE_WORKFLOW,
           parentBindingName: PARENT_BINDING_NAME,
           parentInstanceId,
@@ -651,10 +637,27 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
           awaitStepName: 'await-location-bible',
           // See await-character-bible — same grandchild budget + notify lag.
           timeout: '60 minutes',
-        }),
-        runVisualPrompts(),
-        runElementSheets(),
-      ]);
+        }
+      ),
+      runFramePrompts(),
+      runElementSheets(),
+      // REFERENCE-ONLY writes its MOTION prompts in this slot — the same
+      // phase as the sheets, in place of the frame prompts it skips. They
+      // read bible TEXT, not sheets: the bibles are phase-1 output, casting
+      // resolved at the end of phase 2, and the only real dependency in the
+      // image path is the rendered still (#929 conditions the motion prompt
+      // on it as vision input), which this mode never produces. Null in
+      // every other mode, where they wait for phase 4's stills.
+      referenceOnly
+        ? runMotionMusicPrompts({
+            scenesForPrompts: scenes,
+            startingFrameImageUrls: Object.fromEntries(
+              scenes.map((scene) => [scene.sceneId, null])
+            ),
+            visualSummaryBySceneId: {},
+          })
+        : Promise.resolve(null),
+    ]);
 
     if (charSettled.status === 'rejected') {
       throw new Error(
@@ -666,9 +669,9 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
         `Location sheet generation failed: ${String(locationSettled.reason)}`
       );
     }
-    if (visualSettled.status === 'rejected') {
+    if (framePromptsSettled.status === 'rejected') {
       throw new Error(
-        `Visual prompt generation failed: ${String(visualSettled.reason)}`
+        `Frame prompt generation failed: ${String(framePromptsSettled.reason)}`
       );
     }
     if (elementSheetSettled.status === 'rejected') {
@@ -683,20 +686,14 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
     // (#713/#991): thread them straight to the next phase rather than re-reading
     // `frame.imagePrompt` from the DB — versions are append-only and a
     // concurrent run may have repointed the mirror, so a re-read would be racy.
-    const scenesWithVisualPrompts = visualSettled.value.scenes;
+    const scenesWithVisualPrompts = framePromptsSettled.value.scenes;
     const visualPromptBySceneId: Record<string, string> = Object.fromEntries(
-      Object.entries(visualSettled.value.visualPromptsBySceneId).map(
+      Object.entries(framePromptsSettled.value.visualPromptsBySceneId).map(
         ([sceneId, visual]) => [sceneId, visual.fullPrompt]
       )
     );
     const generatedElements = elementSheetSettled.value;
     const allElements = [...elementsMinimal, ...generatedElements];
-
-    // Reference-only: the prompts are part of THIS phase, so they are awaited
-    // here. Null in every other mode, where they need phase 4's stills.
-    const referenceOnlyPromptsSettled = referenceOnlyPrompts
-      ? (await referenceOnlyPrompts)[0]
-      : null;
 
     // ----------------------------------------------------------------------
     // PHASE 4: shot images + motion/music prompts in parallel
@@ -817,18 +814,23 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
       );
 
     // Settled back in phase 3 when reference-only; otherwise it starts here,
-    // because it needs the stills phase 4 just rendered.
-    const motionMusicSettled =
-      referenceOnlyPromptsSettled ??
-      (
-        await Promise.allSettled([
-          runMotionMusicPrompts({
-            scenesForPrompts: scenesWithVisualPrompts,
-            startingFrameImageUrls,
-            visualSummaryBySceneId: visualPromptBySceneId,
-          }),
-        ])
-      )[0];
+    // because it needs the stills phase 4 just rendered. A phase-3 rejection
+    // is carried through unchanged so it surfaces at the shared raise site
+    // below, after the analysis duration is recorded.
+    const motionMusicSettled: PromiseSettledResult<MotionMusicPromptsWorkflowResult> =
+      referenceOnlyPromptsSettled.status === 'rejected'
+        ? referenceOnlyPromptsSettled
+        : referenceOnlyPromptsSettled.value
+          ? { status: 'fulfilled', value: referenceOnlyPromptsSettled.value }
+          : (
+              await Promise.allSettled([
+                runMotionMusicPrompts({
+                  scenesForPrompts: scenesWithVisualPrompts,
+                  startingFrameImageUrls,
+                  visualSummaryBySceneId: visualPromptBySceneId,
+                }),
+              ])
+            )[0];
 
     // Record analysis duration before raising failures (mirrors QStash).
     await step.do('record-analysis-duration', async () => {
