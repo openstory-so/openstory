@@ -44,7 +44,14 @@ export async function uploadImageFromUrl(
   const response = await fetch(imageUrl);
 
   if (!response.ok) {
-    throw new Error(`Failed to download image: ${response.statusText}`);
+    // `statusText` was the whole error we reported, and it is worthless:
+    // provider CDNs send no reason phrase, so both occurrences to date read
+    // `Failed to download image: <none>` — nothing to act on (#1435). The
+    // status and the provider's error body are what name the cause.
+    const body = (await response.text().catch(() => '')).slice(0, 200).trim();
+    throw new Error(
+      `Failed to download image from ${new URL(imageUrl).host}: ${response.status}${body ? ` ${body}` : ''}`
+    );
   }
 
   // Magic bytes first: fal's upscale endpoints return extension-less URLs
