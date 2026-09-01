@@ -603,15 +603,6 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
         const scenes = assembled.scenes;
         const offsets = assembled.resolution.offsets;
 
-        // Advance the UI to the casting label once scene cards exist; the
-        // parent still awaits both sibling steps before matching.
-        if (sequenceId) {
-          await getGenerationChannel(sequenceId).emit(
-            'generation.phase:start',
-            { phase: 2, phaseName: 'Casting characters & locations…' }
-          );
-        }
-
         // Preview sweep: any scene persisted without a trigger (e.g. a
         // replay that skipped the stream loop) still gets one.
         if (sequenceId) {

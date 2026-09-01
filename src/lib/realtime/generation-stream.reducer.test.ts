@@ -159,3 +159,21 @@ describe('generationStreamReducer — shot retry tracking (#882)', () => {
     expect(cleared.shotRetries.size).toBe(0);
   });
 });
+
+describe('generationStreamReducer — stop-at banner (#1408)', () => {
+  it('does not grow a Script-only banner when Casting is announced', () => {
+    const scriptOnly = createInitialState({ stopAt: 'script' });
+    expect(scriptOnly.phases.map((p) => p.shortName)).toEqual(['Script']);
+
+    const next = apply(scriptOnly, {
+      type: 'PHASE_START',
+      payload: {
+        phase: 2,
+        phaseName: 'Casting characters & locations…',
+      },
+    });
+
+    expect(next.phases.map((p) => p.shortName)).toEqual(['Script']);
+    expect(next.currentPhase).toBe(scriptOnly.currentPhase);
+  });
+});

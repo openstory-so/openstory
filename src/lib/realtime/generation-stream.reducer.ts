@@ -258,6 +258,13 @@ export function generationStreamReducer(
       }
 
       const phaseExists = state.phases.some((p) => p.phase === phase);
+      // Don't grow the banner. Scene-split used to announce Casting while
+      // still finishing Script; a stop-at-Script run must not sprout a
+      // Casting segment. The banner is sized from generationStopAt at init.
+      if (!phaseExists) {
+        return state;
+      }
+
       const updatedPhases = state.phases.map((p) =>
         p.phase === phase
           ? { ...p, phaseName, status: 'active' as const }
@@ -265,19 +272,6 @@ export function generationStreamReducer(
             ? { ...p, status: 'completed' as const }
             : p
       );
-
-      // Add phase dynamically if it wasn't in initial state
-      // (e.g. phase 5 when settings loaded after reducer init due to hydration)
-      if (!phaseExists) {
-        updatedPhases.push({
-          phase,
-          phaseName,
-          shortName: phaseName
-            .replace(/Generating\s+/i, '')
-            .replace(/\u2026$/, ''),
-          status: 'active',
-        });
-      }
 
       return { ...state, currentPhase: phase, phases: updatedPhases };
     }
