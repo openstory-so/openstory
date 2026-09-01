@@ -9,7 +9,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useUpdateSequenceLocation } from '@/hooks/use-sequence-locations';
-import type { SequenceLocation } from '@/lib/db/schema';
+import type { SequenceLocationWithReference } from '@/lib/db/schema';
 import { errorMessage } from '@/lib/errors';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -35,7 +35,7 @@ const locationFormSchema = z.object({
  */
 export const LocationBibleForm: React.FC<{
   sequenceId: string;
-  location: SequenceLocation;
+  location: SequenceLocationWithReference;
 }> = ({ sequenceId, location }) => {
   const updateLocation = useUpdateSequenceLocation();
 

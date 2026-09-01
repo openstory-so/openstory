@@ -4,13 +4,13 @@ import type {
   LocationBibleEntry,
 } from '@/lib/ai/scene-analysis.schema';
 import type {
-  Character,
+  CharacterWithSheet,
   SequenceElement,
-  SequenceLocation,
+  SequenceLocationWithReference,
 } from '@/lib/db/schema';
 
 export function charactersToBible(
-  rows: readonly Character[]
+  rows: readonly CharacterWithSheet[]
 ): CharacterBibleEntry[] {
   return rows.map((c) => ({
     characterId: c.characterId,
@@ -26,7 +26,7 @@ export function charactersToBible(
 }
 
 export function sequenceLocationsToBible(
-  rows: readonly SequenceLocation[]
+  rows: readonly SequenceLocationWithReference[]
 ): LocationBibleEntry[] {
   return rows.map((l) => ({
     locationId: l.locationId,

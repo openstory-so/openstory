@@ -22,7 +22,7 @@ import {
   useSequenceCharacters,
   useSoftDeleteSequenceCharacter,
 } from '@/hooks/use-sequence-characters';
-import type { Character } from '@/lib/db/schema';
+import type { CharacterWithSheet } from '@/lib/db/schema';
 import { errorMessage } from '@/lib/errors';
 import { useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
@@ -38,9 +38,9 @@ type SceneCastTabProps = {
 };
 
 type CastCardProps = {
-  character: Character;
+  character: CharacterWithSheet;
   sequenceId: string;
-  onDelete: (character: Character) => void;
+  onDelete: (character: CharacterWithSheet) => void;
 };
 
 const CastCard: React.FC<CastCardProps> = ({
@@ -132,9 +132,11 @@ export const SceneCastTab: React.FC<SceneCastTabProps> = ({
   const { data: facetMaps } = useSceneFacetMaps(sequenceId);
   const queryClient = useQueryClient();
   const softDelete = useSoftDeleteSequenceCharacter();
-  const [pendingDelete, setPendingDelete] = useState<Character | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<CharacterWithSheet | null>(
+    null
+  );
 
-  const handleConfirmDelete = (character: Character) => {
+  const handleConfirmDelete = (character: CharacterWithSheet) => {
     softDelete.mutate(
       { sequenceId, characterId: character.id },
       {

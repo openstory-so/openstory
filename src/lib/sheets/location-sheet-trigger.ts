@@ -2,7 +2,7 @@
  * Build a LocationSheetWorkflow payload from the live sequence-location row.
  */
 
-import type { SequenceLocation } from '@/lib/db/schema';
+import type { SequenceLocationWithReference } from '@/lib/db/schema';
 import type { ScopedDb } from '@/lib/db/scoped';
 import { resolveSheetImageModel } from '@/lib/sheets/sheet-image-model';
 import { resolveSequenceStyleConfig } from '@/lib/style/style-config';
@@ -21,7 +21,7 @@ function parseLocationType(
 
 /** Convert flat DB columns to the nested LocationBibleEntry shape. */
 export function toLocationMetadata(
-  location: SequenceLocation
+  location: SequenceLocationWithReference
 ): LocationSheetWorkflowInput['locationMetadata'] {
   return {
     locationId: location.locationId,
@@ -53,7 +53,7 @@ export async function buildRegenerateLocationSheetPayload(params: {
     styleConfig: Parameters<typeof resolveSequenceStyleConfig>[0]['snapshot'];
     imageModel: string | null;
   };
-  location: SequenceLocation;
+  location: SequenceLocationWithReference;
   /** Generate-time pick; omit to reuse the live version's model or the sequence default. */
   imageModel?: string | null;
 }): Promise<LocationSheetWorkflowInput> {

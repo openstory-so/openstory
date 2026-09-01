@@ -1,7 +1,7 @@
 import { BibleField } from '@/components/bible-field';
 import { Button } from '@/components/ui/button';
 import { useUpdateSequenceCharacter } from '@/hooks/use-sequence-characters';
-import type { Character } from '@/lib/db/schema';
+import type { CharacterWithSheet } from '@/lib/db/schema';
 import { errorMessage } from '@/lib/errors';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -25,7 +25,7 @@ const characterFormSchema = z.object({
  */
 export const CharacterBibleForm: React.FC<{
   sequenceId: string;
-  character: Character;
+  character: CharacterWithSheet;
 }> = ({ sequenceId, character }) => {
   const updateCharacter = useUpdateSequenceCharacter();
 

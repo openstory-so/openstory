@@ -19,7 +19,10 @@ import { computeShotImageInputHash } from '@/lib/ai/input-hash';
 import type { TextToImageModel } from '@/lib/ai/models';
 import type { AspectRatio } from '@/lib/constants/aspect-ratios';
 import type { ScopedDb } from '@/lib/db/scoped';
-import type { Character, SequenceLocation } from '@/lib/db/schema';
+import type {
+  CharacterWithSheet,
+  SequenceLocationWithReference,
+} from '@/lib/db/schema';
 import { getLogger } from '@/lib/observability/logger';
 import {
   loadSceneContextBySequence,
@@ -42,8 +45,8 @@ export const PENDING_SHEET_HASH = 'recast://pending-sheet-hash';
 
 /** The entity whose sheet the awaited child regenerates. */
 export type RecastSubject =
-  | { kind: 'character'; character: Character }
-  | { kind: 'location'; location: SequenceLocation };
+  | { kind: 'character'; character: CharacterWithSheet }
+  | { kind: 'location'; location: SequenceLocationWithReference };
 
 export type RecastRegenerateSnapshot = {
   shotSnapshots: RegenerateShotSnapshot[];

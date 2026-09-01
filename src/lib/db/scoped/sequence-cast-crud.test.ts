@@ -19,6 +19,7 @@ import type { StyleConfig } from '@/lib/db/schema';
 import type { Database } from '@/lib/db/client';
 import { generateId } from '@/lib/db/id';
 import {
+  characterSheetVariants,
   characters,
   sequenceElements,
   sequenceEvents,
@@ -183,7 +184,15 @@ describe('characters bible CRUD + soft-remove', () => {
       name: 'Alice',
       physicalDescription: 'tall, brown hair',
       sheetStatus: 'completed',
-      sheetInputHash: 'sheet-hash-v1',
+    });
+    // The sheet lives on the version row (#1419), keyed to the character's id.
+    await db.insert(characterSheetVariants).values({
+      id: created.id,
+      characterId: created.id,
+      model: 'prior',
+      url: 'https://r2/alice.png',
+      status: 'completed',
+      inputHash: 'sheet-hash-v1',
     });
 
     const deletedAt = await m.softDelete(created.id, { actorId });
@@ -208,7 +217,9 @@ describe('characters bible CRUD + soft-remove', () => {
     // trip — restore comes back with its old hashes (may honestly read stale
     // if upstream moved while deleted).
     expect(restored.physicalDescription).toBe('tall, brown hair');
-    expect(restored.sheetInputHash).toBe('sheet-hash-v1');
+    // Read back resolved: `restore` returns the raw row, which no longer
+    // carries the sheet (#1419).
+    expect((await m.getById(created.id))?.sheetInputHash).toBe('sheet-hash-v1');
     expect(await m.list(sequenceId)).toHaveLength(1);
 
     const kinds = await eventKinds();

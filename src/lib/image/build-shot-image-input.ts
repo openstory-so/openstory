@@ -14,7 +14,7 @@ import type {
   CharacterMinimal,
   Shot,
   SequenceElement,
-  SequenceLocation,
+  SequenceLocationWithReference,
 } from '@/lib/db/schema';
 import { locationMatchesTag } from '@/lib/db/scoped/sequence-locations';
 import { buildCharacterReferenceImages } from '@/lib/prompts/character-prompt';
@@ -42,7 +42,7 @@ function sortedHashes(
 
 /** Match locations by environmentTag or scene location and return reference images. */
 function getSceneLocationReferenceImages(
-  allLocations: SequenceLocation[],
+  allLocations: SequenceLocationWithReference[],
   environmentTag: string,
   sceneLocation: string
 ) {
@@ -63,7 +63,7 @@ export async function buildShotImageWorkflowInput(opts: {
   sequenceId: string;
   aspectRatio: AspectRatio;
   characters: CharacterMinimal[];
-  locations: SequenceLocation[];
+  locations: SequenceLocationWithReference[];
   elements: SequenceElement[];
   /** The shot's scene, composed from `scenes` + its selected script version. */
   scene: Scene | null;

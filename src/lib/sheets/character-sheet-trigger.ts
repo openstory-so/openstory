@@ -4,14 +4,16 @@
  */
 
 import type { CharacterBibleEntry } from '@/lib/ai/scene-analysis.schema';
-import type { Character } from '@/lib/db/schema';
+import type { CharacterWithSheet } from '@/lib/db/schema';
 import type { ScopedDb } from '@/lib/db/scoped';
 import { resolveSheetImageModel } from '@/lib/sheets/sheet-image-model';
 import { resolveSequenceStyleConfig } from '@/lib/style/style-config';
 import type { CharacterSheetWorkflowInput } from '@/lib/workflow/types';
 import { computeCharacterSheetHashFromDto } from '@/lib/workflows/sheet-snapshots';
 
-function toCharacterMetadata(character: Character): CharacterBibleEntry {
+function toCharacterMetadata(
+  character: CharacterWithSheet
+): CharacterBibleEntry {
   return {
     characterId: character.characterId,
     name: character.name,
@@ -35,7 +37,7 @@ export async function buildRegenerateCharacterSheetPayload(params: {
     styleConfig: Parameters<typeof resolveSequenceStyleConfig>[0]['snapshot'];
     imageModel: string | null;
   };
-  character: Character;
+  character: CharacterWithSheet;
   /** Generate-time pick; omit to reuse the live version's model or the sequence default. */
   imageModel?: string | null;
 }): Promise<CharacterSheetWorkflowInput> {

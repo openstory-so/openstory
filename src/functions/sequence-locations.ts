@@ -339,10 +339,17 @@ export const recastLocationFn = createServerFn({ method: 'POST' })
     if (!libraryLocation) {
       throw new Error('Library location not found');
     }
-    const updatedLocation = await context.scopedDb.sequenceLocations.update(
-      data.locationId,
-      { libraryLocationId: data.libraryLocationId }
+    await context.scopedDb.sequenceLocations.update(data.locationId, {
+      libraryLocationId: data.libraryLocationId,
+    });
+    // Re-read rather than use the write's row: the recast snapshot needs the
+    // live reference, which resolves from the version pointer (#1419).
+    const updatedLocation = await context.scopedDb.sequenceLocations.getById(
+      data.locationId
     );
+    if (!updatedLocation) {
+      throw new NotFoundError('Location not found');
+    }
 
     await context.scopedDb.sequenceLocations.updateReferenceStatus(
       data.locationId,

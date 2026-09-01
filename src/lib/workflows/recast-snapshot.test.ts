@@ -12,9 +12,9 @@
 import { describe, expect, it } from 'vitest';
 import type { Scene } from '@/lib/ai/scene-analysis.schema';
 import type {
-  Character,
+  CharacterWithSheet,
   SequenceElement,
-  SequenceLocation,
+  SequenceLocationWithReference,
   Shot,
 } from '@/lib/db/schema';
 import { buildRegenerateShotSnapshot } from './regenerate-shots-snapshot';
@@ -29,8 +29,10 @@ const PROMPT = 'Jack at the docks at dusk';
 const NEW_SHEET_URL = 'https://example.com/jack-recast.png';
 const NEW_SHEET_HASH = 'jack-hash-v2';
 
-function makeCharacter(overrides: Partial<Character> = {}): Character {
-  const character: Character = {
+function makeCharacter(
+  overrides: Partial<CharacterWithSheet> = {}
+): CharacterWithSheet {
+  const character: CharacterWithSheet = {
     id: 'c1',
     sequenceId: 'seq1',
     characterId: 'jack',
@@ -61,9 +63,9 @@ function makeCharacter(overrides: Partial<Character> = {}): Character {
 }
 
 function makeLocation(
-  overrides: Partial<SequenceLocation> = {}
-): SequenceLocation {
-  const location: SequenceLocation = {
+  overrides: Partial<SequenceLocationWithReference> = {}
+): SequenceLocationWithReference {
+  const location: SequenceLocationWithReference = {
     id: 'l1',
     sequenceId: 'seq1',
     locationId: 'docks',

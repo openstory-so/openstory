@@ -7,7 +7,7 @@
 import type {
   CharacterWithTalent,
   SequenceElement,
-  SequenceLocation,
+  SequenceLocationWithReference,
 } from '@/lib/db/schema';
 
 /**
@@ -39,7 +39,7 @@ export type MentionElementInput = Pick<
   'id' | 'token' | 'description' | 'imageUrl' | 'consistencyTag'
 >;
 export type MentionLocationInput = Pick<
-  SequenceLocation,
+  SequenceLocationWithReference,
   'id' | 'locationId' | 'name' | 'consistencyTag' | 'referenceImageUrl'
 >;
 

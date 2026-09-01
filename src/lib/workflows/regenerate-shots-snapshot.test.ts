@@ -18,10 +18,10 @@
 import { describe, expect, it } from 'vitest';
 import type { Scene } from '@/lib/ai/scene-analysis.schema';
 import type {
-  Character,
+  CharacterWithSheet,
   Shot,
   SequenceElement,
-  SequenceLocation,
+  SequenceLocationWithReference,
 } from '@/lib/db/schema';
 import {
   buildRegenerateShotSnapshot,
@@ -33,8 +33,10 @@ const NOW = new Date('2026-04-29T00:00:00Z');
 /** The shot's default visual prompt, now passed explicitly (was a shot column). */
 const DEFAULT_PROMPT = 'A scene with Jack at the docks';
 
-function makeCharacter(overrides: Partial<Character> = {}): Character {
-  const character: Character = {
+function makeCharacter(
+  overrides: Partial<CharacterWithSheet> = {}
+): CharacterWithSheet {
+  const character: CharacterWithSheet = {
     id: 'c1',
     sequenceId: 'seq1',
     characterId: 'jack',
@@ -97,7 +99,7 @@ function makeScene(overrides: Partial<Scene> = {}): Scene {
   return { ...scene, ...overrides };
 }
 
-const NO_LOCATIONS: SequenceLocation[] = [];
+const NO_LOCATIONS: SequenceLocationWithReference[] = [];
 const NO_ELEMENTS: SequenceElement[] = [];
 
 function makeElement(

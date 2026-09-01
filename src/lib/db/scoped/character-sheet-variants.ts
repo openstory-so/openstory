@@ -15,12 +15,6 @@ import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { insertDivergentRaceTolerant } from './divergent-insert';
 import { buildEventInsert } from './sequence-events';
 
-type PromoteCharacterUpdate = {
-  sheetImageUrl: string | null;
-  sheetImagePath: string | null;
-  sheetInputHash: string | null;
-};
-
 export function createCharacterSheetVariantsMethods(db: Database) {
   return {
     listByCharacter: async (
@@ -340,58 +334,6 @@ export function createCharacterSheetVariantsMethods(db: Database) {
       if (result.length === 0) {
         throw new Error(`CharacterSheetVariant ${variantId} not found`);
       }
-    },
-
-    /**
-     * Single batch so a partial failure cannot leave the live primary updated
-     * with the variant still appearing as divergent.
-     */
-    promoteAtomically: async (
-      characterId: string,
-      characterUpdate: PromoteCharacterUpdate,
-      variantId: string
-    ): Promise<{ discardedAt: Date }> => {
-      const [existingCharacter] = await db
-        .select({ id: characters.id })
-        .from(characters)
-        .where(eq(characters.id, characterId));
-      // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
-      if (!existingCharacter) {
-        throw new Error(`Character ${characterId} not found`);
-      }
-      const [existingVariant] = await db
-        .select({ id: characterSheetVariants.id })
-        .from(characterSheetVariants)
-        .where(eq(characterSheetVariants.id, variantId));
-      // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
-      if (!existingVariant) {
-        throw new Error(`CharacterSheetVariant ${variantId} not found`);
-      }
-
-      const now = new Date();
-      const updateCharacter = db
-        .update(characters)
-        .set({ ...characterUpdate, updatedAt: now })
-        .where(eq(characters.id, characterId))
-        .returning({ id: characters.id });
-      const discardVariant = db
-        .update(characterSheetVariants)
-        .set({ discardedAt: now, updatedAt: now })
-        .where(eq(characterSheetVariants.id, variantId))
-        .returning({ id: characterSheetVariants.id });
-      const [characterRows, variantRows] = await db.batch([
-        updateCharacter,
-        discardVariant,
-      ]);
-      if (characterRows.length === 0) {
-        throw new Error(`Character ${characterId} disappeared during promote`);
-      }
-      if (variantRows.length === 0) {
-        throw new Error(
-          `CharacterSheetVariant ${variantId} disappeared during promote`
-        );
-      }
-      return { discardedAt: now };
     },
   };
 }

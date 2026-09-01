@@ -9,6 +9,7 @@ import type {
   Shot,
   NewSequenceLocation,
   ReferenceStatus,
+  SequenceLocationWithReference,
   SequenceLocation,
 } from '@/lib/db/schema';
 import {
@@ -33,7 +34,7 @@ import { buildEventInsert } from './sequence-events';
  */
 export type LocationBibleUpdate = Partial<
   Pick<
-    SequenceLocation,
+    SequenceLocationWithReference,
     | 'name'
     | 'type'
     | 'timeOfDay'
@@ -137,7 +138,9 @@ export function createSequenceLocationsMethods(db: Database) {
       );
 
   return {
-    getById: async (id: string): Promise<SequenceLocation | null> => {
+    getById: async (
+      id: string
+    ): Promise<SequenceLocationWithReference | null> => {
       const result = await selectWithLiveReference().where(
         eq(sequenceLocations.id, id)
       );
@@ -147,7 +150,7 @@ export function createSequenceLocationsMethods(db: Database) {
     getByLocationId: async (
       sequenceId: string,
       locationId: string
-    ): Promise<SequenceLocation | null> => {
+    ): Promise<SequenceLocationWithReference | null> => {
       const result = await selectWithLiveReference().where(
         and(
           eq(sequenceLocations.sequenceId, sequenceId),
@@ -160,7 +163,9 @@ export function createSequenceLocationsMethods(db: Database) {
     // Default lists exclude soft-deleted rows (#1108) — see the characters
     // twin for rationale. Id-addressed reads (getById/getByIds) still return
     // deleted rows so restore can reach them.
-    list: async (sequenceId: string): Promise<SequenceLocation[]> => {
+    list: async (
+      sequenceId: string
+    ): Promise<SequenceLocationWithReference[]> => {
       return await selectWithLiveReference().where(
         and(
           eq(sequenceLocations.sequenceId, sequenceId),
@@ -171,7 +176,7 @@ export function createSequenceLocationsMethods(db: Database) {
 
     listWithReferences: async (
       sequenceId: string
-    ): Promise<SequenceLocation[]> => {
+    ): Promise<SequenceLocationWithReference[]> => {
       return await selectWithLiveReference().where(
         and(
           eq(sequenceLocations.sequenceId, sequenceId),
@@ -181,7 +186,9 @@ export function createSequenceLocationsMethods(db: Database) {
       );
     },
 
-    getByIds: async (ids: string[]): Promise<SequenceLocation[]> => {
+    getByIds: async (
+      ids: string[]
+    ): Promise<SequenceLocationWithReference[]> => {
       if (ids.length === 0) return [];
       return await selectWithLiveReference().where(
         inArray(sequenceLocations.id, ids)
@@ -327,7 +334,7 @@ export function createSequenceLocationsMethods(db: Database) {
 
     getNeedingReferences: async (
       sequenceId: string
-    ): Promise<SequenceLocation[]> => {
+    ): Promise<SequenceLocationWithReference[]> => {
       return await selectWithLiveReference().where(
         and(
           eq(sequenceLocations.sequenceId, sequenceId),
@@ -540,14 +547,23 @@ export function createSequenceLocationsMethods(db: Database) {
         /** If true, only return locations with completed reference images */
         completedOnly?: boolean;
       }
-    ): Promise<(SequenceLocation & { sequenceTitle: string })[]> => {
+    ): Promise<
+      (SequenceLocationWithReference & { sequenceTitle: string })[]
+    > => {
       const result = await db
         .select({
-          location: sequenceLocations,
+          location: locationsWithLiveReference,
           sequenceTitle: sequences.title,
         })
         .from(sequenceLocations)
         .innerJoin(sequences, eq(sequenceLocations.sequenceId, sequences.id))
+        .leftJoin(
+          locationSheetVariants,
+          and(
+            eq(locationSheetVariants.parentType, 'sequence_location'),
+            eq(locationSheetVariants.id, liveReferenceVersionId)
+          )
+        )
         .where(
           and(
             eq(sequences.teamId, teamId),

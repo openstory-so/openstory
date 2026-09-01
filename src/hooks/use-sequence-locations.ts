@@ -27,14 +27,19 @@ import {
   getTeamLibraryLocationsFn,
 } from '@/functions/location-library';
 import { usePublicOrTeamQuery } from '@/hooks/use-public-or-team-query';
-import type { LibraryLocation, SequenceLocation } from '@/lib/db/schema';
+import type {
+  LibraryLocation,
+  SequenceLocationWithReference,
+} from '@/lib/db/schema';
 
 // Re-export for backwards compatibility
-export type { SequenceLocation };
+export type { SequenceLocationWithReference };
 export type { LibraryLocation };
 
 // Extended type for team library locations (sequence locations with title)
-export type TeamLibraryLocation = SequenceLocation & { sequenceTitle: string };
+export type TeamLibraryLocation = SequenceLocationWithReference & {
+  sequenceTitle: string;
+};
 
 export const sequenceLocationKeys = {
   all: ['sequence-locations'] as const,
@@ -59,7 +64,7 @@ export const libraryLocationKeys = {
 };
 
 export function useSequenceLocations(sequenceId: string) {
-  return useQuery<SequenceLocation[]>({
+  return useQuery<SequenceLocationWithReference[]>({
     queryKey: sequenceLocationKeys.list(sequenceId),
     queryFn: async () => {
       return getSequenceLocationsFn({ data: { sequenceId } });

@@ -5,10 +5,14 @@
 import { describe, expect, it } from 'vitest';
 import { matchLocationsToScene } from '@/lib/workflows/scene-matching';
 import { locationMatchesTag } from '@/lib/db/scoped/sequence-locations';
-import type { SequenceLocation } from '@/lib/db/schema';
+import type { SequenceLocationWithReference } from '@/lib/db/schema';
 
 // Mock location data - using full SequenceLocation type
-const mockLocations: [SequenceLocation, SequenceLocation, SequenceLocation] = [
+const mockLocations: [
+  SequenceLocationWithReference,
+  SequenceLocationWithReference,
+  SequenceLocationWithReference,
+] = [
   {
     id: 'loc-1',
     sequenceId: 'seq-1',

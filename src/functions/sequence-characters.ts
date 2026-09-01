@@ -380,16 +380,21 @@ export const recastCharacterFn = createServerFn({ method: 'POST' })
       data.characterId,
       data.talentId
     );
-    const updatedCharacter = await context.scopedDb.characters.update(
-      data.characterId,
-      {
-        age: castingAttrs.age,
-        gender: castingAttrs.gender,
-        ethnicity: castingAttrs.ethnicity,
-        physicalDescription: castingAttrs.physicalDescription,
-        consistencyTag: castingAttrs.consistencyTag,
-      }
+    await context.scopedDb.characters.update(data.characterId, {
+      age: castingAttrs.age,
+      gender: castingAttrs.gender,
+      ethnicity: castingAttrs.ethnicity,
+      physicalDescription: castingAttrs.physicalDescription,
+      consistencyTag: castingAttrs.consistencyTag,
+    });
+    // Re-read rather than use the write's row: the recast snapshot needs the
+    // live sheet, which resolves from the version pointer (#1419).
+    const updatedCharacter = await context.scopedDb.characters.getById(
+      data.characterId
     );
+    if (!updatedCharacter) {
+      throw new NotFoundError('Character not found');
+    }
 
     const affectedShotIds =
       await context.scopedDb.characters.getShotIdsForCharacter(

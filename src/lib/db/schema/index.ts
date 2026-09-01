@@ -267,6 +267,7 @@ export type { NewSequenceExport, SequenceExport } from './sequence-exports';
 export { characters };
 
 export type {
+  CharacterWithSheet,
   Character,
   CharacterMinimal,
   CharacterWithTalent,
@@ -285,6 +286,7 @@ export { sequenceLocations };
 export type {
   NewSequenceLocation,
   ReferenceStatus,
+  SequenceLocationWithReference,
   SequenceLocation,
   SequenceLocationMinimal,
 } from './sequence-locations';

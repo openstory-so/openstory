@@ -366,10 +366,13 @@ export function createLocationSheetVariantsMethods(db: Database) {
      * or `location_library`) and soft-delete the variant. Single batch so a
      * partial failure cannot leave the live primary updated with the variant
      * still appearing as divergent.
+     *
+     * `library_location` ONLY. `location_library` keeps its mirror columns;
+     * `sequence_locations` lost theirs in #1419, and its promote goes through
+     * `select()`, which moves the pointer instead of copying the image.
      */
     promoteAtomically: async (
-      parentType: LocationSheetVariantParentType,
-      parentId: string,
+      libraryLocationId: string,
       parentUpdate: PromoteLocationUpdate,
       variantId: string
     ): Promise<{ discardedAt: Date }> => {
@@ -386,46 +389,29 @@ export function createLocationSheetVariantsMethods(db: Database) {
         throw new Error(`LocationSheetVariant ${variantId} not found`);
       }
       if (
-        existingVariant.parentType !== parentType ||
-        existingVariant.parentId !== parentId
+        existingVariant.parentType !== 'library_location' ||
+        existingVariant.parentId !== libraryLocationId
       ) {
         throw new Error(
-          `LocationSheetVariant ${variantId} parent (${existingVariant.parentType}:${existingVariant.parentId}) does not match promote target (${parentType}:${parentId})`
+          `LocationSheetVariant ${variantId} parent (${existingVariant.parentType}:${existingVariant.parentId}) does not match promote target (library_location:${libraryLocationId})`
         );
       }
 
-      const existingParent =
-        parentType === 'sequence_location'
-          ? (
-              await db
-                .select({ id: sequenceLocations.id })
-                .from(sequenceLocations)
-                .where(eq(sequenceLocations.id, parentId))
-            )[0]
-          : (
-              await db
-                .select({ id: locationLibrary.id })
-                .from(locationLibrary)
-                .where(eq(locationLibrary.id, parentId))
-            )[0];
+      const [existingParent] = await db
+        .select({ id: locationLibrary.id })
+        .from(locationLibrary)
+        .where(eq(locationLibrary.id, libraryLocationId));
       // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
       if (!existingParent) {
-        throw new Error(`${parentType} ${parentId} not found`);
+        throw new Error(`library_location ${libraryLocationId} not found`);
       }
 
       const now = new Date();
-      const updateParent =
-        parentType === 'sequence_location'
-          ? db
-              .update(sequenceLocations)
-              .set({ ...parentUpdate, updatedAt: now })
-              .where(eq(sequenceLocations.id, parentId))
-              .returning({ id: sequenceLocations.id })
-          : db
-              .update(locationLibrary)
-              .set({ ...parentUpdate, updatedAt: now })
-              .where(eq(locationLibrary.id, parentId))
-              .returning({ id: locationLibrary.id });
+      const updateParent = db
+        .update(locationLibrary)
+        .set({ ...parentUpdate, updatedAt: now })
+        .where(eq(locationLibrary.id, libraryLocationId))
+        .returning({ id: locationLibrary.id });
       const discardVariant = db
         .update(locationSheetVariants)
         .set({ discardedAt: now, updatedAt: now })
@@ -436,7 +422,9 @@ export function createLocationSheetVariantsMethods(db: Database) {
         discardVariant,
       ]);
       if (parentRows.length === 0) {
-        throw new Error(`${parentType} ${parentId} disappeared during promote`);
+        throw new Error(
+          `library_location ${libraryLocationId} disappeared during promote`
+        );
       }
       if (variantRows.length === 0) {
         throw new Error(

@@ -54,6 +54,7 @@ import {
   it,
   vi,
 } from 'vitest';
+import { createCharactersMethods } from './characters';
 import { createFramePromptVersionsMethods } from './frame-prompt-versions';
 import { createFrameVariantsMethods } from './frame-variants';
 import { createSequenceMusicPromptVersionsMethods } from './sequence-music-prompt-versions';
@@ -248,8 +249,6 @@ async function seedCharacterWithSheet(sheetInputHash: string) {
       name: 'Jack',
       consistencyTag: 'char_001: Jack-denim-jacket',
       sheetStatus: 'completed',
-      sheetImageUrl: '/r2/characters/jack.png',
-      sheetInputHash,
     })
     .returning();
   if (!row) throw new Error('test setup: character insert returned nothing');
@@ -263,7 +262,12 @@ async function seedCharacterWithSheet(sheetInputHash: string) {
     status: 'completed',
     inputHash: sheetInputHash,
   });
-  return row;
+  // Return the RESOLVED read — the sheet lives on the version row now (#1419),
+  // and the staleness hash is computed from it.
+  const resolved = await createCharactersMethods(db).getById(row.id);
+  if (!resolved)
+    throw new Error('test setup: character re-read returned nothing');
+  return resolved;
 }
 
 /** The scoped DB + sequence shape `computeShotStaleness` verifies against. */

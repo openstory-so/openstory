@@ -6,6 +6,7 @@
 import { and, eq, getTableColumns, inArray, isNull, sql } from 'drizzle-orm';
 import type { Database } from '@/lib/db/client';
 import type {
+  CharacterWithSheet,
   Character,
   CharacterWithTalent,
   Shot,
@@ -35,7 +36,7 @@ import { buildEventInsert } from './sequence-events';
  */
 export type CharacterBibleUpdate = Partial<
   Pick<
-    Character,
+    CharacterWithSheet,
     | 'name'
     | 'age'
     | 'gender'
@@ -116,7 +117,7 @@ export function createCharactersMethods(db: Database) {
   };
 
   return {
-    getById: async (id: string): Promise<Character | null> => {
+    getById: async (id: string): Promise<CharacterWithSheet | null> => {
       const result = await selectWithLiveSheet().where(eq(characters.id, id));
       return result[0] ?? null;
     },
@@ -124,7 +125,7 @@ export function createCharactersMethods(db: Database) {
     getByCharacterId: async (
       sequenceId: string,
       characterId: string
-    ): Promise<Character | null> => {
+    ): Promise<CharacterWithSheet | null> => {
       const result = await selectWithLiveSheet().where(
         and(
           eq(characters.sequenceId, sequenceId),
@@ -138,7 +139,7 @@ export function createCharactersMethods(db: Database) {
     // must vanish from the cast facet, the prompt-context bibles, and the
     // staleness verifies — all of which read through these methods. Restore
     // (or an id-addressed getById) is the only way back.
-    list: async (sequenceId: string): Promise<Character[]> => {
+    list: async (sequenceId: string): Promise<CharacterWithSheet[]> => {
       return await selectWithLiveSheet().where(
         and(eq(characters.sequenceId, sequenceId), isNull(characters.deletedAt))
       );
@@ -175,12 +176,14 @@ export function createCharactersMethods(db: Database) {
       }));
     },
 
-    getByIds: async (ids: string[]): Promise<Character[]> => {
+    getByIds: async (ids: string[]): Promise<CharacterWithSheet[]> => {
       if (ids.length === 0) return [];
       return await selectWithLiveSheet().where(inArray(characters.id, ids));
     },
 
-    listWithSheets: async (sequenceId: string): Promise<Character[]> => {
+    listWithSheets: async (
+      sequenceId: string
+    ): Promise<CharacterWithSheet[]> => {
       return await selectWithLiveSheet().where(
         and(
           eq(characters.sequenceId, sequenceId),
@@ -296,7 +299,9 @@ export function createCharactersMethods(db: Database) {
       return character;
     },
 
-    getNeedingSheets: async (sequenceId: string): Promise<Character[]> => {
+    getNeedingSheets: async (
+      sequenceId: string
+    ): Promise<CharacterWithSheet[]> => {
       return await selectWithLiveSheet().where(
         and(
           eq(characters.sequenceId, sequenceId),

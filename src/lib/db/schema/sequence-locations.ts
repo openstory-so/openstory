@@ -59,21 +59,16 @@ export const sequenceLocations = snakeCase.table(
     firstMentionSceneId: text(),
     firstMentionText: text(),
     firstMentionLine: integer(),
-    // Reference image (establishing shot / mood board)
-    referenceImageUrl: text(),
-    referenceImagePath: text(), // R2 storage path
-    // Generation status tracking
+    // Generation lifecycle, not a mirror of the version row's status — see
+    // the `characters` twin (#1419).
     referenceStatus: text()
       .$type<ReferenceStatus>()
       .default('pending')
       .notNull(),
-    referenceGeneratedAt: integer({
-      mode: 'timestamp',
-    }),
     referenceError: text(),
-    referenceInputHash: text(),
     // Soft pointer to the live `location_sheet_variants` row (#1108 sheet
     // versions). No FK — same cycle-avoidance as frames.selectedImageVersionId.
+    // Null on rows the #1419 backfill snapshotted; see the `characters` twin.
     selectedReferenceVersionId: text(),
     // Soft-remove from the sequence (#1108 Phase 2, undoable). Mirrors
     // `characters.deletedAt` — excluded from default lists / bibles, restore
@@ -102,11 +97,29 @@ export const sequenceLocations = snakeCase.table(
 );
 
 // Type exports
+
+/**
+ * The stored row. Carries no reference image — see
+ * {@link SequenceLocationWithReference}.
+ */
 export type SequenceLocation = InferSelectModel<typeof sequenceLocations>;
+
+/**
+ * A location as every scoped READ returns it: the row plus the live reference,
+ * resolved from `selected_reference_version_id` (#1419). See the `characters`
+ * twin for why the four fields are no longer columns.
+ */
+export type SequenceLocationWithReference = SequenceLocation & {
+  referenceImageUrl: string | null;
+  referenceImagePath: string | null;
+  referenceGeneratedAt: Date | null;
+  referenceInputHash: string | null;
+};
+
 export type NewSequenceLocation = InferInsertModel<typeof sequenceLocations>;
 
 export type SequenceLocationMinimal = Pick<
-  SequenceLocation,
+  SequenceLocationWithReference,
   | 'id'
   | 'locationId'
   | 'name'

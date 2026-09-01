@@ -17,7 +17,11 @@ import {
   aspectRatioToImageSize,
   type AspectRatio,
 } from '@/lib/constants/aspect-ratios';
-import type { Frame, SequenceLocation, Shot } from '@/lib/db/schema';
+import type {
+  Frame,
+  SequenceLocationWithReference,
+  Shot,
+} from '@/lib/db/schema';
 import { locationMatchesTag } from '@/lib/db/scoped/sequence-locations';
 import type { ScopedDb } from '@/lib/db/scoped';
 import { buildCharacterReferenceImages } from '@/lib/prompts/character-prompt';
@@ -45,7 +49,7 @@ export type ShotImageRefs = Pick<
 
 /** Match locations by environmentTag or scene location and return reference images. */
 export function getSceneLocationReferenceImages(
-  allLocations: SequenceLocation[],
+  allLocations: SequenceLocationWithReference[],
   environmentTag: string,
   sceneLocation?: string
 ): ReferenceImageDescription[] {

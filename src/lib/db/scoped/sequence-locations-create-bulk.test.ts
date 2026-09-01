@@ -14,7 +14,13 @@
 import type { Database } from '@/lib/db/client';
 import { generateId } from '@/lib/db/id';
 import type { NewSequenceLocation } from '@/lib/db/schema';
-import { sequenceLocations, sequences, styles, teams } from '@/lib/db/schema';
+import {
+  locationSheetVariants,
+  sequenceLocations,
+  sequences,
+  styles,
+  teams,
+} from '@/lib/db/schema';
 import { relations } from '@/lib/db/schema/relations';
 import { type Client, createClient } from '@libsql/client';
 import { eq } from 'drizzle-orm';
@@ -124,14 +130,20 @@ describe('createBulk', () => {
     if (!created) throw new Error('test setup: createBulk returned nothing');
 
     // Child LocationSheetWorkflow completes the reference in the meantime.
+    // The image lands on the version row, not the parent (#1419).
     await db
       .update(sequenceLocations)
-      .set({
-        referenceStatus: 'completed',
-        referenceImageUrl: 'https://r2/loc_001.png',
-        referenceImagePath: 'locations/loc_001.png',
-      })
+      .set({ referenceStatus: 'completed' })
       .where(eq(sequenceLocations.id, created.id));
+    await db.insert(locationSheetVariants).values({
+      id: created.id,
+      parentType: 'sequence_location',
+      parentId: created.id,
+      model: 'prior',
+      url: 'https://r2/loc_001.png',
+      storagePath: 'locations/loc_001.png',
+      status: 'completed',
+    });
 
     const [upserted] = await methods.createBulk([
       { ...locationInsert('loc_001'), description: 'fresher description' },
@@ -141,8 +153,10 @@ describe('createBulk', () => {
     expect(upserted?.description).toBe('fresher description');
     // Owned by the child workflow — must not be clobbered by a parent replay.
     expect(upserted?.referenceStatus).toBe('completed');
-    expect(upserted?.referenceImageUrl).toBe('https://r2/loc_001.png');
-    expect(upserted?.referenceImagePath).toBe('locations/loc_001.png');
+    // `createBulk` returns raw rows; the reference reads back resolved.
+    const live = await methods.getById(created.id);
+    expect(live?.referenceImageUrl).toBe('https://r2/loc_001.png');
+    expect(live?.referenceImagePath).toBe('locations/loc_001.png');
   });
 
   it('returns [] for an empty input', async () => {

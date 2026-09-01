@@ -44,7 +44,11 @@ import {
 import { estimateStoryboardPreflightCost } from '@/lib/billing/storyboard-preflight-cost';
 import { aspectRatioToImageSize } from '@/lib/constants/aspect-ratios';
 import type { ScopedDb } from '@/lib/db/scoped';
-import { type Character, type Sequence, type Shot } from '@/lib/db/schema';
+import {
+  type CharacterWithSheet,
+  type Sequence,
+  type Shot,
+} from '@/lib/db/schema';
 import { analyzeFailures } from '@/lib/failures/failure-analysis';
 import {
   motionPromptFromVersion,
@@ -76,7 +80,7 @@ import { getLogger } from '@/lib/observability/logger';
 const logger = getLogger(['openstory', 'sequences', 'smart-retry']);
 
 function getSceneCharacterReferenceImages(
-  allCharacters: Character[],
+  allCharacters: CharacterWithSheet[],
   characterTags: string[]
 ) {
   if (characterTags.length === 0) return [];

@@ -21,7 +21,7 @@ import {
   restoreSequenceLocation,
   useSequenceLocations,
   useSoftDeleteSequenceLocation,
-  type SequenceLocation,
+  type SequenceLocationWithReference,
 } from '@/hooks/use-sequence-locations';
 import { errorMessage } from '@/lib/errors';
 import { useQueryClient } from '@tanstack/react-query';
@@ -63,11 +63,10 @@ export const SceneLocationTab: React.FC<SceneLocationTabProps> = ({
   const { data: facetMaps } = useSceneFacetMaps(sequenceId);
   const queryClient = useQueryClient();
   const softDelete = useSoftDeleteSequenceLocation();
-  const [pendingDelete, setPendingDelete] = useState<SequenceLocation | null>(
-    null
-  );
+  const [pendingDelete, setPendingDelete] =
+    useState<SequenceLocationWithReference | null>(null);
 
-  const handleConfirmDelete = (location: SequenceLocation) => {
+  const handleConfirmDelete = (location: SequenceLocationWithReference) => {
     softDelete.mutate(
       { sequenceId, locationDbId: location.id },
       {

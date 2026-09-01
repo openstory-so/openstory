@@ -530,7 +530,6 @@ export async function createTestCharacter(
     name,
     talentId,
     age: '30s',
-    sheetImageUrl,
     sheetStatus,
     createdAt: now,
     updatedAt: now,
