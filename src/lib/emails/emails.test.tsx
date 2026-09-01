@@ -21,10 +21,9 @@ describe('renderEmail(OtpEmail)', () => {
     expect(html).not.toContain('/brand/openstory-logo-light.png');
     // Styles must be inline — Gmail strips <style> blocks.
     expect(html).not.toContain('<style');
-    // The Tailwind wrapper must have compiled classes to inline styles.
     expect(html).toContain('style=');
-    // Dark canvas, not the old light grey. Tailwind inlines rgb(), not hex.
-    expect(html).toContain('rgb(10,10,10)');
+    // Dark canvas, not the old light grey. Inline styles keep the hex.
+    expect(html).toContain('#0a0a0a');
   });
 
   it('renders a plain-text version with the code', async () => {
