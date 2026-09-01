@@ -31,6 +31,28 @@
     "eslint/no-console": "error",
     "unicorn/prefer-optional-catch-binding": "error",
     "react/rules-of-hooks": "error",
+    // oxlint 1.80 promoted the React Compiler rules into `correctness`, which added
+    // 87 errors on unchanged source (#1404). Downgraded to `warn` so the findings
+    // stay visible without gating CI. #1417 tracks working them down: restore a rule
+    // to "error" and delete its line here once its count reaches zero.
+    "react/refs": "warn",
+    "react/set-state-in-effect": "warn",
+    "react/preserve-manual-memoization": "warn",
+    "react/purity": "warn",
+    "react/immutability": "warn",
+    "react/incompatible-library": "warn",
+    // 1.80 also stopped defaulting these ignore patterns, so idiomatic `_`
+    // throwaways and omit-a-key rest destructuring began erroring.
+    "eslint/no-unused-vars": [
+      "error",
+      {
+        "argsIgnorePattern": "^_",
+        "varsIgnorePattern": "^_",
+        "caughtErrorsIgnorePattern": "^_",
+        "destructuredArrayIgnorePattern": "^_",
+        "ignoreRestSiblings": true
+      }
+    ],
     "openstory/no-loose-text": "error",
     "no-restricted-imports": [
       "error",

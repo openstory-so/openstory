@@ -18,7 +18,6 @@
  *   bun scripts/memory-profile.ts --json       # Raw JSON output
  *   bun scripts/memory-profile.ts --clear      # Clear samples
  */
-export {};
 
 import { spawn } from 'node:child_process';
 import { writeFile } from 'node:fs/promises';
