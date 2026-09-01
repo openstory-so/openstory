@@ -80,6 +80,21 @@ export function isTurboVideoModel(model: string): boolean {
   return TURBO_VIDEO_MODEL_SET.has(model);
 }
 
+/** Style auto-apply may set Fast models in Turbo; Quality recs stay Quality-only. */
+export function styleMayApplyImage(
+  mode: GenerationMode,
+  model: string
+): boolean {
+  return mode !== 'turbo' || isTurboImageModel(model);
+}
+
+export function styleMayApplyVideo(
+  mode: GenerationMode,
+  model: string
+): boolean {
+  return mode !== 'turbo' || isTurboVideoModel(model);
+}
+
 export function isGenerationMode(value: unknown): value is GenerationMode {
   return (
     typeof value === 'string' &&

@@ -89,6 +89,8 @@ import {
 } from '@/lib/ai/models';
 import {
   applyGenerationMode,
+  styleMayApplyImage,
+  styleMayApplyVideo,
   type GenerationMode,
 } from '@/lib/ai/generation-mode';
 import {
@@ -760,12 +762,18 @@ export const ScriptView: FC<{
     const id = selectedStyle?.id;
     if (!id || id === lastAppliedStyleIdRef.current) return;
 
+    // Turbo: skip Quality-only recs so a style can't replace Lite/H3 Max
+    // with Grok/Seedance. Quality mode still applies the style's pick.
     const validImage =
-      recommendedImageModel && isValidTextToImageModel(recommendedImageModel)
+      recommendedImageModel &&
+      isValidTextToImageModel(recommendedImageModel) &&
+      styleMayApplyImage(generationMode, recommendedImageModel)
         ? recommendedImageModel
         : null;
     const validVideo =
-      recommendedVideoModel && isValidImageToVideoModel(recommendedVideoModel)
+      recommendedVideoModel &&
+      isValidImageToVideoModel(recommendedVideoModel) &&
+      styleMayApplyVideo(generationMode, recommendedVideoModel)
         ? recommendedVideoModel
         : null;
     const parsedRatio = recommendedAspectRatio
@@ -822,6 +830,7 @@ export const ScriptView: FC<{
     recommendedImageModel,
     recommendedVideoModel,
     recommendedAspectRatio,
+    generationMode,
   ]);
 
   const resetStyleDefaults = () => {

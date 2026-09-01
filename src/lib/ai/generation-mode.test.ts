@@ -17,6 +17,8 @@ import {
   defaultVideoModel,
   isTurboImageModel,
   isTurboVideoModel,
+  styleMayApplyImage,
+  styleMayApplyVideo,
   QUALITY_DEFAULT_ANALYSIS,
   QUALITY_DEFAULT_IMAGE,
   QUALITY_DEFAULT_VIDEO,
@@ -119,6 +121,24 @@ describe('selector grouping', () => {
     expect(ids[0]).toBe('nano_banana_2_lite');
     expect(ids[1]).toBe('flux_2_flash');
     expect(ids[2]).toBe('gpt_image_2');
+  });
+});
+
+describe('styleMayApplyImage / styleMayApplyVideo', () => {
+  it('lets Quality apply any catalog model', () => {
+    expect(styleMayApplyImage('quality', 'gpt_image_2')).toBe(true);
+    expect(styleMayApplyVideo('quality', 'seedance_v2')).toBe(true);
+  });
+
+  it('blocks Turbo from applying a Quality-only rec', () => {
+    expect(styleMayApplyImage('turbo', 'gpt_image_2')).toBe(false);
+    expect(styleMayApplyImage('turbo', 'grok_imagine_image')).toBe(false);
+    expect(styleMayApplyVideo('turbo', 'seedance_v2')).toBe(false);
+  });
+
+  it('allows Turbo to apply a Fast rec', () => {
+    expect(styleMayApplyImage('turbo', 'nano_banana_2_lite')).toBe(true);
+    expect(styleMayApplyVideo('turbo', 'minimax_h3_max')).toBe(true);
   });
 });
 
