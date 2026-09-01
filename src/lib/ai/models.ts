@@ -66,7 +66,7 @@ export const IMAGE_TO_VIDEO_MODELS = {
   },
   gemini_omni_flash: {
     id: 'fal-ai/gemini-omni-flash/image-to-video',
-    name: 'Gemini Omni Flash',
+    name: 'Gemini Omni Flash 1.1',
     vendor: 'Google',
     license: 'proprietary' as const,
     qualityRank: 2,

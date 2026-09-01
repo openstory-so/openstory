@@ -24,7 +24,7 @@ describe('buildGeminiVideoRequest', () => {
       duration: 5,
       aspectRatio: '16:9',
     });
-    expect(endpointId).toBe('gemini-omni-flash-preview');
+    expect(endpointId).toBe('gemini-omni-1.1-flash');
     expect(input).toEqual({
       prompt: [
         { type: 'image', source: { type: 'url', value: STILL } },

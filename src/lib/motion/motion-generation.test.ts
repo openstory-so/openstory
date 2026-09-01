@@ -48,7 +48,7 @@ vi.doMock('@tanstack/ai-grok', () => ({
 const mockCreateGeminiVideo = vi.fn(() => ({
   kind: 'video',
   name: 'gemini',
-  model: 'gemini-omni-flash-preview',
+  model: 'gemini-omni-1.1-flash',
 }));
 vi.doMock('@tanstack/ai-gemini', () => ({
   createGeminiVideo: mockCreateGeminiVideo,
@@ -610,7 +610,7 @@ describe('Motion Service', () => {
       testEnv.GEMINI_API_KEY = 'platform-google';
       mockGenerateVideo.mockResolvedValue({
         jobId: 'google-job-1',
-        model: 'gemini-omni-flash-preview',
+        model: 'gemini-omni-1.1-flash',
       });
 
       const result = await submitMotionJob({
@@ -646,7 +646,7 @@ describe('Motion Service', () => {
       testEnv.GEMINI_API_KEY = 'platform-google';
       mockGenerateVideo.mockResolvedValue({
         jobId: 'google-job-frame',
-        model: 'gemini-omni-flash-preview',
+        model: 'gemini-omni-1.1-flash',
       });
 
       await submitMotionJob({
@@ -684,7 +684,7 @@ describe('Motion Service', () => {
       testEnv.GEMINI_API_KEY = 'platform-google';
       mockGenerateVideo.mockResolvedValue({
         jobId: 'google-job-refs',
-        model: 'gemini-omni-flash-preview',
+        model: 'gemini-omni-1.1-flash',
       });
 
       await submitMotionJob({
@@ -823,7 +823,7 @@ describe('Motion Service', () => {
       );
       expect(billing.cost).toBe(506_800);
       expect(billing.recordFalUsage).toBe(false);
-      expect(billing.endpointId).toBe('gemini-omni-flash-preview');
+      expect(billing.endpointId).toBe('gemini-omni-1.1-flash');
     });
   });
 });

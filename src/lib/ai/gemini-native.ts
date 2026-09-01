@@ -38,7 +38,7 @@ export function nativeGeminiTextModel(
  * content (or pinned via `generation_config.video_config.task`), unlike fal
  * where each task is its own endpoint.
  */
-export const NATIVE_GEMINI_VIDEO_MODEL = 'gemini-omni-flash-preview';
+export const NATIVE_GEMINI_VIDEO_MODEL = 'gemini-omni-1.1-flash';
 
 export function isNativeGeminiVideoModel(model: ImageToVideoModel): boolean {
   return model === 'gemini_omni_flash';

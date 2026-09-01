@@ -129,7 +129,7 @@ describe('resolveMotionEndpoint', () => {
   it('stamps Google-native Omni Flash as via google and marks refs as inline', () => {
     expect(resolveMotionEndpoint('gemini_omni_flash', true, 'google')).toEqual({
       via: 'google',
-      endpointId: 'gemini-omni-flash-preview',
+      endpointId: 'gemini-omni-1.1-flash',
       references: 'inline',
     });
   });
@@ -138,7 +138,7 @@ describe('resolveMotionEndpoint', () => {
     expect(resolveMotionEndpoint('gemini_omni_flash', false, 'google')).toEqual(
       {
         via: 'google',
-        endpointId: 'gemini-omni-flash-preview',
+        endpointId: 'gemini-omni-1.1-flash',
         references: 'none',
       }
     );
