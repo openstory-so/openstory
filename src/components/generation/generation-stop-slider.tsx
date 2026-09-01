@@ -102,8 +102,7 @@ export const GenerationStopSlider: FC<GenerationStopSliderProps> = ({
         </div>
       </div>
       <p className="text-xs text-muted-foreground">
-        {GENERATION_STAGE_META[selected].description}. You can continue from
-        here later.
+        {GENERATION_STAGE_META[selected].description}.
       </p>
     </section>
   );
