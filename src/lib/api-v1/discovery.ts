@@ -164,31 +164,38 @@ export type RootDocument = HalResource<{
   requestSchema: unknown;
 }>;
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 /**
  * Zod 4.5 emits `{ $ref: "#/$defs/Id", $defs }` when the root schema has
  * `.meta({ id })`. Tool callers expect a draft object (`type: "object"`) at
  * the root; inline that named def and keep the remaining `$defs`.
  */
 function jsonSchemaForToolCallers(schema: z.ZodType): unknown {
-  const generated = z.toJSONSchema(schema) as {
-    $ref?: string;
-    $defs?: Record<string, unknown>;
-    $schema?: string;
-  };
-  const { $ref, $defs, $schema, ...rest } = generated;
-  if (!$ref?.startsWith('#/$defs/') || !$defs) return generated;
-  const name = $ref.slice('#/$defs/'.length);
-  const root = $defs[name];
-  if (!root || typeof root !== 'object' || Array.isArray(root)) {
+  const generated: unknown = JSON.parse(JSON.stringify(z.toJSONSchema(schema)));
+  if (!isPlainObject(generated)) return generated;
+  const ref = generated.$ref;
+  const defs = generated.$defs;
+  if (
+    typeof ref !== 'string' ||
+    !ref.startsWith('#/$defs/') ||
+    !isPlainObject(defs)
+  ) {
     return generated;
   }
-  const defs = { ...$defs };
-  delete defs[name];
+  const name = ref.slice('#/$defs/'.length);
+  const root = defs[name];
+  if (!isPlainObject(root)) return generated;
+  const { $ref: _ref, $defs: _defs, $schema, ...rest } = generated;
+  const remaining = { ...defs };
+  delete remaining[name];
   return {
-    ...(root as Record<string, unknown>),
+    ...root,
     ...rest,
-    ...(Object.keys(defs).length > 0 ? { $defs: defs } : {}),
-    ...($schema ? { $schema } : {}),
+    ...(Object.keys(remaining).length > 0 ? { $defs: remaining } : {}),
+    ...($schema === undefined ? {} : { $schema }),
   };
 }
 
