@@ -24,13 +24,14 @@ vi.doMock('@tanstack/ai', () => ({
   chat: mockChat,
 }));
 
-// Mock create-adapter to avoid real adapter creation. `resolveNativeGrokModel`
-// returns undefined so these tests exercise the OpenRouter request shape;
-// native xAI routing has its own coverage in create-adapter.test.ts.
+// Mock create-adapter to avoid real adapter creation. The native resolvers
+// return undefined so these tests exercise the OpenRouter request shape;
+// native xAI/Google routing has its own coverage in create-adapter.test.ts.
 const mockCreateAdapter = vi.fn(() => ({ kind: 'text', name: 'mock' }));
 vi.doMock('./create-adapter', () => ({
   createAdapter: mockCreateAdapter,
   resolveNativeGrokModel: () => undefined,
+  resolveNativeGeminiModel: () => undefined,
 }));
 
 // Mock the PostHog OTel middleware factory — observability hints are
@@ -54,6 +55,7 @@ const {
   llmCostFromUsage,
   preferUsage,
   RECOMMENDED_MODELS,
+  toGeminiThinkingLevel,
 } = await import('./llm-client');
 const { DEFAULT_ANALYSIS_MODEL, DEFAULT_VISION_MODEL } =
   await import('./models.config');
@@ -900,8 +902,10 @@ describe('llm-client', () => {
 
         const callArgs = mockChat.mock.calls[0]?.[0];
         if (!callArgs) throw new Error('expected mockChat to have been called');
+        // `enabled: true` is stripped: since @tanstack/ai-openrouter 0.19 the
+        // effort config itself is the opt-in, and `enabled` only carries the
+        // explicit `false` opt-out.
         expect(callArgs.modelOptions.reasoning).toEqual({
-          enabled: true,
           effort: 'medium',
         });
       });
@@ -1115,6 +1119,36 @@ describe('llm-client', () => {
       expect(llmCostFromUsage(usage(0.0123), 'x-ai/grok-4.6')).toBe(
         usdToMicros(0.0123)
       );
+    });
+
+    it('prices a Gemini model from Google’s published rates', () => {
+      expect(
+        llmCostFromUsage(
+          {
+            promptTokens: 100_000,
+            completionTokens: 100_000,
+            totalTokens: 200_000,
+          },
+          'google/gemini-3.1-pro-preview'
+        )
+      ).toBe(1_400_000);
+    });
+
+    it('still prefers OpenRouter’s reported cost for a Gemini model', () => {
+      expect(
+        llmCostFromUsage(usage(0.0123), 'google/gemini-3.1-pro-preview')
+      ).toBe(usdToMicros(0.0123));
+    });
+  });
+
+  describe('toGeminiThinkingLevel', () => {
+    it('maps the five-level effort scale onto Gemini thinking levels', () => {
+      expect(toGeminiThinkingLevel('minimal')).toBe('MINIMAL');
+      expect(toGeminiThinkingLevel('low')).toBe('LOW');
+      expect(toGeminiThinkingLevel('medium')).toBe('MEDIUM');
+      expect(toGeminiThinkingLevel(undefined)).toBe('MEDIUM');
+      expect(toGeminiThinkingLevel('high')).toBe('HIGH');
+      expect(toGeminiThinkingLevel('xhigh')).toBe('HIGH');
     });
   });
 

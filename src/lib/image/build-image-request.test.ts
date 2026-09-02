@@ -2,6 +2,7 @@ import { EDIT_ENDPOINTS } from '@/lib/ai/models';
 import { typedEntries } from '@/lib/utils/typed-object';
 import { describe, expect, it } from 'vitest';
 import {
+  buildGeminiImageRequest,
   buildGrokImageRequest,
   buildImageRequest,
 } from './build-image-request';
@@ -278,5 +279,58 @@ describe('resolution tiers (#1449)', () => {
         imageSize: 'landscape_16_9',
       }).input.image_size
     ).toBe('landscape_16_9');
+  });
+});
+
+describe('buildGeminiImageRequest', () => {
+  const BASE = {
+    model: 'nano_banana_2_lite',
+    prompt: 'a lighthouse at dusk',
+  } as const;
+
+  it('spells the tier in Google’s capital-K vocabulary', () => {
+    expect(
+      buildGeminiImageRequest({
+        ...BASE,
+        model: 'nano_banana_2',
+        imageSize: 'landscape_16_9',
+        resolution: '720p',
+      }).size
+    ).toBe('16:9_1K');
+    expect(
+      buildGeminiImageRequest({
+        ...BASE,
+        model: 'nano_banana_pro',
+        imageSize: 'portrait_16_9',
+        resolution: '4k',
+      }).size
+    ).toBe('9:16_4K');
+  });
+
+  it('resolves against Google’s tokens, not the fal enum', () => {
+    // nano_banana_2's fal enum starts at 0.5K, which this via does not admit —
+    // a 720p ask has to land on 1K here, never on a token Gemini rejects.
+    expect(
+      buildGeminiImageRequest({
+        ...BASE,
+        model: 'nano_banana_2',
+        resolution: '720p',
+      }).resolution
+    ).toBe('1K');
+  });
+
+  it('snaps Lite to 1K even when a higher tier is requested', () => {
+    expect(buildGeminiImageRequest({ ...BASE, resolution: '4k' }).size).toBe(
+      '16:9_1K'
+    );
+    expect(
+      buildGeminiImageRequest({ ...BASE, resolution: '1080p' }).nativeModel
+    ).toBe('gemini-3.1-flash-lite-image');
+  });
+
+  it('defaults Pro/2 to 2K, matching the fal path', () => {
+    expect(
+      buildGeminiImageRequest({ ...BASE, model: 'nano_banana_2' }).size
+    ).toBe('16:9_2K');
   });
 });

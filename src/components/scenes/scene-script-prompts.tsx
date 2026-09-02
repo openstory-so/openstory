@@ -18,6 +18,8 @@ import {
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { MarkdownEditor } from '@/components/text-editor/markdown-editor';
+import { VoiceInputButton } from '@/components/voice/voice-input-button';
+import { useEditorDictation } from '@/hooks/use-dictation';
 import { useSequenceMentionItems } from '@/hooks/use-mention-items';
 import { shortenPromptFn } from '@/functions/ai';
 import { generateShotImageFn } from '@/functions/shot-image';
@@ -105,9 +107,11 @@ import {
   CONTENT_REJECTION_USER_TITLE,
   isContentRejectionError,
 } from '@/lib/ai/content-rejection';
+import { isNativeGeminiVideoModel } from '@/lib/ai/gemini-native';
 import { isNativeGrokVideoModel } from '@/lib/ai/grok-native';
 import { buildImageRequest } from '@/lib/image/build-image-request';
 import { buildBytePlusImageRequest } from '@/lib/image/build-byteplus-image-request';
+import { buildGeminiVideoRequest } from '@/lib/motion/build-gemini-video-request';
 import { buildGrokVideoRequest } from '@/lib/motion/build-grok-video-request';
 import { buildBytePlusVideoRequest } from '@/lib/motion/build-byteplus-video-request';
 import { buildMotionRequest } from '@/lib/motion/build-model-input';
@@ -396,6 +400,21 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
   // appears on a prompt the user never touched.
   const imageFocusedRef = useRef(false);
   const motionFocusedRef = useRef(false);
+
+  // The mics live in each prompt's header row; dictation streams into the
+  // editor below through these handles.
+  const { ref: imagePromptRef, voice: imageVoice } = useEditorDictation();
+  const { ref: motionPromptRef, voice: motionVoice } = useEditorDictation();
+
+  // Drop a live take when the shot changes so the previous shot's document
+  // cannot land in the new shot's draft. The buttons remount via `key`.
+  useEffect(() => {
+    imagePromptRef.current?.endDictation();
+    motionPromptRef.current?.endDictation();
+    // Refs are stable; the take must end when the shot id changes, not when
+    // the handle object identity does.
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
+  }, [shot?.id]);
 
   const queryClient = useQueryClient();
   const setImageFromVariant = useSetImageFromVariant();
@@ -1290,6 +1309,32 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
           ),
         };
       }
+      if (isNativeGeminiVideoModel(modelKey)) {
+        const request = buildGeminiVideoRequest({
+          prompt: modelPrompt,
+          imageUrl,
+          duration,
+          aspectRatio,
+          referenceImages,
+          model: modelKey,
+        });
+        const textPart = request.input.prompt.find(
+          (part) => part.type === 'text'
+        );
+        const prompt = textPart?.content ?? modelPrompt;
+        return {
+          modelName: config.name,
+          endpointId: request.endpointId,
+          prompt,
+          json: JSON.stringify(request.input, null, 2),
+          promptLength: prompt.length,
+          maxPromptLength: config.maxPromptLength,
+          images: boundPromptImages(
+            imageUrlsFromPromptParts(request.input.prompt),
+            (position) => `<IMAGE_REF_${position - 1}>`
+          ),
+        };
+      }
       const request = buildMotionRequest(
         {
           prompt: modelPrompt,
@@ -1761,10 +1806,25 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
                   onCopy={(text, key) => void handleCopy(text, key)}
                   label="Copy image prompt"
                 />
+                <VoiceInputButton
+                  key={shot?.id}
+                  label="image prompt"
+                  size="icon-xs"
+                  disabled={isAwaitingVisualPrompt}
+                  {...imageVoice}
+                  onStart={() => {
+                    // Treat dictation as a user edit even though the mic
+                    // never focuses the editor (so Escape still hits the button).
+                    const started = imageVoice.onStart();
+                    if (started) imageFocusedRef.current = true;
+                    return started;
+                  }}
+                />
               </div>
             </div>
             <MarkdownEditor
               id="image-prompt-input"
+              ref={imagePromptRef}
               value={
                 isAwaitingVisualPrompt
                   ? shotPromptStream.visual.text
@@ -2055,10 +2115,24 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
                   onCopy={(text, key) => void handleCopy(text, key)}
                   label="Copy motion prompt"
                 />
+                <VoiceInputButton
+                  key={shot?.id}
+                  label="motion prompt"
+                  size="icon-xs"
+                  disabled={isAwaitingMotionPrompt}
+                  {...motionVoice}
+                  onStart={() => {
+                    // Same as the image mic: Focused means dirty, not DOM focus.
+                    const started = motionVoice.onStart();
+                    if (started) motionFocusedRef.current = true;
+                    return started;
+                  }}
+                />
               </div>
             </div>
             <MarkdownEditor
               id="motion-prompt-input"
+              ref={motionPromptRef}
               value={
                 isAwaitingMotionPrompt
                   ? shotPromptStream.motion.text

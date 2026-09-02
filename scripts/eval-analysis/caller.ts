@@ -88,19 +88,21 @@ export function attachVision(
   return out;
 }
 
+// Since @tanstack/ai-openrouter 0.19, `reasoning.enabled` is the explicit
+// opt-out (`false`) only — sending the effort config IS the opt-in.
 function reasoningOptions(
   model: string,
   effort: Effort
-): LLMRequestParams['reasoning'] | undefined {
+): Omit<NonNullable<LLMRequestParams['reasoning']>, 'enabled'> | undefined {
   if (effort === 'none') {
     // Native Grok cannot disable thinking; OpenRouter Grok often can't either.
     // Sending `low` is the fastest we can ask for.
     if (model.startsWith('x-ai/')) {
-      return { enabled: true, effort: 'low' };
+      return { effort: 'low' };
     }
     return undefined;
   }
-  return { enabled: true, effort };
+  return { effort };
 }
 
 function modelOptions(model: string, effort: Effort, maxTokens: number) {

@@ -18,6 +18,9 @@ export default {
     'src/lib/mocks/tanstack-start.ts',
     // Aliased for `cloudflare:workers` in .storybook/main.ts (string path).
     'src/lib/mocks/cloudflare-workers.ts',
+    // Aliased for @react-email/code-block in vite.config.ts (string path) to
+    // keep prismjs out of the worker's startup path.
+    'src/lib/emails/stubs/code-block.tsx',
   ],
   project: ['src/**/*.{ts,tsx}', 'scripts/**/*.ts'],
   ignore: [
@@ -39,9 +42,8 @@ export default {
     '@testing-library/user-event',
     // shadcn CLI.
     'shadcn',
-    // Spawned via bunx from scripts/pull-motion-schemas.ts (bun motion:codegen).
-    // Pinned so bunx doesn't fetch a release that needs typescript/lib/typescript.js
-    // (gone in TS 7).
+    // Local binary spawned from scripts/pull-motion-schemas.ts
+    // (`bun motion:codegen`). Pinned nightly: no typescript runtime dep.
     '@hey-api/openapi-ts',
     // Cloudflare Workers runtime modules (not npm packages).
     'cloudflare',

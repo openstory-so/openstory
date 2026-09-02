@@ -24,6 +24,12 @@ import {
   FAL_REQUEST_TIMEOUT_MS,
 } from '@/lib/ai/fal-deadline-fetch';
 import {
+  geminiVideoCostFromUsage,
+  geminiVideoDurationCost,
+  isNativeGeminiVideoModel,
+  NATIVE_GEMINI_VIDEO_MODEL,
+} from '@/lib/ai/gemini-native';
+import {
   grokVideoCost,
   grokVideoDurationCost,
   isNativeGrokVideoModel,
@@ -56,8 +62,14 @@ import {
   type TokenUsage,
 } from '@tanstack/ai';
 import { falVideo } from '@tanstack/ai-fal';
+import { createGeminiVideo } from '@tanstack/ai-gemini';
 import { createGrokVideo } from '@tanstack/ai-grok';
 import { buildBytePlusVideoRequest } from './build-byteplus-video-request';
+import { buildGeminiVideoRequest } from './build-gemini-video-request';
+import {
+  getGeminiFileState,
+  isGeminiFilesVideoUrl,
+} from '@/lib/motion/video-storage';
 import { buildGrokVideoRequest } from './build-grok-video-request';
 import { buildMotionRequest } from './build-model-input';
 import { resolveMotionEndpoint } from './resolve-motion-endpoint';
@@ -128,6 +140,16 @@ async function resolveOptionalXaiKey(
   return platformKey ? { key: platformKey, source: 'platform' } : undefined;
 }
 
+/** Undefined when the model isn't Omni Flash or no Google key exists — it
+ *  then goes to fal as before. */
+async function resolveOptionalGoogleKey(
+  scopedDb?: CredentialScopedDb
+): Promise<ResolvedApiKey | undefined> {
+  if (scopedDb) return scopedDb.resolveOptionalKey('google');
+  const platformKey = getEnv().GEMINI_API_KEY;
+  return platformKey ? { key: platformKey, source: 'platform' } : undefined;
+}
+
 function createNativeMotionAdapter(apiKey: string) {
   const env = getEnv();
   return createGrokVideo(NATIVE_GROK_VIDEO_MODEL, apiKey, {
@@ -136,7 +158,18 @@ function createNativeMotionAdapter(apiKey: string) {
   });
 }
 
-async function inlineGrokReferenceImages(
+function createNativeGeminiMotionAdapter(apiKey: string) {
+  const env = getEnv();
+  return createGeminiVideo(NATIVE_GEMINI_VIDEO_MODEL, apiKey, {
+    // GEMINI_BASE_URL is the aimock hook for the native Google path,
+    // mirroring XAI_BASE_URL above.
+    ...(env.GEMINI_BASE_URL && {
+      httpOptions: { baseUrl: env.GEMINI_BASE_URL },
+    }),
+  });
+}
+
+async function inlineNativeReferenceImages(
   references: ReferenceImageDescription[] | undefined
 ): Promise<ReferenceImageDescription[]> {
   if (!references?.length) return [];
@@ -243,11 +276,14 @@ export async function submitMotionJob(
   const modelKey = options.model || DEFAULT_VIDEO_MODEL;
 
   // Same order as Grok (#1167): native key first, fal is the fallback.
-  // `resolveKey('fal')` throws with no fal key, so an xAI-only deploy must
-  // not reach it. BytePlus is platform-only (no resolveOptionalKey('byteplus'))
-  // and yields to a BYOK fal team.
+  // `resolveKey('fal')` throws with no fal key, so an xAI-only (or
+  // Google-only) deploy must not reach it. BytePlus is platform-only (no
+  // resolveOptionalKey('byteplus')) and yields to a BYOK fal team.
   const xaiKey = isNativeGrokVideoModel(modelKey)
     ? await resolveOptionalXaiKey(options.scopedDb)
+    : undefined;
+  const googleKey = isNativeGeminiVideoModel(modelKey)
+    ? await resolveOptionalGoogleKey(options.scopedDb)
     : undefined;
 
   const hasReferenceImages = (options.referenceImages?.length ?? 0) > 0;
@@ -255,6 +291,8 @@ export async function submitMotionJob(
   let via: MediaVia;
   if (xaiKey) {
     via = 'xai';
+  } else if (googleKey) {
+    via = 'google';
   } else if (isNativeBytePlusVideoModel(modelKey) && isBytePlusConfigured()) {
     const falKey = await resolveOptionalFalKey(options.scopedDb);
     via = claimBytePlusVia({
@@ -280,7 +318,7 @@ export async function submitMotionJob(
       // Start frame and refs are inlined as data URIs so this path needs no
       // fal key. Same payload as the scene editor's Grok preview.
       const imageUrl = await toDataOrCdnUrl(options.imageUrl);
-      const referenceImages = await inlineGrokReferenceImages(
+      const referenceImages = await inlineNativeReferenceImages(
         options.referenceImages
       );
       const { input } = buildGrokVideoRequest({
@@ -302,6 +340,39 @@ export async function submitMotionJob(
       });
       jobId = job.jobId;
       usedOwnKey = xaiKey.source === 'team';
+      break;
+    }
+    case 'google': {
+      if (!googleKey) {
+        throw new Error('Google motion via selected with no Google key');
+      }
+      // Start frame and refs are inlined as data URIs so this path needs no
+      // fal key. Same payload as the scene editor's Gemini preview.
+      const imageUrl = await toDataOrCdnUrl(options.imageUrl);
+      const referenceImages = await inlineNativeReferenceImages(
+        options.referenceImages
+      );
+      const { input } = buildGeminiVideoRequest({
+        prompt: options.prompt,
+        imageUrl,
+        duration: options.duration,
+        aspectRatio: options.aspectRatio,
+        referenceImages,
+        model: modelKey,
+      });
+      // Duration/size ride on `modelOptions.response_format` (with
+      // `delivery: "uri"`). Passing them as generateVideo top-level
+      // fields makes the adapter rebuild response_format without
+      // delivery, and Google inlines the MP4 as a data: URL.
+      const job = await generateVideo({
+        adapter: createNativeGeminiMotionAdapter(googleKey.key),
+        prompt: input.prompt,
+        modelOptions: input.modelOptions,
+        timeout: FAL_REQUEST_TIMEOUT_MS,
+        debug: false,
+      });
+      jobId = job.jobId;
+      usedOwnKey = googleKey.source === 'team';
       break;
     }
     case 'fal': {
@@ -421,6 +492,36 @@ export async function pollMotionJob(
         jobId,
       });
     }
+    case 'google': {
+      const key = await resolveOptionalGoogleKey(scopedDb);
+      if (!key) {
+        throw new Error(
+          `Motion job ${jobId} was submitted to Google but no Google key is available to poll it`
+        );
+      }
+      const result = await getVideoJobStatus({
+        adapter: createNativeGeminiMotionAdapter(key.key),
+        jobId,
+      });
+      if (
+        result.status === 'completed' &&
+        result.url &&
+        isGeminiFilesVideoUrl(result.url)
+      ) {
+        const fileState = await getGeminiFileState(result.url, key.key);
+        if (fileState === 'FAILED') {
+          return {
+            ...result,
+            status: 'failed' as const,
+            error: 'Gemini Files API marked the generated video as FAILED',
+          };
+        }
+        if (fileState !== 'ACTIVE') {
+          return { jobId: result.jobId, status: 'processing' as const };
+        }
+      }
+      return result;
+    }
     case 'fal': {
       const key = await resolveFalMotionKey(scopedDb);
       // Bound a single status fetch — the workflow already budgets total poll
@@ -485,6 +586,24 @@ export async function motionCostFromUsage(
         recordFalUsage: false,
       };
     }
+    case 'google': {
+      // Omni bills per second of video, reported as output tokens on the
+      // interaction's usage — priced at Google's published video-output rate.
+      const cost = geminiVideoCostFromUsage(usage);
+      if (cost === undefined) {
+        reportMissingBillingCost({
+          source: 'motion-cost-from-usage-google',
+          modelId: ctx.modelKey,
+          metadata: { usage },
+        });
+      }
+      return {
+        endpointId: NATIVE_GEMINI_VIDEO_MODEL,
+        unitsBilled: usage?.unitsBilled,
+        cost: cost ?? ZERO_MICROS,
+        recordFalUsage: false,
+      };
+    }
     case 'fal': {
       const endpointId = resolveMotionEndpoint(
         ctx.modelKey,
@@ -542,6 +661,17 @@ export function calculateMotionMetadata(
   if (isNativeGrokVideoModel(modelKey)) {
     return {
       cost: grokVideoDurationCost(validatedDuration),
+      duration: validatedDuration,
+      model: modelConfig.id,
+      vendor: modelConfig.vendor,
+    };
+  }
+
+  // Same shape for Omni Flash: Google bills a fixed token count per second
+  // of video, so the estimate needs no `model_pricing` row either.
+  if (isNativeGeminiVideoModel(modelKey)) {
+    return {
+      cost: geminiVideoDurationCost(validatedDuration),
       duration: validatedDuration,
       model: modelConfig.id,
       vendor: modelConfig.vendor,

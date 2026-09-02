@@ -11,6 +11,7 @@
 import {
   createAdapter,
   getPlatformLlmKey,
+  resolveNativeGeminiModel,
   resolveNativeGrokModel,
   type LlmKeyInfo,
 } from '@/lib/ai/create-adapter';
@@ -21,7 +22,9 @@ import {
   openRouterProviderForModel,
   PROMPT_REASONING,
   throwNotedRunError,
+  toGeminiThinkingLevel,
 } from '@/lib/ai/llm-client';
+import { withLlmRateLimitRetry } from '@/lib/ai/llm-rate-limit';
 import type { TextModel } from '@/lib/ai/models';
 import {
   analysisModelSupportsVision,
@@ -65,12 +68,21 @@ export type DurableLLMCallConfig<TSchema extends z.ZodType> = {
   /**
    * Stored-media URLs to attach to the final user turn as vision input (#929).
    * Resolved via {@link toVisionImageSource} INSIDE the LLM step (CDN / fal
-   * storage URL, or a last-resort data part) so image bytes never cross a
-   * Cloudflare step boundary. The model must be vision-capable, and the
-   * prompt template should reference the image.
+   * storage URL, or a last-resort data part; native Gemini always inlines)
+   * so image bytes never cross a Cloudflare step boundary. The model must
+   * be vision-capable, and the prompt template should reference the image.
    */
   visionImageUrls?: string[];
 };
+
+/**
+ * Native Gemini `fileData.fileUri` HTTP fetches sit on a separate quota that
+ * 429s while the same still as `inlineData` still succeeds. OpenRouter keeps
+ * the URL path (payload size).
+ */
+export function shouldInlineVisionForVia(via: LlmKeyInfo['via']): boolean {
+  return via === 'google';
+}
 
 /**
  * Resolve the configured vision image URLs into chat content sources. Returns
@@ -79,10 +91,16 @@ export type DurableLLMCallConfig<TSchema extends z.ZodType> = {
  * boundary.
  */
 async function resolveVisionImageSources(
-  visionImageUrls: string[] | undefined
+  visionImageUrls: string[] | undefined,
+  via: LlmKeyInfo['via']
 ): Promise<ChatMessageImagePart['source'][] | undefined> {
   if (!visionImageUrls || visionImageUrls.length === 0) return undefined;
-  return Promise.all(visionImageUrls.map((url) => toVisionImageSource(url)));
+  const inline = shouldInlineVisionForVia(via);
+  return Promise.all(
+    visionImageUrls.map((url) =>
+      toVisionImageSource(url, undefined, inline ? { inline: true } : undefined)
+    )
+  );
 }
 
 /**
@@ -159,22 +177,35 @@ function reasoningModelOptions(reasoning: boolean | undefined): {
   return reasoning ? { reasoning: PROMPT_REASONING } : {};
 }
 
-/** OpenRouter vs xAI Responses sampling options. xAI rejects `streamOptions`
- *  and uses `max_output_tokens`; omitting reasoning on grok-4.6 falls through
- *  to xAI's `high` default, so unrequested reasoning is sent as `low`. */
+/** OpenRouter vs xAI Responses vs Gemini sampling options. xAI and Google
+ *  reject `streamOptions`; xAI uses `max_output_tokens` and Gemini camelCase
+ *  `maxOutputTokens`. Omitting reasoning on grok-4.6 falls through to xAI's
+ *  `high` default, so unrequested reasoning is sent as `low`; Gemini's
+ *  unset `thinkingConfig` keeps the model's dynamic-thinking default. */
 export function chatModelOptionsForCall(
   modelId: TextModel,
   llmKeyInfo: LlmKeyInfo,
   reasoning: boolean | undefined
 ) {
-  const native = !!resolveNativeGrokModel(modelId, llmKeyInfo);
   const maxTokens = getMaxOutputTokens(modelId);
-  if (native) {
+  if (resolveNativeGrokModel(modelId, llmKeyInfo)) {
     return {
       ...(reasoning
         ? { reasoning: { effort: PROMPT_REASONING.effort } }
         : { reasoning: { effort: 'low' as const } }),
       max_output_tokens: maxTokens,
+    };
+  }
+  if (resolveNativeGeminiModel(modelId, llmKeyInfo)) {
+    return {
+      ...(reasoning
+        ? {
+            thinkingConfig: {
+              thinkingLevel: toGeminiThinkingLevel(PROMPT_REASONING.effort),
+            },
+          }
+        : {}),
+      maxOutputTokens: maxTokens,
     };
   }
   return {
@@ -313,88 +344,94 @@ export async function durableLLMCallCf<TSchema extends z.ZodType>(
           );
         }
         const visionImageSources = effectiveSupportsVision
-          ? await resolveVisionImageSources(config.visionImageUrls)
+          ? await resolveVisionImageSources(
+              config.visionImageUrls,
+              llmKeyInfo.via
+            )
           : undefined;
         const { systemPrompts, chatMessages } = buildChatMessages(
           messages,
           visionImageSources
         );
 
-        const abortController = new AbortController();
-        const timeout = setTimeout(() => abortController.abort(), 300_000);
-
         // Always stream structured output so OpenRouter attaches usage.cost
         // (TanStack/ai#1076). No live channel here — drain for result + usage.
-        const usageCapture = createUsageCapture();
-        try {
-          const commonOptions = {
-            adapter,
-            messages: chatMessages,
-            stream: true as const,
-            abortController,
-            modelOptions: chatModelOptionsForCall(
-              model,
-              llmKeyInfo,
-              config.reasoning
-            ),
-            middleware: [
-              ...aiObservabilityMiddleware({
-                observationName: logName,
-                tags: logTags,
-                metadata: logMetadata,
-                sessionId: callContext.sequenceId,
-                // Fall back to the scoped db's user. Callers reliably pass
-                // `scopedDb` (it resolves the LLM key and books the credit
-                // deduction) but often not `userId`, which silently produced
-                // anonymous generations — see the media-side note in
-                // image-generation.ts.
-                userId: callContext.userId ?? callContext.scopedDb?.userId,
-              }),
-              ...usageCapture.middleware,
-            ],
-            debug: false,
-          };
-          const eventStream = chat({
-            ...commonOptions,
-            systemPrompts,
-            outputSchema: config.responseSchema,
-          });
+        // Gemini/OpenRouter 429s a parallel scene fan-out; backoff inside the
+        // step so siblings that all 429'd together can stagger through.
+        return withLlmRateLimitRetry(logName, async () => {
+          const abortController = new AbortController();
+          const timeout = setTimeout(() => abortController.abort(), 300_000);
+          const usageCapture = createUsageCapture();
+          try {
+            const commonOptions = {
+              adapter,
+              messages: chatMessages,
+              stream: true as const,
+              abortController,
+              modelOptions: chatModelOptionsForCall(
+                model,
+                llmKeyInfo,
+                config.reasoning
+              ),
+              middleware: [
+                ...aiObservabilityMiddleware({
+                  observationName: logName,
+                  tags: logTags,
+                  metadata: logMetadata,
+                  sessionId: callContext.sequenceId,
+                  // Fall back to the scoped db's user. Callers reliably pass
+                  // `scopedDb` (it resolves the LLM key and books the credit
+                  // deduction) but often not `userId`, which silently produced
+                  // anonymous generations — see the media-side note in
+                  // image-generation.ts.
+                  userId: callContext.userId ?? callContext.scopedDb?.userId,
+                }),
+                ...usageCapture.middleware,
+              ],
+              debug: false,
+            };
+            const eventStream = chat({
+              ...commonOptions,
+              systemPrompts,
+              outputSchema: config.responseSchema,
+            });
 
-          let structuredObject: unknown;
-          let runError = null;
-          for await (const event of eventStream) {
-            usageCapture.noteFromStreamEvent(event);
-            const noted = extractRunError(event);
-            if (noted) {
-              runError ??= noted;
-              continue;
+            let structuredObject: unknown;
+            let runError = null;
+            for await (const event of eventStream) {
+              usageCapture.noteFromStreamEvent(event);
+              const noted = extractRunError(event);
+              if (noted) {
+                runError ??= noted;
+                continue;
+              }
+              if (
+                event.type === 'CUSTOM' &&
+                event.name === 'structured-output.complete'
+              ) {
+                structuredObject = event.value.object;
+                continue;
+              }
             }
-            if (
-              event.type === 'CUSTOM' &&
-              event.name === 'structured-output.complete'
-            ) {
-              structuredObject = event.value.object;
-              continue;
-            }
-          }
-          throwNotedRunError(runError);
+            throwNotedRunError(runError);
 
-          if (structuredObject === undefined) {
-            throw new NonRetryableError(
-              `[LLM:${logName}:cf] Call ended without a structured-output.complete event`
-            );
+            if (structuredObject === undefined) {
+              throw new NonRetryableError(
+                `[LLM:${logName}:cf] Call ended without a structured-output.complete event`
+              );
+            }
+            logger.info(`[LLM:${logName}:cf] Call succeeded`);
+            // Return as JSON string — round-trips through step.do without hitting
+            // CF's Rpc.Serializable constraint on the Zod-inferred shape.
+            return {
+              jsonText: JSON.stringify(structuredObject),
+              costMicros: llmCostFromUsage(usageCapture.get(), model),
+              keySource: llmKeyInfo.source,
+            };
+          } finally {
+            clearTimeout(timeout);
           }
-          logger.info(`[LLM:${logName}:cf] Call succeeded`);
-          // Return as JSON string — round-trips through step.do without hitting
-          // CF's Rpc.Serializable constraint on the Zod-inferred shape.
-          return {
-            jsonText: JSON.stringify(structuredObject),
-            costMicros: llmCostFromUsage(usageCapture.get(), model),
-            keySource: llmKeyInfo.source,
-          };
-        } finally {
-          clearTimeout(timeout);
-        }
+        });
       });
     }
   );
@@ -498,115 +535,123 @@ export async function durableStreamingLLMCallCf<TSchema extends z.ZodType>(
           );
         }
         const visionImageSources = effectiveSupportsVision
-          ? await resolveVisionImageSources(config.visionImageUrls)
+          ? await resolveVisionImageSources(
+              config.visionImageUrls,
+              llmKeyInfo.via
+            )
           : undefined;
         const { systemPrompts, chatMessages } = buildChatMessages(
           messages,
           visionImageSources
         );
 
-        const abortController = new AbortController();
-        const timeout = setTimeout(() => abortController.abort(), 300_000);
-
         const channel = getShotPromptChannel(shotId);
-        let accumulated = '';
-        let lastExtracted = '';
-        let pendingDelta = '';
-        let lastEmitAt = 0;
-        const usageCapture = createUsageCapture();
 
-        const flushDelta = async () => {
-          if (!pendingDelta) return;
-          const delta = pendingDelta;
-          pendingDelta = '';
-          lastEmitAt = Date.now();
-          await channel.emit('shotPrompt.streaming', { promptType, delta });
-        };
+        return withLlmRateLimitRetry(logName, async () => {
+          const abortController = new AbortController();
+          const timeout = setTimeout(() => abortController.abort(), 300_000);
+          let accumulated = '';
+          let lastExtracted = '';
+          let pendingDelta = '';
+          let lastEmitAt = 0;
+          const usageCapture = createUsageCapture();
 
-        const commonOptions = {
-          adapter,
-          messages: chatMessages,
-          stream: true as const,
-          abortController,
-          modelOptions: chatModelOptionsForCall(
-            model,
-            llmKeyInfo,
-            config.reasoning
-          ),
-          middleware: [
-            ...aiObservabilityMiddleware({
-              observationName: logName,
-              tags: logTags,
-              metadata: logMetadata,
-              sessionId: callContext.sequenceId,
-              // Same scopedDb fallback as the non-streaming path above.
-              userId: callContext.userId ?? callContext.scopedDb?.userId,
-            }),
-            ...usageCapture.middleware,
-          ],
-          debug: false,
-        };
-        const eventStream = chat({
-          ...commonOptions,
-          systemPrompts,
-          outputSchema: config.responseSchema,
-        });
-        // The orchestrator-validated result from the terminal
-        // `structured-output.complete` event. Preferred over the
-        // hand-accumulated text: it's what the library validated, and it
-        // survives any delta-assembly drift.
-        let structuredJson: string | null = null;
-        let runError = null;
-        try {
-          for await (const event of eventStream) {
-            usageCapture.noteFromStreamEvent(event);
-            const noted = extractRunError(event);
-            if (noted) {
-              runError ??= noted;
-              continue;
-            }
-            if (
-              event.type === 'TEXT_MESSAGE_CONTENT' &&
-              typeof event.delta === 'string'
-            ) {
-              accumulated += event.delta;
-              const next = extractStreamingStringField(
-                accumulated,
-                'fullPrompt'
-              );
-              if (next.length > lastExtracted.length) {
-                pendingDelta += next.slice(lastExtracted.length);
-                lastExtracted = next;
-              }
-              if (pendingDelta && Date.now() - lastEmitAt >= flushIntervalMs) {
-                await flushDelta();
-              }
-              continue;
-            }
-            if (
-              event.type === 'CUSTOM' &&
-              event.name === 'structured-output.complete'
-            ) {
-              structuredJson = JSON.stringify(event.value.object);
-              continue;
-            }
-          }
-          throwNotedRunError(runError);
-          await flushDelta();
-          if (structuredJson === null) {
-            throw new NonRetryableError(
-              `[LLM:${logName}:cf] Stream ended without a structured-output.complete event`
-            );
-          }
-          logger.info(`[LLM:${logName}:cf] Streaming call succeeded`);
-          return {
-            jsonText: structuredJson,
-            costMicros: llmCostFromUsage(usageCapture.get(), model),
-            keySource: llmKeyInfo.source,
+          const flushDelta = async () => {
+            if (!pendingDelta) return;
+            const delta = pendingDelta;
+            pendingDelta = '';
+            lastEmitAt = Date.now();
+            await channel.emit('shotPrompt.streaming', { promptType, delta });
           };
-        } finally {
-          clearTimeout(timeout);
-        }
+
+          const commonOptions = {
+            adapter,
+            messages: chatMessages,
+            stream: true as const,
+            abortController,
+            modelOptions: chatModelOptionsForCall(
+              model,
+              llmKeyInfo,
+              config.reasoning
+            ),
+            middleware: [
+              ...aiObservabilityMiddleware({
+                observationName: logName,
+                tags: logTags,
+                metadata: logMetadata,
+                sessionId: callContext.sequenceId,
+                // Same scopedDb fallback as the non-streaming path above.
+                userId: callContext.userId ?? callContext.scopedDb?.userId,
+              }),
+              ...usageCapture.middleware,
+            ],
+            debug: false,
+          };
+          const eventStream = chat({
+            ...commonOptions,
+            systemPrompts,
+            outputSchema: config.responseSchema,
+          });
+          // The orchestrator-validated result from the terminal
+          // `structured-output.complete` event. Preferred over the
+          // hand-accumulated text: it's what the library validated, and it
+          // survives any delta-assembly drift.
+          let structuredJson: string | null = null;
+          let runError = null;
+          try {
+            for await (const event of eventStream) {
+              usageCapture.noteFromStreamEvent(event);
+              const noted = extractRunError(event);
+              if (noted) {
+                runError ??= noted;
+                continue;
+              }
+              if (
+                event.type === 'TEXT_MESSAGE_CONTENT' &&
+                typeof event.delta === 'string'
+              ) {
+                accumulated += event.delta;
+                const next = extractStreamingStringField(
+                  accumulated,
+                  'fullPrompt'
+                );
+                if (next.length > lastExtracted.length) {
+                  pendingDelta += next.slice(lastExtracted.length);
+                  lastExtracted = next;
+                }
+                if (
+                  pendingDelta &&
+                  Date.now() - lastEmitAt >= flushIntervalMs
+                ) {
+                  await flushDelta();
+                }
+                continue;
+              }
+              if (
+                event.type === 'CUSTOM' &&
+                event.name === 'structured-output.complete'
+              ) {
+                structuredJson = JSON.stringify(event.value.object);
+                continue;
+              }
+            }
+            throwNotedRunError(runError);
+            await flushDelta();
+            if (structuredJson === null) {
+              throw new NonRetryableError(
+                `[LLM:${logName}:cf] Stream ended without a structured-output.complete event`
+              );
+            }
+            logger.info(`[LLM:${logName}:cf] Streaming call succeeded`);
+            return {
+              jsonText: structuredJson,
+              costMicros: llmCostFromUsage(usageCapture.get(), model),
+              keySource: llmKeyInfo.source,
+            };
+          } finally {
+            clearTimeout(timeout);
+          }
+        });
       });
     }
   );

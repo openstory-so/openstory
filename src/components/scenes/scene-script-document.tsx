@@ -17,6 +17,8 @@
  */
 
 import { MarkdownEditor } from '@/components/text-editor/markdown-editor';
+import { VoiceInputButton } from '@/components/voice/voice-input-button';
+import { useEditorDictation } from '@/hooks/use-dictation';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -96,6 +98,7 @@ const SceneScriptBlock: React.FC<SceneScriptBlockProps> = ({
   // `undefined` = no draft; the editor mirrors the saved text. Each block owns
   // its own draft so editing one scene never blocks or discards another's.
   const [draft, setDraft] = useState<string | undefined>(undefined);
+  const { ref: editorRef, voice } = useEditorDictation();
   const saveScript = useSaveSceneScript(sequenceId);
 
   const current = draft ?? block.extract;
@@ -151,8 +154,16 @@ const SceneScriptBlock: React.FC<SceneScriptBlockProps> = ({
           </span>
         </button>
 
+        <div className="ml-auto flex items-center gap-2">
+          <VoiceInputButton
+            label="scene script"
+            disabled={saveScript.isPending}
+            {...voice}
+          />
+        </div>
+
         {isDirty && (
-          <div className="ml-auto flex items-center gap-2">
+          <div className="flex items-center gap-2">
             <span className="hidden text-xs text-muted-foreground lg:inline">
               Saving marks this scene&apos;s prompts as stale.
             </span>
@@ -180,6 +191,7 @@ const SceneScriptBlock: React.FC<SceneScriptBlockProps> = ({
 
       <MarkdownEditor
         id={`scene-script-block-${block.sceneId}`}
+        ref={editorRef}
         value={current}
         onValueChange={setDraft}
         placeholder="Enter the script text for this scene… (type @ to insert elements, cast, locations)"

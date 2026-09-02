@@ -16,6 +16,12 @@ import {
   isNativeGrokImageModel,
   nativeGrokImageModel,
 } from '@/lib/ai/grok-native';
+import {
+  geminiImageCost,
+  isNativeGeminiImageModel,
+  nativeGeminiImageModel,
+} from '@/lib/ai/gemini-native';
+import { withLlmRateLimitRetry } from '@/lib/ai/llm-rate-limit';
 import { isNativeBytePlusImageModel } from '@/lib/ai/models';
 import type { MediaVia } from '@/lib/ai/via';
 import { workersSafeFetch } from '@/lib/ai/workers-safe-fetch';
@@ -25,6 +31,7 @@ import type { CredentialScopedDb } from '@/lib/db/scoped-workflow';
 import { buildBytePlusImageRequest } from '@/lib/image/build-byteplus-image-request';
 import type { ImageGenerationParams } from '@/lib/image/build-image-request';
 import {
+  buildGeminiImageRequest,
   buildGrokImageRequest,
   buildImageRequest,
 } from '@/lib/image/build-image-request';
@@ -35,9 +42,14 @@ import {
 import {
   ensureExternallyFetchableUrls,
   toDataOrCdnUrl,
+  toVisionImageSource,
 } from '@/lib/storage/external-url';
-import { generateImage } from '@tanstack/ai';
+import {
+  generateImage,
+  type ImageGenerationResult as AiImageGenerationResult,
+} from '@tanstack/ai';
 import { falImage } from '@tanstack/ai-fal';
+import { createGeminiImage } from '@tanstack/ai-gemini';
 import { createGrokImage } from '@tanstack/ai-grok';
 
 export type { ImageGenerationParams } from '@/lib/image/build-image-request';
@@ -98,15 +110,21 @@ export async function generateImageWithProvider(
     userId: options?.observability?.userId ?? options?.scopedDb?.userId,
   };
 
-  // Same order as Grok (#1167): native xAI first so an xAI-only deploy
-  // never hits resolveKey('fal'). BytePlus is next — platform Ark key,
-  // vetoed for a BYOK fal team.
+  // Same order as video: native xAI first so an xAI-only deploy never
+  // hits resolveKey('fal'), then Google when the model is a Nano Banana
+  // and a Google key resolves, then BytePlus (platform Ark, vetoed for a
+  // BYOK fal team).
   const xaiKey = isNativeGrokImageModel(params.model)
     ? await resolveOptionalXaiKey(options?.scopedDb)
+    : undefined;
+  const googleKey = isNativeGeminiImageModel(params.model)
+    ? await resolveOptionalGoogleKey(options?.scopedDb)
     : undefined;
   let via: MediaVia;
   if (xaiKey) {
     via = 'xai';
+  } else if (googleKey) {
+    via = 'google';
   } else if (
     isNativeBytePlusImageModel(params.model) &&
     isBytePlusConfigured()
@@ -125,7 +143,13 @@ export async function generateImageWithProvider(
   }
 
   try {
-    const result = await generateImageInternal(params, options, xaiKey, via);
+    const result = await generateImageInternal(
+      params,
+      options,
+      xaiKey,
+      googleKey,
+      via
+    );
     via = result.via;
     recordMediaGenerationSpan({
       ...attribution,
@@ -173,15 +197,24 @@ async function resolveOptionalXaiKey(
   return platformKey ? { key: platformKey, source: 'platform' } : undefined;
 }
 
+async function resolveOptionalGoogleKey(
+  scopedDb?: CredentialScopedDb
+): Promise<ResolvedApiKey | undefined> {
+  if (scopedDb) return scopedDb.resolveOptionalKey('google');
+  const platformKey = getEnv().GEMINI_API_KEY;
+  return platformKey ? { key: platformKey, source: 'platform' } : undefined;
+}
+
 async function generateImageInternal(
   rawParams: ImageGenerationParams,
   options: ImageGenerationOptions | undefined,
   xaiKey: ResolvedApiKey | undefined,
+  googleKey: ResolvedApiKey | undefined,
   via: MediaVia
 ): Promise<ImageGenerationResult> {
   const startTime = Date.now();
 
-  let result: Awaited<ReturnType<typeof generateImage>>;
+  let result: AiImageGenerationResult;
   let endpoint: string;
   let usedOwnKey: boolean;
   let params: ImageGenerationParams = rawParams;
@@ -189,6 +222,45 @@ async function generateImageInternal(
   let cost: Microdollars | undefined;
 
   switch (via) {
+    case 'google': {
+      if (!googleKey) {
+        throw new Error('Google image via selected with no Google key');
+      }
+      const gemini = buildGeminiImageRequest(rawParams);
+      const referenceParts = await Promise.all(
+        gemini.referenceImageUrls.map(async (url) => ({
+          type: 'image' as const,
+          source: await toVisionImageSource(url, undefined, { inline: true }),
+        }))
+      );
+      const env = getEnv();
+      const geminiAdapter = {
+        ...(env.GEMINI_BASE_URL && {
+          httpOptions: { baseUrl: env.GEMINI_BASE_URL },
+        }),
+      };
+      const prompt = referenceParts.length
+        ? [{ type: 'text' as const, content: gemini.prompt }, ...referenceParts]
+        : gemini.prompt;
+      result = await withLlmRateLimitRetry('gemini-image', () =>
+        generateImage({
+          adapter: createGeminiImage(
+            gemini.nativeModel,
+            googleKey.key,
+            geminiAdapter
+          ),
+          prompt,
+          size: gemini.size,
+          numberOfImages: gemini.numImages,
+          timeout: FAL_GENERATION_TIMEOUT_MS,
+          stream: false,
+          debug: false,
+        })
+      );
+      endpoint = gemini.nativeModel;
+      usedOwnKey = googleKey.source === 'team';
+      break;
+    }
     case 'xai': {
       if (!xaiKey) {
         throw new Error('xAI image via selected with no xAI key');
@@ -306,6 +378,10 @@ async function generateImageInternal(
             numberOfImages: request.numberOfImages,
           }),
           modelOptions: request.modelOptions,
+          // Explicit since @tanstack/ai 0.52 added streaming: the spread above
+          // widens the options literal, so without this the return type stays
+          // the streaming/non-streaming union.
+          stream: false,
           debug: false,
         })
       );
@@ -317,7 +393,11 @@ async function generateImageInternal(
   }
 
   const imageUrls = result.images
-    .map((img) => img.url)
+    .map((img) => {
+      if (img.url) return img.url;
+      if (img.b64Json) return `data:image/png;base64,${img.b64Json}`;
+      return undefined;
+    })
     .filter((url): url is string => !!url);
 
   if (imageUrls.length === 0) {
@@ -333,6 +413,18 @@ async function generateImageInternal(
       );
     }
     cost = grokImageCost(imageUrls.length, nativeModel);
+  } else if (via === 'google') {
+    const nativeModel = nativeGeminiImageModel(params.model);
+    if (!nativeModel) {
+      throw new Error(
+        `Google image via selected for a non-Nano-Banana model: ${params.model}`
+      );
+    }
+    cost = geminiImageCost(
+      imageUrls.length,
+      nativeModel,
+      buildGeminiImageRequest(params).resolution
+    );
   }
 
   return {

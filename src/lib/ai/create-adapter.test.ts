@@ -15,8 +15,10 @@ const testEnv: {
   OPENROUTER_KEY: string | undefined;
   FAL_KEY: string | undefined;
   XAI_API_KEY: string | undefined;
+  GEMINI_API_KEY: string | undefined;
   OPENROUTER_BASE_URL: string | undefined;
   XAI_BASE_URL: string | undefined;
+  GEMINI_BASE_URL: string | undefined;
   E2E_RECORD: string | undefined;
   VITE_APP_URL: string;
   VITE_APP_NAME: string;
@@ -24,8 +26,10 @@ const testEnv: {
   OPENROUTER_KEY: undefined,
   FAL_KEY: undefined,
   XAI_API_KEY: undefined,
+  GEMINI_API_KEY: undefined,
   OPENROUTER_BASE_URL: undefined,
   XAI_BASE_URL: undefined,
+  GEMINI_BASE_URL: undefined,
   E2E_RECORD: undefined,
   VITE_APP_URL: 'http://localhost:3000',
   VITE_APP_NAME: 'OpenStory',
@@ -76,10 +80,30 @@ vi.doMock('@tanstack/ai-grok', () => ({
   createGrokText: createGrokTextMock,
 }));
 
+type GeminiCall = {
+  model: string;
+  key: string;
+  config?: { httpOptions?: { baseUrl?: string } };
+};
+const geminiCalls: GeminiCall[] = [];
+const createGeminiChatMock = vi.fn(
+  (model: string, key: string, config?: GeminiCall['config']) => {
+    geminiCalls.push({ model, key, config });
+    return { kind: 'gemini-adapter' };
+  }
+);
+vi.doMock('@tanstack/ai-gemini', () => ({
+  createGeminiChat: createGeminiChatMock,
+}));
+
 // Dynamic import so the mocks above apply — see CLAUDE.md module-mocking
 // pattern.
-const { createAdapter, getPlatformLlmKey, resolveNativeGrokModel } =
-  await import('./create-adapter');
+const {
+  createAdapter,
+  getPlatformLlmKey,
+  resolveNativeGeminiModel,
+  resolveNativeGrokModel,
+} = await import('./create-adapter');
 
 const MODEL = 'x-ai/grok-4.6';
 const FAL_URL = 'https://fal.run/openrouter/router/openai/v1';
@@ -118,11 +142,15 @@ beforeEach(() => {
   testEnv.E2E_RECORD = undefined;
   testEnv.XAI_API_KEY = undefined;
   testEnv.XAI_BASE_URL = undefined;
+  testEnv.GEMINI_API_KEY = undefined;
+  testEnv.GEMINI_BASE_URL = undefined;
   adapterCalls.length = 0;
   grokCalls.length = 0;
+  geminiCalls.length = 0;
   createOpenRouterTextMock.mockClear();
   openRouterTextMock.mockClear();
   createGrokTextMock.mockClear();
+  createGeminiChatMock.mockClear();
 });
 
 afterEach(() => {
@@ -280,6 +308,121 @@ describe('native xAI routing (issue #1167)', () => {
     const call = lastCall();
     if (call.kind !== 'keyed') throw new Error('expected keyed adapter');
     expect(call.key).toBe('platform-or');
+  });
+});
+
+describe('native Google routing', () => {
+  const GEMINI_MODEL = 'google/gemini-3.1-pro-preview';
+
+  it('maps gemini-3.7-flash onto the name Google serves', () => {
+    createAdapter('google/gemini-3.7-flash', {
+      key: 'google-team',
+      via: 'google',
+    });
+    expect(geminiCalls.at(-1)?.model).toBe('gemini-3.7-flash');
+  });
+
+  it('sends a Gemini model to Google under its native model name', () => {
+    createAdapter(GEMINI_MODEL, { key: 'google-team', via: 'google' });
+
+    expect(geminiCalls).toStrictEqual([
+      { model: 'gemini-3.1-pro-preview', key: 'google-team', config: {} },
+    ]);
+    // The OpenRouter factories must not also fire — a double-construct would
+    // mean the request shape and the adapter disagreed.
+    expect(createOpenRouterTextMock).not.toHaveBeenCalled();
+    expect(openRouterTextMock).not.toHaveBeenCalled();
+    expect(createGrokTextMock).not.toHaveBeenCalled();
+  });
+
+  it('points the adapter at GEMINI_BASE_URL (aimock) when set', () => {
+    testEnv.GEMINI_BASE_URL = 'http://localhost:4010/gemini';
+    createAdapter('google/gemini-3-flash-preview', {
+      key: 'google-team',
+      via: 'google',
+    });
+
+    expect(geminiCalls.at(-1)).toStrictEqual({
+      model: 'gemini-3-flash-preview',
+      key: 'google-team',
+      config: { httpOptions: { baseUrl: 'http://localhost:4010/gemini' } },
+    });
+  });
+
+  it('throws on a non-Gemini model with a Google key (#1358 mismatch)', () => {
+    // Mirrors the xai case: a Google key reaching OpenRouter would 401 as
+    // "Missing Authentication header", so the mismatch fails loudly instead.
+    expect(() =>
+      createAdapter('anthropic/claude-sonnet-5', {
+        key: 'google-team',
+        via: 'google',
+      })
+    ).toThrow(/Google key cannot be sent to OpenRouter/);
+
+    expect(createGeminiChatMock).not.toHaveBeenCalled();
+    expect(createOpenRouterTextMock).not.toHaveBeenCalled();
+    expect(openRouterTextMock).not.toHaveBeenCalled();
+  });
+
+  it('falls back to OpenRouter for a Gemini model with no Google key', () => {
+    testEnv.OPENROUTER_KEY = 'platform-or';
+    createAdapter(GEMINI_MODEL);
+
+    expect(createGeminiChatMock).not.toHaveBeenCalled();
+    const call = lastCall();
+    if (call.kind !== 'keyed') throw new Error('expected keyed adapter');
+    expect(call.key).toBe('platform-or');
+  });
+});
+
+describe('resolveNativeGeminiModel', () => {
+  it('agrees with createAdapter about which route a request takes', () => {
+    expect(
+      resolveNativeGeminiModel('google/gemini-3.1-pro-preview', {
+        key: 'k',
+        via: 'google',
+      })
+    ).toBe('gemini-3.1-pro-preview');
+    expect(
+      resolveNativeGeminiModel('google/gemini-3.1-pro-preview', {
+        key: 'k',
+        via: 'openrouter',
+      })
+    ).toBeUndefined();
+    expect(
+      resolveNativeGeminiModel('openai/gpt-5.5', { key: 'k', via: 'google' })
+    ).toBeUndefined();
+  });
+});
+
+describe('getPlatformLlmKey with GEMINI_API_KEY', () => {
+  it('prefers Google for a Gemini model, over both OpenRouter and fal', () => {
+    testEnv.GEMINI_API_KEY = 'platform-google';
+    testEnv.OPENROUTER_KEY = 'platform-or';
+    testEnv.FAL_KEY = 'platform-fal';
+
+    expect(getPlatformLlmKey('google/gemini-3-flash-preview')).toStrictEqual({
+      key: 'platform-google',
+      via: 'google',
+      source: 'platform',
+    });
+  });
+
+  it('ignores GEMINI_API_KEY for a non-Gemini model and when no model is named', () => {
+    testEnv.GEMINI_API_KEY = 'platform-google';
+    testEnv.OPENROUTER_KEY = 'platform-or';
+
+    expect(getPlatformLlmKey('anthropic/claude-sonnet-5')?.via).toBe(
+      'openrouter'
+    );
+    expect(getPlatformLlmKey()?.via).toBe('openrouter');
+  });
+
+  it('never claims a Grok model — xAI wins those', () => {
+    testEnv.GEMINI_API_KEY = 'platform-google';
+    testEnv.XAI_API_KEY = 'platform-xai';
+
+    expect(getPlatformLlmKey(MODEL)?.via).toBe('xai');
   });
 });
 

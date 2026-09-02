@@ -15,6 +15,7 @@
  *   - `none` — URLs are not sent; tokens become descriptions in the prompt
  */
 
+import { NATIVE_GEMINI_VIDEO_MODEL } from '@/lib/ai/gemini-native';
 import { NATIVE_GROK_VIDEO_MODEL } from '@/lib/ai/grok-native';
 import {
   IMAGE_TO_VIDEO_MODELS,
@@ -55,6 +56,18 @@ export function resolveMotionEndpoint(
     return {
       via: 'xai',
       endpointId: NATIVE_GROK_VIDEO_MODEL,
+      references: hasReferenceImages ? 'inline' : 'none',
+    };
+  }
+  if (via === 'google') {
+    // Omni Flash serves every task from one Interactions model: images ride
+    // the same generateVideo prompt as content blocks, bound in the prompt
+    // text by `<IMAGE_REF_n>` tags. There is no start-frame field, so with
+    // references the still goes first and the task is pinned to
+    // reference_to_video (see buildGeminiVideoRequest).
+    return {
+      via: 'google',
+      endpointId: NATIVE_GEMINI_VIDEO_MODEL,
       references: hasReferenceImages ? 'inline' : 'none',
     };
   }

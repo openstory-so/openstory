@@ -29,6 +29,11 @@ import {
   FAL_REQUEST_TIMEOUT_MS,
 } from '@/lib/ai/fal-deadline-fetch';
 import {
+  geminiVideoCostFromUsage,
+  isNativeGeminiVideoModel,
+  NATIVE_GEMINI_VIDEO_MODEL,
+} from '@/lib/ai/gemini-native';
+import {
   grokVideoCost,
   isNativeGrokVideoModel,
   NATIVE_GROK_VIDEO_MODEL,
@@ -68,7 +73,17 @@ import {
   type TokenUsage,
 } from '@tanstack/ai';
 import { falVideo } from '@tanstack/ai-fal';
+import { createGeminiVideo } from '@tanstack/ai-gemini';
 import { createGrokVideo } from '@tanstack/ai-grok';
+import {
+  geminiImagePart,
+  geminiNativeModelOptions,
+  geminiVideoSize,
+} from '@/lib/motion/build-gemini-video-request';
+import {
+  getGeminiFileState,
+  isGeminiFilesVideoUrl,
+} from '@/lib/motion/video-storage';
 
 export type StudioVideoJobOptions = {
   scopedDb?: CredentialScopedDb;
@@ -122,6 +137,23 @@ function createNativeVideoAdapter(apiKey: string) {
   return createGrokVideo(NATIVE_GROK_VIDEO_MODEL, apiKey, {
     fetch: workersSafeFetch,
     ...(env.XAI_BASE_URL && { baseURL: env.XAI_BASE_URL }),
+  });
+}
+
+async function resolveOptionalGoogleKey(
+  scopedDb?: CredentialScopedDb
+): Promise<ResolvedApiKey | undefined> {
+  if (scopedDb) return scopedDb.resolveOptionalKey('google');
+  const platformKey = getEnv().GEMINI_API_KEY;
+  return platformKey ? { key: platformKey, source: 'platform' } : undefined;
+}
+
+function createNativeGeminiVideoAdapter(apiKey: string) {
+  const env = getEnv();
+  return createGeminiVideo(NATIVE_GEMINI_VIDEO_MODEL, apiKey, {
+    ...(env.GEMINI_BASE_URL && {
+      httpOptions: { baseUrl: env.GEMINI_BASE_URL },
+    }),
   });
 }
 
@@ -358,13 +390,19 @@ export async function submitStudioVideoJob(
       ? options.aspectRatio && `${options.aspectRatio}_${tier ?? '720p'}`
       : `adaptive_${tier ?? '720p'}`;
 
-  // Same claim order as sequence motion: xAI, then Ark, then fal.
+  // Same claim order as sequence motion: xAI, then Google, then Ark, then
+  // fal.
   const xaiKey = isNativeGrokVideoModel(modelKey)
     ? await resolveOptionalXaiKey(options.scopedDb)
+    : undefined;
+  const googleKey = isNativeGeminiVideoModel(modelKey)
+    ? await resolveOptionalGoogleKey(options.scopedDb)
     : undefined;
   let via: MediaVia;
   if (xaiKey) {
     via = 'xai';
+  } else if (googleKey) {
+    via = 'google';
   } else if (isNativeBytePlusVideoModel(modelKey) && isBytePlusConfigured()) {
     const falKey = await resolveOptionalFalKey(options.scopedDb);
     via = claimBytePlusVia({
@@ -374,6 +412,9 @@ export async function submitStudioVideoJob(
   } else {
     via = 'fal';
   }
+
+  const geminiSize =
+    via === 'google' ? geminiVideoSize(options.aspectRatio) : undefined;
 
   switch (via) {
     case 'xai': {
@@ -450,6 +491,80 @@ export async function submitStudioVideoJob(
         endpointId: NATIVE_GROK_VIDEO_MODEL,
         via: 'xai',
         usedOwnKey: xaiKey.source === 'team',
+      };
+    }
+    case 'google': {
+      if (!googleKey) {
+        throw new Error('Google studio via selected with no Google key');
+      }
+      // Native Gemini Omni Flash takes stills as prompt image parts bound in
+      // the prompt by `<IMAGE_REF_n>` tags, with the Interactions task pinned
+      // so reference vs frames is never left to the model's inference.
+      // Inlined as data URIs so no fal key is needed.
+      if (mode !== 'text') {
+        const built = buildStudioVideoInput({
+          prompt: tagStudioReferences(options.prompt, modelKey),
+          model: modelKey,
+          duration: options.duration,
+          aspectRatio: options.aspectRatio,
+        });
+        const imageUrls =
+          mode === 'reference'
+            ? (options.referenceImages ?? [])
+            : [options.startImageUrl].filter((url): url is string =>
+                Boolean(url)
+              );
+        const parts = [
+          ...(await Promise.all(
+            imageUrls.map(async (url) =>
+              geminiImagePart(await toDataOrCdnUrl(url))
+            )
+          )),
+          { type: 'text' as const, content: built.prompt },
+        ];
+        const job = await generateVideo({
+          adapter: createNativeGeminiVideoAdapter(googleKey.key),
+          prompt: parts,
+          modelOptions: geminiNativeModelOptions(
+            mode === 'reference' ? 'reference_to_video' : 'image_to_video',
+            built.duration,
+            geminiSize
+          ),
+          timeout: FAL_REQUEST_TIMEOUT_MS,
+          debug: false,
+        });
+        return {
+          jobId: job.jobId,
+          modelKey,
+          endpointId: NATIVE_GEMINI_VIDEO_MODEL,
+          via: 'google',
+          usedOwnKey: googleKey.source === 'team',
+        };
+      }
+      const built = buildStudioVideoInput({
+        prompt: options.prompt,
+        model: modelKey,
+        duration: options.duration,
+        aspectRatio: options.aspectRatio,
+        generateAudio: options.generateAudio,
+      });
+      const job = await generateVideo({
+        adapter: createNativeGeminiVideoAdapter(googleKey.key),
+        prompt: built.prompt,
+        modelOptions: geminiNativeModelOptions(
+          'text_to_video',
+          built.duration,
+          geminiSize
+        ),
+        timeout: FAL_REQUEST_TIMEOUT_MS,
+        debug: false,
+      });
+      return {
+        jobId: job.jobId,
+        modelKey,
+        endpointId: NATIVE_GEMINI_VIDEO_MODEL,
+        via: 'google',
+        usedOwnKey: googleKey.source === 'team',
       };
     }
     case 'byteplus': {
@@ -553,6 +668,36 @@ export async function pollStudioVideoJob(
         jobId: job.jobId,
       });
     }
+    case 'google': {
+      const key = await resolveOptionalGoogleKey(scopedDb);
+      if (!key) {
+        throw new Error(
+          `Studio video job ${job.jobId} was submitted to Google but no Google key is available to poll it`
+        );
+      }
+      const result = await getVideoJobStatus({
+        adapter: createNativeGeminiVideoAdapter(key.key),
+        jobId: job.jobId,
+      });
+      if (
+        result.status === 'completed' &&
+        result.url &&
+        isGeminiFilesVideoUrl(result.url)
+      ) {
+        const fileState = await getGeminiFileState(result.url, key.key);
+        if (fileState === 'FAILED') {
+          return {
+            ...result,
+            status: 'failed' as const,
+            error: 'Gemini Files API marked the generated video as FAILED',
+          };
+        }
+        if (fileState !== 'ACTIVE') {
+          return { jobId: result.jobId, status: 'processing' as const };
+        }
+      }
+      return result;
+    }
     case 'byteplus': {
       const arkKey = getArkApiKey();
       if (!arkKey) {
@@ -591,6 +736,22 @@ export async function studioVideoCostFromUsage(
       }
       return {
         endpointId: NATIVE_GROK_VIDEO_MODEL,
+        unitsBilled: usage?.unitsBilled,
+        cost: cost ?? ZERO_MICROS,
+        recordFalUsage: false,
+      };
+    }
+    case 'google': {
+      const cost = geminiVideoCostFromUsage(usage);
+      if (cost === undefined) {
+        reportMissingBillingCost({
+          source: 'studio-video-cost-from-usage-google',
+          modelId: job.modelKey,
+          metadata: { usage },
+        });
+      }
+      return {
+        endpointId: NATIVE_GEMINI_VIDEO_MODEL,
         unitsBilled: usage?.unitsBilled,
         cost: cost ?? ZERO_MICROS,
         recordFalUsage: false,

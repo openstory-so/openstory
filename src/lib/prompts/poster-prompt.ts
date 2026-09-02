@@ -1,4 +1,5 @@
 import type { StyleConfig } from '@/lib/db/schema/libraries';
+import { UNTITLED_SEQUENCE_TITLE } from '@/lib/sequences/untitled-sequence-title';
 
 const MAX_PROMPT_LENGTH = 2000;
 const MAX_SCRIPT_LENGTH = 500;
@@ -39,8 +40,12 @@ export function buildPosterPrompt(
 ): string {
   const scriptExcerpt = script.slice(0, MAX_SCRIPT_LENGTH).trim();
 
+  // The poster renders before scene-split names the sequence, so the title
+  // is normally still the placeholder — say nothing rather than "Untitled".
   const parts: string[] = [
-    `A cinematic establishing shot for "${title}".`,
+    title === UNTITLED_SEQUENCE_TITLE
+      ? `A cinematic establishing shot.`
+      : `A cinematic establishing shot for "${title}".`,
     `Opening scene: ${scriptExcerpt}`,
   ];
 

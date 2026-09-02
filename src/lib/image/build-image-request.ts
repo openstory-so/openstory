@@ -8,6 +8,11 @@
  */
 
 import {
+  nativeGeminiImageModel,
+  type GeminiImageResolution,
+  type NativeGeminiImageModel,
+} from '@/lib/ai/gemini-native';
+import {
   capReferenceImages,
   getEditEndpoint,
   getTextToImageModelId,
@@ -109,16 +114,26 @@ const IMAGE_RESOLUTION: Partial<
   flux_2_turbo: { pixels: { minEdge: 512, maxEdge: 2048 } },
 };
 
+/** The tokens the Gemini via admits — narrower than the fal enum (no 0.5K). */
+const GEMINI_IMAGE_RESOLUTIONS = ['1K', '2K', '4K'] as const;
+
 /**
  * The model's own spelling of the requested tier, or undefined when it takes
  * no `resolution` field.
+ *
+ * `tokens` overrides the fal enum for a via that admits a different set —
+ * the same model can be reachable through more than one, and each spells the
+ * ask in its own vocabulary.
  */
 function resolveImageResolutionToken(
   model: TextToImageModel,
-  resolution: Resolution | undefined
+  resolution: Resolution | undefined,
+  tokens?: readonly string[]
 ): string | undefined {
+  if (!resolution) return undefined;
+  if (tokens) return pickImageResolution(tokens, resolution);
   const capability = IMAGE_RESOLUTION[model];
-  if (!resolution || !capability || !('tokens' in capability)) return undefined;
+  if (!capability || !('tokens' in capability)) return undefined;
   return pickImageResolution(capability.tokens, resolution);
 }
 
@@ -411,6 +426,61 @@ function buildFalModelOptions(
       throw new Error(`Unsupported model: ${String(_exhaustive)}`);
     }
   }
+}
+
+/** Gemini native `aspectRatio_imageSize` (capital K). Lite is 1K-only. */
+type GeminiNativeImageSize = `${AspectRatioValue}_${GeminiImageResolution}`;
+
+export type GeminiImageRequest = {
+  nativeModel: NativeGeminiImageModel;
+  prompt: string;
+  size: GeminiNativeImageSize;
+  resolution: GeminiImageResolution;
+  numImages: number;
+  referenceImageUrls: string[];
+};
+
+/**
+ * {@link buildImageRequest} for Gemini-native Nano Banana. Fal-only knobs
+ * (safety_tolerance, output format, sync_mode) have no generateContent
+ * counterpart and are dropped. Lite snaps every resolution to 1K.
+ */
+export function buildGeminiImageRequest(
+  params: ImageGenerationParams
+): GeminiImageRequest {
+  const nativeModel = nativeGeminiImageModel(params.model);
+  if (!nativeModel) {
+    throw new Error(
+      `Gemini image request built for a non-Nano-Banana model: ${params.model}`
+    );
+  }
+  const aspectRatio = imageSizeToAspectRatio(
+    params.imageSize ?? DEFAULT_IMAGE_SIZE
+  );
+  // Google's own tokens, not the fal enum: Gemini has no 0.5K, so the tier is
+  // resolved against what this via actually admits (#1449). Narrowed by
+  // lookup rather than asserted, like the xAI via.
+  const picked = resolveImageResolutionToken(
+    params.model,
+    params.resolution,
+    GEMINI_IMAGE_RESOLUTIONS
+  );
+  const resolution: GeminiImageResolution =
+    nativeModel === 'gemini-3.1-flash-lite-image'
+      ? '1K'
+      : (GEMINI_IMAGE_RESOLUTIONS.find((r) => r === picked) ?? '2K');
+
+  return {
+    nativeModel,
+    prompt: truncatePromptForModel(params.prompt, params.model),
+    size: `${aspectRatio}_${resolution}`,
+    resolution,
+    numImages: params.numImages ?? 1,
+    referenceImageUrls: capReferenceImages(
+      params.model,
+      params.referenceImageUrls ?? []
+    ),
+  };
 }
 
 /**

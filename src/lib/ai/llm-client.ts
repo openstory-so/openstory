@@ -18,10 +18,15 @@ import {
   type DebugOption,
   type TokenUsage,
 } from '@tanstack/ai';
+import { googleSearchTool } from '@tanstack/ai-gemini/tools';
 import { grokWebSearchTool } from '@tanstack/ai-grok/tools';
 import type { ProviderPreferences } from '@tanstack/ai-openrouter';
 import { webSearchTool } from '@tanstack/ai-openrouter/tools';
 import { z } from 'zod';
+import {
+  geminiTextCostFromUsage,
+  nativeGeminiTextModel,
+} from '@/lib/ai/gemini-native';
 import {
   grokTextCostFromUsage,
   nativeGrokTextModel,
@@ -33,6 +38,7 @@ import {
 import { aiDebugLogger } from './ai-debug-logger';
 import {
   createAdapter,
+  resolveNativeGeminiModel,
   resolveNativeGrokModel,
   type LlmKeyInfo,
 } from './create-adapter';
@@ -146,6 +152,15 @@ export function llmCostFromUsage(
   const nativeModel = nativeGrokTextModel(modelId);
   if (nativeModel) {
     const cost = grokTextCostFromUsage(usage, nativeModel);
+    if (cost !== undefined) return cost;
+  }
+
+  // Same inference (and the same trap) for Gemini: Google reports tokens
+  // only, so a Gemini model with no cost is priced from Google's published
+  // rates.
+  const nativeGeminiModel = nativeGeminiTextModel(modelId);
+  if (nativeGeminiModel) {
+    const cost = geminiTextCostFromUsage(usage, nativeGeminiModel);
     if (cost !== undefined) return cost;
   }
 
@@ -378,6 +393,39 @@ function toGrokReasoningEffort(
   return 'medium';
 }
 
+/** Our five-level effort scale onto Gemini 3.x thinking levels (no `xhigh`). */
+export function toGeminiThinkingLevel(
+  effort: NonNullable<LLMRequestParams['reasoning']>['effort']
+): 'MINIMAL' | 'LOW' | 'MEDIUM' | 'HIGH' {
+  if (effort === 'minimal') return 'MINIMAL';
+  if (effort === 'low') return 'LOW';
+  if (effort === 'high' || effort === 'xhigh') return 'HIGH';
+  return 'MEDIUM';
+}
+
+/**
+ * Google's Gemini API takes the `GoogleGenAI` generation-config shape:
+ * camelCase, `maxOutputTokens`, level-based `thinkingConfig` instead of
+ * effort-based reasoning, no routing preferences, no `streamOptions` (usage
+ * rides every streamed response). Omitting `thinkingConfig` leaves the
+ * model's dynamic-thinking default in place.
+ */
+function buildGeminiModelOptions(params: LLMRequestParams) {
+  return {
+    ...(params.reasoning?.enabled !== false &&
+      params.reasoning && {
+        thinkingConfig: {
+          thinkingLevel: toGeminiThinkingLevel(params.reasoning.effort),
+        },
+      }),
+    maxOutputTokens: params.max_tokens,
+    temperature: params.temperature,
+    topP: params.top_p,
+    frequencyPenalty: params.frequency_penalty,
+    presencePenalty: params.presence_penalty,
+  };
+}
+
 /**
  * GPT-5 chat models (Luna/Sol/Terra/…) advertise no `temperature` / `top_p`
  * / penalty params on any OpenRouter endpoint. Sending them with
@@ -414,10 +462,19 @@ function buildModelOptions(params: LLMRequestParams) {
     ...openRouterProviderForModel(params.model),
     ...params.provider,
   };
+  // Since @tanstack/ai-openrouter 0.19, `reasoning.enabled` is typed as the
+  // explicit opt-out (`false`) only — `enabled: true` is expressed by just
+  // sending the effort/maxTokens config, so strip a truthy flag here.
+  const { enabled: reasoningEnabled, ...reasoningConfig } =
+    params.reasoning ?? {};
+  const reasoning =
+    reasoningEnabled === false
+      ? { ...reasoningConfig, enabled: false as const }
+      : reasoningConfig;
   const allowSampling = modelAllowsClassicSampling(params.model);
   return {
     provider,
-    ...(params.reasoning && { reasoning: params.reasoning }),
+    ...(params.reasoning && { reasoning }),
     // `maxTokens`, not `maxCompletionTokens`: DeepSeek endpoints advertise only
     // `max_tokens`, so `max_completion_tokens` + requireParameters empties the
     // candidate set ("No endpoints found…") on the region fallback. Native
@@ -438,17 +495,23 @@ function buildModelOptions(params: LLMRequestParams) {
   };
 }
 
+/** Which API a chat call routes to — decided once in {@link baseChatOptions}
+ *  so the adapter, options object, and tools always agree. */
+type ChatRoute = 'xai' | 'google' | 'openrouter';
+
 /**
  * Assemble the `tools` array for `chat()`. Currently only the provider's
  * web-search server tool, gated on `params.webSearch`. Returns `undefined`
  * (not an empty array) when no tool is requested so the option is omitted.
  *
- * xAI's web search is on/off — no engine/result-count/prompt knobs — so those
- * options are dropped on that route rather than failing the call.
+ * xAI's and Google's web search are on/off — no engine/result-count/prompt
+ * knobs — so those options are dropped on the native routes rather than
+ * failing the call.
  */
-function buildTools(params: LLMRequestParams, native: boolean) {
+function buildTools(params: LLMRequestParams, route: ChatRoute) {
   if (!params.webSearch) return undefined;
-  if (native) return [grokWebSearchTool()];
+  if (route === 'xai') return [grokWebSearchTool()];
+  if (route === 'google') return [googleSearchTool()];
   const opts = params.webSearch === true ? {} : params.webSearch;
   return [
     webSearchTool({
@@ -485,20 +548,28 @@ export function structuredOutputSchemaBytes(schema: z.ZodType): number {
   return JSON.stringify(converted).length;
 }
 
-/** `native` is returned rather than recomputed by callers so the adapter, the
+/** `route` is returned rather than recomputed by callers so the adapter, the
  *  options object, and the tools can't disagree about the route. */
 function baseChatOptions(params: LLMRequestParams) {
   const { systemPrompts, messages } = convertMessages(params.messages);
-  const native = resolveNativeGrokModel(params.model, params.apiKey);
-  const tools = buildTools(params, !!native);
+  const route: ChatRoute = resolveNativeGrokModel(params.model, params.apiKey)
+    ? 'xai'
+    : resolveNativeGeminiModel(params.model, params.apiKey)
+      ? 'google'
+      : 'openrouter';
+  const tools = buildTools(params, route);
+  const modelOptions =
+    route === 'xai'
+      ? buildGrokModelOptions(params)
+      : route === 'google'
+        ? buildGeminiModelOptions(params)
+        : buildModelOptions(params);
   return {
-    native,
+    route,
     adapter: createAdapter(params.model, params.apiKey),
     messages,
     systemPrompts,
-    modelOptions: native
-      ? buildGrokModelOptions(params)
-      : buildModelOptions(params),
+    modelOptions,
     ...(tools && { tools }),
     debug: params.debug ?? false,
   };
@@ -795,15 +866,17 @@ async function* callLLMStreamOnce<T>(
   // `usage.cost` (non-stream structuredOutput drops it — TanStack/ai#1076).
   const usageCapture = createUsageCapture();
 
-  const { native, ...chatOptions } = baseChatOptions(params);
+  const { route, ...chatOptions } = baseChatOptions(params);
 
   const baseOptions = {
     ...chatOptions,
     modelOptions: {
       ...chatOptions.modelOptions,
-      // OpenRouter-only opt-in — xAI reports usage on every streamed response
-      // and rejects the option.
-      ...(native ? {} : { streamOptions: { includeUsage: true } }),
+      // OpenRouter-only opt-in — xAI and Google report usage on every
+      // streamed response and reject the option.
+      ...(route === 'openrouter'
+        ? { streamOptions: { includeUsage: true } }
+        : {}),
     },
     middleware: [
       ...aiObservabilityMiddleware({

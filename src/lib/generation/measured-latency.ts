@@ -51,6 +51,13 @@ export const CASTING_FAST = { base: 8, perScene: 1 };
 
 export const VIDEO_WALL_CLOCK = {
   grok_imagine_video_1_5: { p50: 33, p90: 44, n: 18 },
+  // No samples yet; Grok Imagine is the nearest fast native-provider i2v.
+  gemini_omni_flash: {
+    p50: 33,
+    p90: 44,
+    n: 0,
+    proxy: 'grok_imagine_video_1_5',
+  },
   ltx_2_3_pro: { p50: 126, p90: 199, n: 39 },
   veo3_1: { p50: 147, p90: 156, n: 6 },
   kling_v3_pro: { p50: 306, p90: 328, n: 3 },
