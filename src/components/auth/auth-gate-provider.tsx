@@ -55,16 +55,6 @@ type AuthGateContextValue = {
 
 const AuthGateContext = createContext<AuthGateContextValue | null>(null);
 
-/**
- * The gate when one is mounted, else null. For embellishments (the dictation
- * mic inside every MarkdownEditor) that must not take down a tree rendered
- * without the shell — the SSR placeholder test, a bare story. Prefer
- * `useAuthGate` in app code that is always under the shell.
- */
-export function useOptionalAuthGate(): AuthGateContextValue | null {
-  return useContext(AuthGateContext);
-}
-
 export function useAuthGate(): AuthGateContextValue {
   const value = useContext(AuthGateContext);
   if (!value) {

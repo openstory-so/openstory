@@ -79,6 +79,8 @@ import {
   type AspectRatio,
 } from '@/lib/constants/aspect-ratios';
 import { isInsufficientCreditsError } from '@/lib/errors';
+import { VoiceInputButton } from '@/components/voice/voice-input-button';
+import { useEditorDictation } from '@/hooks/use-dictation';
 import {
   pickShufflePrompt,
   studioShufflePrompts,
@@ -283,6 +285,9 @@ export function StudioComposer({ activity }: StudioComposerProps) {
   const [duration, setDuration] = useState(5);
   const [generateAudio, setGenerateAudio] = useState(true);
   const [lastShuffled, setLastShuffled] = useState<string | null>(null);
+  // The mic sits in the toolbar next to Shuffle; dictation streams into the
+  // prompt editor through this handle.
+  const { ref: promptEditorRef, voice: promptVoice } = useEditorDictation();
   const [replaceConfirm, setReplaceConfirm] = useState(false);
   const [emptyPrompt, setEmptyPrompt] = useState(false);
 
@@ -950,9 +955,9 @@ export function StudioComposer({ activity }: StudioComposerProps) {
         <MarkdownEditor
           value={prompt}
           onValueChange={setPrompt}
+          ref={promptEditorRef}
           placeholder={placeholder}
           aria-label="Prompt"
-          voiceInputLabel="prompt"
           data-testid="studio-prompt"
           className="min-h-24 flex-1 border-0 bg-transparent px-1 py-1 shadow-none focus-within:ring-0 dark:bg-transparent"
           mentionItems={refsCapable ? mentionItems : undefined}
@@ -1193,6 +1198,7 @@ export function StudioComposer({ activity }: StudioComposerProps) {
             </Button>
           )}
           <ActionCost estimate={estimate} align="end" />
+          <VoiceInputButton label="prompt" {...promptVoice} />
           <Button
             type="submit"
             size="icon-lg"

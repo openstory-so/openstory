@@ -29,7 +29,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { VoiceInputButton } from '@/components/voice/voice-input-button';
 import type { JsonSchema, JsonValue } from '@/lib/models/catalog';
-import { appendTranscript } from '@/lib/voice/transcript-insert';
+import { useTextDictation } from '@/hooks/use-dictation';
 import { Plus, X } from 'lucide-react';
 import type { FC, FormEvent, KeyboardEvent, ReactNode } from 'react';
 import { useId, useState } from 'react';
@@ -211,6 +211,10 @@ const Field: FC<{
 }) => {
   const id = useId();
   const labelId = `${id}-label`;
+  const voice = useTextDictation(
+    typeof value === 'string' ? value : '',
+    onChange
+  );
   const resolved = resolveRef(schema, root);
   const plan = planWidget(name, resolved, root, depth);
   const description = resolved.description?.split('\n', 1)[0];
@@ -242,11 +246,7 @@ const Field: FC<{
             label={(resolved.title ?? name).toLowerCase()}
             disabled={disabled}
             size="icon-xs"
-            onTranscript={(text) =>
-              onChange(
-                appendTranscript(typeof value === 'string' ? value : '', text)
-              )
-            }
+            {...voice}
           />
         ) : null}
       </div>

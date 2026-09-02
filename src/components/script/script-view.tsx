@@ -152,6 +152,8 @@ import React, {
   useState,
   type FC,
 } from 'react';
+import { VoiceInputButton } from '@/components/voice/voice-input-button';
+import { useEditorDictation } from '@/hooks/use-dictation';
 import { ScriptEditor } from './script-editor';
 
 const DURATION_PRESETS = [
@@ -502,6 +504,10 @@ export const ScriptView: FC<{
     setEnhance('canUndoEnhance', false);
     handleStyleSelect(style.id);
   };
+  // The mic sits in the toolbar next to Shuffle; dictation streams into the
+  // editor through this handle.
+  const { ref: scriptEditorRef, voice: scriptVoice } = useEditorDictation();
+
   const handleShuffleSample = () => {
     const next = pickShuffleStyle(styles, styleId, Math.random);
     if (next) applySampleForStyle(next, 'sample_script_shuffled');
@@ -1566,6 +1572,7 @@ export const ScriptView: FC<{
           <div className="flex min-h-20 flex-1 flex-col md:min-h-28">
             <ScriptEditor
               ref={textareaRef}
+              editorRef={scriptEditorRef}
               value={scriptValue}
               onValueChange={(val) => {
                 setScript(val);
@@ -1633,6 +1640,13 @@ export const ScriptView: FC<{
                 </Button>
               )}
               {enhanceControls}
+              <VoiceInputButton
+                label="script"
+                variant="outline"
+                size="icon-sm"
+                disabled={loading || isEnhancing || isDerivedScript}
+                {...scriptVoice}
+              />
             </div>
           </div>
           <StyleSelector

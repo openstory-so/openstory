@@ -18,6 +18,8 @@ import {
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { MarkdownEditor } from '@/components/text-editor/markdown-editor';
+import { VoiceInputButton } from '@/components/voice/voice-input-button';
+import { useEditorDictation } from '@/hooks/use-dictation';
 import { useSequenceMentionItems } from '@/hooks/use-mention-items';
 import { shortenPromptFn } from '@/functions/ai';
 import { generateShotImageFn } from '@/functions/shot-image';
@@ -392,6 +394,11 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
   // appears on a prompt the user never touched.
   const imageFocusedRef = useRef(false);
   const motionFocusedRef = useRef(false);
+
+  // The mics live in each prompt's header row; dictation streams into the
+  // editor below through these handles.
+  const { ref: imagePromptRef, voice: imageVoice } = useEditorDictation();
+  const { ref: motionPromptRef, voice: motionVoice } = useEditorDictation();
 
   const queryClient = useQueryClient();
   const setImageFromVariant = useSetImageFromVariant();
@@ -1751,11 +1758,17 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
                   onCopy={(text, key) => void handleCopy(text, key)}
                   label="Copy image prompt"
                 />
+                <VoiceInputButton
+                  label="image prompt"
+                  size="icon-xs"
+                  disabled={isAwaitingVisualPrompt}
+                  {...imageVoice}
+                />
               </div>
             </div>
             <MarkdownEditor
               id="image-prompt-input"
-              voiceInputLabel="image prompt"
+              ref={imagePromptRef}
               value={
                 isAwaitingVisualPrompt
                   ? shotPromptStream.visual.text
@@ -2046,11 +2059,17 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
                   onCopy={(text, key) => void handleCopy(text, key)}
                   label="Copy motion prompt"
                 />
+                <VoiceInputButton
+                  label="motion prompt"
+                  size="icon-xs"
+                  disabled={isAwaitingMotionPrompt}
+                  {...motionVoice}
+                />
               </div>
             </div>
             <MarkdownEditor
               id="motion-prompt-input"
-              voiceInputLabel="motion prompt"
+              ref={motionPromptRef}
               value={
                 isAwaitingMotionPrompt
                   ? shotPromptStream.motion.text

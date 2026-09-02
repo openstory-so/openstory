@@ -13,7 +13,7 @@ import { VoiceInputButton } from '@/components/voice/voice-input-button';
 import { useFalPricing } from '@/hooks/use-fal-pricing';
 import { getAudioModelDurationLimits, type AudioModel } from '@/lib/ai/models';
 import { estimateAudioCost } from '@/lib/billing/cost-estimation';
-import { appendTranscript } from '@/lib/voice/transcript-insert';
+import { useTextDictation } from '@/hooks/use-dictation';
 import type { Sequence } from '@/types/database';
 import {
   AlertCircle,
@@ -191,6 +191,7 @@ export const MusicView: React.FC<MusicViewProps> = ({
     sequence;
 
   const [editPrompt, setEditPrompt] = useState(musicPrompt ?? '');
+  const promptVoice = useTextDictation(editPrompt, setEditPrompt);
   const [editDuration, setEditDuration] = useState<number | undefined>(
     () => videoDuration
   );
@@ -330,14 +331,7 @@ export const MusicView: React.FC<MusicViewProps> = ({
           <FormField
             label="Prompt"
             htmlFor="music-prompt-completed"
-            action={
-              <VoiceInputButton
-                label="music prompt"
-                onTranscript={(text) =>
-                  setEditPrompt((current) => appendTranscript(current, text))
-                }
-              />
-            }
+            action={<VoiceInputButton label="music prompt" {...promptVoice} />}
           >
             <Textarea
               id="music-prompt-completed"
@@ -461,9 +455,7 @@ export const MusicView: React.FC<MusicViewProps> = ({
           <VoiceInputButton
             label="music prompt"
             disabled={promptPending}
-            onTranscript={(text) =>
-              setEditPrompt((current) => appendTranscript(current, text))
-            }
+            {...promptVoice}
           />
         }
       >

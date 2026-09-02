@@ -1,69 +1,58 @@
 /**
- * Mic button for dictating into a script or prompt field. Click to start a
- * take, click again (or press Escape while focused) to stop; the transcript is
- * delivered through `onTranscript` once it comes back.
+ * Mic button for dictating into a script or prompt field. Click to start, click
+ * again (or press Escape) to stop. Words stream into the target as they are
+ * spoken: `onTranscript` fires on every interim update with the take so far,
+ * and the target replaces what it rendered for the previous update.
  *
- * Anonymous visitors get the login dialog on first click (transcription is a
- * billed server call); a browser without recording support renders nothing.
+ * Recognition is the browser's own — nothing is recorded or uploaded by us —
+ * so the button hides itself where the Web Speech API is missing (Firefox).
  */
 
-import { useOptionalAuthGate } from '@/components/auth/auth-gate-provider';
 import { Button } from '@/components/ui/button';
 import {
   Tooltip,
   TooltipContent,
-  TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { openBillingGate } from '@/hooks/use-billing-gate-dialog';
 import { useHydrated } from '@/hooks/use-hydrated';
-import { NoSpeechError, useVoiceInput } from '@/hooks/use-voice-input';
-import { errorMessage, isInsufficientCreditsError } from '@/lib/errors';
-import { cn } from '@/lib/utils';
-import { LoaderCircle, Mic, Square } from 'lucide-react';
+import {
+  DictationError,
+  useSpeechDictation,
+} from '@/hooks/use-speech-dictation';
+import { Mic, Square } from 'lucide-react';
 import * as React from 'react';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 
 type VoiceInputButtonProps = {
+  /** The take so far, on every interim update — replaces the previous emission. */
   onTranscript: (text: string) => void;
+  /** A take is starting: anchor wherever the next `onTranscript` should land. */
+  onStart?: () => void;
+  /** The take ended; the last `onTranscript` text stands. */
+  onEnd?: () => void;
   /** What is being dictated, for the tooltip and screen readers ("script", "prompt"). */
   label?: string;
-  disabled?: boolean;
+  variant?: 'ghost' | 'outline';
   size?: 'icon' | 'icon-sm' | 'icon-xs';
+  disabled?: boolean;
   className?: string;
-  /** ISO-639-1 hint; omitted = auto-detect. */
+  /** BCP-47 tag; omitted = the browser's own language. */
   language?: string;
 };
 
-function reportVoiceError(error: unknown) {
-  if (error instanceof NoSpeechError) {
-    toast.info('No speech detected', {
-      description: 'Try again a little closer to the microphone.',
-    });
-    return;
-  }
-  if (isInsufficientCreditsError(error)) {
-    openBillingGate('insufficient');
-    return;
-  }
-  if (error instanceof DOMException && error.name === 'NotAllowedError') {
-    toast.error('Microphone access is blocked', {
-      description:
-        'Allow microphone access for this site in your browser settings, then try again.',
-    });
-    return;
-  }
-  toast.error('Voice input failed', {
-    description: errorMessage(error, 'Please try again.'),
+function reportDictationError(error: DictationError) {
+  toast.error('Dictation stopped', {
+    description:
+      error.code === 'not-allowed' || error.code === 'service-not-allowed'
+        ? 'Allow microphone access for this site in your browser settings, then try again.'
+        : error.message,
   });
 }
 
 function formatElapsed(ms: number): string {
   const total = Math.floor(ms / 1000);
-  const minutes = Math.floor(total / 60);
-  const seconds = total % 60;
-  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  return `${Math.floor(total / 60)}:${(total % 60).toString().padStart(2, '0')}`;
 }
 
 /** Elapsed-time readout, re-rendered once a second while a take is live. */
@@ -82,34 +71,30 @@ const Elapsed: React.FC<{ startedAt: number }> = ({ startedAt }) => {
 
 export const VoiceInputButton: React.FC<VoiceInputButtonProps> = ({
   onTranscript,
+  onStart,
+  onEnd,
   label = 'text',
-  disabled = false,
+  variant = 'ghost',
   size = 'icon-sm',
+  disabled = false,
   className,
   language,
 }) => {
-  // Optional: the mic ships inside every MarkdownEditor, including trees
-  // rendered without the app shell. Without a gate the server fn still
-  // rejects anonymous callers.
-  const authGate = useOptionalAuthGate();
-  const { status, isSupported, startedAt, toggle, cancel } = useVoiceInput({
+  const { status, isSupported, startedAt, toggle, stop } = useSpeechDictation({
     onTranscript,
-    onError: reportVoiceError,
+    onStart,
+    onEnd,
+    onError: reportDictationError,
     language,
   });
   const hydrated = useHydrated();
 
-  // Pre-hydration the button renders disabled so the layout does not shift
-  // when it becomes live; only a browser that cannot record hides it.
+  // Pre-hydration the button renders disabled so the row does not reflow when
+  // it becomes live; only a browser that cannot dictate hides it.
   if (hydrated && !isSupported) return null;
 
-  const recording = status === 'recording';
-  const transcribing = status === 'transcribing';
-  const actionLabel = recording
-    ? 'Stop recording'
-    : transcribing
-      ? 'Transcribing…'
-      : `Dictate ${label}`;
+  const listening = status === 'listening';
+  const actionLabel = listening ? 'Stop dictating' : `Dictate ${label}`;
 
   return (
     <div
@@ -117,61 +102,43 @@ export const VoiceInputButton: React.FC<VoiceInputButtonProps> = ({
       data-slot="voice-input"
       data-status={status}
     >
-      {recording && startedAt !== null ? (
+      {listening && startedAt !== null ? (
         <Elapsed startedAt={startedAt} />
       ) : null}
-      {/* Own provider: the mic renders inside every MarkdownEditor, including
-          trees mounted outside the app shell (SSR test, bare stories). */}
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              type="button"
-              variant={recording ? 'destructive' : 'ghost'}
-              size={size}
-              aria-label={actionLabel}
-              aria-pressed={recording}
-              aria-busy={transcribing}
-              disabled={disabled || !hydrated || transcribing}
-              className={cn(
-                'text-muted-foreground hover:text-foreground',
-                recording && 'text-destructive hover:text-destructive',
-                className
-              )}
-              data-testid="voice-input-button"
-              onClick={() => {
-                if (status === 'idle' && authGate && !authGate.requireAuth()) {
-                  return;
-                }
-                void toggle();
-              }}
-              onKeyDown={(event) => {
-                if (event.key === 'Escape' && recording) {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  cancel();
-                }
-              }}
-            >
-              {transcribing ? (
-                <LoaderCircle className="animate-spin" />
-              ) : recording ? (
-                <Square className="fill-current motion-safe:animate-pulse" />
-              ) : (
-                <Mic />
-              )}
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>{actionLabel}</TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant={listening ? 'destructive' : variant}
+            size={size}
+            className={className}
+            aria-label={actionLabel}
+            aria-pressed={listening}
+            disabled={disabled || !hydrated}
+            data-testid="voice-input-button"
+            onClick={toggle}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape' && listening) {
+                event.preventDefault();
+                event.stopPropagation();
+                stop();
+              }
+            }}
+          >
+            {listening ? (
+              <Square className="size-3.5 fill-current motion-safe:animate-pulse" />
+            ) : (
+              <Mic className="size-3.5" />
+            )}
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>{actionLabel}</TooltipContent>
+      </Tooltip>
       {/* One text fiber whose value changes — never mounted/unmounted (#1283). */}
       <span className="sr-only" aria-live="polite">
-        {recording
-          ? 'Recording. Click again to stop, or press Escape to discard.'
-          : transcribing
-            ? 'Transcribing your recording.'
-            : 'Voice input ready.'}
+        {listening
+          ? 'Listening. Your words appear as you speak. Click again to stop.'
+          : 'Dictation ready.'}
       </span>
     </div>
   );
