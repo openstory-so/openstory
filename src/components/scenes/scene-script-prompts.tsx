@@ -3,6 +3,7 @@ import { ActionCost } from '@/components/billing/action-cost';
 import { type ModelGenerationStatus } from '@/components/model/base-model-selector';
 import { ImageModelSelector } from '@/components/model/image-model-selector';
 import { MotionModelSelector } from '@/components/model/motion-model-selector';
+import { useViaAvailability } from '@/hooks/use-via-availability';
 import { PromptHistorySheet } from '@/components/prompts/prompt-history-sheet';
 import { DivergentAlternateBanner } from '@/components/staleness/divergent-alternate-banner';
 import { StalenessIndicator } from '@/components/staleness/staleness-indicator';
@@ -1228,6 +1229,12 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
   const shotUsesStartFrame = shot
     ? usesStartFrame(shot, { referenceOnly: sequenceReferenceOnly })
     : !sequenceReferenceOnly;
+  // The shot's model can't render without a start frame — it stays listed (it
+  // is already picked) but submit refuses it, so say so here rather than at the
+  // click. Same list the selector filters by.
+  const { referenceOnlyModels } = useViaAvailability();
+  const modelCannotRenderReferenceOnly =
+    !shotUsesStartFrame && !referenceOnlyModels.includes(effectiveMotionModel);
   // With no still, the sheets are the ONLY thing fixing identity and set. None
   // matched means this shot renders as text-to-video at the same price, with
   // its cast and location reinvented while its siblings bind theirs — worth
@@ -2274,6 +2281,10 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
               recommendedVideoModel={recommendedVideoModel}
               styleName={styleName}
               generatedStatuses={videoModelStatuses}
+              // With the start frame off this shot renders reference-only, and
+              // submit refuses a model that cannot (`canRenderReferenceOnly`).
+              // Offering one here would just move the failure to the click.
+              referenceOnly={!shotUsesStartFrame}
             />
             <p className="text-xs text-muted-foreground">
               Changing the model applies to the next generation.
@@ -2409,6 +2420,13 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
               )}
             </span>
           </label>
+
+          {modelCannotRenderReferenceOnly && (
+            <p className="text-xs text-muted-foreground">
+              {IMAGE_TO_VIDEO_MODELS[effectiveMotionModel].name} needs a start
+              frame. Pick another model, or tick Use start frame.
+            </p>
+          )}
 
           {noReferencesMatched && (
             <p className="text-xs text-muted-foreground">

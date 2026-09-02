@@ -259,6 +259,14 @@ const SceneListComponent: React.FC<SceneListProps> = ({
     );
   }, [shots, referenceOnly]);
 
+  // The batch's mode: one reference-only shot in it decides the model list,
+  // because submit checks the picked model against every such shot.
+  const batchRendersReferenceOnly = useMemo(
+    () =>
+      notStartedShots.some((f) => rendersReferenceOnly(f, { referenceOnly })),
+    [notStartedShots, referenceOnly]
+  );
+
   const hasGeneratingShots = useMemo(() => {
     if (!shots) return false;
     return shots.some((f) =>
@@ -549,6 +557,10 @@ const SceneListComponent: React.FC<SceneListProps> = ({
             recommendedVideoModel={recommendedVideoModel}
             styleName={styleName}
             disabled={isGenerating || isMotionInProgress}
+            // A batch can mix modes, and submit validates the model against
+            // every reference-only shot in it — so one such shot is enough to
+            // rule out an image-to-video-only model for the whole run.
+            referenceOnly={batchRendersReferenceOnly}
           />
           {includeMusic && (
             <MusicModelSelector

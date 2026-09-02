@@ -36,6 +36,13 @@ type MotionModelFilterProps = {
    * should never be able to build one.
    */
   referenceOnly?: boolean;
+  /**
+   * Never filter this key out. The shot's current model: hiding it would leave
+   * the trigger reading "Unknown", so it stays listed and the panel says why
+   * it cannot render. Only an ALREADY-chosen model is exempt — the list still
+   * offers no other model the mode cannot use.
+   */
+  keepId?: ImageToVideoModel;
 };
 
 /**
@@ -50,6 +57,7 @@ function useMotionModels({
   styleName,
   allowedIds,
   referenceOnly,
+  keepId,
 }: MotionModelFilterProps) {
   // Resolved server-side per team and seeded by the `_app` route loader, so the
   // list is right on first paint. Grok Imagine appears here only where an xAI
@@ -62,7 +70,12 @@ function useMotionModels({
           if (!isValidImageToVideoModel(key)) return false;
           if ('hidden' in m) return false;
           if (allowedIds && !allowedIds.includes(key)) return false;
-          if (referenceOnly && !referenceOnlyModels.includes(key)) return false;
+          if (
+            referenceOnly &&
+            key !== keepId &&
+            !referenceOnlyModels.includes(key)
+          )
+            return false;
           if (
             'requiredStyleCategory' in m &&
             m.requiredStyleCategory !== styleCategory
@@ -106,6 +119,7 @@ function useMotionModels({
       styleName,
       allowedIds,
       referenceOnly,
+      keepId,
       referenceOnlyModels,
     ]
   );
@@ -207,6 +221,7 @@ export const MotionModelSelector: React.FC<MotionModelSelectorProps> = ({
     styleName,
     allowedIds,
     referenceOnly,
+    keepId: selectedModel,
   });
   const models = useMemo(
     () =>

@@ -21,8 +21,11 @@
 import { globSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
+// `?.` is part of the read: `sequence?.referenceOnly` slipped the guard
+// entirely until it was noticed, and every UI holder of the row spells it that
+// way (the query can be in flight).
 const SEQUENCE_READ =
-  /\bsequence\.referenceOnly\b|\bplan\.sequence\.referenceOnly\b/;
+  /\bsequence\??\.referenceOnly\b|\bplan\.sequence\??\.referenceOnly\b/;
 
 /**
  * Reads that are correctly sequence-level, each with why.
@@ -50,6 +53,16 @@ const SEQUENCE_LEVEL_BY_DESIGN: Record<string, string> = {
   'src/lib/shots/update-stale-plan.ts': 'snapshots the sequence default',
   // The composer edits the SEQUENCE default before any shot exists.
   'src/components/script/script-view.tsx': 'composer editing the default',
+  // Holds the row for the page and hands the default to the per-shot
+  // resolvers (`rendersReferenceOnly`, `sequenceReferenceOnly`); the phase
+  // config it builds is for the whole run.
+  'src/components/scenes/scenes-view.tsx':
+    'passes the default down to per-shot resolvers',
+  // Adds a model to the SEQUENCE's selection — it applies to every shot, so
+  // the sequence default is the right question. A shot that overrides to
+  // reference-only is still checked against the picked model at submit.
+  'src/components/model/add-model-menu.tsx':
+    'sequence-wide model selection, not one shot',
 };
 
 describe('reference-only is resolved per shot', () => {
