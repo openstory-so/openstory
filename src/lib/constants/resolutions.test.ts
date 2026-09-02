@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   clampDimensions,
+  clampResolution,
   pickImageResolution,
   pickVideoResolution,
   resolutionDimensions,
+  tiersForTokens,
   type PixelBounds,
 } from './resolutions';
 
@@ -151,5 +153,61 @@ describe('clampDimensions', () => {
     const clamped = clampDimensions({ width: 720, height: 720 }, GPT_IMAGE_2);
     expect(clamped.width * clamped.height).toBeGreaterThanOrEqual(655_360);
     expect(clamped.width % 16).toBe(0);
+  });
+});
+
+describe('tiersForTokens', () => {
+  it('offers only the tiers a video model advertises', () => {
+    expect(tiersForTokens(VIDEO_ENUMS.veo, 'video')).toEqual([
+      '720p',
+      '1080p',
+      '4k',
+    ]);
+    // Seedance 2.5 stops at 1080p — no 4K pill.
+    expect(tiersForTokens(VIDEO_ENUMS.seedance_2_5, 'video')).toEqual([
+      '720p',
+      '1080p',
+    ]);
+    // H3 Max's ceiling is 768P, which is the 720p tier and nothing above it.
+    expect(tiersForTokens(VIDEO_ENUMS.h3max, 'video')).toEqual(['720p']);
+    // LTX has no low tier at all — its floor is 1080p.
+    expect(tiersForTokens(VIDEO_ENUMS.ltx, 'video')).toEqual(['1080p', '4k']);
+  });
+
+  it('offers nothing for an endpoint with no resolution field', () => {
+    expect(tiersForTokens([], 'video')).toEqual([]);
+  });
+
+  it('maps image tokens onto the tiers, skipping ones a model lacks', () => {
+    expect(tiersForTokens(['0.5K', '1K', '2K', '4K'], 'image')).toEqual([
+      '720p',
+      '1080p',
+      '4k',
+    ]);
+    // Phota is 1K or 4K — there is no middle tier to offer.
+    expect(tiersForTokens(['1K', '4K'], 'image')).toEqual(['720p', '4k']);
+    expect(tiersForTokens(['1k', '2k'], 'image')).toEqual(['720p', '1080p']);
+  });
+
+  it('agrees with the picker: an offered tier resolves into its own band', () => {
+    for (const tokens of Object.values(VIDEO_ENUMS)) {
+      for (const tier of tiersForTokens(tokens, 'video')) {
+        const picked = pickVideoResolution(tokens, tier);
+        expect(picked, `${tier} on ${tokens.join('/')}`).toBeDefined();
+        expect(tiersForTokens(picked ? [picked] : [], 'video')).toEqual([tier]);
+      }
+    }
+  });
+});
+
+describe('clampResolution', () => {
+  it('keeps a tier the model offers', () => {
+    expect(clampResolution('4k', ['720p', '1080p', '4k'])).toBe('4k');
+  });
+
+  it('falls to the nearest offered tier, not silently to the default', () => {
+    expect(clampResolution('4k', ['720p', '1080p'])).toBe('1080p');
+    expect(clampResolution('720p', ['1080p', '4k'])).toBe('1080p');
+    expect(clampResolution('1080p', ['720p'])).toBe('720p');
   });
 });

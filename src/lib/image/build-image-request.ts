@@ -15,13 +15,18 @@ import {
   type TextToImageModel,
 } from '@/lib/ai/models';
 import {
+  DEFAULT_ASPECT_RATIO,
   DEFAULT_IMAGE_SIZE,
+  type AspectRatio,
   type ImageSize,
 } from '@/lib/constants/aspect-ratios';
 import {
   clampDimensions,
   pickImageResolution,
   resolutionDimensions,
+  tierForShortEdge,
+  RESOLUTIONS,
+  tiersForTokens,
   type PixelBounds,
   type Resolution,
 } from '@/lib/constants/resolutions';
@@ -118,23 +123,29 @@ function resolveImageResolutionToken(
 }
 
 /**
- * What the model will actually render at, when that isn't the tier asked for
- * — so a 4K pill on a fixed-1K model doesn't silently lie. Null when the
- * model serves the tier.
+ * The tiers this model can actually deliver — what the resolution picker
+ * offers for it (#1449). Empty when the model's output size is fixed, which
+ * is the picker's cue to say so instead of showing tiers that do nothing.
+ *
+ * A token model is asked which tiers its enum covers; a pixel-sized one is
+ * asked whether the tier's dimensions survive its documented range — FLUX.2
+ * stops at 2048 per edge, so a "4K" pill there would promise a size it can
+ * never return.
  */
-export function imageResolutionNote(
+export function imageResolutionTiers(
   model: TextToImageModel,
-  resolution: Resolution
-): string | null {
+  aspectRatio: AspectRatio = DEFAULT_ASPECT_RATIO
+): Resolution[] {
   const capability = IMAGE_RESOLUTION[model];
-  const name = IMAGE_MODELS[model].name;
-  if (!capability) return `${name} renders at a fixed size`;
-  if (!('tokens' in capability)) return null;
-  const picked = pickImageResolution(capability.tokens, resolution);
-  const wanted = pickImageResolution(['0.5K', '1K', '2K', '4K'], resolution);
-  return picked && picked.toUpperCase() !== wanted?.toUpperCase()
-    ? `${name} renders at ${picked}`
-    : null;
+  if (!capability) return [];
+  if ('tokens' in capability) return tiersForTokens(capability.tokens, 'image');
+  return RESOLUTIONS.filter((tier) => {
+    const clamped = clampDimensions(
+      resolutionDimensions(tier, aspectRatio),
+      capability.pixels
+    );
+    return tierForShortEdge(Math.min(clamped.width, clamped.height)) === tier;
+  });
 }
 
 /**

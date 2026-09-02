@@ -15,7 +15,11 @@ import {
   inlineReferenceDescription,
   substituteReferenceTags,
 } from '@/lib/prompts/reference-legend';
-import { pickVideoResolution } from '@/lib/constants/resolutions';
+import {
+  pickVideoResolution,
+  tiersForTokens,
+  type Resolution,
+} from '@/lib/constants/resolutions';
 import {
   MOTION_JSON_SCHEMAS,
   MOTION_TRANSFORMS,
@@ -33,6 +37,33 @@ const QUALITY_OVERRIDES: Partial<
 };
 
 /**
+ * The `resolution` tokens an endpoint advertises, read off the generated fal
+ * schema. Empty for an endpoint with no such field (Kling v3, Hailuo 2.3),
+ * whose output size is fixed.
+ */
+export function motionResolutionTokens(endpointId: MotionEndpointId): string[] {
+  const schema: { properties?: Record<string, unknown> } =
+    MOTION_JSON_SCHEMAS[endpointId];
+  const field: unknown = schema.properties?.resolution;
+  if (!field || typeof field !== 'object' || !('enum' in field)) return [];
+  const values: unknown = field.enum;
+  if (!Array.isArray(values)) return [];
+  return values.filter((value): value is string => typeof value === 'string');
+}
+
+/**
+ * The tiers a motion model can actually deliver — what the resolution picker
+ * offers for it (#1449). Reads the i2v endpoint's enum; the T2V and
+ * reference-to-video siblings advertise the same tokens.
+ */
+export function motionResolutionTiers(model: ImageToVideoModel): Resolution[] {
+  return tiersForTokens(
+    motionResolutionTokens(IMAGE_TO_VIDEO_MODELS[model].id),
+    'video'
+  );
+}
+
+/**
  * The requested resolution tier (#1449) in the endpoint's own vocabulary —
  * `'768P'` on H3 Max, `'4k'` on Seedance 2.0, `'2160p'` on LTX. Read off the
  * generated fal schema, so a new motion model needs no entry anywhere: it
@@ -46,16 +77,9 @@ function resolutionOverride(
   resolution: GenerateMotionOptions['resolution']
 ): { resolution?: string } {
   if (!resolution) return {};
-  const schema: { properties?: Record<string, unknown> } =
-    MOTION_JSON_SCHEMAS[endpointId];
-  const field: unknown = schema.properties?.resolution;
-  if (!field || typeof field !== 'object' || !('enum' in field)) return {};
-  const values: unknown = field.enum;
-  if (!Array.isArray(values)) return {};
-  const picked = pickVideoResolution(
-    values.filter((value): value is string => typeof value === 'string'),
-    resolution
-  );
+  const options = motionResolutionTokens(endpointId);
+  if (options.length === 0) return {};
+  const picked = pickVideoResolution(options, resolution);
   return picked ? { resolution: picked } : {};
 }
 

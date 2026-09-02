@@ -103,7 +103,9 @@ import {
   estimateImageCost,
   estimateStoryboardCost,
 } from '@/lib/billing/cost-estimation';
+import { clampResolution } from '@/lib/constants/resolutions';
 import type { Resolution } from '@/lib/constants/resolutions';
+import { availableResolutions } from '@/lib/ai/resolution-support';
 import {
   aspectRatioSchema,
   type AspectRatio,
@@ -355,13 +357,23 @@ export const ScriptView: FC<{
     generationMode,
     analysisModels,
     aspectRatio,
-    resolution,
     imageModels,
     videoModels,
     autoGenerateMotion,
     audioModels,
     autoGenerateMusic,
   } = genSettings;
+  // Derived, not stored: the picker only offers tiers the chosen models serve,
+  // so a 4K pick made under one model reads as the nearest tier under a model
+  // that can't reach it — and comes back if they switch back.
+  const resolution = clampResolution(
+    genSettings.resolution,
+    availableResolutions({
+      imageModels,
+      videoModels: autoGenerateMotion ? videoModels : [],
+      aspectRatio,
+    })
+  );
   const updateGen = <K extends keyof typeof genSettings>(
     key: K,
     value: (typeof genSettings)[K]

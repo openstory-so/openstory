@@ -18,8 +18,11 @@ import { MotionModelSelector } from '@/components/model/motion-model-selector';
 import type { MentionItem } from '@/components/scenes/prompt-mention/mention-items';
 import { AspectRatioPills } from '@/components/settings/aspect-ratio-pills';
 import { ResolutionPills } from '@/components/settings/resolution-pills';
-import { imageResolutionNote } from '@/lib/image/build-image-request';
+import { IMAGE_MODELS } from '@/lib/ai/models';
+import { imageResolutionTiers } from '@/lib/image/build-image-request';
+import { motionResolutionTiers } from '@/lib/motion/build-model-input';
 import {
+  clampResolution,
   DEFAULT_RESOLUTION,
   RESOLUTION_OPTIONS,
   type Resolution,
@@ -105,7 +108,6 @@ import {
   studioSupportsEndFrame,
   studioVideoRefLimit,
   studioSupportsMode,
-  studioVideoResolution,
   studioVideoDurations,
   studioVideoSupportsAudio,
   type StudioReferenceToken,
@@ -287,7 +289,8 @@ export function StudioComposer({ activity }: StudioComposerProps) {
     useState<ImageToVideoModel>(DEFAULT_VIDEO_MODEL);
   const [aspectRatio, setAspectRatio] =
     useState<AspectRatio>(DEFAULT_ASPECT_RATIO);
-  const [resolution, setResolution] = useState<Resolution>(DEFAULT_RESOLUTION);
+  const [pickedResolution, setResolution] =
+    useState<Resolution>(DEFAULT_RESOLUTION);
   const [count, setCount] = useState<(typeof COUNTS)[number]>(1);
   const [duration, setDuration] = useState(5);
   const [generateAudio, setGenerateAudio] = useState(true);
@@ -309,13 +312,19 @@ export function StudioComposer({ activity }: StudioComposerProps) {
 
   const isVideo = activity === 'video';
   const compatibleVideoModel = getCompatibleModel(videoModel, aspectRatio);
-  // What the model actually renders at, when it can't serve the tier.
-  const videoTier = studioVideoResolution(compatibleVideoModel, resolution);
-  const videoResolutionNote = videoTier
-    ? videoTier.toLowerCase() === resolution.toLowerCase()
-      ? null
-      : `${IMAGE_TO_VIDEO_MODELS[compatibleVideoModel].name} renders at ${videoTier}`
-    : `${IMAGE_TO_VIDEO_MODELS[compatibleVideoModel].name} renders at a fixed size`;
+  // Only the tiers this model serves get a pill, so the stored pick is clamped
+  // to them rather than left pointing at a pill that is no longer there.
+  const activeModelName = isVideo
+    ? IMAGE_TO_VIDEO_MODELS[compatibleVideoModel].name
+    : IMAGE_MODELS[imageModel].name;
+  const resolutionTiers = isVideo
+    ? motionResolutionTiers(compatibleVideoModel)
+    : imageResolutionTiers(imageModel, aspectRatio);
+  const resolution = clampResolution(pickedResolution, resolutionTiers);
+  const resolutionNote =
+    resolutionTiers.length === 0
+      ? `${activeModelName} renders at a fixed size`
+      : null;
   const snappedDuration = snapStudioVideoDuration(
     duration,
     compatibleVideoModel
@@ -843,7 +852,9 @@ export function StudioComposer({ activity }: StudioComposerProps) {
   const aspect = ASPECT_RATIOS.find((r) => r.value === aspectRatio);
   const summary = [
     aspectRatio,
-    RESOLUTION_OPTIONS.find((r) => r.value === resolution)?.label,
+    resolutionTiers.length > 0
+      ? RESOLUTION_OPTIONS.find((r) => r.value === resolution)?.label
+      : null,
     isVideo && durationCapable ? `${snappedDuration}s` : null,
     isVideo && audioCapable ? (generateAudio ? 'Audio' : 'Silent') : null,
     `×${count}`,
@@ -1099,11 +1110,8 @@ export function StudioComposer({ activity }: StudioComposerProps) {
                 <ResolutionPills
                   value={resolution}
                   onChange={setResolution}
-                  note={
-                    isVideo
-                      ? videoResolutionNote
-                      : imageResolutionNote(imageModel, resolution)
-                  }
+                  available={resolutionTiers}
+                  note={resolutionNote}
                 />
               </section>
               {isVideo && durationCapable && (

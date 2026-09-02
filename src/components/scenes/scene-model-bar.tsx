@@ -11,10 +11,12 @@ import {
   type AspectRatio,
 } from '@/lib/constants/aspect-ratios';
 import {
+  clampResolution,
   isResolution,
   RESOLUTION_OPTIONS,
   type Resolution,
 } from '@/lib/constants/resolutions';
+import { availableResolutions } from '@/lib/ai/resolution-support';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { useSetSequenceResolution } from '@/hooks/use-sequences';
 import type { SelectionScope } from '@/lib/scenes/scene-selection';
@@ -73,13 +75,22 @@ const SettingRow: React.FC<{ label: string; children: React.ReactNode }> = ({
 const SequenceResolutionSelector: React.FC<{
   sequenceId: string;
   resolution: Resolution;
-}> = ({ sequenceId, resolution }) => {
+  imageModel: TextToImageModel;
+  videoModel: ImageToVideoModel;
+}> = ({ sequenceId, resolution, imageModel, videoModel }) => {
   const setResolution = useSetSequenceResolution(sequenceId);
+  const available = availableResolutions({
+    imageModels: [imageModel],
+    videoModels: [videoModel],
+  });
+  // Every model in this sequence renders one fixed size — there is nothing to
+  // pick, so the row would be three pills that all do the same thing.
+  if (available.length === 0) return null;
   return (
     <SettingRow label="Resolution">
       <ToggleGroup
         type="single"
-        value={resolution}
+        value={clampResolution(resolution, available)}
         onValueChange={(value) => {
           if (value && isResolution(value) && value !== resolution) {
             setResolution.mutate(value);
@@ -89,7 +100,9 @@ const SequenceResolutionSelector: React.FC<{
         spacing={0}
         aria-label="Resolution for the next render"
       >
-        {RESOLUTION_OPTIONS.map((option) => (
+        {RESOLUTION_OPTIONS.filter((option) =>
+          available.includes(option.value)
+        ).map((option) => (
           <ToggleGroupItem
             key={option.value}
             value={option.value}
@@ -160,6 +173,8 @@ export const SceneModelBar: React.FC<SceneModelBarProps> = ({
             <SequenceResolutionSelector
               sequenceId={sequenceId}
               resolution={resolution}
+              imageModel={resolvedSequenceImageModel}
+              videoModel={resolvedSequenceVideoModel}
             />
           )}
           <SettingRow label="Script">

@@ -12,6 +12,7 @@
  */
 
 import { IMAGE_TO_VIDEO_MODELS, type ImageToVideoModel } from '@/lib/ai/models';
+import { motionResolutionTokens } from '@/lib/motion/build-model-input';
 import type { AspectRatio } from '@/lib/constants/aspect-ratios';
 import {
   DEFAULT_RESOLUTION,
@@ -260,28 +261,17 @@ export function renumberStudioReferences(
 }
 
 /**
- * The `resolution` tokens each studio video endpoint advertises (#1449). The
- * requested tier picks the nearest; a model absent here has no resolution
- * field at all. Mirrors the enums in the generated fal schemas — the studio
- * T2V/R2V siblings share them with the i2v endpoint.
+ * The model's own spelling of a tier, or undefined when it takes none (#1449).
+ * The tokens come from the i2v endpoint's generated schema — the studio T2V
+ * and reference-to-video siblings advertise the same enum, so there is one
+ * source for both routes rather than a hand-kept copy that can drift.
  */
-const STUDIO_VIDEO_RESOLUTIONS: Partial<
-  Record<ImageToVideoModel, readonly string[]>
-> = {
-  grok_imagine_video_1_5: ['480p', '720p', '1080p'],
-  veo3_1: ['720p', '1080p', '4k'],
-  seedance_v2: ['480p', '720p', '1080p', '4k'],
-  seedance_v2_5: ['480p', '720p', '1080p'],
-  minimax_h3_max: ['480P', '768P'],
-};
-
-/** The model's own spelling of a tier, or undefined when it takes none. */
 export function studioVideoResolution(
   model: ImageToVideoModel,
   resolution: Resolution | undefined
 ): string | undefined {
-  const options = STUDIO_VIDEO_RESOLUTIONS[model];
-  if (!options) return undefined;
+  const options = motionResolutionTokens(IMAGE_TO_VIDEO_MODELS[model].id);
+  if (options.length === 0) return undefined;
   return pickVideoResolution(options, resolution ?? DEFAULT_RESOLUTION);
 }
 

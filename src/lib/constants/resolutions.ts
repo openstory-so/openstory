@@ -18,7 +18,7 @@
 import { z } from 'zod';
 import type { AspectRatio } from './aspect-ratios';
 
-const RESOLUTIONS = ['720p', '1080p', '4k'] as const;
+export const RESOLUTIONS = ['720p', '1080p', '4k'] as const;
 
 export type Resolution = (typeof RESOLUTIONS)[number];
 
@@ -113,6 +113,79 @@ export function pickImageResolution(
   resolution: Resolution
 ): string | undefined {
   return pickNearest(options, IMAGE_TARGET[resolution], imageTokenPixels);
+}
+
+/** The tier a provider token lands in — the inverse of {@link pickNearest}. */
+function tierOf(
+  value: number,
+  targets: Record<Resolution, number>
+): Resolution | undefined {
+  if (!Number.isFinite(value)) return undefined;
+  let best: Resolution | undefined;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  for (const tier of RESOLUTIONS) {
+    const distance = Math.abs(targets[tier] - value);
+    if (distance < bestDistance) {
+      best = tier;
+      bestDistance = distance;
+    }
+  }
+  return best;
+}
+
+/**
+ * The tiers a model can actually deliver, given the tokens it advertises —
+ * what the picker offers, so a pill is never a tier the model can't reach
+ * (#1449). Empty when the model takes no `resolution` at all.
+ *
+ * Exactly the inverse of the picker, which is what keeps the two consistent:
+ * a tier is offered iff some advertised token lands in that tier's band, and
+ * picking it then returns that token. LTX starts at 1080p, so it offers no
+ * 720p; H3 Max tops out at 768P, so 720p is all it offers.
+ */
+export function tiersForTokens(
+  options: readonly string[],
+  kind: 'video' | 'image'
+): Resolution[] {
+  const targets = kind === 'video' ? SHORT_EDGE : IMAGE_TARGET;
+  const measure = kind === 'video' ? videoTokenHeight : imageTokenPixels;
+  const found = new Set(
+    options.map((option) => tierOf(measure(option), targets))
+  );
+  return RESOLUTIONS.filter((tier) => found.has(tier));
+}
+
+/**
+ * The tier a rendered short edge belongs to — the pixel-sized counterpart of
+ * {@link tiersForTokens}, and the same nearest-band rule, so a legal rounding
+ * doesn't demote a tier: GPT Image 2 rounds 1080 to a multiple of 16 (1072),
+ * which is still the 1080p tier and not a failure to reach it.
+ */
+export function tierForShortEdge(pixels: number): Resolution | undefined {
+  return tierOf(pixels, SHORT_EDGE);
+}
+
+/**
+ * `value` if the model offers it, else the closest tier it does offer.
+ * Called wherever a stored tier meets a model that may not serve it — a model
+ * switch must not leave a selection with no pill behind it.
+ */
+export function clampResolution(
+  value: Resolution,
+  available: readonly Resolution[]
+): Resolution {
+  if (available.includes(value)) return value;
+  const target = SHORT_EDGE[value];
+  let best: Resolution = DEFAULT_RESOLUTION;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  for (const tier of available) {
+    const distance = Math.abs(SHORT_EDGE[tier] - target);
+    if (distance < bestDistance) {
+      best = tier;
+      bestDistance = distance;
+    }
+  }
+  return best;
 }
 
 /** Pixel dimensions for a tier at an aspect ratio. Short edge is the tier. */

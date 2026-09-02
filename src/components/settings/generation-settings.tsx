@@ -30,7 +30,10 @@ import {
 import type { AnalysisModelId } from '@/lib/ai/models.config';
 import type { AspectRatio } from '@/lib/constants/aspect-ratios';
 import type { Resolution } from '@/lib/constants/resolutions';
-import { imageResolutionNote } from '@/lib/image/build-image-request';
+import {
+  availableResolutions,
+  resolutionCeilingNote,
+} from '@/lib/ai/resolution-support';
 import { useState, type FC } from 'react';
 import { AspectRatioPills } from './aspect-ratio-pills';
 import { ResolutionPills } from './resolution-pills';
@@ -142,6 +145,13 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
   onResetStyleDefaults,
 }) => {
   const [open, setOpen] = useState(false);
+  // Motion off → the video models render nothing, so they neither widen the
+  // tier choice nor cap it.
+  const modelSelection = {
+    imageModels,
+    videoModels: autoGenerateMotion ? videoModels : [],
+    aspectRatio,
+  };
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -204,11 +214,9 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
             <ResolutionPills
               value={resolution}
               onChange={onResolutionChange}
+              available={availableResolutions(modelSelection)}
               disabled={disabled}
-              note={imageResolutionNote(
-                imageModels[0] ?? DEFAULT_IMAGE_MODEL,
-                resolution
-              )}
+              note={resolutionCeilingNote(resolution, modelSelection)}
             />
           </section>
 
