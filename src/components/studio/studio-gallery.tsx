@@ -22,6 +22,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { AppImage } from '@/components/ui/app-image';
 import {
   useDeleteStudioAsset,
+  useStudioPendingCreates,
   useToggleStudioFavorite,
 } from '@/hooks/use-studio-assets';
 import type { GeneratedAsset } from '@/lib/db/schema';
@@ -131,6 +132,24 @@ function StudioCard({
   );
 }
 
+/** Stand-in for a generation whose rows have not landed in the list yet (#1455). */
+function PendingCard({ aspectRatio }: { aspectRatio: string }) {
+  return (
+    <article className="relative overflow-hidden rounded-lg border bg-muted">
+      <Skeleton
+        className="w-full rounded-none"
+        style={{ aspectRatio: aspectRatio.replace(':', ' / ') }}
+      />
+      <p
+        aria-live="polite"
+        className="absolute inset-x-0 bottom-0 bg-background/80 px-2 py-1 text-xs text-muted-foreground"
+      >
+        Starting…
+      </p>
+    </article>
+  );
+}
+
 /** The opened asset at viewer size: the media fills the dialog, letterboxed. */
 function StudioViewer({ asset }: { asset: GeneratedAsset }) {
   const primary = studioPrimaryOutput(asset);
@@ -191,6 +210,12 @@ export function StudioGallery({
   const [openId, setOpenId] = useState<string | null>(null);
   const remove = useDeleteStudioAsset();
   const openAsset = assets.find((asset) => asset.id === openId);
+  const pending = useStudioPendingCreates(activity).flatMap((input, index) =>
+    Array.from({ length: input.count }, (_, i) => ({
+      key: `pending-${index}-${i}`,
+      aspectRatio: input.aspectRatio,
+    }))
+  );
 
   if (isLoading) {
     return (
@@ -205,7 +230,7 @@ export function StudioGallery({
     );
   }
 
-  if (assets.length === 0) {
+  if (assets.length === 0 && pending.length === 0) {
     return (
       <EmptyState
         icon={<Images className="h-12 w-12" />}
@@ -224,6 +249,11 @@ export function StudioGallery({
   return (
     <>
       <div className="columns-2 gap-4 md:columns-3 lg:columns-4">
+        {pending.map((tile) => (
+          <div key={tile.key} className="mb-4 break-inside-avoid">
+            <PendingCard aspectRatio={tile.aspectRatio} />
+          </div>
+        ))}
         {assets.map((asset) => (
           <div key={asset.id} className="mb-4 break-inside-avoid">
             <StudioCard asset={asset} onOpen={() => setOpenId(asset.id)} />

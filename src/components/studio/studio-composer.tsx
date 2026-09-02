@@ -128,6 +128,7 @@ import {
   AudioLines,
   Film,
   ImagePlus,
+  Loader2,
   RotateCcw,
   Shuffle,
   SlidersHorizontal,
@@ -816,7 +817,7 @@ export function StudioComposer({ activity }: StudioComposerProps) {
   };
 
   const submit = () => {
-    if (!canSubmit) return;
+    if (!canSubmit || create.isPending) return;
     if (trimmed.length === 0) {
       posthog.capture('empty_prompt_generate_clicked', {
         surface: 'studio',
@@ -1245,10 +1246,14 @@ export function StudioComposer({ activity }: StudioComposerProps) {
             type="submit"
             size="icon-lg"
             className="rounded-full"
-            aria-label={submitLabel}
-            disabled={!canSubmit}
+            aria-label={create.isPending ? 'Starting…' : submitLabel}
+            disabled={!canSubmit || create.isPending}
           >
-            <ArrowUp aria-hidden="true" />
+            {create.isPending ? (
+              <Loader2 className="animate-spin" aria-hidden="true" />
+            ) : (
+              <ArrowUp aria-hidden="true" />
+            )}
           </Button>
         </div>
       </div>
