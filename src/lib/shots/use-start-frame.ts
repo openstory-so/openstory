@@ -1,17 +1,13 @@
 /**
  * Does this shot animate FROM a rendered still, or straight from references?
  *
- * The sequence sets the default (`referenceOnly`); a shot may override it
- * (`shots.useStartFrame`, NULL = inherit). One question, one function, because
- * three places have to give the same answer: the motion panel's checkbox, the
- * eligibility filter that decides a shot can render at all, and the submit
- * path that either passes the still or does not.
+ * Sequence sets the default (`referenceOnly`); a shot overrides it
+ * (`shots.useStartFrame`, NULL = inherit). One function so every consumer
+ * agrees — they drifted before.
  *
- * At render time it changes exactly what `buildReferenceVideoPrompt` does with
- * `startImageUrl`: with a still it prepends "Use @Image1 as the starting
- * frame." and binds references from slot 2; without one it drops that line and
- * binds from slot 1, freeing a slot. The prompt TEXT is the user's either way
- * — this is not a prompt-style switch.
+ * Not only a render switch: it picks the motion-prompt template
+ * (`motion-prompt-workflow`) and folds into the motion hash
+ * (`shot-staleness`), so flipping it re-stales the shot's motion prompt.
  */
 
 export type StartFrameShot = { useStartFrame?: boolean | null | undefined };

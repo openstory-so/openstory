@@ -52,14 +52,10 @@ export const shots = snakeCase.table(
     durationMs: integer().default(3000),
     /**
      * Per-shot override of "does this shot animate from a start frame".
-     * NULL = inherit the sequence (`!sequences.referenceOnly`), which is what
-     * every shot is until someone flips this one.
+     * NULL = inherit the sequence (`!sequences.referenceOnly`).
      *
-     * At render time it decides exactly one thing: whether the rendered still
-     * is passed to `buildReferenceVideoPrompt` as `startImageUrl`. That in
-     * turn adds or drops the "Use @Image1 as the starting frame." line, shifts
-     * reference tags by a slot, and spends or frees one image slot. The prompt
-     * TEXT is the user's either way — this is not a prompt-style flag.
+     * Never read raw — resolve with `usesStartFrame()`, which documents what
+     * flipping it costs.
      */
     useStartFrame: integer({ mode: 'boolean' }),
     // A shot owns no video columns (#1067 phase 2d). The whole surface —

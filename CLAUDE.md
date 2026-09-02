@@ -213,14 +213,26 @@ category doesn't match the hatch it came through. Full rationale:
 
 ## Reference-only motion (no start frames)
 
-`sequences.referenceOnly` renders each shot **straight to video** from the
-character / location / element reference sheets — the shot-images phase never
-runs, and neither does the visual-prompt phase (the reference-only motion
-template composes its own opening frame from the bibles and is never handed
-one). The storyboard preview still is kept: it fills the scene rail while the
-clip renders. Off by default; only models with a fal `reference-to-video` route qualify
-(Seedance 2.0 / 2.5, H3 Max, `supportsReferenceOnlyMotion`), and `createSequenceSchema`
-validates **every** selected video model, not just the primary.
+Renders a shot **straight to video** from the character / location / element
+reference sheets — the shot-images phase never runs, and neither does the
+visual-prompt phase (the reference-only motion template composes its own
+opening frame from the bibles and is never handed one). The storyboard preview
+still is kept: it fills the scene rail while the clip renders. Off by default.
+
+**Resolved per shot, never per sequence.** `sequences.referenceOnly` is the
+default; `shots.useStartFrame` overrides it (NULL = inherit). Always resolve
+via `usesStartFrame()` / `rendersReferenceOnly()` — `reference-only-is-per-shot.test.ts`
+fails any per-shot path reading `sequence.referenceOnly` raw. It is NOT a
+render-only switch: it picks the motion-prompt template and folds into the
+motion hash, so flipping it re-stales that shot's motion prompt.
+
+**Two capability questions, don't mix them.** `supportsReferenceOnlyMotion` is
+the model-only floor (fal `reference-to-video`: Seedance 2.0 / 2.5, H3 Max) —
+for pure isomorphic code like `createSequenceSchema`, which validates **every**
+selected video model, not just the primary. Anywhere a team's keys are
+reachable, ask `canRenderReferenceOnly(model, credentials)` instead: Grok
+Imagine renders reference-only on the native xAI via, and the model-only
+question rejects it.
 
 The substance is the prompt. The image-to-video template's central rule is NO
 VISUAL REDUNDANCY — "the video model already sees these in the starting frame"
@@ -237,10 +249,15 @@ Gotchas: motion references gain the location sheet (ordered first — the budget
 is spent in order); `buildReferenceVideoPrompt` drops the "Use @Image1 as the
 starting frame" line and binds refs from slot 1; Ark `size` switches from
 `adaptive` to the sequence's ratio (nothing is left to adapt to, and a portrait
-sheet would silently render 9:16); billing prices the r2v endpoint. The mode
-folds into the motion-prompt hash **only when true**, so no stored digest moves
-— and it is REQUIRED on `ShotPromptContextSequence` because omitting it would
-make every reference-only prompt read stale forever, silently.
+sheet would silently render 9:16); billing prices the r2v endpoint per shot,
+since a batch can mix. The mode folds into the motion-prompt hash **only when
+true**, so no stored digest moves — and it is REQUIRED on
+`ShotPromptContextSequence` because omitting it would make every reference-only
+prompt read stale forever, silently. The manifest records
+`frameVersionId: null` for such a shot even when a still exists, and staleness
+compares against the same rule; `UpdateStalePlan.usesStartFrame` is required
+and never defaulted (`!undefined` is `true`, which would re-render a whole run
+with no start frames).
 
 Full rationale: `docs/architecture/reference-only-motion.md`.
 

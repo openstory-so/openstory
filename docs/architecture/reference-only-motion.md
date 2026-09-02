@@ -1,13 +1,18 @@
 # Reference-only motion
 
-A reference-only sequence never generates start frames. Each shot renders
-straight to video from the character, location and element reference sheets
-plus a self-describing motion prompt, on a route whose start frame is optional.
+A reference-only shot renders straight to video from the character, location
+and element reference sheets plus a self-describing motion prompt, on a route
+whose start frame is optional — no still is generated for it.
 
 The default pipeline is image-to-video: an image model renders a still, and a
 video model animates it. Reference-only removes the still. That is one deleted
 phase and one inverted assumption — and the inverted assumption is the whole
 substance of the feature.
+
+`sequences.referenceOnly` sets the default for a sequence; `shots.useStartFrame`
+overrides it per shot (NULL = inherit). Resolve with `usesStartFrame()` /
+`rendersReferenceOnly()` — never read either column raw. See "Per shot, not per
+sequence" below.
 
 ## Why the motion prompt has to change
 
@@ -167,8 +172,12 @@ take `referenceOnly` through `estimateVideoCost`. A reference-only shot routes
 to r2v even having matched no sheets at all, so resolving on `hasReferenceImages`
 alone under-prices exactly the shots with the least to go on.
 
-`video_variants.manifest` records `frameVersionId: null`, which is already the
-documented encoding of "reference-driven shot with no dedicated first frame".
+`video_variants.manifest` records `frameVersionId: null` — the documented
+encoding of "reference-driven shot with no dedicated first frame". Every write
+path uses it (single-shot, batch, smart-retry, update-stale) and every
+comparison expects it, including `isSelectedVersionStale` via
+`SegmentShotInput.rendersReferenceOnly`. A path that recorded the still it did
+not use marked its own clip Stale the instant it finished.
 
 ## Model gating
 
@@ -177,10 +186,9 @@ Only models in `MOTION_REFERENCE_ENDPOINTS` qualify — today Seedance 2.0 and
 prompt and takes its images in `reference_image_urls` rather than `image_urls`
 (`imageField` on the endpoint config; every builder reads it, so a fourth model
 with a fourth field name needs no code).
-`supportsReferenceOnlyMotion` is keyed on the MODEL, not the resolved via:
-the mode is chosen at sequence creation while the via is claimed per team at
-submit time, so a model that is capable on one via and not another could not be
-gated honestly.
+`supportsReferenceOnlyMotion` is keyed on the MODEL, not the resolved via — the
+conservative floor, safe in a pure isomorphic schema. It is NOT the question to
+ask anywhere a team's keys are reachable; see below.
 
 Kling is excluded — its `elements` ride on the image-to-video endpoint, which
 requires `image_url`.
@@ -200,10 +208,16 @@ for Grok whenever an xAI key resolves. `MotionWorkflow`'s entry guard and the
 content-flag rescue both use it, which is what lets Grok rescue a flagged
 reference-only shot rather than committing itself onto the row and then dying.
 
-Making Grok _selectable_ at creation is a separate decision: it needs a
-server-side "is xAI configured" signal reaching both the schema refine and the
-model selector, which `createSequenceSchema` (isomorphic, pure) does not have
-today.
+Grok IS selectable at creation. `getViaAvailabilityFn` resolves the team's
+reachable vias server-side, the `_app` loader seeds it, and the model selectors
+filter on the `referenceOnlyModels` it returns. The isomorphic schema asks the
+widest question (`referenceOnlyCapableWith(model, { xai: true })`) and
+`createSequences` re-asks against real keys.
+
+**Ask `canRenderReferenceOnly` wherever keys are reachable** — creation, the
+workflow, and both regenerate paths in `motion-functions.ts`. Asking the
+model-only question in a server fn rejected regeneration on Grok sequences that
+same code had already created and rendered.
 
 `createSequenceSchema` validates **every** selected video model, not just the
 primary: reference-only renders each of them, and a variant without a reference
@@ -223,12 +237,45 @@ re-stales the motion prompts rather than silently mixing two prompt styles.
 The failure mode of omitting it is silent and permanent: the stamp would fold
 the flag in and the verify would not, so every reference-only motion prompt
 would read stale forever. Making it required turns that into a compile error at
-each call site. It is read off the sequence row rather than passed as a
-separate argument, so a caller that already loads a sequence carries it without
-opting in.
+each call site. Per-shot call sites must pass the RESOLVED value
+(`shotPromptSequence` / `rendersReferenceOnly`), not the raw sequence column —
+`reference-only-is-per-shot.test.ts` fails a path that reads it raw.
 
 The visual-prompt hash ignores it. The visual prompt produces the still; it
 cannot depend on whether one gets rendered.
+
+## Per shot, not per sequence
+
+`sequences.referenceOnly` is the sequence default; `shots.useStartFrame`
+overrides it (NULL = inherit). The resolution lives in one place —
+`usesStartFrame(shot, sequence)` / its inverse `rendersReferenceOnly` — and
+`reference-only-is-per-shot.test.ts` fails any per-shot path that reads
+`sequence.referenceOnly` raw. Nine call sites have to agree; they drifted once
+already.
+
+The switch is **not** render-only. It picks the motion-prompt template and
+folds into the motion-prompt hash, so flipping it re-stales that shot's motion
+prompt — deliberately, because rendering a reference-only shot with an
+image-to-video prompt reinvents the composition the prompt never described.
+
+Both directions are gated at `setShotUseStartFrameFn`, because either can
+persist a shot that cannot render: ON needs an existing still (a checkbox must
+never start image generation and spend money), OFF needs a model with a
+reference-to-video route. Ungated, one unrenderable shot rejected the whole
+sequence's batch motion.
+
+Consequences of the override being per shot:
+
+- **Eligibility** (`isBatchMotionEligible`) takes the resolved value, or a
+  reference-only shot is filtered out for having no still.
+- **Pricing** takes a per-shot predicate. A mixed batch priced on one shot's
+  answer quotes the wrong endpoint for the rest.
+- **The manifest** records `frameVersionId: null` for a reference-only shot
+  even when a still exists, and staleness compares against the same rule.
+- **`UpdateStalePlan`** freezes `usesStartFrame` per target at click time. It
+  is required and never defaulted: a payload from a build that predates it
+  replays without the key, and `!undefined` is `true`, which would silently
+  re-render every clip in the run with no start frame.
 
 ## Trade-offs
 

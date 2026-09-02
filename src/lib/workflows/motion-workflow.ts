@@ -864,9 +864,8 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
           rejections: rejections.length ? rejections : ['unknown rejection'],
           models: triedModels.map((m) => IMAGE_TO_VIDEO_MODELS[m].name),
           softened,
-          // Reference-only has no still and no still-regeneration UI, so the
-          // default "Regenerate the still" is a dead end. What `flags.image`
-          // names here is a bound reference sheet.
+          // This clip carried no still, so `flags.image` names a reference
+          // sheet and "Regenerate the still" would be a dead end.
           ...(input.referenceOnly
             ? {
                 inputs: {
