@@ -952,6 +952,7 @@ export function StudioComposer({ activity }: StudioComposerProps) {
           onValueChange={setPrompt}
           placeholder={placeholder}
           aria-label="Prompt"
+          voiceInputLabel="prompt"
           data-testid="studio-prompt"
           className="min-h-24 flex-1 border-0 bg-transparent px-1 py-1 shadow-none focus-within:ring-0 dark:bg-transparent"
           mentionItems={refsCapable ? mentionItems : undefined}

@@ -68,6 +68,7 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
           scrollRef={ref}
           id="script"
           name="script"
+          voiceInputLabel="script"
           value={editorValue}
           onValueChange={handleChange}
           onKeyDown={handleKeyDown}

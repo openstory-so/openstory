@@ -27,7 +27,9 @@ import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { VoiceInputButton } from '@/components/voice/voice-input-button';
 import type { JsonSchema, JsonValue } from '@/lib/models/catalog';
+import { appendTranscript } from '@/lib/voice/transcript-insert';
 import { Plus, X } from 'lucide-react';
 import type { FC, FormEvent, KeyboardEvent, ReactNode } from 'react';
 import { useId, useState } from 'react';
@@ -235,6 +237,18 @@ const Field: FC<{
             disabled={disabled}
           />
         )}
+        {plan.kind === 'text' && plan.long ? (
+          <VoiceInputButton
+            label={(resolved.title ?? name).toLowerCase()}
+            disabled={disabled}
+            size="icon-xs"
+            onTranscript={(text) =>
+              onChange(
+                appendTranscript(typeof value === 'string' ? value : '', text)
+              )
+            }
+          />
+        ) : null}
       </div>
       {description && (
         <p className="text-xs text-muted-foreground">{description}</p>

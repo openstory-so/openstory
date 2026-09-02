@@ -9,9 +9,11 @@ import {
   type MarkdownNodeSpec,
   type MarkdownStorage,
 } from 'tiptap-markdown';
+import { VoiceInputButton } from '@/components/voice/voice-input-button';
 import { cn } from '@/lib/utils';
+import { spaceTranscript } from '@/lib/voice/transcript-insert';
 import * as React from 'react';
-import { useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import type { MentionOptions } from '@tiptap/extension-mention';
 import type { MentionItem } from '@/components/scenes/prompt-mention/mention-items';
 import { PromptMention } from './mention/mention-extension';
@@ -143,6 +145,14 @@ type MarkdownEditorProps = {
   mentionItems?: MentionItem[];
   /** Map the chosen @ row to the item to insert (see `createMentionSuggestion`). */
   onMentionSelect?: (item: MentionItem) => MentionItem;
+  /**
+   * Show the dictation mic (default on — every MarkdownEditor is a script or
+   * prompt field). Transcripts land at the caret when the user has placed
+   * one, otherwise at the end of the document.
+   */
+  voiceInput?: boolean;
+  /** What the mic dictates into, for its tooltip: "script", "image prompt"… */
+  voiceInputLabel?: string;
 };
 
 const containerBaseClasses =
@@ -177,6 +187,8 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
   'data-testid': dataTestId,
   mentionItems,
   onMentionSelect,
+  voiceInput = true,
+  voiceInputLabel = 'text',
 }) => {
   // useEditor captures props at init. Bag the live onKeyDown in a ref so the
   // handler reads the freshest callback without needing to recreate the editor.
@@ -285,6 +297,12 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
     onFocus: () => onFocusRef.current?.(),
   });
 
+  // Whether the user has put a caret in this editor since its content was
+  // last replaced from outside. ProseMirror's initial selection sits at the
+  // start of the document, so a dictated take must not land there just
+  // because the user has never clicked in — it goes to the end instead.
+  const caretPlacedRef = useRef(false);
+
   // Canonical Tiptap external-value sync (mirrors the Vue v-model example in
   // their docs): only setContent if the editor's current markdown differs
   // from the incoming value. When mentions are on, we tagify the value first
@@ -303,6 +321,9 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
         ? tagifyMarkdown(value, mentionItemsRef.current).content
         : value;
       editor.commands.setContent(content, { emitUpdate: false });
+      // A replaced document (enhance output, a loaded sample) leaves any old
+      // caret position meaningless; dictation appends until the user clicks.
+      if (!editor.isFocused) caretPlacedRef.current = false;
     });
     return () => cancelAnimationFrame(rafId);
   }, [editor, value, hasMentions]);
@@ -323,6 +344,36 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
     // value intentionally omitted — the sibling effect handles value changes.
     // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [editor, mentionItemsKey, hasMentions]);
+
+  useEffect(() => {
+    if (!editor) return;
+    const placed = () => {
+      if (editor.isFocused) caretPlacedRef.current = true;
+    };
+    editor.on('focus', placed);
+    editor.on('selectionUpdate', placed);
+    return () => {
+      editor.off('focus', placed);
+      editor.off('selectionUpdate', placed);
+    };
+  }, [editor]);
+
+  const insertTranscript = useCallback(
+    (text: string) => {
+      if (!editor || !editor.isEditable) return;
+      // `focus()` without a position keeps the current selection.
+      editor.commands.focus(caretPlacedRef.current ? undefined : 'end');
+      const { view } = editor;
+      const { from } = view.state.selection;
+      const preceding =
+        from > 0 ? view.state.doc.textBetween(from - 1, from, '\n') : '';
+      const spaced = spaceTranscript(preceding, text);
+      if (!spaced) return;
+      // Dispatches a transaction, so onUpdate emits the new markdown.
+      insertTextWithNewlines(view, spaced);
+    },
+    [editor]
+  );
 
   // Emptiness must be transaction-reactive, not read off `editor` at render
   // time: the value-sync effects above apply external content (seeded sample
@@ -373,7 +424,10 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
       // clicks (offsetX past clientWidth) must keep their native behaviour.
       onMouseDown={(e) => {
         if (!editor || disabled) return;
-        if (e.target instanceof Element && e.target.closest('.ProseMirror')) {
+        if (
+          e.target instanceof Element &&
+          e.target.closest('.ProseMirror, [data-slot=voice-input]')
+        ) {
           return;
         }
         if (e.nativeEvent.offsetX > e.currentTarget.clientWidth) return;
@@ -382,7 +436,12 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
       }}
     >
       {placeholder && (editorIsEmpty ?? !value) ? (
-        <p className="pointer-events-none absolute inset-x-0 top-0 px-2.5 py-2 text-base text-muted-foreground md:text-sm">
+        <p
+          className={cn(
+            'pointer-events-none absolute inset-x-0 top-0 px-2.5 py-2 text-base text-muted-foreground md:text-sm',
+            voiceInput && 'pr-9'
+          )}
+        >
           {placeholder}
         </p>
       ) : null}
@@ -401,6 +460,20 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
         editor={editor}
         className={cn('relative w-full', !editor && value && 'hidden')}
       />
+      {/* Own flex column at the end of the row, pinned to the bottom of the
+          visible area: sticky against whichever ancestor scrolls (the
+          composer's bounded editor, or the page), so a long script never
+          scrolls the mic away. Clicks here are excluded from the caret
+          forwarder above. */}
+      {voiceInput ? (
+        <div className="sticky bottom-0 flex shrink-0 self-end pl-1">
+          <VoiceInputButton
+            label={voiceInputLabel}
+            disabled={disabled || !editor}
+            onTranscript={insertTranscript}
+          />
+        </div>
+      ) : null}
     </div>
   );
 };

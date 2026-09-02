@@ -180,6 +180,7 @@ const SceneScriptBlock: React.FC<SceneScriptBlockProps> = ({
 
       <MarkdownEditor
         id={`scene-script-block-${block.sceneId}`}
+        voiceInputLabel="scene script"
         value={current}
         onValueChange={setDraft}
         placeholder="Enter the script text for this scene… (type @ to insert elements, cast, locations)"

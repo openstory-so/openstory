@@ -67,6 +67,7 @@ export const SceneScriptTab: React.FC<SceneScriptTabProps> = ({
         <div className="relative">
           <MarkdownEditor
             id="script-extract-input"
+            voiceInputLabel="scene script"
             value={currentScript}
             onValueChange={(value) => onEditedScriptChange(value)}
             placeholder="Enter the script text for this scene… (type @ to insert elements, cast, locations)"

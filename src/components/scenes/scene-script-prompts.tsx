@@ -1755,6 +1755,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
             </div>
             <MarkdownEditor
               id="image-prompt-input"
+              voiceInputLabel="image prompt"
               value={
                 isAwaitingVisualPrompt
                   ? shotPromptStream.visual.text
@@ -2049,6 +2050,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
             </div>
             <MarkdownEditor
               id="motion-prompt-input"
+              voiceInputLabel="motion prompt"
               value={
                 isAwaitingMotionPrompt
                   ? shotPromptStream.motion.text
