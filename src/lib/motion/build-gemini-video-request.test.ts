@@ -134,3 +134,48 @@ describe('buildGeminiVideoRequest', () => {
     ).toBe('10s');
   });
 });
+
+describe('buildGeminiVideoRequest — reference-only', () => {
+  // Omni Flash carries a fal reference-to-video route, so it qualifies for
+  // reference-only on the model alone and a shot can reach the native google
+  // via with no still at all.
+  it('binds refs from slot 0 and pins reference_to_video with no still', () => {
+    const { input } = buildGeminiVideoRequest({
+      prompt: 'SCARLETT crosses the roof',
+      duration: 5,
+      aspectRatio: '16:9',
+      referenceImages: [
+        ref(
+          'https://example.com/scarlett.png',
+          'Scarlett',
+          'character',
+          'SCARLETT'
+        ),
+      ],
+    });
+    // Slot 0 is the reference, not a still: Google numbers from zero, so the
+    // still occupying it would push every tag down one.
+    expect(input.prompt).toContainEqual({
+      type: 'image',
+      source: { type: 'url', value: 'https://example.com/scarlett.png' },
+    });
+    const text = input.prompt.find((p) => p.type === 'text');
+    expect(text?.content).toContain('<IMAGE_REF_0>');
+    // No still to open on, so the starting-frame line must not appear.
+    expect(text?.content).not.toContain('starting frame');
+    expect(input.modelOptions.generation_config.video_config.task).toBe(
+      'reference_to_video'
+    );
+  });
+
+  it('is text_to_video when nothing matched at all', () => {
+    const { input } = buildGeminiVideoRequest({
+      prompt: 'A wide shot of the empty roof',
+      duration: 5,
+    });
+    expect(input.prompt.every((p) => p.type === 'text')).toBe(true);
+    expect(input.modelOptions.generation_config.video_config.task).toBe(
+      'text_to_video'
+    );
+  });
+});

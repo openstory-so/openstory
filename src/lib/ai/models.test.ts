@@ -225,12 +225,16 @@ describe('supportsReferenceOnlyMotion', () => {
     expect(supportsReferenceOnlyMotion('veo3_1')).toBe(false);
   });
 
-  it('includes both Seedance tiers and H3 Max', () => {
+  it('includes both Seedance tiers, H3 Max and Omni Flash', () => {
     expect(supportsReferenceOnlyMotion('seedance_v2')).toBe(true);
     expect(supportsReferenceOnlyMotion('seedance_v2_5')).toBe(true);
     // H3 Max's reference-to-video route requires only `prompt` — no still.
     expect(supportsReferenceOnlyMotion('minimax_h3_max')).toBe(true);
+    // Omni Flash qualifies on its fal reference-to-video route, so it needs no
+    // Google key — unlike Grok, which is reference-only ONLY on the native via.
+    expect(supportsReferenceOnlyMotion('gemini_omni_flash')).toBe(true);
     expect(referenceOnlyMotionModels().sort()).toEqual([
+      'gemini_omni_flash',
       'minimax_h3_max',
       'seedance_v2',
       'seedance_v2_5',

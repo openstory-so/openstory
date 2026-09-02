@@ -416,7 +416,11 @@ export async function submitMotionJob(
       }
       // Start frame and refs are inlined as data URIs so this path needs no
       // fal key. Same payload as the scene editor's Gemini preview.
-      const imageUrl = await toDataOrCdnUrl(options.imageUrl);
+      // Optional: Omni Flash has a reference-to-video route, so a
+      // reference-only shot reaches here with no still and the sheets alone.
+      const imageUrl = options.imageUrl
+        ? await toDataOrCdnUrl(options.imageUrl)
+        : undefined;
       const referenceImages = await inlineNativeReferenceImages(
         options.referenceImages
       );

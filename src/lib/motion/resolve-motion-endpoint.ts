@@ -79,7 +79,10 @@ export function resolveMotionEndpoint(
     return {
       via: 'google',
       endpointId: NATIVE_GEMINI_VIDEO_MODEL,
-      references: hasReferenceImages ? 'inline' : 'none',
+      // Reference-only rides `inline` even with nothing matched, same as the
+      // xAI and Ark cases: there is no start frame to fall back to, so the
+      // builder must not reserve the first slot for a still.
+      references: hasReferenceImages || referenceOnly ? 'inline' : 'none',
     };
   }
   if (via === 'byteplus') {
