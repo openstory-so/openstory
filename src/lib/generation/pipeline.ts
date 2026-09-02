@@ -18,7 +18,6 @@ import { z } from 'zod';
 
 export const GENERATION_STAGES = [
   'script',
-  'casting',
   'references',
   'images',
   'motion',
@@ -43,43 +42,40 @@ export const GENERATION_STAGE_META: Record<
     actionLabel: string;
   }
 > = {
+  // Script covers scene-split AND casting: the cast, locations and elements
+  // are created (without sheets) before this stage completes, so a stop here
+  // shows the whole bible for review before any reference image is billed.
   script: {
     phase: 1,
-    name: 'Analyzing script\u2026',
+    name: 'Analyzing script & casting\u2026',
     shortName: 'Script',
-    description: 'Reading your script and breaking it into scenes',
+    description:
+      'Breaking your script into scenes and casting characters, locations & elements',
     actionLabel: 'Analyze Script',
   },
-  casting: {
-    phase: 2,
-    name: 'Casting characters & locations\u2026',
-    shortName: 'Casting',
-    description: 'Casting characters and matching locations',
-    actionLabel: 'Cast Characters',
-  },
   references: {
-    phase: 3,
+    phase: 2,
     name: 'Generating references & prompts\u2026',
     shortName: 'References',
     description: 'Generating reference sheets and crafting visual prompts',
     actionLabel: 'Generate References',
   },
   images: {
-    phase: 4,
+    phase: 3,
     name: 'Generating images\u2026',
     shortName: 'Images',
     description: 'Generating images and writing motion & music prompts',
     actionLabel: 'Generate Images',
   },
   motion: {
-    phase: 5,
+    phase: 4,
     name: 'Generating motion\u2026',
     shortName: 'Motion',
     description: 'Generating motion video',
     actionLabel: 'Generate Motion',
   },
   music: {
-    phase: 6,
+    phase: 5,
     name: 'Generating music\u2026',
     shortName: 'Music',
     description: 'Generating the sequence music track',
@@ -95,6 +91,15 @@ export function isGenerationStage(value: unknown): value is GenerationStage {
     typeof value === 'string' &&
     (GENERATION_STAGES as readonly string[]).includes(value)
   );
+}
+
+/**
+ * Stored stage → current stage. `casting` was folded into `script` (rows with
+ * that value predate the merge); anything else unknown is null.
+ */
+function coerceStage(value: unknown): GenerationStage | null {
+  if (value === 'casting') return 'script';
+  return isGenerationStage(value) ? value : null;
 }
 
 export function stageIndex(stage: GenerationStage): number {
@@ -160,8 +165,8 @@ export function stopAtFromFlags(flags: {
 /**
  * Resolve how far a run should go. The explicit stop-at (this click, or the
  * value snapshotted onto the sequence) wins. Flags are last-resort for rows
- * that predate `generationStopAt` — they cannot express Script/Casting/
- * References, so they must not override a stored stage.
+ * that predate `generationStopAt` — they cannot express Script/References,
+ * so they must not override a stored stage.
  */
 export function resolveStopAt(opts: {
   stopAt?: GenerationStage | null;
@@ -169,12 +174,14 @@ export function resolveStopAt(opts: {
   autoGenerateMotion?: boolean;
   autoGenerateMusic?: boolean;
 }): GenerationStage {
-  if (isGenerationStage(opts.stopAt)) return opts.stopAt;
-  if (isGenerationStage(opts.generationStopAt)) return opts.generationStopAt;
-  return stopAtFromFlags({
-    autoGenerateMotion: opts.autoGenerateMotion,
-    autoGenerateMusic: opts.autoGenerateMusic,
-  });
+  return (
+    coerceStage(opts.stopAt) ??
+    coerceStage(opts.generationStopAt) ??
+    stopAtFromFlags({
+      autoGenerateMotion: opts.autoGenerateMotion,
+      autoGenerateMusic: opts.autoGenerateMusic,
+    })
+  );
 }
 
 /**
@@ -198,13 +205,8 @@ export function completedStageFromArtifacts(
   if (artifacts.hasMotion) return 'motion';
   if (artifacts.hasImages) return 'images';
   if (artifacts.hasVisualPrompts) return 'references';
-  if (
-    artifacts.pipelineStage === 'casting' ||
-    artifacts.pipelineStage === 'script'
-  ) {
-    return artifacts.pipelineStage;
-  }
-  if (artifacts.hasScenes) return 'script';
+  if (artifacts.hasScenes || coerceStage(artifacts.pipelineStage) === 'script')
+    return 'script';
   return null;
 }
 
@@ -290,6 +292,7 @@ export type GenerationCheckpoint = {
     talentId: string;
     talentName: string;
     sheetImageUrl: string;
+    sheetMetadata?: CharacterBibleEntry;
     talentDescription?: string;
   }>;
   locationMatches?: Array<{
@@ -320,7 +323,7 @@ export type GenerationCheckpoint = {
     id: string;
     token: string;
     description: string | null;
-    imageUrl: string;
+    imageUrl: string | null;
     consistencyTag: string | null;
   }>;
   visualPromptBySceneId?: Record<string, string>;
@@ -329,7 +332,7 @@ export type GenerationCheckpoint = {
 
 /**
  * Progress-banner phases for a run that stops at `stopAt`. Music rides with
- * motion in one workflow child, so a music stop still has five banner
+ * motion in one workflow child, so a music stop still has four banner
  * segments — the last one labelled "Music & Motion".
  */
 export function bannerStagesForStopAt(
@@ -342,7 +345,7 @@ export function bannerStagesForStopAt(
 }
 
 /**
- * Generate-dialog / continue-slider stops. Same five as a full-run banner —
+ * Generate-dialog / continue-slider stops. Same four as a full-run banner —
  * the last thumb is Music & Motion (`stopAt: 'music'`).
  */
 export const SLIDER_STAGES: readonly GenerationStage[] =

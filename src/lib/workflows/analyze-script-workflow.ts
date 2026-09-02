@@ -33,7 +33,6 @@ import { estimateStoryboardRenderCost } from '@/lib/billing/cost-estimation';
 import { creditsShortStatusError } from '@/lib/billing/credits-short';
 import { microsToUsd } from '@/lib/billing/money';
 import { gateStoryboardRenders } from '@/lib/billing/storyboard-render-gate';
-import { generateId } from '@/lib/db/id';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import { buildCastCharacterBible } from '@/lib/prompts/character-prompt';
 import { getGenerationChannel } from '@/lib/realtime';
@@ -70,7 +69,10 @@ import {
   type GenerationCheckpoint,
   type GenerationStage,
 } from '@/lib/generation/pipeline';
-import { findMissingElementEntries } from '@/lib/workflows/element-sheet-workflow';
+import {
+  createCastRecords,
+  findMissingElementEntries,
+} from '@/lib/workflows/cast-records';
 import { buildStoryboardMotionBatchShots } from '@/lib/workflows/storyboard-motion-batch-shots';
 import {
   computeShotImagesHashFromDto,
@@ -332,6 +334,9 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
     const { scenes, shotMapping, characterBible, locationBible, elementBible } =
       sceneSplitResult;
 
+    // Checkpoint the split before anything else can fail — the scenes and
+    // shots are in D1 either way, and this is what makes them resumable
+    // (#1408). Re-written with the casting matches once they land.
     if (shouldRunStage(startFrom, stopAt, 'script')) {
       await persistProgress({
         completedStage: 'script',
@@ -347,23 +352,20 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
     // fails a run the user can still continue.
     const styleConfig = (await stylePromise) ?? inputStyleConfig;
 
-    if (shouldRunStage(startFrom, stopAt, 'script') && stopAt === 'script') {
-      await recordDuration('script');
-      return scenes;
-    }
-
     // ----------------------------------------------------------------------
-    // PHASE 2: talent + location matching in parallel
+    // PHASE 1b: talent + location matching in parallel, then the cast rows.
+    // Still the Script stage — same banner segment, new caption.
     // ----------------------------------------------------------------------
-    if (shouldRunStage(startFrom, stopAt, 'casting')) {
-      await step.do('phase-2-start', async () => {
+    const runScript = shouldRunStage(startFrom, stopAt, 'script');
+    if (runScript) {
+      await step.do('phase-1-casting', async () => {
         await getGenerationChannel(sequenceId).emit('generation.phase:start', {
-          phase: 2,
+          phase: GENERATION_STAGE_META.script.phase,
           phaseName: 'Casting characters & locations…',
         });
       });
     }
-    const matchingSettled = shouldRunStage(startFrom, stopAt, 'casting')
+    const matchingSettled = runScript
       ? await Promise.allSettled([
           spawnAndAwaitChild<
             TalentMatchingWorkflowInput,
@@ -447,9 +449,34 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
       talentCharacterMatches
     );
 
-    if (shouldRunStage(startFrom, stopAt, 'casting')) {
+    // Cast, locations and script-detected elements land NOW, sheet-less, so a
+    // run stopped at Script shows the whole bible for review before any
+    // reference image is billed. The References stage re-upserts the same
+    // rows (stable ids) and fills the sheets in.
+    const createdElements = runScript
+      ? (
+          await step.do('create-cast-records', async () => {
+            if (!sequenceId) return { elements: [] };
+            return createCastRecords(scopedDb, {
+              sequenceId,
+              characterBible,
+              talentMatches: talentCharacterMatches,
+              locationBible,
+              locationMatches: libraryLocationMatches,
+              elementBible,
+              existingElements: elementsMinimal,
+            });
+          })
+        ).elements
+      : [];
+    // Every element row this run knows about: trigger-time uploads (which, on
+    // a continue, already include the Script-stage placeholders) plus the
+    // placeholders created above.
+    const knownElements = [...elementsMinimal, ...createdElements];
+
+    if (runScript) {
       await persistProgress({
-        completedStage: 'casting',
+        completedStage: 'script',
         scenes,
         shotMapping,
         characterBible,
@@ -458,8 +485,8 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
         talentMatches: talentCharacterMatches,
         locationMatches: libraryLocationMatches,
       });
-      if (stopAt === 'casting') {
-        await recordDuration('casting');
+      if (stopAt === 'script') {
+        await recordDuration('script');
         return scenes;
       }
     }
@@ -471,27 +498,25 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
     if (runReferences) {
       await step.do('phase-3-start', async () => {
         await getGenerationChannel(sequenceId).emit('generation.phase:start', {
-          phase: 3,
+          phase: GENERATION_STAGE_META.references.phase,
           phaseName: 'Generating references & prompts…',
         });
       });
     }
 
     // #835: element-bible entries the scene-split LLM detected (recurring
-    // products/objects) that have no uploaded element row need an
-    // auto-generated reference image, mirroring the character-sheet
-    // treatment. Runs in parallel with the other phase-3 children — visual
-    // prompts only consume the bible text, and the generated references are
-    // concatenated with `elementsMinimal` into `allElements` before phase 4
+    // products/objects) that have no reference image yet — the Script stage
+    // created their rows image-less — get an auto-generated one, mirroring
+    // the character-sheet treatment. Runs in parallel with the other phase-3
+    // children — visual prompts only consume the bible text, and the
+    // generated references are merged into `allElements` before phase 4
     // attaches them to shots.
     //
-    // Each entry carries a pre-allocated `sequence_elements.id`: the child's
-    // idempotency guards key on it rather than on the (renameable) token, so a
-    // replay after the element was renamed can't bill a second reference image.
+    // Each entry carries its `sequence_elements.id`: the child's idempotency
+    // guards key on it rather than on the (renameable) token, so a replay
+    // after the element was renamed can't bill a second reference image.
     const missingElementEntries: ElementSheetEntry[] = sequenceId
-      ? findMissingElementEntries(elementBible, elementsMinimal).map(
-          (entry) => ({ ...entry, elementId: generateId() })
-        )
+      ? findMissingElementEntries(elementBible, knownElements)
       : [];
     const runElementSheets = async (): Promise<SequenceElementMinimal[]> => {
       if (!sequenceId || missingElementEntries.length === 0) {
@@ -660,9 +685,14 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
       elementSheetSettled?.status === 'fulfilled'
         ? elementSheetSettled.value
         : [];
+    // Generated rows first so a filled-in placeholder wins over its
+    // image-less twin in `knownElements`.
     const allElements = runReferences
-      ? [...elementsMinimal, ...generatedElements]
-      : [...elementsMinimal, ...hydrateElements(checkpoint?.allElements)];
+      ? dedupeById([...generatedElements, ...knownElements])
+      : dedupeById([
+          ...hydrateElements(checkpoint?.allElements),
+          ...elementsMinimal,
+        ]);
 
     if (shouldRunStage(startFrom, stopAt, 'references')) {
       await persistProgress({
@@ -755,7 +785,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
     // ----------------------------------------------------------------------
     await step.do('phase-4-start', async () => {
       await getGenerationChannel(sequenceId).emit('generation.phase:start', {
-        phase: 4,
+        phase: GENERATION_STAGE_META.images.phase,
         phaseName: 'Generating images…',
       });
     });
@@ -958,7 +988,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
 
       await step.do('phase-5-start', async () => {
         await getGenerationChannel(sequenceId).emit('generation.phase:start', {
-          phase: 5,
+          phase: GENERATION_STAGE_META.motion.phase,
           phaseName: shouldGenerateMusic
             ? 'Generating motion & music…'
             : 'Generating motion…',
@@ -1044,6 +1074,15 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
   }
 }
 
+function dedupeById<T extends { id: string }>(rows: T[]): T[] {
+  const seen = new Set<string>();
+  return rows.filter((row) => {
+    if (seen.has(row.id)) return false;
+    seen.add(row.id);
+    return true;
+  });
+}
+
 function hydrateCharacters(
   rows: GenerationCheckpoint['charactersWithSheets']
 ): CharacterMinimal[] {
@@ -1095,5 +1134,5 @@ function hydrateElements(
       imageUrl: row.imageUrl,
       consistencyTag: row.consistencyTag,
     }))
-    .filter((row) => row.imageUrl.length > 0);
+    .filter((row) => Boolean(row.imageUrl));
 }

@@ -185,8 +185,8 @@ describe('AnalyzeScriptWorkflow script checkpoint', () => {
     // no recipe. Gating derivation on the script stage would silently render
     // every image against the placeholder (#1408).
     const event = makeEvent({
-      startFrom: 'casting',
-      stopAt: 'casting',
+      startFrom: 'references',
+      stopAt: 'references',
       checkpoint: { completedStage: 'script', ...SPLIT },
     });
 

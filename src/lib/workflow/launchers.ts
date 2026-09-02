@@ -52,6 +52,7 @@ import type { ScopedDb } from '@/lib/db/scoped';
 import { type Sequence } from '@/lib/db/schema';
 import { resolveSequenceStyleConfig } from '@/lib/style/style-config';
 import { sequenceScenesUrl } from '@/lib/emails/notify-sequence-ready';
+import { refreshCheckpointFromCast } from '@/lib/workflow/refresh-checkpoint';
 import { resolveStopAt } from '@/lib/generation/pipeline';
 import { triggerWorkflow } from '@/lib/workflow/client';
 import { buildWorkflowLabel } from '@/lib/workflow/labels';
@@ -174,6 +175,11 @@ async function resolveStoryboardPayload(
   return {
     ...input,
     sequenceId,
+    // A continue re-reads the cast the user may have edited since the run
+    // stopped — the checkpoint's LLM bible would revert those edits.
+    checkpoint: input.checkpoint
+      ? await refreshCheckpointFromCast(scopedDb, sequenceId, input.checkpoint)
+      : undefined,
     suggestedTalent: suggestedTalentRows.map((t) => ({
       talentId: t.id,
       name: t.name,

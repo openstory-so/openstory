@@ -262,7 +262,7 @@ describe('triggerStoryboard', () => {
     triggerWorkflowMock.mockResolvedValue('run-1');
     const { scopedDb } = makeScopedDb({
       workflowRunId: null,
-      generationStopAt: 'casting',
+      generationStopAt: 'references',
       autoGenerateMotion: false,
       autoGenerateMusic: false,
     });
@@ -270,7 +270,7 @@ describe('triggerStoryboard', () => {
     await triggerStoryboard(scopedDb, INPUT);
 
     expect(triggerWorkflowMock.mock.calls[0]?.[1]).toEqual(
-      expect.objectContaining({ stopAt: 'casting' })
+      expect.objectContaining({ stopAt: 'references' })
     );
   });
 

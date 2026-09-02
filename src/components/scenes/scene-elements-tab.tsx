@@ -267,13 +267,22 @@ export const SceneElementsTab: React.FC<SceneElementsTabProps> = ({
             className="group relative block overflow-hidden rounded-lg bg-card"
           >
             <div className="relative aspect-square overflow-hidden bg-muted">
-              <AppImage
-                src={el.imageUrl}
-                alt={el.token}
-                width={160}
-                height={160}
-                className="h-full w-full object-contain transition-transform duration-500 group-hover:scale-105"
-              />
+              {el.imageUrl ? (
+                <AppImage
+                  src={el.imageUrl}
+                  alt={el.token}
+                  width={160}
+                  height={160}
+                  className="h-full w-full object-contain transition-transform duration-500 group-hover:scale-105"
+                />
+              ) : (
+                <div className="flex h-full w-full flex-col items-center justify-center gap-2">
+                  <ImagePlus className="size-8 text-muted-foreground/30" />
+                  <p className="text-xs text-muted-foreground">
+                    No reference yet
+                  </p>
+                </div>
+              )}
               <div className="absolute inset-x-0 bottom-0 bg-linear-to-t from-black/80 via-black/20 to-transparent p-3">
                 <span className="font-mono text-xs font-semibold tracking-wider text-white">
                   {el.token}

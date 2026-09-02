@@ -42,9 +42,11 @@ export const sequenceElements = snakeCase.table(
     description: text(),
     // Short slug tag used in prompts for consistency (e.g. "red-hex-logo").
     consistencyTag: text(),
-    // Storage
-    imageUrl: text().notNull(),
-    imagePath: text().notNull(), // R2 key
+    // Storage. Null for an element the script analysis detected but whose
+    // reference image has not been generated yet (the References stage fills
+    // it in). Reference binding skips image-less elements.
+    imageUrl: text(),
+    imagePath: text(), // R2 key
     // Vision analysis status
     visionStatus: text()
       .$type<ElementVisionStatus>()

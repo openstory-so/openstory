@@ -196,6 +196,13 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
       why: "/element-vision writes description + visionStatus late, so the row must be live — but only for the trigger's elementIds, never a re-enumeration.",
     },
   ],
+  'cast-records.ts': [
+    {
+      read: 'sequenceElements.getByToken',
+      bucket: 'EXISTENCE-GUARD',
+      why: 'Idempotency: a retried create-cast-records step must not violate the (sequenceId, token) unique index for the Script-stage placeholder rows.',
+    },
+  ],
   'asset-generation-workflow.ts': [
     {
       read: 'resolveKey',

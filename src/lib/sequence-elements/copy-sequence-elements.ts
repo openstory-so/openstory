@@ -31,16 +31,22 @@ export async function copySequenceElements(params: {
 
   for (const source of sourceElements) {
     const newId = generateId();
-    const ext = getExtensionFromUrl(source.imagePath);
-    const targetRelative = `${teamId}/${targetSequenceId}/${newId}.${ext}`;
-    const targetPath = `elements/${targetRelative}`;
+    // A script-detected element with no reference yet copies as-is; the
+    // target sequence's References stage generates it.
+    let publicUrl: string | null = null;
+    let targetPath: string | null = null;
+    if (source.imagePath) {
+      const ext = getExtensionFromUrl(source.imagePath);
+      const targetRelative = `${teamId}/${targetSequenceId}/${newId}.${ext}`;
+      targetPath = `elements/${targetRelative}`;
 
-    const sourceRelative = source.imagePath.startsWith('elements/')
-      ? source.imagePath.slice('elements/'.length)
-      : source.imagePath;
-    await copyFile(STORAGE_BUCKETS.ELEMENTS, sourceRelative, targetRelative);
+      const sourceRelative = source.imagePath.startsWith('elements/')
+        ? source.imagePath.slice('elements/'.length)
+        : source.imagePath;
+      await copyFile(STORAGE_BUCKETS.ELEMENTS, sourceRelative, targetRelative);
 
-    const publicUrl = getPublicUrl(STORAGE_BUCKETS.ELEMENTS, targetRelative);
+      publicUrl = getPublicUrl(STORAGE_BUCKETS.ELEMENTS, targetRelative);
+    }
 
     const carryVision = source.visionStatus === 'completed';
 
@@ -57,13 +63,13 @@ export async function copySequenceElements(params: {
       visionGeneratedAt: carryVision ? source.visionGeneratedAt : null,
     });
 
-    if (!carryVision) {
+    if (!carryVision && publicUrl) {
       const input: ElementVisionWorkflowInput = {
         userId,
         teamId,
         sequenceId: targetSequenceId,
         elementId: element.id,
-        imageUrl: element.imageUrl,
+        imageUrl: publicUrl,
         filename: element.uploadedFilename,
         token: element.token,
       };

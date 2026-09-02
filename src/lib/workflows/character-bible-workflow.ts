@@ -17,9 +17,9 @@
  *     `context.workflowRunId`. */
 
 import { DEFAULT_IMAGE_MODEL } from '@/lib/ai/models';
-import { generateId } from '@/lib/db/id';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
-import type { CharacterMinimal, NewCharacter } from '@/lib/db/schema';
+import type { CharacterMinimal } from '@/lib/db/schema';
+import { buildCharacterInsert } from '@/lib/workflows/cast-records';
 import { buildCastingAttributes } from '@/lib/prompts/character-prompt';
 import { shouldReuseTalentSheet } from '@/lib/talent/reuse-talent-sheet';
 import { spawnAndAwaitChild } from '@/lib/workflow/await-child';
@@ -62,37 +62,19 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
           return [];
         }
 
+        // Upsert on (sequenceId, characterId): the Script stage already
+        // created these rows sheet-less, so this keeps their ids and flips
+        // them to `generating`.
         const results: Array<{ id: string; characterId: string }> = [];
         for (const character of input.characterBible) {
-          const talentMatch = matchMap.get(character.characterId);
-          const castingAttrs = talentMatch
-            ? buildCastingAttributes(character, {
-                sheetMetadata: talentMatch.sheetMetadata,
-                talentName: talentMatch.talentName,
-              })
-            : null;
-
-          const created = await scopedDb.characters.create({
-            id: generateId(),
-            sequenceId: input.sequenceId,
-            characterId: character.characterId,
-            name: character.name,
-            age: castingAttrs?.age ?? character.age,
-            gender: castingAttrs?.gender ?? character.gender,
-            ethnicity: castingAttrs?.ethnicity ?? character.ethnicity,
-            physicalDescription:
-              castingAttrs?.physicalDescription ??
-              character.physicalDescription,
-            standardClothing: character.standardClothing,
-            distinguishingFeatures: character.distinguishingFeatures,
-            consistencyTag:
-              castingAttrs?.consistencyTag ?? character.consistencyTag,
-            firstMentionSceneId: null,
-            firstMentionText: null,
-            firstMentionLine: null,
-            sheetStatus: 'generating' as const,
-            talentId: talentMatch?.talentId ?? null,
-          } satisfies NewCharacter);
+          const created = await scopedDb.characters.create(
+            buildCharacterInsert({
+              sequenceId: input.sequenceId,
+              character,
+              talentMatch: matchMap.get(character.characterId),
+              sheetStatus: 'generating',
+            })
+          );
           results.push({ id: created.id, characterId: created.characterId });
         }
         return results;

@@ -37,15 +37,7 @@ import type { SceneSelection } from '@/lib/scenes/scene-selection';
 import type { SequenceSegment } from '@/lib/scenes/scene-segments';
 import type { ShotView } from '@/lib/shots/shot-view';
 import { cn } from '@/lib/utils';
-import {
-  FileText,
-  Images,
-  Loader2,
-  Music,
-  Plus,
-  Users,
-  Video,
-} from 'lucide-react';
+import { FileText, Images, Loader2, Music, Plus, Video } from 'lucide-react';
 import {
   memo,
   useCallback,
@@ -61,7 +53,6 @@ import { SceneListItem } from './scene-list-item';
 
 const CONTINUE_ICON = {
   script: FileText,
-  casting: Users,
   references: Images,
   images: Images,
   motion: Video,

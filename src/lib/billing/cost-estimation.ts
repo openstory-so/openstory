@@ -396,9 +396,8 @@ export function estimateStoryboardCost(opts: StoryboardCostOpts): Microdollars {
   const characterSheets = estimateCharacterSheetCount(sceneCount);
   const locationSheets = estimateLocationSheetCount(sceneCount);
 
-  const llmCalls =
-    (estimateRunsStage(opts, 'script') ? 1 : 0) +
-    (estimateRunsStage(opts, 'casting') ? 2 : 0);
+  // Script = scene-split + talent matching + location matching.
+  const llmCalls = estimateRunsStage(opts, 'script') ? 3 : 0;
   const llmCost = estimateLLMCost(llmCalls);
 
   let total = llmCost;

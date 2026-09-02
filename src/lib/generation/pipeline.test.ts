@@ -20,6 +20,7 @@ import {
   stageIndex,
   stagesUpTo,
   stopAtFromFlags,
+  type GenerationStage,
   type PipelineArtifacts,
 } from './pipeline';
 
@@ -32,17 +33,16 @@ const empty: PipelineArtifacts = {
 };
 
 describe('generation pipeline stages', () => {
-  it('orders script → casting → references → images → motion → music', () => {
+  it('orders script → references → images → motion → music', () => {
     expect([...GENERATION_STAGES]).toEqual([
       'script',
-      'casting',
       'references',
       'images',
       'motion',
       'music',
     ]);
     expect(stageIndex('script')).toBe(0);
-    expect(stageIndex('music')).toBe(5);
+    expect(stageIndex('music')).toBe(4);
   });
 
   it('defaults stop-at to music (stills + motion + music aha)', () => {
@@ -76,13 +76,15 @@ describe('generation pipeline stages', () => {
         autoGenerateMusic: false,
       })
     ).toBe('references');
+    // Rows written before casting folded into script.
     expect(
       resolveStopAt({
-        generationStopAt: 'casting',
+        // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- legacy stored value
+        generationStopAt: 'casting' as GenerationStage,
         autoGenerateMotion: false,
         autoGenerateMusic: false,
       })
-    ).toBe('casting');
+    ).toBe('script');
     expect(
       resolveStopAt({
         autoGenerateMotion: false,
@@ -110,14 +112,14 @@ describe('generation pipeline stages', () => {
     expect(includesStage('references', 'script')).toBe(true);
     expect(includesStage('references', 'references')).toBe(true);
     expect(includesStage('references', 'images')).toBe(false);
-    expect(stagesUpTo('casting').map((s) => s)).toEqual(['script', 'casting']);
+    expect(stagesUpTo('references')).toEqual(['script', 'references']);
   });
 
   it('runs only the slice from startFrom through stopAt', () => {
-    expect(shouldRunStage('casting', 'images', 'script')).toBe(false);
-    expect(shouldRunStage('casting', 'images', 'casting')).toBe(true);
-    expect(shouldRunStage('casting', 'images', 'images')).toBe(true);
-    expect(shouldRunStage('casting', 'images', 'motion')).toBe(false);
+    expect(shouldRunStage('references', 'images', 'script')).toBe(false);
+    expect(shouldRunStage('references', 'images', 'references')).toBe(true);
+    expect(shouldRunStage('references', 'images', 'images')).toBe(true);
+    expect(shouldRunStage('references', 'images', 'motion')).toBe(false);
   });
 
   it('validates stage strings', () => {
@@ -133,8 +135,7 @@ describe('nextStageAfter', () => {
   });
 
   it('walks the DAG in order and ends at music', () => {
-    expect(nextStageAfter('script')).toBe('casting');
-    expect(nextStageAfter('casting')).toBe('references');
+    expect(nextStageAfter('script')).toBe('references');
     expect(nextStageAfter('references')).toBe('images');
     expect(nextStageAfter('images')).toBe('motion');
     expect(nextStageAfter('motion')).toBe('music');
@@ -148,19 +149,19 @@ describe('completedStageFromArtifacts / nextActionFromArtifacts', () => {
     expect(nextActionFromArtifacts(empty)).toBe(null);
   });
 
-  it('treats scenes without prompts as script-complete (next: casting)', () => {
+  it('treats scenes without prompts as script-complete (next: references)', () => {
     const artifacts = { ...empty, hasScenes: true };
     expect(completedStageFromArtifacts(artifacts)).toBe('script');
-    expect(nextActionFromArtifacts(artifacts)).toBe('casting');
+    expect(nextActionFromArtifacts(artifacts)).toBe('references');
   });
 
-  it('uses pipelineStage to distinguish script vs casting', () => {
+  it('reads a legacy casting pipelineStage as script', () => {
     const afterCasting = {
       ...empty,
-      hasScenes: true,
-      pipelineStage: 'casting' as const,
+      // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- legacy stored value
+      pipelineStage: 'casting' as GenerationStage,
     };
-    expect(completedStageFromArtifacts(afterCasting)).toBe('casting');
+    expect(completedStageFromArtifacts(afterCasting)).toBe('script');
     expect(nextActionFromArtifacts(afterCasting)).toBe('references');
   });
 
@@ -194,7 +195,6 @@ describe('completedStageFromArtifacts / nextActionFromArtifacts', () => {
 
   it('labels the continue button with the next stage verb', () => {
     expect(actionLabelForStage('script')).toBe('Analyze Script');
-    expect(actionLabelForStage('casting')).toBe('Cast Characters');
     expect(actionLabelForStage('images')).toBe('Generate Images');
     expect(actionLabelForStage('motion')).toBe('Generate Motion');
     // The `music` stop runs motion too, so the verb must say both.
@@ -220,20 +220,17 @@ describe('completedStageFromArtifacts / nextActionFromArtifacts', () => {
   it('folds music into the motion banner segment (they run as one child)', () => {
     expect(bannerStagesForStopAt('images')).toEqual([
       'script',
-      'casting',
       'references',
       'images',
     ]);
     expect(bannerStagesForStopAt('motion')).toEqual([
       'script',
-      'casting',
       'references',
       'images',
       'motion',
     ]);
     expect(bannerStagesForStopAt('music')).toEqual([
       'script',
-      'casting',
       'references',
       'images',
       'motion',
@@ -243,14 +240,13 @@ describe('completedStageFromArtifacts / nextActionFromArtifacts', () => {
   it('slider folds music into the last stop (Music & Motion)', () => {
     expect([...SLIDER_STAGES]).toEqual([
       'script',
-      'casting',
       'references',
       'images',
       'motion',
     ]);
-    expect(stopAtFromSliderIndex(4)).toBe('music');
-    expect(sliderThumbIndex('music')).toBe(4);
-    expect(sliderThumbIndex('motion')).toBe(4);
+    expect(stopAtFromSliderIndex(3)).toBe('music');
+    expect(sliderThumbIndex('music')).toBe(3);
+    expect(sliderThumbIndex('motion')).toBe(3);
     expect(sliderStopLabel('music')).toBe('Music & Motion');
     expect(sliderStopLabel('images')).toBe('Images');
   });

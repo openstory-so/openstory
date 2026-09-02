@@ -60,8 +60,11 @@ function phaseBudgets(models?: TimeEstimateModels): readonly PhaseBudget[] {
   const stillsThenMotionPrompts = image.p90 + MOTION_PROMPT_P90_SECONDS;
 
   return [
-    analysis,
-    casting,
+    // Script = scene-split then casting, sequential in one phase.
+    {
+      base: analysis.base + casting.base,
+      perScene: analysis.perScene + casting.perScene,
+    },
     { base: sheets, perScene: 0 },
     { base: stillsThenMotionPrompts, perScene: 0 },
   ];
@@ -160,8 +163,8 @@ export function estimateSceneCount(
   return fromWords;
 }
 
-const MOTION_PHASE_INDEX = 4;
-const PIPELINE_PHASE_COUNT = 5;
+const MOTION_PHASE_INDEX = 3;
+const PIPELINE_PHASE_COUNT = 4;
 
 function motionMusicSeconds(
   sceneCount: number,

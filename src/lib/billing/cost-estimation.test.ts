@@ -108,15 +108,15 @@ describe('estimateStoryboardCost', () => {
 
   it('stopAt script is analysis-only', () => {
     expect(estimateStoryboardCost({ ...base, stopAt: 'script' })).toEqual(
-      estimateLLMCost(1)
+      estimateLLMCost(3)
     );
   });
 
-  it('stopAt casting is LLM-only even with no fal pricing', () => {
+  it('stopAt script is LLM-only even with no fal pricing', () => {
     expect(
       estimateStoryboardCost({
         ...base,
-        stopAt: 'casting',
+        stopAt: 'script',
         pricing: {},
       })
     ).toEqual(estimateLLMCost(3));

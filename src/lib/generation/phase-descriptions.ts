@@ -3,9 +3,8 @@
  */
 
 export const PHASE_DESCRIPTIONS: Record<number, string> = {
-  1: 'Reading your script and breaking it into scenes',
-  2: 'Casting characters and matching locations',
-  3: 'Generating reference sheets and crafting visual prompts',
-  4: 'Generating images and writing motion & music prompts',
-  5: 'Generating motion video and music',
+  1: 'Breaking your script into scenes and casting characters, locations & elements',
+  2: 'Generating reference sheets and crafting visual prompts',
+  3: 'Generating images and writing motion & music prompts',
+  4: 'Generating motion video and music',
 };

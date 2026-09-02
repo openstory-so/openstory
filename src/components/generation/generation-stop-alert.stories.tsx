@@ -6,7 +6,6 @@ import { GenerationStopAlert } from './generation-stop-alert';
 
 const COST_BY_STAGE: Record<GenerationStage, ReturnType<typeof micros>> = {
   script: micros(8_000),
-  casting: micros(24_000),
   references: micros(420_000),
   images: micros(1_200_000),
   motion: micros(2_100_000),
