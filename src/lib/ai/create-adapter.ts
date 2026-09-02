@@ -104,11 +104,22 @@ let loggedRetryMode = false;
  * `createModel('vendor/model-id', { input: [...], features: [...] })`.
  *
  */
-export const CATALOG_LAG_MODELS = [] as const;
+export const CATALOG_LAG_MODELS = [
+  // 0.19.5's catalog stops at google/gemini-3.7-flash; 3.8 Flash ships later.
+  createModel('google/gemini-3.8-flash', {
+    input: ['text', 'image', 'video', 'document', 'audio'],
+    features: ['reasoning', 'structured_outputs'],
+  }),
+] as const;
 
-// Empty after @tanstack/ai-openrouter@0.19.5 shipped z-ai/glm-5.3-flash.
-// Restore `extendAdapter` around the OpenRouter factories when the next lag
-// id lands.
+const openRouterTextExtended = extendAdapter(
+  openRouterText,
+  CATALOG_LAG_MODELS
+);
+const createOpenRouterTextExtended = extendAdapter(
+  createOpenRouterText,
+  CATALOG_LAG_MODELS
+);
 
 /** {@link CATALOG_LAG_MODELS} for the Grok adapter. Native `grok-4.6` is
  *  in the 0.16 catalog; `grok-4.20-0309-reasoning` is still lag-bridged.
@@ -123,6 +134,21 @@ const GROK_CATALOG_LAG_MODELS = [
 const createGrokTextExtended = extendAdapter(
   createGrokText,
   GROK_CATALOG_LAG_MODELS
+);
+
+/** {@link CATALOG_LAG_MODELS} for the native Gemini adapter. `ai-gemini`'s
+ *  catalog stops at `gemini-3.7-flash`; the 3.8 Flash native name is
+ *  lag-bridged until the package ships it. Same prune contract. */
+const GEMINI_CATALOG_LAG_MODELS = [
+  createModel('gemini-3.8-flash', {
+    input: ['text', 'image', 'video', 'audio', 'document'],
+    features: ['reasoning', 'structured_outputs'],
+  }),
+] as const;
+
+const createGeminiChatExtended = extendAdapter(
+  createGeminiChat,
+  GEMINI_CATALOG_LAG_MODELS
 );
 
 /**
@@ -177,7 +203,7 @@ export function createAdapter(model: TextModel, keyInfo?: LlmKeyInfo) {
 
   const nativeGeminiModel = resolveNativeGeminiModel(model, resolved);
   if (nativeGeminiModel && key) {
-    return createGeminiChat(nativeGeminiModel, key, {
+    return createGeminiChatExtended(nativeGeminiModel, key, {
       // GEMINI_BASE_URL is the aimock hook for the native Google path,
       // mirroring XAI_BASE_URL above.
       ...(env.GEMINI_BASE_URL && {
@@ -233,6 +259,6 @@ export function createAdapter(model: TextModel, keyInfo?: LlmKeyInfo) {
   };
 
   return key
-    ? createOpenRouterText(model, key, config)
-    : openRouterText(model, config);
+    ? createOpenRouterTextExtended(model, key, config)
+    : openRouterTextExtended(model, config);
 }

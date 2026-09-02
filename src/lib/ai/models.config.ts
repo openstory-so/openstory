@@ -44,11 +44,11 @@ export const SCRIPT_ANALYSIS_MODELS = [
     description: 'Opus 5 low-latency; used for scene-split',
   },
   {
-    id: 'google/gemini-3.7-flash',
-    name: 'Gemini 3.7 Flash',
+    id: 'google/gemini-3.8-flash',
+    name: 'Gemini 3.8 Flash',
     vendor: 'Google',
     license: 'proprietary' as const,
-    // Arena 1490 (gemini-3.7-flash-high).
+    // Successor to Gemini 3.7 Flash; re-rank when arena data lands.
     qualityRank: 4,
     contextWindow: 1_048_576,
     maxOutputTokens: 65_536,

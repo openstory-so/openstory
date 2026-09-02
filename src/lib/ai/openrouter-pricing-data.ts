@@ -29,10 +29,10 @@ export const OPENROUTER_PRICING: Record<string, OpenRouterPricing> = {
     completionPerMillionTokens: 50,
     webSearchPerQuery: 0.01,
   },
-  'google/gemini-3.7-flash': {
-    name: 'Google: Gemini 3.7 Flash',
-    promptPerMillionTokens: 0.375,
-    completionPerMillionTokens: 1.875,
+  'google/gemini-3.8-flash': {
+    name: 'Google: Gemini 3.8 Flash',
+    promptPerMillionTokens: 0.75,
+    completionPerMillionTokens: 3.75,
     webSearchPerQuery: 0.014,
   },
   'google/gemini-3.1-pro-preview': {

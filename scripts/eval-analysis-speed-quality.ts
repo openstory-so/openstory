@@ -86,7 +86,7 @@ type CallId = (typeof CALLS)[number];
 
 const SPEED_SWEEP_MODELS = [
   'anthropic/claude-opus-5-fast',
-  'google/gemini-3.7-flash',
+  'google/gemini-3.8-flash',
   'openai/gpt-5.6-luna',
   'z-ai/glm-5.3-flash',
   'bytedance-seed/seed-2.0-mini',
@@ -151,7 +151,7 @@ const CANDIDATES: Array<{
   },
 ];
 
-const JUDGE_MODEL = 'google/gemini-3.7-flash';
+const JUDGE_MODEL = 'google/gemini-3.8-flash';
 
 /** Production auto-style schema wraps `.catch()` / `preprocess`, which Anthropic
  *  rejects as an invalid enum in strict structured output. The inner object is
@@ -763,7 +763,7 @@ async function main() {
   if (quick && !modelFilter) {
     models = catalog.filter((m) =>
       [
-        'google/gemini-3.7-flash',
+        'google/gemini-3.8-flash',
         'z-ai/glm-5.3-flash',
         'anthropic/claude-opus-5-fast',
       ].includes(m.id)

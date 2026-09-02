@@ -14,7 +14,7 @@ import { typedEntries } from '@/lib/utils/typed-object';
 import type { TokenUsage } from '@tanstack/ai';
 
 const NATIVE_TEXT_MODELS = {
-  'google/gemini-3.7-flash': 'gemini-3.7-flash',
+  'google/gemini-3.8-flash': 'gemini-3.8-flash',
   'google/gemini-3.1-pro-preview': 'gemini-3.1-pro-preview',
   'google/gemini-3-flash-preview': 'gemini-3-flash-preview',
 } as const satisfies Partial<Record<AnalysisModelId, string>>;
@@ -119,7 +119,9 @@ const TEXT_RATES: Record<
   },
   // Introductory rate; Google lists $1.50/$7.50 from 2027-01-01. The
   // model-freshness routine (or whoever lands past the expiry) bumps this.
-  'gemini-3.7-flash': {
+  // Carried forward from 3.7 Flash — OpenRouter reports identical
+  // $0.75/$3.75 for 3.8 Flash; re-verify against ai.google.dev on merge.
+  'gemini-3.8-flash': {
     input: 0.75,
     output: 3.75,
     inputHigh: 0.75,

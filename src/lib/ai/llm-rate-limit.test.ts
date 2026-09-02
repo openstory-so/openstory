@@ -26,7 +26,7 @@ describe('isLlmRateLimitError', () => {
   });
 
   it.each([
-    'google/gemini-3.7-flash is temporarily rate-limited',
+    'google/gemini-3.8-flash is temporarily rate-limited',
     'Too Many Requests',
     'RESOURCE_EXHAUSTED',
   ])('classifies rate-limit text: %s', (message) => {
