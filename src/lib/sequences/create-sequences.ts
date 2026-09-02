@@ -42,6 +42,7 @@ import {
 import { parseStyleConfig } from '@/lib/style/style-config';
 import type { Sequence } from '@/types/database';
 import type { CreateSequenceInput } from '@/lib/schemas/sequence.schemas';
+import { UNTITLED_SEQUENCE_TITLE } from '@/lib/sequences/untitled-sequence-title';
 import { copySequenceElements } from '@/lib/sequence-elements/copy-sequence-elements';
 import { promoteTempElements } from '@/lib/sequence-elements/promote-temp-elements';
 import { captureProductEvent } from '@/lib/observability/product-events';
@@ -292,7 +293,7 @@ export const createSequences = createServerOnlyFn(
 
             const sequence = await context.scopedDb.sequences.create({
               id: sequenceId,
-              title: data.title || 'Untitled Sequence',
+              title: data.title || UNTITLED_SEQUENCE_TITLE,
               script: data.script,
               styleId: boundStyle?.id ?? styleId,
               deferStyleSnapshot: styleSource.kind === 'pending',
