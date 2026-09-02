@@ -32,9 +32,21 @@ import {
   studioPrimaryOutput,
   studioPrompt,
 } from '@/lib/studio/outputs';
+import { estimateStudioProgress } from '@/lib/studio/progress';
 import { cn } from '@/lib/utils';
 import { Download, Images, Star, Trash2 } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+
+/** Wall clock ticking once a second while `active`; null otherwise. */
+function useNow(active: boolean) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!active) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [active]);
+  return active ? now : null;
+}
 
 function StudioCard({
   asset,
@@ -49,6 +61,15 @@ function StudioCard({
   const prompt = studioPrompt(asset);
   const inFlight = asset.status === 'queued' || asset.status === 'running';
   const isVideo = primary?.contentType.startsWith('video/');
+  const now = useNow(inFlight);
+  const progress =
+    now === null
+      ? null
+      : estimateStudioProgress(
+          asset.activity === 'video' ? 'video' : 'image',
+          asset.createdAt,
+          now
+        );
 
   return (
     <article className="group relative overflow-hidden rounded-lg border bg-muted">
@@ -123,9 +144,10 @@ function StudioCard({
       {inFlight && (
         <p
           aria-live="polite"
-          className="absolute inset-x-0 bottom-0 bg-background/80 px-2 py-1 text-xs text-muted-foreground"
+          className="absolute inset-x-0 bottom-0 bg-background/80 px-2 py-1 text-xs text-muted-foreground tabular-nums"
         >
           {asset.status === 'queued' ? 'Queued…' : 'Generating…'}
+          <span>{` ${progress ?? 0}%`}</span>
         </p>
       )}
     </article>
