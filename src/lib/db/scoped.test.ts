@@ -2,12 +2,6 @@
 import { describe, expect, it, beforeEach, vi } from 'vitest';
 import type { NewLocationSheet } from '@/lib/db/schema';
 
-// Import pure utility functions before vi.doMock so they can be re-exported
-import {
-  locationMatchesTag,
-  matchLocationsToShot,
-} from '@/lib/db/scoped/sequence-locations';
-
 // ============================================================================
 // Sub-module mocks — we test that scoped.ts composes them correctly
 // ============================================================================
@@ -276,9 +270,6 @@ vi.doMock('@/lib/db/scoped/sequence-locations', () => ({
     getShotIdsForLocation: mockSeqLocationsGetShotIdsForLocation,
     getTeamLibrary: mockSeqLocationsGetTeamLibrary,
   })),
-  // Re-export pure utility functions so other test files importing them aren't broken
-  locationMatchesTag,
-  matchLocationsToShot,
 }));
 
 // DB chain mock for inline operations (characters, shots)

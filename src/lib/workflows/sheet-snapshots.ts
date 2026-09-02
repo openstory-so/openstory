@@ -410,7 +410,8 @@ export function resolveSceneShotImageReferences(params: {
   const matchedLocations = matchLocationsToScene(
     locations,
     scene?.continuity?.environmentTag ?? '',
-    scene?.metadata?.location ?? ''
+    scene?.metadata?.location ?? '',
+    scene?.originalScript?.extract
   );
   const matchedElements = matchElementsToShotImage(elements, {
     visualPrompt,

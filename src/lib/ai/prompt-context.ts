@@ -195,7 +195,8 @@ export function narrowShotPromptContext(
   const locationBible = matchLocationsToScene(
     ctx.locationBible,
     continuity.environmentTag,
-    scene.metadata?.location ?? ''
+    scene.metadata?.location ?? '',
+    scene.originalScript.extract
   );
   const elementBible = matchElementsToScene(
     ctx.elementBible,

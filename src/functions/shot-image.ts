@@ -288,7 +288,8 @@ export const generateShotVariantsFn = createServerFn({ method: 'POST' })
     const locationReferences = getSceneLocationReferenceImages(
       allLocations,
       scene?.continuity?.environmentTag ?? '',
-      scene?.metadata?.location ?? ''
+      scene?.metadata?.location ?? '',
+      scene?.originalScript?.extract
     );
 
     const workflowInput: ShotVariantWorkflowInput = {
@@ -402,7 +403,8 @@ export const selectShotVariantFn = createServerFn({ method: 'POST' })
     const locationReferences = getSceneLocationReferenceImages(
       allLocations,
       scene?.continuity?.environmentTag ?? '',
-      scene?.metadata?.location ?? ''
+      scene?.metadata?.location ?? '',
+      scene?.originalScript?.extract
     );
 
     // Price the model that will actually render the upscale (#1066) — the same

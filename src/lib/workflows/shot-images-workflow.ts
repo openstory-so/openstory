@@ -182,7 +182,8 @@ export class ShotImagesWorkflow extends OpenStoryWorkflowEntrypoint<ShotImagesWo
               matchLocationsToScene(
                 locationsWithSheets,
                 scene.continuity?.environmentTag || '',
-                scene.metadata?.location || ''
+                scene.metadata?.location || '',
+                scene.originalScript?.extract
               ),
             ])
           ),

@@ -17,7 +17,6 @@ import type {
   SequenceElement,
   SequenceLocationWithReference,
 } from '@/lib/db/schema';
-import { locationMatchesTag } from '@/lib/db/scoped/sequence-locations';
 import { buildCharacterReferenceImages } from '@/lib/prompts/character-prompt';
 import { buildElementReferenceImages } from '@/lib/prompts/element-prompt';
 import { buildLocationReferenceImages } from '@/lib/prompts/location-prompt';
@@ -39,21 +38,6 @@ function sortedHashes(
   return values
     .filter((v): v is string => typeof v === 'string' && v.length > 0)
     .sort();
-}
-
-/** Match locations by environmentTag or scene location and return reference images. */
-function getSceneLocationReferenceImages(
-  allLocations: SequenceLocationWithReference[],
-  environmentTag: string,
-  sceneLocation: string
-) {
-  if (!environmentTag && !sceneLocation) return [];
-  const matched = allLocations.filter(
-    (loc) =>
-      (environmentTag && locationMatchesTag(loc, environmentTag)) ||
-      (sceneLocation && locationMatchesTag(loc, sceneLocation))
-  );
-  return buildLocationReferenceImages(matched);
 }
 
 export async function buildShotImageWorkflowInput(opts: {
@@ -121,13 +105,10 @@ export async function buildShotImageWorkflowInput(opts: {
   const matchedLocations = matchLocationsToScene(
     locations,
     environmentTag,
-    sceneLocation
+    sceneLocation,
+    scriptExtract
   );
-  const locationReferences = getSceneLocationReferenceImages(
-    locations,
-    environmentTag,
-    sceneLocation
-  );
+  const locationReferences = buildLocationReferenceImages(matchedLocations);
 
   const matchedElements = matchElementsToShotImage(elements, {
     visualPrompt: prompt,
