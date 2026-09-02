@@ -20,6 +20,7 @@ describe('buildRootDocument', () => {
     expect(doc.instructions).toMatch(/_links/);
     expect(doc.instructions).toMatch(/POST\s+\/api\/v1\/device\/code/);
     expect(doc.instructions).toMatch(/428 authorization_pending/);
+    expect(doc.instructions).toMatch(/OAuth 2.1/);
   });
 
   it('advertises style create/list/get with a parseable create example', () => {

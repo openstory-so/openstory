@@ -14,6 +14,7 @@
  */
 
 import { getAuth } from '@/lib/auth/config';
+import { PUBLIC_API_KEY_PREFIX } from '@/lib/auth/public-api-key';
 import { getLogger } from '@/lib/observability/logger';
 import { createServerFn } from '@tanstack/react-start';
 import { getRequestHeaders } from '@tanstack/react-start/server';
@@ -22,9 +23,6 @@ import { z } from 'zod';
 import { authWithTeamMiddleware } from './middleware';
 
 const logger = getLogger(['openstory', 'serverFn', 'public-api-keys']);
-
-/** Keys are branded `osk_` (OpenStory Key) for easy recognition in logs/UX. */
-const PUBLIC_API_KEY_PREFIX = 'osk_';
 
 const createPublicApiKeySchema = z.object({
   name: z.string().min(1).max(32),

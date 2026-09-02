@@ -10,6 +10,14 @@ import {
   account,
   apikey,
   deviceCode,
+  jwks,
+  oauthAccessToken,
+  oauthClient,
+  oauthClientAssertion,
+  oauthClientResource,
+  oauthConsent,
+  oauthRefreshToken,
+  oauthResource,
   passkey,
   session,
   user,
@@ -108,7 +116,23 @@ import {
 } from './compliance';
 
 // Better Auth tables
-export { account, apikey, deviceCode, passkey, session, user, verification };
+export {
+  account,
+  apikey,
+  deviceCode,
+  jwks,
+  oauthAccessToken,
+  oauthClient,
+  oauthClientAssertion,
+  oauthClientResource,
+  oauthConsent,
+  oauthRefreshToken,
+  oauthResource,
+  passkey,
+  session,
+  user,
+  verification,
+};
 
 export type { User } from './auth';
 
@@ -399,6 +423,14 @@ export const schema = {
   passkey,
   apikey,
   deviceCode,
+  jwks,
+  oauthAccessToken,
+  oauthClient,
+  oauthClientAssertion,
+  oauthClientResource,
+  oauthConsent,
+  oauthRefreshToken,
+  oauthResource,
 
   // Teams
   teams,

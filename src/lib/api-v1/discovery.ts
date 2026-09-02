@@ -62,8 +62,8 @@ Styles (create your own look):
   (full documents incl. config); GET /api/v1/styles/{id} returns one.
 
 Authentication:
-  Every endpoint except this root and the device-login pair requires an API
-  key. Two ways to get one:
+  Every endpoint except this root and the device-login pair requires an osk_
+  key or an OAuth access token. Two ways to get a key:
   - Device-code login (RFC 8628 shape, no copy-pasting secrets): POST
     /api/v1/device/code, show the user the returned user_code and
     verification_url (or open verification_url_complete), then GET the 'poll'
@@ -78,6 +78,16 @@ Authentication:
   Send the key as either
   'Authorization: Bearer <key>' or 'x-api-key: <key>'. Keys are team-scoped and
   rate limited to 10 requests/second.
+  OAuth 2.1 is also supported ("login with OpenStory") for apps that can run an
+  authorization-code + PKCE flow — hosted MCP clients, forks of OpenStory,
+  anything with a browser redirect. Discover the server at
+  /.well-known/oauth-authorization-server (registration is dynamic, RFC 7591;
+  request 'resource' = <origin>/api/v1 so the token is issued for this API),
+  then send the access token as 'Authorization: Bearer <token>'. Tokens are
+  scoped: reads need 'sequences:read', edits and exports 'sequences:write',
+  anything that spends credits 'generate'; a 403 with an insufficient_scope
+  challenge names the scope to re-authorize with. The user reviews and revokes
+  grants under Settings → Developer → Authorized apps.
 
 Conventions (apply to every endpoint):
   - ?wait=<duration> long-polls: instead of busy-polling, append e.g. ?wait=60s

@@ -307,6 +307,17 @@ phase number); there is no separate stage.
   full `Scene` lives in `frame.metadata`); the staleness tooling covers them
   after the fact.
 
+## OAuth authorization server ("login with OpenStory", #1456)
+
+OpenStory is an OAuth 2.1 authorization server, built on Better Auth's `jwt()` + `@better-auth/mcp` (= `@better-auth/oauth-provider` preconfigured for MCP). Three kinds of clients: hosted MCP clients (discover via RFC 9728/8414, self-register via RFC 7591 DCR, consent screen — nobody registers apps by hand), forks/self-hosts (the OpenRouter pattern inverted: the fork is the client, upstream is the server, the grant is a team credential — **not** SSO), and anything else that can do auth-code + PKCE. Skills/CLIs keep the device-code login (`/api/v1/device/*` → `osk_` key).
+
+- **Config:** `src/lib/auth/oauth-provider.ts` (issuer = `VITE_APP_URL` origin, HTTPS or loopback only; two RFC 8707 resources: `…/mcp` and `…/api/v1`; scopes `sequences:read|write`, `generate`, `credits:read`). The plugins are spread into `config.ts`.
+- **Discovery:** Better Auth lives at `/api/auth`, so `src/routes/[.]well-known/$.ts` forwards root `/.well-known/*` to `auth.handler` (the plugins answer from their `onRequest` hooks) and builds the `/api/v1` protected-resource document itself.
+- **Login/consent:** the provider's `loginPage` is `/oauth/login`, a server route that turns the signed authorize query into `/login?redirectTo=/api/auth/oauth2/authorize?…` (`oauth-login-resume.ts`); after sign-in `finishSignInRedirect` does a full navigation for `/api/` paths. Consent is `/oauth/consent` + `src/functions/oauth-consent.ts`. At consent the grant is stamped with the user's default team (`postLogin.consentReferenceId` → `resolveUserTeam`); there is no picker yet. `/api/v1` uses `team_id` when present, otherwise the same default-team lookup as an `osk_` key.
+- **Bearer JWTs on `/api/v1` only:** `customAPIKeyGetter` only hands `osk_` values to the api-key plugin; `src/lib/auth/oauth-bearer.ts` verifies tokens locally against the JWKS in D1 (audience `…/api/v1`) in `authWithTeamRequestMiddleware`, which enforces `src/lib/api-v1/oauth-scopes.ts` and the `team_id` membership. Internal routes (`/api/storage`, `/api/realtime`) do not accept OAuth JWTs. `osk_` keys are unscoped. JWT plugin `GET /token` is disabled (`disabledPaths`) and `disableSettingJwtHeader` is on so session JWTs are not minted from the same JWKS.
+- **Schema:** `jwks` + `oauth_*` tables in `schema/auth.ts`, from `bun auth:generate` (the CLI config swallows the provider's background init rejection — generation never needs it). The generated FKs into `user`/`session` are deliberately not declared (#612); FKs between the OAuth tables cascade from `oauth_client`, which is what lets `pruneOrphanedOAuthClients` (run on `/oauth2/register`, which is also rate-limited per IP) clean up.
+- **Not yet:** `@better-auth/cimd` (its Node transport needs `node:dns`/`node:https`; the Workers transport is a follow-up), a team picker on consent, the `/mcp` endpoint (#1457), the fork-side "Connect OpenStory" flow and gateway via.
+
 ## Frame System
 
 Frames are the core content unit — each represents one scene from script analysis.
