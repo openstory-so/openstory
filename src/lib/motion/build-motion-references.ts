@@ -32,6 +32,7 @@ import { buildLocationReferenceImages } from '@/lib/prompts/location-prompt';
 import type { ReferenceImageDescription } from '@/lib/prompts/reference-image-prompt';
 import {
   matchCharactersToShotImage,
+  matchElementsToScene,
   matchElementsToShotImage,
   matchLocationsToScene,
 } from '@/lib/workflows/scene-matching';
@@ -89,11 +90,22 @@ export function buildMotionReferenceImages(params: {
     characterTags: scene?.continuity?.characterTags,
     visualPrompt: motionPrompt,
   });
-  const matchedElements = matchElementsToShotImage(elements, {
-    visualPrompt: motionPrompt,
-    elementTags: scene?.continuity?.elementTags,
-    sceneExtract: scene?.originalScript?.extract,
-  });
+  // Elements are ADDITIVE here, not prompt-wins like the still: the
+  // image-to-video template forbids naming what the start frame already shows,
+  // so a prop the motion prompt omits is still in the shot. Tags/extract stay
+  // primary; the prompt only adds what they missed. (Characters get the same
+  // union for free — `matchCharactersToShotImage` is already additive.)
+  const taggedElements = matchElementsToScene(
+    elements,
+    scene?.continuity?.elementTags ?? [],
+    scene?.originalScript?.extract ?? ''
+  );
+  const matchedElements = [
+    ...new Set([
+      ...taggedElements,
+      ...matchElementsToScene(elements, [], motionPrompt ?? ''),
+    ]),
+  ];
   const matchedLocations =
     includeLocations && locations
       ? matchLocationsToScene(

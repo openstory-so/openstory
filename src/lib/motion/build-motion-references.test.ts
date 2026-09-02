@@ -261,3 +261,42 @@ describe('buildMotionReferenceImages — prompt-named cast (#1432)', () => {
     expect(refs).toHaveLength(1);
   });
 });
+
+describe('buildMotionReferenceImages — element refs are additive', () => {
+  // The image-to-video motion prompt deliberately never names what the start
+  // frame already shows, so prompt-wins matching (right for the still) would
+  // drop every tagged prop from the clip.
+  it('keeps a tagged element the motion prompt does not name', () => {
+    const refs = buildMotionReferenceImages({
+      motionPrompt: 'Slow push in as she turns toward the window.',
+      scene: {
+        continuity: { characterTags: [], elementTags: ['LOGO'] },
+        originalScript: { extract: '' },
+      },
+      characters: [],
+      elements: [element('LOGO', 'https://example.com/logo.png')],
+    });
+    expect(refs.map((r) => r.referenceImageUrl)).toEqual([
+      'https://example.com/logo.png',
+    ]);
+  });
+
+  it('adds an element the prompt names but the tags miss, without duplicating', () => {
+    const refs = buildMotionReferenceImages({
+      motionPrompt: 'She lifts the PHONE while the LOGO glows behind her.',
+      scene: {
+        continuity: { characterTags: [], elementTags: ['LOGO'] },
+        originalScript: { extract: '' },
+      },
+      characters: [],
+      elements: [
+        element('LOGO', 'https://example.com/logo.png'),
+        element('PHONE', 'https://example.com/phone.png'),
+      ],
+    });
+    expect(refs.map((r) => r.referenceImageUrl)).toEqual([
+      'https://example.com/logo.png',
+      'https://example.com/phone.png',
+    ]);
+  });
+});
