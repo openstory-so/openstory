@@ -46,14 +46,14 @@ import {
   DEFAULT_ANALYSIS_MODEL,
   getAnalysisModelById,
 } from '@/lib/ai/models.config';
-import { generateId } from '@/lib/db/id';
-import { NotFoundError, ValidationError } from '@/lib/errors';
+import { generateId } from '@/shared/id';
+import { NotFoundError, ValidationError } from '@/shared/errors';
 import type { ScopedDb } from '@/lib/db/scoped';
 import { type Sequence } from '@/lib/db/schema';
 import { resolveSequenceStyleConfig } from '@/lib/style/style-config';
 import { sequenceScenesUrl } from '@/lib/emails/notify-sequence-ready';
 import { refreshCheckpointFromCast } from '@/lib/workflow/refresh-checkpoint';
-import { resolveStopAt } from '@/lib/generation/pipeline';
+import { resolveStopAt } from '@/shared/generation/pipeline';
 import { triggerWorkflow } from '@/lib/workflow/client';
 import { buildWorkflowLabel } from '@/lib/workflow/labels';
 import { resolveRunState } from '@/lib/workflow/reconcile';

@@ -11,7 +11,7 @@ import {
   lastLoginMethodClient,
 } from 'better-auth/client/plugins';
 import { createAuthClient } from 'better-auth/react';
-import { getQueryClient } from '../query-client';
+import { getQueryClient } from '@/shared/query-client';
 import {
   currentAuthCookiePrefix,
   lastUsedLoginMethodCookieName,

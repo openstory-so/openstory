@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { assertSingleShotSegmentForVideoUpload } from '@/functions/media-upload';
 import { requireWritableScene } from '@/functions/shots';
-import { NotFoundError, ValidationError } from '@/lib/errors';
+import { NotFoundError, ValidationError } from '@/shared/errors';
 
 describe('requireWritableScene', () => {
   const sequenceId = 'seq-1';

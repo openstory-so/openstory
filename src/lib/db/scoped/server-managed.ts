@@ -1,4 +1,4 @@
-import { typedEntries, typedFromEntries } from '@/lib/utils/typed-object';
+import { typedEntries, typedFromEntries } from '@/shared/utils/typed-object';
 
 /**
  * Runtime scrub for server-managed columns.

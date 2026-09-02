@@ -30,7 +30,7 @@ import {
   useSoftDeleteSequenceCharacter,
 } from '@/hooks/use-sequence-characters';
 import type { CharacterSheetVariant, TalentWithSheets } from '@/lib/db/schema';
-import { errorMessage } from '@/lib/errors';
+import { errorMessage } from '@/shared/errors';
 import { useRealtime } from '@/lib/realtime/client';
 import { useSheetStaleDetected } from '@/lib/realtime/use-sheet-stale-detected';
 import {

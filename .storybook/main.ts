@@ -27,14 +27,14 @@ const config: StorybookConfig = {
     // Use regex so only exact imports are matched (not subpath like /client).
     const mockPath = path.resolve(
       __dirname,
-      '../src/lib/mocks/tanstack-start.ts'
+      '../src/shared/mocks/tanstack-start.ts'
     );
     // The cloudflare() plugin (which provides the `cloudflare:workers` virtual
     // module) is stripped below; alias the import to a stub so server-only
     // modules pulled into story graphs still resolve.
     const cloudflareWorkersMock = path.resolve(
       __dirname,
-      '../src/lib/mocks/cloudflare-workers.ts'
+      '../src/shared/mocks/cloudflare-workers.ts'
     );
     const existingAliases = Array.isArray(config.resolve.alias)
       ? config.resolve.alias

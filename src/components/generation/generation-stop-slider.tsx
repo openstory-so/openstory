@@ -4,12 +4,12 @@ import {
   sliderThumbIndex,
   stopAfterSentence,
   stopAtFromSliderIndex,
-} from '@/lib/generation/pipeline';
-import type { GenerationStage } from '@/lib/generation/pipeline';
+} from '@/shared/generation/pipeline';
+import type { GenerationStage } from '@/shared/generation/pipeline';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
-import { cn } from '@/lib/utils';
+import { cn } from '@/shared/utils';
 import type { FC } from 'react';
 
 type GenerationStopSliderProps = {

@@ -4,7 +4,7 @@ import {
   frameFixture,
   frameVariantFixture,
   videoVariantFixture,
-} from '@/lib/mocks/frame-fixtures';
+} from '@/shared/mocks/frame-fixtures';
 import { toShotView, type ShotView } from '@/lib/shots/shot-view';
 import { DivergenceCompareDialog } from './divergence-compare-dialog';
 

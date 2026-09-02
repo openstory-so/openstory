@@ -1,6 +1,6 @@
 import { Collapsible, CollapsibleContent } from '@/components/ui/collapsible';
 import { useAutoScroll } from '@/hooks/use-auto-scroll';
-import { cn } from '@/lib/utils';
+import { cn } from '@/shared/utils';
 import { Brain, ChevronRight } from 'lucide-react';
 import { useEffect, useState, type FC } from 'react';
 

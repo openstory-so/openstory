@@ -8,7 +8,7 @@
  */
 
 import type { MarkdownEditorHandle } from '@/components/text-editor/markdown-editor';
-import { appendTranscript } from '@/lib/voice/transcript-insert';
+import { appendTranscript } from '@/shared/voice/transcript-insert';
 import { useMemo, useRef } from 'react';
 import { useAsRef } from './use-as-ref';
 

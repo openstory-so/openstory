@@ -10,8 +10,8 @@
 import { scheduleFlushAnalytics } from '#flush-scheduler';
 import { getAuth } from '@/lib/auth/config';
 import { resolveUserTeam } from '@/lib/db/scoped';
-import { ValidationError } from '@/lib/errors';
-import { CONTACT_EMAIL } from '@/lib/marketing/constants';
+import { ValidationError } from '@/shared/errors';
+import { CONTACT_EMAIL } from '@/shared/marketing/constants';
 import { captureProductEvent } from '@/lib/observability/product-events';
 import { sendFeedbackEmail } from '@/lib/services/email-service';
 import { createServerFn } from '@tanstack/react-start';

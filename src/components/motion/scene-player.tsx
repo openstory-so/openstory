@@ -15,10 +15,10 @@ import {
   type AspectRatio,
   aspectRatioToDimensions,
   getAspectRatioClassName,
-} from '@/lib/constants/aspect-ratios';
-import { cn } from '@/lib/utils';
-import { plainSceneTitle } from '@/lib/utils/markdown-plain';
-import { copyTextToClipboard } from '@/lib/utils/clipboard';
+} from '@/shared/constants/aspect-ratios';
+import { cn } from '@/shared/utils';
+import { plainSceneTitle } from '@/shared/utils/markdown-plain';
+import { copyTextToClipboard } from '@/shared/utils/clipboard';
 import type { ShotView } from '@/lib/shots/shot-view';
 import { AppImage } from '@/components/ui/app-image';
 import { usePostHog } from '@posthog/react';

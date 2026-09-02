@@ -28,7 +28,7 @@ import { buildRegenerateCharacterSheetPayload } from '@/lib/sheets/character-she
 import type { SheetStaleness } from '@/lib/sheets/sheet-staleness';
 import { characterSheetHashMatchesStored } from '@/lib/workflows/sheet-snapshots';
 
-import { NotFoundError } from '@/lib/errors';
+import { NotFoundError } from '@/shared/errors';
 import { getLogger } from '@/lib/observability/logger';
 import { authWithTeamMiddleware, sequenceAccessMiddleware } from './middleware';
 

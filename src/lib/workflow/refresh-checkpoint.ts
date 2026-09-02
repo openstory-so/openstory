@@ -19,7 +19,7 @@ import type { ElementBibleEntry } from '@/lib/ai/scene-analysis.schema';
 import type { ScopedDb } from '@/lib/db/scoped';
 import type { CharacterMinimal } from '@/lib/db/schema/characters';
 import type { SequenceLocationMinimal } from '@/lib/db/schema/sequence-locations';
-import type { GenerationCheckpoint } from '@/lib/generation/pipeline';
+import type { GenerationCheckpoint } from '@/shared/generation/pipeline';
 import type {
   LibraryLocationMatch,
   TalentCharacterMatch,

@@ -6,7 +6,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from '@/components/ui/sidebar';
-import { SECTION_ORDER } from '@/lib/docs/sections';
+import { SECTION_ORDER } from '@/shared/docs/sections';
 import { Link, useRouterState } from '@tanstack/react-router';
 import { allDocs } from 'content-collections';
 

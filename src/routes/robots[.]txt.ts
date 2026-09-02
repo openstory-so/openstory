@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { isPreviewDeployment } from '@/lib/utils/environment';
-import { SITE_CONFIG } from '@/lib/marketing/constants';
+import { isPreviewDeployment } from '@/shared/utils/environment';
+import { SITE_CONFIG } from '@/shared/marketing/constants';
 
 function buildRobotsTxt(isPreview: boolean): string {
   if (isPreview) {

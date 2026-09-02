@@ -32,7 +32,7 @@ import {
   useBillingGateDialogOpen,
   type BillingGateReason,
 } from '@/hooks/use-billing-gate-dialog';
-import { cn } from '@/lib/utils';
+import { cn } from '@/shared/utils';
 import { usePostHog } from '@posthog/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';

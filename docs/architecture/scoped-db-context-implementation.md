@@ -52,7 +52,7 @@ Create `src/lib/db/scoped-context.ts`:
 
 ```typescript
 import type { Frame, Sequence, Style, Character } from '@/lib/db/schema';
-import { AuthorizationError } from '@/lib/errors';
+import { AuthorizationError } from '@/shared/errors';
 
 export interface ScopedDbContext {
   readonly teamId: string;

@@ -13,11 +13,11 @@ import {
   type ImageToVideoModel,
   type MotionReferenceEndpointConfig,
 } from '@/lib/ai/models';
-import type { AspectRatio } from '@/lib/constants/aspect-ratios';
+import type { AspectRatio } from '@/shared/constants/aspect-ratios';
 import {
   pickVideoResolution,
   type Resolution,
-} from '@/lib/constants/resolutions';
+} from '@/shared/constants/resolutions';
 import type { ReferenceImageDescription } from '@/lib/prompts/reference-image-prompt';
 import { buildReferenceVideoPrompt } from './build-reference-video-prompt';
 

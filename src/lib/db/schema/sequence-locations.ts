@@ -11,7 +11,7 @@ import {
   text,
   uniqueIndex,
 } from 'drizzle-orm/sqlite-core';
-import { generateId } from '../id';
+import { generateId } from '@/shared/id';
 import { locationLibrary } from './location-library';
 import { sequences } from './sequences';
 

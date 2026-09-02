@@ -5,19 +5,19 @@
 // dropped `shots.order_index` and emit no frame/variant rows. Fix the script
 // before trusting it again.
 import type { SceneWithScript } from '@/hooks/use-scenes';
-import {
-  dbSceneId,
-  type Frame,
-  type FramePromptVersion,
-  type FrameVariant,
-  type Shot,
-  type VideoVariant,
+import { dbSceneId } from '@/shared/scene-id';
+import type {
+  Frame,
+  FramePromptVersion,
+  FrameVariant,
+  Shot,
+  VideoVariant,
 } from '@/lib/db/schema';
 import {
   frameFixture,
   frameVariantFixture,
   videoVariantFixture,
-} from '@/lib/mocks/frame-fixtures';
+} from '@/shared/mocks/frame-fixtures';
 import {
   toShotView,
   type ShotGridSheet,

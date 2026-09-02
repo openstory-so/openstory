@@ -13,7 +13,7 @@ import {
   text,
   uniqueIndex,
 } from 'drizzle-orm/sqlite-core';
-import { generateId } from '../id';
+import { generateId } from '@/shared/id';
 import { talentSheets } from './talent';
 
 const TALENT_SHEET_VARIANT_STATUSES = [

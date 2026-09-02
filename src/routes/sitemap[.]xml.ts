@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { allDocs } from 'content-collections';
-import { SITE_CONFIG } from '@/lib/marketing/constants';
+import { SITE_CONFIG } from '@/shared/marketing/constants';
 
 // Static pages that serve a 200 to anonymous visitors. `/docs` is deliberately
 // absent — it redirects to the first doc, and sitemap URLs must not 30x (#814).

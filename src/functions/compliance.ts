@@ -12,7 +12,7 @@ import {
 } from '@/lib/compliance/generation-gate';
 import { ATTESTATION_SUBJECT_TYPES } from '@/lib/db/schema/compliance';
 import { statementFor, statementHash } from '@/lib/compliance/attestations';
-import { AttestationRequiredError, ValidationError } from '@/lib/errors';
+import { AttestationRequiredError, ValidationError } from '@/shared/errors';
 import { resolveUserTeam } from '@/lib/db/scoped';
 import { createServerFn } from '@tanstack/react-start';
 import { getRequest } from '@tanstack/react-start/server';

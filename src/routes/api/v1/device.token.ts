@@ -17,7 +17,7 @@ import {
 import { apiJsonError, runApiV1Handler } from '@/lib/api-v1/errors';
 import { API_V1_BASE } from '@/lib/api-v1/hal';
 import { getWaitMs, longPoll } from '@/lib/api-v1/wait';
-import { ValidationError } from '@/lib/errors';
+import { ValidationError } from '@/shared/errors';
 import { createFileRoute } from '@tanstack/react-router';
 
 /**

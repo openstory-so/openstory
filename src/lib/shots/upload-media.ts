@@ -12,14 +12,14 @@
 
 import { DEFAULT_IMAGE_MODEL, safeTextToImageModel } from '@/lib/ai/models';
 import type { Scene } from '@/lib/ai/scene-analysis.schema';
-import type { AspectRatio } from '@/lib/constants/aspect-ratios';
+import type { AspectRatio } from '@/shared/constants/aspect-ratios';
 import type {
   CharacterWithSheet,
   SequenceElement,
   SequenceLocationWithReference,
 } from '@/lib/db/schema';
 import { r2KeyFromUrl, type StorageBucket } from '@/lib/storage/buckets';
-import { getExtensionFromUrl } from '@/lib/utils/file';
+import { getExtensionFromUrl } from '@/shared/utils/file';
 import { buildRegenerateShotSnapshot } from '@/lib/workflows/regenerate-shots-snapshot';
 
 /**

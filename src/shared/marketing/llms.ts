@@ -4,7 +4,7 @@ import {
   PROCESS_STEPS,
   SITE_CONFIG,
   TOP_TIER_FEATURES,
-} from '@/lib/marketing/constants';
+} from '@/shared/marketing/constants';
 
 /**
  * Markdown overview of OpenStory for LLM/agent consumption. Served verbatim

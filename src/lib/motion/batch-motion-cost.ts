@@ -16,7 +16,7 @@ import { resolveVideoModel } from '@/lib/ai/resolve-asset-models';
 import type { EffectiveFalPricing } from '@/lib/ai/fal-cost';
 import { estimateVideoCost, gateEstimate } from '@/lib/billing/cost-estimation';
 import { addMicros, ZERO_MICROS, type Microdollars } from '@/lib/billing/money';
-import type { Resolution } from '@/lib/constants/resolutions';
+import type { Resolution } from '@/shared/constants/resolutions';
 import { snapDuration } from '@/lib/motion/snap-duration';
 
 /** `useStartFrame` so a caller can price each shot on its own render route. */

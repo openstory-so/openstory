@@ -16,7 +16,7 @@ import {
   TURBO_VIDEO_MODELS,
 } from '@/lib/ai/generation-mode';
 import { useViaAvailability } from '@/hooks/use-via-availability';
-import type { AspectRatio } from '@/lib/constants/aspect-ratios';
+import type { AspectRatio } from '@/shared/constants/aspect-ratios';
 import { useMemo } from 'react';
 
 type MotionModelFilterProps = {

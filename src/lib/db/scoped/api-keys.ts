@@ -14,7 +14,7 @@ import {
   decryptApiKey,
   encryptApiKey,
   getKeyHint,
-} from '@/lib/crypto/api-key-encryption';
+} from '@/shared/crypto/api-key-encryption';
 import { type ApiKeyProvider, teamApiKeys } from '@/lib/db/schema';
 
 import { getLogger, serializeError } from '@/lib/observability/logger';

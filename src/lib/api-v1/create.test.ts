@@ -1,6 +1,6 @@
 import type { Style } from '@/lib/db/schema';
 import type { ScopedDb } from '@/lib/db/scoped';
-import { ValidationError } from '@/lib/errors';
+import { ValidationError } from '@/shared/errors';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({

@@ -13,7 +13,7 @@ import {
   type FileUploadProps,
 } from '@/components/ui/file-upload';
 import { useUploadLocationMedia } from '@/hooks/use-location-library';
-import { getFileKey } from '@/lib/utils/upload';
+import { getFileKey } from '@/shared/utils/upload';
 import { Upload, X } from 'lucide-react';
 
 type LocationMediaUploadProps = {

@@ -9,7 +9,7 @@
 import { TYPICAL_SHORT_COST_USD } from '@/lib/billing/constants';
 import { microsToDisplayUsd } from '@/lib/billing/money';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
-import { SITE_CONFIG } from '@/lib/marketing/constants';
+import { SITE_CONFIG } from '@/shared/marketing/constants';
 import { captureProductEvent } from '@/lib/observability/product-events';
 import { sumShotDurationsSeconds } from '@/lib/sequences/shot-durations';
 import { sendSequenceReadyEmail } from '@/lib/services/email-service';

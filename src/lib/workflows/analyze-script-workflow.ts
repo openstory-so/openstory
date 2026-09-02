@@ -72,7 +72,7 @@ import {
   shouldRunStage,
   type GenerationCheckpoint,
   type GenerationStage,
-} from '@/lib/generation/pipeline';
+} from '@/shared/generation/pipeline';
 import {
   createCastRecords,
   findMissingElementEntries,

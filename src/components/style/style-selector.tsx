@@ -1,5 +1,5 @@
 import { Skeleton } from '@/components/ui/skeleton';
-import { cn } from '@/lib/utils';
+import { cn } from '@/shared/utils';
 import { MoreHorizontal } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { StyleRecommendation } from '@/hooks/use-styles';

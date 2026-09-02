@@ -12,7 +12,7 @@ import {
   isContinueStage,
   type ContinueStage,
   type GenerationStage,
-} from '@/lib/generation/pipeline';
+} from '@/shared/generation/pipeline';
 import { useHydrated } from '@/hooks/use-hydrated';
 import { useCreateScene, useReorderScenes } from '@/hooks/use-scene-structure';
 import {
@@ -30,12 +30,12 @@ import {
   estimateVideoCost,
 } from '@/lib/billing/cost-estimation';
 import { addMicros, ZERO_MICROS, type Microdollars } from '@/lib/billing/money';
-import type { AspectRatio } from '@/lib/constants/aspect-ratios';
-import type { Resolution } from '@/lib/constants/resolutions';
+import type { AspectRatio } from '@/shared/constants/aspect-ratios';
+import type { Resolution } from '@/shared/constants/resolutions';
 import { useFalPricing } from '@/hooks/use-fal-pricing';
 import type { SceneWithScript } from '@/hooks/use-scenes';
 import type { ShotVariant } from '@/lib/db/schema';
-import { errorMessage } from '@/lib/errors';
+import { errorMessage } from '@/shared/errors';
 import { resolveShotDuration } from '@/lib/motion/resolve-shot-duration';
 import type { SceneSelection } from '@/lib/scenes/scene-selection';
 import type { SequenceSegment } from '@/lib/scenes/scene-segments';
@@ -45,7 +45,7 @@ import {
   isMotionGenerating,
   type ShotView,
 } from '@/lib/shots/shot-view';
-import { cn } from '@/lib/utils';
+import { cn } from '@/shared/utils';
 import { FileText, Images, Loader2, Music, Plus, Video } from 'lucide-react';
 import {
   memo,

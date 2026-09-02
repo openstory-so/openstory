@@ -28,7 +28,7 @@ import {
   extractImageCost,
   recordFalUsageStep,
 } from '@/lib/billing/workflow-deduction';
-import { generateId } from '@/lib/db/id';
+import { generateId } from '@/shared/id';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import type { SequenceElement, SequenceElementMinimal } from '@/lib/db/schema';
 import type { ImageGenerationParams } from '@/lib/image/image-generation';

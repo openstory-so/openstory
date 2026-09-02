@@ -58,7 +58,7 @@ import {
   includesStage,
   sliderStopLabel,
   type GenerationStage,
-} from '@/lib/generation/pipeline';
+} from '@/shared/generation/pipeline';
 import { useComposedScript } from '@/hooks/use-scenes';
 import { useSequenceCharacters } from '@/hooks/use-sequence-characters';
 import { useViaAvailability } from '@/hooks/use-via-availability';
@@ -71,7 +71,7 @@ import { useSequenceLocations } from '@/hooks/use-sequence-locations';
 import { useCreateSequence } from '@/hooks/use-sequences';
 import { useRecommendedStyles, useStyle, useStyles } from '@/hooks/use-styles';
 import { AUTO_STYLE_ID } from '@/lib/style/auto-style';
-import { errorMessage } from '@/lib/errors';
+import { errorMessage } from '@/shared/errors';
 import {
   assessDurationFit,
   briefRequestsUnrenderableText,
@@ -108,18 +108,18 @@ import {
   estimateImageCost,
   estimateStoryboardCost,
 } from '@/lib/billing/cost-estimation';
-import { clampResolution } from '@/lib/constants/resolutions';
-import type { Resolution } from '@/lib/constants/resolutions';
+import { clampResolution } from '@/shared/constants/resolutions';
+import type { Resolution } from '@/shared/constants/resolutions';
 import { availableResolutions } from '@/lib/ai/resolution-support';
 import {
   aspectRatioSchema,
   type AspectRatio,
-} from '@/lib/constants/aspect-ratios';
+} from '@/shared/constants/aspect-ratios';
 import {
   markPendingIntent,
   takePendingIntent,
-} from '@/lib/generation/pending-generate';
-import { estimateSceneCount } from '@/lib/generation/time-estimate';
+} from '@/shared/generation/pending-generate';
+import { estimateSceneCount } from '@/shared/generation/time-estimate';
 import { replaceTokenInText } from '@/lib/sequence-elements/cascade-rename';
 import { shouldRestoreComposerDraft } from '@/lib/sequences/sequence-draft';
 import {
@@ -132,13 +132,13 @@ import {
   styleAfterComposerCategoryChange,
   styleCategoryGroupKey,
 } from '@/lib/style/composer-style-row';
-import { cn } from '@/lib/utils';
+import { cn } from '@/shared/utils';
 import {
   dataTransferHasImages,
   extractImagesFromSnapshot,
   snapshotDataTransfer,
   toastDragImportCorsError,
-} from '@/lib/utils/drag-images';
+} from '@/shared/utils/drag-images';
 import type { Sequence } from '@/types/database';
 import { usePostHog } from '@posthog/react';
 import {

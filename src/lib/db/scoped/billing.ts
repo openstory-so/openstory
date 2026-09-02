@@ -35,10 +35,10 @@ import type {
   TeamBillingSetting,
   TransactionType,
 } from '@/lib/db/schema/credits';
-import { ValidationError } from '@/lib/errors';
+import { ValidationError } from '@/shared/errors';
 import { getBillingChannel } from '@/lib/realtime';
 import { and, count, desc, eq, gte, notExists, sql } from 'drizzle-orm';
-import { generateId } from '../id';
+import { generateId } from '@/shared/id';
 import { giftTokenRedemptions, giftTokens } from '../schema';
 
 import { getLogger } from '@/lib/observability/logger';

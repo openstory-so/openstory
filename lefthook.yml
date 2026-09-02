@@ -42,6 +42,11 @@ pre-commit:
       # export, wire up a consumer in the same commit or tag it `@public`.
       glob: '{*.{js,ts,cjs,mjs,jsx,tsx},package.json,knip.config.ts}'
       run: bun dead-code
+    client-server-boundary:
+      # Transitive import-graph walk (~1.3s). The per-file lint rule above
+      # catches the direct shape; this catches the leak through a helper.
+      glob: '{src,scripts}/**/*.{ts,tsx}'
+      run: bun run test src/lib/client-server-boundary.test.ts
     migration-safety:
       glob: 'drizzle/migrations/**/*.sql'
       run: bun scripts/check-migrations.ts {staged_files}

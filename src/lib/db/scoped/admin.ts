@@ -6,7 +6,7 @@
 
 import { micros, microsToUsd, usdToMicros } from '@/lib/billing/money';
 import type { Database } from '@/lib/db/client';
-import { generateId } from '@/lib/db/id';
+import { generateId } from '@/shared/id';
 import { user } from '@/lib/db/schema/auth';
 import { credits, transactions } from '@/lib/db/schema/credits';
 import { shots } from '@/lib/db/schema/shots';
@@ -21,7 +21,7 @@ import { sequences } from '@/lib/db/schema/sequences';
 import type { Sequence } from '@/lib/db/schema';
 import type { ShotView } from '@/lib/shots/shot-view';
 import { teamMembers, teams } from '@/lib/db/schema/teams';
-import { ValidationError } from '@/lib/errors';
+import { ValidationError } from '@/shared/errors';
 import { and, count, desc, eq, exists, like, not, or, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/sqlite-core';
 

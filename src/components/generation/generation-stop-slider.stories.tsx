@@ -1,7 +1,7 @@
 import { useState, type ComponentProps } from 'react';
 import type { Meta, StoryObj } from '@storybook/react';
 import { GenerationStopSlider } from './generation-stop-slider';
-import type { GenerationStage } from '@/lib/generation/pipeline';
+import type { GenerationStage } from '@/shared/generation/pipeline';
 
 function StatefulSlider(
   props: Omit<ComponentProps<typeof GenerationStopSlider>, 'onChange'>

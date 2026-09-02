@@ -7,7 +7,7 @@
 
 import { micros } from '@/lib/billing/money';
 import type { ScopedDb } from '@/lib/db/scoped';
-import { InsufficientCreditsError } from '@/lib/errors';
+import { InsufficientCreditsError } from '@/shared/errors';
 import { describe, expect, it, vi } from 'vitest';
 import {
   releaseReservationOnThrow,

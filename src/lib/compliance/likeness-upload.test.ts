@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ASSET_RIGHTS_V1, PORTRAIT_RIGHTS_V1 } from './attestations';
 import { requireUploadAttestation } from './likeness-upload';
-import { AttestationRequiredError, ValidationError } from '@/lib/errors';
+import { AttestationRequiredError, ValidationError } from '@/shared/errors';
 
 describe('requireUploadAttestation', () => {
   it('requires a portrait statement and basis for a human', () => {

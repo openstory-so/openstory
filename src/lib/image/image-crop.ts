@@ -11,7 +11,7 @@
 
 import { getEnv } from '#env';
 import { readStorageObject, uploadFile } from '#storage';
-import { generateId } from '@/lib/db/id';
+import { generateId } from '@/shared/id';
 import {
   STORAGE_BUCKETS,
   isLocalStorageServing,

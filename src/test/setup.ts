@@ -3,7 +3,7 @@
  */
 
 import { afterAll, afterEach, beforeAll } from 'vitest';
-import { server } from '@/lib/mocks/server';
+import { server } from '@/shared/mocks/server';
 
 // Enable API mocking before all tests
 beforeAll(() => {

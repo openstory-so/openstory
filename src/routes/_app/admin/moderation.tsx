@@ -27,7 +27,7 @@ import { formatReportReference } from '@/lib/compliance/provenance';
 import {
   CONTENT_REPORT_REASONS,
   type ContentReportReason,
-} from '@/lib/db/schema/compliance';
+} from '@/shared/content-reports';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { Search, ShieldAlert } from 'lucide-react';

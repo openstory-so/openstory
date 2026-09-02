@@ -17,7 +17,10 @@
  */
 
 import type { Frame, NewFrame, NewFrameVariant } from '@/lib/db/schema';
-import { frameFixture, frameVariantFixture } from '@/lib/mocks/frame-fixtures';
+import {
+  frameFixture,
+  frameVariantFixture,
+} from '@/shared/mocks/frame-fixtures';
 import { describe, expect, it } from 'vitest';
 import {
   bindUpscaleVersion,

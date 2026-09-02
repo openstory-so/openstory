@@ -18,7 +18,7 @@ import {
   requireCredits,
   reserveRunCredits,
 } from '@/lib/billing/preflight';
-import { getVariantGridConfig } from '@/lib/constants/aspect-ratios';
+import { getVariantGridConfig } from '@/shared/constants/aspect-ratios';
 import { cropTileFromGrid } from '@/lib/image/image-crop';
 import { buildCharacterReferenceImages } from '@/lib/prompts/character-prompt';
 import {

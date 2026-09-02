@@ -8,8 +8,17 @@
  * Node SDK, and drizzle-orm/libsql in the browser on every sequence page.
  *
  * The walk starts from the client-side roots (`src/components`, `src/hooks`,
- * and `src/functions` — the RPC surface the client imports for its stubs) and
- * fails if any path reaches a server-only module.
+ * `src/routes` minus `routes/api`, and `src/functions` — the RPC surface the
+ * client imports for its stubs) and fails if any path reaches a server-only
+ * module. Two things count as server-only (#1445):
+ *
+ *  1. A `SERVER_ONLY` package specifier (below).
+ *  2. Any file under `src/lib/**` — `src/lib` is the server half of the tree
+ *     and `src/shared` the client-safe half. The per-file half of this rule is
+ *     `no-restricted-imports` in `.oxlintrc.json`, whose `!@/lib/<dir>`
+ *     exceptions name the directories still mixing both; those are read from
+ *     the config here so the two can never drift. Delete an exception once
+ *     the directory's client-safe files have moved to `src/shared`.
  *
  * Server fn / middleware files are walked THE WAY THE START COMPILER SHIPS
  * THEM (#1257), using the compiler's own building blocks from
@@ -20,8 +29,7 @@
  * EXPORTED helper. That is exactly why heavy server logic must live in
  * `src/lib/**` and be referenced ONLY inside handler bodies: an exported
  * helper in a `functions/` file ships its whole graph to the browser.
- * (The model errs conservative in one spot: the real compiler also strips
- * `.validator(…)` schemas client-side; this walk keeps them.)
+ * `.validator(…)` arguments are compiled out the same way.
  *
  * Files the Start compiler does NOT transform (no createServerFn /
  * createMiddleware / … marker) are served verbatim in dev, so every one of
@@ -29,8 +37,8 @@
  *
  * If this test fails: don't extend the allowlist — move the offending helper
  * out of the `functions/` file into a server-side `src/lib/**` module (see
- * `src/lib/ai/script-enhancement.ts`), or move the pure part you need into a
- * client-safe module (see `src/lib/motion/snap-duration.ts`).
+ * `src/lib/ai/script-enhancement.ts`), or move the pure part you need into
+ * `src/shared/**` (see `src/shared/scene-id.ts`).
  */
 
 import type { Node } from '@babel/types';
@@ -67,7 +75,35 @@ const SERVER_ONLY = [
 /** Client-side entry points of packages whose root is server-only. */
 const CLIENT_SAFE = ['better-auth/client', 'better-auth/react'];
 
-const CLIENT_ROOTS = ['src/components', 'src/hooks', 'src/functions'];
+const CLIENT_ROOTS = [
+  'src/components',
+  'src/hooks',
+  'src/routes',
+  'src/functions',
+];
+
+/**
+ * `src/lib` directories the lint rule still exempts (`!@/lib/<dir>` in
+ * `.oxlintrc.json`) because they mix server and client-safe files. Read from
+ * the config so this test and the lint rule enforce the same list.
+ */
+function readMixedLibDirs(): Set<string> {
+  const raw = readFileSync(join(SRC, '.oxlintrc.json'), 'utf8');
+  // The config's comments are all full-line, so this cannot clip a `//`
+  // inside a string value.
+  const config: unknown = JSON.parse(raw.replace(/^\s*\/\/.*$/gm, ''));
+  const groups = JSON.stringify(config).match(/"!@\/lib\/([^"/]+)"/g) ?? [];
+  return new Set(groups.map((g) => g.slice('"!@/lib/'.length, -1)));
+}
+const MIXED_LIB_DIRS = readMixedLibDirs();
+
+/** A `src/lib/**` file outside the directories the lint rule still exempts. */
+function isServerOnlyFile(file: string): boolean {
+  const inLib = file.replace(`${SRC}/src/lib/`, '');
+  if (inLib === file) return false;
+  const top = inLib.split('/')[0];
+  return top !== undefined && !MIXED_LIB_DIRS.has(top);
+}
 
 function isServerOnly(spec: string): boolean {
   if (CLIENT_SAFE.some((s) => spec === s || spec.startsWith(`${s}/`))) {
@@ -138,7 +174,7 @@ function* walkAst(value: unknown): Generator<Node> {
  * verbatim by vite dev, so no stripping or DCE may be assumed for them.
  */
 const COMPILED_RE =
-  /\bcreateServerFn\b|\bcreateMiddleware\b|\bcreateIsomorphicFn\b|\bcreateServerOnlyFn\b|\.\s*handler\s*\(/;
+  /\bcreateServerFn\b|\bcreateMiddleware\b|\bcreateIsomorphicFn\b|\bcreateServerOnlyFn\b|\bcreateFileRoute\b|\.\s*handler\s*\(/;
 
 /**
  * The value imports of a module as the CLIENT receives it in dev.
@@ -146,7 +182,8 @@ const COMPILED_RE =
  * For compiler-transformed modules this replays the compiler's client pass
  * with its own primitives: `.handler(…)` / `.server(…)` arguments are
  * emptied (the compiler substitutes RPC stubs for handlers and removes
- * middleware server phases), then `deadCodeElimination` — the same
+ * middleware server phases), a route file's `server: { handlers }` option is
+ * dropped the same way, then `deadCodeElimination` — the same
  * babel-dead-code-elimination the Start plugin runs — removes declarations
  * and imports nothing references any more. Everything else is returned
  * verbatim. Type-only imports pull no runtime dependency and are skipped.
@@ -159,14 +196,33 @@ export function clientRetainedImports(source: string): string[] {
   if (COMPILED_RE.test(source)) {
     const referenced = findReferencedIdentifiers(ast);
     for (const node of walkAst(ast.program)) {
+      if (node.type !== 'CallExpression') continue;
       if (
-        node.type === 'CallExpression' &&
         node.callee.type === 'MemberExpression' &&
         node.callee.property.type === 'Identifier' &&
         (node.callee.property.name === 'handler' ||
-          node.callee.property.name === 'server')
+          node.callee.property.name === 'server' ||
+          node.callee.property.name === 'validator')
       ) {
         node.arguments = [];
+      }
+      // createFileRoute('/x')({ server: { handlers } , ...}) — the compiler
+      // strips the `server` option from the client build.
+      const options = node.arguments[0];
+      if (
+        node.callee.type === 'CallExpression' &&
+        node.callee.callee.type === 'Identifier' &&
+        node.callee.callee.name === 'createFileRoute' &&
+        options?.type === 'ObjectExpression'
+      ) {
+        options.properties = options.properties.filter(
+          (p) =>
+            !(
+              p.type === 'ObjectProperty' &&
+              p.key.type === 'Identifier' &&
+              p.key.name === 'server'
+            )
+        );
       }
     }
     deadCodeElimination(ast, referenced);
@@ -224,6 +280,27 @@ describe('client/server import boundary', () => {
       expect(specs).toContain('@tanstack/react-start');
     });
 
+    test('a validator-only import is dropped', () => {
+      const specs = clientRetainedImports(`
+        import { inputSchema } from '@/lib/schemas/input';
+        import { createServerFn } from '@tanstack/react-start';
+        export const fn = createServerFn().validator(inputSchema).handler(() => 1);
+      `);
+      expect(specs).not.toContain('@/lib/schemas/input');
+    });
+
+    test("a route file's server handlers are dropped — the r2.$ shape", () => {
+      const specs = clientRetainedImports(`
+        import { createFileRoute } from '@tanstack/react-router';
+        import { serve } from '@/lib/storage/serve-media';
+        export const Route = createFileRoute('/r2/$')({
+          server: { handlers: { GET: ({ params }) => serve(params) } },
+        });
+      `);
+      expect(specs).not.toContain('@/lib/storage/serve-media');
+      expect(specs).toContain('@tanstack/react-router');
+    });
+
     test('side-effect imports and value re-exports always survive', () => {
       const specs = clientRetainedImports(`
         import '@srv/polyfill';
@@ -276,14 +353,34 @@ describe('client/server import boundary', () => {
     });
   });
 
-  test('no server-only module is reachable from client components/hooks/functions', () => {
+  test('the lint rule still exempts some src/lib directories', () => {
+    // Sanity-check the config parse: an empty set would silently turn the
+    // path check below into "all of src/lib", not "none of it".
+    expect(MIXED_LIB_DIRS.size).toBeGreaterThan(0);
+    expect(MIXED_LIB_DIRS.has('db')).toBe(false);
+  });
+
+  test('no server-only module is reachable from client components/hooks/routes/functions', () => {
     const visited = new Set<string>();
     // file → the import edge that got us there, for a readable failure trail.
     const cameFrom = new Map<string, string>();
     const queue: string[] = [];
     for (const root of CLIENT_ROOTS) {
-      for (const f of walkFiles(join(SRC, root))) queue.push(f);
+      for (const f of walkFiles(join(SRC, root))) {
+        if (!isServerRoute(f)) queue.push(f);
+      }
     }
+
+    const trailTo = (file: string): string[] => {
+      const trail: string[] = [file.replace(`${SRC}/`, '')];
+      for (let at = file; cameFrom.has(at);) {
+        const prev = cameFrom.get(at);
+        if (prev === undefined) break;
+        trail.unshift(prev.replace(`${SRC}/`, ''));
+        at = prev;
+      }
+      return trail;
+    };
 
     const violations: string[] = [];
     while (queue.length > 0) {
@@ -293,26 +390,23 @@ describe('client/server import boundary', () => {
 
       for (const spec of clientRetainedImports(readFileSync(file, 'utf8'))) {
         if (isServerOnly(spec)) {
-          const trail: string[] = [file.replace(`${SRC}/`, '')];
-          for (let at = file; cameFrom.has(at);) {
-            const prev = cameFrom.get(at);
-            if (prev === undefined) break;
-            trail.unshift(prev.replace(`${SRC}/`, ''));
-            at = prev;
-          }
-          violations.push(`${trail.join('\n    → ')}\n    → "${spec}"`);
+          violations.push(`${trailTo(file).join('\n    → ')}\n    → "${spec}"`);
           continue;
         }
         const target = resolveLocal(file, spec);
         if (!target || visited.has(target) || isServerRoute(target)) continue;
         cameFrom.set(target, file);
+        if (isServerOnlyFile(target)) {
+          violations.push(`${trailTo(file).join('\n    → ')}\n    → "${spec}"`);
+          continue;
+        }
         queue.push(target);
       }
     }
 
     expect(
       violations,
-      `Server-only imports reachable from client code:\n\n${violations.join('\n\n')}\n\nMove the offending helper into a server-side src/lib module (referenced only from handler bodies) instead of widening this list.`
+      `Server-only imports reachable from client code:\n\n${violations.join('\n\n')}\n\nMove the client-safe part into src/shared, or keep the server-side helper in src/lib and reference it only from handler bodies — do not widen the exceptions in .oxlintrc.json.`
     ).toEqual([]);
   });
 });

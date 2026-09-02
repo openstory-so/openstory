@@ -1,6 +1,6 @@
 import { uploadFile } from '#storage';
 import { authRequestMiddleware } from '@/functions/middleware';
-import { handleApiError } from '@/lib/errors';
+import { handleApiError } from '@/shared/errors';
 import { resolveUploadTarget } from '@/lib/storage/upload-target';
 import { createFileRoute } from '@tanstack/react-router';
 

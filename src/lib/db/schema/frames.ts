@@ -27,7 +27,7 @@ import {
   text,
   uniqueIndex,
 } from 'drizzle-orm/sqlite-core';
-import { generateId } from '../id';
+import { generateId } from '@/shared/id';
 import { sequences } from './sequences';
 import { SHOT_GENERATION_STATUSES, shots } from './shots';
 

@@ -71,8 +71,8 @@ import {
   buildSceneInsert,
   buildSceneShotLinks,
 } from '@/lib/ai/scene-persistence';
-import { aspectRatioToImageSize } from '@/lib/constants/aspect-ratios';
-import { generateId } from '@/lib/db/id';
+import { aspectRatioToImageSize } from '@/shared/constants/aspect-ratios';
+import { generateId } from '@/shared/id';
 import { dbSceneId, type NewShot } from '@/lib/db/schema';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import type { ShotWithAnchorFrame } from '@/lib/db/scoped/shots';

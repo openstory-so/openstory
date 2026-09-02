@@ -1284,7 +1284,7 @@ export async function runProdSetup(mode: ProdSetupMode) {
   if (!vars.has('VITE_APP_NAME')) vars.set('VITE_APP_NAME', 'OpenStory');
 
   // Contact/privacy emails are derived from VITE_APP_URL at runtime
-  // (src/lib/marketing/constants.ts) — no env vars needed.
+  // (src/shared/marketing/constants.ts) — no env vars needed.
 
   if (!vars.has('BETTER_AUTH_SECRET')) {
     vars.set('BETTER_AUTH_SECRET', generateSecret());

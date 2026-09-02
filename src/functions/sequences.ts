@@ -24,7 +24,7 @@ import {
   reserveRunCredits,
 } from '@/lib/billing/preflight';
 import { estimateStoryboardPreflightCost } from '@/lib/billing/storyboard-preflight-cost';
-import { DEFAULT_ASPECT_RATIO } from '@/lib/constants/aspect-ratios';
+import { DEFAULT_ASPECT_RATIO } from '@/shared/constants/aspect-ratios';
 import type { Shot } from '@/lib/db/schema';
 import {
   loadSceneContextBySequence,
@@ -46,14 +46,14 @@ import {
 import { triggerWorkflow } from '@/lib/workflow/client';
 import { buildWorkflowLabel } from '@/lib/workflow/labels';
 import { triggerStoryboard } from '@/lib/workflow/launchers';
-import { ValidationError } from '@/lib/errors';
+import { ValidationError } from '@/shared/errors';
 import {
   continueStageSchema,
   flagsFromStopAt,
   generationStageSchema,
   nextStageAfter,
   stageIndex,
-} from '@/lib/generation/pipeline';
+} from '@/shared/generation/pipeline';
 import type {
   BatchMotionMusicWorkflowInput,
   MusicWorkflowInput,
@@ -64,7 +64,7 @@ import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
 import { authWithTeamMiddleware, sequenceAccessMiddleware } from './middleware';
 import { bumpStylePopularity } from '@/lib/style/bump-style-popularity';
-import { simpleHash } from '@/lib/utils/hash';
+import { simpleHash } from '@/shared/utils/hash';
 import { getLogger } from '@/lib/observability/logger';
 import { createSequences } from '@/lib/sequences/create-sequences';
 import { canRenderReferenceOnly } from '@/lib/motion/motion-generation';

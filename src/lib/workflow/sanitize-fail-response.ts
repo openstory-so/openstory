@@ -1,4 +1,4 @@
-import { errorMessage } from '@/lib/errors';
+import { errorMessage } from '@/shared/errors';
 
 const MAX_MESSAGE_LENGTH = 500;
 

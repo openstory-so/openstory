@@ -13,7 +13,7 @@ import { Separator } from '@/components/ui/separator';
 import {
   optimizedVideoUrl,
   videoPosterUrl,
-} from '@/lib/media/cloudflare-video';
+} from '@/shared/media/cloudflare-video';
 import {
   styleBespokeVideoUrl,
   styleCanonicalVideoUrl,

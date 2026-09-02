@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react';
 
-import type { AspectRatio } from '@/lib/constants/aspect-ratios';
+import type { AspectRatio } from '@/shared/constants/aspect-ratios';
 import { useState } from 'react';
 import { AspectRatioSelect } from './aspect-ratio-select';
 

@@ -7,7 +7,7 @@
  * Continuity tags are assigned later from bibles ∩ slice.
  */
 
-import { plainSceneTitle } from '@/lib/utils/markdown-plain';
+import { plainSceneTitle } from '@/shared/utils/markdown-plain';
 import type {
   Continuity,
   DialogueLine,

@@ -4,7 +4,7 @@ import {
   unsplitScriptTail,
   type ScriptBlockScene,
 } from './scene-script-document';
-import { dbSceneId } from '@/lib/db/schema';
+import { dbSceneId } from '@/shared/scene-id';
 
 function scene(
   id: string,

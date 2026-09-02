@@ -11,7 +11,7 @@ import {
   uniqueIndex,
   primaryKey,
 } from 'drizzle-orm/sqlite-core';
-import { generateId } from '../id';
+import { generateId } from '@/shared/id';
 import { user } from './auth';
 
 // Enum values as constants (SQLite doesn't have native enums)

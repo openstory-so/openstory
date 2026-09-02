@@ -32,7 +32,7 @@ import { resolveShotDuration } from '@/lib/motion/resolve-shot-duration';
 import { generateMotionSchema } from '@/lib/schemas/shot.schemas';
 import { dbSceneId } from '@/lib/db/schema';
 import { ulidSchema } from '@/lib/schemas/id.schemas';
-import { NotFoundError } from '@/lib/errors';
+import { NotFoundError } from '@/shared/errors';
 import { getLogger } from '@/lib/observability/logger';
 import { getGenerationChannel } from '@/lib/realtime';
 import { triggerWorkflow } from '@/lib/workflow/client';

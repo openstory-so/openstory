@@ -4,7 +4,7 @@ import {
   ASPECT_RATIOS,
   aspectRatioSchema,
   type AspectRatio,
-} from '@/lib/constants/aspect-ratios';
+} from '@/shared/constants/aspect-ratios';
 import { type FC } from 'react';
 
 function isValidAspectRatio(value: string): value is AspectRatio {

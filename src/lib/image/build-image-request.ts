@@ -24,7 +24,7 @@ import {
   DEFAULT_IMAGE_SIZE,
   type AspectRatio,
   type ImageSize,
-} from '@/lib/constants/aspect-ratios';
+} from '@/shared/constants/aspect-ratios';
 import {
   clampDimensions,
   pickImageResolution,
@@ -34,7 +34,7 @@ import {
   tiersForTokens,
   type PixelBounds,
   type Resolution,
-} from '@/lib/constants/resolutions';
+} from '@/shared/constants/resolutions';
 import { getLogger } from '@/lib/observability/logger';
 
 const logger = getLogger(['openstory', 'image', 'build-image-request']);

@@ -12,7 +12,7 @@
 
 import type { Style } from '@/lib/db/schema';
 import type { ScopedDb } from '@/lib/db/scoped';
-import { NotFoundError } from '@/lib/errors';
+import { NotFoundError } from '@/shared/errors';
 import type { TempElementUpload } from '@/lib/sequence-elements/promote-temp-elements';
 import { STORAGE_BUCKETS } from '@/lib/storage/buckets';
 import type { ApiCreateSequenceInput } from './input-schema';

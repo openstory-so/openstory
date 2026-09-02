@@ -17,7 +17,7 @@
 
 import { type InferInsertModel, type InferSelectModel } from 'drizzle-orm';
 import { index, integer, snakeCase, text } from 'drizzle-orm/sqlite-core';
-import { generateId } from '../id';
+import { generateId } from '@/shared/id';
 import { user } from './auth';
 import { teams } from './teams';
 

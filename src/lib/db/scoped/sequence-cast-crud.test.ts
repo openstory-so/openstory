@@ -17,7 +17,7 @@ import { charactersToBible } from '@/lib/ai/bibles-from-scoped';
 import { computeVisualPromptInputHash } from '@/lib/ai/input-hash';
 import type { StyleConfig } from '@/lib/db/schema';
 import type { Database } from '@/lib/db/client';
-import { generateId } from '@/lib/db/id';
+import { generateId } from '@/shared/id';
 import {
   characterSheetVariants,
   characters,

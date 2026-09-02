@@ -1,4 +1,4 @@
-import { cn } from '@/lib/utils';
+import { cn } from '@/shared/utils';
 
 type BlobLoaderProps = {
   size?: 'sm' | 'md' | 'lg';

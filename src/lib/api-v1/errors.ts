@@ -4,7 +4,7 @@
  * HTTP status — never an HTML page or redirect.
  */
 
-import { handleApiError, OpenStoryError } from '@/lib/errors';
+import { handleApiError, OpenStoryError } from '@/shared/errors';
 import { getLogger, toErrorPayload } from '@/lib/observability/logger';
 import { z } from 'zod';
 

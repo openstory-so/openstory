@@ -3,7 +3,7 @@
  * ULID validation for all database entities
  */
 
-import { isValidId } from '@/lib/db/id';
+import { isValidId } from '@/shared/id';
 import { z } from 'zod';
 
 /**

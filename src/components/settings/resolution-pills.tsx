@@ -3,7 +3,7 @@ import {
   isResolution,
   RESOLUTION_OPTIONS,
   type Resolution,
-} from '@/lib/constants/resolutions';
+} from '@/shared/constants/resolutions';
 import { type FC } from 'react';
 
 type ResolutionPillsProps = {

@@ -62,7 +62,8 @@ src/
     _app/           #   App shell (anonymous-browsable; actions gated behind login)
   functions/        # createServerFn endpoints — most business logic lives here
   components/       # React UI (shadcn/ui base + layout-only Tailwind)
-  lib/
+  shared/         # Client-safe code (utils, vocabularies, sequence-player…) — the ONLY src/ tree components may value-import besides hooks/functions
+  lib/            # Server-only (see Client/server boundary below)
     ai/             #   AI model configs, prompt schemas, frame.schema
     db/             #   Drizzle schema + clients (D1 in prod + dev via Wrangler)
     services/       #   Frame, motion, etc. business services
@@ -80,6 +81,7 @@ drizzle/migrations/ # Generated SQL (do NOT hand-edit)
 **Core rules:**
 
 - Database access ONLY in server handlers (never in components).
+- **Client/server boundary (#1445):** `src/lib` is server-only; `src/shared` is client-safe. `src/components`, `src/hooks` and `src/routes` may not value-import `@/lib/**` — enforced per-file by `no-restricted-imports` in `.oxlintrc.json` (type-only imports are fine), and transitively by `src/lib/client-server-boundary.test.ts` (pre-commit). Directories still listed as `!@/lib/<dir>` exceptions in `.oxlintrc.json` mix both halves; moving a helper out of one into `src/shared` and deleting its exception line is the migration.
 - Anonymous-first → upgrade to save work.
 - Team-based resources (sequences, styles, characters).
 - Script-driven generation for consistency.
@@ -443,7 +445,7 @@ Motion status checking: `checkMotionStatus(statusUrl)`, `getMotionResult(respons
 
 Exporting a sequence to one stitched MP4 exists in **two** places:
 
-- **Browser** (`src/lib/sequence-player/export.ts`, `use-sequence-export`) — the Theatre "Export MP4" button. Uses WebCodecs + Web Audio in the user's browser. **Unchanged.**
+- **Browser** (`src/shared/sequence-player/export.ts`, `use-sequence-export`) — the Theatre "Export MP4" button. Uses WebCodecs + Web Audio in the user's browser. **Unchanged.**
 - **Server** (#968) — the public API. WebCodecs/Web Audio don't exist on Workers, so the heavy lift runs in a **Cloudflare Container** (`containers/video-export/`, Node + `@mediabunny/server`/NodeAV). Flow:
   - `POST /api/v1/sequences/$id/exports` reserves a `sequence_exports` row (`status: processing`) and triggers `SequenceExportWorkflow`; `GET …/exports` lists/polls them. (`src/routes/api/v1/sequences.$id.exports.ts`)
   - `SequenceExportWorkflow` (`src/lib/workflows/`) does **all** DB access via `scopedDb`, absolutizes scene/music URLs (`toShareableUrl`), POSTs the job to the container, streams the returned MP4 into R2 (`uploadFile`), and flips the row to `ready`/`failed`. The container is a **stateless renderer — it never touches D1**; it only gets URLs + params over HTTP.
@@ -635,7 +637,7 @@ When re-mocking inside an `it()` block to test a different code path, call `vi.r
 
 ## Platform & Deployment
 
-Production target: **Cloudflare Workers** (the only supported platform). Deployment-context helpers (preview/local detection) live in `src/lib/utils/environment.ts`. Workers Builds auto-deploys main (same mechanism as Deploy-button clones); PRs get GitHub Actions preview deployments with unique D1 databases. See `.env.example` for required vars (or `bun setup` for local defaults).
+Production target: **Cloudflare Workers** (the only supported platform). Deployment-context helpers (preview/local detection) live in `src/shared/utils/environment.ts`. Workers Builds auto-deploys main (same mechanism as Deploy-button clones); PRs get GitHub Actions preview deployments with unique D1 databases. See `.env.example` for required vars (or `bun setup` for local defaults).
 
 <!-- intent-skills:start -->
 

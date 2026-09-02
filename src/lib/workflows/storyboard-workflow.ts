@@ -27,7 +27,7 @@ import {
   extractImageCost,
   recordFalUsageStep,
 } from '@/lib/billing/workflow-deduction';
-import { aspectRatioToImageSize } from '@/lib/constants/aspect-ratios';
+import { aspectRatioToImageSize } from '@/shared/constants/aspect-ratios';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import { generateImageWithProvider } from '@/lib/image/image-generation';
 import { uploadPosterToStorage } from '@/lib/image/image-storage';
@@ -37,7 +37,7 @@ import {
   sequenceScenesUrl,
 } from '@/lib/emails/notify-sequence-ready';
 import { getGenerationChannel } from '@/lib/realtime';
-import { includesStage } from '@/lib/generation/pipeline';
+import { includesStage } from '@/shared/generation/pipeline';
 import { validateSequenceAuth } from '@/lib/workflow/auth';
 import { spawnAndAwaitChild } from '@/lib/workflow/await-child';
 import { OpenStoryWorkflowEntrypoint } from '@/lib/workflow/base-workflow';

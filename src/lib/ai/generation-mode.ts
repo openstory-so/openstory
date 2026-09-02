@@ -17,7 +17,7 @@ import {
   type ImageToVideoModel,
   type TextToImageModel,
 } from '@/lib/ai/models';
-import type { AspectRatio } from '@/lib/constants/aspect-ratios';
+import type { AspectRatio } from '@/shared/constants/aspect-ratios';
 
 const GENERATION_MODES = ['quality', 'turbo'] as const;
 export type GenerationMode = (typeof GENERATION_MODES)[number];

@@ -21,7 +21,7 @@ import {
   useToggleTalentFavorite,
 } from '@/hooks/use-talent';
 import { sheetProgressCopy } from '@/lib/talent/sheet-progress-copy';
-import { cn } from '@/lib/utils';
+import { cn } from '@/shared/utils';
 import { useQuery } from '@tanstack/react-query';
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import {

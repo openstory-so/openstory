@@ -21,8 +21,8 @@
  */
 
 import type { Database } from '@/lib/db/client';
-import type { Resolution } from '@/lib/constants/resolutions';
-import { generateId } from '@/lib/db/id';
+import type { Resolution } from '@/shared/constants/resolutions';
+import { generateId } from '@/shared/id';
 import { framePromptVersions, frameVariants, frames } from '@/lib/db/schema';
 import type {
   FramePromptVersion,
@@ -33,7 +33,7 @@ import {
   type FrameVariantKind,
   isSelectableFrameVariantKind,
 } from '@/lib/db/schema/frame-variants';
-import { simpleHash } from '@/lib/utils/hash';
+import { simpleHash } from '@/shared/utils/hash';
 import {
   and,
   asc,

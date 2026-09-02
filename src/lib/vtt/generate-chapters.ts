@@ -1,5 +1,5 @@
 import type { SceneRow } from '@/lib/db/schema';
-import { plainSceneTitle } from '@/lib/utils/markdown-plain';
+import { plainSceneTitle } from '@/shared/utils/markdown-plain';
 import type { Shot } from '@/types/database';
 
 /** A shot paired with the scene it belongs to (null when it has none). */

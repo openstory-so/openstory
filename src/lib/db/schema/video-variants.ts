@@ -31,8 +31,8 @@
 
 import { type InferInsertModel, type InferSelectModel } from 'drizzle-orm';
 import { index, integer, snakeCase, text } from 'drizzle-orm/sqlite-core';
-import { generateId } from '../id';
-import type { Resolution } from '@/lib/constants/resolutions';
+import { generateId } from '@/shared/id';
+import type { Resolution } from '@/shared/constants/resolutions';
 import { renderSegments } from './render-segments';
 import { sequences } from './sequences';
 import { SHOT_GENERATION_STATUSES } from './shots';

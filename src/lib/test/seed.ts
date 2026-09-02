@@ -8,7 +8,7 @@
  * Do NOT import this from e2e/ fixtures directly — call the HTTP endpoints instead.
  */
 
-import { generateId } from '@/lib/db/id';
+import { generateId } from '@/shared/id';
 import {
   characterSheetVariants,
   characters,

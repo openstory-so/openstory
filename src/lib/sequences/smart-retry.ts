@@ -43,14 +43,14 @@ import {
   reserveRunCredits,
 } from '@/lib/billing/preflight';
 import { estimateStoryboardPreflightCost } from '@/lib/billing/storyboard-preflight-cost';
-import { aspectRatioToImageSize } from '@/lib/constants/aspect-ratios';
+import { aspectRatioToImageSize } from '@/shared/constants/aspect-ratios';
 import type { ScopedDb } from '@/lib/db/scoped';
 import {
   type CharacterWithSheet,
   type Sequence,
   type Shot,
 } from '@/lib/db/schema';
-import { analyzeFailures } from '@/lib/failures/failure-analysis';
+import { analyzeFailures } from '@/shared/failures/failure-analysis';
 import {
   motionPromptFromVersion,
   resolveMotionPromptFromVersion,

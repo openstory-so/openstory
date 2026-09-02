@@ -6,11 +6,11 @@
 import {
   type AspectRatio,
   DEFAULT_ASPECT_RATIO,
-} from '@/lib/constants/aspect-ratios';
-import type { Resolution } from '@/lib/constants/resolutions';
+} from '@/shared/constants/aspect-ratios';
+import type { Resolution } from '@/shared/constants/resolutions';
 import { type InferInsertModel, type InferSelectModel } from 'drizzle-orm';
 import { index, integer, snakeCase, text } from 'drizzle-orm/sqlite-core';
-import { generateId } from '../id';
+import { generateId } from '@/shared/id';
 import { user } from './auth';
 // NOTE: shots imported in index.ts to avoid circular dependency
 // shots.ts imports sequences for foreign key reference
@@ -19,7 +19,7 @@ import { teams } from './teams';
 import type {
   GenerationCheckpoint,
   GenerationStage,
-} from '@/lib/generation/pipeline';
+} from '@/shared/generation/pipeline';
 import type { StoredStyleConfig } from '@/lib/style/style-config';
 
 // Enum values as constants (SQLite doesn't have native enums)

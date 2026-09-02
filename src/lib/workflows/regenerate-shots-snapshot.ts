@@ -16,7 +16,7 @@ import {
 } from '@/lib/ai/input-hash';
 import type { TextToImageModel } from '@/lib/ai/models';
 import type { Scene } from '@/lib/ai/scene-analysis.schema';
-import type { AspectRatio } from '@/lib/constants/aspect-ratios';
+import type { AspectRatio } from '@/shared/constants/aspect-ratios';
 import type {
   CharacterWithSheet,
   Shot,

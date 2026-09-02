@@ -26,7 +26,7 @@ import {
 } from '@/lib/ai/input-hash';
 import { resolveSheetImageModel } from '@/lib/sheets/sheet-image-model';
 import { StyleConfigSchema } from '@/lib/db/schema';
-import { NotFoundError } from '@/lib/errors';
+import { NotFoundError } from '@/shared/errors';
 import { computeStyleConfigHash } from '@/lib/workflows/sheet-snapshots';
 import {
   loadShotPromptContext,
@@ -37,15 +37,15 @@ import {
   shotPromptSequence,
   usesStartFrame,
 } from '@/lib/shots/use-start-frame';
-import { generateId } from '@/lib/db/id';
+import { generateId } from '@/shared/id';
 import type { Scene } from '@/lib/ai/scene-analysis.schema';
-import type { AspectRatio } from '@/lib/constants/aspect-ratios';
+import type { AspectRatio } from '@/shared/constants/aspect-ratios';
 import type { ScopedDb } from '@/lib/db/scoped';
-import { ValidationError } from '@/lib/errors';
+import { ValidationError } from '@/shared/errors';
 import { buildVideoManifest } from '@/lib/motion/render-segments';
 import { getGenerationChannel } from '@/lib/realtime';
 import { ulidSchema } from '@/lib/schemas/id.schemas';
-import { mediaUrlSchema } from '@/lib/schemas/media-url.schemas';
+import { mediaUrlSchema } from '@/shared/schemas/media-url.schemas';
 import { getFrameImageUrl } from '@/lib/shots/frame-image';
 import {
   computeUploadedStillInputHash,
@@ -56,7 +56,7 @@ import {
   type UploadMediaSurface,
 } from '@/lib/shots/upload-media';
 import { STORAGE_BUCKETS, type StorageBucket } from '@/lib/storage/buckets';
-import { getMimeTypeFromExtension } from '@/lib/utils/file';
+import { getMimeTypeFromExtension } from '@/shared/utils/file';
 import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';

@@ -9,7 +9,7 @@ import { INVITATION_CONFIG } from '@/lib/auth/constants';
 import type { TeamRole } from '@/lib/auth/permissions';
 import { getUserRole } from '@/lib/auth/permissions';
 import { teamInvitations, teamMembers, user } from '@/lib/db/schema';
-import { ValidationError } from '@/lib/errors';
+import { ValidationError } from '@/shared/errors';
 import crypto from 'node:crypto';
 
 import { getLogger } from '@/lib/observability/logger';

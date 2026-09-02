@@ -3,7 +3,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import {
   getAspectRatioClassName,
   type AspectRatio,
-} from '@/lib/constants/aspect-ratios';
+} from '@/shared/constants/aspect-ratios';
 import {
   captureVideoPlay,
   captureVideoPlayFailed,
@@ -12,7 +12,7 @@ import {
   type PlaybackTracker,
   type VideoPlaySource,
 } from '@/lib/observability/player-events';
-import { cn } from '@/lib/utils';
+import { cn } from '@/shared/utils';
 import { usePostHog } from '@posthog/react';
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 

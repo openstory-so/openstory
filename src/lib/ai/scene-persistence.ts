@@ -13,7 +13,7 @@
  */
 
 import type { DbSceneId, NewScene, SceneRow } from '@/lib/db/schema';
-import { plainSceneTitle } from '@/lib/utils/markdown-plain';
+import { plainSceneTitle } from '@/shared/utils/markdown-plain';
 import type { Scene } from './scene-analysis.schema';
 
 /**

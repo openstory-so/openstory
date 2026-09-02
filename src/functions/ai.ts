@@ -11,7 +11,7 @@
  * bodies, which the compiler strips.
  */
 
-import { mediaUrlSchema } from '@/lib/schemas/media-url.schemas';
+import { mediaUrlSchema } from '@/shared/schemas/media-url.schemas';
 import {
   callLLMStream,
   llmCostFromUsage,
@@ -32,7 +32,7 @@ import {
   prepareBilling,
   streamScriptEnhancement,
 } from '@/lib/ai/script-enhancement';
-import { aspectRatioSchema } from '@/lib/constants/aspect-ratios';
+import { aspectRatioSchema } from '@/shared/constants/aspect-ratios';
 import { type Style } from '@/lib/db/schema/libraries';
 import { parseStyleConfig, StyleConfigSchema } from '@/lib/style/style-config';
 import { ulidSchema } from '@/lib/schemas/id.schemas';

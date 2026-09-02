@@ -25,7 +25,7 @@ import {
   getTalentSheetUrl,
 } from '@/lib/talent/talent-templates';
 import type { createD1HttpClient } from './client-d1-http';
-import { generateId } from './id';
+import { generateId } from '@/shared/id';
 import {
   appMetadata,
   locationLibrary,

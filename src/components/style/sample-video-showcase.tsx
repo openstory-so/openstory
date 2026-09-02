@@ -7,13 +7,13 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { VideoPlayer } from '@/components/motion/video-player';
-import { getAspectRatioClassName } from '@/lib/constants/aspect-ratios';
+import { getAspectRatioClassName } from '@/shared/constants/aspect-ratios';
 import {
   optimizedVideoUrl,
   videoPosterUrl,
-} from '@/lib/media/cloudflare-video';
+} from '@/shared/media/cloudflare-video';
 import { type SampleEntry } from '@/lib/style/sample-entries';
-import { cn } from '@/lib/utils';
+import { cn } from '@/shared/utils';
 import { Link } from '@tanstack/react-router';
 import { Wand2 } from 'lucide-react';
 import { useCallback, useRef, useState } from 'react';

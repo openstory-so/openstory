@@ -8,7 +8,7 @@ import { useBillingGate } from '@/hooks/use-billing-gate';
 import { useSequence } from '@/hooks/use-sequences';
 import { useStyles } from '@/hooks/use-styles';
 import { useUser } from '@/hooks/use-user';
-import { SITE_CONFIG } from '@/lib/marketing/constants';
+import { SITE_CONFIG } from '@/shared/marketing/constants';
 import { AUTO_STYLE_ID } from '@/lib/style/auto-style';
 import { briefForStyle } from '@/lib/style/brief-for-style';
 import { styleSlug } from '@/lib/style/style-slug';

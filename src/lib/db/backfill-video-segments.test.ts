@@ -18,7 +18,7 @@
  */
 
 import type { Database } from '@/lib/db/client';
-import { generateId } from '@/lib/db/id';
+import { generateId } from '@/shared/id';
 import {
   dbSceneId,
   frames,

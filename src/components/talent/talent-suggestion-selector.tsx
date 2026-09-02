@@ -19,7 +19,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useTalent } from '@/hooks/use-talent';
 import type { TalentWithSheets } from '@/lib/db/schema';
 import { AddTalentDialog } from '@/components/talent-library/add-talent-dialog';
-import { cn } from '@/lib/utils';
+import { cn } from '@/shared/utils';
 import { Check, Plus, Search, User, Users, X } from 'lucide-react';
 import { useState } from 'react';
 import { AppImage } from '@/components/ui/app-image';

@@ -13,7 +13,7 @@
  *    instance-id.ts ever changes its truncation strategy, revisit this.
  */
 
-import { simpleHash } from '@/lib/utils/hash';
+import { simpleHash } from '@/shared/utils/hash';
 
 /**
  * Preview image spawned by SceneSplitWorkflow for a freshly upserted shot.

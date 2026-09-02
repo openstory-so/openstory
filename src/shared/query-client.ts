@@ -1,5 +1,5 @@
 import { openBillingGate } from '@/hooks/use-billing-gate-dialog';
-import { isAuthError, isInsufficientCreditsError } from '@/lib/errors';
+import { isAuthError, isInsufficientCreditsError } from '@/shared/errors';
 import { MutationCache, QueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 

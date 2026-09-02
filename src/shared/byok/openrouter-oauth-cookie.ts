@@ -10,7 +10,10 @@
  */
 
 import { z } from 'zod';
-import { decryptApiKey, encryptApiKey } from '@/lib/crypto/api-key-encryption';
+import {
+  decryptApiKey,
+  encryptApiKey,
+} from '@/shared/crypto/api-key-encryption';
 import type { OAuthState } from './openrouter-oauth';
 
 /** How long the PKCE state stays valid between the redirect hops. */

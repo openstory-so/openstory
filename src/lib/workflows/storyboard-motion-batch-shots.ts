@@ -15,8 +15,8 @@
 
 import type { ImageToVideoModel } from '@/lib/ai/models';
 import type { MotionPrompt, Scene } from '@/lib/ai/scene-analysis.schema';
-import type { AspectRatio } from '@/lib/constants/aspect-ratios';
-import type { Resolution } from '@/lib/constants/resolutions';
+import type { AspectRatio } from '@/shared/constants/aspect-ratios';
+import type { Resolution } from '@/shared/constants/resolutions';
 import type {
   CharacterMinimal,
   SequenceElementMinimal,

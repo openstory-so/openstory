@@ -22,7 +22,7 @@ import {
   deductWorkflowCredits,
   recordFalUsageStep,
 } from '@/lib/billing/workflow-deduction';
-import { DEFAULT_IMAGE_SIZE } from '@/lib/constants/aspect-ratios';
+import { DEFAULT_IMAGE_SIZE } from '@/shared/constants/aspect-ratios';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import type { Frame } from '@/lib/db/schema';
 import {
@@ -35,7 +35,7 @@ import { recordProvenance } from '@/lib/compliance/provenance';
 import { buildR2Key, STORAGE_BUCKETS } from '@/lib/storage/buckets';
 import { buildReferenceImagePrompt } from '@/lib/prompts/reference-image-prompt';
 import { getGenerationChannel } from '@/lib/realtime';
-import { simpleHash } from '@/lib/utils/hash';
+import { simpleHash } from '@/shared/utils/hash';
 import { OpenStoryWorkflowEntrypoint } from '@/lib/workflow/base-workflow';
 import { WorkflowValidationError } from '@/lib/workflow/errors';
 import type { ImageWorkflowInput } from '@/lib/workflow/types';

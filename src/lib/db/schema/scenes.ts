@@ -25,7 +25,7 @@ import {
   text,
   uniqueIndex,
 } from 'drizzle-orm/sqlite-core';
-import { generateId } from '../id';
+import { generateId } from '@/shared/id';
 import { sequences } from './sequences';
 
 /**
@@ -38,15 +38,8 @@ import { sequences } from './sequences';
  * their id params, so a `scene.id` flows through naturally, while a bare
  * analysis `sceneId` string won't type-check where a `DbSceneId` is expected.
  */
-export type DbSceneId = string & { readonly __brand: 'DbSceneId' };
-
-/**
- * Brand a raw ULID string as a `DbSceneId` (no conversion, just a type cast).
- * The single sanctioned place to mint the brand — mirrors `micros()` in
- * billing/money.ts.
- */
-// oxlint-disable-next-line typescript/no-unsafe-type-assertion -- sole brand constructor for DbSceneId
-export const dbSceneId = (id: string): DbSceneId => id as DbSceneId;
+export { dbSceneId, type DbSceneId } from '@/shared/scene-id';
+import type { DbSceneId } from '@/shared/scene-id';
 
 // Scene-level slices of the analysis `Scene` object, reused verbatim so the
 // JSON columns stay precisely typed without re-declaring the shapes. Both

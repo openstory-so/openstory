@@ -16,7 +16,7 @@ import {
   text,
   uniqueIndex,
 } from 'drizzle-orm/sqlite-core';
-import { generateId } from '../id';
+import { generateId } from '@/shared/id';
 import { sequences } from './sequences';
 
 // Music is generated, not merged — no 'merging' status (which is video-only).

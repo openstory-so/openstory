@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useCreateSequenceCharacter } from '@/hooks/use-sequence-characters';
-import { errorMessage } from '@/lib/errors';
+import { errorMessage } from '@/shared/errors';
 import { Loader2, Plus } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';

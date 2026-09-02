@@ -40,9 +40,9 @@ import {
   updateShotSchema,
 } from '@/lib/schemas/shot.schemas';
 import { dbSceneId } from '@/lib/db/schema';
-import { NotFoundError } from '@/lib/errors';
+import { NotFoundError } from '@/shared/errors';
 import { ulidSchema } from '@/lib/schemas/id.schemas';
-import { typedFromEntries } from '@/lib/utils/typed-object';
+import { typedFromEntries } from '@/shared/utils/typed-object';
 import {
   loadSceneContextBySequence,
   resolveSceneForShot,
@@ -59,7 +59,7 @@ import {
   shotAccessMiddleware,
   sequenceAccessMiddleware,
 } from './middleware';
-import { ValidationError } from '@/lib/errors';
+import { ValidationError } from '@/shared/errors';
 
 import { getLogger } from '@/lib/observability/logger';
 

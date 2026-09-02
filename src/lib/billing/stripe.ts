@@ -5,7 +5,7 @@
  */
 
 import { getEnv } from '#env';
-import { ConfigurationError } from '@/lib/errors';
+import { ConfigurationError } from '@/shared/errors';
 import Stripe from 'stripe';
 
 let stripeInstance: Stripe | null = null;

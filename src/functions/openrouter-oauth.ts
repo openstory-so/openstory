@@ -11,13 +11,13 @@ import { getRequest, setCookie } from '@tanstack/react-start/server';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
 import { teamAdminAccessMiddleware } from './middleware';
-import { buildAuthorizationUrl } from '@/lib/byok/openrouter-oauth';
+import { buildAuthorizationUrl } from '@/shared/byok/openrouter-oauth';
 import {
   getOAuthCookieName,
   getOAuthCookieOptions,
   sealOAuthState,
-} from '@/lib/byok/openrouter-oauth-cookie';
-import { getServerAppUrl } from '@/lib/utils/environment';
+} from '@/shared/byok/openrouter-oauth-cookie';
+import { getServerAppUrl } from '@/shared/utils/environment';
 
 // ============================================================================
 // Initiate OAuth Flow

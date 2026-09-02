@@ -72,7 +72,7 @@ We deliberately do **not** add a `content_hash` column on upstream entities them
 
 `src/lib/ai/input-hash.ts` exports one named helper per artifact type (e.g. `computeShotImageInputHash`, `computeCharacterSheetInputHash`, `computeMotionPromptInputHash`). Each helper accepts the minimal input DTO it needs (never a whole DB row) and returns a `string`. This keeps callers honest about what counts as input and makes the helpers trivially unit-testable without DB setup.
 
-The existing `src/lib/utils/hash.ts` (`simpleHash`) is not cryptographic and is too weak for this purpose — it stays where it is for its existing non-security uses, and the staleness helpers use `crypto.subtle.digest('SHA-256', ...)`.
+The existing `src/shared/utils/hash.ts` (`simpleHash`) is not cryptographic and is too weak for this purpose — it stays where it is for its existing non-security uses, and the staleness helpers use `crypto.subtle.digest('SHA-256', ...)`.
 
 Canonical serialization matters: object key order, array order for unordered sets (character refs), and trimming of free-text prompts all need to be deterministic. The helper file is the one place this is defined.
 

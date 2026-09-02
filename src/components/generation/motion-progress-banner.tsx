@@ -7,7 +7,7 @@ import type { Sequence } from '@/lib/db/schema/sequences';
 import {
   estimateMotionSeconds,
   estimateMusicSeconds,
-} from '@/lib/generation/time-estimate';
+} from '@/shared/generation/time-estimate';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 type MotionProgressBannerProps = {

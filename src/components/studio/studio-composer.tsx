@@ -26,7 +26,7 @@ import {
   DEFAULT_RESOLUTION,
   RESOLUTION_OPTIONS,
   type Resolution,
-} from '@/lib/constants/resolutions';
+} from '@/shared/constants/resolutions';
 import {
   StudioReferencePicker,
   useStudioLibrary,
@@ -88,8 +88,8 @@ import {
   ASPECT_RATIOS,
   DEFAULT_ASPECT_RATIO,
   type AspectRatio,
-} from '@/lib/constants/aspect-ratios';
-import { isInsufficientCreditsError } from '@/lib/errors';
+} from '@/shared/constants/aspect-ratios';
+import { isInsufficientCreditsError } from '@/shared/errors';
 import { VoiceInputButton } from '@/components/voice/voice-input-button';
 import { useEditorDictation } from '@/hooks/use-dictation';
 import {
@@ -121,8 +121,8 @@ import {
   extractImagesFromSnapshot,
   snapshotDataTransfer,
   toastDragImportCorsError,
-} from '@/lib/utils/drag-images';
-import { cn } from '@/lib/utils';
+} from '@/shared/utils/drag-images';
+import { cn } from '@/shared/utils';
 import { usePostHog } from '@posthog/react';
 import {
   ArrowUp,

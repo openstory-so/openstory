@@ -1,5 +1,5 @@
 import { Badge } from '@/components/ui/badge';
-import { cn } from '@/lib/utils';
+import { cn } from '@/shared/utils';
 import type { FC } from 'react';
 
 const THIRTY_DAYS_S = 30 * 24 * 60 * 60;

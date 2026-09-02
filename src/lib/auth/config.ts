@@ -3,7 +3,7 @@
  * Anonymous users + email OTP, passkeys, and Google social login (no passwords)
  */
 
-import { generateId } from '@/lib/db/id';
+import { generateId } from '@/shared/id';
 import {
   account,
   apikey,
@@ -43,7 +43,7 @@ import { DEV_OTP_CODE } from '@/lib/auth/dev-otp';
 import {
   isGoogleAuthConfigured,
   isLocalRequestHost,
-} from '@/lib/utils/environment';
+} from '@/shared/utils/environment';
 import { DEVICE_VERIFICATION_PATH } from '@/lib/api-v1/device-auth';
 import { createOAuthProviderPlugins } from '@/lib/auth/oauth-provider';
 import { readPublicApiKeyFromHeaders } from '@/lib/auth/public-api-key';
