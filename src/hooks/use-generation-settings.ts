@@ -38,8 +38,12 @@ import { getLogger } from '@/lib/observability/logger';
 const logger = getLogger(['openstory', 'ui', 'use-generation-settings']);
 
 // Bump when product defaults change so prior localStorage snapshots are ignored
-// (v4 → v5: Turbo is the product default; v5 → v6: resolution tier, #1449).
-const STORAGE_KEY = 'openstory:generation-settings:v6';
+// (v4 → v5: Turbo is the product default). Adding a FIELD is not a reason to
+// bump — `loadSettings` falls back per-field, so an older snapshot still loads.
+// Bumping strands e2e's pinned settings (`GENERATION_SETTINGS_KEY` in
+// e2e/fixtures/test-utils.ts mirrors this literal), which silently reverts the
+// recorded pipeline to Turbo defaults and fails as an aimock fixture miss.
+const STORAGE_KEY = 'openstory:generation-settings:v5';
 
 type GenerationSettings = {
   generationMode: GenerationMode;
