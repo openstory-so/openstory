@@ -139,7 +139,7 @@
     "@tiptap/suggestion": "^3.30.5",
     "@unpic/react": "^1.0.2",
     "@videojs/media": "10.0.0-beta.32",
-    "@videojs/react": "^10.0.0-beta.26",
+    "@videojs/react": "^10.0.0-beta.32",
     "better-auth": "1.7.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
