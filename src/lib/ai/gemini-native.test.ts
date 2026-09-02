@@ -6,10 +6,14 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+  geminiImageCost,
   geminiTextCostFromUsage,
   geminiVideoCostFromUsage,
   geminiVideoDurationCost,
+  isNativeGeminiImageEndpoint,
+  isNativeGeminiImageModel,
   isNativeGeminiVideoModel,
+  nativeGeminiImageModel,
   nativeGeminiTextModel,
 } from './gemini-native';
 
@@ -35,6 +39,46 @@ describe('nativeGeminiTextModel', () => {
   it('returns undefined for every non-Gemini model', () => {
     expect(nativeGeminiTextModel('anthropic/claude-sonnet-5')).toBeUndefined();
     expect(nativeGeminiTextModel('x-ai/grok-4.6')).toBeUndefined();
+  });
+});
+
+describe('nativeGeminiImageModel', () => {
+  it('maps Nano Banana registry keys onto the GA Gemini image ids', () => {
+    expect(nativeGeminiImageModel('nano_banana_2')).toBe(
+      'gemini-3.1-flash-image'
+    );
+    expect(nativeGeminiImageModel('nano_banana_2_lite')).toBe(
+      'gemini-3.1-flash-lite-image'
+    );
+    expect(nativeGeminiImageModel('nano_banana_pro')).toBe(
+      'gemini-3-pro-image'
+    );
+    expect(nativeGeminiImageModel('flux_2_max')).toBeUndefined();
+  });
+
+  it('treats the native ids as Gemini endpoints, not fal ids', () => {
+    expect(isNativeGeminiImageModel('nano_banana_2_lite')).toBe(true);
+    expect(isNativeGeminiImageEndpoint('gemini-3.1-flash-lite-image')).toBe(
+      true
+    );
+    expect(isNativeGeminiImageEndpoint('google/nano-banana-2-lite')).toBe(
+      false
+    );
+  });
+});
+
+describe('geminiImageCost', () => {
+  it('bills each Nano Banana at its published per-image equivalent', () => {
+    expect(geminiImageCost(1, 'gemini-3.1-flash-lite-image', '1K')).toBe(
+      33_600
+    );
+    expect(geminiImageCost(1, 'gemini-3.1-flash-image', '1K')).toBe(67_000);
+    expect(geminiImageCost(1, 'gemini-3.1-flash-image', '2K')).toBe(101_000);
+    expect(geminiImageCost(1, 'gemini-3-pro-image', '1K')).toBe(134_000);
+    expect(geminiImageCost(1, 'gemini-3-pro-image', '4K')).toBe(240_000);
+    expect(geminiImageCost(4, 'gemini-3.1-flash-lite-image', '1K')).toBe(
+      134_400
+    );
   });
 });
 

@@ -7,7 +7,7 @@
  * Client-safe: no env access, no adapters.
  */
 
-import type { ImageToVideoModel } from '@/lib/ai/models';
+import type { ImageToVideoModel, TextToImageModel } from '@/lib/ai/models';
 import type { AnalysisModelId } from '@/lib/ai/models.config';
 import { usdToMicros, type Microdollars } from '@/lib/billing/money';
 import { typedEntries } from '@/lib/utils/typed-object';
@@ -42,6 +42,46 @@ export const NATIVE_GEMINI_VIDEO_MODEL = 'gemini-omni-1.1-flash';
 
 export function isNativeGeminiVideoModel(model: ImageToVideoModel): boolean {
   return model === 'gemini_omni_flash';
+}
+
+/**
+ * Registry key → Gemini native image model. Fal ids in `IMAGE_MODELS` stay
+ * the no-key fallback; native generateContent uses these GA names.
+ *
+ * @see https://ai.google.dev/gemini-api/docs/models/gemini-3.1-flash-image
+ * @see https://ai.google.dev/gemini-api/docs/models/gemini-3.1-flash-lite-image
+ * @see https://ai.google.dev/gemini-api/docs/models/gemini-3-pro-image
+ */
+const NATIVE_IMAGE_MODELS = {
+  nano_banana_2: 'gemini-3.1-flash-image',
+  nano_banana_2_lite: 'gemini-3.1-flash-lite-image',
+  nano_banana_pro: 'gemini-3-pro-image',
+} as const satisfies Partial<Record<TextToImageModel, string>>;
+
+export type NativeGeminiImageModel =
+  (typeof NATIVE_IMAGE_MODELS)[keyof typeof NATIVE_IMAGE_MODELS];
+
+const NATIVE_IMAGE_MODEL_BY_KEY = new Map<string, NativeGeminiImageModel>(
+  typedEntries(NATIVE_IMAGE_MODELS)
+);
+
+const NATIVE_IMAGE_ENDPOINT_IDS = new Set<string>(
+  Object.values(NATIVE_IMAGE_MODELS)
+);
+
+export function nativeGeminiImageModel(
+  model: TextToImageModel
+): NativeGeminiImageModel | undefined {
+  return NATIVE_IMAGE_MODEL_BY_KEY.get(model);
+}
+
+export function isNativeGeminiImageModel(model: TextToImageModel): boolean {
+  return NATIVE_IMAGE_MODEL_BY_KEY.has(model);
+}
+
+/** True when this endpoint id is a Gemini native image model, not a fal id. */
+export function isNativeGeminiImageEndpoint(endpointId: string): boolean {
+  return NATIVE_IMAGE_ENDPOINT_IDS.has(endpointId);
 }
 
 /**
@@ -129,6 +169,32 @@ export function geminiVideoCostFromUsage(
   return usdToMicros(
     (usage.completionTokens / 1_000_000) * OMNI_VIDEO_USD_PER_1M_TOKENS
   );
+}
+
+/**
+ * Published per-image equivalents (ai.google.dev/gemini-api/docs/pricing,
+ * read 2026-09-02). Google bills image output as tokens; these ARE the
+ * advertised 1K/2K/4K conversions, not bill-verified. Lite is 1K-only so
+ * every tier maps to the 1K rate. Native spend is unaudited by #1069.
+ */
+const IMAGE_USD_PER_IMAGE: Record<
+  NativeGeminiImageModel,
+  Record<'1K' | '2K' | '4K', number>
+> = {
+  'gemini-3.1-flash-image': { '1K': 0.067, '2K': 0.101, '4K': 0.151 },
+  'gemini-3.1-flash-lite-image': { '1K': 0.0336, '2K': 0.0336, '4K': 0.0336 },
+  'gemini-3-pro-image': { '1K': 0.134, '2K': 0.134, '4K': 0.24 },
+};
+
+export type GeminiImageResolution = '1K' | '2K' | '4K';
+
+/** Exact advertised rate for the images returned, at the requested tier. */
+export function geminiImageCost(
+  numImages: number,
+  model: NativeGeminiImageModel,
+  resolution: GeminiImageResolution = '1K'
+): Microdollars {
+  return usdToMicros(numImages * IMAGE_USD_PER_IMAGE[model][resolution]);
 }
 
 /** Pre-flight estimate; the charge that lands comes from

@@ -14,6 +14,10 @@
 
 import { isBytePlusPricedModel } from '@/lib/ai/byteplus-pricing';
 import {
+  isNativeGeminiImageEndpoint,
+  NATIVE_GEMINI_VIDEO_MODEL,
+} from '@/lib/ai/gemini-native';
+import {
   isNativeGrokImageEndpoint,
   NATIVE_GROK_VIDEO_MODEL,
 } from '@/lib/ai/grok-native';
@@ -201,12 +205,14 @@ export async function recordFalUsage(
   // Observations are platform-global telemetry with no teamId (see
   // model_usage_observations), but the write still needs a db handle.
   if (!scopedDb) return;
-  // Native xAI / Ark units are a different denomination — sampling them
-  // under a fal endpoint id would corrupt the median the pricing cron
+  // Native xAI / Google / Ark units are a different denomination — sampling
+  // them under a fal endpoint id would corrupt the median the pricing cron
   // reads (#1167 / #1157 / #1069).
   if (
     isNativeGrokImageEndpoint(usage.endpointId) ||
     usage.endpointId === NATIVE_GROK_VIDEO_MODEL ||
+    isNativeGeminiImageEndpoint(usage.endpointId) ||
+    usage.endpointId === NATIVE_GEMINI_VIDEO_MODEL ||
     isBytePlusPricedModel(usage.endpointId)
   ) {
     return;

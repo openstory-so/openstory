@@ -8,6 +8,11 @@
  */
 
 import {
+  nativeGeminiImageModel,
+  type GeminiImageResolution,
+  type NativeGeminiImageModel,
+} from '@/lib/ai/gemini-native';
+import {
   capReferenceImages,
   getEditEndpoint,
   getTextToImageModelId,
@@ -277,6 +282,53 @@ function buildFalModelOptions(
       throw new Error(`Unsupported model: ${String(_exhaustive)}`);
     }
   }
+}
+
+/** Gemini native `aspectRatio_imageSize` (capital K). Lite is 1K-only. */
+type GeminiNativeImageSize = `${AspectRatioValue}_${GeminiImageResolution}`;
+
+export type GeminiImageRequest = {
+  nativeModel: NativeGeminiImageModel;
+  prompt: string;
+  size: GeminiNativeImageSize;
+  resolution: GeminiImageResolution;
+  numImages: number;
+  referenceImageUrls: string[];
+};
+
+/**
+ * {@link buildImageRequest} for Gemini-native Nano Banana. Fal-only knobs
+ * (safety_tolerance, output format, sync_mode) have no generateContent
+ * counterpart and are dropped. Lite snaps every resolution to 1K.
+ */
+export function buildGeminiImageRequest(
+  params: ImageGenerationParams
+): GeminiImageRequest {
+  const nativeModel = nativeGeminiImageModel(params.model);
+  if (!nativeModel) {
+    throw new Error(
+      `Gemini image request built for a non-Nano-Banana model: ${params.model}`
+    );
+  }
+  const aspectRatio = imageSizeToAspectRatio(
+    params.imageSize ?? DEFAULT_IMAGE_SIZE
+  );
+  const resolution: GeminiImageResolution =
+    nativeModel === 'gemini-3.1-flash-lite-image'
+      ? '1K'
+      : (params.resolution ?? '2K');
+
+  return {
+    nativeModel,
+    prompt: truncatePromptForModel(params.prompt, params.model),
+    size: `${aspectRatio}_${resolution}`,
+    resolution,
+    numImages: params.numImages ?? 1,
+    referenceImageUrls: capReferenceImages(
+      params.model,
+      params.referenceImageUrls ?? []
+    ),
+  };
 }
 
 /**

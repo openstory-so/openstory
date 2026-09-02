@@ -2,6 +2,7 @@ import { EDIT_ENDPOINTS } from '@/lib/ai/models';
 import { typedEntries } from '@/lib/utils/typed-object';
 import { describe, expect, it } from 'vitest';
 import {
+  buildGeminiImageRequest,
   buildGrokImageRequest,
   buildImageRequest,
 } from './build-image-request';
@@ -207,5 +208,46 @@ describe('buildGrokImageRequest (issue #1167)', () => {
 
     expect(prompt.length).toBeLessThanOrEqual(4000);
     expect(prompt.endsWith('...')).toBe(true);
+  });
+});
+
+describe('buildGeminiImageRequest', () => {
+  const BASE = {
+    model: 'nano_banana_2_lite',
+    prompt: 'a lighthouse at dusk',
+  } as const;
+
+  it('renders aspectRatio_resolution with Google’s capital-K tiers', () => {
+    expect(
+      buildGeminiImageRequest({
+        ...BASE,
+        model: 'nano_banana_2',
+        imageSize: 'landscape_16_9',
+        resolution: '1K',
+      }).size
+    ).toBe('16:9_1K');
+    expect(
+      buildGeminiImageRequest({
+        ...BASE,
+        model: 'nano_banana_pro',
+        imageSize: 'portrait_16_9',
+        resolution: '4K',
+      }).size
+    ).toBe('9:16_4K');
+  });
+
+  it('snaps Lite to 1K even when 2K/4K is requested', () => {
+    expect(buildGeminiImageRequest({ ...BASE, resolution: '4K' }).size).toBe(
+      '16:9_1K'
+    );
+    expect(
+      buildGeminiImageRequest({ ...BASE, resolution: '2K' }).nativeModel
+    ).toBe('gemini-3.1-flash-lite-image');
+  });
+
+  it('defaults Pro/2 to 2K, matching the fal path', () => {
+    expect(
+      buildGeminiImageRequest({ ...BASE, model: 'nano_banana_2' }).size
+    ).toBe('16:9_2K');
   });
 });
