@@ -164,13 +164,41 @@ export type RootDocument = HalResource<{
   requestSchema: unknown;
 }>;
 
+/**
+ * Zod 4.5 emits `{ $ref: "#/$defs/Id", $defs }` when the root schema has
+ * `.meta({ id })`. Tool callers expect a draft object (`type: "object"`) at
+ * the root; inline that named def and keep the remaining `$defs`.
+ */
+function jsonSchemaForToolCallers(schema: z.ZodType): unknown {
+  const generated = z.toJSONSchema(schema) as {
+    $ref?: string;
+    $defs?: Record<string, unknown>;
+    $schema?: string;
+  };
+  const { $ref, $defs, $schema, ...rest } = generated;
+  if (!$ref?.startsWith('#/$defs/') || !$defs) return generated;
+  const name = $ref.slice('#/$defs/'.length);
+  const root = $defs[name];
+  if (!root || typeof root !== 'object' || Array.isArray(root)) {
+    return generated;
+  }
+  const defs = { ...$defs };
+  delete defs[name];
+  return {
+    ...(root as Record<string, unknown>),
+    ...rest,
+    ...(Object.keys(defs).length > 0 ? { $defs: defs } : {}),
+    ...($schema ? { $schema } : {}),
+  };
+}
+
 /** Build the `GET /api/v1` self-description document. */
 export function buildRootDocument(): RootDocument {
   return {
     name: 'OpenStory API',
     version: 'v1',
     instructions: INSTRUCTIONS,
-    requestSchema: z.toJSONSchema(apiCreateSequenceSchema),
+    requestSchema: jsonSchemaForToolCallers(apiCreateSequenceSchema),
     _links: {
       self: {
         href: API_V1_BASE,
