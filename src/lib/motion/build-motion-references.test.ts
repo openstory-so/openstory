@@ -35,6 +35,7 @@ const element = (token: string, imageUrl: string): SequenceElementMinimal => ({
 describe('buildMotionReferenceImages', () => {
   it('returns refs only for characters/elements the scene references', () => {
     const refs = buildMotionReferenceImages({
+      motionPrompt: null,
       scene: {
         continuity: { characterTags: ['Alice'], elementTags: ['LOGO'] },
         originalScript: { extract: '' },
@@ -67,6 +68,7 @@ describe('buildMotionReferenceImages', () => {
 
   it('matches elements named in the script even without an explicit tag', () => {
     const refs = buildMotionReferenceImages({
+      motionPrompt: null,
       scene: {
         continuity: { characterTags: [], elementTags: [] },
         originalScript: { extract: 'She holds the PHONE up high.' },
@@ -81,6 +83,7 @@ describe('buildMotionReferenceImages', () => {
 
   it('skips characters/elements with no reference image', () => {
     const refs = buildMotionReferenceImages({
+      motionPrompt: null,
       scene: {
         continuity: { characterTags: ['Alice'], elementTags: ['LOGO'] },
         originalScript: { extract: '' },
@@ -93,6 +96,7 @@ describe('buildMotionReferenceImages', () => {
 
   it('returns nothing for a scene with no continuity', () => {
     const refs = buildMotionReferenceImages({
+      motionPrompt: null,
       scene: null,
       characters: [character('Alice', 'https://example.com/alice.png')],
       elements: [element('LOGO', 'https://example.com/logo.png')],
@@ -169,6 +173,7 @@ describe('buildMotionReferenceImages — reference-only', () => {
 
   it('leaves locations out on the image-to-video path', () => {
     const refs = buildMotionReferenceImages({
+      motionPrompt: null,
       scene,
       characters,
       elements: [],
@@ -180,6 +185,7 @@ describe('buildMotionReferenceImages — reference-only', () => {
 
   it('attaches the location sheet first when there is no still', () => {
     const refs = buildMotionReferenceImages({
+      motionPrompt: null,
       scene,
       characters,
       elements: [],
@@ -195,6 +201,7 @@ describe('buildMotionReferenceImages — reference-only', () => {
 
   it('is a no-op when the mode is on but no locations were loaded', () => {
     const refs = buildMotionReferenceImages({
+      motionPrompt: null,
       scene,
       characters,
       elements: [],
@@ -202,5 +209,55 @@ describe('buildMotionReferenceImages — reference-only', () => {
     });
 
     expect(refs.map((r) => r.role)).toEqual(['character']);
+  });
+});
+
+describe('buildMotionReferenceImages — prompt-named cast (#1432)', () => {
+  // The image path gained this in #1432: continuity tags can be empty on a
+  // scene that plainly names its cast. Motion did not follow, and in
+  // reference-only there is no still to fall back on — an unmatched character
+  // is reinvented outright, at full price, with nothing saying why.
+  const untaggedScene = {
+    continuity: { characterTags: [], elementTags: [] },
+    originalScript: { extract: '' },
+  };
+  const cast = [
+    character('Alice', 'https://example.com/alice.png'),
+    character('Bob', 'https://example.com/bob.png'),
+  ];
+
+  it('attaches a character the prompt names but the tags miss', () => {
+    const refs = buildMotionReferenceImages({
+      motionPrompt: 'ALICE turns from the window as the light shifts.',
+      scene: untaggedScene,
+      characters: cast,
+      elements: [],
+    });
+    expect(refs.map((r) => r.referenceImageUrl)).toEqual([
+      'https://example.com/alice.png',
+    ]);
+  });
+
+  it('attaches nothing without the prompt — the bug this fixes', () => {
+    const refs = buildMotionReferenceImages({
+      motionPrompt: null,
+      scene: untaggedScene,
+      characters: cast,
+      elements: [],
+    });
+    expect(refs).toEqual([]);
+  });
+
+  it('does not duplicate a character both tagged and named', () => {
+    const refs = buildMotionReferenceImages({
+      motionPrompt: 'ALICE turns from the window.',
+      scene: {
+        continuity: { characterTags: ['Alice'], elementTags: [] },
+        originalScript: { extract: '' },
+      },
+      characters: cast,
+      elements: [],
+    });
+    expect(refs).toHaveLength(1);
   });
 });

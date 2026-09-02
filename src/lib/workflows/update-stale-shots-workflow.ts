@@ -613,6 +613,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
             scene,
             characters: renderRefs.characters,
             elements: renderRefs.elements,
+            motionPrompt: prompt,
             // With no still the location sheet is the only thing establishing
             // the set — and `renderRefs` already loaded it for the image stage.
             includeLocations: !target.usesStartFrame,

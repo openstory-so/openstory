@@ -181,6 +181,7 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
         : null,
       characters,
       elements,
+      motionPrompt: prompt,
       includeLocations: referenceOnly,
       locations,
     });
@@ -437,6 +438,18 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
       }
     }
 
+    // Batch-load the selected motion prompt version for every eligible shot —
+    // the resolution source of truth (#713), replacing `metadata.prompts.motion`.
+    // Loaded BEFORE the estimate, not just before the submit: cast and element
+    // refs follow the motion prompt (#1432), so estimating without it can price
+    // a ref-less shot that the submit then sends references for.
+    const selectedMotionByShot =
+      await context.scopedDb.shotPromptVersions.getSelectedMotionByShots(
+        eligibleShots.map((s) => s.id)
+      );
+    const motionPromptTextFor = (shotId: string) =>
+      selectedMotionByShot.get(shotId)?.text ?? null;
+
     // Sum per-shot costs — shots may render with different (priced) models.
     const estimatedCost = estimateBatchMotionCost(
       eligibleShots,
@@ -458,6 +471,7 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
               elements,
               // Must match the set actually sent below, or a reference-only
               // shot carried only by its location sheet estimates as ref-less.
+              motionPrompt: motionPromptTextFor(shot.id),
               includeLocations: shotIsReferenceOnly(shot),
               locations: batchLocations,
             }).length > 0
@@ -517,13 +531,6 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
           };
         }
 
-        // Batch-load the selected motion prompt version for every eligible shot —
-        // the resolution source of truth (#713), replacing `metadata.prompts.motion`.
-        const selectedMotionByShot =
-          await context.scopedDb.shotPromptVersions.getSelectedMotionByShots(
-            eligibleShots.map((s) => s.id)
-          );
-
         const workflowInput: BatchMotionMusicWorkflowInput = {
           userId: user.id,
           teamId,
@@ -575,6 +582,7 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
                 scene,
                 characters,
                 elements,
+                motionPrompt: motionPromptTextFor(shot.id),
                 includeLocations: shotIsReferenceOnly(shot),
                 locations: batchLocations,
               }),

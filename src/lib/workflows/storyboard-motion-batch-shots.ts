@@ -117,6 +117,7 @@ export function buildStoryboardMotionBatchShots(input: {
         scene,
         characters: input.characters,
         elements: input.elements,
+        motionPrompt: motionPromptData.fullPrompt,
         includeLocations: input.referenceOnly,
         locations: input.locations,
       }),

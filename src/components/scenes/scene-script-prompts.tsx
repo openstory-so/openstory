@@ -1115,6 +1115,11 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
 
   // Raw prompt for editing (just motion direction, no dialogue/audio)
   const rawMotionPrompt = shotMotionPrompt?.fullPrompt || '';
+  // What submit will actually send. Cast and element refs follow the motion
+  // prompt (#1432), so the preview, the cost estimate and the request all have
+  // to match on the same text — an unsaved edit included.
+  const effectiveMotionPromptText =
+    editedMotionPrompt || rawMotionPrompt || null;
 
   // Assembled preview: exactly what resolveMotionPrompt produces on the server.
   // Overlay any unsaved edit onto the structured prompt so the dialogue/audio
@@ -1170,6 +1175,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
         scene: sceneReference,
         characters: mentionCharacters ?? [],
         elements: mentionElements ?? [],
+        motionPrompt: effectiveMotionPromptText,
       }).length > 0;
     return estimateVideoCost(effectiveMotionModel, duration, {
       pricing: falPricing,
@@ -1184,6 +1190,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     mentionCharacters,
     mentionElements,
     resolution,
+    effectiveMotionPromptText,
   ]);
 
   // CDN-backed deployments absolutize stored /r2/ URLs at submit (toCdnUrl) —
@@ -1231,6 +1238,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
       scene: sceneReference,
       characters: mentionCharacters ?? [],
       elements: mentionElements ?? [],
+      motionPrompt: effectiveMotionPromptText,
       includeLocations: true,
       locations: mentionLocations ?? [],
     }).length === 0;
@@ -1264,6 +1272,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
       scene: sceneReference,
       characters: mentionCharacters ?? [],
       elements: mentionElements ?? [],
+      motionPrompt: effectiveMotionPromptText,
       // Must mirror the submit path or the preview shows the wrong slot
       // numbers: without a still the location sheet is sent, and it goes FIRST,
       // shifting every other reference down one.
@@ -1431,6 +1440,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     mentionElements,
     editedMotionPrompt,
     rawMotionPrompt,
+    effectiveMotionPromptText,
     shotMotionPrompt,
     characterTags,
     aspectRatio,

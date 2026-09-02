@@ -31,9 +31,7 @@ import { buildElementReferenceImages } from '@/lib/prompts/element-prompt';
 import { buildLocationReferenceImages } from '@/lib/prompts/location-prompt';
 import type { ReferenceImageDescription } from '@/lib/prompts/reference-image-prompt';
 import {
-  matchCharactersToScene,
   matchCharactersToShotImage,
-  matchElementsToScene,
   matchElementsToShotImage,
   matchLocationsToScene,
 } from '@/lib/workflows/scene-matching';
@@ -53,6 +51,21 @@ export function buildMotionReferenceImages(params: {
   characters: CharacterMinimal[];
   elements: SequenceElementMinimal[];
   /**
+   * The shot's motion prompt. Cast and element refs follow it as well as the
+   * continuity tags, the same way the image path follows the visual prompt
+   * (#1432) — tags can be empty on a scene that plainly names its cast, and a
+   * missed character means a clip that reinvents them.
+   *
+   * REQUIRED, and `null` only where there genuinely is no prompt yet. Optional
+   * would let a call site omit it and silently fall back to tags alone, which
+   * is the bug this fixes.
+   *
+   * It matters most in reference-only, which skips the visual-prompt phase
+   * entirely: there is no still binding identity, so a character the tags miss
+   * is reinvented outright rather than merely drifting.
+   */
+  motionPrompt: string | null;
+  /**
    * Reference-only mode: also attach the scene's location sheet. With no start
    * frame there is nothing else establishing the set, and the same matcher the
    * image step uses (`matchLocationsToScene`) picks it.
@@ -60,17 +73,27 @@ export function buildMotionReferenceImages(params: {
   includeLocations?: boolean;
   locations?: SequenceLocationMinimal[];
 }): ReferenceImageDescription[] {
-  const { scene, characters, elements, includeLocations, locations } = params;
-
-  const matchedCharacters = matchCharactersToScene(
+  const {
+    scene,
     characters,
-    scene?.continuity?.characterTags ?? []
-  );
-  const matchedElements = matchElementsToScene(
     elements,
-    scene?.continuity?.elementTags ?? [],
-    scene?.originalScript?.extract ?? ''
-  );
+    motionPrompt,
+    includeLocations,
+    locations,
+  } = params;
+
+  // The `*ToShotImage` matchers are prompt-agnostic — they scan whatever
+  // prompt text they are handed for names. The image path passes the visual
+  // prompt; here it is the motion prompt.
+  const matchedCharacters = matchCharactersToShotImage(characters, {
+    characterTags: scene?.continuity?.characterTags,
+    visualPrompt: motionPrompt,
+  });
+  const matchedElements = matchElementsToShotImage(elements, {
+    visualPrompt: motionPrompt,
+    elementTags: scene?.continuity?.elementTags,
+    sceneExtract: scene?.originalScript?.extract,
+  });
   const matchedLocations =
     includeLocations && locations
       ? matchLocationsToScene(

@@ -425,6 +425,7 @@ export async function executeSmartRetry(context: SmartRetryContext) {
                 scene: scene ?? null,
                 characters: motionCharacters,
                 elements: motionElements,
+                motionPrompt: selectedMotion?.text ?? null,
                 includeLocations: true,
                 locations: motionLocations,
               }),
