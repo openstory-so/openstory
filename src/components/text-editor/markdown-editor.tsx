@@ -17,7 +17,13 @@ import {
 import { cn } from '@/lib/utils';
 import { spaceTranscript } from '@/lib/voice/transcript-insert';
 import * as React from 'react';
-import { useEffect, useImperativeHandle, useMemo, useRef } from 'react';
+import {
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import type { MentionOptions } from '@tiptap/extension-mention';
 import type { MentionItem } from '@/components/scenes/prompt-mention/mention-items';
 import { PromptMention } from './mention/mention-extension';
@@ -174,8 +180,11 @@ type MarkdownEditorProps = {
  * update, so revised words replace themselves instead of stacking up.
  */
 export type MarkdownEditorHandle = {
-  /** Anchor a take at the caret — or the end of the document if none is placed. */
-  beginDictation: () => void;
+  /**
+   * Anchor a take at the caret — or the end of the document if none is placed.
+   * Returns false when the editor is missing or not editable.
+   */
+  beginDictation: () => boolean;
   /** Rewrite the live take as `text`. */
   setDictation: (text: string) => void;
   /** Release the take's range; the text stays. */
@@ -332,6 +341,12 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
   // because the user has never clicked in — it goes to the end instead.
   const caretPlacedRef = useRef(false);
 
+  // The range the live dictation take occupies, or null between takes.
+  // `dictationActive` is the React-visible twin so value-sync / mention
+  // tagify skip setContent for the duration and re-run when the take ends.
+  const dictationRef = useRef<{ from: number; to: number } | null>(null);
+  const [dictationActive, setDictationActive] = useState(false);
+
   // Canonical Tiptap external-value sync (mirrors the Vue v-model example in
   // their docs): only setContent if the editor's current markdown differs
   // from the incoming value. When mentions are on, we tagify the value first
@@ -341,21 +356,28 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
   // streaming the script chunk-by-chunk) collapses to one setContent with
   // the latest value. Each setContent is a full markdown re-parse + doc
   // rebuild and freezes the renderer if applied per-chunk at ~30Hz+.
+  //
+  // Skip the rebuild while a take is live — mapping cannot survive a
+  // full-doc replace, and the next setDictation would append instead of
+  // rewrite. `dictationActive` dropping retriggers this so enhance output
+  // that arrived mid-take still lands.
   useEffect(() => {
-    if (!editor) return;
+    if (!editor || dictationActive) return;
     if (editor.storage.markdown.getMarkdown() === value) return;
     const rafId = requestAnimationFrame(() => {
+      if (dictationRef.current) return;
       if (editor.storage.markdown.getMarkdown() === value) return;
       const content = hasMentions
         ? tagifyMarkdown(value, mentionItemsRef.current).content
         : value;
       editor.commands.setContent(content, { emitUpdate: false });
-      // A replaced document (enhance output, a loaded sample) leaves any old
-      // caret position meaningless; dictation appends until the user clicks.
+      // Unfocused setContent forgets the old caret so the next take anchors
+      // at end; a focused replace keeps caretPlacedRef and uses whatever
+      // selection TipTap left.
       if (!editor.isFocused) caretPlacedRef.current = false;
     });
     return () => cancelAnimationFrame(rafId);
-  }, [editor, value, hasMentions]);
+  }, [editor, value, hasMentions, dictationActive]);
 
   // When the items list changes (e.g. characters/elements load async after
   // mount, or the user adds a new one to the sequence), re-tagify the current
@@ -363,16 +385,17 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
   // value-sync effect above won't catch this on its own — the stored value
   // hasn't changed, so its `getMarkdown() === value` guard returns true.
   useEffect(() => {
-    if (!editor || !hasMentions) return;
+    if (!editor || !hasMentions || dictationActive) return;
     const { content, matched } = tagifyMarkdown(value, mentionItemsRef.current);
     if (!matched) return;
     const rafId = requestAnimationFrame(() => {
+      if (dictationRef.current) return;
       editor.commands.setContent(content, { emitUpdate: false });
     });
     return () => cancelAnimationFrame(rafId);
     // value intentionally omitted — the sibling effect handles value changes.
     // oxlint-disable-next-line react-hooks/exhaustive-deps
-  }, [editor, mentionItemsKey, hasMentions]);
+  }, [editor, mentionItemsKey, hasMentions, dictationActive]);
 
   useEffect(() => {
     if (!editor) return;
@@ -387,12 +410,11 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
     };
   }, [editor]);
 
-  // The range the live dictation take occupies, or null between takes.
-  const dictationRef = useRef<{ from: number; to: number } | null>(null);
-
-  // The user may keep typing (or an enhance may stream in) mid-take, so carry
-  // the take's range through everyone else's transactions. Our own already
-  // set the range explicitly.
+  // The user may keep typing mid-take, so carry the take's range through
+  // everyone else's transactions. Our own already set the range explicitly.
+  // Full-doc `setContent` (enhance / mention tagify) is skipped while the
+  // take is live rather than mapped — mapping a replace-all collapses the
+  // range.
   useEffect(() => {
     if (!editor) return;
     const remap = ({ transaction }: { transaction: Transaction }) => {
@@ -414,7 +436,7 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
     ref,
     (): MarkdownEditorHandle => ({
       beginDictation: () => {
-        if (!editor?.isEditable) return;
+        if (!editor?.isEditable) return false;
         const { view } = editor;
         const { tr } = view.state;
         // The caret survives the blur that clicking the mic causes, so the
@@ -425,6 +447,8 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
         view.dispatch(tr.setMeta(DICTATION_META, true));
         const { from } = view.state.selection;
         dictationRef.current = { from, to: from };
+        setDictationActive(true);
+        return true;
       },
       setDictation: (text: string) => {
         const range = dictationRef.current;
@@ -450,6 +474,7 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
       },
       endDictation: () => {
         dictationRef.current = null;
+        setDictationActive(false);
       },
     }),
     [editor]

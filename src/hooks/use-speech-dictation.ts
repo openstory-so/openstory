@@ -1,20 +1,22 @@
 /**
- * Live dictation for the script and prompt editors.
+ * Live dictation for script, prompt, and other text fields.
  *
  * Wraps the browser's `SpeechRecognition` so text streams in while the user
  * speaks: `onTranscript` fires on every interim update with the take *so far*,
- * and the caller replaces whatever it rendered last time. Nothing is recorded
- * and nothing is uploaded by us — the browser owns the mic and the recogniser.
+ * and the caller replaces whatever it rendered last time. OpenStory never
+ * records or POSTs audio; the browser vendor's recogniser typically does.
  *
  * Chromium ends a recognition session on its own after a stretch of silence,
- * so a take spans several sessions: finals are folded into `committedRef` as
- * each one ends and the recogniser is restarted until the user stops.
+ * so a take spans several sessions — see `createDictationSession`.
  */
 
 import {
+  createDictationSession,
+  DictationError,
+  type DictationSession,
+} from '@/lib/voice/dictation-session';
+import {
   getSpeechRecognition,
-  joinSpeech,
-  splitResults,
   type SpeechRecognition,
 } from '@/lib/voice/speech-recognition';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -22,29 +24,12 @@ import { useAsRef } from './use-as-ref';
 import { useHydrated } from './use-hydrated';
 
 export type DictationStatus = 'idle' | 'listening';
-
-/** A recogniser failure the caller should surface. `no-speech` never gets here. */
-export class DictationError extends Error {
-  constructor(readonly code: SpeechRecognitionErrorCode) {
-    super(DICTATION_ERROR_MESSAGES[code]);
-    this.name = 'DictationError';
-  }
-}
-
-const DICTATION_ERROR_MESSAGES: Record<SpeechRecognitionErrorCode, string> = {
-  aborted: 'Dictation stopped.',
-  'audio-capture': 'No microphone was found.',
-  'language-not-supported': 'Dictation is not available in this language.',
-  network: 'Dictation needs a network connection.',
-  'no-speech': 'No speech detected.',
-  'not-allowed': 'Microphone access is blocked.',
-  'phrases-not-supported': 'Dictation is not available in this browser.',
-  'service-not-allowed': 'Microphone access is blocked.',
-};
+export { DictationError };
 
 /**
  * A silent recogniser restarts indefinitely, so a forgotten open mic would
- * hold the browser's recording indicator forever. Bound one take.
+ * hold the browser's recording indicator forever. Bound one take to five
+ * minutes.
  */
 const MAX_DICTATION_MS = 5 * 60 * 1000;
 
@@ -54,8 +39,11 @@ export type UseSpeechDictationOptions = {
    * rather than appending to it — interim words are revised as they settle.
    */
   onTranscript: (text: string) => void;
-  /** A take is starting; no transcript has been emitted for it yet. */
-  onStart?: () => void;
+  /**
+   * A take is starting; no transcript has been emitted for it yet.
+   * Return `false` to abort before the recogniser starts (editor not ready).
+   */
+  onStart?: () => boolean | void;
   /** The take ended. The last `onTranscript` text stands. */
   onEnd?: () => void;
   onError?: (error: DictationError) => void;
@@ -82,16 +70,12 @@ export function useSpeechDictation({
   const onErrorRef = useAsRef(onError);
   const languageRef = useAsRef(language);
 
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
-  /** Finals from earlier recognition sessions within the current take. */
-  const committedRef = useRef('');
-  /** Finals from the session that is running now, folded in when it ends. */
-  const sessionFinalRef = useRef('');
-  /** The user wants to keep dictating — drives the restart in `end`. */
+  const sessionRef = useRef<DictationSession | null>(null);
   const listeningRef = useRef(false);
 
   const finish = useCallback(() => {
     listeningRef.current = false;
+    sessionRef.current = null;
     setStatus('idle');
     setStartedAt(null);
     onEndRef.current?.();
@@ -100,67 +84,56 @@ export function useSpeechDictation({
   const stop = useCallback(() => {
     if (!listeningRef.current) return;
     listeningRef.current = false;
-    // `stop` keeps the phrase in flight; `end` then runs `finish`.
-    recognitionRef.current?.stop();
+    // `stop` keeps the phrase in flight; `onend` then runs `finish`.
+    sessionRef.current?.stop();
   }, []);
 
   const start = useCallback(() => {
     const SpeechRecognitionCtor = getSpeechRecognition();
     if (!SpeechRecognitionCtor || listeningRef.current) return;
 
-    const recognition = new SpeechRecognitionCtor();
+    // Anchor the target before opening the mic so a missing editor does not
+    // leave the recording indicator on with nowhere to put the words.
+    if (onStartRef.current?.() === false) return;
+
+    const recognition: SpeechRecognition = new SpeechRecognitionCtor();
     recognition.continuous = true;
     recognition.interimResults = true;
     recognition.maxAlternatives = 1;
     const lang = languageRef.current;
     if (lang) recognition.lang = lang;
 
-    recognition.onresult = (event) => {
-      const { final, interim } = splitResults(event.results);
-      sessionFinalRef.current = final;
-      onTranscriptRef.current(joinSpeech(committedRef.current, final, interim));
-    };
-
-    recognition.onerror = (event) => {
-      // Silence is not a failure: `end` restarts the recogniser after it.
-      if (event.error === 'no-speech') return;
-      listeningRef.current = false;
-      // 'aborted' is our own `abort()` from cancel/unmount.
-      if (event.error !== 'aborted') {
-        onErrorRef.current?.(new DictationError(event.error));
+    const session = createDictationSession(
+      {
+        start: () => recognition.start(),
+        stop: () => recognition.stop(),
+        abort: () => recognition.abort(),
+      },
+      {
+        onTranscript: (text) => onTranscriptRef.current(text),
+        onError: (error) => onErrorRef.current?.(error),
+        onEnd: finish,
       }
-    };
+    );
+    recognition.onresult = (event) => session.feedResults(event.results);
+    recognition.onerror = (event) => session.feedError(event.error);
+    recognition.onend = () => session.feedEnd();
 
-    recognition.onend = () => {
-      committedRef.current = joinSpeech(
-        committedRef.current,
-        sessionFinalRef.current
-      );
-      sessionFinalRef.current = '';
-      if (!listeningRef.current) {
-        recognitionRef.current = null;
-        finish();
-        return;
-      }
-      // Chromium ends the session after a stretch of silence — pick it back up.
-      recognition.start();
-    };
-
-    recognitionRef.current = recognition;
-    committedRef.current = '';
-    sessionFinalRef.current = '';
+    sessionRef.current = session;
+    if (!session.start()) {
+      // failStart already ran `finish` (toast + endDictation).
+      return;
+    }
     listeningRef.current = true;
-    recognition.start();
     setStatus('listening');
     setStartedAt(Date.now());
-    onStartRef.current?.();
   }, [finish, languageRef, onErrorRef, onStartRef, onTranscriptRef]);
 
   // Release the mic if the surface unmounts mid-take.
   useEffect(
     () => () => {
       listeningRef.current = false;
-      recognitionRef.current?.abort();
+      sessionRef.current?.abort();
     },
     []
   );

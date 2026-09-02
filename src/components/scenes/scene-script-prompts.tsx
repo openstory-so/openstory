@@ -1763,6 +1763,12 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
                   size="icon-xs"
                   disabled={isAwaitingVisualPrompt}
                   {...imageVoice}
+                  onStart={() => {
+                    // Treat dictation as a user edit even though the mic
+                    // never focuses the editor (so Escape still hits the button).
+                    imageFocusedRef.current = true;
+                    return imageVoice.onStart();
+                  }}
                 />
               </div>
             </div>
@@ -2064,6 +2070,10 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
                   size="icon-xs"
                   disabled={isAwaitingMotionPrompt}
                   {...motionVoice}
+                  onStart={() => {
+                    motionFocusedRef.current = true;
+                    return motionVoice.onStart();
+                  }}
                 />
               </div>
             </div>

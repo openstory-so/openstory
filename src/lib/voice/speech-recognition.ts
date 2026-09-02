@@ -2,9 +2,9 @@
  * Typed access to the Web Speech API's `SpeechRecognition`.
  *
  * `lib.dom` ships the event and result types but not the constructor — it is
- * still vendor-prefixed in Chromium (`webkitSpeechRecognition`) and absent in
- * Firefox — so the interface and the two globals are declared here rather
- * than reached through a cast.
+ * still vendor-prefixed in Chromium (`webkitSpeechRecognition`) and missing
+ * when the constructor is absent (default Firefox today) — so the interface
+ * and the two globals are declared here rather than reached through a cast.
  */
 
 export interface SpeechRecognition extends EventTarget {

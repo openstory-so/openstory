@@ -1,9 +1,10 @@
 /**
  * Wiring between a toolbar `VoiceInputButton` and the field it dictates into.
  *
- * Both bindings work the same way: the mic re-emits the whole take on every
- * interim update, so each one rewrites the take's text in place rather than
- * appending — that is what lets the recogniser revise words as they settle.
+ * Shared contract is take-rewrite: the mic re-emits the whole take on every
+ * interim update. The editor inserts at a live ProseMirror range (other
+ * keystrokes are remapped); a textarea freezes a prefix on start and rebuilds
+ * `prefix + take` (keystrokes during the take are overwritten).
  */
 
 import type { MarkdownEditorHandle } from '@/components/text-editor/markdown-editor';
@@ -13,13 +14,15 @@ import { useAsRef } from './use-as-ref';
 
 /**
  * Dictate into a `MarkdownEditor`. Spread `voice` onto the button and put
- * `ref` on the editor; the take lands at the caret the user last placed.
+ * `ref` on the editor; the take lands at the caret if one was placed, else
+ * at the end of the document. Returns `false` from `onStart` when the editor
+ * is not ready so the mic does not open.
  */
 export function useEditorDictation() {
   const ref = useRef<MarkdownEditorHandle>(null);
   const voice = useMemo(
     () => ({
-      onStart: () => ref.current?.beginDictation(),
+      onStart: () => ref.current?.beginDictation() ?? false,
       onTranscript: (text: string) => ref.current?.setDictation(text),
       onEnd: () => ref.current?.endDictation(),
     }),

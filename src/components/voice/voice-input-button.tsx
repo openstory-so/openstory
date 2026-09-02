@@ -1,11 +1,12 @@
 /**
  * Mic button for dictating into a script or prompt field. Click to start, click
- * again (or press Escape) to stop. Words stream into the target as they are
- * spoken: `onTranscript` fires on every interim update with the take so far,
- * and the target replaces what it rendered for the previous update.
+ * again (or press Escape while the mic is focused) to stop. Words stream into
+ * the target as they are spoken: `onTranscript` fires on every interim update
+ * with the take so far, and the target replaces what it rendered last time.
  *
- * Recognition is the browser's own — nothing is recorded or uploaded by us —
- * so the button hides itself where the Web Speech API is missing (Firefox).
+ * OpenStory never records or POSTs audio; the browser vendor's recogniser
+ * typically does. The button hides itself when `SpeechRecognition` /
+ * `webkitSpeechRecognition` is missing (default Firefox today).
  */
 
 import { Button } from '@/components/ui/button';
@@ -28,7 +29,7 @@ type VoiceInputButtonProps = {
   /** The take so far, on every interim update — replaces the previous emission. */
   onTranscript: (text: string) => void;
   /** A take is starting: anchor wherever the next `onTranscript` should land. */
-  onStart?: () => void;
+  onStart?: () => boolean | void;
   /** The take ended; the last `onTranscript` text stands. */
   onEnd?: () => void;
   /** What is being dictated, for the tooltip and screen readers ("script", "prompt"). */
@@ -88,12 +89,19 @@ export const VoiceInputButton: React.FC<VoiceInputButtonProps> = ({
     language,
   });
   const hydrated = useHydrated();
+  const listening = status === 'listening';
+
+  // Parent disable (save / enhance / prompt stream) must not leave a live
+  // take with no stop control — end the take, and keep the button clickable
+  // until it actually goes idle.
+  useEffect(() => {
+    if (disabled && listening) stop();
+  }, [disabled, listening, stop]);
 
   // Pre-hydration the button renders disabled so the row does not reflow when
   // it becomes live; only a browser that cannot dictate hides it.
   if (hydrated && !isSupported) return null;
 
-  const listening = status === 'listening';
   const actionLabel = listening ? 'Stop dictating' : `Dictate ${label}`;
 
   return (
@@ -114,7 +122,7 @@ export const VoiceInputButton: React.FC<VoiceInputButtonProps> = ({
             className={className}
             aria-label={actionLabel}
             aria-pressed={listening}
-            disabled={disabled || !hydrated}
+            disabled={(disabled && !listening) || !hydrated}
             data-testid="voice-input-button"
             onClick={toggle}
             onKeyDown={(event) => {
