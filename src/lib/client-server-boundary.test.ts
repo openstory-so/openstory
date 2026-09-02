@@ -63,6 +63,7 @@ const SERVER_ONLY = [
   '@tanstack/ai-grok',
   '@tanstack/ai-byteplus',
   '@tanstack/ai-fal',
+  '@tanstack/ai-gemini',
   '@opentelemetry/',
   '@libsql/',
   'drizzle-orm/libsql',
