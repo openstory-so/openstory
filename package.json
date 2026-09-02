@@ -73,7 +73,7 @@
     "prepare:e2e-built": "mkdir -p .wrangler/deploy && printf '%s' '{\"configPath\":\"../../dist/server/wrangler.json\",\"auxiliaryWorkers\":[]}' > .wrangler/deploy/config.json",
     "test:e2e:setup": "bun run db:migrate:test && bun scripts/seed.ts --test",
     "db:generate": "bun drizzle-kit generate --config=drizzle.config.d1.ts",
-    "auth:generate": "bun x auth@1.7.1 generate --config src/lib/auth/cli-config.ts",
+    "auth:generate": "bun x auth@1.7.2 generate --config src/lib/auth/cli-config.ts",
     "db:check": "bun drizzle-kit check --config=drizzle.config.d1.ts",
     "db:migrate:local": "bun scripts/migrate-local-d1.ts",
     "db:migrate:test": "bun scripts/migrate-local-d1.ts --test",
@@ -212,9 +212,10 @@
     "wrangler": "^4.127.1"
   },
   "overrides": {
+    "@better-auth/core": "1.7.2",
     "@tanstack/ai-devtools-core": "0.5.5",
-    "@tiptap/core": "3.30.3",
-    "@tiptap/pm": "3.30.3",
+    "@tiptap/core": "3.31.0",
+    "@tiptap/pm": "3.31.0",
     "prosemirror-model": "1.25.11",
     "prosemirror-view": "1.42.2",
     "qs": "6.15.2",

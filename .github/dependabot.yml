@@ -30,15 +30,18 @@ updates:
       prefix: chore
       include: scope
     groups:
-      # Core + adapters share a peer chain (`ai-openrouter`/`ai-fal` peer on
-      # `@tanstack/ai`). First matching group wins, so this must sit above
-      # `production` / `development` or a weekly run will bump `ai` without
-      # the adapters and fail typecheck. Devtools rides along because
+      # Core + adapters share a peer chain (`ai-openrouter`/`ai-fal`/
+      # `ai-grok`/`ai-byteplus` peer on `@tanstack/ai`). First matching
+      # group wins, so this must sit above `production` / `development` or
+      # a weekly run will bump `ai` without the adapters (or grok/byteplus
+      # without `ai`) and fail typecheck. Devtools rides along because
       # `@tanstack/ai-devtools-core` also peers on `@tanstack/ai`.
       tanstack-ai:
         patterns:
           - '@tanstack/ai'
+          - '@tanstack/ai-byteplus'
           - '@tanstack/ai-fal'
+          - '@tanstack/ai-grok'
           - '@tanstack/ai-openrouter'
           - '@tanstack/react-ai-devtools'
         update-types: ['minor', 'patch']
