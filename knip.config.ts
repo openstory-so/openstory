@@ -39,9 +39,8 @@ export default {
     '@testing-library/user-event',
     // shadcn CLI.
     'shadcn',
-    // Spawned via bunx from scripts/pull-motion-schemas.ts (bun motion:codegen).
-    // Pinned so bunx doesn't fetch a release that needs typescript/lib/typescript.js
-    // (gone in TS 7).
+    // Local binary spawned from scripts/pull-motion-schemas.ts
+    // (`bun motion:codegen`). Pinned nightly: no typescript runtime dep.
     '@hey-api/openapi-ts',
     // Cloudflare Workers runtime modules (not npm packages).
     'cloudflare',
