@@ -32,7 +32,6 @@ function projectEntry(
     sequenceId: version.sequenceId,
     variantType: 'video',
     model: version.model,
-    resolution: version.resolution,
     url: version.url,
     storagePath: version.storagePath,
     // The 3×3 grid was image-only; never set for video.

@@ -24,6 +24,7 @@ import {
 } from '@/lib/billing/preflight';
 import { estimateStoryboardPreflightCost } from '@/lib/billing/storyboard-preflight-cost';
 import { DEFAULT_ASPECT_RATIO } from '@/lib/constants/aspect-ratios';
+import { resolutionSchema } from '@/lib/constants/resolutions';
 import type { Shot } from '@/lib/db/schema';
 import {
   loadSceneContextBySequence,
@@ -300,6 +301,34 @@ export const renameSequenceFn = createServerFn({ method: 'POST' })
     }
     return sequence;
   });
+
+// ============================================================================
+// Resolution tier (#1449)
+// ============================================================================
+
+const setSequenceResolutionInputSchema = z.object({
+  sequenceId: ulidSchema,
+  resolution: resolutionSchema,
+});
+
+/**
+ * Change the sequence's resolution tier. Separate from {@link updateSequenceFn}
+ * for the same reason as {@link renameSequenceFn}: that path force-defaults
+ * `aspectRatio` and treats its presence as a regeneration trigger.
+ *
+ * Nothing is re-rendered and nothing goes stale — the tier is what the NEXT
+ * render is asked for. Draft the board at 720p, switch to 4K, re-roll the
+ * shots worth keeping; each version carries the tier it was made at.
+ */
+export const setSequenceResolutionFn = createServerFn({ method: 'POST' })
+  .middleware([sequenceAccessMiddleware])
+  .validator(zodValidator(setSequenceResolutionInputSchema))
+  .handler(async ({ data, context }) =>
+    context.scopedDb.sequences.update({
+      id: data.sequenceId,
+      resolution: data.resolution,
+    })
+  );
 
 // ============================================================================
 // Retry Failed Storyboard

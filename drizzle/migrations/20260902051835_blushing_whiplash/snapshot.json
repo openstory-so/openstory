@@ -1,7 +1,7 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "71dfa39e-6eae-4875-af11-079c64ab2e1b",
+  "id": "c9553445-1130-46a8-9ffd-2090125481c3",
   "prevIds": ["6b683ce2-47b8-40fe-ba77-ca6d3f207ae3"],
   "ddl": [
     {
@@ -5135,16 +5135,6 @@
       "default": null,
       "generated": null,
       "name": "model",
-      "entityType": "columns",
-      "table": "shot_variants"
-    },
-    {
-      "type": "text(10)",
-      "notNull": false,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "resolution",
       "entityType": "columns",
       "table": "shot_variants"
     },

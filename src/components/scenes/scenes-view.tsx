@@ -1585,6 +1585,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
                   styleId={sequence?.styleId ?? undefined}
                   stylePending={sequence?.styleConfig == null}
                   aspectRatio={aspectRatio}
+                  resolution={sequence?.resolution}
                   analysisModel={sequence?.analysisModel ?? undefined}
                 />
                 <div className="px-4 pb-4">

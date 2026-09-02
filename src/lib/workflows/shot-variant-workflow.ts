@@ -108,6 +108,7 @@ export class ShotVariantWorkflow extends OpenStoryWorkflowEntrypoint<ShotVariant
           model,
           prompt: enhancedPrompt,
           imageSize,
+          ...(input.resolution && { resolution: input.resolution }),
           numImages: input.numImages ?? 1,
           seed: input.seed,
           referenceImageUrls: referenceUrls,

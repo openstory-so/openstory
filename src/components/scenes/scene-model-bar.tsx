@@ -10,6 +10,13 @@ import {
   getAspectRatioData,
   type AspectRatio,
 } from '@/lib/constants/aspect-ratios';
+import {
+  isResolution,
+  RESOLUTION_OPTIONS,
+  type Resolution,
+} from '@/lib/constants/resolutions';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { useSetSequenceResolution } from '@/hooks/use-sequences';
 import type { SelectionScope } from '@/lib/scenes/scene-selection';
 import { usePostHog } from '@posthog/react';
 import { Link } from '@tanstack/react-router';
@@ -42,6 +49,7 @@ type SceneModelBarProps = {
   styleId?: string;
   stylePending?: boolean;
   aspectRatio?: AspectRatio;
+  resolution?: Resolution;
   /** The LLM that analysed the script into scenes. Fixed post-analysis. */
   analysisModel?: string;
 };
@@ -62,6 +70,39 @@ const SettingRow: React.FC<{ label: string; children: React.ReactNode }> = ({
   </div>
 );
 
+const SequenceResolutionSelector: React.FC<{
+  sequenceId: string;
+  resolution: Resolution;
+}> = ({ sequenceId, resolution }) => {
+  const setResolution = useSetSequenceResolution(sequenceId);
+  return (
+    <SettingRow label="Resolution">
+      <ToggleGroup
+        type="single"
+        value={resolution}
+        onValueChange={(value) => {
+          if (value && isResolution(value) && value !== resolution) {
+            setResolution.mutate(value);
+          }
+        }}
+        variant="outline"
+        spacing={0}
+        aria-label="Resolution for the next render"
+      >
+        {RESOLUTION_OPTIONS.map((option) => (
+          <ToggleGroupItem
+            key={option.value}
+            value={option.value}
+            className="h-7 px-2 font-mono text-xs"
+          >
+            {option.label}
+          </ToggleGroupItem>
+        ))}
+      </ToggleGroup>
+    </SettingRow>
+  );
+};
+
 export const SceneModelBar: React.FC<SceneModelBarProps> = ({
   scope,
   sequenceId,
@@ -70,6 +111,7 @@ export const SceneModelBar: React.FC<SceneModelBarProps> = ({
   styleId,
   stylePending,
   aspectRatio,
+  resolution,
   analysisModel,
 }) => {
   const posthog = usePostHog();
@@ -111,6 +153,15 @@ export const SceneModelBar: React.FC<SceneModelBarProps> = ({
               <span className="font-mono text-sm">{aspectRatio}</span>
             </span>
           </SettingRow>
+          {/* Unlike the rows above it, this one is live: the tier applies to
+              the NEXT render, so drafting at 720p and re-rolling a keeper at 4K
+              is a pick here plus a re-roll — no re-analysis, nothing stales. */}
+          {sequenceId && resolution && (
+            <SequenceResolutionSelector
+              sequenceId={sequenceId}
+              resolution={resolution}
+            />
+          )}
           <SettingRow label="Script">
             <ModelBadge model={analysisModel} />
           </SettingRow>

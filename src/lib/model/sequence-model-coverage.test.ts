@@ -13,7 +13,6 @@ const baseVariant: ShotVariant = {
   sequenceId: 'seq1',
   variantType: 'image',
   model: 'nano_banana_2',
-  resolution: null,
   url: 'https://r2/img.png',
   storagePath: 'team/seq/img.png',
   shotVariantUrl: null,

@@ -14,7 +14,6 @@ import {
   uniqueIndex,
 } from 'drizzle-orm/sqlite-core';
 import { generateId } from '../id';
-import type { Resolution } from '@/lib/constants/resolutions';
 import { SHOT_GENERATION_STATUSES } from './shots';
 import { shots } from './shots';
 import { sequences } from './sequences';
@@ -41,11 +40,6 @@ export const shotVariants = snakeCase.table(
 
     // Model identification
     model: text({ length: 100 }).notNull(),
-    // Resolution tier this version was asked for (#1449). Null on rows written
-    // before the tier existed. Stamped, not derived: the sequence default can
-    // change after a render, and a 4K re-roll has to stay legible next to the
-    // 720p draft it sits beside.
-    resolution: text({ length: 10 }).$type<Resolution>(),
 
     // Output URLs and storage paths
     url: text(),

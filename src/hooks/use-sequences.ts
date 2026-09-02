@@ -9,11 +9,13 @@ import {
   renameSequenceFn,
   setSequenceModelFn,
   setSequenceMusicFn,
+  setSequenceResolutionFn,
   unarchiveSequenceFn,
   type AddModelResult,
 } from '@/functions/sequences';
 import { DEFAULT_ANALYSIS_MODEL } from '@/lib/ai/models.config';
 import type { SequenceMusicVariant } from '@/lib/db/schema';
+import type { Resolution } from '@/lib/constants/resolutions';
 import type { VariantType } from '@/lib/db/schema/shot-variants';
 import { type CreateSequenceInput } from '@/lib/schemas/sequence.schemas';
 import type { Sequence } from '@/types/database';
@@ -286,6 +288,52 @@ export function useRenameSequence(sequenceId: string) {
         queryKey: sequenceKeys.detail(sequenceId),
       });
       void queryClient.invalidateQueries({ queryKey: sequenceKeys.lists() });
+    },
+  });
+}
+
+/**
+ * Change the sequence's resolution tier (#1449). Nothing is re-rendered and
+ * nothing goes stale — the tier is what the NEXT render is asked for, so the
+ * cache patch is all the feedback there is. Rolls back if the write fails.
+ */
+export function useSetSequenceResolution(sequenceId: string) {
+  const queryClient = useQueryClient();
+  const posthog = usePostHog();
+
+  return useMutation({
+    // Serialize per-sequence writes so two quick picks can't resolve out of
+    // order and persist the stale tier (same reason as the music toggle).
+    scope: { id: `set-sequence-resolution-${sequenceId}` },
+    mutationFn: (resolution: Resolution) =>
+      setSequenceResolutionFn({ data: { sequenceId, resolution } }),
+    onMutate: async (resolution) => {
+      const key = sequenceKeys.detail(sequenceId);
+      await queryClient.cancelQueries({ queryKey: key });
+      const previous = queryClient.getQueryData<Sequence>(key);
+      queryClient.setQueryData<Sequence>(key, (old) =>
+        old ? { ...old, resolution } : old
+      );
+      return { previous };
+    },
+    onError: (error, _resolution, ctx) => {
+      if (ctx?.previous) {
+        queryClient.setQueryData(sequenceKeys.detail(sequenceId), ctx.previous);
+      }
+      toast.error('Could not save the resolution.');
+      posthog.captureException(error, { sequence_id: sequenceId });
+    },
+    onSuccess: (updated) => {
+      queryClient.setQueryData(sequenceKeys.detail(sequenceId), updated);
+      posthog.capture('sequence_resolution_changed', {
+        sequence_id: sequenceId,
+        resolution: updated.resolution,
+      });
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({
+        queryKey: sequenceKeys.detail(sequenceId),
+      });
     },
   });
 }

@@ -127,6 +127,7 @@ const perSegmentShots: ShotView[] = PS_SHOT_CONFIGS.map((cfg, index) => {
 const psVersion = (id: string, model: string): SegmentVideoVersion => ({
   id,
   model,
+  resolution: null,
   status: 'completed',
   url: PS_VIDEO_URL,
   createdAt: PS_FIXED_DATE,
