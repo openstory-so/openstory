@@ -50,13 +50,21 @@ export function availableResolutions(selection: Selection): Resolution[] {
  * The one-line caption under the pills: which selected models won't give you
  * the chosen tier, and why.
  *
- * Two reasons, kept apart because they aren't the same fact: a model with a
- * lower ceiling renders *below* the tier, while a fixed-size model renders at
- * a size the tier never touches — Nano Banana 2 Lite's 1K is not "lower than
- * 720p". Null when every model serves the tier.
+ * Three reasons, kept apart because they aren't the same fact:
  *
- * Names at most two models per clause; "and N more" is the honest way to say a
- * whole selection is short without wrapping a one-line caption.
+ *   - *below* — the model's ceiling is under the tier (Seedance 2.5 at 4K).
+ *   - *above* — its floor is over it, so the shot costs more than was asked
+ *     for, not less (LTX starts at 1080p, so it can't serve a 720p ask).
+ *   - *a fixed size* — the tier can't move this model at all, so it is not
+ *     "lower than 720p", it is outside the scale. Either it takes no size we
+ *     can steer (Nano Banana 2 Lite, and the models publishing no range we'd
+ *     rather not guess at), or every token it does advertise lands in one tier
+ *     (H3 Max's 480P and 768P are both 720p). One reachable tier is no more of
+ *     a choice than none, so both read the same way to the user.
+ *
+ * Null when every model serves the tier. Names at most two models per clause;
+ * "and N more" is the honest way to say a whole selection is short without
+ * wrapping a one-line caption.
  */
 export function resolutionCeilingNote(
   resolution: Resolution,
@@ -65,9 +73,25 @@ export function resolutionCeilingNote(
   const aspectRatio = selection.aspectRatio ?? DEFAULT_ASPECT_RATIO;
   const fixed: string[] = [];
   const lower: string[] = [];
+  const higher: string[] = [];
+  const index = RESOLUTIONS.indexOf(resolution);
   const sort = (name: string, tiers: readonly Resolution[]) => {
-    if (tiers.length === 0) fixed.push(name);
-    else if (!tiers.includes(resolution)) lower.push(name);
+    // One reachable tier means the tier never moves this model, so say that
+    // rather than staying silent when the ask happens to match it.
+    if (tiers.length < 2) {
+      fixed.push(name);
+      return;
+    }
+    if (tiers.includes(resolution)) return;
+    // A model can miss the tier from either side. LTX starts at 1080p, so a
+    // 720p ask renders *above* it — saying "below" there tells the user they
+    // are getting less while they are billed for more. `tiers` is non-empty
+    // here (the fixed case returned above) and ordered low to high, so its
+    // first entry is the model's floor.
+    const floor = tiers[0];
+    const floorIsAbove =
+      floor !== undefined && RESOLUTIONS.indexOf(floor) > index;
+    (floorIsAbove ? higher : lower).push(name);
   };
   for (const model of selection.imageModels ?? []) {
     sort(IMAGE_MODELS[model].name, imageResolutionTiers(model, aspectRatio));
@@ -81,6 +105,7 @@ export function resolutionCeilingNote(
     resolution;
   const clauses = [
     lower.length > 0 && `${subject(lower)} below ${label}`,
+    higher.length > 0 && `${subject(higher)} above ${label}`,
     fixed.length > 0 && `${subject(fixed)} at a fixed size`,
   ].filter((clause): clause is string => clause !== false);
   return clauses.length > 0 ? clauses.join(' · ') : null;

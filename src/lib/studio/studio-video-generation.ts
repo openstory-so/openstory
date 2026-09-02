@@ -40,6 +40,7 @@ import {
   type ImageToVideoModel,
 } from '@/lib/ai/models';
 import { assertMediaVia, type MediaVia } from '@/lib/ai/via';
+import { GROK_VIDEO_RESOLUTIONS } from '@/lib/motion/build-grok-video-request';
 import { workersSafeFetch } from '@/lib/ai/workers-safe-fetch';
 import { reportMissingBillingCost } from '@/lib/billing/billing-observability';
 import { ZERO_MICROS } from '@/lib/billing/money';
@@ -335,16 +336,14 @@ async function buildStudioBytePlusPrompt(
   return [{ type: 'text' as const, content: promptText }, ...frames];
 }
 
-/** xAI's `size` template admits only these. */
-const GROK_VIDEO_RESOLUTIONS = ['480p', '720p', '1080p'] as const;
-
 export async function submitStudioVideoJob(
   options: StudioVideoJobOptions
 ): Promise<StudioVideoJobSubmission> {
   const modelKey = options.model;
   const mode = options.mode ?? 'text';
-  // Every via spells the size `<ratio>_<resolution>`; the tier resolves to
-  // whatever token the model advertises (#1449).
+  // The tier resolves to whatever token the model advertises (#1449). Only the
+  // xAI via spells the size `<ratio>_<resolution>` — the fal via sends a bare
+  // `resolution` and Ark's image mode sends `adaptive_<resolution>`.
   const tier = studioVideoResolution(modelKey, options.resolution);
   // Narrowed by lookup rather than asserted — xAI's `size` template only
   // admits the three tiers Imagine serves.

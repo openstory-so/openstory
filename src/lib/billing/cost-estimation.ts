@@ -19,6 +19,8 @@ import {
 } from '@/lib/ai/models';
 import type { AspectRatio } from '@/lib/constants/aspect-ratios';
 import { aspectRatioToDimensions } from '@/lib/constants/aspect-ratios';
+import type { Resolution } from '@/lib/constants/resolutions';
+import { imageRequestDimensions } from '@/lib/image/build-image-request';
 import { resolveMotionEndpoint } from '@/lib/motion/resolve-motion-endpoint';
 import {
   studioVideoEndpointId,
@@ -131,9 +133,16 @@ export function estimateImageCost(
   model: TextToImageModel,
   aspectRatio: AspectRatio,
   numImages: number,
-  opts: { pricing: FalPricingMap; resolution?: string; edit?: boolean }
+  opts: { pricing: FalPricingMap; resolution?: Resolution; edit?: boolean }
 ): Microdollars | null {
-  const { width, height } = aspectRatioToDimensions(aspectRatio);
+  // Megapixel-priced endpoints bill on the pixels actually requested, so the
+  // tier has to size the estimate — a 4K ask against the flat 1600×900 stand-in
+  // under-quotes by ~5.8× and under-reserves the credits gating it (#1449).
+  // Asked of the request builder rather than derived here, so a model the tier
+  // can't resize is still quoted at the size it really renders.
+  const { width, height } =
+    imageRequestDimensions(model, aspectRatio, opts.resolution) ??
+    aspectRatioToDimensions(aspectRatio);
 
   // Always the fal catalog id: when the platform routes this model to BytePlus
   // Ark, the pricing map already aliases that id to the Ark rate (#1157), so
@@ -164,7 +173,7 @@ export function estimateVideoCost(
   durationSeconds: number,
   opts: {
     pricing: FalPricingMap;
-    resolution?: string;
+    resolution?: Resolution;
     /**
      * True when cast/element (or other) reference images will be sent so
      * `resolveMotionEndpoint` may route to reference-to-video.
@@ -193,11 +202,15 @@ export function estimateVideoCost(
 export function estimateStudioVideoCost(
   model: ImageToVideoModel,
   durationSeconds: number,
-  opts: { pricing: FalPricingMap; mode?: StudioVideoMode }
+  opts: {
+    pricing: FalPricingMap;
+    mode?: StudioVideoMode;
+    resolution?: Resolution;
+  }
 ): Microdollars | null {
   return estimateFalCost(
     studioVideoEndpointId(model, opts.mode),
-    { durationSeconds },
+    { durationSeconds, resolution: opts.resolution },
     opts.pricing
   );
 }
@@ -264,6 +277,12 @@ export type StoryboardCostOpts = {
   imageModelCount?: number;
   aspectRatio: AspectRatio;
   /**
+   * Output resolution tier (#1449). Sizes the stills and clips this estimate
+   * gates; omitted, everything is quoted at the default tier and a 4K run
+   * under-reserves.
+   */
+  resolution?: Resolution;
+  /**
    * Expected still count (≈ scene count today). Prefer labeled Scene N
    * headings from Enhance over word heuristics.
    */
@@ -303,6 +322,7 @@ export function estimateStoryboardRenderCost(
     gateEstimate(
       estimateImageCost(opts.imageModel, opts.aspectRatio, sceneCount, {
         pricing,
+        resolution: opts.resolution,
       }),
       { model: opts.imageModel, operation: 'storyboard:shot-images' },
       sceneCount
@@ -316,6 +336,7 @@ export function estimateStoryboardRenderCost(
       const perShotMotion = gateEstimate(
         estimateVideoCost(model, duration, {
           pricing,
+          resolution: opts.resolution,
           hasReferenceImages: true,
         }),
         { model, operation: 'storyboard:motion' }

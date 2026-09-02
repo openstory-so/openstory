@@ -192,6 +192,7 @@ export const updateSequenceFn = createServerFn({ method: 'POST' })
             DEFAULT_IMAGE_MODEL
           ),
           aspectRatio: sequence.aspectRatio,
+          resolution: sequence.resolution,
           autoGenerateMotion: sequence.autoGenerateMotion,
           videoModels: [
             safeImageToVideoModel(sequence.videoModel, DEFAULT_VIDEO_MODEL),
@@ -361,6 +362,7 @@ export const retryStoryboardFn = createServerFn({ method: 'POST' })
           DEFAULT_IMAGE_MODEL
         ),
         aspectRatio: sequence.aspectRatio,
+        resolution: sequence.resolution,
         autoGenerateMotion: sequence.autoGenerateMotion,
         videoModels: [
           safeImageToVideoModel(sequence.videoModel, DEFAULT_VIDEO_MODEL),
@@ -956,6 +958,7 @@ export const addModelToSequenceFn = createServerFn({ method: 'POST' })
     const perShotCost = gateEstimate(
       estimateImageCost(model, sequence.aspectRatio, 1, {
         pricing: await getEffectiveFalPricing(),
+        resolution: sequence.resolution,
       }),
       { model, operation: 'add-image-model' }
     );

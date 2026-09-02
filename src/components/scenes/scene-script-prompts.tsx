@@ -89,6 +89,7 @@ import {
   DEFAULT_ASPECT_RATIO,
   type AspectRatio,
 } from '@/lib/constants/aspect-ratios';
+import type { Resolution } from '@/lib/constants/resolutions';
 import { getMediaRoutesFn } from '@/functions/media-routes';
 import { getStorageDomainFn } from '@/functions/storage-config';
 import {
@@ -239,6 +240,8 @@ type SceneScriptPromptsProps = {
     type: 'image' | 'motion' | 'scene-variants'
   ) => void;
   aspectRatio?: AspectRatio;
+  /** Output resolution tier (#1449) — sizes the preview and its estimate. */
+  resolution?: Resolution;
   /** Image variant (frame_variants, #989) for the shot's look model. */
   variantForSelectedModel?: FrameVariant;
   /** The selected shot's video variant for the effective video model (#545). */
@@ -308,6 +311,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
   regeneratingMotion,
   onRegenerateStart,
   aspectRatio,
+  resolution,
   variantForSelectedModel,
   videoVariantForSelectedModel,
   segment,
@@ -1125,9 +1129,9 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
       regenImageModel,
       aspectRatio ?? DEFAULT_ASPECT_RATIO,
       1,
-      { pricing: falPricing }
+      { pricing: falPricing, resolution }
     );
-  }, [falPricing, regenImageModel, aspectRatio]);
+  }, [falPricing, regenImageModel, aspectRatio, resolution]);
   const motionCostEstimate = useMemo(() => {
     if (!falPricing || !shot) return null;
     const duration = resolveShotDuration({
@@ -1142,6 +1146,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
       }).length > 0;
     return estimateVideoCost(effectiveMotionModel, duration, {
       pricing: falPricing,
+      resolution,
       hasReferenceImages,
     });
   }, [
@@ -1151,6 +1156,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     sceneReference,
     mentionCharacters,
     mentionElements,
+    resolution,
   ]);
 
   // CDN-backed deployments absolutize stored /r2/ URLs at submit (toCdnUrl) —
@@ -1290,6 +1296,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
           imageUrl,
           duration,
           aspectRatio,
+          resolution,
           generateAudio: videoModelSupportsAudio(modelKey)
             ? generateAudio
             : undefined,
@@ -1324,6 +1331,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     shotMotionPrompt,
     characterTags,
     aspectRatio,
+    resolution,
     generateAudio,
     absolutizeUrl,
     byteplusEnabled,
@@ -1362,6 +1370,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
         imageSize: aspectRatio
           ? aspectRatioToImageSize(aspectRatio)
           : undefined,
+        resolution,
         numImages: 1,
         referenceImageUrls: referenceUrls,
       };
@@ -1407,6 +1416,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     mentionElements,
     mentionLocations,
     aspectRatio,
+    resolution,
     absolutizeUrl,
     byteplusEnabled,
   ]);

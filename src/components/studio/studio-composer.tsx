@@ -360,6 +360,7 @@ export function StudioComposer({ activity }: StudioComposerProps) {
     if (activity === 'image') {
       const still = estimateImageCost(imageModel, aspectRatio, 1, {
         pricing,
+        resolution,
         edit: references.length > 0,
       });
       return still === null ? null : multiplyMicros(still, count);
@@ -367,7 +368,7 @@ export function StudioComposer({ activity }: StudioComposerProps) {
     const motion = estimateStudioVideoCost(
       compatibleVideoModel,
       snappedDuration,
-      { pricing, mode: effectiveMode }
+      { pricing, mode: effectiveMode, resolution }
     );
     return motion === null ? null : multiplyMicros(motion, count);
   }, [
@@ -379,6 +380,7 @@ export function StudioComposer({ activity }: StudioComposerProps) {
     imageModel,
     pricing,
     references.length,
+    resolution,
     snappedDuration,
   ]);
 

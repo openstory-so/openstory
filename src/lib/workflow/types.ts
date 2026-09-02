@@ -356,7 +356,6 @@ export type SceneSplitWorkflowInput = SequenceWorkflowContext & {
   promptName: string;
   modelId: AnalysisModelId;
   aspectRatio: AspectRatio;
-  resolution?: Resolution;
   script: string;
   /** User-uploaded elements to make the model aware of uppercase tokens */
   elements?: SequenceElementMinimal[];
@@ -773,7 +772,6 @@ type ShotMapping = Array<{
 export interface FramePromptBatchWorkflowInput extends SequenceWorkflowContext {
   scenes: Scene[];
   aspectRatio: AspectRatio;
-  resolution?: Resolution;
   characterBible: CharacterBibleEntry[];
   locationBible: LocationBibleEntry[];
   elementBible?: ElementBibleEntry[];
@@ -801,7 +799,6 @@ export interface FramePromptWorkflowInput extends SequenceWorkflowContext {
   sceneBefore?: Scene;
   sceneAfter?: Scene;
   aspectRatio: AspectRatio;
-  resolution?: Resolution;
   characterBible: CharacterBibleEntry[];
   locationBible: LocationBibleEntry[];
   elementBible?: ElementBibleEntry[];
@@ -837,7 +834,6 @@ export interface FramePromptWorkflowInput extends SequenceWorkflowContext {
 export interface MotionPromptBatchWorkflowInput extends SequenceWorkflowContext {
   scenes: Scene[];
   aspectRatio: AspectRatio;
-  resolution?: Resolution;
   characterBible: CharacterBibleEntry[];
   locationBible: LocationBibleEntry[];
   elementBible?: ElementBibleEntry[];
@@ -858,7 +854,6 @@ export interface MotionPromptWorkflowInput extends SequenceWorkflowContext {
   sceneBefore?: Scene;
   sceneAfter?: Scene;
   aspectRatio: AspectRatio;
-  resolution?: Resolution;
   characterBible: CharacterBibleEntry[];
   locationBible: LocationBibleEntry[];
   elementBible?: ElementBibleEntry[];
@@ -1391,7 +1386,6 @@ export interface MotionMusicPromptsWorkflowInput extends SequenceWorkflowContext
   scenesWithVisualPrompts: Scene[];
   shotMapping: ShotMapping;
   aspectRatio: AspectRatio;
-  resolution?: Resolution;
   characterBible: CharacterBibleEntry[];
   locationBible: LocationBibleEntry[];
   elementBible?: ElementBibleEntry[];

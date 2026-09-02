@@ -62,7 +62,10 @@ export function buildUpdateStalePreview(
   const promptsCost = estimateLLMCost(visual.length + motion.length);
   const imagesCost = sum(
     images.map((t) =>
-      estimateImageCost(t.imageModel, plan.aspectRatio, 1, { pricing })
+      estimateImageCost(t.imageModel, plan.aspectRatio, 1, {
+        pricing,
+        resolution: plan.sequence.resolution,
+      })
     )
   );
   const videoModel = safeImageToVideoModel(plan.sequence.videoModel);
@@ -71,7 +74,7 @@ export function buildUpdateStalePreview(
       estimateVideoCost(
         videoModel,
         (t.durationMs ?? DEFAULT_VIDEO_DURATION_MS) / 1000,
-        { pricing }
+        { pricing, resolution: plan.sequence.resolution }
       )
     )
   );

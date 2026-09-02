@@ -21,6 +21,7 @@ import {
   aspectRatioToImageSize,
   DEFAULT_IMAGE_SIZE,
 } from '@/lib/constants/aspect-ratios';
+import type { Resolution } from '@/lib/constants/resolutions';
 import type { ScopedDb } from '@/lib/db/scoped';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import { generateImageWithProvider } from '@/lib/image/image-generation';
@@ -94,6 +95,8 @@ export async function bindUpscaleVersion(params: {
   sourceVariantId: string | null;
   promptVersionId: string | null | undefined;
   workflowRunId: string;
+  /** Tier the upscale was asked for (#1449); null on pre-tier rows. */
+  resolution?: Resolution;
 }): Promise<string | null> {
   const {
     scopedDb,
@@ -104,6 +107,7 @@ export async function bindUpscaleVersion(params: {
     sourceVariantId,
     promptVersionId,
     workflowRunId,
+    resolution,
   } = params;
   if (versionId) {
     const existing = await scopedDb.claims.frameVariants.getById(versionId);
@@ -116,6 +120,7 @@ export async function bindUpscaleVersion(params: {
     sequenceId,
     kind: 'framing',
     model: upscaleModel,
+    resolution: resolution ?? null,
     sourceVariantId,
     promptVersionId,
     status: 'generating',
@@ -287,6 +292,7 @@ export class UpscaleShotVariantWorkflow extends OpenStoryWorkflowEntrypoint<Upsc
         sourceVariantId: input.sourceVariantId ?? null,
         promptVersionId: input.promptVersionId,
         workflowRunId,
+        resolution: input.resolution,
       });
       if (!versionId) {
         logger.info(
@@ -349,6 +355,7 @@ export class UpscaleShotVariantWorkflow extends OpenStoryWorkflowEntrypoint<Upsc
           model: upscaleModel,
           prompt: enhancedPrompt,
           imageSize,
+          resolution: input.resolution,
           referenceImageUrls: referenceUrls,
           numImages: 1,
           outputFormat: 'png',

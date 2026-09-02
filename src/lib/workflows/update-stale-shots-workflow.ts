@@ -601,6 +601,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
               gateEstimate(
                 estimateVideoCost(model, duration, {
                   pricing: await getEffectiveFalPricing(),
+                  resolution: plan.resolution,
                 }),
                 { model, operation: 'update-stale-shots:video' }
               ),

@@ -77,15 +77,22 @@ const SequenceResolutionSelector: React.FC<{
   resolution: Resolution;
   imageModel: TextToImageModel;
   videoModel: ImageToVideoModel;
-}> = ({ sequenceId, resolution, imageModel, videoModel }) => {
+  aspectRatio: AspectRatio | undefined;
+}> = ({ sequenceId, resolution, imageModel, videoModel, aspectRatio }) => {
   const setResolution = useSetSequenceResolution(sequenceId);
+  // The ratio is load-bearing, not decorative: a pixel-sized model reaches
+  // different tiers at different shapes (Seedream serves 720p at 16:9 but
+  // starts at 1080p when square), so omitting it offers pills the model
+  // can't render and hides ones it can.
   const available = availableResolutions({
     imageModels: [imageModel],
     videoModels: [videoModel],
+    aspectRatio,
   });
-  // Every model in this sequence renders one fixed size — there is nothing to
-  // pick, so the row would be three pills that all do the same thing.
-  if (available.length === 0) return null;
+  // Nothing to pick: either no model takes a size we can steer, or they all
+  // land on the same tier (H3 Max advertises 480P and 768P, which are both
+  // 720p). One pill looks like a choice and isn't one.
+  if (available.length < 2) return null;
   return (
     <SettingRow label="Resolution">
       <ToggleGroup
@@ -175,6 +182,7 @@ export const SceneModelBar: React.FC<SceneModelBarProps> = ({
               resolution={resolution}
               imageModel={resolvedSequenceImageModel}
               videoModel={resolvedSequenceVideoModel}
+              aspectRatio={aspectRatio}
             />
           )}
           <SettingRow label="Script">

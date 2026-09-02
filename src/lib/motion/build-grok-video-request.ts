@@ -70,8 +70,12 @@ function grokVideoPromptParts(
   ];
 }
 
-/** Imagine 1.5 image-to-video. Reference-to-video is capped at 720p. */
-const GROK_VIDEO_RESOLUTIONS = ['480p', '720p', '1080p'] as const;
+/**
+ * The only tokens xAI's `size` template admits. Exported so the studio via
+ * narrows against the same list rather than keeping its own copy.
+ * Imagine 1.5 image-to-video; reference-to-video is capped at 720p.
+ */
+export const GROK_VIDEO_RESOLUTIONS = ['480p', '720p', '1080p'] as const;
 
 function grokVideoSize(
   aspectRatio: AspectRatio | undefined,
@@ -80,12 +84,15 @@ function grokVideoSize(
 ): GrokVideoRequestInput['size'] {
   if (!aspectRatio) return undefined;
   // Reference-to-video is 720p only, whatever tier was asked for (#1449).
-  const tier =
+  const picked =
     hasReferences || !resolution
       ? '720p'
-      : (pickVideoResolution(GROK_VIDEO_RESOLUTIONS, resolution) ?? '720p');
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- picked from GROK_VIDEO_RESOLUTIONS
-  return `${aspectRatio}_${tier as (typeof GROK_VIDEO_RESOLUTIONS)[number]}`;
+      : pickVideoResolution(GROK_VIDEO_RESOLUTIONS, resolution);
+  // Narrowed by lookup rather than asserted: `pickVideoResolution` returns the
+  // string it was given, so only a round-trip through the list proves to the
+  // compiler that it is one of the three the template admits.
+  const tier = GROK_VIDEO_RESOLUTIONS.find((r) => r === picked) ?? '720p';
+  return `${aspectRatio}_${tier}`;
 }
 
 export function buildGrokVideoRequest(options: {

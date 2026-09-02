@@ -245,6 +245,7 @@ export const createSequences = createServerOnlyFn(
       imageModel: primaryImageModel,
       imageModelCount: imageModels.length,
       aspectRatio,
+      resolution,
       autoGenerateMotion,
       videoModels,
       autoGenerateMusic,

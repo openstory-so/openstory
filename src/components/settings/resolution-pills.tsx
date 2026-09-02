@@ -12,8 +12,9 @@ type ResolutionPillsProps = {
   /**
    * The tiers the selected model(s) can actually deliver. Only these get a
    * pill — a tier a model can't reach is not a choice, and offering it as one
-   * promises a size that never arrives. Empty means nothing here is
-   * adjustable, so the row explains itself instead (see `note`).
+   * promises a size that never arrives. Fewer than two means nothing here is
+   * adjustable, so the row explains itself instead (see `note`): a lone pill
+   * reads as a choice and isn't one.
    */
   available: readonly Resolution[];
   disabled?: boolean;
@@ -34,7 +35,7 @@ export const ResolutionPills: FC<ResolutionPillsProps> = ({
 
   return (
     <div className="flex min-w-0 flex-col gap-1">
-      {options.length > 0 && (
+      {options.length > 1 && (
         <ToggleGroup
           type="single"
           value={value}
@@ -50,13 +51,9 @@ export const ResolutionPills: FC<ResolutionPillsProps> = ({
             <ToggleGroupItem
               key={option.value}
               value={option.value}
-              className="flex h-9 min-w-0 flex-1 shrink items-center justify-center gap-1.5 px-2 sm:px-3"
-              aria-label={`${option.label} — ${option.hint}`}
+              className="flex h-9 min-w-0 flex-1 shrink items-center justify-center px-2 sm:px-3"
             >
               <span className="font-mono text-xs">{option.label}</span>
-              <span className="hidden text-[10px] text-muted-foreground sm:inline">
-                {option.hint}
-              </span>
             </ToggleGroupItem>
           ))}
         </ToggleGroup>

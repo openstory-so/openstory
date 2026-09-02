@@ -15,6 +15,7 @@ import {
   type TextToImageModel,
 } from '@/lib/ai/models';
 import type { AspectRatio } from '@/lib/constants/aspect-ratios';
+import type { Resolution } from '@/lib/constants/resolutions';
 import { estimateStoryboardCost } from '@/lib/billing/cost-estimation';
 import type { Microdollars } from '@/lib/billing/money';
 import { estimateSceneCount } from '@/lib/generation/time-estimate';
@@ -25,6 +26,8 @@ export type StoryboardPreflightInput = {
   /** Number of image models selected (multiplies per-shot image cost). */
   imageModelCount?: number;
   aspectRatio: AspectRatio;
+  /** Output resolution tier (#1449) — sizes the stills and clips being gated. */
+  resolution?: Resolution;
   autoGenerateMotion?: boolean;
   videoModels?: ImageToVideoModel[];
   autoGenerateMusic?: boolean;
@@ -69,6 +72,7 @@ export function estimateStoryboardPreflightCost(
     imageModel: opts.imageModel,
     imageModelCount: opts.imageModelCount,
     aspectRatio: opts.aspectRatio,
+    resolution: opts.resolution,
     estimatedSceneCount: sceneCount,
     autoGenerateMotion: motionOn,
     videoModels: motionOn ? opts.videoModels : undefined,

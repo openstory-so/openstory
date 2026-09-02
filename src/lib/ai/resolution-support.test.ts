@@ -71,7 +71,7 @@ describe('resolutionCeilingNote', () => {
     ).toBe('Seedance 2.5 renders below 4K');
   });
 
-  it('keeps fixed-size apart from lower — 1K is not "below 720p"', () => {
+  it('keeps fixed-size models apart from lower — 1K is not "below 720p"', () => {
     expect(
       resolutionCeilingNote('720p', {
         imageModels: ['nano_banana_2_lite'],
@@ -86,6 +86,49 @@ describe('resolutionCeilingNote', () => {
     ).toBe(
       'Seedance 2.5 renders below 4K · Nano Banana 2 Lite renders at a fixed size'
     );
+  });
+
+  it('calls a one-tier model fixed, even when the ask matches that tier', () => {
+    // H3 Max advertises 480P and 768P, which both land in the 720p band — so
+    // the tier never moves it. Staying silent because 720p "matches" left the
+    // picker showing a lone 720p pill that did nothing.
+    expect(
+      resolutionCeilingNote('720p', { videoModels: ['minimax_h3_max'] })
+    ).toBe('MiniMax H3 Max renders at a fixed size');
+    // The screenshot case: a fixed image model plus a one-tier video model
+    // leaves nothing to choose, so the caption has to carry the whole row.
+    expect(
+      resolutionCeilingNote('720p', {
+        imageModels: ['nano_banana_2_lite'],
+        videoModels: ['minimax_h3_max'],
+      })
+    ).toBe('Nano Banana 2 Lite and MiniMax H3 Max render at a fixed size');
+  });
+
+  it('says "above" for a model whose floor is over the tier', () => {
+    // LTX starts at 1080p, so a 720p ask renders ABOVE it — and costs more.
+    // Calling that "below 720p" told the user they were getting less while
+    // they were billed for more.
+    expect(
+      resolutionCeilingNote('720p', {
+        imageModels: ['gpt_image_2'],
+        videoModels: ['ltx_2_3_pro'],
+      })
+    ).toBe('LTX 2.3 Pro renders above 720p');
+  });
+
+  it('reads the aspect ratio — a tier can be out of reach at one shape only', () => {
+    // Seedream's documented pixel range puts 720p out of reach when square,
+    // and 4K within it. Dropping the ratio offers a pill it cannot render.
+    expect(
+      availableResolutions({ imageModels: ['seedream_v5'], aspectRatio: '1:1' })
+    ).toEqual(['1080p', '4k']);
+    expect(
+      availableResolutions({
+        imageModels: ['seedream_v5'],
+        aspectRatio: '16:9',
+      })
+    ).toEqual(['720p', '1080p']);
   });
 
   it('collapses a long selection rather than wrapping the caption', () => {

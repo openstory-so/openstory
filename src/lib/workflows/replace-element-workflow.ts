@@ -449,6 +449,7 @@ export class ReplaceElementWorkflow extends OpenStoryWorkflowEntrypoint<ReplaceE
           prompt: editPrompt,
           model,
           imageSize: aspectRatioToImageSize(aspectRatio),
+          resolution: input.resolution,
           numImages: 1,
           referenceImages: [
             {
@@ -588,6 +589,7 @@ export class ReplaceElementWorkflow extends OpenStoryWorkflowEntrypoint<ReplaceE
             prompt: motionPrompt,
             model: videoModel,
             aspectRatio,
+            resolution: input.resolution,
             duration: durationMs ? durationMs / 1000 : undefined,
           };
 

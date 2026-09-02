@@ -169,6 +169,7 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
       gateEstimate(
         estimateVideoCost(model, duration, {
           pricing: await getEffectiveFalPricing(),
+          resolution: sequence.resolution,
           hasReferenceImages: referenceImages.length > 0,
         }),
         { model, operation: 'motion' }
@@ -376,6 +377,7 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
         explicitModel: data.model,
         duration: data.duration,
         pricing: await getEffectiveFalPricing(),
+        resolution: sequence.resolution,
         hasReferenceImages: (batchShot) => {
           const shot = eligibleShots.find((s) => s.id === batchShot.id);
           if (!shot) return false;

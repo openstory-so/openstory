@@ -445,6 +445,71 @@ describe('turbo default image (nano_banana_2_lite)', () => {
   });
 });
 
+describe('the resolution tier sizes the estimate (#1449)', () => {
+  // The tier is one click for the user and a multiple on the bill. Left out of
+  // the estimate, a 4K run is quoted — and credit-gated — at the flat stand-in
+  // size, so preflight reserves a fraction of what the render actually spends.
+  // qwen_image is megapixel-billed AND documents a pixel range, so the tier
+  // genuinely moves both the request and the charge.
+  const MEGAPIXEL_PRICED = {
+    ...FAL_PRICING,
+    'fal-ai/qwen-image-2/pro/text-to-image': {
+      unitPrice: micros(70_000),
+      unit: 'megapixels',
+    },
+  };
+
+  it('prices a megapixel-billed image from the tier, not a flat size', () => {
+    const at720 = estimateImageCost('qwen_image', '16:9', 1, {
+      pricing: MEGAPIXEL_PRICED,
+      resolution: '720p',
+    });
+    const at1080 = estimateImageCost('qwen_image', '16:9', 1, {
+      pricing: MEGAPIXEL_PRICED,
+      resolution: '1080p',
+    });
+    expect(at720).not.toBeNull();
+    // 1920×1080 against 1280×720 — 2.25× the pixels, 2.25× the bill.
+    expect(Number(at1080)).toBeCloseTo(Number(at720) * 2.25, 0);
+  });
+
+  it("leaves a model the tier can't resize quoted at its own size", () => {
+    // FLUX.2 Max publishes no range, so the request keeps its preset and the
+    // estimate must not pretend a 4K ask buys 4K pixels.
+    const at720 = estimateImageCost('flux_2_max', '16:9', 1, {
+      pricing: FAL_PRICING,
+      resolution: '720p',
+    });
+    const at4k = estimateImageCost('flux_2_max', '16:9', 1, {
+      pricing: FAL_PRICING,
+      resolution: '4k',
+    });
+    expect(at720).not.toBeNull();
+    expect(at4k).toEqual(at720);
+  });
+
+  it('prices a token-billed clip from the tier', () => {
+    const tokenPriced = {
+      ...FAL_PRICING,
+      'fal-ai/veo3.1/image-to-video': {
+        unitPrice: micros(1_000),
+        unit: '1000 tokens',
+      },
+    };
+    const at720 = estimateVideoCost('veo3_1', DURATION, {
+      pricing: tokenPriced,
+      resolution: '720p',
+    });
+    const at4k = estimateVideoCost('veo3_1', DURATION, {
+      pricing: tokenPriced,
+      resolution: '4k',
+    });
+    expect(at720).not.toBeNull();
+    // 3840×2160 against 1280×720 — nine times the pixels, nine times the bill.
+    expect(Number(at4k)).toBeCloseTo(Number(at720) * 9, 0);
+  });
+});
+
 describe('gateEstimate', () => {
   const UNPRICED: TextToImageModel = 'grok_imagine_image';
 

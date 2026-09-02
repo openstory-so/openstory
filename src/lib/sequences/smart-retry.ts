@@ -203,6 +203,7 @@ export async function executeSmartRetry(context: SmartRetryContext) {
         script: sequence.script ?? '',
         imageModel,
         aspectRatio: sequence.aspectRatio,
+        resolution: sequence.resolution,
         autoGenerateMotion: sequence.autoGenerateMotion,
         videoModels: [videoModel],
         autoGenerateMusic: sequence.autoGenerateMusic,
@@ -308,7 +309,10 @@ export async function executeSmartRetry(context: SmartRetryContext) {
 
       const imageModel = imageModelFor(shot);
       const imageCost = gateEstimate(
-        estimateImageCost(imageModel, sequence.aspectRatio, 1, { pricing }),
+        estimateImageCost(imageModel, sequence.aspectRatio, 1, {
+          pricing,
+          resolution: sequence.resolution,
+        }),
         { model: imageModel, operation: 'smart-retry:image' }
       );
       const reservationId =
@@ -364,7 +368,7 @@ export async function executeSmartRetry(context: SmartRetryContext) {
         estimateVideoCost(
           shotVideoModel,
           snapDuration(undefined, shotVideoModel),
-          { pricing }
+          { pricing, resolution: sequence.resolution }
         ),
         { model: shotVideoModel, operation: 'smart-retry:motion' }
       );

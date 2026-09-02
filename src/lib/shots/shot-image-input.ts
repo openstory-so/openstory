@@ -227,6 +227,7 @@ export async function prepareShotImageWorkflowInput(args: {
     gateEstimate(
       estimateImageCost(model, sequence.aspectRatio, 1, {
         pricing: await getEffectiveFalPricing(),
+        resolution: sequence.resolution,
       }),
       { model, operation: 'shot-image' }
     ),

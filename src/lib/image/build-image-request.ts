@@ -149,6 +149,29 @@ export function imageResolutionTiers(
 }
 
 /**
+ * The pixel size a tier actually buys on this model, or null when the tier
+ * doesn't steer its size — a token model (the tier picks `2K`, but fal bills
+ * per image either way) or one with no documented range, both of which render
+ * at their own preset.
+ *
+ * Exported so the cost estimate is computed from the size the request will
+ * really carry. Quoting a 4K ask at a flat stand-in under-reserves the credits
+ * gating it; quoting a model the tier can't resize over-reserves (#1449).
+ */
+export function imageRequestDimensions(
+  model: TextToImageModel,
+  aspectRatio: AspectRatio,
+  resolution: Resolution | undefined
+): { width: number; height: number } | null {
+  const capability = IMAGE_RESOLUTION[model];
+  if (!resolution || !capability || !('pixels' in capability)) return null;
+  return clampDimensions(
+    resolutionDimensions(resolution, aspectRatio),
+    capability.pixels
+  );
+}
+
+/**
  * The `image_size` to send: explicit pixels for a model that accepts them,
  * otherwise the fal preset unchanged.
  */
@@ -156,13 +179,12 @@ function resolveImageSize(
   params: ImageGenerationParams
 ): ImageSize | { width: number; height: number } {
   const imageSize = params.imageSize ?? DEFAULT_IMAGE_SIZE;
-  const capability = IMAGE_RESOLUTION[params.model];
-  if (!params.resolution || !capability || !('pixels' in capability)) {
-    return imageSize;
-  }
-  return clampDimensions(
-    resolutionDimensions(params.resolution, imageSizeToAspectRatio(imageSize)),
-    capability.pixels
+  return (
+    imageRequestDimensions(
+      params.model,
+      imageSizeToAspectRatio(imageSize),
+      params.resolution
+    ) ?? imageSize
   );
 }
 

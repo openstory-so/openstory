@@ -16,6 +16,7 @@ import { resolveVideoModel } from '@/lib/ai/resolve-asset-models';
 import type { EffectiveFalPricing } from '@/lib/ai/fal-cost';
 import { estimateVideoCost, gateEstimate } from '@/lib/billing/cost-estimation';
 import { addMicros, ZERO_MICROS, type Microdollars } from '@/lib/billing/money';
+import type { Resolution } from '@/lib/constants/resolutions';
 import { snapDuration } from '@/lib/motion/snap-duration';
 
 type BatchShot = { id: string };
@@ -62,6 +63,8 @@ export function estimateBatchMotionCost(
     pricing: Record<string, EffectiveFalPricing>;
     explicitModel?: ImageToVideoModel | null;
     duration?: number;
+    /** Output resolution tier (#1449) — token-billed clips scale with it. */
+    resolution?: Resolution;
     /**
      * When true (or per-shot true), price the reference-to-video endpoint for
      * models that route there with cast/element refs (#873).
@@ -85,6 +88,7 @@ export function estimateBatchMotionCost(
       gateEstimate(
         estimateVideoCost(model, snapDuration(opts.duration, model), {
           pricing: opts.pricing,
+          resolution: opts.resolution,
           hasReferenceImages: hasRefs,
         }),
         { model, operation: 'batch-motion' }

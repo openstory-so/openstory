@@ -62,6 +62,7 @@ export const generateShotsFn = createServerFn({ method: 'POST' })
           DEFAULT_IMAGE_MODEL
         ),
         aspectRatio: sequence.aspectRatio,
+        resolution: sequence.resolution,
         videoModels: [
           safeImageToVideoModel(sequence.videoModel, DEFAULT_VIDEO_MODEL),
         ],
@@ -257,7 +258,10 @@ export const generateShotVariantsFn = createServerFn({ method: 'POST' })
           data.model ?? DEFAULT_IMAGE_MODEL,
           sequence.aspectRatio,
           numImages,
-          { pricing: await getEffectiveFalPricing() }
+          {
+            pricing: await getEffectiveFalPricing(),
+            resolution: sequence.resolution,
+          }
         ),
         {
           model: data.model ?? DEFAULT_IMAGE_MODEL,
@@ -411,7 +415,10 @@ export const selectShotVariantFn = createServerFn({ method: 'POST' })
           resolveUpscaleModel(sheet.model),
           sequence.aspectRatio,
           1,
-          { pricing: await getEffectiveFalPricing() }
+          {
+            pricing: await getEffectiveFalPricing(),
+            resolution: sequence.resolution,
+          }
         ),
         {
           model: resolveUpscaleModel(sheet.model),

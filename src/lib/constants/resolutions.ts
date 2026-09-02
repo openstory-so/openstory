@@ -32,15 +32,14 @@ export function isResolution(value: unknown): value is Resolution {
 
 type ResolutionOption = {
   value: Resolution;
+  /** How the tier is spelled to the user — '4k' shows as '4K'. */
   label: string;
-  /** One word under the pill — what picking it costs you. */
-  hint: string;
 };
 
 export const RESOLUTION_OPTIONS: ResolutionOption[] = [
-  { value: '720p', label: '720p', hint: 'Draft' },
-  { value: '1080p', label: '1080p', hint: 'HD' },
-  { value: '4k', label: '4K', hint: 'Max' },
+  { value: '720p', label: '720p' },
+  { value: '1080p', label: '1080p' },
+  { value: '4k', label: '4K' },
 ];
 
 /** Short edge in pixels. The long edge follows the aspect ratio. */

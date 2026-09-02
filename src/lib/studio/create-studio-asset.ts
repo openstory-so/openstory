@@ -48,6 +48,7 @@ function estimateStudioCost(
     const perImage = gateEstimate(
       estimateImageCost(input.imageModel, input.aspectRatio, 1, {
         pricing,
+        resolution: input.resolution,
         edit: input.referenceImages.length > 0,
       }),
       { model: input.imageModel, operation: 'studio-image' }
@@ -59,6 +60,7 @@ function estimateStudioCost(
   const perVideo = gateEstimate(
     estimateStudioVideoCost(input.videoModel, duration, {
       pricing,
+      resolution: input.resolution,
       mode: input.mode,
     }),
     { model: input.videoModel, operation: 'studio-video' }
