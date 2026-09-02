@@ -312,7 +312,7 @@ describe('submitStudioVideoJob', () => {
   it('falls back to fal Omni Flash T2V when no Google key exists', async () => {
     mockGenerateVideo.mockResolvedValue({
       jobId: 'fal-omni-t2v',
-      model: 'fal-ai/gemini-omni-flash',
+      model: 'fal-ai/gemini-omni-1.1-flash',
     });
 
     const result = await submitStudioVideoJob({
@@ -322,7 +322,7 @@ describe('submitStudioVideoJob', () => {
     });
 
     expect(result.via).toBe('fal');
-    expect(result.endpointId).toBe('fal-ai/gemini-omni-flash');
+    expect(result.endpointId).toBe('fal-ai/gemini-omni-1.1-flash');
     expect(mockCreateGeminiVideo).not.toHaveBeenCalled();
   });
 

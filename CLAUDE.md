@@ -297,7 +297,7 @@ pass top-level `duration`/`size` to `generateVideo` — the adapter overwrites
 API instead of inlining a multi-MB `data:` URL. Inline bytes miss Cloudflare
 Workflows' 1 MiB `step.do` cap; poll/upload download the Files URI with the
 Google key. Without a Google key the same model runs on fal's
-`fal-ai/gemini-omni-flash[/image-to-video|/reference-to-video]` endpoints.
+`fal-ai/gemini-omni-1.1-flash[/image-to-video|/reference-to-video]` endpoints.
 Data-URI stills must be decomposed to inline base64 on the native path —
 Google won't fetch `data:` as a URI.
 

@@ -112,7 +112,7 @@ describe('resolveMotionEndpoint', () => {
   it('routes Omni Flash to fal reference-to-video when refs are present', () => {
     expect(resolveMotionEndpoint('gemini_omni_flash', true)).toEqual({
       via: 'fal',
-      endpointId: 'fal-ai/gemini-omni-flash/reference-to-video',
+      endpointId: 'fal-ai/gemini-omni-1.1-flash/reference-to-video',
       references: 'endpoint',
       referenceConfig: MOTION_REFERENCE_ENDPOINTS.gemini_omni_flash,
     });

@@ -628,7 +628,7 @@ describe('Motion Service', () => {
     it('falls back to fal for Omni Flash when no Google key exists', async () => {
       mockGenerateVideo.mockResolvedValue({
         jobId: 'fal-omni-job',
-        model: 'fal-ai/gemini-omni-flash/image-to-video',
+        model: 'fal-ai/gemini-omni-1.1-flash/image-to-video',
       });
 
       const result = await submitMotionJob({

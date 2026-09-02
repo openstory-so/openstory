@@ -6,7 +6,8 @@
  *   - `reference` — reference-to-video: up to N stills bound in the prompt as
  *                   `@Image1`…`@ImageN`
  *   - `frames`    — image-to-video: a start frame, plus an end frame where the
- *                   endpoint has `end_image_url` (Kling, LTX, Seedance, H3 Max)
+ *                   endpoint has `end_image_url` (Kling, LTX, Seedance, H3 Max,
+ *                   Omni Flash)
  *
  * Client-safe: no env, no adapters.
  */
@@ -18,7 +19,7 @@ const STUDIO_TEXT_TO_VIDEO_ENDPOINTS = {
   grok_imagine_video_1_5: 'xai/grok-imagine-video/v1.5/text-to-video',
   ltx_2_3_pro: 'fal-ai/ltx-2.3/text-to-video',
   veo3_1: 'fal-ai/veo3.1',
-  gemini_omni_flash: 'fal-ai/gemini-omni-flash',
+  gemini_omni_flash: 'fal-ai/gemini-omni-1.1-flash',
   kling_v3_pro: 'fal-ai/kling-video/v3/pro/text-to-video',
   minimax_hailuo_02: 'fal-ai/minimax/hailuo-2.3/pro/text-to-video',
   minimax_h3_max: 'minimax/h3-max/text-to-video',
@@ -150,7 +151,7 @@ const STUDIO_REFERENCE_ENDPOINTS: Partial<
     maxAudio: 0,
   },
   gemini_omni_flash: {
-    endpointId: 'fal-ai/gemini-omni-flash/reference-to-video',
+    endpointId: 'fal-ai/gemini-omni-1.1-flash/reference-to-video',
     imageField: 'image_urls',
     // Google numbers references from zero.
     imageTag: (n) => `<IMAGE_REF_${n - 1}>`,
@@ -188,6 +189,7 @@ const STUDIO_END_FRAME_MODELS = {
   minimax_h3_max: true,
   seedance_v2: true,
   seedance_v2_5: true,
+  gemini_omni_flash: true,
 } as const satisfies Partial<Record<ImageToVideoModel, true>>;
 
 /** 0 when the model has no reference-to-video sibling. */

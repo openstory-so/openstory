@@ -65,7 +65,7 @@ export const IMAGE_TO_VIDEO_MODELS = {
     performance: { estimatedGenerationTime: 147, quality: 'best' as const },
   },
   gemini_omni_flash: {
-    id: 'fal-ai/gemini-omni-flash/image-to-video',
+    id: 'fal-ai/gemini-omni-1.1-flash/image-to-video',
     name: 'Gemini Omni Flash 1.1',
     vendor: 'Google',
     license: 'proprietary' as const,
@@ -730,7 +730,7 @@ export const MOTION_REFERENCE_ENDPOINTS: Partial<
     maxImages: 9,
   },
   gemini_omni_flash: {
-    endpointId: 'fal-ai/gemini-omni-flash/reference-to-video',
+    endpointId: 'fal-ai/gemini-omni-1.1-flash/reference-to-video',
     // Google numbers references from zero (Omni Flash prompt guide); the API
     // caps a request at 7 reference images.
     tag: (position) => `<IMAGE_REF_${position - 1}>`,
