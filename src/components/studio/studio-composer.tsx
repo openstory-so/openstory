@@ -128,7 +128,6 @@ import {
   AudioLines,
   Film,
   ImagePlus,
-  Loader2,
   RotateCcw,
   Shuffle,
   SlidersHorizontal,
@@ -1246,14 +1245,10 @@ export function StudioComposer({ activity }: StudioComposerProps) {
             type="submit"
             size="icon-lg"
             className="rounded-full"
-            aria-label={create.isPending ? 'Starting…' : submitLabel}
-            disabled={!canSubmit || create.isPending}
+            aria-label={submitLabel}
+            disabled={!canSubmit}
           >
-            {create.isPending ? (
-              <Loader2 className="animate-spin" aria-hidden="true" />
-            ) : (
-              <ArrowUp aria-hidden="true" />
-            )}
+            <ArrowUp aria-hidden="true" />
           </Button>
         </div>
       </div>
