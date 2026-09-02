@@ -74,19 +74,29 @@ export function useSpeechDictation({
   const listeningRef = useRef(false);
 
   const finish = useCallback(() => {
+    const wasLive = listeningRef.current || sessionRef.current !== null;
     listeningRef.current = false;
     sessionRef.current = null;
     setStatus('idle');
     setStartedAt(null);
-    onEndRef.current?.();
+    if (wasLive) onEndRef.current?.();
   }, [onEndRef]);
 
   const stop = useCallback(() => {
     if (!listeningRef.current) return;
-    listeningRef.current = false;
-    // `stop` keeps the phrase in flight; `onend` then runs `finish`.
+    // Keep the phrase in flight; `onend` then runs `finish`. If `stop()`
+    // throws (engine already inactive), the session calls `onEnd` itself.
     sessionRef.current?.stop();
   }, []);
+
+  const abort = useCallback(() => {
+    if (!listeningRef.current) return;
+    const session = sessionRef.current;
+    // Drop `dictationActive` now — do not wait for `onend`, or enhance /
+    // a shot switch stays locked behind the setContent skip.
+    finish();
+    session?.abort();
+  }, [finish]);
 
   const start = useCallback(() => {
     const SpeechRecognitionCtor = getSpeechRecognition();
@@ -94,7 +104,10 @@ export function useSpeechDictation({
 
     // Anchor the target before opening the mic so a missing editor does not
     // leave the recording indicator on with nowhere to put the words.
-    if (onStartRef.current?.() === false) return;
+    if (onStartRef.current?.() === false) {
+      onErrorRef.current?.(new DictationError('start-failed'));
+      return;
+    }
 
     const recognition: SpeechRecognition = new SpeechRecognitionCtor();
     recognition.continuous = true;
@@ -121,7 +134,7 @@ export function useSpeechDictation({
 
     sessionRef.current = session;
     if (!session.start()) {
-      // failStart already ran `finish` (toast + endDictation).
+      // failStart already fired `onError` and `onEnd` (`finish`).
       return;
     }
     listeningRef.current = true;
@@ -157,6 +170,7 @@ export function useSpeechDictation({
     startedAt,
     start,
     stop,
+    abort,
     toggle,
   };
 }

@@ -28,7 +28,10 @@ import { toast } from 'sonner';
 type VoiceInputButtonProps = {
   /** The take so far, on every interim update — replaces the previous emission. */
   onTranscript: (text: string) => void;
-  /** A take is starting: anchor wherever the next `onTranscript` should land. */
+  /**
+   * A take is starting: anchor wherever the next `onTranscript` should land.
+   * Return `false` to abort before the recogniser starts (editor not ready).
+   */
   onStart?: () => boolean | void;
   /** The take ended; the last `onTranscript` text stands. */
   onEnd?: () => void;
@@ -81,22 +84,23 @@ export const VoiceInputButton: React.FC<VoiceInputButtonProps> = ({
   className,
   language,
 }) => {
-  const { status, isSupported, startedAt, toggle, stop } = useSpeechDictation({
-    onTranscript,
-    onStart,
-    onEnd,
-    onError: reportDictationError,
-    language,
-  });
+  const { status, isSupported, startedAt, toggle, stop, abort } =
+    useSpeechDictation({
+      onTranscript,
+      onStart,
+      onEnd,
+      onError: reportDictationError,
+      language,
+    });
   const hydrated = useHydrated();
   const listening = status === 'listening';
 
   // Parent disable (save / enhance / prompt stream) must not leave a live
-  // take with no stop control — end the take, and keep the button clickable
-  // until it actually goes idle.
+  // take with no stop control. Abort + finish immediately so the editor's
+  // setContent skip drops; keep the button clickable until it goes idle.
   useEffect(() => {
-    if (disabled && listening) stop();
-  }, [disabled, listening, stop]);
+    if (disabled && listening) abort();
+  }, [disabled, listening, abort]);
 
   // Pre-hydration the button renders disabled so the row does not reflow when
   // it becomes live; only a browser that cannot dictate hides it.

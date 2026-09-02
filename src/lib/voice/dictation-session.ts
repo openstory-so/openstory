@@ -4,7 +4,8 @@
  *
  * OpenStory never records or POSTs audio. The browser vendor's recogniser
  * typically does (Chromium → Google, Safari → Apple), which is why a
- * `network` error exists and why `start()` can throw.
+ * `network` error exists. `start()` throws on Chromium's same-turn
+ * `end` → `start()` race, not because of that upload.
  */
 
 import {
@@ -17,7 +18,7 @@ type DictationErrorCode =
   | Exclude<SpeechRecognitionErrorCode, 'no-speech'>
   | 'start-failed';
 
-/** A recogniser failure the caller should surface. `no-speech` never gets here. */
+/** A failure the caller should surface. `no-speech` never gets here. */
 export class DictationError extends Error {
   constructor(readonly code: DictationErrorCode) {
     super(DICTATION_ERROR_MESSAGES[code]);
@@ -49,11 +50,8 @@ type RecognitionControls = {
 };
 
 export type DictationSession = {
-  /** Feed a `result` event. */
   feedResults: (results: RecognitionResults) => void;
-  /** Feed an `error` event. */
   feedError: (error: SpeechRecognitionErrorCode) => void;
-  /** Feed an `end` event. */
   feedEnd: () => void;
   start: () => boolean;
   stop: () => void;
@@ -101,9 +99,9 @@ export function createDictationSession(
     // Silence is not a failure: `feedEnd` restarts the recogniser after it.
     if (error === 'no-speech') return;
     listening = false;
-    // `aborted` from our own `abort()` (unmount) is not a user-facing error.
-    // The UA also fires `aborted` when another recogniser starts or the tab
-    // is backgrounded — those we toast.
+    // `aborted` from our own `abort()` (unmount / parent disable) is not a
+    // user-facing error. The UA also fires `aborted` when another recogniser
+    // starts — those we surface.
     if (error === 'aborted' && aborting) return;
     callbacks.onError(new DictationError(error));
   };
@@ -139,12 +137,22 @@ export function createDictationSession(
     stop: () => {
       if (!listening) return;
       listening = false;
-      recognition.stop();
+      try {
+        recognition.stop();
+      } catch {
+        // Engine already inactive — no `end` is coming.
+        callbacks.onEnd();
+      }
     },
     abort: () => {
-      listening = false;
       aborting = true;
-      recognition.abort();
+      if (!listening) return;
+      listening = false;
+      try {
+        recognition.abort();
+      } catch {
+        callbacks.onEnd();
+      }
     },
   };
 }

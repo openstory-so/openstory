@@ -335,10 +335,10 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
     onFocus: () => onFocusRef.current?.(),
   });
 
-  // Whether the user has put a caret in this editor since its content was
-  // last replaced from outside. ProseMirror's initial selection sits at the
-  // start of the document, so a dictated take must not land there just
-  // because the user has never clicked in — it goes to the end instead.
+  // Whether the user has put a caret in this editor since the last unfocused
+  // external replace. ProseMirror's initial selection sits at the start of
+  // the document, so a dictated take must not land there just because the
+  // user has never clicked in — it goes to the end instead.
   const caretPlacedRef = useRef(false);
 
   // The range the live dictation take occupies, or null between takes.
@@ -357,10 +357,10 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
   // the latest value. Each setContent is a full markdown re-parse + doc
   // rebuild and freezes the renderer if applied per-chunk at ~30Hz+.
   //
-  // Skip the rebuild while a take is live — mapping cannot survive a
-  // full-doc replace, and the next setDictation would append instead of
-  // rewrite. `dictationActive` dropping retriggers this so enhance output
-  // that arrived mid-take still lands.
+  // Skip the rebuild while a take is live — mapping a replace-all collapses
+  // the range, so the next setDictation inserts instead of rewriting.
+  // `dictationActive` dropping retriggers this so enhance output that
+  // arrived mid-take still lands.
   useEffect(() => {
     if (!editor || dictationActive) return;
     if (editor.storage.markdown.getMarkdown() === value) return;
