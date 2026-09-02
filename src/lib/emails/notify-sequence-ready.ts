@@ -53,7 +53,6 @@ export type NotifySequenceReadyOpts = {
   scopedDb: WorkflowScopedDb;
   sequenceId: string;
   ownerEmail: string | null | undefined;
-  title: string;
   sequenceUrl: string;
   posterUrl?: string | null;
   /** When false, skip (API-key `/api/v1` callers poll). */
@@ -73,6 +72,12 @@ export async function notifySequenceReady(
   if (!claimed) return 'skipped';
 
   try {
+    // Read the title now, not from the trigger snapshot: the row still holds
+    // the "Untitled Sequence" placeholder at the click, and scene-split names
+    // it from the script mid-run (#1453). A live read also honours a rename.
+    const sequence = await opts.scopedDb.liveRead.sequences.getForUser({
+      sequenceId: opts.sequenceId,
+    });
     const shots = await opts.scopedDb.liveRead.shots.listBySequence(
       opts.sequenceId
     );
@@ -84,7 +89,7 @@ export async function notifySequenceReady(
 
     const result = await sendSequenceReadyEmail({
       to: opts.ownerEmail,
-      title: opts.title,
+      title: sequence.title,
       watchUrl: withReadyUtm(opts.sequenceUrl),
       creditsUrl: withReadyUtm(`${origin}/credits`),
       posterUrl,

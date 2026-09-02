@@ -524,7 +524,6 @@ export async function executeSmartRetry(context: SmartRetryContext) {
         scopedDb: toWorkflowScopedDb(context.scopedDb),
         sequenceId: sequence.id,
         ownerEmail,
-        title: sequence.title,
         sequenceUrl: sequenceScenesUrl(sequence.id),
         posterUrl: sequence.posterUrl,
         userId: user.id,

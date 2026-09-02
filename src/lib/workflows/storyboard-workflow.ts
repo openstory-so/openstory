@@ -257,7 +257,6 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
         scopedDb,
         sequenceId,
         ownerEmail: input.ownerEmail,
-        title,
         sequenceUrl: input.sequenceUrl || sequenceScenesUrl(sequenceId),
         posterUrl,
         notify: input.notify,
