@@ -59,6 +59,13 @@ import { bumpStylePopularity } from '@/lib/style/bump-style-popularity';
 import { simpleHash } from '@/lib/utils/hash';
 import { getLogger } from '@/lib/observability/logger';
 import { createSequences } from '@/lib/sequences/create-sequences';
+import { canRenderReferenceOnly } from '@/lib/motion/motion-generation';
+import { toWorkflowScopedDb } from '@/lib/db/scoped-workflow';
+import {
+  rendersReferenceOnly,
+  type StartFrameSequence,
+} from '@/lib/shots/use-start-frame';
+import { REFERENCE_ONLY_MODEL_ERROR } from '@/lib/schemas/sequence.schemas';
 
 const logger = getLogger(['openstory', 'serverFn', 'sequences']);
 
@@ -561,15 +568,21 @@ export function assertModelNotAlreadyAdded(
 }
 
 /**
- * Shots eligible for a video add-model run (#547): only those with a completed
- * primary image to animate. A shot with no usable image is skipped — there is
- * nothing to feed image-to-video.
+ * Shots eligible for a video add-model run (#547): those with a completed
+ * primary image to animate, PLUS the ones that render reference-only — those
+ * animate from the sheets and never have a still, so requiring one excluded
+ * every shot of a reference-only sequence and the add failed with "No shots
+ * have a completed image to animate yet". Resolved per shot, because the
+ * start-frame switch is.
  */
 export function selectEligibleVideoShots(
-  shots: readonly ShotView[]
+  shots: readonly ShotView[],
+  sequence: StartFrameSequence
 ): ShotView[] {
   return shots.filter(
-    (f) => f.frame.imageStatus === 'completed' && Boolean(f.image?.url)
+    (f) =>
+      rendersReferenceOnly(f, sequence) ||
+      (f.frame.imageStatus === 'completed' && Boolean(f.image?.url))
   );
 }
 
@@ -777,9 +790,21 @@ export const addModelToSequenceFn = createServerFn({ method: 'POST' })
             ]
           : [];
       });
-      const eligible = selectEligibleVideoShots(shotViews);
+      const eligible = selectEligibleVideoShots(shotViews, sequence);
       if (eligible.length === 0) {
         throw new Error('No shots have a completed image to animate yet');
+      }
+      // The added model runs on every eligible shot, so one reference-only
+      // shot among them decides what can be added at all — the same question
+      // the menu filters by, asked again here against the team's real keys.
+      if (
+        eligible.some((shot) => rendersReferenceOnly(shot, sequence)) &&
+        !(await canRenderReferenceOnly(
+          model,
+          toWorkflowScopedDb(scopedDb).credentials
+        ))
+      ) {
+        throw new Error(REFERENCE_ONLY_MODEL_ERROR);
       }
 
       const reservationId = await reserveRunCredits(

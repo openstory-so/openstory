@@ -31,6 +31,7 @@ import {
 import type { VariantType } from '@/lib/db/schema/shot-variants';
 import { DEFAULT_ASPECT_RATIO } from '@/lib/constants/aspect-ratios';
 import { useViaAvailability } from '@/hooks/use-via-availability';
+import { rendersReferenceOnly } from '@/lib/shots/use-start-frame';
 import { useMemo } from 'react';
 import { toast } from 'sonner';
 
@@ -72,6 +73,8 @@ export const AddModelMenuSection = ({
   const { data: sequence } = useSequence(sequenceId);
   const { data: style } = useSequenceStyle(sequenceId);
   const aspectRatio = sequence?.aspectRatio ?? DEFAULT_ASPECT_RATIO;
+  // Only the DEFAULT — `rendersReferenceOnly` resolves each shot's override
+  // against it below.
   const referenceOnly = sequence?.referenceOnly ?? false;
   const { referenceOnlyModels } = useViaAvailability();
   // Style-category gating (mirrors motion-model-selector): a model declaring a
@@ -114,21 +117,29 @@ export const AddModelMenuSection = ({
     }
 
     if (variantType === 'video') {
-      const count = shotList.filter((f) =>
-        referenceOnly
-          ? true
-          : f.frame.imageStatus === 'completed' && f.image?.url
-      ).length;
+      // What the server will accept (`selectEligibleVideoShots`): a shot needs
+      // a still UNLESS it renders reference-only, which is a per-shot answer.
+      const eligible = shotList.filter(
+        (f) =>
+          rendersReferenceOnly(f, { referenceOnly }) ||
+          (f.frame.imageStatus === 'completed' && f.image?.url)
+      );
+      const count = eligible.length;
+      // The add generates for EVERY eligible shot, so a single reference-only
+      // one among them decides the list: a model with no reference-to-video
+      // route cannot serve that shot, and the server refuses the whole add
+      // rather than quietly skipping it.
+      const anyReferenceOnly = eligible.some((f) =>
+        rendersReferenceOnly(f, { referenceOnly })
+      );
       return Object.keys(IMAGE_TO_VIDEO_MODELS)
         .filter(isValidImageToVideoModel)
         .filter((key) => {
           const model = IMAGE_TO_VIDEO_MODELS[key];
           if (used.has(key) || 'hidden' in model) return false;
-          // A reference-only sequence renders EVERY selected model with no
-          // start frame, so a model without a reference-to-video route would
-          // fail every shot it was added for — same rule the create schema
-          // applies to the initial selection.
-          if (referenceOnly && !referenceOnlyModels.includes(key)) return false;
+          if (anyReferenceOnly && !referenceOnlyModels.includes(key)) {
+            return false;
+          }
           // Exclude models gated to a different style category (e.g. Seedance 2
           // is animation-only) — same rule as the motion-model selector.
           if (

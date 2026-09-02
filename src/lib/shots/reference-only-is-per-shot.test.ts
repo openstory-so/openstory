@@ -58,11 +58,10 @@ const SEQUENCE_LEVEL_BY_DESIGN: Record<string, string> = {
   // config it builds is for the whole run.
   'src/components/scenes/scenes-view.tsx':
     'passes the default down to per-shot resolvers',
-  // Adds a model to the SEQUENCE's selection — it applies to every shot, so
-  // the sequence default is the right question. A shot that overrides to
-  // reference-only is still checked against the picked model at submit.
+  // Reads the default and hands it to `rendersReferenceOnly` per shot; the
+  // list then narrows if ANY eligible shot renders reference-only.
   'src/components/model/add-model-menu.tsx':
-    'sequence-wide model selection, not one shot',
+    'passes the default to the per-shot resolver',
 };
 
 describe('reference-only is resolved per shot', () => {
