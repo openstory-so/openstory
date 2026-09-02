@@ -31,8 +31,8 @@ describe('nativeGeminiTextModel', () => {
     expect(nativeGeminiTextModel('google/gemini-3-flash-preview')).toBe(
       'gemini-3-flash-preview'
     );
-    expect(nativeGeminiTextModel('google/gemini-3.7-flash')).toBe(
-      'gemini-3.7-flash'
+    expect(nativeGeminiTextModel('google/gemini-3.8-flash')).toBe(
+      'gemini-3.8-flash'
     );
   });
 
