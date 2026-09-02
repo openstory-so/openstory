@@ -299,7 +299,10 @@ Workflows' 1 MiB `step.do` cap; poll/upload download the Files URI with the
 Google key. Without a Google key the same model runs on fal's
 `fal-ai/gemini-omni-1.1-flash[/image-to-video|/reference-to-video]` endpoints.
 Data-URI stills must be decomposed to inline base64 on the native path —
-Google won't fetch `data:` as a URI.
+Google won't fetch `data:` as a URI. Chat vision (motion prompts) must also
+inline stored stills: Google's `fileData.fileUri` HTTP fetch (CDN / fal URLs)
+sits on a separate quota that 429s while the same bytes as `inlineData`
+succeed. `toVisionImageSource(..., { inline: true })` is that path.
 
 ### Fal.ai Integration
 

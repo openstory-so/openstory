@@ -13,7 +13,10 @@
  *   - fal model inputs (Kling `image_url`, nano-banana `image_urls`, …) →
  *     read the bytes from the R2 binding and upload them to fal storage,
  *     substituting the returned fal URL.
- *   - OpenRouter vision messages → inline the bytes as a base64 data part.
+ *   - OpenRouter vision messages → prefer a fetchable URL (payload size);
+ *     native Gemini chat/image MUST inline — Google's `fileData.fileUri`
+ *     HTTP fetch sits on a separate quota that 429s while inline
+ *     `generateContent` still succeeds.
  *
  * Pass-through cases:
  * - the URL isn't ours (fal CDN outputs, user-supplied externals, legacy
@@ -105,6 +108,20 @@ export async function toDataOrCdnUrl(url: string): Promise<string> {
   return `data:${source.mimeType};base64,${source.value}`;
 }
 
+export type VisionImageSource =
+  | { type: 'url'; value: string }
+  | { type: 'data'; value: string; mimeType: string };
+
+export type VisionImageSourceOptions = {
+  /**
+   * Force a base64 data part. Required for native Gemini: `fileData.fileUri`
+   * HTTP fetches (CDN / fal storage URLs) sit on a separate Google quota
+   * that 429s RESOURCE_EXHAUSTED while the same bytes as `inlineData` still
+   * succeed. OpenRouter keeps the default URL path for payload size.
+   */
+  inline?: boolean;
+};
+
 /**
  * Vision-message image source for a storage URL.
  *
@@ -116,14 +133,18 @@ export async function toDataOrCdnUrl(url: string): Promise<string> {
  * ~6s to ~30s per call, which a 14-scene record run pays 14 times over.
  * Replay keeps the relative `/r2/` URL so aimock can string-match. No
  * credentials → last-resort data part.
+ *
+ * Pass `{ inline: true }` for native Gemini (chat vision + image refs).
  */
 export async function toVisionImageSource(
   url: string,
-  falApiKey?: string
-): Promise<
-  | { type: 'url'; value: string }
-  | { type: 'data'; value: string; mimeType: string }
-> {
+  falApiKey?: string,
+  options?: VisionImageSourceOptions
+): Promise<VisionImageSource> {
+  if (options?.inline && !isReplayMode()) {
+    return inlineVisionImageSource(url);
+  }
+
   const key = r2KeyFromUrl(url);
   if (key === null) return { type: 'url', value: url };
   const cdnUrl = toCdnUrl(url);
@@ -138,12 +159,47 @@ export async function toVisionImageSource(
     };
   }
 
-  const { bytes, contentType } = await readStoredBytes(key);
+  return bytesToDataPart(await readStoredBytes(key));
+}
+
+function bytesToDataPart(object: {
+  bytes: Uint8Array;
+  contentType: string;
+}): VisionImageSource {
   return {
     type: 'data',
-    value: toBase64(bytes),
-    mimeType: contentType || 'image/png',
+    value: toBase64(object.bytes),
+    mimeType: object.contentType || 'image/png',
   };
+}
+
+async function inlineVisionImageSource(
+  url: string
+): Promise<VisionImageSource> {
+  const key = r2KeyFromUrl(url);
+  if (key !== null) {
+    return bytesToDataPart(await readStoredBytes(key));
+  }
+  const dataUri = /^data:([^;,]+);base64,(.*)$/.exec(url);
+  if (dataUri?.[1] && dataUri[2] !== undefined) {
+    return { type: 'data', value: dataUri[2], mimeType: dataUri[1] };
+  }
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(
+      `Failed to fetch vision image (${response.status} ${response.statusText}): ${url}`
+    );
+  }
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  const sniffed = sniffImageMimeType(bytes);
+  const headerType = response.headers
+    .get('content-type')
+    ?.split(';')[0]
+    ?.trim();
+  return bytesToDataPart({
+    bytes,
+    contentType: sniffed || headerType || 'image/png',
+  });
 }
 
 // Web-safe base64 (no node:buffer — this module sits on an import path that

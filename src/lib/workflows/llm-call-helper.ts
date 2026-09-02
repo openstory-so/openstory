@@ -68,12 +68,21 @@ export type DurableLLMCallConfig<TSchema extends z.ZodType> = {
   /**
    * Stored-media URLs to attach to the final user turn as vision input (#929).
    * Resolved via {@link toVisionImageSource} INSIDE the LLM step (CDN / fal
-   * storage URL, or a last-resort data part) so image bytes never cross a
-   * Cloudflare step boundary. The model must be vision-capable, and the
-   * prompt template should reference the image.
+   * storage URL, or a last-resort data part; native Gemini always inlines)
+   * so image bytes never cross a Cloudflare step boundary. The model must
+   * be vision-capable, and the prompt template should reference the image.
    */
   visionImageUrls?: string[];
 };
+
+/**
+ * Native Gemini `fileData.fileUri` HTTP fetches sit on a separate quota that
+ * 429s while the same still as `inlineData` still succeeds. OpenRouter keeps
+ * the URL path (payload size).
+ */
+export function shouldInlineVisionForVia(via: LlmKeyInfo['via']): boolean {
+  return via === 'google';
+}
 
 /**
  * Resolve the configured vision image URLs into chat content sources. Returns
@@ -82,10 +91,16 @@ export type DurableLLMCallConfig<TSchema extends z.ZodType> = {
  * boundary.
  */
 async function resolveVisionImageSources(
-  visionImageUrls: string[] | undefined
+  visionImageUrls: string[] | undefined,
+  via: LlmKeyInfo['via']
 ): Promise<ChatMessageImagePart['source'][] | undefined> {
   if (!visionImageUrls || visionImageUrls.length === 0) return undefined;
-  return Promise.all(visionImageUrls.map((url) => toVisionImageSource(url)));
+  const inline = shouldInlineVisionForVia(via);
+  return Promise.all(
+    visionImageUrls.map((url) =>
+      toVisionImageSource(url, undefined, inline ? { inline: true } : undefined)
+    )
+  );
 }
 
 /**
@@ -329,7 +344,10 @@ export async function durableLLMCallCf<TSchema extends z.ZodType>(
           );
         }
         const visionImageSources = effectiveSupportsVision
-          ? await resolveVisionImageSources(config.visionImageUrls)
+          ? await resolveVisionImageSources(
+              config.visionImageUrls,
+              llmKeyInfo.via
+            )
           : undefined;
         const { systemPrompts, chatMessages } = buildChatMessages(
           messages,
@@ -517,7 +535,10 @@ export async function durableStreamingLLMCallCf<TSchema extends z.ZodType>(
           );
         }
         const visionImageSources = effectiveSupportsVision
-          ? await resolveVisionImageSources(config.visionImageUrls)
+          ? await resolveVisionImageSources(
+              config.visionImageUrls,
+              llmKeyInfo.via
+            )
           : undefined;
         const { systemPrompts, chatMessages } = buildChatMessages(
           messages,

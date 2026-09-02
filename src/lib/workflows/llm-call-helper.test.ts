@@ -47,8 +47,11 @@ vi.doMock('@/lib/realtime', () => ({
   }),
 }));
 
-const { durableLLMCallCf, durableStreamingLLMCallCf } =
-  await import('./llm-call-helper');
+const {
+  durableLLMCallCf,
+  durableStreamingLLMCallCf,
+  shouldInlineVisionForVia,
+} = await import('./llm-call-helper');
 const { usdToMicros, ZERO_MICROS } = await import('@/lib/billing/money');
 
 // Minimal WorkflowStep: run every step body immediately, no retries.
@@ -266,5 +269,17 @@ describe('durableStreamingLLMCallCf structured-output.complete', () => {
     await expect(
       durableStreamingLLMCallCf(step, callConfig, callContext)
     ).rejects.toThrow();
+  });
+});
+
+describe('shouldInlineVisionForVia', () => {
+  it('inlines for native Gemini so fileUri HTTP fetches are not used', () => {
+    expect(shouldInlineVisionForVia('google')).toBe(true);
+  });
+
+  it('keeps URL sources for OpenRouter, fal, and xAI', () => {
+    expect(shouldInlineVisionForVia('openrouter')).toBe(false);
+    expect(shouldInlineVisionForVia('fal')).toBe(false);
+    expect(shouldInlineVisionForVia('xai')).toBe(false);
   });
 });
