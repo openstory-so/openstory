@@ -431,8 +431,10 @@ export async function executeSmartRetry(context: SmartRetryContext) {
             }
           : {}),
         // The versions this clip renders from, pinned here so the render
-        // manifest can't name rows a concurrent edit repointed to.
-        frameVersionId: shot.image?.id ?? null,
+        // manifest can't name rows a concurrent edit repointed to. `null` when
+        // the clip renders from references — see `isSelectedVersionStale`: a
+        // pointer at a still the clip never received reads as divergence.
+        frameVersionId: referenceOnly ? null : (shot.image?.id ?? null),
         motionPromptVersionId: selectedMotion?.id ?? null,
         sequenceTitle: sequence.title,
         prompt: resolveMotionPromptFromVersion(

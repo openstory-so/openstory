@@ -12,7 +12,9 @@ import type { Shot } from '@/lib/db/schema';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
 
-import { AUDIO_MODELS, supportsReferenceOnlyMotion } from '@/lib/ai/models';
+import { AUDIO_MODELS } from '@/lib/ai/models';
+import { canRenderReferenceOnly } from '@/lib/motion/motion-generation';
+import { toWorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import { REFERENCE_ONLY_MODEL_ERROR } from '@/lib/schemas/sequence.schemas';
 import { resolveVideoModel } from '@/lib/ai/resolve-asset-models';
 import { getEffectiveFalPricing } from '@/lib/ai/fal-pricing-live';
@@ -95,9 +97,21 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
       selectedVersionModel: selectedVersion?.model,
       sequenceModel: sequence.videoModel,
     });
-    if (referenceOnly && !supportsReferenceOnlyMotion(model)) {
+    if (
+      referenceOnly &&
+      !(await canRenderReferenceOnly(
+        model,
+        toWorkflowScopedDb(context.scopedDb).credentials
+      ))
+    ) {
       // `MotionWorkflow` rejects this too, but only after the reservation is
       // held and the child is spawned. One 400 here beats a burnt reservation.
+      //
+      // Via-AWARE, like `createSequences` and `MotionWorkflow`: Grok Imagine
+      // renders reference-only on the native xAI route, and its fal id is an
+      // image-to-video endpoint, so the model-only `supportsReferenceOnlyMotion`
+      // says no. Asking that here rejected regeneration on Grok sequences this
+      // same code had already created and rendered.
       throw new Error(REFERENCE_ONLY_MODEL_ERROR);
     }
 
@@ -400,21 +414,27 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
     // Same pre-credit rejection as the single-shot path, but it matters more
     // here: the reservation covers the whole batch, so one doomed model would
     // burn credits for N shots to produce N workflow validation errors.
-    if (
-      eligibleShots.some(
-        (shot) =>
-          shotIsReferenceOnly(shot) &&
-          !supportsReferenceOnlyMotion(
-            resolveBatchShotVideoModel(
-              { id: shot.id },
-              shotModels,
-              sequence,
-              data.model
-            )
+    // Via-AWARE, matching `createSequences`, `MotionWorkflow` and the
+    // single-shot path above — the model-only check rejected Grok Imagine,
+    // which renders reference-only fine on the native xAI route. Resolved once
+    // per distinct model: the answer depends on the team's keys, not the shot.
+    const referenceOnlyModels = new Set(
+      eligibleShots
+        .filter(shotIsReferenceOnly)
+        .map((shot) =>
+          resolveBatchShotVideoModel(
+            { id: shot.id },
+            shotModels,
+            sequence,
+            data.model
           )
-      )
-    ) {
-      throw new Error(REFERENCE_ONLY_MODEL_ERROR);
+        )
+    );
+    const credentials = toWorkflowScopedDb(context.scopedDb).credentials;
+    for (const model of referenceOnlyModels) {
+      if (!(await canRenderReferenceOnly(model, credentials))) {
+        throw new Error(REFERENCE_ONLY_MODEL_ERROR);
+      }
     }
 
     // Sum per-shot costs — shots may render with different (priced) models.
@@ -427,9 +447,7 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
         duration: data.duration,
         pricing: await getEffectiveFalPricing(),
         resolution: sequence.resolution,
-        // Priced on the majority route; each shot's own reference set is
-        // still resolved per shot below.
-        referenceOnly: anyReferenceOnly,
+        referenceOnly: shotIsReferenceOnly,
         hasReferenceImages: (batchShot) => {
           const shot = eligibleShots.find((s) => s.id === batchShot.id);
           if (!shot) return false;
@@ -527,7 +545,12 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
               referenceOnly: shotIsReferenceOnly(shot),
               // The versions this clip renders from, pinned here so the render
               // manifest can't name rows a concurrent edit repointed to.
-              frameVersionId: shot.image?.id ?? null,
+              // `null` when the clip renders from references — naming a still
+              // it never received makes regenerating that unused still read as
+              // divergence, and "Update all" then re-renders the clip for money.
+              frameVersionId: shotIsReferenceOnly(shot)
+                ? null
+                : (shot.image?.id ?? null),
               motionPromptVersionId: selectedMotion?.id ?? null,
               prompt: resolveMotionPromptFromVersion(
                 selectedMotion,

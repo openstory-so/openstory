@@ -11,7 +11,11 @@
  * materialised per shot at spawn time.
  */
 
-import { usesStartFrame } from '@/lib/shots/use-start-frame';
+import {
+  rendersReferenceOnly,
+  usesStartFrame,
+  type StartFrameSequence,
+} from '@/lib/shots/use-start-frame';
 import { musicPromptInputHashMatches } from '@/lib/ai/input-hash';
 import {
   DEFAULT_ANALYSIS_MODEL,
@@ -236,6 +240,31 @@ export type UpdateStalePlan = {
   skipped: SkippedShot[];
 };
 
+/**
+ * The first target whose `usesStartFrame` did not survive the payload round
+ * trip, or `null` when the plan is intact.
+ *
+ * `usesStartFrame` is typed required, but a plan frozen by a build that
+ * predates it replays out of the durable payload without the key — and
+ * `!undefined` is `true`, which every read site takes to mean "render this
+ * shot reference-only". That failure is silent AND expensive: on a model with
+ * a reference-to-video route the run SUCCEEDS, rewriting every motion prompt
+ * with the reference-only template and re-rendering every clip with no start
+ * frame, billed, with nothing in the logs.
+ *
+ * So the value is demanded rather than defaulted. Inferring `!referenceOnly`
+ * here would be a guess about a shot that may have overridden the sequence,
+ * and a wrong guess spends money; a rejected run costs one click.
+ */
+export function findTargetMissingStartFrameMode(
+  plan: Pick<UpdateStalePlan, 'targets'>
+): PlanTarget | null {
+  return (
+    plan.targets.find((target) => typeof target.usesStartFrame !== 'boolean') ??
+    null
+  );
+}
+
 function toPlanSequence(sequence: Sequence): PlanSequence {
   return {
     id: sequence.id,
@@ -303,7 +332,7 @@ export async function computePlan(args: {
   if (inScope.length === 0) return empty;
 
   const videoStateByShot = depthIncludes(depth, 'video')
-    ? await loadVideoStateByShot(scopedDb, sequenceId, allShots)
+    ? await loadVideoStateByShot(scopedDb, sequenceId, allShots, sequence)
     : new Map<string, ShotVideoState>();
 
   await scopedDb.shots.ensureAnchorFrames(inScope);
@@ -443,7 +472,8 @@ type ShotVideoState = {
 async function loadVideoStateByShot(
   scopedDb: ScopedDb,
   sequenceId: string,
-  allShots: Shot[]
+  allShots: Shot[],
+  sequence: StartFrameSequence
 ): Promise<Map<string, ShotVideoState>> {
   const [segments, versions, allFrames] = await Promise.all([
     scopedDb.renderSegments.listBySequence(sequenceId),
@@ -453,7 +483,12 @@ async function loadVideoStateByShot(
   const assembled = assembleSequenceSegments({
     segments,
     versions,
-    shots: allShots,
+    // Per shot, not per sequence — staleness compares against what each clip
+    // actually rendered from, and a shot can override the sequence default.
+    shots: allShots.map((shot) => ({
+      ...shot,
+      rendersReferenceOnly: rendersReferenceOnly(shot, sequence),
+    })),
     frames: allFrames,
   });
 

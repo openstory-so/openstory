@@ -77,6 +77,7 @@ import {
 } from '@/lib/shots/shot-image-input';
 import {
   claimTargets,
+  findTargetMissingStartFrameMode,
   type MusicPlan,
   type PlanTarget,
   type ShotClaims,
@@ -162,6 +163,13 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
       // move. Failing loudly beats a run that reports "nothing was stale".
       throw new WorkflowValidationError(
         'Update-all plan missing from payload; re-trigger the update'
+      );
+    }
+    // Rationale lives with the plan type: `findTargetMissingStartFrameMode`.
+    const untyped = findTargetMissingStartFrameMode(plan);
+    if (untyped) {
+      throw new WorkflowValidationError(
+        `Update-all plan predates the per-shot start-frame switch (shot ${untyped.shotId}); re-trigger the update`
       );
     }
 
@@ -566,13 +574,18 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
           const manifestEntry = selectedVideo.manifest.find(
             (entry) => entry.shotId === shot.id
           );
+          // A shot rendering from references has no frame pointer at all —
+          // `null` is the manifest's documented encoding for that. Compare
+          // against the same rule the write below uses, or a reference-only
+          // shot that HAPPENS to have a still reads as permanently diverged
+          // and re-renders on every update-stale run.
+          const expectedFrameVersionId = target.usesStartFrame
+            ? (still?.id ?? null)
+            : null;
           const diverged =
             !manifestEntry ||
             manifestEntry.motionPromptVersionId !== motionVersion.id ||
-            // Null on both sides in reference-only mode — the manifest's
-            // documented encoding of "no dedicated first frame", so it agrees
-            // with itself rather than reading as permanently diverged.
-            manifestEntry.frameVersionId !== (still?.id ?? null);
+            manifestEntry.frameVersionId !== expectedFrameVersionId;
           if (!diverged) return null;
           // Selected-version model → sequence default. (The single-shot fn
           // also consults a last-failed attempt; irrelevant here — a video
@@ -642,7 +655,9 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
               ? (still?.url ?? undefined)
               : undefined,
             referenceOnly: !target.usesStartFrame,
-            frameVersionId: still?.id ?? null,
+            // Same rule as `expectedFrameVersionId` above — a clip rendered
+            // from references names no still.
+            frameVersionId: target.usesStartFrame ? (still?.id ?? null) : null,
             motionPromptVersionId: motionVersion.id,
             prompt,
             model,

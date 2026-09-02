@@ -1216,30 +1216,45 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     [storageDomain]
   );
 
-  // Exact request for the *selected* video model — same builder
-  // submitMotionJob uses, including reference bindings. Other catalog
-  // models are omitted (#1242): they inflate the inspector for picks the
-  // user has not made. A transform rejection (e.g. no still yet) falls
-  // back to the plain-text assembled prompt at render. Grok native uses
-  // buildGrokVideoRequest so the panel shows <IMAGE_n> parts, not the fal
-  // Per-shot "animate from the still, or straight from the sheets". Only the
-  // render changes: with a still the request carries it (and the model is told
-  // "Use @Image1 as the starting frame."); without one the sheets fill slot 1.
-  // The prompt text is untouched either way, so nothing re-stales.
+  // Flipping this re-stales the motion prompt — the two modes use different
+  // templates. See `usesStartFrame`.
   const shotUsesStartFrame = shot
     ? usesStartFrame(shot, { referenceOnly: sequenceReferenceOnly })
     : !sequenceReferenceOnly;
+  // With no still, the sheets are the ONLY thing fixing identity and set. None
+  // matched means this shot renders as text-to-video at the same price, with
+  // its cast and location reinvented while its siblings bind theirs — worth
+  // saying before the money is spent, not after the clip looks wrong.
+  const noReferencesMatched =
+    !shotUsesStartFrame &&
+    buildMotionReferenceImages({
+      scene: sceneReference,
+      characters: mentionCharacters ?? [],
+      elements: mentionElements ?? [],
+      includeLocations: true,
+      locations: mentionLocations ?? [],
+    }).length === 0;
   const startFrameAvailable = !!shot && canUseStartFrame(shot);
   const setUseStartFrame = useMutation({
     mutationFn: (next: boolean) =>
       setShotUseStartFrameFn({
         data: { sequenceId, shotId: shot?.id ?? '', useStartFrame: next },
       }),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ['shots', sequenceId] }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['shots', sequenceId] });
+      // The flip re-stales the motion prompt; without this the indicator kept
+      // reading fresh and the shot rendered with the other mode's prompt.
+      void queryClient.invalidateQueries({ queryKey: shotStalenessNamespace });
+    },
     onError: (error: Error) => toast.error(error.message),
   });
 
+  // Exact request for the *selected* video model — same builder
+  // submitMotionJob uses, including reference bindings. Other catalog
+  // models are omitted (#1242): they inflate the inspector for picks the
+  // user has not made. A transform rejection (e.g. no still yet) falls
+  // back to the plain-text assembled prompt at render. Grok native uses
+  // buildGrokVideoRequest so the panel shows <IMAGE_n> parts, not the fal
   // i2v bag.
   const motionRequestPreview = useMemo((): OptimisedPromptPreview | null => {
     if (!shot) return null;
@@ -2384,6 +2399,14 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
               )}
             </span>
           </label>
+
+          {noReferencesMatched && (
+            <p className="text-xs text-muted-foreground">
+              No character, location or element references match this scene, so
+              it will render from the prompt alone — same price, but nothing
+              holds the cast or set consistent with the other shots.
+            </p>
+          )}
 
           {/* Motion action button — variant-aware (#545), mirror of the image
               tab: when the picked model already has a completed video for this

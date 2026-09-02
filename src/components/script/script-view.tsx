@@ -354,7 +354,15 @@ export const ScriptView: FC<{
       isEditing && sequence.videoModel
         ? [safeImageToVideoModel(sequence.videoModel, DEFAULT_VIDEO_MODEL)]
         : savedSettings.videoModels,
-    autoGenerateMotion: isEditing ? false : savedSettings.autoGenerateMotion,
+    // Re-generating an existing sequence defaults motion OFF — except in
+    // reference-only, where motion is the ONLY thing that renders and the
+    // create schema rejects the pair outright. Seeding `false` there made
+    // every reference-only sequence un-regenerable: Generate 400s, and the
+    // reference-only toggle is disabled while motion is off, so the error
+    // named a control the user could not reach.
+    autoGenerateMotion: isEditing
+      ? sequence.referenceOnly
+      : savedSettings.autoGenerateMotion,
     // Editing an existing sequence inherits its mode; a new one starts from
     // the remembered setting.
     referenceOnly: isEditing
