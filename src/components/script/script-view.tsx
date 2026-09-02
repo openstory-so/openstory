@@ -107,6 +107,9 @@ import {
   estimateImageCost,
   estimateStoryboardCost,
 } from '@/lib/billing/cost-estimation';
+import { clampResolution } from '@/lib/constants/resolutions';
+import type { Resolution } from '@/lib/constants/resolutions';
+import { availableResolutions } from '@/lib/ai/resolution-support';
 import {
   aspectRatioSchema,
   type AspectRatio,
@@ -156,6 +159,8 @@ import React, {
   useState,
   type FC,
 } from 'react';
+import { VoiceInputButton } from '@/components/voice/voice-input-button';
+import { useEditorDictation } from '@/hooks/use-dictation';
 import { ScriptEditor } from './script-editor';
 
 const DURATION_PRESETS = [
@@ -328,6 +333,7 @@ export const ScriptView: FC<{
     generationMode: GenerationMode;
     analysisModels: AnalysisModelId[];
     aspectRatio: AspectRatio;
+    resolution: Resolution;
     imageModels: TextToImageModel[];
     videoModels: ImageToVideoModel[];
     stopAt: GenerationStage;
@@ -336,6 +342,7 @@ export const ScriptView: FC<{
     generationMode: savedSettings.generationMode,
     analysisModels: sequenceAnalysisModels,
     aspectRatio: isEditing ? sequence.aspectRatio : savedSettings.aspectRatio,
+    resolution: isEditing ? sequence.resolution : savedSettings.resolution,
     imageModels:
       isEditing && sequence.imageModel
         ? [safeTextToImageModel(sequence.imageModel, DEFAULT_IMAGE_MODEL)]
@@ -361,6 +368,17 @@ export const ScriptView: FC<{
     stopAt,
     audioModels,
   } = genSettings;
+  // Derived, not stored: the picker only offers tiers the chosen models serve,
+  // so a 4K pick made under one model reads as the nearest tier under a model
+  // that can't reach it — and comes back if they switch back.
+  const resolution = clampResolution(
+    genSettings.resolution,
+    availableResolutions({
+      imageModels,
+      videoModels: includesStage(stopAt, 'motion') ? videoModels : [],
+      aspectRatio,
+    })
+  );
   const updateGen = <K extends keyof typeof genSettings>(
     key: K,
     value: (typeof genSettings)[K]
@@ -505,6 +523,10 @@ export const ScriptView: FC<{
     setEnhance('canUndoEnhance', false);
     handleStyleSelect(style.id);
   };
+  // The mic sits in the toolbar next to Shuffle; dictation streams into the
+  // editor through this handle.
+  const { ref: scriptEditorRef, voice: scriptVoice } = useEditorDictation();
+
   const handleShuffleSample = () => {
     const next = pickShuffleStyle(styles, styleId, Math.random);
     if (next) applySampleForStyle(next, 'sample_script_shuffled');
@@ -665,6 +687,7 @@ export const ScriptView: FC<{
       setGenSettings({
         generationMode: savedSettings.generationMode,
         aspectRatio: savedSettings.aspectRatio,
+        resolution: savedSettings.resolution,
         analysisModels: savedSettings.analysisModels,
         imageModels: savedSettings.imageModels,
         videoModels: savedSettings.videoModels,
@@ -919,6 +942,7 @@ export const ScriptView: FC<{
         script: script ?? baseScript ?? '',
         styleId: styleId || sequence?.styleId || undefined,
         aspectRatio,
+        resolution,
         analysisModels,
         imageModels,
         videoModels,
@@ -1060,6 +1084,7 @@ export const ScriptView: FC<{
       target_duration: targetDuration,
       script_length: sourceScript.length,
       aspect_ratio: aspectRatio,
+      resolution,
       invent,
     });
     // Enhancing rewrites the text — it stops being an untouched sample.
@@ -1294,6 +1319,7 @@ export const ScriptView: FC<{
         imageModel: primaryImage,
         imageModelCount: Math.max(imageModels.length, 1),
         aspectRatio,
+        resolution,
         estimatedSceneCount: sceneCount,
         stopAt: runUntil,
         autoGenerateMotion: motionOn,
@@ -1313,6 +1339,7 @@ export const ScriptView: FC<{
       falPricing,
       imageModels,
       aspectRatio,
+      resolution,
       scriptValue,
       targetDuration,
       videoModels,
@@ -1463,11 +1490,13 @@ export const ScriptView: FC<{
         <CardHeader className="shrink-0 flex flex-row items-center md:flex-col md:items-start lg:flex-row justify-between gap-3 px-6 py-4 border-b border-border/50 bg-card/40 short-h:py-2">
           <GenerationSettings
             aspectRatio={aspectRatio}
+            resolution={resolution}
             analysisModels={analysisModels}
             imageModels={imageModels}
             videoModels={videoModels}
             audioModels={audioModels}
             onAspectRatioChange={(v) => updateGen('aspectRatio', v)}
+            onResolutionChange={(v) => updateGen('resolution', v)}
             onAnalysisModelsChange={(v) => updateGen('analysisModels', v)}
             onImageModelsChange={(v) => updateGen('imageModels', v)}
             onVideoModelsChange={(v) => updateGen('videoModels', v)}
@@ -1561,6 +1590,7 @@ export const ScriptView: FC<{
           <div className="flex min-h-20 flex-1 flex-col md:min-h-28">
             <ScriptEditor
               ref={textareaRef}
+              editorRef={scriptEditorRef}
               value={scriptValue}
               onValueChange={(val) => {
                 setScript(val);
@@ -1628,6 +1658,13 @@ export const ScriptView: FC<{
                 </Button>
               )}
               {enhanceControls}
+              <VoiceInputButton
+                label="script"
+                variant="outline"
+                size="icon-sm"
+                disabled={loading || isEnhancing || isDerivedScript}
+                {...scriptVoice}
+              />
             </div>
           </div>
           <StyleSelector

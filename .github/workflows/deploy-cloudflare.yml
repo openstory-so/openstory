@@ -227,8 +227,11 @@ jobs:
           # have no registered OAuth redirect URIs, and absence of the
           # secrets is what hides Google sign-in (isGoogleAuthConfigured).
           SECRET_OPENROUTER_KEY: ${{ secrets.OPENROUTER_KEY }}
-          # Absent → Grok falls back to OpenRouter/fal on previews (#1167).
+          # Absent → Grok/Gemini fall back to OpenRouter/fal on previews
+          # (#1167 / native Google). Staging has both; empty values are
+          # stripped by the jq filter below.
           SECRET_XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
+          SECRET_GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           SECRET_VITE_R2_PUBLIC_ASSETS_DOMAIN: ${{ vars.VITE_R2_PUBLIC_ASSETS_DOMAIN }}
           SECRET_R2_PUBLIC_STORAGE_DOMAIN: ${{ vars.R2_PUBLIC_STORAGE_DOMAIN }}
           SECRET_VITE_PUBLIC_POSTHOG_PROJECT_TOKEN: ${{ secrets.VITE_PUBLIC_POSTHOG_PROJECT_TOKEN }}

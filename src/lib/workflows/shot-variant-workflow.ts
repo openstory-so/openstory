@@ -108,6 +108,7 @@ export class ShotVariantWorkflow extends OpenStoryWorkflowEntrypoint<ShotVariant
           model,
           prompt: enhancedPrompt,
           imageSize,
+          ...(input.resolution && { resolution: input.resolution }),
           numImages: input.numImages ?? 1,
           seed: input.seed,
           referenceImageUrls: referenceUrls,
@@ -140,6 +141,7 @@ export class ShotVariantWorkflow extends OpenStoryWorkflowEntrypoint<ShotVariant
           sequenceId: input.sequenceId,
           kind: 'framing',
           model,
+          resolution: input.resolution ?? null,
           sourceVariantId: null,
           // Provenance only — the sheet is never selected, but its tiles
           // inherit which prompt the grid was generated from (#1070).

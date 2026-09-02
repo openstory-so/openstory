@@ -27,7 +27,9 @@ import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { VoiceInputButton } from '@/components/voice/voice-input-button';
 import type { JsonSchema, JsonValue } from '@/lib/models/catalog';
+import { useTextDictation } from '@/hooks/use-dictation';
 import { Plus, X } from 'lucide-react';
 import type { FC, FormEvent, KeyboardEvent, ReactNode } from 'react';
 import { useId, useState } from 'react';
@@ -209,6 +211,10 @@ const Field: FC<{
 }) => {
   const id = useId();
   const labelId = `${id}-label`;
+  const voice = useTextDictation(
+    typeof value === 'string' ? value : '',
+    onChange
+  );
   const resolved = resolveRef(schema, root);
   const plan = planWidget(name, resolved, root, depth);
   const description = resolved.description?.split('\n', 1)[0];
@@ -235,6 +241,14 @@ const Field: FC<{
             disabled={disabled}
           />
         )}
+        {plan.kind === 'text' && plan.long ? (
+          <VoiceInputButton
+            label={(resolved.title ?? name).toLowerCase()}
+            disabled={disabled}
+            size="icon-xs"
+            {...voice}
+          />
+        ) : null}
       </div>
       {description && (
         <p className="text-xs text-muted-foreground">{description}</p>

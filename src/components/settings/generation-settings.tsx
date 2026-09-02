@@ -28,17 +28,25 @@ import {
 } from '@/lib/ai/models';
 import type { AnalysisModelId } from '@/lib/ai/models.config';
 import type { AspectRatio } from '@/lib/constants/aspect-ratios';
+import type { Resolution } from '@/lib/constants/resolutions';
+import {
+  availableResolutions,
+  resolutionCeilingNote,
+} from '@/lib/ai/resolution-support';
 import { useState, type FC } from 'react';
 import { AspectRatioPills } from './aspect-ratio-pills';
+import { ResolutionPills } from './resolution-pills';
 import { GenerationSettingsTrigger } from './generation-settings-trigger';
 
 type GenerationSettingsProps = {
   aspectRatio: AspectRatio;
+  resolution: Resolution;
   analysisModels: AnalysisModelId[];
   imageModels: TextToImageModel[];
   videoModels: ImageToVideoModel[];
   audioModels?: AudioModel[];
   onAspectRatioChange: (value: AspectRatio) => void;
+  onResolutionChange: (value: Resolution) => void;
   onAnalysisModelsChange: (value: AnalysisModelId[]) => void;
   onImageModelsChange: (value: TextToImageModel[]) => void;
   onVideoModelsChange: (value: ImageToVideoModel[]) => void;
@@ -69,11 +77,13 @@ type GenerationSettingsProps = {
 
 export const GenerationSettings: FC<GenerationSettingsProps> = ({
   aspectRatio,
+  resolution,
   analysisModels,
   imageModels,
   videoModels,
   audioModels,
   onAspectRatioChange,
+  onResolutionChange,
   onAnalysisModelsChange,
   onImageModelsChange,
   onVideoModelsChange,
@@ -90,12 +100,22 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
   onResetStyleDefaults,
 }) => {
   const [open, setOpen] = useState(false);
+  // How far the run goes is picked at Generate (#1408), so the video models
+  // always count toward the tier choice here.
+  const modelSelection = {
+    imageModels,
+    videoModels,
+    aspectRatio,
+  };
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <div className="flex items-center gap-2 flex-wrap">
         <PopoverTrigger asChild disabled={disabled}>
-          <GenerationSettingsTrigger aspectRatio={aspectRatio} />
+          <GenerationSettingsTrigger
+            aspectRatio={aspectRatio}
+            resolution={resolution}
+          />
         </PopoverTrigger>
         {appliedFromStyle && onResetStyleDefaults && (
           <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 text-primary px-2 py-0.5 text-xs">
@@ -136,6 +156,20 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
               onChange={onAspectRatioChange}
               recommendedAspectRatio={recommendedAspectRatio}
               styleName={styleName}
+            />
+          </section>
+
+          <Separator />
+
+          {/* Resolution Section */}
+          <section className="flex flex-col gap-2">
+            <h3 className="text-sm font-medium text-foreground">Resolution</h3>
+            <ResolutionPills
+              value={resolution}
+              onChange={onResolutionChange}
+              available={availableResolutions(modelSelection)}
+              disabled={disabled}
+              note={resolutionCeilingNote(resolution, modelSelection)}
             />
           </section>
 

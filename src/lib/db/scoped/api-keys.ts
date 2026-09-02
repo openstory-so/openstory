@@ -8,6 +8,7 @@ import { and, eq } from 'drizzle-orm';
 import type { Database } from '@/lib/db/client';
 import { getEnv } from '#env';
 import { getPlatformLlmKey } from '@/lib/ai/create-adapter';
+import { nativeGeminiTextModel } from '@/lib/ai/gemini-native';
 import { nativeGrokTextModel } from '@/lib/ai/grok-native';
 import {
   decryptApiKey,
@@ -43,9 +44,10 @@ export type ResolvedApiKey =
 // through: 'openrouter' = OpenRouter directly (Bearer auth), 'fal' = fal's
 // OpenAI-compatible OpenRouter endpoint (`Key` auth) so a team with only a
 // fal key still covers LLM calls (issue #895), 'xai' = xAI's own Responses
-// API for Grok models (issue #1167).
+// API for Grok models (issue #1167), 'google' = Google's own Gemini API for
+// Gemini models.
 export type ResolvedLlmKey = ResolvedApiKey & {
-  via: 'openrouter' | 'fal' | 'xai';
+  via: 'openrouter' | 'fal' | 'xai' | 'google';
 };
 
 // The cached shape of a `team_api_keys` lookup. Holds the *encrypted* row
@@ -285,6 +287,8 @@ export function createApiKeysReadMethods(db: Database, teamId: string) {
         return env.FAL_KEY || undefined;
       case 'xai':
         return env.XAI_API_KEY || undefined;
+      case 'google':
+        return env.GEMINI_API_KEY || undefined;
       default: {
         const _exhaustive: never = provider;
         throw new Error(`Unknown provider: ${String(_exhaustive)}`);
@@ -338,7 +342,8 @@ export function createApiKeysReadMethods(db: Database, teamId: string) {
 
   // Resolve the key for an LLM call. Preference order:
   //   0. xAI key (team, else platform) when `model` is a Grok model — the
-  //      first-party API, no reseller in front of it (issue #1167)
+  //      first-party API, no reseller in front of it (issue #1167); a Google
+  //      key the same way when `model` is a Gemini model
   //   1. team OpenRouter key (direct OpenRouter)
   //   2. team fal key (routed through fal's OpenRouter endpoint) — a fal-only
   //      team still covers LLM calls on their own key (issue #895)
@@ -354,6 +359,11 @@ export function createApiKeysReadMethods(db: Database, teamId: string) {
     if (model && nativeGrokTextModel(model)) {
       const xai = await resolveOptionalKey('xai');
       if (xai) return { ...xai, via: 'xai' };
+    }
+
+    if (model && nativeGeminiTextModel(model)) {
+      const google = await resolveOptionalKey('google');
+      if (google) return { ...google, via: 'google' };
     }
 
     const orLookup = await readKeyRowLogged('openrouter');
@@ -439,6 +449,15 @@ export function createApiKeysReadMethods(db: Database, teamId: string) {
         });
         if (response.ok) return { valid: true };
         return { valid: false, error: `xAI returned ${response.status}` };
+      }
+      case 'google': {
+        // Cheapest authenticated read: the model list. 200 live, 400/403 bad.
+        const response = await fetch(
+          'https://generativelanguage.googleapis.com/v1beta/models?pageSize=1',
+          { headers: { 'x-goog-api-key': apiKey } }
+        );
+        if (response.ok) return { valid: true };
+        return { valid: false, error: `Google returned ${response.status}` };
       }
       default: {
         const _exhaustive: never = provider;

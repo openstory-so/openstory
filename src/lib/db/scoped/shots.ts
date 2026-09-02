@@ -42,6 +42,7 @@ type ShotWithSequence = Shot & {
     | 'imageModel'
     | 'videoModel'
     | 'aspectRatio'
+    | 'resolution'
     | 'analysisModel'
   >;
 };
@@ -572,6 +573,7 @@ export function createShotsMethods(db: Database) {
               imageModel: true,
               videoModel: true,
               aspectRatio: true,
+              resolution: true,
               analysisModel: true,
             },
           },

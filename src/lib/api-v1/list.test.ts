@@ -55,6 +55,7 @@ function makeSequence(overrides: Partial<Sequence> = {}): Sequence {
     styleId: 'style-1',
     styleConfig: null,
     aspectRatio: '16:9',
+    resolution: '720p',
     analysisModel: 'anthropic/claude-haiku-4.5',
     analysisDurationMs: 0,
     imageModel: 'nano_banana_2',

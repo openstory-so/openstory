@@ -1,15 +1,21 @@
 import { Button } from '@/components/ui/button';
 import { AspectRatioIcon } from '@/components/icons/aspect-ratio-icon';
 import { ASPECT_RATIOS, type AspectRatio } from '@/lib/constants/aspect-ratios';
+import {
+  RESOLUTION_OPTIONS,
+  type Resolution,
+} from '@/lib/constants/resolutions';
 import { ChevronDown, SlidersHorizontal } from 'lucide-react';
 import type { FC, ComponentProps } from 'react';
 
 type GenerationSettingsTriggerProps = {
   aspectRatio: AspectRatio;
+  resolution: Resolution;
 } & ComponentProps<typeof Button>;
 
 export const GenerationSettingsTrigger: FC<GenerationSettingsTriggerProps> = ({
   aspectRatio,
+  resolution,
   ...props
 }) => {
   const aspectRatioData = ASPECT_RATIOS.find((r) => r.value === aspectRatio);
@@ -29,6 +35,9 @@ export const GenerationSettingsTrigger: FC<GenerationSettingsTriggerProps> = ({
         />
       )}
       <span className="font-mono text-sm">{aspectRatio}</span>
+      <span className="font-mono text-xs text-muted-foreground">
+        {RESOLUTION_OPTIONS.find((r) => r.value === resolution)?.label}
+      </span>
       <SlidersHorizontal className="size-3.5 text-muted-foreground" />
       <ChevronDown className="size-3.5 text-muted-foreground" />
     </Button>

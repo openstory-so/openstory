@@ -29,6 +29,7 @@ describe('studioVideoEndpointId', () => {
       'xai/grok-imagine-video/v1.5/text-to-video',
       'fal-ai/ltx-2.3/text-to-video',
       'fal-ai/veo3.1',
+      'fal-ai/gemini-omni-1.1-flash',
       'fal-ai/kling-video/v3/pro/text-to-video',
       'fal-ai/minimax/hailuo-2.3/pro/text-to-video',
       'minimax/h3-max/text-to-video',
@@ -43,6 +44,7 @@ describe('studioVideoEndpointId', () => {
         'xai/grok-imagine-video/v1.5/reference-to-video',
         'fal-ai/veo3.1/reference-to-video',
         'fal-ai/kling-video/o3/pro/reference-to-video',
+        'fal-ai/gemini-omni-1.1-flash/reference-to-video',
         'minimax/h3-max/reference-to-video',
       ])
     );
@@ -77,7 +79,7 @@ describe('buildStudioVideoInput', () => {
     });
   });
 
-  it('encodes Veo duration with an s suffix and 1080p', () => {
+  it('encodes Veo duration with an s suffix and the default tier', () => {
     expect(
       buildStudioVideoInput({ ...base, model: 'veo3_1', duration: 8 })
         .modelOptions
@@ -85,8 +87,31 @@ describe('buildStudioVideoInput', () => {
       duration: '8s',
       aspect_ratio: '16:9',
       generate_audio: true,
-      resolution: '1080p',
+      resolution: '720p',
     });
+  });
+
+  it('resolves the requested tier against the model enum (#1449)', () => {
+    const at = (
+      model: 'veo3_1' | 'minimax_h3_max',
+      resolution: '1080p' | '4k'
+    ) =>
+      buildStudioVideoInput({ ...base, model, duration: 8, resolution })
+        .modelOptions.resolution;
+    expect(at('veo3_1', '4k')).toBe('4k');
+    expect(at('veo3_1', '1080p')).toBe('1080p');
+    // H3 Max stops at 768P, whatever is asked for.
+    expect(at('minimax_h3_max', '4k')).toBe('768P');
+  });
+
+  it('omits resolution for a model that takes none', () => {
+    expect(
+      buildStudioVideoInput({
+        ...base,
+        model: 'kling_v3_pro',
+        resolution: '4k',
+      }).modelOptions
+    ).not.toHaveProperty('resolution');
   });
 
   it('sends LTX duration as a number snapped to 6/8/10', () => {
@@ -204,6 +229,9 @@ describe('reference tags', () => {
       'reference image 2 at dusk'
     );
     expect(
+      tagStudioReferences('Image1 meets Image2', 'gemini_omni_flash')
+    ).toBe('<IMAGE_REF_0> meets <IMAGE_REF_1>');
+    expect(
       tagStudioReferences(
         'Image1 walks with Video1 under Audio1',
         'minimax_h3_max'
@@ -255,6 +283,7 @@ describe('studioVideoEndpointId modes', () => {
       IMAGE_TO_VIDEO_MODELS.kling_v3_pro.id
     );
     expect(studioSupportsEndFrame('kling_v3_pro')).toBe(true);
+    expect(studioSupportsEndFrame('gemini_omni_flash')).toBe(true);
     expect(studioSupportsEndFrame('veo3_1')).toBe(false);
   });
 });

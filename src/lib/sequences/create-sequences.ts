@@ -34,6 +34,7 @@ import { estimateStoryboardPreflightCost } from '@/lib/billing/storyboard-prefli
 import { generateId } from '@/lib/db/id';
 import type { ScopedDb } from '@/lib/db/scoped';
 import { ValidationError } from '@/lib/errors';
+import { DEFAULT_RESOLUTION } from '@/lib/constants/resolutions';
 import {
   AUTO_STYLE_ID,
   type AutoStyleDraft,
@@ -42,6 +43,7 @@ import {
 import { parseStyleConfig } from '@/lib/style/style-config';
 import type { Sequence } from '@/types/database';
 import type { CreateSequenceInput } from '@/lib/schemas/sequence.schemas';
+import { UNTITLED_SEQUENCE_TITLE } from '@/lib/sequences/untitled-sequence-title';
 import { copySequenceElements } from '@/lib/sequence-elements/copy-sequence-elements';
 import { promoteTempElements } from '@/lib/sequence-elements/promote-temp-elements';
 import { captureProductEvent } from '@/lib/observability/product-events';
@@ -124,6 +126,7 @@ export const createSequences = createServerOnlyFn(
       script,
       styleId,
       aspectRatio,
+      resolution = DEFAULT_RESOLUTION,
       analysisModels: requestedAnalysisModels,
       imageModel: imageModelLegacy,
       imageModels: imageModelsInput,
@@ -244,6 +247,7 @@ export const createSequences = createServerOnlyFn(
       imageModel: primaryImageModel,
       imageModelCount: imageModels.length,
       aspectRatio,
+      resolution,
       autoGenerateMotion,
       stopAt,
       videoModels,
@@ -289,11 +293,12 @@ export const createSequences = createServerOnlyFn(
 
             const sequence = await context.scopedDb.sequences.create({
               id: sequenceId,
-              title: data.title || 'Untitled Sequence',
+              title: data.title || UNTITLED_SEQUENCE_TITLE,
               script: data.script,
               styleId: boundStyle?.id ?? styleId,
               deferStyleSnapshot: styleSource.kind === 'pending',
               aspectRatio,
+              resolution,
               analysisModel:
                 getAnalysisModelById(modelId)?.id ||
                 resolveModelForCountry(DEFAULT_ANALYSIS_MODEL, country),
@@ -392,6 +397,7 @@ export const createSequences = createServerOnlyFn(
         style_id: styleId,
         automatic_style: styleSource.kind !== 'library',
         aspect_ratio: aspectRatio,
+        resolution,
         sequence_ids: sequenceIds,
         sequence_count: sequenceIds.length,
         analysis_model_count: analysisModels.length,

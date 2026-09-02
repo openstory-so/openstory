@@ -18,6 +18,8 @@ import {
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { MarkdownEditor } from '@/components/text-editor/markdown-editor';
+import { VoiceInputButton } from '@/components/voice/voice-input-button';
+import { useEditorDictation } from '@/hooks/use-dictation';
 import { useSequenceMentionItems } from '@/hooks/use-mention-items';
 import { shortenPromptFn } from '@/functions/ai';
 import { generateShotImageFn } from '@/functions/shot-image';
@@ -89,6 +91,7 @@ import {
   DEFAULT_ASPECT_RATIO,
   type AspectRatio,
 } from '@/lib/constants/aspect-ratios';
+import type { Resolution } from '@/lib/constants/resolutions';
 import { getMediaRoutesFn } from '@/functions/media-routes';
 import { getStorageDomainFn } from '@/functions/storage-config';
 import {
@@ -104,9 +107,11 @@ import {
   CONTENT_REJECTION_USER_TITLE,
   isContentRejectionError,
 } from '@/lib/ai/content-rejection';
+import { isNativeGeminiVideoModel } from '@/lib/ai/gemini-native';
 import { isNativeGrokVideoModel } from '@/lib/ai/grok-native';
 import { buildImageRequest } from '@/lib/image/build-image-request';
 import { buildBytePlusImageRequest } from '@/lib/image/build-byteplus-image-request';
+import { buildGeminiVideoRequest } from '@/lib/motion/build-gemini-video-request';
 import { buildGrokVideoRequest } from '@/lib/motion/build-grok-video-request';
 import { buildBytePlusVideoRequest } from '@/lib/motion/build-byteplus-video-request';
 import { buildMotionRequest } from '@/lib/motion/build-model-input';
@@ -239,6 +244,8 @@ type SceneScriptPromptsProps = {
     type: 'image' | 'motion' | 'scene-variants'
   ) => void;
   aspectRatio?: AspectRatio;
+  /** Output resolution tier (#1449) — sizes the preview and its estimate. */
+  resolution?: Resolution;
   /** Image variant (frame_variants, #989) for the shot's look model. */
   variantForSelectedModel?: FrameVariant;
   /** The selected shot's video variant for the effective video model (#545). */
@@ -308,6 +315,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
   regeneratingMotion,
   onRegenerateStart,
   aspectRatio,
+  resolution,
   variantForSelectedModel,
   videoVariantForSelectedModel,
   segment,
@@ -392,6 +400,21 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
   // appears on a prompt the user never touched.
   const imageFocusedRef = useRef(false);
   const motionFocusedRef = useRef(false);
+
+  // The mics live in each prompt's header row; dictation streams into the
+  // editor below through these handles.
+  const { ref: imagePromptRef, voice: imageVoice } = useEditorDictation();
+  const { ref: motionPromptRef, voice: motionVoice } = useEditorDictation();
+
+  // Drop a live take when the shot changes so the previous shot's document
+  // cannot land in the new shot's draft. The buttons remount via `key`.
+  useEffect(() => {
+    imagePromptRef.current?.endDictation();
+    motionPromptRef.current?.endDictation();
+    // Refs are stable; the take must end when the shot id changes, not when
+    // the handle object identity does.
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
+  }, [shot?.id]);
 
   const queryClient = useQueryClient();
   const setImageFromVariant = useSetImageFromVariant();
@@ -1125,9 +1148,9 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
       regenImageModel,
       aspectRatio ?? DEFAULT_ASPECT_RATIO,
       1,
-      { pricing: falPricing }
+      { pricing: falPricing, resolution }
     );
-  }, [falPricing, regenImageModel, aspectRatio]);
+  }, [falPricing, regenImageModel, aspectRatio, resolution]);
   const motionCostEstimate = useMemo(() => {
     if (!falPricing || !shot) return null;
     const duration = resolveShotDuration({
@@ -1142,6 +1165,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
       }).length > 0;
     return estimateVideoCost(effectiveMotionModel, duration, {
       pricing: falPricing,
+      resolution,
       hasReferenceImages,
     });
   }, [
@@ -1151,6 +1175,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     sceneReference,
     mentionCharacters,
     mentionElements,
+    resolution,
   ]);
 
   // CDN-backed deployments absolutize stored /r2/ URLs at submit (toCdnUrl) —
@@ -1284,12 +1309,39 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
           ),
         };
       }
+      if (isNativeGeminiVideoModel(modelKey)) {
+        const request = buildGeminiVideoRequest({
+          prompt: modelPrompt,
+          imageUrl,
+          duration,
+          aspectRatio,
+          referenceImages,
+          model: modelKey,
+        });
+        const textPart = request.input.prompt.find(
+          (part) => part.type === 'text'
+        );
+        const prompt = textPart?.content ?? modelPrompt;
+        return {
+          modelName: config.name,
+          endpointId: request.endpointId,
+          prompt,
+          json: JSON.stringify(request.input, null, 2),
+          promptLength: prompt.length,
+          maxPromptLength: config.maxPromptLength,
+          images: boundPromptImages(
+            imageUrlsFromPromptParts(request.input.prompt),
+            (position) => `<IMAGE_REF_${position - 1}>`
+          ),
+        };
+      }
       const request = buildMotionRequest(
         {
           prompt: modelPrompt,
           imageUrl,
           duration,
           aspectRatio,
+          resolution,
           generateAudio: videoModelSupportsAudio(modelKey)
             ? generateAudio
             : undefined,
@@ -1324,6 +1376,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     shotMotionPrompt,
     characterTags,
     aspectRatio,
+    resolution,
     generateAudio,
     absolutizeUrl,
     byteplusEnabled,
@@ -1362,6 +1415,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
         imageSize: aspectRatio
           ? aspectRatioToImageSize(aspectRatio)
           : undefined,
+        resolution,
         numImages: 1,
         referenceImageUrls: referenceUrls,
       };
@@ -1407,6 +1461,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     mentionElements,
     mentionLocations,
     aspectRatio,
+    resolution,
     absolutizeUrl,
     byteplusEnabled,
   ]);
@@ -1751,10 +1806,25 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
                   onCopy={(text, key) => void handleCopy(text, key)}
                   label="Copy image prompt"
                 />
+                <VoiceInputButton
+                  key={shot?.id}
+                  label="image prompt"
+                  size="icon-xs"
+                  disabled={isAwaitingVisualPrompt}
+                  {...imageVoice}
+                  onStart={() => {
+                    // Treat dictation as a user edit even though the mic
+                    // never focuses the editor (so Escape still hits the button).
+                    const started = imageVoice.onStart();
+                    if (started) imageFocusedRef.current = true;
+                    return started;
+                  }}
+                />
               </div>
             </div>
             <MarkdownEditor
               id="image-prompt-input"
+              ref={imagePromptRef}
               value={
                 isAwaitingVisualPrompt
                   ? shotPromptStream.visual.text
@@ -2045,10 +2115,24 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
                   onCopy={(text, key) => void handleCopy(text, key)}
                   label="Copy motion prompt"
                 />
+                <VoiceInputButton
+                  key={shot?.id}
+                  label="motion prompt"
+                  size="icon-xs"
+                  disabled={isAwaitingMotionPrompt}
+                  {...motionVoice}
+                  onStart={() => {
+                    // Same as the image mic: Focused means dirty, not DOM focus.
+                    const started = motionVoice.onStart();
+                    if (started) motionFocusedRef.current = true;
+                    return started;
+                  }}
+                />
               </div>
             </div>
             <MarkdownEditor
               id="motion-prompt-input"
+              ref={motionPromptRef}
               value={
                 isAwaitingMotionPrompt
                   ? shotPromptStream.motion.text

@@ -258,7 +258,6 @@ describe('StoryboardWorkflow email-ready', () => {
       expect.objectContaining({
         sequenceId: 'seq_1',
         ownerEmail: 'owner@example.com',
-        title: 'The Long Walk',
         userId: 'u1',
       })
     );

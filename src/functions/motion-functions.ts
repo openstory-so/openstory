@@ -169,6 +169,7 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
       gateEstimate(
         estimateVideoCost(model, duration, {
           pricing: await getEffectiveFalPricing(),
+          resolution: sequence.resolution,
           hasReferenceImages: referenceImages.length > 0,
         }),
         { model, operation: 'motion' }
@@ -222,6 +223,7 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
               fps: data.fps,
               motionBucket: data.motionBucket,
               aspectRatio: sequence.aspectRatio,
+              resolution: sequence.resolution,
               generateAudio: data.generateAudio,
               sceneTitle: context.scene?.metadata?.title,
               sequenceTitle: sequence.title,
@@ -375,6 +377,7 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
         explicitModel: data.model,
         duration: data.duration,
         pricing: await getEffectiveFalPricing(),
+        resolution: sequence.resolution,
         hasReferenceImages: (batchShot) => {
           const shot = eligibleShots.find((s) => s.id === batchShot.id);
           if (!shot) return false;
@@ -482,6 +485,7 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
               fps: data.fps,
               motionBucket: data.motionBucket,
               aspectRatio: sequence.aspectRatio,
+              resolution: sequence.resolution,
               generateAudio: data.generateAudio,
               referenceImages: buildMotionReferenceImages({
                 scene,

@@ -32,6 +32,7 @@
 import { type InferInsertModel, type InferSelectModel } from 'drizzle-orm';
 import { index, integer, snakeCase, text } from 'drizzle-orm/sqlite-core';
 import { generateId } from '../id';
+import type { Resolution } from '@/lib/constants/resolutions';
 import { renderSegments } from './render-segments';
 import { sequences } from './sequences';
 import { SHOT_GENERATION_STATUSES } from './shots';
@@ -80,6 +81,12 @@ export const videoVariants = snakeCase.table(
       .references(() => sequences.id, { onDelete: 'cascade' }),
 
     model: text({ length: 100 }).notNull(),
+    // Resolution tier this version was asked for (#1449). Null on rows written
+    // before the tier existed. Stamped, not derived: the sequence default can
+    // change after a render, and a 4K re-roll has to stay legible next to the
+    // 720p draft it sits beside.
+    resolution: text({ length: 10 }).$type<Resolution>(),
+
     // Ordered, one entry per covered shot — the immutable snapshot the render
     // consumed (see VideoManifestEntry).
     manifest: text({ mode: 'json' }).$type<VideoManifest>().notNull(),

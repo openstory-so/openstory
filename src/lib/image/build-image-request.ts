@@ -8,6 +8,11 @@
  */
 
 import {
+  nativeGeminiImageModel,
+  type GeminiImageResolution,
+  type NativeGeminiImageModel,
+} from '@/lib/ai/gemini-native';
+import {
   capReferenceImages,
   getEditEndpoint,
   getTextToImageModelId,
@@ -15,9 +20,21 @@ import {
   type TextToImageModel,
 } from '@/lib/ai/models';
 import {
+  DEFAULT_ASPECT_RATIO,
   DEFAULT_IMAGE_SIZE,
+  type AspectRatio,
   type ImageSize,
 } from '@/lib/constants/aspect-ratios';
+import {
+  clampDimensions,
+  pickImageResolution,
+  resolutionDimensions,
+  tierForShortEdge,
+  RESOLUTIONS,
+  tiersForTokens,
+  type PixelBounds,
+  type Resolution,
+} from '@/lib/constants/resolutions';
 import { getLogger } from '@/lib/observability/logger';
 
 const logger = getLogger(['openstory', 'image', 'build-image-request']);
@@ -38,7 +55,8 @@ export type ImageGenerationParams = {
   // Model-specific
   style?: string;
   colors?: Array<{ r: number; g: number; b: number }>;
-  resolution?: '1K' | '2K' | '4K';
+  /** Output resolution tier (#1449). Resolved per model — see IMAGE_RESOLUTION. */
+  resolution?: Resolution;
   enhancePrompt?: boolean;
   safetyTolerance?: number;
   acceleration?: 'none' | 'regular' | 'high';
@@ -56,6 +74,133 @@ type AspectRatioValue = (typeof ASPECT_RATIO_MAP)[ImageSize];
 
 function imageSizeToAspectRatio(imageSize: ImageSize): AspectRatioValue {
   return ASPECT_RATIO_MAP[imageSize];
+}
+
+/**
+ * How each model takes a resolution ask (#1449), transcribed from its fal
+ * `llms.txt`. Two shapes, because fal has two:
+ *
+ *   - `tokens` — the model's own `resolution` enum; the tier picks the nearest.
+ *   - `pixels` — `image_size` takes `{width, height}`; the tier's dimensions
+ *     are clamped into the documented range.
+ *
+ * A model absent from this map renders at a fixed size (Nano Banana 2 Lite) or
+ * publishes no range (Krea, Hunyuan, FLUX.2 Max, HiDream). Guessing a range
+ * there would 422 the main generation path, so the tier leaves them on their
+ * preset — see #1449.
+ */
+const IMAGE_RESOLUTION: Partial<
+  Record<TextToImageModel, { tokens: string[] } | { pixels: PixelBounds }>
+> = {
+  nano_banana_2: { tokens: ['0.5K', '1K', '2K', '4K'] },
+  nano_banana_pro: { tokens: ['1K', '2K', '4K'] },
+  phota: { tokens: ['1K', '4K'] },
+  grok_imagine_image: { tokens: ['1k', '2k'] },
+  grok_imagine_image_quality: { tokens: ['1k', '2k'] },
+  // Seedream's fal via is pixel-sized; its Ark via takes a token
+  // (build-byteplus-image-request.ts).
+  seedream_v5: { pixels: { minPixels: 1024 * 1024, maxPixels: 2048 * 2048 } },
+  gpt_image_2: {
+    pixels: {
+      maxEdge: 3840,
+      minPixels: 655_360,
+      maxPixels: 8_294_400,
+      multipleOf: 16,
+    },
+  },
+  qwen_image: { pixels: { minPixels: 512 * 512, maxPixels: 2048 * 2048 } },
+  flux_2_dev: { pixels: { minEdge: 512, maxEdge: 2048 } },
+  flux_2_flash: { pixels: { minEdge: 512, maxEdge: 2048 } },
+  flux_2_turbo: { pixels: { minEdge: 512, maxEdge: 2048 } },
+};
+
+/** The tokens the Gemini via admits — narrower than the fal enum (no 0.5K). */
+const GEMINI_IMAGE_RESOLUTIONS = ['1K', '2K', '4K'] as const;
+
+/**
+ * The model's own spelling of the requested tier, or undefined when it takes
+ * no `resolution` field.
+ *
+ * `tokens` overrides the fal enum for a via that admits a different set —
+ * the same model can be reachable through more than one, and each spells the
+ * ask in its own vocabulary.
+ */
+function resolveImageResolutionToken(
+  model: TextToImageModel,
+  resolution: Resolution | undefined,
+  tokens?: readonly string[]
+): string | undefined {
+  if (!resolution) return undefined;
+  if (tokens) return pickImageResolution(tokens, resolution);
+  const capability = IMAGE_RESOLUTION[model];
+  if (!capability || !('tokens' in capability)) return undefined;
+  return pickImageResolution(capability.tokens, resolution);
+}
+
+/**
+ * The tiers this model can actually deliver — what the resolution picker
+ * offers for it (#1449). Empty when the model's output size is fixed, which
+ * is the picker's cue to say so instead of showing tiers that do nothing.
+ *
+ * A token model is asked which tiers its enum covers; a pixel-sized one is
+ * asked whether the tier's dimensions survive its documented range — FLUX.2
+ * stops at 2048 per edge, so a "4K" pill there would promise a size it can
+ * never return.
+ */
+export function imageResolutionTiers(
+  model: TextToImageModel,
+  aspectRatio: AspectRatio = DEFAULT_ASPECT_RATIO
+): Resolution[] {
+  const capability = IMAGE_RESOLUTION[model];
+  if (!capability) return [];
+  if ('tokens' in capability) return tiersForTokens(capability.tokens, 'image');
+  return RESOLUTIONS.filter((tier) => {
+    const clamped = clampDimensions(
+      resolutionDimensions(tier, aspectRatio),
+      capability.pixels
+    );
+    return tierForShortEdge(Math.min(clamped.width, clamped.height)) === tier;
+  });
+}
+
+/**
+ * The pixel size a tier actually buys on this model, or null when the tier
+ * doesn't steer its size — a token model (the tier picks `2K`, but fal bills
+ * per image either way) or one with no documented range, both of which render
+ * at their own preset.
+ *
+ * Exported so the cost estimate is computed from the size the request will
+ * really carry. Quoting a 4K ask at a flat stand-in under-reserves the credits
+ * gating it; quoting a model the tier can't resize over-reserves (#1449).
+ */
+export function imageRequestDimensions(
+  model: TextToImageModel,
+  aspectRatio: AspectRatio,
+  resolution: Resolution | undefined
+): { width: number; height: number } | null {
+  const capability = IMAGE_RESOLUTION[model];
+  if (!resolution || !capability || !('pixels' in capability)) return null;
+  return clampDimensions(
+    resolutionDimensions(resolution, aspectRatio),
+    capability.pixels
+  );
+}
+
+/**
+ * The `image_size` to send: explicit pixels for a model that accepts them,
+ * otherwise the fal preset unchanged.
+ */
+function resolveImageSize(
+  params: ImageGenerationParams
+): ImageSize | { width: number; height: number } {
+  const imageSize = params.imageSize ?? DEFAULT_IMAGE_SIZE;
+  return (
+    imageRequestDimensions(
+      params.model,
+      imageSizeToAspectRatio(imageSize),
+      params.resolution
+    ) ?? imageSize
+  );
 }
 
 /** xAI's `aspectRatio_resolution` template, narrowed to the ratios we offer.
@@ -81,7 +226,7 @@ function buildFalModelOptions(
   switch (params.model) {
     case 'flux_2_dev':
       return {
-        image_size: params.imageSize ?? DEFAULT_IMAGE_SIZE,
+        image_size: resolveImageSize(params),
         num_inference_steps: params.numInferenceSteps ?? 28,
         guidance_scale: params.guidanceScale ?? 2.5,
         enable_safety_checker: true,
@@ -101,7 +246,7 @@ function buildFalModelOptions(
     case 'flux_2_flash':
     case 'flux_2_turbo':
       return {
-        image_size: params.imageSize ?? DEFAULT_IMAGE_SIZE,
+        image_size: resolveImageSize(params),
         // Turbo historically sent a 4-step default; Flash's schema has no
         // steps knob. Only Turbo keeps the field.
         ...(params.model === 'flux_2_turbo' && {
@@ -124,7 +269,7 @@ function buildFalModelOptions(
 
     case 'krea_2_turbo':
       return {
-        image_size: params.imageSize ?? DEFAULT_IMAGE_SIZE,
+        image_size: resolveImageSize(params),
         enable_safety_checker: true,
         ...(params.seed !== undefined && { seed: params.seed }),
         ...(params.numImages !== undefined && { num_images: params.numImages }),
@@ -138,7 +283,7 @@ function buildFalModelOptions(
 
     case 'flux_2_max':
       return {
-        image_size: params.imageSize ?? DEFAULT_IMAGE_SIZE,
+        image_size: resolveImageSize(params),
         enable_safety_checker: true,
         ...(params.safetyTolerance !== undefined && {
           safety_tolerance: params.safetyTolerance.toString(),
@@ -162,7 +307,9 @@ function buildFalModelOptions(
         // Lite is fixed 1K — the schema has no `resolution` field and 2K/4K
         // would 422. Pro/2 keep the existing default.
         ...(params.model !== 'nano_banana_2_lite' && {
-          resolution: params.resolution ?? '2K',
+          resolution:
+            resolveImageResolutionToken(params.model, params.resolution) ??
+            '2K',
         }),
         safety_tolerance: '6',
         ...(params.numImages !== undefined && { num_images: params.numImages }),
@@ -175,7 +322,7 @@ function buildFalModelOptions(
 
     case 'gpt_image_2':
       return {
-        image_size: params.imageSize ?? DEFAULT_IMAGE_SIZE,
+        image_size: resolveImageSize(params),
         quality: 'high',
         ...(params.numImages !== undefined && { num_images: params.numImages }),
         ...(params.outputFormat && { output_format: params.outputFormat }),
@@ -191,7 +338,8 @@ function buildFalModelOptions(
         aspect_ratio: imageSizeToAspectRatio(
           params.imageSize ?? DEFAULT_IMAGE_SIZE
         ),
-        resolution: (params.resolution ?? '2K').toLowerCase(),
+        resolution:
+          resolveImageResolutionToken(params.model, params.resolution) ?? '2k',
         // 2.0 accepts low/medium; Quality Mode has no quality knob — the
         // model *is* the higher-fidelity tier.
         ...(params.model === 'grok_imagine_image' && { quality: 'medium' }),
@@ -208,8 +356,9 @@ function buildFalModelOptions(
         aspect_ratio: imageSizeToAspectRatio(
           params.imageSize ?? DEFAULT_IMAGE_SIZE
         ),
-        // Phota only accepts '1K' or '4K' — map anything else to '1K'
-        resolution: params.resolution === '4K' ? '4K' : '1K',
+        // Phota only accepts '1K' or '4K'.
+        resolution:
+          resolveImageResolutionToken(params.model, params.resolution) ?? '1K',
         ...(params.numImages !== undefined && { num_images: params.numImages }),
         ...(params.outputFormat && { output_format: params.outputFormat }),
         ...(params.referenceImageUrls?.length && {
@@ -220,7 +369,7 @@ function buildFalModelOptions(
 
     case 'hunyuan_image_v3':
       return {
-        image_size: params.imageSize ?? DEFAULT_IMAGE_SIZE,
+        image_size: resolveImageSize(params),
         ...(params.seed !== undefined && { seed: params.seed }),
         ...(params.numImages !== undefined && { num_images: params.numImages }),
         ...(params.outputFormat && { output_format: params.outputFormat }),
@@ -232,7 +381,7 @@ function buildFalModelOptions(
 
     case 'qwen_image':
       return {
-        image_size: params.imageSize ?? DEFAULT_IMAGE_SIZE,
+        image_size: resolveImageSize(params),
         enable_safety_checker: true,
         enable_prompt_expansion: true,
         ...(params.seed !== undefined && { seed: params.seed }),
@@ -262,7 +411,7 @@ function buildFalModelOptions(
 
     case 'seedream_v5':
       return {
-        image_size: params.imageSize ?? DEFAULT_IMAGE_SIZE,
+        image_size: resolveImageSize(params),
         enable_safety_checker: true,
         ...(params.seed !== undefined && { seed: params.seed }),
         ...(params.numImages !== undefined && { num_images: params.numImages }),
@@ -277,6 +426,61 @@ function buildFalModelOptions(
       throw new Error(`Unsupported model: ${String(_exhaustive)}`);
     }
   }
+}
+
+/** Gemini native `aspectRatio_imageSize` (capital K). Lite is 1K-only. */
+type GeminiNativeImageSize = `${AspectRatioValue}_${GeminiImageResolution}`;
+
+export type GeminiImageRequest = {
+  nativeModel: NativeGeminiImageModel;
+  prompt: string;
+  size: GeminiNativeImageSize;
+  resolution: GeminiImageResolution;
+  numImages: number;
+  referenceImageUrls: string[];
+};
+
+/**
+ * {@link buildImageRequest} for Gemini-native Nano Banana. Fal-only knobs
+ * (safety_tolerance, output format, sync_mode) have no generateContent
+ * counterpart and are dropped. Lite snaps every resolution to 1K.
+ */
+export function buildGeminiImageRequest(
+  params: ImageGenerationParams
+): GeminiImageRequest {
+  const nativeModel = nativeGeminiImageModel(params.model);
+  if (!nativeModel) {
+    throw new Error(
+      `Gemini image request built for a non-Nano-Banana model: ${params.model}`
+    );
+  }
+  const aspectRatio = imageSizeToAspectRatio(
+    params.imageSize ?? DEFAULT_IMAGE_SIZE
+  );
+  // Google's own tokens, not the fal enum: Gemini has no 0.5K, so the tier is
+  // resolved against what this via actually admits (#1449). Narrowed by
+  // lookup rather than asserted, like the xAI via.
+  const picked = resolveImageResolutionToken(
+    params.model,
+    params.resolution,
+    GEMINI_IMAGE_RESOLUTIONS
+  );
+  const resolution: GeminiImageResolution =
+    nativeModel === 'gemini-3.1-flash-lite-image'
+      ? '1K'
+      : (GEMINI_IMAGE_RESOLUTIONS.find((r) => r === picked) ?? '2K');
+
+  return {
+    nativeModel,
+    prompt: truncatePromptForModel(params.prompt, params.model),
+    size: `${aspectRatio}_${resolution}`,
+    resolution,
+    numImages: params.numImages ?? 1,
+    referenceImageUrls: capReferenceImages(
+      params.model,
+      params.referenceImageUrls ?? []
+    ),
+  };
 }
 
 /**
@@ -295,7 +499,10 @@ export function buildGrokImageRequest(params: ImageGenerationParams): {
     params.imageSize ?? DEFAULT_IMAGE_SIZE
   );
   // Imagine has no 4K tier — 4K lands on the highest it serves.
-  const resolution = params.resolution === '1K' ? '1k' : '2k';
+  const resolution =
+    resolveImageResolutionToken(params.model, params.resolution) === '1k'
+      ? '1k'
+      : '2k';
 
   return {
     prompt: truncatePromptForModel(params.prompt, params.model),

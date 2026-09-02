@@ -12,6 +12,7 @@
 
 import { portraitAttestationSchema } from '@/lib/compliance/likeness-upload';
 import { aspectRatioSchema } from '@/lib/constants/aspect-ratios';
+import { resolutionSchema } from '@/lib/constants/resolutions';
 import { MUSIC_REQUIRES_MOTION_ERROR } from '@/lib/schemas/sequence.schemas';
 import { z } from 'zod';
 
@@ -136,6 +137,11 @@ export const apiCreateSequenceSchema = z
     aspectRatio: aspectRatioSchema.optional().meta({
       description:
         "Aspect ratio. Defaults to the resolved style's recommendation, else 16:9.",
+    }),
+
+    resolution: resolutionSchema.optional().meta({
+      description:
+        'Output resolution tier, resolved per model to the nearest thing it serves. Defaults to 720p.',
     }),
 
     analysisModels: z.array(z.string()).min(1).optional().meta({

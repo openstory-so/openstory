@@ -52,7 +52,10 @@ import { getEffectiveFalPricing } from '@/lib/ai/fal-pricing-live';
 import { gateEstimate } from '@/lib/billing/cost-estimation';
 import type { TokenUsage } from '@tanstack/ai';
 import { buildVideoManifest } from '@/lib/motion/render-segments';
-import { uploadVideoToStorage } from '@/lib/motion/video-storage';
+import {
+  uploadVideoToStorage,
+  videoUrlFitsWorkflowCheckpoint,
+} from '@/lib/motion/video-storage';
 import { recordProvenance } from '@/lib/compliance/provenance';
 import { buildR2Key, STORAGE_BUCKETS } from '@/lib/storage/buckets';
 import { recordMediaGenerationSpan } from '@/lib/observability/ai-otel';
@@ -306,6 +309,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
             renderSegmentId,
             sequenceId: input.sequenceId,
             model,
+            resolution: input.resolution ?? null,
             manifest,
             inputHash,
             status: 'generating',
@@ -589,6 +593,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
             fps: input.fps,
             motionBucket: input.motionBucket,
             aspectRatio: input.aspectRatio,
+            ...(input.resolution && { resolution: input.resolution }),
             generateAudio: input.generateAudio,
             // Cast/element reference images (#873) — only Kling v3 Pro emits them.
             referenceImages: input.referenceImages,
@@ -679,10 +684,40 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
 
               if (pollResult.status === 'completed') {
                 if (pollResult.url) {
+                  let url = pollResult.url;
+                  // Omni Flash defaults to inline base64. A data: MP4 is
+                  // several MB and will fail the 1 MiB step.do cap — park
+                  // it in R2 before this result is checkpointed.
+                  if (!videoUrlFitsWorkflowCheckpoint(url)) {
+                    if (!input.teamId || !input.sequenceId || !input.shotId) {
+                      throw new Error(
+                        'Native Gemini returned inline video bytes too large to checkpoint'
+                      );
+                    }
+                    const googleKey =
+                      job.via === 'google'
+                        ? await scopedDb.credentials.resolveOptionalKey(
+                            'google'
+                          )
+                        : undefined;
+                    const stored = await uploadVideoToStorage({
+                      videoUrl: url,
+                      teamId: input.teamId,
+                      sequenceId: input.sequenceId,
+                      shotId: input.shotId,
+                      sequenceTitle: input.sequenceTitle ?? 'sequence',
+                      sceneTitle: input.sceneTitle,
+                      googleApiKey: googleKey?.key,
+                    });
+                    if (!stored.success) {
+                      throw new Error(stored.error);
+                    }
+                    url = stored.url;
+                  }
                   logger.info(`[MotionWorkflow:cf] Generation completed`);
                   return {
                     kind: 'completed',
-                    url: pollResult.url,
+                    url,
                     usage: pollResult.usage,
                   };
                 }
@@ -879,6 +914,10 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
           throw new Error('Missing teamId or sequenceId for storage upload');
         }
 
+        const googleKey =
+          succeededJob.via === 'google'
+            ? await scopedDb.credentials.resolveOptionalKey('google')
+            : undefined;
         const result = await uploadVideoToStorage({
           videoUrl,
           teamId: input.teamId,
@@ -886,6 +925,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
           shotId,
           sequenceTitle: input.sequenceTitle ?? 'sequence',
           sceneTitle: input.sceneTitle,
+          googleApiKey: googleKey?.key,
         });
 
         if (!result.success) {

@@ -17,6 +17,16 @@ import { ImageModelSelector } from '@/components/model/image-model-selector';
 import { MotionModelSelector } from '@/components/model/motion-model-selector';
 import type { MentionItem } from '@/components/scenes/prompt-mention/mention-items';
 import { AspectRatioPills } from '@/components/settings/aspect-ratio-pills';
+import { ResolutionPills } from '@/components/settings/resolution-pills';
+import { IMAGE_MODELS } from '@/lib/ai/models';
+import { imageResolutionTiers } from '@/lib/image/build-image-request';
+import { motionResolutionTiers } from '@/lib/motion/build-model-input';
+import {
+  clampResolution,
+  DEFAULT_RESOLUTION,
+  RESOLUTION_OPTIONS,
+  type Resolution,
+} from '@/lib/constants/resolutions';
 import {
   StudioReferencePicker,
   useStudioLibrary,
@@ -79,6 +89,8 @@ import {
   type AspectRatio,
 } from '@/lib/constants/aspect-ratios';
 import { isInsufficientCreditsError } from '@/lib/errors';
+import { VoiceInputButton } from '@/components/voice/voice-input-button';
+import { useEditorDictation } from '@/hooks/use-dictation';
 import {
   pickShufflePrompt,
   studioShufflePrompts,
@@ -279,10 +291,15 @@ export function StudioComposer({ activity }: StudioComposerProps) {
     useState<ImageToVideoModel>(DEFAULT_VIDEO_MODEL);
   const [aspectRatio, setAspectRatio] =
     useState<AspectRatio>(DEFAULT_ASPECT_RATIO);
+  const [pickedResolution, setResolution] =
+    useState<Resolution>(DEFAULT_RESOLUTION);
   const [count, setCount] = useState<(typeof COUNTS)[number]>(1);
   const [duration, setDuration] = useState(5);
   const [generateAudio, setGenerateAudio] = useState(true);
   const [lastShuffled, setLastShuffled] = useState<string | null>(null);
+  // The mic sits in the toolbar next to Shuffle; dictation streams into the
+  // prompt editor through this handle.
+  const { ref: promptEditorRef, voice: promptVoice } = useEditorDictation();
   const [replaceConfirm, setReplaceConfirm] = useState(false);
   const [emptyPrompt, setEmptyPrompt] = useState(false);
 
@@ -300,6 +317,19 @@ export function StudioComposer({ activity }: StudioComposerProps) {
 
   const isVideo = activity === 'video';
   const compatibleVideoModel = getCompatibleModel(videoModel, aspectRatio);
+  // Only the tiers this model serves get a pill, so the stored pick is clamped
+  // to them rather than left pointing at a pill that is no longer there.
+  const activeModelName = isVideo
+    ? IMAGE_TO_VIDEO_MODELS[compatibleVideoModel].name
+    : IMAGE_MODELS[imageModel].name;
+  const resolutionTiers = isVideo
+    ? motionResolutionTiers(compatibleVideoModel)
+    : imageResolutionTiers(imageModel, aspectRatio);
+  const resolution = clampResolution(pickedResolution, resolutionTiers);
+  const resolutionNote =
+    resolutionTiers.length === 0
+      ? `${activeModelName} renders at a fixed size`
+      : null;
   const snappedDuration = snapStudioVideoDuration(
     duration,
     compatibleVideoModel
@@ -335,6 +365,7 @@ export function StudioComposer({ activity }: StudioComposerProps) {
     if (activity === 'image') {
       const still = estimateImageCost(imageModel, aspectRatio, 1, {
         pricing,
+        resolution,
         edit: references.length > 0,
       });
       return still === null ? null : multiplyMicros(still, count);
@@ -342,7 +373,7 @@ export function StudioComposer({ activity }: StudioComposerProps) {
     const motion = estimateStudioVideoCost(
       compatibleVideoModel,
       snappedDuration,
-      { pricing, mode: effectiveMode }
+      { pricing, mode: effectiveMode, resolution }
     );
     return motion === null ? null : multiplyMicros(motion, count);
   }, [
@@ -354,6 +385,7 @@ export function StudioComposer({ activity }: StudioComposerProps) {
     imageModel,
     pricing,
     references.length,
+    resolution,
     snappedDuration,
   ]);
 
@@ -757,6 +789,7 @@ export function StudioComposer({ activity }: StudioComposerProps) {
         prompt: trimmed,
         videoModel: compatibleVideoModel,
         aspectRatio,
+        resolution,
         duration: snappedDuration,
         count,
         generateAudio: audioCapable ? generateAudio : undefined,
@@ -776,6 +809,7 @@ export function StudioComposer({ activity }: StudioComposerProps) {
       prompt: trimmed,
       imageModel,
       aspectRatio,
+      resolution,
       count,
       referenceImages: references.map((r) => r.url),
     };
@@ -825,6 +859,9 @@ export function StudioComposer({ activity }: StudioComposerProps) {
   const aspect = ASPECT_RATIOS.find((r) => r.value === aspectRatio);
   const summary = [
     aspectRatio,
+    resolutionTiers.length > 0
+      ? RESOLUTION_OPTIONS.find((r) => r.value === resolution)?.label
+      : null,
     isVideo && durationCapable ? `${snappedDuration}s` : null,
     isVideo && audioCapable ? (generateAudio ? 'Audio' : 'Silent') : null,
     `×${count}`,
@@ -950,6 +987,7 @@ export function StudioComposer({ activity }: StudioComposerProps) {
         <MarkdownEditor
           value={prompt}
           onValueChange={setPrompt}
+          ref={promptEditorRef}
           placeholder={placeholder}
           aria-label="Prompt"
           data-testid="studio-prompt"
@@ -1074,6 +1112,16 @@ export function StudioComposer({ activity }: StudioComposerProps) {
                   onChange={setAspectRatio}
                 />
               </section>
+              <Separator />
+              <section className="flex flex-col gap-2">
+                <h3 className="text-sm font-medium">Resolution</h3>
+                <ResolutionPills
+                  value={resolution}
+                  onChange={setResolution}
+                  available={resolutionTiers}
+                  note={resolutionNote}
+                />
+              </section>
               {isVideo && durationCapable && (
                 <>
                   <Separator />
@@ -1192,6 +1240,7 @@ export function StudioComposer({ activity }: StudioComposerProps) {
             </Button>
           )}
           <ActionCost estimate={estimate} align="end" />
+          <VoiceInputButton label="prompt" {...promptVoice} />
           <Button
             type="submit"
             size="icon-lg"

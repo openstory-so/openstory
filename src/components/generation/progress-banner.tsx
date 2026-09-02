@@ -1,14 +1,21 @@
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+/**
+ * Generation progress as a chip, not a banner (#1427).
+ *
+ * The old card sat in the column flow above the scenes view, so every run
+ * pushed the whole layout down and back up again. This lives in the
+ * Canvas/Script toolbar's leading slot — a row that is already there and
+ * already that tall — so it costs zero layout shift and covers nothing. The
+ * phase detail moved into a popover, closed by default.
+ */
+
 import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible';
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 import { formatTimeRemaining } from '@/lib/generation/time-estimate';
 import { cn } from '@/lib/utils';
-import { Check, ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
+import { Check, Loader2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 export type BannerPhase = {
@@ -80,125 +87,111 @@ export const ProgressBanner: React.FC<ProgressBannerProps> = ({
   const activePhase = phases.find((p) => p.status === 'active');
   const completedCount = phases.filter((p) => p.status === 'completed').length;
   const progressValue = activePhase ? completedCount + 1 : completedCount;
+  const percent = Math.round((progressValue / phases.length) * 100);
 
   const showCompleted = isComplete && completedLabel;
+  const label = showCompleted
+    ? completedLabel
+    : (activePhase?.name ?? defaultLabel);
 
   return (
-    <Collapsible open={isOpen} onOpenChange={onOpenChange}>
-      <Card
+    <Popover open={isOpen} onOpenChange={onOpenChange}>
+      {/* Progress fills the chip's own background — a determinate cue that
+          costs no extra height. The <progress> carries the semantics. */}
+      <progress
+        value={progressValue}
+        max={phases.length}
+        aria-label={
+          activePhase
+            ? `${ariaPrefix} progress: ${activePhase.name}`
+            : `${ariaPrefix} progress`
+        }
+        className="sr-only"
+      />
+      <PopoverTrigger
         className={cn(
-          'gap-0 py-0 transition-all duration-500',
-          isExiting && !prefersReducedMotion && 'translate-y-[-100%] opacity-0',
-          isExiting && prefersReducedMotion && 'opacity-0'
+          'relative flex h-8 min-w-0 items-center gap-1.5 overflow-hidden rounded-full border bg-background px-2.5 text-xs text-muted-foreground transition-opacity duration-500 hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 outline-none',
+          isExiting && 'opacity-0'
         )}
       >
-        <CardContent className="flex flex-col gap-2 py-3">
-          {/* Header row */}
-          <div className="flex items-center gap-3">
-            {showCompleted ? (
-              <Check className="h-4 w-4 shrink-0 text-primary" />
-            ) : (
-              <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary" />
+        <span
+          aria-hidden="true"
+          className="absolute inset-y-0 left-0 bg-primary/10 transition-[width] duration-500"
+          style={{ width: `${percent}%` }}
+        />
+        {showCompleted ? (
+          <Check className="relative h-3.5 w-3.5 shrink-0 text-primary" />
+        ) : (
+          <Loader2
+            className={cn(
+              'relative h-3.5 w-3.5 shrink-0 text-primary',
+              !prefersReducedMotion && 'animate-spin'
             )}
-            <span className="text-sm font-medium truncate">
-              {showCompleted
-                ? completedLabel
-                : activePhase
-                  ? activePhase.name
-                  : defaultLabel}
-            </span>
-
-            <Badge
-              variant="secondary"
-              className="ml-auto tabular-nums"
-              aria-live="polite"
-            >
-              {showCompleted && completedBadge
-                ? completedBadge
-                : formatTimeRemaining(remaining)}
-            </Badge>
-
-            <CollapsibleTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-7 w-7">
-                {isOpen ? (
-                  <ChevronUp className="h-4 w-4" />
-                ) : (
-                  <ChevronDown className="h-4 w-4" />
-                )}
-                <span className="sr-only">
-                  {isOpen ? 'Collapse' : 'Expand'} progress
-                </span>
-              </Button>
-            </CollapsibleTrigger>
-          </div>
-
-          {/* Segmented progress bar: visual is N phase divs (decorative); the real <progress> below is sr-only and carries the semantics. */}
-          <progress
-            value={progressValue}
-            max={phases.length}
-            aria-label={
-              activePhase
-                ? `${ariaPrefix} progress: ${activePhase.name}`
-                : `${ariaPrefix} progress`
-            }
-            className="sr-only"
           />
-          <div className="flex gap-0.5" aria-hidden="true">
-            {phases.map((phase) => (
-              <div
-                key={phase.key}
+        )}
+        {/* Container query, not a breakpoint: the toolbar cell this sits in
+            narrows with the spine and inspector, not with the viewport. Below
+            ~15rem the name drops and the chip is spinner + ETA (~4rem), which
+            fits the tightest real cell. The name is always in the popover. */}
+        <span className="relative hidden truncate @[15rem]:inline">
+          {label}
+        </span>
+        <span className="relative tabular-nums" aria-live="polite">
+          {showCompleted && completedBadge ? (
+            completedBadge
+          ) : (
+            <>
+              {formatTimeRemaining(remaining)}
+              <span className="sr-only"> remaining</span>
+            </>
+          )}
+        </span>
+        <span className="sr-only">Show {ariaPrefix.toLowerCase()} detail</span>
+      </PopoverTrigger>
+
+      {/* Right-anchored trigger, so open leftwards from its right edge. */}
+      <PopoverContent align="end" className="gap-3">
+        <p className="font-medium text-foreground">{label}</p>
+        <ol className="flex flex-col gap-1.5">
+          {phases.map((phase) => (
+            <li
+              key={phase.key}
+              className={cn(
+                'flex items-center gap-2 text-xs',
+                phase.status === 'completed' && 'text-muted-foreground',
+                phase.status === 'active' && 'font-medium text-foreground',
+                phase.status === 'pending' && 'text-muted-foreground/40'
+              )}
+            >
+              <span
+                aria-hidden="true"
                 className={cn(
-                  'h-1 flex-1 rounded-full transition-colors duration-500',
+                  'h-1.5 w-1.5 shrink-0 rounded-full',
                   phase.status === 'completed' && 'bg-primary',
                   phase.status === 'active' &&
-                    'bg-primary/60' +
-                      (!prefersReducedMotion ? ' animate-pulse' : ''),
+                    cn('bg-primary', !prefersReducedMotion && 'animate-pulse'),
                   phase.status === 'pending' && 'bg-border'
                 )}
               />
-            ))}
-          </div>
-        </CardContent>
+              <span className="truncate">{phase.shortName}</span>
+            </li>
+          ))}
+        </ol>
 
-        {/* Expanded content */}
-        <CollapsibleContent>
-          <CardContent className="flex flex-col gap-3 border-t py-3">
-            {/* Phase labels aligned to segments — hidden on mobile */}
-            <div className="hidden gap-4 sm:flex">
-              {phases.map((phase) => (
-                <span
-                  key={phase.key}
-                  className={cn(
-                    'flex-1 text-center text-[11px] tracking-wide',
-                    phase.status === 'completed' && 'text-muted-foreground',
-                    phase.status === 'active' && 'font-medium text-foreground',
-                    phase.status === 'pending' && 'text-muted-foreground/40'
-                  )}
-                >
-                  {phase.shortName}
-                </span>
-              ))}
-            </div>
+        {activePhase?.description && (
+          <p className="text-xs text-muted-foreground">
+            {activePhase.description}
+          </p>
+        )}
 
-            {/* Active phase description */}
-            {activePhase?.description && (
-              <p className="text-sm text-muted-foreground">
-                {activePhase.description}
-              </p>
-            )}
-
-            {/* "You can leave" message */}
-            <p className="text-xs text-muted-foreground/50">
-              {leaveHint ?? (
-                <>
-                  Click around or create something else while you&rsquo;re
-                  waiting
-                </>
-              )}
-            </p>
-          </CardContent>
-        </CollapsibleContent>
-      </Card>
-    </Collapsible>
+        <p className="text-xs text-muted-foreground/50">
+          {leaveHint ?? (
+            <>
+              Click around or create something else while you&rsquo;re waiting
+            </>
+          )}
+        </p>
+      </PopoverContent>
+    </Popover>
   );
 };

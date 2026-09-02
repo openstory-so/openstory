@@ -28,6 +28,7 @@ import {
 } from '@/lib/billing/cost-estimation';
 import { addMicros, ZERO_MICROS, type Microdollars } from '@/lib/billing/money';
 import type { AspectRatio } from '@/lib/constants/aspect-ratios';
+import type { Resolution } from '@/lib/constants/resolutions';
 import { useFalPricing } from '@/hooks/use-fal-pricing';
 import type { SceneWithScript } from '@/hooks/use-scenes';
 import type { ShotVariant } from '@/lib/db/schema';
@@ -119,6 +120,8 @@ export type SceneListProps = {
   segmentsError?: Error | null;
   selection: SceneSelection;
   aspectRatio: AspectRatio;
+  /** Output resolution tier (#1449) — sizes the batch-motion estimate. */
+  resolution?: Resolution;
   onSelectScene: (sceneId: string, additive: boolean) => void;
   onSelectShot: (shotId: string) => void;
   onClearSelection: () => void;
@@ -162,6 +165,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
   segmentsError,
   selection,
   aspectRatio,
+  resolution,
   onSelectScene,
   onSelectShot,
   onClearSelection,
@@ -388,6 +392,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
       // by motion time; Seedance routes to reference-to-video when they do.
       const perShot = estimateVideoCost(videoModel, duration, {
         pricing: falPricing,
+        resolution,
         hasReferenceImages: true,
       });
       if (perShot === null) continue;
@@ -413,7 +418,14 @@ const SceneListComponent: React.FC<SceneListProps> = ({
       }
     }
     return anyHonest ? total : null;
-  }, [falPricing, notStartedShots, includeMusic, musicModel, videoModel]);
+  }, [
+    falPricing,
+    notStartedShots,
+    includeMusic,
+    musicModel,
+    videoModel,
+    resolution,
+  ]);
 
   const continueCostEstimate = useMemo((): Microdollars | null => {
     if (!nextStage || !showContinueFooter) return null;

@@ -15,7 +15,16 @@ import {
   inlineReferenceDescription,
   substituteReferenceTags,
 } from '@/lib/prompts/reference-legend';
-import { MOTION_TRANSFORMS, type MotionEndpointId } from './endpoint-map';
+import {
+  pickVideoResolution,
+  tiersForTokens,
+  type Resolution,
+} from '@/lib/constants/resolutions';
+import {
+  MOTION_JSON_SCHEMAS,
+  MOTION_TRANSFORMS,
+  type MotionEndpointId,
+} from './endpoint-map';
 import { resolveMotionEndpoint } from './resolve-motion-endpoint';
 import type { GenerateMotionOptions } from './motion-generation';
 
@@ -23,12 +32,56 @@ import type { GenerateMotionOptions } from './motion-generation';
 const QUALITY_OVERRIDES: Partial<
   Record<ImageToVideoModel, Record<string, unknown>>
 > = {
-  veo3_1: { resolution: '1080p' },
-  seedance_v2: { resolution: '720p' },
-  seedance_v2_5: { resolution: '720p' },
   // Required on i2v and r2v; schema default is the same value.
   minimax_h3_max: { prompt_expansion_mode: 'balanced' },
 };
+
+/**
+ * The `resolution` tokens an endpoint advertises, read off the generated fal
+ * schema. Empty for an endpoint with no such field (Kling v3, Hailuo 2.3),
+ * whose output size is fixed.
+ */
+export function motionResolutionTokens(endpointId: MotionEndpointId): string[] {
+  const schema: { properties?: Record<string, unknown> } =
+    MOTION_JSON_SCHEMAS[endpointId];
+  const field: unknown = schema.properties?.resolution;
+  if (!field || typeof field !== 'object' || !('enum' in field)) return [];
+  const values: unknown = field.enum;
+  if (!Array.isArray(values)) return [];
+  return values.filter((value): value is string => typeof value === 'string');
+}
+
+/**
+ * The tiers a motion model can actually deliver — what the resolution picker
+ * offers for it (#1449). Reads the i2v endpoint's enum; the T2V and
+ * reference-to-video siblings advertise the same tokens.
+ */
+export function motionResolutionTiers(model: ImageToVideoModel): Resolution[] {
+  return tiersForTokens(
+    motionResolutionTokens(IMAGE_TO_VIDEO_MODELS[model].id),
+    'video'
+  );
+}
+
+/**
+ * The requested resolution tier (#1449) in the endpoint's own vocabulary —
+ * `'768P'` on H3 Max, `'4k'` on Seedance 2.0, `'2160p'` on LTX. Read off the
+ * generated fal schema, so a new motion model needs no entry anywhere: it
+ * inherits whatever its `resolution` enum advertises, and an endpoint with no
+ * such field (Kling v3, Hailuo 2.3) keeps its fixed output.
+ *
+ * Empty when no tier was asked for, which leaves the schema default in place.
+ */
+function resolutionOverride(
+  endpointId: MotionEndpointId,
+  resolution: GenerateMotionOptions['resolution']
+): { resolution?: string } {
+  if (!resolution) return {};
+  const options = motionResolutionTokens(endpointId);
+  if (options.length === 0) return {};
+  const picked = pickVideoResolution(options, resolution);
+  return picked ? { resolution: picked } : {};
+}
 
 /**
  * Second lever against model-generated music (#1165) for the two endpoints
@@ -100,6 +153,7 @@ export function buildModelInput<T extends ImageToVideoModel>(
     imageUrl: options.imageUrl,
     aspectRatio: options.aspectRatio,
     ...QUALITY_OVERRIDES[modelKey],
+    ...resolutionOverride(endpointId, options.resolution),
     ...(NO_MUSIC_NEGATIVE_PROMPTS[modelKey] && {
       negative_prompt: NO_MUSIC_NEGATIVE_PROMPTS[modelKey],
     }),
@@ -185,6 +239,7 @@ export function buildMotionRequest<T extends ImageToVideoModel>(
     aspectRatio: options.aspectRatio,
     [imageField]: imageUrls,
     ...QUALITY_OVERRIDES[modelKey],
+    ...resolutionOverride(endpointId, options.resolution),
     ...(options.generateAudio !== undefined && {
       generate_audio: options.generateAudio,
     }),

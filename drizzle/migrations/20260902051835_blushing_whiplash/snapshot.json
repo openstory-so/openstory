@@ -1,8 +1,8 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "54d57204-328c-4cca-9c29-83244aca3384",
-  "prevIds": ["d60b8b08-1a58-48a8-9d38-c08d8786ae6a"],
+  "id": "c9553445-1130-46a8-9ffd-2090125481c3",
+  "prevIds": ["6b683ce2-47b8-40fe-ba77-ca6d3f207ae3"],
   "ddl": [
     {
       "name": "account",
@@ -2059,6 +2059,16 @@
       "table": "frame_variants"
     },
     {
+      "type": "text(10)",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "resolution",
+      "entityType": "columns",
+      "table": "frame_variants"
+    },
+    {
       "type": "text",
       "notNull": false,
       "autoincrement": false,
@@ -3660,7 +3670,7 @@
     },
     {
       "type": "text",
-      "notNull": false,
+      "notNull": true,
       "autoincrement": false,
       "default": null,
       "generated": null,
@@ -3670,7 +3680,7 @@
     },
     {
       "type": "text",
-      "notNull": false,
+      "notNull": true,
       "autoincrement": false,
       "default": null,
       "generated": null,
@@ -4619,6 +4629,16 @@
       "table": "sequences"
     },
     {
+      "type": "text(10)",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "'720p'",
+      "generated": null,
+      "name": "resolution",
+      "entityType": "columns",
+      "table": "sequences"
+    },
+    {
       "type": "text(100)",
       "notNull": true,
       "autoincrement": false,
@@ -4805,36 +4825,6 @@
       "default": "false",
       "generated": null,
       "name": "auto_generate_music",
-      "entityType": "columns",
-      "table": "sequences"
-    },
-    {
-      "type": "text",
-      "notNull": false,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "generation_stop_at",
-      "entityType": "columns",
-      "table": "sequences"
-    },
-    {
-      "type": "text",
-      "notNull": false,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "pipeline_stage",
-      "entityType": "columns",
-      "table": "sequences"
-    },
-    {
-      "type": "text",
-      "notNull": false,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "generation_checkpoint",
       "entityType": "columns",
       "table": "sequences"
     },
@@ -7055,6 +7045,16 @@
       "default": null,
       "generated": null,
       "name": "model",
+      "entityType": "columns",
+      "table": "video_variants"
+    },
+    {
+      "type": "text(10)",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "resolution",
       "entityType": "columns",
       "table": "video_variants"
     },

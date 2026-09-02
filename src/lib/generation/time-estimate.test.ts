@@ -195,14 +195,14 @@ describe('formatTimeRemaining', () => {
   });
 
   test('shows seconds for < 60', () => {
-    expect(formatTimeRemaining(30)).toBe('30s remaining');
+    expect(formatTimeRemaining(30)).toBe('30s');
   });
 
   test('shows minutes:seconds for 60', () => {
-    expect(formatTimeRemaining(60)).toBe('1:00 remaining');
+    expect(formatTimeRemaining(60)).toBe('1:00');
   });
 
   test('shows minutes:seconds for 150', () => {
-    expect(formatTimeRemaining(150)).toBe('2:30 remaining');
+    expect(formatTimeRemaining(150)).toBe('2:30');
   });
 });

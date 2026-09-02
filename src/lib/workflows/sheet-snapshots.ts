@@ -41,7 +41,7 @@ import type {
   LocationSheetWorkflowInput,
 } from '@/lib/workflow/types';
 import {
-  matchCharactersToScene,
+  matchCharactersToShotImage,
   matchElementsToShotImage,
   matchLocationsToScene,
 } from './scene-matching';
@@ -360,9 +360,11 @@ function sortedRefHashes(values: Array<string | null | undefined>): string[] {
  * image re-stales stills even with identical bible inputs), else the parent
  * `sheetInputHash` / `referenceInputHash`; plus element `imageUrl`.
  *
- * Element matching uses the still's visual prompt when `visualPrompt` is
- * passed (the same text the image model generated from). Scene extract /
- * `elementTags` are the fallback only when no prompt exists.
+ * Character and element matching use the still's visual prompt when
+ * `visualPrompt` is passed (the same text the image model generated from)
+ * so a regenerated prompt that names `SCARLETT` still attaches her sheet
+ * when continuity tags are empty (#1432). Scene extract / `elementTags`
+ * are the element fallback only when no prompt exists.
  *
  * Single source of truth so the image-generation trigger **stamp**
  * (`computeShotImageInputHash` via `prepareShotImageWorkflowInput`) and the staleness **verify**
@@ -401,10 +403,10 @@ export function resolveSceneShotImageReferences(params: {
   elementReferenceHashes: string[];
 } {
   const { scene, visualPrompt, characters, locations, elements } = params;
-  const matchedCharacters = matchCharactersToScene(
-    characters,
-    scene?.continuity?.characterTags ?? []
-  );
+  const matchedCharacters = matchCharactersToShotImage(characters, {
+    characterTags: scene?.continuity?.characterTags,
+    visualPrompt,
+  });
   const matchedLocations = matchLocationsToScene(
     locations,
     scene?.continuity?.environmentTag ?? '',

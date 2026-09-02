@@ -50,6 +50,7 @@ export type UserEditProvenance = {
   analysisModel: string | null;
 };
 import type { AspectRatio, ImageSize } from '@/lib/constants/aspect-ratios';
+import type { Resolution } from '@/lib/constants/resolutions';
 import type {
   CharacterMinimal,
   GeneratedAssetActivity,
@@ -144,6 +145,7 @@ export interface ImageWorkflowInput extends SequenceWorkflowContext {
    * present so write-time hash recomputation matches the trigger-time hash.
    */
   aspectRatio?: AspectRatio;
+  resolution?: Resolution;
   /** Hash over `(prompt, model, aspectRatio, sceneSnapshot)`; validated at start. */
   snapshotInputHash?: string;
   /**
@@ -197,6 +199,7 @@ export interface ShotVariantWorkflowInput extends SequenceWorkflowContext {
   frameId?: string;
   /** Sequence aspect ratio — drives shot grid layout */
   aspectRatio?: AspectRatio;
+  resolution?: Resolution;
   /** Scene visual prompt, from the anchor `frame.imagePrompt` mirror (#713) */
   scenePrompt?: string;
   /** The `frame_prompt_versions` row `scenePrompt` was read from, snapshotted
@@ -227,6 +230,7 @@ export interface StoryboardWorkflowInput extends SequenceWorkflowContext {
   title: string;
   script: string;
   aspectRatio: AspectRatio;
+  resolution?: Resolution;
   styleConfig: StyleConfig;
   /**
    * Automatic style (#1213): set when the sequence's style is a placeholder
@@ -309,6 +313,7 @@ export type StoryboardTriggerInput = Omit<
   | 'title'
   | 'script'
   | 'aspectRatio'
+  | 'resolution'
   | 'styleConfig'
   | 'analysisModelId'
   | 'imageModel'
@@ -328,6 +333,7 @@ export interface AnalyzeScriptWorkflowInput extends SequenceWorkflowContext {
   // Required inputs
   script: string;
   aspectRatio: AspectRatio;
+  resolution?: Resolution;
   styleConfig: StyleConfig;
   /** @see StoryboardWorkflowInput.pendingAutoStyleId — derived here, in parallel with scene-split. */
   pendingAutoStyleId?: string;
@@ -446,6 +452,7 @@ export interface MotionWorkflowInput extends SequenceWorkflowContext {
   fps?: number;
   motionBucket?: number;
   aspectRatio?: AspectRatio; // "16:9", "9:16", "1:1"
+  resolution?: Resolution;
   /**
    * For audio-capable models (kling v3, veo3), pass `false` to suppress the
    * model's native audio output (sfx/ambient/lip-sync). Omit to use the API
@@ -633,6 +640,7 @@ export interface RegenerateShotsWorkflowInput extends SequenceWorkflowContext {
   imageModel?: TextToImageModel;
   /** Aspect ratio (frozen at trigger time, replaces a live sequence read). */
   aspectRatio: AspectRatio;
+  resolution?: Resolution;
   /** Per-shot inlined snapshot DTOs. */
   shotSnapshots: RegenerateShotSnapshot[];
   /**
@@ -677,6 +685,7 @@ export interface RecastCharacterWorkflowInput extends SequenceWorkflowContext {
   styleConfig?: StyleConfig;
   /** Aspect ratio (frozen at trigger time, replaces a live sequence read). */
   aspectRatio: AspectRatio;
+  resolution?: Resolution;
   /**
    * Per-shot regenerate-shots snapshots for the shots this character appears
    * in, resolved at trigger time. The scope of the regeneration IS this list —
@@ -932,6 +941,7 @@ export interface UpscaleShotVariantWorkflowInput extends SequenceWorkflowContext
   croppedTilePath: string;
   /** Sequence aspect ratio — determines output image size for upscale */
   aspectRatio?: AspectRatio;
+  resolution?: Resolution;
   /** Character reference sheets for visual consistency during upscale */
   characterReferences?: ReferenceImageDescription[];
   /** Location reference images for environment consistency during upscale */
@@ -1158,6 +1168,7 @@ export interface RecastLocationWorkflowInput extends SequenceWorkflowContext {
   styleConfig?: StyleConfig;
   /** Aspect ratio (frozen at trigger time, replaces a live sequence read). */
   aspectRatio: AspectRatio;
+  resolution?: Resolution;
   /**
    * Per-shot regenerate-shots snapshots for the shots this location appears
    * in, resolved at trigger time. The scope of the regeneration IS this list —
@@ -1275,6 +1286,7 @@ export interface BatchMotionMusicWorkflowInput extends SequenceWorkflowContext {
     fps?: number;
     motionBucket?: number;
     aspectRatio?: AspectRatio;
+    resolution?: Resolution;
     /** See `MotionWorkflowInput.generateAudio`. */
     generateAudio?: boolean;
     /** See `MotionWorkflowInput.userEditProvenance`. */
@@ -1351,6 +1363,7 @@ export interface ShotImagesWorkflowInput extends SequenceWorkflowContext {
   /** Multiple image models for variant generation (first is primary) */
   imageModels?: TextToImageModel[];
   aspectRatio: AspectRatio;
+  resolution?: Resolution;
   /**
    * Per-scene snapshot of the upstream sheet hashes for the references that
    * will be inlined into image generation. Resolved at trigger time so the
@@ -1524,6 +1537,7 @@ export interface ReplaceElementWorkflowInput extends SequenceWorkflowContext {
   shotSnapshotByShotId: Record<string, ReplaceElementShotSnapshot>;
   /** Sequence aspect ratio, frozen at trigger time. */
   aspectRatio: AspectRatio;
+  resolution?: Resolution;
   /**
    * Video model for the re-render, resolved at trigger time — the SAME value
    * the motion prompts in `motionPromptByShotId` were assembled for.

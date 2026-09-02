@@ -161,6 +161,7 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
           numImages: input.numImages ?? 1,
           seed: input.seed,
           referenceImageUrls: referenceUrls,
+          ...(input.resolution && { resolution: input.resolution }),
         };
 
         // A preview for a shot can only land if it knows its anchor frame, and
@@ -229,6 +230,7 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
             {
               workflowRunId,
               model,
+              resolution: input.resolution ?? null,
               promptVersionId,
               // Direct-regen claims already carry the hash from enqueue;
               // chained claims get it stamped here (the render's snapshot
@@ -249,6 +251,7 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
             sequenceId: input.sequenceId,
             kind: 'model',
             model,
+            resolution: input.resolution ?? null,
             status: 'generating',
             workflowRunId,
             promptVersionId,

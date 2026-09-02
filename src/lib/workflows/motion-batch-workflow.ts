@@ -109,6 +109,7 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
         fps: shot.fps,
         motionBucket: shot.motionBucket,
         aspectRatio: shot.aspectRatio,
+        resolution: shot.resolution,
         generateAudio: shot.generateAudio,
         userEditProvenance: shot.userEditProvenance,
         userEditText: shot.userEditText,

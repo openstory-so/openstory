@@ -108,4 +108,39 @@ describe('resolveMotionEndpoint', () => {
       references: 'none',
     });
   });
+
+  it('routes Omni Flash to fal reference-to-video when refs are present', () => {
+    expect(resolveMotionEndpoint('gemini_omni_flash', true)).toEqual({
+      via: 'fal',
+      endpointId: 'fal-ai/gemini-omni-1.1-flash/reference-to-video',
+      references: 'endpoint',
+      referenceConfig: MOTION_REFERENCE_ENDPOINTS.gemini_omni_flash,
+    });
+  });
+
+  it('keeps Omni Flash on fal image-to-video when there are no refs', () => {
+    expect(resolveMotionEndpoint('gemini_omni_flash', false)).toEqual({
+      via: 'fal',
+      endpointId: IMAGE_TO_VIDEO_MODELS.gemini_omni_flash.id,
+      references: 'none',
+    });
+  });
+
+  it('stamps Google-native Omni Flash as via google and marks refs as inline', () => {
+    expect(resolveMotionEndpoint('gemini_omni_flash', true, 'google')).toEqual({
+      via: 'google',
+      endpointId: 'gemini-omni-1.1-flash',
+      references: 'inline',
+    });
+  });
+
+  it('stamps Google-native Omni Flash with no refs as via google', () => {
+    expect(resolveMotionEndpoint('gemini_omni_flash', false, 'google')).toEqual(
+      {
+        via: 'google',
+        endpointId: 'gemini-omni-1.1-flash',
+        references: 'none',
+      }
+    );
+  });
 });

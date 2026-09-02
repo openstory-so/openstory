@@ -32,14 +32,18 @@ import {
   inlineReferenceDescription,
   substituteReferenceTags,
 } from '@/lib/prompts/reference-legend';
+import {
+  pickVideoResolution,
+  type Resolution,
+} from '@/lib/constants/resolutions';
 import { buildReferenceVideoPrompt } from './build-reference-video-prompt';
 
 /**
- * Resolution tier we ask Ark for. Matches the `QUALITY_OVERRIDES` entry the
- * fal route applies to Seedance, so switching route doesn't silently change
- * what a shot costs or how it looks.
+ * Resolution tokens Ark serves for Seedance. Matches the fal route's enum, so
+ * switching route doesn't silently change what a shot costs or how it looks.
+ * A missing tier falls back to 720p — the old fixed value (#1449).
  */
-const BYTEPLUS_RESOLUTION = '720p';
+const BYTEPLUS_RESOLUTIONS = ['480p', '720p', '1080p', '4k'] as const;
 
 /** One entry of the Ark prompt-parts array. */
 type BytePlusPromptPart =
@@ -66,6 +70,7 @@ export type BytePlusVideoRequestOptions = {
   prompt: string;
   aspectRatio?: AspectRatio;
   duration?: number;
+  resolution?: Resolution;
   generateAudio?: boolean;
   referenceImages?: ReferenceImageDescription[];
 };
@@ -99,7 +104,11 @@ export function buildBytePlusVideoRequest(
   // Seedance 2.5 first-frame / first-last-frame rejects a concrete ratio
   // (`9:16`, `16:9`, …). Output follows the first-frame still; `adaptive`
   // is the only accepted value. Sequence motion always sends a still.
-  const size = `adaptive_${BYTEPLUS_RESOLUTION}`;
+  const size = `adaptive_${
+    (options.resolution &&
+      pickVideoResolution(BYTEPLUS_RESOLUTIONS, options.resolution)) ??
+    '720p'
+  }`;
 
   const modelOptions: Record<string, unknown> = {
     // Ark defaults `watermark` to false for video, but state it: the flag is

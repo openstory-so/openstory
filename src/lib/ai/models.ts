@@ -64,6 +64,19 @@ export const IMAGE_TO_VIDEO_MODELS = {
     maxPromptLength: 20000,
     performance: { estimatedGenerationTime: 147, quality: 'best' as const },
   },
+  gemini_omni_flash: {
+    id: 'fal-ai/gemini-omni-1.1-flash/image-to-video',
+    name: 'Gemini Omni Flash 1.1',
+    vendor: 'Google',
+    license: 'proprietary' as const,
+    qualityRank: 2,
+    // Always generates synchronized audio (dialogue, ambience, score). Neither
+    // the fal schema nor the Interactions API expose a generate_audio toggle
+    // (`videoModelSupportsAudio` is false), so audio direction is in-prompt
+    // and the scene-editor SFX checkbox stays hidden.
+    maxPromptLength: 20000,
+    performance: { estimatedGenerationTime: 20, quality: 'best' as const },
+  },
   kling_v3_pro: {
     id: 'fal-ai/kling-video/v3/pro/image-to-video',
     name: 'Kling v3 Pro',
@@ -715,6 +728,13 @@ export const MOTION_REFERENCE_ENDPOINTS: Partial<
     endpointId: 'bytedance/seedance-2.5/reference-to-video',
     tag: (position) => `@Image${position}`,
     maxImages: 9,
+  },
+  gemini_omni_flash: {
+    endpointId: 'fal-ai/gemini-omni-1.1-flash/reference-to-video',
+    // Google numbers references from zero (Omni Flash prompt guide); the API
+    // caps a request at 7 reference images.
+    tag: (position) => `<IMAGE_REF_${position - 1}>`,
+    maxImages: 7,
   },
   // Schema caps images at 9 (videos 3, audio 3; combined 12 files).
   minimax_h3_max: {

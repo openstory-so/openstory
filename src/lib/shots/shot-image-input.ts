@@ -13,6 +13,7 @@ import { isValidTextToImageModel } from '@/lib/ai/models';
 import { resolveImageModel } from '@/lib/ai/resolve-asset-models';
 import { estimateImageCost, gateEstimate } from '@/lib/billing/cost-estimation';
 import { requireCredits } from '@/lib/billing/preflight';
+import type { Resolution } from '@/lib/constants/resolutions';
 import {
   aspectRatioToImageSize,
   type AspectRatio,
@@ -35,7 +36,7 @@ import type {
 } from '@/lib/workflow/types';
 import { shouldRecordUserEdit } from '@/lib/workflows/user-edit-predicate';
 import {
-  matchCharactersToScene,
+  matchCharactersToShotImage,
   matchElementsToShotImage,
   matchLocationsToScene,
 } from '@/lib/workflows/scene-matching';
@@ -81,6 +82,7 @@ export async function prepareShotImageWorkflowInput(args: {
     id: string;
     teamId: string;
     aspectRatio: AspectRatio;
+    resolution: Resolution;
     imageModel: string | null;
     styleId: string | null;
     analysisModel: string;
@@ -173,10 +175,10 @@ export async function prepareShotImageWorkflowInput(args: {
         scopedDb.sequenceElements.list(sequence.id),
       ]);
 
-  const matchedCharacters = matchCharactersToScene(
-    allCharacters,
-    continuity?.characterTags ?? []
-  );
+  const matchedCharacters = matchCharactersToShotImage(allCharacters, {
+    characterTags: continuity?.characterTags,
+    visualPrompt: prompt,
+  });
   const characterReferences = buildCharacterReferenceImages(matchedCharacters);
 
   const matchedLocations = matchLocationsToScene(
@@ -225,6 +227,7 @@ export async function prepareShotImageWorkflowInput(args: {
     gateEstimate(
       estimateImageCost(model, sequence.aspectRatio, 1, {
         pricing: await getEffectiveFalPricing(),
+        resolution: sequence.resolution,
       }),
       { model, operation: 'shot-image' }
     ),
@@ -281,6 +284,7 @@ export async function prepareShotImageWorkflowInput(args: {
         : promptVersionOverride,
     sequenceId: sequence.id,
     aspectRatio: sequence.aspectRatio,
+    resolution: sequence.resolution,
     sceneSnapshot,
     snapshotInputHash,
     referenceImages: [

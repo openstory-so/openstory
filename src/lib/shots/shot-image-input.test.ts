@@ -62,6 +62,7 @@ function baseArgs(scopedDb: ReturnType<typeof makeScopedDb>['scopedDb']) {
       id: 'seq_1',
       teamId: 'team_1',
       aspectRatio: '16:9' as const,
+      resolution: '720p' as const,
       imageModel: DEFAULT_IMAGE_MODEL,
       styleId: null,
       analysisModel: 'anthropic/claude-haiku-4.5',

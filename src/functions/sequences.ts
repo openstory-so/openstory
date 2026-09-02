@@ -24,6 +24,7 @@ import {
 } from '@/lib/billing/preflight';
 import { estimateStoryboardPreflightCost } from '@/lib/billing/storyboard-preflight-cost';
 import { DEFAULT_ASPECT_RATIO } from '@/lib/constants/aspect-ratios';
+import { resolutionSchema } from '@/lib/constants/resolutions';
 import type { Shot } from '@/lib/db/schema';
 import {
   loadSceneContextBySequence,
@@ -273,6 +274,7 @@ export const updateSequenceFn = createServerFn({ method: 'POST' })
             DEFAULT_IMAGE_MODEL
           ),
           aspectRatio: sequence.aspectRatio,
+          resolution: sequence.resolution,
           autoGenerateMotion: sequence.autoGenerateMotion,
           stopAt: sequence.generationStopAt ?? undefined,
           videoModels: [
@@ -386,6 +388,34 @@ export const renameSequenceFn = createServerFn({ method: 'POST' })
   });
 
 // ============================================================================
+// Resolution tier (#1449)
+// ============================================================================
+
+const setSequenceResolutionInputSchema = z.object({
+  sequenceId: ulidSchema,
+  resolution: resolutionSchema,
+});
+
+/**
+ * Change the sequence's resolution tier. Separate from {@link updateSequenceFn}
+ * for the same reason as {@link renameSequenceFn}: that path force-defaults
+ * `aspectRatio` and treats its presence as a regeneration trigger.
+ *
+ * Nothing is re-rendered and nothing goes stale — the tier is what the NEXT
+ * render is asked for. Draft the board at 720p, switch to 4K, re-roll the
+ * shots worth keeping; each version carries the tier it was made at.
+ */
+export const setSequenceResolutionFn = createServerFn({ method: 'POST' })
+  .middleware([sequenceAccessMiddleware])
+  .validator(zodValidator(setSequenceResolutionInputSchema))
+  .handler(async ({ data, context }) =>
+    context.scopedDb.sequences.update({
+      id: data.sequenceId,
+      resolution: data.resolution,
+    })
+  );
+
+// ============================================================================
 // Retry Failed Storyboard
 // ============================================================================
 
@@ -416,6 +446,7 @@ export const retryStoryboardFn = createServerFn({ method: 'POST' })
           DEFAULT_IMAGE_MODEL
         ),
         aspectRatio: sequence.aspectRatio,
+        resolution: sequence.resolution,
         autoGenerateMotion: sequence.autoGenerateMotion,
         videoModels: [
           safeImageToVideoModel(sequence.videoModel, DEFAULT_VIDEO_MODEL),
@@ -908,6 +939,7 @@ export const addModelToSequenceFn = createServerFn({ method: 'POST' })
                   characterTags: sceneOf(f)?.continuity?.characterTags,
                   duration: f.durationMs ? f.durationMs / 1000 : 3,
                   aspectRatio: sequence.aspectRatio,
+                  resolution: sequence.resolution,
                 };
               }),
             };
@@ -985,6 +1017,7 @@ export const addModelToSequenceFn = createServerFn({ method: 'POST' })
         teamId: sequence.teamId,
         sequenceId: sequence.id,
         aspectRatio: sequence.aspectRatio,
+        resolution: sequence.resolution,
         characters,
         locations,
         elements,
@@ -1010,6 +1043,7 @@ export const addModelToSequenceFn = createServerFn({ method: 'POST' })
     const perShotCost = gateEstimate(
       estimateImageCost(model, sequence.aspectRatio, 1, {
         pricing: await getEffectiveFalPricing(),
+        resolution: sequence.resolution,
       }),
       { model, operation: 'add-image-model' }
     );

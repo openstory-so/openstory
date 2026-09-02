@@ -26,6 +26,7 @@ import { buildLocationReferenceImages } from '@/lib/prompts/location-prompt';
 import type { ReferenceImageDescription } from '@/lib/prompts/reference-image-prompt';
 import {
   matchCharactersToScene,
+  matchCharactersToShotImage,
   matchElementsToScene,
   matchElementsToShotImage,
   matchLocationsToScene,
@@ -73,8 +74,8 @@ export function buildMotionReferenceImages(params: {
 export function buildShotImageReferenceImages(params: {
   scene: SceneReferenceInput;
   /**
-   * The still's visual prompt. When present, element refs follow the
-   * prompt (same matcher as `/image` stamp + staleness verify).
+   * The still's visual prompt. Character and element refs follow the
+   * prompt (same matcher as `/image` stamp + staleness verify) (#1432).
    */
   visualPrompt?: string | null;
   characters: CharacterMinimal[];
@@ -83,10 +84,10 @@ export function buildShotImageReferenceImages(params: {
 }): ReferenceImageDescription[] {
   const { scene, visualPrompt, characters, locations, elements } = params;
 
-  const matchedCharacters = matchCharactersToScene(
-    characters,
-    scene?.continuity?.characterTags ?? []
-  );
+  const matchedCharacters = matchCharactersToShotImage(characters, {
+    characterTags: scene?.continuity?.characterTags,
+    visualPrompt,
+  });
   const matchedLocations = matchLocationsToScene(
     locations,
     scene?.continuity?.environmentTag ?? '',

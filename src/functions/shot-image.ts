@@ -39,7 +39,7 @@ import type {
   ShotVariantWorkflowInput,
   UpscaleShotVariantWorkflowInput,
 } from '@/lib/workflow/types';
-import { matchCharactersToScene } from '@/lib/workflows/scene-matching';
+import { matchCharactersToShotImage } from '@/lib/workflows/scene-matching';
 import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
@@ -62,6 +62,7 @@ export const generateShotsFn = createServerFn({ method: 'POST' })
           DEFAULT_IMAGE_MODEL
         ),
         aspectRatio: sequence.aspectRatio,
+        resolution: sequence.resolution,
         videoModels: [
           safeImageToVideoModel(sequence.videoModel, DEFAULT_VIDEO_MODEL),
         ],
@@ -249,22 +250,6 @@ export const generateShotVariantsFn = createServerFn({ method: 'POST' })
       throw new Error('Shot must have a still image to generate variants');
     }
 
-    const allCharacters = await context.scopedDb.characters.listWithSheets(
-      sequence.id
-    );
-    const characterTags = scene?.continuity?.characterTags ?? [];
-    const characterReferences = buildCharacterReferenceImages(
-      matchCharactersToScene(allCharacters, characterTags)
-    );
-
-    const allLocations =
-      await context.scopedDb.sequenceLocations.listWithReferences(sequence.id);
-    const locationReferences = getSceneLocationReferenceImages(
-      allLocations,
-      scene?.continuity?.environmentTag ?? '',
-      scene?.metadata?.location ?? ''
-    );
-
     const numImages = data.numImages ?? 1;
     await requireCredits(
       context.scopedDb,
@@ -273,7 +258,10 @@ export const generateShotVariantsFn = createServerFn({ method: 'POST' })
           data.model ?? DEFAULT_IMAGE_MODEL,
           sequence.aspectRatio,
           numImages,
-          { pricing: await getEffectiveFalPricing() }
+          {
+            pricing: await getEffectiveFalPricing(),
+            resolution: sequence.resolution,
+          }
         ),
         {
           model: data.model ?? DEFAULT_IMAGE_MODEL,
@@ -286,8 +274,22 @@ export const generateShotVariantsFn = createServerFn({ method: 'POST' })
 
     const gridConfig = getVariantGridConfig(sequence.aspectRatio);
 
-    const selectedPrompt =
-      await context.scopedDb.framePromptVersions.getSelected(frame.id);
+    const [allCharacters, allLocations, selectedPrompt] = await Promise.all([
+      context.scopedDb.characters.listWithSheets(sequence.id),
+      context.scopedDb.sequenceLocations.listWithReferences(sequence.id),
+      context.scopedDb.framePromptVersions.getSelected(frame.id),
+    ]);
+    const characterReferences = buildCharacterReferenceImages(
+      matchCharactersToShotImage(allCharacters, {
+        characterTags: scene?.continuity?.characterTags,
+        visualPrompt: selectedPrompt?.text,
+      })
+    );
+    const locationReferences = getSceneLocationReferenceImages(
+      allLocations,
+      scene?.continuity?.environmentTag ?? '',
+      scene?.metadata?.location ?? ''
+    );
 
     const workflowInput: ShotVariantWorkflowInput = {
       userId: user.id,
@@ -300,6 +302,7 @@ export const generateShotVariantsFn = createServerFn({ method: 'POST' })
       promptVersionId: selectedPrompt?.id ?? null,
       model: data.model,
       aspectRatio: sequence.aspectRatio,
+      resolution: sequence.resolution,
       imageSize: data.imageSize || gridConfig.imageSize,
       numImages,
       seed: data.seed,
@@ -385,9 +388,13 @@ export const selectShotVariantFn = createServerFn({ method: 'POST' })
     const allCharacters = await context.scopedDb.characters.listWithSheets(
       sequence.id
     );
-    const characterTags = scene?.continuity?.characterTags ?? [];
+    const selectedPrompt =
+      await context.scopedDb.framePromptVersions.getSelected(frame.id);
     const characterReferences = buildCharacterReferenceImages(
-      matchCharactersToScene(allCharacters, characterTags)
+      matchCharactersToShotImage(allCharacters, {
+        characterTags: scene?.continuity?.characterTags,
+        visualPrompt: selectedPrompt?.text,
+      })
     );
 
     const allLocations =
@@ -408,7 +415,10 @@ export const selectShotVariantFn = createServerFn({ method: 'POST' })
           resolveUpscaleModel(sheet.model),
           sequence.aspectRatio,
           1,
-          { pricing: await getEffectiveFalPricing() }
+          {
+            pricing: await getEffectiveFalPricing(),
+            resolution: sequence.resolution,
+          }
         ),
         {
           model: resolveUpscaleModel(sheet.model),
@@ -461,6 +471,7 @@ export const selectShotVariantFn = createServerFn({ method: 'POST' })
       croppedTileUrl: cropResult.url,
       croppedTilePath: cropResult.path,
       aspectRatio: sequence.aspectRatio,
+      resolution: sequence.resolution,
       characterReferences,
       locationReferences,
       // The framing version the upscaled tile derives from (#989) — the upscale

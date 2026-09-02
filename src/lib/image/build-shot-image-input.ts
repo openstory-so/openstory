@@ -10,6 +10,7 @@
 import type { TextToImageModel } from '@/lib/ai/models';
 import type { Scene } from '@/lib/ai/scene-analysis.schema';
 import { aspectRatioToImageSize } from '@/lib/constants/aspect-ratios';
+import type { Resolution } from '@/lib/constants/resolutions';
 import type {
   CharacterMinimal,
   Shot,
@@ -26,7 +27,7 @@ import type {
   ImageWorkflowInput,
 } from '@/lib/workflow/types';
 import {
-  matchCharactersToScene,
+  matchCharactersToShotImage,
   matchElementsToShotImage,
   matchLocationsToScene,
 } from '@/lib/workflows/scene-matching';
@@ -62,6 +63,7 @@ export async function buildShotImageWorkflowInput(opts: {
   teamId: string;
   sequenceId: string;
   aspectRatio: AspectRatio;
+  resolution: Resolution;
   characters: CharacterMinimal[];
   locations: SequenceLocationWithReference[];
   elements: SequenceElement[];
@@ -93,6 +95,7 @@ export async function buildShotImageWorkflowInput(opts: {
     teamId,
     sequenceId,
     aspectRatio,
+    resolution,
     characters,
     locations,
     elements,
@@ -107,10 +110,10 @@ export async function buildShotImageWorkflowInput(opts: {
 
   const continuity = opts.continuity ?? opts.scene?.continuity;
 
-  const matchedCharacters = matchCharactersToScene(
-    characters,
-    continuity?.characterTags ?? []
-  );
+  const matchedCharacters = matchCharactersToShotImage(characters, {
+    characterTags: continuity?.characterTags,
+    visualPrompt: prompt,
+  });
   const characterReferences = buildCharacterReferenceImages(matchedCharacters);
 
   const environmentTag = continuity?.environmentTag ?? '';
@@ -164,6 +167,7 @@ export async function buildShotImageWorkflowInput(opts: {
     shotId: shot.id,
     sequenceId,
     aspectRatio,
+    resolution,
     sceneSnapshot,
     snapshotInputHash,
     referenceImages: [

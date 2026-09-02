@@ -108,6 +108,7 @@ const IMAGE: StudioCreateInput = {
   prompt: 'a red fox',
   imageModel: 'gpt_image_2',
   aspectRatio: '16:9',
+  resolution: '720p' as const,
   count: 1,
   referenceImages: [],
 };
@@ -117,6 +118,7 @@ const VIDEO: StudioCreateInput = {
   prompt: 'the fox turns',
   videoModel: 'seedance_v2',
   aspectRatio: '16:9',
+  resolution: '720p' as const,
   duration: 5,
   count: 1,
   mode: 'text',

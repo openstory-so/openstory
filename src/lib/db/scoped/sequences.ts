@@ -9,6 +9,10 @@ import {
   type AspectRatio,
   DEFAULT_ASPECT_RATIO,
 } from '@/lib/constants/aspect-ratios';
+import {
+  DEFAULT_RESOLUTION,
+  type Resolution,
+} from '@/lib/constants/resolutions';
 import type { Database } from '@/lib/db/client';
 import {
   assembleShotViews,
@@ -314,6 +318,7 @@ export function createSequencesMethods(
        */
       deferStyleSnapshot?: boolean;
       aspectRatio?: AspectRatio;
+      resolution?: Resolution;
       analysisModel?: string;
       imageModel?: string;
       videoModel?: string;
@@ -337,6 +342,7 @@ export function createSequencesMethods(
         styleId: params.styleId,
         styleConfig,
         aspectRatio: params.aspectRatio ?? DEFAULT_ASPECT_RATIO,
+        resolution: params.resolution ?? DEFAULT_RESOLUTION,
         // The sequences SQL column defaults are stale literals
         // ('anthropic/claude-haiku-4.5' for analysis, 'nano_banana_2' for
         // image, 'kling_v3_pro' for video — see schema/sequences.ts) that
@@ -433,6 +439,7 @@ export function createSequencesMethods(
       workflowRunId?: string;
       analysisModel?: string;
       aspectRatio?: AspectRatio;
+      resolution?: Resolution;
       imageModel?: string;
       videoModel?: string;
       musicModel?: string;

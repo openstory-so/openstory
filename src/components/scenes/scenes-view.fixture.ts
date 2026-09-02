@@ -39,6 +39,7 @@ export const fixtureSequence: Sequence = {
   styleId: '01KT2QRY2BWFJHT67CNQ3V9566',
   styleConfig: null,
   aspectRatio: '9:16',
+  resolution: '720p',
   analysisModel: 'anthropic/claude-opus-5',
   analysisDurationMs: 81570,
   imageModel: 'nano_banana_pro',

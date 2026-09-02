@@ -2,13 +2,18 @@
  * Shared text adapter factory.
  *
  * Creates TanStack AI adapters for our chat models. Grok models go to xAI
- * directly when an xAI key is resolvable (issue #1167); everything else — and
- * Grok with no xAI key — goes to OpenRouter, either directly or through fal's
- * OpenAI-compatible OpenRouter endpoint (so a team with only a fal key still
- * covers LLM calls — issue #895).
+ * directly when an xAI key is resolvable (issue #1167), and Gemini models to
+ * Google's own Gemini API when a Google key is resolvable; everything else —
+ * and Grok/Gemini with no native key — goes to OpenRouter, either directly or
+ * through fal's OpenAI-compatible OpenRouter endpoint (so a team with only a
+ * fal key still covers LLM calls — issue #895).
  */
 
 import { getEnv } from '#env';
+import {
+  nativeGeminiTextModel,
+  type NativeGeminiTextModel,
+} from '@/lib/ai/gemini-native';
 import {
   nativeGrokTextModel,
   type NativeGrokTextModel,
@@ -17,6 +22,7 @@ import type { TextModel } from '@/lib/ai/models';
 import { workersSafeFetch } from '@/lib/ai/workers-safe-fetch';
 import { HTTPClient } from '@openrouter/sdk/lib/http';
 import { createModel, extendAdapter } from '@tanstack/ai';
+import { createGeminiChat } from '@tanstack/ai-gemini';
 import { createGrokText } from '@tanstack/ai-grok';
 import { createOpenRouterText, openRouterText } from '@tanstack/ai-openrouter';
 
@@ -36,9 +42,10 @@ export type LlmKeyInfo = {
    * Which API the key belongs to: 'openrouter' calls OpenRouter directly
    * (Bearer auth), 'fal' routes through fal's OpenRouter endpoint (`Key`
    * auth — fal rejects Bearer there), 'xai' calls xAI's own Responses API
-   * (Bearer auth, Grok models only — issue #1167).
+   * (Bearer auth, Grok models only — issue #1167), 'google' calls Google's
+   * own Gemini API (`x-goog-api-key` auth, Gemini models only).
    */
-  via: 'openrouter' | 'fal' | 'xai';
+  via: 'openrouter' | 'fal' | 'xai' | 'google';
 };
 
 // fal's endpoint authenticates with `Authorization: Key <FAL_KEY>` while the
@@ -54,12 +61,14 @@ function falAuthHttpClient(falKey: string): HTTPClient {
 
 /**
  * Resolve the platform-level LLM key from env. A Grok model prefers
- * XAI_API_KEY (#1167); otherwise OPENROUTER_KEY, and with only FAL_KEY set LLM
- * calls route through fal's OpenRouter endpoint — the platform can run on a
- * single fal key (issue #895). Returns undefined when none is configured.
+ * XAI_API_KEY (#1167) and a Gemini model GEMINI_API_KEY; otherwise
+ * OPENROUTER_KEY, and with only FAL_KEY set LLM calls route through fal's
+ * OpenRouter endpoint — the platform can run on a single fal key (issue
+ * #895). Returns undefined when none is configured.
  *
  * Omitting `model` keeps the OpenRouter-first order, which every model
- * supports — a caller that can't name the model can't promise it's a Grok one.
+ * supports — a caller that can't name the model can't promise it's a Grok
+ * or Gemini one.
  */
 export function getPlatformLlmKey(
   model?: string
@@ -67,6 +76,9 @@ export function getPlatformLlmKey(
   const env = getEnv();
   if (model && nativeGrokTextModel(model) && env.XAI_API_KEY) {
     return { key: env.XAI_API_KEY, via: 'xai', source: 'platform' };
+  }
+  if (model && nativeGeminiTextModel(model) && env.GEMINI_API_KEY) {
+    return { key: env.GEMINI_API_KEY, via: 'google', source: 'platform' };
   }
   if (env.OPENROUTER_KEY) {
     return { key: env.OPENROUTER_KEY, via: 'openrouter', source: 'platform' };
@@ -92,22 +104,11 @@ let loggedRetryMode = false;
  * `createModel('vendor/model-id', { input: [...], features: [...] })`.
  *
  */
-export const CATALOG_LAG_MODELS = [
-  // Released 2026-08-26; 0.18.1's catalog stops at z-ai/glm-5.3 (#1367).
-  createModel('z-ai/glm-5.3-flash', {
-    input: ['text', 'image'],
-    features: ['reasoning', 'structured_outputs'],
-  }),
-] as const;
+export const CATALOG_LAG_MODELS = [] as const;
 
-const openRouterTextExtended = extendAdapter(
-  openRouterText,
-  CATALOG_LAG_MODELS
-);
-const createOpenRouterTextExtended = extendAdapter(
-  createOpenRouterText,
-  CATALOG_LAG_MODELS
-);
+// Empty after @tanstack/ai-openrouter@0.19.5 shipped z-ai/glm-5.3-flash.
+// Restore `extendAdapter` around the OpenRouter factories when the next lag
+// id lands.
 
 /** {@link CATALOG_LAG_MODELS} for the Grok adapter. Native `grok-4.6` is
  *  in the 0.16 catalog; `grok-4.20-0309-reasoning` is still lag-bridged.
@@ -139,6 +140,22 @@ export function resolveNativeGrokModel(
   return nativeGrokTextModel(model);
 }
 
+/**
+ * Whether a request goes to Google's Gemini API directly, and under which
+ * model name. Same contract as {@link resolveNativeGrokModel}: `llm-client`
+ * asks this too rather than deciding for itself, so the adapter, the options
+ * object (camelCase `GoogleGenAI` config vs OpenRouter's shape), and the
+ * tools can't disagree about the route.
+ */
+export function resolveNativeGeminiModel(
+  model: TextModel,
+  keyInfo?: LlmKeyInfo
+): NativeGeminiTextModel | undefined {
+  const resolved = keyInfo ?? getPlatformLlmKey(model);
+  if (resolved?.via !== 'google' || !resolved.key) return undefined;
+  return nativeGeminiTextModel(model);
+}
+
 // Callers must say which API a key belongs to (`via`) — a bare string can't:
 // a fal key mistaken for an OpenRouter key gets Bearer auth against
 // openrouter.ai and 401s at runtime, invisibly to the compiler.
@@ -158,13 +175,25 @@ export function createAdapter(model: TextModel, keyInfo?: LlmKeyInfo) {
     });
   }
 
-  // An xAI key on the OpenRouter branch is the #1358 mismatch: resolveLlmKey
-  // was asked for a Grok model, then the call used a different one. OpenRouter
-  // answers that with "Missing Authentication header" (its text for any
-  // non-sk-or key). Throw so the next mismatch is a stack, not a 401 puzzle.
-  if (via === 'xai') {
+  const nativeGeminiModel = resolveNativeGeminiModel(model, resolved);
+  if (nativeGeminiModel && key) {
+    return createGeminiChat(nativeGeminiModel, key, {
+      // GEMINI_BASE_URL is the aimock hook for the native Google path,
+      // mirroring XAI_BASE_URL above.
+      ...(env.GEMINI_BASE_URL && {
+        httpOptions: { baseUrl: env.GEMINI_BASE_URL },
+      }),
+    });
+  }
+
+  // A native-provider key on the OpenRouter branch is the #1358 mismatch:
+  // resolveLlmKey was asked for a Grok/Gemini model, then the call used a
+  // different one. OpenRouter answers that with "Missing Authentication
+  // header" (its text for any non-sk-or key). Throw so the next mismatch is
+  // a stack, not a 401 puzzle.
+  if (via === 'xai' || via === 'google') {
     throw new Error(
-      `xAI key cannot be sent to OpenRouter (model '${model}'). Resolve the LLM key for the model being called, not a different analysis model.`
+      `${via === 'xai' ? 'xAI' : 'Google'} key cannot be sent to OpenRouter (model '${model}'). Resolve the LLM key for the model being called, not a different analysis model.`
     );
   }
 
@@ -204,6 +233,6 @@ export function createAdapter(model: TextModel, keyInfo?: LlmKeyInfo) {
   };
 
   return key
-    ? createOpenRouterTextExtended(model, key, config)
-    : openRouterTextExtended(model, config);
+    ? createOpenRouterText(model, key, config)
+    : openRouterText(model, config);
 }

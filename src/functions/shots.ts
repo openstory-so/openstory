@@ -839,6 +839,7 @@ export const updateStaleShotsFn = createServerFn({ method: 'POST' })
         gateEstimate(
           estimateImageCost(model, sequence.aspectRatio, 1, {
             pricing: await getEffectiveFalPricing(),
+            resolution: sequence.resolution,
           }),
           { model, operation: 'update-stale-shots' }
         ),

@@ -96,6 +96,7 @@ function makeSequence(overrides: Partial<Sequence> = {}): Sequence {
     styleId: 'style_1',
     styleConfig: null,
     aspectRatio: '16:9',
+    resolution: '720p',
     analysisModel: 'anthropic/claude-haiku-4.5',
     analysisDurationMs: 0,
     imageModel: 'nano_banana_2',
@@ -666,14 +667,20 @@ describe('executeSmartRetry — per-asset model selection (#1066)', () => {
 
     // One hold per shot so leftover zeros cannot kill a sibling envelope.
     const gptCost = gateEstimate(
-      estimateImageCost('gpt_image_2', '16:9', 1, { pricing: FAL_PRICING }),
+      estimateImageCost('gpt_image_2', '16:9', 1, {
+        pricing: FAL_PRICING,
+        resolution: '720p',
+      }),
       {
         model: 'gpt_image_2',
         operation: 'smart-retry:image',
       }
     );
     const fluxCost = gateEstimate(
-      estimateImageCost('flux_2_max', '16:9', 1, { pricing: FAL_PRICING }),
+      estimateImageCost('flux_2_max', '16:9', 1, {
+        pricing: FAL_PRICING,
+        resolution: '720p',
+      }),
       {
         model: 'flux_2_max',
         operation: 'smart-retry:image',
@@ -756,7 +763,10 @@ describe('executeSmartRetry — per-asset model selection (#1066)', () => {
     // …and it is priced as flux_2_max, so the estimate matches the charge.
     expect(reserveRunCreditsMock.mock.calls[0]?.[1]).toEqual(
       gateEstimate(
-        estimateImageCost('flux_2_max', '16:9', 1, { pricing: FAL_PRICING }),
+        estimateImageCost('flux_2_max', '16:9', 1, {
+          pricing: FAL_PRICING,
+          resolution: '720p',
+        }),
         {
           model: 'flux_2_max',
           operation: 'smart-retry:image',

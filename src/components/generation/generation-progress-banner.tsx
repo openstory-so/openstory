@@ -37,7 +37,7 @@ export const GenerationProgressBanner: React.FC<
   musicModel,
   willEmail = false,
 }) => {
-  const [isOpen, setIsOpen] = useState(true);
+  const [isOpen, setIsOpen] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const startTimeRef = useRef(startedAt?.getTime() ?? Date.now());
 

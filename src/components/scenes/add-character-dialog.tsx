@@ -64,7 +64,7 @@ export const AddCharacterDialog: React.FC<{ sequenceId: string }> = ({
       <DialogTrigger asChild>
         <Button variant="outline" size="sm">
           <Plus className="mr-2 h-4 w-4" />
-          Add CharacterWithSheet
+          Add Character
         </Button>
       </DialogTrigger>
       <DialogContent>

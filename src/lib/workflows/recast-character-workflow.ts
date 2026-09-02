@@ -100,6 +100,7 @@ async function buildRegeneratePayload(
     triggerId: input.characterDbId,
     imageModel,
     aspectRatio,
+    resolution: input.resolution,
     shotSnapshots: merged.shotSnapshots,
     snapshotInputHash: merged.snapshotInputHash,
   };
