@@ -1,17 +1,23 @@
 import { Button } from '@/components/ui/button';
 import { AspectRatioIcon } from '@/components/icons/aspect-ratio-icon';
 import { ASPECT_RATIOS, type AspectRatio } from '@/lib/constants/aspect-ratios';
+import {
+  RESOLUTION_OPTIONS,
+  type Resolution,
+} from '@/lib/constants/resolutions';
 import { ChevronDown, SlidersHorizontal } from 'lucide-react';
 import type { FC, ComponentProps } from 'react';
 
 type GenerationSettingsTriggerProps = {
   aspectRatio: AspectRatio;
+  resolution: Resolution;
   autoGenerateMotion?: boolean;
   autoGenerateMusic?: boolean;
 } & ComponentProps<typeof Button>;
 
 export const GenerationSettingsTrigger: FC<GenerationSettingsTriggerProps> = ({
   aspectRatio,
+  resolution,
   autoGenerateMotion,
   autoGenerateMusic,
   ...props
@@ -38,6 +44,9 @@ export const GenerationSettingsTrigger: FC<GenerationSettingsTriggerProps> = ({
         />
       )}
       <span className="font-mono text-sm">{aspectRatio}</span>
+      <span className="font-mono text-xs text-muted-foreground">
+        {RESOLUTION_OPTIONS.find((r) => r.value === resolution)?.label}
+      </span>
       {autoLabels.length > 0 && (
         <span className="hidden sm:inline text-xs text-muted-foreground">
           {autoLabels.join(' + ')}

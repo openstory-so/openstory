@@ -400,6 +400,7 @@ export async function executeSmartRetry(context: SmartRetryContext) {
         ),
         model: shotVideoModel,
         aspectRatio: sequence.aspectRatio,
+        resolution: sequence.resolution,
         duration: shot.durationMs ? shot.durationMs / 1000 : undefined,
       };
 

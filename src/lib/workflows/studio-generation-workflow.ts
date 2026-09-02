@@ -104,6 +104,7 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
             ? tagStudioReferences(input.prompt)
             : input.prompt,
           imageSize,
+          resolution: input.resolution,
           numImages: 1,
           ...(input.referenceImages.length > 0 && {
             referenceImageUrls: input.referenceImages,
@@ -212,6 +213,7 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
             model: videoModel,
             duration: input.duration,
             aspectRatio: input.aspectRatio,
+            resolution: input.resolution,
             generateAudio: input.generateAudio,
             mode: input.mode,
             referenceImages: input.referenceImages,

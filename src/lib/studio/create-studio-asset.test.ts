@@ -84,6 +84,7 @@ describe('studioCreateInputSchema', () => {
       prompt: 'a red fox in fog',
       imageModel: 'gpt_image_2',
       aspectRatio: '16:9',
+      resolution: '720p' as const,
     });
     expect(parsed).toMatchObject({
       activity: 'image',
@@ -98,6 +99,7 @@ describe('studioCreateInputSchema', () => {
       prompt: 'a red fox',
       imageModel: 'krea_2_turbo',
       aspectRatio: '16:9',
+      resolution: '720p' as const,
     });
     expect(result.success).toBe(false);
   });
@@ -113,6 +115,7 @@ describe('studioCreateInputSchema', () => {
         prompt: 'a red fox',
         imageModel,
         aspectRatio: '16:9',
+        resolution: '720p' as const,
         referenceImages: ['https://example.com/ref.png'],
       });
       expect(parsed).toMatchObject({ activity: 'image', imageModel });
@@ -125,6 +128,7 @@ describe('studioCreateInputSchema', () => {
       prompt: 'a red fox',
       imageModel: 'fal-ai/flux-1/dev',
       aspectRatio: '16:9',
+      resolution: '720p' as const,
     });
     expect(result.success).toBe(false);
   });
@@ -135,6 +139,7 @@ describe('studioCreateInputSchema', () => {
       prompt: 'the fox turns toward camera',
       videoModel: 'seedance_v2_5',
       aspectRatio: '9:16',
+      resolution: '720p' as const,
       duration: 5,
     });
     expect(result.success).toBe(false);
@@ -151,6 +156,7 @@ describe('studioCreateInputSchema', () => {
       prompt: 'the fox turns toward camera',
       videoModel: 'minimax_h3_max',
       aspectRatio: '16:9',
+      resolution: '720p' as const,
       duration: 5,
       mode: 'reference',
       referenceImages: urls(9, 'img'),
@@ -164,6 +170,7 @@ describe('studioCreateInputSchema', () => {
       prompt: 'the fox turns toward camera',
       videoModel: 'minimax_h3_max',
       aspectRatio: '16:9',
+      resolution: '720p' as const,
       duration: 5,
       mode: 'reference',
       referenceImages: urls(9, 'img'),
@@ -179,6 +186,7 @@ describe('studioCreateInputSchema', () => {
       prompt: 'the fox turns toward camera',
       videoModel: 'seedance_v2',
       aspectRatio: '9:16',
+      resolution: '720p' as const,
       duration: 5,
     });
     expect(parsed.activity).toBe('video');
@@ -203,6 +211,7 @@ describe('createStudioAssets', () => {
         prompt: 'a red fox',
         imageModel: 'gpt_image_2',
         aspectRatio: '16:9',
+        resolution: '720p' as const,
         count: 1,
         referenceImages: [],
       })
@@ -224,6 +233,7 @@ describe('createStudioAssets', () => {
         prompt: 'a red fox',
         imageModel: 'gpt_image_2',
         aspectRatio: '16:9',
+        resolution: '720p' as const,
         count: 1,
         referenceImages: [],
       })
@@ -244,6 +254,7 @@ describe('createStudioAssets', () => {
       prompt: 'a red fox in fog',
       imageModel: 'gpt_image_2',
       aspectRatio: '16:9',
+      resolution: '720p' as const,
       count: 2,
       referenceImages: [],
     });
@@ -259,6 +270,7 @@ describe('createStudioAssets', () => {
     expect(rows[0]?.input).toMatchObject({
       prompt: 'a red fox in fog',
       aspectRatio: '16:9',
+      resolution: '720p' as const,
       imageModel: 'gpt_image_2',
     });
 
@@ -276,6 +288,7 @@ describe('createStudioAssets', () => {
           prompt: 'a red fox in fog',
           imageModel: 'gpt_image_2',
           aspectRatio: '16:9',
+          resolution: '720p' as const,
         }),
       }),
       expect.objectContaining({
@@ -317,6 +330,7 @@ describe('createStudioAssets', () => {
         prompt: 'a red fox',
         imageModel: 'gpt_image_2',
         aspectRatio: '16:9',
+        resolution: '720p' as const,
         count: 2,
         referenceImages: [],
       })
@@ -337,6 +351,7 @@ describe('createStudioAssets', () => {
         prompt: 'a red fox',
         imageModel: 'gpt_image_2',
         aspectRatio: '16:9',
+        resolution: '720p' as const,
         count: 1,
         referenceImages: [],
       })
@@ -366,6 +381,7 @@ describe('createStudioAssets', () => {
         prompt: 'a red fox',
         imageModel: 'gpt_image_2',
         aspectRatio: '16:9',
+        resolution: '720p' as const,
         count: 3,
         referenceImages: [],
       })
@@ -389,6 +405,7 @@ describe('createStudioAssets', () => {
       prompt: 'first',
       imageModel: 'gpt_image_2',
       aspectRatio: '16:9',
+      resolution: '720p' as const,
       count: 1,
       referenceImages: [],
     });
@@ -397,6 +414,7 @@ describe('createStudioAssets', () => {
       prompt: 'second',
       imageModel: 'gpt_image_2',
       aspectRatio: '1:1',
+      resolution: '720p' as const,
       count: 1,
       referenceImages: [],
     });
@@ -436,6 +454,7 @@ describe('createStudioAssets', () => {
       prompt: 'the fox turns toward camera',
       videoModel: 'seedance_v2',
       aspectRatio: '9:16',
+      resolution: '720p' as const,
       duration: 5,
       count: 1,
       mode: 'text',
@@ -455,6 +474,7 @@ describe('createStudioAssets', () => {
       prompt: 'the fox turns toward camera',
       videoModel: 'seedance_v2',
       aspectRatio: '9:16',
+      resolution: '720p' as const,
     });
     expect(rows[0]?.input).not.toHaveProperty('imageModel');
 
@@ -468,6 +488,7 @@ describe('createStudioAssets', () => {
           prompt: 'the fox turns toward camera',
           videoModel: 'seedance_v2',
           aspectRatio: '9:16',
+          resolution: '720p' as const,
         }),
       }),
       expect.objectContaining({

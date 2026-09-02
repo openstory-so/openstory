@@ -187,16 +187,16 @@ describe('buildGrokImageRequest (issue #1167)', () => {
     ).toBe('1:1_2k');
   });
 
-  it('maps our resolution names onto the two tiers xAI serves', () => {
-    expect(buildGrokImageRequest({ ...BASE, resolution: '1K' }).size).toBe(
+  it('maps the resolution tiers onto the two xAI serves', () => {
+    expect(buildGrokImageRequest({ ...BASE, resolution: '720p' }).size).toBe(
       '16:9_1k'
     );
-    expect(buildGrokImageRequest({ ...BASE, resolution: '2K' }).size).toBe(
+    expect(buildGrokImageRequest({ ...BASE, resolution: '1080p' }).size).toBe(
       '16:9_2k'
     );
     // xAI has no 4K tier — asking for one lands on the highest it does serve
     // rather than being rejected outright.
-    expect(buildGrokImageRequest({ ...BASE, resolution: '4K' }).size).toBe(
+    expect(buildGrokImageRequest({ ...BASE, resolution: '4k' }).size).toBe(
       '16:9_2k'
     );
   });
@@ -207,5 +207,76 @@ describe('buildGrokImageRequest (issue #1167)', () => {
 
     expect(prompt.length).toBeLessThanOrEqual(4000);
     expect(prompt.endsWith('...')).toBe(true);
+  });
+});
+
+describe('resolution tiers (#1449)', () => {
+  const base = { prompt: 'a lighthouse at dusk' } as const;
+
+  it('spells the tier in the model’s own resolution vocabulary', () => {
+    expect(
+      buildImageRequest({ ...base, model: 'nano_banana_2', resolution: '720p' })
+        .input.resolution
+    ).toBe('1K');
+    expect(
+      buildImageRequest({ ...base, model: 'nano_banana_2', resolution: '4k' })
+        .input.resolution
+    ).toBe('4K');
+    // Phota serves 1K or 4K only.
+    expect(
+      buildImageRequest({ ...base, model: 'phota', resolution: '1080p' }).input
+        .resolution
+    ).toBe('1K');
+  });
+
+  it('leaves a fixed-size model without a resolution field', () => {
+    expect(
+      buildImageRequest({
+        ...base,
+        model: 'nano_banana_2_lite',
+        resolution: '4k',
+      }).input
+    ).not.toHaveProperty('resolution');
+  });
+
+  it('sizes a pixel-sized model from the tier and the aspect ratio', () => {
+    expect(
+      buildImageRequest({
+        ...base,
+        model: 'gpt_image_2',
+        imageSize: 'landscape_16_9',
+        resolution: '4k',
+      }).input.image_size
+    ).toEqual({ width: 3840, height: 2160 });
+    expect(
+      buildImageRequest({
+        ...base,
+        model: 'gpt_image_2',
+        imageSize: 'portrait_16_9',
+        resolution: '720p',
+      }).input.image_size
+    ).toEqual({ width: 720, height: 1280 });
+  });
+
+  it('clamps a 4K ask into the model’s documented range', () => {
+    // FLUX.2 tops out at 2048 per edge — a 4K ask must not 422.
+    expect(
+      buildImageRequest({
+        ...base,
+        model: 'flux_2_dev',
+        imageSize: 'landscape_16_9',
+        resolution: '4k',
+      }).input.image_size
+    ).toEqual({ width: 2048, height: 1152 });
+  });
+
+  it('keeps the preset when no tier is asked for', () => {
+    expect(
+      buildImageRequest({
+        ...base,
+        model: 'gpt_image_2',
+        imageSize: 'landscape_16_9',
+      }).input.image_size
+    ).toBe('landscape_16_9');
   });
 });

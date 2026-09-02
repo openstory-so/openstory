@@ -222,6 +222,7 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
               fps: data.fps,
               motionBucket: data.motionBucket,
               aspectRatio: sequence.aspectRatio,
+              resolution: sequence.resolution,
               generateAudio: data.generateAudio,
               sceneTitle: context.scene?.metadata?.title,
               sequenceTitle: sequence.title,
@@ -482,6 +483,7 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
               fps: data.fps,
               motionBucket: data.motionBucket,
               aspectRatio: sequence.aspectRatio,
+              resolution: sequence.resolution,
               generateAudio: data.generateAudio,
               referenceImages: buildMotionReferenceImages({
                 scene,

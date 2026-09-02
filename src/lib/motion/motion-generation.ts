@@ -41,6 +41,7 @@ import { workersSafeFetch } from '@/lib/ai/workers-safe-fetch';
 import { reportMissingBillingCost } from '@/lib/billing/billing-observability';
 import { ZERO_MICROS, type Microdollars } from '@/lib/billing/money';
 import { type AspectRatio } from '@/lib/constants/aspect-ratios';
+import type { Resolution } from '@/lib/constants/resolutions';
 import type { ResolvedApiKey } from '@/lib/db/scoped/api-keys';
 import type { CredentialScopedDb } from '@/lib/db/scoped-workflow';
 import { snapDuration } from '@/lib/motion/snap-duration';
@@ -70,6 +71,10 @@ export type GenerateMotionOptions = {
   fps?: number;
   motionBucket?: number;
   aspectRatio?: AspectRatio;
+  /** Output resolution tier (#1449). Resolved against whatever `resolution`
+   *  tokens the endpoint advertises — a model that stops at 1080p serves a 4K
+   *  ask with 1080p rather than rejecting it. */
+  resolution?: Resolution;
   /** For audio-capable models (kling v3, veo3), pass `false` to suppress
    *  the model's native audio output (sfx/ambient/lip-sync). Omitting the
    *  flag lets the API schema default apply (true for audio-capable models). */
@@ -283,6 +288,7 @@ export async function submitMotionJob(
         imageUrl,
         duration: snapDuration(options.duration, modelKey),
         aspectRatio: options.aspectRatio,
+        ...(options.resolution && { resolution: options.resolution }),
         referenceImages,
         model: modelKey,
       });

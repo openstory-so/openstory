@@ -298,6 +298,7 @@ export const generateShotVariantsFn = createServerFn({ method: 'POST' })
       promptVersionId: selectedPrompt?.id ?? null,
       model: data.model,
       aspectRatio: sequence.aspectRatio,
+      resolution: sequence.resolution,
       imageSize: data.imageSize || gridConfig.imageSize,
       numImages,
       seed: data.seed,
@@ -463,6 +464,7 @@ export const selectShotVariantFn = createServerFn({ method: 'POST' })
       croppedTileUrl: cropResult.url,
       croppedTilePath: cropResult.path,
       aspectRatio: sequence.aspectRatio,
+      resolution: sequence.resolution,
       characterReferences,
       locationReferences,
       // The framing version the upscaled tile derives from (#989) — the upscale

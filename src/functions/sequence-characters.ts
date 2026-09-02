@@ -462,6 +462,7 @@ export const recastCharacterFn = createServerFn({ method: 'POST' })
       talentSheetInputHash: defaultSheet?.inputHash ?? null,
       styleConfig,
       aspectRatio: sequence.aspectRatio,
+      resolution: sequence.resolution,
       shotSnapshots,
       snapshotInputHash,
     };

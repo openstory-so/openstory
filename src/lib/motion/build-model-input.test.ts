@@ -74,9 +74,28 @@ describe('buildModelInput', () => {
   });
 
   describe('Veo 3.1 (audio)', () => {
-    it('overrides resolution to 1080p', () => {
+    it('falls back to the schema default with no tier asked for', () => {
       const result = build('veo3_1');
-      expect(result.resolution).toBe('1080p');
+      expect(result.resolution).toBe('720p');
+    });
+
+    it('resolves the requested tier against the endpoint enum (#1449)', () => {
+      expect(build('veo3_1', { resolution: '1080p' }).resolution).toBe('1080p');
+      expect(build('veo3_1', { resolution: '4k' }).resolution).toBe('4k');
+      // Seedance 2.5 stops at 1080p — a 4K ask lands there, not on a 422.
+      expect(build('seedance_v2_5', { resolution: '4k' }).resolution).toBe(
+        '1080p'
+      );
+      // H3 Max spells its only HD tier '768P'.
+      expect(build('minimax_h3_max', { resolution: '720p' }).resolution).toBe(
+        '768P'
+      );
+    });
+
+    it('leaves a model with no resolution field alone', () => {
+      expect(build('kling_v3_pro', { resolution: '4k' })).not.toHaveProperty(
+        'resolution'
+      );
     });
 
     it('sets generate_audio to true from schema default', () => {

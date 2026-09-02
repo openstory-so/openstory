@@ -11,6 +11,7 @@
 import type { ImageToVideoModel } from '@/lib/ai/models';
 import type { MotionPrompt, Scene } from '@/lib/ai/scene-analysis.schema';
 import type { AspectRatio } from '@/lib/constants/aspect-ratios';
+import type { Resolution } from '@/lib/constants/resolutions';
 import type { CharacterMinimal, SequenceElementMinimal } from '@/lib/db/schema';
 import { assembleMotionPrompt } from '@/lib/motion/assemble-motion-prompt';
 import { buildMotionReferenceImages } from '@/lib/motion/build-motion-references';
@@ -37,6 +38,7 @@ export function buildStoryboardMotionBatchShots(input: {
   motionPromptVersionIdsBySceneId: Record<string, string | null | undefined>;
   videoModel: ImageToVideoModel;
   aspectRatio: AspectRatio;
+  resolution?: Resolution;
   characters: CharacterMinimal[];
   elements: SequenceElementMinimal[];
 }): BatchMotionMusicWorkflowInput['shots'] {
@@ -84,6 +86,7 @@ export function buildStoryboardMotionBatchShots(input: {
       characterTags,
       duration: scene.metadata?.durationSeconds || 3,
       aspectRatio: input.aspectRatio,
+      resolution: input.resolution,
       // Cast/element refs so motion preserves identity across the clip
       // (#873) — only Kling v3 Pro emits them. Same library + matcher the
       // image step uses, so motion attaches the same references.

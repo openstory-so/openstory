@@ -13,6 +13,11 @@
 
 import { IMAGE_TO_VIDEO_MODELS, type ImageToVideoModel } from '@/lib/ai/models';
 import type { AspectRatio } from '@/lib/constants/aspect-ratios';
+import {
+  DEFAULT_RESOLUTION,
+  pickVideoResolution,
+  type Resolution,
+} from '@/lib/constants/resolutions';
 
 const STUDIO_TEXT_TO_VIDEO_ENDPOINTS = {
   grok_imagine_video_1_5: 'xai/grok-imagine-video/v1.5/text-to-video',
@@ -254,13 +259,31 @@ export function renumberStudioReferences(
   );
 }
 
-const STUDIO_VIDEO_RESOLUTION: Partial<Record<ImageToVideoModel, string>> = {
-  grok_imagine_video_1_5: '720p',
-  veo3_1: '1080p',
-  seedance_v2: '720p',
-  seedance_v2_5: '720p',
-  minimax_h3_max: '768P',
+/**
+ * The `resolution` tokens each studio video endpoint advertises (#1449). The
+ * requested tier picks the nearest; a model absent here has no resolution
+ * field at all. Mirrors the enums in the generated fal schemas — the studio
+ * T2V/R2V siblings share them with the i2v endpoint.
+ */
+const STUDIO_VIDEO_RESOLUTIONS: Partial<
+  Record<ImageToVideoModel, readonly string[]>
+> = {
+  grok_imagine_video_1_5: ['480p', '720p', '1080p'],
+  veo3_1: ['720p', '1080p', '4k'],
+  seedance_v2: ['480p', '720p', '1080p', '4k'],
+  seedance_v2_5: ['480p', '720p', '1080p'],
+  minimax_h3_max: ['480P', '768P'],
 };
+
+/** The model's own spelling of a tier, or undefined when it takes none. */
+export function studioVideoResolution(
+  model: ImageToVideoModel,
+  resolution: Resolution | undefined
+): string | undefined {
+  const options = STUDIO_VIDEO_RESOLUTIONS[model];
+  if (!options) return undefined;
+  return pickVideoResolution(options, resolution ?? DEFAULT_RESOLUTION);
+}
 
 export function studioVideoEndpointId(
   model: ImageToVideoModel,
@@ -339,6 +362,7 @@ type StudioVideoInput = {
   model: ImageToVideoModel;
   duration?: number;
   aspectRatio?: AspectRatio;
+  resolution?: Resolution;
   generateAudio?: boolean;
 };
 
@@ -374,7 +398,7 @@ export function buildStudioVideoInput(
     modelOptions.generate_audio = options.generateAudio;
   }
 
-  const resolution = STUDIO_VIDEO_RESOLUTION[model];
+  const resolution = studioVideoResolution(model, options.resolution);
   if (resolution) modelOptions.resolution = resolution;
 
   if (model === 'minimax_h3_max') {

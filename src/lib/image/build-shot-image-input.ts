@@ -10,6 +10,7 @@
 import type { TextToImageModel } from '@/lib/ai/models';
 import type { Scene } from '@/lib/ai/scene-analysis.schema';
 import { aspectRatioToImageSize } from '@/lib/constants/aspect-ratios';
+import type { Resolution } from '@/lib/constants/resolutions';
 import type {
   CharacterMinimal,
   Shot,
@@ -62,6 +63,7 @@ export async function buildShotImageWorkflowInput(opts: {
   teamId: string;
   sequenceId: string;
   aspectRatio: AspectRatio;
+  resolution: Resolution;
   characters: CharacterMinimal[];
   locations: SequenceLocationWithReference[];
   elements: SequenceElement[];
@@ -93,6 +95,7 @@ export async function buildShotImageWorkflowInput(opts: {
     teamId,
     sequenceId,
     aspectRatio,
+    resolution,
     characters,
     locations,
     elements,
@@ -164,6 +167,7 @@ export async function buildShotImageWorkflowInput(opts: {
     shotId: shot.id,
     sequenceId,
     aspectRatio,
+    resolution,
     sceneSnapshot,
     snapshotInputHash,
     referenceImages: [

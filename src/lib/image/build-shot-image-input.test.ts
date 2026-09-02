@@ -65,6 +65,7 @@ const baseOpts = {
   teamId: 'team-1',
   sequenceId: 'seq-1',
   aspectRatio: '16:9' as const,
+  resolution: '720p' as const,
   characters: [] as CharacterMinimal[],
   locations: [],
   elements: [],

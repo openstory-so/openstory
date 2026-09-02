@@ -133,7 +133,7 @@ export class LibraryTalentSheetWorkflow extends OpenStoryWorkflowEntrypoint<Libr
         ),
         imageSize: 'landscape_16_9',
         numImages: 1,
-        resolution: '2K',
+        resolution: '1080p',
       } satisfies ImageGenerationParams;
 
       // Only include referenceImageUrls if provided

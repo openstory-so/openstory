@@ -13,6 +13,7 @@ import { isValidTextToImageModel } from '@/lib/ai/models';
 import { resolveImageModel } from '@/lib/ai/resolve-asset-models';
 import { estimateImageCost, gateEstimate } from '@/lib/billing/cost-estimation';
 import { requireCredits } from '@/lib/billing/preflight';
+import type { Resolution } from '@/lib/constants/resolutions';
 import {
   aspectRatioToImageSize,
   type AspectRatio,
@@ -81,6 +82,7 @@ export async function prepareShotImageWorkflowInput(args: {
     id: string;
     teamId: string;
     aspectRatio: AspectRatio;
+    resolution: Resolution;
     imageModel: string | null;
     styleId: string | null;
     analysisModel: string;
@@ -281,6 +283,7 @@ export async function prepareShotImageWorkflowInput(args: {
         : promptVersionOverride,
     sequenceId: sequence.id,
     aspectRatio: sequence.aspectRatio,
+    resolution: sequence.resolution,
     sceneSnapshot,
     snapshotInputHash,
     referenceImages: [

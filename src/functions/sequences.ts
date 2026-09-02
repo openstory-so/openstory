@@ -823,6 +823,7 @@ export const addModelToSequenceFn = createServerFn({ method: 'POST' })
                   characterTags: sceneOf(f)?.continuity?.characterTags,
                   duration: f.durationMs ? f.durationMs / 1000 : 3,
                   aspectRatio: sequence.aspectRatio,
+                  resolution: sequence.resolution,
                 };
               }),
             };
@@ -900,6 +901,7 @@ export const addModelToSequenceFn = createServerFn({ method: 'POST' })
         teamId: sequence.teamId,
         sequenceId: sequence.id,
         aspectRatio: sequence.aspectRatio,
+        resolution: sequence.resolution,
         characters,
         locations,
         elements,

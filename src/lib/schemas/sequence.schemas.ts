@@ -11,6 +11,7 @@ import {
   isValidAnalysisModelId,
 } from '@/lib/ai/models.config';
 import { aspectRatioSchema } from '@/lib/constants/aspect-ratios';
+import { resolutionSchema } from '@/lib/constants/resolutions';
 import { sequences } from '@/lib/db/schema/sequences';
 import { ulidSchemaOptional } from '@/lib/schemas/id.schemas';
 import { createInsertSchema, createUpdateSchema } from 'drizzle-orm/zod';
@@ -40,6 +41,7 @@ export const createSequenceSchema = createInsertSchema(sequences, {
   script: z.string().min(10), // Override to make it required with business rules
   teamId: ulidSchemaOptional, // Optional - will use user's default team if not provided
   aspectRatio: aspectRatioSchema.optional(), // Optional - defaults to '16:9' in database
+  resolution: resolutionSchema.optional(), // Optional - defaults to '720p' in database
   styleId: z.string().optional(), // Optional - can be null
 })
   .omit({
@@ -180,6 +182,7 @@ export const updateSequenceSchema = createUpdateSchema(sequences, {
       message: 'Invalid video model',
     }),
   aspectRatio: aspectRatioSchema.optional(),
+  resolution: resolutionSchema.optional(),
 }).omit({
   id: true,
   teamId: true,

@@ -616,6 +616,7 @@ export const regenerateShotPromptFn = createServerFn({ method: 'POST' })
       shotId: shot.id,
       scene,
       aspectRatio: sequence.aspectRatio,
+      resolution: sequence.resolution,
       characterBible: ctx.characterBible,
       locationBible: ctx.locationBible,
       elementBible: ctx.elementBible,

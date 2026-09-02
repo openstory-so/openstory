@@ -44,6 +44,7 @@ import { workersSafeFetch } from '@/lib/ai/workers-safe-fetch';
 import { reportMissingBillingCost } from '@/lib/billing/billing-observability';
 import { ZERO_MICROS } from '@/lib/billing/money';
 import type { AspectRatio } from '@/lib/constants/aspect-ratios';
+import type { Resolution } from '@/lib/constants/resolutions';
 import type { ResolvedApiKey } from '@/lib/db/scoped/api-keys';
 import type { CredentialScopedDb } from '@/lib/db/scoped-workflow';
 import { MOTION_TRANSFORMS } from '@/lib/motion/endpoint-map';
@@ -55,6 +56,7 @@ import {
   buildStudioVideoInput,
   studioReferenceEndpoint,
   studioVideoEndpointId,
+  studioVideoResolution,
   tagStudioReferences,
   type StudioVideoMode,
   type StudioVideoRequest,
@@ -73,6 +75,7 @@ export type StudioVideoJobOptions = {
   model: ImageToVideoModel;
   duration?: number;
   aspectRatio?: AspectRatio;
+  resolution?: Resolution;
   generateAudio?: boolean;
   mode?: StudioVideoMode;
   referenceImages?: string[];
@@ -146,6 +149,7 @@ async function buildStudioImageModeInput(
       model: modelKey,
       duration: options.duration,
       aspectRatio: options.aspectRatio,
+      resolution: options.resolution,
       generateAudio: options.generateAudio,
     });
     return {
@@ -331,17 +335,29 @@ async function buildStudioBytePlusPrompt(
   return [{ type: 'text' as const, content: promptText }, ...frames];
 }
 
+/** xAI's `size` template admits only these. */
+const GROK_VIDEO_RESOLUTIONS = ['480p', '720p', '1080p'] as const;
+
 export async function submitStudioVideoJob(
   options: StudioVideoJobOptions
 ): Promise<StudioVideoJobSubmission> {
   const modelKey = options.model;
   const mode = options.mode ?? 'text';
+  // Every via spells the size `<ratio>_<resolution>`; the tier resolves to
+  // whatever token the model advertises (#1449).
+  const tier = studioVideoResolution(modelKey, options.resolution);
+  // Narrowed by lookup rather than asserted — xAI's `size` template only
+  // admits the three tiers Imagine serves.
+  const grokTier = GROK_VIDEO_RESOLUTIONS.find((r) => r === tier) ?? '720p';
   const grokSize = options.aspectRatio
-    ? (`${options.aspectRatio}_720p` as const)
+    ? (`${options.aspectRatio}_${grokTier}` as const)
     : undefined;
   // Seedance 2.5 first-frame / first-last-frame rejects a concrete ratio;
   // output follows the first still. Text-to-video can still pick one.
-  const arkSize = mode === 'text' ? grokSize : ('adaptive_720p' as const);
+  const arkSize =
+    mode === 'text'
+      ? options.aspectRatio && `${options.aspectRatio}_${tier ?? '720p'}`
+      : `adaptive_${tier ?? '720p'}`;
 
   // Same claim order as sequence motion: xAI, then Ark, then fal.
   const xaiKey = isNativeGrokVideoModel(modelKey)
@@ -418,6 +434,7 @@ export async function submitStudioVideoJob(
         model: modelKey,
         duration: options.duration,
         aspectRatio: options.aspectRatio,
+        resolution: options.resolution,
         generateAudio: options.generateAudio,
       });
       const job = await generateVideo({
@@ -454,6 +471,7 @@ export async function submitStudioVideoJob(
         model: modelKey,
         duration: options.duration,
         aspectRatio: options.aspectRatio,
+        resolution: options.resolution,
         generateAudio: options.generateAudio,
       });
       const prompt = await buildStudioBytePlusPrompt(

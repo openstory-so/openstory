@@ -190,6 +190,7 @@ export function useCreateSequence() {
           analysisModels: input.analysisModels || [DEFAULT_ANALYSIS_MODEL],
           teamId: input.teamId,
           aspectRatio: input.aspectRatio,
+          resolution: input.resolution,
           imageModels: input.imageModels,
           videoModel: input.videoModel,
           // Forward the multi-model arrays — without these the server only ever

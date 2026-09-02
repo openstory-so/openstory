@@ -7,6 +7,7 @@ import {
   type AspectRatio,
   DEFAULT_ASPECT_RATIO,
 } from '@/lib/constants/aspect-ratios';
+import type { Resolution } from '@/lib/constants/resolutions';
 import { type InferInsertModel, type InferSelectModel } from 'drizzle-orm';
 import { index, integer, snakeCase, text } from 'drizzle-orm/sqlite-core';
 import { generateId } from '../id';
@@ -81,6 +82,15 @@ export const sequences = snakeCase.table(
     aspectRatio: text({ length: 10 })
       .$type<AspectRatio>()
       .default(DEFAULT_ASPECT_RATIO)
+      .notNull(),
+    // Output resolution tier every generation in this sequence is asked for
+    // (#1449). SQL default pinned to the literal '720p' to match the deployed
+    // column default — DEFAULT_RESOLUTION must NOT be written here: SQLite
+    // can't ALTER a column default without a full table rebuild, which
+    // CASCADE-deletes child rows on D1 (#612).
+    resolution: text({ length: 10 })
+      .$type<Resolution>()
+      .default('720p')
       .notNull(),
 
     // SQL default pinned to the literal 'anthropic/claude-haiku-4.5' to match

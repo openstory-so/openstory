@@ -97,6 +97,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
       sequenceId,
       script,
       aspectRatio,
+      resolution,
       styleConfig: inputStyleConfig,
       pendingAutoStyleId,
       analysisModelId,
@@ -221,6 +222,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
             reservationId: input.reservationId,
             promptName: 'phase/scene-splitting-boundaries-chat',
             aspectRatio,
+            resolution,
             script: sanitizeScriptContent(script),
             modelId: analysisModelId,
             elements: elementsMinimal,
@@ -448,6 +450,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
             reservationId: input.reservationId,
             scenes,
             aspectRatio,
+            resolution,
             characterBible: castCharacterBible,
             locationBible,
             elementBible,
@@ -607,6 +610,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
       imageModel,
       imageModels,
       aspectRatio,
+      resolution,
       sceneSnapshots,
     };
     shotImagesPayload.snapshotInputHash = await computeShotImagesHashFromDto({
@@ -676,6 +680,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
           scenesWithVisualPrompts,
           shotMapping,
           aspectRatio,
+          resolution,
           characterBible: castCharacterBible,
           locationBible,
           elementBible,
@@ -756,6 +761,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
         motionPromptVersionIdsBySceneId: motionPromptVersionIdsBySceneId ?? {},
         videoModel: primaryVideoModel,
         aspectRatio,
+        resolution,
         characters: charactersWithSheets,
         elements: allElements,
       });

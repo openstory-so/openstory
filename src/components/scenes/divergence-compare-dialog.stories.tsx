@@ -60,6 +60,7 @@ function makeVariant(
     shotId: 'shot-1',
     sequenceId: 'seq-1',
     model: 'nano_banana_2',
+    resolution: null,
     url: 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee',
     storagePath: null,
     shotVariantUrl: null,

@@ -29,8 +29,11 @@ import {
 } from '@/lib/ai/models';
 import type { AnalysisModelId } from '@/lib/ai/models.config';
 import type { AspectRatio } from '@/lib/constants/aspect-ratios';
+import type { Resolution } from '@/lib/constants/resolutions';
+import { imageResolutionNote } from '@/lib/image/build-image-request';
 import { useState, type FC } from 'react';
 import { AspectRatioPills } from './aspect-ratio-pills';
+import { ResolutionPills } from './resolution-pills';
 import { GenerationSettingsTrigger } from './generation-settings-trigger';
 
 type AutoToggleProps = {
@@ -65,6 +68,7 @@ const AutoToggle: FC<AutoToggleProps> = ({
 
 type GenerationSettingsProps = {
   aspectRatio: AspectRatio;
+  resolution: Resolution;
   analysisModels: AnalysisModelId[];
   imageModels: TextToImageModel[];
   videoModels: ImageToVideoModel[];
@@ -72,6 +76,7 @@ type GenerationSettingsProps = {
   audioModels?: AudioModel[];
   autoGenerateMusic?: boolean;
   onAspectRatioChange: (value: AspectRatio) => void;
+  onResolutionChange: (value: Resolution) => void;
   onAnalysisModelsChange: (value: AnalysisModelId[]) => void;
   onImageModelsChange: (value: TextToImageModel[]) => void;
   onVideoModelsChange: (value: ImageToVideoModel[]) => void;
@@ -108,6 +113,7 @@ type GenerationSettingsProps = {
 
 export const GenerationSettings: FC<GenerationSettingsProps> = ({
   aspectRatio,
+  resolution,
   analysisModels,
   imageModels,
   videoModels,
@@ -115,6 +121,7 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
   audioModels,
   autoGenerateMusic = true,
   onAspectRatioChange,
+  onResolutionChange,
   onAnalysisModelsChange,
   onImageModelsChange,
   onVideoModelsChange,
@@ -142,6 +149,7 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
         <PopoverTrigger asChild disabled={disabled}>
           <GenerationSettingsTrigger
             aspectRatio={aspectRatio}
+            resolution={resolution}
             autoGenerateMotion={autoGenerateMotion}
             autoGenerateMusic={autoGenerateMusic}
           />
@@ -185,6 +193,22 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
               onChange={onAspectRatioChange}
               recommendedAspectRatio={recommendedAspectRatio}
               styleName={styleName}
+            />
+          </section>
+
+          <Separator />
+
+          {/* Resolution Section */}
+          <section className="flex flex-col gap-2">
+            <h3 className="text-sm font-medium text-foreground">Resolution</h3>
+            <ResolutionPills
+              value={resolution}
+              onChange={onResolutionChange}
+              disabled={disabled}
+              note={imageResolutionNote(
+                imageModels[0] ?? DEFAULT_IMAGE_MODEL,
+                resolution
+              )}
             />
           </section>
 

@@ -103,6 +103,7 @@ import {
   estimateImageCost,
   estimateStoryboardCost,
 } from '@/lib/billing/cost-estimation';
+import type { Resolution } from '@/lib/constants/resolutions';
 import {
   aspectRatioSchema,
   type AspectRatio,
@@ -324,6 +325,7 @@ export const ScriptView: FC<{
     generationMode: GenerationMode;
     analysisModels: AnalysisModelId[];
     aspectRatio: AspectRatio;
+    resolution: Resolution;
     imageModels: TextToImageModel[];
     videoModels: ImageToVideoModel[];
     autoGenerateMotion: boolean;
@@ -333,6 +335,7 @@ export const ScriptView: FC<{
     generationMode: savedSettings.generationMode,
     analysisModels: sequenceAnalysisModels,
     aspectRatio: isEditing ? sequence.aspectRatio : savedSettings.aspectRatio,
+    resolution: isEditing ? sequence.resolution : savedSettings.resolution,
     imageModels:
       isEditing && sequence.imageModel
         ? [safeTextToImageModel(sequence.imageModel, DEFAULT_IMAGE_MODEL)]
@@ -352,6 +355,7 @@ export const ScriptView: FC<{
     generationMode,
     analysisModels,
     aspectRatio,
+    resolution,
     imageModels,
     videoModels,
     autoGenerateMotion,
@@ -664,6 +668,7 @@ export const ScriptView: FC<{
       setGenSettings({
         generationMode: savedSettings.generationMode,
         aspectRatio: savedSettings.aspectRatio,
+        resolution: savedSettings.resolution,
         analysisModels: savedSettings.analysisModels,
         imageModels: savedSettings.imageModels,
         videoModels: savedSettings.videoModels,
@@ -941,6 +946,7 @@ export const ScriptView: FC<{
         script: script ?? baseScript ?? '',
         styleId: styleId || sequence?.styleId || undefined,
         aspectRatio,
+        resolution,
         analysisModels,
         imageModels,
         videoModels,
@@ -1068,6 +1074,7 @@ export const ScriptView: FC<{
       target_duration: targetDuration,
       script_length: sourceScript.length,
       aspect_ratio: aspectRatio,
+      resolution,
       invent,
     });
     // Enhancing rewrites the text — it stops being an untouched sample.
@@ -1460,6 +1467,7 @@ export const ScriptView: FC<{
         <CardHeader className="shrink-0 flex flex-row items-center md:flex-col md:items-start lg:flex-row justify-between gap-3 px-6 py-4 border-b border-border/50 bg-card/40 short-h:py-2">
           <GenerationSettings
             aspectRatio={aspectRatio}
+            resolution={resolution}
             analysisModels={analysisModels}
             imageModels={imageModels}
             videoModels={videoModels}
@@ -1467,6 +1475,7 @@ export const ScriptView: FC<{
             audioModels={audioModels}
             autoGenerateMusic={autoGenerateMusic}
             onAspectRatioChange={(v) => updateGen('aspectRatio', v)}
+            onResolutionChange={(v) => updateGen('resolution', v)}
             onAnalysisModelsChange={(v) => updateGen('analysisModels', v)}
             onImageModelsChange={(v) => updateGen('imageModels', v)}
             onVideoModelsChange={(v) => updateGen('videoModels', v)}

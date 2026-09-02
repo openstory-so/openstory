@@ -31,6 +31,7 @@ function videoVariant(overrides: Partial<VideoVariant> = {}): VideoVariant {
     renderSegmentId: 'seg-1',
     sequenceId: 'seq-1',
     model: 'veo3_1',
+    resolution: null,
     url: 'https://r2/v.mp4',
     storagePath: 'path/v.mp4',
     status: 'completed',

@@ -71,6 +71,7 @@ function snapshotInput(input: StudioCreateInput): GeneratedAssetInput {
     const snapshot: GeneratedAssetInput = {
       prompt: input.prompt,
       aspectRatio: input.aspectRatio,
+      resolution: input.resolution,
       videoModel: input.videoModel,
       duration: snapStudioVideoDuration(input.duration, input.videoModel),
       count: input.count,
@@ -93,6 +94,7 @@ function snapshotInput(input: StudioCreateInput): GeneratedAssetInput {
   return {
     prompt: input.prompt,
     aspectRatio: input.aspectRatio,
+    resolution: input.resolution,
     imageModel: input.imageModel,
     count: input.count,
     ...(input.referenceImages.length > 0 && {

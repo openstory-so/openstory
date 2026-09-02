@@ -14,6 +14,7 @@ import { getAuth } from '@/lib/auth/config';
 import { isSystemAdmin, requireSystemAdmin } from '@/lib/auth/system-admin';
 import { APIError } from 'better-auth/api';
 import type { AspectRatio } from '@/lib/constants/aspect-ratios';
+import type { Resolution } from '@/lib/constants/resolutions';
 import {
   createScopedDb,
   createSystemAdminScopedDb,
@@ -82,6 +83,7 @@ type PartialSequence = {
   imageModel: string;
   videoModel: string;
   aspectRatio: AspectRatio;
+  resolution: Resolution;
   analysisModel: string;
 };
 
@@ -549,6 +551,7 @@ export const shotAccessMiddleware = createMiddleware({ type: 'function' })
     const sequence: PartialSequence = {
       ...rawSequence,
       aspectRatio: rawSequence.aspectRatio satisfies AspectRatio,
+      resolution: rawSequence.resolution satisfies Resolution,
     };
 
     const { scene, script } = await resolveSceneForShotFromDb(shot, scopedDb);

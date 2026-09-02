@@ -17,6 +17,13 @@ import { ImageModelSelector } from '@/components/model/image-model-selector';
 import { MotionModelSelector } from '@/components/model/motion-model-selector';
 import type { MentionItem } from '@/components/scenes/prompt-mention/mention-items';
 import { AspectRatioPills } from '@/components/settings/aspect-ratio-pills';
+import { ResolutionPills } from '@/components/settings/resolution-pills';
+import { imageResolutionNote } from '@/lib/image/build-image-request';
+import {
+  DEFAULT_RESOLUTION,
+  RESOLUTION_OPTIONS,
+  type Resolution,
+} from '@/lib/constants/resolutions';
 import {
   StudioReferencePicker,
   useStudioLibrary,
@@ -98,6 +105,7 @@ import {
   studioSupportsEndFrame,
   studioVideoRefLimit,
   studioSupportsMode,
+  studioVideoResolution,
   studioVideoDurations,
   studioVideoSupportsAudio,
   type StudioReferenceToken,
@@ -279,6 +287,7 @@ export function StudioComposer({ activity }: StudioComposerProps) {
     useState<ImageToVideoModel>(DEFAULT_VIDEO_MODEL);
   const [aspectRatio, setAspectRatio] =
     useState<AspectRatio>(DEFAULT_ASPECT_RATIO);
+  const [resolution, setResolution] = useState<Resolution>(DEFAULT_RESOLUTION);
   const [count, setCount] = useState<(typeof COUNTS)[number]>(1);
   const [duration, setDuration] = useState(5);
   const [generateAudio, setGenerateAudio] = useState(true);
@@ -300,6 +309,13 @@ export function StudioComposer({ activity }: StudioComposerProps) {
 
   const isVideo = activity === 'video';
   const compatibleVideoModel = getCompatibleModel(videoModel, aspectRatio);
+  // What the model actually renders at, when it can't serve the tier.
+  const videoTier = studioVideoResolution(compatibleVideoModel, resolution);
+  const videoResolutionNote = videoTier
+    ? videoTier.toLowerCase() === resolution.toLowerCase()
+      ? null
+      : `${IMAGE_TO_VIDEO_MODELS[compatibleVideoModel].name} renders at ${videoTier}`
+    : `${IMAGE_TO_VIDEO_MODELS[compatibleVideoModel].name} renders at a fixed size`;
   const snappedDuration = snapStudioVideoDuration(
     duration,
     compatibleVideoModel
@@ -757,6 +773,7 @@ export function StudioComposer({ activity }: StudioComposerProps) {
         prompt: trimmed,
         videoModel: compatibleVideoModel,
         aspectRatio,
+        resolution,
         duration: snappedDuration,
         count,
         generateAudio: audioCapable ? generateAudio : undefined,
@@ -776,6 +793,7 @@ export function StudioComposer({ activity }: StudioComposerProps) {
       prompt: trimmed,
       imageModel,
       aspectRatio,
+      resolution,
       count,
       referenceImages: references.map((r) => r.url),
     };
@@ -825,6 +843,7 @@ export function StudioComposer({ activity }: StudioComposerProps) {
   const aspect = ASPECT_RATIOS.find((r) => r.value === aspectRatio);
   const summary = [
     aspectRatio,
+    RESOLUTION_OPTIONS.find((r) => r.value === resolution)?.label,
     isVideo && durationCapable ? `${snappedDuration}s` : null,
     isVideo && audioCapable ? (generateAudio ? 'Audio' : 'Silent') : null,
     `×${count}`,
@@ -1072,6 +1091,19 @@ export function StudioComposer({ activity }: StudioComposerProps) {
                 <AspectRatioPills
                   value={aspectRatio}
                   onChange={setAspectRatio}
+                />
+              </section>
+              <Separator />
+              <section className="flex flex-col gap-2">
+                <h3 className="text-sm font-medium">Resolution</h3>
+                <ResolutionPills
+                  value={resolution}
+                  onChange={setResolution}
+                  note={
+                    isVideo
+                      ? videoResolutionNote
+                      : imageResolutionNote(imageModel, resolution)
+                  }
                 />
               </section>
               {isVideo && durationCapable && (

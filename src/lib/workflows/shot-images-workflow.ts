@@ -333,6 +333,7 @@ export class ShotImagesWorkflow extends OpenStoryWorkflowEntrypoint<ShotImagesWo
         model,
         imageSize,
         aspectRatio,
+        resolution: input.resolution,
         numImages: 1,
         shotId: matchedShot?.shotId,
         // Materialized by scene-split and threaded through the mapping

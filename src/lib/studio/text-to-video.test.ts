@@ -77,7 +77,7 @@ describe('buildStudioVideoInput', () => {
     });
   });
 
-  it('encodes Veo duration with an s suffix and 1080p', () => {
+  it('encodes Veo duration with an s suffix and the default tier', () => {
     expect(
       buildStudioVideoInput({ ...base, model: 'veo3_1', duration: 8 })
         .modelOptions
@@ -85,8 +85,31 @@ describe('buildStudioVideoInput', () => {
       duration: '8s',
       aspect_ratio: '16:9',
       generate_audio: true,
-      resolution: '1080p',
+      resolution: '720p',
     });
+  });
+
+  it('resolves the requested tier against the model enum (#1449)', () => {
+    const at = (
+      model: 'veo3_1' | 'minimax_h3_max',
+      resolution: '1080p' | '4k'
+    ) =>
+      buildStudioVideoInput({ ...base, model, duration: 8, resolution })
+        .modelOptions.resolution;
+    expect(at('veo3_1', '4k')).toBe('4k');
+    expect(at('veo3_1', '1080p')).toBe('1080p');
+    // H3 Max stops at 768P, whatever is asked for.
+    expect(at('minimax_h3_max', '4k')).toBe('768P');
+  });
+
+  it('omits resolution for a model that takes none', () => {
+    expect(
+      buildStudioVideoInput({
+        ...base,
+        model: 'kling_v3_pro',
+        resolution: '4k',
+      }).modelOptions
+    ).not.toHaveProperty('resolution');
   });
 
   it('sends LTX duration as a number snapped to 6/8/10', () => {

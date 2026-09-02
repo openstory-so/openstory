@@ -30,6 +30,7 @@ import type {
   Scene,
 } from '@/lib/ai/scene-analysis.schema';
 import type { AspectRatio } from '@/lib/constants/aspect-ratios';
+import type { Resolution } from '@/lib/constants/resolutions';
 import type {
   Frame,
   FramePromptVersion,
@@ -194,6 +195,7 @@ type PlanSequence = {
   teamId: string;
   title: string;
   aspectRatio: AspectRatio;
+  resolution: Resolution;
   imageModel: string;
   videoModel: string;
   styleId: string | null;
@@ -210,6 +212,7 @@ type PlanPromptContext = {
 
 export type UpdateStalePlan = {
   aspectRatio: AspectRatio;
+  resolution: Resolution;
   sequence: PlanSequence;
   /** Non-null only at depth 'music'. */
   music: MusicPlan | null;
@@ -224,6 +227,7 @@ function toPlanSequence(sequence: Sequence): PlanSequence {
     teamId: sequence.teamId,
     title: sequence.title,
     aspectRatio: sequence.aspectRatio,
+    resolution: sequence.resolution,
     imageModel: sequence.imageModel,
     videoModel: sequence.videoModel,
     styleId: sequence.styleId,
@@ -273,6 +277,7 @@ export async function computePlan(args: {
 
   const empty: UpdateStalePlan = {
     aspectRatio: sequence.aspectRatio,
+    resolution: sequence.resolution,
     sequence: toPlanSequence(sequence),
     music,
     promptContext: null,
@@ -363,6 +368,7 @@ export async function computePlan(args: {
 
   return {
     aspectRatio: sequence.aspectRatio,
+    resolution: sequence.resolution,
     sequence: toPlanSequence(sequence),
     music,
     promptContext: {

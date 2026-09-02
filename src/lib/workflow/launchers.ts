@@ -186,6 +186,7 @@ async function resolveStoryboardPayload(
     title: sequence.title,
     script: sequence.script,
     aspectRatio: sequence.aspectRatio,
+    resolution: sequence.resolution,
     styleConfig: resolveSequenceStyleConfig({
       snapshot: sequence.styleConfig,
       live: style?.config,

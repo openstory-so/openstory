@@ -14,6 +14,10 @@ import {
   type MotionReferenceEndpointConfig,
 } from '@/lib/ai/models';
 import type { AspectRatio } from '@/lib/constants/aspect-ratios';
+import {
+  pickVideoResolution,
+  type Resolution,
+} from '@/lib/constants/resolutions';
 import type { ReferenceImageDescription } from '@/lib/prompts/reference-image-prompt';
 import { buildReferenceVideoPrompt } from './build-reference-video-prompt';
 
@@ -66,12 +70,22 @@ function grokVideoPromptParts(
   ];
 }
 
+/** Imagine 1.5 image-to-video. Reference-to-video is capped at 720p. */
+const GROK_VIDEO_RESOLUTIONS = ['480p', '720p', '1080p'] as const;
+
 function grokVideoSize(
-  aspectRatio: AspectRatio | undefined
+  aspectRatio: AspectRatio | undefined,
+  resolution: Resolution | undefined,
+  hasReferences: boolean
 ): GrokVideoRequestInput['size'] {
-  // Fal's grok i2v schema defaults to 720p; Imagine 1.5 reference-to-video
-  // is capped at 720p, so we never emit 1080p from this builder.
-  return aspectRatio ? `${aspectRatio}_720p` : undefined;
+  if (!aspectRatio) return undefined;
+  // Reference-to-video is 720p only, whatever tier was asked for (#1449).
+  const tier =
+    hasReferences || !resolution
+      ? '720p'
+      : (pickVideoResolution(GROK_VIDEO_RESOLUTIONS, resolution) ?? '720p');
+  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- picked from GROK_VIDEO_RESOLUTIONS
+  return `${aspectRatio}_${tier as (typeof GROK_VIDEO_RESOLUTIONS)[number]}`;
 }
 
 export function buildGrokVideoRequest(options: {
@@ -80,6 +94,7 @@ export function buildGrokVideoRequest(options: {
   duration?: number;
   aspectRatio?: AspectRatio;
   referenceImages?: ReferenceImageDescription[];
+  resolution?: Resolution;
   model?: ImageToVideoModel;
 }): {
   endpointId: string;
@@ -90,7 +105,11 @@ export function buildGrokVideoRequest(options: {
   const references = options.referenceImages ?? [];
   const attached = references.filter((ref) => ref.referenceImageUrl);
   const duration = options.duration ?? 5;
-  const size = grokVideoSize(options.aspectRatio);
+  const size = grokVideoSize(
+    options.aspectRatio,
+    options.resolution,
+    attached.length > 0
+  );
 
   if (attached.length === 0) {
     const text =

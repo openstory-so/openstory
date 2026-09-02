@@ -18,6 +18,13 @@ import {
   DEFAULT_IMAGE_SIZE,
   type ImageSize,
 } from '@/lib/constants/aspect-ratios';
+import {
+  clampDimensions,
+  pickImageResolution,
+  resolutionDimensions,
+  type PixelBounds,
+  type Resolution,
+} from '@/lib/constants/resolutions';
 import { getLogger } from '@/lib/observability/logger';
 
 const logger = getLogger(['openstory', 'image', 'build-image-request']);
@@ -38,7 +45,8 @@ export type ImageGenerationParams = {
   // Model-specific
   style?: string;
   colors?: Array<{ r: number; g: number; b: number }>;
-  resolution?: '1K' | '2K' | '4K';
+  /** Output resolution tier (#1449). Resolved per model — see IMAGE_RESOLUTION. */
+  resolution?: Resolution;
   enhancePrompt?: boolean;
   safetyTolerance?: number;
   acceleration?: 'none' | 'regular' | 'high';
@@ -56,6 +64,95 @@ type AspectRatioValue = (typeof ASPECT_RATIO_MAP)[ImageSize];
 
 function imageSizeToAspectRatio(imageSize: ImageSize): AspectRatioValue {
   return ASPECT_RATIO_MAP[imageSize];
+}
+
+/**
+ * How each model takes a resolution ask (#1449), transcribed from its fal
+ * `llms.txt`. Two shapes, because fal has two:
+ *
+ *   - `tokens` — the model's own `resolution` enum; the tier picks the nearest.
+ *   - `pixels` — `image_size` takes `{width, height}`; the tier's dimensions
+ *     are clamped into the documented range.
+ *
+ * A model absent from this map renders at a fixed size (Nano Banana 2 Lite) or
+ * publishes no range (Krea, Hunyuan, FLUX.2 Max, HiDream). Guessing a range
+ * there would 422 the main generation path, so the tier leaves them on their
+ * preset — see #1449.
+ */
+const IMAGE_RESOLUTION: Partial<
+  Record<TextToImageModel, { tokens: string[] } | { pixels: PixelBounds }>
+> = {
+  nano_banana_2: { tokens: ['0.5K', '1K', '2K', '4K'] },
+  nano_banana_pro: { tokens: ['1K', '2K', '4K'] },
+  phota: { tokens: ['1K', '4K'] },
+  grok_imagine_image: { tokens: ['1k', '2k'] },
+  grok_imagine_image_quality: { tokens: ['1k', '2k'] },
+  // Seedream's fal via is pixel-sized; its Ark via takes a token
+  // (build-byteplus-image-request.ts).
+  seedream_v5: { pixels: { minPixels: 1024 * 1024, maxPixels: 2048 * 2048 } },
+  gpt_image_2: {
+    pixels: {
+      maxEdge: 3840,
+      minPixels: 655_360,
+      maxPixels: 8_294_400,
+      multipleOf: 16,
+    },
+  },
+  qwen_image: { pixels: { minPixels: 512 * 512, maxPixels: 2048 * 2048 } },
+  flux_2_dev: { pixels: { minEdge: 512, maxEdge: 2048 } },
+  flux_2_flash: { pixels: { minEdge: 512, maxEdge: 2048 } },
+  flux_2_turbo: { pixels: { minEdge: 512, maxEdge: 2048 } },
+};
+
+/**
+ * The model's own spelling of the requested tier, or undefined when it takes
+ * no `resolution` field.
+ */
+function resolveImageResolutionToken(
+  model: TextToImageModel,
+  resolution: Resolution | undefined
+): string | undefined {
+  const capability = IMAGE_RESOLUTION[model];
+  if (!resolution || !capability || !('tokens' in capability)) return undefined;
+  return pickImageResolution(capability.tokens, resolution);
+}
+
+/**
+ * What the model will actually render at, when that isn't the tier asked for
+ * — so a 4K pill on a fixed-1K model doesn't silently lie. Null when the
+ * model serves the tier.
+ */
+export function imageResolutionNote(
+  model: TextToImageModel,
+  resolution: Resolution
+): string | null {
+  const capability = IMAGE_RESOLUTION[model];
+  const name = IMAGE_MODELS[model].name;
+  if (!capability) return `${name} renders at a fixed size`;
+  if (!('tokens' in capability)) return null;
+  const picked = pickImageResolution(capability.tokens, resolution);
+  const wanted = pickImageResolution(['0.5K', '1K', '2K', '4K'], resolution);
+  return picked && picked.toUpperCase() !== wanted?.toUpperCase()
+    ? `${name} renders at ${picked}`
+    : null;
+}
+
+/**
+ * The `image_size` to send: explicit pixels for a model that accepts them,
+ * otherwise the fal preset unchanged.
+ */
+function resolveImageSize(
+  params: ImageGenerationParams
+): ImageSize | { width: number; height: number } {
+  const imageSize = params.imageSize ?? DEFAULT_IMAGE_SIZE;
+  const capability = IMAGE_RESOLUTION[params.model];
+  if (!params.resolution || !capability || !('pixels' in capability)) {
+    return imageSize;
+  }
+  return clampDimensions(
+    resolutionDimensions(params.resolution, imageSizeToAspectRatio(imageSize)),
+    capability.pixels
+  );
 }
 
 /** xAI's `aspectRatio_resolution` template, narrowed to the ratios we offer.
@@ -81,7 +178,7 @@ function buildFalModelOptions(
   switch (params.model) {
     case 'flux_2_dev':
       return {
-        image_size: params.imageSize ?? DEFAULT_IMAGE_SIZE,
+        image_size: resolveImageSize(params),
         num_inference_steps: params.numInferenceSteps ?? 28,
         guidance_scale: params.guidanceScale ?? 2.5,
         enable_safety_checker: true,
@@ -101,7 +198,7 @@ function buildFalModelOptions(
     case 'flux_2_flash':
     case 'flux_2_turbo':
       return {
-        image_size: params.imageSize ?? DEFAULT_IMAGE_SIZE,
+        image_size: resolveImageSize(params),
         // Turbo historically sent a 4-step default; Flash's schema has no
         // steps knob. Only Turbo keeps the field.
         ...(params.model === 'flux_2_turbo' && {
@@ -124,7 +221,7 @@ function buildFalModelOptions(
 
     case 'krea_2_turbo':
       return {
-        image_size: params.imageSize ?? DEFAULT_IMAGE_SIZE,
+        image_size: resolveImageSize(params),
         enable_safety_checker: true,
         ...(params.seed !== undefined && { seed: params.seed }),
         ...(params.numImages !== undefined && { num_images: params.numImages }),
@@ -138,7 +235,7 @@ function buildFalModelOptions(
 
     case 'flux_2_max':
       return {
-        image_size: params.imageSize ?? DEFAULT_IMAGE_SIZE,
+        image_size: resolveImageSize(params),
         enable_safety_checker: true,
         ...(params.safetyTolerance !== undefined && {
           safety_tolerance: params.safetyTolerance.toString(),
@@ -162,7 +259,9 @@ function buildFalModelOptions(
         // Lite is fixed 1K — the schema has no `resolution` field and 2K/4K
         // would 422. Pro/2 keep the existing default.
         ...(params.model !== 'nano_banana_2_lite' && {
-          resolution: params.resolution ?? '2K',
+          resolution:
+            resolveImageResolutionToken(params.model, params.resolution) ??
+            '2K',
         }),
         safety_tolerance: '6',
         ...(params.numImages !== undefined && { num_images: params.numImages }),
@@ -175,7 +274,7 @@ function buildFalModelOptions(
 
     case 'gpt_image_2':
       return {
-        image_size: params.imageSize ?? DEFAULT_IMAGE_SIZE,
+        image_size: resolveImageSize(params),
         quality: 'high',
         ...(params.numImages !== undefined && { num_images: params.numImages }),
         ...(params.outputFormat && { output_format: params.outputFormat }),
@@ -191,7 +290,8 @@ function buildFalModelOptions(
         aspect_ratio: imageSizeToAspectRatio(
           params.imageSize ?? DEFAULT_IMAGE_SIZE
         ),
-        resolution: (params.resolution ?? '2K').toLowerCase(),
+        resolution:
+          resolveImageResolutionToken(params.model, params.resolution) ?? '2k',
         // 2.0 accepts low/medium; Quality Mode has no quality knob — the
         // model *is* the higher-fidelity tier.
         ...(params.model === 'grok_imagine_image' && { quality: 'medium' }),
@@ -208,8 +308,9 @@ function buildFalModelOptions(
         aspect_ratio: imageSizeToAspectRatio(
           params.imageSize ?? DEFAULT_IMAGE_SIZE
         ),
-        // Phota only accepts '1K' or '4K' — map anything else to '1K'
-        resolution: params.resolution === '4K' ? '4K' : '1K',
+        // Phota only accepts '1K' or '4K'.
+        resolution:
+          resolveImageResolutionToken(params.model, params.resolution) ?? '1K',
         ...(params.numImages !== undefined && { num_images: params.numImages }),
         ...(params.outputFormat && { output_format: params.outputFormat }),
         ...(params.referenceImageUrls?.length && {
@@ -220,7 +321,7 @@ function buildFalModelOptions(
 
     case 'hunyuan_image_v3':
       return {
-        image_size: params.imageSize ?? DEFAULT_IMAGE_SIZE,
+        image_size: resolveImageSize(params),
         ...(params.seed !== undefined && { seed: params.seed }),
         ...(params.numImages !== undefined && { num_images: params.numImages }),
         ...(params.outputFormat && { output_format: params.outputFormat }),
@@ -232,7 +333,7 @@ function buildFalModelOptions(
 
     case 'qwen_image':
       return {
-        image_size: params.imageSize ?? DEFAULT_IMAGE_SIZE,
+        image_size: resolveImageSize(params),
         enable_safety_checker: true,
         enable_prompt_expansion: true,
         ...(params.seed !== undefined && { seed: params.seed }),
@@ -262,7 +363,7 @@ function buildFalModelOptions(
 
     case 'seedream_v5':
       return {
-        image_size: params.imageSize ?? DEFAULT_IMAGE_SIZE,
+        image_size: resolveImageSize(params),
         enable_safety_checker: true,
         ...(params.seed !== undefined && { seed: params.seed }),
         ...(params.numImages !== undefined && { num_images: params.numImages }),
@@ -295,7 +396,10 @@ export function buildGrokImageRequest(params: ImageGenerationParams): {
     params.imageSize ?? DEFAULT_IMAGE_SIZE
   );
   // Imagine has no 4K tier — 4K lands on the highest it serves.
-  const resolution = params.resolution === '1K' ? '1k' : '2k';
+  const resolution =
+    resolveImageResolutionToken(params.model, params.resolution) === '1k'
+      ? '1k'
+      : '2k';
 
   return {
     prompt: truncatePromptForModel(params.prompt, params.model),
