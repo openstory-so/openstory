@@ -175,22 +175,10 @@ const SceneThumbnailComponent: React.FC<SceneThumbnailProps> = ({
   );
 };
 
-const areEqual = (
-  prevProps: SceneThumbnailProps,
-  nextProps: SceneThumbnailProps
-): boolean => {
-  return (
-    prevProps.thumbnailUrl === nextProps.thumbnailUrl &&
-    prevProps.previewThumbnailUrl === nextProps.previewThumbnailUrl &&
-    prevProps.thumbnailStatus === nextProps.thumbnailStatus &&
-    prevProps.generationError === nextProps.generationError &&
-    prevProps.alt === nextProps.alt &&
-    prevProps.aspectRatio === nextProps.aspectRatio &&
-    prevProps.className === nextProps.className &&
-    prevProps.gridSheetUrl === nextProps.gridSheetUrl &&
-    prevProps.pendingUpscaleIndex === nextProps.pendingUpscaleIndex &&
-    prevProps.pendingUpscaleUrl === nextProps.pendingUpscaleUrl
-  );
-};
-
-export const SceneThumbnail = memo(SceneThumbnailComponent, areEqual);
+// Default shallow compare, no hand-written comparator. Every prop here is a
+// primitive, so the two are behaviourally identical — except an allowlist has
+// to be updated for each new prop, and twice now it was not: #1272 added
+// `generationError` after the fact, and `videoUrl` was missed entirely, which
+// froze the tile on the previous clip's first frame because every listed prop
+// was unchanged.
+export const SceneThumbnail = memo(SceneThumbnailComponent);
