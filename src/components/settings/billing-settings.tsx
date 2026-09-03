@@ -28,7 +28,11 @@ import {
 } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
-import { getTransactionsFn, updateAutoTopUpFn } from '@/functions/billing';
+import {
+  getTransactionsFn,
+  reportCheckoutCanceledFn,
+  updateAutoTopUpFn,
+} from '@/functions/billing';
 import { openAddCreditsDialog } from '@/hooks/use-add-credits-dialog';
 import { clearBalanceFlash } from '@/hooks/use-balance-flash';
 import {
@@ -54,6 +58,7 @@ import { toast } from 'sonner';
 type BillingSettingsProps = {
   success?: boolean;
   canceled?: boolean;
+  sessionId?: string;
 };
 
 type SectionHeaderProps = {
@@ -93,7 +98,11 @@ function getErrorMessage(
 
 const RETURN_KEY = 'openstory:billing-return';
 
-export function BillingSettings({ success, canceled }: BillingSettingsProps) {
+export function BillingSettings({
+  success,
+  canceled,
+  sessionId,
+}: BillingSettingsProps) {
   const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
   const [autoTopUpPrompt, setAutoTopUpPrompt] = useState<number | null>(null);
@@ -107,7 +116,12 @@ export function BillingSettings({ success, canceled }: BillingSettingsProps) {
     checkoutHandledRef.current = true;
 
     // Clear pending flash marker on cancel
-    if (canceled) clearBalanceFlash();
+    if (canceled) {
+      clearBalanceFlash();
+      if (sessionId) {
+        void reportCheckoutCanceledFn({ data: { sessionId } });
+      }
+    }
 
     // Refetch balance + show return toast on success
     if (success) {
@@ -140,7 +154,7 @@ export function BillingSettings({ success, canceled }: BillingSettingsProps) {
       window.history.replaceState({}, '', '/credits');
     }, 5000);
     return () => clearTimeout(timer);
-  }, [success, canceled, queryClient, navigate]);
+  }, [success, canceled, sessionId, queryClient, navigate]);
 
   const {
     data: balanceData,

@@ -19,6 +19,7 @@ const searchSchema = z.object({
   tab: z.enum(tabValues).optional().default('balance'),
   success: z.boolean().optional(),
   canceled: z.boolean().optional(),
+  session_id: z.string().max(256).optional(),
 });
 
 export const Route = createFileRoute('/_app/credits')({
@@ -52,7 +53,7 @@ const tabs = [
 ];
 
 function CreditsPage() {
-  const { tab, success, canceled } = Route.useSearch();
+  const { tab, success, canceled, session_id: sessionId } = Route.useSearch();
   const navigate = useNavigate();
 
   return (
@@ -80,7 +81,11 @@ function CreditsPage() {
         </TabsList>
 
         <TabsContent value="balance">
-          <BillingSettings success={success} canceled={canceled} />
+          <BillingSettings
+            success={success}
+            canceled={canceled}
+            sessionId={sessionId}
+          />
         </TabsContent>
         <TabsContent value="transactions">
           <TransactionSettings />
