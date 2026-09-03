@@ -144,7 +144,9 @@ test.describe('Sequences', () => {
       ''
     );
     await expect(
-      page.getByText('Paste a screenplay, or a one-liner we can expand.')
+      page.getByText(
+        'Paste a screenplay, or a one-liner we can expand — not a prompt.'
+      )
     ).toBeVisible();
     const automatic = page.getByRole('button', {
       name: 'Match script: derive a style from the script',

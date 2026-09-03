@@ -269,7 +269,7 @@ describe('completedStageFromArtifacts / nextActionFromArtifacts', () => {
     expect(sliderStopLabel('music')).toBe('Music & Motion');
     expect(sliderStopLabel('references')).toBe('References & Prompts');
     expect(sliderStopLabel('images')).toBe('Images');
-    expect(stopAfterSentence('motion')).toBe('Stop after motion & music');
+    expect(stopAfterSentence('motion')).toBe('Continue to the end');
   });
 
   it('slider has no Images stop in reference-only', () => {
