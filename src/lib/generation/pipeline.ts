@@ -396,8 +396,8 @@ const STOP_AFTER_SENTENCE: Record<GenerationStage, string> = {
   script: 'Stop after casting',
   references: 'Stop after references & prompts',
   images: 'Stop after images',
-  motion: 'Stop after motion & music',
-  music: 'Stop after motion & music',
+  motion: 'Don’t stop',
+  music: 'Don’t stop',
 };
 
 export function stopAfterSentence(stopAt: GenerationStage): string {
