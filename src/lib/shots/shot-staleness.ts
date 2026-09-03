@@ -5,7 +5,10 @@
  * to the stored `*_input_hash`.
  */
 
-import { rendersReferenceOnly } from '@/lib/shots/use-start-frame';
+import {
+  rendersReferenceOnly,
+  type StartFrameSequence,
+} from '@/lib/shots/use-start-frame';
 import { z } from 'zod';
 import { DEFAULT_IMAGE_MODEL, safeTextToImageModel } from '@/lib/ai/models';
 import {
@@ -134,10 +137,11 @@ export type ShotStalenessRefs = ShotPromptContextRefs;
  */
 export async function computeShotStaleness(args: {
   scopedDb: ScopedDb;
-  sequence: ShotPromptContextSequence & {
-    aspectRatio: AspectRatio;
-    status: SequenceStatus;
-  };
+  sequence: Omit<ShotPromptContextSequence, 'referenceOnly'> &
+    StartFrameSequence & {
+      aspectRatio: AspectRatio;
+      status: SequenceStatus;
+    };
   shot: Shot;
   frame: Frame;
   /**
@@ -282,7 +286,7 @@ export async function computeShotStaleness(args: {
         const latest = await scopedDb.framePromptVersions.getLatest(frame.id);
         const ctx = await loadNarrowShotPromptContext({
           scopedDb,
-          sequence,
+          sequence: motionSequence,
           scene,
           analysisModelOverride: latest?.analysisModel ?? null,
           refs,

@@ -9,8 +9,9 @@ video model animates it. Reference-only removes the still. That is one deleted
 phase and one inverted assumption — and the inverted assumption is the whole
 substance of the feature.
 
-`sequences.referenceOnly` sets the default for a sequence; `shots.useStartFrame`
-overrides it per shot (NULL = inherit). Resolve with `usesStartFrame()` /
+`sequences.generateStartFrames` sets the default for a sequence (off, the
+default, is reference-only); `shots.useStartFrame` overrides it per shot (NULL =
+inherit). Resolve with `usesStartFrame()` /
 `rendersReferenceOnly()` — never read either column raw. See "Per shot, not per
 sequence" below.
 
@@ -267,12 +268,14 @@ cannot depend on whether one gets rendered.
 
 ## Per shot, not per sequence
 
-`sequences.referenceOnly` is the sequence default; `shots.useStartFrame`
-overrides it (NULL = inherit). The resolution lives in one place —
+`sequences.generateStartFrames` is the sequence default (off = reference-only,
+which is what a new sequence gets); `shots.useStartFrame` overrides it (NULL =
+inherit). It replaced an inverted `referenceOnly` column so the sequence default
+speaks the same language as the shot override. The resolution lives in one place —
 `usesStartFrame(shot, sequence)` / its inverse `rendersReferenceOnly` — and
 `reference-only-is-per-shot.test.ts` fails any per-shot path that reads
-`sequence.referenceOnly` raw. Nine call sites have to agree; they drifted once
-already.
+`sequence.generateStartFrames` raw. Nine call sites have to agree; they drifted
+once already.
 
 The switch is **not** render-only. It picks the motion-prompt template and
 folds into the motion-prompt hash, so flipping it re-stales that shot's motion
@@ -304,4 +307,9 @@ Reference-only is faster and cheaper — one generation per shot instead of two.
 What it gives up is control: with a still you can look at the composition,
 regenerate it, upscale it, or hand-pick a variant before any video spend. Here
 the first thing you see is the clip. It also narrows the usable motion models
-to those with a reference-to-video route. Off by default for both reasons.
+to those with a reference-to-video route. It is the default even so: most shots
+never need a hand-picked still, and "Generate start frames" in the options opts
+a sequence back into the frame-based workflow. Every sequence and shot that
+existed before the default flipped was stamped onto start frames by migration
+`20260903000946_backfill_generate_start_frames`, so the flip changed nothing
+already made.

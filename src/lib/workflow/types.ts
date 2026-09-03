@@ -290,7 +290,7 @@ export interface StoryboardWorkflowInput extends SequenceWorkflowContext {
   /**
    * Reference-only mode: render straight to video from the cast / location /
    * element reference sheets, skipping start-frame generation entirely.
-   * Snapshotted from `sequences.referenceOnly` by the launcher and passed
+   * Snapshotted from `!sequences.generateStartFrames` by the launcher and passed
    * straight through to analyze-script.
    */
   referenceOnly?: boolean;
@@ -357,7 +357,7 @@ export interface AnalyzeScriptWorkflowInput extends SequenceWorkflowContext {
   /**
    * Reference-only mode: render straight to video from the cast / location /
    * element reference sheets, skipping start-frame generation entirely. Pinned
-   * onto the payload at the trigger from `sequences.referenceOnly` like every
+   * onto the payload at the trigger from `!sequences.generateStartFrames` like every
    * other generation setting, so a mid-run toggle cannot change what this run
    * is doing.
    */

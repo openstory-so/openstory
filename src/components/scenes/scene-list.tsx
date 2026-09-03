@@ -126,7 +126,7 @@ export type SceneListProps = {
    * Sequence renders straight to video with no stills, so shot eligibility
    * cannot require one — see `isBatchMotionEligible`.
    */
-  referenceOnly?: boolean;
+  generateStartFrames?: boolean;
   recommendedVideoModel?: string | null;
   styleName?: string;
   modelMissingShotIds?: Set<string>;
@@ -162,7 +162,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
   initialMusicModel,
   initialVideoModel,
   styleCategory,
-  referenceOnly = false,
+  generateStartFrames = false,
   recommendedVideoModel,
   styleName,
   modelMissingShotIds,
@@ -255,24 +255,26 @@ const SceneListComponent: React.FC<SceneListProps> = ({
   const notStartedShots = useMemo(() => {
     if (!shots) return [];
     return shots.filter((f) =>
-      isBatchMotionEligible(f, rendersReferenceOnly(f, { referenceOnly }))
+      isBatchMotionEligible(f, rendersReferenceOnly(f, { generateStartFrames }))
     );
-  }, [shots, referenceOnly]);
+  }, [shots, generateStartFrames]);
 
   // The batch's mode: one reference-only shot in it decides the model list,
   // because submit checks the picked model against every such shot.
   const batchRendersReferenceOnly = useMemo(
     () =>
-      notStartedShots.some((f) => rendersReferenceOnly(f, { referenceOnly })),
-    [notStartedShots, referenceOnly]
+      notStartedShots.some((f) =>
+        rendersReferenceOnly(f, { generateStartFrames })
+      ),
+    [notStartedShots, generateStartFrames]
   );
 
   const hasGeneratingShots = useMemo(() => {
     if (!shots) return false;
     return shots.some((f) =>
-      isMotionGenerating(f, rendersReferenceOnly(f, { referenceOnly }))
+      isMotionGenerating(f, rendersReferenceOnly(f, { generateStartFrames }))
     );
-  }, [shots, referenceOnly]);
+  }, [shots, generateStartFrames]);
 
   // Check if all eligible shots have motion prompts ready
   const motionPromptsReady = useMemo(() => {

@@ -14,8 +14,8 @@ import {
   usesStartFrame,
 } from './use-start-frame';
 
-const IMAGE_SEQ = { referenceOnly: false };
-const REF_ONLY_SEQ = { referenceOnly: true };
+const IMAGE_SEQ = { generateStartFrames: true };
+const REF_ONLY_SEQ = { generateStartFrames: false };
 
 describe('usesStartFrame', () => {
   it('inherits the sequence when the shot has no override', () => {

@@ -88,6 +88,7 @@ function makeScopedDb(opts: {
   const getForUser = vi.fn(async () => ({
     id: 'seq_1',
     title: 'The Long Walk',
+    generateStartFrames: true,
     script: opts.script === undefined ? 'INT. HALLWAY — NIGHT' : opts.script,
     aspectRatio: '16:9',
     styleId: opts.styleId === undefined ? 'style_1' : opts.styleId,
@@ -208,6 +209,8 @@ describe('triggerStoryboard', () => {
       ...INPUT,
       title: 'The Long Walk',
       script: 'INT. HALLWAY — NIGHT',
+      // The sequence default, inverted into the payload's render vocabulary.
+      referenceOnly: false,
       aspectRatio: '16:9',
       styleConfig: STYLE_CONFIG,
       // Unrecognised model ids on the row fall back to the defaults here, not

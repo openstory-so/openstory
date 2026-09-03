@@ -176,7 +176,7 @@ describe('sequence schemas', () => {
   it('rejects reference-only with motion off — it would render nothing', () => {
     const r = createSequenceSchema.safeParse({
       ...base,
-      referenceOnly: true,
+      generateStartFrames: false,
       autoGenerateMotion: false,
       autoGenerateMusic: false,
     });
@@ -190,7 +190,7 @@ describe('sequence schemas', () => {
     const r = createSequenceSchema.safeParse({
       ...base,
       videoModels: ['seedance_v2_5', 'kling_v3_pro'],
-      referenceOnly: true,
+      generateStartFrames: false,
     });
     expect(r.success).toBe(false);
     expect(JSON.stringify(r.error)).toContain(REFERENCE_ONLY_MODEL_ERROR);
@@ -198,7 +198,8 @@ describe('sequence schemas', () => {
 
   it('accepts reference-only with motion on and capable models', () => {
     expect(
-      createSequenceSchema.safeParse({ ...base, referenceOnly: true }).success
+      createSequenceSchema.safeParse({ ...base, generateStartFrames: false })
+        .success
     ).toBe(true);
   });
 
@@ -209,16 +210,16 @@ describe('sequence schemas', () => {
       createSequenceSchema.safeParse({
         ...base,
         videoModels: ['grok_imagine_video_1_5'],
-        referenceOnly: true,
+        generateStartFrames: false,
       }).success
     ).toBe(true);
   });
 
-  it('refuses to update referenceOnly on an existing sequence', () => {
+  it('refuses to update generateStartFrames on an existing sequence', () => {
     // Toggling it past the create-time model gate rewrites what every already
     // rendered shot means — on, approved stills are dropped from the request
     // while their prompts still assume one.
-    const parsed = updateSequenceSchema.parse({ referenceOnly: true });
-    expect(Object.keys(parsed)).not.toContain('referenceOnly');
+    const parsed = updateSequenceSchema.parse({ generateStartFrames: true });
+    expect(Object.keys(parsed)).not.toContain('generateStartFrames');
   });
 });

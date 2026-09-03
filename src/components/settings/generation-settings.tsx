@@ -79,11 +79,12 @@ type GenerationSettingsProps = {
   videoModels: ImageToVideoModel[];
   autoGenerateMotion?: boolean;
   /**
-   * Reference-only: skip start-frame generation and render each shot straight
-   * to video from the cast / location / element sheets. Omit the change
-   * handler to hide the control (contexts that cannot switch mode).
+   * Generate a still per shot before motion (the frame-based workflow). Off,
+   * the default, renders each shot straight to video from the cast / location
+   * / element sheets. Omit the change handler to hide the control (contexts
+   * that cannot switch mode).
    */
-  referenceOnly?: boolean;
+  generateStartFrames?: boolean;
   audioModels?: AudioModel[];
   autoGenerateMusic?: boolean;
   onAspectRatioChange: (value: AspectRatio) => void;
@@ -92,7 +93,7 @@ type GenerationSettingsProps = {
   onImageModelsChange: (value: TextToImageModel[]) => void;
   onVideoModelsChange: (value: ImageToVideoModel[]) => void;
   onAutoGenerateMotionChange?: (value: boolean) => void;
-  onReferenceOnlyChange?: (value: boolean) => void;
+  onGenerateStartFramesChange?: (value: boolean) => void;
   onAudioModelsChange?: (value: AudioModel[]) => void;
   onAutoGenerateMusicChange?: (value: boolean) => void;
   disabled?: boolean;
@@ -130,7 +131,7 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
   imageModels,
   videoModels,
   autoGenerateMotion = true,
-  referenceOnly = false,
+  generateStartFrames = false,
   audioModels,
   autoGenerateMusic = true,
   onAspectRatioChange,
@@ -139,7 +140,7 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
   onImageModelsChange,
   onVideoModelsChange,
   onAutoGenerateMotionChange,
-  onReferenceOnlyChange,
+  onGenerateStartFramesChange,
   onAudioModelsChange,
   onAutoGenerateMusicChange,
   disabled = false,
@@ -176,25 +177,25 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
   );
 
   /**
-   * Reference-only renders nothing without motion, and the server now rejects
-   * that pair. Turning motion off only *disabled* the reference-only toggle,
-   * leaving its `true` value to be submitted — so clear it here instead.
+   * Reference-only renders nothing without motion, and the server rejects
+   * that pair. Turning motion off only *disables* the start-frame toggle,
+   * leaving its value to be submitted — so switch start frames on here instead.
    */
   const handleAutoGenerateMotionChange = (next: boolean) => {
     onAutoGenerateMotionChange?.(next);
-    if (!next && referenceOnly) onReferenceOnlyChange?.(false);
+    if (!next && !generateStartFrames) onGenerateStartFramesChange?.(true);
   };
 
   /**
-   * Turning the mode ON narrows the motion list, which can strand a selection
+   * Turning start frames OFF narrows the motion list, which can strand a selection
    * the server would then reject at submit. Drop the models that cannot render
    * without a start frame here, falling back to the first capable one so the
    * selection is never empty — the user sees the change while the panel is
    * open, rather than an error after pressing Generate.
    */
-  const handleReferenceOnlyChange = (next: boolean) => {
-    onReferenceOnlyChange?.(next);
-    if (!next) return;
+  const handleGenerateStartFramesChange = (next: boolean) => {
+    onGenerateStartFramesChange?.(next);
+    if (next) return;
     const capable = videoModels.filter((m) => referenceOnlyModels.includes(m));
     if (capable.length === videoModels.length) return;
     const fallback = referenceOnlyModels[0];
@@ -327,16 +328,16 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
                 disabled={disabled}
               />
             )}
-            {onReferenceOnlyChange && (
+            {onGenerateStartFramesChange && (
               <AutoToggle
-                id="reference-only"
-                label="Skip start frames (reference-only)"
-                checked={referenceOnly}
-                onChange={handleReferenceOnlyChange}
+                id="generate-start-frames"
+                label="Generate start frames"
+                checked={generateStartFrames}
+                onChange={handleGenerateStartFramesChange}
                 disabled={disabled || !autoGenerateMotion}
               />
             )}
-            {onReferenceOnlyChange && referenceOnly && (
+            {onGenerateStartFramesChange && !generateStartFrames && (
               <p className="text-xs text-muted-foreground">
                 Each shot renders straight to video from the character, location
                 and element references — no still is generated first. Faster and
@@ -353,7 +354,7 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
                 styleCategory={styleCategory}
                 recommendedVideoModel={recommendedVideoModel}
                 styleName={styleName}
-                referenceOnly={referenceOnly}
+                referenceOnly={!generateStartFrames}
               />
             ) : (
               <MotionModelMultiSelector
@@ -364,7 +365,7 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
                 styleCategory={styleCategory}
                 recommendedVideoModel={recommendedVideoModel}
                 styleName={styleName}
-                referenceOnly={referenceOnly}
+                referenceOnly={!generateStartFrames}
               />
             )}
           </section>

@@ -5,6 +5,7 @@ import {
   safeTextToImageModel,
 } from '@/lib/ai/models';
 import { resolveUpscaleModel } from '@/lib/ai/resolve-asset-models';
+import { shotPromptSequence } from '@/lib/shots/use-start-frame';
 import {
   estimateImageCost,
   estimateStoryboardCost,
@@ -149,7 +150,7 @@ export const generateShotImageFn = createServerFn({ method: 'POST' })
 
     const workflowInput = await prepareShotImageWorkflowInput({
       scopedDb: context.scopedDb,
-      sequence,
+      sequence: shotPromptSequence(sequence, shot),
       shot,
       scene: sceneForInput,
       frame,

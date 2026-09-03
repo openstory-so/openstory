@@ -72,13 +72,13 @@ describe('createSequenceSchema — reference-only', () => {
   it('defaults off', () => {
     const result = createSequenceSchema.safeParse(base);
     expect(result.success).toBe(true);
-    if (result.success) expect(result.data.referenceOnly).toBe(false);
+    if (result.success) expect(result.data.generateStartFrames).toBe(false);
   });
 
   it('accepts a model with a reference-to-video route', () => {
     const result = createSequenceSchema.safeParse({
       ...base,
-      referenceOnly: true,
+      generateStartFrames: false,
       videoModel: 'seedance_v2_5',
       videoModels: ['seedance_v2_5'],
     });
@@ -88,7 +88,7 @@ describe('createSequenceSchema — reference-only', () => {
   it('rejects a model that needs a start frame', () => {
     const result = createSequenceSchema.safeParse({
       ...base,
-      referenceOnly: true,
+      generateStartFrames: false,
       videoModel: 'kling_v3_pro',
       videoModels: ['kling_v3_pro'],
     });
@@ -103,16 +103,17 @@ describe('createSequenceSchema — reference-only', () => {
     // variant without a reference route would fail every shot it rendered.
     const result = createSequenceSchema.safeParse({
       ...base,
-      referenceOnly: true,
+      generateStartFrames: false,
       videoModel: 'seedance_v2_5',
       videoModels: ['seedance_v2_5', 'veo3_1'],
     });
     expect(result.success).toBe(false);
   });
 
-  it('leaves start-frame model selection alone when the mode is off', () => {
+  it('leaves motion model selection alone when start frames are on', () => {
     const result = createSequenceSchema.safeParse({
       ...base,
+      generateStartFrames: true,
       videoModel: 'kling_v3_pro',
       videoModels: ['kling_v3_pro'],
     });

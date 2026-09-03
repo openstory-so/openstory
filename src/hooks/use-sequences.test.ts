@@ -3,7 +3,7 @@
  *
  * It used to hand-copy a field list, and a field missing from that list failed
  * silently in the worst way: the composer set it, the hook dropped it, and the
- * server's Zod `.default()` supplied a value nobody chose. `referenceOnly`
+ * server's Zod `.default()` supplied a value nobody chose. `generateStartFrames` (then `referenceOnly`)
  * shipped that way — the toggle rendered, persisted to localStorage, priced
  * itself into the quote, and every sequence still wrote `reference_only = 0`.
  * Nothing threw, so the only symptom was the full image pipeline running in a
@@ -61,22 +61,22 @@ const INPUT = {
   videoModels: ['minimax_h3_max'],
   autoGenerateMotion: true,
   autoGenerateMusic: false,
-  referenceOnly: true,
+  generateStartFrames: false,
   targetDurationSeconds: 30,
   suggestedTalentIds: ['talent_1'],
   suggestedLocationIds: ['loc_1'],
 };
 
 describe('useCreateSequence forwards the full input', () => {
-  it('sends every field the caller set, referenceOnly included', async () => {
+  it('sends every field the caller set, generateStartFrames included', async () => {
     createSequenceFn.mockClear();
     await mutationFnOf(useCreateSequence())(INPUT);
 
     const sent = createSequenceFn.mock.calls[0]?.[0];
     expect(sent).toBeDefined();
 
-    // The regression that shipped: dropped silently, defaulted to false.
-    expect(sent?.data.referenceOnly).toBe(true);
+    // The regression that shipped: dropped silently, defaulted away.
+    expect(sent?.data.generateStartFrames).toBe(false);
 
     // And the general rule — nothing the caller set may go missing.
     for (const [key, value] of Object.entries(INPUT)) {
@@ -90,6 +90,6 @@ describe('useCreateSequence forwards the full input', () => {
 
     const sent = createSequenceFn.mock.calls[0]?.[0];
     expect(sent?.data.title).toBe('Untitled Sequence');
-    expect(sent?.data.referenceOnly).toBe(true);
+    expect(sent?.data.generateStartFrames).toBe(false);
   });
 });

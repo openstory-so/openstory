@@ -1,7 +1,7 @@
 /**
  * `sequences.create` must PERSIST the settings the composer chose.
  *
- * `referenceOnly` shipped validated, capability-checked against the team's
+ * `generateStartFrames` shipped validated, capability-checked against the team's
  * vias, and priced into the credit estimate — and then not written. The column
  * default is 0, so every sequence came back with the mode off and ran the full
  * image pipeline. Nothing threw anywhere along the way; the only symptom was a
@@ -73,27 +73,27 @@ beforeEach(async () => {
 });
 
 describe('sequences.create persists the chosen settings', () => {
-  it('writes referenceOnly rather than falling back to the column default', async () => {
+  it('writes generateStartFrames rather than falling back to the column default', async () => {
     const methods = createSequencesMethods(db, teamId, userId);
     const created = await methods.create({
-      title: 'Reference-only board',
+      title: 'Frame-based board',
       styleId,
       videoModel: 'minimax_h3_max',
       autoGenerateMotion: true,
-      referenceOnly: true,
+      generateStartFrames: true,
     });
 
-    expect(created.referenceOnly).toBe(true);
+    expect(created.generateStartFrames).toBe(true);
 
     // Read it back: `returning()` could report a value the row does not hold.
     const [row] = await db.select().from(sequences);
-    expect(row?.referenceOnly).toBe(true);
+    expect(row?.generateStartFrames).toBe(true);
   });
 
   it('defaults to off when the caller omits it', async () => {
     const methods = createSequencesMethods(db, teamId, userId);
     const created = await methods.create({ title: 'Normal', styleId });
-    expect(created.referenceOnly).toBe(false);
+    expect(created.generateStartFrames).toBe(false);
   });
 
   it('carries every generation setting through, not just some', async () => {
@@ -108,7 +108,7 @@ describe('sequences.create persists the chosen settings', () => {
       musicModel: 'elevenlabs_music',
       autoGenerateMotion: true,
       autoGenerateMusic: true,
-      referenceOnly: true,
+      generateStartFrames: false,
     });
 
     expect({
@@ -119,7 +119,7 @@ describe('sequences.create persists the chosen settings', () => {
       musicModel: created.musicModel,
       autoGenerateMotion: created.autoGenerateMotion,
       autoGenerateMusic: created.autoGenerateMusic,
-      referenceOnly: created.referenceOnly,
+      generateStartFrames: created.generateStartFrames,
     }).toEqual({
       aspectRatio: '9:16',
       analysisModel: 'openai/gpt-5.6-luna',
@@ -128,7 +128,7 @@ describe('sequences.create persists the chosen settings', () => {
       musicModel: 'elevenlabs_music',
       autoGenerateMotion: true,
       autoGenerateMusic: true,
-      referenceOnly: true,
+      generateStartFrames: false,
     });
   });
 });

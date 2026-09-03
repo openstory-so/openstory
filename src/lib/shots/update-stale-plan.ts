@@ -218,7 +218,7 @@ type PlanSequence = {
    * writes them. Re-reading it per stage would let a mid-run toggle produce a
    * sequence with half its prompts in each style.
    */
-  referenceOnly: boolean;
+  generateStartFrames: boolean;
 };
 
 type PlanPromptContext = {
@@ -276,7 +276,7 @@ function toPlanSequence(sequence: Sequence): PlanSequence {
     videoModel: sequence.videoModel,
     styleId: sequence.styleId,
     analysisModel: sequence.analysisModel,
-    referenceOnly: sequence.referenceOnly,
+    generateStartFrames: sequence.generateStartFrames,
   };
 }
 
@@ -404,10 +404,12 @@ export async function computePlan(args: {
     return { ...empty, skipped };
   }
 
-  // Sequence-wide bibles + style — same loader as single-shot regen.
+  // Sequence-wide bibles + style — same loader as single-shot regen. Only
+  // the bibles are read off this context, so the sequence default stands in
+  // for the per-shot mode (which is frozen per target as `usesStartFrame`).
   const ctx = await loadShotPromptContext({
     scopedDb,
-    sequence,
+    sequence: { ...sequence, referenceOnly: !sequence.generateStartFrames },
     scene: sceneForBibles,
   });
 

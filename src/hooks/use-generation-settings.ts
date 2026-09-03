@@ -56,8 +56,8 @@ type GenerationSettings = {
   motionModel: ImageToVideoModel;
   videoModels: ImageToVideoModel[];
   autoGenerateMotion: boolean;
-  /** Skip start-frame generation; render straight to video from references. */
-  referenceOnly: boolean;
+  /** Render a still per shot first (the frame-based workflow); off = reference-only. */
+  generateStartFrames: boolean;
   musicModel: AudioModel;
   audioModels: AudioModel[];
   autoGenerateMusic: boolean;
@@ -96,9 +96,9 @@ const DEFAULT_SETTINGS: GenerationSettings = withMode({
   // Motion + music on by default so the first Generate is a short film aha
   // (welcome grant sized for a ~30s stills+motion+music board — #1140).
   autoGenerateMotion: true,
-  // Off by default: start frames are what make composition steerable, and
-  // reference-only narrows the usable motion models.
-  referenceOnly: false,
+  // Off by default: a new sequence renders reference-only; start frames are
+  // the opt-in for steerable composition.
+  generateStartFrames: false,
   musicModel: TURBO_DEFAULT_AUDIO,
   audioModels: [TURBO_DEFAULT_AUDIO],
   autoGenerateMusic: true,
@@ -247,9 +247,10 @@ function loadSettings(): GenerationSettings {
       motionModel,
       videoModels,
       autoGenerateMotion,
-      referenceOnly:
-        'referenceOnly' in parsed && typeof parsed.referenceOnly === 'boolean'
-          ? parsed.referenceOnly
+      generateStartFrames:
+        'generateStartFrames' in parsed &&
+        typeof parsed.generateStartFrames === 'boolean'
+          ? parsed.generateStartFrames
           : false,
       musicModel,
       audioModels,
@@ -260,9 +261,9 @@ function loadSettings(): GenerationSettings {
     // reference-to-video route — either way, restoring it would hand the
     // create schema a selection it rejects. Checked against the post-`withMode`
     // list, since the mode can swap the video models out from under it.
-    return settings.referenceOnly &&
+    return !settings.generateStartFrames &&
       !settings.videoModels.every(supportsReferenceOnlyMotion)
-      ? { ...settings, referenceOnly: false }
+      ? { ...settings, generateStartFrames: true }
       : settings;
   } catch (error) {
     logger.warn('Failed to load settings from localStorage:', { err: error });

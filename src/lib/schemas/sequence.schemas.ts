@@ -127,7 +127,7 @@ export const createSequenceSchema = createInsertSchema(sequences, {
     // Explicit default for the same reason as the flags above: the model
     // refinement below and the create handler both read the parsed value, and
     // leaving it `undefined` would make "off" indistinguishable from "unset".
-    referenceOnly: z.boolean().default(false).optional(),
+    generateStartFrames: z.boolean().default(false).optional(),
     // Music model selection (model key, not full ID) — primary / first of audioModels
     musicModel: z
       .string()
@@ -187,7 +187,7 @@ export const createSequenceSchema = createInsertSchema(sequences, {
   // then re-asks it against the team's real keys via `canRenderReferenceOnly`.
   .refine(
     (data) =>
-      !data.referenceOnly ||
+      data.generateStartFrames ||
       data.videoModels.every(
         (model) =>
           validVideoModelKeys.includes(model) &&
@@ -195,15 +195,15 @@ export const createSequenceSchema = createInsertSchema(sequences, {
           referenceOnlyCapableWith(model as ImageToVideoModel, { xai: true })
       ),
     {
-      path: ['referenceOnly'],
+      path: ['generateStartFrames'],
       message: REFERENCE_ONLY_MODEL_ERROR,
     }
   )
   // Reference-only skips the image pass; motion is the only thing left that
   // renders. With motion off the sequence would complete having generated
   // nothing at all, and report success doing it.
-  .refine((data) => !data.referenceOnly || data.autoGenerateMotion, {
-    path: ['referenceOnly'],
+  .refine((data) => data.generateStartFrames || data.autoGenerateMotion, {
+    path: ['generateStartFrames'],
     message: REFERENCE_ONLY_REQUIRES_MOTION_ERROR,
   });
 
@@ -239,7 +239,7 @@ export const updateSequenceSchema = createUpdateSchema(sequences, {
   // on, the stills the user approved are silently dropped from the request
   // while their prompts still assume one; off, no shot has a still and batch
   // motion finds nothing eligible. Regenerate instead of toggling.
-  referenceOnly: true,
+  generateStartFrames: true,
   // Copied from the style row on styleId change — clients send styleId only.
   styleConfig: true,
   // Music fields - managed by workflow, not user input

@@ -1,5 +1,6 @@
 import {
   rendersReferenceOnly,
+  shotPromptSequence,
   usesStartFrame,
 } from '@/lib/shots/use-start-frame';
 import {
@@ -113,24 +114,6 @@ const shotListInput = z.object({
   shotId: ulidSchema,
   promptType: promptTypeSchema,
 });
-
-/**
- * The sequence as THIS shot's prompts see it.
- *
- * `referenceOnly` decides which motion-prompt template writes the version, and
- * it is folded into the motion-prompt hash. A shot may now override the
- * sequence (`shots.useStartFrame`), so every place that computes the hash, the
- * bail check, and the workflow trigger must read the SAME resolved answer —
- * the sequence row on its own would stamp one value and verify another, which
- * is the #867 drift in a new costume. Same reason the still is withheld: a
- * shot rendering reference-only must not hash a frame it will never animate.
- */
-function shotPromptSequence<T extends { referenceOnly: boolean }>(
-  sequence: T,
-  shot: { useStartFrame?: boolean | null }
-): T {
-  return { ...sequence, referenceOnly: rendersReferenceOnly(shot, sequence) };
-}
 
 export const listShotPromptVariantsFn = createServerFn({ method: 'GET' })
   .middleware([shotAccessMiddleware])

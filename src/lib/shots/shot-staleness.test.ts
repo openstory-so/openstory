@@ -44,7 +44,7 @@ const sequence = {
   styleId: 'style-1',
   aspectRatio: '16:9',
   analysisModel: 'model-1',
-  referenceOnly: false,
+  generateStartFrames: true,
   // Settled sequence — the mid-run short-circuit (#1121) is exercised by its
   // own test below, and must not silence any of the others.
   status: 'completed',

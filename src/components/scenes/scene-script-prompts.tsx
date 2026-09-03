@@ -177,13 +177,14 @@ export function tabsForScope(scope: SelectionScope): TabDescriptor[] {
     // No Script tab: the script is scene-scoped (`scene_script_versions` is
     // keyed by sceneId), so editing it from a shot would silently rewrite every
     // sibling shot's text. Shot scope keeps only what a shot actually owns — its
-    // image and motion prompts.
+    // image and motion prompts. Video leads: it is the deliverable, and in
+    // the default reference-only mode the keyframe is optional.
     return [
+      { value: 'motion-prompt', label: 'Video' },
+      { value: 'image-prompt', label: 'Keyframe' },
       { value: 'cast', label: 'Cast' },
       { value: 'location', label: 'Locations' },
       { value: 'elements', label: 'Elements' },
-      { value: 'image-prompt', label: 'Image' },
-      { value: 'motion-prompt', label: 'Video' },
     ];
   }
   if (scope === 'scenes') {
@@ -240,7 +241,7 @@ type SceneScriptPromptsProps = {
    * Sequence default for "animate from a start frame". A shot may override it
    * (`shots.useStartFrame`); the checkbox below shows the resolved answer.
    */
-  sequenceReferenceOnly?: boolean;
+  sequenceGeneratesStartFrames?: boolean;
   selectedTab: TabValue;
   /** Tabs to render for the current selection scope (#986). */
   visibleTabs: TabDescriptor[];
@@ -316,7 +317,7 @@ type SceneScriptPromptsProps = {
 export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
   shot,
   sequenceId,
-  sequenceReferenceOnly = false,
+  sequenceGeneratesStartFrames = false,
   selectedTab,
   visibleTabs,
   onTabChange,
@@ -1227,8 +1228,10 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
   // Flipping this re-stales the motion prompt — the two modes use different
   // templates. See `usesStartFrame`.
   const shotUsesStartFrame = shot
-    ? usesStartFrame(shot, { referenceOnly: sequenceReferenceOnly })
-    : !sequenceReferenceOnly;
+    ? usesStartFrame(shot, {
+        generateStartFrames: sequenceGeneratesStartFrames,
+      })
+    : sequenceGeneratesStartFrames;
   // The shot's model can't render without a start frame — it stays listed (it
   // is already picked) but submit refuses it, so say so here rather than at the
   // click. Same list the selector filters by.

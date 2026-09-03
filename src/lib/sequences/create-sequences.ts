@@ -140,7 +140,7 @@ export const createSequences = createServerOnlyFn(
       videoModels: videoModelsInput,
       autoGenerateMotion = true,
       autoGenerateMusic = true,
-      referenceOnly = false,
+      generateStartFrames = false,
       musicModel,
       audioModels: audioModelsInput,
       targetDurationSeconds,
@@ -233,7 +233,7 @@ export const createSequences = createServerOnlyFn(
     // on the native xAI route only; without an xAI key it falls back to a fal
     // image-to-video endpoint that requires `image_url`, and every shot would
     // fail at submit. Reject here instead, before a single credit is reserved.
-    if (referenceOnly) {
+    if (!generateStartFrames) {
       // `credentials` is the flattened key-resolver surface these helpers take
       // — the same one the workflows get, so create-time and submit-time ask
       // the identical question.
@@ -282,7 +282,7 @@ export const createSequences = createServerOnlyFn(
       videoModels,
       autoGenerateMusic,
       audioModels,
-      referenceOnly,
+      referenceOnly: !generateStartFrames,
       // Align with Generate ActionCost (duration chip → scene count + clip length).
       targetDurationSeconds,
       pricing: await getEffectiveFalPricing(),
@@ -342,7 +342,7 @@ export const createSequences = createServerOnlyFn(
               musicModel: persistedMusicModel,
               autoGenerateMotion,
               autoGenerateMusic,
-              referenceOnly,
+              generateStartFrames,
               suggestedTalentIds: suggestedTalentIds?.length
                 ? suggestedTalentIds
                 : undefined,

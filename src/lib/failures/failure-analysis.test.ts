@@ -105,7 +105,7 @@ function makeSequence(overrides: Partial<Sequence> = {}): Sequence {
     readyEmailSentAt: null,
     autoGenerateMotion: false,
     autoGenerateMusic: false,
-    referenceOnly: false,
+    generateStartFrames: true,
     suggestedTalentIds: null,
     suggestedLocationIds: null,
     ...overrides,

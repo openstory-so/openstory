@@ -47,7 +47,10 @@ import {
   resolveMotionPrompt,
   resolveMotionPromptFromVersion,
 } from '@/lib/motion/resolve-motion-prompt';
-import { rendersReferenceOnly } from '@/lib/shots/use-start-frame';
+import {
+  rendersReferenceOnly,
+  shotPromptSequence,
+} from '@/lib/shots/use-start-frame';
 import { isBatchMotionEligible, toShotView } from '@/lib/shots/shot-view';
 import { rescanContinuityFromPrompt } from '@/lib/scenes/rescan-continuity-from-prompt';
 import { buildUserEditProvenance } from '@/lib/prompts/user-edit-provenance';
@@ -230,7 +233,7 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
           ? await buildUserEditProvenance({
               kind: 'motion',
               scopedDb: context.scopedDb,
-              sequence,
+              sequence: shotPromptSequence(sequence, shot),
               scene: context.scene
                 ? { ...context.scene, continuity: effectiveContinuity }
                 : null,

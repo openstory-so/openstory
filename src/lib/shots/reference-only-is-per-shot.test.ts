@@ -25,7 +25,7 @@ import { describe, expect, it } from 'vitest';
 // entirely until it was noticed, and every UI holder of the row spells it that
 // way (the query can be in flight).
 const SEQUENCE_READ =
-  /\bsequence\??\.referenceOnly\b|\bplan\.sequence\??\.referenceOnly\b/;
+  /\bsequence\??\.generateStartFrames\b|\bplan\.sequence\??\.generateStartFrames\b/;
 
 /**
  * Reads that are correctly sequence-level, each with why.
@@ -38,9 +38,6 @@ const SEQUENCE_LEVEL_BY_DESIGN: Record<string, string> = {
   // The flag's own home: it resolves the shot override against this default.
   'src/lib/shots/use-start-frame.ts':
     'defines the resolution — the default it falls back to',
-  // Reads the value off whatever sequence object it is HANDED, which callers
-  // now build per shot via `shotPromptSequence`.
-  'src/lib/ai/prompt-context.ts': 'passes through the caller-resolved sequence',
   // A full storyboard run starts in the sequence's mode; per-shot overrides
   // are applied later, per shot, by the render paths.
   'src/lib/workflow/launchers.ts': 'sequence-wide storyboard launch',
@@ -81,7 +78,7 @@ describe('reference-only is resolved per shot', () => {
     expect(
       offenders,
       offenders.length > 0
-        ? `These read sequence.referenceOnly directly. If the answer is about ONE SHOT, ` +
+        ? `These read sequence.generateStartFrames directly. If the answer is about ONE SHOT, ` +
             `use usesStartFrame(shot, sequence) — a shot can override the sequence. ` +
             `If it really is sequence-wide, add it to SEQUENCE_LEVEL_BY_DESIGN with a reason.\n  ` +
             offenders.join('\n  ')

@@ -293,7 +293,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
   const aspectRatio = sequence?.aspectRatio || DEFAULT_ASPECT_RATIO;
   // No stills are ever rendered in this mode, so every motion-eligibility
   // check has to stop requiring one (`isBatchMotionEligible`).
-  const referenceOnly = sequence?.referenceOnly ?? false;
+  const generateStartFrames = sequence?.generateStartFrames ?? false;
   const isProcessing = sequence?.status === 'processing';
   const processingRef = useRef(isProcessing);
   processingRef.current = isProcessing;
@@ -373,12 +373,12 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     () => ({
       autoGenerateMotion: sequence?.autoGenerateMotion ?? false,
       autoGenerateMusic: sequence?.autoGenerateMusic ?? false,
-      referenceOnly: sequence?.referenceOnly ?? false,
+      referenceOnly: !(sequence?.generateStartFrames ?? false),
     }),
     [
       sequence?.autoGenerateMotion,
       sequence?.autoGenerateMusic,
-      sequence?.referenceOnly,
+      sequence?.generateStartFrames,
     ]
   );
 
@@ -1252,7 +1252,10 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
       // for a user-driven batch generate, never auto-retried.
       const eligibleShotIds = (shots ?? [])
         .filter((f) =>
-          isBatchMotionEligible(f, rendersReferenceOnly(f, { referenceOnly }))
+          isBatchMotionEligible(
+            f,
+            rendersReferenceOnly(f, { generateStartFrames })
+          )
         )
         .map((f) => f.id);
 
@@ -1328,7 +1331,14 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
         }
       }
     },
-    [sequenceId, shots, referenceOnly, queryClient, posthog, showBillingGate]
+    [
+      sequenceId,
+      shots,
+      generateStartFrames,
+      queryClient,
+      posthog,
+      showBillingGate,
+    ]
   );
 
   const musicPromptsReady = !!(sequence?.musicPrompt && sequence.musicTags);
@@ -1436,7 +1446,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     initialMusicModel: sequenceMusicModel,
     initialVideoModel: sequenceVideoModel,
     styleCategory,
-    referenceOnly,
+    generateStartFrames,
     recommendedVideoModel,
     styleName,
     modelMissingShotIds: shotsMissingActiveImage,
@@ -1600,7 +1610,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
                     shot={selectedShot}
                     sequenceId={sequenceId}
                     resolution={sequence?.resolution}
-                    sequenceReferenceOnly={referenceOnly}
+                    sequenceGeneratesStartFrames={generateStartFrames}
                     selectedTab={effectiveTab}
                     visibleTabs={visibleTabs}
                     onTabChange={(tab) => {

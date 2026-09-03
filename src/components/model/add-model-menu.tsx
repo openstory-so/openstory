@@ -75,7 +75,7 @@ export const AddModelMenuSection = ({
   const aspectRatio = sequence?.aspectRatio ?? DEFAULT_ASPECT_RATIO;
   // Only the DEFAULT — `rendersReferenceOnly` resolves each shot's override
   // against it below.
-  const referenceOnly = sequence?.referenceOnly ?? false;
+  const generateStartFrames = sequence?.generateStartFrames ?? false;
   const { referenceOnlyModels } = useViaAvailability();
   // Style-category gating (mirrors motion-model-selector): a model declaring a
   // `requiredStyleCategory` (none currently declare one) is only offered when
@@ -121,7 +121,7 @@ export const AddModelMenuSection = ({
       // a still UNLESS it renders reference-only, which is a per-shot answer.
       const eligible = shotList.filter(
         (f) =>
-          rendersReferenceOnly(f, { referenceOnly }) ||
+          rendersReferenceOnly(f, { generateStartFrames }) ||
           (f.frame.imageStatus === 'completed' && f.image?.url)
       );
       const count = eligible.length;
@@ -130,7 +130,7 @@ export const AddModelMenuSection = ({
       // route cannot serve that shot, and the server refuses the whole add
       // rather than quietly skipping it.
       const anyReferenceOnly = eligible.some((f) =>
-        rendersReferenceOnly(f, { referenceOnly })
+        rendersReferenceOnly(f, { generateStartFrames })
       );
       return Object.keys(IMAGE_TO_VIDEO_MODELS)
         .filter(isValidImageToVideoModel)
@@ -200,7 +200,7 @@ export const AddModelMenuSection = ({
     sceneRows,
     aspectRatio,
     styleCategory,
-    referenceOnly,
+    generateStartFrames,
     referenceOnlyModels,
   ]);
 

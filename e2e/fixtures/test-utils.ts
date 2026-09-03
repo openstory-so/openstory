@@ -36,6 +36,9 @@ export const RECORDED_PIPELINE_SETTINGS = {
   // the fixtures were recorded at Seedance 720p / Grok Imagine 1k (#1449).
   resolution: '720p',
   autoGenerateMotion: true,
+  // The fixtures were recorded on the frame-based workflow; reference-only
+  // is the product default now, so opt back in explicitly.
+  generateStartFrames: true,
   musicModel: 'elevenlabs_music',
   audioModels: ['elevenlabs_music'],
   autoGenerateMusic: true,

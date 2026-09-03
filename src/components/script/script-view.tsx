@@ -338,7 +338,7 @@ export const ScriptView: FC<{
     imageModels: TextToImageModel[];
     videoModels: ImageToVideoModel[];
     autoGenerateMotion: boolean;
-    referenceOnly: boolean;
+    generateStartFrames: boolean;
     audioModels: AudioModel[];
     autoGenerateMusic: boolean;
   }>(() => ({
@@ -361,13 +361,13 @@ export const ScriptView: FC<{
     // reference-only toggle is disabled while motion is off, so the error
     // named a control the user could not reach.
     autoGenerateMotion: isEditing
-      ? sequence.referenceOnly
+      ? !sequence.generateStartFrames
       : savedSettings.autoGenerateMotion,
     // Editing an existing sequence inherits its mode; a new one starts from
     // the remembered setting.
-    referenceOnly: isEditing
-      ? sequence.referenceOnly
-      : savedSettings.referenceOnly,
+    generateStartFrames: isEditing
+      ? sequence.generateStartFrames
+      : savedSettings.generateStartFrames,
     audioModels:
       isEditing && sequence.musicModel
         ? [safeAudioModel(sequence.musicModel, DEFAULT_MUSIC_MODEL)]
@@ -381,7 +381,7 @@ export const ScriptView: FC<{
     imageModels,
     videoModels,
     autoGenerateMotion,
-    referenceOnly,
+    generateStartFrames,
     audioModels,
     autoGenerateMusic,
   } = genSettings;
@@ -711,7 +711,7 @@ export const ScriptView: FC<{
         imageModels: savedSettings.imageModels,
         videoModels: savedSettings.videoModels,
         autoGenerateMotion: savedSettings.autoGenerateMotion,
-        referenceOnly: savedSettings.referenceOnly,
+        generateStartFrames: savedSettings.generateStartFrames,
         audioModels: savedSettings.audioModels,
         autoGenerateMusic: savedSettings.autoGenerateMusic,
       });
@@ -823,7 +823,8 @@ export const ScriptView: FC<{
       recommendedVideoModel &&
       isValidImageToVideoModel(recommendedVideoModel) &&
       styleMayApplyVideo(generationMode, recommendedVideoModel) &&
-      (!referenceOnly || referenceOnlyModels.includes(recommendedVideoModel))
+      (generateStartFrames ||
+        referenceOnlyModels.includes(recommendedVideoModel))
         ? recommendedVideoModel
         : null;
     const parsedRatio = recommendedAspectRatio
@@ -879,7 +880,7 @@ export const ScriptView: FC<{
     selectedStyle?.name,
     recommendedImageModel,
     recommendedVideoModel,
-    referenceOnly,
+    generateStartFrames,
     referenceOnlyModels,
     recommendedAspectRatio,
     generationMode,
@@ -998,7 +999,7 @@ export const ScriptView: FC<{
         videoModels,
         videoModel: videoModels[0] ?? DEFAULT_VIDEO_MODEL,
         autoGenerateMotion,
-        referenceOnly,
+        generateStartFrames,
         autoGenerateMusic,
         musicModel: audioModels[0] ?? DEFAULT_MUSIC_MODEL,
         audioModels,
@@ -1355,7 +1356,7 @@ export const ScriptView: FC<{
         ? motionDurations.perShotSeconds
         : undefined,
       autoGenerateMusic,
-      referenceOnly,
+      referenceOnly: !generateStartFrames,
       audioModels: autoGenerateMusic ? audioModels : undefined,
       audioDurationSeconds: autoGenerateMusic
         ? motionDurations.totalSeconds
@@ -1373,7 +1374,7 @@ export const ScriptView: FC<{
     videoModels,
     autoGenerateMusic,
     audioModels,
-    referenceOnly,
+    generateStartFrames,
   ]);
 
   // Nothing written yet: Enhance writes the script instead of expanding one
@@ -1523,7 +1524,7 @@ export const ScriptView: FC<{
             imageModels={imageModels}
             videoModels={videoModels}
             autoGenerateMotion={autoGenerateMotion}
-            referenceOnly={referenceOnly}
+            generateStartFrames={generateStartFrames}
             audioModels={audioModels}
             autoGenerateMusic={autoGenerateMusic}
             onAspectRatioChange={(v) => updateGen('aspectRatio', v)}
@@ -1534,7 +1535,9 @@ export const ScriptView: FC<{
             onAutoGenerateMotionChange={(v) =>
               updateGen('autoGenerateMotion', v)
             }
-            onReferenceOnlyChange={(v) => updateGen('referenceOnly', v)}
+            onGenerateStartFramesChange={(v) =>
+              updateGen('generateStartFrames', v)
+            }
             onAudioModelsChange={(v) => updateGen('audioModels', v)}
             onAutoGenerateMusicChange={(v) => updateGen('autoGenerateMusic', v)}
             disabled={loading}

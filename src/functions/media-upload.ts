@@ -33,7 +33,10 @@ import {
   narrowShotPromptContext,
 } from '@/lib/ai/prompt-context';
 import { computeVideoManifestInputHash } from '@/lib/ai/input-hash';
-import { usesStartFrame } from '@/lib/shots/use-start-frame';
+import {
+  shotPromptSequence,
+  usesStartFrame,
+} from '@/lib/shots/use-start-frame';
 import { generateId } from '@/lib/db/id';
 import type { Scene } from '@/lib/ai/scene-analysis.schema';
 import type { AspectRatio } from '@/lib/constants/aspect-ratios';
@@ -367,7 +370,7 @@ export const replaceFrameContentFn = createServerFn({ method: 'POST' })
       try {
         const ctx = await loadShotPromptContext({
           scopedDb,
-          sequence,
+          sequence: shotPromptSequence(sequence, shot),
           scene,
           startingFrameImageUrl: await getFrameImageUrl(scopedDb, frame.id),
         });

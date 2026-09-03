@@ -217,12 +217,15 @@ Renders a shot **straight to video** from the character / location / element
 reference sheets — the shot-images phase never runs, and neither does the
 visual-prompt phase (the reference-only motion template composes its own
 opening frame from the bibles and is never handed one). The storyboard preview
-still is kept: it fills the scene rail while the clip renders. Off by default.
+still is kept: it fills the scene rail while the clip renders. It is the
+**default** for a new sequence; "Generate start frames" in the options opts
+back into the frame-based workflow.
 
-**Resolved per shot, never per sequence.** `sequences.referenceOnly` is the
-default; `shots.useStartFrame` overrides it (NULL = inherit). Always resolve
+**Resolved per shot, never per sequence.** `sequences.generateStartFrames` is
+the default (off = reference-only); `shots.useStartFrame` overrides it (NULL =
+inherit). Always resolve
 via `usesStartFrame()` / `rendersReferenceOnly()` — `reference-only-is-per-shot.test.ts`
-fails any per-shot path reading `sequence.referenceOnly` raw. It is NOT a
+fails any per-shot path reading `sequence.generateStartFrames` raw. It is NOT a
 render-only switch: it picks the motion-prompt template and folds into the
 motion hash, so flipping it re-stales that shot's motion prompt.
 

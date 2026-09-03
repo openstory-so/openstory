@@ -204,7 +204,7 @@ async function resolveStoryboardPayload(
     musicPromptSource: sequence.musicPrompt ? 'regenerated' : 'ai-generated',
     // Pinned like every other generation setting: a toggle mid-run must not
     // leave one half of the pipeline rendering stills and the other half not.
-    referenceOnly: sequence.referenceOnly,
+    referenceOnly: !sequence.generateStartFrames,
     ownerEmail: await scopedDb.teamManagement.getMemberEmail(input.userId),
     sequenceUrl: sequenceScenesUrl(sequenceId),
   };

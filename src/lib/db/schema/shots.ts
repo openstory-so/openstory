@@ -52,7 +52,7 @@ export const shots = snakeCase.table(
     durationMs: integer().default(3000),
     /**
      * Per-shot override of "does this shot animate from a start frame".
-     * NULL = inherit the sequence (`!sequences.referenceOnly`).
+     * NULL = inherit the sequence (`sequences.generateStartFrames`).
      *
      * Never read raw — resolve with `usesStartFrame()`, which documents what
      * flipping it costs.

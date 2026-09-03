@@ -125,9 +125,9 @@ describe('assertModelNotAlreadyAdded (#547)', () => {
 });
 
 /** The ordinary sequence: shots animate from a rendered still. */
-const STILLS = { referenceOnly: false };
+const STILLS = { generateStartFrames: true };
 /** Reference-only: no stills are ever rendered, so none can be required. */
-const REFERENCE_ONLY = { referenceOnly: true };
+const REFERENCE_ONLY = { generateStartFrames: false };
 
 describe('selectEligibleVideoShots (#547)', () => {
   it('includes shots with a completed image', () => {

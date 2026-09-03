@@ -110,7 +110,7 @@ testWithUser.describe('Manual pipeline (no storyboard)', () => {
 
       // ---- 3. Select the shot and edit its visual prompt ---------------
       await shotCards.first().click();
-      await page.getByRole('tab', { name: 'Image' }).click();
+      await page.getByRole('tab', { name: 'Keyframe' }).click();
       const promptEditor = page
         .getByRole('tabpanel')
         .locator('[data-slot="markdown-editor"] .ProseMirror');
@@ -128,7 +128,7 @@ testWithUser.describe('Manual pipeline (no storyboard)', () => {
       // The mobile drawer mounts a second (hidden) copy of the tab — scope to
       // the visible desktop tabpanel.
       await page
-        .getByRole('tabpanel', { name: 'Image' })
+        .getByRole('tabpanel', { name: 'Keyframe' })
         .locator('input[type="file"]')
         .setInputFiles(IMAGE_FIXTURE);
       await expect(page.getByText('Image replaced')).toBeVisible({
