@@ -21,19 +21,27 @@ import {
   getOAuthConsentContextFn,
 } from '@/functions/oauth-consent';
 import { requireSessionOrRedirect } from '@/lib/auth/route-guards';
+import { errorMessage } from '@/lib/errors';
 import { useMutation, useSuspenseQuery } from '@tanstack/react-query';
-import { createFileRoute, useLocation } from '@tanstack/react-router';
+import { createFileRoute } from '@tanstack/react-router';
 import { Suspense } from 'react';
 import { toast } from 'sonner';
 import { z } from 'zod';
 
-// Only the params the page reads; the full signed query is taken from the
-// location and echoed back to the provider untouched.
-const searchSchema = z.object({
-  client_id: z.string().optional(),
-  scope: z.string().optional(),
-  redirect_uri: z.string().optional(),
-});
+const CONSENT_STALE_MESSAGE =
+  'This request is no longer valid. Start again from the app.';
+
+// Display fields only. `.passthrough()` keeps `sig` / `exp` / `ba_*` / PKCE
+// on the URL so Approve can echo the provider's signed query. Better Auth's
+// own client reads `window.location.search` for the same reason — TanStack's
+// `searchStr` is a re-serialized parse and can drop or rewrite those params.
+const searchSchema = z
+  .object({
+    client_id: z.string().optional(),
+    scope: z.string().optional(),
+    redirect_uri: z.string().optional(),
+  })
+  .passthrough();
 
 export const Route = createFileRoute('/_app/oauth/consent')({
   validateSearch: searchSchema,
@@ -87,7 +95,6 @@ function ConsentDecision({
   scope: string;
   redirectUri: string | undefined;
 }) {
-  const searchStr = useLocation({ select: (location) => location.searchStr });
   const { data } = useSuspenseQuery({
     queryKey: ['oauthConsent', clientId, scope, redirectUri],
     queryFn: () =>
@@ -98,17 +105,20 @@ function ConsentDecision({
 
   const decide = useMutation({
     mutationFn: (accept: boolean) =>
-      decideOAuthConsentFn({ data: { accept, oauthQuery: searchStr } }),
+      decideOAuthConsentFn({
+        data: { accept, oauthQuery: window.location.search },
+      }),
     onSuccess: ({ url }) => {
-      // The destination is the app's own redirect_uri — a full navigation.
+      if (!url || (!/^https?:\/\//i.test(url) && !url.startsWith('/'))) {
+        toast.error(CONSENT_STALE_MESSAGE);
+        return;
+      }
       window.location.assign(url);
     },
-    onError: (err) =>
-      toast.error(
-        err instanceof Error
-          ? err.message
-          : 'This request is no longer valid. Start again from the app.'
-      ),
+    onError: (err) => {
+      const text = errorMessage(err, CONSENT_STALE_MESSAGE).trim();
+      toast.error(text || CONSENT_STALE_MESSAGE);
+    },
   });
 
   if (!data.client) {

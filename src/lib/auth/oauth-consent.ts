@@ -14,6 +14,7 @@
 import { getAuth } from '@/lib/auth/config';
 import { OAUTH_SCOPE_DESCRIPTIONS } from '@/lib/auth/oauth-scopes';
 import { resolveUserTeam, revokeOAuthGrantTokens } from '@/lib/db/scoped';
+import { ValidationError } from '@/lib/errors';
 import { getLogger } from '@/lib/observability/logger';
 import { APIError } from 'better-auth/api';
 
@@ -119,6 +120,25 @@ export async function loadOAuthConsentContext(input: {
   };
 }
 
+const CONSENT_STALE_MESSAGE =
+  'This request is no longer valid. Start again from the app.';
+
+/** Provider errors often set `error_description` and leave `message` empty. */
+export function oauthProviderUserMessage(
+  error: unknown,
+  fallback: string
+): string {
+  if (error instanceof APIError) {
+    const body = error.body as
+      | { error_description?: string; message?: string }
+      | undefined;
+    const text = body?.error_description || body?.message;
+    if (text?.trim()) return text;
+  }
+  if (error instanceof Error && error.message.trim()) return error.message;
+  return fallback;
+}
+
 /**
  * Approve or deny. Either way the result is a URL to send the browser to: the
  * client's `redirect_uri` with a code, or with `error=access_denied`.
@@ -133,17 +153,27 @@ export async function decideOAuthConsent(input: {
 }): Promise<{ url: string }> {
   const auth = getAuth();
   const oauthQuery = input.oauthQuery.replace(/^\?/, '');
-  const result = await auth.api.oauth2Consent({
-    headers: input.headers,
-    body: { accept: input.accept, oauth_query: oauthQuery },
-  });
-  logger.info('oauth consent decided', {
-    userId: input.userId,
-    teamId: input.teamId,
-    accept: input.accept,
-    clientId: new URLSearchParams(oauthQuery).get('client_id'),
-  });
-  return { url: result.url };
+  try {
+    const result = await auth.api.oauth2Consent({
+      headers: input.headers,
+      body: { accept: input.accept, oauth_query: oauthQuery },
+    });
+    if (!result?.url) {
+      throw new ValidationError(CONSENT_STALE_MESSAGE);
+    }
+    logger.info('oauth consent decided', {
+      userId: input.userId,
+      teamId: input.teamId,
+      accept: input.accept,
+      clientId: new URLSearchParams(oauthQuery).get('client_id'),
+    });
+    return { url: result.url };
+  } catch (error) {
+    if (error instanceof ValidationError) throw error;
+    throw new ValidationError(
+      oauthProviderUserMessage(error, CONSENT_STALE_MESSAGE)
+    );
+  }
 }
 
 /** Apps the user has granted access to, newest first. */
