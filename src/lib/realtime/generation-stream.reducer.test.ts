@@ -177,3 +177,53 @@ describe('generationStreamReducer — stop-at banner (#1408)', () => {
     expect(next.currentPhase).toBe(scriptOnly.currentPhase);
   });
 });
+
+describe('progress phases in reference-only', () => {
+  const shortNames = (config?: Parameters<typeof createInitialState>[0]) =>
+    createInitialState(config).phases.map((p) => p.shortName);
+
+  it('drops the shot-images phase entirely', () => {
+    // Nothing is left in the images stage: the stills are skipped and the
+    // motion prompts finished back in references. Relabelling it would leave
+    // a step the user watches while it does nothing; the workflow emits no
+    // images event at all, so the chip would sit pending until motion swept it.
+    expect(shortNames({ stopAt: 'music', referenceOnly: true })).toEqual([
+      'Script',
+      'References',
+      'Music & Motion',
+    ]);
+
+    expect(
+      createInitialState({ stopAt: 'music', referenceOnly: true }).phases.map(
+        (p) => p.phase
+      )
+    ).toEqual([1, 2, 4]);
+  });
+
+  it('leaves the image-rendering modes alone', () => {
+    expect(shortNames({ stopAt: 'music' })).toEqual([
+      'Script',
+      'References',
+      'Images',
+      'Music & Motion',
+    ]);
+  });
+
+  it('sweeps the earlier steps complete when motion starts', () => {
+    // The rail has a gap where images would be; motion arriving must still
+    // mark the earlier stages completed rather than leaving them mid-flight.
+    const state = apply(
+      createInitialState({ stopAt: 'music', referenceOnly: true }),
+      {
+        type: 'PHASE_START',
+        payload: { phase: 4, phaseName: 'Generating motion & music…' },
+      }
+    );
+
+    expect(state.phases.map((p) => p.status)).toEqual([
+      'completed',
+      'completed',
+      'active',
+    ]);
+  });
+});

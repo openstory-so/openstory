@@ -312,6 +312,9 @@ export async function runOneShotCreate(
       videoModels: input.videoModels,
       autoGenerateMotion: input.motion,
       autoGenerateMusic: input.music,
+      // The API keeps the frame-based workflow: motion is opt-in spend here, and
+      // reference-only (the app default) cannot exist without it.
+      generateStartFrames: true,
       audioModels: input.audioModels,
       // Same duration chip as Enhance / dashboard Generate ActionCost (#1140).
       targetDurationSeconds: input.targetSeconds,

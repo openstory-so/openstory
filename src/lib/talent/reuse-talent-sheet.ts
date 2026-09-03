@@ -130,3 +130,41 @@ export function shouldReuseTalentSheet(input: ReuseTalentSheetInput): boolean {
 
   return true;
 }
+
+/**
+ * Does this cast character skip sheet generation entirely?
+ *
+ * Reuse is a storage copy of the talent's sheet (`persistReusedTalentSheet`),
+ * so it costs nothing at the provider. Two callers must agree on the answer:
+ * `character-bible-workflow`, which acts on it, and the in-run reservation
+ * gate, which counts the sheets that will actually be BILLED. A gate that
+ * counted reused sheets would over-reserve and could refuse a run the team
+ * could afford.
+ */
+export function reusesTalentSheet(
+  character: {
+    standardClothing?: string | null;
+    distinguishingFeatures?: string | null;
+  },
+  talentMatch:
+    | {
+        sheetImageUrl?: string | null;
+        sheetMetadata?: {
+          standardClothing?: string | null;
+          distinguishingFeatures?: string | null;
+          physicalDescription?: string | null;
+        };
+        talentDescription?: string | null;
+      }
+    | undefined
+): boolean {
+  if (!talentMatch?.sheetImageUrl) return false;
+  return shouldReuseTalentSheet({
+    characterClothing: character.standardClothing,
+    characterFeatures: character.distinguishingFeatures,
+    talentClothing: talentMatch.sheetMetadata?.standardClothing,
+    talentFeatures: talentMatch.sheetMetadata?.distinguishingFeatures,
+    talentPhysical: talentMatch.sheetMetadata?.physicalDescription,
+    talentDescription: talentMatch.talentDescription,
+  });
+}

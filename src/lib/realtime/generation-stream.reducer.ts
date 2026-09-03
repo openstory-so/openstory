@@ -161,6 +161,14 @@ export type GenerationPhaseConfig = {
   stopAt?: GenerationStage;
   autoGenerateMotion?: boolean;
   autoGenerateMusic?: boolean;
+  /**
+   * Straight-to-video: no shot-images stage. Reference-only renders straight
+   * to video, so the images stage never runs and its motion prompts are
+   * folded into references alongside the sheets. The step is DROPPED rather
+   * than relabelled: it has no work left of its own, and a chip that only
+   * ever waits is one the user watches for no reason.
+   */
+  referenceOnly?: boolean;
 };
 
 function resolveStopAt(config?: GenerationPhaseConfig): GenerationStage {
@@ -212,20 +220,18 @@ export function createInitialState(
 ): GenerationStreamState {
   const stopAt = resolveStopAt(config);
   const combinedMusic = stopAt === 'music';
-  const phases: GenerationPhase[] = bannerStagesForStopAt(stopAt).map(
-    (stage) => {
+  const phases: GenerationPhase[] = bannerStagesForStopAt(stopAt)
+    .filter((stage) => !(config?.referenceOnly && stage === 'images'))
+    .map((stage) => {
       const meta = GENERATION_STAGE_META[stage];
       const isCombinedLast = combinedMusic && stage === 'motion';
       return {
         phase: meta.phase,
-        phaseName: isCombinedLast
-          ? 'Generating motion & music\u2026'
-          : meta.name,
+        phaseName: isCombinedLast ? 'Generating motion & music…' : meta.name,
         shortName: isCombinedLast ? 'Music & Motion' : meta.shortName,
         status: 'pending' as const,
       };
-    }
-  );
+    });
 
   return {
     currentPhase: 0,

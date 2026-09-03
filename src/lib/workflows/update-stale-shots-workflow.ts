@@ -77,6 +77,7 @@ import {
 } from '@/lib/shots/shot-image-input';
 import {
   claimTargets,
+  findTargetMissingStartFrameMode,
   type MusicPlan,
   type PlanTarget,
   type ShotClaims,
@@ -162,6 +163,13 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
       // move. Failing loudly beats a run that reports "nothing was stale".
       throw new WorkflowValidationError(
         'Update-all plan missing from payload; re-trigger the update'
+      );
+    }
+    // Rationale lives with the plan type: `findTargetMissingStartFrameMode`.
+    const untyped = findTargetMissingStartFrameMode(plan);
+    if (untyped) {
+      throw new WorkflowValidationError(
+        `Update-all plan predates the per-shot start-frame switch (shot ${untyped.shotId}); re-trigger the update`
       );
     }
 
@@ -354,7 +362,10 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
           try {
             const prepared = await prepareShotImageWorkflowInput({
               scopedDb: scopedDb.stalenessPlanning,
-              sequence: sequenceSnapshot,
+              sequence: {
+                ...sequenceSnapshot,
+                referenceOnly: !target.usesStartFrame,
+              },
               shot,
               frame,
               scene,
@@ -477,7 +488,14 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
             // still mean that after the click pinned it.
             still = standing?.discardedAt ? null : standing;
           }
-          if (!still?.url) {
+          // Reference-only sequences never render a still, so demanding one
+          // here failed the whole update run — and a mode flip re-stales every
+          // motion prompt, which is exactly what sends a reference-only
+          // sequence down this path.
+          // Per target, not per sequence: a shot may override the sequence's
+          // start-frame mode either way, and the plan froze that answer at
+          // click time.
+          if (!still?.url && target.usesStartFrame) {
             throw new NonRetryableError(
               `Shot ${target.shotId} has no rendered still to animate`,
               'WorkflowValidationError'
@@ -559,10 +577,18 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
           const manifestEntry = selectedVideo.manifest.find(
             (entry) => entry.shotId === shot.id
           );
+          // A shot rendering from references has no frame pointer at all —
+          // `null` is the manifest's documented encoding for that. Compare
+          // against the same rule the write below uses, or a reference-only
+          // shot that HAPPENS to have a still reads as permanently diverged
+          // and re-renders on every update-stale run.
+          const expectedFrameVersionId = target.usesStartFrame
+            ? (still?.id ?? null)
+            : null;
           const diverged =
             !manifestEntry ||
             manifestEntry.motionPromptVersionId !== motionVersion.id ||
-            manifestEntry.frameVersionId !== still.id;
+            manifestEntry.frameVersionId !== expectedFrameVersionId;
           if (!diverged) return null;
           // Selected-version model → sequence default. (The single-shot fn
           // also consults a last-failed attempt; irrelevant here — a video
@@ -590,6 +616,11 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
             scene,
             characters: renderRefs.characters,
             elements: renderRefs.elements,
+            motionPrompt: prompt,
+            // With no still the location sheet is the only thing establishing
+            // the set — and `renderRefs` already loaded it for the image stage.
+            includeLocations: !target.usesStartFrame,
+            locations: renderRefs.locations,
           });
           const duration = resolveShotDuration({
             durationMs: target.durationMs,
@@ -602,6 +633,10 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
                 estimateVideoCost(model, duration, {
                   pricing: await getEffectiveFalPricing(),
                   resolution: plan.resolution,
+                  // Same route the submit below takes, or a reference-only
+                  // shot is gated at the image-to-video rate.
+                  referenceOnly: !target.usesStartFrame,
+                  hasReferenceImages: referenceImages.length > 0,
                 }),
                 { model, operation: 'update-stale-shots:video' }
               ),
@@ -624,8 +659,13 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
             sequenceId,
             shotId: shot.id,
             sceneId: shot.sceneId,
-            imageUrl: still.url,
-            frameVersionId: still.id,
+            imageUrl: target.usesStartFrame
+              ? (still?.url ?? undefined)
+              : undefined,
+            referenceOnly: !target.usesStartFrame,
+            // Same rule as `expectedFrameVersionId` above — a clip rendered
+            // from references names no still.
+            frameVersionId: target.usesStartFrame ? (still?.id ?? null) : null,
             motionPromptVersionId: motionVersion.id,
             prompt,
             model,
@@ -885,7 +925,10 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
                     ...base,
                     sceneBefore: scenes.sceneBefore,
                     sceneAfter: scenes.sceneAfter,
-                    startingFrameImageUrl: startingFrameImageUrl ?? undefined,
+                    startingFrameImageUrl: target.usesStartFrame
+                      ? (startingFrameImageUrl ?? undefined)
+                      : undefined,
+                    referenceOnly: !target.usesStartFrame,
                     targetVersionId: claims.motionVersionId ?? undefined,
                   },
                   spawnStepName: `spawn-motion-prompt-${target.shotId}`,

@@ -48,6 +48,7 @@ export class MotionPromptBatchWorkflow extends OpenStoryWorkflowEntrypoint<Motio
       shotMapping,
       sequenceId,
       startingFrameImageUrls,
+      referenceOnly = false,
     } = input;
 
     // ============================================================
@@ -79,9 +80,13 @@ export class MotionPromptBatchWorkflow extends OpenStoryWorkflowEntrypoint<Motio
         // Explicit single-shot regenerates (scenes.ts / prompt-variants.ts)
         // stay text-only-capable: there the trigger deliberately snapshots a
         // null still because no image exists yet.
+        //
+        // Reference-only sequences are the one case where a missing still is
+        // correct: no image pass ever ran. The guard is skipped there, and the
+        // child writes its prompt from the reference-only template instead.
         const startingFrameImageUrl =
           startingFrameImageUrls?.[scene.sceneId] ?? null;
-        if (!startingFrameImageUrl) {
+        if (!startingFrameImageUrl && !referenceOnly) {
           return Promise.reject(
             new Error(
               `scene ${scene.sceneId} has no rendered starting frame (its image generation failed or was skipped); refusing to generate an unanchored motion prompt`
@@ -110,6 +115,7 @@ export class MotionPromptBatchWorkflow extends OpenStoryWorkflowEntrypoint<Motio
           // Pass the rendered still per scene, snapshotted upstream (#929) —
           // never looked up inside the child workflow.
           startingFrameImageUrl,
+          referenceOnly,
         };
 
         return spawnAndAwaitChild<

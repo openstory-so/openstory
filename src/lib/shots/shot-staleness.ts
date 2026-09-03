@@ -5,6 +5,10 @@
  * to the stored `*_input_hash`.
  */
 
+import {
+  rendersReferenceOnly,
+  type StartFrameSequence,
+} from '@/lib/shots/use-start-frame';
 import { z } from 'zod';
 import { DEFAULT_IMAGE_MODEL, safeTextToImageModel } from '@/lib/ai/models';
 import {
@@ -133,10 +137,11 @@ export type ShotStalenessRefs = ShotPromptContextRefs;
  */
 export async function computeShotStaleness(args: {
   scopedDb: ScopedDb;
-  sequence: ShotPromptContextSequence & {
-    aspectRatio: AspectRatio;
-    status: SequenceStatus;
-  };
+  sequence: Omit<ShotPromptContextSequence, 'referenceOnly'> &
+    StartFrameSequence & {
+      aspectRatio: AspectRatio;
+      status: SequenceStatus;
+    };
   shot: Shot;
   frame: Frame;
   /**
@@ -149,6 +154,18 @@ export async function computeShotStaleness(args: {
   refs?: ShotStalenessRefs;
 }): Promise<ShotStalenessResult> {
   const { scopedDb, sequence, shot, frame, selectedImage, scene, refs } = args;
+  // A shot may override the sequence's start-frame mode, and the motion hash
+  // folds that flag in. Recomputing the live hash from the SEQUENCE value would
+  // never match the stamp an overridden shot was written with, leaving it
+  // reported stale for ever. The still is withheld for the same reason: a shot
+  // rendering reference-only did not hash one.
+  const motionSequence = {
+    ...sequence,
+    referenceOnly: rendersReferenceOnly(shot, sequence),
+  };
+  const motionStartingFrameUrl = motionSequence.referenceOnly
+    ? null
+    : (selectedImage?.url ?? null);
 
   // ============================================================
   // Mid-run short-circuit (#1121). Every comparison below pits a hash stamped
@@ -269,7 +286,7 @@ export async function computeShotStaleness(args: {
         const latest = await scopedDb.framePromptVersions.getLatest(frame.id);
         const ctx = await loadNarrowShotPromptContext({
           scopedDb,
-          sequence,
+          sequence: motionSequence,
           scene,
           analysisModelOverride: latest?.analysisModel ?? null,
           refs,
@@ -319,10 +336,10 @@ export async function computeShotStaleness(args: {
         );
         const ctx = await loadNarrowShotPromptContext({
           scopedDb,
-          sequence,
+          sequence: motionSequence,
           scene,
           analysisModelOverride: latest?.analysisModel ?? null,
-          startingFrameImageUrl: selectedImage?.url ?? null,
+          startingFrameImageUrl: motionStartingFrameUrl,
           refs,
         });
         const liveHash = await computeMotionPromptInputHash(ctx);

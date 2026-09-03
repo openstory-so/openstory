@@ -7,14 +7,18 @@ import {
   MOTION_REFERENCE_ENDPOINTS,
   capReferenceImages,
   getEditEndpoint,
+  getMotionReferenceEndpoint,
   isNativeBytePlusVideoModel,
   isValidImageToVideoModel,
   isValidTextToImageModel,
+  referenceOnlyMotionModels,
   safeImageToVideoModel,
   safeTextToImageModel,
   supportsReferenceImages,
+  supportsReferenceOnlyMotion,
   videoModelSupportsAudio,
 } from './models';
+import { typedEntries } from '@/lib/utils/typed-object';
 
 describe('turbo image models (#1390)', () => {
   it('exposes Nano Banana 2 Lite, FLUX.2 Flash, and FLUX.2 Turbo in the picker', () => {
@@ -201,5 +205,39 @@ describe('Model Validation', () => {
         expect(IMAGE_TO_VIDEO_MODELS[model]).toBeDefined();
       }
     });
+  });
+});
+
+describe('supportsReferenceOnlyMotion', () => {
+  it('is exactly the set of models with a reference-to-video endpoint', () => {
+    for (const [model] of typedEntries(IMAGE_TO_VIDEO_MODELS)) {
+      expect(supportsReferenceOnlyMotion(model)).toBe(
+        getMotionReferenceEndpoint(model) !== null
+      );
+    }
+  });
+
+  it('excludes models whose only route needs a start frame', () => {
+    // Kling's `elements` and Grok's fal route both ride image-to-video, which
+    // requires `image_url` — a reference-only shot has nowhere to go there.
+    expect(supportsReferenceOnlyMotion('kling_v3_pro')).toBe(false);
+    expect(supportsReferenceOnlyMotion('grok_imagine_video_1_5')).toBe(false);
+    expect(supportsReferenceOnlyMotion('veo3_1')).toBe(false);
+  });
+
+  it('includes both Seedance tiers, H3 Max and Omni Flash', () => {
+    expect(supportsReferenceOnlyMotion('seedance_v2')).toBe(true);
+    expect(supportsReferenceOnlyMotion('seedance_v2_5')).toBe(true);
+    // H3 Max's reference-to-video route requires only `prompt` — no still.
+    expect(supportsReferenceOnlyMotion('minimax_h3_max')).toBe(true);
+    // Omni Flash qualifies on its fal reference-to-video route, so it needs no
+    // Google key — unlike Grok, which is reference-only ONLY on the native via.
+    expect(supportsReferenceOnlyMotion('gemini_omni_flash')).toBe(true);
+    expect(referenceOnlyMotionModels().sort()).toEqual([
+      'gemini_omni_flash',
+      'minimax_h3_max',
+      'seedance_v2',
+      'seedance_v2_5',
+    ]);
   });
 });

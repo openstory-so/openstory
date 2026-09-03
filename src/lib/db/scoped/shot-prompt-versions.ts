@@ -46,6 +46,12 @@ type WriteShotPromptVersionBase = {
    */
   dialogue?: MotionDialogue | null;
   audio?: MotionAudio | null;
+  /**
+   * The mode this text was authored for (`usesStartFrame(shot, sequence)` at
+   * write time; a restore copies its source row's). Required: a forgotten stamp
+   * is silent for ever. Restoring a pre-stamp (null) row must resolve it fresh.
+   */
+  usesStartFrame: boolean;
   createdBy?: string | null;
   /**
    * `false`: append to history only — the shot keeps its selected prompt.
@@ -217,6 +223,7 @@ export function createShotPromptVersionsMethods(db: Database) {
             parameters: input.parameters,
             dialogue: input.dialogue,
             audio: input.audio,
+            usesStartFrame: input.usesStartFrame,
             source: input.source,
             inputHash: nextHash,
             analysisModel,
@@ -260,6 +267,7 @@ export function createShotPromptVersionsMethods(db: Database) {
       parameters?: MotionPromptParameters | null;
       dialogue?: MotionDialogue | null;
       audio?: MotionAudio | null;
+      usesStartFrame: boolean;
       inputHash: string;
       analysisModel: string;
       createdBy?: string | null;
@@ -281,6 +289,9 @@ export function createShotPromptVersionsMethods(db: Database) {
     createPending: async (input: {
       shotId: string;
       pendingInputHash: string;
+      // The mode the run will author for; the claim carries it from the
+      // start so no row ever holds the column's default as a placeholder.
+      usesStartFrame: boolean;
       workflowRunId?: string | null;
       createdBy?: string | null;
     }): Promise<ShotPromptVersion> => {
@@ -290,6 +301,7 @@ export function createShotPromptVersionsMethods(db: Database) {
           shotId: input.shotId,
           promptType: 'motion',
           text: '',
+          usesStartFrame: input.usesStartFrame,
           source: 'regenerated',
           inputHash: null,
           analysisModel: null,
@@ -379,6 +391,7 @@ export function createShotPromptVersionsMethods(db: Database) {
       parameters?: MotionPromptParameters | null;
       dialogue?: MotionDialogue | null;
       audio?: MotionAudio | null;
+      usesStartFrame: boolean;
       inputHash: string;
       analysisModel: string;
     }): Promise<ShotPromptVersion | null> => {
@@ -442,6 +455,7 @@ export function createShotPromptVersionsMethods(db: Database) {
           parameters: input.parameters ?? null,
           dialogue: input.dialogue ?? null,
           audio: input.audio ?? null,
+          usesStartFrame: input.usesStartFrame,
           inputHash: input.inputHash,
           analysisModel: input.analysisModel,
           status: 'completed',

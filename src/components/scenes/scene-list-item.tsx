@@ -191,6 +191,7 @@ const SceneListItemComponent: React.FC<SceneListItemProps> = ({
                 thumbnailUrl={shot?.image?.url}
                 previewThumbnailUrl={shot?.previewThumbnailUrl}
                 thumbnailStatus={shot?.frame.imageStatus || undefined}
+                videoUrl={hasVideo ? shot.video?.url : null}
                 generationError={shot?.frame.imageError}
                 alt={title ?? 'Scene thumbnail'}
                 aspectRatio={aspectRatio}

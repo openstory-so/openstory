@@ -19,6 +19,13 @@ type ShotStatus =
 
 type VideoStateOverlayProps = {
   thumbnailUrl?: string | null;
+  /**
+   * A clip is mounted and playable underneath. It is showing its own first
+   * frame, so the tile is NOT blank and the loader must stay off — without
+   * this, a shot with a video but no poster (reference-only, which renders no
+   * still) gets a spinner drawn over a finished clip.
+   */
+  hasPlayableVideo?: boolean;
   videoStatus: ShotStatus;
   /** Still-image lifecycle — a content-blocked still is a warning, not a crash. */
   imageStatus?: ShotStatus;
@@ -38,6 +45,7 @@ type VideoStateOverlayProps = {
 
 export const VideoStateOverlay: React.FC<VideoStateOverlayProps> = ({
   thumbnailUrl,
+  hasPlayableVideo = false,
   videoStatus,
   imageStatus,
   imageError,
@@ -46,8 +54,9 @@ export const VideoStateOverlay: React.FC<VideoStateOverlayProps> = ({
   progressMessage,
   retry,
 }) => {
-  // Only show loader when there's no thumbnail image yet
-  const hasNoThumbnail = !thumbnailUrl;
+  // Only show the loader when the tile would otherwise be blank. A playable
+  // clip counts as content: it renders its own first frame.
+  const hasNoThumbnail = !thumbnailUrl && !hasPlayableVideo;
   const imageFailed = imageStatus === 'failed';
   const videoFailed = videoStatus === 'failed';
   const hasFailed = videoFailed || (imageFailed && hasNoThumbnail);

@@ -97,7 +97,8 @@ function grokVideoSize(
 
 export function buildGrokVideoRequest(options: {
   prompt: string;
-  imageUrl: string;
+  /** The rendered still, or undefined in reference-only mode. */
+  imageUrl?: string;
   duration?: number;
   aspectRatio?: AspectRatio;
   referenceImages?: ReferenceImageDescription[];
@@ -118,6 +119,8 @@ export function buildGrokVideoRequest(options: {
     attached.length > 0
   );
 
+  const startFrameUrl = options.imageUrl;
+
   if (attached.length === 0) {
     const text =
       options.prompt.length <= maxPromptLength
@@ -126,9 +129,11 @@ export function buildGrokVideoRequest(options: {
     return {
       endpointId: NATIVE_GROK_VIDEO_MODEL,
       input: {
-        prompt: grokVideoPromptParts(text, [
-          { url: options.imageUrl, role: 'start_frame' },
-        ]),
+        // Reference-only with nothing matched is text-to-video: no image parts.
+        prompt: grokVideoPromptParts(
+          text,
+          startFrameUrl ? [{ url: startFrameUrl, role: 'start_frame' }] : []
+        ),
         duration,
         ...(size && { size }),
       },
@@ -138,11 +143,17 @@ export function buildGrokVideoRequest(options: {
   const { prompt, imageUrls } = buildReferenceVideoPrompt(
     GROK_VIDEO_REFERENCE_CONFIG,
     options.prompt,
-    options.imageUrl,
+    startFrameUrl ?? null,
     references,
     maxPromptLength
   );
-  const usable = attached.slice(0, GROK_VIDEO_REFERENCE_CONFIG.maxImages - 1);
+  // `imageUrls` leads with the still when there is one, so the reference that
+  // owns slot `index` sits one further back in `usable` on that path.
+  const referenceOffset = startFrameUrl ? 1 : 0;
+  const usable = attached.slice(
+    0,
+    GROK_VIDEO_REFERENCE_CONFIG.maxImages - referenceOffset
+  );
   return {
     endpointId: NATIVE_GROK_VIDEO_MODEL,
     input: {
@@ -151,9 +162,9 @@ export function buildGrokVideoRequest(options: {
         imageUrls.map((url, index) => ({
           url,
           role:
-            index === 0
+            startFrameUrl && index === 0
               ? 'reference'
-              : grokReferencePartRole(usable[index - 1]?.role),
+              : grokReferencePartRole(usable[index - referenceOffset]?.role),
         }))
       ),
       duration,

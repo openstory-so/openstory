@@ -1,5 +1,8 @@
 -- Table rebuild (SQLite cannot drop NOT NULL in place). Safe under the #612
 -- trap: no table has an FK INTO sequence_elements, so the DROP fires no cascade.
+ALTER TABLE `sequences` ADD `generation_stop_at` text;--> statement-breakpoint
+ALTER TABLE `sequences` ADD `pipeline_stage` text;--> statement-breakpoint
+ALTER TABLE `sequences` ADD `generation_checkpoint` text;--> statement-breakpoint
 PRAGMA foreign_keys=OFF;--> statement-breakpoint
 CREATE TABLE `__new_sequence_elements` (
 	`id` text PRIMARY KEY,

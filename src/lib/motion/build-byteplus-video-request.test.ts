@@ -136,3 +136,60 @@ describe('buildBytePlusVideoRequest', () => {
     expect(text?.content.endsWith('...')).toBe(true);
   });
 });
+
+describe('buildBytePlusVideoRequest — reference-only', () => {
+  const referenceOnlyBase = {
+    prompt: 'A slow dolly toward SCARLETT at the window',
+    aspectRatio: '16:9' as const,
+    duration: 5,
+    referenceOnly: true,
+  };
+
+  it('states a concrete ratio, since nothing is left for adaptive to follow', () => {
+    expect(
+      buildBytePlusVideoRequest(
+        { ...referenceOnlyBase, referenceImages: references },
+        'seedance_v2_5'
+      ).size
+    ).toBe('16:9_720p');
+    expect(
+      buildBytePlusVideoRequest(
+        {
+          ...referenceOnlyBase,
+          aspectRatio: '9:16',
+          referenceImages: references,
+        },
+        'seedance_v2_5'
+      ).size
+    ).toBe('9:16_720p');
+  });
+
+  it('sends every image as a reference role and no start_frame', () => {
+    const request = buildBytePlusVideoRequest(
+      { ...referenceOnlyBase, referenceImages: references },
+      'seedance_v2_5'
+    );
+    const images = request.prompt.filter((part) => part.type === 'image');
+
+    expect(images).toHaveLength(1);
+    expect(images.every((i) => i.metadata?.role === 'reference')).toBe(true);
+    expect(
+      request.prompt.some(
+        (part) =>
+          part.type === 'text' && part.content.includes('starting frame')
+      )
+    ).toBe(false);
+  });
+
+  it('sends a text-only request when nothing matched', () => {
+    const request = buildBytePlusVideoRequest(
+      { ...referenceOnlyBase, referenceImages: [] },
+      'seedance_v2_5'
+    );
+
+    expect(request.prompt).toEqual([
+      { type: 'text', content: referenceOnlyBase.prompt },
+    ]);
+    expect(request.size).toBe('16:9_720p');
+  });
+});

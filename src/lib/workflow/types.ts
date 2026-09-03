@@ -301,6 +301,13 @@ export interface StoryboardWorkflowInput extends SequenceWorkflowContext {
    * don't want a mailbox ping. Default (undefined) is send.
    */
   notify?: boolean;
+  /**
+   * Reference-only mode: render straight to video from the cast / location /
+   * element reference sheets, skipping start-frame generation entirely.
+   * Snapshotted from `!sequences.generateStartFrames` by the launcher and passed
+   * straight through to analyze-script.
+   */
+  referenceOnly?: boolean;
 }
 
 /**
@@ -364,6 +371,14 @@ export interface AnalyzeScriptWorkflowInput extends SequenceWorkflowContext {
   suggestedTalent?: SuggestedTalentSnapshot[];
   /** @see LocationMatchingWorkflowInput.suggestedLocations — passed straight through. */
   suggestedLocations?: SuggestedLocationSnapshot[];
+  /**
+   * Reference-only mode: render straight to video from the cast / location /
+   * element reference sheets, skipping start-frame generation entirely. Pinned
+   * onto the payload at the trigger from `!sequences.generateStartFrames` like every
+   * other generation setting, so a mid-run toggle cannot change what this run
+   * is doing.
+   */
+  referenceOnly?: boolean;
 }
 
 /**
@@ -445,7 +460,22 @@ export interface MotionWorkflowInput extends SequenceWorkflowContext {
    * clip never rendered from. Absent falls back to the live selection.
    */
   frameVersionId?: string | null;
-  imageUrl: string;
+  /**
+   * The rendered start frame. Required except in reference-only mode, where
+   * this shot has no still by design and `referenceOnly` is set instead.
+   */
+  imageUrl?: string;
+  /**
+   * Reference-only mode: render straight to video from the cast / location /
+   * element sheets with no start frame. Forces the reference-to-video route
+   * (whose start frame is optional) and leaves `frameVersionId` null in the
+   * render manifest — the documented meaning of a null there.
+   *
+   * Required, not defaulted: a caller that forgot it shipped a payload with
+   * neither a still nor the flag, which the batch workflow rejected only after
+   * credits were reserved.
+   */
+  referenceOnly: boolean;
   prompt: string;
   model?: keyof typeof IMAGE_TO_VIDEO_MODELS;
   duration?: number;
@@ -864,6 +894,12 @@ export interface MotionPromptBatchWorkflowInput extends SequenceWorkflowContext 
    * had no rendered still and falls back to the text-only motion path.
    */
   startingFrameImageUrls?: Record<string, string | null>;
+  /**
+   * Reference-only mode (see {@link MotionPromptWorkflowInput.referenceOnly}).
+   * The batch's "every scene must have a rendered still" guard is lifted here:
+   * in this mode a missing still is the design, not a failed image.
+   */
+  referenceOnly?: boolean;
 }
 
 export interface MotionPromptWorkflowInput extends SequenceWorkflowContext {
@@ -885,6 +921,14 @@ export interface MotionPromptWorkflowInput extends SequenceWorkflowContext {
    * / absent → no still available, text-only motion path.
    */
   startingFrameImageUrl?: string | null;
+  /**
+   * Reference-only mode: this sequence renders straight to video from the
+   * cast / location / element sheets and never generates a start frame, so the
+   * prompt is written against a different template — one that composes the
+   * opening frame in words instead of animating a still. Distinct from a
+   * merely absent `startingFrameImageUrl`, which means "no still YET".
+   */
+  referenceOnly?: boolean;
   /** See {@link FramePromptWorkflowInput.emitStreaming}. */
   emitStreaming?: boolean;
   /**
@@ -1255,7 +1299,10 @@ export interface BatchMotionMusicWorkflowInput extends SequenceWorkflowContext {
     shotId: string;
     /** See `MotionWorkflowInput.sceneId`. */
     sceneId?: string | null;
-    imageUrl: string;
+    /** The start frame. Absent only when `referenceOnly` is set. */
+    imageUrl?: string;
+    /** See `MotionWorkflowInput.referenceOnly`. Required for the same reason. */
+    referenceOnly: boolean;
     /** See `MotionWorkflowInput.frameVersionId`. */
     frameVersionId?: string | null;
     /** See `MotionWorkflowInput.motionPromptVersionId`. */
@@ -1432,6 +1479,12 @@ export interface MotionMusicPromptsWorkflowInput extends SequenceWorkflowContext
   visualSummaryBySceneId?: Record<string, string>;
   /** @see StoryboardWorkflowInput.musicPromptSource — passed to the music-prompt child. */
   musicPromptSource: 'ai-generated' | 'regenerated';
+  /**
+   * Reference-only mode (see {@link MotionPromptWorkflowInput.referenceOnly}),
+   * forwarded to the motion-prompt batch. Music is unaffected — it has never
+   * depended on the still.
+   */
+  referenceOnly?: boolean;
 }
 
 export interface MotionMusicPromptsWorkflowResult {

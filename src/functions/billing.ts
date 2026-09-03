@@ -6,6 +6,13 @@
 import { requireTeamAdminAccess } from '@/lib/auth/action-utils';
 import { createCheckoutSession } from '@/lib/billing/checkout';
 import {
+  captureCheckoutCanceledFromSession,
+  captureCheckoutFailed,
+  captureCheckoutOpened,
+  captureSavedCardStripeError,
+  mapCheckoutFailureReason,
+} from '@/lib/billing/checkout-events';
+import {
   isStripeEnabled,
   MAX_TOPUP_AMOUNT_USD,
   MIN_TOPUP_AMOUNT_USD,
@@ -33,8 +40,11 @@ import { authWithTeamMiddleware } from './middleware';
 
 const logger = getLogger(['openstory', 'functions', 'billing']);
 
+const checkoutSurfaceSchema = z.string().trim().min(1).max(64).optional();
+
 const checkoutInputSchema = z.object({
   amountUsd: z.number().min(MIN_TOPUP_AMOUNT_USD).max(MAX_TOPUP_AMOUNT_USD),
+  surface: checkoutSurfaceSchema,
 });
 
 export const createCheckoutSessionFn = createServerFn({ method: 'POST' })
@@ -54,11 +64,44 @@ export const createCheckoutSessionFn = createServerFn({ method: 'POST' })
       amountUsd: data.amountUsd,
       userId: context.user.id,
       userEmail: context.user.email,
-      successUrl: `${appUrl}/credits?success=true`,
-      cancelUrl: `${appUrl}/credits?canceled=true`,
+      successUrl: `${appUrl}/credits?success=true&session_id={CHECKOUT_SESSION_ID}`,
+      cancelUrl: `${appUrl}/credits?canceled=true&session_id={CHECKOUT_SESSION_ID}`,
+      surface: data.surface,
     });
 
     return { url };
+  });
+
+const reportCheckoutCanceledSchema = z.object({
+  sessionId: z.string().min(1).max(256),
+});
+
+/**
+ * Stripe cancel_url hit without payment. Server-side so checkout_failed is
+ * not a client-only event (#1466).
+ */
+export const reportCheckoutCanceledFn = createServerFn({ method: 'POST' })
+  .middleware([authWithTeamMiddleware])
+  .validator(zodValidator(reportCheckoutCanceledSchema))
+  .handler(async ({ data, context }) => {
+    if (!isStripeEnabled()) return { ok: true as const };
+
+    try {
+      const { getStripeOrThrow } = await import('@/lib/billing/stripe');
+      const stripe = getStripeOrThrow();
+      const session = await stripe.checkout.sessions.retrieve(data.sessionId);
+      captureCheckoutCanceledFromSession(session, {
+        teamId: context.teamId,
+        userId: context.user.id,
+      });
+    } catch (err) {
+      logger.error('Failed to report checkout cancel', {
+        err,
+        sessionId: data.sessionId,
+      });
+    }
+
+    return { ok: true as const };
   });
 
 // ============================================================================
@@ -140,6 +183,7 @@ const purchaseInputSchema = z.object({
    * user's, or the transport's — can never charge or credit twice.
    */
   requestId: z.string().min(1).max(64),
+  surface: checkoutSurfaceSchema,
 });
 
 /**
@@ -200,6 +244,8 @@ export const purchaseCreditsFn = createServerFn({ method: 'POST' })
             type: 'credit_top_up_direct',
             amountUsd: String(data.amountUsd),
             idempotencyKey,
+            method: 'saved_card',
+            ...(data.surface ? { surface: data.surface } : {}),
           },
         },
         { idempotencyKey }
@@ -210,10 +256,25 @@ export const purchaseCreditsFn = createServerFn({ method: 'POST' })
       // both misinforms the user and (via the log-level split in
       // loggerMiddleware) hides a payment outage from production error logs.
       if (err instanceof Stripe.errors.StripeCardError) {
+        captureSavedCardStripeError(err, {
+          distinctId: context.user.id,
+          teamId: context.teamId,
+          amountUsd: data.amountUsd,
+          surface: data.surface,
+        });
         throw new ValidationError(err.message);
       }
       throw err;
     }
+
+    captureCheckoutOpened({
+      distinctId: context.user.id,
+      teamId: context.teamId,
+      amountUsd: data.amountUsd,
+      method: 'saved_card',
+      stripePaymentIntentId: paymentIntent.id,
+      ...(data.surface ? { surface: data.surface } : {}),
+    });
 
     if (paymentIntent.status !== 'succeeded') {
       // `processing` / `requires_capture` will likely settle, so telling the
@@ -224,6 +285,30 @@ export const purchaseCreditsFn = createServerFn({ method: 'POST' })
         status: paymentIntent.status,
         stripePaymentIntentId: paymentIntent.id,
       });
+      if (
+        paymentIntent.status === 'requires_action' ||
+        paymentIntent.status === 'requires_payment_method' ||
+        paymentIntent.status === 'canceled'
+      ) {
+        captureCheckoutFailed({
+          distinctId: context.user.id,
+          teamId: context.teamId,
+          amountUsd: data.amountUsd,
+          method: 'saved_card',
+          stripePaymentIntentId: paymentIntent.id,
+          ...(data.surface ? { surface: data.surface } : {}),
+          reason: mapCheckoutFailureReason({
+            eventType:
+              paymentIntent.status === 'canceled'
+                ? 'payment_intent.canceled'
+                : 'payment_intent.payment_failed',
+            paymentIntentStatus: paymentIntent.status,
+            stripeErrorCode: paymentIntent.last_payment_error?.code,
+          }),
+          stripeErrorCode: paymentIntent.last_payment_error?.code,
+          stripeDeclineCode: paymentIntent.last_payment_error?.decline_code,
+        });
+      }
       throw new ValidationError(
         paymentIntent.status === 'requires_action'
           ? 'Your card requires additional verification — use "Add payment method" to pay via checkout instead'

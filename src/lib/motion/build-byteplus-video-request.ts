@@ -18,6 +18,10 @@
  * 2.5 tags are `@Image1`/`@Image2` on fal and Ark. Ark does not want a
  * trailing "Reference images:" legend.
  *
+ * Reference-only mode has no still to demote, so the mix-ban stops mattering
+ * and `size` switches from `adaptive` to the sequence's own ratio (nothing is
+ * left for `adaptive` to adapt to — see the comment at the `size` assignment).
+ *
  * Client-safe: no env, no adapters.
  */
 
@@ -66,7 +70,8 @@ export type BytePlusVideoRequest = {
 };
 
 export type BytePlusVideoRequestOptions = {
-  imageUrl: string;
+  /** The rendered still, or undefined in reference-only mode. */
+  imageUrl?: string;
   prompt: string;
   aspectRatio?: AspectRatio;
   duration?: number;
@@ -103,12 +108,19 @@ export function buildBytePlusVideoRequest(
   );
   // Seedance 2.5 first-frame / first-last-frame rejects a concrete ratio
   // (`9:16`, `16:9`, …). Output follows the first-frame still; `adaptive`
-  // is the only accepted value. Sequence motion always sends a still.
-  const size = `adaptive_${
+  // is the only accepted value there. Sequence motion normally sends a still.
+  //
+  // Reference-only inverts that: with no frame role in the request there is
+  // nothing for `adaptive` to adapt TO, and Ark would size the clip from the
+  // first reference — a portrait character sheet would silently render a
+  // 9:16 clip into a 16:9 sequence. So the sequence's own ratio is stated.
+  const resolution =
     (options.resolution &&
       pickVideoResolution(BYTEPLUS_RESOLUTIONS, options.resolution)) ??
-    '720p'
-  }`;
+    '720p';
+  const size = options.imageUrl
+    ? `adaptive_${resolution}`
+    : `${options.aspectRatio ?? '16:9'}_${resolution}`;
 
   const modelOptions: Record<string, unknown> = {
     // Ark defaults `watermark` to false for video, but state it: the flag is
@@ -120,6 +132,8 @@ export function buildBytePlusVideoRequest(
     }),
   };
 
+  const startFrameUrl = options.imageUrl;
+
   if (references.length === 0) {
     return {
       modelId,
@@ -128,11 +142,17 @@ export function buildBytePlusVideoRequest(
           type: 'text',
           content: truncate(options.prompt, config.maxPromptLength),
         },
-        {
-          type: 'image',
-          source: { type: 'url', value: options.imageUrl },
-          metadata: { role: 'start_frame' },
-        },
+        // Reference-only with no matched sheets is pure text-to-video: a
+        // prompt part and nothing else. Ark serves that on the same model id.
+        ...(startFrameUrl
+          ? [
+              {
+                type: 'image' as const,
+                source: { type: 'url' as const, value: startFrameUrl },
+                metadata: { role: 'start_frame' as const },
+              },
+            ]
+          : []),
       ],
       size,
       duration: options.duration,
@@ -148,7 +168,7 @@ export function buildBytePlusVideoRequest(
     ? buildReferenceVideoPrompt(
         referenceConfig,
         options.prompt,
-        options.imageUrl,
+        startFrameUrl ?? null,
         references,
         config.maxPromptLength,
         { skipLegend: true }
@@ -167,7 +187,7 @@ export function buildBytePlusVideoRequest(
           ).prompt,
           config.maxPromptLength
         ),
-        imageUrls: [options.imageUrl],
+        imageUrls: startFrameUrl ? [startFrameUrl] : [],
       };
 
   return {

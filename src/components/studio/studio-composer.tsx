@@ -66,6 +66,7 @@ import { useFalPricing } from '@/hooks/use-fal-pricing';
 import {
   useCreateStudioAssets,
   useDraftStudioPrompt,
+  useStudioPendingCreates,
 } from '@/hooks/use-studio-assets';
 import { useUploadTempMedia } from '@/hooks/use-talent';
 import {
@@ -155,6 +156,8 @@ const REFERENCE_TOKENS = {
 
 type StudioComposerProps = {
   activity: 'image' | 'video';
+  /** Prompts of generations still in flight — the editor pulses while it shows one. */
+  generatingPrompts: string[];
 };
 
 function referenceMentionItem(
@@ -274,13 +277,17 @@ function AddTile({
   );
 }
 
-export function StudioComposer({ activity }: StudioComposerProps) {
+export function StudioComposer({
+  activity,
+  generatingPrompts,
+}: StudioComposerProps) {
   const { requireAuth, isAuthenticated } = useAuthGate();
   const posthog = usePostHog();
   const { showGate } = useFalBillingGate();
   const { pricing } = useFalPricing();
   const create = useCreateStudioAssets();
   const draft = useDraftStudioPrompt();
+  const pendingCreates = useStudioPendingCreates(activity);
   const upload = useUploadTempMedia();
   const library = useStudioLibrary();
 
@@ -399,6 +406,12 @@ export function StudioComposer({ activity }: StudioComposerProps) {
   // cheapest place to open the login dialog or offer a random prompt. Only
   // an unready mode or an in-flight upload actually disables it.
   const canSubmit = modeReady && uploading === 0;
+  // The prompt, not the button, is what pulses while its generation runs
+  // (#1455) — and typing anything else stops it, even mid-generation.
+  const generating =
+    trimmed.length > 0 &&
+    (generatingPrompts.includes(trimmed) ||
+      pendingCreates.some((input) => input.prompt === trimmed));
 
   // --- references -----------------------------------------------------------
 
@@ -816,7 +829,7 @@ export function StudioComposer({ activity }: StudioComposerProps) {
   };
 
   const submit = () => {
-    if (!canSubmit) return;
+    if (!canSubmit || create.isPending) return;
     if (trimmed.length === 0) {
       posthog.capture('empty_prompt_generate_clicked', {
         surface: 'studio',
@@ -991,7 +1004,10 @@ export function StudioComposer({ activity }: StudioComposerProps) {
           placeholder={placeholder}
           aria-label="Prompt"
           data-testid="studio-prompt"
-          className="min-h-24 flex-1 border-0 bg-transparent px-1 py-1 shadow-none focus-within:ring-0 dark:bg-transparent"
+          className={cn(
+            'min-h-24 flex-1 border-0 bg-transparent px-1 py-1 shadow-none focus-within:ring-0 dark:bg-transparent',
+            generating && 'motion-safe:animate-pulse'
+          )}
           mentionItems={refsCapable ? mentionItems : undefined}
           onMentionSelect={onMentionSelect}
           onKeyDown={(event) => {

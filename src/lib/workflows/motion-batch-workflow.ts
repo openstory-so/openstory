@@ -69,6 +69,21 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
         'music config is required when includeMusic is true'
       );
     }
+    // Every shot needs either a start frame or the reference-only flag. Callers
+    // all pre-filter, but until reference-only made `imageUrl` optional the
+    // only thing catching an empty one was the per-shot child — after it had
+    // been spawned, credit-checked, and had a `video_variants` row opened.
+    // Assert it here instead, where it costs nothing and names the shot.
+    const unrenderable = input.shots.filter(
+      (shot) => !shot.imageUrl?.trim() && !shot.referenceOnly
+    );
+    if (unrenderable.length > 0) {
+      throw new WorkflowValidationError(
+        `Shots have no start frame and are not reference-only: ${unrenderable
+          .map((shot) => shot.shotId)
+          .join(', ')}`
+      );
+    }
 
     // Step 1: Fan out motion workflows + optional music workflow in parallel.
     // Multi-model video (#545): one MOTION_WORKFLOW child per (shot, model)
@@ -101,6 +116,7 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
         // Pinned at the trigger — passed through untouched, never re-derived.
         sceneId: shot.sceneId,
         imageUrl: shot.imageUrl,
+        referenceOnly: shot.referenceOnly,
         frameVersionId: shot.frameVersionId,
         motionPromptVersionId: shot.motionPromptVersionId,
         prompt,

@@ -57,6 +57,7 @@ Oh, hi Mom. Yeah, I'm fine. Just... working on a big project.`,
   generationStopAt: null,
   pipelineStage: null,
   generationCheckpoint: null,
+  generateStartFrames: true,
   suggestedTalentIds: null,
   suggestedLocationIds: null,
 };

@@ -211,6 +211,65 @@ Each surface is enumerated in `scoped-workflow.ts` and pinned by
 category doesn't match the hatch it came through. Full rationale:
 `docs/architecture/workflow-snapshots-and-content-hash-staleness.md`.
 
+## Reference-only motion (no start frames)
+
+Renders a shot **straight to video** from the character / location / element
+reference sheets — the shot-images phase never runs, and neither does the
+visual-prompt phase (the reference-only motion template composes its own
+opening frame from the bibles and is never handed one). The storyboard preview
+still is kept: it fills the scene rail while the clip renders. It is the
+**default** for a new sequence; "Generate start frames" in the options opts
+back into the frame-based workflow.
+
+**Resolved per shot, never per sequence.** `sequences.generateStartFrames` is
+the default (off = reference-only); `shots.useStartFrame` overrides it (NULL =
+inherit). Always resolve
+via `usesStartFrame()` / `rendersReferenceOnly()` — `reference-only-is-per-shot.test.ts`
+fails any per-shot path reading `sequence.generateStartFrames` raw. It is NOT a
+render-only switch: it picks the motion-prompt template and folds into the
+motion hash, so flipping it re-stales that shot's motion prompt.
+
+**Two capability questions, don't mix them.** `supportsReferenceOnlyMotion` is
+the model-only floor (fal `reference-to-video`: Seedance 2.0 / 2.5, H3 Max);
+`referenceOnlyCapableWith(model, vias)` is its isomorphic via-aware form, which
+`createSequenceSchema` asks with `{ xai: true }` for **every** selected video
+model, not just the primary. Anywhere a team's keys are
+reachable, ask `canRenderReferenceOnly(model, credentials)` instead: Grok
+Imagine renders reference-only on the native xAI via, and the model-only
+question rejects it.
+
+The substance is the prompt. The image-to-video template's central rule is NO
+VISUAL REDUNDANCY — "the video model already sees these in the starting frame"
+— which inverts with no still: anything the prompt omits gets reinvented per
+shot. So reference-only has its own template
+(`phase/motion-prompt-reference-only-chat`) that composes the opening frame
+(framing, blocking, set, light, look, prop state) AND directs the motion, while
+still leaving identity to the bound sheets. It is also handed
+`<LOCATION_BIBLE>` / `<ELEMENT_BIBLE>`, which its sibling computes and silently
+drops. Two templates, not one conditional — they disagree on their most
+load-bearing rule.
+
+Gotchas: motion references gain the location sheet (ordered first — the budget
+is spent in order); `buildReferenceVideoPrompt` drops the "Use @Image1 as the
+starting frame" line and binds refs from slot 1; Ark `size` switches from
+`adaptive` to the sequence's ratio (nothing is left to adapt to, and a portrait
+sheet would silently render 9:16); billing prices the r2v endpoint per shot,
+since a batch can mix. The mode folds into the motion-prompt hash **only when
+true**, so no stored digest moves — and it is REQUIRED on
+`ShotPromptContextSequence` because omitting it would make every reference-only
+prompt read stale forever, silently. The manifest records
+`frameVersionId: null` for such a shot even when a still exists, and staleness
+compares against the same rule; `UpdateStalePlan.usesStartFrame` is required
+and never defaulted (`!undefined` is `true`, which would re-render a whole run
+with no start frames). **Provenance is stamped, never inferred:** every
+`VideoManifestEntry` and every motion `shot_prompt_versions` row carries a
+required `usesStartFrame` (a null `frameVersionId` is overloaded and the prompt
+hash is opaque). The column is NOT NULL with a default of true, which only
+labels rows that predate reference-only and were therefore image-to-video;
+pre-stamp manifests were backfilled from the shot's mode.
+
+Full rationale: `docs/architecture/reference-only-motion.md`.
+
 ## Frame System
 
 Frames are the core content unit — each represents one scene from script analysis.

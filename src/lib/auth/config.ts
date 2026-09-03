@@ -13,6 +13,7 @@ import {
   user,
   verification,
 } from '@/lib/db/schema';
+import { eq } from 'drizzle-orm';
 
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
@@ -323,12 +324,37 @@ export function createAuth(db: ReturnType<typeof getDb> = getDb()) {
       session: {
         create: {
           after: async (session, context) => {
+            // Identify by email so checkout attempters are not anonymous
+            // in PostHog (#1466). Lookup is best-effort — a miss must not
+            // fail session create.
+            let personProperties: Record<string, unknown> | undefined;
+            try {
+              const db = getDb();
+              const [signedInUser] = await db
+                .select({ email: user.email, name: user.name })
+                .from(user)
+                .where(eq(user.id, session.userId))
+                .limit(1);
+              if (signedInUser) {
+                personProperties = {
+                  email: signedInUser.email,
+                  name: signedInUser.name,
+                };
+              }
+            } catch (err) {
+              logger.error('Failed to load user for user_signed_in identify', {
+                err,
+                userId: session.userId,
+              });
+            }
             captureProductEvent({
               distinctId: session.userId,
               event: 'user_signed_in',
               properties: {
                 path: context?.path,
+                ...personProperties,
               },
+              personProperties,
             });
           },
         },

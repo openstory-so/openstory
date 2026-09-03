@@ -1,0 +1,1 @@
+ALTER TABLE `sequences` DROP COLUMN `reference_only`;

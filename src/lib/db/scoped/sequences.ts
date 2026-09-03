@@ -326,6 +326,8 @@ export function createSequencesMethods(
       autoGenerateMotion?: boolean;
       autoGenerateMusic?: boolean;
       generationStopAt?: GenerationStage;
+      /** Opt-in to the frame-based workflow; off = reference-only (the default). */
+      generateStartFrames?: boolean;
       suggestedTalentIds?: string[];
       suggestedLocationIds?: string[];
     }): Promise<Sequence> => {
@@ -355,6 +357,7 @@ export function createSequencesMethods(
         autoGenerateMotion: params.autoGenerateMotion ?? false,
         autoGenerateMusic: params.autoGenerateMusic ?? false,
         generationStopAt: params.generationStopAt,
+        generateStartFrames: params.generateStartFrames ?? false,
         suggestedTalentIds: params.suggestedTalentIds ?? null,
         suggestedLocationIds: params.suggestedLocationIds ?? null,
         status: 'draft',

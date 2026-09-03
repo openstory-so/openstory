@@ -12,11 +12,13 @@
 import {
   DEFAULT_MUSIC_MODEL,
   DEFAULT_VIDEO_MODEL,
+  IMAGE_TO_VIDEO_MODELS,
   isValidAudioModel,
   safeAudioModel,
   safeImageToVideoModel,
   safeTextToImageModel,
 } from '@/lib/ai/models';
+import { canRenderReferenceOnly } from '@/lib/motion/motion-generation';
 import {
   DEFAULT_ANALYSIS_MODEL,
   getAnalysisModelById,
@@ -33,6 +35,7 @@ import {
 import { estimateStoryboardPreflightCost } from '@/lib/billing/storyboard-preflight-cost';
 import { generateId } from '@/lib/db/id';
 import type { ScopedDb } from '@/lib/db/scoped';
+import { toWorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import { ValidationError } from '@/lib/errors';
 import { DEFAULT_RESOLUTION } from '@/lib/constants/resolutions';
 import {
@@ -42,7 +45,10 @@ import {
 } from '@/lib/style/auto-style';
 import { parseStyleConfig } from '@/lib/style/style-config';
 import type { Sequence } from '@/types/database';
-import type { CreateSequenceInput } from '@/lib/schemas/sequence.schemas';
+import {
+  REFERENCE_ONLY_MODEL_ERROR,
+  type CreateSequenceInput,
+} from '@/lib/schemas/sequence.schemas';
 import { UNTITLED_SEQUENCE_TITLE } from '@/lib/sequences/untitled-sequence-title';
 import { copySequenceElements } from '@/lib/sequence-elements/copy-sequence-elements';
 import { promoteTempElements } from '@/lib/sequence-elements/promote-temp-elements';
@@ -135,6 +141,7 @@ export const createSequences = createServerOnlyFn(
       stopAt,
       autoGenerateMotion,
       autoGenerateMusic,
+      generateStartFrames = false,
       musicModel,
       audioModels: audioModelsInput,
       targetDurationSeconds,
@@ -221,6 +228,30 @@ export const createSequences = createServerOnlyFn(
       );
     }
 
+    // Reference-only, re-asked against THIS team's real keys. `createSequenceSchema`
+    // is isomorphic so it could only ask the widest question (capable on some
+    // via) — which lets Grok Imagine through. Grok renders reference-only shots
+    // on the native xAI route only; without an xAI key it falls back to a fal
+    // image-to-video endpoint that requires `image_url`, and every shot would
+    // fail at submit. Reject here instead, before a single credit is reserved.
+    if (!generateStartFrames) {
+      // `credentials` is the flattened key-resolver surface these helpers take
+      // — the same one the workflows get, so create-time and submit-time ask
+      // the identical question.
+      const { credentials } = toWorkflowScopedDb(context.scopedDb);
+      const incapable: string[] = [];
+      for (const model of videoModels) {
+        if (!(await canRenderReferenceOnly(model, credentials))) {
+          incapable.push(IMAGE_TO_VIDEO_MODELS[model].name);
+        }
+      }
+      if (incapable.length > 0) {
+        throw new ValidationError(
+          `${REFERENCE_ONLY_MODEL_ERROR} (${incapable.join(', ')} needs an xAI key on this team.)`
+        );
+      }
+    }
+
     // Validate and resolve audio models (sequence-level, mirrors the pattern).
     const validatedAudioModels = audioModelsInput?.map((m) =>
       safeAudioModel(m, DEFAULT_MUSIC_MODEL)
@@ -253,6 +284,7 @@ export const createSequences = createServerOnlyFn(
       videoModels,
       autoGenerateMusic,
       audioModels,
+      referenceOnly: !generateStartFrames,
       // Align with Generate ActionCost (duration chip → scene count + clip length).
       targetDurationSeconds,
       pricing: await getEffectiveFalPricing(),
@@ -308,6 +340,7 @@ export const createSequences = createServerOnlyFn(
               autoGenerateMotion,
               autoGenerateMusic,
               generationStopAt: stopAt,
+              generateStartFrames,
               suggestedTalentIds: suggestedTalentIds?.length
                 ? suggestedTalentIds
                 : undefined,

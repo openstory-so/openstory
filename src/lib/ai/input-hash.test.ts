@@ -15,6 +15,7 @@ const entry = (
   shotId: 's1',
   motionPromptVersionId: 'mp1',
   frameVersionId: 'fv1',
+  usesStartFrame: true,
   durationMs: 3000,
   ...overrides,
 });

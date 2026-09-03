@@ -87,7 +87,8 @@ export function reconstructRecordedFalEditPrompts(): RecordedFalEditPrompt[] {
         matchLocationsToScene(
           locations,
           scene.continuity.environmentTag,
-          scene.metadata.location
+          scene.metadata.location,
+          scene.originalScript.extract
         )
       ),
       ...buildElementReferenceImages(

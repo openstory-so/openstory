@@ -5,6 +5,8 @@ import {
   DEFAULT_VIDEO_MODEL,
   IMAGE_MODELS,
   IMAGE_TO_VIDEO_MODELS,
+  referenceOnlyCapableWith,
+  type ImageToVideoModel,
 } from '@/lib/ai/models';
 import {
   DEFAULT_ANALYSIS_MODEL,
@@ -41,6 +43,12 @@ const validAudioModelKeys = Object.keys(
 
 export const MUSIC_REQUIRES_MOTION_ERROR =
   'Music generation currently requires motion. Turn on motion or disable music.';
+
+export const REFERENCE_ONLY_MODEL_ERROR =
+  'Without start frames, the video model must render from references alone. Pick Seedance, H3 Max, Omni Flash or Grok Imagine, or turn on Generate start frames.';
+
+export const REFERENCE_ONLY_REQUIRES_MOTION_ERROR =
+  'Without start frames, each shot renders straight to video, so motion is required. Turn motion on, or turn on Generate start frames.';
 
 export const createSequenceSchema = createInsertSchema(sequences, {
   title: (schema) => schema.min(1).optional(), // Optional - defaults to 'Untitled Sequence' in hook
@@ -125,6 +133,10 @@ export const createSequenceSchema = createInsertSchema(sequences, {
     stopAt: generationStageSchema.optional(),
     autoGenerateMotion: z.boolean().optional(),
     autoGenerateMusic: z.boolean().optional(),
+    // Explicit default: the model refinement below and the create handler
+    // both read the parsed value, and leaving it `undefined` would make "off"
+    // indistinguishable from "unset".
+    generateStartFrames: z.boolean().default(false).optional(),
     // Music model selection (model key, not full ID) — primary / first of audioModels
     musicModel: z
       .string()
@@ -170,6 +182,8 @@ export const createSequenceSchema = createInsertSchema(sequences, {
     // newly created sequence so the user doesn't have to re-upload references.
     sourceSequenceId: ulidSchemaOptional,
   })
+  // Legacy-flag checks only apply when the caller did not pick a stop-at
+  // (#1408): an explicit early stop is a deliberate partial run.
   .superRefine((data, ctx) => {
     if (data.stopAt) return;
     if (data.autoGenerateMusic && data.autoGenerateMotion === false) {
@@ -179,7 +193,39 @@ export const createSequenceSchema = createInsertSchema(sequences, {
         message: MUSIC_REQUIRES_MOTION_ERROR,
       });
     }
+    // Reference-only skips the image pass; motion is the only thing left that
+    // renders. With motion off the sequence would complete having generated
+    // nothing at all, and report success doing it.
+    if (!data.generateStartFrames && data.autoGenerateMotion === false) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['generateStartFrames'],
+        message: REFERENCE_ONLY_REQUIRES_MOTION_ERROR,
+      });
+    }
   })
+  // Reference-only has no start frame, so EVERY selected model must have a
+  // route whose start frame is optional — not just the primary. A variant
+  // model without one would fail every shot it was asked to render.
+  //
+  // This schema is isomorphic and pure, so it cannot know which vias a team
+  // reaches. It asks the widest question — capable on SOME via — which rejects
+  // Kling / Veo / LTX always and lets Grok Imagine through; `createSequences`
+  // then re-asks it against the team's real keys via `canRenderReferenceOnly`.
+  .refine(
+    (data) =>
+      data.generateStartFrames ||
+      data.videoModels.every(
+        (model) =>
+          validVideoModelKeys.includes(model) &&
+          // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- guarded by the key check above
+          referenceOnlyCapableWith(model as ImageToVideoModel, { xai: true })
+      ),
+    {
+      path: ['generateStartFrames'],
+      message: REFERENCE_ONLY_MODEL_ERROR,
+    }
+  )
   .transform((data) => {
     const stopAt =
       data.stopAt ??
@@ -221,6 +267,12 @@ export const updateSequenceSchema = createUpdateSchema(sequences, {
   updatedBy: true,
   workflow: true, // Set by workflow, not user
   workflowRunId: true, // Set at workflow trigger time, not user
+  // Set at creation only. Toggling it on an existing sequence bypasses the
+  // model refine below AND rewrites what every already-rendered shot means:
+  // on, the stills the user approved are silently dropped from the request
+  // while their prompts still assume one; off, no shot has a still and batch
+  // motion finds nothing eligible. Regenerate instead of toggling.
+  generateStartFrames: true,
   // Copied from the style row on styleId change — clients send styleId only.
   styleConfig: true,
   // Music fields - managed by workflow, not user input

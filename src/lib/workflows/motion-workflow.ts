@@ -44,6 +44,7 @@ import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import { ensureImageUnderLimit } from '@/lib/image/image-compress';
 import {
   calculateMotionMetadata,
+  canRenderReferenceOnly,
   motionCostFromUsage,
   pollMotionJob,
   submitMotionJob,
@@ -137,10 +138,23 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
     const workflowRunId = event.instanceId;
     const model = input.model || DEFAULT_VIDEO_MODEL;
 
-    // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
-    if (!input.imageUrl?.trim()) {
+    // Reference-only shots have no still by design — the reference sheets and
+    // the prompt are the whole input. Every other shot must carry one.
+    if (!input.imageUrl?.trim() && !input.referenceOnly) {
       throw new WorkflowValidationError(
         'Thumbnail Path is required for motion generation'
+      );
+    }
+    if (
+      input.referenceOnly &&
+      !(await canRenderReferenceOnly(model, scopedDb.credentials))
+    ) {
+      // A route whose start frame is optional is what makes this shot
+      // renderable — a fal reference-to-video endpoint, or Grok on the native
+      // xAI via. A model with neither cannot serve it at all. Fail before the
+      // credit check rather than burning a reservation on a doomed submit.
+      throw new WorkflowValidationError(
+        `Video model "${model}" cannot render reference-only shots (no route whose start frame is optional)`
       );
     }
 
@@ -166,6 +180,8 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
         const { cost: estimatedCost, duration } = calculateMotionMetadata(
           {
             imageUrl: input.imageUrl,
+            referenceOnly: input.referenceOnly,
+            referenceImages: input.referenceImages,
             prompt: input.prompt,
             model,
             duration: input.duration,
@@ -173,7 +189,6 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
             motionBucket: input.motionBucket,
             aspectRatio: input.aspectRatio,
             generateAudio: input.generateAudio,
-            referenceImages: input.referenceImages,
           },
           await getEffectiveFalPricing()
         );
@@ -245,6 +260,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
             dialogue: input.priorMotion?.dialogue ?? null,
             audio: input.priorMotion?.audio ?? null,
             source: 'user-edit',
+            usesStartFrame: !input.referenceOnly,
             inputHash: input.userEditProvenance.inputHash,
             analysisModel: input.userEditProvenance.analysisModel,
             createdBy: input.userId,
@@ -293,6 +309,9 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
                 input.motionPromptVersionId ??
                 null,
               frameVersionId: input.frameVersionId ?? null,
+              // Provenance stamp: the mode this render ran in, independent
+              // of the null-`frameVersionId` encoding above.
+              usesStartFrame: !input.referenceOnly,
               durationMs: duration * 1000,
             },
           ]);
@@ -360,26 +379,40 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
     }
 
     // Step 2: Prepare start image — use Cloudflare Image Resizing if Kling model and image exceeds 10MB
-    const startImageUrl = await step.do('prepare-start-image', async () => {
-      const modelConfig = IMAGE_TO_VIDEO_MODELS[model];
-      if (modelConfig.vendor !== 'Kling') {
-        return input.imageUrl;
+    const startImageUrl = await step.do(
+      'prepare-start-image',
+      async (): Promise<string | null> => {
+        // Reference-only has no still to prepare. `null`, not `undefined`:
+        // a step result is persisted and replayed as JSON, where `undefined`
+        // has no representation and comes back as `null` anyway — returning it
+        // outright keeps the declared type true on the replay path too.
+        // (Kling is not reference-only capable, but the empty check has to come
+        // first regardless.) Trimmed to agree with the entry guard above, so a
+        // whitespace-only URL can't slip past as a real still and shift every
+        // reference tag down a slot.
+        if (!input.imageUrl?.trim()) {
+          return null;
+        }
+        const modelConfig = IMAGE_TO_VIDEO_MODELS[model];
+        if (modelConfig.vendor !== 'Kling') {
+          return input.imageUrl;
+        }
+
+        const compressed = await ensureImageUnderLimit(
+          input.imageUrl,
+          KLING_MAX_IMAGE_BYTES
+        );
+        if (!compressed) {
+          return input.imageUrl;
+        }
+
+        logger.info(
+          `[MotionWorkflow:cf] Image ${(compressed.originalSizeBytes / 1024 / 1024).toFixed(1)}MB exceeds limit, using Cloudflare Image Resizing`
+        );
+
+        return compressed.url;
       }
-
-      const compressed = await ensureImageUnderLimit(
-        input.imageUrl,
-        KLING_MAX_IMAGE_BYTES
-      );
-      if (!compressed) {
-        return input.imageUrl;
-      }
-
-      logger.info(
-        `[MotionWorkflow:cf] Image ${(compressed.originalSizeBytes / 1024 / 1024).toFixed(1)}MB exceeds limit, using Cloudflare Image Resizing`
-      );
-
-      return compressed.url;
-    });
+    );
 
     // Step 3: Submit + poll with a bounded same-model retry on content-flag
     // rejections (#881). Each attempt resubmits a fresh fal job; a content
@@ -419,8 +452,27 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
         // A rejection with no `body.<field>` prefix (Veo's "could not
         // generate", sensitive audio) is prompt-shaped: soften.
         const flags = flaggedInputs(lastRejection ?? '');
+        // The fallback must be able to serve THIS shot. A reference-only shot
+        // flags `body.image_urls` (a reference sheet, not a still), which
+        // matches `flaggedInputs`' image test — so without this check the
+        // rescue would swap to Grok, commit the model onto `video_variants`,
+        // and then die inside `resolveMotionEndpoint` on a team with no xAI
+        // key. `canRenderReferenceOnly` knows the via, so Grok still rescues
+        // the shot wherever it genuinely can.
+        const fallbackCanServe =
+          !input.referenceOnly ||
+          (await canRenderReferenceOnly(
+            MOTION_CONTENT_FALLBACK_MODEL,
+            scopedDb.credentials
+          ));
         const swapModel =
-          flags.image && model !== MOTION_CONTENT_FALLBACK_MODEL;
+          flags.image &&
+          model !== MOTION_CONTENT_FALLBACK_MODEL &&
+          fallbackCanServe;
+        // A flagged reference sheet cannot be softened away either (the sheet
+        // is the input, not the prose), so a reference-only shot with no
+        // usable fallback falls straight through to the terminal message
+        // rather than burning a rewrite that changes nothing.
         const softenPrompt = flags.prompt || !flags.image;
         if (!swapModel && !softenPrompt) break;
 
@@ -497,6 +549,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
                   promptType: 'motion',
                   text: softenedText,
                   source: 'softened',
+                  usesStartFrame: !input.referenceOnly,
                   inputHash: provenance.inputHash,
                   analysisModel: provenance.analysisModel,
                   createdBy: input.userId,
@@ -586,7 +639,8 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
         }
         try {
           const job = await submitMotionJob({
-            imageUrl: startImageUrl,
+            imageUrl: startImageUrl ?? undefined,
+            referenceOnly: input.referenceOnly,
             prompt,
             model: activeModel,
             duration: input.duration,
@@ -815,6 +869,19 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
           rejections: rejections.length ? rejections : ['unknown rejection'],
           models: triedModels.map((m) => IMAGE_TO_VIDEO_MODELS[m].name),
           softened,
+          // This clip carried no still, so `flags.image` names a reference
+          // sheet and "Regenerate the still" would be a dead end.
+          ...(input.referenceOnly
+            ? {
+                inputs: {
+                  still: {
+                    name: 'a reference sheet',
+                    fix: 'Regenerate the flagged character, location or element reference',
+                  },
+                  prompt: 'the motion prompt',
+                },
+              }
+            : {}),
         }),
         'ContentRejectionExhausted'
       );
@@ -840,6 +907,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
       motionCostFromUsage(job.via, billedUsage, {
         modelKey: job.modelKey,
         hasReferenceImages: (input.referenceImages?.length ?? 0) > 0,
+        referenceOnly: input.referenceOnly,
       })
     );
     const actualCost = billing.cost;

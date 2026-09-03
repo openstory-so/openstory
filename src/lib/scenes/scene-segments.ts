@@ -122,6 +122,14 @@ export type SegmentShotInput = {
   id: string;
   renderSegmentId: string | null;
   selectedMotionPromptVersionId: string | null;
+  /**
+   * Does this shot render from reference sheets rather than a still?
+   * `rendersReferenceOnly(shot, sequence)` — REQUIRED, not defaulted: such a
+   * shot has no frame pointer to compare, and getting it wrong silently marks
+   * every clip Stale (or hides a real staleness). Required so a new caller
+   * has to answer it rather than inherit a guess.
+   */
+  rendersReferenceOnly: boolean;
 };
 export type SegmentFrameInput = {
   shotId: string;
@@ -198,11 +206,22 @@ export function assembleSequenceSegments(input: {
     shotIdsBySegment.set(shot.renderSegmentId, list);
   }
 
-  // Each shot's current anchor-frame selected image version (role 'first').
+  // Each shot's current anchor-frame selected image version (role 'first'),
+  // or `null` for a shot that renders from references — it animates from no
+  // still, so it has no frame pointer, and the manifest records `null` to
+  // match. Comparing a reference-only clip against a still it never received
+  // marked it Stale the instant it finished, offering a paid re-render that
+  // produced the identical clip for ever.
+  const referenceOnlyShots = new Set(
+    orderedShots.filter((shot) => shot.rendersReferenceOnly).map((s) => s.id)
+  );
   const currentFrameByShot = new Map<string, string | null>();
   for (const frame of input.frames) {
     if (frame.role !== 'first') continue;
-    currentFrameByShot.set(frame.shotId, frame.selectedImageVersionId);
+    currentFrameByShot.set(
+      frame.shotId,
+      referenceOnlyShots.has(frame.shotId) ? null : frame.selectedImageVersionId
+    );
   }
 
   // Versions grouped by segment, preserving input order (oldest-first).

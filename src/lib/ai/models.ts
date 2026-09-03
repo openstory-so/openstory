@@ -3,6 +3,9 @@
  * Separated to avoid circular dependencies between service and client modules
  */
 
+// Value import, but one-way: grok-native imports this module type-only, so
+// there is no runtime cycle.
+import { isNativeGrokVideoModel } from '@/lib/ai/grok-native';
 import type { AnalysisModelId } from '@/lib/ai/models.config';
 import type { AspectRatio } from '@/lib/constants/aspect-ratios';
 import { MOTION_INPUT_SCHEMAS } from '@/lib/motion/endpoint-map';
@@ -766,6 +769,71 @@ export function getMotionReferenceEndpoint(
 
 export function attachesInlineReferences(model: ImageToVideoModel): boolean {
   return model in MOTION_INLINE_REFERENCE_MODELS;
+}
+
+/**
+ * Can this model render a shot from reference images alone — no start frame?
+ *
+ * Reference-only mode (see `docs/architecture/reference-only-motion.md`) skips
+ * still generation entirely, so the model must have a route whose start frame
+ * is optional. That is exactly the `MOTION_REFERENCE_ENDPOINTS` set: fal's
+ * `reference-to-video` endpoints take an optional `image_urls[]` and have no
+ * `image_url` field at all, and the same models' BytePlus Ark route sends
+ * every image as a `reference` role (Ark's frame/reference mix-ban means the
+ * still was never a frame there either).
+ *
+ * Keyed on the MODEL alone, so it is true on EVERY via — the floor, safe to
+ * call anywhere including a pure isomorphic schema. Kling is excluded: its
+ * `elements` ride on the image-to-video endpoint, which requires `image_url`.
+ * Grok Imagine is excluded here too, but only because its fal id is
+ * `xai/grok-imagine-video/v1.5/image-to-video` — it DOES accept references
+ * with no start frame on the native xAI via. Where the via is known, ask
+ * {@link referenceOnlyCapableWith} instead.
+ */
+export function supportsReferenceOnlyMotion(model: ImageToVideoModel): boolean {
+  return model in MOTION_REFERENCE_ENDPOINTS;
+}
+
+/** Which native vias are reachable. Resolved per team by `getViaAvailabilityFn`. */
+export type ReferenceOnlyVias = { xai?: boolean; byteplus?: boolean };
+
+/**
+ * Can this model render a reference-only shot given the vias actually
+ * reachable? The one rule, shared by everything that has to answer it:
+ * the client model filters (via the router loader), the create-time server
+ * check, and `canRenderReferenceOnly` on the submit path. Duplicating it would
+ * let the UI offer a model the workflow then refuses.
+ *
+ * `xai` is the only via that adds anything today: Grok Imagine 1.5 binds up to
+ * 7 references and needs no start frame on `api.x.ai`, but falls back to a fal
+ * image-to-video endpoint when no xAI key resolves. BytePlus adds nothing —
+ * Seedance already qualifies on its fal route, and Ark sends every image as a
+ * `reference` role anyway.
+ */
+export function referenceOnlyCapableWith(
+  model: ImageToVideoModel,
+  vias: ReferenceOnlyVias
+): boolean {
+  if (supportsReferenceOnlyMotion(model)) return true;
+  return Boolean(vias.xai) && isNativeGrokVideoModel(model);
+}
+
+/**
+ * The reference-only-capable models for these vias — for UI copy, the model
+ * selectors, and validation messages. Ordered by the catalog's quality rank so
+ * the list reads the same as the selector.
+ */
+export function referenceOnlyMotionModels(
+  vias: ReferenceOnlyVias = {}
+): ImageToVideoModel[] {
+  return Object.keys(IMAGE_TO_VIDEO_MODELS)
+    .filter(isValidImageToVideoModel)
+    .filter((model) => referenceOnlyCapableWith(model, vias))
+    .sort(
+      (a, b) =>
+        IMAGE_TO_VIDEO_MODELS[a].qualityRank -
+        IMAGE_TO_VIDEO_MODELS[b].qualityRank
+    );
 }
 
 /**

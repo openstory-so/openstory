@@ -13,6 +13,9 @@ import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
 
 import { AUDIO_MODELS } from '@/lib/ai/models';
+import { canRenderReferenceOnly } from '@/lib/motion/motion-generation';
+import { toWorkflowScopedDb } from '@/lib/db/scoped-workflow';
+import { REFERENCE_ONLY_MODEL_ERROR } from '@/lib/schemas/sequence.schemas';
 import { resolveVideoModel } from '@/lib/ai/resolve-asset-models';
 import { getEffectiveFalPricing } from '@/lib/ai/fal-pricing-live';
 import { estimateVideoCost, gateEstimate } from '@/lib/billing/cost-estimation';
@@ -44,7 +47,11 @@ import {
   resolveMotionPrompt,
   resolveMotionPromptFromVersion,
 } from '@/lib/motion/resolve-motion-prompt';
-import { toShotView } from '@/lib/shots/shot-view';
+import {
+  rendersReferenceOnly,
+  shotPromptSequence,
+} from '@/lib/shots/use-start-frame';
+import { isBatchMotionEligible, toShotView } from '@/lib/shots/shot-view';
 import { rescanContinuityFromPrompt } from '@/lib/scenes/rescan-continuity-from-prompt';
 import { buildUserEditProvenance } from '@/lib/prompts/user-edit-provenance';
 import { shouldRecordUserEdit } from '@/lib/workflows/user-edit-predicate';
@@ -68,13 +75,17 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
     // Resolved as the whole row, not just the URL: the render manifest records
     // WHICH version the clip rendered from, and re-reading the pointer in the
     // workflow could name a different still than the one submitted.
-    const selectedStill = await context.scopedDb.frameVariants.getSelected(
-      frame.id
-    );
-    if (!selectedStill?.url) {
+    // Per shot, falling back to the sequence default — the user can send one
+    // shot straight to video from references while its neighbours animate from
+    // their stills, and vice versa.
+    const referenceOnly = rendersReferenceOnly(shot, sequence);
+    const selectedStill = referenceOnly
+      ? null
+      : await context.scopedDb.frameVariants.getSelected(frame.id);
+    if (!referenceOnly && !selectedStill?.url) {
       throw new Error('Shot has no thumbnail to generate motion from');
     }
-    const imageUrl = selectedStill.url;
+    const imageUrl = selectedStill?.url ?? undefined;
 
     // Model identity lives on the version that rendered the clip (#1066):
     // explicit request model wins, else the version the shot's render segment
@@ -89,6 +100,23 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
       selectedVersionModel: selectedVersion?.model,
       sequenceModel: sequence.videoModel,
     });
+    if (
+      referenceOnly &&
+      !(await canRenderReferenceOnly(
+        model,
+        toWorkflowScopedDb(context.scopedDb).credentials
+      ))
+    ) {
+      // `MotionWorkflow` rejects this too, but only after the reservation is
+      // held and the child is spawned. One 400 here beats a burnt reservation.
+      //
+      // Via-AWARE, like `createSequences` and `MotionWorkflow`: Grok Imagine
+      // renders reference-only on the native xAI route, and its fal id is an
+      // image-to-video endpoint, so the model-only `supportsReferenceOnlyMotion`
+      // says no. Asking that here rejected regeneration on Grok sequences this
+      // same code had already created and rendered.
+      throw new Error(REFERENCE_ONLY_MODEL_ERROR);
+    }
 
     const userEditedPrompt = Boolean(data.prompt);
     const selectedMotion =
@@ -141,9 +169,14 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
     // the clip, not just in the start frame (#873). Only Kling v3 Pro emits
     // them downstream; threaded for every model so they're ready if support
     // widens. Matches the continuity AFTER any rescan above.
-    const [characters, elements] = await Promise.all([
+    const [characters, elements, locations] = await Promise.all([
       context.scopedDb.characters.listWithSheets(sequence.id),
       context.scopedDb.sequenceElements.list(sequence.id),
+      // Reference-only additionally needs the location sheet: with no still,
+      // it is the only thing establishing the set.
+      referenceOnly
+        ? context.scopedDb.sequenceLocations.listWithReferences(sequence.id)
+        : Promise.resolve([]),
     ]);
     const referenceImages = buildMotionReferenceImages({
       scene: context.scene
@@ -151,6 +184,9 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
         : null,
       characters,
       elements,
+      motionPrompt: prompt,
+      includeLocations: referenceOnly,
+      locations,
     });
 
     // Snap the resolved duration onto the selected model's valid set before
@@ -171,6 +207,7 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
           pricing: await getEffectiveFalPricing(),
           resolution: sequence.resolution,
           hasReferenceImages: referenceImages.length > 0,
+          referenceOnly,
         }),
         { model, operation: 'motion' }
       ),
@@ -196,7 +233,7 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
           ? await buildUserEditProvenance({
               kind: 'motion',
               scopedDb: context.scopedDb,
-              sequence,
+              sequence: shotPromptSequence(sequence, shot),
               scene: context.scene
                 ? { ...context.scene, continuity: effectiveContinuity }
                 : null,
@@ -215,7 +252,8 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
               shotId: shot.id,
               sceneId: shot.sceneId,
               imageUrl,
-              frameVersionId: selectedStill.id,
+              referenceOnly,
+              frameVersionId: selectedStill?.id ?? null,
               motionPromptVersionId: selectedMotion?.id ?? null,
               prompt,
               model,
@@ -334,14 +372,19 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
     // same set optimistically (scenes-view, mobile-scene-drawer); leaving it
     // out here made them disagree, so a cancelled shot showed an optimistic
     // spinner the server then silently skipped.
-    const eligibleShots = allShots.filter(
-      (f) =>
-        f.frame.imageStatus === 'completed' &&
-        f.image?.url &&
-        (f.videoStatus === 'pending' ||
-          f.videoStatus === 'failed' ||
-          f.videoStatus === 'cancelled')
+    // Reference-only sequences render no stills, so the still-done half of the
+    // filter would exclude every shot; there the video status alone decides.
+    // Per shot now, not per sequence: a shot can override the sequence default
+    // either way, so eligibility, the still, the reference set and the price
+    // all have to be asked shot by shot.
+    const shotIsReferenceOnly = (shot: { useStartFrame?: boolean | null }) =>
+      rendersReferenceOnly(shot, sequence);
+    const eligibleShots = allShots.filter((f) =>
+      isBatchMotionEligible(f, shotIsReferenceOnly(f))
     );
+    // Location sheets are loaded once for the batch, so ANY reference-only
+    // shot pulls them; `includeLocations` below still decides per shot.
+    const anyReferenceOnly = allShots.some(shotIsReferenceOnly);
 
     if (eligibleShots.length === 0) {
       throw new Error('No eligible shots for motion generation');
@@ -363,10 +406,52 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
     // Resolve cast/element reference images once for the whole batch (#873) —
     // before credit pre-flight so Seedance prices the reference-to-video
     // endpoint when refs will actually be sent.
-    const [characters, elements] = await Promise.all([
+    const [characters, elements, batchLocations] = await Promise.all([
       context.scopedDb.characters.listWithSheets(sequence.id),
       context.scopedDb.sequenceElements.list(sequence.id),
+      // Reference-only only: with no still, the location sheet is the set.
+      anyReferenceOnly
+        ? context.scopedDb.sequenceLocations.listWithReferences(sequence.id)
+        : Promise.resolve([]),
     ]);
+
+    // Same pre-credit rejection as the single-shot path, but it matters more
+    // here: the reservation covers the whole batch, so one doomed model would
+    // burn credits for N shots to produce N workflow validation errors.
+    // Via-AWARE, matching `createSequences`, `MotionWorkflow` and the
+    // single-shot path above — the model-only check rejected Grok Imagine,
+    // which renders reference-only fine on the native xAI route. Resolved once
+    // per distinct model: the answer depends on the team's keys, not the shot.
+    const referenceOnlyModels = new Set(
+      eligibleShots
+        .filter(shotIsReferenceOnly)
+        .map((shot) =>
+          resolveBatchShotVideoModel(
+            { id: shot.id },
+            shotModels,
+            sequence,
+            data.model
+          )
+        )
+    );
+    const credentials = toWorkflowScopedDb(context.scopedDb).credentials;
+    for (const model of referenceOnlyModels) {
+      if (!(await canRenderReferenceOnly(model, credentials))) {
+        throw new Error(REFERENCE_ONLY_MODEL_ERROR);
+      }
+    }
+
+    // Batch-load the selected motion prompt version for every eligible shot —
+    // the resolution source of truth (#713), replacing `metadata.prompts.motion`.
+    // Loaded BEFORE the estimate, not just before the submit: cast and element
+    // refs follow the motion prompt (#1432), so estimating without it can price
+    // a ref-less shot that the submit then sends references for.
+    const selectedMotionByShot =
+      await context.scopedDb.shotPromptVersions.getSelectedMotionByShots(
+        eligibleShots.map((s) => s.id)
+      );
+    const motionPromptTextFor = (shotId: string) =>
+      selectedMotionByShot.get(shotId)?.text ?? null;
 
     // Sum per-shot costs — shots may render with different (priced) models.
     const estimatedCost = estimateBatchMotionCost(
@@ -378,6 +463,7 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
         duration: data.duration,
         pricing: await getEffectiveFalPricing(),
         resolution: sequence.resolution,
+        referenceOnly: shotIsReferenceOnly,
         hasReferenceImages: (batchShot) => {
           const shot = eligibleShots.find((s) => s.id === batchShot.id);
           if (!shot) return false;
@@ -386,6 +472,11 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
               scene: sceneOf(shot),
               characters,
               elements,
+              // Must match the set actually sent below, or a reference-only
+              // shot carried only by its location sheet estimates as ref-less.
+              motionPrompt: motionPromptTextFor(shot.id),
+              includeLocations: shotIsReferenceOnly(shot),
+              locations: batchLocations,
             }).length > 0
           );
         },
@@ -443,13 +534,6 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
           };
         }
 
-        // Batch-load the selected motion prompt version for every eligible shot —
-        // the resolution source of truth (#713), replacing `metadata.prompts.motion`.
-        const selectedMotionByShot =
-          await context.scopedDb.shotPromptVersions.getSelectedMotionByShots(
-            eligibleShots.map((s) => s.id)
-          );
-
         const workflowInput: BatchMotionMusicWorkflowInput = {
           userId: user.id,
           teamId,
@@ -463,10 +547,20 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
             return {
               shotId: shot.id,
               sceneId: shot.sceneId,
-              imageUrl: shot.image?.url ?? '',
+              // Reference-only carries no still; every other shot passed the
+              // eligibility filter above, which requires one.
+              imageUrl: shotIsReferenceOnly(shot)
+                ? undefined
+                : (shot.image?.url ?? undefined),
+              referenceOnly: shotIsReferenceOnly(shot),
               // The versions this clip renders from, pinned here so the render
               // manifest can't name rows a concurrent edit repointed to.
-              frameVersionId: shot.image?.id ?? null,
+              // `null` when the clip renders from references — naming a still
+              // it never received makes regenerating that unused still read as
+              // divergence, and "Update all" then re-renders the clip for money.
+              frameVersionId: shotIsReferenceOnly(shot)
+                ? null
+                : (shot.image?.id ?? null),
               motionPromptVersionId: selectedMotion?.id ?? null,
               prompt: resolveMotionPromptFromVersion(
                 selectedMotion,
@@ -491,6 +585,9 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
                 scene,
                 characters,
                 elements,
+                motionPrompt: motionPromptTextFor(shot.id),
+                includeLocations: shotIsReferenceOnly(shot),
+                locations: batchLocations,
               }),
             };
           }),

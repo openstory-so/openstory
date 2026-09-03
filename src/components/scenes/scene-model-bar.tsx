@@ -11,14 +11,10 @@ import {
   type AspectRatio,
 } from '@/lib/constants/aspect-ratios';
 import {
-  clampResolution,
-  isResolution,
   RESOLUTION_OPTIONS,
   type Resolution,
 } from '@/lib/constants/resolutions';
-import { availableResolutions } from '@/lib/ai/resolution-support';
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
-import { useSetSequenceResolution } from '@/hooks/use-sequences';
+import { Badge } from '@/components/ui/badge';
 import type { SelectionScope } from '@/lib/scenes/scene-selection';
 import { usePostHog } from '@posthog/react';
 import { Link } from '@tanstack/react-router';
@@ -72,57 +68,6 @@ const SettingRow: React.FC<{ label: string; children: React.ReactNode }> = ({
   </div>
 );
 
-const SequenceResolutionSelector: React.FC<{
-  sequenceId: string;
-  resolution: Resolution;
-  imageModel: TextToImageModel;
-  videoModel: ImageToVideoModel;
-  aspectRatio: AspectRatio | undefined;
-}> = ({ sequenceId, resolution, imageModel, videoModel, aspectRatio }) => {
-  const setResolution = useSetSequenceResolution(sequenceId);
-  // The ratio is load-bearing, not decorative: a pixel-sized model reaches
-  // different tiers at different shapes (Seedream serves 720p at 16:9 but
-  // starts at 1080p when square), so omitting it offers pills the model
-  // can't render and hides ones it can.
-  const available = availableResolutions({
-    imageModels: [imageModel],
-    videoModels: [videoModel],
-    aspectRatio,
-  });
-  // Nothing to pick: either no model takes a size we can steer, or they all
-  // land on the same tier (H3 Max advertises 480P and 768P, which are both
-  // 720p). One pill looks like a choice and isn't one.
-  if (available.length < 2) return null;
-  return (
-    <SettingRow label="Resolution">
-      <ToggleGroup
-        type="single"
-        value={clampResolution(resolution, available)}
-        onValueChange={(value) => {
-          if (value && isResolution(value) && value !== resolution) {
-            setResolution.mutate(value);
-          }
-        }}
-        variant="outline"
-        spacing={0}
-        aria-label="Resolution for the next render"
-      >
-        {RESOLUTION_OPTIONS.filter((option) =>
-          available.includes(option.value)
-        ).map((option) => (
-          <ToggleGroupItem
-            key={option.value}
-            value={option.value}
-            className="h-7 px-2 font-mono text-xs"
-          >
-            {option.label}
-          </ToggleGroupItem>
-        ))}
-      </ToggleGroup>
-    </SettingRow>
-  );
-};
-
 export const SceneModelBar: React.FC<SceneModelBarProps> = ({
   scope,
   sequenceId,
@@ -173,17 +118,16 @@ export const SceneModelBar: React.FC<SceneModelBarProps> = ({
               <span className="font-mono text-sm">{aspectRatio}</span>
             </span>
           </SettingRow>
-          {/* Unlike the rows above it, this one is live: the tier applies to
-              the NEXT render, so drafting at 720p and re-rolling a keeper at 4K
-              is a pick here plus a re-roll — no re-analysis, nothing stales. */}
-          {sequenceId && resolution && (
-            <SequenceResolutionSelector
-              sequenceId={sequenceId}
-              resolution={resolution}
-              imageModel={resolvedSequenceImageModel}
-              videoModel={resolvedSequenceVideoModel}
-              aspectRatio={aspectRatio}
-            />
+          {/* Read-only like the rows above it: the tier is picked in the
+              composer's generation settings. A pill group here read as a live
+              switch for the whole sequence, which it is not. */}
+          {resolution && (
+            <SettingRow label="Resolution">
+              <Badge variant="secondary" className="font-mono text-xs">
+                {RESOLUTION_OPTIONS.find((o) => o.value === resolution)
+                  ?.label ?? resolution}
+              </Badge>
+            </SettingRow>
           )}
           <SettingRow label="Script">
             <ModelBadge model={analysisModel} />

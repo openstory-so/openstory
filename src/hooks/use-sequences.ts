@@ -9,13 +9,11 @@ import {
   renameSequenceFn,
   setSequenceModelFn,
   setSequenceMusicFn,
-  setSequenceResolutionFn,
   unarchiveSequenceFn,
   type AddModelResult,
 } from '@/functions/sequences';
 import { DEFAULT_ANALYSIS_MODEL } from '@/lib/ai/models.config';
 import type { SequenceMusicVariant } from '@/lib/db/schema';
-import type { Resolution } from '@/lib/constants/resolutions';
 import type { VariantType } from '@/lib/db/schema/shot-variants';
 import { type CreateSequenceInput } from '@/lib/schemas/sequence.schemas';
 import { UNTITLED_SEQUENCE_TITLE } from '@/lib/sequences/untitled-sequence-title';
@@ -184,35 +182,19 @@ export function useCreateSequence() {
     CreateSequenceInput
   >({
     mutationFn: async (input) => {
+      // SPREAD, never a field list. This was a hand-copied allowlist, and a
+      // field missing from it is invisible: the composer sets it, this drops
+      // it, and the server's schema default takes over — which is how
+      // `referenceOnly` reached production as a toggle that did nothing (every
+      // sequence persisted `reference_only = 0`). `CreateSequenceInput` IS
+      // `z.infer<typeof createSequenceSchema>`, so the whole object is exactly
+      // what the server validates. Only the two defaults are applied on top.
       const sequences = await createSequenceFn({
         data: {
-          script: input.script,
-          styleId: input.styleId,
+          ...input,
           title: input.title || UNTITLED_SEQUENCE_TITLE,
           // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
           analysisModels: input.analysisModels || [DEFAULT_ANALYSIS_MODEL],
-          teamId: input.teamId,
-          aspectRatio: input.aspectRatio,
-          resolution: input.resolution,
-          imageModels: input.imageModels,
-          videoModel: input.videoModel,
-          // Forward the multi-model arrays — without these the server only ever
-          // sees the singular primary and resolveVideoModels/resolveAudioModels
-          // collapse the user's selection to one model (#545/#546).
-          videoModels: input.videoModels,
-          // Explicit stop-at, not just the derived flags. Flags false/false
-          // collapse to Images, so omitting this makes Script/Casting/
-          // References keep generating stills (#1408).
-          stopAt: input.stopAt,
-          autoGenerateMotion: input.autoGenerateMotion,
-          autoGenerateMusic: input.autoGenerateMusic,
-          musicModel: input.musicModel,
-          audioModels: input.audioModels,
-          targetDurationSeconds: input.targetDurationSeconds,
-          suggestedTalentIds: input.suggestedTalentIds,
-          suggestedLocationIds: input.suggestedLocationIds,
-          elementUploads: input.elementUploads,
-          sourceSequenceId: input.sourceSequenceId,
         },
       });
 
@@ -293,52 +275,6 @@ export function useRenameSequence(sequenceId: string) {
         queryKey: sequenceKeys.detail(sequenceId),
       });
       void queryClient.invalidateQueries({ queryKey: sequenceKeys.lists() });
-    },
-  });
-}
-
-/**
- * Change the sequence's resolution tier (#1449). Nothing is re-rendered and
- * nothing goes stale — the tier is what the NEXT render is asked for, so the
- * cache patch is all the feedback there is. Rolls back if the write fails.
- */
-export function useSetSequenceResolution(sequenceId: string) {
-  const queryClient = useQueryClient();
-  const posthog = usePostHog();
-
-  return useMutation({
-    // Serialize per-sequence writes so two quick picks can't resolve out of
-    // order and persist the stale tier (same reason as the music toggle).
-    scope: { id: `set-sequence-resolution-${sequenceId}` },
-    mutationFn: (resolution: Resolution) =>
-      setSequenceResolutionFn({ data: { sequenceId, resolution } }),
-    onMutate: async (resolution) => {
-      const key = sequenceKeys.detail(sequenceId);
-      await queryClient.cancelQueries({ queryKey: key });
-      const previous = queryClient.getQueryData<Sequence>(key);
-      queryClient.setQueryData<Sequence>(key, (old) =>
-        old ? { ...old, resolution } : old
-      );
-      return { previous };
-    },
-    onError: (error, _resolution, ctx) => {
-      if (ctx?.previous) {
-        queryClient.setQueryData(sequenceKeys.detail(sequenceId), ctx.previous);
-      }
-      toast.error('Could not save the resolution.');
-      posthog.captureException(error, { sequence_id: sequenceId });
-    },
-    onSuccess: (updated) => {
-      queryClient.setQueryData(sequenceKeys.detail(sequenceId), updated);
-      posthog.capture('sequence_resolution_changed', {
-        sequence_id: sequenceId,
-        resolution: updated.resolution,
-      });
-    },
-    onSettled: () => {
-      void queryClient.invalidateQueries({
-        queryKey: sequenceKeys.detail(sequenceId),
-      });
     },
   });
 }

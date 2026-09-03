@@ -5,6 +5,7 @@ import {
   safeTextToImageModel,
 } from '@/lib/ai/models';
 import { resolveUpscaleModel } from '@/lib/ai/resolve-asset-models';
+import { shotPromptSequence } from '@/lib/shots/use-start-frame';
 import {
   estimateImageCost,
   estimateStoryboardCost,
@@ -66,6 +67,10 @@ export const generateShotsFn = createServerFn({ method: 'POST' })
         videoModels: [
           safeImageToVideoModel(sequence.videoModel, DEFAULT_VIDEO_MODEL),
         ],
+        // Whole-run envelope before any shot exists, so the sequence default
+        // is the right question here: without start frames the image line is
+        // zero and motion prices the reference-to-video route.
+        referenceOnly: !sequence.generateStartFrames,
         pricing: await getEffectiveFalPricing(),
       }),
       {
@@ -149,7 +154,7 @@ export const generateShotImageFn = createServerFn({ method: 'POST' })
 
     const workflowInput = await prepareShotImageWorkflowInput({
       scopedDb: context.scopedDb,
-      sequence,
+      sequence: shotPromptSequence(sequence, shot),
       shot,
       scene: sceneForInput,
       frame,
@@ -288,7 +293,8 @@ export const generateShotVariantsFn = createServerFn({ method: 'POST' })
     const locationReferences = getSceneLocationReferenceImages(
       allLocations,
       scene?.continuity?.environmentTag ?? '',
-      scene?.metadata?.location ?? ''
+      scene?.metadata?.location ?? '',
+      scene?.originalScript.extract
     );
 
     const workflowInput: ShotVariantWorkflowInput = {
@@ -402,7 +408,8 @@ export const selectShotVariantFn = createServerFn({ method: 'POST' })
     const locationReferences = getSceneLocationReferenceImages(
       allLocations,
       scene?.continuity?.environmentTag ?? '',
-      scene?.metadata?.location ?? ''
+      scene?.metadata?.location ?? '',
+      scene?.originalScript.extract
     );
 
     // Price the model that will actually render the upscale (#1066) — the same

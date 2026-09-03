@@ -50,6 +50,14 @@ export const shots = snakeCase.table(
     // target, which is what makes a workflow replay hit the same shot row.
     shotNumber: integer(),
     durationMs: integer().default(3000),
+    /**
+     * Per-shot override of "does this shot animate from a start frame".
+     * NULL = inherit the sequence (`sequences.generateStartFrames`).
+     *
+     * Never read raw — resolve with `usesStartFrame()`, which documents what
+     * flipping it costs.
+     */
+    useStartFrame: integer({ mode: 'boolean' }),
     // A shot owns no video columns (#1067 phase 2d). The whole surface —
     // url/path/model/hash AND status/error/run id — is projected from the
     // segment's `video_variants` rows by `toShotView`. Rendering is

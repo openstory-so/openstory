@@ -13,6 +13,13 @@
  *   - `inline` — URLs on the same generations call (Kling `elements`, Grok
  *     Imagine 1.5 native `reference`/`character` prompt parts)
  *   - `none` — URLs are not sent; tokens become descriptions in the prompt
+ *
+ * `referenceOnly` is the mode where no start frame was ever rendered: the clip
+ * is driven by the cast/element/location sheets and a self-describing prompt.
+ * It forces the reference route even when a shot happens to have matched no
+ * references at all (a two-hander in an unmatched location still has to reach
+ * an endpoint whose start frame is optional), and it is what tells the request
+ * builders not to reserve `@Image1` for a still that does not exist.
  */
 
 import { NATIVE_GEMINI_VIDEO_MODEL } from '@/lib/ai/gemini-native';
@@ -45,7 +52,8 @@ export type MotionEndpointResolution =
 export function resolveMotionEndpoint(
   modelKey: ImageToVideoModel,
   hasReferenceImages: boolean,
-  via: MediaVia = 'fal'
+  via: MediaVia = 'fal',
+  referenceOnly = false
 ): MotionEndpointResolution {
   if (via === 'xai') {
     // Imagine 1.5 reference-to-video rides the same `/videos/generations`
@@ -56,7 +64,10 @@ export function resolveMotionEndpoint(
     return {
       via: 'xai',
       endpointId: NATIVE_GROK_VIDEO_MODEL,
-      references: hasReferenceImages ? 'inline' : 'none',
+      // Reference-only rides `inline` even with nothing matched: there is no
+      // start frame to fall back to, so the request is prompt-plus-refs and
+      // the builder must not look for a still to pin as `start_frame`.
+      references: hasReferenceImages || referenceOnly ? 'inline' : 'none',
     };
   }
   if (via === 'google') {
@@ -68,7 +79,10 @@ export function resolveMotionEndpoint(
     return {
       via: 'google',
       endpointId: NATIVE_GEMINI_VIDEO_MODEL,
-      references: hasReferenceImages ? 'inline' : 'none',
+      // Reference-only rides `inline` even with nothing matched, same as the
+      // xAI and Ark cases: there is no start frame to fall back to, so the
+      // builder must not reserve the first slot for a still.
+      references: hasReferenceImages || referenceOnly ? 'inline' : 'none',
     };
   }
   if (via === 'byteplus') {
@@ -82,10 +96,10 @@ export function resolveMotionEndpoint(
     return {
       via: 'byteplus',
       endpointId,
-      references: hasReferenceImages ? 'inline' : 'none',
+      references: hasReferenceImages || referenceOnly ? 'inline' : 'none',
     };
   }
-  if (hasReferenceImages) {
+  if (hasReferenceImages || referenceOnly) {
     const referenceConfig = getMotionReferenceEndpoint(modelKey);
     if (referenceConfig) {
       return {
@@ -94,6 +108,16 @@ export function resolveMotionEndpoint(
         references: 'endpoint',
         referenceConfig,
       };
+    }
+    // Reference-only has nowhere to go on a model without a reference route:
+    // every remaining fal endpoint requires `image_url`, and there is no still.
+    // Fail here rather than submitting a request the endpoint must reject —
+    // `createSequenceSchema` / `canRenderReferenceOnly` gate this at creation,
+    // so reaching it means a model swap slipped past that gate.
+    if (referenceOnly) {
+      throw new Error(
+        `Motion model "${modelKey}" has no reference-to-video endpoint and cannot render without a start frame`
+      );
     }
     if (attachesInlineReferences(modelKey)) {
       return {

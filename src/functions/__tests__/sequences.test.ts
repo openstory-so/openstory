@@ -42,6 +42,7 @@ function makeShot({
     sceneId: null,
     shotNumber: 1,
     durationMs: 3000,
+    useStartFrame: null,
     selectedMotionPromptVersionId: null,
     renderSegmentId: null,
     deletedAt: null,
@@ -123,10 +124,15 @@ describe('assertModelNotAlreadyAdded (#547)', () => {
   });
 });
 
+/** The ordinary sequence: shots animate from a rendered still. */
+const STILLS = { generateStartFrames: true };
+/** Reference-only: no stills are ever rendered, so none can be required. */
+const REFERENCE_ONLY = { generateStartFrames: false };
+
 describe('selectEligibleVideoShots (#547)', () => {
   it('includes shots with a completed image', () => {
     const shots = [makeShot()];
-    expect(selectEligibleVideoShots(shots)).toHaveLength(1);
+    expect(selectEligibleVideoShots(shots, STILLS)).toHaveLength(1);
   });
 
   it('excludes shots whose image is not completed', () => {
@@ -135,7 +141,7 @@ describe('selectEligibleVideoShots (#547)', () => {
       makeShot({ id: 'generating', imageStatus: 'generating' }),
       makeShot({ id: 'failed', imageStatus: 'failed' }),
     ];
-    expect(selectEligibleVideoShots(shots)).toEqual([]);
+    expect(selectEligibleVideoShots(shots, STILLS)).toEqual([]);
   });
 
   it('excludes shots completed but missing a still url', () => {
@@ -143,7 +149,7 @@ describe('selectEligibleVideoShots (#547)', () => {
       makeShot({ id: 'null-url', imageUrl: null }),
       makeShot({ id: 'empty-url', imageUrl: '' }),
     ];
-    expect(selectEligibleVideoShots(shots)).toEqual([]);
+    expect(selectEligibleVideoShots(shots, STILLS)).toEqual([]);
   });
 
   it('returns only the eligible shots from a mixed set', () => {
@@ -152,10 +158,36 @@ describe('selectEligibleVideoShots (#547)', () => {
       makeShot({ id: 'no-image', imageStatus: 'pending' }),
       makeShot({ id: 'ok-2' }),
     ];
-    expect(selectEligibleVideoShots(shots).map((f) => f.id)).toEqual([
+    expect(selectEligibleVideoShots(shots, STILLS).map((f) => f.id)).toEqual([
       'ok-1',
       'ok-2',
     ]);
+  });
+
+  it('includes a still-less shot when the sequence is reference-only', () => {
+    // The add used to fail outright here: no shot in such a sequence has a
+    // still, so every one was filtered out.
+    const shots = [makeShot({ id: 'no-still', imageStatus: 'pending' })];
+    expect(
+      selectEligibleVideoShots(shots, REFERENCE_ONLY).map((f) => f.id)
+    ).toEqual(['no-still']);
+  });
+
+  it('asks the shot, not the sequence', () => {
+    const shots = [
+      makeShot({
+        id: 'opted-out',
+        imageStatus: 'pending',
+        useStartFrame: false,
+      }),
+      makeShot({ id: 'opted-in', imageStatus: 'pending', useStartFrame: true }),
+    ];
+    expect(selectEligibleVideoShots(shots, STILLS).map((f) => f.id)).toEqual([
+      'opted-out',
+    ]);
+    expect(
+      selectEligibleVideoShots(shots, REFERENCE_ONLY).map((f) => f.id)
+    ).toEqual(['opted-out']);
   });
 });
 

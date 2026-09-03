@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { PageContainer } from '@/components/layout/page-container';
 import { PageIntro } from '@/components/typography/page-intro';
 import { useStudioAssets } from '@/hooks/use-studio-assets';
+import { studioPrompt } from '@/lib/studio/outputs';
 import type { StudioActivity, StudioSort } from '@/lib/studio/schema';
 import { Link } from '@tanstack/react-router';
 import { Star } from 'lucide-react';
@@ -24,6 +25,9 @@ export function StudioView({ activity, sort, favorites }: StudioViewProps) {
   });
 
   const assets = query.data?.pages.flatMap((page) => page.assets) ?? [];
+  const generatingPrompts = assets
+    .filter((a) => a.status === 'queued' || a.status === 'running')
+    .map(studioPrompt);
   const to = activity === 'video' ? '/videos' : '/images';
 
   return (
@@ -103,7 +107,10 @@ export function StudioView({ activity, sort, favorites }: StudioViewProps) {
 
       <div className="shrink-0 border-t bg-background/80 backdrop-blur-md">
         <PageContainer maxWidth="wide" padding="compact" className="py-4">
-          <StudioComposer activity={activity} />
+          <StudioComposer
+            activity={activity}
+            generatingPrompts={generatingPrompts}
+          />
         </PageContainer>
       </div>
     </div>

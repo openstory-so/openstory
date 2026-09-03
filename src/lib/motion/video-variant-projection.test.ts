@@ -23,6 +23,7 @@ function videoVariant(overrides: Partial<VideoVariant> = {}): VideoVariant {
       shotId: 'shot-1',
       motionPromptVersionId: 'mp-1',
       frameVersionId: 'fv-1',
+      usesStartFrame: true,
       durationMs: 3000,
     },
   ];
@@ -80,12 +81,14 @@ describe('projectVideoVariants', () => {
           shotId: 'shot-1',
           motionPromptVersionId: 'mp-1',
           frameVersionId: 'fv-1',
+          usesStartFrame: true,
           durationMs: 3000,
         },
         {
           shotId: 'shot-2',
           motionPromptVersionId: 'mp-2',
           frameVersionId: 'fv-2',
+          usesStartFrame: true,
           durationMs: 4000,
         },
       ],

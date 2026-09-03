@@ -177,10 +177,80 @@ export function matchCharactersToShotImage<T extends CharacterMatchInput>(
   return extra.length === 0 ? tagged : [...tagged, ...extra];
 }
 
+/**
+ * Slugline scaffolding and time-of-day, not place words: `INT. OFFICE - DAY`
+ * is the same set as the prose "the office", and requiring `int` or `day`
+ * would fail every prose scene. Time lives on the bible entry's own
+ * `timeOfDay` field anyway.
+ */
+const HEADING_NOISE = new Set([
+  'int',
+  'ext',
+  'the',
+  'and',
+  'into',
+  'day',
+  'night',
+  'dawn',
+  'dusk',
+  'morning',
+  'afternoon',
+  'evening',
+  'later',
+  'continuous',
+]);
+
 type LocationMatchInput = Pick<
   SequenceLocationMinimal,
   'locationId' | 'name' | 'consistencyTag'
 >;
+
+/**
+ * The set named in the scene's own words, for a scene whose tag and slugline
+ * name nothing.
+ *
+ * A prose script has no `INT./EXT.` heading, so the slice carries an empty
+ * `metadata.location`, so scene-split stamps an empty `environmentTag` — and
+ * the tag match below then finds nothing for every scene in the sequence. The
+ * still gets no location sheet, the inspector's Locations tab reads empty, and
+ * a reference-only clip (no still at all) invents the room outright. Cast and
+ * elements have always had this fallback — they scan the scene text for their
+ * own names. Locations never did.
+ *
+ * ONE winner: a scene happens in one place, and the most tokens matched is
+ * the most specific name ("ROOFTOP GARDEN" over "GARDEN").
+ */
+function matchLocationInText<T extends LocationMatchInput>(
+  allLocations: T[],
+  sceneText: string
+): T[] {
+  const textTokens = new Set(tokenize(sceneText));
+  if (textTokens.size === 0) return [];
+
+  let best: { location: T; score: number } | null = null;
+  for (const loc of allLocations) {
+    // Every identifier form is a candidate; the tokens are the same words in
+    // any casing or punctuation, so `"Stitched Felt Meadow"`,
+    // `stitched_felt_meadow` and `felt_meadow_stitched` all match the prose
+    // "a stitched felt meadow" — the token-subset rule cast names already use.
+    for (const term of [loc.name, loc.locationId, loc.consistencyTag ?? '']) {
+      const tokens = tokenize(term).filter(
+        (t) => t.length >= 3 && !HEADING_NOISE.has(t)
+      );
+      if (!isSubset(tokens, textTokens)) continue;
+      // Most tokens matched wins: the most specific name, not the first one.
+      if (!best || tokens.length > best.score) {
+        best = { location: loc, score: tokens.length };
+      }
+    }
+  }
+  // Deliberately no "the sequence only has one location, so use it" rule: the
+  // pool handed in is not always the whole sequence (`getShotIdsForLocation`
+  // passes a single candidate), and a length check cannot tell the two apart.
+  // A continuation slice that names nowhere is filled at split time instead —
+  // see the carry-forward in `reconcileSceneTags`.
+  return best ? [best.location] : [];
+}
 
 /**
  * Match locations to a scene by environment tag or location name.
@@ -188,18 +258,29 @@ type LocationMatchInput = Pick<
  *
  * Generic so we can reuse it on `LocationBibleEntry` (same id/name/tag shape)
  * when narrowing the bible for prompt-input hashing.
+ *
+ * `sceneText` is a FALLBACK only — consulted when the tag and the slugline
+ * matched nothing, so a scene that already binds a location is untouched and
+ * its stored hashes do not move. A prose-script scene that previously bound
+ * NO location and whose text names one DOES gain a binding, so its rendered
+ * shots read stale once after deploy. Pass it wherever the scene is in hand;
+ * omitting it leaves a prose-script scene with no set. See
+ * `matchLocationInText`.
  */
 export function matchLocationsToScene<T extends LocationMatchInput>(
   allLocations: T[],
   environmentTag: string,
-  sceneLocation: string
+  sceneLocation: string,
+  sceneText?: string | null
 ): T[] {
-  if (!environmentTag && !sceneLocation) return [];
+  if (!environmentTag && !sceneLocation) {
+    return sceneText ? matchLocationInText(allLocations, sceneText) : [];
+  }
 
   const envTagLower = environmentTag.toLowerCase();
   const sceneLocLower = sceneLocation.toLowerCase();
 
-  return allLocations.filter((loc) => {
+  const tagged = allLocations.filter((loc) => {
     const consistencyTag = (loc.consistencyTag ?? '').toLowerCase();
     const locName = loc.name.toLowerCase();
     const locId = loc.locationId.toLowerCase();
@@ -222,6 +303,9 @@ export function matchLocationsToScene<T extends LocationMatchInput>(
         (sceneLocLower.length > 0 && term.includes(sceneLocLower))
     );
   });
+
+  if (tagged.length > 0 || !sceneText) return tagged;
+  return matchLocationInText(allLocations, sceneText);
 }
 
 type ElementMatchInput = Pick<SequenceElementMinimal, 'token'>;

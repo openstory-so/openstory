@@ -36,6 +36,9 @@ export const RECORDED_PIPELINE_SETTINGS = {
   // the fixtures were recorded at Seedance 720p / Grok Imagine 1k (#1449).
   resolution: '720p',
   autoGenerateMotion: true,
+  // The fixtures were recorded on the frame-based workflow; reference-only
+  // is the product default now, so opt back in explicitly.
+  generateStartFrames: true,
   musicModel: 'elevenlabs_music',
   audioModels: ['elevenlabs_music'],
   autoGenerateMusic: true,
@@ -312,4 +315,17 @@ export async function cleanupTalentByName(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ teamId, name }),
   });
+}
+
+/**
+ * Opt a new sequence into the frame-based workflow. Reference-only is the
+ * product default; specs that inspect stills or start-frame variants need
+ * this ticked before Generate.
+ */
+export async function enableStartFrames(page: Page): Promise<void> {
+  await page.getByRole('button', { name: 'Generation settings' }).click();
+  const toggle = page.getByRole('checkbox', { name: 'Generate start frames' });
+  await expect(toggle).toBeVisible({ timeout: HYDRATION_TIMEOUT });
+  await toggle.check();
+  await page.keyboard.press('Escape');
 }

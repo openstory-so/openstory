@@ -209,6 +209,9 @@ async function resolveStoryboardPayload(
     // grandchild runs long after this row could have gained a prompt, and a
     // lookup down there would relabel the version on a retry.
     musicPromptSource: sequence.musicPrompt ? 'regenerated' : 'ai-generated',
+    // Pinned like every other generation setting: a toggle mid-run must not
+    // leave one half of the pipeline rendering stills and the other half not.
+    referenceOnly: !sequence.generateStartFrames,
     ownerEmail: await scopedDb.teamManagement.getMemberEmail(input.userId),
     sequenceUrl: sequenceScenesUrl(sequenceId),
     // Pin stop-at from this click, else the sequence snapshot — never let

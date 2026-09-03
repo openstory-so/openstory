@@ -115,7 +115,9 @@ vi.doMock('@/lib/ai/input-hash', () => ({
   ),
 }));
 
-const { computePlan, claimTargets } = await import('./update-stale-plan');
+const { computePlan, claimTargets, findTargetMissingStartFrameMode } =
+  await import('./update-stale-plan');
+type PlanTarget = import('./update-stale-plan').PlanTarget;
 
 type VideoFixture = {
   segments?: Array<{
@@ -166,6 +168,9 @@ function buildScopedDb(
           musicPromptInputHash: null,
           musicUrl: null,
           musicStatus: 'pending',
+          // Frame-based unless a test overrides it: a reference-only shot never
+          // re-renders its still, which would silence the image cascades below.
+          generateStartFrames: true,
           ...opts.sequence,
         }),
     },
@@ -511,6 +516,32 @@ describe("computePlan — 'updating' dedup (#1085)", () => {
   });
 });
 
+describe('computePlan — per-shot start-frame mode', () => {
+  it('freezes the SHOT override onto the target, not the sequence default', async () => {
+    stalenessByShot.set('shot-1', { ...FRESH, visualPrompt: 'stale' });
+    const shots = [makeShot({ useStartFrame: false })];
+    const frames = [makeFrame()];
+    const result = await plan(shots, frames, {
+      db: buildScopedDb(shots, frames, {
+        sequence: { generateStartFrames: true },
+      }),
+    });
+    expect(result.targets[0]?.usesStartFrame).toBe(false);
+  });
+
+  it('freezes a start-frame override on a reference-only sequence', async () => {
+    stalenessByShot.set('shot-1', { ...FRESH, visualPrompt: 'stale' });
+    const shots = [makeShot({ useStartFrame: true })];
+    const frames = [makeFrame()];
+    const result = await plan(shots, frames, {
+      db: buildScopedDb(shots, frames, {
+        sequence: { generateStartFrames: false },
+      }),
+    });
+    expect(result.targets[0]?.usesStartFrame).toBe(true);
+  });
+});
+
 describe('claimTargets (#1085)', () => {
   type PendingRow = { id: string; workflowRunId: string | null };
 
@@ -523,6 +554,7 @@ describe('claimTargets (#1085)', () => {
       beforeShotId: null,
       afterShotId: null,
       startingFrameImageUrl: null,
+      usesStartFrame: true,
       durationMs: null,
       standingImageVariantId: null,
       standingMotionVersionId: null,
@@ -819,5 +851,47 @@ describe('computePlan — durable step-result size', () => {
       afterShotId: 'shot-2',
     });
     expect(JSON.stringify(target)).not.toContain('sceneId');
+  });
+});
+
+describe('findTargetMissingStartFrameMode', () => {
+  // `usesStartFrame` is typed required, but a plan frozen by an older build
+  // replays out of the durable payload without it. `!undefined` is `true`, so
+  // every read site would take those shots for reference-only and the run
+  // would SUCCEED — rewriting prompts with the wrong template and re-rendering
+  // every clip with no start frame, billed, silently.
+  const target = (over: Record<string, unknown>) =>
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- shape drift is the thing under test
+    ({ shotId: 'shot-1', ...over }) as PlanTarget;
+
+  it('passes a plan whose targets all carry the flag', () => {
+    expect(
+      findTargetMissingStartFrameMode({
+        targets: [
+          target({ usesStartFrame: true }),
+          target({ usesStartFrame: false }),
+        ],
+      })
+    ).toBeNull();
+  });
+
+  it('names the target a pre-switch payload dropped the flag from', () => {
+    const found = findTargetMissingStartFrameMode({
+      targets: [target({ usesStartFrame: true }), target({ shotId: 'old' })],
+    });
+    expect(found?.shotId).toBe('old');
+  });
+
+  it('rejects rather than coercing a non-boolean', () => {
+    // JSON round trips have no undefined; a null must not read as `false`.
+    expect(
+      findTargetMissingStartFrameMode({
+        targets: [target({ usesStartFrame: null })],
+      })
+    ).not.toBeNull();
+  });
+
+  it('passes an empty plan', () => {
+    expect(findTargetMissingStartFrameMode({ targets: [] })).toBeNull();
   });
 });

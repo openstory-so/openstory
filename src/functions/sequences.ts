@@ -17,14 +17,14 @@ import {
 } from '@/lib/billing/cost-estimation';
 import { getEffectiveFalPricing } from '@/lib/ai/fal-pricing-live';
 import { sumShotDurationsSeconds } from '@/lib/sequences/shot-durations';
-import { multiplyMicros } from '@/lib/billing/money';
+import { addMicros, ZERO_MICROS } from '@/lib/billing/money';
+import { buildMotionReferenceImages } from '@/lib/motion/build-motion-references';
 import {
   releaseReservationOnThrow,
   reserveRunCredits,
 } from '@/lib/billing/preflight';
 import { estimateStoryboardPreflightCost } from '@/lib/billing/storyboard-preflight-cost';
 import { DEFAULT_ASPECT_RATIO } from '@/lib/constants/aspect-ratios';
-import { resolutionSchema } from '@/lib/constants/resolutions';
 import type { Shot } from '@/lib/db/schema';
 import {
   loadSceneContextBySequence,
@@ -63,6 +63,13 @@ import { bumpStylePopularity } from '@/lib/style/bump-style-popularity';
 import { simpleHash } from '@/lib/utils/hash';
 import { getLogger } from '@/lib/observability/logger';
 import { createSequences } from '@/lib/sequences/create-sequences';
+import { canRenderReferenceOnly } from '@/lib/motion/motion-generation';
+import { toWorkflowScopedDb } from '@/lib/db/scoped-workflow';
+import {
+  rendersReferenceOnly,
+  type StartFrameSequence,
+} from '@/lib/shots/use-start-frame';
+import { REFERENCE_ONLY_MODEL_ERROR } from '@/lib/schemas/sequence.schemas';
 
 const logger = getLogger(['openstory', 'serverFn', 'sequences']);
 
@@ -284,6 +291,7 @@ export const updateSequenceFn = createServerFn({ method: 'POST' })
           audioModels: [
             safeAudioModel(sequence.musicModel, DEFAULT_MUSIC_MODEL),
           ],
+          referenceOnly: !sequence.generateStartFrames,
           pricing: await getEffectiveFalPricing(),
         }),
         {
@@ -388,34 +396,6 @@ export const renameSequenceFn = createServerFn({ method: 'POST' })
   });
 
 // ============================================================================
-// Resolution tier (#1449)
-// ============================================================================
-
-const setSequenceResolutionInputSchema = z.object({
-  sequenceId: ulidSchema,
-  resolution: resolutionSchema,
-});
-
-/**
- * Change the sequence's resolution tier. Separate from {@link updateSequenceFn}
- * for the same reason as {@link renameSequenceFn}: that path force-defaults
- * `aspectRatio` and treats its presence as a regeneration trigger.
- *
- * Nothing is re-rendered and nothing goes stale — the tier is what the NEXT
- * render is asked for. Draft the board at 720p, switch to 4K, re-roll the
- * shots worth keeping; each version carries the tier it was made at.
- */
-export const setSequenceResolutionFn = createServerFn({ method: 'POST' })
-  .middleware([sequenceAccessMiddleware])
-  .validator(zodValidator(setSequenceResolutionInputSchema))
-  .handler(async ({ data, context }) =>
-    context.scopedDb.sequences.update({
-      id: data.sequenceId,
-      resolution: data.resolution,
-    })
-  );
-
-// ============================================================================
 // Retry Failed Storyboard
 // ============================================================================
 
@@ -453,6 +433,7 @@ export const retryStoryboardFn = createServerFn({ method: 'POST' })
         ],
         autoGenerateMusic: sequence.autoGenerateMusic,
         audioModels: [safeAudioModel(sequence.musicModel, DEFAULT_MUSIC_MODEL)],
+        referenceOnly: !sequence.generateStartFrames,
         pricing: await getEffectiveFalPricing(),
       }),
       {
@@ -644,15 +625,21 @@ export function assertModelNotAlreadyAdded(
 }
 
 /**
- * Shots eligible for a video add-model run (#547): only those with a completed
- * primary image to animate. A shot with no usable image is skipped — there is
- * nothing to feed image-to-video.
+ * Shots eligible for a video add-model run (#547): those with a completed
+ * primary image to animate, PLUS the ones that render reference-only — those
+ * animate from the sheets and never have a still, so requiring one excluded
+ * every shot of a reference-only sequence and the add failed with "No shots
+ * have a completed image to animate yet". Resolved per shot, because the
+ * start-frame switch is.
  */
 export function selectEligibleVideoShots(
-  shots: readonly ShotView[]
+  shots: readonly ShotView[],
+  sequence: StartFrameSequence
 ): ShotView[] {
   return shots.filter(
-    (f) => f.frame.imageStatus === 'completed' && Boolean(f.image?.url)
+    (f) =>
+      rendersReferenceOnly(f, sequence) ||
+      (f.frame.imageStatus === 'completed' && Boolean(f.image?.url))
   );
 }
 
@@ -860,21 +847,55 @@ export const addModelToSequenceFn = createServerFn({ method: 'POST' })
             ]
           : [];
       });
-      const eligible = selectEligibleVideoShots(shotViews);
+      const eligible = selectEligibleVideoShots(shotViews, sequence);
       if (eligible.length === 0) {
         throw new Error('No shots have a completed image to animate yet');
       }
+      // The added model runs on every eligible shot, so one reference-only
+      // shot among them decides what can be added at all — the same question
+      // the menu filters by, asked again here against the team's real keys.
+      const shotIsReferenceOnly = (shot: ShotView) =>
+        rendersReferenceOnly(shot, sequence);
+      const anyReferenceOnly = eligible.some(shotIsReferenceOnly);
+      if (
+        anyReferenceOnly &&
+        !(await canRenderReferenceOnly(
+          model,
+          toWorkflowScopedDb(scopedDb).credentials
+        ))
+      ) {
+        throw new Error(REFERENCE_ONLY_MODEL_ERROR);
+      }
 
+      // Cast / element sheets bind per shot on the motion path (#873); with no
+      // still the location sheet is the set, so it is loaded only when a shot
+      // renders reference-only — the same shape as the batch path.
+      const [characters, elements, locations] = await Promise.all([
+        scopedDb.characters.listWithSheets(sequence.id),
+        scopedDb.sequenceElements.list(sequence.id),
+        anyReferenceOnly
+          ? scopedDb.sequenceLocations.listWithReferences(sequence.id)
+          : Promise.resolve([]),
+      ]);
+
+      const pricing = await getEffectiveFalPricing();
       const reservationId = await reserveRunCredits(
         scopedDb,
-        multiplyMicros(
-          gateEstimate(
-            estimateVideoCost(model, 5, {
-              pricing: await getEffectiveFalPricing(),
-            }),
-            { model, operation: 'add-video-model' }
-          ),
-          eligible.length
+        // Per shot: a reference-only shot prices the reference-to-video route.
+        eligible.reduce(
+          (sum, shot) =>
+            addMicros(
+              sum,
+              gateEstimate(
+                estimateVideoCost(model, 5, {
+                  pricing,
+                  resolution: sequence.resolution,
+                  referenceOnly: shotIsReferenceOnly(shot),
+                }),
+                { model, operation: 'add-video-model' }
+              )
+            ),
+          ZERO_MICROS
         ),
         {
           errorMessage: 'Insufficient credits to add this video model',
@@ -922,9 +943,26 @@ export const addModelToSequenceFn = createServerFn({ method: 'POST' })
                 const motionPrompt = selectedMotion
                   ? motionPromptFromVersion(selectedMotion)
                   : undefined;
+                const referenceOnly = shotIsReferenceOnly(f);
                 return {
                   shotId: f.id,
-                  imageUrl: f.image?.url ?? '',
+                  sceneId: f.sceneId,
+                  // Reference-only carries no still; every other eligible shot
+                  // has one. Same encoding as the batch path in
+                  // `generateBatchMotionFn`: a null `frameVersionId` means the
+                  // clip rendered from references.
+                  imageUrl: referenceOnly ? undefined : (f.image?.url ?? ''),
+                  referenceOnly,
+                  frameVersionId: referenceOnly ? null : (f.image?.id ?? null),
+                  motionPromptVersionId: selectedMotion?.id ?? null,
+                  referenceImages: buildMotionReferenceImages({
+                    scene: sceneOf(f),
+                    characters,
+                    elements,
+                    motionPrompt: selectedMotion?.text ?? null,
+                    includeLocations: referenceOnly,
+                    locations,
+                  }),
                   prompt: resolveMotionPrompt(
                     {
                       motionPrompt: motionPrompt ?? null,

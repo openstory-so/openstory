@@ -36,7 +36,12 @@ import { errorMessage } from '@/lib/errors';
 import { resolveShotDuration } from '@/lib/motion/resolve-shot-duration';
 import type { SceneSelection } from '@/lib/scenes/scene-selection';
 import type { SequenceSegment } from '@/lib/scenes/scene-segments';
-import type { ShotView } from '@/lib/shots/shot-view';
+import { rendersReferenceOnly } from '@/lib/shots/use-start-frame';
+import {
+  isBatchMotionEligible,
+  isMotionGenerating,
+  type ShotView,
+} from '@/lib/shots/shot-view';
 import { cn } from '@/lib/utils';
 import { FileText, Images, Loader2, Music, Plus, Video } from 'lucide-react';
 import {
@@ -145,6 +150,11 @@ export type SceneListProps = {
   initialImageModel?: TextToImageModel;
   /** Style-category gate for models that require a matching style. */
   styleCategory?: string;
+  /**
+   * Sequence renders straight to video with no stills, so shot eligibility
+   * cannot require one — see `isBatchMotionEligible`.
+   */
+  generateStartFrames?: boolean;
   styleName?: string;
   modelMissingShotIds?: Set<string>;
   modelMissingLabel?: string | null;
@@ -183,6 +193,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
   initialVideoModel,
   initialImageModel,
   styleCategory,
+  generateStartFrames = false,
   styleName,
   modelMissingShotIds,
   modelMissingLabel,
@@ -279,22 +290,27 @@ const SceneListComponent: React.FC<SceneListProps> = ({
   // user-driven batch generate, never auto-retried.
   const notStartedShots = useMemo(() => {
     if (!shots) return [];
-    return shots.filter(
-      (f) =>
-        (f.videoStatus === 'pending' ||
-          f.videoStatus === 'failed' ||
-          f.videoStatus === 'cancelled') &&
-        f.frame.imageStatus === 'completed'
+    return shots.filter((f) =>
+      isBatchMotionEligible(f, rendersReferenceOnly(f, { generateStartFrames }))
     );
-  }, [shots]);
+  }, [shots, generateStartFrames]);
+
+  // The batch's mode: one reference-only shot in it decides the model list,
+  // because submit checks the picked model against every such shot.
+  const batchRendersReferenceOnly = useMemo(
+    () =>
+      notStartedShots.some((f) =>
+        rendersReferenceOnly(f, { generateStartFrames })
+      ),
+    [notStartedShots, generateStartFrames]
+  );
 
   const hasGeneratingShots = useMemo(() => {
     if (!shots) return false;
-    return shots.some(
-      (f) =>
-        f.videoStatus === 'generating' && f.frame.imageStatus === 'completed'
+    return shots.some((f) =>
+      isMotionGenerating(f, rendersReferenceOnly(f, { generateStartFrames }))
     );
-  }, [shots]);
+  }, [shots, generateStartFrames]);
 
   // Check if all eligible shots have motion prompts ready
   const motionPromptsReady = useMemo(() => {
@@ -394,6 +410,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
         pricing: falPricing,
         resolution,
         hasReferenceImages: true,
+        referenceOnly: rendersReferenceOnly(shot, { generateStartFrames }),
       });
       if (perShot === null) continue;
       anyHonest = true;
@@ -425,6 +442,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
     musicModel,
     videoModel,
     resolution,
+    generateStartFrames,
   ]);
 
   const continueCostEstimate = useMemo((): Microdollars | null => {
@@ -681,6 +699,10 @@ const SceneListComponent: React.FC<SceneListProps> = ({
             styleCategory={styleCategory}
             styleName={styleName}
             disabled={isGenerating || isMotionInProgress}
+            // A batch can mix modes, and submit validates the model against
+            // every reference-only shot in it — so one such shot is enough to
+            // rule out an image-to-video-only model for the whole run.
+            referenceOnly={batchRendersReferenceOnly}
           />
           {includeMusic && (
             <MusicModelSelector

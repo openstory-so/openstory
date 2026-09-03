@@ -1,10 +1,10 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "d297353a-a95e-4535-bf2e-53f1ec9fb456",
+  "id": "da68cfb6-d0ba-4026-863d-bce630619605",
   "prevIds": [
-    "c9553445-1130-46a8-9ffd-2090125481c3",
-    "d60b8b08-1a58-48a8-9d38-c08d8786ae6a"
+    "27f4ac5d-4e03-43a2-80b0-5c9763d1dd12",
+    "c9553445-1130-46a8-9ffd-2090125481c3"
   ],
   "ddl": [
     {
@@ -3673,7 +3673,7 @@
     },
     {
       "type": "text",
-      "notNull": false,
+      "notNull": true,
       "autoincrement": false,
       "default": null,
       "generated": null,
@@ -3683,7 +3683,7 @@
     },
     {
       "type": "text",
-      "notNull": false,
+      "notNull": true,
       "autoincrement": false,
       "default": null,
       "generated": null,
@@ -4817,6 +4817,16 @@
       "autoincrement": false,
       "default": "false",
       "generated": null,
+      "name": "reference_only",
+      "entityType": "columns",
+      "table": "sequences"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "false",
+      "generated": null,
       "name": "auto_generate_motion",
       "entityType": "columns",
       "table": "sequences"
@@ -4828,36 +4838,6 @@
       "default": "false",
       "generated": null,
       "name": "auto_generate_music",
-      "entityType": "columns",
-      "table": "sequences"
-    },
-    {
-      "type": "text",
-      "notNull": false,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "generation_stop_at",
-      "entityType": "columns",
-      "table": "sequences"
-    },
-    {
-      "type": "text",
-      "notNull": false,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "pipeline_stage",
-      "entityType": "columns",
-      "table": "sequences"
-    },
-    {
-      "type": "text",
-      "notNull": false,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "generation_checkpoint",
       "entityType": "columns",
       "table": "sequences"
     },
@@ -5048,6 +5028,16 @@
       "default": null,
       "generated": null,
       "name": "source",
+      "entityType": "columns",
+      "table": "shot_prompt_versions"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "true",
+      "generated": null,
+      "name": "uses_start_frame",
       "entityType": "columns",
       "table": "shot_prompt_versions"
     },
@@ -5388,6 +5378,16 @@
       "default": "3000",
       "generated": null,
       "name": "duration_ms",
+      "entityType": "columns",
+      "table": "shots"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "use_start_frame",
       "entityType": "columns",
       "table": "shots"
     },

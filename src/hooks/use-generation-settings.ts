@@ -3,6 +3,7 @@ import {
   isValidAudioModel,
   isValidImageToVideoModel,
   isValidTextToImageModel,
+  referenceOnlyCapableWith,
   type AudioModel,
   type ImageToVideoModel,
   type TextToImageModel,
@@ -65,6 +66,8 @@ type GenerationSettings = {
   stopAt: GenerationStage;
   /** Skip the Generate stop-at alert and reuse `stopAt`. */
   rememberStopAt: boolean;
+  /** Render a still per shot first (the frame-based workflow); off = reference-only. */
+  generateStartFrames: boolean;
   musicModel: AudioModel;
   audioModels: AudioModel[];
 };
@@ -103,6 +106,9 @@ const DEFAULT_SETTINGS: GenerationSettings = withMode({
   // (welcome grant sized for a ~30s stills+motion+music board — #1140).
   stopAt: DEFAULT_GENERATION_STOP_AT,
   rememberStopAt: false,
+  // Off by default: a new sequence renders reference-only; start frames are
+  // the opt-in for steerable composition.
+  generateStartFrames: false,
   musicModel: TURBO_DEFAULT_AUDIO,
   audioModels: [TURBO_DEFAULT_AUDIO],
 });
@@ -249,7 +255,7 @@ function loadSettings(): GenerationSettings {
       ? bag.resolution
       : DEFAULT_RESOLUTION;
 
-    return withMode({
+    const settings = withMode({
       generationMode,
       aspectRatio,
       resolution,
@@ -260,9 +266,28 @@ function loadSettings(): GenerationSettings {
       videoModels,
       stopAt,
       rememberStopAt,
+      generateStartFrames:
+        'generateStartFrames' in parsed &&
+        typeof parsed.generateStartFrames === 'boolean'
+          ? parsed.generateStartFrames
+          : false,
       musicModel,
       audioModels,
     });
+
+    // A stored selection can predate the mode, or predate a model losing its
+    // reference-to-video route — either way, restoring it would hand the
+    // create schema a selection it rejects. Checked against the post-`withMode`
+    // list, since the mode can swap the video models out from under it. Asks
+    // the same via-aware question as `createSequenceSchema` (not the model-only
+    // floor): Grok Imagine is accepted by the server and must not be flipped
+    // back to start frames on reload.
+    return !settings.generateStartFrames &&
+      !settings.videoModels.every((model) =>
+        referenceOnlyCapableWith(model, { xai: true })
+      )
+      ? { ...settings, generateStartFrames: true }
+      : settings;
   } catch (error) {
     logger.warn('Failed to load settings from localStorage:', { err: error });
     return DEFAULT_SETTINGS;

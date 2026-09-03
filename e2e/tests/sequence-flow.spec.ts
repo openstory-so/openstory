@@ -10,7 +10,7 @@
 import { expect } from 'playwright/test';
 import { test as testWithUser } from '../fixtures/auth.fixture';
 import { setupMockRoutes } from '../mocks/handlers';
-import { fillScriptEditor } from '../fixtures/test-utils';
+import { enableStartFrames, fillScriptEditor } from '../fixtures/test-utils';
 import {
   createTestTalentSet,
   cleanupTalentById,
@@ -92,6 +92,8 @@ Here's your caffeine fix. How's it going?
 
       // Now fill the editor - React is hydrated since style click worked
       await fillScriptEditor(page, testScript);
+      // This spec inspects the still and its variants, so opt into start frames.
+      await enableStartFrames(page);
 
       // Wait for "Generate" button to become enabled - this proves:
       // 1. React hydration is complete (event handlers attached)
@@ -201,6 +203,9 @@ testWithUser.describe('Variant Selection', () => {
     await expect(page).toHaveURL(new RegExp(`shot=${testShot.id}`), {
       timeout: 15_000,
     });
+    // Video leads the shot tabs, so the canvas opens on the clip; the still
+    // (and its variants button) is on the Start Frame tab.
+    await page.getByRole('tab', { name: 'Start Frame' }).click();
     // `exact` so this never also matches the dialog's own "Regenerate frame
     // variants" button.
     const variantsButton = page.getByRole('button', {

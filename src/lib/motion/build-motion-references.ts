@@ -6,9 +6,15 @@
  * (`buildFrameImageWorkflowInput` / `resolveSceneFrameImageReferences`) so
  * motion attaches the SAME cast/element refs the image step does — otherwise
  * characters and elements that look right in the start frame degrade across the
- * generated clip. Only characters and elements are resolved here (locations are
- * out of scope for #873); the result is consumed by `buildKlingElementsInput`
- * and only emitted for models that accept reference images (Kling v3 Pro).
+ * generated clip. The result is consumed by `buildKlingElementsInput` and
+ * `buildReferenceVideoPrompt`.
+ *
+ * LOCATIONS are excluded on the image-to-video path (out of scope for #873,
+ * and redundant there: the still already fixes the environment, so a location
+ * sheet only competes with it for reference slots). Reference-only mode has no
+ * still, which makes the location sheet the ONLY thing standing between the
+ * prompt's words and an invented set — so those callers pass
+ * `includeLocations` and the matched location sheets ride along.
  *
  * Accepts the structural scene shape both the strict `Scene` and the looser
  * `frame.metadata` satisfy, so the single-frame, batch, and full-pipeline
@@ -25,7 +31,6 @@ import { buildElementReferenceImages } from '@/lib/prompts/element-prompt';
 import { buildLocationReferenceImages } from '@/lib/prompts/location-prompt';
 import type { ReferenceImageDescription } from '@/lib/prompts/reference-image-prompt';
 import {
-  matchCharactersToScene,
   matchCharactersToShotImage,
   matchElementsToScene,
   matchElementsToShotImage,
@@ -46,20 +51,76 @@ export function buildMotionReferenceImages(params: {
   scene: SceneReferenceInput;
   characters: CharacterMinimal[];
   elements: SequenceElementMinimal[];
+  /**
+   * The shot's motion prompt. Cast and element refs follow it as well as the
+   * continuity tags, the same way the image path follows the visual prompt
+   * (#1432) — tags can be empty on a scene that plainly names its cast, and a
+   * missed character means a clip that reinvents them.
+   *
+   * REQUIRED, and `null` only where there genuinely is no prompt yet. Optional
+   * would let a call site omit it and silently fall back to tags alone, which
+   * is the bug this fixes.
+   *
+   * It matters most in reference-only, which skips the visual-prompt phase
+   * entirely: there is no still binding identity, so a character the tags miss
+   * is reinvented outright rather than merely drifting.
+   */
+  motionPrompt: string | null;
+  /**
+   * Reference-only mode: also attach the scene's location sheet. With no start
+   * frame there is nothing else establishing the set, and the same matcher the
+   * image step uses (`matchLocationsToScene`) picks it.
+   */
+  includeLocations?: boolean;
+  locations?: SequenceLocationMinimal[];
 }): ReferenceImageDescription[] {
-  const { scene, characters, elements } = params;
-
-  const matchedCharacters = matchCharactersToScene(
+  const {
+    scene,
     characters,
-    scene?.continuity?.characterTags ?? []
-  );
-  const matchedElements = matchElementsToScene(
+    elements,
+    motionPrompt,
+    includeLocations,
+    locations,
+  } = params;
+
+  // The `*ToShotImage` matchers are prompt-agnostic — they scan whatever
+  // prompt text they are handed for names. The image path passes the visual
+  // prompt; here it is the motion prompt.
+  const matchedCharacters = matchCharactersToShotImage(characters, {
+    characterTags: scene?.continuity?.characterTags,
+    visualPrompt: motionPrompt,
+  });
+  // Elements are ADDITIVE here, not prompt-wins like the still: the
+  // image-to-video template forbids naming what the start frame already shows,
+  // so a prop the motion prompt omits is still in the shot. Tags/extract stay
+  // primary; the prompt only adds what they missed. (Characters get the same
+  // union for free — `matchCharactersToShotImage` is already additive.)
+  const taggedElements = matchElementsToScene(
     elements,
     scene?.continuity?.elementTags ?? [],
     scene?.originalScript?.extract ?? ''
   );
+  const matchedElements = [
+    ...new Set([
+      ...taggedElements,
+      ...matchElementsToScene(elements, [], motionPrompt ?? ''),
+    ]),
+  ];
+  const matchedLocations =
+    includeLocations && locations
+      ? matchLocationsToScene(
+          locations,
+          scene?.continuity?.environmentTag ?? '',
+          scene?.metadata?.location ?? '',
+          scene?.originalScript?.extract
+        )
+      : [];
 
+  // Location first among the supporting refs: it is the widest establishing
+  // signal, and the reference budget is spent in order, so a scene with a big
+  // cast should lose a bit player before it loses its set.
   return [
+    ...buildLocationReferenceImages(matchedLocations),
     ...buildCharacterReferenceImages(matchedCharacters),
     ...buildElementReferenceImages(matchedElements),
   ];
@@ -91,7 +152,8 @@ export function buildShotImageReferenceImages(params: {
   const matchedLocations = matchLocationsToScene(
     locations,
     scene?.continuity?.environmentTag ?? '',
-    scene?.metadata?.location ?? ''
+    scene?.metadata?.location ?? '',
+    scene?.originalScript?.extract
   );
   const matchedElements = matchElementsToShotImage(elements, {
     visualPrompt,

@@ -337,6 +337,7 @@ export const ScriptView: FC<{
     imageModels: TextToImageModel[];
     videoModels: ImageToVideoModel[];
     stopAt: GenerationStage;
+    generateStartFrames: boolean;
     audioModels: AudioModel[];
   }>(() => ({
     generationMode: savedSettings.generationMode,
@@ -354,6 +355,11 @@ export const ScriptView: FC<{
     stopAt: isEditing
       ? (sequence.generationStopAt ?? DEFAULT_GENERATION_STOP_AT)
       : savedSettings.stopAt,
+    // Editing an existing sequence inherits its mode; a new one starts from
+    // the remembered setting.
+    generateStartFrames: isEditing
+      ? sequence.generateStartFrames
+      : savedSettings.generateStartFrames,
     audioModels:
       isEditing && sequence.musicModel
         ? [safeAudioModel(sequence.musicModel, DEFAULT_MUSIC_MODEL)]
@@ -366,6 +372,7 @@ export const ScriptView: FC<{
     imageModels,
     videoModels,
     stopAt,
+    generateStartFrames,
     audioModels,
   } = genSettings;
   // Derived, not stored: the picker only offers tiers the chosen models serve,
@@ -692,6 +699,7 @@ export const ScriptView: FC<{
         imageModels: savedSettings.imageModels,
         videoModels: savedSettings.videoModels,
         stopAt: savedSettings.stopAt,
+        generateStartFrames: savedSettings.generateStartFrames,
         audioModels: savedSettings.audioModels,
       });
       hasSyncedRef.current = true;
@@ -950,6 +958,7 @@ export const ScriptView: FC<{
         stopAt: runUntil,
         autoGenerateMotion: flags.autoGenerateMotion,
         autoGenerateMusic: flags.autoGenerateMusic,
+        generateStartFrames,
         musicModel: audioModels[0] ?? DEFAULT_MUSIC_MODEL,
         audioModels,
         targetDurationSeconds: targetDuration,
@@ -1323,6 +1332,7 @@ export const ScriptView: FC<{
         estimatedSceneCount: sceneCount,
         stopAt: runUntil,
         autoGenerateMotion: motionOn,
+        referenceOnly: !generateStartFrames,
         videoModels: motionOn ? videoModels : undefined,
         videoDurationSeconds: motionOn
           ? motionDurations.perShotSeconds
@@ -1344,6 +1354,7 @@ export const ScriptView: FC<{
       targetDuration,
       videoModels,
       audioModels,
+      generateStartFrames,
     ]
   );
   const storyboardCostEstimate = estimateForStopAt(DEFAULT_GENERATION_STOP_AT);
@@ -1494,12 +1505,16 @@ export const ScriptView: FC<{
             analysisModels={analysisModels}
             imageModels={imageModels}
             videoModels={videoModels}
+            generateStartFrames={generateStartFrames}
             audioModels={audioModels}
             onAspectRatioChange={(v) => updateGen('aspectRatio', v)}
             onResolutionChange={(v) => updateGen('resolution', v)}
             onAnalysisModelsChange={(v) => updateGen('analysisModels', v)}
             onImageModelsChange={(v) => updateGen('imageModels', v)}
             onVideoModelsChange={(v) => updateGen('videoModels', v)}
+            onGenerateStartFramesChange={(v) =>
+              updateGen('generateStartFrames', v)
+            }
             onAudioModelsChange={(v) => updateGen('audioModels', v)}
             disabled={loading}
             styleCategory={styleCategory}

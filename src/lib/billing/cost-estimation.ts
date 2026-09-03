@@ -13,6 +13,7 @@ import {
   AUDIO_MODELS,
   IMAGE_MODELS,
   IMAGE_TO_VIDEO_MODELS,
+  supportsReferenceOnlyMotion,
   type AudioModel,
   type ImageToVideoModel,
   type TextToImageModel,
@@ -66,6 +67,7 @@ type GateOperation =
   | 'smart-retry:motion'
   | 'smart-retry:music'
   | 'storyboard:character-sheets'
+  | 'storyboard:element-sheets'
   | 'storyboard:location-sheets'
   | 'storyboard:motion'
   | 'storyboard:music'
@@ -184,11 +186,24 @@ export function estimateVideoCost(
      * `resolveMotionEndpoint` may route to reference-to-video.
      */
     hasReferenceImages?: boolean;
+    /**
+     * Reference-only shots route to reference-to-video even when the scene
+     * matched no sheets at all, so the estimate has to be told: resolving on
+     * `hasReferenceImages` alone would price the image-to-video row for a job
+     * that never runs there.
+     */
+    referenceOnly?: boolean;
   }
 ): Microdollars | null {
   const { endpointId } = resolveMotionEndpoint(
     model,
-    opts.hasReferenceImages === true
+    opts.hasReferenceImages === true,
+    'fal',
+    // Gated on the model: `resolveMotionEndpoint` THROWS for reference-only on
+    // a model with no fal reference-to-video route, and an estimator must not.
+    // Grok reference-only is exactly that case — it runs on the native xAI via,
+    // whose cost is the flat per-second rate off `modelConfig.id` anyway.
+    opts.referenceOnly === true && supportsReferenceOnlyMotion(model)
   );
   // Keep the catalog model id path when unresolved (tests / unknown keys).
   // Both ids alias to the Ark rate when the platform routes there (#1157).
@@ -311,6 +326,13 @@ export type StoryboardCostOpts = {
   audioModels?: AudioModel[];
   /** Total sequence duration in seconds (one music track spans the sequence) */
   audioDurationSeconds?: number;
+  /**
+   * Reference-only: no shot stills are rendered, so the image line is zero and
+   * motion prices on the reference-to-video route. Without it the quote — and
+   * the reservation built on it — bills a full set of images the mode never
+   * generates, which is most of what makes reference-only cheaper.
+   */
+  referenceOnly?: boolean;
   /** Live pricing map from `getEffectiveFalPricing()`. */
   pricing: FalPricingMap;
 };
@@ -345,8 +367,10 @@ export function estimateStoryboardRenderCost(
   const imageModelCount = opts.imageModelCount ?? 1;
   const { pricing } = opts;
 
+  // Reference-only renders straight to video: the shot-images phase never
+  // spawns (see `analyze-script-workflow` phase 4), so there is nothing to bill.
   let totalCost = micros(0);
-  if (estimateRunsStage(opts, 'images')) {
+  if (!opts.referenceOnly && estimateRunsStage(opts, 'images')) {
     totalCost = multiplyMicros(
       gateEstimate(
         estimateImageCost(opts.imageModel, opts.aspectRatio, sceneCount, {
@@ -368,6 +392,7 @@ export function estimateStoryboardRenderCost(
           pricing,
           resolution: opts.resolution,
           hasReferenceImages: true,
+          referenceOnly: opts.referenceOnly,
         }),
         { model, operation: 'storyboard:motion' }
       );
@@ -411,36 +436,62 @@ export function estimateStoryboardRenderCost(
  * film-cost showcase also use this total after an honest primary-image probe;
  * unpriced motion/audio lines may still embed floors in that composite.
  */
+/**
+ * Character + location + element reference sheets, priced per image.
+ *
+ * Two callers with very different information. Pre-flight only has the script,
+ * so it passes the `estimate*SheetCount(sceneCount)` heuristics. The in-run
+ * gate runs after casting, where the counts are FACTS — one sheet per bible
+ * entry, minus the characters whose matched talent sheet is reused (a storage
+ * copy, no generation) — so it passes those instead. Sheets are always square
+ * 16:9 regardless of the sequence's ratio.
+ */
+export function estimateReferenceSheetCost(opts: {
+  imageModel: TextToImageModel;
+  characterSheets: number;
+  locationSheets: number;
+  /** Auto-generated element references (#835). Zero at pre-flight: unknowable. */
+  elementSheets?: number;
+  pricing: FalPricingMap;
+}): Microdollars {
+  const { imageModel, pricing } = opts;
+  const line = (count: number, operation: GateOperation): Microdollars =>
+    count <= 0
+      ? micros(0)
+      : gateEstimate(
+          estimateImageCost(imageModel, '16:9', count, { pricing }),
+          { model: imageModel, operation },
+          count
+        );
+
+  return addMicros(
+    addMicros(
+      line(opts.characterSheets, 'storyboard:character-sheets'),
+      line(opts.locationSheets, 'storyboard:location-sheets')
+    ),
+    line(opts.elementSheets ?? 0, 'storyboard:element-sheets')
+  );
+}
+
 export function estimateStoryboardCost(opts: StoryboardCostOpts): Microdollars {
   const sceneCount = opts.estimatedSceneCount ?? DEFAULT_ESTIMATED_SCENE_COUNT;
   const { pricing } = opts;
-  const characterSheets = estimateCharacterSheetCount(sceneCount);
-  const locationSheets = estimateLocationSheetCount(sceneCount);
 
   // Script = scene-split + talent matching + location matching.
   const llmCalls = estimateRunsStage(opts, 'script') ? 3 : 0;
   const llmCost = estimateLLMCost(llmCalls);
 
-  let total = llmCost;
-  if (estimateRunsStage(opts, 'references')) {
-    const characterSheetCost = gateEstimate(
-      estimateImageCost(opts.imageModel, '16:9', characterSheets, { pricing }),
-      {
-        model: opts.imageModel,
-        operation: 'storyboard:character-sheets',
-      },
-      characterSheets
-    );
-    const locationSheetCost = gateEstimate(
-      estimateImageCost(opts.imageModel, '16:9', locationSheets, { pricing }),
-      {
-        model: opts.imageModel,
-        operation: 'storyboard:location-sheets',
-      },
-      locationSheets
-    );
-    total = addMicros(addMicros(total, characterSheetCost), locationSheetCost);
-  }
+  const sheetCost = estimateRunsStage(opts, 'references')
+    ? estimateReferenceSheetCost({
+        imageModel: opts.imageModel,
+        characterSheets: estimateCharacterSheetCount(sceneCount),
+        locationSheets: estimateLocationSheetCount(sceneCount),
+        pricing,
+      })
+    : micros(0);
 
-  return addMicros(total, estimateStoryboardRenderCost(opts));
+  return addMicros(
+    addMicros(llmCost, sheetCost),
+    estimateStoryboardRenderCost(opts)
+  );
 }

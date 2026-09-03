@@ -152,7 +152,8 @@ export function geminiVideoSize(
 
 export function buildGeminiVideoRequest(options: {
   prompt: string;
-  imageUrl: string;
+  /** The rendered still, or undefined in reference-only mode. */
+  imageUrl?: string;
   duration?: number;
   aspectRatio?: AspectRatio;
   referenceImages?: ReferenceImageDescription[];
@@ -177,11 +178,14 @@ export function buildGeminiVideoRequest(options: {
     return {
       endpointId: NATIVE_GEMINI_VIDEO_MODEL,
       input: {
-        prompt: geminiVideoPromptParts(text, [options.imageUrl]),
+        prompt: geminiVideoPromptParts(
+          text,
+          options.imageUrl ? [options.imageUrl] : []
+        ),
         duration,
         ...(size && { size }),
         modelOptions: geminiNativeModelOptions(
-          'image_to_video',
+          options.imageUrl ? 'image_to_video' : 'text_to_video',
           duration,
           size
         ),
@@ -192,7 +196,7 @@ export function buildGeminiVideoRequest(options: {
   const { prompt, imageUrls } = buildReferenceVideoPrompt(
     GEMINI_VIDEO_REFERENCE_CONFIG,
     options.prompt,
-    options.imageUrl,
+    options.imageUrl ?? null,
     options.referenceImages ?? [],
     maxPromptLength
   );

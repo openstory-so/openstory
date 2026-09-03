@@ -11,7 +11,11 @@ import { QueryClient } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { promptVariantKeys } from '@/hooks/use-prompt-variants';
+import { sceneFacetKeys } from '@/hooks/use-scene-facets';
 import { sceneKeys } from '@/hooks/use-scenes';
+import { sequenceCharacterKeys } from '@/hooks/use-sequence-characters';
+import { sequenceElementKeys } from '@/hooks/use-sequence-elements';
+import { sequenceLocationKeys } from '@/hooks/use-sequence-locations';
 import { shotKeys } from '@/hooks/use-shots';
 import type { Frame, Shot, VideoVariant } from '@/lib/db/schema';
 import {
@@ -54,6 +58,7 @@ function makeShot(
     sceneId: null,
     shotNumber: 1,
     durationMs: 3000,
+    useStartFrame: null,
     selectedMotionPromptVersionId: null,
     renderSegmentId: 'seg-1',
     deletedAt: null,
@@ -468,6 +473,72 @@ describe('updateQueryCacheFromEvent — variant-only guard (#547)', () => {
       const keys = invalidate.mock.calls.map((c) => c[0]?.queryKey);
       expect(keys).toContainEqual(sceneKeys.list(SEQ));
       expect(keys).toContainEqual(shotKeys.list(SEQ));
+    });
+  });
+
+  // The Cast / Locations / Elements tabs filter their lists through the
+  // server-resolved facet maps. A refreshed list behind a stale map showed an
+  // empty tab until staleTime elapsed and something refocused the window.
+  describe('bibles refresh the per-scene facet maps, not just the lists', () => {
+    it('character-sheet:progress refetches the facet maps with the cast list', () => {
+      const invalidate = vi.spyOn(qc, 'invalidateQueries');
+
+      updateQueryCacheFromEvent(
+        qc,
+        SEQ,
+        'generation.character-sheet:progress',
+        {
+          characterId: 'char-1',
+          status: 'completed',
+        }
+      );
+
+      vi.advanceTimersByTime(200);
+      const keys = invalidate.mock.calls.map((c) => c[0]?.queryKey);
+      expect(keys).toContainEqual(sequenceCharacterKeys.list(SEQ));
+      expect(keys).toContainEqual(sceneFacetKeys.maps(SEQ));
+    });
+
+    it('location:matched refetches the location list and the facet maps', () => {
+      const invalidate = vi.spyOn(qc, 'invalidateQueries');
+
+      updateQueryCacheFromEvent(qc, SEQ, 'generation.location:matched', {
+        matches: [],
+      });
+
+      vi.advanceTimersByTime(200);
+      const keys = invalidate.mock.calls.map((c) => c[0]?.queryKey);
+      expect(keys).toContainEqual(sequenceLocationKeys.list(SEQ));
+      expect(keys).toContainEqual(sceneFacetKeys.maps(SEQ));
+    });
+
+    it('phase:start refetches every bible list — elements emit no event of their own', () => {
+      const invalidate = vi.spyOn(qc, 'invalidateQueries');
+
+      updateQueryCacheFromEvent(qc, SEQ, 'generation.phase:start', {
+        phase: 4,
+        phaseName: 'shot-images',
+      });
+
+      vi.advanceTimersByTime(200);
+      const keys = invalidate.mock.calls.map((c) => c[0]?.queryKey);
+      expect(keys).toContainEqual(sequenceCharacterKeys.list(SEQ));
+      expect(keys).toContainEqual(sequenceLocationKeys.list(SEQ));
+      expect(keys).toContainEqual(sequenceElementKeys.bySequence(SEQ));
+      expect(keys).toContainEqual(sceneFacetKeys.maps(SEQ));
+    });
+
+    it('generation.complete refetches the element list and the facet maps', () => {
+      const invalidate = vi.spyOn(qc, 'invalidateQueries');
+
+      updateQueryCacheFromEvent(qc, SEQ, 'generation.complete', {
+        sequenceId: SEQ,
+      });
+
+      const keys = invalidate.mock.calls.map((c) => c[0]?.queryKey);
+      expect(keys).toContainEqual(sequenceElementKeys.bySequence(SEQ));
+      expect(keys).toContainEqual(sequenceLocationKeys.list(SEQ));
+      expect(keys).toContainEqual(sceneFacetKeys.maps(SEQ));
     });
   });
 });

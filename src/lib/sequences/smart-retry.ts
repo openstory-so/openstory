@@ -10,6 +10,7 @@
  * body, which the compiler strips.
  */
 
+import { usesStartFrame } from '@/lib/shots/use-start-frame';
 import {
   loadSceneContextBySequence,
   resolveSceneForShot,
@@ -55,6 +56,7 @@ import {
   resolveMotionPromptFromVersion,
 } from '@/lib/motion/resolve-motion-prompt';
 import { toShotView } from '@/lib/shots/shot-view';
+import { buildMotionReferenceImages } from '@/lib/motion/build-motion-references';
 import { buildCharacterReferenceImages } from '@/lib/prompts/character-prompt';
 import { triggerWorkflow } from '@/lib/workflow/client';
 import { buildWorkflowLabel } from '@/lib/workflow/labels';
@@ -208,6 +210,7 @@ export async function executeSmartRetry(context: SmartRetryContext) {
         videoModels: [videoModel],
         autoGenerateMusic: sequence.autoGenerateMusic,
         audioModels: [safeAudioModel(sequence.musicModel, DEFAULT_MUSIC_MODEL)],
+        referenceOnly: !sequence.generateStartFrames,
         pricing: await getEffectiveFalPricing(),
       }),
       {
@@ -276,10 +279,22 @@ export async function executeSmartRetry(context: SmartRetryContext) {
   const failedImageShots = shotViews.filter(
     (f) => f.frame.imageStatus === 'failed'
   );
+  // Reference-only shots have no still by design, so requiring one here made
+  // every failed reference-only clip invisible to retry — and the empty result
+  // reported "none of the failed items can be retried", pushing the user at a
+  // full regeneration to recover clips that were retryable all along.
+  // Per shot: a shot can override the sequence's start-frame mode either way,
+  // so a retry has to re-ask rather than assume the sequence default.
+  const shotUsesStartFrame = (shot: { useStartFrame?: boolean | null }) =>
+    usesStartFrame(shot, sequence);
   const failedMotionShots = shotViews.filter(
     (f) =>
-      f.videoStatus === 'failed' && f.image?.url && f.motionPrompt?.fullPrompt
+      f.videoStatus === 'failed' &&
+      (!shotUsesStartFrame(f) || f.image?.url) &&
+      f.motionPrompt?.fullPrompt
   );
+  // Loaded once for the batch; `includeLocations` still decides per shot.
+  const anyReferenceOnly = shotViews.some((f) => !shotUsesStartFrame(f));
   const hasMusicFailure =
     sequence.musicStatus === 'failed' && sequence.musicPrompt;
 
@@ -356,10 +371,22 @@ export async function executeSmartRetry(context: SmartRetryContext) {
   // 2. Retry failed motion
   if (failedMotionShots.length > 0) {
     const { snapDuration } = await import('@/lib/motion/snap-duration');
+    // Reference-only clips are driven ENTIRELY by their reference sheets, so a
+    // retry that forwarded none would silently resubmit as text-to-video —
+    // different characters, different set, at the same price. Loaded once for
+    // the whole batch; the image-to-video path keeps its existing behaviour.
+    const [motionCharacters, motionElements, motionLocations] = anyReferenceOnly
+      ? await Promise.all([
+          context.scopedDb.characters.listWithSheets(sequence.id),
+          context.scopedDb.sequenceElements.list(sequence.id),
+          context.scopedDb.sequenceLocations.listWithReferences(sequence.id),
+        ])
+      : [[], [], []];
     let triggeredMotion = 0;
     for (const shot of failedMotionShots) {
       const imageUrl = shot.image?.url;
-      if (!imageUrl) continue;
+      const referenceOnly = !shotUsesStartFrame(shot);
+      if (!imageUrl && !referenceOnly) continue;
 
       const shotVideoModel = videoModelFor(shot);
       const scene = sceneOf(shot);
@@ -368,7 +395,7 @@ export async function executeSmartRetry(context: SmartRetryContext) {
         estimateVideoCost(
           shotVideoModel,
           snapDuration(undefined, shotVideoModel),
-          { pricing, resolution: sequence.resolution }
+          { pricing, resolution: sequence.resolution, referenceOnly }
         ),
         { model: shotVideoModel, operation: 'smart-retry:motion' }
       );
@@ -388,10 +415,27 @@ export async function executeSmartRetry(context: SmartRetryContext) {
         shotId: shot.id,
         sceneId: shot.sceneId,
         sequenceId: sequence.id,
-        imageUrl,
+        // Null only on the reference-only path — the `continue` above still
+        // rejects a missing still everywhere else.
+        imageUrl: referenceOnly ? undefined : (imageUrl ?? undefined),
+        referenceOnly,
+        ...(referenceOnly
+          ? {
+              referenceImages: buildMotionReferenceImages({
+                scene: scene ?? null,
+                characters: motionCharacters,
+                elements: motionElements,
+                motionPrompt: selectedMotion?.text ?? null,
+                includeLocations: true,
+                locations: motionLocations,
+              }),
+            }
+          : {}),
         // The versions this clip renders from, pinned here so the render
-        // manifest can't name rows a concurrent edit repointed to.
-        frameVersionId: shot.image?.id ?? null,
+        // manifest can't name rows a concurrent edit repointed to. `null` when
+        // the clip renders from references — see `isSelectedVersionStale`: a
+        // pointer at a still the clip never received reads as divergence.
+        frameVersionId: referenceOnly ? null : (shot.image?.id ?? null),
         motionPromptVersionId: selectedMotion?.id ?? null,
         sequenceTitle: sequence.title,
         prompt: resolveMotionPromptFromVersion(

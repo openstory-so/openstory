@@ -102,3 +102,21 @@ export const CompletedWithDifferentImage: Story = {
     alt: 'Scene 2 - Different composition',
   },
 };
+
+export const ClipFirstFrame: Story = {
+  args: {
+    videoUrl:
+      'https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
+    thumbnailStatus: 'pending',
+    alt: 'Scene 1 — reference-only shot, showing the clip first frame',
+  },
+};
+
+export const ClipFirstFrameBeatsPreview: Story = {
+  args: {
+    previewThumbnailUrl: 'https://picsum.photos/seed/preview1/320/180',
+    videoUrl:
+      'https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
+    alt: 'Scene 1 — storyboard preview is superseded once the clip exists',
+  },
+};

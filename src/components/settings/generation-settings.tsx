@@ -12,6 +12,7 @@ import {
   MusicModelSelector,
 } from '@/components/model/music-model-selector';
 import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
 import {
   Popover,
   PopoverContent,
@@ -22,6 +23,7 @@ import {
   DEFAULT_IMAGE_MODEL,
   DEFAULT_MUSIC_MODEL,
   DEFAULT_VIDEO_MODEL,
+  IMAGE_TO_VIDEO_MODELS,
   type AudioModel,
   type ImageToVideoModel,
   type TextToImageModel,
@@ -33,7 +35,8 @@ import {
   availableResolutions,
   resolutionCeilingNote,
 } from '@/lib/ai/resolution-support';
-import { useState, type FC } from 'react';
+import { useMemo, useState, type FC } from 'react';
+import { useViaAvailability } from '@/hooks/use-via-availability';
 import { AspectRatioPills } from './aspect-ratio-pills';
 import { ResolutionPills } from './resolution-pills';
 import { GenerationSettingsTrigger } from './generation-settings-trigger';
@@ -44,12 +47,20 @@ type GenerationSettingsProps = {
   analysisModels: AnalysisModelId[];
   imageModels: TextToImageModel[];
   videoModels: ImageToVideoModel[];
+  /**
+   * Generate a still per shot before motion (the frame-based workflow). Off,
+   * the default, renders each shot straight to video from the cast / location
+   * / element sheets. Omit the change handler to hide the control (contexts
+   * that cannot switch mode).
+   */
+  generateStartFrames?: boolean;
   audioModels?: AudioModel[];
   onAspectRatioChange: (value: AspectRatio) => void;
   onResolutionChange: (value: Resolution) => void;
   onAnalysisModelsChange: (value: AnalysisModelId[]) => void;
   onImageModelsChange: (value: TextToImageModel[]) => void;
   onVideoModelsChange: (value: ImageToVideoModel[]) => void;
+  onGenerateStartFramesChange?: (value: boolean) => void;
   onAudioModelsChange?: (value: AudioModel[]) => void;
   disabled?: boolean;
   singleSelectAnalysis?: boolean;
@@ -81,12 +92,14 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
   analysisModels,
   imageModels,
   videoModels,
+  generateStartFrames = false,
   audioModels,
   onAspectRatioChange,
   onResolutionChange,
   onAnalysisModelsChange,
   onImageModelsChange,
   onVideoModelsChange,
+  onGenerateStartFramesChange,
   onAudioModelsChange,
   disabled = false,
   singleSelectAnalysis = false,
@@ -106,6 +119,35 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
     imageModels,
     videoModels,
     aspectRatio,
+  };
+
+  // Per-team list from the `_app` loader, so the copy names the models this
+  // team can actually pick — Grok Imagine included when xAI is reachable.
+  const { referenceOnlyModels } = useViaAvailability();
+  const referenceOnlyModelNames = useMemo(
+    () =>
+      new Intl.ListFormat('en', { style: 'long', type: 'disjunction' }).format(
+        referenceOnlyModels.map((m) => IMAGE_TO_VIDEO_MODELS[m].name)
+      ),
+    [referenceOnlyModels]
+  );
+
+  /**
+   * Turning start frames OFF narrows the motion list, which can strand a selection
+   * the server would then reject at submit. Drop the models that cannot render
+   * without a start frame here, falling back to the first capable one so the
+   * selection is never empty — the user sees the change while the panel is
+   * open, rather than an error after pressing Generate.
+   */
+  const handleGenerateStartFramesChange = (next: boolean) => {
+    onGenerateStartFramesChange?.(next);
+    if (next) return;
+    const capable = videoModels.filter((m) => referenceOnlyModels.includes(m));
+    if (capable.length === videoModels.length) return;
+    const fallback = referenceOnlyModels[0];
+    onVideoModelsChange(
+      capable.length > 0 ? capable : fallback ? [fallback] : videoModels
+    );
   };
 
   return (
@@ -217,6 +259,34 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
             <h3 className="text-sm font-medium text-foreground">
               {singleSelectMotion ? 'Motion Model' : 'Motion Models'}
             </h3>
+            {onGenerateStartFramesChange && (
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="generate-start-frames"
+                  checked={generateStartFrames}
+                  onChange={(e) =>
+                    handleGenerateStartFramesChange(e.target.checked)
+                  }
+                  disabled={disabled}
+                  className="h-4 w-4 rounded border-border text-primary focus:ring-2 focus:ring-primary focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                />
+                <Label
+                  htmlFor="generate-start-frames"
+                  className="text-sm font-normal cursor-pointer"
+                >
+                  Generate start frames
+                </Label>
+              </div>
+            )}
+            {onGenerateStartFramesChange && !generateStartFrames && (
+              <p className="text-xs text-muted-foreground">
+                Each shot renders straight to video from the character, location
+                and element references — no still is generated first. Faster and
+                cheaper, with looser control over composition. Only{' '}
+                {referenceOnlyModelNames} can do this.
+              </p>
+            )}
             {singleSelectMotion ? (
               <MotionModelSelector
                 selectedModel={videoModels[0] ?? DEFAULT_VIDEO_MODEL}
@@ -224,6 +294,7 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
                 disabled={disabled}
                 aspectRatio={aspectRatio}
                 styleCategory={styleCategory}
+                referenceOnly={!generateStartFrames}
               />
             ) : (
               <MotionModelMultiSelector
@@ -232,6 +303,7 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
                 disabled={disabled}
                 aspectRatio={aspectRatio}
                 styleCategory={styleCategory}
+                referenceOnly={!generateStartFrames}
               />
             )}
           </section>

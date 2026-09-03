@@ -29,10 +29,14 @@ import { resolveAudioModels } from '@/lib/ai/resolve-audio-models';
 import { resolveImageModels } from '@/lib/ai/resolve-image-models';
 import { resolveVideoModels } from '@/lib/ai/resolve-video-models';
 import type { Scene } from '@/lib/ai/scene-analysis.schema';
-import { estimateStoryboardRenderCost } from '@/lib/billing/cost-estimation';
+import {
+  estimateReferenceSheetCost,
+  estimateStoryboardRenderCost,
+} from '@/lib/billing/cost-estimation';
 import { creditsShortStatusError } from '@/lib/billing/credits-short';
-import { microsToUsd } from '@/lib/billing/money';
+import { addMicros, microsToUsd } from '@/lib/billing/money';
 import { gateStoryboardRenders } from '@/lib/billing/storyboard-render-gate';
+import { reusesTalentSheet } from '@/lib/talent/reuse-talent-sheet';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import { buildCastCharacterBible } from '@/lib/prompts/character-prompt';
 import { getGenerationChannel } from '@/lib/realtime';
@@ -124,6 +128,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
       audioModels: audioModelsInput,
       suggestedTalentIds,
       suggestedLocationIds,
+      referenceOnly = false,
     } = input;
 
     const stopAt: GenerationStage = resolveStopAt({
@@ -492,14 +497,167 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
       }
     }
 
-    // ----------------------------------------------------------------------
-    // PHASE 3: character bible + location bible + visual prompts in parallel
-    // ----------------------------------------------------------------------
     const runReferences = shouldRunStage(startFrom, stopAt, 'references');
+
+    const totalDurationSeconds = scenes.reduce(
+      (sum, scene) => sum + (scene.metadata?.durationSeconds || 5),
+      0
+    );
+
+    // The reference sheets phase 3 is about to bill, counted EXACTLY rather
+    // than guessed. Casting has resolved, so this is one sheet per bible entry
+    // minus the characters whose matched talent sheet is reused (a storage
+    // copy, no generation) — the same question `character-bible-workflow` asks
+    // per character, via the same helper. Auto-generated element references
+    // (#835) are likewise decided by `findMissingElementEntries`, which reads
+    // only phase-1 output. Every location gets a sheet: a library match
+    // supplies a reference image but the styled sheet is still generated.
+    // A continue that starts after References bills no sheets (#1408).
+    const billedCharacterSheets = runReferences
+      ? castCharacterBible.filter(
+          (character) =>
+            !reusesTalentSheet(
+              character,
+              talentCharacterMatches.find(
+                (m) => m.characterId === character.characterId
+              )
+            )
+        ).length
+      : 0;
+    const billedLocationSheets = runReferences ? locationBible.length : 0;
+    const billedElementSheets = runReferences
+      ? findMissingElementEntries(elementBible, knownElements).length
+      : 0;
+
+    // Runs BEFORE phase 3, not after it (#929 had it downstream of the sheets).
+    // `peek.remaining` is a live balance, so a gate placed after phase 3 could
+    // only compare against money the sheets had already spent — which is why
+    // `estimateStoryboardRenderCost` excludes them. Moving it here means the
+    // sheet cost has to be added back, and in exchange a credits-short run
+    // fails in seconds rather than after a full set of sheets is paid for.
+    const renderGate = await step.do('grow-reservation', async () => {
+      const pricing = await getEffectiveFalPricing();
+      const remainingWork = addMicros(
+        estimateStoryboardRenderCost({
+          imageModel,
+          imageModelCount: imageModels.length,
+          aspectRatio,
+          resolution,
+          estimatedSceneCount: scenes.length,
+          autoGenerateMotion,
+          stopAt,
+          startFrom,
+          referenceOnly,
+          videoModels: autoGenerateMotion ? videoModels : undefined,
+          videoDurationSeconds: Math.max(
+            5,
+            Math.round(totalDurationSeconds / Math.max(scenes.length, 1))
+          ),
+          autoGenerateMusic: autoGenerateMusic && autoGenerateMotion,
+          audioModels:
+            autoGenerateMusic && autoGenerateMotion ? audioModels : undefined,
+          audioDurationSeconds: totalDurationSeconds,
+          pricing,
+        }),
+        estimateReferenceSheetCost({
+          imageModel,
+          characterSheets: billedCharacterSheets,
+          locationSheets: billedLocationSheets,
+          elementSheets: billedElementSheets,
+          pricing,
+        })
+      );
+      return gateStoryboardRenders({
+        scopedDb,
+        reservationId: input.reservationId,
+        remainingWork,
+        sceneCount: scenes.length,
+        sequenceId,
+      });
+    });
+
+    if (!renderGate.spawnRenders) {
+      // Gate already zeroed leftover. Fail the sequence and throw so the
+      // parent does not mark it completed with no stills.
+      const shortMessage = creditsShortStatusError({
+        sceneCount: scenes.length,
+        neededMicros: renderGate.neededMicros,
+      });
+      await step.do('emit-reservation-short', async () => {
+        if (!sequenceId) return;
+        await scopedDb
+          .sequence(sequenceId)
+          .updateStatus('failed', shortMessage);
+        await getGenerationChannel(sequenceId).emit(
+          'generation.reservation:short',
+          {
+            neededUsd: microsToUsd(renderGate.neededMicros),
+            remainingUsd: microsToUsd(renderGate.remainingMicros),
+            sceneCount: scenes.length,
+          }
+        );
+      });
+      await step.do('record-analysis-duration', async () => {
+        if (sequenceId) {
+          await scopedDb.sequences.updateAnalysisDurationMs(
+            sequenceId,
+            Date.now() - startTime
+          );
+        }
+      });
+      throw new NonRetryableError(shortMessage);
+    }
+
+    const runMotionMusicPrompts = (args: {
+      scenesForPrompts: Scene[];
+      startingFrameImageUrls: Record<string, string | null>;
+      visualSummaryBySceneId: Record<string, string>;
+    }) =>
+      spawnAndAwaitChild<
+        MotionMusicPromptsWorkflowInput,
+        MotionMusicPromptsWorkflowResult
+      >(step, {
+        binding: this.env.MOTION_MUSIC_PROMPTS_WORKFLOW,
+        parentBindingName: PARENT_BINDING_NAME,
+        parentInstanceId,
+        childId: `motion-music-prompts:${sequenceId ?? 'no-seq'}`,
+        childPayload: {
+          userId: input.userId,
+          teamId: input.teamId,
+          sequenceId,
+          reservationId: input.reservationId,
+          scenesWithVisualPrompts: args.scenesForPrompts,
+          shotMapping,
+          aspectRatio,
+          characterBible: castCharacterBible,
+          locationBible,
+          elementBible,
+          styleConfig,
+          analysisModelId,
+          videoModel,
+          videoModels,
+          startingFrameImageUrls: args.startingFrameImageUrls,
+          visualSummaryBySceneId: args.visualSummaryBySceneId,
+          musicPromptSource: input.musicPromptSource,
+          referenceOnly,
+        },
+        spawnStepName: 'spawn-motion-music-prompts',
+        awaitStepName: 'await-motion-music-prompts',
+        // Must exceed the child's own await budget: motion-prompt scene
+        // children get 30 minutes each, plus notify lag under a burst.
+        timeout: '60 minutes',
+      });
+
+    // ----------------------------------------------------------------------
+    // PHASE 3: character bible + location bible + frame prompts (or,
+    // reference-only, motion/music prompts) in parallel
+    // ----------------------------------------------------------------------
     if (runReferences) {
       await step.do('phase-3-start', async () => {
         await getGenerationChannel(sequenceId).emit('generation.phase:start', {
           phase: GENERATION_STAGE_META.references.phase,
+          // Accurate in both modes: reference-only writes no VISUAL prompts here
+          // but does write its motion/music prompts alongside the sheets.
           phaseName: 'Generating references & prompts…',
         });
       });
@@ -545,6 +703,55 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
       });
       return result.elements;
     };
+
+    // The STILL's prompt (`frame_prompt_versions`) — named for the frame, not
+    // "visual", so it cannot be confused with the motion prompt below now that
+    // both run in this phase.
+    //
+    // REFERENCE-ONLY skips it: one LLM call per scene for a
+    // prompt nothing in this mode reads. No still is rendered from it, and the
+    // reference-only motion template composes its own opening frame from the
+    // bibles — it is never handed the visual prompt (see
+    // `phase/motion-prompt-reference-only-chat`, whose inputs are the scene
+    // JSON and the bibles). The one consumer left is the music prompt's visual
+    // grounding, which falls back to `scene.metadata`.
+    //
+    // The anchor frame is still materialized and the per-scene storyboard
+    // preview still is untouched — the rail needs a thumbnail while the clip
+    // renders, and that preview is what fills it.
+    const runFramePrompts =
+      async (): Promise<FramePromptBatchWorkflowResult> => {
+        if (referenceOnly) {
+          return { scenes, visualPromptsBySceneId: {} };
+        }
+        return spawnAndAwaitChild<
+          FramePromptBatchWorkflowInput,
+          FramePromptBatchWorkflowResult
+        >(step, {
+          binding: this.env.FRAME_PROMPT_BATCH_WORKFLOW,
+          parentBindingName: PARENT_BINDING_NAME,
+          parentInstanceId,
+          childId: `frame-prompts-batch:${sequenceId ?? 'no-seq'}`,
+          childPayload: {
+            userId: input.userId,
+            teamId: input.teamId,
+            sequenceId,
+            reservationId: input.reservationId,
+            scenes,
+            aspectRatio,
+            characterBible: castCharacterBible,
+            locationBible,
+            elementBible,
+            styleConfig,
+            analysisModelId,
+            shotMapping,
+          },
+          spawnStepName: 'spawn-visual-prompts',
+          awaitStepName: 'await-visual-prompts',
+          // See await-character-bible — same grandchild budget + notify lag.
+          timeout: '60 minutes',
+        });
+      };
 
     const referenceSettled = runReferences
       ? await Promise.allSettled([
@@ -600,40 +807,31 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
             // See await-character-bible — same grandchild budget + notify lag.
             timeout: '60 minutes',
           }),
-          spawnAndAwaitChild<
-            FramePromptBatchWorkflowInput,
-            FramePromptBatchWorkflowResult
-          >(step, {
-            binding: this.env.FRAME_PROMPT_BATCH_WORKFLOW,
-            parentBindingName: PARENT_BINDING_NAME,
-            parentInstanceId,
-            childId: `frame-prompts-batch:${sequenceId ?? 'no-seq'}`,
-            childPayload: {
-              userId: input.userId,
-              teamId: input.teamId,
-              sequenceId,
-              reservationId: input.reservationId,
-              scenes,
-              aspectRatio,
-              characterBible: castCharacterBible,
-              locationBible,
-              elementBible,
-              styleConfig,
-              analysisModelId,
-              shotMapping,
-            },
-            spawnStepName: 'spawn-visual-prompts',
-            awaitStepName: 'await-visual-prompts',
-            // See await-character-bible — same grandchild budget + notify lag.
-            timeout: '60 minutes',
-          }),
+          runFramePrompts(),
           runElementSheets(),
+          // REFERENCE-ONLY writes its MOTION prompts in this slot — the same
+          // phase as the sheets, in place of the frame prompts it skips. They
+          // read bible TEXT, not sheets: the bibles are phase-1 output, casting
+          // resolved at the end of phase 2, and the only real dependency in the
+          // image path is the rendered still (#929 conditions the motion prompt
+          // on it as vision input), which this mode never produces. Null in
+          // every other mode, where they wait for phase 4's stills.
+          referenceOnly
+            ? runMotionMusicPrompts({
+                scenesForPrompts: scenes,
+                startingFrameImageUrls: Object.fromEntries(
+                  scenes.map((scene) => [scene.sceneId, null])
+                ),
+                visualSummaryBySceneId: {},
+              })
+            : Promise.resolve(null),
         ])
       : null;
     const charSettled = referenceSettled?.[0];
     const locationSettled = referenceSettled?.[1];
-    const visualSettled = referenceSettled?.[2];
+    const framePromptsSettled = referenceSettled?.[2];
     const elementSheetSettled = referenceSettled?.[3];
+    const referenceOnlyPromptsSettled = referenceSettled?.[4];
 
     if (runReferences) {
       if (!charSettled || charSettled.status !== 'fulfilled') {
@@ -646,9 +844,9 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
           `Location sheet generation failed: ${String(locationSettled?.reason ?? 'missing result')}`
         );
       }
-      if (!visualSettled || visualSettled.status !== 'fulfilled') {
+      if (!framePromptsSettled || framePromptsSettled.status !== 'fulfilled') {
         throw new Error(
-          `Visual prompt generation failed: ${String(visualSettled?.reason ?? 'missing result')}`
+          `Frame prompt generation failed: ${String(framePromptsSettled?.reason ?? 'missing result')}`
         );
       }
       if (!elementSheetSettled || elementSheetSettled.status !== 'fulfilled') {
@@ -671,15 +869,15 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
     // `frame.imagePrompt` from the DB — versions are append-only and a
     // concurrent run may have repointed the mirror, so a re-read would be racy.
     const scenesWithVisualPrompts =
-      visualSettled?.status === 'fulfilled'
-        ? visualSettled.value.scenes
+      framePromptsSettled?.status === 'fulfilled'
+        ? framePromptsSettled.value.scenes
         : (checkpoint?.scenesWithVisualPrompts ?? scenes);
     const visualPromptBySceneId: Record<string, string> =
-      visualSettled?.status === 'fulfilled'
+      framePromptsSettled?.status === 'fulfilled'
         ? Object.fromEntries(
-            Object.entries(visualSettled.value.visualPromptsBySceneId).map(
-              ([sceneId, visual]) => [sceneId, visual.fullPrompt]
-            )
+            Object.entries(
+              framePromptsSettled.value.visualPromptsBySceneId
+            ).map(([sceneId, visual]) => [sceneId, visual.fullPrompt])
           )
         : (checkpoint?.visualPromptBySceneId ?? {});
     const generatedElements =
@@ -695,7 +893,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
           ...elementsMinimal,
         ]);
 
-    if (shouldRunStage(startFrom, stopAt, 'references')) {
+    if (runReferences) {
       await persistProgress({
         completedStage: 'references',
         scenes,
@@ -717,80 +915,20 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
       }
     }
 
-    const totalDurationSeconds = scenes.reduce(
-      (sum, scene) => sum + (scene.metadata?.durationSeconds || 5),
-      0
-    );
-    const renderGate = await step.do('grow-reservation', async () => {
-      const remainingWork = estimateStoryboardRenderCost({
-        imageModel,
-        imageModelCount: imageModels.length,
-        aspectRatio,
-        resolution,
-        estimatedSceneCount: scenes.length,
-        autoGenerateMotion,
-        stopAt,
-        videoModels: autoGenerateMotion ? videoModels : undefined,
-        videoDurationSeconds: Math.max(
-          5,
-          Math.round(totalDurationSeconds / Math.max(scenes.length, 1))
-        ),
-        autoGenerateMusic: autoGenerateMusic && autoGenerateMotion,
-        audioModels:
-          autoGenerateMusic && autoGenerateMotion ? audioModels : undefined,
-        audioDurationSeconds: totalDurationSeconds,
-        pricing: await getEffectiveFalPricing(),
-      });
-      return gateStoryboardRenders({
-        scopedDb,
-        reservationId: input.reservationId,
-        remainingWork,
-        sceneCount: scenes.length,
-        sequenceId,
-      });
-    });
-
-    if (!renderGate.spawnRenders) {
-      // Gate already zeroed leftover. Fail the sequence and throw so the
-      // parent does not mark it completed with no stills.
-      const shortMessage = creditsShortStatusError({
-        sceneCount: scenes.length,
-        neededMicros: renderGate.neededMicros,
-      });
-      await step.do('emit-reservation-short', async () => {
-        if (!sequenceId) return;
-        await scopedDb
-          .sequence(sequenceId)
-          .updateStatus('failed', shortMessage);
-        await getGenerationChannel(sequenceId).emit(
-          'generation.reservation:short',
-          {
-            neededUsd: microsToUsd(renderGate.neededMicros),
-            remainingUsd: microsToUsd(renderGate.remainingMicros),
-            sceneCount: scenes.length,
-          }
-        );
-      });
-      await step.do('record-analysis-duration', async () => {
-        if (sequenceId) {
-          await scopedDb.sequences.updateAnalysisDurationMs(
-            sequenceId,
-            Date.now() - startTime
-          );
-        }
-      });
-      throw new NonRetryableError(shortMessage);
-    }
-
     // ----------------------------------------------------------------------
     // PHASE 4: shot images + motion/music prompts in parallel
     // ----------------------------------------------------------------------
-    await step.do('phase-4-start', async () => {
-      await getGenerationChannel(sequenceId).emit('generation.phase:start', {
-        phase: GENERATION_STAGE_META.images.phase,
-        phaseName: 'Generating images…',
+    // Reference-only has no phase 4: the stills are skipped and the prompts
+    // finished in phase 3, so it emits nothing and the progress rail runs
+    // Script → Casting → References → Music & Motion.
+    if (!referenceOnly) {
+      await step.do('phase-4-start', async () => {
+        await getGenerationChannel(sequenceId).emit('generation.phase:start', {
+          phase: GENERATION_STAGE_META.images.phase,
+          phaseName: 'Generating images…',
+        });
       });
-    });
+    }
 
     // Build per-scene snapshots for shot-images divergence detection. Resolve
     // references through the SAME helper the image-gen stamp and staleness
@@ -846,28 +984,43 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
     // music artifact in exchange for image-grounded motion. Each child is
     // wrapped in `Promise.allSettled` so a rejection is captured (not thrown)
     // and surfaced together below after recording the analysis duration.
-    const [shotImagesSettled] = await Promise.allSettled([
-      spawnAndAwaitChild<ShotImagesWorkflowInput, ShotImagesWorkflowResult>(
-        step,
-        {
-          binding: this.env.SHOT_IMAGES_WORKFLOW,
-          parentBindingName: PARENT_BINDING_NAME,
-          parentInstanceId,
-          childId: `shot-images:${sequenceId ?? 'no-seq'}`,
-          childPayload: shotImagesPayload,
-          spawnStepName: 'spawn-shot-images',
-          awaitStepName: 'await-shot-images',
-          // Must exceed the child's own budget — under a many-sequence burst
-          // the image queue alone can outlast the 30-minute default.
-          timeout: '90 minutes',
-        }
-      ),
-    ]);
+    //
+    // REFERENCE-ONLY skips this phase outright: no still is rendered, so the
+    // reason motion waits on images disappears and with it the whole image
+    // pass. Its motion/music prompts already settled in phase 3
+    // (`referenceOnlyPromptsSettled`); nothing is awaited here.
+    const shotImagesSettled: PromiseSettledResult<ShotImagesWorkflowResult> =
+      referenceOnly
+        ? {
+            status: 'fulfilled',
+            value: { imageUrls: [], frameVersionIds: [] },
+          }
+        : (
+            await Promise.allSettled([
+              spawnAndAwaitChild<
+                ShotImagesWorkflowInput,
+                ShotImagesWorkflowResult
+              >(step, {
+                binding: this.env.SHOT_IMAGES_WORKFLOW,
+                parentBindingName: PARENT_BINDING_NAME,
+                parentInstanceId,
+                childId: `shot-images:${sequenceId ?? 'no-seq'}`,
+                childPayload: shotImagesPayload,
+                spawnStepName: 'spawn-shot-images',
+                awaitStepName: 'await-shot-images',
+                // Must exceed the child's own budget — under a many-sequence
+                // burst the image queue alone can outlast the 30-minute
+                // default.
+                timeout: '90 minutes',
+              }),
+            ])
+          )[0];
 
     // Snapshot the rendered primary still per scene. `imageUrls` is aligned to
     // `scenesWithVisualPrompts` order (shot-images preserves slots, null for a
     // failed scene); a rejected batch → empty map → motion falls back to
-    // text-only (and the rejection is raised below regardless).
+    // text-only (and the rejection is raised below regardless). Reference-only
+    // leaves every entry null, which is what the mode means.
     const shotImageUrls =
       shotImagesSettled.status === 'fulfilled'
         ? shotImagesSettled.value.imageUrls
@@ -880,41 +1033,26 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
         ])
       );
 
-    const [motionMusicSettled] = await Promise.allSettled([
-      spawnAndAwaitChild<
-        MotionMusicPromptsWorkflowInput,
-        MotionMusicPromptsWorkflowResult
-      >(step, {
-        binding: this.env.MOTION_MUSIC_PROMPTS_WORKFLOW,
-        parentBindingName: PARENT_BINDING_NAME,
-        parentInstanceId,
-        childId: `motion-music-prompts:${sequenceId ?? 'no-seq'}`,
-        childPayload: {
-          userId: input.userId,
-          teamId: input.teamId,
-          sequenceId,
-          reservationId: input.reservationId,
-          scenesWithVisualPrompts,
-          shotMapping,
-          aspectRatio,
-          characterBible: castCharacterBible,
-          locationBible,
-          elementBible,
-          styleConfig,
-          analysisModelId,
-          videoModel,
-          videoModels,
-          startingFrameImageUrls,
-          visualSummaryBySceneId: visualPromptBySceneId,
-          musicPromptSource: input.musicPromptSource,
-        },
-        spawnStepName: 'spawn-motion-music-prompts',
-        awaitStepName: 'await-motion-music-prompts',
-        // Must exceed the child's own await budget: motion-prompt scene
-        // children get 30 minutes each, plus notify lag under a burst.
-        timeout: '60 minutes',
-      }),
-    ]);
+    // Settled back in phase 3 when reference-only; otherwise it starts here,
+    // because it needs the stills phase 4 just rendered. A phase-3 rejection
+    // is carried through unchanged so it surfaces at the shared raise site
+    // below, after the analysis duration is recorded. A continue that skipped
+    // phase 3 (#1408) has no settled prompts and runs them here regardless.
+    const motionMusicSettled: PromiseSettledResult<MotionMusicPromptsWorkflowResult> =
+      referenceOnlyPromptsSettled?.status === 'rejected'
+        ? referenceOnlyPromptsSettled
+        : referenceOnlyPromptsSettled?.status === 'fulfilled' &&
+            referenceOnlyPromptsSettled.value
+          ? { status: 'fulfilled', value: referenceOnlyPromptsSettled.value }
+          : (
+              await Promise.allSettled([
+                runMotionMusicPrompts({
+                  scenesForPrompts: scenesWithVisualPrompts,
+                  startingFrameImageUrls,
+                  visualSummaryBySceneId: visualPromptBySceneId,
+                }),
+              ])
+            )[0];
 
     // Record analysis duration before raising failures (mirrors QStash).
     await step.do('record-analysis-duration', async () => {
@@ -958,10 +1096,13 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
     // ----------------------------------------------------------------------
     // PHASE 5: motion (+ optional music + merge) batch — single child
     // ----------------------------------------------------------------------
+    // Reference-only has no stills to require: the sheets and the prompt are
+    // the whole input, so the "at least one image rendered" gate would skip
+    // motion on every reference-only sequence.
     const shouldGenerateMotion =
       autoGenerateMotion &&
       primaryVideoModel &&
-      imageUrls.some((url) => url !== null);
+      (referenceOnly || imageUrls.some((url) => url !== null));
     const shouldGenerateMusic = Boolean(
       autoGenerateMusic &&
       sequenceId &&
@@ -988,6 +1129,10 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
         resolution,
         characters: charactersWithSheets,
         elements: allElements,
+        // Reference-only motion attaches the location sheet too — with no
+        // still, it is the only thing establishing the set.
+        locations: locationsWithSheets,
+        referenceOnly,
       });
 
       await step.do('phase-5-start', async () => {

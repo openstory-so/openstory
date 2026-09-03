@@ -23,6 +23,7 @@ const emit = vi.fn(async () => {});
 vi.doMock('@/lib/motion/motion-generation', () => ({
   submitMotionJob: mockSubmit,
   pollMotionJob: mockPoll,
+  canRenderReferenceOnly: async () => true,
   calculateMotionMetadata: () => ({ cost: 0, duration: 5 }),
   motionCostFromUsage: () => ({
     cost: 0,
@@ -165,6 +166,7 @@ function makeEvent(
       shotId: 'shot-1',
       sceneId: 'scene-1',
       imageUrl: '/r2/stills/a.png',
+      referenceOnly: false,
       prompt: 'the original prompt',
       model: MODEL,
       motionPromptVersionId: 'spv-orig',
@@ -261,6 +263,7 @@ describe('MotionWorkflow content-flag rescue (#1373)', () => {
         promptType: 'motion',
         text: 'the softened prompt',
         source: 'softened',
+        usesStartFrame: true,
         inputHash: 'ctx-hash',
         analysisModel: 'anthropic/claude-haiku-4.5',
         select: true,
@@ -268,7 +271,10 @@ describe('MotionWorkflow content-flag rescue (#1373)', () => {
     );
     expect(videoVariants.update).toHaveBeenCalledWith('vv-1', {
       manifest: [
-        expect.objectContaining({ motionPromptVersionId: 'spv-soft' }),
+        expect.objectContaining({
+          motionPromptVersionId: 'spv-soft',
+          usesStartFrame: true,
+        }),
       ],
       inputHash: `${MODEL}:spv-soft`,
     });
@@ -402,5 +408,34 @@ describe('MotionWorkflow content-flag rescue (#1373)', () => {
     );
     expect(mockSubmit).toHaveBeenCalledTimes(4);
     expect(mockDeductWorkflowCredits).not.toHaveBeenCalled();
+  });
+});
+
+describe('MotionWorkflow reference-only provenance', () => {
+  it('stamps usesStartFrame: false and a null frameVersionId on the opened version', async () => {
+    const { scopedDb, videoVariants } = makeScopedDb();
+
+    await makeWorkflow().runBody(
+      makeEvent({
+        imageUrl: undefined,
+        frameVersionId: undefined,
+        referenceOnly: true,
+      }),
+      makeStep(),
+      scopedDb
+    );
+
+    // The column default is `true`, so only an explicit `false` proves the
+    // stamp was written rather than inferred.
+    expect(videoVariants.appendVersion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        manifest: [
+          expect.objectContaining({
+            usesStartFrame: false,
+            frameVersionId: null,
+          }),
+        ],
+      })
+    );
   });
 });
