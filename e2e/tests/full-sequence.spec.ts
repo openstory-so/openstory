@@ -314,7 +314,7 @@ SUPER:  CORAL.  OUT NOW.
       // dialog because the confirm button is also called "Generate".
       const stopAtAlert = page.getByRole('alertdialog');
       await expect(
-        stopAtAlert.getByText('How far should this run?')
+        stopAtAlert.getByText('How much control do you want?')
       ).toBeVisible({ timeout: t(10_000) });
       await stopAtAlert.getByRole('button', { name: /^Generate$/i }).click();
 

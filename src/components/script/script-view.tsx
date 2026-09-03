@@ -1805,7 +1805,7 @@ export const ScriptView: FC<{
                   prefix={
                     savedSettings.rememberStopAt ? (
                       <span>
-                        Until{' '}
+                        Stops after{' '}
                         <button
                           type="button"
                           className="underline underline-offset-2 hover:text-foreground"

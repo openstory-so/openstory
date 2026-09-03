@@ -163,7 +163,7 @@ describe('generationStreamReducer — shot retry tracking (#882)', () => {
 describe('generationStreamReducer — stop-at banner (#1408)', () => {
   it('does not grow a Script-only banner when Casting is announced', () => {
     const scriptOnly = createInitialState({ stopAt: 'script' });
-    expect(scriptOnly.phases.map((p) => p.shortName)).toEqual(['Script']);
+    expect(scriptOnly.phases.map((p) => p.shortName)).toEqual(['Casting']);
 
     // Casting rides on the Script phase number — it recaptions, never sprouts.
     const next = apply(scriptOnly, {
@@ -174,14 +174,14 @@ describe('generationStreamReducer — stop-at banner (#1408)', () => {
       },
     });
 
-    expect(next.phases.map((p) => p.shortName)).toEqual(['Script']);
+    expect(next.phases.map((p) => p.shortName)).toEqual(['Casting']);
     expect(next.phases[0]?.phaseName).toBe('Casting characters & locations…');
   });
 
   it('grows a banner sized for an early stop when a Continue runs past it', () => {
     const references = createInitialState({ stopAt: 'references' });
     expect(references.phases.map((p) => p.shortName)).toEqual([
-      'Script',
+      'Casting',
       'References',
     ]);
 
@@ -191,7 +191,7 @@ describe('generationStreamReducer — stop-at banner (#1408)', () => {
     });
 
     expect(next.phases.map((p) => p.shortName)).toEqual([
-      'Script',
+      'Casting',
       'References',
       'Music & Motion',
     ]);
@@ -214,7 +214,7 @@ describe('progress phases in reference-only', () => {
     // a step the user watches while it does nothing; the workflow emits no
     // images event at all, so the chip would sit pending until motion swept it.
     expect(shortNames({ stopAt: 'music', referenceOnly: true })).toEqual([
-      'Script',
+      'Casting',
       'References',
       'Music & Motion',
     ]);
@@ -228,7 +228,7 @@ describe('progress phases in reference-only', () => {
 
   it('leaves the image-rendering modes alone', () => {
     expect(shortNames({ stopAt: 'music' })).toEqual([
-      'Script',
+      'Casting',
       'References',
       'Images',
       'Music & Motion',

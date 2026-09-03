@@ -66,7 +66,7 @@ export const GenerationStopAlert: FC<GenerationStopAlertProps> = ({
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent className="data-[size=default]:max-w-lg data-[size=default]:sm:max-w-lg">
         <AlertDialogHeader>
-          <AlertDialogTitle>How far should this run?</AlertDialogTitle>
+          <AlertDialogTitle>How much control do you want?</AlertDialogTitle>
           <AlertDialogDescription>
             {description ??
               'The workflow stops at the stage you pick. You can generate the rest from the scene list.'}
@@ -91,22 +91,25 @@ export const GenerationStopAlert: FC<GenerationStopAlertProps> = ({
             Remember my choice
           </Label>
         </div>
-        <div className="min-h-4 flex justify-end">
-          <ActionCost estimate={estimate} align="end" />
-        </div>
-        <AlertDialogFooter>
+        <AlertDialogFooter className="sm:items-start">
           <AlertDialogCancel>Cancel</AlertDialogCancel>
-          <AlertDialogAction
-            onClick={() =>
-              onConfirm({
-                stopAt: draftStopAt,
-                generateStartFrames: draftStartFrames,
-                remember: draftRemember,
-              })
-            }
-          >
-            {confirmLabel}
-          </AlertDialogAction>
+          {/* Cost sits under the CTA, as under every other generate button. */}
+          <div className="flex flex-col gap-1">
+            <AlertDialogAction
+              onClick={() =>
+                onConfirm({
+                  stopAt: draftStopAt,
+                  generateStartFrames: draftStartFrames,
+                  remember: draftRemember,
+                })
+              }
+            >
+              {confirmLabel}
+            </AlertDialogAction>
+            <div className="min-h-4">
+              <ActionCost estimate={estimate} align="end" />
+            </div>
+          </div>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

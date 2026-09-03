@@ -70,7 +70,7 @@ export const GENERATION_STAGE_META: Record<
   script: {
     phase: 1,
     name: 'Analyzing script & casting\u2026',
-    shortName: 'Script',
+    shortName: 'Casting',
     description:
       'Breaking your script into scenes and casting characters, locations & elements',
     actionLabel: 'Analyze Script',
@@ -384,6 +384,7 @@ export function stopAtFromSliderIndex(
 
 export function sliderStopLabel(stopAt: GenerationStage): string {
   if (stopAt === 'music' || stopAt === 'motion') return 'Music & Motion';
+  if (stopAt === 'references') return 'References & Prompts';
   return GENERATION_STAGE_META[stopAt].shortName;
 }
 

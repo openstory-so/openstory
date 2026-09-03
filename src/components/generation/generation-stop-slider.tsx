@@ -56,7 +56,7 @@ export const GenerationStopSlider: FC<GenerationStopSliderProps> = ({
           id="generation-stop-label"
           className="text-sm font-medium text-foreground"
         >
-          Run until
+          Stop after
         </h3>
         <span className="text-sm text-muted-foreground">
           {sliderStopLabel(selected)}
@@ -114,29 +114,32 @@ export const GenerationStopSlider: FC<GenerationStopSliderProps> = ({
         {sliderStopDescription(selected)}.
       </p>
       {onGenerateStartFramesChange && (
-        <div className="flex items-center justify-between gap-3">
-          <Label
-            htmlFor="generate-start-frames"
-            className="text-sm font-normal text-muted-foreground"
-          >
-            Start frames
-          </Label>
-          <Switch
-            id="generate-start-frames"
-            checked={generateStartFrames}
-            onCheckedChange={(next) => {
-              onGenerateStartFramesChange(next);
-              // Off drops the Images stop; a thumb sitting on it moves up to
-              // Music & Motion so the parent's value matches the slider.
-              const nextStages = sliderStages(!next);
-              const moved = stopAtFromSliderIndex(
-                sliderThumbIndex(value, nextStages),
-                nextStages
-              );
-              if (moved !== value) onChange(moved);
-            }}
-            disabled={disabled}
-          />
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-2">
+            <Switch
+              id="generate-start-frames"
+              checked={generateStartFrames}
+              onCheckedChange={(next) => {
+                onGenerateStartFramesChange(next);
+                // Off drops the Images stop; a thumb sitting on it moves up to
+                // Music & Motion so the parent's value matches the slider.
+                const nextStages = sliderStages(!next);
+                const moved = stopAtFromSliderIndex(
+                  sliderThumbIndex(value, nextStages),
+                  nextStages
+                );
+                if (moved !== value) onChange(moved);
+              }}
+              disabled={disabled}
+            />
+            <Label htmlFor="generate-start-frames" className="text-sm">
+              Use start frames
+            </Label>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Renders a still for each shot to review before motion. Off renders
+            video straight from the reference sheets.
+          </p>
         </div>
       )}
     </section>

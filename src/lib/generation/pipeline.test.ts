@@ -266,6 +266,7 @@ describe('completedStageFromArtifacts / nextActionFromArtifacts', () => {
     expect(sliderThumbIndex('music', stages)).toBe(3);
     expect(sliderThumbIndex('motion', stages)).toBe(3);
     expect(sliderStopLabel('music')).toBe('Music & Motion');
+    expect(sliderStopLabel('references')).toBe('References & Prompts');
     expect(sliderStopLabel('images')).toBe('Images');
   });
 
