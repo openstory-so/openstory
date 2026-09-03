@@ -340,12 +340,11 @@ function toShareableExportUrl(url: string): string {
 
 function triggerDownload(url: string, title: string | null | undefined): void {
   const a = document.createElement('a');
-  a.href = url;
+  // `?download` keeps the worker's /r2 route from redirecting to the CDN
+  // domain: the bytes stay same-origin (so `download` below applies) and come
+  // back as `content-disposition: attachment` rather than playing in a tab.
+  a.href = `${url}${url.includes('?') ? '&' : '?'}download`;
   a.download = `${title || 'sequence'}_openstory.mp4`;
-  // Browsers ignore `download` on cross-origin hrefs (the CDN domain in prod)
-  // and would navigate the theatre tab away — open in a new tab instead.
-  a.target = '_blank';
-  a.rel = 'noopener';
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);

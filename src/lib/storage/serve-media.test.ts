@@ -62,3 +62,31 @@ describe('serveStoredMedia', () => {
     expect(serveFile).toHaveBeenCalledWith('audio/a.wav', request);
   });
 });
+
+describe('serveStoredMedia ?download', () => {
+  it('streams with content-disposition instead of redirecting to the CDN', async () => {
+    setEnv({ R2_PUBLIC_STORAGE_DOMAIN: 'storage.example.com' });
+    serveFile.mockResolvedValue(new Response('bytes'));
+
+    const response = await serveStoredMedia(
+      'videos/team/v.mp4',
+      new Request('https://app.example.com/r2/videos/team/v.mp4?download')
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-disposition')).toBe('attachment');
+  });
+
+  it('passes a 404 through untouched', async () => {
+    setEnv({ R2_PUBLIC_STORAGE_DOMAIN: 'storage.example.com' });
+    serveFile.mockResolvedValue(new Response('Not found', { status: 404 }));
+
+    const response = await serveStoredMedia(
+      'videos/gone.mp4',
+      new Request('https://app.example.com/r2/videos/gone.mp4?download')
+    );
+
+    expect(response.status).toBe(404);
+    expect(response.headers.get('content-disposition')).toBeNull();
+  });
+});

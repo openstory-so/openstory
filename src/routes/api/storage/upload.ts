@@ -10,7 +10,7 @@ export const Route = createFileRoute('/api/storage/upload')({
     handlers: {
       PUT: async ({ request, context }) => {
         try {
-          const resolved = await resolveUploadTarget(request, context.user.id);
+          const resolved = await resolveUploadTarget(request, context.user);
           if (!resolved.ok) return resolved.response;
           const { bucket, path, contentType } = resolved.target;
 
