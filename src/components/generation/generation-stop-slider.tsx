@@ -99,7 +99,9 @@ export const GenerationStopSlider: FC<GenerationStopSliderProps> = ({
               )}
               style={{ left: `${stopLabelPercent(index, lastStop)}%` }}
             >
-              {GENERATION_STAGE_META[stage].shortName}
+              {index === lastStop
+                ? stopAfterSentence(stage)
+                : GENERATION_STAGE_META[stage].shortName}
             </button>
           ))}
         </div>
