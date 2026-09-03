@@ -59,12 +59,21 @@ export function ActionCost({
     align === 'center' && 'justify-center'
   );
 
-  if (!showCosts || estimate == null) {
+  if (!showCosts) {
     return prefix ? (
       <span className={cn(justify, 'text-muted-foreground', className)}>
         {prefix}
       </span>
     ) : null;
+  }
+  // The estimate arrives client-side after the pricing query, so an empty
+  // line is reserved until then — otherwise every button it sits under jumps.
+  if (estimate == null) {
+    return (
+      <span className={cn(justify, 'min-h-4 text-muted-foreground', className)}>
+        {prefix}
+      </span>
+    );
   }
 
   // Wallet path only — team fal key covers media (and LLM when routed via fal).

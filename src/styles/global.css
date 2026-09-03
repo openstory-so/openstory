@@ -235,10 +235,10 @@ body {
   background: linear-gradient(
     90deg,
     transparent 30%,
-    color-mix(in oklch, var(--primary) 35%, transparent) 50%,
+    color-mix(in oklch, var(--primary) 22%, transparent) 50%,
     transparent 70%
   );
-  animation: progress-shimmer 1.8s ease-in-out infinite;
+  animation: progress-shimmer 2.4s ease-in-out infinite;
   pointer-events: none;
 }
 

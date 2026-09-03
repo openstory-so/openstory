@@ -1376,6 +1376,14 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
 
   const handleContinueGeneration = useCallback(
     async (args: { startFrom: ContinueStage; stopAt: GenerationStage }) => {
+      // Optimistic status flip, as the motion batch does: the chip and the
+      // footer key off `sequence.status`, and the server fn reserves credits
+      // and triggers the workflow before it returns.
+      const key = sequenceKeys.detail(sequenceId);
+      const previous = queryClient.getQueryData<Sequence>(key);
+      queryClient.setQueryData<Sequence>(key, (old) =>
+        old ? { ...old, status: 'processing', updatedAt: new Date() } : old
+      );
       try {
         await continueGenerationFn({
           data: {
@@ -1387,6 +1395,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
       } catch (error) {
         // Continue reserves credits like any other run, so it hits the same
         // gate as batch motion — show the gate, not a generic error toast.
+        queryClient.setQueryData<Sequence>(key, previous);
         if (!isInsufficientCreditsError(error)) throw error;
         showBillingGate('insufficient');
         void queryClient.invalidateQueries({ queryKey: BILLING_BALANCE_KEY });
