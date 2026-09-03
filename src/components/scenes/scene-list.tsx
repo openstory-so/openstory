@@ -9,6 +9,8 @@ import {
   actionLabelForStage,
   DEFAULT_GENERATION_STOP_AT,
   includesStage,
+  isContinueStage,
+  type ContinueStage,
   type GenerationStage,
 } from '@/lib/generation/pipeline';
 import { useCreateScene, useReorderScenes } from '@/hooks/use-scene-structure';
@@ -135,7 +137,7 @@ export type SceneListProps = {
   onBatchGenerateMotion?: (args: BatchGenerateMotionArgs) => Promise<void>;
   nextStage?: GenerationStage | null;
   onContinueGeneration?: (args: {
-    startFrom: GenerationStage;
+    startFrom: ContinueStage;
     stopAt: GenerationStage;
   }) => Promise<void>;
   onGenerateMusic?: (model: AudioModel) => Promise<void>;
@@ -361,15 +363,13 @@ const SceneListComponent: React.FC<SceneListProps> = ({
     !hideBatchButton && nextStage === 'music' && Boolean(onGenerateMusic);
   const showContinueFooter =
     !hideBatchButton &&
-    Boolean(nextStage) &&
-    nextStage !== 'motion' &&
-    nextStage !== 'music' &&
+    isContinueStage(nextStage) &&
     Boolean(onContinueGeneration);
   const ContinueIcon = CONTINUE_ICON[continueStopAt];
   const showButton = showMotionFooter;
 
   const handleContinue = async () => {
-    if (!onContinueGeneration || !nextStage) return;
+    if (!onContinueGeneration || !isContinueStage(nextStage)) return;
     await runFooterAction(
       `Failed to ${actionLabelForStage(continueStopAt).toLowerCase()}`,
       () =>
@@ -478,6 +478,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
       estimatedSceneCount: sceneCount,
       startFrom: nextStage,
       stopAt: continueStopAt,
+      referenceOnly: !generateStartFrames,
       autoGenerateMotion: motionOn,
       videoModels: motionOn ? [videoModel] : undefined,
       videoDurationSeconds: motionOn ? perShotSeconds : undefined,
@@ -495,6 +496,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
     scenes?.length,
     shots,
     continueStopAt,
+    generateStartFrames,
     videoModel,
     musicModel,
   ]);
@@ -770,7 +772,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
         </div>
       )}
 
-      {showContinueFooter && nextStage && (
+      {showContinueFooter && (
         <div className="sticky bottom-0 border-t bg-background p-4 flex flex-col gap-3">
           <GenerationStopSlider
             value={continueStopAt}

@@ -21,7 +21,6 @@ import {
   stageIndex,
   stagesUpTo,
   stopAtFromFlags,
-  type GenerationStage,
   type PipelineArtifacts,
 } from './pipeline';
 
@@ -77,15 +76,6 @@ describe('generation pipeline stages', () => {
         autoGenerateMusic: false,
       })
     ).toBe('references');
-    // Rows written before casting folded into script.
-    expect(
-      resolveStopAt({
-        // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- legacy stored value
-        generationStopAt: 'casting' as GenerationStage,
-        autoGenerateMotion: false,
-        autoGenerateMusic: false,
-      })
-    ).toBe('script');
     expect(
       resolveStopAt({
         autoGenerateMotion: false,
@@ -156,16 +146,6 @@ describe('completedStageFromArtifacts / nextActionFromArtifacts', () => {
     expect(nextActionFromArtifacts(artifacts)).toBe('references');
   });
 
-  it('reads a legacy casting pipelineStage as script', () => {
-    const afterCasting = {
-      ...empty,
-      // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- legacy stored value
-      pipelineStage: 'casting' as GenerationStage,
-    };
-    expect(completedStageFromArtifacts(afterCasting)).toBe('script');
-    expect(nextActionFromArtifacts(afterCasting)).toBe('references');
-  });
-
   it('prefers artifacts over a stale pipelineStage write', () => {
     const imagesLanded = {
       ...empty,
@@ -228,6 +208,11 @@ describe('completedStageFromArtifacts / nextActionFromArtifacts', () => {
 
     const done = { ...videos, hasMusic: true };
     expect(nextActionFromArtifacts(done)).toBe(null);
+
+    // Music left over from a run whose shots were since deleted is not a
+    // finished pipeline.
+    const staleMusic = { ...empty, hasScenes: true, hasMusic: true };
+    expect(nextActionFromArtifacts(staleMusic)).toBe('references');
   });
 
   it('labels the continue button with the next stage verb', () => {

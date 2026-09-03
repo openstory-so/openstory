@@ -24,6 +24,7 @@ import { continueGenerationFn, generateMusicFn } from '@/functions/sequences';
 import {
   artifactsFromSequenceState,
   continueStageFromState,
+  type ContinueStage,
   type GenerationStage,
 } from '@/lib/generation/pipeline';
 import { getDivergentVariantPromptDiffFn } from '@/functions/prompt-variants';
@@ -1374,7 +1375,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
   );
 
   const handleContinueGeneration = useCallback(
-    async (args: { startFrom: GenerationStage; stopAt: GenerationStage }) => {
+    async (args: { startFrom: ContinueStage; stopAt: GenerationStage }) => {
       try {
         await continueGenerationFn({
           data: {

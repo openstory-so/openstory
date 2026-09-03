@@ -37,6 +37,7 @@ import {
   sequenceScenesUrl,
 } from '@/lib/emails/notify-sequence-ready';
 import { getGenerationChannel } from '@/lib/realtime';
+import { includesStage } from '@/lib/generation/pipeline';
 import { validateSequenceAuth } from '@/lib/workflow/auth';
 import { spawnAndAwaitChild } from '@/lib/workflow/await-child';
 import { OpenStoryWorkflowEntrypoint } from '@/lib/workflow/base-workflow';
@@ -99,12 +100,15 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
       }
 
       await seq.updateStatus('processing');
-      if (input.stopAt) {
-        await scopedDb.sequences.update({
-          id: sequenceId,
-          generationStopAt: input.stopAt,
-        });
-      }
+      await scopedDb.sequences.update({
+        id: sequenceId,
+        generationStopAt: input.stopAt,
+        // A fresh run just deleted the shots the old checkpoint maps to; a
+        // stale stage would offer a continue into them (#1408).
+        ...(input.resume
+          ? {}
+          : { pipelineStage: null, generationCheckpoint: null }),
+      });
     });
 
     // Pending automatic style (#1213): the poster renders from the script alone.
@@ -270,6 +274,11 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
         sequenceId,
       });
     });
+
+    // "Your video is ready" is a one-shot claim per sequence: sending it for
+    // a run that stopped before motion would spend it on a board with no video
+    // and silence the real completion (#1408).
+    if (!includesStage(input.stopAt, 'motion')) return;
 
     // After emit-complete: a send retry must not strand the player on processing.
     await step.do('email-ready', async () => {

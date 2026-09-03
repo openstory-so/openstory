@@ -68,7 +68,7 @@ import type {
 } from '@/lib/workflow/types';
 import {
   GENERATION_STAGE_META,
-  resolveStopAt,
+  flagsFromStopAt,
   shouldRunStage,
   type GenerationCheckpoint,
   type GenerationStage,
@@ -119,9 +119,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
       imageModels: imageModelsInput,
       videoModel,
       videoModels: videoModelsInput,
-      autoGenerateMotion = false,
-      autoGenerateMusic = false,
-      stopAt: stopAtInput,
+      stopAt,
       startFrom: startFromInput,
       checkpoint: checkpointInput,
       musicModel,
@@ -131,11 +129,9 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
       referenceOnly = false,
     } = input;
 
-    const stopAt: GenerationStage = resolveStopAt({
-      stopAt: stopAtInput,
-      autoGenerateMotion,
-      autoGenerateMusic,
-    });
+    // Stop-at is the only word on how far to run; the legacy flags on the
+    // payload are derived from it and never consulted (#1408).
+    const { autoGenerateMotion, autoGenerateMusic } = flagsFromStopAt(stopAt);
     const startFrom: GenerationStage = startFromInput ?? 'script';
     let checkpoint: GenerationCheckpoint | undefined = checkpointInput;
 
@@ -859,11 +855,11 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
     const charactersWithSheets =
       charSettled?.status === 'fulfilled'
         ? charSettled.value
-        : hydrateCharacters(checkpoint?.charactersWithSheets);
+        : (checkpoint?.charactersWithSheets ?? []);
     const locationsWithSheets =
       locationSettled?.status === 'fulfilled'
         ? locationSettled.value
-        : hydrateLocations(checkpoint?.locationsWithSheets);
+        : (checkpoint?.locationsWithSheets ?? []);
     // The visual-prompt workflow returns the generated prompts in memory
     // (#713/#991): thread them straight to the next phase rather than re-reading
     // `frame.imagePrompt` from the DB — versions are append-only and a
@@ -888,10 +884,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
     // image-less twin in `knownElements`.
     const allElements = runReferences
       ? dedupeById([...generatedElements, ...knownElements])
-      : dedupeById([
-          ...hydrateElements(checkpoint?.allElements),
-          ...elementsMinimal,
-        ]);
+      : dedupeById([...(checkpoint?.allElements ?? []), ...elementsMinimal]);
 
     if (runReferences) {
       await persistProgress({
@@ -920,7 +913,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
     // ----------------------------------------------------------------------
     // Reference-only has no phase 4: the stills are skipped and the prompts
     // finished in phase 3, so it emits nothing and the progress rail runs
-    // Script → Casting → References → Music & Motion.
+    // Script → References → Music & Motion.
     if (!referenceOnly) {
       await step.do('phase-4-start', async () => {
         await getGenerationChannel(sequenceId).emit('generation.phase:start', {
@@ -1230,58 +1223,4 @@ function dedupeById<T extends { id: string }>(rows: T[]): T[] {
     seen.add(row.id);
     return true;
   });
-}
-
-function hydrateCharacters(
-  rows: GenerationCheckpoint['charactersWithSheets']
-): CharacterMinimal[] {
-  if (!rows) return [];
-  return rows.map((row) => ({
-    id: row.id,
-    characterId: row.characterId,
-    name: row.name,
-    sheetImageUrl: row.sheetImageUrl,
-    sheetStatus:
-      row.sheetStatus === 'generating' ||
-      row.sheetStatus === 'completed' ||
-      row.sheetStatus === 'failed'
-        ? row.sheetStatus
-        : 'pending',
-    sheetInputHash: row.sheetInputHash,
-    selectedSheetVersionId: row.selectedSheetVersionId,
-    physicalDescription: row.physicalDescription,
-    consistencyTag: row.consistencyTag,
-  }));
-}
-
-function hydrateLocations(
-  rows: GenerationCheckpoint['locationsWithSheets']
-): SequenceLocationMinimal[] {
-  if (!rows) return [];
-  return rows.map((row) => ({
-    id: row.id,
-    locationId: row.locationId,
-    name: row.name,
-    referenceImageUrl: row.referenceImageUrl,
-    referenceStatus: 'completed',
-    referenceInputHash: null,
-    selectedReferenceVersionId: null,
-    description: null,
-    consistencyTag: null,
-  }));
-}
-
-function hydrateElements(
-  rows: GenerationCheckpoint['allElements']
-): SequenceElementMinimal[] {
-  if (!rows) return [];
-  return rows
-    .map((row) => ({
-      id: row.id,
-      token: row.token,
-      description: row.description,
-      imageUrl: row.imageUrl,
-      consistencyTag: row.consistencyTag,
-    }))
-    .filter((row) => Boolean(row.imageUrl));
 }

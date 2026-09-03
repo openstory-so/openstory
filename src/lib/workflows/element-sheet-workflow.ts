@@ -40,6 +40,7 @@ import { uploadResponse } from '@/lib/storage/upload-response';
 import { contentRejectionSummary } from '@/lib/ai/content-rejection';
 import { OpenStoryWorkflowEntrypoint } from '@/lib/workflow/base-workflow';
 import { generateImageSoftening } from '@/lib/workflows/content-soften';
+import { MAX_AUTO_ELEMENTS } from '@/lib/workflows/cast-records';
 import type {
   ElementSheetWorkflowInput,
   ElementSheetWorkflowResult,
@@ -48,13 +49,6 @@ import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { getLogger } from '@/lib/observability/logger';
 
 const logger = getLogger(['openstory', 'workflow', 'element-sheet']);
-
-/**
- * Upper bound on auto-generated element references per run. The scene-split
- * prompt asks the model to detect at most 3; this guards against a chatty
- * model burning image credits on incidental props.
- */
-const MAX_AUTO_ELEMENTS = 3;
 
 function toMinimalElement(
   row: Pick<

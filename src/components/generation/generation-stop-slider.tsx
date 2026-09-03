@@ -127,7 +127,7 @@ export const GenerationStopSlider: FC<GenerationStopSliderProps> = ({
             onCheckedChange={(next) => {
               onGenerateStartFramesChange(next);
               // Off drops the Images stop; a thumb sitting on it moves up to
-              // Motion so the parent's value matches what the slider shows.
+              // Music & Motion so the parent's value matches the slider.
               const nextStages = sliderStages(!next);
               const moved = stopAtFromSliderIndex(
                 sliderThumbIndex(value, nextStages),

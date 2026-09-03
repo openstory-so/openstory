@@ -165,16 +165,42 @@ describe('generationStreamReducer — stop-at banner (#1408)', () => {
     const scriptOnly = createInitialState({ stopAt: 'script' });
     expect(scriptOnly.phases.map((p) => p.shortName)).toEqual(['Script']);
 
+    // Casting rides on the Script phase number — it recaptions, never sprouts.
     const next = apply(scriptOnly, {
       type: 'PHASE_START',
       payload: {
-        phase: 2,
+        phase: 1,
         phaseName: 'Casting characters & locations…',
       },
     });
 
     expect(next.phases.map((p) => p.shortName)).toEqual(['Script']);
-    expect(next.currentPhase).toBe(scriptOnly.currentPhase);
+    expect(next.phases[0]?.phaseName).toBe('Casting characters & locations…');
+  });
+
+  it('grows a banner sized for an early stop when a Continue runs past it', () => {
+    const references = createInitialState({ stopAt: 'references' });
+    expect(references.phases.map((p) => p.shortName)).toEqual([
+      'Script',
+      'References',
+    ]);
+
+    const next = apply(references, {
+      type: 'PHASE_START',
+      payload: { phase: 4, phaseName: 'Generating motion & music…' },
+    });
+
+    expect(next.phases.map((p) => p.shortName)).toEqual([
+      'Script',
+      'References',
+      'Music & Motion',
+    ]);
+    expect(next.phases.map((p) => p.status)).toEqual([
+      'completed',
+      'completed',
+      'active',
+    ]);
+    expect(next.currentPhase).toBe(4);
   });
 });
 

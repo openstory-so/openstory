@@ -6,8 +6,9 @@
 import {
   bannerStagesForStopAt,
   GENERATION_STAGE_META,
-  isGenerationStage,
-  stopAtFromFlags,
+  GENERATION_STAGES,
+  resolveStopAt,
+  sliderStopLabel,
   type GenerationStage,
 } from '@/lib/generation/pipeline';
 
@@ -171,17 +172,6 @@ export type GenerationPhaseConfig = {
   referenceOnly?: boolean;
 };
 
-function resolveStopAt(config?: GenerationPhaseConfig): GenerationStage {
-  if (config?.stopAt && isGenerationStage(config.stopAt)) return config.stopAt;
-  if (config) {
-    return stopAtFromFlags({
-      autoGenerateMotion: config.autoGenerateMotion,
-      autoGenerateMusic: config.autoGenerateMusic,
-    });
-  }
-  return 'images';
-}
-
 /**
  * Apply a retry signal (or its absence) to the per-shot retry map for one
  * artifact. A present `retry` records the in-flight attempt; any non-retry
@@ -218,7 +208,7 @@ function updateShotRetries(
 export function createInitialState(
   config?: GenerationPhaseConfig
 ): GenerationStreamState {
-  const stopAt = resolveStopAt(config);
+  const stopAt = resolveStopAt(config ?? {});
   const combinedMusic = stopAt === 'music';
   const phases: GenerationPhase[] = bannerStagesForStopAt(stopAt)
     .filter((stage) => !(config?.referenceOnly && stage === 'images'))
@@ -263,14 +253,6 @@ export function generationStreamReducer(
         return state;
       }
 
-      const phaseExists = state.phases.some((p) => p.phase === phase);
-      // Don't grow the banner. Scene-split used to announce Casting while
-      // still finishing Script; a stop-at-Script run must not sprout a
-      // Casting segment. The banner is sized from generationStopAt at init.
-      if (!phaseExists) {
-        return state;
-      }
-
       const updatedPhases = state.phases.map((p) =>
         p.phase === phase
           ? { ...p, phaseName, status: 'active' as const }
@@ -278,6 +260,24 @@ export function generationStreamReducer(
             ? { ...p, status: 'completed' as const }
             : p
       );
+
+      // Grow the banner for a phase it was not sized for: the phase list is
+      // built once from the sequence row, which is not loaded yet on a cold
+      // mid-run load, and a Continue runs past the stop-at it was sized for
+      // (#1408). Casting rides on the Script phase number, so a Script stop
+      // never sprouts a segment.
+      if (!updatedPhases.some((p) => p.phase === phase)) {
+        const stage = GENERATION_STAGES.find(
+          (s) => GENERATION_STAGE_META[s].phase === phase
+        );
+        updatedPhases.push({
+          phase,
+          phaseName,
+          shortName: stage ? sliderStopLabel(stage) : phaseName,
+          status: 'active',
+        });
+        updatedPhases.sort((a, b) => a.phase - b.phase);
+      }
 
       return { ...state, currentPhase: phase, phases: updatedPhases };
     }

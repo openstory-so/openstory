@@ -44,6 +44,14 @@ describe('findMissingElementEntries', () => {
 
     expect(missing.map((e) => e.token)).toEqual(['LOGO']);
   });
+
+  test('caps at MAX_AUTO_ELEMENTS so no placeholder outlives the sheet pass', () => {
+    const bible = ['A', 'B', 'C', 'D', 'E'].map(entry);
+
+    const missing = findMissingElementEntries(bible, []);
+
+    expect(missing.map((e) => e.token)).toEqual(['A', 'B', 'C']);
+  });
 });
 
 describe('createCastRecords', () => {

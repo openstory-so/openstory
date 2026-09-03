@@ -145,7 +145,7 @@ export const createSequenceSchema = createInsertSchema(sequences, {
       })
       .optional(),
     // Multiple audio models for variant generation (first is primary). Optional
-    // (music is opt-in via autoGenerateMusic); when present must be non-empty.
+    // (music is opt-in via a `music` stop-at); when present must be non-empty.
     audioModels: z
       .array(
         z.string().refine((val) => validAudioModelKeys.includes(val), {

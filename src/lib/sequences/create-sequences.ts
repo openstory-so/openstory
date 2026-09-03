@@ -297,9 +297,6 @@ export const createSequences = createServerOnlyFn(
 
     const created = await Promise.all(
       analysisModels.map(async (modelId) => {
-        // Persist the user's model picks even when this run stops before
-        // motion/music — continue-from-DAG uses them on the next stage.
-
         const sequenceId = generateId();
         const reservationId = await reserveRunCredits(
           context.scopedDb,
@@ -335,6 +332,8 @@ export const createSequences = createServerOnlyFn(
                 getAnalysisModelById(modelId)?.id ||
                 resolveModelForCountry(DEFAULT_ANALYSIS_MODEL, country),
               imageModel: primaryImageModel,
+              // Persisted even when this run stops before motion/music —
+              // continue-from-DAG uses them on the next stage.
               videoModel: primaryVideoModel,
               musicModel: primaryAudioModel,
               autoGenerateMotion,

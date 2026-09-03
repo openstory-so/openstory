@@ -268,8 +268,12 @@ export interface StoryboardWorkflowInput extends SequenceWorkflowContext {
   videoModels?: ImageToVideoModel[];
   autoGenerateMotion?: boolean;
   autoGenerateMusic?: boolean;
-  /** How far this run should go (#1408). Overrides the auto-generate flags. */
-  stopAt?: GenerationStage;
+  /**
+   * How far this run should go (#1408). Resolved by the launcher, so the
+   * workflow never has to fall back to the auto-generate flags — those are
+   * derived from it and kept only for legacy readers.
+   */
+  stopAt: GenerationStage;
   /**
    * Continue-from-DAG: skip earlier phases and hydrate from `checkpoint`.
    * Storyboard must pass `resume: true` so it does not wipe existing shots.
@@ -317,6 +321,7 @@ export interface StoryboardWorkflowInput extends SequenceWorkflowContext {
  */
 export type StoryboardTriggerInput = Omit<
   StoryboardWorkflowInput,
+  | 'stopAt'
   | 'title'
   | 'script'
   | 'aspectRatio'
@@ -331,7 +336,10 @@ export type StoryboardTriggerInput = Omit<
   | 'suggestedLocations'
   | 'ownerEmail'
   | 'sequenceUrl'
->;
+> & {
+  /** This click's choice; absent, the launcher falls back to the sequence snapshot. */
+  stopAt?: GenerationStage;
+};
 
 /**
  * Analyze scenes workflow input
@@ -357,7 +365,7 @@ export interface AnalyzeScriptWorkflowInput extends SequenceWorkflowContext {
   videoModels?: ImageToVideoModel[];
   autoGenerateMotion?: boolean;
   autoGenerateMusic?: boolean;
-  stopAt?: GenerationStage;
+  stopAt: GenerationStage;
   startFrom?: GenerationStage;
   checkpoint?: GenerationCheckpoint;
   musicModel?: keyof typeof AUDIO_MODELS;

@@ -316,16 +316,3 @@ export async function cleanupTalentByName(
     body: JSON.stringify({ teamId, name }),
   });
 }
-
-/**
- * Opt a new sequence into the frame-based workflow. Reference-only is the
- * product default; specs that inspect stills or start-frame variants need
- * this ticked before Generate.
- */
-export async function enableStartFrames(page: Page): Promise<void> {
-  await page.getByRole('button', { name: 'Generation settings' }).click();
-  const toggle = page.getByRole('checkbox', { name: 'Generate start frames' });
-  await expect(toggle).toBeVisible({ timeout: HYDRATION_TIMEOUT });
-  await toggle.check();
-  await page.keyboard.press('Escape');
-}

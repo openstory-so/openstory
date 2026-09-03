@@ -46,9 +46,13 @@ import {
 import { triggerWorkflow } from '@/lib/workflow/client';
 import { buildWorkflowLabel } from '@/lib/workflow/labels';
 import { triggerStoryboard } from '@/lib/workflow/launchers';
+import { ValidationError } from '@/lib/errors';
 import {
+  continueStageSchema,
   flagsFromStopAt,
   generationStageSchema,
+  nextStageAfter,
+  stageIndex,
 } from '@/lib/generation/pipeline';
 import type {
   BatchMotionMusicWorkflowInput,
@@ -131,22 +135,46 @@ export const createSequenceFn = createServerFn({ method: 'POST' })
   });
 
 /**
- * Continue a stopped pipeline from the next DAG stage through `stopAt` (#1408).
+ * Continue a stopped pipeline from `startFrom` through `stopAt` (#1408).
  * Does not wipe existing shots — storyboard runs in resume mode.
+ *
+ * Only References and Images continue here: Script is a fresh run, and
+ * motion/music have their own batch footers. Everything is checked before a
+ * credit is reserved or the mutex claimed — the workflow would otherwise
+ * reject the same input minutes later, after the UI flipped to processing.
  */
 export const continueGenerationFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
   .validator(
     zodValidator(
-      z.object({
-        sequenceId: ulidSchema,
-        startFrom: generationStageSchema,
-        stopAt: generationStageSchema,
-      })
+      z
+        .object({
+          sequenceId: ulidSchema,
+          startFrom: continueStageSchema,
+          stopAt: generationStageSchema,
+        })
+        .refine((d) => stageIndex(d.startFrom) <= stageIndex(d.stopAt), {
+          path: ['stopAt'],
+          message: 'stopAt must not be earlier than startFrom',
+        })
     )
   )
   .handler(async ({ data, context }) => {
     const { sequence } = context;
+    const checkpoint = sequence.generationCheckpoint;
+    if (!checkpoint) {
+      throw new ValidationError(
+        'Nothing to continue from — generate the sequence first'
+      );
+    }
+    // A checkpoint carries everything up to its stage, so re-running an
+    // earlier stage is fine; starting past it has nothing to hydrate from.
+    const reachable = nextStageAfter(checkpoint.completedStage);
+    if (!reachable || stageIndex(data.startFrom) > stageIndex(reachable)) {
+      throw new ValidationError(
+        `The last run only reached ${checkpoint.completedStage}; ${data.startFrom} cannot start from there`
+      );
+    }
     const { autoGenerateMotion, autoGenerateMusic } = flagsFromStopAt(
       data.stopAt
     );
@@ -160,8 +188,11 @@ export const continueGenerationFn = createServerFn({ method: 'POST' })
           DEFAULT_IMAGE_MODEL
         ),
         aspectRatio: sequence.aspectRatio,
+        resolution: sequence.resolution,
         autoGenerateMotion,
         stopAt: data.stopAt,
+        startFrom: data.startFrom,
+        referenceOnly: !sequence.generateStartFrames,
         videoModels: [
           safeImageToVideoModel(sequence.videoModel, DEFAULT_VIDEO_MODEL),
         ],
@@ -192,7 +223,7 @@ export const continueGenerationFn = createServerFn({ method: 'POST' })
         resume: true,
         startFrom: data.startFrom,
         stopAt: data.stopAt,
-        checkpoint: sequence.generationCheckpoint ?? undefined,
+        checkpoint,
         autoGenerateMotion,
         autoGenerateMusic,
         imageModels: [

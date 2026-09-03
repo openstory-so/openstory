@@ -75,8 +75,10 @@ export class LocationBibleWorkflow extends OpenStoryWorkflowEntrypoint<LocationB
       'create-location-records',
       async () => {
         // Upsert on (sequenceId, locationId): the Script stage already
-        // created these rows sheet-less, so this keeps their ids and flips
-        // them to `generating`.
+        // created these rows sheet-less, so this keeps their ids. The status
+        // is NOT refreshed on conflict (a step replay must not clobber the
+        // child's `completed`), so a placeholder reads `pending` until the
+        // sheet child writes its terminal status.
         const locationInserts = input.locationBible.map((location) =>
           buildLocationInsert({
             sequenceId,

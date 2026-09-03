@@ -3,9 +3,10 @@
  * and "what's next" (#1408).
  *
  * One ordered list drives the generate-dialog slider, the progress banner,
- * and the scene-list continue button. Stop-at is a per-run choice (not a
- * stored auto-generate flag). Recovery reads artifacts + the last completed
- * stage the workflow persisted.
+ * and the scene-list continue button. Stop-at is chosen per run and
+ * snapshotted onto `sequences.generationStopAt`; the auto-generate flags are
+ * derived from it. Recovery reads artifacts + the last completed stage the
+ * workflow persisted.
  */
 
 import type {
@@ -14,6 +15,13 @@ import type {
   LocationBibleEntry,
   Scene,
 } from '@/lib/ai/scene-analysis.schema';
+import type { CharacterMinimal } from '@/lib/db/schema/characters';
+import type { SequenceElementMinimal } from '@/lib/db/schema/sequence-elements';
+import type { SequenceLocationMinimal } from '@/lib/db/schema/sequence-locations';
+import type {
+  LibraryLocationMatch,
+  TalentCharacterMatch,
+} from '@/lib/workflow/types';
 import { z } from 'zod';
 
 export const GENERATION_STAGES = [
@@ -27,6 +35,20 @@ export const GENERATION_STAGES = [
 export type GenerationStage = (typeof GENERATION_STAGES)[number];
 
 export const generationStageSchema = z.enum(GENERATION_STAGES);
+
+/**
+ * Stages the scene-list continue button can start from. Script is a fresh
+ * run; motion and music have their own batch footers.
+ */
+const CONTINUE_STAGES = ['references', 'images'] as const;
+export type ContinueStage = (typeof CONTINUE_STAGES)[number];
+export const continueStageSchema = z.enum(CONTINUE_STAGES);
+
+export function isContinueStage(
+  stage: GenerationStage | null | undefined
+): stage is ContinueStage {
+  return stage === 'references' || stage === 'images';
+}
 
 /** Product default: stills + motion + music (the short-film aha). */
 export const DEFAULT_GENERATION_STOP_AT: GenerationStage = 'music';
@@ -93,12 +115,8 @@ export function isGenerationStage(value: unknown): value is GenerationStage {
   );
 }
 
-/**
- * Stored stage → current stage. `casting` was folded into `script` (rows with
- * that value predate the merge); anything else unknown is null.
- */
+/** Stored stage → current stage; anything unknown is null. */
 function coerceStage(value: unknown): GenerationStage | null {
-  if (value === 'casting') return 'script';
   return isGenerationStage(value) ? value : null;
 }
 
@@ -151,7 +169,8 @@ export function flagsFromStopAt(stopAt: GenerationStage): {
 
 /**
  * Map the legacy auto-generate booleans onto a stop-at stage. Music without
- * motion collapses to motion (music currently requires motion clips).
+ * motion is dropped (music currently requires motion clips), so that run
+ * stops at images.
  */
 export function stopAtFromFlags(flags: {
   autoGenerateMotion?: boolean;
@@ -185,9 +204,10 @@ export function resolveStopAt(opts: {
 }
 
 /**
- * Observable artifacts + the workflow's last completed stage. Artifact
- * flags win when they contradict `pipelineStage` (a crash after images
- * landed but before the stage write still looks like images).
+ * Observable artifacts + the workflow's last completed stage. Artifacts are
+ * the evidence (a crash after images landed but before the stage write still
+ * looks like images); `pipelineStage` only vouches for Script, whose scenes
+ * can be deleted by hand.
  */
 export type PipelineArtifacts = {
   hasScenes: boolean;
@@ -201,7 +221,9 @@ export type PipelineArtifacts = {
 export function completedStageFromArtifacts(
   artifacts: PipelineArtifacts
 ): GenerationStage | null {
-  if (artifacts.hasMusic) return 'music';
+  // Music outlives a re-run that deleted every shot; on its own it would hide
+  // the whole board behind a finished pipeline.
+  if (artifacts.hasMusic && artifacts.hasMotion) return 'music';
   if (artifacts.hasMotion) return 'motion';
   if (artifacts.hasImages) return 'images';
   if (artifacts.hasVisualPrompts) return 'references';
@@ -285,8 +307,10 @@ export function artifactsFromSequenceState(args: {
  * re-reading mutable D1 inside the workflow. Written after each completed
  * stage; the continue launcher copies it onto the next run's payload.
  *
- * Structural (not Drizzle) types so sequences.ts can import this module
- * without a cycle, and every field is JSON-serializable for server fns.
+ * The sheet rows are the same shapes the References children return, so a
+ * continue feeds shot-images exactly what a fresh run would — including the
+ * version ids the still's manifest hashes against. Type-only imports, so
+ * the schema → pipeline → schema loop never exists at runtime.
  */
 export type GenerationCheckpoint = {
   completedStage: GenerationStage;
@@ -299,45 +323,11 @@ export type GenerationCheckpoint = {
   characterBible?: CharacterBibleEntry[];
   locationBible?: LocationBibleEntry[];
   elementBible?: ElementBibleEntry[];
-  talentMatches?: Array<{
-    characterId: string;
-    talentId: string;
-    talentName: string;
-    sheetImageUrl: string;
-    sheetMetadata?: CharacterBibleEntry;
-    talentDescription?: string;
-  }>;
-  locationMatches?: Array<{
-    locationId: string;
-    libraryLocationId: string;
-    libraryLocationName: string;
-    referenceImageUrl: string;
-    description?: string;
-  }>;
-  charactersWithSheets?: Array<{
-    id: string;
-    characterId: string;
-    name: string;
-    sheetImageUrl: string | null;
-    sheetStatus: string | null;
-    sheetInputHash: string | null;
-    selectedSheetVersionId: string | null;
-    physicalDescription: string | null;
-    consistencyTag: string | null;
-  }>;
-  locationsWithSheets?: Array<{
-    id: string;
-    locationId: string;
-    name: string;
-    referenceImageUrl: string | null;
-  }>;
-  allElements?: Array<{
-    id: string;
-    token: string;
-    description: string | null;
-    imageUrl: string | null;
-    consistencyTag: string | null;
-  }>;
+  talentMatches?: TalentCharacterMatch[];
+  locationMatches?: LibraryLocationMatch[];
+  charactersWithSheets?: CharacterMinimal[];
+  locationsWithSheets?: SequenceLocationMinimal[];
+  allElements?: SequenceElementMinimal[];
   visualPromptBySceneId?: Record<string, string>;
   scenesWithVisualPrompts?: Scene[];
 };
@@ -376,8 +366,8 @@ export function sliderThumbIndex(
   }
   const index = stages.indexOf(stopAt);
   if (index >= 0) return index;
-  // A stop the slider does not offer (Images in reference-only) lands on the
-  // next stop up — which is where that run ends anyway.
+  // A stop the slider does not offer (Images in reference-only) shows on the
+  // next stop up; nothing renders in Images there, so the two look the same.
   const next = stages.findIndex((s) => stageIndex(s) > stageIndex(stopAt));
   return next < 0 ? stages.length - 1 : next;
 }

@@ -8,11 +8,22 @@
  * carried the LLM's original values a continue would silently revert every
  * edit. Runs at the trigger (a snapshot, per the no-mid-run-reads rule), only
  * where rows exist: a checkpoint whose casting never landed keeps its bible.
+ *
+ * The same goes one stage later: a References stop exists to review the
+ * sheets, so the sheet snapshots shot-images renders against (URL, selected
+ * version, input hash) are re-read too — otherwise a regenerated sheet is
+ * ignored and the still's manifest hashes against a retired version.
  */
 
 import type { ElementBibleEntry } from '@/lib/ai/scene-analysis.schema';
 import type { ScopedDb } from '@/lib/db/scoped';
+import type { CharacterMinimal } from '@/lib/db/schema/characters';
+import type { SequenceLocationMinimal } from '@/lib/db/schema/sequence-locations';
 import type { GenerationCheckpoint } from '@/lib/generation/pipeline';
+import type {
+  LibraryLocationMatch,
+  TalentCharacterMatch,
+} from '@/lib/workflow/types';
 import { toCharacterMetadata } from '@/lib/sheets/character-sheet-trigger';
 import { toLocationMetadata } from '@/lib/sheets/location-sheet-trigger';
 
@@ -30,8 +41,7 @@ export async function refreshCheckpointFromCast(
 
   if (characters.length > 0) {
     next.characterBible = characters.map(toCharacterMetadata);
-    const talentMatches: NonNullable<GenerationCheckpoint['talentMatches']> =
-      [];
+    const talentMatches: TalentCharacterMatch[] = [];
     for (const character of characters) {
       if (!character.talentId) continue;
       const talent = await scopedDb.talent.getWithRelations(character.talentId);
@@ -52,9 +62,7 @@ export async function refreshCheckpointFromCast(
 
   if (locations.length > 0) {
     next.locationBible = locations.map(toLocationMetadata);
-    const locationMatches: NonNullable<
-      GenerationCheckpoint['locationMatches']
-    > = [];
+    const locationMatches: LibraryLocationMatch[] = [];
     for (const location of locations) {
       if (!location.libraryLocationId) continue;
       const library = await scopedDb.locations.getById(
@@ -82,6 +90,44 @@ export async function refreshCheckpointFromCast(
         text: el.firstMentionText ?? '',
         lineNumber: el.firstMentionLine ?? 0,
       },
+    }));
+  }
+
+  // Sheet snapshots exist only past References; a Script checkpoint has none
+  // and must not gain any, or the workflow would think References ran.
+  if (next.charactersWithSheets) {
+    next.charactersWithSheets = characters.map((c): CharacterMinimal => ({
+      id: c.id,
+      characterId: c.characterId,
+      name: c.name,
+      sheetImageUrl: c.sheetImageUrl,
+      sheetStatus: c.sheetStatus,
+      sheetInputHash: c.sheetInputHash,
+      selectedSheetVersionId: c.selectedSheetVersionId,
+      physicalDescription: c.physicalDescription,
+      consistencyTag: c.consistencyTag,
+    }));
+  }
+  if (next.locationsWithSheets) {
+    next.locationsWithSheets = locations.map((l): SequenceLocationMinimal => ({
+      id: l.id,
+      locationId: l.locationId,
+      name: l.name,
+      referenceImageUrl: l.referenceImageUrl,
+      referenceStatus: l.referenceStatus,
+      referenceInputHash: l.referenceInputHash,
+      selectedReferenceVersionId: l.selectedReferenceVersionId,
+      description: l.description,
+      consistencyTag: l.consistencyTag,
+    }));
+  }
+  if (next.allElements) {
+    next.allElements = elements.map((el) => ({
+      id: el.id,
+      token: el.token,
+      description: el.description,
+      imageUrl: el.imageUrl,
+      consistencyTag: el.consistencyTag,
     }));
   }
 

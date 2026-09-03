@@ -105,22 +105,35 @@ export function buildLocationInsert(args: {
 }
 
 /**
+ * Upper bound on auto-generated element references per run. The scene-split
+ * prompt asks the model to detect at most 3; this guards against a chatty
+ * model burning image credits on incidental props.
+ */
+export const MAX_AUTO_ELEMENTS = 3;
+
+/**
  * Element bible entries that still need a reference image: no row for the
  * token, or a row the Script stage created without one. Uploaded elements
  * always win — the bible echoes their tokens back. The existing row's id is
  * reused so the References stage fills in the same row the user has been
  * looking at.
+ *
+ * Capped here, where the placeholder rows, the billing count and the sheet
+ * spawn all read from, so an entry past the cap never gets a row that would
+ * sit image-less forever and re-count as missing on every run.
  */
 export function findMissingElementEntries(
   elementBible: ElementBibleEntry[],
   existing: Array<Pick<SequenceElementMinimal, 'id' | 'token' | 'imageUrl'>>
 ): ElementSheetEntry[] {
   const byToken = new Map(existing.map((el) => [el.token, el]));
-  return elementBible.flatMap((entry) => {
-    const row = byToken.get(entry.token);
-    if (row?.imageUrl) return [];
-    return [{ ...entry, elementId: row?.id ?? generateId() }];
-  });
+  return elementBible
+    .flatMap((entry) => {
+      const row = byToken.get(entry.token);
+      if (row?.imageUrl) return [];
+      return [{ ...entry, elementId: row?.id ?? generateId() }];
+    })
+    .slice(0, MAX_AUTO_ELEMENTS);
 }
 
 /**

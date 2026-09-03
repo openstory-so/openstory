@@ -407,19 +407,17 @@ export const ScriptView: FC<{
    * cannot render without a start frame, falling back to the first capable one
    * so the selection is never empty.
    */
-  const setGenerateStartFrames = (next: boolean) => {
-    setGenSettings((s) => {
-      const capable = next
-        ? s.videoModels
-        : s.videoModels.filter((m) => referenceOnlyModels.includes(m));
-      const fallback = referenceOnlyModels[0];
-      const videoModels =
-        capable.length > 0 ? capable : fallback ? [fallback] : s.videoModels;
-      return applyGenerationMode(
-        { ...s, generateStartFrames: next, videoModels },
-        s.generationMode
-      );
-    });
+  const withStartFrames = (s: typeof genSettings, next: boolean) => {
+    const capable = next
+      ? s.videoModels
+      : s.videoModels.filter((m) => referenceOnlyModels.includes(m));
+    const fallback = referenceOnlyModels[0];
+    const videoModels =
+      capable.length > 0 ? capable : fallback ? [fallback] : s.videoModels;
+    return applyGenerationMode(
+      { ...s, generateStartFrames: next, videoModels },
+      s.generationMode
+    );
   };
   const [selections, setSelections] = useState({
     talentIds: sequence?.suggestedTalentIds ?? [],
@@ -788,8 +786,9 @@ export const ScriptView: FC<{
     }
   }, [styleCategory, videoModels]);
 
-  // Auto-apply the style's aspect ratio on style change. Styles do not
-  // recommend models (#1408) — only aspect ratio. A "From {Style} · Reset"
+  // Auto-apply the style's aspect ratio on style change. A style's model
+  // recommendations are no longer applied here (#1408) — only its aspect
+  // ratio. A "From {Style} · Reset"
   // pill lets the user back out with a single click.
   //
   // The seed value of `lastAppliedStyleIdRef` is the sequence's stored styleId
@@ -964,7 +963,16 @@ export const ScriptView: FC<{
     'generate'
   );
 
-  const executeRegeneration = (runUntil: GenerationStage = stopAt) => {
+  // Takes the settings explicitly: the stop-at dialog confirms and fires in
+  // one tick, before its setState lands, so reading the closure would send
+  // the pre-dialog mode and model list (#1408).
+  const executeRegeneration = (
+    run: Pick<
+      typeof genSettings,
+      'stopAt' | 'generateStartFrames' | 'videoModels'
+    > = genSettings
+  ) => {
+    const { stopAt: runUntil, generateStartFrames, videoModels } = run;
     const flags = flagsFromStopAt(runUntil);
     // sequence_generated is captured server-side in createSequences (#1088)
     // so dashboard + public API both feed #product-alerts once.
@@ -1017,7 +1025,7 @@ export const ScriptView: FC<{
 
   const requestGenerate = () => {
     if (savedSettings.rememberStopAt) {
-      executeRegeneration(stopAt);
+      executeRegeneration();
       return;
     }
     setStopAlertMode('generate');
@@ -1950,12 +1958,15 @@ export const ScriptView: FC<{
           generateStartFrames: nextStartFrames,
           remember,
         }) => {
-          updateGen('stopAt', nextStopAt);
-          setGenerateStartFrames(nextStartFrames);
+          const next = withStartFrames(
+            { ...genSettings, stopAt: nextStopAt },
+            nextStartFrames
+          );
+          setGenSettings(next);
           saveSettings({ stopAt: nextStopAt, rememberStopAt: remember });
           setShowStopAlert(false);
           if (stopAlertMode === 'generate') {
-            executeRegeneration(nextStopAt);
+            executeRegeneration(next);
           }
         }}
       />
