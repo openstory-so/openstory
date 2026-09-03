@@ -149,6 +149,9 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
 
   // Track regenerating state from realtime events
   const [isRegenerating, setIsRegenerating] = useState(false);
+  // Set while a content-flag retry is in flight so the spinner says so
+  // instead of reading as a hang; cleared with every non-retry event.
+  const [retryLabel, setRetryLabel] = useState<string | null>(null);
 
   // Handle realtime events for character sheet progress
   const handleRealtimeEvent = useCallback(
@@ -177,8 +180,21 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
 
         if (payload.status === 'generating') {
           setIsRegenerating(true);
+          setRetryLabel(
+            !('phase' in data) || data.phase !== 'retrying'
+              ? null
+              : 'promptSoftened' in data && data.promptSoftened === true
+                ? 'Retrying with a rewritten prompt…'
+                : 'attempt' in data &&
+                    'maxAttempts' in data &&
+                    typeof data.attempt === 'number' &&
+                    typeof data.maxAttempts === 'number'
+                  ? `Retrying (/)…`
+                  : 'Retrying…'
+          );
         } else {
           setIsRegenerating(false);
+          setRetryLabel(null);
           // Invalidate query to refetch updated character data
           void queryClient.invalidateQueries({
             queryKey: sequenceCharacterKeys.list(sequenceId),
@@ -290,9 +306,11 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
   const hasPriorSheet = Boolean(
     character?.sheetGeneratedAt || character?.selectedSheetVersionId
   );
-  const sheetBusyLabel = hasPriorSheet
-    ? 'Regenerating character sheet…'
-    : 'Generating character sheet…';
+  const sheetBusyLabel =
+    retryLabel ??
+    (hasPriorSheet
+      ? 'Regenerating character sheet…'
+      : 'Generating character sheet…');
   const selectedSheetModel = resolveSheetImageModel({
     explicit: sheetModel,
     liveVersionModel: (versionHistory?.versions ?? []).find(

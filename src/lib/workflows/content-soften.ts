@@ -169,9 +169,22 @@ export type GenerateImageSofteningArgs = {
    * `params`; pass one when the prompt carries a model-sized reference legend.
    */
   rebuild?: (prompt: string, model: TextToImageModel) => ImageGenerationParams;
+  /**
+   * Called before every attempt after the first — same-prompt reseed, model
+   * fallback, softened prompt — so the caller can tell the UI the spinner is
+   * a retry, not a hang. Failures are swallowed: a realtime hiccup must never
+   * fail the render.
+   */
+  onRetry?: (info: RetryInfo) => Promise<void>;
   /** Ids for structured logs. */
   meta?: Record<string, unknown>;
   reservationId?: string;
+};
+
+type RetryInfo = {
+  attempt: number;
+  maxAttempts: number;
+  promptSoftened: boolean;
 };
 
 export type GenerateImageSofteningResult = {
@@ -201,6 +214,17 @@ export async function generateImageSoftening(
   const canFallback = args.params.model !== IMAGE_CONTENT_FALLBACK_MODEL;
   const maxAttempts = MAX_CONTENT_ATTEMPTS + (canFallback ? 1 : 0) + 1;
 
+  const announceRetry = async (attempt: number, promptSoftened: boolean) => {
+    if (attempt === 1 || !args.onRetry) return;
+    try {
+      await args.onRetry({ attempt, maxAttempts, promptSoftened });
+    } catch (error) {
+      logger.warn(`${logTag} retry announce failed for ${subject}`, {
+        err: error,
+      });
+    }
+  };
+
   const generateOnce = (
     name: string,
     params: ImageGenerationParams,
@@ -227,6 +251,7 @@ export async function generateImageSoftening(
   let lastRejection: string | null = null;
   for (let attempt = 0; attempt < MAX_CONTENT_ATTEMPTS; attempt++) {
     const tag = attempt === 0 ? '' : `-retry-${attempt}`;
+    await announceRetry(attempt + 1, false);
     const outcome = await generateOnce(
       `${stepName}${tag}`,
       params,
@@ -266,6 +291,7 @@ export async function generateImageSoftening(
       }
     );
     params = rebuild(prompt, IMAGE_CONTENT_FALLBACK_MODEL);
+    await announceRetry(MAX_CONTENT_ATTEMPTS + 1, false);
     const outcome = await generateOnce(
       `${stepName}-fallback`,
       params,
@@ -324,6 +350,7 @@ export async function generateImageSoftening(
   }
 
   params = rebuild(softened, params.model);
+  await announceRetry(maxAttempts, true);
   const outcome = await generateOnce(
     `${stepName}-softened`,
     params,
