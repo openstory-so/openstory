@@ -925,11 +925,7 @@ export const ScriptView: FC<{
       ? recommendations
       : undefined;
   const isRecommended = !!activeRecommendations && !isRecommending;
-  const recommendButtonLabel = isRecommending
-    ? 'Recommend styles'
-    : isRecommended
-      ? 'Recommended'
-      : 'Recommend styles';
+  const recommendButtonLabel = isRecommended ? 'Recommended' : 'Recommend';
   // The shortlist ran but turned up nothing usable (or errored). Distinguish
   // this from "never asked" so we can tell the user instead of silently
   // reverting to the trigger button (which invites a re-click + re-charge).
@@ -1398,11 +1394,11 @@ export const ScriptView: FC<{
 
   // Nothing written yet: Enhance writes the script instead of expanding one
   // (#1393), so it stays live at any length and says which job it is doing.
-  // "Draft" is the house word for it — the studio composer's equivalent is
-  // "Draft prompt" — and it keeps this distinct from Shuffle next door, which
-  // swaps in a canned sample rather than writing anything.
+  // "Invent" says it writes something new, which keeps it distinct from
+  // "Surprise me" over by the styles, which swaps in a canned sample rather
+  // than writing anything (#1481).
   const enhanceInvents = scriptValue.trim().length === 0;
-  const enhanceLabel = enhanceInvents ? 'Draft script' : 'Enhance Script';
+  const enhanceLabel = enhanceInvents ? 'Invent script' : 'Enhance Script';
   // Match script (the default) passes no style to the enhancer, so the draft
   // really is any genre at all.
   const inventStyleName = styles.find((s) => s.id === styleId)?.name;
@@ -1688,24 +1684,25 @@ export const ScriptView: FC<{
               onChange={handleStyleCategoryChange}
               disabled={loading || isLoadingStyles}
             />
+            {/* Sits with the style controls: it picks a random style and its
+                sample, so it belongs beside Recommend and the category filter,
+                not with the script tools (#1481). */}
+            {!isEditing && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                disabled={loading || isEnhancing || isSubmitting || !canShuffle}
+                onClick={requestShuffle}
+              >
+                <Shuffle className="size-3.5" />
+                Surprise me
+              </Button>
+            )}
             {/* CSS-only placement so SSR and hydration match — no useIsMobile
                 gate (that hid Enhance until the client effect ran). */}
             <div className="ml-auto flex items-center gap-1">
-              {!isEditing && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="gap-1.5"
-                  disabled={
-                    loading || isEnhancing || isSubmitting || !canShuffle
-                  }
-                  onClick={requestShuffle}
-                >
-                  <Shuffle className="size-3.5" />
-                  Shuffle
-                </Button>
-              )}
               {enhanceControls}
               <VoiceInputButton
                 label="script"
@@ -1982,7 +1979,7 @@ export const ScriptView: FC<{
             <AlertDialogDescription>
               {sampleReplaceConfirm?.kind === 'try'
                 ? "This swaps in the style's sample script. What you've written here will be replaced."
-                : "Shuffle swaps in a sample script for a random style. What you've written here will be replaced."}
+                : "Surprise me swaps in a sample script for a random style. What you've written here will be replaced."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
