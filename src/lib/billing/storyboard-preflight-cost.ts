@@ -19,6 +19,10 @@ import type { Resolution } from '@/lib/constants/resolutions';
 import { estimateStoryboardCost } from '@/lib/billing/cost-estimation';
 import type { Microdollars } from '@/lib/billing/money';
 import { estimateSceneCount } from '@/lib/generation/time-estimate';
+import {
+  shouldRunStage,
+  type GenerationStage,
+} from '@/lib/generation/pipeline';
 
 export type StoryboardPreflightInput = {
   script: string;
@@ -29,6 +33,9 @@ export type StoryboardPreflightInput = {
   /** Output resolution tier (#1449) — sizes the stills and clips being gated. */
   resolution?: Resolution;
   autoGenerateMotion?: boolean;
+  stopAt?: GenerationStage;
+  /** Continue-from: stages before this already ran and are not gated (#1408). */
+  startFrom?: GenerationStage;
   videoModels?: ImageToVideoModel[];
   autoGenerateMusic?: boolean;
   audioModels?: AudioModel[];
@@ -52,10 +59,15 @@ export function estimateStoryboardPreflightCost(
     targetDurationSeconds: opts.targetDurationSeconds,
   });
 
-  const motionOn = Boolean(opts.autoGenerateMotion && opts.videoModels?.length);
-  const musicOn = Boolean(
-    motionOn && opts.autoGenerateMusic && opts.audioModels?.length
-  );
+  const startFrom = opts.startFrom ?? 'script';
+  const motionOn = opts.stopAt
+    ? shouldRunStage(startFrom, opts.stopAt, 'motion') &&
+      Boolean(opts.videoModels?.length)
+    : Boolean(opts.autoGenerateMotion && opts.videoModels?.length);
+  const musicOn = opts.stopAt
+    ? shouldRunStage(startFrom, opts.stopAt, 'music') &&
+      Boolean(opts.audioModels?.length)
+    : Boolean(motionOn && opts.autoGenerateMusic && opts.audioModels?.length);
 
   const primaryVideo = opts.videoModels?.[0] ?? DEFAULT_VIDEO_MODEL;
   const motionDurations =
@@ -77,6 +89,8 @@ export function estimateStoryboardPreflightCost(
     resolution: opts.resolution,
     estimatedSceneCount: sceneCount,
     autoGenerateMotion: motionOn,
+    stopAt: opts.stopAt,
+    startFrom: opts.startFrom,
     videoModels: motionOn ? opts.videoModels : undefined,
     videoDurationSeconds: motionDurations?.perShotSeconds,
     autoGenerateMusic: musicOn,

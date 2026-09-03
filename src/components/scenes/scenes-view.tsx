@@ -20,6 +20,13 @@ import { FailureSummaryBanner } from '@/components/sequence/failure-summary-bann
 import { SequenceHeaderPortal } from '@/components/sequence/sequence-header-slot';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { batchGenerateMotionFn } from '@/functions/motion-functions';
+import { continueGenerationFn, generateMusicFn } from '@/functions/sequences';
+import {
+  artifactsFromSequenceState,
+  continueStageFromState,
+  type ContinueStage,
+  type GenerationStage,
+} from '@/lib/generation/pipeline';
 import { getDivergentVariantPromptDiffFn } from '@/functions/prompt-variants';
 import { smartRetryFn } from '@/functions/smart-retry';
 import { useActiveImageModel } from '@/hooks/use-active-image-model';
@@ -59,6 +66,7 @@ import {
   safeAudioModel,
   safeImageToVideoModel,
   safeTextToImageModel,
+  type AudioModel,
   type ImageToVideoModel,
   type TextToImageModel,
 } from '@/lib/ai/models';
@@ -365,17 +373,16 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     DEFAULT_VIDEO_MODEL
   );
   const styleName = style?.name ?? undefined;
-  const recommendedImageModel = style?.recommendedImageModel ?? null;
-  const recommendedVideoModel = style?.recommendedVideoModel ?? null;
-
   // Phase config from DB — set in stone when the workflow was triggered
   const phaseConfig = useMemo<GenerationPhaseConfig>(
     () => ({
+      stopAt: sequence?.generationStopAt ?? undefined,
       autoGenerateMotion: sequence?.autoGenerateMotion ?? false,
       autoGenerateMusic: sequence?.autoGenerateMusic ?? false,
       referenceOnly: !(sequence?.generateStartFrames ?? false),
     }),
     [
+      sequence?.generationStopAt,
       sequence?.autoGenerateMotion,
       sequence?.autoGenerateMusic,
       sequence?.generateStartFrames,
@@ -1343,6 +1350,73 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
 
   const musicPromptsReady = !!(sequence?.musicPrompt && sequence.musicTags);
 
+  const nextStage = useMemo(
+    () =>
+      continueStageFromState({
+        isProcessing,
+        artifacts: artifactsFromSequenceState({
+          sceneCount: scenes?.length ?? 0,
+          shots: shots ?? [],
+          musicStatus: sequence?.musicStatus,
+          musicUrl: sequence?.musicUrl,
+          pipelineStage: sequence?.pipelineStage,
+          referenceOnly: !generateStartFrames,
+        }),
+      }),
+    [
+      isProcessing,
+      scenes?.length,
+      shots,
+      sequence?.musicStatus,
+      sequence?.musicUrl,
+      sequence?.pipelineStage,
+      generateStartFrames,
+    ]
+  );
+
+  const handleContinueGeneration = useCallback(
+    async (args: { startFrom: ContinueStage; stopAt: GenerationStage }) => {
+      // Optimistic status flip, as the motion batch does: the chip and the
+      // footer key off `sequence.status`, and the server fn reserves credits
+      // and triggers the workflow before it returns.
+      const key = sequenceKeys.detail(sequenceId);
+      const previous = queryClient.getQueryData<Sequence>(key);
+      queryClient.setQueryData<Sequence>(key, (old) =>
+        old ? { ...old, status: 'processing', updatedAt: new Date() } : old
+      );
+      try {
+        await continueGenerationFn({
+          data: {
+            sequenceId,
+            startFrom: args.startFrom,
+            stopAt: args.stopAt,
+          },
+        });
+      } catch (error) {
+        // Continue reserves credits like any other run, so it hits the same
+        // gate as batch motion — show the gate, not a generic error toast.
+        queryClient.setQueryData<Sequence>(key, previous);
+        if (!isInsufficientCreditsError(error)) throw error;
+        showBillingGate('insufficient');
+        void queryClient.invalidateQueries({ queryKey: BILLING_BALANCE_KEY });
+        return;
+      }
+      void queryClient.invalidateQueries({
+        queryKey: sequenceKeys.detail(sequenceId),
+      });
+    },
+    [sequenceId, queryClient, showBillingGate]
+  );
+
+  const handleGenerateMusic = useCallback(
+    async (model: AudioModel) => {
+      await generateMusicFn({
+        data: { sequenceId, model },
+      });
+    },
+    [sequenceId]
+  );
+
   // GenerationProgressBanner is owned by the script-analysis pipeline
   // (sequence.status === 'processing'). Standalone motion gen runs when the
   // sequence is already 'completed' / 'ready', so it must render via the
@@ -1439,15 +1513,18 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     regeneratingImages,
     regeneratingMotion,
     onBatchGenerateMotion: handleBatchMotionGeneration,
+    nextStage,
+    onContinueGeneration: handleContinueGeneration,
+    onGenerateMusic: handleGenerateMusic,
     musicPromptsReady,
-    hideBatchButton: phaseConfig.autoGenerateMotion && isGenerationActive,
+    hideBatchButton: isGenerationActive,
     divergentVariants,
     onCompareDivergent: setCompareVariant,
     initialMusicModel: sequenceMusicModel,
     initialVideoModel: sequenceVideoModel,
+    initialImageModel: resolvedSequenceImageModel,
     styleCategory,
     generateStartFrames,
-    recommendedVideoModel,
     styleName,
     modelMissingShotIds: shotsMissingActiveImage,
     modelMissingLabel: activeImageModelLabel,
@@ -1632,8 +1709,6 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
                     onImageModelChange={handleImageModelChange}
                     onVideoModelChange={handleVideoModelChange}
                     styleName={styleName}
-                    recommendedImageModel={recommendedImageModel}
-                    recommendedVideoModel={recommendedVideoModel}
                     styleCategory={styleCategory}
                     shotDivergentVariants={divergentVariants?.filter(
                       (v) => v.shotId === curSelectedShotId

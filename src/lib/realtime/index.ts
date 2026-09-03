@@ -244,6 +244,12 @@ export const realtimeSchema = {
     'character-sheet:progress': z.object({
       characterId: z.string(),
       status: z.enum(['generating', 'completed', 'failed']),
+      // In-flight content-flag retry (#882 shape): `status` stays
+      // `generating`; absent on the first attempt and on terminal events.
+      phase: z.enum(['generating', 'retrying']).optional(),
+      attempt: z.number().int().positive().optional(),
+      maxAttempts: z.number().int().positive().optional(),
+      promptSoftened: z.boolean().optional(),
       sheetImageUrl: z.string().optional(),
       error: z.string().optional(),
     }),
@@ -252,6 +258,10 @@ export const realtimeSchema = {
     'location-sheet:progress': z.object({
       locationId: z.string(),
       status: z.enum(['generating', 'completed', 'failed']),
+      phase: z.enum(['generating', 'retrying']).optional(),
+      attempt: z.number().int().positive().optional(),
+      maxAttempts: z.number().int().positive().optional(),
+      promptSoftened: z.boolean().optional(),
       referenceImageUrl: z.string().optional(),
       error: z.string().optional(),
     }),

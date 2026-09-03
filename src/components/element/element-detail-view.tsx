@@ -183,13 +183,22 @@ export const ElementDetailView: React.FC<ElementDetailViewProps> = ({
                 <p className="text-sm text-muted-foreground">Analyzing…</p>
               </div>
             ) : null}
-            <AppImage
-              src={element.imageUrl}
-              alt={element.token}
-              width={640}
-              height={360}
-              className="h-full w-full object-contain"
-            />
+            {element.imageUrl ? (
+              <AppImage
+                src={element.imageUrl}
+                alt={element.token}
+                width={640}
+                height={360}
+                className="h-full w-full object-contain"
+              />
+            ) : (
+              <div className="flex h-full w-full flex-col items-center justify-center gap-2">
+                <ImagePlus className="size-12 text-muted-foreground/30" />
+                <p className="text-sm text-muted-foreground">
+                  No reference yet — generated at the References stage
+                </p>
+              </div>
+            )}
             {element.visionStatus === 'completed' && (
               <ElementTokenButton
                 token={element.token}

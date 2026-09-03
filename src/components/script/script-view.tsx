@@ -10,6 +10,7 @@ import {
 import { GenerateSequenceIcon } from '@/components/icons/generate-sequence-icon';
 import { LocationSuggestionSelector } from '@/components/location-library/location-suggestion-selector';
 import { buildMentionItems } from '@/components/scenes/prompt-mention/mention-items';
+import { GenerationStopAlert } from '@/components/generation/generation-stop-alert';
 import { GenerationModeToggle } from '@/components/settings/generation-mode-toggle';
 import { GenerationSettings } from '@/components/settings/generation-settings';
 import { StyleCategorySelect } from '@/components/style/style-category-select';
@@ -51,10 +52,17 @@ import { BILLING_TRANSACTIONS_KEY } from '@/hooks/use-billing-balance-realtime';
 import { useBillingGate } from '@/hooks/use-billing-gate';
 import { useFalPricing } from '@/hooks/use-fal-pricing';
 import { useGenerationSettings } from '@/hooks/use-generation-settings';
+import {
+  DEFAULT_GENERATION_STOP_AT,
+  flagsFromStopAt,
+  includesStage,
+  sliderStopLabel,
+  type GenerationStage,
+} from '@/lib/generation/pipeline';
 import { useComposedScript } from '@/hooks/use-scenes';
 import { useSequenceCharacters } from '@/hooks/use-sequence-characters';
-import { useSequenceDraft } from '@/hooks/use-sequence-draft';
 import { useViaAvailability } from '@/hooks/use-via-availability';
+import { useSequenceDraft } from '@/hooks/use-sequence-draft';
 import {
   useSequenceElements,
   type DraftElementUpload,
@@ -78,8 +86,6 @@ import {
   DEFAULT_MUSIC_MODEL,
   DEFAULT_VIDEO_MODEL,
   IMAGE_TO_VIDEO_MODELS,
-  isValidImageToVideoModel,
-  isValidTextToImageModel,
   safeAudioModel,
   safeImageToVideoModel,
   safeTextToImageModel,
@@ -90,8 +96,6 @@ import {
 } from '@/lib/ai/models';
 import {
   applyGenerationMode,
-  styleMayApplyImage,
-  styleMayApplyVideo,
   type GenerationMode,
 } from '@/lib/ai/generation-mode';
 import {
@@ -337,10 +341,9 @@ export const ScriptView: FC<{
     resolution: Resolution;
     imageModels: TextToImageModel[];
     videoModels: ImageToVideoModel[];
-    autoGenerateMotion: boolean;
+    stopAt: GenerationStage;
     generateStartFrames: boolean;
     audioModels: AudioModel[];
-    autoGenerateMusic: boolean;
   }>(() => ({
     generationMode: savedSettings.generationMode,
     analysisModels: sequenceAnalysisModels,
@@ -354,15 +357,9 @@ export const ScriptView: FC<{
       isEditing && sequence.videoModel
         ? [safeImageToVideoModel(sequence.videoModel, DEFAULT_VIDEO_MODEL)]
         : savedSettings.videoModels,
-    // Re-generating an existing sequence defaults motion OFF — except in
-    // reference-only, where motion is the ONLY thing that renders and the
-    // create schema rejects the pair outright. Seeding `false` there made
-    // every reference-only sequence un-regenerable: Generate 400s, and the
-    // reference-only toggle is disabled while motion is off, so the error
-    // named a control the user could not reach.
-    autoGenerateMotion: isEditing
-      ? !sequence.generateStartFrames
-      : savedSettings.autoGenerateMotion,
+    stopAt: isEditing
+      ? (sequence.generationStopAt ?? DEFAULT_GENERATION_STOP_AT)
+      : savedSettings.stopAt,
     // Editing an existing sequence inherits its mode; a new one starts from
     // the remembered setting.
     generateStartFrames: isEditing
@@ -372,7 +369,6 @@ export const ScriptView: FC<{
       isEditing && sequence.musicModel
         ? [safeAudioModel(sequence.musicModel, DEFAULT_MUSIC_MODEL)]
         : savedSettings.audioModels,
-    autoGenerateMusic: isEditing ? false : savedSettings.autoGenerateMusic,
   }));
   const {
     generationMode,
@@ -380,10 +376,9 @@ export const ScriptView: FC<{
     aspectRatio,
     imageModels,
     videoModels,
-    autoGenerateMotion,
+    stopAt,
     generateStartFrames,
     audioModels,
-    autoGenerateMusic,
   } = genSettings;
   // Derived, not stored: the picker only offers tiers the chosen models serve,
   // so a 4K pick made under one model reads as the nearest tier under a model
@@ -392,7 +387,7 @@ export const ScriptView: FC<{
     genSettings.resolution,
     availableResolutions({
       imageModels,
-      videoModels: autoGenerateMotion ? videoModels : [],
+      videoModels: includesStage(stopAt, 'motion') ? videoModels : [],
       aspectRatio,
     })
   );
@@ -405,6 +400,24 @@ export const ScriptView: FC<{
     );
   const setGenerationMode = (mode: GenerationMode) => {
     setGenSettings((s) => applyGenerationMode(s, mode));
+  };
+  /**
+   * Turning start frames OFF narrows the motion list, which can strand a
+   * selection the server would then reject at submit. Drop the models that
+   * cannot render without a start frame, falling back to the first capable one
+   * so the selection is never empty.
+   */
+  const withStartFrames = (s: typeof genSettings, next: boolean) => {
+    const capable = next
+      ? s.videoModels
+      : s.videoModels.filter((m) => referenceOnlyModels.includes(m));
+    const fallback = referenceOnlyModels[0];
+    const videoModels =
+      capable.length > 0 ? capable : fallback ? [fallback] : s.videoModels;
+    return applyGenerationMode(
+      { ...s, generateStartFrames: next, videoModels },
+      s.generationMode
+    );
   };
   const [selections, setSelections] = useState({
     talentIds: sequence?.suggestedTalentIds ?? [],
@@ -634,8 +647,6 @@ export const ScriptView: FC<{
     },
     []
   );
-  const recommendedImageModel = selectedStyle?.recommendedImageModel ?? null;
-  const recommendedVideoModel = selectedStyle?.recommendedVideoModel ?? null;
   const recommendedAspectRatio = selectedStyle?.defaultAspectRatio ?? null;
 
   // Sync draft state when creating new sequences (not editing). A Try /
@@ -710,10 +721,9 @@ export const ScriptView: FC<{
         analysisModels: savedSettings.analysisModels,
         imageModels: savedSettings.imageModels,
         videoModels: savedSettings.videoModels,
-        autoGenerateMotion: savedSettings.autoGenerateMotion,
+        stopAt: savedSettings.stopAt,
         generateStartFrames: savedSettings.generateStartFrames,
         audioModels: savedSettings.audioModels,
-        autoGenerateMusic: savedSettings.autoGenerateMusic,
       });
       hasSyncedRef.current = true;
     }
@@ -776,11 +786,10 @@ export const ScriptView: FC<{
     }
   }, [styleCategory, videoModels]);
 
-  // Auto-apply style recommendations on style change. Issue #716 originally
-  // said "suggest, never auto-change", but in practice most users never open
-  // the settings popover, so badges alone don't drive adoption of the
-  // recommended models. We override + show a "From {Style} · Reset" pill so
-  // the user can back out with a single click.
+  // Auto-apply the style's aspect ratio on style change. A style's model
+  // recommendations are no longer applied here (#1408) — only its aspect
+  // ratio. A "From {Style} · Reset"
+  // pill lets the user back out with a single click.
   //
   // The seed value of `lastAppliedStyleIdRef` is the sequence's stored styleId
   // when editing (so we don't clobber existing values on mount) or null when
@@ -790,8 +799,6 @@ export const ScriptView: FC<{
   );
   const styleApplySnapshotRef = useRef<{
     aspectRatio: AspectRatio;
-    imageModels: TextToImageModel[];
-    videoModels: ImageToVideoModel[];
   } | null>(null);
   const [appliedFromStyle, setAppliedFromStyle] = useState<{
     styleId: string;
@@ -807,26 +814,6 @@ export const ScriptView: FC<{
     const id = selectedStyle?.id;
     if (!id || id === lastAppliedStyleIdRef.current) return;
 
-    // Turbo: skip Quality-only recs so a style can't replace Lite/H3 Max
-    // with Grok/Seedance. Quality mode still applies the style's pick.
-    const validImage =
-      recommendedImageModel &&
-      isValidTextToImageModel(recommendedImageModel) &&
-      styleMayApplyImage(generationMode, recommendedImageModel)
-        ? recommendedImageModel
-        : null;
-    // A style's recommendation is a preference; reference-only is a hard
-    // constraint. Two seeded styles recommend Grok Imagine, which has no fal
-    // reference-to-video route — applying it here would build a selection the
-    // create schema rejects at Generate, after the settings panel is closed.
-    const validVideo =
-      recommendedVideoModel &&
-      isValidImageToVideoModel(recommendedVideoModel) &&
-      styleMayApplyVideo(generationMode, recommendedVideoModel) &&
-      (generateStartFrames ||
-        referenceOnlyModels.includes(recommendedVideoModel))
-        ? recommendedVideoModel
-        : null;
     const parsedRatio = recommendedAspectRatio
       ? aspectRatioSchema.safeParse(recommendedAspectRatio)
       : null;
@@ -837,11 +824,10 @@ export const ScriptView: FC<{
     // Always restore the existing snapshot first (if any) so chained style
     // switches measure against the user's pre-auto-apply baseline, never
     // against another style's applied values. Switching to a style with no
-    // recommendations therefore lands the user back on their baseline rather
-    // than stranding them on the previous style's recommendations.
+    // recommended ratio therefore lands the user back on their baseline.
     const baseline = styleApplySnapshotRef.current;
 
-    if (!validImage && !validVideo && !validRatio) {
+    if (!validRatio) {
       if (baseline) {
         setGenSettings((s) =>
           applyGenerationMode({ ...s, ...baseline }, s.generationMode)
@@ -853,18 +839,12 @@ export const ScriptView: FC<{
     }
 
     setGenSettings((s) => {
-      const start = baseline ?? {
-        aspectRatio: s.aspectRatio,
-        imageModels: s.imageModels,
-        videoModels: s.videoModels,
-      };
+      const start = baseline ?? { aspectRatio: s.aspectRatio };
       styleApplySnapshotRef.current = start;
       return applyGenerationMode(
         {
           ...s,
-          aspectRatio: validRatio ?? start.aspectRatio,
-          imageModels: validImage ? [validImage] : start.imageModels,
-          videoModels: validVideo ? [validVideo] : start.videoModels,
+          aspectRatio: validRatio,
         },
         s.generationMode
       );
@@ -878,12 +858,7 @@ export const ScriptView: FC<{
     settingsLoaded,
     selectedStyle?.id,
     selectedStyle?.name,
-    recommendedImageModel,
-    recommendedVideoModel,
-    generateStartFrames,
-    referenceOnlyModels,
     recommendedAspectRatio,
-    generationMode,
   ]);
 
   const resetStyleDefaults = () => {
@@ -983,7 +958,22 @@ export const ScriptView: FC<{
 
   const handleCancel = onCancel;
 
-  const executeRegeneration = () => {
+  const [showStopAlert, setShowStopAlert] = useState(false);
+  const [stopAlertMode, setStopAlertMode] = useState<'generate' | 'edit'>(
+    'generate'
+  );
+
+  // Takes the settings explicitly: the stop-at dialog confirms and fires in
+  // one tick, before its setState lands, so reading the closure would send
+  // the pre-dialog mode and model list (#1408).
+  const executeRegeneration = (
+    run: Pick<
+      typeof genSettings,
+      'stopAt' | 'generateStartFrames' | 'videoModels'
+    > = genSettings
+  ) => {
+    const { stopAt: runUntil, generateStartFrames, videoModels } = run;
+    const flags = flagsFromStopAt(runUntil);
     // sequence_generated is captured server-side in createSequences (#1088)
     // so dashboard + public API both feed #product-alerts once.
     createSequenceMutation.mutate(
@@ -998,9 +988,10 @@ export const ScriptView: FC<{
         imageModels,
         videoModels,
         videoModel: videoModels[0] ?? DEFAULT_VIDEO_MODEL,
-        autoGenerateMotion,
+        stopAt: runUntil,
+        autoGenerateMotion: flags.autoGenerateMotion,
+        autoGenerateMusic: flags.autoGenerateMusic,
         generateStartFrames,
-        autoGenerateMusic,
         musicModel: audioModels[0] ?? DEFAULT_MUSIC_MODEL,
         audioModels,
         targetDurationSeconds: targetDuration,
@@ -1030,6 +1021,15 @@ export const ScriptView: FC<{
         },
       }
     );
+  };
+
+  const requestGenerate = () => {
+    if (savedSettings.rememberStopAt) {
+      executeRegeneration();
+      return;
+    }
+    setStopAlertMode('generate');
+    setShowStopAlert(true);
   };
 
   const handleSubmit = async (event?: React.FormEvent<HTMLFormElement>) => {
@@ -1075,7 +1075,11 @@ export const ScriptView: FC<{
     }
 
     if (isEditing) {
-      setEnhance('showRegenerateConfirm', true);
+      if (savedSettings.rememberStopAt) {
+        setEnhance('showRegenerateConfirm', true);
+        return;
+      }
+      requestGenerate();
       return;
     }
 
@@ -1090,7 +1094,7 @@ export const ScriptView: FC<{
       return;
     }
 
-    executeRegeneration();
+    requestGenerate();
   };
 
   const previousScriptRef = useRef<string>('');
@@ -1319,63 +1323,78 @@ export const ScriptView: FC<{
 
   // Transparent pricing under Generate (#1140). Honest estimate only —
   // null with no script (nothing to generate yet), or when the primary
-  // image model has no pricing signal.
+  // image model has no pricing signal. The Generate button always quotes
+  // the full pipeline (stills + motion + music); the stop-at alert quotes
+  // the selected slice.
   const { pricing: falPricing } = useFalPricing();
-  const storyboardCostEstimate = useMemo(() => {
-    if (!scriptValue.trim()) return null;
-    if (!falPricing) return null;
-    const primaryImage = imageModels[0] ?? DEFAULT_IMAGE_MODEL;
-    if (
-      estimateImageCost(primaryImage, aspectRatio, 1, {
-        pricing: falPricing,
-      }) === null
-    ) {
-      return null;
-    }
-    // Prefer Scene N headings after Enhance; else words + target duration.
-    const sceneCount = estimateSceneCount(scriptValue, {
-      targetDurationSeconds: targetDuration,
-    });
-    // Snap labeled clips (or the target spread) onto the primary video
-    // model's grid so the quote matches what will actually render (#1374).
-    const motionDurations = estimateMotionDurations({
-      script: scriptValue,
-      targetSeconds: targetDuration,
-      sceneCount,
-      model: videoModels[0] ?? DEFAULT_VIDEO_MODEL,
-    });
-    return estimateStoryboardCost({
-      imageModel: primaryImage,
-      imageModelCount: Math.max(imageModels.length, 1),
+  const estimateForStopAt = useCallback(
+    (runUntil: GenerationStage, startFrames: boolean = generateStartFrames) => {
+      if (!scriptValue.trim()) return null;
+      const needsMedia =
+        includesStage(runUntil, 'references') ||
+        includesStage(runUntil, 'images') ||
+        includesStage(runUntil, 'motion') ||
+        includesStage(runUntil, 'music');
+      if (needsMedia && !falPricing) return null;
+      const primaryImage = imageModels[0] ?? DEFAULT_IMAGE_MODEL;
+      if (
+        falPricing &&
+        includesStage(runUntil, 'images') &&
+        estimateImageCost(primaryImage, aspectRatio, 1, {
+          pricing: falPricing,
+        }) === null
+      ) {
+        return null;
+      }
+      const sceneCount = estimateSceneCount(scriptValue, {
+        targetDurationSeconds: targetDuration,
+      });
+      const motionDurations = estimateMotionDurations({
+        script: scriptValue,
+        targetSeconds: targetDuration,
+        sceneCount,
+        model: videoModels[0] ?? DEFAULT_VIDEO_MODEL,
+      });
+      const motionOn = includesStage(runUntil, 'motion');
+      const musicOn = includesStage(runUntil, 'music');
+      return estimateStoryboardCost({
+        imageModel: primaryImage,
+        imageModelCount: Math.max(imageModels.length, 1),
+        aspectRatio,
+        resolution,
+        estimatedSceneCount: sceneCount,
+        stopAt: runUntil,
+        autoGenerateMotion: motionOn,
+        referenceOnly: !startFrames,
+        videoModels: motionOn ? videoModels : undefined,
+        videoDurationSeconds: motionOn
+          ? motionDurations.perShotSeconds
+          : undefined,
+        autoGenerateMusic: musicOn,
+        audioModels: musicOn ? audioModels : undefined,
+        audioDurationSeconds: musicOn
+          ? motionDurations.totalSeconds
+          : undefined,
+        pricing: falPricing ?? {},
+      });
+    },
+    [
+      falPricing,
+      imageModels,
       aspectRatio,
       resolution,
-      estimatedSceneCount: sceneCount,
-      autoGenerateMotion,
-      videoModels: autoGenerateMotion ? videoModels : undefined,
-      videoDurationSeconds: autoGenerateMotion
-        ? motionDurations.perShotSeconds
-        : undefined,
-      autoGenerateMusic,
-      referenceOnly: !generateStartFrames,
-      audioModels: autoGenerateMusic ? audioModels : undefined,
-      audioDurationSeconds: autoGenerateMusic
-        ? motionDurations.totalSeconds
-        : undefined,
-      pricing: falPricing,
-    });
-  }, [
-    falPricing,
-    imageModels,
-    aspectRatio,
-    resolution,
-    scriptValue,
-    targetDuration,
-    autoGenerateMotion,
-    videoModels,
-    autoGenerateMusic,
-    audioModels,
-    generateStartFrames,
-  ]);
+      scriptValue,
+      targetDuration,
+      videoModels,
+      audioModels,
+      generateStartFrames,
+    ]
+  );
+  // Remembered: the footer quotes the run that will actually happen. Otherwise
+  // the dialog asks, so quote the default full run.
+  const storyboardCostEstimate = estimateForStopAt(
+    savedSettings.rememberStopAt ? stopAt : DEFAULT_GENERATION_STOP_AT
+  );
 
   // Nothing written yet: Enhance writes the script instead of expanding one
   // (#1393), so it stays live at any length and says which job it is doing.
@@ -1523,28 +1542,17 @@ export const ScriptView: FC<{
             analysisModels={analysisModels}
             imageModels={imageModels}
             videoModels={videoModels}
-            autoGenerateMotion={autoGenerateMotion}
             generateStartFrames={generateStartFrames}
             audioModels={audioModels}
-            autoGenerateMusic={autoGenerateMusic}
             onAspectRatioChange={(v) => updateGen('aspectRatio', v)}
             onResolutionChange={(v) => updateGen('resolution', v)}
             onAnalysisModelsChange={(v) => updateGen('analysisModels', v)}
             onImageModelsChange={(v) => updateGen('imageModels', v)}
             onVideoModelsChange={(v) => updateGen('videoModels', v)}
-            onAutoGenerateMotionChange={(v) =>
-              updateGen('autoGenerateMotion', v)
-            }
-            onGenerateStartFramesChange={(v) =>
-              updateGen('generateStartFrames', v)
-            }
             onAudioModelsChange={(v) => updateGen('audioModels', v)}
-            onAutoGenerateMusicChange={(v) => updateGen('autoGenerateMusic', v)}
             disabled={loading}
             styleCategory={styleCategory}
             styleName={styleName}
-            recommendedImageModel={recommendedImageModel}
-            recommendedVideoModel={recommendedVideoModel}
             recommendedAspectRatio={recommendedAspectRatio}
             appliedFromStyle={appliedFromStyle}
             onResetStyleDefaults={resetStyleDefaults}
@@ -1791,7 +1799,27 @@ export const ScriptView: FC<{
                   pops in after the SSR paint — reserve its line so the footer
                   doesn't grow and shift the page (#1187). */}
               <div className="min-h-4">
-                <ActionCost estimate={storyboardCostEstimate} align="end" />
+                <ActionCost
+                  estimate={storyboardCostEstimate}
+                  align="end"
+                  prefix={
+                    savedSettings.rememberStopAt ? (
+                      <span>
+                        Stops after{' '}
+                        <button
+                          type="button"
+                          className="underline underline-offset-2 hover:text-foreground"
+                          onClick={() => {
+                            setStopAlertMode('edit');
+                            setShowStopAlert(true);
+                          }}
+                        >
+                          {sliderStopLabel(stopAt)}
+                        </button>
+                      </span>
+                    ) : undefined
+                  }
+                />
               </div>
               <span className="hidden text-xs text-muted-foreground sm:block sm:text-right">
                 {isEditing
@@ -1825,7 +1853,7 @@ export const ScriptView: FC<{
             <AlertDialogAction
               onClick={() => {
                 setEnhance('showRegenerateConfirm', false);
-                executeRegeneration();
+                requestGenerate();
               }}
             >
               Generate Copy
@@ -1889,7 +1917,7 @@ export const ScriptView: FC<{
               className={buttonVariants({ variant: 'secondary' })}
               onClick={() => {
                 setEnhance('showEnhanceNudge', false);
-                executeRegeneration();
+                requestGenerate();
               }}
             >
               Generate As-Is
@@ -1906,6 +1934,42 @@ export const ScriptView: FC<{
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <GenerationStopAlert
+        open={showStopAlert}
+        onOpenChange={setShowStopAlert}
+        stopAt={stopAt}
+        generateStartFrames={generateStartFrames}
+        remember={savedSettings.rememberStopAt}
+        confirmLabel={
+          stopAlertMode === 'edit'
+            ? 'Save'
+            : isEditing
+              ? 'Generate Copy'
+              : 'Generate'
+        }
+        description={
+          isEditing
+            ? "A copy will be created from this script. Your original sequence won't change."
+            : undefined
+        }
+        estimateForStopAt={estimateForStopAt}
+        onConfirm={({
+          stopAt: nextStopAt,
+          generateStartFrames: nextStartFrames,
+          remember,
+        }) => {
+          const next = withStartFrames(
+            { ...genSettings, stopAt: nextStopAt },
+            nextStartFrames
+          );
+          setGenSettings(next);
+          saveSettings({ stopAt: nextStopAt, rememberStopAt: remember });
+          setShowStopAlert(false);
+          if (stopAlertMode === 'generate') {
+            executeRegeneration(next);
+          }
+        }}
+      />
       <AlertDialog
         open={sampleReplaceConfirm !== null}
         onOpenChange={(open) => {

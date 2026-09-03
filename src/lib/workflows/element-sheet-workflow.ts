@@ -40,6 +40,7 @@ import { uploadResponse } from '@/lib/storage/upload-response';
 import { contentRejectionSummary } from '@/lib/ai/content-rejection';
 import { OpenStoryWorkflowEntrypoint } from '@/lib/workflow/base-workflow';
 import { generateImageSoftening } from '@/lib/workflows/content-soften';
+import { MAX_AUTO_ELEMENTS } from '@/lib/workflows/cast-records';
 import type {
   ElementSheetWorkflowInput,
   ElementSheetWorkflowResult,
@@ -49,18 +50,6 @@ import { getLogger } from '@/lib/observability/logger';
 
 const logger = getLogger(['openstory', 'workflow', 'element-sheet']);
 
-/**
- * Upper bound on auto-generated element references per run. The scene-split
- * prompt asks the model to detect at most 3; this guards against a chatty
- * model burning image credits on incidental props.
- */
-const MAX_AUTO_ELEMENTS = 3;
-
-/**
- * Element bible entries that have no matching uploaded/ingested element row.
- * Uploaded elements always win — the bible echoes their tokens back, so any
- * token already present in `existing` is covered by a real reference image.
- */
 function toMinimalElement(
   row: Pick<
     SequenceElement,
@@ -74,14 +63,6 @@ function toMinimalElement(
     imageUrl: row.imageUrl,
     consistencyTag: row.consistencyTag,
   };
-}
-
-export function findMissingElementEntries(
-  elementBible: ElementBibleEntry[],
-  existing: Array<Pick<SequenceElementMinimal, 'token'>>
-): ElementBibleEntry[] {
-  const existingTokens = new Set(existing.map((el) => el.token));
-  return elementBible.filter((entry) => !existingTokens.has(entry.token));
 }
 
 /**
@@ -147,10 +128,12 @@ export class ElementSheetWorkflow extends OpenStoryWorkflowEntrypoint<ElementShe
         // Idempotency guard: a replayed run (or a token the user uploaded
         // mid-flight) must not violate the (sequenceId, token) unique index.
         // The id lookup comes first and is the one that survives a rename —
-        // `entry.elementId` is allocated at the spawn and is what `create`
-        // below writes, whereas the token can be rewritten (by the user, or by
-        // the vision auto-rename) between attempts. The token lookup stays as
-        // the uniqueness guard against a concurrent upload of the same token.
+        // `entry.elementId` is the row the Script stage created (or a fresh
+        // id) and is what `ingest` below writes, whereas the token can be
+        // rewritten (by the user, or by the vision auto-rename) between
+        // attempts. The token lookup stays as the uniqueness guard against a
+        // concurrent upload of the same token. A row WITHOUT an image is the
+        // Script-stage placeholder — it needs generating, not skipping.
         const existing = await step.do(
           `check-existing-element-${index}`,
           async () => {
@@ -165,7 +148,7 @@ export class ElementSheetWorkflow extends OpenStoryWorkflowEntrypoint<ElementShe
             return row ? toMinimalElement(row) : null;
           }
         );
-        if (existing) {
+        if (existing?.imageUrl) {
           logger.info(
             `[ElementSheetWorkflow:cf] Element ${entry.token} already exists for sequence ${sequenceId}; skipping generation`
           );
@@ -273,7 +256,8 @@ export class ElementSheetWorkflow extends OpenStoryWorkflowEntrypoint<ElementShe
           // Re-check inside the durable step: this step's own retry would hit
           // the primary key, and the unique (sequenceId, token) index makes a
           // race with a concurrent upload a hard failure — prefer the existing
-          // row over our generated one either way.
+          // row over our generated one either way. The Script-stage
+          // placeholder (no image) is filled in rather than replaced.
           const raced =
             (await scopedDb.liveRead.sequenceElements.getById(
               entry.elementId
@@ -282,8 +266,16 @@ export class ElementSheetWorkflow extends OpenStoryWorkflowEntrypoint<ElementShe
               sequenceId,
               entry.token
             ));
-          if (raced) {
+          if (raced?.imageUrl) {
             return toMinimalElement(raced);
+          }
+          if (raced) {
+            return toMinimalElement(
+              await scopedDb.sequenceElements.update(raced.id, {
+                imageUrl: storageResult.url,
+                imagePath: storageResult.path,
+              })
+            );
           }
 
           const created = await scopedDb.sequenceElements.create({
@@ -337,8 +329,8 @@ export class ElementSheetWorkflow extends OpenStoryWorkflowEntrypoint<ElementShe
     error: string;
     scopedDb: WorkflowScopedDb;
   }): void {
-    // No row to mark failed — sequence_elements rows are only created on
-    // success. The parent analysis surfaces this failure to the user.
+    // The Script-stage placeholder row (no image) simply stays image-less.
+    // The parent analysis surfaces this failure to the user.
     logger.error(
       `[ElementSheetWorkflow:cf] Element reference generation failed for sequence ${event.payload.sequenceId}: ${error}`
     );

@@ -52,6 +52,8 @@ import type { ScopedDb } from '@/lib/db/scoped';
 import { type Sequence } from '@/lib/db/schema';
 import { resolveSequenceStyleConfig } from '@/lib/style/style-config';
 import { sequenceScenesUrl } from '@/lib/emails/notify-sequence-ready';
+import { refreshCheckpointFromCast } from '@/lib/workflow/refresh-checkpoint';
+import { resolveStopAt } from '@/lib/generation/pipeline';
 import { triggerWorkflow } from '@/lib/workflow/client';
 import { buildWorkflowLabel } from '@/lib/workflow/labels';
 import { resolveRunState } from '@/lib/workflow/reconcile';
@@ -173,6 +175,11 @@ async function resolveStoryboardPayload(
   return {
     ...input,
     sequenceId,
+    // A continue re-reads the cast the user may have edited since the run
+    // stopped — the checkpoint's LLM bible would revert those edits.
+    checkpoint: input.checkpoint
+      ? await refreshCheckpointFromCast(scopedDb, sequenceId, input.checkpoint)
+      : undefined,
     suggestedTalent: suggestedTalentRows.map((t) => ({
       talentId: t.id,
       name: t.name,
@@ -207,6 +214,15 @@ async function resolveStoryboardPayload(
     referenceOnly: !sequence.generateStartFrames,
     ownerEmail: await scopedDb.teamManagement.getMemberEmail(input.userId),
     sequenceUrl: sequenceScenesUrl(sequenceId),
+    // Pin stop-at from this click, else the sequence snapshot — never let
+    // auto-generate flags collapse References to Images (#1408).
+    stopAt: resolveStopAt({
+      stopAt: input.stopAt,
+      generationStopAt: sequence.generationStopAt,
+      autoGenerateMotion:
+        input.autoGenerateMotion ?? sequence.autoGenerateMotion,
+      autoGenerateMusic: input.autoGenerateMusic ?? sequence.autoGenerateMusic,
+    }),
   };
 }
 

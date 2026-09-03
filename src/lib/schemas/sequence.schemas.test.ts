@@ -2,10 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   createSequenceSchema,
   REFERENCE_ONLY_MODEL_ERROR,
+  REFERENCE_ONLY_REQUIRES_MOTION_ERROR,
 } from './sequence.schemas';
 
 describe('createSequenceSchema', () => {
-  it('defaults motion and music ON when omitted (product aha path)', () => {
+  it('defaults stop-at to music when omitted (product aha path)', () => {
     const result = createSequenceSchema.safeParse({
       script: 'A valid length script here.',
       styleId: 'style_1',
@@ -14,9 +15,69 @@ describe('createSequenceSchema', () => {
 
     expect(result.success).toBe(true);
     if (result.success) {
+      expect(result.data.stopAt).toBe('music');
       expect(result.data.autoGenerateMotion).toBe(true);
       expect(result.data.autoGenerateMusic).toBe(true);
     }
+  });
+
+  it('maps stopAt onto the legacy auto-generate flags', () => {
+    const result = createSequenceSchema.safeParse({
+      script: 'A valid length script here.',
+      styleId: 'style_1',
+      aspectRatio: '16:9',
+      stopAt: 'references',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.stopAt).toBe('references');
+      expect(result.data.autoGenerateMotion).toBe(false);
+      expect(result.data.autoGenerateMusic).toBe(false);
+    }
+  });
+
+  it('collapses motion-off flags to images when stopAt is omitted', () => {
+    const result = createSequenceSchema.safeParse({
+      script: 'A valid length script here.',
+      styleId: 'style_1',
+      aspectRatio: '16:9',
+      // Reference-only renders nothing without motion, so the frame-based
+      // workflow is the only mode where motion-off flags parse.
+      generateStartFrames: true,
+      autoGenerateMotion: false,
+      autoGenerateMusic: false,
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.stopAt).toBe('images');
+    }
+  });
+
+  it('rejects motion-off flags in reference-only when stopAt is omitted', () => {
+    const result = createSequenceSchema.safeParse({
+      script: 'A valid length script here.',
+      styleId: 'style_1',
+      aspectRatio: '16:9',
+      autoGenerateMotion: false,
+      autoGenerateMusic: false,
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0]?.message).toBe(
+        REFERENCE_ONLY_REQUIRES_MOTION_ERROR
+      );
+    }
+  });
+
+  it('accepts an explicit early stop in reference-only', () => {
+    // A stop-at is a deliberate partial run, not a motion-off flag.
+    const result = createSequenceSchema.safeParse({
+      script: 'A valid length script here.',
+      styleId: 'style_1',
+      aspectRatio: '16:9',
+      stopAt: 'references',
+    });
+    expect(result.success).toBe(true);
   });
 
   it('accepts targetDurationSeconds for pre-flight scene count', () => {

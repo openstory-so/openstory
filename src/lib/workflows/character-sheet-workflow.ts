@@ -295,6 +295,18 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
       stepName: 'generate-sheet-image',
       params: builtParams,
       meta: { characterDbId: input.characterDbId },
+      onRetry: async (retry) => {
+        if (!input.sequenceId || !input.characterDbId) return;
+        await getGenerationChannel(input.sequenceId).emit(
+          'generation.character-sheet:progress',
+          {
+            characterId: input.characterDbId,
+            status: 'generating',
+            phase: 'retrying',
+            ...retry,
+          }
+        );
+      },
     });
     const imageResult = generation.result;
     const generationParams = generation.params;

@@ -1,18 +1,31 @@
 import { ActionCost } from '@/components/billing/action-cost';
+import { GenerationStopSlider } from '@/components/generation/generation-stop-slider';
 import { MotionModelSelector } from '@/components/model/motion-model-selector';
 import { MusicModelSelector } from '@/components/model/music-model-selector';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import {
+  actionLabelForStage,
+  DEFAULT_GENERATION_STOP_AT,
+  includesStage,
+  isContinueStage,
+  type ContinueStage,
+  type GenerationStage,
+} from '@/lib/generation/pipeline';
 import { useCreateScene, useReorderScenes } from '@/hooks/use-scene-structure';
 import {
+  DEFAULT_IMAGE_MODEL,
   DEFAULT_MUSIC_MODEL,
   DEFAULT_VIDEO_MODEL,
   type AudioModel,
   type ImageToVideoModel,
+  type TextToImageModel,
 } from '@/lib/ai/models';
 import {
   estimateAudioCost,
+  estimateImageCost,
+  estimateStoryboardCost,
   estimateVideoCost,
 } from '@/lib/billing/cost-estimation';
 import { addMicros, ZERO_MICROS, type Microdollars } from '@/lib/billing/money';
@@ -32,10 +45,11 @@ import {
   type ShotView,
 } from '@/lib/shots/shot-view';
 import { cn } from '@/lib/utils';
-import { Loader2, Plus, Video } from 'lucide-react';
+import { FileText, Images, Loader2, Music, Plus, Video } from 'lucide-react';
 import {
   memo,
   useCallback,
+  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -44,6 +58,14 @@ import {
 import { toast } from 'sonner';
 import { SceneGroup } from './scene-group';
 import { SceneListItem } from './scene-list-item';
+
+const CONTINUE_ICON = {
+  script: FileText,
+  references: Images,
+  images: Images,
+  motion: Video,
+  music: Music,
+} as const;
 
 /**
  * Center `el` in the nearest Radix ScrollArea viewport. Returns false when
@@ -113,6 +135,12 @@ export type SceneListProps = {
   regeneratingImages: Set<string>;
   regeneratingMotion: Set<string>;
   onBatchGenerateMotion?: (args: BatchGenerateMotionArgs) => Promise<void>;
+  nextStage?: GenerationStage | null;
+  onContinueGeneration?: (args: {
+    startFrom: ContinueStage;
+    stopAt: GenerationStage;
+  }) => Promise<void>;
+  onGenerateMusic?: (model: AudioModel) => Promise<void>;
   musicPromptsReady: boolean;
   hideBatchButton?: boolean;
   divergentVariants?: ShotVariant[];
@@ -120,6 +148,8 @@ export type SceneListProps = {
   initialMusicModel?: AudioModel;
   /** Sequence default / last batch pick — seeds the motion model dropdown. */
   initialVideoModel?: ImageToVideoModel;
+  /** Sequence stills model — continue-from-DAG cost quotes. */
+  initialImageModel?: TextToImageModel;
   /** Style-category gate for models that require a matching style. */
   styleCategory?: string;
   /**
@@ -127,7 +157,6 @@ export type SceneListProps = {
    * cannot require one — see `isBatchMotionEligible`.
    */
   generateStartFrames?: boolean;
-  recommendedVideoModel?: string | null;
   styleName?: string;
   modelMissingShotIds?: Set<string>;
   modelMissingLabel?: string | null;
@@ -155,15 +184,18 @@ const SceneListComponent: React.FC<SceneListProps> = ({
   regeneratingImages,
   regeneratingMotion,
   onBatchGenerateMotion,
+  nextStage = null,
+  onContinueGeneration,
+  onGenerateMusic,
   musicPromptsReady,
   hideBatchButton = false,
   divergentVariants,
   onCompareDivergent,
   initialMusicModel,
   initialVideoModel,
+  initialImageModel,
   styleCategory,
   generateStartFrames = false,
-  recommendedVideoModel,
   styleName,
   modelMissingShotIds,
   modelMissingLabel,
@@ -225,6 +257,12 @@ const SceneListComponent: React.FC<SceneListProps> = ({
   };
 
   const [isGenerating, setIsGenerating] = useState(false);
+  const [continueStopAt, setContinueStopAt] = useState<GenerationStage>(
+    nextStage ?? DEFAULT_GENERATION_STOP_AT
+  );
+  useEffect(() => {
+    if (nextStage) setContinueStopAt(nextStage);
+  }, [nextStage]);
   const [includeMusic, setIncludeMusic] = useState(true);
   const [generateAudio, setGenerateAudio] = useState(true);
   const [musicModel, setMusicModel] = useState<AudioModel>(
@@ -282,25 +320,72 @@ const SceneListComponent: React.FC<SceneListProps> = ({
     return notStartedShots.every((f) => f.motionPrompt?.fullPrompt);
   }, [notStartedShots]);
 
-  const handleGenerateMotion = async () => {
-    if (!onBatchGenerateMotion || notStartedShots.length === 0) return;
-
+  /**
+   * Run one footer action with the shared spinner. Each of these used to
+   * `try/finally` without a `catch`, so a rejected generate call reset the
+   * button and said nothing — the click read as a hang (#1408). Insufficient
+   * credits is the one failure the parent swallows (it opens the billing
+   * gate instead), so it never reaches here.
+   */
+  const runFooterAction = async (
+    label: string,
+    run: () => Promise<unknown>
+  ) => {
     setIsGenerating(true);
     try {
-      await onBatchGenerateMotion({
-        includeMusic,
-        musicModel,
-        videoModel,
-        generateAudio,
-      });
+      await run();
+    } catch (error) {
+      toast.error(label, { description: errorMessage(error) });
     } finally {
       setIsGenerating(false);
     }
   };
 
+  const handleGenerateMotion = async () => {
+    if (!onBatchGenerateMotion || notStartedShots.length === 0) return;
+    await runFooterAction('Failed to generate motion', () =>
+      onBatchGenerateMotion({
+        includeMusic,
+        musicModel,
+        videoModel,
+        generateAudio,
+      })
+    );
+  };
+
   const isMotionInProgress = regeneratingMotion.size > 0 || hasGeneratingShots;
-  const showButton =
-    !hideBatchButton && notStartedShots.length > 0 && !isMotionInProgress;
+  const showMotionFooter =
+    !hideBatchButton &&
+    !isMotionInProgress &&
+    (nextStage === 'motion' ||
+      (nextStage == null && notStartedShots.length > 0));
+  const showMusicFooter =
+    !hideBatchButton && nextStage === 'music' && Boolean(onGenerateMusic);
+  const showContinueFooter =
+    !hideBatchButton &&
+    isContinueStage(nextStage) &&
+    Boolean(onContinueGeneration);
+  const ContinueIcon = CONTINUE_ICON[continueStopAt];
+  const showButton = showMotionFooter;
+
+  const handleContinue = async () => {
+    if (!onContinueGeneration || !isContinueStage(nextStage)) return;
+    await runFooterAction(
+      `Failed to ${actionLabelForStage(continueStopAt).toLowerCase()}`,
+      () =>
+        onContinueGeneration({
+          startFrom: nextStage,
+          stopAt: continueStopAt,
+        })
+    );
+  };
+
+  const handleGenerateMusicClick = async () => {
+    if (!onGenerateMusic) return;
+    await runFooterAction('Failed to generate music', () =>
+      onGenerateMusic(musicModel)
+    );
+  };
   const isButtonDisabled =
     isGenerating ||
     notStartedShots.length === 0 ||
@@ -358,6 +443,62 @@ const SceneListComponent: React.FC<SceneListProps> = ({
     videoModel,
     resolution,
     generateStartFrames,
+  ]);
+
+  const continueCostEstimate = useMemo((): Microdollars | null => {
+    if (!nextStage || !showContinueFooter) return null;
+    const needsMedia =
+      includesStage(continueStopAt, 'references') ||
+      includesStage(continueStopAt, 'images') ||
+      includesStage(continueStopAt, 'motion') ||
+      includesStage(continueStopAt, 'music');
+    if (needsMedia && !falPricing) return null;
+    const imageModel = initialImageModel ?? DEFAULT_IMAGE_MODEL;
+    if (
+      falPricing &&
+      includesStage(continueStopAt, 'images') &&
+      estimateImageCost(imageModel, aspectRatio, 1, { pricing: falPricing }) ===
+        null
+    ) {
+      return null;
+    }
+    const sceneCount = Math.max(scenes?.length ?? shots?.length ?? 0, 1);
+    const motionOn = includesStage(continueStopAt, 'motion');
+    const musicOn = includesStage(continueStopAt, 'music');
+    const perShotSeconds =
+      shots && shots.length > 0
+        ? resolveShotDuration({
+            durationMs: shots[0]?.durationMs,
+            model: videoModel,
+          })
+        : 5;
+    return estimateStoryboardCost({
+      imageModel,
+      aspectRatio,
+      estimatedSceneCount: sceneCount,
+      startFrom: nextStage,
+      stopAt: continueStopAt,
+      referenceOnly: !generateStartFrames,
+      autoGenerateMotion: motionOn,
+      videoModels: motionOn ? [videoModel] : undefined,
+      videoDurationSeconds: motionOn ? perShotSeconds : undefined,
+      autoGenerateMusic: musicOn,
+      audioModels: musicOn ? [musicModel] : undefined,
+      audioDurationSeconds: musicOn ? perShotSeconds * sceneCount : undefined,
+      pricing: falPricing ?? {},
+    });
+  }, [
+    falPricing,
+    nextStage,
+    showContinueFooter,
+    initialImageModel,
+    aspectRatio,
+    scenes?.length,
+    shots,
+    continueStopAt,
+    generateStartFrames,
+    videoModel,
+    musicModel,
   ]);
 
   const shotsBySceneId = useMemo(() => {
@@ -558,7 +699,6 @@ const SceneListComponent: React.FC<SceneListProps> = ({
             onModelChange={setVideoModel}
             aspectRatio={aspectRatio}
             styleCategory={styleCategory}
-            recommendedVideoModel={recommendedVideoModel}
             styleName={styleName}
             disabled={isGenerating || isMotionInProgress}
             // A batch can mix modes, and submit validates the model against
@@ -631,6 +771,70 @@ const SceneListComponent: React.FC<SceneListProps> = ({
           </label>
         </div>
       )}
+
+      {showContinueFooter && (
+        <div className="sticky bottom-0 border-t bg-background p-4 flex flex-col gap-3">
+          <GenerationStopSlider
+            value={continueStopAt}
+            onChange={setContinueStopAt}
+            minStage={nextStage}
+            generateStartFrames={generateStartFrames}
+            disabled={isGenerating}
+          />
+          <Button
+            variant="default"
+            className="w-full"
+            onClick={() => void handleContinue()}
+            disabled={isGenerating}
+          >
+            {isGenerating ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Generating…
+              </>
+            ) : (
+              <>
+                <ContinueIcon className="mr-2 h-4 w-4" />
+                {actionLabelForStage(continueStopAt)}
+              </>
+            )}
+          </Button>
+          <ActionCost estimate={continueCostEstimate} />
+        </div>
+      )}
+
+      {showMusicFooter && (
+        <div className="sticky bottom-0 border-t bg-background p-4 flex flex-col gap-3">
+          <MusicModelSelector
+            selectedModel={musicModel}
+            onModelChange={setMusicModel}
+            disabled={isGenerating}
+          />
+          <Button
+            variant="default"
+            className="w-full"
+            onClick={() => void handleGenerateMusicClick()}
+            disabled={isGenerating || !musicPromptsReady}
+          >
+            {isGenerating ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Generating…
+              </>
+            ) : !musicPromptsReady ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Composing music…
+              </>
+            ) : (
+              <>
+                <Music className="mr-2 h-4 w-4" />
+                Generate Music
+              </>
+            )}
+          </Button>
+        </div>
+      )}
     </div>
   );
 };
@@ -651,10 +855,11 @@ const areEqual = (
     prevProps.aspectRatio !== nextProps.aspectRatio ||
     prevProps.musicPromptsReady !== nextProps.musicPromptsReady ||
     prevProps.hideBatchButton !== nextProps.hideBatchButton ||
+    prevProps.nextStage !== nextProps.nextStage ||
     prevProps.initialMusicModel !== nextProps.initialMusicModel ||
     prevProps.initialVideoModel !== nextProps.initialVideoModel ||
+    prevProps.initialImageModel !== nextProps.initialImageModel ||
     prevProps.styleCategory !== nextProps.styleCategory ||
-    prevProps.recommendedVideoModel !== nextProps.recommendedVideoModel ||
     prevProps.styleName !== nextProps.styleName ||
     prevProps.modelMissingLabel !== nextProps.modelMissingLabel ||
     prevProps.modelMissingShotIds !== nextProps.modelMissingShotIds ||
@@ -673,6 +878,8 @@ const areEqual = (
 
   if (
     prevProps.onBatchGenerateMotion !== nextProps.onBatchGenerateMotion ||
+    prevProps.onContinueGeneration !== nextProps.onContinueGeneration ||
+    prevProps.onGenerateMusic !== nextProps.onGenerateMusic ||
     prevProps.onCompareDivergent !== nextProps.onCompareDivergent ||
     prevProps.onSelectScene !== nextProps.onSelectScene ||
     prevProps.onSelectShot !== nextProps.onSelectShot ||

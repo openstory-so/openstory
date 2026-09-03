@@ -11,23 +11,14 @@ import type { FC, ComponentProps } from 'react';
 type GenerationSettingsTriggerProps = {
   aspectRatio: AspectRatio;
   resolution: Resolution;
-  autoGenerateMotion?: boolean;
-  autoGenerateMusic?: boolean;
 } & ComponentProps<typeof Button>;
 
 export const GenerationSettingsTrigger: FC<GenerationSettingsTriggerProps> = ({
   aspectRatio,
   resolution,
-  autoGenerateMotion,
-  autoGenerateMusic,
   ...props
 }) => {
   const aspectRatioData = ASPECT_RATIOS.find((r) => r.value === aspectRatio);
-
-  const autoLabels = [
-    autoGenerateMotion && 'Motion',
-    autoGenerateMusic && 'Music',
-  ].filter(Boolean);
 
   return (
     <Button
@@ -47,11 +38,6 @@ export const GenerationSettingsTrigger: FC<GenerationSettingsTriggerProps> = ({
       <span className="font-mono text-xs text-muted-foreground">
         {RESOLUTION_OPTIONS.find((r) => r.value === resolution)?.label}
       </span>
-      {autoLabels.length > 0 && (
-        <span className="hidden sm:inline text-xs text-muted-foreground">
-          {autoLabels.join(' + ')}
-        </span>
-      )}
       <SlidersHorizontal className="size-3.5 text-muted-foreground" />
       <ChevronDown className="size-3.5 text-muted-foreground" />
     </Button>

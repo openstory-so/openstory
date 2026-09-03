@@ -17,6 +17,7 @@ import { DEFAULT_IMAGE_MODEL, DEFAULT_VIDEO_MODEL } from '@/lib/ai/models';
 import { DEFAULT_ANALYSIS_MODEL } from '@/lib/ai/models.config';
 import type { ScopedDb } from '@/lib/db/scoped';
 import type { StyleConfig } from '@/lib/db/schema';
+import type { GenerationStage } from '@/lib/generation/pipeline';
 import type { StoryboardTriggerInput } from '@/lib/workflow/types';
 
 const triggerWorkflowMock = vi.fn();
@@ -75,6 +76,9 @@ function makeScopedDb(opts: {
   talent?: Array<{ id: string; name: string; description: string | null }>;
   locations?: Array<{ id: string; name: string; description: string | null }>;
   musicPrompt?: string | null;
+  generationStopAt?: GenerationStage | null;
+  autoGenerateMotion?: boolean;
+  autoGenerateMusic?: boolean;
 }) {
   const updateStatus = vi.fn();
   const claimWorkflowSlot = vi.fn<
@@ -98,6 +102,9 @@ function makeScopedDb(opts: {
     videoModel: 'not-a-real-video-model',
     workflowRunId: opts.workflowRunId,
     musicPrompt: opts.musicPrompt ?? null,
+    generationStopAt: opts.generationStopAt ?? null,
+    autoGenerateMotion: opts.autoGenerateMotion ?? false,
+    autoGenerateMusic: opts.autoGenerateMusic ?? false,
     status: 'failed',
   }));
   const getStyleById = vi.fn(async () =>
@@ -227,7 +234,47 @@ describe('triggerStoryboard', () => {
       suggestedLocations: [],
       ownerEmail: 'owner@example.com',
       sequenceUrl: expect.stringMatching(/\/sequences\/seq_1\/scenes$/),
+      pendingAutoStyleId: undefined,
+      // No stopAt on the trigger and no generationStopAt on the row → flags
+      // collapse to images (legacy stills-only).
+      stopAt: 'images',
     });
+  });
+
+  test('pins explicit stopAt so flags cannot collapse References to Images', async () => {
+    runStateResult = 'failed';
+    triggerWorkflowMock.mockReset();
+    triggerWorkflowMock.mockResolvedValue('run-1');
+    const { scopedDb } = makeScopedDb({ workflowRunId: null });
+
+    await triggerStoryboard(scopedDb, {
+      ...INPUT,
+      stopAt: 'references',
+      autoGenerateMotion: false,
+      autoGenerateMusic: false,
+    });
+
+    expect(triggerWorkflowMock.mock.calls[0]?.[1]).toEqual(
+      expect.objectContaining({ stopAt: 'references' })
+    );
+  });
+
+  test('pins sequence.generationStopAt when the trigger omits stopAt', async () => {
+    runStateResult = 'failed';
+    triggerWorkflowMock.mockReset();
+    triggerWorkflowMock.mockResolvedValue('run-1');
+    const { scopedDb } = makeScopedDb({
+      workflowRunId: null,
+      generationStopAt: 'references',
+      autoGenerateMotion: false,
+      autoGenerateMusic: false,
+    });
+
+    await triggerStoryboard(scopedDb, INPUT);
+
+    expect(triggerWorkflowMock.mock.calls[0]?.[1]).toEqual(
+      expect.objectContaining({ stopAt: 'references' })
+    );
   });
 
   test('uses the sequence-owned style snapshot, not the live catalog row', async () => {

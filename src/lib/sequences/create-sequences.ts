@@ -138,8 +138,9 @@ export const createSequences = createServerOnlyFn(
       imageModels: imageModelsInput,
       videoModel,
       videoModels: videoModelsInput,
-      autoGenerateMotion = true,
-      autoGenerateMusic = true,
+      stopAt,
+      autoGenerateMotion,
+      autoGenerateMusic,
       generateStartFrames = false,
       musicModel,
       audioModels: audioModelsInput,
@@ -279,6 +280,7 @@ export const createSequences = createServerOnlyFn(
       aspectRatio,
       resolution,
       autoGenerateMotion,
+      stopAt,
       videoModels,
       autoGenerateMusic,
       audioModels,
@@ -295,14 +297,6 @@ export const createSequences = createServerOnlyFn(
 
     const created = await Promise.all(
       analysisModels.map(async (modelId) => {
-        // Only persist video/music model choices when the user actually opts
-        // into auto-generation. Otherwise the sequence ends up with a "ghost"
-        // model preference the user never picked, which surfaces stale values
-        // in the header chip and batch footer. Tracked in #714.
-        const persistedMusicModel = autoGenerateMusic
-          ? primaryAudioModel
-          : undefined;
-
         const sequenceId = generateId();
         const reservationId = await reserveRunCredits(
           context.scopedDb,
@@ -338,10 +332,13 @@ export const createSequences = createServerOnlyFn(
                 getAnalysisModelById(modelId)?.id ||
                 resolveModelForCountry(DEFAULT_ANALYSIS_MODEL, country),
               imageModel: primaryImageModel,
-              videoModel: autoGenerateMotion ? primaryVideoModel : undefined,
-              musicModel: persistedMusicModel,
+              // Persisted even when this run stops before motion/music —
+              // continue-from-DAG uses them on the next stage.
+              videoModel: primaryVideoModel,
+              musicModel: primaryAudioModel,
               autoGenerateMotion,
               autoGenerateMusic,
+              generationStopAt: stopAt,
               generateStartFrames,
               suggestedTalentIds: suggestedTalentIds?.length
                 ? suggestedTalentIds
@@ -392,8 +389,9 @@ export const createSequences = createServerOnlyFn(
               },
               autoGenerateMotion,
               autoGenerateMusic,
-              musicModel: autoGenerateMusic ? primaryAudioModel : undefined,
-              audioModels: autoGenerateMusic ? audioModels : undefined,
+              stopAt,
+              musicModel: primaryAudioModel,
+              audioModels,
               suggestedTalentIds,
               suggestedLocationIds,
             };
@@ -440,6 +438,7 @@ export const createSequences = createServerOnlyFn(
         audio_models: audioModels,
         auto_generate_motion: autoGenerateMotion,
         auto_generate_music: autoGenerateMusic,
+        stop_at: stopAt,
         script_length: data.script.length,
         source: sourceSequenceId ? 'regenerate' : 'create',
       },

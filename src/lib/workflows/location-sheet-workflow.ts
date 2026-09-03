@@ -142,6 +142,18 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
       stepName: 'generate-reference-image',
       params: builtParams,
       meta: { locationDbId: input.locationDbId },
+      onRetry: async (retry) => {
+        if (!input.sequenceId || !input.locationDbId) return;
+        await getGenerationChannel(input.sequenceId).emit(
+          'generation.location-sheet:progress',
+          {
+            locationId: input.locationDbId,
+            status: 'generating',
+            phase: 'retrying',
+            ...retry,
+          }
+        );
+      },
     });
     const imageResult = generation.result;
     const generationParams = generation.params;

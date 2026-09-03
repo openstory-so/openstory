@@ -111,6 +111,7 @@ export const ProgressBanner: React.FC<ProgressBannerProps> = ({
       <PopoverTrigger
         className={cn(
           'relative flex h-8 min-w-0 items-center gap-1.5 overflow-hidden rounded-full border bg-background px-2.5 text-xs text-muted-foreground transition-opacity duration-500 hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 outline-none',
+          !showCompleted && 'progress-shimmer',
           isExiting && 'opacity-0'
         )}
       >

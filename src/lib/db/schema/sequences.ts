@@ -16,6 +16,10 @@ import { user } from './auth';
 // shots.ts imports sequences for foreign key reference
 import { styles } from './libraries';
 import { teams } from './teams';
+import type {
+  GenerationCheckpoint,
+  GenerationStage,
+} from '@/lib/generation/pipeline';
 import type { StoredStyleConfig } from '@/lib/style/style-config';
 
 // Enum values as constants (SQLite doesn't have native enums)
@@ -170,10 +174,18 @@ export const sequences = snakeCase.table(
     // so flipping it re-stales the prompts rather than mixing two styles.
     generateStartFrames: integer({ mode: 'boolean' }).default(false).notNull(),
 
-    // Auto-generation flags (set at sequence creation, read by UI for phase display)
-    // TB-20260804: DB-Audit: autoGenerateMotion and autoGenerateMusic should not be stored. They should be set when the workflow is initiated.
+    // Auto-generation flags (derived from generationStopAt at trigger time).
+    // Kept so existing readers (progress banner, smart-retry, API v1) keep
+    // working; stop-at is the source of truth (#1408).
     autoGenerateMotion: integer({ mode: 'boolean' }).default(false).notNull(),
     autoGenerateMusic: integer({ mode: 'boolean' }).default(false).notNull(),
+
+    // How far the current/last run was asked to go, and how far it actually
+    // got. Checkpoint holds in-memory DAG state (bibles, matches) that is
+    // not yet in character/location rows, so a stopped run can resume.
+    generationStopAt: text().$type<GenerationStage>(),
+    pipelineStage: text().$type<GenerationStage>(),
+    generationCheckpoint: text({ mode: 'json' }).$type<GenerationCheckpoint>(),
 
     // Suggested talent/location IDs used during generation (for pre-populating the UI)
     suggestedTalentIds: text({

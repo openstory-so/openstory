@@ -160,58 +160,117 @@ describe('generationStreamReducer — shot retry tracking (#882)', () => {
   });
 });
 
+describe('generationStreamReducer — stop-at banner (#1408)', () => {
+  it('does not grow a Script-only banner when Casting is announced', () => {
+    const scriptOnly = createInitialState({ stopAt: 'script' });
+    expect(scriptOnly.phases.map((p) => p.shortName)).toEqual(['Casting']);
+
+    // Casting rides on the Script phase number — it recaptions, never sprouts.
+    const next = apply(scriptOnly, {
+      type: 'PHASE_START',
+      payload: {
+        phase: 1,
+        phaseName: 'Casting characters & locations…',
+      },
+    });
+
+    expect(next.phases.map((p) => p.shortName)).toEqual(['Casting']);
+    expect(next.phases[0]?.phaseName).toBe('Casting characters & locations…');
+  });
+
+  it('grows a banner sized for an early stop when a Continue runs past it', () => {
+    const references = createInitialState({ stopAt: 'references' });
+    expect(references.phases.map((p) => p.shortName)).toEqual([
+      'Casting',
+      'References',
+    ]);
+
+    const next = apply(references, {
+      type: 'PHASE_START',
+      payload: { phase: 4, phaseName: 'Generating motion & music…' },
+    });
+
+    expect(next.phases.map((p) => p.shortName)).toEqual([
+      'Casting',
+      'References',
+      'Music & Motion',
+    ]);
+    expect(next.phases.map((p) => p.status)).toEqual([
+      'completed',
+      'completed',
+      'active',
+    ]);
+    expect(next.currentPhase).toBe(4);
+  });
+});
+
 describe('progress phases in reference-only', () => {
   const shortNames = (config?: Parameters<typeof createInitialState>[0]) =>
     createInitialState(config).phases.map((p) => p.shortName);
 
   it('drops the shot-images phase entirely', () => {
-    // Nothing is left in phase 4: the stills are skipped and the motion
-    // prompts finished back in phase 3. Relabelling it would leave a step the
-    // user watches while it does nothing; the workflow emits no phase-4 event
-    // at all, so the chip would sit pending until phase 5 swept it.
-    expect(
-      shortNames({
-        autoGenerateMotion: true,
-        autoGenerateMusic: true,
-        referenceOnly: true,
-      })
-    ).toEqual(['Script', 'Casting', 'References', 'Music & Motion']);
+    // Nothing is left in the images stage: the stills are skipped and the
+    // motion prompts finished back in references. Relabelling it would leave
+    // a step the user watches while it does nothing; the workflow emits no
+    // images event at all, so the chip would sit pending until motion swept it.
+    expect(shortNames({ stopAt: 'music', referenceOnly: true })).toEqual([
+      'Casting',
+      'References',
+      'Music & Motion',
+    ]);
 
     expect(
-      createInitialState({
-        autoGenerateMotion: true,
-        autoGenerateMusic: true,
-        referenceOnly: true,
-      }).phases.map((p) => p.phase)
-    ).toEqual([1, 2, 3, 5]);
+      createInitialState({ stopAt: 'music', referenceOnly: true }).phases.map(
+        (p) => p.phase
+      )
+    ).toEqual([1, 2, 4]);
   });
 
   it('leaves the image-rendering modes alone', () => {
-    expect(
-      shortNames({ autoGenerateMotion: true, autoGenerateMusic: true })
-    ).toEqual(['Script', 'Casting', 'References', 'Images', 'Music & Motion']);
+    expect(shortNames({ stopAt: 'music' })).toEqual([
+      'Casting',
+      'References',
+      'Images',
+      'Music & Motion',
+    ]);
   });
 
-  it('sweeps the earlier steps complete when phase 5 starts', () => {
-    // The rail has a gap where 4 would be; phase 5 arriving must still mark
-    // 1-3 completed rather than leaving them mid-flight.
+  it('sweeps the earlier steps complete when motion starts', () => {
+    // The rail has a gap where images would be; motion arriving must still
+    // mark the earlier stages completed rather than leaving them mid-flight.
     const state = apply(
-      createInitialState({
-        autoGenerateMotion: true,
-        autoGenerateMusic: true,
-        referenceOnly: true,
-      }),
+      createInitialState({ stopAt: 'music', referenceOnly: true }),
       {
         type: 'PHASE_START',
-        payload: { phase: 5, phaseName: 'Generating motion & music…' },
+        payload: { phase: 4, phaseName: 'Generating motion & music…' },
       }
     );
 
     expect(state.phases.map((p) => p.status)).toEqual([
       'completed',
       'completed',
-      'completed',
       'active',
     ]);
+  });
+});
+
+describe('continue after a finished run', () => {
+  it('starts a new run from a completed state instead of exiting on arrival', () => {
+    const done = apply(createInitialState({ stopAt: 'references' }), {
+      type: 'COMPLETE',
+      payload: { sequenceId: 'seq' },
+    });
+    expect(done.isComplete).toBe(true);
+    expect(done.currentPhase).toBe(3);
+
+    // Continue from References: phase 2 is "backwards" of the parked
+    // currentPhase, and the chip would unmount on isComplete.
+    const next = apply(done, {
+      type: 'PHASE_START',
+      payload: { phase: 2, phaseName: 'Generating references & prompts…' },
+    });
+    expect(next.isComplete).toBe(false);
+    expect(next.currentPhase).toBe(2);
+    expect(next.phases.map((p) => p.status)).toEqual(['completed', 'active']);
   });
 });

@@ -15,6 +15,12 @@ import {
 import { aspectRatioSchema } from '@/lib/constants/aspect-ratios';
 import { resolutionSchema } from '@/lib/constants/resolutions';
 import { sequences } from '@/lib/db/schema/sequences';
+import {
+  DEFAULT_GENERATION_STOP_AT,
+  flagsFromStopAt,
+  generationStageSchema,
+  stopAtFromFlags,
+} from '@/lib/generation/pipeline';
 import { ulidSchemaOptional } from '@/lib/schemas/id.schemas';
 import { createInsertSchema, createUpdateSchema } from 'drizzle-orm/zod';
 import { z } from 'zod';
@@ -74,6 +80,9 @@ export const createSequenceSchema = createInsertSchema(sequences, {
     musicModel: true,
     musicPrompt: true,
     musicTags: true,
+    generationStopAt: true,
+    pipelineStage: true,
+    generationCheckpoint: true,
   })
   .extend({
     // Accept array of models for multi-model sequence creation
@@ -118,15 +127,15 @@ export const createSequenceSchema = createInsertSchema(sequences, {
       )
       .min(1, 'At least one video model must be selected')
       .default([DEFAULT_VIDEO_MODEL]),
-    // Product default ON for the aha path (stills + motion + music). Callers
-    // that omit flags get true after parse — keep API v1 explicit if it must
-    // stay opt-in spend. Zod `.default()` runs before handler destructuring, so
-    // handler `= true` alone is not enough when the flag is omitted.
-    autoGenerateMotion: z.boolean().default(true).optional(),
-    autoGenerateMusic: z.boolean().default(true).optional(),
-    // Explicit default for the same reason as the flags above: the model
-    // refinement below and the create handler both read the parsed value, and
-    // leaving it `undefined` would make "off" indistinguishable from "unset".
+    // How far the run should go (#1408). Default music = stills + motion +
+    // music (the aha path). Legacy auto-generate flags still parse and map
+    // onto a stop-at when `stopAt` is omitted.
+    stopAt: generationStageSchema.optional(),
+    autoGenerateMotion: z.boolean().optional(),
+    autoGenerateMusic: z.boolean().optional(),
+    // Explicit default: the model refinement below and the create handler
+    // both read the parsed value, and leaving it `undefined` would make "off"
+    // indistinguishable from "unset".
     generateStartFrames: z.boolean().default(false).optional(),
     // Music model selection (model key, not full ID) — primary / first of audioModels
     musicModel: z
@@ -136,7 +145,7 @@ export const createSequenceSchema = createInsertSchema(sequences, {
       })
       .optional(),
     // Multiple audio models for variant generation (first is primary). Optional
-    // (music is opt-in via autoGenerateMusic); when present must be non-empty.
+    // (music is opt-in via a `music` stop-at); when present must be non-empty.
     audioModels: z
       .array(
         z.string().refine((val) => validAudioModelKeys.includes(val), {
@@ -173,9 +182,27 @@ export const createSequenceSchema = createInsertSchema(sequences, {
     // newly created sequence so the user doesn't have to re-upload references.
     sourceSequenceId: ulidSchemaOptional,
   })
-  .refine((data) => !data.autoGenerateMusic || data.autoGenerateMotion, {
-    path: ['autoGenerateMusic'],
-    message: MUSIC_REQUIRES_MOTION_ERROR,
+  // Legacy-flag checks only apply when the caller did not pick a stop-at
+  // (#1408): an explicit early stop is a deliberate partial run.
+  .superRefine((data, ctx) => {
+    if (data.stopAt) return;
+    if (data.autoGenerateMusic && data.autoGenerateMotion === false) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['autoGenerateMusic'],
+        message: MUSIC_REQUIRES_MOTION_ERROR,
+      });
+    }
+    // Reference-only skips the image pass; motion is the only thing left that
+    // renders. With motion off the sequence would complete having generated
+    // nothing at all, and report success doing it.
+    if (!data.generateStartFrames && data.autoGenerateMotion === false) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['generateStartFrames'],
+        message: REFERENCE_ONLY_REQUIRES_MOTION_ERROR,
+      });
+    }
   })
   // Reference-only has no start frame, so EVERY selected model must have a
   // route whose start frame is optional — not just the primary. A variant
@@ -199,12 +226,18 @@ export const createSequenceSchema = createInsertSchema(sequences, {
       message: REFERENCE_ONLY_MODEL_ERROR,
     }
   )
-  // Reference-only skips the image pass; motion is the only thing left that
-  // renders. With motion off the sequence would complete having generated
-  // nothing at all, and report success doing it.
-  .refine((data) => data.generateStartFrames || data.autoGenerateMotion, {
-    path: ['generateStartFrames'],
-    message: REFERENCE_ONLY_REQUIRES_MOTION_ERROR,
+  .transform((data) => {
+    const stopAt =
+      data.stopAt ??
+      (data.autoGenerateMotion === undefined &&
+      data.autoGenerateMusic === undefined
+        ? DEFAULT_GENERATION_STOP_AT
+        : stopAtFromFlags({
+            autoGenerateMotion: data.autoGenerateMotion ?? true,
+            autoGenerateMusic: data.autoGenerateMusic ?? true,
+          }));
+    const flags = flagsFromStopAt(stopAt);
+    return { ...data, stopAt, ...flags };
   });
 
 export const updateSequenceSchema = createUpdateSchema(sequences, {
@@ -251,6 +284,9 @@ export const updateSequenceSchema = createUpdateSchema(sequences, {
   musicModel: true,
   musicPrompt: true,
   musicTags: true,
+  generationStopAt: true,
+  pipelineStage: true,
+  generationCheckpoint: true,
 });
 
 export type CreateSequenceInput = z.infer<typeof createSequenceSchema>;

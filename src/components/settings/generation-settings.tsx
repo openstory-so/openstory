@@ -12,7 +12,6 @@ import {
   MusicModelSelector,
 } from '@/components/model/music-model-selector';
 import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
 import {
   Popover,
   PopoverContent,
@@ -41,61 +40,26 @@ import { AspectRatioPills } from './aspect-ratio-pills';
 import { ResolutionPills } from './resolution-pills';
 import { GenerationSettingsTrigger } from './generation-settings-trigger';
 
-type AutoToggleProps = {
-  id: string;
-  label: string;
-  checked: boolean;
-  onChange: (checked: boolean) => void;
-  disabled?: boolean;
-};
-
-const AutoToggle: FC<AutoToggleProps> = ({
-  id,
-  label,
-  checked,
-  onChange,
-  disabled,
-}) => (
-  <div className="flex items-center gap-2">
-    <input
-      type="checkbox"
-      id={id}
-      checked={checked}
-      onChange={(e) => onChange(e.target.checked)}
-      disabled={disabled}
-      className="h-4 w-4 rounded border-border text-primary focus:ring-2 focus:ring-primary focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-    />
-    <Label htmlFor={id} className="text-sm font-normal cursor-pointer">
-      {label}
-    </Label>
-  </div>
-);
-
 type GenerationSettingsProps = {
   aspectRatio: AspectRatio;
   resolution: Resolution;
   analysisModels: AnalysisModelId[];
   imageModels: TextToImageModel[];
   videoModels: ImageToVideoModel[];
-  autoGenerateMotion?: boolean;
   /**
    * Generate a still per shot before motion (the frame-based workflow). Off,
    * the default, renders each shot straight to video from the cast / location
-   * / element sheets. Omit the change handler to hide the control (contexts
-   * that cannot switch mode).
+   * / element sheets. Chosen on the Generate dialog (#1408); here it only
+   * narrows the motion models to the ones that can render without a still.
    */
   generateStartFrames?: boolean;
   audioModels?: AudioModel[];
-  autoGenerateMusic?: boolean;
   onAspectRatioChange: (value: AspectRatio) => void;
   onResolutionChange: (value: Resolution) => void;
   onAnalysisModelsChange: (value: AnalysisModelId[]) => void;
   onImageModelsChange: (value: TextToImageModel[]) => void;
   onVideoModelsChange: (value: ImageToVideoModel[]) => void;
-  onAutoGenerateMotionChange?: (value: boolean) => void;
-  onGenerateStartFramesChange?: (value: boolean) => void;
   onAudioModelsChange?: (value: AudioModel[]) => void;
-  onAutoGenerateMusicChange?: (value: boolean) => void;
   disabled?: boolean;
   singleSelectAnalysis?: boolean;
   /** Use single-select for image model (e.g. in regeneration context) */
@@ -106,12 +70,8 @@ type GenerationSettingsProps = {
   singleSelectMusic?: boolean;
   /** Current style category, used to show/hide style-restricted motion models */
   styleCategory?: string;
-  /** Current style name, used in recommendation tooltips */
+  /** Current style name, used in aspect-ratio recommendation tooltips */
   styleName?: string;
-  /** Style-recommended image model — drives the "Recommended" badge */
-  recommendedImageModel?: string | null;
-  /** Style-recommended video model — drives the "Recommended" badge */
-  recommendedVideoModel?: string | null;
   /** Style-recommended aspect ratio — drives the "Recommended" badge */
   recommendedAspectRatio?: string | null;
   /**
@@ -130,19 +90,14 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
   analysisModels,
   imageModels,
   videoModels,
-  autoGenerateMotion = true,
   generateStartFrames = false,
   audioModels,
-  autoGenerateMusic = true,
   onAspectRatioChange,
   onResolutionChange,
   onAnalysisModelsChange,
   onImageModelsChange,
   onVideoModelsChange,
-  onAutoGenerateMotionChange,
-  onGenerateStartFramesChange,
   onAudioModelsChange,
-  onAutoGenerateMusicChange,
   disabled = false,
   singleSelectAnalysis = false,
   singleSelectImage = false,
@@ -150,18 +105,16 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
   singleSelectMusic = false,
   styleCategory,
   styleName,
-  recommendedImageModel,
-  recommendedVideoModel,
   recommendedAspectRatio,
   appliedFromStyle,
   onResetStyleDefaults,
 }) => {
   const [open, setOpen] = useState(false);
-  // Motion off → the video models render nothing, so they neither widen the
-  // tier choice nor cap it.
+  // How far the run goes is picked at Generate (#1408), so the video models
+  // always count toward the tier choice here.
   const modelSelection = {
     imageModels,
-    videoModels: autoGenerateMotion ? videoModels : [],
+    videoModels,
     aspectRatio,
   };
 
@@ -176,34 +129,6 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
     [referenceOnlyModels]
   );
 
-  /**
-   * Reference-only renders nothing without motion, and the server rejects
-   * that pair. Turning motion off only *disables* the start-frame toggle,
-   * leaving its value to be submitted — so switch start frames on here instead.
-   */
-  const handleAutoGenerateMotionChange = (next: boolean) => {
-    onAutoGenerateMotionChange?.(next);
-    if (!next && !generateStartFrames) onGenerateStartFramesChange?.(true);
-  };
-
-  /**
-   * Turning start frames OFF narrows the motion list, which can strand a selection
-   * the server would then reject at submit. Drop the models that cannot render
-   * without a start frame here, falling back to the first capable one so the
-   * selection is never empty — the user sees the change while the panel is
-   * open, rather than an error after pressing Generate.
-   */
-  const handleGenerateStartFramesChange = (next: boolean) => {
-    onGenerateStartFramesChange?.(next);
-    if (next) return;
-    const capable = videoModels.filter((m) => referenceOnlyModels.includes(m));
-    if (capable.length === videoModels.length) return;
-    const fallback = referenceOnlyModels[0];
-    onVideoModelsChange(
-      capable.length > 0 ? capable : fallback ? [fallback] : videoModels
-    );
-  };
-
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <div className="flex items-center gap-2 flex-wrap">
@@ -211,8 +136,6 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
           <GenerationSettingsTrigger
             aspectRatio={aspectRatio}
             resolution={resolution}
-            autoGenerateMotion={autoGenerateMotion}
-            autoGenerateMusic={autoGenerateMusic}
           />
         </PopoverTrigger>
         {appliedFromStyle && onResetStyleDefaults && (
@@ -298,16 +221,12 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
                 selectedModel={imageModels[0] ?? DEFAULT_IMAGE_MODEL}
                 onModelChange={(model) => onImageModelsChange([model])}
                 disabled={disabled}
-                recommendedImageModel={recommendedImageModel}
-                styleName={styleName}
               />
             ) : (
               <ImageModelMultiSelector
                 selectedModels={imageModels}
                 onModelsChange={onImageModelsChange}
                 disabled={disabled}
-                recommendedImageModel={recommendedImageModel}
-                styleName={styleName}
               />
             )}
           </section>
@@ -319,25 +238,7 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
             <h3 className="text-sm font-medium text-foreground">
               {singleSelectMotion ? 'Motion Model' : 'Motion Models'}
             </h3>
-            {onAutoGenerateMotionChange && (
-              <AutoToggle
-                id="auto-generate-motion"
-                label="Auto-generate motion"
-                checked={autoGenerateMotion}
-                onChange={handleAutoGenerateMotionChange}
-                disabled={disabled}
-              />
-            )}
-            {onGenerateStartFramesChange && (
-              <AutoToggle
-                id="generate-start-frames"
-                label="Generate start frames"
-                checked={generateStartFrames}
-                onChange={handleGenerateStartFramesChange}
-                disabled={disabled || !autoGenerateMotion}
-              />
-            )}
-            {onGenerateStartFramesChange && !generateStartFrames && (
+            {!generateStartFrames && (
               <p className="text-xs text-muted-foreground">
                 Each shot renders straight to video from the character, location
                 and element references — no still is generated first. Faster and
@@ -349,28 +250,24 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
               <MotionModelSelector
                 selectedModel={videoModels[0] ?? DEFAULT_VIDEO_MODEL}
                 onModelChange={(model) => onVideoModelsChange([model])}
-                disabled={disabled || !autoGenerateMotion}
+                disabled={disabled}
                 aspectRatio={aspectRatio}
                 styleCategory={styleCategory}
-                recommendedVideoModel={recommendedVideoModel}
-                styleName={styleName}
                 referenceOnly={!generateStartFrames}
               />
             ) : (
               <MotionModelMultiSelector
                 selectedModels={videoModels}
                 onModelsChange={onVideoModelsChange}
-                disabled={disabled || !autoGenerateMotion}
+                disabled={disabled}
                 aspectRatio={aspectRatio}
                 styleCategory={styleCategory}
-                recommendedVideoModel={recommendedVideoModel}
-                styleName={styleName}
                 referenceOnly={!generateStartFrames}
               />
             )}
           </section>
 
-          {onAutoGenerateMusicChange && onAudioModelsChange && audioModels && (
+          {onAudioModelsChange && audioModels && (
             <>
               <Separator />
 
@@ -379,24 +276,17 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
                 <h3 className="text-sm font-medium text-foreground">
                   {singleSelectMusic ? 'Music Model' : 'Music Models'}
                 </h3>
-                <AutoToggle
-                  id="auto-generate-music"
-                  label="Auto-generate music"
-                  checked={autoGenerateMusic}
-                  onChange={onAutoGenerateMusicChange}
-                  disabled={disabled}
-                />
                 {singleSelectMusic ? (
                   <MusicModelSelector
                     selectedModel={audioModels[0] ?? DEFAULT_MUSIC_MODEL}
                     onModelChange={(model) => onAudioModelsChange([model])}
-                    disabled={disabled || !autoGenerateMusic}
+                    disabled={disabled}
                   />
                 ) : (
                   <MusicModelMultiSelector
                     selectedModels={audioModels}
                     onModelsChange={onAudioModelsChange}
-                    disabled={disabled || !autoGenerateMusic}
+                    disabled={disabled}
                   />
                 )}
               </section>

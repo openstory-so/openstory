@@ -63,6 +63,10 @@ import type { ReferenceImageDescription } from '@/lib/prompts/reference-image-pr
 import type { UpdateStalePlan } from '@/lib/shots/update-stale-plan';
 import type { StudioCreateInput } from '@/lib/studio/schema';
 import type { Json } from '@/types/database';
+import type {
+  GenerationCheckpoint,
+  GenerationStage,
+} from '@/lib/generation/pipeline';
 import { z } from 'zod';
 import type { musicDesignResultSchema } from '../ai/response-schemas';
 
@@ -264,6 +268,20 @@ export interface StoryboardWorkflowInput extends SequenceWorkflowContext {
   videoModels?: ImageToVideoModel[];
   autoGenerateMotion?: boolean;
   autoGenerateMusic?: boolean;
+  /**
+   * How far this run should go (#1408). Resolved by the launcher, so the
+   * workflow never has to fall back to the auto-generate flags — those are
+   * derived from it and kept only for legacy readers.
+   */
+  stopAt: GenerationStage;
+  /**
+   * Continue-from-DAG: skip earlier phases and hydrate from `checkpoint`.
+   * Storyboard must pass `resume: true` so it does not wipe existing shots.
+   */
+  startFrom?: GenerationStage;
+  checkpoint?: GenerationCheckpoint;
+  /** Skip poster + shot delete — this run continues an existing pipeline. */
+  resume?: boolean;
   musicModel?: keyof typeof AUDIO_MODELS;
   /** Multiple audio models for variant generation (first is primary) */
   audioModels?: (keyof typeof AUDIO_MODELS)[];
@@ -303,6 +321,7 @@ export interface StoryboardWorkflowInput extends SequenceWorkflowContext {
  */
 export type StoryboardTriggerInput = Omit<
   StoryboardWorkflowInput,
+  | 'stopAt'
   | 'title'
   | 'script'
   | 'aspectRatio'
@@ -317,7 +336,10 @@ export type StoryboardTriggerInput = Omit<
   | 'suggestedLocations'
   | 'ownerEmail'
   | 'sequenceUrl'
->;
+> & {
+  /** This click's choice; absent, the launcher falls back to the sequence snapshot. */
+  stopAt?: GenerationStage;
+};
 
 /**
  * Analyze scenes workflow input
@@ -343,6 +365,9 @@ export interface AnalyzeScriptWorkflowInput extends SequenceWorkflowContext {
   videoModels?: ImageToVideoModel[];
   autoGenerateMotion?: boolean;
   autoGenerateMusic?: boolean;
+  stopAt: GenerationStage;
+  startFrom?: GenerationStage;
+  checkpoint?: GenerationCheckpoint;
   musicModel?: keyof typeof AUDIO_MODELS;
   /** Multiple audio models for variant generation (first is primary) */
   audioModels?: (keyof typeof AUDIO_MODELS)[];

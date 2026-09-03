@@ -107,6 +107,66 @@ describe('estimateStoryboardCost', () => {
     expect(oneScene).toBeLessThan(llm + sheetsIfAlwaysThree + oneShot);
   });
 
+  it('stopAt script is analysis-only', () => {
+    expect(estimateStoryboardCost({ ...base, stopAt: 'script' })).toEqual(
+      estimateLLMCost(3)
+    );
+  });
+
+  it('stopAt script is LLM-only even with no fal pricing', () => {
+    expect(
+      estimateStoryboardCost({
+        ...base,
+        stopAt: 'script',
+        pricing: {},
+      })
+    ).toEqual(estimateLLMCost(3));
+  });
+
+  it('stopAt music costs more than stopAt images', () => {
+    const images = Number(
+      estimateStoryboardCost({
+        ...base,
+        stopAt: 'images',
+        videoModels: [VIDEO_A],
+        videoDurationSeconds: DURATION,
+        audioModels: [AUDIO_A],
+        audioDurationSeconds: SCENE_COUNT * DURATION,
+      })
+    );
+    const music = Number(
+      estimateStoryboardCost({
+        ...base,
+        stopAt: 'music',
+        videoModels: [VIDEO_A],
+        videoDurationSeconds: DURATION,
+        audioModels: [AUDIO_A],
+        audioDurationSeconds: SCENE_COUNT * DURATION,
+      })
+    );
+    expect(music).toBeGreaterThan(images);
+  });
+
+  it('startFrom images excludes analysis and sheets', () => {
+    const stills = Number(
+      estimateStoryboardCost({ ...base, stopAt: 'images' })
+    );
+    const continueImages = Number(
+      estimateStoryboardCost({
+        ...base,
+        startFrom: 'images',
+        stopAt: 'images',
+      })
+    );
+    const shotImages = Number(
+      estimateImageCost(IMAGE_MODEL, base.aspectRatio, SCENE_COUNT, {
+        pricing: FAL_PRICING,
+      })
+    );
+    expect(continueImages).toBe(shotImages);
+    expect(stills).toBeGreaterThan(continueImages);
+  });
+
   it('adds exactly one extra per-shot image pass per image model', () => {
     const one = Number(estimateStoryboardCost({ ...base, imageModelCount: 1 }));
     const two = Number(estimateStoryboardCost({ ...base, imageModelCount: 2 }));

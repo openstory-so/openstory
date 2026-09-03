@@ -154,6 +154,35 @@ describe('generateImageSoftening', () => {
     expect(stepNames.at(-1)).toBe('generate-sheet-image-softened');
   });
 
+  it('announces every attempt after the first, and which one is the softened prompt', async () => {
+    rejectThenOk(MAX_CONTENT_ATTEMPTS + 1);
+    durableLLMCallCf.mockResolvedValue({ prompt: 'softer' });
+    const onRetry = vi.fn<(info: unknown) => Promise<void>>(async () => {});
+
+    await run({ onRetry });
+
+    // 3 reseeds + fallback + softened = 5; the first attempt is silent.
+    expect(onRetry.mock.calls.map((c) => c[0])).toEqual([
+      { attempt: 2, maxAttempts: 5, promptSoftened: false },
+      { attempt: 3, maxAttempts: 5, promptSoftened: false },
+      { attempt: 4, maxAttempts: 5, promptSoftened: false },
+      { attempt: 5, maxAttempts: 5, promptSoftened: true },
+    ]);
+  });
+
+  it('never fails the render because a retry announce threw', async () => {
+    rejectThenOk(1);
+
+    const out = await run({
+      onRetry: async () => {
+        throw new Error('realtime down');
+      },
+    });
+
+    expect(out.softened).toBe(false);
+    expect(generateImageWithProvider).toHaveBeenCalledTimes(2);
+  });
+
   it('skips the swap and softens in place when already on Grok', async () => {
     rejectThenOk(MAX_CONTENT_ATTEMPTS);
     durableLLMCallCf.mockResolvedValue({ prompt: 'A boy wizard' });

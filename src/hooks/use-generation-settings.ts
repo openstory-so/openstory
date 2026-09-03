@@ -32,6 +32,12 @@ import {
   isResolution,
   type Resolution,
 } from '@/lib/constants/resolutions';
+import {
+  DEFAULT_GENERATION_STOP_AT,
+  isGenerationStage,
+  stopAtFromFlags,
+  type GenerationStage,
+} from '@/lib/generation/pipeline';
 import { useCallback, useEffect, useState } from 'react';
 
 import { getLogger } from '@/lib/observability/logger';
@@ -39,11 +45,13 @@ import { getLogger } from '@/lib/observability/logger';
 const logger = getLogger(['openstory', 'ui', 'use-generation-settings']);
 
 // Bump when product defaults change so prior localStorage snapshots are ignored
-// (v4 → v5: Turbo is the product default). Adding a FIELD is not a reason to
-// bump — `loadSettings` falls back per-field, so an older snapshot still loads.
-// Bumping strands e2e's pinned settings (`GENERATION_SETTINGS_KEY` in
-// e2e/fixtures/test-utils.ts mirrors this literal), which silently reverts the
-// recorded pipeline to Turbo defaults and fails as an aimock fixture miss.
+// (v4 → v5: Turbo is the product default. Stop-at is migrated from
+// auto-generate flags when loading a v5 snapshot — #1408). Adding a FIELD is
+// not a reason to bump — `loadSettings` falls back per-field, so an older
+// snapshot still loads. Bumping strands e2e's pinned settings
+// (`GENERATION_SETTINGS_KEY` in e2e/fixtures/test-utils.ts mirrors this
+// literal), which silently reverts the recorded pipeline to Turbo defaults and
+// fails as an aimock fixture miss.
 const STORAGE_KEY = 'openstory:generation-settings:v5';
 
 type GenerationSettings = {
@@ -55,12 +63,13 @@ type GenerationSettings = {
   imageModels: TextToImageModel[];
   motionModel: ImageToVideoModel;
   videoModels: ImageToVideoModel[];
-  autoGenerateMotion: boolean;
+  stopAt: GenerationStage;
+  /** Skip the Generate stop-at alert and reuse `stopAt`. */
+  rememberStopAt: boolean;
   /** Render a still per shot first (the frame-based workflow); off = reference-only. */
   generateStartFrames: boolean;
   musicModel: AudioModel;
   audioModels: AudioModel[];
-  autoGenerateMusic: boolean;
 };
 
 function withMode(settings: GenerationSettings): GenerationSettings {
@@ -95,13 +104,13 @@ const DEFAULT_SETTINGS: GenerationSettings = withMode({
   videoModels: [TURBO_DEFAULT_VIDEO],
   // Motion + music on by default so the first Generate is a short film aha
   // (welcome grant sized for a ~30s stills+motion+music board — #1140).
-  autoGenerateMotion: true,
+  stopAt: DEFAULT_GENERATION_STOP_AT,
+  rememberStopAt: false,
   // Off by default: a new sequence renders reference-only; start frames are
   // the opt-in for steerable composition.
   generateStartFrames: false,
   musicModel: TURBO_DEFAULT_AUDIO,
   audioModels: [TURBO_DEFAULT_AUDIO],
-  autoGenerateMusic: true,
 });
 
 /**
@@ -203,10 +212,25 @@ function loadSettings(): GenerationSettings {
       ...new Set(rawVideoModels.map((m) => getCompatibleModel(m, aspectRatio))),
     ];
 
-    const autoGenerateMotion =
-      'autoGenerateMotion' in parsed &&
-      typeof parsed.autoGenerateMotion === 'boolean'
-        ? parsed.autoGenerateMotion
+    const rawStopAt = 'stopAt' in parsed ? parsed.stopAt : undefined;
+    const stopAt = isGenerationStage(rawStopAt)
+      ? rawStopAt
+      : stopAtFromFlags({
+          autoGenerateMotion:
+            'autoGenerateMotion' in parsed &&
+            typeof parsed.autoGenerateMotion === 'boolean'
+              ? parsed.autoGenerateMotion
+              : true,
+          autoGenerateMusic:
+            'autoGenerateMusic' in parsed &&
+            typeof parsed.autoGenerateMusic === 'boolean'
+              ? parsed.autoGenerateMusic
+              : true,
+        });
+
+    const rememberStopAt =
+      'rememberStopAt' in parsed && typeof parsed.rememberStopAt === 'boolean'
+        ? parsed.rememberStopAt
         : false;
 
     const musicModel =
@@ -222,12 +246,6 @@ function loadSettings(): GenerationSettings {
       parsed.audioModels.every(isValidAudioModel)
         ? parsed.audioModels
         : [musicModel];
-
-    const autoGenerateMusic =
-      'autoGenerateMusic' in parsed &&
-      typeof parsed.autoGenerateMusic === 'boolean'
-        ? parsed.autoGenerateMusic
-        : false;
 
     const bag: Record<string, unknown> = parsed;
     const generationMode = isGenerationMode(bag.generationMode)
@@ -246,7 +264,8 @@ function loadSettings(): GenerationSettings {
       imageModels,
       motionModel,
       videoModels,
-      autoGenerateMotion,
+      stopAt,
+      rememberStopAt,
       generateStartFrames:
         'generateStartFrames' in parsed &&
         typeof parsed.generateStartFrames === 'boolean'
@@ -254,7 +273,6 @@ function loadSettings(): GenerationSettings {
           : false,
       musicModel,
       audioModels,
-      autoGenerateMusic,
     });
 
     // A stored selection can predate the mode, or predate a model losing its
