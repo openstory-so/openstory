@@ -388,9 +388,18 @@ export function sliderStopLabel(stopAt: GenerationStage): string {
   return GENERATION_STAGE_META[stopAt].shortName;
 }
 
-export function sliderStopDescription(stopAt: GenerationStage): string {
-  if (stopAt === 'music' || stopAt === 'motion') {
-    return 'Generating motion video and music';
-  }
-  return GENERATION_STAGE_META[stopAt].description;
+/**
+ * Whole sentences, not "Stop after" + a label: a translator needs the noun
+ * and the verb together.
+ */
+const STOP_AFTER_SENTENCE: Record<GenerationStage, string> = {
+  script: 'Stop after casting',
+  references: 'Stop after references & prompts',
+  images: 'Stop after images',
+  motion: 'Stop after motion & music',
+  music: 'Stop after motion & music',
+};
+
+export function stopAfterSentence(stopAt: GenerationStage): string {
+  return STOP_AFTER_SENTENCE[stopAt];
 }

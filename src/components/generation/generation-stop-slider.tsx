@@ -1,9 +1,8 @@
 import {
   GENERATION_STAGE_META,
   sliderStages,
-  sliderStopDescription,
-  sliderStopLabel,
   sliderThumbIndex,
+  stopAfterSentence,
   stopAtFromSliderIndex,
 } from '@/lib/generation/pipeline';
 import type { GenerationStage } from '@/lib/generation/pipeline';
@@ -51,17 +50,12 @@ export const GenerationStopSlider: FC<GenerationStopSliderProps> = ({
       className="flex flex-col gap-3"
       aria-labelledby="generation-stop-label"
     >
-      <div className="flex items-start justify-between gap-2">
-        <h3
-          id="generation-stop-label"
-          className="text-sm font-medium text-foreground"
-        >
-          Stop after
-        </h3>
-        <span className="text-sm text-muted-foreground">
-          {sliderStopLabel(selected)}
-        </span>
-      </div>
+      <h3
+        id="generation-stop-label"
+        className="text-sm font-medium text-foreground"
+      >
+        {stopAfterSentence(selected)}
+      </h3>
       <Slider
         min={0}
         max={lastStop}
@@ -110,9 +104,6 @@ export const GenerationStopSlider: FC<GenerationStopSliderProps> = ({
           ))}
         </div>
       </div>
-      <p className="text-xs text-muted-foreground">
-        {sliderStopDescription(selected)}.
-      </p>
       {onGenerateStartFramesChange && (
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2">
@@ -137,8 +128,9 @@ export const GenerationStopSlider: FC<GenerationStopSliderProps> = ({
             </Label>
           </div>
           <p className="text-xs text-muted-foreground">
-            Renders a still for each shot to review before motion. Off renders
-            video straight from the reference sheets.
+            {generateStartFrames
+              ? 'Each shot’s video starts from a generated still.'
+              : 'Video is generated straight from the reference sheets.'}
           </p>
         </div>
       )}

@@ -11,7 +11,6 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Label } from '@/components/ui/label';
 import type { Microdollars } from '@/lib/billing/money';
 import { type GenerationStage } from '@/lib/generation/pipeline';
 import { useEffect, useState, type FC } from 'react';
@@ -67,10 +66,9 @@ export const GenerationStopAlert: FC<GenerationStopAlertProps> = ({
       <AlertDialogContent className="data-[size=default]:max-w-lg data-[size=default]:sm:max-w-lg">
         <AlertDialogHeader>
           <AlertDialogTitle>How much control do you want?</AlertDialogTitle>
-          <AlertDialogDescription>
-            {description ??
-              'The workflow stops at the stage you pick. You can generate the rest from the scene list.'}
-          </AlertDialogDescription>
+          {description && (
+            <AlertDialogDescription>{description}</AlertDialogDescription>
+          )}
         </AlertDialogHeader>
         <GenerationStopSlider
           value={draftStopAt}
@@ -78,20 +76,20 @@ export const GenerationStopAlert: FC<GenerationStopAlertProps> = ({
           generateStartFrames={draftStartFrames}
           onGenerateStartFramesChange={setDraftStartFrames}
         />
-        <div className="flex items-center gap-2">
-          <Checkbox
-            id="remember-generation-stop"
-            checked={draftRemember}
-            onCheckedChange={(checked) => setDraftRemember(checked === true)}
-          />
-          <Label
-            htmlFor="remember-generation-stop"
-            className="text-sm font-normal text-muted-foreground"
-          >
-            Remember my choice
-          </Label>
-        </div>
         <AlertDialogFooter className="sm:items-start">
+          {/* "Don't ask again" lives in the button bar, opposite the buttons,
+              as it does in native dialogs. */}
+          <label
+            htmlFor="remember-generation-stop"
+            className="flex h-9 items-center gap-2 text-sm text-muted-foreground sm:mr-auto"
+          >
+            <Checkbox
+              id="remember-generation-stop"
+              checked={draftRemember}
+              onCheckedChange={(checked) => setDraftRemember(checked === true)}
+            />
+            Don't ask again
+          </label>
           <AlertDialogCancel>Cancel</AlertDialogCancel>
           {/* Cost sits under the CTA, as under every other generate button. */}
           <div className="flex flex-col gap-1">

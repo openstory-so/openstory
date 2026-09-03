@@ -248,8 +248,14 @@ export function generationStreamReducer(
     case 'PHASE_START': {
       const { phase, phaseName } = action.payload;
 
+      // A phase starting after COMPLETE / FAILED is a new run — a Continue
+      // (#1408). The old terminal state would make the chip exit on arrival,
+      // and COMPLETE parks currentPhase past the end, which would drop this
+      // event as "backwards".
+      const newRun = state.isComplete || state.isFailed;
+
       // Ignore backwards phase transitions (prevents flickering from out-of-order events)
-      if (phase < state.currentPhase) {
+      if (!newRun && phase < state.currentPhase) {
         return state;
       }
 
@@ -279,7 +285,13 @@ export function generationStreamReducer(
         updatedPhases.sort((a, b) => a.phase - b.phase);
       }
 
-      return { ...state, currentPhase: phase, phases: updatedPhases };
+      return {
+        ...state,
+        currentPhase: phase,
+        phases: updatedPhases,
+        isComplete: false,
+        isFailed: false,
+      };
     }
 
     case 'PHASE_COMPLETE': {

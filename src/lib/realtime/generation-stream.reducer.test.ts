@@ -253,3 +253,24 @@ describe('progress phases in reference-only', () => {
     ]);
   });
 });
+
+describe('continue after a finished run', () => {
+  it('starts a new run from a completed state instead of exiting on arrival', () => {
+    const done = apply(createInitialState({ stopAt: 'references' }), {
+      type: 'COMPLETE',
+      payload: { sequenceId: 'seq' },
+    });
+    expect(done.isComplete).toBe(true);
+    expect(done.currentPhase).toBe(3);
+
+    // Continue from References: phase 2 is "backwards" of the parked
+    // currentPhase, and the chip would unmount on isComplete.
+    const next = apply(done, {
+      type: 'PHASE_START',
+      payload: { phase: 2, phaseName: 'Generating references & prompts…' },
+    });
+    expect(next.isComplete).toBe(false);
+    expect(next.currentPhase).toBe(2);
+    expect(next.phases.map((p) => p.status)).toEqual(['completed', 'active']);
+  });
+});

@@ -6,6 +6,7 @@ import {
   completedStageFromArtifacts,
   sliderStages,
   sliderStopLabel,
+  stopAfterSentence,
   sliderThumbIndex,
   stopAtFromSliderIndex,
   continueStageFromState,
@@ -268,6 +269,7 @@ describe('completedStageFromArtifacts / nextActionFromArtifacts', () => {
     expect(sliderStopLabel('music')).toBe('Music & Motion');
     expect(sliderStopLabel('references')).toBe('References & Prompts');
     expect(sliderStopLabel('images')).toBe('Images');
+    expect(stopAfterSentence('motion')).toBe('Stop after motion & music');
   });
 
   it('slider has no Images stop in reference-only', () => {
