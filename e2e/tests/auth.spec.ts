@@ -37,7 +37,7 @@ baseTest.describe('Route Protection', () => {
       const editor = page.locator('[data-slot="markdown-editor"]');
       await expect(
         page.getByText(
-          'Paste a screenplay, or a one-liner we can expand — not a prompt.'
+          'Paste a screenplay, or a one-liner we can expand - not a prompt.'
         )
       ).toBeVisible();
       const height = await editor.evaluate(

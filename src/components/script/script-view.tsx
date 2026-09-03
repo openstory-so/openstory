@@ -176,7 +176,7 @@ const DURATION_PRESETS = [
 /** Empty-composer copy (#1255): visible until the user types or shuffles.
  *  Keep this to ~1–2 lines so it fits the phone editor floor. */
 const COMPOSER_SCRIPT_PLACEHOLDER =
-  'Paste a screenplay, or a one-liner we can expand — not a prompt.';
+  'Paste a screenplay, or a one-liner we can expand - not a prompt.';
 
 function DurationFitHint({
   targetDuration,
