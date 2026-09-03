@@ -544,6 +544,7 @@ export const updateShotFn = createServerFn({ method: 'POST' })
         dialogue: selectedMotion?.dialogue ?? null,
         audio: selectedMotion?.audio ?? null,
         source: 'user-edit',
+        usesStartFrame: usesStartFrame(context.shot, context.sequence),
         inputHash: null,
         analysisModel: null,
         createdBy: context.user.id,

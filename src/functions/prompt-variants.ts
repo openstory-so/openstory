@@ -1,4 +1,7 @@
-import { rendersReferenceOnly } from '@/lib/shots/use-start-frame';
+import {
+  rendersReferenceOnly,
+  usesStartFrame,
+} from '@/lib/shots/use-start-frame';
 import {
   computeMotionPromptInputHash,
   computeMusicPromptInputHash,
@@ -254,6 +257,7 @@ export const restoreShotPromptVariantFn = createServerFn({ method: 'POST' })
       dialogue: chosen.dialogue,
       audio: chosen.audio,
       source: 'restored',
+      usesStartFrame: chosen.usesStartFrame,
       inputHash: chosen.inputHash,
       analysisModel: chosen.analysisModel,
       createdBy: context.user.id,
@@ -388,6 +392,7 @@ export const saveShotPromptFn = createServerFn({ method: 'POST' })
       dialogue: selectedMotion?.dialogue ?? null,
       audio: selectedMotion?.audio ?? null,
       source: 'user-edit',
+      usesStartFrame: usesStartFrame(shot, sequence),
       inputHash,
       analysisModel,
       createdBy: user.id,
@@ -605,6 +610,7 @@ export const regenerateShotPromptFn = createServerFn({ method: 'POST' })
           : await scopedDb.shotPromptVersions.createPending({
               shotId: shot.id,
               pendingInputHash: liveHash,
+              usesStartFrame: usesStartFrame(shot, sequence),
               createdBy: user.id,
             });
     } catch (error) {

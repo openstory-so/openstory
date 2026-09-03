@@ -1,0 +1,1 @@
+ALTER TABLE `shot_prompt_versions` ADD `uses_start_frame` integer DEFAULT true NOT NULL;

@@ -257,7 +257,12 @@ prompt read stale forever, silently. The manifest records
 `frameVersionId: null` for such a shot even when a still exists, and staleness
 compares against the same rule; `UpdateStalePlan.usesStartFrame` is required
 and never defaulted (`!undefined` is `true`, which would re-render a whole run
-with no start frames).
+with no start frames). **Provenance is stamped, never inferred:** every
+`VideoManifestEntry` and every motion `shot_prompt_versions` row carries a
+required `usesStartFrame` (a null `frameVersionId` is overloaded and the prompt
+hash is opaque). The column is NOT NULL with a default of true, which only
+labels rows that predate reference-only and were therefore image-to-video;
+pre-stamp manifests were backfilled from the shot's mode.
 
 Full rationale: `docs/architecture/reference-only-motion.md`.
 

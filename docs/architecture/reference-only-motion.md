@@ -179,6 +179,27 @@ comparison expects it, including `isSelectedVersionStale` via
 `SegmentShotInput.rendersReferenceOnly`. A path that recorded the still it did
 not use marked its own clip Stale the instant it finished.
 
+That null is not the record of the mode, though. It is overloaded: it also
+means "frame not pinned" (#1380) and, beside a null prompt id, "legacy row,
+unknown provenance". So every manifest entry also carries a **required**
+`usesStartFrame` — stamped, not derived, for the same reason
+`video_variants.resolution` is: the shot's switch can flip after the render,
+and a clip has to be able to say how it was made. Rows written before the
+stamp were backfilled by migration
+`20260902235958_backfill_manifest_uses_start_frame` from the shot's mode at
+that moment (reference-only ships in the same release, so nothing had
+flipped). Staleness still compares pointers as above; the stamp exists so the
+row is legible on its own.
+
+The motion prompt gets the same stamp. `shot_prompt_versions.usesStartFrame`
+records which template authored the text: the two templates disagree on their
+central rule, so a prompt is only correct in the mode it was written for, and
+`inputHash` folds the mode in but cannot be read back. Every write input
+requires it (`write`, `writeAiVersion`, `createPending`,
+`completePendingAiVersion`); a restore copies its source row's. The column is
+NOT NULL with a SQL default of true, which is only ever exercised by rows that
+predate reference-only and so were image-to-video.
+
 ## Model gating
 
 Only models in `MOTION_REFERENCE_ENDPOINTS` qualify — today Seedance 2.0 and

@@ -223,6 +223,7 @@ async function insertLegacySegment(opts: {
             shotId: shot.id,
             motionPromptVersionId: null,
             frameVersionId: null,
+            usesStartFrame: true,
             durationMs: 3000,
           },
         ],
@@ -312,6 +313,9 @@ describe('#1067 phase-2a backfill — orphan shots (video, no segment)', () => {
     expect(variant?.inputHash).toBeNull();
 
     // Manifest keys must match VideoManifestEntry or every reader breaks.
+    // `usesStartFrame` is absent here on purpose: this migration predates the
+    // stamp, and in the real chain `20260902235109_backfill_manifest_uses_start_frame`
+    // runs after it and stamps these rows.
     expect(variant?.manifest).toEqual([
       {
         shotId: shot.id,

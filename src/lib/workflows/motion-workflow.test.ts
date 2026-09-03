@@ -261,6 +261,7 @@ describe('MotionWorkflow content-flag rescue (#1373)', () => {
         promptType: 'motion',
         text: 'the softened prompt',
         source: 'softened',
+        usesStartFrame: true,
         inputHash: 'ctx-hash',
         analysisModel: 'anthropic/claude-haiku-4.5',
         select: true,
@@ -268,7 +269,10 @@ describe('MotionWorkflow content-flag rescue (#1373)', () => {
     );
     expect(videoVariants.update).toHaveBeenCalledWith('vv-1', {
       manifest: [
-        expect.objectContaining({ motionPromptVersionId: 'spv-soft' }),
+        expect.objectContaining({
+          motionPromptVersionId: 'spv-soft',
+          usesStartFrame: true,
+        }),
       ],
       inputHash: `${MODEL}:spv-soft`,
     });

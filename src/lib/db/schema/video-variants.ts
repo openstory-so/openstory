@@ -52,12 +52,20 @@ type VideoGenerationStatus = (typeof VIDEO_VARIANT_STATUSES)[number];
  * contributed. `motionPromptVersionId` / `frameVersionId` reference immutable
  * version rows (null `frameVersionId` = reference-driven shot with no dedicated
  * first frame). `durationMs` is a value-snapshot (not a versioned input).
+ *
+ * `usesStartFrame` stamps the mode the render actually ran in. Stamped, not
+ * derived (like `resolution`): the shot's switch can flip after the render,
+ * and a null `frameVersionId` alone is overloaded — it also means "not
+ * pinned" (#1380) and, with a null prompt id, "legacy, unknown provenance".
+ * Required so no write path can forget it. Rows written before the stamp
+ * carry no key at runtime; a reader comparing it must treat that as unknown.
  * @public consumed from #990+
  */
 export type VideoManifestEntry = {
   shotId: string;
   motionPromptVersionId: string | null;
   frameVersionId: string | null;
+  usesStartFrame: boolean;
   durationMs: number;
 };
 

@@ -853,6 +853,7 @@ async function claimShotArtifacts(args: {
         scopedDb.shotPromptVersions.createPending({
           shotId: target.shotId,
           pendingInputHash: motionLiveHash,
+          usesStartFrame: target.usesStartFrame,
           workflowRunId: parentInstanceId,
         }),
     });

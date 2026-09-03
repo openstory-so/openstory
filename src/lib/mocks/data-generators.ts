@@ -79,6 +79,7 @@ const generateMockShot = (overrides?: Partial<ShotView>): ShotView => {
         shotId: shot.id,
         motionPromptVersionId: null,
         frameVersionId: null,
+        usesStartFrame: true,
         durationMs: shot.durationMs ?? 3000,
       },
     ],

@@ -260,6 +260,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
             dialogue: input.priorMotion?.dialogue ?? null,
             audio: input.priorMotion?.audio ?? null,
             source: 'user-edit',
+            usesStartFrame: !(input.referenceOnly ?? false),
             inputHash: input.userEditProvenance.inputHash,
             analysisModel: input.userEditProvenance.analysisModel,
             createdBy: input.userId,
@@ -308,6 +309,9 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
                 input.motionPromptVersionId ??
                 null,
               frameVersionId: input.frameVersionId ?? null,
+              // Provenance stamp: the mode this render ran in, independent
+              // of the null-`frameVersionId` encoding above.
+              usesStartFrame: !(input.referenceOnly ?? false),
               durationMs: duration * 1000,
             },
           ]);
@@ -545,6 +549,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
                   promptType: 'motion',
                   text: softenedText,
                   source: 'softened',
+                  usesStartFrame: !(input.referenceOnly ?? false),
                   inputHash: provenance.inputHash,
                   analysisModel: provenance.analysisModel,
                   createdBy: input.userId,

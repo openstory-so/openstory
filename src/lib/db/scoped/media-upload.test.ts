@@ -188,6 +188,7 @@ async function seedSegmentAndVideo(frameVersionId: string) {
       shotId,
       motionPromptVersionId: null,
       frameVersionId,
+      usesStartFrame: true,
       durationMs: 4000,
     },
   ];
@@ -509,6 +510,7 @@ describe('§4.3 B — image-only upload (appendUploadedVersion + select)', () =>
         shotId,
         motionPromptVersionId: null,
         frameVersionId: uploaded.id,
+        usesStartFrame: true,
         durationMs: 4000,
       },
     ];
@@ -766,6 +768,7 @@ describe('video upload (appendUploadedVersion + select)', () => {
         shotId,
         motionPromptVersionId: null,
         frameVersionId: still.id,
+        usesStartFrame: true,
         durationMs: 4000,
       },
     ];
@@ -814,6 +817,7 @@ describe('video upload (appendUploadedVersion + select)', () => {
         shotId,
         motionPromptVersionId: null,
         frameVersionId: nextStill.id,
+        usesStartFrame: true,
         durationMs: 4000,
       },
     ];

@@ -33,6 +33,7 @@ import {
   narrowShotPromptContext,
 } from '@/lib/ai/prompt-context';
 import { computeVideoManifestInputHash } from '@/lib/ai/input-hash';
+import { usesStartFrame } from '@/lib/shots/use-start-frame';
 import { generateId } from '@/lib/db/id';
 import type { Scene } from '@/lib/ai/scene-analysis.schema';
 import type { AspectRatio } from '@/lib/constants/aspect-ratios';
@@ -491,6 +492,9 @@ export const setShotVideoFromUploadFn = createServerFn({ method: 'POST' })
         shotId: shot.id,
         motionPromptVersionId: selectedMotion?.id ?? null,
         frameVersionId: selectedImage?.id ?? null,
+        // An upload rendered from nothing we know of; stamp the shot's mode
+        // so it agrees with the still pinned above.
+        usesStartFrame: usesStartFrame(shot, sequence),
         durationMs,
       },
     ]);

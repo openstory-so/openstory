@@ -206,6 +206,7 @@ export class MotionPromptWorkflow extends OpenStoryWorkflowEntrypoint<MotionProm
                 text: motionPrompt.fullPrompt,
                 dialogue: motionPrompt.dialogue,
                 audio: motionPrompt.audio,
+                usesStartFrame: !referenceOnly,
                 inputHash,
                 analysisModel: analysisModelId,
               });
@@ -225,6 +226,7 @@ export class MotionPromptWorkflow extends OpenStoryWorkflowEntrypoint<MotionProm
               text: motionPrompt.fullPrompt,
               dialogue: motionPrompt.dialogue,
               audio: motionPrompt.audio,
+              usesStartFrame: !referenceOnly,
               inputHash,
               analysisModel: analysisModelId,
             });
