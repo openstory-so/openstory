@@ -23,7 +23,7 @@ vi.doMock('@/lib/auth/oauth-provider', () => ({
   resolveOAuthIssuer: () => 'https://openstory.test',
 }));
 
-const { resolveRequestPrincipal } = await import('./middleware');
+const { resolveRequestPrincipal } = await import('./request-principal');
 
 const jwt = 'aaa.bbb.ccc';
 const user = { id: 'user_1', email: 'ada@example.com', name: 'Ada' };

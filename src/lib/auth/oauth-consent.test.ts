@@ -20,10 +20,6 @@ vi.doMock('@/lib/db/scoped', () => ({
   resolveUserTeam,
   revokeOAuthGrantTokens,
 }));
-vi.doMock('@tanstack/react-start/server', () => ({
-  getRequestHeaders: () => new Headers(),
-}));
-
 const { loadOAuthConsentContext, performAuthorizedAppRevoke, toClientSummary } =
   await import('./oauth-consent');
 
