@@ -24,27 +24,41 @@ import { requireSessionOrRedirect } from '@/lib/auth/route-guards';
 import { errorMessage } from '@/lib/errors';
 import { useMutation, useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
+import { createIsomorphicFn } from '@tanstack/react-start';
+import { getRequest } from '@tanstack/react-start/server';
 import { Suspense } from 'react';
 import { toast } from 'sonner';
-import { z } from 'zod';
 
 const CONSENT_STALE_MESSAGE =
   'This request is no longer valid. Start again from the app.';
 
-// Display fields only. `.passthrough()` keeps `sig` / `exp` / `ba_*` / PKCE
-// on the URL so Approve can echo the provider's signed query. Better Auth's
-// own client reads `window.location.search` for the same reason — TanStack's
-// `searchStr` is a re-serialized parse and can drop or rewrite those params.
-const searchSchema = z
-  .object({
-    client_id: z.string().optional(),
-    scope: z.string().optional(),
-    redirect_uri: z.string().optional(),
-  })
-  .passthrough();
+/**
+ * The provider signs the *raw* query, including repeated `ba_param` keys.
+ * TanStack's default search parser (qss) keeps one value per key and rewrites
+ * the address bar on hydrate, so `window.location.search` / `searchStr` are
+ * already invalid by Approve. Snapshot the document URL on the server.
+ */
+const readConsentOAuthQuery = createIsomorphicFn()
+  .server(() => new URL(getRequest().url).search)
+  .client(() => window.location.search);
+
+function displayFieldsFromOAuthQuery(search: string): {
+  clientId: string;
+  scope: string;
+  redirectUri: string | undefined;
+} {
+  const params = new URLSearchParams(
+    search.startsWith('?') ? search.slice(1) : search
+  );
+  return {
+    clientId: params.get('client_id') ?? '',
+    scope: params.get('scope') ?? '',
+    redirectUri: params.get('redirect_uri') ?? undefined,
+  };
+}
 
 export const Route = createFileRoute('/_app/oauth/consent')({
-  validateSearch: searchSchema,
+  loader: () => ({ oauthQuery: readConsentOAuthQuery() }),
   beforeLoad: async ({ context: { queryClient }, location }) => {
     await requireSessionOrRedirect(queryClient, location.href);
   },
@@ -53,7 +67,9 @@ export const Route = createFileRoute('/_app/oauth/consent')({
 });
 
 function ConsentPage() {
-  const { client_id, scope, redirect_uri } = Route.useSearch();
+  const { oauthQuery } = Route.useLoaderData();
+  const { clientId, scope, redirectUri } =
+    displayFieldsFromOAuthQuery(oauthQuery);
 
   return (
     <div className="mx-auto w-full max-w-md p-6">
@@ -66,12 +82,13 @@ function ConsentPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
-          {client_id ? (
+          {clientId ? (
             <Suspense fallback={<Skeleton className="h-40 w-full" />}>
               <ConsentDecision
-                clientId={client_id}
-                scope={scope ?? ''}
-                redirectUri={redirect_uri}
+                clientId={clientId}
+                scope={scope}
+                redirectUri={redirectUri}
+                oauthQuery={oauthQuery}
               />
             </Suspense>
           ) : (
@@ -90,10 +107,12 @@ function ConsentDecision({
   clientId,
   scope,
   redirectUri,
+  oauthQuery,
 }: {
   clientId: string;
   scope: string;
   redirectUri: string | undefined;
+  oauthQuery: string;
 }) {
   const { data } = useSuspenseQuery({
     queryKey: ['oauthConsent', clientId, scope, redirectUri],
@@ -108,7 +127,7 @@ function ConsentDecision({
     meta: { inlineError: true },
     mutationFn: (accept: boolean) =>
       decideOAuthConsentFn({
-        data: { accept, oauthQuery: window.location.search },
+        data: { accept, oauthQuery },
       }),
     onSuccess: ({ url }) => {
       if (!url || (!/^https?:\/\//i.test(url) && !url.startsWith('/'))) {

@@ -25,6 +25,7 @@ vi.doMock('@/lib/db/scoped', () => ({
 }));
 
 const {
+  consentRedirectUrl,
   decideOAuthConsent,
   loadOAuthConsentContext,
   oauthProviderUserMessage,
@@ -132,11 +133,42 @@ describe('oauthProviderUserMessage', () => {
       'missing oauth query'
     );
   });
+
+  it('maps invalid_signature to the stale-request fallback', () => {
+    const error = new APIError('BAD_REQUEST', { error: 'invalid_signature' });
+    expect(oauthProviderUserMessage(error, 'fallback')).toBe('fallback');
+  });
+});
+
+describe('consentRedirectUrl', () => {
+  it('accepts url or redirect_uri', () => {
+    expect(consentRedirectUrl({ url: 'https://a.example/cb' })).toBe(
+      'https://a.example/cb'
+    );
+    expect(consentRedirectUrl({ redirect_uri: 'https://b.example/cb' })).toBe(
+      'https://b.example/cb'
+    );
+    expect(consentRedirectUrl({})).toBeNull();
+  });
 });
 
 describe('decideOAuthConsent', () => {
   const signedQuery =
     '?client_id=c1&sig=deadbeef&exp=1700000000&resource=https://x/api/v1';
+
+  it('accepts redirect_uri when the client does not set url', async () => {
+    oauth2Consent.mockResolvedValueOnce({
+      redirect_uri: 'http://127.0.0.1:8765/cb?code=2',
+    });
+    const result = await decideOAuthConsent({
+      userId: 'user_1',
+      teamId: 'team_1',
+      accept: true,
+      oauthQuery: 'client_id=c1',
+      headers: new Headers(),
+    });
+    expect(result.url).toBe('http://127.0.0.1:8765/cb?code=2');
+  });
 
   it('strips a leading ? and returns the provider redirect', async () => {
     oauth2Consent.mockResolvedValueOnce({

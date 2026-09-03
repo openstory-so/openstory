@@ -123,20 +123,32 @@ export async function loadOAuthConsentContext(input: {
 const CONSENT_STALE_MESSAGE =
   'This request is no longer valid. Start again from the app.';
 
-/** Provider errors often set `error_description` and leave `message` empty. */
+/** Provider errors often set `error` / `error_description` and leave `message` empty. */
 export function oauthProviderUserMessage(
   error: unknown,
   fallback: string
 ): string {
   if (error instanceof APIError) {
     const body = error.body as
-      | { error_description?: string; message?: string }
+      | { error?: string; error_description?: string; message?: string }
       | undefined;
+    if (body?.error === 'invalid_signature') return fallback;
     const text = body?.error_description || body?.message;
     if (text?.trim()) return text;
   }
   if (error instanceof Error && error.message.trim()) return error.message;
   return fallback;
+}
+
+/** `oauth2Consent` OpenAPI says `redirect_uri`; the JS client also uses `url`. */
+export function consentRedirectUrl(result: unknown): string | null {
+  if (!result || typeof result !== 'object') return null;
+  const rec = result as { url?: unknown; redirect_uri?: unknown };
+  if (typeof rec.url === 'string' && rec.url.length > 0) return rec.url;
+  if (typeof rec.redirect_uri === 'string' && rec.redirect_uri.length > 0) {
+    return rec.redirect_uri;
+  }
+  return null;
 }
 
 /**
@@ -153,23 +165,31 @@ export async function decideOAuthConsent(input: {
 }): Promise<{ url: string }> {
   const auth = getAuth();
   const oauthQuery = input.oauthQuery.replace(/^\?/, '');
+  const queryParams = new URLSearchParams(oauthQuery);
   try {
     const result = await auth.api.oauth2Consent({
       headers: input.headers,
       body: { accept: input.accept, oauth_query: oauthQuery },
     });
-    if (!result?.url) {
+    const url = consentRedirectUrl(result);
+    if (!url) {
       throw new ValidationError(CONSENT_STALE_MESSAGE);
     }
     logger.info('oauth consent decided', {
       userId: input.userId,
       teamId: input.teamId,
       accept: input.accept,
-      clientId: new URLSearchParams(oauthQuery).get('client_id'),
+      clientId: queryParams.get('client_id'),
     });
-    return { url: result.url };
+    return { url };
   } catch (error) {
     if (error instanceof ValidationError) throw error;
+    logger.warn('oauth consent rejected', {
+      hasSig: queryParams.has('sig'),
+      baParamCount: queryParams.getAll('ba_param').length,
+      keyCount: [...queryParams.keys()].length,
+      reason: oauthProviderUserMessage(error, CONSENT_STALE_MESSAGE),
+    });
     throw new ValidationError(
       oauthProviderUserMessage(error, CONSENT_STALE_MESSAGE)
     );
