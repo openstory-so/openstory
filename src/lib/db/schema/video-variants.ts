@@ -57,8 +57,10 @@ type VideoGenerationStatus = (typeof VIDEO_VARIANT_STATUSES)[number];
  * derived (like `resolution`): the shot's switch can flip after the render,
  * and a null `frameVersionId` alone is overloaded — it also means "not
  * pinned" (#1380) and, with a null prompt id, "legacy, unknown provenance".
- * Required so no write path can forget it. Rows written before the stamp
- * carry no key at runtime; a reader comparing it must treat that as unknown.
+ * Required so no write path can forget it. Rows written before the stamp were
+ * backfilled from the shot's mode by
+ * `20260902235958_backfill_manifest_uses_start_frame`; only an empty or
+ * invalid manifest can lack it.
  * @public consumed from #990+
  */
 export type VideoManifestEntry = {

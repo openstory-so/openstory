@@ -7,10 +7,18 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_VIDEO_MODEL } from '@/lib/ai/models';
 import type { MotionPrompt, Scene } from '@/lib/ai/scene-analysis.schema';
+import type {
+  CharacterMinimal,
+  SequenceLocationMinimal,
+} from '@/lib/db/schema';
 import { WorkflowValidationError } from '@/lib/workflow/errors';
 import { buildStoryboardMotionBatchShots } from './storyboard-motion-batch-shots';
 
-function scene(sceneId: string, durationSeconds = 5): Scene {
+function scene(
+  sceneId: string,
+  durationSeconds = 5,
+  extra: Record<string, unknown> = {}
+): Scene {
   // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- helper only reads sceneId, metadata.durationSeconds, continuity.characterTags
   return {
     sceneId,
@@ -18,6 +26,7 @@ function scene(sceneId: string, durationSeconds = 5): Scene {
     originalScript: { extract: 'a beat', lineNumber: 1 },
     metadata: { title: sceneId, durationSeconds },
     continuity: { characterTags: [] },
+    ...extra,
   } as unknown as Scene;
 }
 
@@ -148,6 +157,78 @@ describe('buildStoryboardMotionBatchShots — reference-only', () => {
     // A null frameVersionId in the manifest is the documented encoding of
     // "reference-driven shot with no dedicated first frame".
     expect(shot?.frameVersionId).toBeNull();
+  });
+
+  it('attaches the location sheet first when there is no still', () => {
+    const [shot] = buildStoryboardMotionBatchShots({
+      ...referenceOnlyArgs,
+      scenes: [
+        scene('sc-1', 5, {
+          continuity: { characterTags: ['Alice'], environmentTag: 'Rooftop' },
+          metadata: { title: 'sc-1', durationSeconds: 5, location: 'Rooftop' },
+        }),
+      ],
+      characters: [
+        // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- matcher reads name/tag + sheet url only
+        {
+          id: 'ch-alice',
+          characterId: 'alice',
+          name: 'Alice',
+          consistencyTag: 'alice',
+          sheetImageUrl: 'https://cdn/alice.png',
+          sheetStatus: 'completed',
+        } as unknown as CharacterMinimal,
+      ],
+      locations: [
+        // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- matcher reads name/tag + reference url only
+        {
+          id: 'loc-rooftop',
+          locationId: 'rooftop',
+          name: 'Rooftop',
+          referenceImageUrl: 'https://cdn/rooftop.png',
+          referenceStatus: 'completed',
+          consistencyTag: 'rooftop',
+        } as unknown as SequenceLocationMinimal,
+      ],
+    });
+
+    // Location leads: the reference budget is spent in order, so the set
+    // survives a cast that overflows it.
+    expect(shot?.referenceImages?.map((r) => r.role)).toEqual([
+      'location',
+      'character',
+    ]);
+    expect(shot?.referenceImages?.[0]?.referenceImageUrl).toBe(
+      'https://cdn/rooftop.png'
+    );
+  });
+
+  it('leaves the location sheet out when the mode is off', () => {
+    const [shot] = buildStoryboardMotionBatchShots({
+      ...referenceOnlyArgs,
+      imageUrls: ['https://cdn/a.png', 'https://cdn/b.png'],
+      frameVersionIds: ['fv-1', 'fv-2'],
+      referenceOnly: false,
+      scenes: [
+        scene('sc-1', 5, {
+          continuity: { characterTags: [], environmentTag: 'Rooftop' },
+          metadata: { title: 'sc-1', durationSeconds: 5, location: 'Rooftop' },
+        }),
+      ],
+      locations: [
+        // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- matcher reads name/tag + reference url only
+        {
+          id: 'loc-rooftop',
+          locationId: 'rooftop',
+          name: 'Rooftop',
+          referenceImageUrl: 'https://cdn/rooftop.png',
+          referenceStatus: 'completed',
+          consistencyTag: 'rooftop',
+        } as unknown as SequenceLocationMinimal,
+      ],
+    });
+
+    expect(shot?.referenceImages ?? []).toEqual([]);
   });
 
   it('still drops a shot whose still failed when the mode is off', () => {

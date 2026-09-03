@@ -74,7 +74,11 @@ export function buildUpdateStalePreview(
       estimateVideoCost(
         videoModel,
         (t.durationMs ?? DEFAULT_VIDEO_DURATION_MS) / 1000,
-        { pricing, resolution: plan.sequence.resolution }
+        {
+          pricing,
+          resolution: plan.sequence.resolution,
+          referenceOnly: !t.usesStartFrame,
+        }
       )
     )
   );

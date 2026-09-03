@@ -633,6 +633,10 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
                 estimateVideoCost(model, duration, {
                   pricing: await getEffectiveFalPricing(),
                   resolution: plan.resolution,
+                  // Same route the submit below takes, or a reference-only
+                  // shot is gated at the image-to-video rate.
+                  referenceOnly: !target.usesStartFrame,
+                  hasReferenceImages: referenceImages.length > 0,
                 }),
                 { model, operation: 'update-stale-shots:video' }
               ),

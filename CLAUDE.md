@@ -230,9 +230,10 @@ render-only switch: it picks the motion-prompt template and folds into the
 motion hash, so flipping it re-stales that shot's motion prompt.
 
 **Two capability questions, don't mix them.** `supportsReferenceOnlyMotion` is
-the model-only floor (fal `reference-to-video`: Seedance 2.0 / 2.5, H3 Max) —
-for pure isomorphic code like `createSequenceSchema`, which validates **every**
-selected video model, not just the primary. Anywhere a team's keys are
+the model-only floor (fal `reference-to-video`: Seedance 2.0 / 2.5, H3 Max);
+`referenceOnlyCapableWith(model, vias)` is its isomorphic via-aware form, which
+`createSequenceSchema` asks with `{ xai: true }` for **every** selected video
+model, not just the primary. Anywhere a team's keys are
 reachable, ask `canRenderReferenceOnly(model, credentials)` instead: Grok
 Imagine renders reference-only on the native xAI via, and the model-only
 question rejects it.

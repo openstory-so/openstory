@@ -477,7 +477,8 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
       });
 
     // ----------------------------------------------------------------------
-    // PHASE 3: character bible + location bible + visual prompts in parallel
+    // PHASE 3: character bible + location bible + frame prompts (or,
+    // reference-only, motion/music prompts) in parallel
     // ----------------------------------------------------------------------
     await step.do('phase-3-start', async () => {
       await getGenerationChannel(sequenceId).emit('generation.phase:start', {
@@ -767,8 +768,8 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
     //
     // REFERENCE-ONLY skips this phase outright: no still is rendered, so the
     // reason motion waits on images disappears and with it the whole image
-    // pass. Its motion/music prompts have been running since phase 3 (see
-    // `earlyMotionMusic`), so this phase is only their await point.
+    // pass. Its motion/music prompts already settled in phase 3
+    // (`referenceOnlyPromptsSettled`); nothing is awaited here.
     const shotImagesSettled: PromiseSettledResult<ShotImagesWorkflowResult> =
       referenceOnly
         ? {

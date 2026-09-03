@@ -3,7 +3,7 @@ import {
   isValidAudioModel,
   isValidImageToVideoModel,
   isValidTextToImageModel,
-  supportsReferenceOnlyMotion,
+  referenceOnlyCapableWith,
   type AudioModel,
   type ImageToVideoModel,
   type TextToImageModel,
@@ -260,9 +260,14 @@ function loadSettings(): GenerationSettings {
     // A stored selection can predate the mode, or predate a model losing its
     // reference-to-video route — either way, restoring it would hand the
     // create schema a selection it rejects. Checked against the post-`withMode`
-    // list, since the mode can swap the video models out from under it.
+    // list, since the mode can swap the video models out from under it. Asks
+    // the same via-aware question as `createSequenceSchema` (not the model-only
+    // floor): Grok Imagine is accepted by the server and must not be flipped
+    // back to start frames on reload.
     return !settings.generateStartFrames &&
-      !settings.videoModels.every(supportsReferenceOnlyMotion)
+      !settings.videoModels.every((model) =>
+        referenceOnlyCapableWith(model, { xai: true })
+      )
       ? { ...settings, generateStartFrames: true }
       : settings;
   } catch (error) {

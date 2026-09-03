@@ -54,8 +54,9 @@ export type ShotPromptContextSequence = {
   aspectRatio: string;
   analysisModel: string;
   /**
-   * Reference-only mode. Read straight off the sequence row rather than passed
-   * as a separate argument, and REQUIRED rather than optional: the failure mode
+   * Reference-only mode. Resolved per shot via `shotPromptSequence(sequence,
+   * shot)` (`use-start-frame.ts`) — never the raw sequence column, since
+   * `shots.useStartFrame` overrides it — and REQUIRED rather than optional: the failure mode
    * of omitting it is silent and permanent — the stamp would fold the flag in
    * and the verify would not, so every reference-only motion prompt would read
    * stale forever. Making it required turns that into a compile error at each

@@ -168,6 +168,9 @@ function buildScopedDb(
           musicPromptInputHash: null,
           musicUrl: null,
           musicStatus: 'pending',
+          // Frame-based unless a test overrides it: a reference-only shot never
+          // re-renders its still, which would silence the image cascades below.
+          generateStartFrames: true,
           ...opts.sequence,
         }),
     },
@@ -510,6 +513,32 @@ describe("computePlan — 'updating' dedup (#1085)", () => {
       motionLiveHash: 'live-motion',
       imageLiveHash: 'live-thumb',
     });
+  });
+});
+
+describe('computePlan — per-shot start-frame mode', () => {
+  it('freezes the SHOT override onto the target, not the sequence default', async () => {
+    stalenessByShot.set('shot-1', { ...FRESH, visualPrompt: 'stale' });
+    const shots = [makeShot({ useStartFrame: false })];
+    const frames = [makeFrame()];
+    const result = await plan(shots, frames, {
+      db: buildScopedDb(shots, frames, {
+        sequence: { generateStartFrames: true },
+      }),
+    });
+    expect(result.targets[0]?.usesStartFrame).toBe(false);
+  });
+
+  it('freezes a start-frame override on a reference-only sequence', async () => {
+    stalenessByShot.set('shot-1', { ...FRESH, visualPrompt: 'stale' });
+    const shots = [makeShot({ useStartFrame: true })];
+    const frames = [makeFrame()];
+    const result = await plan(shots, frames, {
+      db: buildScopedDb(shots, frames, {
+        sequence: { generateStartFrames: false },
+      }),
+    });
+    expect(result.targets[0]?.usesStartFrame).toBe(true);
   });
 });
 

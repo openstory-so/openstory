@@ -1,7 +1,7 @@
 /**
  * Repo guard: ask the SHOT, not the sequence.
  *
- * `sequences.referenceOnly` is only a default now — a shot overrides it with
+ * `sequences.generateStartFrames` is only a default now — a shot overrides it with
  * `shots.useStartFrame`, so anything deciding what a shot renders must go
  * through `usesStartFrame` / `rendersReferenceOnly`.
  *
@@ -24,8 +24,11 @@ import { describe, expect, it } from 'vitest';
 // `?.` is part of the read: `sequence?.referenceOnly` slipped the guard
 // entirely until it was noticed, and every UI holder of the row spells it that
 // way (the query can be in flight).
+// Any receiver, not just `sequence`: `row.`, `seq.`, `snapshot.` all slipped
+// the old guard. Destructuring (`const { generateStartFrames } = sequence`) is
+// the other spelling of the same read.
 const SEQUENCE_READ =
-  /\bsequence\??\.generateStartFrames\b|\bplan\.sequence\??\.generateStartFrames\b/;
+  /\.generateStartFrames\b|\{[^{}]*\bgenerateStartFrames\b[^{}]*\}\s*=(?![=>])/;
 
 /**
  * Reads that are correctly sequence-level, each with why.
@@ -45,6 +48,7 @@ const SEQUENCE_LEVEL_BY_DESIGN: Record<string, string> = {
   // between two similarly-priced routes; the envelope is an estimate.
   'src/lib/sequences/smart-retry.ts': 'whole-run credit estimate',
   'src/functions/sequences.ts': 'whole-run credit estimate',
+  'src/functions/shot-image.ts': 'whole-run credit estimate',
   // Plan snapshot of the sequence row. Per-shot answers are frozen onto each
   // PlanTarget as `usesStartFrame`.
   'src/lib/shots/update-stale-plan.ts': 'snapshots the sequence default',
@@ -59,6 +63,12 @@ const SEQUENCE_LEVEL_BY_DESIGN: Record<string, string> = {
   // list then narrows if ANY eligible shot renders reference-only.
   'src/components/model/add-model-menu.tsx':
     'passes the default to the per-shot resolver',
+  // Creation: no shot exists yet, so the sequence default is the only answer.
+  'src/lib/schemas/sequence.schemas.ts': 'validates the create-time default',
+  'src/lib/sequences/create-sequences.ts': 'creates the row from the default',
+  'src/lib/db/scoped/sequences.ts': 'writes the column',
+  // Restores the composer's stored default; there is no shot to ask.
+  'src/hooks/use-generation-settings.ts': 'stored composer default',
 };
 
 describe('reference-only is resolved per shot', () => {

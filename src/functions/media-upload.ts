@@ -490,14 +490,19 @@ export const setShotVideoFromUploadFn = createServerFn({ method: 'POST' })
       scopedDb.shotPromptVersions.getSelectedMotion(shot.id),
       scopedDb.frameVariants.getSelected(frame.id),
     ]);
+    const shotUsesStartFrame = usesStartFrame(shot, sequence);
     const manifest = buildVideoManifest([
       {
         shotId: shot.id,
         motionPromptVersionId: selectedMotion?.id ?? null,
-        frameVersionId: selectedImage?.id ?? null,
+        // A reference-only shot's frame pointer is null even when a still
+        // exists (`assembleSequenceSegments` compares against null), so pinning
+        // the still here would make the upload read Stale for ever and let
+        // "Update all" re-render over it.
+        frameVersionId: shotUsesStartFrame ? (selectedImage?.id ?? null) : null,
         // An upload rendered from nothing we know of; stamp the shot's mode
-        // so it agrees with the still pinned above.
-        usesStartFrame: usesStartFrame(shot, sequence),
+        // so it agrees with the pointer above.
+        usesStartFrame: shotUsesStartFrame,
         durationMs,
       },
     ]);

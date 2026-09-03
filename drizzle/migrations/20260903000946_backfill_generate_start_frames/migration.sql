@@ -11,6 +11,9 @@
 -- the inverse of the column it replaces. Every existing shot is also stamped
 -- `use_start_frame = 1` explicitly rather than left to inherit, so the flip of
 -- the sequence default can never change what an already-made shot renders.
+-- That stamp cannot contradict a sequence's copy in production: `reference_only`
+-- was added in this same PR and never deployed, so no deployed row has
+-- `reference_only = 1`.
 --
 -- Both statements are set-based single-table updates; a replay is a no-op
 -- (the shot stamp is idempotent, and the sequence copy runs once because the

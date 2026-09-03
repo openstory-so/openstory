@@ -6,6 +6,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { canRenderReferenceOnly } from './motion-generation';
+import { estimateFalCost } from '@/lib/ai/fal-cost';
 import { estimateVideoCost } from '@/lib/billing/cost-estimation';
 import { micros } from '@/lib/billing/money';
 import {
@@ -109,9 +110,17 @@ describe('estimateVideoCost', () => {
       pricing,
       hasReferenceImages: false,
     });
-    expect(withFlag).not.toBeNull();
-    expect(withoutFlag).not.toBeNull();
-    expect(withFlag).not.toBe(withoutFlag);
+    // Pinned to the r2v row, not merely "different from i2v": any wrong route
+    // that happens to differ would pass an inequality.
+    const at = (endpointId: string) =>
+      Number(estimateFalCost(endpointId, { durationSeconds: 5 }, pricing));
+    expect(Number(withFlag)).toBe(
+      at('bytedance/seedance-2.5/reference-to-video')
+    );
+    expect(Number(withoutFlag)).toBe(
+      at('bytedance/seedance-2.5/image-to-video')
+    );
+    expect(Number(withFlag)).toBeGreaterThan(0);
   });
 
   it('does not throw for a model with no fal reference-to-video route', () => {

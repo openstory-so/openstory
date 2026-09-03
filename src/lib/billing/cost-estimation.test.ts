@@ -255,6 +255,46 @@ describe('estimateStoryboardCost', () => {
     expect(referenceOnly).toBe(withStills - stills);
   });
 
+  it('prices reference-only motion at the reference-to-video rate', () => {
+    // Unequal i2v vs r2v rates so a route regression cannot hide behind a
+    // model that happens to price both the same (VIDEO_A does).
+    const pricing = {
+      ...FAL_PRICING,
+      'bytedance/seedance-2.5/image-to-video': {
+        unitPrice: micros(10_000),
+        unit: 'units',
+      },
+      'bytedance/seedance-2.5/reference-to-video': {
+        unitPrice: micros(20_000),
+        unit: 'units',
+      },
+    };
+    const model: ImageToVideoModel = 'seedance_v2_5';
+    const perShotAtR2v = Number(
+      estimateVideoCost(model, DURATION, {
+        pricing,
+        hasReferenceImages: true,
+        referenceOnly: true,
+      })
+    );
+    const perShotAtI2v = Number(
+      estimateVideoCost(model, DURATION, { pricing, hasReferenceImages: false })
+    );
+    expect(perShotAtR2v).not.toBe(perShotAtI2v);
+
+    const referenceOnly = Number(
+      estimateStoryboardRenderCost({
+        ...base,
+        pricing,
+        autoGenerateMotion: true,
+        videoModels: [model],
+        referenceOnly: true,
+      })
+    );
+    // No stills line at all: the whole render is SCENE_COUNT clips at r2v.
+    expect(referenceOnly).toBe(perShotAtR2v * SCENE_COUNT);
+  });
+
   it('render cost is stills + motion + music, excluding analysis sheets and LLM', () => {
     const total = Number(
       estimateStoryboardCost({

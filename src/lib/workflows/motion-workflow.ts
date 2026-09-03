@@ -260,7 +260,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
             dialogue: input.priorMotion?.dialogue ?? null,
             audio: input.priorMotion?.audio ?? null,
             source: 'user-edit',
-            usesStartFrame: !(input.referenceOnly ?? false),
+            usesStartFrame: !input.referenceOnly,
             inputHash: input.userEditProvenance.inputHash,
             analysisModel: input.userEditProvenance.analysisModel,
             createdBy: input.userId,
@@ -311,7 +311,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
               frameVersionId: input.frameVersionId ?? null,
               // Provenance stamp: the mode this render ran in, independent
               // of the null-`frameVersionId` encoding above.
-              usesStartFrame: !(input.referenceOnly ?? false),
+              usesStartFrame: !input.referenceOnly,
               durationMs: duration * 1000,
             },
           ]);
@@ -549,7 +549,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
                   promptType: 'motion',
                   text: softenedText,
                   source: 'softened',
-                  usesStartFrame: !(input.referenceOnly ?? false),
+                  usesStartFrame: !input.referenceOnly,
                   inputHash: provenance.inputHash,
                   analysisModel: provenance.analysisModel,
                   createdBy: input.userId,
@@ -907,7 +907,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
       motionCostFromUsage(job.via, billedUsage, {
         modelKey: job.modelKey,
         hasReferenceImages: (input.referenceImages?.length ?? 0) > 0,
-        referenceOnly: input.referenceOnly ?? false,
+        referenceOnly: input.referenceOnly,
       })
     );
     const actualCost = billing.cost;

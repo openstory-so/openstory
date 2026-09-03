@@ -453,8 +453,12 @@ export interface MotionWorkflowInput extends SequenceWorkflowContext {
    * element sheets with no start frame. Forces the reference-to-video route
    * (whose start frame is optional) and leaves `frameVersionId` null in the
    * render manifest — the documented meaning of a null there.
+   *
+   * Required, not defaulted: a caller that forgot it shipped a payload with
+   * neither a still nor the flag, which the batch workflow rejected only after
+   * credits were reserved.
    */
-  referenceOnly?: boolean;
+  referenceOnly: boolean;
   prompt: string;
   model?: keyof typeof IMAGE_TO_VIDEO_MODELS;
   duration?: number;
@@ -1280,8 +1284,8 @@ export interface BatchMotionMusicWorkflowInput extends SequenceWorkflowContext {
     sceneId?: string | null;
     /** The start frame. Absent only when `referenceOnly` is set. */
     imageUrl?: string;
-    /** See `MotionWorkflowInput.referenceOnly`. */
-    referenceOnly?: boolean;
+    /** See `MotionWorkflowInput.referenceOnly`. Required for the same reason. */
+    referenceOnly: boolean;
     /** See `MotionWorkflowInput.frameVersionId`. */
     frameVersionId?: string | null;
     /** See `MotionWorkflowInput.motionPromptVersionId`. */

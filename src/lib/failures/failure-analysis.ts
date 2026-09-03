@@ -15,6 +15,7 @@ import type { SceneRow } from '@/lib/db/schema/scenes';
 import type { Shot } from '@/lib/db/schema/shots';
 import type { Sequence } from '@/lib/db/schema/sequences';
 import type { ShotView } from '@/lib/shots/shot-view';
+import { usesStartFrame } from '@/lib/shots/use-start-frame';
 import { plainSceneTitle } from '@/lib/utils/markdown-plain';
 
 /** Scene titles keyed by scene id — the label source for each failed shot. */
@@ -219,10 +220,14 @@ export function analyzeFailures(
     });
   }
 
-  // Failed motion (only shots with thumbnails AND a motion prompt)
+  // Failed motion: a motion prompt, plus a still unless the shot renders from
+  // references — same rule as `smartRetry`, or the panel reports nothing
+  // retryable for clips the server would in fact retry.
   const failedMotionShots = shots.filter(
     (f) =>
-      f.videoStatus === 'failed' && f.image?.url && f.motionPrompt?.fullPrompt
+      f.videoStatus === 'failed' &&
+      (!usesStartFrame(f, sequence) || f.image?.url) &&
+      f.motionPrompt?.fullPrompt
   );
   if (failedMotionShots.length > 0) {
     groups.push({

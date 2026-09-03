@@ -586,6 +586,7 @@ export class ReplaceElementWorkflow extends OpenStoryWorkflowEntrypoint<ReplaceE
             sequenceId,
             shotId,
             imageUrl: newThumbnailUrl,
+            referenceOnly: false,
             prompt: motionPrompt,
             model: videoModel,
             aspectRatio,

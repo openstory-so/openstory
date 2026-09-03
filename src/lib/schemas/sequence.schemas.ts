@@ -39,10 +39,10 @@ export const MUSIC_REQUIRES_MOTION_ERROR =
   'Music generation currently requires motion. Turn on motion or disable music.';
 
 export const REFERENCE_ONLY_MODEL_ERROR =
-  'Reference-only mode needs a video model that can render without a start frame. Pick a Seedance model, or turn reference-only off.';
+  'Without start frames, the video model must render from references alone. Pick Seedance, H3 Max, Omni Flash or Grok Imagine, or turn on Generate start frames.';
 
 export const REFERENCE_ONLY_REQUIRES_MOTION_ERROR =
-  'Reference-only mode renders straight to video, so it needs motion. Turn motion on, or turn reference-only off.';
+  'Without start frames, each shot renders straight to video, so motion is required. Turn motion on, or turn on Generate start frames.';
 
 export const createSequenceSchema = createInsertSchema(sequences, {
   title: (schema) => schema.min(1).optional(), // Optional - defaults to 'Untitled Sequence' in hook

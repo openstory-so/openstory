@@ -585,7 +585,14 @@ async function decideShotTarget(args: {
     };
   }
 
-  const flags = cascadeFlags({ staleness, selectedImage, depth, videoState });
+  const shotUsesStartFrame = usesStartFrame(shot, sequence);
+  const flags = cascadeFlags({
+    staleness,
+    selectedImage,
+    depth,
+    videoState,
+    usesStartFrame: shotUsesStartFrame,
+  });
   if (
     !flags.regenVisual &&
     !flags.regenMotion &&
@@ -647,13 +654,15 @@ function cascadeFlags(args: {
   selectedImage: Pick<FrameVariant, 'url'> | null;
   depth: UpdateStaleDepth;
   videoState: ShotVideoState | undefined;
+  /** Resolved per shot — a reference-only clip never reads its still. */
+  usesStartFrame: boolean;
 }): {
   regenVisual: boolean;
   regenMotion: boolean;
   regenImage: boolean;
   regenVideo: boolean;
 } {
-  const { staleness, selectedImage, depth, videoState } = args;
+  const { staleness, selectedImage, depth, videoState, usesStartFrame } = args;
 
   // 'stale' only — 'updating' is a live claim already fixing this artifact.
   const regenVisual = staleness.visualPrompt === 'stale';
@@ -661,8 +670,11 @@ function cascadeFlags(args: {
 
   // Depth ≥ images: re-render stills that are stale, or whose visual prompt
   // regenerates in this run (would read stale the moment the prompt lands).
-  // Depth 'prompts' renders nothing. Never a FIRST still.
+  // Depth 'prompts' renders nothing. Never a FIRST still. Never on a
+  // reference-only shot: its clip renders from the sheets, so a re-rendered
+  // still is billed and then ignored — and would cascade into the clip too.
   const regenImage =
+    usesStartFrame &&
     depthIncludes(depth, 'images') &&
     !!selectedImage?.url &&
     (staleness.thumbnail === 'stale' || regenVisual);

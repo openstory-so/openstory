@@ -70,7 +70,7 @@ export const getSceneFacetMapsFn = createServerFn({ method: 'GET' })
         locations,
         scene?.continuity?.environmentTag ?? '',
         scene?.metadata?.location ?? '',
-        scene?.originalScript?.extract
+        scene?.originalScript.extract
       ).map((l) => l.id);
 
       const characterTags = scene?.continuity?.characterTags ?? [];

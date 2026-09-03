@@ -48,6 +48,7 @@ import { assertMediaVia, type MediaVia } from '@/lib/ai/via';
 import { workersSafeFetch } from '@/lib/ai/workers-safe-fetch';
 import { reportMissingBillingCost } from '@/lib/billing/billing-observability';
 import { getLogger } from '@/lib/observability/logger';
+import { getPostHogClient } from '@/lib/posthog-server';
 import { ZERO_MICROS, type Microdollars } from '@/lib/billing/money';
 import { type AspectRatio } from '@/lib/constants/aspect-ratios';
 import type { Resolution } from '@/lib/constants/resolutions';
@@ -171,18 +172,19 @@ async function resolveOptionalGoogleKey(
 /**
  * Can this model render a reference-only shot FOR THIS TEAM?
  *
- * `supportsReferenceOnlyMotion` is the creation-time gate and is keyed on the
- * model alone, because the via is claimed per team at submit time and a
- * sequence is configured long before that. Here the via IS knowable, so the
- * answer can be the honest one — which matters for Grok Imagine: it accepts
- * references with no start frame on the native xAI route (`resolveMotionEndpoint`
- * already returns `inline` for it), but its fal id is
- * `xai/grok-imagine-video/v1.5/image-to-video`, which requires `image_url`. So
- * Grok can serve a reference-only shot exactly when an xAI key resolves.
+ * `supportsReferenceOnlyMotion` is the model-only floor for isomorphic code,
+ * keyed on the model alone because a pure schema cannot see a team's keys.
+ * Here the via IS knowable, so the answer can be the honest one — which
+ * matters for Grok Imagine: it accepts references with no start frame on the
+ * native xAI route (`resolveMotionEndpoint` already returns `inline` for it),
+ * but its fal id is `xai/grok-imagine-video/v1.5/image-to-video`, which
+ * requires `image_url`. So Grok can serve a reference-only shot exactly when
+ * an xAI key resolves.
  *
- * Use this wherever a model is chosen for an already-created reference-only
- * shot (the content-flag rescue). Do NOT use it to gate sequence creation —
- * a team's key can be revoked between the two.
+ * Use this wherever a team's keys are reachable: creation, the per-shot
+ * toggle, regenerate, add-model, and the content-flag rescue. A key can still
+ * be revoked between creation and submit, so `MotionWorkflow`'s entry guard
+ * re-asks.
  */
 export async function canRenderReferenceOnly(
   modelKey: ImageToVideoModel,
@@ -363,12 +365,19 @@ export async function submitMotionJob(
   // reinvented for this one shot while every sibling shot binds its sheets.
   // The request is still valid (the endpoint serves it), so this is a warning
   // rather than a throw; without it the shot just comes back looking wrong and
-  // nothing anywhere says why.
+  // nothing anywhere says why. Also emitted as an event: a server log is
+  // nobody's dashboard, and the rate of this is the measure of how often
+  // reference-only silently degrades to text-to-video.
   if (options.referenceOnly && !hasReferenceImages) {
     logger.warn(
       'Reference-only motion job has no matched reference sheets; submitting as text-to-video',
       { modelKey, via: endpoint.via }
     );
+    getPostHogClient()?.capture({
+      distinctId: 'system',
+      event: 'reference_only_no_references',
+      properties: { model: modelKey, via: endpoint.via },
+    });
   }
 
   let jobId: string;

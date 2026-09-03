@@ -67,6 +67,10 @@ export const generateShotsFn = createServerFn({ method: 'POST' })
         videoModels: [
           safeImageToVideoModel(sequence.videoModel, DEFAULT_VIDEO_MODEL),
         ],
+        // Whole-run envelope before any shot exists, so the sequence default
+        // is the right question here: without start frames the image line is
+        // zero and motion prices the reference-to-video route.
+        referenceOnly: !sequence.generateStartFrames,
         pricing: await getEffectiveFalPricing(),
       }),
       {
@@ -290,7 +294,7 @@ export const generateShotVariantsFn = createServerFn({ method: 'POST' })
       allLocations,
       scene?.continuity?.environmentTag ?? '',
       scene?.metadata?.location ?? '',
-      scene?.originalScript?.extract
+      scene?.originalScript.extract
     );
 
     const workflowInput: ShotVariantWorkflowInput = {
@@ -405,7 +409,7 @@ export const selectShotVariantFn = createServerFn({ method: 'POST' })
       allLocations,
       scene?.continuity?.environmentTag ?? '',
       scene?.metadata?.location ?? '',
-      scene?.originalScript?.extract
+      scene?.originalScript.extract
     );
 
     // Price the model that will actually render the upscale (#1066) — the same

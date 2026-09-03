@@ -93,7 +93,7 @@ export function buildStoryboardMotionBatchShots(input: {
         ? { referenceOnly: true as const }
         : // The early return above already rejected a null slot on this path;
           // the fallback keeps the narrowing local instead of asserting.
-          { imageUrl: imageUrl ?? undefined }),
+          { referenceOnly: false as const, imageUrl: imageUrl ?? undefined }),
       frameVersionId: input.frameVersionIds[index] ?? null,
       motionPromptVersionId:
         input.motionPromptVersionIdsBySceneId[scene.sceneId] ?? null,

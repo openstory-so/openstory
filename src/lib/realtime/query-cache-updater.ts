@@ -1,6 +1,8 @@
 import { characterSheetVariantKeys } from '@/hooks/use-character-sheet-variants';
 import { promptVariantKeys } from '@/hooks/use-prompt-variants';
+import { sceneFacetKeys } from '@/hooks/use-scene-facets';
 import { sceneKeys } from '@/hooks/use-scenes';
+import { sequenceElementKeys } from '@/hooks/use-sequence-elements';
 import { shotStalenessNamespace } from '@/hooks/use-shot-staleness';
 import { segmentKeys } from '@/hooks/use-segments';
 import { shotKeys } from '@/hooks/use-shots';
@@ -50,6 +52,20 @@ function debouncedInvalidate(
   }, DEBOUNCE_MS);
 
   pendingInvalidations.set(debounceKey, timeout);
+}
+
+/**
+ * Which cast / locations / elements belong to which shot is resolved on the
+ * server (`getSceneFacetMapsFn`) and cached separately from the lists, so a
+ * refreshed list still filters through a stale map. Any event that can change
+ * membership refreshes both.
+ */
+function invalidateSceneFacets(queryClient: QueryClient, sequenceId: string) {
+  debouncedInvalidate(
+    queryClient,
+    sceneFacetKeys.maps(sequenceId),
+    `scene-facets:${sequenceId}`
+  );
 }
 
 /**
@@ -668,6 +684,16 @@ export function updateQueryCacheFromEvent(
         characterSheetVariantKeys.all,
         `character-sheet-variants:${sequenceId}`
       );
+      invalidateSceneFacets(queryClient, sequenceId);
+      break;
+
+    case 'generation.location:matched':
+      debouncedInvalidate(
+        queryClient,
+        sequenceLocationKeys.list(sequenceId),
+        `sequence-locations:${sequenceId}`
+      );
+      invalidateSceneFacets(queryClient, sequenceId);
       break;
 
     case 'generation.location-sheet:progress':
@@ -681,6 +707,31 @@ export function updateQueryCacheFromEvent(
         locationSheetVariantKeys.all,
         `location-sheet-variants:${sequenceId}`
       );
+      invalidateSceneFacets(queryClient, sequenceId);
+      break;
+
+    case 'generation.phase:start':
+      // A phase boundary is the one moment every bible the previous phase
+      // wrote (cast, locations, elements) is complete. Elements emit no event
+      // of their own, and the per-scene membership the Cast / Locations /
+      // Elements tabs filter by is a separate query from the lists, so
+      // refetch all of them here rather than waiting on staleTime or focus.
+      debouncedInvalidate(
+        queryClient,
+        sequenceCharacterKeys.list(sequenceId),
+        `sequence-characters:${sequenceId}`
+      );
+      debouncedInvalidate(
+        queryClient,
+        sequenceLocationKeys.list(sequenceId),
+        `sequence-locations:${sequenceId}`
+      );
+      debouncedInvalidate(
+        queryClient,
+        sequenceElementKeys.bySequence(sequenceId),
+        `sequence-elements:${sequenceId}`
+      );
+      invalidateSceneFacets(queryClient, sequenceId);
       break;
 
     case 'generation.preview:replaced':
@@ -698,10 +749,20 @@ export function updateQueryCacheFromEvent(
       void queryClient.invalidateQueries({
         queryKey: sequenceKeys.detail(sequenceId),
       });
-      // Final catch-all so the cast list reflects the finished run even if an
-      // intermediate character event was missed.
+      // Final catch-all so the cast, location and element lists — and the
+      // per-scene membership the tabs filter by — reflect the finished run
+      // even if an intermediate event was missed.
       void queryClient.invalidateQueries({
         queryKey: sequenceCharacterKeys.list(sequenceId),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: sequenceLocationKeys.list(sequenceId),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: sequenceElementKeys.bySequence(sequenceId),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: sceneFacetKeys.maps(sequenceId),
       });
       // Staleness was deferred for the whole run (#1121: every artifact reads
       // 'generating' while the sequence is 'processing'). The run ending is

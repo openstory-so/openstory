@@ -112,8 +112,8 @@ export function resolveMotionEndpoint(
     // Reference-only has nowhere to go on a model without a reference route:
     // every remaining fal endpoint requires `image_url`, and there is no still.
     // Fail here rather than submitting a request the endpoint must reject —
-    // `supportsReferenceOnlyMotion` gates this at sequence creation, so
-    // reaching it means a model swap slipped past that gate.
+    // `createSequenceSchema` / `canRenderReferenceOnly` gate this at creation,
+    // so reaching it means a model swap slipped past that gate.
     if (referenceOnly) {
       throw new Error(
         `Motion model "${modelKey}" has no reference-to-video endpoint and cannot render without a start frame`

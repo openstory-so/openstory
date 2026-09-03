@@ -261,8 +261,11 @@ function matchLocationInText<T extends LocationMatchInput>(
  *
  * `sceneText` is a FALLBACK only — consulted when the tag and the slugline
  * matched nothing, so a scene that already binds a location is untouched and
- * no stored hash moves. Pass it wherever the scene is in hand; omitting it
- * leaves a prose-script scene with no set. See `matchLocationInText`.
+ * its stored hashes do not move. A prose-script scene that previously bound
+ * NO location and whose text names one DOES gain a binding, so its rendered
+ * shots read stale once after deploy. Pass it wherever the scene is in hand;
+ * omitting it leaves a prose-script scene with no set. See
+ * `matchLocationInText`.
  */
 export function matchLocationsToScene<T extends LocationMatchInput>(
   allLocations: T[],

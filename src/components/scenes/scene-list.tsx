@@ -325,6 +325,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
         pricing: falPricing,
         resolution,
         hasReferenceImages: true,
+        referenceOnly: rendersReferenceOnly(shot, { generateStartFrames }),
       });
       if (perShot === null) continue;
       anyHonest = true;
@@ -356,6 +357,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
     musicModel,
     videoModel,
     resolution,
+    generateStartFrames,
   ]);
 
   const shotsBySceneId = useMemo(() => {

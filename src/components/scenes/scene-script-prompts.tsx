@@ -178,10 +178,10 @@ export function tabsForScope(scope: SelectionScope): TabDescriptor[] {
     // keyed by sceneId), so editing it from a shot would silently rewrite every
     // sibling shot's text. Shot scope keeps only what a shot actually owns — its
     // image and motion prompts. Video leads: it is the deliverable, and in
-    // the default reference-only mode the keyframe is optional.
+    // the default reference-only mode the start frame is optional.
     return [
       { value: 'motion-prompt', label: 'Video' },
-      { value: 'image-prompt', label: 'Keyframe' },
+      { value: 'image-prompt', label: 'Start Frame' },
       { value: 'cast', label: 'Cast' },
       { value: 'location', label: 'Locations' },
       { value: 'elements', label: 'Elements' },
@@ -1172,17 +1172,25 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
       durationMs: shot.durationMs,
       model: effectiveMotionModel,
     });
+    // Per shot, not the sequence default: the chip must quote the route the
+    // submit takes, and without a still the location sheet counts as a ref.
+    const referenceOnly = !usesStartFrame(shot, {
+      generateStartFrames: sequenceGeneratesStartFrames,
+    });
     const hasReferenceImages =
       buildMotionReferenceImages({
         scene: sceneReference,
         characters: mentionCharacters ?? [],
         elements: mentionElements ?? [],
         motionPrompt: effectiveMotionPromptText,
+        includeLocations: referenceOnly,
+        locations: mentionLocations ?? [],
       }).length > 0;
     return estimateVideoCost(effectiveMotionModel, duration, {
       pricing: falPricing,
       resolution,
       hasReferenceImages,
+      referenceOnly,
     });
   }, [
     falPricing,
@@ -1191,8 +1199,10 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     sceneReference,
     mentionCharacters,
     mentionElements,
+    mentionLocations,
     resolution,
     effectiveMotionPromptText,
+    sequenceGeneratesStartFrames,
   ]);
 
   // CDN-backed deployments absolutize stored /r2/ URLs at submit (toCdnUrl) —
@@ -1263,6 +1273,11 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
       // The flip re-stales the motion prompt; without this the indicator kept
       // reading fresh and the shot rendered with the other mode's prompt.
       void queryClient.invalidateQueries({ queryKey: shotStalenessNamespace });
+      // Segment staleness derives the frame pointer from the mode, so the
+      // Video tab's Stale badge lags a full stale-time without this.
+      void queryClient.invalidateQueries({
+        queryKey: segmentKeys.list(sequenceId),
+      });
     },
     onError: (error: Error) => toast.error(error.message),
   });
