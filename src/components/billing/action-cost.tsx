@@ -26,6 +26,7 @@ import {
 } from '@/lib/billing/money';
 import { cn } from '@/lib/utils';
 import { AlertTriangle } from 'lucide-react';
+import type { ReactNode } from 'react';
 
 type ActionCostProps = {
   /** Honest estimate, or null when pricing is unknown for this action. */
@@ -33,18 +34,38 @@ type ActionCostProps = {
   className?: string;
   /** Align under a full-width button vs. a right-aligned primary CTA. */
   align?: 'center' | 'end' | 'start';
+  /**
+   * Copy before the amount, e.g. "Until References". Shown even when the
+   * amount is not (costs hidden, or no honest estimate) — it is the caller's
+   * control, not part of the number.
+   */
+  prefix?: ReactNode;
 };
 
 export function ActionCost({
   estimate,
   className,
   align = 'center',
+  prefix,
 }: ActionCostProps) {
   const { showCosts } = useShowCosts();
   const { balance } = useBillingBalance();
   const { data: gate } = useBillingGateQuery();
 
-  if (!showCosts || estimate == null) return null;
+  const justify = cn(
+    'flex items-center gap-1 text-xs',
+    align === 'end' && 'justify-end',
+    align === 'start' && 'justify-start',
+    align === 'center' && 'justify-center'
+  );
+
+  if (!showCosts || estimate == null) {
+    return prefix ? (
+      <span className={cn(justify, 'text-muted-foreground', className)}>
+        {prefix}
+      </span>
+    ) : null;
+  }
 
   // Wallet path only — team fal key covers media (and LLM when routed via fal).
   // OpenRouter-only BYOK is not checked here.
@@ -64,10 +85,8 @@ export function ActionCost({
   return (
     <span
       className={cn(
-        'flex items-center gap-1 text-xs tabular-nums',
-        align === 'end' && 'justify-end',
-        align === 'start' && 'justify-start',
-        align === 'center' && 'justify-center',
+        justify,
+        'tabular-nums',
         exceedsBalance
           ? 'text-amber-600 dark:text-amber-400'
           : 'text-muted-foreground',
@@ -75,6 +94,7 @@ export function ActionCost({
       )}
       aria-label={label}
     >
+      {prefix}
       {exceedsBalance ? (
         <AlertTriangle className="size-3 shrink-0" aria-hidden />
       ) : null}

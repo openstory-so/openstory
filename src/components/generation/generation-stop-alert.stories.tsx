@@ -19,6 +19,7 @@ function OpenAlert() {
       open={open}
       onOpenChange={setOpen}
       stopAt="music"
+      generateStartFrames={false}
       remember={false}
       estimateForStopAt={(stage) => COST_BY_STAGE[stage]}
       onConfirm={() => setOpen(false)}

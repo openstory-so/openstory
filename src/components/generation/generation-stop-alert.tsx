@@ -20,19 +20,29 @@ type GenerationStopAlertProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   stopAt: GenerationStage;
+  /** Start frames on/off rides with the stop-at: off hides the Images stop. */
+  generateStartFrames: boolean;
   remember: boolean;
-  onConfirm: (next: { stopAt: GenerationStage; remember: boolean }) => void;
+  onConfirm: (next: {
+    stopAt: GenerationStage;
+    generateStartFrames: boolean;
+    remember: boolean;
+  }) => void;
   /** Extra copy — e.g. Generate Copy warning. */
   description?: string;
   confirmLabel?: string;
-  /** Cost of a run that stops at the given stage. */
-  estimateForStopAt?: (stage: GenerationStage) => Microdollars | null;
+  /** Cost of a run that stops at the given stage in the given mode. */
+  estimateForStopAt?: (
+    stage: GenerationStage,
+    generateStartFrames: boolean
+  ) => Microdollars | null;
 };
 
 export const GenerationStopAlert: FC<GenerationStopAlertProps> = ({
   open,
   onOpenChange,
   stopAt,
+  generateStartFrames,
   remember,
   onConfirm,
   description,
@@ -40,15 +50,17 @@ export const GenerationStopAlert: FC<GenerationStopAlertProps> = ({
   estimateForStopAt,
 }) => {
   const [draftStopAt, setDraftStopAt] = useState(stopAt);
+  const [draftStartFrames, setDraftStartFrames] = useState(generateStartFrames);
   const [draftRemember, setDraftRemember] = useState(remember);
 
   useEffect(() => {
     if (!open) return;
     setDraftStopAt(stopAt);
+    setDraftStartFrames(generateStartFrames);
     setDraftRemember(remember);
-  }, [open, stopAt, remember]);
+  }, [open, stopAt, generateStartFrames, remember]);
 
-  const estimate = estimateForStopAt?.(draftStopAt) ?? null;
+  const estimate = estimateForStopAt?.(draftStopAt, draftStartFrames) ?? null;
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
@@ -60,7 +72,12 @@ export const GenerationStopAlert: FC<GenerationStopAlertProps> = ({
               'The workflow stops at the stage you pick. You can generate the rest from the scene list.'}
           </AlertDialogDescription>
         </AlertDialogHeader>
-        <GenerationStopSlider value={draftStopAt} onChange={setDraftStopAt} />
+        <GenerationStopSlider
+          value={draftStopAt}
+          onChange={setDraftStopAt}
+          generateStartFrames={draftStartFrames}
+          onGenerateStartFramesChange={setDraftStartFrames}
+        />
         <div className="flex items-center gap-2">
           <Checkbox
             id="remember-generation-stop"
@@ -81,7 +98,11 @@ export const GenerationStopAlert: FC<GenerationStopAlertProps> = ({
           <AlertDialogCancel>Cancel</AlertDialogCancel>
           <AlertDialogAction
             onClick={() =>
-              onConfirm({ stopAt: draftStopAt, remember: draftRemember })
+              onConfirm({
+                stopAt: draftStopAt,
+                generateStartFrames: draftStartFrames,
+                remember: draftRemember,
+              })
             }
           >
             {confirmLabel}

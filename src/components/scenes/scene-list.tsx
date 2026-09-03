@@ -776,6 +776,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
             value={continueStopAt}
             onChange={setContinueStopAt}
             minStage={nextStage}
+            generateStartFrames={generateStartFrames}
             disabled={isGenerating}
           />
           <Button

@@ -61,6 +61,7 @@ import {
 } from '@/lib/generation/pipeline';
 import { useComposedScript } from '@/hooks/use-scenes';
 import { useSequenceCharacters } from '@/hooks/use-sequence-characters';
+import { useViaAvailability } from '@/hooks/use-via-availability';
 import { useSequenceDraft } from '@/hooks/use-sequence-draft';
 import {
   useSequenceElements,
@@ -319,6 +320,10 @@ export const ScriptView: FC<{
     clearDraft,
   } = useSequenceDraft();
 
+  // Which video models can render reference-only for this team — resolved
+  // server-side and seeded by the `_app` route loader.
+  const { referenceOnlyModels } = useViaAvailability();
+
   // Initialize with sequence values (if editing) or localStorage defaults (if creating)
   const sequenceAnalysisModels: AnalysisModelId[] = useMemo(() => {
     if (isEditing && sequence.analysisModel) {
@@ -395,6 +400,26 @@ export const ScriptView: FC<{
     );
   const setGenerationMode = (mode: GenerationMode) => {
     setGenSettings((s) => applyGenerationMode(s, mode));
+  };
+  /**
+   * Turning start frames OFF narrows the motion list, which can strand a
+   * selection the server would then reject at submit. Drop the models that
+   * cannot render without a start frame, falling back to the first capable one
+   * so the selection is never empty.
+   */
+  const setGenerateStartFrames = (next: boolean) => {
+    setGenSettings((s) => {
+      const capable = next
+        ? s.videoModels
+        : s.videoModels.filter((m) => referenceOnlyModels.includes(m));
+      const fallback = referenceOnlyModels[0];
+      const videoModels =
+        capable.length > 0 ? capable : fallback ? [fallback] : s.videoModels;
+      return applyGenerationMode(
+        { ...s, generateStartFrames: next, videoModels },
+        s.generationMode
+      );
+    });
   };
   const [selections, setSelections] = useState({
     talentIds: sequence?.suggestedTalentIds ?? [],
@@ -1295,7 +1320,7 @@ export const ScriptView: FC<{
   // the selected slice.
   const { pricing: falPricing } = useFalPricing();
   const estimateForStopAt = useCallback(
-    (runUntil: GenerationStage) => {
+    (runUntil: GenerationStage, startFrames: boolean = generateStartFrames) => {
       if (!scriptValue.trim()) return null;
       const needsMedia =
         includesStage(runUntil, 'references') ||
@@ -1332,7 +1357,7 @@ export const ScriptView: FC<{
         estimatedSceneCount: sceneCount,
         stopAt: runUntil,
         autoGenerateMotion: motionOn,
-        referenceOnly: !generateStartFrames,
+        referenceOnly: !startFrames,
         videoModels: motionOn ? videoModels : undefined,
         videoDurationSeconds: motionOn
           ? motionDurations.perShotSeconds
@@ -1357,7 +1382,11 @@ export const ScriptView: FC<{
       generateStartFrames,
     ]
   );
-  const storyboardCostEstimate = estimateForStopAt(DEFAULT_GENERATION_STOP_AT);
+  // Remembered: the footer quotes the run that will actually happen. Otherwise
+  // the dialog asks, so quote the default full run.
+  const storyboardCostEstimate = estimateForStopAt(
+    savedSettings.rememberStopAt ? stopAt : DEFAULT_GENERATION_STOP_AT
+  );
 
   // Nothing written yet: Enhance writes the script instead of expanding one
   // (#1393), so it stays live at any length and says which job it is doing.
@@ -1512,9 +1541,6 @@ export const ScriptView: FC<{
             onAnalysisModelsChange={(v) => updateGen('analysisModels', v)}
             onImageModelsChange={(v) => updateGen('imageModels', v)}
             onVideoModelsChange={(v) => updateGen('videoModels', v)}
-            onGenerateStartFramesChange={(v) =>
-              updateGen('generateStartFrames', v)
-            }
             onAudioModelsChange={(v) => updateGen('audioModels', v)}
             disabled={loading}
             styleCategory={styleCategory}
@@ -1765,7 +1791,27 @@ export const ScriptView: FC<{
                   pops in after the SSR paint — reserve its line so the footer
                   doesn't grow and shift the page (#1187). */}
               <div className="min-h-4">
-                <ActionCost estimate={storyboardCostEstimate} align="end" />
+                <ActionCost
+                  estimate={storyboardCostEstimate}
+                  align="end"
+                  prefix={
+                    savedSettings.rememberStopAt ? (
+                      <span>
+                        Until{' '}
+                        <button
+                          type="button"
+                          className="underline underline-offset-2 hover:text-foreground"
+                          onClick={() => {
+                            setStopAlertMode('edit');
+                            setShowStopAlert(true);
+                          }}
+                        >
+                          {sliderStopLabel(stopAt)}
+                        </button>
+                      </span>
+                    ) : undefined
+                  }
+                />
               </div>
               <span className="hidden text-xs text-muted-foreground sm:block sm:text-right">
                 {isEditing
@@ -1776,18 +1822,6 @@ export const ScriptView: FC<{
                     ? '1 sequence will be created'
                     : `${analysisModels.length} sequences will be created`}
               </span>
-              {savedSettings.rememberStopAt && (
-                <button
-                  type="button"
-                  className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline sm:text-right"
-                  onClick={() => {
-                    setStopAlertMode('edit');
-                    setShowStopAlert(true);
-                  }}
-                >
-                  Until {sliderStopLabel(stopAt)} · Change
-                </button>
-              )}
             </div>
           </div>
         </CardFooter>
@@ -1896,6 +1930,7 @@ export const ScriptView: FC<{
         open={showStopAlert}
         onOpenChange={setShowStopAlert}
         stopAt={stopAt}
+        generateStartFrames={generateStartFrames}
         remember={savedSettings.rememberStopAt}
         confirmLabel={
           stopAlertMode === 'edit'
@@ -1910,8 +1945,13 @@ export const ScriptView: FC<{
             : undefined
         }
         estimateForStopAt={estimateForStopAt}
-        onConfirm={({ stopAt: nextStopAt, remember }) => {
+        onConfirm={({
+          stopAt: nextStopAt,
+          generateStartFrames: nextStartFrames,
+          remember,
+        }) => {
           updateGen('stopAt', nextStopAt);
+          setGenerateStartFrames(nextStartFrames);
           saveSettings({ stopAt: nextStopAt, rememberStopAt: remember });
           setShowStopAlert(false);
           if (stopAlertMode === 'generate') {

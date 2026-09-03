@@ -250,16 +250,28 @@ export function artifactsFromSequenceState(args: {
   musicStatus?: string | null;
   musicUrl?: string | null;
   pipelineStage?: GenerationStage | null;
+  /**
+   * Reference-only writes no frame prompts and renders no stills, so those
+   * artifacts never appear. The stage the workflow persisted after References
+   * is the only evidence, and it covers Images too — nothing renders there,
+   * so the next action after References is Motion.
+   */
+  referenceOnly?: boolean;
 }): PipelineArtifacts {
   const { shots } = args;
+  const reached = coerceStage(args.pipelineStage);
+  const referencesDone =
+    reached !== null && stageIndex(reached) >= stageIndex('references');
   return {
     hasScenes: args.sceneCount > 0,
-    hasVisualPrompts:
-      shots.length > 0 &&
-      shots.every((shot) => shot.imagePromptVersion != null),
-    hasImages:
-      shots.length > 0 &&
-      shots.every((shot) => shot.frame.imageStatus === 'completed'),
+    hasVisualPrompts: args.referenceOnly
+      ? referencesDone
+      : shots.length > 0 &&
+        shots.every((shot) => shot.imagePromptVersion != null),
+    hasImages: args.referenceOnly
+      ? referencesDone
+      : shots.length > 0 &&
+        shots.every((shot) => shot.frame.imageStatus === 'completed'),
     hasMotion:
       shots.length > 0 &&
       shots.every((shot) => shot.videoStatus === 'completed'),
@@ -345,24 +357,38 @@ export function bannerStagesForStopAt(
 }
 
 /**
- * Generate-dialog / continue-slider stops. Same four as a full-run banner —
- * the last thumb is Music & Motion (`stopAt: 'music'`).
+ * Generate-dialog / continue-slider stops. Same as a full-run banner — the
+ * last thumb is Music & Motion (`stopAt: 'music'`). Reference-only has no
+ * Images stop: nothing renders there, so the thumb goes References → Motion.
  */
-export const SLIDER_STAGES: readonly GenerationStage[] =
-  bannerStagesForStopAt('music');
-
-export function sliderThumbIndex(stopAt: GenerationStage): number {
-  if (stopAt === 'music' || stopAt === 'motion') {
-    return SLIDER_STAGES.length - 1;
-  }
-  const index = SLIDER_STAGES.indexOf(stopAt);
-  return index < 0 ? 0 : index;
+export function sliderStages(referenceOnly: boolean): GenerationStage[] {
+  return bannerStagesForStopAt('music').filter(
+    (stage) => !(referenceOnly && stage === 'images')
+  );
 }
 
-export function stopAtFromSliderIndex(index: number): GenerationStage {
-  const last = SLIDER_STAGES.length - 1;
+export function sliderThumbIndex(
+  stopAt: GenerationStage,
+  stages: readonly GenerationStage[]
+): number {
+  if (stopAt === 'music' || stopAt === 'motion') {
+    return stages.length - 1;
+  }
+  const index = stages.indexOf(stopAt);
+  if (index >= 0) return index;
+  // A stop the slider does not offer (Images in reference-only) lands on the
+  // next stop up — which is where that run ends anyway.
+  const next = stages.findIndex((s) => stageIndex(s) > stageIndex(stopAt));
+  return next < 0 ? stages.length - 1 : next;
+}
+
+export function stopAtFromSliderIndex(
+  index: number,
+  stages: readonly GenerationStage[]
+): GenerationStage {
+  const last = stages.length - 1;
   const clamped = Math.max(0, Math.min(index, last));
-  const stage = SLIDER_STAGES[clamped] ?? 'script';
+  const stage = stages[clamped] ?? 'script';
   return stage === 'motion' ? 'music' : stage;
 }
 

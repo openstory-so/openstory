@@ -1359,6 +1359,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
           musicStatus: sequence?.musicStatus,
           musicUrl: sequence?.musicUrl,
           pipelineStage: sequence?.pipelineStage,
+          referenceOnly: !generateStartFrames,
         }),
       }),
     [
@@ -1368,6 +1369,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
       sequence?.musicStatus,
       sequence?.musicUrl,
       sequence?.pipelineStage,
+      generateStartFrames,
     ]
   );
 

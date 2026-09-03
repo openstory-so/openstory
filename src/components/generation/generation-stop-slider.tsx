@@ -1,13 +1,15 @@
 import {
   GENERATION_STAGE_META,
-  SLIDER_STAGES,
+  sliderStages,
   sliderStopDescription,
   sliderStopLabel,
   sliderThumbIndex,
   stopAtFromSliderIndex,
 } from '@/lib/generation/pipeline';
 import type { GenerationStage } from '@/lib/generation/pipeline';
+import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
+import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
 import type { FC } from 'react';
 
@@ -16,24 +18,33 @@ type GenerationStopSliderProps = {
   onChange: (stage: GenerationStage) => void;
   /** Continue-from: the thumb cannot move earlier than this stage. */
   minStage?: GenerationStage;
+  /**
+   * Render a still per shot before motion. Off = reference-only, which has no
+   * Images stop. Pass `onGenerateStartFramesChange` to offer the switch; omit
+   * it where the mode is already fixed (an existing sequence).
+   */
+  generateStartFrames?: boolean;
+  onGenerateStartFramesChange?: (value: boolean) => void;
   disabled?: boolean;
 };
 
-const LAST_STOP = SLIDER_STAGES.length - 1;
-
-function stopLabelPercent(index: number): number {
-  return LAST_STOP === 0 ? 0 : (index / LAST_STOP) * 100;
+function stopLabelPercent(index: number, lastStop: number): number {
+  return lastStop === 0 ? 0 : (index / lastStop) * 100;
 }
 
 export const GenerationStopSlider: FC<GenerationStopSliderProps> = ({
   value,
   onChange,
   minStage,
+  generateStartFrames = true,
+  onGenerateStartFramesChange,
   disabled = false,
 }) => {
-  const minIndex = minStage ? sliderThumbIndex(minStage) : 0;
-  const clampedIndex = Math.max(minIndex, sliderThumbIndex(value));
-  const selected = stopAtFromSliderIndex(clampedIndex);
+  const stages = sliderStages(!generateStartFrames);
+  const lastStop = stages.length - 1;
+  const minIndex = minStage ? sliderThumbIndex(minStage, stages) : 0;
+  const clampedIndex = Math.max(minIndex, sliderThumbIndex(value, stages));
+  const selected = stopAtFromSliderIndex(clampedIndex, stages);
 
   return (
     <section
@@ -53,14 +64,14 @@ export const GenerationStopSlider: FC<GenerationStopSliderProps> = ({
       </div>
       <Slider
         min={0}
-        max={LAST_STOP}
+        max={lastStop}
         step={1}
         value={[clampedIndex]}
         disabled={disabled}
         onValueChange={(next) => {
           const index = next[0];
           if (index === undefined) return;
-          onChange(stopAtFromSliderIndex(Math.max(minIndex, index)));
+          onChange(stopAtFromSliderIndex(Math.max(minIndex, index), stages));
         }}
         aria-label="How far generation should run"
       />
@@ -71,20 +82,20 @@ export const GenerationStopSlider: FC<GenerationStopSliderProps> = ({
       */}
       <div className="px-1.5" aria-hidden="true">
         <div className="relative h-5">
-          {SLIDER_STAGES.map((stage, index) => (
+          {stages.map((stage, index) => (
             <button
               key={stage}
               type="button"
               disabled={disabled || index < minIndex}
               onClick={() => {
                 if (index < minIndex) return;
-                onChange(stopAtFromSliderIndex(index));
+                onChange(stopAtFromSliderIndex(index, stages));
               }}
               className={cn(
                 'absolute top-0 text-[11px] tracking-wide whitespace-nowrap',
                 index === 0
                   ? 'translate-x-0'
-                  : index === LAST_STOP
+                  : index === lastStop
                     ? '-translate-x-full'
                     : '-translate-x-1/2',
                 index <= clampedIndex
@@ -92,7 +103,7 @@ export const GenerationStopSlider: FC<GenerationStopSliderProps> = ({
                   : 'text-muted-foreground/40',
                 index < minIndex && 'cursor-not-allowed opacity-50'
               )}
-              style={{ left: `${stopLabelPercent(index)}%` }}
+              style={{ left: `${stopLabelPercent(index, lastStop)}%` }}
             >
               {GENERATION_STAGE_META[stage].shortName}
             </button>
@@ -102,6 +113,32 @@ export const GenerationStopSlider: FC<GenerationStopSliderProps> = ({
       <p className="text-xs text-muted-foreground">
         {sliderStopDescription(selected)}.
       </p>
+      {onGenerateStartFramesChange && (
+        <div className="flex items-center justify-between gap-3">
+          <Label
+            htmlFor="generate-start-frames"
+            className="text-sm font-normal text-muted-foreground"
+          >
+            Start frames
+          </Label>
+          <Switch
+            id="generate-start-frames"
+            checked={generateStartFrames}
+            onCheckedChange={(next) => {
+              onGenerateStartFramesChange(next);
+              // Off drops the Images stop; a thumb sitting on it moves up to
+              // Motion so the parent's value matches what the slider shows.
+              const nextStages = sliderStages(!next);
+              const moved = stopAtFromSliderIndex(
+                sliderThumbIndex(value, nextStages),
+                nextStages
+              );
+              if (moved !== value) onChange(moved);
+            }}
+            disabled={disabled}
+          />
+        </div>
+      )}
     </section>
   );
 };

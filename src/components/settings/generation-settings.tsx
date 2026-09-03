@@ -12,7 +12,6 @@ import {
   MusicModelSelector,
 } from '@/components/model/music-model-selector';
 import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
 import {
   Popover,
   PopoverContent,
@@ -50,8 +49,8 @@ type GenerationSettingsProps = {
   /**
    * Generate a still per shot before motion (the frame-based workflow). Off,
    * the default, renders each shot straight to video from the cast / location
-   * / element sheets. Omit the change handler to hide the control (contexts
-   * that cannot switch mode).
+   * / element sheets. Chosen on the Generate dialog (#1408); here it only
+   * narrows the motion models to the ones that can render without a still.
    */
   generateStartFrames?: boolean;
   audioModels?: AudioModel[];
@@ -60,7 +59,6 @@ type GenerationSettingsProps = {
   onAnalysisModelsChange: (value: AnalysisModelId[]) => void;
   onImageModelsChange: (value: TextToImageModel[]) => void;
   onVideoModelsChange: (value: ImageToVideoModel[]) => void;
-  onGenerateStartFramesChange?: (value: boolean) => void;
   onAudioModelsChange?: (value: AudioModel[]) => void;
   disabled?: boolean;
   singleSelectAnalysis?: boolean;
@@ -99,7 +97,6 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
   onAnalysisModelsChange,
   onImageModelsChange,
   onVideoModelsChange,
-  onGenerateStartFramesChange,
   onAudioModelsChange,
   disabled = false,
   singleSelectAnalysis = false,
@@ -131,24 +128,6 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
       ),
     [referenceOnlyModels]
   );
-
-  /**
-   * Turning start frames OFF narrows the motion list, which can strand a selection
-   * the server would then reject at submit. Drop the models that cannot render
-   * without a start frame here, falling back to the first capable one so the
-   * selection is never empty — the user sees the change while the panel is
-   * open, rather than an error after pressing Generate.
-   */
-  const handleGenerateStartFramesChange = (next: boolean) => {
-    onGenerateStartFramesChange?.(next);
-    if (next) return;
-    const capable = videoModels.filter((m) => referenceOnlyModels.includes(m));
-    if (capable.length === videoModels.length) return;
-    const fallback = referenceOnlyModels[0];
-    onVideoModelsChange(
-      capable.length > 0 ? capable : fallback ? [fallback] : videoModels
-    );
-  };
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -259,27 +238,7 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
             <h3 className="text-sm font-medium text-foreground">
               {singleSelectMotion ? 'Motion Model' : 'Motion Models'}
             </h3>
-            {onGenerateStartFramesChange && (
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="generate-start-frames"
-                  checked={generateStartFrames}
-                  onChange={(e) =>
-                    handleGenerateStartFramesChange(e.target.checked)
-                  }
-                  disabled={disabled}
-                  className="h-4 w-4 rounded border-border text-primary focus:ring-2 focus:ring-primary focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                />
-                <Label
-                  htmlFor="generate-start-frames"
-                  className="text-sm font-normal cursor-pointer"
-                >
-                  Generate start frames
-                </Label>
-              </div>
-            )}
-            {onGenerateStartFramesChange && !generateStartFrames && (
+            {!generateStartFrames && (
               <p className="text-xs text-muted-foreground">
                 Each shot renders straight to video from the character, location
                 and element references — no still is generated first. Faster and

@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   actionLabelForStage,
+  artifactsFromSequenceState,
   bannerStagesForStopAt,
   completedStageFromArtifacts,
-  SLIDER_STAGES,
+  sliderStages,
   sliderStopLabel,
   sliderThumbIndex,
   stopAtFromSliderIndex,
@@ -177,6 +178,42 @@ describe('completedStageFromArtifacts / nextActionFromArtifacts', () => {
     expect(nextActionFromArtifacts(imagesLanded)).toBe('motion');
   });
 
+  it('reference-only: References done means Images done too (next: motion)', () => {
+    // No frame prompts or stills ever land in this mode, so the persisted
+    // stage is the only evidence — and the Images stage renders nothing.
+    const shots = [
+      {
+        imagePromptVersion: null,
+        frame: { imageStatus: null },
+        videoStatus: 'pending',
+      },
+    ];
+    const afterReferences = artifactsFromSequenceState({
+      sceneCount: 1,
+      shots,
+      pipelineStage: 'references',
+      referenceOnly: true,
+    });
+    expect(completedStageFromArtifacts(afterReferences)).toBe('images');
+    expect(nextActionFromArtifacts(afterReferences)).toBe('motion');
+
+    const afterScript = artifactsFromSequenceState({
+      sceneCount: 1,
+      shots,
+      pipelineStage: 'script',
+      referenceOnly: true,
+    });
+    expect(nextActionFromArtifacts(afterScript)).toBe('references');
+
+    // Frame-based still needs the artifacts themselves.
+    const frameBased = artifactsFromSequenceState({
+      sceneCount: 1,
+      shots,
+      pipelineStage: 'references',
+    });
+    expect(nextActionFromArtifacts(frameBased)).toBe('references');
+  });
+
   it('offers motion after stills, music after motion, nothing after music', () => {
     const stills = {
       ...empty,
@@ -238,16 +275,21 @@ describe('completedStageFromArtifacts / nextActionFromArtifacts', () => {
   });
 
   it('slider folds music into the last stop (Music & Motion)', () => {
-    expect([...SLIDER_STAGES]).toEqual([
-      'script',
-      'references',
-      'images',
-      'motion',
-    ]);
-    expect(stopAtFromSliderIndex(3)).toBe('music');
-    expect(sliderThumbIndex('music')).toBe(3);
-    expect(sliderThumbIndex('motion')).toBe(3);
+    const stages = sliderStages(false);
+    expect(stages).toEqual(['script', 'references', 'images', 'motion']);
+    expect(stopAtFromSliderIndex(3, stages)).toBe('music');
+    expect(sliderThumbIndex('music', stages)).toBe(3);
+    expect(sliderThumbIndex('motion', stages)).toBe(3);
     expect(sliderStopLabel('music')).toBe('Music & Motion');
     expect(sliderStopLabel('images')).toBe('Images');
+  });
+
+  it('slider has no Images stop in reference-only', () => {
+    const stages = sliderStages(true);
+    expect(stages).toEqual(['script', 'references', 'motion']);
+    // A remembered Images stop lands on the next stop up, Music & Motion.
+    expect(sliderThumbIndex('images', stages)).toBe(2);
+    expect(stopAtFromSliderIndex(2, stages)).toBe('music');
+    expect(sliderThumbIndex('references', stages)).toBe(1);
   });
 });
