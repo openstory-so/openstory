@@ -369,7 +369,7 @@ type StudioReferencePickerProps = {
   /** How many more of each kind can be added. 0 disables that kind. */
   slots: StudioReferenceSlots;
   onPick: (references: StudioReference[]) => void;
-  onUpload: (files: File[]) => Promise<void> | void;
+  onUpload: (files: File[]) => void;
 };
 
 export function StudioReferencePicker({
@@ -455,7 +455,8 @@ export function StudioReferencePicker({
               const files = Array.from(event.currentTarget.files ?? []);
               event.currentTarget.value = '';
               if (files.length > 0) {
-                void Promise.resolve(onUpload(files)).then(close);
+                onUpload(files);
+                close();
               }
             }}
           />
@@ -505,8 +506,8 @@ export function StudioReferencePicker({
             {source === 'draw' ? (
               <StudioDrawingCanvas
                 onCancel={close}
-                onSubmit={async (file) => {
-                  await onUpload([file]);
+                onSubmit={(file) => {
+                  onUpload([file]);
                   close();
                 }}
               />

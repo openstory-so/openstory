@@ -1309,8 +1309,8 @@ export function StudioComposer({
             if (first) placeReference(first, picker);
           }
         }}
-        onUpload={async (files) => {
-          if (picker) await uploadFiles(files, picker);
+        onUpload={(files) => {
+          if (picker) void uploadFiles(files, picker);
         }}
       />
 
