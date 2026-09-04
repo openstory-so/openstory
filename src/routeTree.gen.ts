@@ -15,6 +15,7 @@ import { Route as DocsRouteImport } from './routes/docs'
 import { Route as LlmsDottxtRouteImport } from './routes/llms[.]txt'
 import { Route as RobotsDottxtRouteImport } from './routes/robots[.]txt'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
+import { Route as DotwellKnownSplatRouteImport } from './routes/[.]well-known/$'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AppAdminRouteRouteImport } from './routes/_app/admin/route'
 import { Route as AppCreditsRouteImport } from './routes/_app/credits'
@@ -36,6 +37,8 @@ import { Route as GiftCodeRouteImport } from './routes/gift/$code'
 import { Route as MetaOgRouteImport } from './routes/meta/og'
 import { Route as MetaOgGithubRouteImport } from './routes/meta/og-github'
 import { Route as MetaOgLinkedinRouteImport } from './routes/meta/og-linkedin'
+import { Route as OauthConsentStartRouteImport } from './routes/oauth/consent-start'
+import { Route as OauthLoginRouteImport } from './routes/oauth/login'
 import { Route as R2SplatRouteImport } from './routes/r2.$'
 import { Route as AppAdminModerationRouteImport } from './routes/_app/admin/moderation'
 import { Route as AppAdminUsageRouteImport } from './routes/_app/admin/usage'
@@ -45,6 +48,7 @@ import { Route as AppLocationsIndexRouteImport } from './routes/_app/locations/i
 import { Route as AppLocationsLocationIdRouteImport } from './routes/_app/locations/$locationId'
 import { Route as AppModelsIndexRouteImport } from './routes/_app/models/index'
 import { Route as AppModelsSplatRouteImport } from './routes/_app/models/$'
+import { Route as AppOauthConsentRouteImport } from './routes/_app/oauth/consent'
 import { Route as AppSequencesIndexRouteImport } from './routes/_app/sequences/index'
 import { Route as AppSequencesIdRouteRouteImport } from './routes/_app/sequences/$id/route'
 import { Route as AppSequencesNewRouteImport } from './routes/_app/sequences/new'
@@ -121,6 +125,11 @@ const RobotsDottxtRoute = RobotsDottxtRouteImport.update({
 const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
   id: '/sitemap.xml',
   path: '/sitemap.xml',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DotwellKnownSplatRoute = DotwellKnownSplatRouteImport.update({
+  id: '/.well-known/$',
+  path: '/.well-known/$',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AppIndexRoute = AppIndexRouteImport.update({
@@ -228,6 +237,16 @@ const MetaOgLinkedinRoute = MetaOgLinkedinRouteImport.update({
   path: '/meta/og-linkedin',
   getParentRoute: () => rootRouteImport,
 } as any)
+const OauthConsentStartRoute = OauthConsentStartRouteImport.update({
+  id: '/oauth/consent-start',
+  path: '/oauth/consent-start',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OauthLoginRoute = OauthLoginRouteImport.update({
+  id: '/oauth/login',
+  path: '/oauth/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const R2SplatRoute = R2SplatRouteImport.update({
   id: '/r2/$',
   path: '/r2/$',
@@ -271,6 +290,11 @@ const AppModelsIndexRoute = AppModelsIndexRouteImport.update({
 const AppModelsSplatRoute = AppModelsSplatRouteImport.update({
   id: '/models/$',
   path: '/models/$',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const AppOauthConsentRoute = AppOauthConsentRouteImport.update({
+  id: '/oauth/consent',
+  path: '/oauth/consent',
   getParentRoute: () => AppRouteRoute,
 } as any)
 const AppSequencesIndexRoute = AppSequencesIndexRouteImport.update({
@@ -533,6 +557,7 @@ export interface FileRoutesByFullPath {
   '/admin': typeof AppAdminRouteRouteWithChildren
   '/settings': typeof AppSettingsRouteRouteWithChildren
   '/api/test': typeof ApiTestRouteRouteWithChildren
+  '/.well-known/$': typeof DotwellKnownSplatRoute
   '/credits': typeof AppCreditsRoute
   '/device': typeof AppDeviceRoute
   '/pricing': typeof AppPricingRoute
@@ -549,6 +574,8 @@ export interface FileRoutesByFullPath {
   '/meta/og': typeof MetaOgRoute
   '/meta/og-github': typeof MetaOgGithubRoute
   '/meta/og-linkedin': typeof MetaOgLinkedinRoute
+  '/oauth/consent-start': typeof OauthConsentStartRoute
+  '/oauth/login': typeof OauthLoginRoute
   '/r2/$': typeof R2SplatRoute
   '/docs/': typeof DocsIndexRoute
   '/sequences/$id': typeof AppSequencesIdRouteRouteWithChildren
@@ -556,6 +583,7 @@ export interface FileRoutesByFullPath {
   '/admin/usage': typeof AppAdminUsageRoute
   '/locations/$locationId': typeof AppLocationsLocationIdRoute
   '/models/$': typeof AppModelsSplatRoute
+  '/oauth/consent': typeof AppOauthConsentRoute
   '/sequences/new': typeof AppSequencesNewRoute
   '/settings/api-keys': typeof AppSettingsApiKeysRoute
   '/settings/developer': typeof AppSettingsDeveloperRoute
@@ -616,6 +644,7 @@ export interface FileRoutesByTo {
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/admin': typeof AppAdminRouteRouteWithChildren
   '/api/test': typeof ApiTestRouteRouteWithChildren
+  '/.well-known/$': typeof DotwellKnownSplatRoute
   '/credits': typeof AppCreditsRoute
   '/device': typeof AppDeviceRoute
   '/pricing': typeof AppPricingRoute
@@ -632,6 +661,8 @@ export interface FileRoutesByTo {
   '/meta/og': typeof MetaOgRoute
   '/meta/og-github': typeof MetaOgGithubRoute
   '/meta/og-linkedin': typeof MetaOgLinkedinRoute
+  '/oauth/consent-start': typeof OauthConsentStartRoute
+  '/oauth/login': typeof OauthLoginRoute
   '/r2/$': typeof R2SplatRoute
   '/docs': typeof DocsIndexRoute
   '/sequences/$id': typeof AppSequencesIdRouteRouteWithChildren
@@ -639,6 +670,7 @@ export interface FileRoutesByTo {
   '/admin/usage': typeof AppAdminUsageRoute
   '/locations/$locationId': typeof AppLocationsLocationIdRoute
   '/models/$': typeof AppModelsSplatRoute
+  '/oauth/consent': typeof AppOauthConsentRoute
   '/sequences/new': typeof AppSequencesNewRoute
   '/settings/api-keys': typeof AppSettingsApiKeysRoute
   '/settings/developer': typeof AppSettingsDeveloperRoute
@@ -703,6 +735,7 @@ export interface FileRoutesById {
   '/_app/admin': typeof AppAdminRouteRouteWithChildren
   '/_app/settings': typeof AppSettingsRouteRouteWithChildren
   '/api/test': typeof ApiTestRouteRouteWithChildren
+  '/.well-known/$': typeof DotwellKnownSplatRoute
   '/_app/credits': typeof AppCreditsRoute
   '/_app/device': typeof AppDeviceRoute
   '/_app/pricing': typeof AppPricingRoute
@@ -719,6 +752,8 @@ export interface FileRoutesById {
   '/meta/og': typeof MetaOgRoute
   '/meta/og-github': typeof MetaOgGithubRoute
   '/meta/og-linkedin': typeof MetaOgLinkedinRoute
+  '/oauth/consent-start': typeof OauthConsentStartRoute
+  '/oauth/login': typeof OauthLoginRoute
   '/r2/$': typeof R2SplatRoute
   '/_app/': typeof AppIndexRoute
   '/docs/': typeof DocsIndexRoute
@@ -727,6 +762,7 @@ export interface FileRoutesById {
   '/_app/admin/usage': typeof AppAdminUsageRoute
   '/_app/locations/$locationId': typeof AppLocationsLocationIdRoute
   '/_app/models/$': typeof AppModelsSplatRoute
+  '/_app/oauth/consent': typeof AppOauthConsentRoute
   '/_app/sequences/new': typeof AppSequencesNewRoute
   '/_app/settings/api-keys': typeof AppSettingsApiKeysRoute
   '/_app/settings/developer': typeof AppSettingsDeveloperRoute
@@ -791,6 +827,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/settings'
     | '/api/test'
+    | '/.well-known/$'
     | '/credits'
     | '/device'
     | '/pricing'
@@ -807,6 +844,8 @@ export interface FileRouteTypes {
     | '/meta/og'
     | '/meta/og-github'
     | '/meta/og-linkedin'
+    | '/oauth/consent-start'
+    | '/oauth/login'
     | '/r2/$'
     | '/docs/'
     | '/sequences/$id'
@@ -814,6 +853,7 @@ export interface FileRouteTypes {
     | '/admin/usage'
     | '/locations/$locationId'
     | '/models/$'
+    | '/oauth/consent'
     | '/sequences/new'
     | '/settings/api-keys'
     | '/settings/developer'
@@ -874,6 +914,7 @@ export interface FileRouteTypes {
     | '/sitemap.xml'
     | '/admin'
     | '/api/test'
+    | '/.well-known/$'
     | '/credits'
     | '/device'
     | '/pricing'
@@ -890,6 +931,8 @@ export interface FileRouteTypes {
     | '/meta/og'
     | '/meta/og-github'
     | '/meta/og-linkedin'
+    | '/oauth/consent-start'
+    | '/oauth/login'
     | '/r2/$'
     | '/docs'
     | '/sequences/$id'
@@ -897,6 +940,7 @@ export interface FileRouteTypes {
     | '/admin/usage'
     | '/locations/$locationId'
     | '/models/$'
+    | '/oauth/consent'
     | '/sequences/new'
     | '/settings/api-keys'
     | '/settings/developer'
@@ -960,6 +1004,7 @@ export interface FileRouteTypes {
     | '/_app/admin'
     | '/_app/settings'
     | '/api/test'
+    | '/.well-known/$'
     | '/_app/credits'
     | '/_app/device'
     | '/_app/pricing'
@@ -976,6 +1021,8 @@ export interface FileRouteTypes {
     | '/meta/og'
     | '/meta/og-github'
     | '/meta/og-linkedin'
+    | '/oauth/consent-start'
+    | '/oauth/login'
     | '/r2/$'
     | '/_app/'
     | '/docs/'
@@ -984,6 +1031,7 @@ export interface FileRouteTypes {
     | '/_app/admin/usage'
     | '/_app/locations/$locationId'
     | '/_app/models/$'
+    | '/_app/oauth/consent'
     | '/_app/sequences/new'
     | '/_app/settings/api-keys'
     | '/_app/settings/developer'
@@ -1046,11 +1094,14 @@ export interface RootRouteChildren {
   RobotsDottxtRoute: typeof RobotsDottxtRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   ApiTestRouteRoute: typeof ApiTestRouteRouteWithChildren
+  DotwellKnownSplatRoute: typeof DotwellKnownSplatRoute
   ApiRealtimeRoute: typeof ApiRealtimeRoute
   GiftCodeRoute: typeof GiftCodeRoute
   MetaOgRoute: typeof MetaOgRoute
   MetaOgGithubRoute: typeof MetaOgGithubRoute
   MetaOgLinkedinRoute: typeof MetaOgLinkedinRoute
+  OauthConsentStartRoute: typeof OauthConsentStartRoute
+  OauthLoginRoute: typeof OauthLoginRoute
   R2SplatRoute: typeof R2SplatRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiBillingWebhookRoute: typeof ApiBillingWebhookRoute
@@ -1109,6 +1160,13 @@ declare module '@tanstack/react-router' {
       path: '/sitemap.xml'
       fullPath: '/sitemap.xml'
       preLoaderRoute: typeof SitemapDotxmlRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/.well-known/$': {
+      id: '/.well-known/$'
+      path: '/.well-known/$'
+      fullPath: '/.well-known/$'
+      preLoaderRoute: typeof DotwellKnownSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_app/': {
@@ -1258,6 +1316,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MetaOgLinkedinRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/oauth/consent-start': {
+      id: '/oauth/consent-start'
+      path: '/oauth/consent-start'
+      fullPath: '/oauth/consent-start'
+      preLoaderRoute: typeof OauthConsentStartRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/oauth/login': {
+      id: '/oauth/login'
+      path: '/oauth/login'
+      fullPath: '/oauth/login'
+      preLoaderRoute: typeof OauthLoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/r2/$': {
       id: '/r2/$'
       path: '/r2/$'
@@ -1319,6 +1391,13 @@ declare module '@tanstack/react-router' {
       path: '/models/$'
       fullPath: '/models/$'
       preLoaderRoute: typeof AppModelsSplatRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/_app/oauth/consent': {
+      id: '/_app/oauth/consent'
+      path: '/oauth/consent'
+      fullPath: '/oauth/consent'
+      preLoaderRoute: typeof AppOauthConsentRouteImport
       parentRoute: typeof AppRouteRoute
     }
     '/_app/sequences/': {
@@ -1741,6 +1820,7 @@ interface AppRouteRouteChildren {
   AppSequencesIdRouteRoute: typeof AppSequencesIdRouteRouteWithChildren
   AppLocationsLocationIdRoute: typeof AppLocationsLocationIdRoute
   AppModelsSplatRoute: typeof AppModelsSplatRoute
+  AppOauthConsentRoute: typeof AppOauthConsentRoute
   AppSequencesNewRoute: typeof AppSequencesNewRoute
   AppTalentIdRoute: typeof AppTalentIdRoute
   AppGalleryIndexRoute: typeof AppGalleryIndexRoute
@@ -1768,6 +1848,7 @@ const AppRouteRouteChildren: AppRouteRouteChildren = {
   AppSequencesIdRouteRoute: AppSequencesIdRouteRouteWithChildren,
   AppLocationsLocationIdRoute: AppLocationsLocationIdRoute,
   AppModelsSplatRoute: AppModelsSplatRoute,
+  AppOauthConsentRoute: AppOauthConsentRoute,
   AppSequencesNewRoute: AppSequencesNewRoute,
   AppTalentIdRoute: AppTalentIdRoute,
   AppGalleryIndexRoute: AppGalleryIndexRoute,
@@ -1889,11 +1970,14 @@ const rootRouteChildren: RootRouteChildren = {
   RobotsDottxtRoute: RobotsDottxtRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   ApiTestRouteRoute: ApiTestRouteRouteWithChildren,
+  DotwellKnownSplatRoute: DotwellKnownSplatRoute,
   ApiRealtimeRoute: ApiRealtimeRoute,
   GiftCodeRoute: GiftCodeRoute,
   MetaOgRoute: MetaOgRoute,
   MetaOgGithubRoute: MetaOgGithubRoute,
   MetaOgLinkedinRoute: MetaOgLinkedinRoute,
+  OauthConsentStartRoute: OauthConsentStartRoute,
+  OauthLoginRoute: OauthLoginRoute,
   R2SplatRoute: R2SplatRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiBillingWebhookRoute: ApiBillingWebhookRoute,

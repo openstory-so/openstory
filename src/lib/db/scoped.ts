@@ -8,10 +8,14 @@
 import { getDb } from '#db-client';
 import type { Sequence, User } from '@/lib/db/schema';
 import {
-  deviceCode,
-  sequences,
   teamMembers,
   teams,
+  deviceCode,
+  oauthAccessToken,
+  oauthClient,
+  oauthConsent,
+  oauthRefreshToken,
+  sequences,
   user,
 } from '@/lib/db/schema';
 import type { TeamMemberRole } from '@/lib/db/schema/teams';
@@ -67,7 +71,7 @@ import {
 } from '@/lib/db/scoped/talent';
 import { createTalentSheetVariantsMethods } from '@/lib/db/scoped/talent-sheet-variants';
 import { createTeamManagementMethods } from '@/lib/db/scoped/team-management';
-import { and, eq, lt, sql } from 'drizzle-orm';
+import { and, inArray, isNull, lt, notExists, eq, sql } from 'drizzle-orm';
 
 import { getLogger } from '@/lib/observability/logger';
 
@@ -82,6 +86,94 @@ export type { UserActivityRow } from '@/lib/db/scoped/admin';
  */
 export async function pruneExpiredDeviceCodes(): Promise<void> {
   await getDb().delete(deviceCode).where(lt(deviceCode.expiresAt, new Date()));
+}
+
+/** Long enough for a fork registered at boot to see its first "Connect" click. */
+const ORPHANED_OAUTH_CLIENT_GRACE_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Housekeeping for self-registered OAuth clients (#1456). RFC 7591 dynamic
+ * client registration is open (the MCP spec expects it), so anyone can create
+ * `oauth_client` rows. Dynamically registered clients (no owning user or
+ * reference) older than the grace period with neither a consent nor a refresh
+ * token are deleted; the cascade FKs take stray tokens with them. Not a 24h
+ * cron: opportunistic on `POST /oauth2/register`, so idle orphans wait until
+ * the next DCR. Module-level and unscoped like `pruneExpiredDeviceCodes`.
+ * Returns the number removed.
+ */
+export async function pruneOrphanedOAuthClients(
+  now = new Date()
+): Promise<number> {
+  const db = getDb();
+  const cutoff = new Date(now.getTime() - ORPHANED_OAUTH_CLIENT_GRACE_MS);
+  const orphaned = and(
+    isNull(oauthClient.userId),
+    isNull(oauthClient.referenceId),
+    lt(oauthClient.createdAt, cutoff),
+    notExists(
+      db
+        .select({ one: sql`1` })
+        .from(oauthConsent)
+        .where(sql`${oauthConsent.clientId} = ${oauthClient.clientId}`)
+    ),
+    notExists(
+      db
+        .select({ one: sql`1` })
+        .from(oauthRefreshToken)
+        .where(sql`${oauthRefreshToken.clientId} = ${oauthClient.clientId}`)
+    )
+  );
+  const orphans = await db
+    .select({ clientId: oauthClient.clientId })
+    .from(oauthClient)
+    .where(orphaned)
+    .limit(100);
+  if (orphans.length === 0) return 0;
+  // Re-apply the predicate on DELETE so a consent that lands between select
+  // and delete is not cascade-removed.
+  await db.delete(oauthClient).where(
+    and(
+      inArray(
+        oauthClient.clientId,
+        orphans.map((row) => row.clientId)
+      ),
+      orphaned
+    )
+  );
+  return orphans.length;
+}
+
+/**
+ * Mark this user's refresh tokens for the client revoked so Settings revoke
+ * cannot be bypassed by refresh. Access JWTs are not checked against this
+ * table and expire on their own (≤1h). Unscoped: a grant is the user's.
+ */
+export async function revokeOAuthGrantTokens(
+  userId: string,
+  clientId: string,
+  now = new Date()
+): Promise<void> {
+  const db = getDb();
+  await db
+    .update(oauthRefreshToken)
+    .set({ revoked: now })
+    .where(
+      and(
+        eq(oauthRefreshToken.userId, userId),
+        eq(oauthRefreshToken.clientId, clientId),
+        isNull(oauthRefreshToken.revoked)
+      )
+    );
+  await db
+    .update(oauthAccessToken)
+    .set({ revoked: now })
+    .where(
+      and(
+        eq(oauthAccessToken.userId, userId),
+        eq(oauthAccessToken.clientId, clientId),
+        isNull(oauthAccessToken.revoked)
+      )
+    );
 }
 
 /**

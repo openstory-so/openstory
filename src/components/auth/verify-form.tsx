@@ -4,6 +4,7 @@
  */
 
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { finishSignInRedirect } from '@/lib/auth/navigation';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -57,7 +58,7 @@ export function VerifyForm({ email, redirectTo = '/' }: VerifyFormProps) {
           }
 
           // user_signed_in is captured server-side on session create (#1088).
-          await navigate({ to: redirectTo });
+          await finishSignInRedirect(navigate, redirectTo);
         } catch (err) {
           logger.error('Verify OTP error:', { err });
           setError(err instanceof Error ? err.message : 'Verification failed');

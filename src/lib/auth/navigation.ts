@@ -3,6 +3,8 @@
  * Helpers for navigating to auth pages with redirect preservation
  */
 
+import { isServerRedirect } from '@/lib/auth/oauth-login-resume';
+
 /**
  * Get the redirect URL from query params
  * For use in auth pages to read the intended destination
@@ -64,4 +66,21 @@ export function sanitizeAuthRedirect(
   if (path.startsWith('/login')) return '/';
 
   return path || '/';
+}
+
+/**
+ * Land on `redirectTo` after a successful sign-in. App routes go through the
+ * router; a server route (`/api/…`, e.g. the OAuth authorize resume — see
+ * `oauth-login-resume.ts`) needs a full navigation, since the router would
+ * 404 on it client-side.
+ */
+export async function finishSignInRedirect(
+  navigate: (opts: { to: string }) => Promise<void> | void,
+  redirectTo: string
+): Promise<void> {
+  if (isServerRedirect(redirectTo)) {
+    window.location.assign(redirectTo);
+    return;
+  }
+  await navigate({ to: redirectTo });
 }

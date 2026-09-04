@@ -80,7 +80,13 @@ testWithUser.describe('Manual pipeline (no storyboard)', () => {
 
       // ---- 1. Add a scene (creates its first shot) ---------------------
       const sceneGroups = page.locator('[data-testid="scene-group"]');
-      await page.getByRole('button', { name: 'Add scene' }).click();
+      // The button is in the SSR markup but disabled until React hydrates
+      // (`useHydrated`); a click before that is lost and the DB poll below
+      // times out with zero shots. Wait for it to be enabled, as the library
+      // specs do, instead of clicking on first paint.
+      const addSceneButton = page.getByRole('button', { name: 'Add scene' });
+      await expect(addSceneButton).toBeEnabled({ timeout: 15_000 });
+      await addSceneButton.click();
       // DB first — the rail used to stay on "No scenes yet" until list
       // queries settled, which flakes under parallel D1 load (#1108/#1384).
       await expect

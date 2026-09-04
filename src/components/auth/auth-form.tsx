@@ -17,7 +17,10 @@ import { Label } from '@/components/ui/label';
 import type { AuthOptions } from '@/functions/auth-options';
 import { authClient } from '@/lib/auth/client';
 import { DEV_OTP_CODE } from '@/lib/auth/dev-otp';
-import { sanitizeAuthRedirect } from '@/lib/auth/navigation';
+import {
+  finishSignInRedirect,
+  sanitizeAuthRedirect,
+} from '@/lib/auth/navigation';
 import { usePostHog } from '@posthog/react';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
@@ -75,10 +78,14 @@ export function AuthForm({
 
       // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- cancelled can be set true by cleanup between awaits
       if (!cancelled && result.data) {
-        void navigate({ to: redirectTo });
+        void finishSignInRedirect(navigate, redirectTo);
       }
     };
-    void preloadPasskeys();
+    void preloadPasskeys().catch((error: unknown) => {
+      logger.debug('Passkey preload skipped', {
+        err: error instanceof Error ? error.message : String(error),
+      });
+    });
 
     return () => {
       cancelled = true;
@@ -116,7 +123,7 @@ export function AuthForm({
         });
         if (!signIn.error) {
           // user_signed_in is captured server-side on session create (#1088).
-          await navigate({ to: redirectTo });
+          await finishSignInRedirect(navigate, redirectTo);
           return;
         }
         logger.warn('Dev fixed-OTP sign-in failed; falling back to verify', {
