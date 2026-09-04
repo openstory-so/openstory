@@ -35,19 +35,20 @@ describe('scene-shot-list-chat', () => {
   });
 });
 
-describe('script/enhance — two levels (#1486)', () => {
+describe('script/enhance — Fountain, not clip labels', () => {
   const enhance = WORKFLOW_TEXT_PROMPTS['script/enhance'] ?? '';
 
-  it('no longer defines a scene as one clip', () => {
-    expect(enhance).not.toContain(
-      'each scene becomes one still image that is then animated into a ~5-second clip'
-    );
-    expect(enhance).toContain('may hold several SHOTS');
-    expect(enhance).toContain('Cut to: the hallway beyond');
+  it('asks for a Fountain screenplay, not Scene/Shot duration headings', () => {
+    expect(enhance).toContain('Fountain');
+    expect(enhance).toContain('INT. LOCATION - DAY');
+    expect(enhance).toContain('CUT TO:');
+    expect(enhance).not.toContain('Scene 2 — 12s');
+    expect(enhance).not.toContain('Shot 1 — 6s');
+    expect(enhance).not.toContain('TOTAL:');
   });
 
-  it('labels scene totals and per-shot clip durations', () => {
-    expect(enhance).toContain('Shot 1 — 6s');
-    expect(enhance).toContain('one-shot scene needs only the scene label');
+  it('keeps internal cuts under the current slugline', () => {
+    expect(enhance).toContain('write CUT TO:');
+    expect(enhance).toContain('do not start a new INT');
   });
 });
