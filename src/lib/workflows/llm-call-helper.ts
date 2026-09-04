@@ -19,6 +19,8 @@ import { llmtrCompatibleApi } from '@/lib/ai/llmtr';
 import {
   createUsageCapture,
   extractRunError,
+  glmReasoningEffortForCall,
+  isForcedGlmReasoningModel,
   llmCostFromUsage,
   openRouterProviderForModel,
   PROMPT_REASONING,
@@ -52,6 +54,9 @@ import { NonRetryableError } from 'cloudflare:workflows';
 import type { z } from 'zod';
 
 const logger = getLogger(['openstory', 'workflow', 'llm-call-helper']);
+
+/** Client-side abort so a hung provider cannot pin a workflow step forever. */
+const LLM_CALL_TIMEOUT_MS = 300_000;
 
 export type DurableLLMCallConfig<TSchema extends z.ZodType> = {
   name: string;
@@ -178,13 +183,37 @@ function reasoningModelOptions(reasoning: boolean | undefined): {
   return reasoning ? { reasoning: PROMPT_REASONING } : {};
 }
 
+/**
+ * After draining `chat()`, either we have a structured object or we don't.
+ * An abort is a timeout (retryable — the GLM hang in #1494 later succeeded
+ * on the same instance). A clean end without the complete event is a
+ * schema/provider fault and must not be retried.
+ */
+function assertStructuredOutput<T>(
+  value: T | undefined | null,
+  logName: string,
+  aborted: boolean,
+  kind: 'Call' | 'Stream'
+): asserts value is T {
+  if (value !== undefined && value !== null) return;
+  if (aborted) {
+    throw new Error(
+      `[LLM:${logName}:cf] Timed out after ${LLM_CALL_TIMEOUT_MS / 1000}s waiting for structured output`
+    );
+  }
+  throw new NonRetryableError(
+    `[LLM:${logName}:cf] ${kind} ended without a structured-output.complete event`
+  );
+}
+
 /** OpenRouter vs xAI Responses vs Gemini vs LLMTR Chat Completions options.
  *  xAI and Google reject `streamOptions`; xAI uses `max_output_tokens` and
  *  Gemini camelCase `maxOutputTokens`. LLMTR spreads native Chat Completions
  *  names (`max_tokens`, `reasoning_effort`) — OpenRouter camelCase would
  *  land as unknown fields. Omitting reasoning on grok-4.6 falls through to
  *  xAI's `high` default, so unrequested reasoning is sent as `low`; Gemini's
- *  unset `thinkingConfig` keeps the model's dynamic-thinking default. */
+ *  unset `thinkingConfig` keeps the model's dynamic-thinking default. GLM-5.3
+ *  forces thinking at `max` unless we send `low` (#1494). */
 export function chatModelOptionsForCall(
   modelId: TextModel,
   llmKeyInfo: LlmKeyInfo,
@@ -211,23 +240,34 @@ export function chatModelOptionsForCall(
       maxOutputTokens: maxTokens,
     };
   }
+  const glmEffort = isForcedGlmReasoningModel(modelId)
+    ? glmReasoningEffortForCall(reasoning)
+    : undefined;
   if (llmKeyInfo.via === 'llmtr') {
     if (llmtrCompatibleApi(modelId) === 'responses') {
       return {
-        ...(reasoning
-          ? { reasoning: { effort: PROMPT_REASONING.effort } }
-          : {}),
+        ...(glmEffort
+          ? { reasoning: { effort: glmEffort } }
+          : reasoning
+            ? { reasoning: { effort: PROMPT_REASONING.effort } }
+            : {}),
         max_output_tokens: maxTokens,
       };
     }
     return {
-      ...(reasoning ? { reasoning_effort: PROMPT_REASONING.effort } : {}),
+      ...(glmEffort
+        ? { reasoning_effort: glmEffort }
+        : reasoning
+          ? { reasoning_effort: PROMPT_REASONING.effort }
+          : {}),
       max_tokens: maxTokens,
     };
   }
   return {
     provider: openRouterProviderForModel(modelId),
-    ...reasoningModelOptions(reasoning),
+    ...(glmEffort
+      ? { reasoning: { effort: glmEffort } }
+      : reasoningModelOptions(reasoning)),
     // Native OpenAI GPT-5 endpoints advertise `max_tokens`, not
     // `max_completion_tokens` (Azure-only). Match llm-client.
     maxTokens,
@@ -379,7 +419,10 @@ export async function durableLLMCallCf<TSchema extends z.ZodType>(
         // step so siblings that all 429'd together can stagger through.
         return withLlmRateLimitRetry(logName, async () => {
           const abortController = new AbortController();
-          const timeout = setTimeout(() => abortController.abort(), 300_000);
+          const timeout = setTimeout(
+            () => abortController.abort(),
+            LLM_CALL_TIMEOUT_MS
+          );
           const usageCapture = createUsageCapture();
           try {
             const commonOptions = {
@@ -433,12 +476,12 @@ export async function durableLLMCallCf<TSchema extends z.ZodType>(
               }
             }
             throwNotedRunError(runError);
-
-            if (structuredObject === undefined) {
-              throw new NonRetryableError(
-                `[LLM:${logName}:cf] Call ended without a structured-output.complete event`
-              );
-            }
+            assertStructuredOutput(
+              structuredObject,
+              logName,
+              abortController.signal.aborted,
+              'Call'
+            );
             logger.info(`[LLM:${logName}:cf] Call succeeded`);
             // Return as JSON string — round-trips through step.do without hitting
             // CF's Rpc.Serializable constraint on the Zod-inferred shape.
@@ -573,7 +616,10 @@ export async function durableStreamingLLMCallCf<TSchema extends z.ZodType>(
 
         return withLlmRateLimitRetry(logName, async () => {
           const abortController = new AbortController();
-          const timeout = setTimeout(() => abortController.abort(), 300_000);
+          const timeout = setTimeout(
+            () => abortController.abort(),
+            LLM_CALL_TIMEOUT_MS
+          );
           let accumulated = '';
           let lastExtracted = '';
           let pendingDelta = '';
@@ -661,11 +707,12 @@ export async function durableStreamingLLMCallCf<TSchema extends z.ZodType>(
             }
             throwNotedRunError(runError);
             await flushDelta();
-            if (structuredJson === null) {
-              throw new NonRetryableError(
-                `[LLM:${logName}:cf] Stream ended without a structured-output.complete event`
-              );
-            }
+            assertStructuredOutput(
+              structuredJson,
+              logName,
+              abortController.signal.aborted,
+              'Stream'
+            );
             logger.info(`[LLM:${logName}:cf] Streaming call succeeded`);
             return {
               jsonText: structuredJson,
