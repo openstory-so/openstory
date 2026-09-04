@@ -131,8 +131,9 @@ describe('SECRETS catalog (#1502)', () => {
     expect(TOOLING_OR_LEGACY.has('FAL_PRICING_KEY')).toBe(true);
   });
 
-  it('classifies LLMTR_API_KEY as runtime (Worker env., not process.env)', () => {
-    expect(SECRETS.LLMTR_API_KEY).toEqual({ runtime: true, build: false });
+  it('keeps LLMTR_API_KEY in tooling/legacy — team BYOK, never a Worker secret', () => {
+    expect('LLMTR_API_KEY' in SECRETS).toBe(false);
+    expect(TOOLING_OR_LEGACY.has('LLMTR_API_KEY')).toBe(true);
   });
 
   it('classifies VITE_APP_* and PostHog as both runtime and build', () => {

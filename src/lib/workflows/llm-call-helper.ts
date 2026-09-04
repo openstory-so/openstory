@@ -279,7 +279,7 @@ async function resolveCallKey(
   const platform = getPlatformLlmKey(model);
   if (!platform) {
     throw new NonRetryableError(
-      'No platform LLM key available (set OPENROUTER_KEY, FAL_KEY or LLMTR_API_KEY)',
+      'No platform LLM key available (set OPENROUTER_KEY or FAL_KEY)',
       'WorkflowValidationError'
     );
   }

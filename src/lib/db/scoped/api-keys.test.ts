@@ -39,14 +39,12 @@ const testEnv: {
   FAL_KEY: string | undefined;
   XAI_API_KEY: string | undefined;
   GEMINI_API_KEY: string | undefined;
-  LLMTR_API_KEY: string | undefined;
 } = {
   API_KEY_ENCRYPTION_KEY: 'test-secret-for-api-keys-memoization',
   OPENROUTER_KEY: 'platform-openrouter-key',
   FAL_KEY: 'platform-fal-key',
   XAI_API_KEY: undefined,
   GEMINI_API_KEY: undefined,
-  LLMTR_API_KEY: undefined,
 };
 
 vi.doMock('#env', () => ({
@@ -120,7 +118,6 @@ beforeEach(async () => {
   testEnv.FAL_KEY = 'platform-fal-key';
   testEnv.XAI_API_KEY = undefined;
   testEnv.GEMINI_API_KEY = undefined;
-  testEnv.LLMTR_API_KEY = undefined;
   await seed();
 });
 
@@ -588,39 +585,22 @@ describe('resolveLlmKey — LLMTR gateway', () => {
     });
   });
 
-  it('uses the platform LLMTR key when OpenRouter and fal are unset', async () => {
+  it('does not fall back to a platform LLMTR key when OpenRouter and fal are unset', async () => {
     testEnv.OPENROUTER_KEY = undefined;
     testEnv.FAL_KEY = undefined;
-    testEnv.LLMTR_API_KEY = 'platform-llmtr';
     const scope = createApiKeysReadMethods(db, teamId);
 
-    expect(await scope.resolveLlmKey(CARRIED)).toStrictEqual({
-      key: 'platform-llmtr',
-      source: 'platform',
-      via: 'llmtr',
-      fallbackReason: undefined,
-    });
+    await expect(scope.resolveLlmKey(CARRIED)).rejects.toThrow(
+      /No platform LLM key available \(set OPENROUTER_KEY or FAL_KEY\)/
+    );
   });
 
-  it('does not let platform LLMTR outrank OPENROUTER_KEY', async () => {
-    testEnv.LLMTR_API_KEY = 'platform-llmtr';
+  it('throws from resolveKey when there is no team LLMTR key', async () => {
     const scope = createApiKeysReadMethods(db, teamId);
 
-    expect(await scope.resolveLlmKey(CARRIED)).toMatchObject({
-      key: 'platform-openrouter-key',
-      source: 'platform',
-      via: 'openrouter',
-    });
-  });
-
-  it('resolves the platform LLMTR key via resolveKey too', async () => {
-    testEnv.LLMTR_API_KEY = 'platform-llmtr';
-    const scope = createApiKeysReadMethods(db, teamId);
-
-    expect(await scope.resolveKey('llmtr')).toEqual({
-      key: 'platform-llmtr',
-      source: 'platform',
-    });
+    await expect(scope.resolveKey('llmtr')).rejects.toThrow(
+      /No API key available for provider: llmtr/
+    );
   });
 });
 

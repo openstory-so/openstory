@@ -71,13 +71,12 @@ function falAuthHttpClient(falKey: string): HTTPClient {
 /**
  * Resolve the platform-level LLM key from env. A Grok model prefers
  * XAI_API_KEY (#1167) and a Gemini model GEMINI_API_KEY; otherwise
- * OPENROUTER_KEY, then FAL_KEY (issue #895). A platform `LLMTR_API_KEY` is
- * last-resort for models LLMTR carries — it must not steal traffic from
- * OpenRouter or fal. Returns undefined when none is configured.
+ * OPENROUTER_KEY, then FAL_KEY (issue #895). LLMTR is team BYOK only —
+ * there is no platform LLMTR key. Returns undefined when none is configured.
  *
  * Omitting `model` keeps the OpenRouter-first order, which every model
  * supports — a caller that can't name the model can't promise it's a Grok
- * or Gemini one, nor that LLMTR carries it.
+ * or Gemini one.
  */
 export function getPlatformLlmKey(
   model?: string
@@ -94,9 +93,6 @@ export function getPlatformLlmKey(
   }
   if (env.FAL_KEY) {
     return { key: env.FAL_KEY, via: 'fal', source: 'platform' };
-  }
-  if (model && llmtrTextModel(model) && env.LLMTR_API_KEY) {
-    return { key: env.LLMTR_API_KEY, via: 'llmtr', source: 'platform' };
   }
   return undefined;
 }

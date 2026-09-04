@@ -78,7 +78,6 @@ export const SECRETS = {
   LANGFUSE_PROMPTS_ENABLED: { runtime: false, build: false },
   LANGFUSE_PUBLIC_KEY: { runtime: false, build: false },
   LANGFUSE_SECRET_KEY: { runtime: false, build: false },
-  LLMTR_API_KEY: { runtime: true, build: false },
   OPENROUTER_KEY: { runtime: true, build: false },
   R2_PUBLIC_ASSETS_DOMAIN: { runtime: false, build: false },
   R2_PUBLIC_STORAGE_DOMAIN: { runtime: true, build: false },
@@ -113,6 +112,8 @@ export const TOOLING_OR_LEGACY = new Set([
   // Local fal billing-compare tooling (`scripts/verify-fal-costs.ts --compare`,
   // `scripts/env-file.ts`). The Worker's admin-scoped fal key is FAL_BILLING_KEY.
   'FAL_PRICING_KEY',
+  // LLMTR is team BYOK only (Settings → API Keys). Never a Worker secret.
+  'LLMTR_API_KEY',
   // Pre-rename / retired names sometimes left on the Worker
   'APP_NAME',
   'APP_URL',

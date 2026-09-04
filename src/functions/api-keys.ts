@@ -116,7 +116,7 @@ export const checkApiKeyStatusFn = createServerFn({ method: 'GET' })
       fal: hasFal ? 'team' : 'platform',
       xai: hasXai ? 'team' : 'platform',
       google: hasGoogle ? 'team' : 'platform',
-      llmtr: hasLlmtr ? 'team' : 'platform',
+      llmtr: hasLlmtr ? 'team' : 'none',
     } as const;
   });
 

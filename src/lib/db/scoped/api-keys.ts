@@ -297,7 +297,8 @@ export function createApiKeysReadMethods(db: Database, teamId: string) {
       case 'google':
         return env.GEMINI_API_KEY || undefined;
       case 'llmtr':
-        return env.LLMTR_API_KEY || undefined;
+        // Team BYOK only — OpenRouter/fal cover platform LLM calls.
+        return undefined;
       default: {
         const _exhaustive: never = provider;
         throw new Error(`Unknown provider: ${String(_exhaustive)}`);
@@ -376,8 +377,7 @@ export function createApiKeysReadMethods(db: Database, teamId: string) {
   //   2. team OpenRouter key (direct OpenRouter)
   //   3. team fal key (routed through fal's OpenRouter endpoint) — a fal-only
   //      team still covers LLM calls on their own key (issue #895)
-  //   4. platform key (OPENROUTER_KEY, else FAL_KEY, else LLMTR_API_KEY when
-  //      it carries the model)
+  //   4. platform key (OPENROUTER_KEY, else FAL_KEY)
   // A skipped OpenRouter key that a working fal key supersedes returns
   // `source: 'team'` with no fallbackReason — the reason only surfaces when
   // resolution falls all the way through to the platform key.
@@ -440,7 +440,7 @@ export function createApiKeysReadMethods(db: Database, teamId: string) {
     const platform = getPlatformLlmKey(model);
     if (!platform) {
       throw new Error(
-        'No platform LLM key available (set OPENROUTER_KEY, FAL_KEY or LLMTR_API_KEY)'
+        'No platform LLM key available (set OPENROUTER_KEY or FAL_KEY)'
       );
     }
     if (fallbackReason) {

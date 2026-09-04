@@ -16,7 +16,6 @@ const testEnv: {
   FAL_KEY: string | undefined;
   XAI_API_KEY: string | undefined;
   GEMINI_API_KEY: string | undefined;
-  LLMTR_API_KEY: string | undefined;
   OPENROUTER_BASE_URL: string | undefined;
   XAI_BASE_URL: string | undefined;
   GEMINI_BASE_URL: string | undefined;
@@ -28,7 +27,6 @@ const testEnv: {
   FAL_KEY: undefined,
   XAI_API_KEY: undefined,
   GEMINI_API_KEY: undefined,
-  LLMTR_API_KEY: undefined,
   OPENROUTER_BASE_URL: undefined,
   XAI_BASE_URL: undefined,
   GEMINI_BASE_URL: undefined,
@@ -174,7 +172,6 @@ beforeEach(() => {
   testEnv.XAI_BASE_URL = undefined;
   testEnv.GEMINI_API_KEY = undefined;
   testEnv.GEMINI_BASE_URL = undefined;
-  testEnv.LLMTR_API_KEY = undefined;
   adapterCalls.length = 0;
   grokCalls.length = 0;
   geminiCalls.length = 0;
@@ -247,55 +244,10 @@ describe('createAdapter LLMTR routing', () => {
     expect(createOpenRouterTextMock).not.toHaveBeenCalled();
   });
 
-  it('does not let platform LLMTR steal OpenRouter traffic', () => {
-    testEnv.LLMTR_API_KEY = 'platform-llmtr';
+  it('never resolves a platform LLMTR key — LLMTR is team BYOK only', () => {
+    expect(getPlatformLlmKey('anthropic/claude-sonnet-5')).toBeUndefined();
     testEnv.OPENROUTER_KEY = 'platform-or';
-
     expect(getPlatformLlmKey('anthropic/claude-sonnet-5')).toEqual({
-      key: 'platform-or',
-      via: 'openrouter',
-      source: 'platform',
-    });
-  });
-
-  it('uses platform LLMTR only when OpenRouter and fal are unset', () => {
-    testEnv.LLMTR_API_KEY = 'platform-llmtr';
-
-    expect(getPlatformLlmKey('anthropic/claude-sonnet-5')).toEqual({
-      key: 'platform-llmtr',
-      via: 'llmtr',
-      source: 'platform',
-    });
-  });
-
-  it('leaves a model LLMTR does not carry on the platform OpenRouter key', () => {
-    testEnv.LLMTR_API_KEY = 'platform-llmtr';
-    testEnv.OPENROUTER_KEY = 'platform-or';
-
-    expect(getPlatformLlmKey('anthropic/claude-opus-5-fast')).toEqual({
-      key: 'platform-or',
-      via: 'openrouter',
-      source: 'platform',
-    });
-  });
-
-  it('keeps xAI first for Grok — first-party beats a gateway', () => {
-    testEnv.XAI_API_KEY = 'platform-xai';
-    testEnv.LLMTR_API_KEY = 'platform-llmtr';
-
-    expect(getPlatformLlmKey(MODEL)).toEqual({
-      key: 'platform-xai',
-      via: 'xai',
-      source: 'platform',
-    });
-  });
-
-  it('ignores LLMTR when the caller cannot name the model', () => {
-    // Without a model there is no way to know LLMTR carries it.
-    testEnv.LLMTR_API_KEY = 'platform-llmtr';
-    testEnv.OPENROUTER_KEY = 'platform-or';
-
-    expect(getPlatformLlmKey()).toEqual({
       key: 'platform-or',
       via: 'openrouter',
       source: 'platform',

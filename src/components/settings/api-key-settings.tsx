@@ -445,7 +445,7 @@ type ManualKeyRowProps = {
   placeholder: string;
   keyUrl: string;
   existingKey?: { keyHint: string };
-  status?: 'team' | 'platform';
+  status?: 'team' | 'platform' | 'none';
   isLoading: boolean;
   onSave: (apiKey: string) => void;
   onDelete: () => void;
@@ -552,7 +552,7 @@ function ManualKeyRow({
   );
 }
 
-function StatusBadge({ source }: { source?: 'team' | 'platform' }) {
+function StatusBadge({ source }: { source?: 'team' | 'platform' | 'none' }) {
   if (source === 'team') {
     return (
       <Badge variant="default" className="text-xs">
@@ -560,9 +560,12 @@ function StatusBadge({ source }: { source?: 'team' | 'platform' }) {
       </Badge>
     );
   }
-  return (
-    <Badge variant="secondary" className="text-xs">
-      Platform key
-    </Badge>
-  );
+  if (source === 'platform') {
+    return (
+      <Badge variant="secondary" className="text-xs">
+        Platform key
+      </Badge>
+    );
+  }
+  return null;
 }
