@@ -1669,11 +1669,15 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
             <div
               id="scene-inspector"
               className={cn(
-                'md:flex md:h-full md:min-h-0 md:w-[380px] lg:w-[420px] md:flex-col md:overflow-hidden md:rounded-lg md:border md:bg-background',
+                // The phone height is on this wrapper, not on the ScrollArea:
+                // a `max-h` alone leaves the Radix viewport (`height: 100%` of
+                // an auto-height root) resolving to its content height, so the
+                // root clipped at 40dvh with nothing scrollable inside it.
+                'max-md:h-[40dvh] md:flex md:h-full md:min-h-0 md:w-[380px] lg:w-[420px] md:flex-col md:overflow-hidden md:rounded-lg md:border md:bg-background',
                 mobileInspectorOpen ? 'block' : 'hidden'
               )}
             >
-              <ScrollArea className="h-full min-h-0 max-md:max-h-[40dvh]">
+              <ScrollArea className="h-full min-h-0">
                 <SceneModelBar
                   scope={scope}
                   sequenceId={sequenceId}
