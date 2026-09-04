@@ -19,7 +19,7 @@
  *     value directly; CF has no equivalent so we spawn-and-await. */
 
 import { DEFAULT_IMAGE_MODEL } from '@/lib/ai/models';
-import { generateId } from '@/lib/db/id';
+import { generateId } from '@/shared/id';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import type { SequenceLocationMinimal } from '@/lib/db/schema';
 import { buildLocationInsert } from '@/lib/workflows/cast-records';

@@ -11,7 +11,7 @@
  * unselectable, or a preview stays in the user's model dropdown.
  */
 
-import { generateId } from '@/lib/db/id';
+import { generateId } from '@/shared/id';
 import {
   frameVariants,
   frames,

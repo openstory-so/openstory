@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { openStoryErrorSerializationAdapter } from '@/lib/errors';
+import { openStoryErrorSerializationAdapter } from '@/shared/errors';
 
 /**
  * The catalog module holds a TTL response cache at module level, so each

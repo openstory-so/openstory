@@ -14,8 +14,8 @@ import {
   useArchivedSequences,
   useUnarchiveSequence,
 } from '@/hooks/use-sequences';
-import { errorMessage } from '@/lib/errors';
-import { formatDistanceToNow } from '@/lib/format-date';
+import { errorMessage } from '@/shared/errors';
+import { formatDistanceToNow } from '@/shared/format-date';
 import { ArchiveRestore, ChevronDown, ChevronRight } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';

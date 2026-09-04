@@ -26,14 +26,14 @@ import {
   effectiveExportMusicUrl,
   hashSequenceExportInputs,
   sequenceExportInputsKey,
-} from '@/lib/sequence-player/source-shots-hash';
-import { putToR2 } from '@/lib/utils/upload';
+} from '@/shared/sequence-player/source-shots-hash';
+import { putToR2 } from '@/shared/utils/upload';
 import {
   exportSequence,
   type ExportProgress,
-} from '@/lib/sequence-player/export';
+} from '@/shared/sequence-player/export';
 import type { Sequence } from '@/types/database';
-import { copyTextToClipboard } from '@/lib/utils/clipboard';
+import { copyTextToClipboard } from '@/shared/utils/clipboard';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { usePostHog } from '@posthog/react';
 import { useCallback, useMemo, useRef, useState } from 'react';

@@ -16,12 +16,12 @@ import {
   type ImageToVideoModel,
   type TextToImageModel,
 } from '@/lib/ai/models';
-import { aspectRatioSchema } from '@/lib/constants/aspect-ratios';
+import { aspectRatioSchema } from '@/shared/constants/aspect-ratios';
 import {
   DEFAULT_RESOLUTION,
   resolutionSchema,
-} from '@/lib/constants/resolutions';
-import { mediaUrlSchema } from '@/lib/schemas/media-url.schemas';
+} from '@/shared/constants/resolutions';
+import { mediaUrlSchema } from '@/shared/schemas/media-url.schemas';
 import {
   STUDIO_VIDEO_MODES,
   studioAudioLimit,

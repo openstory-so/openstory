@@ -8,7 +8,7 @@
  */
 
 import { authWithTeamRequestMiddleware } from '@/functions/middleware';
-import { completeOpenRouterOAuth } from '@/functions/openrouter-oauth-callback';
+import { completeOpenRouterOAuth } from '@/lib/byok/complete-oauth';
 import { getOAuthCookieClearHeader } from '@/lib/byok/openrouter-oauth-cookie';
 import { createFileRoute } from '@tanstack/react-router';
 

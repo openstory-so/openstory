@@ -1,5 +1,5 @@
 import { uploadAttestationSchema } from '@/lib/compliance/likeness-upload';
-import { mediaUrlSchema } from '@/lib/schemas/media-url.schemas';
+import { mediaUrlSchema } from '@/shared/schemas/media-url.schemas';
 import { characterBibleEntrySchema } from '@/lib/ai/scene-analysis.schema';
 import { talent, talentSheets } from '@/lib/db/schema';
 import { createInsertSchema, createUpdateSchema } from 'drizzle-orm/zod';

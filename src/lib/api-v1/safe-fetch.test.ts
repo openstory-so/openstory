@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ValidationError } from '@/lib/errors';
+import { ValidationError } from '@/shared/errors';
 import {
   IMAGE_FETCH_TIMEOUT_MS,
   MAX_IMAGE_REDIRECTS,

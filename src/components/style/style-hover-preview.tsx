@@ -1,7 +1,7 @@
 import { AppImage } from '@/components/ui/app-image';
-import { optimizedVideoUrl } from '@/lib/media/cloudflare-video';
+import { optimizedVideoUrl } from '@/shared/media/cloudflare-video';
 import { styleHoverVideoUrl } from '@/lib/style/style-assets';
-import { cn } from '@/lib/utils';
+import { cn } from '@/shared/utils';
 import type { Style } from '@/types/database';
 import type { FC } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';

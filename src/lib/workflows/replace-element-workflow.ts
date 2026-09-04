@@ -35,7 +35,7 @@ import {
   safeTextToImageModel,
   supportsReferenceImages,
 } from '@/lib/ai/models';
-import { aspectRatioToImageSize } from '@/lib/constants/aspect-ratios';
+import { aspectRatioToImageSize } from '@/shared/constants/aspect-ratios';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import type { ElementVisionStatus } from '@/lib/db/schema';
 import {

@@ -18,7 +18,7 @@
  */
 
 import type { Database } from '@/lib/db/client';
-import { generateId, isValidId } from '@/lib/db/id';
+import { generateId, isValidId } from '@/shared/id';
 import {
   sequences,
   shotPromptVersions,

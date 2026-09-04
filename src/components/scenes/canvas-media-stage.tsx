@@ -11,9 +11,9 @@
  * fills the stage height.
  */
 
-import { getCanvasFitClassName } from '@/lib/constants/aspect-ratios';
-import type { AspectRatio } from '@/lib/constants/aspect-ratios';
-import { cn } from '@/lib/utils';
+import { getCanvasFitClassName } from '@/shared/constants/aspect-ratios';
+import type { AspectRatio } from '@/shared/constants/aspect-ratios';
+import { cn } from '@/shared/utils';
 import type { ReactNode } from 'react';
 
 /** Space under the fit frame for the preview caption line (text-xs + py-1). */

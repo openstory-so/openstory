@@ -195,7 +195,7 @@ Production pushes to `main` deploy via Workers Builds (see [Build & Deploy](#bui
 OpenStory automatically detects the deployment platform:
 
 ```typescript
-import { getDeploymentPlatform } from '@/lib/utils/environment';
+import { getDeploymentPlatform } from '@/shared/utils/environment';
 
 const platform = getDeploymentPlatform();
 // Returns: 'cloudflare' | 'local' | 'unknown'

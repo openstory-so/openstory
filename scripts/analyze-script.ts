@@ -36,7 +36,7 @@ import {
 import {
   aspectRatioSchema,
   type AspectRatio,
-} from '../src/lib/constants/aspect-ratios';
+} from '../src/shared/constants/aspect-ratios';
 import { z } from 'zod';
 import {
   parseStyleConfig,

@@ -4,7 +4,7 @@
  * A flat list of MP4 snapshots of a sequence. Unlike the old
  * `sequence_video_variants` table, there is no primary/divergent split — every
  * row is just a snapshot at a point in time. Two producers write here:
- *  - the browser-side export pipeline (`src/lib/sequence-player/export.ts`),
+ *  - the browser-side export pipeline (`src/shared/sequence-player/export.ts`),
  *    which commits a finished `ready` row directly; and
  *  - the server-side (API) export workflow, which reserves a `processing` row
  *    up front and later flips it to `ready`/`failed`.
@@ -26,7 +26,7 @@ import {
   text,
   uniqueIndex,
 } from 'drizzle-orm/sqlite-core';
-import { generateId } from '../id';
+import { generateId } from '@/shared/id';
 import { sequences } from './sequences';
 
 export const sequenceExports = snakeCase.table(

@@ -23,7 +23,7 @@ import {
   useSoftDeleteSequenceCharacter,
 } from '@/hooks/use-sequence-characters';
 import type { CharacterWithSheet } from '@/lib/db/schema';
-import { errorMessage } from '@/lib/errors';
+import { errorMessage } from '@/shared/errors';
 import { useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { Film, Trash2, User } from 'lucide-react';

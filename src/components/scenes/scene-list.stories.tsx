@@ -1,6 +1,6 @@
-import { generateMockShots } from '@/lib/mocks/data-generators';
-import { DEFAULT_ASPECT_RATIO } from '@/lib/constants/aspect-ratios';
-import { dbSceneId, type DbSceneId } from '@/lib/db/schema';
+import { generateMockShots } from '@/shared/mocks/data-generators';
+import { DEFAULT_ASPECT_RATIO } from '@/shared/constants/aspect-ratios';
+import { dbSceneId, type DbSceneId } from '@/shared/scene-id';
 import type { SceneWithScript } from '@/hooks/use-scenes';
 import type {
   SegmentVideoVersion,

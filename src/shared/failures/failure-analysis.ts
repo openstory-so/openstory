@@ -16,7 +16,7 @@ import type { Shot } from '@/lib/db/schema/shots';
 import type { Sequence } from '@/lib/db/schema/sequences';
 import type { ShotView } from '@/lib/shots/shot-view';
 import { usesStartFrame } from '@/lib/shots/use-start-frame';
-import { plainSceneTitle } from '@/lib/utils/markdown-plain';
+import { plainSceneTitle } from '@/shared/utils/markdown-plain';
 
 /** Scene titles keyed by scene id — the label source for each failed shot. */
 type ScenesById = ReadonlyMap<string, Pick<SceneRow, 'title' | 'orderIndex'>>;

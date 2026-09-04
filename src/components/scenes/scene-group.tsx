@@ -28,17 +28,17 @@ import {
   useUpdateScene,
 } from '@/hooks/use-scene-structure';
 import { videoModelDisplayName } from '@/lib/ai/models';
-import type { AspectRatio } from '@/lib/constants/aspect-ratios';
+import type { AspectRatio } from '@/shared/constants/aspect-ratios';
 import type { SceneWithScript } from '@/hooks/use-scenes';
 import type { ShotVariant } from '@/lib/db/schema';
-import { errorMessage } from '@/lib/errors';
+import { errorMessage } from '@/shared/errors';
 import {
   groupShotsBySegment,
   type SequenceSegment,
 } from '@/lib/scenes/scene-segments';
 import type { ShotView } from '@/lib/shots/shot-view';
-import { cn } from '@/lib/utils';
-import { plainSceneTitle } from '@/lib/utils/markdown-plain';
+import { cn } from '@/shared/utils';
+import { plainSceneTitle } from '@/shared/utils/markdown-plain';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   ArrowDown,

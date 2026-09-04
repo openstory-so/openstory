@@ -13,11 +13,11 @@ import { isValidTextToImageModel } from '@/lib/ai/models';
 import { resolveImageModel } from '@/lib/ai/resolve-asset-models';
 import { estimateImageCost, gateEstimate } from '@/lib/billing/cost-estimation';
 import { requireCredits } from '@/lib/billing/preflight';
-import type { Resolution } from '@/lib/constants/resolutions';
+import type { Resolution } from '@/shared/constants/resolutions';
 import {
   aspectRatioToImageSize,
   type AspectRatio,
-} from '@/lib/constants/aspect-ratios';
+} from '@/shared/constants/aspect-ratios';
 import type {
   Frame,
   SequenceLocationWithReference,

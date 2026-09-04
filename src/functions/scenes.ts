@@ -1,6 +1,6 @@
-import { dbSceneId } from '@/lib/db/schema';
-import { NotFoundError } from '@/lib/errors';
-import { plainSceneTitle } from '@/lib/utils/markdown-plain';
+import { dbSceneId } from '@/shared/scene-id';
+import { NotFoundError } from '@/shared/errors';
+import { plainSceneTitle } from '@/shared/utils/markdown-plain';
 import {
   composeSequenceScriptFromDb,
   loadSceneContextBySequence,

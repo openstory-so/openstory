@@ -1,4 +1,4 @@
-import { generateMockStyles } from '@/lib/mocks/data-generators';
+import { generateMockStyles } from '@/shared/mocks/data-generators';
 import { DEFAULT_COMPOSER_STYLE_CATEGORY } from '@/lib/style/composer-style-row';
 import { MOCK_SYSTEM_STYLES } from '@/lib/style/style-templates';
 import type { Meta, StoryObj } from '@storybook/react';

@@ -2,7 +2,7 @@ import { PostHogIdentify } from '@/components/observability/posthog-identify';
 import { sessionQueryOptions } from '@/lib/auth/session-query';
 import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { installChunkReload } from '@/lib/chunk-reload';
+import { installChunkReload } from '@/shared/chunk-reload';
 import { configureLogging } from '@/lib/observability/logger';
 import { flushReactErrors } from '@/lib/observability/react-errors';
 import { PostHogProvider } from '@posthog/react';

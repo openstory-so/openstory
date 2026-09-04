@@ -19,7 +19,7 @@ import {
   text,
   uniqueIndex,
 } from 'drizzle-orm/sqlite-core';
-import { generateId } from '../id';
+import { generateId } from '@/shared/id';
 import { characters } from './characters';
 
 const CHARACTER_SHEET_VARIANT_STATUSES = [

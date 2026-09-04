@@ -21,7 +21,7 @@ import {
 } from '@/components/ui/popover';
 import { SCRIPT_ANALYSIS_MODELS } from '@/lib/ai/models.config';
 import { IMAGE_MODELS } from '@/lib/ai/models';
-import { ASPECT_RATIOS } from '@/lib/constants/aspect-ratios';
+import { ASPECT_RATIOS } from '@/shared/constants/aspect-ratios';
 import {
   Clapperboard,
   ImageIcon,

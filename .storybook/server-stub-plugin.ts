@@ -5,7 +5,10 @@ import type { Plugin } from 'vite';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, '..');
-const STUB_RUNTIME = path.resolve(__dirname, '../src/lib/mocks/server-stub.ts');
+const STUB_RUNTIME = path.resolve(
+  __dirname,
+  '../src/shared/mocks/server-stub.ts'
+);
 
 // Module paths whose import graph must NOT enter the Storybook bundle.
 // These are server-only files that drag Node-only deps into the iframe and

@@ -8,7 +8,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import type { StalenessEntityType } from '@/components/staleness/staleness-indicator';
-import { cn } from '@/lib/utils';
+import { cn } from '@/shared/utils';
 import { Loader2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { AppImage } from '@/components/ui/app-image';

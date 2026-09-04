@@ -4,7 +4,7 @@
  * `sourceShotsHash`, not "newest ready".
  *
  * Two producers write here:
- * - the browser export pipeline (see `src/lib/sequence-player/export.ts`),
+ * - the browser export pipeline (see `src/shared/sequence-player/export.ts`),
  *   which commits a finished `ready` row directly; and
  * - the server-side (API) export workflow, which `createProcessing()`s a row
  *   up front and later flips it to `ready`/`failed`.

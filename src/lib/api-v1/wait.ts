@@ -14,7 +14,7 @@
  * syntax learns via a 400 rather than a silent downgrade to a busy-poll).
  */
 
-import { ValidationError } from '@/lib/errors';
+import { ValidationError } from '@/shared/errors';
 
 const MAX_WAIT_MS = 90_000;
 const DEFAULT_POLL_INTERVAL_MS = 2_000;

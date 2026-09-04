@@ -6,7 +6,7 @@
  * 58 frames keep claiming a finished still that renders nothing.
  */
 
-import { generateId } from '@/lib/db/id';
+import { generateId } from '@/shared/id';
 import {
   frameVariants,
   frames,

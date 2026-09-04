@@ -22,14 +22,14 @@ import {
   Output,
   QUALITY_HIGH,
 } from 'mediabunny';
-import { addCorsCacheBuster } from '@/lib/utils/cors-cache-buster';
+import { addCorsCacheBuster } from '@/shared/utils/cors-cache-buster';
 
 import {
   applyGain,
   DEFAULT_MUSIC_LOUDNESS_LUFS,
   gainToTarget,
   integratedLoudnessLUFS,
-} from '@/lib/browser-merge';
+} from '@/shared/browser-merge';
 
 import {
   ConcatenatedVideoSource,

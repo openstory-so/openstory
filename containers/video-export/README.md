@@ -9,7 +9,7 @@ one MP4, using [`mediabunny`](https://mediabunny.dev) +
 
 ## Why a container (and not the Worker)
 
-The browser export (`src/lib/sequence-player/export.ts`) relies on WebCodecs +
+The browser export (`src/shared/sequence-player/export.ts`) relies on WebCodecs +
 Web Audio, which Cloudflare Workers don't provide. `@mediabunny/server`
 polyfills the full pipeline via NodeAV (native FFmpeg bindings) — that needs a
 real Node runtime, hence a container. See CLAUDE.md → "Server-side export".

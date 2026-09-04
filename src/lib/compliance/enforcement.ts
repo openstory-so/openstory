@@ -12,7 +12,7 @@
  * suspended and it was not".
  */
 
-import { AccountRestrictedError } from '@/lib/errors';
+import { AccountRestrictedError } from '@/shared/errors';
 import type {
   EnforcementActionType,
   ContentReportReason,

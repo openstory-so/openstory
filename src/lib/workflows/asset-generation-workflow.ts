@@ -42,7 +42,7 @@ import {
 } from '@/lib/compliance/provenance';
 import { STORAGE_BUCKETS, type StorageBucket } from '@/lib/storage/buckets';
 import { uploadResponse } from '@/lib/storage/upload-response';
-import { getMimeTypeFromExtension } from '@/lib/utils/file';
+import { getMimeTypeFromExtension } from '@/shared/utils/file';
 import { OpenStoryWorkflowEntrypoint } from '@/lib/workflow/base-workflow';
 import type { AssetGenerationWorkflowInput } from '@/lib/workflow/types';
 import { fal } from '@fal-ai/client';

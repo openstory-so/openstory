@@ -1,5 +1,5 @@
 import { assert, describe, expect, it } from 'vitest';
-import { AccountRestrictedError } from '@/lib/errors';
+import { AccountRestrictedError } from '@/shared/errors';
 import {
   assertCanGenerate,
   assertCanWrite,

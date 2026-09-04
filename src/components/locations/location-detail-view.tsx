@@ -30,7 +30,7 @@ import {
   useSoftDeleteSequenceLocation,
 } from '@/hooks/use-sequence-locations';
 import type { LocationSheetVariant } from '@/lib/db/schema';
-import { errorMessage } from '@/lib/errors';
+import { errorMessage } from '@/shared/errors';
 import { useRealtime } from '@/lib/realtime/client';
 import { useSheetStaleDetected } from '@/lib/realtime/use-sheet-stale-detected';
 import {

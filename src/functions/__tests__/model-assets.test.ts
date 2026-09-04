@@ -15,7 +15,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createClient } from '@libsql/client';
 import { drizzle } from 'drizzle-orm/libsql';
 import { migrate } from 'drizzle-orm/libsql/migrator';
-import { generateId } from '@/lib/db/id';
+import { generateId } from '@/shared/id';
 import type { Database } from '@/lib/db/client';
 import {
   generatedAssets,
@@ -146,7 +146,7 @@ describe('validateAssetInput', () => {
 
 describe('createGeneratedAsset', () => {
   it('rejects a restricted account BEFORE the credit gate, leaving no row', async () => {
-    const { AccountRestrictedError } = await import('@/lib/errors');
+    const { AccountRestrictedError } = await import('@/shared/errors');
     mockRequireGenerationAllowed.mockRejectedValue(
       new AccountRestrictedError('paused')
     );

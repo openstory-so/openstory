@@ -6,8 +6,8 @@ import { EvalSceneCell } from './eval-scene-cell';
 import type { DialogTab } from './eval-cell-dialog';
 import { useScenesBySequence, type SceneWithScript } from '@/hooks/use-scenes';
 import type { SequenceWithShots } from '@/hooks/use-sequences-with-shots';
-import type { AspectRatio } from '@/lib/constants/aspect-ratios';
-import { DEFAULT_ASPECT_RATIO } from '@/lib/constants/aspect-ratios';
+import type { AspectRatio } from '@/shared/constants/aspect-ratios';
+import { DEFAULT_ASPECT_RATIO } from '@/shared/constants/aspect-ratios';
 import type { ViewMode } from './eval-view';
 
 const METADATA_WIDTH = 280;

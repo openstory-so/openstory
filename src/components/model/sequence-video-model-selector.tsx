@@ -20,7 +20,7 @@ import {
   IMAGE_TO_VIDEO_MODELS,
   isValidImageToVideoModel,
 } from '@/lib/ai/models';
-import { computeSequenceModelCoverage } from '@/lib/model/sequence-model-coverage';
+import { computeSequenceModelCoverage } from '@/shared/model/sequence-model-coverage';
 import { ChevronDown } from 'lucide-react';
 import { useMemo } from 'react';
 

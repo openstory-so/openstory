@@ -12,7 +12,7 @@
  * imported by the app, so nothing here ships in the worker bundle.
  */
 
-import type { AspectRatio } from '@/lib/constants/aspect-ratios';
+import type { AspectRatio } from '@/shared/constants/aspect-ratios';
 import { z } from 'zod';
 
 /** Sequence statuses past which no further generation happens. */

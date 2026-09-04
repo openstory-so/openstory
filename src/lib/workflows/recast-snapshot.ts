@@ -17,7 +17,7 @@
 
 import { computeShotImageInputHash } from '@/lib/ai/input-hash';
 import type { TextToImageModel } from '@/lib/ai/models';
-import type { AspectRatio } from '@/lib/constants/aspect-ratios';
+import type { AspectRatio } from '@/shared/constants/aspect-ratios';
 import type { ScopedDb } from '@/lib/db/scoped';
 import type {
   CharacterWithSheet,

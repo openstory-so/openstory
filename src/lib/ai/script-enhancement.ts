@@ -34,7 +34,7 @@ import { estimateLLMCost } from '@/lib/billing/cost-estimation';
 import { addMicros, ZERO_MICROS, type Microdollars } from '@/lib/billing/money';
 import type { ScopedDb } from '@/lib/db/scoped';
 import type { ResolvedLlmKey } from '@/lib/db/scoped/api-keys';
-import { InsufficientCreditsError } from '@/lib/errors';
+import { InsufficientCreditsError } from '@/shared/errors';
 import { getLogger } from '@/lib/observability/logger';
 import {
   getPrompt,

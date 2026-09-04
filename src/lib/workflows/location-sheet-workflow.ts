@@ -21,7 +21,7 @@ import {
   recordFalUsageStep,
 } from '@/lib/billing/workflow-deduction';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
-import { generateId } from '@/lib/db/id';
+import { generateId } from '@/shared/id';
 import type { ImageGenerationParams } from '@/lib/image/image-generation';
 import { buildLocationSheetPrompt } from '@/lib/prompts/location-prompt';
 import { recordProvenance } from '@/lib/compliance/provenance';

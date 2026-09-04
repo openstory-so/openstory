@@ -17,7 +17,7 @@ import {
   deleteTalentMediaFn,
 } from '@/functions/talent';
 import { usePublicOrTeamQuery } from '@/hooks/use-public-or-team-query';
-import { putToR2 } from '@/lib/utils/upload';
+import { putToR2 } from '@/shared/utils/upload';
 import type {
   CreateTalentInput,
   UpdateTalentInput,

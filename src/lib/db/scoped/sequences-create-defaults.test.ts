@@ -6,7 +6,7 @@
 import { DEFAULT_ANALYSIS_MODEL } from '@/lib/ai/models.config';
 import { DEFAULT_IMAGE_MODEL, DEFAULT_VIDEO_MODEL } from '@/lib/ai/models';
 import type { Database } from '@/lib/db/client';
-import { generateId } from '@/lib/db/id';
+import { generateId } from '@/shared/id';
 import { sequences, styles, teams, user } from '@/lib/db/schema';
 import { relations } from '@/lib/db/schema/relations';
 import { type Client, createClient } from '@libsql/client';

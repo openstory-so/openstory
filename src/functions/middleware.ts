@@ -19,8 +19,8 @@ import {
 } from '@/lib/auth/request-principal';
 import { requiredOAuthScope } from '@/lib/api-v1/oauth-scopes';
 import { isSystemAdmin, requireSystemAdmin } from '@/lib/auth/system-admin';
-import type { AspectRatio } from '@/lib/constants/aspect-ratios';
-import type { Resolution } from '@/lib/constants/resolutions';
+import type { AspectRatio } from '@/shared/constants/aspect-ratios';
+import type { Resolution } from '@/shared/constants/resolutions';
 import {
   createScopedDb,
   createSystemAdminScopedDb,
@@ -40,7 +40,7 @@ import {
   AccountRestrictedError,
   AuthenticationError,
   NotFoundError,
-} from '@/lib/errors';
+} from '@/shared/errors';
 import {
   errorHeadline,
   getLogger,

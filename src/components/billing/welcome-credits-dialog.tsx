@@ -26,7 +26,7 @@ import { useShowCosts } from '@/hooks/use-show-costs';
 import { useUser } from '@/hooks/use-user';
 import { SIGNUP_GRANT_MICROS } from '@/lib/billing/constants';
 import { microsToDisplayUsd } from '@/lib/billing/money';
-import { hasPendingGenerate } from '@/lib/generation/pending-generate';
+import { hasPendingGenerate } from '@/shared/generation/pending-generate';
 import { Sparkles } from 'lucide-react';
 import {
   createContext,

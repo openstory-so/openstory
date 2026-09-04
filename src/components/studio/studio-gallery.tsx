@@ -33,7 +33,7 @@ import {
   studioPrompt,
 } from '@/lib/studio/outputs';
 import { estimateStudioProgress } from '@/lib/studio/progress';
-import { cn } from '@/lib/utils';
+import { cn } from '@/shared/utils';
 import { Download, Images, Star, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 

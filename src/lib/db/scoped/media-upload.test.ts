@@ -15,7 +15,7 @@ import { DEFAULT_IMAGE_MODEL, safeTextToImageModel } from '@/lib/ai/models';
 import { computeVideoManifestInputHash } from '@/lib/ai/input-hash';
 import type { Scene } from '@/lib/ai/scene-analysis.schema';
 import type { Database } from '@/lib/db/client';
-import { generateId } from '@/lib/db/id';
+import { generateId } from '@/shared/id';
 import {
   characterSheetVariants,
   characters,

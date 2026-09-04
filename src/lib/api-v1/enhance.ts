@@ -24,9 +24,9 @@ import {
   isValidImageToVideoModel,
   type ImageToVideoModel,
 } from '@/lib/ai/models';
-import { aspectRatioSchema } from '@/lib/constants/aspect-ratios';
+import { aspectRatioSchema } from '@/shared/constants/aspect-ratios';
 import type { ScopedDb } from '@/lib/db/scoped';
-import { handleApiError } from '@/lib/errors';
+import { handleApiError } from '@/shared/errors';
 import { getLogger, toErrorPayload } from '@/lib/observability/logger';
 import { createSequenceLink, enhanceScriptLink } from './discovery';
 import type { ApiEnhanceScriptInput } from './enhance-input-schema';

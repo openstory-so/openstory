@@ -25,7 +25,7 @@
  *     or QStash per-deploy. */
 
 import { resolveImageModels } from '@/lib/ai/resolve-image-models';
-import { aspectRatioToImageSize } from '@/lib/constants/aspect-ratios';
+import { aspectRatioToImageSize } from '@/shared/constants/aspect-ratios';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import { buildCharacterReferenceImages } from '@/lib/prompts/character-prompt';
 import { buildElementReferenceImages } from '@/lib/prompts/element-prompt';

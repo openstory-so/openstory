@@ -19,7 +19,7 @@ import {
   text,
   uniqueIndex,
 } from 'drizzle-orm/sqlite-core';
-import { generateId } from '../id';
+import { generateId } from '@/shared/id';
 import { user } from './auth';
 import { frames } from './frames';
 

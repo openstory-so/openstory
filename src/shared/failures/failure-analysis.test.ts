@@ -6,7 +6,7 @@ import {
   frameFixture,
   frameVariantFixture,
   videoVariantFixture,
-} from '@/lib/mocks/frame-fixtures';
+} from '@/shared/mocks/frame-fixtures';
 import {
   type ShotView,
   type ShotViewSources,

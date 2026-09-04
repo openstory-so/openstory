@@ -1,4 +1,4 @@
-import { cn } from '@/lib/utils';
+import { cn } from '@/shared/utils';
 import { ScrollText } from 'lucide-react';
 
 type AutoStyleTileProps = {

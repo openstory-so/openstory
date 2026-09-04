@@ -14,7 +14,7 @@ import type {
   Scene,
 } from '@/lib/ai/scene-analysis.schema';
 import type { ScopedDb } from '@/lib/db/scoped';
-import { ValidationError } from '@/lib/errors';
+import { ValidationError } from '@/shared/errors';
 import type { StyleConfig } from '@/lib/db/schema';
 import { resolveSequenceStyleConfig } from '@/lib/style/style-config';
 import {

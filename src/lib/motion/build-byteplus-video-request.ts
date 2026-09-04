@@ -30,7 +30,7 @@ import {
   IMAGE_TO_VIDEO_MODELS,
   type ImageToVideoModel,
 } from '@/lib/ai/models';
-import type { AspectRatio } from '@/lib/constants/aspect-ratios';
+import type { AspectRatio } from '@/shared/constants/aspect-ratios';
 import type { ReferenceImageDescription } from '@/lib/prompts/reference-image-prompt';
 import {
   inlineReferenceDescription,
@@ -39,7 +39,7 @@ import {
 import {
   pickVideoResolution,
   type Resolution,
-} from '@/lib/constants/resolutions';
+} from '@/shared/constants/resolutions';
 import { buildReferenceVideoPrompt } from './build-reference-video-prompt';
 
 /**

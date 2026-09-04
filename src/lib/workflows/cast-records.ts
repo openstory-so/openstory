@@ -13,7 +13,7 @@ import type {
   ElementBibleEntry,
   LocationBibleEntry,
 } from '@/lib/ai/scene-analysis.schema';
-import { generateId } from '@/lib/db/id';
+import { generateId } from '@/shared/id';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import type {
   NewCharacter,

@@ -20,7 +20,7 @@ import {
   audioWallClock,
   imageWallClock,
   videoWallClock,
-} from '@/lib/generation/measured-latency';
+} from '@/shared/generation/measured-latency';
 
 type PhaseBudget = { base: number; perScene: number };
 

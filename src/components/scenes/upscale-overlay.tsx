@@ -1,9 +1,9 @@
 import {
   type AspectRatio,
   getVariantGridConfig,
-} from '@/lib/constants/aspect-ratios';
+} from '@/shared/constants/aspect-ratios';
 import { tileBackgroundCss } from '@/lib/image/tile-crop';
-import { cn } from '@/lib/utils';
+import { cn } from '@/shared/utils';
 import { Loader2 } from 'lucide-react';
 
 type UpscaleOverlayProps = {

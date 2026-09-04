@@ -1,5 +1,5 @@
 import type { SceneRow } from '@/lib/db/schema';
-import { plainSceneTitle } from '@/lib/utils/markdown-plain';
+import { plainSceneTitle } from '@/shared/utils/markdown-plain';
 import type { Shot } from '@/types/database';
 
 /** A shot paired with the scene it belongs to (null when it has none). */
@@ -26,7 +26,7 @@ function formatTimestamp(seconds: number): string {
 function escapeVTTText(text: string): string {
   return text
     .replace(/&/g, '&amp;')
-    .replace(/-->/g, '—>')
+    .replace(/--!?>/g, '—>')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/\n/g, ' ')

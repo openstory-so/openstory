@@ -9,7 +9,7 @@
  * `AssetGenerationWorkflow` — see `@/lib/models/generated-assets` (#1257).
  */
 
-import { assertModelsEnabled } from '@/lib/flags';
+import { assertModelsEnabled } from '@/shared/flags';
 import { GENERATED_ASSET_ACTIVITIES, type JsonValue } from '@/lib/db/schema';
 import { createGeneratedAsset } from '@/lib/models/generated-assets';
 import { ulidSchema } from '@/lib/schemas/id.schemas';

@@ -20,7 +20,7 @@ vi.doMock('@/lib/storage/buckets', () => ({
   getPublicUrl: (bucket: string, path: string) =>
     `https://cdn.test/${bucket}/${path}`,
 }));
-vi.doMock('@/lib/db/id', () => ({ generateId: () => 'gen-1' }));
+vi.doMock('@/shared/id', () => ({ generateId: () => 'gen-1' }));
 
 const { resolveStyle, resolveTalentIds, resolveLocationIds, ingestElements } =
   await import('./resolve');

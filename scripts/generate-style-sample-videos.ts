@@ -56,7 +56,7 @@ import { loadLocalFalPricing } from './load-local-fal-pricing';
 import {
   aspectRatioSchema,
   type AspectRatio,
-} from '@/lib/constants/aspect-ratios';
+} from '@/shared/constants/aspect-ratios';
 import { calculateMotionMetadata } from '@/lib/motion/motion-generation';
 import {
   createSampleSequence,

@@ -20,7 +20,7 @@ import {
   withSequenceStateLinks,
 } from '@/lib/api-v1/state';
 import { getWaitMs, longPoll } from '@/lib/api-v1/wait';
-import { NotFoundError } from '@/lib/errors';
+import { NotFoundError } from '@/shared/errors';
 import { createFileRoute } from '@tanstack/react-router';
 
 export const Route = createFileRoute('/api/v1/sequences/$id')({

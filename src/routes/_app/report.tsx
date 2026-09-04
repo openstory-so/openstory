@@ -26,8 +26,8 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { submitContentReportFn } from '@/functions/content-reports';
-import { CONTENT_REPORT_REASONS } from '@/lib/db/schema/compliance';
-import { SITE_CONFIG } from '@/lib/marketing/constants';
+import { CONTENT_REPORT_REASONS } from '@/shared/content-reports';
+import { SITE_CONFIG } from '@/shared/marketing/constants';
 import { useMutation } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { useState } from 'react';

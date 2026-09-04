@@ -49,8 +49,8 @@ export type UserEditProvenance = {
   inputHash: string | null;
   analysisModel: string | null;
 };
-import type { AspectRatio, ImageSize } from '@/lib/constants/aspect-ratios';
-import type { Resolution } from '@/lib/constants/resolutions';
+import type { AspectRatio, ImageSize } from '@/shared/constants/aspect-ratios';
+import type { Resolution } from '@/shared/constants/resolutions';
 import type {
   CharacterMinimal,
   GeneratedAssetActivity,
@@ -66,7 +66,7 @@ import type { Json } from '@/types/database';
 import type {
   GenerationCheckpoint,
   GenerationStage,
-} from '@/lib/generation/pipeline';
+} from '@/shared/generation/pipeline';
 import { z } from 'zod';
 import type { musicDesignResultSchema } from '../ai/response-schemas';
 

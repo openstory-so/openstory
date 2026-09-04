@@ -16,7 +16,7 @@
  */
 
 import type { Database } from '@/lib/db/client';
-import { generateId } from '@/lib/db/id';
+import { generateId } from '@/shared/id';
 import { teamApiKeys, teams, user } from '@/lib/db/schema';
 import { relations } from '@/lib/db/schema/relations';
 import { type Client, createClient } from '@libsql/client';

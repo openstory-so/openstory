@@ -12,8 +12,8 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
-import { cn } from '@/lib/utils';
-import { copyImageToClipboard } from '@/lib/utils/clipboard';
+import { cn } from '@/shared/utils';
+import { copyImageToClipboard } from '@/shared/utils/clipboard';
 import { ChevronRight, CopyIcon } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';

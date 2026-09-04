@@ -8,11 +8,11 @@ import { DEFAULT_IMAGE_MODEL, DEFAULT_VIDEO_MODEL } from '@/lib/ai/models';
 import {
   type AspectRatio,
   DEFAULT_ASPECT_RATIO,
-} from '@/lib/constants/aspect-ratios';
+} from '@/shared/constants/aspect-ratios';
 import {
   DEFAULT_RESOLUTION,
   type Resolution,
-} from '@/lib/constants/resolutions';
+} from '@/shared/constants/resolutions';
 import type { Database } from '@/lib/db/client';
 import {
   assembleShotViews,
@@ -33,7 +33,7 @@ import type { MusicStatus, SequenceStatus } from '@/lib/db/schema/sequences';
 import type {
   GenerationCheckpoint,
   GenerationStage,
-} from '@/lib/generation/pipeline';
+} from '@/shared/generation/pipeline';
 import { parseStyleConfig } from '@/lib/style/style-config';
 import type { ShotReadiness, ShotView } from '@/lib/shots/shot-view';
 import { getLatestPreviewByFrameIds } from './frame-variants';
@@ -43,7 +43,7 @@ import {
   SETTINGS_CHANGED_EVENT,
   SETTINGS_CHANGED_LABELS,
 } from './sequence-events';
-import { ValidationError } from '@/lib/errors';
+import { ValidationError } from '@/shared/errors';
 import { and, asc, desc, eq, inArray, isNull, lt, not, or } from 'drizzle-orm';
 
 export type MusicFieldsUpdate = {

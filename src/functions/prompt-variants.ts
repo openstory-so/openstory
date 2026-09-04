@@ -30,7 +30,7 @@ import {
   resolveSceneForShot,
 } from '@/lib/scenes/scene-script';
 import { getFrameImageUrl } from '@/lib/shots/frame-image';
-import { simpleHash } from '@/lib/utils/hash';
+import { simpleHash } from '@/shared/utils/hash';
 import { triggerWorkflow } from '@/lib/workflow/client';
 import { buildWorkflowLabel } from '@/lib/workflow/labels';
 import { terminateSingleArtifactRun } from '@/lib/workflow/run-outcome';

@@ -12,7 +12,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { useRenameSequence } from '@/hooks/use-sequences';
-import { errorMessage } from '@/lib/errors';
+import { errorMessage } from '@/shared/errors';
 import { Pencil } from 'lucide-react';
 import { useRef, useState } from 'react';
 

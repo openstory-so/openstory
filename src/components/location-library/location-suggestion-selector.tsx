@@ -19,7 +19,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useLibraryLocations } from '@/hooks/use-sequence-locations';
 import type { LibraryLocation } from '@/lib/db/schema';
 import { AddLocationDialog } from '@/components/location-library/add-location-dialog';
-import { cn } from '@/lib/utils';
+import { cn } from '@/shared/utils';
 import { Check, MapPin, Plus, Search, X } from 'lucide-react';
 import { useState } from 'react';
 import { AppImage } from '@/components/ui/app-image';

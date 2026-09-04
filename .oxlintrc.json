@@ -24,6 +24,12 @@
     "typescript/no-unnecessary-type-assertion": "error",
     "typescript/no-unsafe-type-assertion": "error",
     "typescript/no-non-null-assertion": "error",
+    // `import { type X } from 'y'` compiles to `import {} from 'y'` under
+    // verbatimModuleSyntax — a side-effect import that keeps y's whole graph
+    // in the client bundle. Only the top-level `import type` form is erased,
+    // so the boundary rule below (allowTypeImports) is only sound if the
+    // inline form cannot exist (#1445).
+    "typescript/no-import-type-side-effects": "error",
     "typescript/no-floating-promises": "error",
     "typescript/no-misused-promises": "error",
     "typescript/await-thenable": "error",
@@ -85,11 +91,130 @@
         "scripts/**/*.ts",
         "e2e/**/*.ts",
         "src/lib/observability/logger.ts",
-        "src/lib/mocks/**/*.ts"
+        "src/shared/mocks/**/*.ts"
       ],
       "rules": {
         "react/rules-of-hooks": "off",
         "eslint/no-console": "off"
+      }
+    },
+    {
+      // Client/server boundary (#1445). `src/lib` is server-only; the
+      // client-safe half lives in `src/shared`. This is a per-file path rule
+      // so the mistake is visible in the editor — the transitive backstop is
+      // `src/lib/client-server-boundary.test.ts`. Top-level `import type` is
+      // erased at compile time and stays legal; the inline
+      // `import { type X }` form is NOT (it leaves a side-effect import), and
+      // `typescript/no-import-type-side-effects` above bans it outright.
+      //
+      // `src/functions/**` is deliberately absent: a server fn's whole job is
+      // to reference `src/lib` from inside its handler, which the compiler
+      // strips. The boundary test covers it instead, modelling that stripping.
+      //
+      // Most `!` exceptions below are a directory still mixing server and
+      // shared code: delete the line once its client-safe files have moved to
+      // `src/shared`. Two are NOT that shape and must not be "migrated":
+      //   `!@/lib/storage`   — `routes/r2.$.ts` imports `serve-media` inside a
+      //                        `server: { handlers }` block the client build
+      //                        prunes. It reaches `#storage`; it can never
+      //                        move to `src/shared`.
+      //   `!@/lib/workflows` — one `.test.ts` import only. No production
+      //                        client file needs it.
+      "files": [
+        "src/components/**",
+        "src/hooks/**",
+        "src/routes/**",
+        "src/shared/**"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "#db-client",
+                "message": "Only db/scoped.ts and auth/config.ts may import #db-client"
+              },
+              {
+                "name": "@/lib/db/scoped",
+                "importNames": ["createScopedDb"],
+                "message": "createScopedDb only allowed in middleware.ts, workflow/base-workflow.ts, and authorized route handlers. Use context.scopedDb."
+              }
+            ],
+            "patterns": [
+              {
+                "group": [
+                  "@/lib/*",
+                  "@/lib/**",
+                  "!@/lib/ai",
+                  "!@/lib/ai/**",
+                  "!@/lib/auth",
+                  "!@/lib/auth/**",
+                  "!@/lib/billing",
+                  "!@/lib/billing/**",
+                  "!@/lib/compliance",
+                  "!@/lib/compliance/**",
+                  "!@/lib/image",
+                  "!@/lib/image/**",
+                  "!@/lib/models",
+                  "!@/lib/models/**",
+                  "!@/lib/motion",
+                  "!@/lib/motion/**",
+                  "!@/lib/observability",
+                  "!@/lib/observability/**",
+                  "!@/lib/prompts",
+                  "!@/lib/prompts/**",
+                  "!@/lib/realtime",
+                  "!@/lib/realtime/**",
+                  "!@/lib/scenes",
+                  "!@/lib/scenes/**",
+                  "!@/lib/sequence-elements",
+                  "!@/lib/sequence-elements/**",
+                  "!@/lib/sequences",
+                  "!@/lib/sequences/**",
+                  "!@/lib/sheets",
+                  "!@/lib/sheets/**",
+                  "!@/lib/shots",
+                  "!@/lib/shots/**",
+                  "!@/lib/storage",
+                  "!@/lib/storage/**",
+                  "!@/lib/studio",
+                  "!@/lib/studio/**",
+                  "!@/lib/style",
+                  "!@/lib/style/**",
+                  "!@/lib/talent",
+                  "!@/lib/talent/**",
+                  "!@/lib/workflows",
+                  "!@/lib/workflows/**"
+                ],
+                "allowTypeImports": true,
+                "message": "src/lib is server-only and must not ship to the browser. Import the client-safe helper from @/shared (move it there if it is not yet), or make this a type-only import."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      // `routes/api/**` are server handlers, not client code.
+      "files": ["src/routes/api/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "#db-client",
+                "message": "Only db/scoped.ts and auth/config.ts may import #db-client"
+              },
+              {
+                "name": "@/lib/db/scoped",
+                "importNames": ["createScopedDb"],
+                "message": "createScopedDb only allowed in middleware.ts, workflow/base-workflow.ts, and authorized route handlers. Use context.scopedDb."
+              }
+            ]
+          }
+        ]
       }
     },
     {

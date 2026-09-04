@@ -24,7 +24,7 @@ import {
   useSetMusicFromVariant,
   useUndiscardSequenceMusicVariant,
 } from '@/hooks/use-sequence-variants';
-import { type ModelGenerationStatus } from '@/components/model/base-model-selector';
+import type { ModelGenerationStatus } from '@/components/model/base-model-selector';
 import {
   DEFAULT_MUSIC_MODEL,
   safeAudioModel,

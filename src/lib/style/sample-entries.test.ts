@@ -1,5 +1,5 @@
 import type { StyleSampleVideo } from '@/lib/db/schema/libraries';
-import { generateMockStyles } from '@/lib/mocks/data-generators';
+import { generateMockStyles } from '@/shared/mocks/data-generators';
 import { buildSampleEntries } from '@/lib/style/sample-entries';
 import type { Style } from '@/types/database';
 import { describe, expect, it } from 'vitest';

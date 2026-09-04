@@ -17,7 +17,7 @@ import { DEFAULT_IMAGE_MODEL, DEFAULT_VIDEO_MODEL } from '@/lib/ai/models';
 import { DEFAULT_ANALYSIS_MODEL } from '@/lib/ai/models.config';
 import type { ScopedDb } from '@/lib/db/scoped';
 import type { StyleConfig } from '@/lib/db/schema';
-import type { GenerationStage } from '@/lib/generation/pipeline';
+import type { GenerationStage } from '@/shared/generation/pipeline';
 import type { StoryboardTriggerInput } from '@/lib/workflow/types';
 
 const triggerWorkflowMock = vi.fn();

@@ -10,8 +10,8 @@ import { uploadResponse } from '@/lib/storage/upload-response';
 import {
   getExtensionFromUrl,
   getMimeTypeFromExtension,
-} from '@/lib/utils/file';
-import { generateId } from '@/lib/db/id';
+} from '@/shared/utils/file';
+import { generateId } from '@/shared/id';
 
 import { getLogger } from '@/lib/observability/logger';
 

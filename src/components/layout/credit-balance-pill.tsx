@@ -16,7 +16,7 @@
  * Subscribes to team billing SSE only while visible and signed in.
  */
 
-import { cn } from '@/lib/utils';
+import { cn } from '@/shared/utils';
 import {
   SidebarMenu,
   SidebarMenuButton,

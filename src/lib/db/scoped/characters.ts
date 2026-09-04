@@ -23,7 +23,7 @@ import {
   loadSceneContextBySequenceFromDb,
   resolveSceneForShot,
 } from '@/lib/scenes/scene-script';
-import { typedEntries } from '@/lib/utils/typed-object';
+import { typedEntries } from '@/shared/utils/typed-object';
 import { matchCharacterToShotTags } from '@/lib/workflows/scene-matching';
 import { createCharacterSheetVariantsMethods } from './character-sheet-variants';
 import { buildEventInsert } from './sequence-events';

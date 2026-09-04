@@ -19,7 +19,7 @@ import { type Client, createClient } from '@libsql/client';
 import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/libsql';
 import { migrate } from 'drizzle-orm/libsql/migrator';
-import { generateId } from '@/lib/db/id';
+import { generateId } from '@/shared/id';
 import {
   characters,
   shotVariants,

@@ -1,7 +1,7 @@
 import { GenerationProgressBanner } from '@/components/generation/generation-progress-banner';
 import { RenderWaitCopy } from '@/components/generation/render-wait-copy';
 import { MotionProgressBanner } from '@/components/generation/motion-progress-banner';
-import { type ModelGenerationStatus } from '@/components/model/base-model-selector';
+import type { ModelGenerationStatus } from '@/components/model/base-model-selector';
 import { DivergenceCompareDialog } from '@/components/scenes/divergence-compare-dialog';
 import { MobileSceneDrawer } from '@/components/scenes/mobile-scene-drawer';
 import { CanvasViewToggle } from '@/components/scenes/canvas-view-toggle';
@@ -26,7 +26,7 @@ import {
   continueStageFromState,
   type ContinueStage,
   type GenerationStage,
-} from '@/lib/generation/pipeline';
+} from '@/shared/generation/pipeline';
 import { getDivergentVariantPromptDiffFn } from '@/functions/prompt-variants';
 import { smartRetryFn } from '@/functions/smart-retry';
 import { useActiveImageModel } from '@/hooks/use-active-image-model';
@@ -42,7 +42,7 @@ import {
   useSceneShotStaleness,
   useSequenceShotStaleness,
 } from '@/hooks/use-shot-staleness';
-import { errorMessage, isInsufficientCreditsError } from '@/lib/errors';
+import { errorMessage, isInsufficientCreditsError } from '@/shared/errors';
 import { adjacentShotId } from '@/lib/scenes/shot-walk';
 import { sequenceKeys, useSequence } from '@/hooks/use-sequences';
 import {
@@ -83,17 +83,17 @@ import {
   resolveImageModel,
   resolveVideoModel,
 } from '@/lib/ai/resolve-asset-models';
-import { DEFAULT_ASPECT_RATIO } from '@/lib/constants/aspect-ratios';
+import { DEFAULT_ASPECT_RATIO } from '@/shared/constants/aspect-ratios';
 import { isSetImageOffered } from '@/lib/shots/set-image-offer';
 import type { FrameVariant, ShotVariant } from '@/lib/db/schema';
 import { rendersReferenceOnly } from '@/lib/shots/use-start-frame';
 import { isBatchMotionEligible, type ShotView } from '@/lib/shots/shot-view';
-import { analyzeLoadedFailures } from '@/lib/failures/failure-analysis';
+import { analyzeLoadedFailures } from '@/shared/failures/failure-analysis';
 import type { GenerationPhaseConfig } from '@/lib/realtime/generation-stream.reducer';
 import { useGenerationStream } from '@/lib/realtime/use-generation-stream';
 import { useStaleDetected } from '@/lib/realtime/use-stale-detected';
 import type { Sequence } from '@/types/database';
-import { cn } from '@/lib/utils';
+import { cn } from '@/shared/utils';
 import { ChevronDown } from 'lucide-react';
 import { usePostHog } from '@posthog/react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -104,7 +104,7 @@ import { captureSequenceReadySeen } from '@/lib/observability/player-events';
 import {
   estimateSceneCount,
   estimateTotalSeconds,
-} from '@/lib/generation/time-estimate';
+} from '@/shared/generation/time-estimate';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 

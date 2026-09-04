@@ -6,7 +6,7 @@
  *
  * Falls back to a CTA ("Export as MP4 to download") when the browser can't
  * decode the source codecs. The export pipeline lives in
- * `src/lib/sequence-player/export.ts`.
+ * `src/shared/sequence-player/export.ts`.
  */
 
 import { Button } from '@/components/ui/button';
@@ -15,7 +15,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import {
   getAspectRatioClassName,
   type AspectRatio,
-} from '@/lib/constants/aspect-ratios';
+} from '@/shared/constants/aspect-ratios';
 import {
   Tooltip,
   TooltipContent,
@@ -24,13 +24,13 @@ import {
 import {
   SequencePlayerEngine,
   type SequencePlayerMeta,
-} from '@/lib/sequence-player/playback';
-import type { SceneInput } from '@/lib/sequence-player/concatenated-video-source';
-import { scenePlaybackKey } from '@/lib/sequence-player/playback-scenes';
+} from '@/shared/sequence-player/playback';
+import type { SceneInput } from '@/shared/sequence-player/concatenated-video-source';
+import { scenePlaybackKey } from '@/shared/sequence-player/playback-scenes';
 import {
   playAttemptUiState,
   type PlayAttemptResult,
-} from '@/lib/sequence-player/play-attempt';
+} from '@/shared/sequence-player/play-attempt';
 import {
   captureVideoPlay,
   captureVideoPlayFailed,
@@ -39,7 +39,7 @@ import {
   type PlaybackTracker,
   type VideoPlaySource,
 } from '@/lib/observability/player-events';
-import { cn } from '@/lib/utils';
+import { cn } from '@/shared/utils';
 import { usePostHog } from '@posthog/react';
 import {
   AlertCircle,

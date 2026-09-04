@@ -42,7 +42,7 @@ import {
 import { getModelDetailFn, getModelFamilyFn } from '@/functions/model-catalog';
 import { BILLING_BALANCE_KEY } from '@/hooks/use-billing-balance';
 import { useFalBillingGate } from '@/hooks/use-billing-gate';
-import { isInsufficientCreditsError } from '@/lib/errors';
+import { isInsufficientCreditsError } from '@/shared/errors';
 import type { GeneratedAsset } from '@/lib/db/schema';
 import {
   CATALOG_ACTIVITIES,

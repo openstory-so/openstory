@@ -20,8 +20,8 @@ import {
 } from '@/components/ui/sidebar';
 import { FeedbackDialog } from '@/components/feedback/feedback-dialog';
 import { useLowBalanceWarning } from '@/hooks/use-low-balance-warning';
-import { MODELS_ENABLED } from '@/lib/flags';
-import { SITE_CONFIG } from '@/lib/marketing/constants';
+import { MODELS_ENABLED } from '@/shared/flags';
+import { SITE_CONFIG } from '@/shared/marketing/constants';
 import { usePostHog } from '@posthog/react';
 import { Link, useRouterState } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';

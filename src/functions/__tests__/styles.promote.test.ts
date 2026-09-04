@@ -3,7 +3,7 @@
  * server-fn middleware chain is covered by e2e; this pins the decision.
  */
 import { describe, expect, it } from 'vitest';
-import { NotFoundError, ValidationError } from '@/lib/errors';
+import { NotFoundError, ValidationError } from '@/shared/errors';
 import { placeholderAutoStyleDraft } from '@/lib/style/auto-style';
 import { assertPromotableAutoStyle } from '@/functions/styles';
 

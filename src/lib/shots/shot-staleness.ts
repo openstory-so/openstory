@@ -23,7 +23,7 @@ import {
   type ShotPromptContextSequence,
 } from '@/lib/ai/prompt-context';
 import type { Scene } from '@/lib/ai/scene-analysis.schema';
-import type { AspectRatio } from '@/lib/constants/aspect-ratios';
+import type { AspectRatio } from '@/shared/constants/aspect-ratios';
 import type { Frame, FrameVariant, Shot } from '@/lib/db/schema';
 import { dbSceneId } from '@/lib/db/schema/scenes';
 import {

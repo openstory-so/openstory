@@ -5,7 +5,7 @@
  */
 
 import type { Scene } from '@/lib/ai/scene-analysis.schema';
-import { generateId } from '@/lib/db/id';
+import { generateId } from '@/shared/id';
 
 /** Screenplay markers that typically indicate scene boundaries */
 const SCENE_HEADING_PATTERN = /^(?:INT\.|EXT\.|INT\/EXT\.|I\/E\.)[\s]/i;

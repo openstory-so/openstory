@@ -1,5 +1,5 @@
 import { OpenStoryLogo } from '@/components/icons/openstory-logo';
-import { SITE_CONFIG } from '@/lib/marketing/constants';
+import { SITE_CONFIG } from '@/shared/marketing/constants';
 
 export const OgImageLinkedIn: React.FC = () => {
   return (

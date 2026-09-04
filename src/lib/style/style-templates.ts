@@ -1,4 +1,4 @@
-import { type StyleConfig } from '@/lib/style/style-config';
+import type { StyleConfig } from '@/lib/style/style-config';
 import { styleSlug } from '@/lib/style/style-slug';
 import { getPublicAssetsDomain } from '@/lib/storage/public-assets';
 import type { Style } from '@/types/database';

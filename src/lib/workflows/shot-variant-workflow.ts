@@ -17,7 +17,7 @@ import {
 import {
   DEFAULT_IMAGE_SIZE,
   getVariantGridConfig,
-} from '@/lib/constants/aspect-ratios';
+} from '@/shared/constants/aspect-ratios';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import type { ImageGenerationParams } from '@/lib/image/image-generation';
 import { recordProvenance } from '@/lib/compliance/provenance';

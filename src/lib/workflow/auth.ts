@@ -2,7 +2,7 @@
  * Authentication utilities for workflows
  */
 
-import { AuthenticationError } from '@/lib/errors';
+import { AuthenticationError } from '@/shared/errors';
 import type { SequenceWorkflowContext } from './types';
 
 /**

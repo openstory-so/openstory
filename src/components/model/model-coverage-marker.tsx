@@ -4,7 +4,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import type { ModelCoverage } from '@/lib/model/sequence-model-coverage';
+import type { ModelCoverage } from '@/shared/model/sequence-model-coverage';
 import { Check, CircleAlert, CircleCheck, Loader2 } from 'lucide-react';
 
 /**

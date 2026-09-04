@@ -11,7 +11,7 @@
  * render queues until the SDK's `loaded` callback calls `flushReactErrors`.
  */
 
-import { errorCode } from '@/lib/errors';
+import { errorCode } from '@/shared/errors';
 import { getLogger } from '@/lib/observability/logger';
 import posthog from 'posthog-js';
 import type { ErrorInfo } from 'react';

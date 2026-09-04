@@ -27,7 +27,7 @@ import {
 } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
-import { copyTextToClipboard } from '@/lib/utils/clipboard';
+import { copyTextToClipboard } from '@/shared/utils/clipboard';
 import {
   createPublicApiKeyFn,
   listPublicApiKeysFn,

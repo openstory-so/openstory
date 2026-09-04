@@ -19,7 +19,7 @@ import {
   pickVideoResolution,
   tiersForTokens,
   type Resolution,
-} from '@/lib/constants/resolutions';
+} from '@/shared/constants/resolutions';
 import {
   MOTION_JSON_SCHEMAS,
   MOTION_TRANSFORMS,

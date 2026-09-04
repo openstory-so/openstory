@@ -18,7 +18,7 @@ import type { SceneWithScript } from '@/hooks/use-scenes';
 import { useSetSequenceMusic } from '@/hooks/use-sequences';
 import type { TabValue } from '@/components/scenes/scene-script-prompts';
 import type { TextToImageModel } from '@/lib/ai/models';
-import type { AspectRatio } from '@/lib/constants/aspect-ratios';
+import type { AspectRatio } from '@/shared/constants/aspect-ratios';
 import {
   selectionScope,
   selectionShots,
@@ -28,8 +28,8 @@ import type { ShotView } from '@/lib/shots/shot-view';
 import type { Sequence } from '@/types/database';
 import { Download, Film, Link, Loader2 } from 'lucide-react';
 import { useMemo } from 'react';
-import type { ExportProgress } from '@/lib/sequence-player/export';
-import { toPlaybackScenes } from '@/lib/sequence-player/playback-scenes';
+import type { ExportProgress } from '@/shared/sequence-player/export';
+import { toPlaybackScenes } from '@/shared/sequence-player/playback-scenes';
 
 type SceneCanvasProps = {
   selection: SceneSelection;

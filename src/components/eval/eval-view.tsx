@@ -19,7 +19,7 @@ import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { VideoIcon } from 'lucide-react';
 import { Link } from '@tanstack/react-router';
-import type { AspectRatio } from '@/lib/constants/aspect-ratios';
+import type { AspectRatio } from '@/shared/constants/aspect-ratios';
 import type {
   SequencesListPrefs,
   SequencesListSearch,

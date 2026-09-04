@@ -6,7 +6,7 @@
 import { authWithTeamRequestMiddleware } from '@/functions/middleware';
 import { runApiV1Handler } from '@/lib/api-v1/errors';
 import { styleDocument } from '@/lib/api-v1/styles';
-import { NotFoundError } from '@/lib/errors';
+import { NotFoundError } from '@/shared/errors';
 import { createFileRoute } from '@tanstack/react-router';
 
 export const Route = createFileRoute('/api/v1/styles/$id')({

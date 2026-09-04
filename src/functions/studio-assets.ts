@@ -13,8 +13,8 @@ import {
 } from '@/lib/ai/studio-prompt-draft';
 import { reportMissingBillingCost } from '@/lib/billing/billing-observability';
 import { estimateLLMCost } from '@/lib/billing/cost-estimation';
-import { InsufficientCreditsError } from '@/lib/errors';
-import { mediaUrlSchema } from '@/lib/schemas/media-url.schemas';
+import { InsufficientCreditsError } from '@/shared/errors';
+import { mediaUrlSchema } from '@/shared/schemas/media-url.schemas';
 import { getLogger } from '@/lib/observability/logger';
 import { STORAGE_BUCKETS, r2KeyFromUrl } from '@/lib/storage/buckets';
 import { deleteFile } from '@/lib/storage/storage-cloudflare';

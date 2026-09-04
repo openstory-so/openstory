@@ -20,7 +20,7 @@ import { getBytePlusImageModelId, IMAGE_MODELS } from '@/lib/ai/models';
 import {
   DEFAULT_IMAGE_SIZE,
   type ImageSize,
-} from '@/lib/constants/aspect-ratios';
+} from '@/shared/constants/aspect-ratios';
 import type { ImageGenerationParams } from '@/lib/image/build-image-request';
 import type {
   BytePlusImageModel,

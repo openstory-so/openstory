@@ -3,8 +3,8 @@ import {
   isResolution,
   RESOLUTION_OPTIONS,
   type Resolution,
-} from '@/lib/constants/resolutions';
-import { type FC } from 'react';
+} from '@/shared/constants/resolutions';
+import type { FC } from 'react';
 
 type ResolutionPillsProps = {
   value: Resolution;

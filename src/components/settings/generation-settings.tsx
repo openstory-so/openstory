@@ -28,8 +28,8 @@ import {
   type TextToImageModel,
 } from '@/lib/ai/models';
 import type { AnalysisModelId } from '@/lib/ai/models.config';
-import type { AspectRatio } from '@/lib/constants/aspect-ratios';
-import type { Resolution } from '@/lib/constants/resolutions';
+import type { AspectRatio } from '@/shared/constants/aspect-ratios';
+import type { Resolution } from '@/shared/constants/resolutions';
 import {
   availableResolutions,
   resolutionCeilingNote,

@@ -1,6 +1,6 @@
 import type { GeneratedAsset, GeneratedAssetOutput } from '@/lib/db/schema';
-import type { AspectRatio } from '@/lib/constants/aspect-ratios';
-import { aspectRatioSchema } from '@/lib/constants/aspect-ratios';
+import type { AspectRatio } from '@/shared/constants/aspect-ratios';
+import { aspectRatioSchema } from '@/shared/constants/aspect-ratios';
 
 export function studioPrimaryOutput(
   asset: GeneratedAsset

@@ -6,7 +6,7 @@
  * matches a freshly computed one means the inputs that produced the artifact
  * have changed — the artifact is stale.
  *
- * The existing `simpleHash` in `src/lib/utils/hash.ts` is a 32-bit
+ * The existing `simpleHash` in `src/shared/utils/hash.ts` is a 32-bit
  * non-cryptographic hash used for prompt-change detection. It is not
  * collision-resistant and not appropriate for cross-entity dependency
  * tracking, hence this separate module.

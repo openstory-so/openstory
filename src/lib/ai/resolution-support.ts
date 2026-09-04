@@ -15,12 +15,12 @@ import type { ImageToVideoModel, TextToImageModel } from '@/lib/ai/models';
 import {
   DEFAULT_ASPECT_RATIO,
   type AspectRatio,
-} from '@/lib/constants/aspect-ratios';
+} from '@/shared/constants/aspect-ratios';
 import {
   RESOLUTION_OPTIONS,
   RESOLUTIONS,
   type Resolution,
-} from '@/lib/constants/resolutions';
+} from '@/shared/constants/resolutions';
 import { imageResolutionTiers } from '@/lib/image/build-image-request';
 import { motionResolutionTiers } from '@/lib/motion/build-model-input';
 

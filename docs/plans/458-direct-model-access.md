@@ -146,7 +146,7 @@ call, R2 upload, cost deduction, failure handling. Steps write the row status tr
 - Commit regularly with clear messages; lefthook runs lint/format/typecheck/knip on commit.
   End commit messages with `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>`. Do NOT push.
 - No `any`/`unknown`/`Record<string, unknown>`; no non-null assertions; typedEntries/
-  typedFromEntries from `@/lib/utils/typed-object` instead of Object.entries/fromEntries.
+  typedFromEntries from `@/shared/utils/typed-object` instead of Object.entries/fromEntries.
 - DB access only in server handlers/services — never components. ULID pks. Migrations only via
   `bun db:generate`.
 - React: TanStack Query + Suspense (no isLoading), shadcn base components, Tailwind layout-only,

@@ -1,7 +1,7 @@
-import { mediaUrlSchema } from '@/lib/schemas/media-url.schemas';
+import { mediaUrlSchema } from '@/shared/schemas/media-url.schemas';
 import { getSignedUploadUrl } from '#storage';
 import { requireTeamAdminAccess } from '@/lib/auth/action-utils';
-import { generateId } from '@/lib/db/id';
+import { generateId } from '@/shared/id';
 import {
   getPublicLibraryLocationById,
   listPublicLibraryLocations,
@@ -12,7 +12,7 @@ import { STORAGE_BUCKETS } from '@/lib/storage/buckets';
 import {
   getExtensionFromUrl,
   getMimeTypeFromExtension,
-} from '@/lib/utils/file';
+} from '@/shared/utils/file';
 import { triggerWorkflow } from '@/lib/workflow/client';
 import { buildWorkflowLabel } from '@/lib/workflow/labels';
 import type { LibraryLocationSheetWorkflowInput } from '@/lib/workflow/types';

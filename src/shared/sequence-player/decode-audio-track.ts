@@ -10,7 +10,7 @@
  * every `Input` open.
  */
 
-import { assembleChannelData } from '@/lib/browser-merge';
+import { assembleChannelData } from '@/shared/browser-merge';
 import { EncodedPacketSink, type InputAudioTrack } from 'mediabunny';
 
 export async function decodeAudioTrack(

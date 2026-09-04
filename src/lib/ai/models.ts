@@ -7,7 +7,7 @@
 // there is no runtime cycle.
 import { isNativeGrokVideoModel } from '@/lib/ai/grok-native';
 import type { AnalysisModelId } from '@/lib/ai/models.config';
-import type { AspectRatio } from '@/lib/constants/aspect-ratios';
+import type { AspectRatio } from '@/shared/constants/aspect-ratios';
 import { MOTION_INPUT_SCHEMAS } from '@/lib/motion/endpoint-map';
 // Type-only: the Seedream adapter narrows `model` to a literal union, so the
 // catalog's `byteplusId` has to be that union rather than a bare string —
