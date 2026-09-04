@@ -3,6 +3,10 @@
  *
  * Better Auth sends the signed query to `/oauth/consent-start`, which packs it
  * into `q` and 302s here so TanStack cannot collapse repeated `ba_param`.
+ *
+ * Who is asking, for what, and which team the grant bills to load in the
+ * route loader so the first HTML already has Approve — no client fetch, no
+ * skeleton.
  */
 
 import { Button } from '@/components/ui/button';
@@ -13,10 +17,10 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { Skeleton } from '@/components/ui/skeleton';
 import {
   decideOAuthConsentFn,
   getOAuthConsentContextFn,
+  type OAuthConsentContext,
 } from '@/functions/oauth-consent';
 import {
   consentPageHref,
@@ -27,12 +31,12 @@ import {
 } from '@/lib/auth/oauth-query-snapshot';
 import { requireSessionOrRedirect } from '@/lib/auth/route-guards';
 import { errorMessage } from '@/lib/errors';
-import { useMutation, useSuspenseQuery } from '@tanstack/react-query';
+import { useMutation } from '@tanstack/react-query';
 import { createFileRoute, redirect } from '@tanstack/react-router';
 import { createIsomorphicFn } from '@tanstack/react-start';
 import { getRequest } from '@tanstack/react-start/server';
 import { Check } from 'lucide-react';
-import { Suspense, useState } from 'react';
+import { useState } from 'react';
 import { toast } from 'sonner';
 
 const CONSENT_STALE_MESSAGE =
@@ -62,9 +66,19 @@ export const Route = createFileRoute('/_app/oauth/consent')({
       },
     ],
   }),
-  loader: () => ({
-    oauthQuery: resolveOAuthQuery(readConsentOAuthQuery()),
-  }),
+  // One-shot signed request — don't background-refetch after SSR.
+  staleTime: Infinity,
+  loader: async () => {
+    const oauthQuery = resolveOAuthQuery(readConsentOAuthQuery());
+    const { clientId, scope, redirectUri } =
+      displayFieldsFromOAuthQuery(oauthQuery);
+    const consent: OAuthConsentContext | null = clientId
+      ? await getOAuthConsentContextFn({
+          data: { clientId, scope, redirectUri },
+        })
+      : null;
+    return { oauthQuery, consent };
+  },
   beforeLoad: async ({ context: { queryClient } }) => {
     const rawSearch = readConsentOAuthQuery();
     const href = consentPageHref(rawSearch);
@@ -78,7 +92,7 @@ export const Route = createFileRoute('/_app/oauth/consent')({
 });
 
 function ConsentPage() {
-  const { oauthQuery: loaderQuery } = Route.useLoaderData();
+  const { oauthQuery: loaderQuery, consent } = Route.useLoaderData();
   const oauthQuery = pickOAuthQuery([
     resolveOAuthQuery(loaderQuery),
     typeof window !== 'undefined'
@@ -87,8 +101,6 @@ function ConsentPage() {
         )
       : undefined,
   ]);
-  const { clientId, scope, redirectUri } =
-    displayFieldsFromOAuthQuery(oauthQuery);
 
   return (
     <div className="mx-auto w-full max-w-md p-6">
@@ -101,15 +113,8 @@ function ConsentPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
-          {clientId ? (
-            <Suspense fallback={<Skeleton className="h-40 w-full" />}>
-              <ConsentDecision
-                clientId={clientId}
-                scope={scope}
-                redirectUri={redirectUri}
-                oauthQuery={oauthQuery}
-              />
-            </Suspense>
+          {consent ? (
+            <ConsentDecision consent={consent} oauthQuery={oauthQuery} />
           ) : (
             <p role="alert">
               This page is missing its authorization request. Start again from
@@ -123,24 +128,13 @@ function ConsentPage() {
 }
 
 function ConsentDecision({
-  clientId,
-  scope,
-  redirectUri,
+  consent,
   oauthQuery,
 }: {
-  clientId: string;
-  scope: string;
-  redirectUri: string | undefined;
+  consent: OAuthConsentContext;
   oauthQuery: string;
 }) {
   const [outcome, setOutcome] = useState<'granted' | 'denied' | null>(null);
-  const { data } = useSuspenseQuery({
-    queryKey: ['oauthConsent', clientId, scope, redirectUri],
-    queryFn: () =>
-      getOAuthConsentContextFn({
-        data: { clientId, scope, redirectUri },
-      }),
-  });
 
   const decide = useMutation({
     // Suppress the global MutationCache toast — we render our own below.
@@ -165,7 +159,7 @@ function ConsentDecision({
     },
   });
 
-  if (!data.client) {
+  if (!consent.client) {
     return (
       <p role="alert">
         This app isn’t registered with OpenStory, or its registration has
@@ -190,7 +184,7 @@ function ConsentDecision({
     );
   }
 
-  const { client, scopes, team } = data;
+  const { client, scopes, team } = consent;
 
   return (
     <div className="flex flex-col gap-4">
