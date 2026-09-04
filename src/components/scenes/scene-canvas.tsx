@@ -227,7 +227,7 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
         progressMessage={progressMessage}
         retry={retry}
         posterUrl={sequence?.posterUrl ?? undefined}
-        generateStartFrames={sequence?.generateStartFrames}
+        sequence={sequence}
         className="h-full max-h-none w-full"
         wrapperClassName="h-full w-full"
         frameOverlay={frameOverlay}
@@ -268,7 +268,7 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
             aspectRatio={aspectRatio}
             progressMessage={progressMessage}
             posterUrl={sequence?.posterUrl ?? undefined}
-            generateStartFrames={sequence?.generateStartFrames}
+            sequence={sequence}
             className="h-full max-h-none w-full"
             wrapperClassName="h-full w-full"
           />

@@ -20,7 +20,10 @@ import { cn } from '@/shared/utils';
 import { plainSceneTitle } from '@/shared/utils/markdown-plain';
 import { copyTextToClipboard } from '@/shared/utils/clipboard';
 import type { ShotView } from '@/lib/shots/shot-view';
-import { usesStartFrame } from '@/lib/shots/use-start-frame';
+import {
+  usesStartFrame,
+  type StartFrameSequence,
+} from '@/lib/shots/use-start-frame';
 import { AppImage } from '@/components/ui/app-image';
 import { playerPosterSrc } from './player-poster';
 import { usePostHog } from '@posthog/react';
@@ -71,8 +74,8 @@ type ScenePlayerProps = {
    */
   retry?: { attempt: number; maxAttempts?: number };
   posterUrl?: string;
-  /** Sequence default for start-frame vs reference-only. */
-  generateStartFrames?: boolean;
+  /** Sequence row — `usesStartFrame` reads the default + shot override. */
+  sequence?: StartFrameSequence | null;
   /**
    * Extra node rendered absolutely inside the frame container (#986) — e.g. the
    * starting-frame variants control. Positioned by the overlay itself.
@@ -98,7 +101,7 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
   progressMessage,
   retry,
   posterUrl,
-  generateStartFrames = false,
+  sequence,
   frameOverlay,
   onTimeUpdate,
   onEnded,
@@ -351,7 +354,10 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
         stillUrl: currentShot.image?.url,
         previewUrl: currentShot.previewThumbnailUrl,
         overrideImageUrl,
-        usesStartFrame: usesStartFrame(currentShot, { generateStartFrames }),
+        usesStartFrame: usesStartFrame(
+          currentShot,
+          sequence ?? { generateStartFrames: false }
+        ),
       });
   const isPreviewImage =
     !!displayImage &&
