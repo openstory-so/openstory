@@ -1,21 +1,19 @@
 /**
- * Labeled Download / Copy for the sequence cut. Lives in the Canvas/Script
- * toggle's trailing slot — always on screen, never on the video overlay
- * (that row is already music + mixed-res + player chrome).
- *
- * Same content-addressed cache as theatre play: a matching MP4 is reused;
- * otherwise the click creates one first.
+ * Canvas-view trailing control: an Export dropdown in the same slot as
+ * Copy script. Download / Copy stay as icon overlay on the theatre player;
+ * this menu is the place later formats will land.
  */
 
 import { Button } from '@/components/ui/button';
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import type { SequenceExportState } from '@/components/theatre/use-sequence-export';
 import type { ExportProgress } from '@/shared/sequence-player/export';
-import { Download, Link, Loader2 } from 'lucide-react';
+import { ChevronDown, Download, FileDown, Link, Loader2 } from 'lucide-react';
 
 export function formatExportProgress(progress: ExportProgress | null): string {
   if (!progress) return 'Creating MP4…';
@@ -46,69 +44,53 @@ export const SequenceExportActions: React.FC<{
   sequenceExport: SequenceExportState;
 }> = ({ sequenceExport }) => {
   const running = sequenceExport.isRunning;
-  const progressLabel = formatExportProgress(sequenceExport.progress);
   const pending =
     !running && !sequenceExport.canExport && !sequenceExport.freshExportUrl;
-  const pendingHint = pending
-    ? `${sequenceExport.clipsReady} of ${sequenceExport.clipsTotal} clips ready`
-    : null;
-  const downloadHint = running
-    ? progressLabel
-    : (pendingHint ?? 'Download MP4');
-  const copyHint = running ? progressLabel : (pendingHint ?? 'Copy link');
-  const downloadLabel = running ? 'Creating…' : 'Download MP4';
-  const copyLabel = running ? 'Creating…' : 'Copy link';
+  const label = running
+    ? formatExportProgress(sequenceExport.progress)
+    : pending
+      ? `${sequenceExport.clipsReady} of ${sequenceExport.clipsTotal} clips ready`
+      : 'Export';
 
   return (
-    <div className="flex items-center justify-end">
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span className="inline-flex">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-11 px-2 md:h-8 md:px-2.5"
-              aria-label={downloadHint}
-              aria-busy={running}
-              disabled={pending}
-              onClick={sequenceExport.download}
-            >
-              {running ? (
-                <Loader2 className="h-4 w-4 animate-spin md:mr-1.5 md:h-3.5 md:w-3.5" />
-              ) : (
-                <Download className="h-4 w-4 md:mr-1.5 md:h-3.5 md:w-3.5" />
-              )}
-              <span className="hidden md:inline">{downloadLabel}</span>
-            </Button>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-11 px-2 md:h-8 md:px-2.5"
+          aria-label={label}
+          aria-busy={running}
+          disabled={pending}
+        >
+          {running ? (
+            <Loader2 className="h-4 w-4 animate-spin md:mr-1.5 md:h-3.5 md:w-3.5" />
+          ) : (
+            <FileDown className="h-4 w-4 md:mr-1.5 md:h-3.5 md:w-3.5" />
+          )}
+          <span className="hidden md:inline">
+            {running ? 'Creating…' : 'Export'}
           </span>
-        </TooltipTrigger>
-        <TooltipContent>{downloadHint}</TooltipContent>
-      </Tooltip>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span className="inline-flex">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-11 px-2 md:h-8 md:px-2.5"
-              aria-label={copyHint}
-              aria-busy={running}
-              disabled={pending}
-              onClick={sequenceExport.copyLink}
-            >
-              {running ? (
-                <Loader2 className="h-4 w-4 animate-spin md:mr-1.5 md:h-3.5 md:w-3.5" />
-              ) : (
-                <Link className="h-4 w-4 md:mr-1.5 md:h-3.5 md:w-3.5" />
-              )}
-              <span className="hidden md:inline">{copyLabel}</span>
-            </Button>
-          </span>
-        </TooltipTrigger>
-        <TooltipContent>{copyHint}</TooltipContent>
-      </Tooltip>
-    </div>
+          <ChevronDown className="hidden size-3 md:inline" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem
+          disabled={pending || running}
+          onClick={sequenceExport.download}
+        >
+          <Download />
+          Download MP4
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          disabled={pending || running}
+          onClick={sequenceExport.copyLink}
+        >
+          <Link />
+          Copy link
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 };

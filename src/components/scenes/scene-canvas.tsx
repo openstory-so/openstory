@@ -5,7 +5,13 @@ import { StartingFrameVariants } from '@/components/scenes/starting-frame-varian
 import { formatExportProgress } from '@/components/scenes/sequence-export-actions';
 import { SequencePlayer } from '@/components/theatre/sequence-player';
 import type { SequenceExportState } from '@/components/theatre/use-sequence-export';
+import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import type { SceneWithScript } from '@/hooks/use-scenes';
 import { useSetSequenceMusic } from '@/hooks/use-sequences';
 import type { TabValue } from '@/components/scenes/scene-script-prompts';
@@ -18,7 +24,7 @@ import {
 } from '@/lib/scenes/scene-selection';
 import type { ShotView } from '@/lib/shots/shot-view';
 import type { Sequence } from '@/types/database';
-import { Film } from 'lucide-react';
+import { Download, Film, Link, Loader2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { theatrePlaybackMode } from '@/shared/sequence-player/theatre-playback-mode';
 import { toPlaybackScenes } from '@/shared/sequence-player/playback-scenes';
@@ -54,6 +60,83 @@ type SceneCanvasProps = {
    */
   firstRunActive?: boolean;
   sequenceExport: SequenceExportState;
+};
+
+/**
+ * Download + Copy on the theatre player. Icon-only so they fit the existing
+ * overlay row (music + mixed-res). The Canvas-bar Export menu is the labeled
+ * home for more formats later.
+ */
+const TheatreShareOverlay: React.FC<{
+  sequenceExport: SequenceExportState;
+}> = ({ sequenceExport }) => {
+  const running = sequenceExport.isRunning;
+  const progressLabel = formatExportProgress(sequenceExport.progress);
+  const pending =
+    !running && !sequenceExport.canExport && !sequenceExport.freshExportUrl;
+  const wait = running
+    ? progressLabel
+    : pending
+      ? `Export · ${sequenceExport.clipsReady} of ${sequenceExport.clipsTotal} clips ready`
+      : null;
+  const downloadLabel =
+    wait ??
+    (sequenceExport.freshExportUrl
+      ? 'Download MP4'
+      : 'Export and download MP4');
+  const copyLabel =
+    wait ??
+    (sequenceExport.freshExportUrl
+      ? 'Copy video link'
+      : 'Export and copy video link');
+  return (
+    <>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="inline-flex">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-11 w-11 bg-black/50 text-white hover:bg-black/70 md:h-8 md:w-8"
+              aria-label={downloadLabel}
+              aria-busy={running}
+              disabled={pending}
+              onClick={sequenceExport.download}
+            >
+              {running ? (
+                <Loader2 className="h-5 w-5 animate-spin md:h-4 md:w-4" />
+              ) : (
+                <Download className="h-5 w-5 md:h-4 md:w-4" />
+              )}
+            </Button>
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>{downloadLabel}</TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="inline-flex">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-11 w-11 bg-black/50 text-white hover:bg-black/70 md:h-8 md:w-8"
+              aria-label={copyLabel}
+              aria-busy={running}
+              disabled={pending}
+              onClick={sequenceExport.copyLink}
+            >
+              {running ? (
+                <Loader2 className="h-5 w-5 animate-spin md:h-4 md:w-4" />
+              ) : (
+                <Link className="h-5 w-5 md:h-4 md:w-4" />
+              )}
+            </Button>
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>{copyLabel}</TooltipContent>
+      </Tooltip>
+    </>
+  );
 };
 
 export const SceneCanvas: React.FC<SceneCanvasProps> = ({
@@ -257,6 +340,11 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
         }
         onPreviewLive={() => setPreviewLive(true)}
         onPrepared={(meta) => setCanTransmux(meta.canTransmux)}
+        overlayActions={
+          scope === 'sequence' ? (
+            <TheatreShareOverlay sequenceExport={sequenceExport} />
+          ) : undefined
+        }
       />
     </CanvasMediaStage>
   );
