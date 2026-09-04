@@ -66,10 +66,12 @@ test.describe('Images and Videos studio', () => {
     await expect(dialog).toBeVisible();
     await dialog.getByRole('button', { name: 'Draw' }).click();
     await expect(dialog.getByLabel('Drawing canvas')).toBeVisible();
+    await expect(dialog.getByText('Click to draw.')).toBeVisible();
     await expect(
       dialog.getByRole('button', { name: 'Add drawing' })
     ).toBeDisabled();
     await expect(dialog.getByRole('button', { name: 'Undo' })).toBeDisabled();
+    await expect(dialog.getByRole('button', { name: 'Erase' })).toBeVisible();
   });
 
   test('signed-in user can open Models from the sidebar', async ({ page }) => {

@@ -1,9 +1,15 @@
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { Eraser, PencilLine, RotateCcw, Trash2 } from 'lucide-react';
-import { useEffect, useRef, useState, type PointerEvent } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type PointerEvent,
+} from 'react';
 
-type DrawingTool = 'pen' | 'mask';
+type DrawingTool = 'pen' | 'erase';
 
 type StudioDrawingCanvasProps = {
   className?: string;
@@ -14,8 +20,13 @@ type StudioDrawingCanvasProps = {
 
 const CANVAS_WIDTH = 960;
 const CANVAS_HEIGHT = 540;
-const MAX_UNDO_STEPS = 3;
+const MAX_UNDO_STEPS = 25;
 const STROKE_WIDTH = 8;
+const PEN_CURSOR = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cpath fill='%23111111' d='M22.8 4.5a2.4 2.4 0 0 1 3.4 0l1.3 1.3a2.4 2.4 0 0 1 0 3.4l-2 2-4.7-4.7 2-2Z'/%3E%3Cpath fill='%23111111' d='m7.7 20.2 12-12 4.7 4.7-12 12-5.5.8z'/%3E%3Cpath fill='%23ffffff' d='m8.5 19.4 4.1 4.1-4.9.8z'/%3E%3C/g%3E%3C/svg%3E") 4 28, crosshair`;
+
+function isBlankSnapshot(snapshot: ImageData) {
+  return snapshot.data.every((value) => value === 255);
+}
 
 function drawStroke(
   context: CanvasRenderingContext2D,
@@ -24,7 +35,7 @@ function drawStroke(
   to: { x: number; y: number }
 ) {
   context.save();
-  context.strokeStyle = tool === 'mask' ? '#ffffff' : '#111111';
+  context.strokeStyle = tool === 'erase' ? '#ffffff' : '#111111';
   context.lineWidth = STROKE_WIDTH;
   context.lineCap = 'round';
   context.lineJoin = 'round';
@@ -59,6 +70,10 @@ export function StudioDrawingCanvas({
     context.fillStyle = '#ffffff';
     context.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
   }, []);
+
+  const canvasCursorStyle: CSSProperties = {
+    cursor: PEN_CURSOR,
+  };
 
   const getContext = (): CanvasRenderingContext2D | null =>
     canvasRef.current?.getContext('2d') ?? null;
@@ -147,10 +162,7 @@ export function StudioDrawingCanvas({
     if (!snapshot) return;
     context.putImageData(snapshot, 0, 0);
     setUndoStack((previous) => previous.slice(0, -1));
-    const blank = snapshot.data.every((value, index) =>
-      (index + 1) % 4 === 0 ? value === 255 : value === 255
-    );
-    setHasInk(!blank);
+    setHasInk(!isBlankSnapshot(snapshot));
   };
 
   const handleClear = () => {
@@ -195,13 +207,13 @@ export function StudioDrawingCanvas({
         </Button>
         <Button
           type="button"
-          variant={tool === 'mask' ? 'default' : 'outline'}
+          variant={tool === 'erase' ? 'default' : 'outline'}
           size="sm"
           disabled={disabled || submitting}
-          onClick={() => setTool('mask')}
+          onClick={() => setTool('erase')}
         >
           <Eraser aria-hidden="true" />
-          Mask
+          Erase
         </Button>
         <Button
           type="button"
@@ -223,9 +235,6 @@ export function StudioDrawingCanvas({
           <Trash2 aria-hidden="true" />
           Clear
         </Button>
-        <p className="ml-auto text-xs text-muted-foreground">
-          Freehand only. Undo up to 3 strokes.
-        </p>
       </div>
 
       <div className="rounded-lg border bg-muted/40 p-3">
@@ -234,7 +243,8 @@ export function StudioDrawingCanvas({
           width={CANVAS_WIDTH}
           height={CANVAS_HEIGHT}
           aria-label="Drawing canvas"
-          className="block aspect-video w-full cursor-crosshair rounded-md border bg-white shadow-xs"
+          className="block aspect-video w-full rounded-md border bg-white shadow-xs"
+          style={canvasCursorStyle}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={finishStroke}
@@ -245,10 +255,7 @@ export function StudioDrawingCanvas({
         />
       </div>
 
-      <p className="text-sm text-muted-foreground">
-        Draw in black, or use Mask to paint white over existing lines. The
-        sketch is flattened to a PNG reference when you add it.
-      </p>
+      <p className="text-sm text-muted-foreground">Click to draw.</p>
 
       <div className="flex justify-end gap-2">
         <Button
