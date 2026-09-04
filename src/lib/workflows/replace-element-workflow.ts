@@ -260,7 +260,8 @@ export class ReplaceElementWorkflow extends OpenStoryWorkflowEntrypoint<ReplaceE
         elementId,
         'analyzing'
       );
-      const llmKeyInfo = await scopedDb.credentials.resolveLlmKey();
+      const llmKeyInfo =
+        await scopedDb.credentials.resolveLlmKey(ELEMENT_VISION_MODEL);
       const result = await describeElementImage({
         imageUrl: newImageUrl,
         filename: input.newFilename,

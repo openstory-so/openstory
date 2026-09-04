@@ -3,10 +3,11 @@
  *
  * Creates TanStack AI adapters for our chat models. Grok models go to xAI
  * directly when an xAI key is resolvable (issue #1167), and Gemini models to
- * Google's own Gemini API when a Google key is resolvable; everything else —
- * and Grok/Gemini with no native key — goes to OpenRouter, either directly or
- * through fal's OpenAI-compatible OpenRouter endpoint (so a team with only a
- * fal key still covers LLM calls — issue #895).
+ * Google's own Gemini API when a Google key is resolvable. LLMTR goes through
+ * the OpenAI-compatible Chat Completions adapter (`openaiCompatibleText`).
+ * Everything else — and Grok/Gemini with no native key — goes to OpenRouter,
+ * either directly or through fal's OpenAI-compatible OpenRouter endpoint (so a
+ * team with only a fal key still covers LLM calls — issue #895).
  */
 
 import { getEnv } from '#env';
@@ -18,12 +19,18 @@ import {
   nativeGrokTextModel,
   type NativeGrokTextModel,
 } from '@/lib/ai/grok-native';
+import {
+  LLMTR_BASE_URL,
+  llmtrCompatibleApi,
+  llmtrTextModel,
+} from '@/lib/ai/llmtr';
 import type { TextModel } from '@/lib/ai/models';
 import { workersSafeFetch } from '@/lib/ai/workers-safe-fetch';
 import { HTTPClient } from '@openrouter/sdk/lib/http';
 import { createModel, extendAdapter } from '@tanstack/ai';
 import { createGeminiChat } from '@tanstack/ai-gemini';
 import { createGrokText } from '@tanstack/ai-grok';
+import { openaiCompatibleText } from '@tanstack/ai-openai/compatible';
 import { createOpenRouterText, openRouterText } from '@tanstack/ai-openrouter';
 
 import { getLogger } from '@/lib/observability/logger';
@@ -43,9 +50,11 @@ export type LlmKeyInfo = {
    * (Bearer auth), 'fal' routes through fal's OpenRouter endpoint (`Key`
    * auth — fal rejects Bearer there), 'xai' calls xAI's own Responses API
    * (Bearer auth, Grok models only — issue #1167), 'google' calls Google's
-   * own Gemini API (`x-goog-api-key` auth, Gemini models only).
+   * own Gemini API (`x-goog-api-key` auth, Gemini models only), 'llmtr' calls
+   * the LLMTR gateway (Bearer auth, OpenAI Chat Completions, and only the
+   * models `LLMTR_TEXT_MODELS` maps).
    */
-  via: 'openrouter' | 'fal' | 'xai' | 'google';
+  via: 'openrouter' | 'fal' | 'xai' | 'google' | 'llmtr';
 };
 
 // fal's endpoint authenticates with `Authorization: Key <FAL_KEY>` while the
@@ -62,13 +71,13 @@ function falAuthHttpClient(falKey: string): HTTPClient {
 /**
  * Resolve the platform-level LLM key from env. A Grok model prefers
  * XAI_API_KEY (#1167) and a Gemini model GEMINI_API_KEY; otherwise
- * OPENROUTER_KEY, and with only FAL_KEY set LLM calls route through fal's
- * OpenRouter endpoint — the platform can run on a single fal key (issue
- * #895). Returns undefined when none is configured.
+ * OPENROUTER_KEY, then FAL_KEY (issue #895). A platform `LLMTR_API_KEY` is
+ * last-resort for models LLMTR carries — it must not steal traffic from
+ * OpenRouter or fal. Returns undefined when none is configured.
  *
  * Omitting `model` keeps the OpenRouter-first order, which every model
  * supports — a caller that can't name the model can't promise it's a Grok
- * or Gemini one.
+ * or Gemini one, nor that LLMTR carries it.
  */
 export function getPlatformLlmKey(
   model?: string
@@ -85,6 +94,9 @@ export function getPlatformLlmKey(
   }
   if (env.FAL_KEY) {
     return { key: env.FAL_KEY, via: 'fal', source: 'platform' };
+  }
+  if (model && llmtrTextModel(model) && env.LLMTR_API_KEY) {
+    return { key: env.LLMTR_API_KEY, via: 'llmtr', source: 'platform' };
   }
   return undefined;
 }
@@ -211,6 +223,28 @@ export function createAdapter(model: TextModel, keyInfo?: LlmKeyInfo) {
     );
   }
 
+  // LLMTR is OpenAI-compatible, not OpenRouter. Driving it with the
+  // OpenRouter Speakeasy client rejects LLMTR's SSE chunks as "Response
+  // validation failed". Every OpenAI model (and Grok) uses Responses —
+  // Chat Completions 400s those. Same
+  // mismatch-throw as xAI/Google: an LLMTR key on a model LLMTR does not
+  // carry must not fall through to OpenRouter.
+  if (via === 'llmtr') {
+    const llmtrModel = llmtrTextModel(model);
+    if (!llmtrModel || !key) {
+      throw new Error(
+        `LLMTR does not carry model '${model}'. Resolve the LLM key for the model being called, not a different analysis model.`
+      );
+    }
+    return openaiCompatibleText(llmtrModel, {
+      name: 'llmtr',
+      baseURL: LLMTR_BASE_URL,
+      apiKey: key,
+      api: llmtrCompatibleApi(llmtrModel),
+      fetch: workersSafeFetch,
+    });
+  }
+
   // During E2E recording, aimock proxies our OpenRouter calls upstream and
   // *buffers* the entire SSE response before relaying — see
   // node_modules/@copilotkit/aimock/dist/recorder.js. That buffering window
@@ -229,8 +263,8 @@ export function createAdapter(model: TextModel, keyInfo?: LlmKeyInfo) {
     );
   }
 
-  // OPENROUTER_BASE_URL (aimock in e2e) wins over the fal proxy so tests stay
-  // hermetic regardless of which key the team resolved.
+  // OPENROUTER_BASE_URL (aimock in e2e) wins over fal's proxy so tests stay
+  // hermetic regardless of which OpenRouter-shaped key the team resolved.
   const serverURL =
     env.OPENROUTER_BASE_URL ??
     (via === 'fal' ? FAL_OPENROUTER_BASE_URL : undefined);

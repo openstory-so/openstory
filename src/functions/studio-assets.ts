@@ -132,7 +132,7 @@ export const draftStudioPromptFn = createServerFn({ method: 'POST' })
   )
   .handler(async ({ context, data }) => {
     const { scopedDb } = context;
-    const llmKey = await scopedDb.apiKeys.resolveLlmKey();
+    const llmKey = await scopedDb.apiKeys.resolveLlmKey(STUDIO_DRAFT_MODEL);
     if (llmKey.source !== 'team') {
       const canAfford = await scopedDb.billing.hasEnoughCredits(
         estimateLLMCost(1)

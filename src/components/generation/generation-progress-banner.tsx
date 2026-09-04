@@ -17,6 +17,7 @@ type GenerationProgressBannerProps = {
   script?: string;
   /** When set, used instead of the banner's own elapsed-based remaining. */
   remainingSeconds?: number;
+  analysisModel?: string | null;
   imageModel?: string | null;
   videoModel?: string | null;
   musicModel?: string | null;
@@ -32,6 +33,7 @@ export const GenerationProgressBanner: React.FC<
   startedAt,
   script,
   remainingSeconds,
+  analysisModel,
   imageModel,
   videoModel,
   musicModel,
@@ -64,7 +66,7 @@ export const GenerationProgressBanner: React.FC<
         sceneCount,
         estimatedSceneCount,
         generationState.phases.length,
-        { imageModel, videoModel, musicModel }
+        { analysisModel, imageModel, videoModel, musicModel }
       ) - elapsedSeconds
     );
 

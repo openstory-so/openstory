@@ -913,7 +913,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
     // ----------------------------------------------------------------------
     // Reference-only has no phase 4: the stills are skipped and the prompts
     // finished in phase 3, so it emits nothing and the progress rail runs
-    // Script → References → Music & Motion.
+    // Script → References → Motion & Music.
     if (!referenceOnly) {
       await step.do('phase-4-start', async () => {
         await getGenerationChannel(sequenceId).emit('generation.phase:start', {
@@ -1188,7 +1188,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
     error: string;
     scopedDb: WorkflowScopedDb;
   }): Promise<void> {
-    const { sequenceId, reservationId } = event.payload;
+    const { sequenceId, reservationId, analysisModelId } = event.payload;
     if (reservationId) {
       try {
         await scopedDb.billing.zeroReservation(reservationId);
@@ -1207,7 +1207,8 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
     });
 
     const userMessage =
-      (await handleLlmAuthFailure(scopedDb, sanitized)) ?? sanitized;
+      (await handleLlmAuthFailure(scopedDb, sanitized, analysisModelId)) ??
+      sanitized;
 
     await scopedDb.sequence(sequenceId).updateStatus('failed', userMessage);
     await getGenerationChannel(sequenceId).emit('generation.failed', {

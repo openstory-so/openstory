@@ -260,13 +260,13 @@ describe('completedStageFromArtifacts / nextActionFromArtifacts', () => {
     ]);
   });
 
-  it('slider folds music into the last stop (Music & Motion)', () => {
+  it('slider folds music into the last stop (Motion & Music)', () => {
     const stages = sliderStages(false);
     expect(stages).toEqual(['script', 'references', 'images', 'motion']);
     expect(stopAtFromSliderIndex(3, stages)).toBe('music');
     expect(sliderThumbIndex('music', stages)).toBe(3);
     expect(sliderThumbIndex('motion', stages)).toBe(3);
-    expect(sliderStopLabel('music')).toBe('Music & Motion');
+    expect(sliderStopLabel('music')).toBe('Motion & Music');
     expect(sliderStopLabel('references')).toBe('References & Prompts');
     expect(sliderStopLabel('images')).toBe('Images');
     expect(stopAfterSentence('motion')).toBe('Don’t stop');
@@ -275,7 +275,7 @@ describe('completedStageFromArtifacts / nextActionFromArtifacts', () => {
   it('slider has no Images stop in reference-only', () => {
     const stages = sliderStages(true);
     expect(stages).toEqual(['script', 'references', 'motion']);
-    // A remembered Images stop lands on the next stop up, Music & Motion.
+    // A remembered Images stop lands on the next stop up, Motion & Music.
     expect(sliderThumbIndex('images', stages)).toBe(2);
     expect(stopAtFromSliderIndex(2, stages)).toBe('music');
     expect(sliderThumbIndex('references', stages)).toBe(1);

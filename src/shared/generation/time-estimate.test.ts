@@ -2,7 +2,6 @@ import { describe, expect, test } from 'vitest';
 import {
   countScriptSceneHeadings,
   estimateMotionSeconds,
-  estimateRemainingSeconds,
   estimateSceneCount,
   estimateSceneCountFromDuration,
   estimateTotalSeconds,
@@ -104,9 +103,11 @@ describe('estimateSceneCountFromDuration', () => {
 });
 
 describe('estimateTotalSeconds', () => {
-  test('quality GPT Image 2 + Seedance is one parallel video wave', () => {
-    // 109+18+126+143+288 from PostHog p90s (30d ending 2026-09-01)
-    expect(estimateTotalSeconds(6)).toBe(684);
+  test('defaults are GPT Image 2 + Seedance stills/motion, Luna analysis', () => {
+    // Image/video p90s from PostHog (30d ending 2026-09-01). Analysis falls
+    // back to DEFAULT_ANALYSIS_MODEL (Luna, fast) like the other wall clocks,
+    // so the default pair is deliberately mixed-tier.
+    expect(estimateTotalSeconds(6)).toBe(641);
   });
 
   test('uses default scene count for 0', () => {
@@ -122,14 +123,55 @@ describe('estimateTotalSeconds', () => {
   });
 
   test('turbo Lite + H3 Max is ~2.5 min, not a Seedance-class 11 min', () => {
-    const quality = estimateTotalSeconds(5);
+    const defaults = estimateTotalSeconds(5);
     const turbo = estimateTotalSeconds(5, undefined, undefined, {
+      analysisModel: 'openai/gpt-5.6-luna',
       imageModel: 'nano_banana_2_lite',
       videoModel: 'minimax_h3_max',
     });
-    expect(quality).toBe(674);
+    expect(defaults).toBe(635);
     expect(turbo).toBe(151);
-    expect(turbo).toBeLessThan(quality / 2);
+    expect(turbo).toBeLessThan(defaults / 2);
+  });
+
+  test('analysis tier follows the analysis model, not the image model', () => {
+    // Both mixed pairs named in #1433.
+    const liteFable = estimateTotalSeconds(5, undefined, undefined, {
+      analysisModel: 'anthropic/claude-fable-5.1',
+      imageModel: 'nano_banana_2_lite',
+    });
+    const liteLuna = estimateTotalSeconds(5, undefined, undefined, {
+      analysisModel: 'openai/gpt-5.6-luna',
+      imageModel: 'nano_banana_2_lite',
+    });
+    expect(liteFable).toBeGreaterThan(liteLuna);
+
+    const gptImageLuna = estimateTotalSeconds(5, undefined, undefined, {
+      analysisModel: 'openai/gpt-5.6-luna',
+      imageModel: 'gpt_image_2',
+    });
+    const gptImageFable = estimateTotalSeconds(5, undefined, undefined, {
+      analysisModel: 'anthropic/claude-fable-5.1',
+      imageModel: 'gpt_image_2',
+    });
+    expect(gptImageLuna).toBeLessThan(gptImageFable);
+
+    // Same image model, so the whole gap is the analysis tier.
+    expect(liteFable - liteLuna).toBe(gptImageFable - gptImageLuna);
+  });
+
+  test('a retired analysis id scores the app default, not quality', () => {
+    // The `sequences.analysisModel` SQL default is a pinned legacy literal
+    // that is no longer in the registry (#612 blocks changing it).
+    const legacy = estimateTotalSeconds(5, undefined, undefined, {
+      analysisModel: 'anthropic/claude-haiku-4.5',
+      imageModel: 'gpt_image_2',
+    });
+    expect(legacy).toBe(
+      estimateTotalSeconds(5, undefined, undefined, {
+        imageModel: 'gpt_image_2',
+      })
+    );
   });
 });
 
@@ -148,44 +190,6 @@ describe('estimateMotionSeconds', () => {
 
   test('Hailuo stays Seedance-class even though it is in the turbo picker', () => {
     expect(estimateMotionSeconds('minimax_hailuo_02', 5)).toBe(228);
-  });
-});
-
-describe('estimateRemainingSeconds', () => {
-  test('decreases as phases complete', () => {
-    const full = estimateRemainingSeconds({
-      sceneCount: 6,
-      completedPhases: [],
-      elapsedSeconds: 0,
-    });
-
-    const partial = estimateRemainingSeconds({
-      sceneCount: 6,
-      completedPhases: [1, 2, 3],
-      elapsedSeconds: 30,
-    });
-
-    expect(partial).toBeLessThan(full);
-  });
-
-  test('never returns negative', () => {
-    const result = estimateRemainingSeconds({
-      sceneCount: 6,
-      completedPhases: [1, 2, 3, 4, 5],
-      elapsedSeconds: 9999,
-    });
-
-    expect(result).toBe(0);
-  });
-
-  test('returns 0 when all phases completed', () => {
-    const result = estimateRemainingSeconds({
-      sceneCount: 1,
-      completedPhases: [1, 2, 3, 4, 5],
-      elapsedSeconds: 0,
-    });
-
-    expect(result).toBe(0);
   });
 });
 

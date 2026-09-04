@@ -137,7 +137,7 @@ export const shortenPromptFn = createServerFn({ method: 'POST' })
       throw new Error('Shortened prompt is too short. Please try again.');
     }
 
-    await deduct?.(llmCostFromUsage(usage, model));
+    await deduct?.(llmCostFromUsage(usage, model, llmKey.via));
 
     return {
       originalPrompt: data.prompt,
@@ -235,7 +235,7 @@ export const estimateSceneDurationFn = createServerFn({ method: 'POST' })
       throw new Error('No response received from AI service');
     }
 
-    await deduct?.(llmCostFromUsage(usage, analysisModel));
+    await deduct?.(llmCostFromUsage(usage, analysisModel, llmKey.via));
 
     return { durationSeconds: clampDuration(response.durationSeconds) };
   });
@@ -487,7 +487,7 @@ Return up to ${limit} best-fit styles, strongest first.`;
       throw new Error('No response received from AI service');
     }
 
-    await deduct?.(llmCostFromUsage(usage, model));
+    await deduct?.(llmCostFromUsage(usage, model, llmKey.via));
 
     const recommendations = rankStyleRecommendations(
       result,
