@@ -60,6 +60,20 @@ describe('secretAction', () => {
     expect(secretAction(both, true, true)).toBe('update');
     expect(secretAction(both, true, false)).toBe('CREATE');
   });
+
+  it('reports held and never treats it as a push verb', () => {
+    const held: SecretNeed = {
+      runtime: true,
+      build: false,
+      hold: 'BytePlus native is off',
+    };
+    expect(secretAction(held, true, false)).toBe(
+      'held - BytePlus native is off'
+    );
+    expect(secretAction(held, false, true)).toBe(
+      'held - BytePlus native is off'
+    );
+  });
 });
 
 describe('buildPushPayload', () => {
@@ -95,6 +109,20 @@ describe('buildPushPayload', () => {
     const parsed: unknown = JSON.parse(JSON.stringify(payload));
     expect(parsed).toEqual({ FAL_KEY: 'fal-key' });
     expect(JSON.stringify(payload)).not.toContain(':null');
+  });
+
+  it('never writes held BytePlus keys even when Doppler has them', () => {
+    const payload = buildPushPayload(SECRETS, {
+      FAL_KEY: 'fal-key',
+      ARK_API_KEY: 'ark-key',
+      ARK_BASE_URL: 'https://ark.example',
+      BYTEPLUS_ACCESS_KEY: 'ak',
+      BYTEPLUS_SECRET_KEY: 'sk',
+      BYTEPLUS_ASSET_GROUP_ID: 'group',
+      BYTEPLUS_OPENAPI_HOST: 'host',
+    });
+    expect(payload).toEqual({ FAL_KEY: 'fal-key' });
+    expect(payload).not.toHaveProperty('ARK_API_KEY');
   });
 });
 
@@ -134,6 +162,20 @@ describe('SECRETS catalog (#1502)', () => {
   it('keeps LLMTR_API_KEY in tooling/legacy — team BYOK, never a Worker secret', () => {
     expect('LLMTR_API_KEY' in SECRETS).toBe(false);
     expect(TOOLING_OR_LEGACY.has('LLMTR_API_KEY')).toBe(true);
+  });
+
+  it('holds BytePlus keys as runtime-but-not-pushed', () => {
+    const held = {
+      runtime: true,
+      build: false,
+      hold: 'BytePlus native is off',
+    };
+    expect(SECRETS.ARK_API_KEY).toEqual(held);
+    expect(SECRETS.ARK_BASE_URL).toEqual(held);
+    expect(SECRETS.BYTEPLUS_ACCESS_KEY).toEqual(held);
+    expect(SECRETS.BYTEPLUS_SECRET_KEY).toEqual(held);
+    expect(SECRETS.BYTEPLUS_ASSET_GROUP_ID).toEqual(held);
+    expect(SECRETS.BYTEPLUS_OPENAPI_HOST).toEqual(held);
   });
 
   it('classifies VITE_APP_* and PostHog as both runtime and build', () => {

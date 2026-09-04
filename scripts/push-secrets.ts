@@ -18,7 +18,9 @@
  *
  * Grep those two spellings in `src/` (and `worker-configuration.d.ts` does
  * not count — wrangler types every secret already on the Worker). Then set
- * the flags. `--push` writes only `runtime: true`. Build-only and unused
+ * the flags. `--push` writes only `runtime: true` entries that are not
+ * `hold`. `hold` keeps a runtime secret visible without writing it —
+ * BytePlus native is off until we drop the hold. Build-only and unused
  * entries stay on the list so the next person classifies them instead of
  * re-adding them to a flat allowlist.
  *
@@ -51,7 +53,12 @@ export type SecretNeed = {
   runtime: boolean;
   /** Vite inlines it at build time (`import.meta.env`) — Workers Builds vars. */
   build: boolean;
+  /** Report this reason and never push, even when runtime. */
+  hold?: string;
 };
+
+/** Live `ARK_API_KEY` on the Worker is what claims the BytePlus via. */
+const BYTEPLUS_NATIVE_OFF = 'BytePlus native is off';
 
 /**
  * App secrets production may hold. Source of truth is Doppler; this catalog
@@ -61,12 +68,28 @@ export type SecretNeed = {
 export const SECRETS = {
   ADMIN_EMAILS: { runtime: true, build: false },
   API_KEY_ENCRYPTION_KEY: { runtime: true, build: false },
-  ARK_API_KEY: { runtime: true, build: false },
-  ARK_BASE_URL: { runtime: true, build: false },
-  BYTEPLUS_ACCESS_KEY: { runtime: true, build: false },
-  BYTEPLUS_SECRET_KEY: { runtime: true, build: false },
-  BYTEPLUS_ASSET_GROUP_ID: { runtime: true, build: false },
-  BYTEPLUS_OPENAPI_HOST: { runtime: true, build: false },
+  ARK_API_KEY: { runtime: true, build: false, hold: BYTEPLUS_NATIVE_OFF },
+  ARK_BASE_URL: { runtime: true, build: false, hold: BYTEPLUS_NATIVE_OFF },
+  BYTEPLUS_ACCESS_KEY: {
+    runtime: true,
+    build: false,
+    hold: BYTEPLUS_NATIVE_OFF,
+  },
+  BYTEPLUS_SECRET_KEY: {
+    runtime: true,
+    build: false,
+    hold: BYTEPLUS_NATIVE_OFF,
+  },
+  BYTEPLUS_ASSET_GROUP_ID: {
+    runtime: true,
+    build: false,
+    hold: BYTEPLUS_NATIVE_OFF,
+  },
+  BYTEPLUS_OPENAPI_HOST: {
+    runtime: true,
+    build: false,
+    hold: BYTEPLUS_NATIVE_OFF,
+  },
   BETTER_AUTH_SECRET: { runtime: true, build: false },
   EMAIL_FROM: { runtime: true, build: false },
   FAL_BILLING_KEY: { runtime: true, build: false },
@@ -151,6 +174,7 @@ export function secretAction(
   inDoppler: boolean,
   onWorker: boolean
 ): string {
+  if (need.hold) return `held - ${need.hold}`;
   if (!need.runtime && need.build) {
     return 'build-only - set in Workers Builds';
   }
@@ -163,7 +187,7 @@ export function secretAction(
 
 /**
  * Runtime secrets with a non-empty Doppler value. Never emits null, never
- * includes build-only or unused entries.
+ * includes build-only, unused, or held entries.
  */
 export function buildPushPayload(
   catalog: Record<string, SecretNeed>,
@@ -171,7 +195,7 @@ export function buildPushPayload(
 ): Record<string, string> {
   const payload: Record<string, string> = {};
   for (const [name, need] of Object.entries(catalog)) {
-    if (!need.runtime) continue;
+    if (!need.runtime || need.hold) continue;
     const value = doppler[name];
     if (value !== undefined && value !== '') payload[name] = value;
   }
@@ -342,7 +366,7 @@ function main(): void {
     }\n`
   );
   console.log(
-    '  runtime = Worker reads it (pushed).  build = Vite inlines it (Workers Builds vars, not pushed).\n'
+    '  runtime = Worker reads it (pushed unless held).  build = Vite inlines it (Workers Builds vars, not pushed).\n'
   );
   console.log(formatSecretsTable(rows));
 
