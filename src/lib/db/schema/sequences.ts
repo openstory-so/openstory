@@ -8,7 +8,7 @@ import {
   DEFAULT_ASPECT_RATIO,
 } from '@/shared/constants/aspect-ratios';
 import type { Resolution } from '@/shared/constants/resolutions';
-import { type InferInsertModel, type InferSelectModel } from 'drizzle-orm';
+import type { InferInsertModel, InferSelectModel } from 'drizzle-orm';
 import { index, integer, snakeCase, text } from 'drizzle-orm/sqlite-core';
 import { generateId } from '@/shared/id';
 import { user } from './auth';

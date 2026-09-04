@@ -17,8 +17,11 @@
  *     and `src/shared` the client-safe half. The per-file half of this rule is
  *     `no-restricted-imports` in `.oxlintrc.json`, whose `!@/lib/<dir>`
  *     exceptions name the directories still mixing both; those are read from
- *     the config here so the two can never drift. Delete an exception once
- *     the directory's client-safe files have moved to `src/shared`.
+ *     the config here so the lint exemptions cannot silently outgrow this
+ *     test. (Only the bare `!@/lib/<dir>` form is matched, not its `/**`
+ *     twin — an exception added in the `/**` form alone makes this walk
+ *     stricter than lint, which fails loudly rather than silently.) Delete
+ *     an exception once the directory's client-safe files have moved.
  *
  * Server fn / middleware files are walked THE WAY THE START COMPILER SHIPS
  * THEM (#1257), using the compiler's own building blocks from
@@ -128,9 +131,12 @@ function resolveLocal(fromFile: string, spec: string): string | null {
 }
 
 /**
- * `routes/api/**` files reach the client only through the generated
- * routeTree, where the Start compiler strips their `server.handlers` the same
- * way it strips server-fn handlers — their graphs are not walked here.
+ * `routes/api/**` files never reach the client at all: a route whose only
+ * `createFileRoute` option is `server` is pruned out of the client route tree
+ * entirely (`start-plugin-core`'s `pruneServerOnlySubtrees`). A route that
+ * ALSO has client props keeps its node and instead has `ssr`/`server`/
+ * `headers` deleted from the options — the shape handled below. Either way
+ * their graphs are not walked here.
  */
 function isServerRoute(file: string): boolean {
   return file.includes('/routes/api/');
@@ -177,6 +183,46 @@ function* walkAst(value: unknown): Generator<Node> {
 const COMPILED_RE =
   /\bcreateServerFn\b|\bcreateMiddleware\b|\bcreateIsomorphicFn\b|\bcreateServerOnlyFn\b|\bcreateFileRoute\b|\.\s*handler\s*\(/;
 
+/** The builders whose `.handler/.server/.validator(…)` the compiler strips. */
+const SERVER_FN_BUILDERS = new Set([
+  'createServerFn',
+  'createMiddleware',
+  'createIsomorphicFn',
+  'createServerOnlyFn',
+]);
+
+/**
+ * Does this member expression sit on a server-fn builder chain?
+ *
+ * The real compiler only strips `.handler/.server/.validator(…)` on chains it
+ * has already identified as one of `SERVER_FN_BUILDERS` — so matching on the
+ * method NAME alone would also empty an unrelated client-side call (a form's
+ * `.validator(…)`, an emitter's `.handler(…)`) and silently DCE away a real
+ * leak. `src/shared/mocks/tanstack-start.ts` already contains a plain
+ * `builder.handler(handler)`, and every route file matches `COMPILED_RE`, so
+ * this is a live shape, not a hypothetical one.
+ */
+function rootsAtServerFnBuilder(node: Node): boolean {
+  let cur: Node = node;
+  for (;;) {
+    if (cur.type === 'MemberExpression') {
+      cur = cur.object;
+      continue;
+    }
+    if (cur.type === 'CallExpression') {
+      if (
+        cur.callee.type === 'Identifier' &&
+        SERVER_FN_BUILDERS.has(cur.callee.name)
+      ) {
+        return true;
+      }
+      cur = cur.callee;
+      continue;
+    }
+    return false;
+  }
+}
+
 /**
  * The value imports of a module as the CLIENT receives it in dev.
  *
@@ -187,9 +233,13 @@ const COMPILED_RE =
  * dropped the same way, then `deadCodeElimination` — the same
  * babel-dead-code-elimination the Start plugin runs — removes declarations
  * and imports nothing references any more. Everything else is returned
- * verbatim. Type-only imports pull no runtime dependency and are skipped.
- * Dynamic `import()` is the sanctioned escape hatch for genuinely shared
- * modules — Vite loads it lazily, so it never ships unless executed.
+ * verbatim. Only a TOP-LEVEL `import type` is skipped; the inline
+ * `import { type X } from 'y'` form leaves a side-effect import and IS
+ * followed (see the import handling below).
+ *
+ * Dynamic `import()` keeps a module out of the eager graph, but it is not a
+ * free pass: `no-restricted-imports` matches it too, so using it against
+ * `@/lib/**` from a client file still needs an explicit `oxlint-disable`.
  */
 export function clientRetainedImports(source: string): string[] {
   const ast = parseAst({ code: source });
@@ -203,7 +253,8 @@ export function clientRetainedImports(source: string): string[] {
         node.callee.property.type === 'Identifier' &&
         (node.callee.property.name === 'handler' ||
           node.callee.property.name === 'server' ||
-          node.callee.property.name === 'validator')
+          node.callee.property.name === 'validator') &&
+        rootsAtServerFnBuilder(node.callee.object)
       ) {
         node.arguments = [];
       }
@@ -232,13 +283,15 @@ export function clientRetainedImports(source: string): string[] {
   const specs: string[] = [];
   for (const node of ast.program.body) {
     if (node.type === 'ImportDeclaration') {
+      // Only the TOP-LEVEL `import type` form is erased. Under
+      // `verbatimModuleSyntax` (tsconfig.json), an all-inline-type
+      // `import { type X } from 'y'` compiles to `import {} from 'y'` — a
+      // side-effect import that keeps y's whole graph — so every declaration
+      // that is not `import type` leaves a runtime edge and is followed.
+      // `typescript/no-import-type-side-effects` bans that form outright;
+      // this is the transitive half of the same rule.
       if (node.importKind === 'type') continue;
-      const hasValueBinding =
-        node.specifiers.length === 0 || // side-effect import
-        node.specifiers.some(
-          (s) => s.type !== 'ImportSpecifier' || s.importKind !== 'type'
-        );
-      if (hasValueBinding) specs.push(node.source.value);
+      specs.push(node.source.value);
       continue;
     }
     // Value re-exports (`export … from 'x'`) always survive the transform.
@@ -331,6 +384,34 @@ describe('client/server import boundary', () => {
       expect(specs).toContain('@srv/mixed');
     });
 
+    test('an all-inline-type import IS followed — it leaves a side effect', () => {
+      // `import { type X } from 'y'` compiles to `import {} from 'y'` under
+      // verbatimModuleSyntax, keeping y's whole graph. Treating it as free
+      // shipped drizzle-orm + 4 db/schema modules to the browser (#1445).
+      const specs = clientRetainedImports(`
+        import { type Only } from '@srv/inline-type';
+        export const x = 1;
+      `);
+      expect(specs).toContain('@srv/inline-type');
+    });
+
+    test('an unrelated .handler()/.validator() call does not disarm the file', () => {
+      // Matching the method NAME alone would empty these arguments and DCE
+      // the server-only imports away, silently blinding the whole file.
+      const specs = clientRetainedImports(`
+        import { createFileRoute } from '@tanstack/react-router';
+        import { schema } from '@/lib/db/schema';
+        import { emitter } from '@srv/emitter';
+        function Page() {
+          emitter.handler(() => 1);
+          return useForm().validator(schema);
+        }
+        export const Route = createFileRoute('/x')({ component: Page });
+      `);
+      expect(specs).toContain('@/lib/db/schema');
+      expect(specs).toContain('@srv/emitter');
+    });
+
     test('createIsomorphicFn .server() import is dropped — the #1354 shape', () => {
       const specs = clientRetainedImports(`
         import { getPostHogClient } from '@/lib/posthog-server';
@@ -352,6 +433,20 @@ describe('client/server import boundary', () => {
         '@/lib/posthog-server'
       );
     });
+  });
+
+  test('every no-restricted-imports block carries the same `paths`', () => {
+    // oxlint overrides REPLACE a rule's config rather than merging it, so the
+    // base `paths` array is copied into each override that re-declares the
+    // rule. Nothing else keeps the copies in sync: adding a restricted path
+    // to the base block alone would silently exempt every file the overrides
+    // match. Deep-equal them here, next to the exception list this file
+    // already reads, rather than trusting the copies to be maintained.
+    const raw = readFileSync(join(SRC, '.oxlintrc.json'), 'utf8');
+    const config: unknown = JSON.parse(raw.replace(/^\s*\/\/.*$/gm, ''));
+    const paths = JSON.stringify(config).match(/"paths":(\[.*?\]),"/g) ?? [];
+    expect(paths.length).toBeGreaterThan(1);
+    expect(new Set(paths).size).toBe(1);
   });
 
   test('the lint rule still exempts some src/lib directories', () => {

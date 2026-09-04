@@ -11,7 +11,7 @@
  */
 
 import type { Scene } from '@/lib/ai/scene-analysis.schema';
-import { type InferSelectModel } from 'drizzle-orm';
+import type { InferSelectModel } from 'drizzle-orm';
 import { index, integer, snakeCase, text } from 'drizzle-orm/sqlite-core';
 import { generateId } from '@/shared/id';
 import { user } from './auth';

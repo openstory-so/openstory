@@ -40,10 +40,8 @@ import {
   lastUsedLoginMethodCookieName,
 } from '@/lib/auth/cookie-prefix';
 import { DEV_OTP_CODE } from '@/lib/auth/dev-otp';
-import {
-  isGoogleAuthConfigured,
-  isLocalRequestHost,
-} from '@/shared/utils/environment';
+import { isGoogleAuthConfigured } from '@/lib/auth/google-auth';
+import { isLocalRequestHost } from '@/shared/utils/environment';
 import { DEVICE_VERIFICATION_PATH } from '@/lib/api-v1/device-auth';
 import { createOAuthProviderPlugins } from '@/lib/auth/oauth-provider';
 import { readPublicApiKeyFromHeaders } from '@/lib/auth/public-api-key';

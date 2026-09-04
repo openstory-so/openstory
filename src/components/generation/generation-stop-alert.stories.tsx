@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react';
 import { useState } from 'react';
 import { micros } from '@/lib/billing/money';
-import { type GenerationStage } from '@/shared/generation/pipeline';
+import type { GenerationStage } from '@/shared/generation/pipeline';
 import { GenerationStopAlert } from './generation-stop-alert';
 
 const COST_BY_STAGE: Record<GenerationStage, ReturnType<typeof micros>> = {

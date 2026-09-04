@@ -1,4 +1,4 @@
-import { type TabValue } from '@/components/scenes/scene-script-prompts';
+import type { TabValue } from '@/components/scenes/scene-script-prompts';
 import { BlobLoader } from '@/components/ui/blob-loader';
 import { Button } from '@/components/ui/button';
 import {

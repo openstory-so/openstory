@@ -1,4 +1,4 @@
-import { dbSceneId } from '@/lib/db/schema';
+import { dbSceneId } from '@/shared/scene-id';
 import { NotFoundError } from '@/shared/errors';
 import { plainSceneTitle } from '@/shared/utils/markdown-plain';
 import {

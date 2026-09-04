@@ -22,7 +22,7 @@ import {
 } from 'drizzle-orm/sqlite-core';
 import { generateId } from '@/shared/id';
 import { user } from './auth';
-import { type PromptVariantSource } from './shot-prompt-versions';
+import type { PromptVariantSource } from './shot-prompt-versions';
 import { sequences } from './sequences';
 
 const SEQUENCE_MUSIC_PROMPT_TYPE = 'music' as const;

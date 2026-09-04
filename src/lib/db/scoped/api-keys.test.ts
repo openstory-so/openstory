@@ -55,10 +55,10 @@ vi.doMock('#env', () => ({
 // test can assert decryption runs once per call — i.e. the cache holds
 // ciphertext, not plaintext. `encryptApiKey` stays real so `saveKey` round-trips.
 const decryptSpy = vi.fn();
-vi.doMock('@/shared/crypto/api-key-encryption', async () => {
+vi.doMock('@/lib/crypto/api-key-encryption', async () => {
   const actual = await vi.importActual<
-    typeof import('@/shared/crypto/api-key-encryption')
-  >('@/shared/crypto/api-key-encryption');
+    typeof import('@/lib/crypto/api-key-encryption')
+  >('@/lib/crypto/api-key-encryption');
   decryptSpy.mockImplementation(actual.decryptApiKey);
   return { ...actual, decryptApiKey: decryptSpy };
 });

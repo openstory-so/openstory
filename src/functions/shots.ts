@@ -39,7 +39,7 @@ import {
   singleShotSchema,
   updateShotSchema,
 } from '@/lib/schemas/shot.schemas';
-import { dbSceneId } from '@/lib/db/schema';
+import { dbSceneId } from '@/shared/scene-id';
 import { NotFoundError } from '@/shared/errors';
 import { ulidSchema } from '@/lib/schemas/id.schemas';
 import { typedFromEntries } from '@/shared/utils/typed-object';

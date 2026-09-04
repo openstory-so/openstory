@@ -4,11 +4,11 @@
  */
 
 import { getCookie } from '@tanstack/react-start/server';
-import { exchangeCodeForKey } from '@/shared/byok/openrouter-oauth';
+import { exchangeCodeForKey } from '@/lib/byok/openrouter-oauth';
 import {
   getOAuthCookieName,
   unsealOAuthState,
-} from '@/shared/byok/openrouter-oauth-cookie';
+} from '@/lib/byok/openrouter-oauth-cookie';
 import type { ScopedDb } from '@/lib/db/scoped';
 
 /** The slice of ScopedDb this flow needs — keeps tests cast-free. */

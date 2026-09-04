@@ -5,7 +5,7 @@ import {
   aspectRatioSchema,
   type AspectRatio,
 } from '@/shared/constants/aspect-ratios';
-import { type FC } from 'react';
+import type { FC } from 'react';
 
 function isValidAspectRatio(value: string): value is AspectRatio {
   return aspectRatioSchema.safeParse(value).success;

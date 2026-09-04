@@ -4,7 +4,7 @@
  * referenced in scripts by uppercase token.
  */
 
-import { type InferInsertModel, type InferSelectModel } from 'drizzle-orm';
+import type { InferInsertModel, InferSelectModel } from 'drizzle-orm';
 import {
   index,
   integer,

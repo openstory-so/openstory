@@ -1,6 +1,6 @@
 import { ThinkingBar } from '@/components/ai/thinking-bar';
 import { ActionCost } from '@/components/billing/action-cost';
-import { type ModelGenerationStatus } from '@/components/model/base-model-selector';
+import type { ModelGenerationStatus } from '@/components/model/base-model-selector';
 import { ImageModelSelector } from '@/components/model/image-model-selector';
 import { MotionModelSelector } from '@/components/model/motion-model-selector';
 import { useViaAvailability } from '@/hooks/use-via-availability';

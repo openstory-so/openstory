@@ -62,7 +62,7 @@ src/
     _app/           #   App shell (anonymous-browsable; actions gated behind login)
   functions/        # createServerFn endpoints — most business logic lives here
   components/       # React UI (shadcn/ui base + layout-only Tailwind)
-  shared/         # Client-safe code (utils, vocabularies, sequence-player…) — the ONLY src/ tree components may value-import besides hooks/functions
+  shared/         # Client-safe code (utils, vocabularies, sequence-player…) — where client code should import from; `@/lib` value imports are limited to the shrinking exception list in .oxlintrc.json
   lib/            # Server-only (see Client/server boundary below)
     ai/             #   AI model configs, prompt schemas, frame.schema
     db/             #   Drizzle schema + clients (D1 in prod + dev via Wrangler)
@@ -81,7 +81,7 @@ drizzle/migrations/ # Generated SQL (do NOT hand-edit)
 **Core rules:**
 
 - Database access ONLY in server handlers (never in components).
-- **Client/server boundary (#1445):** `src/lib` is server-only; `src/shared` is client-safe. `src/components`, `src/hooks` and `src/routes` may not value-import `@/lib/**` — enforced per-file by `no-restricted-imports` in `.oxlintrc.json` (type-only imports are fine), and transitively by `src/lib/client-server-boundary.test.ts` (pre-commit). Directories still listed as `!@/lib/<dir>` exceptions in `.oxlintrc.json` mix both halves; moving a helper out of one into `src/shared` and deleting its exception line is the migration.
+- **Client/server boundary (#1445):** `src/lib` is server-only; `src/shared` is client-safe. `src/components`, `src/hooks`, `src/routes` and `src/shared` may not value-import `@/lib/**` — enforced per-file by `no-restricted-imports` in `.oxlintrc.json`, and transitively by `src/lib/client-server-boundary.test.ts` (pre-commit). `src/routes/api/**` and `src/functions/**` are exempt from the per-file rule (server handlers); the test covers them by modelling what the Start compiler strips. Top-level `import type` is free; the inline `import { type X }` form is NOT — it leaves a side-effect import that ships the whole graph, so `typescript/no-import-type-side-effects` bans it. Directories still listed as `!@/lib/<dir>` exceptions mix both halves; moving a helper into `src/shared` and deleting its exception line is the migration (two exceptions are not that shape — see the comment in `.oxlintrc.json`).
 - Anonymous-first → upgrade to save work.
 - Team-based resources (sequences, styles, characters).
 - Script-driven generation for consistency.

@@ -1,7 +1,7 @@
 import { GenerationProgressBanner } from '@/components/generation/generation-progress-banner';
 import { RenderWaitCopy } from '@/components/generation/render-wait-copy';
 import { MotionProgressBanner } from '@/components/generation/motion-progress-banner';
-import { type ModelGenerationStatus } from '@/components/model/base-model-selector';
+import type { ModelGenerationStatus } from '@/components/model/base-model-selector';
 import { DivergenceCompareDialog } from '@/components/scenes/divergence-compare-dialog';
 import { MobileSceneDrawer } from '@/components/scenes/mobile-scene-drawer';
 import { CanvasViewToggle } from '@/components/scenes/canvas-view-toggle';

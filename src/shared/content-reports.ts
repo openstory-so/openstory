@@ -26,7 +26,12 @@ export const CONTENT_REPORT_REASONS = [
 ] as const;
 export type ContentReportReason = (typeof CONTENT_REPORT_REASONS)[number];
 
-/** What the report points at. Mirrors `PROVENANCE_ASSET_KINDS` plus accounts. */
+/**
+ * What the report points at: generated assets, the library entities that own
+ * them, accounts, and off-platform URLs. Deliberately NOT the same list as
+ * `PROVENANCE_ASSET_KINDS` in `db/schema/compliance.ts` (which is per-artifact
+ * provenance, and is not exported) — reports point at what a human can name.
+ */
 export const CONTENT_REPORT_TARGET_TYPES = [
   'sequence',
   'frame_variant',

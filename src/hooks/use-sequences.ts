@@ -15,7 +15,7 @@ import {
 import { DEFAULT_ANALYSIS_MODEL } from '@/lib/ai/models.config';
 import type { SequenceMusicVariant } from '@/lib/db/schema';
 import type { VariantType } from '@/lib/db/schema/shot-variants';
-import { type CreateSequenceInput } from '@/lib/schemas/sequence.schemas';
+import type { CreateSequenceInput } from '@/lib/schemas/sequence.schemas';
 import { UNTITLED_SEQUENCE_TITLE } from '@/lib/sequences/untitled-sequence-title';
 import type { Sequence } from '@/types/database';
 import { useAuthSession } from '@/lib/auth/session-query';

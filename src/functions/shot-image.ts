@@ -25,7 +25,7 @@ import {
   generateVariantSchema,
   regenerateShotSchema,
 } from '@/lib/schemas/shot.schemas';
-import { dbSceneId } from '@/lib/db/schema';
+import { dbSceneId } from '@/shared/scene-id';
 import { ulidSchema } from '@/lib/schemas/id.schemas';
 import { rescanContinuityFromPrompt } from '@/lib/scenes/rescan-continuity-from-prompt';
 import {

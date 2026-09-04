@@ -12,7 +12,7 @@ import {
   optimizedVideoUrl,
   videoPosterUrl,
 } from '@/shared/media/cloudflare-video';
-import { type SampleEntry } from '@/lib/style/sample-entries';
+import type { SampleEntry } from '@/lib/style/sample-entries';
 import { cn } from '@/shared/utils';
 import { Link } from '@tanstack/react-router';
 import { Wand2 } from 'lucide-react';

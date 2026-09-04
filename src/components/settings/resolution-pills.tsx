@@ -4,7 +4,7 @@ import {
   RESOLUTION_OPTIONS,
   type Resolution,
 } from '@/shared/constants/resolutions';
-import { type FC } from 'react';
+import type { FC } from 'react';
 
 type ResolutionPillsProps = {
   value: Resolution;

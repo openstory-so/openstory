@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { OAuthState } from '@/shared/byok/openrouter-oauth';
+import type { OAuthState } from '@/lib/byok/openrouter-oauth';
 import type { ScopedDb } from '@/lib/db/scoped';
 
 vi.doMock('#env', () => ({
@@ -15,14 +15,13 @@ vi.doMock('@tanstack/react-start/server', () => ({
 
 const exchangeCodeForKeyMock =
   vi.fn<(code: string, verifier: string) => Promise<{ apiKey: string }>>();
-vi.doMock('@/shared/byok/openrouter-oauth', () => ({
+vi.doMock('@/lib/byok/openrouter-oauth', () => ({
   exchangeCodeForKey: exchangeCodeForKeyMock,
 }));
 
 const { sealOAuthState, getOAuthCookieName } =
-  await import('@/shared/byok/openrouter-oauth-cookie');
-const { completeOpenRouterOAuth } =
-  await import('../openrouter-oauth-callback');
+  await import('@/lib/byok/openrouter-oauth-cookie');
+const { completeOpenRouterOAuth } = await import('./complete-oauth');
 
 const TEAM_ID = '01JTEAM00000000000000000000';
 const USER_ID = '01JUSER00000000000000000000';

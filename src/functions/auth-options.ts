@@ -11,7 +11,7 @@
  */
 
 import { isDevFixedOtpActive } from '@/lib/auth/config';
-import { isGoogleAuthConfigured } from '@/shared/utils/environment';
+import { isGoogleAuthConfigured } from '@/lib/auth/google-auth';
 import { createServerFn } from '@tanstack/react-start';
 import { getRequest } from '@tanstack/react-start/server';
 

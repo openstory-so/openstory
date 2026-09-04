@@ -45,11 +45,7 @@ import {
 import { estimateStoryboardPreflightCost } from '@/lib/billing/storyboard-preflight-cost';
 import { aspectRatioToImageSize } from '@/shared/constants/aspect-ratios';
 import type { ScopedDb } from '@/lib/db/scoped';
-import {
-  type CharacterWithSheet,
-  type Sequence,
-  type Shot,
-} from '@/lib/db/schema';
+import type { CharacterWithSheet, Sequence, Shot } from '@/lib/db/schema';
 import { analyzeFailures } from '@/shared/failures/failure-analysis';
 import {
   motionPromptFromVersion,

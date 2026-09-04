@@ -49,7 +49,7 @@ import {
 import { generateId } from '@/shared/id';
 import { NotFoundError, ValidationError } from '@/shared/errors';
 import type { ScopedDb } from '@/lib/db/scoped';
-import { type Sequence } from '@/lib/db/schema';
+import type { Sequence } from '@/lib/db/schema';
 import { resolveSequenceStyleConfig } from '@/lib/style/style-config';
 import { sequenceScenesUrl } from '@/lib/emails/notify-sequence-ready';
 import { refreshCheckpointFromCast } from '@/lib/workflow/refresh-checkpoint';

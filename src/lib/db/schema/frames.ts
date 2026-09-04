@@ -19,7 +19,7 @@
  * @see src/lib/db/schema/shots.ts — frames reference a shot via `frames.shotId`
  */
 
-import { type InferInsertModel, type InferSelectModel } from 'drizzle-orm';
+import type { InferInsertModel, InferSelectModel } from 'drizzle-orm';
 import {
   index,
   integer,

@@ -3,7 +3,7 @@
  * Locations extracted from scripts for visual consistency within a sequence
  */
 
-import { type InferInsertModel, type InferSelectModel } from 'drizzle-orm';
+import type { InferInsertModel, InferSelectModel } from 'drizzle-orm';
 import {
   index,
   integer,

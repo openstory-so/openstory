@@ -1,4 +1,4 @@
-import { type InferSelectModel } from 'drizzle-orm';
+import type { InferSelectModel } from 'drizzle-orm';
 import {
   integer,
   snakeCase,
