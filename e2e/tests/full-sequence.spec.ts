@@ -309,7 +309,7 @@ SUPER:  CORAL.  OUT NOW.
       await page.getByRole('button', { name: /^Generate$/i }).click();
 
       // Generate opens the stop-at alert (#1408) rather than starting the run.
-      // Its default is the full pipeline ("Music & Motion"), which is what this
+      // Its default is the full pipeline ("Motion & Music"), which is what this
       // spec asserts, so confirm without touching the slider. Scoped to the
       // dialog because the confirm button is also called "Generate".
       const stopAtAlert = page.getByRole('alertdialog');

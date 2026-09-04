@@ -515,7 +515,8 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
         let finalBoundaries = parsedResult.boundaries;
         let llmCostMicros = llmCostFromUsage(
           firstPass.usage,
-          SCENE_SPLIT_MODEL
+          SCENE_SPLIT_MODEL,
+          llmKeyInfo.via
         );
 
         const degraded = isExcessivelyRepaired(
@@ -553,7 +554,11 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
           if (retryPass.parsed) {
             llmCostMicros = addMicros(
               llmCostMicros,
-              llmCostFromUsage(retryPass.usage, SCENE_SPLIT_MODEL)
+              llmCostFromUsage(
+                retryPass.usage,
+                SCENE_SPLIT_MODEL,
+                llmKeyInfo.via
+              )
             );
             const retryAssembled = assembleScenes(
               script,
@@ -687,7 +692,7 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
 
       const result: BiblesStepResult = {
         ...parsed,
-        llmCostMicros: llmCostFromUsage(usage, modelId),
+        llmCostMicros: llmCostFromUsage(usage, modelId, llmKeyInfo.via),
         llmKeySource: llmKeyInfo.source,
       };
       return JSON.stringify(result);

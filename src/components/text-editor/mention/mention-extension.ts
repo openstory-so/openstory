@@ -40,7 +40,9 @@ export type PromptMentionAttrs = {
   label: string | null;
 };
 
-function readPromptAttrs(attrs: Record<string, unknown>): PromptMentionAttrs {
+export function readPromptAttrs(
+  attrs: Record<string, unknown>
+): PromptMentionAttrs {
   const idRaw = attrs.id;
   const sectionRaw = attrs.section;
   const labelRaw = attrs.label;
@@ -106,7 +108,7 @@ export const PromptMention = Mention.extend({
   },
 }).configure({
   HTMLAttributes: {
-    class: BASE_PILL_CLASS,
+    class: `${BASE_PILL_CLASS} cursor-pointer`,
     spellcheck: 'false',
   },
   renderHTML: ({ node, options }) => {

@@ -193,7 +193,7 @@ describe('generationStreamReducer — stop-at banner (#1408)', () => {
     expect(next.phases.map((p) => p.shortName)).toEqual([
       'Casting',
       'References',
-      'Music & Motion',
+      'Motion & Music',
     ]);
     expect(next.phases.map((p) => p.status)).toEqual([
       'completed',
@@ -216,7 +216,7 @@ describe('progress phases in reference-only', () => {
     expect(shortNames({ stopAt: 'music', referenceOnly: true })).toEqual([
       'Casting',
       'References',
-      'Music & Motion',
+      'Motion & Music',
     ]);
 
     expect(
@@ -231,7 +231,7 @@ describe('progress phases in reference-only', () => {
       'Casting',
       'References',
       'Images',
-      'Music & Motion',
+      'Motion & Music',
     ]);
   });
 

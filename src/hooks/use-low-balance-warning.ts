@@ -5,13 +5,17 @@
 
 import { usePostHog } from '@posthog/react';
 import { useEffect, useRef } from 'react';
-import { toast } from 'sonner';
+import { showLowBalanceToast } from '@/components/billing/low-balance-toast';
+import { openAddCreditsDialog } from './use-add-credits-dialog';
 import { openBillingGate } from './use-billing-gate-dialog';
 import { useBillingBalance } from './use-billing-balance';
+import { useFalPricing } from './use-fal-pricing';
+import { typicalShortCostUsd } from '@/lib/billing/typical-short-cost';
 
 export function useLowBalanceWarning() {
   const { balance, isLowBalance, isZeroBalance, lowBalanceThreshold } =
     useBillingBalance();
+  const { pricing } = useFalPricing();
   const posthog = usePostHog();
   const prevBalanceRef = useRef<number | null>(null);
   const hasWarnedRef = useRef(false);
@@ -36,30 +40,32 @@ export function useLowBalanceWarning() {
     if (hasWarnedRef.current) return;
     if (!isZeroBalance && !isLowBalance) return;
 
-    // "Options" opens the billing gate — buying credits, asking the founder,
-    // fal.ai BYOK, and gift codes all live there (#1099).
     hasWarnedRef.current = true;
-    const props = { balance_usd: balance };
+    const props = { balance_usd: balance, is_zero: isZeroBalance };
     posthog.capture('low_balance_toast_shown', props);
-    const action = {
-      label: 'Options',
-      onClick: () => {
-        posthog.capture('low_balance_toast_clicked', props);
+
+    const clicked = (choice: 'add_credits' | 'other_options') =>
+      posthog.capture('low_balance_toast_clicked', { ...props, choice });
+
+    showLowBalanceToast({
+      balanceUsd: balance,
+      isZeroBalance,
+      runCostUsd: typicalShortCostUsd(pricing),
+      onAddCredits: () => {
+        clicked('add_credits');
+        openAddCreditsDialog('low_balance_toast');
+      },
+      onOtherOptions: () => {
+        clicked('other_options');
         openBillingGate(isZeroBalance ? 'zero' : 'manual');
       },
-    };
-    if (isZeroBalance) {
-      toast.error('Your credit balance is $0', {
-        description: 'Generation is disabled until you add credits.',
-        action,
-        duration: 10_000,
-      });
-    } else {
-      toast.warning(`Balance is below $${lowBalanceThreshold}`, {
-        description: `Your balance is $${balance.toFixed(2)}.`,
-        action,
-        duration: 8_000,
-      });
-    }
-  }, [balance, isLowBalance, isZeroBalance, lowBalanceThreshold, posthog]);
+    });
+  }, [
+    balance,
+    isLowBalance,
+    isZeroBalance,
+    lowBalanceThreshold,
+    posthog,
+    pricing,
+  ]);
 }

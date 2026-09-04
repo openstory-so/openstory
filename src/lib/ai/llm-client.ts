@@ -1,6 +1,6 @@
 /**
  * LLM client for AI services
- * Uses @tanstack/ai-openrouter adapters for unified AI integration
+ * Routes through native xAI / Google, LLMTR (OpenAI-compat), or OpenRouter.
  */
 
 import type { TextModel } from '@/lib/ai/models';
@@ -31,6 +31,7 @@ import {
   grokTextCostFromUsage,
   nativeGrokTextModel,
 } from '@/lib/ai/grok-native';
+import { llmtrCompatibleApi, llmtrTextCostFromUsage } from '@/lib/ai/llmtr';
 import {
   isRegionBlockedLlmError,
   regionFallbackModel,
@@ -133,20 +134,30 @@ export function createUsageCapture(): {
 /**
  * Convert a completed LLM call's usage into a charge.
  *
- * Uses OpenRouter's per-request `cost` (USD) when present. xAI reports tokens
- * only, so a Grok model with no cost is by construction a native call (#1167)
- * and is priced from xAI's published rates. TRAP: that inference means an
- * OpenRouter Grok call that dropped `usage.cost` (TanStack/ai#1076) is priced
- * at xAI list rates instead of surfacing as a missing-cost report.
+ * Uses OpenRouter's per-request `cost` (USD) when present. LLMTR, xAI and
+ * Google report tokens only, so they are priced from published rates instead.
+ *
+ * `via` is load-bearing. Pass the value the call actually resolved:
+ * `llmCostFromUsage(usage, model, llmKey.via)`. LLMTR is checked first so a
+ * Grok-on-LLMTR / Gemini-on-LLMTR call is not priced from xAI / Google rates.
+ * Without `via`, a Grok model with no cost is treated as native xAI (#1167)
+ * and a Gemini model as native Google — including an OpenRouter call that
+ * dropped `usage.cost` (TanStack/ai#1076). Any other LLMTR model bills $0.
  *
  * Anything else missing a cost stays $0 + a report. Do not invent rates.
  */
 export function llmCostFromUsage(
   usage: TokenUsage | undefined,
-  modelId: string
+  modelId: string,
+  via?: LlmKeyInfo['via']
 ): Microdollars {
   if (usageHasCost(usage)) {
     return usdToMicros(usage.cost);
+  }
+
+  if (via === 'llmtr') {
+    const cost = llmtrTextCostFromUsage(usage, modelId);
+    if (cost !== undefined) return cost;
   }
 
   const nativeModel = nativeGrokTextModel(modelId);
@@ -167,7 +178,7 @@ export function llmCostFromUsage(
   reportMissingBillingCost({
     source: 'llm-cost-from-usage',
     modelId,
-    metadata: { usage },
+    metadata: { usage, via },
   });
   return ZERO_MICROS;
 }
@@ -267,7 +278,7 @@ export type LLMRequestParams<T = unknown> = {
  */
 const STRUCTURED_OUTPUT_MODELS = new Set([
   'x-ai/grok-4.6',
-  'anthropic/claude-fable-5',
+  'anthropic/claude-fable-5.1',
   'anthropic/claude-sonnet-5',
   'x-ai/grok-4.20',
   'anthropic/claude-opus-5',
@@ -297,7 +308,7 @@ export const RECOMMENDED_MODELS = {
   creative: 'anthropic/claude-sonnet-5',
   structured: 'anthropic/claude-sonnet-5',
   fast: 'anthropic/claude-sonnet-5',
-  premium: 'anthropic/claude-fable-5',
+  premium: 'anthropic/claude-fable-5.1',
 } as const;
 
 /**
@@ -426,6 +437,59 @@ function buildGeminiModelOptions(params: LLMRequestParams) {
   };
 }
 
+/** Chat Completions has no `xhigh`; Responses does. */
+function toLlmtrReasoningEffort(
+  effort: NonNullable<LLMRequestParams['reasoning']>['effort'],
+  api: 'chat-completions' | 'responses'
+): 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' {
+  if (effort === 'minimal') return 'minimal';
+  if (effort === 'low') return 'low';
+  if (effort === 'xhigh') return api === 'responses' ? 'xhigh' : 'high';
+  if (effort === 'high') return 'high';
+  return 'medium';
+}
+
+/**
+ * LLMTR's compatible adapter spreads `modelOptions` as native wire names.
+ * Responses-only models (`max_output_tokens`, `reasoning.effort`) 400 if
+ * handed Chat Completions names (`max_tokens`, `reasoning_effort`).
+ */
+function buildLlmtrModelOptions(params: LLMRequestParams) {
+  const allowSampling = modelAllowsClassicSampling(params.model);
+  const api = llmtrCompatibleApi(params.model);
+  const reasoning =
+    params.reasoning && params.reasoning.enabled !== false
+      ? toLlmtrReasoningEffort(params.reasoning.effort, api)
+      : undefined;
+  const sampling = {
+    ...(allowSampling &&
+      params.temperature != null && { temperature: params.temperature }),
+    ...(allowSampling && params.top_p != null && { top_p: params.top_p }),
+    ...(allowSampling &&
+      params.frequency_penalty != null && {
+        frequency_penalty: params.frequency_penalty,
+      }),
+    ...(allowSampling &&
+      params.presence_penalty != null && {
+        presence_penalty: params.presence_penalty,
+      }),
+  };
+  if (api === 'responses') {
+    return {
+      ...(reasoning && { reasoning: { effort: reasoning } }),
+      ...(params.max_tokens != null && {
+        max_output_tokens: params.max_tokens,
+      }),
+      ...sampling,
+    };
+  }
+  return {
+    ...(reasoning && { reasoning_effort: reasoning }),
+    ...(params.max_tokens != null && { max_tokens: params.max_tokens }),
+    ...sampling,
+  };
+}
+
 /**
  * GPT-5 chat models (Luna/Sol/Terra/…) advertise no `temperature` / `top_p`
  * / penalty params on any OpenRouter endpoint. Sending them with
@@ -456,7 +520,27 @@ export function openRouterProviderForModel(
 // Since @tanstack/ai 0.27, sampling options live in provider-native
 // modelOptions (camelCase, per the OpenRouter SDK) instead of the root of
 // chat(). The public LLMRequestParams surface keeps its OpenAI-style
-// snake_case names; this is the single mapping point.
+// snake_case names; this is the single mapping point for the OpenRouter
+// route. LLMTR uses buildLlmtrModelOptions (Chat Completions names).
+/**
+ * Every OpenRouter call asks for the priority ("fast") service tier.
+ *
+ * Safe to send unconditionally: OpenRouter tries priority endpoints first and
+ * falls back to the rest when a model has none, and billing follows the
+ * endpoint that actually served the request — so a model without a priority
+ * endpoint (Claude Fable 5.1 today) is charged its ordinary rate and simply
+ * runs as before. You pay the premium only when you actually get it.
+ *
+ * The premium is roughly 2x on Opus 5 ($5/$25 -> $10/$50) and up to 4x on
+ * Luna, but LLM tokens are a rounding error next to image and video
+ * generation, so buying latency across the board is the better trade here.
+ *
+ * `'priority'` is the canonical value the OpenRouter SDK enumerates; `'fast'`
+ * is an accepted alias for it. Scoped to the OpenRouter route by construction:
+ * native xAI/Gemini and the LLMTR gateway build their own options.
+ */
+const SERVICE_TIER = 'priority' as const;
+
 function buildModelOptions(params: LLMRequestParams) {
   const provider: ProviderPreferences = {
     ...openRouterProviderForModel(params.model),
@@ -474,6 +558,7 @@ function buildModelOptions(params: LLMRequestParams) {
   const allowSampling = modelAllowsClassicSampling(params.model);
   return {
     provider,
+    serviceTier: SERVICE_TIER,
     ...(params.reasoning && { reasoning }),
     // `maxTokens`, not `maxCompletionTokens`: DeepSeek endpoints advertise only
     // `max_tokens`, so `max_completion_tokens` + requireParameters empties the
@@ -497,7 +582,14 @@ function buildModelOptions(params: LLMRequestParams) {
 
 /** Which API a chat call routes to — decided once in {@link baseChatOptions}
  *  so the adapter, options object, and tools always agree. */
-type ChatRoute = 'xai' | 'google' | 'openrouter';
+type ChatRoute = 'xai' | 'google' | 'openrouter' | 'llmtr';
+
+function resolveChatRoute(params: LLMRequestParams): ChatRoute {
+  if (resolveNativeGrokModel(params.model, params.apiKey)) return 'xai';
+  if (resolveNativeGeminiModel(params.model, params.apiKey)) return 'google';
+  if (params.apiKey?.via === 'llmtr') return 'llmtr';
+  return 'openrouter';
+}
 
 /**
  * Assemble the `tools` array for `chat()`. Currently only the provider's
@@ -506,10 +598,12 @@ type ChatRoute = 'xai' | 'google' | 'openrouter';
  *
  * xAI's and Google's web search are on/off — no engine/result-count/prompt
  * knobs — so those options are dropped on the native routes rather than
- * failing the call.
+ * failing the call. LLMTR is OpenAI Chat Completions and does not run
+ * OpenRouter server tools (`openrouter:web_search`).
  */
 function buildTools(params: LLMRequestParams, route: ChatRoute) {
   if (!params.webSearch) return undefined;
+  if (route === 'llmtr') return undefined;
   if (route === 'xai') return [grokWebSearchTool()];
   if (route === 'google') return [googleSearchTool()];
   const opts = params.webSearch === true ? {} : params.webSearch;
@@ -552,18 +646,16 @@ export function structuredOutputSchemaBytes(schema: z.ZodType): number {
  *  options object, and the tools can't disagree about the route. */
 function baseChatOptions(params: LLMRequestParams) {
   const { systemPrompts, messages } = convertMessages(params.messages);
-  const route: ChatRoute = resolveNativeGrokModel(params.model, params.apiKey)
-    ? 'xai'
-    : resolveNativeGeminiModel(params.model, params.apiKey)
-      ? 'google'
-      : 'openrouter';
+  const route = resolveChatRoute(params);
   const tools = buildTools(params, route);
   const modelOptions =
     route === 'xai'
       ? buildGrokModelOptions(params)
       : route === 'google'
         ? buildGeminiModelOptions(params)
-        : buildModelOptions(params);
+        : route === 'llmtr'
+          ? buildLlmtrModelOptions(params)
+          : buildModelOptions(params);
   return {
     route,
     adapter: createAdapter(params.model, params.apiKey),

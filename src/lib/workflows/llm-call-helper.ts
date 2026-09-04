@@ -15,6 +15,7 @@ import {
   resolveNativeGrokModel,
   type LlmKeyInfo,
 } from '@/lib/ai/create-adapter';
+import { llmtrCompatibleApi } from '@/lib/ai/llmtr';
 import {
   createUsageCapture,
   extractRunError,
@@ -177,10 +178,12 @@ function reasoningModelOptions(reasoning: boolean | undefined): {
   return reasoning ? { reasoning: PROMPT_REASONING } : {};
 }
 
-/** OpenRouter vs xAI Responses vs Gemini sampling options. xAI and Google
- *  reject `streamOptions`; xAI uses `max_output_tokens` and Gemini camelCase
- *  `maxOutputTokens`. Omitting reasoning on grok-4.6 falls through to xAI's
- *  `high` default, so unrequested reasoning is sent as `low`; Gemini's
+/** OpenRouter vs xAI Responses vs Gemini vs LLMTR Chat Completions options.
+ *  xAI and Google reject `streamOptions`; xAI uses `max_output_tokens` and
+ *  Gemini camelCase `maxOutputTokens`. LLMTR spreads native Chat Completions
+ *  names (`max_tokens`, `reasoning_effort`) — OpenRouter camelCase would
+ *  land as unknown fields. Omitting reasoning on grok-4.6 falls through to
+ *  xAI's `high` default, so unrequested reasoning is sent as `low`; Gemini's
  *  unset `thinkingConfig` keeps the model's dynamic-thinking default. */
 export function chatModelOptionsForCall(
   modelId: TextModel,
@@ -206,6 +209,20 @@ export function chatModelOptionsForCall(
           }
         : {}),
       maxOutputTokens: maxTokens,
+    };
+  }
+  if (llmKeyInfo.via === 'llmtr') {
+    if (llmtrCompatibleApi(modelId) === 'responses') {
+      return {
+        ...(reasoning
+          ? { reasoning: { effort: PROMPT_REASONING.effort } }
+          : {}),
+        max_output_tokens: maxTokens,
+      };
+    }
+    return {
+      ...(reasoning ? { reasoning_effort: PROMPT_REASONING.effort } : {}),
+      max_tokens: maxTokens,
     };
   }
   return {
@@ -262,7 +279,7 @@ async function resolveCallKey(
   const platform = getPlatformLlmKey(model);
   if (!platform) {
     throw new NonRetryableError(
-      'No platform LLM key available (set OPENROUTER_KEY or FAL_KEY)',
+      'No platform LLM key available (set OPENROUTER_KEY, FAL_KEY or LLMTR_API_KEY)',
       'WorkflowValidationError'
     );
   }
@@ -317,11 +334,13 @@ export async function durableLLMCallCf<TSchema extends z.ZodType>(
       costMicros: Microdollars;
       keySource: LlmKeySource;
     }> => {
-      const llmKeyInfo = await resolveCallKey(callContext, modelId);
       // Region-block fallback (#1259): workflows egress from the colo nearest
       // the user, so an Anthropic model can be geo-blocked even "server-side".
       // Retry once on a region-available model instead of burning step retries.
+      // Resolve the key INSIDE the fallback so a model swap cannot reuse a
+      // via that does not carry the retry model (LLMTR key → OpenRouter 401).
       return withRegionFallback(modelId, hasImageInput, async (model) => {
+        const llmKeyInfo = await resolveCallKey(callContext, model);
         const adapter = createAdapter(model, llmKeyInfo);
 
         logger.info(`[LLM:${logName}:cf] Starting call`, {
@@ -425,7 +444,11 @@ export async function durableLLMCallCf<TSchema extends z.ZodType>(
             // CF's Rpc.Serializable constraint on the Zod-inferred shape.
             return {
               jsonText: JSON.stringify(structuredObject),
-              costMicros: llmCostFromUsage(usageCapture.get(), model),
+              costMicros: llmCostFromUsage(
+                usageCapture.get(),
+                model,
+                llmKeyInfo.via
+              ),
               keySource: llmKeyInfo.source,
             };
           } finally {
@@ -509,11 +532,12 @@ export async function durableStreamingLLMCallCf<TSchema extends z.ZodType>(
       costMicros: Microdollars;
       keySource: LlmKeySource;
     }> => {
-      const llmKeyInfo = await resolveCallKey(callContext, modelId);
       // Region-block fallback (#1259) — see durableLLMCallCf. A geo-blocked
       // model errors before its first token, so the realtime channel has seen
-      // nothing when the retry restarts the stream.
+      // nothing when the retry restarts the stream. Resolve the key for the
+      // model actually called so via tracks the retry.
       return withRegionFallback(modelId, hasImageInput, async (model) => {
+        const llmKeyInfo = await resolveCallKey(callContext, model);
         const adapter = createAdapter(model, llmKeyInfo);
 
         logger.info(`[LLM:${logName}:cf] Starting streaming call`, {
@@ -645,7 +669,11 @@ export async function durableStreamingLLMCallCf<TSchema extends z.ZodType>(
             logger.info(`[LLM:${logName}:cf] Streaming call succeeded`);
             return {
               jsonText: structuredJson,
-              costMicros: llmCostFromUsage(usageCapture.get(), model),
+              costMicros: llmCostFromUsage(
+                usageCapture.get(),
+                model,
+                llmKeyInfo.via
+              ),
               keySource: llmKeyInfo.source,
             };
           } finally {

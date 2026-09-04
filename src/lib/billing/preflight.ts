@@ -4,6 +4,7 @@
  * before triggering workflows. Skips check if team has own BYOK keys.
  */
 
+import { llmtrTextModel } from '@/lib/ai/llmtr';
 import type { Microdollars } from '@/lib/billing/money';
 import type { ScopedDb } from '@/lib/db/scoped';
 import { InsufficientCreditsError } from '@/shared/errors';
@@ -30,6 +31,20 @@ type ReservationPreflightScopedDb = {
 
 type Provider = 'fal' | 'openrouter';
 
+async function coversProvider(
+  scopedDb: PreflightScopedDb,
+  provider: Provider,
+  llmModel?: string
+): Promise<boolean> {
+  if (await scopedDb.apiKeys.hasUsableKey(provider)) return true;
+  if (provider !== 'openrouter') return false;
+  if (await scopedDb.apiKeys.hasUsableKey('fal')) return true;
+  // LLMTR only covers models it actually maps. Fal's OpenRouter proxy
+  // carries the whole registry; LLMTR does not.
+  if (!llmModel || !llmtrTextModel(llmModel)) return false;
+  return scopedDb.apiKeys.hasUsableKey('llmtr');
+}
+
 /**
  * Verify a team can afford a generation before triggering it.
  * Skips the check entirely if the team has BYOK keys for all required providers.
@@ -47,22 +62,17 @@ export async function requireCredits(
   opts: {
     providers?: Provider[];
     errorMessage?: string;
+    llmModel?: string;
   } = {}
 ): Promise<void> {
   const providers = opts.providers ?? ['fal'];
 
-  // Check if team has all required BYOK keys (any missing = need credits).
-  // A fal key also satisfies the openrouter requirement: LLM calls route
-  // through fal's OpenRouter endpoint on the team's fal key (issue #895).
   // `hasUsableKey` (not `hasKey`): a key flagged invalid is skipped by
   // resolveKey/resolveLlmKey at call time — the platform key pays — so it
   // must not bypass the credit check here.
   const keyChecks = await Promise.all(
-    providers.map(
-      async (provider) =>
-        (await scopedDb.apiKeys.hasUsableKey(provider)) ||
-        (provider === 'openrouter' &&
-          (await scopedDb.apiKeys.hasUsableKey('fal')))
+    providers.map((provider) =>
+      coversProvider(scopedDb, provider, opts.llmModel)
     )
   );
   const hasAllKeys = keyChecks.every(Boolean);
@@ -91,15 +101,13 @@ export async function reserveRunCredits(
     errorMessage?: string;
     sequenceId?: string;
     idempotencyKey?: string;
+    llmModel?: string;
   } = {}
 ): Promise<string | undefined> {
   const providers = opts.providers ?? ['fal'];
   const keyChecks = await Promise.all(
-    providers.map(
-      async (provider) =>
-        (await scopedDb.apiKeys.hasUsableKey(provider)) ||
-        (provider === 'openrouter' &&
-          (await scopedDb.apiKeys.hasUsableKey('fal')))
+    providers.map((provider) =>
+      coversProvider(scopedDb, provider, opts.llmModel)
     )
   );
   if (keyChecks.every(Boolean)) return undefined;

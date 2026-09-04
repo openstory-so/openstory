@@ -223,7 +223,10 @@ export async function* streamScriptEnhancement(
       },
     })) {
       if (chunk.done) {
-        totalCost = addMicros(totalCost, llmCostFromUsage(chunk.usage, model));
+        totalCost = addMicros(
+          totalCost,
+          llmCostFromUsage(chunk.usage, model, llmKey.via)
+        );
         continue;
       }
       if (chunk.delta) yield { delta: chunk.delta };

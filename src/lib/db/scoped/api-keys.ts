@@ -1,7 +1,8 @@
 /**
  * Scoped API Keys Sub-module
- * Team-scoped API key management for external providers (OpenRouter, Fal.ai).
- * Handles CRUD operations and key resolution (team key -> platform fallback).
+ * Team-scoped API key management for external providers. Handles CRUD
+ * operations and key resolution (team key -> platform fallback). `via` is
+ * which API the resolved key belongs to.
  */
 
 import { and, eq } from 'drizzle-orm';
@@ -10,6 +11,11 @@ import { getEnv } from '#env';
 import { getPlatformLlmKey } from '@/lib/ai/create-adapter';
 import { nativeGeminiTextModel } from '@/lib/ai/gemini-native';
 import { nativeGrokTextModel } from '@/lib/ai/grok-native';
+import {
+  LLMTR_BASE_URL,
+  LLMTR_VALIDATION_MODEL,
+  llmtrTextModel,
+} from '@/lib/ai/llmtr';
 import {
   decryptApiKey,
   encryptApiKey,
@@ -45,9 +51,10 @@ export type ResolvedApiKey =
 // OpenAI-compatible OpenRouter endpoint (`Key` auth) so a team with only a
 // fal key still covers LLM calls (issue #895), 'xai' = xAI's own Responses
 // API for Grok models (issue #1167), 'google' = Google's own Gemini API for
-// Gemini models.
+// Gemini models, 'llmtr' = the LLMTR gateway (Bearer auth, OpenAI Chat
+// Completions, models per `LLMTR_TEXT_MODELS`).
 export type ResolvedLlmKey = ResolvedApiKey & {
-  via: 'openrouter' | 'fal' | 'xai' | 'google';
+  via: 'openrouter' | 'fal' | 'xai' | 'google' | 'llmtr';
 };
 
 // The cached shape of a `team_api_keys` lookup. Holds the *encrypted* row
@@ -289,6 +296,8 @@ export function createApiKeysReadMethods(db: Database, teamId: string) {
         return env.XAI_API_KEY || undefined;
       case 'google':
         return env.GEMINI_API_KEY || undefined;
+      case 'llmtr':
+        return env.LLMTR_API_KEY || undefined;
       default: {
         const _exhaustive: never = provider;
         throw new Error(`Unknown provider: ${String(_exhaustive)}`);
@@ -340,19 +349,40 @@ export function createApiKeysReadMethods(db: Database, teamId: string) {
     return resolved;
   }
 
+  // Resolve the team key for a gateway that only fronts *some* models, given
+  // the row already read. Returns the key, or the reason it was skipped.
+  async function teamGatewayKey(
+    provider: ApiKeyProvider,
+    lookup: CachedKeyLookup
+  ): Promise<{ key: string } | { skippedReason?: string }> {
+    if (!lookup.found) return {};
+    if (lookup.isInvalid) {
+      return {
+        skippedReason:
+          lookup.invalidReason ?? `Team ${provider} key marked invalid`,
+      };
+    }
+    return decryptOrMarkInvalid(provider, lookup);
+  }
+
   // Resolve the key for an LLM call. Preference order:
   //   0. xAI key (team, else platform) when `model` is a Grok model — the
   //      first-party API, no reseller in front of it (issue #1167); a Google
   //      key the same way when `model` is a Gemini model
-  //   1. team OpenRouter key (direct OpenRouter)
-  //   2. team fal key (routed through fal's OpenRouter endpoint) — a fal-only
+  //   1. team LLMTR key, when LLMTR carries `model` — a team that added an
+  //      LLMTR key chose that gateway deliberately. Models it doesn't carry
+  //      fall through to OpenRouter/fal below rather than being silently
+  //      swapped for a near neighbour.
+  //   2. team OpenRouter key (direct OpenRouter)
+  //   3. team fal key (routed through fal's OpenRouter endpoint) — a fal-only
   //      team still covers LLM calls on their own key (issue #895)
-  //   3. platform key (OPENROUTER_KEY, or FAL_KEY routed through fal)
+  //   4. platform key (OPENROUTER_KEY, else FAL_KEY, else LLMTR_API_KEY when
+  //      it carries the model)
   // A skipped OpenRouter key that a working fal key supersedes returns
   // `source: 'team'` with no fallbackReason — the reason only surfaces when
   // resolution falls all the way through to the platform key.
-  // Omitting `model` means no native routing — a caller that can't name the
-  // model can't promise it's a Grok one.
+  // Omitting `model` means no gateway routing — a caller that can't name the
+  // model can't promise it's a Grok/Gemini one, nor that LLMTR carries it.
   async function resolveLlmKey(model?: string): Promise<ResolvedLlmKey> {
     let fallbackReason: string | undefined;
 
@@ -366,17 +396,30 @@ export function createApiKeysReadMethods(db: Database, teamId: string) {
       if (google) return { ...google, via: 'google' };
     }
 
+    if (model && llmtrTextModel(model)) {
+      const result = await teamGatewayKey(
+        'llmtr',
+        await readKeyRowLogged('llmtr')
+      );
+      if ('key' in result) {
+        return { key: result.key, source: 'team', via: 'llmtr' };
+      }
+      fallbackReason = result.skippedReason;
+    }
+
+    // `??=` throughout: the reason reported is the one from the
+    // highest-priority key that was skipped, not the last one checked.
     const orLookup = await readKeyRowLogged('openrouter');
     if (orLookup.found) {
       if (orLookup.isInvalid) {
-        fallbackReason =
+        fallbackReason ??=
           orLookup.invalidReason ?? 'Team OpenRouter key marked invalid';
       } else {
         const result = await decryptOrMarkInvalid('openrouter', orLookup);
         if ('key' in result) {
           return { key: result.key, source: 'team', via: 'openrouter' };
         }
-        fallbackReason = result.skippedReason;
+        fallbackReason ??= result.skippedReason;
       }
     }
 
@@ -394,10 +437,10 @@ export function createApiKeysReadMethods(db: Database, teamId: string) {
       }
     }
 
-    const platform = getPlatformLlmKey();
+    const platform = getPlatformLlmKey(model);
     if (!platform) {
       throw new Error(
-        'No platform LLM key available (set OPENROUTER_KEY or FAL_KEY)'
+        'No platform LLM key available (set OPENROUTER_KEY, FAL_KEY or LLMTR_API_KEY)'
       );
     }
     if (fallbackReason) {
@@ -458,6 +501,47 @@ export function createApiKeysReadMethods(db: Database, teamId: string) {
         );
         if (response.ok) return { valid: true };
         return { valid: false, error: `Google returned ${response.status}` };
+      }
+      case 'llmtr': {
+        // LLMTR has no key-introspection endpoint, and its `/v1/models` is
+        // public — it answers 200 for a bogus key, so it proves nothing. A
+        // 1-token completion on a $0 model is the cheapest thing that
+        // actually exercises auth. Require a successful completion: 401/403
+        // is a bad key, anything else non-OK (404 ping model gone, 5xx) is
+        // not proof the key works.
+        const response = await fetch(`${LLMTR_BASE_URL}/chat/completions`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: LLMTR_VALIDATION_MODEL,
+            messages: [{ role: 'user', content: 'ping' }],
+            max_tokens: 1,
+          }),
+        });
+        if (response.status === 401 || response.status === 403) {
+          return { valid: false, error: 'Invalid LLMTR API key' };
+        }
+        if (!response.ok) {
+          return {
+            valid: false,
+            error: `LLMTR returned ${response.status}`,
+          };
+        }
+        const body: unknown = await response.json();
+        const choices =
+          body &&
+          typeof body === 'object' &&
+          'choices' in body &&
+          Array.isArray(body.choices)
+            ? body.choices
+            : undefined;
+        if (!choices || choices.length === 0) {
+          return { valid: false, error: 'LLMTR did not return a completion' };
+        }
+        return { valid: true };
       }
       default: {
         const _exhaustive: never = provider;

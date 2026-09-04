@@ -218,7 +218,7 @@ export function createInitialState(
       return {
         phase: meta.phase,
         phaseName: isCombinedLast ? 'Generating motion & music…' : meta.name,
-        shortName: isCombinedLast ? 'Music & Motion' : meta.shortName,
+        shortName: isCombinedLast ? 'Motion & Music' : meta.shortName,
         status: 'pending' as const,
       };
     });

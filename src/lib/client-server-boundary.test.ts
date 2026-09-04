@@ -456,6 +456,8 @@ describe('client/server import boundary', () => {
     expect(MIXED_LIB_DIRS.has('db')).toBe(false);
   });
 
+  // Walks every client-reachable file synchronously, so it runs 5-9s and
+  // tripped the 5s default whenever it shared a worker with other suites.
   test('no server-only module is reachable from client components/hooks/routes/functions', () => {
     const visited = new Set<string>();
     // file → the import edge that got us there, for a readable failure trail.
@@ -504,5 +506,5 @@ describe('client/server import boundary', () => {
       violations,
       `Server-only imports reachable from client code:\n\n${violations.join('\n\n')}\n\nMove the client-safe part into src/shared, or keep the server-side helper in src/lib and reference it only from handler bodies — do not widen the exceptions in .oxlintrc.json.`
     ).toEqual([]);
-  });
+  }, 30_000);
 });

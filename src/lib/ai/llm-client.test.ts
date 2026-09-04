@@ -1,4 +1,5 @@
 import { usdToMicros, ZERO_MICROS } from '@/lib/billing/money';
+import type { TextModel } from '@/lib/ai/models';
 import type { TokenUsage } from '@tanstack/ai';
 import { convertWebSearchToolToAdapterFormat } from '@tanstack/ai-openrouter/tools';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -217,6 +218,35 @@ describe('llm-client', () => {
       if (!firstCall) throw new Error('expected mockChat to have been called');
       expect(firstCall[0].stream).toBe(true);
       expect(firstCall[0].modelOptions?.streamOptions?.includeUsage).toBe(true);
+    });
+
+    it('asks for the priority service tier on every OpenRouter call', async () => {
+      const tierFor = async (model: TextModel) => {
+        mockChat.mockClear();
+        mockChat.mockReturnValue(
+          (async function* () {
+            yield { type: 'TEXT_MESSAGE_CONTENT', delta: 'ok' };
+          })()
+        );
+        for await (const _chunk of callLLMStream({
+          model,
+          messages: [{ role: 'user', content: 'test' }],
+        })) {
+          // drain
+        }
+        const call = mockChat.mock.calls[0];
+        if (!call) throw new Error('expected mockChat to have been called');
+        return call[0].modelOptions?.serviceTier;
+      };
+
+      // Fast section.
+      expect(await tierFor('openai/gpt-5.6-luna')).toBe('priority');
+      expect(await tierFor('z-ai/glm-5.3-flash')).toBe('priority');
+      // Quality section too: OpenRouter falls back off-tier when a model has
+      // no priority endpoint, and bills the endpoint that actually served —
+      // so asking costs nothing when it can't be honoured.
+      expect(await tierFor('anthropic/claude-fable-5.1')).toBe('priority');
+      expect(await tierFor('anthropic/claude-sonnet-5')).toBe('priority');
     });
 
     it('surfaces usage.cost on structured responseSchema streams from RUN_FINISHED', async () => {
@@ -957,6 +987,78 @@ describe('llm-client', () => {
         ).toBe('openrouter:web_search');
       });
 
+      it('does not send OpenRouter web search or provider routing on LLMTR', async () => {
+        mockChat.mockReturnValue(
+          (async function* () {
+            yield { type: 'TEXT_MESSAGE_CONTENT', delta: 'ok' };
+          })()
+        );
+
+        await drain(
+          callLLMStream({
+            model: 'anthropic/claude-sonnet-5',
+            messages: [{ role: 'user', content: 'test' }],
+            webSearch: true,
+            apiKey: { key: 'llmtr-team', via: 'llmtr' },
+          })
+        );
+
+        const callArgs = mockChat.mock.calls[0]?.[0];
+        if (!callArgs) throw new Error('expected mockChat to have been called');
+        expect(callArgs.tools).toBeUndefined();
+        expect(callArgs.modelOptions.provider).toBeUndefined();
+        expect(callArgs.modelOptions.streamOptions).toBeUndefined();
+      });
+
+      it('sends Responses wire names on LLMTR for Luna, not Chat Completions', async () => {
+        mockChat.mockReturnValue(
+          (async function* () {
+            yield { type: 'TEXT_MESSAGE_CONTENT', delta: 'ok' };
+          })()
+        );
+
+        await drain(
+          callLLMStream({
+            model: 'openai/gpt-5.6-luna',
+            messages: [{ role: 'user', content: 'test' }],
+            max_tokens: 300,
+            temperature: 0.7,
+            reasoning: { enabled: true, effort: 'low' },
+            apiKey: { key: 'llmtr-team', via: 'llmtr' },
+          })
+        );
+
+        const options = mockChat.mock.calls[0]?.[0]?.modelOptions;
+        expect(options).toEqual({
+          reasoning: { effort: 'low' },
+          max_output_tokens: 300,
+        });
+      });
+
+      it('sends Chat Completions wire names on LLMTR for models that serve that endpoint', async () => {
+        mockChat.mockReturnValue(
+          (async function* () {
+            yield { type: 'TEXT_MESSAGE_CONTENT', delta: 'ok' };
+          })()
+        );
+
+        await drain(
+          callLLMStream({
+            model: 'anthropic/claude-sonnet-5',
+            messages: [{ role: 'user', content: 'test' }],
+            max_tokens: 300,
+            temperature: 0.7,
+            apiKey: { key: 'llmtr-team', via: 'llmtr' },
+          })
+        );
+
+        const options = mockChat.mock.calls[0]?.[0]?.modelOptions;
+        expect(options).toEqual({
+          max_tokens: 300,
+          temperature: 0.7,
+        });
+      });
+
       it('omits tools entirely when webSearch is not requested', async () => {
         mockChat.mockReturnValue(
           (async function* () {
@@ -1111,6 +1213,56 @@ describe('llm-client', () => {
           'x-ai/grok-4.6'
         )
       ).toBe(800_000);
+    });
+
+    it('prices an LLMTR call from the gateway’s catalog rates', () => {
+      // LLMTR reports tokens but never a cost — $0 here would be a silent
+      // revenue hole on every LLMTR-routed render.
+      // claude-sonnet-5: $2/M in, $10/M out → 1M in + 0.1M out = $3.
+      expect(
+        llmCostFromUsage(
+          {
+            promptTokens: 1_000_000,
+            completionTokens: 100_000,
+            totalTokens: 1_100_000,
+          },
+          'anthropic/claude-sonnet-5',
+          'llmtr'
+        )
+      ).toBe(usdToMicros(3));
+    });
+
+    it('prices a Grok model on LLMTR from LLMTR’s rates, not xAI’s', () => {
+      // Both routes report tokens only; `via` is what tells them apart. The
+      // rates happen to agree today — the point is which table is consulted.
+      const tokens = {
+        promptTokens: 100_000,
+        completionTokens: 100_000,
+        totalTokens: 200_000,
+      };
+      expect(llmCostFromUsage(tokens, 'x-ai/grok-4.6', 'llmtr')).toBe(800_000);
+    });
+
+    it('still prefers a reported cost over the LLMTR rate table', () => {
+      expect(
+        llmCostFromUsage(usage(0.0123), 'anthropic/claude-sonnet-5', 'llmtr')
+      ).toBe(usdToMicros(0.0123));
+    });
+
+    it('charges nothing for an LLMTR-routed model with no rate', () => {
+      // Resolution never routes these to LLMTR; if one arrived anyway, it
+      // must surface as a missing cost rather than a guessed rate.
+      expect(
+        llmCostFromUsage(
+          {
+            promptTokens: 1_000_000,
+            completionTokens: 0,
+            totalTokens: 1_000_000,
+          },
+          'anthropic/claude-opus-5-fast',
+          'llmtr'
+        )
+      ).toBe(ZERO_MICROS);
     });
 
     it('still prefers OpenRouter’s reported cost for a Grok model', () => {

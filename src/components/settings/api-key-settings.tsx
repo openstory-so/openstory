@@ -1,6 +1,6 @@
 /**
  * API Key Settings Component
- * Manages BYOK (Bring Your Own Key) for OpenRouter and Fal.ai
+ * Manages BYOK (Bring Your Own Key) for OpenRouter, Fal.ai, xAI, Google and LLMTR
  */
 
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/card';
 import { FalLogo } from '@/components/icons/fal-logo';
 import { GoogleGIcon } from '@/components/icons/google-g-icon';
+import { LlmtrLogo } from '@/components/icons/llmtr-logo';
 import { OpenRouterLogo } from '@/components/icons/openrouter-logo';
 import { XIcon } from '@/components/icons/x-icon';
 import { Input } from '@/components/ui/input';
@@ -41,7 +42,7 @@ type ApiKeySettingsProps = {
   error?: string;
 };
 
-type ApiKeyProviderId = 'openrouter' | 'fal' | 'xai' | 'google';
+type ApiKeyProviderId = 'openrouter' | 'fal' | 'xai' | 'google' | 'llmtr';
 /** Providers whose key is pasted in — OpenRouter alone uses OAuth. */
 type ManualProvider = Exclude<ApiKeyProviderId, 'openrouter'>;
 
@@ -50,6 +51,7 @@ const PROVIDER_LABELS: Record<ApiKeyProviderId, string> = {
   fal: 'fal.ai',
   xai: 'xAI',
   google: 'Google',
+  llmtr: 'LLMTR',
 };
 
 export function ApiKeySettings(props: ApiKeySettingsProps) {
@@ -202,6 +204,7 @@ function ApiKeySettingsContent({
   const falKey = apiKeys?.find((k) => k.provider === 'fal');
   const xaiKey = apiKeys?.find((k) => k.provider === 'xai');
   const googleKey = apiKeys?.find((k) => k.provider === 'google');
+  const llmtrKey = apiKeys?.find((k) => k.provider === 'llmtr');
 
   // Re-validate stored team keys on mount so opening the settings page
   // refreshes their validity without waiting for the next workflow failure.
@@ -265,6 +268,23 @@ function ApiKeySettingsContent({
               saveKeyMutation.mutate({ provider: 'fal', apiKey })
             }
             onDelete={() => deleteMutation.mutate('fal')}
+            isSaving={saveKeyMutation.isPending}
+            isDeleting={deleteMutation.isPending}
+          />
+
+          <ManualKeyRow
+            provider="llmtr"
+            icon={<LlmtrLogo className="size-5" />}
+            blurb="Turkey-hosted gateway: Claude, GPT, Gemini & Grok on one key."
+            placeholder="llmtr-..."
+            keyUrl="https://llmtr.com/dashboard/keys"
+            existingKey={llmtrKey}
+            status={keyStatus?.llmtr}
+            isLoading={isLoading}
+            onSave={(apiKey) =>
+              saveKeyMutation.mutate({ provider: 'llmtr', apiKey })
+            }
+            onDelete={() => deleteMutation.mutate('llmtr')}
             isSaving={saveKeyMutation.isPending}
             isDeleting={deleteMutation.isPending}
           />

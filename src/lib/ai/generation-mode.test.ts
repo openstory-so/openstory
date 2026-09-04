@@ -24,6 +24,7 @@ import {
   QUALITY_DEFAULT_VIDEO,
   selectorGroup,
   TURBO_ANALYSIS_MODELS,
+  isTurboAnalysisModel,
   TURBO_AUDIO_MODELS,
   TURBO_DEFAULT_ANALYSIS,
   TURBO_DEFAULT_AUDIO,
@@ -35,7 +36,7 @@ import {
 
 const baseSettings = {
   generationMode: 'quality' as const,
-  analysisModels: ['anthropic/claude-fable-5' as const],
+  analysisModels: ['anthropic/claude-fable-5.1' as const],
   imageModels: ['gpt_image_2' as const],
   videoModels: ['seedance_v2' as const],
   audioModels: ['elevenlabs_music' as const],
@@ -87,7 +88,7 @@ describe('mode defaults', () => {
   });
 
   it('quality defaults are Fable / GPT Image 2 / Seedance', () => {
-    expect(defaultAnalysisModel('quality')).toBe('anthropic/claude-fable-5');
+    expect(defaultAnalysisModel('quality')).toBe('anthropic/claude-fable-5.1');
     expect(defaultImageModel('quality')).toBe('gpt_image_2');
     expect(defaultVideoModel('quality', '16:9')).toBe('seedance_v2');
   });
@@ -142,12 +143,17 @@ describe('styleMayApplyImage / styleMayApplyVideo', () => {
   });
 });
 
-describe('isTurboImageModel / isTurboVideoModel', () => {
+describe('isTurboAnalysisModel / isTurboImageModel / isTurboVideoModel', () => {
   it('flags Lite and H3 Max, not GPT Image 2 or Seedance', () => {
     expect(isTurboImageModel('nano_banana_2_lite')).toBe(true);
     expect(isTurboImageModel('gpt_image_2')).toBe(false);
     expect(isTurboVideoModel('minimax_h3_max')).toBe(true);
     expect(isTurboVideoModel('seedance_v2')).toBe(false);
+  });
+
+  it('flags Luna, not Fable', () => {
+    expect(isTurboAnalysisModel('openai/gpt-5.6-luna')).toBe(true);
+    expect(isTurboAnalysisModel('anthropic/claude-fable-5.1')).toBe(false);
   });
 });
 
