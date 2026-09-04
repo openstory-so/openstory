@@ -161,6 +161,16 @@ describe('consentRedirectUrl', () => {
       )
     ).toBe('http://127.0.0.1:8765/cb?code=1');
   });
+
+  it('reads location from a thrown Better Auth FOUND error', () => {
+    expect(
+      consentRedirectUrl(
+        new APIError('FOUND', undefined, {
+          location: 'http://127.0.0.1:8765/cb?code=9',
+        })
+      )
+    ).toBe('http://127.0.0.1:8765/cb?code=9');
+  });
 });
 
 describe('decideOAuthConsent', () => {
@@ -195,6 +205,7 @@ describe('decideOAuthConsent', () => {
     });
     expect(oauth2Consent).toHaveBeenCalledWith({
       headers: expect.any(Headers),
+      asResponse: true,
       body: {
         accept: true,
         oauth_query: signedQuery.slice(1),
@@ -217,6 +228,23 @@ describe('decideOAuthConsent', () => {
     expect(passed?.headers).toBeInstanceOf(Headers);
     expect(passed?.headers.get('Accept')).toBe('application/json');
     expect(passed?.headers.get('Sec-Fetch-Mode')).toBe('cors');
+    expect(passed?.asResponse).toBe(true);
+  });
+
+  it('uses location when the provider throws a FOUND APIError', async () => {
+    oauth2Consent.mockRejectedValueOnce(
+      new APIError('FOUND', undefined, {
+        location: 'http://127.0.0.1:8765/cb?code=6',
+      })
+    );
+    const result = await decideOAuthConsent({
+      userId: 'user_1',
+      teamId: 'team_1',
+      accept: true,
+      oauthQuery: 'client_id=c1',
+      headers: new Headers(),
+    });
+    expect(result.url).toBe('http://127.0.0.1:8765/cb?code=6');
   });
 
   it('uses Location when the provider throws a redirect Response', async () => {
@@ -250,6 +278,7 @@ describe('decideOAuthConsent', () => {
     expect(result.url).toBe('http://127.0.0.1:8765/cb?code=1');
     expect(oauth2Consent).toHaveBeenCalledWith({
       headers: expect.any(Headers),
+      asResponse: true,
       body: {
         accept: true,
         oauth_query: signedQuery.slice(1),

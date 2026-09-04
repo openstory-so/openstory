@@ -142,10 +142,10 @@ export function oauthProviderUserMessage(
 }
 
 /**
- * Better Auth's consent handler 302s unless the call looks like a CORS fetch
- * that accepts JSON (`sec-fetch-mode: cors` + `Accept: application/json`).
- * Server-fn headers can miss that, so the grant is written and then the
- * redirect is thrown — which we used to map to "no longer valid".
+ * Better Auth 302s the consent result (`APIError FOUND` + `Location`) unless
+ * the call is treated as a CORS JSON fetch. `auth.api` from a server fn is
+ * not a Request, so the grant is written and the redirect is thrown — which
+ * we used to map to "no longer valid".
  */
 function jsonConsentHeaders(headers: Headers): Headers {
   const next = new Headers(headers);
@@ -154,26 +154,47 @@ function jsonConsentHeaders(headers: Headers): Headers {
   return next;
 }
 
+const API_ERROR_HEADERS = Symbol.for('better-call:api-error-headers');
+
+function headerLocation(headers: unknown): string | null {
+  if (!headers || typeof headers !== 'object') return null;
+  if (headers instanceof Headers) {
+    return headers.get('Location') ?? headers.get('location');
+  }
+  if ('get' in headers && typeof headers.get === 'function') {
+    const loc = headers.get('Location') ?? headers.get('location');
+    if (typeof loc === 'string' && loc.length > 0) return loc;
+  }
+  if ('location' in headers && typeof headers.location === 'string') {
+    return headers.location;
+  }
+  if ('Location' in headers && typeof headers.Location === 'string') {
+    return headers.Location;
+  }
+  return null;
+}
+
 /** `oauth2Consent` OpenAPI says `redirect_uri`; the JS client also uses `url`. */
 export function consentRedirectUrl(result: unknown): string | null {
   if (!result) return null;
   if (result instanceof Response) {
-    return result.headers.get('Location');
+    return headerLocation(result.headers);
   }
   if (typeof result !== 'object') return null;
-  const rec = result as {
-    url?: unknown;
-    redirect_uri?: unknown;
-    headers?: { get?: (name: string) => string | null };
-  };
-  if (typeof rec.url === 'string' && rec.url.length > 0) return rec.url;
-  if (typeof rec.redirect_uri === 'string' && rec.redirect_uri.length > 0) {
-    return rec.redirect_uri;
+  if ('url' in result && typeof result.url === 'string' && result.url) {
+    return result.url;
   }
-  const location =
-    rec.headers?.get?.('Location') ?? rec.headers?.get?.('location');
-  if (location) return location;
-  return null;
+  if (
+    'redirect_uri' in result &&
+    typeof result.redirect_uri === 'string' &&
+    result.redirect_uri
+  ) {
+    return result.redirect_uri;
+  }
+  const headers = 'headers' in result ? result.headers : undefined;
+  const hidden =
+    API_ERROR_HEADERS in result ? result[API_ERROR_HEADERS] : undefined;
+  return headerLocation(headers) ?? headerLocation(hidden);
 }
 
 /**
@@ -195,8 +216,16 @@ export async function decideOAuthConsent(input: {
     const result = await auth.api.oauth2Consent({
       headers: jsonConsentHeaders(input.headers),
       body: { accept: input.accept, oauth_query: oauthQuery },
+      asResponse: true,
     });
-    const url = consentRedirectUrl(result);
+    let url = consentRedirectUrl(result);
+    if (!url && result instanceof Response) {
+      try {
+        url = consentRedirectUrl(await result.clone().json());
+      } catch {
+        url = null;
+      }
+    }
     if (!url) {
       throw new ValidationError(CONSENT_STALE_MESSAGE);
     }
