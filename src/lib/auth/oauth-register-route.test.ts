@@ -19,7 +19,7 @@ vi.doMock('@/lib/db/scoped', () => ({
 }));
 vi.doMock('#flush-scheduler', () => ({ scheduleFlushAnalytics }));
 
-const { Route } = await import('./$');
+const { Route } = await import('@/routes/api/auth/$');
 
 type Handler = (ctx: { request: Request }) => Promise<Response>;
 const post = z
