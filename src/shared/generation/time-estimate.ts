@@ -8,7 +8,11 @@
  * badly undercounts (e.g. 29 labeled scenes → ~8 by words → ~⅓ the real cost).
  */
 
-import { isTurboImageModel } from '@/lib/ai/generation-mode';
+import { isTurboAnalysisModel } from '@/lib/ai/generation-mode';
+import {
+  DEFAULT_ANALYSIS_MODEL,
+  isValidAnalysisModelId,
+} from '@/lib/ai/models.config';
 import {
   ANALYSIS_FAST,
   ANALYSIS_QUALITY,
@@ -25,6 +29,7 @@ import {
 type PhaseBudget = { base: number; perScene: number };
 
 export type TimeEstimateModels = {
+  analysisModel?: string | null;
   imageModel?: string | null;
   videoModel?: string | null;
   musicModel?: string | null;
@@ -51,9 +56,16 @@ export function estimateMusicSeconds(musicModel?: string | null): number {
 
 function phaseBudgets(models?: TimeEstimateModels): readonly PhaseBudget[] {
   const image = imageWallClock(models?.imageModel);
-  const fastAnalysis = Boolean(
-    models?.imageModel && isTurboImageModel(models.imageModel)
-  );
+  // Analysis + casting are LLM phases: their tier follows the analysis model,
+  // which is picked independently of the image model. Absent or retired ids
+  // (e.g. the legacy `analysisModel` column default) fall back to the app
+  // default, matching imageWallClock / videoWallClock / audioWallClock —
+  // defaulting to quality instead would re-create this bug for those rows.
+  const analysisModel =
+    models?.analysisModel && isValidAnalysisModelId(models.analysisModel)
+      ? models.analysisModel
+      : DEFAULT_ANALYSIS_MODEL;
+  const fastAnalysis = isTurboAnalysisModel(analysisModel);
   const analysis = fastAnalysis ? ANALYSIS_FAST : ANALYSIS_QUALITY;
   const casting = fastAnalysis ? CASTING_FAST : CASTING_QUALITY;
   const sheets = Math.max(VISUAL_PROMPT_P90_SECONDS, image.p90);
@@ -203,34 +215,6 @@ export function estimateTotalSeconds(
     total += phaseBudget(i, scenes, models);
   }
   return total;
-}
-
-export function estimateRemainingSeconds(opts: {
-  sceneCount: number;
-  completedPhases: number[];
-  elapsedSeconds: number;
-  estimatedSceneCount?: number;
-  imageModel?: string | null;
-  videoModel?: string | null;
-  musicModel?: string | null;
-}): number {
-  const models = {
-    imageModel: opts.imageModel,
-    videoModel: opts.videoModel,
-    musicModel: opts.musicModel,
-  };
-  const fallback = opts.estimatedSceneCount ?? DEFAULT_SCENE_COUNT;
-  const scenes = opts.sceneCount > 0 ? opts.sceneCount : fallback;
-  const completedSet = new Set(opts.completedPhases);
-
-  let remaining = 0;
-  for (let i = 0; i < PIPELINE_PHASE_COUNT; i++) {
-    if (!completedSet.has(i + 1)) {
-      remaining += phaseBudget(i, scenes, models);
-    }
-  }
-
-  return Math.max(0, remaining);
 }
 
 export function formatTimeRemaining(seconds: number): string {

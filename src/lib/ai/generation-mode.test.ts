@@ -24,6 +24,7 @@ import {
   QUALITY_DEFAULT_VIDEO,
   selectorGroup,
   TURBO_ANALYSIS_MODELS,
+  isTurboAnalysisModel,
   TURBO_AUDIO_MODELS,
   TURBO_DEFAULT_ANALYSIS,
   TURBO_DEFAULT_AUDIO,
@@ -142,12 +143,17 @@ describe('styleMayApplyImage / styleMayApplyVideo', () => {
   });
 });
 
-describe('isTurboImageModel / isTurboVideoModel', () => {
+describe('isTurboAnalysisModel / isTurboImageModel / isTurboVideoModel', () => {
   it('flags Lite and H3 Max, not GPT Image 2 or Seedance', () => {
     expect(isTurboImageModel('nano_banana_2_lite')).toBe(true);
     expect(isTurboImageModel('gpt_image_2')).toBe(false);
     expect(isTurboVideoModel('minimax_h3_max')).toBe(true);
     expect(isTurboVideoModel('seedance_v2')).toBe(false);
+  });
+
+  it('flags Luna, not Fable', () => {
+    expect(isTurboAnalysisModel('openai/gpt-5.6-luna')).toBe(true);
+    expect(isTurboAnalysisModel('anthropic/claude-fable-5')).toBe(false);
   });
 });
 

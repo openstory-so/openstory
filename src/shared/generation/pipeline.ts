@@ -102,7 +102,7 @@ export const GENERATION_STAGE_META: Record<
     shortName: 'Music',
     description: 'Generating the sequence music track',
     // The `music` stop runs motion AND music in one workflow child, which is
-    // why the slider calls it "Music & Motion". The button has to promise the
+    // why the slider calls it "Motion & Music". The button has to promise the
     // same thing — "Generate Music" under-sold the whole motion pass (#1408).
     actionLabel: 'Generate Motion & Music',
   },
@@ -335,7 +335,7 @@ export type GenerationCheckpoint = {
 /**
  * Progress-banner phases for a run that stops at `stopAt`. Music rides with
  * motion in one workflow child, so a music stop still has four banner
- * segments — the last one labelled "Music & Motion".
+ * segments — the last one labelled "Motion & Music".
  */
 export function bannerStagesForStopAt(
   stopAt: GenerationStage
@@ -348,7 +348,7 @@ export function bannerStagesForStopAt(
 
 /**
  * Generate-dialog / continue-slider stops. Same as a full-run banner — the
- * last thumb is Music & Motion (`stopAt: 'music'`). Reference-only has no
+ * last thumb is Motion & Music (`stopAt: 'music'`). Reference-only has no
  * Images stop: nothing renders there, so the thumb goes References → Motion.
  */
 export function sliderStages(referenceOnly: boolean): GenerationStage[] {
@@ -383,7 +383,7 @@ export function stopAtFromSliderIndex(
 }
 
 export function sliderStopLabel(stopAt: GenerationStage): string {
-  if (stopAt === 'music' || stopAt === 'motion') return 'Music & Motion';
+  if (stopAt === 'music' || stopAt === 'motion') return 'Motion & Music';
   if (stopAt === 'references') return 'References & Prompts';
   return GENERATION_STAGE_META[stopAt].shortName;
 }

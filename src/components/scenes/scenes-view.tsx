@@ -1454,6 +1454,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
         sequence?.script ? estimateSceneCount(sequence.script) : undefined,
         generationState.phases.length,
         {
+          analysisModel: sequence?.analysisModel,
           imageModel: sequence?.imageModel,
           videoModel: sequence?.videoModel,
           musicModel: sequence?.musicModel,
@@ -1465,6 +1466,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     generationState.phases,
     generationState.scenes.length,
     sequence?.script,
+    sequence?.analysisModel,
     sequence?.imageModel,
     sequence?.videoModel,
     sequence?.musicModel,
@@ -1481,6 +1483,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
       startedAt={sequence.updatedAt}
       script={sequence.script ?? undefined}
       remainingSeconds={remainingSeconds}
+      analysisModel={sequence.analysisModel}
       imageModel={sequence.imageModel}
       videoModel={sequence.videoModel}
       musicModel={sequence.musicModel}
