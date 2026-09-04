@@ -282,10 +282,10 @@ export type {
   SequenceMusicVariant,
 } from './sequence-music-variants';
 
-// Sequence exports (browser-rendered MP4 snapshots)
+// Sequence exports (container-rendered MP4 snapshots)
 export { sequenceExports };
 
-export type { NewSequenceExport, SequenceExport } from './sequence-exports';
+export type { SequenceExport } from './sequence-exports';
 
 // Characters (scripted roles)
 export { characters };

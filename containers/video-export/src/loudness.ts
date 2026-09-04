@@ -6,7 +6,7 @@
  * explanatory comments). The Cloudflare Container image is built with its
  * Dockerfile directory as the context, so it cannot import across the repo —
  * keeping a copy here is the trade-off. If you change the loudness math, change
- * it in BOTH places (the browser export and this server export must stay
+ * it in BOTH places (live playback mix and this server export must stay
  * loudness-identical). NOTE: the browser copy's tests
  * (`src/shared/browser-merge/loudness-normalize.test.ts`) do NOT import this file —
  * the container is outside the root vitest/tsconfig — so this copy has no

@@ -18,7 +18,7 @@ export type ExportJob = {
   musicUrl: string | null;
   /**
    * Precomputed music gain in dB. `null` triggers an in-process EBU R128
-   * measurement so the server export matches the browser export's loudness.
+   * measurement so the server export matches live playback loudness.
    */
   musicLoudnessGainDb: number | null;
 };

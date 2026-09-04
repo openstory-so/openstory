@@ -5,8 +5,7 @@
  * on a canvas.
  *
  * Falls back to an overlay message when the browser can't decode the source
- * codecs. Download/Copy live on `overlayActions` (theatre) — see
- * `src/shared/sequence-player/export.ts` and `use-sequence-export`.
+ * codecs. Download/Copy live on `overlayActions` (theatre).
  */
 
 import { Button } from '@/components/ui/button';

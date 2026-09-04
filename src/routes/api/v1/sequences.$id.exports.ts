@@ -12,9 +12,8 @@
  *          `processing`.
  *
  * Team-scoped via `authWithTeamRequestMiddleware`; a key only sees its own
- * team's sequences. Both producers write the same `sequence_exports` table
- * and the same `sourceShotsHash` (via `hashSequenceExportInputs`) so a
- * server-rendered MP4 is reused by the theatre cache (#1406).
+ * team's sequences. Theatre Download/Copy POST this same route; a ready MP4
+ * whose `sourceShotsHash` matches is reused (#1406).
  */
 
 import { authWithTeamRequestMiddleware } from '@/functions/middleware';

@@ -443,15 +443,12 @@ Motion status checking: `checkMotionStatus(statusUrl)`, `getMotionResult(respons
 
 ## Server-side export (API)
 
-Exporting a sequence to one stitched MP4 exists in **two** places:
+Theatre Download/Copy and the public API both `POST /api/v1/sequences/$id/exports`. There is no in-browser encode. Playback is the live canvas stitch, or a matching ready MP4 (`sourceShotsHash`). Overlay icons on the player; desktop also has an Export dropdown next to Copy script.
 
-- **Browser** (`src/shared/sequence-player/export.ts`, `use-sequence-export`) — Theatre Download/Copy are icon overlay on the sequence player; on desktop an Export dropdown sits in the Canvas/Script toggle trailing slot (same place as Copy script). Mobile keeps Download/Copy on the player and does not show that dropdown. Playback is the live canvas stitch, or a matching export MP4 if the user already exported one (`sourceShotsHash`). When the container is bound, Download/Copy POST `/api/v1/…/exports` instead of encoding in the browser (no MP4 upload). Firefox AAC-missing and mixed-res both take that path. A matching `sourceShotsHash` is served from cache and never re-rendered.
-- **Server** (#968) — the public API. WebCodecs/Web Audio don't exist on Workers, so the heavy lift runs in a **Cloudflare Container** (`containers/video-export/`, Node + `@mediabunny/server`/NodeAV). Flow:
-  - `POST /api/v1/sequences/$id/exports` returns 200 when a ready row already matches the current `sourceShotsHash`; otherwise reserves a `sequence_exports` row (`status: processing`) and triggers `SequenceExportWorkflow`. `GET …/exports` lists/polls them (`?wait=60s` long-polls until nothing is `processing`). (`src/routes/api/v1/sequences.$id.exports.ts`)
-  - `SequenceExportWorkflow` (`src/lib/workflows/`) does **all** DB access via `scopedDb`, absolutizes scene/music URLs (`toShareableUrl`), POSTs the job to the container, streams the returned MP4 into R2 (`uploadFile`), and flips the row to `ready`/`failed`. The container is a **stateless renderer — it never touches D1**; it only gets URLs + params over HTTP.
-  - `sequence_exports` gained `status`/`error`/`workflowRunId` (additive). `listBySequence`/`getLatest` are `ready`-only (the browser UI never sees in-flight/failed server rows); the API uses `listAllBySequence`.
-- **v1 scope:** transmux when every scene is uniform AVC; otherwise decode→letterbox→re-encode. Production container is `standard-4`. Theatre POSTs here when the container is bound (skips uploading the MP4); browser Mediabunny is the fallback when it is not.
-- **Local dev:** `bun dev:all` runs the export service (`dev:bunny`, host bun runtime — no Docker, `node-av`/FFmpeg works under bun) AND sets `VIDEO_EXPORT_DEV_URL=http://localhost:8080` (via `CLOUDFLARE_INCLUDE_PROCESS_ENV`, the same injection Playwright uses) so the workflow POSTs to it instead of the (production-only) container binding — a full local export loop, zero config. Plain `bun dev` doesn't set the var (prod uses the container); for a two-terminal `bun dev` + `bun dev:bunny` setup, set `VIDEO_EXPORT_DEV_URL` in `.env.local` yourself. The container uses **bun** as its package manager (`bun.lock`, `trustedDependencies: ["node-av"]`) but **Node** as the image runtime. Container details, contract, and Docker build/smoke-test: `containers/video-export/README.md`.
+- POST 200 = ready row for the current cut (hash computed server-side). POST 202 = reuse a live `processing` row, or reserve one and trigger `SequenceExportWorkflow`. GET `?wait=60s` long-polls. (`src/routes/api/v1/sequences.$id.exports.ts`)
+- The workflow absolutizes scene/music URLs, POSTs to the video-export Cloudflare Container (`containers/video-export/`), streams the MP4 into R2, and flips the row to `ready`/`failed`. The container never touches D1.
+- Uniform AVC transmuxes; mixed-res/codec is decode→letterbox→re-encode. Production and PR previews run `standard-4`.
+- **Local:** `bun dev:all` runs `dev:bunny` and sets `VIDEO_EXPORT_DEV_URL`. Plain `bun dev` and e2e have no renderer — theatre toasts rather than encoding in the tab. Container details: `containers/video-export/README.md`.
 
 ---
 

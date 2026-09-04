@@ -1,6 +1,6 @@
 /**
- * Server-side sequence export (#968) — the API counterpart of the browser
- * export in `src/shared/sequence-player/export.ts`.
+ * Server-side sequence export (#968). Theatre Download/Copy and the public
+ * API both go through this workflow.
  *
  * Flow:
  *   1. `render-and-upload` — absolutize the payload's scene/music URLs, POST

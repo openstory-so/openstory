@@ -11,33 +11,15 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import type { SequenceExportState } from '@/components/theatre/use-sequence-export';
-import type { ExportProgress } from '@/shared/sequence-player/export';
+import type {
+  ExportProgress,
+  SequenceExportState,
+} from '@/components/theatre/use-sequence-export';
 import { ChevronDown, Download, FileDown, Link, Loader2 } from 'lucide-react';
 
 export function formatExportProgress(progress: ExportProgress | null): string {
   if (!progress) return 'Creating MP4…';
-  const phaseLabel: Record<ExportProgress['phase'], string> = {
-    prepare: 'Preparing',
-    video: 'Stitching video',
-    music: 'Downloading music',
-    dialogue: 'Decoding dialogue',
-    mix: 'Mixing audio',
-    encode: 'Encoding audio',
-    finalize: 'Finalizing',
-    upload: 'Uploading',
-    commit: 'Saving',
-    server: 'Rendering on server',
-  };
-  const label = phaseLabel[progress.phase];
-  if (progress.total > 0) {
-    const pct = Math.min(
-      100,
-      Math.round((progress.completed / progress.total) * 100)
-    );
-    return `${label}… ${pct}%`;
-  }
-  return `${label}…`;
+  return 'Rendering on server…';
 }
 
 export const SequenceExportActions: React.FC<{

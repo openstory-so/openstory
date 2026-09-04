@@ -19,7 +19,7 @@ describe('isServerExportAvailable', () => {
     expect(isServerExportAvailable()).toBe(false);
   });
 
-  it('is true when the production container binding exists', () => {
+  it('is true when the production or PR-preview container binding exists', () => {
     env.VIDEO_EXPORT_CONTAINER = { idFromName: () => {} };
     expect(isServerExportAvailable()).toBe(true);
   });

@@ -4,7 +4,7 @@
  * POSTs `/api/v1/sequences/$id/exports` with the session cookie (CSRF is
  * server-fn-only, so this route accepts it) and polls GET until the row is
  * `ready` or `failed`. A ready hash-match on POST returns immediately —
- * the theatre then downloads that URL the same way as a browser-encoded MP4.
+ * the theatre then downloads or copies that URL.
  */
 
 const POLL_WAIT = '60s';

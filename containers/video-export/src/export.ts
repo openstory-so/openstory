@@ -1,6 +1,6 @@
 /**
- * Server-side sequence export — the Node/mediabunny counterpart of the browser
- * pipeline in `src/shared/sequence-player/export.ts`.
+ * Server-side sequence export. Stitches scene videos and mixes music +
+ * dialogue into one MP4.
  *
  * Uniform AVC (byte-identical decoder config) concatenates packets. Mixed
  * codec / mixed resolution decodes each scene, letterboxes into the bounding

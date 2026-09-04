@@ -9,10 +9,10 @@ one MP4, using [`mediabunny`](https://mediabunny.dev) +
 
 ## Why a container (and not the Worker)
 
-The browser export (`src/shared/sequence-player/export.ts`) relies on WebCodecs +
-Web Audio, which Cloudflare Workers don't provide. `@mediabunny/server`
-polyfills the full pipeline via NodeAV (native FFmpeg bindings) — that needs a
-real Node runtime, hence a container. See CLAUDE.md → "Server-side export".
+WebCodecs and Web Audio don't exist on Workers. `@mediabunny/server` polyfills
+the pipeline via NodeAV (native FFmpeg bindings) — that needs a real Node
+runtime, hence a container. Production and PR previews run `standard-4`.
+See CLAUDE.md → "Server-side export".
 
 ## Contract
 
@@ -39,8 +39,8 @@ this service, and streams the result into R2.
 Concatenates **transmux-compatible** scenes (every scene AVC with a
 byte-identical decoder config) and mixes audio. Mixed-codec / mixed-resolution
 sequences are decoded, letterboxed into the bounding box (`fit: 'contain'`),
-and re-encoded as one AVC track. Production runs this on a `standard-4`
-container (4 vCPU / 12 GiB).
+and re-encoded as one AVC track. Production and PR previews run this on a
+`standard-4` container (4 vCPU / 12 GiB).
 
 ## Deploy
 

@@ -3,22 +3,20 @@
  *
  * A flat list of MP4 snapshots of a sequence. Unlike the old
  * `sequence_video_variants` table, there is no primary/divergent split — every
- * row is just a snapshot at a point in time. Two producers write here:
- *  - the browser-side export pipeline (`src/shared/sequence-player/export.ts`),
- *    which commits a finished `ready` row directly; and
- *  - the server-side (API) export workflow, which reserves a `processing` row
- *    up front and later flips it to `ready`/`failed`.
- * Theatre Download/Share reuse a row only when `sourceShotsHash` matches the
+ * row is just a snapshot at a point in time. The server-side export workflow
+ * reserves a `processing` row and later flips it to `ready`/`failed`. Theatre
+ * Download/Copy POST the same API and reuse a row only when `sourceShotsHash`
+ * matches the
  * current cut (`freshExportUrl` in `useSequenceExport`). The API lists every
  * status so a caller can poll progress.
  *
  * `sourceShotsHash` is SHA-256 of `{sceneUrls, musicUrl}`, computed by
- * `hashSequenceExportInputs` and written by both producers (#1253, #1406).
+ * `hashSequenceExportInputs` and written by the server export path (#1253, #1406).
  * There is no "latest ready" fallback.
  * `sourceMusicVariantId` is reserved but currently never written.
  */
 
-import { sql, type InferInsertModel, type InferSelectModel } from 'drizzle-orm';
+import { sql, type InferSelectModel } from 'drizzle-orm';
 import {
   index,
   integer,
@@ -47,18 +45,16 @@ export const sequenceExports = snakeCase.table(
     storagePath: text().notNull(),
     durationSeconds: integer(),
 
-    // Lifecycle. Browser exports commit a finished row directly, so they
-    // default to `ready`; the server-side (API) export creates a `processing`
-    // row up front and the export workflow flips it to `ready`/`failed`.
-    // The `ready` SQL default also backfills every pre-existing row on the
-    // ADD COLUMN migration.
+    // Lifecycle. Server export creates a `processing` row up front and the
+    // workflow flips it to `ready`/`failed`. The `ready` SQL default also
+    // backfills every pre-existing row on the ADD COLUMN migration.
     status: text({ enum: ['processing', 'ready', 'failed'] })
       .notNull()
       .default('ready'),
     // Populated only on `failed` — surfaced to the API caller.
     error: text(),
     // The server-side export workflow run that produced (or is producing) this
-    // row. Null for browser exports.
+    // row. Null on rows that predate the workflow.
     workflowRunId: text(),
 
     // Inputs that produced this snapshot (cache key, see hashSequenceExportInputs)
@@ -75,8 +71,7 @@ export const sequenceExports = snakeCase.table(
     // At most one in-flight server export per sequence. Makes the API's
     // "reuse the in-flight export instead of spawning a duplicate" coalescing
     // atomic against concurrent POSTs (a losing INSERT raises a unique-
-    // constraint error the route absorbs). Browser exports land as `ready`,
-    // so they're never constrained.
+    // constraint error the route absorbs). Ready rows are never constrained.
     uniqueIndex('uq_sequence_exports_one_processing')
       .on(table.sequenceId)
       .where(sql`${table.status} = 'processing'`),
@@ -84,4 +79,3 @@ export const sequenceExports = snakeCase.table(
 );
 
 export type SequenceExport = InferSelectModel<typeof sequenceExports>;
-export type NewSequenceExport = InferInsertModel<typeof sequenceExports>;
