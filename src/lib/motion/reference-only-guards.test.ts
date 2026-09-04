@@ -54,8 +54,11 @@ describe('canRenderReferenceOnly', () => {
     ).toBe(false);
   });
 
+  it('accepts Kling — O3 Pro is a fal reference-to-video route', async () => {
+    expect(await canRenderReferenceOnly('kling_v3_pro', noKeysDb)).toBe(true);
+  });
+
   it('rejects a model with no reference route on either via', async () => {
-    expect(await canRenderReferenceOnly('kling_v3_pro', xaiKeyDb)).toBe(false);
     expect(await canRenderReferenceOnly('veo3_1', xaiKeyDb)).toBe(false);
   });
 });
@@ -198,11 +201,21 @@ describe('sequence schemas', () => {
   it('rejects reference-only with an incapable variant model', () => {
     const r = createSequenceSchema.safeParse({
       ...base,
-      videoModels: ['seedance_v2_5', 'kling_v3_pro'],
+      videoModels: ['seedance_v2_5', 'veo3_1'],
       generateStartFrames: false,
     });
     expect(r.success).toBe(false);
     expect(JSON.stringify(r.error)).toContain(REFERENCE_ONLY_MODEL_ERROR);
+  });
+
+  it('accepts reference-only with Kling — it routes to O3 Pro', () => {
+    expect(
+      createSequenceSchema.safeParse({
+        ...base,
+        videoModels: ['kling_v3_pro'],
+        generateStartFrames: false,
+      }).success
+    ).toBe(true);
   });
 
   it('accepts reference-only with motion on and capable models', () => {

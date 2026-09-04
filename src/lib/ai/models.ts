@@ -715,9 +715,11 @@ export type MotionReferenceEndpointConfig = {
  * `image_url`. This is the motion analogue of `EDIT_ENDPOINTS` on the image
  * side: when a scene has references AND the model is listed here, motion
  * routes to this endpoint and passes the rendered still as the first image
- * plus cast/element refs after it (see `resolveMotionEndpoint`). Models that
- * emit references inline on their normal endpoint (e.g. Kling v3 Pro's
- * `elements` field) are NOT listed here.
+ * plus cast/element refs after it (see `resolveMotionEndpoint`).
+ *
+ * Kling v3 Pro's start-frame-only shots stay on image-to-video; shots with
+ * references (and reference-only shots) route to Kling O3 Pro, the sibling
+ * that actually has a reference-to-video endpoint (#1498).
  */
 export const MOTION_REFERENCE_ENDPOINTS: Partial<
   Record<ImageToVideoModel, MotionReferenceEndpointConfig>
@@ -739,6 +741,12 @@ export const MOTION_REFERENCE_ENDPOINTS: Partial<
     tag: (position) => `<IMAGE_REF_${position - 1}>`,
     maxImages: 7,
   },
+  // Schema caps images at 4 (elements + reference images combined).
+  kling_v3_pro: {
+    endpointId: 'fal-ai/kling-video/o3/pro/reference-to-video',
+    tag: (position) => `@Image${position}`,
+    maxImages: 4,
+  },
   // Schema caps images at 9 (videos 3, audio 3; combined 12 files).
   minimax_h3_max: {
     endpointId: 'minimax/h3-max/reference-to-video',
@@ -749,15 +757,6 @@ export const MOTION_REFERENCE_ENDPOINTS: Partial<
 };
 
 /**
- * Models that attach reference images on the normal image-to-video endpoint
- * (Kling's `elements` field). Distinct from `MOTION_REFERENCE_ENDPOINTS`,
- * which switch to a different endpoint.
- */
-const MOTION_INLINE_REFERENCE_MODELS = {
-  kling_v3_pro: true,
-} as const satisfies Partial<Record<ImageToVideoModel, true>>;
-
-/**
  * Get the reference-to-video endpoint config for a motion model, if it has one.
  * @returns The endpoint config, or null if the model has no reference endpoint
  */
@@ -765,10 +764,6 @@ export function getMotionReferenceEndpoint(
   model: ImageToVideoModel
 ): MotionReferenceEndpointConfig | null {
   return MOTION_REFERENCE_ENDPOINTS[model] ?? null;
-}
-
-export function attachesInlineReferences(model: ImageToVideoModel): boolean {
-  return model in MOTION_INLINE_REFERENCE_MODELS;
 }
 
 /**
@@ -783,12 +778,10 @@ export function attachesInlineReferences(model: ImageToVideoModel): boolean {
  * still was never a frame there either).
  *
  * Keyed on the MODEL alone, so it is true on EVERY via — the floor, safe to
- * call anywhere including a pure isomorphic schema. Kling is excluded: its
- * `elements` ride on the image-to-video endpoint, which requires `image_url`.
- * Grok Imagine is excluded here too, but only because its fal id is
- * `xai/grok-imagine-video/v1.5/image-to-video` — it DOES accept references
- * with no start frame on the native xAI via. Where the via is known, ask
- * {@link referenceOnlyCapableWith} instead.
+ * call anywhere including a pure isomorphic schema. Grok Imagine is excluded
+ * here because its fal id is `xai/grok-imagine-video/v1.5/image-to-video` —
+ * it DOES accept references with no start frame on the native xAI via. Where
+ * the via is known, ask {@link referenceOnlyCapableWith} instead.
  */
 export function supportsReferenceOnlyMotion(model: ImageToVideoModel): boolean {
   return model in MOTION_REFERENCE_ENDPOINTS;

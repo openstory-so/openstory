@@ -6,8 +6,7 @@
  * (`buildFrameImageWorkflowInput` / `resolveSceneFrameImageReferences`) so
  * motion attaches the SAME cast/element refs the image step does — otherwise
  * characters and elements that look right in the start frame degrade across the
- * generated clip. The result is consumed by `buildKlingElementsInput` and
- * `buildReferenceVideoPrompt`.
+ * generated clip. The result is consumed by `buildReferenceVideoPrompt`.
  *
  * LOCATIONS are excluded on the image-to-video path (out of scope for #873,
  * and redundant there: the still already fixes the environment, so a location

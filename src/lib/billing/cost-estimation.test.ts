@@ -317,7 +317,8 @@ describe('estimateStoryboardCost', () => {
 
   it('prices reference-only motion at the reference-to-video rate', () => {
     // Unequal i2v vs r2v rates so a route regression cannot hide behind a
-    // model that happens to price both the same (VIDEO_A does).
+    // model that happens to price both the same (Kling's storyboard path
+    // prices O3 for refs and for reference-only, so those rates match).
     const pricing = {
       ...FAL_PRICING,
       'bytedance/seedance-2.5/image-to-video': {
@@ -510,7 +511,7 @@ describe('estimateVideoCost endpoint routing', () => {
     expect(withMotion - stillsOnly).toBe(refPerShot * SCENE_COUNT);
   });
 
-  it('leaves Kling on image-to-video even with refs (inline elements path)', () => {
+  it('prices Kling with refs on O3 Pro reference-to-video', () => {
     const withRefs = estimateVideoCost('kling_v3_pro', 5, {
       pricing: FAL_PRICING,
       hasReferenceImages: true,
@@ -519,8 +520,8 @@ describe('estimateVideoCost endpoint routing', () => {
       pricing: FAL_PRICING,
       hasReferenceImages: false,
     });
-    expect(withRefs).toBe(without);
-    expect(withRefs).toBe(micros(5 * 70_000));
+    expect(withRefs).toBe(micros(5 * 140_000));
+    expect(without).toBe(micros(5 * 70_000));
   });
 
   it('prices a 5s H3 Max clip at $0.20 (8 billed units, not duration)', () => {

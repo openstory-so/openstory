@@ -2,12 +2,11 @@
  * Build reference-to-video input (prompt + image_urls) from the rendered still
  * + cast/element reference images (#873).
  *
- * Unlike Kling (whose `elements` field rides on the normal image-to-video
- * endpoint), models in `MOTION_REFERENCE_ENDPOINTS` accept references only on
- * a separate reference-to-video endpoint that has NO start-frame `image_url`.
- * It takes an image list (`image_urls` or `reference_image_urls`) bound to
- * prompt tokens — Seedance's `@Image1…N`, H3 Max's `Image 1…N` — via the
- * endpoint's `tag` config.
+ * Models in `MOTION_REFERENCE_ENDPOINTS` accept references on a dedicated
+ * reference-to-video endpoint that has NO start-frame `image_url`. It takes
+ * an image list (`image_urls` or `reference_image_urls`) bound to prompt
+ * tokens — Seedance's `@Image1…N`, H3 Max's `Image 1…N`, Kling O3's
+ * `@Image1…N` — via the endpoint's `tag` config.
  *
  * Binding follows the vendors' own prompt examples: the FIRST line declares
  * the still as the starting frame ("Use @Image1 as the starting frame." —

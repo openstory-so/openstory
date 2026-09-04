@@ -105,7 +105,7 @@ export type GenerateMotionOptions = {
   /**
    * Character + element reference images for identity consistency across the
    * clip (#873). Emitted when `resolveMotionEndpoint` says they go on the
-   * wire: Kling `elements`, Seedance `image_urls[]`, H3 Max
+   * wire: Seedance / Kling O3 `image_urls[]`, H3 Max
    * `reference_image_urls[]`, and Grok Imagine 1.5 native
    * `metadata.role: 'reference' | 'character'` prompt parts. Other models
    * substitute tokens with descriptions instead.
