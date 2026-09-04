@@ -2,18 +2,10 @@ import { ScenePlayer } from '@/components/motion/scene-player';
 import { CanvasMediaStage } from '@/components/scenes/canvas-media-stage';
 import { ShotMediaDropZone } from '@/components/scenes/shot-media-drop-zone';
 import { StartingFrameVariants } from '@/components/scenes/starting-frame-variants';
+import { formatExportProgress } from '@/components/scenes/sequence-export-actions';
 import { SequencePlayer } from '@/components/theatre/sequence-player';
-import {
-  useSequenceExport,
-  type SequenceExportState,
-} from '@/components/theatre/use-sequence-export';
-import { Button } from '@/components/ui/button';
+import type { SequenceExportState } from '@/components/theatre/use-sequence-export';
 import { Skeleton } from '@/components/ui/skeleton';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
 import type { SceneWithScript } from '@/hooks/use-scenes';
 import { useSetSequenceMusic } from '@/hooks/use-sequences';
 import type { TabValue } from '@/components/scenes/scene-script-prompts';
@@ -26,9 +18,9 @@ import {
 } from '@/lib/scenes/scene-selection';
 import type { ShotView } from '@/lib/shots/shot-view';
 import type { Sequence } from '@/types/database';
-import { Download, Film, Link, Loader2 } from 'lucide-react';
-import { useMemo } from 'react';
-import type { ExportProgress } from '@/shared/sequence-player/export';
+import { Film } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { theatrePlaybackMode } from '@/shared/sequence-player/theatre-playback-mode';
 import { toPlaybackScenes } from '@/shared/sequence-player/playback-scenes';
 
 type SceneCanvasProps = {
@@ -61,111 +53,7 @@ type SceneCanvasProps = {
    * the sequence has something to act on (#1286).
    */
   firstRunActive?: boolean;
-};
-
-function formatExportProgress(progress: ExportProgress | null): string {
-  if (!progress) return 'Exporting…';
-  const phaseLabel: Record<ExportProgress['phase'], string> = {
-    prepare: 'Preparing',
-    video: 'Stitching video',
-    music: 'Downloading music',
-    dialogue: 'Decoding dialogue',
-    mix: 'Mixing audio',
-    encode: 'Encoding audio',
-    finalize: 'Finalizing',
-    upload: 'Uploading',
-    commit: 'Saving',
-    server: 'Rendering on server',
-  };
-  const label = phaseLabel[progress.phase];
-  if (progress.total > 0) {
-    const pct = Math.min(
-      100,
-      Math.round((progress.completed / progress.total) * 100)
-    );
-    return `${label}… ${pct}%`;
-  }
-  return `${label}…`;
-}
-
-/**
- * Download + Share for the theatre. Both actions treat `sequence_exports` as
- * a content-addressed cache of what the user is looking at: a cached MP4 of
- * the current state is reused, otherwise a new export runs first (#1253).
- */
-const TheatreShareOverlay: React.FC<{
   sequenceExport: SequenceExportState;
-}> = ({ sequenceExport }) => {
-  const running = sequenceExport.isRunning;
-  const progressLabel = formatExportProgress(sequenceExport.progress);
-  const pending =
-    !running && !sequenceExport.canExport && !sequenceExport.freshExportUrl;
-  const wait = running
-    ? progressLabel
-    : pending
-      ? `Export · ${sequenceExport.clipsReady} of ${sequenceExport.clipsTotal} clips ready`
-      : null;
-  const downloadLabel =
-    wait ??
-    (sequenceExport.freshExportUrl
-      ? 'Download MP4'
-      : 'Export and download MP4');
-  const copyLabel =
-    wait ??
-    (sequenceExport.freshExportUrl
-      ? 'Copy video link'
-      : 'Export and copy video link');
-  return (
-    <>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          {/* Span so a disabled button still shows the pending-count tooltip. */}
-          <span className="inline-flex">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-11 w-11 bg-black/50 text-white hover:bg-black/70 md:h-8 md:w-8"
-              aria-label={downloadLabel}
-              aria-busy={running}
-              disabled={pending}
-              // Stays enabled while running (the actions no-op) so the tooltip
-              // can show progress — disabled buttons emit no pointer events.
-              onClick={sequenceExport.download}
-            >
-              {running ? (
-                <Loader2 className="h-5 w-5 animate-spin md:h-4 md:w-4" />
-              ) : (
-                <Download className="h-5 w-5 md:h-4 md:w-4" />
-              )}
-            </Button>
-          </span>
-        </TooltipTrigger>
-        <TooltipContent>{downloadLabel}</TooltipContent>
-      </Tooltip>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span className="inline-flex">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-11 w-11 bg-black/50 text-white hover:bg-black/70 md:h-8 md:w-8"
-              aria-label={copyLabel}
-              aria-busy={running}
-              disabled={pending}
-              onClick={sequenceExport.copyLink}
-            >
-              {running ? (
-                <Loader2 className="h-5 w-5 animate-spin md:h-4 md:w-4" />
-              ) : (
-                <Link className="h-5 w-5 md:h-4 md:w-4" />
-              )}
-            </Button>
-          </span>
-        </TooltipTrigger>
-        <TooltipContent>{copyLabel}</TooltipContent>
-      </Tooltip>
-    </>
-  );
 };
 
 export const SceneCanvas: React.FC<SceneCanvasProps> = ({
@@ -189,6 +77,7 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
   regeneratingSceneVariants,
   onGenerateSceneVariantsStart,
   firstRunActive = false,
+  sequenceExport,
 }) => {
   const scope = selectionScope(selection);
   const scopedShots = useMemo(
@@ -202,7 +91,28 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
   );
 
   const setMusicEnabled = useSetSequenceMusic(sequence?.id ?? '');
-  const sequenceExport = useSequenceExport(sequence);
+  const [previewLive, setPreviewLive] = useState(false);
+  const [canTransmux, setCanTransmux] = useState<boolean | null>(null);
+  const playbackMode = theatrePlaybackMode({
+    freshExportUrl: sequenceExport.freshExportUrl,
+    serverExportAvailable: sequenceExport.serverExportAvailable,
+    canTransmux,
+    previewLive,
+    playCutFailed: sequenceExport.playCutFailed,
+  });
+
+  useEffect(() => {
+    setPreviewLive(false);
+    setCanTransmux(null);
+  }, [sequence?.id, sequence?.includeMusic, sequence?.musicUrl]);
+
+  const ensureCut = sequenceExport.ensureCut;
+  const canExportCut = sequenceExport.canExport;
+  useEffect(() => {
+    if (playbackMode !== 'wait-for-cut') return;
+    if (!canExportCut) return;
+    ensureCut();
+  }, [playbackMode, canExportCut, ensureCut]);
 
   if (loadError) {
     return (
@@ -333,15 +243,20 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
         cachedVideoUrl={
           scope !== 'sequence'
             ? null
-            : sequenceExport.isCacheResolved
-              ? sequenceExport.freshExportUrl
-              : undefined
+            : !sequenceExport.isCacheResolved
+              ? undefined
+              : playbackMode === 'native'
+                ? sequenceExport.freshExportUrl
+                : null
         }
-        overlayActions={
-          scope === 'sequence' ? (
-            <TheatreShareOverlay sequenceExport={sequenceExport} />
-          ) : undefined
+        cutPending={playbackMode === 'wait-for-cut'}
+        cutPendingLabel={
+          sequenceExport.isRunning
+            ? formatExportProgress(sequenceExport.progress)
+            : undefined
         }
+        onPreviewLive={() => setPreviewLive(true)}
+        onPrepared={(meta) => setCanTransmux(meta.canTransmux)}
       />
     </CanvasMediaStage>
   );

@@ -5,7 +5,9 @@
  *      poll until the container row is `ready` (#1402). Mixed-resolution
  *      (missing AVC) still fails with the #1397 message — the container
  *      cannot re-encode.
- *   3. Browser path: reserve an upload URL, PUT the Blob, commit the row.
+ *   3. Theatre play (`ensureCut`) skips the browser encode and POSTs the
+ *      server path so the player can swap to the native MP4.
+ *   4. Browser path: reserve an upload URL, PUT the Blob, commit the row.
  *
  * Every commit (and every server-side ready row) records `sourceShotsHash` —
  * SHA-256 of `{sceneUrls, musicUrl}` via `hashSequenceExportInputs` — so
@@ -42,7 +44,7 @@ import type { Sequence } from '@/types/database';
 import { copyTextToClipboard } from '@/shared/utils/clipboard';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { usePostHog } from '@posthog/react';
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
 const sequenceExportKeys = {
@@ -55,6 +57,8 @@ const sequenceExportKeys = {
 // (browser export's safety valve, matching server — #1430).
 const UPLOAD_TIMEOUT_MS = 10 * 60 * 1000;
 
+type SequenceExportAndThen = 'download' | 'copy-link' | 'play';
+
 export type SequenceExportState = {
   isRunning: boolean;
   progress: ExportProgress | null;
@@ -66,11 +70,20 @@ export type SequenceExportState = {
   download: () => void;
   /** Copy a shareable URL for the current state's MP4 — exports first if not cached. */
   copyLink: () => void;
+  /**
+   * Render the current cut on the server so theatre can play the MP4.
+   * No-ops when a matching export already exists or a run is in flight.
+   */
+  ensureCut: () => void;
   abort: () => void;
   clipsReady: number;
   clipsTotal: number;
   /** False until every shot has a clip. */
   canExport: boolean;
+  /** Container (or local bunny) can take a server render. False until probed. */
+  serverExportAvailable: boolean;
+  /** Last `ensureCut` / play-path server render failed — theatre should stitch. */
+  playCutFailed: boolean;
 };
 
 export function useSequenceExport(
@@ -88,7 +101,7 @@ export function useSequenceExport(
     enabled: Boolean(sequence),
   });
 
-  useQuery({
+  const { data: serverExportAvailable = false } = useQuery({
     queryKey: sequenceExportKeys.serverAvailable,
     queryFn: () => isServerExportAvailableFn(),
     staleTime: Infinity,
@@ -131,15 +144,19 @@ export function useSequenceExport(
 
   const [isRunning, setIsRunning] = useState(false);
   const [progress, setProgress] = useState<ExportProgress | null>(null);
+  const [playCutFailed, setPlayCutFailed] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  const playKickHashRef = useRef<string | null>(null);
 
   const exportMutation = useMutation({
     mutationFn: async ({
       signal,
       andThen,
+      via,
     }: {
       signal: AbortSignal;
-      andThen: 'download' | 'copy-link';
+      andThen: SequenceExportAndThen;
+      via?: 'server';
     }) => {
       if (!sequence) throw new Error('No sequence selected.');
       if (!shots || shots.length === 0) {
@@ -164,6 +181,29 @@ export function useSequenceExport(
         throw new Error('Could not fingerprint the scenes for export.', {
           cause: inputsHashError,
         });
+      }
+
+      if (via === 'server') {
+        const available = await queryClient.ensureQueryData({
+          queryKey: sequenceExportKeys.serverAvailable,
+          queryFn: () => isServerExportAvailableFn(),
+        });
+        if (!available) {
+          throw new Error(
+            'Server export is not available in this environment.'
+          );
+        }
+        setProgress({ phase: 'server', completed: 0, total: 0 });
+        const server = await exportSequenceOnServer({
+          sequenceId: sequence.id,
+          signal,
+        });
+        return {
+          reEncoded: false,
+          url: server.url,
+          andThen,
+          via: 'server' as const,
+        };
       }
 
       let blob: Blob;
@@ -263,6 +303,7 @@ export function useSequenceExport(
       void queryClient.invalidateQueries({
         queryKey: sequenceExportKeys.list(sequenceId),
       });
+      if (andThen === 'play') return;
       if (andThen === 'download') {
         toast.success('MP4 ready to download.');
         triggerDownload(url, sequence?.title);
@@ -286,8 +327,11 @@ export function useSequenceExport(
         });
       }
     },
-    onError: (error) => {
+    onError: (error, variables) => {
       if (abortRef.current?.signal.aborted) return;
+      if (variables.andThen === 'play') {
+        setPlayCutFailed(true);
+      }
       toast.error(toExportErrorMessage(error));
       posthog.captureException(error, { sequence_id: sequenceId });
     },
@@ -299,13 +343,13 @@ export function useSequenceExport(
   });
 
   const run = useCallback(
-    (andThen: 'download' | 'copy-link') => {
+    (andThen: SequenceExportAndThen, via?: 'server') => {
       if (isRunning) return;
       const controller = new AbortController();
       abortRef.current = controller;
       setIsRunning(true);
       setProgress(null);
-      exportMutation.mutate({ signal: controller.signal, andThen });
+      exportMutation.mutate({ signal: controller.signal, andThen, via });
     },
     [exportMutation, isRunning]
   );
@@ -324,6 +368,18 @@ export function useSequenceExport(
   const clipsTotal = shotList.length;
   const clipsReady = shotList.filter((s) => Boolean(s.video?.url)).length;
   const canExport = clipsTotal > 0 && clipsReady === clipsTotal;
+
+  useEffect(() => {
+    setPlayCutFailed(false);
+    playKickHashRef.current = null;
+  }, [inputsHash]);
+
+  const ensureCut = useCallback(() => {
+    if (freshExportUrl || !canExport || !inputsHash) return;
+    if (playKickHashRef.current === inputsHash) return;
+    playKickHashRef.current = inputsHash;
+    run('play', 'server');
+  }, [freshExportUrl, canExport, inputsHash, run]);
 
   const download = useCallback(() => {
     posthog.capture('export_clicked', {
@@ -372,10 +428,13 @@ export function useSequenceExport(
     isCacheResolved: !exportsLoading && !hashLoading,
     download,
     copyLink,
+    ensureCut,
     abort,
     clipsReady,
     clipsTotal,
     canExport,
+    serverExportAvailable,
+    playCutFailed,
   };
 }
 

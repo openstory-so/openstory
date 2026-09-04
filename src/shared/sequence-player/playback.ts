@@ -89,6 +89,13 @@ export type SequencePlayerMeta = {
   hasMixedAspectRatios: boolean;
   /** Distinct resolutions present, e.g. `"1920×1080, 1280×1280"`. */
   resolutionsLabel: string;
+  /**
+   * True when every scene is AVC with a byte-identical decoder config, so a
+   * server-side container export can transmux it. False means mixed
+   * resolutions / decoder configs — the container rejects those, so theatre
+   * must live-stitch.
+   */
+  canTransmux: boolean;
 };
 
 type DialogueClip = {
@@ -213,6 +220,7 @@ export class SequencePlayerEngine {
       hasMixedResolutions: videoMeta.hasMixedResolutions,
       hasMixedAspectRatios: videoMeta.hasMixedAspectRatios,
       resolutionsLabel: videoMeta.resolutionsLabel,
+      canTransmux: videoMeta.canTransmux,
     };
 
     await this.primeFirstFrame();
