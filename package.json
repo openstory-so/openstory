@@ -49,7 +49,7 @@
     "agent-harness": "bunx github:tombeckenham/agent-harness",
     "dev": "bun scripts/ensure-env.ts && bun run dev:app",
     "dev:all": "bun scripts/ensure-env.ts && CLOUDFLARE_INCLUDE_PROCESS_ENV=true VIDEO_EXPORT_DEV_URL=http://localhost:8080 bun run --parallel dev:app stripe:dev dev:bunny",
-    "dev:app": "bun --sequential db:migrate:local db:seed:local dev:vite",
+    "dev:app": "bun run db:migrate:local && bun run db:seed:local && bun run dev:vite",
     "dev:vite": "bun scripts/build-content-collections.ts && vite dev",
     "dev:bunny": "cd containers/video-export && bun install && bun run dev",
     "stripe:dev": "source .env.local 2>/dev/null; [ -z \"${STRIPE_SECRET_KEY}\" ] && echo 'Skipping Stripe (no STRIPE_SECRET_KEY)' && exit 0; stripe listen --forward-to localhost:3000/api/billing/webhook --api-key=${STRIPE_SECRET_KEY}",
