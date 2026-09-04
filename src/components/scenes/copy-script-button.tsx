@@ -15,8 +15,8 @@
 
 import { Button } from '@/components/ui/button';
 import { useComposedScript } from '@/hooks/use-scenes';
-import { cn } from '@/lib/utils';
-import { copyTextToClipboard } from '@/lib/utils/clipboard';
+import { cn } from '@/shared/utils';
+import { copyTextToClipboard } from '@/shared/utils/clipboard';
 import { AlertCircle, Check, CopyIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';

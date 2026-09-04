@@ -1,4 +1,4 @@
-import { ValidationError } from '@/lib/errors';
+import { ValidationError } from '@/shared/errors';
 import { APIError } from 'better-auth/api';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 

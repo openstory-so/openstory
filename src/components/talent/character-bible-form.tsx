@@ -2,7 +2,7 @@ import { BibleField } from '@/components/bible-field';
 import { Button } from '@/components/ui/button';
 import { useUpdateSequenceCharacter } from '@/hooks/use-sequence-characters';
 import type { CharacterWithSheet } from '@/lib/db/schema';
-import { errorMessage } from '@/lib/errors';
+import { errorMessage } from '@/shared/errors';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { z } from 'zod';

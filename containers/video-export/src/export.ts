@@ -1,6 +1,6 @@
 /**
  * Server-side sequence export — the Node/mediabunny counterpart of the browser
- * pipeline in `src/lib/sequence-player/export.ts`.
+ * pipeline in `src/shared/sequence-player/export.ts`.
  *
  * v1 scope: concatenate transmux-compatible scenes (every scene AVC with a
  * byte-identical decoder config — the common single-model sequence) and mix

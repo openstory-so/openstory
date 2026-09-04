@@ -1,4 +1,4 @@
-import { mediaUrlSchema } from '@/lib/schemas/media-url.schemas';
+import { mediaUrlSchema } from '@/shared/schemas/media-url.schemas';
 import { getSignedUploadUrl } from '#storage';
 import {
   describeElementImage,
@@ -6,15 +6,15 @@ import {
 } from '@/lib/ai/element-vision';
 import { reportMissingBillingCost } from '@/lib/billing/billing-observability';
 import { estimateLLMCost } from '@/lib/billing/cost-estimation';
-import { InsufficientCreditsError, NotFoundError } from '@/lib/errors';
-import { generateId } from '@/lib/db/id';
+import { InsufficientCreditsError, NotFoundError } from '@/shared/errors';
+import { generateId } from '@/shared/id';
 import { ulidSchema } from '@/lib/schemas/id.schemas';
 import { deriveTokenFromFilename } from '@/lib/sequence-elements/derive-token';
 import { STORAGE_BUCKETS } from '@/lib/storage/buckets';
 import {
   getExtensionFromUrl,
   getMimeTypeFromExtension,
-} from '@/lib/utils/file';
+} from '@/shared/utils/file';
 import { triggerWorkflow } from '@/lib/workflow/client';
 import { buildWorkflowLabel } from '@/lib/workflow/labels';
 import type { ElementVisionWorkflowInput } from '@/lib/workflow/types';

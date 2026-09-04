@@ -6,7 +6,7 @@
 
 import { micros, microsToUsd, usdToMicros } from '@/lib/billing/money';
 import type { Database } from '@/lib/db/client';
-import { generateId } from '@/lib/db/id';
+import { generateId } from '@/shared/id';
 import { user } from '@/lib/db/schema/auth';
 import { credits, transactions } from '@/lib/db/schema/credits';
 import { shots } from '@/lib/db/schema/shots';
@@ -21,18 +21,21 @@ import { sequences } from '@/lib/db/schema/sequences';
 import type { Sequence } from '@/lib/db/schema';
 import type { ShotView } from '@/lib/shots/shot-view';
 import { teamMembers, teams } from '@/lib/db/schema/teams';
-import { ValidationError } from '@/lib/errors';
+import { ValidationError } from '@/shared/errors';
 import { and, count, desc, eq, exists, like, not, or, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/sqlite-core';
 
-// Ambiguity-free alphabet (no 0/O/1/I) -- 32 chars -> 32^6 ~ 1B combinations
+// Ambiguity-free alphabet (no 0/O/1/I) -- 32 chars -> 32^6 ~ 1B combinations.
+// Exactly 32 so a 5-bit mask of each random byte picks uniformly (a modulo
+// would be biased for any length that does not divide 256).
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const CODE_MASK = CODE_ALPHABET.length - 1;
 const CODE_LENGTH = 6;
 
 function generateGiftCode(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(CODE_LENGTH));
   return Array.from(bytes)
-    .map((b) => CODE_ALPHABET[b % CODE_ALPHABET.length])
+    .map((b) => CODE_ALPHABET[b & CODE_MASK])
     .join('');
 }
 

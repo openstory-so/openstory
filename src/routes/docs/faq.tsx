@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { FAQ_ITEMS, SITE_CONFIG } from '@/lib/marketing/constants';
+import { FAQ_ITEMS, SITE_CONFIG } from '@/shared/marketing/constants';
 
 const title = 'Frequently Asked Questions';
 const description =

@@ -10,7 +10,8 @@ vi.doMock('@/lib/auth/config', () => ({
   getAuth: () => ({ handler }),
 }));
 
-const { Route, buildApiResourceMetadata } = await import('./$');
+const { Route } = await import('./$');
+const { buildApiResourceMetadata } = await import('@/lib/auth/oauth-provider');
 
 type Handler = (ctx: { request: Request }) => Response | Promise<Response>;
 const get = z

@@ -1,4 +1,4 @@
-import { generateMockStyles } from '@/lib/mocks/data-generators';
+import { generateMockStyles } from '@/shared/mocks/data-generators';
 import { StyleInlineTile } from '@/components/style/style-inline-tile';
 import type { Style } from '@/types/database';
 import { renderToStaticMarkup } from 'react-dom/server';

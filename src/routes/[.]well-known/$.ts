@@ -11,28 +11,11 @@
  */
 
 import { getAuth } from '@/lib/auth/config';
-import {
-  apiResourceIdentifier,
-  resolveOAuthIssuer,
-} from '@/lib/auth/oauth-provider';
-import { OAUTH_API_SCOPES } from '@/lib/auth/oauth-scopes';
+import { buildApiResourceMetadata } from '@/lib/auth/oauth-provider';
 import { createFileRoute } from '@tanstack/react-router';
 
 const API_RESOURCE_METADATA_PATH =
   '/.well-known/oauth-protected-resource/api/v1';
-
-/** RFC 9728 document for the `/api/v1` resource. */
-export function buildApiResourceMetadata() {
-  const issuer = resolveOAuthIssuer();
-  return {
-    resource: apiResourceIdentifier(issuer),
-    authorization_servers: [issuer],
-    bearer_methods_supported: ['header'],
-    scopes_supported: [...OAUTH_API_SCOPES],
-    resource_name: 'OpenStory API',
-    resource_documentation: `${issuer}/api/v1`,
-  };
-}
 
 const handle = ({ request }: { request: Request }) => {
   const pathname = new URL(request.url).pathname.replace(/\/+$/, '');

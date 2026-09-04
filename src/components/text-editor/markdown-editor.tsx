@@ -14,8 +14,8 @@ import {
   type MarkdownNodeSpec,
   type MarkdownStorage,
 } from 'tiptap-markdown';
-import { cn } from '@/lib/utils';
-import { spaceTranscript } from '@/lib/voice/transcript-insert';
+import { cn } from '@/shared/utils';
+import { spaceTranscript } from '@/shared/voice/transcript-insert';
 import * as React from 'react';
 import {
   useEffect,

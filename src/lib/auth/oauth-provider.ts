@@ -120,6 +120,26 @@ export function apiResourceIdentifier(issuer = resolveOAuthIssuer()): string {
 }
 
 /**
+ * RFC 9728 protected-resource document for the `/api/v1` resource, served by
+ * `routes/[.]well-known/$.ts`. It lives here, not in the route, because a
+ * route file's EXPORTED helpers survive the client build — exporting it there
+ * (only its test needed it) kept this module alive past dead-code
+ * elimination and shipped `@/lib/db/scoped` and `better-auth/plugins` to the
+ * browser (#1445).
+ */
+export function buildApiResourceMetadata() {
+  const issuer = resolveOAuthIssuer();
+  return {
+    resource: apiResourceIdentifier(issuer),
+    authorization_servers: [issuer],
+    bearer_methods_supported: ['header'],
+    scopes_supported: [...OAUTH_API_SCOPES],
+    resource_name: 'OpenStory API',
+    resource_documentation: `${issuer}/api/v1`,
+  };
+}
+
+/**
  * The Better Auth plugins that make OpenStory an authorization server. Order
  * matters: `mcp()` looks up the `jwt()` plugin for signing keys and the
  * issuer.

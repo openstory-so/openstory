@@ -4,7 +4,7 @@ import {
   CONTENT_REJECTION_USER_TITLE,
   isContentRejectionError,
 } from '@/lib/ai/content-rejection';
-import { cn } from '@/lib/utils';
+import { cn } from '@/shared/utils';
 import { AlertCircle, Info, Loader2 } from 'lucide-react';
 
 // 'cancelled' (#1108) renders like 'pending': no failure banner, no spinner —

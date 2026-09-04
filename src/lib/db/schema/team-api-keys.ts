@@ -16,7 +16,7 @@ import {
   index,
   uniqueIndex,
 } from 'drizzle-orm/sqlite-core';
-import { generateId } from '../id';
+import { generateId } from '@/shared/id';
 import { teams } from './teams';
 import { user } from './auth';
 

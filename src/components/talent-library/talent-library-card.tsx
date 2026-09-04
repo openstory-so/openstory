@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { useToggleTalentFavorite } from '@/hooks/use-talent';
 import type { TalentWithSheets } from '@/lib/db/schema';
-import { cn } from '@/lib/utils';
+import { cn } from '@/shared/utils';
 import { Link } from '@tanstack/react-router';
 import { ImageIcon, Loader2, Sparkles, Star, User } from 'lucide-react';
 import type React from 'react';

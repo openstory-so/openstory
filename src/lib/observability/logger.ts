@@ -30,7 +30,7 @@ import {
 // once `dev` resolves to `false` at build time (process.env.NODE_ENV is
 // statically replaced). require() doesn't work for this ESM-only package in
 // Workerd, which is what broke pretty output under `bun dev`.
-import { OpenStoryError } from '@/lib/errors';
+import { OpenStoryError } from '@/shared/errors';
 import { getPrettyFormatter } from '@logtape/pretty';
 import { redactByPattern, type RedactionPattern } from '@logtape/redaction';
 

@@ -6,8 +6,8 @@
 
 import type { Microdollars } from '@/lib/billing/money';
 import type { ScopedDb } from '@/lib/db/scoped';
-import { InsufficientCreditsError } from '@/lib/errors';
-import { generateId } from '@/lib/db/id';
+import { InsufficientCreditsError } from '@/shared/errors';
+import { generateId } from '@/shared/id';
 import { getLogger } from '@/lib/observability/logger';
 
 const logger = getLogger(['openstory', 'billing', 'preflight']);

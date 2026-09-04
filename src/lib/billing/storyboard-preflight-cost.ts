@@ -14,15 +14,15 @@ import {
   type ImageToVideoModel,
   type TextToImageModel,
 } from '@/lib/ai/models';
-import type { AspectRatio } from '@/lib/constants/aspect-ratios';
-import type { Resolution } from '@/lib/constants/resolutions';
+import type { AspectRatio } from '@/shared/constants/aspect-ratios';
+import type { Resolution } from '@/shared/constants/resolutions';
 import { estimateStoryboardCost } from '@/lib/billing/cost-estimation';
 import type { Microdollars } from '@/lib/billing/money';
-import { estimateSceneCount } from '@/lib/generation/time-estimate';
+import { estimateSceneCount } from '@/shared/generation/time-estimate';
 import {
   shouldRunStage,
   type GenerationStage,
-} from '@/lib/generation/pipeline';
+} from '@/shared/generation/pipeline';
 
 export type StoryboardPreflightInput = {
   script: string;

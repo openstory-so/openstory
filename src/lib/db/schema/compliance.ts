@@ -28,9 +28,9 @@
  *    account with open enforcement history cannot be quietly hard-deleted.
  */
 
-import { type InferInsertModel, type InferSelectModel } from 'drizzle-orm';
+import type { InferInsertModel, InferSelectModel } from 'drizzle-orm';
 import { index, integer, snakeCase, text } from 'drizzle-orm/sqlite-core';
-import { generateId } from '../id';
+import { generateId } from '@/shared/id';
 import { user } from './auth';
 import { teams } from './teams';
 
@@ -263,51 +263,16 @@ export type UploadAttestation = InferSelectModel<typeof uploadAttestations>;
 // Content Reports
 // ============================================================================
 
-/**
- * Why something was reported. Ordered loosely by escalation posture, and kept
- * deliberately coarse: a reporter picking from twelve overlapping options
- * mislabels, and the triage queue reads the free-text `details` anyway.
- * `csam` exists as its own category because it alone routes to immediate
- * takedown plus external referral rather than to normal triage.
- */
-export const CONTENT_REPORT_REASONS = [
-  'csam',
-  'portrait_rights',
-  'deepfake_impersonation',
-  'copyright',
-  'sexual_content',
-  'violence_or_harm',
-  'hate_or_harassment',
-  'illegal_or_regulated',
-  'misleading_content',
-  'other',
-] as const;
-export type ContentReportReason = (typeof CONTENT_REPORT_REASONS)[number];
-
-/** What the report points at. Mirrors `PROVENANCE_ASSET_KINDS` plus accounts. */
-export const CONTENT_REPORT_TARGET_TYPES = [
-  'sequence',
-  'frame_variant',
-  'video_variant',
-  'music_variant',
-  'sequence_export',
-  'generated_asset',
-  'talent',
-  'sequence_element',
-  'style',
-  'user',
-  'external_url',
-] as const;
-export type ContentReportTargetType =
-  (typeof CONTENT_REPORT_TARGET_TYPES)[number];
-
-export const CONTENT_REPORT_STATUSES = [
-  'open',
-  'triaged',
-  'actioned',
-  'dismissed',
-] as const;
-export type ContentReportStatus = (typeof CONTENT_REPORT_STATUSES)[number];
+import type {
+  ContentReportReason,
+  ContentReportStatus,
+  ContentReportTargetType,
+} from '@/shared/content-reports';
+export type {
+  ContentReportReason,
+  ContentReportStatus,
+  ContentReportTargetType,
+} from '@/shared/content-reports';
 
 /**
  * An inbound complaint about generated content or an account.

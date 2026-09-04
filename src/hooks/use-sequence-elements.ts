@@ -10,7 +10,7 @@ import {
   replaceSequenceElementFn,
   restoreSequenceElementFn,
 } from '@/functions/sequence-elements';
-import { putToR2 } from '@/lib/utils/upload';
+import { putToR2 } from '@/shared/utils/upload';
 import { sceneKeys } from '@/hooks/use-scenes';
 import { shotStalenessNamespace } from '@/hooks/use-shot-staleness';
 import {

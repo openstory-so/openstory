@@ -15,7 +15,7 @@ import {
 } from '@/components/ui/file-upload';
 import { Badge } from '@/components/ui/badge';
 import { useUploadTalentMedia, useUploadTempMedia } from '@/hooks/use-talent';
-import { getFileKey } from '@/lib/utils/upload';
+import { getFileKey } from '@/shared/utils/upload';
 import { Upload, X } from 'lucide-react';
 
 type TalentMediaUploadProps = {

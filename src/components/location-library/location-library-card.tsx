@@ -1,7 +1,7 @@
 import { SheetStalenessBanners } from '@/components/sheets/sheet-staleness-banners';
 import { Card } from '@/components/ui/card';
 import type { LibraryLocation } from '@/lib/db/schema';
-import { cn } from '@/lib/utils';
+import { cn } from '@/shared/utils';
 import { Link } from '@tanstack/react-router';
 import { Loader2, MapPin } from 'lucide-react';
 import { AppImage } from '@/components/ui/app-image';

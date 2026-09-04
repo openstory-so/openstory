@@ -1,4 +1,4 @@
-import { mediaUrlSchema } from '@/lib/schemas/media-url.schemas';
+import { mediaUrlSchema } from '@/shared/schemas/media-url.schemas';
 import { isValidTextToImageModel, safeTextToImageModel } from '@/lib/ai/models';
 import type { LocationBibleUpdate } from '@/lib/db/scoped/sequence-locations';
 import type { SheetStaleness } from '@/lib/sheets/sheet-staleness';
@@ -23,7 +23,7 @@ import { locationSheetHashMatchesStored } from '@/lib/workflows/sheet-snapshots'
 import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
-import { NotFoundError } from '@/lib/errors';
+import { NotFoundError } from '@/shared/errors';
 import { getLogger } from '@/lib/observability/logger';
 import { authWithTeamMiddleware, sequenceAccessMiddleware } from './middleware';
 

@@ -1,4 +1,4 @@
-import { DEFAULT_ASPECT_RATIO } from '@/lib/constants/aspect-ratios';
+import { DEFAULT_ASPECT_RATIO } from '@/shared/constants/aspect-ratios';
 import {
   TURBO_DEFAULT_AUDIO,
   TURBO_DEFAULT_IMAGE,

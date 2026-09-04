@@ -11,7 +11,7 @@
 import {
   getAspectRatioData,
   type AspectRatio,
-} from '@/lib/constants/aspect-ratios';
+} from '@/shared/constants/aspect-ratios';
 
 /** Relative |actual - expected| / expected. 2% covers rounding on integer px. */
 const ASPECT_RATIO_MATCH_EPSILON = 0.02;

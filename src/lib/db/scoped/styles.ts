@@ -6,7 +6,7 @@
 import type { Database } from '@/lib/db/client';
 import type { NewStyle, Style } from '@/lib/db/schema';
 import { styles } from '@/lib/db/schema';
-import { ConflictError, ValidationError } from '@/lib/errors';
+import { ConflictError, ValidationError } from '@/shared/errors';
 import {
   SERVER_MANAGED_STYLE_COLUMNS,
   type ServerManagedStyleColumn,

@@ -11,8 +11,8 @@
  */
 
 import { portraitAttestationSchema } from '@/lib/compliance/likeness-upload';
-import { aspectRatioSchema } from '@/lib/constants/aspect-ratios';
-import { resolutionSchema } from '@/lib/constants/resolutions';
+import { aspectRatioSchema } from '@/shared/constants/aspect-ratios';
+import { resolutionSchema } from '@/shared/constants/resolutions';
 import { MUSIC_REQUIRES_MOTION_ERROR } from '@/lib/schemas/sequence.schemas';
 import { z } from 'zod';
 

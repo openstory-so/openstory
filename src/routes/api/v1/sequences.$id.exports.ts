@@ -24,8 +24,8 @@ import {
   type HalLinks,
 } from '@/lib/api-v1/hal';
 import type { SequenceExport } from '@/lib/db/schema';
-import { generateId } from '@/lib/db/id';
-import { NotFoundError, ValidationError } from '@/lib/errors';
+import { generateId } from '@/shared/id';
+import { NotFoundError, ValidationError } from '@/shared/errors';
 import {
   STORAGE_BUCKETS,
   getPublicUrl,
@@ -34,7 +34,7 @@ import {
 import {
   effectiveExportMusicUrl,
   hashSequenceExportInputs,
-} from '@/lib/sequence-player/source-shots-hash';
+} from '@/shared/sequence-player/source-shots-hash';
 import { triggerWorkflow } from '@/lib/workflow/client';
 import type { SequenceExportWorkflowInput } from '@/lib/workflow/types';
 import { createFileRoute } from '@tanstack/react-router';

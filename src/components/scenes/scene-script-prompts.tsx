@@ -1,6 +1,6 @@
 import { ThinkingBar } from '@/components/ai/thinking-bar';
 import { ActionCost } from '@/components/billing/action-cost';
-import { type ModelGenerationStatus } from '@/components/model/base-model-selector';
+import type { ModelGenerationStatus } from '@/components/model/base-model-selector';
 import { ImageModelSelector } from '@/components/model/image-model-selector';
 import { MotionModelSelector } from '@/components/model/motion-model-selector';
 import { useViaAvailability } from '@/hooks/use-via-availability';
@@ -52,7 +52,7 @@ import {
 } from '@/hooks/use-media-upload';
 import type { SequenceSegment } from '@/lib/scenes/scene-segments';
 import type { UpdateStaleDepth } from '@/lib/shots/update-stale-depth';
-import { copyTextToClipboard } from '@/lib/utils/clipboard';
+import { copyTextToClipboard } from '@/shared/utils/clipboard';
 import { isSetImageOffered } from '@/lib/shots/set-image-offer';
 import {
   type ShotStaleness,
@@ -93,8 +93,8 @@ import {
   aspectRatioToImageSize,
   DEFAULT_ASPECT_RATIO,
   type AspectRatio,
-} from '@/lib/constants/aspect-ratios';
-import type { Resolution } from '@/lib/constants/resolutions';
+} from '@/shared/constants/aspect-ratios';
+import type { Resolution } from '@/shared/constants/resolutions';
 import { getMediaRoutesFn } from '@/functions/media-routes';
 import { getStorageDomainFn } from '@/functions/storage-config';
 import {
@@ -137,7 +137,7 @@ import {
   type SceneFacet,
   type SelectionScope,
 } from '@/lib/scenes/scene-selection';
-import { errorMessage, isInsufficientCreditsError } from '@/lib/errors';
+import { errorMessage, isInsufficientCreditsError } from '@/shared/errors';
 import { useUpdateStaleShots } from '@/hooks/use-update-stale-shots';
 import { SceneCastTab } from './scene-cast-tab';
 import { SceneStaleShots } from './scene-stale-shots';

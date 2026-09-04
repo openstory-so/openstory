@@ -11,11 +11,11 @@ import { systemAdminMiddleware } from './middleware';
 import {
   CONTENT_REPORT_REASONS,
   CONTENT_REPORT_STATUSES,
-  ENFORCEMENT_ACTIONS,
-} from '@/lib/db/schema/compliance';
+} from '@/shared/content-reports';
+import { ENFORCEMENT_ACTIONS } from '@/lib/db/schema/compliance';
 import { extractStorageKey, parseTraceId } from '@/lib/compliance/provenance';
 import { ulidSchema } from '@/lib/schemas/id.schemas';
-import { ValidationError } from '@/lib/errors';
+import { ValidationError } from '@/shared/errors';
 import { getLogger } from '@/lib/observability/logger';
 import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';

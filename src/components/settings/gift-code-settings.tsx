@@ -14,7 +14,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { triggerBalanceFlash } from '@/hooks/use-balance-flash';
 import { BILLING_BALANCE_KEY } from '@/hooks/use-billing-balance';
 import { BILLING_GATE_KEY } from '@/hooks/use-billing-gate';
-import { copyTextToClipboard } from '@/lib/utils/clipboard';
+import { copyTextToClipboard } from '@/shared/utils/clipboard';
 import {
   batchCreateGiftTokensFn,
   createGiftTokenFn,

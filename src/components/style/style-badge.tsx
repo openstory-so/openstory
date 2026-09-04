@@ -11,7 +11,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { StyleDetailDialog } from '@/components/style/style-detail-dialog';
 import { PromoteStyleDialog } from '@/components/style/promote-style-dialog';
 import { useSequenceStyle, useStyle, useStyles } from '@/hooks/use-styles';
-import { cn } from '@/lib/utils';
+import { cn } from '@/shared/utils';
 import { ChevronDown, Info, Library, Wand2 } from 'lucide-react';
 
 // Tinted chip treatments from the Tailwind palette. A style name always hashes

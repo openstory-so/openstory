@@ -23,7 +23,7 @@ import {
   useSoftDeleteSequenceLocation,
   type SequenceLocationWithReference,
 } from '@/hooks/use-sequence-locations';
-import { errorMessage } from '@/lib/errors';
+import { errorMessage } from '@/shared/errors';
 import { useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { ExternalLink, MapPin, Trash2 } from 'lucide-react';

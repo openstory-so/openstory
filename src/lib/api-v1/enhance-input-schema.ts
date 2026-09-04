@@ -15,7 +15,7 @@
  * import it without pulling in the server-only AI stack from `enhance.ts`.
  */
 
-import { aspectRatioSchema } from '@/lib/constants/aspect-ratios';
+import { aspectRatioSchema } from '@/shared/constants/aspect-ratios';
 import { z } from 'zod';
 
 export const apiEnhanceScriptSchema = z

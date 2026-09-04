@@ -22,7 +22,7 @@ import {
   UPDATE_STALE_DEPTH_LABELS,
   type UpdateStaleDepth,
 } from '@/lib/shots/update-stale-depth';
-import { cn } from '@/lib/utils';
+import { cn } from '@/shared/utils';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 

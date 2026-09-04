@@ -22,7 +22,7 @@ import { buildLocationMatchingPromptVariables } from '@/lib/ai/location-matching
 import { locationMatchResponseSchema } from '@/lib/ai/response-schemas';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import { getGenerationChannel } from '@/lib/realtime';
-import { GENERATION_STAGE_META } from '@/lib/generation/pipeline';
+import { GENERATION_STAGE_META } from '@/shared/generation/pipeline';
 import { OpenStoryWorkflowEntrypoint } from '@/lib/workflow/base-workflow';
 import { durableLLMCallCf } from '@/lib/workflows/llm-call-helper';
 import { waitForLocationReferences } from '@/lib/workflows/wait-for-sheets';

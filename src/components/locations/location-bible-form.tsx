@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/select';
 import { useUpdateSequenceLocation } from '@/hooks/use-sequence-locations';
 import type { SequenceLocationWithReference } from '@/lib/db/schema';
-import { errorMessage } from '@/lib/errors';
+import { errorMessage } from '@/shared/errors';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { z } from 'zod';

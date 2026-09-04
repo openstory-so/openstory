@@ -1,4 +1,4 @@
-import { mediaUrlSchema } from '@/lib/schemas/media-url.schemas';
+import { mediaUrlSchema } from '@/shared/schemas/media-url.schemas';
 import {
   AUDIO_MODELS,
   DEFAULT_IMAGE_MODEL,
@@ -12,15 +12,15 @@ import {
   DEFAULT_ANALYSIS_MODEL,
   isValidAnalysisModelId,
 } from '@/lib/ai/models.config';
-import { aspectRatioSchema } from '@/lib/constants/aspect-ratios';
-import { resolutionSchema } from '@/lib/constants/resolutions';
+import { aspectRatioSchema } from '@/shared/constants/aspect-ratios';
+import { resolutionSchema } from '@/shared/constants/resolutions';
 import { sequences } from '@/lib/db/schema/sequences';
 import {
   DEFAULT_GENERATION_STOP_AT,
   flagsFromStopAt,
   generationStageSchema,
   stopAtFromFlags,
-} from '@/lib/generation/pipeline';
+} from '@/shared/generation/pipeline';
 import { ulidSchemaOptional } from '@/lib/schemas/id.schemas';
 import { createInsertSchema, createUpdateSchema } from 'drizzle-orm/zod';
 import { z } from 'zod';

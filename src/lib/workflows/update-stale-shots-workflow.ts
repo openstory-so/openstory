@@ -52,7 +52,7 @@ import { getEffectiveFalPricing } from '@/lib/ai/fal-pricing-live';
 import { estimateVideoCost, gateEstimate } from '@/lib/billing/cost-estimation';
 import { requireCredits } from '@/lib/billing/preflight';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
-import { isInsufficientCreditsError } from '@/lib/errors';
+import { isInsufficientCreditsError } from '@/shared/errors';
 import { buildMotionReferenceImages } from '@/lib/motion/build-motion-references';
 import { resolveMotionPromptFromVersion } from '@/lib/motion/resolve-motion-prompt';
 import { resolveShotDuration } from '@/lib/motion/resolve-shot-duration';

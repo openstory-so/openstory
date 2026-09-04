@@ -5,7 +5,7 @@ import { useRouter } from '@tanstack/react-router';
 import type { ErrorComponentProps } from '@tanstack/react-router';
 import { AlertCircle } from 'lucide-react';
 
-import { errorCode } from '@/lib/errors';
+import { errorCode } from '@/shared/errors';
 import { getLogger } from '@/lib/observability/logger';
 
 const logger = getLogger(['openstory', 'ui', 'error', 'route-error-fallback']);

@@ -9,7 +9,7 @@
 import type { Database } from '@/lib/db/client';
 import { scenes, sequenceEvents, shots } from '@/lib/db/schema';
 import type { DbSceneId, NewScene, SceneRow } from '@/lib/db/schema';
-import { typedEntries } from '@/lib/utils/typed-object';
+import { typedEntries } from '@/shared/utils/typed-object';
 import { and, asc, desc, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
 import { buildEventInsert } from './sequence-events';
 

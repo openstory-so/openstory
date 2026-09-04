@@ -1,5 +1,5 @@
 import { getEnv } from '#env';
-import { AuthenticationError } from '@/lib/errors';
+import { AuthenticationError } from '@/shared/errors';
 import { createServerOnlyFn } from '@tanstack/react-start';
 
 function parseAdminEmails(): string[] {

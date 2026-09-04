@@ -31,7 +31,7 @@ import {
 import { microsToUsd, type Microdollars } from '@/lib/billing/money';
 import { buildModelInput } from '@/lib/motion/build-model-input';
 import { snapDuration } from '@/lib/motion/snap-duration';
-import { typedEntries } from '@/lib/utils/typed-object';
+import { typedEntries } from '@/shared/utils/typed-object';
 import { createFalClient } from '@fal-ai/client';
 import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';

@@ -6,7 +6,7 @@
  * data and the app shell is anonymous-browsable (same policy as
  * getPublicStylesFn) — running a model is what's gated, not browsing.
  */
-import { assertModelsEnabled } from '@/lib/flags';
+import { assertModelsEnabled } from '@/shared/flags';
 import {
   CATALOG_ACTIVITIES,
   getModelDetail,

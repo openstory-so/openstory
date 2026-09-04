@@ -12,7 +12,7 @@ import {
 import { usePublicOrTeamQuery } from '@/hooks/use-public-or-team-query';
 import { useAuthSession } from '@/lib/auth/session-query';
 import { publicStylesQueryKey } from '@/lib/style/public-styles-query';
-import { simpleHash } from '@/lib/utils/hash';
+import { simpleHash } from '@/shared/utils/hash';
 import type { Style } from '@/types/database';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 

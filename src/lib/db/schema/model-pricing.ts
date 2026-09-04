@@ -21,7 +21,7 @@ import {
   text,
 } from 'drizzle-orm/sqlite-core';
 import { sql } from 'drizzle-orm';
-import { generateId } from '../id';
+import { generateId } from '@/shared/id';
 
 export type ModelPricingProvider = 'fal' | 'openrouter';
 

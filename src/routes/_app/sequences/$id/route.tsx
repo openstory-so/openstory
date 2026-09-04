@@ -7,7 +7,7 @@ import { getSequenceFn } from '@/functions/sequences';
 import { sequenceKeys, useSequence } from '@/hooks/use-sequences';
 import { useUser } from '@/hooks/use-user';
 import { requireSessionOrRedirect } from '@/lib/auth/route-guards';
-import { isValidId } from '@/lib/db/id';
+import { isValidId } from '@/shared/id';
 import { createFileRoute, notFound, Outlet } from '@tanstack/react-router';
 
 function SequenceCrumbLabel({ id }: { id: string }) {

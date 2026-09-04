@@ -5,7 +5,7 @@
  * and hands the resolved `StyleConfig` back for every child payload.
  */
 import type { AnalysisModelId } from '@/lib/ai/models.config';
-import type { AspectRatio } from '@/lib/constants/aspect-ratios';
+import type { AspectRatio } from '@/shared/constants/aspect-ratios';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import { getLogger } from '@/lib/observability/logger';
 import { getGenerationChannel } from '@/lib/realtime';

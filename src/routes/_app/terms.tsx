@@ -3,7 +3,7 @@ import {
   CONTACT_EMAIL,
   PRIVACY_EMAIL,
   SITE_CONFIG,
-} from '@/lib/marketing/constants';
+} from '@/shared/marketing/constants';
 
 const title = `Terms of Service — ${SITE_CONFIG.name}`;
 

@@ -26,18 +26,18 @@ import {
 import {
   DEFAULT_ASPECT_RATIO,
   type AspectRatio,
-} from '@/lib/constants/aspect-ratios';
+} from '@/shared/constants/aspect-ratios';
 import {
   DEFAULT_RESOLUTION,
   isResolution,
   type Resolution,
-} from '@/lib/constants/resolutions';
+} from '@/shared/constants/resolutions';
 import {
   DEFAULT_GENERATION_STOP_AT,
   isGenerationStage,
   stopAtFromFlags,
   type GenerationStage,
-} from '@/lib/generation/pipeline';
+} from '@/shared/generation/pipeline';
 import { useCallback, useEffect, useState } from 'react';
 
 import { getLogger } from '@/lib/observability/logger';

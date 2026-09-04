@@ -25,7 +25,7 @@ import { withLlmRateLimitRetry } from '@/lib/ai/llm-rate-limit';
 import { isNativeBytePlusImageModel } from '@/lib/ai/models';
 import type { MediaVia } from '@/lib/ai/via';
 import { workersSafeFetch } from '@/lib/ai/workers-safe-fetch';
-import { type Microdollars } from '@/lib/billing/money';
+import type { Microdollars } from '@/lib/billing/money';
 import type { ResolvedApiKey } from '@/lib/db/scoped/api-keys';
 import type { CredentialScopedDb } from '@/lib/db/scoped-workflow';
 import { buildBytePlusImageRequest } from '@/lib/image/build-byteplus-image-request';

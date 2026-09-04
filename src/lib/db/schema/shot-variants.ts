@@ -13,7 +13,7 @@ import {
   text,
   uniqueIndex,
 } from 'drizzle-orm/sqlite-core';
-import { generateId } from '../id';
+import { generateId } from '@/shared/id';
 import { SHOT_GENERATION_STATUSES } from './shots';
 import { shots } from './shots';
 import { sequences } from './sequences';

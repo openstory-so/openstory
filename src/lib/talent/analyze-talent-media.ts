@@ -12,7 +12,7 @@ import type { CharacterBibleEntry } from '@/lib/ai/scene-analysis.schema';
 import { reportMissingBillingCost } from '@/lib/billing/billing-observability';
 import { estimateLLMCost } from '@/lib/billing/cost-estimation';
 import type { ScopedDb } from '@/lib/db/scoped';
-import { InsufficientCreditsError } from '@/lib/errors';
+import { InsufficientCreditsError } from '@/shared/errors';
 
 export type AnalyzeTalentMediaForTeamInput = {
   scopedDb: ScopedDb;

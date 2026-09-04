@@ -14,7 +14,7 @@ import {
   type LikenessRequestContext,
   type UploadAttestationInput,
 } from '@/lib/compliance/likeness-upload';
-import { generateId } from '@/lib/db/id';
+import { generateId } from '@/shared/id';
 import type { Talent } from '@/lib/db/schema';
 import type { ScopedDb } from '@/lib/db/scoped';
 import { getLogger } from '@/lib/observability/logger';
@@ -23,7 +23,7 @@ import {
   getPathFromUrl,
   getPublicUrl,
 } from '@/lib/storage/buckets';
-import { getExtensionFromUrl } from '@/lib/utils/file';
+import { getExtensionFromUrl } from '@/shared/utils/file';
 import type { LibraryTalentSheetWorkflowInput } from '@/lib/workflow/types';
 import { computeLibraryTalentSheetHashFromDto } from '@/lib/workflows/sheet-snapshots';
 import type { CharacterBibleEntry } from '@/lib/ai/scene-analysis.schema';

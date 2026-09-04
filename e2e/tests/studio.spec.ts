@@ -104,4 +104,31 @@ test.describe('Images and Videos studio', () => {
     await page.getByRole('button', { name: 'Shuffle' }).click();
     await expect(editor).not.toHaveAttribute('data-markdown', '');
   });
+
+  test('a long image prompt does not cover the gallery (#1474)', async ({
+    page,
+  }) => {
+    await page.goto('/images');
+    await waitForComposer(page);
+    const editor = page.locator('[data-testid="studio-prompt"] .ProseMirror');
+    const longPrompt = Array.from(
+      { length: 40 },
+      (_, i) =>
+        `Line ${i + 1}: a detailed still that would otherwise cover the results.`
+    ).join('\n');
+    await editor.fill(longPrompt);
+
+    const pane = page.getByTestId('studio-composer-pane');
+    const viewport = page.viewportSize();
+    const box = await pane.boundingBox();
+    expect(box?.height ?? Number.POSITIVE_INFINITY).toBeLessThan(
+      (viewport?.height ?? 0) * 0.75
+    );
+    await expect(
+      page.getByRole('link', { name: 'Favorites' })
+    ).toBeInViewport();
+    await expect(
+      page.getByRole('button', { name: 'Generate image' })
+    ).toBeInViewport();
+  });
 });

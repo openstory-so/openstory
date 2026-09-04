@@ -18,9 +18,9 @@ import {
   type ImageToVideoModel,
   type TextToImageModel,
 } from '@/lib/ai/models';
-import type { AspectRatio } from '@/lib/constants/aspect-ratios';
-import { aspectRatioToDimensions } from '@/lib/constants/aspect-ratios';
-import type { Resolution } from '@/lib/constants/resolutions';
+import type { AspectRatio } from '@/shared/constants/aspect-ratios';
+import { aspectRatioToDimensions } from '@/shared/constants/aspect-ratios';
+import type { Resolution } from '@/shared/constants/resolutions';
 import { imageRequestDimensions } from '@/lib/image/build-image-request';
 import { resolveMotionEndpoint } from '@/lib/motion/resolve-motion-endpoint';
 import {
@@ -32,7 +32,7 @@ import {
   shouldRunStage,
   stageIndex,
   type GenerationStage,
-} from '@/lib/generation/pipeline';
+} from '@/shared/generation/pipeline';
 import { reportFlooredEstimate } from './billing-observability';
 import { type Microdollars, addMicros, micros, multiplyMicros } from './money';
 

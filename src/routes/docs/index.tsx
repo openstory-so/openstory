@@ -1,6 +1,6 @@
 import { createFileRoute, redirect } from '@tanstack/react-router';
 import { allDocs } from 'content-collections';
-import { SECTION_ORDER } from '@/lib/docs/sections';
+import { SECTION_ORDER } from '@/shared/docs/sections';
 
 const sectionIndex = new Map<string, number>(
   SECTION_ORDER.map((section, i) => [section, i])

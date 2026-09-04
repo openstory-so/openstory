@@ -6,9 +6,9 @@ import {
 import {
   type AspectRatio,
   getAspectRatioClassName,
-} from '@/lib/constants/aspect-ratios';
+} from '@/shared/constants/aspect-ratios';
 import { Skeleton } from '@/components/ui/skeleton';
-import { cn } from '@/lib/utils';
+import { cn } from '@/shared/utils';
 import { AlertCircle, Info } from 'lucide-react';
 import { AppImage } from '@/components/ui/app-image';
 import { memo } from 'react';

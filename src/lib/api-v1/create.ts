@@ -17,8 +17,8 @@ import { enhanceScriptToString } from '@/lib/ai/script-enhancement';
 import { toEnhanceInputs } from '@/lib/ai/enhance-inputs';
 import { DEFAULT_VIDEO_MODEL, isValidImageToVideoModel } from '@/lib/ai/models';
 import { isShortScript } from '@/lib/ai/should-enhance';
-import { DEFAULT_RESOLUTION } from '@/lib/constants/resolutions';
-import { DEFAULT_ASPECT_RATIO } from '@/lib/constants/aspect-ratios';
+import { DEFAULT_RESOLUTION } from '@/shared/constants/resolutions';
+import { DEFAULT_ASPECT_RATIO } from '@/shared/constants/aspect-ratios';
 import type { ScopedDb } from '@/lib/db/scoped';
 import {
   createLibraryLocation,

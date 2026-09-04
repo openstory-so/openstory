@@ -7,7 +7,7 @@ import {
   type AudioModel,
   type AudioModelConfig,
 } from '@/lib/ai/models';
-import { type Microdollars } from '@/lib/billing/money';
+import type { Microdollars } from '@/lib/billing/money';
 import type { CredentialScopedDb } from '@/lib/db/scoped-workflow';
 import { isContentRejectionError } from '@/lib/ai/content-rejection';
 import { extractFalErrorMessage } from '@/lib/ai/fal-error';

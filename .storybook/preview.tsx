@@ -11,7 +11,7 @@ import { RealtimeProvider } from '../src/lib/realtime/client';
 import { TooltipProvider } from '../src/components/ui/tooltip';
 import { mswLoader } from 'msw-storybook-addon/csf3';
 import { setupWorker } from 'msw/browser';
-import { handlers } from '../src/lib/mocks/handlers';
+import { handlers } from '../src/shared/mocks/handlers';
 
 import '../src/styles/global.css';
 

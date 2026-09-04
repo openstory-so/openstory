@@ -23,8 +23,8 @@
  */
 
 import { uploadFile } from '#storage';
-import { generateId } from '@/lib/db/id';
-import { ValidationError } from '@/lib/errors';
+import { generateId } from '@/shared/id';
+import { ValidationError } from '@/shared/errors';
 import { getPublicUrl, type StorageBucket } from '@/lib/storage/buckets';
 
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024; // 20 MB

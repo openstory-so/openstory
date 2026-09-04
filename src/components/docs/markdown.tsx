@@ -1,6 +1,9 @@
-import { docsHighlightCss, highlightDocsCode } from '@/lib/docs/highlight';
-import { isInternalDocsHref, type MarkdownDocument } from '@/lib/docs/markdown';
-import { cn } from '@/lib/utils';
+import { docsHighlightCss, highlightDocsCode } from '@/shared/docs/highlight';
+import {
+  isInternalDocsHref,
+  type MarkdownDocument,
+} from '@/shared/docs/markdown';
+import { cn } from '@/shared/utils';
 import {
   Markdown,
   type MarkdownComponentProps,

@@ -7,7 +7,7 @@
  */
 
 import type { Database } from '@/lib/db/client';
-import { generateId } from '@/lib/db/id';
+import { generateId } from '@/shared/id';
 import {
   styles,
   teams,
@@ -20,7 +20,7 @@ import {
   createPublicStylesReadMethods,
   createStylesMethods,
 } from '@/lib/db/scoped/styles';
-import { ConflictError } from '@/lib/errors';
+import { ConflictError } from '@/shared/errors';
 import type { ServerManagedStyleColumn } from '@/lib/schemas/style.schemas';
 import { createClient, type Client } from '@libsql/client';
 import { asc, desc, eq, or, sql } from 'drizzle-orm';

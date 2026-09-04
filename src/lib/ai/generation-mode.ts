@@ -8,7 +8,7 @@
  * Scene-split stays on SCENE_SPLIT_MODEL (Opus 5 Fast) regardless of mode —
  * that call is pinned in the workflow, not the composer picker.
  */
-import { type AnalysisModelId } from '@/lib/ai/models.config';
+import type { AnalysisModelId } from '@/lib/ai/models.config';
 import {
   DEFAULT_VIDEO_MODEL,
   getCompatibleModel,
@@ -17,7 +17,7 @@ import {
   type ImageToVideoModel,
   type TextToImageModel,
 } from '@/lib/ai/models';
-import type { AspectRatio } from '@/lib/constants/aspect-ratios';
+import type { AspectRatio } from '@/shared/constants/aspect-ratios';
 
 const GENERATION_MODES = ['quality', 'turbo'] as const;
 export type GenerationMode = (typeof GENERATION_MODES)[number];

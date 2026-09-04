@@ -6,7 +6,7 @@
  * absent here; the scoped-db layer strips them again.
  */
 
-import { aspectRatioSchema } from '@/lib/constants/aspect-ratios';
+import { aspectRatioSchema } from '@/shared/constants/aspect-ratios';
 import { StyleConfigSchema } from '@/lib/style/style-config';
 import { z } from 'zod';
 

@@ -3,7 +3,7 @@
  * Creates checkout sessions for credit top-ups
  */
 
-import { ValidationError } from '@/lib/errors';
+import { ValidationError } from '@/shared/errors';
 import {
   formatPlatformFeePercent,
   MIN_TOPUP_AMOUNT_USD,

@@ -33,11 +33,11 @@ import {
   reserveRunCredits,
 } from '@/lib/billing/preflight';
 import { estimateStoryboardPreflightCost } from '@/lib/billing/storyboard-preflight-cost';
-import { generateId } from '@/lib/db/id';
+import { generateId } from '@/shared/id';
 import type { ScopedDb } from '@/lib/db/scoped';
 import { toWorkflowScopedDb } from '@/lib/db/scoped-workflow';
-import { ValidationError } from '@/lib/errors';
-import { DEFAULT_RESOLUTION } from '@/lib/constants/resolutions';
+import { ValidationError } from '@/shared/errors';
+import { DEFAULT_RESOLUTION } from '@/shared/constants/resolutions';
 import {
   AUTO_STYLE_ID,
   type AutoStyleDraft,

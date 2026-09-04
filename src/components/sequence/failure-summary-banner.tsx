@@ -10,8 +10,8 @@ import {
   CREDITS_SHORT_TITLE,
   creditsShortHint,
 } from '@/lib/billing/credits-short';
-import type { FailureSummary } from '@/lib/failures/failure-analysis';
-import { cn } from '@/lib/utils';
+import type { FailureSummary } from '@/shared/failures/failure-analysis';
+import { cn } from '@/shared/utils';
 import {
   AlertCircle,
   ChevronDown,

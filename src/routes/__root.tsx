@@ -1,10 +1,10 @@
 import { getEnv } from '#env';
-import { getProductionDeploymentAppUrl } from '@/lib/utils/environment';
+import { getProductionDeploymentAppUrl } from '@/shared/utils/environment';
 import { DocsReferrerTracker } from '@/components/docs/docs-referrer-tracker';
 import { DefaultNotFound } from '@/components/error/default-not-found';
 import { Providers } from '@/components/providers';
 import { Button } from '@/components/ui/button';
-import { SITE_CONFIG } from '@/lib/marketing/constants';
+import { SITE_CONFIG } from '@/shared/marketing/constants';
 import appCss from '@/styles/global.css?url';
 import type { QueryClient } from '@tanstack/react-query';
 import type { ErrorComponentProps } from '@tanstack/react-router';

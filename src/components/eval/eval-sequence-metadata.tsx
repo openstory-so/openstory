@@ -16,9 +16,9 @@ import {
   CREDITS_SHORT_TITLE,
   isCreditsShortError,
 } from '@/lib/billing/credits-short';
-import { getAspectRatioData } from '@/lib/constants/aspect-ratios';
-import { errorMessage } from '@/lib/errors';
-import { formatDistanceToNow } from '@/lib/format-date';
+import { getAspectRatioData } from '@/shared/constants/aspect-ratios';
+import { errorMessage } from '@/shared/errors';
+import { formatDistanceToNow } from '@/shared/format-date';
 import { Link } from '@tanstack/react-router';
 import {
   AlertTriangle,

@@ -25,7 +25,7 @@
  */
 import type { GeneratedAssetActivity, JsonValue } from '@/lib/db/schema';
 import { getEnv } from '#env';
-import { OpenStoryError } from '@/lib/errors';
+import { OpenStoryError } from '@/shared/errors';
 import { groupModelsIntoFamilies, type ModelFamily } from './model-families';
 
 const MODELSCHEMAS_BASE_URL = 'https://modelschemas.com';

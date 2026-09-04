@@ -1,9 +1,9 @@
-import { mediaUrlSchema } from '@/lib/schemas/media-url.schemas';
+import { mediaUrlSchema } from '@/shared/schemas/media-url.schemas';
 import { moveFile } from '#storage';
 import type { ScopedDb } from '@/lib/db/scoped';
-import { generateId } from '@/lib/db/id';
+import { generateId } from '@/shared/id';
 import { STORAGE_BUCKETS, getPublicUrl } from '@/lib/storage/buckets';
-import { getExtensionFromUrl } from '@/lib/utils/file';
+import { getExtensionFromUrl } from '@/shared/utils/file';
 import { triggerWorkflow } from '@/lib/workflow/client';
 import { buildWorkflowLabel } from '@/lib/workflow/labels';
 import type { ElementVisionWorkflowInput } from '@/lib/workflow/types';

@@ -2,11 +2,11 @@ import {
   type BannerPhase,
   ProgressBanner,
 } from '@/components/generation/progress-banner';
-import { PHASE_DESCRIPTIONS } from '@/lib/generation/phase-descriptions';
+import { PHASE_DESCRIPTIONS } from '@/shared/generation/phase-descriptions';
 import {
   estimateSceneCount,
   estimateTotalSeconds,
-} from '@/lib/generation/time-estimate';
+} from '@/shared/generation/time-estimate';
 import type { GenerationStreamState } from '@/lib/realtime/generation-stream.reducer';
 import { useEffect, useRef, useState } from 'react';
 

@@ -20,7 +20,7 @@ import {
   updateLibraryLocationFn,
 } from '@/functions/location-library';
 import { usePublicOrTeamQuery } from '@/hooks/use-public-or-team-query';
-import { putToR2 } from '@/lib/utils/upload';
+import { putToR2 } from '@/shared/utils/upload';
 import {
   libraryLocationKeys,
   sequenceLocationKeys,

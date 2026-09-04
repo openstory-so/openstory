@@ -1,6 +1,6 @@
 import { CONTENT_REJECTION_USER_HINT } from '@/lib/ai/content-rejection';
 import { CREDITS_SHORT_TITLE } from '@/lib/billing/credits-short';
-import type { FailureSummary } from '@/lib/failures/failure-analysis';
+import type { FailureSummary } from '@/shared/failures/failure-analysis';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { FailureSummaryBanner } from './failure-summary-banner';

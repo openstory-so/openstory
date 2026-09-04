@@ -18,14 +18,14 @@ import {
   requireCredits,
   reserveRunCredits,
 } from '@/lib/billing/preflight';
-import { getVariantGridConfig } from '@/lib/constants/aspect-ratios';
+import { getVariantGridConfig } from '@/shared/constants/aspect-ratios';
 import { cropTileFromGrid } from '@/lib/image/image-crop';
 import { buildCharacterReferenceImages } from '@/lib/prompts/character-prompt';
 import {
   generateVariantSchema,
   regenerateShotSchema,
 } from '@/lib/schemas/shot.schemas';
-import { dbSceneId } from '@/lib/db/schema';
+import { dbSceneId } from '@/shared/scene-id';
 import { ulidSchema } from '@/lib/schemas/id.schemas';
 import { rescanContinuityFromPrompt } from '@/lib/scenes/rescan-continuity-from-prompt';
 import {

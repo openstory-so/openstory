@@ -1,10 +1,13 @@
 import { Button } from '@/components/ui/button';
 import { AspectRatioIcon } from '@/components/icons/aspect-ratio-icon';
-import { ASPECT_RATIOS, type AspectRatio } from '@/lib/constants/aspect-ratios';
+import {
+  ASPECT_RATIOS,
+  type AspectRatio,
+} from '@/shared/constants/aspect-ratios';
 import {
   RESOLUTION_OPTIONS,
   type Resolution,
-} from '@/lib/constants/resolutions';
+} from '@/shared/constants/resolutions';
 import { ChevronDown, SlidersHorizontal } from 'lucide-react';
 import type { FC, ComponentProps } from 'react';
 

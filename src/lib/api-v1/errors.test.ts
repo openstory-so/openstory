@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ValidationError } from '@/lib/errors';
+import { ValidationError } from '@/shared/errors';
 import { z } from 'zod';
 
 const { mockWarn, mockError } = vi.hoisted(() => ({

@@ -5,7 +5,7 @@
 
 import { requireTeamAdminAccess } from '@/lib/auth/action-utils';
 import type { Sequence, Style } from '@/lib/db/schema';
-import { NotFoundError, ValidationError } from '@/lib/errors';
+import { NotFoundError, ValidationError } from '@/shared/errors';
 import { ulidSchema } from '@/lib/schemas/id.schemas';
 import {
   createStyleSchema,

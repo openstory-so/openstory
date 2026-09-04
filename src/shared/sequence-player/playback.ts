@@ -29,7 +29,7 @@ import {
   type WrappedAudioBuffer,
   type WrappedCanvas,
 } from 'mediabunny';
-import { addCorsCacheBuster } from '@/lib/utils/cors-cache-buster';
+import { addCorsCacheBuster } from '@/shared/utils/cors-cache-buster';
 
 import {
   ConcatenatedVideoSource,

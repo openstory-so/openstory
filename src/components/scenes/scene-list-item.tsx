@@ -15,9 +15,9 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { SceneWithScript } from '@/hooks/use-scenes';
-import type { AspectRatio } from '@/lib/constants/aspect-ratios';
-import { cn } from '@/lib/utils';
-import { plainSceneTitle, stripMarkdown } from '@/lib/utils/markdown-plain';
+import type { AspectRatio } from '@/shared/constants/aspect-ratios';
+import { cn } from '@/shared/utils';
+import { plainSceneTitle, stripMarkdown } from '@/shared/utils/markdown-plain';
 import type { ShotView } from '@/lib/shots/shot-view';
 import { Link } from '@tanstack/react-router';
 import {

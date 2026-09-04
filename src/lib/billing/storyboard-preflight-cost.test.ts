@@ -7,7 +7,7 @@ import {
 } from '@/lib/ai/models';
 import { estimateStoryboardCost } from '@/lib/billing/cost-estimation';
 import { estimateStoryboardPreflightCost } from '@/lib/billing/storyboard-preflight-cost';
-import { estimateSceneCount } from '@/lib/generation/time-estimate';
+import { estimateSceneCount } from '@/shared/generation/time-estimate';
 
 const base = {
   imageModel: DEFAULT_IMAGE_MODEL,

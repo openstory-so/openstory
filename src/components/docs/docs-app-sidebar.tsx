@@ -10,7 +10,7 @@ import {
   SidebarSeparator,
 } from '@/components/ui/sidebar';
 import { UserSidebarFooter } from '@/components/layout/user-sidebar-footer';
-import { getDocsReturnUrl } from '@/lib/docs/docs-referrer';
+import { getDocsReturnUrl } from '@/shared/docs/docs-referrer';
 import { useRouter } from '@tanstack/react-router';
 import { ArrowLeft } from 'lucide-react';
 

@@ -13,7 +13,7 @@ import {
 } from '@/lib/billing/constants';
 import { getPricingCatalogFn } from '@/functions/pricing';
 import { openAddCreditsDialog } from '@/hooks/use-add-credits-dialog';
-import { SITE_CONFIG } from '@/lib/marketing/constants';
+import { SITE_CONFIG } from '@/shared/marketing/constants';
 import { ArrowUpRight, KeyRound } from 'lucide-react';
 
 const title = `Pricing — ${SITE_CONFIG.name}`;

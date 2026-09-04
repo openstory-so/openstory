@@ -6,7 +6,7 @@
  */
 
 import type { Frame, FrameVariant, VideoVariant } from '@/lib/db/schema';
-import { generateId } from '@/lib/db/id';
+import { generateId } from '@/shared/id';
 
 /**
  * An anchor `frames` row. Its `id` is its own — a frame is NOT its shot (#989),

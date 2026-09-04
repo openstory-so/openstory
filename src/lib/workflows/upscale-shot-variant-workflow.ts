@@ -20,8 +20,8 @@ import {
 import {
   aspectRatioToImageSize,
   DEFAULT_IMAGE_SIZE,
-} from '@/lib/constants/aspect-ratios';
-import type { Resolution } from '@/lib/constants/resolutions';
+} from '@/shared/constants/aspect-ratios';
+import type { Resolution } from '@/shared/constants/resolutions';
 import type { ScopedDb } from '@/lib/db/scoped';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import { generateImageWithProvider } from '@/lib/image/image-generation';

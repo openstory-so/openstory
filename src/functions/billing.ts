@@ -25,12 +25,12 @@ import {
   usdToMicros,
 } from '@/lib/billing/money';
 import type { TransactionType } from '@/lib/db/schema/credits';
-import { ValidationError } from '@/lib/errors';
-import { FOUNDER_EMAIL } from '@/lib/marketing/constants';
+import { ValidationError } from '@/shared/errors';
+import { FOUNDER_EMAIL } from '@/shared/marketing/constants';
 import { getLogger } from '@/lib/observability/logger';
 import { captureProductEvent } from '@/lib/observability/product-events';
 import { sendFounderCreditRequestEmail } from '@/lib/services/email-service';
-import { getServerAppUrl } from '@/lib/utils/environment';
+import { getServerAppUrl } from '@/shared/utils/environment';
 import { createServerFn } from '@tanstack/react-start';
 import { getRequest } from '@tanstack/react-start/server';
 import { zodValidator } from '@tanstack/zod-adapter';

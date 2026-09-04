@@ -24,7 +24,7 @@ import {
   IMAGE_MODELS,
   IMAGE_TO_VIDEO_MODELS,
 } from '@/lib/ai/models';
-import { DEFAULT_ASPECT_RATIO } from '@/lib/constants/aspect-ratios';
+import { DEFAULT_ASPECT_RATIO } from '@/shared/constants/aspect-ratios';
 import {
   estimateCharacterSheetCount,
   estimateImageCost,

@@ -19,12 +19,12 @@ import {
 } from '@/hooks/use-sequence-elements';
 import type { SequenceElement } from '@/lib/db/schema';
 import { MAX_SEQUENCE_ELEMENTS } from '@/lib/sequence-elements/limits';
-import { cn } from '@/lib/utils';
+import { cn } from '@/shared/utils';
 import {
   extractImagesFromSnapshot,
   snapshotDataTransfer,
   toastDragImportCorsError,
-} from '@/lib/utils/drag-images';
+} from '@/shared/utils/drag-images';
 import { Link } from '@tanstack/react-router';
 import { ImagePlus, Loader2, Upload } from 'lucide-react';
 import { AppImage } from '@/components/ui/app-image';

@@ -10,7 +10,7 @@
 
 import { describe, expect, it } from 'vitest';
 import type { Frame, FrameVariant, Shot } from '@/lib/db/schema';
-import { frameVariantFixture } from '@/lib/mocks/frame-fixtures';
+import { frameVariantFixture } from '@/shared/mocks/frame-fixtures';
 import { toShotView, type ShotView } from '@/lib/shots/shot-view';
 import {
   assertModelNotAlreadyAdded,

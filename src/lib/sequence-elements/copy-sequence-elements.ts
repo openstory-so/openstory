@@ -1,8 +1,8 @@
 import { copyFile } from '#storage';
-import { generateId } from '@/lib/db/id';
+import { generateId } from '@/shared/id';
 import type { ScopedDb } from '@/lib/db/scoped';
 import { STORAGE_BUCKETS, getPublicUrl } from '@/lib/storage/buckets';
-import { getExtensionFromUrl } from '@/lib/utils/file';
+import { getExtensionFromUrl } from '@/shared/utils/file';
 import { triggerWorkflow } from '@/lib/workflow/client';
 import { buildWorkflowLabel } from '@/lib/workflow/labels';
 import type { ElementVisionWorkflowInput } from '@/lib/workflow/types';

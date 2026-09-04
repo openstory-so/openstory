@@ -22,7 +22,7 @@
  */
 
 import type { Database } from '@/lib/db/client';
-import { generateId } from '@/lib/db/id';
+import { generateId } from '@/shared/id';
 import {
   contentProvenance,
   contentReports,
@@ -41,7 +41,7 @@ import type {
   AttestationSubjectType,
 } from '@/lib/db/schema/compliance';
 import { teams, user } from '@/lib/db/schema';
-import { ValidationError } from '@/lib/errors';
+import { ValidationError } from '@/shared/errors';
 import { and, asc, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/sqlite-core';
 

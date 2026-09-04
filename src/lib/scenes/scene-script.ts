@@ -18,7 +18,7 @@ import type { Database } from '@/lib/db/client';
 import { createSceneScriptVersionsMethods } from '@/lib/db/scoped/scene-script-versions';
 import { createScenesMethods } from '@/lib/db/scoped/scenes';
 import type { ScopedDb } from '@/lib/db/scoped';
-import { plainSceneTitle } from '@/lib/utils/markdown-plain';
+import { plainSceneTitle } from '@/shared/utils/markdown-plain';
 
 /** A scene row plus its selected script — everything a `Scene` composes from. */
 export type SceneContext = {

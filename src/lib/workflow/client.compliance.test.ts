@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { AccountRestrictedError } from '@/lib/errors';
+import { AccountRestrictedError } from '@/shared/errors';
 
 const mockLoadComplianceRecords = vi.fn();
 

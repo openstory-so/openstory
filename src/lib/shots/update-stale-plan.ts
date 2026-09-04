@@ -34,8 +34,8 @@ import type {
   LocationBibleEntry,
   Scene,
 } from '@/lib/ai/scene-analysis.schema';
-import type { AspectRatio } from '@/lib/constants/aspect-ratios';
-import type { Resolution } from '@/lib/constants/resolutions';
+import type { AspectRatio } from '@/shared/constants/aspect-ratios';
+import type { Resolution } from '@/shared/constants/resolutions';
 import type {
   Frame,
   FramePromptVersion,
@@ -62,7 +62,7 @@ import {
   type UpdateStaleDepth,
 } from '@/lib/shots/update-stale-depth';
 import { buildMusicSceneSummaries } from '@/lib/workflows/music-scene-summaries';
-import { NotFoundError } from '@/lib/errors';
+import { NotFoundError } from '@/shared/errors';
 import type { MusicSceneSummary } from '@/lib/workflow/types';
 
 const logger = getLogger(['openstory', 'shots', 'update-stale-plan']);

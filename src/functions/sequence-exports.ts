@@ -1,7 +1,7 @@
 /**
  * Server functions for `sequence_exports`: the table of MP4 snapshots the user
  * explicitly created via the browser-side export pipeline (see
- * `src/lib/sequence-player/export.ts`).
+ * `src/shared/sequence-player/export.ts`).
  *
  * Three handlers:
  *   - `requestSequenceExportUploadUrlFn` — reserves an R2 path so the browser
@@ -17,7 +17,7 @@
  */
 
 import { getSignedUploadUrl } from '#storage';
-import { generateId } from '@/lib/db/id';
+import { generateId } from '@/shared/id';
 import { ulidSchema } from '@/lib/schemas/id.schemas';
 import { STORAGE_BUCKETS, getPublicUrl } from '@/lib/storage/buckets';
 import { createServerFn } from '@tanstack/react-start';

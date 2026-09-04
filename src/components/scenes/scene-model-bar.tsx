@@ -9,11 +9,11 @@ import type { ImageToVideoModel, TextToImageModel } from '@/lib/ai/models';
 import {
   getAspectRatioData,
   type AspectRatio,
-} from '@/lib/constants/aspect-ratios';
+} from '@/shared/constants/aspect-ratios';
 import {
   RESOLUTION_OPTIONS,
   type Resolution,
-} from '@/lib/constants/resolutions';
+} from '@/shared/constants/resolutions';
 import { Badge } from '@/components/ui/badge';
 import type { SelectionScope } from '@/lib/scenes/scene-selection';
 import { usePostHog } from '@posthog/react';

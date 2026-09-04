@@ -23,7 +23,7 @@
 import {
   CONTENT_REPORT_REASONS,
   CONTENT_REPORT_TARGET_TYPES,
-} from '@/lib/db/schema/compliance';
+} from '@/shared/content-reports';
 import { complianceEnv } from '@/lib/compliance/config';
 import {
   formatReportReference,

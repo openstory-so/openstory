@@ -1,6 +1,6 @@
 import { AppImage } from '@/components/ui/app-image';
 import type { Style } from '@/lib/db/schema/libraries';
-import { cn } from '@/lib/utils';
+import { cn } from '@/shared/utils';
 import { Info, Sparkles } from 'lucide-react';
 import { useState } from 'react';
 import { getStyleGradient } from './style-gradient';

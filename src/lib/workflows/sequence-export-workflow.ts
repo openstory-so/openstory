@@ -1,6 +1,6 @@
 /**
  * Server-side sequence export (#968) — the API counterpart of the browser
- * export in `src/lib/sequence-player/export.ts`.
+ * export in `src/shared/sequence-player/export.ts`.
  *
  * Flow:
  *   1. `render-and-upload` — absolutize the payload's scene/music URLs, POST

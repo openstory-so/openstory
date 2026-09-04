@@ -73,7 +73,7 @@ export const mutedBoxStyle: React.CSSProperties = {
 
 // Emails can't bundle assets and outlive any single deployment, so the logo
 // is served from the stable public-assets domain (same fallback pattern as
-// src/lib/marketing/constants.ts). Source image is 1146x250. Dark-ground
+// src/shared/marketing/constants.ts). Source image is 1146x250. Dark-ground
 // wordmark (light type) — the app defaults to dark (#1188, #1276).
 const ASSETS_DOMAIN =
   import.meta.env.VITE_R2_PUBLIC_ASSETS_DOMAIN || 'assets.openstory.so';

@@ -21,8 +21,7 @@ vi.doMock('@/lib/byok/openrouter-oauth', () => ({
 
 const { sealOAuthState, getOAuthCookieName } =
   await import('@/lib/byok/openrouter-oauth-cookie');
-const { completeOpenRouterOAuth } =
-  await import('../openrouter-oauth-callback');
+const { completeOpenRouterOAuth } = await import('./complete-oauth');
 
 const TEAM_ID = '01JTEAM00000000000000000000';
 const USER_ID = '01JUSER00000000000000000000';

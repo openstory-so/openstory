@@ -26,7 +26,7 @@
  * and event type so the leaf workflow doesn't need to know who its caller is.
  */
 
-import { simpleHash } from '@/lib/utils/hash';
+import { simpleHash } from '@/shared/utils/hash';
 import { getLogger } from '@/lib/observability/logger';
 import {
   isInstanceAlreadyExistsError,

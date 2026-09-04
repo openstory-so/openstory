@@ -29,7 +29,7 @@ import {
   type SelectorGroup,
 } from '@/lib/ai/generation-mode';
 import type { VariantType } from '@/lib/db/schema/shot-variants';
-import { DEFAULT_ASPECT_RATIO } from '@/lib/constants/aspect-ratios';
+import { DEFAULT_ASPECT_RATIO } from '@/shared/constants/aspect-ratios';
 import { useViaAvailability } from '@/hooks/use-via-availability';
 import { rendersReferenceOnly } from '@/lib/shots/use-start-frame';
 import { useMemo } from 'react';

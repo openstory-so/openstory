@@ -1,7 +1,7 @@
-import { mediaUrlSchema } from '@/lib/schemas/media-url.schemas';
+import { mediaUrlSchema } from '@/shared/schemas/media-url.schemas';
 import { deleteFile, getSignedUploadUrl } from '#storage';
 import { requireTeamAdminAccess } from '@/lib/auth/action-utils';
-import { generateId } from '@/lib/db/id';
+import { generateId } from '@/shared/id';
 import {
   getPublicTalentWithRelations,
   listPublicTalent,
@@ -24,7 +24,7 @@ import { STORAGE_BUCKETS } from '@/lib/storage/buckets';
 import {
   getExtensionFromUrl,
   getMimeTypeFromExtension,
-} from '@/lib/utils/file';
+} from '@/shared/utils/file';
 import type { LibraryTalentSheetWorkflowInput } from '@/lib/workflow/types';
 import { computeLibraryTalentSheetHashFromDto } from '@/lib/workflows/sheet-snapshots';
 import { isTeamWritableTalent } from '@/lib/db/scoped/talent';

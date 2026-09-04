@@ -30,7 +30,7 @@ import {
   resolveOAuthQuery,
 } from '@/lib/auth/oauth-query-snapshot';
 import { requireSessionOrRedirect } from '@/lib/auth/route-guards';
-import { errorMessage } from '@/lib/errors';
+import { errorMessage } from '@/shared/errors';
 import { useMutation } from '@tanstack/react-query';
 import { createFileRoute, redirect } from '@tanstack/react-router';
 import { createIsomorphicFn } from '@tanstack/react-start';

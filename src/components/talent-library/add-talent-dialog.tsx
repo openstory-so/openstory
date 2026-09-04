@@ -15,7 +15,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useHydrated } from '@/hooks/use-hydrated';
 import { useAnalyzeTalentMedia, useCreateTalent } from '@/hooks/use-talent';
-import { getFileKey } from '@/lib/utils/upload';
+import { getFileKey } from '@/shared/utils/upload';
 import { statementFor } from '@/lib/compliance/attestations';
 import type { Talent } from '@/lib/db/schema';
 import { sheetProgressCopy } from '@/lib/talent/sheet-progress-copy';

@@ -11,7 +11,7 @@ import {
   frameFixture,
   frameVariantFixture,
   videoVariantFixture,
-} from '@/lib/mocks/frame-fixtures';
+} from '@/shared/mocks/frame-fixtures';
 import { describe, expect, it } from 'vitest';
 import {
   isBrowserDisplayableStillUrl,
