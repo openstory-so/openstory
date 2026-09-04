@@ -459,16 +459,17 @@ export function StudioReferencePicker({
               }
             }}
           />
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={source === 'draw'}
-            onClick={() => fileInput.current?.click()}
-          >
-            <Upload aria-hidden="true" />
-            {source === 'audio' ? 'Upload audio' : 'Upload'}
-          </Button>
+          {source !== 'draw' && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => fileInput.current?.click()}
+            >
+              <Upload aria-hidden="true" />
+              {source === 'audio' ? 'Upload audio' : 'Upload'}
+            </Button>
+          )}
         </DialogHeader>
 
         <div className="flex min-h-0 flex-1">
