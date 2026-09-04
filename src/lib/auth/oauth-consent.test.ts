@@ -150,6 +150,17 @@ describe('consentRedirectUrl', () => {
     );
     expect(consentRedirectUrl({})).toBeNull();
   });
+
+  it('reads Location from a 302 Response', () => {
+    expect(
+      consentRedirectUrl(
+        new Response(null, {
+          status: 302,
+          headers: { Location: 'http://127.0.0.1:8765/cb?code=1' },
+        })
+      )
+    ).toBe('http://127.0.0.1:8765/cb?code=1');
+  });
 });
 
 describe('decideOAuthConsent', () => {
@@ -189,6 +200,40 @@ describe('decideOAuthConsent', () => {
         oauth_query: signedQuery.slice(1),
       },
     });
+  });
+
+  it('asks the provider for a JSON redirect instead of a 302', async () => {
+    oauth2Consent.mockResolvedValueOnce({
+      url: 'http://127.0.0.1:8765/cb?code=4',
+    });
+    await decideOAuthConsent({
+      userId: 'user_1',
+      teamId: 'team_1',
+      accept: true,
+      oauthQuery: 'client_id=c1',
+      headers: new Headers({ accept: 'text/html' }),
+    });
+    const passed = oauth2Consent.mock.calls[0]?.[0];
+    expect(passed?.headers).toBeInstanceOf(Headers);
+    expect(passed?.headers.get('Accept')).toBe('application/json');
+    expect(passed?.headers.get('Sec-Fetch-Mode')).toBe('cors');
+  });
+
+  it('uses Location when the provider throws a redirect Response', async () => {
+    oauth2Consent.mockRejectedValueOnce(
+      new Response(null, {
+        status: 302,
+        headers: { Location: 'http://127.0.0.1:8765/cb?code=5' },
+      })
+    );
+    const result = await decideOAuthConsent({
+      userId: 'user_1',
+      teamId: 'team_1',
+      accept: true,
+      oauthQuery: 'client_id=c1',
+      headers: new Headers(),
+    });
+    expect(result.url).toBe('http://127.0.0.1:8765/cb?code=5');
   });
 
   it('strips a leading ? and returns the provider redirect', async () => {

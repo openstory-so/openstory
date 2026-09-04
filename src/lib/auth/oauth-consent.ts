@@ -141,14 +141,38 @@ export function oauthProviderUserMessage(
   return fallback;
 }
 
+/**
+ * Better Auth's consent handler 302s unless the call looks like a CORS fetch
+ * that accepts JSON (`sec-fetch-mode: cors` + `Accept: application/json`).
+ * Server-fn headers can miss that, so the grant is written and then the
+ * redirect is thrown — which we used to map to "no longer valid".
+ */
+function jsonConsentHeaders(headers: Headers): Headers {
+  const next = new Headers(headers);
+  next.set('Accept', 'application/json');
+  next.set('Sec-Fetch-Mode', 'cors');
+  return next;
+}
+
 /** `oauth2Consent` OpenAPI says `redirect_uri`; the JS client also uses `url`. */
 export function consentRedirectUrl(result: unknown): string | null {
-  if (!result || typeof result !== 'object') return null;
-  const rec = result as { url?: unknown; redirect_uri?: unknown };
+  if (!result) return null;
+  if (result instanceof Response) {
+    return result.headers.get('Location');
+  }
+  if (typeof result !== 'object') return null;
+  const rec = result as {
+    url?: unknown;
+    redirect_uri?: unknown;
+    headers?: { get?: (name: string) => string | null };
+  };
   if (typeof rec.url === 'string' && rec.url.length > 0) return rec.url;
   if (typeof rec.redirect_uri === 'string' && rec.redirect_uri.length > 0) {
     return rec.redirect_uri;
   }
+  const location =
+    rec.headers?.get?.('Location') ?? rec.headers?.get?.('location');
+  if (location) return location;
   return null;
 }
 
@@ -169,7 +193,7 @@ export async function decideOAuthConsent(input: {
   const queryParams = new URLSearchParams(oauthQuery);
   try {
     const result = await auth.api.oauth2Consent({
-      headers: input.headers,
+      headers: jsonConsentHeaders(input.headers),
       body: { accept: input.accept, oauth_query: oauthQuery },
     });
     const url = consentRedirectUrl(result);
@@ -185,6 +209,16 @@ export async function decideOAuthConsent(input: {
     return { url };
   } catch (error) {
     if (error instanceof ValidationError) throw error;
+    const thrownUrl = consentRedirectUrl(error);
+    if (thrownUrl) {
+      logger.info('oauth consent decided via redirect', {
+        userId: input.userId,
+        teamId: input.teamId,
+        accept: input.accept,
+        clientId: queryParams.get('client_id'),
+      });
+      return { url: thrownUrl };
+    }
     logger.warn('oauth consent rejected', {
       hasSig: queryParams.has('sig'),
       baParamCount: queryParams.getAll('ba_param').length,
