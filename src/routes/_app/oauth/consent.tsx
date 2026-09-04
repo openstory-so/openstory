@@ -20,44 +20,49 @@ import {
   decideOAuthConsentFn,
   getOAuthConsentContextFn,
 } from '@/functions/oauth-consent';
+import {
+  displayFieldsFromOAuthQuery,
+  pickOAuthQuery,
+} from '@/lib/auth/oauth-query-snapshot';
 import { requireSessionOrRedirect } from '@/lib/auth/route-guards';
 import { errorMessage } from '@/lib/errors';
 import { useMutation, useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { createIsomorphicFn } from '@tanstack/react-start';
 import { getRequest } from '@tanstack/react-start/server';
-import { Suspense } from 'react';
+import { Check } from 'lucide-react';
+import { Suspense, useState } from 'react';
 import { toast } from 'sonner';
 
 const CONSENT_STALE_MESSAGE =
   'This request is no longer valid. Start again from the app.';
 
+declare global {
+  interface Window {
+    __OPENSTORY_OAUTH_QUERY__?: string;
+  }
+}
+
 /**
  * The provider signs the *raw* query, including repeated `ba_param` keys.
  * TanStack's default search parser (qss) keeps one value per key and rewrites
- * the address bar on hydrate, so `window.location.search` / `searchStr` are
- * already invalid by Approve. Snapshot the document URL on the server.
+ * the address bar on hydrate, so `window.location.search` is already invalid
+ * by Approve. Capture the document URL on the server and again in a head
+ * script before the router runs.
  */
 const readConsentOAuthQuery = createIsomorphicFn()
   .server(() => new URL(getRequest().url).search)
-  .client(() => window.location.search);
-
-function displayFieldsFromOAuthQuery(search: string): {
-  clientId: string;
-  scope: string;
-  redirectUri: string | undefined;
-} {
-  const params = new URLSearchParams(
-    search.startsWith('?') ? search.slice(1) : search
-  );
-  return {
-    clientId: params.get('client_id') ?? '',
-    scope: params.get('scope') ?? '',
-    redirectUri: params.get('redirect_uri') ?? undefined,
-  };
-}
+  .client(() => window.__OPENSTORY_OAUTH_QUERY__ || window.location.search);
 
 export const Route = createFileRoute('/_app/oauth/consent')({
+  head: () => ({
+    scripts: [
+      {
+        children:
+          'window.__OPENSTORY_OAUTH_QUERY__=window.__OPENSTORY_OAUTH_QUERY__||window.location.search',
+      },
+    ],
+  }),
   loader: () => ({ oauthQuery: readConsentOAuthQuery() }),
   beforeLoad: async ({ context: { queryClient }, location }) => {
     await requireSessionOrRedirect(queryClient, location.href);
@@ -67,7 +72,13 @@ export const Route = createFileRoute('/_app/oauth/consent')({
 });
 
 function ConsentPage() {
-  const { oauthQuery } = Route.useLoaderData();
+  const { oauthQuery: loaderQuery } = Route.useLoaderData();
+  const oauthQuery = pickOAuthQuery([
+    loaderQuery,
+    typeof window !== 'undefined'
+      ? window.__OPENSTORY_OAUTH_QUERY__
+      : undefined,
+  ]);
   const { clientId, scope, redirectUri } =
     displayFieldsFromOAuthQuery(oauthQuery);
 
@@ -114,6 +125,7 @@ function ConsentDecision({
   redirectUri: string | undefined;
   oauthQuery: string;
 }) {
+  const [outcome, setOutcome] = useState<'granted' | 'denied' | null>(null);
   const { data } = useSuspenseQuery({
     queryKey: ['oauthConsent', clientId, scope, redirectUri],
     queryFn: () =>
@@ -129,12 +141,15 @@ function ConsentDecision({
       decideOAuthConsentFn({
         data: { accept, oauthQuery },
       }),
-    onSuccess: ({ url }) => {
+    onSuccess: ({ url }, accept) => {
       if (!url || (!/^https?:\/\//i.test(url) && !url.startsWith('/'))) {
         toast.error(CONSENT_STALE_MESSAGE);
         return;
       }
-      window.location.assign(url);
+      setOutcome(accept ? 'granted' : 'denied');
+      window.setTimeout(() => {
+        window.location.assign(url);
+      }, 800);
     },
     onError: (err) => {
       const text = errorMessage(err, CONSENT_STALE_MESSAGE).trim();
@@ -148,6 +163,22 @@ function ConsentDecision({
         This app isn’t registered with OpenStory, or its registration has
         expired. Start again from the app.
       </p>
+    );
+  }
+
+  if (outcome) {
+    return (
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center gap-2">
+          <Check className="h-5 w-5" aria-hidden />
+          <p className="font-semibold">
+            {outcome === 'granted' ? 'Access granted' : 'Request denied'}
+          </p>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          You can close this tab. Sending you back to the app…
+        </p>
+      </div>
     );
   }
 
