@@ -25,14 +25,19 @@ describe('scene-splitting-boundaries-chat — shots vs scenes (#1486)', () => {
 });
 
 describe('scene-shot-list-chat', () => {
-  it('is registered and asks for shots inside already-sliced scenes', () => {
+  it('is registered and covers scenes as a director, not a script splitter', () => {
     const prompt = WORKFLOW_CHAT_PROMPTS['phase/scene-shot-list-chat'];
     expect(prompt).toBeDefined();
     const system = prompt?.[0]?.content ?? '';
     expect(system).toContain('1..N shots');
+    expect(system).toContain('HOW TO SHOOT');
+    expect(system).toContain('Style is the director');
     expect(system).toContain('You NEVER create, merge, or rewrite scenes');
     expect(system).toContain('The system assigns the real clip lengths');
+    expect(system).not.toContain('A scene with no internal cut is ONE shot');
     expect(prompt?.[1]?.content).toContain('{{scenes}}');
+    expect(prompt?.[1]?.content).toContain('{{style}}');
+    expect(prompt?.[1]?.content).toContain('DIRECTOR_STYLE');
   });
 });
 

@@ -2,7 +2,7 @@
   "fixtures": [
     {
       "match": {
-        "userMessage": "List the shots inside each scene. Copy sceneNumber from the \"## Scene N\" headings. A scene with no internal cut is a single shot.",
+        "userMessage": "Cover each scene. The script is what happens; you decide the camera setups in this director's style. Copy sceneNumber from the \"## Scene N\" headings.",
         "turnIndex": 0,
         "hasToolResult": false
       },

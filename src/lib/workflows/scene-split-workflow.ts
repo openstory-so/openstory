@@ -15,9 +15,9 @@
  *     finalizes scene k via a local slice, so scene cards appear with real
  *     script text in seconds.
  *   - `scene-bibles` — character/location/element bibles.
- *   - `scene-shot-list` — after slices exist, a second structured call lists
- *     1..N shots inside each scene (`shotListPassResultSchema`). A cut inside
- *     one location/beat is shot 2, not scene 2. Failure degrades to one shot.
+ *   - `scene-shot-list` — after slices exist, a second structured call covers
+ *     each scene with 1..N setups (`shotListPassResultSchema`), directed by
+ *     the snapshotted style. Failure degrades to one shot.
  *
  * After the join, scene continuity tags are assigned from bibles ∩ slice
  * (`tag-reconcile.ts`) and bible `firstMention`s get their owning scene id
@@ -55,6 +55,7 @@ import {
   applyTargetDurations,
   attachShotLists,
   buildShotInserts,
+  formatDirectorStyleForShotList,
   formatScenesForShotListPrompt,
 } from '@/lib/ai/shot-list-pass';
 import {
@@ -840,6 +841,7 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
 
         const { messages } = await getChatPrompt(SHOT_LIST_PROMPT_NAME, {
           scenes: formatScenesForShotListPrompt(reconciledScenes),
+          style: formatDirectorStyleForShotList(input.styleConfig),
         });
         const llmKeyInfo = await scopedDb.credentials.resolveLlmKey(modelId);
         let parsed: ShotListPassResult | undefined;

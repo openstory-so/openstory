@@ -3,9 +3,10 @@
  * ============================================================================
  *
  * Scene-split's boundary pass only decides WHERE each scene starts. This
- * module is the second analysis step: given those verbatim slices, attach
- * 1..N structured shots per scene (from the LLM, or a single default shot
- * when the call fails / omits a scene).
+ * module is the second analysis step: given those verbatim slices, cover
+ * each scene with 1..N camera setups (from the LLM, or a single default
+ * shot when the call fails / omits a scene). Coverage is a director
+ * decision — the style's camera / pace / energy — not a script-split.
  *
  * A one-shot scene keeps today's duration (the slice label / estimate). Extra
  * shots take their duration from the spec. Prompts are assembled later by
@@ -14,6 +15,7 @@
 
 import type { NewShot } from '@/lib/db/schema';
 import { allocateClipDurations } from '@/lib/motion/snap-duration';
+import type { StyleConfig } from '@/lib/style/style-config';
 import type { DbSceneId } from '@/shared/scene-id';
 import type { SceneSplittingScene } from './streaming-scene-parser';
 import {
@@ -179,6 +181,23 @@ export function buildShotInserts(
     }
   }
   return inserts;
+}
+
+/** Director brief for the shot-list pass: motion + mood, not the still look. */
+export function formatDirectorStyleForShotList(
+  style: StyleConfig | null | undefined
+): string {
+  if (!style) return '';
+  const lines = [`Mood: ${style.look.mood}`, `Camera: ${style.motion.camera}`];
+  if (style.motion.shots) lines.push(`Shot selection: ${style.motion.shots}`);
+  if (style.motion.pace) lines.push(`Pace: ${style.motion.pace}`);
+  if (style.motion.energy !== undefined) {
+    lines.push(`Energy: ${style.motion.energy}/5`);
+  }
+  if (style.references.length > 0) {
+    lines.push(`References: ${style.references.slice(0, 4).join('; ')}`);
+  }
+  return lines.join('\n');
 }
 
 /** User-prompt body: numbered slices the model must not re-author. */

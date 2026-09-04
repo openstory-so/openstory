@@ -10,6 +10,7 @@ import {
   buildSceneWithShots,
   buildShotInserts,
   defaultSingleShot,
+  formatDirectorStyleForShotList,
   formatScenesForShotListPrompt,
   isSingleShotScene,
   normalizeShots,
@@ -235,6 +236,42 @@ describe('buildShotInserts / shotDurationMs', () => {
     expect(inserts).toHaveLength(2);
     expect(inserts.map((row) => row.shotNumber)).toEqual([1, 2]);
     expect(inserts.map((row) => row.durationMs)).toEqual([4000, 4000]);
+  });
+});
+
+describe('formatDirectorStyleForShotList', () => {
+  it('emits mood + camera, and optional coverage refinements', () => {
+    const style = migrateStyleConfigV1ToV2({
+      mood: 'tense',
+      artStyle: 'neo-noir',
+      lighting: 'low key',
+      colorPalette: ['#111', '#eee'],
+      cameraWork: 'handheld, tight lenses',
+      referenceFilms: ['Children of Men'],
+      colorGrading: 'teal and orange',
+    });
+    const text = formatDirectorStyleForShotList({
+      ...style,
+      motion: {
+        ...style.motion,
+        shots: 'wide establishing, then tight inserts',
+        pace: 'brisk',
+        energy: 4,
+      },
+    });
+    expect(text).toContain('Mood: tense');
+    expect(text).toContain('Camera: handheld, tight lenses');
+    expect(text).toContain(
+      'Shot selection: wide establishing, then tight inserts'
+    );
+    expect(text).toContain('Pace: brisk');
+    expect(text).toContain('Energy: 4/5');
+    expect(text).toContain('References: Children of Men');
+    expect(text).not.toContain('neo-noir');
+  });
+
+  it('returns empty when no style is snapshotted', () => {
+    expect(formatDirectorStyleForShotList(undefined)).toBe('');
   });
 });
 
