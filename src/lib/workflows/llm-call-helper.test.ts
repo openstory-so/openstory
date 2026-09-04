@@ -48,6 +48,7 @@ vi.doMock('@/lib/realtime', () => ({
 }));
 
 const {
+  chatModelOptionsForCall,
   durableLLMCallCf,
   durableStreamingLLMCallCf,
   shouldInlineVisionForVia,
@@ -84,6 +85,20 @@ const nonStreamContext = {
   sequenceId: '01TESTSEQUENCE0000000000',
   workflowRunId: 'wf-test',
 };
+
+describe('chatModelOptionsForCall', () => {
+  it('uses Responses wire names for LLMTR Luna, not Chat Completions', () => {
+    const options = chatModelOptionsForCall(
+      'openai/gpt-5.6-luna',
+      { key: 'k', via: 'llmtr' },
+      true
+    );
+    expect(options).toEqual({
+      reasoning: { effort: 'medium' },
+      max_output_tokens: expect.any(Number),
+    });
+  });
+});
 
 describe('durableLLMCallCf usage cost capture', () => {
   it('requests stream + includeUsage and bills usage.cost from RUN_FINISHED', async () => {

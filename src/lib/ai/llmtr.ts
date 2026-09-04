@@ -3,10 +3,12 @@
  *
  * LLMTR (llmtr.com, by Knowhy.co) is a Turkey-hosted, OpenAI-compatible LLM
  * gateway: one key fronts Anthropic / OpenAI / Google / xAI / DeepSeek plus
- * models it hosts in Turkey itself. Its `/v1` wire format and its `/v1/models`
- * payload are OpenRouter-shaped, which is why the OpenRouter adapter drives it
- * with nothing but a `serverURL` swap (see `create-adapter.ts`) — the same
- * trick #895 plays with fal's OpenRouter proxy.
+ * models it hosts in Turkey itself. It speaks Chat Completions and
+ * Responses at `/v1` (and serves an OpenRouter-shaped `/v1/models`
+ * catalog). `create-adapter.ts` drives it with `openaiCompatibleText` —
+ * not the OpenRouter Speakeasy client, whose chunk schema rejects LLMTR's
+ * SSE as "Response validation failed". Some models are Responses-only;
+ * {@link llmtrCompatibleApi} picks the endpoint.
  *
  * Two things this file exists to pin down:
  *
@@ -101,10 +103,40 @@ export function llmtrTextModel(model: string): LlmtrTextModel | undefined {
 }
 
 /**
- * The LLMTR catalog ids that are NOT valid OpenRouter slugs. The
- * OpenRouter adapter's generated model union rejects them, so
- * `create-adapter.ts` widens the factory with exactly these — the identity
- * mappings above already typecheck.
+ * Non-OpenAI catalog ids that only serve `/v1/responses`. Every `openai/`
+ * model goes to Responses too (see {@link llmtrCompatibleApi}). Posting a
+ * Responses-only id to Chat Completions returns 400 (`endpoint_mismatch` /
+ * "The model provider rejected the request"). Re-read
+ * https://llmtr.com/v1/models (`supported_endpoints`) when the registry
+ * changes.
+ */
+export const LLMTR_RESPONSES_ONLY_MODEL_IDS = [
+  'xai/grok-4.6',
+  'xai/grok-4.20-0309-reasoning',
+] as const satisfies ReadonlyArray<LlmtrTextModel>;
+
+const LLMTR_RESPONSES_ONLY = new Set<string>(LLMTR_RESPONSES_ONLY_MODEL_IDS);
+
+/**
+ * Which OpenAI-compatible API to drive for this model. Accepts a registry id
+ * or an LLMTR catalog id. Every OpenAI model uses Responses; Grok is
+ * Responses-only on LLMTR; everything else stays on Chat Completions.
+ */
+export function llmtrCompatibleApi(
+  model: string
+): 'chat-completions' | 'responses' {
+  const catalogId = llmtrTextModel(model) ?? model;
+  if (catalogId.startsWith('openai/') || LLMTR_RESPONSES_ONLY.has(catalogId)) {
+    return 'responses';
+  }
+  return 'chat-completions';
+}
+
+/**
+ * The LLMTR catalog ids that are NOT valid OpenRouter slugs. Identity
+ * mappings share OpenRouter's spelling; these four are the renamed set
+ * (`xai/` not `x-ai/`, etc.). `llmtr.test.ts` asserts this list equals the
+ * renamed entries of {@link LLMTR_TEXT_MODELS}.
  */
 export const LLMTR_ONLY_MODEL_IDS = [
   'mistral/mistral-small-latest',

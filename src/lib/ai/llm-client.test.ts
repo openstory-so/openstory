@@ -957,6 +957,78 @@ describe('llm-client', () => {
         ).toBe('openrouter:web_search');
       });
 
+      it('does not send OpenRouter web search or provider routing on LLMTR', async () => {
+        mockChat.mockReturnValue(
+          (async function* () {
+            yield { type: 'TEXT_MESSAGE_CONTENT', delta: 'ok' };
+          })()
+        );
+
+        await drain(
+          callLLMStream({
+            model: 'anthropic/claude-sonnet-5',
+            messages: [{ role: 'user', content: 'test' }],
+            webSearch: true,
+            apiKey: { key: 'llmtr-team', via: 'llmtr' },
+          })
+        );
+
+        const callArgs = mockChat.mock.calls[0]?.[0];
+        if (!callArgs) throw new Error('expected mockChat to have been called');
+        expect(callArgs.tools).toBeUndefined();
+        expect(callArgs.modelOptions.provider).toBeUndefined();
+        expect(callArgs.modelOptions.streamOptions).toBeUndefined();
+      });
+
+      it('sends Responses wire names on LLMTR for Luna, not Chat Completions', async () => {
+        mockChat.mockReturnValue(
+          (async function* () {
+            yield { type: 'TEXT_MESSAGE_CONTENT', delta: 'ok' };
+          })()
+        );
+
+        await drain(
+          callLLMStream({
+            model: 'openai/gpt-5.6-luna',
+            messages: [{ role: 'user', content: 'test' }],
+            max_tokens: 300,
+            temperature: 0.7,
+            reasoning: { enabled: true, effort: 'low' },
+            apiKey: { key: 'llmtr-team', via: 'llmtr' },
+          })
+        );
+
+        const options = mockChat.mock.calls[0]?.[0]?.modelOptions;
+        expect(options).toEqual({
+          reasoning: { effort: 'low' },
+          max_output_tokens: 300,
+        });
+      });
+
+      it('sends Chat Completions wire names on LLMTR for models that serve that endpoint', async () => {
+        mockChat.mockReturnValue(
+          (async function* () {
+            yield { type: 'TEXT_MESSAGE_CONTENT', delta: 'ok' };
+          })()
+        );
+
+        await drain(
+          callLLMStream({
+            model: 'anthropic/claude-sonnet-5',
+            messages: [{ role: 'user', content: 'test' }],
+            max_tokens: 300,
+            temperature: 0.7,
+            apiKey: { key: 'llmtr-team', via: 'llmtr' },
+          })
+        );
+
+        const options = mockChat.mock.calls[0]?.[0]?.modelOptions;
+        expect(options).toEqual({
+          max_tokens: 300,
+          temperature: 0.7,
+        });
+      });
+
       it('omits tools entirely when webSearch is not requested', async () => {
         mockChat.mockReturnValue(
           (async function* () {

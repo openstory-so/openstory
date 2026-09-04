@@ -12,8 +12,10 @@ import { describe, expect, it } from 'vitest';
 import {
   LLMTR_BASE_URL,
   LLMTR_ONLY_MODEL_IDS,
+  LLMTR_RESPONSES_ONLY_MODEL_IDS,
   LLMTR_TEXT_MODELS,
   LLMTR_UNMAPPED_MODEL_IDS,
+  llmtrCompatibleApi,
   llmtrTextCostFromUsage,
   llmtrTextModel,
 } from './llmtr';
@@ -76,14 +78,26 @@ describe('llmtrTextModel', () => {
   });
 
   it('lists exactly the mapped slugs that are not valid OpenRouter ids', () => {
-    // `create-adapter` widens the OpenRouter model union with this list. An
-    // entry missing here is a compile error there; a stale extra entry is
-    // dead weight the union carries forever.
+    // Renamed slugs are the ones that would 404 if we sent the registry id
+    // straight through. An extra or missing entry here is a map-drift signal.
     const renamed = typedEntries(LLMTR_TEXT_MODELS)
       .filter(([registryId, llmtrId]) => registryId !== llmtrId)
       .map(([, llmtrId]) => llmtrId)
       .sort();
     expect([...LLMTR_ONLY_MODEL_IDS].sort()).toEqual(renamed);
+  });
+
+  it('sends every OpenAI model and Grok to /v1/responses', () => {
+    expect(llmtrCompatibleApi('openai/gpt-5.6-luna')).toBe('responses');
+    expect(llmtrCompatibleApi('openai/gpt-5.4-mini')).toBe('responses');
+    expect(llmtrCompatibleApi('x-ai/grok-4.6')).toBe('responses');
+    expect(llmtrCompatibleApi('anthropic/claude-sonnet-5')).toBe(
+      'chat-completions'
+    );
+    const catalogIds = new Set(Object.values(LLMTR_TEXT_MODELS));
+    for (const id of LLMTR_RESPONSES_ONLY_MODEL_IDS) {
+      expect(catalogIds.has(id), `${id} is not an LLMTR catalog id`).toBe(true);
+    }
   });
 });
 

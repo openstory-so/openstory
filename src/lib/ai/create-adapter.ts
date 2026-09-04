@@ -3,10 +3,11 @@
  *
  * Creates TanStack AI adapters for our chat models. Grok models go to xAI
  * directly when an xAI key is resolvable (issue #1167), and Gemini models to
- * Google's own Gemini API when a Google key is resolvable; everything else —
- * and Grok/Gemini with no native key — goes to OpenRouter, either directly,
- * through the LLMTR gateway, or through fal's OpenAI-compatible OpenRouter
- * endpoint (so a team with only a fal key still covers LLM calls — issue #895).
+ * Google's own Gemini API when a Google key is resolvable. LLMTR goes through
+ * the OpenAI-compatible Chat Completions adapter (`openaiCompatibleText`).
+ * Everything else — and Grok/Gemini with no native key — goes to OpenRouter,
+ * either directly or through fal's OpenAI-compatible OpenRouter endpoint (so a
+ * team with only a fal key still covers LLM calls — issue #895).
  */
 
 import { getEnv } from '#env';
@@ -20,7 +21,7 @@ import {
 } from '@/lib/ai/grok-native';
 import {
   LLMTR_BASE_URL,
-  LLMTR_ONLY_MODEL_IDS,
+  llmtrCompatibleApi,
   llmtrTextModel,
 } from '@/lib/ai/llmtr';
 import type { TextModel } from '@/lib/ai/models';
@@ -29,6 +30,7 @@ import { HTTPClient } from '@openrouter/sdk/lib/http';
 import { createModel, extendAdapter } from '@tanstack/ai';
 import { createGeminiChat } from '@tanstack/ai-gemini';
 import { createGrokText } from '@tanstack/ai-grok';
+import { openaiCompatibleText } from '@tanstack/ai-openai/compatible';
 import { createOpenRouterText, openRouterText } from '@tanstack/ai-openrouter';
 
 import { getLogger } from '@/lib/observability/logger';
@@ -49,7 +51,7 @@ export type LlmKeyInfo = {
    * auth — fal rejects Bearer there), 'xai' calls xAI's own Responses API
    * (Bearer auth, Grok models only — issue #1167), 'google' calls Google's
    * own Gemini API (`x-goog-api-key` auth, Gemini models only), 'llmtr' calls
-   * the LLMTR gateway (Bearer auth, OpenRouter wire format, and only the
+   * the LLMTR gateway (Bearer auth, OpenAI Chat Completions, and only the
    * models `LLMTR_TEXT_MODELS` maps).
    */
   via: 'openrouter' | 'fal' | 'xai' | 'google' | 'llmtr';
@@ -136,43 +138,6 @@ const createGrokTextExtended = extendAdapter(
 );
 
 /**
- * The LLMTR catalog ids that are not valid OpenRouter slugs (LLMTR namespaces
- * these vendors differently — see `LLMTR_ONLY_MODEL_IDS`). Widening the
- * factory with them is what lets the OpenRouter adapter drive LLMTR: same wire
- * format, different base URL and model names. Capabilities are transcribed
- * from LLMTR's own catalog.
- *
- * Identity mappings already typecheck against the generated OpenRouter union;
- * only renamed slugs need `extendAdapter`.
- */
-const LLMTR_CATALOG_MODELS = [
-  createModel('mistral/mistral-small-latest', {
-    input: ['text', 'image'],
-    features: ['structured_outputs'],
-  }),
-  createModel('xai/grok-4.6', {
-    input: ['text', 'image'],
-    features: ['reasoning', 'structured_outputs'],
-  }),
-  createModel('xai/grok-4.20-0309-reasoning', {
-    input: ['text'],
-    features: ['reasoning', 'structured_outputs'],
-  }),
-  createModel('zai/glm-5.3-flash', {
-    input: ['text'],
-    features: ['reasoning', 'structured_outputs'],
-  }),
-] as const satisfies ReadonlyArray<{
-  name: (typeof LLMTR_ONLY_MODEL_IDS)[number];
-}>;
-
-/** OpenRouter's factory, widened to also accept the LLMTR-only ids above. */
-const createOpenRouterTextExtended = extendAdapter(
-  createOpenRouterText,
-  LLMTR_CATALOG_MODELS
-);
-
-/**
  * Whether a request goes to xAI directly, and under which model name. The
  * request body differs by route (xAI speaks the Responses API), so `llm-client`
  * asks this too rather than deciding for itself — that's what stops a
@@ -237,19 +202,33 @@ export function createAdapter(model: TextModel, keyInfo?: LlmKeyInfo) {
   // resolveLlmKey was asked for a Grok/Gemini model, then the call used a
   // different one. OpenRouter answers that with "Missing Authentication
   // header" (its text for any non-sk-or key). Throw so the next mismatch is
-  // a stack, not a 401 puzzle. Same for an LLMTR key on a model LLMTR does
-  // not carry — sending that key to OpenRouter 401s the same way.
+  // a stack, not a 401 puzzle.
   if (via === 'xai' || via === 'google') {
     throw new Error(
       `${via === 'xai' ? 'xAI' : 'Google'} key cannot be sent to OpenRouter (model '${model}'). Resolve the LLM key for the model being called, not a different analysis model.`
     );
   }
 
-  const llmtrModel = via === 'llmtr' ? llmtrTextModel(model) : undefined;
-  if (via === 'llmtr' && !llmtrModel) {
-    throw new Error(
-      `LLMTR key cannot be sent to OpenRouter (model '${model}'). Resolve the LLM key for the model being called, not a different analysis model.`
-    );
+  // LLMTR is OpenAI-compatible, not OpenRouter. Driving it with the
+  // OpenRouter Speakeasy client rejects LLMTR's SSE chunks as "Response
+  // validation failed". Every OpenAI model (and Grok) uses Responses —
+  // Chat Completions 400s those. Same
+  // mismatch-throw as xAI/Google: an LLMTR key on a model LLMTR does not
+  // carry must not fall through to OpenRouter.
+  if (via === 'llmtr') {
+    const llmtrModel = llmtrTextModel(model);
+    if (!llmtrModel || !key) {
+      throw new Error(
+        `LLMTR does not carry model '${model}'. Resolve the LLM key for the model being called, not a different analysis model.`
+      );
+    }
+    return openaiCompatibleText(llmtrModel, {
+      name: 'llmtr',
+      baseURL: LLMTR_BASE_URL,
+      apiKey: key,
+      api: llmtrCompatibleApi(llmtrModel),
+      fetch: workersSafeFetch,
+    });
   }
 
   // During E2E recording, aimock proxies our OpenRouter calls upstream and
@@ -270,15 +249,11 @@ export function createAdapter(model: TextModel, keyInfo?: LlmKeyInfo) {
     );
   }
 
-  // OPENROUTER_BASE_URL (aimock in e2e) wins over both proxies so tests stay
-  // hermetic regardless of which key the team resolved.
+  // OPENROUTER_BASE_URL (aimock in e2e) wins over fal's proxy so tests stay
+  // hermetic regardless of which OpenRouter-shaped key the team resolved.
   const serverURL =
     env.OPENROUTER_BASE_URL ??
-    (via === 'fal'
-      ? FAL_OPENROUTER_BASE_URL
-      : llmtrModel
-        ? LLMTR_BASE_URL
-        : undefined);
+    (via === 'fal' ? FAL_OPENROUTER_BASE_URL : undefined);
 
   const config = {
     httpReferer: env.VITE_APP_URL || 'http://localhost:3000',
@@ -291,10 +266,7 @@ export function createAdapter(model: TextModel, keyInfo?: LlmKeyInfo) {
     }),
   };
 
-  // The extended factory is a strict superset of `createOpenRouterText`, so
-  // every non-LLMTR call goes through it unchanged; only the model name it is
-  // handed differs.
   return key
-    ? createOpenRouterTextExtended(llmtrModel ?? model, key, config)
+    ? createOpenRouterText(model, key, config)
     : openRouterText(model, config);
 }

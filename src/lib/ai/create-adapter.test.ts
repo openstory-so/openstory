@@ -70,6 +70,27 @@ vi.doMock('@tanstack/ai-openrouter', () => ({
   openRouterText: openRouterTextMock,
 }));
 
+type LlmtrCall = {
+  model: string;
+  config: {
+    name?: string;
+    baseURL: string;
+    apiKey: string;
+    api?: string;
+    fetch?: unknown;
+  };
+};
+const llmtrCalls: LlmtrCall[] = [];
+const openaiCompatibleTextMock = vi.fn(
+  (model: string, config: LlmtrCall['config']) => {
+    llmtrCalls.push({ model, config });
+    return { kind: 'llmtr-adapter' };
+  }
+);
+vi.doMock('@tanstack/ai-openai/compatible', () => ({
+  openaiCompatibleText: openaiCompatibleTextMock,
+}));
+
 type GrokCall = { model: string; key: string; config: { baseURL?: string } };
 const grokCalls: GrokCall[] = [];
 const createGrokTextMock = vi.fn(
@@ -117,6 +138,12 @@ function lastCall(): AdapterCall {
   return call;
 }
 
+function lastLlmtrCall(): LlmtrCall {
+  const call = llmtrCalls.at(-1);
+  if (!call) throw new Error('the LLMTR adapter was never constructed');
+  return call;
+}
+
 /**
  * Push a request through the adapter's HTTPClient and return what would hit
  * the wire, so tests assert on the post-hook Authorization header.
@@ -151,10 +178,12 @@ beforeEach(() => {
   adapterCalls.length = 0;
   grokCalls.length = 0;
   geminiCalls.length = 0;
+  llmtrCalls.length = 0;
   createOpenRouterTextMock.mockClear();
   openRouterTextMock.mockClear();
   createGrokTextMock.mockClear();
   createGeminiChatMock.mockClear();
+  openaiCompatibleTextMock.mockClear();
 });
 
 afterEach(() => {
@@ -162,18 +191,18 @@ afterEach(() => {
 });
 
 describe('createAdapter LLMTR routing', () => {
-  it('routes via:"llmtr" to LLMTR, translating the model slug, on Bearer auth', () => {
+  it('routes via:"llmtr" through openaiCompatibleText, translating the slug', () => {
     createAdapter(MODEL, { key: 'llmtr-team', via: 'llmtr' });
 
-    const call = lastCall();
-    expect(call.kind).toBe('keyed');
-    if (call.kind !== 'keyed') throw new Error('expected keyed adapter');
-    expect(call.key).toBe('llmtr-team');
-    expect(call.config.serverURL).toBe(LLMTR_URL);
+    const call = lastLlmtrCall();
+    expect(call.config.apiKey).toBe('llmtr-team');
+    expect(call.config.baseURL).toBe(LLMTR_URL);
+    expect(call.config.name).toBe('llmtr');
+    expect(call.config.api).toBe('responses');
     // LLMTR spells this vendor `xai/`; sending the OpenRouter slug 404s.
     expect(call.model).toBe('xai/grok-4.6');
-    // Bearer is the SDK default — no header rewrite, unlike fal.
-    expect(call.config.httpClient).toBeUndefined();
+    expect(createOpenRouterTextMock).not.toHaveBeenCalled();
+    expect(openRouterTextMock).not.toHaveBeenCalled();
   });
 
   it('keeps the id unchanged for a model LLMTR spells the same way', () => {
@@ -182,9 +211,19 @@ describe('createAdapter LLMTR routing', () => {
       via: 'llmtr',
     });
 
-    const call = lastCall();
+    const call = lastLlmtrCall();
     expect(call.model).toBe('anthropic/claude-sonnet-5');
-    expect(call.config.serverURL).toBe(LLMTR_URL);
+    expect(call.config.baseURL).toBe(LLMTR_URL);
+    expect(call.config.api).toBe('chat-completions');
+  });
+
+  it('sends every OpenAI model through Responses', () => {
+    createAdapter('openai/gpt-5.4-mini', {
+      key: 'llmtr-team',
+      via: 'llmtr',
+    });
+    expect(lastLlmtrCall().config.api).toBe('responses');
+    expect(lastLlmtrCall().model).toBe('openai/gpt-5.4-mini');
   });
 
   it('throws when via:"llmtr" meets a model LLMTR does not carry', () => {
@@ -193,14 +232,19 @@ describe('createAdapter LLMTR routing', () => {
         key: 'llmtr-team',
         via: 'llmtr',
       })
-    ).toThrow(/LLMTR key cannot be sent to OpenRouter/);
+    ).toThrow(/LLMTR does not carry model/);
+    expect(openaiCompatibleTextMock).not.toHaveBeenCalled();
+    expect(createOpenRouterTextMock).not.toHaveBeenCalled();
   });
 
-  it('lets OPENROUTER_BASE_URL (aimock) win over the LLMTR URL', () => {
+  it('does not let OPENROUTER_BASE_URL steal LLMTR traffic', () => {
+    // Aimock's OpenRouter fixtures are the wrong wire format for the
+    // Chat Completions adapter. LLMTR stays on its own URL.
     testEnv.OPENROUTER_BASE_URL = 'http://localhost:4010/v1';
     createAdapter(MODEL, { key: 'llmtr-team', via: 'llmtr' });
 
-    expect(lastCall().config.serverURL).toBe('http://localhost:4010/v1');
+    expect(lastLlmtrCall().config.baseURL).toBe(LLMTR_URL);
+    expect(createOpenRouterTextMock).not.toHaveBeenCalled();
   });
 
   it('does not let platform LLMTR steal OpenRouter traffic', () => {

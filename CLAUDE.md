@@ -410,11 +410,15 @@ that 429s while the same bytes as `inlineData` succeed.
 ### LLMTR Gateway
 
 LLMTR (llmtr.com) is a Turkey-hosted, OpenAI-compatible LLM gateway. It
-speaks OpenRouter's wire format **and** serves an OpenRouter-shaped
-`/v1/models`, so the OpenRouter adapter drives it with a `serverURL` swap —
-the same trick #895 plays with fal's OpenRouter proxy. UI: **Settings → API
-Keys → LLMTR**. Platform `LLMTR_API_KEY` is last-resort (after OpenRouter
-and fal) for models it carries. e2e never sets it.
+serves Chat Completions **and** Responses at `/v1` (plus an
+OpenRouter-shaped `/v1/models` catalog). `createAdapter` drives it with
+`openaiCompatibleText` from `@tanstack/ai-openai/compatible` — not the
+OpenRouter Speakeasy client, whose chunk schema rejects LLMTR's SSE as
+"Response validation failed". Every OpenAI model (and Grok) uses
+Responses; posting those to Chat Completions 400s. `llmtrCompatibleApi`
+picks the endpoint. UI:
+**Settings → API Keys → LLMTR**. Platform `LLMTR_API_KEY` is last-resort
+(after OpenRouter and fal) for models it carries. e2e never sets it.
 
 `src/lib/ai/llmtr.ts` pins the two silent-break traps:
 
@@ -431,6 +435,11 @@ and fal) for models it carries. e2e never sets it.
   `llmCostFromUsage(usage, model, llmKey.via)`. This spend bypasses
   `model_pricing` and the #1069 fal reconcile. Re-read
   https://llmtr.com/v1/models when the registry changes.
+- **Native wire names, not OpenRouter plugins.** Do not send
+  `openrouter:web_search`, `provider.only` / `requireParameters`, or
+  OpenRouter camelCase (`maxTokens`, `streamOptions`) on `via: 'llmtr'`.
+  Chat Completions uses `max_tokens` / `reasoning_effort`; Responses uses
+  `max_output_tokens` / `reasoning.effort`.
 
 Resolution order (`resolveLlmKey`): native xAI (Grok) → native Google
 (Gemini) → **team LLMTR when `llmtrTextModel` maps** → team OpenRouter →

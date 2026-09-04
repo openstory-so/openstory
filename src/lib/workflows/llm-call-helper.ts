@@ -15,6 +15,7 @@ import {
   resolveNativeGrokModel,
   type LlmKeyInfo,
 } from '@/lib/ai/create-adapter';
+import { llmtrCompatibleApi } from '@/lib/ai/llmtr';
 import {
   createUsageCapture,
   extractRunError,
@@ -177,10 +178,12 @@ function reasoningModelOptions(reasoning: boolean | undefined): {
   return reasoning ? { reasoning: PROMPT_REASONING } : {};
 }
 
-/** OpenRouter vs xAI Responses vs Gemini sampling options. xAI and Google
- *  reject `streamOptions`; xAI uses `max_output_tokens` and Gemini camelCase
- *  `maxOutputTokens`. Omitting reasoning on grok-4.6 falls through to xAI's
- *  `high` default, so unrequested reasoning is sent as `low`; Gemini's
+/** OpenRouter vs xAI Responses vs Gemini vs LLMTR Chat Completions options.
+ *  xAI and Google reject `streamOptions`; xAI uses `max_output_tokens` and
+ *  Gemini camelCase `maxOutputTokens`. LLMTR spreads native Chat Completions
+ *  names (`max_tokens`, `reasoning_effort`) — OpenRouter camelCase would
+ *  land as unknown fields. Omitting reasoning on grok-4.6 falls through to
+ *  xAI's `high` default, so unrequested reasoning is sent as `low`; Gemini's
  *  unset `thinkingConfig` keeps the model's dynamic-thinking default. */
 export function chatModelOptionsForCall(
   modelId: TextModel,
@@ -206,6 +209,20 @@ export function chatModelOptionsForCall(
           }
         : {}),
       maxOutputTokens: maxTokens,
+    };
+  }
+  if (llmKeyInfo.via === 'llmtr') {
+    if (llmtrCompatibleApi(modelId) === 'responses') {
+      return {
+        ...(reasoning
+          ? { reasoning: { effort: PROMPT_REASONING.effort } }
+          : {}),
+        max_output_tokens: maxTokens,
+      };
+    }
+    return {
+      ...(reasoning ? { reasoning_effort: PROMPT_REASONING.effort } : {}),
+      max_tokens: maxTokens,
     };
   }
   return {

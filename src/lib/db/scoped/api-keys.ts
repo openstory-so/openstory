@@ -51,8 +51,8 @@ export type ResolvedApiKey =
 // OpenAI-compatible OpenRouter endpoint (`Key` auth) so a team with only a
 // fal key still covers LLM calls (issue #895), 'xai' = xAI's own Responses
 // API for Grok models (issue #1167), 'google' = Google's own Gemini API for
-// Gemini models, 'llmtr' = the LLMTR gateway (Bearer auth, OpenRouter wire
-// format, models per `LLMTR_TEXT_MODELS`).
+// Gemini models, 'llmtr' = the LLMTR gateway (Bearer auth, OpenAI Chat
+// Completions, models per `LLMTR_TEXT_MODELS`).
 export type ResolvedLlmKey = ResolvedApiKey & {
   via: 'openrouter' | 'fal' | 'xai' | 'google' | 'llmtr';
 };
