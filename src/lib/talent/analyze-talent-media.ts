@@ -25,7 +25,8 @@ export type AnalyzeTalentMediaForTeamInput = {
 export async function analyzeTalentMediaForTeam(
   input: AnalyzeTalentMediaForTeamInput
 ): Promise<TalentVisionResult> {
-  const llmKeyInfo = await input.scopedDb.apiKeys.resolveLlmKey();
+  const llmKeyInfo =
+    await input.scopedDb.apiKeys.resolveLlmKey(TALENT_VISION_MODEL);
   if (llmKeyInfo.source !== 'team') {
     const estimatedCost = estimateLLMCost(1);
     const canAfford =

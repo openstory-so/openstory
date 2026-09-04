@@ -183,7 +183,11 @@ export async function draftStudioPrompt(
 
   return {
     prompt,
-    costMicros: llmCostFromUsage(usageCapture.get(), STUDIO_DRAFT_MODEL),
+    costMicros: llmCostFromUsage(
+      usageCapture.get(),
+      STUDIO_DRAFT_MODEL,
+      input.llmKey?.via
+    ),
     usedOwnKey: input.llmKey?.source === 'team',
   };
 }

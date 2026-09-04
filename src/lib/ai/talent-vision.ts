@@ -201,7 +201,11 @@ export async function analyzeTalentMedia(
   );
   return {
     ...parsed,
-    costMicros: llmCostFromUsage(usageCapture.get(), TALENT_VISION_MODEL),
+    costMicros: llmCostFromUsage(
+      usageCapture.get(),
+      TALENT_VISION_MODEL,
+      input.llmKey?.via
+    ),
     usedOwnKey: input.llmKey?.source === 'team',
   };
 }

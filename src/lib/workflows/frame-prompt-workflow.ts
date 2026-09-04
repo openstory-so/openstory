@@ -323,7 +323,11 @@ export class FramePromptWorkflow extends OpenStoryWorkflowEntrypoint<FramePrompt
               : visualPromptResultSchema.parse(JSON.parse(accumulated));
           return {
             resultJson: JSON.stringify(resultObject),
-            costMicros: llmCostFromUsage(usageCapture.get(), analysisModelId),
+            costMicros: llmCostFromUsage(
+              usageCapture.get(),
+              analysisModelId,
+              llmKeyInfo.via
+            ),
             keySource: llmKeyInfo.source,
           };
         } finally {

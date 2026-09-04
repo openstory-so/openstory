@@ -1,6 +1,6 @@
 /**
  * Team API Keys Schema
- * Encrypted storage for user-provided API keys (OpenRouter, Fal.ai, …).
+ * Encrypted storage for user-provided API keys.
  * Add a provider by appending to `API_KEY_PROVIDERS` — the Zod schema, key
  * resolver, and validate switch are derived from that list so a missing case
  * is a type error (#1216).
@@ -25,6 +25,7 @@ export const API_KEY_PROVIDERS = [
   'fal',
   'xai',
   'google',
+  'llmtr',
 ] as const;
 export type ApiKeyProvider = (typeof API_KEY_PROVIDERS)[number];
 

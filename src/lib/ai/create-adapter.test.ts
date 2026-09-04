@@ -16,6 +16,7 @@ const testEnv: {
   FAL_KEY: string | undefined;
   XAI_API_KEY: string | undefined;
   GEMINI_API_KEY: string | undefined;
+  LLMTR_API_KEY: string | undefined;
   OPENROUTER_BASE_URL: string | undefined;
   XAI_BASE_URL: string | undefined;
   GEMINI_BASE_URL: string | undefined;
@@ -27,6 +28,7 @@ const testEnv: {
   FAL_KEY: undefined,
   XAI_API_KEY: undefined,
   GEMINI_API_KEY: undefined,
+  LLMTR_API_KEY: undefined,
   OPENROUTER_BASE_URL: undefined,
   XAI_BASE_URL: undefined,
   GEMINI_BASE_URL: undefined,
@@ -68,6 +70,27 @@ vi.doMock('@tanstack/ai-openrouter', () => ({
   openRouterText: openRouterTextMock,
 }));
 
+type LlmtrCall = {
+  model: string;
+  config: {
+    name?: string;
+    baseURL: string;
+    apiKey: string;
+    api?: string;
+    fetch?: unknown;
+  };
+};
+const llmtrCalls: LlmtrCall[] = [];
+const openaiCompatibleTextMock = vi.fn(
+  (model: string, config: LlmtrCall['config']) => {
+    llmtrCalls.push({ model, config });
+    return { kind: 'llmtr-adapter' };
+  }
+);
+vi.doMock('@tanstack/ai-openai/compatible', () => ({
+  openaiCompatibleText: openaiCompatibleTextMock,
+}));
+
 type GrokCall = { model: string; key: string; config: { baseURL?: string } };
 const grokCalls: GrokCall[] = [];
 const createGrokTextMock = vi.fn(
@@ -107,10 +130,17 @@ const {
 
 const MODEL = 'x-ai/grok-4.6';
 const FAL_URL = 'https://fal.run/openrouter/router/openai/v1';
+const LLMTR_URL = 'https://llmtr.com/v1';
 
 function lastCall(): AdapterCall {
   const call = adapterCalls.at(-1);
   if (!call) throw new Error('the adapter was never constructed');
+  return call;
+}
+
+function lastLlmtrCall(): LlmtrCall {
+  const call = llmtrCalls.at(-1);
+  if (!call) throw new Error('the LLMTR adapter was never constructed');
   return call;
 }
 
@@ -144,17 +174,133 @@ beforeEach(() => {
   testEnv.XAI_BASE_URL = undefined;
   testEnv.GEMINI_API_KEY = undefined;
   testEnv.GEMINI_BASE_URL = undefined;
+  testEnv.LLMTR_API_KEY = undefined;
   adapterCalls.length = 0;
   grokCalls.length = 0;
   geminiCalls.length = 0;
+  llmtrCalls.length = 0;
   createOpenRouterTextMock.mockClear();
   openRouterTextMock.mockClear();
   createGrokTextMock.mockClear();
   createGeminiChatMock.mockClear();
+  openaiCompatibleTextMock.mockClear();
 });
 
 afterEach(() => {
   vi.unstubAllGlobals();
+});
+
+describe('createAdapter LLMTR routing', () => {
+  it('routes via:"llmtr" through openaiCompatibleText, translating the slug', () => {
+    createAdapter(MODEL, { key: 'llmtr-team', via: 'llmtr' });
+
+    const call = lastLlmtrCall();
+    expect(call.config.apiKey).toBe('llmtr-team');
+    expect(call.config.baseURL).toBe(LLMTR_URL);
+    expect(call.config.name).toBe('llmtr');
+    expect(call.config.api).toBe('responses');
+    // LLMTR spells this vendor `xai/`; sending the OpenRouter slug 404s.
+    expect(call.model).toBe('xai/grok-4.6');
+    expect(createOpenRouterTextMock).not.toHaveBeenCalled();
+    expect(openRouterTextMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps the id unchanged for a model LLMTR spells the same way', () => {
+    createAdapter('anthropic/claude-sonnet-5', {
+      key: 'llmtr-team',
+      via: 'llmtr',
+    });
+
+    const call = lastLlmtrCall();
+    expect(call.model).toBe('anthropic/claude-sonnet-5');
+    expect(call.config.baseURL).toBe(LLMTR_URL);
+    expect(call.config.api).toBe('chat-completions');
+  });
+
+  it('sends every OpenAI model through Responses', () => {
+    createAdapter('openai/gpt-5.4-mini', {
+      key: 'llmtr-team',
+      via: 'llmtr',
+    });
+    expect(lastLlmtrCall().config.api).toBe('responses');
+    expect(lastLlmtrCall().model).toBe('openai/gpt-5.4-mini');
+  });
+
+  it('throws when via:"llmtr" meets a model LLMTR does not carry', () => {
+    expect(() =>
+      createAdapter('anthropic/claude-opus-5-fast', {
+        key: 'llmtr-team',
+        via: 'llmtr',
+      })
+    ).toThrow(/LLMTR does not carry model/);
+    expect(openaiCompatibleTextMock).not.toHaveBeenCalled();
+    expect(createOpenRouterTextMock).not.toHaveBeenCalled();
+  });
+
+  it('does not let OPENROUTER_BASE_URL steal LLMTR traffic', () => {
+    // Aimock's OpenRouter fixtures are the wrong wire format for the
+    // Chat Completions adapter. LLMTR stays on its own URL.
+    testEnv.OPENROUTER_BASE_URL = 'http://localhost:4010/v1';
+    createAdapter(MODEL, { key: 'llmtr-team', via: 'llmtr' });
+
+    expect(lastLlmtrCall().config.baseURL).toBe(LLMTR_URL);
+    expect(createOpenRouterTextMock).not.toHaveBeenCalled();
+  });
+
+  it('does not let platform LLMTR steal OpenRouter traffic', () => {
+    testEnv.LLMTR_API_KEY = 'platform-llmtr';
+    testEnv.OPENROUTER_KEY = 'platform-or';
+
+    expect(getPlatformLlmKey('anthropic/claude-sonnet-5')).toEqual({
+      key: 'platform-or',
+      via: 'openrouter',
+      source: 'platform',
+    });
+  });
+
+  it('uses platform LLMTR only when OpenRouter and fal are unset', () => {
+    testEnv.LLMTR_API_KEY = 'platform-llmtr';
+
+    expect(getPlatformLlmKey('anthropic/claude-sonnet-5')).toEqual({
+      key: 'platform-llmtr',
+      via: 'llmtr',
+      source: 'platform',
+    });
+  });
+
+  it('leaves a model LLMTR does not carry on the platform OpenRouter key', () => {
+    testEnv.LLMTR_API_KEY = 'platform-llmtr';
+    testEnv.OPENROUTER_KEY = 'platform-or';
+
+    expect(getPlatformLlmKey('anthropic/claude-opus-5-fast')).toEqual({
+      key: 'platform-or',
+      via: 'openrouter',
+      source: 'platform',
+    });
+  });
+
+  it('keeps xAI first for Grok — first-party beats a gateway', () => {
+    testEnv.XAI_API_KEY = 'platform-xai';
+    testEnv.LLMTR_API_KEY = 'platform-llmtr';
+
+    expect(getPlatformLlmKey(MODEL)).toEqual({
+      key: 'platform-xai',
+      via: 'xai',
+      source: 'platform',
+    });
+  });
+
+  it('ignores LLMTR when the caller cannot name the model', () => {
+    // Without a model there is no way to know LLMTR carries it.
+    testEnv.LLMTR_API_KEY = 'platform-llmtr';
+    testEnv.OPENROUTER_KEY = 'platform-or';
+
+    expect(getPlatformLlmKey()).toEqual({
+      key: 'platform-or',
+      via: 'openrouter',
+      source: 'platform',
+    });
+  });
 });
 
 describe('createAdapter routing (issue #895)', () => {

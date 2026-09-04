@@ -1188,7 +1188,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
     error: string;
     scopedDb: WorkflowScopedDb;
   }): Promise<void> {
-    const { sequenceId, reservationId } = event.payload;
+    const { sequenceId, reservationId, analysisModelId } = event.payload;
     if (reservationId) {
       try {
         await scopedDb.billing.zeroReservation(reservationId);
@@ -1207,7 +1207,8 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
     });
 
     const userMessage =
-      (await handleLlmAuthFailure(scopedDb, sanitized)) ?? sanitized;
+      (await handleLlmAuthFailure(scopedDb, sanitized, analysisModelId)) ??
+      sanitized;
 
     await scopedDb.sequence(sequenceId).updateStatus('failed', userMessage);
     await getGenerationChannel(sequenceId).emit('generation.failed', {
