@@ -457,6 +457,25 @@ export function openRouterProviderForModel(
 // modelOptions (camelCase, per the OpenRouter SDK) instead of the root of
 // chat(). The public LLMRequestParams surface keeps its OpenAI-style
 // snake_case names; this is the single mapping point.
+/**
+ * Every OpenRouter call asks for the priority ("fast") service tier.
+ *
+ * Safe to send unconditionally: OpenRouter tries priority endpoints first and
+ * falls back to the rest when a model has none, and billing follows the
+ * endpoint that actually served the request — so a model without a priority
+ * endpoint (Claude Fable 5.1 today) is charged its ordinary rate and simply
+ * runs as before. You pay the premium only when you actually get it.
+ *
+ * The premium is roughly 2x on Opus 5 ($5/$25 -> $10/$50) and up to 4x on
+ * Luna, but LLM tokens are a rounding error next to image and video
+ * generation, so buying latency across the board is the better trade here.
+ *
+ * `'priority'` is the canonical value the OpenRouter SDK enumerates; `'fast'`
+ * is an accepted alias for it. OpenRouter-only by construction: this builder
+ * serves the `openrouter` route, so native xAI/Gemini calls never see it.
+ */
+const SERVICE_TIER = 'priority' as const;
+
 function buildModelOptions(params: LLMRequestParams) {
   const provider: ProviderPreferences = {
     ...openRouterProviderForModel(params.model),
@@ -474,6 +493,7 @@ function buildModelOptions(params: LLMRequestParams) {
   const allowSampling = modelAllowsClassicSampling(params.model);
   return {
     provider,
+    serviceTier: SERVICE_TIER,
     ...(params.reasoning && { reasoning }),
     // `maxTokens`, not `maxCompletionTokens`: DeepSeek endpoints advertise only
     // `max_tokens`, so `max_completion_tokens` + requireParameters empties the
