@@ -105,8 +105,16 @@ export function StudioView({ activity, sort, favorites }: StudioViewProps) {
         </PageContainer>
       </div>
 
-      <div className="shrink-0 border-t bg-background/80 backdrop-blur-md">
-        <PageContainer maxWidth="wide" padding="compact" className="py-4">
+      {/* #1474: grow with the prompt, but never more than half the column. */}
+      <div
+        className="flex min-h-0 max-h-[50%] shrink-0 flex-col overflow-hidden border-t bg-background/80 backdrop-blur-md"
+        data-testid="studio-composer-pane"
+      >
+        <PageContainer
+          maxWidth="wide"
+          padding="compact"
+          className="flex min-h-0 flex-col overflow-hidden py-4"
+        >
           <StudioComposer
             activity={activity}
             generatingPrompts={generatingPrompts}
