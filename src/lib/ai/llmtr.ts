@@ -66,7 +66,7 @@ type LlmtrMappedId = Exclude<
  * ("Mistral Small 4" on both sides).
  */
 export const LLMTR_TEXT_MODELS = {
-  'anthropic/claude-fable-5': 'anthropic/claude-fable-5',
+  'anthropic/claude-fable-5.1': 'anthropic/claude-fable-5.1',
   'anthropic/claude-opus-5': 'anthropic/claude-opus-5',
   'google/gemini-3.7-flash': 'google/gemini-3.7-flash',
   'google/gemini-3.1-pro-preview': 'google/gemini-3.1-pro-preview',
@@ -166,7 +166,7 @@ const LLMTR_TEXT_RATES: Record<
   LlmtrTextModel,
   { input: number; output: number }
 > = {
-  'anthropic/claude-fable-5': { input: 10, output: 50 },
+  'anthropic/claude-fable-5.1': { input: 10, output: 50 },
   'anthropic/claude-opus-5': { input: 5, output: 25 },
   'google/gemini-3.7-flash': { input: 0.75, output: 3.75 },
   'google/gemini-3.1-pro-preview': { input: 2, output: 12 },

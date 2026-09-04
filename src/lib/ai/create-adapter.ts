@@ -116,11 +116,25 @@ let loggedRetryMode = false;
  * `createModel('vendor/model-id', { input: [...], features: [...] })`.
  *
  */
-export const CATALOG_LAG_MODELS = [] as const;
+export const CATALOG_LAG_MODELS = [
+  // Not lag but a REMOVAL: 0.19.7 dropped this id from the catalog in the same
+  // sync that added anthropic/claude-fable-5.1. Still offered in
+  // SCRIPT_ANALYSIS_MODELS, so it needs the same bridge. Delete the entry (and
+  // the model) if OpenRouter has genuinely retired it.
+  createModel('anthropic/claude-opus-5-fast', {
+    input: ['text', 'image'],
+    features: ['reasoning', 'structured_outputs'],
+  }),
+] as const;
 
-// Empty after @tanstack/ai-openrouter@0.19.5 shipped z-ai/glm-5.3-flash.
-// Restore `extendAdapter` around the OpenRouter factories when the next lag
-// id lands.
+const openRouterTextExtended = extendAdapter(
+  openRouterText,
+  CATALOG_LAG_MODELS
+);
+const createOpenRouterTextExtended = extendAdapter(
+  createOpenRouterText,
+  CATALOG_LAG_MODELS
+);
 
 /** {@link CATALOG_LAG_MODELS} for the Grok adapter. Native `grok-4.6` is
  *  in the 0.16 catalog; `grok-4.20-0309-reasoning` is still lag-bridged.
@@ -267,6 +281,6 @@ export function createAdapter(model: TextModel, keyInfo?: LlmKeyInfo) {
   };
 
   return key
-    ? createOpenRouterText(model, key, config)
-    : openRouterText(model, config);
+    ? createOpenRouterTextExtended(model, key, config)
+    : openRouterTextExtended(model, config);
 }

@@ -137,7 +137,7 @@ describe('estimateTotalSeconds', () => {
   test('analysis tier follows the analysis model, not the image model', () => {
     // Both mixed pairs named in #1433.
     const liteFable = estimateTotalSeconds(5, undefined, undefined, {
-      analysisModel: 'anthropic/claude-fable-5',
+      analysisModel: 'anthropic/claude-fable-5.1',
       imageModel: 'nano_banana_2_lite',
     });
     const liteLuna = estimateTotalSeconds(5, undefined, undefined, {
@@ -151,7 +151,7 @@ describe('estimateTotalSeconds', () => {
       imageModel: 'gpt_image_2',
     });
     const gptImageFable = estimateTotalSeconds(5, undefined, undefined, {
-      analysisModel: 'anthropic/claude-fable-5',
+      analysisModel: 'anthropic/claude-fable-5.1',
       imageModel: 'gpt_image_2',
     });
     expect(gptImageLuna).toBeLessThan(gptImageFable);

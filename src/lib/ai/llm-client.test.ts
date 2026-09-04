@@ -1,4 +1,5 @@
 import { usdToMicros, ZERO_MICROS } from '@/lib/billing/money';
+import type { TextModel } from '@/lib/ai/models';
 import type { TokenUsage } from '@tanstack/ai';
 import { convertWebSearchToolToAdapterFormat } from '@tanstack/ai-openrouter/tools';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -217,6 +218,35 @@ describe('llm-client', () => {
       if (!firstCall) throw new Error('expected mockChat to have been called');
       expect(firstCall[0].stream).toBe(true);
       expect(firstCall[0].modelOptions?.streamOptions?.includeUsage).toBe(true);
+    });
+
+    it('asks for the priority service tier on every OpenRouter call', async () => {
+      const tierFor = async (model: TextModel) => {
+        mockChat.mockClear();
+        mockChat.mockReturnValue(
+          (async function* () {
+            yield { type: 'TEXT_MESSAGE_CONTENT', delta: 'ok' };
+          })()
+        );
+        for await (const _chunk of callLLMStream({
+          model,
+          messages: [{ role: 'user', content: 'test' }],
+        })) {
+          // drain
+        }
+        const call = mockChat.mock.calls[0];
+        if (!call) throw new Error('expected mockChat to have been called');
+        return call[0].modelOptions?.serviceTier;
+      };
+
+      // Fast section.
+      expect(await tierFor('openai/gpt-5.6-luna')).toBe('priority');
+      expect(await tierFor('z-ai/glm-5.3-flash')).toBe('priority');
+      // Quality section too: OpenRouter falls back off-tier when a model has
+      // no priority endpoint, and bills the endpoint that actually served —
+      // so asking costs nothing when it can't be honoured.
+      expect(await tierFor('anthropic/claude-fable-5.1')).toBe('priority');
+      expect(await tierFor('anthropic/claude-sonnet-5')).toBe('priority');
     });
 
     it('surfaces usage.cost on structured responseSchema streams from RUN_FINISHED', async () => {
