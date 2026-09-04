@@ -893,7 +893,7 @@ export function StudioComposer({
     // oxlint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- drop zone; the Add tile is the keyboard path
     <form
       className={cn(
-        'relative flex h-full min-h-0 flex-col gap-3 overflow-hidden rounded-xl border bg-card p-3 shadow-sm',
+        'relative flex min-h-0 flex-col gap-3 overflow-hidden rounded-xl border bg-card p-3 shadow-sm',
         dragging && 'border-ring ring-3 ring-ring/30'
       )}
       onSubmit={(event) => {

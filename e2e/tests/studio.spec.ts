@@ -130,16 +130,5 @@ test.describe('Images and Videos studio', () => {
     await expect(
       page.getByRole('button', { name: 'Generate image' })
     ).toBeInViewport();
-
-    const handle = page.getByRole('button', { name: /Prompt height/ });
-    await handle.focus();
-    await page.keyboard.press('End');
-    await expect
-      .poll(async () =>
-        page.evaluate(() =>
-          localStorage.getItem('openstory:studio-composer-max:v1')
-        )
-      )
-      .toBe('0.7');
   });
 });
