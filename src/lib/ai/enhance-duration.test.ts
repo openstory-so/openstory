@@ -209,6 +209,9 @@ describe('buildDurationPromptParagraph', () => {
     });
     expect(paragraph).toContain('Target running time: 30 seconds');
     expect(paragraph).toContain('about 4-5 locations/beats');
+    expect(paragraph).toContain(
+      'The rendered film should sum to about 30 seconds'
+    );
     expect(paragraph).toContain('Fountain');
     expect(paragraph).toContain('6, 8 or 10 seconds');
     expect(paragraph).not.toContain('TOTAL:');

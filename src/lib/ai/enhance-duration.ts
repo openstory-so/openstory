@@ -267,7 +267,7 @@ export function buildDurationPromptParagraph(opts: {
       ? `Keep each continuous take short enough to play in ${gridText} — those are the clip lengths the selected video model can render.`
       : `Keep each continuous take short — most around 5 seconds, a few up to ~8 when the motion needs it.`;
 
-  return `Target running time: ${formatDuration(opts.targetSeconds)} (about ${rangeText} locations/beats). Write a Fountain screenplay that would play at that length — denser, not padded. A new INT./EXT. slugline is a new location or time, not a new camera angle. ${pace} Do not stamp seconds on headings and do not write a TOTAL line. If the brief asks for a title card, logo, SUPER, or on-screen text, do not write that card — substitute a living final beat with a real subject.`;
+  return `Target running time: ${formatDuration(opts.targetSeconds)} (about ${rangeText} locations/beats). The rendered film should sum to about ${formatDuration(opts.targetSeconds)} — write a Fountain screenplay that plays at that length, denser, not padded. A new INT./EXT. slugline is a new location or time, not a new camera angle. ${pace} Do not stamp seconds on headings and do not write a TOTAL line. If the brief asks for a title card, logo, SUPER, or on-screen text, do not write that card — substitute a living final beat with a real subject.`;
 }
 
 export function buildDurationCorrectionPrompt(opts: {

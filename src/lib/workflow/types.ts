@@ -312,6 +312,12 @@ export interface StoryboardWorkflowInput extends SequenceWorkflowContext {
    * straight through to analyze-script.
    */
   referenceOnly?: boolean;
+  /**
+   * Duration chip from Enhance / Generate (e.g. 30). Scene-split assigns
+   * snapped clip lengths so the rendered shots sum as close as possible to
+   * this. Absent on retries that did not pass a chip — allocation is skipped.
+   */
+  targetSeconds?: number;
 }
 
 /**
@@ -387,6 +393,8 @@ export interface AnalyzeScriptWorkflowInput extends SequenceWorkflowContext {
    * is doing.
    */
   referenceOnly?: boolean;
+  /** @see StoryboardWorkflowInput.targetSeconds — passed straight through. */
+  targetSeconds?: number;
 }
 
 /**
@@ -399,6 +407,10 @@ export type SceneSplitWorkflowInput = SequenceWorkflowContext & {
   script: string;
   /** User-uploaded elements to make the model aware of uppercase tokens */
   elements?: SequenceElementMinimal[];
+  /** @see StoryboardWorkflowInput.targetSeconds */
+  targetSeconds?: number;
+  /** Clip-grid for duration allocation. Absent → skip allocation. */
+  videoModel?: ImageToVideoModel;
 };
 
 export type SceneSplitWorkflowResult = {

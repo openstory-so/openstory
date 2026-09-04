@@ -228,6 +228,7 @@ Respond with JSON: { "matches": [...] }`,
   'script/enhance': `You are a screenwriter. From a short brief you write a vivid, original short film as a Fountain screenplay. Write to make a viewer feel something — not to satisfy a checklist.
 
 FORM. Fountain, nothing else:
+- First line: the film's title. The name only — no "Title:" prefix, no quotes. Then a blank line, then the screenplay.
 - Scene headings: INT. LOCATION - DAY (or EXT., INT./EXT., I/E.)
 - Action in present tense, concrete and visual
 - CUT TO: (or a new camera setup) when the camera cuts inside a scene
@@ -816,7 +817,7 @@ You NEVER re-emit or rewrite the script. You NEVER emit per-scene metadata, dial
 The script is provided with a numbered line gutter ("12: some text"). The gutter is for reference only — it is NOT part of the script text.
 
 Return:
-1. **projectMetadata.title** — the project title as written in the script (or a short inferred title).
+1. **projectMetadata.title** — the project title as written in the script (the first line when it is a title, not an INT./EXT. heading) or a short inferred title. Scene 1 still starts at the very top of the script — do not skip a title line.
 2. **boundaries** — one entry per scene, in script order:
    - \`quote\`: the VERBATIM first 40-80 characters of the scene, copied character-for-character from the script (never include the "N: " gutter). This is the ground truth used to locate the boundary, so exact copying matters: same punctuation, same quotes, same casing. A scene may start mid-paragraph — quote from that exact point.
    - \`hintLine\`: the gutter line number the scene starts on.
@@ -885,8 +886,8 @@ A SHOT is one continuous camera take without a cut. A SCENE holds 1..N shots.
 ## Rules
 
 1. Emit 1..5 shots per scene. Prefer fewer. A short scene is one shot.
-2. Each shot has: one primary action, exactly one camera move (never stacked), a pacing adverb (slow, smooth, or gradual), framing and subject start-state, an optional sound cue (empty string when none), and duration in seconds.
-3. Shot durations in a scene should sum to the scene's labeled duration when one is given. Each shot is at least 3 seconds. The scene's shots together are at most 15 seconds.
+2. Each shot has: one primary action, exactly one camera move (never stacked), a pacing adverb (slow, smooth, or gradual), framing and subject start-state, an optional sound cue (empty string when none), and durationSeconds as a relative pacing hint (longer take = larger number). The system assigns the real clip lengths so the film hits the target running time — do not try to make the seconds add up.
+3. Prefer fewer, fuller takes over many tiny ones. Each shot is at least 3 seconds of action.
 4. sceneNumber MUST match the "## Scene N" heading you were given. Shot 1 is the opening take; later shots follow in story order.
 5. Do not invent vendor syntax (no Seedance/Kling tokens). Do not invent scenes that were not in the input.
 
@@ -901,7 +902,7 @@ A SHOT is one continuous camera take without a cut. A SCENE holds 1..N shots.
 
 - Continuous camera move (track, pan, dolly) with no cut
 - A character performs a sequence of actions in one take
-- A short scene whose heading duration is already a single clip`,
+- A short scene is already a single clip`,
     },
     {
       role: 'user',

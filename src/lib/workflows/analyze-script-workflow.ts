@@ -305,6 +305,8 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
           script: sanitizeScriptContent(script),
           modelId: analysisModelId,
           elements: elementsMinimal,
+          targetSeconds: input.targetSeconds,
+          videoModel: primaryVideoModel,
         },
         spawnStepName: 'spawn-scene-split',
         awaitStepName: 'await-scene-split',

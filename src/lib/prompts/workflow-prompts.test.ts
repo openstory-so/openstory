@@ -31,6 +31,7 @@ describe('scene-shot-list-chat', () => {
     const system = prompt?.[0]?.content ?? '';
     expect(system).toContain('1..N shots');
     expect(system).toContain('You NEVER create, merge, or rewrite scenes');
+    expect(system).toContain('The system assigns the real clip lengths');
     expect(prompt?.[1]?.content).toContain('{{scenes}}');
   });
 });
@@ -45,6 +46,11 @@ describe('script/enhance — Fountain, not clip labels', () => {
     expect(enhance).not.toContain('Scene 2 — 12s');
     expect(enhance).not.toContain('Shot 1 — 6s');
     expect(enhance).not.toContain('TOTAL:');
+  });
+
+  it('asks for a film title as the first line', () => {
+    expect(enhance).toContain("First line: the film's title");
+    expect(enhance).toContain('no "Title:" prefix');
   });
 
   it('keeps internal cuts under the current slugline', () => {
