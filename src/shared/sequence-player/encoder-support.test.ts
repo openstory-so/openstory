@@ -8,7 +8,12 @@ const canEncodeAudio = vi.fn<() => Promise<boolean>>();
 const canEncodeVideo = vi.fn<() => Promise<boolean>>();
 vi.doMock('mediabunny', () => ({ canEncodeAudio, canEncodeVideo }));
 
-const { assertEncoderSupport } = await import('./encoder-support');
+const {
+  assertEncoderSupport,
+  chooseExportRoute,
+  EncoderUnsupportedError,
+  probeEncoderSupport,
+} = await import('./encoder-support');
 
 const needs = {
   audio: true,
@@ -69,5 +74,69 @@ describe('assertEncoderSupport', () => {
       width: 1920,
       height: 1080,
     });
+  });
+});
+
+describe('probeEncoderSupport', () => {
+  it('reports which encoder failed without throwing', async () => {
+    canEncodeAudio.mockResolvedValue(false);
+    await expect(probeEncoderSupport(needs)).resolves.toEqual({
+      audioOk: false,
+      videoOk: true,
+    });
+  });
+});
+
+describe('chooseExportRoute', () => {
+  const aacOnlyTransmux = {
+    missingAac: true,
+    missingAvc: false,
+    canTransmux: true,
+  };
+
+  it('routes AAC-only transmux gaps to the container when it is available', () => {
+    expect(chooseExportRoute(aacOnlyTransmux, true)).toBe('server');
+  });
+
+  it('keeps the #1397 error when the container is not available', () => {
+    expect(chooseExportRoute(aacOnlyTransmux, false)).toBe('unsupported');
+  });
+
+  it('does not send mixed-resolution (missing AVC) cuts to the container', () => {
+    expect(
+      chooseExportRoute(
+        { missingAac: true, missingAvc: true, canTransmux: false },
+        true
+      )
+    ).toBe('unsupported');
+    expect(
+      chooseExportRoute(
+        { missingAac: false, missingAvc: true, canTransmux: false },
+        true
+      )
+    ).toBe('unsupported');
+  });
+
+  it('does not send an AAC gap that also needs a video re-encode', () => {
+    expect(
+      chooseExportRoute(
+        { missingAac: true, missingAvc: false, canTransmux: false },
+        true
+      )
+    ).toBe('unsupported');
+  });
+});
+
+describe('EncoderUnsupportedError', () => {
+  it('carries the #1397 message and the routing fields', () => {
+    const error = new EncoderUnsupportedError({
+      missingAac: true,
+      missingAvc: false,
+      canTransmux: true,
+    });
+    expect(error).toBeInstanceOf(Error);
+    expect(error.message).toMatch(/AAC audio/);
+    expect(error.missingAac).toBe(true);
+    expect(error.canTransmux).toBe(true);
   });
 });

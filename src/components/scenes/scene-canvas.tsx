@@ -75,6 +75,7 @@ function formatExportProgress(progress: ExportProgress | null): string {
     finalize: 'Finalizing',
     upload: 'Uploading',
     commit: 'Saving',
+    server: 'Rendering on server',
   };
   const label = phaseLabel[progress.phase];
   if (progress.total > 0) {

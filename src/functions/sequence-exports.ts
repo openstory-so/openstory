@@ -3,12 +3,14 @@
  * explicitly created via the browser-side export pipeline (see
  * `src/shared/sequence-player/export.ts`).
  *
- * Three handlers:
+ * Four handlers:
  *   - `requestSequenceExportUploadUrlFn` — reserves an R2 path so the browser
  *     can stream the finalized MP4 directly to storage.
  *   - `commitSequenceExportFn`           — verifies the team-scoped path, then
  *     records a new `sequence_exports` row pointing at it.
  *   - `listSequenceExportsFn`            — returns newest-first list for UI.
+ *   - `isServerExportAvailableFn`        — whether the container (or local
+ *     bunny URL) can take over when the browser has no AAC encoder (#1402).
  *
  * Unlike the old merged-video flow there is no status state machine on the
  * sequence row itself: every export is just an additional row. If the browser
@@ -19,6 +21,7 @@
 import { getSignedUploadUrl } from '#storage';
 import { generateId } from '@/shared/id';
 import { ulidSchema } from '@/lib/schemas/id.schemas';
+import { isServerExportAvailable } from '@/shared/sequence-player/server-export-available';
 import { STORAGE_BUCKETS, getPublicUrl } from '@/lib/storage/buckets';
 import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
@@ -103,3 +106,7 @@ export const listSequenceExportsFn = createServerFn({ method: 'GET' })
       context.sequence.id
     );
   });
+
+export const isServerExportAvailableFn = createServerFn({
+  method: 'GET',
+}).handler(() => isServerExportAvailable());

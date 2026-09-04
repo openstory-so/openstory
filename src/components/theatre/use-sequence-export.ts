@@ -1,23 +1,24 @@
 /**
- * Hook that drives the on-demand browser-side export pipeline:
- *   1. Reserve an upload URL via `requestSequenceExportUploadUrlFn`.
- *   2. Run the Mediabunny pipeline (`exportSequence`) — shares the
- *      `ConcatenatedVideoSource` primitive with the live `<SequencePlayer>`.
- *   3. PUT the resulting Blob to the reserved URL.
- *   4. Commit via `commitSequenceExportFn` (writes a new `sequence_exports` row).
+ * Hook that drives the on-demand export pipeline:
+ *   1. Run the Mediabunny pipeline (`exportSequence`) in the browser.
+ *   2. On an AAC-only encoder gap, fall back to POST /api/v1/…/exports and
+ *      poll until the container row is `ready` (#1402). Mixed-resolution
+ *      (missing AVC) still fails with the #1397 message — the container
+ *      cannot re-encode.
+ *   3. Browser path: reserve an upload URL, PUT the Blob, commit the row.
  *
- * Every commit records `sourceShotsHash` — SHA-256 of `{sceneUrls, musicUrl}`
- * via `hashSequenceExportInputs` — so `sequence_exports` is a content-
- * addressed cache of what the user is looking at (#1253, #1406). The server
- * export route writes the same hash, so an API-produced MP4 is reused here.
- * `freshExportUrl` is the cached MP4 for the CURRENT state (or null), and
- * both user actions go through the cache: `download()` and `copyLink()` reuse
- * a matching export, else export first and then act. There is no "export"
- * verb in the UI and no way to share a stale cut.
+ * Every commit (and every server-side ready row) records `sourceShotsHash` —
+ * SHA-256 of `{sceneUrls, musicUrl}` via `hashSequenceExportInputs` — so
+ * `sequence_exports` is a content-addressed cache of what the user is looking
+ * at (#1253, #1406). `freshExportUrl` is the cached MP4 for the CURRENT state
+ * (or null), and both user actions go through the cache: `download()` and
+ * `copyLink()` reuse a matching export, else export first and then act. There
+ * is no "export" verb in the UI and no way to share a stale cut.
  */
 
 import {
   commitSequenceExportFn,
+  isServerExportAvailableFn,
   listSequenceExportsFn,
   requestSequenceExportUploadUrlFn,
 } from '@/functions/sequence-exports';
@@ -29,9 +30,14 @@ import {
 } from '@/shared/sequence-player/source-shots-hash';
 import { putToR2 } from '@/shared/utils/upload';
 import {
+  chooseExportRoute,
+  EncoderUnsupportedError,
+} from '@/shared/sequence-player/encoder-support';
+import {
   exportSequence,
   type ExportProgress,
 } from '@/shared/sequence-player/export';
+import { exportSequenceOnServer } from '@/shared/sequence-player/server-export-client';
 import type { Sequence } from '@/types/database';
 import { copyTextToClipboard } from '@/shared/utils/clipboard';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -41,6 +47,7 @@ import { toast } from 'sonner';
 
 const sequenceExportKeys = {
   list: (sequenceId: string) => ['sequence-exports', sequenceId] as const,
+  serverAvailable: ['server-export-available'] as const,
 };
 
 // Cap the upload PUT so a stalled R2 proxy surfaces an error toast instead of
@@ -79,6 +86,12 @@ export function useSequenceExport(
     queryFn: () => listSequenceExportsFn({ data: { sequenceId } }),
     staleTime: 5_000,
     enabled: Boolean(sequence),
+  });
+
+  useQuery({
+    queryKey: sequenceExportKeys.serverAvailable,
+    queryFn: () => isServerExportAvailableFn(),
+    staleTime: Infinity,
   });
 
   const exportInputs = useMemo(() => {
@@ -153,12 +166,12 @@ export function useSequenceExport(
         });
       }
 
-      const reservation = await requestSequenceExportUploadUrlFn({
-        data: { sequenceId: sequence.id },
-      });
-
-      const { blob, durationSeconds, reEncoded, resolutionsLabel } =
-        await exportSequence({
+      let blob: Blob;
+      let durationSeconds: number;
+      let reEncoded: boolean;
+      let resolutionsLabel: string;
+      try {
+        const result = await exportSequence({
           scenes,
           // Omit the music track entirely when the sequence's music toggle is
           // off — the exported MP4 then carries only scene/dialogue audio (#834).
@@ -167,6 +180,37 @@ export function useSequenceExport(
           onProgress: setProgress,
           signal,
         });
+        blob = result.blob;
+        durationSeconds = result.durationSeconds;
+        reEncoded = result.reEncoded;
+        resolutionsLabel = result.resolutionsLabel;
+      } catch (error) {
+        const available = await queryClient.ensureQueryData({
+          queryKey: sequenceExportKeys.serverAvailable,
+          queryFn: () => isServerExportAvailableFn(),
+        });
+        if (
+          error instanceof EncoderUnsupportedError &&
+          chooseExportRoute(error, available) === 'server'
+        ) {
+          setProgress({ phase: 'server', completed: 0, total: 0 });
+          const server = await exportSequenceOnServer({
+            sequenceId: sequence.id,
+            signal,
+          });
+          return {
+            reEncoded: false,
+            url: server.url,
+            andThen,
+            via: 'server' as const,
+          };
+        }
+        throw error;
+      }
+
+      const reservation = await requestSequenceExportUploadUrlFn({
+        data: { sequenceId: sequence.id },
+      });
 
       // Tell the user from the export's OWN probe — the player's warning is a
       // separate, possibly-unfired prepare(), so it can't be relied on (#791).
@@ -203,12 +247,18 @@ export function useSequenceExport(
           sourceShotsHash: inputsHash,
         },
       });
-      return { reEncoded, url: committed.url, andThen };
+      return {
+        reEncoded,
+        url: committed.url,
+        andThen,
+        via: 'browser' as const,
+      };
     },
-    onSuccess: ({ reEncoded, url, andThen }) => {
+    onSuccess: ({ reEncoded, url, andThen, via }) => {
       posthog.capture('sequence_export_completed', {
         sequence_id: sequenceId,
         re_encoded: reEncoded,
+        via,
       });
       void queryClient.invalidateQueries({
         queryKey: sequenceExportKeys.list(sequenceId),

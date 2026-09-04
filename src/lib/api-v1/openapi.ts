@@ -602,7 +602,7 @@ export function buildOpenApiDocument(): JsonObject {
           tags: ['sequences'],
           summary: 'List server-side exports',
           description:
-            "Lists this sequence's server-side MP4 exports in any status (processing/ready/failed), newest first. Poll until an entry is `ready`, then download its `url`.",
+            "Lists this sequence's server-side MP4 exports in any status (processing/ready/failed), newest first. Poll until an entry is `ready`, then download its `url`. Pass `?wait=60s` to long-poll until no export is `processing`.",
           parameters: [
             {
               name: 'id',
@@ -611,10 +611,18 @@ export function buildOpenApiDocument(): JsonObject {
               description: 'The sequence id (ULID).',
               schema: { type: 'string' },
             },
+            waitParam,
           ],
           responses: {
             '200': {
               description: 'The list of exports.',
+              headers: {
+                'X-Wait-Changed': {
+                  description:
+                    'Only present when ?wait was set. "true" if an export changed status during the wait, "false" if the wait timed out unchanged.',
+                  schema: { type: 'string', enum: ['true', 'false'] },
+                },
+              },
               content: {
                 'application/json': {
                   schema: {
@@ -631,7 +639,7 @@ export function buildOpenApiDocument(): JsonObject {
           tags: ['sequences'],
           summary: 'Start a server-side MP4 export',
           description:
-            "Stitches the sequence's scene videos and mixes music + dialogue into one MP4, rendered in a Cloudflare Container (mediabunny) and stored in R2. Async: responds 202 with a `processing` export — poll the GET endpoint until it is `ready`. An already in-flight export is reused rather than duplicated. Takes no body.",
+            "Stitches the sequence's scene videos and mixes music + dialogue into one MP4, rendered in a Cloudflare Container (mediabunny) and stored in R2. A ready export of the current cut (`sourceShotsHash`) is returned 200 and not re-rendered. Otherwise async: responds 202 with a `processing` export — poll the GET endpoint until it is `ready`. An already in-flight export is reused rather than duplicated. Takes no body.",
           parameters: [
             {
               name: 'id',
@@ -653,6 +661,17 @@ export function buildOpenApiDocument(): JsonObject {
             },
           },
           responses: {
+            '200': {
+              description:
+                'A ready export of the current cut already exists; returned as-is.',
+              content: {
+                'application/json': {
+                  schema: {
+                    $ref: '#/components/schemas/SequenceExportAccepted',
+                  },
+                },
+              },
+            },
             '202': {
               description: 'Export accepted (newly started or coalesced).',
               content: {

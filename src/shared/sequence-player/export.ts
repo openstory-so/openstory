@@ -36,7 +36,10 @@ import {
   type SceneInput,
 } from './concatenated-video-source';
 import { decodeAudioTrack } from './decode-audio-track';
-import { assertEncoderSupport } from './encoder-support';
+import {
+  EncoderUnsupportedError,
+  probeEncoderSupport,
+} from './encoder-support';
 import { assertBrowserExportDuration } from './export-duration';
 
 import { getLogger } from '@/lib/observability/logger';
@@ -61,7 +64,9 @@ type ExportProgressPhase =
   // commit stall shows in the UI as a stuck "Finalizing…", since `finalize` is
   // the last phase this module emits.
   | 'upload'
-  | 'commit';
+  | 'commit'
+  // Server-container fallback when the browser has no AAC encoder (#1402).
+  | 'server';
 
 export type ExportProgress = {
   phase: ExportProgressPhase;
@@ -119,7 +124,9 @@ export async function exportSequence(
 
     // Earliest point at which both encoder needs are known, and still before
     // any decode work — fail in a second rather than after a full pass (#1397).
-    await assertEncoderSupport({
+    // EncoderUnsupportedError is what the theatre hook intercepts to route
+    // an AAC-only transmux cut to the container (#1402).
+    const probe = await probeEncoderSupport({
       audio: hasAudio,
       video: !meta.canTransmux,
       width: meta.displayWidth,
@@ -128,6 +135,13 @@ export async function exportSequence(
       numberOfChannels: TARGET_CHANNELS,
       audioBitrate: AAC_BITRATE,
     });
+    if (!probe.audioOk || !probe.videoOk) {
+      throw new EncoderUnsupportedError({
+        missingAac: !probe.audioOk,
+        missingAvc: !probe.videoOk,
+        canTransmux: meta.canTransmux,
+      });
+    }
 
     const output = new Output({
       format: new Mp4OutputFormat({ fastStart: 'in-memory' }),

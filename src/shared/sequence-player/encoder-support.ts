@@ -1,5 +1,6 @@
 /**
- * Encoder-support probe for browser export (#1397).
+ * Encoder-support probe for browser export (#1397) and the route that picks
+ * the server-side container when the browser can't encode AAC (#1402).
  *
  * `exportSequence` needs two WebCodecs encoders, and neither is universal:
  *
@@ -13,8 +14,9 @@
  *
  * The server-side container export (#968) covers the AAC case — it renders
  * exactly the uniform-AVC-plus-audio-mix shape — but explicitly rejects mixed
- * resolutions, so it can't stand in for the AVC case. Routing there is a
- * follow-up; this module is the prerequisite either way.
+ * resolutions, so it can't stand in for the AVC case. `chooseExportRoute`
+ * encodes that overlap: AAC-only + transmux + container available → server;
+ * anything involving a missing AVC encoder stays the #1397 error.
  */
 
 import { canEncodeAudio, canEncodeVideo } from 'mediabunny';
@@ -31,11 +33,51 @@ export type EncoderNeeds = {
   audioBitrate: number;
 };
 
+export type EncoderProbe = {
+  audioOk: boolean;
+  videoOk: boolean;
+};
+
+export type EncoderGap = {
+  missingAac: boolean;
+  missingAvc: boolean;
+  canTransmux: boolean;
+};
+
+export type ExportRoute = 'server' | 'unsupported';
+
 /**
- * Throws a message naming the missing codec(s) when the browser can't encode
- * what this export needs. Resolves silently otherwise.
+ * Named error so the theatre hook can intercept an AAC-only gap and route
+ * to the container instead of toasting the #1397 message. `canTransmux` is
+ * the container's v1 floor — mixed-resolution re-encode is out of its scope.
  */
-export async function assertEncoderSupport(needs: EncoderNeeds): Promise<void> {
+export class EncoderUnsupportedError extends Error {
+  readonly missingAac: boolean;
+  readonly missingAvc: boolean;
+  readonly canTransmux: boolean;
+
+  constructor(gap: EncoderGap) {
+    super(encoderSupportMessage(gap));
+    this.name = 'EncoderUnsupportedError';
+    this.missingAac = gap.missingAac;
+    this.missingAvc = gap.missingAvc;
+    this.canTransmux = gap.canTransmux;
+  }
+}
+
+function encoderSupportMessage(gap: {
+  missingAac: boolean;
+  missingAvc: boolean;
+}): string {
+  const missing: string[] = [];
+  if (gap.missingAac) missing.push('AAC audio');
+  if (gap.missingAvc) missing.push('H.264 video');
+  return `This browser can't encode ${missing.join(' or ')}, which this export needs. Try Chrome, Edge, or Safari.`;
+}
+
+export async function probeEncoderSupport(
+  needs: EncoderNeeds
+): Promise<EncoderProbe> {
   const [audioOk, videoOk] = await Promise.all([
     needs.audio
       ? canEncodeAudio('aac', {
@@ -48,13 +90,41 @@ export async function assertEncoderSupport(needs: EncoderNeeds): Promise<void> {
       ? canEncodeVideo('avc', { width: needs.width, height: needs.height })
       : Promise.resolve(true),
   ]);
+  return { audioOk, videoOk };
+}
 
-  const missing: string[] = [];
-  if (!audioOk) missing.push('AAC audio');
-  if (!videoOk) missing.push('H.264 video');
-  if (missing.length === 0) return;
-
+/**
+ * Throws a message naming the missing codec(s) when the browser can't encode
+ * what this export needs. Resolves silently otherwise.
+ */
+export async function assertEncoderSupport(needs: EncoderNeeds): Promise<void> {
+  const { audioOk, videoOk } = await probeEncoderSupport(needs);
+  if (audioOk && videoOk) return;
   throw new Error(
-    `This browser can't encode ${missing.join(' or ')}, which this export needs. Try Chrome, Edge, or Safari.`
+    encoderSupportMessage({ missingAac: !audioOk, missingAvc: !videoOk })
   );
+}
+
+/**
+ * Decide whether an encoder gap can be rescued by the container.
+ *
+ * Server path only when AAC is the missing piece, the cut is transmux-
+ * compatible (the container's v1 scope), and the container (or local
+ * `VIDEO_EXPORT_DEV_URL`) is actually bound. A missing AVC encoder — mixed
+ * resolutions — still fails with the #1397 message: the container rejects
+ * those. Same when the container isn't available (plain `bun dev`, e2e).
+ */
+export function chooseExportRoute(
+  gap: EncoderGap,
+  serverExportAvailable: boolean
+): ExportRoute {
+  if (
+    gap.missingAac &&
+    !gap.missingAvc &&
+    gap.canTransmux &&
+    serverExportAvailable
+  ) {
+    return 'server';
+  }
+  return 'unsupported';
 }

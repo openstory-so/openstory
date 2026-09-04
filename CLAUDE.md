@@ -445,9 +445,9 @@ Motion status checking: `checkMotionStatus(statusUrl)`, `getMotionResult(respons
 
 Exporting a sequence to one stitched MP4 exists in **two** places:
 
-- **Browser** (`src/shared/sequence-player/export.ts`, `use-sequence-export`) — the Theatre "Export MP4" button. Uses WebCodecs + Web Audio in the user's browser. **Unchanged.**
+- **Browser** (`src/shared/sequence-player/export.ts`, `use-sequence-export`) — the Theatre "Export MP4" button. Uses WebCodecs + Web Audio in the user's browser. When the browser has no AAC encoder (Firefox) and the cut is transmux-compatible, the hook falls back to the server container (#1402) instead of the #1397 error. Mixed-resolution (missing AVC) still fails fast — the container cannot re-encode. A matching `sourceShotsHash` is served from cache and never re-rendered.
 - **Server** (#968) — the public API. WebCodecs/Web Audio don't exist on Workers, so the heavy lift runs in a **Cloudflare Container** (`containers/video-export/`, Node + `@mediabunny/server`/NodeAV). Flow:
-  - `POST /api/v1/sequences/$id/exports` reserves a `sequence_exports` row (`status: processing`) and triggers `SequenceExportWorkflow`; `GET …/exports` lists/polls them. (`src/routes/api/v1/sequences.$id.exports.ts`)
+  - `POST /api/v1/sequences/$id/exports` returns 200 when a ready row already matches the current `sourceShotsHash`; otherwise reserves a `sequence_exports` row (`status: processing`) and triggers `SequenceExportWorkflow`. `GET …/exports` lists/polls them (`?wait=60s` long-polls until nothing is `processing`). (`src/routes/api/v1/sequences.$id.exports.ts`)
   - `SequenceExportWorkflow` (`src/lib/workflows/`) does **all** DB access via `scopedDb`, absolutizes scene/music URLs (`toShareableUrl`), POSTs the job to the container, streams the returned MP4 into R2 (`uploadFile`), and flips the row to `ready`/`failed`. The container is a **stateless renderer — it never touches D1**; it only gets URLs + params over HTTP.
   - `sequence_exports` gained `status`/`error`/`workflowRunId` (additive). `listBySequence`/`getLatest` are `ready`-only (the browser UI never sees in-flight/failed server rows); the API uses `listAllBySequence`.
 - **v1 scope:** transmux-compatible (uniform AVC) sequences + music/dialogue mix. Mixed-resolution re-encode is rejected server-side (browser still handles it) — a follow-up.
