@@ -29,6 +29,16 @@ export function mentionShowsAt(section: MentionSection): boolean {
   );
 }
 
+/**
+ * Sections whose target owns a user-editable name (#1475). Element tokens are
+ * the only one: renaming cascades through the script and every prompt. Cast
+ * and location tags derive from rows edited elsewhere, and studio's `@ImageN`
+ * slots are positional.
+ */
+export function mentionIsRenameable(section: MentionSection): boolean {
+  return section === 'elements';
+}
+
 /** Fields buildMentionItems actually consumes. */
 export type MentionCharacterInput = Pick<
   CharacterWithTalent,

@@ -26,6 +26,8 @@ type SceneScriptTabProps = {
   onCopy: (text: string) => void;
   /** Pills the script's bare slugs for elements/cast/locations. */
   mentionItems?: MentionItem[];
+  /** Rename the target a pill points at (#1475); see `MarkdownEditor`. */
+  onMentionRename?: (item: MentionItem, name: string) => void;
 };
 
 export const SceneScriptTab: React.FC<SceneScriptTabProps> = ({
@@ -38,6 +40,7 @@ export const SceneScriptTab: React.FC<SceneScriptTabProps> = ({
   isCopied,
   onCopy,
   mentionItems,
+  onMentionRename,
 }) => {
   const { ref: editorRef, voice } = useEditorDictation();
 
@@ -85,6 +88,7 @@ export const SceneScriptTab: React.FC<SceneScriptTabProps> = ({
             className="min-h-[180px] pr-10"
             disabled={!sceneId || isSaving}
             mentionItems={mentionItems}
+            onMentionRename={onMentionRename}
           />
           <Button
             size="icon"

@@ -25,10 +25,74 @@ import {
   useState,
 } from 'react';
 import type { MentionOptions } from '@tiptap/extension-mention';
-import type { MentionItem } from '@/components/scenes/prompt-mention/mention-items';
-import { PromptMention } from './mention/mention-extension';
+import {
+  mentionInsertAttrs,
+  type MentionItem,
+  type MentionSection,
+} from '@/components/scenes/prompt-mention/mention-items';
+import {
+  Popover,
+  PopoverAnchor,
+  PopoverContent,
+} from '@/components/ui/popover';
+import {
+  PromptMention,
+  readPromptAttrs,
+  type PromptMentionAttrs,
+} from './mention/mention-extension';
+import { MentionEditPopover } from './mention/mention-edit-popover';
 import { createMentionSuggestion } from './mention/mention-suggestion';
 import { tagifyMarkdown } from './mention/tagify';
+
+/** The mention pill the edit popover is anchored to. */
+type MentionTarget = {
+  pos: number;
+  dom: HTMLElement;
+  attrs: PromptMentionAttrs;
+  /** Opened by click / keyboard — stays open and takes focus. */
+  pinned: boolean;
+};
+
+const pillFrom = (target: EventTarget | null): HTMLElement | null =>
+  target instanceof Element
+    ? target.closest<HTMLElement>('[data-type="mention"]')
+    : null;
+
+/**
+ * Document position of the mention node a pill renders. ProseMirror resolves
+ * an atom's DOM to the position either at or just before it depending on the
+ * bias it picks, so accept whichever of the two actually holds the node.
+ */
+const mentionPosAt = (view: EditorView, dom: HTMLElement): number | null => {
+  let pos: number;
+  try {
+    pos = view.posAtDOM(dom, 0);
+  } catch {
+    return null;
+  }
+  for (const candidate of [pos, pos - 1]) {
+    if (candidate < 0) continue;
+    const node = view.state.doc.nodeAt(candidate);
+    if (node?.type.name === 'mention') return candidate;
+  }
+  return null;
+};
+
+/**
+ * Position of the mention pill the caret sits against, or null. Inline atoms
+ * are NOT node-selected by arrow keys (ProseMirror only does that for block
+ * nodes), so caret adjacency is the only keyboard handle on a pill.
+ */
+const mentionPosAtCaret = (view: EditorView): number | null => {
+  const { $from, empty } = view.state.selection;
+  if (!empty) return null;
+  if ($from.nodeAfter?.type.name === 'mention') return $from.pos;
+  if ($from.nodeBefore?.type.name === 'mention') return $from.pos - 1;
+  return null;
+};
+
+/** Hover-out grace so the pointer can travel from pill to popover. */
+const MENTION_CLOSE_DELAY_MS = 180;
 
 type MentionConfigure = Partial<MentionOptions>;
 
@@ -170,6 +234,12 @@ type MarkdownEditorProps = {
   mentionItems?: MentionItem[];
   /** Map the chosen @ row to the item to insert (see `createMentionSuggestion`). */
   onMentionSelect?: (item: MentionItem) => MentionItem;
+  /**
+   * Rename the target a pill points at (#1475). Omit where nothing about the
+   * target is renameable — studio's `@ImageN` slots are positional, so the
+   * popover offers repointing only.
+   */
+  onMentionRename?: (item: MentionItem, name: string) => void;
   /** Imperative handle for streaming dictation in from a toolbar mic. */
   ref?: React.Ref<MarkdownEditorHandle>;
 };
@@ -226,6 +296,7 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
   'data-testid': dataTestId,
   mentionItems,
   onMentionSelect,
+  onMentionRename,
   ref,
 }) => {
   // useEditor captures props at init. Bag the live onKeyDown in a ref so the
@@ -246,6 +317,52 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
   const hasMentions = mentionItems !== undefined;
   const onMentionSelectRef = useRef(onMentionSelect);
   onMentionSelectRef.current = onMentionSelect;
+
+  // The pill whose edit popover is open (#1475), and the timer that grants a
+  // grace period for the pointer to travel from pill to popover.
+  const [mentionTarget, setMentionTarget] = useState<MentionTarget | null>(
+    null
+  );
+  const mentionTargetRef = useRef<MentionTarget | null>(null);
+  mentionTargetRef.current = mentionTarget;
+  const closeTimer = useRef<number | null>(null);
+
+  const cancelMentionClose = () => {
+    if (closeTimer.current !== null) window.clearTimeout(closeTimer.current);
+    closeTimer.current = null;
+  };
+  const closeMention = () => {
+    cancelMentionClose();
+    setMentionTarget(null);
+  };
+  const scheduleMentionClose = () => {
+    if (mentionTargetRef.current?.pinned) return;
+    cancelMentionClose();
+    closeTimer.current = window.setTimeout(
+      () => setMentionTarget(null),
+      MENTION_CLOSE_DELAY_MS
+    );
+  };
+  useEffect(() => cancelMentionClose, []);
+
+  const openMention = (
+    view: EditorView,
+    dom: HTMLElement,
+    pinned: boolean
+  ): void => {
+    // `view.editable` rather than the `disabled` prop: editorProps are captured
+    // at init, the view's flag is not.
+    if (!view.editable) return;
+    cancelMentionClose();
+    const open = mentionTargetRef.current;
+    // mouseover re-fires for every child of the pill; only the pin can change.
+    if (open?.dom === dom && (open.pinned || !pinned)) return;
+    const pos = mentionPosAt(view, dom);
+    if (pos === null) return;
+    const node = view.state.doc.nodeAt(pos);
+    if (!node) return;
+    setMentionTarget({ pos, dom, attrs: readPromptAttrs(node.attrs), pinned });
+  };
 
   // Signature changes when the set of available tags changes; drives the
   // "re-pill on items load" effect below.
@@ -307,8 +424,40 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
         ...(name ? { 'data-name': name } : {}),
         class: cn(proseClasses, placeholderClasses),
       },
-      handleKeyDown: (_view, event) => onKeyDownRef.current?.(event) === true,
+      handleKeyDown: (view, event) => {
+        // Alt+Enter beside a pill is the keyboard route into the edit
+        // popover, which the pointer reaches by hovering. Plain Enter is not
+        // available — it belongs to the prose being written around the pill.
+        if (event.key === 'Enter' && event.altKey) {
+          const pos = mentionPosAtCaret(view);
+          const dom = pos === null ? null : view.nodeDOM(pos);
+          if (dom instanceof HTMLElement) {
+            openMention(view, dom, true);
+            return true;
+          }
+        }
+        return onKeyDownRef.current?.(event) === true;
+      },
       handleDOMEvents: {
+        // Pills are atoms with no editing affordance of their own: hover
+        // previews the target, click opens the picker that repoints it (#1475).
+        mouseover: (view, event) => {
+          const pill = pillFrom(event.target);
+          if (pill) openMention(view, pill, false);
+          return false;
+        },
+        mouseout: (_view, event) => {
+          if (pillFrom(event.target)) scheduleMentionClose();
+          return false;
+        },
+        // `click`, not `mousedown`: ProseMirror focuses the view on the way
+        // out of a mousedown, which would pull focus straight back off the
+        // popover's filter input.
+        click: (view, event) => {
+          const pill = pillFrom(event.target);
+          if (pill) openMention(view, pill, true);
+          return false;
+        },
         beforeinput: (view, event) => {
           if (!(event instanceof InputEvent)) return false;
           const newlineInput =
@@ -396,6 +545,21 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
     // value intentionally omitted — the sibling effect handles value changes.
     // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [editor, mentionItemsKey, hasMentions, dictationActive]);
+
+  // Any doc change invalidates the anchored position, so drop the popover
+  // rather than let it rewrite the wrong node.
+  useEffect(() => {
+    if (!editor) return;
+    const onTransaction = ({ transaction }: { transaction: Transaction }) => {
+      if (transaction.docChanged) closeMention();
+    };
+    editor.on('transaction', onTransaction);
+    return () => {
+      editor.off('transaction', onTransaction);
+    };
+    // closeMention is a stable local closure over refs/setState.
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
+  }, [editor]);
 
   useEffect(() => {
     if (!editor) return;
@@ -490,6 +654,43 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
     selector: (ctx) => ctx.editor?.isEmpty ?? null,
   });
 
+  const writeMentionAttrs = (attrs: {
+    id: string | null;
+    section: MentionSection | null;
+    label: string | null;
+  }) => {
+    if (!editor || !mentionTarget) return;
+    const { state, dispatch } = editor.view;
+    if (state.doc.nodeAt(mentionTarget.pos)?.type.name !== 'mention') return;
+    dispatch(state.tr.setNodeMarkup(mentionTarget.pos, undefined, attrs));
+    closeMention();
+  };
+
+  // Repoint the pill at another target in place. The host's `onMentionSelect`
+  // runs first for the same reason the `@` dropdown runs it: the studio swaps
+  // a library row for a freshly attached `@ImageN`.
+  const replaceMention = (item: MentionItem) => {
+    writeMentionAttrs(
+      mentionInsertAttrs(onMentionSelectRef.current?.(item) ?? item)
+    );
+  };
+
+  // The cascade rewrites the SAVED script server-side; this editor may hold an
+  // unsaved draft, so the open pill is repointed at the new token here too —
+  // otherwise saving would reintroduce the old one.
+  const renameMention = (item: MentionItem, name: string) => {
+    onMentionRename?.(item, name);
+    writeMentionAttrs({ id: name, section: item.section, label: name });
+  };
+
+  const removeMention = () => {
+    if (!editor || !mentionTarget) return;
+    const { state, dispatch } = editor.view;
+    if (state.doc.nodeAt(mentionTarget.pos)?.type.name !== 'mention') return;
+    dispatch(state.tr.delete(mentionTarget.pos, mentionTarget.pos + 1));
+    closeMention();
+  };
+
   // editable is captured at init; mirror prop changes through to the editor.
   useEffect(() => {
     if (!editor) return;
@@ -557,6 +758,35 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
         editor={editor}
         className={cn('relative w-full', !editor && value && 'hidden')}
       />
+      {mentionTarget && !disabled ? (
+        <Popover
+          open
+          onOpenChange={(next) => {
+            if (!next) closeMention();
+          }}
+        >
+          <PopoverAnchor virtualRef={{ current: mentionTarget.dom }} />
+          <PopoverContent
+            align="start"
+            className="w-80"
+            // Hover-opened popovers must not steal the caret mid-sentence;
+            // a click-opened one focuses its filter input itself.
+            onOpenAutoFocus={(e) => e.preventDefault()}
+            onPointerEnter={cancelMentionClose}
+            onPointerLeave={scheduleMentionClose}
+          >
+            <MentionEditPopover
+              attrs={mentionTarget.attrs}
+              items={mentionItems ?? []}
+              focusOnOpen={mentionTarget.pinned}
+              onReplace={replaceMention}
+              onRemove={removeMention}
+              onRename={onMentionRename ? renameMention : undefined}
+              onClose={closeMention}
+            />
+          </PopoverContent>
+        </Popover>
+      ) : null}
     </div>
   );
 };
