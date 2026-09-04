@@ -1,4 +1,3 @@
-import { playerPosterSrc } from '@/components/motion/player-poster';
 import { ScenePlayer } from '@/components/motion/scene-player';
 import { CanvasMediaStage } from '@/components/scenes/canvas-media-stage';
 import { ShotMediaDropZone } from '@/components/scenes/shot-media-drop-zone';
@@ -24,7 +23,6 @@ import {
   type SceneSelection,
 } from '@/lib/scenes/scene-selection';
 import type { ShotView } from '@/lib/shots/shot-view';
-import { usesStartFrame } from '@/lib/shots/use-start-frame';
 import type { Sequence } from '@/types/database';
 import { Download, Film, Link, Loader2 } from 'lucide-react';
 import { useMemo } from 'react';
@@ -303,15 +301,6 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
         className="h-full max-h-none w-full"
         playSource="theatre"
         sequenceId={sequence.id}
-        posterUrl={
-          scopedShots[0]
-            ? playerPosterSrc({
-                videoUrl: scopedShots[0].video?.url,
-                stillUrl: scopedShots[0].image?.url,
-                usesStartFrame: usesStartFrame(scopedShots[0], sequence),
-              })
-            : null
-        }
         cachedVideoUrl={
           scope !== 'sequence'
             ? null

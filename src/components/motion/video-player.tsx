@@ -160,7 +160,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   }
 
   const placeholder = (
-    <PlayerPlaceholder posterSrc={posterSrc} alt="Video thumbnail" />
+    <PlayerPlaceholder posterSrc={null} alt="Video thumbnail" />
   );
 
   return (
@@ -176,7 +176,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           <VideoPlayerSurface
             src={src}
             chaptersUrl={chaptersUrl}
-            posterSrc={posterSrc}
+            posterSrc={null}
             autoPlay={autoPlay}
             onLoadedMetadata={(duration) => {
               tracker.setDuration(duration);

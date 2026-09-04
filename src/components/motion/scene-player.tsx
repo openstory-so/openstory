@@ -481,7 +481,7 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
             // reused the previous shot's poster after a shot switch (#1070).
             key={`${currentShot.id}:${playbackVideoUrl || displayImage || ''}`}
             src={playbackVideoUrl}
-            posterSrc={displayImage}
+            posterSrc={playbackVideoUrl ? null : displayImage}
             aspectRatio={aspectRatio}
             className="h-full w-full"
             autoPlay={shouldAutoPlay}
