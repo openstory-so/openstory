@@ -822,6 +822,8 @@ type ShotMapping = Array<{
   analysisSceneId: string;
   shotId: string;
   frameId: string | null;
+  /** 1-based order within the scene. Omitted on pre-#1486 mappings (= 1). */
+  shotNumber?: number;
 }>;
 
 export interface FramePromptBatchWorkflowInput extends SequenceWorkflowContext {

@@ -35,7 +35,15 @@
  * The analysis annotates a shot list with framing, one action, exactly one
  * camera move (paired with a pacing adverb), a sound cue and a duration. It
  * never emits vendor-specific syntax (Seedance/Kling/etc.) — the render layer
- * (#910) adapts per model capability.
+ * (#910 / #953) adapts per model capability.
+ *
+ * ## Live LLM contract (#1486)
+ *
+ * Scene-split keeps the #1035 boundary-annotation pass (WHERE each scene
+ * starts). A second pass then lists shots inside each resolved slice. That
+ * second pass sends `shotListPassResultSchema` — sceneNumber + shots[] only,
+ * union-free. `sceneWithShotsResultSchema` re-emits script/bibles/continuity
+ * and is the assembled (non-LLM) shape; it is not sent as structured output.
  */
 
 import { z } from 'zod';
@@ -232,10 +240,9 @@ export type SceneWithShots = z.infer<typeof sceneWithShotsSchema>;
 // ============================================================================
 
 /**
- * The full structured output of the shot-list analysis pass. Mirrors the
- * pre-#1035 single-call scene-split result but with scenes that own shot
- * lists. Kept union-free (see file header) to isolate the Anthropic 16-union
- * budget.
+ * Assembled (non-LLM) shot-list result: scenes with shared continuity plus
+ * bibles. Exceeds the Anthropic grammar budget — do not send as
+ * `responseSchema`. The live LLM contract is `shotListPassResultSchema`.
  */
 export const sceneWithShotsResultSchema = z.object({
   projectMetadata: projectMetadataSchema.meta({
@@ -257,10 +264,41 @@ export const sceneWithShotsResultSchema = z.object({
 });
 
 /**
- * Inferred result of the shot-list analysis pass. The render-layer rewire
- * (#910) consumes this when scene-split switches to the shot-list schema; kept
- * exported now as the published analysis contract so #910 can adopt it without
- * a churn to this file.
+ * Assembled shot-list analysis result (not the LLM wire shape).
  * @public
  */
 export type SceneWithShotsResult = z.infer<typeof sceneWithShotsResultSchema>;
+
+// ============================================================================
+// LLM shot-list pass (#1486) — shots inside already-sliced scenes
+// ============================================================================
+
+/**
+ * One scene's shot list as returned by the second analysis pass. `sceneNumber`
+ * matches the already-assembled scene; the pass cannot create or merge scenes.
+ */
+const shotListPassSceneSchema = z.object({
+  sceneNumber: z.number().meta({
+    description:
+      '1-based scene number matching the SCENE N heading in the prompt',
+  }),
+  shots: z
+    .array(shotSpecSchema)
+    .min(1)
+    .meta({
+      description: `Ordered list of 1..${MAX_SHOTS_PER_SCENE} shots. A scene with no internal cut is a single shot. The 5-shot cap is prompt + post-parse (Anthropic rejects maxItems).`,
+    }),
+});
+
+/**
+ * Structured output of the shot-list pass. Union-free and under the Anthropic
+ * grammar budget — scene metadata, script text, and bibles are NOT re-emitted.
+ */
+export const shotListPassResultSchema = z.object({
+  scenes: z.array(shotListPassSceneSchema).meta({
+    description:
+      'One entry per input scene, in scene-number order, each owning 1..N shots',
+  }),
+});
+
+export type ShotListPassResult = z.infer<typeof shotListPassResultSchema>;

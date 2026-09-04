@@ -21,7 +21,7 @@ import {
 } from './llmtr';
 import { SCRIPT_ANALYSIS_MODELS } from './models.config';
 import { microsToUsd, ZERO_MICROS } from '@/lib/billing/money';
-import { typedEntries } from '@/lib/utils/typed-object';
+import { typedEntries } from '@/shared/utils/typed-object';
 
 const usage = (promptTokens: number, completionTokens: number) => ({
   promptTokens,

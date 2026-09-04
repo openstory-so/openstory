@@ -31,7 +31,7 @@
 
 import type { AnalysisModelId } from '@/lib/ai/models.config';
 import { usdToMicros, type Microdollars } from '@/lib/billing/money';
-import { typedEntries } from '@/lib/utils/typed-object';
+import { typedEntries } from '@/shared/utils/typed-object';
 import type { TokenUsage } from '@tanstack/ai';
 
 /** LLMTR's OpenAI-compatible base URL. */

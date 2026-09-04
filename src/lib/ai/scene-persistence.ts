@@ -22,9 +22,8 @@ import type { Scene } from './scene-analysis.schema';
  * shots under scene headers as soon as each scene lands — not only after the
  * final bulk `persist-scenes` step.
  *
- * Today analysis is still 1 scene = 1 shot; multi-shot emission (#910) will
- * keep calling this once per narrative scene and attach N shots to the same
- * row via `shots.sceneId`.
+ * Multi-shot emission (#1486) keeps calling this once per narrative scene
+ * and attaches N shots to the same row via `shots.sceneId`.
  */
 export function buildSceneInsert(
   sequenceId: string,
@@ -85,14 +84,17 @@ export type SceneShotLinkPlan = {
  * `sceneRows` means the link is correct even if `createBulk`'s `RETURNING`
  * order ever diverges from insertion order.
  *
- * 1:1 today: analysis emits one shot per scene, so every shot links at
- * `shotNumber` 1. When multi-shot emission lands (#910) the number comes from
- * the shot spec.
+ * `shotNumber` comes from the mapping (shot-list pass, #1486). Missing
+ * numbers default to 1 so a 1-shot mapping stays identical to today.
  */
 export function buildSceneShotLinks(
   scenes: ReadonlyArray<Pick<Scene, 'sceneId'>>,
   sceneRows: ReadonlyArray<SceneRow>,
-  shotMapping: ReadonlyArray<{ analysisSceneId: string; shotId: string }>
+  shotMapping: ReadonlyArray<{
+    analysisSceneId: string;
+    shotId: string;
+    shotNumber?: number;
+  }>
 ): SceneShotLinkPlan {
   const orderIndexByAnalysisId = new Map(
     scenes.map((scene, index) => [scene.sceneId, index])
@@ -103,7 +105,7 @@ export function buildSceneShotLinks(
 
   const links: SceneShotLink[] = [];
   const unmappedShotIds: string[] = [];
-  for (const { analysisSceneId, shotId } of shotMapping) {
+  for (const { analysisSceneId, shotId, shotNumber } of shotMapping) {
     const orderIndex = orderIndexByAnalysisId.get(analysisSceneId);
     const sceneRow =
       orderIndex === undefined
@@ -113,7 +115,11 @@ export function buildSceneShotLinks(
       unmappedShotIds.push(shotId);
       continue;
     }
-    links.push({ shotId, sceneId: sceneRow.id, shotNumber: 1 });
+    links.push({
+      shotId,
+      sceneId: sceneRow.id,
+      shotNumber: shotNumber ?? 1,
+    });
   }
   return { links, unmappedShotIds };
 }

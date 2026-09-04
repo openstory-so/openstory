@@ -9,7 +9,9 @@ import {
   estimateMotionDurations,
   formatClipGrid,
   maybeRewriteDurationLabels,
+  parseClipDurationLabels,
   parseSceneDurationLabels,
+  parseShotDurationLabels,
   sceneRangeText,
   stripTotalLine,
   sumSceneDurations,
@@ -44,6 +46,26 @@ describe('parseSceneDurationLabels', () => {
   it('accepts hyphen and em-dash', () => {
     const script = 'Scene 1 - 6s\nGo.\n\nScene 2 — 8s\nStop.';
     expect(parseSceneDurationLabels(script)).toEqual([6, 8]);
+  });
+});
+
+const MULTI_SHOT_SCENE = `Scene 1 — 10s
+INT. HALLWAY - NIGHT
+Shot 1 — 4s
+She opens the door.
+Shot 2 — 6s
+Cut to the hallway beyond.`;
+
+describe('parseClipDurationLabels', () => {
+  it('uses scene labels when there are no shot labels (1-shot identity)', () => {
+    expect(parseClipDurationLabels(FIVE_SCENES)).toEqual([5, 5, 5, 5, 5]);
+  });
+
+  it('uses shot labels when present and does not double-count the scene total', () => {
+    expect(parseShotDurationLabels(MULTI_SHOT_SCENE)).toEqual([4, 6]);
+    expect(parseSceneDurationLabels(MULTI_SHOT_SCENE)).toEqual([10]);
+    expect(parseClipDurationLabels(MULTI_SHOT_SCENE)).toEqual([4, 6]);
+    expect(sumSceneDurations(MULTI_SHOT_SCENE)).toBe(10);
   });
 });
 
@@ -141,6 +163,18 @@ describe('maybeRewriteDurationLabels', () => {
     expect(rewritten).toContain('Scene 1 — 6s');
     expect(rewritten).not.toContain('Scene 1 — 5s');
   });
+
+  it('snaps shot labels and leaves the scene total line alone', () => {
+    const script = `Scene 1 — 10s
+Shot 1 — 5s
+A.
+Shot 2 — 5s
+B.`;
+    const rewritten = maybeRewriteDurationLabels(script, 'ltx_2_3_pro');
+    expect(parseShotDurationLabels(rewritten)).toEqual([6, 6]);
+    expect(rewritten).toContain('Scene 1 — 10s');
+    expect(rewritten).toContain('Shot 1 — 6s');
+  });
 });
 
 describe('assessDurationFit', () => {
@@ -174,12 +208,14 @@ describe('buildDurationPromptParagraph', () => {
       videoModel: 'ltx_2_3_pro',
     });
     expect(paragraph).toContain('Target video duration: 30 seconds');
-    expect(paragraph).toContain('about 4-5 scenes');
+    expect(paragraph).toContain('about 4-5 clips');
     expect(paragraph).toContain('Clip durations MUST be 6, 8 or 10 seconds');
     expect(paragraph).toContain('MUST add up to 30 seconds');
     expect(paragraph).toContain('TOTAL: <sum>s');
     expect(paragraph).toContain('title card');
     expect(paragraph).toContain('living beat');
+    expect(paragraph).toContain('a scene may hold several shots');
+    expect(paragraph).toContain('one-shot scene needs only the scene label');
   });
 });
 
@@ -195,6 +231,7 @@ describe('buildDurationCorrectionPrompt', () => {
     expect(prompt).toContain('target is 30s');
     expect(prompt).toContain('6, 8 or 10 seconds');
     expect(prompt).toContain('9 scenes at ≥6s is at least 54s');
+    expect(prompt).toContain('clip duration labels');
   });
 });
 

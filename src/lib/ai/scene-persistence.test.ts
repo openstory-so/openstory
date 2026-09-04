@@ -149,6 +149,30 @@ describe('buildSceneShotLinks', () => {
     ]);
   });
 
+  it('preserves shotNumber from a multi-shot mapping', () => {
+    const { links, unmappedShotIds } = buildSceneShotLinks(
+      [{ sceneId: 'analysis-scene-1' }],
+      [makeSceneRow('scene-row-1', 0)],
+      [
+        {
+          analysisSceneId: 'analysis-scene-1',
+          shotId: 'shot-a',
+          shotNumber: 1,
+        },
+        {
+          analysisSceneId: 'analysis-scene-1',
+          shotId: 'shot-a2',
+          shotNumber: 2,
+        },
+      ]
+    );
+    expect(unmappedShotIds).toEqual([]);
+    expect(links).toEqual([
+      { shotId: 'shot-a', sceneId: 'scene-row-1', shotNumber: 1 },
+      { shotId: 'shot-a2', sceneId: 'scene-row-1', shotNumber: 2 },
+    ]);
+  });
+
   it('keys on orderIndex, not array position (rows returned out of order)', () => {
     // createBulk RETURNING order is not guaranteed; the link must still be
     // correct when sceneRows come back reversed.
