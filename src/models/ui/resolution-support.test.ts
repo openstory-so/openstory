@@ -16,9 +16,11 @@ describe('availableResolutions', () => {
       '720p',
       '1080p',
     ]);
-    // H3 Max is the Turbo default and tops out at 768P.
+    // H3 Max is the Turbo default; fal added 1080P (latent refinement from a
+    // native 768P source) alongside 480P/768P.
     expect(availableResolutions({ videoModels: ['minimax_h3_max'] })).toEqual([
       '720p',
+      '1080p',
     ]);
   });
 
@@ -89,20 +91,20 @@ describe('resolutionCeilingNote', () => {
   });
 
   it('calls a one-tier model fixed, even when the ask matches that tier', () => {
-    // H3 Max advertises 480P and 768P, which both land in the 720p band — so
-    // the tier never moves it. Staying silent because 720p "matches" left the
-    // picker showing a lone 720p pill that did nothing.
+    // Seedance 2.0 Mini advertises 480p and 720p, which both land in the 720p
+    // band — so the tier never moves it. Staying silent because 720p "matches"
+    // left the picker showing a lone 720p pill that did nothing.
     expect(
-      resolutionCeilingNote('720p', { videoModels: ['minimax_h3_max'] })
-    ).toBe('MiniMax H3 Max renders at a fixed size');
+      resolutionCeilingNote('720p', { videoModels: ['seedance_v2_mini'] })
+    ).toBe('Seedance 2.0 Mini renders at a fixed size');
     // The screenshot case: a fixed image model plus a one-tier video model
     // leaves nothing to choose, so the caption has to carry the whole row.
     expect(
       resolutionCeilingNote('720p', {
         imageModels: ['nano_banana_2_lite'],
-        videoModels: ['minimax_h3_max'],
+        videoModels: ['seedance_v2_mini'],
       })
-    ).toBe('Nano Banana 2 Lite and MiniMax H3 Max render at a fixed size');
+    ).toBe('Nano Banana 2 Lite and Seedance 2.0 Mini render at a fixed size');
   });
 
   it('says "above" for a model whose floor is over the tier', () => {

@@ -57,11 +57,20 @@ describe('resolveMotionEndpoint', () => {
     });
   });
 
-  it('keeps Kling on image-to-video and marks refs as inline', () => {
+  it('routes Kling to O3 Pro reference-to-video when refs are present', () => {
     expect(resolveMotionEndpoint('kling_v3_pro', true)).toEqual({
       via: 'fal',
+      endpointId: 'fal-ai/kling-video/o3/pro/reference-to-video',
+      references: 'endpoint',
+      referenceConfig: MOTION_REFERENCE_ENDPOINTS.kling_v3_pro,
+    });
+  });
+
+  it('keeps Kling on v3 Pro image-to-video when there are no refs', () => {
+    expect(resolveMotionEndpoint('kling_v3_pro', false)).toEqual({
+      via: 'fal',
       endpointId: IMAGE_TO_VIDEO_MODELS.kling_v3_pro.id,
-      references: 'inline',
+      references: 'none',
     });
   });
 
@@ -159,6 +168,7 @@ describe('reference-only', () => {
   it.each([
     ['seedance_v2', 'bytedance/seedance-2.0/enterprise/v2/text-to-video'],
     ['seedance_v2_5', 'bytedance/seedance-2.5/text-to-video'],
+    ['kling_v3_pro', 'fal-ai/kling-video/o3/pro/text-to-video'],
     ['minimax_h3_max', 'minimax/h3-max/text-to-video'],
     ['gemini_omni_flash', 'fal-ai/gemini-omni-1.1-flash'],
   ] as const)(
@@ -173,9 +183,6 @@ describe('reference-only', () => {
   );
 
   it('refuses a model with no reference-to-video route', () => {
-    expect(() =>
-      resolveMotionEndpoint('kling_v3_pro', true, 'fal', true)
-    ).toThrow(/cannot render without a start frame/);
     expect(() => resolveMotionEndpoint('veo3_1', false, 'fal', true)).toThrow(
       /cannot render without a start frame/
     );

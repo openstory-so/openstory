@@ -36,7 +36,9 @@ export const MOTION_RESOLUTION_TOKENS = {
   gemini_omni_flash: ['360p', '720p', '1080p', '4k'],
   kling_v3_pro: [],
   minimax_hailuo_02: [],
-  minimax_h3_max: ['480P', '768P'],
+  // fal added 1080P (latent refinement from a native 768P source) upstream;
+  // picked up by `bun motion:codegen`, unrelated to #1498.
+  minimax_h3_max: ['480P', '768P', '1080P'],
   seedance_v2: ['480p', '720p', '1080p', '4k'],
   seedance_v2_mini: ['480p', '720p'],
   seedance_v2_5: ['480p', '720p', '1080p'],

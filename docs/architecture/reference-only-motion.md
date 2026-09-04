@@ -208,18 +208,21 @@ predate reference-only and so were image-to-video.
 ## Model gating
 
 Only models in `MOTION_REFERENCE_ENDPOINTS` qualify — today Seedance 2.0 and
-2.5, MiniMax H3 Max and Gemini Omni Flash, each with a `reference-to-video`
-route that needs no start frame (H3 Max takes its images in
-`reference_image_urls` rather than `image_urls` — `imageField` on the endpoint
-config; every builder reads it, so a fifth model with a fifth field name needs
-no code) and a `textToVideoEndpointId` sibling for a shot that matched nothing
-(#1521).
+2.5, MiniMax H3 Max, Gemini Omni Flash and Kling O3 Pro, each with a
+`reference-to-video` route whose start frame is optional (H3 Max takes its
+images in `reference_image_urls` rather than `image_urls` — `imageField` on
+the endpoint config, so no builder needs to know the field name; a genuinely
+new field name still has to widen that union, and every new endpoint needs a
+transform registered in `endpoint-map.ts`) and a `textToVideoEndpointId`
+sibling for a shot that matched nothing (#1521).
 `supportsReferenceOnlyMotion` is keyed on the MODEL, not the resolved via — the
 conservative floor, safe in a pure isomorphic schema. It is NOT the question to
 ask anywhere a team's keys are reachable; see below.
 
-Kling is excluded — its `elements` ride on the image-to-video endpoint, which
-requires `image_url`.
+Kling v3 Pro start-frame-only shots stay on image-to-video. Shots with
+references, and reference-only shots, route to Kling O3 Pro
+(`fal-ai/kling-video/o3/pro/reference-to-video`) — the sibling whose start
+frame is optional. Catalog key stays `kling_v3_pro`.
 
 **Grok Imagine 1.5 is not excluded because it lacks references — it has them.**
 `GROK_VIDEO_REFERENCE_CONFIG` binds up to 7, `resolveMotionEndpoint` returns

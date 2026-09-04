@@ -146,12 +146,22 @@ describe('createSequenceSchema — reference-only', () => {
     expect(result.success).toBe(true);
   });
 
-  it('rejects a model that needs a start frame', () => {
+  it('accepts Kling — reference-only routes to O3 Pro', () => {
     const result = createSequenceSchema.safeParse({
       ...base,
       generateStartFrames: false,
       videoModel: 'kling_v3_pro',
       videoModels: ['kling_v3_pro'],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects a model that needs a start frame', () => {
+    const result = createSequenceSchema.safeParse({
+      ...base,
+      generateStartFrames: false,
+      videoModel: 'veo3_1',
+      videoModels: ['veo3_1'],
     });
     expect(result.success).toBe(false);
     if (!result.success) {

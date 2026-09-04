@@ -101,8 +101,9 @@ describe('buildStudioVideoInput', () => {
         .modelOptions.resolution;
     expect(at('veo3_1', '4k')).toBe('4k');
     expect(at('veo3_1', '1080p')).toBe('1080p');
-    // H3 Max stops at 768P, whatever is asked for.
-    expect(at('minimax_h3_max', '4k')).toBe('768P');
+    // H3 Max stops at 1080P (fal's latent refinement of a native 768P
+    // source), whatever is asked for.
+    expect(at('minimax_h3_max', '4k')).toBe('1080P');
   });
 
   it('omits resolution for a model that takes none', () => {
