@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { CharacterMinimal, SequenceElementMinimal } from '@/lib/db/schema';
 import {
+  characterMentionedInPrompt,
   matchCharacterToShotTags,
   matchCharactersToScene,
+  matchCharactersToShotImage,
   matchElementsToScene,
   matchElementsToShotImage,
 } from './scene-matching';
@@ -151,6 +153,79 @@ describe('matchCharactersToScene', () => {
       makeCharacter({ name: 'GIRL ONE', characterId: 'char_girl_one' }),
     ];
     expect(matchCharactersToScene(cast, [])).toEqual([]);
+  });
+});
+
+describe('matchCharactersToShotImage', () => {
+  const scarlett = makeCharacter({
+    name: 'Scarlett',
+    characterId: 'char_001',
+    consistencyTag: 'char_001: scarlett-red-coat',
+  });
+  const jack = makeCharacter({ name: 'Jack', characterId: 'char_002' });
+
+  it('attaches a character named in ALL-CAPS in the visual prompt even with empty tags (#1432)', () => {
+    const result = matchCharactersToShotImage([scarlett, jack], {
+      characterTags: [],
+      visualPrompt: 'SCARLETT stands in the doorway, coat dripping.',
+    });
+    expect(result.map((c) => c.name)).toEqual(['Scarlett']);
+  });
+
+  it('does not treat a lowercase prose mention as a cast reference', () => {
+    expect(
+      matchCharactersToShotImage([scarlett], {
+        characterTags: [],
+        visualPrompt: 'scarlett stands in the doorway.',
+      })
+    ).toEqual([]);
+  });
+
+  it('unions prompt mentions with continuity tags', () => {
+    const result = matchCharactersToShotImage([scarlett, jack], {
+      characterTags: ['Jack'],
+      visualPrompt: 'SCARLETT enters. The room is empty.',
+    });
+    expect(result.map((c) => c.name).sort()).toEqual(['Jack', 'Scarlett']);
+  });
+
+  it('falls back to tags when the visual prompt is empty', () => {
+    expect(
+      matchCharactersToShotImage([jack], {
+        characterTags: ['Jack'],
+        visualPrompt: '   ',
+      }).map((c) => c.name)
+    ).toEqual(['Jack']);
+  });
+
+  it('matches characterId and consistencyTag slug in the prompt', () => {
+    expect(
+      matchCharactersToShotImage([scarlett], {
+        characterTags: [],
+        visualPrompt: 'char_001 waits by the window.',
+      }).map((c) => c.name)
+    ).toEqual(['Scarlett']);
+    expect(
+      matchCharactersToShotImage([scarlett], {
+        characterTags: [],
+        visualPrompt: 'scarlett-red-coat in silhouette.',
+      }).map((c) => c.name)
+    ).toEqual(['Scarlett']);
+  });
+});
+
+describe('characterMentionedInPrompt', () => {
+  it('requires the ALL-CAPS name, not title case', () => {
+    const scarlett = makeCharacter({
+      name: 'Scarlett',
+      characterId: 'char_001',
+    });
+    expect(characterMentionedInPrompt(scarlett, 'SCARLETT walks in.')).toBe(
+      true
+    );
+    expect(characterMentionedInPrompt(scarlett, 'Scarlett walks in.')).toBe(
+      false
+    );
   });
 });
 

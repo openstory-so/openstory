@@ -7,6 +7,7 @@ import {
   type AspectRatio,
   DEFAULT_ASPECT_RATIO,
 } from '@/lib/constants/aspect-ratios';
+import type { Resolution } from '@/lib/constants/resolutions';
 import { type InferInsertModel, type InferSelectModel } from 'drizzle-orm';
 import { index, integer, snakeCase, text } from 'drizzle-orm/sqlite-core';
 import { generateId } from '../id';
@@ -15,6 +16,10 @@ import { user } from './auth';
 // shots.ts imports sequences for foreign key reference
 import { styles } from './libraries';
 import { teams } from './teams';
+import type {
+  GenerationCheckpoint,
+  GenerationStage,
+} from '@/lib/generation/pipeline';
 import type { StoredStyleConfig } from '@/lib/style/style-config';
 
 // Enum values as constants (SQLite doesn't have native enums)
@@ -82,6 +87,15 @@ export const sequences = snakeCase.table(
       .$type<AspectRatio>()
       .default(DEFAULT_ASPECT_RATIO)
       .notNull(),
+    // Output resolution tier every generation in this sequence is asked for
+    // (#1449). SQL default pinned to the literal '720p' to match the deployed
+    // column default — DEFAULT_RESOLUTION must NOT be written here: SQLite
+    // can't ALTER a column default without a full table rebuild, which
+    // CASCADE-deletes child rows on D1 (#612).
+    resolution: text({ length: 10 })
+      .$type<Resolution>()
+      .default('720p')
+      .notNull(),
 
     // SQL default pinned to the literal 'anthropic/claude-haiku-4.5' to match
     // every deployed DB's column default. DEFAULT_ANALYSIS_MODEL (see
@@ -147,10 +161,31 @@ export const sequences = snakeCase.table(
     // retries and smart-retry re-completes cannot double-send.
     readyEmailSentAt: integer({ mode: 'timestamp' }),
 
-    // Auto-generation flags (set at sequence creation, read by UI for phase display)
-    // TB-20260804: DB-Audit: autoGenerateMotion and autoGenerateMusic should not be stored. They should be set when the workflow is initiated.
+    // Sequence default for "does a shot animate from a rendered still"
+    // (`shots.useStartFrame` overrides it per shot, NULL = inherit; resolve
+    // with `usesStartFrame()`, never raw). Off by default: a new sequence
+    // renders reference-only, straight to video from the cast / location /
+    // element sheets, and this is the opt-in back to the frame-based
+    // workflow. Replaced the inverted `referenceOnly` (ADD COLUMN + backfill +
+    // DROP COLUMN, no rebuild, #612). Set at creation and never toggled
+    // after (`updateSequenceSchema` omits it): the storyboard trigger
+    // snapshots it onto the workflow payload,
+    // and every stored motion prompt's input hash folds the resolved mode in,
+    // so flipping it re-stales the prompts rather than mixing two styles.
+    generateStartFrames: integer({ mode: 'boolean' }).default(false).notNull(),
+
+    // Auto-generation flags (derived from generationStopAt at trigger time).
+    // Kept so existing readers (progress banner, smart-retry, API v1) keep
+    // working; stop-at is the source of truth (#1408).
     autoGenerateMotion: integer({ mode: 'boolean' }).default(false).notNull(),
     autoGenerateMusic: integer({ mode: 'boolean' }).default(false).notNull(),
+
+    // How far the current/last run was asked to go, and how far it actually
+    // got. Checkpoint holds in-memory DAG state (bibles, matches) that is
+    // not yet in character/location rows, so a stopped run can resume.
+    generationStopAt: text().$type<GenerationStage>(),
+    pipelineStage: text().$type<GenerationStage>(),
+    generationCheckpoint: text({ mode: 'json' }).$type<GenerationCheckpoint>(),
 
     // Suggested talent/location IDs used during generation (for pre-populating the UI)
     suggestedTalentIds: text({

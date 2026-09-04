@@ -15,6 +15,7 @@ import {
   selectorGroup,
   TURBO_VIDEO_MODELS,
 } from '@/lib/ai/generation-mode';
+import { useViaAvailability } from '@/hooks/use-via-availability';
 import type { AspectRatio } from '@/lib/constants/aspect-ratios';
 import { useMemo } from 'react';
 
@@ -28,6 +29,20 @@ type MotionModelFilterProps = {
   styleName?: string;
   /** When set, only these keys appear (Turbo mode). */
   allowedIds?: readonly ImageToVideoModel[];
+  /**
+   * Reference-only mode: narrow the list to models that can render without a
+   * start frame. Filtering the options is what keeps the mode from failing at
+   * submit — the create schema rejects an incompatible selection, and a user
+   * should never be able to build one.
+   */
+  referenceOnly?: boolean;
+  /**
+   * Never filter this key out. The shot's current model: hiding it would leave
+   * the trigger reading "Unknown", so it stays listed and the panel says why
+   * it cannot render. Only an ALREADY-chosen model is exempt — the list still
+   * offers no other model the mode cannot use.
+   */
+  keepId?: ImageToVideoModel;
 };
 
 /**
@@ -41,7 +56,13 @@ function useMotionModels({
   recommendedVideoModel,
   styleName,
   allowedIds,
+  referenceOnly,
+  keepId,
 }: MotionModelFilterProps) {
+  // Resolved server-side per team and seeded by the `_app` route loader, so the
+  // list is right on first paint. Grok Imagine appears here only where an xAI
+  // key resolves — on fal its id is an image-to-video endpoint.
+  const { referenceOnlyModels } = useViaAvailability();
   return useMemo(
     () =>
       Object.entries(IMAGE_TO_VIDEO_MODELS)
@@ -49,6 +70,12 @@ function useMotionModels({
           if (!isValidImageToVideoModel(key)) return false;
           if ('hidden' in m) return false;
           if (allowedIds && !allowedIds.includes(key)) return false;
+          if (
+            referenceOnly &&
+            key !== keepId &&
+            !referenceOnlyModels.includes(key)
+          )
+            return false;
           if (
             'requiredStyleCategory' in m &&
             m.requiredStyleCategory !== styleCategory
@@ -85,7 +112,16 @@ function useMotionModels({
             recommendedFor,
           };
         }),
-    [aspectRatio, styleCategory, recommendedVideoModel, styleName, allowedIds]
+    [
+      aspectRatio,
+      styleCategory,
+      recommendedVideoModel,
+      styleName,
+      allowedIds,
+      referenceOnly,
+      keepId,
+      referenceOnlyModels,
+    ]
   );
 }
 
@@ -174,6 +210,7 @@ export const MotionModelSelector: React.FC<MotionModelSelectorProps> = ({
   styleCategory,
   recommendedVideoModel,
   styleName,
+  referenceOnly,
   generatedStatuses,
   allowedIds,
 }) => {
@@ -183,6 +220,8 @@ export const MotionModelSelector: React.FC<MotionModelSelectorProps> = ({
     recommendedVideoModel,
     styleName,
     allowedIds,
+    referenceOnly,
+    keepId: selectedModel,
   });
   const models = useMemo(
     () =>
@@ -240,6 +279,7 @@ export const MotionModelMultiSelector: React.FC<
   recommendedVideoModel,
   styleName,
   allowedIds,
+  referenceOnly,
 }) => {
   const models = useMotionModels({
     aspectRatio,
@@ -247,6 +287,7 @@ export const MotionModelMultiSelector: React.FC<
     recommendedVideoModel,
     styleName,
     allowedIds,
+    referenceOnly,
   });
   const recommendationStatus = useRecommendationStatus(
     recommendedVideoModel,

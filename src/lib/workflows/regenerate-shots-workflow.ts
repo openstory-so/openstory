@@ -123,6 +123,7 @@ export class RegenerateShotsWorkflow extends OpenStoryWorkflowEntrypoint<Regener
 
     const imageModel = input.imageModel ?? DEFAULT_IMAGE_MODEL;
     const aspectRatio = input.aspectRatio;
+    const resolution = input.resolution;
 
     await step.do('emit-start', async () => {
       await emitRecastEvent({
@@ -271,6 +272,7 @@ export class RegenerateShotsWorkflow extends OpenStoryWorkflowEntrypoint<Regener
                     ? snapshot.locationRefs
                     : undefined,
                 aspectRatio,
+                resolution,
                 model: imageModel,
               },
               {

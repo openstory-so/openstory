@@ -32,14 +32,14 @@ describe('buildBytePlusImageRequest', () => {
     expect(buildBytePlusImageRequest(base).size).toBe('2048x1152');
   });
 
-  it('passes an explicit 1K resolution through as a token', () => {
-    expect(buildBytePlusImageRequest({ ...base, resolution: '1K' }).size).toBe(
-      '1K'
-    );
+  it('drops the 720p tier to the 1K pixel size', () => {
+    expect(
+      buildBytePlusImageRequest({ ...base, resolution: '720p' }).size
+    ).toBe('1024x576');
   });
 
   it('snaps 4K to the 2K pixel size — Pro has no 4K token', () => {
-    expect(buildBytePlusImageRequest({ ...base, resolution: '4K' }).size).toBe(
+    expect(buildBytePlusImageRequest({ ...base, resolution: '4k' }).size).toBe(
       '2048x1152'
     );
   });

@@ -28,6 +28,7 @@ function makeShot(overrides: Partial<Shot> = {}): Shot {
     sceneId: null,
     shotNumber: 1,
     durationMs: 3000,
+    useStartFrame: null,
     selectedMotionPromptVersionId: null,
     renderSegmentId: null,
     deletedAt: null,
@@ -65,6 +66,7 @@ const baseOpts = {
   teamId: 'team-1',
   sequenceId: 'seq-1',
   aspectRatio: '16:9' as const,
+  resolution: '720p' as const,
   characters: [] as CharacterMinimal[],
   locations: [],
   elements: [],
@@ -227,6 +229,40 @@ describe('buildShotImageWorkflowInput — reference images', () => {
     expect(input?.referenceImages?.[0]).toMatchObject({
       referenceImageUrl: 'https://cdn/jack-sheet.png',
       role: 'character',
+    });
+  });
+
+  it('attaches a character named in the visual prompt even when continuity tags are empty (#1432)', async () => {
+    const shot = makeShot();
+    const character: CharacterMinimal = {
+      id: 'c1',
+      characterId: 'char_001',
+      name: 'Scarlett',
+      sheetImageUrl: 'https://cdn/scarlett-sheet.png',
+      sheetStatus: 'completed',
+      sheetInputHash: 'hash-scarlett',
+      selectedSheetVersionId: null,
+      physicalDescription: 'red coat',
+      consistencyTag: null,
+    };
+    const input = await buildShotImageWorkflowInput({
+      ...baseOpts,
+      shot,
+      imagePrompt: 'SCARLETT stands in the doorway.',
+      characters: [character],
+      continuity: {
+        characterTags: [],
+        environmentTag: '',
+        elementTags: [],
+        colorPalette: '',
+        lightingSetup: '',
+        styleTag: '',
+      },
+    });
+    expect(input?.referenceImages?.[0]).toMatchObject({
+      referenceImageUrl: 'https://cdn/scarlett-sheet.png',
+      role: 'character',
+      token: 'Scarlett',
     });
   });
 });

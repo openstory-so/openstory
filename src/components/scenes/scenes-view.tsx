@@ -20,6 +20,13 @@ import { FailureSummaryBanner } from '@/components/sequence/failure-summary-bann
 import { SequenceHeaderPortal } from '@/components/sequence/sequence-header-slot';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { batchGenerateMotionFn } from '@/functions/motion-functions';
+import { continueGenerationFn, generateMusicFn } from '@/functions/sequences';
+import {
+  artifactsFromSequenceState,
+  continueStageFromState,
+  type ContinueStage,
+  type GenerationStage,
+} from '@/lib/generation/pipeline';
 import { getDivergentVariantPromptDiffFn } from '@/functions/prompt-variants';
 import { smartRetryFn } from '@/functions/smart-retry';
 import { useActiveImageModel } from '@/hooks/use-active-image-model';
@@ -59,6 +66,7 @@ import {
   safeAudioModel,
   safeImageToVideoModel,
   safeTextToImageModel,
+  type AudioModel,
   type ImageToVideoModel,
   type TextToImageModel,
 } from '@/lib/ai/models';
@@ -78,7 +86,8 @@ import {
 import { DEFAULT_ASPECT_RATIO } from '@/lib/constants/aspect-ratios';
 import { isSetImageOffered } from '@/lib/shots/set-image-offer';
 import type { FrameVariant, ShotVariant } from '@/lib/db/schema';
-import type { ShotView } from '@/lib/shots/shot-view';
+import { rendersReferenceOnly } from '@/lib/shots/use-start-frame';
+import { isBatchMotionEligible, type ShotView } from '@/lib/shots/shot-view';
 import { analyzeLoadedFailures } from '@/lib/failures/failure-analysis';
 import type { GenerationPhaseConfig } from '@/lib/realtime/generation-stream.reducer';
 import { useGenerationStream } from '@/lib/realtime/use-generation-stream';
@@ -290,6 +299,9 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     },
   });
   const aspectRatio = sequence?.aspectRatio || DEFAULT_ASPECT_RATIO;
+  // No stills are ever rendered in this mode, so every motion-eligibility
+  // check has to stop requiring one (`isBatchMotionEligible`).
+  const generateStartFrames = sequence?.generateStartFrames ?? false;
   const isProcessing = sequence?.status === 'processing';
   const processingRef = useRef(isProcessing);
   processingRef.current = isProcessing;
@@ -361,16 +373,20 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     DEFAULT_VIDEO_MODEL
   );
   const styleName = style?.name ?? undefined;
-  const recommendedImageModel = style?.recommendedImageModel ?? null;
-  const recommendedVideoModel = style?.recommendedVideoModel ?? null;
-
   // Phase config from DB — set in stone when the workflow was triggered
   const phaseConfig = useMemo<GenerationPhaseConfig>(
     () => ({
+      stopAt: sequence?.generationStopAt ?? undefined,
       autoGenerateMotion: sequence?.autoGenerateMotion ?? false,
       autoGenerateMusic: sequence?.autoGenerateMusic ?? false,
+      referenceOnly: !(sequence?.generateStartFrames ?? false),
     }),
-    [sequence?.autoGenerateMotion, sequence?.autoGenerateMusic]
+    [
+      sequence?.generationStopAt,
+      sequence?.autoGenerateMotion,
+      sequence?.autoGenerateMusic,
+      sequence?.generateStartFrames,
+    ]
   );
 
   // Subscribe to real-time generation events when sequence is processing.
@@ -1242,12 +1258,11 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
       // 'cancelled' is user-initiated (#1108 Phase 4): deliberately eligible
       // for a user-driven batch generate, never auto-retried.
       const eligibleShotIds = (shots ?? [])
-        .filter(
-          (f) =>
-            f.frame.imageStatus === 'completed' &&
-            (f.videoStatus === 'pending' ||
-              f.videoStatus === 'failed' ||
-              f.videoStatus === 'cancelled')
+        .filter((f) =>
+          isBatchMotionEligible(
+            f,
+            rendersReferenceOnly(f, { generateStartFrames })
+          )
         )
         .map((f) => f.id);
 
@@ -1323,10 +1338,84 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
         }
       }
     },
-    [sequenceId, shots, queryClient, posthog, showBillingGate]
+    [
+      sequenceId,
+      shots,
+      generateStartFrames,
+      queryClient,
+      posthog,
+      showBillingGate,
+    ]
   );
 
   const musicPromptsReady = !!(sequence?.musicPrompt && sequence.musicTags);
+
+  const nextStage = useMemo(
+    () =>
+      continueStageFromState({
+        isProcessing,
+        artifacts: artifactsFromSequenceState({
+          sceneCount: scenes?.length ?? 0,
+          shots: shots ?? [],
+          musicStatus: sequence?.musicStatus,
+          musicUrl: sequence?.musicUrl,
+          pipelineStage: sequence?.pipelineStage,
+          referenceOnly: !generateStartFrames,
+        }),
+      }),
+    [
+      isProcessing,
+      scenes?.length,
+      shots,
+      sequence?.musicStatus,
+      sequence?.musicUrl,
+      sequence?.pipelineStage,
+      generateStartFrames,
+    ]
+  );
+
+  const handleContinueGeneration = useCallback(
+    async (args: { startFrom: ContinueStage; stopAt: GenerationStage }) => {
+      // Optimistic status flip, as the motion batch does: the chip and the
+      // footer key off `sequence.status`, and the server fn reserves credits
+      // and triggers the workflow before it returns.
+      const key = sequenceKeys.detail(sequenceId);
+      const previous = queryClient.getQueryData<Sequence>(key);
+      queryClient.setQueryData<Sequence>(key, (old) =>
+        old ? { ...old, status: 'processing', updatedAt: new Date() } : old
+      );
+      try {
+        await continueGenerationFn({
+          data: {
+            sequenceId,
+            startFrom: args.startFrom,
+            stopAt: args.stopAt,
+          },
+        });
+      } catch (error) {
+        // Continue reserves credits like any other run, so it hits the same
+        // gate as batch motion — show the gate, not a generic error toast.
+        queryClient.setQueryData<Sequence>(key, previous);
+        if (!isInsufficientCreditsError(error)) throw error;
+        showBillingGate('insufficient');
+        void queryClient.invalidateQueries({ queryKey: BILLING_BALANCE_KEY });
+        return;
+      }
+      void queryClient.invalidateQueries({
+        queryKey: sequenceKeys.detail(sequenceId),
+      });
+    },
+    [sequenceId, queryClient, showBillingGate]
+  );
+
+  const handleGenerateMusic = useCallback(
+    async (model: AudioModel) => {
+      await generateMusicFn({
+        data: { sequenceId, model },
+      });
+    },
+    [sequenceId]
+  );
 
   // GenerationProgressBanner is owned by the script-analysis pipeline
   // (sequence.status === 'processing'). Standalone motion gen runs when the
@@ -1417,20 +1506,25 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     segmentsError,
     selection,
     aspectRatio,
+    resolution: sequence?.resolution,
     onSelectScene: handleSelectScene,
     onSelectShot: handleSelectShot,
     onClearSelection: handleClearSelection,
     regeneratingImages,
     regeneratingMotion,
     onBatchGenerateMotion: handleBatchMotionGeneration,
+    nextStage,
+    onContinueGeneration: handleContinueGeneration,
+    onGenerateMusic: handleGenerateMusic,
     musicPromptsReady,
-    hideBatchButton: phaseConfig.autoGenerateMotion && isGenerationActive,
+    hideBatchButton: isGenerationActive,
     divergentVariants,
     onCompareDivergent: setCompareVariant,
     initialMusicModel: sequenceMusicModel,
     initialVideoModel: sequenceVideoModel,
+    initialImageModel: resolvedSequenceImageModel,
     styleCategory,
-    recommendedVideoModel,
+    generateStartFrames,
     styleName,
     modelMissingShotIds: shotsMissingActiveImage,
     modelMissingLabel: activeImageModelLabel,
@@ -1585,12 +1679,15 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
                   styleId={sequence?.styleId ?? undefined}
                   stylePending={sequence?.styleConfig == null}
                   aspectRatio={aspectRatio}
+                  resolution={sequence?.resolution}
                   analysisModel={sequence?.analysisModel ?? undefined}
                 />
                 <div className="px-4 pb-4">
                   <SceneScriptPrompts
                     shot={selectedShot}
                     sequenceId={sequenceId}
+                    resolution={sequence?.resolution}
+                    sequenceGeneratesStartFrames={generateStartFrames}
                     selectedTab={effectiveTab}
                     visibleTabs={visibleTabs}
                     onTabChange={(tab) => {
@@ -1612,8 +1709,6 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
                     onImageModelChange={handleImageModelChange}
                     onVideoModelChange={handleVideoModelChange}
                     styleName={styleName}
-                    recommendedImageModel={recommendedImageModel}
-                    recommendedVideoModel={recommendedVideoModel}
                     styleCategory={styleCategory}
                     shotDivergentVariants={divergentVariants?.filter(
                       (v) => v.shotId === curSelectedShotId

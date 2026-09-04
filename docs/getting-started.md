@@ -9,7 +9,7 @@ OpenStory is an open-source AI video production platform. This guide walks you t
 
 ## Prerequisites
 
-- [Bun](https://bun.com/docs/installation) >= 1.3.0
+- [Bun](https://bun.com/docs/installation) >= 1.3.9
 - [Git](https://git-scm.com)
 
 Nothing else. No Docker, no external database, no Cloudflare account — local dev runs the full stack (D1, R2, Workflows, Durable Objects, email) inside Workerd via Miniflare.

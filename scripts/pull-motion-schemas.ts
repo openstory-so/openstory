@@ -90,21 +90,18 @@ async function main() {
   writeFileSync(outputPath, JSON.stringify(data, null, 2));
   console.log(`\nSaved ${models.length} specs to ${outputPath}`);
 
-  // Run hey-api codegen. Via npx with an explicit typescript@5 so the peer
-  // resolves to a version that still ships the JS compiler API — npm-latest
-  // typescript is 7 (the Go rewrite), which has no `ts.SyntaxKind`, and a bare
-  // `bunx @hey-api/openapi-ts` crashes on it.
+  // Local pin (`package.json` `@hey-api/openapi-ts` nightly). Do not `npx -p`
+  // the package — that builds an isolated prefix from registry-latest and
+  // bypasses the pin (#1444).
   console.log('\nRunning @hey-api/openapi-ts codegen...\n');
-  await runCommand('npx', [
-    '-y',
-    '-p',
-    'typescript@5.9.2',
-    '-p',
-    '@hey-api/openapi-ts',
-    'openapi-ts',
-    '-f',
-    'scripts/motion-openapi-ts.config.ts',
-  ]);
+  const openapiTsBin = join(
+    import.meta.dirname,
+    '..',
+    'node_modules',
+    '.bin',
+    'openapi-ts'
+  );
+  await runCommand(openapiTsBin, ['-f', 'scripts/motion-openapi-ts.config.ts']);
 
   // Generate endpoint map + prompt limits from the generated types
   console.log('\nGenerating endpoint map...\n');

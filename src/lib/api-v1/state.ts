@@ -92,6 +92,7 @@ export type SequenceSummary = {
   status: SequenceStatus;
   statusError: string | null;
   aspectRatio: string;
+  resolution: string;
   style: SequenceStyle;
   models: SequenceModels;
   createdAt: string;
@@ -178,6 +179,7 @@ export function buildSequenceSummary(params: {
     status: sequence.status,
     statusError: sequence.statusError ?? null,
     aspectRatio: sequence.aspectRatio,
+    resolution: sequence.resolution,
     style: { id: sequence.styleId, name: style?.name ?? null },
     models: {
       analysis: sequence.analysisModel,

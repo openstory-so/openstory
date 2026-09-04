@@ -13,18 +13,26 @@ import {
   AUDIO_MODELS,
   IMAGE_MODELS,
   IMAGE_TO_VIDEO_MODELS,
+  supportsReferenceOnlyMotion,
   type AudioModel,
   type ImageToVideoModel,
   type TextToImageModel,
 } from '@/lib/ai/models';
 import type { AspectRatio } from '@/lib/constants/aspect-ratios';
 import { aspectRatioToDimensions } from '@/lib/constants/aspect-ratios';
+import type { Resolution } from '@/lib/constants/resolutions';
+import { imageRequestDimensions } from '@/lib/image/build-image-request';
 import { resolveMotionEndpoint } from '@/lib/motion/resolve-motion-endpoint';
 import {
   studioVideoEndpointId,
   type StudioVideoMode,
 } from '@/lib/studio/text-to-video';
 import { getLogger } from '@/lib/observability/logger';
+import {
+  shouldRunStage,
+  stageIndex,
+  type GenerationStage,
+} from '@/lib/generation/pipeline';
 import { reportFlooredEstimate } from './billing-observability';
 import { type Microdollars, addMicros, micros, multiplyMicros } from './money';
 
@@ -59,6 +67,7 @@ type GateOperation =
   | 'smart-retry:motion'
   | 'smart-retry:music'
   | 'storyboard:character-sheets'
+  | 'storyboard:element-sheets'
   | 'storyboard:location-sheets'
   | 'storyboard:motion'
   | 'storyboard:music'
@@ -131,9 +140,16 @@ export function estimateImageCost(
   model: TextToImageModel,
   aspectRatio: AspectRatio,
   numImages: number,
-  opts: { pricing: FalPricingMap; resolution?: string; edit?: boolean }
+  opts: { pricing: FalPricingMap; resolution?: Resolution; edit?: boolean }
 ): Microdollars | null {
-  const { width, height } = aspectRatioToDimensions(aspectRatio);
+  // Megapixel-priced endpoints bill on the pixels actually requested, so the
+  // tier has to size the estimate — a 4K ask against the flat 1600×900 stand-in
+  // under-quotes by ~5.8× and under-reserves the credits gating it (#1449).
+  // Asked of the request builder rather than derived here, so a model the tier
+  // can't resize is still quoted at the size it really renders.
+  const { width, height } =
+    imageRequestDimensions(model, aspectRatio, opts.resolution) ??
+    aspectRatioToDimensions(aspectRatio);
 
   // Always the fal catalog id: when the platform routes this model to BytePlus
   // Ark, the pricing map already aliases that id to the Ark rate (#1157), so
@@ -164,17 +180,30 @@ export function estimateVideoCost(
   durationSeconds: number,
   opts: {
     pricing: FalPricingMap;
-    resolution?: string;
+    resolution?: Resolution;
     /**
      * True when cast/element (or other) reference images will be sent so
      * `resolveMotionEndpoint` may route to reference-to-video.
      */
     hasReferenceImages?: boolean;
+    /**
+     * Reference-only shots route to reference-to-video even when the scene
+     * matched no sheets at all, so the estimate has to be told: resolving on
+     * `hasReferenceImages` alone would price the image-to-video row for a job
+     * that never runs there.
+     */
+    referenceOnly?: boolean;
   }
 ): Microdollars | null {
   const { endpointId } = resolveMotionEndpoint(
     model,
-    opts.hasReferenceImages === true
+    opts.hasReferenceImages === true,
+    'fal',
+    // Gated on the model: `resolveMotionEndpoint` THROWS for reference-only on
+    // a model with no fal reference-to-video route, and an estimator must not.
+    // Grok reference-only is exactly that case — it runs on the native xAI via,
+    // whose cost is the flat per-second rate off `modelConfig.id` anyway.
+    opts.referenceOnly === true && supportsReferenceOnlyMotion(model)
   );
   // Keep the catalog model id path when unresolved (tests / unknown keys).
   // Both ids alias to the Ark rate when the platform routes there (#1157).
@@ -193,11 +222,15 @@ export function estimateVideoCost(
 export function estimateStudioVideoCost(
   model: ImageToVideoModel,
   durationSeconds: number,
-  opts: { pricing: FalPricingMap; mode?: StudioVideoMode }
+  opts: {
+    pricing: FalPricingMap;
+    mode?: StudioVideoMode;
+    resolution?: Resolution;
+  }
 ): Microdollars | null {
   return estimateFalCost(
     studioVideoEndpointId(model, opts.mode),
-    { durationSeconds },
+    { durationSeconds, resolution: opts.resolution },
     opts.pricing
   );
 }
@@ -264,11 +297,21 @@ export type StoryboardCostOpts = {
   imageModelCount?: number;
   aspectRatio: AspectRatio;
   /**
+   * Output resolution tier (#1449). Sizes the stills and clips this estimate
+   * gates; omitted, everything is quoted at the default tier and a 4K run
+   * under-reserves.
+   */
+  resolution?: Resolution;
+  /**
    * Expected still count (≈ scene count today). Prefer labeled Scene N
    * headings from Enhance over word heuristics.
    */
   estimatedSceneCount?: number;
   autoGenerateMotion?: boolean;
+  /** How far the run will go (#1408). Overrides auto-generate flags. */
+  stopAt?: GenerationStage;
+  /** Continue-from: skip stages before this (#1408). */
+  startFrom?: GenerationStage;
   /**
    * Video models for per-shot motion (#545). Each is priced from its own
    * parameters — a uniform multiplier would mis-estimate a mixed selection.
@@ -283,9 +326,34 @@ export type StoryboardCostOpts = {
   audioModels?: AudioModel[];
   /** Total sequence duration in seconds (one music track spans the sequence) */
   audioDurationSeconds?: number;
+  /**
+   * Reference-only: no shot stills are rendered, so the image line is zero and
+   * motion prices on the reference-to-video route. Without it the quote — and
+   * the reservation built on it — bills a full set of images the mode never
+   * generates, which is most of what makes reference-only cheaper.
+   */
+  referenceOnly?: boolean;
   /** Live pricing map from `getEffectiveFalPricing()`. */
   pricing: FalPricingMap;
 };
+
+/** Whether this estimate's slice includes `stage`. */
+function estimateRunsStage(
+  opts: Pick<
+    StoryboardCostOpts,
+    'startFrom' | 'stopAt' | 'autoGenerateMotion' | 'autoGenerateMusic'
+  >,
+  stage: GenerationStage
+): boolean {
+  const startFrom = opts.startFrom ?? 'script';
+  if (opts.stopAt) {
+    return shouldRunStage(startFrom, opts.stopAt, stage);
+  }
+  if (stageIndex(stage) < stageIndex(startFrom)) return false;
+  if (stage === 'motion') return Boolean(opts.autoGenerateMotion);
+  if (stage === 'music') return Boolean(opts.autoGenerateMusic);
+  return true;
+}
 
 /**
  * Stills + optional motion + optional music for an already-split board.
@@ -299,24 +367,32 @@ export function estimateStoryboardRenderCost(
   const imageModelCount = opts.imageModelCount ?? 1;
   const { pricing } = opts;
 
-  let totalCost = multiplyMicros(
-    gateEstimate(
-      estimateImageCost(opts.imageModel, opts.aspectRatio, sceneCount, {
-        pricing,
-      }),
-      { model: opts.imageModel, operation: 'storyboard:shot-images' },
-      sceneCount
-    ),
-    imageModelCount
-  );
+  // Reference-only renders straight to video: the shot-images phase never
+  // spawns (see `analyze-script-workflow` phase 4), so there is nothing to bill.
+  let totalCost = micros(0);
+  if (!opts.referenceOnly && estimateRunsStage(opts, 'images')) {
+    totalCost = multiplyMicros(
+      gateEstimate(
+        estimateImageCost(opts.imageModel, opts.aspectRatio, sceneCount, {
+          pricing,
+          resolution: opts.resolution,
+        }),
+        { model: opts.imageModel, operation: 'storyboard:shot-images' },
+        sceneCount
+      ),
+      imageModelCount
+    );
+  }
 
-  if (opts.autoGenerateMotion && opts.videoModels?.length) {
+  if (estimateRunsStage(opts, 'motion') && opts.videoModels?.length) {
     const duration = opts.videoDurationSeconds ?? 5;
     for (const model of opts.videoModels) {
       const perShotMotion = gateEstimate(
         estimateVideoCost(model, duration, {
           pricing,
+          resolution: opts.resolution,
           hasReferenceImages: true,
+          referenceOnly: opts.referenceOnly,
         }),
         { model, operation: 'storyboard:motion' }
       );
@@ -327,7 +403,7 @@ export function estimateStoryboardRenderCost(
     }
   }
 
-  if (opts.autoGenerateMusic && opts.audioModels?.length) {
+  if (estimateRunsStage(opts, 'music') && opts.audioModels?.length) {
     const audioDuration = opts.audioDurationSeconds ?? sceneCount * 5;
     for (const model of opts.audioModels) {
       totalCost = addMicros(
@@ -360,34 +436,62 @@ export function estimateStoryboardRenderCost(
  * film-cost showcase also use this total after an honest primary-image probe;
  * unpriced motion/audio lines may still embed floors in that composite.
  */
+/**
+ * Character + location + element reference sheets, priced per image.
+ *
+ * Two callers with very different information. Pre-flight only has the script,
+ * so it passes the `estimate*SheetCount(sceneCount)` heuristics. The in-run
+ * gate runs after casting, where the counts are FACTS — one sheet per bible
+ * entry, minus the characters whose matched talent sheet is reused (a storage
+ * copy, no generation) — so it passes those instead. Sheets are always square
+ * 16:9 regardless of the sequence's ratio.
+ */
+export function estimateReferenceSheetCost(opts: {
+  imageModel: TextToImageModel;
+  characterSheets: number;
+  locationSheets: number;
+  /** Auto-generated element references (#835). Zero at pre-flight: unknowable. */
+  elementSheets?: number;
+  pricing: FalPricingMap;
+}): Microdollars {
+  const { imageModel, pricing } = opts;
+  const line = (count: number, operation: GateOperation): Microdollars =>
+    count <= 0
+      ? micros(0)
+      : gateEstimate(
+          estimateImageCost(imageModel, '16:9', count, { pricing }),
+          { model: imageModel, operation },
+          count
+        );
+
+  return addMicros(
+    addMicros(
+      line(opts.characterSheets, 'storyboard:character-sheets'),
+      line(opts.locationSheets, 'storyboard:location-sheets')
+    ),
+    line(opts.elementSheets ?? 0, 'storyboard:element-sheets')
+  );
+}
+
 export function estimateStoryboardCost(opts: StoryboardCostOpts): Microdollars {
   const sceneCount = opts.estimatedSceneCount ?? DEFAULT_ESTIMATED_SCENE_COUNT;
   const { pricing } = opts;
-  const characterSheets = estimateCharacterSheetCount(sceneCount);
-  const locationSheets = estimateLocationSheetCount(sceneCount);
 
-  const llmCost = estimateLLMCost(3);
+  // Script = scene-split + talent matching + location matching.
+  const llmCalls = estimateRunsStage(opts, 'script') ? 3 : 0;
+  const llmCost = estimateLLMCost(llmCalls);
 
-  const characterSheetCost = gateEstimate(
-    estimateImageCost(opts.imageModel, '16:9', characterSheets, { pricing }),
-    {
-      model: opts.imageModel,
-      operation: 'storyboard:character-sheets',
-    },
-    characterSheets
-  );
-
-  const locationSheetCost = gateEstimate(
-    estimateImageCost(opts.imageModel, '16:9', locationSheets, { pricing }),
-    {
-      model: opts.imageModel,
-      operation: 'storyboard:location-sheets',
-    },
-    locationSheets
-  );
+  const sheetCost = estimateRunsStage(opts, 'references')
+    ? estimateReferenceSheetCost({
+        imageModel: opts.imageModel,
+        characterSheets: estimateCharacterSheetCount(sceneCount),
+        locationSheets: estimateLocationSheetCount(sceneCount),
+        pricing,
+      })
+    : micros(0);
 
   return addMicros(
-    addMicros(addMicros(llmCost, characterSheetCost), locationSheetCost),
+    addMicros(llmCost, sheetCost),
     estimateStoryboardRenderCost(opts)
   );
 }

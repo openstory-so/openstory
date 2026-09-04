@@ -320,18 +320,6 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
     plainSceneTitle(currentScene?.title) ||
     (sceneNumber ? `Scene ${sceneNumber}` : undefined);
 
-  // Best available image: override (variant preview) → final thumbnail → fast preview → sequence poster
-  const displayImage =
-    overrideImageUrl ??
-    currentShot.image?.url ??
-    currentShot.previewThumbnailUrl ??
-    posterUrl ??
-    null;
-  const isPreviewImage =
-    !!currentShot.previewThumbnailUrl && !currentShot.image?.url;
-  const isVariantPreview =
-    !!overrideImageUrl && overrideImageUrl !== currentShot.image?.url;
-
   // The image-focused tabs (the still image + the shot-variant grid) keep
   // showing the image; every other tab (script, motion, cast, location,
   // elements) shows the scene's video when one exists.
@@ -347,6 +335,31 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
   const playbackVideoUrl = showsStillImage
     ? ''
     : (overrideVideoUrl ?? currentShot.video?.url ?? '');
+
+  // The storyboard preview is a placeholder for a still that has not arrived.
+  // Once a clip is playable it is not a placeholder any more, it is a
+  // DIFFERENT picture — reference-only never renders the still it stood in
+  // for, so it would sit in front of the finished shot forever, captioned
+  // "may not match the final image". Drop it (and its badge) as soon as the
+  // clip can play, and let the video show its own first frame. A real still
+  // still wins: on that path the still IS the first frame.
+  const previewSupersededByVideo =
+    !!playbackVideoUrl && !currentShot.image?.url && !overrideImageUrl;
+
+  // Best available image: override (variant preview) → final thumbnail → fast preview → sequence poster
+  const displayImage = previewSupersededByVideo
+    ? null
+    : (overrideImageUrl ??
+      currentShot.image?.url ??
+      currentShot.previewThumbnailUrl ??
+      posterUrl ??
+      null);
+  const isPreviewImage =
+    !previewSupersededByVideo &&
+    !!currentShot.previewThumbnailUrl &&
+    !currentShot.image?.url;
+  const isVariantPreview =
+    !!overrideImageUrl && overrideImageUrl !== currentShot.image?.url;
 
   return (
     <div className={cn('relative flex w-full flex-col', wrapperClassName)}>
@@ -483,6 +496,7 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
           {/* Show overlay for image/video generation states */}
           <VideoStateOverlay
             thumbnailUrl={displayImage}
+            hasPlayableVideo={!!playbackVideoUrl}
             videoStatus={
               isVariantVideoPreview ? 'completed' : currentShot.videoStatus
             }

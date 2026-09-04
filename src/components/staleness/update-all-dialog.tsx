@@ -67,6 +67,28 @@ export const shotsLabel = (
   return `shots ${numbers.slice(0, -1).join(', ')} & ${numbers[numbers.length - 1]}`;
 };
 
+/**
+ * Immediate checkbox levels from the client staleness map (#1432). The dry-run
+ * preview is a server `computePlan` at max depth — on a remote D1 that can
+ * take long enough that the dialog used to render "…" with no checkboxes.
+ * These two levels are what the client already knows; video/music arrive
+ * when the preview does.
+ */
+export const levelsFromStaleShots = (
+  staleShots: ShotStaleness[]
+): Array<{ depth: UpdateStaleDepth; label: string }> => {
+  const prompts = staleShots.some(
+    (s) => s.visualPrompt === 'stale' || s.motionPrompt === 'stale'
+  );
+  const images = staleShots.some(
+    (s) => s.thumbnail === 'stale' || s.visualPrompt === 'stale'
+  );
+  const levels: Array<{ depth: UpdateStaleDepth; label: string }> = [];
+  if (prompts) levels.push({ depth: 'prompts', label: 'Prompts' });
+  if (images) levels.push({ depth: 'images', label: 'Images' });
+  return levels;
+};
+
 /** Levels with something to do, in cascade order, with their own additions. */
 export const previewLevels = (
   preview: UpdateStalePreview,
@@ -111,12 +133,13 @@ const RANK: Record<UpdateStaleDepth, number> = {
 };
 
 /**
- * "Update all" confirmation (#1085/#1194). Leads with WHAT changed, then the
- * computed cascade from a server dry-run of the same plan the workflow
- * freezes: one checkbox per level that has work, with its shots and cost.
- * Levels cascade (images need prompts, videos need images), so ticking a
- * level locks every shallower one on. Only the deepest tick is sent — the
- * run's `depth`. Native inputs for keyboard/AT semantics.
+ * "Update all" confirmation (#1085/#1194/#1432). Leads with WHAT changed,
+ * then one checkbox per level that has work. Checkboxes render immediately
+ * from the client staleness map; the server dry-run refines labels, costs,
+ * and video/music when it lands. Levels cascade (images need prompts,
+ * videos need images), so ticking a level locks every shallower one on.
+ * Only the deepest tick is sent — the run's `depth`. Native inputs for
+ * keyboard/AT semantics.
  */
 export const UpdateAllDialog: React.FC<UpdateAllDialogProps> = ({
   open,
@@ -132,7 +155,11 @@ export const UpdateAllDialog: React.FC<UpdateAllDialogProps> = ({
   const { showCosts } = useShowCosts();
   const singleShotScope = scope.shotId != null;
 
-  const { data: preview, isError } = useQuery({
+  const {
+    data: preview,
+    isError,
+    isPending,
+  } = useQuery({
     queryKey: [
       'update-stale-preview',
       scope.sequenceId,
@@ -144,14 +171,13 @@ export const UpdateAllDialog: React.FC<UpdateAllDialogProps> = ({
     staleTime: 30_000,
   });
 
+  const clientLevels = levelsFromStaleShots(staleShots);
   const levels = preview
     ? previewLevels(preview, shotNumberById, singleShotScope)
-    : null;
+    : clientLevels;
   // Snap the default to a level that exists: the deepest at or above it.
   const available =
-    depth == null
-      ? []
-      : (levels?.filter((l) => RANK[l.depth] <= RANK[depth]) ?? []);
+    depth == null ? [] : levels.filter((l) => RANK[l.depth] <= RANK[depth]);
   // Preview failed: fall back to the pre-preview behaviour — a plain confirm
   // at the old default depth — rather than blocking the update on a preview.
   const selectedDepth =
@@ -160,13 +186,11 @@ export const UpdateAllDialog: React.FC<UpdateAllDialogProps> = ({
   const checked = (d: UpdateStaleDepth) =>
     selectedDepth != null && RANK[d] <= RANK[selectedDepth];
   const total = levels
-    ? levels
-        .filter((l) => checked(l.depth))
-        .reduce<Microdollars | null>((acc, l) => {
-          const c = preview?.costByLevel[l.depth] ?? null;
-          return acc == null || c == null ? null : addMicros(acc, c);
-        }, ZERO_MICROS)
-    : null;
+    .filter((l) => checked(l.depth))
+    .reduce<Microdollars | null>((acc, l) => {
+      const c = preview?.costByLevel[l.depth] ?? null;
+      return acc == null || c == null ? null : addMicros(acc, c);
+    }, ZERO_MICROS);
 
   const toggle = (d: UpdateStaleDepth, on: boolean) => {
     if (on) {
@@ -174,7 +198,7 @@ export const UpdateAllDialog: React.FC<UpdateAllDialogProps> = ({
       return;
     }
     // Unticking a level drops it and everything deeper.
-    const shallower = levels?.filter((l) => RANK[l.depth] < RANK[d]) ?? [];
+    const shallower = levels.filter((l) => RANK[l.depth] < RANK[d]);
     setDepth(shallower[shallower.length - 1]?.depth ?? null);
   };
 
@@ -193,16 +217,15 @@ export const UpdateAllDialog: React.FC<UpdateAllDialogProps> = ({
         </AlertDialogHeader>
         <fieldset className="flex flex-col gap-2">
           <legend className="sr-only">What to regenerate</legend>
-          {isError ? (
+          {isError && (
             <span className="text-xs text-muted-foreground">
-              Couldn’t compute the plan — Update regenerates out-of-date prompts
-              and images.
+              Couldn’t compute the exact plan — showing out-of-date prompts and
+              images.
             </span>
-          ) : levels == null ? (
-            <span className="text-xs text-muted-foreground">…</span>
-          ) : levels.length === 0 ? (
+          )}
+          {levels.length === 0 ? (
             <span className="text-xs text-muted-foreground">
-              Nothing to regenerate.
+              {isPending ? '…' : 'Nothing to regenerate.'}
             </span>
           ) : (
             levels.map((level, index) => {

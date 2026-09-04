@@ -12,6 +12,7 @@
 
 import { createServerFn } from '@tanstack/react-start';
 import { sequenceAccessMiddleware } from './middleware';
+import { rendersReferenceOnly } from '@/lib/shots/use-start-frame';
 import {
   assembleSequenceSegments,
   type SequenceSegment,
@@ -42,7 +43,13 @@ export const getSequenceSegmentsFn = createServerFn({ method: 'GET' })
     const assembled = assembleSequenceSegments({
       segments,
       versions,
-      shots,
+      // Resolved per shot, not per sequence — a shot can override the
+      // sequence's start-frame mode either way, and staleness compares against
+      // what the clip actually rendered from.
+      shots: shots.map((shot) => ({
+        ...shot,
+        rendersReferenceOnly: rendersReferenceOnly(shot, sequence),
+      })),
       frames,
     });
 

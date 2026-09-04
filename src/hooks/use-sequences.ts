@@ -16,6 +16,7 @@ import { DEFAULT_ANALYSIS_MODEL } from '@/lib/ai/models.config';
 import type { SequenceMusicVariant } from '@/lib/db/schema';
 import type { VariantType } from '@/lib/db/schema/shot-variants';
 import { type CreateSequenceInput } from '@/lib/schemas/sequence.schemas';
+import { UNTITLED_SEQUENCE_TITLE } from '@/lib/sequences/untitled-sequence-title';
 import type { Sequence } from '@/types/database';
 import { useAuthSession } from '@/lib/auth/session-query';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -181,30 +182,19 @@ export function useCreateSequence() {
     CreateSequenceInput
   >({
     mutationFn: async (input) => {
+      // SPREAD, never a field list. This was a hand-copied allowlist, and a
+      // field missing from it is invisible: the composer sets it, this drops
+      // it, and the server's schema default takes over — which is how
+      // `referenceOnly` reached production as a toggle that did nothing (every
+      // sequence persisted `reference_only = 0`). `CreateSequenceInput` IS
+      // `z.infer<typeof createSequenceSchema>`, so the whole object is exactly
+      // what the server validates. Only the two defaults are applied on top.
       const sequences = await createSequenceFn({
         data: {
-          script: input.script,
-          styleId: input.styleId,
-          title: input.title || 'Untitled Sequence',
+          ...input,
+          title: input.title || UNTITLED_SEQUENCE_TITLE,
           // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
           analysisModels: input.analysisModels || [DEFAULT_ANALYSIS_MODEL],
-          teamId: input.teamId,
-          aspectRatio: input.aspectRatio,
-          imageModels: input.imageModels,
-          videoModel: input.videoModel,
-          // Forward the multi-model arrays — without these the server only ever
-          // sees the singular primary and resolveVideoModels/resolveAudioModels
-          // collapse the user's selection to one model (#545/#546).
-          videoModels: input.videoModels,
-          autoGenerateMotion: input.autoGenerateMotion,
-          autoGenerateMusic: input.autoGenerateMusic,
-          musicModel: input.musicModel,
-          audioModels: input.audioModels,
-          targetDurationSeconds: input.targetDurationSeconds,
-          suggestedTalentIds: input.suggestedTalentIds,
-          suggestedLocationIds: input.suggestedLocationIds,
-          elementUploads: input.elementUploads,
-          sourceSequenceId: input.sourceSequenceId,
         },
       });
 

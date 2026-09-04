@@ -108,4 +108,75 @@ describe('resolveMotionEndpoint', () => {
       references: 'none',
     });
   });
+
+  it('routes Omni Flash to fal reference-to-video when refs are present', () => {
+    expect(resolveMotionEndpoint('gemini_omni_flash', true)).toEqual({
+      via: 'fal',
+      endpointId: 'fal-ai/gemini-omni-1.1-flash/reference-to-video',
+      references: 'endpoint',
+      referenceConfig: MOTION_REFERENCE_ENDPOINTS.gemini_omni_flash,
+    });
+  });
+
+  it('keeps Omni Flash on fal image-to-video when there are no refs', () => {
+    expect(resolveMotionEndpoint('gemini_omni_flash', false)).toEqual({
+      via: 'fal',
+      endpointId: IMAGE_TO_VIDEO_MODELS.gemini_omni_flash.id,
+      references: 'none',
+    });
+  });
+
+  it('stamps Google-native Omni Flash as via google and marks refs as inline', () => {
+    expect(resolveMotionEndpoint('gemini_omni_flash', true, 'google')).toEqual({
+      via: 'google',
+      endpointId: 'gemini-omni-1.1-flash',
+      references: 'inline',
+    });
+  });
+
+  it('stamps Google-native Omni Flash with no refs as via google', () => {
+    expect(resolveMotionEndpoint('gemini_omni_flash', false, 'google')).toEqual(
+      {
+        via: 'google',
+        endpointId: 'gemini-omni-1.1-flash',
+        references: 'none',
+      }
+    );
+  });
+});
+
+describe('reference-only', () => {
+  it('routes Seedance to reference-to-video even with no matched refs', () => {
+    expect(resolveMotionEndpoint('seedance_v2_5', false, 'fal', true)).toEqual({
+      via: 'fal',
+      endpointId: 'bytedance/seedance-2.5/reference-to-video',
+      references: 'endpoint',
+      referenceConfig: MOTION_REFERENCE_ENDPOINTS.seedance_v2_5,
+    });
+  });
+
+  it('refuses a model with no reference-to-video route', () => {
+    expect(() =>
+      resolveMotionEndpoint('kling_v3_pro', true, 'fal', true)
+    ).toThrow(/cannot render without a start frame/);
+    expect(() => resolveMotionEndpoint('veo3_1', false, 'fal', true)).toThrow(
+      /cannot render without a start frame/
+    );
+  });
+
+  it('marks refs inline on the native vias so no still is pinned as a frame', () => {
+    expect(
+      resolveMotionEndpoint('seedance_v2_5', false, 'byteplus', true)
+    ).toEqual({
+      via: 'byteplus',
+      endpointId: 'dreamina-seedance-2-5-260628',
+      references: 'inline',
+    });
+  });
+
+  it('leaves image-to-video resolution untouched when the flag is off', () => {
+    expect(resolveMotionEndpoint('seedance_v2_5', false, 'fal', false)).toEqual(
+      resolveMotionEndpoint('seedance_v2_5', false)
+    );
+  });
 });

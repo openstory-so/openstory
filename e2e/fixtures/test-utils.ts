@@ -14,6 +14,9 @@ import { expect } from 'playwright/test';
  */
 const HYDRATION_TIMEOUT = 15_000;
 const SEQUENCE_DRAFT_KEY = 'openstory:sequence-draft:v1';
+/** Mirrors `STORAGE_KEY` in src/hooks/use-generation-settings.ts — bump both
+ *  together, or the pin lands under a key the app never reads and the recorded
+ *  pipeline silently reverts to Turbo defaults. */
 const GENERATION_SETTINGS_KEY = 'openstory:generation-settings:v5';
 
 /**
@@ -29,7 +32,13 @@ export const RECORDED_PIPELINE_SETTINGS = {
   imageModels: ['grok_imagine_image'],
   motionModel: 'seedance_v2',
   videoModels: ['seedance_v2'],
+  // Pinned, not defaulted: the tier picks each model's resolution token, and
+  // the fixtures were recorded at Seedance 720p / Grok Imagine 1k (#1449).
+  resolution: '720p',
   autoGenerateMotion: true,
+  // The fixtures were recorded on the frame-based workflow; reference-only
+  // is the product default now, so opt back in explicitly.
+  generateStartFrames: true,
   musicModel: 'elevenlabs_music',
   audioModels: ['elevenlabs_music'],
   autoGenerateMusic: true,

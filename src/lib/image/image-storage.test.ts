@@ -90,9 +90,11 @@ describe('uploadPosterToStorage', () => {
     expect(result.path).toMatch(/\.webp$/);
   });
 
-  it('throws when the provider image cannot be downloaded', async () => {
+  it('names the status, host and provider body when the download fails', async () => {
+    // Providers send no reason phrase, so `statusText` alone said `<none>`
+    // and left the failure undiagnosable (#1435).
     fetchMock.mockResolvedValue(
-      new Response(null, { status: 404, statusText: 'Not Found' })
+      new Response('NoSuchKey', { status: 404, statusText: '' })
     );
 
     await expect(
@@ -101,7 +103,9 @@ describe('uploadPosterToStorage', () => {
         teamId: 'team_1',
         sequenceId: 'seq_1',
       })
-    ).rejects.toThrow('Failed to download image');
+    ).rejects.toThrow(
+      'Failed to download image from v3.fal.media: 404 NoSuchKey'
+    );
     expect(uploadFile).not.toHaveBeenCalled();
   });
 });

@@ -31,14 +31,18 @@ export function buildElementDescription(
 export function buildElementReferenceImages(
   elements: SequenceElementMinimal[]
 ): ReferenceImageDescription[] {
-  return elements
-    .filter((el) => el.imageUrl)
-    .map((el) => ({
-      referenceImageUrl: el.imageUrl,
-      description: buildElementDescription(el),
-      role: 'element' as const,
-      token: el.token,
-    }));
+  return elements.flatMap((el) =>
+    el.imageUrl
+      ? [
+          {
+            referenceImageUrl: el.imageUrl,
+            description: buildElementDescription(el),
+            role: 'element' as const,
+            token: el.token,
+          },
+        ]
+      : []
+  );
 }
 
 /**

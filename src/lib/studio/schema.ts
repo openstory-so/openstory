@@ -17,6 +17,10 @@ import {
   type TextToImageModel,
 } from '@/lib/ai/models';
 import { aspectRatioSchema } from '@/lib/constants/aspect-ratios';
+import {
+  DEFAULT_RESOLUTION,
+  resolutionSchema,
+} from '@/lib/constants/resolutions';
 import { mediaUrlSchema } from '@/lib/schemas/media-url.schemas';
 import {
   STUDIO_VIDEO_MODES,
@@ -76,6 +80,7 @@ export const studioCreateInputSchema = z.discriminatedUnion('activity', [
       prompt: promptSchema,
       imageModel: imageModelKeySchema,
       aspectRatio: aspectRatioSchema,
+      resolution: resolutionSchema.default(DEFAULT_RESOLUTION),
       count: countSchema.default(1),
       /** Routes to the model's edit endpoint; bound as `@Image1`…`@ImageN`. */
       referenceImages: z.array(mediaUrlSchema).max(9).default([]),
@@ -98,6 +103,7 @@ export const studioCreateInputSchema = z.discriminatedUnion('activity', [
       prompt: promptSchema,
       videoModel: videoModelKeySchema,
       aspectRatio: aspectRatioSchema,
+      resolution: resolutionSchema.default(DEFAULT_RESOLUTION),
       duration: z.number().positive(),
       count: countSchema.default(1),
       generateAudio: z.boolean().optional(),

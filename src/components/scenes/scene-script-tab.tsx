@@ -9,6 +9,8 @@
 import { Button } from '@/components/ui/button';
 import type { MentionItem } from '@/components/scenes/prompt-mention/mention-items';
 import { MarkdownEditor } from '@/components/text-editor/markdown-editor';
+import { VoiceInputButton } from '@/components/voice/voice-input-button';
+import { useEditorDictation } from '@/hooks/use-dictation';
 import { CopyIcon, Loader2 } from 'lucide-react';
 
 type SceneScriptTabProps = {
@@ -37,6 +39,8 @@ export const SceneScriptTab: React.FC<SceneScriptTabProps> = ({
   onCopy,
   mentionItems,
 }) => {
+  const { ref: editorRef, voice } = useEditorDictation();
+
   const savedScript = scriptText ?? '';
   const currentScript = editedScript ?? savedScript;
   const isDirty = editedScript !== undefined && editedScript !== savedScript;
@@ -60,13 +64,21 @@ export const SceneScriptTab: React.FC<SceneScriptTabProps> = ({
           <label htmlFor="script-extract-input" className="text-sm font-medium">
             Scene script
           </label>
-          <span className="text-xs text-muted-foreground">
-            {currentScript.length} characters
-          </span>
+          <div className="flex items-center gap-1">
+            <span className="text-xs text-muted-foreground">
+              {currentScript.length} characters
+            </span>
+            <VoiceInputButton
+              label="scene script"
+              disabled={isSaving}
+              {...voice}
+            />
+          </div>
         </div>
         <div className="relative">
           <MarkdownEditor
             id="script-extract-input"
+            ref={editorRef}
             value={currentScript}
             onValueChange={(value) => onEditedScriptChange(value)}
             placeholder="Enter the script text for this scene… (type @ to insert elements, cast, locations)"

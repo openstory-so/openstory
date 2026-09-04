@@ -9,6 +9,7 @@ import {
   estimateAudioCost,
   estimateCharacterSheetCount,
   estimateImageCost,
+  estimateReferenceSheetCost,
   estimateLLMCost,
   estimateLocationSheetCount,
   estimateStoryboardCost,
@@ -104,6 +105,66 @@ describe('estimateStoryboardCost', () => {
     const llm = Number(estimateLLMCost(3));
     expect(oneScene).toBe(llm + sheetsScaled + oneShot);
     expect(oneScene).toBeLessThan(llm + sheetsIfAlwaysThree + oneShot);
+  });
+
+  it('stopAt script is analysis-only', () => {
+    expect(estimateStoryboardCost({ ...base, stopAt: 'script' })).toEqual(
+      estimateLLMCost(3)
+    );
+  });
+
+  it('stopAt script is LLM-only even with no fal pricing', () => {
+    expect(
+      estimateStoryboardCost({
+        ...base,
+        stopAt: 'script',
+        pricing: {},
+      })
+    ).toEqual(estimateLLMCost(3));
+  });
+
+  it('stopAt music costs more than stopAt images', () => {
+    const images = Number(
+      estimateStoryboardCost({
+        ...base,
+        stopAt: 'images',
+        videoModels: [VIDEO_A],
+        videoDurationSeconds: DURATION,
+        audioModels: [AUDIO_A],
+        audioDurationSeconds: SCENE_COUNT * DURATION,
+      })
+    );
+    const music = Number(
+      estimateStoryboardCost({
+        ...base,
+        stopAt: 'music',
+        videoModels: [VIDEO_A],
+        videoDurationSeconds: DURATION,
+        audioModels: [AUDIO_A],
+        audioDurationSeconds: SCENE_COUNT * DURATION,
+      })
+    );
+    expect(music).toBeGreaterThan(images);
+  });
+
+  it('startFrom images excludes analysis and sheets', () => {
+    const stills = Number(
+      estimateStoryboardCost({ ...base, stopAt: 'images' })
+    );
+    const continueImages = Number(
+      estimateStoryboardCost({
+        ...base,
+        startFrom: 'images',
+        stopAt: 'images',
+      })
+    );
+    const shotImages = Number(
+      estimateImageCost(IMAGE_MODEL, base.aspectRatio, SCENE_COUNT, {
+        pricing: FAL_PRICING,
+      })
+    );
+    expect(continueImages).toBe(shotImages);
+    expect(stills).toBeGreaterThan(continueImages);
   });
 
   it('adds exactly one extra per-shot image pass per image model', () => {
@@ -232,6 +293,66 @@ describe('estimateStoryboardCost', () => {
         })
       )
     ).toBe(noMusic);
+  });
+
+  it('drops the shot-stills line in reference-only', () => {
+    const opts = {
+      ...base,
+      autoGenerateMotion: true,
+      videoModels: [VIDEO_A],
+    };
+    const withStills = Number(estimateStoryboardRenderCost(opts));
+    const referenceOnly = Number(
+      estimateStoryboardRenderCost({ ...opts, referenceOnly: true })
+    );
+    const stills = Number(
+      estimateImageCost(IMAGE_MODEL, base.aspectRatio, SCENE_COUNT, {
+        pricing: FAL_PRICING,
+      })
+    );
+
+    expect(stills).toBeGreaterThan(0);
+    expect(referenceOnly).toBe(withStills - stills);
+  });
+
+  it('prices reference-only motion at the reference-to-video rate', () => {
+    // Unequal i2v vs r2v rates so a route regression cannot hide behind a
+    // model that happens to price both the same (VIDEO_A does).
+    const pricing = {
+      ...FAL_PRICING,
+      'bytedance/seedance-2.5/image-to-video': {
+        unitPrice: micros(10_000),
+        unit: 'units',
+      },
+      'bytedance/seedance-2.5/reference-to-video': {
+        unitPrice: micros(20_000),
+        unit: 'units',
+      },
+    };
+    const model: ImageToVideoModel = 'seedance_v2_5';
+    const perShotAtR2v = Number(
+      estimateVideoCost(model, DURATION, {
+        pricing,
+        hasReferenceImages: true,
+        referenceOnly: true,
+      })
+    );
+    const perShotAtI2v = Number(
+      estimateVideoCost(model, DURATION, { pricing, hasReferenceImages: false })
+    );
+    expect(perShotAtR2v).not.toBe(perShotAtI2v);
+
+    const referenceOnly = Number(
+      estimateStoryboardRenderCost({
+        ...base,
+        pricing,
+        autoGenerateMotion: true,
+        videoModels: [model],
+        referenceOnly: true,
+      })
+    );
+    // No stills line at all: the whole render is SCENE_COUNT clips at r2v.
+    expect(referenceOnly).toBe(perShotAtR2v * SCENE_COUNT);
   });
 
   it('render cost is stills + motion + music, excluding analysis sheets and LLM', () => {
@@ -445,6 +566,71 @@ describe('turbo default image (nano_banana_2_lite)', () => {
   });
 });
 
+describe('the resolution tier sizes the estimate (#1449)', () => {
+  // The tier is one click for the user and a multiple on the bill. Left out of
+  // the estimate, a 4K run is quoted — and credit-gated — at the flat stand-in
+  // size, so preflight reserves a fraction of what the render actually spends.
+  // qwen_image is megapixel-billed AND documents a pixel range, so the tier
+  // genuinely moves both the request and the charge.
+  const MEGAPIXEL_PRICED = {
+    ...FAL_PRICING,
+    'fal-ai/qwen-image-2/pro/text-to-image': {
+      unitPrice: micros(70_000),
+      unit: 'megapixels',
+    },
+  };
+
+  it('prices a megapixel-billed image from the tier, not a flat size', () => {
+    const at720 = estimateImageCost('qwen_image', '16:9', 1, {
+      pricing: MEGAPIXEL_PRICED,
+      resolution: '720p',
+    });
+    const at1080 = estimateImageCost('qwen_image', '16:9', 1, {
+      pricing: MEGAPIXEL_PRICED,
+      resolution: '1080p',
+    });
+    expect(at720).not.toBeNull();
+    // 1920×1080 against 1280×720 — 2.25× the pixels, 2.25× the bill.
+    expect(Number(at1080)).toBeCloseTo(Number(at720) * 2.25, 0);
+  });
+
+  it("leaves a model the tier can't resize quoted at its own size", () => {
+    // FLUX.2 Max publishes no range, so the request keeps its preset and the
+    // estimate must not pretend a 4K ask buys 4K pixels.
+    const at720 = estimateImageCost('flux_2_max', '16:9', 1, {
+      pricing: FAL_PRICING,
+      resolution: '720p',
+    });
+    const at4k = estimateImageCost('flux_2_max', '16:9', 1, {
+      pricing: FAL_PRICING,
+      resolution: '4k',
+    });
+    expect(at720).not.toBeNull();
+    expect(at4k).toEqual(at720);
+  });
+
+  it('prices a token-billed clip from the tier', () => {
+    const tokenPriced = {
+      ...FAL_PRICING,
+      'fal-ai/veo3.1/image-to-video': {
+        unitPrice: micros(1_000),
+        unit: '1000 tokens',
+      },
+    };
+    const at720 = estimateVideoCost('veo3_1', DURATION, {
+      pricing: tokenPriced,
+      resolution: '720p',
+    });
+    const at4k = estimateVideoCost('veo3_1', DURATION, {
+      pricing: tokenPriced,
+      resolution: '4k',
+    });
+    expect(at720).not.toBeNull();
+    // 3840×2160 against 1280×720 — nine times the pixels, nine times the bill.
+    expect(Number(at4k)).toBeCloseTo(Number(at720) * 9, 0);
+  });
+});
+
 describe('gateEstimate', () => {
   const UNPRICED: TextToImageModel = 'grok_imagine_image';
 
@@ -490,5 +676,59 @@ describe('gateEstimate', () => {
     const llm = Number(estimateLLMCost(3));
 
     expect(total).toBe(flooredImages + llm);
+  });
+});
+
+describe('estimateReferenceSheetCost', () => {
+  const sheets = (count: number) =>
+    Number(
+      estimateImageCost(IMAGE_MODEL, '16:9', count, { pricing: FAL_PRICING })
+    );
+
+  it('prices character, location and element sheets as one image each', () => {
+    const cost = Number(
+      estimateReferenceSheetCost({
+        imageModel: IMAGE_MODEL,
+        characterSheets: 2,
+        locationSheets: 3,
+        elementSheets: 1,
+        pricing: FAL_PRICING,
+      })
+    );
+    expect(cost).toBe(sheets(2) + sheets(3) + sheets(1));
+  });
+
+  it('charges nothing for a count of zero', () => {
+    // The in-run gate reaches this whenever every cast character reuses a
+    // matched talent sheet — a storage copy, not a generation. A floored
+    // estimate here would over-reserve and could refuse an affordable run.
+    expect(
+      Number(
+        estimateReferenceSheetCost({
+          imageModel: IMAGE_MODEL,
+          characterSheets: 0,
+          locationSheets: 0,
+          elementSheets: 0,
+          pricing: FAL_PRICING,
+        })
+      )
+    ).toBe(0);
+  });
+
+  it('treats element sheets as optional', () => {
+    const withoutElements = estimateReferenceSheetCost({
+      imageModel: IMAGE_MODEL,
+      characterSheets: 1,
+      locationSheets: 1,
+      pricing: FAL_PRICING,
+    });
+    const withZeroElements = estimateReferenceSheetCost({
+      imageModel: IMAGE_MODEL,
+      characterSheets: 1,
+      locationSheets: 1,
+      elementSheets: 0,
+      pricing: FAL_PRICING,
+    });
+    expect(Number(withoutElements)).toBe(Number(withZeroElements));
   });
 });

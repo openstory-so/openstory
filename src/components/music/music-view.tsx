@@ -9,9 +9,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
+import { VoiceInputButton } from '@/components/voice/voice-input-button';
 import { useFalPricing } from '@/hooks/use-fal-pricing';
 import { getAudioModelDurationLimits, type AudioModel } from '@/lib/ai/models';
 import { estimateAudioCost } from '@/lib/billing/cost-estimation';
+import { useTextDictation } from '@/hooks/use-dictation';
 import type { Sequence } from '@/types/database';
 import {
   AlertCircle,
@@ -129,6 +131,8 @@ type FormFieldProps = {
   label: string;
   htmlFor?: string;
   muted?: boolean;
+  /** Trailing control on the label row (e.g. the dictation mic). */
+  action?: React.ReactNode;
   children: React.ReactNode;
 };
 
@@ -136,15 +140,19 @@ const FormField: React.FC<FormFieldProps> = ({
   label,
   htmlFor,
   muted,
+  action,
   children,
 }) => (
   <div className="flex flex-col gap-2">
-    <Label
-      htmlFor={htmlFor}
-      className={muted ? 'text-xs text-muted-foreground' : undefined}
-    >
-      {label}
-    </Label>
+    <div className="flex items-center justify-between gap-2">
+      <Label
+        htmlFor={htmlFor}
+        className={muted ? 'text-xs text-muted-foreground' : undefined}
+      >
+        {label}
+      </Label>
+      {action}
+    </div>
     {children}
   </div>
 );
@@ -183,6 +191,7 @@ export const MusicView: React.FC<MusicViewProps> = ({
     sequence;
 
   const [editPrompt, setEditPrompt] = useState(musicPrompt ?? '');
+  const promptVoice = useTextDictation(editPrompt, setEditPrompt);
   const [editDuration, setEditDuration] = useState<number | undefined>(
     () => videoDuration
   );
@@ -319,7 +328,11 @@ export const MusicView: React.FC<MusicViewProps> = ({
             user-edit prompt version WITHOUT regenerating — the Regenerate
             button below stays the explicit re-render path. */}
         {onSaveMusicPrompt ? (
-          <FormField label="Prompt" htmlFor="music-prompt-completed">
+          <FormField
+            label="Prompt"
+            htmlFor="music-prompt-completed"
+            action={<VoiceInputButton label="music prompt" {...promptVoice} />}
+          >
             <Textarea
               id="music-prompt-completed"
               value={editPrompt}
@@ -435,7 +448,17 @@ export const MusicView: React.FC<MusicViewProps> = ({
       message={promptPending ? 'Preparing music…' : 'Music prompt ready'}
     >
       {stalenessBanner}
-      <FormField label="Prompt" htmlFor="music-prompt">
+      <FormField
+        label="Prompt"
+        htmlFor="music-prompt"
+        action={
+          <VoiceInputButton
+            label="music prompt"
+            disabled={promptPending}
+            {...promptVoice}
+          />
+        }
+      >
         <Textarea
           id="music-prompt"
           value={editPrompt}

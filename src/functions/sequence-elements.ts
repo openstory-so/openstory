@@ -214,7 +214,7 @@ export const finalizeElementUploadFn = createServerFn({ method: 'POST' })
       await triggerElementVision({
         elementId: element.id,
         sequenceId: element.sequenceId,
-        imageUrl: element.imageUrl,
+        imageUrl: data.publicUrl,
         filename: element.uploadedFilename,
         token: element.token,
         teamId: context.teamId,
@@ -417,7 +417,7 @@ export const replaceSequenceElementFn = createServerFn({ method: 'POST' })
       await triggerElementVision({
         elementId: updated.id,
         sequenceId: context.sequence.id,
-        imageUrl: updated.imageUrl,
+        imageUrl: data.publicUrl,
         filename: updated.uploadedFilename,
         token: updated.token,
         teamId: context.teamId,

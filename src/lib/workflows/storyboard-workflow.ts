@@ -37,6 +37,7 @@ import {
   sequenceScenesUrl,
 } from '@/lib/emails/notify-sequence-ready';
 import { getGenerationChannel } from '@/lib/realtime';
+import { includesStage } from '@/lib/generation/pipeline';
 import { validateSequenceAuth } from '@/lib/workflow/auth';
 import { spawnAndAwaitChild } from '@/lib/workflow/await-child';
 import { OpenStoryWorkflowEntrypoint } from '@/lib/workflow/base-workflow';
@@ -73,6 +74,7 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
       title,
       script,
       aspectRatio,
+      resolution,
       analysisModelId,
       imageModel,
       videoModel,
@@ -85,21 +87,36 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
         teamId: input.teamId,
         userId: input.userId,
         autoGenerateMotion: input.autoGenerateMotion,
+        stopAt: input.stopAt,
+        resume: input.resume,
       });
       validateSequenceAuth(input);
 
       // Throws if the sequence was deleted (or moved teams) since the trigger.
       await scopedDb.liveRead.sequences.getForUser({ sequenceId });
 
-      await scopedDb.shots.deleteBySequence(sequenceId);
+      if (!input.resume) {
+        await scopedDb.shots.deleteBySequence(sequenceId);
+      }
 
       await seq.updateStatus('processing');
+      await scopedDb.sequences.update({
+        id: sequenceId,
+        generationStopAt: input.stopAt,
+        // A fresh run just deleted the shots the old checkpoint maps to; a
+        // stale stage would offer a continue into them (#1408).
+        ...(input.resume
+          ? {}
+          : { pipelineStage: null, generationCheckpoint: null }),
+      });
     });
 
     // Pending automatic style (#1213): the poster renders from the script alone.
+    // Continue-from-DAG skips the poster — the sequence already has one.
     const styleConfig = input.pendingAutoStyleId
       ? undefined
       : input.styleConfig;
+    const skipPoster = Boolean(input.resume);
 
     // Generate a poster image from the script for the video player empty
     // state. Non-critical — failures are logged and swallowed so a poster
@@ -107,24 +124,26 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
     // try/catch swallow inside the step.
     let posterUrl: string | null = null;
 
-    const posterResult = await step.do('generate-poster', async () => {
-      try {
-        const prompt = buildPosterPrompt(title, script, styleConfig);
-        return await generateImageWithProvider(
-          {
-            model: PREVIEW_IMAGE_MODEL,
-            prompt,
-            imageSize: aspectRatioToImageSize(aspectRatio),
-          },
-          { scopedDb: scopedDb.credentials }
-        );
-      } catch (error) {
-        logger.warn('[StoryboardWorkflow:cf] Poster generation failed:', {
-          err: error,
+    const posterResult = skipPoster
+      ? null
+      : await step.do('generate-poster', async () => {
+          try {
+            const prompt = buildPosterPrompt(title, script, styleConfig);
+            return await generateImageWithProvider(
+              {
+                model: PREVIEW_IMAGE_MODEL,
+                prompt,
+                imageSize: aspectRatioToImageSize(aspectRatio),
+              },
+              { scopedDb: scopedDb.credentials }
+            );
+          } catch (error) {
+            logger.warn('[StoryboardWorkflow:cf] Poster generation failed:', {
+              err: error,
+            });
+            return null;
+          }
         });
-        return null;
-      }
-    });
 
     if (posterResult) {
       const generatedPosterUrl = posterResult.imageUrls[0];
@@ -203,6 +222,7 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
         reservationId: input.reservationId,
         script,
         aspectRatio,
+        resolution,
         styleConfig: input.styleConfig,
         pendingAutoStyleId: input.pendingAutoStyleId,
         analysisModelId,
@@ -214,12 +234,16 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
         videoModels: input.videoModels ?? [videoModel],
         autoGenerateMotion: input.autoGenerateMotion ?? false,
         autoGenerateMusic: input.autoGenerateMusic ?? false,
+        stopAt: input.stopAt,
+        startFrom: input.startFrom,
+        checkpoint: input.checkpoint,
         musicModel: input.musicModel,
         audioModels: input.audioModels,
         suggestedTalentIds: input.suggestedTalentIds,
         suggestedLocationIds: input.suggestedLocationIds,
         suggestedTalent: input.suggestedTalent,
         suggestedLocations: input.suggestedLocations,
+        referenceOnly: input.referenceOnly ?? false,
       },
       spawnStepName: 'spawn-analyze-script',
       awaitStepName: 'await-analyze-script',
@@ -251,13 +275,17 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
       });
     });
 
+    // "Your video is ready" is a one-shot claim per sequence: sending it for
+    // a run that stopped before motion would spend it on a board with no video
+    // and silence the real completion (#1408).
+    if (!includesStage(input.stopAt, 'motion')) return;
+
     // After emit-complete: a send retry must not strand the player on processing.
     await step.do('email-ready', async () => {
       await notifySequenceReady({
         scopedDb,
         sequenceId,
         ownerEmail: input.ownerEmail,
-        title,
         sequenceUrl: input.sequenceUrl || sequenceScenesUrl(sequenceId),
         posterUrl,
         notify: input.notify,

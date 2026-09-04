@@ -258,3 +258,78 @@ describe('buildReferenceVideoPrompt (per-model config knobs)', () => {
     ]);
   });
 });
+
+describe('reference-only (no start frame)', () => {
+  it('binds the first reference to tag 1 and omits the starting-frame line', () => {
+    const result = buildReferenceVideoPrompt(
+      seedanceV25Config,
+      'SCARLETT lifts the CORAL_LIPSTICK',
+      null,
+      [
+        ref('https://example.com/a.png', 'Scarlett - athletic', 'SCARLETT'),
+        {
+          referenceImageUrl: 'https://example.com/b.png',
+          description: 'CORAL_LIPSTICK - a coral tube',
+          role: 'element',
+          token: 'CORAL_LIPSTICK',
+        },
+      ]
+    );
+
+    expect(result.prompt).not.toContain('starting frame');
+    expect(result.prompt).toBe('@Image1 lifts the @Image2');
+    expect(result.imageUrls).toEqual([
+      'https://example.com/a.png',
+      'https://example.com/b.png',
+    ]);
+  });
+
+  it('spends the whole image budget on references', () => {
+    const refs = Array.from(
+      { length: seedanceV25Config.maxImages + 1 },
+      (_, i) => ref(`https://example.com/${i}.png`, `Ref ${i}`, `TOKEN_${i}`)
+    );
+
+    const withStill = buildReferenceVideoPrompt(
+      seedanceV25Config,
+      'a shot',
+      STILL,
+      refs
+    );
+    const withoutStill = buildReferenceVideoPrompt(
+      seedanceV25Config,
+      'a shot',
+      null,
+      refs
+    );
+
+    // Both fill every slot the endpoint allows; the still costs one of them.
+    expect(withStill.imageUrls).toHaveLength(seedanceV25Config.maxImages);
+    expect(withoutStill.imageUrls).toHaveLength(seedanceV25Config.maxImages);
+    expect(withoutStill.imageUrls).not.toContain(STILL);
+  });
+
+  it('numbers legend lines from 1 for unmentioned references', () => {
+    const result = buildReferenceVideoPrompt(
+      seedanceV25Config,
+      'A slow dolly across an empty room',
+      null,
+      [ref('https://example.com/a.png', 'Scarlett - athletic', 'SCARLETT')]
+    );
+
+    expect(result.prompt).toContain('@Image1: Scarlett - athletic');
+    expect(result.prompt).not.toContain('@Image2');
+  });
+
+  it('degenerates to the bare prompt when nothing matched', () => {
+    const result = buildReferenceVideoPrompt(
+      seedanceV25Config,
+      'A slow dolly across an empty room',
+      null,
+      []
+    );
+
+    expect(result.prompt).toBe('A slow dolly across an empty room');
+    expect(result.imageUrls).toEqual([]);
+  });
+});

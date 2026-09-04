@@ -17,7 +17,8 @@ import {
 } from '@/lib/billing/cost-estimation';
 import { getEffectiveFalPricing } from '@/lib/ai/fal-pricing-live';
 import { sumShotDurationsSeconds } from '@/lib/sequences/shot-durations';
-import { multiplyMicros } from '@/lib/billing/money';
+import { addMicros, ZERO_MICROS } from '@/lib/billing/money';
+import { buildMotionReferenceImages } from '@/lib/motion/build-motion-references';
 import {
   releaseReservationOnThrow,
   reserveRunCredits,
@@ -45,6 +46,14 @@ import {
 import { triggerWorkflow } from '@/lib/workflow/client';
 import { buildWorkflowLabel } from '@/lib/workflow/labels';
 import { triggerStoryboard } from '@/lib/workflow/launchers';
+import { ValidationError } from '@/lib/errors';
+import {
+  continueStageSchema,
+  flagsFromStopAt,
+  generationStageSchema,
+  nextStageAfter,
+  stageIndex,
+} from '@/lib/generation/pipeline';
 import type {
   BatchMotionMusicWorkflowInput,
   MusicWorkflowInput,
@@ -58,6 +67,13 @@ import { bumpStylePopularity } from '@/lib/style/bump-style-popularity';
 import { simpleHash } from '@/lib/utils/hash';
 import { getLogger } from '@/lib/observability/logger';
 import { createSequences } from '@/lib/sequences/create-sequences';
+import { canRenderReferenceOnly } from '@/lib/motion/motion-generation';
+import { toWorkflowScopedDb } from '@/lib/db/scoped-workflow';
+import {
+  rendersReferenceOnly,
+  type StartFrameSequence,
+} from '@/lib/shots/use-start-frame';
+import { REFERENCE_ONLY_MODEL_ERROR } from '@/lib/schemas/sequence.schemas';
 
 const logger = getLogger(['openstory', 'serverFn', 'sequences']);
 
@@ -116,6 +132,111 @@ export const createSequenceFn = createServerFn({ method: 'POST' })
       teamId: context.teamId,
     });
     return sequences;
+  });
+
+/**
+ * Continue a stopped pipeline from `startFrom` through `stopAt` (#1408).
+ * Does not wipe existing shots — storyboard runs in resume mode.
+ *
+ * Only References and Images continue here: Script is a fresh run, and
+ * motion/music have their own batch footers. Everything is checked before a
+ * credit is reserved or the mutex claimed — the workflow would otherwise
+ * reject the same input minutes later, after the UI flipped to processing.
+ */
+export const continueGenerationFn = createServerFn({ method: 'POST' })
+  .middleware([sequenceAccessMiddleware])
+  .validator(
+    zodValidator(
+      z
+        .object({
+          sequenceId: ulidSchema,
+          startFrom: continueStageSchema,
+          stopAt: generationStageSchema,
+        })
+        .refine((d) => stageIndex(d.startFrom) <= stageIndex(d.stopAt), {
+          path: ['stopAt'],
+          message: 'stopAt must not be earlier than startFrom',
+        })
+    )
+  )
+  .handler(async ({ data, context }) => {
+    const { sequence } = context;
+    const checkpoint = sequence.generationCheckpoint;
+    if (!checkpoint) {
+      throw new ValidationError(
+        'Nothing to continue from — generate the sequence first'
+      );
+    }
+    // A checkpoint carries everything up to its stage, so re-running an
+    // earlier stage is fine; starting past it has nothing to hydrate from.
+    const reachable = nextStageAfter(checkpoint.completedStage);
+    if (!reachable || stageIndex(data.startFrom) > stageIndex(reachable)) {
+      throw new ValidationError(
+        `The last run only reached ${checkpoint.completedStage}; ${data.startFrom} cannot start from there`
+      );
+    }
+    const { autoGenerateMotion, autoGenerateMusic } = flagsFromStopAt(
+      data.stopAt
+    );
+
+    const reservationId = await reserveRunCredits(
+      context.scopedDb,
+      estimateStoryboardPreflightCost({
+        script: sequence.script ?? '',
+        imageModel: safeTextToImageModel(
+          sequence.imageModel,
+          DEFAULT_IMAGE_MODEL
+        ),
+        aspectRatio: sequence.aspectRatio,
+        resolution: sequence.resolution,
+        autoGenerateMotion,
+        stopAt: data.stopAt,
+        startFrom: data.startFrom,
+        referenceOnly: !sequence.generateStartFrames,
+        videoModels: [
+          safeImageToVideoModel(sequence.videoModel, DEFAULT_VIDEO_MODEL),
+        ],
+        autoGenerateMusic,
+        audioModels: [safeAudioModel(sequence.musicModel, DEFAULT_MUSIC_MODEL)],
+        pricing: await getEffectiveFalPricing(),
+      }),
+      {
+        providers: ['fal', 'openrouter'],
+        errorMessage: 'Insufficient credits to continue generation',
+        sequenceId: data.sequenceId,
+      }
+    );
+
+    await context.scopedDb.sequences.update({
+      id: data.sequenceId,
+      generationStopAt: data.stopAt,
+      autoGenerateMotion,
+      autoGenerateMusic,
+    });
+
+    return releaseReservationOnThrow(context.scopedDb, reservationId, () =>
+      triggerStoryboard(context.scopedDb, {
+        userId: context.user.id,
+        teamId: context.teamId,
+        sequenceId: data.sequenceId,
+        reservationId,
+        resume: true,
+        startFrom: data.startFrom,
+        stopAt: data.stopAt,
+        checkpoint,
+        autoGenerateMotion,
+        autoGenerateMusic,
+        imageModels: [
+          safeTextToImageModel(sequence.imageModel, DEFAULT_IMAGE_MODEL),
+        ],
+        videoModels: [
+          safeImageToVideoModel(sequence.videoModel, DEFAULT_VIDEO_MODEL),
+        ],
+        musicModel: sequence.musicModel
+          ? safeAudioModel(sequence.musicModel, DEFAULT_MUSIC_MODEL)
+          : undefined,
+      })
+    );
   });
 
 /**
@@ -191,7 +312,9 @@ export const updateSequenceFn = createServerFn({ method: 'POST' })
             DEFAULT_IMAGE_MODEL
           ),
           aspectRatio: sequence.aspectRatio,
+          resolution: sequence.resolution,
           autoGenerateMotion: sequence.autoGenerateMotion,
+          stopAt: sequence.generationStopAt ?? undefined,
           videoModels: [
             safeImageToVideoModel(sequence.videoModel, DEFAULT_VIDEO_MODEL),
           ],
@@ -199,6 +322,7 @@ export const updateSequenceFn = createServerFn({ method: 'POST' })
           audioModels: [
             safeAudioModel(sequence.musicModel, DEFAULT_MUSIC_MODEL),
           ],
+          referenceOnly: !sequence.generateStartFrames,
           pricing: await getEffectiveFalPricing(),
         }),
         {
@@ -227,6 +351,7 @@ export const updateSequenceFn = createServerFn({ method: 'POST' })
           },
           autoGenerateMotion: sequence.autoGenerateMotion,
           autoGenerateMusic: sequence.autoGenerateMusic,
+          stopAt: sequence.generationStopAt ?? undefined,
         })
       );
     }
@@ -332,12 +457,14 @@ export const retryStoryboardFn = createServerFn({ method: 'POST' })
           DEFAULT_IMAGE_MODEL
         ),
         aspectRatio: sequence.aspectRatio,
+        resolution: sequence.resolution,
         autoGenerateMotion: sequence.autoGenerateMotion,
         videoModels: [
           safeImageToVideoModel(sequence.videoModel, DEFAULT_VIDEO_MODEL),
         ],
         autoGenerateMusic: sequence.autoGenerateMusic,
         audioModels: [safeAudioModel(sequence.musicModel, DEFAULT_MUSIC_MODEL)],
+        referenceOnly: !sequence.generateStartFrames,
         pricing: await getEffectiveFalPricing(),
       }),
       {
@@ -361,6 +488,7 @@ export const retryStoryboardFn = createServerFn({ method: 'POST' })
       },
       autoGenerateMotion: sequence.autoGenerateMotion,
       autoGenerateMusic: sequence.autoGenerateMusic,
+      stopAt: sequence.generationStopAt ?? undefined,
     };
 
     // Owns the generation mutex, the 'processing' status write, and the
@@ -528,15 +656,21 @@ export function assertModelNotAlreadyAdded(
 }
 
 /**
- * Shots eligible for a video add-model run (#547): only those with a completed
- * primary image to animate. A shot with no usable image is skipped — there is
- * nothing to feed image-to-video.
+ * Shots eligible for a video add-model run (#547): those with a completed
+ * primary image to animate, PLUS the ones that render reference-only — those
+ * animate from the sheets and never have a still, so requiring one excluded
+ * every shot of a reference-only sequence and the add failed with "No shots
+ * have a completed image to animate yet". Resolved per shot, because the
+ * start-frame switch is.
  */
 export function selectEligibleVideoShots(
-  shots: readonly ShotView[]
+  shots: readonly ShotView[],
+  sequence: StartFrameSequence
 ): ShotView[] {
   return shots.filter(
-    (f) => f.frame.imageStatus === 'completed' && Boolean(f.image?.url)
+    (f) =>
+      rendersReferenceOnly(f, sequence) ||
+      (f.frame.imageStatus === 'completed' && Boolean(f.image?.url))
   );
 }
 
@@ -744,21 +878,55 @@ export const addModelToSequenceFn = createServerFn({ method: 'POST' })
             ]
           : [];
       });
-      const eligible = selectEligibleVideoShots(shotViews);
+      const eligible = selectEligibleVideoShots(shotViews, sequence);
       if (eligible.length === 0) {
         throw new Error('No shots have a completed image to animate yet');
       }
+      // The added model runs on every eligible shot, so one reference-only
+      // shot among them decides what can be added at all — the same question
+      // the menu filters by, asked again here against the team's real keys.
+      const shotIsReferenceOnly = (shot: ShotView) =>
+        rendersReferenceOnly(shot, sequence);
+      const anyReferenceOnly = eligible.some(shotIsReferenceOnly);
+      if (
+        anyReferenceOnly &&
+        !(await canRenderReferenceOnly(
+          model,
+          toWorkflowScopedDb(scopedDb).credentials
+        ))
+      ) {
+        throw new Error(REFERENCE_ONLY_MODEL_ERROR);
+      }
 
+      // Cast / element sheets bind per shot on the motion path (#873); with no
+      // still the location sheet is the set, so it is loaded only when a shot
+      // renders reference-only — the same shape as the batch path.
+      const [characters, elements, locations] = await Promise.all([
+        scopedDb.characters.listWithSheets(sequence.id),
+        scopedDb.sequenceElements.list(sequence.id),
+        anyReferenceOnly
+          ? scopedDb.sequenceLocations.listWithReferences(sequence.id)
+          : Promise.resolve([]),
+      ]);
+
+      const pricing = await getEffectiveFalPricing();
       const reservationId = await reserveRunCredits(
         scopedDb,
-        multiplyMicros(
-          gateEstimate(
-            estimateVideoCost(model, 5, {
-              pricing: await getEffectiveFalPricing(),
-            }),
-            { model, operation: 'add-video-model' }
-          ),
-          eligible.length
+        // Per shot: a reference-only shot prices the reference-to-video route.
+        eligible.reduce(
+          (sum, shot) =>
+            addMicros(
+              sum,
+              gateEstimate(
+                estimateVideoCost(model, 5, {
+                  pricing,
+                  resolution: sequence.resolution,
+                  referenceOnly: shotIsReferenceOnly(shot),
+                }),
+                { model, operation: 'add-video-model' }
+              )
+            ),
+          ZERO_MICROS
         ),
         {
           errorMessage: 'Insufficient credits to add this video model',
@@ -806,9 +974,26 @@ export const addModelToSequenceFn = createServerFn({ method: 'POST' })
                 const motionPrompt = selectedMotion
                   ? motionPromptFromVersion(selectedMotion)
                   : undefined;
+                const referenceOnly = shotIsReferenceOnly(f);
                 return {
                   shotId: f.id,
-                  imageUrl: f.image?.url ?? '',
+                  sceneId: f.sceneId,
+                  // Reference-only carries no still; every other eligible shot
+                  // has one. Same encoding as the batch path in
+                  // `generateBatchMotionFn`: a null `frameVersionId` means the
+                  // clip rendered from references.
+                  imageUrl: referenceOnly ? undefined : (f.image?.url ?? ''),
+                  referenceOnly,
+                  frameVersionId: referenceOnly ? null : (f.image?.id ?? null),
+                  motionPromptVersionId: selectedMotion?.id ?? null,
+                  referenceImages: buildMotionReferenceImages({
+                    scene: sceneOf(f),
+                    characters,
+                    elements,
+                    motionPrompt: selectedMotion?.text ?? null,
+                    includeLocations: referenceOnly,
+                    locations,
+                  }),
                   prompt: resolveMotionPrompt(
                     {
                       motionPrompt: motionPrompt ?? null,
@@ -823,6 +1008,7 @@ export const addModelToSequenceFn = createServerFn({ method: 'POST' })
                   characterTags: sceneOf(f)?.continuity?.characterTags,
                   duration: f.durationMs ? f.durationMs / 1000 : 3,
                   aspectRatio: sequence.aspectRatio,
+                  resolution: sequence.resolution,
                 };
               }),
             };
@@ -900,6 +1086,7 @@ export const addModelToSequenceFn = createServerFn({ method: 'POST' })
         teamId: sequence.teamId,
         sequenceId: sequence.id,
         aspectRatio: sequence.aspectRatio,
+        resolution: sequence.resolution,
         characters,
         locations,
         elements,
@@ -925,6 +1112,7 @@ export const addModelToSequenceFn = createServerFn({ method: 'POST' })
     const perShotCost = gateEstimate(
       estimateImageCost(model, sequence.aspectRatio, 1, {
         pricing: await getEffectiveFalPricing(),
+        resolution: sequence.resolution,
       }),
       { model, operation: 'add-image-model' }
     );

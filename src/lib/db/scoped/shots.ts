@@ -42,7 +42,9 @@ type ShotWithSequence = Shot & {
     | 'imageModel'
     | 'videoModel'
     | 'aspectRatio'
+    | 'resolution'
     | 'analysisModel'
+    | 'generateStartFrames'
   >;
 };
 
@@ -572,7 +574,11 @@ export function createShotsMethods(db: Database) {
               imageModel: true,
               videoModel: true,
               aspectRatio: true,
+              resolution: true,
               analysisModel: true,
+              // The start-frame default: shot-scoped motion paths resolve the
+              // shot's override against it and must not demand a still.
+              generateStartFrames: true,
             },
           },
         },

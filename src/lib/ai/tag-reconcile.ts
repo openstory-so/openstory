@@ -96,10 +96,14 @@ export function reconcileSceneTags(
       }
     }
 
+    // Prose scripts have no slugline, so `metadata.location` is empty and
+    // the join key would be too. The extract is the same haystack the cast and
+    // element scans above already use.
     const [locationMatch] = matchLocationsToScene(
       bibles.locationBible,
       '',
-      scene.metadata.location
+      scene.metadata.location,
+      extract
     );
     const environmentTag = locationMatch
       ? canonicalLocationTag(locationMatch)
@@ -149,6 +153,17 @@ export function reconcileSceneTags(
     if (!scene.continuity.elementTags && previous.continuity.elementTags) {
       scene.continuity.elementTags = [...previous.continuity.elementTags];
       stats.assignedElementTags += previous.continuity.elementTags.length;
+    }
+    // Same for the set: a slice that names nowhere ("She leans into the
+    // mirror") is still in the room the last one established. Without this a
+    // prose script — no slugline, so nothing but the text to go on — leaves
+    // every continuation scene with no location sheet at all.
+    if (
+      !scene.continuity.environmentTag &&
+      previous.continuity.environmentTag
+    ) {
+      scene.continuity.environmentTag = previous.continuity.environmentTag;
+      stats.assignedEnvironmentTags++;
     }
   }
 

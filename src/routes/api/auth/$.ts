@@ -1,6 +1,33 @@
+import { assertDeviceLoginRate } from '@/lib/api-v1/device-auth';
 import { getAuth } from '@/lib/auth/config';
+import { pruneOrphanedOAuthClients } from '@/lib/db/scoped';
+import { getLogger } from '@/lib/observability/logger';
 import { createFileRoute } from '@tanstack/react-router';
 import { scheduleFlushAnalytics } from '#flush-scheduler';
+
+const logger = getLogger(['openstory', 'api', 'auth']);
+
+/**
+ * RFC 7591 dynamic client registration is open (#1456): the MCP spec expects
+ * a client to register itself before the user ever sees a consent screen.
+ * Better Auth's own rate limiter is memory-backed and off outside NODE_ENV
+ * production, so the endpoint is throttled here with the same per-IP Workers
+ * limiter the device-code login uses, and stale registrations are pruned.
+ */
+const CLIENT_REGISTRATION_PATH = '/api/auth/oauth2/register';
+
+async function guardClientRegistration(request: Request): Promise<void> {
+  if (request.method !== 'POST') return;
+  if (new URL(request.url).pathname !== CLIENT_REGISTRATION_PATH) return;
+  await assertDeviceLoginRate(request);
+  try {
+    const pruned = await pruneOrphanedOAuthClients();
+    if (pruned > 0) logger.info('pruned orphaned oauth clients', { pruned });
+  } catch (error) {
+    // Housekeeping must never block a registration.
+    logger.warn('orphaned oauth client prune failed', { err: error });
+  }
+}
 
 /**
  * Better Auth's `user.create` / `session.create` hooks fire
@@ -18,6 +45,13 @@ import { scheduleFlushAnalytics } from '#flush-scheduler';
  * Workers, so the response is not delayed.
  */
 async function handleAuthRequest(request: Request): Promise<Response> {
+  try {
+    await guardClientRegistration(request);
+  } catch (error) {
+    // `assertDeviceLoginRate` throws a ready-made 429 Response.
+    if (error instanceof Response) return error;
+    throw error;
+  }
   const auth = getAuth();
   const response = await auth.handler(request);
   await scheduleFlushAnalytics();

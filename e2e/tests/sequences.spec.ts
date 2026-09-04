@@ -144,7 +144,9 @@ test.describe('Sequences', () => {
       ''
     );
     await expect(
-      page.getByText('Paste a screenplay, or a one-liner we can expand.')
+      page.getByText(
+        'Paste a screenplay, or a one-liner we can expand - not a prompt.'
+      )
     ).toBeVisible();
     const automatic = page.getByRole('button', {
       name: 'Match script: derive a style from the script',
@@ -160,7 +162,7 @@ test.describe('Sequences', () => {
     // Generate stays live on an empty script (#1393), and so does Enhance —
     // which writes the script from nothing rather than expanding one.
     await expect(generate).toBeEnabled();
-    const draftScript = page.getByRole('button', { name: 'Draft script' });
+    const draftScript = page.getByRole('button', { name: 'Invent script' });
     await expect(draftScript).toBeEnabled();
 
     // Generating with nothing written hands over to Enhance: its popover
@@ -246,11 +248,11 @@ test.describe('Sequences', () => {
     await page.reload();
     await waitForScriptEditor(page);
     // Signed-in `/` hydrates the team style list after the public prefetch;
-    // Action tiles are the proof that Shuffle has a sample to pick (#1384).
+    // Action tiles are the proof that Surprise me has a sample to pick (#1384).
     await expect(
       page.getByRole('button', { name: 'Select Action style' })
     ).toBeVisible({ timeout: 15_000 });
-    const shuffle = page.getByRole('button', { name: 'Shuffle' });
+    const shuffle = page.getByRole('button', { name: 'Surprise me' });
     await expect(shuffle).toBeEnabled({ timeout: 15_000 });
     await shuffle.click();
     const editor = page.locator('[data-slot="markdown-editor"]');
@@ -259,7 +261,7 @@ test.describe('Sequences', () => {
     });
     const shuffled = await editor.getAttribute('data-markdown');
     if (!shuffled) {
-      throw new Error('Shuffle left the composer empty');
+      throw new Error('Surprise me left the composer empty');
     }
     await waitForSequenceDraftScript(page, shuffled);
     await page.reload();

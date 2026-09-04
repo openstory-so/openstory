@@ -1,2 +1,0 @@
-$ bun scripts/check-model-updates.ts --json
-error: script "models:check" exited with code 1

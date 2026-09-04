@@ -4,10 +4,12 @@
  */
 
 import { stripeWebhookMiddleware } from '@/functions/stripe-webhook-middleware';
+import { captureCheckoutAnalyticsForStripeEvent } from '@/lib/billing/checkout-events';
 import { microsToDisplayUsd, usdToMicros } from '@/lib/billing/money';
 import { getStripeOrThrow } from '@/lib/billing/stripe';
 import { getPostHogClient } from '@/lib/posthog-server';
 import { createFileRoute } from '@tanstack/react-router';
+import { scheduleFlushAnalytics } from '#flush-scheduler';
 
 import { getLogger } from '@/lib/observability/logger';
 
@@ -18,12 +20,19 @@ export const Route = createFileRoute('/api/billing/webhook')({
     middleware: [stripeWebhookMiddleware],
     handlers: {
       POST: async ({ context }) => {
-        const { stripeEvent: event, scopedDb, teamId } = context;
+        const { stripeEvent: event, scopedDb, teamId, userId } = context;
         if (!event || !scopedDb) {
           return Response.json({ received: true }, { status: 200 });
         }
 
         try {
+          if (teamId && userId) {
+            captureCheckoutAnalyticsForStripeEvent(event, {
+              teamId,
+              userId,
+            });
+          }
+
           switch (event.type) {
             case 'checkout.session.completed': {
               const session = event.data.object;
@@ -182,6 +191,11 @@ export const Route = createFileRoute('/api/billing/webhook')({
             { error: 'Webhook handler failed' },
             { status: 400 }
           );
+        } finally {
+          // Server routes skip analyticsFlushMiddleware; without this the
+          // checkout_* captures race isolate teardown the same way
+          // user_signed_in did on `/api/auth` (#1088).
+          await scheduleFlushAnalytics();
         }
       },
     },

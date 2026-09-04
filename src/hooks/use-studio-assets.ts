@@ -6,14 +6,16 @@ import {
   listStudioAssetsFn,
   setStudioAssetFavoriteFn,
 } from '@/functions/studio-assets';
-import type {
-  StudioActivity,
-  StudioCreateInput,
-  StudioSort,
+import {
+  studioCreateInputSchema,
+  type StudioActivity,
+  type StudioCreateInput,
+  type StudioSort,
 } from '@/lib/studio/schema';
 import {
   useInfiniteQuery,
   useMutation,
+  useMutationState,
   useQueryClient,
 } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -63,19 +65,40 @@ export function useStudioAssets(filters: StudioAssetFilters) {
   });
 }
 
+// Module-level so pending creates can be found by identity (no `mutationKey`:
+// a keyed mutation would stop the global cache from refreshing the balance).
+const createStudioAssets = (input: StudioCreateInput) =>
+  createStudioAssetsFn({ data: input });
+
 export function useCreateStudioAssets() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (input: StudioCreateInput) =>
-      createStudioAssetsFn({ data: input }),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: studioAssetKeys.all });
-    },
+    mutationFn: createStudioAssets,
+    // Awaited so the mutation stays pending until the new rows are in the
+    // list — the composer's spinner and the gallery's placeholder tiles
+    // (#1455) hand off to the real queued tiles with no gap.
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: studioAssetKeys.all }),
     onError: (error) => {
       toast.error(error.message);
     },
   });
+}
+
+/** Inputs of studio generations still being started, newest first (#1455). */
+export function useStudioPendingCreates(activity: StudioActivity) {
+  return useMutationState({
+    filters: {
+      status: 'pending',
+      predicate: (mutation) =>
+        mutation.options.mutationFn === createStudioAssets,
+    },
+    select: (mutation) =>
+      studioCreateInputSchema.parse(mutation.state.variables),
+  })
+    .filter((input) => input.activity === activity)
+    .reverse();
 }
 
 export function useToggleStudioFavorite() {

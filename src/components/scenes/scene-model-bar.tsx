@@ -10,6 +10,11 @@ import {
   getAspectRatioData,
   type AspectRatio,
 } from '@/lib/constants/aspect-ratios';
+import {
+  RESOLUTION_OPTIONS,
+  type Resolution,
+} from '@/lib/constants/resolutions';
+import { Badge } from '@/components/ui/badge';
 import type { SelectionScope } from '@/lib/scenes/scene-selection';
 import { usePostHog } from '@posthog/react';
 import { Link } from '@tanstack/react-router';
@@ -42,6 +47,7 @@ type SceneModelBarProps = {
   styleId?: string;
   stylePending?: boolean;
   aspectRatio?: AspectRatio;
+  resolution?: Resolution;
   /** The LLM that analysed the script into scenes. Fixed post-analysis. */
   analysisModel?: string;
 };
@@ -70,6 +76,7 @@ export const SceneModelBar: React.FC<SceneModelBarProps> = ({
   styleId,
   stylePending,
   aspectRatio,
+  resolution,
   analysisModel,
 }) => {
   const posthog = usePostHog();
@@ -111,6 +118,17 @@ export const SceneModelBar: React.FC<SceneModelBarProps> = ({
               <span className="font-mono text-sm">{aspectRatio}</span>
             </span>
           </SettingRow>
+          {/* Read-only like the rows above it: the tier is picked in the
+              composer's generation settings. A pill group here read as a live
+              switch for the whole sequence, which it is not. */}
+          {resolution && (
+            <SettingRow label="Resolution">
+              <Badge variant="secondary" className="font-mono text-xs">
+                {RESOLUTION_OPTIONS.find((o) => o.value === resolution)
+                  ?.label ?? resolution}
+              </Badge>
+            </SettingRow>
+          )}
           <SettingRow label="Script">
             <ModelBadge model={analysisModel} />
           </SettingRow>

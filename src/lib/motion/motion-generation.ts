@@ -24,6 +24,12 @@ import {
   FAL_REQUEST_TIMEOUT_MS,
 } from '@/lib/ai/fal-deadline-fetch';
 import {
+  geminiVideoCostFromUsage,
+  geminiVideoDurationCost,
+  isNativeGeminiVideoModel,
+  NATIVE_GEMINI_VIDEO_MODEL,
+} from '@/lib/ai/gemini-native';
+import {
   grokVideoCost,
   grokVideoDurationCost,
   isNativeGrokVideoModel,
@@ -34,13 +40,18 @@ import {
   getBytePlusVideoModelId,
   IMAGE_TO_VIDEO_MODELS,
   isNativeBytePlusVideoModel,
+  referenceOnlyCapableWith,
+  supportsReferenceOnlyMotion,
   type ImageToVideoModel,
 } from '@/lib/ai/models';
 import { assertMediaVia, type MediaVia } from '@/lib/ai/via';
 import { workersSafeFetch } from '@/lib/ai/workers-safe-fetch';
 import { reportMissingBillingCost } from '@/lib/billing/billing-observability';
+import { getLogger } from '@/lib/observability/logger';
+import { getPostHogClient } from '@/lib/posthog-server';
 import { ZERO_MICROS, type Microdollars } from '@/lib/billing/money';
 import { type AspectRatio } from '@/lib/constants/aspect-ratios';
+import type { Resolution } from '@/lib/constants/resolutions';
 import type { ResolvedApiKey } from '@/lib/db/scoped/api-keys';
 import type { CredentialScopedDb } from '@/lib/db/scoped-workflow';
 import { snapDuration } from '@/lib/motion/snap-duration';
@@ -55,21 +66,38 @@ import {
   type TokenUsage,
 } from '@tanstack/ai';
 import { falVideo } from '@tanstack/ai-fal';
+import { createGeminiVideo } from '@tanstack/ai-gemini';
 import { createGrokVideo } from '@tanstack/ai-grok';
 import { buildBytePlusVideoRequest } from './build-byteplus-video-request';
+import { buildGeminiVideoRequest } from './build-gemini-video-request';
+import {
+  getGeminiFileState,
+  isGeminiFilesVideoUrl,
+} from '@/lib/motion/video-storage';
 import { buildGrokVideoRequest } from './build-grok-video-request';
 import { buildMotionRequest } from './build-model-input';
 import { resolveMotionEndpoint } from './resolve-motion-endpoint';
 
+const logger = getLogger(['openstory', 'motion', 'generation']);
+
 export type GenerateMotionOptions = {
   scopedDb?: CredentialScopedDb;
-  imageUrl: string;
+  /**
+   * The rendered start frame. Absent only in reference-only mode, where no
+   * still was ever generated and the clip is driven by the prompt plus the
+   * cast/location/element sheets — see `referenceOnly` below.
+   */
+  imageUrl?: string;
   prompt: string;
   model?: ImageToVideoModel;
   duration?: number;
   fps?: number;
   motionBucket?: number;
   aspectRatio?: AspectRatio;
+  /** Output resolution tier (#1449). Resolved against whatever `resolution`
+   *  tokens the endpoint advertises — a model that stops at 1080p serves a 4K
+   *  ask with 1080p rather than rejecting it. */
+  resolution?: Resolution;
   /** For audio-capable models (kling v3, veo3), pass `false` to suppress
    *  the model's native audio output (sfx/ambient/lip-sync). Omitting the
    *  flag lets the API schema default apply (true for audio-capable models). */
@@ -83,6 +111,14 @@ export type GenerateMotionOptions = {
    * substitute tokens with descriptions instead.
    */
   referenceImages?: ReferenceImageDescription[];
+  /**
+   * Reference-only mode: this shot has no start frame by design, not by
+   * failure. It forces the reference-to-video route (whose start frame is
+   * optional) even when the scene matched no sheets at all, and it is what
+   * keeps `@Image1` bound to a real reference instead of a nonexistent still.
+   * `imageUrl` must be absent whenever this is true.
+   */
+  referenceOnly?: boolean;
 };
 
 export type MotionJobSubmission = {
@@ -123,6 +159,43 @@ async function resolveOptionalXaiKey(
   return platformKey ? { key: platformKey, source: 'platform' } : undefined;
 }
 
+/** Undefined when the model isn't Omni Flash or no Google key exists — it
+ *  then goes to fal as before. */
+async function resolveOptionalGoogleKey(
+  scopedDb?: CredentialScopedDb
+): Promise<ResolvedApiKey | undefined> {
+  if (scopedDb) return scopedDb.resolveOptionalKey('google');
+  const platformKey = getEnv().GEMINI_API_KEY;
+  return platformKey ? { key: platformKey, source: 'platform' } : undefined;
+}
+
+/**
+ * Can this model render a reference-only shot FOR THIS TEAM?
+ *
+ * `supportsReferenceOnlyMotion` is the model-only floor for isomorphic code,
+ * keyed on the model alone because a pure schema cannot see a team's keys.
+ * Here the via IS knowable, so the answer can be the honest one — which
+ * matters for Grok Imagine: it accepts references with no start frame on the
+ * native xAI route (`resolveMotionEndpoint` already returns `inline` for it),
+ * but its fal id is `xai/grok-imagine-video/v1.5/image-to-video`, which
+ * requires `image_url`. So Grok can serve a reference-only shot exactly when
+ * an xAI key resolves.
+ *
+ * Use this wherever a team's keys are reachable: creation, the per-shot
+ * toggle, regenerate, add-model, and the content-flag rescue. A key can still
+ * be revoked between creation and submit, so `MotionWorkflow`'s entry guard
+ * re-asks.
+ */
+export async function canRenderReferenceOnly(
+  modelKey: ImageToVideoModel,
+  scopedDb?: CredentialScopedDb
+): Promise<boolean> {
+  if (supportsReferenceOnlyMotion(modelKey)) return true;
+  return referenceOnlyCapableWith(modelKey, {
+    xai: Boolean(await resolveOptionalXaiKey(scopedDb)),
+  });
+}
+
 function createNativeMotionAdapter(apiKey: string) {
   const env = getEnv();
   return createGrokVideo(NATIVE_GROK_VIDEO_MODEL, apiKey, {
@@ -131,7 +204,18 @@ function createNativeMotionAdapter(apiKey: string) {
   });
 }
 
-async function inlineGrokReferenceImages(
+function createNativeGeminiMotionAdapter(apiKey: string) {
+  const env = getEnv();
+  return createGeminiVideo(NATIVE_GEMINI_VIDEO_MODEL, apiKey, {
+    // GEMINI_BASE_URL is the aimock hook for the native Google path,
+    // mirroring XAI_BASE_URL above.
+    ...(env.GEMINI_BASE_URL && {
+      httpOptions: { baseUrl: env.GEMINI_BASE_URL },
+    }),
+  });
+}
+
+async function inlineNativeReferenceImages(
   references: ReferenceImageDescription[] | undefined
 ): Promise<ReferenceImageDescription[]> {
   if (!references?.length) return [];
@@ -156,15 +240,19 @@ async function submitFalMotionJob(
   modelKey: ImageToVideoModel
 ): Promise<{ jobId: string; usedOwnKey: boolean; endpointId: string }> {
   const hasReferenceImages = (options.referenceImages?.length ?? 0) > 0;
-  const endpoint = resolveMotionEndpoint(modelKey, hasReferenceImages, 'fal');
+  const endpoint = resolveMotionEndpoint(
+    modelKey,
+    hasReferenceImages,
+    'fal',
+    options.referenceOnly ?? false
+  );
   const key = await resolveFalMotionKey(options.scopedDb);
 
   // Locally-served /r2/ image URLs aren't reachable by real fal — swap them
   // for a fal-storage upload first (no-op in prod and e2e replay).
-  const imageUrl = await ensureExternallyFetchableUrl(
-    options.imageUrl,
-    key.key
-  );
+  const imageUrl = options.imageUrl
+    ? await ensureExternallyFetchableUrl(options.imageUrl, key.key)
+    : undefined;
 
   // Reference URLs only need to be fetchable when they go on the wire
   // (`endpoint` or `inline`). Models with `references: 'none'` keep the raw
@@ -238,11 +326,14 @@ export async function submitMotionJob(
   const modelKey = options.model || DEFAULT_VIDEO_MODEL;
 
   // Same order as Grok (#1167): native key first, fal is the fallback.
-  // `resolveKey('fal')` throws with no fal key, so an xAI-only deploy must
-  // not reach it. BytePlus is platform-only (no resolveOptionalKey('byteplus'))
-  // and yields to a BYOK fal team.
+  // `resolveKey('fal')` throws with no fal key, so an xAI-only (or
+  // Google-only) deploy must not reach it. BytePlus is platform-only (no
+  // resolveOptionalKey('byteplus')) and yields to a BYOK fal team.
   const xaiKey = isNativeGrokVideoModel(modelKey)
     ? await resolveOptionalXaiKey(options.scopedDb)
+    : undefined;
+  const googleKey = isNativeGeminiVideoModel(modelKey)
+    ? await resolveOptionalGoogleKey(options.scopedDb)
     : undefined;
 
   const hasReferenceImages = (options.referenceImages?.length ?? 0) > 0;
@@ -250,6 +341,8 @@ export async function submitMotionJob(
   let via: MediaVia;
   if (xaiKey) {
     via = 'xai';
+  } else if (googleKey) {
+    via = 'google';
   } else if (isNativeBytePlusVideoModel(modelKey) && isBytePlusConfigured()) {
     const falKey = await resolveOptionalFalKey(options.scopedDb);
     via = claimBytePlusVia({
@@ -260,7 +353,32 @@ export async function submitMotionJob(
     via = 'fal';
   }
 
-  const endpoint = resolveMotionEndpoint(modelKey, hasReferenceImages, via);
+  const endpoint = resolveMotionEndpoint(
+    modelKey,
+    hasReferenceImages,
+    via,
+    options.referenceOnly ?? false
+  );
+
+  // Reference-only with nothing matched is not the mode — it is text-to-video
+  // at the reference-to-video price, with the character, set and continuity all
+  // reinvented for this one shot while every sibling shot binds its sheets.
+  // The request is still valid (the endpoint serves it), so this is a warning
+  // rather than a throw; without it the shot just comes back looking wrong and
+  // nothing anywhere says why. Also emitted as an event: a server log is
+  // nobody's dashboard, and the rate of this is the measure of how often
+  // reference-only silently degrades to text-to-video.
+  if (options.referenceOnly && !hasReferenceImages) {
+    logger.warn(
+      'Reference-only motion job has no matched reference sheets; submitting as text-to-video',
+      { modelKey, via: endpoint.via }
+    );
+    getPostHogClient()?.capture({
+      distinctId: 'system',
+      event: 'reference_only_no_references',
+      properties: { model: modelKey, via: endpoint.via },
+    });
+  }
 
   let jobId: string;
   let usedOwnKey: boolean;
@@ -274,8 +392,10 @@ export async function submitMotionJob(
       }
       // Start frame and refs are inlined as data URIs so this path needs no
       // fal key. Same payload as the scene editor's Grok preview.
-      const imageUrl = await toDataOrCdnUrl(options.imageUrl);
-      const referenceImages = await inlineGrokReferenceImages(
+      const imageUrl = options.imageUrl
+        ? await toDataOrCdnUrl(options.imageUrl)
+        : undefined;
+      const referenceImages = await inlineNativeReferenceImages(
         options.referenceImages
       );
       const { input } = buildGrokVideoRequest({
@@ -283,6 +403,7 @@ export async function submitMotionJob(
         imageUrl,
         duration: snapDuration(options.duration, modelKey),
         aspectRatio: options.aspectRatio,
+        ...(options.resolution && { resolution: options.resolution }),
         referenceImages,
         model: modelKey,
       });
@@ -296,6 +417,43 @@ export async function submitMotionJob(
       });
       jobId = job.jobId;
       usedOwnKey = xaiKey.source === 'team';
+      break;
+    }
+    case 'google': {
+      if (!googleKey) {
+        throw new Error('Google motion via selected with no Google key');
+      }
+      // Start frame and refs are inlined as data URIs so this path needs no
+      // fal key. Same payload as the scene editor's Gemini preview.
+      // Optional: Omni Flash has a reference-to-video route, so a
+      // reference-only shot reaches here with no still and the sheets alone.
+      const imageUrl = options.imageUrl
+        ? await toDataOrCdnUrl(options.imageUrl)
+        : undefined;
+      const referenceImages = await inlineNativeReferenceImages(
+        options.referenceImages
+      );
+      const { input } = buildGeminiVideoRequest({
+        prompt: options.prompt,
+        imageUrl,
+        duration: options.duration,
+        aspectRatio: options.aspectRatio,
+        referenceImages,
+        model: modelKey,
+      });
+      // Duration/size ride on `modelOptions.response_format` (with
+      // `delivery: "uri"`). Passing them as generateVideo top-level
+      // fields makes the adapter rebuild response_format without
+      // delivery, and Google inlines the MP4 as a data: URL.
+      const job = await generateVideo({
+        adapter: createNativeGeminiMotionAdapter(googleKey.key),
+        prompt: input.prompt,
+        modelOptions: input.modelOptions,
+        timeout: FAL_REQUEST_TIMEOUT_MS,
+        debug: false,
+      });
+      jobId = job.jobId;
+      usedOwnKey = googleKey.source === 'team';
       break;
     }
     case 'fal': {
@@ -314,11 +472,9 @@ export async function submitMotionJob(
       // to be `asset://`. A public URL of a photorealistic face (including
       // a generated start frame) 400s as a possible real person.
       const falKey = await resolveOptionalFalKey(options.scopedDb);
-      const imageUrl = await toArkMediaUrl(
-        options.imageUrl,
-        'Image',
-        falKey?.key
-      );
+      const imageUrl = options.imageUrl
+        ? await toArkMediaUrl(options.imageUrl, 'Image', falKey?.key)
+        : undefined;
       const referenceImages = options.referenceImages?.length
         ? await Promise.all(
             options.referenceImages.map(async (ref) => ({
@@ -415,6 +571,36 @@ export async function pollMotionJob(
         jobId,
       });
     }
+    case 'google': {
+      const key = await resolveOptionalGoogleKey(scopedDb);
+      if (!key) {
+        throw new Error(
+          `Motion job ${jobId} was submitted to Google but no Google key is available to poll it`
+        );
+      }
+      const result = await getVideoJobStatus({
+        adapter: createNativeGeminiMotionAdapter(key.key),
+        jobId,
+      });
+      if (
+        result.status === 'completed' &&
+        result.url &&
+        isGeminiFilesVideoUrl(result.url)
+      ) {
+        const fileState = await getGeminiFileState(result.url, key.key);
+        if (fileState === 'FAILED') {
+          return {
+            ...result,
+            status: 'failed' as const,
+            error: 'Gemini Files API marked the generated video as FAILED',
+          };
+        }
+        if (fileState !== 'ACTIVE') {
+          return { jobId: result.jobId, status: 'processing' as const };
+        }
+      }
+      return result;
+    }
     case 'fal': {
       const key = await resolveFalMotionKey(scopedDb);
       // Bound a single status fetch — the workflow already budgets total poll
@@ -460,7 +646,17 @@ export async function pollMotionJob(
 export async function motionCostFromUsage(
   via: MediaVia,
   usage: TokenUsage | undefined,
-  ctx: { modelKey: ImageToVideoModel; hasReferenceImages: boolean }
+  ctx: {
+    modelKey: ImageToVideoModel;
+    hasReferenceImages: boolean;
+    /**
+     * Reference-only shots route to the reference-to-video endpoint even with
+     * no matched sheets, so the charge must be priced against that endpoint —
+     * resolving without it would bill an image-to-video rate for a job that
+     * never ran there.
+     */
+    referenceOnly?: boolean;
+  }
 ) {
   switch (via) {
     case 'xai': {
@@ -479,10 +675,30 @@ export async function motionCostFromUsage(
         recordFalUsage: false,
       };
     }
+    case 'google': {
+      // Omni bills per second of video, reported as output tokens on the
+      // interaction's usage — priced at Google's published video-output rate.
+      const cost = geminiVideoCostFromUsage(usage);
+      if (cost === undefined) {
+        reportMissingBillingCost({
+          source: 'motion-cost-from-usage-google',
+          modelId: ctx.modelKey,
+          metadata: { usage },
+        });
+      }
+      return {
+        endpointId: NATIVE_GEMINI_VIDEO_MODEL,
+        unitsBilled: usage?.unitsBilled,
+        cost: cost ?? ZERO_MICROS,
+        recordFalUsage: false,
+      };
+    }
     case 'fal': {
       const endpointId = resolveMotionEndpoint(
         ctx.modelKey,
-        ctx.hasReferenceImages
+        ctx.hasReferenceImages,
+        'fal',
+        ctx.referenceOnly ?? false
       ).endpointId;
       return {
         endpointId,
@@ -536,6 +752,17 @@ export function calculateMotionMetadata(
   if (isNativeGrokVideoModel(modelKey)) {
     return {
       cost: grokVideoDurationCost(validatedDuration),
+      duration: validatedDuration,
+      model: modelConfig.id,
+      vendor: modelConfig.vendor,
+    };
+  }
+
+  // Same shape for Omni Flash: Google bills a fixed token count per second
+  // of video, so the estimate needs no `model_pricing` row either.
+  if (isNativeGeminiVideoModel(modelKey)) {
+    return {
+      cost: geminiVideoDurationCost(validatedDuration),
       duration: validatedDuration,
       model: modelConfig.id,
       vendor: modelConfig.vendor,

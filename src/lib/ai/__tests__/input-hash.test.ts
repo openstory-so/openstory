@@ -643,6 +643,35 @@ describe('prompt input hashes', () => {
     expect(withReRenderedImage).not.toBe(withImage);
   });
 
+  it('reference-only re-stales the motion prompt but never the visual one', async () => {
+    const baseline = await computeMotionPromptInputHash(sceneCtx);
+    const referenceOnly = await computeMotionPromptInputHash({
+      ...sceneCtx,
+      referenceOnly: true,
+    });
+    // The mode picks a different LLM template, so the prompt it produces for
+    // the same scene is materially different.
+    expect(referenceOnly).not.toBe(baseline);
+
+    // The visual prompt produces the still; it cannot depend on whether one
+    // gets rendered.
+    expect(
+      await computeVisualPromptInputHash({ ...sceneCtx, referenceOnly: true })
+    ).toBe(await computeVisualPromptInputHash(sceneCtx));
+  });
+
+  it('leaves every stored image-to-video digest unchanged', async () => {
+    // The flag joins the hash body only when true, so no existing row's
+    // digest moves and no hash-version bump is needed.
+    const omitted = await computeMotionPromptInputHash(sceneCtx);
+    const explicitFalse = await computeMotionPromptInputHash({
+      ...sceneCtx,
+      referenceOnly: false,
+    });
+    expect(explicitFalse).toBe(omitted);
+    expect(await motionPromptInputHashMatches(omitted, sceneCtx)).toBe(true);
+  });
+
   it('omitting startingFrameImageUrl equals passing null (legacy shots)', async () => {
     const omitted = await computeMotionPromptInputHash(sceneCtx);
     const explicitNull = await computeMotionPromptInputHash({

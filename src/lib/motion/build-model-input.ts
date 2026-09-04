@@ -15,7 +15,16 @@ import {
   inlineReferenceDescription,
   substituteReferenceTags,
 } from '@/lib/prompts/reference-legend';
-import { MOTION_TRANSFORMS, type MotionEndpointId } from './endpoint-map';
+import {
+  pickVideoResolution,
+  tiersForTokens,
+  type Resolution,
+} from '@/lib/constants/resolutions';
+import {
+  MOTION_JSON_SCHEMAS,
+  MOTION_TRANSFORMS,
+  type MotionEndpointId,
+} from './endpoint-map';
 import { resolveMotionEndpoint } from './resolve-motion-endpoint';
 import type { GenerateMotionOptions } from './motion-generation';
 
@@ -23,12 +32,56 @@ import type { GenerateMotionOptions } from './motion-generation';
 const QUALITY_OVERRIDES: Partial<
   Record<ImageToVideoModel, Record<string, unknown>>
 > = {
-  veo3_1: { resolution: '1080p' },
-  seedance_v2: { resolution: '720p' },
-  seedance_v2_5: { resolution: '720p' },
   // Required on i2v and r2v; schema default is the same value.
   minimax_h3_max: { prompt_expansion_mode: 'balanced' },
 };
+
+/**
+ * The `resolution` tokens an endpoint advertises, read off the generated fal
+ * schema. Empty for an endpoint with no such field (Kling v3, Hailuo 2.3),
+ * whose output size is fixed.
+ */
+export function motionResolutionTokens(endpointId: MotionEndpointId): string[] {
+  const schema: { properties?: Record<string, unknown> } =
+    MOTION_JSON_SCHEMAS[endpointId];
+  const field: unknown = schema.properties?.resolution;
+  if (!field || typeof field !== 'object' || !('enum' in field)) return [];
+  const values: unknown = field.enum;
+  if (!Array.isArray(values)) return [];
+  return values.filter((value): value is string => typeof value === 'string');
+}
+
+/**
+ * The tiers a motion model can actually deliver — what the resolution picker
+ * offers for it (#1449). Reads the i2v endpoint's enum; the T2V and
+ * reference-to-video siblings advertise the same tokens.
+ */
+export function motionResolutionTiers(model: ImageToVideoModel): Resolution[] {
+  return tiersForTokens(
+    motionResolutionTokens(IMAGE_TO_VIDEO_MODELS[model].id),
+    'video'
+  );
+}
+
+/**
+ * The requested resolution tier (#1449) in the endpoint's own vocabulary —
+ * `'768P'` on H3 Max, `'4k'` on Seedance 2.0, `'2160p'` on LTX. Read off the
+ * generated fal schema, so a new motion model needs no entry anywhere: it
+ * inherits whatever its `resolution` enum advertises, and an endpoint with no
+ * such field (Kling v3, Hailuo 2.3) keeps its fixed output.
+ *
+ * Empty when no tier was asked for, which leaves the schema default in place.
+ */
+function resolutionOverride(
+  endpointId: MotionEndpointId,
+  resolution: GenerateMotionOptions['resolution']
+): { resolution?: string } {
+  if (!resolution) return {};
+  const options = motionResolutionTokens(endpointId);
+  if (options.length === 0) return {};
+  const picked = pickVideoResolution(options, resolution);
+  return picked ? { resolution: picked } : {};
+}
 
 /**
  * Second lever against model-generated music (#1165) for the two endpoints
@@ -97,9 +150,12 @@ export function buildModelInput<T extends ImageToVideoModel>(
   const result = transform.parse({
     prompt,
     duration: options.duration,
+    // Every endpoint reaching this builder requires a start frame;
+    // `buildMotionRequest` asserts one is present before calling in.
     imageUrl: options.imageUrl,
     aspectRatio: options.aspectRatio,
     ...QUALITY_OVERRIDES[modelKey],
+    ...resolutionOverride(endpointId, options.resolution),
     ...(NO_MUSIC_NEGATIVE_PROMPTS[modelKey] && {
       negative_prompt: NO_MUSIC_NEGATIVE_PROMPTS[modelKey],
     }),
@@ -136,7 +192,9 @@ type ReferenceVideoOutput =
  * When `resolveMotionEndpoint` routes to a dedicated reference-to-video
  * endpoint (Seedance / H3 Max with cast/element refs), the still goes
  * first in the image-list field with the sheets after it — there is no
- * separate start-frame `image_url` on that endpoint.
+ * separate start-frame `image_url` on that endpoint. In reference-only mode
+ * (`options.referenceOnly`) there is no still at all: the sheets fill that
+ * field from slot 1 and the prompt carries the composition.
  */
 export function buildMotionRequest<T extends ImageToVideoModel>(
   options: GenerateMotionOptions,
@@ -148,10 +206,21 @@ export function buildMotionRequest<T extends ImageToVideoModel>(
   const modelConfig = IMAGE_TO_VIDEO_MODELS[modelKey];
   const endpoint = resolveMotionEndpoint(
     modelKey,
-    (options.referenceImages?.length ?? 0) > 0
+    (options.referenceImages?.length ?? 0) > 0,
+    'fal',
+    options.referenceOnly ?? false
   );
 
   if (endpoint.references !== 'endpoint') {
+    if (!options.imageUrl) {
+      // Only reachable if a reference-only shot reached a non-reference route,
+      // which `resolveMotionEndpoint` already refuses to return. Assert it
+      // anyway so the failure names the cause rather than surfacing as a
+      // provider 422 on a missing `image_url`.
+      throw new Error(
+        `Motion model "${modelKey}" requires a start frame but none was provided`
+      );
+    }
     return {
       endpointId: endpoint.endpointId,
       input: buildModelInput(options, modelConfig, modelKey),
@@ -168,10 +237,20 @@ export function buildMotionRequest<T extends ImageToVideoModel>(
     );
   }
 
+  if (!options.imageUrl && !options.referenceOnly) {
+    // The reference-to-video endpoint accepts a request with no still, so a
+    // missing one here would silently render reference-only instead of
+    // failing — a shot whose image generation died would quietly come back as
+    // a different kind of clip. Only the explicit mode may omit the still.
+    throw new Error(
+      `Motion model "${modelKey}" was given no start frame outside reference-only mode`
+    );
+  }
+
   const { prompt, imageUrls } = buildReferenceVideoPrompt(
     endpoint.referenceConfig,
     options.prompt,
-    options.imageUrl,
+    options.imageUrl ?? null,
     options.referenceImages ?? [],
     modelConfig.maxPromptLength
   );
@@ -183,8 +262,12 @@ export function buildMotionRequest<T extends ImageToVideoModel>(
     prompt,
     duration: options.duration,
     aspectRatio: options.aspectRatio,
-    [imageField]: imageUrls,
+    // The image list is optional on the reference-to-video schema; a
+    // reference-only shot whose scene matched no cast, location or element
+    // sheets degenerates to pure text-to-video, which the endpoint serves.
+    ...(imageUrls.length > 0 && { [imageField]: imageUrls }),
     ...QUALITY_OVERRIDES[modelKey],
+    ...resolutionOverride(endpointId, options.resolution),
     ...(options.generateAudio !== undefined && {
       generate_audio: options.generateAudio,
     }),

@@ -22,6 +22,7 @@ import { buildLocationMatchingPromptVariables } from '@/lib/ai/location-matching
 import { locationMatchResponseSchema } from '@/lib/ai/response-schemas';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import { getGenerationChannel } from '@/lib/realtime';
+import { GENERATION_STAGE_META } from '@/lib/generation/pipeline';
 import { OpenStoryWorkflowEntrypoint } from '@/lib/workflow/base-workflow';
 import { durableLLMCallCf } from '@/lib/workflows/llm-call-helper';
 import { waitForLocationReferences } from '@/lib/workflows/wait-for-sheets';
@@ -66,8 +67,8 @@ export class LocationMatchingWorkflow extends OpenStoryWorkflowEntrypoint<Locati
               scopedDb.liveRead,
               suggestedLocationIds,
               {
-                // Surface the wait in the generation progress dialog (phase 2
-                // is the "Casting characters & locations…" step). Only emitted
+                // Surface the wait in the generation progress dialog (casting runs
+                // inside the Script phase). Only emitted
                 // when we actually have to wait, so a ready library never
                 // flashes a spurious status.
                 onWaitNeeded: async () => {
@@ -75,7 +76,7 @@ export class LocationMatchingWorkflow extends OpenStoryWorkflowEntrypoint<Locati
                   await getGenerationChannel(sequenceId).emit(
                     'generation.phase:start',
                     {
-                      phase: 2,
+                      phase: GENERATION_STAGE_META.script.phase,
                       phaseName: 'Waiting for location references…',
                     }
                   );

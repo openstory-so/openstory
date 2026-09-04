@@ -42,7 +42,7 @@ export const Route = createFileRoute('/api/storage/multipart')({
       // create | complete | abort — selected by ?action=
       POST: async ({ request, context }) => {
         try {
-          const resolved = await resolveUploadTarget(request, context.user.id);
+          const resolved = await resolveUploadTarget(request, context.user);
           if (!resolved.ok) return resolved.response;
           const { bucket, path, contentType } = resolved.target;
           const url = new URL(request.url);
@@ -107,7 +107,7 @@ export const Route = createFileRoute('/api/storage/multipart')({
       // fully buffered in Worker memory (same rationale as the single upload).
       PUT: async ({ request, context }) => {
         try {
-          const resolved = await resolveUploadTarget(request, context.user.id);
+          const resolved = await resolveUploadTarget(request, context.user);
           if (!resolved.ok) return resolved.response;
           const { bucket, path } = resolved.target;
 

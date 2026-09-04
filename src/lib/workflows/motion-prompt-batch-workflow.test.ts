@@ -17,11 +17,22 @@
  */
 
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
-import type { MotionPromptBatchWorkflowInput } from '@/lib/workflow/types';
+import type {
+  MotionPromptBatchWorkflowInput,
+  MotionPromptWorkflowInput,
+} from '@/lib/workflow/types';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { describe, expect, test, vi } from 'vitest';
 
-const spawnAndAwaitChild = vi.fn();
+// Typed so `.mock.calls` yields the child payload rather than `any` — the
+// reference-only tests below assert on what each child was handed.
+const spawnAndAwaitChild =
+  vi.fn<
+    (
+      step: unknown,
+      args: { childId: string; childPayload: MotionPromptWorkflowInput }
+    ) => Promise<unknown>
+  >();
 vi.doMock('@/lib/workflow/await-child', () => ({ spawnAndAwaitChild }));
 
 const { MotionPromptBatchWorkflow } =
@@ -59,9 +70,11 @@ function makeInput(): MotionPromptBatchWorkflowInput {
   };
 }
 
-function makeEvent(): Readonly<WorkflowEvent<MotionPromptBatchWorkflowInput>> {
+function makeEvent(
+  overrides: Partial<MotionPromptBatchWorkflowInput> = {}
+): Readonly<WorkflowEvent<MotionPromptBatchWorkflowInput>> {
   return {
-    payload: makeInput(),
+    payload: { ...makeInput(), ...overrides },
     instanceId: 'mpb_run_A',
     workflowName: 'motion-prompt-batch',
     timestamp: new Date(0),
@@ -160,5 +173,65 @@ describe('MotionPromptBatchWorkflow partial failures', () => {
     await expect(
       makeWorkflow().batch(makeEvent(), makeStep(), SCOPED_DB)
     ).rejects.toThrow(/failed for all 3 scenes/);
+  });
+});
+
+describe('MotionPromptBatchWorkflow reference-only', () => {
+  test('rejects a scene with no still on the image-to-video path', async () => {
+    spawnAndAwaitChild.mockReset();
+    spawnAndAwaitChild.mockImplementation(
+      (_step: unknown, args: { childId: string }) =>
+        succeed(args.childId.split(':').at(-1) ?? '')
+    );
+
+    const event = makeEvent({
+      startingFrameImageUrls: {
+        scene_1: 'https://example.com/scene_1.png',
+        scene_2: null,
+        scene_3: 'https://example.com/scene_3.png',
+      },
+    });
+
+    const result = await makeWorkflow().batch(event, makeStep(), SCOPED_DB);
+
+    expect(result.map((r) => r.sceneId)).toEqual(['scene_1', 'scene_3']);
+  });
+
+  test('fans out every scene when no stills exist by design', async () => {
+    spawnAndAwaitChild.mockReset();
+    spawnAndAwaitChild.mockImplementation(
+      (_step: unknown, args: { childId: string }) =>
+        succeed(args.childId.split(':').at(-1) ?? '')
+    );
+
+    const event = makeEvent({
+      startingFrameImageUrls: undefined,
+      referenceOnly: true,
+    });
+
+    const result = await makeWorkflow().batch(event, makeStep(), SCOPED_DB);
+
+    expect(result.map((r) => r.sceneId)).toEqual(SCENE_IDS);
+    expect(spawnAndAwaitChild).toHaveBeenCalledTimes(3);
+  });
+
+  test('passes the mode down to each child', async () => {
+    spawnAndAwaitChild.mockReset();
+    spawnAndAwaitChild.mockImplementation(
+      (_step: unknown, args: { childId: string }) =>
+        succeed(args.childId.split(':').at(-1) ?? '')
+    );
+
+    const event = makeEvent({
+      startingFrameImageUrls: undefined,
+      referenceOnly: true,
+    });
+
+    await makeWorkflow().batch(event, makeStep(), SCOPED_DB);
+
+    const payloads = spawnAndAwaitChild.mock.calls.map(
+      ([, args]) => args.childPayload
+    );
+    expect(payloads.every((p) => p.referenceOnly === true)).toBe(true);
   });
 });

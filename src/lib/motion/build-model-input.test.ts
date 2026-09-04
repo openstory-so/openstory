@@ -74,9 +74,28 @@ describe('buildModelInput', () => {
   });
 
   describe('Veo 3.1 (audio)', () => {
-    it('overrides resolution to 1080p', () => {
+    it('falls back to the schema default with no tier asked for', () => {
       const result = build('veo3_1');
-      expect(result.resolution).toBe('1080p');
+      expect(result.resolution).toBe('720p');
+    });
+
+    it('resolves the requested tier against the endpoint enum (#1449)', () => {
+      expect(build('veo3_1', { resolution: '1080p' }).resolution).toBe('1080p');
+      expect(build('veo3_1', { resolution: '4k' }).resolution).toBe('4k');
+      // Seedance 2.5 stops at 1080p — a 4K ask lands there, not on a 422.
+      expect(build('seedance_v2_5', { resolution: '4k' }).resolution).toBe(
+        '1080p'
+      );
+      // H3 Max spells its only HD tier '768P'.
+      expect(build('minimax_h3_max', { resolution: '720p' }).resolution).toBe(
+        '768P'
+      );
+    });
+
+    it('leaves a model with no resolution field alone', () => {
+      expect(build('kling_v3_pro', { resolution: '4k' })).not.toHaveProperty(
+        'resolution'
+      );
     });
 
     it('sets generate_audio to true from schema default', () => {
@@ -190,6 +209,7 @@ describe('buildModelInput', () => {
       seedance_v2_5: Array.from({ length: 27 }, (_, i) => String(i + 4)),
       minimax_hailuo_02: [],
       minimax_h3_max: [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+      gemini_omni_flash: [3, 4, 5, 6, 7, 8, 9, 10],
     };
 
     for (const [model, allowed] of typedEntries(valid)) {
@@ -428,5 +448,93 @@ describe('buildModelInput', () => {
         expect(result.aspect_ratio).toBe('auto');
       }
     );
+  });
+});
+
+describe('buildMotionRequest — reference-only', () => {
+  const referenceOnlyOptions: GenerateMotionOptions = {
+    prompt: 'A slow dolly toward SCARLETT at the window',
+    duration: 5,
+    aspectRatio: '16:9',
+    referenceOnly: true,
+    referenceImages: [
+      {
+        referenceImageUrl: 'https://example.com/scarlett.png',
+        description: 'Scarlett, red hair',
+        token: 'SCARLETT',
+        role: 'character',
+      },
+    ],
+  };
+
+  it('routes to reference-to-video and sends no start frame', () => {
+    const { endpointId, input } = buildMotionRequest(
+      referenceOnlyOptions,
+      'seedance_v2_5'
+    );
+
+    expect(endpointId).toBe('bytedance/seedance-2.5/reference-to-video');
+    expect(input).not.toHaveProperty('image_url');
+    expect('image_urls' in input ? input.image_urls : undefined).toEqual([
+      'https://example.com/scarlett.png',
+    ]);
+    expect(input.prompt).not.toContain('starting frame');
+    expect(input.prompt).toContain('@Image1');
+  });
+
+  it('binds refs from slot 1 on H3 Max, whose image field is its own', () => {
+    const { endpointId, input } = buildMotionRequest(
+      referenceOnlyOptions,
+      'minimax_h3_max'
+    );
+
+    expect(endpointId).toBe('minimax/h3-max/reference-to-video');
+    expect(input).not.toHaveProperty('image_url');
+    expect(input).not.toHaveProperty('image_urls');
+    expect(
+      'reference_image_urls' in input ? input.reference_image_urls : undefined
+    ).toEqual(['https://example.com/scarlett.png']);
+    expect(input.prompt).not.toContain('starting frame');
+    expect(input.prompt).toContain('Image 1');
+  });
+
+  it('omits image_urls entirely when nothing matched', () => {
+    const { input } = buildMotionRequest(
+      { ...referenceOnlyOptions, referenceImages: [] },
+      'seedance_v2_5'
+    );
+
+    expect(
+      'image_urls' in input ? input.image_urls : undefined
+    ).toBeUndefined();
+    expect(input.prompt).toBe(referenceOnlyOptions.prompt);
+  });
+
+  it('carries the sequence aspect ratio rather than adapting to a still', () => {
+    const { input } = buildMotionRequest(
+      { ...referenceOnlyOptions, aspectRatio: '9:16' },
+      'seedance_v2_5'
+    );
+    expect(input.aspect_ratio).toBe('9:16');
+  });
+
+  it('refuses a start-frame model asked to render without one', () => {
+    expect(() =>
+      buildMotionRequest(
+        { ...referenceOnlyOptions, referenceOnly: false },
+        'kling_v3_pro'
+      )
+    ).toThrow(/requires a start frame/);
+  });
+
+  it('refuses to silently degrade a failed still into a reference-only clip', () => {
+    // Seedance with refs already routes to reference-to-video, whose still is
+    // optional — so a missing one must be rejected rather than rendered.
+    expect(() =>
+      buildMotionRequest(
+        { ...referenceOnlyOptions, referenceOnly: false },
+        'seedance_v2_5'
+      )
+    ).toThrow(/outside reference-only mode/);
   });
 });

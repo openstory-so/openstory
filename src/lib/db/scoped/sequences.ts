@@ -9,6 +9,10 @@ import {
   type AspectRatio,
   DEFAULT_ASPECT_RATIO,
 } from '@/lib/constants/aspect-ratios';
+import {
+  DEFAULT_RESOLUTION,
+  type Resolution,
+} from '@/lib/constants/resolutions';
 import type { Database } from '@/lib/db/client';
 import {
   assembleShotViews,
@@ -26,6 +30,10 @@ import {
 } from '@/lib/db/schema';
 import type { NewSequence, Sequence } from '@/lib/db/schema';
 import type { MusicStatus, SequenceStatus } from '@/lib/db/schema/sequences';
+import type {
+  GenerationCheckpoint,
+  GenerationStage,
+} from '@/lib/generation/pipeline';
 import { parseStyleConfig } from '@/lib/style/style-config';
 import type { ShotReadiness, ShotView } from '@/lib/shots/shot-view';
 import { getLatestPreviewByFrameIds } from './frame-variants';
@@ -310,12 +318,16 @@ export function createSequencesMethods(
        */
       deferStyleSnapshot?: boolean;
       aspectRatio?: AspectRatio;
+      resolution?: Resolution;
       analysisModel?: string;
       imageModel?: string;
       videoModel?: string;
       musicModel?: string;
       autoGenerateMotion?: boolean;
       autoGenerateMusic?: boolean;
+      generationStopAt?: GenerationStage;
+      /** Opt-in to the frame-based workflow; off = reference-only (the default). */
+      generateStartFrames?: boolean;
       suggestedTalentIds?: string[];
       suggestedLocationIds?: string[];
     }): Promise<Sequence> => {
@@ -332,6 +344,7 @@ export function createSequencesMethods(
         styleId: params.styleId,
         styleConfig,
         aspectRatio: params.aspectRatio ?? DEFAULT_ASPECT_RATIO,
+        resolution: params.resolution ?? DEFAULT_RESOLUTION,
         // The sequences SQL column defaults are stale literals
         // ('anthropic/claude-haiku-4.5' for analysis, 'nano_banana_2' for
         // image, 'kling_v3_pro' for video — see schema/sequences.ts) that
@@ -343,6 +356,8 @@ export function createSequencesMethods(
         musicModel: params.musicModel,
         autoGenerateMotion: params.autoGenerateMotion ?? false,
         autoGenerateMusic: params.autoGenerateMusic ?? false,
+        generationStopAt: params.generationStopAt,
+        generateStartFrames: params.generateStartFrames ?? false,
         suggestedTalentIds: params.suggestedTalentIds ?? null,
         suggestedLocationIds: params.suggestedLocationIds ?? null,
         status: 'draft',
@@ -427,6 +442,7 @@ export function createSequencesMethods(
       workflowRunId?: string;
       analysisModel?: string;
       aspectRatio?: AspectRatio;
+      resolution?: Resolution;
       imageModel?: string;
       videoModel?: string;
       musicModel?: string;
@@ -437,6 +453,11 @@ export function createSequencesMethods(
       musicGeneratedAt?: Date;
       posterUrl?: string | null;
       includeMusic?: boolean;
+      autoGenerateMotion?: boolean;
+      autoGenerateMusic?: boolean;
+      generationStopAt?: GenerationStage | null;
+      pipelineStage?: GenerationStage | null;
+      generationCheckpoint?: GenerationCheckpoint | null;
     }): Promise<Sequence> => {
       // Scoped by teamId like every other write here — `workflowRunId` in
       // particular is the generation-mutex column (#839), so a cross-team id

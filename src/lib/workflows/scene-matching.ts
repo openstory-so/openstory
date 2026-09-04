@@ -93,10 +93,164 @@ export function matchCharactersToScene<T extends CharacterMatchInput>(
   );
 }
 
+/**
+ * Strip `"char_001: jack-denim-jacket"` down to the slug half. Same split
+ * `extract-continuity-from-prompt` uses — kept local to avoid a cycle.
+ */
+function consistencyTagSlug(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const idx = raw.indexOf(':');
+  const slug = (idx >= 0 ? raw.slice(idx + 1) : raw).trim();
+  return slug.length > 0 ? slug : null;
+}
+
+function escapeForRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Whole-word match. Hyphen/underscore stay inside the token so
+ * `jack-denim-jacket` is one term. `caseSensitive` is for ALL-CAPS cast
+ * names (the deliberate `SCARLETT` mention, not lowercase prose).
+ */
+function tagMatchesText(
+  tag: string,
+  text: string,
+  caseSensitive = false
+): boolean {
+  if (!tag) return false;
+  const escaped = escapeForRegex(tag);
+  const re = new RegExp(
+    `(?:^|[^A-Za-z0-9_-])${escaped}(?:[^A-Za-z0-9_-]|$)`,
+    caseSensitive ? '' : 'i'
+  );
+  return re.test(text);
+}
+
+/**
+ * Did this visual prompt name the character the way prompts actually do
+ * (#1432)? ALL-CAPS name is case-sensitive (mirrors tagify / the continuity
+ * rescan); `characterId` and the consistencyTag slug are case-insensitive.
+ */
+export function characterMentionedInPrompt(
+  character: CharacterMatchInput,
+  prompt: string
+): boolean {
+  if (!prompt.trim()) return false;
+  const nameUpper = character.name.toUpperCase();
+  if (nameUpper.length > 0 && tagMatchesText(nameUpper, prompt, true)) {
+    return true;
+  }
+  if (tagMatchesText(character.characterId, prompt)) return true;
+  const slug = consistencyTagSlug(character.consistencyTag);
+  return slug != null && tagMatchesText(slug, prompt);
+}
+
+/**
+ * Characters whose sheets should attach to a still (#1432).
+ *
+ * Continuity tags stay the primary match (a tagged character may be described
+ * without an ALL-CAPS name). The visual prompt is additive: a regenerated
+ * prompt that names `SCARLETT` still attaches her sheet when tags are empty
+ * or stale — the same fallback `matchElementsToShotImage` already has for
+ * tokens. Update all's chained stills skip `rescanContinuityFromPrompt`, so
+ * this is the path that actually sends the refs.
+ */
+export function matchCharactersToShotImage<T extends CharacterMatchInput>(
+  allCharacters: T[],
+  args: {
+    characterTags?: string[] | null;
+    visualPrompt?: string | null;
+  }
+): T[] {
+  const tagged = matchCharactersToScene(
+    allCharacters,
+    args.characterTags ?? []
+  );
+  const prompt = (args.visualPrompt ?? '').trim();
+  if (!prompt) return tagged;
+
+  const seen = new Set(tagged.map((c) => c.characterId));
+  const extra = allCharacters.filter(
+    (c) => !seen.has(c.characterId) && characterMentionedInPrompt(c, prompt)
+  );
+  return extra.length === 0 ? tagged : [...tagged, ...extra];
+}
+
+/**
+ * Slugline scaffolding and time-of-day, not place words: `INT. OFFICE - DAY`
+ * is the same set as the prose "the office", and requiring `int` or `day`
+ * would fail every prose scene. Time lives on the bible entry's own
+ * `timeOfDay` field anyway.
+ */
+const HEADING_NOISE = new Set([
+  'int',
+  'ext',
+  'the',
+  'and',
+  'into',
+  'day',
+  'night',
+  'dawn',
+  'dusk',
+  'morning',
+  'afternoon',
+  'evening',
+  'later',
+  'continuous',
+]);
+
 type LocationMatchInput = Pick<
   SequenceLocationMinimal,
   'locationId' | 'name' | 'consistencyTag'
 >;
+
+/**
+ * The set named in the scene's own words, for a scene whose tag and slugline
+ * name nothing.
+ *
+ * A prose script has no `INT./EXT.` heading, so the slice carries an empty
+ * `metadata.location`, so scene-split stamps an empty `environmentTag` — and
+ * the tag match below then finds nothing for every scene in the sequence. The
+ * still gets no location sheet, the inspector's Locations tab reads empty, and
+ * a reference-only clip (no still at all) invents the room outright. Cast and
+ * elements have always had this fallback — they scan the scene text for their
+ * own names. Locations never did.
+ *
+ * ONE winner: a scene happens in one place, and the most tokens matched is
+ * the most specific name ("ROOFTOP GARDEN" over "GARDEN").
+ */
+function matchLocationInText<T extends LocationMatchInput>(
+  allLocations: T[],
+  sceneText: string
+): T[] {
+  const textTokens = new Set(tokenize(sceneText));
+  if (textTokens.size === 0) return [];
+
+  let best: { location: T; score: number } | null = null;
+  for (const loc of allLocations) {
+    // Every identifier form is a candidate; the tokens are the same words in
+    // any casing or punctuation, so `"Stitched Felt Meadow"`,
+    // `stitched_felt_meadow` and `felt_meadow_stitched` all match the prose
+    // "a stitched felt meadow" — the token-subset rule cast names already use.
+    for (const term of [loc.name, loc.locationId, loc.consistencyTag ?? '']) {
+      const tokens = tokenize(term).filter(
+        (t) => t.length >= 3 && !HEADING_NOISE.has(t)
+      );
+      if (!isSubset(tokens, textTokens)) continue;
+      // Most tokens matched wins: the most specific name, not the first one.
+      if (!best || tokens.length > best.score) {
+        best = { location: loc, score: tokens.length };
+      }
+    }
+  }
+  // Deliberately no "the sequence only has one location, so use it" rule: the
+  // pool handed in is not always the whole sequence (`getShotIdsForLocation`
+  // passes a single candidate), and a length check cannot tell the two apart.
+  // A continuation slice that names nowhere is filled at split time instead —
+  // see the carry-forward in `reconcileSceneTags`.
+  return best ? [best.location] : [];
+}
 
 /**
  * Match locations to a scene by environment tag or location name.
@@ -104,18 +258,29 @@ type LocationMatchInput = Pick<
  *
  * Generic so we can reuse it on `LocationBibleEntry` (same id/name/tag shape)
  * when narrowing the bible for prompt-input hashing.
+ *
+ * `sceneText` is a FALLBACK only — consulted when the tag and the slugline
+ * matched nothing, so a scene that already binds a location is untouched and
+ * its stored hashes do not move. A prose-script scene that previously bound
+ * NO location and whose text names one DOES gain a binding, so its rendered
+ * shots read stale once after deploy. Pass it wherever the scene is in hand;
+ * omitting it leaves a prose-script scene with no set. See
+ * `matchLocationInText`.
  */
 export function matchLocationsToScene<T extends LocationMatchInput>(
   allLocations: T[],
   environmentTag: string,
-  sceneLocation: string
+  sceneLocation: string,
+  sceneText?: string | null
 ): T[] {
-  if (!environmentTag && !sceneLocation) return [];
+  if (!environmentTag && !sceneLocation) {
+    return sceneText ? matchLocationInText(allLocations, sceneText) : [];
+  }
 
   const envTagLower = environmentTag.toLowerCase();
   const sceneLocLower = sceneLocation.toLowerCase();
 
-  return allLocations.filter((loc) => {
+  const tagged = allLocations.filter((loc) => {
     const consistencyTag = (loc.consistencyTag ?? '').toLowerCase();
     const locName = loc.name.toLowerCase();
     const locId = loc.locationId.toLowerCase();
@@ -138,6 +303,9 @@ export function matchLocationsToScene<T extends LocationMatchInput>(
         (sceneLocLower.length > 0 && term.includes(sceneLocLower))
     );
   });
+
+  if (tagged.length > 0 || !sceneText) return tagged;
+  return matchLocationInText(allLocations, sceneText);
 }
 
 type ElementMatchInput = Pick<SequenceElementMinimal, 'token'>;

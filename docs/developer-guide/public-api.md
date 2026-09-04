@@ -22,8 +22,8 @@ up. `https://openstory.so/llms.txt` also points here.
 
 ## Authentication
 
-Every endpoint except discovery and the device-login pair requires an API key.
-Two ways to get one:
+Except discovery and the device-login pair, callers send an `osk_` key **or**
+an OAuth access token. Two ways to get a key:
 
 - **Device-code login** (for agents/CLIs, no copy-pasting): `POST
 /api/v1/device/code` returns a `device_code`, a short `user_code`, and a
@@ -47,6 +47,53 @@ x-api-key: <key>
 Keys are team-scoped — a key only ever sees its own team's sequences — and rate
 limited to **10 requests/second**; exceeding it returns `429` with a `Retry-After`
 header.
+
+### OAuth 2.1 ("login with OpenStory")
+
+Apps that can run an authorization-code + PKCE flow — hosted MCP clients such
+as Claude or Cursor, a fork of OpenStory offering "Connect OpenStory", anything
+with a browser redirect — don't need a key at all. OpenStory is an OAuth 2.1
+authorization server:
+
+- **Discovery:** `GET /.well-known/oauth-authorization-server` (RFC 8414; also
+  `/.well-known/openid-configuration`). The API's protected-resource document
+  is `GET /.well-known/oauth-protected-resource/api/v1` (RFC 9728), and the
+  MCP endpoint's is `/.well-known/oauth-protected-resource/mcp`.
+- **Registration is dynamic** (RFC 7591): `POST /api/auth/oauth2/register`
+  with your `redirect_uris` and `client_name`. No dashboard step. The endpoint
+  is rate limited per IP. Unused DCR clients (no consent, no refresh token)
+  older than a week are deleted on later registration requests.
+- **Authorize:** send the user to `/api/auth/oauth2/authorize` with PKCE
+  (`S256`), the scopes you need, and `resource=<origin>/api/v1` (RFC 8707) so
+  the token is issued for this API. They sign in if needed, then approve on
+  the consent page, which names your app and the team the grant bills to.
+- **Token:** exchange the code at `/api/auth/oauth2/token`. Access tokens are
+  JWTs valid for an hour; request `offline_access` for a refresh token.
+
+Send the access token exactly like a key:
+
+```
+Authorization: Bearer <access_token>
+```
+
+Tokens are **scoped**, unlike keys:
+
+| Scope             | Grants                                                    |
+| ----------------- | --------------------------------------------------------- |
+| `sequences:read`  | Every `GET`                                               |
+| `sequences:write` | Edits and exports (`POST …/exports`, style mutations)     |
+| `generate`        | Anything that spends credits (`POST /sequences`, enhance) |
+| `credits:read`    | Credit balance (reserved for the MCP endpoint)            |
+
+A token without the scope a route needs gets `403` with a
+`WWW-Authenticate: Bearer error="insufficient_scope", scope="…"` challenge
+naming what to re-authorize with; an invalid or expired token gets `401` with
+`error="invalid_token"`. Both carry `resource_metadata="…"` pointing at the
+RFC 9728 document, which is how MCP clients find their way into the flow.
+
+Users review and revoke grants under **Settings → Developer → Authorized
+apps**. Revoking invalidates the refresh token immediately; an access token
+already issued runs out within the hour.
 
 ## Create a sequence
 

@@ -8,11 +8,20 @@ import {
   account,
   apikey,
   deviceCode,
+  jwks,
+  oauthAccessToken,
+  oauthClient,
+  oauthClientAssertion,
+  oauthClientResource,
+  oauthConsent,
+  oauthRefreshToken,
+  oauthResource,
   passkey,
   session,
   user,
   verification,
 } from '@/lib/db/schema';
+import { eq } from 'drizzle-orm';
 
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
@@ -36,6 +45,8 @@ import {
   isLocalRequestHost,
 } from '@/lib/utils/environment';
 import { DEVICE_VERIFICATION_PATH } from '@/lib/api-v1/device-auth';
+import { createOAuthProviderPlugins } from '@/lib/auth/oauth-provider';
+import { readPublicApiKeyFromHeaders } from '@/lib/auth/public-api-key';
 import { apiKey } from '@better-auth/api-key';
 import { deviceAuthorization } from 'better-auth/plugins/device-authorization';
 import { passkey as passkeyPlugin } from '@better-auth/passkey';
@@ -45,6 +56,8 @@ import { getLogger } from '@/lib/observability/logger';
 
 const logger = getLogger(['openstory', 'auth', 'config']);
 const betterAuthLogger = getLogger(['openstory', 'auth', 'better-auth']);
+
+export { PUBLIC_API_KEY_PREFIX } from '@/lib/auth/public-api-key';
 
 /**
  * Fixed sign-in OTP for local development, so signing in doesn't require
@@ -130,9 +143,23 @@ export function createAuth(db: ReturnType<typeof getDb> = getDb()) {
         passkey: passkey,
         apikey: apikey,
         deviceCode: deviceCode,
+        // OAuth authorization server (#1456)
+        jwks,
+        oauthClient,
+        oauthResource,
+        oauthClientResource,
+        oauthRefreshToken,
+        oauthAccessToken,
+        oauthConsent,
+        oauthClientAssertion,
       },
     }),
     secret: runtimeEnv.BETTER_AUTH_SECRET,
+    // JWT plugin's GET /token mints a session JWT from a cookie. That is not
+    // the OAuth token endpoint (`/oauth2/token`) and must stay off when we
+    // are an authorization server — same JWKS, no scopes / team_id.
+    // https://better-auth.com/docs/plugins/jwt#oauth-provider-mode
+    disabledPaths: ['/token'],
     trustedOrigins: [
       'http://localhost:*',
       'http://192.168.*:*',
@@ -235,15 +262,17 @@ export function createAuth(db: ReturnType<typeof getDb> = getDb()) {
           timeWindow: 1000,
         },
         // Accept either `x-api-key: <key>` or the conventional
-        // `Authorization: Bearer <key>` header.
-        customAPIKeyGetter: (ctx) => {
-          const authHeader = ctx.headers?.get('authorization');
-          if (authHeader?.startsWith('Bearer ')) {
-            return authHeader.slice('Bearer '.length).trim();
-          }
-          return ctx.headers?.get('x-api-key') ?? null;
-        },
+        // `Authorization: Bearer <key>` header. Only `osk_` values are keys:
+        // an OAuth access token (#1456) also travels as a Bearer and is
+        // verified separately (`src/lib/auth/oauth-bearer.ts`), so it must
+        // not be looked up as a key — that would 401 every token.
+        customAPIKeyGetter: (ctx) =>
+          ctx.headers ? readPublicApiKeyFromHeaders(ctx.headers) : null,
       }),
+      // OAuth 2.1 authorization server (#1456): `jwt()` + `mcp()`. Login with
+      // OpenStory for hosted MCP clients, forks, and agents. Options and the
+      // rest of the wiring live in `src/lib/auth/oauth-provider.ts`.
+      ...createOAuthProviderPlugins(),
       // TanStack Start cookie integration - must be after all plugins that set cookies
       // (emailOTP, passkey, lastLoginMethod)
       tanstackStartCookies(),
@@ -323,12 +352,37 @@ export function createAuth(db: ReturnType<typeof getDb> = getDb()) {
       session: {
         create: {
           after: async (session, context) => {
+            // Identify by email so checkout attempters are not anonymous
+            // in PostHog (#1466). Lookup is best-effort — a miss must not
+            // fail session create.
+            let personProperties: Record<string, unknown> | undefined;
+            try {
+              const db = getDb();
+              const [signedInUser] = await db
+                .select({ email: user.email, name: user.name })
+                .from(user)
+                .where(eq(user.id, session.userId))
+                .limit(1);
+              if (signedInUser) {
+                personProperties = {
+                  email: signedInUser.email,
+                  name: signedInUser.name,
+                };
+              }
+            } catch (err) {
+              logger.error('Failed to load user for user_signed_in identify', {
+                err,
+                userId: session.userId,
+              });
+            }
             captureProductEvent({
               distinctId: session.userId,
               event: 'user_signed_in',
               properties: {
                 path: context?.path,
+                ...personProperties,
               },
+              personProperties,
             });
           },
         },

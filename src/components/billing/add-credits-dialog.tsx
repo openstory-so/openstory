@@ -133,7 +133,10 @@ export function AddCreditsDialog() {
       amountUsd: number;
       paymentMethodId: string;
       requestId: string;
-    }) => purchaseCreditsFn({ data: input }),
+    }) =>
+      purchaseCreditsFn({
+        data: { ...input, surface: getAddCreditsSurface() || undefined },
+      }),
     onSuccess: (_data, input) => {
       invalidateBilling();
       triggerBalanceFlash();
@@ -157,7 +160,12 @@ export function AddCreditsDialog() {
   const checkoutMutation = useMutation({
     meta: { inlineError: true },
     mutationFn: (checkoutAmountUsd: number) =>
-      createCheckoutSessionFn({ data: { amountUsd: checkoutAmountUsd } }),
+      createCheckoutSessionFn({
+        data: {
+          amountUsd: checkoutAmountUsd,
+          surface: getAddCreditsSurface() || undefined,
+        },
+      }),
     onSuccess: (data) => {
       window.location.href = data.url;
     },

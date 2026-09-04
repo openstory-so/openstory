@@ -3,6 +3,7 @@ import {
   isValidAudioModel,
   isValidImageToVideoModel,
   isValidTextToImageModel,
+  referenceOnlyCapableWith,
   type AudioModel,
   type ImageToVideoModel,
   type TextToImageModel,
@@ -26,6 +27,17 @@ import {
   DEFAULT_ASPECT_RATIO,
   type AspectRatio,
 } from '@/lib/constants/aspect-ratios';
+import {
+  DEFAULT_RESOLUTION,
+  isResolution,
+  type Resolution,
+} from '@/lib/constants/resolutions';
+import {
+  DEFAULT_GENERATION_STOP_AT,
+  isGenerationStage,
+  stopAtFromFlags,
+  type GenerationStage,
+} from '@/lib/generation/pipeline';
 import { useCallback, useEffect, useState } from 'react';
 
 import { getLogger } from '@/lib/observability/logger';
@@ -33,21 +45,31 @@ import { getLogger } from '@/lib/observability/logger';
 const logger = getLogger(['openstory', 'ui', 'use-generation-settings']);
 
 // Bump when product defaults change so prior localStorage snapshots are ignored
-// (v4 → v5: Turbo is the product default).
+// (v4 → v5: Turbo is the product default. Stop-at is migrated from
+// auto-generate flags when loading a v5 snapshot — #1408). Adding a FIELD is
+// not a reason to bump — `loadSettings` falls back per-field, so an older
+// snapshot still loads. Bumping strands e2e's pinned settings
+// (`GENERATION_SETTINGS_KEY` in e2e/fixtures/test-utils.ts mirrors this
+// literal), which silently reverts the recorded pipeline to Turbo defaults and
+// fails as an aimock fixture miss.
 const STORAGE_KEY = 'openstory:generation-settings:v5';
 
 type GenerationSettings = {
   generationMode: GenerationMode;
   aspectRatio: AspectRatio;
+  resolution: Resolution;
   analysisModels: AnalysisModelId[];
   imageModel: TextToImageModel;
   imageModels: TextToImageModel[];
   motionModel: ImageToVideoModel;
   videoModels: ImageToVideoModel[];
-  autoGenerateMotion: boolean;
+  stopAt: GenerationStage;
+  /** Skip the Generate stop-at alert and reuse `stopAt`. */
+  rememberStopAt: boolean;
+  /** Render a still per shot first (the frame-based workflow); off = reference-only. */
+  generateStartFrames: boolean;
   musicModel: AudioModel;
   audioModels: AudioModel[];
-  autoGenerateMusic: boolean;
 };
 
 function withMode(settings: GenerationSettings): GenerationSettings {
@@ -74,6 +96,7 @@ function withMode(settings: GenerationSettings): GenerationSettings {
 const DEFAULT_SETTINGS: GenerationSettings = withMode({
   generationMode: DEFAULT_GENERATION_MODE,
   aspectRatio: DEFAULT_ASPECT_RATIO,
+  resolution: DEFAULT_RESOLUTION,
   analysisModels: [TURBO_DEFAULT_ANALYSIS],
   imageModel: TURBO_DEFAULT_IMAGE,
   imageModels: [TURBO_DEFAULT_IMAGE],
@@ -81,10 +104,13 @@ const DEFAULT_SETTINGS: GenerationSettings = withMode({
   videoModels: [TURBO_DEFAULT_VIDEO],
   // Motion + music on by default so the first Generate is a short film aha
   // (welcome grant sized for a ~30s stills+motion+music board — #1140).
-  autoGenerateMotion: true,
+  stopAt: DEFAULT_GENERATION_STOP_AT,
+  rememberStopAt: false,
+  // Off by default: a new sequence renders reference-only; start frames are
+  // the opt-in for steerable composition.
+  generateStartFrames: false,
   musicModel: TURBO_DEFAULT_AUDIO,
   audioModels: [TURBO_DEFAULT_AUDIO],
-  autoGenerateMusic: true,
 });
 
 /**
@@ -186,10 +212,25 @@ function loadSettings(): GenerationSettings {
       ...new Set(rawVideoModels.map((m) => getCompatibleModel(m, aspectRatio))),
     ];
 
-    const autoGenerateMotion =
-      'autoGenerateMotion' in parsed &&
-      typeof parsed.autoGenerateMotion === 'boolean'
-        ? parsed.autoGenerateMotion
+    const rawStopAt = 'stopAt' in parsed ? parsed.stopAt : undefined;
+    const stopAt = isGenerationStage(rawStopAt)
+      ? rawStopAt
+      : stopAtFromFlags({
+          autoGenerateMotion:
+            'autoGenerateMotion' in parsed &&
+            typeof parsed.autoGenerateMotion === 'boolean'
+              ? parsed.autoGenerateMotion
+              : true,
+          autoGenerateMusic:
+            'autoGenerateMusic' in parsed &&
+            typeof parsed.autoGenerateMusic === 'boolean'
+              ? parsed.autoGenerateMusic
+              : true,
+        });
+
+    const rememberStopAt =
+      'rememberStopAt' in parsed && typeof parsed.rememberStopAt === 'boolean'
+        ? parsed.rememberStopAt
         : false;
 
     const musicModel =
@@ -206,30 +247,47 @@ function loadSettings(): GenerationSettings {
         ? parsed.audioModels
         : [musicModel];
 
-    const autoGenerateMusic =
-      'autoGenerateMusic' in parsed &&
-      typeof parsed.autoGenerateMusic === 'boolean'
-        ? parsed.autoGenerateMusic
-        : false;
-
     const bag: Record<string, unknown> = parsed;
     const generationMode = isGenerationMode(bag.generationMode)
       ? bag.generationMode
       : DEFAULT_GENERATION_MODE;
+    const resolution = isResolution(bag.resolution)
+      ? bag.resolution
+      : DEFAULT_RESOLUTION;
 
-    return withMode({
+    const settings = withMode({
       generationMode,
       aspectRatio,
+      resolution,
       analysisModels,
       imageModel,
       imageModels,
       motionModel,
       videoModels,
-      autoGenerateMotion,
+      stopAt,
+      rememberStopAt,
+      generateStartFrames:
+        'generateStartFrames' in parsed &&
+        typeof parsed.generateStartFrames === 'boolean'
+          ? parsed.generateStartFrames
+          : false,
       musicModel,
       audioModels,
-      autoGenerateMusic,
     });
+
+    // A stored selection can predate the mode, or predate a model losing its
+    // reference-to-video route — either way, restoring it would hand the
+    // create schema a selection it rejects. Checked against the post-`withMode`
+    // list, since the mode can swap the video models out from under it. Asks
+    // the same via-aware question as `createSequenceSchema` (not the model-only
+    // floor): Grok Imagine is accepted by the server and must not be flipped
+    // back to start frames on reload.
+    return !settings.generateStartFrames &&
+      !settings.videoModels.every((model) =>
+        referenceOnlyCapableWith(model, { xai: true })
+      )
+      ? { ...settings, generateStartFrames: true }
+      : settings;
   } catch (error) {
     logger.warn('Failed to load settings from localStorage:', { err: error });
     return DEFAULT_SETTINGS;

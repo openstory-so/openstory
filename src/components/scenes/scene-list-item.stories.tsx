@@ -18,6 +18,7 @@ const mockShot: ShotView = toShotView(
     sceneId: null,
     shotNumber: 1,
     durationMs: 3000,
+    useStartFrame: null,
     selectedMotionPromptVersionId: null,
     renderSegmentId: null,
     deletedAt: null,

@@ -80,7 +80,9 @@ function makeWorkflow(): TestableStoryboardWorkflow {
 
 function makeEvent(
   sequenceId: string | undefined,
-  extras: Partial<Pick<StoryboardWorkflowInput, 'notify'>> = {}
+  extras: Partial<
+    Pick<StoryboardWorkflowInput, 'notify' | 'stopAt' | 'resume'>
+  > = {}
 ): Readonly<WorkflowEvent<StoryboardWorkflowInput>> {
   const payload: StoryboardWorkflowInput = {
     userId: 'u1',
@@ -89,6 +91,7 @@ function makeEvent(
     title: 'The Long Walk',
     script: 'INT. HALLWAY — NIGHT',
     aspectRatio: '16:9',
+    stopAt: 'music',
     musicPromptSource: 'ai-generated',
     styleConfig: migrateStyleConfigV1ToV2({
       mood: 'tense and hopeful',
@@ -218,16 +221,17 @@ function makeRunImplDb() {
   const updateStatus = vi.fn();
   const deleteBySequence = vi.fn();
   const getForUser = vi.fn(async () => ({ id: 'seq_1', status: 'processing' }));
+  const update = vi.fn();
   const stub = {
     liveRead: { sequences: { getForUser } },
     sequence: vi.fn(() => ({ updateStatus })),
     shots: { deleteBySequence },
     credentials: {},
-    sequences: {},
+    sequences: { update },
   };
   // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- stub covering only the runImpl surface
   const scopedDb = stub as unknown as WorkflowScopedDb;
-  return { scopedDb, updateStatus, names: undefined as string[] | undefined };
+  return { scopedDb, updateStatus, deleteBySequence, update };
 }
 
 describe('StoryboardWorkflow email-ready', () => {
@@ -258,7 +262,6 @@ describe('StoryboardWorkflow email-ready', () => {
       expect.objectContaining({
         sequenceId: 'seq_1',
         ownerEmail: 'owner@example.com',
-        title: 'The Long Walk',
         userId: 'u1',
       })
     );
@@ -283,5 +286,58 @@ describe('StoryboardWorkflow email-ready', () => {
     expect(notifySequenceReady).toHaveBeenCalledWith(
       expect.objectContaining({ notify: false })
     );
+  });
+});
+
+describe('StoryboardWorkflow stop-at + resume (#1408)', () => {
+  const run = async (extras: Parameters<typeof makeEvent>[1]) => {
+    notifySequenceReady.mockReset();
+    notifySequenceReady.mockResolvedValue('sent');
+    spawnAndAwaitChild.mockReset();
+    spawnAndAwaitChild.mockResolvedValue(undefined);
+    const db = makeRunImplDb();
+    const { step, names } = makeStep();
+    await makeWorkflow().invokeRunImpl(
+      makeEvent('seq_1', extras),
+      step,
+      db.scopedDb
+    );
+    return { ...db, names };
+  };
+
+  test('a fresh run wipes shots and the stale checkpoint', async () => {
+    const { deleteBySequence, update, names } = await run({ stopAt: 'music' });
+
+    expect(deleteBySequence).toHaveBeenCalledWith('seq_1');
+    expect(update).toHaveBeenCalledWith({
+      id: 'seq_1',
+      generationStopAt: 'music',
+      pipelineStage: null,
+      generationCheckpoint: null,
+    });
+    expect(names).toContain('generate-poster');
+  });
+
+  test('a resume keeps shots, checkpoint and poster', async () => {
+    const { deleteBySequence, update, names } = await run({
+      stopAt: 'images',
+      resume: true,
+    });
+
+    expect(deleteBySequence).not.toHaveBeenCalled();
+    expect(update).toHaveBeenCalledWith({
+      id: 'seq_1',
+      generationStopAt: 'images',
+    });
+    expect(names).not.toContain('generate-poster');
+  });
+
+  test('an early stop completes without spending the ready email', async () => {
+    const { updateStatus, names } = await run({ stopAt: 'script' });
+
+    expect(updateStatus).toHaveBeenCalledWith('completed');
+    expect(names).toContain('emit-complete');
+    expect(names).not.toContain('email-ready');
+    expect(notifySequenceReady).not.toHaveBeenCalled();
   });
 });

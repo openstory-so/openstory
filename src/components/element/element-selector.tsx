@@ -138,7 +138,7 @@ export function selectFilesToAccept(
 
 type DisplayItem = {
   key: string;
-  imageUrl: string;
+  imageUrl: string | null;
   token?: string;
   status: 'uploading' | 'analyzing' | 'done' | 'error';
   errorMessage?: string;
@@ -706,14 +706,19 @@ export const ElementSelector: React.FC<ElementSelectorProps> = (props) => {
                       key={item.key}
                       className="relative aspect-square overflow-hidden rounded-md group"
                     >
-                      {/* biome-ignore lint/performance/noImgElement: preview uses object URL or R2 URL */}
-                      <AppImage
-                        src={item.imageUrl}
-                        alt={item.token ?? 'Element'}
-                        width={160}
-                        height={160}
-                        className="size-full object-cover"
-                      />
+                      {item.imageUrl ? (
+                        <AppImage
+                          src={item.imageUrl}
+                          alt={item.token ?? 'Element'}
+                          width={160}
+                          height={160}
+                          className="size-full object-cover"
+                        />
+                      ) : (
+                        <div className="flex size-full items-center justify-center bg-muted">
+                          <ImagePlus className="size-6 text-muted-foreground/40" />
+                        </div>
+                      )}
                       {(item.status === 'uploading' ||
                         item.status === 'analyzing') && (
                         <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-background/50">

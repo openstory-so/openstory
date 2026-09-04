@@ -23,9 +23,11 @@ function makeScopedDb(opts: { claim: boolean }) {
     { durationMs: 5000 },
   ]);
   const getBalance = vi.fn(async () => usdToMicros(6.4));
+  const getForUser = vi.fn(async () => ({ title: 'The Long Walk' }));
   const stub = {
     sequences: { claimReadyEmailSend, releaseReadyEmailSend },
     liveRead: {
+      sequences: { getForUser },
       shots: { listBySequence },
       billing: { getBalance },
     },
@@ -38,7 +40,6 @@ function makeScopedDb(opts: { claim: boolean }) {
 const OPTS = {
   sequenceId: 'seq_1',
   ownerEmail: 'owner@example.com',
-  title: 'The Long Walk',
   sequenceUrl: 'https://openstory.so/sequences/seq_1/scenes',
   posterUrl: '/r2/posters/seq_1.png',
   userId: 'u1',

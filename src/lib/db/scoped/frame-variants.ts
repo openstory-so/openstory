@@ -21,6 +21,7 @@
  */
 
 import type { Database } from '@/lib/db/client';
+import type { Resolution } from '@/lib/constants/resolutions';
 import { generateId } from '@/lib/db/id';
 import { framePromptVersions, frameVariants, frames } from '@/lib/db/schema';
 import type {
@@ -630,6 +631,9 @@ export function createFrameVariantsMethods(db: Database) {
       data: {
         workflowRunId: string;
         model: string;
+        /** Tier the render was asked for (#1449). Stamped here, with the
+         *  model, because the claim row predates the render. */
+        resolution?: Resolution | null;
         promptVersionId?: string | null;
         pendingInputHash?: string | null;
       }
@@ -641,6 +645,7 @@ export function createFrameVariantsMethods(db: Database) {
             status: 'generating',
             workflowRunId: data.workflowRunId,
             model: data.model,
+            resolution: data.resolution ?? null,
             promptVersionId: data.promptVersionId ?? null,
             ...(data.pendingInputHash !== undefined
               ? { pendingInputHash: data.pendingInputHash }

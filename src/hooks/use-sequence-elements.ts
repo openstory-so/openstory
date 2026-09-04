@@ -20,7 +20,7 @@ import {
   type QueryClient,
 } from '@tanstack/react-query';
 
-const sequenceElementKeys = {
+export const sequenceElementKeys = {
   all: ['sequence-elements'] as const,
   bySequence: (sequenceId: string) =>
     ['sequence-elements', sequenceId] as const,

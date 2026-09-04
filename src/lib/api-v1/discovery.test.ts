@@ -20,6 +20,7 @@ describe('buildRootDocument', () => {
     expect(doc.instructions).toMatch(/_links/);
     expect(doc.instructions).toMatch(/POST\s+\/api\/v1\/device\/code/);
     expect(doc.instructions).toMatch(/428 authorization_pending/);
+    expect(doc.instructions).toMatch(/OAuth 2.1/);
   });
 
   it('advertises style create/list/get with a parseable create example', () => {
@@ -37,6 +38,10 @@ describe('buildRootDocument', () => {
   it('embeds the request JSON Schema for tool callers', () => {
     const doc = buildRootDocument();
     expect(doc.requestSchema).toMatchObject({ type: 'object' });
+    // Nested named defs stay in $defs; the root CreateSequenceRequest is inlined.
+    expect(doc.requestSchema).toMatchObject({
+      $defs: { CharacterRef: expect.any(Object) },
+    });
   });
 
   it('links every operation with a method (and write links with examples)', () => {

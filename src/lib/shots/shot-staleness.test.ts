@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Scene } from '@/lib/ai/scene-analysis.schema';
 import type { Frame, FrameVariant, Shot } from '@/lib/db/schema';
 import type { ScopedDb } from '@/lib/db/scoped';
@@ -44,6 +44,7 @@ const sequence = {
   styleId: 'style-1',
   aspectRatio: '16:9',
   analysisModel: 'model-1',
+  generateStartFrames: true,
   // Settled sequence — the mid-run short-circuit (#1121) is exercised by its
   // own test below, and must not silence any of the others.
   status: 'completed',
@@ -465,5 +466,66 @@ describe('staleness causes (#1194)', () => {
       'Character "Woman"',
       'Element BOTTLE',
     ]);
+  });
+});
+
+describe('per-shot start-frame override', () => {
+  const stillUrl = 'https://example.com/still.png';
+  const still = asStub<FrameVariant>({
+    id: 'fv-1',
+    inputHash: 'image-stored',
+    model: null,
+    url: stillUrl,
+  });
+  /** The motion branch is the only caller that passes `startingFrameImageUrl`. */
+  const motionContextArgs = () =>
+    // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- mock call args
+    (loadNarrowShotPromptContext.mock.calls as Array<[Record<string, unknown>]>)
+      .map(([args]) => args)
+      .filter((args) => 'startingFrameImageUrl' in args)
+      .at(-1);
+
+  beforeEach(() => {
+    loadNarrowShotPromptContext.mockClear();
+    buildRegenerateShotSnapshot.mockResolvedValue({
+      snapshotInputHash: 'image-stored',
+    });
+    loadNarrowShotPromptContext.mockResolvedValue({});
+    computeVisualPromptInputHash.mockResolvedValue('visual-stored');
+    computeMotionPromptInputHash.mockResolvedValue('motion-stored');
+  });
+
+  it('hashes a reference-only SHOT with no still, on a start-frame sequence', async () => {
+    await computeShotStaleness({
+      scopedDb: makeScopedDb({ motionSelectedHash: 'motion-stored' }),
+      sequence,
+      shot: asStub<Shot>({ id: 'shot-1', useStartFrame: false }),
+      frame,
+      selectedImage: still,
+      scene,
+    });
+
+    // Recomputing from the SEQUENCE value would hash the still and the
+    // image-to-video template, and never match the stamp the override wrote.
+    expect(motionContextArgs()).toMatchObject({
+      sequence: expect.objectContaining({ referenceOnly: true }),
+      startingFrameImageUrl: null,
+    });
+  });
+
+  it('hashes a start-frame SHOT with its still, on a reference-only sequence', async () => {
+    await computeShotStaleness({
+      scopedDb: makeScopedDb({ motionSelectedHash: 'motion-stored' }),
+      sequence: { ...sequence, generateStartFrames: false },
+      shot: asStub<Shot>({ id: 'shot-1', useStartFrame: true }),
+      frame,
+      selectedImage: still,
+      scene,
+    });
+
+    expect(motionContextArgs()).toMatchObject({
+      sequence: expect.objectContaining({ referenceOnly: false }),
+      startingFrameImageUrl: stillUrl,
+    });
   });
 });

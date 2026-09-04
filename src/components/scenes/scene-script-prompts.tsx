@@ -3,12 +3,15 @@ import { ActionCost } from '@/components/billing/action-cost';
 import { type ModelGenerationStatus } from '@/components/model/base-model-selector';
 import { ImageModelSelector } from '@/components/model/image-model-selector';
 import { MotionModelSelector } from '@/components/model/motion-model-selector';
+import { useViaAvailability } from '@/hooks/use-via-availability';
 import { PromptHistorySheet } from '@/components/prompts/prompt-history-sheet';
 import { DivergentAlternateBanner } from '@/components/staleness/divergent-alternate-banner';
 import { StalenessIndicator } from '@/components/staleness/staleness-indicator';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { setShotUseStartFrameFn } from '@/functions/shots';
+import { canUseStartFrame, usesStartFrame } from '@/lib/shots/use-start-frame';
 import {
   Select,
   SelectContent,
@@ -18,6 +21,8 @@ import {
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { MarkdownEditor } from '@/components/text-editor/markdown-editor';
+import { VoiceInputButton } from '@/components/voice/voice-input-button';
+import { useEditorDictation } from '@/hooks/use-dictation';
 import { useSequenceMentionItems } from '@/hooks/use-mention-items';
 import { shortenPromptFn } from '@/functions/ai';
 import { generateShotImageFn } from '@/functions/shot-image';
@@ -89,6 +94,7 @@ import {
   DEFAULT_ASPECT_RATIO,
   type AspectRatio,
 } from '@/lib/constants/aspect-ratios';
+import type { Resolution } from '@/lib/constants/resolutions';
 import { getMediaRoutesFn } from '@/functions/media-routes';
 import { getStorageDomainFn } from '@/functions/storage-config';
 import {
@@ -104,9 +110,11 @@ import {
   CONTENT_REJECTION_USER_TITLE,
   isContentRejectionError,
 } from '@/lib/ai/content-rejection';
+import { isNativeGeminiVideoModel } from '@/lib/ai/gemini-native';
 import { isNativeGrokVideoModel } from '@/lib/ai/grok-native';
 import { buildImageRequest } from '@/lib/image/build-image-request';
 import { buildBytePlusImageRequest } from '@/lib/image/build-byteplus-image-request';
+import { buildGeminiVideoRequest } from '@/lib/motion/build-gemini-video-request';
 import { buildGrokVideoRequest } from '@/lib/motion/build-grok-video-request';
 import { buildBytePlusVideoRequest } from '@/lib/motion/build-byteplus-video-request';
 import { buildMotionRequest } from '@/lib/motion/build-model-input';
@@ -169,13 +177,14 @@ export function tabsForScope(scope: SelectionScope): TabDescriptor[] {
     // No Script tab: the script is scene-scoped (`scene_script_versions` is
     // keyed by sceneId), so editing it from a shot would silently rewrite every
     // sibling shot's text. Shot scope keeps only what a shot actually owns — its
-    // image and motion prompts.
+    // image and motion prompts. Video leads: it is the deliverable, and in
+    // the default reference-only mode the start frame is optional.
     return [
+      { value: 'motion-prompt', label: 'Video' },
+      { value: 'image-prompt', label: 'Start Frame' },
       { value: 'cast', label: 'Cast' },
       { value: 'location', label: 'Locations' },
       { value: 'elements', label: 'Elements' },
-      { value: 'image-prompt', label: 'Image' },
-      { value: 'motion-prompt', label: 'Video' },
     ];
   }
   if (scope === 'scenes') {
@@ -228,6 +237,11 @@ const PromptCopyButton: React.FC<{
 type SceneScriptPromptsProps = {
   shot?: ShotView | undefined;
   sequenceId: string;
+  /**
+   * Sequence default for "animate from a start frame". A shot may override it
+   * (`shots.useStartFrame`); the checkbox below shows the resolved answer.
+   */
+  sequenceGeneratesStartFrames?: boolean;
   selectedTab: TabValue;
   /** Tabs to render for the current selection scope (#986). */
   visibleTabs: TabDescriptor[];
@@ -239,6 +253,8 @@ type SceneScriptPromptsProps = {
     type: 'image' | 'motion' | 'scene-variants'
   ) => void;
   aspectRatio?: AspectRatio;
+  /** Output resolution tier (#1449) — sizes the preview and its estimate. */
+  resolution?: Resolution;
   /** Image variant (frame_variants, #989) for the shot's look model. */
   variantForSelectedModel?: FrameVariant;
   /** The selected shot's video variant for the effective video model (#545). */
@@ -301,6 +317,7 @@ type SceneScriptPromptsProps = {
 export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
   shot,
   sequenceId,
+  sequenceGeneratesStartFrames = false,
   selectedTab,
   visibleTabs,
   onTabChange,
@@ -308,6 +325,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
   regeneratingMotion,
   onRegenerateStart,
   aspectRatio,
+  resolution,
   variantForSelectedModel,
   videoVariantForSelectedModel,
   segment,
@@ -392,6 +410,21 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
   // appears on a prompt the user never touched.
   const imageFocusedRef = useRef(false);
   const motionFocusedRef = useRef(false);
+
+  // The mics live in each prompt's header row; dictation streams into the
+  // editor below through these handles.
+  const { ref: imagePromptRef, voice: imageVoice } = useEditorDictation();
+  const { ref: motionPromptRef, voice: motionVoice } = useEditorDictation();
+
+  // Drop a live take when the shot changes so the previous shot's document
+  // cannot land in the new shot's draft. The buttons remount via `key`.
+  useEffect(() => {
+    imagePromptRef.current?.endDictation();
+    motionPromptRef.current?.endDictation();
+    // Refs are stable; the take must end when the shot id changes, not when
+    // the handle object identity does.
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
+  }, [shot?.id]);
 
   const queryClient = useQueryClient();
   const setImageFromVariant = useSetImageFromVariant();
@@ -1084,6 +1117,11 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
 
   // Raw prompt for editing (just motion direction, no dialogue/audio)
   const rawMotionPrompt = shotMotionPrompt?.fullPrompt || '';
+  // What submit will actually send. Cast and element refs follow the motion
+  // prompt (#1432), so the preview, the cost estimate and the request all have
+  // to match on the same text — an unsaved edit included.
+  const effectiveMotionPromptText =
+    editedMotionPrompt || rawMotionPrompt || null;
 
   // Assembled preview: exactly what resolveMotionPrompt produces on the server.
   // Overlay any unsaved edit onto the structured prompt so the dialogue/audio
@@ -1125,24 +1163,34 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
       regenImageModel,
       aspectRatio ?? DEFAULT_ASPECT_RATIO,
       1,
-      { pricing: falPricing }
+      { pricing: falPricing, resolution }
     );
-  }, [falPricing, regenImageModel, aspectRatio]);
+  }, [falPricing, regenImageModel, aspectRatio, resolution]);
   const motionCostEstimate = useMemo(() => {
     if (!falPricing || !shot) return null;
     const duration = resolveShotDuration({
       durationMs: shot.durationMs,
       model: effectiveMotionModel,
     });
+    // Per shot, not the sequence default: the chip must quote the route the
+    // submit takes, and without a still the location sheet counts as a ref.
+    const referenceOnly = !usesStartFrame(shot, {
+      generateStartFrames: sequenceGeneratesStartFrames,
+    });
     const hasReferenceImages =
       buildMotionReferenceImages({
         scene: sceneReference,
         characters: mentionCharacters ?? [],
         elements: mentionElements ?? [],
+        motionPrompt: effectiveMotionPromptText,
+        includeLocations: referenceOnly,
+        locations: mentionLocations ?? [],
       }).length > 0;
     return estimateVideoCost(effectiveMotionModel, duration, {
       pricing: falPricing,
+      resolution,
       hasReferenceImages,
+      referenceOnly,
     });
   }, [
     falPricing,
@@ -1151,6 +1199,10 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     sceneReference,
     mentionCharacters,
     mentionElements,
+    mentionLocations,
+    resolution,
+    effectiveMotionPromptText,
+    sequenceGeneratesStartFrames,
   ]);
 
   // CDN-backed deployments absolutize stored /r2/ URLs at submit (toCdnUrl) —
@@ -1183,6 +1235,53 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     [storageDomain]
   );
 
+  // Flipping this re-stales the motion prompt — the two modes use different
+  // templates. See `usesStartFrame`.
+  const shotUsesStartFrame = shot
+    ? usesStartFrame(shot, {
+        generateStartFrames: sequenceGeneratesStartFrames,
+      })
+    : sequenceGeneratesStartFrames;
+  // The shot's model can't render without a start frame — it stays listed (it
+  // is already picked) but submit refuses it, so say so here rather than at the
+  // click. Same list the selector filters by.
+  const { referenceOnlyModels } = useViaAvailability();
+  const modelCannotRenderReferenceOnly =
+    !shotUsesStartFrame && !referenceOnlyModels.includes(effectiveMotionModel);
+  // With no still, the sheets are the ONLY thing fixing identity and set. None
+  // matched means this shot renders as text-to-video at the same price, with
+  // its cast and location reinvented while its siblings bind theirs — worth
+  // saying before the money is spent, not after the clip looks wrong.
+  const noReferencesMatched =
+    !shotUsesStartFrame &&
+    buildMotionReferenceImages({
+      scene: sceneReference,
+      characters: mentionCharacters ?? [],
+      elements: mentionElements ?? [],
+      motionPrompt: effectiveMotionPromptText,
+      includeLocations: true,
+      locations: mentionLocations ?? [],
+    }).length === 0;
+  const startFrameAvailable = !!shot && canUseStartFrame(shot);
+  const setUseStartFrame = useMutation({
+    mutationFn: (next: boolean) =>
+      setShotUseStartFrameFn({
+        data: { sequenceId, shotId: shot?.id ?? '', useStartFrame: next },
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['shots', sequenceId] });
+      // The flip re-stales the motion prompt; without this the indicator kept
+      // reading fresh and the shot rendered with the other mode's prompt.
+      void queryClient.invalidateQueries({ queryKey: shotStalenessNamespace });
+      // Segment staleness derives the frame pointer from the mode, so the
+      // Video tab's Stale badge lags a full stale-time without this.
+      void queryClient.invalidateQueries({
+        queryKey: segmentKeys.list(sequenceId),
+      });
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
   // Exact request for the *selected* video model — same builder
   // submitMotionJob uses, including reference bindings. Other catalog
   // models are omitted (#1242): they inflate the inspector for picks the
@@ -1198,6 +1297,12 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
       scene: sceneReference,
       characters: mentionCharacters ?? [],
       elements: mentionElements ?? [],
+      motionPrompt: effectiveMotionPromptText,
+      // Must mirror the submit path or the preview shows the wrong slot
+      // numbers: without a still the location sheet is sent, and it goes FIRST,
+      // shifting every other reference down one.
+      includeLocations: !shotUsesStartFrame,
+      locations: mentionLocations ?? [],
     }).map((ref) => ({
       ...ref,
       referenceImageUrl: absolutizeUrl(ref.referenceImageUrl),
@@ -1227,7 +1332,13 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
         durationMs: shot.durationMs,
         model: modelKey,
       });
-      const imageUrl = absolutizeUrl(shot.image?.url ?? '');
+      // The whole point of this panel is that it shows what the model receives.
+      // Unticking "Use start frame" withholds the still at submit, so it has to
+      // be withheld here too — that is what drops the "Use @Image1 as the
+      // starting frame." line and rebinds references from slot 1.
+      const imageUrl = shotUsesStartFrame
+        ? absolutizeUrl(shot.image?.url ?? '')
+        : undefined;
       if (isNativeGrokVideoModel(modelKey)) {
         const request = buildGrokVideoRequest({
           prompt: modelPrompt,
@@ -1284,16 +1395,47 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
           ),
         };
       }
+      if (isNativeGeminiVideoModel(modelKey)) {
+        const request = buildGeminiVideoRequest({
+          prompt: modelPrompt,
+          imageUrl,
+          duration,
+          aspectRatio,
+          referenceImages,
+          model: modelKey,
+        });
+        const textPart = request.input.prompt.find(
+          (part) => part.type === 'text'
+        );
+        const prompt = textPart?.content ?? modelPrompt;
+        return {
+          modelName: config.name,
+          endpointId: request.endpointId,
+          prompt,
+          json: JSON.stringify(request.input, null, 2),
+          promptLength: prompt.length,
+          maxPromptLength: config.maxPromptLength,
+          images: boundPromptImages(
+            imageUrlsFromPromptParts(request.input.prompt),
+            (position) => `<IMAGE_REF_${position - 1}>`
+          ),
+        };
+      }
       const request = buildMotionRequest(
         {
           prompt: modelPrompt,
           imageUrl,
           duration,
           aspectRatio,
+          resolution,
           generateAudio: videoModelSupportsAudio(modelKey)
             ? generateAudio
             : undefined,
           referenceImages,
+          // Forces the reference-to-video route even when this scene matched
+          // no sheets — exactly as submit does, so the endpoint shown is the
+          // endpoint used.
+          referenceOnly: !shotUsesStartFrame,
         },
         modelKey
       );
@@ -1313,6 +1455,8 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
       return null;
     }
   }, [
+    mentionLocations,
+    shotUsesStartFrame,
     shot,
     effectiveMotionModel,
     sceneReference,
@@ -1321,9 +1465,11 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     mentionElements,
     editedMotionPrompt,
     rawMotionPrompt,
+    effectiveMotionPromptText,
     shotMotionPrompt,
     characterTags,
     aspectRatio,
+    resolution,
     generateAudio,
     absolutizeUrl,
     byteplusEnabled,
@@ -1362,6 +1508,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
         imageSize: aspectRatio
           ? aspectRatioToImageSize(aspectRatio)
           : undefined,
+        resolution,
         numImages: 1,
         referenceImageUrls: referenceUrls,
       };
@@ -1407,6 +1554,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     mentionElements,
     mentionLocations,
     aspectRatio,
+    resolution,
     absolutizeUrl,
     byteplusEnabled,
   ]);
@@ -1471,6 +1619,14 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     dirtyMotionRef.current &&
     editedMotionPrompt.trim().length > 0 &&
     editedMotionPrompt.trim() !== rawMotionPrompt.trim();
+
+  // "Regenerate" promises a previous version to replace. Reference-only skips
+  // the visual-prompt phase entirely, so its shots reach this panel with no
+  // image prompt ever written — and the button offering to redo one that does
+  // not exist is why it reads wrong. Keyed on the prompt itself rather than on
+  // the mode, so it is also right for a shot whose prompt generation failed.
+  const visualPromptAction = imagePrompt?.trim() ? 'Regenerate' : 'Generate';
+  const motionPromptAction = rawMotionPrompt.trim() ? 'Regenerate' : 'Generate';
 
   // Check if image is currently generating
   const isGenerating =
@@ -1751,10 +1907,25 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
                   onCopy={(text, key) => void handleCopy(text, key)}
                   label="Copy image prompt"
                 />
+                <VoiceInputButton
+                  key={shot?.id}
+                  label="image prompt"
+                  size="icon-xs"
+                  disabled={isAwaitingVisualPrompt}
+                  {...imageVoice}
+                  onStart={() => {
+                    // Treat dictation as a user edit even though the mic
+                    // never focuses the editor (so Escape still hits the button).
+                    const started = imageVoice.onStart();
+                    if (started) imageFocusedRef.current = true;
+                    return started;
+                  }}
+                />
               </div>
             </div>
             <MarkdownEditor
               id="image-prompt-input"
+              ref={imagePromptRef}
               value={
                 isAwaitingVisualPrompt
                   ? shotPromptStream.visual.text
@@ -1889,14 +2060,16 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
             }
             disabled={!shot || isRegeneratingVisualPrompt}
             className="w-full"
-            aria-label="Regenerate visual prompt"
+            aria-label={`${visualPromptAction} visual prompt`}
           >
             {isRegeneratingVisualPrompt ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             ) : (
               <RefreshCw className="mr-2 h-4 w-4" />
             )}
-            {isRegeneratingVisualPrompt ? 'Regenerating…' : 'Regenerate Prompt'}
+            {isRegeneratingVisualPrompt
+              ? `${visualPromptAction}ing…`
+              : `${visualPromptAction} Prompt`}
           </Button>
 
           {divergentImageVariant && (
@@ -2045,10 +2218,24 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
                   onCopy={(text, key) => void handleCopy(text, key)}
                   label="Copy motion prompt"
                 />
+                <VoiceInputButton
+                  key={shot?.id}
+                  label="motion prompt"
+                  size="icon-xs"
+                  disabled={isAwaitingMotionPrompt}
+                  {...motionVoice}
+                  onStart={() => {
+                    // Same as the image mic: Focused means dirty, not DOM focus.
+                    const started = motionVoice.onStart();
+                    if (started) motionFocusedRef.current = true;
+                    return started;
+                  }}
+                />
               </div>
             </div>
             <MarkdownEditor
               id="motion-prompt-input"
+              ref={motionPromptRef}
               value={
                 isAwaitingMotionPrompt
                   ? shotPromptStream.motion.text
@@ -2112,6 +2299,10 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
               recommendedVideoModel={recommendedVideoModel}
               styleName={styleName}
               generatedStatuses={videoModelStatuses}
+              // With the start frame off this shot renders reference-only, and
+              // submit refuses a model that cannot (`canRenderReferenceOnly`).
+              // Offering one here would just move the failure to the click.
+              referenceOnly={!shotUsesStartFrame}
             />
             <p className="text-xs text-muted-foreground">
               Changing the model applies to the next generation.
@@ -2177,14 +2368,16 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
             }
             disabled={!shot || isRegeneratingMotionPrompt}
             className="w-full"
-            aria-label="Regenerate motion prompt"
+            aria-label={`${motionPromptAction} motion prompt`}
           >
             {isRegeneratingMotionPrompt ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             ) : (
               <RefreshCw className="mr-2 h-4 w-4" />
             )}
-            {isRegeneratingMotionPrompt ? 'Regenerating…' : 'Regenerate Prompt'}
+            {isRegeneratingMotionPrompt
+              ? `${motionPromptAction}ing…`
+              : `${motionPromptAction} Prompt`}
           </Button>
 
           {divergentVideoVariant && (
@@ -2212,6 +2405,53 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
               />
               <span>Include SFX &amp; dialogue</span>
             </label>
+          )}
+
+          {/* Start-frame switch. Unticked, the shot renders straight from its
+              reference sheets — the same thing the sequence-wide reference-only
+              setting does, decided per shot. Disabled without a still to point
+              at: ticking it must never trigger image generation. */}
+          <label
+            htmlFor="scene-use-start-frame"
+            className="flex items-center gap-2 text-sm text-muted-foreground"
+          >
+            <Checkbox
+              id="scene-use-start-frame"
+              checked={shotUsesStartFrame}
+              onCheckedChange={(checked) =>
+                setUseStartFrame.mutate(checked === true)
+              }
+              disabled={
+                !shot ||
+                setUseStartFrame.isPending ||
+                isGeneratingMotion ||
+                (!startFrameAvailable && !shotUsesStartFrame)
+              }
+            />
+            <span>
+              Use start frame
+              {!startFrameAvailable && !shotUsesStartFrame && (
+                <span className="text-muted-foreground/70">
+                  {' '}
+                  — generate one first
+                </span>
+              )}
+            </span>
+          </label>
+
+          {modelCannotRenderReferenceOnly && (
+            <p className="text-xs text-muted-foreground">
+              {IMAGE_TO_VIDEO_MODELS[effectiveMotionModel].name} needs a start
+              frame. Pick another model, or tick Use start frame.
+            </p>
+          )}
+
+          {noReferencesMatched && (
+            <p className="text-xs text-muted-foreground">
+              No character, location or element references match this scene, so
+              it will render from the prompt alone — same price, but nothing
+              holds the cast or set consistent with the other shots.
+            </p>
           )}
 
           {/* Motion action button — variant-aware (#545), mirror of the image

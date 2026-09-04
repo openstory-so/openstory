@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  reusesTalentSheet,
   jaccard,
   shouldReuseTalentSheet,
   tokenizeAppearance,
@@ -117,5 +118,53 @@ describe('shouldReuseTalentSheet', () => {
         talentDescription: 'Weathered face, left-cheek scar',
       })
     ).toBe(true);
+  });
+});
+
+describe('reusesTalentSheet', () => {
+  const CHARACTER = {
+    standardClothing: 'yellow rain jacket',
+    distinguishingFeatures: 'scar over left eyebrow',
+  };
+
+  it('is false with no match at all', () => {
+    expect(reusesTalentSheet(CHARACTER, undefined)).toBe(false);
+  });
+
+  it('is false when the matched talent has no sheet image to copy', () => {
+    // The reservation gate counts on this: no sheet URL means the character
+    // sheet is generated, and generation is what gets billed.
+    expect(
+      reusesTalentSheet(CHARACTER, {
+        sheetMetadata: {
+          standardClothing: 'yellow rain jacket',
+          distinguishingFeatures: 'scar over left eyebrow',
+        },
+      })
+    ).toBe(false);
+  });
+
+  it('is true when the talent sheet already wears the role', () => {
+    expect(
+      reusesTalentSheet(CHARACTER, {
+        sheetImageUrl: 'https://example.com/talent.png',
+        sheetMetadata: {
+          standardClothing: 'yellow rain jacket',
+          distinguishingFeatures: 'scar over left eyebrow',
+        },
+      })
+    ).toBe(true);
+  });
+
+  it('is false when the role wardrobe diverges from the talent sheet', () => {
+    expect(
+      reusesTalentSheet(CHARACTER, {
+        sheetImageUrl: 'https://example.com/talent.png',
+        sheetMetadata: {
+          standardClothing: 'charcoal three-piece suit',
+          distinguishingFeatures: 'clean shaven',
+        },
+      })
+    ).toBe(false);
   });
 });

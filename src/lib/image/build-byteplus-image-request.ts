@@ -28,17 +28,31 @@ import type {
 } from '@tanstack/ai-byteplus';
 
 /**
- * Pixel dimensions per aspect preset at the 2K tier we render at.
+ * Pixel dimensions per aspect preset, per resolution tier (#1449).
  *
- * Spelled out rather than sent as the `2K` token because the token is square:
- * a 16:9 shot asked for as `2K` comes back 2048x2048 and gets letterboxed
- * downstream. 16:9 lands at exactly 2.36 megapixels, which is also Seedream's
- * price-tier boundary — see the rate card in `byteplus-pricing.ts`.
+ * Spelled out rather than sent as the `1K`/`2K` token because the token is
+ * square: a 16:9 shot asked for as `2K` comes back 2048x2048 and gets
+ * letterboxed downstream. 2K 16:9 lands at exactly 2.36 megapixels, which is
+ * also Seedream's price-tier boundary — see the rate card in
+ * `byteplus-pricing.ts`.
+ *
+ * Pro serves 1K and 2K only (no 4K token, unlike lite), so a 4K ask lands on
+ * the 2K row rather than a size Ark rejects.
  */
-const BYTEPLUS_IMAGE_DIMENSIONS: Record<ImageSize, BytePlusImageSize> = {
-  square_hd: '2048x2048',
-  portrait_16_9: '1152x2048',
-  landscape_16_9: '2048x1152',
+const BYTEPLUS_IMAGE_DIMENSIONS: Record<
+  '1K' | '2K',
+  Record<ImageSize, BytePlusImageSize>
+> = {
+  '1K': {
+    square_hd: '1024x1024',
+    portrait_16_9: '576x1024',
+    landscape_16_9: '1024x576',
+  },
+  '2K': {
+    square_hd: '2048x2048',
+    portrait_16_9: '1152x2048',
+    landscape_16_9: '2048x1152',
+  },
 };
 
 /** One entry of the Ark prompt-parts array. */
@@ -78,12 +92,10 @@ export function buildBytePlusImageRequest(
       ? params.prompt
       : `${params.prompt.slice(0, maxPromptLength - 3)}...`;
 
-  // Pro accepts 1K / 2K only (no 4K token, unlike lite). A 4K ask snaps to
-  // the 2K pixel size for the aspect rather than sending a token Ark rejects.
+  // Pro serves 1K and 2K only, so 1080p and 4K both land on 2K.
+  const tier = params.resolution === '720p' ? '1K' : '2K';
   const size =
-    params.resolution === '1K'
-      ? '1K'
-      : BYTEPLUS_IMAGE_DIMENSIONS[params.imageSize ?? DEFAULT_IMAGE_SIZE];
+    BYTEPLUS_IMAGE_DIMENSIONS[tier][params.imageSize ?? DEFAULT_IMAGE_SIZE];
 
   return {
     modelId,

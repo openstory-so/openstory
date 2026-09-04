@@ -349,6 +349,21 @@ describe('recordFalUsage', () => {
     expect(recordUsage).not.toHaveBeenCalled();
   });
 
+  it('skips native Gemini image endpoints so they do not pollute fal medians', async () => {
+    const { scopedDb, recordUsage } = makeScopedDb();
+
+    await recordFalUsageImpl(scopedDb, {
+      endpointId: 'gemini-3.1-flash-lite-image',
+      unitsBilled: 1,
+    });
+    await recordFalUsageImpl(scopedDb, {
+      endpointId: 'gemini-3-pro-image',
+      unitsBilled: 1,
+    });
+
+    expect(recordUsage).not.toHaveBeenCalled();
+  });
+
   it('propagates a write failure so the caller’s step.do can retry it', async () => {
     // Swallowing this made the enclosing `step.do` always succeed, throwing
     // away the free retry it exists for. The step isolates the failure from

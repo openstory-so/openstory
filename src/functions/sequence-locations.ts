@@ -397,6 +397,7 @@ export const recastLocationFn = createServerFn({ method: 'POST' })
         imageModel,
         styleConfig,
         aspectRatio: sequence.aspectRatio,
+        resolution: sequence.resolution,
         shotSnapshots,
         snapshotInputHash,
       } satisfies RecastLocationWorkflowInput,

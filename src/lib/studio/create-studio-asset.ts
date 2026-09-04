@@ -48,6 +48,7 @@ function estimateStudioCost(
     const perImage = gateEstimate(
       estimateImageCost(input.imageModel, input.aspectRatio, 1, {
         pricing,
+        resolution: input.resolution,
         edit: input.referenceImages.length > 0,
       }),
       { model: input.imageModel, operation: 'studio-image' }
@@ -59,6 +60,7 @@ function estimateStudioCost(
   const perVideo = gateEstimate(
     estimateStudioVideoCost(input.videoModel, duration, {
       pricing,
+      resolution: input.resolution,
       mode: input.mode,
     }),
     { model: input.videoModel, operation: 'studio-video' }
@@ -71,6 +73,7 @@ function snapshotInput(input: StudioCreateInput): GeneratedAssetInput {
     const snapshot: GeneratedAssetInput = {
       prompt: input.prompt,
       aspectRatio: input.aspectRatio,
+      resolution: input.resolution,
       videoModel: input.videoModel,
       duration: snapStudioVideoDuration(input.duration, input.videoModel),
       count: input.count,
@@ -93,6 +96,7 @@ function snapshotInput(input: StudioCreateInput): GeneratedAssetInput {
   return {
     prompt: input.prompt,
     aspectRatio: input.aspectRatio,
+    resolution: input.resolution,
     imageModel: input.imageModel,
     count: input.count,
     ...(input.referenceImages.length > 0 && {

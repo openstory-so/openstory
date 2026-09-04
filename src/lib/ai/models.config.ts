@@ -12,7 +12,7 @@ export const SCRIPT_ANALYSIS_MODELS = [
     name: 'Claude Fable 5.1',
     vendor: 'Anthropic',
     license: 'proprietary' as const,
-    // Arena 1507.
+    // Arena 1507 (Fable 5 — no 5.1 score published yet; rank unchanged).
     qualityRank: 1,
     contextWindow: 1_000_000,
     maxOutputTokens: 128_000,

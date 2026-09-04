@@ -280,4 +280,39 @@ describe('toVisionImageSource', () => {
       toVisionImageSource('/r2/elements/team/missing.png')
     ).rejects.toThrow(/not found/);
   });
+
+  it('inlines stored bytes even when a CDN domain is configured', async () => {
+    setEnv({
+      R2_PUBLIC_STORAGE_DOMAIN: 'storage.example.com',
+      FAL_KEY: 'test-key',
+    });
+    readStorageObject.mockResolvedValue({
+      bytes: PNG_BYTES,
+      contentType: 'image/png',
+    });
+
+    await expect(
+      toVisionImageSource('/r2/elements/team/el.png', undefined, {
+        inline: true,
+      })
+    ).resolves.toEqual({
+      type: 'data',
+      value: Buffer.from(PNG_BYTES).toString('base64'),
+      mimeType: 'image/png',
+    });
+    expect(falUpload).not.toHaveBeenCalled();
+  });
+
+  it('decomposes a data: URI when inlining', async () => {
+    const payload = Buffer.from(PNG_BYTES).toString('base64');
+    await expect(
+      toVisionImageSource(`data:image/png;base64,${payload}`, undefined, {
+        inline: true,
+      })
+    ).resolves.toEqual({
+      type: 'data',
+      value: payload,
+      mimeType: 'image/png',
+    });
+  });
 });

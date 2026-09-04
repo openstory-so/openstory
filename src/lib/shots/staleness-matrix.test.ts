@@ -81,6 +81,7 @@ function videoHash(state: PipelineState): Promise<string | null> {
       shotId: 'shot-1',
       motionPromptVersionId: state.selectedMotionPromptVersionId,
       frameVersionId: state.selectedFrameVersionId,
+      usesStartFrame: true,
       durationMs: state.durationMs,
     },
   ];

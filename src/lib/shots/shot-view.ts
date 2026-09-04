@@ -253,3 +253,54 @@ export function shotAfterVariantSelect(
     videoStatus: 'pending',
   };
 }
+
+/**
+ * The rows a motion-eligibility decision reads. Narrower than `ShotView` so a
+ * caller holding a partial projection can still ask the question.
+ */
+type MotionEligibilityShot = {
+  frame: Pick<Frame, 'imageStatus'>;
+  image: Pick<FrameVariant, 'url'> | null;
+  videoStatus: ShotView['videoStatus'];
+};
+
+/**
+ * Is this shot eligible for a user-driven batch motion generate?
+ *
+ * Shared because there are four call sites: `batchGenerateMotionFn`, which
+ * actually spawns the work, and three client views that recompute the same set
+ * optimistically — the scenes-view spinner set, scene-list's "Generate all"
+ * button and cost preview, and the add-model menu. They drifted once when
+ * `'cancelled'` was added on the server side only; reference-only would drift
+ * them again, since a sequence that never renders a still leaves `imageStatus`
+ * at `'pending'` forever and the still half of the rule then excludes every
+ * shot — hiding the button outright.
+ *
+ * `'cancelled'` is eligible here and NOT in smart retry: a cancel excludes a
+ * shot from AUTO retry, not from a user asking again.
+ */
+export function isBatchMotionEligible(
+  shot: MotionEligibilityShot,
+  referenceOnly: boolean
+): boolean {
+  const hasStill = shot.frame.imageStatus === 'completed' && !!shot.image?.url;
+  return (
+    (referenceOnly || hasStill) &&
+    (shot.videoStatus === 'pending' ||
+      shot.videoStatus === 'failed' ||
+      shot.videoStatus === 'cancelled')
+  );
+}
+
+/**
+ * Is this shot's clip currently rendering? Same still-gate rationale as
+ * {@link isBatchMotionEligible} — without it a reference-only sequence never
+ * reports an in-flight render, so the progress banner never appears.
+ */
+export function isMotionGenerating(
+  shot: MotionEligibilityShot,
+  referenceOnly: boolean
+): boolean {
+  const hasStill = shot.frame.imageStatus === 'completed' && !!shot.image?.url;
+  return (referenceOnly || hasStill) && shot.videoStatus === 'generating';
+}

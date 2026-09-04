@@ -454,6 +454,19 @@ export type PromptSceneContextHashInput = {
    * image — it can't depend on it).
    */
   startingFrameImageUrl?: string | null;
+  /**
+   * Reference-only mode — the sequence renders straight to video with no start
+   * frames. Only the MOTION prompt consumes this: the mode picks a different
+   * LLM template (compose-the-frame-then-move-it, rather than animate-this-
+   * still), so the same scene yields a materially different prompt under it
+   * and flipping the mode must re-stale what is stored.
+   *
+   * Joins the hash body only when true, so every existing image-to-video row's
+   * digest is unchanged and no `PROMPT_INPUT_HASH_VERSION` bump or null-sweep
+   * migration is needed — the same shape-stable trick `styleConfigHashBody`
+   * uses for its optional refinements.
+   */
+  referenceOnly?: boolean;
 };
 
 /**
@@ -635,6 +648,7 @@ function motionPromptHashBody(
     aspectRatio: trim(input.aspectRatio),
     analysisModel: trim(input.analysisModel),
     startingFrameImageUrl: trim(input.startingFrameImageUrl),
+    ...(input.referenceOnly ? { referenceOnly: true } : {}),
   };
 }
 

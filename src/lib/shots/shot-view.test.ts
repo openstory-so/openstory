@@ -32,6 +32,7 @@ function makeShot(): Shot {
     shotNumber: 1,
     durationMs: 3000,
     selectedMotionPromptVersionId: null,
+    useStartFrame: null,
     renderSegmentId: 'seg-1',
     deletedAt: null,
     createdAt: now,

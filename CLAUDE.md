@@ -211,6 +211,113 @@ Each surface is enumerated in `scoped-workflow.ts` and pinned by
 category doesn't match the hatch it came through. Full rationale:
 `docs/architecture/workflow-snapshots-and-content-hash-staleness.md`.
 
+## Reference-only motion (no start frames)
+
+Renders a shot **straight to video** from the character / location / element
+reference sheets — the shot-images phase never runs, and neither does the
+visual-prompt phase (the reference-only motion template composes its own
+opening frame from the bibles and is never handed one). The storyboard preview
+still is kept: it fills the scene rail while the clip renders. It is the
+**default** for a new sequence; "Generate start frames" in the options opts
+back into the frame-based workflow.
+
+**Resolved per shot, never per sequence.** `sequences.generateStartFrames` is
+the default (off = reference-only); `shots.useStartFrame` overrides it (NULL =
+inherit). Always resolve
+via `usesStartFrame()` / `rendersReferenceOnly()` — `reference-only-is-per-shot.test.ts`
+fails any per-shot path reading `sequence.generateStartFrames` raw. It is NOT a
+render-only switch: it picks the motion-prompt template and folds into the
+motion hash, so flipping it re-stales that shot's motion prompt.
+
+**Two capability questions, don't mix them.** `supportsReferenceOnlyMotion` is
+the model-only floor (fal `reference-to-video`: Seedance 2.0 / 2.5, H3 Max);
+`referenceOnlyCapableWith(model, vias)` is its isomorphic via-aware form, which
+`createSequenceSchema` asks with `{ xai: true }` for **every** selected video
+model, not just the primary. Anywhere a team's keys are
+reachable, ask `canRenderReferenceOnly(model, credentials)` instead: Grok
+Imagine renders reference-only on the native xAI via, and the model-only
+question rejects it.
+
+The substance is the prompt. The image-to-video template's central rule is NO
+VISUAL REDUNDANCY — "the video model already sees these in the starting frame"
+— which inverts with no still: anything the prompt omits gets reinvented per
+shot. So reference-only has its own template
+(`phase/motion-prompt-reference-only-chat`) that composes the opening frame
+(framing, blocking, set, light, look, prop state) AND directs the motion, while
+still leaving identity to the bound sheets. It is also handed
+`<LOCATION_BIBLE>` / `<ELEMENT_BIBLE>`, which its sibling computes and silently
+drops. Two templates, not one conditional — they disagree on their most
+load-bearing rule.
+
+Gotchas: motion references gain the location sheet (ordered first — the budget
+is spent in order); `buildReferenceVideoPrompt` drops the "Use @Image1 as the
+starting frame" line and binds refs from slot 1; Ark `size` switches from
+`adaptive` to the sequence's ratio (nothing is left to adapt to, and a portrait
+sheet would silently render 9:16); billing prices the r2v endpoint per shot,
+since a batch can mix. The mode folds into the motion-prompt hash **only when
+true**, so no stored digest moves — and it is REQUIRED on
+`ShotPromptContextSequence` because omitting it would make every reference-only
+prompt read stale forever, silently. The manifest records
+`frameVersionId: null` for such a shot even when a still exists, and staleness
+compares against the same rule; `UpdateStalePlan.usesStartFrame` is required
+and never defaulted (`!undefined` is `true`, which would re-render a whole run
+with no start frames). **Provenance is stamped, never inferred:** every
+`VideoManifestEntry` and every motion `shot_prompt_versions` row carries a
+required `usesStartFrame` (a null `frameVersionId` is overloaded and the prompt
+hash is opaque). The column is NOT NULL with a default of true, which only
+labels rows that predate reference-only and were therefore image-to-video;
+pre-stamp manifests were backfilled from the shot's mode.
+
+Full rationale: `docs/architecture/reference-only-motion.md`.
+
+## Stop-at stages and continue (#1408)
+
+Generate asks how far to run. **One ordered list**, `GENERATION_STAGES` in
+`src/lib/generation/pipeline.ts` (script → references → images → motion →
+music), drives the Generate-dialog slider, the progress banner and the
+scene-list continue button. Casting is part of `script` (it emits the Script
+phase number); there is no separate stage.
+
+- **`stopAt` is the only word on how far a run goes.** It is chosen per click,
+  snapshotted onto `sequences.generationStopAt`, and REQUIRED on the storyboard
+  / analyze-script payloads (the launcher resolves it via `resolveStopAt`). The
+  legacy `autoGenerateMotion` / `autoGenerateMusic` columns are DERIVED from it
+  (`flagsFromStopAt`) and kept only for old readers — never set them on their
+  own, and never gate a phase on them inside a workflow.
+- **Checkpoint.** After each completed stage the workflow writes
+  `sequences.pipelineStage` + `sequences.generationCheckpoint`
+  (`persistProgress`). The checkpoint carries the in-memory DAG state the next
+  stage needs (bibles, matches, sheet rows, prompts) so a continue never
+  re-reads mutable D1 mid-run. A fresh (non-resume) storyboard run nulls both
+  alongside its shot wipe.
+- **Continue** (`continueGenerationFn`) only starts from `references` or
+  `images` (`ContinueStage`); Script is a fresh run, motion/music have batch
+  footers. It validates `startFrom ≤ stopAt` and that the checkpoint reaches
+  `startFrom` BEFORE reserving credits, reserves only the slice
+  (`estimateStoryboardPreflightCost({ startFrom, stopAt, referenceOnly })`),
+  and triggers storyboard with `resume: true` (no shot wipe, no poster). At
+  the trigger, `refreshCheckpointFromCast` re-snapshots the bibles, matches AND
+  sheet rows from D1 so edits made while stopped (recast, regenerated sheet)
+  survive — the checkpoint's LLM values would otherwise silently revert them.
+- **Ready email** only sends when the run reached motion: the send is a
+  one-shot claim per sequence.
+- Reference-only has no Images stop; `pipelineStage` is the only evidence of
+  References there (`artifactsFromSequenceState({ referenceOnly })`).
+- Known gap: scenes added/edited during a stop are NOT re-snapshotted (the
+  full `Scene` lives in `frame.metadata`); the staleness tooling covers them
+  after the fact.
+
+## OAuth authorization server ("login with OpenStory", #1456)
+
+OpenStory is an OAuth 2.1 authorization server, built on Better Auth's `jwt()` + `@better-auth/mcp` (= `@better-auth/oauth-provider` preconfigured for MCP). Three kinds of clients: hosted MCP clients (discover via RFC 9728/8414, self-register via RFC 7591 DCR, consent screen — nobody registers apps by hand), forks/self-hosts (the OpenRouter pattern inverted: the fork is the client, upstream is the server, the grant is a team credential — **not** SSO), and anything else that can do auth-code + PKCE. Skills/CLIs keep the device-code login (`/api/v1/device/*` → `osk_` key).
+
+- **Config:** `src/lib/auth/oauth-provider.ts` (issuer = `VITE_APP_URL` origin, HTTPS or loopback only; two RFC 8707 resources: `…/mcp` and `…/api/v1`; scopes `sequences:read|write`, `generate`, `credits:read`). The plugins are spread into `config.ts`.
+- **Discovery:** Better Auth lives at `/api/auth`, so `src/routes/[.]well-known/$.ts` forwards root `/.well-known/*` to `auth.handler` (the plugins answer from their `onRequest` hooks) and builds the `/api/v1` protected-resource document itself.
+- **Login/consent:** the provider's `loginPage` is `/oauth/login`, a server route that turns the signed authorize query into `/login?redirectTo=/api/auth/oauth2/authorize?…` (`oauth-login-resume.ts`); after sign-in `finishSignInRedirect` does a full navigation for `/api/` paths. `consentPage` is `/oauth/consent-start`, which packs the signed query (repeated `ba_param` keys) into a single `q` param and 302s to `/oauth/consent` — TanStack's qss parser would otherwise collapse the repeats and fail signature verify. At consent the grant is stamped with the user's default team (`postLogin.consentReferenceId` → `resolveUserTeam`); there is no picker yet. `/api/v1` uses `team_id` when present, otherwise the same default-team lookup as an `osk_` key.
+- **Bearer JWTs on `/api/v1` only:** `customAPIKeyGetter` only hands `osk_` values to the api-key plugin; `src/lib/auth/oauth-bearer.ts` verifies tokens locally against the JWKS in D1 (audience `…/api/v1`) in `authWithTeamRequestMiddleware`, which enforces `src/lib/api-v1/oauth-scopes.ts` and the `team_id` membership. Internal routes (`/api/storage`, `/api/realtime`) do not accept OAuth JWTs. `osk_` keys are unscoped. JWT plugin `GET /token` is disabled (`disabledPaths`) and `disableSettingJwtHeader` is on so session JWTs are not minted from the same JWKS.
+- **Schema:** `jwks` + `oauth_*` tables in `schema/auth.ts`, from `bun auth:generate` (the CLI config swallows the provider's background init rejection — generation never needs it). The generated FKs into `user`/`session` are deliberately not declared (#612); FKs between the OAuth tables cascade from `oauth_client`, which is what lets `pruneOrphanedOAuthClients` (run on `/oauth2/register`, which is also rate-limited per IP) clean up.
+- **Not yet:** `@better-auth/cimd` (its Node transport needs `node:dns`/`node:https`; the Workers transport is a follow-up), a team picker on consent, the `/mcp` endpoint (#1457), the fork-side "Connect OpenStory" flow and gateway via.
+
 ## Frame System
 
 Frames are the core content unit — each represents one scene from script analysis.
@@ -236,9 +343,9 @@ frame.metadata = {
 
 Access via `frameService.getSceneData(frame)`, `getVisualPrompt(frame)`, `getMotionPrompt(frame)`, or directly: `frame.metadata.metadata.title`, `frame.metadata.prompts.visual.fullPrompt`. Storing the full scene lets us regenerate without re-analyzing the script and preserves variants for retries.
 
-## Media vias: fal + BytePlus + xAI
+## Media vias: fal + BytePlus + xAI + Google
 
-fal is the default **via** for every image / video / audio model. Catalog **vendor** is who trained the model (ByteDance, Kling, …). **Seedance (video) and Seedream (image) also have a native BytePlus Ark via (#1157)** — see below. Grok has a native xAI via. Everything after this paragraph in the fal section applies to the fal via only.
+fal is the default **via** for every image / video / audio model. Catalog **vendor** is who trained the model (ByteDance, Kling, …). **Seedance (video) and Seedream (image) also have a native BytePlus Ark via (#1157)** — see below. Grok has a native xAI via, and Gemini (chat + Omni Flash video) a native Google via. Everything after this paragraph in the fal section applies to the fal via only.
 
 ### BytePlus Ark (Seedance + Seedream)
 
@@ -268,6 +375,48 @@ Two traps: xAI speaks the Responses API, so `resolveNativeGrokModel` is what
 keeps `llm-client`'s options object and the adapter agreeing on the route; and
 media job ids are via-scoped, so `MotionJobSubmission.via` pins polling to
 whoever the job was submitted to.
+
+### Native Google (Gemini)
+
+Same shape as native Grok: Gemini chat (`google/gemini-3.1-pro-preview`,
+`google/gemini-3-flash-preview`), **Nano Banana** stills (`nano_banana_2`,
+`nano_banana_2_lite`, `nano_banana_pro`), and **Gemini Omni Flash** video
+(`gemini_omni_flash`) go to Google's own Gemini API via `@tanstack/ai-gemini`
+when a Google key resolves (team `google` key → platform `GEMINI_API_KEY` →
+neither, which falls back to OpenRouter/fal unchanged). e2e never sets
+`GEMINI_API_KEY`, so fixtures keep exercising the fallback;
+`GEMINI_BASE_URL` is the aimock hook for the native path.
+
+`src/lib/ai/gemini-native.ts` owns registry id → Gemini model name plus the
+pricing, transcribed from ai.google.dev — Google reports tokens, never cost,
+so those tables ARE the bill (like xAI, native spend is **unaudited** by the
+#1069 drift detection). Omni Flash bills video output as tokens (5,792/s of
+720p at the $17.50/1M video-output rate ≈ $0.10/s). Nano Banana stills bill
+the advertised per-image equivalent (Lite 1K $0.0336; Flash 1K/2K/4K
+$0.067/$0.101/$0.151; Pro 1K/2K $0.134, 4K $0.24). Native ids are
+`gemini-3.1-flash-image`, `gemini-3.1-flash-lite-image`, `gemini-3-pro-image`;
+without a Google key the same catalog keys stay on fal
+(`fal-ai/nano-banana-2`, `google/nano-banana-2-lite`, `fal-ai/nano-banana-pro`).
+
+Omni Flash serves image-to-video, reference-to-video, and text-to-video from
+ONE Interactions-API model (`gemini-omni-1.1-flash`): images ride the
+generateVideo prompt as content blocks bound in the prompt text by
+`<IMAGE_REF_n>` tags (0-based; ≤7 images; 3–10s; 16:9/9:16 only), and
+`buildGeminiVideoRequest` pins the task via
+`generation_config.video_config.task` rather than letting the model infer it.
+Native submit MUST request `response_format.delivery: "uri"` (and must NOT
+pass top-level `duration`/`size` to `generateVideo` — the adapter overwrites
+`response_format` when those are set) so Google parks the MP4 on the Files
+API instead of inlining a multi-MB `data:` URL. Inline bytes miss Cloudflare
+Workflows' 1 MiB `step.do` cap; poll/upload download the Files URI with the
+Google key. Without a Google key the same model runs on fal's
+`fal-ai/gemini-omni-1.1-flash[/image-to-video|/reference-to-video]` endpoints.
+Data-URI stills must be decomposed to inline base64 on the native path —
+Google won't fetch `data:` as a URI. Chat vision (motion prompts) and
+native image refs must also inline stored stills: Google's
+`fileData.fileUri` HTTP fetch (CDN / fal URLs) sits on a separate quota
+that 429s while the same bytes as `inlineData` succeed.
+`toVisionImageSource(..., { inline: true })` is that path.
 
 ### Fal.ai Integration
 

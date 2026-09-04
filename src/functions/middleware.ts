@@ -11,13 +11,21 @@ import {
 } from '@/lib/auth/action-utils';
 import type { Session, User } from '@/lib/auth/config';
 import { getAuth } from '@/lib/auth/config';
+import { bearerChallengeHeaders } from '@/lib/auth/oauth-bearer';
+import {
+  apiResourceMetadataUrl,
+  authErrorResponse,
+  resolveRequestPrincipal,
+} from '@/lib/auth/request-principal';
+import { requiredOAuthScope } from '@/lib/api-v1/oauth-scopes';
 import { isSystemAdmin, requireSystemAdmin } from '@/lib/auth/system-admin';
-import { APIError } from 'better-auth/api';
 import type { AspectRatio } from '@/lib/constants/aspect-ratios';
+import type { Resolution } from '@/lib/constants/resolutions';
 import {
   createScopedDb,
   createSystemAdminScopedDb,
   getSequenceByIdUnscoped,
+  getUserTeamMembership,
   resolveUserTeam,
   type ScopedDb,
 } from '@/lib/db/scoped';
@@ -82,7 +90,10 @@ type PartialSequence = {
   imageModel: string;
   videoModel: string;
   aspectRatio: AspectRatio;
+  resolution: Resolution;
   analysisModel: string;
+  /** Sequence default for the start-frame mode; see `usesStartFrame()`. */
+  generateStartFrames: boolean;
 };
 
 export type ShotContext = TeamContext & {
@@ -124,20 +135,6 @@ const EXPECTED_REJECTION_CODES = new Set([
   'NOT_FOUND',
 ]);
 const serverFnLogger = getLogger(['openstory', 'serverFn']);
-const apiAuthLogger = getLogger(['openstory', 'api', 'auth']);
-
-/**
- * JSON error envelope for request-middleware rejections, matching the
- * `/api/v1` `{ error: { code, message } }` contract. Programmatic callers parse
- * this; a plain-text 401/403 would crash their JSON parser.
- */
-function authErrorResponse(
-  status: number,
-  code: string,
-  message: string
-): Response {
-  return Response.json({ error: { code, message } }, { status });
-}
 
 export const loggerMiddleware = createMiddleware({ type: 'function' }).server(
   async ({ next, serverFnMeta }) => {
@@ -220,64 +217,15 @@ export const loggerMiddleware = createMiddleware({ type: 'function' }).server(
 // ============================================================================
 
 /**
- * Resolve the session for a request. The apiKey plugin validates a key header
- * inside `getSession` and *throws* an APIError rather than returning null:
- *   - a 429 (key over its per-key rate limit) is surfaced as a JSON 429 with a
- *     `Retry-After` header (programmatic callers need this);
- *   - a genuine auth rejection (disabled/expired/unknown key → 401/403) is
- *     treated as unauthenticated → null (the caller turns that into a 401);
- *   - anything else (D1 down, auth-backend 5xx, programmer error) is logged and
- *     surfaced as a JSON 500. It must NOT be flattened to a 401 "bad key": that
- *     tells a caller with a perfectly valid key to rotate/abandon it, and hides
- *     the real incident.
- */
-async function resolveRequestSession(request: Request) {
-  const auth = getAuth();
-  try {
-    return await auth.api.getSession({ headers: request.headers });
-  } catch (error) {
-    if (error instanceof APIError && error.statusCode === 429) {
-      const tryAgainInMs = error.body?.details?.tryAgainIn;
-      const retryAfter =
-        typeof tryAgainInMs === 'number' ? Math.ceil(tryAgainInMs / 1000) : 1;
-      throw Response.json(
-        {
-          error: {
-            code: 'RATE_LIMITED',
-            message: 'API key rate limit exceeded. Retry shortly.',
-          },
-        },
-        { status: 429, headers: { 'Retry-After': String(retryAfter) } }
-      );
-    }
-    if (
-      error instanceof APIError &&
-      (error.statusCode === 401 || error.statusCode === 403)
-    ) {
-      return null;
-    }
-    apiAuthLogger.error('session resolution failed: {message}', {
-      message: error instanceof Error ? error.message : String(error),
-      err: toErrorPayload(error),
-    });
-    throw authErrorResponse(
-      500,
-      'INTERNAL_ERROR',
-      'Authentication could not be processed. Please retry.'
-    );
-  }
-}
-
-/**
  * Request auth middleware — for use with server routes (server.middleware).
  * Unlike authMiddleware (type: 'function'), this is request-scoped and
  * receives the request object directly from the middleware params.
  */
 export const authRequestMiddleware = createMiddleware().server(
   async ({ next, request }) => {
-    const session = await resolveRequestSession(request);
+    const principal = await resolveRequestPrincipal(request);
 
-    if (!session?.user) {
+    if (!principal) {
       throw authErrorResponse(
         401,
         'UNAUTHORIZED',
@@ -287,8 +235,8 @@ export const authRequestMiddleware = createMiddleware().server(
 
     return next({
       context: {
-        user: session.user,
-        session,
+        user: principal.user,
+        session: principal.session,
       },
     });
   }
@@ -308,28 +256,53 @@ export const authWithTeamRequestMiddleware = createMiddleware().server(
     // teardown: `captureProductEvent` is fire-and-forget, and on Workers an
     // in-flight fetch is cancelled once the response is returned.
     try {
-      const session = await resolveRequestSession(request);
+      const principal = await resolveRequestPrincipal(request);
 
-      if (!session?.user) {
+      if (!principal) {
         throw authErrorResponse(
           401,
           'UNAUTHORIZED',
-          'Valid authentication required. Provide an API key via "Authorization: Bearer <key>" or "x-api-key".'
+          'Valid authentication required. Provide an API key via "Authorization: Bearer <key>" or "x-api-key".',
+          bearerChallengeHeaders({
+            resourceMetadataUrl: apiResourceMetadataUrl(),
+          })
         );
       }
+      // OAuth tokens are scoped (an `osk_` key has the full API) and bill the
+      // team chosen at consent, which must still be one the user belongs to.
+      const { oauth } = principal;
+      if (oauth) {
+        const scope = requiredOAuthScope(request);
+        if (scope && !oauth.scopes.includes(scope)) {
+          throw authErrorResponse(
+            403,
+            'INSUFFICIENT_SCOPE',
+            `This request needs the "${scope}" scope. Re-authorize the app with that scope.`,
+            bearerChallengeHeaders({
+              resourceMetadataUrl: apiResourceMetadataUrl(),
+              error: 'insufficient_scope',
+              scope: [scope],
+            })
+          );
+        }
+      }
 
-      const team = await resolveUserTeam(session.user.id);
+      const team = oauth?.teamId
+        ? await getUserTeamMembership(principal.user.id, oauth.teamId)
+        : await resolveUserTeam(principal.user.id);
 
       if (!team) {
         throw authErrorResponse(
           403,
           'NO_TEAM',
-          'No team is associated with this account.'
+          oauth?.teamId
+            ? 'This token was issued for a team you no longer belong to. Re-authorize the app.'
+            : 'No team is associated with this account.'
         );
       }
 
       const compliance = await loadComplianceState(
-        session.user.id,
+        principal.user.id,
         team.teamId
       );
       if (!compliance.enforcement.canAccess) {
@@ -351,10 +324,11 @@ export const authWithTeamRequestMiddleware = createMiddleware().server(
 
       return await next({
         context: {
-          user: session.user,
-          session,
+          user: principal.user,
+          session: principal.session,
+          oauth: principal.oauth,
           teamId: team.teamId,
-          scopedDb: createScopedDb(team.teamId, session.user.id),
+          scopedDb: createScopedDb(team.teamId, principal.user.id),
         },
       });
     } finally {
@@ -549,6 +523,7 @@ export const shotAccessMiddleware = createMiddleware({ type: 'function' })
     const sequence: PartialSequence = {
       ...rawSequence,
       aspectRatio: rawSequence.aspectRatio satisfies AspectRatio,
+      resolution: rawSequence.resolution satisfies Resolution,
     };
 
     const { scene, script } = await resolveSceneForShotFromDb(shot, scopedDb);

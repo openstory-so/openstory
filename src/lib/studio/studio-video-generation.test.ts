@@ -15,6 +15,7 @@ const testEnv: {
   FAL_KEY: string | undefined;
   OPENROUTER_KEY: string | undefined;
   XAI_API_KEY: string | undefined;
+  GEMINI_API_KEY: string | undefined;
   ARK_API_KEY: string | undefined;
   ARK_BASE_URL: string | undefined;
   E2E_TEST: string | undefined;
@@ -22,6 +23,7 @@ const testEnv: {
   FAL_KEY: 'test-fal-key',
   OPENROUTER_KEY: 'test-or-key',
   XAI_API_KEY: undefined,
+  GEMINI_API_KEY: undefined,
   ARK_API_KEY: undefined,
   ARK_BASE_URL: undefined,
   E2E_TEST: undefined,
@@ -38,6 +40,15 @@ const mockCreateGrokVideo = vi.fn(() => ({
 }));
 vi.doMock('@tanstack/ai-grok', () => ({
   createGrokVideo: mockCreateGrokVideo,
+}));
+
+const mockCreateGeminiVideo = vi.fn(() => ({
+  kind: 'video',
+  name: 'gemini',
+  model: 'gemini-omni-1.1-flash',
+}));
+vi.doMock('@tanstack/ai-gemini', () => ({
+  createGeminiVideo: mockCreateGeminiVideo,
 }));
 
 const mockCreateBytePlusVideo = vi.fn(() => ({
@@ -57,9 +68,11 @@ describe('submitStudioVideoJob', () => {
     mockGenerateVideo.mockClear();
     mockGetVideoJobStatus.mockClear();
     mockCreateGrokVideo.mockClear();
+    mockCreateGeminiVideo.mockClear();
     mockCreateBytePlusVideo.mockClear();
     mockFalVideo.mockClear();
     testEnv.XAI_API_KEY = undefined;
+    testEnv.GEMINI_API_KEY = undefined;
     testEnv.FAL_KEY = 'test-fal-key';
     testEnv.ARK_API_KEY = undefined;
     testEnv.ARK_BASE_URL = undefined;
@@ -179,6 +192,138 @@ describe('submitStudioVideoJob', () => {
         size: '16:9_720p',
       })
     );
+  });
+
+  it('sends native Omni Flash a text prompt with the task pinned', async () => {
+    testEnv.GEMINI_API_KEY = 'platform-google';
+    mockGenerateVideo.mockResolvedValue({
+      jobId: 'google-t2v',
+      model: 'gemini-omni-1.1-flash',
+    });
+
+    const result = await submitStudioVideoJob({
+      prompt: 'A red fox turns toward camera',
+      model: 'gemini_omni_flash',
+      duration: 5,
+      aspectRatio: '16:9',
+    });
+
+    expect(result.via).toBe('google');
+    expect(result.endpointId).toBe('gemini-omni-1.1-flash');
+    expect(mockCreateGeminiVideo).toHaveBeenCalled();
+    expect(mockGenerateVideo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: 'A red fox turns toward camera',
+        modelOptions: {
+          generation_config: { video_config: { task: 'text_to_video' } },
+          response_format: {
+            type: 'video',
+            delivery: 'uri',
+            duration: '5s',
+            aspect_ratio: '16:9',
+          },
+        },
+      })
+    );
+    expect(mockGenerateVideo.mock.calls.at(-1)?.[0].duration).toBeUndefined();
+    expect(mockGenerateVideo.mock.calls.at(-1)?.[0].size).toBeUndefined();
+  });
+
+  it('sends studio frames to Omni Flash as image_to_video with the still', async () => {
+    testEnv.GEMINI_API_KEY = 'platform-google';
+    mockGenerateVideo.mockResolvedValue({
+      jobId: 'google-frames',
+      model: 'gemini-omni-1.1-flash',
+    });
+
+    const result = await submitStudioVideoJob({
+      prompt: 'Camera pushes in',
+      model: 'gemini_omni_flash',
+      mode: 'frames',
+      startImageUrl: 'https://example.com/start.jpg',
+      duration: 5,
+      aspectRatio: '16:9',
+    });
+
+    expect(result.via).toBe('google');
+    expect(mockGenerateVideo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: [
+          {
+            type: 'image',
+            source: { type: 'url', value: 'https://example.com/start.jpg' },
+          },
+          { type: 'text', content: expect.any(String) },
+        ],
+        modelOptions: expect.objectContaining({
+          generation_config: {
+            video_config: { task: 'image_to_video' },
+          },
+        }),
+      })
+    );
+  });
+
+  it('tags studio references as <IMAGE_REF_n> and pins reference_to_video', async () => {
+    testEnv.GEMINI_API_KEY = 'platform-google';
+    mockGenerateVideo.mockResolvedValue({
+      jobId: 'google-refs',
+      model: 'gemini-omni-1.1-flash',
+    });
+
+    await submitStudioVideoJob({
+      prompt: 'Image1 walks past Image2',
+      model: 'gemini_omni_flash',
+      mode: 'reference',
+      referenceImages: [
+        'https://example.com/a.jpg',
+        'https://example.com/b.jpg',
+      ],
+      duration: 5,
+    });
+
+    expect(mockGenerateVideo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: [
+          {
+            type: 'image',
+            source: { type: 'url', value: 'https://example.com/a.jpg' },
+          },
+          {
+            type: 'image',
+            source: { type: 'url', value: 'https://example.com/b.jpg' },
+          },
+          {
+            type: 'text',
+            content: expect.stringMatching(
+              /<IMAGE_REF_0> walks past <IMAGE_REF_1>/
+            ),
+          },
+        ],
+        modelOptions: expect.objectContaining({
+          generation_config: {
+            video_config: { task: 'reference_to_video' },
+          },
+        }),
+      })
+    );
+  });
+
+  it('falls back to fal Omni Flash T2V when no Google key exists', async () => {
+    mockGenerateVideo.mockResolvedValue({
+      jobId: 'fal-omni-t2v',
+      model: 'fal-ai/gemini-omni-1.1-flash',
+    });
+
+    const result = await submitStudioVideoJob({
+      prompt: 'A red fox turns toward camera',
+      model: 'gemini_omni_flash',
+      duration: 5,
+    });
+
+    expect(result.via).toBe('fal');
+    expect(result.endpointId).toBe('fal-ai/gemini-omni-1.1-flash');
+    expect(mockCreateGeminiVideo).not.toHaveBeenCalled();
   });
 
   it('falls back to fal Grok T2V when no xAI key exists', async () => {
@@ -316,9 +461,11 @@ describe('pollStudioVideoJob', () => {
   beforeEach(() => {
     mockGetVideoJobStatus.mockClear();
     mockCreateGrokVideo.mockClear();
+    mockCreateGeminiVideo.mockClear();
     mockCreateBytePlusVideo.mockClear();
     mockFalVideo.mockClear();
     testEnv.XAI_API_KEY = undefined;
+    testEnv.GEMINI_API_KEY = undefined;
     testEnv.FAL_KEY = 'test-fal-key';
     testEnv.ARK_API_KEY = undefined;
     testEnv.ARK_BASE_URL = undefined;
@@ -363,6 +510,25 @@ describe('pollStudioVideoJob', () => {
     expect(mockCreateBytePlusVideo).toHaveBeenCalled();
     expect(mockFalVideo).not.toHaveBeenCalled();
   });
+
+  it('polls Google when the job was stamped google', async () => {
+    testEnv.GEMINI_API_KEY = 'platform-google';
+    mockGetVideoJobStatus.mockResolvedValue({
+      jobId: 'google-job',
+      status: 'completed',
+      url: 'data:video/mp4;base64,AAAA',
+    });
+
+    const result = await pollStudioVideoJob({
+      jobId: 'google-job',
+      via: 'google',
+      endpointId: 'gemini-omni-1.1-flash',
+    });
+
+    expect(result.status).toBe('completed');
+    expect(mockCreateGeminiVideo).toHaveBeenCalled();
+    expect(mockFalVideo).not.toHaveBeenCalled();
+  });
 });
 
 describe('studioVideoCostFromUsage', () => {
@@ -378,5 +544,19 @@ describe('studioVideoCostFromUsage', () => {
     expect(billing.unitsBilled).toBe(108);
     expect(billing.recordFalUsage).toBe(false);
     expect(billing.endpointId).toBe('dreamina-seedance-2-5-260628');
+  });
+
+  it('prices Google video-output tokens and skips fal usage sampling', async () => {
+    const billing = await studioVideoCostFromUsage(
+      {
+        via: 'google',
+        endpointId: 'gemini-omni-1.1-flash',
+        modelKey: 'gemini_omni_flash',
+      },
+      { promptTokens: 120, completionTokens: 28_960, totalTokens: 29_080 }
+    );
+    expect(billing.cost).toBe(506_800);
+    expect(billing.recordFalUsage).toBe(false);
+    expect(billing.endpointId).toBe('gemini-omni-1.1-flash');
   });
 });

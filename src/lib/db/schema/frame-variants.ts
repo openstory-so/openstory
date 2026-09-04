@@ -36,6 +36,7 @@ import {
   uniqueIndex,
 } from 'drizzle-orm/sqlite-core';
 import { generateId } from '../id';
+import type { Resolution } from '@/lib/constants/resolutions';
 import { frames } from './frames';
 import { sequences } from './sequences';
 import { SHOT_GENERATION_STATUSES } from './shots';
@@ -103,6 +104,12 @@ export const frameVariants = snakeCase.table(
     // pick derived from a model image; 'preview' = the pre-prompt stand-in.
     kind: text().$type<FrameVariantKind>().notNull().default('model'),
     model: text({ length: 100 }).notNull(),
+    // Resolution tier this version was asked for (#1449). Null on rows written
+    // before the tier existed. Stamped, not derived: the sequence default can
+    // change after a render, and a 4K re-roll has to stay legible next to the
+    // 720p draft it sits beside.
+    resolution: text({ length: 10 }).$type<Resolution>(),
+
     // For kind='framing': the frame_variants.id of the model image whose 3×3
     // grid this pick came from. Soft pointer (plain column) — no FK, to avoid a
     // self-referential cycle; app-level integrity, rows are soft-deleted anyway.

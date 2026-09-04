@@ -94,12 +94,14 @@ describe('buildVideoManifest', () => {
           shotId: 's1',
           motionPromptVersionId: 'mp1',
           frameVersionId: 'fv1',
+          usesStartFrame: true,
           durationMs: 3000,
         },
         {
           shotId: 's2',
           motionPromptVersionId: null,
           frameVersionId: null,
+          usesStartFrame: true,
           durationMs: 4000,
         },
       ])
@@ -108,12 +110,14 @@ describe('buildVideoManifest', () => {
         shotId: 's1',
         motionPromptVersionId: 'mp1',
         frameVersionId: 'fv1',
+        usesStartFrame: true,
         durationMs: 3000,
       },
       {
         shotId: 's2',
         motionPromptVersionId: null,
         frameVersionId: null,
+        usesStartFrame: true,
         durationMs: 4000,
       },
     ]);

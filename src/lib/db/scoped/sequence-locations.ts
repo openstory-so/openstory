@@ -23,6 +23,7 @@ import {
   resolveSceneForShot,
 } from '@/lib/scenes/scene-script';
 import { typedEntries } from '@/lib/utils/typed-object';
+import { matchLocationsToScene } from '@/lib/workflows/scene-matching';
 import { createLocationSheetVariantsMethods } from './location-sheet-variants';
 import { buildEventInsert } from './sequence-events';
 
@@ -51,31 +52,6 @@ export type LocationBibleUpdate = Partial<
 // ============================================================================
 // Pure utility functions (exported separately, not in factory)
 // ============================================================================
-
-/**
- * Match a location to a scene's environmentTag
- */
-export function locationMatchesTag(
-  location: SequenceLocation,
-  environmentTag: string
-): boolean {
-  if (!environmentTag) return false;
-
-  const consistencyTag = (location.consistencyTag ?? '').toLowerCase();
-  const locName = location.name.toLowerCase();
-  const locId = location.locationId.toLowerCase();
-  const envTagLower = environmentTag.toLowerCase();
-
-  // Check if any of the location identifiers match the environment tag
-  if (consistencyTag && envTagLower.includes(consistencyTag)) return true;
-  if (envTagLower.includes(locName)) return true;
-  if (envTagLower.includes(locId)) return true;
-
-  // Also check if location name contains the env tag (reverse match)
-  if (locName.includes(envTagLower)) return true;
-
-  return false;
-}
 
 // ============================================================================
 // Factory function
@@ -489,12 +465,16 @@ export function createSequenceLocationsMethods(db: Database) {
       // Filter shots that are at this location
       return allShots.filter((shot) => {
         const scene = resolveSceneForShot(shot, sceneContext).scene;
-        const environmentTag = scene?.continuity?.environmentTag ?? '';
-        const sceneLocation = scene?.metadata?.location ?? '';
-
+        // Same matcher the render path uses, so "shots at this location"
+        // can't disagree with which shots actually bind its sheet — a prose
+        // script names its set only in the scene text.
         return (
-          (environmentTag && locationMatchesTag(location, environmentTag)) ||
-          (sceneLocation && locationMatchesTag(location, sceneLocation))
+          matchLocationsToScene(
+            [location],
+            scene?.continuity?.environmentTag ?? '',
+            scene?.metadata?.location ?? '',
+            scene?.originalScript?.extract
+          ).length > 0
         );
       });
     },
@@ -528,12 +508,13 @@ export function createSequenceLocationsMethods(db: Database) {
       return allShots
         .filter((shot) => {
           const scene = resolveSceneForShot(shot, sceneContext).scene;
-          const environmentTag = scene?.continuity?.environmentTag ?? '';
-          const sceneLocation = scene?.metadata?.location ?? '';
-
           return (
-            (environmentTag && locationMatchesTag(location, environmentTag)) ||
-            (sceneLocation && locationMatchesTag(location, sceneLocation))
+            matchLocationsToScene(
+              [location],
+              scene?.continuity?.environmentTag ?? '',
+              scene?.metadata?.location ?? '',
+              scene?.originalScript?.extract
+            ).length > 0
           );
         })
         .map((f) => f.id);

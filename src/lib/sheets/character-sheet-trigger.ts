@@ -11,7 +11,7 @@ import { resolveSequenceStyleConfig } from '@/lib/style/style-config';
 import type { CharacterSheetWorkflowInput } from '@/lib/workflow/types';
 import { computeCharacterSheetHashFromDto } from '@/lib/workflows/sheet-snapshots';
 
-function toCharacterMetadata(
+export function toCharacterMetadata(
   character: CharacterWithSheet
 ): CharacterBibleEntry {
   return {

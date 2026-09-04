@@ -6,12 +6,22 @@
  * snapshotted here — the motion child never re-derives them (#1380). Omitting
  * the version ids stamps `video_variants.manifest` with nulls, so every
  * auto-motion clip is born Stale.
+ *
+ * In reference-only mode there is no still and no frame version: every shot
+ * carries `referenceOnly` instead of an `imageUrl`, and its reference set
+ * gains the scene's location sheet, which the image-to-video path leaves out
+ * because the still already fixed the set.
  */
 
 import type { ImageToVideoModel } from '@/lib/ai/models';
 import type { MotionPrompt, Scene } from '@/lib/ai/scene-analysis.schema';
 import type { AspectRatio } from '@/lib/constants/aspect-ratios';
-import type { CharacterMinimal, SequenceElementMinimal } from '@/lib/db/schema';
+import type { Resolution } from '@/lib/constants/resolutions';
+import type {
+  CharacterMinimal,
+  SequenceElementMinimal,
+  SequenceLocationMinimal,
+} from '@/lib/db/schema';
 import { assembleMotionPrompt } from '@/lib/motion/assemble-motion-prompt';
 import { buildMotionReferenceImages } from '@/lib/motion/build-motion-references';
 import { getLogger } from '@/lib/observability/logger';
@@ -37,8 +47,16 @@ export function buildStoryboardMotionBatchShots(input: {
   motionPromptVersionIdsBySceneId: Record<string, string | null | undefined>;
   videoModel: ImageToVideoModel;
   aspectRatio: AspectRatio;
+  resolution?: Resolution;
   characters: CharacterMinimal[];
   elements: SequenceElementMinimal[];
+  /** Location sheets. Only attached in reference-only mode. */
+  locations?: SequenceLocationMinimal[];
+  /**
+   * Reference-only mode: no stills were rendered, so `imageUrls` is empty by
+   * design and the missing-still skip below must not eat every shot.
+   */
+  referenceOnly?: boolean;
 }): BatchMotionMusicWorkflowInput['shots'] {
   return input.scenes.flatMap((scene, index) => {
     const matchedShot = input.shotMapping.find(
@@ -50,7 +68,7 @@ export function buildStoryboardMotionBatchShots(input: {
     // those scenes (no starting frame). Skip rather than throwing —
     // a missing still used to fail the whole storyboard.
     const imageUrl = input.imageUrls[index];
-    if (!imageUrl) {
+    if (!imageUrl && !input.referenceOnly) {
       logger.warn(
         `[AnalyzeScriptWorkflow:cf] Scene ${scene.sceneId} has no generated image (index ${index}); skipping its motion`
       );
@@ -68,7 +86,14 @@ export function buildStoryboardMotionBatchShots(input: {
 
     return {
       shotId: matchedShot?.shotId ?? '',
-      imageUrl,
+      // Reference-only carries no still and no frame version — a null
+      // `frameVersionId` in the render manifest is the documented encoding of
+      // "reference-driven shot with no dedicated first frame".
+      ...(input.referenceOnly
+        ? { referenceOnly: true as const }
+        : // The early return above already rejected a null slot on this path;
+          // the fallback keeps the narrowing local instead of asserting.
+          { referenceOnly: false as const, imageUrl: imageUrl ?? undefined }),
       frameVersionId: input.frameVersionIds[index] ?? null,
       motionPromptVersionId:
         input.motionPromptVersionIdsBySceneId[scene.sceneId] ?? null,
@@ -84,6 +109,7 @@ export function buildStoryboardMotionBatchShots(input: {
       characterTags,
       duration: scene.metadata?.durationSeconds || 3,
       aspectRatio: input.aspectRatio,
+      resolution: input.resolution,
       // Cast/element refs so motion preserves identity across the clip
       // (#873) — only Kling v3 Pro emits them. Same library + matcher the
       // image step uses, so motion attaches the same references.
@@ -91,6 +117,9 @@ export function buildStoryboardMotionBatchShots(input: {
         scene,
         characters: input.characters,
         elements: input.elements,
+        motionPrompt: motionPromptData.fullPrompt,
+        includeLocations: input.referenceOnly,
+        locations: input.locations,
       }),
     };
   });

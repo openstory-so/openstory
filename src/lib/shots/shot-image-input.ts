@@ -13,6 +13,7 @@ import { isValidTextToImageModel } from '@/lib/ai/models';
 import { resolveImageModel } from '@/lib/ai/resolve-asset-models';
 import { estimateImageCost, gateEstimate } from '@/lib/billing/cost-estimation';
 import { requireCredits } from '@/lib/billing/preflight';
+import type { Resolution } from '@/lib/constants/resolutions';
 import {
   aspectRatioToImageSize,
   type AspectRatio,
@@ -22,7 +23,6 @@ import type {
   SequenceLocationWithReference,
   Shot,
 } from '@/lib/db/schema';
-import { locationMatchesTag } from '@/lib/db/scoped/sequence-locations';
 import type { ScopedDb } from '@/lib/db/scoped';
 import { buildCharacterReferenceImages } from '@/lib/prompts/character-prompt';
 import { buildElementReferenceImages } from '@/lib/prompts/element-prompt';
@@ -35,7 +35,7 @@ import type {
 } from '@/lib/workflow/types';
 import { shouldRecordUserEdit } from '@/lib/workflows/user-edit-predicate';
 import {
-  matchCharactersToScene,
+  matchCharactersToShotImage,
   matchElementsToShotImage,
   matchLocationsToScene,
 } from '@/lib/workflows/scene-matching';
@@ -47,21 +47,28 @@ export type ShotImageRefs = Pick<
   'characters' | 'locations' | 'elements'
 >;
 
-/** Match locations by environmentTag or scene location and return reference images. */
+/**
+ * Match locations by environmentTag / scene location / scene text and return
+ * reference images.
+ *
+ * Delegates to `matchLocationsToScene` — the same matcher the scene snapshot
+ * hashes. It used to filter with its own `locationMatchesTag` copy, which had
+ * drifted: the snapshot could record a location sheet the request never sent.
+ */
 export function getSceneLocationReferenceImages(
   allLocations: SequenceLocationWithReference[],
   environmentTag: string,
-  sceneLocation?: string
+  sceneLocation?: string,
+  sceneText?: string | null
 ): ReferenceImageDescription[] {
-  if (!environmentTag && !sceneLocation) return [];
-
-  const matchedLocations = allLocations.filter(
-    (loc) =>
-      (environmentTag && locationMatchesTag(loc, environmentTag)) ||
-      (sceneLocation && locationMatchesTag(loc, sceneLocation))
+  return buildLocationReferenceImages(
+    matchLocationsToScene(
+      allLocations,
+      environmentTag,
+      sceneLocation ?? '',
+      sceneText
+    )
   );
-
-  return buildLocationReferenceImages(matchedLocations);
 }
 
 /**
@@ -81,9 +88,16 @@ export async function prepareShotImageWorkflowInput(args: {
     id: string;
     teamId: string;
     aspectRatio: AspectRatio;
+    resolution: Resolution;
     imageModel: string | null;
     styleId: string | null;
     analysisModel: string;
+    /**
+     * Carried only to satisfy `ShotPromptContextSequence` on the provenance
+     * hash below. The visual-prompt hash ignores it — this is the still's own
+     * prompt, which cannot depend on whether a still gets rendered.
+     */
+    referenceOnly: boolean;
   };
   shot: Shot;
   frame: Frame;
@@ -173,22 +187,19 @@ export async function prepareShotImageWorkflowInput(args: {
         scopedDb.sequenceElements.list(sequence.id),
       ]);
 
-  const matchedCharacters = matchCharactersToScene(
-    allCharacters,
-    continuity?.characterTags ?? []
-  );
+  const matchedCharacters = matchCharactersToShotImage(allCharacters, {
+    characterTags: continuity?.characterTags,
+    visualPrompt: prompt,
+  });
   const characterReferences = buildCharacterReferenceImages(matchedCharacters);
 
   const matchedLocations = matchLocationsToScene(
     allLocations,
     continuity?.environmentTag ?? '',
-    scene?.metadata?.location ?? ''
+    scene?.metadata?.location ?? '',
+    scene?.originalScript?.extract
   );
-  const locationReferences = getSceneLocationReferenceImages(
-    allLocations,
-    continuity?.environmentTag ?? '',
-    scene?.metadata?.location ?? ''
-  );
+  const locationReferences = buildLocationReferenceImages(matchedLocations);
 
   const matchedElements = matchElementsToShotImage(allElements, {
     visualPrompt: prompt,
@@ -225,6 +236,7 @@ export async function prepareShotImageWorkflowInput(args: {
     gateEstimate(
       estimateImageCost(model, sequence.aspectRatio, 1, {
         pricing: await getEffectiveFalPricing(),
+        resolution: sequence.resolution,
       }),
       { model, operation: 'shot-image' }
     ),
@@ -281,6 +293,7 @@ export async function prepareShotImageWorkflowInput(args: {
         : promptVersionOverride,
     sequenceId: sequence.id,
     aspectRatio: sequence.aspectRatio,
+    resolution: sequence.resolution,
     sceneSnapshot,
     snapshotInputHash,
     referenceImages: [
