@@ -1,7 +1,7 @@
 /**
- * Canvas-view trailing control: an Export dropdown in the same slot as
- * Copy script. Download / Copy stay as icon overlay on the theatre player;
- * this menu is the place later formats will land.
+ * Desktop canvas-view trailing control: an Export dropdown in the same slot
+ * as Copy script. Hidden on mobile — Download / Copy stay on the theatre
+ * player overlay, which already meets the 44px hit target.
  */
 
 import { Button } from '@/components/ui/button';
@@ -53,44 +53,44 @@ export const SequenceExportActions: React.FC<{
       : 'Export';
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="h-11 px-2 md:h-8 md:px-2.5"
-          aria-label={label}
-          aria-busy={running}
-          disabled={pending}
-        >
-          {running ? (
-            <Loader2 className="h-4 w-4 animate-spin md:mr-1.5 md:h-3.5 md:w-3.5" />
-          ) : (
-            <FileDown className="h-4 w-4 md:mr-1.5 md:h-3.5 md:w-3.5" />
-          )}
-          <span className="hidden md:inline">
-            {running ? 'Creating…' : 'Export'}
-          </span>
-          <ChevronDown className="hidden size-3 md:inline" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <DropdownMenuItem
-          disabled={pending || running}
-          onClick={sequenceExport.download}
-        >
-          <Download />
-          Download MP4
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          disabled={pending || running}
-          onClick={sequenceExport.copyLink}
-        >
-          <Link />
-          Copy link
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <div className="hidden md:block">
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-8 px-2.5"
+            aria-label={label}
+            aria-busy={running}
+            disabled={pending}
+          >
+            {running ? (
+              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <FileDown className="mr-1.5 h-3.5 w-3.5" />
+            )}
+            <span>{running ? 'Creating…' : 'Export'}</span>
+            <ChevronDown className="size-3" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem
+            disabled={pending || running}
+            onClick={sequenceExport.download}
+          >
+            <Download />
+            Download MP4
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            disabled={pending || running}
+            onClick={sequenceExport.copyLink}
+          >
+            <Link />
+            Copy link
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
   );
 };

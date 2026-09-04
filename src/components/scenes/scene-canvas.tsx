@@ -25,8 +25,7 @@ import {
 import type { ShotView } from '@/lib/shots/shot-view';
 import type { Sequence } from '@/types/database';
 import { Download, Film, Link, Loader2 } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
-import { theatrePlaybackMode } from '@/shared/sequence-player/theatre-playback-mode';
+import { useMemo } from 'react';
 import { toPlaybackScenes } from '@/shared/sequence-player/playback-scenes';
 
 type SceneCanvasProps = {
@@ -174,28 +173,7 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
   );
 
   const setMusicEnabled = useSetSequenceMusic(sequence?.id ?? '');
-  const [previewLive, setPreviewLive] = useState(false);
-  const [canTransmux, setCanTransmux] = useState<boolean | null>(null);
-  const playbackMode = theatrePlaybackMode({
-    freshExportUrl: sequenceExport.freshExportUrl,
-    serverExportAvailable: sequenceExport.serverExportAvailable,
-    canTransmux,
-    previewLive,
-    playCutFailed: sequenceExport.playCutFailed,
-  });
-
-  useEffect(() => {
-    setPreviewLive(false);
-    setCanTransmux(null);
-  }, [sequence?.id, sequence?.includeMusic, sequence?.musicUrl]);
-
-  const ensureCut = sequenceExport.ensureCut;
-  const canExportCut = sequenceExport.canExport;
-  useEffect(() => {
-    if (playbackMode !== 'wait-for-cut') return;
-    if (!canExportCut) return;
-    ensureCut();
-  }, [playbackMode, canExportCut, ensureCut]);
+  const playbackMode = sequenceExport.playbackMode;
 
   if (loadError) {
     return (
@@ -338,8 +316,8 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
             ? formatExportProgress(sequenceExport.progress)
             : undefined
         }
-        onPreviewLive={() => setPreviewLive(true)}
-        onPrepared={(meta) => setCanTransmux(meta.canTransmux)}
+        onPreviewLive={sequenceExport.previewNow}
+        onPrepared={(meta) => sequenceExport.notePrepared(meta.canTransmux)}
         overlayActions={
           scope === 'sequence' ? (
             <TheatreShareOverlay sequenceExport={sequenceExport} />

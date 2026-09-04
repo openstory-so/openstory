@@ -85,8 +85,9 @@ type SequencePlayerProps = {
   playSource?: VideoPlaySource;
   sequenceId?: string;
   /**
-   * Server cut is rendering — hide live-stitch controls and show a poster
-   * overlay instead of inviting play on the canvas engine.
+   * Server cut is rendering — CSS-hide live-stitch controls and show a poster
+   * overlay instead of inviting play. The canvas engine stays mounted so
+   * Preview now is instant (the expensive work is the stitcher, not the chrome).
    */
   cutPending?: boolean;
   cutPendingLabel?: string;
@@ -378,31 +379,29 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
         className="absolute inset-0 h-full w-full object-contain"
         aria-label="Sequence playback"
       />
-      {!meta && (
-        <>
-          {posterUrl && (
-            <img
-              src={posterUrl}
-              alt=""
-              className="absolute inset-0 h-full w-full object-contain opacity-60"
-            />
-          )}
-          <Skeleton
-            data-testid="player-loading"
-            className="absolute inset-0 h-full w-full bg-muted/40"
+      <div className={cn(meta && 'hidden')}>
+        {posterUrl && (
+          <img
+            src={posterUrl}
+            alt=""
+            className="absolute inset-0 h-full w-full object-contain opacity-60"
           />
-          <p
-            aria-live="polite"
-            className="absolute inset-x-0 bottom-3 text-center text-xs text-white/80"
-          >
-            {cachedVideoUrl === undefined
-              ? 'Loading…'
-              : loadedScenes < scenes.length
-                ? `Loading scene ${loadedScenes + 1} of ${scenes.length}…`
-                : 'Preparing playback…'}
-          </p>
-        </>
-      )}
+        )}
+        <Skeleton
+          data-testid="player-loading"
+          className="absolute inset-0 h-full w-full bg-muted/40"
+        />
+        <p
+          aria-live="polite"
+          className="absolute inset-x-0 bottom-3 text-center text-xs text-white/80"
+        >
+          {cachedVideoUrl === undefined
+            ? 'Loading…'
+            : loadedScenes < scenes.length
+              ? `Loading scene ${loadedScenes + 1} of ${scenes.length}…`
+              : 'Preparing playback…'}
+        </p>
+      </div>
       <div className="absolute top-2 right-2 z-10 flex items-center gap-2">
         {meta?.hasMixedResolutions && (
           <Tooltip>
@@ -435,38 +434,41 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
         )}
         {overlayActions}
       </div>
-      {cutPending && (
-        <div className="absolute inset-0 z-[5] flex flex-col items-center justify-center gap-3 bg-black/55 px-4">
-          <p aria-live="polite" className="text-center text-sm text-white/90">
-            {cutPendingLabel ?? 'Preparing full video…'}
-          </p>
-          {onPreviewLive && (
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              onClick={onPreviewLive}
-            >
-              Preview now
-            </Button>
-          )}
-        </div>
-      )}
-      {meta && !cutPending && (
+      <div
+        className={cn(
+          'absolute inset-0 z-[5] flex-col items-center justify-center gap-3 bg-black/55 px-4',
+          cutPending ? 'flex' : 'hidden'
+        )}
+      >
+        <p aria-live="polite" className="text-center text-sm text-white/90">
+          {cutPendingLabel ?? 'Preparing full video…'}
+        </p>
+        {onPreviewLive && (
+          <Button
+            type="button"
+            variant="secondary"
+            className="h-11 px-4 md:h-8"
+            onClick={onPreviewLive}
+          >
+            Preview now
+          </Button>
+        )}
+      </div>
+      <div className={cn((!meta || cutPending) && 'hidden')}>
         <PlayerControls
           playing={playing}
           currentTime={currentTime}
-          duration={meta.durationSeconds}
+          duration={meta?.durationSeconds ?? 0}
           volume={volume}
-          muted={muted || !meta.hasAudio}
-          hasAudio={meta.hasAudio}
+          muted={muted || !(meta?.hasAudio ?? false)}
+          hasAudio={meta?.hasAudio ?? false}
           onTogglePlay={togglePlay}
           onSeek={seek}
           onVolumeChange={setVolume}
           onToggleMute={() => setMuted((m) => !m)}
           containerRef={containerRef}
         />
-      )}
+      </div>
     </div>
   );
 };
