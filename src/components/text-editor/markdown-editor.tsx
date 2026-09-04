@@ -49,8 +49,6 @@ type MentionTarget = {
   pos: number;
   dom: HTMLElement;
   attrs: PromptMentionAttrs;
-  /** Opened by click / keyboard — stays open and takes focus. */
-  pinned: boolean;
 };
 
 const pillFrom = (target: EventTarget | null): HTMLElement | null =>
@@ -90,9 +88,6 @@ const mentionPosAtCaret = (view: EditorView): number | null => {
   if ($from.nodeBefore?.type.name === 'mention') return $from.pos - 1;
   return null;
 };
-
-/** Hover-out grace so the pointer can travel from pill to popover. */
-const MENTION_CLOSE_DELAY_MS = 180;
 
 type MentionConfigure = Partial<MentionOptions>;
 
@@ -318,50 +313,23 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
   const onMentionSelectRef = useRef(onMentionSelect);
   onMentionSelectRef.current = onMentionSelect;
 
-  // The pill whose edit popover is open (#1475), and the timer that grants a
-  // grace period for the pointer to travel from pill to popover.
+  // The pill whose edit popover is open (#1475). Opened by clicking the pill
+  // — hovering only shows the pointer cursor, so reading a prompt with the
+  // mouse in it never pops menus over the text.
   const [mentionTarget, setMentionTarget] = useState<MentionTarget | null>(
     null
   );
-  const mentionTargetRef = useRef<MentionTarget | null>(null);
-  mentionTargetRef.current = mentionTarget;
-  const closeTimer = useRef<number | null>(null);
+  const closeMention = () => setMentionTarget(null);
 
-  const cancelMentionClose = () => {
-    if (closeTimer.current !== null) window.clearTimeout(closeTimer.current);
-    closeTimer.current = null;
-  };
-  const closeMention = () => {
-    cancelMentionClose();
-    setMentionTarget(null);
-  };
-  const scheduleMentionClose = () => {
-    if (mentionTargetRef.current?.pinned) return;
-    cancelMentionClose();
-    closeTimer.current = window.setTimeout(
-      () => setMentionTarget(null),
-      MENTION_CLOSE_DELAY_MS
-    );
-  };
-  useEffect(() => cancelMentionClose, []);
-
-  const openMention = (
-    view: EditorView,
-    dom: HTMLElement,
-    pinned: boolean
-  ): void => {
+  const openMention = (view: EditorView, dom: HTMLElement): void => {
     // `view.editable` rather than the `disabled` prop: editorProps are captured
     // at init, the view's flag is not.
     if (!view.editable) return;
-    cancelMentionClose();
-    const open = mentionTargetRef.current;
-    // mouseover re-fires for every child of the pill; only the pin can change.
-    if (open?.dom === dom && (open.pinned || !pinned)) return;
     const pos = mentionPosAt(view, dom);
     if (pos === null) return;
     const node = view.state.doc.nodeAt(pos);
     if (!node) return;
-    setMentionTarget({ pos, dom, attrs: readPromptAttrs(node.attrs), pinned });
+    setMentionTarget({ pos, dom, attrs: readPromptAttrs(node.attrs) });
   };
 
   // Signature changes when the set of available tags changes; drives the
@@ -432,30 +400,26 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
           const pos = mentionPosAtCaret(view);
           const dom = pos === null ? null : view.nodeDOM(pos);
           if (dom instanceof HTMLElement) {
-            openMention(view, dom, true);
+            openMention(view, dom);
             return true;
           }
         }
         return onKeyDownRef.current?.(event) === true;
       },
       handleDOMEvents: {
-        // Pills are atoms with no editing affordance of their own: hover
-        // previews the target, click opens the picker that repoints it (#1475).
-        mouseover: (view, event) => {
-          const pill = pillFrom(event.target);
-          if (pill) openMention(view, pill, false);
-          return false;
+        // Pills are atoms with no editing affordance of their own, so a click
+        // opens the picker that repoints one (#1475). Swallowing the mousedown
+        // keeps ProseMirror from focusing the view and placing a caret: the
+        // click is opening a menu, and the view's focus would immediately be
+        // stolen back from the popover's filter input.
+        mousedown: (_view, event) => {
+          if (!pillFrom(event.target)) return false;
+          event.preventDefault();
+          return true;
         },
-        mouseout: (_view, event) => {
-          if (pillFrom(event.target)) scheduleMentionClose();
-          return false;
-        },
-        // `click`, not `mousedown`: ProseMirror focuses the view on the way
-        // out of a mousedown, which would pull focus straight back off the
-        // popover's filter input.
         click: (view, event) => {
           const pill = pillFrom(event.target);
-          if (pill) openMention(view, pill, true);
+          if (pill) openMention(view, pill);
           return false;
         },
         beforeinput: (view, event) => {
@@ -769,16 +733,21 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
           <PopoverContent
             align="start"
             className="w-80"
-            // Hover-opened popovers must not steal the caret mid-sentence;
-            // a click-opened one focuses its filter input itself.
-            onOpenAutoFocus={(e) => e.preventDefault()}
-            onPointerEnter={cancelMentionClose}
-            onPointerLeave={scheduleMentionClose}
+            // Radix would focus the popover root; the filter input is the
+            // useful landing spot. Done here rather than in an effect inside
+            // the child because this fires once Radix has mounted the content,
+            // with no frame to race against ProseMirror's own focus.
+            onOpenAutoFocus={(e) => {
+              e.preventDefault();
+              if (!(e.currentTarget instanceof HTMLElement)) return;
+              e.currentTarget
+                .querySelector<HTMLInputElement>('[data-mention-filter]')
+                ?.focus();
+            }}
           >
             <MentionEditPopover
               attrs={mentionTarget.attrs}
               items={mentionItems ?? []}
-              focusOnOpen={mentionTarget.pinned}
               onReplace={replaceMention}
               onRemove={removeMention}
               onRename={onMentionRename ? renameMention : undefined}

@@ -1,8 +1,8 @@
 /**
- * Edit affordance for an already-inserted mention pill (#1475). Hovering a
- * pill previews what it points at; clicking it opens the same sectioned list
- * the `@` dropdown uses, so the target can be repointed in place instead of
- * deleted and retyped.
+ * Edit affordance for an already-inserted mention pill (#1475). Clicking a
+ * pill opens this: a preview of what it points at plus the same sectioned
+ * list the `@` dropdown uses, so the target can be repointed in place instead
+ * of deleted and retyped.
  *
  * Rename is optional (`onRename`) because only some targets are renameable —
  * sequence elements own an editable token, studio's positional `@ImageN`
@@ -20,7 +20,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { deriveTokenFromFilename } from '@/lib/sequence-elements/derive-token';
 import { Trash2 } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { MentionList, type MentionListRef } from './mention-list';
 import type { PromptMentionAttrs } from './mention-extension';
 
@@ -67,35 +67,16 @@ export function replacementItems(
 export const MentionEditPopover: React.FC<{
   attrs: PromptMentionAttrs;
   items: MentionItem[];
-  /** Focus the filter input on mount (click / keyboard open, never hover). */
-  focusOnOpen: boolean;
   onReplace: (item: MentionItem) => void;
   onRemove: () => void;
   /** Omitted when nothing about this target can be renamed. */
   onRename?: (item: MentionItem, name: string) => void;
   onClose: () => void;
-}> = ({
-  attrs,
-  items,
-  focusOnOpen,
-  onReplace,
-  onRemove,
-  onRename,
-  onClose,
-}) => {
+}> = ({ attrs, items, onReplace, onRemove, onRename, onClose }) => {
   const current = findMentionItem(items, attrs);
   const [query, setQuery] = useState('');
   const [name, setName] = useState(current?.tag ?? '');
   const listRef = useRef<MentionListRef>(null);
-  const queryRef = useRef<HTMLInputElement>(null);
-
-  // Next frame: ProseMirror re-focuses its view after the click that pinned
-  // this popover open, so focusing synchronously would lose the race.
-  useEffect(() => {
-    if (!focusOnOpen) return;
-    const raf = requestAnimationFrame(() => queryRef.current?.focus());
-    return () => cancelAnimationFrame(raf);
-  }, [focusOnOpen]);
 
   const rows = replacementItems(items, current, query);
   const renameable =
@@ -165,7 +146,8 @@ export const MentionEditPopover: React.FC<{
       )}
 
       <Input
-        ref={queryRef}
+        // Focused by the popover's `onOpenAutoFocus` — see `markdown-editor`.
+        data-mention-filter=""
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         placeholder="Point at…"
