@@ -24,8 +24,31 @@ const MAX_UNDO_STEPS = 25;
 const STROKE_WIDTH = 8;
 const PEN_CURSOR = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cpath fill='%23111111' d='M22.8 4.5a2.4 2.4 0 0 1 3.4 0l1.3 1.3a2.4 2.4 0 0 1 0 3.4l-2 2-4.7-4.7 2-2Z'/%3E%3Cpath fill='%23111111' d='m7.7 20.2 12-12 4.7 4.7-12 12-5.5.8z'/%3E%3Cpath fill='%23ffffff' d='m8.5 19.4 4.1 4.1-4.9.8z'/%3E%3C/g%3E%3C/svg%3E") 4 28, crosshair`;
 
-function isBlankSnapshot(snapshot: ImageData) {
+type BlobCanvas = Pick<HTMLCanvasElement, 'toBlob'>;
+
+export function isBlankSnapshot(snapshot: ImageData) {
   return snapshot.data.every((value) => value === 255);
+}
+
+export function appendUndoSnapshot(
+  previous: ImageData[],
+  snapshot: ImageData | null
+) {
+  if (!snapshot) return previous;
+  return [...previous.slice(-(MAX_UNDO_STEPS - 1)), snapshot];
+}
+
+export async function canvasToPngFile(canvas: BlobCanvas, now = Date.now) {
+  const blob = await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((next) => {
+      if (next) resolve(next);
+      else reject(new Error('Failed to export drawing'));
+    }, 'image/png');
+  });
+
+  return new File([blob], `reference-drawing-${now()}.png`, {
+    type: 'image/png',
+  });
 }
 
 function drawStroke(
@@ -103,11 +126,7 @@ export function StudioDrawingCanvas({
   };
 
   const pushUndoSnapshot = (snapshot: ImageData | null) => {
-    if (!snapshot) return;
-    setUndoStack((previous) => [
-      ...previous.slice(-(MAX_UNDO_STEPS - 1)),
-      snapshot,
-    ]);
+    setUndoStack((previous) => appendUndoSnapshot(previous, snapshot));
   };
 
   const handlePointerDown = (event: PointerEvent<HTMLCanvasElement>) => {
@@ -177,15 +196,7 @@ export function StudioDrawingCanvas({
     if (!canvas || !hasInk || disabled || submitting) return;
     setSubmitting(true);
     try {
-      const blob = await new Promise<Blob>((resolve, reject) => {
-        canvas.toBlob((next) => {
-          if (next) resolve(next);
-          else reject(new Error('Failed to export drawing'));
-        }, 'image/png');
-      });
-      const file = new File([blob], `reference-drawing-${Date.now()}.png`, {
-        type: 'image/png',
-      });
+      const file = await canvasToPngFile(canvas);
       await onSubmit(file);
     } finally {
       setSubmitting(false);
