@@ -262,13 +262,12 @@ export function buildDurationPromptParagraph(opts: {
   const grid = durationGridForModel(opts.videoModel);
   const rangeText = sceneRangeText(opts.targetSeconds, grid);
   const gridText = formatClipGrid(grid);
-  const exampleClip = grid[0] ?? 5;
-  const clipRule =
+  const pace =
     gridText.length > 0
-      ? `Each SHOT is one video clip. Clip durations MUST be ${gridText} — those are the only lengths the selected video model can render.`
-      : `Give each shot a realistic clip duration — most around 5 seconds, a few up to ~8 when the motion genuinely needs it.`;
+      ? `Keep each continuous take short enough to play in ${gridText} — those are the clip lengths the selected video model can render.`
+      : `Keep each continuous take short — most around 5 seconds, a few up to ~8 when the motion needs it.`;
 
-  return `Target video duration: ${formatDuration(opts.targetSeconds)} (about ${rangeText} clips). Group clips that share a location and beat into one scene — a scene may hold several shots. ${clipRule} Label every scene (e.g. a "Scene 3 — ${exampleClip}s" heading). When a scene has more than one shot, also label each shot (e.g. "Shot 1 — ${exampleClip}s"); shot labels in a scene MUST add up to the scene label. A one-shot scene needs only the scene label — that label IS the clip duration. The clip labels (shot labels when present, otherwise scene labels) MUST add up to ${opts.targetSeconds} seconds (±${DURATION_PROMPT_TOLERANCE_SECONDS} seconds). Count the clips, add the labels, and do not return until they sum to the target. Reach the target through the number of shots, not by stretching illegal clip lengths. If the brief asks for a title card, logo, SUPER, or on-screen text, do not write that card — the image model cannot render text. Substitute a final living beat with a real subject. End with a single line: TOTAL: <sum>s`;
+  return `Target running time: ${formatDuration(opts.targetSeconds)} (about ${rangeText} locations/beats). Write a Fountain screenplay that would play at that length — denser, not padded. A new INT./EXT. slugline is a new location or time, not a new camera angle. ${pace} Do not stamp seconds on headings and do not write a TOTAL line. If the brief asks for a title card, logo, SUPER, or on-screen text, do not write that card — substitute a living final beat with a real subject.`;
 }
 
 export function buildDurationCorrectionPrompt(opts: {
