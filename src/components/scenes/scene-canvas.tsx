@@ -63,8 +63,9 @@ type SceneCanvasProps = {
 
 /**
  * Download + Copy on the theatre player. Icon-only so they fit the existing
- * overlay row (music + mixed-res). The Canvas-bar Export menu is the labeled
- * home for more formats later.
+ * overlay row (music + mixed-res). Desktop also has a labeled Export menu in
+ * the Canvas/Script toggle trailing slot; mobile keeps these overlay icons
+ * at the 44px hit target.
  */
 const TheatreShareOverlay: React.FC<{
   sequenceExport: SequenceExportState;

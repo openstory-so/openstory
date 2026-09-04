@@ -5,8 +5,9 @@
  *
  * - Live player: video → `CanvasSink`, music + per-scene dialogue → `AudioBufferSink`
  *                / `AudioBufferSourceNode` → `GainNode`.
- * - Export:      video → `EncodedVideoPacketSource`, music + per-scene dialogue
- *                mixed in an `OfflineAudioContext` → AAC → `EncodedAudioPacketSource`.
+ * - Export:      video → `EncodedVideoPacketSource` (or `CanvasSource` when
+ *                mixed-res), music + per-scene dialogue mixed in an
+ *                `OfflineAudioContext` → AAC → `EncodedAudioPacketSource`.
  *
  * The result is an in-memory MP4 `Blob` ready to upload to R2 via the
  * `sequence_exports` server functions.
@@ -124,8 +125,8 @@ export async function exportSequence(
 
     // Earliest point at which both encoder needs are known, and still before
     // any decode work — fail in a second rather than after a full pass (#1397).
-    // EncoderUnsupportedError is what the theatre hook intercepts to route
-    // an AAC-only transmux cut to the container (#1402).
+    // EncoderUnsupportedError is the #1397 path when the container is not
+    // bound. Theatre prefers POST /exports when it is.
     const probe = await probeEncoderSupport({
       audio: hasAudio,
       video: !meta.canTransmux,

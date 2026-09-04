@@ -1,16 +1,18 @@
 /**
- * Server functions for `sequence_exports`: the table of MP4 snapshots the user
- * explicitly created via the browser-side export pipeline (see
- * `src/shared/sequence-player/export.ts`).
+ * Server functions for `sequence_exports`. Two producers write the table:
+ * the browser pipeline (`src/shared/sequence-player/export.ts` → commit) and
+ * `POST /api/v1/sequences/$id/exports` (`SequenceExportWorkflow`). Theatre
+ * reuse is hash-matched on `sourceShotsHash`, not "newest ready".
  *
  * Four handlers:
  *   - `requestSequenceExportUploadUrlFn` — reserves an R2 path so the browser
  *     can stream the finalized MP4 directly to storage.
  *   - `commitSequenceExportFn`           — verifies the team-scoped path, then
  *     records a new `sequence_exports` row pointing at it.
- *   - `listSequenceExportsFn`            — returns newest-first list for UI.
+ *   - `listSequenceExportsFn`            — ready-only, newest-first, for the
+ *     theatre cache.
  *   - `isServerExportAvailableFn`        — whether the container (or local
- *     bunny URL) can take over when the browser has no AAC encoder (#1402).
+ *     bunny URL) can render the export (#1402).
  *
  * Unlike the old merged-video flow there is no status state machine on the
  * sequence row itself: every export is just an additional row. If the browser

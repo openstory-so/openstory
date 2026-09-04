@@ -4,8 +4,9 @@
  *
  * Theatre lookup is content-addressed on `sourceShotsHash`. The route must
  * do the same: a ready MP4 of the current cut is returned as-is rather than
- * spawning another container render. In-flight coalescing (one processing
- * row per sequence) is unchanged.
+ * spawning another container render. In-flight coalescing is one processing
+ * row per sequence (the unique index), not per hash — a POST for a new cut
+ * while another is rendering joins that row rather than starting a second.
  */
 
 export type ExistingExportRow = {

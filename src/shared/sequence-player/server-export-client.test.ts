@@ -100,7 +100,7 @@ describe('exportSequenceOnServer', () => {
               id: 'exp-1',
               status: 'failed',
               url: null,
-              error: 'Scenes have mixed resolutions (1920×1080, 1280×720)',
+              error: 'Render worker crashed',
             },
           ],
         })
@@ -112,7 +112,7 @@ describe('exportSequenceOnServer', () => {
         fetchFn,
         sleepFn: async () => {},
       })
-    ).rejects.toThrow(/mixed resolutions/);
+    ).rejects.toThrow(/Render worker crashed/);
   });
 
   it('surfaces the API error envelope on a failed POST', async () => {

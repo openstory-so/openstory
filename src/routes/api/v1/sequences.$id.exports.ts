@@ -2,11 +2,11 @@
  * /api/v1/sequences/$id/exports — server-side MP4 export for the public API.
  *
  *   POST — start a server-side export. A ready row whose `sourceShotsHash`
- *          matches the current cut is returned 200 (no re-render). Otherwise
- *          reserves a `sequence_exports` row (status `processing`) and
- *          triggers `SequenceExportWorkflow`, which renders the stitched MP4
- *          in the video-export Cloudflare Container and streams it to R2.
- *          Responds 202; poll the GET endpoint.
+ *          matches the current cut is returned 200 (no re-render). A live
+ *          `processing` row is returned 202 (reuse, one in-flight per
+ *          sequence). Otherwise reserves a row and triggers
+ *          `SequenceExportWorkflow`, which renders the stitched MP4 in the
+ *          video-export Cloudflare Container and streams it to R2. Poll GET.
  *   GET  — list this sequence's exports (any status) so an agent can poll for
  *          the `ready` URL. `?wait=60s` long-polls until nothing is
  *          `processing`.

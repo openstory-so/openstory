@@ -4,9 +4,9 @@
  * that MP4 natively; otherwise it stitches scene videos + music via Mediabunny
  * on a canvas.
  *
- * Falls back to a CTA ("Export as MP4 to download") when the browser can't
- * decode the source codecs. The export pipeline lives in
- * `src/shared/sequence-player/export.ts`.
+ * Falls back to an overlay message when the browser can't decode the source
+ * codecs. Download/Copy live on `overlayActions` (theatre) — see
+ * `src/shared/sequence-player/export.ts` and `use-sequence-export`.
  */
 
 import { Button } from '@/components/ui/button';

@@ -26,7 +26,7 @@ export type ExportJob = {
 /** Returned as response headers alongside the MP4 body. */
 export type ExportResultMeta = {
   durationSeconds: number;
-  /** True when the transmux fast path was unavailable (currently rejected). */
+  /** True when scenes were decoded and re-encoded (mixed res / codec). */
   reEncoded: boolean;
   /** Distinct scene resolutions when mixed, else "". */
   resolutionsLabel: string;

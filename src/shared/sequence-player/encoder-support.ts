@@ -12,11 +12,10 @@
  * Without this probe the export runs its full decode pass first and dies
  * minutes later with a raw `DOMException` from the encoder error callback.
  *
- * The server-side container export (#968) covers the AAC case — it renders
- * exactly the uniform-AVC-plus-audio-mix shape — but explicitly rejects mixed
- * resolutions, so it can't stand in for the AVC case. `chooseExportRoute`
- * encodes that overlap: AAC-only + transmux + container available → server;
- * anything involving a missing AVC encoder stays the #1397 error.
+ * The server-side container export (#968) covers both gaps: AAC mix and
+ * mixed-res decode→letterbox→re-encode. `chooseExportRoute` sends any encoder
+ * gap to the container when it is bound; otherwise keep the #1397 error
+ * (plain `bun dev`, PR previews, e2e).
  */
 
 import { canEncodeAudio, canEncodeVideo } from 'mediabunny';
@@ -47,9 +46,9 @@ export type EncoderGap = {
 export type ExportRoute = 'server' | 'unsupported';
 
 /**
- * Named error so the theatre hook can intercept an AAC-only gap and route
- * to the container instead of toasting the #1397 message. `canTransmux` is
- * the container's v1 floor — mixed-resolution re-encode is out of its scope.
+ * Named error thrown when the browser cannot encode what this export needs.
+ * Theatre prefers the container when it is bound; this is the #1397 toast
+ * when it is not.
  */
 export class EncoderUnsupportedError extends Error {
   readonly missingAac: boolean;
@@ -108,23 +107,12 @@ export async function assertEncoderSupport(needs: EncoderNeeds): Promise<void> {
 /**
  * Decide whether an encoder gap can be rescued by the container.
  *
- * Server path only when AAC is the missing piece, the cut is transmux-
- * compatible (the container's v1 scope), and the container (or local
- * `VIDEO_EXPORT_DEV_URL`) is actually bound. A missing AVC encoder — mixed
- * resolutions — still fails with the #1397 message: the container rejects
- * those. Same when the container isn't available (plain `bun dev`, e2e).
+ * When the container (or `VIDEO_EXPORT_DEV_URL`) is bound it handles AAC
+ * mix and mixed-res re-encode. Otherwise keep the #1397 error.
  */
 export function chooseExportRoute(
-  gap: EncoderGap,
+  _gap: EncoderGap,
   serverExportAvailable: boolean
 ): ExportRoute {
-  if (
-    gap.missingAac &&
-    !gap.missingAvc &&
-    gap.canTransmux &&
-    serverExportAvailable
-  ) {
-    return 'server';
-  }
-  return 'unsupported';
+  return serverExportAvailable ? 'server' : 'unsupported';
 }

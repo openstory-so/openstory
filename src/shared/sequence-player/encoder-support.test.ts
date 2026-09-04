@@ -102,26 +102,35 @@ describe('chooseExportRoute', () => {
     expect(chooseExportRoute(aacOnlyTransmux, false)).toBe('unsupported');
   });
 
-  it('does not send mixed-resolution (missing AVC) cuts to the container', () => {
+  it('routes mixed-resolution (missing AVC) cuts to the container when it is available', () => {
     expect(
       chooseExportRoute(
         { missingAac: true, missingAvc: true, canTransmux: false },
         true
       )
-    ).toBe('unsupported');
+    ).toBe('server');
     expect(
       chooseExportRoute(
         { missingAac: false, missingAvc: true, canTransmux: false },
         true
       )
-    ).toBe('unsupported');
+    ).toBe('server');
   });
 
-  it('does not send an AAC gap that also needs a video re-encode', () => {
+  it('routes an AAC gap that also needs a video re-encode to the container', () => {
     expect(
       chooseExportRoute(
         { missingAac: true, missingAvc: false, canTransmux: false },
         true
+      )
+    ).toBe('server');
+  });
+
+  it('keeps mixed-resolution on the #1397 path when the container is not available', () => {
+    expect(
+      chooseExportRoute(
+        { missingAac: false, missingAvc: true, canTransmux: false },
+        false
       )
     ).toBe('unsupported');
   });

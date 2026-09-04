@@ -552,7 +552,9 @@
         {
           "class_name": "VideoExportContainer",
           "image": "./containers/video-export/Dockerfile",
-          "instance_type": "standard",
+          // Mixed-res re-encode is decode+AVC encode; `standard` (½ vCPU) is
+          // too small. `standard-4` is 4 vCPU / 12 GiB / 20 GB disk.
+          "instance_type": "standard-4",
           "max_instances": 3,
         },
       ],

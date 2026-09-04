@@ -1,10 +1,10 @@
 /**
  * Hook that drives the on-demand export pipeline:
- *   1. Run the Mediabunny pipeline (`exportSequence`) in the browser.
- *   2. On an AAC-only encoder gap, fall back to POST /api/v1/…/exports and
- *      poll until the container row is `ready` (#1402). Mixed-resolution
- *      (missing AVC) still fails with the #1397 message — the container
- *      cannot re-encode.
+ *   1. If the container is bound, POST /api/v1/…/exports and poll until
+ *      `ready` (skips uploading the MP4 from the browser). Mixed-res is
+ *      decode→letterbox→re-encode on the container.
+ *   2. Otherwise run Mediabunny in the browser. An encoder gap still falls
+ *      back to the container if it became available; otherwise #1397.
  *   3. Browser path: reserve an upload URL, PUT the Blob, commit the row.
  *
  * Every commit (and every server-side ready row) records `sourceShotsHash` —
@@ -12,8 +12,9 @@
  * `sequence_exports` is a content-addressed cache of what the user is looking
  * at (#1253, #1406). `freshExportUrl` is the cached MP4 for the CURRENT state
  * (or null), and both user actions go through the cache: `download()` and
- * `copyLink()` reuse a matching export, else export first and then act. There
- * is no "export" verb in the UI and no way to share a stale cut.
+ * `copyLink()` reuse a matching export, else export first and then act.
+ * Export in the UI is those two actions, both cache-keyed — a new cut is
+ * not rendered until the user clicks.
  */
 
 import {
@@ -29,10 +30,6 @@ import {
   sequenceExportInputsKey,
 } from '@/shared/sequence-player/source-shots-hash';
 import { putToR2 } from '@/shared/utils/upload';
-import {
-  chooseExportRoute,
-  EncoderUnsupportedError,
-} from '@/shared/sequence-player/encoder-support';
 import {
   exportSequence,
   type ExportProgress,
@@ -168,34 +165,13 @@ export function useSequenceExport(
         });
       }
 
-      let blob: Blob;
-      let durationSeconds: number;
-      let reEncoded: boolean;
-      let resolutionsLabel: string;
-      try {
-        const result = await exportSequence({
-          scenes,
-          // Omit the music track entirely when the sequence's music toggle is
-          // off — the exported MP4 then carries only scene/dialogue audio (#834).
-          musicUrl: sequence.includeMusic ? (sequence.musicUrl ?? null) : null,
-          musicLoudnessGainDb: null,
-          onProgress: setProgress,
-          signal,
-        });
-        blob = result.blob;
-        durationSeconds = result.durationSeconds;
-        reEncoded = result.reEncoded;
-        resolutionsLabel = result.resolutionsLabel;
-      } catch (error) {
-        const available = await queryClient.ensureQueryData({
-          queryKey: sequenceExportKeys.serverAvailable,
-          queryFn: () => isServerExportAvailableFn(),
-        });
-        if (
-          error instanceof EncoderUnsupportedError &&
-          chooseExportRoute(error, available) === 'server'
-        ) {
-          setProgress({ phase: 'server', completed: 0, total: 0 });
+      const available = await queryClient.ensureQueryData({
+        queryKey: sequenceExportKeys.serverAvailable,
+        queryFn: () => isServerExportAvailableFn(),
+      });
+      if (available) {
+        setProgress({ phase: 'server', completed: 0, total: 0 });
+        try {
           const server = await exportSequenceOnServer({
             sequenceId: sequence.id,
             signal,
@@ -206,9 +182,24 @@ export function useSequenceExport(
             andThen,
             via: 'server' as const,
           };
+        } catch (error) {
+          if (isAbortError(error) || signal.aborted) throw error;
         }
-        throw error;
       }
+
+      const result = await exportSequence({
+        scenes,
+        // Omit the music track entirely when the sequence's music toggle is
+        // off — the exported MP4 then carries only scene/dialogue audio (#834).
+        musicUrl: sequence.includeMusic ? (sequence.musicUrl ?? null) : null,
+        musicLoudnessGainDb: null,
+        onProgress: setProgress,
+        signal,
+      });
+      const blob = result.blob;
+      const durationSeconds = result.durationSeconds;
+      const reEncoded = result.reEncoded;
+      const resolutionsLabel = result.resolutionsLabel;
 
       const reservation = await requestSequenceExportUploadUrlFn({
         data: { sequenceId: sequence.id },
@@ -388,6 +379,10 @@ export function useSequenceExport(
  */
 function toShareableExportUrl(url: string): string {
   return new URL(url, window.location.origin).href;
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === 'AbortError';
 }
 
 function triggerDownload(url: string, title: string | null | undefined): void {

@@ -34,13 +34,13 @@ header (URI-encoded JSON `{ durationSeconds, reEncoded, resolutionsLabel }`).
 `SequenceExportWorkflow` does all DB access, resolves absolute media URLs, calls
 this service, and streams the result into R2.
 
-### v1 scope
+### Scope
 
 Concatenates **transmux-compatible** scenes (every scene AVC with a
-byte-identical decoder config — the common single-model sequence) and mixes
-audio. Mixed-codec / mixed-resolution sequences are rejected with a clear error
-(the browser export still handles those client-side); server-side
-decode→resize→re-encode is a follow-up.
+byte-identical decoder config) and mixes audio. Mixed-codec / mixed-resolution
+sequences are decoded, letterboxed into the bounding box (`fit: 'contain'`),
+and re-encoded as one AVC track. Production runs this on a `standard-4`
+container (4 vCPU / 12 GiB).
 
 ## Deploy
 
