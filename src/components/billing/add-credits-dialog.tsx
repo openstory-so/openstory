@@ -62,6 +62,9 @@ import { ulid } from 'ulid';
 /** Sentinel Select value for "pay with a new card at checkout". */
 const NEW_CARD = 'new-card';
 
+/** Amount the dialog opens on — matches the low-balance toast's "Add $10". */
+const DEFAULT_TOPUP_AMOUNT = String(MIN_TOPUP_AMOUNT_USD);
+
 function formatBrand(brand: string): string {
   return brand.charAt(0).toUpperCase() + brand.slice(1);
 }
@@ -72,17 +75,7 @@ export function AddCreditsDialog() {
   const queryClient = useQueryClient();
   const posthog = usePostHog();
 
-  // Every "Add credits" button routes through openAddCreditsDialog(surface),
-  // so one capture here covers them all (#1301).
-  useEffect(() => {
-    if (open) {
-      posthog.capture('add_credits_clicked', {
-        surface: getAddCreditsSurface(),
-      });
-    }
-  }, [open, posthog]);
-
-  const [amount, setAmount] = useState('10');
+  const [amount, setAmount] = useState(DEFAULT_TOPUP_AMOUNT);
   const [selectedPm, setSelectedPm] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   /**
@@ -91,6 +84,19 @@ export function AddCreditsDialog() {
    * whose charge actually landed can never charge or credit a second time.
    */
   const [requestId, setRequestId] = useState(() => ulid());
+
+  // Every "Add credits" button routes through openAddCreditsDialog(surface),
+  // so one capture here covers them all (#1301).
+  useEffect(() => {
+    if (open) {
+      posthog.capture('add_credits_clicked', {
+        surface: getAddCreditsSurface(),
+      });
+      // The dialog is mounted once, so a previously typed amount would still
+      // be sitting there — and the low-balance toast promises "Add $10" (#1299).
+      setAmount(DEFAULT_TOPUP_AMOUNT);
+    }
+  }, [open, posthog]);
 
   const {
     data: pmData,
