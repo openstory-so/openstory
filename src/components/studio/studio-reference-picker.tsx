@@ -10,6 +10,7 @@
 
 import { AppImage } from '@/components/ui/app-image';
 import { Button } from '@/components/ui/button';
+import { StudioDrawingCanvas } from '@/components/studio/studio-drawing-canvas';
 import {
   Dialog,
   DialogContent,
@@ -48,6 +49,7 @@ import {
   Sparkles,
   Upload,
   Users,
+  PencilRuler,
 } from 'lucide-react';
 import type { StudioReferenceKind } from '@/lib/studio/schema';
 import { useMemo, useRef, useState } from 'react';
@@ -76,7 +78,14 @@ export type StudioLibrary = {
 
 type StudioReferenceSlots = Record<StudioReferenceKind, number>;
 
-type Source = 'generations' | 'sequences' | 'cast' | 'locations' | 'audio';
+type Source =
+  | 'generations'
+  | 'sequences'
+  | 'cast'
+  | 'locations'
+  | 'audio'
+  | 'draw';
+type LibrarySource = Exclude<Source, 'audio' | 'draw'>;
 
 const SOURCES: { key: Source; label: string; icon: typeof Sparkles }[] = [
   { key: 'generations', label: 'Generations', icon: Sparkles },
@@ -84,9 +93,10 @@ const SOURCES: { key: Source; label: string; icon: typeof Sparkles }[] = [
   { key: 'cast', label: 'Talent', icon: Users },
   { key: 'locations', label: 'Locations', icon: MapPin },
   { key: 'audio', label: 'Audio', icon: AudioLines },
+  { key: 'draw', label: 'Draw', icon: PencilRuler },
 ];
 
-const EMPTY: Record<Exclude<Source, 'audio'>, string> = {
+const EMPTY: Record<LibrarySource, string> = {
   generations:
     'No generations yet — make an image or clip and it shows up here.',
   sequences: 'No sequences yet.',
@@ -359,7 +369,7 @@ type StudioReferencePickerProps = {
   /** How many more of each kind can be added. 0 disables that kind. */
   slots: StudioReferenceSlots;
   onPick: (references: StudioReference[]) => void;
-  onUpload: (files: File[]) => void;
+  onUpload: (files: File[]) => Promise<void> | void;
 };
 
 export function StudioReferencePicker({
@@ -382,6 +392,10 @@ export function StudioReferencePicker({
   const openSequence = sequenceId
     ? sequences.find((s) => s.id === sequenceId)
     : undefined;
+  const tileSource =
+    source === 'generations' || source === 'cast' || source === 'locations'
+      ? source
+      : null;
 
   const close = () => {
     setPending([]);
@@ -441,8 +455,7 @@ export function StudioReferencePicker({
               const files = Array.from(event.currentTarget.files ?? []);
               event.currentTarget.value = '';
               if (files.length > 0) {
-                onUpload(files);
-                close();
+                void Promise.resolve(onUpload(files)).then(close);
               }
             }}
           />
@@ -450,6 +463,7 @@ export function StudioReferencePicker({
             type="button"
             variant="outline"
             size="sm"
+            disabled={source === 'draw'}
             onClick={() => fileInput.current?.click()}
           >
             <Upload aria-hidden="true" />
@@ -477,7 +491,7 @@ export function StudioReferencePicker({
               >
                 <Icon aria-hidden="true" />
                 {label}
-                {key !== 'audio' && (
+                {key !== 'audio' && key !== 'draw' && (
                   <span className="ml-auto font-mono text-xs text-muted-foreground">
                     {library[key].length}
                   </span>
@@ -487,7 +501,15 @@ export function StudioReferencePicker({
           </nav>
 
           <div className="min-h-0 flex-1 overflow-y-auto p-3">
-            {source === 'audio' ? (
+            {source === 'draw' ? (
+              <StudioDrawingCanvas
+                onCancel={close}
+                onSubmit={async (file) => {
+                  await onUpload([file]);
+                  close();
+                }}
+              />
+            ) : source === 'audio' ? (
               <div className="flex flex-col items-start gap-3 p-4">
                 <p className="text-sm text-muted-foreground">
                   MP3 or WAV, up to {slots.audio} more. Seedance: 15 seconds
@@ -553,17 +575,20 @@ export function StudioReferencePicker({
                   ))}
                 </ul>
               )
-            ) : library[source].length === 0 ? (
+            ) : tileSource && library[tileSource].length === 0 ? (
               <p className="p-4 text-sm text-muted-foreground">
-                {EMPTY[source]}
+                {EMPTY[tileSource]}
               </p>
             ) : (
-              <TileGrid items={library[source]} {...grid} />
+              <TileGrid
+                items={tileSource ? library[tileSource] : []}
+                {...grid}
+              />
             )}
           </div>
         </div>
 
-        {multiple && (
+        {multiple && source !== 'draw' && (
           <DialogFooter className="mx-0 mb-0 border-t px-4 py-3">
             <Button type="button" variant="ghost" onClick={close}>
               Cancel

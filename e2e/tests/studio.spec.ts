@@ -56,6 +56,22 @@ test.describe('Images and Videos studio', () => {
     await expect(page.getByRole('button', { name: 'End frame' })).toBeVisible();
   });
 
+  test('reference modal offers freehand drawing on images', async ({
+    page,
+  }) => {
+    await page.goto('/images');
+    await waitForComposer(page);
+    await page.getByRole('button', { name: 'Reference', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Add reference' });
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('button', { name: 'Draw' }).click();
+    await expect(dialog.getByLabel('Drawing canvas')).toBeVisible();
+    await expect(
+      dialog.getByRole('button', { name: 'Add drawing' })
+    ).toBeDisabled();
+    await expect(dialog.getByRole('button', { name: 'Undo' })).toBeDisabled();
+  });
+
   test('signed-in user can open Models from the sidebar', async ({ page }) => {
     await page.goto('/');
     const models = page.getByRole('link', { name: 'Models', exact: true });
