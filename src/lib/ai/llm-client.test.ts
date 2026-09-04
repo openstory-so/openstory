@@ -53,10 +53,13 @@ const {
   callLLM,
   callLLMStream,
   createUsageCapture,
+  glmReasoningEffortForCall,
+  isForcedGlmReasoningModel,
   llmCostFromUsage,
   preferUsage,
   RECOMMENDED_MODELS,
   toGeminiThinkingLevel,
+  toGlmReasoningEffort,
 } = await import('./llm-client');
 const { DEFAULT_ANALYSIS_MODEL, DEFAULT_VISION_MODEL } =
   await import('./models.config');
@@ -958,6 +961,68 @@ describe('llm-client', () => {
         if (!callArgs) throw new Error('expected mockChat to have been called');
         expect(callArgs.modelOptions.reasoning).toBeUndefined();
       });
+
+      it('pins GLM-5.3 Flash unrequested reasoning to low (#1494)', async () => {
+        mockChat.mockReturnValue(
+          (async function* () {
+            yield { type: 'TEXT_MESSAGE_CONTENT', delta: 'ok' };
+          })()
+        );
+
+        await drain(
+          callLLMStream({
+            model: 'z-ai/glm-5.3-flash',
+            messages: [{ role: 'user', content: 'test' }],
+          })
+        );
+
+        const callArgs = mockChat.mock.calls[0]?.[0];
+        if (!callArgs) throw new Error('expected mockChat to have been called');
+        expect(callArgs.modelOptions.reasoning).toEqual({ effort: 'low' });
+        expect(callArgs.modelOptions.reasoning).not.toHaveProperty('enabled');
+      });
+
+      it('maps GLM-5.3 medium reasoning to high (Z.AI rejects medium)', async () => {
+        mockChat.mockReturnValue(
+          (async function* () {
+            yield { type: 'TEXT_MESSAGE_CONTENT', delta: 'ok' };
+          })()
+        );
+
+        await drain(
+          callLLMStream({
+            model: 'z-ai/glm-5.3-flash',
+            messages: [{ role: 'user', content: 'test' }],
+            reasoning: { enabled: true, effort: 'medium' },
+          })
+        );
+
+        const callArgs = mockChat.mock.calls[0]?.[0];
+        if (!callArgs) throw new Error('expected mockChat to have been called');
+        expect(callArgs.modelOptions.reasoning).toEqual({ effort: 'high' });
+      });
+
+      it('sends GLM-5.3 reasoning_effort low on LLMTR when unrequested', async () => {
+        mockChat.mockReturnValue(
+          (async function* () {
+            yield { type: 'TEXT_MESSAGE_CONTENT', delta: 'ok' };
+          })()
+        );
+
+        await drain(
+          callLLMStream({
+            model: 'z-ai/glm-5.3-flash',
+            messages: [{ role: 'user', content: 'test' }],
+            apiKey: { key: 'llmtr-team', via: 'llmtr' },
+          })
+        );
+
+        const options = mockChat.mock.calls[0]?.[0]?.modelOptions;
+        expect(options).toEqual(
+          expect.objectContaining({ reasoning_effort: 'low' })
+        );
+        expect(options).not.toHaveProperty('reasoning');
+      });
     });
 
     describe('web search tool', () => {
@@ -1301,6 +1366,33 @@ describe('llm-client', () => {
       expect(toGeminiThinkingLevel(undefined)).toBe('MEDIUM');
       expect(toGeminiThinkingLevel('high')).toBe('HIGH');
       expect(toGeminiThinkingLevel('xhigh')).toBe('HIGH');
+    });
+  });
+
+  describe('GLM-5.3 reasoning (#1494)', () => {
+    it('recognises registry and LLMTR ids', () => {
+      expect(isForcedGlmReasoningModel('z-ai/glm-5.3-flash')).toBe(true);
+      expect(isForcedGlmReasoningModel('zai/glm-5.3-flash')).toBe(true);
+      expect(isForcedGlmReasoningModel('z-ai/glm-5.3')).toBe(true);
+      expect(isForcedGlmReasoningModel('anthropic/claude-sonnet-5')).toBe(
+        false
+      );
+    });
+
+    it('maps the five-level scale onto max|high|low', () => {
+      expect(toGlmReasoningEffort(undefined)).toBe('low');
+      expect(toGlmReasoningEffort('minimal')).toBe('low');
+      expect(toGlmReasoningEffort('low')).toBe('low');
+      expect(toGlmReasoningEffort('medium')).toBe('high');
+      expect(toGlmReasoningEffort('high')).toBe('high');
+      expect(toGlmReasoningEffort('xhigh')).toBe('max');
+    });
+
+    it('never disables thinking — unrequested and enabled:false both become low', () => {
+      expect(glmReasoningEffortForCall(undefined)).toBe('low');
+      expect(glmReasoningEffortForCall(false)).toBe('low');
+      expect(glmReasoningEffortForCall({ enabled: false })).toBe('low');
+      expect(glmReasoningEffortForCall(true)).toBe('high');
     });
   });
 

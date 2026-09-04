@@ -332,14 +332,58 @@ export const PROMPT_REASONING = {
 
 /**
  * Reasoning for script enhancement. Always on at `low`: some providers
- * (Grok) cannot disable thinking, and omitting the param falls through to
- * a high default — so sending `low` is the fastest we can ask for.
- * Workflows keep {@link PROMPT_REASONING} (`medium`); latency is hidden there.
+ * (Grok, GLM-5.3) cannot disable thinking, and omitting the param falls
+ * through to a high/`max` default — so sending `low` is the fastest we can
+ * ask for. Workflows keep {@link PROMPT_REASONING} (`medium`); latency is
+ * hidden there.
  */
 export const ENHANCE_REASONING = {
   enabled: true,
   effort: 'low',
 } as const satisfies NonNullable<LLMRequestParams['reasoning']>;
+
+type ReasoningEffort = NonNullable<
+  NonNullable<LLMRequestParams['reasoning']>['effort']
+>;
+
+/**
+ * GLM-5.3 / Flash force thinking: Z.AI 400s `thinking.type: disabled`, and
+ * the default effort is `max` (OpenRouter launch note). Omitting `reasoning`
+ * therefore runs a five-minute think on a music-prompt call (#1494). Same
+ * trap as Grok — send `low` when the caller did not ask for reasoning.
+ * Matches registry (`z-ai/glm-5.3-flash`) and LLMTR (`zai/glm-5.3-flash`) ids.
+ */
+export function isForcedGlmReasoningModel(modelId: string): boolean {
+  return modelId.includes('glm-5.3');
+}
+
+export type GlmReasoningEffort = 'low' | 'high' | 'max';
+
+/**
+ * GLM-5.3 only accepts `max | high | low`. Our five-level scale includes
+ * `medium` ({@link PROMPT_REASONING}), which Z.AI rejects. Map like GLM-5.2:
+ * medium → high; xhigh → max; unrequested / minimal → low.
+ */
+export function toGlmReasoningEffort(
+  effort: ReasoningEffort | undefined
+): GlmReasoningEffort {
+  if (effort === undefined || effort === 'minimal' || effort === 'low') {
+    return 'low';
+  }
+  if (effort === 'xhigh') return 'max';
+  return 'high';
+}
+
+/** Wire `reasoning.effort` for GLM-5.3. Unrequested → `low`, never `enabled: false`. */
+export function glmReasoningEffortForCall(
+  reasoning: LLMRequestParams['reasoning'] | boolean | undefined
+): GlmReasoningEffort {
+  if (reasoning === true) return toGlmReasoningEffort(PROMPT_REASONING.effort);
+  if (reasoning === false || reasoning === undefined) return 'low';
+  return toGlmReasoningEffort(
+    reasoning.enabled === false ? undefined : reasoning.effort
+  );
+}
 
 /**
  * System messages must be strings (they become systemPrompts on the adapter).
@@ -457,8 +501,13 @@ function toLlmtrReasoningEffort(
 function buildLlmtrModelOptions(params: LLMRequestParams) {
   const allowSampling = modelAllowsClassicSampling(params.model);
   const api = llmtrCompatibleApi(params.model);
+  const glmEffort = isForcedGlmReasoningModel(params.model)
+    ? glmReasoningEffortForCall(params.reasoning)
+    : undefined;
   const reasoning =
-    params.reasoning && params.reasoning.enabled !== false
+    glmEffort === undefined &&
+    params.reasoning &&
+    params.reasoning.enabled !== false
       ? toLlmtrReasoningEffort(params.reasoning.effort, api)
       : undefined;
   const sampling = {
@@ -476,7 +525,9 @@ function buildLlmtrModelOptions(params: LLMRequestParams) {
   };
   if (api === 'responses') {
     return {
-      ...(reasoning && { reasoning: { effort: reasoning } }),
+      ...(glmEffort
+        ? { reasoning: { effort: glmEffort } }
+        : reasoning && { reasoning: { effort: reasoning } }),
       ...(params.max_tokens != null && {
         max_output_tokens: params.max_tokens,
       }),
@@ -484,7 +535,9 @@ function buildLlmtrModelOptions(params: LLMRequestParams) {
     };
   }
   return {
-    ...(reasoning && { reasoning_effort: reasoning }),
+    ...(glmEffort
+      ? { reasoning_effort: glmEffort }
+      : reasoning && { reasoning_effort: reasoning }),
     ...(params.max_tokens != null && { max_tokens: params.max_tokens }),
     ...sampling,
   };
@@ -556,10 +609,15 @@ function buildModelOptions(params: LLMRequestParams) {
       ? { ...reasoningConfig, enabled: false as const }
       : reasoningConfig;
   const allowSampling = modelAllowsClassicSampling(params.model);
+  const reasoningOptions = isForcedGlmReasoningModel(params.model)
+    ? { reasoning: { effort: glmReasoningEffortForCall(params.reasoning) } }
+    : params.reasoning
+      ? { reasoning }
+      : {};
   return {
     provider,
     serviceTier: SERVICE_TIER,
-    ...(params.reasoning && { reasoning }),
+    ...reasoningOptions,
     // `maxTokens`, not `maxCompletionTokens`: DeepSeek endpoints advertise only
     // `max_tokens`, so `max_completion_tokens` + requireParameters empties the
     // candidate set ("No endpoints found…") on the region fallback. Native

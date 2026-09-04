@@ -98,6 +98,44 @@ describe('chatModelOptionsForCall', () => {
       max_output_tokens: expect.any(Number),
     });
   });
+
+  it('pins GLM-5.3 Flash unrequested reasoning to low on OpenRouter (#1494)', () => {
+    const options = chatModelOptionsForCall(
+      'z-ai/glm-5.3-flash',
+      { key: 'k', via: 'openrouter' },
+      undefined
+    );
+    expect(options).toEqual(
+      expect.objectContaining({
+        reasoning: { effort: 'low' },
+      })
+    );
+  });
+
+  it('maps GLM-5.3 requested medium reasoning to high', () => {
+    const options = chatModelOptionsForCall(
+      'z-ai/glm-5.3-flash',
+      { key: 'k', via: 'openrouter' },
+      true
+    );
+    expect(options).toEqual(
+      expect.objectContaining({
+        reasoning: { effort: 'high' },
+      })
+    );
+  });
+
+  it('sends GLM-5.3 reasoning_effort low on LLMTR when unrequested', () => {
+    const options = chatModelOptionsForCall(
+      'z-ai/glm-5.3-flash',
+      { key: 'k', via: 'llmtr' },
+      undefined
+    );
+    expect(options).toEqual({
+      reasoning_effort: 'low',
+      max_tokens: expect.any(Number),
+    });
+  });
 });
 
 describe('durableLLMCallCf usage cost capture', () => {
@@ -192,6 +230,21 @@ describe('durableLLMCallCf usage cost capture', () => {
     await expect(
       durableLLMCallCf(step, callConfig, nonStreamContext)
     ).rejects.toThrow(/structured-output\.complete/);
+  });
+
+  it('throws a retryable timeout when the abort fires without a complete event (#1494)', async () => {
+    mockChat.mockImplementation(
+      (opts: { abortController?: AbortController }) => {
+        opts.abortController?.abort();
+        return (async function* () {
+          // Stream ends with no complete event — the abort is why.
+        })();
+      }
+    );
+
+    await expect(
+      durableLLMCallCf(step, callConfig, nonStreamContext)
+    ).rejects.toThrow(/Timed out after 300s waiting for structured output/);
   });
 
   it('drains chat() after RUN_ERROR so otel onError can end the span', async () => {
