@@ -665,8 +665,14 @@ describe('SceneSplitWorkflow shot-list pass (#1486)', () => {
     // Stream previews shot 1 of each scene; pass 2 previews the extra shot.
     expect(previewCalls()).toHaveLength(4);
     const extraPreview = previewCalls().find((call) => {
-      const body = call[1] as { prompt?: string };
-      return body.prompt?.includes('Cut to the hallway beyond');
+      const body = call[1];
+      return (
+        typeof body === 'object' &&
+        body !== null &&
+        'prompt' in body &&
+        typeof body.prompt === 'string' &&
+        body.prompt.includes('Cut to the hallway beyond')
+      );
     });
     expect(extraPreview).toBeDefined();
   });
