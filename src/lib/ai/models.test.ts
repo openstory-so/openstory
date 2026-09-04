@@ -74,6 +74,7 @@ describe('Seedance catalog split', () => {
       'fal-ai/kling-video/o3/pro/reference-to-video'
     );
     expect(MOTION_REFERENCE_ENDPOINTS.kling_v3_pro?.maxImages).toBe(4);
+    expect(IMAGE_TO_VIDEO_MODELS.kling_v3_pro.name).toBe('Kling 3.0 Omni');
     for (const config of Object.values(MOTION_REFERENCE_ENDPOINTS)) {
       expect(MOTION_TRANSFORMS).toHaveProperty(config.endpointId);
     }

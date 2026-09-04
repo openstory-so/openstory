@@ -82,7 +82,7 @@ export const IMAGE_TO_VIDEO_MODELS = {
   },
   kling_v3_pro: {
     id: 'fal-ai/kling-video/v3/pro/image-to-video',
-    name: 'Kling v3 Pro',
+    name: 'Kling 3.0 Omni',
     vendor: 'Kling',
     license: 'proprietary' as const,
     qualityRank: 3,
@@ -400,7 +400,7 @@ export function isValidImageToVideoModel(
 }
 
 /**
- * Friendly display name for a video model id ("Kling v3 Pro"); returns the raw
+ * Friendly display name for a video model id ("Kling 3.0 Omni"); returns the raw
  * id for an unrecognized (e.g. retired) model rather than hiding it.
  */
 export function videoModelDisplayName(model: string): string {

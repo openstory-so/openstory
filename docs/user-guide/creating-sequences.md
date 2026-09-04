@@ -108,7 +108,7 @@ The AI model for image-to-video animation. Toggle **Auto-generate motion** to au
 | LTX 2.3 Pro            | Lightricks | ~2 min (open weight)               |
 | Veo 3.1                | Google     | ~2.5 min                           |
 | MiniMax Hailuo 2.3     | MiniMax    | ~3 min                             |
-| Kling v3 Pro           | Kling      | ~5 min                             |
+| Kling 3.0 Omni         | Kling      | ~5 min                             |
 
 ### Music Model
 
