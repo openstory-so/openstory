@@ -430,8 +430,8 @@ OpenRouter Speakeasy client, whose chunk schema rejects LLMTR's SSE as
 "Response validation failed". Every OpenAI model (and Grok) uses
 Responses; posting those to Chat Completions 400s. `llmtrCompatibleApi`
 picks the endpoint. UI:
-**Settings → API Keys → LLMTR**. Platform `LLMTR_API_KEY` is last-resort
-(after OpenRouter and fal) for models it carries. e2e never sets it.
+**Settings → API Keys → LLMTR**. Team BYOK only — there is no platform
+LLMTR key; without a team key, resolution falls through to OpenRouter/fal.
 
 `src/lib/ai/llmtr.ts` pins the two silent-break traps:
 
@@ -456,9 +456,8 @@ picks the endpoint. UI:
 
 Resolution order (`resolveLlmKey`): native xAI (Grok) → native Google
 (Gemini) → **team LLMTR when `llmtrTextModel` maps** → team OpenRouter →
-team fal → platform (`OPENROUTER_KEY`, else `FAL_KEY`, else `LLMTR_API_KEY`
-if mapped). A team that adds an LLMTR key chose that gateway, so it
-outranks their OpenRouter key. `validateKey` cannot use `/v1/models` — it
+team fal → platform (`OPENROUTER_KEY`, else `FAL_KEY`). A team that adds
+an LLMTR key chose that gateway, so it outranks their OpenRouter key. `validateKey` cannot use `/v1/models` — it
 is public and answers 200 for a bogus key — so validation is a 1-token
 completion on a $0 model and requires `response.ok`.
 
