@@ -12,6 +12,7 @@
  */
 
 import { getAuth } from '@/lib/auth/config';
+import { resolveOAuthQuery } from '@/lib/auth/oauth-query-snapshot';
 import { OAUTH_SCOPE_DESCRIPTIONS } from '@/lib/auth/oauth-scopes';
 import { resolveUserTeam, revokeOAuthGrantTokens } from '@/lib/db/scoped';
 import { ValidationError } from '@/lib/errors';
@@ -164,7 +165,7 @@ export async function decideOAuthConsent(input: {
   headers: Headers;
 }): Promise<{ url: string }> {
   const auth = getAuth();
-  const oauthQuery = input.oauthQuery.replace(/^\?/, '');
+  const oauthQuery = resolveOAuthQuery(input.oauthQuery).replace(/^\?/, '');
   const queryParams = new URLSearchParams(oauthQuery);
   try {
     const result = await auth.api.oauth2Consent({

@@ -1,10 +1,8 @@
 /**
  * /oauth/consent — approve an app's request for access (#1456).
  *
- * The OAuth provider redirects here with the client's signed authorization
- * query once the user is signed in. The page shows who is asking and for
- * what, and hands the decision back to the provider, which sends the browser
- * on to the app's `redirect_uri`.
+ * Better Auth sends the signed query to `/oauth/consent-start`, which packs it
+ * into `q` and 302s here so TanStack cannot collapse repeated `ba_param`.
  */
 
 import { Button } from '@/components/ui/button';
@@ -21,13 +19,16 @@ import {
   getOAuthConsentContextFn,
 } from '@/functions/oauth-consent';
 import {
+  consentPageHref,
   displayFieldsFromOAuthQuery,
+  needsOAuthQueryPack,
   pickOAuthQuery,
+  resolveOAuthQuery,
 } from '@/lib/auth/oauth-query-snapshot';
 import { requireSessionOrRedirect } from '@/lib/auth/route-guards';
 import { errorMessage } from '@/lib/errors';
 import { useMutation, useSuspenseQuery } from '@tanstack/react-query';
-import { createFileRoute } from '@tanstack/react-router';
+import { createFileRoute, redirect } from '@tanstack/react-router';
 import { createIsomorphicFn } from '@tanstack/react-start';
 import { getRequest } from '@tanstack/react-start/server';
 import { Check } from 'lucide-react';
@@ -44,11 +45,9 @@ declare global {
 }
 
 /**
- * The provider signs the *raw* query, including repeated `ba_param` keys.
- * TanStack's default search parser (qss) keeps one value per key and rewrites
- * the address bar on hydrate, so `window.location.search` is already invalid
- * by Approve. Capture the document URL on the server and again in a head
- * script before the router runs.
+ * Prefer the incoming request URL (server) or a head-script snapshot (client)
+ * over TanStack's parsed `location.search`. Packed `q` is immune to qss;
+ * this still covers a stray hit on `/oauth/consent` with the raw signed query.
  */
 const readConsentOAuthQuery = createIsomorphicFn()
   .server(() => new URL(getRequest().url).search)
@@ -63,9 +62,16 @@ export const Route = createFileRoute('/_app/oauth/consent')({
       },
     ],
   }),
-  loader: () => ({ oauthQuery: readConsentOAuthQuery() }),
-  beforeLoad: async ({ context: { queryClient }, location }) => {
-    await requireSessionOrRedirect(queryClient, location.href);
+  loader: () => ({
+    oauthQuery: resolveOAuthQuery(readConsentOAuthQuery()),
+  }),
+  beforeLoad: async ({ context: { queryClient } }) => {
+    const rawSearch = readConsentOAuthQuery();
+    const href = consentPageHref(rawSearch);
+    if (needsOAuthQueryPack(rawSearch)) {
+      throw redirect({ href });
+    }
+    await requireSessionOrRedirect(queryClient, href);
   },
   component: ConsentPage,
   staticData: { breadcrumb: 'Authorize app' },
@@ -74,9 +80,11 @@ export const Route = createFileRoute('/_app/oauth/consent')({
 function ConsentPage() {
   const { oauthQuery: loaderQuery } = Route.useLoaderData();
   const oauthQuery = pickOAuthQuery([
-    loaderQuery,
+    resolveOAuthQuery(loaderQuery),
     typeof window !== 'undefined'
-      ? window.__OPENSTORY_OAUTH_QUERY__
+      ? resolveOAuthQuery(
+          window.__OPENSTORY_OAUTH_QUERY__ || window.location.search
+        )
       : undefined,
   ]);
   const { clientId, scope, redirectUri } =

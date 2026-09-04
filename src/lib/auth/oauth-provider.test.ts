@@ -169,6 +169,7 @@ describe('createOAuthProviderPlugins', () => {
     expect(options.allowDynamicClientRegistration).toBe(true);
     expect(options.allowUnauthenticatedClientRegistration).toBe(true);
     expect(options.loginPage).toBe('/oauth/login');
-    expect(options.consentPage).toBe('/oauth/consent');
+    expect(options.consentPage).toBe('/oauth/consent-start');
+    expect(options.postLogin?.page).toBe('/oauth/consent-start');
   });
 });

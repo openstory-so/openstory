@@ -28,7 +28,9 @@
  *   `onRequest` discovery hooks never see root requests otherwise.
  * - `src/routes/oauth/login.ts` turns the plugin's signed login redirect into a
  *   plain `/login?redirectTo=…`, so the auth form needs no OAuth awareness.
- * - `src/routes/_app/oauth/consent.tsx` + `src/functions/oauth-consent.ts`.
+ * - `src/routes/oauth/consent-start.ts` packs the signed consent query so
+ *   TanStack cannot collapse repeated `ba_param`, then 302s to
+ *   `src/routes/_app/oauth/consent.tsx` + `src/functions/oauth-consent.ts`.
  * - At consent the grant is stamped with the user's default team
  *   (`consentReferenceId` → `resolveUserTeam`); there is no picker yet.
  *   `/api/v1` uses `team_id` when present, otherwise the same default-team
@@ -36,6 +38,7 @@
  */
 
 import { getEnv } from '#env';
+import { OAUTH_CONSENT_START_PATH } from '@/lib/auth/oauth-query-snapshot';
 import { OAUTH_API_SCOPES, OAUTH_SCOPES } from '@/lib/auth/oauth-scopes';
 import { resolveUserTeam } from '@/lib/db/scoped';
 import { getLogger } from '@/lib/observability/logger';
@@ -46,8 +49,6 @@ const logger = getLogger(['openstory', 'auth', 'oauth-provider']);
 
 /** Server route that resumes an interrupted authorize request after login. */
 const OAUTH_LOGIN_PATH = '/oauth/login';
-/** Consent page (`src/routes/_app/oauth/consent.tsx`). */
-const OAUTH_CONSENT_PATH = '/oauth/consent';
 
 const DEV_ISSUER = 'http://localhost:3000';
 
@@ -137,7 +138,7 @@ export function createOAuthProviderPlugins() {
     mcp({
       resource: mcpResourceIdentifier(issuer),
       loginPage: OAUTH_LOGIN_PATH,
-      consentPage: OAUTH_CONSENT_PATH,
+      consentPage: OAUTH_CONSENT_START_PATH,
       scopes: [...OAUTH_SCOPES],
       resources: [
         {
@@ -159,7 +160,7 @@ export function createOAuthProviderPlugins() {
       // `shouldRedirect` is a hook for a future team picker; today the grant
       // goes to the user's default team, exactly like an `osk_` key.
       postLogin: {
-        page: OAUTH_CONSENT_PATH,
+        page: OAUTH_CONSENT_START_PATH,
         shouldRedirect: () => false,
         consentReferenceId: async ({ user }) => {
           const team = await resolveUserTeam(user.id);

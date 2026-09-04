@@ -170,6 +170,27 @@ describe('decideOAuthConsent', () => {
     expect(result.url).toBe('http://127.0.0.1:8765/cb?code=2');
   });
 
+  it('unpacks a packed q before calling the provider', async () => {
+    const { packOAuthQuery } = await import('./oauth-query-snapshot');
+    oauth2Consent.mockResolvedValueOnce({
+      url: 'http://127.0.0.1:8765/cb?code=3',
+    });
+    await decideOAuthConsent({
+      userId: 'user_1',
+      teamId: 'team_1',
+      accept: true,
+      oauthQuery: `?q=${packOAuthQuery(signedQuery)}`,
+      headers: new Headers(),
+    });
+    expect(oauth2Consent).toHaveBeenCalledWith({
+      headers: expect.any(Headers),
+      body: {
+        accept: true,
+        oauth_query: signedQuery.slice(1),
+      },
+    });
+  });
+
   it('strips a leading ? and returns the provider redirect', async () => {
     oauth2Consent.mockResolvedValueOnce({
       url: 'http://127.0.0.1:8765/cb?code=1',

@@ -37,6 +37,7 @@ import { Route as GiftCodeRouteImport } from './routes/gift/$code'
 import { Route as MetaOgRouteImport } from './routes/meta/og'
 import { Route as MetaOgGithubRouteImport } from './routes/meta/og-github'
 import { Route as MetaOgLinkedinRouteImport } from './routes/meta/og-linkedin'
+import { Route as OauthConsentStartRouteImport } from './routes/oauth/consent-start'
 import { Route as OauthLoginRouteImport } from './routes/oauth/login'
 import { Route as R2SplatRouteImport } from './routes/r2.$'
 import { Route as AppAdminModerationRouteImport } from './routes/_app/admin/moderation'
@@ -234,6 +235,11 @@ const MetaOgGithubRoute = MetaOgGithubRouteImport.update({
 const MetaOgLinkedinRoute = MetaOgLinkedinRouteImport.update({
   id: '/meta/og-linkedin',
   path: '/meta/og-linkedin',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OauthConsentStartRoute = OauthConsentStartRouteImport.update({
+  id: '/oauth/consent-start',
+  path: '/oauth/consent-start',
   getParentRoute: () => rootRouteImport,
 } as any)
 const OauthLoginRoute = OauthLoginRouteImport.update({
@@ -568,6 +574,7 @@ export interface FileRoutesByFullPath {
   '/meta/og': typeof MetaOgRoute
   '/meta/og-github': typeof MetaOgGithubRoute
   '/meta/og-linkedin': typeof MetaOgLinkedinRoute
+  '/oauth/consent-start': typeof OauthConsentStartRoute
   '/oauth/login': typeof OauthLoginRoute
   '/r2/$': typeof R2SplatRoute
   '/docs/': typeof DocsIndexRoute
@@ -654,6 +661,7 @@ export interface FileRoutesByTo {
   '/meta/og': typeof MetaOgRoute
   '/meta/og-github': typeof MetaOgGithubRoute
   '/meta/og-linkedin': typeof MetaOgLinkedinRoute
+  '/oauth/consent-start': typeof OauthConsentStartRoute
   '/oauth/login': typeof OauthLoginRoute
   '/r2/$': typeof R2SplatRoute
   '/docs': typeof DocsIndexRoute
@@ -744,6 +752,7 @@ export interface FileRoutesById {
   '/meta/og': typeof MetaOgRoute
   '/meta/og-github': typeof MetaOgGithubRoute
   '/meta/og-linkedin': typeof MetaOgLinkedinRoute
+  '/oauth/consent-start': typeof OauthConsentStartRoute
   '/oauth/login': typeof OauthLoginRoute
   '/r2/$': typeof R2SplatRoute
   '/_app/': typeof AppIndexRoute
@@ -835,6 +844,7 @@ export interface FileRouteTypes {
     | '/meta/og'
     | '/meta/og-github'
     | '/meta/og-linkedin'
+    | '/oauth/consent-start'
     | '/oauth/login'
     | '/r2/$'
     | '/docs/'
@@ -921,6 +931,7 @@ export interface FileRouteTypes {
     | '/meta/og'
     | '/meta/og-github'
     | '/meta/og-linkedin'
+    | '/oauth/consent-start'
     | '/oauth/login'
     | '/r2/$'
     | '/docs'
@@ -1010,6 +1021,7 @@ export interface FileRouteTypes {
     | '/meta/og'
     | '/meta/og-github'
     | '/meta/og-linkedin'
+    | '/oauth/consent-start'
     | '/oauth/login'
     | '/r2/$'
     | '/_app/'
@@ -1088,6 +1100,7 @@ export interface RootRouteChildren {
   MetaOgRoute: typeof MetaOgRoute
   MetaOgGithubRoute: typeof MetaOgGithubRoute
   MetaOgLinkedinRoute: typeof MetaOgLinkedinRoute
+  OauthConsentStartRoute: typeof OauthConsentStartRoute
   OauthLoginRoute: typeof OauthLoginRoute
   R2SplatRoute: typeof R2SplatRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
@@ -1301,6 +1314,13 @@ declare module '@tanstack/react-router' {
       path: '/meta/og-linkedin'
       fullPath: '/meta/og-linkedin'
       preLoaderRoute: typeof MetaOgLinkedinRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/oauth/consent-start': {
+      id: '/oauth/consent-start'
+      path: '/oauth/consent-start'
+      fullPath: '/oauth/consent-start'
+      preLoaderRoute: typeof OauthConsentStartRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/oauth/login': {
@@ -1956,6 +1976,7 @@ const rootRouteChildren: RootRouteChildren = {
   MetaOgRoute: MetaOgRoute,
   MetaOgGithubRoute: MetaOgGithubRoute,
   MetaOgLinkedinRoute: MetaOgLinkedinRoute,
+  OauthConsentStartRoute: OauthConsentStartRoute,
   OauthLoginRoute: OauthLoginRoute,
   R2SplatRoute: R2SplatRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
