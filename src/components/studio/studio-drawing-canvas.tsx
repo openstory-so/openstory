@@ -209,7 +209,7 @@ export function StudioDrawingCanvas({
           type="button"
           variant={tool === 'erase' ? 'default' : 'outline'}
           size="sm"
-          disabled={disabled || submitting}
+          disabled={disabled || submitting || !hasInk}
           onClick={() => setTool('erase')}
         >
           <Eraser aria-hidden="true" />
