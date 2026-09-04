@@ -4,11 +4,14 @@
 
 import { describe, expect, it } from 'vitest';
 import { matchLocationsToScene } from '@/lib/workflows/scene-matching';
-import { locationMatchesTag } from '@/lib/db/scoped/sequence-locations';
-import type { SequenceLocation } from '@/lib/db/schema';
+import type { SequenceLocationWithReference } from '@/lib/db/schema';
 
 // Mock location data - using full SequenceLocation type
-const mockLocations: [SequenceLocation, SequenceLocation, SequenceLocation] = [
+const mockLocations: [
+  SequenceLocationWithReference,
+  SequenceLocationWithReference,
+  SequenceLocationWithReference,
+] = [
   {
     id: 'loc-1',
     sequenceId: 'seq-1',
@@ -33,6 +36,8 @@ const mockLocations: [SequenceLocation, SequenceLocation, SequenceLocation] = [
     referenceGeneratedAt: new Date(),
     referenceError: null,
     referenceInputHash: null,
+    selectedReferenceVersionId: null,
+    deletedAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),
   },
@@ -60,6 +65,8 @@ const mockLocations: [SequenceLocation, SequenceLocation, SequenceLocation] = [
     referenceGeneratedAt: new Date(),
     referenceError: null,
     referenceInputHash: null,
+    selectedReferenceVersionId: null,
+    deletedAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),
   },
@@ -87,46 +94,14 @@ const mockLocations: [SequenceLocation, SequenceLocation, SequenceLocation] = [
     referenceGeneratedAt: null,
     referenceError: null,
     referenceInputHash: null,
+    selectedReferenceVersionId: null,
+    deletedAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),
   },
 ];
 
 // Helper to create a partial mock shot with just the fields needed for matching
-
-describe('sequence-locations helpers', () => {
-  describe('locationMatchesTag', () => {
-    it('should match by consistency tag', () => {
-      expect(locationMatchesTag(mockLocations[0], 'office_modern_glass')).toBe(
-        true
-      );
-      expect(locationMatchesTag(mockLocations[0], 'OFFICE_MODERN_GLASS')).toBe(
-        true
-      );
-      expect(locationMatchesTag(mockLocations[0], 'random_tag')).toBe(false);
-    });
-
-    it('should match by location name (partial)', () => {
-      expect(locationMatchesTag(mockLocations[0], 'office')).toBe(true);
-      expect(locationMatchesTag(mockLocations[1], 'street')).toBe(true);
-      expect(locationMatchesTag(mockLocations[2], 'apartment')).toBe(true);
-    });
-
-    it('should match by locationId', () => {
-      expect(locationMatchesTag(mockLocations[0], 'loc_001')).toBe(true);
-      expect(locationMatchesTag(mockLocations[1], 'loc_002')).toBe(true);
-    });
-
-    it('should be case-insensitive', () => {
-      expect(locationMatchesTag(mockLocations[0], 'OFFICE')).toBe(true);
-      expect(locationMatchesTag(mockLocations[0], 'Office')).toBe(true);
-    });
-
-    it('should return false for empty tags', () => {
-      expect(locationMatchesTag(mockLocations[0], '')).toBe(false);
-    });
-  });
-});
 
 describe('matchLocationsToScene', () => {
   it('matches on the scene environment tag', () => {
@@ -158,5 +133,45 @@ describe('matchLocationsToScene', () => {
 
   it('returns nothing when neither key is set', () => {
     expect(matchLocationsToScene(mockLocations, '', '')).toEqual([]);
+  });
+});
+
+describe('matchLocationsToScene — prose scripts (no slugline)', () => {
+  it('finds the set named in the scene text when tag and slugline are empty', () => {
+    const matched = matchLocationsToScene(
+      mockLocations,
+      '',
+      '',
+      'Mateo pushes through the office doors at a run.'
+    );
+    expect(matched.map((l) => l.id)).toEqual(['loc-1']);
+  });
+
+  it('prefers the location whose whole name the text carries', () => {
+    // "city street" is both tokens of loc-2's consistency tag; "office" is one
+    // of loc-1's. The more specific match wins.
+    const matched = matchLocationsToScene(
+      mockLocations,
+      '',
+      '',
+      'They meet on the city street outside the office block.'
+    );
+    expect(matched.map((l) => l.id)).toEqual(['loc-2']);
+  });
+
+  it('does not scan the text when the tag already matched', () => {
+    const matched = matchLocationsToScene(
+      mockLocations,
+      'office_modern_glass',
+      '',
+      'A wide shot of the city street.'
+    );
+    expect(matched.map((l) => l.id)).toEqual(['loc-1']);
+  });
+
+  it('returns nothing when the text names no location', () => {
+    expect(
+      matchLocationsToScene(mockLocations, '', '', 'Close on her hands.')
+    ).toEqual([]);
   });
 });

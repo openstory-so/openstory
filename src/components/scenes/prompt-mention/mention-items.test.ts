@@ -104,8 +104,14 @@ describe('buildMentionItems', () => {
     expect(items.find((i) => i.id === 'location:l1')?.tag).toBe('loc_001');
   });
 
-  it('orders elements before cast before locations in SECTION_ORDER', () => {
-    expect(SECTION_ORDER).toEqual(['elements', 'cast', 'locations']);
+  it('orders attached before elements, cast, locations, then library images', () => {
+    expect(SECTION_ORDER).toEqual([
+      'references',
+      'elements',
+      'cast',
+      'locations',
+      'images',
+    ]);
   });
 });
 

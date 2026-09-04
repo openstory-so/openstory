@@ -6,7 +6,7 @@ import {
 import { useScenesBySequence } from '@/hooks/use-scenes';
 import { useAddModelToSequence, useSequence } from '@/hooks/use-sequences';
 import { useShotsBySequence } from '@/hooks/use-shots';
-import { useStyle } from '@/hooks/use-styles';
+import { useSequenceStyle } from '@/hooks/use-styles';
 import {
   AUDIO_MODELS,
   IMAGE_MODELS,
@@ -16,8 +16,22 @@ import {
   isValidImageToVideoModel,
   isValidTextToImageModel,
 } from '@/lib/ai/models';
+import {
+  compareSelectorModels,
+  QUALITY_DEFAULT_AUDIO,
+  QUALITY_DEFAULT_IMAGE,
+  QUALITY_DEFAULT_VIDEO,
+  SELECTOR_GROUP_ORDER,
+  selectorGroup,
+  TURBO_AUDIO_MODELS,
+  TURBO_IMAGE_MODELS,
+  TURBO_VIDEO_MODELS,
+  type SelectorGroup,
+} from '@/lib/ai/generation-mode';
 import type { VariantType } from '@/lib/db/schema/shot-variants';
 import { DEFAULT_ASPECT_RATIO } from '@/lib/constants/aspect-ratios';
+import { useViaAvailability } from '@/hooks/use-via-availability';
+import { rendersReferenceOnly } from '@/lib/shots/use-start-frame';
 import { useMemo } from 'react';
 import { toast } from 'sonner';
 
@@ -25,6 +39,7 @@ type Candidate = {
   key: string;
   name: string;
   scope: string;
+  group: SelectorGroup;
 };
 
 const scenes = (n: number) => `${n} scene${n === 1 ? '' : 's'}`;
@@ -56,8 +71,12 @@ export const AddModelMenuSection = ({
   const { data: shots } = useShotsBySequence(sequenceId);
   const { data: sceneRows } = useScenesBySequence(sequenceId);
   const { data: sequence } = useSequence(sequenceId);
-  const { data: style } = useStyle(sequence?.styleId ?? '');
+  const { data: style } = useSequenceStyle(sequenceId);
   const aspectRatio = sequence?.aspectRatio ?? DEFAULT_ASPECT_RATIO;
+  // Only the DEFAULT — `rendersReferenceOnly` resolves each shot's override
+  // against it below.
+  const generateStartFrames = sequence?.generateStartFrames ?? false;
+  const { referenceOnlyModels } = useViaAvailability();
   // Style-category gating (mirrors motion-model-selector): a model declaring a
   // `requiredStyleCategory` (none currently declare one) is only offered when
   // the sequence's style matches — otherwise it isn't a valid choice here.
@@ -79,25 +98,48 @@ export const AddModelMenuSection = ({
       return Object.keys(IMAGE_MODELS)
         .filter(isValidTextToImageModel)
         .filter((key) => !used.has(key) && !('hidden' in IMAGE_MODELS[key]))
-        .sort(
-          (a, b) => IMAGE_MODELS[a].qualityRank - IMAGE_MODELS[b].qualityRank
+        .sort((a, b) =>
+          compareSelectorModels(
+            a,
+            b,
+            TURBO_IMAGE_MODELS,
+            QUALITY_DEFAULT_IMAGE,
+            (id) =>
+              isValidTextToImageModel(id) ? IMAGE_MODELS[id].qualityRank : 99
+          )
         )
         .map((key) => ({
           key,
           name: IMAGE_MODELS[key].name,
           scope: count ? scenes(count) : 'all scenes',
+          group: selectorGroup(key, TURBO_IMAGE_MODELS),
         }));
     }
 
     if (variantType === 'video') {
-      const count = shotList.filter(
-        (f) => f.frame.imageStatus === 'completed' && f.image?.url
-      ).length;
+      // What the server will accept (`selectEligibleVideoShots`): a shot needs
+      // a still UNLESS it renders reference-only, which is a per-shot answer.
+      const eligible = shotList.filter(
+        (f) =>
+          rendersReferenceOnly(f, { generateStartFrames }) ||
+          (f.frame.imageStatus === 'completed' && f.image?.url)
+      );
+      const count = eligible.length;
+      // The add generates for EVERY eligible shot, so a single reference-only
+      // one among them decides the list: a model with no reference-to-video
+      // route cannot serve that shot, and the server refuses the whole add
+      // rather than quietly skipping it.
+      const anyReferenceOnly = eligible.some((f) =>
+        rendersReferenceOnly(f, { generateStartFrames })
+      );
       return Object.keys(IMAGE_TO_VIDEO_MODELS)
         .filter(isValidImageToVideoModel)
         .filter((key) => {
           const model = IMAGE_TO_VIDEO_MODELS[key];
           if (used.has(key) || 'hidden' in model) return false;
+          if (anyReferenceOnly && !referenceOnlyModels.includes(key)) {
+            return false;
+          }
           // Exclude models gated to a different style category (e.g. Seedance 2
           // is animation-only) — same rule as the motion-model selector.
           if (
@@ -107,10 +149,17 @@ export const AddModelMenuSection = ({
             return false;
           return isModelCompatibleWithAspectRatio(key, aspectRatio);
         })
-        .sort(
-          (a, b) =>
-            IMAGE_TO_VIDEO_MODELS[a].qualityRank -
-            IMAGE_TO_VIDEO_MODELS[b].qualityRank
+        .sort((a, b) =>
+          compareSelectorModels(
+            a,
+            b,
+            TURBO_VIDEO_MODELS,
+            QUALITY_DEFAULT_VIDEO,
+            (id) =>
+              isValidImageToVideoModel(id)
+                ? IMAGE_TO_VIDEO_MODELS[id].qualityRank
+                : 99
+          )
         )
         .map((key) => ({
           key,
@@ -118,6 +167,7 @@ export const AddModelMenuSection = ({
           // Matches the image branch: before any still is rendered the scope is
           // every scene, not the literal zero that have one today.
           scope: count ? scenes(count) : 'all scenes',
+          group: selectorGroup(key, TURBO_VIDEO_MODELS),
         }));
     }
 
@@ -128,13 +178,31 @@ export const AddModelMenuSection = ({
         // oxlint-disable-next-line typescript/no-unnecessary-condition
         (key) => !used.has(key) && AUDIO_MODELS[key].type === 'music'
       )
-      .sort((a, b) => AUDIO_MODELS[a].qualityRank - AUDIO_MODELS[b].qualityRank)
+      .sort((a, b) =>
+        compareSelectorModels(
+          a,
+          b,
+          TURBO_AUDIO_MODELS,
+          QUALITY_DEFAULT_AUDIO,
+          (id) => (isValidAudioModel(id) ? AUDIO_MODELS[id].qualityRank : 99)
+        )
+      )
       .map((key) => ({
         key,
         name: AUDIO_MODELS[key].name,
         scope: '1 track',
+        group: selectorGroup(key, TURBO_AUDIO_MODELS),
       }));
-  }, [variantType, usedModels, shots, sceneRows, aspectRatio, styleCategory]);
+  }, [
+    variantType,
+    usedModels,
+    shots,
+    sceneRows,
+    aspectRatio,
+    styleCategory,
+    generateStartFrames,
+    referenceOnlyModels,
+  ]);
 
   if (candidates.length === 0) return null;
 
@@ -175,20 +243,34 @@ export const AddModelMenuSection = ({
       <DropdownMenuLabel className="text-[10px] text-muted-foreground uppercase tracking-wider font-normal">
         Add a model
       </DropdownMenuLabel>
-      {candidates.map((c) => (
-        <DropdownMenuItem
-          key={c.key}
-          disabled={addModel.isPending}
-          onSelect={(e) => {
-            e.preventDefault();
-            handleAdd(c);
-          }}
-          className="cursor-pointer flex flex-col items-start gap-0.5"
-        >
-          <span className="w-full truncate">{c.name}</span>
-          <span className="text-[10px] text-muted-foreground">{c.scope}</span>
-        </DropdownMenuItem>
-      ))}
+      {SELECTOR_GROUP_ORDER.map((group, groupIndex) => {
+        const groupCandidates = candidates.filter((c) => c.group === group);
+        if (groupCandidates.length === 0) return null;
+        return (
+          <div key={group}>
+            {groupIndex > 0 && <DropdownMenuSeparator />}
+            <DropdownMenuLabel className="text-[10px] text-muted-foreground uppercase tracking-wider font-normal">
+              {group === 'fast' ? 'Fast' : 'Quality'}
+            </DropdownMenuLabel>
+            {groupCandidates.map((c) => (
+              <DropdownMenuItem
+                key={c.key}
+                disabled={addModel.isPending}
+                onSelect={(e) => {
+                  e.preventDefault();
+                  handleAdd(c);
+                }}
+                className="cursor-pointer flex flex-col items-start gap-0.5"
+              >
+                <span className="w-full truncate">{c.name}</span>
+                <span className="text-[10px] text-muted-foreground">
+                  {c.scope}
+                </span>
+              </DropdownMenuItem>
+            ))}
+          </div>
+        );
+      })}
     </>
   );
 };

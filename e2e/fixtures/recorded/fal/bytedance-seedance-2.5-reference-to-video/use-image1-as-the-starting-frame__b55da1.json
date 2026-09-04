@@ -1,0 +1,24 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use @Image1 as the starting frame.\nSteady handheld drift follows @Image2's sandy fingers as they close around the @Image3 and lift it from the sand. She turns the tube once in her palm, grit catching the sun on the casing, then slips it into the tote's inner pocket without twisting it open. She stands, rising from the kneel.\n\nSand grains fall from her fingers and the casing. A light breeze tugs the open tote. Distant surf rolls.\n\ngentle morning surf, light beach breeze, distant waves. fingers brushing coarse sand, lipstick tube lifted from grit, soft fabric rustle as the tube slides into the tote pocket, sand shifting as she stands.\n\nNo BGM, no music. Generate only dialogue, environmental sounds, and action sounds. Single continuous shot, no cuts. Avoid jitter and bent limbs.",
+        "model": "bytedance/seedance-2.5/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://v3b.fal.media/files/b/0aa70c0b/K2h20uPlRDUifh7XCxlre_video.mp4",
+            "content_type": "video/mp4",
+            "file_name": "video.mp4",
+            "file_size": 3573525
+          },
+          "seed": 1485062546
+        },
+        "status": 200,
+        "billableUnits": 108.9
+      }
+    }
+  ]
+}

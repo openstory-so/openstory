@@ -63,7 +63,6 @@ export const promoteLibraryLocationSheetVariantFn = createServerFn({
     }
 
     await context.scopedDb.locationSheetVariants.promoteAtomically(
-      'library_location',
       variant.parentId,
       {
         referenceImageUrl: variant.url,

@@ -1,0 +1,24 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use @Image1 as the starting frame.\nSteady handheld drift follows @Image2 as she lowers her wrist from her eyes, blinking salt away, never touching her mouth. A smaller wave slaps her shoulder. She turns and wades toward shore through the shallows.\n\nWater sheets off her sleeve. Foam breaks around her calves. Wet hair ropes down her back as she turns. Sunlit spray hangs in the air.\n\nrolling surf and morning shoreline wash, distant beach murmur. wave slap against shoulder, water splashing around legs, drips falling from wrist.\n\nNo BGM, no music. Generate only dialogue, environmental sounds, and action sounds. Single continuous shot, no cuts. Avoid jitter and bent limbs.\n\nReference images:\n@Image3: CORAL_LIPSTICK - A slim pocket-length lipstick tube — keep visually consistent throughout the shot.",
+        "model": "bytedance/seedance-2.5/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://v3b.fal.media/files/b/0aa70c17/GPDAb85OfGsDA3R4vs_l5_video.mp4",
+            "content_type": "video/mp4",
+            "file_name": "video.mp4",
+            "file_size": 5194407
+          },
+          "seed": 883962460
+        },
+        "status": 200,
+        "billableUnits": 108.9
+      }
+    }
+  ]
+}

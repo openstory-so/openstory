@@ -42,6 +42,7 @@ export function frameVariantFixture(
     id: generateId(),
     kind: 'model',
     model: 'nano_banana_2',
+    resolution: null,
     sourceVariantId: null,
     url: null,
     storagePath: null,
@@ -73,6 +74,7 @@ export function videoVariantFixture(
   return {
     id: generateId(),
     model: 'kling_25_turbo_pro',
+    resolution: null,
     manifest: [],
     url: null,
     storagePath: null,

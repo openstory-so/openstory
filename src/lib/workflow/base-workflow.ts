@@ -45,9 +45,25 @@ import {
 } from 'cloudflare:workers';
 import { NonRetryableError } from 'cloudflare:workflows';
 import { flushAnalytics } from '@/lib/observability/flush-analytics';
+import { captureProductEvent } from '@/lib/observability/product-events';
 import { getLogger, serializeError } from '@/lib/observability/logger';
 
 const logger = getLogger(['openstory', 'workflow', 'cf', 'base']);
+
+async function zeroOwnedReservation(
+  payload: UserWorkflowContext,
+  scopedDb: WorkflowScopedDb
+): Promise<void> {
+  if (!payload.ownsReservation || !payload.reservationId) return;
+  try {
+    await scopedDb.billing.zeroReservation(payload.reservationId);
+  } catch (err) {
+    logger.error(
+      `[${payload.reservationId}] Failed to zero owned reservation:`,
+      { err }
+    );
+  }
+}
 
 let e2ePricingSeed: Promise<unknown> | null = null;
 
@@ -75,6 +91,16 @@ function extractParentHint(payload: unknown): ParentNotifyHint | undefined {
     return hint;
   }
   return undefined;
+}
+
+/**
+ * `sequenceId` rides on most payloads (`SequenceWorkflowContext`) but not on
+ * the base contract, so read it defensively for the failure alert.
+ */
+function extractSequenceId(payload: UserWorkflowContext): string | undefined {
+  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- optional slot not part of the base payload type
+  const id = (payload as { sequenceId?: string }).sequenceId;
+  return typeof id === 'string' ? id : undefined;
 }
 
 export type OpenStoryFailureContext<T extends UserWorkflowContext> = {
@@ -143,6 +169,7 @@ export abstract class OpenStoryWorkflowEntrypoint<
 
     try {
       const result = await this.runImpl(event, step, scopedDb);
+      await zeroOwnedReservation(event.payload, scopedDb);
 
       // Notify the parent on success (Pattern 3 fan-in). No-op for top-level
       // workflows that weren't spawned via spawnAndAwaitChild.
@@ -186,7 +213,24 @@ export abstract class OpenStoryWorkflowEntrypoint<
         err: serializeError(error),
       });
 
-      if (this.onFailure) {
+      // Every user-visible generation failure funnels through this one catch,
+      // so this is the only place a "user hit an error" alert needs to fire
+      // (#1088 Slack destination). Emitted after the engine-abort guard above,
+      // so transient interruptions that resume don't page anyone. The `finally`
+      // below flushes it before the isolate is torn down.
+      captureProductEvent({
+        distinctId: event.payload.userId,
+        event: 'sequence_error',
+        properties: {
+          workflow: this.constructor.name,
+          error: sanitized,
+          sequence_id: extractSequenceId(event.payload) ?? null,
+          team_id: event.payload.teamId,
+          run_id: event.instanceId,
+        },
+      });
+
+      if (this.onFailure || event.payload.ownsReservation) {
         // Wrap in step.do so cleanup retries on its own merits. The catch
         // sits OUTSIDE the step — catching inside would make the step
         // succeed on the first attempt and silently skip the engine's
@@ -197,6 +241,7 @@ export abstract class OpenStoryWorkflowEntrypoint<
         // persisted workflowRunId (see lib/cron/reconcile-all.ts).
         try {
           await step.do('emit-failure', async () => {
+            await zeroOwnedReservation(event.payload, scopedDb);
             await this.onFailure?.({ event, error: sanitized, scopedDb });
           });
         } catch (cleanupError) {

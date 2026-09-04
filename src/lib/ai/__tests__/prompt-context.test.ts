@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { migrateStyleConfigV1ToV2 } from '@/lib/style/style-config';
 import { buildCastCharacterBible } from '@/lib/prompts/character-prompt';
 import type {
-  Character,
+  CharacterWithSheet,
   SequenceElement,
-  SequenceLocation,
+  SequenceLocationWithReference,
   StyleConfig,
 } from '@/lib/db/schema';
 import {
@@ -345,6 +345,32 @@ describe('prompt-driving projection (#867 §4.2)', () => {
     expect(after).toBe(before);
   });
 
+  it('a rename on a referenced location does NOT move the visual hash', async () => {
+    const before = await computeVisualPromptInputHash(
+      narrowShotPromptContext(baseCtx)
+    );
+    const after = await computeVisualPromptInputHash(
+      narrowShotPromptContext({
+        ...baseCtx,
+        locationBible: [{ ...beach, name: 'The Shore' }],
+      })
+    );
+    expect(after).toBe(before);
+  });
+
+  it('a rename on a referenced character does NOT move the visual hash', async () => {
+    const before = await computeVisualPromptInputHash(
+      narrowShotPromptContext(baseCtx)
+    );
+    const after = await computeVisualPromptInputHash(
+      narrowShotPromptContext({
+        ...baseCtx,
+        characterBible: [{ ...alice, name: 'Alicia' }],
+      })
+    );
+    expect(after).toBe(before);
+  });
+
   it('a physicalDescription change on a referenced character DOES move the visual hash', async () => {
     const before = await computeVisualPromptInputHash(
       narrowShotPromptContext(baseCtx)
@@ -396,7 +422,7 @@ describe('casting round-trip — stamp matches verify (#867)', () => {
 
   // Simulate the row the character-bible workflow persists, then read it back
   // the way `getShotStalenessFn` does at verify time.
-  const makeCharacterRow = (b: CharacterBibleEntry): Character => ({
+  const makeCharacter = (b: CharacterBibleEntry): CharacterWithSheet => ({
     id: `row_${b.characterId}`,
     sequenceId: 'seq_1',
     talentId: 'talent_1',
@@ -418,6 +444,8 @@ describe('casting round-trip — stamp matches verify (#867)', () => {
     sheetGeneratedAt: null,
     sheetError: null,
     sheetInputHash: null,
+    selectedSheetVersionId: null,
+    deletedAt: null,
     createdAt: new Date(0),
     updatedAt: new Date(0),
   });
@@ -436,7 +464,7 @@ describe('casting round-trip — stamp matches verify (#867)', () => {
   it('stamp (cast bible fed to prompt) equals verify (cast bible read from the DB)', async () => {
     const [castSarah] = buildCastCharacterBible([rawSarah], [match]);
     if (!castSarah) throw new Error('expected one cast entry');
-    const verifyBible = charactersToBible([makeCharacterRow(castSarah)]);
+    const verifyBible = charactersToBible([makeCharacter(castSarah)]);
 
     const stampHash = await computeVisualPromptInputHash(ctxWith([castSarah]));
     const verifyHash = await computeVisualPromptInputHash(ctxWith(verifyBible));
@@ -460,7 +488,7 @@ describe('casting round-trip — stamp matches verify (#867)', () => {
   it('motion: stamp (cast bible) equals verify (cast bible read from the DB)', async () => {
     const [castSarah] = buildCastCharacterBible([rawSarah], [match]);
     if (!castSarah) throw new Error('expected one cast entry');
-    const verifyBible = charactersToBible([makeCharacterRow(castSarah)]);
+    const verifyBible = charactersToBible([makeCharacter(castSarah)]);
 
     const stampHash = await computeMotionPromptInputHash(ctxWith([castSarah]));
     const verifyHash = await computeMotionPromptInputHash(ctxWith(verifyBible));
@@ -502,7 +530,9 @@ describe('location/element bible round-trip — stamp matches verify (#867)', ()
       analysisModel: 'anthropic/claude-haiku-4.5',
     });
 
-  const makeLocationRow = (l: LocationBibleEntry): SequenceLocation => ({
+  const makeLocationRow = (
+    l: LocationBibleEntry
+  ): SequenceLocationWithReference => ({
     id: `row_${l.locationId}`,
     sequenceId: 'seq_1',
     libraryLocationId: null,
@@ -526,6 +556,8 @@ describe('location/element bible round-trip — stamp matches verify (#867)', ()
     referenceGeneratedAt: null,
     referenceError: null,
     referenceInputHash: null,
+    selectedReferenceVersionId: null,
+    deletedAt: null,
     createdAt: new Date(0),
     updatedAt: new Date(0),
   });
@@ -545,6 +577,7 @@ describe('location/element bible round-trip — stamp matches verify (#867)', ()
     firstMentionSceneId: e.firstMention.sceneId || null,
     firstMentionText: e.firstMention.text || null,
     firstMentionLine: e.firstMention.lineNumber || null,
+    deletedAt: null,
     createdAt: new Date(0),
     updatedAt: new Date(0),
   });

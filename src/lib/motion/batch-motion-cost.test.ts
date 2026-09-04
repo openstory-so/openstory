@@ -81,11 +81,11 @@ describe('resolveBatchShotVideoModel', () => {
 /** Unequal Seedance i2v vs ref rates so routing regressions fail the suite. */
 const seedanceUnequalPricing = {
   ...FAL_PRICING,
-  'bytedance/seedance-2.0/enterprise/v2/image-to-video': {
+  'bytedance/seedance-2.5/image-to-video': {
     unitPrice: micros(10_000),
     unit: 'units',
   },
-  'bytedance/seedance-2.0/enterprise/v2/reference-to-video': {
+  'bytedance/seedance-2.5/reference-to-video': {
     unitPrice: micros(20_000),
     unit: 'units',
   },
@@ -95,7 +95,7 @@ describe('estimateBatchMotionCost', () => {
   it('prices Seedance at reference-to-video when hasReferenceImages is true', () => {
     const shots = [{ id: 'shot-a' }];
     const seedanceOnly = {
-      selected: new Map([['shot-a', 'seedance_v2']]),
+      selected: new Map([['shot-a', 'seedance_v2_5']]),
       lastFailed: new Map<string, string>(),
     };
     const i2v = estimateBatchMotionCost(shots, seedanceOnly, sequence, {
@@ -113,8 +113,8 @@ describe('estimateBatchMotionCost', () => {
     const shots = [{ id: 'shot-a' }, { id: 'shot-b' }];
     const seedanceBoth = {
       selected: new Map([
-        ['shot-a', 'seedance_v2'],
-        ['shot-b', 'seedance_v2'],
+        ['shot-a', 'seedance_v2_5'],
+        ['shot-b', 'seedance_v2_5'],
       ]),
       lastFailed: new Map<string, string>(),
     };
@@ -201,5 +201,40 @@ describe('estimateBatchMotionCost', () => {
         pricing: FAL_PRICING,
       })
     ).toEqual(ZERO_MICROS);
+  });
+});
+
+describe('estimateBatchMotionCost — per-shot reference-only', () => {
+  // A batch can mix: a shot overrides the sequence's start-frame mode either
+  // way. Pricing every shot on one shot's answer (the old `.some()`) quoted
+  // the reference-to-video rate for shots that animate from a still.
+  const shots = [
+    { id: 'shot-a', useStartFrame: false },
+    { id: 'shot-b', useStartFrame: true },
+  ];
+  const seedanceBoth = {
+    selected: new Map([
+      ['shot-a', 'seedance_v2_5'],
+      ['shot-b', 'seedance_v2_5'],
+    ]),
+    lastFailed: new Map<string, string>(),
+  };
+  const price = (referenceOnly: boolean | ((s: { id: string }) => boolean)) =>
+    Number(
+      estimateBatchMotionCost(shots, seedanceBoth, sequence, {
+        pricing: seedanceUnequalPricing,
+        hasReferenceImages: false,
+        referenceOnly,
+      })
+    );
+
+  it('prices a mixed batch between the all-on and all-off totals', () => {
+    const mixed = price((shot) => shot.id === 'shot-a');
+    expect(mixed).toBeGreaterThan(price(false));
+    expect(mixed).toBeLessThan(price(true));
+  });
+
+  it('still accepts a plain boolean for a uniform batch', () => {
+    expect(price(() => true)).toBe(price(true));
   });
 });

@@ -1,0 +1,24 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use @Image1 as the starting frame.\nSteady handheld track follows @Image2 as she keeps walking, then breaks into a jog toward the sand.\n\n@Image2 holds her glance at @Image3, grin widening as she speaks. She then lengthens her stride into a jog, hair lifting. @Image3 keeps walking and turns her head to watch @Image2 peel toward the beach.\n\nSun glitter shifts on the swell. A breeze lifts hair and loose fabric. Flip-flops slap the concrete.\n\nmorning surf rolling in, distant promenade chatter, light coastal breeze. flip-flops slapping concrete, footsteps shifting into a jog.\n\n@Image2 says \"That's the point.\" in a easy confident voice.\n\nNo BGM, no music. Generate only dialogue, environmental sounds, and action sounds. Single continuous shot, no cuts. Avoid jitter and bent limbs.\n\nReference images:\n@Image4: CORAL_LIPSTICK - A slim pocket-length lipstick tube — keep visually consistent throughout the shot.",
+        "model": "bytedance/seedance-2.5/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://v3b.fal.media/files/b/0aa70c1e/oJwO70qAYt8LGFRCGN8ZM_video.mp4",
+            "content_type": "video/mp4",
+            "file_name": "video.mp4",
+            "file_size": 3468298
+          },
+          "seed": 1326266838
+        },
+        "status": 200,
+        "billableUnits": 108.9
+      }
+    }
+  ]
+}

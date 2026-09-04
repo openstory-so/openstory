@@ -28,7 +28,15 @@ import { type Client, createClient } from '@libsql/client';
 import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/libsql';
 import { migrate } from 'drizzle-orm/libsql/migrator';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 import { createFramePromptVersionsMethods } from './frame-prompt-versions';
 import { createFrameVariantsMethods } from './frame-variants';
 
@@ -1096,6 +1104,38 @@ describe("frameVariants kind: 'preview' (#1101)", () => {
     ]);
   });
 
+  it('still lists in-flight and all-failed models (#1133)', async () => {
+    const m = createFrameVariantsMethods(db);
+    // Neither has a url, so the blunt `url IS NOT NULL` filter would hide both:
+    // an in-flight render would drop out of the model bar until its image
+    // landed, and a model whose attempts all failed would hide the failure.
+    await db.insert(frameVariants).values([
+      {
+        id: 'inflight-row',
+        frameId,
+        sequenceId,
+        kind: 'model',
+        model: 'gpt_image_2',
+        status: 'generating',
+        url: null,
+      },
+      {
+        id: 'allfailed-row',
+        frameId,
+        sequenceId,
+        kind: 'model',
+        model: 'flux_2_dev',
+        status: 'failed',
+        url: null,
+      },
+    ]);
+
+    expect((await m.listModelsForSequence(sequenceId)).sort()).toEqual([
+      'flux_2_dev',
+      'gpt_image_2',
+    ]);
+  });
+
   it('orders by createdAt, so a non-ULID legacy id cannot win (#1132)', async () => {
     const m = createFrameVariantsMethods(db);
     const real = await m.recordPreview({
@@ -1125,5 +1165,37 @@ describe("frameVariants kind: 'preview' (#1101)", () => {
     );
     const byFrame = await m.listLatestPreviewsByFrameIds([frameId]);
     expect(byFrame.get(frameId)?.url).toBe('https://fal.media/real.png');
+  });
+});
+
+describe('frameVariants.getSelectedByFrameIds (#1322)', () => {
+  it("chunks the id list under D1's 100-param ceiling and returns every selection", async () => {
+    // The scenes page loads this for every frame of a sequence; a >100-frame
+    // sequence threw `too many SQL variables` on D1. libsql has no cap, so the
+    // spy is what pins the fan-out.
+    const m = createFrameVariantsMethods(db);
+    const ids: string[] = [];
+    for (let i = 0; i < 200; i++) {
+      const id = generateId();
+      ids.push(id);
+      await db
+        .insert(frames)
+        .values({ id, shotId, sequenceId, orderIndex: i + 1, role: 'first' });
+      const [v] = await db
+        .insert(frameVariants)
+        .values({ frameId: id, sequenceId, model: 'm', status: 'completed' })
+        .returning();
+      if (!v) throw new Error('test setup: variant insert returned nothing');
+      await db
+        .update(frames)
+        .set({ selectedImageVersionId: v.id })
+        .where(eq(frames.id, id));
+    }
+    const select = vi.spyOn(db, 'select');
+    const byFrame = await m.getSelectedByFrameIds(ids);
+    expect(byFrame.size).toBe(200);
+    for (const id of ids) expect(byFrame.get(id)?.frameId).toBe(id);
+    expect(select).toHaveBeenCalledTimes(3);
+    select.mockRestore();
   });
 });

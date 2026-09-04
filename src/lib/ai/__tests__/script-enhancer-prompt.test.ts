@@ -18,6 +18,16 @@ const NEO_NOIR_V1 = {
 };
 
 describe('createUserPrompt (issue #855)', () => {
+  it('invents instead of expanding when there is nothing to expand (#1393)', () => {
+    const prompt = createUserPrompt('', { invent: true, targetDuration: 15 });
+    // No <USER_SCRIPT> block: an "invent something" line inside those tags is
+    // narrative material by definition, so it would be written ABOUT, not
+    // followed.
+    expect(prompt).not.toContain('<USER_SCRIPT>');
+    expect(prompt).toContain('Invent an original short video');
+    expect(prompt).toContain('Target video duration: 15 seconds');
+  });
+
   it('carries the per-request payload (script, duration, injection guard)', () => {
     const prompt = createUserPrompt('a new product launch', {
       targetDuration: 15,
@@ -31,18 +41,18 @@ describe('createUserPrompt (issue #855)', () => {
     expect(prompt).not.toContain('Non-negotiables');
   });
 
-  it('anchors length to scene count with realistic clip durations, no word cap, no forced sum (#929)', () => {
-    const prompt = createUserPrompt('a brief', { targetDuration: 60 });
+  it('anchors length to scene count, clip grid, and a hard sum (#1374)', () => {
+    const prompt = createUserPrompt('a brief', {
+      targetDuration: 60,
+      videoModel: 'ltx_2_3_pro',
+    });
     expect(prompt).toContain('Target video duration: 1 minute');
-    expect(prompt).toContain('about 8-12 scenes');
-    // The aggressive "~N words" ceiling was removed — length is anchored by
-    // duration + scene count, not a word cap.
+    // LTX min clip 6s caps 60s at 10 scenes; preferred 8–12 intersects to 8–10.
+    expect(prompt).toContain('about 8-10 scenes');
     expect(prompt).not.toMatch(/~\s*\d+\s*words/);
-    // The enhanced script carries per-scene durations…
-    expect(prompt).toContain('realistic single-clip duration');
-    // …but must NOT be forced to stretch clips to an exact total (the #929
-    // follow-up bug: 18 scenes mechanically summed to 120s).
-    expect(prompt).not.toContain('add up to the target');
+    expect(prompt).toContain('Clip durations MUST be 6, 8 or 10 seconds');
+    expect(prompt).toContain('MUST add up to 60 seconds');
+    expect(prompt).toContain('TOTAL: <sum>s');
   });
 
   it('threads style name/category/tags so the genre drives the events', () => {
@@ -129,6 +139,7 @@ SUPER:  CORAL.  OUT NOW.`;
       },
       aspectRatio: '16:9',
       targetDuration: 60,
+      videoModel: 'seedance_v2',
     });
     const fixture = z
       .object({

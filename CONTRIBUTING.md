@@ -8,7 +8,7 @@ For detailed architecture documentation, see [CLAUDE.md](CLAUDE.md).
 
 ### Prerequisites
 
-- **Bun** >= 1.3.0 — [install](https://bun.com/docs/installation)
+- **Bun** >= 1.3.9 — [install](https://bun.com/docs/installation)
 
 No Docker or external services — local dev runs the full stack (D1, R2, Workflows, Durable Objects) inside Workerd via Miniflare.
 

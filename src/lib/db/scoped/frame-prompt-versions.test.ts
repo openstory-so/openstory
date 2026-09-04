@@ -270,6 +270,32 @@ describe('framePromptVersions.write', () => {
     expect(selected?.text).toBe('Hand-typed prompt');
     expect(selected?.inputHash).toBeNull();
   });
+
+  it('softened rewrite at the same hash appends a distinct row and keeps tracking live context', async () => {
+    const m = createFramePromptVersionsMethods(db);
+    const first = await m.write({
+      frameId,
+      text: 'A graphic fight in the alley',
+      source: 'ai-generated',
+      inputHash: 'hash-1',
+      analysisModel: HAIKU,
+    });
+    const softened = await m.write({
+      frameId,
+      text: 'Two figures confront each other in the alley',
+      source: 'softened',
+      inputHash: 'hash-1',
+      analysisModel: HAIKU,
+    });
+    expect(softened.id).not.toBe(first.id);
+    expect(softened.source).toBe('softened');
+    expect(softened.inputHash).toBe('hash-1');
+
+    const selected =
+      await createFramePromptVersionsMethods(db).getSelected(frameId);
+    expect(selected?.text).toBe('Two figures confront each other in the alley');
+    expect(selected?.id).toBe(softened.id);
+  });
 });
 
 describe('framePromptVersions.select (restore)', () => {

@@ -57,6 +57,41 @@ export const OverLimit: Story = {
   },
 };
 
+export const BoundImages: Story = {
+  args: {
+    defaultOpen: true,
+    preview: {
+      modelName: 'Seedance 2.5',
+      endpointId: 'dreamina-seedance-2-5-260628',
+      prompt:
+        'Use @Image1 as the starting frame.\n@Image2 turns toward the window.',
+      json: JSON.stringify(
+        {
+          prompt: 'Use @Image1 as the starting frame.',
+          image_urls: [
+            'https://picsum.photos/seed/still/256/256',
+            'https://picsum.photos/seed/cast/256/256',
+          ],
+        },
+        null,
+        2
+      ),
+      promptLength: 64,
+      maxPromptLength: 4096,
+      images: [
+        {
+          label: '@Image1',
+          url: 'https://picsum.photos/seed/still/256/256',
+        },
+        {
+          label: '@Image2',
+          url: 'https://picsum.photos/seed/cast/256/256',
+        },
+      ],
+    },
+  },
+};
+
 export const AssembledTextOnly: Story = {
   args: {
     preview: {

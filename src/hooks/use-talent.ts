@@ -213,7 +213,7 @@ export function useUploadTempMedia() {
   return useMutation({
     mutationFn: async (data: {
       file: File;
-      type: 'image' | 'video';
+      type: 'image' | 'video' | 'recording';
       onProgress?: (percent: number) => void;
     }) => {
       const presign = await presignTalentUploadFn({

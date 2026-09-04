@@ -43,9 +43,10 @@ List your sequences:
 Enhance only (no sequence):
   POST /api/v1/scripts/enhance to expand/polish a script without generating a
   video. Takes the enhancement-relevant inputs (style, aspectRatio, targetSeconds,
-  elements) and STREAMS the result back as Server-Sent Events: unnamed 'data:'
+  videoModel, elements) and STREAMS the result back as Server-Sent Events: unnamed 'data:'
   shots each carry { "delta": "..." }; a final 'event: done' shot carries the
-  full { "enhancedScript": "..." } plus a '_links' catalog whose
+  full { "enhancedScript": "..." } plus duration fit (snapped total vs target)
+  and a '_links' catalog whose
   'create-sequence' affordance embeds a ready-to-POST example body using the
   enhanced script (with enhance: "off"). Errors after streaming starts arrive
   as an 'event: error' shot.
@@ -163,13 +164,48 @@ export type RootDocument = HalResource<{
   requestSchema: unknown;
 }>;
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Zod 4.5 emits `{ $ref: "#/$defs/Id", $defs }` when the root schema has
+ * `.meta({ id })`. Tool callers expect a draft object (`type: "object"`) at
+ * the root; inline that named def and keep the remaining `$defs`.
+ */
+function jsonSchemaForToolCallers(schema: z.ZodType): unknown {
+  const generated: unknown = JSON.parse(JSON.stringify(z.toJSONSchema(schema)));
+  if (!isPlainObject(generated)) return generated;
+  const ref = generated.$ref;
+  const defs = generated.$defs;
+  if (
+    typeof ref !== 'string' ||
+    !ref.startsWith('#/$defs/') ||
+    !isPlainObject(defs)
+  ) {
+    return generated;
+  }
+  const name = ref.slice('#/$defs/'.length);
+  const root = defs[name];
+  if (!isPlainObject(root)) return generated;
+  const { $ref: _ref, $defs: _defs, $schema, ...rest } = generated;
+  const remaining = { ...defs };
+  delete remaining[name];
+  return {
+    ...root,
+    ...rest,
+    ...(Object.keys(remaining).length > 0 ? { $defs: remaining } : {}),
+    ...($schema === undefined ? {} : { $schema }),
+  };
+}
+
 /** Build the `GET /api/v1` self-description document. */
 export function buildRootDocument(): RootDocument {
   return {
     name: 'OpenStory API',
     version: 'v1',
     instructions: INSTRUCTIONS,
-    requestSchema: z.toJSONSchema(apiCreateSequenceSchema),
+    requestSchema: jsonSchemaForToolCallers(apiCreateSequenceSchema),
     _links: {
       self: {
         href: API_V1_BASE,

@@ -18,10 +18,10 @@ import type { TextToImageModel } from '@/lib/ai/models';
 import type { Scene } from '@/lib/ai/scene-analysis.schema';
 import type { AspectRatio } from '@/lib/constants/aspect-ratios';
 import type {
-  Character,
+  CharacterWithSheet,
   Shot,
   SequenceElement,
-  SequenceLocation,
+  SequenceLocationWithReference,
 } from '@/lib/db/schema';
 import { buildCharacterReferenceImages } from '@/lib/prompts/character-prompt';
 import { buildLocationReferenceImages } from '@/lib/prompts/location-prompt';
@@ -54,8 +54,8 @@ export async function buildRegenerateShotSnapshot(params: {
   imagePromptVersionId?: string | null;
   /** The shot's anchor frame, when the caller already resolved it. */
   frameId?: string;
-  characters: Character[];
-  locations: SequenceLocation[];
+  characters: CharacterWithSheet[];
+  locations: SequenceLocationWithReference[];
   elements: SequenceElement[];
   imageModel: TextToImageModel;
   aspectRatio: AspectRatio;

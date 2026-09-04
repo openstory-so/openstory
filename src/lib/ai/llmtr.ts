@@ -36,6 +36,25 @@ import type { TokenUsage } from '@tanstack/ai';
 export const LLMTR_BASE_URL = 'https://llmtr.com/v1';
 
 /**
+ * Registry ids LLMTR does not carry. Absence is a routing decision, not an
+ * alias: substituting a neighbour would silently change the model the caller
+ * asked for. A new `AnalysisModelId` that is in neither this list nor
+ * {@link LLMTR_TEXT_MODELS} is a compile error.
+ *
+ * Re-check against https://llmtr.com/v1/models when the registry changes.
+ */
+export const LLMTR_UNMAPPED_MODEL_IDS = [
+  'anthropic/claude-opus-5-fast',
+  'deepseek/deepseek-v3.2',
+  'bytedance-seed/seed-2.0-mini',
+] as const satisfies ReadonlyArray<AnalysisModelId>;
+
+type LlmtrMappedId = Exclude<
+  AnalysisModelId,
+  (typeof LLMTR_UNMAPPED_MODEL_IDS)[number]
+>;
+
+/**
  * Registry id → LLMTR catalog id, for every text model LLMTR carries.
  *
  * Only genuine equivalences: `x-ai/grok-4.20` picks `-0309-reasoning` for the
@@ -43,31 +62,27 @@ export const LLMTR_BASE_URL = 'https://llmtr.com/v1';
  * that build is what the id means), and `mistral/mistral-small-latest` is
  * LLMTR's spelling of the release OpenRouter pins as `mistral-small-2603`
  * ("Mistral Small 4" on both sides).
- *
- * Deliberately absent — LLMTR carries no equivalent, so these stay on
- * OpenRouter/fal even for an LLMTR-keyed team:
- *   - `anthropic/claude-opus-5-fast` (no `:fast` build in the catalog; plain
- *     Opus 5 is a different latency/price product, not a substitute)
- *   - `deepseek/deepseek-v3.2` (catalog jumps v4-flash → v4-pro)
- *   - `bytedance-seed/seed-2.0-mini` (vendor not carried)
- * Re-check against https://llmtr.com/v1/models when the registry changes.
  */
 export const LLMTR_TEXT_MODELS = {
-  'anthropic/claude-opus-5': 'anthropic/claude-opus-5',
   'anthropic/claude-fable-5': 'anthropic/claude-fable-5',
-  'anthropic/claude-sonnet-5': 'anthropic/claude-sonnet-5',
-  'anthropic/claude-opus-4.8': 'anthropic/claude-opus-4.8',
-  'deepseek/deepseek-v4-pro-0813': 'deepseek/deepseek-v4-pro-0813',
+  'anthropic/claude-opus-5': 'anthropic/claude-opus-5',
+  'google/gemini-3.7-flash': 'google/gemini-3.7-flash',
   'google/gemini-3.1-pro-preview': 'google/gemini-3.1-pro-preview',
-  'google/gemini-3-flash-preview': 'google/gemini-3-flash-preview',
+  'openai/gpt-5.6-sol': 'openai/gpt-5.6-sol',
   'openai/gpt-5.5': 'openai/gpt-5.5',
+  'anthropic/claude-opus-4.8': 'anthropic/claude-opus-4.8',
+  'x-ai/grok-4.20': 'xai/grok-4.20-0309-reasoning',
+  'google/gemini-3-flash-preview': 'google/gemini-3-flash-preview',
+  'z-ai/glm-5.3-flash': 'zai/glm-5.3-flash',
+  'openai/gpt-5.6-terra': 'openai/gpt-5.6-terra',
+  'deepseek/deepseek-v4-pro-0813': 'deepseek/deepseek-v4-pro-0813',
+  'anthropic/claude-sonnet-5': 'anthropic/claude-sonnet-5',
+  'x-ai/grok-4.6': 'xai/grok-4.6',
+  'openai/gpt-5.6-luna': 'openai/gpt-5.6-luna',
   'openai/gpt-5.4-mini': 'openai/gpt-5.4-mini',
   'openai/gpt-5.4-nano': 'openai/gpt-5.4-nano',
   'mistralai/mistral-small-2603': 'mistral/mistral-small-latest',
-  'x-ai/grok-4.6': 'xai/grok-4.6',
-  'x-ai/grok-4.20': 'xai/grok-4.20-0309-reasoning',
-  'z-ai/glm-5.2': 'zai/glm-5.2',
-} as const satisfies Partial<Record<AnalysisModelId, string>>;
+} as const satisfies Record<LlmtrMappedId, string>;
 
 export type LlmtrTextModel =
   (typeof LLMTR_TEXT_MODELS)[keyof typeof LLMTR_TEXT_MODELS];
@@ -86,7 +101,7 @@ export function llmtrTextModel(model: string): LlmtrTextModel | undefined {
 }
 
 /**
- * The four LLMTR catalog ids that are NOT valid OpenRouter slugs. The
+ * The LLMTR catalog ids that are NOT valid OpenRouter slugs. The
  * OpenRouter adapter's generated model union rejects them, so
  * `create-adapter.ts` widens the factory with exactly these — the identity
  * mappings above already typecheck.
@@ -95,7 +110,7 @@ export const LLMTR_ONLY_MODEL_IDS = [
   'mistral/mistral-small-latest',
   'xai/grok-4.6',
   'xai/grok-4.20-0309-reasoning',
-  'zai/glm-5.2',
+  'zai/glm-5.3-flash',
 ] as const satisfies ReadonlyArray<LlmtrTextModel>;
 
 /**
@@ -107,14 +122,11 @@ export const LLMTR_VALIDATION_MODEL = 'qwen/qwen3.6-27b-free';
 
 /**
  * LLMTR catalog rates in USD per 1M tokens (read from
- * https://llmtr.com/v1/models on 2026-08-24 — `pricing.prompt` /
+ * https://llmtr.com/v1/models on 2026-09-04 — `pricing.prompt` /
  * `pricing.completion`, which are per-token, ×1e6).
  *
  * Transcribed provider rates, not estimates: LLMTR returns token counts with
- * no `cost` field, so without this table an LLMTR call bills $0. LLMTR
- * advertises catalog rates with no per-model markup (its 8% margin is taken on
- * credit top-ups instead), so these track the upstream list prices — which
- * currently match OPENROUTER_PRICING for every shared model. They are NOT
+ * no `cost` field, so without this table an LLMTR call bills $0. They are NOT
  * bill-verified the way fal rates are (#1069); re-read the catalog when a
  * model is added or a vendor re-prices.
  */
@@ -122,20 +134,24 @@ const LLMTR_TEXT_RATES: Record<
   LlmtrTextModel,
   { input: number; output: number }
 > = {
-  'anthropic/claude-opus-5': { input: 5, output: 25 },
   'anthropic/claude-fable-5': { input: 10, output: 50 },
-  'anthropic/claude-sonnet-5': { input: 2, output: 10 },
-  'anthropic/claude-opus-4.8': { input: 5, output: 25 },
-  'deepseek/deepseek-v4-pro-0813': { input: 1.32, output: 3.96 },
+  'anthropic/claude-opus-5': { input: 5, output: 25 },
+  'google/gemini-3.7-flash': { input: 0.75, output: 3.75 },
   'google/gemini-3.1-pro-preview': { input: 2, output: 12 },
-  'google/gemini-3-flash-preview': { input: 0.5, output: 3 },
+  'openai/gpt-5.6-sol': { input: 4, output: 20 },
   'openai/gpt-5.5': { input: 5, output: 30 },
+  'anthropic/claude-opus-4.8': { input: 5, output: 25 },
+  'xai/grok-4.20-0309-reasoning': { input: 1.25, output: 2.5 },
+  'google/gemini-3-flash-preview': { input: 0.5, output: 3 },
+  'zai/glm-5.3-flash': { input: 0.075, output: 0.25 },
+  'openai/gpt-5.6-terra': { input: 2, output: 12 },
+  'deepseek/deepseek-v4-pro-0813': { input: 1.32, output: 3.96 },
+  'anthropic/claude-sonnet-5': { input: 2, output: 10 },
+  'xai/grok-4.6': { input: 2, output: 6 },
+  'openai/gpt-5.6-luna': { input: 0.2, output: 1.2 },
   'openai/gpt-5.4-mini': { input: 0.75, output: 4.5 },
   'openai/gpt-5.4-nano': { input: 0.2, output: 1.25 },
   'mistral/mistral-small-latest': { input: 0.15, output: 0.6 },
-  'xai/grok-4.6': { input: 2, output: 6 },
-  'xai/grok-4.20-0309-reasoning': { input: 1.25, output: 2.5 },
-  'zai/glm-5.2': { input: 1.26, output: 3.96 },
 };
 
 /**

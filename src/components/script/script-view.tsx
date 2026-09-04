@@ -10,10 +10,13 @@ import {
 import { GenerateSequenceIcon } from '@/components/icons/generate-sequence-icon';
 import { LocationSuggestionSelector } from '@/components/location-library/location-suggestion-selector';
 import { buildMentionItems } from '@/components/scenes/prompt-mention/mention-items';
+import { GenerationStopAlert } from '@/components/generation/generation-stop-alert';
+import { GenerationModeToggle } from '@/components/settings/generation-mode-toggle';
 import { GenerationSettings } from '@/components/settings/generation-settings';
 import { StyleCategorySelect } from '@/components/style/style-category-select';
 import { StyleSelector } from '@/components/style/style-selector';
 import { TalentSuggestionSelector } from '@/components/talent/talent-suggestion-selector';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -49,8 +52,16 @@ import { BILLING_TRANSACTIONS_KEY } from '@/hooks/use-billing-balance-realtime';
 import { useBillingGate } from '@/hooks/use-billing-gate';
 import { useFalPricing } from '@/hooks/use-fal-pricing';
 import { useGenerationSettings } from '@/hooks/use-generation-settings';
+import {
+  DEFAULT_GENERATION_STOP_AT,
+  flagsFromStopAt,
+  includesStage,
+  sliderStopLabel,
+  type GenerationStage,
+} from '@/lib/generation/pipeline';
 import { useComposedScript } from '@/hooks/use-scenes';
 import { useSequenceCharacters } from '@/hooks/use-sequence-characters';
+import { useViaAvailability } from '@/hooks/use-via-availability';
 import { useSequenceDraft } from '@/hooks/use-sequence-draft';
 import {
   useSequenceElements,
@@ -60,6 +71,14 @@ import { useSequenceLocations } from '@/hooks/use-sequence-locations';
 import { useCreateSequence } from '@/hooks/use-sequences';
 import { useRecommendedStyles, useStyle, useStyles } from '@/hooks/use-styles';
 import { AUTO_STYLE_ID } from '@/lib/style/auto-style';
+import { errorMessage } from '@/lib/errors';
+import {
+  assessDurationFit,
+  briefRequestsUnrenderableText,
+  estimateMotionDurations,
+  formatClipGrid,
+  TITLE_CARD_NOTE,
+} from '@/lib/ai/enhance-duration';
 import { toEnhanceInputs } from '@/lib/ai/enhance-inputs';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -67,15 +86,18 @@ import {
   DEFAULT_MUSIC_MODEL,
   DEFAULT_VIDEO_MODEL,
   IMAGE_TO_VIDEO_MODELS,
-  isValidImageToVideoModel,
-  isValidTextToImageModel,
   safeAudioModel,
   safeImageToVideoModel,
   safeTextToImageModel,
+  videoModelDisplayName,
   type AudioModel,
   type ImageToVideoModel,
   type TextToImageModel,
 } from '@/lib/ai/models';
+import {
+  applyGenerationMode,
+  type GenerationMode,
+} from '@/lib/ai/generation-mode';
 import {
   DEFAULT_ANALYSIS_MODEL,
   isValidAnalysisModelId,
@@ -86,16 +108,20 @@ import {
   estimateImageCost,
   estimateStoryboardCost,
 } from '@/lib/billing/cost-estimation';
+import { clampResolution } from '@/lib/constants/resolutions';
+import type { Resolution } from '@/lib/constants/resolutions';
+import { availableResolutions } from '@/lib/ai/resolution-support';
 import {
   aspectRatioSchema,
   type AspectRatio,
 } from '@/lib/constants/aspect-ratios';
 import {
-  markPendingGenerate,
-  takePendingGenerate,
+  markPendingIntent,
+  takePendingIntent,
 } from '@/lib/generation/pending-generate';
 import { estimateSceneCount } from '@/lib/generation/time-estimate';
 import { replaceTokenInText } from '@/lib/sequence-elements/cascade-rename';
+import { shouldRestoreComposerDraft } from '@/lib/sequences/sequence-draft';
 import {
   pickShuffleStyle,
   sampleScriptForStyle,
@@ -121,6 +147,7 @@ import {
   Shuffle,
   Sparkles,
   Square,
+  TriangleAlert,
   Undo2,
   Library,
   Wand2,
@@ -133,6 +160,8 @@ import React, {
   useState,
   type FC,
 } from 'react';
+import { VoiceInputButton } from '@/components/voice/voice-input-button';
+import { useEditorDictation } from '@/hooks/use-dictation';
 import { ScriptEditor } from './script-editor';
 
 const DURATION_PRESETS = [
@@ -141,12 +170,36 @@ const DURATION_PRESETS = [
   { value: '60', label: '1m', seconds: 60 },
   { value: '120', label: '2m', seconds: 120 },
   { value: '180', label: '3m', seconds: 180 },
+  { value: '300', label: '5m', seconds: 300 },
 ] as const;
 
 /** Empty-composer copy (#1255): visible until the user types or shuffles.
  *  Keep this to ~1–2 lines so it fits the phone editor floor. */
 const COMPOSER_SCRIPT_PLACEHOLDER =
-  'Paste a screenplay, or a one-liner we can expand.';
+  'Paste a screenplay, or a one-liner we can expand - not a prompt.';
+
+function DurationFitHint({
+  targetDuration,
+  videoModel,
+  script,
+}: {
+  targetDuration: number;
+  videoModel: ImageToVideoModel;
+  script: string;
+}) {
+  const fit = assessDurationFit(script, targetDuration, videoModel);
+  const grid = formatClipGrid(fit.clipGrid);
+  const modelName = videoModelDisplayName(videoModel);
+  const snapped =
+    fit.snappedSeconds != null
+      ? ` This script renders at ${fit.snappedSeconds}s.`
+      : '';
+  return (
+    <p className="max-w-xs text-xs text-muted-foreground">
+      {`${modelName} clips: ${grid}.${snapped}`}
+    </p>
+  );
+}
 
 export const ScriptView: FC<{
   teamId?: string;
@@ -229,11 +282,11 @@ export const ScriptView: FC<{
 
   // Sample state (#1187): non-null while the editor shows an untouched sample
   // script for that style. While set, the script follows style picks (swapping
-  // to the new style's sample), Shuffle shows under the editor, Generate skips
-  // the enhance nudge, and the draft persists as empty (a pristine sample is
-  // not the user's work). Any user edit or enhance clears it. Only an explicit
-  // seed (`?style=` Try, Shuffle, style-detail Try) enters this state now —
-  // the bare composer does not auto-seed (#1255).
+  // to the new style's sample), Generate skips the enhance nudge, and the
+  // draft stores the sample so login/reload restore it (#1384). Any user edit
+  // or enhance clears it. Only an explicit seed (`?style=` Try, Shuffle,
+  // style-detail Try) enters this state now — the bare composer does not
+  // auto-seed (#1255).
   const [sampleStyleId, setSampleStyleId] = useState<string | null>(
     initialScriptIsSample && initialScript && initialStyleId
       ? initialStyleId
@@ -267,6 +320,10 @@ export const ScriptView: FC<{
     clearDraft,
   } = useSequenceDraft();
 
+  // Which video models can render reference-only for this team — resolved
+  // server-side and seeded by the `_app` route loader.
+  const { referenceOnlyModels } = useViaAvailability();
+
   // Initialize with sequence values (if editing) or localStorage defaults (if creating)
   const sequenceAnalysisModels: AnalysisModelId[] = useMemo(() => {
     if (isEditing && sequence.analysisModel) {
@@ -278,16 +335,20 @@ export const ScriptView: FC<{
   }, [isEditing, sequence?.analysisModel, savedSettings.analysisModels]);
 
   const [genSettings, setGenSettings] = useState<{
+    generationMode: GenerationMode;
     analysisModels: AnalysisModelId[];
     aspectRatio: AspectRatio;
+    resolution: Resolution;
     imageModels: TextToImageModel[];
     videoModels: ImageToVideoModel[];
-    autoGenerateMotion: boolean;
+    stopAt: GenerationStage;
+    generateStartFrames: boolean;
     audioModels: AudioModel[];
-    autoGenerateMusic: boolean;
   }>(() => ({
+    generationMode: savedSettings.generationMode,
     analysisModels: sequenceAnalysisModels,
     aspectRatio: isEditing ? sequence.aspectRatio : savedSettings.aspectRatio,
+    resolution: isEditing ? sequence.resolution : savedSettings.resolution,
     imageModels:
       isEditing && sequence.imageModel
         ? [safeTextToImageModel(sequence.imageModel, DEFAULT_IMAGE_MODEL)]
@@ -296,26 +357,68 @@ export const ScriptView: FC<{
       isEditing && sequence.videoModel
         ? [safeImageToVideoModel(sequence.videoModel, DEFAULT_VIDEO_MODEL)]
         : savedSettings.videoModels,
-    autoGenerateMotion: isEditing ? false : savedSettings.autoGenerateMotion,
+    stopAt: isEditing
+      ? (sequence.generationStopAt ?? DEFAULT_GENERATION_STOP_AT)
+      : savedSettings.stopAt,
+    // Editing an existing sequence inherits its mode; a new one starts from
+    // the remembered setting.
+    generateStartFrames: isEditing
+      ? sequence.generateStartFrames
+      : savedSettings.generateStartFrames,
     audioModels:
       isEditing && sequence.musicModel
         ? [safeAudioModel(sequence.musicModel, DEFAULT_MUSIC_MODEL)]
         : savedSettings.audioModels,
-    autoGenerateMusic: isEditing ? false : savedSettings.autoGenerateMusic,
   }));
   const {
+    generationMode,
     analysisModels,
     aspectRatio,
     imageModels,
     videoModels,
-    autoGenerateMotion,
+    stopAt,
+    generateStartFrames,
     audioModels,
-    autoGenerateMusic,
   } = genSettings;
+  // Derived, not stored: the picker only offers tiers the chosen models serve,
+  // so a 4K pick made under one model reads as the nearest tier under a model
+  // that can't reach it — and comes back if they switch back.
+  const resolution = clampResolution(
+    genSettings.resolution,
+    availableResolutions({
+      imageModels,
+      videoModels: includesStage(stopAt, 'motion') ? videoModels : [],
+      aspectRatio,
+    })
+  );
   const updateGen = <K extends keyof typeof genSettings>(
     key: K,
     value: (typeof genSettings)[K]
-  ) => setGenSettings((s) => ({ ...s, [key]: value }));
+  ) =>
+    setGenSettings((s) =>
+      applyGenerationMode({ ...s, [key]: value }, s.generationMode)
+    );
+  const setGenerationMode = (mode: GenerationMode) => {
+    setGenSettings((s) => applyGenerationMode(s, mode));
+  };
+  /**
+   * Turning start frames OFF narrows the motion list, which can strand a
+   * selection the server would then reject at submit. Drop the models that
+   * cannot render without a start frame, falling back to the first capable one
+   * so the selection is never empty.
+   */
+  const withStartFrames = (s: typeof genSettings, next: boolean) => {
+    const capable = next
+      ? s.videoModels
+      : s.videoModels.filter((m) => referenceOnlyModels.includes(m));
+    const fallback = referenceOnlyModels[0];
+    const videoModels =
+      capable.length > 0 ? capable : fallback ? [fallback] : s.videoModels;
+    return applyGenerationMode(
+      { ...s, generateStartFrames: next, videoModels },
+      s.generationMode
+    );
+  };
   const [selections, setSelections] = useState({
     talentIds: sequence?.suggestedTalentIds ?? [],
     locationIds: sequence?.suggestedLocationIds ?? [],
@@ -357,9 +460,13 @@ export const ScriptView: FC<{
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     if (!allowElementDrop || !hasDraggedImages(e)) return;
-    e.preventDefault();
     dragCounterRef.current = 0;
     setIsDraggingFiles(false);
+    // A nested dropzone (talent/location dialog, element popover) already took
+    // this drop — portals still bubble React events here, so don't add it as
+    // an element too (#1269).
+    if (e.defaultPrevented) return;
+    e.preventDefault();
     const snapshot = snapshotDataTransfer(e.dataTransfer);
     void extractImagesFromSnapshot(snapshot).then(({ files, failedUrls }) => {
       if (files.length > 0) {
@@ -446,10 +553,18 @@ export const ScriptView: FC<{
     setEnhance('canUndoEnhance', false);
     handleStyleSelect(style.id);
   };
+  // The mic sits in the toolbar next to Shuffle; dictation streams into the
+  // editor through this handle.
+  const { ref: scriptEditorRef, voice: scriptVoice } = useEditorDictation();
+
   const handleShuffleSample = () => {
     const next = pickShuffleStyle(styles, styleId, Math.random);
     if (next) applySampleForStyle(next, 'sample_script_shuffled');
   };
+  // Signed-in `/` prefetches the *public* catalogue; useStyles then fetches
+  // the team list (a different query key). Until that lands, `styles` is []
+  // and Shuffle would no-op (#1384).
+  const canShuffle = pickShuffleStyle(styles, styleId, () => 0) != null;
   const handleTrySample = (tryStyleId: string) => {
     const style = styles.find((s) => s.id === tryStyleId);
     if (style) applySampleForStyle(style, 'sample_script_tried');
@@ -532,44 +647,45 @@ export const ScriptView: FC<{
     },
     []
   );
-  const recommendedImageModel = selectedStyle?.recommendedImageModel ?? null;
-  const recommendedVideoModel = selectedStyle?.recommendedVideoModel ?? null;
   const recommendedAspectRatio = selectedStyle?.defaultAspectRatio ?? null;
 
-  // Sync draft state when creating new sequences (not editing). An explicit
-  // seed — a sample-style brief (`initialScript`) or just a chosen style
-  // (`initialStyleId`, the "Use this style" CTA) — is the user's just-now
-  // intent, so it wins; skip restoring the older saved draft over it.
+  // Sync draft state when creating new sequences (not editing). A Try /
+  // Use-this-style seed for a *different* style is just-now intent and wins;
+  // the same-style leftover `?style=` after login/reload restores the draft
+  // (typed text or Shuffle/Try sample) (#1384).
   const hasSyncedDraftRef = React.useRef(false);
+  const skipPersistAfterRestoreRef = React.useRef(false);
   useEffect(() => {
-    if (isEditing || loading || initialScript || initialStyleId) {
+    if (isEditing || loading) {
       hasSyncedDraftRef.current = false;
       return;
     }
     if (!draftLoaded) return;
-    if (!hasSyncedDraftRef.current && draft.script) {
-      setContentState((s) => ({
-        script: draft.script,
-        styleId: draft.styleId || s.styleId,
-      }));
-      // Restored text is the user's own work, not a sample.
-      setSampleStyleId(null);
-      setSelections((s) => ({
-        talentIds:
-          draft.selectedTalentIds.length > 0
-            ? draft.selectedTalentIds
-            : s.talentIds,
-        locationIds:
-          draft.selectedLocationIds.length > 0
-            ? draft.selectedLocationIds
-            : s.locationIds,
-      }));
-      if (draft.elementUploads.length > 0) {
-        setDraftElements(draft.elementUploads);
-      }
-      hasSyncedDraftRef.current = true;
+    if (hasSyncedDraftRef.current) return;
+    hasSyncedDraftRef.current = true;
+    if (!shouldRestoreComposerDraft(draft, initialStyleId)) {
+      return;
     }
-  }, [isEditing, loading, draftLoaded, draft, initialScript, initialStyleId]);
+    skipPersistAfterRestoreRef.current = true;
+    setContentState((s) => ({
+      script: draft.script,
+      styleId: draft.styleId || s.styleId,
+    }));
+    setSampleStyleId(draft.sampleStyleId);
+    setSelections((s) => ({
+      talentIds:
+        draft.selectedTalentIds.length > 0
+          ? draft.selectedTalentIds
+          : s.talentIds,
+      locationIds:
+        draft.selectedLocationIds.length > 0
+          ? draft.selectedLocationIds
+          : s.locationIds,
+    }));
+    if (draft.elementUploads.length > 0) {
+      setDraftElements(draft.elementUploads);
+    }
+  }, [isEditing, loading, draftLoaded, draft, initialStyleId]);
 
   // While the sample is untouched, the script follows the style: picking a
   // different style (tile, category row, or Shuffle) swaps in that style's
@@ -599,13 +715,15 @@ export const ScriptView: FC<{
     // Sync once when creating new sequence
     if (!hasSyncedRef.current) {
       setGenSettings({
+        generationMode: savedSettings.generationMode,
         aspectRatio: savedSettings.aspectRatio,
+        resolution: savedSettings.resolution,
         analysisModels: savedSettings.analysisModels,
         imageModels: savedSettings.imageModels,
         videoModels: savedSettings.videoModels,
-        autoGenerateMotion: savedSettings.autoGenerateMotion,
+        stopAt: savedSettings.stopAt,
+        generateStartFrames: savedSettings.generateStartFrames,
         audioModels: savedSettings.audioModels,
-        autoGenerateMusic: savedSettings.autoGenerateMusic,
       });
       hasSyncedRef.current = true;
     }
@@ -619,20 +737,23 @@ export const ScriptView: FC<{
     }
   }, [isEditing, settingsLoaded, genSettings, saveSettings]);
 
-  // Persist draft to localStorage when creating new sequences. An untouched
-  // sample (Shuffle / Try) is not the user's work — persist it as empty so a
-  // reload or sign-in restores the empty composer (placeholder + Automatic)
-  // instead of treating the sample as a draft.
+  // Persist draft to localStorage when creating new sequences. Shuffle/Try
+  // samples are user intent — store the text and sampleStyleId so login and
+  // reload restore the same composer (#1384).
   useEffect(() => {
-    if (!isEditing && draftLoaded) {
-      saveDraft({
-        script: sampleStyleId ? '' : (script ?? ''),
-        styleId,
-        selectedTalentIds,
-        selectedLocationIds,
-        elementUploads: draftElements,
-      });
+    if (isEditing || !draftLoaded || !hasSyncedDraftRef.current) return;
+    if (skipPersistAfterRestoreRef.current) {
+      skipPersistAfterRestoreRef.current = false;
+      return;
     }
+    saveDraft({
+      script: script ?? '',
+      styleId,
+      sampleStyleId,
+      selectedTalentIds,
+      selectedLocationIds,
+      elementUploads: draftElements,
+    });
   }, [
     isEditing,
     draftLoaded,
@@ -665,11 +786,10 @@ export const ScriptView: FC<{
     }
   }, [styleCategory, videoModels]);
 
-  // Auto-apply style recommendations on style change. Issue #716 originally
-  // said "suggest, never auto-change", but in practice most users never open
-  // the settings popover, so badges alone don't drive adoption of the
-  // recommended models. We override + show a "From {Style} · Reset" pill so
-  // the user can back out with a single click.
+  // Auto-apply the style's aspect ratio on style change. A style's model
+  // recommendations are no longer applied here (#1408) — only its aspect
+  // ratio. A "From {Style} · Reset"
+  // pill lets the user back out with a single click.
   //
   // The seed value of `lastAppliedStyleIdRef` is the sequence's stored styleId
   // when editing (so we don't clobber existing values on mount) or null when
@@ -679,8 +799,6 @@ export const ScriptView: FC<{
   );
   const styleApplySnapshotRef = useRef<{
     aspectRatio: AspectRatio;
-    imageModels: TextToImageModel[];
-    videoModels: ImageToVideoModel[];
   } | null>(null);
   const [appliedFromStyle, setAppliedFromStyle] = useState<{
     styleId: string;
@@ -696,14 +814,6 @@ export const ScriptView: FC<{
     const id = selectedStyle?.id;
     if (!id || id === lastAppliedStyleIdRef.current) return;
 
-    const validImage =
-      recommendedImageModel && isValidTextToImageModel(recommendedImageModel)
-        ? recommendedImageModel
-        : null;
-    const validVideo =
-      recommendedVideoModel && isValidImageToVideoModel(recommendedVideoModel)
-        ? recommendedVideoModel
-        : null;
     const parsedRatio = recommendedAspectRatio
       ? aspectRatioSchema.safeParse(recommendedAspectRatio)
       : null;
@@ -714,13 +824,14 @@ export const ScriptView: FC<{
     // Always restore the existing snapshot first (if any) so chained style
     // switches measure against the user's pre-auto-apply baseline, never
     // against another style's applied values. Switching to a style with no
-    // recommendations therefore lands the user back on their baseline rather
-    // than stranding them on the previous style's recommendations.
+    // recommended ratio therefore lands the user back on their baseline.
     const baseline = styleApplySnapshotRef.current;
 
-    if (!validImage && !validVideo && !validRatio) {
+    if (!validRatio) {
       if (baseline) {
-        setGenSettings((s) => ({ ...s, ...baseline }));
+        setGenSettings((s) =>
+          applyGenerationMode({ ...s, ...baseline }, s.generationMode)
+        );
       }
       styleApplySnapshotRef.current = null;
       setAppliedFromStyle(null);
@@ -728,18 +839,15 @@ export const ScriptView: FC<{
     }
 
     setGenSettings((s) => {
-      const start = baseline ?? {
-        aspectRatio: s.aspectRatio,
-        imageModels: s.imageModels,
-        videoModels: s.videoModels,
-      };
+      const start = baseline ?? { aspectRatio: s.aspectRatio };
       styleApplySnapshotRef.current = start;
-      return {
-        ...s,
-        aspectRatio: validRatio ?? start.aspectRatio,
-        imageModels: validImage ? [validImage] : start.imageModels,
-        videoModels: validVideo ? [validVideo] : start.videoModels,
-      };
+      return applyGenerationMode(
+        {
+          ...s,
+          aspectRatio: validRatio,
+        },
+        s.generationMode
+      );
     });
     setAppliedFromStyle({
       styleId: id,
@@ -750,15 +858,15 @@ export const ScriptView: FC<{
     settingsLoaded,
     selectedStyle?.id,
     selectedStyle?.name,
-    recommendedImageModel,
-    recommendedVideoModel,
     recommendedAspectRatio,
   ]);
 
   const resetStyleDefaults = () => {
     const snapshot = styleApplySnapshotRef.current;
     if (!snapshot) return;
-    setGenSettings((s) => ({ ...s, ...snapshot }));
+    setGenSettings((s) =>
+      applyGenerationMode({ ...s, ...snapshot }, s.generationMode)
+    );
     styleApplySnapshotRef.current = null;
     setAppliedFromStyle(null);
   };
@@ -796,9 +904,9 @@ export const ScriptView: FC<{
 
   // Style recommendations. We rank a *snapshot* of the script (not the live
   // value) so the LLM call only fires on an explicit trigger — the "Recommend
-  // styles" button or a completed enhance — and editing the script afterwards
-  // doesn't re-spend a call on every keystroke. Repeats are free (cached by
-  // script hash in useRecommendedStyles).
+  // styles" button (never automatically, #1279) — and editing the script
+  // afterwards doesn't re-spend a call on every keystroke. Repeats are free
+  // (cached by script hash in useRecommendedStyles).
   const [recommendScript, setRecommendScript] = useState<string | null>(null);
   const {
     data: recommendData,
@@ -817,11 +925,7 @@ export const ScriptView: FC<{
       ? recommendations
       : undefined;
   const isRecommended = !!activeRecommendations && !isRecommending;
-  const recommendButtonLabel = isRecommending
-    ? 'Recommend styles'
-    : isRecommended
-      ? 'Recommended'
-      : 'Recommend styles';
+  const recommendButtonLabel = isRecommended ? 'Recommended' : 'Recommend';
   // The shortlist ran but turned up nothing usable (or errored). Distinguish
   // this from "never asked" so we can tell the user instead of silently
   // reverting to the trigger button (which invites a re-click + re-charge).
@@ -850,7 +954,22 @@ export const ScriptView: FC<{
 
   const handleCancel = onCancel;
 
-  const executeRegeneration = () => {
+  const [showStopAlert, setShowStopAlert] = useState(false);
+  const [stopAlertMode, setStopAlertMode] = useState<'generate' | 'edit'>(
+    'generate'
+  );
+
+  // Takes the settings explicitly: the stop-at dialog confirms and fires in
+  // one tick, before its setState lands, so reading the closure would send
+  // the pre-dialog mode and model list (#1408).
+  const executeRegeneration = (
+    run: Pick<
+      typeof genSettings,
+      'stopAt' | 'generateStartFrames' | 'videoModels'
+    > = genSettings
+  ) => {
+    const { stopAt: runUntil, generateStartFrames, videoModels } = run;
+    const flags = flagsFromStopAt(runUntil);
     // sequence_generated is captured server-side in createSequences (#1088)
     // so dashboard + public API both feed #product-alerts once.
     createSequenceMutation.mutate(
@@ -860,12 +979,15 @@ export const ScriptView: FC<{
         script: script ?? baseScript ?? '',
         styleId: styleId || sequence?.styleId || undefined,
         aspectRatio,
+        resolution,
         analysisModels,
         imageModels,
         videoModels,
         videoModel: videoModels[0] ?? DEFAULT_VIDEO_MODEL,
-        autoGenerateMotion,
-        autoGenerateMusic,
+        stopAt: runUntil,
+        autoGenerateMotion: flags.autoGenerateMotion,
+        autoGenerateMusic: flags.autoGenerateMusic,
+        generateStartFrames,
         musicModel: audioModels[0] ?? DEFAULT_MUSIC_MODEL,
         audioModels,
         targetDurationSeconds: targetDuration,
@@ -897,29 +1019,49 @@ export const ScriptView: FC<{
     );
   };
 
+  const requestGenerate = () => {
+    if (savedSettings.rememberStopAt) {
+      executeRegeneration();
+      return;
+    }
+    setStopAlertMode('generate');
+    setShowStopAlert(true);
+  };
+
   const handleSubmit = async (event?: React.FormEvent<HTMLFormElement>) => {
     if (event) {
       event.preventDefault();
     }
 
-    // ⌘+Enter requestSubmit()s even while Generate is disabled. Empty is
-    // now the first-run default (#1255) — don't open login / the enhance
-    // nudge / a generate with no script.
     const scriptText = (script ?? baseScript ?? '').trim();
-    if (
-      !scriptText ||
-      !(styleId || sequence?.styleId) ||
-      analysisModels.length === 0
-    ) {
+    if (!(styleId || sequence?.styleId) || analysisModels.length === 0) return;
+
+    // Empty is the first-run default (#1255) and Generate stays live on it
+    // (#1393): logged out that click is worth a login prompt, logged in it
+    // hands over to Enhance — which writes a script from nothing — by opening
+    // its popover, so the duration controls are in front of the user before
+    // anything is written. Copying an existing sequence has nothing to offer.
+    if (!scriptText) {
+      if (isEditing) return;
+      posthog.capture('empty_prompt_generate_clicked', {
+        surface: 'script',
+        authenticated: isAuthenticated,
+      });
+      if (!requireAuth()) {
+        markPendingIntent('generate');
+        return;
+      }
+      setEnhancePopoverOpen(true);
       return;
     }
 
     // Anonymous visitors can compose a draft, but generating prompts a login.
-    // The draft is persisted to localStorage, so it's restored after sign-in.
+    // Typed text and Shuffle/Try samples persist to localStorage and restore
+    // after sign-in (#1384).
     // Remember the click too, so the resume effect below continues this exact
     // step (nudge, billing gate, generation) once sign-in completes (#1187).
     if (!requireAuth()) {
-      if (!isEditing) markPendingGenerate();
+      if (!isEditing) markPendingIntent('generate');
       return;
     }
 
@@ -929,7 +1071,11 @@ export const ScriptView: FC<{
     }
 
     if (isEditing) {
-      setEnhance('showRegenerateConfirm', true);
+      if (savedSettings.rememberStopAt) {
+        setEnhance('showRegenerateConfirm', true);
+        return;
+      }
+      requestGenerate();
       return;
     }
 
@@ -944,15 +1090,24 @@ export const ScriptView: FC<{
       return;
     }
 
-    executeRegeneration();
+    requestGenerate();
   };
 
   const previousScriptRef = useRef<string>('');
   const enhanceAbortRef = useRef<AbortController | null>(null);
 
+  /**
+   * Enhance, and — on an empty composer — write the script in the first place
+   * (#1393). One call either way: nothing to expand means invent, in the
+   * selected style or in any genre at all when Match script is selected.
+   */
   const handleEnhance = async () => {
     // Enhancing runs an AI model on the server — gate it behind login too.
+    // Remember the click so post-auth resume continues Enhance, not Generate,
+    // and so we don't dump a first-time user on the empty sequences list
+    // (#1286).
     if (!requireAuth()) {
+      if (!isEditing) markPendingIntent('enhance');
       return;
     }
 
@@ -961,17 +1116,21 @@ export const ScriptView: FC<{
       return;
     }
 
+    const sourceScript = scriptValue.trim();
+    const invent = sourceScript.length === 0;
     posthog.capture('script_enhanced', {
       target_duration: targetDuration,
-      script_length: scriptValue.length,
+      script_length: sourceScript.length,
       aspect_ratio: aspectRatio,
+      resolution,
+      invent,
     });
     // Enhancing rewrites the text — it stops being an untouched sample.
     setSampleStyleId(null);
     setThinkingText('');
     setThinkingActive(true);
     setEnhanceUI((s) => ({ ...s, isEnhancing: true, error: null }));
-    previousScriptRef.current = scriptValue;
+    previousScriptRef.current = sourceScript;
     setScript('');
 
     const abortController = new AbortController();
@@ -989,8 +1148,10 @@ export const ScriptView: FC<{
       let accumulated = '';
       for await (const chunk of await enhanceScriptStreamFn({
         data: {
-          script: scriptValue,
+          script: sourceScript,
+          invent,
           targetDuration,
+          videoModel: videoModels[0] ?? DEFAULT_VIDEO_MODEL,
           analysisModel: analysisModels[0],
           aspectRatio,
           ...toEnhanceInputs({
@@ -1002,6 +1163,12 @@ export const ScriptView: FC<{
         if (abortController.signal.aborted) break;
         if (chunk.reasoning) {
           setThinkingText((t) => t + chunk.reasoning);
+          continue;
+        }
+        if (chunk.replace) {
+          setThinkingActive(false);
+          accumulated = chunk.delta;
+          setScript(accumulated);
           continue;
         }
         if (!chunk.delta) continue;
@@ -1019,19 +1186,9 @@ export const ScriptView: FC<{
       void queryClient.invalidateQueries({
         queryKey: [...BILLING_TRANSACTIONS_KEY],
       });
-      // Pre-warm the style shortlist off the freshly enhanced script so the
-      // picker is ready the moment the user looks for it.
-      // Billing is already gated above (handleEnhance returns early when
-      // needsBillingSetup), so reaching here means the recommend call can bill.
-      if (!abortController.signal.aborted && accumulated.trim().length >= 3) {
-        setRecommendScript(accumulated.trim());
-      }
     } catch (error) {
       if (!abortController.signal.aborted) {
-        setEnhance(
-          'error',
-          error instanceof Error ? error.message : 'Failed to enhance script'
-        );
+        setEnhance('error', errorMessage(error, 'Failed to enhance script'));
         setScript(previousScriptRef.current);
       }
     } finally {
@@ -1062,14 +1219,13 @@ export const ScriptView: FC<{
     return () => window.removeEventListener('keydown', handler);
   }, [isEnhancing]);
 
-  const isFormValid =
-    Boolean((script ?? baseScript ?? '').trim()) &&
-    Boolean(styleId || sequence?.styleId) &&
-    analysisModels.length > 0;
+  // Everything Generate needs except the script itself — an empty script is a
+  // live click that routes to login or "what should we make?" (#1393).
+  const isReady =
+    Boolean(styleId || sequence?.styleId) && analysisModels.length > 0;
 
   const isSubmitting = createSequenceMutation.isPending;
-  const isDisabled =
-    !isFormValid || isSubmitting || isEnhancing || isElementBusy;
+  const isDisabled = !isReady || isSubmitting || isEnhancing || isElementBusy;
 
   const isMobile = useIsMobile();
   const [referencesSheetOpen, setReferencesSheetOpen] = useState(false);
@@ -1123,29 +1279,39 @@ export const ScriptView: FC<{
   const { blocking: welcomeCreditsBlocking } = useWelcomeCreditsGate();
   const handleSubmitRef = useRef(handleSubmit);
   handleSubmitRef.current = handleSubmit;
+  const handleEnhanceRef = useRef(handleEnhance);
+  handleEnhanceRef.current = handleEnhance;
   const resumeTriedRef = useRef(false);
   useEffect(() => {
     if (isEditing || loading || !isAuthenticated) return;
     if (resumeTriedRef.current) return;
-    if (!draftLoaded || !isFormValid || isSubmitting) return;
+    if (!draftLoaded || !isReady || isSubmitting || isEnhancing) return;
     // Let the welcome-credits moment finish first — its "Keep creating"
     // dismiss is what hands the flow back to us, instead of the nudge
     // stacking on top of the gift dialog.
     if (welcomeCreditsBlocking) return;
     resumeTriedRef.current = true;
-    if (!takePendingGenerate()) return;
-    void handleSubmitRef.current();
+    const intent = takePendingIntent();
+    if (intent === 'generate') void handleSubmitRef.current();
+    else if (intent === 'enhance') void handleEnhanceRef.current();
   }, [
     isEditing,
     loading,
     isAuthenticated,
     draftLoaded,
-    isFormValid,
+    isReady,
     isSubmitting,
+    isEnhancing,
     welcomeCreditsBlocking,
   ]);
 
   const scriptValue = script ?? baseScript ?? '';
+  const primaryVideoModel = videoModels[0] ?? DEFAULT_VIDEO_MODEL;
+  const durationFit = assessDurationFit(
+    scriptValue,
+    targetDuration,
+    primaryVideoModel
+  );
   const { ref: textareaRef } = useAutoScroll<HTMLDivElement>({
     enabled: isEnhancing,
     content: scriptValue,
@@ -1153,55 +1319,89 @@ export const ScriptView: FC<{
 
   // Transparent pricing under Generate (#1140). Honest estimate only —
   // null with no script (nothing to generate yet), or when the primary
-  // image model has no pricing signal.
+  // image model has no pricing signal. The Generate button always quotes
+  // the full pipeline (stills + motion + music); the stop-at alert quotes
+  // the selected slice.
   const { pricing: falPricing } = useFalPricing();
-  const storyboardCostEstimate = useMemo(() => {
-    if (!scriptValue.trim()) return null;
-    if (!falPricing) return null;
-    const primaryImage = imageModels[0] ?? DEFAULT_IMAGE_MODEL;
-    if (
-      estimateImageCost(primaryImage, aspectRatio, 1, {
-        pricing: falPricing,
-      }) === null
-    ) {
-      return null;
-    }
-    // Prefer Scene N headings after Enhance; else words + target duration.
-    const sceneCount = estimateSceneCount(scriptValue, {
-      targetDurationSeconds: targetDuration,
-    });
-    // Spread the Enhance target across shots for motion; music spans the full
-    // target. Avoids billing every shot at a flat 5s when the user picked 30s/1m.
-    const perShotDurationSeconds = Math.max(
-      5,
-      Math.round(targetDuration / Math.max(sceneCount, 1))
-    );
-    return estimateStoryboardCost({
-      imageModel: primaryImage,
-      imageModelCount: Math.max(imageModels.length, 1),
+  const estimateForStopAt = useCallback(
+    (runUntil: GenerationStage, startFrames: boolean = generateStartFrames) => {
+      if (!scriptValue.trim()) return null;
+      const needsMedia =
+        includesStage(runUntil, 'references') ||
+        includesStage(runUntil, 'images') ||
+        includesStage(runUntil, 'motion') ||
+        includesStage(runUntil, 'music');
+      if (needsMedia && !falPricing) return null;
+      const primaryImage = imageModels[0] ?? DEFAULT_IMAGE_MODEL;
+      if (
+        falPricing &&
+        includesStage(runUntil, 'images') &&
+        estimateImageCost(primaryImage, aspectRatio, 1, {
+          pricing: falPricing,
+        }) === null
+      ) {
+        return null;
+      }
+      const sceneCount = estimateSceneCount(scriptValue, {
+        targetDurationSeconds: targetDuration,
+      });
+      const motionDurations = estimateMotionDurations({
+        script: scriptValue,
+        targetSeconds: targetDuration,
+        sceneCount,
+        model: videoModels[0] ?? DEFAULT_VIDEO_MODEL,
+      });
+      const motionOn = includesStage(runUntil, 'motion');
+      const musicOn = includesStage(runUntil, 'music');
+      return estimateStoryboardCost({
+        imageModel: primaryImage,
+        imageModelCount: Math.max(imageModels.length, 1),
+        aspectRatio,
+        resolution,
+        estimatedSceneCount: sceneCount,
+        stopAt: runUntil,
+        autoGenerateMotion: motionOn,
+        referenceOnly: !startFrames,
+        videoModels: motionOn ? videoModels : undefined,
+        videoDurationSeconds: motionOn
+          ? motionDurations.perShotSeconds
+          : undefined,
+        autoGenerateMusic: musicOn,
+        audioModels: musicOn ? audioModels : undefined,
+        audioDurationSeconds: musicOn
+          ? motionDurations.totalSeconds
+          : undefined,
+        pricing: falPricing ?? {},
+      });
+    },
+    [
+      falPricing,
+      imageModels,
       aspectRatio,
-      estimatedSceneCount: sceneCount,
-      autoGenerateMotion,
-      videoModels: autoGenerateMotion ? videoModels : undefined,
-      videoDurationSeconds: autoGenerateMotion
-        ? perShotDurationSeconds
-        : undefined,
-      autoGenerateMusic,
-      audioModels: autoGenerateMusic ? audioModels : undefined,
-      audioDurationSeconds: autoGenerateMusic ? targetDuration : undefined,
-      pricing: falPricing,
-    });
-  }, [
-    falPricing,
-    imageModels,
-    aspectRatio,
-    scriptValue,
-    targetDuration,
-    autoGenerateMotion,
-    videoModels,
-    autoGenerateMusic,
-    audioModels,
-  ]);
+      resolution,
+      scriptValue,
+      targetDuration,
+      videoModels,
+      audioModels,
+      generateStartFrames,
+    ]
+  );
+  // Remembered: the footer quotes the run that will actually happen. Otherwise
+  // the dialog asks, so quote the default full run.
+  const storyboardCostEstimate = estimateForStopAt(
+    savedSettings.rememberStopAt ? stopAt : DEFAULT_GENERATION_STOP_AT
+  );
+
+  // Nothing written yet: Enhance writes the script instead of expanding one
+  // (#1393), so it stays live at any length and says which job it is doing.
+  // "Invent" says it writes something new, which keeps it distinct from
+  // "Surprise me" over by the styles, which swaps in a canned sample rather
+  // than writing anything (#1481).
+  const enhanceInvents = scriptValue.trim().length === 0;
+  const enhanceLabel = enhanceInvents ? 'Invent script' : 'Enhance Script';
+  // Match script (the default) passes no style to the enhancer, so the draft
+  // really is any genre at all.
+  const inventStyleName = styles.find((s) => s.id === styleId)?.name;
 
   const enhanceControls = (
     <>
@@ -1239,10 +1439,10 @@ export const ScriptView: FC<{
               variant="outline"
               size="sm"
               className="gap-1.5"
-              disabled={!scriptValue || scriptValue.length < 10 || isSubmitting}
+              disabled={isSubmitting}
             >
               <Sparkles className="size-3.5 text-primary" />
-              Enhance Script
+              {enhanceLabel}
             </Button>
           </PopoverTrigger>
           <PopoverContent align="end" side="top" className="w-auto">
@@ -1264,6 +1464,24 @@ export const ScriptView: FC<{
                   </ToggleGroupItem>
                 ))}
               </ToggleGroup>
+              {enhanceInvents ? (
+                <p className="max-w-xs text-xs text-muted-foreground">
+                  {inventStyleName
+                    ? `An original ${inventStyleName} script, yours to edit.`
+                    : 'An original script, any genre, yours to edit.'}
+                </p>
+              ) : (
+                <DurationFitHint
+                  targetDuration={targetDuration}
+                  videoModel={primaryVideoModel}
+                  script={scriptValue}
+                />
+              )}
+              {briefRequestsUnrenderableText(scriptValue) ? (
+                <p className="max-w-xs text-xs text-muted-foreground">
+                  {TITLE_CARD_NOTE}
+                </p>
+              ) : null}
               <Button
                 type="button"
                 size="sm"
@@ -1274,7 +1492,7 @@ export const ScriptView: FC<{
                 }}
               >
                 <Sparkles className="size-3.5" />
-                Enhance
+                {enhanceInvents ? 'Draft it' : 'Enhance'}
               </Button>
             </div>
           </PopoverContent>
@@ -1316,26 +1534,21 @@ export const ScriptView: FC<{
         <CardHeader className="shrink-0 flex flex-row items-center md:flex-col md:items-start lg:flex-row justify-between gap-3 px-6 py-4 border-b border-border/50 bg-card/40 short-h:py-2">
           <GenerationSettings
             aspectRatio={aspectRatio}
+            resolution={resolution}
             analysisModels={analysisModels}
             imageModels={imageModels}
             videoModels={videoModels}
-            autoGenerateMotion={autoGenerateMotion}
+            generateStartFrames={generateStartFrames}
             audioModels={audioModels}
-            autoGenerateMusic={autoGenerateMusic}
             onAspectRatioChange={(v) => updateGen('aspectRatio', v)}
+            onResolutionChange={(v) => updateGen('resolution', v)}
             onAnalysisModelsChange={(v) => updateGen('analysisModels', v)}
             onImageModelsChange={(v) => updateGen('imageModels', v)}
             onVideoModelsChange={(v) => updateGen('videoModels', v)}
-            onAutoGenerateMotionChange={(v) =>
-              updateGen('autoGenerateMotion', v)
-            }
             onAudioModelsChange={(v) => updateGen('audioModels', v)}
-            onAutoGenerateMusicChange={(v) => updateGen('autoGenerateMusic', v)}
             disabled={loading}
             styleCategory={styleCategory}
             styleName={styleName}
-            recommendedImageModel={recommendedImageModel}
-            recommendedVideoModel={recommendedVideoModel}
             recommendedAspectRatio={recommendedAspectRatio}
             appliedFromStyle={appliedFromStyle}
             onResetStyleDefaults={resetStyleDefaults}
@@ -1397,6 +1610,16 @@ export const ScriptView: FC<{
             text={thinkingText || undefined}
             className="shrink-0"
           />
+          {!isEnhancing && durationFit.message ? (
+            <Alert>
+              <TriangleAlert />
+              <AlertTitle>
+                This brief cannot fit {targetDuration}s on{' '}
+                {videoModelDisplayName(primaryVideoModel)}
+              </AlertTitle>
+              <AlertDescription>{durationFit.message}</AlertDescription>
+            </Alert>
+          ) : null}
           {/* Label only while a sample is in the box — empty composers keep
               this row off so the placeholder is the instruction (#1255). */}
           {!isEditing && sampleStyleId ? (
@@ -1412,6 +1635,7 @@ export const ScriptView: FC<{
           <div className="flex min-h-20 flex-1 flex-col md:min-h-28">
             <ScriptEditor
               ref={textareaRef}
+              editorRef={scriptEditorRef}
               value={scriptValue}
               onValueChange={(val) => {
                 setScript(val);
@@ -1460,23 +1684,33 @@ export const ScriptView: FC<{
               onChange={handleStyleCategoryChange}
               disabled={loading || isLoadingStyles}
             />
+            {/* Sits with the style controls: it picks a random style and its
+                sample, so it belongs beside Recommend and the category filter,
+                not with the script tools (#1481). */}
+            {!isEditing && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                disabled={loading || isEnhancing || isSubmitting || !canShuffle}
+                onClick={requestShuffle}
+              >
+                <Shuffle className="size-3.5" />
+                Surprise me
+              </Button>
+            )}
             {/* CSS-only placement so SSR and hydration match — no useIsMobile
                 gate (that hid Enhance until the client effect ran). */}
             <div className="ml-auto flex items-center gap-1">
-              {!isEditing && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="gap-1.5"
-                  disabled={loading || isEnhancing || isSubmitting}
-                  onClick={requestShuffle}
-                >
-                  <Shuffle className="size-3.5" />
-                  Shuffle
-                </Button>
-              )}
               {enhanceControls}
+              <VoiceInputButton
+                label="script"
+                variant="outline"
+                size="icon-sm"
+                disabled={loading || isEnhancing || isDerivedScript}
+                {...scriptVoice}
+              />
             </div>
           </div>
           <StyleSelector
@@ -1530,6 +1764,11 @@ export const ScriptView: FC<{
                     Cancel
                   </Button>
                 )}
+                <GenerationModeToggle
+                  value={generationMode}
+                  onChange={setGenerationMode}
+                  disabled={loading}
+                />
                 <Button
                   type="submit"
                   disabled={isDisabled}
@@ -1557,7 +1796,27 @@ export const ScriptView: FC<{
                   pops in after the SSR paint — reserve its line so the footer
                   doesn't grow and shift the page (#1187). */}
               <div className="min-h-4">
-                <ActionCost estimate={storyboardCostEstimate} align="end" />
+                <ActionCost
+                  estimate={storyboardCostEstimate}
+                  align="end"
+                  prefix={
+                    savedSettings.rememberStopAt ? (
+                      <span>
+                        Stops after{' '}
+                        <button
+                          type="button"
+                          className="underline underline-offset-2 hover:text-foreground"
+                          onClick={() => {
+                            setStopAlertMode('edit');
+                            setShowStopAlert(true);
+                          }}
+                        >
+                          {sliderStopLabel(stopAt)}
+                        </button>
+                      </span>
+                    ) : undefined
+                  }
+                />
               </div>
               <span className="hidden text-xs text-muted-foreground sm:block sm:text-right">
                 {isEditing
@@ -1591,7 +1850,7 @@ export const ScriptView: FC<{
             <AlertDialogAction
               onClick={() => {
                 setEnhance('showRegenerateConfirm', false);
-                executeRegeneration();
+                requestGenerate();
               }}
             >
               Generate Copy
@@ -1642,6 +1901,11 @@ export const ScriptView: FC<{
                 </ToggleGroupItem>
               ))}
             </ToggleGroup>
+            <DurationFitHint
+              targetDuration={targetDuration}
+              videoModel={primaryVideoModel}
+              script={scriptValue}
+            />
           </div>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
@@ -1650,7 +1914,7 @@ export const ScriptView: FC<{
               className={buttonVariants({ variant: 'secondary' })}
               onClick={() => {
                 setEnhance('showEnhanceNudge', false);
-                executeRegeneration();
+                requestGenerate();
               }}
             >
               Generate As-Is
@@ -1667,6 +1931,42 @@ export const ScriptView: FC<{
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <GenerationStopAlert
+        open={showStopAlert}
+        onOpenChange={setShowStopAlert}
+        stopAt={stopAt}
+        generateStartFrames={generateStartFrames}
+        remember={savedSettings.rememberStopAt}
+        confirmLabel={
+          stopAlertMode === 'edit'
+            ? 'Save'
+            : isEditing
+              ? 'Generate Copy'
+              : 'Generate'
+        }
+        description={
+          isEditing
+            ? "A copy will be created from this script. Your original sequence won't change."
+            : undefined
+        }
+        estimateForStopAt={estimateForStopAt}
+        onConfirm={({
+          stopAt: nextStopAt,
+          generateStartFrames: nextStartFrames,
+          remember,
+        }) => {
+          const next = withStartFrames(
+            { ...genSettings, stopAt: nextStopAt },
+            nextStartFrames
+          );
+          setGenSettings(next);
+          saveSettings({ stopAt: nextStopAt, rememberStopAt: remember });
+          setShowStopAlert(false);
+          if (stopAlertMode === 'generate') {
+            executeRegeneration(next);
+          }
+        }}
+      />
       <AlertDialog
         open={sampleReplaceConfirm !== null}
         onOpenChange={(open) => {
@@ -1679,7 +1979,7 @@ export const ScriptView: FC<{
             <AlertDialogDescription>
               {sampleReplaceConfirm?.kind === 'try'
                 ? "This swaps in the style's sample script. What you've written here will be replaced."
-                : "Shuffle swaps in a sample script for a random style. What you've written here will be replaced."}
+                : "Surprise me swaps in a sample script for a random style. What you've written here will be replaced."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1697,7 +1997,7 @@ export const ScriptView: FC<{
               ) : (
                 <Shuffle className="size-3.5" />
               )}
-              Replace
+              <span>Replace</span>
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

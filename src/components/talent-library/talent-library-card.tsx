@@ -99,7 +99,8 @@ export const TalentLibraryCard: React.FC<TalentLibraryCardProps> = ({
             <div className="flex items-center gap-1">
               <ImageIcon className="h-3 w-3" />
               <span>
-                {talent.sheetCount} sheet{talent.sheetCount !== 1 && 's'}
+                {talent.sheetCount}{' '}
+                {talent.sheetCount === 1 ? 'sheet' : 'sheets'}
               </span>
             </div>
           </div>

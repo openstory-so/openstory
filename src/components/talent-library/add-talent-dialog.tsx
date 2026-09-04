@@ -494,21 +494,20 @@ export const AddTalentDialog: React.FC<AddTalentDialogProps> = ({
               Cancel
             </Button>
             <Button type="submit" disabled={isBusy || isUploading}>
-              {createPhase === 'analyzing' ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Analyzing photos…
-                </>
-              ) : createPhase === 'creating' || createTalent.isPending ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Creating…
-                </>
-              ) : isUploading ? (
-                'Uploading…'
-              ) : (
-                'Add Talent'
+              {(createPhase === 'analyzing' ||
+                createPhase === 'creating' ||
+                createTalent.isPending) && (
+                <Loader2 className="h-4 w-4 animate-spin" />
               )}
+              <span>
+                {createPhase === 'analyzing'
+                  ? 'Analyzing photos…'
+                  : createPhase === 'creating' || createTalent.isPending
+                    ? 'Creating…'
+                    : isUploading
+                      ? 'Uploading…'
+                      : 'Add Talent'}
+              </span>
             </Button>
           </DialogFooter>
         </form>

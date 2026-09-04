@@ -100,6 +100,7 @@ async function buildRegeneratePayload(
     triggerId: input.characterDbId,
     imageModel,
     aspectRatio,
+    resolution: input.resolution,
     shotSnapshots: merged.shotSnapshots,
     snapshotInputHash: merged.snapshotInputHash,
   };
@@ -210,7 +211,8 @@ export class RecastCharacterWorkflow extends OpenStoryWorkflowEntrypoint<RecastC
       input,
       {
         imageUrl: sheetImageUrl,
-        inputHash: sheetPayload.snapshotInputHash ?? null,
+        inputHash:
+          sheetResult.sheetVersionId ?? sheetPayload.snapshotInputHash ?? null,
       }
     );
 

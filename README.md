@@ -11,7 +11,7 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License" /></a>
   <a href="https://github.com/openstory-so/openstory/actions/workflows/test.yml"><img src="https://github.com/openstory-so/openstory/actions/workflows/test.yml/badge.svg" alt="CI" /></a>
-  <img src="https://img.shields.io/badge/bun-%3E%3D1.3.0-f9f1e1" alt="Bun >= 1.3.0" />
+  <img src="https://img.shields.io/badge/bun-%3E%3D1.3.9-f9f1e1" alt="Bun >= 1.3.9" />
 </p>
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/openstory-so/openstory)
@@ -49,7 +49,7 @@ OpenStory takes a script and produces a sequence of AI-generated frames — imag
 
 ## Prerequisites
 
-- **Bun** >= 1.3.0 — [install](https://bun.com/docs/installation)
+- **Bun** >= 1.3.9 — [install](https://bun.com/docs/installation)
 
 That's it. No Docker, no external database, no Cloudflare account — local dev runs the full stack (D1, R2, Workflows, Durable Objects, email) inside Workerd via Miniflare.
 

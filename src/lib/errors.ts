@@ -165,13 +165,48 @@ export function isInsufficientCreditsError(error: unknown): boolean {
   return errorCode(error) === 'INSUFFICIENT_CREDITS';
 }
 
-/** Display text for an arbitrary thrown value. */
+/**
+ * 401/403 — the caller lacks a session or permission. Structural (`statusCode`
+ * survives the server-fn boundary via the adapter below) so it also matches
+ * Better Auth's `APIError`. A retry cannot succeed; it only repeats the log
+ * line (#1333).
+ */
+export function isAuthError(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  const status = (error as { statusCode?: unknown }).statusCode;
+  return status === 401 || status === 403;
+}
+
+/**
+ * Display text for an arbitrary thrown value. A Zod failure — a live
+ * `ZodError`, or one that crossed the server-fn boundary as its JSON `message`
+ * (#1285) — collapses to one `path: message` line per issue instead of the raw
+ * issue array.
+ */
 export function errorMessage(
   error: unknown,
   fallback = 'Unknown error'
 ): string {
   if (!(error instanceof Error)) return fallback;
-  return error.message;
+  return zodIssuesLine(error.message) ?? error.message;
+}
+
+function zodIssuesLine(message: string): string | null {
+  if (!message.startsWith('[')) return null;
+  let issues: unknown;
+  try {
+    issues = JSON.parse(message);
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(issues) || issues.length === 0) return null;
+  const lines: string[] = [];
+  for (const issue of issues) {
+    if (!isRecord(issue) || typeof issue.message !== 'string') return null;
+    const path = Array.isArray(issue.path) ? issue.path.join('.') : '';
+    lines.push(path ? `${path}: ${issue.message}` : issue.message);
+  }
+  return lines.join('; ');
 }
 
 /**

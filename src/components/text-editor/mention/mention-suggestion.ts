@@ -30,8 +30,14 @@ type SuggestionConfig = Omit<
   'editor'
 >;
 
+/**
+ * `getOnSelect` (optional) lets the host swap the chosen row for the item that
+ * should actually be inserted — the studio composer turns a library pick into
+ * an attached `@ImageN` reference.
+ */
 export function createMentionSuggestion(
-  getItems: () => MentionItem[]
+  getItems: () => MentionItem[],
+  getOnSelect?: () => ((item: MentionItem) => MentionItem) | undefined
 ): SuggestionConfig {
   return {
     char: '@',
@@ -50,7 +56,7 @@ export function createMentionSuggestion(
     },
 
     command: ({ editor, range, props }) => {
-      const attrs = mentionInsertAttrs(props);
+      const attrs = mentionInsertAttrs(getOnSelect?.()?.(props) ?? props);
       // Same space-collapse as Tiptap's default mention command: if the node
       // after the query is already a space, extend the replace range over it
       // so we don't insert a double space.
@@ -78,6 +84,11 @@ export function createMentionSuggestion(
     render: () => {
       let component: ReactRenderer<MentionListRef> | null = null;
       let popup: HTMLDivElement | null = null;
+      let clientRect: (() => DOMRect | null) | null | undefined = null;
+      // Thumbnails load after mount, so the popup grows after it was
+      // positioned — re-run the flip-above check whenever its size changes
+      // (matters most for editors pinned to the bottom of the viewport).
+      let resize: ResizeObserver | null = null;
 
       const position = (
         el: HTMLDivElement,
@@ -123,7 +134,14 @@ export function createMentionSuggestion(
           popup.style.left = '0';
           popup.appendChild(component.element);
           document.body.appendChild(popup);
-          position(popup, props.clientRect?.());
+          clientRect = props.clientRect;
+          position(popup, clientRect?.());
+          if (typeof ResizeObserver !== 'undefined') {
+            resize = new ResizeObserver(() => {
+              if (popup) position(popup, clientRect?.());
+            });
+            resize.observe(component.element);
+          }
         },
 
         onUpdate: (props: SuggestionProps<MentionItem, MentionItem>) => {
@@ -133,11 +151,14 @@ export function createMentionSuggestion(
               props.command(item);
             },
           });
-          if (popup) position(popup, props.clientRect?.());
+          clientRect = props.clientRect;
+          if (popup) position(popup, clientRect?.());
         },
 
         onKeyDown: (props) => {
           if (props.event.key === 'Escape') {
+            resize?.disconnect();
+            resize = null;
             popup?.remove();
             popup = null;
             component?.destroy();
@@ -150,6 +171,8 @@ export function createMentionSuggestion(
         },
 
         onExit: () => {
+          resize?.disconnect();
+          resize = null;
           popup?.remove();
           popup = null;
           component?.destroy();

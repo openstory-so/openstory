@@ -13,6 +13,9 @@ import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
 
 import { AUDIO_MODELS } from '@/lib/ai/models';
+import { canRenderReferenceOnly } from '@/lib/motion/motion-generation';
+import { toWorkflowScopedDb } from '@/lib/db/scoped-workflow';
+import { REFERENCE_ONLY_MODEL_ERROR } from '@/lib/schemas/sequence.schemas';
 import { resolveVideoModel } from '@/lib/ai/resolve-asset-models';
 import { getEffectiveFalPricing } from '@/lib/ai/fal-pricing-live';
 import { estimateVideoCost, gateEstimate } from '@/lib/billing/cost-estimation';
@@ -20,18 +23,35 @@ import {
   estimateBatchMotionCost,
   resolveBatchShotVideoModel,
 } from '@/lib/motion/batch-motion-cost';
-import { requireCredits } from '@/lib/billing/preflight';
+import {
+  releaseReservationOnThrow,
+  reserveRunCredits,
+} from '@/lib/billing/preflight';
 import { buildMotionReferenceImages } from '@/lib/motion/build-motion-references';
 import { resolveShotDuration } from '@/lib/motion/resolve-shot-duration';
 import { generateMotionSchema } from '@/lib/schemas/shot.schemas';
 import { dbSceneId } from '@/lib/db/schema';
 import { ulidSchema } from '@/lib/schemas/id.schemas';
+import { NotFoundError } from '@/lib/errors';
+import { getLogger } from '@/lib/observability/logger';
+import { getGenerationChannel } from '@/lib/realtime';
 import { triggerWorkflow } from '@/lib/workflow/client';
 import { buildWorkflowLabel } from '@/lib/workflow/labels';
+import { terminateSingleArtifactRun } from '@/lib/workflow/run-outcome';
+
+const motionLogger = getLogger(['openstory', 'serverFn', 'motion']);
 import type { BatchMotionMusicWorkflowInput } from '@/lib/workflow/types';
 
-import { resolveMotionPromptFromVersion } from '@/lib/motion/resolve-motion-prompt';
-import { toShotView } from '@/lib/shots/shot-view';
+import {
+  motionPromptFromVersion,
+  resolveMotionPrompt,
+  resolveMotionPromptFromVersion,
+} from '@/lib/motion/resolve-motion-prompt';
+import {
+  rendersReferenceOnly,
+  shotPromptSequence,
+} from '@/lib/shots/use-start-frame';
+import { isBatchMotionEligible, toShotView } from '@/lib/shots/shot-view';
 import { rescanContinuityFromPrompt } from '@/lib/scenes/rescan-continuity-from-prompt';
 import { buildUserEditProvenance } from '@/lib/prompts/user-edit-provenance';
 import { shouldRecordUserEdit } from '@/lib/workflows/user-edit-predicate';
@@ -55,13 +75,17 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
     // Resolved as the whole row, not just the URL: the render manifest records
     // WHICH version the clip rendered from, and re-reading the pointer in the
     // workflow could name a different still than the one submitted.
-    const selectedStill = await context.scopedDb.frameVariants.getSelected(
-      frame.id
-    );
-    if (!selectedStill?.url) {
+    // Per shot, falling back to the sequence default — the user can send one
+    // shot straight to video from references while its neighbours animate from
+    // their stills, and vice versa.
+    const referenceOnly = rendersReferenceOnly(shot, sequence);
+    const selectedStill = referenceOnly
+      ? null
+      : await context.scopedDb.frameVariants.getSelected(frame.id);
+    if (!referenceOnly && !selectedStill?.url) {
       throw new Error('Shot has no thumbnail to generate motion from');
     }
-    const imageUrl = selectedStill.url;
+    const imageUrl = selectedStill?.url ?? undefined;
 
     // Model identity lives on the version that rendered the clip (#1066):
     // explicit request model wins, else the version the shot's render segment
@@ -76,20 +100,48 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
       selectedVersionModel: selectedVersion?.model,
       sequenceModel: sequence.videoModel,
     });
+    if (
+      referenceOnly &&
+      !(await canRenderReferenceOnly(
+        model,
+        toWorkflowScopedDb(context.scopedDb).credentials
+      ))
+    ) {
+      // `MotionWorkflow` rejects this too, but only after the reservation is
+      // held and the child is spawned. One 400 here beats a burnt reservation.
+      //
+      // Via-AWARE, like `createSequences` and `MotionWorkflow`: Grok Imagine
+      // renders reference-only on the native xAI route, and its fal id is an
+      // image-to-video endpoint, so the model-only `supportsReferenceOnlyMotion`
+      // says no. Asking that here rejected regeneration on Grok sequences this
+      // same code had already created and rendered.
+      throw new Error(REFERENCE_ONLY_MODEL_ERROR);
+    }
 
     const userEditedPrompt = Boolean(data.prompt);
     const selectedMotion =
       await context.scopedDb.shotPromptVersions.getSelectedMotion(shot.id);
-    const prompt =
-      data.prompt ||
-      resolveMotionPromptFromVersion(
-        selectedMotion,
-        {
-          characterTags: context.scene?.continuity?.characterTags,
-          description: context.scene?.originalScript.extract ?? null,
-        },
-        model
-      );
+    // An edit replaces the version's `fullPrompt`; model assembly (dialogue
+    // tags, audio direction, no-music) still goes on top — the same thing the
+    // editor's optimised-prompt preview shows. So what fal receives (`prompt`)
+    // and what is persisted as the user-edit version (`data.prompt`) differ.
+    const prompt = resolveMotionPrompt(
+      {
+        motionPrompt: data.prompt
+          ? {
+              fullPrompt: data.prompt,
+              dialogue: selectedMotion?.dialogue ?? null,
+              audio: selectedMotion?.audio ?? null,
+            }
+          : selectedMotion
+            ? motionPromptFromVersion(selectedMotion)
+            : null,
+        characterTags: context.scene?.continuity?.characterTags,
+        description: context.scene?.originalScript.extract ?? null,
+        generateAudio: data.generateAudio,
+      },
+      model
+    );
 
     // Auto-link any element/cast/location tags the user mentioned in their
     // edited motion prompt into the scene's continuity, so downstream
@@ -101,7 +153,7 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
         scopedDb: context.scopedDb,
         sequenceId: sequence.id,
         existing: effectiveContinuity,
-        promptText: prompt,
+        promptText: data.prompt ?? prompt,
       });
       if (rescan.changed && shot.sceneId) {
         effectiveContinuity = rescan.continuity;
@@ -117,9 +169,14 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
     // the clip, not just in the start frame (#873). Only Kling v3 Pro emits
     // them downstream; threaded for every model so they're ready if support
     // widens. Matches the continuity AFTER any rescan above.
-    const [characters, elements] = await Promise.all([
+    const [characters, elements, locations] = await Promise.all([
       context.scopedDb.characters.listWithSheets(sequence.id),
       context.scopedDb.sequenceElements.list(sequence.id),
+      // Reference-only additionally needs the location sheet: with no still,
+      // it is the only thing establishing the set.
+      referenceOnly
+        ? context.scopedDb.sequenceLocations.listWithReferences(sequence.id)
+        : Promise.resolve([]),
     ]);
     const referenceImages = buildMotionReferenceImages({
       scene: context.scene
@@ -127,6 +184,9 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
         : null,
       characters,
       elements,
+      motionPrompt: prompt,
+      includeLocations: referenceOnly,
+      locations,
     });
 
     // Snap the resolved duration onto the selected model's valid set before
@@ -140,81 +200,96 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
       model,
     });
 
-    await requireCredits(
+    const reservationId = await reserveRunCredits(
       context.scopedDb,
       gateEstimate(
         estimateVideoCost(model, duration, {
           pricing: await getEffectiveFalPricing(),
+          resolution: sequence.resolution,
           hasReferenceImages: referenceImages.length > 0,
+          referenceOnly,
         }),
         { model, operation: 'motion' }
       ),
-      { errorMessage: 'Insufficient credits for motion generation' }
-    );
-
-    // Both of these are snapshotted HERE rather than re-read in the workflow:
-    // that read would be racy against concurrent append-only version writes and
-    // replay-unsafe, since this very run repoints the selection pointer
-    // (#713/#991).
-    const userEditProvenance = shouldRecordUserEdit({
-      userEditedPrompt,
-      prompt,
-      currentPrompt: selectedMotion?.text ?? null,
-    })
-      ? await buildUserEditProvenance({
-          kind: 'motion',
-          scopedDb: context.scopedDb,
-          sequence,
-          scene: context.scene
-            ? { ...context.scene, continuity: effectiveContinuity }
-            : null,
-          startingFrameImageUrl: imageUrl,
-        })
-      : undefined;
-
-    const workflowInput: BatchMotionMusicWorkflowInput = {
-      userId: context.user.id,
-      teamId,
-      sequenceId: sequence.id,
-      includeMusic: false,
-      shots: [
-        {
-          shotId: shot.id,
-          sceneId: shot.sceneId,
-          imageUrl,
-          frameVersionId: selectedStill.id,
-          motionPromptVersionId: selectedMotion?.id ?? null,
-          prompt,
-          model,
-          duration,
-          fps: data.fps,
-          motionBucket: data.motionBucket,
-          aspectRatio: sequence.aspectRatio,
-          generateAudio: data.generateAudio,
-          sceneTitle: context.scene?.metadata?.title,
-          sequenceTitle: sequence.title,
-          userEditProvenance,
-          priorMotion: userEditProvenance
-            ? {
-                dialogue: selectedMotion?.dialogue ?? null,
-                audio: selectedMotion?.audio ?? null,
-              }
-            : undefined,
-          referenceImages,
-        },
-      ],
-    };
-
-    const workflowRunId = await triggerWorkflow(
-      '/motion-batch',
-      workflowInput,
       {
-        deduplicationId: `motion-batch-${shot.id}-${Date.now()}`,
-        label: buildWorkflowLabel(sequence.id),
+        errorMessage: 'Insufficient credits for motion generation',
+        sequenceId: sequence.id,
       }
     );
 
-    return { workflowRunId, shotId: shot.id };
+    return releaseReservationOnThrow(
+      context.scopedDb,
+      reservationId,
+      async () => {
+        // Both of these are snapshotted HERE rather than re-read in the workflow:
+        // that read would be racy against concurrent append-only version writes and
+        // replay-unsafe, since this very run repoints the selection pointer
+        // (#713/#991).
+        const userEditProvenance = shouldRecordUserEdit({
+          userEditedPrompt,
+          prompt: data.prompt,
+          currentPrompt: selectedMotion?.text ?? null,
+        })
+          ? await buildUserEditProvenance({
+              kind: 'motion',
+              scopedDb: context.scopedDb,
+              sequence: shotPromptSequence(sequence, shot),
+              scene: context.scene
+                ? { ...context.scene, continuity: effectiveContinuity }
+                : null,
+              startingFrameImageUrl: imageUrl,
+            })
+          : undefined;
+
+        const workflowInput: BatchMotionMusicWorkflowInput = {
+          userId: context.user.id,
+          teamId,
+          sequenceId: sequence.id,
+          reservationId,
+          includeMusic: false,
+          shots: [
+            {
+              shotId: shot.id,
+              sceneId: shot.sceneId,
+              imageUrl,
+              referenceOnly,
+              frameVersionId: selectedStill?.id ?? null,
+              motionPromptVersionId: selectedMotion?.id ?? null,
+              prompt,
+              model,
+              duration,
+              fps: data.fps,
+              motionBucket: data.motionBucket,
+              aspectRatio: sequence.aspectRatio,
+              resolution: sequence.resolution,
+              generateAudio: data.generateAudio,
+              sceneTitle: context.scene?.metadata?.title,
+              sequenceTitle: sequence.title,
+              userEditProvenance,
+              userEditText: userEditProvenance ? data.prompt : undefined,
+              priorMotion: userEditProvenance
+                ? {
+                    dialogue: selectedMotion?.dialogue ?? null,
+                    audio: selectedMotion?.audio ?? null,
+                  }
+                : undefined,
+              referenceImages,
+            },
+          ],
+        };
+
+        const workflowRunId = await triggerWorkflow(
+          '/motion-batch',
+          workflowInput,
+          {
+            deduplicationId: `motion-batch-${shot.id}-${Date.now()}`,
+            label: buildWorkflowLabel(sequence.id),
+          }
+        );
+
+        return { workflowRunId, shotId: shot.id };
+      }
+    );
   });
 
 // -- Batch Generate Motion for Sequence ----------------------------------
@@ -290,13 +365,26 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
           ]
         : [];
     });
-    // Server determines eligible shots: still done, video pending/failed
-    const eligibleShots = allShots.filter(
-      (f) =>
-        f.frame.imageStatus === 'completed' &&
-        f.image?.url &&
-        (f.videoStatus === 'pending' || f.videoStatus === 'failed')
+    // Server determines eligible shots: still done, video pending/failed/
+    // cancelled. 'cancelled' (#1108) belongs here because THIS is the
+    // user-driven batch — a cancel only excludes a shot from AUTO retry
+    // (smart retry, which matches 'failed' alone). The clients compute the
+    // same set optimistically (scenes-view, mobile-scene-drawer); leaving it
+    // out here made them disagree, so a cancelled shot showed an optimistic
+    // spinner the server then silently skipped.
+    // Reference-only sequences render no stills, so the still-done half of the
+    // filter would exclude every shot; there the video status alone decides.
+    // Per shot now, not per sequence: a shot can override the sequence default
+    // either way, so eligibility, the still, the reference set and the price
+    // all have to be asked shot by shot.
+    const shotIsReferenceOnly = (shot: { useStartFrame?: boolean | null }) =>
+      rendersReferenceOnly(shot, sequence);
+    const eligibleShots = allShots.filter((f) =>
+      isBatchMotionEligible(f, shotIsReferenceOnly(f))
     );
+    // Location sheets are loaded once for the batch, so ANY reference-only
+    // shot pulls them; `includeLocations` below still decides per shot.
+    const anyReferenceOnly = allShots.some(shotIsReferenceOnly);
 
     if (eligibleShots.length === 0) {
       throw new Error('No eligible shots for motion generation');
@@ -318,10 +406,52 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
     // Resolve cast/element reference images once for the whole batch (#873) —
     // before credit pre-flight so Seedance prices the reference-to-video
     // endpoint when refs will actually be sent.
-    const [characters, elements] = await Promise.all([
+    const [characters, elements, batchLocations] = await Promise.all([
       context.scopedDb.characters.listWithSheets(sequence.id),
       context.scopedDb.sequenceElements.list(sequence.id),
+      // Reference-only only: with no still, the location sheet is the set.
+      anyReferenceOnly
+        ? context.scopedDb.sequenceLocations.listWithReferences(sequence.id)
+        : Promise.resolve([]),
     ]);
+
+    // Same pre-credit rejection as the single-shot path, but it matters more
+    // here: the reservation covers the whole batch, so one doomed model would
+    // burn credits for N shots to produce N workflow validation errors.
+    // Via-AWARE, matching `createSequences`, `MotionWorkflow` and the
+    // single-shot path above — the model-only check rejected Grok Imagine,
+    // which renders reference-only fine on the native xAI route. Resolved once
+    // per distinct model: the answer depends on the team's keys, not the shot.
+    const referenceOnlyModels = new Set(
+      eligibleShots
+        .filter(shotIsReferenceOnly)
+        .map((shot) =>
+          resolveBatchShotVideoModel(
+            { id: shot.id },
+            shotModels,
+            sequence,
+            data.model
+          )
+        )
+    );
+    const credentials = toWorkflowScopedDb(context.scopedDb).credentials;
+    for (const model of referenceOnlyModels) {
+      if (!(await canRenderReferenceOnly(model, credentials))) {
+        throw new Error(REFERENCE_ONLY_MODEL_ERROR);
+      }
+    }
+
+    // Batch-load the selected motion prompt version for every eligible shot —
+    // the resolution source of truth (#713), replacing `metadata.prompts.motion`.
+    // Loaded BEFORE the estimate, not just before the submit: cast and element
+    // refs follow the motion prompt (#1432), so estimating without it can price
+    // a ref-less shot that the submit then sends references for.
+    const selectedMotionByShot =
+      await context.scopedDb.shotPromptVersions.getSelectedMotionByShots(
+        eligibleShots.map((s) => s.id)
+      );
+    const motionPromptTextFor = (shotId: string) =>
+      selectedMotionByShot.get(shotId)?.text ?? null;
 
     // Sum per-shot costs — shots may render with different (priced) models.
     const estimatedCost = estimateBatchMotionCost(
@@ -332,6 +462,8 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
         explicitModel: data.model,
         duration: data.duration,
         pricing: await getEffectiveFalPricing(),
+        resolution: sequence.resolution,
+        referenceOnly: shotIsReferenceOnly,
         hasReferenceImages: (batchShot) => {
           const shot = eligibleShots.find((s) => s.id === batchShot.id);
           if (!shot) return false;
@@ -340,119 +472,204 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
               scene: sceneOf(shot),
               characters,
               elements,
+              // Must match the set actually sent below, or a reference-only
+              // shot carried only by its location sheet estimates as ref-less.
+              motionPrompt: motionPromptTextFor(shot.id),
+              includeLocations: shotIsReferenceOnly(shot),
+              locations: batchLocations,
             }).length > 0
           );
         },
       }
     );
 
-    await requireCredits(context.scopedDb, estimatedCost, {
-      errorMessage: `Insufficient credits for batch motion generation (${eligibleShots.length} shots)`,
-    });
-
     const includeMusic =
       (data.includeMusic ?? false) && sequence.musicStatus !== 'generating';
-
-    // Persist the batch model picks so the sequence header chip, future batch
-    // sessions, and storyboard regen reflect what the user just chose.
-    const videoModelChanged = data.model && data.model !== sequence.videoModel;
-    const musicModelChanged =
-      includeMusic &&
-      data.musicModel &&
-      data.musicModel !== sequence.musicModel;
-    if (videoModelChanged || musicModelChanged) {
-      await context.scopedDb.sequences.update({
-        id: sequence.id,
-        ...(videoModelChanged ? { videoModel: data.model } : {}),
-        ...(musicModelChanged ? { musicModel: data.musicModel } : {}),
-      });
+    if (includeMusic && (!sequence.musicPrompt || !sequence.musicTags)) {
+      throw new Error('No music prompt or tags found');
     }
 
-    // Build music config if requested
-    let musicConfig: BatchMotionMusicWorkflowInput['music'];
-    if (includeMusic) {
-      if (!sequence.musicPrompt || !sequence.musicTags) {
-        throw new Error('No music prompt or tags found');
-      }
-
-      const totalDuration = allShots.reduce(
-        (sum, shot) => sum + (shot.durationMs ? shot.durationMs / 1000 : 10),
-        0
-      );
-
-      musicConfig = {
-        prompt: sequence.musicPrompt,
-        tags: sequence.musicTags,
-        duration: totalDuration || 30,
-        model: data.musicModel,
-      };
-    }
-
-    // Batch-load the selected motion prompt version for every eligible shot —
-    // the resolution source of truth (#713), replacing `metadata.prompts.motion`.
-    const selectedMotionByShot =
-      await context.scopedDb.shotPromptVersions.getSelectedMotionByShots(
-        eligibleShots.map((s) => s.id)
-      );
-
-    const workflowInput: BatchMotionMusicWorkflowInput = {
-      userId: user.id,
-      teamId,
-      sequenceId: sequence.id,
-      includeMusic,
-      shots: eligibleShots.map((shot) => {
-        const shotModel = resolveShotVideoModel(shot);
-        const scene = sceneOf(shot);
-        const selectedMotion = selectedMotionByShot.get(shot.id);
-        return {
-          shotId: shot.id,
-          sceneId: shot.sceneId,
-          imageUrl: shot.image?.url ?? '',
-          // The versions this clip renders from, pinned here so the render
-          // manifest can't name rows a concurrent edit repointed to.
-          frameVersionId: shot.image?.id ?? null,
-          motionPromptVersionId: selectedMotion?.id ?? null,
-          prompt: resolveMotionPromptFromVersion(
-            selectedMotion,
-            {
-              characterTags: scene?.continuity?.characterTags,
-              description: scene?.originalScript.extract ?? null,
-            },
-            shotModel
-          ),
-          model: shotModel,
-          sceneTitle: scene?.metadata?.title,
-          sequenceTitle: sequence.title,
-          duration:
-            data.duration ?? (shot.durationMs ? shot.durationMs / 1000 : 3),
-          fps: data.fps,
-          motionBucket: data.motionBucket,
-          aspectRatio: sequence.aspectRatio,
-          generateAudio: data.generateAudio,
-          referenceImages: buildMotionReferenceImages({
-            scene,
-            characters,
-            elements,
-          }),
-        };
-      }),
-      music: musicConfig,
-    };
-
-    const workflowRunId = await triggerWorkflow(
-      '/motion-batch',
-      workflowInput,
+    const reservationId = await reserveRunCredits(
+      context.scopedDb,
+      estimatedCost,
       {
-        deduplicationId: `motion-batch-${sequence.id}-${Date.now()}`,
-        label: buildWorkflowLabel(sequence.id),
+        errorMessage: `Insufficient credits for batch motion generation (${eligibleShots.length} shots)`,
+        sequenceId: sequence.id,
       }
     );
 
-    return {
-      sequenceId: sequence.id,
-      totalShots: allShots.length,
-      eligibleShots: eligibleShots.length,
-      workflowRunId,
-      includeMusic,
-    };
+    return releaseReservationOnThrow(
+      context.scopedDb,
+      reservationId,
+      async () => {
+        // Persist the batch model picks so the sequence header chip, future batch
+        // sessions, and storyboard regen reflect what the user just chose.
+        const videoModelChanged =
+          data.model && data.model !== sequence.videoModel;
+        const musicModelChanged =
+          includeMusic &&
+          data.musicModel &&
+          data.musicModel !== sequence.musicModel;
+        if (videoModelChanged || musicModelChanged) {
+          await context.scopedDb.sequences.update({
+            id: sequence.id,
+            ...(videoModelChanged ? { videoModel: data.model } : {}),
+            ...(musicModelChanged ? { musicModel: data.musicModel } : {}),
+          });
+        }
+
+        let musicConfig: BatchMotionMusicWorkflowInput['music'];
+        if (includeMusic && sequence.musicPrompt && sequence.musicTags) {
+          const totalDuration = allShots.reduce(
+            (sum, shot) =>
+              sum + (shot.durationMs ? shot.durationMs / 1000 : 10),
+            0
+          );
+
+          musicConfig = {
+            prompt: sequence.musicPrompt,
+            tags: sequence.musicTags,
+            duration: totalDuration || 30,
+            model: data.musicModel,
+          };
+        }
+
+        const workflowInput: BatchMotionMusicWorkflowInput = {
+          userId: user.id,
+          teamId,
+          sequenceId: sequence.id,
+          reservationId,
+          includeMusic,
+          shots: eligibleShots.map((shot) => {
+            const shotModel = resolveShotVideoModel(shot);
+            const scene = sceneOf(shot);
+            const selectedMotion = selectedMotionByShot.get(shot.id);
+            return {
+              shotId: shot.id,
+              sceneId: shot.sceneId,
+              // Reference-only carries no still; every other shot passed the
+              // eligibility filter above, which requires one.
+              imageUrl: shotIsReferenceOnly(shot)
+                ? undefined
+                : (shot.image?.url ?? undefined),
+              referenceOnly: shotIsReferenceOnly(shot),
+              // The versions this clip renders from, pinned here so the render
+              // manifest can't name rows a concurrent edit repointed to.
+              // `null` when the clip renders from references — naming a still
+              // it never received makes regenerating that unused still read as
+              // divergence, and "Update all" then re-renders the clip for money.
+              frameVersionId: shotIsReferenceOnly(shot)
+                ? null
+                : (shot.image?.id ?? null),
+              motionPromptVersionId: selectedMotion?.id ?? null,
+              prompt: resolveMotionPromptFromVersion(
+                selectedMotion,
+                {
+                  characterTags: scene?.continuity?.characterTags,
+                  description: scene?.originalScript.extract ?? null,
+                  generateAudio: data.generateAudio,
+                },
+                shotModel
+              ),
+              model: shotModel,
+              sceneTitle: scene?.metadata?.title,
+              sequenceTitle: sequence.title,
+              duration:
+                data.duration ?? (shot.durationMs ? shot.durationMs / 1000 : 3),
+              fps: data.fps,
+              motionBucket: data.motionBucket,
+              aspectRatio: sequence.aspectRatio,
+              resolution: sequence.resolution,
+              generateAudio: data.generateAudio,
+              referenceImages: buildMotionReferenceImages({
+                scene,
+                characters,
+                elements,
+                motionPrompt: motionPromptTextFor(shot.id),
+                includeLocations: shotIsReferenceOnly(shot),
+                locations: batchLocations,
+              }),
+            };
+          }),
+          music: musicConfig,
+        };
+
+        const workflowRunId = await triggerWorkflow(
+          '/motion-batch',
+          workflowInput,
+          {
+            deduplicationId: `motion-batch-${sequence.id}-${Date.now()}`,
+            label: buildWorkflowLabel(sequence.id),
+          }
+        );
+
+        return {
+          sequenceId: sequence.id,
+          totalShots: allShots.length,
+          eligibleShots: eligibleShots.length,
+          workflowRunId,
+          includeMusic,
+        };
+      }
+    );
+  });
+
+// ---------------------------------------------------------------------------
+// Cancel an in-flight video render (#1108 Phase 4 — parity with the image
+// claim cancel in cancelPendingArtifactFn).
+// ---------------------------------------------------------------------------
+
+const cancelVideoRenderInput = z.object({
+  sequenceId: ulidSchema,
+  shotId: ulidSchema,
+  versionId: ulidSchema,
+});
+
+/**
+ * Flip an in-flight `video_variants` row terminal (`status: 'cancelled'`,
+ * #1108 — deliberately NOT 'failed', so smart retry and the failure surfaces
+ * never re-run and re-bill a deliberate cancel). The completion write is
+ * status-guarded (`completeIfLive`), so a render that finishes after this
+ * discards its result instead of resurrecting the row.
+ *
+ * The realtime emit carries `status: 'cancelled'` (the `video:progress`
+ * schema was extended with it), so a second tab's cache converges on
+ * 'cancelled' directly — never a transient 'failed'.
+ *
+ * Data-only: the fal job itself is not terminated (spend was committed at
+ * submit; MotionWorkflow is not in the single-artifact terminate set), and
+ * `terminateSingleArtifactRun` no-ops safely if that ever changes.
+ * Idempotent — an already-terminal row reports `cancelled: false`.
+ */
+export const cancelVideoRenderFn = createServerFn({ method: 'POST' })
+  .middleware([shotAccessMiddleware])
+  .validator(zodValidator(cancelVideoRenderInput))
+  .handler(async ({ context, data }) => {
+    const { shot, scopedDb } = context;
+    const row = await scopedDb.videoVariants.getById(data.versionId);
+    if (!row || row.renderSegmentId !== shot.renderSegmentId) {
+      throw new NotFoundError('Video version not found for this shot');
+    }
+    const cancelled = await scopedDb.videoVariants.markTerminal(row.id, {
+      error: 'Cancelled by user',
+      actorId: context.user.id,
+    });
+    if (!cancelled) return { cancelled: false } as const;
+
+    await terminateSingleArtifactRun(row.workflowRunId);
+    try {
+      await getGenerationChannel(data.sequenceId).emit(
+        'generation.video:progress',
+        {
+          shotId: shot.id,
+          status: 'cancelled',
+          model: row.model,
+          variantOnly: !row.isPrimary,
+          error: 'Cancelled by user',
+        }
+      );
+    } catch (error) {
+      motionLogger.error('realtime emit failed', { err: error });
+    }
+    return { cancelled: true } as const;
   });

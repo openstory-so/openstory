@@ -14,6 +14,7 @@ import { getAuth } from '@/lib/auth/config';
 import { isSystemAdmin, requireSystemAdmin } from '@/lib/auth/system-admin';
 import { APIError } from 'better-auth/api';
 import type { AspectRatio } from '@/lib/constants/aspect-ratios';
+import type { Resolution } from '@/lib/constants/resolutions';
 import {
   createScopedDb,
   createSystemAdminScopedDb,
@@ -28,7 +29,11 @@ import {
   restrictionNotice,
 } from '@/lib/compliance/enforcement';
 import { loadComplianceState } from '@/lib/compliance/generation-gate';
-import { AccountRestrictedError, NotFoundError } from '@/lib/errors';
+import {
+  AccountRestrictedError,
+  AuthenticationError,
+  NotFoundError,
+} from '@/lib/errors';
 import {
   errorHeadline,
   getLogger,
@@ -78,7 +83,10 @@ type PartialSequence = {
   imageModel: string;
   videoModel: string;
   aspectRatio: AspectRatio;
+  resolution: Resolution;
   analysisModel: string;
+  /** Sequence default for the start-frame mode; see `usesStartFrame()`. */
+  generateStartFrames: boolean;
 };
 
 export type ShotContext = TeamContext & {
@@ -370,7 +378,7 @@ export const authMiddleware = createMiddleware({ type: 'function' }).server(
     const session = await auth.api.getSession({ headers: request.headers });
 
     if (!session?.user) {
-      throw new Error('Authentication required');
+      throw new AuthenticationError('Authentication required');
     }
 
     return next({
@@ -545,6 +553,7 @@ export const shotAccessMiddleware = createMiddleware({ type: 'function' })
     const sequence: PartialSequence = {
       ...rawSequence,
       aspectRatio: rawSequence.aspectRatio satisfies AspectRatio,
+      resolution: rawSequence.resolution satisfies Resolution,
     };
 
     const { scene, script } = await resolveSceneForShotFromDb(shot, scopedDb);

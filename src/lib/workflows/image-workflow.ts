@@ -29,10 +29,7 @@ import {
   CONTENT_REJECTION_EVENT,
   isContentRejectionError,
 } from '@/lib/ai/content-rejection';
-import {
-  generateImageWithProvider,
-  type ImageGenerationParams,
-} from '@/lib/image/image-generation';
+import type { ImageGenerationParams } from '@/lib/image/image-generation';
 import { uploadImageToStorage } from '@/lib/image/image-storage';
 import { recordProvenance } from '@/lib/compliance/provenance';
 import { buildR2Key, STORAGE_BUCKETS } from '@/lib/storage/buckets';
@@ -44,6 +41,7 @@ import { WorkflowValidationError } from '@/lib/workflow/errors';
 import type { ImageWorkflowInput } from '@/lib/workflow/types';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { computeImageWorkflowHashFromDto } from '@/lib/workflows/image-workflow-snapshot';
+import { generateImageWithContentRetry } from '@/lib/workflows/soften-image-prompt';
 import { getLogger } from '@/lib/observability/logger';
 
 const logger = getLogger(['openstory', 'workflow', 'image']);
@@ -52,6 +50,13 @@ type ImageWorkflowResult = {
   imageUrl: string;
   shotId?: string;
   sequenceId?: string;
+  /**
+   * The `frame_variants` version this still completed as. Parents pin the
+   * motion-batch payload off THIS id rather than re-reading the frame's
+   * selection pointer (#1380). Null when nothing was persisted (preview,
+   * cancelled claim, or a shotless ad-hoc run).
+   */
+  frameVersionId?: string | null;
   /**
    * The render's claim was cancelled by the user (before or during the
    * render) and its result was discarded (#1085). Parents must treat this as
@@ -156,6 +161,7 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
           numImages: input.numImages ?? 1,
           seed: input.seed,
           referenceImageUrls: referenceUrls,
+          ...(input.resolution && { resolution: input.resolution }),
         };
 
         // A preview for a shot can only land if it knows its anchor frame, and
@@ -224,6 +230,7 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
             {
               workflowRunId,
               model,
+              resolution: input.resolution ?? null,
               promptVersionId,
               // Direct-regen claims already carry the hash from enqueue;
               // chained claims get it stamped here (the render's snapshot
@@ -244,6 +251,7 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
             sequenceId: input.sequenceId,
             kind: 'model',
             model,
+            resolution: input.resolution ?? null,
             status: 'generating',
             workflowRunId,
             promptVersionId,
@@ -299,45 +307,27 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
         imageUrl: '',
         shotId: input.shotId,
         sequenceId: input.sequenceId,
+        frameVersionId: null,
         cancelled: true,
       };
     }
 
-    // Generate the image. CF's default per-step retry handles content-flag and
-    // transient errors (#881): a stochastic rejection clears on a fresh
-    // same-model call; a deterministic content-checker hit exhausts the retries
-    // and fails with its real message — recorded on the frame by onFailure.
-    const imageResult = await step.do('generate-image', async (ctx) => {
-      logger.info(
-        `[ImageWorkflow] Generating image ${input.shotId} with model ${prep.params.model} (attempt ${ctx.attempt})`
-      );
-      if (ctx.attempt > 1 && input.shotId && input.sequenceId) {
-        await getGenerationChannel(input.sequenceId).emit(
-          'generation.image:progress',
-          {
-            shotId: input.shotId,
-            status: 'generating',
-            phase: 'retrying',
-            attempt: ctx.attempt,
-            ...(ctx.config.retries?.limit !== undefined && {
-              maxAttempts: ctx.config.retries.limit + 1,
-            }),
-            model: prep.params.model,
-            variantOnly: input.variantOnly,
-          }
-        );
-      }
-      return generateImageWithProvider(prep.params, {
-        scopedDb: scopedDb.credentials,
-        observability: {
-          observationName: 'shot-image',
-          tags: ['image'],
-          userId: input.userId,
-          sessionId: input.sequenceId,
-          metadata: { shotId: input.shotId, model: prep.params.model },
-        },
-      });
+    // Same-prompt reseeds on content-flag (#881), then Grok Imagine 2 on
+    // the original prompt, then one softened prompt + retry (#1272).
+    // Transient errors still throw so CF retries the named generate step.
+    // A deterministic checker hit that survives all three is
+    // NonRetryableError — onFailure records the real message.
+    const generation = await generateImageWithContentRetry({
+      step,
+      scopedDb,
+      workflowRunId,
+      input,
+      params: prep.params,
+      versionId: prep.versionId,
+      snapshotInputHash: snapshotHash,
     });
+    const imageResult = generation.result;
+    const snapshotInputHash = generation.snapshotInputHash;
 
     const imageCostMicros = imageResult.metadata.cost ?? ZERO_MICROS;
     const { teamId, shotId, sequenceId } = input;
@@ -354,11 +344,12 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
           scopedDb,
           costMicros: imageCostMicros,
           usedOwnKey: imageResult.metadata.usedOwnKey,
-          description: `Image generation (${prep.params.model})`,
+          description: `Image generation (${generation.params.model})`,
           idempotencyKey: `${event.instanceId}:image`,
+          reservationId: input.reservationId,
           metadata: {
             ...falUsage,
-            model: prep.params.model,
+            model: generation.params.model,
             shotId: input.shotId,
             sequenceId: input.sequenceId,
           },
@@ -372,6 +363,7 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
       throw new Error('Image generation did not return any image URLs');
     }
     let imageUrl: string = generatedImageUrl;
+    let frameVersionId: string | null = prep.versionId || null;
 
     if (imageUrl && shotId && sequenceId && teamId && !input.skipStorage) {
       const upload = await step.do('upload-image', async () => {
@@ -380,10 +372,16 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
 
       const writeResult = await step.do(
         'persist-result',
-        async (): Promise<{ imageUrl: string; cancelled?: boolean }> => {
-          const promptHash = input.prompt ? simpleHash(input.prompt) : null;
-          const { model } = prep.params;
-          const versionId = prep.versionId;
+        async (): Promise<{
+          imageUrl: string;
+          cancelled?: boolean;
+          frameVersionId: string | null;
+        }> => {
+          const promptHash = generation.prompt
+            ? simpleHash(generation.prompt)
+            : null;
+          const { model } = generation.params;
+          const versionId = generation.versionId || prep.versionId;
 
           // The same frame `set-generating-status` claimed on — re-read only to
           // confirm it survived the render.
@@ -392,7 +390,7 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
             logger.info(
               `[ImageWorkflow] Shot ${shotId} lost its anchor frame before select; skipping`
             );
-            return { imageUrl: upload.url };
+            return { imageUrl: upload.url, frameVersionId: null };
           }
 
           // Complete the in-flight version — status-guarded, so a user cancel
@@ -408,7 +406,7 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
               generatedAt: new Date(),
               error: null,
               promptHash,
-              inputHash: snapshotHash,
+              inputHash: snapshotInputHash,
             }
           );
           if (!completed) {
@@ -435,7 +433,11 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
                 versionId
               );
             }
-            return { imageUrl: upload.url, cancelled: true };
+            return {
+              imageUrl: upload.url,
+              cancelled: true,
+              frameVersionId: null,
+            };
           }
 
           await scopedDb.sequenceEvents.record({
@@ -459,7 +461,7 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
               model,
               variantOnly: true,
             });
-            return { imageUrl: upload.url };
+            return { imageUrl: upload.url, frameVersionId: versionId };
           }
 
           // Claim the promote in ONE conditional write: last kickoff / explicit
@@ -483,7 +485,7 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
               model,
             });
             logger.info(`[ImageWorkflow] Uploaded + selected: ${upload.path}`);
-            return { imageUrl: upload.url };
+            return { imageUrl: upload.url, frameVersionId: versionId };
           }
 
           // Not the promote target — finalize into history only. Reset in-flight
@@ -515,10 +517,11 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
           logger.info(
             `[ImageWorkflow] Uploaded unselected (pending promote moved): ${upload.path}`
           );
-          return { imageUrl: upload.url };
+          return { imageUrl: upload.url, frameVersionId: versionId };
         }
       );
       imageUrl = writeResult.imageUrl;
+      frameVersionId = writeResult.frameVersionId;
 
       // Provenance (#1180) — recorded before the cancel check on purpose: a
       // cancelled render still uploaded bytes to R2, so the object exists and
@@ -530,22 +533,29 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
           teamId,
           userId: input.userId,
           assetKind: 'frame_variant',
-          assetId: prep.versionId,
+          assetId: generation.versionId || prep.versionId,
           storageKey: buildR2Key(STORAGE_BUCKETS.THUMBNAILS, upload.path),
           provider: imageResult.via,
-          model: prep.params.model,
+          model: generation.params.model,
           providerRequestId:
             falUsage.requestId ?? imageResult.metadata.requestId ?? null,
           workflowRunId: event.instanceId,
-          prompt: prep.params.prompt,
+          prompt: generation.params.prompt,
           sequenceId,
           shotId,
-          referenceImageCount: prep.params.referenceImageUrls?.length ?? 0,
+          referenceImageCount:
+            generation.params.referenceImageUrls?.length ?? 0,
         });
       });
 
       if (writeResult.cancelled) {
-        return { imageUrl, shotId, sequenceId, cancelled: true };
+        return {
+          imageUrl,
+          shotId,
+          sequenceId,
+          frameVersionId: null,
+          cancelled: true,
+        };
       }
     } else if (imageUrl && shotId && input.skipStorage) {
       await step.do('record-preview-variant', async () => {
@@ -572,9 +582,9 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
         await scopedDb.frameVariants.recordPreview({
           frameId: anchor.id,
           sequenceId: anchor.sequenceId,
-          model: prep.params.model,
+          model: generation.params.model,
           url: imageUrl,
-          promptHash: input.prompt ? simpleHash(input.prompt) : null,
+          promptHash: generation.prompt ? simpleHash(generation.prompt) : null,
           workflowRunId,
         });
 
@@ -587,7 +597,7 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
       });
     }
 
-    return { imageUrl, shotId, sequenceId };
+    return { imageUrl, shotId, sequenceId, frameVersionId };
   }
 
   protected override async onFailure({

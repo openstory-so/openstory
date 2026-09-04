@@ -22,16 +22,24 @@ export const PLATFORM_FEE_PERCENT = 0.07;
  * Free credit granted to every new team on signup, in USD.
  *
  * Must cover a typical first short with product defaults: Enhance 30s target
- * (~6 shots × 5s), stills + motion + music (DEFAULT_IMAGE_MODEL / video /
- * audio). Guarded by the signup-grant test in constants.test.ts. Preflight
- * uses fal historical typicalUnitsPerCall (not raw unitPrice alone) so
- * gpt-image-2 estimates ~$0.22/image, not $1 (#1062). Raised from $10 when
- * motion+music became the default aha path (#1140).
+ * (~6 shots × 5s), stills + motion + music (Turbo: Nano Banana 2 Lite /
+ * H3 Max / ElevenLabs). Guarded by the signup-grant test in
+ * constants.test.ts. Preflight uses fal historical typicalUnitsPerCall
+ * (not raw unitPrice alone). Raised from $10 when motion+music became the
+ * default aha path (#1140).
  */
 const SIGNUP_GRANT_USD = 20;
 
 /** Free credit granted to every new team on signup, in microdollars */
 export const SIGNUP_GRANT_MICROS: Microdollars = usdToMicros(SIGNUP_GRANT_USD);
+
+/**
+ * Rough cost of another default short, used in the ready-email balance line
+ * (#1276). Matches the issue copy ("about ~$13") rather than a live estimate
+ * — pricing may be empty, and the point is "you probably can't fund a second
+ * run", not a precise quote.
+ */
+export const TYPICAL_SHORT_COST_USD = 13;
 
 /** Minimum top-up amount in USD */
 export const MIN_TOPUP_AMOUNT_USD = 10;
@@ -52,6 +60,23 @@ export const LOW_BALANCE_THRESHOLD_USD = 5;
 
 /** Minimum time between auto-top-up charges in milliseconds (60 seconds) */
 export const AUTO_TOPUP_COOLDOWN_MS = 60_000;
+
+/**
+ * After a hard card decline, skip further auto-top-up PaymentIntents for
+ * this long (#1334). Stripe returned `stripe-should-retry: false` on the
+ * incident charges; retrying on every reservation debit/capture hammered
+ * the same card 20 times in 8 minutes. A successful purchase, a settings
+ * save, or a new default payment method clears the marker immediately.
+ */
+export const AUTO_TOPUP_DECLINE_COOLDOWN_MS = 6 * 60 * 60 * 1000;
+
+/**
+ * How long a run envelope stays in the available SUM (#1310).
+ * Longer than AnalyzeScript's 90-minute image await plus 45-minute motion
+ * await under burst, so in-flight capture still owns the row after
+ * `expiresAt` would drop it from *new* reserves.
+ */
+export const RESERVATION_TTL_MS = 6 * 60 * 60 * 1000;
 
 /** Number of months before credit batches expire */
 const CREDIT_EXPIRY_MONTHS = 12;

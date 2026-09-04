@@ -28,7 +28,9 @@ import {
 } from '@/hooks/use-billing-gate';
 import {
   closeBillingGate,
+  getBillingGateReason,
   useBillingGateDialogOpen,
+  type BillingGateReason,
 } from '@/hooks/use-billing-gate-dialog';
 import { cn } from '@/lib/utils';
 import { usePostHog } from '@posthog/react';
@@ -42,7 +44,7 @@ import {
   Gift,
   HeartHandshake,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 const RETURN_KEY = 'openstory:billing-return';
 
@@ -280,6 +282,8 @@ type BillingGateDialogProps = {
   stripeEnabled?: boolean;
   returnTo?: string;
   context?: 'generation' | 'onboarding';
+  /** `billing_gate_shown.reason` (#1301). */
+  reason?: BillingGateReason;
 };
 
 export const BillingGateDialog: React.FC<BillingGateDialogProps> = ({
@@ -289,11 +293,16 @@ export const BillingGateDialog: React.FC<BillingGateDialogProps> = ({
   stripeEnabled = true,
   returnTo,
   context = 'generation',
+  reason = 'manual',
 }) => {
   const queryClient = useQueryClient();
   const posthog = usePostHog();
   const [falKeyInput, setFalKeyInput] = useState('');
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (open) posthog.capture('billing_gate_shown', { reason, context });
+  }, [open, reason, context, posthog]);
 
   const { data: profile } = useQuery({
     queryKey: ['currentUserProfile'],
@@ -367,7 +376,7 @@ export const BillingGateDialog: React.FC<BillingGateDialogProps> = ({
                 title="Add credits"
                 description="Pay as you go. Auto-reload keeps you generating."
                 variant="primary"
-                onClick={openAddCreditsDialog}
+                onClick={() => openAddCreditsDialog('billing_gate')}
               />
 
               <AskFounderCard />
@@ -467,6 +476,7 @@ export const GlobalBillingGateDialog: React.FC = () => {
       }}
       hasFalKey={data?.hasFalKey ?? false}
       stripeEnabled={data?.stripeEnabled ?? true}
+      reason={open ? getBillingGateReason() : undefined}
     />
   );
 };

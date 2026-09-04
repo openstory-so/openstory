@@ -30,15 +30,18 @@ updates:
       prefix: chore
       include: scope
     groups:
-      # Core + adapters share a peer chain (`ai-openrouter`/`ai-fal` peer on
-      # `@tanstack/ai`). First matching group wins, so this must sit above
-      # `production` / `development` or a weekly run will bump `ai` without
-      # the adapters and fail typecheck. Devtools rides along because
+      # Core + adapters share a peer chain (`ai-openrouter`/`ai-fal`/
+      # `ai-grok`/`ai-byteplus` peer on `@tanstack/ai`). First matching
+      # group wins, so this must sit above `production` / `development` or
+      # a weekly run will bump `ai` without the adapters (or grok/byteplus
+      # without `ai`) and fail typecheck. Devtools rides along because
       # `@tanstack/ai-devtools-core` also peers on `@tanstack/ai`.
       tanstack-ai:
         patterns:
           - '@tanstack/ai'
+          - '@tanstack/ai-byteplus'
           - '@tanstack/ai-fal'
+          - '@tanstack/ai-grok'
           - '@tanstack/ai-openrouter'
           - '@tanstack/react-ai-devtools'
         update-types: ['minor', 'patch']
@@ -68,6 +71,13 @@ updates:
         versions: ['<1.0.0-0']
       - dependency-name: 'drizzle-kit'
         versions: ['<1.0.0-0']
+      # Pinned to a nightly: every release imports typescript/lib/typescript.js,
+      # which TS 7 removed, and breaks `bun motion:codegen`. The nightly is cut
+      # from main after 0.97.3, so GHSA-hhx9-57xq-r5rw is already fixed (and the
+      # affected `buildClientParams` SDK template isn't generated here anyway —
+      # only the typescript/schemas/zod plugins run). Move only once a release
+      # drops the typescript runtime dep. See #1344, #1351.
+      - dependency-name: '@hey-api/openapi-ts'
 
   # Server-side export container (separate package.json + bun.lock).
   - package-ecosystem: bun

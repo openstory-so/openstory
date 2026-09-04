@@ -98,7 +98,7 @@ async function processTask(task: Task): Promise<boolean> {
       prompt: task.prompt,
       imageSize: task.imageSize,
       numImages: 1,
-      resolution: '2K',
+      resolution: '1080p',
     });
 
     const imageUrl = result.imageUrls[0];

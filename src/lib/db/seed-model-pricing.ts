@@ -9,6 +9,10 @@
  */
 
 import { getFalEndpointIds } from '@/lib/ai/fal-endpoints';
+import {
+  FAL_ADVERTISED_CALL_USD,
+  FAL_TYPICAL_UNITS_PER_DEFAULT_CLIP,
+} from '@/lib/ai/fal-typical-units';
 import { usdToMicros } from '@/lib/billing/money';
 import { modelPricing } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
@@ -41,6 +45,12 @@ const units = (unitPriceUsd: number, typicalUnitsPerCall = 1): SeedPrice => ({
 export const LOCAL_FAL_PRICING_SEED: Record<string, SeedPrice> = {
   'fal-ai/nano-banana-2': img(0.08, 1.5),
   'fal-ai/nano-banana-2/edit': img(0.08, 1.5),
+  'google/nano-banana-2-lite': img(
+    FAL_ADVERTISED_CALL_USD['google/nano-banana-2-lite']
+  ),
+  'google/nano-banana-lite/edit': img(
+    FAL_ADVERTISED_CALL_USD['google/nano-banana-lite/edit']
+  ),
   'fal-ai/nano-banana-pro': img(0.14, 1.5),
   'fal-ai/nano-banana-pro/edit': img(0.14, 1.5),
   'openai/gpt-image-2': units(1, 0.22),
@@ -60,23 +70,84 @@ export const LOCAL_FAL_PRICING_SEED: Record<string, SeedPrice> = {
   'fal-ai/qwen-image-2/pro/text-to-image': img(0.04),
   'fal-ai/qwen-image-2/pro/edit': img(0.04),
   'fal-ai/hidream-i1-full': img(0.04),
-  'fal-ai/bytedance/seedream/v5/lite/text-to-image': img(0.04),
-  'fal-ai/bytedance/seedream/v5/lite/edit': img(0.04),
+  'bytedance/seedream/v5/pro/text-to-image': img(0.135),
+  'bytedance/seedream/v5/pro/edit': img(0.135),
+  'fal-ai/flux-2/flash': { unit: 'megapixels', unitPriceUsd: 0.005 },
+  'fal-ai/flux-2/flash/edit': { unit: 'megapixels', unitPriceUsd: 0.005 },
   'fal-ai/flux-2/turbo': { unit: 'megapixels', unitPriceUsd: 0.01 },
   'fal-ai/flux-2/turbo/edit': { unit: 'megapixels', unitPriceUsd: 0.01 },
+  'fal-ai/krea-2/turbo': { unit: 'megapixels', unitPriceUsd: 0.008 },
   'xai/grok-imagine-video/v1.5/image-to-video': {
     unit: 'videos',
     unitPriceUsd: 0.05,
     typicalUnitsPerCall: 1,
   },
+  'xai/grok-imagine-video/v1.5/text-to-video': {
+    unit: 'seconds',
+    unitPriceUsd: 0.14,
+  },
+  'xai/grok-imagine-video/v1.5/reference-to-video': {
+    unit: 'seconds',
+    unitPriceUsd: 0.14,
+  },
   'fal-ai/ltx-2.3/image-to-video': { unit: 'seconds', unitPriceUsd: 0.04 },
+  'fal-ai/ltx-2.3/text-to-video': { unit: 'seconds', unitPriceUsd: 0.08 },
   'fal-ai/veo3.1/image-to-video': { unit: 'seconds', unitPriceUsd: 0.4 },
+  'fal-ai/veo3.1': { unit: 'seconds', unitPriceUsd: 0.4 },
+  'fal-ai/veo3.1/reference-to-video': { unit: 'seconds', unitPriceUsd: 0.4 },
+  // fal 1.1 bills per second by resolution: 360p $0.03, 720p $0.10 (schema
+  // default), 1080p $0.15, 4K $0.30. Seed the default 720p advertised rate.
+  'fal-ai/gemini-omni-1.1-flash/image-to-video': {
+    unit: 'seconds',
+    unitPriceUsd: 0.1,
+  },
+  'fal-ai/gemini-omni-1.1-flash': { unit: 'seconds', unitPriceUsd: 0.1 },
+  'fal-ai/gemini-omni-1.1-flash/reference-to-video': {
+    unit: 'seconds',
+    unitPriceUsd: 0.1,
+  },
   'fal-ai/kling-video/v3/pro/image-to-video': {
     unit: 'seconds',
     unitPriceUsd: 0.07,
   },
+  'fal-ai/kling-video/v3/pro/text-to-video': {
+    unit: 'seconds',
+    unitPriceUsd: 0.168,
+  },
+  'fal-ai/kling-video/o3/pro/reference-to-video': {
+    unit: 'seconds',
+    unitPriceUsd: 0.14,
+  },
   'fal-ai/minimax/hailuo-2.3/pro/image-to-video': units(0.49),
+  'fal-ai/minimax/hailuo-2.3/pro/text-to-video': units(0.49),
+  // Bill-verified unit is the 480p second ($0.025). 768P (our default) bills
+  // 8 units for a 5s clip — not 5 (#1382). Same advertised rates on t2v.
+  'minimax/h3-max/image-to-video': {
+    unit: 'seconds',
+    unitPriceUsd: 0.025,
+    typicalUnitsPerCall:
+      FAL_TYPICAL_UNITS_PER_DEFAULT_CLIP['minimax/h3-max/image-to-video'] ?? 8,
+  },
+  'minimax/h3-max/text-to-video': {
+    unit: 'seconds',
+    unitPriceUsd: 0.025,
+    typicalUnitsPerCall:
+      FAL_TYPICAL_UNITS_PER_DEFAULT_CLIP['minimax/h3-max/text-to-video'] ?? 8,
+  },
+  // Advertised $0.08/s of output video (plus ref-token billing after four
+  // 1024² images — we do not invent a per-ref surcharge).
+  'minimax/h3-max/reference-to-video': {
+    unit: 'seconds',
+    unitPriceUsd: 0.08,
+  },
+  // Seedance 2.5 (sequences + studio). Advertised fal unit is ~$0.014–0.021
+  // per 1000 tokens; local seed is a floor until the pricing cron runs.
+  'bytedance/seedance-2.5/image-to-video': units(0.014),
+  'bytedance/seedance-2.5/reference-to-video': units(0.014),
+  'bytedance/seedance-2.5/text-to-video': units(0.014),
+  // Seedance 2.0 enterprise (fal only — no Ark via).
   'bytedance/seedance-2.0/enterprise/v2/image-to-video': units(0.014),
+  'bytedance/seedance-2.0/enterprise/v2/text-to-video': units(0.014),
   'bytedance/seedance-2.0/enterprise/v2/reference-to-video': units(0.014),
   'fal-ai/elevenlabs/music': { unit: 'minutes', unitPriceUsd: 0.8 },
   'fal-ai/ace-step-1.5': units(0.0005),

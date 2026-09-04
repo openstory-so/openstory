@@ -1,17 +1,24 @@
 import {
-  DEFAULT_IMAGE_MODEL,
-  DEFAULT_MUSIC_MODEL,
-  DEFAULT_VIDEO_MODEL,
   getCompatibleModel,
   isValidAudioModel,
   isValidImageToVideoModel,
   isValidTextToImageModel,
+  referenceOnlyCapableWith,
   type AudioModel,
   type ImageToVideoModel,
   type TextToImageModel,
 } from '@/lib/ai/models';
 import {
-  DEFAULT_ANALYSIS_MODEL,
+  applyGenerationMode,
+  DEFAULT_GENERATION_MODE,
+  isGenerationMode,
+  TURBO_DEFAULT_ANALYSIS,
+  TURBO_DEFAULT_AUDIO,
+  TURBO_DEFAULT_IMAGE,
+  TURBO_DEFAULT_VIDEO,
+  type GenerationMode,
+} from '@/lib/ai/generation-mode';
+import {
   isSelectableAnalysisModelId,
   isValidAnalysisModelId,
   type AnalysisModelId,
@@ -20,6 +27,17 @@ import {
   DEFAULT_ASPECT_RATIO,
   type AspectRatio,
 } from '@/lib/constants/aspect-ratios';
+import {
+  DEFAULT_RESOLUTION,
+  isResolution,
+  type Resolution,
+} from '@/lib/constants/resolutions';
+import {
+  DEFAULT_GENERATION_STOP_AT,
+  isGenerationStage,
+  stopAtFromFlags,
+  type GenerationStage,
+} from '@/lib/generation/pipeline';
 import { useCallback, useEffect, useState } from 'react';
 
 import { getLogger } from '@/lib/observability/logger';
@@ -27,36 +45,73 @@ import { getLogger } from '@/lib/observability/logger';
 const logger = getLogger(['openstory', 'ui', 'use-generation-settings']);
 
 // Bump when product defaults change so prior localStorage snapshots are ignored
-// (v2 → v3: motion + music on for the welcome short aha — #1140).
-const STORAGE_KEY = 'openstory:generation-settings:v3';
+// (v4 → v5: Turbo is the product default. Stop-at is migrated from
+// auto-generate flags when loading a v5 snapshot — #1408). Adding a FIELD is
+// not a reason to bump — `loadSettings` falls back per-field, so an older
+// snapshot still loads. Bumping strands e2e's pinned settings
+// (`GENERATION_SETTINGS_KEY` in e2e/fixtures/test-utils.ts mirrors this
+// literal), which silently reverts the recorded pipeline to Turbo defaults and
+// fails as an aimock fixture miss.
+const STORAGE_KEY = 'openstory:generation-settings:v5';
 
 type GenerationSettings = {
+  generationMode: GenerationMode;
   aspectRatio: AspectRatio;
+  resolution: Resolution;
   analysisModels: AnalysisModelId[];
   imageModel: TextToImageModel;
   imageModels: TextToImageModel[];
   motionModel: ImageToVideoModel;
   videoModels: ImageToVideoModel[];
-  autoGenerateMotion: boolean;
+  stopAt: GenerationStage;
+  /** Skip the Generate stop-at alert and reuse `stopAt`. */
+  rememberStopAt: boolean;
+  /** Render a still per shot first (the frame-based workflow); off = reference-only. */
+  generateStartFrames: boolean;
   musicModel: AudioModel;
   audioModels: AudioModel[];
-  autoGenerateMusic: boolean;
 };
 
-const DEFAULT_SETTINGS: GenerationSettings = {
+function withMode(settings: GenerationSettings): GenerationSettings {
+  const lists = applyGenerationMode(
+    {
+      generationMode: settings.generationMode,
+      analysisModels: settings.analysisModels,
+      imageModels: settings.imageModels,
+      videoModels: settings.videoModels,
+      audioModels: settings.audioModels,
+      aspectRatio: settings.aspectRatio,
+    },
+    settings.generationMode
+  );
+  return {
+    ...settings,
+    ...lists,
+    imageModel: lists.imageModels[0] ?? settings.imageModel,
+    motionModel: lists.videoModels[0] ?? settings.motionModel,
+    musicModel: lists.audioModels[0] ?? settings.musicModel,
+  };
+}
+
+const DEFAULT_SETTINGS: GenerationSettings = withMode({
+  generationMode: DEFAULT_GENERATION_MODE,
   aspectRatio: DEFAULT_ASPECT_RATIO,
-  analysisModels: [DEFAULT_ANALYSIS_MODEL],
-  imageModel: DEFAULT_IMAGE_MODEL,
-  imageModels: [DEFAULT_IMAGE_MODEL],
-  motionModel: DEFAULT_VIDEO_MODEL,
-  videoModels: [DEFAULT_VIDEO_MODEL],
+  resolution: DEFAULT_RESOLUTION,
+  analysisModels: [TURBO_DEFAULT_ANALYSIS],
+  imageModel: TURBO_DEFAULT_IMAGE,
+  imageModels: [TURBO_DEFAULT_IMAGE],
+  motionModel: TURBO_DEFAULT_VIDEO,
+  videoModels: [TURBO_DEFAULT_VIDEO],
   // Motion + music on by default so the first Generate is a short film aha
   // (welcome grant sized for a ~30s stills+motion+music board — #1140).
-  autoGenerateMotion: true,
-  musicModel: DEFAULT_MUSIC_MODEL,
-  audioModels: [DEFAULT_MUSIC_MODEL],
-  autoGenerateMusic: true,
-};
+  stopAt: DEFAULT_GENERATION_STOP_AT,
+  rememberStopAt: false,
+  // Off by default: a new sequence renders reference-only; start frames are
+  // the opt-in for steerable composition.
+  generateStartFrames: false,
+  musicModel: TURBO_DEFAULT_AUDIO,
+  audioModels: [TURBO_DEFAULT_AUDIO],
+});
 
 /**
  * Validates aspect ratio value
@@ -120,11 +175,11 @@ function loadSettings(): GenerationSettings {
     const analysisModels =
       storedAnalysisModels.length > 0
         ? storedAnalysisModels
-        : [DEFAULT_ANALYSIS_MODEL];
+        : [TURBO_DEFAULT_ANALYSIS];
 
     const imageModel = isValidTextToImageModel(parsed.imageModel)
       ? parsed.imageModel
-      : DEFAULT_IMAGE_MODEL;
+      : TURBO_DEFAULT_IMAGE;
 
     // Load imageModels array, falling back to [imageModel] for backward compat
     const imageModels =
@@ -137,7 +192,7 @@ function loadSettings(): GenerationSettings {
 
     const rawMotionModel = isValidImageToVideoModel(parsed.motionModel)
       ? parsed.motionModel
-      : DEFAULT_VIDEO_MODEL;
+      : TURBO_DEFAULT_VIDEO;
 
     // Ensure motion model is compatible with aspect ratio
     const motionModel = getCompatibleModel(rawMotionModel, aspectRatio);
@@ -157,16 +212,31 @@ function loadSettings(): GenerationSettings {
       ...new Set(rawVideoModels.map((m) => getCompatibleModel(m, aspectRatio))),
     ];
 
-    const autoGenerateMotion =
-      'autoGenerateMotion' in parsed &&
-      typeof parsed.autoGenerateMotion === 'boolean'
-        ? parsed.autoGenerateMotion
+    const rawStopAt = 'stopAt' in parsed ? parsed.stopAt : undefined;
+    const stopAt = isGenerationStage(rawStopAt)
+      ? rawStopAt
+      : stopAtFromFlags({
+          autoGenerateMotion:
+            'autoGenerateMotion' in parsed &&
+            typeof parsed.autoGenerateMotion === 'boolean'
+              ? parsed.autoGenerateMotion
+              : true,
+          autoGenerateMusic:
+            'autoGenerateMusic' in parsed &&
+            typeof parsed.autoGenerateMusic === 'boolean'
+              ? parsed.autoGenerateMusic
+              : true,
+        });
+
+    const rememberStopAt =
+      'rememberStopAt' in parsed && typeof parsed.rememberStopAt === 'boolean'
+        ? parsed.rememberStopAt
         : false;
 
     const musicModel =
       'musicModel' in parsed && isValidAudioModel(parsed.musicModel)
         ? parsed.musicModel
-        : DEFAULT_MUSIC_MODEL;
+        : TURBO_DEFAULT_AUDIO;
 
     // Load audioModels array, falling back to [musicModel] for backward compat.
     const audioModels =
@@ -177,24 +247,47 @@ function loadSettings(): GenerationSettings {
         ? parsed.audioModels
         : [musicModel];
 
-    const autoGenerateMusic =
-      'autoGenerateMusic' in parsed &&
-      typeof parsed.autoGenerateMusic === 'boolean'
-        ? parsed.autoGenerateMusic
-        : false;
+    const bag: Record<string, unknown> = parsed;
+    const generationMode = isGenerationMode(bag.generationMode)
+      ? bag.generationMode
+      : DEFAULT_GENERATION_MODE;
+    const resolution = isResolution(bag.resolution)
+      ? bag.resolution
+      : DEFAULT_RESOLUTION;
 
-    return {
+    const settings = withMode({
+      generationMode,
       aspectRatio,
+      resolution,
       analysisModels,
       imageModel,
       imageModels,
       motionModel,
       videoModels,
-      autoGenerateMotion,
+      stopAt,
+      rememberStopAt,
+      generateStartFrames:
+        'generateStartFrames' in parsed &&
+        typeof parsed.generateStartFrames === 'boolean'
+          ? parsed.generateStartFrames
+          : false,
       musicModel,
       audioModels,
-      autoGenerateMusic,
-    };
+    });
+
+    // A stored selection can predate the mode, or predate a model losing its
+    // reference-to-video route — either way, restoring it would hand the
+    // create schema a selection it rejects. Checked against the post-`withMode`
+    // list, since the mode can swap the video models out from under it. Asks
+    // the same via-aware question as `createSequenceSchema` (not the model-only
+    // floor): Grok Imagine is accepted by the server and must not be flipped
+    // back to start frames on reload.
+    return !settings.generateStartFrames &&
+      !settings.videoModels.every((model) =>
+        referenceOnlyCapableWith(model, { xai: true })
+      )
+      ? { ...settings, generateStartFrames: true }
+      : settings;
   } catch (error) {
     logger.warn('Failed to load settings from localStorage:', { err: error });
     return DEFAULT_SETTINGS;
@@ -263,6 +356,8 @@ export function useGenerationSettings() {
           videoModels: compatibleVideoModels,
         };
       }
+
+      updated = withMode(updated);
 
       saveSettings(updated);
       return updated;

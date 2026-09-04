@@ -42,7 +42,7 @@ type ModelItem = {
   id: string;
   name: string;
   group: string;
-  badge?: 'open-source' | 'proprietary';
+  badge?: 'open-weight' | 'proprietary';
   /** Show a "Recommended" badge with the given tooltip text */
   recommendedFor?: string;
   /**
@@ -194,7 +194,9 @@ export const BaseModelSelector: React.FC<BaseModelSelectorProps> = ({
       .join(' ');
   };
 
-  const showGroupHeaders = groupOrder.length > 1;
+  const showGroupHeaders =
+    groupOrder.filter((key) => (groupedModels[key]?.length ?? 0) > 0).length >
+    1;
 
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
@@ -209,7 +211,10 @@ export const BaseModelSelector: React.FC<BaseModelSelectorProps> = ({
           <ChevronDown className="ml-2 size-4 shrink-0" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent className="w-[300px] max-h-[400px] overflow-y-auto">
+      <DropdownMenuContent
+        collisionPadding={12}
+        className="w-[min(300px,calc(100vw-2rem))] max-h-[min(24rem,var(--radix-dropdown-menu-content-available-height,24rem))] overflow-y-auto"
+      >
         <div className="flex items-center justify-between px-2 py-1.5">
           <DropdownMenuLabel className="p-0 text-xs">{label}</DropdownMenuLabel>
           {multiSelect && (
@@ -276,9 +281,9 @@ export const BaseModelSelector: React.FC<BaseModelSelectorProps> = ({
                           </Tooltip>
                         </TooltipProvider>
                       )}
-                      {model.badge === 'open-source' && (
+                      {model.badge === 'open-weight' && (
                         <span className="shrink-0 rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-500">
-                          Open Source
+                          Open Weight
                         </span>
                       )}
                     </span>

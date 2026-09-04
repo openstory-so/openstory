@@ -297,10 +297,15 @@ export function StyleSelector({
           // bottom padding moves outside the clip (pb-0 + mb-2) so overflow
           // tiles can't peek into it. Total height matches the measured state
           // exactly: pt + row + mb == pt + row + pb at each breakpoint.
+          // The clip is a clip-path, not overflow-hidden, so it can extend
+          // 2px past the box on the sides and bottom: the selected tile's
+          // scale-105 bleeds ~1.6px and overflow-hidden shaved its highlight
+          // (#1279). Overflow tiles peek 2px into that slack — transparent
+          // border for style tiles; a faint dashed sliver if "+N More" wraps.
           !measured &&
             // sm:py-2 beats unprefixed pb-0, so sm:pb-0 is required or SSR
             // keeps padding AND sm:mb-2 — an 8px jump when measured (#1255).
-            'grid-rows-[auto] [grid-auto-rows:0] gap-y-0 overflow-hidden pb-0 mb-1 sm:pb-0 sm:mb-2'
+            'grid-rows-[auto] [grid-auto-rows:0] gap-y-0 [clip-path:inset(0_-2px_-2px)] pb-0 mb-1 sm:pb-0 sm:mb-2'
         )}
         role="grid"
         aria-label="Style selection"

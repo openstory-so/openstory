@@ -12,11 +12,13 @@
 import {
   DEFAULT_MUSIC_MODEL,
   DEFAULT_VIDEO_MODEL,
+  IMAGE_TO_VIDEO_MODELS,
   isValidAudioModel,
   safeAudioModel,
   safeImageToVideoModel,
   safeTextToImageModel,
 } from '@/lib/ai/models';
+import { canRenderReferenceOnly } from '@/lib/motion/motion-generation';
 import {
   DEFAULT_ANALYSIS_MODEL,
   getAnalysisModelById,
@@ -26,11 +28,16 @@ import { resolveAudioModels } from '@/lib/ai/resolve-audio-models';
 import { resolveImageModels } from '@/lib/ai/resolve-image-models';
 import { resolveVideoModels } from '@/lib/ai/resolve-video-models';
 import { getEffectiveFalPricing } from '@/lib/ai/fal-pricing-live';
-import { requireCredits } from '@/lib/billing/preflight';
+import {
+  releaseReservationOnThrow,
+  reserveRunCredits,
+} from '@/lib/billing/preflight';
 import { estimateStoryboardPreflightCost } from '@/lib/billing/storyboard-preflight-cost';
 import { generateId } from '@/lib/db/id';
 import type { ScopedDb } from '@/lib/db/scoped';
+import { toWorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import { ValidationError } from '@/lib/errors';
+import { DEFAULT_RESOLUTION } from '@/lib/constants/resolutions';
 import {
   AUTO_STYLE_ID,
   type AutoStyleDraft,
@@ -38,7 +45,11 @@ import {
 } from '@/lib/style/auto-style';
 import { parseStyleConfig } from '@/lib/style/style-config';
 import type { Sequence } from '@/types/database';
-import type { CreateSequenceInput } from '@/lib/schemas/sequence.schemas';
+import {
+  REFERENCE_ONLY_MODEL_ERROR,
+  type CreateSequenceInput,
+} from '@/lib/schemas/sequence.schemas';
+import { UNTITLED_SEQUENCE_TITLE } from '@/lib/sequences/untitled-sequence-title';
 import { copySequenceElements } from '@/lib/sequence-elements/copy-sequence-elements';
 import { promoteTempElements } from '@/lib/sequence-elements/promote-temp-elements';
 import { captureProductEvent } from '@/lib/observability/product-events';
@@ -91,6 +102,11 @@ export type CreateSequencesContext = {
   scopedDb: ScopedDb;
   user: { id: string };
   teamId: string;
+  /**
+   * When false, the storyboard run skips the ready email (#1276). `/api/v1`
+   * callers poll; dashboard creates leave this undefined (send).
+   */
+  notify?: boolean;
 };
 
 export type CreateSequencesResult = {
@@ -116,13 +132,16 @@ export const createSequences = createServerOnlyFn(
       script,
       styleId,
       aspectRatio,
+      resolution = DEFAULT_RESOLUTION,
       analysisModels: requestedAnalysisModels,
       imageModel: imageModelLegacy,
       imageModels: imageModelsInput,
       videoModel,
       videoModels: videoModelsInput,
-      autoGenerateMotion = true,
-      autoGenerateMusic = true,
+      stopAt,
+      autoGenerateMotion,
+      autoGenerateMusic,
+      generateStartFrames = false,
       musicModel,
       audioModels: audioModelsInput,
       targetDurationSeconds,
@@ -209,6 +228,30 @@ export const createSequences = createServerOnlyFn(
       );
     }
 
+    // Reference-only, re-asked against THIS team's real keys. `createSequenceSchema`
+    // is isomorphic so it could only ask the widest question (capable on some
+    // via) — which lets Grok Imagine through. Grok renders reference-only shots
+    // on the native xAI route only; without an xAI key it falls back to a fal
+    // image-to-video endpoint that requires `image_url`, and every shot would
+    // fail at submit. Reject here instead, before a single credit is reserved.
+    if (!generateStartFrames) {
+      // `credentials` is the flattened key-resolver surface these helpers take
+      // — the same one the workflows get, so create-time and submit-time ask
+      // the identical question.
+      const { credentials } = toWorkflowScopedDb(context.scopedDb);
+      const incapable: string[] = [];
+      for (const model of videoModels) {
+        if (!(await canRenderReferenceOnly(model, credentials))) {
+          incapable.push(IMAGE_TO_VIDEO_MODELS[model].name);
+        }
+      }
+      if (incapable.length > 0) {
+        throw new ValidationError(
+          `${REFERENCE_ONLY_MODEL_ERROR} (${incapable.join(', ')} needs an xAI key on this team.)`
+        );
+      }
+    }
+
     // Validate and resolve audio models (sequence-level, mirrors the pattern).
     const validatedAudioModels = audioModelsInput?.map((m) =>
       safeAudioModel(m, DEFAULT_MUSIC_MODEL)
@@ -230,26 +273,22 @@ export const createSequences = createServerOnlyFn(
       throw new Error('Style ID and aspect ratio are required');
     }
 
-    await requireCredits(
-      context.scopedDb,
-      estimateStoryboardPreflightCost({
-        script,
-        imageModel: primaryImageModel,
-        imageModelCount: imageModels.length,
-        aspectRatio,
-        autoGenerateMotion,
-        videoModels,
-        autoGenerateMusic,
-        audioModels,
-        // Align with Generate ActionCost (duration chip → scene count + clip length).
-        targetDurationSeconds,
-        pricing: await getEffectiveFalPricing(),
-      }),
-      {
-        providers: ['fal', 'openrouter'],
-        errorMessage: 'Insufficient credits to generate storyboard',
-      }
-    );
+    const envelopeCost = estimateStoryboardPreflightCost({
+      script,
+      imageModel: primaryImageModel,
+      imageModelCount: imageModels.length,
+      aspectRatio,
+      resolution,
+      autoGenerateMotion,
+      stopAt,
+      videoModels,
+      autoGenerateMusic,
+      audioModels,
+      referenceOnly: !generateStartFrames,
+      // Align with Generate ActionCost (duration chip → scene count + clip length).
+      targetDurationSeconds,
+      pricing: await getEffectiveFalPricing(),
+    });
 
     // Automatic style (#1213). `'auto'` asks for a fresh script-derived style;
     // a style already bound to another sequence (regenerate / copy of an auto
@@ -258,97 +297,113 @@ export const createSequences = createServerOnlyFn(
 
     const created = await Promise.all(
       analysisModels.map(async (modelId) => {
-        // Only persist video/music model choices when the user actually opts
-        // into auto-generation. Otherwise the sequence ends up with a "ghost"
-        // model preference the user never picked, which surfaces stale values
-        // in the header chip and batch footer. Tracked in #714.
-        const persistedMusicModel = autoGenerateMusic
-          ? primaryAudioModel
-          : undefined;
-
         const sequenceId = generateId();
-        const boundStyle =
-          styleSource.kind === 'library'
-            ? null
-            : await context.scopedDb.styles.createForSequence({
-                sequenceId,
-                draft: styleSource.draft,
-              });
-
-        const sequence = await context.scopedDb.sequences.create({
-          id: sequenceId,
-          title: data.title || 'Untitled Sequence',
-          script: data.script,
-          styleId: boundStyle?.id ?? styleId,
-          deferStyleSnapshot: styleSource.kind === 'pending',
-          aspectRatio,
-          analysisModel:
-            getAnalysisModelById(modelId)?.id ||
-            resolveModelForCountry(DEFAULT_ANALYSIS_MODEL, country),
-          imageModel: primaryImageModel,
-          videoModel: autoGenerateMotion ? primaryVideoModel : undefined,
-          musicModel: persistedMusicModel,
-          autoGenerateMotion,
-          autoGenerateMusic,
-          suggestedTalentIds: suggestedTalentIds?.length
-            ? suggestedTalentIds
-            : undefined,
-          suggestedLocationIds: suggestedLocationIds?.length
-            ? suggestedLocationIds
-            : undefined,
-        });
-
-        // Promote any draft element uploads to this new sequence (temp → final
-        // path + insert rows + trigger vision). Runs before workflow trigger
-        // so analyze-script-workflow can wait for vision to complete.
-        if (elementUploads && elementUploads.length > 0) {
-          await promoteTempElements({
-            scopedDb: context.scopedDb,
-            teamId,
-            userId: context.user.id,
-            sequenceId: sequence.id,
-            uploads: elementUploads,
-          });
-        }
-
-        // Carry forward elements from the source sequence when regenerating.
-        if (sourceSequenceId) {
-          await copySequenceElements({
-            scopedDb: context.scopedDb,
-            teamId,
-            userId: context.user.id,
-            sourceSequenceId,
-            targetSequenceId: sequence.id,
-          });
-        }
-
-        const workflowInput: StoryboardTriggerInput = {
-          userId: context.user.id,
-          teamId,
-          sequenceId: sequence.id,
-          imageModels,
-          videoModels,
-          options: {
-            shotsPerScene: 3,
-            generateThumbnails: true,
-            generateDescriptions: true,
-            aiProvider: 'openrouter',
-            regenerateAll: true,
-          },
-          autoGenerateMotion,
-          autoGenerateMusic,
-          musicModel: autoGenerateMusic ? primaryAudioModel : undefined,
-          audioModels: autoGenerateMusic ? audioModels : undefined,
-          suggestedTalentIds,
-          suggestedLocationIds,
-        };
-
-        const { workflowRunId } = await triggerStoryboard(
+        const reservationId = await reserveRunCredits(
           context.scopedDb,
-          workflowInput
+          envelopeCost,
+          {
+            providers: ['fal', 'openrouter'],
+            errorMessage: 'Insufficient credits to generate storyboard',
+            sequenceId,
+          }
         );
 
-        return { sequence, workflowRunId };
+        return releaseReservationOnThrow(
+          context.scopedDb,
+          reservationId,
+          async () => {
+            const boundStyle =
+              styleSource.kind === 'library'
+                ? null
+                : await context.scopedDb.styles.createForSequence({
+                    sequenceId,
+                    draft: styleSource.draft,
+                  });
+
+            const sequence = await context.scopedDb.sequences.create({
+              id: sequenceId,
+              title: data.title || UNTITLED_SEQUENCE_TITLE,
+              script: data.script,
+              styleId: boundStyle?.id ?? styleId,
+              deferStyleSnapshot: styleSource.kind === 'pending',
+              aspectRatio,
+              resolution,
+              analysisModel:
+                getAnalysisModelById(modelId)?.id ||
+                resolveModelForCountry(DEFAULT_ANALYSIS_MODEL, country),
+              imageModel: primaryImageModel,
+              // Persisted even when this run stops before motion/music —
+              // continue-from-DAG uses them on the next stage.
+              videoModel: primaryVideoModel,
+              musicModel: primaryAudioModel,
+              autoGenerateMotion,
+              autoGenerateMusic,
+              generationStopAt: stopAt,
+              generateStartFrames,
+              suggestedTalentIds: suggestedTalentIds?.length
+                ? suggestedTalentIds
+                : undefined,
+              suggestedLocationIds: suggestedLocationIds?.length
+                ? suggestedLocationIds
+                : undefined,
+            });
+
+            // Promote any draft element uploads to this new sequence (temp → final
+            // path + insert rows + trigger vision). Runs before workflow trigger
+            // so analyze-script-workflow can wait for vision to complete.
+            if (elementUploads && elementUploads.length > 0) {
+              await promoteTempElements({
+                scopedDb: context.scopedDb,
+                teamId,
+                userId: context.user.id,
+                sequenceId: sequence.id,
+                uploads: elementUploads,
+              });
+            }
+
+            // Carry forward elements from the source sequence when regenerating.
+            if (sourceSequenceId) {
+              await copySequenceElements({
+                scopedDb: context.scopedDb,
+                teamId,
+                userId: context.user.id,
+                sourceSequenceId,
+                targetSequenceId: sequence.id,
+              });
+            }
+
+            const workflowInput: StoryboardTriggerInput = {
+              userId: context.user.id,
+              teamId,
+              sequenceId: sequence.id,
+              reservationId,
+              notify: context.notify,
+              imageModels,
+              videoModels,
+              options: {
+                shotsPerScene: 3,
+                generateThumbnails: true,
+                generateDescriptions: true,
+                aiProvider: 'openrouter',
+                regenerateAll: true,
+              },
+              autoGenerateMotion,
+              autoGenerateMusic,
+              stopAt,
+              musicModel: primaryAudioModel,
+              audioModels,
+              suggestedTalentIds,
+              suggestedLocationIds,
+            };
+
+            const { workflowRunId } = await triggerStoryboard(
+              context.scopedDb,
+              workflowInput
+            );
+
+            return { sequence, workflowRunId };
+          }
+        );
       })
     );
 
@@ -374,6 +429,7 @@ export const createSequences = createServerOnlyFn(
         style_id: styleId,
         automatic_style: styleSource.kind !== 'library',
         aspect_ratio: aspectRatio,
+        resolution,
         sequence_ids: sequenceIds,
         sequence_count: sequenceIds.length,
         analysis_model_count: analysisModels.length,
@@ -382,6 +438,7 @@ export const createSequences = createServerOnlyFn(
         audio_models: audioModels,
         auto_generate_motion: autoGenerateMotion,
         auto_generate_music: autoGenerateMusic,
+        stop_at: stopAt,
         script_length: data.script.length,
         source: sourceSequenceId ? 'regenerate' : 'create',
       },

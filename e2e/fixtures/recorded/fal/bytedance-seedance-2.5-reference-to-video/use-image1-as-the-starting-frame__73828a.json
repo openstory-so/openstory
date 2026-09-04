@@ -1,0 +1,24 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use @Image1 as the starting frame.\nStatic high-angle lock-off on the scuffed black stage floor. SCARLETT's outstretched hand slides the last inch forward, fingertips touching the @Image3, then drags it slowly across the floor toward her, the tube rolling a quarter turn as it scrapes over the paint-marked boards. Her fingers curl and close around it, the ring catching the work light, and she lifts it cleanly up and out of the bottom-right of frame. Her arm withdraws, leaving the empty floor, the crumpled napkin set list and the water bottle behind.\n\nWater trembles faintly in the bottle as the floor shifts. The work light holds steady, its warm pool unchanged, dust drifting through the beam.\n\nlarge empty room tone, faint electrical hum from the work light. metal tube scraping across wooden stage floor, soft roll and click as the lipstick turns, fabric rustle of a sleeve, distant single footstep offstage.\n\nNo BGM, no music. Generate only dialogue, environmental sounds, and action sounds. Single continuous shot, no cuts. Avoid jitter and bent limbs.\n\nReference images:\n@Image2: SCARLETT VEGA — keep visually consistent throughout the shot.",
+        "model": "bytedance/seedance-2.0/enterprise/v2/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://v3b.fal.media/files/b/0aa74e8b/cthypHe8tuOXcjRKN_6Fl_video.mp4",
+            "content_type": "video/mp4",
+            "file_name": "video.mp4",
+            "file_size": 1562768
+          },
+          "seed": 924864169
+        },
+        "status": 200,
+        "billableUnits": 108.9
+      }
+    }
+  ]
+}

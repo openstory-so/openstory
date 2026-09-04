@@ -43,8 +43,8 @@ export const LocationRecastConfirmDialog: React.FC<
               <>
                 {' '}
                 <strong>
-                  {affectedShotCount} shot
-                  {affectedShotCount !== 1 ? 's' : ''}
+                  {affectedShotCount}{' '}
+                  {affectedShotCount === 1 ? 'shot' : 'shots'}
                 </strong>{' '}
                 at this location will be regenerated with the new look.
               </>
@@ -54,14 +54,8 @@ export const LocationRecastConfirmDialog: React.FC<
         <AlertDialogFooter>
           <AlertDialogCancel disabled={isLoading}>Cancel</AlertDialogCancel>
           <AlertDialogAction onClick={onConfirm} disabled={isLoading}>
-            {isLoading ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Updating...
-              </>
-            ) : (
-              'Update Reference'
-            )}
+            {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            <span>{isLoading ? 'Updating…' : 'Update Reference'}</span>
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

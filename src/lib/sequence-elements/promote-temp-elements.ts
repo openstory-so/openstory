@@ -119,7 +119,7 @@ export async function promoteTempElements(params: {
       await triggerElementVision({
         elementId: element.id,
         sequenceId,
-        imageUrl: element.imageUrl,
+        imageUrl: publicUrl,
         filename: element.uploadedFilename,
         token: element.token,
         teamId,

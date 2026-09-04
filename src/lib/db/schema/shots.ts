@@ -50,6 +50,14 @@ export const shots = snakeCase.table(
     // target, which is what makes a workflow replay hit the same shot row.
     shotNumber: integer(),
     durationMs: integer().default(3000),
+    /**
+     * Per-shot override of "does this shot animate from a start frame".
+     * NULL = inherit the sequence (`sequences.generateStartFrames`).
+     *
+     * Never read raw — resolve with `usesStartFrame()`, which documents what
+     * flipping it costs.
+     */
+    useStartFrame: integer({ mode: 'boolean' }),
     // A shot owns no video columns (#1067 phase 2d). The whole surface —
     // url/path/model/hash AND status/error/run id — is projected from the
     // segment's `video_variants` rows by `toShotView`. Rendering is
@@ -69,6 +77,12 @@ export const shots = snakeCase.table(
     // A shot owns no audio columns (#1067): per-shot audio was never built —
     // music is sequence-level (`sequences.music*`) and dialogue rides inside
     // the video.
+    // Soft-delete (#1108 Phase 1, undoable): excluded from default lists /
+    // staleness plans / export / theatre, but the row, its frames, versions
+    // and hashes are all retained for a lossless restore. `shotNumber` keeps
+    // its slot (the partial unique index spans deleted rows, so nothing can
+    // steal it); reorder renumbers deleted rows into the tail band.
+    deletedAt: integer({ mode: 'timestamp' }),
     createdAt: integer({ mode: 'timestamp' })
       .$defaultFn(() => new Date())
       .notNull(),

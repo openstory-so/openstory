@@ -3,7 +3,13 @@
  */
 
 import { Heading, Section, Text } from '@react-email/components';
-import { EmailLayout, headingClass, paragraphClass } from './email-layout';
+import {
+  detailRowStyle,
+  EmailLayout,
+  headingStyle,
+  mutedBoxStyle,
+  paragraphStyle,
+} from './email-layout';
 
 interface AbuseReportEmailProps {
   appName: string;
@@ -12,8 +18,6 @@ interface AbuseReportEmailProps {
   targetType: string;
   hasTrace: boolean;
 }
-
-const detailRowClass = 'm-0 text-sm leading-6 text-gray-700';
 
 export const AbuseReportEmail: React.FC<AbuseReportEmailProps> = ({
   appName,
@@ -24,25 +28,25 @@ export const AbuseReportEmail: React.FC<AbuseReportEmailProps> = ({
 }) => (
   <EmailLayout appName={appName} preview={`New ${reason} report ${reference}`}>
     <Section>
-      <Heading as="h2" className={headingClass}>
+      <Heading as="h2" style={headingStyle}>
         New content report
       </Heading>
-      <Text className={paragraphClass}>
+      <Text style={paragraphStyle}>
         A report landed in the moderation queue. Open Admin → Moderation to
         triage it.
       </Text>
 
-      <Section className="my-6 rounded-lg bg-gray-100 p-6">
-        <Text className={detailRowClass}>
+      <Section style={mutedBoxStyle}>
+        <Text style={detailRowStyle}>
           <strong>Reference:</strong> {reference}
         </Text>
-        <Text className={detailRowClass}>
+        <Text style={detailRowStyle}>
           <strong>Reason:</strong> {reason}
         </Text>
-        <Text className={detailRowClass}>
+        <Text style={detailRowStyle}>
           <strong>Target:</strong> {targetType}
         </Text>
-        <Text className={detailRowClass}>
+        <Text style={detailRowStyle}>
           <strong>Trace id supplied:</strong> {hasTrace ? 'yes' : 'no'}
         </Text>
       </Section>

@@ -47,6 +47,23 @@ describe('buildSceneInsert', () => {
     // The script is NOT mapped onto the row — it lives in scene_script_versions.
     expect(row).not.toHaveProperty('originalScript');
   });
+
+  it('stores a plain-text title when the analysis title carries markdown', () => {
+    const row = buildSceneInsert(
+      'seq-1',
+      makeScene({
+        metadata: {
+          title: '**Entrance**',
+          durationSeconds: 4,
+          location: 'INT. OFFICE - DAY',
+          timeOfDay: 'day',
+          storyBeat: 'introduction',
+        },
+      }),
+      0
+    );
+    expect(row.title).toBe('Entrance');
+  });
 });
 
 describe('buildSceneInserts', () => {
@@ -103,6 +120,7 @@ function makeSceneRow(id: string, orderIndex: number): SceneRow {
     title: null,
     continuity: null,
     selectedScriptVersionId: null,
+    deletedAt: null,
     createdAt: now,
     updatedAt: now,
   };

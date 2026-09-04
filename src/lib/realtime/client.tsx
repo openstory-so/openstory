@@ -21,9 +21,9 @@ import type {
  * Exactly **one** `EventSource` is open at a time, carrying the union of every
  * channel the mounted hooks have registered: `/api/realtime?channels=a,b,c`
  * fans out to one `RealtimeChannel` Durable Object per channel server-side and
- * merges them back into that single stream. The DO holds the stream open, so
- * the browser's native `EventSource` reconnect is the only reconnection logic
- * we need — no manual reconnect loop.
+ * merges them back into that single stream. The DO holds each sub-stream open.
+ * EventSource reconnects the merged `/api/realtime` response if it dies; the
+ * worker also re-subscribes to a channel's DO if that sub-stream ends (#1332).
  *
  * One connection per channel is NOT a valid alternative: browsers cap
  * concurrent HTTP/1.1 connections per origin at 6, and an SSE stream holds its

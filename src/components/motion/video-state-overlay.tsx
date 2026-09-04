@@ -1,14 +1,38 @@
 import { BlobLoader } from '@/components/ui/blob-loader';
+import {
+  CONTENT_REJECTION_USER_HINT,
+  CONTENT_REJECTION_USER_TITLE,
+  isContentRejectionError,
+} from '@/lib/ai/content-rejection';
 import { cn } from '@/lib/utils';
-import { AlertCircle, Loader2 } from 'lucide-react';
+import { AlertCircle, Info, Loader2 } from 'lucide-react';
 
-type ShotStatus = 'pending' | 'generating' | 'completed' | 'failed' | null;
+// 'cancelled' (#1108) renders like 'pending': no failure banner, no spinner —
+// a deliberate cancel is neutral, and any previously selected video plays.
+type ShotStatus =
+  | 'pending'
+  | 'generating'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+  | null;
 
 type VideoStateOverlayProps = {
   thumbnailUrl?: string | null;
+  /**
+   * A clip is mounted and playable underneath. It is showing its own first
+   * frame, so the tile is NOT blank and the loader must stay off — without
+   * this, a shot with a video but no poster (reference-only, which renders no
+   * still) gets a spinner drawn over a finished clip.
+   */
+  hasPlayableVideo?: boolean;
   videoStatus: ShotStatus;
+  /** Still-image lifecycle — a content-blocked still is a warning, not a crash. */
+  imageStatus?: ShotStatus;
+  imageError?: string | null;
+  videoError?: string | null;
   className?: string;
-  progressMessage?: string;
+  progressMessage?: React.ReactNode;
   /**
    * In-flight retry state (#882). When set, the overlay reads "Retrying
    * (attempt/maxAttempts)…" (or a bare "Retrying…" when the budget has no fixed
@@ -21,14 +45,24 @@ type VideoStateOverlayProps = {
 
 export const VideoStateOverlay: React.FC<VideoStateOverlayProps> = ({
   thumbnailUrl,
+  hasPlayableVideo = false,
   videoStatus,
+  imageStatus,
+  imageError,
+  videoError,
   className,
   progressMessage,
   retry,
 }) => {
-  // Only show loader when there's no thumbnail image yet
-  const hasNoThumbnail = !thumbnailUrl;
-  const hasFailed = videoStatus === 'failed';
+  // Only show the loader when the tile would otherwise be blank. A playable
+  // clip counts as content: it renders its own first frame.
+  const hasNoThumbnail = !thumbnailUrl && !hasPlayableVideo;
+  const imageFailed = imageStatus === 'failed';
+  const videoFailed = videoStatus === 'failed';
+  const hasFailed = videoFailed || (imageFailed && hasNoThumbnail);
+  const contentBlocked =
+    (imageFailed && isContentRejectionError(imageError)) ||
+    (videoFailed && isContentRejectionError(videoError));
   const retryMessage = retry
     ? retry.maxAttempts
       ? `Retrying (${retry.attempt}/${retry.maxAttempts})…`
@@ -58,7 +92,9 @@ export const VideoStateOverlay: React.FC<VideoStateOverlayProps> = ({
   return (
     <div
       className={cn(
-        'absolute inset-0 z-10 flex items-center justify-center',
+        // pointer-events-none: the failed overlay is informational. Clicks
+        // must reach the start-frame share control (and the still itself).
+        'pointer-events-none absolute inset-0 z-10 flex items-center justify-center',
         className
       )}
       style={{
@@ -80,14 +116,25 @@ export const VideoStateOverlay: React.FC<VideoStateOverlayProps> = ({
           </>
         )}
 
-        {hasFailed && (
-          <>
-            <AlertCircle className="h-8 w-8 text-destructive" />
-            <p className="text-sm font-medium text-destructive">
-              Generation failed
-            </p>
-          </>
-        )}
+        {hasFailed &&
+          (contentBlocked ? (
+            <>
+              <Info className="h-8 w-8 text-muted-foreground" />
+              <p className="max-w-xs text-center text-sm font-medium">
+                {CONTENT_REJECTION_USER_TITLE}
+              </p>
+              <p className="max-w-xs text-center text-xs text-muted-foreground">
+                {CONTENT_REJECTION_USER_HINT}
+              </p>
+            </>
+          ) : (
+            <>
+              <AlertCircle className="h-8 w-8 text-destructive" />
+              <p className="text-sm font-medium text-destructive">
+                Generation failed
+              </p>
+            </>
+          ))}
       </div>
     </div>
   );

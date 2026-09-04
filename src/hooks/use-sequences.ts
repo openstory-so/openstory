@@ -1,18 +1,24 @@
 import {
   addModelToSequenceFn,
+  archiveSequenceFn,
   createSequenceFn,
+  getArchivedSequencesFn,
   getSequenceAudioVariantsFn,
   getSequenceFn,
   getSequencesFn,
+  renameSequenceFn,
   setSequenceModelFn,
   setSequenceMusicFn,
+  unarchiveSequenceFn,
   type AddModelResult,
 } from '@/functions/sequences';
 import { DEFAULT_ANALYSIS_MODEL } from '@/lib/ai/models.config';
 import type { SequenceMusicVariant } from '@/lib/db/schema';
 import type { VariantType } from '@/lib/db/schema/shot-variants';
 import { type CreateSequenceInput } from '@/lib/schemas/sequence.schemas';
+import { UNTITLED_SEQUENCE_TITLE } from '@/lib/sequences/untitled-sequence-title';
 import type { Sequence } from '@/types/database';
+import { useAuthSession } from '@/lib/auth/session-query';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { usePostHog } from '@posthog/react';
 import { toast } from 'sonner';
@@ -125,14 +131,17 @@ export function useSetSequenceModel() {
   });
 }
 
-// Hook for listing sequences
+// Hook for listing sequences. The app shell is anonymous-browsable but the
+// fn requires auth, so don't fire (and error-log) it without a session (#1333).
 export function useSequences(teamId?: string) {
+  const { data: session } = useAuthSession();
   return useQuery<Sequence[]>({
     queryKey: sequenceKeys.list(teamId),
     queryFn: async () => {
       return getSequencesFn();
     },
     staleTime: 5 * 60 * 1000, // 5 minutes
+    enabled: !!session,
   });
 }
 
@@ -147,6 +156,7 @@ export function useSequence(
     staleTime?: number;
   }
 ) {
+  const { data: session } = useAuthSession();
   return useQuery<Sequence>({
     queryKey: sequenceKeys.detail(id),
     queryFn: async () => {
@@ -155,7 +165,7 @@ export function useSequence(
     },
     throwOnError: true,
     staleTime: options?.staleTime ?? 1000,
-    enabled: !!id,
+    enabled: !!id && !!session,
     refetchInterval: options?.refetchInterval ?? false,
     refetchOnMount: 'always',
     refetchOnWindowFocus: true,
@@ -172,30 +182,19 @@ export function useCreateSequence() {
     CreateSequenceInput
   >({
     mutationFn: async (input) => {
+      // SPREAD, never a field list. This was a hand-copied allowlist, and a
+      // field missing from it is invisible: the composer sets it, this drops
+      // it, and the server's schema default takes over — which is how
+      // `referenceOnly` reached production as a toggle that did nothing (every
+      // sequence persisted `reference_only = 0`). `CreateSequenceInput` IS
+      // `z.infer<typeof createSequenceSchema>`, so the whole object is exactly
+      // what the server validates. Only the two defaults are applied on top.
       const sequences = await createSequenceFn({
         data: {
-          script: input.script,
-          styleId: input.styleId,
-          title: input.title || 'Untitled Sequence',
+          ...input,
+          title: input.title || UNTITLED_SEQUENCE_TITLE,
           // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
           analysisModels: input.analysisModels || [DEFAULT_ANALYSIS_MODEL],
-          teamId: input.teamId,
-          aspectRatio: input.aspectRatio,
-          imageModels: input.imageModels,
-          videoModel: input.videoModel,
-          // Forward the multi-model arrays — without these the server only ever
-          // sees the singular primary and resolveVideoModels/resolveAudioModels
-          // collapse the user's selection to one model (#545/#546).
-          videoModels: input.videoModels,
-          autoGenerateMotion: input.autoGenerateMotion,
-          autoGenerateMusic: input.autoGenerateMusic,
-          musicModel: input.musicModel,
-          audioModels: input.audioModels,
-          targetDurationSeconds: input.targetDurationSeconds,
-          suggestedTalentIds: input.suggestedTalentIds,
-          suggestedLocationIds: input.suggestedLocationIds,
-          elementUploads: input.elementUploads,
-          sourceSequenceId: input.sourceSequenceId,
         },
       });
 
@@ -217,6 +216,65 @@ export function useCreateSequence() {
     // #1259 — always tell the user why nothing happened.
     onError: (error) => {
       toast.error(error.message || 'Generation failed to start.');
+    },
+  });
+}
+
+/** Archived sequences for the team (#1108 Phase 4). */
+export function useArchivedSequences() {
+  return useQuery<Sequence[]>({
+    queryKey: ['archived-sequences'],
+    queryFn: () => getArchivedSequencesFn(),
+    staleTime: 60_000,
+  });
+}
+
+/** Archive (soft "delete" per plan) — undone via useUnarchiveSequence. */
+export function useArchiveSequence() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (sequenceId: string) =>
+      archiveSequenceFn({ data: { sequenceId } }),
+    onSuccess: () => invalidateSequenceLists(queryClient),
+  });
+}
+
+/** Restore an archived sequence to its recorded prior status. */
+export function useUnarchiveSequence() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (sequenceId: string) =>
+      unarchiveSequenceFn({ data: { sequenceId } }),
+    onSuccess: () => invalidateSequenceLists(queryClient),
+  });
+}
+
+function invalidateSequenceLists(
+  queryClient: ReturnType<typeof useQueryClient>
+): void {
+  void queryClient.invalidateQueries({ queryKey: sequenceKeys.lists() });
+  void queryClient.invalidateQueries({ queryKey: ['archived-sequences'] });
+  // The eval matrix joins shots per listed sequence — refresh its join too.
+  void queryClient.invalidateQueries({ queryKey: ['shots', 'by-sequences'] });
+}
+
+/**
+ * Rename a sequence (#1108 Phase 4) — title-only write via the dedicated
+ * `renameSequenceFn` (never `updateSequenceFn`, whose aspect-ratio handling
+ * makes it unsafe for partial writes). Refreshes the detail (breadcrumb +
+ * header) and the sequences list.
+ */
+export function useRenameSequence(sequenceId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (title: string) =>
+      renameSequenceFn({ data: { sequenceId, title } }),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(sequenceKeys.detail(sequenceId), updated);
+      void queryClient.invalidateQueries({
+        queryKey: sequenceKeys.detail(sequenceId),
+      });
+      void queryClient.invalidateQueries({ queryKey: sequenceKeys.lists() });
     },
   });
 }

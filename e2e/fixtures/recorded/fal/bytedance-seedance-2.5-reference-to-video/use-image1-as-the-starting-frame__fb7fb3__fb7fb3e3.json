@@ -1,0 +1,24 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use @Image1 as the starting frame.\nSteady handheld drift closer on @Image2 at the rail. She stays leaned on the metal, watching the next set roll through, then turns her face into the wind and the last of the sun. Her eyes close. A private almost-smile. Hair lifts off her shoulders. @Image3 catches the light. She does not reach for a phone. She does not reapply. She just stays.\n\nWaves keep breaking below. Wind lifts her hair. Late sun slides across her mouth and the rail.\n\nocean swell and breaking surf, light coastal wind along the promenade. waves rolling and washing onto sand, soft wind through hair, distant footsteps on concrete.\n\nNo BGM, no music. Generate only dialogue, environmental sounds, and action sounds. Single continuous shot, no cuts. Avoid jitter and bent limbs.",
+        "model": "bytedance/seedance-2.5/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://v3b.fal.media/files/b/0aa70c1a/ckqqSgTxovF0vQNqh7jWu_video.mp4",
+            "content_type": "video/mp4",
+            "file_name": "video.mp4",
+            "file_size": 2374123
+          },
+          "seed": 943157702
+        },
+        "status": 200,
+        "billableUnits": 130.5
+      }
+    }
+  ]
+}

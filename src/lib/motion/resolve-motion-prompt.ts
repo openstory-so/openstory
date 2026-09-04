@@ -52,6 +52,8 @@ type ResolveMotionPromptInput = {
   characterTags?: readonly string[];
   /** Fallback prompt when the shot has no motion prompt version. */
   description: string | null;
+  /** See `AssembleOptions.generateAudio`. */
+  generateAudio?: boolean;
 };
 
 /**
@@ -70,6 +72,7 @@ export function resolveMotionPrompt(
       motionPrompt: input.motionPrompt,
       model,
       characterTags: input.characterTags,
+      generateAudio: input.generateAudio,
     });
   }
   return input.description || '';
@@ -84,6 +87,7 @@ export function resolveMotionPromptFromVersion(
   opts: {
     characterTags?: readonly string[];
     description: string | null;
+    generateAudio?: boolean;
   },
   model: ImageToVideoModel
 ): string {
@@ -93,6 +97,7 @@ export function resolveMotionPromptFromVersion(
       motionPrompt: motionPromptFromVersion(version),
       characterTags: opts.characterTags,
       description: opts.description,
+      generateAudio: opts.generateAudio,
     },
     model
   );

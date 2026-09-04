@@ -111,4 +111,35 @@ describe('estimateStoryboardPreflightCost', () => {
     expect(stills).toBeLessThan(motionOnly);
     expect(motionAndMusic).toBeGreaterThan(motionOnly);
   });
+
+  it('continue reserves only the slice from startFrom (#1408)', () => {
+    const script = 'Scene 1 — 5s\nA room.';
+    const full = Number(
+      estimateStoryboardPreflightCost({ ...base, script, stopAt: 'images' })
+    );
+    const imagesOnly = Number(
+      estimateStoryboardPreflightCost({
+        ...base,
+        script,
+        startFrom: 'images',
+        stopAt: 'images',
+      })
+    );
+    // Script LLM calls + reference sheets already ran; only stills are gated.
+    expect(imagesOnly).toBeGreaterThan(0);
+    expect(imagesOnly).toBeLessThan(full);
+
+    // Reference-only never renders stills, so the same slice bills nothing.
+    expect(
+      Number(
+        estimateStoryboardPreflightCost({
+          ...base,
+          script,
+          startFrom: 'images',
+          stopAt: 'images',
+          referenceOnly: true,
+        })
+      )
+    ).toBe(0);
+  });
 });

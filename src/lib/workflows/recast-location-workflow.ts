@@ -100,6 +100,7 @@ async function buildRegeneratePayload(
     triggerId: input.locationDbId,
     imageModel,
     aspectRatio,
+    resolution: input.resolution,
     shotSnapshots: merged.shotSnapshots,
     snapshotInputHash: merged.snapshotInputHash,
   };
@@ -216,7 +217,8 @@ export class RecastLocationWorkflow extends OpenStoryWorkflowEntrypoint<RecastLo
       input,
       {
         imageUrl: referenceImageUrl,
-        inputHash: sheetBody.snapshotInputHash ?? null,
+        inputHash:
+          sheetResult.sheetVersionId ?? sheetBody.snapshotInputHash ?? null,
       }
     );
 

@@ -6,13 +6,14 @@
  *   3. PUT the resulting Blob to the reserved URL.
  *   4. Commit via `commitSequenceExportFn` (writes a new `sequence_exports` row).
  *
- * Every commit records `sourceShotsHash` — a SHA-256 of the scene video URLs
- * + the music choice — so `sequence_exports` is a content-addressed cache of
- * what the user is looking at (#1253). `freshExportUrl` is the cached MP4 for
- * the CURRENT state (or null), and both user actions go through the cache:
- * `download()` and `copyLink()` reuse a matching export, else export first and
- * then act. There is no "export" verb in the UI and no way to share a stale
- * cut.
+ * Every commit records `sourceShotsHash` — SHA-256 of `{sceneUrls, musicUrl}`
+ * via `hashSequenceExportInputs` — so `sequence_exports` is a content-
+ * addressed cache of what the user is looking at (#1253, #1406). The server
+ * export route writes the same hash, so an API-produced MP4 is reused here.
+ * `freshExportUrl` is the cached MP4 for the CURRENT state (or null), and
+ * both user actions go through the cache: `download()` and `copyLink()` reuse
+ * a matching export, else export first and then act. There is no "export"
+ * verb in the UI and no way to share a stale cut.
  */
 
 import {
@@ -21,7 +22,11 @@ import {
   requestSequenceExportUploadUrlFn,
 } from '@/functions/sequence-exports';
 import { useShotsBySequence } from '@/hooks/use-shots';
-import { sha256Hex } from '@/lib/compliance/hash';
+import {
+  effectiveExportMusicUrl,
+  hashSequenceExportInputs,
+  sequenceExportInputsKey,
+} from '@/lib/sequence-player/source-shots-hash';
 import { putToR2 } from '@/lib/utils/upload';
 import {
   exportSequence,
@@ -39,8 +44,9 @@ const sequenceExportKeys = {
 };
 
 // Cap the upload PUT so a stalled R2 proxy surfaces an error toast instead of
-// spinning forever. Generous enough for a 5-min export on a slow connection.
-const UPLOAD_TIMEOUT_MS = 5 * 60 * 1000;
+// spinning forever. Generous enough for a 10-min export on a slow connection
+// (browser export's safety valve, matching server — #1430).
+const UPLOAD_TIMEOUT_MS = 10 * 60 * 1000;
 
 export type SequenceExportState = {
   isRunning: boolean;
@@ -54,6 +60,10 @@ export type SequenceExportState = {
   /** Copy a shareable URL for the current state's MP4 — exports first if not cached. */
   copyLink: () => void;
   abort: () => void;
+  clipsReady: number;
+  clipsTotal: number;
+  /** False until every shot has a clip. */
+  canExport: boolean;
 };
 
 export function useSequenceExport(
@@ -71,23 +81,37 @@ export function useSequenceExport(
     enabled: Boolean(sequence),
   });
 
-  const inputsKey = useMemo(() => {
+  const exportInputs = useMemo(() => {
     if (!sequence || !shots) return null;
-    const sceneUrls = shots.map((f) => f.video?.url ?? null);
-    if (sceneUrls.length === 0 || sceneUrls.some((u) => !u)) return null;
-    return JSON.stringify({
+    const sceneUrls: string[] = [];
+    for (const shot of shots) {
+      const url = shot.video?.url;
+      if (!url) return null;
+      sceneUrls.push(url);
+    }
+    if (sceneUrls.length === 0) return null;
+    return {
       sceneUrls,
-      musicUrl: sequence.includeMusic ? (sequence.musicUrl ?? null) : null,
-    });
+      musicUrl: effectiveExportMusicUrl(
+        sequence.includeMusic,
+        sequence.musicUrl
+      ),
+    };
   }, [sequence, shots]);
+  const inputsKey = exportInputs ? sequenceExportInputsKey(exportInputs) : null;
   const {
     data: inputsHash,
     error: inputsHashError,
     isLoading: hashLoading,
   } = useQuery({
     queryKey: ['sequence-export-inputs-hash', inputsKey],
-    queryFn: () => sha256Hex(inputsKey ?? ''),
-    enabled: inputsKey !== null,
+    queryFn: () => {
+      if (!exportInputs) {
+        throw new Error('Could not fingerprint the scenes for export.');
+      }
+      return hashSequenceExportInputs(exportInputs);
+    },
+    enabled: exportInputs !== null,
     staleTime: Infinity,
     retry: false,
   });
@@ -246,16 +270,30 @@ export function useSequenceExport(
       exports?.find((e) => e.sourceShotsHash === inputsHash)?.url) ||
     null;
 
+  const shotList = shots ?? [];
+  const clipsTotal = shotList.length;
+  const clipsReady = shotList.filter((s) => Boolean(s.video?.url)).length;
+  const canExport = clipsTotal > 0 && clipsReady === clipsTotal;
+
   const download = useCallback(() => {
+    posthog.capture('export_clicked', {
+      surface: 'theatre',
+      sequence_id: sequenceId,
+    });
     if (freshExportUrl) {
       triggerDownload(freshExportUrl, sequence?.title);
       posthog.capture('video_downloaded', { sequence_id: sequenceId });
       return;
     }
+    if (!canExport) return;
     run('download');
-  }, [freshExportUrl, run, sequence?.title, sequenceId, posthog]);
+  }, [freshExportUrl, canExport, run, sequence?.title, sequenceId, posthog]);
 
   const copyLink = useCallback(() => {
+    posthog.capture('share_clicked', {
+      surface: 'theatre',
+      sequence_id: sequenceId,
+    });
     if (freshExportUrl) {
       void copyTextToClipboard(toShareableExportUrl(freshExportUrl)).then(
         (copied) => {
@@ -269,8 +307,9 @@ export function useSequenceExport(
       );
       return;
     }
+    if (!canExport) return;
     run('copy-link');
-  }, [freshExportUrl, run, sequenceId, posthog]);
+  }, [freshExportUrl, canExport, run, sequenceId, posthog]);
 
   const abort = useCallback(() => {
     abortRef.current?.abort();
@@ -284,6 +323,9 @@ export function useSequenceExport(
     download,
     copyLink,
     abort,
+    clipsReady,
+    clipsTotal,
+    canExport,
   };
 }
 
@@ -298,12 +340,11 @@ function toShareableExportUrl(url: string): string {
 
 function triggerDownload(url: string, title: string | null | undefined): void {
   const a = document.createElement('a');
-  a.href = url;
+  // `?download` keeps the worker's /r2 route from redirecting to the CDN
+  // domain: the bytes stay same-origin (so `download` below applies) and come
+  // back as `content-disposition: attachment` rather than playing in a tab.
+  a.href = `${url}${url.includes('?') ? '&' : '?'}download`;
   a.download = `${title || 'sequence'}_openstory.mp4`;
-  // Browsers ignore `download` on cross-origin hrefs (the CDN domain in prod)
-  // and would navigate the theatre tab away — open in a new tab instead.
-  a.target = '_blank';
-  a.rel = 'noopener';
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);

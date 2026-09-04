@@ -13,6 +13,67 @@ import { expect } from 'playwright/test';
  * heavy client chunk routinely takes longer than that.
  */
 const HYDRATION_TIMEOUT = 15_000;
+const SEQUENCE_DRAFT_KEY = 'openstory:sequence-draft:v1';
+/** Mirrors `STORAGE_KEY` in src/hooks/use-generation-settings.ts — bump both
+ *  together, or the pin lands under a key the app never reads and the recorded
+ *  pipeline silently reverts to Turbo defaults. */
+const GENERATION_SETTINGS_KEY = 'openstory:generation-settings:v5';
+
+/**
+ * Catalog the recorded full-pipeline fal fixtures were captured against.
+ * Turbo is the product default (Lite + H3 Max); replay has no recordings
+ * for those. Quality + these keys is what aimock STRICT matches.
+ */
+export const RECORDED_PIPELINE_SETTINGS = {
+  generationMode: 'quality',
+  aspectRatio: '16:9',
+  analysisModels: ['openai/gpt-5.6-luna'],
+  imageModel: 'grok_imagine_image',
+  imageModels: ['grok_imagine_image'],
+  motionModel: 'seedance_v2',
+  videoModels: ['seedance_v2'],
+  // Pinned, not defaulted: the tier picks each model's resolution token, and
+  // the fixtures were recorded at Seedance 720p / Grok Imagine 1k (#1449).
+  resolution: '720p',
+  autoGenerateMotion: true,
+  // The fixtures were recorded on the frame-based workflow; reference-only
+  // is the product default now, so opt back in explicitly.
+  generateStartFrames: true,
+  musicModel: 'elevenlabs_music',
+  audioModels: ['elevenlabs_music'],
+  autoGenerateMusic: true,
+} as const;
+
+/** Stamp recorded-pipeline settings before the first navigation. */
+export async function pinRecordedPipelineSettings(page: Page): Promise<void> {
+  await page.addInitScript(
+    ({ key, json }) => {
+      localStorage.setItem(key, json);
+    },
+    {
+      key: GENERATION_SETTINGS_KEY,
+      json: JSON.stringify(RECORDED_PIPELINE_SETTINGS),
+    }
+  );
+}
+
+/** Wait until the composer draft in localStorage has this script (#1384). */
+export async function waitForSequenceDraftScript(
+  page: Page,
+  expected: string
+): Promise<void> {
+  await expect
+    .poll(() =>
+      page.evaluate((key) => {
+        try {
+          return JSON.parse(localStorage.getItem(key) ?? '{}').script ?? '';
+        } catch {
+          return '';
+        }
+      }, SEQUENCE_DRAFT_KEY)
+    )
+    .toBe(expected);
+}
 
 /**
  * Resolve the composer's script input once it is actually usable.
@@ -55,6 +116,12 @@ export async function fillScriptEditor(
     script,
     { timeout: 5_000 }
   );
+  // React error boundaries swallow pageerror, so a throw during the
+  // composer's cost estimate (#1354) replaces the tree instead of failing
+  // the test. The heading is the error-boundary copy in __root.tsx.
+  await expect(
+    page.getByRole('heading', { name: 'Something went wrong' })
+  ).toHaveCount(0);
   return editor;
 }
 
@@ -90,6 +157,62 @@ export async function selectComposerStyle(
     await tile.click();
   }
   await expect(selectedTile).toBeVisible();
+}
+
+/**
+ * Switch to Quality and pick the image/motion models the recorded fal
+ * fixtures cover. Style apply can remap recommendations; call this after
+ * the style tile, before Generate.
+ */
+export async function selectRecordedPipelineModels(page: Page): Promise<void> {
+  const quality = page.getByRole('radio', {
+    name: 'Quality mode — quality-recommended defaults',
+  });
+  await expect(quality).toBeVisible({ timeout: HYDRATION_TIMEOUT });
+  await quality.click();
+  await expect(quality).toHaveAttribute('data-state', 'on');
+
+  await page.getByRole('button', { name: 'Generation settings' }).click();
+
+  await selectSingleCatalogModel(
+    page,
+    /^Image Models?:/,
+    'Grok Imagine Image 2.0',
+    'Image Models: Grok Imagine Image 2.0'
+  );
+  await selectSingleCatalogModel(
+    page,
+    /^Motion Models?:/,
+    'Seedance 2.0',
+    /Motion Models?: Seedance 2.0/
+  );
+
+  await page.keyboard.press('Escape');
+}
+
+async function selectSingleCatalogModel(
+  page: Page,
+  triggerName: RegExp,
+  optionName: string,
+  expectedTriggerName: string | RegExp
+): Promise<void> {
+  const trigger = page.getByRole('button', { name: triggerName });
+  await expect(trigger).toBeVisible({ timeout: HYDRATION_TIMEOUT });
+  if (
+    await page.getByRole('button', { name: expectedTriggerName }).isVisible()
+  ) {
+    return;
+  }
+  await trigger.click();
+  const option = page.getByRole('menuitemcheckbox', { name: optionName });
+  await expect(option).toBeVisible({ timeout: HYDRATION_TIMEOUT });
+  if ((await option.getAttribute('data-state')) !== 'checked') {
+    await option.click();
+  }
+  await page.keyboard.press('Escape');
+  await expect(
+    page.getByRole('button', { name: expectedTriggerName })
+  ).toBeVisible();
 }
 
 /**

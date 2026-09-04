@@ -2,7 +2,7 @@
  * Email Service
  * Handles sending transactional emails via Cloudflare Email Service.
  * Templates are React components in src/lib/emails/ rendered to
- * email-safe HTML (and a plain-text version) by @react-email/render.
+ * email-safe HTML (and a plain-text version) by render-email.ts.
  */
 
 import { getEnv } from '#env';
@@ -11,7 +11,9 @@ import { AbuseReportEmail } from '@/lib/emails/abuse-report-email';
 import { FeedbackEmail } from '@/lib/emails/feedback-email';
 import { FounderCreditRequestEmail } from '@/lib/emails/founder-credit-request-email';
 import { OtpEmail } from '@/lib/emails/otp-email';
+import { SequenceReadyEmail } from '@/lib/emails/sequence-ready-email';
 import { renderEmail } from '@/lib/emails/render-email';
+import { CONTACT_EMAIL } from '@/lib/marketing/constants';
 import { getLogger } from '@/lib/observability/logger';
 
 const logger = getLogger(['openstory', 'services', 'email-service']);
@@ -64,6 +66,7 @@ interface SendEmailParams {
   to: string;
   subject: string;
   body: React.ReactElement;
+  replyTo?: string;
 }
 
 /**
@@ -73,6 +76,7 @@ async function sendEmail({
   to,
   subject,
   body,
+  replyTo,
 }: SendEmailParams): Promise<{ success: boolean; error?: string }> {
   try {
     const { fromEmail, fromName } = getEmailConfig();
@@ -85,6 +89,7 @@ async function sendEmail({
       subject,
       html,
       text,
+      ...(replyTo ? { replyTo } : {}),
     });
 
     logger.info('Sent successfully:', { data: result.messageId });
@@ -158,6 +163,36 @@ export async function sendAbuseReportNotifyEmail(params: {
         reason={params.reason}
         targetType={params.targetType}
         hasTrace={params.hasTrace}
+      />
+    ),
+  });
+}
+
+/** "Your video is ready" — one per sequence, reply-to us (#1276). */
+export async function sendSequenceReadyEmail(params: {
+  to: string;
+  title: string;
+  watchUrl: string;
+  creditsUrl: string;
+  posterUrl?: string;
+  clipMeta?: string;
+  balanceDisplay: string;
+  typicalShortCostDisplay: string;
+}): Promise<{ success: boolean; error?: string }> {
+  return sendEmail({
+    to: params.to,
+    subject: `"${params.title}" is ready`,
+    replyTo: CONTACT_EMAIL,
+    body: (
+      <SequenceReadyEmail
+        appName={getAppName()}
+        title={params.title}
+        watchUrl={params.watchUrl}
+        creditsUrl={params.creditsUrl}
+        posterUrl={params.posterUrl}
+        clipMeta={params.clipMeta}
+        balanceDisplay={params.balanceDisplay}
+        typicalShortCostDisplay={params.typicalShortCostDisplay}
       />
     ),
   });

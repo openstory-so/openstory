@@ -4,8 +4,17 @@ import {
   getAspectRatioClassName,
   type AspectRatio,
 } from '@/lib/constants/aspect-ratios';
+import {
+  captureVideoPlay,
+  captureVideoPlayFailed,
+  captureVideoWatched,
+  createPlaybackTracker,
+  type PlaybackTracker,
+  type VideoPlaySource,
+} from '@/lib/observability/player-events';
 import { cn } from '@/lib/utils';
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { usePostHog } from '@posthog/react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 
 // Dynamic, and rendered only after mount — see video-player-surface.tsx. The
 // import must not be evaluated on the server: `@videojs/store` constructs an
@@ -26,6 +35,11 @@ type VideoPlayerProps = {
   onTimeUpdate?: (currentTime: number) => void;
   onPause?: () => void;
   onEnded?: () => void;
+  onPlay?: () => void;
+  /** PostHog `video_play` / `video_play_failed` source. Omit to skip capture. */
+  playSource?: VideoPlaySource;
+  sequenceId?: string;
+  shotId?: string;
 };
 
 /**
@@ -75,8 +89,46 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   onTimeUpdate,
   onPause,
   onEnded,
+  onPlay,
+  playSource,
+  sequenceId,
+  shotId,
 }) => {
   const mounted = useMounted();
+  const posthog = usePostHog();
+
+  // video_play / video_watched / stalled-play analytics (#1301). Only when a
+  // `playSource` is given; autoplay counts as its own source. Props via a
+  // ref so the one tracker instance reports the current shot.
+  const eventProps = playSource
+    ? {
+        source: autoPlay ? ('autoplay' as const) : playSource,
+        sequence_id: sequenceId,
+        shot_id: shotId,
+      }
+    : null;
+  const eventPropsRef = useRef(eventProps);
+  eventPropsRef.current = eventProps;
+  const trackerRef = useRef<PlaybackTracker | null>(null);
+  trackerRef.current ??= createPlaybackTracker({
+    onStall: () => {
+      if (eventPropsRef.current) {
+        captureVideoPlayFailed(posthog, {
+          ...eventPropsRef.current,
+          reason: 'timeout',
+        });
+      }
+    },
+  });
+  const tracker = trackerRef.current;
+  const flushWatched = (completed?: boolean) => {
+    const watched = tracker.stop(completed);
+    if (!watched || !eventPropsRef.current) return;
+    if (watched.seconds_watched === 0 && !watched.completed) return;
+    captureVideoWatched(posthog, { ...eventPropsRef.current, ...watched });
+  };
+  // Leaving mid-play (shot switch remounts the player) still counts as watched.
+  useEffect(() => () => flushWatched(false), []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Show skeleton when there's no video source and no poster
   if (!src && !posterSrc) {
@@ -126,10 +178,37 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             chaptersUrl={chaptersUrl}
             posterSrc={posterSrc}
             autoPlay={autoPlay}
-            onLoadedMetadata={onLoadedMetadata}
-            onTimeUpdate={onTimeUpdate}
-            onPause={onPause}
-            onEnded={onEnded}
+            onLoadedMetadata={(duration) => {
+              tracker.setDuration(duration);
+              onLoadedMetadata?.(duration);
+            }}
+            onTimeUpdate={(t) => {
+              tracker.tick(t);
+              onTimeUpdate?.(t);
+            }}
+            onPause={() => {
+              // `pause` also fires right before `ended`; the tracker infers
+              // completion from position so that pair reports once.
+              flushWatched();
+              onPause?.();
+            }}
+            onEnded={() => {
+              flushWatched(true);
+              onEnded?.();
+            }}
+            onPlay={() => {
+              onPlay?.();
+              if (eventProps) {
+                tracker.start();
+                captureVideoPlay(posthog, eventProps);
+              }
+            }}
+            onError={(reason) => {
+              tracker.dispose();
+              if (eventProps) {
+                captureVideoPlayFailed(posthog, { ...eventProps, reason });
+              }
+            }}
           />
         </Suspense>
       ) : (

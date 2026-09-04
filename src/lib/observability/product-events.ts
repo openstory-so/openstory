@@ -19,9 +19,15 @@ type ProductEventName =
   | 'user_signed_up'
   | 'user_signed_in'
   | 'sequence_generated'
+  | 'sequence_error'
   | 'founder_credits_requested'
   | 'credits_added'
-  | 'feedback_submitted';
+  | 'checkout_opened'
+  | 'checkout_completed'
+  | 'checkout_failed'
+  | 'feedback_submitted'
+  | 'sequence_ready_email_sent'
+  | 'studio_generation_started';
 
 export type CaptureProductEventArgs = {
   distinctId: string;

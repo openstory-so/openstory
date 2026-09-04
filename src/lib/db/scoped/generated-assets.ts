@@ -15,14 +15,19 @@ import {
   generatedAssets,
   type GeneratedAsset,
   type GeneratedAssetOutput,
+  type GeneratedAssetSource,
   type NewGeneratedAsset,
 } from '@/lib/db/schema';
-import { and, desc, eq, lt, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, lt, type SQL } from 'drizzle-orm';
 
-/** Filters + keyset pagination for team-scoped listing (newest-first). */
+/** Filters + keyset pagination for team-scoped listing. */
 export type ListGeneratedAssetsOptions = {
   activity?: GeneratedAsset['activity'];
   endpointId?: string;
+  source?: GeneratedAssetSource;
+  favoritesOnly?: boolean;
+  /** Recency by ULID. Default newest-first. */
+  order?: 'newest' | 'oldest';
   /** Page size; capped by the caller's validator. */
   limit?: number;
   /** `id` of the last row of the previous page (ULID ≈ creation time). */
@@ -49,11 +54,12 @@ export function createGeneratedAssetsMethods(
       return row;
     },
 
-    /** Newest-first team-scoped list with optional filters + keyset cursor. */
+    /** Team-scoped list with optional filters + keyset cursor. */
     list: async (
       options: ListGeneratedAssetsOptions = {}
     ): Promise<{ assets: GeneratedAsset[]; nextCursor: string | null }> => {
       const limit = options.limit ?? DEFAULT_LIST_LIMIT;
+      const order = options.order ?? 'newest';
       const conditions: SQL[] = [eq(generatedAssets.teamId, teamId)];
       if (options.activity) {
         conditions.push(eq(generatedAssets.activity, options.activity));
@@ -61,14 +67,28 @@ export function createGeneratedAssetsMethods(
       if (options.endpointId) {
         conditions.push(eq(generatedAssets.endpointId, options.endpointId));
       }
+      if (options.source) {
+        conditions.push(eq(generatedAssets.source, options.source));
+      }
+      if (options.favoritesOnly) {
+        conditions.push(eq(generatedAssets.isFavorite, true));
+      }
       if (options.cursor) {
-        conditions.push(lt(generatedAssets.id, options.cursor));
+        conditions.push(
+          order === 'oldest'
+            ? gt(generatedAssets.id, options.cursor)
+            : lt(generatedAssets.id, options.cursor)
+        );
       }
       const rows = await db
         .select()
         .from(generatedAssets)
         .where(and(...conditions))
-        .orderBy(desc(generatedAssets.id))
+        .orderBy(
+          order === 'oldest'
+            ? asc(generatedAssets.id)
+            : desc(generatedAssets.id)
+        )
         .limit(limit + 1);
 
       const page = rows.slice(0, limit);
@@ -147,6 +167,27 @@ export function createGeneratedAssetsMethods(
         )
         .returning({ id: generatedAssets.id });
       assertUpdated(updated, id);
+    },
+
+    setFavorite: async (id: string, isFavorite: boolean): Promise<void> => {
+      const updated = await db
+        .update(generatedAssets)
+        .set({ isFavorite, updatedAt: new Date() })
+        .where(
+          and(eq(generatedAssets.id, id), eq(generatedAssets.teamId, teamId))
+        )
+        .returning({ id: generatedAssets.id });
+      assertUpdated(updated, id);
+    },
+
+    delete: async (id: string): Promise<void> => {
+      const deleted = await db
+        .delete(generatedAssets)
+        .where(
+          and(eq(generatedAssets.id, id), eq(generatedAssets.teamId, teamId))
+        )
+        .returning({ id: generatedAssets.id });
+      assertUpdated(deleted, id);
     },
   };
 }

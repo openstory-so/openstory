@@ -22,7 +22,15 @@ import { type Client, createClient } from '@libsql/client';
 import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/libsql';
 import { migrate } from 'drizzle-orm/libsql/migrator';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 import { createFramesMethods } from './frames';
 
 let client: Client;
@@ -298,5 +306,27 @@ describe('frames.setPendingPromoteVersionId (#1101)', () => {
       .from(frames)
       .where(eq(frames.id, frame.id));
     expect(cleared?.pendingPromoteVersionId).toBeNull();
+  });
+});
+
+describe('frames.getByIds (#1322)', () => {
+  it("chunks the id list under D1's 100-param ceiling and returns every row", async () => {
+    // libsql has no bound-param cap, so a single IN(…) would pass here and
+    // throw `too many SQL variables` on D1 — assert the fan-out directly.
+    const m = createFramesMethods(db);
+    const ids: string[] = [];
+    for (let i = 0; i < 200; i++) {
+      const id = generateId();
+      ids.push(id);
+      await db
+        .insert(frames)
+        .values({ id, shotId, sequenceId, orderIndex: i, role: 'first' });
+    }
+    const select = vi.spyOn(db, 'select');
+    const rows = await m.getByIds(ids);
+    expect(rows).toHaveLength(200);
+    expect(new Set(rows.map((r) => r.id))).toEqual(new Set(ids));
+    expect(select).toHaveBeenCalledTimes(3);
+    select.mockRestore();
   });
 });

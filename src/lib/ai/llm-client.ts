@@ -18,10 +18,15 @@ import {
   type DebugOption,
   type TokenUsage,
 } from '@tanstack/ai';
+import { googleSearchTool } from '@tanstack/ai-gemini/tools';
 import { grokWebSearchTool } from '@tanstack/ai-grok/tools';
 import type { ProviderPreferences } from '@tanstack/ai-openrouter';
 import { webSearchTool } from '@tanstack/ai-openrouter/tools';
 import { z } from 'zod';
+import {
+  geminiTextCostFromUsage,
+  nativeGeminiTextModel,
+} from '@/lib/ai/gemini-native';
 import {
   grokTextCostFromUsage,
   nativeGrokTextModel,
@@ -34,6 +39,7 @@ import {
 import { aiDebugLogger } from './ai-debug-logger';
 import {
   createAdapter,
+  resolveNativeGeminiModel,
   resolveNativeGrokModel,
   type LlmKeyInfo,
 } from './create-adapter';
@@ -128,15 +134,15 @@ export function createUsageCapture(): {
 /**
  * Convert a completed LLM call's usage into a charge.
  *
- * Uses OpenRouter's per-request `cost` (USD) when present. LLMTR and xAI
- * report tokens only, so they are priced from their published rates instead.
+ * Uses OpenRouter's per-request `cost` (USD) when present. LLMTR, xAI and
+ * Google report tokens only, so they are priced from published rates instead.
  *
- * `via` disambiguates the two token-only routes, and must be the value the
- * call actually resolved: a Grok model runs on either, and the rates are
- * transcribed from different catalogs. Without it a Grok model with no cost is
- * by construction a native xAI call (#1167). TRAP: that inference means an
- * OpenRouter Grok call that dropped `usage.cost` (TanStack/ai#1076) is priced
- * at xAI list rates instead of surfacing as a missing-cost report.
+ * `via` is load-bearing. Pass the value the call actually resolved:
+ * `llmCostFromUsage(usage, model, llmKey.via)`. LLMTR is checked first so a
+ * Grok-on-LLMTR / Gemini-on-LLMTR call is not priced from xAI / Google rates.
+ * Without `via`, a Grok model with no cost is treated as native xAI (#1167)
+ * and a Gemini model as native Google — including an OpenRouter call that
+ * dropped `usage.cost` (TanStack/ai#1076). Any other LLMTR model bills $0.
  *
  * Anything else missing a cost stays $0 + a report. Do not invent rates.
  */
@@ -157,6 +163,15 @@ export function llmCostFromUsage(
   const nativeModel = nativeGrokTextModel(modelId);
   if (nativeModel) {
     const cost = grokTextCostFromUsage(usage, nativeModel);
+    if (cost !== undefined) return cost;
+  }
+
+  // Same inference (and the same trap) for Gemini: Google reports tokens
+  // only, so a Gemini model with no cost is priced from Google's published
+  // rates.
+  const nativeGeminiModel = nativeGeminiTextModel(modelId);
+  if (nativeGeminiModel) {
+    const cost = geminiTextCostFromUsage(usage, nativeGeminiModel);
     if (cost !== undefined) return cost;
   }
 
@@ -271,9 +286,13 @@ const STRUCTURED_OUTPUT_MODELS = new Set([
   'anthropic/claude-opus-4.8',
   'deepseek/deepseek-v3.2',
   'deepseek/deepseek-v4-pro-0813',
-  'z-ai/glm-5.2',
+  'z-ai/glm-5.3-flash',
   'google/gemini-3.1-pro-preview',
   'openai/gpt-5.5',
+  'openai/gpt-5.6-sol',
+  'openai/gpt-5.6-terra',
+  'openai/gpt-5.6-luna',
+  'google/gemini-3.7-flash',
   'google/gemini-3-flash-preview',
   'mistralai/mistral-small-2603',
   'openai/gpt-5.4-mini',
@@ -385,22 +404,32 @@ function toGrokReasoningEffort(
   return 'medium';
 }
 
-// Since @tanstack/ai 0.27, sampling options live in provider-native
-// modelOptions (camelCase, per the OpenRouter SDK) instead of the root of
-// chat(). The public LLMRequestParams surface keeps its OpenAI-style
-// snake_case names; this is the single mapping point.
-function buildModelOptions(params: LLMRequestParams) {
-  // Azure-hosted Claude compiles strict structured-output schemas against a
-  // much smaller grammar budget than Anthropic's own endpoint and rejects our
-  // analysis schemas ("The compiled grammar is too large"). Keep Anthropic
-  // models off Azure; an explicit caller-supplied preference still wins.
-  const provider =
-    params.provider ??
-    (params.model.startsWith('anthropic/') ? { ignore: ['azure'] } : undefined);
+/** Our five-level effort scale onto Gemini 3.x thinking levels (no `xhigh`). */
+export function toGeminiThinkingLevel(
+  effort: NonNullable<LLMRequestParams['reasoning']>['effort']
+): 'MINIMAL' | 'LOW' | 'MEDIUM' | 'HIGH' {
+  if (effort === 'minimal') return 'MINIMAL';
+  if (effort === 'low') return 'LOW';
+  if (effort === 'high' || effort === 'xhigh') return 'HIGH';
+  return 'MEDIUM';
+}
+
+/**
+ * Google's Gemini API takes the `GoogleGenAI` generation-config shape:
+ * camelCase, `maxOutputTokens`, level-based `thinkingConfig` instead of
+ * effort-based reasoning, no routing preferences, no `streamOptions` (usage
+ * rides every streamed response). Omitting `thinkingConfig` leaves the
+ * model's dynamic-thinking default in place.
+ */
+function buildGeminiModelOptions(params: LLMRequestParams) {
   return {
-    ...(provider && { provider }),
-    ...(params.reasoning && { reasoning: params.reasoning }),
-    maxCompletionTokens: params.max_tokens,
+    ...(params.reasoning?.enabled !== false &&
+      params.reasoning && {
+        thinkingConfig: {
+          thinkingLevel: toGeminiThinkingLevel(params.reasoning.effort),
+        },
+      }),
+    maxOutputTokens: params.max_tokens,
     temperature: params.temperature,
     topP: params.top_p,
     frequencyPenalty: params.frequency_penalty,
@@ -409,16 +438,91 @@ function buildModelOptions(params: LLMRequestParams) {
 }
 
 /**
+ * GPT-5 chat models (Luna/Sol/Terra/…) advertise no `temperature` / `top_p`
+ * / penalty params on any OpenRouter endpoint. Sending them with
+ * `requireParameters: true` yields "No endpoints found that can handle the
+ * requested parameters". Image-variant GPT-5 ids still take sampling.
+ */
+function modelAllowsClassicSampling(model: string): boolean {
+  return !(model.startsWith('openai/gpt-5') && !model.includes('image'));
+}
+
+/**
+ * OpenRouter provider routing. Anthropic is pinned to Anthropic's own
+ * endpoint (Vertex advertises `response_format` without `structured_outputs`
+ * — #1285; Azure's grammar is too small). OpenAI is pinned to OpenAI's own
+ * endpoint because Azure GPT-5 hosts advertise `max_completion_tokens` while
+ * native OpenAI advertises `max_tokens` — `requireParameters` plus an
+ * ignored Azure host empties the candidate set (#1302). Everyone else keeps
+ * `requireParameters`. Caller-supplied preferences layer on top.
+ */
+export function openRouterProviderForModel(
+  model: string
+): Pick<ProviderPreferences, 'only' | 'requireParameters'> {
+  if (model.startsWith('anthropic/')) return { only: ['anthropic'] };
+  if (model.startsWith('openai/')) return { only: ['openai'] };
+  return { requireParameters: true };
+}
+
+// Since @tanstack/ai 0.27, sampling options live in provider-native
+// modelOptions (camelCase, per the OpenRouter SDK) instead of the root of
+// chat(). The public LLMRequestParams surface keeps its OpenAI-style
+// snake_case names; this is the single mapping point.
+function buildModelOptions(params: LLMRequestParams) {
+  const provider: ProviderPreferences = {
+    ...openRouterProviderForModel(params.model),
+    ...params.provider,
+  };
+  // Since @tanstack/ai-openrouter 0.19, `reasoning.enabled` is typed as the
+  // explicit opt-out (`false`) only — `enabled: true` is expressed by just
+  // sending the effort/maxTokens config, so strip a truthy flag here.
+  const { enabled: reasoningEnabled, ...reasoningConfig } =
+    params.reasoning ?? {};
+  const reasoning =
+    reasoningEnabled === false
+      ? { ...reasoningConfig, enabled: false as const }
+      : reasoningConfig;
+  const allowSampling = modelAllowsClassicSampling(params.model);
+  return {
+    provider,
+    ...(params.reasoning && { reasoning }),
+    // `maxTokens`, not `maxCompletionTokens`: DeepSeek endpoints advertise only
+    // `max_tokens`, so `max_completion_tokens` + requireParameters empties the
+    // candidate set ("No endpoints found…") on the region fallback. Native
+    // OpenAI GPT-5 Luna is the same — Azure-only hosts take
+    // `max_completion_tokens`.
+    ...(params.max_tokens != null && { maxTokens: params.max_tokens }),
+    ...(allowSampling &&
+      params.temperature != null && { temperature: params.temperature }),
+    ...(allowSampling && params.top_p != null && { topP: params.top_p }),
+    ...(allowSampling &&
+      params.frequency_penalty != null && {
+        frequencyPenalty: params.frequency_penalty,
+      }),
+    ...(allowSampling &&
+      params.presence_penalty != null && {
+        presencePenalty: params.presence_penalty,
+      }),
+  };
+}
+
+/** Which API a chat call routes to — decided once in {@link baseChatOptions}
+ *  so the adapter, options object, and tools always agree. */
+type ChatRoute = 'xai' | 'google' | 'openrouter';
+
+/**
  * Assemble the `tools` array for `chat()`. Currently only the provider's
  * web-search server tool, gated on `params.webSearch`. Returns `undefined`
  * (not an empty array) when no tool is requested so the option is omitted.
  *
- * xAI's web search is on/off — no engine/result-count/prompt knobs — so those
- * options are dropped on that route rather than failing the call.
+ * xAI's and Google's web search are on/off — no engine/result-count/prompt
+ * knobs — so those options are dropped on the native routes rather than
+ * failing the call.
  */
-function buildTools(params: LLMRequestParams, native: boolean) {
+function buildTools(params: LLMRequestParams, route: ChatRoute) {
   if (!params.webSearch) return undefined;
-  if (native) return [grokWebSearchTool()];
+  if (route === 'xai') return [grokWebSearchTool()];
+  if (route === 'google') return [googleSearchTool()];
   const opts = params.webSearch === true ? {} : params.webSearch;
   return [
     webSearchTool({
@@ -455,20 +559,28 @@ export function structuredOutputSchemaBytes(schema: z.ZodType): number {
   return JSON.stringify(converted).length;
 }
 
-/** `native` is returned rather than recomputed by callers so the adapter, the
+/** `route` is returned rather than recomputed by callers so the adapter, the
  *  options object, and the tools can't disagree about the route. */
 function baseChatOptions(params: LLMRequestParams) {
   const { systemPrompts, messages } = convertMessages(params.messages);
-  const native = resolveNativeGrokModel(params.model, params.apiKey);
-  const tools = buildTools(params, !!native);
+  const route: ChatRoute = resolveNativeGrokModel(params.model, params.apiKey)
+    ? 'xai'
+    : resolveNativeGeminiModel(params.model, params.apiKey)
+      ? 'google'
+      : 'openrouter';
+  const tools = buildTools(params, route);
+  const modelOptions =
+    route === 'xai'
+      ? buildGrokModelOptions(params)
+      : route === 'google'
+        ? buildGeminiModelOptions(params)
+        : buildModelOptions(params);
   return {
-    native,
+    route,
     adapter: createAdapter(params.model, params.apiKey),
     messages,
     systemPrompts,
-    modelOptions: native
-      ? buildGrokModelOptions(params)
-      : buildModelOptions(params),
+    modelOptions,
     ...(tools && { tools }),
     debug: params.debug ?? false,
   };
@@ -765,15 +877,17 @@ async function* callLLMStreamOnce<T>(
   // `usage.cost` (non-stream structuredOutput drops it — TanStack/ai#1076).
   const usageCapture = createUsageCapture();
 
-  const { native, ...chatOptions } = baseChatOptions(params);
+  const { route, ...chatOptions } = baseChatOptions(params);
 
   const baseOptions = {
     ...chatOptions,
     modelOptions: {
       ...chatOptions.modelOptions,
-      // OpenRouter-only opt-in — xAI reports usage on every streamed response
-      // and rejects the option.
-      ...(native ? {} : { streamOptions: { includeUsage: true } }),
+      // OpenRouter-only opt-in — xAI and Google report usage on every
+      // streamed response and reject the option.
+      ...(route === 'openrouter'
+        ? { streamOptions: { includeUsage: true } }
+        : {}),
     },
     middleware: [
       ...aiObservabilityMiddleware({

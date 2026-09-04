@@ -2,12 +2,16 @@
  * Schema-level acceptance test for the input-hash columns plus a behavioral
  * truth-table test for the `isStale` wrappers on `shots` and `shotVariants`.
  *
- * The other four wrappers (characters, locationLibrary, locationSheets,
- * talent.sheets) follow the same four-line shape exercised here, and their
+ * The remaining wrappers (locationLibrary, locationSheets, talent.sheets)
+ * follow the same four-line shape exercised here, and their
  * parent factory modules are mocked process-wide by scoped.test.ts (per the
  * preamble of `./talent.test.ts`) — so importing them in a sibling test yields
  * stubs. The schema persistence asserts in this file plus the truth-table
  * coverage on frames/shotVariants are the regression guard for the pattern.
+ *
+ * `characters` and `sequenceLocations` are absent: #1419 dropped their
+ * input-hash columns and deleted their `isStale` wrappers. The live sheet
+ * hash is the version row's, covered by `sheet-variants.test.ts`.
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -141,28 +145,6 @@ describe('shot_variants input-hash + diverged_at columns', () => {
   });
 });
 
-describe('characters.sheet_input_hash', () => {
-  it('defaults to null and persists when set', async () => {
-    const [c] = await db
-      .insert(characters)
-      .values({ sequenceId, characterId: 'c1', name: 'C', age: '30s' })
-      .returning();
-    if (!c) throw new Error('test setup: character insert returned nothing');
-    expect(c.sheetInputHash).toBeNull();
-
-    await db
-      .update(characters)
-      .set({ sheetInputHash: 'h' })
-      .where(eq(characters.id, c.id));
-    const [refreshed] = await db
-      .select()
-      .from(characters)
-      .where(eq(characters.id, c.id));
-    if (!refreshed) throw new Error('test setup: refresh failed');
-    expect(refreshed.sheetInputHash).toBe('h');
-  });
-});
-
 describe('locationLibrary.reference_input_hash', () => {
   it('defaults to null and persists when set', async () => {
     const [loc] = await db
@@ -241,72 +223,6 @@ describe('talent_sheets.input_hash', () => {
 
 // `shots.isStale` is gone with `video_input_hash` (#1067 phase 2d) — it was the
 // method's only remaining artifact, and it had no production callers.
-
-// `createSequenceLocationsMethods` is mocked process-wide by scoped.test.ts,
-// so the factory cannot be exercised here. The predicate is the same 4-line
-// shape as `shotVariants.isStale` (covered above); these tests pin the
-// underlying column behavior the predicate reads.
-describe('sequenceLocations.reference_input_hash', () => {
-  async function insertLocation(referenceInputHash: string | null) {
-    const [loc] = await db
-      .insert(sequenceLocations)
-      .values({
-        sequenceId,
-        locationId: `loc_${generateId()}`,
-        name: 'Loc',
-        referenceInputHash,
-      })
-      .returning();
-    if (!loc) throw new Error('test setup: location insert returned nothing');
-    return loc;
-  }
-
-  it('defaults to null and persists when set', async () => {
-    const loc = await insertLocation(null);
-    expect(loc.referenceInputHash).toBeNull();
-
-    await db
-      .update(sequenceLocations)
-      .set({ referenceInputHash: 'h' })
-      .where(eq(sequenceLocations.id, loc.id));
-    const [refreshed] = await db
-      .select()
-      .from(sequenceLocations)
-      .where(eq(sequenceLocations.id, loc.id));
-    if (!refreshed) throw new Error('test setup: refresh failed');
-    expect(refreshed.referenceInputHash).toBe('h');
-  });
-
-  it('predicate truth-table holds against stored column (null / match / differ)', async () => {
-    // Stored null → no opinion (never stale).
-    const noHash = await insertLocation(null);
-    const [r0] = await db
-      .select({ stored: sequenceLocations.referenceInputHash })
-      .from(sequenceLocations)
-      .where(eq(sequenceLocations.id, noHash.id));
-    if (!r0) throw new Error('test setup: r0 select returned nothing');
-    expect(r0.stored).toBeNull();
-
-    // Stored match → not stale.
-    const match = await insertLocation('h-match');
-    const [r1] = await db
-      .select({ stored: sequenceLocations.referenceInputHash })
-      .from(sequenceLocations)
-      .where(eq(sequenceLocations.id, match.id));
-    if (!r1) throw new Error('test setup: r1 select returned nothing');
-    expect(r1.stored).toBe('h-match');
-
-    // Stored differs → stale.
-    const differ = await insertLocation('h-old');
-    const [r2] = await db
-      .select({ stored: sequenceLocations.referenceInputHash })
-      .from(sequenceLocations)
-      .where(eq(sequenceLocations.id, differ.id));
-    if (!r2) throw new Error('test setup: r2 select returned nothing');
-    expect(r2.stored).toBe('h-old');
-    expect(r2.stored !== 'h-new').toBe(true);
-  });
-});
 
 describe('shotVariants.isStale', () => {
   async function insertVariant(inputHash: string | null) {

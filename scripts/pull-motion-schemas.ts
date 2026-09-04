@@ -90,13 +90,18 @@ async function main() {
   writeFileSync(outputPath, JSON.stringify(data, null, 2));
   console.log(`\nSaved ${models.length} specs to ${outputPath}`);
 
-  // Run hey-api codegen
+  // Local pin (`package.json` `@hey-api/openapi-ts` nightly). Do not `npx -p`
+  // the package — that builds an isolated prefix from registry-latest and
+  // bypasses the pin (#1444).
   console.log('\nRunning @hey-api/openapi-ts codegen...\n');
-  await runCommand('bunx', [
-    '@hey-api/openapi-ts',
-    '-f',
-    'scripts/motion-openapi-ts.config.ts',
-  ]);
+  const openapiTsBin = join(
+    import.meta.dirname,
+    '..',
+    'node_modules',
+    '.bin',
+    'openapi-ts'
+  );
+  await runCommand(openapiTsBin, ['-f', 'scripts/motion-openapi-ts.config.ts']);
 
   // Generate endpoint map + prompt limits from the generated types
   console.log('\nGenerating endpoint map...\n');

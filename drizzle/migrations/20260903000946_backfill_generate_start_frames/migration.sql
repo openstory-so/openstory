@@ -1,0 +1,22 @@
+-- Move every existing sequence and shot onto the frame-based workflow before
+-- reference-only becomes the default.
+--
+-- HAND-WRITTEN ON PURPOSE. Pure data backfill, no schema diff, so drizzle-kit
+-- cannot emit it; generated with `bun db:generate --custom`. A migration, not
+-- a script, because every deploy path only runs `wrangler d1 migrations apply`.
+--
+-- WHY: `sequences.generate_start_frames` replaces `reference_only`, inverted,
+-- and defaults OFF (reference-only is now the default for NEW sequences). An
+-- existing sequence must keep the workflow it was made with, so its value is
+-- the inverse of the column it replaces. Every existing shot is also stamped
+-- `use_start_frame = 1` explicitly rather than left to inherit, so the flip of
+-- the sequence default can never change what an already-made shot renders.
+-- That stamp cannot contradict a sequence's copy in production: `reference_only`
+-- was added in this same PR and never deployed, so no deployed row has
+-- `reference_only = 1`.
+--
+-- Both statements are set-based single-table updates; a replay is a no-op
+-- (the shot stamp is idempotent, and the sequence copy runs once because the
+-- source column is dropped by the next migration).
+UPDATE sequences SET generate_start_frames = NOT reference_only;
+UPDATE shots SET use_start_frame = 1 WHERE use_start_frame IS NULL;

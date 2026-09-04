@@ -1,8 +1,16 @@
 import { withThemeByClassName } from '@storybook/addon-themes';
 import type { Decorator, Preview } from '@storybook/react-vite';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRouter,
+  RouterProvider,
+} from '@tanstack/react-router';
 import { RealtimeProvider } from '../src/lib/realtime/client';
-import { initialize, mswLoader } from 'msw-storybook-addon';
+import { TooltipProvider } from '../src/components/ui/tooltip';
+import { mswLoader } from 'msw-storybook-addon/csf3';
+import { setupWorker } from 'msw/browser';
 import { handlers } from '../src/lib/mocks/handlers';
 
 import '../src/styles/global.css';
@@ -12,9 +20,6 @@ import '../src/styles/global.css';
  * See https://github.com/mswjs/msw-storybook-addon#configuring-msw
  * to learn how to customize it
  */
-initialize({
-  onUnhandledRequest: 'bypass',
-});
 
 // Create a client for Storybook
 const queryClient = new QueryClient({
@@ -26,10 +31,23 @@ const queryClient = new QueryClient({
   },
 });
 
+// Components render <Link> (e.g. SceneListItem), which needs a router context.
+// A root-only memory router is enough: links resolve, nothing navigates.
+const withRouter: Decorator = (Story) => {
+  const router = createRouter({
+    routeTree: createRootRoute({ component: () => <Story /> }),
+    history: createMemoryHistory({ initialEntries: ['/'] }),
+  });
+  return <RouterProvider router={router} />;
+};
+
 const withProviders: Decorator = (Story) => (
   <QueryClientProvider client={queryClient}>
     <RealtimeProvider>
-      <Story />
+      {/* Radix Tooltip needs a provider (same as src/components/providers.tsx). */}
+      <TooltipProvider>
+        <Story />
+      </TooltipProvider>
     </RealtimeProvider>
   </QueryClientProvider>
 );
@@ -65,10 +83,17 @@ const preview: Preview = {
     },
   },
 
-  loaders: [mswLoader],
+  loaders: [
+    mswLoader(async () => {
+      const worker = setupWorker();
+      await worker.start({ onUnhandledRequest: 'bypass' });
+      return worker;
+    }),
+  ],
 
   decorators: [
     withProviders,
+    withRouter,
     withThemeByClassName({
       themes: {
         light: '',

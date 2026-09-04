@@ -49,6 +49,7 @@ const mockSequence: Sequence = {
   styleId: 'style-1',
   styleConfig: null,
   aspectRatio: '16:9',
+  resolution: '720p',
   analysisModel: 'anthropic/claude-haiku-4.5',
   analysisDurationMs: 0,
   imageModel: 'nano_banana',
@@ -65,8 +66,13 @@ const mockSequence: Sequence = {
   musicPromptInputHash: null,
   includeMusic: true,
   posterUrl: null,
+  readyEmailSentAt: null,
   autoGenerateMotion: false,
   autoGenerateMusic: false,
+  generationStopAt: null,
+  pipelineStage: null,
+  generationCheckpoint: null,
+  generateStartFrames: true,
   suggestedTalentIds: null,
   suggestedLocationIds: null,
 };
@@ -189,6 +195,7 @@ const mockScene = (orderIndex: number, title: string): SceneWithScript => ({
   continuity: null,
   script: { extract: 'Sample scene text', dialogue: [] },
   selectedScriptVersionId: null,
+  deletedAt: null,
   createdAt: new Date(),
   updatedAt: new Date(),
 });
@@ -235,8 +242,10 @@ const mockShot = (spec: {
       sceneId: spec.sceneId,
       shotNumber: 1,
       durationMs: 5000,
+      useStartFrame: null,
       selectedMotionPromptVersionId: null,
       renderSegmentId: null,
+      deletedAt: null,
       createdAt: now,
       updatedAt: now,
     },
@@ -616,7 +625,7 @@ export const PreviewMode: Story = {
     docs: {
       description: {
         story:
-          'Shows preview mode where fast preview images are displayed while full-resolution thumbnails are still generating. Scenes 1-2 show the "Preview" badge, Scene 3 has its final image ready (no badge).',
+          'Shows preview mode where fast preview images are displayed while full-resolution thumbnails are still generating. Scenes 1-2 show the "Storyboard" badge, Scene 3 has its final image ready (no badge).',
       },
     },
   },

@@ -218,14 +218,10 @@ export const ReplaceElementPopover: React.FC<ReplaceElementPopoverProps> = ({
                   onClick={handleConfirm}
                   disabled={isPending}
                 >
-                  {isPending ? (
-                    <>
-                      <Loader2 className="mr-2 size-4 animate-spin" />
-                      Replacing…
-                    </>
-                  ) : (
-                    `Replace ${token}`
+                  {isPending && (
+                    <Loader2 className="mr-2 size-4 animate-spin" />
                   )}
+                  <span>{isPending ? 'Replacing…' : `Replace ${token}`}</span>
                 </Button>
               </div>
             </div>

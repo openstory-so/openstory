@@ -38,6 +38,7 @@ import {
 } from '@/hooks/use-balance-flash';
 import {
   closeAddCreditsDialog,
+  getAddCreditsSurface,
   useAddCreditsDialogOpen,
 } from '@/hooks/use-add-credits-dialog';
 import { closeBillingGate } from '@/hooks/use-billing-gate-dialog';
@@ -54,7 +55,7 @@ import { usePostHog } from '@posthog/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { CreditCard, ExternalLink, Plus } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { ulid } from 'ulid';
 
@@ -70,6 +71,16 @@ export function AddCreditsDialog() {
   const { data: session } = useAuthSession();
   const queryClient = useQueryClient();
   const posthog = usePostHog();
+
+  // Every "Add credits" button routes through openAddCreditsDialog(surface),
+  // so one capture here covers them all (#1301).
+  useEffect(() => {
+    if (open) {
+      posthog.capture('add_credits_clicked', {
+        surface: getAddCreditsSurface(),
+      });
+    }
+  }, [open, posthog]);
 
   const [amount, setAmount] = useState('10');
   const [selectedPm, setSelectedPm] = useState<string | null>(null);
@@ -122,7 +133,10 @@ export function AddCreditsDialog() {
       amountUsd: number;
       paymentMethodId: string;
       requestId: string;
-    }) => purchaseCreditsFn({ data: input }),
+    }) =>
+      purchaseCreditsFn({
+        data: { ...input, surface: getAddCreditsSurface() || undefined },
+      }),
     onSuccess: (_data, input) => {
       invalidateBilling();
       triggerBalanceFlash();
@@ -146,7 +160,12 @@ export function AddCreditsDialog() {
   const checkoutMutation = useMutation({
     meta: { inlineError: true },
     mutationFn: (checkoutAmountUsd: number) =>
-      createCheckoutSessionFn({ data: { amountUsd: checkoutAmountUsd } }),
+      createCheckoutSessionFn({
+        data: {
+          amountUsd: checkoutAmountUsd,
+          surface: getAddCreditsSurface() || undefined,
+        },
+      }),
     onSuccess: (data) => {
       window.location.href = data.url;
     },
@@ -244,14 +263,22 @@ export function AddCreditsDialog() {
             // silently pushes a returning customer back through Checkout.
             <p role="alert" className="text-xs text-destructive">
               Couldn&apos;t load your saved cards
-              {pmError instanceof Error ? `: ${pmError.message}` : ''}
+              {pmError instanceof Error && <span>: {pmError.message}</span>}
             </p>
           ) : pmLoading ? (
             <Skeleton className="h-9 w-full" />
           ) : (
             <Select
               value={effectivePm}
+              items={[
+                ...paymentMethods.map((pm) => ({
+                  value: pm.id,
+                  label: `${formatBrand(pm.brand)} •••• ${pm.last4}`,
+                })),
+                { value: NEW_CARD, label: 'New card at checkout' },
+              ]}
               onValueChange={(value) => {
+                if (value == null) return;
                 setSelectedPm(value);
                 setError(null);
               }}

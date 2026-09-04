@@ -16,6 +16,60 @@ const variantInputSchema = z.object({
   variantId: ulidSchema,
 });
 
+const characterVersionsInput = z.object({
+  sequenceId: ulidSchema,
+  characterId: ulidSchema,
+});
+
+/** Completed, non-discarded sheet versions for the history list. */
+export const listCharacterSheetVersionsFn = createServerFn({ method: 'GET' })
+  .middleware([sequenceAccessMiddleware])
+  .validator(zodValidator(characterVersionsInput))
+  .handler(async ({ context, data }) => {
+    const character = await context.scopedDb.characters.getById(
+      data.characterId
+    );
+    if (!character || character.sequenceId !== context.sequence.id) {
+      throw new Error('Character not found in this sequence');
+    }
+    const rows =
+      await context.scopedDb.characterSheetVariants.listHistoryByCharacter(
+        character.id
+      );
+    return {
+      selectedSheetVersionId: character.selectedSheetVersionId,
+      versions: rows,
+    };
+  });
+
+export const selectCharacterSheetVersionFn = createServerFn({ method: 'POST' })
+  .middleware([sequenceAccessMiddleware])
+  .validator(
+    zodValidator(characterVersionsInput.extend({ versionId: ulidSchema }))
+  )
+  .handler(async ({ context, data }) => {
+    const character = await context.scopedDb.characters.getById(
+      data.characterId
+    );
+    if (!character || character.sequenceId !== context.sequence.id) {
+      throw new Error('Character not found in this sequence');
+    }
+    const version = await context.scopedDb.characterSheetVariants.select(
+      character.id,
+      data.versionId,
+      { actorId: context.user.id }
+    );
+    try {
+      await getGenerationChannel(context.sequence.id).emit(
+        'generation.character-sheet:progress',
+        { characterId: character.id, status: 'completed' }
+      );
+    } catch (error) {
+      logger.error('realtime emit failed', { err: error });
+    }
+    return { versionId: version.id, characterId: character.id };
+  });
+
 /**
  * List active divergent character-sheet alternates across all characters in a
  * sequence. Drives the corner-dot indicator on talent cards and the inline
@@ -65,14 +119,10 @@ export const promoteCharacterSheetVariantFn = createServerFn({ method: 'POST' })
       throw new Error('Character not found in this sequence');
     }
 
-    await context.scopedDb.characterSheetVariants.promoteAtomically(
+    await context.scopedDb.characterSheetVariants.select(
       variant.characterId,
-      {
-        sheetImageUrl: variant.url,
-        sheetImagePath: variant.storagePath,
-        sheetInputHash: variant.inputHash,
-      },
-      variant.id
+      variant.id,
+      { actorId: context.user.id }
     );
 
     // Realtime emit is purely cache-busting — TanStack Query refetches on the

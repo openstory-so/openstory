@@ -5,13 +5,22 @@ import {
   DEFAULT_VIDEO_MODEL,
   IMAGE_MODELS,
   IMAGE_TO_VIDEO_MODELS,
+  referenceOnlyCapableWith,
+  type ImageToVideoModel,
 } from '@/lib/ai/models';
 import {
   DEFAULT_ANALYSIS_MODEL,
   isValidAnalysisModelId,
 } from '@/lib/ai/models.config';
 import { aspectRatioSchema } from '@/lib/constants/aspect-ratios';
+import { resolutionSchema } from '@/lib/constants/resolutions';
 import { sequences } from '@/lib/db/schema/sequences';
+import {
+  DEFAULT_GENERATION_STOP_AT,
+  flagsFromStopAt,
+  generationStageSchema,
+  stopAtFromFlags,
+} from '@/lib/generation/pipeline';
 import { ulidSchemaOptional } from '@/lib/schemas/id.schemas';
 import { createInsertSchema, createUpdateSchema } from 'drizzle-orm/zod';
 import { z } from 'zod';
@@ -35,11 +44,18 @@ const validAudioModelKeys = Object.keys(
 export const MUSIC_REQUIRES_MOTION_ERROR =
   'Music generation currently requires motion. Turn on motion or disable music.';
 
+export const REFERENCE_ONLY_MODEL_ERROR =
+  'Without start frames, the video model must render from references alone. Pick Seedance, H3 Max, Omni Flash or Grok Imagine, or turn on Generate start frames.';
+
+export const REFERENCE_ONLY_REQUIRES_MOTION_ERROR =
+  'Without start frames, each shot renders straight to video, so motion is required. Turn motion on, or turn on Generate start frames.';
+
 export const createSequenceSchema = createInsertSchema(sequences, {
   title: (schema) => schema.min(1).optional(), // Optional - defaults to 'Untitled Sequence' in hook
   script: z.string().min(10), // Override to make it required with business rules
   teamId: ulidSchemaOptional, // Optional - will use user's default team if not provided
   aspectRatio: aspectRatioSchema.optional(), // Optional - defaults to '16:9' in database
+  resolution: resolutionSchema.optional(), // Optional - defaults to '720p' in database
   styleId: z.string().optional(), // Optional - can be null
 })
   .omit({
@@ -64,6 +80,9 @@ export const createSequenceSchema = createInsertSchema(sequences, {
     musicModel: true,
     musicPrompt: true,
     musicTags: true,
+    generationStopAt: true,
+    pipelineStage: true,
+    generationCheckpoint: true,
   })
   .extend({
     // Accept array of models for multi-model sequence creation
@@ -108,12 +127,16 @@ export const createSequenceSchema = createInsertSchema(sequences, {
       )
       .min(1, 'At least one video model must be selected')
       .default([DEFAULT_VIDEO_MODEL]),
-    // Product default ON for the aha path (stills + motion + music). Callers
-    // that omit flags get true after parse — keep API v1 explicit if it must
-    // stay opt-in spend. Zod `.default()` runs before handler destructuring, so
-    // handler `= true` alone is not enough when the flag is omitted.
-    autoGenerateMotion: z.boolean().default(true).optional(),
-    autoGenerateMusic: z.boolean().default(true).optional(),
+    // How far the run should go (#1408). Default music = stills + motion +
+    // music (the aha path). Legacy auto-generate flags still parse and map
+    // onto a stop-at when `stopAt` is omitted.
+    stopAt: generationStageSchema.optional(),
+    autoGenerateMotion: z.boolean().optional(),
+    autoGenerateMusic: z.boolean().optional(),
+    // Explicit default: the model refinement below and the create handler
+    // both read the parsed value, and leaving it `undefined` would make "off"
+    // indistinguishable from "unset".
+    generateStartFrames: z.boolean().default(false).optional(),
     // Music model selection (model key, not full ID) — primary / first of audioModels
     musicModel: z
       .string()
@@ -122,7 +145,7 @@ export const createSequenceSchema = createInsertSchema(sequences, {
       })
       .optional(),
     // Multiple audio models for variant generation (first is primary). Optional
-    // (music is opt-in via autoGenerateMusic); when present must be non-empty.
+    // (music is opt-in via a `music` stop-at); when present must be non-empty.
     audioModels: z
       .array(
         z.string().refine((val) => validAudioModelKeys.includes(val), {
@@ -131,10 +154,10 @@ export const createSequenceSchema = createInsertSchema(sequences, {
       )
       .min(1, 'At least one audio model must be selected')
       .optional(),
-    // Enhance / Generate duration chip (15 / 30 / 60 / 180). Pre-flight scene
+    // Enhance / Generate duration chip (15 / 30 / 60 / 120 / 180 / 300). Pre-flight scene
     // count + per-shot duration use this so client ActionCost and server
     // requireCredits stay aligned before Scene N headings exist (#1140).
-    targetDurationSeconds: z.number().min(5).max(180).optional(),
+    targetDurationSeconds: z.number().min(5).max(300).optional(),
     // Suggested talent IDs for AI-assisted casting during generation
     suggestedTalentIds: z.array(z.string()).optional(),
     // Suggested location IDs for visual consistency during generation
@@ -159,9 +182,62 @@ export const createSequenceSchema = createInsertSchema(sequences, {
     // newly created sequence so the user doesn't have to re-upload references.
     sourceSequenceId: ulidSchemaOptional,
   })
-  .refine((data) => !data.autoGenerateMusic || data.autoGenerateMotion, {
-    path: ['autoGenerateMusic'],
-    message: MUSIC_REQUIRES_MOTION_ERROR,
+  // Legacy-flag checks only apply when the caller did not pick a stop-at
+  // (#1408): an explicit early stop is a deliberate partial run.
+  .superRefine((data, ctx) => {
+    if (data.stopAt) return;
+    if (data.autoGenerateMusic && data.autoGenerateMotion === false) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['autoGenerateMusic'],
+        message: MUSIC_REQUIRES_MOTION_ERROR,
+      });
+    }
+    // Reference-only skips the image pass; motion is the only thing left that
+    // renders. With motion off the sequence would complete having generated
+    // nothing at all, and report success doing it.
+    if (!data.generateStartFrames && data.autoGenerateMotion === false) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['generateStartFrames'],
+        message: REFERENCE_ONLY_REQUIRES_MOTION_ERROR,
+      });
+    }
+  })
+  // Reference-only has no start frame, so EVERY selected model must have a
+  // route whose start frame is optional — not just the primary. A variant
+  // model without one would fail every shot it was asked to render.
+  //
+  // This schema is isomorphic and pure, so it cannot know which vias a team
+  // reaches. It asks the widest question — capable on SOME via — which rejects
+  // Kling / Veo / LTX always and lets Grok Imagine through; `createSequences`
+  // then re-asks it against the team's real keys via `canRenderReferenceOnly`.
+  .refine(
+    (data) =>
+      data.generateStartFrames ||
+      data.videoModels.every(
+        (model) =>
+          validVideoModelKeys.includes(model) &&
+          // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- guarded by the key check above
+          referenceOnlyCapableWith(model as ImageToVideoModel, { xai: true })
+      ),
+    {
+      path: ['generateStartFrames'],
+      message: REFERENCE_ONLY_MODEL_ERROR,
+    }
+  )
+  .transform((data) => {
+    const stopAt =
+      data.stopAt ??
+      (data.autoGenerateMotion === undefined &&
+      data.autoGenerateMusic === undefined
+        ? DEFAULT_GENERATION_STOP_AT
+        : stopAtFromFlags({
+            autoGenerateMotion: data.autoGenerateMotion ?? true,
+            autoGenerateMusic: data.autoGenerateMusic ?? true,
+          }));
+    const flags = flagsFromStopAt(stopAt);
+    return { ...data, stopAt, ...flags };
   });
 
 export const updateSequenceSchema = createUpdateSchema(sequences, {
@@ -180,6 +256,7 @@ export const updateSequenceSchema = createUpdateSchema(sequences, {
       message: 'Invalid video model',
     }),
   aspectRatio: aspectRatioSchema.optional(),
+  resolution: resolutionSchema.optional(),
 }).omit({
   id: true,
   teamId: true,
@@ -190,6 +267,12 @@ export const updateSequenceSchema = createUpdateSchema(sequences, {
   updatedBy: true,
   workflow: true, // Set by workflow, not user
   workflowRunId: true, // Set at workflow trigger time, not user
+  // Set at creation only. Toggling it on an existing sequence bypasses the
+  // model refine below AND rewrites what every already-rendered shot means:
+  // on, the stills the user approved are silently dropped from the request
+  // while their prompts still assume one; off, no shot has a still and batch
+  // motion finds nothing eligible. Regenerate instead of toggling.
+  generateStartFrames: true,
   // Copied from the style row on styleId change — clients send styleId only.
   styleConfig: true,
   // Music fields - managed by workflow, not user input
@@ -201,6 +284,9 @@ export const updateSequenceSchema = createUpdateSchema(sequences, {
   musicModel: true,
   musicPrompt: true,
   musicTags: true,
+  generationStopAt: true,
+  pipelineStage: true,
+  generationCheckpoint: true,
 });
 
 export type CreateSequenceInput = z.infer<typeof createSequenceSchema>;

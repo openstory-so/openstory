@@ -19,6 +19,7 @@ import { talentMatchResponseSchema } from '@/lib/ai/response-schemas';
 import { buildMatchingPromptVariables } from '@/lib/ai/talent-matching-prompt';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import { getGenerationChannel } from '@/lib/realtime';
+import { GENERATION_STAGE_META } from '@/lib/generation/pipeline';
 import { OpenStoryWorkflowEntrypoint } from '@/lib/workflow/base-workflow';
 import { durableLLMCallCf } from '@/lib/workflows/llm-call-helper';
 import { waitForTalentSheets } from '@/lib/workflows/wait-for-sheets';
@@ -62,8 +63,8 @@ export class TalentMatchingWorkflow extends OpenStoryWorkflowEntrypoint<TalentMa
               scopedDb.liveRead,
               suggestedTalentIds,
               {
-                // Surface the wait in the generation progress dialog. Phase 2 is
-                // the "Casting characters & locations…" step; only emitted when
+                // Surface the wait in the generation progress dialog. Casting runs inside
+                // the Script phase; only emitted when
                 // we actually have to wait, so a ready library never flashes a
                 // spurious status.
                 onWaitNeeded: async () => {
@@ -71,7 +72,7 @@ export class TalentMatchingWorkflow extends OpenStoryWorkflowEntrypoint<TalentMa
                   await getGenerationChannel(sequenceId).emit(
                     'generation.phase:start',
                     {
-                      phase: 2,
+                      phase: GENERATION_STAGE_META.script.phase,
                       phaseName: 'Waiting for talent sheets…',
                     }
                   );
@@ -116,6 +117,7 @@ export class TalentMatchingWorkflow extends OpenStoryWorkflowEntrypoint<TalentMa
               userId: input.userId,
               workflowRunId: event.instanceId,
               scopedDb,
+              reservationId: input.reservationId,
             }
           )
         : { matches: [] as Array<{ characterId: string; talentId: string }> };

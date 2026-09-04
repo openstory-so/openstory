@@ -16,9 +16,11 @@ import { resolveVideoModel } from '@/lib/ai/resolve-asset-models';
 import type { EffectiveFalPricing } from '@/lib/ai/fal-cost';
 import { estimateVideoCost, gateEstimate } from '@/lib/billing/cost-estimation';
 import { addMicros, ZERO_MICROS, type Microdollars } from '@/lib/billing/money';
+import type { Resolution } from '@/lib/constants/resolutions';
 import { snapDuration } from '@/lib/motion/snap-duration';
 
-type BatchShot = { id: string };
+/** `useStartFrame` so a caller can price each shot on its own render route. */
+type BatchShot = { id: string; useStartFrame?: boolean | null };
 type SequenceModelFields = { videoModel: string | null | undefined };
 /**
  * The per-shot model maps the batch resolves from (#1066), both keyed by SHOT
@@ -62,11 +64,19 @@ export function estimateBatchMotionCost(
     pricing: Record<string, EffectiveFalPricing>;
     explicitModel?: ImageToVideoModel | null;
     duration?: number;
+    /** Output resolution tier (#1449) — token-billed clips scale with it. */
+    resolution?: Resolution;
     /**
      * When true (or per-shot true), price the reference-to-video endpoint for
      * models that route there with cast/element refs (#873).
      */
     hasReferenceImages?: boolean | ((shot: BatchShot) => boolean);
+    /**
+     * @see estimateVideoCost — reference-only always routes to r2v. Per shot
+     * like its neighbour: a batch can mix, and pricing every shot on one
+     * shot's answer quotes the wrong endpoint for the rest.
+     */
+    referenceOnly?: boolean | ((shot: BatchShot) => boolean);
   }
 ): Microdollars {
   return shots.reduce((sum, shot) => {
@@ -80,12 +90,18 @@ export function estimateBatchMotionCost(
       typeof opts.hasReferenceImages === 'function'
         ? opts.hasReferenceImages(shot)
         : (opts.hasReferenceImages ?? false);
+    const referenceOnly =
+      typeof opts.referenceOnly === 'function'
+        ? opts.referenceOnly(shot)
+        : (opts.referenceOnly ?? false);
     return addMicros(
       sum,
       gateEstimate(
         estimateVideoCost(model, snapDuration(opts.duration, model), {
           pricing: opts.pricing,
+          resolution: opts.resolution,
           hasReferenceImages: hasRefs,
+          referenceOnly,
         }),
         { model, operation: 'batch-motion' }
       )

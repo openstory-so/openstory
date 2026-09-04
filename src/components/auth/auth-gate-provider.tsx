@@ -29,6 +29,7 @@ import {
 import { useUser } from '@/hooks/use-user';
 import { getAuthOptionsFn } from '@/functions/auth-options';
 import { sanitizeAuthRedirect } from '@/lib/auth/navigation';
+import { usePostHog } from '@posthog/react';
 import { useQuery } from '@tanstack/react-query';
 import { useRouterState } from '@tanstack/react-router';
 import {
@@ -101,6 +102,7 @@ export function AuthGateProvider({ children }: { children: ReactNode }) {
   }
   const isAuthenticated = !!user;
   const [open, setOpen] = useState(false);
+  const posthog = usePostHog();
 
   // Same server-reported options the login route loads in beforeLoad —
   // which sign-in methods to offer (Google only where configured, dev
@@ -115,13 +117,25 @@ export function AuthGateProvider({ children }: { children: ReactNode }) {
   // Return the visitor to wherever they were after signing in so their
   // in-progress draft (persisted to localStorage) is restored. Strip the
   // hash (#compose from "Try this style") — better-auth rejects it as an
-  // OAuth callbackURL. `?style=` is enough to re-seed the composer.
+  // OAuth callbackURL. Path + search keep the composer seed; the draft
+  // restores typed or shuffled text (#1384).
   const redirectTo = useRouterState({
     select: (s) =>
       sanitizeAuthRedirect(`${s.location.pathname}${s.location.searchStr}`),
   });
 
-  const openLogin = useCallback(() => setOpen(true), []);
+  // Which button opened the dialog: `explicit` = a Sign in control,
+  // `auth_gate` = an action the visitor tried to take. The funnel can't tell
+  // them apart without this.
+  const openDialog = useCallback(
+    (source: 'auth_gate' | 'explicit') => {
+      posthog.capture('login_dialog_opened', { source });
+      setOpen(true);
+    },
+    [posthog]
+  );
+
+  const openLogin = useCallback(() => openDialog('explicit'), [openDialog]);
 
   const requireAuth = useCallback(
     (action?: () => void) => {
@@ -129,10 +143,10 @@ export function AuthGateProvider({ children }: { children: ReactNode }) {
         action?.();
         return true;
       }
-      setOpen(true);
+      openDialog('auth_gate');
       return false;
     },
-    [isAuthenticated]
+    [isAuthenticated, openDialog]
   );
 
   const value = useMemo(

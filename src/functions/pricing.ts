@@ -1,3 +1,4 @@
+import { isBytePlusConfigured } from '@/lib/ai/byteplus-config';
 import {
   getEffectiveFalPricing,
   getFalPricingUpdatedAt,
@@ -23,7 +24,11 @@ export const getPricingCatalogFn = createServerFn({ method: 'GET' }).handler(
       getFalPricingUpdatedAt(),
     ]);
     return {
-      ...buildPricingCatalog({ falPricing, falUpdatedAt }),
+      ...buildPricingCatalog({
+        falPricing,
+        falUpdatedAt,
+        byteplusEnabled: isBytePlusConfigured(),
+      }),
       filmCosts: buildFilmCostExamples(falPricing),
     };
   }

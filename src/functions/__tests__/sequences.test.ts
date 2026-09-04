@@ -16,6 +16,7 @@ import {
   assertModelNotAlreadyAdded,
   buildAddAudioMusicInput,
   musicWithoutMotion,
+  resolveUnarchiveRestore,
   selectEligibleVideoShots,
 } from '@/functions/sequences';
 import { sumShotDurationsSeconds } from '@/lib/sequences/shot-durations';
@@ -41,8 +42,10 @@ function makeShot({
     sceneId: null,
     shotNumber: 1,
     durationMs: 3000,
+    useStartFrame: null,
     selectedMotionPromptVersionId: null,
     renderSegmentId: null,
+    deletedAt: null,
     createdAt: NOW,
     updatedAt: NOW,
     ...overrides,
@@ -121,10 +124,15 @@ describe('assertModelNotAlreadyAdded (#547)', () => {
   });
 });
 
+/** The ordinary sequence: shots animate from a rendered still. */
+const STILLS = { generateStartFrames: true };
+/** Reference-only: no stills are ever rendered, so none can be required. */
+const REFERENCE_ONLY = { generateStartFrames: false };
+
 describe('selectEligibleVideoShots (#547)', () => {
   it('includes shots with a completed image', () => {
     const shots = [makeShot()];
-    expect(selectEligibleVideoShots(shots)).toHaveLength(1);
+    expect(selectEligibleVideoShots(shots, STILLS)).toHaveLength(1);
   });
 
   it('excludes shots whose image is not completed', () => {
@@ -133,7 +141,7 @@ describe('selectEligibleVideoShots (#547)', () => {
       makeShot({ id: 'generating', imageStatus: 'generating' }),
       makeShot({ id: 'failed', imageStatus: 'failed' }),
     ];
-    expect(selectEligibleVideoShots(shots)).toEqual([]);
+    expect(selectEligibleVideoShots(shots, STILLS)).toEqual([]);
   });
 
   it('excludes shots completed but missing a still url', () => {
@@ -141,7 +149,7 @@ describe('selectEligibleVideoShots (#547)', () => {
       makeShot({ id: 'null-url', imageUrl: null }),
       makeShot({ id: 'empty-url', imageUrl: '' }),
     ];
-    expect(selectEligibleVideoShots(shots)).toEqual([]);
+    expect(selectEligibleVideoShots(shots, STILLS)).toEqual([]);
   });
 
   it('returns only the eligible shots from a mixed set', () => {
@@ -150,10 +158,36 @@ describe('selectEligibleVideoShots (#547)', () => {
       makeShot({ id: 'no-image', imageStatus: 'pending' }),
       makeShot({ id: 'ok-2' }),
     ];
-    expect(selectEligibleVideoShots(shots).map((f) => f.id)).toEqual([
+    expect(selectEligibleVideoShots(shots, STILLS).map((f) => f.id)).toEqual([
       'ok-1',
       'ok-2',
     ]);
+  });
+
+  it('includes a still-less shot when the sequence is reference-only', () => {
+    // The add used to fail outright here: no shot in such a sequence has a
+    // still, so every one was filtered out.
+    const shots = [makeShot({ id: 'no-still', imageStatus: 'pending' })];
+    expect(
+      selectEligibleVideoShots(shots, REFERENCE_ONLY).map((f) => f.id)
+    ).toEqual(['no-still']);
+  });
+
+  it('asks the shot, not the sequence', () => {
+    const shots = [
+      makeShot({
+        id: 'opted-out',
+        imageStatus: 'pending',
+        useStartFrame: false,
+      }),
+      makeShot({ id: 'opted-in', imageStatus: 'pending', useStartFrame: true }),
+    ];
+    expect(selectEligibleVideoShots(shots, STILLS).map((f) => f.id)).toEqual([
+      'opted-out',
+    ]);
+    expect(
+      selectEligibleVideoShots(shots, REFERENCE_ONLY).map((f) => f.id)
+    ).toEqual(['opted-out']);
   });
 });
 
@@ -257,5 +291,40 @@ describe('musicWithoutMotion (#823)', () => {
     expect(
       musicWithoutMotion({ autoGenerateMusic: false }, flags(true, false))
     ).toBe(false);
+  });
+});
+
+describe('resolveUnarchiveRestore', () => {
+  it('restores a recorded completed/failed/draft status verbatim', () => {
+    expect(
+      resolveUnarchiveRestore({ recordedStatus: 'completed', hasShots: false })
+    ).toEqual({ status: 'completed', interrupted: false });
+    expect(
+      resolveUnarchiveRestore({ recordedStatus: 'failed', hasShots: true })
+    ).toEqual({ status: 'failed', interrupted: false });
+    expect(
+      resolveUnarchiveRestore({ recordedStatus: 'draft', hasShots: false })
+    ).toEqual({ status: 'draft', interrupted: false });
+  });
+
+  it('maps a recorded processing status to interrupted failed', () => {
+    expect(
+      resolveUnarchiveRestore({
+        recordedStatus: 'processing',
+        hasShots: true,
+      })
+    ).toEqual({ status: 'failed', interrupted: true });
+  });
+
+  it('falls back to completed when the archive event is missing and shots exist', () => {
+    expect(
+      resolveUnarchiveRestore({ recordedStatus: null, hasShots: true })
+    ).toEqual({ status: 'completed', interrupted: false });
+  });
+
+  it('falls back to draft when the archive event is missing and there are no shots', () => {
+    expect(
+      resolveUnarchiveRestore({ recordedStatus: null, hasShots: false })
+    ).toEqual({ status: 'draft', interrupted: false });
   });
 });

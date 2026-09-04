@@ -29,6 +29,7 @@ interface UploadPosterOptions {
 type StorageResult = {
   url: string;
   path: string;
+  contentType: string;
 };
 
 /**
@@ -36,14 +37,21 @@ type StorageResult = {
  * `buildPath` receives the resolved file extension so callers own the
  * key layout without duplicating the type sniffing below.
  */
-async function uploadImageFromUrl(
+export async function uploadImageFromUrl(
   imageUrl: string,
   buildPath: (extension: string) => string
 ): Promise<StorageResult> {
   const response = await fetch(imageUrl);
 
   if (!response.ok) {
-    throw new Error(`Failed to download image: ${response.statusText}`);
+    // `statusText` was the whole error we reported, and it is worthless:
+    // provider CDNs send no reason phrase, so both occurrences to date read
+    // `Failed to download image: <none>` — nothing to act on (#1435). The
+    // status and the provider's error body are what name the cause.
+    const body = (await response.text().catch(() => '')).slice(0, 200).trim();
+    throw new Error(
+      `Failed to download image from ${new URL(imageUrl).host}: ${response.status}${body ? ` ${body}` : ''}`
+    );
   }
 
   // Magic bytes first: fal's upscale endpoints return extension-less URLs
@@ -80,6 +88,7 @@ async function uploadImageFromUrl(
   return {
     url: result.publicUrl,
     path: storagePath,
+    contentType,
   };
 }
 

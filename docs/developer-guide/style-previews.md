@@ -67,7 +67,7 @@ Outputs (report-only — never deletes anything):
 - Console: styles ranked worst-first + a re-roll list (anything below `--threshold`, or with a hard flag on the chosen scene). Exits non-zero if any style fails — useful as a gate.
 
 Flags: `--filter "<name>"`, `--scene <name>`, `--model <id>` (default
-`google/gemini-3-flash-preview`), `--threshold <n>`.
+`google/gemini-3.7-flash`), `--threshold <n>`.
 
 > LLM anatomy detection is imperfect — treat anatomy flags as a strong hint, not
 > gospel, and spot-check the chosen thumbnails.

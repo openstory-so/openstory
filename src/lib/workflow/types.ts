@@ -50,6 +50,7 @@ export type UserEditProvenance = {
   analysisModel: string | null;
 };
 import type { AspectRatio, ImageSize } from '@/lib/constants/aspect-ratios';
+import type { Resolution } from '@/lib/constants/resolutions';
 import type {
   CharacterMinimal,
   GeneratedAssetActivity,
@@ -60,7 +61,12 @@ import type {
 } from '@/lib/db/schema';
 import type { ReferenceImageDescription } from '@/lib/prompts/reference-image-prompt';
 import type { UpdateStalePlan } from '@/lib/shots/update-stale-plan';
+import type { StudioCreateInput } from '@/lib/studio/schema';
 import type { Json } from '@/types/database';
+import type {
+  GenerationCheckpoint,
+  GenerationStage,
+} from '@/lib/generation/pipeline';
 import { z } from 'zod';
 import type { musicDesignResultSchema } from '../ai/response-schemas';
 
@@ -71,6 +77,18 @@ import type { musicDesignResultSchema } from '../ai/response-schemas';
 export interface UserWorkflowContext {
   userId: string;
   teamId: string;
+  /**
+   * Run envelope (#1310). Optional so in-flight instances without it still
+   * last-resort deduct. Children inherit this from the parent payload.
+   */
+  reservationId?: string;
+  /**
+   * This instance created a private envelope (add-model per shot, smart-retry
+   * leaf). The base class zeros leftover on success and failure. Leave unset
+   * on shared-envelope children so the base class does not zero; parents may
+   * still zero explicitly.
+   */
+  ownsReservation?: boolean;
 }
 
 export interface SequenceWorkflowContext extends UserWorkflowContext {
@@ -127,6 +145,7 @@ export interface ImageWorkflowInput extends SequenceWorkflowContext {
    * present so write-time hash recomputation matches the trigger-time hash.
    */
   aspectRatio?: AspectRatio;
+  resolution?: Resolution;
   /** Hash over `(prompt, model, aspectRatio, sceneSnapshot)`; validated at start. */
   snapshotInputHash?: string;
   /**
@@ -180,6 +199,7 @@ export interface ShotVariantWorkflowInput extends SequenceWorkflowContext {
   frameId?: string;
   /** Sequence aspect ratio — drives shot grid layout */
   aspectRatio?: AspectRatio;
+  resolution?: Resolution;
   /** Scene visual prompt, from the anchor `frame.imagePrompt` mirror (#713) */
   scenePrompt?: string;
   /** The `frame_prompt_versions` row `scenePrompt` was read from, snapshotted
@@ -210,6 +230,7 @@ export interface StoryboardWorkflowInput extends SequenceWorkflowContext {
   title: string;
   script: string;
   aspectRatio: AspectRatio;
+  resolution?: Resolution;
   styleConfig: StyleConfig;
   /**
    * Automatic style (#1213): set when the sequence's style is a placeholder
@@ -247,6 +268,20 @@ export interface StoryboardWorkflowInput extends SequenceWorkflowContext {
   videoModels?: ImageToVideoModel[];
   autoGenerateMotion?: boolean;
   autoGenerateMusic?: boolean;
+  /**
+   * How far this run should go (#1408). Resolved by the launcher, so the
+   * workflow never has to fall back to the auto-generate flags — those are
+   * derived from it and kept only for legacy readers.
+   */
+  stopAt: GenerationStage;
+  /**
+   * Continue-from-DAG: skip earlier phases and hydrate from `checkpoint`.
+   * Storyboard must pass `resume: true` so it does not wipe existing shots.
+   */
+  startFrom?: GenerationStage;
+  checkpoint?: GenerationCheckpoint;
+  /** Skip poster + shot delete — this run continues an existing pipeline. */
+  resume?: boolean;
   musicModel?: keyof typeof AUDIO_MODELS;
   /** Multiple audio models for variant generation (first is primary) */
   audioModels?: (keyof typeof AUDIO_MODELS)[];
@@ -258,6 +293,25 @@ export interface StoryboardWorkflowInput extends SequenceWorkflowContext {
   suggestedTalent?: SuggestedTalentSnapshot[];
   /** @see LocationMatchingWorkflowInput.suggestedLocations — resolved by the launcher. */
   suggestedLocations?: SuggestedLocationSnapshot[];
+  /**
+   * Owner's email at trigger time (#1276). Null when the triggering user has
+   * no address on the team — the ready-email step then no-ops.
+   */
+  ownerEmail?: string | null;
+  /** Absolute `/sequences/:id/scenes` URL, snapshotted with the app origin. */
+  sequenceUrl: string;
+  /**
+   * When false, skip the ready email. API-key `/api/v1` callers poll and
+   * don't want a mailbox ping. Default (undefined) is send.
+   */
+  notify?: boolean;
+  /**
+   * Reference-only mode: render straight to video from the cast / location /
+   * element reference sheets, skipping start-frame generation entirely.
+   * Snapshotted from `!sequences.generateStartFrames` by the launcher and passed
+   * straight through to analyze-script.
+   */
+  referenceOnly?: boolean;
 }
 
 /**
@@ -267,9 +321,11 @@ export interface StoryboardWorkflowInput extends SequenceWorkflowContext {
  */
 export type StoryboardTriggerInput = Omit<
   StoryboardWorkflowInput,
+  | 'stopAt'
   | 'title'
   | 'script'
   | 'aspectRatio'
+  | 'resolution'
   | 'styleConfig'
   | 'analysisModelId'
   | 'imageModel'
@@ -278,7 +334,12 @@ export type StoryboardTriggerInput = Omit<
   | 'musicPromptSource'
   | 'suggestedTalent'
   | 'suggestedLocations'
->;
+  | 'ownerEmail'
+  | 'sequenceUrl'
+> & {
+  /** This click's choice; absent, the launcher falls back to the sequence snapshot. */
+  stopAt?: GenerationStage;
+};
 
 /**
  * Analyze scenes workflow input
@@ -287,6 +348,7 @@ export interface AnalyzeScriptWorkflowInput extends SequenceWorkflowContext {
   // Required inputs
   script: string;
   aspectRatio: AspectRatio;
+  resolution?: Resolution;
   styleConfig: StyleConfig;
   /** @see StoryboardWorkflowInput.pendingAutoStyleId — derived here, in parallel with scene-split. */
   pendingAutoStyleId?: string;
@@ -303,6 +365,9 @@ export interface AnalyzeScriptWorkflowInput extends SequenceWorkflowContext {
   videoModels?: ImageToVideoModel[];
   autoGenerateMotion?: boolean;
   autoGenerateMusic?: boolean;
+  stopAt: GenerationStage;
+  startFrom?: GenerationStage;
+  checkpoint?: GenerationCheckpoint;
   musicModel?: keyof typeof AUDIO_MODELS;
   /** Multiple audio models for variant generation (first is primary) */
   audioModels?: (keyof typeof AUDIO_MODELS)[];
@@ -314,6 +379,14 @@ export interface AnalyzeScriptWorkflowInput extends SequenceWorkflowContext {
   suggestedTalent?: SuggestedTalentSnapshot[];
   /** @see LocationMatchingWorkflowInput.suggestedLocations — passed straight through. */
   suggestedLocations?: SuggestedLocationSnapshot[];
+  /**
+   * Reference-only mode: render straight to video from the cast / location /
+   * element reference sheets, skipping start-frame generation entirely. Pinned
+   * onto the payload at the trigger from `!sequences.generateStartFrames` like every
+   * other generation setting, so a mid-run toggle cannot change what this run
+   * is doing.
+   */
+  referenceOnly?: boolean;
 }
 
 /**
@@ -322,9 +395,6 @@ export interface AnalyzeScriptWorkflowInput extends SequenceWorkflowContext {
 export type SceneSplitWorkflowInput = SequenceWorkflowContext & {
   promptName: string;
   modelId: AnalysisModelId;
-  /** Only styles the per-scene preview stills; absent while an automatic style
-   *  is still being derived alongside this run (#1213). */
-  styleConfig?: StyleConfig;
   aspectRatio: AspectRatio;
   script: string;
   /** User-uploaded elements to make the model aware of uppercase tokens */
@@ -398,13 +468,29 @@ export interface MotionWorkflowInput extends SequenceWorkflowContext {
    * clip never rendered from. Absent falls back to the live selection.
    */
   frameVersionId?: string | null;
-  imageUrl: string;
+  /**
+   * The rendered start frame. Required except in reference-only mode, where
+   * this shot has no still by design and `referenceOnly` is set instead.
+   */
+  imageUrl?: string;
+  /**
+   * Reference-only mode: render straight to video from the cast / location /
+   * element sheets with no start frame. Forces the reference-to-video route
+   * (whose start frame is optional) and leaves `frameVersionId` null in the
+   * render manifest — the documented meaning of a null there.
+   *
+   * Required, not defaulted: a caller that forgot it shipped a payload with
+   * neither a still nor the flag, which the batch workflow rejected only after
+   * credits were reserved.
+   */
+  referenceOnly: boolean;
   prompt: string;
   model?: keyof typeof IMAGE_TO_VIDEO_MODELS;
   duration?: number;
   fps?: number;
   motionBucket?: number;
   aspectRatio?: AspectRatio; // "16:9", "9:16", "1:1"
+  resolution?: Resolution;
   /**
    * For audio-capable models (kling v3, veo3), pass `false` to suppress the
    * model's native audio output (sfx/ambient/lip-sync). Omit to use the API
@@ -419,6 +505,12 @@ export interface MotionWorkflowInput extends SequenceWorkflowContext {
    * instruction to append a `user-edit` prompt version. @see UserEditProvenance
    */
   userEditProvenance?: UserEditProvenance;
+  /**
+   * With `userEditProvenance`: the text the user typed, persisted as the
+   * `user-edit` version. `prompt` is that text after model assembly (dialogue
+   * tags, audio direction) — storing it would double-assemble on the next run.
+   */
+  userEditText?: string;
   /**
    * Only meaningful when `userEditedPrompt`: the dialogue/audio direction of the
    * version being edited, captured at trigger time so the recorded user-edit
@@ -586,6 +678,7 @@ export interface RegenerateShotsWorkflowInput extends SequenceWorkflowContext {
   imageModel?: TextToImageModel;
   /** Aspect ratio (frozen at trigger time, replaces a live sequence read). */
   aspectRatio: AspectRatio;
+  resolution?: Resolution;
   /** Per-shot inlined snapshot DTOs. */
   shotSnapshots: RegenerateShotSnapshot[];
   /**
@@ -630,6 +723,7 @@ export interface RecastCharacterWorkflowInput extends SequenceWorkflowContext {
   styleConfig?: StyleConfig;
   /** Aspect ratio (frozen at trigger time, replaces a live sequence read). */
   aspectRatio: AspectRatio;
+  resolution?: Resolution;
   /**
    * Per-shot regenerate-shots snapshots for the shots this character appears
    * in, resolved at trigger time. The scope of the regeneration IS this list —
@@ -808,6 +902,12 @@ export interface MotionPromptBatchWorkflowInput extends SequenceWorkflowContext 
    * had no rendered still and falls back to the text-only motion path.
    */
   startingFrameImageUrls?: Record<string, string | null>;
+  /**
+   * Reference-only mode (see {@link MotionPromptWorkflowInput.referenceOnly}).
+   * The batch's "every scene must have a rendered still" guard is lifted here:
+   * in this mode a missing still is the design, not a failed image.
+   */
+  referenceOnly?: boolean;
 }
 
 export interface MotionPromptWorkflowInput extends SequenceWorkflowContext {
@@ -829,6 +929,14 @@ export interface MotionPromptWorkflowInput extends SequenceWorkflowContext {
    * / absent → no still available, text-only motion path.
    */
   startingFrameImageUrl?: string | null;
+  /**
+   * Reference-only mode: this sequence renders straight to video from the
+   * cast / location / element sheets and never generates a start frame, so the
+   * prompt is written against a different template — one that composes the
+   * opening frame in words instead of animating a still. Distinct from a
+   * merely absent `startingFrameImageUrl`, which means "no still YET".
+   */
+  referenceOnly?: boolean;
   /** See {@link FramePromptWorkflowInput.emitStreaming}. */
   emitStreaming?: boolean;
   /**
@@ -849,6 +957,12 @@ export interface CharacterSheetWorkflowResult {
   sheetImageUrl: string;
   characterDbId?: string;
   sheetImagePath?: string;
+  /**
+   * The live `character_sheet_variants` row selected on a convergent write.
+   * Recast substitutes this into still hashes (version id is the sheet
+   * identity). Absent on divergent / first-gen-null-hash paths.
+   */
+  sheetVersionId?: string | null;
   /**
    * The run diverged: `sheetImageUrl` is a parked variant and the character's
    * PRIMARY sheet is unchanged. Without this a parent cannot tell the two
@@ -879,6 +993,7 @@ export interface UpscaleShotVariantWorkflowInput extends SequenceWorkflowContext
   croppedTilePath: string;
   /** Sequence aspect ratio — determines output image size for upscale */
   aspectRatio?: AspectRatio;
+  resolution?: Resolution;
   /** Character reference sheets for visual consistency during upscale */
   characterReferences?: ReferenceImageDescription[];
   /** Location reference images for environment consistency during upscale */
@@ -978,6 +1093,8 @@ export interface LocationSheetWorkflowResult {
   referenceImageUrl: string;
   locationDbId?: string;
   referenceImagePath?: string;
+  /** Live `location_sheet_variants` id after a convergent write. */
+  sheetVersionId?: string | null;
   /**
    * The run diverged: `referenceImageUrl` is a parked variant and the
    * location's PRIMARY reference is unchanged. @see
@@ -1103,6 +1220,7 @@ export interface RecastLocationWorkflowInput extends SequenceWorkflowContext {
   styleConfig?: StyleConfig;
   /** Aspect ratio (frozen at trigger time, replaces a live sequence read). */
   aspectRatio: AspectRatio;
+  resolution?: Resolution;
   /**
    * Per-shot regenerate-shots snapshots for the shots this location appears
    * in, resolved at trigger time. The scope of the regeneration IS this list —
@@ -1189,7 +1307,10 @@ export interface BatchMotionMusicWorkflowInput extends SequenceWorkflowContext {
     shotId: string;
     /** See `MotionWorkflowInput.sceneId`. */
     sceneId?: string | null;
-    imageUrl: string;
+    /** The start frame. Absent only when `referenceOnly` is set. */
+    imageUrl?: string;
+    /** See `MotionWorkflowInput.referenceOnly`. Required for the same reason. */
+    referenceOnly: boolean;
     /** See `MotionWorkflowInput.frameVersionId`. */
     frameVersionId?: string | null;
     /** See `MotionWorkflowInput.motionPromptVersionId`. */
@@ -1220,10 +1341,13 @@ export interface BatchMotionMusicWorkflowInput extends SequenceWorkflowContext {
     fps?: number;
     motionBucket?: number;
     aspectRatio?: AspectRatio;
+    resolution?: Resolution;
     /** See `MotionWorkflowInput.generateAudio`. */
     generateAudio?: boolean;
     /** See `MotionWorkflowInput.userEditProvenance`. */
     userEditProvenance?: UserEditProvenance;
+    /** See `MotionWorkflowInput.userEditText`. */
+    userEditText?: string;
     /** See `MotionWorkflowInput.sceneTitle`. */
     sceneTitle?: string;
     /** See `MotionWorkflowInput.sequenceTitle`. */
@@ -1294,6 +1418,7 @@ export interface ShotImagesWorkflowInput extends SequenceWorkflowContext {
   /** Multiple image models for variant generation (first is primary) */
   imageModels?: TextToImageModel[];
   aspectRatio: AspectRatio;
+  resolution?: Resolution;
   /**
    * Per-scene snapshot of the upstream sheet hashes for the references that
    * will be inlined into image generation. Resolved at trigger time so the
@@ -1314,6 +1439,15 @@ export interface ShotImagesWorkflowResult {
    * wrong scene.
    */
   imageUrls: (string | null)[];
+  /**
+   * Primary `frame_variants` version id per scene, ALIGNED to `imageUrls`.
+   * Null slot = that scene's image failed. Threaded into the motion-batch
+   * payload so the clip's manifest names the still it actually rendered from
+   * (#1380). Optional only so an in-flight child from a pre-#1380 build
+   * (URLs only) still type-checks at the parent; treat a missing array as
+   * all-null.
+   */
+  frameVersionIds?: (string | null)[];
 }
 
 /**
@@ -1353,6 +1487,12 @@ export interface MotionMusicPromptsWorkflowInput extends SequenceWorkflowContext
   visualSummaryBySceneId?: Record<string, string>;
   /** @see StoryboardWorkflowInput.musicPromptSource — passed to the music-prompt child. */
   musicPromptSource: 'ai-generated' | 'regenerated';
+  /**
+   * Reference-only mode (see {@link MotionPromptWorkflowInput.referenceOnly}),
+   * forwarded to the motion-prompt batch. Music is unaffected — it has never
+   * depended on the still.
+   */
+  referenceOnly?: boolean;
 }
 
 export interface MotionMusicPromptsWorkflowResult {
@@ -1365,6 +1505,15 @@ export interface MotionMusicPromptsWorkflowResult {
    * by the per-scene child.
    */
   motionPromptsBySceneId: Record<string, MotionPrompt>;
+  /**
+   * The `shot_prompt_versions` id each per-scene child left live, keyed by
+   * `sceneId`. Analyze-script pins this onto the motion-batch payload so the
+   * clip's manifest names the prompt it rendered from (#1380). Null when the
+   * child persisted nothing (no shot, or the claim was cancelled). Optional
+   * only so an in-flight child from a pre-#1380 build still type-checks;
+   * treat a missing map as all-null.
+   */
+  motionPromptVersionIdsBySceneId?: Record<string, string | null>;
   musicPrompt: string;
   musicTags: string;
 }
@@ -1449,6 +1598,7 @@ export interface ReplaceElementWorkflowInput extends SequenceWorkflowContext {
   shotSnapshotByShotId: Record<string, ReplaceElementShotSnapshot>;
   /** Sequence aspect ratio, frozen at trigger time. */
   aspectRatio: AspectRatio;
+  resolution?: Resolution;
   /**
    * Video model for the re-render, resolved at trigger time — the SAME value
    * the motion prompts in `motionPromptByShotId` were assembled for.
@@ -1478,6 +1628,17 @@ export interface AssetGenerationWorkflowInput extends UserWorkflowContext {
   activity: GeneratedAssetActivity;
   /** Schema-validated endpoint input, forwarded verbatim to fal. */
   input: GeneratedAssetInput;
+}
+
+/**
+ * Images and Videos (#1274). The validated create input rides along whole,
+ * so the run never re-reads the row and the `activity` discriminant keeps
+ * image/video fields where the types can prove them. Video `duration` is
+ * already snapped to the model's accepted seconds.
+ */
+export interface StudioGenerationWorkflowInput extends UserWorkflowContext {
+  assetId: string;
+  input: StudioCreateInput;
 }
 
 /**

@@ -47,17 +47,27 @@ export const realtimeSchema = {
   billing: {
     'balance:updated': z.object({
       teamId: z.string(),
-      /** Post-mutation balance in USD. */
+      /** Posted ledger balance in USD. */
       balanceUsd: z.number(),
+      /**
+       * Spendable funds (posted minus unexpired holds). Additive so old
+       * clients keep using `balanceUsd` (#1310).
+       */
+      availableUsd: z.number().optional(),
+      /** Sum of unexpired reservation remaining. */
+      reservedUsd: z.number().optional(),
       /** Signed ledger amount in USD (negative for usage, positive for top-ups). */
       amountUsd: z.number(),
-      transactionId: z.string(),
-      type: z.enum([
-        'credit_purchase',
-        'credit_usage',
-        'credit_refund',
-        'credit_adjustment',
-      ]),
+      /** Absent on hold-only snapshots (create/grow/zero). */
+      transactionId: z.string().optional(),
+      type: z
+        .enum([
+          'credit_purchase',
+          'credit_usage',
+          'credit_refund',
+          'credit_adjustment',
+        ])
+        .optional(),
     }),
   },
 
@@ -157,6 +167,14 @@ export const realtimeSchema = {
       // it the FailureSummaryBanner only ever shows "Unknown error" until a
       // full refetch (#881).
       error: z.string().optional(),
+      // Set when this run just appended a `softened` prompt version (#1272).
+      // Invalidates visual history and toasts so the user knows the original
+      // is still in Versions.
+      promptSoftened: z.boolean().optional(),
+      // Set when this run swapped to Grok Imagine 2 after the selected model
+      // content-flagged (#1272). Invalidates the per-model variant list so the
+      // fallback still shows up, and toasts the swap.
+      modelFallback: z.boolean().optional(),
     }),
 
     // Fast preview shots replaced by AI-analyzed shots
@@ -171,10 +189,18 @@ export const realtimeSchema = {
       variantImageUrl: z.string().optional(),
     }),
 
-    // Video generation progress
+    // Video generation progress. 'cancelled' (#1108): a user cancelled the
+    // in-flight render — terminal, neutral (no failure banner), never
+    // retriable.
     'video:progress': z.object({
       shotId: z.string(),
-      status: z.enum(['pending', 'generating', 'completed', 'failed']),
+      status: z.enum([
+        'pending',
+        'generating',
+        'completed',
+        'failed',
+        'cancelled',
+      ]),
       videoUrl: z.string().optional(),
       // In-flight retry state (#882) — see `image:progress` above. Emitted
       // before a retry attempt with `status` still `generating`.
@@ -194,6 +220,11 @@ export const realtimeSchema = {
       // Failure reason — carried on `failed` so the cache updater writes
       // `shots.videoError` live (see image:progress.error above). (#881)
       error: z.string().optional(),
+      // Content-checker rescue (#1373) — see image:progress above. Set on the
+      // retrying emit when this run appended a `softened` motion prompt
+      // version / swapped the clip to the fallback video model.
+      promptSoftened: z.boolean().optional(),
+      modelFallback: z.boolean().optional(),
     }),
 
     // Audio/music generation progress (shotId optional for sequence-level music)
@@ -213,6 +244,12 @@ export const realtimeSchema = {
     'character-sheet:progress': z.object({
       characterId: z.string(),
       status: z.enum(['generating', 'completed', 'failed']),
+      // In-flight content-flag retry (#882 shape): `status` stays
+      // `generating`; absent on the first attempt and on terminal events.
+      phase: z.enum(['generating', 'retrying']).optional(),
+      attempt: z.number().int().positive().optional(),
+      maxAttempts: z.number().int().positive().optional(),
+      promptSoftened: z.boolean().optional(),
       sheetImageUrl: z.string().optional(),
       error: z.string().optional(),
     }),
@@ -221,6 +258,10 @@ export const realtimeSchema = {
     'location-sheet:progress': z.object({
       locationId: z.string(),
       status: z.enum(['generating', 'completed', 'failed']),
+      phase: z.enum(['generating', 'retrying']).optional(),
+      attempt: z.number().int().positive().optional(),
+      maxAttempts: z.number().int().positive().optional(),
+      promptSoftened: z.boolean().optional(),
       referenceImageUrl: z.string().optional(),
       error: z.string().optional(),
     }),
@@ -382,6 +423,15 @@ export const realtimeSchema = {
     }),
     failed: z.object({
       message: z.string(),
+    }),
+    /**
+     * Scene-split found more work than the click envelope can grow to cover.
+     * Split/bibles/prompts stay; stills and motion do not spawn (#1310).
+     */
+    'reservation:short': z.object({
+      neededUsd: z.number(),
+      remainingUsd: z.number(),
+      sceneCount: z.number(),
     }),
     // Terminal events
     complete: z.object({

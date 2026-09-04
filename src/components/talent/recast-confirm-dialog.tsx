@@ -16,6 +16,8 @@ type RecastConfirmDialogProps = {
   onConfirm: () => void;
   characterName: string;
   talentName: string;
+  /** True when this role already has talent — copy says Recast, not Cast. */
+  replacingExisting: boolean;
   affectedShotCount: number;
   isLoading: boolean;
 };
@@ -26,15 +28,17 @@ export const RecastConfirmDialog: React.FC<RecastConfirmDialogProps> = ({
   onConfirm,
   characterName,
   talentName,
+  replacingExisting,
   affectedShotCount,
   isLoading,
 }) => {
+  const verb = replacingExisting ? 'Recast' : 'Cast';
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>
-            Recast {talentName} as {characterName}?
+            {verb} {talentName} as {characterName}?
           </AlertDialogTitle>
           <AlertDialogDescription>
             This will generate a new character sheet using {talentName} as the
@@ -43,8 +47,8 @@ export const RecastConfirmDialog: React.FC<RecastConfirmDialogProps> = ({
               <>
                 {' '}
                 <strong>
-                  {affectedShotCount} shot
-                  {affectedShotCount !== 1 ? 's' : ''}
+                  {affectedShotCount}{' '}
+                  {affectedShotCount === 1 ? 'shot' : 'shots'}
                 </strong>{' '}
                 containing this character will need to be regenerated.
               </>
@@ -54,14 +58,8 @@ export const RecastConfirmDialog: React.FC<RecastConfirmDialogProps> = ({
         <AlertDialogFooter>
           <AlertDialogCancel disabled={isLoading}>Cancel</AlertDialogCancel>
           <AlertDialogAction onClick={onConfirm} disabled={isLoading}>
-            {isLoading ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Recasting…
-              </>
-            ) : (
-              'Recast'
-            )}
+            {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            <span>{isLoading ? `${verb}ing…` : verb}</span>
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

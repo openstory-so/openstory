@@ -1,5 +1,6 @@
 import { getEnv } from '#env';
 import { AuthenticationError } from '@/lib/errors';
+import { createServerOnlyFn } from '@tanstack/react-start';
 
 function parseAdminEmails(): string[] {
   const raw = getEnv().ADMIN_EMAILS;
@@ -10,9 +11,15 @@ function parseAdminEmails(): string[] {
     .filter(Boolean);
 }
 
-export function isSystemAdmin(email: string): boolean {
-  return parseAdminEmails().includes(email.toLowerCase());
-}
+/**
+ * Server-only: an admin check that silently returned `false` in a client
+ * bundle would read as "not an admin" instead of failing, so the Start
+ * compiler replaces this with a throwing stub there (and drops the
+ * `ADMIN_EMAILS` read with it).
+ */
+export const isSystemAdmin = createServerOnlyFn((email: string): boolean =>
+  parseAdminEmails().includes(email.toLowerCase())
+);
 
 export function getInternalDomains(): string[] {
   const domains = new Set<string>();

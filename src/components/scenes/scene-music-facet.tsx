@@ -1,11 +1,14 @@
 import { MusicView, MusicViewSkeleton } from '@/components/music/music-view';
+import { UploadMediaButton } from '@/components/scenes/upload-media-button';
 import { DivergentAlternateBanner } from '@/components/staleness/divergent-alternate-banner';
 import {
   getMusicPromptStalenessFn,
   regenerateMusicPromptFn,
+  saveMusicPromptFn,
 } from '@/functions/prompt-variants';
 import { generateMusicFn } from '@/functions/sequences';
 import { useActiveAudioModel } from '@/hooks/use-active-audio-model';
+import { useUploadSequenceMusic } from '@/hooks/use-media-upload';
 import { useShotsBySequence } from '@/hooks/use-shots';
 import {
   musicPromptStalenessKey,
@@ -104,7 +107,8 @@ export const SceneMusicFacet: React.FC<SceneMusicFacetProps> = ({
   const videoDuration = useMemo(() => {
     if (!shots?.length) return undefined;
     return shots.reduce(
-      (sum, shot) => sum + (shot.durationMs ? shot.durationMs / 1000 : 10),
+      // Null durationMs must estimate as the column's 3000ms default, not 10s.
+      (sum, shot) => sum + (shot.durationMs ? shot.durationMs / 1000 : 3),
       0
     );
   }, [shots]);
@@ -116,6 +120,7 @@ export const SceneMusicFacet: React.FC<SceneMusicFacetProps> = ({
   );
 
   const setMusicEnabled = useSetSequenceMusic(sequenceId);
+  const uploadMusic = useUploadSequenceMusic();
   const promoteVariant = usePromoteSequenceMusicVariant();
   const discardVariant = useDiscardSequenceMusicVariant();
   const undiscardVariant = useUndiscardSequenceMusicVariant();
@@ -246,6 +251,40 @@ export const SceneMusicFacet: React.FC<SceneMusicFacetProps> = ({
     enabled: editable,
   });
 
+  // Persist a post-track prompt edit (#1108 Phase 4) — a user-edit version,
+  // no regen; the Generate/Regenerate button stays the explicit re-render.
+  const saveMusicPrompt = useMutation({
+    mutationFn: (prompt: string) =>
+      saveMusicPromptFn({ data: { sequenceId, prompt } }),
+    onSuccess: async (result) => {
+      toast.success(
+        result.unchanged ? 'No changes to save' : 'Music prompt saved'
+      );
+      await queryClient.invalidateQueries({
+        queryKey: sequenceKeys.detail(sequenceId),
+      });
+      await queryClient.invalidateQueries({
+        queryKey: stalenessKey,
+      });
+    },
+    onError: (error) => {
+      toast.error('Failed to save music prompt', {
+        description: error instanceof Error ? error.message : 'Unknown error',
+      });
+    },
+  });
+
+  // The playing track's stored prompt vs the sequence's current one — drives
+  // the "edited since this track" hint. Null prompts on old variants: no hint.
+  const playingVariantPrompt = useMemo(() => {
+    const url = (resolvedSequence ?? sequence)?.musicUrl;
+    if (!url) return null;
+    return (audioVariants ?? []).find((v) => v.url === url)?.prompt ?? null;
+  }, [resolvedSequence, sequence, audioVariants]);
+  const promptEditedSinceTrack =
+    playingVariantPrompt !== null &&
+    (sequence?.musicPrompt ?? '').trim() !== playingVariantPrompt.trim();
+
   const regenerateMusicPrompt = useMutation({
     mutationFn: () => regenerateMusicPromptFn({ data: { sequenceId } }),
     onSuccess: async (result) => {
@@ -310,26 +349,55 @@ export const SceneMusicFacet: React.FC<SceneMusicFacetProps> = ({
   ) : null;
 
   return (
-    <MusicView
-      sequence={resolvedSequence ?? sequence}
-      videoDuration={videoDuration}
-      onGenerateMusic={(args) => generateMusic.mutate(args)}
-      isGeneratingMusic={generating || generateMusic.isPending}
-      audioModelStatuses={audioModelStatuses}
-      selectedModel={safeAudioModel(
-        activeAudioModel ?? sequence.musicModel,
-        DEFAULT_MUSIC_MODEL
-      )}
-      onModelChange={selectAudioModel}
-      onSetModel={handleSetModel}
-      isSettingModel={setMusicModel.isPending}
-      divergentBanner={divergentBanner}
-      isMusicPromptStale={musicPromptStaleness?.musicPrompt === 'stale'}
-      onRegenerateMusicPrompt={() => regenerateMusicPrompt.mutate()}
-      isRegeneratingMusicPrompt={regenerateMusicPrompt.isPending}
-      onIncludeMusicChange={(includeMusic) =>
-        setMusicEnabled.mutate(includeMusic)
-      }
-    />
+    <div className="flex flex-col gap-3">
+      <MusicView
+        sequence={resolvedSequence ?? sequence}
+        videoDuration={videoDuration}
+        onGenerateMusic={(args) => generateMusic.mutate(args)}
+        isGeneratingMusic={generating || generateMusic.isPending}
+        audioModelStatuses={audioModelStatuses}
+        selectedModel={safeAudioModel(
+          activeAudioModel ?? sequence.musicModel,
+          DEFAULT_MUSIC_MODEL
+        )}
+        onModelChange={selectAudioModel}
+        onSetModel={handleSetModel}
+        isSettingModel={setMusicModel.isPending}
+        divergentBanner={divergentBanner}
+        isMusicPromptStale={musicPromptStaleness?.musicPrompt === 'stale'}
+        onRegenerateMusicPrompt={() => regenerateMusicPrompt.mutate()}
+        isRegeneratingMusicPrompt={regenerateMusicPrompt.isPending}
+        onSaveMusicPrompt={(prompt) => saveMusicPrompt.mutate(prompt)}
+        isSavingMusicPrompt={saveMusicPrompt.isPending}
+        promptEditedSinceTrack={promptEditedSinceTrack}
+        onIncludeMusicChange={(includeMusic) =>
+          setMusicEnabled.mutate(includeMusic)
+        }
+      />
+      {/* User score inject (#1108) — an uploaded track lands in the
+          user-upload primary slot; generated alternates stay switchable. */}
+      <div className="flex justify-center">
+        <UploadMediaButton
+          label="Upload Audio"
+          pendingLabel="Uploading…"
+          accept="audio/*"
+          isPending={uploadMusic.isPending}
+          disabled={generating}
+          onFile={(file) =>
+            uploadMusic.mutate(
+              { file, sequenceId },
+              {
+                onSuccess: () => toast.success('Music track uploaded'),
+                onError: (error) =>
+                  toast.error('Music upload failed', {
+                    description:
+                      error instanceof Error ? error.message : 'Unknown error',
+                  }),
+              }
+            )
+          }
+        />
+      </div>
+    </div>
   );
 };

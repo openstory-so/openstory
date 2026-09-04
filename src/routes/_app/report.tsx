@@ -190,6 +190,10 @@ function ReportPage() {
           <Label htmlFor="reason">What is the problem?</Label>
           <Select
             value={reason}
+            items={CONTENT_REPORT_REASONS.map((value) => ({
+              value,
+              label: REASON_LABELS[value],
+            }))}
             onValueChange={(value) => {
               // Narrow by lookup rather than asserting: the Select hands back a
               // plain string, and a value that is not one of our reasons should
@@ -271,7 +275,7 @@ function ReportPage() {
             {mutation.isPending ? 'Submitting…' : 'Submit report'}
           </Button>
           <p aria-live="polite" className="text-sm text-muted-foreground">
-            {mutation.isPending ? 'Sending your report…' : null}
+            {mutation.isPending && <span>Sending your report…</span>}
           </p>
         </div>
       </form>

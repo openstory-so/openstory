@@ -1,5 +1,6 @@
 import { ScenePlayer } from '@/components/motion/scene-player';
 import { CanvasMediaStage } from '@/components/scenes/canvas-media-stage';
+import { ShotMediaDropZone } from '@/components/scenes/shot-media-drop-zone';
 import { StartingFrameVariants } from '@/components/scenes/starting-frame-variants';
 import { SequencePlayer } from '@/components/theatre/sequence-player';
 import {
@@ -28,6 +29,7 @@ import type { Sequence } from '@/types/database';
 import { Download, Film, Link, Loader2 } from 'lucide-react';
 import { useMemo } from 'react';
 import type { ExportProgress } from '@/lib/sequence-player/export';
+import { toPlaybackScenes } from '@/lib/sequence-player/playback-scenes';
 
 type SceneCanvasProps = {
   selection: SceneSelection;
@@ -46,7 +48,7 @@ type SceneCanvasProps = {
   modelMismatchLabel?: string | null;
   /** Quiet stale chip for the displayed image (#1077). */
   staleLabel?: string | null;
-  progressMessage?: string;
+  progressMessage?: React.ReactNode;
   retry?: { attempt: number; maxAttempts?: number };
   onSelectShot?: (shotId: string) => void;
   /** Scene-level image model (#909) used to generate starting-frame variants. */
@@ -54,6 +56,11 @@ type SceneCanvasProps = {
   /** Shots with an in-flight scene-variants generation (#882). */
   regeneratingSceneVariants?: Set<string>;
   onGenerateSceneVariantsStart?: (shotId: string) => void;
+  /**
+   * First pipeline run still in flight — hide variants / stale chrome until
+   * the sequence has something to act on (#1286).
+   */
+  firstRunActive?: boolean;
 };
 
 function formatExportProgress(progress: ExportProgress | null): string {
@@ -90,59 +97,71 @@ const TheatreShareOverlay: React.FC<{
 }> = ({ sequenceExport }) => {
   const running = sequenceExport.isRunning;
   const progressLabel = formatExportProgress(sequenceExport.progress);
+  const pending =
+    !running && !sequenceExport.canExport && !sequenceExport.freshExportUrl;
+  const wait = running
+    ? progressLabel
+    : pending
+      ? `Export · ${sequenceExport.clipsReady} of ${sequenceExport.clipsTotal} clips ready`
+      : null;
+  const downloadLabel =
+    wait ??
+    (sequenceExport.freshExportUrl
+      ? 'Download MP4'
+      : 'Export and download MP4');
+  const copyLabel =
+    wait ??
+    (sequenceExport.freshExportUrl
+      ? 'Copy video link'
+      : 'Export and copy video link');
   return (
     <>
       <Tooltip>
         <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 bg-black/50 text-white hover:bg-black/70"
-            aria-label={running ? progressLabel : 'Download MP4'}
-            aria-busy={running}
-            // Stays enabled while running (the actions no-op) so the tooltip
-            // can show progress — disabled buttons emit no pointer events.
-            onClick={sequenceExport.download}
-          >
-            {running ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Download className="h-4 w-4" />
-            )}
-          </Button>
+          {/* Span so a disabled button still shows the pending-count tooltip. */}
+          <span className="inline-flex">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-11 w-11 bg-black/50 text-white hover:bg-black/70 md:h-8 md:w-8"
+              aria-label={downloadLabel}
+              aria-busy={running}
+              disabled={pending}
+              // Stays enabled while running (the actions no-op) so the tooltip
+              // can show progress — disabled buttons emit no pointer events.
+              onClick={sequenceExport.download}
+            >
+              {running ? (
+                <Loader2 className="h-5 w-5 animate-spin md:h-4 md:w-4" />
+              ) : (
+                <Download className="h-5 w-5 md:h-4 md:w-4" />
+              )}
+            </Button>
+          </span>
         </TooltipTrigger>
-        <TooltipContent>
-          {running
-            ? progressLabel
-            : sequenceExport.freshExportUrl
-              ? 'Download MP4'
-              : 'Export and download MP4'}
-        </TooltipContent>
+        <TooltipContent>{downloadLabel}</TooltipContent>
       </Tooltip>
       <Tooltip>
         <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 bg-black/50 text-white hover:bg-black/70"
-            aria-label={running ? progressLabel : 'Copy video link'}
-            aria-busy={running}
-            onClick={sequenceExport.copyLink}
-          >
-            {running ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Link className="h-4 w-4" />
-            )}
-          </Button>
+          <span className="inline-flex">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-11 w-11 bg-black/50 text-white hover:bg-black/70 md:h-8 md:w-8"
+              aria-label={copyLabel}
+              aria-busy={running}
+              disabled={pending}
+              onClick={sequenceExport.copyLink}
+            >
+              {running ? (
+                <Loader2 className="h-5 w-5 animate-spin md:h-4 md:w-4" />
+              ) : (
+                <Link className="h-5 w-5 md:h-4 md:w-4" />
+              )}
+            </Button>
+          </span>
         </TooltipTrigger>
-        <TooltipContent>
-          {running
-            ? progressLabel
-            : sequenceExport.freshExportUrl
-              ? 'Copy video link'
-              : 'Export and copy video link'}
-        </TooltipContent>
+        <TooltipContent>{copyLabel}</TooltipContent>
       </Tooltip>
     </>
   );
@@ -168,6 +187,7 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
   sceneImageModel,
   regeneratingSceneVariants,
   onGenerateSceneVariantsStart,
+  firstRunActive = false,
 }) => {
   const scope = selectionScope(selection);
   const scopedShots = useMemo(
@@ -175,12 +195,10 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
     [selection, shots]
   );
 
-  const playbackScenes = useMemo(() => {
-    return scopedShots
-      .map((f) => f.video?.url)
-      .filter((url): url is string => Boolean(url))
-      .map((videoUrl, orderIndex) => ({ orderIndex, videoUrl }));
-  }, [scopedShots]);
+  const playbackScenes = useMemo(
+    () => toPlaybackScenes(scopedShots),
+    [scopedShots]
+  );
 
   const setMusicEnabled = useSetSequenceMusic(sequence?.id ?? '');
   const sequenceExport = useSequenceExport(sequence);
@@ -209,8 +227,9 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
   if (scope === 'shot' && selection.shotId) {
     const shotId = selection.shotId;
     const selectedShot = shots.find((s) => s.id === shotId);
+    const stillUrl = selectedShot?.image?.url;
     const frameOverlay =
-      selectedShot && sceneImageModel ? (
+      selectedShot && sceneImageModel && stillUrl && !firstRunActive ? (
         <StartingFrameVariants
           shot={selectedShot}
           sequenceId={selectedShot.sequenceId}
@@ -220,27 +239,40 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
           onGenerateStart={() => onGenerateSceneVariantsStart?.(shotId)}
         />
       ) : undefined;
+    const player = (
+      <ScenePlayer
+        shots={playerShots}
+        scenes={scenes}
+        selectedShotId={selection.shotId}
+        aspectRatio={aspectRatio}
+        onSelectShot={onSelectShot}
+        selectedTab={selectedTab}
+        overrideImageUrl={overrideImageUrl}
+        overrideVideoUrl={overrideVideoUrl}
+        badgeMessage={badgeMessage}
+        modelMismatchLabel={modelMismatchLabel}
+        staleLabel={staleLabel}
+        progressMessage={progressMessage}
+        retry={retry}
+        posterUrl={sequence?.posterUrl ?? undefined}
+        className="h-full max-h-none w-full"
+        wrapperClassName="h-full w-full"
+        frameOverlay={frameOverlay}
+      />
+    );
     return (
       <CanvasMediaStage aspectRatio={aspectRatio}>
-        <ScenePlayer
-          shots={playerShots}
-          scenes={scenes}
-          selectedShotId={selection.shotId}
-          aspectRatio={aspectRatio}
-          onSelectShot={onSelectShot}
-          selectedTab={selectedTab}
-          overrideImageUrl={overrideImageUrl}
-          overrideVideoUrl={overrideVideoUrl}
-          badgeMessage={badgeMessage}
-          modelMismatchLabel={modelMismatchLabel}
-          staleLabel={staleLabel}
-          progressMessage={progressMessage}
-          retry={retry}
-          posterUrl={sequence?.posterUrl ?? undefined}
-          className="h-full max-h-none w-full"
-          wrapperClassName="h-full w-full"
-          frameOverlay={frameOverlay}
-        />
+        {selectedShot ? (
+          <ShotMediaDropZone
+            sequenceId={selectedShot.sequenceId}
+            shotId={shotId}
+            aspectRatio={aspectRatio}
+          >
+            {player}
+          </ShotMediaDropZone>
+        ) : (
+          player
+        )}
       </CanvasMediaStage>
     );
   }
@@ -294,6 +326,8 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
         onMusicEnabledChange={(enabled) => setMusicEnabled.mutate(enabled)}
         aspectRatio={aspectRatio}
         className="h-full max-h-none w-full"
+        playSource="theatre"
+        sequenceId={sequence.id}
         posterUrl={scopedShots[0]?.image?.url ?? sequence.posterUrl}
         cachedVideoUrl={
           scope !== 'sequence'

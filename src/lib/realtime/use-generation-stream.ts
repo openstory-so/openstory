@@ -12,6 +12,7 @@ import {
 import { updateQueryCacheFromEvent } from './query-cache-updater';
 
 import { getLogger } from '@/lib/observability/logger';
+import { toast } from 'sonner';
 
 const logger = getLogger(['openstory', 'realtime', 'use-generation-stream']);
 
@@ -37,14 +38,22 @@ function asOptionalNumber(value: unknown): number | undefined {
   return typeof value === 'number' ? value : undefined;
 }
 
-type ShotStatus = 'pending' | 'generating' | 'completed' | 'failed';
+// 'cancelled' (#1108): a video cancel is terminal — storing it clears any
+// 'generating' overlay like the other terminal statuses do.
+type ShotStatus =
+  | 'pending'
+  | 'generating'
+  | 'completed'
+  | 'failed'
+  | 'cancelled';
 
 function asShotStatus(value: unknown): ShotStatus | undefined {
   if (
     value === 'pending' ||
     value === 'generating' ||
     value === 'completed' ||
-    value === 'failed'
+    value === 'failed' ||
+    value === 'cancelled'
   ) {
     return value;
   }
@@ -165,6 +174,14 @@ function mapEventToAction(
         payload: { message: asString(data.message) },
       };
 
+    case 'generation.reservation:short':
+      return {
+        type: 'FAILED',
+        payload: {
+          message: `Not enough credits to generate images for ${asNumber(data.sceneCount)} scenes.`,
+        },
+      };
+
     case 'generation.error':
       return {
         type: 'ERROR',
@@ -274,6 +291,26 @@ export function useGenerationStream(
       // Update TanStack Query cache for data-related events
       updateQueryCacheFromEvent(queryClient, sequenceId, eventName, data);
 
+      // Live-only (history replay does not use this handler). Tell the user
+      // the still / clip is being retried from a rewritten prompt or on the
+      // fallback model, and that the original is still in Versions (#1272,
+      // motion in #1373).
+      const isMediaProgress =
+        eventName === 'generation.image:progress' ||
+        eventName === 'generation.video:progress';
+      if (isMediaProgress && data.promptSoftened === true) {
+        toast.info('Prompt rewritten to pass a content checker', {
+          description: 'The original is kept in Versions.',
+        });
+      }
+      if (isMediaProgress && data.modelFallback === true) {
+        toast.info('Retrying on Grok Imagine after the content checker', {
+          description: 'The selected model is kept in Versions.',
+        });
+      }
+      // reservation:short is a top-up prompt, not a failure toast (#1328).
+      // The scenes banner is the persistent CTA.
+
       // Map event to typed action and dispatch
       const action = mapEventToAction(eventName, data);
       if (action) {
@@ -329,12 +366,14 @@ export function useGenerationStream(
       'generation.talent:unmatched',
       'generation.location:matched',
       'generation.character-sheet:progress',
+      'generation.location-sheet:progress',
       'generation.poster:ready',
       'generation.style:ready',
       'generation.preview:replaced',
       'generation.stale:detected',
       'generation.complete',
       'generation.failed',
+      'generation.reservation:short',
       'generation.updated',
       'generation.error',
     ] as const,

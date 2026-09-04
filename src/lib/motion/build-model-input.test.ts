@@ -74,9 +74,28 @@ describe('buildModelInput', () => {
   });
 
   describe('Veo 3.1 (audio)', () => {
-    it('overrides resolution to 1080p', () => {
+    it('falls back to the schema default with no tier asked for', () => {
       const result = build('veo3_1');
-      expect(result.resolution).toBe('1080p');
+      expect(result.resolution).toBe('720p');
+    });
+
+    it('resolves the requested tier against the endpoint enum (#1449)', () => {
+      expect(build('veo3_1', { resolution: '1080p' }).resolution).toBe('1080p');
+      expect(build('veo3_1', { resolution: '4k' }).resolution).toBe('4k');
+      // Seedance 2.5 stops at 1080p — a 4K ask lands there, not on a 422.
+      expect(build('seedance_v2_5', { resolution: '4k' }).resolution).toBe(
+        '1080p'
+      );
+      // H3 Max spells its only HD tier '768P'.
+      expect(build('minimax_h3_max', { resolution: '720p' }).resolution).toBe(
+        '768P'
+      );
+    });
+
+    it('leaves a model with no resolution field alone', () => {
+      expect(build('kling_v3_pro', { resolution: '4k' })).not.toHaveProperty(
+        'resolution'
+      );
     });
 
     it('sets generate_audio to true from schema default', () => {
@@ -114,6 +133,18 @@ describe('buildModelInput', () => {
     });
   });
 
+  describe('MiniMax H3 Max', () => {
+    it('uses image_url and keeps fal defaults (768P, balanced expansion)', () => {
+      const result = build('minimax_h3_max');
+      expect(result).toHaveProperty('image_url', baseOptions.imageUrl);
+      expect(result.prompt).toBe(baseOptions.prompt);
+      expect(result).toMatchObject({
+        resolution: '768P',
+        prompt_expansion_mode: 'balanced',
+      });
+    });
+  });
+
   describe('LTX 2.3 Pro', () => {
     it('uses image_url', () => {
       const result = build('ltx_2_3_pro');
@@ -126,28 +157,31 @@ describe('buildModelInput', () => {
     });
   });
 
-  describe('Seedance 2.0 (audio)', () => {
-    it('uses image_url', () => {
-      const result = build('seedance_v2');
-      expect(result).toHaveProperty('image_url', baseOptions.imageUrl);
-    });
+  describe.each(['seedance_v2', 'seedance_v2_5'] as const)(
+    '%s (audio)',
+    (model) => {
+      it('uses image_url', () => {
+        const result = build(model);
+        expect(result).toHaveProperty('image_url', baseOptions.imageUrl);
+      });
 
-    it('sets generate_audio to true from schema default', () => {
-      const result = build('seedance_v2');
-      expect(result.generate_audio).toBe(true);
-    });
+      it('sets generate_audio to true from schema default', () => {
+        const result = build(model);
+        expect(result.generate_audio).toBe(true);
+      });
 
-    // Seedance 2.0 has no negative_prompt field — its only music lever is the
-    // in-prompt constraint from assembleMotionPrompt (#1165).
-    it('sends no negative_prompt', () => {
-      expect(build('seedance_v2')).not.toHaveProperty('negative_prompt');
-    });
+      // Seedance has no negative_prompt field — its only music lever is the
+      // in-prompt constraint from assembleMotionPrompt (#1165).
+      it('sends no negative_prompt', () => {
+        expect(build(model)).not.toHaveProperty('negative_prompt');
+      });
 
-    it('forwards generate_audio=false when caller suppresses audio', () => {
-      const result = build('seedance_v2', { generateAudio: false });
-      expect(result.generate_audio).toBe(false);
-    });
-  });
+      it('forwards generate_audio=false when caller suppresses audio', () => {
+        const result = build(model, { generateAudio: false });
+        expect(result.generate_audio).toBe(false);
+      });
+    }
+  );
 
   describe('duration snapping (1–30s)', () => {
     const valid: Record<ImageToVideoModel, readonly (string | number)[]> = {
@@ -171,21 +205,11 @@ describe('buildModelInput', () => {
       ],
       veo3_1: ['4s', '6s', '8s'],
       ltx_2_3_pro: [6, 8, 10],
-      seedance_v2: [
-        '4',
-        '5',
-        '6',
-        '7',
-        '8',
-        '9',
-        '10',
-        '11',
-        '12',
-        '13',
-        '14',
-        '15',
-      ],
+      seedance_v2: Array.from({ length: 12 }, (_, i) => String(i + 4)),
+      seedance_v2_5: Array.from({ length: 27 }, (_, i) => String(i + 4)),
       minimax_hailuo_02: [],
+      minimax_h3_max: [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+      gemini_omni_flash: [3, 4, 5, 6, 7, 8, 9, 10],
     };
 
     for (const [model, allowed] of typedEntries(valid)) {
@@ -285,7 +309,67 @@ describe('buildModelInput', () => {
     });
   });
 
-  describe('buildMotionRequest reference-to-video (#873 Seedance)', () => {
+  describe.each(['seedance_v2', 'seedance_v2_5'] as const)(
+    'buildMotionRequest reference-to-video (#873 %s)',
+    (model) => {
+      const referenceImages = [
+        {
+          referenceImageUrl: 'https://example.com/jack-sheet.png',
+          description: 'Jack - tall man with a scar',
+          role: 'character' as const,
+        },
+        {
+          referenceImageUrl: 'https://example.com/logo.png',
+          description: 'ACME_LOGO - red circular badge',
+          role: 'element' as const,
+        },
+      ];
+
+      const buildRef = (overrides: Partial<GenerateMotionOptions> = {}) => {
+        const { input } = buildMotionRequest(
+          { ...baseOptions, referenceImages, ...overrides },
+          model
+        );
+        if (!('image_urls' in input)) {
+          throw new Error('expected Seedance reference-to-video input');
+        }
+        return input;
+      };
+
+      it('puts the still as @Image1 in image_urls and omits image_url', () => {
+        const result = buildRef();
+        expect(result).not.toHaveProperty('image_url');
+        expect(result.image_urls).toEqual([
+          baseOptions.imageUrl,
+          'https://example.com/jack-sheet.png',
+          'https://example.com/logo.png',
+        ]);
+      });
+
+      it('declares the still as the starting frame and legends unmentioned refs', () => {
+        const result = buildRef();
+        expect(result.prompt).toContain(baseOptions.prompt);
+        expect(
+          typeof result.prompt === 'string' &&
+            result.prompt.startsWith('Use @Image1 as the starting frame.')
+        ).toBe(true);
+        expect(result.prompt).toContain('@Image2: Jack - tall man with a scar');
+        expect(result.prompt).toContain(
+          '@Image3: ACME_LOGO - red circular badge'
+        );
+      });
+
+      it('applies the seedance resolution quality override', () => {
+        expect(buildRef().resolution).toBe('720p');
+      });
+
+      it('forwards generate_audio=false when caller suppresses audio', () => {
+        expect(buildRef({ generateAudio: false }).generate_audio).toBe(false);
+      });
+    }
+  );
+
+  describe('buildMotionRequest reference-to-video (minimax_h3_max)', () => {
     const referenceImages = [
       {
         referenceImageUrl: 'https://example.com/jack-sheet.png',
@@ -300,45 +384,44 @@ describe('buildModelInput', () => {
     ];
 
     const buildRef = (overrides: Partial<GenerateMotionOptions> = {}) => {
-      const { input } = buildMotionRequest(
+      const { endpointId, input } = buildMotionRequest(
         { ...baseOptions, referenceImages, ...overrides },
-        'seedance_v2'
+        'minimax_h3_max'
       );
-      if (!('image_urls' in input)) {
-        throw new Error('expected Seedance reference-to-video input');
+      if (!('reference_image_urls' in input)) {
+        throw new Error('expected H3 Max reference-to-video input');
       }
-      return input;
+      return { endpointId, input };
     };
 
-    it('puts the still as @Image1 in image_urls and omits image_url', () => {
-      const result = buildRef();
-      expect(result).not.toHaveProperty('image_url');
-      expect(result.image_urls).toEqual([
+    it('routes to the r2v sibling and puts stills in reference_image_urls', () => {
+      const { endpointId, input } = buildRef();
+      expect(endpointId).toBe('minimax/h3-max/reference-to-video');
+      expect(input).not.toHaveProperty('image_url');
+      expect(input).not.toHaveProperty('image_urls');
+      expect(input.reference_image_urls).toEqual([
         baseOptions.imageUrl,
         'https://example.com/jack-sheet.png',
         'https://example.com/logo.png',
       ]);
     });
 
-    it('declares the still as the starting frame and legends unmentioned refs', () => {
-      const result = buildRef();
-      expect(result.prompt).toContain(baseOptions.prompt);
+    it('declares the still as Image 1 and legends unmentioned refs', () => {
+      const { input } = buildRef();
       expect(
-        typeof result.prompt === 'string' &&
-          result.prompt.startsWith('Use @Image1 as the starting frame.')
+        typeof input.prompt === 'string' &&
+          input.prompt.startsWith('Use Image 1 as the starting frame.')
       ).toBe(true);
-      expect(result.prompt).toContain('@Image2: Jack - tall man with a scar');
-      expect(result.prompt).toContain(
-        '@Image3: ACME_LOGO - red circular badge'
-      );
+      expect(input.prompt).toContain('Image 2: Jack - tall man with a scar');
+      expect(input.prompt).toContain('Image 3: ACME_LOGO - red circular badge');
     });
 
-    it('applies the seedance resolution quality override', () => {
-      expect(buildRef().resolution).toBe('720p');
-    });
-
-    it('forwards generate_audio=false when caller suppresses audio', () => {
-      expect(buildRef({ generateAudio: false }).generate_audio).toBe(false);
+    it('keeps 768P and balanced prompt expansion', () => {
+      const { input } = buildRef();
+      expect(input).toMatchObject({
+        resolution: '768P',
+        prompt_expansion_mode: 'balanced',
+      });
     });
   });
 
@@ -350,14 +433,108 @@ describe('buildModelInput', () => {
       }
     });
 
-    it('passes aspect_ratio from options', () => {
-      const result = build('seedance_v2', { aspectRatio: '9:16' });
-      expect(result.aspect_ratio).toBe('9:16');
-    });
+    it.each(['seedance_v2', 'seedance_v2_5'] as const)(
+      'passes aspect_ratio from options (%s)',
+      (model) => {
+        const result = build(model, { aspectRatio: '9:16' });
+        expect(result.aspect_ratio).toBe('9:16');
+      }
+    );
 
-    it('falls back to the schema default for aspect_ratio when not provided', () => {
-      const result = build('seedance_v2', { aspectRatio: undefined });
-      expect(result.aspect_ratio).toBe('auto');
-    });
+    it.each(['seedance_v2', 'seedance_v2_5'] as const)(
+      'falls back to the schema default for aspect_ratio when not provided (%s)',
+      (model) => {
+        const result = build(model, { aspectRatio: undefined });
+        expect(result.aspect_ratio).toBe('auto');
+      }
+    );
+  });
+});
+
+describe('buildMotionRequest — reference-only', () => {
+  const referenceOnlyOptions: GenerateMotionOptions = {
+    prompt: 'A slow dolly toward SCARLETT at the window',
+    duration: 5,
+    aspectRatio: '16:9',
+    referenceOnly: true,
+    referenceImages: [
+      {
+        referenceImageUrl: 'https://example.com/scarlett.png',
+        description: 'Scarlett, red hair',
+        token: 'SCARLETT',
+        role: 'character',
+      },
+    ],
+  };
+
+  it('routes to reference-to-video and sends no start frame', () => {
+    const { endpointId, input } = buildMotionRequest(
+      referenceOnlyOptions,
+      'seedance_v2_5'
+    );
+
+    expect(endpointId).toBe('bytedance/seedance-2.5/reference-to-video');
+    expect(input).not.toHaveProperty('image_url');
+    expect('image_urls' in input ? input.image_urls : undefined).toEqual([
+      'https://example.com/scarlett.png',
+    ]);
+    expect(input.prompt).not.toContain('starting frame');
+    expect(input.prompt).toContain('@Image1');
+  });
+
+  it('binds refs from slot 1 on H3 Max, whose image field is its own', () => {
+    const { endpointId, input } = buildMotionRequest(
+      referenceOnlyOptions,
+      'minimax_h3_max'
+    );
+
+    expect(endpointId).toBe('minimax/h3-max/reference-to-video');
+    expect(input).not.toHaveProperty('image_url');
+    expect(input).not.toHaveProperty('image_urls');
+    expect(
+      'reference_image_urls' in input ? input.reference_image_urls : undefined
+    ).toEqual(['https://example.com/scarlett.png']);
+    expect(input.prompt).not.toContain('starting frame');
+    expect(input.prompt).toContain('Image 1');
+  });
+
+  it('omits image_urls entirely when nothing matched', () => {
+    const { input } = buildMotionRequest(
+      { ...referenceOnlyOptions, referenceImages: [] },
+      'seedance_v2_5'
+    );
+
+    expect(
+      'image_urls' in input ? input.image_urls : undefined
+    ).toBeUndefined();
+    expect(input.prompt).toBe(referenceOnlyOptions.prompt);
+  });
+
+  it('carries the sequence aspect ratio rather than adapting to a still', () => {
+    const { input } = buildMotionRequest(
+      { ...referenceOnlyOptions, aspectRatio: '9:16' },
+      'seedance_v2_5'
+    );
+    expect(input.aspect_ratio).toBe('9:16');
+  });
+
+  it('refuses a start-frame model asked to render without one', () => {
+    expect(() =>
+      buildMotionRequest(
+        { ...referenceOnlyOptions, referenceOnly: false },
+        'kling_v3_pro'
+      )
+    ).toThrow(/requires a start frame/);
+  });
+
+  it('refuses to silently degrade a failed still into a reference-only clip', () => {
+    // Seedance with refs already routes to reference-to-video, whose still is
+    // optional — so a missing one must be rejected rather than rendered.
+    expect(() =>
+      buildMotionRequest(
+        { ...referenceOnlyOptions, referenceOnly: false },
+        'seedance_v2_5'
+      )
+    ).toThrow(/outside reference-only mode/);
   });
 });

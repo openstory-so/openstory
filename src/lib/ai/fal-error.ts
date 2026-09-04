@@ -12,7 +12,7 @@
  * ("Unprocessable Entity") and the real reason is lost.
  */
 type FalErrorBody = {
-  detail?: Array<{ msg: string; type?: string }> | string;
+  detail?: Array<{ msg: string; type?: string; loc?: string[] }> | string;
   error?: { message?: string } | string;
   message?: string;
 };
@@ -35,8 +35,13 @@ export function extractFalErrorMessage(error: unknown): string {
     }
 
     if (Array.isArray(detail) && detail.length > 0) {
-      // Join all detail messages (usually just one)
-      return detail.map((d) => d.msg).join('; ');
+      // Join all detail messages, each prefixed by the input it names
+      // (`body.prompt: …; body.image_url: …`). A content flag on the still
+      // and one on the prompt read identically without it (#1373); the
+      // prefix is what `flaggedInputs` classifies on.
+      return detail
+        .map((d) => (d.loc?.length ? `${d.loc.join('.')}: ${d.msg}` : d.msg))
+        .join('; ');
     }
   }
 

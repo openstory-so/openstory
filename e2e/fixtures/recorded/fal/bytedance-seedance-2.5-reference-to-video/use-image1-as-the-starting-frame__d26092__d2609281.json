@@ -1,0 +1,24 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use @Image1 as the starting frame.\nHandheld wide shot with steady natural micro-movement, drifting gently left to stay with her as she crosses. From this mid-stride pose, @Image2 breaks into a brisk jog across the crosswalk stripes, tote bouncing against her hip, jacket shifting with each step. She keeps her head turned back over her shoulder toward the lens, grin holding, then delivers her line straight to camera before facing forward again and continuing out of frame right.\n\nHer mouth moves clearly on the line, chin lifted, free hand swinging loose at her side; a quick eyebrow raise punctuates the delivery.\n\nSteam curls up from the street vent behind her, idling taxi headlights flare and shimmer on the wet asphalt, hair lifting with her momentum, red signal hand glowing steady.\n\nnight city street, idling taxi engines, distant traffic hum. boot heels striking wet asphalt, short taxi horn, hiss of street steam, canvas tote strap creaking.\n\n@Image2 says \"Made for the street.\" in a playful confident, tossed off with a grin voice.\n\nNo BGM, no music. Generate only dialogue, environmental sounds, and action sounds. Single continuous shot, no cuts. Avoid jitter and bent limbs.\n\nReference images:\n@Image3: CORAL_LIPSTICK - A squat — keep visually consistent throughout the shot.",
+        "model": "bytedance/seedance-2.0/enterprise/v2/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://v3b.fal.media/files/b/0aa74eac/Izq5zwpTyXvECN8WT4lF5_video.mp4",
+            "content_type": "video/mp4",
+            "file_name": "video.mp4",
+            "file_size": 3560560
+          },
+          "seed": 674515083
+        },
+        "status": 200,
+        "billableUnits": 108.9
+      }
+    }
+  ]
+}

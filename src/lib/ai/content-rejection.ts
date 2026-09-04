@@ -17,9 +17,17 @@
  *   - seedance: "Output audio has sensitive content."
  *
  * Many of these (especially the veo "did not generate / could not generate"
- * strings) are stochastic and clear on a reseeded re-roll; a subset are
- * deterministic content-checker hits that will exhaust the retry budget and
- * fail as before (acceptable — a later prompt-sanitize pass targets those).
+ * / "unexpected result" strings) are stochastic and clear on a reseeded
+ * re-roll; a subset are deterministic. Those hits are often the model
+ * rejecting its own sample because the prompt's grammar is broken or it
+ * stacks unusual word combinations — not (only) unsafe subject matter.
+ * Image generation exhausts the same-prompt reseed budget then rewrites the
+ * prompt (policy soften AND/OR plainer grammar) and retries once (#1272).
+ *
+ * BytePlus `InputImageSensitiveContentDetected.PrivacyInformation` is NOT
+ * in this set on purpose. It is a provenance 400 on the still (public URL
+ * vs `asset://`); reseeding cannot change it. Submit falls back to fal —
+ * see `byteplus-portrait-filter.ts`.
  */
 
 import { extractFalErrorMessage } from '@/lib/ai/fal-error';
@@ -36,6 +44,7 @@ export const CONTENT_REJECTION_PATTERNS: readonly RegExp[] = [
   /flagged by a content/i,
   /did not generate the expected output/i,
   /could not generate images?/i,
+  /unexpected (?:result|output)/i,
   /unsafe content/i,
   /sensitive content/i,
   /content could not be processed/i,
@@ -58,6 +67,21 @@ export const CONTENT_REJECTION_RETRY_EVENT = 'content_rejection_retry' as const;
 export const CONTENT_REJECTION_EVENT = 'content_rejection' as const;
 
 /**
+ * Stable marker when image generation rewrites the prompt after reseeds
+ * exhaust (#1272). Queryable alongside {@link CONTENT_REJECTION_RETRY_EVENT}.
+ */
+export const CONTENT_REJECTION_SOFTEN_EVENT =
+  'content_rejection_soften' as const;
+
+/**
+ * Stable marker when image generation swaps to Grok Imagine 2 after the
+ * selected model's reseeds exhaust (#1272). Soften only runs if this fallback
+ * also content-flags.
+ */
+export const CONTENT_REJECTION_FALLBACK_EVENT =
+  'content_rejection_fallback' as const;
+
+/**
  * True when `error` looks like a provider content-filter / model-rejection
  * hit. Operates on the extracted fal message so it works whether the caller
  * hands us the raw fal `ApiError` (422 with `body.detail`) or an already
@@ -66,4 +90,170 @@ export const CONTENT_REJECTION_EVENT = 'content_rejection' as const;
 export function isContentRejectionError(error: unknown): boolean {
   const message = extractFalErrorMessage(error);
   return CONTENT_REJECTION_PATTERNS.some((pattern) => pattern.test(message));
+}
+
+/**
+ * Provider finish reasons that mean "the model stopped because a safety
+ * classifier fired", as opposed to a transient fault. Anthropic returns this
+ * for the WHOLE analysis call (not just image generation), either with no
+ * content at all or with the response cut mid-token — see
+ * {@link contentFilterLlmMessage}.
+ */
+const CONTENT_FILTER_FINISH_REASONS: ReadonlySet<string> = new Set([
+  'content_filter',
+  'content-filter',
+]);
+
+/**
+ * True when a `RUN_FINISHED` stream event ended on a safety-classifier stop.
+ * Read defensively: the yielded event union is wide and a malformed provider
+ * shot can carry a non-string `finishReason`.
+ */
+export function isContentFilterFinish(event: unknown): boolean {
+  if (
+    !event ||
+    typeof event !== 'object' ||
+    !('type' in event) ||
+    event.type !== 'RUN_FINISHED' ||
+    !('finishReason' in event) ||
+    typeof event.finishReason !== 'string'
+  ) {
+    return false;
+  }
+  return CONTENT_FILTER_FINISH_REASONS.has(event.finishReason);
+}
+
+/** Overlay / list title — not "Generation failed". */
+export const CONTENT_REJECTION_USER_TITLE = 'Blocked by the content checker';
+
+/**
+ * Message for an LLM call the provider stopped on a content filter.
+ *
+ * Deliberately worded to match {@link CONTENT_REJECTION_PATTERNS} so the
+ * existing image-path classification (failure banners, `statusError` severity,
+ * PostHog rejection metrics) treats a filtered *analysis* call the same way it
+ * already treats a filtered *image* — as a warning naming the blocked subject,
+ * not an opaque "Generation failed".
+ *
+ * Without this the stop surfaced as `structured-output-missing-result` (empty
+ * response) or `Failed to parse structured output as JSON` (cut mid-token),
+ * neither of which tells the user their script tripped a safety classifier.
+ */
+export function contentFilterLlmMessage(subject: string): string {
+  return `${CONTENT_REJECTION_USER_TITLE}: ${subject} (stopped by the provider's content filter)`;
+}
+
+/** What the user can do next. */
+export const CONTENT_REJECTION_USER_HINT =
+  'Edit the script or the visual prompt, or retry.';
+
+/**
+ * Bible-level failure message when EVERY child failed a content check:
+ * `Blocked by the content checker: Ron Weasley, Harry Potter`. Parent
+ * workflows only prefix, so the names survive to `sequence.statusError` and
+ * {@link contentRejectionSubjects} reads them back. `null` when any failure
+ * was something else — the caller keeps its verbose message.
+ */
+export function contentRejectionSummary(
+  failures: ReadonlyArray<{ name: string; reason: string }>
+): string | null {
+  if (
+    failures.length === 0 ||
+    !failures.every((f) => isContentRejectionError(f.reason))
+  ) {
+    return null;
+  }
+  return `${CONTENT_REJECTION_USER_TITLE}: ${failures.map((f) => f.name).join(', ')}`;
+}
+
+/** Names appended by {@link contentRejectionSummary}, or `[]`. */
+export function contentRejectionSubjects(error: string): string[] {
+  const marker = `${CONTENT_REJECTION_USER_TITLE}: `;
+  const start = error.lastIndexOf(marker);
+  if (start < 0) return [];
+  return error
+    .slice(start + marker.length)
+    .replace(/…$/, '')
+    .split(', ')
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+/**
+ * Which inputs a fal 422 named. `extractFalErrorMessage` prefixes each detail
+ * with its `loc` (`body.prompt: …; body.image_url: …`, #1373); a rejection
+ * without any prefix (Veo's "could not generate", BytePlus, aimock) classifies
+ * as nothing flagged and callers treat it as prompt-shaped.
+ */
+export function flaggedInputs(rejection: string): {
+  prompt: boolean;
+  image: boolean;
+  audio: boolean;
+} {
+  const fields = [...rejection.matchAll(/\bbody\.([\w.[\]]+):/g)].map(
+    (m) => m[1] ?? ''
+  );
+  return {
+    prompt: fields.some((f) => /prompt/i.test(f)),
+    image: fields.some((f) => /image|frame|element/i.test(f)),
+    audio: fields.some((f) => /audio/i.test(f)),
+  };
+}
+
+/**
+ * Terminal clip error once every remedy is spent. Names the flagged inputs and
+ * the models that refused them, then says what the user can change — a
+ * flagged still cannot be reseeded or softened away, only regenerated (#1373).
+ * Keeps "content checker" so `isContentRejectionError` still classifies it.
+ */
+export function clipContentRejectionMessage(args: {
+  /**
+   * Every rejection seen, in order. Flags OR across them — the rescue attempt's
+   * (fallback-model) rejection may lack the `body.<field>` prefix the first
+   * attempts carried, and must not erase what they named. The last is quoted
+   * when nothing was named.
+   */
+  rejections: string[];
+  /** Display names in the order tried, e.g. `['LTX 2.3 Pro', 'Grok …']`. */
+  models: string[];
+  softened: boolean;
+  /**
+   * What this caller's inputs are called. Default is image-to-video (a start
+   * still + motion prompt). Studio text-to-video has no still — pass its
+   * reference image when it has one, or no `still` at all.
+   */
+  inputs?: {
+    still?: { name: string; fix: string };
+    prompt: string;
+  };
+}): string {
+  const flags = flaggedInputs(args.rejections.join('; '));
+  const still = args.inputs
+    ? args.inputs.still
+    : { name: 'the still', fix: 'Regenerate the still' };
+  const promptName = args.inputs?.prompt ?? 'the motion prompt';
+  const stillFlagged = flags.image && still !== undefined;
+  const what =
+    stillFlagged && flags.prompt
+      ? `${still.name} and the prompt`
+      : stillFlagged
+        ? still.name
+        : flags.prompt
+          ? 'the prompt'
+          : flags.audio
+            ? 'the audio'
+            : 'the clip';
+  const lower = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
+  const hint = stillFlagged
+    ? `${still.fix}${flags.prompt ? ` or rewrite ${promptName}` : ''}.`
+    : flags.prompt
+      ? `Rewrite ${promptName}.`
+      : `Rewrite ${promptName}${still ? ` or ${lower(still.fix)}` : ''}. (${args.rejections.at(-1) ?? ''})`;
+  const tried = [
+    args.models.join(', then '),
+    args.softened ? 'softened prompt also rejected' : null,
+  ]
+    .filter(Boolean)
+    .join('; ');
+  return `Content checker rejected ${what} (${tried}). ${hint}`;
 }

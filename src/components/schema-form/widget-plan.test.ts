@@ -7,10 +7,13 @@ import {
   matchVariant,
   orderedPropertyNames,
   parseJsonDraft,
+  partitionObjectFields,
   planWidget,
   resolveRef,
   seedFormValue,
   seedValue,
+  isOmittedFormValue,
+  withOptionalField,
   variantsOf,
 } from './widget-plan';
 
@@ -74,6 +77,69 @@ describe('orderedPropertyNames', () => {
       'optional1',
       'optional2',
     ]);
+  });
+});
+
+describe('partitionObjectFields', () => {
+  it('puts the prompt first and parks long-tail optionals in Advanced', () => {
+    const schema: JsonSchema = {
+      type: 'object',
+      properties: {
+        seed: { type: 'integer' },
+        prompt: { type: 'string' },
+        enable_safety_checker: { type: 'boolean' },
+        num_images: { type: 'integer' },
+        image_url: { type: 'string' },
+      },
+      required: ['prompt'],
+    };
+    expect(partitionObjectFields(schema)).toEqual({
+      primary: ['prompt', 'image_url', 'num_images'],
+      advanced: ['seed', 'enable_safety_checker'],
+    });
+  });
+
+  it('keeps required fields on the main form even when they are not common knobs', () => {
+    const schema: JsonSchema = {
+      type: 'object',
+      properties: {
+        enable_safety_checker: { type: 'boolean' },
+        prompt: { type: 'string' },
+      },
+      required: ['prompt', 'enable_safety_checker'],
+    };
+    expect(partitionObjectFields(schema)).toEqual({
+      primary: ['prompt', 'enable_safety_checker'],
+      advanced: [],
+    });
+  });
+});
+
+describe('isOmittedFormValue / withOptionalField', () => {
+  it('treats empty widgets as omit, but keeps 0', () => {
+    expect(isOmittedFormValue(undefined)).toBe(true);
+    expect(isOmittedFormValue('')).toBe(true);
+    expect(isOmittedFormValue(false)).toBe(false);
+    expect(isOmittedFormValue([])).toBe(true);
+    expect(isOmittedFormValue({})).toBe(true);
+    expect(isOmittedFormValue(0)).toBe(false);
+    expect(isOmittedFormValue('a fox')).toBe(false);
+  });
+
+  it('drops an optional key when the widget is cleared', () => {
+    expect(
+      withOptionalField({ prompt: 'fox', seed: 3 }, 'seed', '', false)
+    ).toEqual({ prompt: 'fox' });
+    expect(withOptionalField({ prompt: 'fox' }, 'seed', 12, false)).toEqual({
+      prompt: 'fox',
+      seed: 12,
+    });
+  });
+
+  it('never drops a required field', () => {
+    expect(withOptionalField({ prompt: 'fox' }, 'prompt', '', true)).toEqual({
+      prompt: '',
+    });
   });
 });
 

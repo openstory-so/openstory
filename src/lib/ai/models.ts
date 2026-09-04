@@ -3,9 +3,16 @@
  * Separated to avoid circular dependencies between service and client modules
  */
 
+// Value import, but one-way: grok-native imports this module type-only, so
+// there is no runtime cycle.
+import { isNativeGrokVideoModel } from '@/lib/ai/grok-native';
 import type { AnalysisModelId } from '@/lib/ai/models.config';
 import type { AspectRatio } from '@/lib/constants/aspect-ratios';
 import { MOTION_INPUT_SCHEMAS } from '@/lib/motion/endpoint-map';
+// Type-only: the Seedream adapter narrows `model` to a literal union, so the
+// catalog's `byteplusId` has to be that union rather than a bare string —
+// a retired id then fails typecheck instead of at request time (#1157).
+import type { BytePlusImageModel } from '@tanstack/ai-byteplus';
 import { z } from 'zod';
 
 import { getLogger } from '@/lib/observability/logger';
@@ -40,16 +47,16 @@ export const IMAGE_TO_VIDEO_MODELS = {
     license: 'proprietary' as const,
     qualityRank: 1,
     maxPromptLength: 2500,
-    performance: { estimatedGenerationTime: 20, quality: 'best' as const },
+    performance: { estimatedGenerationTime: 33, quality: 'best' as const },
   },
   ltx_2_3_pro: {
     id: 'fal-ai/ltx-2.3/image-to-video',
     name: 'LTX 2.3 Pro',
     vendor: 'Lightricks',
-    license: 'open-source' as const,
+    license: 'open-weight' as const,
     qualityRank: 2,
     maxPromptLength: 2500,
-    performance: { estimatedGenerationTime: 15, quality: 'best' as const },
+    performance: { estimatedGenerationTime: 126, quality: 'best' as const },
   },
   veo3_1: {
     id: 'fal-ai/veo3.1/image-to-video',
@@ -58,7 +65,20 @@ export const IMAGE_TO_VIDEO_MODELS = {
     license: 'proprietary' as const,
     qualityRank: 2,
     maxPromptLength: 20000,
-    performance: { estimatedGenerationTime: 25, quality: 'best' as const },
+    performance: { estimatedGenerationTime: 147, quality: 'best' as const },
+  },
+  gemini_omni_flash: {
+    id: 'fal-ai/gemini-omni-1.1-flash/image-to-video',
+    name: 'Gemini Omni Flash 1.1',
+    vendor: 'Google',
+    license: 'proprietary' as const,
+    qualityRank: 2,
+    // Always generates synchronized audio (dialogue, ambience, score). Neither
+    // the fal schema nor the Interactions API expose a generate_audio toggle
+    // (`videoModelSupportsAudio` is false), so audio direction is in-prompt
+    // and the scene-editor SFX checkbox stays hidden.
+    maxPromptLength: 20000,
+    performance: { estimatedGenerationTime: 20, quality: 'best' as const },
   },
   kling_v3_pro: {
     id: 'fal-ai/kling-video/v3/pro/image-to-video',
@@ -67,7 +87,7 @@ export const IMAGE_TO_VIDEO_MODELS = {
     license: 'proprietary' as const,
     qualityRank: 3,
     maxPromptLength: 2500,
-    performance: { estimatedGenerationTime: 20, quality: 'best' as const },
+    performance: { estimatedGenerationTime: 306, quality: 'best' as const },
   },
   minimax_hailuo_02: {
     id: 'fal-ai/minimax/hailuo-2.3/pro/image-to-video',
@@ -76,16 +96,49 @@ export const IMAGE_TO_VIDEO_MODELS = {
     license: 'proprietary' as const,
     qualityRank: 5,
     maxPromptLength: 2500,
-    performance: { estimatedGenerationTime: 15, quality: 'best' as const },
+    performance: { estimatedGenerationTime: 199, quality: 'best' as const },
+  },
+  minimax_h3_max: {
+    id: 'minimax/h3-max/image-to-video',
+    name: 'MiniMax H3 Max',
+    vendor: 'MiniMax',
+    license: 'proprietary' as const,
+    qualityRank: 4,
+    // Always generates audio (lip-synced dialogue, ambience, score) with no
+    // API switch — the schema has no generate_audio, so the builder must
+    // direct it in-prompt. See buildMinimaxH3Prompt.
+    supportsAudio: true,
+    maxPromptLength: 2500,
+    // PostHog p50 9.7s (n=74, 30d ending 2026-09-01).
+    performance: { estimatedGenerationTime: 10, quality: 'best' as const },
   },
   seedance_v2: {
     id: 'bytedance/seedance-2.0/enterprise/v2/image-to-video',
     name: 'Seedance 2.0',
     vendor: 'ByteDance',
     license: 'proprietary' as const,
+    qualityRank: 4,
+    maxPromptLength: 4096,
+    performance: { estimatedGenerationTime: 208, quality: 'best' as const },
+  },
+  seedance_v2_5: {
+    id: 'bytedance/seedance-2.5/image-to-video',
+    name: 'Seedance 2.5',
+    vendor: 'ByteDance',
+    license: 'proprietary' as const,
     qualityRank: 2,
     maxPromptLength: 4096,
-    performance: { estimatedGenerationTime: 20, quality: 'best' as const },
+    performance: { estimatedGenerationTime: 208, quality: 'best' as const },
+    // Hidden from sequence/studio pickers: public fal 2.5 400s photoreal
+    // faces without Ark `asset://` ingest, and we are not rolling Ark out.
+    // Catalog key stays so a later Ark enablement does not need a rename.
+    hidden: true,
+    // Native BytePlus Ark route (#1157). Must be activated in the Ark console
+    // first — an unopened model answers 404 ModelNotOpen at request time. The
+    // Ark route requests 720p (see BYTEPLUS_RESOLUTION); the rate card's
+    // $10.70/1M-token entry is exact for that tier only. fal has no
+    // enterprise 2.5 (those paths 404); public 2.5 is the fal via.
+    byteplusId: 'dreamina-seedance-2-5-260628' as const,
   },
 } as const;
 
@@ -100,6 +153,16 @@ export const IMAGE_MODELS = {
     license: 'proprietary' as const,
     qualityRank: 1,
     description: "Google's latest fast image generation and editing model",
+    maxPromptLength: 50000,
+  },
+  nano_banana_2_lite: {
+    id: 'google/nano-banana-2-lite' as const,
+    name: 'Nano Banana 2 Lite',
+    vendor: 'Google',
+    license: 'proprietary' as const,
+    qualityRank: 3,
+    description:
+      'Fastest Google image model — ~4s, references, fixed 1K output',
     maxPromptLength: 50000,
   },
   nano_banana_pro: {
@@ -162,16 +225,16 @@ export const IMAGE_MODELS = {
     id: 'fal-ai/hunyuan-image/v3/text-to-image' as const,
     name: 'Hunyuan Image v3',
     vendor: 'Tencent',
-    license: 'open-source' as const,
+    license: 'open-weight' as const,
     qualityRank: 6,
-    description: 'Open source with strong composition',
+    description: 'Open weights, strong composition',
     maxPromptLength: 2000,
   },
   flux_2_dev: {
     id: 'fal-ai/flux-2' as const,
     name: 'FLUX.2 Dev',
     vendor: 'Black Forest Labs',
-    license: 'open-source' as const,
+    license: 'open-weight' as const,
     qualityRank: 7,
     description: '32B open weights with native editing',
     maxPromptLength: 2000,
@@ -180,7 +243,7 @@ export const IMAGE_MODELS = {
     id: 'fal-ai/qwen-image-2/pro/text-to-image' as const,
     name: 'Qwen Image 2 Pro',
     vendor: 'Alibaba',
-    license: 'open-source' as const,
+    license: 'open-weight' as const,
     qualityRank: 8,
     description: 'Apache 2.0, native 2K, text rendering, editing support',
     maxPromptLength: 2000,
@@ -189,27 +252,51 @@ export const IMAGE_MODELS = {
     id: 'fal-ai/hidream-i1-full' as const,
     name: 'HiDream I1',
     vendor: 'HiDream',
-    license: 'open-source' as const,
+    license: 'open-weight' as const,
     qualityRank: 9,
     description: 'MIT licensed, 17B parameters',
     maxPromptLength: 2000,
   },
   seedream_v5: {
-    id: 'fal-ai/bytedance/seedream/v5/lite/text-to-image' as const,
-    name: 'Seedream 5',
+    id: 'bytedance/seedream/v5/pro/text-to-image' as const,
+    name: 'Seedream 5.0 Pro',
     vendor: 'ByteDance',
     license: 'proprietary' as const,
     qualityRank: 10,
-    description: 'Unified generation and editing',
+    description:
+      'Flagship generation and editing — dense layouts, native text, up to 10 refs',
+    maxPromptLength: 2000,
+    // Native BytePlus Ark route (#1157). Ark carries reference images inline
+    // on the generation call, so this route has no separate edit endpoint —
+    // see EDIT_ENDPOINTS, which stays fal-only. Pro, not lite:
+    // dola-seedream-5-0-pro-260628. Lite is seedream-5-0-260128.
+    byteplusId: 'dola-seedream-5-0-pro-260628' as const,
+  },
+  flux_2_flash: {
+    id: 'fal-ai/flux-2/flash' as const,
+    name: 'FLUX.2 Flash',
+    vendor: 'Black Forest Labs',
+    license: 'open-weight' as const,
+    qualityRank: 11,
+    description: 'Cheapest distilled FLUX.2 — sub-second, edit up to 4 refs',
     maxPromptLength: 2000,
   },
   flux_2_turbo: {
     id: 'fal-ai/flux-2/turbo' as const,
     name: 'FLUX.2 Turbo',
     vendor: 'Black Forest Labs',
-    license: 'open-source' as const,
+    license: 'open-weight' as const,
+    qualityRank: 12,
+    description: 'Distilled FLUX.2 — ~2s, edit up to 4 refs',
+    maxPromptLength: 2000,
+  },
+  krea_2_turbo: {
+    id: 'fal-ai/krea-2/turbo' as const,
+    name: 'Krea 2 Turbo',
+    vendor: 'Krea',
+    license: 'open-weight' as const,
     qualityRank: 99,
-    description: 'Ultra-fast preview generation',
+    description: 'Ultra-fast storyboard generation',
     maxPromptLength: 2000,
     hidden: true,
   },
@@ -222,8 +309,10 @@ type TextToImageModelId = ImageModelConfig['id'];
 
 export const DEFAULT_IMAGE_MODEL: TextToImageModel = 'gpt_image_2';
 
-/** Model used for fast preview image generation */
-export const PREVIEW_IMAGE_MODEL: TextToImageModel = 'flux_2_turbo';
+/** Model used for fast preview image generation. krea_2_turbo stays hidden
+ *  (no edit/reference endpoint). flux_2_turbo is a picker model; stored
+ *  preview variants may still name it. */
+export const PREVIEW_IMAGE_MODEL: TextToImageModel = 'krea_2_turbo';
 
 // Helper to get model ID from key
 export function getTextToImageModelId(
@@ -237,8 +326,38 @@ export function getImageModelById(id: string): ImageModelConfig | undefined {
   return Object.values(IMAGE_MODELS).find((model) => model.id === id);
 }
 
+/**
+ * The BytePlus Ark model id for a text-to-image model, or undefined when the
+ * model has no native Ark route and always goes through fal (#1157).
+ */
+export function getBytePlusImageModelId(
+  modelKey: TextToImageModel
+): BytePlusImageModel | undefined {
+  const config = IMAGE_MODELS[modelKey];
+  return 'byteplusId' in config ? config.byteplusId : undefined;
+}
+
+export function isNativeBytePlusImageModel(model: TextToImageModel): boolean {
+  return getBytePlusImageModelId(model) !== undefined;
+}
+
 // Image to video model types
 export type ImageToVideoModel = keyof typeof IMAGE_TO_VIDEO_MODELS;
+
+/**
+ * The BytePlus Ark model id for a motion model, or undefined when the model
+ * has no native Ark route and always goes through fal (#1157).
+ */
+export function getBytePlusVideoModelId(
+  modelKey: ImageToVideoModel
+): string | undefined {
+  const config = IMAGE_TO_VIDEO_MODELS[modelKey];
+  return 'byteplusId' in config ? config.byteplusId : undefined;
+}
+
+export function isNativeBytePlusVideoModel(model: ImageToVideoModel): boolean {
+  return getBytePlusVideoModelId(model) !== undefined;
+}
 
 export const DEFAULT_VIDEO_MODEL: ImageToVideoModel = 'seedance_v2';
 
@@ -362,6 +481,7 @@ function getModelsForAspectRatio(
   return Object.keys(IMAGE_TO_VIDEO_MODELS).filter(
     (key): key is ImageToVideoModel =>
       isValidImageToVideoModel(key) &&
+      !('hidden' in IMAGE_TO_VIDEO_MODELS[key]) &&
       isModelCompatibleWithAspectRatio(key, aspectRatio)
   );
 }
@@ -412,7 +532,7 @@ export const AUDIO_MODELS = {
       supportedFormats: ['mp3'],
     },
     performance: {
-      estimatedGenerationTime: 30,
+      estimatedGenerationTime: 10,
       quality: 'best',
     },
   },
@@ -420,7 +540,7 @@ export const AUDIO_MODELS = {
     id: 'fal-ai/ace-step-1.5' as const,
     name: 'ACE-Step 1.5',
     vendor: 'ACE Studio',
-    license: 'open-source' as const,
+    license: 'open-weight' as const,
     qualityRank: 2,
     type: 'music' as const,
     capabilities: {
@@ -432,7 +552,7 @@ export const AUDIO_MODELS = {
       supportedFormats: ['wav'],
     },
     performance: {
-      estimatedGenerationTime: 25,
+      estimatedGenerationTime: 33,
       quality: 'best',
     },
   },
@@ -440,7 +560,7 @@ export const AUDIO_MODELS = {
     id: 'fal-ai/ace-step/prompt-to-audio' as const,
     name: 'ACE-Step',
     vendor: 'ACE Studio',
-    license: 'open-source' as const,
+    license: 'open-weight' as const,
     qualityRank: 3,
     type: 'music' as const,
     capabilities: {
@@ -452,7 +572,7 @@ export const AUDIO_MODELS = {
       supportedFormats: ['wav'],
     },
     performance: {
-      estimatedGenerationTime: 20,
+      estimatedGenerationTime: 33,
       quality: 'best',
     },
   },
@@ -501,6 +621,10 @@ export function safeAudioModel(
  */
 export const EDIT_ENDPOINTS: Partial<Record<TextToImageModel, string>> = {
   nano_banana_2: 'fal-ai/nano-banana-2/edit',
+  // T2I is `google/nano-banana-2-lite`; fal's documented edit sibling drops
+  // the `2` and carries the token pricing the `/2-lite/edit` catalog row
+  // advertises as $0 compute-seconds.
+  nano_banana_2_lite: 'google/nano-banana-lite/edit',
   nano_banana_pro: 'fal-ai/nano-banana-pro/edit',
   gpt_image_2: 'openai/gpt-image-2/edit',
   grok_imagine_image: 'xai/grok-imagine-image/v2.0/edit',
@@ -509,9 +633,10 @@ export const EDIT_ENDPOINTS: Partial<Record<TextToImageModel, string>> = {
   phota: 'fal-ai/phota/edit',
   hunyuan_image_v3: 'fal-ai/hunyuan-image/v3/instruct/edit',
   flux_2_dev: 'fal-ai/flux-2/edit',
+  flux_2_flash: 'fal-ai/flux-2/flash/edit',
   flux_2_turbo: 'fal-ai/flux-2/turbo/edit',
   qwen_image: 'fal-ai/qwen-image-2/pro/edit',
-  seedream_v5: 'fal-ai/bytedance/seedream/v5/lite/edit',
+  seedream_v5: 'bytedance/seedream/v5/pro/edit',
 };
 
 /**
@@ -528,9 +653,12 @@ export const EDIT_ENDPOINTS: Partial<Record<TextToImageModel, string>> = {
  */
 const EDIT_REFERENCE_LIMITS: Partial<Record<TextToImageModel, number>> = {
   flux_2_dev: 4,
+  flux_2_flash: 4,
   flux_2_turbo: 4,
   grok_imagine_image: 3,
   grok_imagine_image_quality: 3,
+  // Seedream 5.0 Pro: 10 on fal edit and on Ark. Lite was 14.
+  seedream_v5: 10,
 };
 
 /**
@@ -564,20 +692,25 @@ export type MotionReferenceEndpointConfig = {
   /** The fal reference-to-video endpoint id to submit to. */
   endpointId: string;
   /**
-   * Renders the prompt token bound to `image_urls[position - 1]` (position is
-   * 1-based) — e.g. `@Image1` for Seedance, `<IMAGE_REF_0>` for Gemini Omni
-   * Flash.
+   * Renders the prompt token bound to the image-list field at
+   * `position - 1` (1-based) — e.g. `@Image1` for Seedance, `Image 1`
+   * for H3 Max.
    */
   tag: (position: number) => string;
   /** Total images the endpoint accepts, including the rendered still. */
   maxImages: number;
+  /**
+   * Request field the stills go in. Seedance uses `image_urls`; H3 Max
+   * uses `reference_image_urls`. Defaults to `image_urls`.
+   */
+  imageField?: 'image_urls' | 'reference_image_urls';
 };
 
 /**
  * Map image-to-video models to a SEPARATE reference-to-video endpoint (#873).
  *
  * Some motion models accept cast/element reference images only on a dedicated
- * endpoint that takes `image_urls[]` (bound to prompt tokens — see
+ * endpoint that takes an image list (bound to prompt tokens — see
  * `MotionReferenceEndpointConfig.tag`) and has NO single start-frame
  * `image_url`. This is the motion analogue of `EDIT_ENDPOINTS` on the image
  * side: when a scene has references AND the model is listed here, motion
@@ -593,6 +726,25 @@ export const MOTION_REFERENCE_ENDPOINTS: Partial<
     endpointId: 'bytedance/seedance-2.0/enterprise/v2/reference-to-video',
     tag: (position) => `@Image${position}`,
     maxImages: 9,
+  },
+  seedance_v2_5: {
+    endpointId: 'bytedance/seedance-2.5/reference-to-video',
+    tag: (position) => `@Image${position}`,
+    maxImages: 9,
+  },
+  gemini_omni_flash: {
+    endpointId: 'fal-ai/gemini-omni-1.1-flash/reference-to-video',
+    // Google numbers references from zero (Omni Flash prompt guide); the API
+    // caps a request at 7 reference images.
+    tag: (position) => `<IMAGE_REF_${position - 1}>`,
+    maxImages: 7,
+  },
+  // Schema caps images at 9 (videos 3, audio 3; combined 12 files).
+  minimax_h3_max: {
+    endpointId: 'minimax/h3-max/reference-to-video',
+    tag: (position) => `Image ${position}`,
+    maxImages: 9,
+    imageField: 'reference_image_urls',
   },
 };
 
@@ -617,6 +769,71 @@ export function getMotionReferenceEndpoint(
 
 export function attachesInlineReferences(model: ImageToVideoModel): boolean {
   return model in MOTION_INLINE_REFERENCE_MODELS;
+}
+
+/**
+ * Can this model render a shot from reference images alone — no start frame?
+ *
+ * Reference-only mode (see `docs/architecture/reference-only-motion.md`) skips
+ * still generation entirely, so the model must have a route whose start frame
+ * is optional. That is exactly the `MOTION_REFERENCE_ENDPOINTS` set: fal's
+ * `reference-to-video` endpoints take an optional `image_urls[]` and have no
+ * `image_url` field at all, and the same models' BytePlus Ark route sends
+ * every image as a `reference` role (Ark's frame/reference mix-ban means the
+ * still was never a frame there either).
+ *
+ * Keyed on the MODEL alone, so it is true on EVERY via — the floor, safe to
+ * call anywhere including a pure isomorphic schema. Kling is excluded: its
+ * `elements` ride on the image-to-video endpoint, which requires `image_url`.
+ * Grok Imagine is excluded here too, but only because its fal id is
+ * `xai/grok-imagine-video/v1.5/image-to-video` — it DOES accept references
+ * with no start frame on the native xAI via. Where the via is known, ask
+ * {@link referenceOnlyCapableWith} instead.
+ */
+export function supportsReferenceOnlyMotion(model: ImageToVideoModel): boolean {
+  return model in MOTION_REFERENCE_ENDPOINTS;
+}
+
+/** Which native vias are reachable. Resolved per team by `getViaAvailabilityFn`. */
+export type ReferenceOnlyVias = { xai?: boolean; byteplus?: boolean };
+
+/**
+ * Can this model render a reference-only shot given the vias actually
+ * reachable? The one rule, shared by everything that has to answer it:
+ * the client model filters (via the router loader), the create-time server
+ * check, and `canRenderReferenceOnly` on the submit path. Duplicating it would
+ * let the UI offer a model the workflow then refuses.
+ *
+ * `xai` is the only via that adds anything today: Grok Imagine 1.5 binds up to
+ * 7 references and needs no start frame on `api.x.ai`, but falls back to a fal
+ * image-to-video endpoint when no xAI key resolves. BytePlus adds nothing —
+ * Seedance already qualifies on its fal route, and Ark sends every image as a
+ * `reference` role anyway.
+ */
+export function referenceOnlyCapableWith(
+  model: ImageToVideoModel,
+  vias: ReferenceOnlyVias
+): boolean {
+  if (supportsReferenceOnlyMotion(model)) return true;
+  return Boolean(vias.xai) && isNativeGrokVideoModel(model);
+}
+
+/**
+ * The reference-only-capable models for these vias — for UI copy, the model
+ * selectors, and validation messages. Ordered by the catalog's quality rank so
+ * the list reads the same as the selector.
+ */
+export function referenceOnlyMotionModels(
+  vias: ReferenceOnlyVias = {}
+): ImageToVideoModel[] {
+  return Object.keys(IMAGE_TO_VIDEO_MODELS)
+    .filter(isValidImageToVideoModel)
+    .filter((model) => referenceOnlyCapableWith(model, vias))
+    .sort(
+      (a, b) =>
+        IMAGE_TO_VIDEO_MODELS[a].qualityRank -
+        IMAGE_TO_VIDEO_MODELS[b].qualityRank
+    );
 }
 
 /**

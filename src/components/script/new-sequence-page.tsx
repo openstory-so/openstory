@@ -1,6 +1,7 @@
 import { BillingGateDialog } from '@/components/billing/billing-gate-dialog';
 import { OpenStoryLogo } from '@/components/icons/openstory-logo';
 import { PageContainer } from '@/components/layout/page-container';
+import { PageIntro } from '@/components/typography/page-intro';
 import { ScriptView } from '@/components/script/script-view';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useBillingGate } from '@/hooks/use-billing-gate';
@@ -76,7 +77,8 @@ export function NewSequencePage({
   // resolved from the style here so the URL only needs the slug; settings
   // (models, aspect ratio) follow once the style is selected. Remounting the
   // composer (`key`) on a new seed lets the `initialScript`/`initialStyleId`
-  // props re-seed it — and take precedence over a stale draft (see ScriptView).
+  // props re-seed it. A leftover `?style=` after login restores the draft
+  // instead of that seed when the style matches (see ScriptView, #1384).
   const { data: styles } = useStyles();
 
   // The composer mirrors its style pick into `?style=` (see `handleStyleChange`
@@ -89,6 +91,17 @@ export function NewSequencePage({
   const seedRef = useRef<{ key: string; script?: string; styleId?: string }>({
     key: 'blank',
   });
+  // Login remounts the composer (logged-out chrome → signed-in chrome). Drop
+  // the frozen self-sync seed so the current URL is re-read — otherwise a
+  // Shuffle after Try keeps the original Try seed and login restores the
+  // wrong sample (#1384).
+  const userId = user?.id ?? null;
+  const prevUserIdRef = useRef(userId);
+  if (prevUserIdRef.current !== userId) {
+    prevUserIdRef.current = userId;
+    lastSelfSyncRef.current = null;
+    seedRef.current = { key: '' };
+  }
 
   const seedStyle = styleParam
     ? styles?.find((s) => styleSlug(s.name) === styleParam)
@@ -227,25 +240,34 @@ export function NewSequencePage({
     );
   }
 
-  // Signed-in: the script box fills the screen (no marketing chrome).
-  // Logged-out: logo + tagline + composer.
+  // Signed-in: same left one-liner as Sequences / Images / Models, then the
+  // script box. Logged-out: logo + centered tagline + composer.
   if (user) {
     return (
-      <div className="h-full">
+      <div className="flex h-full flex-col overflow-hidden">
         {billingGate}
-        <PageContainer maxWidth="narrow" fullHeight>
-          <ScriptView
-            key={from ? `copy:${from}` : composerKey}
-            loading={false}
-            onSuccess={handleSuccess}
-            sequence={sourceSequence}
-            allowScriptEdit={!!from}
-            onCancel={handleCancelCopy}
-            initialScript={from ? undefined : seedScript}
-            initialStyleId={from ? undefined : seedStyleId}
-            initialScriptIsSample={!from && !!seedScript}
-            onStyleChange={from ? undefined : handleStyleChange}
-          />
+        <PageIntro title={SITE_CONFIG.tagline} maxWidth="narrow">
+          {SITE_CONFIG.taglineSub}
+        </PageIntro>
+        <PageContainer
+          maxWidth="narrow"
+          padding="none"
+          className="flex min-h-0 flex-1 flex-col overflow-hidden"
+        >
+          <div className="flex min-h-0 flex-1 flex-col">
+            <ScriptView
+              key={from ? `copy:${from}` : composerKey}
+              loading={false}
+              onSuccess={handleSuccess}
+              sequence={sourceSequence}
+              allowScriptEdit={!!from}
+              onCancel={handleCancelCopy}
+              initialScript={from ? undefined : seedScript}
+              initialStyleId={from ? undefined : seedStyleId}
+              initialScriptIsSample={!from && !!seedScript}
+              onStyleChange={from ? undefined : handleStyleChange}
+            />
+          </div>
         </PageContainer>
       </div>
     );

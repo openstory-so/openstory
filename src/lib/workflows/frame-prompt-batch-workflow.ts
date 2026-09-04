@@ -12,6 +12,7 @@
  * shot-creation time in `scene-split-workflow` and threaded here via
  * `shotMapping` (#991). */
 
+import { contentRejectionSummary } from '@/lib/ai/content-rejection';
 import type { Scene, VisualPrompt } from '@/lib/ai/scene-analysis.schema';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import { spawnAndAwaitChild } from '@/lib/workflow/await-child';
@@ -77,6 +78,7 @@ export class FramePromptBatchWorkflow extends OpenStoryWorkflowEntrypoint<FrameP
       );
 
       const childPayload: FramePromptWorkflowInput = {
+        reservationId: input.reservationId,
         scene,
         sceneBefore,
         sceneAfter,
@@ -125,6 +127,7 @@ export class FramePromptBatchWorkflow extends OpenStoryWorkflowEntrypoint<FrameP
           childResult: FramePromptResult;
         }> = [];
         const failedSceneIds: string[] = [];
+        const failures: Array<{ name: string; reason: string }> = [];
 
         for (const [index, outcome] of settled.entries()) {
           const scene = scenes[index];
@@ -135,7 +138,16 @@ export class FramePromptBatchWorkflow extends OpenStoryWorkflowEntrypoint<FrameP
                 err: outcome.reason,
               }
             );
-            if (scene) failedSceneIds.push(scene.sceneId);
+            if (scene) {
+              failedSceneIds.push(scene.sceneId);
+              failures.push({
+                name: `Scene ${scene.sceneNumber}`,
+                reason:
+                  outcome.reason instanceof Error
+                    ? outcome.reason.message
+                    : String(outcome.reason),
+              });
+            }
             continue;
           }
           successResults.push(outcome.value);
@@ -145,9 +157,15 @@ export class FramePromptBatchWorkflow extends OpenStoryWorkflowEntrypoint<FrameP
           // NonRetryableError (not WorkflowValidationError) because the base
           // class's re-wrap only runs at the runImpl catch boundary; a throw
           // inside step.do gets retried by CF's step machinery first.
+          //
+          // When EVERY child was stopped by a content filter, say so and name
+          // the scenes: that message survives to `sequence.statusError`, where
+          // the existing rejection classification renders it as a warning the
+          // user can act on (#1304). Anything else keeps the diagnostic text.
           throw new NonRetryableError(
-            `frame-prompt child(ren) returned no body for scene(s) [${failedSceneIds.join(', ')}]. ` +
-              `Check sub-workflow logs for the upstream failure.`,
+            contentRejectionSummary(failures) ??
+              `frame-prompt child(ren) returned no body for scene(s) [${failedSceneIds.join(', ')}]. ` +
+                `Check sub-workflow logs for the upstream failure.`,
             'WorkflowValidationError'
           );
         }

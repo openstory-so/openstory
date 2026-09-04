@@ -5,6 +5,7 @@ import {
 } from '@/functions/scenes';
 import type { Scene } from '@/lib/ai/scene-analysis.schema';
 import type { SceneRow } from '@/lib/db/schema';
+import { sceneFacetKeys } from '@/hooks/use-scene-facets';
 import { sequenceKeys } from '@/hooks/use-sequences';
 import { shotStalenessNamespace } from '@/hooks/use-shot-staleness';
 import { shotKeys } from '@/hooks/use-shots';
@@ -76,6 +77,13 @@ export function useSaveSceneScript(sequenceId: string) {
         }),
         queryClient.invalidateQueries({
           queryKey: sceneKeys.composedScript(sequenceId),
+        }),
+        // A script edit can auto-link @-mentioned cast/elements/locations into
+        // the scene's continuity (#1341): refetch the scene rows and the
+        // server-resolved facet membership the Cast tab reads.
+        queryClient.invalidateQueries({ queryKey: sceneKeys.list(sequenceId) }),
+        queryClient.invalidateQueries({
+          queryKey: sceneFacetKeys.maps(sequenceId),
         }),
         // Staleness is per-shot and keyed by shot id; the scene's shots aren't
         // enumerated here, so drop the whole staleness namespace.

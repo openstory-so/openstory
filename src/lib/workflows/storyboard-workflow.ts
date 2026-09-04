@@ -32,7 +32,12 @@ import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import { generateImageWithProvider } from '@/lib/image/image-generation';
 import { uploadPosterToStorage } from '@/lib/image/image-storage';
 import { buildPosterPrompt } from '@/lib/prompts/poster-prompt';
+import {
+  notifySequenceReady,
+  sequenceScenesUrl,
+} from '@/lib/emails/notify-sequence-ready';
 import { getGenerationChannel } from '@/lib/realtime';
+import { includesStage } from '@/lib/generation/pipeline';
 import { validateSequenceAuth } from '@/lib/workflow/auth';
 import { spawnAndAwaitChild } from '@/lib/workflow/await-child';
 import { OpenStoryWorkflowEntrypoint } from '@/lib/workflow/base-workflow';
@@ -69,6 +74,7 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
       title,
       script,
       aspectRatio,
+      resolution,
       analysisModelId,
       imageModel,
       videoModel,
@@ -81,44 +87,63 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
         teamId: input.teamId,
         userId: input.userId,
         autoGenerateMotion: input.autoGenerateMotion,
+        stopAt: input.stopAt,
+        resume: input.resume,
       });
       validateSequenceAuth(input);
 
       // Throws if the sequence was deleted (or moved teams) since the trigger.
       await scopedDb.liveRead.sequences.getForUser({ sequenceId });
 
-      await scopedDb.shots.deleteBySequence(sequenceId);
+      if (!input.resume) {
+        await scopedDb.shots.deleteBySequence(sequenceId);
+      }
 
       await seq.updateStatus('processing');
+      await scopedDb.sequences.update({
+        id: sequenceId,
+        generationStopAt: input.stopAt,
+        // A fresh run just deleted the shots the old checkpoint maps to; a
+        // stale stage would offer a continue into them (#1408).
+        ...(input.resume
+          ? {}
+          : { pipelineStage: null, generationCheckpoint: null }),
+      });
     });
 
     // Pending automatic style (#1213): the poster renders from the script alone.
+    // Continue-from-DAG skips the poster — the sequence already has one.
     const styleConfig = input.pendingAutoStyleId
       ? undefined
       : input.styleConfig;
+    const skipPoster = Boolean(input.resume);
 
     // Generate a poster image from the script for the video player empty
     // state. Non-critical — failures are logged and swallowed so a poster
     // outage cannot block the storyboard. Mirrors the QStash original's
     // try/catch swallow inside the step.
-    const posterResult = await step.do('generate-poster', async () => {
-      try {
-        const prompt = buildPosterPrompt(title, script, styleConfig);
-        return await generateImageWithProvider(
-          {
-            model: PREVIEW_IMAGE_MODEL,
-            prompt,
-            imageSize: aspectRatioToImageSize(aspectRatio),
-          },
-          { scopedDb: scopedDb.credentials }
-        );
-      } catch (error) {
-        logger.warn('[StoryboardWorkflow:cf] Poster generation failed:', {
-          err: error,
+    let posterUrl: string | null = null;
+
+    const posterResult = skipPoster
+      ? null
+      : await step.do('generate-poster', async () => {
+          try {
+            const prompt = buildPosterPrompt(title, script, styleConfig);
+            return await generateImageWithProvider(
+              {
+                model: PREVIEW_IMAGE_MODEL,
+                prompt,
+                imageSize: aspectRatioToImageSize(aspectRatio),
+              },
+              { scopedDb: scopedDb.credentials }
+            );
+          } catch (error) {
+            logger.warn('[StoryboardWorkflow:cf] Poster generation failed:', {
+              err: error,
+            });
+            return null;
+          }
         });
-        return null;
-      }
-    });
 
     if (posterResult) {
       const generatedPosterUrl = posterResult.imageUrls[0];
@@ -143,13 +168,17 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
           }
         });
 
-        const posterUrl = storedPosterUrl ?? generatedPosterUrl;
+        const savedPosterUrl = storedPosterUrl ?? generatedPosterUrl;
+        posterUrl = savedPosterUrl;
 
         await step.do('save-poster', async () => {
-          await scopedDb.sequences.update({ id: sequenceId, posterUrl });
+          await scopedDb.sequences.update({
+            id: sequenceId,
+            posterUrl: savedPosterUrl,
+          });
           await getGenerationChannel(sequenceId).emit(
             'generation.poster:ready',
-            { posterUrl }
+            { posterUrl: savedPosterUrl }
           );
         });
 
@@ -168,6 +197,7 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
             usedOwnKey: posterResult.metadata.usedOwnKey,
             description: `Sequence poster (${PREVIEW_IMAGE_MODEL})`,
             idempotencyKey: `${event.instanceId}:poster`,
+            reservationId: input.reservationId,
             metadata: {
               ...posterUsage,
               model: PREVIEW_IMAGE_MODEL,
@@ -189,8 +219,10 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
         userId: input.userId,
         teamId: input.teamId,
         sequenceId,
+        reservationId: input.reservationId,
         script,
         aspectRatio,
+        resolution,
         styleConfig: input.styleConfig,
         pendingAutoStyleId: input.pendingAutoStyleId,
         analysisModelId,
@@ -202,12 +234,16 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
         videoModels: input.videoModels ?? [videoModel],
         autoGenerateMotion: input.autoGenerateMotion ?? false,
         autoGenerateMusic: input.autoGenerateMusic ?? false,
+        stopAt: input.stopAt,
+        startFrom: input.startFrom,
+        checkpoint: input.checkpoint,
         musicModel: input.musicModel,
         audioModels: input.audioModels,
         suggestedTalentIds: input.suggestedTalentIds,
         suggestedLocationIds: input.suggestedLocationIds,
         suggestedTalent: input.suggestedTalent,
         suggestedLocations: input.suggestedLocations,
+        referenceOnly: input.referenceOnly ?? false,
       },
       spawnStepName: 'spawn-analyze-script',
       awaitStepName: 'await-analyze-script',
@@ -222,6 +258,13 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
       timeout: '6 hours',
     });
 
+    const reservationId = input.reservationId;
+    if (reservationId) {
+      await step.do('zero-reservation', async () => {
+        await scopedDb.billing.zeroReservation(reservationId);
+      });
+    }
+
     await step.do('mark-completed', async () => {
       await seq.updateStatus('completed');
     });
@@ -229,6 +272,24 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
     await step.do('emit-complete', async () => {
       await getGenerationChannel(sequenceId).emit('generation.complete', {
         sequenceId,
+      });
+    });
+
+    // "Your video is ready" is a one-shot claim per sequence: sending it for
+    // a run that stopped before motion would spend it on a board with no video
+    // and silence the real completion (#1408).
+    if (!includesStage(input.stopAt, 'motion')) return;
+
+    // After emit-complete: a send retry must not strand the player on processing.
+    await step.do('email-ready', async () => {
+      await notifySequenceReady({
+        scopedDb,
+        sequenceId,
+        ownerEmail: input.ownerEmail,
+        sequenceUrl: input.sequenceUrl || sequenceScenesUrl(sequenceId),
+        posterUrl,
+        notify: input.notify,
+        userId,
       });
     });
   }
@@ -255,13 +316,27 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
     // sequence failed — its message ("Your OpenRouter API key is invalid…")
     // is more specific than the parent's wrapper ("Child workflow
     // analyze-script… failed: …").
-    const { sequenceId } = event.payload;
+    const { sequenceId, reservationId } = event.payload;
+    if (reservationId) {
+      try {
+        await scopedDb.billing.zeroReservation(reservationId);
+      } catch (releaseError) {
+        logger.error(
+          `[StoryboardWorkflow:cf] Failed to zero reservation ${reservationId}:`,
+          { err: releaseError }
+        );
+      }
+    }
     if (!sequenceId) return;
 
     const sequence = await scopedDb.liveRead.sequences.getForUser({
       sequenceId,
     });
-    if (sequence.status === 'failed') return;
+    // Trailing steps (email-ready) run AFTER mark-completed. A send failure
+    // must not un-complete a successful generation.
+    if (sequence.status === 'failed' || sequence.status === 'completed') {
+      return;
+    }
 
     await scopedDb.sequence(sequenceId).updateStatus('failed', error);
     await getGenerationChannel(sequenceId).emit('generation.failed', {

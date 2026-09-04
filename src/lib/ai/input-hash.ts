@@ -162,7 +162,20 @@ export function computeShotVideoInputHash(
 export function computeVideoManifestInputHash(
   manifest: readonly VideoManifestEntry[],
   model: string
-): Promise<string> {
+): Promise<string | null> {
+  // A hash over null/null immediately diverges from a live hash built from
+  // the selected still + prompt — that's how storyboard clips were born
+  // Stale (#1380). Unknown provenance is a null hash, matching
+  // `videoVariants.isStale` for legacy rows (never stale).
+  if (
+    manifest.length > 0 &&
+    manifest.every(
+      (entry) =>
+        entry.motionPromptVersionId == null && entry.frameVersionId == null
+    )
+  ) {
+    return Promise.resolve(null);
+  }
   return sha256Hex({ artifact: 'video:manifest', model, manifest });
 }
 
@@ -204,14 +217,15 @@ export type CharacterSheetHashInput = {
   imageModel: string;
 };
 
-export function computeCharacterSheetInputHash(
-  input: CharacterSheetHashInput
-): Promise<string> {
+function characterSheetHashBody(
+  input: CharacterSheetHashInput,
+  includeName: boolean
+): unknown {
   const cb = input.characterBible;
-  return sha256Hex({
+  return {
     artifact: 'character:sheet',
     characterBible: {
-      name: trim(cb.name),
+      ...(includeName ? { name: trim(cb.name) } : {}),
       age: trim(cb.age),
       gender: trim(cb.gender),
       ethnicity: trim(cb.ethnicity),
@@ -223,7 +237,33 @@ export function computeCharacterSheetInputHash(
     talentSheetHash: input.talentSheetHash ?? null,
     styleConfigHash: input.styleConfigHash,
     imageModel: input.imageModel,
-  });
+  };
+}
+
+export function computeCharacterSheetInputHash(
+  input: CharacterSheetHashInput
+): Promise<string> {
+  return sha256Hex(characterSheetHashBody(input, false));
+}
+
+/** Named-bible digest. Verify/tests only — delete after {@link LEGACY_HASH_UNTIL}. */
+export function computeCharacterSheetInputHashLegacy(
+  input: CharacterSheetHashInput
+): Promise<string> {
+  return sha256Hex(characterSheetHashBody(input, true));
+}
+
+/** Verify: current (nameless) digest or the pre-#1108 digest that hashed `name`. */
+export async function characterSheetInputHashMatches(
+  stored: string | null,
+  input: CharacterSheetHashInput
+): Promise<boolean> {
+  if (!stored) return false;
+  const [current, legacy] = await Promise.all([
+    sha256Hex(characterSheetHashBody(input, false)),
+    sha256Hex(characterSheetHashBody(input, true)),
+  ]);
+  return stored === current || stored === legacy;
 }
 
 export type LocationBibleHashFields = {
@@ -239,19 +279,38 @@ export type LocationSheetHashInput = {
   imageModel: string;
 };
 
-export function computeLocationSheetInputHash(
-  input: LocationSheetHashInput
-): Promise<string> {
-  return sha256Hex({
+function locationSheetHashBody(
+  input: LocationSheetHashInput,
+  includeName: boolean
+): unknown {
+  return {
     artifact: 'location:sheet',
     locationBible: {
-      name: trim(input.locationBible.name),
+      ...(includeName ? { name: trim(input.locationBible.name) } : {}),
       description: trim(input.locationBible.description),
     },
     libraryLocationReferenceHash: input.libraryLocationReferenceHash ?? null,
     styleConfigHash: input.styleConfigHash,
     imageModel: input.imageModel,
-  });
+  };
+}
+
+export function computeLocationSheetInputHash(
+  input: LocationSheetHashInput
+): Promise<string> {
+  return sha256Hex(locationSheetHashBody(input, false));
+}
+
+export async function locationSheetInputHashMatches(
+  stored: string | null,
+  input: LocationSheetHashInput
+): Promise<boolean> {
+  if (!stored) return false;
+  const [current, legacy] = await Promise.all([
+    sha256Hex(locationSheetHashBody(input, false)),
+    sha256Hex(locationSheetHashBody(input, true)),
+  ]);
+  return stored === current || stored === legacy;
 }
 
 export type LibraryLocationReferenceHashInput = {
@@ -262,19 +321,38 @@ export type LibraryLocationReferenceHashInput = {
   referenceMediaHashes?: readonly string[];
 };
 
-export function computeLibraryLocationReferenceInputHash(
-  input: LibraryLocationReferenceHashInput
-): Promise<string> {
-  return sha256Hex({
+function libraryLocationReferenceHashBody(
+  input: LibraryLocationReferenceHashInput,
+  includeName: boolean
+): unknown {
+  return {
     artifact: 'library-location:reference',
     locationBible: {
-      name: trim(input.locationBible.name),
+      ...(includeName ? { name: trim(input.locationBible.name) } : {}),
       description: trim(input.locationBible.description),
     },
     referenceMediaHashes: sortedRefs(input.referenceMediaHashes),
     styleConfigHash: input.styleConfigHash,
     imageModel: input.imageModel,
-  });
+  };
+}
+
+export function computeLibraryLocationReferenceInputHash(
+  input: LibraryLocationReferenceHashInput
+): Promise<string> {
+  return sha256Hex(libraryLocationReferenceHashBody(input, false));
+}
+
+export async function libraryLocationReferenceInputHashMatches(
+  stored: string | null,
+  input: LibraryLocationReferenceHashInput
+): Promise<boolean> {
+  if (!stored) return false;
+  const [current, legacy] = await Promise.all([
+    sha256Hex(libraryLocationReferenceHashBody(input, false)),
+    sha256Hex(libraryLocationReferenceHashBody(input, true)),
+  ]);
+  return stored === current || stored === legacy;
 }
 
 export type TalentSheetHashInput = {
@@ -287,18 +365,44 @@ export type TalentSheetHashInput = {
   imageModel: string;
 };
 
-export function computeTalentSheetInputHash(
-  input: TalentSheetHashInput
-): Promise<string> {
-  return sha256Hex({
+function talentSheetHashBody(
+  input: TalentSheetHashInput,
+  includeName: boolean
+): unknown {
+  return {
     artifact: 'talent:sheet',
     talent: {
-      name: trim(input.talent.name),
+      ...(includeName ? { name: trim(input.talent.name) } : {}),
       description: trim(input.talent.description),
     },
     referenceMediaHashes: sortedRefs(input.referenceMediaHashes),
     imageModel: input.imageModel,
-  });
+  };
+}
+
+export function computeTalentSheetInputHash(
+  input: TalentSheetHashInput
+): Promise<string> {
+  return sha256Hex(talentSheetHashBody(input, false));
+}
+
+/** Named-talent digest. Verify/tests only — delete after {@link LEGACY_HASH_UNTIL}. */
+export function computeTalentSheetInputHashLegacy(
+  input: TalentSheetHashInput
+): Promise<string> {
+  return sha256Hex(talentSheetHashBody(input, true));
+}
+
+export async function talentSheetInputHashMatches(
+  stored: string | null,
+  input: TalentSheetHashInput
+): Promise<boolean> {
+  if (!stored) return false;
+  const [current, legacy] = await Promise.all([
+    sha256Hex(talentSheetHashBody(input, false)),
+    sha256Hex(talentSheetHashBody(input, true)),
+  ]);
+  return stored === current || stored === legacy;
 }
 
 // ---------------------------------------------------------------------------
@@ -350,6 +454,19 @@ export type PromptSceneContextHashInput = {
    * image — it can't depend on it).
    */
   startingFrameImageUrl?: string | null;
+  /**
+   * Reference-only mode — the sequence renders straight to video with no start
+   * frames. Only the MOTION prompt consumes this: the mode picks a different
+   * LLM template (compose-the-frame-then-move-it, rather than animate-this-
+   * still), so the same scene yields a materially different prompt under it
+   * and flipping the mode must re-stale what is stored.
+   *
+   * Joins the hash body only when true, so every existing image-to-video row's
+   * digest is unchanged and no `PROMPT_INPUT_HASH_VERSION` bump or null-sweep
+   * migration is needed — the same shape-stable trick `styleConfigHashBody`
+   * uses for its optional refinements.
+   */
+  referenceOnly?: boolean;
 };
 
 /**
@@ -363,34 +480,64 @@ export type PromptSceneContextHashInput = {
  * hashed here. `durationSeconds` is excluded for the same #767 reason — it is a
  * video parameter (hashed by `computeShotVideoInputHash`), not a prompt driver.
  */
-function sceneInputContext(scene: Scene) {
+function sceneMetadata(scene: Scene, includeTitle: boolean) {
+  if (!scene.metadata) return null;
   return {
-    // No `sceneId`: identity is not content. Hashing it made a prompt stale
-    // when a scene was re-analysed under a new id without its text changing.
-    sceneNumber: scene.sceneNumber,
+    ...(includeTitle ? { title: scene.metadata.title } : {}),
+    // `location` is the INT./EXT. heading (content), not a display label.
+    location: scene.metadata.location,
+    timeOfDay: scene.metadata.timeOfDay,
+    storyBeat: scene.metadata.storyBeat,
+  };
+}
+
+/**
+ * Current stamp shape. v5 dropped `sceneNumber` from the scene surface.
+ * Display labels (`name` on bibles/talent, `title` on scene metadata and
+ * music summaries) are also omitted from the stamp. Verify accepts the
+ * previous digests via the `*InputHashMatches` helpers until
+ * {@link LEGACY_HASH_UNTIL}.
+ */
+const PROMPT_INPUT_HASH_VERSION = 5;
+const PROMPT_INPUT_HASH_VERSION_V4 = 4;
+
+/**
+ * Delete the v4 / named / titled verify fallbacks after this date.
+ * Tracking: https://github.com/openstory-so/openstory/issues/1371
+ */
+export const LEGACY_HASH_UNTIL = '2026-09-28';
+
+type PromptHashKind = 'current' | 'v5-titled' | 'v5-named' | 'v4';
+
+function promptHashFlags(kind: PromptHashKind) {
+  return {
+    hashVersion:
+      kind === 'v4' ? PROMPT_INPUT_HASH_VERSION_V4 : PROMPT_INPUT_HASH_VERSION,
+    named: kind === 'v4' || kind === 'v5-named',
+    includeTitle: kind !== 'current',
+    includeSceneNumber: kind === 'v4',
+  };
+}
+
+function sceneInputContext(scene: Scene, kind: PromptHashKind) {
+  const flags = promptHashFlags(kind);
+  return {
+    ...(flags.includeSceneNumber ? { sceneNumber: scene.sceneNumber } : {}),
     originalScript: scene.originalScript,
-    metadata: scene.metadata
-      ? {
-          title: scene.metadata.title,
-          location: scene.metadata.location,
-          timeOfDay: scene.metadata.timeOfDay,
-          storyBeat: scene.metadata.storyBeat,
-        }
-      : null,
+    metadata: sceneMetadata(scene, flags.includeTitle),
   };
 }
 
 /**
  * Project a bible entry down to the fields that actually drive prompt text.
- * Identity / provenance / image-gen-tag fields (`characterId`, `locationId`,
- * `consistencyTag`, `firstMention`) are handed to the LLM but never shape the
- * prose, so hashing them only manufactures false staleness — e.g. a casting tag
- * rewrite or a re-extracted `firstMention.lineNumber`. See the staleness doc
- * §4.2. The LLM still receives the full entries; only the hash is the projection.
+ * Identity / provenance / display-label / image-gen-tag fields (`characterId`,
+ * `locationId`, `name`, `consistencyTag`, `firstMention`) are handed to the
+ * LLM but never hashed — a rename or a casting-tag rewrite must not flag
+ * every prompt stale. Scene `metadata.title` is the same class of label.
+ * The LLM still receives the full entries; only the hash is the projection.
  */
 function projectCharacterForPrompt(c: CharacterBibleEntry) {
   return {
-    name: trim(c.name),
     age: trim(c.age),
     gender: trim(c.gender),
     ethnicity: trim(c.ethnicity),
@@ -400,9 +547,12 @@ function projectCharacterForPrompt(c: CharacterBibleEntry) {
   };
 }
 
+function projectCharacterForPromptV4(c: CharacterBibleEntry) {
+  return { name: trim(c.name), ...projectCharacterForPrompt(c) };
+}
+
 function projectLocationForPrompt(l: LocationBibleEntry) {
   return {
-    name: trim(l.name),
     type: l.type,
     timeOfDay: trim(l.timeOfDay),
     description: trim(l.description),
@@ -412,6 +562,10 @@ function projectLocationForPrompt(l: LocationBibleEntry) {
     lightingSetup: trim(l.lightingSetup),
     ambiance: trim(l.ambiance),
   };
+}
+
+function projectLocationForPromptV4(l: LocationBibleEntry) {
+  return { name: trim(l.name), ...projectLocationForPrompt(l) };
 }
 
 function projectElementForPrompt(e: ElementBibleEntry) {
@@ -442,61 +596,128 @@ function sortedBibles(input: PromptSceneContextHashInput) {
   };
 }
 
-/**
- * Bumped when the canonical hashed body shape for prompt-input hashes
- * changes — bumping forces every previously-stored hash to diverge from the
- * freshly-computed one, which would normally surface to users as "stale"
- * banners on unchanged content. The staleness handlers short-circuit when
- * the stored hash is null, so the matching deploy step should null the
- * `*_prompt_input_hash` columns on `shots` / `sequences` so legacy rows
- * fall through that safe path until they're regenerated.
- */
-const PROMPT_INPUT_HASH_VERSION = 4;
+function promptBibleProjection(
+  input: PromptSceneContextHashInput,
+  named: boolean
+) {
+  const bibles = sortedBibles(input);
+  const character = named
+    ? projectCharacterForPromptV4
+    : projectCharacterForPrompt;
+  const location = named
+    ? projectLocationForPromptV4
+    : projectLocationForPrompt;
+  return {
+    characterBible: bibles.characterBible.map(character),
+    locationBible: bibles.locationBible.map(location),
+    elementBible: bibles.elementBible
+      ? bibles.elementBible.map(projectElementForPrompt)
+      : null,
+  };
+}
+
+function visualPromptHashBody(
+  input: PromptSceneContextHashInput,
+  kind: PromptHashKind
+): unknown {
+  const flags = promptHashFlags(kind);
+  const bibles = promptBibleProjection(input, flags.named);
+  return {
+    artifact: 'shot:visual-prompt',
+    hashVersion: flags.hashVersion,
+    scene: sceneInputContext(input.scene, kind),
+    styleConfig: styleConfigHashBody(input.styleConfig),
+    ...bibles,
+    aspectRatio: trim(input.aspectRatio),
+    analysisModel: trim(input.analysisModel),
+  };
+}
+
+function motionPromptHashBody(
+  input: PromptSceneContextHashInput,
+  kind: PromptHashKind
+): unknown {
+  const flags = promptHashFlags(kind);
+  const bibles = promptBibleProjection(input, flags.named);
+  return {
+    artifact: 'shot:motion-prompt',
+    hashVersion: flags.hashVersion,
+    scene: sceneInputContext(input.scene, kind),
+    styleConfig: styleConfigHashBody(input.styleConfig),
+    ...bibles,
+    aspectRatio: trim(input.aspectRatio),
+    analysisModel: trim(input.analysisModel),
+    startingFrameImageUrl: trim(input.startingFrameImageUrl),
+    ...(input.referenceOnly ? { referenceOnly: true } : {}),
+  };
+}
 
 export function computeVisualPromptInputHash(
   input: PromptSceneContextHashInput
 ): Promise<string> {
-  const bibles = sortedBibles(input);
-  return sha256Hex({
-    artifact: 'shot:visual-prompt',
-    hashVersion: PROMPT_INPUT_HASH_VERSION,
-    scene: sceneInputContext(input.scene),
-    // Projected (not the raw blob) so the v2 config reshape and `version`
-    // cannot flip stored hashes. The projection keeps the legacy flat key
-    // names — a v2 config with no authored refinements hashes identically to
-    // its v1 row.
-    styleConfig: styleConfigHashBody(input.styleConfig),
-    characterBible: bibles.characterBible.map(projectCharacterForPrompt),
-    locationBible: bibles.locationBible.map(projectLocationForPrompt),
-    elementBible: bibles.elementBible
-      ? bibles.elementBible.map(projectElementForPrompt)
-      : null,
-    aspectRatio: trim(input.aspectRatio),
-    analysisModel: trim(input.analysisModel),
-  });
+  return sha256Hex(visualPromptHashBody(input, 'current'));
+}
+
+/** v4 digest. Verify/tests only — delete after {@link LEGACY_HASH_UNTIL}. */
+export function computeVisualPromptInputHashV4(
+  input: PromptSceneContextHashInput
+): Promise<string> {
+  return sha256Hex(visualPromptHashBody(input, 'v4'));
+}
+
+/**
+ * True if `stored` matches the current digest or a legacy v4 / v5-named
+ * digest of the same inputs. Remove after {@link LEGACY_HASH_UNTIL}.
+ */
+export async function visualPromptInputHashMatches(
+  stored: string | null,
+  input: PromptSceneContextHashInput
+): Promise<boolean> {
+  if (!stored) return false;
+  const [current, v5titled, v5named, v4] = await Promise.all([
+    sha256Hex(visualPromptHashBody(input, 'current')),
+    sha256Hex(visualPromptHashBody(input, 'v5-titled')),
+    sha256Hex(visualPromptHashBody(input, 'v5-named')),
+    sha256Hex(visualPromptHashBody(input, 'v4')),
+  ]);
+  return (
+    stored === current ||
+    stored === v5titled ||
+    stored === v5named ||
+    stored === v4
+  );
 }
 
 export function computeMotionPromptInputHash(
   input: PromptSceneContextHashInput
 ): Promise<string> {
-  const bibles = sortedBibles(input);
-  return sha256Hex({
-    artifact: 'shot:motion-prompt',
-    hashVersion: PROMPT_INPUT_HASH_VERSION,
-    scene: sceneInputContext(input.scene),
-    // Same projection as the visual hash — see the comment there.
-    styleConfig: styleConfigHashBody(input.styleConfig),
-    characterBible: bibles.characterBible.map(projectCharacterForPrompt),
-    locationBible: bibles.locationBible.map(projectLocationForPrompt),
-    elementBible: bibles.elementBible
-      ? bibles.elementBible.map(projectElementForPrompt)
-      : null,
-    aspectRatio: trim(input.aspectRatio),
-    analysisModel: trim(input.analysisModel),
-    // The rendered still motion is conditioned on (#929). Re-rendering the
-    // image yields a new URL, which flips this and re-stales the motion prompt.
-    startingFrameImageUrl: trim(input.startingFrameImageUrl),
-  });
+  return sha256Hex(motionPromptHashBody(input, 'current'));
+}
+
+/** v4 digest. Verify/tests only — delete after {@link LEGACY_HASH_UNTIL}. */
+export function computeMotionPromptInputHashV4(
+  input: PromptSceneContextHashInput
+): Promise<string> {
+  return sha256Hex(motionPromptHashBody(input, 'v4'));
+}
+
+export async function motionPromptInputHashMatches(
+  stored: string | null,
+  input: PromptSceneContextHashInput
+): Promise<boolean> {
+  if (!stored) return false;
+  const [current, v5titled, v5named, v4] = await Promise.all([
+    sha256Hex(motionPromptHashBody(input, 'current')),
+    sha256Hex(motionPromptHashBody(input, 'v5-titled')),
+    sha256Hex(motionPromptHashBody(input, 'v5-named')),
+    sha256Hex(motionPromptHashBody(input, 'v4')),
+  ]);
+  return (
+    stored === current ||
+    stored === v5titled ||
+    stored === v5named ||
+    stored === v4
+  );
 }
 
 export type MusicPromptInputHashInput = {
@@ -505,15 +726,61 @@ export type MusicPromptInputHashInput = {
   analysisModel: string;
 };
 
+type MusicHashKind = 'current' | 'v5-titled' | 'v4';
+
+function projectMusicSceneSummary(
+  summary: MusicSceneSummary,
+  includeTitle: boolean
+) {
+  if (includeTitle) return summary;
+  return {
+    sceneId: summary.sceneId,
+    storyBeat: summary.storyBeat,
+    durationSeconds: summary.durationSeconds,
+    location: summary.location,
+    timeOfDay: summary.timeOfDay,
+    visualSummary: summary.visualSummary,
+  };
+}
+
+function musicPromptHashBody(
+  input: MusicPromptInputHashInput,
+  kind: MusicHashKind
+): unknown {
+  return {
+    artifact: 'sequence:music-prompt',
+    hashVersion: kind === 'v4' ? 4 : PROMPT_INPUT_HASH_VERSION,
+    sceneSummaries: input.sceneSummaries.map((summary) =>
+      projectMusicSceneSummary(summary, kind !== 'current')
+    ),
+    analysisModel: trim(input.analysisModel),
+  };
+}
+
 export function computeMusicPromptInputHash(
   input: MusicPromptInputHashInput
 ): Promise<string> {
-  return sha256Hex({
-    artifact: 'sequence:music-prompt',
-    hashVersion: PROMPT_INPUT_HASH_VERSION,
-    sceneSummaries: input.sceneSummaries,
-    analysisModel: trim(input.analysisModel),
-  });
+  return sha256Hex(musicPromptHashBody(input, 'current'));
+}
+
+/** v4 digest. Verify/tests only — delete after {@link LEGACY_HASH_UNTIL}. */
+export function computeMusicPromptInputHashV4(
+  input: MusicPromptInputHashInput
+): Promise<string> {
+  return sha256Hex(musicPromptHashBody(input, 'v4'));
+}
+
+export async function musicPromptInputHashMatches(
+  stored: string | null,
+  input: MusicPromptInputHashInput
+): Promise<boolean> {
+  if (!stored) return false;
+  const [current, v5titled, v4] = await Promise.all([
+    sha256Hex(musicPromptHashBody(input, 'current')),
+    sha256Hex(musicPromptHashBody(input, 'v5-titled')),
+    sha256Hex(musicPromptHashBody(input, 'v4')),
+  ]);
+  return stored === current || stored === v5titled || stored === v4;
 }
 
 export type SequenceMusicHashInput = {

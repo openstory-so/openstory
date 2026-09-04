@@ -2,26 +2,44 @@
  * Hook for fetching sequence locations
  */
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type QueryClient,
+} from '@tanstack/react-query';
+import {
+  createSequenceLocationFn,
   getShotIdsForLocationFn,
   getSequenceLocationsFn,
   getTeamLocationsLibraryFn,
+  getLocationSheetStalenessFn,
   recastLocationFn,
+  regenerateLocationSheetFn,
+  restoreSequenceLocationFn,
+  softDeleteSequenceLocationFn,
+  updateSequenceLocationFn,
 } from '@/functions/sequence-locations';
+import type { SheetStaleness } from '@/lib/sheets/sheet-staleness';
+import { shotStalenessNamespace } from '@/hooks/use-shot-staleness';
 import {
   getPublicLibraryLocationsFn,
   getTeamLibraryLocationsFn,
 } from '@/functions/location-library';
 import { usePublicOrTeamQuery } from '@/hooks/use-public-or-team-query';
-import type { LibraryLocation, SequenceLocation } from '@/lib/db/schema';
+import type {
+  LibraryLocation,
+  SequenceLocationWithReference,
+} from '@/lib/db/schema';
 
 // Re-export for backwards compatibility
-export type { SequenceLocation };
+export type { SequenceLocationWithReference };
 export type { LibraryLocation };
 
 // Extended type for team library locations (sequence locations with title)
-export type TeamLibraryLocation = SequenceLocation & { sequenceTitle: string };
+export type TeamLibraryLocation = SequenceLocationWithReference & {
+  sequenceTitle: string;
+};
 
 export const sequenceLocationKeys = {
   all: ['sequence-locations'] as const,
@@ -30,6 +48,13 @@ export const sequenceLocationKeys = {
   shotsForLocation: (sequenceId: string, locationId: string) =>
     [...sequenceLocationKeys.all, 'shots', sequenceId, locationId] as const,
   teamLibrary: ['team-locations-library'] as const,
+  sheetStaleness: (sequenceId: string, locationDbId: string) =>
+    [
+      ...sequenceLocationKeys.all,
+      'sheet-staleness',
+      sequenceId,
+      locationDbId,
+    ] as const,
 };
 
 export const libraryLocationKeys = {
@@ -39,7 +64,7 @@ export const libraryLocationKeys = {
 };
 
 export function useSequenceLocations(sequenceId: string) {
-  return useQuery<SequenceLocation[]>({
+  return useQuery<SequenceLocationWithReference[]>({
     queryKey: sequenceLocationKeys.list(sequenceId),
     queryFn: async () => {
       return getSequenceLocationsFn({ data: { sequenceId } });
@@ -92,6 +117,127 @@ export function useShotIdsForLocation(sequenceId: string, locationId: string) {
     enabled: !!sequenceId && !!locationId,
     staleTime: 60 * 1000, // 1 minute
   });
+}
+
+/** Editable bible fields; `''` clears a nullable field server-side. */
+type LocationBibleInput = {
+  type?: 'interior' | 'exterior' | 'both';
+  timeOfDay?: string;
+  description?: string;
+  architecturalStyle?: string;
+  keyFeatures?: string;
+  colorPalette?: string;
+  lightingSetup?: string;
+  ambiance?: string;
+};
+
+/** Manual location create (#1108 Phase 2) — reference-less until recast. */
+export function useCreateSequenceLocation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (
+      data: { sequenceId: string; name: string } & LocationBibleInput
+    ) => createSequenceLocationFn({ data }),
+    onSuccess: (_location, { sequenceId }) => {
+      void queryClient.invalidateQueries({
+        queryKey: sequenceLocationKeys.list(sequenceId),
+      });
+    },
+  });
+}
+
+/**
+ * Bible field edit (#1108 Phase 2). Prompts and the location reference that
+ * project the edited fields re-stale by hash derivation, so the staleness
+ * namespace refetches for the dots to appear.
+ */
+export function useUpdateSequenceLocation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (
+      data: {
+        sequenceId: string;
+        locationDbId: string;
+        name?: string;
+      } & LocationBibleInput
+    ) => updateSequenceLocationFn({ data }),
+    onSuccess: (_location, { sequenceId }) => {
+      void queryClient.invalidateQueries({
+        queryKey: sequenceLocationKeys.list(sequenceId),
+      });
+      void queryClient.invalidateQueries({ queryKey: shotStalenessNamespace });
+      void queryClient.invalidateQueries({
+        queryKey: sequenceLocationKeys.all,
+      });
+    },
+  });
+}
+
+export function useLocationSheetStaleness(
+  sequenceId: string,
+  locationDbId: string
+) {
+  return useQuery<SheetStaleness>({
+    queryKey: sequenceLocationKeys.sheetStaleness(sequenceId, locationDbId),
+    queryFn: () =>
+      getLocationSheetStalenessFn({ data: { sequenceId, locationDbId } }),
+    enabled: !!sequenceId && !!locationDbId,
+    staleTime: 15_000,
+  });
+}
+
+export function useRegenerateLocationSheet() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: {
+      sequenceId: string;
+      locationDbId: string;
+      imageModel?: string;
+    }) => regenerateLocationSheetFn({ data }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: sequenceLocationKeys.all,
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ['location-sheet-variants'],
+      });
+      void queryClient.invalidateQueries({ queryKey: shotStalenessNamespace });
+    },
+  });
+}
+
+/** Soft-remove / restore (#1108 Phase 2) — see the character analogs. */
+export function useSoftDeleteSequenceLocation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { sequenceId: string; locationDbId: string }) =>
+      softDeleteSequenceLocationFn({ data }),
+    onSuccess: (_result, { sequenceId }) =>
+      invalidateLocationMembership(queryClient, sequenceId),
+  });
+}
+
+/**
+ * Restore is a plain async, not a hook — see `restoreSequenceCharacter` for
+ * why (undo-toast closures outlive the removing component).
+ */
+export async function restoreSequenceLocation(
+  queryClient: QueryClient,
+  data: { sequenceId: string; locationDbId: string }
+): Promise<void> {
+  await restoreSequenceLocationFn({ data });
+  invalidateLocationMembership(queryClient, data.sequenceId);
+}
+
+function invalidateLocationMembership(
+  queryClient: QueryClient,
+  sequenceId: string
+): void {
+  void queryClient.invalidateQueries({
+    queryKey: sequenceLocationKeys.list(sequenceId),
+  });
+  void queryClient.invalidateQueries({ queryKey: ['scene-facets'] });
+  void queryClient.invalidateQueries({ queryKey: shotStalenessNamespace });
 }
 
 /**

@@ -36,12 +36,13 @@ import {
   type SceneInput,
 } from './concatenated-video-source';
 import { decodeAudioTrack } from './decode-audio-track';
+import { assertEncoderSupport } from './encoder-support';
+import { assertBrowserExportDuration } from './export-duration';
 
 import { getLogger } from '@/lib/observability/logger';
 
 const logger = getLogger(['openstory', 'sequence-player', 'export']);
 
-const MAX_TOTAL_DURATION_SECONDS = 5 * 60;
 const TARGET_SAMPLE_RATE = 48_000;
 const TARGET_CHANNELS = 2;
 const AAC_BITRATE = 192_000;
@@ -111,14 +112,22 @@ export async function exportSequence(
     const meta = await videoSource.prepare();
     onProgress?.({ phase: 'prepare', completed: 1, total: 1 });
 
-    if (meta.totalDurationSeconds > MAX_TOTAL_DURATION_SECONDS) {
-      throw new Error(
-        `Sequence is ${meta.totalDurationSeconds.toFixed(1)}s long; browser export currently caps at ${MAX_TOTAL_DURATION_SECONDS}s.`
-      );
-    }
+    assertBrowserExportDuration(meta.totalDurationSeconds);
 
     const sceneAudioTracks = videoSource.getSceneAudioTracks();
     const hasAudio = Boolean(musicUrl) || sceneAudioTracks.length > 0;
+
+    // Earliest point at which both encoder needs are known, and still before
+    // any decode work — fail in a second rather than after a full pass (#1397).
+    await assertEncoderSupport({
+      audio: hasAudio,
+      video: !meta.canTransmux,
+      width: meta.displayWidth,
+      height: meta.displayHeight,
+      sampleRate: TARGET_SAMPLE_RATE,
+      numberOfChannels: TARGET_CHANNELS,
+      audioBitrate: AAC_BITRATE,
+    });
 
     const output = new Output({
       format: new Mp4OutputFormat({ fastStart: 'in-memory' }),

@@ -21,12 +21,19 @@
  */
 
 import type { Database } from '@/lib/db/client';
+import type { Resolution } from '@/lib/constants/resolutions';
+import { generateId } from '@/lib/db/id';
 import { framePromptVersions, frameVariants, frames } from '@/lib/db/schema';
-import type { FrameVariant, NewFrameVariant } from '@/lib/db/schema';
+import type {
+  FramePromptVersion,
+  FrameVariant,
+  NewFrameVariant,
+} from '@/lib/db/schema';
 import {
   type FrameVariantKind,
   isSelectableFrameVariantKind,
 } from '@/lib/db/schema/frame-variants';
+import { simpleHash } from '@/lib/utils/hash';
 import {
   and,
   asc,
@@ -35,6 +42,7 @@ import {
   inArray,
   isNotNull,
   isNull,
+  ne,
   or,
 } from 'drizzle-orm';
 import { LIVE_PENDING_STATUSES } from './frame-prompt-versions';
@@ -248,6 +256,227 @@ export function createFrameVariantsMethods(db: Database) {
     },
 
     /**
+     * Append a user-uploaded still as a completed `kind:'upload'` version
+     * (#1108 §4.3 B), committing the row and its `image.uploaded` event in one
+     * `db.batch()`. Selection is the caller's next step (`select`), so the
+     * upload lands in history exactly like a finished generation and the
+     * repoint keeps the setImageFromVariantFn semantics (mirror + event +
+     * pending-promote clear + prompt pairing).
+     *
+     * `inputHash` must be stamped from the CURRENT selected prompt + sheets
+     * (same builder as the image workflow — see §8 "hash stamp consistency"),
+     * or null when the frame has no prompt yet (staleness reads 'untracked').
+     */
+    appendUploadedVersion: async (input: {
+      frameId: string;
+      sequenceId: string;
+      model: string;
+      url: string;
+      storagePath: string;
+      inputHash: string | null;
+      /** Selected prompt version the hash was computed against, if any. */
+      promptVersionId: string | null;
+      /** Text of that prompt (for the promptHash pairing column). */
+      promptText: string | null;
+      actorId: string | null;
+    }): Promise<FrameVariant> => {
+      const versionId = generateId();
+      const [inserted] = await db.batch([
+        db
+          .insert(frameVariants)
+          .values({
+            id: versionId,
+            frameId: input.frameId,
+            sequenceId: input.sequenceId,
+            kind: 'upload',
+            model: input.model,
+            url: input.url,
+            storagePath: input.storagePath,
+            status: 'completed',
+            generatedAt: new Date(),
+            inputHash: input.inputHash,
+            promptHash: input.promptText ? simpleHash(input.promptText) : null,
+            promptVersionId: input.promptVersionId,
+          })
+          .returning(),
+        buildEventInsert(db, {
+          sequenceId: input.sequenceId,
+          actorId: input.actorId,
+          kind: 'image.uploaded',
+          targetType: 'frame',
+          targetId: input.frameId,
+          summary: 'Uploaded still image',
+          data: { versionId, promptVersionId: input.promptVersionId },
+        }),
+      ]);
+      const version = inserted[0];
+      if (!version) {
+        throw new Error(
+          `Failed to append uploaded frame variant for frame ${input.frameId}`
+        );
+      }
+      return version;
+    },
+
+    /**
+     * Atomic prompt + still replace (#1108 §4.3 C): append a `user-edit`
+     * prompt version AND a `kind:'upload'` image version whose `inputHash`
+     * was computed against the NEW prompt text, repoint BOTH selection
+     * pointers, and log the events — all in ONE `db.batch()`, so the image
+     * can never be observed stale relative to the prompt it was uploaded
+     * with. Video is "cleared" by derivation: the render manifest still
+     * references the previous frame version, so segment staleness flips.
+     *
+     * Mirrors the union of `framePromptVersions.write` (mirror + live-claim
+     * demotion — the explicit repoint revokes in-flight prompt claims' mirror
+     * rights, #1085) and `select` (image mirror + pending-promote clear).
+     */
+    replaceContent: async (input: {
+      frameId: string;
+      sequenceId: string;
+      actorId: string | null;
+      prompt: {
+        text: string;
+        /** Current upstream-context hash; null when uncomputable (matches saveShotPromptFn). */
+        inputHash: string | null;
+        analysisModel: string | null;
+        createdBy: string | null;
+      };
+      image: {
+        model: string;
+        url: string;
+        storagePath: string;
+        /** Hash computed from the NEW prompt text + current sheets. */
+        inputHash: string | null;
+      };
+    }): Promise<{
+      promptVersion: FramePromptVersion;
+      imageVersion: FrameVariant;
+    }> => {
+      const [frame] = await db
+        .select({
+          id: frames.id,
+          prevImageVersionId: frames.selectedImageVersionId,
+          prevPromptVersionId: frames.selectedImagePromptVersionId,
+        })
+        .from(frames)
+        .where(eq(frames.id, input.frameId));
+      if (!frame) {
+        throw new Error(`Frame ${input.frameId} not found`);
+      }
+
+      const promptVersionId = generateId();
+      const imageVersionId = generateId();
+      const now = new Date();
+
+      const [promptRows, imageRows] = await db.batch([
+        db
+          .insert(framePromptVersions)
+          .values({
+            id: promptVersionId,
+            frameId: input.frameId,
+            text: input.prompt.text,
+            source: 'user-edit',
+            status: 'completed',
+            inputHash: input.prompt.inputHash,
+            analysisModel: input.prompt.analysisModel,
+            createdBy: input.prompt.createdBy,
+          })
+          .returning(),
+        db
+          .insert(frameVariants)
+          .values({
+            id: imageVersionId,
+            frameId: input.frameId,
+            sequenceId: input.sequenceId,
+            kind: 'upload',
+            model: input.image.model,
+            url: input.image.url,
+            storagePath: input.image.storagePath,
+            status: 'completed',
+            generatedAt: now,
+            inputHash: input.image.inputHash,
+            promptHash: simpleHash(input.prompt.text),
+            promptVersionId,
+          })
+          .returning(),
+        db
+          .update(frames)
+          .set({
+            selectedImagePromptVersionId: promptVersionId,
+            selectedImageVersionId: imageVersionId,
+            imageStatus: 'completed',
+            imageError: null,
+            pendingPromoteVersionId: null,
+            updatedAt: now,
+          })
+          .where(eq(frames.id, input.frameId)),
+        db
+          .update(framePromptVersions)
+          .set({ pendingInputHash: null })
+          .where(
+            and(
+              eq(framePromptVersions.frameId, input.frameId),
+              inArray(framePromptVersions.status, [...LIVE_PENDING_STATUSES])
+            )
+          ),
+        buildEventInsert(db, {
+          sequenceId: input.sequenceId,
+          actorId: input.actorId,
+          kind: 'prompt.edited',
+          targetType: 'frame',
+          targetId: input.frameId,
+          summary: 'Replaced image prompt with upload',
+          data: {
+            versionId: promptVersionId,
+            prevVersionId: frame.prevPromptVersionId ?? null,
+            fromImageVersionId: imageVersionId,
+          },
+        }),
+        buildEventInsert(db, {
+          sequenceId: input.sequenceId,
+          actorId: input.actorId,
+          kind: 'image.uploaded',
+          targetType: 'frame',
+          targetId: input.frameId,
+          summary: 'Uploaded still image with new prompt',
+          data: {
+            versionId: imageVersionId,
+            prevVersionId: frame.prevImageVersionId ?? null,
+            promptVersionId,
+          },
+        }),
+        // The repoint above is a selection move, so it logs one too — the
+        // activity timeline reads pointer history off `image.selected`, and
+        // without it this path's move is invisible there (every other repoint
+        // goes through `select`, which emits it).
+        buildEventInsert(db, {
+          sequenceId: input.sequenceId,
+          actorId: input.actorId,
+          kind: 'image.selected',
+          targetType: 'frame',
+          targetId: input.frameId,
+          summary: 'Selected uploaded image',
+          data: {
+            versionId: imageVersionId,
+            model: input.image.model,
+            prevVersionId: frame.prevImageVersionId ?? null,
+            promptVersionId,
+            prevPromptVersionId: frame.prevPromptVersionId ?? null,
+          },
+        }),
+      ]);
+      const promptVersion = promptRows[0];
+      const imageVersion = imageRows[0];
+      if (!promptVersion || !imageVersion) {
+        throw new Error(
+          `Failed to replace content for frame ${input.frameId} (batch returned no rows)`
+        );
+      }
+      return { promptVersion, imageVersion };
+    },
+
+    /**
      * Mark any still-'generating' version for a workflow run as failed. Used by
      * the image workflow's `onFailure`, which only has the run id (not the
      * version id minted in the generating step).
@@ -402,6 +631,9 @@ export function createFrameVariantsMethods(db: Database) {
       data: {
         workflowRunId: string;
         model: string;
+        /** Tier the render was asked for (#1449). Stamped here, with the
+         *  model, because the claim row predates the render. */
+        resolution?: Resolution | null;
         promptVersionId?: string | null;
         pendingInputHash?: string | null;
       }
@@ -413,6 +645,7 @@ export function createFrameVariantsMethods(db: Database) {
             status: 'generating',
             workflowRunId: data.workflowRunId,
             model: data.model,
+            resolution: data.resolution ?? null,
             promptVersionId: data.promptVersionId ?? null,
             ...(data.pendingInputHash !== undefined
               ? { pendingInputHash: data.pendingInputHash }
@@ -579,17 +812,25 @@ export function createFrameVariantsMethods(db: Database) {
     },
 
     /**
-     * Distinct `kind:'model'` model names that actually RENDERED something in a
-     * sequence — this drives the user-facing image-model dropdown.
+     * Distinct `kind:'model'` model names ATTEMPTED in a sequence — in-flight,
+     * failed, cancelled, or rendered — this drives the user-facing image-model
+     * dropdown. Only the completed-without-image husk is excluded.
      *
-     * `url IS NOT NULL` is load-bearing, not tidiness (#1133). Without it the
-     * dropdown's correctness depends on the #1101 reclassify having caught
-     * every `flux_2_turbo` row, and it did not: 58 rows across 15 sequences are
-     * still `kind:'model'` because a frame selects them, which leaks the
-     * internal preview model into those sequences as a selectable option. A
-     * model whose only rows are empty husks produced nothing, so requiring an
-     * actual image fixes this for any hidden/internal model rather than
-     * depending on migration coverage.
+     * Excluding the husk shape is load-bearing, not tidiness (#1133). Without
+     * it the dropdown's correctness depends on the #1101 reclassify having
+     * caught every `flux_2_turbo` row, and it did not: 58 rows across 15
+     * sequences are still `kind:'model'` because a frame selects them, which
+     * leaks the internal preview model in as a selectable option.
+     *
+     * The predicate is `NOT (completed AND no url)` rather than the blunter
+     * `url IS NOT NULL`, which would also hide two kinds of row the user needs
+     * to see: an in-flight render (pending/generating has no url yet, so a
+     * model would vanish from the bar until its image landed) and a render
+     * whose attempts all failed (hiding it hides the failure). `cancelled`
+     * (#1085, never attempted) passes for the same reason as `failed`: a
+     * terminal no-output state the user should see, not a husk. Measured against
+     * production, the narrow form removes the same 15 leaking sequences while
+     * losing 0 legitimate models; the blunt form also dropped 11.
      */
     listModelsForSequence: async (sequenceId: string): Promise<string[]> => {
       const rows = await db
@@ -599,7 +840,12 @@ export function createFrameVariantsMethods(db: Database) {
           and(
             eq(frameVariants.sequenceId, sequenceId),
             eq(frameVariants.kind, 'model'),
-            isNotNull(frameVariants.url),
+            // De Morgan of NOT (completed AND no url) — `status` is NOT NULL,
+            // so the inequality is safe without a null guard.
+            or(
+              ne(frameVariants.status, 'completed'),
+              isNotNull(frameVariants.url)
+            ),
             isNull(frameVariants.discardedAt)
           )
         );
@@ -805,17 +1051,27 @@ export function createFrameVariantsMethods(db: Database) {
       frameIds: string[]
     ): Promise<Map<string, FrameVariant>> => {
       if (frameIds.length === 0) return new Map();
-      const rows = await db
-        .select({ frameId: frames.id, version: frameVariants })
-        .from(frames)
-        .innerJoin(
-          frameVariants,
-          eq(frameVariants.id, frames.selectedImageVersionId)
-        )
-        .where(
-          and(inArray(frames.id, frameIds), isNull(frameVariants.discardedAt))
-        );
-      return new Map(rows.map((r) => [r.frameId, r.version]));
+      const byFrame = new Map<string, FrameVariant>();
+      for (let i = 0; i < frameIds.length; i += PREVIEW_BY_FRAMES_BATCH) {
+        const rows = await db
+          .select({ frameId: frames.id, version: frameVariants })
+          .from(frames)
+          .innerJoin(
+            frameVariants,
+            eq(frameVariants.id, frames.selectedImageVersionId)
+          )
+          .where(
+            and(
+              inArray(
+                frames.id,
+                frameIds.slice(i, i + PREVIEW_BY_FRAMES_BATCH)
+              ),
+              isNull(frameVariants.discardedAt)
+            )
+          );
+        for (const r of rows) byFrame.set(r.frameId, r.version);
+      }
+      return byFrame;
     },
 
     /**

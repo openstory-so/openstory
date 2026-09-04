@@ -32,23 +32,42 @@
 import { type InferInsertModel, type InferSelectModel } from 'drizzle-orm';
 import { index, integer, snakeCase, text } from 'drizzle-orm/sqlite-core';
 import { generateId } from '../id';
+import type { Resolution } from '@/lib/constants/resolutions';
 import { renderSegments } from './render-segments';
 import { sequences } from './sequences';
 import { SHOT_GENERATION_STATUSES } from './shots';
 
-type VideoGenerationStatus = (typeof SHOT_GENERATION_STATUSES)[number];
+// Video rows extend the shared generation statuses with 'cancelled' (#1108
+// Phase 4, mirroring frame_variants): a user cancel is deliberate abandonment,
+// distinct from 'failed' — smart retry and the failure surfaces match on
+// 'failed' only, so a cancel is never auto-re-run and re-billed.
+const VIDEO_VARIANT_STATUSES = [
+  ...SHOT_GENERATION_STATUSES,
+  'cancelled',
+] as const;
+type VideoGenerationStatus = (typeof VIDEO_VARIANT_STATUSES)[number];
 
 /**
  * One covered shot in a render's manifest — a snapshot of the inputs that shot
  * contributed. `motionPromptVersionId` / `frameVersionId` reference immutable
  * version rows (null `frameVersionId` = reference-driven shot with no dedicated
  * first frame). `durationMs` is a value-snapshot (not a versioned input).
+ *
+ * `usesStartFrame` stamps the mode the render actually ran in. Stamped, not
+ * derived (like `resolution`): the shot's switch can flip after the render,
+ * and a null `frameVersionId` alone is overloaded — it also means "not
+ * pinned" (#1380) and, with a null prompt id, "legacy, unknown provenance".
+ * Required so no write path can forget it. Rows written before the stamp were
+ * backfilled from the shot's mode by
+ * `20260902235958_backfill_manifest_uses_start_frame`; only an empty or
+ * invalid manifest can lack it.
  * @public consumed from #990+
  */
 export type VideoManifestEntry = {
   shotId: string;
   motionPromptVersionId: string | null;
   frameVersionId: string | null;
+  usesStartFrame: boolean;
   durationMs: number;
 };
 
@@ -72,6 +91,12 @@ export const videoVariants = snakeCase.table(
       .references(() => sequences.id, { onDelete: 'cascade' }),
 
     model: text({ length: 100 }).notNull(),
+    // Resolution tier this version was asked for (#1449). Null on rows written
+    // before the tier existed. Stamped, not derived: the sequence default can
+    // change after a render, and a 4K re-roll has to stay legible next to the
+    // 720p draft it sits beside.
+    resolution: text({ length: 10 }).$type<Resolution>(),
+
     // Ordered, one entry per covered shot — the immutable snapshot the render
     // consumed (see VideoManifestEntry).
     manifest: text({ mode: 'json' }).$type<VideoManifest>().notNull(),

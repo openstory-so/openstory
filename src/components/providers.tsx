@@ -2,7 +2,9 @@ import { PostHogIdentify } from '@/components/observability/posthog-identify';
 import { sessionQueryOptions } from '@/lib/auth/session-query';
 import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { installChunkReload } from '@/lib/chunk-reload';
 import { configureLogging } from '@/lib/observability/logger';
+import { flushReactErrors } from '@/lib/observability/react-errors';
 import { PostHogProvider } from '@posthog/react';
 import type { QueryClient } from '@tanstack/react-query';
 import { QueryClientProvider } from '@tanstack/react-query';
@@ -10,6 +12,7 @@ import { RealtimeContext, RealtimeProvider } from '@/lib/realtime/client';
 import { lazy, useEffect, useState, type FC } from 'react';
 
 configureLogging();
+installChunkReload();
 
 // Wrap the entire lazy() in import.meta.env.DEV so Vite dead-code-eliminates
 // the dynamic imports before rollup tries to resolve them. This prevents
@@ -89,6 +92,7 @@ const ObservabilityProvider: FC<{
         api_host: apiHost,
         defaults: '2025-05-24',
         capture_exceptions: true,
+        loaded: flushReactErrors,
         debug: false,
         ...(user && {
           bootstrap: { distinctID: user.id, isIdentifiedID: true },

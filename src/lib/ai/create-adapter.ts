@@ -2,13 +2,18 @@
  * Shared text adapter factory.
  *
  * Creates TanStack AI adapters for our chat models. Grok models go to xAI
- * directly when an xAI key is resolvable (issue #1167); everything else — and
- * Grok with no xAI key — goes to OpenRouter, either directly, through the
- * LLMTR gateway, or through fal's OpenAI-compatible OpenRouter endpoint (so a
- * team with only a fal key still covers LLM calls — issue #895).
+ * directly when an xAI key is resolvable (issue #1167), and Gemini models to
+ * Google's own Gemini API when a Google key is resolvable; everything else —
+ * and Grok/Gemini with no native key — goes to OpenRouter, either directly,
+ * through the LLMTR gateway, or through fal's OpenAI-compatible OpenRouter
+ * endpoint (so a team with only a fal key still covers LLM calls — issue #895).
  */
 
 import { getEnv } from '#env';
+import {
+  nativeGeminiTextModel,
+  type NativeGeminiTextModel,
+} from '@/lib/ai/gemini-native';
 import {
   nativeGrokTextModel,
   type NativeGrokTextModel,
@@ -22,6 +27,7 @@ import type { TextModel } from '@/lib/ai/models';
 import { workersSafeFetch } from '@/lib/ai/workers-safe-fetch';
 import { HTTPClient } from '@openrouter/sdk/lib/http';
 import { createModel, extendAdapter } from '@tanstack/ai';
+import { createGeminiChat } from '@tanstack/ai-gemini';
 import { createGrokText } from '@tanstack/ai-grok';
 import { createOpenRouterText, openRouterText } from '@tanstack/ai-openrouter';
 
@@ -41,11 +47,12 @@ export type LlmKeyInfo = {
    * Which API the key belongs to: 'openrouter' calls OpenRouter directly
    * (Bearer auth), 'fal' routes through fal's OpenRouter endpoint (`Key`
    * auth — fal rejects Bearer there), 'xai' calls xAI's own Responses API
-   * (Bearer auth, Grok models only — issue #1167), 'llmtr' calls the LLMTR
-   * gateway (Bearer auth, OpenRouter wire format, and only the models
-   * `LLMTR_TEXT_MODELS` maps).
+   * (Bearer auth, Grok models only — issue #1167), 'google' calls Google's
+   * own Gemini API (`x-goog-api-key` auth, Gemini models only), 'llmtr' calls
+   * the LLMTR gateway (Bearer auth, OpenRouter wire format, and only the
+   * models `LLMTR_TEXT_MODELS` maps).
    */
-  via: 'openrouter' | 'fal' | 'xai' | 'llmtr';
+  via: 'openrouter' | 'fal' | 'xai' | 'google' | 'llmtr';
 };
 
 // fal's endpoint authenticates with `Authorization: Key <FAL_KEY>` while the
@@ -61,15 +68,14 @@ function falAuthHttpClient(falKey: string): HTTPClient {
 
 /**
  * Resolve the platform-level LLM key from env. A Grok model prefers
- * XAI_API_KEY (#1167); a model LLMTR carries prefers LLMTR_API_KEY, so a
- * deployment that sets it routes its LLM traffic through the Turkey-hosted
- * gateway; otherwise OPENROUTER_KEY, and with only FAL_KEY set LLM calls route
- * through fal's OpenRouter endpoint — the platform can run on a single fal key
- * (issue #895). Returns undefined when none is configured.
+ * XAI_API_KEY (#1167) and a Gemini model GEMINI_API_KEY; otherwise
+ * OPENROUTER_KEY, then FAL_KEY (issue #895). A platform `LLMTR_API_KEY` is
+ * last-resort for models LLMTR carries — it must not steal traffic from
+ * OpenRouter or fal. Returns undefined when none is configured.
  *
  * Omitting `model` keeps the OpenRouter-first order, which every model
- * supports — a caller that can't name the model can't promise it's a Grok one,
- * nor that LLMTR carries it.
+ * supports — a caller that can't name the model can't promise it's a Grok
+ * or Gemini one, nor that LLMTR carries it.
  */
 export function getPlatformLlmKey(
   model?: string
@@ -78,14 +84,17 @@ export function getPlatformLlmKey(
   if (model && nativeGrokTextModel(model) && env.XAI_API_KEY) {
     return { key: env.XAI_API_KEY, via: 'xai', source: 'platform' };
   }
-  if (model && llmtrTextModel(model) && env.LLMTR_API_KEY) {
-    return { key: env.LLMTR_API_KEY, via: 'llmtr', source: 'platform' };
+  if (model && nativeGeminiTextModel(model) && env.GEMINI_API_KEY) {
+    return { key: env.GEMINI_API_KEY, via: 'google', source: 'platform' };
   }
   if (env.OPENROUTER_KEY) {
     return { key: env.OPENROUTER_KEY, via: 'openrouter', source: 'platform' };
   }
   if (env.FAL_KEY) {
     return { key: env.FAL_KEY, via: 'fal', source: 'platform' };
+  }
+  if (model && llmtrTextModel(model) && env.LLMTR_API_KEY) {
+    return { key: env.LLMTR_API_KEY, via: 'llmtr', source: 'platform' };
   }
   return undefined;
 }
@@ -104,11 +113,12 @@ let loggedRetryMode = false;
  * entries with `createModel` from '@tanstack/ai':
  * `createModel('vendor/model-id', { input: [...], features: [...] })`.
  *
- * Empty after @tanstack/ai-openrouter@0.18.1 shipped Grok 4.6 and
- * Claude Opus 5 / Opus 5 Fast. Restore `extendAdapter` around the
- * factories when the next lag id lands.
  */
 export const CATALOG_LAG_MODELS = [] as const;
+
+// Empty after @tanstack/ai-openrouter@0.19.5 shipped z-ai/glm-5.3-flash.
+// Restore `extendAdapter` around the OpenRouter factories when the next lag
+// id lands.
 
 /** {@link CATALOG_LAG_MODELS} for the Grok adapter. Native `grok-4.6` is
  *  in the 0.16 catalog; `grok-4.20-0309-reasoning` is still lag-bridged.
@@ -132,10 +142,8 @@ const createGrokTextExtended = extendAdapter(
  * format, different base URL and model names. Capabilities are transcribed
  * from LLMTR's own catalog.
  *
- * Only these four need declaring — the other eleven LLMTR mappings are
- * identity, so the generated OpenRouter union already accepts them (and they
- * keep its per-model metadata, e.g. the combined tools+schema fast path a
- * renamed id necessarily loses).
+ * Identity mappings already typecheck against the generated OpenRouter union;
+ * only renamed slugs need `extendAdapter`.
  */
 const LLMTR_CATALOG_MODELS = [
   createModel('mistral/mistral-small-latest', {
@@ -150,7 +158,7 @@ const LLMTR_CATALOG_MODELS = [
     input: ['text'],
     features: ['reasoning', 'structured_outputs'],
   }),
-  createModel('zai/glm-5.2', {
+  createModel('zai/glm-5.3-flash', {
     input: ['text'],
     features: ['reasoning', 'structured_outputs'],
   }),
@@ -179,6 +187,22 @@ export function resolveNativeGrokModel(
   return nativeGrokTextModel(model);
 }
 
+/**
+ * Whether a request goes to Google's Gemini API directly, and under which
+ * model name. Same contract as {@link resolveNativeGrokModel}: `llm-client`
+ * asks this too rather than deciding for itself, so the adapter, the options
+ * object (camelCase `GoogleGenAI` config vs OpenRouter's shape), and the
+ * tools can't disagree about the route.
+ */
+export function resolveNativeGeminiModel(
+  model: TextModel,
+  keyInfo?: LlmKeyInfo
+): NativeGeminiTextModel | undefined {
+  const resolved = keyInfo ?? getPlatformLlmKey(model);
+  if (resolved?.via !== 'google' || !resolved.key) return undefined;
+  return nativeGeminiTextModel(model);
+}
+
 // Callers must say which API a key belongs to (`via`) — a bare string can't:
 // a fal key mistaken for an OpenRouter key gets Bearer auth against
 // openrouter.ai and 401s at runtime, invisibly to the compiler.
@@ -198,13 +222,35 @@ export function createAdapter(model: TextModel, keyInfo?: LlmKeyInfo) {
     });
   }
 
-  // LLMTR speaks OpenRouter's wire format, so the path below drives it with
-  // nothing but a base-URL swap — Bearer auth is the SDK default. What LLMTR
-  // does need is a model-name translation, because it namespaces some vendors
-  // differently. `via === 'llmtr'` is only ever set for a model
-  // `llmtrTextModel` maps (key resolution checks), so an unmapped model here
-  // would fall through to OpenRouter rather than 404 against LLMTR.
+  const nativeGeminiModel = resolveNativeGeminiModel(model, resolved);
+  if (nativeGeminiModel && key) {
+    return createGeminiChat(nativeGeminiModel, key, {
+      // GEMINI_BASE_URL is the aimock hook for the native Google path,
+      // mirroring XAI_BASE_URL above.
+      ...(env.GEMINI_BASE_URL && {
+        httpOptions: { baseUrl: env.GEMINI_BASE_URL },
+      }),
+    });
+  }
+
+  // A native-provider key on the OpenRouter branch is the #1358 mismatch:
+  // resolveLlmKey was asked for a Grok/Gemini model, then the call used a
+  // different one. OpenRouter answers that with "Missing Authentication
+  // header" (its text for any non-sk-or key). Throw so the next mismatch is
+  // a stack, not a 401 puzzle. Same for an LLMTR key on a model LLMTR does
+  // not carry — sending that key to OpenRouter 401s the same way.
+  if (via === 'xai' || via === 'google') {
+    throw new Error(
+      `${via === 'xai' ? 'xAI' : 'Google'} key cannot be sent to OpenRouter (model '${model}'). Resolve the LLM key for the model being called, not a different analysis model.`
+    );
+  }
+
   const llmtrModel = via === 'llmtr' ? llmtrTextModel(model) : undefined;
+  if (via === 'llmtr' && !llmtrModel) {
+    throw new Error(
+      `LLMTR key cannot be sent to OpenRouter (model '${model}'). Resolve the LLM key for the model being called, not a different analysis model.`
+    );
+  }
 
   // During E2E recording, aimock proxies our OpenRouter calls upstream and
   // *buffers* the entire SSE response before relaying — see

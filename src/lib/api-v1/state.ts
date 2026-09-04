@@ -39,7 +39,13 @@ type SequenceStateShot = {
   orderIndex: number;
   title: string | null;
   image: { status: ShotGenStatus; url: string | null };
-  video: { status: ShotGenStatus; url: string | null };
+  video: {
+    status: ShotGenStatus;
+    url: string | null;
+    /** Why the primary render failed — names the flagged input on a content
+     * check (#1373). Null unless `status` is "failed". */
+    error: string | null;
+  };
 };
 
 export type SequenceCounts = {
@@ -86,6 +92,7 @@ export type SequenceSummary = {
   status: SequenceStatus;
   statusError: string | null;
   aspectRatio: string;
+  resolution: string;
   style: SequenceStyle;
   models: SequenceModels;
   createdAt: string;
@@ -172,6 +179,7 @@ export function buildSequenceSummary(params: {
     status: sequence.status,
     statusError: sequence.statusError ?? null,
     aspectRatio: sequence.aspectRatio,
+    resolution: sequence.resolution,
     style: { id: sequence.styleId, name: style?.name ?? null },
     models: {
       analysis: sequence.analysisModel,
@@ -282,8 +290,21 @@ export async function buildSequenceState(
         url: share(imageUrl),
       },
       video: {
-        status: shot.videoStatus,
+        // The public doc never surfaces 'cancelled' (#1108) — mirroring the
+        // image side, where a cancel settles the frame back to
+        // completed/pending. A cancelled render means "nothing new happened":
+        // the selected video (if any) still stands.
+        status:
+          shot.videoStatus === 'cancelled'
+            ? shot.video?.url
+              ? 'completed'
+              : 'pending'
+            : shot.videoStatus,
         url: share(shot.video?.url ?? null),
+        error:
+          shot.videoStatus === 'failed'
+            ? (shot.primaryVideo?.error ?? null)
+            : null,
       },
     };
   });

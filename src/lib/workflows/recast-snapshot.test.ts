@@ -12,9 +12,9 @@
 import { describe, expect, it } from 'vitest';
 import type { Scene } from '@/lib/ai/scene-analysis.schema';
 import type {
-  Character,
+  CharacterWithSheet,
   SequenceElement,
-  SequenceLocation,
+  SequenceLocationWithReference,
   Shot,
 } from '@/lib/db/schema';
 import { buildRegenerateShotSnapshot } from './regenerate-shots-snapshot';
@@ -29,8 +29,10 @@ const PROMPT = 'Jack at the docks at dusk';
 const NEW_SHEET_URL = 'https://example.com/jack-recast.png';
 const NEW_SHEET_HASH = 'jack-hash-v2';
 
-function makeCharacter(overrides: Partial<Character> = {}): Character {
-  const character: Character = {
+function makeCharacter(
+  overrides: Partial<CharacterWithSheet> = {}
+): CharacterWithSheet {
+  const character: CharacterWithSheet = {
     id: 'c1',
     sequenceId: 'seq1',
     characterId: 'jack',
@@ -48,10 +50,12 @@ function makeCharacter(overrides: Partial<Character> = {}): Character {
     sheetGeneratedAt: NOW,
     sheetError: null,
     sheetInputHash: 'jack-hash-v1',
+    selectedSheetVersionId: null,
     talentId: null,
     firstMentionLine: null,
     firstMentionText: null,
     firstMentionSceneId: null,
+    deletedAt: null,
     createdAt: NOW,
     updatedAt: NOW,
   };
@@ -59,9 +63,9 @@ function makeCharacter(overrides: Partial<Character> = {}): Character {
 }
 
 function makeLocation(
-  overrides: Partial<SequenceLocation> = {}
-): SequenceLocation {
-  const location: SequenceLocation = {
+  overrides: Partial<SequenceLocationWithReference> = {}
+): SequenceLocationWithReference {
+  const location: SequenceLocationWithReference = {
     id: 'l1',
     sequenceId: 'seq1',
     locationId: 'docks',
@@ -82,9 +86,11 @@ function makeLocation(
     referenceGeneratedAt: NOW,
     referenceError: null,
     referenceInputHash: 'docks-hash-v1',
+    selectedReferenceVersionId: null,
     firstMentionSceneId: null,
     firstMentionText: null,
     firstMentionLine: null,
+    deletedAt: null,
     createdAt: NOW,
     updatedAt: NOW,
   };
@@ -97,8 +103,10 @@ const SHOT: Shot = {
   sceneId: 's1',
   shotNumber: 1,
   durationMs: 3000,
+  useStartFrame: null,
   selectedMotionPromptVersionId: null,
   renderSegmentId: null,
+  deletedAt: null,
   createdAt: NOW,
   updatedAt: NOW,
 };

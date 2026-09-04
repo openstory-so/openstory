@@ -9,6 +9,8 @@ const SITEMAP_PAGES = [
   '/',
   '/login',
   '/sequences',
+  '/images',
+  '/videos',
   '/talent',
   '/locations',
   '/docs/faq',

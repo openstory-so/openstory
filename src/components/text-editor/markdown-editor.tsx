@@ -1,7 +1,12 @@
 import HardBreak from '@tiptap/extension-hard-break';
 import { Placeholder } from '@tiptap/extensions/placeholder';
 import { EditorContent, useEditor, useEditorState } from '@tiptap/react';
-import { AllSelection } from '@tiptap/pm/state';
+import {
+  Fragment,
+  type Node as ProseMirrorNode,
+  type Schema,
+} from '@tiptap/pm/model';
+import { AllSelection, Selection, type Transaction } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 import StarterKit from '@tiptap/starter-kit';
 import {
@@ -10,8 +15,15 @@ import {
   type MarkdownStorage,
 } from 'tiptap-markdown';
 import { cn } from '@/lib/utils';
+import { spaceTranscript } from '@/lib/voice/transcript-insert';
 import * as React from 'react';
-import { useEffect, useMemo, useRef } from 'react';
+import {
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import type { MentionOptions } from '@tiptap/extension-mention';
 import type { MentionItem } from '@/components/scenes/prompt-mention/mention-items';
 import { PromptMention } from './mention/mention-extension';
@@ -58,22 +70,37 @@ const domSelectionCoversEditor = (view: EditorView): boolean => {
 };
 
 /**
+ * Inline nodes for `text`, with every newline as a hard break — a ProseMirror
+ * text node cannot hold a `\n`, and `getMarkdown()` round-trips a hard break
+ * losslessly (see the HardBreak serializer below). Shared by the insertText
+ * handler and streaming dictation.
+ */
+const screenplayNodes = (
+  schema: Schema,
+  text: string
+): Array<ProseMirrorNode> => {
+  const hardBreak = schema.nodes.hardBreak;
+  if (!hardBreak) return [];
+  return normalizeScreenplayNewlines(text)
+    .split('\n')
+    .flatMap((line, i, lines) => {
+      const out: Array<ProseMirrorNode> = [];
+      if (line.length > 0) out.push(schema.text(line));
+      if (i < lines.length - 1) out.push(hardBreak.create());
+      return out;
+    });
+};
+
+/**
  * Playwright `.fill()` (and other `insertText` with embedded newlines) cannot
  * put `\n` in a ProseMirror text node. Map each newline to a hard break so
  * `getMarkdown()` round-trips the source script — including the recorded
  * aimock enhance body. Paste is not handled here; ProseMirror owns that.
  */
 const insertTextWithNewlines = (view: EditorView, text: string): boolean => {
-  const normalized = normalizeScreenplayNewlines(text);
   const { schema } = view.state;
-  const hardBreak = schema.nodes.hardBreak;
-  if (!hardBreak) return false;
-  const nodes = normalized.split('\n').flatMap((line, i, lines) => {
-    const out = [];
-    if (line.length > 0) out.push(schema.text(line));
-    if (i < lines.length - 1) out.push(hardBreak.create());
-    return out;
-  });
+  if (!schema.nodes.hardBreak) return false;
+  const nodes = screenplayNodes(schema, text);
   if (nodes.length === 0) return true;
   const { tr } = view.state;
   if (view.state.selection.empty && domSelectionCoversEditor(view)) {
@@ -141,7 +168,31 @@ type MarkdownEditorProps = {
    * later becomes a list, or the extension never registers.
    */
   mentionItems?: MentionItem[];
+  /** Map the chosen @ row to the item to insert (see `createMentionSuggestion`). */
+  onMentionSelect?: (item: MentionItem) => MentionItem;
+  /** Imperative handle for streaming dictation in from a toolbar mic. */
+  ref?: React.Ref<MarkdownEditorHandle>;
 };
+
+/**
+ * Lets a `VoiceInputButton` rendered outside the editor stream a dictation
+ * take into it. The take occupies one range that is rewritten on every interim
+ * update, so revised words replace themselves instead of stacking up.
+ */
+export type MarkdownEditorHandle = {
+  /**
+   * Anchor a take at the caret — or the end of the document if none is placed.
+   * Returns false when the editor is missing or not editable.
+   */
+  beginDictation: () => boolean;
+  /** Rewrite the live take as `text`. */
+  setDictation: (text: string) => void;
+  /** Release the take's range; the text stays. */
+  endDictation: () => void;
+};
+
+/** Marks our own dictation transactions so the range mapper skips them. */
+const DICTATION_META = 'markdownEditorDictation';
 
 const containerBaseClasses =
   'flex w-full min-h-16 rounded-lg border border-input bg-transparent px-2.5 py-2 text-base transition-colors outline-none focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 md:text-sm dark:bg-input/30 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40';
@@ -174,6 +225,8 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
   'aria-invalid': ariaInvalid,
   'data-testid': dataTestId,
   mentionItems,
+  onMentionSelect,
+  ref,
 }) => {
   // useEditor captures props at init. Bag the live onKeyDown in a ref so the
   // handler reads the freshest callback without needing to recreate the editor.
@@ -191,6 +244,8 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
   const mentionItemsRef = useRef<MentionItem[]>(mentionItems ?? []);
   mentionItemsRef.current = mentionItems ?? [];
   const hasMentions = mentionItems !== undefined;
+  const onMentionSelectRef = useRef(onMentionSelect);
+  onMentionSelectRef.current = onMentionSelect;
 
   // Signature changes when the set of available tags changes; drives the
   // "re-pill on items load" effect below.
@@ -235,7 +290,8 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
             PromptMention.configure({
               // oxlint-disable-next-line typescript/no-unsafe-type-assertion
               suggestion: createMentionSuggestion(
-                () => mentionItemsRef.current
+                () => mentionItemsRef.current,
+                () => onMentionSelectRef.current
               ) as MentionConfigure['suggestion'],
             }),
           ]
@@ -279,6 +335,18 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
     onFocus: () => onFocusRef.current?.(),
   });
 
+  // Whether the user has put a caret in this editor since the last unfocused
+  // external replace. ProseMirror's initial selection sits at the start of
+  // the document, so a dictated take must not land there just because the
+  // user has never clicked in — it goes to the end instead.
+  const caretPlacedRef = useRef(false);
+
+  // The range the live dictation take occupies, or null between takes.
+  // `dictationActive` is the React-visible twin so value-sync / mention
+  // tagify skip setContent for the duration and re-run when the take ends.
+  const dictationRef = useRef<{ from: number; to: number } | null>(null);
+  const [dictationActive, setDictationActive] = useState(false);
+
   // Canonical Tiptap external-value sync (mirrors the Vue v-model example in
   // their docs): only setContent if the editor's current markdown differs
   // from the incoming value. When mentions are on, we tagify the value first
@@ -288,18 +356,28 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
   // streaming the script chunk-by-chunk) collapses to one setContent with
   // the latest value. Each setContent is a full markdown re-parse + doc
   // rebuild and freezes the renderer if applied per-chunk at ~30Hz+.
+  //
+  // Skip the rebuild while a take is live — mapping a replace-all collapses
+  // the range, so the next setDictation inserts instead of rewriting.
+  // `dictationActive` dropping retriggers this so enhance output that
+  // arrived mid-take still lands.
   useEffect(() => {
-    if (!editor) return;
+    if (!editor || dictationActive) return;
     if (editor.storage.markdown.getMarkdown() === value) return;
     const rafId = requestAnimationFrame(() => {
+      if (dictationRef.current) return;
       if (editor.storage.markdown.getMarkdown() === value) return;
       const content = hasMentions
         ? tagifyMarkdown(value, mentionItemsRef.current).content
         : value;
       editor.commands.setContent(content, { emitUpdate: false });
+      // Unfocused setContent forgets the old caret so the next take anchors
+      // at end; a focused replace keeps caretPlacedRef and uses whatever
+      // selection TipTap left.
+      if (!editor.isFocused) caretPlacedRef.current = false;
     });
     return () => cancelAnimationFrame(rafId);
-  }, [editor, value, hasMentions]);
+  }, [editor, value, hasMentions, dictationActive]);
 
   // When the items list changes (e.g. characters/elements load async after
   // mount, or the user adds a new one to the sequence), re-tagify the current
@@ -307,16 +385,100 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
   // value-sync effect above won't catch this on its own — the stored value
   // hasn't changed, so its `getMarkdown() === value` guard returns true.
   useEffect(() => {
-    if (!editor || !hasMentions) return;
+    if (!editor || !hasMentions || dictationActive) return;
     const { content, matched } = tagifyMarkdown(value, mentionItemsRef.current);
     if (!matched) return;
     const rafId = requestAnimationFrame(() => {
+      if (dictationRef.current) return;
       editor.commands.setContent(content, { emitUpdate: false });
     });
     return () => cancelAnimationFrame(rafId);
     // value intentionally omitted — the sibling effect handles value changes.
     // oxlint-disable-next-line react-hooks/exhaustive-deps
-  }, [editor, mentionItemsKey, hasMentions]);
+  }, [editor, mentionItemsKey, hasMentions, dictationActive]);
+
+  useEffect(() => {
+    if (!editor) return;
+    const placed = () => {
+      if (editor.isFocused) caretPlacedRef.current = true;
+    };
+    editor.on('focus', placed);
+    editor.on('selectionUpdate', placed);
+    return () => {
+      editor.off('focus', placed);
+      editor.off('selectionUpdate', placed);
+    };
+  }, [editor]);
+
+  // The user may keep typing mid-take, so carry the take's range through
+  // everyone else's transactions. Our own already set the range explicitly.
+  // Full-doc `setContent` (enhance / mention tagify) is skipped while the
+  // take is live rather than mapped — mapping a replace-all collapses the
+  // range.
+  useEffect(() => {
+    if (!editor) return;
+    const remap = ({ transaction }: { transaction: Transaction }) => {
+      const range = dictationRef.current;
+      if (!range || !transaction.docChanged) return;
+      if (transaction.getMeta(DICTATION_META)) return;
+      dictationRef.current = {
+        from: transaction.mapping.map(range.from),
+        to: transaction.mapping.map(range.to),
+      };
+    };
+    editor.on('transaction', remap);
+    return () => {
+      editor.off('transaction', remap);
+    };
+  }, [editor]);
+
+  useImperativeHandle(
+    ref,
+    (): MarkdownEditorHandle => ({
+      beginDictation: () => {
+        if (!editor?.isEditable) return false;
+        const { view } = editor;
+        const { tr } = view.state;
+        // The caret survives the blur that clicking the mic causes, so the
+        // take lands where the user left it — but an untouched editor's
+        // selection sits at position 0, which is not where dictation belongs.
+        if (!caretPlacedRef.current) tr.setSelection(Selection.atEnd(tr.doc));
+        if (!tr.selection.empty) tr.deleteSelection();
+        view.dispatch(tr.setMeta(DICTATION_META, true));
+        const { from } = view.state.selection;
+        dictationRef.current = { from, to: from };
+        setDictationActive(true);
+        return true;
+      },
+      setDictation: (text: string) => {
+        const range = dictationRef.current;
+        if (!editor?.isEditable || !range) return;
+        const { view } = editor;
+        const { doc, schema } = view.state;
+        const preceding =
+          range.from > 0
+            ? doc.textBetween(range.from - 1, range.from, '\n')
+            : '';
+        const fragment = Fragment.fromArray(
+          screenplayNodes(schema, spaceTranscript(preceding, text))
+        );
+        const tr = view.state.tr
+          .replaceWith(range.from, range.to, fragment)
+          .setMeta(DICTATION_META, true);
+        // Dispatching emits onUpdate, so the new markdown reaches onValueChange.
+        view.dispatch(tr.scrollIntoView());
+        dictationRef.current = {
+          from: range.from,
+          to: range.from + fragment.size,
+        };
+      },
+      endDictation: () => {
+        dictationRef.current = null;
+        setDictationActive(false);
+      },
+    }),
+    [editor]
+  );
 
   // Emptiness must be transaction-reactive, not read off `editor` at render
   // time: the value-sync effects above apply external content (seeded sample
@@ -346,14 +508,20 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
         containerBaseClasses,
         'relative',
         disabled && disabledClasses,
-        // overscroll-contain: hitting the editor's scroll bounds must not
-        // chain the touch gesture into scrolling the page underneath.
-        'overflow-y-auto overscroll-contain',
+        // No overflow rule here: the editor grows with its content. A caller
+        // that bounds its height (the composer's ScriptEditor) makes it the
+        // scroller. Chrome stops wheel chaining at a scroll container with
+        // overscroll-contain even when it has nothing to scroll, so an
+        // unconditional `overflow-y-auto overscroll-contain` froze the panel
+        // behind every prompt editor on desktop (#1281).
         className
       )}
       aria-invalid={ariaInvalid}
       data-testid={dataTestId}
       data-slot="markdown-editor"
+      // Chrome auto-translate rewriting a contenteditable desyncs
+      // ProseMirror's view (#1283); the script is the user's own text anyway.
+      translate="no"
       data-markdown={value}
       // The ProseMirror node only spans its text, so the empty area below the
       // last line (the box's min-height) is otherwise a dead zone — clicking

@@ -20,8 +20,10 @@ const generateMockShot = (overrides?: Partial<ShotView>): ShotView => {
     sceneId: null,
     shotNumber: 1,
     durationMs: faker.number.int({ min: 3000, max: 10000 }),
+    useStartFrame: null,
     selectedMotionPromptVersionId: null,
     renderSegmentId: null,
+    deletedAt: null,
     createdAt,
     updatedAt,
   };
@@ -70,12 +72,14 @@ const generateMockShot = (overrides?: Partial<ShotView>): ShotView => {
       'veo3_1',
       'kling_v3_pro',
       'seedance_v2',
+      'seedance_v2_5',
     ]),
     manifest: [
       {
         shotId: shot.id,
         motionPromptVersionId: null,
         frameVersionId: null,
+        usesStartFrame: true,
         durationMs: shot.durationMs ?? 3000,
       },
     ],

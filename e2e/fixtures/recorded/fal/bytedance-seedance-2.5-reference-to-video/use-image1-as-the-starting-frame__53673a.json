@@ -1,0 +1,24 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use @Image1 as the starting frame.\nStatic locked-off overhead-angled frame on the bone-white counter. SCARLETT's hand, already pinching the beige box above the flip phone, tips it downward and slides the @Image3 free; the tube drops the last inch to the counter, rolls a half-turn toward the napkin and stops. Her fingers lift away and retreat out of frame right, the box withdrawing with them, leaving the coral tube alone and steady in the light.\n\nHard window daylight holds its crisp shadow edges across the counter; the napkin corner lifts faintly as her hand passes, and the coins shift a fraction as the tube settles.\n\nquiet apartment room tone, faint muffled street traffic through glass. cardboard box lid slipping open, lipstick tube tapping down on stone counter, short rolling scuff of plastic on the counter, soft paper napkin rustle.\n\nNo BGM, no music. Generate only dialogue, environmental sounds, and action sounds. Single continuous shot, no cuts. Avoid jitter and bent limbs.\n\nReference images:\n@Image2: SCARLETT VEGA — keep visually consistent throughout the shot.",
+        "model": "bytedance/seedance-2.0/enterprise/v2/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://v3b.fal.media/files/b/0aa74e96/dXIKla1Fuiw0be4QhC4Qq_video.mp4",
+            "content_type": "video/mp4",
+            "file_name": "video.mp4",
+            "file_size": 1127845
+          },
+          "seed": 381472091
+        },
+        "status": 200,
+        "billableUnits": 108.9
+      }
+    }
+  ]
+}

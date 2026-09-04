@@ -17,12 +17,13 @@
  *     `context.workflowRunId`. */
 
 import { DEFAULT_IMAGE_MODEL } from '@/lib/ai/models';
-import { generateId } from '@/lib/db/id';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
-import type { CharacterMinimal, NewCharacter } from '@/lib/db/schema';
+import type { CharacterMinimal } from '@/lib/db/schema';
+import { buildCharacterInsert } from '@/lib/workflows/cast-records';
 import { buildCastingAttributes } from '@/lib/prompts/character-prompt';
-import { shouldReuseTalentSheet } from '@/lib/talent/reuse-talent-sheet';
+import { reusesTalentSheet } from '@/lib/talent/reuse-talent-sheet';
 import { spawnAndAwaitChild } from '@/lib/workflow/await-child';
+import { contentRejectionSummary } from '@/lib/ai/content-rejection';
 import { OpenStoryWorkflowEntrypoint } from '@/lib/workflow/base-workflow';
 import { WorkflowValidationError } from '@/lib/workflow/errors';
 import type {
@@ -61,39 +62,19 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
           return [];
         }
 
+        // Upsert on (sequenceId, characterId): the Script stage already
+        // created these rows sheet-less, so this keeps their ids and flips
+        // them to `generating`.
         const results: Array<{ id: string; characterId: string }> = [];
         for (const character of input.characterBible) {
-          const talentMatch = matchMap.get(character.characterId);
-          const castingAttrs = talentMatch
-            ? buildCastingAttributes(character, {
-                sheetMetadata: talentMatch.sheetMetadata,
-                talentName: talentMatch.talentName,
-              })
-            : null;
-
-          const created = await scopedDb.characters.create({
-            id: generateId(),
-            sequenceId: input.sequenceId,
-            characterId: character.characterId,
-            name: character.name,
-            age: castingAttrs?.age ?? character.age,
-            gender: castingAttrs?.gender ?? character.gender,
-            ethnicity: castingAttrs?.ethnicity ?? character.ethnicity,
-            physicalDescription:
-              castingAttrs?.physicalDescription ??
-              character.physicalDescription,
-            standardClothing: character.standardClothing,
-            distinguishingFeatures: character.distinguishingFeatures,
-            consistencyTag:
-              castingAttrs?.consistencyTag ?? character.consistencyTag,
-            firstMentionSceneId: null,
-            firstMentionText: null,
-            firstMentionLine: null,
-            sheetImageUrl: null,
-            sheetImagePath: null,
-            sheetStatus: 'generating' as const,
-            talentId: talentMatch?.talentId ?? null,
-          } satisfies NewCharacter);
+          const created = await scopedDb.characters.create(
+            buildCharacterInsert({
+              sequenceId: input.sequenceId,
+              character,
+              talentMatch: matchMap.get(character.characterId),
+              sheetStatus: 'generating',
+            })
+          );
           results.push({ id: created.id, characterId: created.characterId });
         }
         return results;
@@ -133,22 +114,15 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
           })
         : null;
 
-      const reuseTalentSheet = Boolean(
-        talentMatch?.sheetImageUrl &&
-        shouldReuseTalentSheet({
-          characterClothing: character.standardClothing,
-          characterFeatures: character.distinguishingFeatures,
-          talentClothing: talentMatch.sheetMetadata?.standardClothing,
-          talentFeatures: talentMatch.sheetMetadata?.distinguishingFeatures,
-          talentPhysical: talentMatch.sheetMetadata?.physicalDescription,
-          talentDescription: talentMatch.talentDescription,
-        })
-      );
+      // Shared with the reservation gate, which counts the sheets that will
+      // actually be billed — see `reusesTalentSheet`.
+      const reuseTalentSheet = reusesTalentSheet(character, talentMatch);
 
       const childPayload: CharacterSheetWorkflowInput = {
         userId: input.userId,
         teamId: input.teamId,
         sequenceId: input.sequenceId,
+        reservationId: input.reservationId,
         characterDbId,
         characterName: character.name,
         characterMetadata: character,
@@ -190,7 +164,7 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
     const settled = await Promise.allSettled(spawnPromises);
 
     const seqCharacters: CharacterMinimal[] = [];
-    const failures: string[] = [];
+    const failures: { name: string; reason: string }[] = [];
     for (const [index, outcome] of settled.entries()) {
       if (outcome.status === 'rejected') {
         // A reference sheet is what anchors a character's identity across cuts
@@ -216,7 +190,7 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
             err: outcome.reason,
           }
         );
-        failures.push(`${name} (${reason})`);
+        failures.push({ name, reason });
         continue;
       }
 
@@ -230,6 +204,7 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
         sheetImageUrl: childResult.sheetImageUrl,
         sheetStatus: 'completed' as const,
         sheetInputHash: null,
+        selectedSheetVersionId: childResult.sheetVersionId ?? null,
         physicalDescription:
           castingAttrs?.physicalDescription ?? character.physicalDescription,
         consistencyTag:
@@ -242,9 +217,12 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
       // (#939). This rejection propagates up through `spawnAndAwaitChild` to
       // analyze-script's `charSettled.status === 'rejected'` branch, which marks
       // the sequence `failed` with this message and emits `generation.failed`.
+      // Content-only failures collapse to the names so the banner can list
+      // who was blocked (#1293).
       throw new Error(
-        `Character sheet generation failed for ${failures.length} of ${settled.length} character(s); ` +
-          `stopping rather than rendering an unanchored sequence: ${failures.join('; ')}`
+        contentRejectionSummary(failures) ??
+          `Character sheet generation failed for ${failures.length} of ${settled.length} character(s); ` +
+            `stopping rather than rendering an unanchored sequence: ${failures.map((f) => `${f.name} (${f.reason})`).join('; ')}`
       );
     }
 

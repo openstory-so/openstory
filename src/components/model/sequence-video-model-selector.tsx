@@ -116,7 +116,11 @@ export const SequenceVideoModelSelector = ({
           </Badge>
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-[280px]">
+      <DropdownMenuContent
+        align="start"
+        collisionPadding={12}
+        className="w-[min(280px,calc(100vw-2rem))]"
+      >
         <DropdownMenuLabel className="text-xs">
           Video model
           <span className="block font-normal text-muted-foreground">

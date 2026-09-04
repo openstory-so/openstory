@@ -22,16 +22,14 @@ import {
 } from '@/lib/billing/workflow-deduction';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import { generateId } from '@/lib/db/id';
-import {
-  generateImageWithProvider,
-  type ImageGenerationParams,
-} from '@/lib/image/image-generation';
+import type { ImageGenerationParams } from '@/lib/image/image-generation';
 import { buildLocationSheetPrompt } from '@/lib/prompts/location-prompt';
 import { recordProvenance } from '@/lib/compliance/provenance';
 import { getGenerationChannel } from '@/lib/realtime';
 import { STORAGE_BUCKETS } from '@/lib/storage/buckets';
 import { uploadResponse } from '@/lib/storage/upload-response';
 import { OpenStoryWorkflowEntrypoint } from '@/lib/workflow/base-workflow';
+import { generateImageSoftening } from '@/lib/workflows/content-soften';
 import { WorkflowValidationError } from '@/lib/workflow/errors';
 import type {
   LocationSheetWorkflowInput,
@@ -85,7 +83,7 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
     });
 
     // Step 1: Validate and build prompt
-    const generationParams: ImageGenerationParams = await step.do(
+    const builtParams: ImageGenerationParams = await step.do(
       'build-prompt',
       async () => {
         // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
@@ -129,16 +127,36 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
       }
     );
 
-    // Step 2: Generate the location reference image
-    const imageResult = await step.do('generate-reference-image', async () => {
-      logger.info(
-        `[LocationSheetWorkflow:cf] Generating reference for ${input.locationName} with model ${generationParams.model}`
-      );
-
-      return await generateImageWithProvider(generationParams, {
-        scopedDb: scopedDb.credentials,
-      });
+    // Step 2: Generate the location reference image — reseeds on a content
+    // flag, then one softened prompt (#1293).
+    const generation = await generateImageSoftening({
+      step,
+      scopedDb,
+      workflowRunId: event.instanceId,
+      userId: input.userId,
+      sequenceId: input.sequenceId,
+      reservationId: input.reservationId,
+      kind: 'location-sheet',
+      logTag: '[LocationSheetWorkflow:cf]',
+      subject: `reference for ${input.locationName}`,
+      stepName: 'generate-reference-image',
+      params: builtParams,
+      meta: { locationDbId: input.locationDbId },
+      onRetry: async (retry) => {
+        if (!input.sequenceId || !input.locationDbId) return;
+        await getGenerationChannel(input.sequenceId).emit(
+          'generation.location-sheet:progress',
+          {
+            locationId: input.locationDbId,
+            status: 'generating',
+            phase: 'retrying',
+            ...retry,
+          }
+        );
+      },
     });
+    const imageResult = generation.result;
+    const generationParams = generation.params;
 
     // Before the deduction guard — see recordFalUsageStep (#1069).
     const falUsage = await recordFalUsageStep(
@@ -155,6 +173,7 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
         usedOwnKey: imageResult.metadata.usedOwnKey,
         description: `Location sheet (${generationParams.model})`,
         idempotencyKey: `${event.instanceId}:sheet`,
+        reservationId: input.reservationId,
         metadata: {
           ...falUsage,
           model: generationParams.model,
@@ -171,6 +190,7 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
     }
     let referenceImageUrl: string = initialReferenceImageUrl;
     let referenceImagePath: string | undefined = undefined;
+    let sheetVersionId: string | null = null;
 
     if (input.locationDbId && input.teamId && input.sequenceId) {
       // Capture narrowed values so inner async closures see `string`, not
@@ -242,7 +262,10 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
       const snapshotInputHash = input.snapshotInputHash ?? null;
       const reconcileOutcome = await step.do(
         'reconcile-database',
-        async (): Promise<{ kind: 'convergent' } | { kind: 'divergent' }> => {
+        async (): Promise<
+          | { kind: 'convergent'; versionId: string | null }
+          | { kind: 'divergent' }
+        > => {
           logger.info(
             `[LocationSheetWorkflow:cf] Updating database for ${input.locationName}`
           );
@@ -279,15 +302,22 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
             return { kind: 'divergent' };
           }
 
-          await scopedDb.sequenceLocations.updateReference(
+          const location = await scopedDb.sequenceLocations.updateReference(
             locationDbId,
             storageResult.url,
             storageResult.path,
-            snapshotInputHash
+            snapshotInputHash,
+            { model: generationParams.model, workflowRunId }
           );
-          return { kind: 'convergent' };
+          return {
+            kind: 'convergent',
+            versionId: location.selectedReferenceVersionId,
+          };
         }
       );
+      if (reconcileOutcome.kind === 'convergent') {
+        sheetVersionId = reconcileOutcome.versionId;
+      }
 
       referenceImagePath = storageResult.path;
       referenceImageUrl = storageResult.url;
@@ -348,6 +378,7 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
       referenceImageUrl,
       referenceImagePath,
       locationDbId: input.locationDbId,
+      sheetVersionId,
     };
 
     return result;

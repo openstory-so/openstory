@@ -49,9 +49,14 @@ export const REGION_FALLBACK_TEXT_MODEL =
 export const REGION_FALLBACK_VISION_MODEL =
   'mistralai/mistral-small-2603' satisfies TextModel;
 
-/** Matches the provider error a geo-blocked model returns through OpenRouter. */
+/**
+ * Errors the region fallback recovers from: the geo-block itself, and the
+ * text-only DeepSeek fallback being handed images (#1323 — "No endpoints
+ * found that support image input"). Both retry on `regionFallbackModel`, which
+ * picks the vision-capable fallback when the messages carry images.
+ */
 export function isRegionBlockedLlmError(message: string): boolean {
-  return /not available in your region|unsupported_country_region/i.test(
+  return /not available in your region|unsupported_country_region|no endpoints found that support image input/i.test(
     message
   );
 }

@@ -35,7 +35,6 @@ import {
 } from '@/lib/mocks/frame-fixtures';
 import { toShotView, type ShotView } from '@/lib/shots/shot-view';
 import { estimateImageCost, gateEstimate } from '@/lib/billing/cost-estimation';
-import { addMicros, ZERO_MICROS } from '@/lib/billing/money';
 
 const assertNoActiveStoryboardMock = vi.fn();
 const triggerStoryboardMock = vi.fn();
@@ -53,9 +52,21 @@ vi.doMock('@/lib/workflow/client', () => ({
   triggerWorkflow: triggerWorkflowMock,
 }));
 
-const requireCreditsMock = vi.fn();
+const reserveRunCreditsMock = vi.fn();
 vi.doMock('@/lib/billing/preflight', () => ({
-  requireCredits: requireCreditsMock,
+  reserveRunCredits: reserveRunCreditsMock,
+  releaseReservationOnThrow: async (
+    _db: unknown,
+    _id: unknown,
+    work: () => Promise<unknown>
+  ) => work(),
+}));
+
+const notifySequenceReadyMock = vi.fn();
+vi.doMock('@/lib/emails/notify-sequence-ready', () => ({
+  notifySequenceReady: notifySequenceReadyMock,
+  sequenceScenesUrl: (id: string) =>
+    `https://openstory.so/sequences/${id}/scenes`,
 }));
 
 // The live pricing loader reads D1 (unavailable under node tests).
@@ -85,6 +96,7 @@ function makeSequence(overrides: Partial<Sequence> = {}): Sequence {
     styleId: 'style_1',
     styleConfig: null,
     aspectRatio: '16:9',
+    resolution: '720p',
     analysisModel: 'anthropic/claude-haiku-4.5',
     analysisDurationMs: 0,
     imageModel: 'nano_banana_2',
@@ -103,8 +115,13 @@ function makeSequence(overrides: Partial<Sequence> = {}): Sequence {
     musicPromptInputHash: null,
     includeMusic: true,
     posterUrl: null,
+    readyEmailSentAt: null,
     autoGenerateMotion: false,
     autoGenerateMusic: false,
+    generationStopAt: null,
+    pipelineStage: null,
+    generationCheckpoint: null,
+    generateStartFrames: true,
     suggestedTalentIds: null,
     suggestedLocationIds: null,
     ...overrides,
@@ -140,8 +157,10 @@ function makeShot({
     sceneId: null,
     shotNumber: 1,
     durationMs: 3000,
+    useStartFrame: null,
     selectedMotionPromptVersionId: null,
     renderSegmentId: null,
+    deletedAt: null,
     createdAt: NOW,
     updatedAt: NOW,
     ...overrides,
@@ -191,6 +210,7 @@ function makeShot({
                 shotId: shot.id,
                 motionPromptVersionId: null,
                 frameVersionId: null,
+                usesStartFrame: true,
                 durationMs: shot.durationMs ?? 3000,
               },
             ],
@@ -234,6 +254,7 @@ function motionVersionFixture(
     parameters: null,
     dialogue: null,
     audio: null,
+    usesStartFrame: true,
     source: 'ai-generated',
     inputHash: null,
     analysisModel: null,
@@ -350,6 +371,9 @@ function makeContext(
     characters: { listWithSheets },
     shotPromptVersions: { getSelectedMotionByShots },
     sequence: vi.fn(() => ({ updateStatus, updateMusicFields })),
+    teamManagement: {
+      getMemberEmail: vi.fn(async () => 'owner@example.com'),
+    },
   };
   // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal ScopedDb stub exposing only what executeSmartRetry touches
   const scopedDb = stub as unknown as ScopedDb;
@@ -368,8 +392,10 @@ function resetMocks() {
   triggerStoryboardMock.mockResolvedValue({ workflowRunId: 'wf_new' });
   triggerWorkflowMock.mockReset();
   triggerWorkflowMock.mockResolvedValue('wf_child');
-  requireCreditsMock.mockReset();
-  requireCreditsMock.mockResolvedValue(undefined);
+  reserveRunCreditsMock.mockReset();
+  reserveRunCreditsMock.mockResolvedValue(undefined);
+  notifySequenceReadyMock.mockReset();
+  notifySequenceReadyMock.mockResolvedValue('sent');
 }
 
 describe('executeSmartRetry — generation mutex (#839)', () => {
@@ -402,9 +428,14 @@ describe('executeSmartRetry — full retry fallback', () => {
     const result = await executeSmartRetry(context);
 
     expect(triggerStoryboardMock).toHaveBeenCalledTimes(1);
+    expect(reserveRunCreditsMock).toHaveBeenCalledTimes(1);
     expect(triggerStoryboardMock).toHaveBeenCalledWith(
       scopedDb,
-      expect.objectContaining({ sequenceId: 'seq_1', teamId: 't1' })
+      expect.objectContaining({
+        sequenceId: 'seq_1',
+        teamId: 't1',
+        reservationId: undefined,
+      })
     );
     expect(triggerWorkflowMock).not.toHaveBeenCalled();
     // The launcher owns the 'processing' write — no direct status write here.
@@ -535,6 +566,32 @@ describe('executeSmartRetry — partial retry status reset', () => {
     expect(updateStatus).toHaveBeenCalledWith('completed');
   });
 
+  test('cancelled motion is NOT a failure — never selected for retry (#1108)', async () => {
+    resetMocks();
+    // Identical to the retriable failed-motion shape above except the status:
+    // a deliberate user cancel must not be re-run and re-billed by Retry
+    // failed. With nothing else failed, smart retry finds no work at all.
+    const shot = makeShot({
+      videoStatus: 'cancelled',
+      imageStatus: 'completed',
+      imageUrl: 'https://cdn/thumb.jpg',
+      motionPrompt: {
+        fullPrompt: 'slow pan across the lab',
+        dialogue: null,
+        audio: null,
+      },
+      durationMs: 5000,
+    });
+    const { context } = makeContext(
+      makeSequence({ status: 'completed', statusError: null }),
+      [shot]
+    );
+
+    await expect(executeSmartRetry(context)).rejects.toThrow();
+    expect(triggerWorkflowMock).not.toHaveBeenCalled();
+    expect(triggerStoryboardMock).not.toHaveBeenCalled();
+  });
+
   test('sequence not marked failed → no status write after retrying', async () => {
     resetMocks();
     const shot = makeShot({
@@ -595,39 +652,47 @@ describe('executeSmartRetry — per-asset model selection (#1066)', () => {
     // the sequence default.
     expect(triggerWorkflowMock).toHaveBeenCalledWith(
       '/image',
-      expect.objectContaining({ shotId: 'shot-a', model: 'gpt_image_2' }),
+      expect.objectContaining({
+        shotId: 'shot-a',
+        model: 'gpt_image_2',
+        ownsReservation: true,
+      }),
       expect.objectContaining({ label: expect.any(String) })
     );
     expect(triggerWorkflowMock).toHaveBeenCalledWith(
       '/image',
-      expect.objectContaining({ shotId: 'shot-b', model: 'flux_2_max' }),
+      expect.objectContaining({
+        shotId: 'shot-b',
+        model: 'flux_2_max',
+        ownsReservation: true,
+      }),
       expect.objectContaining({ label: expect.any(String) })
     );
 
-    // Pre-flight credit check sums per-shot costs across the two models —
-    // a regression to single-model `multiply(cost, count)` pricing would diverge
-    // whenever the shots were rendered by differently-priced models.
-    const expectedCost = addMicros(
-      addMicros(
-        ZERO_MICROS,
-        gateEstimate(
-          estimateImageCost('gpt_image_2', '16:9', 1, { pricing: FAL_PRICING }),
-          {
-            model: 'gpt_image_2',
-            operation: 'smart-retry:image',
-          }
-        )
-      ),
-      gateEstimate(
-        estimateImageCost('flux_2_max', '16:9', 1, { pricing: FAL_PRICING }),
-        {
-          model: 'flux_2_max',
-          operation: 'smart-retry:image',
-        }
-      )
+    // One hold per shot so leftover zeros cannot kill a sibling envelope.
+    const gptCost = gateEstimate(
+      estimateImageCost('gpt_image_2', '16:9', 1, {
+        pricing: FAL_PRICING,
+        resolution: '720p',
+      }),
+      {
+        model: 'gpt_image_2',
+        operation: 'smart-retry:image',
+      }
     );
-    expect(requireCreditsMock).toHaveBeenCalledTimes(1);
-    expect(requireCreditsMock.mock.calls[0]?.[1]).toEqual(expectedCost);
+    const fluxCost = gateEstimate(
+      estimateImageCost('flux_2_max', '16:9', 1, {
+        pricing: FAL_PRICING,
+        resolution: '720p',
+      }),
+      {
+        model: 'flux_2_max',
+        operation: 'smart-retry:image',
+      }
+    );
+    expect(reserveRunCreditsMock).toHaveBeenCalledTimes(2);
+    expect(reserveRunCreditsMock.mock.calls[0]?.[1]).toEqual(gptCost);
+    expect(reserveRunCreditsMock.mock.calls[1]?.[1]).toEqual(fluxCost);
   });
 
   test("retries each failed motion video with its selected version's model", async () => {
@@ -657,12 +722,20 @@ describe('executeSmartRetry — per-asset model selection (#1066)', () => {
 
     expect(triggerWorkflowMock).toHaveBeenCalledWith(
       '/motion',
-      expect.objectContaining({ shotId: 'shot-a', model: 'seedance_v2' }),
+      expect.objectContaining({
+        shotId: 'shot-a',
+        model: 'seedance_v2',
+        ownsReservation: true,
+      }),
       expect.objectContaining({ label: expect.any(String) })
     );
     expect(triggerWorkflowMock).toHaveBeenCalledWith(
       '/motion',
-      expect.objectContaining({ shotId: 'shot-b', model: 'kling_v3_pro' }),
+      expect.objectContaining({
+        shotId: 'shot-b',
+        model: 'kling_v3_pro',
+        ownsReservation: true,
+      }),
       expect.objectContaining({ label: expect.any(String) })
     );
   });
@@ -692,16 +765,16 @@ describe('executeSmartRetry — per-asset model selection (#1066)', () => {
       expect.objectContaining({ label: expect.any(String) })
     );
     // …and it is priced as flux_2_max, so the estimate matches the charge.
-    expect(requireCreditsMock.mock.calls[0]?.[1]).toEqual(
-      addMicros(
-        ZERO_MICROS,
-        gateEstimate(
-          estimateImageCost('flux_2_max', '16:9', 1, { pricing: FAL_PRICING }),
-          {
-            model: 'flux_2_max',
-            operation: 'smart-retry:image',
-          }
-        )
+    expect(reserveRunCreditsMock.mock.calls[0]?.[1]).toEqual(
+      gateEstimate(
+        estimateImageCost('flux_2_max', '16:9', 1, {
+          pricing: FAL_PRICING,
+          resolution: '720p',
+        }),
+        {
+          model: 'flux_2_max',
+          operation: 'smart-retry:image',
+        }
       )
     );
   });

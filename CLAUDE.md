@@ -211,6 +211,102 @@ Each surface is enumerated in `scoped-workflow.ts` and pinned by
 category doesn't match the hatch it came through. Full rationale:
 `docs/architecture/workflow-snapshots-and-content-hash-staleness.md`.
 
+## Reference-only motion (no start frames)
+
+Renders a shot **straight to video** from the character / location / element
+reference sheets — the shot-images phase never runs, and neither does the
+visual-prompt phase (the reference-only motion template composes its own
+opening frame from the bibles and is never handed one). The storyboard preview
+still is kept: it fills the scene rail while the clip renders. It is the
+**default** for a new sequence; "Generate start frames" in the options opts
+back into the frame-based workflow.
+
+**Resolved per shot, never per sequence.** `sequences.generateStartFrames` is
+the default (off = reference-only); `shots.useStartFrame` overrides it (NULL =
+inherit). Always resolve
+via `usesStartFrame()` / `rendersReferenceOnly()` — `reference-only-is-per-shot.test.ts`
+fails any per-shot path reading `sequence.generateStartFrames` raw. It is NOT a
+render-only switch: it picks the motion-prompt template and folds into the
+motion hash, so flipping it re-stales that shot's motion prompt.
+
+**Two capability questions, don't mix them.** `supportsReferenceOnlyMotion` is
+the model-only floor (fal `reference-to-video`: Seedance 2.0 / 2.5, H3 Max);
+`referenceOnlyCapableWith(model, vias)` is its isomorphic via-aware form, which
+`createSequenceSchema` asks with `{ xai: true }` for **every** selected video
+model, not just the primary. Anywhere a team's keys are
+reachable, ask `canRenderReferenceOnly(model, credentials)` instead: Grok
+Imagine renders reference-only on the native xAI via, and the model-only
+question rejects it.
+
+The substance is the prompt. The image-to-video template's central rule is NO
+VISUAL REDUNDANCY — "the video model already sees these in the starting frame"
+— which inverts with no still: anything the prompt omits gets reinvented per
+shot. So reference-only has its own template
+(`phase/motion-prompt-reference-only-chat`) that composes the opening frame
+(framing, blocking, set, light, look, prop state) AND directs the motion, while
+still leaving identity to the bound sheets. It is also handed
+`<LOCATION_BIBLE>` / `<ELEMENT_BIBLE>`, which its sibling computes and silently
+drops. Two templates, not one conditional — they disagree on their most
+load-bearing rule.
+
+Gotchas: motion references gain the location sheet (ordered first — the budget
+is spent in order); `buildReferenceVideoPrompt` drops the "Use @Image1 as the
+starting frame" line and binds refs from slot 1; Ark `size` switches from
+`adaptive` to the sequence's ratio (nothing is left to adapt to, and a portrait
+sheet would silently render 9:16); billing prices the r2v endpoint per shot,
+since a batch can mix. The mode folds into the motion-prompt hash **only when
+true**, so no stored digest moves — and it is REQUIRED on
+`ShotPromptContextSequence` because omitting it would make every reference-only
+prompt read stale forever, silently. The manifest records
+`frameVersionId: null` for such a shot even when a still exists, and staleness
+compares against the same rule; `UpdateStalePlan.usesStartFrame` is required
+and never defaulted (`!undefined` is `true`, which would re-render a whole run
+with no start frames). **Provenance is stamped, never inferred:** every
+`VideoManifestEntry` and every motion `shot_prompt_versions` row carries a
+required `usesStartFrame` (a null `frameVersionId` is overloaded and the prompt
+hash is opaque). The column is NOT NULL with a default of true, which only
+labels rows that predate reference-only and were therefore image-to-video;
+pre-stamp manifests were backfilled from the shot's mode.
+
+Full rationale: `docs/architecture/reference-only-motion.md`.
+
+## Stop-at stages and continue (#1408)
+
+Generate asks how far to run. **One ordered list**, `GENERATION_STAGES` in
+`src/lib/generation/pipeline.ts` (script → references → images → motion →
+music), drives the Generate-dialog slider, the progress banner and the
+scene-list continue button. Casting is part of `script` (it emits the Script
+phase number); there is no separate stage.
+
+- **`stopAt` is the only word on how far a run goes.** It is chosen per click,
+  snapshotted onto `sequences.generationStopAt`, and REQUIRED on the storyboard
+  / analyze-script payloads (the launcher resolves it via `resolveStopAt`). The
+  legacy `autoGenerateMotion` / `autoGenerateMusic` columns are DERIVED from it
+  (`flagsFromStopAt`) and kept only for old readers — never set them on their
+  own, and never gate a phase on them inside a workflow.
+- **Checkpoint.** After each completed stage the workflow writes
+  `sequences.pipelineStage` + `sequences.generationCheckpoint`
+  (`persistProgress`). The checkpoint carries the in-memory DAG state the next
+  stage needs (bibles, matches, sheet rows, prompts) so a continue never
+  re-reads mutable D1 mid-run. A fresh (non-resume) storyboard run nulls both
+  alongside its shot wipe.
+- **Continue** (`continueGenerationFn`) only starts from `references` or
+  `images` (`ContinueStage`); Script is a fresh run, motion/music have batch
+  footers. It validates `startFrom ≤ stopAt` and that the checkpoint reaches
+  `startFrom` BEFORE reserving credits, reserves only the slice
+  (`estimateStoryboardPreflightCost({ startFrom, stopAt, referenceOnly })`),
+  and triggers storyboard with `resume: true` (no shot wipe, no poster). At
+  the trigger, `refreshCheckpointFromCast` re-snapshots the bibles, matches AND
+  sheet rows from D1 so edits made while stopped (recast, regenerated sheet)
+  survive — the checkpoint's LLM values would otherwise silently revert them.
+- **Ready email** only sends when the run reached motion: the send is a
+  one-shot claim per sequence.
+- Reference-only has no Images stop; `pipelineStage` is the only evidence of
+  References there (`artifactsFromSequenceState({ referenceOnly })`).
+- Known gap: scenes added/edited during a stop are NOT re-snapshotted (the
+  full `Scene` lives in `frame.metadata`); the staleness tooling covers them
+  after the fact.
+
 ## Frame System
 
 Frames are the core content unit — each represents one scene from script analysis.
@@ -236,7 +332,23 @@ frame.metadata = {
 
 Access via `frameService.getSceneData(frame)`, `getVisualPrompt(frame)`, `getMotionPrompt(frame)`, or directly: `frame.metadata.metadata.title`, `frame.metadata.prompts.visual.fullPrompt`. Storing the full scene lets us regenerate without re-analyzing the script and preserves variants for retries.
 
-## Native Grok (xAI)
+## Media vias: fal + BytePlus + xAI + Google
+
+fal is the default **via** for every image / video / audio model. Catalog **vendor** is who trained the model (ByteDance, Kling, …). **Seedance (video) and Seedream (image) also have a native BytePlus Ark via (#1157)** — see below. Grok has a native xAI via, and Gemini (chat + Omni Flash video) a native Google via. Everything after this paragraph in the fal section applies to the fal via only.
+
+### BytePlus Ark (Seedance + Seedream)
+
+Two vias, one catalog key. `IMAGE_TO_VIDEO_MODELS.seedance_v2_5` / `IMAGE_MODELS.seedream_v5` carry a `byteplusId` alongside their fal endpoint id. `seedance_v2` is fal Seedance 2.0 enterprise (no Ark via). fal has no enterprise 2.5. Claim is the Grok pattern (#1167): `isNativeBytePlus*Model` + live `ARK_API_KEY` (`claimBytePlusVia`), then `resolveMotionEndpoint(..., via)` / the image `switch (via)` — **BytePlus when Ark is configured AND the model is native AND the team is not on its own fal key**. BYOK fal stays on fal (their key, their bill). Stamp `via` on the job; poll MUST follow the stamp (default missing stamps to `'fal'`). Sequences store the model _key_, never the endpoint.
+
+- **Platform key only.** `team_api_keys` stays `'openrouter' | 'fal'` — there is no `'byteplus'` on `API_KEY_PROVIDERS` and no `resolveOptionalKey('byteplus')`.
+- **Ark is not fal-shaped**, so the fal codegen (`bun motion:codegen`, `MOTION_TRANSFORMS`) does not apply. `resolveMotionEndpoint` stays fal i2v vs reference-to-video. Ark Seedance with refs uses `buildBytePlusVideoRequest` — Ark **rejects frame roles mixed with reference roles** (a shot with cast refs sends the still AS a reference). Seedream's `2K` token is **square**, so non-square sizes must be spelled in pixels. Image `watermark` **defaults to true**.
+- **Pricing is a static card**, not `model_pricing` — BytePlus publishes no pricing API. `src/lib/ai/byteplus-pricing.ts` holds dated, advertised (NOT bill-verified) rates and is merged into the effective pricing map at read time, so a fresh deploy never bills $0. When Ark is configured, `applyBytePlusRouteAliases` points the fal endpoint ids at the Ark rate, which is why **no estimator or UI call site needs to know the via**. Video bills in tokens (÷1000 for the `1000 tokens` unit); images bill per image. Ark units set `recordFalUsage: false`.
+- **Ark quotas are per-ACCOUNT** (shared by every team), where fal's are per-key — so the backpressure is 429 classification + exponential backoff in `byteplus-rate-limit.ts` (`withBytePlusQuotaRetry` lives inside the byteplus via case), which deliberately does **not** consume the content-flag retry budget. Deliberately **not** a per-run fan-out cap: #1143 deleted that mechanism because it is per workflow RUN. Real admission control has to live where it can see the whole system. Every rejection emits a `byteplus_quota_backoff` PostHog event (`byteplus-observability.ts`) — un-deduped. Watch the `exhausted: true` rate: non-zero means it is time for a bounded queue in front of Ark (#891).
+- **Photorealistic faces (including generated ones).** Seedance 2.5/2.0 reject a public URL that _may contain a real person_ (`InputImageSensitiveContentDetected.PrivacyInformation`). Advanced Creation Rights unlock the **virtual** portrait library. Submit registers **every still** as `asset://` (`BYTEPLUS_ACCESS_KEY` / `BYTEPLUS_SECRET_KEY`) — start frame and all references. If ingest is missing or Ark still 400s, fal fallback remains. Do **not** fold it into the content-flag re-roll.
+- **Ark keys are region-scoped** and Seedance is served only from `ap-southeast`; an EU key fails at request time, not startup.
+- **E2E stays on fal.** `isBytePlusConfigured()` returns false under `E2E_TEST` unless `ARK_BASE_URL` is also set. Recording Ark fixtures needs a real Ark key.
+
+### Native Grok (xAI)
 
 Grok chat, image, and video go to `api.x.ai` via `@tanstack/ai-grok` instead of
 OpenRouter/fal when an xAI key resolves (team `xai` key → platform
@@ -253,47 +365,82 @@ keeps `llm-client`'s options object and the adapter agreeing on the route; and
 media job ids are via-scoped, so `MotionJobSubmission.via` pins polling to
 whoever the job was submitted to.
 
-## LLMTR Gateway
+### Native Google (Gemini)
 
-LLMTR (llmtr.com) is a Turkey-hosted, OpenAI-compatible LLM gateway that fronts
-Anthropic / OpenAI / Google / xAI / DeepSeek plus models it hosts in Turkey.
-It speaks OpenRouter's wire format **and** serves an OpenRouter-shaped
-`/v1/models`, so the OpenRouter adapter drives it with nothing but a
-`serverURL` swap — the same trick #895 plays with fal's OpenRouter proxy. It is
-a BYOK provider like any other: **Settings → API Keys → LLMTR**, or a
-platform-wide `LLMTR_API_KEY`.
+Same shape as native Grok: Gemini chat (`google/gemini-3.1-pro-preview`,
+`google/gemini-3-flash-preview`), **Nano Banana** stills (`nano_banana_2`,
+`nano_banana_2_lite`, `nano_banana_pro`), and **Gemini Omni Flash** video
+(`gemini_omni_flash`) go to Google's own Gemini API via `@tanstack/ai-gemini`
+when a Google key resolves (team `google` key → platform `GEMINI_API_KEY` →
+neither, which falls back to OpenRouter/fal unchanged). e2e never sets
+`GEMINI_API_KEY`, so fixtures keep exercising the fallback;
+`GEMINI_BASE_URL` is the aimock hook for the native path.
 
-`src/lib/ai/llmtr.ts` owns the two things that would otherwise break silently:
+`src/lib/ai/gemini-native.ts` owns registry id → Gemini model name plus the
+pricing, transcribed from ai.google.dev — Google reports tokens, never cost,
+so those tables ARE the bill (like xAI, native spend is **unaudited** by the
+#1069 drift detection). Omni Flash bills video output as tokens (5,792/s of
+720p at the $17.50/1M video-output rate ≈ $0.10/s). Nano Banana stills bill
+the advertised per-image equivalent (Lite 1K $0.0336; Flash 1K/2K/4K
+$0.067/$0.101/$0.151; Pro 1K/2K $0.134, 4K $0.24). Native ids are
+`gemini-3.1-flash-image`, `gemini-3.1-flash-lite-image`, `gemini-3-pro-image`;
+without a Google key the same catalog keys stay on fal
+(`fal-ai/nano-banana-2`, `google/nano-banana-2-lite`, `fal-ai/nano-banana-pro`).
+
+Omni Flash serves image-to-video, reference-to-video, and text-to-video from
+ONE Interactions-API model (`gemini-omni-1.1-flash`): images ride the
+generateVideo prompt as content blocks bound in the prompt text by
+`<IMAGE_REF_n>` tags (0-based; ≤7 images; 3–10s; 16:9/9:16 only), and
+`buildGeminiVideoRequest` pins the task via
+`generation_config.video_config.task` rather than letting the model infer it.
+Native submit MUST request `response_format.delivery: "uri"` (and must NOT
+pass top-level `duration`/`size` to `generateVideo` — the adapter overwrites
+`response_format` when those are set) so Google parks the MP4 on the Files
+API instead of inlining a multi-MB `data:` URL. Inline bytes miss Cloudflare
+Workflows' 1 MiB `step.do` cap; poll/upload download the Files URI with the
+Google key. Without a Google key the same model runs on fal's
+`fal-ai/gemini-omni-1.1-flash[/image-to-video|/reference-to-video]` endpoints.
+Data-URI stills must be decomposed to inline base64 on the native path —
+Google won't fetch `data:` as a URI. Chat vision (motion prompts) and
+native image refs must also inline stored stills: Google's
+`fileData.fileUri` HTTP fetch (CDN / fal URLs) sits on a separate quota
+that 429s while the same bytes as `inlineData` succeed.
+`toVisionImageSource(..., { inline: true })` is that path.
+
+### LLMTR Gateway
+
+LLMTR (llmtr.com) is a Turkey-hosted, OpenAI-compatible LLM gateway. It
+speaks OpenRouter's wire format **and** serves an OpenRouter-shaped
+`/v1/models`, so the OpenRouter adapter drives it with a `serverURL` swap —
+the same trick #895 plays with fal's OpenRouter proxy. UI: **Settings → API
+Keys → LLMTR**. Platform `LLMTR_API_KEY` is last-resort (after OpenRouter
+and fal) for models it carries. e2e never sets it.
+
+`src/lib/ai/llmtr.ts` pins the two silent-break traps:
 
 - **Slug drift.** LLMTR namespaces some vendors differently (`xai/` not
-  `x-ai/`, `zai/` not `z-ai/`, `mistral/` not `mistralai/`), so every routable
-  model is spelled out in `LLMTR_TEXT_MODELS`. A registry id absent from that
-  map is **not routable** — resolution skips the LLMTR key for it and the call
-  goes to OpenRouter/fal, rather than guessing at a near neighbour. Three are
-  absent today: `claude-opus-5-fast`, `deepseek-v3.2`, `seed-2.0-mini`.
-  `LLMTR_ONLY_MODEL_IDS` (the renamed four) widens the OpenRouter adapter's
-  model union via `extendAdapter`; a renamed id necessarily loses that
-  catalog's per-model metadata, including the combined tools+schema fast path.
-- **Unaudited spend.** LLMTR reports token counts but no per-request `cost`,
-  so `llmCostFromUsage` needs the resolved `via` to know to price the call from
-  `LLMTR_TEXT_RATES` — without it the call bills $0. Same shape and same caveat
-  as Grok above: this spend bypasses `model_pricing` and the hourly fal
-  reconcile, so the #1069 drift detection covers none of it. Re-read
-  https://llmtr.com/v1/models when the registry changes or a vendor re-prices.
+  `x-ai/`, `zai/` not `z-ai/`, `mistral/` not `mistralai/`). A registry id
+  absent from `LLMTR_TEXT_MODELS` is not routable — resolution skips the
+  LLMTR key rather than guessing a neighbour. `createAdapter` throws if
+  `via: 'llmtr'` meets an unmapped model (do not send that key to
+  OpenRouter).
+- **Unaudited spend.** LLMTR reports token counts but no per-request
+  `cost`, so `llmCostFromUsage` **must** get the resolved `via`. Omit it
+  and a Grok-on-LLMTR / Gemini-on-LLMTR call is priced from xAI / Google
+  rates; any other LLMTR model bills $0. Pass
+  `llmCostFromUsage(usage, model, llmKey.via)`. This spend bypasses
+  `model_pricing` and the #1069 fal reconcile. Re-read
+  https://llmtr.com/v1/models when the registry changes.
 
-Resolution order (`resolveLlmKey`): native xAI for Grok → **team LLMTR key
-when LLMTR carries the model** → team OpenRouter → team fal → platform
-(`LLMTR_API_KEY` for a carried model, else `OPENROUTER_KEY`, else `FAL_KEY`).
-A team that adds an LLMTR key chose that gateway deliberately, so it outranks
-their OpenRouter key. Two traps: key resolution and `createAdapter` must agree
-on routability (both ask `llmtrTextModel`), and `validateKey` cannot use
-`/v1/models` — it is public and answers 200 for a bogus key, so validation is a
-1-token completion on a $0 model.
+Resolution order (`resolveLlmKey`): native xAI (Grok) → native Google
+(Gemini) → **team LLMTR when `llmtrTextModel` maps** → team OpenRouter →
+team fal → platform (`OPENROUTER_KEY`, else `FAL_KEY`, else `LLMTR_API_KEY`
+if mapped). A team that adds an LLMTR key chose that gateway, so it
+outranks their OpenRouter key. `validateKey` cannot use `/v1/models` — it
+is public and answers 200 for a bogus key — so validation is a 1-token
+completion on a $0 model and requires `response.ok`.
 
-e2e never sets `LLMTR_API_KEY`, so fixtures keep exercising the OpenRouter/fal
-path unchanged.
-
-## Fal.ai Integration
+### Fal.ai Integration
 
 **Always check `/llms.txt` before updating models.** Machine-readable, authoritative param specs:
 
@@ -338,9 +485,9 @@ bun db:migrate   # Apply migrations to local.db
 ```
 
 - Schema in `src/lib/db/schema/` (Drizzle auto-infers types).
-- **NEVER** hand-write migration SQL.
+- **NEVER** hand-write migration SQL. The one exception is a pure data backfill/repair, which has no schema diff so drizzle-kit cannot emit it: generate the empty file with `bun db:generate --custom --name=<name>`, write the SQL into it, and say so in a comment header. It must be a migration and not a script — PR previews and Deploy-button clones only ever run `wrangler d1 migrations apply`.
 - **NEVER hand-write Better Auth tables.** Adding/changing a Better Auth plugin → run `bun auth:generate` (Better Auth CLI against the real config via `src/lib/auth/cli-config.ts`; emits `auth-schema.ts` at the root), port the new table(s) verbatim into `src/lib/db/schema/auth.ts` (same `snakeCase.table` style as the neighbours), then `bun db:generate`. Field names/types must match the plugin exactly or the adapter silently breaks.
-- **ULID** primary keys (not UUID).
+- **ULIDs are the ONLY id format in the database.** Every id is an app-generated ULID from `generateId()` — never a UUID, never a slug, never `lower(hex(randomblob(16)))` or any other SQL-minted value. SQL cannot produce a ULID, so a migration that has to insert a row **reuses its parent row's ULID as the new id**. Ids only have to be unique within their own table; the same ULID appearing as a `characters.id` and as that character's `character_sheet_variants.id` is fine, and it makes the migration deterministic and replay-safe. See `20260901073033_backfill_character_sheet_variants`.
 - **Typed JSONB:** `frame.metadata` typed as `Scene`.
 
 ### wrangler.jsonc env layout — READ BEFORE TOUCHING
@@ -375,7 +522,7 @@ This destroyed `team_members`, `session`, `account`, and `passkey` in production
 2. **Apply destructive migrations manually.** Snapshot first (`wrangler d1 export`), then apply via the D1 dashboard or `wrangler d1 ... --file=…`. Do not let the automated `wrangler d1 migrations apply` paths run it (mark it applied in `d1_migrations` afterwards so they skip it).
 3. **Avoid `ON DELETE CASCADE`** on FKs to long-lived parent tables (`user`, `teams`, `sequences`). Use `'restrict'` or `'no action'` and clean up children in app code.
 
-**Local guardrail:** `scripts/check-migrations.ts` runs as a Lefthook pre-commit step on staged `drizzle/migrations/**/*.sql`. It flags `DROP TABLE`, `TRUNCATE`, `DELETE FROM`, `ALTER TABLE … DROP COLUMN`, and annotates each `DROP TABLE` with the count of inbound `ON DELETE CASCADE` FKs. Bypass for a manually-applied migration: `bun scripts/check-migrations.ts --allow-destructive`.
+**Local guardrail:** `scripts/check-migrations.ts` runs as a Lefthook pre-commit step on staged `drizzle/migrations/**/*.sql`. It flags `DROP TABLE`, `TRUNCATE`, `DELETE FROM`, `ALTER TABLE … DROP COLUMN`, and annotates each `DROP TABLE` with the count of inbound `ON DELETE CASCADE` FKs. Bypass for a manually-applied migration: `bun scripts/check-migrations.ts --allow-destructive`. Note `--allow-destructive` is an argument to the SCRIPT — the Lefthook step (`lefthook.yml`) invokes it without one, so to land an intentionally destructive migration commit with `LEFTHOOK_EXCLUDE=migration-safety git commit`, NOT `--no-verify` (which also skips typecheck, lint, format and knip). A native `ALTER TABLE … DROP COLUMN` is flagged but is exactly the refactor the check asks for — it rebuilds no table, so #612 does not apply.
 
 **Schema-drift trap (#898):** drizzle-kit only diffs **top-level exported** tables — removing a table's named export from `src/lib/db/schema/index.ts` (e.g. in a dead-code sweep) makes the next `db:generate` emit `DROP TABLE` for it. Keep every table individually exported. And never change a column's SQL `.default()` without generating the migration in the same PR — a default change forces a full table rebuild (see trap above); prefer `$defaultFn()` for app-level defaults with no DDL impact.
 

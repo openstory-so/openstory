@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { copyTextToClipboard } from './clipboard';
+import { copyImageToClipboard, copyTextToClipboard } from './clipboard';
 
 /**
  * Unit tests run in the `node` environment, so both `navigator.clipboard` and
@@ -89,5 +89,89 @@ describe('copyTextToClipboard', () => {
     stubDocument({});
 
     expect(await copyTextToClipboard('hello')).toBe(false);
+  });
+});
+
+class FakeClipboardItem {
+  items: Record<string, Blob | Promise<Blob>>;
+  constructor(items: Record<string, Blob | Promise<Blob>>) {
+    this.items = items;
+  }
+}
+
+function writtenItem(
+  write: ReturnType<typeof vi.fn>,
+  call: number
+): FakeClipboardItem {
+  const item = write.mock.calls[call]?.[0]?.[0];
+  if (!(item instanceof FakeClipboardItem)) {
+    throw new Error(
+      `clipboard.write call ${call} did not receive a ClipboardItem`
+    );
+  }
+  return item;
+}
+
+describe('copyImageToClipboard', () => {
+  it('writes a PNG blob via clipboard.write', async () => {
+    const png = new Blob(['png-bytes'], { type: 'image/png' });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        blob: async () => png,
+      })
+    );
+    const write = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal('ClipboardItem', FakeClipboardItem);
+    vi.stubGlobal('navigator', { clipboard: { write } });
+
+    expect(await copyImageToClipboard('/r2/still.png')).toBe(true);
+    expect(write).toHaveBeenCalledOnce();
+    const item = writtenItem(write, 0);
+    expect(item.items['image/png']).toBeInstanceOf(Promise);
+    await expect(item.items['image/png']).resolves.toBe(png);
+  });
+
+  it('retries with a resolved blob when Promise ClipboardItem is rejected', async () => {
+    const png = new Blob(['png-bytes'], { type: 'image/png' });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        blob: async () => png,
+      })
+    );
+    const write = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('promises not supported'))
+      .mockResolvedValueOnce(undefined);
+    vi.stubGlobal('ClipboardItem', FakeClipboardItem);
+    vi.stubGlobal('navigator', { clipboard: { write } });
+
+    expect(await copyImageToClipboard('/r2/still.png')).toBe(true);
+    expect(write).toHaveBeenCalledTimes(2);
+    expect(writtenItem(write, 1).items['image/png']).toBe(png);
+  });
+
+  it('reports failure when clipboard.write is unavailable', async () => {
+    vi.stubGlobal('navigator', { clipboard: { writeText: vi.fn() } });
+    vi.stubGlobal('ClipboardItem', class {});
+    expect(await copyImageToClipboard('/r2/still.png')).toBe(false);
+  });
+
+  it('reports failure when the image cannot be fetched', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({ ok: false, status: 404 })
+    );
+    const write = vi.fn().mockRejectedValue(new Error('item failed'));
+    class FakeClipboardItem {
+      constructor(public items: Record<string, Blob | Promise<Blob>>) {}
+    }
+    vi.stubGlobal('ClipboardItem', FakeClipboardItem);
+    vi.stubGlobal('navigator', { clipboard: { write } });
+
+    expect(await copyImageToClipboard('/r2/missing.png')).toBe(false);
   });
 });

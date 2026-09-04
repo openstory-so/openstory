@@ -7,7 +7,7 @@
  */
 
 import { AutoTopUpDialog } from '@/components/billing/auto-topup-dialog';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -28,7 +28,11 @@ import {
 } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
-import { getTransactionsFn, updateAutoTopUpFn } from '@/functions/billing';
+import {
+  getTransactionsFn,
+  reportCheckoutCanceledFn,
+  updateAutoTopUpFn,
+} from '@/functions/billing';
 import { openAddCreditsDialog } from '@/hooks/use-add-credits-dialog';
 import { clearBalanceFlash } from '@/hooks/use-balance-flash';
 import {
@@ -40,7 +44,13 @@ import { useShowCosts } from '@/hooks/use-show-costs';
 import { MIN_TOPUP_AMOUNT_USD } from '@/lib/billing/constants';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
-import { CreditCard, ExternalLink, RefreshCw, Wallet } from 'lucide-react';
+import {
+  AlertCircle,
+  CreditCard,
+  ExternalLink,
+  RefreshCw,
+  Wallet,
+} from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
@@ -48,6 +58,7 @@ import { toast } from 'sonner';
 type BillingSettingsProps = {
   success?: boolean;
   canceled?: boolean;
+  sessionId?: string;
 };
 
 type SectionHeaderProps = {
@@ -87,7 +98,11 @@ function getErrorMessage(
 
 const RETURN_KEY = 'openstory:billing-return';
 
-export function BillingSettings({ success, canceled }: BillingSettingsProps) {
+export function BillingSettings({
+  success,
+  canceled,
+  sessionId,
+}: BillingSettingsProps) {
   const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
   const [autoTopUpPrompt, setAutoTopUpPrompt] = useState<number | null>(null);
@@ -101,7 +116,12 @@ export function BillingSettings({ success, canceled }: BillingSettingsProps) {
     checkoutHandledRef.current = true;
 
     // Clear pending flash marker on cancel
-    if (canceled) clearBalanceFlash();
+    if (canceled) {
+      clearBalanceFlash();
+      if (sessionId) {
+        void reportCheckoutCanceledFn({ data: { sessionId } });
+      }
+    }
 
     // Refetch balance + show return toast on success
     if (success) {
@@ -134,7 +154,7 @@ export function BillingSettings({ success, canceled }: BillingSettingsProps) {
       window.history.replaceState({}, '', '/credits');
     }, 5000);
     return () => clearTimeout(timer);
-  }, [success, canceled, queryClient, navigate]);
+  }, [success, canceled, sessionId, queryClient, navigate]);
 
   const {
     data: balanceData,
@@ -257,7 +277,11 @@ export function BillingSettings({ success, canceled }: BillingSettingsProps) {
             description="Pay-as-you-go wallet for AI generation at provider cost"
             action={
               stripeEnabled ? (
-                <Button onClick={openAddCreditsDialog}>Add credits</Button>
+                <Button
+                  onClick={() => openAddCreditsDialog('billing_settings')}
+                >
+                  Add credits
+                </Button>
               ) : undefined
             }
           />
@@ -267,7 +291,10 @@ export function BillingSettings({ success, canceled }: BillingSettingsProps) {
             <Skeleton className="h-12 w-32" />
           ) : (
             <p className="text-4xl font-bold tabular-nums">
-              ${balanceData?.balance.toFixed(2) ?? '0.00'}
+              $
+              {(balanceData?.availableUsd ?? balanceData?.balance)?.toFixed(
+                2
+              ) ?? '0.00'}
             </p>
           )}
           <ShowCostsToggle />
@@ -314,7 +341,7 @@ export function BillingSettings({ success, canceled }: BillingSettingsProps) {
                 }
               />
             </CardHeader>
-            <CardContent>
+            <CardContent className="flex flex-col gap-3">
               {balanceLoading ? (
                 <Skeleton className="h-5 w-64" />
               ) : !balanceData?.hasPaymentMethod ? (
@@ -330,6 +357,16 @@ export function BillingSettings({ success, canceled }: BillingSettingsProps) {
                 </p>
               ) : (
                 <p className="text-sm text-muted-foreground">Off</p>
+              )}
+              {balanceData?.autoTopUp.lastFailure && (
+                <Alert variant="destructive">
+                  <AlertCircle />
+                  <AlertTitle>Auto top-up failed — update your card</AlertTitle>
+                  <AlertDescription>
+                    We paused auto-reload after your card was declined. Add a
+                    working payment method to resume.
+                  </AlertDescription>
+                </Alert>
               )}
             </CardContent>
           </Card>

@@ -2,18 +2,31 @@
  * Workflow credit deduction. Skips BYOK teams; warns and skips (rather than
  * throwing) on insufficient credits, since the work is already done.
  *
+ * When the payload carries a `reservationId` (run envelope, #1310), capture
+ * posts usage against that hold. Otherwise `tryDeductCredits` charges posted
+ * balance. A missing hold or a short capture reports the unbilled remainder.
+ *
  * Pricing observations are deliberately NOT recorded here: call sites guard
  * deduction behind `cost > 0 && !usedOwnKey`, so a recorder inside this
  * function would never see the BYOK/unpriced generations whose units we most
  * need (#1069). Use `recordFalUsage` in its own workflow step instead.
  */
 
+import { isBytePlusPricedModel } from '@/lib/ai/byteplus-pricing';
+import {
+  isNativeGeminiImageEndpoint,
+  NATIVE_GEMINI_VIDEO_MODEL,
+} from '@/lib/ai/gemini-native';
 import {
   isNativeGrokImageEndpoint,
   NATIVE_GROK_VIDEO_MODEL,
 } from '@/lib/ai/grok-native';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
-import { reportMissingBillingCost } from './billing-observability';
+import type { ModelPricingProvider } from '@/lib/db/schema/model-pricing';
+import {
+  reportMissingBillingCost,
+  reportSkippedDeduction,
+} from './billing-observability';
 import { type Microdollars, microsToUsd, ZERO_MICROS } from './money';
 
 import { getLogger } from '@/lib/observability/logger';
@@ -37,12 +50,42 @@ type WorkflowDeductionOpts = {
   metadata?: Record<string, unknown>;
   /** Workflow name for the logger.warn prefix (e.g., "VariantWorkflow") */
   workflowName?: string;
+  /** Run envelope created at the HTTP trigger. Capture against it when set. */
+  reservationId?: string;
 };
+
+function logPrefix(workflowName: string | undefined): string {
+  return workflowName ? `[${workflowName}]` : '[Workflow]';
+}
+
+function skipDeduction(
+  scopedDb: WorkflowScopedDb,
+  opts: WorkflowDeductionOpts
+): void {
+  const prefix = logPrefix(opts.workflowName);
+  logger.warn(
+    `${prefix} Insufficient credits (cost: $${microsToUsd(opts.costMicros).toFixed(4)}), skipping deduction`
+  );
+  reportSkippedDeduction({
+    teamId: scopedDb.teamId,
+    workflowName: opts.workflowName,
+    description: opts.description,
+    costMicros: opts.costMicros,
+    idempotencyKey: opts.idempotencyKey,
+    metadata: opts.metadata,
+  });
+  void scopedDb.billing.checkAutoTopUp().catch((err) => {
+    logger.error('Failed:', { err });
+  });
+}
 
 /**
  * Deduct credits for a completed workflow generation. A `costMicros <= 0` is
  * reported as a pricing bug, not treated as a free call; insufficient credits
  * warn, skip, and fire an auto-top-up attempt.
+ *
+ * When `reservationId` is set, capture against that envelope. Otherwise
+ * atomic deduct of posted balance.
  */
 export async function deductWorkflowCredits(
   opts: WorkflowDeductionOpts
@@ -58,30 +101,42 @@ export async function deductWorkflowCredits(
       workflowName: opts.workflowName,
       description: opts.description,
       metadata: opts.metadata,
+      teamId: scopedDb.teamId,
     });
     return;
   }
 
-  const canAfford = await scopedDb.liveRead.billing.hasEnoughCredits(
-    opts.costMicros
-  );
-  if (!canAfford) {
-    const prefix = opts.workflowName ? `[${opts.workflowName}]` : '[Workflow]';
-    logger.warn(
-      `${prefix} Insufficient credits (cost: $${microsToUsd(opts.costMicros).toFixed(4)}), skipping deduction`
+  if (opts.reservationId) {
+    const captured = await scopedDb.billing.captureReservation(
+      opts.reservationId,
+      opts.costMicros,
+      {
+        description: opts.description,
+        metadata: opts.metadata,
+        idempotencyKey: opts.idempotencyKey,
+      }
     );
-    // Still attempt auto-top-up so balance can recover
-    void scopedDb.liveRead.billing.checkAutoTopUp().catch((err) => {
-      logger.error('Failed:', { err });
-    });
+    if (!captured.ok) {
+      skipDeduction(scopedDb, opts);
+      return;
+    }
+    if (captured.skippedDeltaMicros) {
+      skipDeduction(scopedDb, {
+        ...opts,
+        costMicros: captured.skippedDeltaMicros,
+      });
+    }
     return;
   }
 
-  await scopedDb.billing.deductCredits(opts.costMicros, {
+  const debit = await scopedDb.billing.tryDeductCredits(opts.costMicros, {
     description: opts.description,
     metadata: opts.metadata,
     idempotencyKey: opts.idempotencyKey,
   });
+  if (!debit.ok) {
+    skipDeduction(scopedDb, opts);
+  }
 }
 
 /**
@@ -108,6 +163,17 @@ export type FalUsage = {
    * record, the per-request billed cost the hourly reconcile audits against.
    */
   requestId?: string;
+  /**
+   * Which API billed this (#1157). Observations are keyed by
+   * (provider, endpointId), so a BytePlus sample filed under 'fal' would
+   * pollute the fal endpoint's median with a different denomination.
+   *
+   * Named `billingProvider`, not `provider`: callers spread whole generation
+   * metadata objects in here, and those already carry a `provider` meaning the
+   * LAB ("ElevenLabs", "ByteDance"). A bare `provider` would capture it
+   * silently and file every music sample under a nonexistent provider.
+   */
+  billingProvider?: ModelPricingProvider;
 };
 
 /**
@@ -121,6 +187,7 @@ function falUsageMetadata(metadata: FalUsage): FalUsage {
     unitsBilled: metadata.unitsBilled,
     numImages: metadata.numImages,
     requestId: metadata.requestId,
+    billingProvider: metadata.billingProvider,
   };
 }
 
@@ -138,11 +205,15 @@ export async function recordFalUsage(
   // Observations are platform-global telemetry with no teamId (see
   // model_usage_observations), but the write still needs a db handle.
   if (!scopedDb) return;
-  // Native xAI units are a different denomination — sampling them under the
-  // fal endpoint id would corrupt the median the pricing cron reads (#1167).
+  // Native xAI / Google / Ark units are a different denomination — sampling
+  // them under a fal endpoint id would corrupt the median the pricing cron
+  // reads (#1167 / #1157 / #1069).
   if (
     isNativeGrokImageEndpoint(usage.endpointId) ||
-    usage.endpointId === NATIVE_GROK_VIDEO_MODEL
+    usage.endpointId === NATIVE_GROK_VIDEO_MODEL ||
+    isNativeGeminiImageEndpoint(usage.endpointId) ||
+    usage.endpointId === NATIVE_GEMINI_VIDEO_MODEL ||
+    isBytePlusPricedModel(usage.endpointId)
   ) {
     return;
   }
@@ -163,7 +234,7 @@ export async function recordFalUsage(
     return;
   }
   await scopedDb.modelUsage.record({
-    provider: 'fal',
+    provider: usage.billingProvider ?? 'fal',
     endpointId: usage.endpointId,
     unitsBilled,
     numImages: usage.numImages,

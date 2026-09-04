@@ -1,0 +1,1 @@
+ALTER TABLE `shots` ADD `use_start_frame` integer;

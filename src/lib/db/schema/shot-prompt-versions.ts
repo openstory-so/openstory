@@ -55,6 +55,10 @@ const PROMPT_VARIANT_SOURCES = [
   'user-edit',
   'regenerated',
   'restored',
+  // Auto-rewritten after a provider content-checker rejection (#1272).
+  // Kept in lockstep with PromptVersionSource — visual history is listed
+  // through this union.
+  'softened',
 ] as const;
 export type PromptVariantSource = (typeof PROMPT_VARIANT_SOURCES)[number];
 
@@ -95,6 +99,16 @@ export const shotPromptVersions = snakeCase.table(
     }).$type<MotionAudio>(),
 
     source: text().$type<PromptVariantSource>().notNull(),
+
+    // Motion-only: which template authored this text — true for the
+    // image-to-video prompt ("the model already sees the still"), false for
+    // the reference-only one (composes the opening frame itself). The two
+    // disagree on their central rule, so a prompt is only correct in the mode
+    // it was written for. Stamped for legibility: `inputHash` folds the mode
+    // in but is opaque. The SQL default only labels rows that predate the
+    // stamp, all of which were written before reference-only shipped and so
+    // were image-to-video; every write input requires an explicit value.
+    usesStartFrame: integer({ mode: 'boolean' }).default(true).notNull(),
 
     // SHA-256 of the upstream context that produced an AI prompt; null for
     // user-edits since they have no upstream input surface.

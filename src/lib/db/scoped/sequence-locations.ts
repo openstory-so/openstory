@@ -3,52 +3,82 @@
  * Location CRUD, reference images, and shot-location matching.
  */
 
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, getTableColumns, inArray, isNull, sql } from 'drizzle-orm';
 import type { Database } from '@/lib/db/client';
 import type {
   Shot,
   NewSequenceLocation,
   ReferenceStatus,
+  SequenceLocationWithReference,
   SequenceLocation,
 } from '@/lib/db/schema';
-import { shots, sequenceLocations, sequences } from '@/lib/db/schema';
+import {
+  locationSheetVariants,
+  shots,
+  sequenceLocations,
+  sequences,
+} from '@/lib/db/schema';
 import {
   loadSceneContextBySequenceFromDb,
   resolveSceneForShot,
 } from '@/lib/scenes/scene-script';
+import { typedEntries } from '@/lib/utils/typed-object';
+import { matchLocationsToScene } from '@/lib/workflows/scene-matching';
+import { createLocationSheetVariantsMethods } from './location-sheet-variants';
+import { buildEventInsert } from './sequence-events';
+
+/**
+ * The user-editable location bible fields (#1108 Phase 2). Casting
+ * (`libraryLocationId`), reference output, and first-mention provenance are
+ * owned by dedicated paths. Edits re-stale the location sheet and the prompts
+ * that project them — purely by hash derivation.
+ */
+export type LocationBibleUpdate = Partial<
+  Pick<
+    SequenceLocationWithReference,
+    | 'name'
+    | 'type'
+    | 'timeOfDay'
+    | 'description'
+    | 'architecturalStyle'
+    | 'keyFeatures'
+    | 'colorPalette'
+    | 'lightingSetup'
+    | 'ambiance'
+    | 'consistencyTag'
+  >
+>;
 
 // ============================================================================
 // Pure utility functions (exported separately, not in factory)
 // ============================================================================
 
-/**
- * Match a location to a scene's environmentTag
- */
-export function locationMatchesTag(
-  location: SequenceLocation,
-  environmentTag: string
-): boolean {
-  if (!environmentTag) return false;
-
-  const consistencyTag = (location.consistencyTag ?? '').toLowerCase();
-  const locName = location.name.toLowerCase();
-  const locId = location.locationId.toLowerCase();
-  const envTagLower = environmentTag.toLowerCase();
-
-  // Check if any of the location identifiers match the environment tag
-  if (consistencyTag && envTagLower.includes(consistencyTag)) return true;
-  if (envTagLower.includes(locName)) return true;
-  if (envTagLower.includes(locId)) return true;
-
-  // Also check if location name contains the env tag (reverse match)
-  if (locName.includes(envTagLower)) return true;
-
-  return false;
-}
-
 // ============================================================================
 // Factory function
 // ============================================================================
+
+/**
+ * The location's live reference version (#1419 PR B) — the sequence-location
+ * twin of `characters.ts`'s `liveSheetVersionId`; see that file for why the
+ * pointer is deliberately left NULL on backfilled rows.
+ *
+ * Scoped to `parent_type = 'sequence_location'` because
+ * `location_sheet_variants` also services team-level `location_library` rows.
+ */
+const liveReferenceVersionId = sql`COALESCE(${sequenceLocations.selectedReferenceVersionId}, ${sequenceLocations.id})`;
+
+/**
+ * Location columns with the four reference mirrors resolved from that live
+ * version. `referenceStatus` / `referenceError` stay on the row — they are
+ * generation lifecycle, not version mirrors (see the characters twin).
+ */
+const locationsWithLiveReference = {
+  ...getTableColumns(sequenceLocations),
+  referenceImageUrl: locationSheetVariants.url,
+  referenceImagePath: locationSheetVariants.storagePath,
+  referenceGeneratedAt: locationSheetVariants.generatedAt,
+  referenceInputHash: locationSheetVariants.inputHash,
+};
 
 export function createSequenceLocationsMethods(db: Database) {
   // Private update helper
@@ -70,58 +100,75 @@ export function createSequenceLocationsMethods(db: Database) {
     return location;
   };
 
+  /** `select(locationsWithLiveReference)` + the join it depends on. */
+  const selectWithLiveReference = () =>
+    db
+      .select(locationsWithLiveReference)
+      .from(sequenceLocations)
+      .leftJoin(
+        locationSheetVariants,
+        and(
+          eq(locationSheetVariants.parentType, 'sequence_location'),
+          eq(locationSheetVariants.id, liveReferenceVersionId)
+        )
+      );
+
   return {
-    getById: async (id: string): Promise<SequenceLocation | null> => {
-      const result = await db
-        .select()
-        .from(sequenceLocations)
-        .where(eq(sequenceLocations.id, id));
+    getById: async (
+      id: string
+    ): Promise<SequenceLocationWithReference | null> => {
+      const result = await selectWithLiveReference().where(
+        eq(sequenceLocations.id, id)
+      );
       return result[0] ?? null;
     },
 
     getByLocationId: async (
       sequenceId: string,
       locationId: string
-    ): Promise<SequenceLocation | null> => {
-      const result = await db
-        .select()
-        .from(sequenceLocations)
-        .where(
-          and(
-            eq(sequenceLocations.sequenceId, sequenceId),
-            eq(sequenceLocations.locationId, locationId)
-          )
-        );
+    ): Promise<SequenceLocationWithReference | null> => {
+      const result = await selectWithLiveReference().where(
+        and(
+          eq(sequenceLocations.sequenceId, sequenceId),
+          eq(sequenceLocations.locationId, locationId)
+        )
+      );
       return result[0] ?? null;
     },
 
-    list: async (sequenceId: string): Promise<SequenceLocation[]> => {
-      return await db
-        .select()
-        .from(sequenceLocations)
-        .where(eq(sequenceLocations.sequenceId, sequenceId));
+    // Default lists exclude soft-deleted rows (#1108) — see the characters
+    // twin for rationale. Id-addressed reads (getById/getByIds) still return
+    // deleted rows so restore can reach them.
+    list: async (
+      sequenceId: string
+    ): Promise<SequenceLocationWithReference[]> => {
+      return await selectWithLiveReference().where(
+        and(
+          eq(sequenceLocations.sequenceId, sequenceId),
+          isNull(sequenceLocations.deletedAt)
+        )
+      );
     },
 
     listWithReferences: async (
       sequenceId: string
-    ): Promise<SequenceLocation[]> => {
-      return await db
-        .select()
-        .from(sequenceLocations)
-        .where(
-          and(
-            eq(sequenceLocations.sequenceId, sequenceId),
-            eq(sequenceLocations.referenceStatus, 'completed')
-          )
-        );
+    ): Promise<SequenceLocationWithReference[]> => {
+      return await selectWithLiveReference().where(
+        and(
+          eq(sequenceLocations.sequenceId, sequenceId),
+          eq(sequenceLocations.referenceStatus, 'completed'),
+          isNull(sequenceLocations.deletedAt)
+        )
+      );
     },
 
-    getByIds: async (ids: string[]): Promise<SequenceLocation[]> => {
+    getByIds: async (
+      ids: string[]
+    ): Promise<SequenceLocationWithReference[]> => {
       if (ids.length === 0) return [];
-      return await db
-        .select()
-        .from(sequenceLocations)
-        .where(inArray(sequenceLocations.id, ids));
+      return await selectWithLiveReference().where(
+        inArray(sequenceLocations.id, ids)
+      );
     },
 
     create: async (data: NewSequenceLocation): Promise<SequenceLocation> => {
@@ -142,10 +189,12 @@ export function createSequenceLocationsMethods(db: Database) {
             lightingSetup: data.lightingSetup,
             ambiance: data.ambiance,
             consistencyTag: data.consistencyTag,
-            referenceImageUrl: data.referenceImageUrl,
-            referenceImagePath: data.referenceImagePath,
+            // Reference OUTPUT is not re-written here — see the characters
+            // twin (#1419).
             referenceStatus: data.referenceStatus,
-            referenceGeneratedAt: data.referenceGeneratedAt,
+            // A re-analysis re-extracting a soft-deleted location revives it
+            // (#1108) — mirrors the characters upsert.
+            deletedAt: null,
             updatedAt: new Date(),
           },
         })
@@ -199,6 +248,7 @@ export function createSequenceLocationsMethods(db: Database) {
               firstMentionSceneId: sql.raw(`excluded."first_mention_scene_id"`),
               firstMentionText: sql.raw(`excluded."first_mention_text"`),
               firstMentionLine: sql.raw(`excluded."first_mention_line"`),
+              deletedAt: null,
               updatedAt: new Date(),
             },
           })
@@ -235,7 +285,6 @@ export function createSequenceLocationsMethods(db: Database) {
       return await update(id, {
         referenceStatus: status,
         referenceError: error ?? null,
-        ...(status === 'completed' && { referenceGeneratedAt: new Date() }),
       });
     },
 
@@ -243,52 +292,149 @@ export function createSequenceLocationsMethods(db: Database) {
       id: string,
       imageUrl: string,
       imagePath: string,
-      inputHash: string | null = null
+      inputHash: string | null = null,
+      opts?: { model?: string; workflowRunId?: string | null }
     ): Promise<SequenceLocation> => {
-      return await update(id, {
-        referenceImageUrl: imageUrl,
-        referenceImagePath: imagePath,
-        referenceStatus: 'completed',
-        referenceGeneratedAt: new Date(),
-        referenceError: null,
-        referenceInputHash: inputHash,
+      const { location } = await createLocationSheetVariantsMethods(
+        db
+      ).applyConvergent({
+        locationDbId: id,
+        url: imageUrl,
+        storagePath: imagePath,
+        inputHash,
+        model: opts?.model ?? 'unknown',
+        workflowRunId: opts?.workflowRunId,
       });
-    },
-
-    /**
-     * True iff `currentHash` differs from the stored `referenceInputHash`.
-     * Returns false when no hash has been recorded yet (legacy artifact, no
-     * opinion). Mirrors `characters.isStale` and `locationLibrary.isStale`.
-     */
-    isStale: async (
-      locationId: string,
-      currentHash: string
-    ): Promise<boolean> => {
-      const result = await db
-        .select({ hash: sequenceLocations.referenceInputHash })
-        .from(sequenceLocations)
-        .where(eq(sequenceLocations.id, locationId));
-      const row = result[0];
-      if (!row) {
-        throw new Error(`SequenceLocation ${locationId} not found`);
-      }
-      const stored = row.hash;
-      if (stored === null) return false;
-      return currentHash !== stored;
+      return location;
     },
 
     getNeedingReferences: async (
       sequenceId: string
-    ): Promise<SequenceLocation[]> => {
-      return await db
+    ): Promise<SequenceLocationWithReference[]> => {
+      return await selectWithLiveReference().where(
+        and(
+          eq(sequenceLocations.sequenceId, sequenceId),
+          inArray(sequenceLocations.referenceStatus, ['pending', 'failed']),
+          isNull(sequenceLocations.deletedAt)
+        )
+      );
+    },
+
+    /**
+     * User edit of the bible fields (#1108 Phase 2) — the locations twin of
+     * `characters.updateBible`: update + `location.updated` event (with prev
+     * values for undo/audit) in one batch; staleness flips by derivation.
+     */
+    updateBible: async (
+      id: string,
+      data: LocationBibleUpdate,
+      opts: { actorId: string | null }
+    ): Promise<SequenceLocation> => {
+      const [existing] = await db
         .select()
         .from(sequenceLocations)
-        .where(
-          and(
-            eq(sequenceLocations.sequenceId, sequenceId),
-            inArray(sequenceLocations.referenceStatus, ['pending', 'failed'])
-          )
-        );
+        .where(eq(sequenceLocations.id, id));
+      if (!existing) {
+        throw new Error(`SequenceLocation ${id} not found`);
+      }
+      const prev: Record<string, string | null> = {};
+      for (const [key, value] of typedEntries(data)) {
+        if (value === undefined) continue;
+        prev[key] = existing[key] ?? null;
+      }
+      const [updatedRows] = await db.batch([
+        db
+          .update(sequenceLocations)
+          .set({ ...data, updatedAt: new Date() })
+          .where(eq(sequenceLocations.id, id))
+          .returning(),
+        buildEventInsert(db, {
+          sequenceId: existing.sequenceId,
+          actorId: opts.actorId,
+          kind: 'location.updated',
+          targetType: 'location',
+          targetId: id,
+          summary: `Edited location ${data.name ?? existing.name}`,
+          data: { prevState: prev },
+        }),
+      ]);
+      const updated = updatedRows[0];
+      if (!updated) {
+        throw new Error(`SequenceLocation ${id} disappeared during update`);
+      }
+      return updated;
+    },
+
+    /**
+     * Soft-remove from the sequence (undoable) — the locations twin of
+     * `characters.softDelete`. Scene continuity tags are NOT touched.
+     * Returns the timestamp for the toast Undo; idempotent.
+     */
+    softDelete: async (
+      id: string,
+      opts: { actorId: string | null }
+    ): Promise<Date> => {
+      const [existing] = await db
+        .select()
+        .from(sequenceLocations)
+        .where(eq(sequenceLocations.id, id));
+      if (!existing) {
+        throw new Error(`SequenceLocation ${id} not found`);
+      }
+      if (existing.deletedAt) return existing.deletedAt;
+      const deletedAt = new Date();
+      await db.batch([
+        db
+          .update(sequenceLocations)
+          .set({ deletedAt, updatedAt: deletedAt })
+          .where(eq(sequenceLocations.id, id)),
+        buildEventInsert(db, {
+          sequenceId: existing.sequenceId,
+          actorId: opts.actorId,
+          kind: 'location.deleted',
+          targetType: 'location',
+          targetId: id,
+          summary: `Removed location ${existing.name}`,
+          data: { name: existing.name, locationId: existing.locationId },
+        }),
+      ]);
+      return deletedAt;
+    },
+
+    /** Undo a soft delete (clears `deletedAt`), with a matching event. */
+    restore: async (
+      id: string,
+      opts: { actorId: string | null }
+    ): Promise<SequenceLocation> => {
+      const [existing] = await db
+        .select()
+        .from(sequenceLocations)
+        .where(eq(sequenceLocations.id, id));
+      if (!existing) {
+        throw new Error(`SequenceLocation ${id} not found`);
+      }
+      const now = new Date();
+      const [restoredRows] = await db.batch([
+        db
+          .update(sequenceLocations)
+          .set({ deletedAt: null, updatedAt: now })
+          .where(eq(sequenceLocations.id, id))
+          .returning(),
+        buildEventInsert(db, {
+          sequenceId: existing.sequenceId,
+          actorId: opts.actorId,
+          kind: 'location.restored',
+          targetType: 'location',
+          targetId: id,
+          summary: `Restored location ${existing.name}`,
+          data: { name: existing.name },
+        }),
+      ]);
+      const restored = restoredRows[0];
+      if (!restored) {
+        throw new Error(`SequenceLocation ${id} disappeared during restore`);
+      }
+      return restored;
     },
 
     getShotsForLocation: async (
@@ -310,19 +456,25 @@ export function createSequenceLocationsMethods(db: Database) {
         db
           .select()
           .from(shots)
-          .where(eq(shots.sequenceId, sequenceId)) as Promise<Shot[]>,
+          .where(
+            and(eq(shots.sequenceId, sequenceId), isNull(shots.deletedAt))
+          ) as Promise<Shot[]>,
         loadSceneContextBySequenceFromDb(db, sequenceId),
       ]);
 
       // Filter shots that are at this location
       return allShots.filter((shot) => {
         const scene = resolveSceneForShot(shot, sceneContext).scene;
-        const environmentTag = scene?.continuity?.environmentTag ?? '';
-        const sceneLocation = scene?.metadata?.location ?? '';
-
+        // Same matcher the render path uses, so "shots at this location"
+        // can't disagree with which shots actually bind its sheet — a prose
+        // script names its set only in the scene text.
         return (
-          (environmentTag && locationMatchesTag(location, environmentTag)) ||
-          (sceneLocation && locationMatchesTag(location, sceneLocation))
+          matchLocationsToScene(
+            [location],
+            scene?.continuity?.environmentTag ?? '',
+            scene?.metadata?.location ?? '',
+            scene?.originalScript?.extract
+          ).length > 0
         );
       });
     },
@@ -346,7 +498,9 @@ export function createSequenceLocationsMethods(db: Database) {
         db
           .select()
           .from(shots)
-          .where(eq(shots.sequenceId, sequenceId)) as Promise<Shot[]>,
+          .where(
+            and(eq(shots.sequenceId, sequenceId), isNull(shots.deletedAt))
+          ) as Promise<Shot[]>,
         loadSceneContextBySequenceFromDb(db, sequenceId),
       ]);
 
@@ -354,12 +508,13 @@ export function createSequenceLocationsMethods(db: Database) {
       return allShots
         .filter((shot) => {
           const scene = resolveSceneForShot(shot, sceneContext).scene;
-          const environmentTag = scene?.continuity?.environmentTag ?? '';
-          const sceneLocation = scene?.metadata?.location ?? '';
-
           return (
-            (environmentTag && locationMatchesTag(location, environmentTag)) ||
-            (sceneLocation && locationMatchesTag(location, sceneLocation))
+            matchLocationsToScene(
+              [location],
+              scene?.continuity?.environmentTag ?? '',
+              scene?.metadata?.location ?? '',
+              scene?.originalScript?.extract
+            ).length > 0
           );
         })
         .map((f) => f.id);
@@ -373,17 +528,27 @@ export function createSequenceLocationsMethods(db: Database) {
         /** If true, only return locations with completed reference images */
         completedOnly?: boolean;
       }
-    ): Promise<(SequenceLocation & { sequenceTitle: string })[]> => {
+    ): Promise<
+      (SequenceLocationWithReference & { sequenceTitle: string })[]
+    > => {
       const result = await db
         .select({
-          location: sequenceLocations,
+          location: locationsWithLiveReference,
           sequenceTitle: sequences.title,
         })
         .from(sequenceLocations)
         .innerJoin(sequences, eq(sequenceLocations.sequenceId, sequences.id))
+        .leftJoin(
+          locationSheetVariants,
+          and(
+            eq(locationSheetVariants.parentType, 'sequence_location'),
+            eq(locationSheetVariants.id, liveReferenceVersionId)
+          )
+        )
         .where(
           and(
             eq(sequences.teamId, teamId),
+            isNull(sequenceLocations.deletedAt),
             options?.completedOnly
               ? eq(sequenceLocations.referenceStatus, 'completed')
               : undefined,

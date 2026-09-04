@@ -28,6 +28,7 @@ const sceneRowFixture = (overrides: Partial<SceneRow> = {}): SceneRow => ({
   title: 'Office',
   continuity: null,
   selectedScriptVersionId: null,
+  deletedAt: null,
   createdAt: new Date(),
   updatedAt: new Date(),
   ...overrides,
@@ -46,6 +47,14 @@ describe('resolveSceneForShot', () => {
     expect(scene?.metadata?.title).toBe('Office');
     expect(scene?.sceneId).toBe('scene-row-1');
     expect(scene?.sceneNumber).toBe(1);
+  });
+
+  it('strips markdown from the composed scene title', () => {
+    const { scene } = resolveSceneForShot(shot, {
+      scene: sceneRowFixture({ title: '**Office**' }),
+      script: null,
+    });
+    expect(scene?.metadata?.title).toBe('Office');
   });
 
   it('derives durationSeconds from the shot, not a stored copy', () => {

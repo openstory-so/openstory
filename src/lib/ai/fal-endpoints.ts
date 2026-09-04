@@ -8,6 +8,7 @@ import {
   IMAGE_TO_VIDEO_MODELS,
   MOTION_REFERENCE_ENDPOINTS,
 } from '@/lib/ai/models';
+import { studioVideoEndpointIds } from '@/lib/studio/text-to-video';
 
 export function getFalEndpointIds(): string[] {
   const video = Object.values(IMAGE_TO_VIDEO_MODELS).map((m) => m.id);
@@ -17,8 +18,18 @@ export function getFalEndpointIds(): string[] {
   const motionRef = Object.values(MOTION_REFERENCE_ENDPOINTS).map(
     (m) => m.endpointId
   );
+  const studioVideo = studioVideoEndpointIds();
 
-  return [...new Set([...video, ...image, ...edit, ...audio, ...motionRef])];
+  return [
+    ...new Set([
+      ...video,
+      ...studioVideo,
+      ...image,
+      ...edit,
+      ...audio,
+      ...motionRef,
+    ]),
+  ];
 }
 
 /**

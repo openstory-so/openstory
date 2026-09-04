@@ -15,12 +15,29 @@ type GenerationProgressBannerProps = {
   isProcessing: boolean;
   startedAt?: Date;
   script?: string;
+  /** When set, used instead of the banner's own elapsed-based remaining. */
+  remainingSeconds?: number;
+  imageModel?: string | null;
+  videoModel?: string | null;
+  musicModel?: string | null;
+  /** Show the ready-email promise in the leave hint. */
+  willEmail?: boolean;
 };
 
 export const GenerationProgressBanner: React.FC<
   GenerationProgressBannerProps
-> = ({ generationState, isProcessing, startedAt, script }) => {
-  const [isOpen, setIsOpen] = useState(true);
+> = ({
+  generationState,
+  isProcessing,
+  startedAt,
+  script,
+  remainingSeconds,
+  imageModel,
+  videoModel,
+  musicModel,
+  willEmail = false,
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const startTimeRef = useRef(startedAt?.getTime() ?? Date.now());
 
@@ -39,14 +56,17 @@ export const GenerationProgressBanner: React.FC<
   const phase1Completed = generationState.phases[0]?.status === 'completed';
   const sceneCount = phase1Completed ? generationState.scenes.length : 0;
   const estimatedSceneCount = script ? estimateSceneCount(script) : undefined;
-  const remaining = Math.max(
-    0,
-    estimateTotalSeconds(
-      sceneCount,
-      estimatedSceneCount,
-      generationState.phases.length
-    ) - elapsedSeconds
-  );
+  const remaining =
+    remainingSeconds ??
+    Math.max(
+      0,
+      estimateTotalSeconds(
+        sceneCount,
+        estimatedSceneCount,
+        generationState.phases.length,
+        { imageModel, videoModel, musicModel }
+      ) - elapsedSeconds
+    );
 
   const bannerPhases: BannerPhase[] = generationState.phases.map((phase) => ({
     key: String(phase.phase),
@@ -67,6 +87,11 @@ export const GenerationProgressBanner: React.FC<
       exitDelayMs={0}
       isOpen={isOpen}
       onOpenChange={setIsOpen}
+      leaveHint={
+        willEmail ? (
+          <>We&rsquo;ll email you when it&rsquo;s ready.</>
+        ) : undefined
+      }
     />
   );
 };

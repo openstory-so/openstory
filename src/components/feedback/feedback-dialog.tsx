@@ -1,5 +1,7 @@
 /**
  * Super-simple feedback dialog — one message field, send email + product event.
+ * Works signed out too (the sidebar shows it to everyone): visitors get an
+ * optional email field so we can reply.
  */
 
 import { Button } from '@/components/ui/button';
@@ -11,8 +13,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { submitFeedbackFn } from '@/functions/feedback';
+import { useUser } from '@/hooks/use-user';
 import { useMutation } from '@tanstack/react-query';
 import { useState } from 'react';
 
@@ -23,9 +27,11 @@ type FeedbackDialogProps = {
 
 export function FeedbackDialog({ open, onOpenChange }: FeedbackDialogProps) {
   const [message, setMessage] = useState('');
+  const { data: user } = useUser();
 
   const mutation = useMutation({
-    mutationFn: (text: string) => submitFeedbackFn({ data: { message: text } }),
+    mutationFn: (input: { message: string; email?: string }) =>
+      submitFeedbackFn({ data: input }),
     onSuccess: () => {
       setMessage('');
     },
@@ -39,11 +45,15 @@ export function FeedbackDialog({ open, onOpenChange }: FeedbackDialogProps) {
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const trimmed = message.trim();
     if (!trimmed || mutation.isPending) return;
-    mutation.mutate(trimmed);
+    const email = new FormData(e.currentTarget).get('email');
+    mutation.mutate({
+      message: trimmed,
+      email: typeof email === 'string' ? email : undefined,
+    });
   };
 
   return (
@@ -69,6 +79,18 @@ export function FeedbackDialog({ open, onOpenChange }: FeedbackDialogProps) {
                 Bugs, ideas, or anything else — send a short note.
               </DialogDescription>
             </DialogHeader>
+
+            {!user && (
+              <Input
+                type="email"
+                name="email"
+                autoComplete="email"
+                inputMode="email"
+                maxLength={254}
+                placeholder="Email (optional — if you'd like a reply)"
+                aria-label="Email (optional)"
+              />
+            )}
 
             <Textarea
               name="message"

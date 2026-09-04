@@ -12,9 +12,10 @@ import { getGenerationChannel } from '@/lib/realtime';
 import {
   autoStyleDraftFromResponse,
   autoStyleResponseSchema,
+  STYLE_CATEGORIES,
   type AutoStyleDraft,
 } from '@/lib/style/auto-style';
-import type { StyleConfig } from '@/lib/style/style-config';
+import { STYLE_PACE_VALUES, type StyleConfig } from '@/lib/style/style-config';
 import { durableLLMCallCf } from '@/lib/workflows/llm-call-helper';
 import type { WorkflowStep } from 'cloudflare:workers';
 import { NonRetryableError } from 'cloudflare:workflows';
@@ -31,6 +32,7 @@ export async function deriveAutoStyle(
     script: string;
     aspectRatio: AspectRatio;
     analysisModelId: AnalysisModelId;
+    reservationId?: string;
   }
 ): Promise<StyleConfig> {
   const { scopedDb, sequenceId, styleId } = params;
@@ -44,13 +46,20 @@ export async function deriveAutoStyle(
       promptVariables: {
         script: params.script,
         aspectRatio: params.aspectRatio,
+        categories: STYLE_CATEGORIES.join(', '),
+        paces: STYLE_PACE_VALUES.join(', '),
       },
       modelId: params.analysisModelId,
       responseSchema: autoStyleResponseSchema,
       additionalMetadata: { styleId },
       reasoning: true,
     },
-    { sequenceId, workflowRunId: params.workflowRunId, scopedDb }
+    {
+      sequenceId,
+      workflowRunId: params.workflowRunId,
+      scopedDb,
+      reservationId: params.reservationId,
+    }
   );
 
   // The LLM result is a cached durable step, so a coercion failure here replays

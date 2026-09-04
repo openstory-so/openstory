@@ -40,6 +40,7 @@ import { Route as R2SplatRouteImport } from './routes/r2.$'
 import { Route as AppAdminModerationRouteImport } from './routes/_app/admin/moderation'
 import { Route as AppAdminUsageRouteImport } from './routes/_app/admin/usage'
 import { Route as AppGalleryIndexRouteImport } from './routes/_app/gallery/index'
+import { Route as AppImagesIndexRouteImport } from './routes/_app/images/index'
 import { Route as AppLocationsIndexRouteImport } from './routes/_app/locations/index'
 import { Route as AppLocationsLocationIdRouteImport } from './routes/_app/locations/$locationId'
 import { Route as AppModelsIndexRouteImport } from './routes/_app/models/index'
@@ -51,9 +52,11 @@ import { Route as AppSettingsIndexRouteImport } from './routes/_app/settings/ind
 import { Route as AppSettingsApiKeysRouteImport } from './routes/_app/settings/api-keys'
 import { Route as AppSettingsDeveloperRouteImport } from './routes/_app/settings/developer'
 import { Route as AppSettingsPasskeysRouteImport } from './routes/_app/settings/passkeys'
+import { Route as AppStudioIndexRouteImport } from './routes/_app/studio/index'
 import { Route as AppStylesIndexRouteImport } from './routes/_app/styles/index'
 import { Route as AppTalentIndexRouteImport } from './routes/_app/talent/index'
 import { Route as AppTalentIdRouteImport } from './routes/_app/talent/$id'
+import { Route as AppVideosIndexRouteImport } from './routes/_app/videos/index'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiBillingWebhookRouteImport } from './routes/api/billing/webhook'
 import { Route as ApiDevMemoryRouteImport } from './routes/api/dev/memory'
@@ -245,6 +248,11 @@ const AppGalleryIndexRoute = AppGalleryIndexRouteImport.update({
   path: '/gallery/',
   getParentRoute: () => AppRouteRoute,
 } as any)
+const AppImagesIndexRoute = AppImagesIndexRouteImport.update({
+  id: '/images/',
+  path: '/images/',
+  getParentRoute: () => AppRouteRoute,
+} as any)
 const AppLocationsIndexRoute = AppLocationsIndexRouteImport.update({
   id: '/locations/',
   path: '/locations/',
@@ -300,6 +308,11 @@ const AppSettingsPasskeysRoute = AppSettingsPasskeysRouteImport.update({
   path: '/passkeys',
   getParentRoute: () => AppSettingsRouteRoute,
 } as any)
+const AppStudioIndexRoute = AppStudioIndexRouteImport.update({
+  id: '/studio/',
+  path: '/studio/',
+  getParentRoute: () => AppRouteRoute,
+} as any)
 const AppStylesIndexRoute = AppStylesIndexRouteImport.update({
   id: '/styles/',
   path: '/styles/',
@@ -313,6 +326,11 @@ const AppTalentIndexRoute = AppTalentIndexRouteImport.update({
 const AppTalentIdRoute = AppTalentIdRouteImport.update({
   id: '/talent/$id',
   path: '/talent/$id',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const AppVideosIndexRoute = AppVideosIndexRouteImport.update({
+  id: '/videos/',
+  path: '/videos/',
   getParentRoute: () => AppRouteRoute,
 } as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
@@ -563,12 +581,15 @@ export interface FileRoutesByFullPath {
   '/api/v1/sequences': typeof ApiV1SequencesRouteWithChildren
   '/api/v1/styles': typeof ApiV1StylesRouteWithChildren
   '/gallery/': typeof AppGalleryIndexRoute
+  '/images/': typeof AppImagesIndexRoute
   '/locations/': typeof AppLocationsIndexRoute
   '/models/': typeof AppModelsIndexRoute
   '/sequences/': typeof AppSequencesIndexRoute
   '/settings/': typeof AppSettingsIndexRoute
+  '/studio/': typeof AppStudioIndexRoute
   '/styles/': typeof AppStylesIndexRoute
   '/talent/': typeof AppTalentIndexRoute
+  '/videos/': typeof AppVideosIndexRoute
   '/api/v1/': typeof ApiV1IndexRoute
   '/models/family/$': typeof AppModelsFamilySplatRoute
   '/sequences/$id/music': typeof AppSequencesIdMusicRoute
@@ -643,12 +664,15 @@ export interface FileRoutesByTo {
   '/api/v1/sequences': typeof ApiV1SequencesRouteWithChildren
   '/api/v1/styles': typeof ApiV1StylesRouteWithChildren
   '/gallery': typeof AppGalleryIndexRoute
+  '/images': typeof AppImagesIndexRoute
   '/locations': typeof AppLocationsIndexRoute
   '/models': typeof AppModelsIndexRoute
   '/sequences': typeof AppSequencesIndexRoute
   '/settings': typeof AppSettingsIndexRoute
+  '/studio': typeof AppStudioIndexRoute
   '/styles': typeof AppStylesIndexRoute
   '/talent': typeof AppTalentIndexRoute
+  '/videos': typeof AppVideosIndexRoute
   '/api/v1': typeof ApiV1IndexRoute
   '/models/family/$': typeof AppModelsFamilySplatRoute
   '/sequences/$id/music': typeof AppSequencesIdMusicRoute
@@ -728,12 +752,15 @@ export interface FileRoutesById {
   '/api/v1/sequences': typeof ApiV1SequencesRouteWithChildren
   '/api/v1/styles': typeof ApiV1StylesRouteWithChildren
   '/_app/gallery/': typeof AppGalleryIndexRoute
+  '/_app/images/': typeof AppImagesIndexRoute
   '/_app/locations/': typeof AppLocationsIndexRoute
   '/_app/models/': typeof AppModelsIndexRoute
   '/_app/sequences/': typeof AppSequencesIndexRoute
   '/_app/settings/': typeof AppSettingsIndexRoute
+  '/_app/studio/': typeof AppStudioIndexRoute
   '/_app/styles/': typeof AppStylesIndexRoute
   '/_app/talent/': typeof AppTalentIndexRoute
+  '/_app/videos/': typeof AppVideosIndexRoute
   '/api/v1/': typeof ApiV1IndexRoute
   '/_app/models/family/$': typeof AppModelsFamilySplatRoute
   '/_app/sequences/$id/music': typeof AppSequencesIdMusicRoute
@@ -812,12 +839,15 @@ export interface FileRouteTypes {
     | '/api/v1/sequences'
     | '/api/v1/styles'
     | '/gallery/'
+    | '/images/'
     | '/locations/'
     | '/models/'
     | '/sequences/'
     | '/settings/'
+    | '/studio/'
     | '/styles/'
     | '/talent/'
+    | '/videos/'
     | '/api/v1/'
     | '/models/family/$'
     | '/sequences/$id/music'
@@ -892,12 +922,15 @@ export interface FileRouteTypes {
     | '/api/v1/sequences'
     | '/api/v1/styles'
     | '/gallery'
+    | '/images'
     | '/locations'
     | '/models'
     | '/sequences'
     | '/settings'
+    | '/studio'
     | '/styles'
     | '/talent'
+    | '/videos'
     | '/api/v1'
     | '/models/family/$'
     | '/sequences/$id/music'
@@ -976,12 +1009,15 @@ export interface FileRouteTypes {
     | '/api/v1/sequences'
     | '/api/v1/styles'
     | '/_app/gallery/'
+    | '/_app/images/'
     | '/_app/locations/'
     | '/_app/models/'
     | '/_app/sequences/'
     | '/_app/settings/'
+    | '/_app/studio/'
     | '/_app/styles/'
     | '/_app/talent/'
+    | '/_app/videos/'
     | '/api/v1/'
     | '/_app/models/family/$'
     | '/_app/sequences/$id/music'
@@ -1250,6 +1286,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppGalleryIndexRouteImport
       parentRoute: typeof AppRouteRoute
     }
+    '/_app/images/': {
+      id: '/_app/images/'
+      path: '/images'
+      fullPath: '/images/'
+      preLoaderRoute: typeof AppImagesIndexRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
     '/_app/locations/': {
       id: '/_app/locations/'
       path: '/locations'
@@ -1327,6 +1370,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSettingsPasskeysRouteImport
       parentRoute: typeof AppSettingsRouteRoute
     }
+    '/_app/studio/': {
+      id: '/_app/studio/'
+      path: '/studio'
+      fullPath: '/studio/'
+      preLoaderRoute: typeof AppStudioIndexRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
     '/_app/styles/': {
       id: '/_app/styles/'
       path: '/styles'
@@ -1346,6 +1396,13 @@ declare module '@tanstack/react-router' {
       path: '/talent/$id'
       fullPath: '/talent/$id'
       preLoaderRoute: typeof AppTalentIdRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/_app/videos/': {
+      id: '/_app/videos/'
+      path: '/videos'
+      fullPath: '/videos/'
+      preLoaderRoute: typeof AppVideosIndexRouteImport
       parentRoute: typeof AppRouteRoute
     }
     '/api/auth/$': {
@@ -1687,11 +1744,14 @@ interface AppRouteRouteChildren {
   AppSequencesNewRoute: typeof AppSequencesNewRoute
   AppTalentIdRoute: typeof AppTalentIdRoute
   AppGalleryIndexRoute: typeof AppGalleryIndexRoute
+  AppImagesIndexRoute: typeof AppImagesIndexRoute
   AppLocationsIndexRoute: typeof AppLocationsIndexRoute
   AppModelsIndexRoute: typeof AppModelsIndexRoute
   AppSequencesIndexRoute: typeof AppSequencesIndexRoute
+  AppStudioIndexRoute: typeof AppStudioIndexRoute
   AppStylesIndexRoute: typeof AppStylesIndexRoute
   AppTalentIndexRoute: typeof AppTalentIndexRoute
+  AppVideosIndexRoute: typeof AppVideosIndexRoute
   AppModelsFamilySplatRoute: typeof AppModelsFamilySplatRoute
 }
 
@@ -1711,11 +1771,14 @@ const AppRouteRouteChildren: AppRouteRouteChildren = {
   AppSequencesNewRoute: AppSequencesNewRoute,
   AppTalentIdRoute: AppTalentIdRoute,
   AppGalleryIndexRoute: AppGalleryIndexRoute,
+  AppImagesIndexRoute: AppImagesIndexRoute,
   AppLocationsIndexRoute: AppLocationsIndexRoute,
   AppModelsIndexRoute: AppModelsIndexRoute,
   AppSequencesIndexRoute: AppSequencesIndexRoute,
+  AppStudioIndexRoute: AppStudioIndexRoute,
   AppStylesIndexRoute: AppStylesIndexRoute,
   AppTalentIndexRoute: AppTalentIndexRoute,
+  AppVideosIndexRoute: AppVideosIndexRoute,
   AppModelsFamilySplatRoute: AppModelsFamilySplatRoute,
 }
 

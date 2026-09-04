@@ -28,6 +28,8 @@ const PROMPT_VERSION_SOURCES = [
   'user-edit',
   'regenerated',
   'restored',
+  // Auto-rewritten after a provider content-checker rejection (#1272).
+  'softened',
 ] as const;
 export type PromptVersionSource = (typeof PROMPT_VERSION_SOURCES)[number];
 

@@ -33,6 +33,7 @@ import {
 } from '@/lib/scenes/scene-script';
 import { matchElementsToShotImage } from '@/lib/workflows/scene-matching';
 import { and, eq, inArray, isNull, like, ne, or, sql } from 'drizzle-orm';
+import { buildEventInsert } from './sequence-events';
 
 /** Selected visual prompt text for each shot's anchor frame, keyed by shot id. */
 async function loadVisualPromptsByShotId(
@@ -163,11 +164,20 @@ export function createSequenceElementsMethods(db: Database) {
       throw new Error('Unable to generate unique element token');
     },
 
+    // Default list excludes soft-deleted rows (#1108): a deleted element must
+    // vanish from the elements grid and the prompt-context element bible.
+    // Token uniqueness (isTokenTaken / ensureUniqueToken) deliberately still
+    // counts deleted rows so a restore can never collide.
     list: async (sequenceId: string): Promise<SequenceElement[]> => {
       return await db
         .select()
         .from(sequenceElements)
-        .where(eq(sequenceElements.sequenceId, sequenceId))
+        .where(
+          and(
+            eq(sequenceElements.sequenceId, sequenceId),
+            isNull(sequenceElements.deletedAt)
+          )
+        )
         .orderBy(sequenceElements.createdAt);
     },
 
@@ -503,6 +513,80 @@ export function createSequenceElementsMethods(db: Database) {
       };
     },
 
+    /**
+     * Soft-hide an element (undoable, #1108): stamp `deletedAt` + an
+     * `element.deleted` event in one batch. The product Delete button routes
+     * here; {@link delete} (hard) remains for admin/GC only. Returns the
+     * timestamp for the toast Undo; idempotent.
+     */
+    softDelete: async (
+      id: string,
+      opts: { actorId: string | null }
+    ): Promise<Date> => {
+      const [existing] = await db
+        .select()
+        .from(sequenceElements)
+        .where(eq(sequenceElements.id, id));
+      if (!existing) {
+        throw new Error(`SequenceElement ${id} not found`);
+      }
+      if (existing.deletedAt) return existing.deletedAt;
+      const deletedAt = new Date();
+      await db.batch([
+        db
+          .update(sequenceElements)
+          .set({ deletedAt, updatedAt: deletedAt })
+          .where(eq(sequenceElements.id, id)),
+        buildEventInsert(db, {
+          sequenceId: existing.sequenceId,
+          actorId: opts.actorId,
+          kind: 'element.deleted',
+          targetType: 'element',
+          targetId: id,
+          summary: `Removed element ${existing.token}`,
+          data: { token: existing.token },
+        }),
+      ]);
+      return deletedAt;
+    },
+
+    /** Undo an element soft delete, with a matching event. */
+    restore: async (
+      id: string,
+      opts: { actorId: string | null }
+    ): Promise<SequenceElement> => {
+      const [existing] = await db
+        .select()
+        .from(sequenceElements)
+        .where(eq(sequenceElements.id, id));
+      if (!existing) {
+        throw new Error(`SequenceElement ${id} not found`);
+      }
+      const now = new Date();
+      const [restoredRows] = await db.batch([
+        db
+          .update(sequenceElements)
+          .set({ deletedAt: null, updatedAt: now })
+          .where(eq(sequenceElements.id, id))
+          .returning(),
+        buildEventInsert(db, {
+          sequenceId: existing.sequenceId,
+          actorId: opts.actorId,
+          kind: 'element.restored',
+          targetType: 'element',
+          targetId: id,
+          summary: `Restored element ${existing.token}`,
+          data: { token: existing.token },
+        }),
+      ]);
+      const restored = restoredRows[0];
+      if (!restored) {
+        throw new Error(`SequenceElement ${id} disappeared during restore`);
+      }
+      return restored;
+    },
+
+    /** HARD delete — admin/GC only; the product Delete is {@link softDelete}. */
     delete: async (id: string): Promise<boolean> => {
       const result = await db
         .delete(sequenceElements)
@@ -526,10 +610,16 @@ export function createSequenceElementsMethods(db: Database) {
       }
 
       const [allShots, sceneContext, promptByShotId] = await Promise.all([
+        // Live shots only (#1108): this set becomes replace-element's
+        // affected shots — a soft-deleted shot must not get its still edited.
+        // (cascadeRename above deliberately scans ALL rows: a restored shot
+        // must come back carrying the renamed token.)
         db
           .select()
           .from(shots)
-          .where(eq(shots.sequenceId, sequenceId)) as Promise<Shot[]>,
+          .where(
+            and(eq(shots.sequenceId, sequenceId), isNull(shots.deletedAt))
+          ) as Promise<Shot[]>,
         loadSceneContextBySequenceFromDb(db, sequenceId),
         loadVisualPromptsByShotId(db, sequenceId),
       ]);
@@ -562,7 +652,12 @@ export function createSequenceElementsMethods(db: Database) {
       const allElements = await db
         .select()
         .from(sequenceElements)
-        .where(eq(sequenceElements.sequenceId, sequenceId));
+        .where(
+          and(
+            eq(sequenceElements.sequenceId, sequenceId),
+            isNull(sequenceElements.deletedAt)
+          )
+        );
       const counts: Record<string, { shotCount: number; videoCount: number }> =
         {};
       for (const el of allElements) {
@@ -572,10 +667,13 @@ export function createSequenceElementsMethods(db: Database) {
 
       const [allShots, sceneContext, shotIdsWithVideo, promptByShotId] =
         await Promise.all([
+          // Live shots only — "used in N shots" must not count hidden ones.
           db
             .select()
             .from(shots)
-            .where(eq(shots.sequenceId, sequenceId)) as Promise<Shot[]>,
+            .where(
+              and(eq(shots.sequenceId, sequenceId), isNull(shots.deletedAt))
+            ) as Promise<Shot[]>,
           loadSceneContextBySequenceFromDb(db, sequenceId),
           // A shot "has video" when its render segment points at a live version
           // (#1067 phase 2d) — the `shots.videoUrl` mirror is gone.

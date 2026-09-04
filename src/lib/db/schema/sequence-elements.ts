@@ -42,9 +42,11 @@ export const sequenceElements = snakeCase.table(
     description: text(),
     // Short slug tag used in prompts for consistency (e.g. "red-hex-logo").
     consistencyTag: text(),
-    // Storage
-    imageUrl: text().notNull(),
-    imagePath: text().notNull(), // R2 key
+    // Storage. Null for an element the script analysis detected but whose
+    // reference image has not been generated yet (the References stage fills
+    // it in). Reference binding skips image-less elements.
+    imageUrl: text(),
+    imagePath: text(), // R2 key
     // Vision analysis status
     visionStatus: text()
       .$type<ElementVisionStatus>()
@@ -56,6 +58,10 @@ export const sequenceElements = snakeCase.table(
     firstMentionSceneId: text(),
     firstMentionText: text(),
     firstMentionLine: integer(),
+    // Soft-hide from the sequence (#1108 Phase 2, undoable). Excluded from
+    // default lists / element bibles; token uniqueness still counts deleted
+    // rows so a restore can never collide. R2 bytes are never deleted.
+    deletedAt: integer({ mode: 'timestamp' }),
     // Timestamps
     createdAt: integer({ mode: 'timestamp' })
       .$defaultFn(() => new Date())

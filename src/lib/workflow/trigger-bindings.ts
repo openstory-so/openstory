@@ -53,6 +53,7 @@ const TRIGGER_TO_BINDING: Record<string, keyof CloudflareEnv> = {
   'analyze-script': 'ANALYZE_SCRIPT_WORKFLOW',
   'sequence-export': 'SEQUENCE_EXPORT_WORKFLOW',
   asset: 'ASSET_WORKFLOW',
+  studio: 'STUDIO_WORKFLOW',
 };
 
 export type CfTriggerResult = { workflowRunId: string };

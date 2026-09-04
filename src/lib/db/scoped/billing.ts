@@ -6,9 +6,11 @@
 
 import {
   AUTO_TOPUP_COOLDOWN_MS,
+  AUTO_TOPUP_DECLINE_COOLDOWN_MS,
   calculateExpiryDate,
   isStripeEnabled,
   MIN_TOPUP_AMOUNT_MICROS,
+  RESERVATION_TTL_MS,
   totalCheckoutCents,
 } from '@/lib/billing/constants';
 import {
@@ -17,11 +19,13 @@ import {
   microsToDisplayUsd,
   microsToUsd,
   negateMicros,
+  subtractMicros,
   ZERO_MICROS,
 } from '@/lib/billing/money';
 import type { Database } from '@/lib/db/client';
 import {
   creditBatches,
+  creditReservations,
   credits,
   teamBillingSettings,
   transactions,
@@ -33,7 +37,7 @@ import type {
 } from '@/lib/db/schema/credits';
 import { ValidationError } from '@/lib/errors';
 import { getBillingChannel } from '@/lib/realtime';
-import { and, count, desc, eq, notExists, sql } from 'drizzle-orm';
+import { and, count, desc, eq, gte, notExists, sql } from 'drizzle-orm';
 import { generateId } from '../id';
 import { giftTokenRedemptions, giftTokens } from '../schema';
 
@@ -48,24 +52,85 @@ import { getLogger } from '@/lib/observability/logger';
  * Call only after a *new* transaction row was inserted (not on idempotent
  * replay).
  */
-async function emitBalanceUpdated(opts: {
+async function emitFundsUpdated(opts: {
   teamId: string;
-  newBalance: Microdollars;
-  /** Signed ledger amount (negative for usage). */
+  balance: Microdollars;
+  reserved: Microdollars;
+  available: Microdollars;
+  /** Signed ledger amount (negative for usage). Zero when only a hold changed. */
   amountMicros: Microdollars;
-  transactionId: string;
-  type: TransactionType;
+  transactionId?: string;
+  type?: TransactionType;
 }): Promise<void> {
   await getBillingChannel(opts.teamId).emit('billing.balance:updated', {
     teamId: opts.teamId,
-    balanceUsd: microsToUsd(opts.newBalance),
+    balanceUsd: microsToUsd(opts.balance),
+    availableUsd: microsToUsd(opts.available),
+    reservedUsd: microsToUsd(opts.reserved),
     amountUsd: microsToUsd(opts.amountMicros),
-    transactionId: opts.transactionId,
-    type: opts.type,
+    ...(opts.transactionId != null && opts.type
+      ? { transactionId: opts.transactionId, type: opts.type }
+      : {}),
   });
 }
 
 const logger = getLogger(['openstory', 'db', 'billing']);
+
+/**
+ * Duck-type Stripe card errors. This module is in the client graph via
+ * scoped-db middleware, so a static `stripe` import would ship the Node
+ * SDK to the browser (#1253).
+ */
+function stripeDeclineCode(err: unknown): string | null {
+  if (typeof err !== 'object' || err === null || !('type' in err)) return null;
+  if (err.type !== 'StripeCardError' && err.type !== 'card_error') return null;
+  const declineCode =
+    'decline_code' in err && typeof err.decline_code === 'string'
+      ? err.decline_code
+      : null;
+  const code = 'code' in err && typeof err.code === 'string' ? err.code : null;
+  return declineCode ?? code ?? 'card_declined';
+}
+
+type TryDebitResult =
+  | {
+      ok: true;
+      newBalance: Microdollars;
+      chargedAmount: Microdollars;
+      transactionId: string;
+      replay: boolean;
+    }
+  | { ok: false };
+
+export type CreateReservationResult =
+  | {
+      ok: true;
+      reservationId: string;
+      remaining: Microdollars;
+      replay: boolean;
+    }
+  | { ok: false };
+
+export type GrowReservationResult =
+  | { ok: true; remaining: Microdollars }
+  | { ok: false };
+
+export type CaptureReservationResult =
+  | { ok: false; reason: 'missing' }
+  | {
+      ok: true;
+      captured: Microdollars;
+      skippedDeltaMicros?: Microdollars;
+    };
+
+function skippedCaptureDelta(
+  actualMicros: Microdollars,
+  captured: Microdollars
+): Microdollars | undefined {
+  return actualMicros > captured
+    ? subtractMicros(actualMicros, captured)
+    : undefined;
+}
 
 function mapBatchSource(
   type: TransactionType,
@@ -99,11 +164,40 @@ function createBillingReadMethods(db: Database, teamId: string) {
     return micros(row.balance);
   }
 
+  async function reservedSum(now = new Date()): Promise<Microdollars> {
+    const nowSeconds = Math.floor(now.getTime() / 1000);
+    const [row] = await db
+      .select({
+        total: sql<number>`coalesce(sum(${creditReservations.remainingAmount}), 0)`,
+      })
+      .from(creditReservations)
+      .where(
+        and(
+          eq(creditReservations.teamId, teamId),
+          sql`${creditReservations.remainingAmount} > 0`,
+          sql`${creditReservations.expiresAt} > ${nowSeconds}`
+        )
+      );
+    return micros(Number(row?.total ?? 0));
+  }
+
+  async function getAvailable(now = new Date()): Promise<{
+    balance: Microdollars;
+    reserved: Microdollars;
+    available: Microdollars;
+  }> {
+    const balance = await getBalance();
+    const reserved = await reservedSum(now);
+    const available =
+      balance > reserved ? subtractMicros(balance, reserved) : ZERO_MICROS;
+    return { balance, reserved, available };
+  }
+
   async function hasEnoughCredits(
     estimatedCostMicros: Microdollars
   ): Promise<boolean> {
-    const balance = await getBalance();
-    return balance >= estimatedCostMicros;
+    const { available } = await getAvailable();
+    return available >= estimatedCostMicros;
   }
 
   async function getTransactionHistory(
@@ -189,6 +283,7 @@ function createBillingReadMethods(db: Database, teamId: string) {
 
   return {
     getBalance,
+    getAvailable,
     hasEnoughCredits,
     getTransactionHistory,
     getBillingSettings,
@@ -204,6 +299,44 @@ export function createBillingMethods(
   userId: string
 ) {
   const read = createBillingReadMethods(db, teamId);
+
+  async function emitTeamFunds(opts: {
+    amountMicros: Microdollars;
+    transactionId?: string;
+    type?: TransactionType;
+  }): Promise<void> {
+    const snapshot = await read.getAvailable();
+    await emitFundsUpdated({
+      teamId,
+      ...snapshot,
+      amountMicros: opts.amountMicros,
+      transactionId: opts.transactionId,
+      type: opts.type,
+    });
+  }
+
+  async function clearAutoTopUpFailure(): Promise<void> {
+    await db
+      .update(teamBillingSettings)
+      .set({
+        autoTopUpFailedAt: null,
+        autoTopUpDeclineCode: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(teamBillingSettings.teamId, teamId));
+  }
+
+  async function recordAutoTopUpFailure(declineCode: string): Promise<void> {
+    await db
+      .update(teamBillingSettings)
+      .set({
+        autoTopUpFailedAt: new Date(),
+        autoTopUpDeclineCode: declineCode,
+        updatedAt: new Date(),
+      })
+      .where(eq(teamBillingSettings.teamId, teamId));
+    await emitTeamFunds({ amountMicros: ZERO_MICROS });
+  }
 
   async function addCredits(
     amountMicros: Microdollars,
@@ -291,13 +424,17 @@ export function createBillingMethods(
     });
 
     const newBalance = micros(updated.balance);
-    await emitBalanceUpdated({
-      teamId,
-      newBalance,
+    await emitTeamFunds({
       amountMicros,
       transactionId,
       type: txType,
     });
+
+    // A successful card charge (checkout, saved-card purchase, or
+    // auto-top-up) is the signal that the payment method works again.
+    if (txType === 'credit_purchase') {
+      await clearAutoTopUpFailure();
+    }
 
     return { newBalance, transactionId };
   }
@@ -316,8 +453,8 @@ export function createBillingMethods(
   }
 
   /**
-   * Charges provider cost at face value (no usage fee). Triggers auto-top-up if balance drops below
-   * threshold.
+   * Charges provider cost at face value (no usage fee). Triggers auto-top-up
+   * if available funds (posted minus open holds) drop to the threshold.
    *
    * Pass `opts.idempotencyKey` (convention: `${workflowInstanceId}:<charge-name>`)
    * from any retryable context — a workflow `step.do` that throws partway
@@ -462,16 +599,14 @@ export function createBillingMethods(
     }
 
     if (isNewCharge) {
-      await emitBalanceUpdated({
-        teamId,
-        newBalance,
+      await emitTeamFunds({
         amountMicros: negateMicros(chargedAmount),
         transactionId,
         type: 'credit_usage',
       });
     }
 
-    void maybeAutoTopUp(newBalance).catch((err) => {
+    void maybeAutoTopUp().catch((err) => {
       logger.error('Auto top-up failed after deduction', {
         teamId,
         balanceMicros: newBalance,
@@ -484,6 +619,572 @@ export function createBillingMethods(
       chargedAmount,
       transactionId,
     };
+  }
+
+  async function getTransactionByIdempotencyKey(idempotencyKey: string) {
+    const [row] = await db
+      .select()
+      .from(transactions)
+      .where(
+        and(
+          eq(transactions.teamId, teamId),
+          eq(transactions.idempotencyKey, idempotencyKey)
+        )
+      )
+      .limit(1);
+    return row ?? null;
+  }
+
+  /**
+   * Atomic conditional debit: `UPDATE credits SET balance = balance - n
+   * WHERE balance >= n` plus a ledger row, in one `db.batch`. The INSERT
+   * only lands when the UPDATE actually changed a row (`changes() > 0`),
+   * so an overdraft is a no-op rather than a CHECK failure or a phantom
+   * charge. Replay of the same `idempotencyKey` recovers the original row.
+   */
+  async function tryDebit(
+    amountMicros: Microdollars,
+    opts: {
+      description: string;
+      metadata: Record<string, unknown>;
+      idempotencyKey: string;
+      type?: TransactionType;
+    }
+  ): Promise<TryDebitResult> {
+    if (amountMicros <= 0) return { ok: false };
+
+    const existing = await getTransactionByIdempotencyKey(opts.idempotencyKey);
+    if (existing) {
+      const [balanceRow] = await db
+        .select({ balance: credits.balance })
+        .from(credits)
+        .where(eq(credits.teamId, teamId))
+        .limit(1);
+      return {
+        ok: true,
+        replay: true,
+        transactionId: existing.id,
+        chargedAmount: micros(Math.abs(existing.amount)),
+        newBalance: micros(balanceRow?.balance ?? 0),
+      };
+    }
+
+    await db
+      .insert(credits)
+      .values({ teamId, balance: 0 })
+      .onConflictDoNothing();
+
+    const txId = generateId();
+    const now = new Date();
+    const nowSeconds = Math.floor(now.getTime() / 1000);
+    const txType = opts.type ?? 'credit_usage';
+    const signedAmount =
+      txType === 'credit_usage' ? negateMicros(amountMicros) : amountMicros;
+
+    const updateBalance = db
+      .update(credits)
+      .set({
+        balance: sql`${credits.balance} - ${amountMicros}`,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(credits.teamId, teamId),
+          gte(credits.balance, amountMicros),
+          notExists(
+            db
+              .select({ id: transactions.id })
+              .from(transactions)
+              .where(
+                and(
+                  eq(transactions.teamId, teamId),
+                  eq(transactions.idempotencyKey, opts.idempotencyKey)
+                )
+              )
+          )
+        )
+      );
+
+    const insertTransaction = db
+      .insert(transactions)
+      .select(
+        db
+          .select({
+            id: sql<string>`${txId}`.as('id'),
+            teamId: sql<string>`${teamId}`.as('team_id'),
+            userId: sql<string>`${userId}`.as('user_id'),
+            type: sql<string>`${txType}`.as('type'),
+            amount: sql<number>`${signedAmount}`.as('amount'),
+            balanceAfter: credits.balance,
+            description: sql<string>`${opts.description}`.as('description'),
+            metadata: sql`${JSON.stringify(opts.metadata)}`.as('metadata'),
+            idempotencyKey: sql<string>`${opts.idempotencyKey}`.as(
+              'idempotency_key'
+            ),
+            createdAt: sql`${nowSeconds}`.as('created_at'),
+          })
+          .from(credits)
+          .where(and(eq(credits.teamId, teamId), sql`changes() > 0`))
+      )
+      .onConflictDoNothing()
+      .returning({ id: transactions.id });
+
+    const readBackBalance = db
+      .select({ balance: credits.balance })
+      .from(credits)
+      .where(eq(credits.teamId, teamId));
+
+    const [, insertedRows, balanceRows] = await db.batch([
+      updateBalance,
+      insertTransaction,
+      readBackBalance,
+    ]);
+
+    const balanceRow = balanceRows[0];
+    if (!balanceRow) {
+      throw new Error(
+        `tryDebit: credits row missing for team ${teamId} after batch`
+      );
+    }
+    const newBalance = micros(balanceRow.balance);
+    const transactionId = insertedRows[0]?.id;
+    if (!transactionId) {
+      const raced = await getTransactionByIdempotencyKey(opts.idempotencyKey);
+      if (raced) {
+        return {
+          ok: true,
+          replay: true,
+          transactionId: raced.id,
+          chargedAmount: micros(Math.abs(raced.amount)),
+          newBalance,
+        };
+      }
+      return { ok: false };
+    }
+
+    await emitTeamFunds({
+      amountMicros: signedAmount,
+      transactionId,
+      type: txType,
+    });
+
+    if (txType === 'credit_usage') {
+      void maybeAutoTopUp().catch((err) => {
+        logger.error('Auto top-up failed after reservation debit', {
+          teamId,
+          balanceMicros: newBalance,
+          err,
+        });
+      });
+    }
+
+    return {
+      ok: true,
+      replay: false,
+      transactionId,
+      chargedAmount: amountMicros,
+      newBalance,
+    };
+  }
+
+  async function tryDeductCredits(
+    amountMicros: Microdollars,
+    opts: {
+      description?: string;
+      metadata?: Record<string, unknown>;
+      idempotencyKey: string;
+    }
+  ): Promise<TryDebitResult> {
+    return tryDebit(amountMicros, {
+      description:
+        opts.description ?? `Usage: $${microsToUsd(amountMicros).toFixed(4)}`,
+      metadata: opts.metadata ?? {},
+      idempotencyKey: opts.idempotencyKey,
+    });
+  }
+
+  async function createReservation(
+    amountMicros: Microdollars,
+    opts: {
+      idempotencyKey: string;
+      sequenceId?: string;
+      ttlMs?: number;
+    }
+  ): Promise<CreateReservationResult> {
+    if (amountMicros <= 0) return { ok: false };
+
+    const existing = await db
+      .select()
+      .from(creditReservations)
+      .where(
+        and(
+          eq(creditReservations.teamId, teamId),
+          eq(creditReservations.idempotencyKey, opts.idempotencyKey)
+        )
+      )
+      .limit(1);
+    const existingRow = existing[0];
+    if (existingRow) {
+      return {
+        ok: true,
+        reservationId: existingRow.id,
+        remaining: micros(existingRow.remainingAmount),
+        replay: true,
+      };
+    }
+
+    await db
+      .insert(credits)
+      .values({ teamId, balance: 0 })
+      .onConflictDoNothing();
+
+    const reservationId = generateId();
+    const now = new Date();
+    const expiresAt = new Date(
+      now.getTime() + (opts.ttlMs ?? RESERVATION_TTL_MS)
+    );
+    const nowSeconds = Math.floor(now.getTime() / 1000);
+    const expiresSeconds = Math.floor(expiresAt.getTime() / 1000);
+
+    const inserted = await db
+      .insert(creditReservations)
+      .select(
+        db
+          .select({
+            id: sql<string>`${reservationId}`.as('id'),
+            teamId: sql<string>`${teamId}`.as('team_id'),
+            userId: sql<string>`${userId}`.as('user_id'),
+            sequenceId: sql`${opts.sequenceId ?? null}`.as('sequence_id'),
+            originalAmount: sql<number>`${amountMicros}`.as('original_amount'),
+            remainingAmount: sql<number>`${amountMicros}`.as(
+              'remaining_amount'
+            ),
+            expiresAt: sql`${expiresSeconds}`.as('expires_at'),
+            idempotencyKey: sql<string>`${opts.idempotencyKey}`.as(
+              'idempotency_key'
+            ),
+            createdAt: sql`${nowSeconds}`.as('created_at'),
+          })
+          .from(credits)
+          .where(
+            and(
+              eq(credits.teamId, teamId),
+              sql`${credits.balance} - coalesce((
+                select sum(${creditReservations.remainingAmount})
+                from ${creditReservations}
+                where ${creditReservations.teamId} = ${teamId}
+                  and ${creditReservations.remainingAmount} > 0
+                  and ${creditReservations.expiresAt} > ${nowSeconds}
+              ), 0) >= ${amountMicros}`
+            )
+          )
+      )
+      .onConflictDoNothing()
+      .returning({ id: creditReservations.id });
+
+    const created = inserted[0];
+    if (!created) {
+      const raced = await db
+        .select()
+        .from(creditReservations)
+        .where(
+          and(
+            eq(creditReservations.teamId, teamId),
+            eq(creditReservations.idempotencyKey, opts.idempotencyKey)
+          )
+        )
+        .limit(1);
+      const racedRow = raced[0];
+      if (racedRow) {
+        return {
+          ok: true,
+          reservationId: racedRow.id,
+          remaining: micros(racedRow.remainingAmount),
+          replay: true,
+        };
+      }
+      return { ok: false };
+    }
+
+    await emitTeamFunds({ amountMicros: ZERO_MICROS });
+    return {
+      ok: true,
+      reservationId: created.id,
+      remaining: amountMicros,
+      replay: false,
+    };
+  }
+
+  async function growReservation(
+    reservationId: string,
+    extraMicros: Microdollars,
+    opts: { ttlMs?: number } = {}
+  ): Promise<GrowReservationResult> {
+    if (extraMicros <= 0) {
+      const [row] = await db
+        .select({ remaining: creditReservations.remainingAmount })
+        .from(creditReservations)
+        .where(
+          and(
+            eq(creditReservations.id, reservationId),
+            eq(creditReservations.teamId, teamId)
+          )
+        )
+        .limit(1);
+      return row
+        ? { ok: true, remaining: micros(row.remaining) }
+        : { ok: false };
+    }
+
+    const now = new Date();
+    const nowSeconds = Math.floor(now.getTime() / 1000);
+    const expiresAt = new Date(
+      now.getTime() + (opts.ttlMs ?? RESERVATION_TTL_MS)
+    );
+
+    const [updated] = await db
+      .update(creditReservations)
+      .set({
+        remainingAmount: sql`${creditReservations.remainingAmount} + ${extraMicros}`,
+        originalAmount: sql`${creditReservations.originalAmount} + ${extraMicros}`,
+        expiresAt,
+      })
+      .where(
+        and(
+          eq(creditReservations.id, reservationId),
+          eq(creditReservations.teamId, teamId),
+          sql`${extraMicros} <= (
+            (select ${credits.balance} from ${credits} where ${credits.teamId} = ${teamId})
+            - coalesce((
+              select sum(${creditReservations.remainingAmount})
+              from ${creditReservations}
+              where ${creditReservations.teamId} = ${teamId}
+                and ${creditReservations.remainingAmount} > 0
+                and ${creditReservations.expiresAt} > ${nowSeconds}
+            ), 0)
+          )`
+        )
+      )
+      .returning({ remaining: creditReservations.remainingAmount });
+
+    if (!updated) return { ok: false };
+    await emitTeamFunds({ amountMicros: ZERO_MICROS });
+    return { ok: true, remaining: micros(updated.remaining) };
+  }
+
+  async function captureReservation(
+    reservationId: string,
+    actualMicros: Microdollars,
+    opts: {
+      idempotencyKey: string;
+      description?: string;
+      metadata?: Record<string, unknown>;
+    }
+  ): Promise<CaptureReservationResult> {
+    if (actualMicros <= 0) {
+      return { ok: true, captured: ZERO_MICROS };
+    }
+
+    // Replay before grow — a retried over-actual capture must not inflate
+    // remaining a second time.
+    const already = await getTransactionByIdempotencyKey(opts.idempotencyKey);
+    if (already) {
+      const captured = micros(Math.abs(already.amount));
+      return {
+        ok: true,
+        captured,
+        skippedDeltaMicros: skippedCaptureDelta(actualMicros, captured),
+      };
+    }
+
+    const [reservation] = await db
+      .select({ id: creditReservations.id })
+      .from(creditReservations)
+      .where(
+        and(
+          eq(creditReservations.id, reservationId),
+          eq(creditReservations.teamId, teamId)
+        )
+      )
+      .limit(1);
+    if (!reservation) return { ok: false, reason: 'missing' };
+
+    const now = new Date();
+    const nowSeconds = Math.floor(now.getTime() / 1000);
+    const expiresAt = new Date(now.getTime() + RESERVATION_TTL_MS);
+    const txId = generateId();
+    const txType: TransactionType = 'credit_usage';
+    const description =
+      opts.description ?? `Usage: $${microsToUsd(actualMicros).toFixed(4)}`;
+    const metadataJson = JSON.stringify({
+      reservationId,
+      ...opts.metadata,
+    });
+
+    // Take is computed in SQL at debit time so two captures racing the
+    // same envelope split remaining instead of one silent-zeroing.
+    const takeExpr = sql`(
+      select min(${creditReservations.remainingAmount}, ${actualMicros})
+      from ${creditReservations}
+      where ${creditReservations.id} = ${reservationId}
+        and ${creditReservations.teamId} = ${teamId}
+    )`;
+    const extraExpr = sql`max(0, ${actualMicros} - ${creditReservations.remainingAmount})`;
+
+    const growHold = db
+      .update(creditReservations)
+      .set({
+        remainingAmount: sql`${creditReservations.remainingAmount} + ${extraExpr}`,
+        originalAmount: sql`${creditReservations.originalAmount} + ${extraExpr}`,
+        expiresAt,
+      })
+      .where(
+        and(
+          eq(creditReservations.id, reservationId),
+          eq(creditReservations.teamId, teamId),
+          sql`${extraExpr} > 0`,
+          sql`${extraExpr} <= (
+            (select ${credits.balance} from ${credits} where ${credits.teamId} = ${teamId})
+            - coalesce((
+              select sum(${creditReservations.remainingAmount})
+              from ${creditReservations}
+              where ${creditReservations.teamId} = ${teamId}
+                and ${creditReservations.remainingAmount} > 0
+                and ${creditReservations.expiresAt} > ${nowSeconds}
+            ), 0)
+          )`
+        )
+      );
+
+    const updateBalance = db
+      .update(credits)
+      .set({
+        balance: sql`${credits.balance} - ${takeExpr}`,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(credits.teamId, teamId),
+          sql`${takeExpr} > 0`,
+          sql`${credits.balance} >= ${takeExpr}`,
+          notExists(
+            db
+              .select({ id: transactions.id })
+              .from(transactions)
+              .where(
+                and(
+                  eq(transactions.teamId, teamId),
+                  eq(transactions.idempotencyKey, opts.idempotencyKey)
+                )
+              )
+          )
+        )
+      );
+
+    const insertTransaction = db
+      .insert(transactions)
+      .select(
+        db
+          .select({
+            id: sql<string>`${txId}`.as('id'),
+            teamId: sql<string>`${teamId}`.as('team_id'),
+            userId: sql<string>`${userId}`.as('user_id'),
+            type: sql<string>`${txType}`.as('type'),
+            amount: sql<number>`(${takeExpr}) * -1`.as('amount'),
+            balanceAfter: credits.balance,
+            description: sql<string>`${description}`.as('description'),
+            metadata: sql`${metadataJson}`.as('metadata'),
+            idempotencyKey: sql<string>`${opts.idempotencyKey}`.as(
+              'idempotency_key'
+            ),
+            createdAt: sql`${nowSeconds}`.as('created_at'),
+          })
+          .from(credits)
+          .where(and(eq(credits.teamId, teamId), sql`changes() > 0`))
+      )
+      .onConflictDoNothing()
+      .returning({ id: transactions.id, amount: transactions.amount });
+
+    const reduceRemaining = db
+      .update(creditReservations)
+      .set({
+        remainingAmount: sql`${creditReservations.remainingAmount} - min(${creditReservations.remainingAmount}, ${actualMicros})`,
+      })
+      .where(
+        and(
+          eq(creditReservations.id, reservationId),
+          eq(creditReservations.teamId, teamId),
+          sql`changes() > 0`
+        )
+      );
+
+    const readBackBalance = db
+      .select({ balance: credits.balance })
+      .from(credits)
+      .where(eq(credits.teamId, teamId));
+
+    const [, , insertedRows, , balanceRows] = await db.batch([
+      growHold,
+      updateBalance,
+      insertTransaction,
+      reduceRemaining,
+      readBackBalance,
+    ]);
+
+    const inserted = insertedRows[0];
+    if (!inserted) {
+      const raced = await getTransactionByIdempotencyKey(opts.idempotencyKey);
+      if (raced) {
+        const captured = micros(Math.abs(raced.amount));
+        return {
+          ok: true,
+          captured,
+          skippedDeltaMicros: skippedCaptureDelta(actualMicros, captured),
+        };
+      }
+      return {
+        ok: true,
+        captured: ZERO_MICROS,
+        skippedDeltaMicros: skippedCaptureDelta(actualMicros, ZERO_MICROS),
+      };
+    }
+
+    const captured = micros(Math.abs(inserted.amount));
+    const balanceRow = balanceRows[0];
+    const newBalance = micros(balanceRow?.balance ?? 0);
+
+    await emitTeamFunds({
+      amountMicros: negateMicros(captured),
+      transactionId: inserted.id,
+      type: txType,
+    });
+
+    void maybeAutoTopUp().catch((err) => {
+      logger.error('Auto top-up failed after reservation capture', {
+        teamId,
+        balanceMicros: newBalance,
+        err,
+      });
+    });
+
+    return {
+      ok: true,
+      captured,
+      skippedDeltaMicros: skippedCaptureDelta(actualMicros, captured),
+    };
+  }
+
+  async function zeroReservation(reservationId: string): Promise<void> {
+    await db
+      .update(creditReservations)
+      .set({ remainingAmount: 0 })
+      .where(
+        and(
+          eq(creditReservations.id, reservationId),
+          eq(creditReservations.teamId, teamId)
+        )
+      );
+    await emitTeamFunds({ amountMicros: ZERO_MICROS });
   }
 
   async function updateAutoTopUpSettings(settings: {
@@ -518,6 +1219,8 @@ export function createBillingMethods(
         autoTopUpEnabled: settings.enabled,
         autoTopUpThresholdMicros: settings.thresholdMicros,
         autoTopUpAmountMicros: settings.amountMicros,
+        autoTopUpFailedAt: null,
+        autoTopUpDeclineCode: null,
       })
       .onConflictDoUpdate({
         target: teamBillingSettings.teamId,
@@ -529,12 +1232,14 @@ export function createBillingMethods(
           ...(settings.amountMicros !== undefined && {
             autoTopUpAmountMicros: settings.amountMicros,
           }),
+          autoTopUpFailedAt: null,
+          autoTopUpDeclineCode: null,
           updatedAt: new Date(),
         },
       });
   }
 
-  async function maybeAutoTopUp(currentBalance: Microdollars): Promise<void> {
+  async function maybeAutoTopUp(): Promise<void> {
     if (!isStripeEnabled()) return;
 
     const settings = await read.getBillingSettings();
@@ -551,7 +1256,23 @@ export function createBillingMethods(
       return;
     }
 
-    if (currentBalance > settings.autoTopUpThresholdMicros) {
+    // Holds reduce spendable funds; posted balance can sit above the
+    // threshold while the pill shows available below it.
+    const { available } = await read.getAvailable();
+    if (available > settings.autoTopUpThresholdMicros) {
+      return;
+    }
+
+    if (
+      settings.autoTopUpFailedAt &&
+      Date.now() - settings.autoTopUpFailedAt.getTime() <
+        AUTO_TOPUP_DECLINE_COOLDOWN_MS
+    ) {
+      logger.debug('Auto top-up skipped: decline cooldown', {
+        teamId,
+        declineCode: settings.autoTopUpDeclineCode,
+        failedAt: settings.autoTopUpFailedAt,
+      });
       return;
     }
 
@@ -613,33 +1334,49 @@ export function createBillingMethods(
         ? defaultPaymentMethod
         : defaultPaymentMethod.id;
 
-    const paymentIntent = await stripe.paymentIntents.create({
-      amount: amountCents,
-      currency: 'usd',
-      customer: settings.stripeCustomerId,
-      payment_method: paymentMethodId,
-      off_session: true,
-      confirm: true,
-      expand: ['latest_charge'],
-      // userId is required by stripeWebhookMiddleware — without it every
-      // payment_intent.* webhook for this charge is rejected with a 400.
-      metadata: {
-        teamId,
-        userId,
-        type: 'auto_top_up',
-      },
-    });
+    let paymentIntent;
+    try {
+      paymentIntent = await stripe.paymentIntents.create({
+        amount: amountCents,
+        currency: 'usd',
+        customer: settings.stripeCustomerId,
+        payment_method: paymentMethodId,
+        off_session: true,
+        confirm: true,
+        expand: ['latest_charge'],
+        // userId is required by stripeWebhookMiddleware — without it every
+        // payment_intent.* webhook for this charge is rejected with a 400.
+        metadata: {
+          teamId,
+          userId,
+          type: 'auto_top_up',
+        },
+      });
+    } catch (err) {
+      const declineCode = stripeDeclineCode(err);
+      if (declineCode) {
+        logger.error('Auto top-up declined', {
+          teamId,
+          declineCode,
+          amountCents,
+        });
+        await recordAutoTopUpFailure(declineCode);
+        return;
+      }
+      throw err;
+    }
 
     if (paymentIntent.status !== 'succeeded') {
       // Declines and SCA (`requires_action`) are the common off-session
-      // outcomes. Nothing downstream retries, so this is the only record that
-      // auto-top-up has stopped working for this team.
+      // outcomes. Record a cooldown so the next debit/capture does not
+      // fire another PaymentIntent at the same card (#1334).
       logger.error('Auto top-up payment did not succeed', {
         teamId,
         status: paymentIntent.status,
         amountCents,
         stripePaymentIntentId: paymentIntent.id,
       });
+      await recordAutoTopUpFailure(paymentIntent.status);
       return;
     }
 
@@ -658,8 +1395,7 @@ export function createBillingMethods(
   }
 
   async function checkAutoTopUp(): Promise<void> {
-    const balance = await read.getBalance();
-    await maybeAutoTopUp(balance);
+    await maybeAutoTopUp();
   }
 
   /** Sum active (non-expired) batch remainingAmounts and compare to credits.balance */
@@ -775,7 +1511,13 @@ export function createBillingMethods(
     ...read,
     addCredits,
     saveStripeCustomerId,
+    clearAutoTopUpFailure,
     deductCredits,
+    tryDeductCredits,
+    createReservation,
+    growReservation,
+    captureReservation,
+    zeroReservation,
     updateAutoTopUpSettings,
     checkAutoTopUp,
     reconcileBatchBalance,

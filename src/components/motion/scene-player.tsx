@@ -17,17 +17,12 @@ import {
   getAspectRatioClassName,
 } from '@/lib/constants/aspect-ratios';
 import { cn } from '@/lib/utils';
+import { plainSceneTitle } from '@/lib/utils/markdown-plain';
 import { copyTextToClipboard } from '@/lib/utils/clipboard';
 import type { ShotView } from '@/lib/shots/shot-view';
 import { AppImage } from '@/components/ui/app-image';
-import {
-  AlertCircle,
-  Download,
-  Link,
-  Loader2,
-  Share2,
-  VideoIcon,
-} from 'lucide-react';
+import { usePostHog } from '@posthog/react';
+import { Download, Link, Loader2, Share2, VideoIcon } from 'lucide-react';
 import { useCallback, useState } from 'react';
 import { toast } from 'sonner';
 import { VideoPlayer } from './video-player';
@@ -67,7 +62,7 @@ type ScenePlayerProps = {
    * earlier inputs. Info-level: amber dot on a muted chip, no warning fill.
    */
   staleLabel?: string | null;
-  progressMessage?: string;
+  progressMessage?: React.ReactNode;
   /**
    * In-flight retry state for the selected shot (#882) — rendered as
    * "Retrying (N/M)…" (or "Retrying…") in the player overlay.
@@ -104,6 +99,7 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
   onEnded,
 }) => {
   const [shouldAutoPlay, setShouldAutoPlay] = useState(false);
+  const posthog = usePostHog();
 
   const imageDimensions = aspectRatioToDimensions(aspectRatio);
   // Derive the current shot synchronously from selection — do NOT park the
@@ -126,6 +122,11 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
 
   const handleCopyImageUrl = useCallback(async () => {
     if (!currentShot?.image?.url) return;
+    posthog.capture('share_clicked', {
+      surface: 'shot_image',
+      sequence_id: currentShot.sequenceId,
+      shot_id: currentShot.id,
+    });
     try {
       // Stored media URLs are origin-relative (#894) — absolutize against the
       // current origin so the copied link is usable when pasted elsewhere. The
@@ -140,10 +141,20 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
     } catch {
       toast.error('Failed to copy URL');
     }
-  }, [currentShot?.image?.url]);
+  }, [
+    currentShot?.image?.url,
+    currentShot?.sequenceId,
+    currentShot?.id,
+    posthog,
+  ]);
 
   const handleCopyVideoUrl = useCallback(async () => {
     if (!currentShot?.video?.url) return;
+    posthog.capture('share_clicked', {
+      surface: 'shot_video',
+      sequence_id: currentShot.sequenceId,
+      shot_id: currentShot.id,
+    });
     try {
       const absoluteUrl = new URL(currentShot.video.url, window.location.origin)
         .href;
@@ -155,7 +166,12 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
     } catch {
       toast.error('Failed to copy URL');
     }
-  }, [currentShot?.video?.url]);
+  }, [
+    currentShot?.video?.url,
+    currentShot?.sequenceId,
+    currentShot?.id,
+    posthog,
+  ]);
 
   // Check video status
   const hasCompletedVideo =
@@ -172,6 +188,11 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
 
   const handleDownloadVideo = useCallback(() => {
     if (!downloadData?.downloadUrl) return;
+    posthog.capture('export_clicked', {
+      surface: 'shot',
+      sequence_id: currentShot?.sequenceId,
+      shot_id: currentShot?.id,
+    });
     const a = document.createElement('a');
     a.href = downloadData.downloadUrl;
     a.download =
@@ -180,7 +201,7 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-  }, [downloadData, currentShot?.id]);
+  }, [downloadData, currentShot?.id, currentShot?.sequenceId, posthog]);
 
   // Handle video pause - disable autoplay when user manually pauses
   const handlePause = useCallback(() => {
@@ -219,15 +240,22 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
                 <span className="absolute top-2 right-2 z-10 rounded bg-background/80 px-2 py-1 text-xs font-medium text-muted-foreground backdrop-blur-sm">
                   Preview
                 </span>
+                <div className="absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/80 to-transparent p-4">
+                  <p className="text-center text-sm font-medium text-white">
+                    {progressMessage}
+                  </p>
+                </div>
               </>
             ) : (
               <>
                 <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(167,112,239,0.12),transparent_70%)]" />
-                <div className="relative flex flex-col items-center gap-4">
+                <div className="relative flex flex-col items-center gap-4 px-4">
                   <BlobLoader size="lg" />
                   <div className="flex items-center gap-2">
                     <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                    <p className="text-sm font-medium">{progressMessage}</p>
+                    <p className="text-center text-sm font-medium">
+                      {progressMessage}
+                    </p>
                   </div>
                 </div>
               </>
@@ -289,20 +317,8 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
       ? currentShotIndex + 1
       : undefined;
   const title =
-    currentScene?.title?.trim() ||
+    plainSceneTitle(currentScene?.title) ||
     (sceneNumber ? `Scene ${sceneNumber}` : undefined);
-
-  // Best available image: override (variant preview) → final thumbnail → fast preview → sequence poster
-  const displayImage =
-    overrideImageUrl ??
-    currentShot.image?.url ??
-    currentShot.previewThumbnailUrl ??
-    posterUrl ??
-    null;
-  const isPreviewImage =
-    !!currentShot.previewThumbnailUrl && !currentShot.image?.url;
-  const isVariantPreview =
-    !!overrideImageUrl && overrideImageUrl !== currentShot.image?.url;
 
   // The image-focused tabs (the still image + the shot-variant grid) keep
   // showing the image; every other tab (script, motion, cast, location,
@@ -319,6 +335,31 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
   const playbackVideoUrl = showsStillImage
     ? ''
     : (overrideVideoUrl ?? currentShot.video?.url ?? '');
+
+  // The storyboard preview is a placeholder for a still that has not arrived.
+  // Once a clip is playable it is not a placeholder any more, it is a
+  // DIFFERENT picture — reference-only never renders the still it stood in
+  // for, so it would sit in front of the finished shot forever, captioned
+  // "may not match the final image". Drop it (and its badge) as soon as the
+  // clip can play, and let the video show its own first frame. A real still
+  // still wins: on that path the still IS the first frame.
+  const previewSupersededByVideo =
+    !!playbackVideoUrl && !currentShot.image?.url && !overrideImageUrl;
+
+  // Best available image: override (variant preview) → final thumbnail → fast preview → sequence poster
+  const displayImage = previewSupersededByVideo
+    ? null
+    : (overrideImageUrl ??
+      currentShot.image?.url ??
+      currentShot.previewThumbnailUrl ??
+      posterUrl ??
+      null);
+  const isPreviewImage =
+    !previewSupersededByVideo &&
+    !!currentShot.previewThumbnailUrl &&
+    !currentShot.image?.url;
+  const isVariantPreview =
+    !!overrideImageUrl && overrideImageUrl !== currentShot.image?.url;
 
   return (
     <div className={cn('relative flex w-full flex-col', wrapperClassName)}>
@@ -357,10 +398,10 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="absolute top-2 right-2 z-10 h-8 w-8 bg-black/50 text-white hover:bg-black/70"
+                  className="absolute top-2 right-2 z-20 h-11 w-11 bg-black/50 text-white hover:bg-black/70 md:h-8 md:w-8"
                   aria-label="Share image"
                 >
-                  <Share2 className="h-4 w-4" />
+                  <Share2 className="h-5 w-5 md:h-4 md:w-4" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
@@ -372,19 +413,11 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
             </DropdownMenu>
           )}
 
-          {/* Error overlay */}
-          <div
-            className={cn(
-              'absolute inset-0 flex items-center justify-center pointer-events-none',
-              // Use semi-transparent overlay if image exists, solid bg if not
-              displayImage ? 'bg-muted/80' : 'bg-transparent'
-            )}
-          >
-            <div className="flex flex-col items-center gap-2 text-muted-foreground">
-              <AlertCircle className="h-8 w-8" />
-              <span className="text-sm">Failed to generate video</span>
-            </div>
-          </div>
+          <VideoStateOverlay
+            thumbnailUrl={displayImage}
+            videoStatus="failed"
+            videoError={currentShot.primaryVideo?.error ?? null}
+          />
           {frameOverlay}
         </div>
       ) : (
@@ -395,17 +428,16 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
             className
           )}
         >
-          {/* Share dropdown */}
           {(currentShot.image?.url || currentShot.video?.url) && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="absolute top-2 right-2 z-10 h-8 w-8 bg-black/50 text-white hover:bg-black/70"
+                  className="absolute top-2 right-2 z-20 h-11 w-11 bg-black/50 text-white hover:bg-black/70 md:h-8 md:w-8"
                   aria-label="Share"
                 >
-                  <Share2 className="h-4 w-4" />
+                  <Share2 className="h-5 w-5 md:h-4 md:w-4" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
@@ -454,6 +486,9 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
             aspectRatio={aspectRatio}
             className="h-full w-full"
             autoPlay={shouldAutoPlay}
+            playSource="canvas"
+            sequenceId={currentShot.sequenceId}
+            shotId={currentShot.id}
             onTimeUpdate={onTimeUpdate}
             onPause={handlePause}
             onEnded={handleEnded}
@@ -461,9 +496,13 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
           {/* Show overlay for image/video generation states */}
           <VideoStateOverlay
             thumbnailUrl={displayImage}
+            hasPlayableVideo={!!playbackVideoUrl}
             videoStatus={
               isVariantVideoPreview ? 'completed' : currentShot.videoStatus
             }
+            imageStatus={currentShot.frame.imageStatus}
+            imageError={currentShot.frame.imageError}
+            videoError={currentShot.primaryVideo?.error ?? null}
             progressMessage={progressMessage}
             retry={retry}
           />
@@ -490,7 +529,7 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
           )}
           {isPreviewImage && !isVariantPreview && (
             <span className="absolute top-2 right-2 z-10 rounded bg-background/80 px-2 py-1 text-xs font-medium text-muted-foreground backdrop-blur-sm">
-              Preview
+              Storyboard
             </span>
           )}
           {frameOverlay}

@@ -17,8 +17,12 @@ import {
 } from '@/lib/billing/cost-estimation';
 import { getEffectiveFalPricing } from '@/lib/ai/fal-pricing-live';
 import { sumShotDurationsSeconds } from '@/lib/sequences/shot-durations';
-import { multiplyMicros } from '@/lib/billing/money';
-import { requireCredits } from '@/lib/billing/preflight';
+import { addMicros, ZERO_MICROS } from '@/lib/billing/money';
+import { buildMotionReferenceImages } from '@/lib/motion/build-motion-references';
+import {
+  releaseReservationOnThrow,
+  reserveRunCredits,
+} from '@/lib/billing/preflight';
 import { estimateStoryboardPreflightCost } from '@/lib/billing/storyboard-preflight-cost';
 import { DEFAULT_ASPECT_RATIO } from '@/lib/constants/aspect-ratios';
 import type { Shot } from '@/lib/db/schema';
@@ -42,6 +46,14 @@ import {
 import { triggerWorkflow } from '@/lib/workflow/client';
 import { buildWorkflowLabel } from '@/lib/workflow/labels';
 import { triggerStoryboard } from '@/lib/workflow/launchers';
+import { ValidationError } from '@/lib/errors';
+import {
+  continueStageSchema,
+  flagsFromStopAt,
+  generationStageSchema,
+  nextStageAfter,
+  stageIndex,
+} from '@/lib/generation/pipeline';
 import type {
   BatchMotionMusicWorkflowInput,
   MusicWorkflowInput,
@@ -55,6 +67,13 @@ import { bumpStylePopularity } from '@/lib/style/bump-style-popularity';
 import { simpleHash } from '@/lib/utils/hash';
 import { getLogger } from '@/lib/observability/logger';
 import { createSequences } from '@/lib/sequences/create-sequences';
+import { canRenderReferenceOnly } from '@/lib/motion/motion-generation';
+import { toWorkflowScopedDb } from '@/lib/db/scoped-workflow';
+import {
+  rendersReferenceOnly,
+  type StartFrameSequence,
+} from '@/lib/shots/use-start-frame';
+import { REFERENCE_ONLY_MODEL_ERROR } from '@/lib/schemas/sequence.schemas';
 
 const logger = getLogger(['openstory', 'serverFn', 'sequences']);
 
@@ -78,6 +97,14 @@ export const getSequencesFn = createServerFn({ method: 'GET' })
   .middleware([authWithTeamMiddleware])
   .handler(async ({ context }) => {
     return context.scopedDb.sequences.list();
+  });
+
+/** Archived sequences for the unarchive picker (#1108 Phase 4) — the default
+ * list excludes them. */
+export const getArchivedSequencesFn = createServerFn({ method: 'GET' })
+  .middleware([authWithTeamMiddleware])
+  .handler(async ({ context }) => {
+    return context.scopedDb.sequences.listArchived();
   });
 
 export const getSequenceFn = createServerFn({ method: 'GET' })
@@ -105,6 +132,111 @@ export const createSequenceFn = createServerFn({ method: 'POST' })
       teamId: context.teamId,
     });
     return sequences;
+  });
+
+/**
+ * Continue a stopped pipeline from `startFrom` through `stopAt` (#1408).
+ * Does not wipe existing shots — storyboard runs in resume mode.
+ *
+ * Only References and Images continue here: Script is a fresh run, and
+ * motion/music have their own batch footers. Everything is checked before a
+ * credit is reserved or the mutex claimed — the workflow would otherwise
+ * reject the same input minutes later, after the UI flipped to processing.
+ */
+export const continueGenerationFn = createServerFn({ method: 'POST' })
+  .middleware([sequenceAccessMiddleware])
+  .validator(
+    zodValidator(
+      z
+        .object({
+          sequenceId: ulidSchema,
+          startFrom: continueStageSchema,
+          stopAt: generationStageSchema,
+        })
+        .refine((d) => stageIndex(d.startFrom) <= stageIndex(d.stopAt), {
+          path: ['stopAt'],
+          message: 'stopAt must not be earlier than startFrom',
+        })
+    )
+  )
+  .handler(async ({ data, context }) => {
+    const { sequence } = context;
+    const checkpoint = sequence.generationCheckpoint;
+    if (!checkpoint) {
+      throw new ValidationError(
+        'Nothing to continue from — generate the sequence first'
+      );
+    }
+    // A checkpoint carries everything up to its stage, so re-running an
+    // earlier stage is fine; starting past it has nothing to hydrate from.
+    const reachable = nextStageAfter(checkpoint.completedStage);
+    if (!reachable || stageIndex(data.startFrom) > stageIndex(reachable)) {
+      throw new ValidationError(
+        `The last run only reached ${checkpoint.completedStage}; ${data.startFrom} cannot start from there`
+      );
+    }
+    const { autoGenerateMotion, autoGenerateMusic } = flagsFromStopAt(
+      data.stopAt
+    );
+
+    const reservationId = await reserveRunCredits(
+      context.scopedDb,
+      estimateStoryboardPreflightCost({
+        script: sequence.script ?? '',
+        imageModel: safeTextToImageModel(
+          sequence.imageModel,
+          DEFAULT_IMAGE_MODEL
+        ),
+        aspectRatio: sequence.aspectRatio,
+        resolution: sequence.resolution,
+        autoGenerateMotion,
+        stopAt: data.stopAt,
+        startFrom: data.startFrom,
+        referenceOnly: !sequence.generateStartFrames,
+        videoModels: [
+          safeImageToVideoModel(sequence.videoModel, DEFAULT_VIDEO_MODEL),
+        ],
+        autoGenerateMusic,
+        audioModels: [safeAudioModel(sequence.musicModel, DEFAULT_MUSIC_MODEL)],
+        pricing: await getEffectiveFalPricing(),
+      }),
+      {
+        providers: ['fal', 'openrouter'],
+        errorMessage: 'Insufficient credits to continue generation',
+        sequenceId: data.sequenceId,
+      }
+    );
+
+    await context.scopedDb.sequences.update({
+      id: data.sequenceId,
+      generationStopAt: data.stopAt,
+      autoGenerateMotion,
+      autoGenerateMusic,
+    });
+
+    return releaseReservationOnThrow(context.scopedDb, reservationId, () =>
+      triggerStoryboard(context.scopedDb, {
+        userId: context.user.id,
+        teamId: context.teamId,
+        sequenceId: data.sequenceId,
+        reservationId,
+        resume: true,
+        startFrom: data.startFrom,
+        stopAt: data.stopAt,
+        checkpoint,
+        autoGenerateMotion,
+        autoGenerateMusic,
+        imageModels: [
+          safeTextToImageModel(sequence.imageModel, DEFAULT_IMAGE_MODEL),
+        ],
+        videoModels: [
+          safeImageToVideoModel(sequence.videoModel, DEFAULT_VIDEO_MODEL),
+        ],
+        musicModel: sequence.musicModel
+          ? safeAudioModel(sequence.musicModel, DEFAULT_MUSIC_MODEL)
+          : undefined,
+      })
+    );
   });
 
 /**
@@ -171,7 +303,7 @@ export const updateSequenceFn = createServerFn({ method: 'POST' })
     }
 
     if (needsRegeneration) {
-      await requireCredits(
+      const reservationId = await reserveRunCredits(
         context.scopedDb,
         estimateStoryboardPreflightCost({
           script: sequence.script ?? '',
@@ -180,7 +312,9 @@ export const updateSequenceFn = createServerFn({ method: 'POST' })
             DEFAULT_IMAGE_MODEL
           ),
           aspectRatio: sequence.aspectRatio,
+          resolution: sequence.resolution,
           autoGenerateMotion: sequence.autoGenerateMotion,
+          stopAt: sequence.generationStopAt ?? undefined,
           videoModels: [
             safeImageToVideoModel(sequence.videoModel, DEFAULT_VIDEO_MODEL),
           ],
@@ -188,11 +322,13 @@ export const updateSequenceFn = createServerFn({ method: 'POST' })
           audioModels: [
             safeAudioModel(sequence.musicModel, DEFAULT_MUSIC_MODEL),
           ],
+          referenceOnly: !sequence.generateStartFrames,
           pricing: await getEffectiveFalPricing(),
         }),
         {
           providers: ['fal', 'openrouter'],
           errorMessage: 'Insufficient credits to regenerate storyboard',
+          sequenceId,
         }
       );
 
@@ -200,20 +336,24 @@ export const updateSequenceFn = createServerFn({ method: 'POST' })
       // persistence (#839), and the trigger-time content snapshot. Regeneration
       // used to trigger `/storyboard` raw, so it both bypassed the mutex and
       // left the workflow to re-derive the payload mid-run.
-      await triggerStoryboard(context.scopedDb, {
-        userId: context.user.id,
-        teamId: context.teamId,
-        sequenceId,
-        options: {
-          shotsPerScene: 3,
-          generateThumbnails: true,
-          generateDescriptions: true,
-          aiProvider: 'openrouter',
-          regenerateAll: true,
-        },
-        autoGenerateMotion: sequence.autoGenerateMotion,
-        autoGenerateMusic: sequence.autoGenerateMusic,
-      });
+      await releaseReservationOnThrow(context.scopedDb, reservationId, () =>
+        triggerStoryboard(context.scopedDb, {
+          userId: context.user.id,
+          teamId: context.teamId,
+          sequenceId,
+          reservationId,
+          options: {
+            shotsPerScene: 3,
+            generateThumbnails: true,
+            generateDescriptions: true,
+            aiProvider: 'openrouter',
+            regenerateAll: true,
+          },
+          autoGenerateMotion: sequence.autoGenerateMotion,
+          autoGenerateMusic: sequence.autoGenerateMusic,
+          stopAt: sequence.generationStopAt ?? undefined,
+        })
+      );
     }
 
     return sequence;
@@ -247,6 +387,46 @@ export const setSequenceMusicFn = createServerFn({ method: 'POST' })
   });
 
 // ============================================================================
+// Rename (#1108 Phase 4)
+// ============================================================================
+
+const renameSequenceInputSchema = z.object({
+  sequenceId: ulidSchema,
+  title: z.string().trim().min(1).max(500),
+});
+
+/**
+ * Rename a sequence. Deliberately separate from {@link updateSequenceFn} for
+ * the same reason as {@link setSequenceMusicFn}: that path force-defaults
+ * `aspectRatio` and treats its mere presence as a regeneration trigger, so a
+ * title-only write through it would either reset a non-16:9 sequence's aspect
+ * ratio or charge credits and wipe the storyboard. Minimal write, no side
+ * effects beyond the event.
+ */
+export const renameSequenceFn = createServerFn({ method: 'POST' })
+  .middleware([sequenceAccessMiddleware])
+  .validator(zodValidator(renameSequenceInputSchema))
+  .handler(async ({ data, context }) => {
+    const prevTitle = context.sequence.title;
+    const sequence = await context.scopedDb.sequences.update({
+      id: data.sequenceId,
+      title: data.title,
+    });
+    if (data.title !== prevTitle) {
+      await context.scopedDb.sequenceEvents.record({
+        sequenceId: data.sequenceId,
+        actorId: context.user.id,
+        kind: 'sequence.renamed',
+        targetType: 'sequence',
+        targetId: data.sequenceId,
+        summary: `Renamed sequence to ${data.title}`,
+        data: { prevTitle },
+      });
+    }
+    return sequence;
+  });
+
+// ============================================================================
 // Retry Failed Storyboard
 // ============================================================================
 
@@ -268,7 +448,7 @@ export const retryStoryboardFn = createServerFn({ method: 'POST' })
       throw new Error('Only failed sequences can be retried');
     }
 
-    await requireCredits(
+    const reservationId = await reserveRunCredits(
       context.scopedDb,
       estimateStoryboardPreflightCost({
         script: sequence.script ?? '',
@@ -277,17 +457,20 @@ export const retryStoryboardFn = createServerFn({ method: 'POST' })
           DEFAULT_IMAGE_MODEL
         ),
         aspectRatio: sequence.aspectRatio,
+        resolution: sequence.resolution,
         autoGenerateMotion: sequence.autoGenerateMotion,
         videoModels: [
           safeImageToVideoModel(sequence.videoModel, DEFAULT_VIDEO_MODEL),
         ],
         autoGenerateMusic: sequence.autoGenerateMusic,
         audioModels: [safeAudioModel(sequence.musicModel, DEFAULT_MUSIC_MODEL)],
+        referenceOnly: !sequence.generateStartFrames,
         pricing: await getEffectiveFalPricing(),
       }),
       {
         providers: ['fal', 'openrouter'],
         errorMessage: 'Insufficient credits to retry storyboard',
+        sequenceId: sequence.id,
       }
     );
 
@@ -295,6 +478,7 @@ export const retryStoryboardFn = createServerFn({ method: 'POST' })
       userId: user.id,
       teamId,
       sequenceId: sequence.id,
+      reservationId,
       options: {
         shotsPerScene: 3,
         generateThumbnails: true,
@@ -304,24 +488,133 @@ export const retryStoryboardFn = createServerFn({ method: 'POST' })
       },
       autoGenerateMotion: sequence.autoGenerateMotion,
       autoGenerateMusic: sequence.autoGenerateMusic,
+      stopAt: sequence.generationStopAt ?? undefined,
     };
 
     // Owns the generation mutex, the 'processing' status write, and the
     // run-id persistence (#839).
-    await triggerStoryboard(context.scopedDb, workflowInput);
+    await releaseReservationOnThrow(context.scopedDb, reservationId, () =>
+      triggerStoryboard(context.scopedDb, workflowInput)
+    );
 
     return { success: true };
   });
 
-/** Archive a sequence (hides from list, lets in-flight workflows finish) */
+/** Archive a sequence (hides from list, lets in-flight workflows finish).
+ * Records the prior status so {@link unarchiveSequenceFn} can restore it. */
 export const archiveSequenceFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
   .validator(zodValidator(z.object({ sequenceId: ulidSchema })))
   .handler(async ({ context }) => {
+    const prevStatus = context.sequence.status;
+    if (prevStatus === 'archived') return { success: true };
     await context.scopedDb
       .sequence(context.sequence.id)
       .updateStatus('archived');
+    await context.scopedDb.sequenceEvents.record({
+      sequenceId: context.sequence.id,
+      actorId: context.user.id,
+      kind: 'sequence.archived',
+      targetType: 'sequence',
+      targetId: context.sequence.id,
+      summary: `Archived ${context.sequence.title}`,
+      data: { prevState: { status: prevStatus } },
+    });
     return { success: true };
+  });
+
+/**
+ * Statuses an unarchive may restore verbatim. `'processing'` is deliberately
+ * NOT here: archiving lets the in-flight run finish, so by unarchive time the
+ * generation is over one way or the other, and re-asserting 'processing'
+ * makes the editor poll and show "Generating…" for a run that is not
+ * happening. The cron reconciler only heals such a row while its Cloudflare
+ * instance is still resolvable, so a long-archived sequence would stay stuck.
+ * A recorded 'processing' maps to {@link INTERRUPTED_STATUS} instead — the
+ * same honest, retryable state the reconciler writes for a dead run.
+ */
+const RESTORABLE_STATUSES = ['draft', 'completed', 'failed'] as const;
+type RestorableStatus = (typeof RESTORABLE_STATUSES)[number];
+function isRestorableStatus(value: string | null): value is RestorableStatus {
+  return (
+    value !== null && (RESTORABLE_STATUSES as readonly string[]).includes(value)
+  );
+}
+
+/** Maps a recorded archive prevStatus to the status unarchive should restore. */
+export function resolveUnarchiveRestore(args: {
+  recordedStatus: string | null;
+  hasShots: boolean;
+}): { status: RestorableStatus; interrupted: boolean } {
+  if (args.recordedStatus === 'processing') {
+    return { status: 'failed', interrupted: true };
+  }
+  if (isRestorableStatus(args.recordedStatus)) {
+    return { status: args.recordedStatus, interrupted: false };
+  }
+  return {
+    status: args.hasShots ? 'completed' : 'draft',
+    interrupted: false,
+  };
+}
+
+/** Mirrors `reconcileSequencesPass`'s wording for an interrupted run. */
+const INTERRUPTED_STATUS = {
+  status: 'failed' as const,
+  error: 'Generation was interrupted — use Retry to run it again.',
+};
+
+/**
+ * Undo an archive (#1108 Phase 4): restore the status the sequence had when
+ * it was archived (from the `sequence.archived` event's prevState). Sequences
+ * archived before that event existed fall back to a content-derived status —
+ * 'completed' when the sequence has shots, else 'draft'.
+ */
+export const unarchiveSequenceFn = createServerFn({ method: 'POST' })
+  .middleware([sequenceAccessMiddleware])
+  .validator(zodValidator(z.object({ sequenceId: ulidSchema })))
+  .handler(async ({ context }) => {
+    const { scopedDb, sequence, user } = context;
+    if (sequence.status !== 'archived') {
+      return { success: true, status: sequence.status };
+    }
+    const events = await scopedDb.sequenceEvents.listByTarget(
+      'sequence',
+      sequence.id
+    );
+    const archiveEvent = events.find((e) => e.kind === 'sequence.archived');
+    const recorded = archiveEvent?.data?.prevState;
+    const recordedStatus =
+      recorded !== null &&
+      recorded !== undefined &&
+      typeof recorded === 'object' &&
+      !Array.isArray(recorded) &&
+      typeof recorded.status === 'string'
+        ? recorded.status
+        : null;
+    // A run that was mid-flight at archive time is over by now — restore the
+    // interrupted state rather than a "Generating…" the user can't act on.
+    const hasShots =
+      (await scopedDb.shots.listBySequence(sequence.id, { limit: 1 })).length >
+      0;
+    const { status, interrupted } = resolveUnarchiveRestore({
+      recordedStatus,
+      hasShots,
+    });
+
+    await scopedDb
+      .sequence(sequence.id)
+      .updateStatus(status, interrupted ? INTERRUPTED_STATUS.error : null);
+    await scopedDb.sequenceEvents.record({
+      sequenceId: sequence.id,
+      actorId: user.id,
+      kind: 'sequence.unarchived',
+      targetType: 'sequence',
+      targetId: sequence.id,
+      summary: `Unarchived ${sequence.title}`,
+      data: { restoredStatus: status },
+    });
+    return { success: true, status };
   });
 
 /**
@@ -363,15 +656,21 @@ export function assertModelNotAlreadyAdded(
 }
 
 /**
- * Shots eligible for a video add-model run (#547): only those with a completed
- * primary image to animate. A shot with no usable image is skipped — there is
- * nothing to feed image-to-video.
+ * Shots eligible for a video add-model run (#547): those with a completed
+ * primary image to animate, PLUS the ones that render reference-only — those
+ * animate from the sheets and never have a still, so requiring one excluded
+ * every shot of a reference-only sequence and the add failed with "No shots
+ * have a completed image to animate yet". Resolved per shot, because the
+ * start-frame switch is.
  */
 export function selectEligibleVideoShots(
-  shots: readonly ShotView[]
+  shots: readonly ShotView[],
+  sequence: StartFrameSequence
 ): ShotView[] {
   return shots.filter(
-    (f) => f.frame.imageStatus === 'completed' && Boolean(f.image?.url)
+    (f) =>
+      rendersReferenceOnly(f, sequence) ||
+      (f.frame.imageStatus === 'completed' && Boolean(f.image?.url))
   );
 }
 
@@ -438,7 +737,9 @@ export const addModelToSequenceFn = createServerFn({ method: 'POST' })
         sequence.id
       );
       assertModelNotAlreadyAdded(existing, model, 'audio');
-      if (!sequence.musicPrompt || !sequence.musicTags) {
+      const musicPrompt = sequence.musicPrompt;
+      const musicTags = sequence.musicTags;
+      if (!musicPrompt || !musicTags) {
         throw new Error(
           'Generate music once before adding another audio model'
         );
@@ -446,7 +747,7 @@ export const addModelToSequenceFn = createServerFn({ method: 'POST' })
       const allShots = await scopedDb.shots.listBySequence(sequence.id);
       const totalDuration = sumShotDurationsSeconds(allShots) || 30;
 
-      await requireCredits(
+      const reservationId = await reserveRunCredits(
         scopedDb,
         gateEstimate(
           estimateAudioCost(model, totalDuration, {
@@ -454,37 +755,50 @@ export const addModelToSequenceFn = createServerFn({ method: 'POST' })
           }),
           { model, operation: 'add-audio-model' }
         ),
-        { errorMessage: 'Insufficient credits to add this audio model' }
+        {
+          errorMessage: 'Insufficient credits to add this audio model',
+          sequenceId: sequence.id,
+        }
       );
 
-      await scopedDb.sequenceVariants.upsertMusicPrimary({
-        sequenceId: sequence.id,
-        model,
-        prompt: sequence.musicPrompt,
-        tags: sequence.musicTags,
-        durationSeconds: Math.round(totalDuration),
-        status: 'pending',
-      });
-
-      const musicInput = buildAddAudioMusicInput({
-        baseCtx,
-        prompt: sequence.musicPrompt,
-        tags: sequence.musicTags,
-        durationSeconds: totalDuration,
-        model,
-      });
       try {
-        const workflowRunId = await triggerWorkflow('/music', musicInput, {
-          deduplicationId: `add-audio-${sequence.id}-${model}-${Date.now()}`,
-          label: buildWorkflowLabel(sequence.id),
-        });
-        return {
-          workflowRunId,
-          variantType,
-          model,
-          count: 1,
-          failed: 0,
-        } satisfies AddModelResult;
+        return await releaseReservationOnThrow(
+          scopedDb,
+          reservationId,
+          async () => {
+            await scopedDb.sequenceVariants.upsertMusicPrimary({
+              sequenceId: sequence.id,
+              model,
+              prompt: musicPrompt,
+              tags: musicTags,
+              durationSeconds: Math.round(totalDuration),
+              status: 'pending',
+            });
+
+            const musicInput = {
+              ...buildAddAudioMusicInput({
+                baseCtx,
+                prompt: musicPrompt,
+                tags: musicTags,
+                durationSeconds: totalDuration,
+                model,
+              }),
+              reservationId,
+              ownsReservation: true,
+            };
+            const workflowRunId = await triggerWorkflow('/music', musicInput, {
+              deduplicationId: `add-audio-${sequence.id}-${model}-${Date.now()}`,
+              label: buildWorkflowLabel(sequence.id),
+            });
+            return {
+              workflowRunId,
+              variantType,
+              model,
+              count: 1,
+              failed: 0,
+            } satisfies AddModelResult;
+          }
+        );
       } catch (error) {
         logger.error('add-model: failed to trigger music workflow', {
           err: error,
@@ -498,8 +812,8 @@ export const addModelToSequenceFn = createServerFn({ method: 'POST' })
           await scopedDb.sequenceVariants.upsertMusicPrimary({
             sequenceId: sequence.id,
             model,
-            prompt: sequence.musicPrompt,
-            tags: sequence.musicTags,
+            prompt: musicPrompt,
+            tags: musicTags,
             durationSeconds: Math.round(totalDuration),
             status: 'failed',
           });
@@ -564,86 +878,144 @@ export const addModelToSequenceFn = createServerFn({ method: 'POST' })
             ]
           : [];
       });
-      const eligible = selectEligibleVideoShots(shotViews);
+      const eligible = selectEligibleVideoShots(shotViews, sequence);
       if (eligible.length === 0) {
         throw new Error('No shots have a completed image to animate yet');
       }
+      // The added model runs on every eligible shot, so one reference-only
+      // shot among them decides what can be added at all — the same question
+      // the menu filters by, asked again here against the team's real keys.
+      const shotIsReferenceOnly = (shot: ShotView) =>
+        rendersReferenceOnly(shot, sequence);
+      const anyReferenceOnly = eligible.some(shotIsReferenceOnly);
+      if (
+        anyReferenceOnly &&
+        !(await canRenderReferenceOnly(
+          model,
+          toWorkflowScopedDb(scopedDb).credentials
+        ))
+      ) {
+        throw new Error(REFERENCE_ONLY_MODEL_ERROR);
+      }
 
-      await requireCredits(
+      // Cast / element sheets bind per shot on the motion path (#873); with no
+      // still the location sheet is the set, so it is loaded only when a shot
+      // renders reference-only — the same shape as the batch path.
+      const [characters, elements, locations] = await Promise.all([
+        scopedDb.characters.listWithSheets(sequence.id),
+        scopedDb.sequenceElements.list(sequence.id),
+        anyReferenceOnly
+          ? scopedDb.sequenceLocations.listWithReferences(sequence.id)
+          : Promise.resolve([]),
+      ]);
+
+      const pricing = await getEffectiveFalPricing();
+      const reservationId = await reserveRunCredits(
         scopedDb,
-        multiplyMicros(
-          gateEstimate(
-            estimateVideoCost(model, 5, {
-              pricing: await getEffectiveFalPricing(),
-            }),
-            { model, operation: 'add-video-model' }
-          ),
-          eligible.length
-        ),
-        { errorMessage: 'Insufficient credits to add this video model' }
-      );
-
-      const sceneContext = await loadSceneContextBySequence(
-        scopedDb,
-        sequence.id
-      );
-      const sceneOf = (s: Pick<Shot, 'sceneId' | 'durationMs'>) =>
-        resolveSceneForShot(s, sceneContext).scene;
-
-      // No pre-seeded `video_variants` version here (mirrors the image branch
-      // below, #990): each shot's motion child opens its own in-flight
-      // `video_variants` version in `set-generating-status` (keyed by
-      // (renderSegmentId, model, workflowRunId), materializing the degenerate
-      // one-shot segment), and the workflow's `onFailure` marks it failed.
-      // Pre-seeding a `pending` row the workflow can't reconcile (it dedupes on
-      // the run id the pending row lacks) would orphan it and — being non-failed
-      // — permanently block re-adding the model via `assertModelNotAlreadyAdded`.
-      // Structured motion prompt now lives on the shot's selected
-      // `shot_prompt_versions` row (#713), not `metadata.prompts.motion`. Batch
-      // it once; `motion-batch` re-assembles per model from `motionPrompt`.
-      const selectedMotionByShot =
-        await scopedDb.shotPromptVersions.getSelectedMotionByShots(
-          eligible.map((f) => f.id)
-        );
-      const workflowInput: BatchMotionMusicWorkflowInput = {
-        ...baseCtx,
-        includeMusic: false,
-        videoModels: [model],
-        // Adding a video model lands as an alternate only — never the primary
-        // video. Promote later with "Set". (#547)
-        variantOnly: true,
-        shots: eligible.map((f) => {
-          const selectedMotion = selectedMotionByShot.get(f.id);
-          const motionPrompt = selectedMotion
-            ? motionPromptFromVersion(selectedMotion)
-            : undefined;
-          return {
-            shotId: f.id,
-            imageUrl: f.image?.url ?? '',
-            prompt: resolveMotionPrompt(
-              {
-                motionPrompt: motionPrompt ?? null,
-                characterTags: sceneOf(f)?.continuity?.characterTags,
-                description: sceneOf(f)?.originalScript.extract ?? null,
-              },
-              model
+        // Per shot: a reference-only shot prices the reference-to-video route.
+        eligible.reduce(
+          (sum, shot) =>
+            addMicros(
+              sum,
+              gateEstimate(
+                estimateVideoCost(model, 5, {
+                  pricing,
+                  resolution: sequence.resolution,
+                  referenceOnly: shotIsReferenceOnly(shot),
+                }),
+                { model, operation: 'add-video-model' }
+              )
             ),
-            model,
-            motionPrompt,
-            sceneTitle: sceneOf(f)?.metadata?.title,
-            characterTags: sceneOf(f)?.continuity?.characterTags,
-            duration: f.durationMs ? f.durationMs / 1000 : 3,
-            aspectRatio: sequence.aspectRatio,
-          };
-        }),
-      };
+          ZERO_MICROS
+        ),
+        {
+          errorMessage: 'Insufficient credits to add this video model',
+          sequenceId: sequence.id,
+        }
+      );
+
       try {
-        const workflowRunId = await triggerWorkflow(
-          '/motion-batch',
-          workflowInput,
-          {
-            deduplicationId: `add-video-${sequence.id}-${model}-${Date.now()}`,
-            label: buildWorkflowLabel(sequence.id),
+        const workflowRunId = await releaseReservationOnThrow(
+          scopedDb,
+          reservationId,
+          async () => {
+            const sceneContext = await loadSceneContextBySequence(
+              scopedDb,
+              sequence.id
+            );
+            const sceneOf = (s: Pick<Shot, 'sceneId' | 'durationMs'>) =>
+              resolveSceneForShot(s, sceneContext).scene;
+
+            // No pre-seeded `video_variants` version here (mirrors the image branch
+            // below, #990): each shot's motion child opens its own in-flight
+            // `video_variants` version in `set-generating-status` (keyed by
+            // (renderSegmentId, model, workflowRunId), materializing the degenerate
+            // one-shot segment), and the workflow's `onFailure` marks it failed.
+            // Pre-seeding a `pending` row the workflow can't reconcile (it dedupes on
+            // the run id the pending row lacks) would orphan it and — being non-failed
+            // — permanently block re-adding the model via `assertModelNotAlreadyAdded`.
+            // Structured motion prompt now lives on the shot's selected
+            // `shot_prompt_versions` row (#713), not `metadata.prompts.motion`. Batch
+            // it once; `motion-batch` re-assembles per model from `motionPrompt`.
+            const selectedMotionByShot =
+              await scopedDb.shotPromptVersions.getSelectedMotionByShots(
+                eligible.map((f) => f.id)
+              );
+            const workflowInput: BatchMotionMusicWorkflowInput = {
+              ...baseCtx,
+              reservationId,
+              includeMusic: false,
+              videoModels: [model],
+              // Adding a video model lands as an alternate only — never the primary
+              // video. Promote later with "Set". (#547)
+              variantOnly: true,
+              shots: eligible.map((f) => {
+                const selectedMotion = selectedMotionByShot.get(f.id);
+                const motionPrompt = selectedMotion
+                  ? motionPromptFromVersion(selectedMotion)
+                  : undefined;
+                const referenceOnly = shotIsReferenceOnly(f);
+                return {
+                  shotId: f.id,
+                  sceneId: f.sceneId,
+                  // Reference-only carries no still; every other eligible shot
+                  // has one. Same encoding as the batch path in
+                  // `generateBatchMotionFn`: a null `frameVersionId` means the
+                  // clip rendered from references.
+                  imageUrl: referenceOnly ? undefined : (f.image?.url ?? ''),
+                  referenceOnly,
+                  frameVersionId: referenceOnly ? null : (f.image?.id ?? null),
+                  motionPromptVersionId: selectedMotion?.id ?? null,
+                  referenceImages: buildMotionReferenceImages({
+                    scene: sceneOf(f),
+                    characters,
+                    elements,
+                    motionPrompt: selectedMotion?.text ?? null,
+                    includeLocations: referenceOnly,
+                    locations,
+                  }),
+                  prompt: resolveMotionPrompt(
+                    {
+                      motionPrompt: motionPrompt ?? null,
+                      characterTags: sceneOf(f)?.continuity?.characterTags,
+                      description: sceneOf(f)?.originalScript.extract ?? null,
+                    },
+                    model
+                  ),
+                  model,
+                  motionPrompt,
+                  sceneTitle: sceneOf(f)?.metadata?.title,
+                  characterTags: sceneOf(f)?.continuity?.characterTags,
+                  duration: f.durationMs ? f.durationMs / 1000 : 3,
+                  aspectRatio: sequence.aspectRatio,
+                  resolution: sequence.resolution,
+                };
+              }),
+            };
+            return triggerWorkflow('/motion-batch', workflowInput, {
+              deduplicationId: `add-video-${sequence.id}-${model}-${Date.now()}`,
+              label: buildWorkflowLabel(sequence.id),
+            });
           }
         );
         return {
@@ -714,6 +1086,7 @@ export const addModelToSequenceFn = createServerFn({ method: 'POST' })
         teamId: sequence.teamId,
         sequenceId: sequence.id,
         aspectRatio: sequence.aspectRatio,
+        resolution: sequence.resolution,
         characters,
         locations,
         elements,
@@ -736,35 +1109,49 @@ export const addModelToSequenceFn = createServerFn({ method: 'POST' })
       throw new Error('No shots have a prompt to generate from');
     }
 
-    await requireCredits(
-      scopedDb,
-      multiplyMicros(
-        gateEstimate(
-          estimateImageCost(model, sequence.aspectRatio, 1, {
-            pricing: await getEffectiveFalPricing(),
-          }),
-          { model, operation: 'add-image-model' }
-        ),
-        inputs.length
-      ),
-      { errorMessage: 'Insufficient credits to add this image model' }
+    const perShotCost = gateEstimate(
+      estimateImageCost(model, sequence.aspectRatio, 1, {
+        pricing: await getEffectiveFalPricing(),
+        resolution: sequence.resolution,
+      }),
+      { model, operation: 'add-image-model' }
     );
 
-    // Trigger one image workflow per shot. A single shot's trigger failure
-    // shouldn't abort the rest of the batch — mark that shot's pending row
-    // failed (so it doesn't block a future re-add) and continue. Only throw if
-    // every shot failed to trigger.
+    // Trigger one image workflow per shot, each with its own hold. A shared
+    // envelope would let the first child to finish zero leftover for siblings.
+    // A single shot's trigger failure shouldn't abort the rest of the batch.
+    // Only throw if every shot failed to trigger.
     // No pre-seeded variant row: the IMAGE_WORKFLOW (variantOnly) appends the
     // in-flight `frame_variants` 'model' version itself in set-generating-status,
     // and its onFailure marks it failed — so there's nothing to pre-write here.
     let workflowRunId = '';
     let triggered = 0;
     for (const input of inputs) {
+      let reservationId: string | undefined;
       try {
-        workflowRunId = await triggerWorkflow('/image', input, {
-          deduplicationId: `add-image-${input.shotId}-${model}-${Date.now()}`,
-          label: buildWorkflowLabel(sequence.id),
+        reservationId = await reserveRunCredits(scopedDb, perShotCost, {
+          errorMessage: 'Insufficient credits to add this image model',
+          sequenceId: sequence.id,
         });
+      } catch (error) {
+        logger.error('add-model: insufficient credits for remaining shots', {
+          err: error,
+          sequenceId: sequence.id,
+          model,
+          triggered,
+        });
+        if (triggered === 0) throw error;
+        break;
+      }
+      try {
+        workflowRunId = await triggerWorkflow(
+          '/image',
+          { ...input, reservationId, ownsReservation: true },
+          {
+            deduplicationId: `add-image-${input.shotId}-${model}-${Date.now()}`,
+            label: buildWorkflowLabel(sequence.id),
+          }
+        );
         triggered++;
       } catch (error) {
         // Log every per-shot trigger failure so a systemic cause (e.g. a
@@ -776,6 +1163,17 @@ export const addModelToSequenceFn = createServerFn({ method: 'POST' })
           shotId: input.shotId,
           model,
         });
+        if (reservationId) {
+          try {
+            await scopedDb.billing.zeroReservation(reservationId);
+          } catch (releaseError) {
+            logger.error('add-model: failed to zero image reservation', {
+              err: releaseError,
+              sequenceId: sequence.id,
+              reservationId,
+            });
+          }
+        }
       }
     }
     if (triggered === 0) {

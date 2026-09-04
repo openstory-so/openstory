@@ -74,6 +74,27 @@ export async function uploadNamedTalentImage(
   await waitForUploadComplete(page);
 }
 
+// Drag-and-drop path (vs. the file chooser above): the dialog is a portal, so
+// the drop also bubbles to the composer's whole-page element dropzone (#1269).
+export async function dropNamedTalentImage(
+  page: Page,
+  filename: string
+): Promise<void> {
+  const dataTransfer = await page.evaluateHandle(
+    ({ b64, name }) => {
+      const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+      const dt = new DataTransfer();
+      dt.items.add(new File([bytes], name, { type: 'image/jpeg' }));
+      return dt;
+    },
+    { b64: TEST_IMAGE_JPEG.toString('base64'), name: filename }
+  );
+  await addTalentDialog(page)
+    .getByText('Drag & drop or paste')
+    .dispatchEvent('drop', { dataTransfer });
+  await waitForUploadComplete(page);
+}
+
 export async function waitForSubjectKind(
   page: Page,
   kind: 'Human' | 'Animated' | 'Other'

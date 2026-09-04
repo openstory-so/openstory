@@ -1,0 +1,1 @@
+ALTER TABLE `sequences` ADD `reference_only` integer DEFAULT false NOT NULL;

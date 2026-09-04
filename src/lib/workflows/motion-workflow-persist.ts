@@ -76,6 +76,10 @@ export type PersistMotionScopedDb = {
       versionId: string,
       data: Partial<NewVideoVariant>
     ) => Promise<{ id: string }>;
+    completeIfLive: (
+      versionId: string,
+      data: Partial<NewVideoVariant>
+    ) => Promise<{ id: string } | null>;
     select: (
       shotId: string,
       versionId: string,
@@ -125,6 +129,15 @@ export type MotionVideoProgressPayload =
       // Failure reason so the cache updater writes `shots.videoError` live
       // (else the FailureSummaryBanner shows "Unknown error" until refetch). (#881)
       error?: string;
+    }
+  | {
+      // User cancel (#1108): terminal + neutral — other viewers' generating
+      // chips clear and their caches converge on 'cancelled', never 'failed'.
+      shotId: string;
+      status: 'cancelled';
+      model: string;
+      variantOnly?: boolean;
+      error?: string;
     };
 
 export type MotionEmit = (
@@ -134,7 +147,10 @@ export type MotionEmit = (
 
 export type PersistMotionOutcome =
   | { status: 'completed'; videoUrl: string }
-  | { status: 'shot-deleted' };
+  | { status: 'shot-deleted' }
+  // A user cancel (#1108 Phase 4) flipped the row terminal mid-render; the
+  // output is discarded — never resurrected to 'completed'.
+  | { status: 'cancelled' };
 
 /**
  * Completed write. Flips the in-flight `video_variants` version to `completed`,
@@ -182,13 +198,20 @@ export async function persistMotionCompletion(opts: {
     now = () => new Date(),
   } = opts;
 
-  await scopedDb.videoVariants.update(videoVersionId, {
-    url: upload.url,
-    storagePath: upload.path,
-    status: 'completed',
-    generatedAt: now(),
-    error: null,
-  });
+  // Status-guarded (#1108): a user cancel flips the row to terminal
+  // 'cancelled' while the render is in flight; completing must not resurrect it.
+  const completed = await scopedDb.videoVariants.completeIfLive(
+    videoVersionId,
+    {
+      url: upload.url,
+      storagePath: upload.path,
+      generatedAt: now(),
+      error: null,
+    }
+  );
+  if (!completed) {
+    return { status: 'cancelled' };
+  }
 
   await scopedDb.sequenceEvents.record({
     sequenceId,

@@ -88,6 +88,11 @@ type FrameMirrorColumn =
 /** Fields `update` accepts — everything on a frame except the mirror columns. */
 export type FrameUpdateInput = Omit<Partial<NewFrame>, FrameMirrorColumn>;
 
+// One bound param per id; 90 keeps each query under D1's 100-bound-parameter
+// ceiling (#1322). Unit tests run on libsql, which has no such cap — an
+// unchunked list passes CI and throws `too many SQL variables` on D1.
+const FRAMES_BY_IDS_BATCH = 90;
+
 export function createFramesMethods(db: Database) {
   return {
     getById: async (frameId: string): Promise<Frame | null> => {
@@ -100,7 +105,18 @@ export function createFramesMethods(db: Database) {
 
     getByIds: async (frameIds: string[]): Promise<Frame[]> => {
       if (frameIds.length === 0) return [];
-      return await db.select().from(frames).where(inArray(frames.id, frameIds));
+      const rows: Frame[] = [];
+      for (let i = 0; i < frameIds.length; i += FRAMES_BY_IDS_BATCH) {
+        rows.push(
+          ...(await db
+            .select()
+            .from(frames)
+            .where(
+              inArray(frames.id, frameIds.slice(i, i + FRAMES_BY_IDS_BATCH))
+            ))
+        );
+      }
+      return rows;
     },
 
     /**

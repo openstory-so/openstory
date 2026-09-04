@@ -22,7 +22,7 @@ import type { ShotView } from '@/lib/shots/shot-view';
 /** One video render (version) of a segment, trimmed to what the editor shows. */
 export type SegmentVideoVersion = Pick<
   VideoVariant,
-  'id' | 'model' | 'status' | 'url' | 'createdAt'
+  'id' | 'model' | 'resolution' | 'status' | 'url' | 'createdAt'
 >;
 
 /** A scene's render segment with its video versions + selection. */
@@ -122,6 +122,14 @@ export type SegmentShotInput = {
   id: string;
   renderSegmentId: string | null;
   selectedMotionPromptVersionId: string | null;
+  /**
+   * Does this shot render from reference sheets rather than a still?
+   * `rendersReferenceOnly(shot, sequence)` — REQUIRED, not defaulted: such a
+   * shot has no frame pointer to compare, and getting it wrong silently marks
+   * every clip Stale (or hides a real staleness). Required so a new caller
+   * has to answer it rather than inherit a guess.
+   */
+  rendersReferenceOnly: boolean;
 };
 export type SegmentFrameInput = {
   shotId: string;
@@ -133,6 +141,7 @@ function toVersion(v: SegmentVersionInput): SegmentVideoVersion {
   return {
     id: v.id,
     model: v.model,
+    resolution: v.resolution,
     status: v.status,
     url: v.url,
     createdAt: v.createdAt,
@@ -146,7 +155,9 @@ function toVersion(v: SegmentVersionInput): SegmentVideoVersion {
  * stored references against the shots' *current* pointers (rather than rehashing)
  * is the derivation the schema doc calls out, and it sidesteps false positives
  * from non-referenced inputs like a re-snapped duration. A manifest entry whose
- * shot no longer exists (deleted/re-tiled) reads as stale, not fresh.
+ * shot no longer exists (deleted/re-tiled) reads as stale, not fresh. An entry
+ * with both version ids null is unknown provenance (legacy / unpinned trigger)
+ * and is not stale — same contract as a null `inputHash`.
  */
 export function isSelectedVersionStale(
   selected: SegmentVersionInput | undefined,
@@ -155,6 +166,12 @@ export function isSelectedVersionStale(
 ): boolean {
   if (!selected) return false;
   return selected.manifest.some((entry) => {
+    // Both ids null = unknown provenance (pre-#1380 storyboard clips, or a
+    // trigger that forgot to pin). Same contract as a legacy null hash:
+    // unknown is not stale, so a regression cannot mark every clip Stale.
+    if (entry.motionPromptVersionId == null && entry.frameVersionId == null) {
+      return false;
+    }
     const currentMotion = currentMotionByShot.get(entry.shotId) ?? null;
     const currentFrame = currentFrameByShot.get(entry.shotId) ?? null;
     return (
@@ -189,11 +206,22 @@ export function assembleSequenceSegments(input: {
     shotIdsBySegment.set(shot.renderSegmentId, list);
   }
 
-  // Each shot's current anchor-frame selected image version (role 'first').
+  // Each shot's current anchor-frame selected image version (role 'first'),
+  // or `null` for a shot that renders from references — it animates from no
+  // still, so it has no frame pointer, and the manifest records `null` to
+  // match. Comparing a reference-only clip against a still it never received
+  // marked it Stale the instant it finished, offering a paid re-render that
+  // produced the identical clip for ever.
+  const referenceOnlyShots = new Set(
+    orderedShots.filter((shot) => shot.rendersReferenceOnly).map((s) => s.id)
+  );
   const currentFrameByShot = new Map<string, string | null>();
   for (const frame of input.frames) {
     if (frame.role !== 'first') continue;
-    currentFrameByShot.set(frame.shotId, frame.selectedImageVersionId);
+    currentFrameByShot.set(
+      frame.shotId,
+      referenceOnlyShots.has(frame.shotId) ? null : frame.selectedImageVersionId
+    );
   }
 
   // Versions grouped by segment, preserving input order (oldest-first).

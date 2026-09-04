@@ -19,12 +19,16 @@ const logger = getLogger([
   'enqueue-library-talent-sheet',
 ]);
 
-export async function enqueueLibraryTalentSheet(params: {
+export type EnqueueLibraryTalentSheetParams = {
   talentId: string;
   workflowInput: LibraryTalentSheetWorkflowInput;
   activity: SheetProgressActivity;
   deduplicationId?: string;
-}): Promise<string> {
+};
+
+export async function enqueueLibraryTalentSheet(
+  params: EnqueueLibraryTalentSheetParams
+): Promise<string> {
   try {
     const runId = await triggerWorkflow(
       '/library-talent-sheet',

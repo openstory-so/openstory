@@ -12,7 +12,6 @@
  * parent still surfaces a terminal error, but only after every other sibling has
  * resolved one way or the other. */
 
-import type { MotionPrompt } from '@/lib/ai/scene-analysis.schema';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import { spawnAndAwaitChild } from '@/lib/workflow/await-child';
 import { OpenStoryWorkflowEntrypoint } from '@/lib/workflow/base-workflow';
@@ -21,16 +20,12 @@ import type {
   MotionPromptWorkflowInput,
   MotionPromptBatchWorkflowInput,
 } from '@/lib/workflow/types';
+import type { MotionPromptWorkflowResult } from '@/lib/workflows/motion-prompt-workflow';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { NonRetryableError } from 'cloudflare:workflows';
 import { getLogger } from '@/lib/observability/logger';
 
 const logger = getLogger(['openstory', 'workflow', 'motion-prompt-batch']);
-
-type MotionPromptWorkflowResult = {
-  sceneId: string;
-  motionPrompt: MotionPrompt;
-};
 
 type MotionPromptBatchWorkflowResult = MotionPromptWorkflowResult[];
 
@@ -53,6 +48,7 @@ export class MotionPromptBatchWorkflow extends OpenStoryWorkflowEntrypoint<Motio
       shotMapping,
       sequenceId,
       startingFrameImageUrls,
+      referenceOnly = false,
     } = input;
 
     // ============================================================
@@ -84,9 +80,13 @@ export class MotionPromptBatchWorkflow extends OpenStoryWorkflowEntrypoint<Motio
         // Explicit single-shot regenerates (scenes.ts / prompt-variants.ts)
         // stay text-only-capable: there the trigger deliberately snapshots a
         // null still because no image exists yet.
+        //
+        // Reference-only sequences are the one case where a missing still is
+        // correct: no image pass ever ran. The guard is skipped there, and the
+        // child writes its prompt from the reference-only template instead.
         const startingFrameImageUrl =
           startingFrameImageUrls?.[scene.sceneId] ?? null;
-        if (!startingFrameImageUrl) {
+        if (!startingFrameImageUrl && !referenceOnly) {
           return Promise.reject(
             new Error(
               `scene ${scene.sceneId} has no rendered starting frame (its image generation failed or was skipped); refusing to generate an unanchored motion prompt`
@@ -97,6 +97,7 @@ export class MotionPromptBatchWorkflow extends OpenStoryWorkflowEntrypoint<Motio
         const sceneAfter =
           sceneIndex < scenes.length - 1 ? scenes[sceneIndex + 1] : undefined;
         const childPayload: MotionPromptWorkflowInput = {
+          reservationId: input.reservationId,
           scene,
           sceneBefore,
           sceneAfter,
@@ -114,6 +115,7 @@ export class MotionPromptBatchWorkflow extends OpenStoryWorkflowEntrypoint<Motio
           // Pass the rendered still per scene, snapshotted upstream (#929) —
           // never looked up inside the child workflow.
           startingFrameImageUrl,
+          referenceOnly,
         };
 
         return spawnAndAwaitChild<
@@ -179,6 +181,9 @@ export class MotionPromptBatchWorkflow extends OpenStoryWorkflowEntrypoint<Motio
     return results.map((result) => ({
       sceneId: result.sceneId,
       motionPrompt: result.motionPrompt,
+      // Threaded so analyze-script can pin the render off THIS id rather
+      // than re-reading the shot's selection pointer (#1380).
+      finalVersionId: result.finalVersionId ?? null,
     }));
   }
 

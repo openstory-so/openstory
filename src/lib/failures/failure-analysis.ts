@@ -3,10 +3,20 @@
  * Analyzes shots + sequence to determine what failed and whether smart retry is possible.
  */
 
+import {
+  contentRejectionSubjects,
+  isContentRejectionError,
+} from '@/lib/ai/content-rejection';
+import {
+  CREDITS_SHORT_TITLE,
+  isCreditsShortError,
+} from '@/lib/billing/credits-short';
 import type { SceneRow } from '@/lib/db/schema/scenes';
 import type { Shot } from '@/lib/db/schema/shots';
 import type { Sequence } from '@/lib/db/schema/sequences';
 import type { ShotView } from '@/lib/shots/shot-view';
+import { usesStartFrame } from '@/lib/shots/use-start-frame';
+import { plainSceneTitle } from '@/lib/utils/markdown-plain';
 
 /** Scene titles keyed by scene id — the label source for each failed shot. */
 type ScenesById = ReadonlyMap<string, Pick<SceneRow, 'title' | 'orderIndex'>>;
@@ -39,6 +49,12 @@ export type FailureSummary = {
   totalFailures: number;
   hasFailed: boolean;
   error?: string | null;
+  /**
+   * Content-checker-only failures are a warning (edit script / prompt / retry).
+   * A reservation-short stop (#1328) is a credits prompt, not a generation
+   * error. Mixed or infrastructure failures stay 'error'.
+   */
+  tone: 'error' | 'warning' | 'credits';
 };
 
 function sceneNumberOf(shot: Shot, scenesById: ScenesById): number {
@@ -48,16 +64,52 @@ function sceneNumberOf(shot: Shot, scenesById: ScenesById): number {
 
 function getSceneTitle(shot: Shot, scenesById: ScenesById): string {
   const scene = shot.sceneId ? scenesById.get(shot.sceneId) : null;
-  return scene?.title || `Scene ${sceneNumberOf(shot, scenesById)}`;
+  return (
+    plainSceneTitle(scene?.title) || `Scene ${sceneNumberOf(shot, scenesById)}`
+  );
+}
+
+function groupIsContentOnly(group: FailureGroup): boolean {
+  if (group.shots.length > 0) {
+    return group.shots.every(
+      (shot) => !!shot.error && isContentRejectionError(shot.error)
+    );
+  }
+  return !!group.error && isContentRejectionError(group.error);
+}
+
+/** Sequence-level statusError → banner tone. Credits-short outranks a wrapped content-checker phrase. */
+function toneOf(error: string | null | undefined): FailureSummary['tone'] {
+  if (error && isCreditsShortError(error)) return 'credits';
+  if (error && isContentRejectionError(error)) return 'warning';
+  return 'error';
+}
+
+const FULL_RETRY_HEADLINE = 'Generation failed \u2014 full retry required';
+
+/** "A", "A and B", "A, B and C". */
+function listNames(names: string[]): string {
+  if (names.length <= 1) return names.join('');
+  return `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
+}
+
+function fullRetryHeadline(error: string | null | undefined): string {
+  const tone = toneOf(error);
+  if (tone === 'credits') return CREDITS_SHORT_TITLE;
+  if (tone !== 'warning') return FULL_RETRY_HEADLINE;
+  const subjects = contentRejectionSubjects(error ?? '');
+  return `${subjects.length > 0 ? listNames(subjects) : 'Script'} didn't pass the content checker \u2014 regenerate to retry`;
 }
 
 function buildHeadline(
   groups: FailureGroup[],
-  requiresFullRetry: boolean
+  requiresFullRetry: boolean,
+  error: string | null | undefined,
+  clipsReady: number,
+  clipsTotal: number
 ): string {
   if (groups.length === 0) {
-    if (requiresFullRetry)
-      return 'Generation failed \u2014 full retry required';
+    if (requiresFullRetry) return fullRetryHeadline(error);
     return 'No failures detected';
   }
 
@@ -69,27 +121,63 @@ function buildHeadline(
       const names = promptGroups.map((g) => g.label).join(' and ');
       return `${names} \u2014 full retry required`;
     }
-    return 'Generation failed \u2014 full retry required';
+    return fullRetryHeadline(error);
   }
 
   const parts: string[] = [];
   for (const group of groups) {
     if (group.category === 'image') {
+      const n = group.shots.length;
       parts.push(
-        `${group.shots.length} image${group.shots.length !== 1 ? 's' : ''} failed`
+        groupIsContentOnly(group)
+          ? n === 1
+            ? "1 still didn't pass the content checker"
+            : `${n} stills didn't pass the content checker`
+          : `${n} image${n !== 1 ? 's' : ''} failed`
       );
     } else if (group.category === 'motion') {
+      const n = group.shots.length;
       parts.push(
-        `${group.shots.length} motion video${group.shots.length !== 1 ? 's' : ''} failed`
+        groupIsContentOnly(group)
+          ? n === 1
+            ? "1 clip didn't pass the content checker"
+            : `${n} clips didn't pass the content checker`
+          : `${n} motion video${n !== 1 ? 's' : ''} failed`
       );
     } else if (group.category === 'music') {
-      parts.push('music generation failed');
+      parts.push(
+        groupIsContentOnly(group)
+          ? "music didn't pass the content checker"
+          : 'music generation failed'
+      );
     } else if (group.category === 'music-prompt') {
       parts.push('music prompt generation failed');
     }
   }
 
-  return parts.join(' and ');
+  const failure = parts.join(' and ');
+  // Lead with what worked so a single miss doesn't headline the first run
+  // (#1286). "6 of 7 clips ready · 1 image failed".
+  if (clipsTotal > 0) {
+    const ready = `${clipsReady} of ${clipsTotal} clips ready`;
+    return failure ? `${ready} \u00b7 ${failure}` : ready;
+  }
+  return failure;
+}
+
+/**
+ * `analyzeFailures` only once the shot list has resolved. `shots ?? []` on a
+ * failed sequence is the same shape as "analysis never produced shots", so
+ * SSR would emit the generic full-retry banner and hydration would replace it
+ * with the content-checker banner once shots land.
+ */
+export function analyzeLoadedFailures(
+  shots: ShotView[] | undefined,
+  sequence: Sequence | undefined,
+  scenesById: ScenesById
+): FailureSummary | null {
+  if (!sequence || shots === undefined) return null;
+  return analyzeFailures(shots, sequence, scenesById);
 }
 
 export function analyzeFailures(
@@ -106,11 +194,12 @@ export function analyzeFailures(
   if (shots.length === 0 && sequence.status === 'failed') {
     return {
       requiresFullRetry: true,
-      headline: 'Generation failed \u2014 full retry required',
+      headline: fullRetryHeadline(sequence.statusError),
       groups: [],
       totalFailures: 1,
       hasFailed: true,
       error: sequence.statusError,
+      tone: toneOf(sequence.statusError),
     };
   }
 
@@ -131,10 +220,14 @@ export function analyzeFailures(
     });
   }
 
-  // Failed motion (only shots with thumbnails AND a motion prompt)
+  // Failed motion: a motion prompt, plus a still unless the shot renders from
+  // references — same rule as `smartRetry`, or the panel reports nothing
+  // retryable for clips the server would in fact retry.
   const failedMotionShots = shots.filter(
     (f) =>
-      f.videoStatus === 'failed' && f.image?.url && f.motionPrompt?.fullPrompt
+      f.videoStatus === 'failed' &&
+      (!usesStartFrame(f, sequence) || f.image?.url) &&
+      f.motionPrompt?.fullPrompt
   );
   if (failedMotionShots.length > 0) {
     groups.push({
@@ -221,11 +314,12 @@ export function analyzeFailures(
   ) {
     return {
       requiresFullRetry: true,
-      headline: 'Generation failed \u2014 full retry required',
+      headline: fullRetryHeadline(sequence.statusError),
       groups: [],
       totalFailures: 1,
       hasFailed: true,
       error: sequence.statusError,
+      tone: toneOf(sequence.statusError),
     };
   }
 
@@ -236,12 +330,29 @@ export function analyzeFailures(
 
   const hasFailed = groups.length > 0 || sequence.status === 'failed';
 
+  const failedShotIds = new Set(
+    groups.flatMap((g) => g.shots.map((s) => s.shotId))
+  );
+  const clipsReady = shots.filter((s) => !failedShotIds.has(s.id)).length;
+
   return {
     requiresFullRetry,
-    headline: buildHeadline(groups, requiresFullRetry),
+    headline: buildHeadline(
+      groups,
+      requiresFullRetry,
+      sequence.statusError,
+      clipsReady,
+      shots.length
+    ),
     groups,
     totalFailures,
     hasFailed,
     error: sequence.statusError,
+    tone:
+      requiresFullRetry || groups.length === 0
+        ? toneOf(sequence.statusError)
+        : groups.every(groupIsContentOnly)
+          ? 'warning'
+          : 'error',
   };
 }

@@ -38,12 +38,14 @@ const testEnv: {
   OPENROUTER_KEY: string | undefined;
   FAL_KEY: string | undefined;
   XAI_API_KEY: string | undefined;
+  GEMINI_API_KEY: string | undefined;
   LLMTR_API_KEY: string | undefined;
 } = {
   API_KEY_ENCRYPTION_KEY: 'test-secret-for-api-keys-memoization',
   OPENROUTER_KEY: 'platform-openrouter-key',
   FAL_KEY: 'platform-fal-key',
   XAI_API_KEY: undefined,
+  GEMINI_API_KEY: undefined,
   LLMTR_API_KEY: undefined,
 };
 
@@ -117,6 +119,7 @@ beforeEach(async () => {
   testEnv.OPENROUTER_KEY = 'platform-openrouter-key';
   testEnv.FAL_KEY = 'platform-fal-key';
   testEnv.XAI_API_KEY = undefined;
+  testEnv.GEMINI_API_KEY = undefined;
   testEnv.LLMTR_API_KEY = undefined;
   await seed();
 });
@@ -520,6 +523,29 @@ describe('resolveLlmKey — LLMTR gateway', () => {
     });
   });
 
+  it('routes Grok to team LLMTR when there is no xAI key', async () => {
+    const scope = createApiKeysMethods(db, teamId, userId);
+    await scope.saveKey({ provider: 'llmtr', apiKey: 'llmtr-team' });
+
+    expect(await scope.resolveLlmKey('x-ai/grok-4.6')).toEqual({
+      key: 'llmtr-team',
+      source: 'team',
+      via: 'llmtr',
+    });
+  });
+
+  it('keeps Google ahead of LLMTR for Gemini models', async () => {
+    testEnv.GEMINI_API_KEY = 'platform-google';
+    const scope = createApiKeysMethods(db, teamId, userId);
+    await scope.saveKey({ provider: 'llmtr', apiKey: 'llmtr-team' });
+
+    expect(await scope.resolveLlmKey('google/gemini-3.1-pro-preview')).toEqual({
+      key: 'platform-google',
+      source: 'platform',
+      via: 'google',
+    });
+  });
+
   it('keeps xAI ahead of LLMTR for Grok models', async () => {
     testEnv.XAI_API_KEY = 'platform-xai';
     const scope = createApiKeysMethods(db, teamId, userId);
@@ -562,7 +588,9 @@ describe('resolveLlmKey — LLMTR gateway', () => {
     });
   });
 
-  it('uses the platform LLMTR key for a carried model when the team has none', async () => {
+  it('uses the platform LLMTR key when OpenRouter and fal are unset', async () => {
+    testEnv.OPENROUTER_KEY = undefined;
+    testEnv.FAL_KEY = undefined;
     testEnv.LLMTR_API_KEY = 'platform-llmtr';
     const scope = createApiKeysReadMethods(db, teamId);
 
@@ -571,6 +599,17 @@ describe('resolveLlmKey — LLMTR gateway', () => {
       source: 'platform',
       via: 'llmtr',
       fallbackReason: undefined,
+    });
+  });
+
+  it('does not let platform LLMTR outrank OPENROUTER_KEY', async () => {
+    testEnv.LLMTR_API_KEY = 'platform-llmtr';
+    const scope = createApiKeysReadMethods(db, teamId);
+
+    expect(await scope.resolveLlmKey(CARRIED)).toMatchObject({
+      key: 'platform-openrouter-key',
+      source: 'platform',
+      via: 'openrouter',
     });
   });
 
@@ -667,6 +706,66 @@ describe('native xAI key resolution (issue #1167)', () => {
     expect(await scope.resolveLlmKey('x-ai/grok-4.6')).toMatchObject({
       via: 'openrouter',
     });
+  });
+});
+
+describe('native Google key resolution', () => {
+  it('prefers a team Google key for a Gemini model', async () => {
+    const scope = createApiKeysMethods(db, teamId, userId);
+    await scope.saveKey({ provider: 'openrouter', apiKey: 'sk-team-or' });
+    await scope.saveKey({ provider: 'google', apiKey: 'google-team' });
+
+    expect(
+      await scope.resolveLlmKey('google/gemini-3.1-pro-preview')
+    ).toMatchObject({
+      key: 'google-team',
+      source: 'team',
+      via: 'google',
+    });
+  });
+
+  it('leaves non-Gemini models on OpenRouter even with a Google key stored', async () => {
+    const scope = createApiKeysMethods(db, teamId, userId);
+    await scope.saveKey({ provider: 'openrouter', apiKey: 'sk-team-or' });
+    await scope.saveKey({ provider: 'google', apiKey: 'google-team' });
+
+    expect(
+      await scope.resolveLlmKey('anthropic/claude-sonnet-5')
+    ).toMatchObject({ key: 'sk-team-or', via: 'openrouter' });
+  });
+
+  it('falls back to the platform GEMINI_API_KEY when the team has none', async () => {
+    testEnv.GEMINI_API_KEY = 'platform-google';
+    const scope = createApiKeysReadMethods(db, teamId);
+
+    expect(
+      await scope.resolveLlmKey('google/gemini-3-flash-preview')
+    ).toMatchObject({
+      key: 'platform-google',
+      source: 'platform',
+      via: 'google',
+    });
+  });
+
+  it('falls through to OpenRouter for a Gemini model with no Google key anywhere', async () => {
+    const scope = createApiKeysReadMethods(db, teamId);
+
+    expect(
+      await scope.resolveLlmKey('google/gemini-3.1-pro-preview')
+    ).toMatchObject({
+      key: 'platform-openrouter-key',
+      via: 'openrouter',
+    });
+  });
+
+  it('skips a Google key flagged invalid rather than sending it', async () => {
+    const scope = createApiKeysMethods(db, teamId, userId);
+    await scope.saveKey({ provider: 'google', apiKey: 'google-team' });
+    await scope.markKeyInvalid('google', 'revoked');
+
+    expect(
+      await scope.resolveLlmKey('google/gemini-3.1-pro-preview')
+    ).toMatchObject({ via: 'openrouter' });
   });
 });
 

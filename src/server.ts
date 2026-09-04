@@ -109,6 +109,7 @@ export { StoryboardWorkflow } from '@/lib/workflows/storyboard-workflow';
 export { AnalyzeScriptWorkflow } from '@/lib/workflows/analyze-script-workflow';
 export { SequenceExportWorkflow } from '@/lib/workflows/sequence-export-workflow';
 export { AssetGenerationWorkflow } from '@/lib/workflows/asset-generation-workflow';
+export { StudioGenerationWorkflow } from '@/lib/workflows/studio-generation-workflow';
 
 // Realtime broker Durable Object. Re-exported so the binding's `class_name`
 // in wrangler.jsonc resolves in the Worker bundle (#802).

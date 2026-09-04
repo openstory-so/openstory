@@ -38,7 +38,7 @@ const WELCOME_AMOUNT = microsToDisplayUsd(SIGNUP_GRANT_MICROS);
 
 export const CreditBalancePill: React.FC = () => {
   const { data: user, isLoading: userLoading } = useUser();
-  const { balance, teamId, isLowBalance } = useBillingBalance();
+  const { balance, reserved, teamId, isLowBalance } = useBillingBalance();
   const { data: gateStatus } = useBillingGateQuery();
   const { showCosts } = useShowCosts();
   const { isFlashing } = useBalanceFlash();
@@ -89,7 +89,8 @@ export const CreditBalancePill: React.FC = () => {
       : undefined;
 
   const amount = `$${balance?.toFixed(2) ?? '0.00'}`;
-  const tooltip = `Credits · ${amount}`;
+  const tooltip =
+    reserved > 0 ? `Credits · ${amount} available` : `Credits · ${amount}`;
 
   return (
     <SidebarMenu>
@@ -97,7 +98,7 @@ export const CreditBalancePill: React.FC = () => {
         {/* Opens the add-credits modal, not the credits page (#1099) */}
         <SidebarMenuButton
           tooltip={tooltip}
-          onClick={openAddCreditsDialog}
+          onClick={() => openAddCreditsDialog('sidebar_pill')}
           aria-label={`Credit balance ${amount}. Add credits.`}
           className={cn(
             'animate-[balance-flash-in_300ms_ease-out_both]',

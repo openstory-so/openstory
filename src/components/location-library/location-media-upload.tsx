@@ -125,7 +125,7 @@ export const LocationMediaUpload: React.FC<LocationMediaUploadProps> = ({
           </Button>
         </FileUploadTrigger>
         <p className="text-xs text-muted-foreground">
-          Images{maxFiles > 1 ? ` (max ${maxFiles})` : ''}
+          {maxFiles > 1 ? `Images (max ${maxFiles})` : 'Images'}
         </p>
       </FileUploadDropzone>
 

@@ -1,6 +1,6 @@
 /**
  * API Key Settings Component
- * Manages BYOK (Bring Your Own Key) for OpenRouter, Fal.ai, xAI and LLMTR
+ * Manages BYOK (Bring Your Own Key) for OpenRouter, Fal.ai, xAI, Google and LLMTR
  */
 
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -14,6 +14,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { FalLogo } from '@/components/icons/fal-logo';
+import { GoogleGIcon } from '@/components/icons/google-g-icon';
 import { LlmtrLogo } from '@/components/icons/llmtr-logo';
 import { OpenRouterLogo } from '@/components/icons/openrouter-logo';
 import { XIcon } from '@/components/icons/x-icon';
@@ -41,7 +42,7 @@ type ApiKeySettingsProps = {
   error?: string;
 };
 
-type ApiKeyProviderId = 'openrouter' | 'fal' | 'xai' | 'llmtr';
+type ApiKeyProviderId = 'openrouter' | 'fal' | 'xai' | 'google' | 'llmtr';
 /** Providers whose key is pasted in — OpenRouter alone uses OAuth. */
 type ManualProvider = Exclude<ApiKeyProviderId, 'openrouter'>;
 
@@ -49,6 +50,7 @@ const PROVIDER_LABELS: Record<ApiKeyProviderId, string> = {
   openrouter: 'OpenRouter',
   fal: 'fal.ai',
   xai: 'xAI',
+  google: 'Google',
   llmtr: 'LLMTR',
 };
 
@@ -201,6 +203,7 @@ function ApiKeySettingsContent({
   const openrouterKey = apiKeys?.find((k) => k.provider === 'openrouter');
   const falKey = apiKeys?.find((k) => k.provider === 'fal');
   const xaiKey = apiKeys?.find((k) => k.provider === 'xai');
+  const googleKey = apiKeys?.find((k) => k.provider === 'google');
   const llmtrKey = apiKeys?.find((k) => k.provider === 'llmtr');
 
   // Re-validate stored team keys on mount so opening the settings page
@@ -299,6 +302,23 @@ function ApiKeySettingsContent({
               saveKeyMutation.mutate({ provider: 'xai', apiKey })
             }
             onDelete={() => deleteMutation.mutate('xai')}
+            isSaving={saveKeyMutation.isPending}
+            isDeleting={deleteMutation.isPending}
+          />
+
+          <ManualKeyRow
+            provider="google"
+            icon={<GoogleGIcon className="size-4" />}
+            blurb="Gemini chat & Omni Flash video, billed by Google directly."
+            placeholder="AIza..."
+            keyUrl="https://aistudio.google.com/apikey"
+            existingKey={googleKey}
+            status={keyStatus?.google}
+            isLoading={isLoading}
+            onSave={(apiKey) =>
+              saveKeyMutation.mutate({ provider: 'google', apiKey })
+            }
+            onDelete={() => deleteMutation.mutate('google')}
             isSaving={saveKeyMutation.isPending}
             isDeleting={deleteMutation.isPending}
           />

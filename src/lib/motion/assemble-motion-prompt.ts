@@ -48,6 +48,12 @@ type AssembleOptions = {
    * "Avoid jitter and bent limbs.").
    */
   characterTags?: readonly string[];
+  /**
+   * The scene editor's "Include SFX & dialogue" toggle. Models with a
+   * `generate_audio` request field get it there; H3 Max has no field and
+   * always renders an audio track, so `false` is written into its prompt.
+   */
+  generateAudio?: boolean;
 };
 
 /**
@@ -61,6 +67,7 @@ export function assembleMotionPrompt({
   motionPrompt,
   model,
   characterTags,
+  generateAudio,
 }: AssembleOptions): string {
   const { dialogue, audio, fullPrompt } = motionPrompt;
   const supportsAudio = videoModelSupportsAudio(model);
@@ -73,9 +80,8 @@ export function assembleMotionPrompt({
     assembled = fullPrompt;
   } else {
     // Audio-capable models: enrich fullPrompt with dialogue + audio sections.
-    // dialogue/audio are nullish on the schema (the model emits null when a
-    // scene has none — see scene-analysis.schema.ts), so normalize null →
-    // undefined for the builders.
+    // Stored rows and UI overrides may still be null; the LLM schema uses
+    // emptyable objects. Normalize null → undefined for the builders.
     const hasDialogue = dialogue?.presence && dialogue.lines.length > 0;
     const dialogueData = hasDialogue ? dialogue : undefined;
     const audioData = audio ?? undefined;
@@ -90,6 +96,14 @@ export function assembleMotionPrompt({
           dialogueData,
           audioData,
           characterTags
+        );
+        break;
+      case 'MiniMax':
+        assembled = buildMinimaxH3Prompt(
+          fullPrompt,
+          dialogueData,
+          audioData,
+          generateAudio
         );
         break;
       case 'Google':
@@ -144,10 +158,10 @@ function formatKlingDialogue(lines: DialogueLine[]): string {
 }
 
 // ---------------------------------------------------------------------------
-// ByteDance Seedance 2.0: sound as natural prose woven into the prompt — no
-// labeled sections. One ambient sentence, SFX tied to on-screen actions,
+// ByteDance Seedance 2.0 / 2.5: sound as natural prose woven into the prompt
+// — no labeled sections. One ambient sentence, SFX tied to on-screen actions,
 // dialogue as `X says "…" in a [tone] voice` (lip-sync is weaker than
-// SFX/ambience, so dialogue stays concise). Seedance 2.0 has no
+// SFX/ambience, so dialogue stays concise). Neither version has
 // negative_prompt or camera_fixed parameters, so guards go in-prompt.
 // Guide: https://fal.ai/learn/devs/bytedance-seedance2-prompts
 // ---------------------------------------------------------------------------
@@ -187,6 +201,58 @@ function buildSeedancePrompt(
     guards.push('Avoid jitter and bent limbs.');
   }
   parts.push(guards.join(' '));
+
+  return parts.join('\n\n');
+}
+
+// ---------------------------------------------------------------------------
+// MiniMax H3 Max: the model's native prompt is three labelled sections —
+// `integrated_multimodal_description` (with dialogue as `<d>[Lang] …</d>`),
+// `overall_soundscape`, and `non_diegetic_music`. fal's prompt expander
+// rewrites whatever we send into that shape, so the no-music intent has to be
+// explicit or the expander invents a score. `non_diegetic_music: N/A` is the
+// documented off value. Hailuo 2.3 shares the vendor but is non-audio, so it
+// never reaches this builder.
+// Spec: https://platform.minimax.io/docs/api-reference/video-generation-v2-h3-context-ir
+// ---------------------------------------------------------------------------
+
+function buildMinimaxH3Prompt(
+  fullPrompt: string,
+  dialogue: MotionDialogue | undefined,
+  audio: MotionAudio | undefined,
+  generateAudio: boolean | undefined
+): string {
+  const parts = [fullPrompt];
+
+  // No API switch: "off" is a silent soundscape and no dialogue lines.
+  if (generateAudio === false) {
+    parts.push(
+      'overall_soundscape: Silent. No dialogue, no sound effects, no music.\nnon_diegetic_music: N/A'
+    );
+    return parts.join('\n\n');
+  }
+
+  if (dialogue) {
+    // ponytail: dialogue lines carry no language; assume English until the
+    // scene schema records one.
+    const dialogueProse = dialogue.lines
+      .map((line) => {
+        const subject = line.character || 'A voice';
+        const tone = line.tone ? ` in a ${line.tone} tone` : '';
+        return `${subject} says${tone}: <d>[English] ${line.line}</d>`;
+      })
+      .join(' ');
+    parts.push(dialogueProse);
+  }
+
+  const soundscape: string[] = [];
+  if (audio?.ambientSound) soundscape.push(asSentence(audio.ambientSound));
+  if (audio && audio.soundEffects.length > 0)
+    soundscape.push(asSentence(audio.soundEffects.join(', ')));
+  soundscape.push(NO_MUSIC_DIRECTION);
+  parts.push(
+    `overall_soundscape: ${soundscape.join(' ')}\nnon_diegetic_music: N/A`
+  );
 
   return parts.join('\n\n');
 }

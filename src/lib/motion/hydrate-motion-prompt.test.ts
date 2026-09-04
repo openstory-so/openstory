@@ -33,7 +33,7 @@ const baseScene = {
 
 const baseMotionPrompt = {
   fullPrompt: 'Slow dolly in.',
-  dialogue: null,
+  dialogue: { presence: false, lines: [] },
   audio: { ambientSound: 'quiet room', soundEffects: [] },
 } satisfies MotionPrompt;
 

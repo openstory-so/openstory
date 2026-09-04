@@ -27,7 +27,7 @@ function walk(dir: string): string[] {
 const GATE =
   /requireGenerationAllowed|requireUploadAttestation|assertCanGenerate/;
 const TRIGGER = /triggerWorkflow/;
-const CREDITS_CALL = /requireCredits\s*\(/;
+const CREDITS_CALL = /(?:requireCredits|reserveRunCredits)\s*\(/;
 
 describe('generation-gate wiring', () => {
   test('triggerWorkflow runs the generation gate', () => {

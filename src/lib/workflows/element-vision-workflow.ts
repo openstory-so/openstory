@@ -48,7 +48,8 @@ export class ElementVisionWorkflow extends OpenStoryWorkflowEntrypoint<ElementVi
 
     // Step 2: vision call (also returns a vision-suggested token).
     const vision = await step.do('describe-element', async () => {
-      const llmKeyInfo = await scopedDb.credentials.resolveLlmKey();
+      const llmKeyInfo =
+        await scopedDb.credentials.resolveLlmKey(ELEMENT_VISION_MODEL);
       return await describeElementImage({
         imageUrl,
         filename,

@@ -86,10 +86,37 @@ export const Failed: Story = {
   },
 };
 
+export const ContentBlocked: Story = {
+  args: {
+    thumbnailStatus: 'failed',
+    generationError:
+      'The content could not be processed because it contained material flagged by a content checker.',
+    alt: 'Scene 1',
+  },
+};
+
 export const CompletedWithDifferentImage: Story = {
   args: {
     thumbnailUrl: 'https://picsum.photos/seed/scene2/320/180',
     thumbnailStatus: 'completed',
     alt: 'Scene 2 - Different composition',
+  },
+};
+
+export const ClipFirstFrame: Story = {
+  args: {
+    videoUrl:
+      'https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
+    thumbnailStatus: 'pending',
+    alt: 'Scene 1 — reference-only shot, showing the clip first frame',
+  },
+};
+
+export const ClipFirstFrameBeatsPreview: Story = {
+  args: {
+    previewThumbnailUrl: 'https://picsum.photos/seed/preview1/320/180',
+    videoUrl:
+      'https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
+    alt: 'Scene 1 — storyboard preview is superseded once the clip exists',
   },
 };

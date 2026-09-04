@@ -18,6 +18,14 @@ describe('isRegionBlockedLlmError', () => {
     ).toBe(true);
   });
 
+  it('matches the text-only fallback rejecting image input (#1323)', () => {
+    expect(
+      isRegionBlockedLlmError(
+        'LLM stream error [model=deepseek/deepseek-v4-pro-0813]: No endpoints found that support image input'
+      )
+    ).toBe(true);
+  });
+
   it('does not match other provider errors', () => {
     expect(isRegionBlockedLlmError('LLM stream error: 401 Unauthorized')).toBe(
       false

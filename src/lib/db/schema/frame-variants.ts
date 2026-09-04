@@ -17,6 +17,9 @@
  *                 before a prompt version exists, so it carries no
  *                 `promptVersionId` and is never selectable / promotable /
  *                 snapshotted into a render manifest.
+ *   - 'upload'  → a user-provided still (#1108 manual media inject); `model` is
+ *                 the `USER_UPLOAD_MODEL` sentinel, `inputHash` is stamped from
+ *                 the CURRENT prompt + sheets so later upstream edits re-stale it
  *
  * Versions are immutable once completed (we soft-hide with `discardedAt`, never
  * hard-delete), so other rows — e.g. a video render manifest — can reference a
@@ -33,6 +36,7 @@ import {
   uniqueIndex,
 } from 'drizzle-orm/sqlite-core';
 import { generateId } from '../id';
+import type { Resolution } from '@/lib/constants/resolutions';
 import { frames } from './frames';
 import { sequences } from './sequences';
 import { SHOT_GENERATION_STATUSES } from './shots';
@@ -47,7 +51,12 @@ const FRAME_VARIANT_STATUSES = [
 type FrameGenerationStatus = (typeof FRAME_VARIANT_STATUSES)[number];
 
 /** @public consumed from #988+ */
-export const FRAME_VARIANT_KINDS = ['model', 'framing', 'preview'] as const;
+export const FRAME_VARIANT_KINDS = [
+  'model',
+  'framing',
+  'preview',
+  'upload',
+] as const;
 export type FrameVariantKind = (typeof FRAME_VARIANT_KINDS)[number];
 
 /**
@@ -59,6 +68,7 @@ export type FrameVariantKind = (typeof FRAME_VARIANT_KINDS)[number];
 const SELECTABLE_FRAME_VARIANT_KINDS = [
   'model',
   'framing',
+  'upload',
 ] as const satisfies readonly FrameVariantKind[];
 
 export type SelectableFrameVariantKind =
@@ -94,6 +104,12 @@ export const frameVariants = snakeCase.table(
     // pick derived from a model image; 'preview' = the pre-prompt stand-in.
     kind: text().$type<FrameVariantKind>().notNull().default('model'),
     model: text({ length: 100 }).notNull(),
+    // Resolution tier this version was asked for (#1449). Null on rows written
+    // before the tier existed. Stamped, not derived: the sequence default can
+    // change after a render, and a 4K re-roll has to stay legible next to the
+    // 720p draft it sits beside.
+    resolution: text({ length: 10 }).$type<Resolution>(),
+
     // For kind='framing': the frame_variants.id of the model image whose 3×3
     // grid this pick came from. Soft pointer (plain column) — no FK, to avoid a
     // self-referential cycle; app-level integrity, rows are soft-deleted anyway.

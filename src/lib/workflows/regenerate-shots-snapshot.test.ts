@@ -18,10 +18,10 @@
 import { describe, expect, it } from 'vitest';
 import type { Scene } from '@/lib/ai/scene-analysis.schema';
 import type {
-  Character,
+  CharacterWithSheet,
   Shot,
   SequenceElement,
-  SequenceLocation,
+  SequenceLocationWithReference,
 } from '@/lib/db/schema';
 import {
   buildRegenerateShotSnapshot,
@@ -33,8 +33,10 @@ const NOW = new Date('2026-04-29T00:00:00Z');
 /** The shot's default visual prompt, now passed explicitly (was a shot column). */
 const DEFAULT_PROMPT = 'A scene with Jack at the docks';
 
-function makeCharacter(overrides: Partial<Character> = {}): Character {
-  const character: Character = {
+function makeCharacter(
+  overrides: Partial<CharacterWithSheet> = {}
+): CharacterWithSheet {
+  const character: CharacterWithSheet = {
     id: 'c1',
     sequenceId: 'seq1',
     characterId: 'jack',
@@ -52,10 +54,12 @@ function makeCharacter(overrides: Partial<Character> = {}): Character {
     sheetGeneratedAt: NOW,
     sheetError: null,
     sheetInputHash: 'jack-hash-v1',
+    selectedSheetVersionId: null,
     talentId: null,
     firstMentionLine: null,
     firstMentionText: null,
     firstMentionSceneId: null,
+    deletedAt: null,
     createdAt: NOW,
     updatedAt: NOW,
   };
@@ -70,7 +74,9 @@ function makeShot(overrides: Partial<Shot> = {}): Shot {
     shotNumber: 1,
     durationMs: 3000,
     selectedMotionPromptVersionId: null,
+    useStartFrame: null,
     renderSegmentId: null,
+    deletedAt: null,
     createdAt: NOW,
     updatedAt: NOW,
   };
@@ -94,7 +100,7 @@ function makeScene(overrides: Partial<Scene> = {}): Scene {
   return { ...scene, ...overrides };
 }
 
-const NO_LOCATIONS: SequenceLocation[] = [];
+const NO_LOCATIONS: SequenceLocationWithReference[] = [];
 const NO_ELEMENTS: SequenceElement[] = [];
 
 function makeElement(
@@ -115,6 +121,7 @@ function makeElement(
     firstMentionSceneId: null,
     firstMentionText: null,
     firstMentionLine: null,
+    deletedAt: null,
     createdAt: NOW,
     updatedAt: NOW,
   };
@@ -175,6 +182,39 @@ describe('buildRegenerateShotSnapshot', () => {
     });
 
     expect(after.snapshotInputHash).not.toBe(before.snapshotInputHash);
+  });
+
+  it('prefers the selected sheet version id over the parent input hash', async () => {
+    const hashedByParent = await buildRegenerateShotSnapshot({
+      shot: makeShot(),
+      scene: makeScene(),
+      imagePrompt: DEFAULT_PROMPT,
+      characters: [makeCharacter({ sheetInputHash: 'jack-hash-v1' })],
+      locations: NO_LOCATIONS,
+      elements: NO_ELEMENTS,
+      imageModel: 'nano_banana_2',
+      aspectRatio: '16:9',
+    });
+    const hashedByVersion = await buildRegenerateShotSnapshot({
+      shot: makeShot(),
+      scene: makeScene(),
+      imagePrompt: DEFAULT_PROMPT,
+      characters: [
+        makeCharacter({
+          sheetInputHash: 'jack-hash-v1',
+          selectedSheetVersionId: 'version-ulid-2',
+        }),
+      ],
+      locations: NO_LOCATIONS,
+      elements: NO_ELEMENTS,
+      imageModel: 'nano_banana_2',
+      aspectRatio: '16:9',
+    });
+    expect(hashedByParent.characterSheetHashes).toEqual(['jack-hash-v1']);
+    expect(hashedByVersion.characterSheetHashes).toEqual(['version-ulid-2']);
+    expect(hashedByVersion.snapshotInputHash).not.toBe(
+      hashedByParent.snapshotInputHash
+    );
   });
 
   it('changes the snapshotInputHash when the imagePrompt changes', async () => {

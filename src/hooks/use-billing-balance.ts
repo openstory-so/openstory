@@ -20,7 +20,9 @@ export function useBillingBalance() {
     enabled: !!session?.user,
   });
 
-  const balance = query.data?.balance ?? null;
+  const posted = query.data?.balance ?? null;
+  const balance = query.data?.availableUsd ?? posted;
+  const reserved = query.data?.reservedUsd ?? 0;
   const autoTopUp = query.data?.autoTopUp;
   const lowBalanceThreshold =
     autoTopUp?.enabled && autoTopUp.thresholdUsd != null
@@ -30,6 +32,8 @@ export function useBillingBalance() {
   return {
     ...query,
     balance,
+    posted,
+    reserved,
     teamId: query.data?.teamId,
     stripeEnabled: query.data?.stripeEnabled ?? false,
     hasUsedCredits: query.data?.hasUsedCredits ?? false,

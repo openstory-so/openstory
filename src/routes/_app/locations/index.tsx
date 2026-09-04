@@ -3,8 +3,7 @@ import { AddLocationDialog } from '@/components/location-library/add-location-di
 import { LocationLibraryFilters } from '@/components/location-library/location-library-filters';
 import { LocationLibraryList } from '@/components/location-library/location-library-list';
 import { PageContainer } from '@/components/layout/page-container';
-import { PageDescription } from '@/components/typography/page-description';
-import { PageHeader } from '@/components/typography/page-header';
+import { PageIntro } from '@/components/typography/page-intro';
 import { EmptyState } from '@/components/ui/empty-state';
 import { useLibraryLocations } from '@/hooks/use-sequence-locations';
 import { createFileRoute } from '@tanstack/react-router';
@@ -47,16 +46,12 @@ function LocationsPage() {
 
   return (
     <div className="h-full overflow-auto">
-      <PageContainer>
-        <h1 className="sr-only">Location Library</h1>
-        <PageHeader actions={addAction}>
-          <PageDescription>
-            {isAuthenticated
-              ? 'Browse and manage location references across all your sequences. Upload custom references to maintain visual consistency.'
-              : 'Browse system locations. Sign in to add your own references and keep settings consistent across sequences.'}
-          </PageDescription>
-        </PageHeader>
-
+      <PageIntro title="Location Library" actions={addAction}>
+        {isAuthenticated
+          ? 'Browse and manage location references across all your sequences. Upload custom references to maintain visual consistency.'
+          : 'Browse system locations. Sign in to add your own references and keep settings consistent across sequences.'}
+      </PageIntro>
+      <PageContainer padding="none" className="pb-8">
         {isAuthenticated && <LocationLibraryFilters currentSearch={search} />}
 
         {!isLoading && filteredLocations && filteredLocations.length === 0 ? (

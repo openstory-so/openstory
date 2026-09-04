@@ -45,7 +45,7 @@ import type {
   ShotVariantWorkflowInput,
 } from '@/lib/workflow/types';
 import {
-  matchCharactersToScene,
+  matchCharactersToShotImage,
   matchElementsToShotImage,
   matchLocationsToScene,
 } from '@/lib/workflows/scene-matching';
@@ -59,10 +59,33 @@ import { getLogger } from '@/lib/observability/logger';
 
 const logger = getLogger(['openstory', 'workflow', 'shot-images']);
 
+/** Retry a lone failed primary once so one miss of seven doesn't headline the page (#1286). */
+export function loneFailedPrimaryJobIndex(
+  jobs: ReadonlyArray<{ model: string }>,
+  results: ReadonlyArray<PromiseSettledResult<unknown>>,
+  primaryModel: string
+): number | null {
+  const primaryIndexes: number[] = [];
+  for (let i = 0; i < jobs.length; i++) {
+    if (jobs[i]?.model === primaryModel) primaryIndexes.push(i);
+  }
+  const failed = primaryIndexes.filter(
+    (i) => results[i]?.status === 'rejected'
+  );
+  return failed.length === 1 ? (failed[0] ?? null) : null;
+}
+
 type ImageChildResult = {
   imageUrl: string;
   shotId?: string;
   sequenceId?: string;
+  /** The `frame_variants` version this still completed as. Null when none. */
+  frameVersionId?: string | null;
+};
+
+type ShotImageJobResult = {
+  imageUrl: string;
+  frameVersionId: string | null;
 };
 
 /**
@@ -147,10 +170,10 @@ export class ShotImagesWorkflow extends OpenStoryWorkflowEntrypoint<ShotImagesWo
           sceneCharacterMap: Object.fromEntries(
             scenesWithVisualPrompts.map((scene) => [
               scene.sceneId,
-              matchCharactersToScene(
-                charactersWithSheets,
-                scene.continuity?.characterTags || []
-              ),
+              matchCharactersToShotImage(charactersWithSheets, {
+                characterTags: scene.continuity?.characterTags,
+                visualPrompt: visualPromptBySceneId[scene.sceneId] ?? '',
+              }),
             ])
           ),
           sceneLocationMap: Object.fromEntries(
@@ -159,7 +182,8 @@ export class ShotImagesWorkflow extends OpenStoryWorkflowEntrypoint<ShotImagesWo
               matchLocationsToScene(
                 locationsWithSheets,
                 scene.continuity?.environmentTag || '',
-                scene.metadata?.location || ''
+                scene.metadata?.location || '',
+                scene.originalScript?.extract
               ),
             ])
           ),
@@ -279,79 +303,88 @@ export class ShotImagesWorkflow extends OpenStoryWorkflowEntrypoint<ShotImagesWo
     // admission control anyway: the limit was per workflow run, so N
     // concurrent sequences multiplied straight through it. Rate limiting
     // belongs somewhere that can see the whole system, not here.
-    const jobResults = await Promise.allSettled(
-      jobs.map(async ({ scene, model }) => {
-        const context = sceneContexts.get(scene.sceneId);
-        if (context === undefined) {
-          throw new WorkflowValidationError(
-            `Scene ${scene.sceneId} has no resolved image context`
-          );
-        }
-        if (context instanceof Error) throw context;
-        const {
-          visualPrompt,
-          matchedShot,
-          characterRefs,
-          locationRefs,
-          elementRefs,
-          allReferences,
-          sceneSnapshot,
-        } = context;
-        const perShotSnapshotInputHash =
-          snapshotHashByKey[snapshotHashKey(scene.sceneId, model)];
+    const runImageJob = async (
+      { scene, model }: (typeof jobs)[number],
+      attempt: 'first' | 'retry'
+    ): Promise<ShotImageJobResult> => {
+      const context = sceneContexts.get(scene.sceneId);
+      if (context === undefined) {
+        throw new WorkflowValidationError(
+          `Scene ${scene.sceneId} has no resolved image context`
+        );
+      }
+      if (context instanceof Error) throw context;
+      const {
+        visualPrompt,
+        matchedShot,
+        characterRefs,
+        locationRefs,
+        elementRefs,
+        allReferences,
+        sceneSnapshot,
+      } = context;
+      const perShotSnapshotInputHash =
+        snapshotHashByKey[snapshotHashKey(scene.sceneId, model)];
 
-        const childBody: ImageWorkflowInput = {
-          userId: input.userId,
-          teamId: input.teamId,
-          prompt: visualPrompt,
-          model,
-          imageSize,
-          aspectRatio,
-          numImages: 1,
-          shotId: matchedShot?.shotId,
-          // Materialized by scene-split and threaded through the mapping
-          // (#991) — the child never re-resolves the anchor.
-          frameId: matchedShot?.frameId ?? undefined,
-          sequenceId,
-          referenceImages: allReferences.length > 0 ? allReferences : undefined,
-          sceneSnapshot,
-          snapshotInputHash: perShotSnapshotInputHash,
-        };
+      const childBody: ImageWorkflowInput = {
+        userId: input.userId,
+        teamId: input.teamId,
+        reservationId: input.reservationId,
+        prompt: visualPrompt,
+        model,
+        imageSize,
+        aspectRatio,
+        resolution: input.resolution,
+        numImages: 1,
+        shotId: matchedShot?.shotId,
+        // Materialized by scene-split and threaded through the mapping
+        // (#991) — the child never re-resolves the anchor.
+        frameId: matchedShot?.frameId ?? undefined,
+        sequenceId,
+        referenceImages: allReferences.length > 0 ? allReferences : undefined,
+        sceneSnapshot,
+        snapshotInputHash: perShotSnapshotInputHash,
+      };
 
-        // Per-spawn unique IDs. Include the model so the per-(scene,
-        // model) fan-out gets distinct CF instance IDs — siblings
-        // would otherwise collide on `image:${sequenceId}:${shotId}`
-        // (CF instance IDs are global per Worker script).
-        const childIdSuffix = matchedShot?.shotId
-          ? `image:${sequenceId ?? 'no-seq'}:${matchedShot.shotId}:${model}`
-          : `image:${sequenceId ?? 'no-seq'}:${scene.sceneId}:${model}`;
+      // Per-spawn unique IDs. Include the model so the per-(scene,
+      // model) fan-out gets distinct CF instance IDs — siblings
+      // would otherwise collide on `image:${sequenceId}:${shotId}`
+      // (CF instance IDs are global per Worker script). A silent retry
+      // must also be a new instance — the failed child already exists.
+      const retrySuffix = attempt === 'retry' ? ':retry' : '';
+      const stepSuffix = attempt === 'retry' ? '-retry' : '';
+      const childIdSuffix = matchedShot?.shotId
+        ? `image:${sequenceId ?? 'no-seq'}:${matchedShot.shotId}:${model}${retrySuffix}`
+        : `image:${sequenceId ?? 'no-seq'}:${scene.sceneId}:${model}${retrySuffix}`;
 
-        const childOutput = await spawnAndAwaitChild<
-          ImageWorkflowInput,
-          ImageChildResult
-        >(step, {
-          binding: imageBinding,
-          parentBindingName: 'SHOT_IMAGES_WORKFLOW',
-          parentInstanceId,
-          childId: childIdSuffix,
-          childPayload: childBody,
-          spawnStepName: `spawn-image-${scene.sceneId}-${model}`,
-          awaitStepName: `await-image-${scene.sceneId}-${model}`,
-          timeout: '30 minutes',
-        });
+      const childOutput = await spawnAndAwaitChild<
+        ImageWorkflowInput,
+        ImageChildResult
+      >(step, {
+        binding: imageBinding,
+        parentBindingName: 'SHOT_IMAGES_WORKFLOW',
+        parentInstanceId,
+        childId: childIdSuffix,
+        childPayload: childBody,
+        spawnStepName: `spawn-image-${scene.sceneId}-${model}${stepSuffix}`,
+        awaitStepName: `await-image-${scene.sceneId}-${model}${stepSuffix}`,
+        timeout: '30 minutes',
+      });
 
-        if (!childOutput.imageUrl) {
-          throw new WorkflowValidationError(
-            `Image generation failed for scene ${scene.sceneId} model ${model}`
-          );
-        }
+      if (!childOutput.imageUrl) {
+        throw new WorkflowValidationError(
+          `Image generation failed for scene ${scene.sceneId} model ${model}`
+        );
+      }
 
-        // Trigger variant (shot grid) workflow as a separate top-level
-        // run. Fire-and-forget — shot-images shouldn't block on it,
-        // since the variant just enriches the shot after the fact and
-        // its progress is tracked independently via
-        // `shot.variantImageStatus`.
-        await step.do(`trigger-variant-${scene.sceneId}-${model}`, async () => {
+      // Trigger variant (shot grid) workflow as a separate top-level
+      // run. Fire-and-forget — shot-images shouldn't block on it,
+      // since the variant just enriches the shot after the fact and
+      // its progress is tracked independently via
+      // `shot.variantImageStatus`.
+      await step.do(
+        `trigger-variant-${scene.sceneId}-${model}${stepSuffix}`,
+        async () => {
           const enforcement =
             await scopedDb.liveRead.compliance.listEnforcementFor(
               input.userId,
@@ -391,11 +424,43 @@ export class ShotImagesWorkflow extends OpenStoryWorkflowEntrypoint<ShotImagesWo
               enforcement,
             }
           );
-        });
+        }
+      );
 
-        return childOutput.imageUrl;
-      })
-    );
+      return {
+        imageUrl: childOutput.imageUrl,
+        frameVersionId: childOutput.frameVersionId ?? null,
+      };
+    };
+
+    const jobResults: PromiseSettledResult<ShotImageJobResult>[] =
+      await Promise.allSettled(jobs.map((job) => runImageJob(job, 'first')));
+
+    // One failed primary of many is usually a transient content-flag or
+    // timeout — retry it once silently so the scenes page doesn't open on
+    // "Generation partially failed. 1 image failed" (#1286).
+    const [primaryModel] = imageModels;
+    const retryIndex =
+      primaryModel === undefined
+        ? null
+        : loneFailedPrimaryJobIndex(jobs, jobResults, primaryModel);
+    if (retryIndex !== null) {
+      const retryJob = jobs[retryIndex];
+      if (retryJob) {
+        logger.info(
+          `[ShotImagesWorkflow:cf] Silently retrying lone failed primary for scene ${retryJob.scene.sceneId} model ${retryJob.model}`
+        );
+        try {
+          const retried = await runImageJob(retryJob, 'retry');
+          jobResults[retryIndex] = {
+            status: 'fulfilled',
+            value: retried,
+          };
+        } catch (err) {
+          jobResults[retryIndex] = { status: 'rejected', reason: err };
+        }
+      }
+    }
 
     // Regroup the flat job results back per scene, model order preserved, so
     // the primary/alternate rule below is unchanged by the flattening.
@@ -404,7 +469,7 @@ export class ShotImagesWorkflow extends OpenStoryWorkflowEntrypoint<ShotImagesWo
     // each scene's model sequence exactly.
     const modelResultsByScene = new Map<
       number,
-      PromiseSettledResult<string>[]
+      PromiseSettledResult<ShotImageJobResult>[]
     >();
     jobs.forEach((job, jobIndex) => {
       const result = jobResults[jobIndex];
@@ -419,7 +484,7 @@ export class ShotImagesWorkflow extends OpenStoryWorkflowEntrypoint<ShotImagesWo
     // for parity with the QStash original's `result.isFailed` check.
     // Sibling-model failures are logged but don't block — they're
     // alternates that enrich `shot_variants`, not the primary.
-    const sceneResults: PromiseSettledResult<string>[] =
+    const sceneResults: PromiseSettledResult<ShotImageJobResult>[] =
       scenesWithVisualPrompts.map((scene, sceneIndex) => {
         const modelResults = modelResultsByScene.get(sceneIndex) ?? [];
         const primary = modelResults[0];
@@ -463,7 +528,7 @@ export class ShotImagesWorkflow extends OpenStoryWorkflowEntrypoint<ShotImagesWo
     // with no visual prompt (or a deleted shot mid-flight) can't poison the
     // rest of the batch.
     const imageUrls: (string | null)[] = sceneResults.map((r, i) => {
-      if (r.status === 'fulfilled') return r.value;
+      if (r.status === 'fulfilled') return r.value.imageUrl;
       const scene = scenesWithVisualPrompts[i];
       logger.error(
         `[ShotImagesWorkflow:cf] Scene ${scene?.sceneId ?? '(unknown)'} failed: ${String(r.reason)}`,
@@ -473,8 +538,11 @@ export class ShotImagesWorkflow extends OpenStoryWorkflowEntrypoint<ShotImagesWo
       );
       return null;
     });
+    const frameVersionIds: (string | null)[] = sceneResults.map((r) =>
+      r.status === 'fulfilled' ? r.value.frameVersionId : null
+    );
 
-    return { imageUrls };
+    return { imageUrls, frameVersionIds };
   }
 
   protected override onFailure({

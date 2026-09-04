@@ -16,7 +16,6 @@
  * always parsed.
  */
 
-import { migrateStyleConfigV1ToV2 } from '@/lib/style/style-config';
 import { SCENE_SPLIT_MODEL } from '@/lib/ai/models.config';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import type {
@@ -27,7 +26,6 @@ import type {
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import type { SceneSplittingScene } from '@/lib/ai/streaming-scene-parser';
 import type { SceneSplitWorkflowInput } from '@/lib/workflow/types';
-import type { StyleConfig } from '@/lib/db/schema';
 
 const triggerWorkflow =
   vi.fn<(path: string, body: unknown, options?: unknown) => Promise<string>>();
@@ -174,16 +172,6 @@ const BIBLES_RESULT = {
   elementBible: [],
 };
 
-const STYLE_CONFIG: StyleConfig = migrateStyleConfigV1ToV2({
-  mood: 'tense',
-  artStyle: 'photoreal',
-  lighting: 'hard key',
-  colorPalette: ['#101020'],
-  cameraWork: 'handheld',
-  referenceFilms: [],
-  colorGrading: 'cool shadows',
-});
-
 const INPUT: SceneSplitWorkflowInput = {
   userId: 'u1',
   teamId: 't1',
@@ -191,12 +179,18 @@ const INPUT: SceneSplitWorkflowInput = {
   script: SCRIPT,
   modelId: 'anthropic/claude-sonnet-5',
   promptName: 'scene-splitting',
-  styleConfig: STYLE_CONFIG,
   aspectRatio: '16:9',
   elements: [],
 };
 
-function makeScopedDb(): WorkflowScopedDb {
+function makeScopedDb(
+  resolveLlmKey: (model?: string) => Promise<{
+    source: string;
+    via: string;
+    key: string;
+  }> = () =>
+    Promise.resolve({ source: 'platform', via: 'openrouter', key: 'k' })
+): WorkflowScopedDb {
   let shotSeq = 0;
   const shot = () => {
     shotSeq++;
@@ -204,8 +198,7 @@ function makeScopedDb(): WorkflowScopedDb {
   };
   const scopedDb = {
     credentials: {
-      resolveLlmKey: () =>
-        Promise.resolve({ source: 'platform', via: 'env', key: 'k' }),
+      resolveLlmKey,
     },
     liveRead: {
       compliance: {
@@ -247,11 +240,13 @@ function makeScopedDb(): WorkflowScopedDb {
   return scopedDb as unknown as WorkflowScopedDb;
 }
 
-function makeEvent(): Readonly<WorkflowEvent<SceneSplitWorkflowInput>> {
+function makeEvent(
+  payload: SceneSplitWorkflowInput = INPUT
+): Readonly<WorkflowEvent<SceneSplitWorkflowInput>> {
   // The stub satisfies WorkflowEvent structurally, so no assertion is needed
   // — and asserting anyway now trips no-unnecessary-type-assertion.
   return {
-    payload: INPUT,
+    payload,
     instanceId: 'split_run_A',
     workflowName: 'scene-split',
     timestamp: new Date(0),
@@ -447,6 +442,7 @@ describe('SceneSplitWorkflow stream step config', () => {
   beforeEach(() => {
     triggerWorkflow.mockReset();
     triggerWorkflow.mockResolvedValue('run_1');
+    vi.mocked(callLLMStream).mockClear();
     streamChunks = singleDoneChunk();
     feed.mockReset();
   });
@@ -474,6 +470,41 @@ describe('SceneSplitWorkflow stream step config', () => {
         ([params]) => params.observationName === 'phase-1-scene-bibles'
       )?.[0];
     expect(bibleCall?.model).toBe(INPUT.modelId);
+  });
+
+  test('resolves the scenes-call key for SCENE_SPLIT_MODEL, not a Grok analysis model (#1358)', async () => {
+    const grokKey = {
+      source: 'platform' as const,
+      via: 'xai' as const,
+      key: 'xai-platform-key',
+    };
+    const splitKey = {
+      source: 'platform' as const,
+      via: 'openrouter' as const,
+      key: 'or-platform-key',
+    };
+    const resolveLlmKey = vi.fn(async (model?: string) =>
+      model === 'x-ai/grok-4.6' ? grokKey : splitKey
+    );
+
+    await makeWorkflow().split(
+      makeEvent({ ...INPUT, modelId: 'x-ai/grok-4.6' }),
+      makeStep(),
+      makeScopedDb(resolveLlmKey)
+    );
+
+    expect(resolveLlmKey).toHaveBeenCalledWith(SCENE_SPLIT_MODEL);
+    const sceneCall = sceneSplittingLlmCalls()[0]?.[0];
+    expect(sceneCall?.model).toBe(SCENE_SPLIT_MODEL);
+    expect(sceneCall?.apiKey).toEqual(splitKey);
+
+    const bibleCall = vi
+      .mocked(callLLMStream)
+      .mock.calls.find(
+        ([params]) => params.observationName === 'phase-1-scene-bibles'
+      )?.[0];
+    expect(bibleCall?.model).toBe('x-ai/grok-4.6');
+    expect(bibleCall?.apiKey).toEqual(grokKey);
   });
 });
 

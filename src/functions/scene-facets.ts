@@ -69,7 +69,8 @@ export const getSceneFacetMapsFn = createServerFn({ method: 'GET' })
       locationIdsByShot[shot.id] = matchLocationsToScene(
         locations,
         scene?.continuity?.environmentTag ?? '',
-        scene?.metadata?.location ?? ''
+        scene?.metadata?.location ?? '',
+        scene?.originalScript.extract
       ).map((l) => l.id);
 
       const characterTags = scene?.continuity?.characterTags ?? [];

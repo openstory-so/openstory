@@ -12,7 +12,13 @@ import {
 } from 'better-auth/client/plugins';
 import { createAuthClient } from 'better-auth/react';
 import { getQueryClient } from '../query-client';
+import {
+  currentAuthCookiePrefix,
+  lastUsedLoginMethodCookieName,
+} from './cookie-prefix';
 import type { Auth } from './config';
+
+const cookiePrefix = currentAuthCookiePrefix();
 
 /** Auth API paths that change session state */
 const SESSION_MUTATION_PATHS = [
@@ -50,7 +56,9 @@ export const authClient = createAuthClient({
     emailOTPClient(),
     passkeyClient(),
     inferAdditionalFields<Auth>(),
-    lastLoginMethodClient(),
+    lastLoginMethodClient({
+      cookieName: lastUsedLoginMethodCookieName(cookiePrefix),
+    }),
   ],
 });
 

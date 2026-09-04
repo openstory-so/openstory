@@ -76,6 +76,7 @@ import {
 
 import {
   creditBatches,
+  creditReservations,
   credits,
   teamBillingSettings,
   transactions,
@@ -266,6 +267,7 @@ export type { NewSequenceExport, SequenceExport } from './sequence-exports';
 export { characters };
 
 export type {
+  CharacterWithSheet,
   Character,
   CharacterMinimal,
   CharacterWithTalent,
@@ -284,6 +286,7 @@ export { sequenceLocations };
 export type {
   NewSequenceLocation,
   ReferenceStatus,
+  SequenceLocationWithReference,
   SequenceLocation,
   SequenceLocationMinimal,
 } from './sequence-locations';
@@ -322,7 +325,7 @@ export { audio, StyleConfigSchema, StyleSampleVideoSchema, styles, vfx };
 export type { Audio, NewStyle, Style, StyleConfig, Vfx } from './libraries';
 
 // Credits, Transactions, and Billing
-export { credits, transactions };
+export { creditReservations, credits, transactions };
 
 /**
  * drizzle-kit only diffs TOP-LEVEL exported tables — tables reachable only
@@ -362,6 +365,7 @@ export type {
   GeneratedAssetActivity,
   GeneratedAssetInput,
   GeneratedAssetOutput,
+  GeneratedAssetSource,
   JsonValue,
 } from './generated-assets';
 
@@ -451,6 +455,7 @@ export const schema = {
   // Credits & Billing
   credits,
   creditBatches,
+  creditReservations,
   transactions,
   teamBillingSettings,
 

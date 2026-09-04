@@ -17,13 +17,25 @@
 
 import {
   CONTENT_REJECTION_EVENT,
+  CONTENT_REJECTION_FALLBACK_EVENT,
   CONTENT_REJECTION_RETRY_EVENT,
+  CONTENT_REJECTION_SOFTEN_EVENT,
+  clipContentRejectionMessage,
+  flaggedInputs,
   isContentRejectionError,
 } from '@/lib/ai/content-rejection';
 import { extractFalErrorMessage } from '@/lib/ai/fal-error';
 import { computeVideoManifestInputHash } from '@/lib/ai/input-hash';
 import { DEFAULT_VIDEO_MODEL, IMAGE_TO_VIDEO_MODELS } from '@/lib/ai/models';
-import { microsToUsd } from '@/lib/billing/money';
+import {
+  DEFAULT_ANALYSIS_MODEL,
+  getAnalysisModelById,
+} from '@/lib/ai/models.config';
+import type { VideoManifest } from '@/lib/db/schema';
+import {
+  MOTION_CONTENT_FALLBACK_MODEL,
+  softenRejectedMotionPrompt,
+} from '@/lib/workflows/content-soften';
 import {
   deductWorkflowCredits,
   recordFalUsageStep,
@@ -32,6 +44,7 @@ import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import { ensureImageUnderLimit } from '@/lib/image/image-compress';
 import {
   calculateMotionMetadata,
+  canRenderReferenceOnly,
   motionCostFromUsage,
   pollMotionJob,
   submitMotionJob,
@@ -40,7 +53,10 @@ import { getEffectiveFalPricing } from '@/lib/ai/fal-pricing-live';
 import { gateEstimate } from '@/lib/billing/cost-estimation';
 import type { TokenUsage } from '@tanstack/ai';
 import { buildVideoManifest } from '@/lib/motion/render-segments';
-import { uploadVideoToStorage } from '@/lib/motion/video-storage';
+import {
+  uploadVideoToStorage,
+  videoUrlFitsWorkflowCheckpoint,
+} from '@/lib/motion/video-storage';
 import { recordProvenance } from '@/lib/compliance/provenance';
 import { buildR2Key, STORAGE_BUCKETS } from '@/lib/storage/buckets';
 import { recordMediaGenerationSpan } from '@/lib/observability/ai-otel';
@@ -122,10 +138,23 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
     const workflowRunId = event.instanceId;
     const model = input.model || DEFAULT_VIDEO_MODEL;
 
-    // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
-    if (!input.imageUrl?.trim()) {
+    // Reference-only shots have no still by design — the reference sheets and
+    // the prompt are the whole input. Every other shot must carry one.
+    if (!input.imageUrl?.trim() && !input.referenceOnly) {
       throw new WorkflowValidationError(
         'Thumbnail Path is required for motion generation'
+      );
+    }
+    if (
+      input.referenceOnly &&
+      !(await canRenderReferenceOnly(model, scopedDb.credentials))
+    ) {
+      // A route whose start frame is optional is what makes this shot
+      // renderable — a fal reference-to-video endpoint, or Grok on the native
+      // xAI via. A model with neither cannot serve it at all. Fail before the
+      // credit check rather than burning a reservation on a doomed submit.
+      throw new WorkflowValidationError(
+        `Video model "${model}" cannot render reference-only shots (no route whose start frame is optional)`
       );
     }
 
@@ -151,6 +180,8 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
         const { cost: estimatedCost, duration } = calculateMotionMetadata(
           {
             imageUrl: input.imageUrl,
+            referenceOnly: input.referenceOnly,
+            referenceImages: input.referenceImages,
             prompt: input.prompt,
             model,
             duration: input.duration,
@@ -169,13 +200,10 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
 
         const falKeyInfo = await scopedDb.credentials.resolveKey('fal');
         const usedOwnKey = falKeyInfo.source === 'team';
-        if (cost > 0 && !usedOwnKey) {
+        if (cost > 0 && !usedOwnKey && !input.reservationId) {
           const canAfford =
             await scopedDb.liveRead.billing.hasEnoughCredits(cost);
           if (!canAfford) {
-            logger.warn(
-              `[MotionWorkflow:cf] Insufficient credits for team ${input.teamId} (cost: $${microsToUsd(cost).toFixed(4)}), skipping deduction`
-            );
             throw new NonRetryableError(
               `Insufficient credits for motion generation`
             );
@@ -190,12 +218,16 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
     );
 
     // Step 1: Set status to generating and store model being used
-    const { shotDeleted, videoVersionId, sceneId } = await step.do(
+    const { shotDeleted, videoVersionId, sceneId, manifest } = await step.do(
       'set-generating-status',
       async (): Promise<{
         shotDeleted: boolean;
         videoVersionId: string | null;
         sceneId: string | null;
+        // The opened version's manifest, so a content-checker rescue (#1373)
+        // can repoint it at the softened prompt version. Absent on a run that
+        // cached this step before #1373.
+        manifest?: VideoManifest | null;
       }> => {
         if (!input.shotId) {
           return { shotDeleted: false, videoVersionId: null, sceneId: null };
@@ -224,10 +256,11 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
           const written = await scopedDb.shotPromptVersions.write({
             shotId: input.shotId,
             promptType: 'motion',
-            text: input.prompt,
+            text: input.userEditText ?? input.prompt,
             dialogue: input.priorMotion?.dialogue ?? null,
             audio: input.priorMotion?.audio ?? null,
             source: 'user-edit',
+            usesStartFrame: !input.referenceOnly,
             inputHash: input.userEditProvenance.inputHash,
             analysisModel: input.userEditProvenance.analysisModel,
             createdBy: input.userId,
@@ -245,6 +278,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
         // mirror of whichever version the shot's selection points at.
         const renderSceneId = input.sceneId ?? shot.sceneId;
         let openedVideoVersionId: string | null = null;
+        let manifest: VideoManifest | null = null;
         if (input.sequenceId) {
           if (!renderSceneId) {
             throw new WorkflowValidationError(
@@ -265,7 +299,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
           // that a different still than the one this clip rendered from (the
           // render consumes `input.imageUrl`, snapshotted at the trigger). A
           // payload without it records null provenance, as pre-#1067 rows do.
-          const manifest = buildVideoManifest([
+          manifest = buildVideoManifest([
             {
               shotId: input.shotId,
               // No selection-pointer fallback: a payload without the field
@@ -275,15 +309,28 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
                 input.motionPromptVersionId ??
                 null,
               frameVersionId: input.frameVersionId ?? null,
+              // Provenance stamp: the mode this render ran in, independent
+              // of the null-`frameVersionId` encoding above.
+              usesStartFrame: !input.referenceOnly,
               durationMs: duration * 1000,
             },
           ]);
+          const inputHash = await computeVideoManifestInputHash(
+            manifest,
+            model
+          );
+          if (inputHash == null && !input.variantOnly) {
+            logger.warn(
+              `[MotionWorkflow:cf] Shot ${input.shotId} primary render is missing pinned frameVersionId/motionPromptVersionId; storing a null hash so the clip is unknown-not-stale rather than born Stale (#1380)`
+            );
+          }
           const version = await scopedDb.videoVariants.appendVersion({
             renderSegmentId,
             sequenceId: input.sequenceId,
             model,
+            resolution: input.resolution ?? null,
             manifest,
-            inputHash: await computeVideoManifestInputHash(manifest, model),
+            inputHash,
             status: 'generating',
             workflowRunId,
             isPrimary: !input.variantOnly,
@@ -322,6 +369,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
           shotDeleted: false,
           videoVersionId: openedVideoVersionId,
           sceneId: renderSceneId,
+          manifest,
         };
       }
     );
@@ -331,26 +379,40 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
     }
 
     // Step 2: Prepare start image — use Cloudflare Image Resizing if Kling model and image exceeds 10MB
-    const startImageUrl = await step.do('prepare-start-image', async () => {
-      const modelConfig = IMAGE_TO_VIDEO_MODELS[model];
-      if (modelConfig.vendor !== 'Kling') {
-        return input.imageUrl;
+    const startImageUrl = await step.do(
+      'prepare-start-image',
+      async (): Promise<string | null> => {
+        // Reference-only has no still to prepare. `null`, not `undefined`:
+        // a step result is persisted and replayed as JSON, where `undefined`
+        // has no representation and comes back as `null` anyway — returning it
+        // outright keeps the declared type true on the replay path too.
+        // (Kling is not reference-only capable, but the empty check has to come
+        // first regardless.) Trimmed to agree with the entry guard above, so a
+        // whitespace-only URL can't slip past as a real still and shift every
+        // reference tag down a slot.
+        if (!input.imageUrl?.trim()) {
+          return null;
+        }
+        const modelConfig = IMAGE_TO_VIDEO_MODELS[model];
+        if (modelConfig.vendor !== 'Kling') {
+          return input.imageUrl;
+        }
+
+        const compressed = await ensureImageUnderLimit(
+          input.imageUrl,
+          KLING_MAX_IMAGE_BYTES
+        );
+        if (!compressed) {
+          return input.imageUrl;
+        }
+
+        logger.info(
+          `[MotionWorkflow:cf] Image ${(compressed.originalSizeBytes / 1024 / 1024).toFixed(1)}MB exceeds limit, using Cloudflare Image Resizing`
+        );
+
+        return compressed.url;
       }
-
-      const compressed = await ensureImageUnderLimit(
-        input.imageUrl,
-        KLING_MAX_IMAGE_BYTES
-      );
-      if (!compressed) {
-        return input.imageUrl;
-      }
-
-      logger.info(
-        `[MotionWorkflow:cf] Image ${(compressed.originalSizeBytes / 1024 / 1024).toFixed(1)}MB exceeds limit, using Cloudflare Image Resizing`
-      );
-
-      return compressed.url;
-    });
+    );
 
     // Step 3: Submit + poll with a bounded same-model retry on content-flag
     // rejections (#881). Each attempt resubmits a fresh fal job; a content
@@ -364,21 +426,197 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
     // this into a billed cost + unit count below, switching on the job's via.
     let billedUsage: TokenUsage | undefined;
     let lastRejection: string | null = null;
+    // Every rejection in order: the rescue's may lack the `body.<field>`
+    // prefix the reseeds carried, so the final message classifies on all.
+    const rejections: string[] = [];
     // The job behind the clip that ultimately succeeded — its `submittedAt` /
     // `usedOwnKey` drive observation timing and credit deduction below.
     let succeededJob: Awaited<ReturnType<typeof submitMotionJob>> | null = null;
+    // Rescue attempt (#1373): once the reseeds exhaust, one more submit with
+    // the remedy the flagged input calls for — a rewritten prompt when the
+    // prompt was flagged, the fallback video model when the still was (a
+    // flagged still cannot be reseeded or softened away). Both feed the final
+    // error text so the user learns which input to change.
+    let prompt = input.prompt;
+    let activeModel = model;
+    let softened = false;
+    // The manifest the in-flight version currently carries — repointed at the
+    // softened prompt version when the rescue rewrites it.
+    let renderManifest: VideoManifest | null = manifest ?? null;
+    const triedModels: (typeof model)[] = [model];
+    const maxAttempts = MAX_MOTION_ATTEMPTS + 1;
 
-    for (let attempt = 0; attempt < MAX_MOTION_ATTEMPTS; attempt++) {
-      const tag = attempt === 0 ? '' : `-retry-${attempt}`;
+    for (let attempt = 0; attempt <= MAX_MOTION_ATTEMPTS; attempt++) {
+      const isRescue = attempt === MAX_MOTION_ATTEMPTS;
+      if (isRescue) {
+        // A rejection with no `body.<field>` prefix (Veo's "could not
+        // generate", sensitive audio) is prompt-shaped: soften.
+        const flags = flaggedInputs(lastRejection ?? '');
+        // The fallback must be able to serve THIS shot. A reference-only shot
+        // flags `body.image_urls` (a reference sheet, not a still), which
+        // matches `flaggedInputs`' image test — so without this check the
+        // rescue would swap to Grok, commit the model onto `video_variants`,
+        // and then die inside `resolveMotionEndpoint` on a team with no xAI
+        // key. `canRenderReferenceOnly` knows the via, so Grok still rescues
+        // the shot wherever it genuinely can.
+        const fallbackCanServe =
+          !input.referenceOnly ||
+          (await canRenderReferenceOnly(
+            MOTION_CONTENT_FALLBACK_MODEL,
+            scopedDb.credentials
+          ));
+        const swapModel =
+          flags.image &&
+          model !== MOTION_CONTENT_FALLBACK_MODEL &&
+          fallbackCanServe;
+        // A flagged reference sheet cannot be softened away either (the sheet
+        // is the input, not the prose), so a reference-only shot with no
+        // usable fallback falls straight through to the terminal message
+        // rather than burning a rewrite that changes nothing.
+        const softenPrompt = flags.prompt || !flags.image;
+        if (!swapModel && !softenPrompt) break;
+
+        const logMeta = {
+          kind: 'motion',
+          model,
+          shotId: input.shotId,
+          sequenceId: input.sequenceId,
+          rejection: lastRejection,
+        };
+        if (softenPrompt) {
+          logger.warn(
+            `[MotionWorkflow:cf] same-prompt reseeds exhausted; softening prompt for shot ${input.shotId}`,
+            { event: CONTENT_REJECTION_SOFTEN_EVENT, ...logMeta }
+          );
+          const provenance = await step.do(
+            'load-motion-prompt-provenance',
+            async () => {
+              if (input.userEditProvenance) return input.userEditProvenance;
+              const original =
+                input.shotId && input.motionPromptVersionId
+                  ? await scopedDb.claims.shotPromptVersions.getByIdForShot(
+                      input.motionPromptVersionId,
+                      input.shotId
+                    )
+                  : null;
+              return {
+                inputHash: original?.inputHash ?? null,
+                analysisModel: original?.analysisModel ?? null,
+              };
+            }
+          );
+          try {
+            prompt = await softenRejectedMotionPrompt(step, {
+              scopedDb,
+              workflowRunId,
+              sequenceId: input.sequenceId,
+              userId: input.userId,
+              prompt: input.prompt,
+              rejection: lastRejection ?? 'unknown rejection',
+              analysisModelId:
+                getAnalysisModelById(provenance.analysisModel ?? '')?.id ??
+                DEFAULT_ANALYSIS_MODEL,
+              shotId: input.shotId,
+              model,
+              reservationId: input.reservationId,
+            });
+            softened = true;
+          } catch (error) {
+            logger.warn(
+              `[MotionWorkflow:cf] failed to soften prompt for shot ${input.shotId}`,
+              { err: error, rejection: lastRejection }
+            );
+            if (!swapModel) break;
+          }
+          if (softened && input.shotId) {
+            const shotId = input.shotId;
+            const softenedText = prompt;
+            renderManifest = await step.do(
+              'write-softened-motion-prompt',
+              async () => {
+                // A primary render selects the rewrite (the original stays
+                // in Versions), as the image softener does for the frame.
+                // A variant-only render appends to history only: an
+                // alternate model's rescue must not move the primary shot's
+                // prompt out from under the primary clip (which would then
+                // read stale). ponytail: `input.prompt` is already
+                // model-assembled (dialogue prose + audio trailer baked in),
+                // so this row gets null dialogue/audio — a later render from
+                // it appends the model trailer a second time. Structured
+                // assembly resumes once the user regenerates the prompt.
+                const version = await scopedDb.shotPromptVersions.write({
+                  shotId,
+                  promptType: 'motion',
+                  text: softenedText,
+                  source: 'softened',
+                  usesStartFrame: !input.referenceOnly,
+                  inputHash: provenance.inputHash,
+                  analysisModel: provenance.analysisModel,
+                  createdBy: input.userId,
+                  select: !input.variantOnly,
+                });
+                if (!videoVersionId || !manifest) return manifest ?? null;
+                const rescued = manifest.map((e) => ({
+                  ...e,
+                  motionPromptVersionId: version.id,
+                }));
+                await scopedDb.videoVariants.update(videoVersionId, {
+                  manifest: rescued,
+                  inputHash: await computeVideoManifestInputHash(
+                    rescued,
+                    model
+                  ),
+                });
+                return rescued;
+              }
+            );
+          }
+        }
+        if (swapModel) {
+          logger.warn(
+            `[MotionWorkflow:cf] still flagged; falling back to ${MOTION_CONTENT_FALLBACK_MODEL} for shot ${input.shotId}`,
+            {
+              event: CONTENT_REJECTION_FALLBACK_EVENT,
+              ...logMeta,
+              fromModel: model,
+              model: MOTION_CONTENT_FALLBACK_MODEL,
+            }
+          );
+          activeModel = MOTION_CONTENT_FALLBACK_MODEL;
+          triedModels.push(activeModel);
+          if (videoVersionId) {
+            const versionId = videoVersionId;
+            // The in-flight version moves to the fallback model's group so the
+            // switcher shows what actually rendered; the hash follows — over
+            // the softened manifest when the prompt was rescued too.
+            const hashManifest = renderManifest;
+            await step.do('switch-to-fallback-video-model', async () => {
+              await scopedDb.videoVariants.update(versionId, {
+                model: MOTION_CONTENT_FALLBACK_MODEL,
+                ...(hashManifest
+                  ? {
+                      inputHash: await computeVideoManifestInputHash(
+                        hashManifest,
+                        MOTION_CONTENT_FALLBACK_MODEL
+                      ),
+                    }
+                  : {}),
+              });
+            });
+          }
+        }
+      }
+      const tag =
+        attempt === 0 ? '' : isRescue ? '-rescue' : `-retry-${attempt}`;
 
       // Step 3a: Submit. A content rejection surfaces as a sentinel (not
       // thrown) so the loop owns the retry; a non-content 422 stays a hard
       // stop; anything else throws for CF's per-step retry.
       const submitOutcome = await step.do(`submit-motion${tag}`, async () => {
         // Surface the same-model content-flag re-roll (#881) as in-flight retry
-        // state so the scenes UI shows "Retrying (N/3)…" instead of a spinner
+        // state so the scenes UI shows "Retrying (N/4)…" instead of a spinner
         // indistinguishable from a hang (#882). `attempt` is 0-indexed; show it
-        // 1-based.
+        // 1-based. The rescue emit also flags what changed (#1373).
         if (attempt > 0 && input.shotId && input.sequenceId) {
           await getGenerationChannel(input.sequenceId).emit(
             'generation.video:progress',
@@ -387,21 +625,29 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
               status: 'generating',
               phase: 'retrying',
               attempt: attempt + 1,
-              maxAttempts: MAX_MOTION_ATTEMPTS,
-              model,
+              maxAttempts,
+              model: activeModel,
               variantOnly: input.variantOnly,
+              ...(isRescue
+                ? {
+                    promptSoftened: softened,
+                    modelFallback: activeModel !== model,
+                  }
+                : {}),
             }
           );
         }
         try {
           const job = await submitMotionJob({
-            imageUrl: startImageUrl,
-            prompt: input.prompt,
-            model,
+            imageUrl: startImageUrl ?? undefined,
+            referenceOnly: input.referenceOnly,
+            prompt,
+            model: activeModel,
             duration: input.duration,
             fps: input.fps,
             motionBucket: input.motionBucket,
             aspectRatio: input.aspectRatio,
+            ...(input.resolution && { resolution: input.resolution }),
             generateAudio: input.generateAudio,
             // Cast/element reference images (#873) — only Kling v3 Pro emits them.
             referenceImages: input.referenceImages,
@@ -431,6 +677,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
 
       if (!submitOutcome.ok) {
         lastRejection = submitOutcome.rejection;
+        rejections.push(lastRejection);
         logger.warn(
           `[MotionWorkflow:cf] content-flag rejection on submit attempt ${attempt + 1}/${MAX_MOTION_ATTEMPTS} for shot ${input.shotId}: ${submitOutcome.rejection}`
         );
@@ -459,7 +706,8 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
                   job.jobId,
                   job.modelKey,
                   scopedDb.credentials,
-                  job.via
+                  job.via,
+                  job.endpointId
                 );
               } catch (error) {
                 if (isContentRejectionError(error)) {
@@ -490,10 +738,40 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
 
               if (pollResult.status === 'completed') {
                 if (pollResult.url) {
+                  let url = pollResult.url;
+                  // Omni Flash defaults to inline base64. A data: MP4 is
+                  // several MB and will fail the 1 MiB step.do cap — park
+                  // it in R2 before this result is checkpointed.
+                  if (!videoUrlFitsWorkflowCheckpoint(url)) {
+                    if (!input.teamId || !input.sequenceId || !input.shotId) {
+                      throw new Error(
+                        'Native Gemini returned inline video bytes too large to checkpoint'
+                      );
+                    }
+                    const googleKey =
+                      job.via === 'google'
+                        ? await scopedDb.credentials.resolveOptionalKey(
+                            'google'
+                          )
+                        : undefined;
+                    const stored = await uploadVideoToStorage({
+                      videoUrl: url,
+                      teamId: input.teamId,
+                      sequenceId: input.sequenceId,
+                      shotId: input.shotId,
+                      sequenceTitle: input.sequenceTitle ?? 'sequence',
+                      sceneTitle: input.sceneTitle,
+                      googleApiKey: googleKey?.key,
+                    });
+                    if (!stored.success) {
+                      throw new Error(stored.error);
+                    }
+                    url = stored.url;
+                  }
                   logger.info(`[MotionWorkflow:cf] Generation completed`);
                   return {
                     kind: 'completed',
-                    url: pollResult.url,
+                    url,
                     usage: pollResult.usage,
                   };
                 }
@@ -552,6 +830,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
 
       if (rejected) {
         lastRejection = rejected;
+        rejections.push(rejected);
         logger.warn(
           `[MotionWorkflow:cf] content-flag rejection on poll attempt ${attempt + 1}/${MAX_MOTION_ATTEMPTS} for shot ${input.shotId}: ${rejected}`
         );
@@ -568,20 +847,42 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
 
     if (!videoUrl) {
       logger.error(
-        `[MotionWorkflow:cf] content-flag retry exhausted for shot ${input.shotId} after ${MAX_MOTION_ATTEMPTS} attempts`,
+        `[MotionWorkflow:cf] content-flag retry exhausted for shot ${input.shotId} after ${triedModels.length > 1 || softened ? maxAttempts : MAX_MOTION_ATTEMPTS} attempts`,
         {
           event: CONTENT_REJECTION_RETRY_EVENT,
           outcome: 'exhausted',
           kind: 'motion',
-          model,
-          attempts: MAX_MOTION_ATTEMPTS,
+          model: activeModel,
+          attempts:
+            triedModels.length > 1 || softened
+              ? maxAttempts
+              : MAX_MOTION_ATTEMPTS,
           shotId: input.shotId,
           sequenceId: input.sequenceId,
           rejection: lastRejection,
+          softened,
+          models: triedModels,
         }
       );
       throw new NonRetryableError(
-        `Motion generation rejected by content filter after ${MAX_MOTION_ATTEMPTS} attempts: ${lastRejection ?? 'unknown rejection'}`,
+        clipContentRejectionMessage({
+          rejections: rejections.length ? rejections : ['unknown rejection'],
+          models: triedModels.map((m) => IMAGE_TO_VIDEO_MODELS[m].name),
+          softened,
+          // This clip carried no still, so `flags.image` names a reference
+          // sheet and "Regenerate the still" would be a dead end.
+          ...(input.referenceOnly
+            ? {
+                inputs: {
+                  still: {
+                    name: 'a reference sheet',
+                    fix: 'Regenerate the flagged character, location or element reference',
+                  },
+                  prompt: 'the motion prompt',
+                },
+              }
+            : {}),
+        }),
         'ContentRejectionExhausted'
       );
     }
@@ -606,6 +907,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
       motionCostFromUsage(job.via, billedUsage, {
         modelKey: job.modelKey,
         hasReferenceImages: (input.referenceImages?.length ?? 0) > 0,
+        referenceOnly: input.referenceOnly,
       })
     );
     const actualCost = billing.cost;
@@ -616,20 +918,20 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
     // output. Record it here instead, where all three are known.
     await step.do('record-motion-observation', async () => {
       recordMediaGenerationSpan({
-        model,
+        model: activeModel,
         provider: job.via,
         activity: 'video',
         durationMs: Date.now() - job.submittedAt,
         costMicros: actualCost,
         unitsBilled: billing.unitsBilled,
         usedOwnKey: job.usedOwnKey,
-        prompt: input.prompt,
+        prompt,
         outputUrl: videoUrl,
         observationName: 'motion',
         tags: ['motion'],
         userId: input.userId,
         sessionId: input.sequenceId,
-        metadata: { model, shotId: input.shotId },
+        metadata: { model: activeModel, shotId: input.shotId },
       });
     });
 
@@ -645,21 +947,21 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
         })
       : {};
 
-    // Deduct credits (skip if team used own fal key). Routed through
-    // deductWorkflowCredits so insufficient balances warn-and-skip (with an
-    // auto-top-up attempt) like every other workflow, instead of debiting
-    // the balance negative.
+    // Settle the spawn-time reservation against fal's billed cost. If this
+    // run never reserved (BYOK / unpriced), deductWorkflowCredits falls back
+    // to an atomic try-deduct.
     if (actualCost > 0 && input.teamId && !gatedUsedOwnKey) {
       await step.do('deduct-credits', async () => {
         await deductWorkflowCredits({
           scopedDb,
           costMicros: actualCost,
           usedOwnKey: job.usedOwnKey,
-          description: `Motion generation (${model})`,
+          description: `Motion generation (${activeModel})`,
           idempotencyKey: `${event.instanceId}:motion`,
+          reservationId: input.reservationId,
           metadata: {
             ...falUsage,
-            model,
+            model: activeModel,
             shotId: input.shotId,
             sequenceId: input.sequenceId,
             duration: duration,
@@ -680,6 +982,10 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
           throw new Error('Missing teamId or sequenceId for storage upload');
         }
 
+        const googleKey =
+          succeededJob.via === 'google'
+            ? await scopedDb.credentials.resolveOptionalKey('google')
+            : undefined;
         const result = await uploadVideoToStorage({
           videoUrl,
           teamId: input.teamId,
@@ -687,6 +993,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
           shotId,
           sequenceTitle: input.sequenceTitle ?? 'sequence',
           sceneTitle: input.sceneTitle,
+          googleApiKey: googleKey?.key,
         });
 
         if (!result.success) {
@@ -718,7 +1025,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
           sequenceId: input.sequenceId,
           sceneId,
           videoVersionId,
-          model,
+          model: activeModel,
           upload: { url: storageResult.url, path: storageResult.path },
           actorId: input.userId,
           variantOnly: input.variantOnly,
@@ -737,6 +1044,11 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
         if (outcome.status === 'shot-deleted') {
           logger.info(
             `[MotionWorkflow:cf] Shot ${shotId} was deleted, skipping final update`
+          );
+        }
+        if (outcome.status === 'cancelled') {
+          logger.info(
+            `[MotionWorkflow:cf] version ${videoVersionId} was cancelled mid-render; discarding result`
           );
         }
       });
@@ -758,10 +1070,10 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
             assetId: provenanceVersionId,
             storageKey: buildR2Key(STORAGE_BUCKETS.VIDEOS, storageResult.path),
             provider: 'fal',
-            model,
+            model: activeModel,
             providerRequestId: job.jobId,
             workflowRunId: event.instanceId,
-            prompt: input.prompt,
+            prompt,
             sequenceId: input.sequenceId,
             shotId,
             // Image-to-video: the start frame is a reference image, and whether

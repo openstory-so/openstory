@@ -75,6 +75,32 @@ export function createSequenceVariantsMethods(db: Database) {
     return variant;
   };
 
+  /**
+   * Vacate a model's live primary slot by stamping `divergedAt`, so a fresh
+   * row can take it while the old one survives as a promotable alternate
+   * (#1108). Needed for user uploads: every upload shares the
+   * `USER_UPLOAD_MODEL` slot, so `upsertMusicPrimary` would UPDATE the previous
+   * upload's row in place and destroy the only pointer to those bytes —
+   * versions are append-only, and product delete is never silent. Generated
+   * tracks don't need this: each model owns its own slot.
+   *
+   * Returns the retired row, or null when the slot was already empty.
+   */
+  const retireMusicPrimary = async (
+    sequenceId: string,
+    model: string
+  ): Promise<SequenceMusicVariant | null> => {
+    const existing = await getMusicPrimary(sequenceId, model);
+    if (!existing) return null;
+    const now = new Date();
+    const [retired] = await db
+      .update(sequenceMusicVariants)
+      .set({ divergedAt: now, updatedAt: now })
+      .where(eq(sequenceMusicVariants.id, existing.id))
+      .returning();
+    return retired ?? null;
+  };
+
   const insertDivergentMusic = async (
     data: NewSequenceMusicVariant & { inputHash: string; divergedAt: Date }
   ): Promise<SequenceMusicVariant> => {
@@ -127,6 +153,7 @@ export function createSequenceVariantsMethods(db: Database) {
 
     getMusicPrimary,
     upsertMusicPrimary,
+    retireMusicPrimary,
     insertDivergentMusic,
 
     /**

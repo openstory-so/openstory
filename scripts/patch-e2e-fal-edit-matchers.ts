@@ -29,6 +29,18 @@ function commonPrefixLength(a: string, b: string): number {
   return i;
 }
 
+/** Variant CONTACT SHEET wrappers drift independently of the scene body. */
+function sceneBody(prompt: string): string {
+  const idx = prompt.indexOf('\nScene: ');
+  return idx >= 0 ? prompt.slice(idx) : prompt;
+}
+
+function matchScore(fixturePrompt: string, livePrompt: string): number {
+  const full = commonPrefixLength(fixturePrompt, livePrompt);
+  if (full >= MIN_PREFIX) return full;
+  return commonPrefixLength(sceneBody(fixturePrompt), sceneBody(livePrompt));
+}
+
 function loadEditFixtures(dir: string) {
   return readdirSync(dir)
     .filter((name) => name.endsWith('.json'))
@@ -64,7 +76,7 @@ for (const live of reconstructRecordedFalEditPrompts()) {
   const closest = files
     .map((file) => ({
       file,
-      prefix: commonPrefixLength(file.userMessage, live.prompt),
+      prefix: matchScore(file.userMessage, live.prompt),
     }))
     .sort((a, b) => b.prefix - a.prefix)[0];
   if (!closest || closest.prefix < MIN_PREFIX) {

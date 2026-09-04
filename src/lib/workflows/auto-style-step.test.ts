@@ -7,6 +7,7 @@ import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import type { AutoStyleResponse } from '@/lib/style/auto-style';
 import type { WorkflowStep } from 'cloudflare:workers';
 import { describe, expect, it, vi } from 'vitest';
+import type { z } from 'zod';
 
 const durableLLMCallCf = vi.fn();
 vi.doMock('@/lib/workflows/llm-call-helper', () => ({ durableLLMCallCf }));
@@ -94,8 +95,63 @@ describe('deriveAutoStyle', () => {
       name: 'automatic-style',
       promptName: 'phase/automatic-style-chat',
       modelId: 'anthropic/claude-sonnet-5',
-      promptVariables: { script: 'INT. HALLWAY — NIGHT' },
+      promptVariables: {
+        script: 'INT. HALLWAY — NIGHT',
+        categories: expect.stringContaining('film, commercial'),
+        paces: expect.stringContaining('slow, measured'),
+      },
     });
+  });
+
+  it('saves a collapsed look/motion prose answer instead of failing the run (#1304)', async () => {
+    durableLLMCallCf.mockImplementationOnce(
+      async (_step: unknown, cfg: { responseSchema: z.ZodType }) =>
+        cfg.responseSchema.parse({
+          name: 'Bioluminescent Lab Noir',
+          description: 'Dark cinematic science-explainer.',
+          look: 'Photoreal CGI-meets-scientific-visualization in near-black negative space.',
+          motion:
+            'Slow, deliberate, gravity-free camera work on macro subjects.',
+          colorPalette: ['#05080f', '#2fe3d6'],
+          references: ['self-illuminated molecular structures'],
+          category: 'tech',
+          tags: ['science'],
+          energy: 2,
+          pace: 'measured',
+        })
+    );
+    emit.mockReset();
+    const { scopedDb, setGeneratedForSequence } = makeScopedDb(true);
+
+    const config = await deriveAutoStyle(step, { scopedDb, ...PARAMS });
+
+    expect(config.look.mood).toContain(
+      'Photoreal CGI-meets-scientific-visualization'
+    );
+    expect(config.motion.camera).toContain('Slow, deliberate, gravity-free');
+    expect(setGeneratedForSequence).toHaveBeenCalledWith(
+      expect.objectContaining({
+        draft: expect.objectContaining({ name: 'Bioluminescent Lab Noir' }),
+      })
+    );
+  });
+
+  it('rejects an off-vocabulary category at schema parse (#1410)', async () => {
+    // durableLLMCallCf parses through `responseSchema` — mirror that here.
+    // `.catch()` on the enum is gone so Anthropic accepts the schema; an
+    // off-vocabulary word is now a parse failure, not a silent default.
+    durableLLMCallCf.mockImplementationOnce(
+      async (_step: unknown, cfg: { responseSchema: z.ZodType }) =>
+        cfg.responseSchema.parse({ ...RESPONSE, category: 'documentary' })
+    );
+    emit.mockReset();
+    const { scopedDb, setGeneratedForSequence } = makeScopedDb(true);
+
+    await expect(
+      deriveAutoStyle(step, { scopedDb, ...PARAMS })
+    ).rejects.toThrow(/invalid option|unsalvageable/i);
+    expect(setGeneratedForSequence).not.toHaveBeenCalled();
+    expect(emit).not.toHaveBeenCalled();
   });
 
   it('refuses to touch a row that is no longer bound to the sequence', async () => {

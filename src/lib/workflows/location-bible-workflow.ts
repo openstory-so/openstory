@@ -21,10 +21,8 @@
 import { DEFAULT_IMAGE_MODEL } from '@/lib/ai/models';
 import { generateId } from '@/lib/db/id';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
-import type {
-  NewSequenceLocation,
-  SequenceLocationMinimal,
-} from '@/lib/db/schema';
+import type { SequenceLocationMinimal } from '@/lib/db/schema';
+import { buildLocationInsert } from '@/lib/workflows/cast-records';
 import { spawnAndAwaitChild } from '@/lib/workflow/await-child';
 import { OpenStoryWorkflowEntrypoint } from '@/lib/workflow/base-workflow';
 import { WorkflowValidationError } from '@/lib/workflow/errors';
@@ -76,45 +74,18 @@ export class LocationBibleWorkflow extends OpenStoryWorkflowEntrypoint<LocationB
     const createdLocations = await step.do(
       'create-location-records',
       async () => {
-        const locationInserts: NewSequenceLocation[] = input.locationBible.map(
-          (location) => {
-            // Check if there's a library match for this location
-            const libraryMatch = matchMap.get(location.locationId);
-
-            return {
-              id: generateId(),
-              sequenceId,
-              locationId: location.locationId,
-              name: location.name,
-              // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
-              type: location.type ?? null,
-              // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
-              timeOfDay: location.timeOfDay ?? null,
-              // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
-              description: location.description ?? null,
-              // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
-              architecturalStyle: location.architecturalStyle ?? null,
-              // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
-              keyFeatures: location.keyFeatures ?? null,
-              // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
-              colorPalette: location.colorPalette ?? null,
-              // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
-              lightingSetup: location.lightingSetup ?? null,
-              // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
-              ambiance: location.ambiance ?? null,
-              // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
-              consistencyTag: location.consistencyTag ?? null,
-              // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
-              firstMentionSceneId: location.firstMention?.sceneId ?? null,
-              // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
-              firstMentionText: location.firstMention?.text ?? null,
-              // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
-              firstMentionLine: location.firstMention?.lineNumber ?? null,
-              referenceStatus: 'generating' as const,
-              // Link to library location if matched
-              libraryLocationId: libraryMatch?.libraryLocationId ?? null,
-            };
-          }
+        // Upsert on (sequenceId, locationId): the Script stage already
+        // created these rows sheet-less, so this keeps their ids. The status
+        // is NOT refreshed on conflict (a step replay must not clobber the
+        // child's `completed`), so a placeholder reads `pending` until the
+        // sheet child writes its terminal status.
+        const locationInserts = input.locationBible.map((location) =>
+          buildLocationInsert({
+            sequenceId,
+            location,
+            libraryMatch: matchMap.get(location.locationId),
+            referenceStatus: 'generating',
+          })
         );
 
         const created =
@@ -156,6 +127,7 @@ export class LocationBibleWorkflow extends OpenStoryWorkflowEntrypoint<LocationB
           userId: input.userId,
           teamId,
           sequenceId,
+          reservationId: input.reservationId,
           locationDbId,
           locationName: location.name,
           locationMetadata: location,
@@ -204,6 +176,7 @@ export class LocationBibleWorkflow extends OpenStoryWorkflowEntrypoint<LocationB
             referenceImageUrl: childResult.referenceImageUrl,
             referenceStatus: 'completed' as const,
             referenceInputHash: null,
+            selectedReferenceVersionId: childResult.sheetVersionId ?? null,
             // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
             description: location.description ?? null,
             // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
@@ -229,6 +202,7 @@ export class LocationBibleWorkflow extends OpenStoryWorkflowEntrypoint<LocationB
           referenceImageUrl: null,
           referenceStatus: 'failed' as const,
           referenceInputHash: null,
+          selectedReferenceVersionId: null,
           // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
           description: location.description ?? null,
           // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard

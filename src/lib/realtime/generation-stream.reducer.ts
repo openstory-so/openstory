@@ -3,7 +3,23 @@
  * Handles events from the Upstash Realtime channel during storyboard generation.
  */
 
-type ShotStatus = 'pending' | 'generating' | 'completed' | 'failed';
+import {
+  bannerStagesForStopAt,
+  GENERATION_STAGE_META,
+  GENERATION_STAGES,
+  resolveStopAt,
+  sliderStopLabel,
+  type GenerationStage,
+} from '@/lib/generation/pipeline';
+
+// 'cancelled' (#1108) is video-only in practice; it behaves as a terminal
+// status here (clears 'generating') like completed/failed.
+type ShotStatus =
+  | 'pending'
+  | 'generating'
+  | 'completed'
+  | 'failed'
+  | 'cancelled';
 
 type StreamingScene = {
   sceneId: string;
@@ -142,34 +158,19 @@ export type GenerationStreamAction =
   | { type: 'PREVIEW_REPLACED'; payload: { newSceneCount: number } }
   | { type: 'RESET' };
 
-const PHASES = [
-  { name: 'Analyzing script\u2026', shortName: 'Script' },
-  { name: 'Casting characters & locations\u2026', shortName: 'Casting' },
-  { name: 'Generating references & prompts\u2026', shortName: 'References' },
-  { name: 'Generating images\u2026', shortName: 'Images' },
-] as const;
-
 export type GenerationPhaseConfig = {
-  autoGenerateMotion: boolean;
-  autoGenerateMusic: boolean;
+  stopAt?: GenerationStage;
+  autoGenerateMotion?: boolean;
+  autoGenerateMusic?: boolean;
+  /**
+   * Straight-to-video: no shot-images stage. Reference-only renders straight
+   * to video, so the images stage never runs and its motion prompts are
+   * folded into references alongside the sheets. The step is DROPPED rather
+   * than relabelled: it has no work left of its own, and a chip that only
+   * ever waits is one the user watches for no reason.
+   */
+  referenceOnly?: boolean;
 };
-
-function getPhase5Label(config: GenerationPhaseConfig): {
-  name: string;
-  shortName: string;
-} {
-  const { autoGenerateMotion, autoGenerateMusic } = config;
-  if (autoGenerateMotion && autoGenerateMusic) {
-    return {
-      name: 'Generating motion & music\u2026',
-      shortName: 'Music & Motion',
-    };
-  }
-  if (autoGenerateMotion) {
-    return { name: 'Generating motion\u2026', shortName: 'Motion' };
-  }
-  return { name: 'Generating music\u2026', shortName: 'Music' };
-}
 
 /**
  * Apply a retry signal (or its absence) to the per-shot retry map for one
@@ -207,22 +208,20 @@ function updateShotRetries(
 export function createInitialState(
   config?: GenerationPhaseConfig
 ): GenerationStreamState {
-  const phases: GenerationPhase[] = PHASES.map((p, i) => ({
-    phase: i + 1,
-    phaseName: p.name,
-    shortName: p.shortName,
-    status: 'pending' as const,
-  }));
-
-  if (config && (config.autoGenerateMotion || config.autoGenerateMusic)) {
-    const label = getPhase5Label(config);
-    phases.push({
-      phase: 5,
-      phaseName: label.name,
-      shortName: label.shortName,
-      status: 'pending',
+  const stopAt = resolveStopAt(config ?? {});
+  const combinedMusic = stopAt === 'music';
+  const phases: GenerationPhase[] = bannerStagesForStopAt(stopAt)
+    .filter((stage) => !(config?.referenceOnly && stage === 'images'))
+    .map((stage) => {
+      const meta = GENERATION_STAGE_META[stage];
+      const isCombinedLast = combinedMusic && stage === 'motion';
+      return {
+        phase: meta.phase,
+        phaseName: isCombinedLast ? 'Generating motion & music…' : meta.name,
+        shortName: isCombinedLast ? 'Music & Motion' : meta.shortName,
+        status: 'pending' as const,
+      };
     });
-  }
 
   return {
     currentPhase: 0,
@@ -249,12 +248,17 @@ export function generationStreamReducer(
     case 'PHASE_START': {
       const { phase, phaseName } = action.payload;
 
+      // A phase starting after COMPLETE / FAILED is a new run — a Continue
+      // (#1408). The old terminal state would make the chip exit on arrival,
+      // and COMPLETE parks currentPhase past the end, which would drop this
+      // event as "backwards".
+      const newRun = state.isComplete || state.isFailed;
+
       // Ignore backwards phase transitions (prevents flickering from out-of-order events)
-      if (phase < state.currentPhase) {
+      if (!newRun && phase < state.currentPhase) {
         return state;
       }
 
-      const phaseExists = state.phases.some((p) => p.phase === phase);
       const updatedPhases = state.phases.map((p) =>
         p.phase === phase
           ? { ...p, phaseName, status: 'active' as const }
@@ -263,20 +267,31 @@ export function generationStreamReducer(
             : p
       );
 
-      // Add phase dynamically if it wasn't in initial state
-      // (e.g. phase 5 when settings loaded after reducer init due to hydration)
-      if (!phaseExists) {
+      // Grow the banner for a phase it was not sized for: the phase list is
+      // built once from the sequence row, which is not loaded yet on a cold
+      // mid-run load, and a Continue runs past the stop-at it was sized for
+      // (#1408). Casting rides on the Script phase number, so a Script stop
+      // never sprouts a segment.
+      if (!updatedPhases.some((p) => p.phase === phase)) {
+        const stage = GENERATION_STAGES.find(
+          (s) => GENERATION_STAGE_META[s].phase === phase
+        );
         updatedPhases.push({
           phase,
           phaseName,
-          shortName: phaseName
-            .replace(/Generating\s+/i, '')
-            .replace(/\u2026$/, ''),
+          shortName: stage ? sliderStopLabel(stage) : phaseName,
           status: 'active',
         });
+        updatedPhases.sort((a, b) => a.phase - b.phase);
       }
 
-      return { ...state, currentPhase: phase, phases: updatedPhases };
+      return {
+        ...state,
+        currentPhase: phase,
+        phases: updatedPhases,
+        isComplete: false,
+        isFailed: false,
+      };
     }
 
     case 'PHASE_COMPLETE': {

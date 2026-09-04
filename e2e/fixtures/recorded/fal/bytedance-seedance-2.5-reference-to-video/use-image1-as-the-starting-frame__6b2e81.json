@@ -1,0 +1,24 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use @Image1 as the starting frame.\nHandheld camera drifts in gently toward @Image2 at the counter, natural micro-shake throughout. From her held pose, SCARLETT presses the napkin to her mouth, dabs once, then lowers it and turns the clean face of the napkin briefly toward the lens. She takes another small bite of the half-eaten dumpling, chews, and lifts one eyebrow with a deadpan direct look into camera, the corner of her mouth curling.\n\nSteam curls up off the dumpling tray and drifts across the warm window light. Loose hair strands shift with her head turn; the canvas tote strap sways slightly. Blurred street traffic and pedestrians move behind her in the deepening blue evening.\n\nevening side-street ambience, distant traffic, muffled kitchen clatter and exhaust fan hum from the window. soft sizzle and steam hiss, paper napkin crinkle, quiet chewing, a passing car whoosh.\n\nNo BGM, no music. Generate only dialogue, environmental sounds, and action sounds. Single continuous shot, no cuts. Avoid jitter and bent limbs.\n\nReference images:\n@Image3: CORAL_LIPSTICK - A squat — keep visually consistent throughout the shot.",
+        "model": "bytedance/seedance-2.0/enterprise/v2/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://v3b.fal.media/files/b/0aa74e99/EV2M0ZUmOpEHWp8lVXpT__video.mp4",
+            "content_type": "video/mp4",
+            "file_name": "video.mp4",
+            "file_size": 2703307
+          },
+          "seed": 303208216
+        },
+        "status": 200,
+        "billableUnits": 108.9
+      }
+    }
+  ]
+}

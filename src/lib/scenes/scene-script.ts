@@ -18,6 +18,7 @@ import type { Database } from '@/lib/db/client';
 import { createSceneScriptVersionsMethods } from '@/lib/db/scoped/scene-script-versions';
 import { createScenesMethods } from '@/lib/db/scoped/scenes';
 import type { ScopedDb } from '@/lib/db/scoped';
+import { plainSceneTitle } from '@/lib/utils/markdown-plain';
 
 /** A scene row plus its selected script — everything a `Scene` composes from. */
 export type SceneContext = {
@@ -41,7 +42,7 @@ function composeSceneForShot(
     sceneNumber: scene.orderIndex + 1,
     originalScript: script ?? { extract: '', dialogue: [] },
     metadata: {
-      title: scene.title ?? '',
+      title: plainSceneTitle(scene.title),
       durationSeconds: (shot.durationMs ?? 3000) / 1000,
       location: scene.location ?? '',
       timeOfDay: scene.timeOfDay ?? '',

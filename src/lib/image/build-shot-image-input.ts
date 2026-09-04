@@ -10,13 +10,13 @@
 import type { TextToImageModel } from '@/lib/ai/models';
 import type { Scene } from '@/lib/ai/scene-analysis.schema';
 import { aspectRatioToImageSize } from '@/lib/constants/aspect-ratios';
+import type { Resolution } from '@/lib/constants/resolutions';
 import type {
   CharacterMinimal,
   Shot,
   SequenceElement,
-  SequenceLocation,
+  SequenceLocationWithReference,
 } from '@/lib/db/schema';
-import { locationMatchesTag } from '@/lib/db/scoped/sequence-locations';
 import { buildCharacterReferenceImages } from '@/lib/prompts/character-prompt';
 import { buildElementReferenceImages } from '@/lib/prompts/element-prompt';
 import { buildLocationReferenceImages } from '@/lib/prompts/location-prompt';
@@ -26,7 +26,7 @@ import type {
   ImageWorkflowInput,
 } from '@/lib/workflow/types';
 import {
-  matchCharactersToScene,
+  matchCharactersToShotImage,
   matchElementsToShotImage,
   matchLocationsToScene,
 } from '@/lib/workflows/scene-matching';
@@ -40,21 +40,6 @@ function sortedHashes(
     .sort();
 }
 
-/** Match locations by environmentTag or scene location and return reference images. */
-function getSceneLocationReferenceImages(
-  allLocations: SequenceLocation[],
-  environmentTag: string,
-  sceneLocation: string
-) {
-  if (!environmentTag && !sceneLocation) return [];
-  const matched = allLocations.filter(
-    (loc) =>
-      (environmentTag && locationMatchesTag(loc, environmentTag)) ||
-      (sceneLocation && locationMatchesTag(loc, sceneLocation))
-  );
-  return buildLocationReferenceImages(matched);
-}
-
 export async function buildShotImageWorkflowInput(opts: {
   shot: Shot;
   model: TextToImageModel;
@@ -62,8 +47,9 @@ export async function buildShotImageWorkflowInput(opts: {
   teamId: string;
   sequenceId: string;
   aspectRatio: AspectRatio;
+  resolution: Resolution;
   characters: CharacterMinimal[];
-  locations: SequenceLocation[];
+  locations: SequenceLocationWithReference[];
   elements: SequenceElement[];
   /** The shot's scene, composed from `scenes` + its selected script version. */
   scene: Scene | null;
@@ -93,6 +79,7 @@ export async function buildShotImageWorkflowInput(opts: {
     teamId,
     sequenceId,
     aspectRatio,
+    resolution,
     characters,
     locations,
     elements,
@@ -107,10 +94,10 @@ export async function buildShotImageWorkflowInput(opts: {
 
   const continuity = opts.continuity ?? opts.scene?.continuity;
 
-  const matchedCharacters = matchCharactersToScene(
-    characters,
-    continuity?.characterTags ?? []
-  );
+  const matchedCharacters = matchCharactersToShotImage(characters, {
+    characterTags: continuity?.characterTags,
+    visualPrompt: prompt,
+  });
   const characterReferences = buildCharacterReferenceImages(matchedCharacters);
 
   const environmentTag = continuity?.environmentTag ?? '';
@@ -118,13 +105,10 @@ export async function buildShotImageWorkflowInput(opts: {
   const matchedLocations = matchLocationsToScene(
     locations,
     environmentTag,
-    sceneLocation
+    sceneLocation,
+    scriptExtract
   );
-  const locationReferences = getSceneLocationReferenceImages(
-    locations,
-    environmentTag,
-    sceneLocation
-  );
+  const locationReferences = buildLocationReferenceImages(matchedLocations);
 
   const matchedElements = matchElementsToShotImage(elements, {
     visualPrompt: prompt,
@@ -137,10 +121,12 @@ export async function buildShotImageWorkflowInput(opts: {
     sceneId: opts.scene?.sceneId ?? shot.id,
     visualPrompt: prompt,
     characterSheetHashes: sortedHashes(
-      matchedCharacters.map((c) => c.sheetInputHash)
+      matchedCharacters.map((c) => c.selectedSheetVersionId ?? c.sheetInputHash)
     ),
     locationSheetHashes: sortedHashes(
-      matchedLocations.map((l) => l.referenceInputHash)
+      matchedLocations.map(
+        (l) => l.selectedReferenceVersionId ?? l.referenceInputHash
+      )
     ),
     elementReferenceHashes: sortedHashes(
       matchedElements.map((e) => e.imageUrl)
@@ -162,6 +148,7 @@ export async function buildShotImageWorkflowInput(opts: {
     shotId: shot.id,
     sequenceId,
     aspectRatio,
+    resolution,
     sceneSnapshot,
     snapshotInputHash,
     referenceImages: [

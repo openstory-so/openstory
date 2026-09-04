@@ -196,6 +196,13 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
       why: "/element-vision writes description + visionStatus late, so the row must be live — but only for the trigger's elementIds, never a re-enumeration.",
     },
   ],
+  'cast-records.ts': [
+    {
+      read: 'sequenceElements.getByToken',
+      bucket: 'EXISTENCE-GUARD',
+      why: 'Idempotency: a retried create-cast-records step must not violate the (sequenceId, token) unique index for the Script-stage placeholder rows.',
+    },
+  ],
   'asset-generation-workflow.ts': [
     {
       read: 'resolveKey',
@@ -241,6 +248,13 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
       why: "The trigger's frame, confirmed to still exist and settled when a render is cancelled mid-flight.",
     },
   ],
+  'soften-image-prompt.ts': [
+    {
+      read: 'framePromptVersions.getByIdForFrame',
+      bucket: 'CLAIM-BY-ID',
+      why: 'The prompt version this run rendered from, named by the trigger snapshot — copied onto the softened row so staleness keeps the same upstream hash.',
+    },
+  ],
   'llm-call-helper.ts': [
     {
       read: 'resolveLlmKey',
@@ -277,6 +291,11 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
       why: 'Resolved inside the charging step; usedOwnKey rides the step result so the gate and the deduction agree on one pinned read.',
     },
     {
+      read: 'resolveOptionalKey',
+      bucket: 'CREDENTIAL',
+      why: 'Google key re-resolved inside the poll/upload step that downloads a native Omni Flash clip from the Files API — a Files URI is unreadable without it.',
+    },
+    {
       read: 'billing.hasEnoughCredits',
       bucket: 'BALANCE',
       why: 'A key or balance change mid-run must not let a charge land on a balance the gate never checked.',
@@ -285,6 +304,11 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
       read: 'shots.getById',
       bucket: 'EXISTENCE-GUARD',
       why: 'Shot deleted mid-run is a stand-down, not a failure.',
+    },
+    {
+      read: 'shotPromptVersions.getByIdForShot',
+      bucket: 'CLAIM-BY-ID',
+      why: 'The motion prompt version this clip renders from, named by the trigger snapshot — its hash + model are copied onto the softened row (#1373), as soften-image-prompt does for stills.',
     },
   ],
   'recast-snapshot.ts': [
@@ -396,6 +420,13 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
       read: 'sequences.getForUser',
       bucket: 'EXISTENCE-GUARD',
       why: 'Throws if the sequence was deleted (or moved teams) since the trigger; on the failure path, checks whether the child already wrote a more specific error.',
+    },
+  ],
+  'studio-generation-workflow.ts': [
+    {
+      read: 'resolveOptionalKey',
+      bucket: 'CREDENTIAL',
+      why: 'Google key re-resolved inside the poll step that parks a native Omni Flash clip in R2 — a Files URI is unreadable without it.',
     },
   ],
   // compute-plan now runs at the trigger, so the plan arrives on the payload.

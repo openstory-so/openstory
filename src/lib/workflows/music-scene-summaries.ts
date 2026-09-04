@@ -1,5 +1,8 @@
 import type { Scene } from '@/lib/ai/scene-analysis.schema';
+import { getLogger } from '@/lib/observability/logger';
 import type { MusicSceneSummary } from '@/lib/workflow/types';
+
+const logger = getLogger(['openstory', 'workflow', 'music']);
 
 type MusicSceneRow = {
   sceneId: string;
@@ -47,15 +50,31 @@ export function buildMusicSceneSummaries(
  * Scene ids are server-minted ULIDs; the music LLM is asked to echo them and
  * routinely mangles them (and static e2e fixtures never can). The summaries
  * we send are index-aligned with this array, so position is the contract.
- * A length mismatch would silently attach another scene's cue — throw instead.
+ *
+ * Extra trailing rows are dropped (Luna and similar sometimes emit one more
+ * scene than they were given). Fewer rows still throws — padding would invent
+ * a cue, and pairing a short list by position would attach another scene's
+ * music to the remainder.
  */
 export function joinMusicDesignByIndex(
   scenes: readonly Scene[],
   musicScenes: ReadonlyArray<MusicSceneRow>
 ): Scene[] {
-  if (musicScenes.length !== scenes.length) {
+  if (musicScenes.length < scenes.length) {
     throw new Error(
       `Music design returned ${musicScenes.length} scene(s) but ${scenes.length} were sent; refusing to pair by position`
+    );
+  }
+  if (musicScenes.length > scenes.length) {
+    logger.warn(
+      'Dropping extra music-design rows ({returned} returned, {sent} sent)',
+      {
+        sent: scenes.length,
+        returned: musicScenes.length,
+        extraSceneIds: musicScenes
+          .slice(scenes.length)
+          .map((row) => row.sceneId),
+      }
     );
   }
   return scenes.map((scene, index) => {

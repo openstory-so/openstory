@@ -1,9 +1,9 @@
 import { DEFAULT_ASPECT_RATIO } from '@/lib/constants/aspect-ratios';
 import {
-  DEFAULT_IMAGE_MODEL,
-  DEFAULT_MUSIC_MODEL,
-  DEFAULT_VIDEO_MODEL,
-} from '@/lib/ai/models';
+  TURBO_DEFAULT_AUDIO,
+  TURBO_DEFAULT_IMAGE,
+  TURBO_DEFAULT_VIDEO,
+} from '@/lib/ai/generation-mode';
 import { describe, expect, it } from 'vitest';
 import { TEST_FAL_PRICING as FAL_PRICING } from '@/lib/ai/__tests__/fal-pricing-fixture';
 import {
@@ -70,21 +70,21 @@ describe('billing constants', () => {
    */
   it('signup grant covers a default 30s stills+motion+music pre-flight estimate', () => {
     const defaultShortCost = estimateStoryboardCost({
-      imageModel: DEFAULT_IMAGE_MODEL,
+      imageModel: TURBO_DEFAULT_IMAGE,
       aspectRatio: DEFAULT_ASPECT_RATIO,
       estimatedSceneCount: WELCOME_SHORT_SCENE_COUNT,
       autoGenerateMotion: true,
-      videoModels: [DEFAULT_VIDEO_MODEL],
+      videoModels: [TURBO_DEFAULT_VIDEO],
       videoDurationSeconds: WELCOME_SHORT_SHOT_DURATION_S,
       autoGenerateMusic: true,
-      audioModels: [DEFAULT_MUSIC_MODEL],
+      audioModels: [TURBO_DEFAULT_AUDIO],
       audioDurationSeconds: WELCOME_SHORT_TARGET_S,
       pricing: FAL_PRICING,
     });
 
     expect(
       SIGNUP_GRANT_MICROS,
-      `SIGNUP_GRANT ($${microsToUsd(SIGNUP_GRANT_MICROS)}) must be ≥ default short estimate ($${microsToUsd(defaultShortCost).toFixed(2)}; ${DEFAULT_IMAGE_MODEL} + ${DEFAULT_VIDEO_MODEL} + ${DEFAULT_MUSIC_MODEL})`
+      `SIGNUP_GRANT ($${microsToUsd(SIGNUP_GRANT_MICROS)}) must be ≥ default short estimate ($${microsToUsd(defaultShortCost).toFixed(2)}; ${TURBO_DEFAULT_IMAGE} + ${TURBO_DEFAULT_VIDEO} + ${TURBO_DEFAULT_AUDIO})`
     ).toBeGreaterThanOrEqual(defaultShortCost);
   });
 });

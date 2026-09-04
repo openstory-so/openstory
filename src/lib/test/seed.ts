@@ -10,6 +10,7 @@
 
 import { generateId } from '@/lib/db/id';
 import {
+  characterSheetVariants,
   characters,
   credits,
   frameVariants,
@@ -529,11 +530,26 @@ export async function createTestCharacter(
     name,
     talentId,
     age: '30s',
-    sheetImageUrl,
     sheetStatus,
     createdAt: now,
     updatedAt: now,
   });
+
+  // The live sheet is read from the version row, not the mirror (#1419).
+  // Keyed to the character's own id — the shape the backfill produced and the
+  // one `applyConvergent` snapshots a pre-versioning image under.
+  if (sheetImageUrl) {
+    await db.insert(characterSheetVariants).values({
+      id,
+      characterId: id,
+      model: 'prior',
+      url: sheetImageUrl,
+      status: 'completed',
+      generatedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    });
+  }
 
   return { id, sequenceId, characterId, name };
 }

@@ -194,12 +194,32 @@ testWithUser.describe('Variant Selection', () => {
 
     // Variants moved from a tab to a dialog opened from the canvas image (#986):
     // select the shot, then open the variants dialog from the starting frame.
-    await shotThumbnail.click();
+    // The list item is a real <a href> (#1339), so the click lands whether or
+    // not React has hydrated; selection is URL state, so gate on `?shot=<id>`
+    // rather than on the SSR-visible thumbnail.
+    await page.getByRole('link', { name: 'Scene 1' }).click();
+    await expect(page).toHaveURL(new RegExp(`shot=${testShot.id}`), {
+      timeout: 15_000,
+    });
+    // Video leads the shot tabs, so the canvas opens on the clip; the still
+    // (and its variants button) is on the Start Frame tab.
+    await page.getByRole('tab', { name: 'Start Frame' }).click();
+    // `exact` so this never also matches the dialog's own "Regenerate frame
+    // variants" button.
     const variantsButton = page.getByRole('button', {
       name: 'Frame variants',
+      exact: true,
     });
     await expect(variantsButton).toBeVisible({ timeout: 10000 });
-    await variantsButton.click();
+    // Selecting the scene above is a real <a href> navigation, so this button
+    // renders server-side and stays inert until React hydrates it — a single
+    // click lands on nothing. Click until the dialog is actually up (the open
+    // dialog aria-hides the button, so ask the dialog, not the button).
+    const variantsDialog = page.getByRole('dialog', { name: 'Frame variants' });
+    await expect(async () => {
+      if (!(await variantsDialog.isVisible())) await variantsButton.click();
+      await expect(variantsDialog).toBeVisible({ timeout: 2000 });
+    }).toPass({ timeout: 20_000 });
 
     const variantGrid = page.getByRole('grid', { name: 'Variant selection' });
 
@@ -316,8 +336,13 @@ testWithUser.describe('Character Recast', () => {
         timeout: 15000,
       });
 
-      // Click Recast button
-      const recastButton = page.getByRole('button', { name: 'Recast' });
+      // Click Recast button. `exact` so the rename-sequence control
+      // (aria-label includes the sequence title, which contains "Recast")
+      // is not a strict-mode match.
+      const recastButton = page.getByRole('button', {
+        name: 'Recast',
+        exact: true,
+      });
       await expect(recastButton).toBeVisible();
       await recastButton.click();
 
@@ -335,7 +360,7 @@ testWithUser.describe('Character Recast', () => {
       ).toBeVisible();
 
       // Confirm the recast
-      await page.getByRole('button', { name: 'Recast' }).click();
+      await page.getByRole('button', { name: 'Recast', exact: true }).click();
 
       // The confirmation dialog should close (loading state may briefly appear)
       // With mocks, the mutation should complete quickly

@@ -7,10 +7,27 @@
 import type {
   CharacterWithTalent,
   SequenceElement,
-  SequenceLocation,
+  SequenceLocationWithReference,
 } from '@/lib/db/schema';
 
-export type MentionSection = 'elements' | 'cast' | 'locations';
+/**
+ * `references` = stills, clips, and audio attached to a studio composer
+ * (pill `@ImageN` / `@VideoN` / `@AudioN`);
+ * `images` = the team's generated stills, offered so picking one attaches it.
+ */
+export type MentionSection =
+  | 'references'
+  | 'elements'
+  | 'cast'
+  | 'locations'
+  | 'images';
+
+/** Sections whose pill renders with a leading `@` (the tag has no CAPS form). */
+export function mentionShowsAt(section: MentionSection): boolean {
+  return (
+    section === 'locations' || section === 'references' || section === 'images'
+  );
+}
 
 /** Fields buildMentionItems actually consumes. */
 export type MentionCharacterInput = Pick<
@@ -22,7 +39,7 @@ export type MentionElementInput = Pick<
   'id' | 'token' | 'description' | 'imageUrl' | 'consistencyTag'
 >;
 export type MentionLocationInput = Pick<
-  SequenceLocation,
+  SequenceLocationWithReference,
   'id' | 'locationId' | 'name' | 'consistencyTag' | 'referenceImageUrl'
 >;
 
@@ -168,13 +185,17 @@ export function mentionInsertAttrs(item: {
 }
 
 export const SECTION_LABELS: Record<MentionSection, string> = {
+  references: 'Attached',
   elements: 'Elements',
   cast: 'Cast',
   locations: 'Locations',
+  images: 'Images',
 };
 
 export const SECTION_ORDER: MentionSection[] = [
+  'references',
   'elements',
   'cast',
   'locations',
+  'images',
 ];

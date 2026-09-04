@@ -90,6 +90,7 @@ const version = (
   id,
   renderSegmentId,
   model,
+  resolution: null,
   status: 'completed',
   url: `https://cdn.test/${id}.mp4`,
   createdAt: new Date('2026-01-01'),
@@ -99,11 +100,13 @@ const version = (
 const segShot = (
   id: string,
   renderSegmentId: string | null,
-  selectedMotionPromptVersionId: string | null = null
+  selectedMotionPromptVersionId: string | null = null,
+  rendersReferenceOnly = false
 ): SegmentShotInput => ({
   id,
   renderSegmentId,
   selectedMotionPromptVersionId,
+  rendersReferenceOnly,
 });
 
 describe('isSelectedVersionStale', () => {
@@ -141,6 +144,20 @@ describe('isSelectedVersionStale', () => {
       { shotId: 'gone', motionPromptVersionId: 'mp-1', frameVersionId: 'fv-1' },
     ]);
     expect(isSelectedVersionStale(v, motion, frame)).toBe(true);
+  });
+
+  it('treats a null-null manifest as unknown-not-stale, not born-stale (#1380)', () => {
+    // Storyboard auto-motion used to stamp both ids as null. Comparing that
+    // to the live selected still + prompt always diverged, so every clip
+    // showed Stale the moment it landed. Same contract as a legacy null hash.
+    const v = version('v1', 'seg', 'kling', [
+      {
+        shotId: 'shot-1',
+        motionPromptVersionId: null,
+        frameVersionId: null,
+      },
+    ]);
+    expect(isSelectedVersionStale(v, motion, frame)).toBe(false);
   });
 });
 
@@ -234,5 +251,41 @@ describe('assembleSequenceSegments', () => {
       frames: [],
     });
     expect(result[0]?.stale).toBe(true);
+  });
+});
+
+describe('reference-only shots and staleness', () => {
+  // A shot rendering from reference sheets animates from no still, so its
+  // manifest entry records `frameVersionId: null`. The shot may still HAVE a
+  // still — a per-shot override on a normal sequence, or one generated before
+  // the switch was flipped — and comparing the clip against a still it never
+  // received marked it Stale the instant it finished, offering a paid
+  // re-render that produced the identical clip for ever.
+  const referenceOnlyClip = () =>
+    version('v1', 'seg-a', 'seedance', [
+      { shotId: 'shot-1', motionPromptVersionId: 'mp-1', frameVersionId: null },
+    ]);
+
+  const assemble = (rendersReferenceOnly: boolean) =>
+    assembleSequenceSegments({
+      segments: [
+        { id: 'seg-a', sceneId: 'sc-1', selectedVideoVersionId: 'v1' },
+      ],
+      versions: [referenceOnlyClip()],
+      shots: [segShot('shot-1', 'seg-a', 'mp-1', rendersReferenceOnly)],
+      // The shot has a selected still regardless — that is the whole trap.
+      frames: [
+        { shotId: 'shot-1', role: 'first', selectedImageVersionId: 'fv-1' },
+      ],
+    });
+
+  it('is fresh when the clip rendered from references and a still exists', () => {
+    expect(assemble(true)[0]?.stale).toBe(false);
+  });
+
+  it('is still stale when the same clip did NOT render reference-only', () => {
+    // The null-frame escape must not swallow a genuine missing pointer: this
+    // clip claims no start frame while the shot animates from one.
+    expect(assemble(false)[0]?.stale).toBe(true);
   });
 });

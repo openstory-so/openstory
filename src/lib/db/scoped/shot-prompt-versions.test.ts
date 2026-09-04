@@ -133,6 +133,7 @@ describe('shot_prompt_variants helper', () => {
     const variant = await methods.write({
       shotId,
       promptType: 'motion',
+      usesStartFrame: true,
       text: 'User edited prompt',
       source: 'user-edit',
       inputHash: null,
@@ -149,12 +150,46 @@ describe('shot_prompt_variants helper', () => {
     expect(selected?.inputHash).toBeNull();
   });
 
+  it('persists the start-frame mode the prompt was authored for', async () => {
+    const methods = createShotPromptVersionsMethods(db);
+
+    const referenceOnly = await methods.write({
+      shotId,
+      promptType: 'motion',
+      usesStartFrame: false,
+      text: 'composes its own opening frame',
+      source: 'user-edit',
+      inputHash: null,
+      analysisModel: null,
+    });
+    expect(referenceOnly.usesStartFrame).toBe(false);
+    expect((await selectedMotionVersion())?.usesStartFrame).toBe(false);
+
+    // A claim carries the mode from the start, not the column default.
+    const pending = await methods.createPending({
+      usesStartFrame: false,
+      shotId,
+      pendingInputHash: 'live-hash',
+    });
+    expect(pending.usesStartFrame).toBe(false);
+    const completed = await methods.completePendingAiVersion({
+      usesStartFrame: true,
+      versionId: pending.id,
+      shotId,
+      text: 'animates the still',
+      inputHash: 'live-hash',
+      analysisModel: 'anthropic/claude-haiku-4.5',
+    });
+    expect(completed?.usesStartFrame).toBe(true);
+  });
+
   it('user-edit with a real inputHash stamps the row the shot selects', async () => {
     const methods = createShotPromptVersionsMethods(db);
 
     const variant = await methods.write({
       shotId,
       promptType: 'motion',
+      usesStartFrame: true,
       text: 'User edited prompt',
       source: 'user-edit',
       inputHash: 'hash-at-edit-time',
@@ -176,6 +211,7 @@ describe('shot_prompt_variants helper', () => {
     const variant = await methods.write({
       shotId,
       promptType: 'motion',
+      usesStartFrame: true,
       text: 'AI prompt v2',
       source: 'regenerated',
       inputHash: 'context-hash-abc',
@@ -200,6 +236,7 @@ describe('shot_prompt_variants helper', () => {
     await methods.write({
       shotId,
       promptType: 'motion',
+      usesStartFrame: true,
       text: 'AI prompt v1',
       source: 'ai-generated',
       inputHash: 'context-hash-1',
@@ -208,6 +245,7 @@ describe('shot_prompt_variants helper', () => {
     await methods.write({
       shotId,
       promptType: 'motion',
+      usesStartFrame: true,
       text: 'User edited prompt',
       source: 'user-edit',
       inputHash: null,
@@ -239,6 +277,7 @@ describe('shot_prompt_variants helper', () => {
     await methods.write({
       shotId,
       promptType: 'motion',
+      usesStartFrame: true,
       text: 'AI prompt v1',
       source: firstSource,
       inputHash: 'hash-v1',
@@ -252,6 +291,7 @@ describe('shot_prompt_variants helper', () => {
     await methods.write({
       shotId,
       promptType: 'motion',
+      usesStartFrame: true,
       text: 'AI prompt v2',
       source: secondSource,
       inputHash: 'hash-v2',
@@ -261,6 +301,7 @@ describe('shot_prompt_variants helper', () => {
     await methods.write({
       shotId,
       promptType: 'motion',
+      usesStartFrame: true,
       text: 'User polished it',
       source: 'user-edit',
       inputHash: null,
@@ -287,6 +328,7 @@ describe('shot_prompt_variants helper', () => {
     const first = await methods.write({
       shotId,
       promptType: 'motion',
+      usesStartFrame: true,
       text: 'AI prompt v1',
       source: 'ai-generated',
       inputHash: 'context-hash-1',
@@ -296,6 +338,7 @@ describe('shot_prompt_variants helper', () => {
     const retried = await methods.write({
       shotId,
       promptType: 'motion',
+      usesStartFrame: true,
       text: 'AI prompt v1',
       source: 'ai-generated',
       inputHash: 'context-hash-1',
@@ -320,6 +363,7 @@ describe('shot_prompt_variants helper', () => {
     const first = await methods.write({
       shotId,
       promptType: 'motion',
+      usesStartFrame: true,
       text: 'AI prompt v1',
       source: 'ai-generated',
       inputHash: 'context-hash-1',
@@ -329,6 +373,7 @@ describe('shot_prompt_variants helper', () => {
     const forced = await methods.write({
       shotId,
       promptType: 'motion',
+      usesStartFrame: true,
       text: 'Fresh LLM completion against same inputs',
       source: 'regenerated',
       inputHash: 'context-hash-1',
@@ -365,6 +410,7 @@ describe('shot_prompt_variants helper', () => {
     await methods.write({
       shotId,
       promptType: 'motion',
+      usesStartFrame: true,
       text: 'AI prompt v1',
       source: 'ai-generated',
       inputHash: 'context-hash-1',
@@ -374,6 +420,7 @@ describe('shot_prompt_variants helper', () => {
     await methods.write({
       shotId,
       promptType: 'motion',
+      usesStartFrame: true,
       text: 'AI prompt v1',
       source: 'regenerated',
       inputHash: 'context-hash-1',
@@ -390,6 +437,7 @@ describe('shot_prompt_variants helper', () => {
     await methods.write({
       shotId,
       promptType: 'motion',
+      usesStartFrame: true,
       text: 'AI v1',
       source: 'ai-generated',
       inputHash: 'hash-a',
@@ -398,6 +446,7 @@ describe('shot_prompt_variants helper', () => {
     await methods.write({
       shotId,
       promptType: 'motion',
+      usesStartFrame: true,
       text: 'AI v2',
       source: 'regenerated',
       inputHash: 'hash-b',
@@ -425,6 +474,7 @@ describe('shot_prompt_variants helper', () => {
     const ownVariant = await methods.write({
       shotId,
       promptType: 'motion',
+      usesStartFrame: true,
       text: 'belongs to shot A',
       source: 'ai-generated',
       inputHash: 'hash-A',
@@ -450,6 +500,7 @@ describe('shot_prompt_variants helper', () => {
     const original = await methods.write({
       shotId,
       promptType: 'motion',
+      usesStartFrame: true,
       text: 'AI prompt v1',
       source: 'ai-generated',
       inputHash: 'context-hash-1',
@@ -463,6 +514,7 @@ describe('shot_prompt_variants helper', () => {
     await methods.write({
       shotId,
       promptType: 'motion',
+      usesStartFrame: true,
       text: 'User edited prompt',
       source: 'user-edit',
       inputHash: null,
@@ -475,6 +527,7 @@ describe('shot_prompt_variants helper', () => {
     const restored = await methods.write({
       shotId,
       promptType: 'motion',
+      usesStartFrame: true,
       text: original.text,
       components: original.components,
       parameters: original.parameters,
@@ -506,6 +559,49 @@ describe('shot_prompt_variants helper', () => {
     expect(selected?.inputHash).toBe('context-hash-1');
   });
 
+  it('softened row with select:false (variant-only rescue) lands in history and leaves the selection alone (#1373)', async () => {
+    const methods = createShotPromptVersionsMethods(db);
+    const original = await methods.write({
+      shotId,
+      promptType: 'motion',
+      usesStartFrame: true,
+      text: 'User prompt',
+      source: 'user-edit',
+      inputHash: 'context-hash-1',
+      analysisModel: 'anthropic/claude-haiku-4.5',
+    });
+
+    const softened = await methods.write({
+      shotId,
+      promptType: 'motion',
+      usesStartFrame: true,
+      text: 'Softened prompt',
+      source: 'softened',
+      inputHash: original.inputHash,
+      analysisModel: original.analysisModel,
+      select: false,
+    });
+    expect(softened.id).not.toBe(original.id);
+    expect(softened.inputHash).toBe('context-hash-1');
+
+    const history = await methods.listByShot(shotId, 'motion');
+    expect(history.map((r) => r.source)).toEqual(['softened', 'user-edit']);
+    // An alternate model's rescue never moves the primary shot's prompt.
+    expect((await selectedMotionVersion())?.id).toBe(original.id);
+
+    // The default (primary render) selects the rewrite, as the image path does.
+    const selected = await methods.write({
+      shotId,
+      promptType: 'motion',
+      usesStartFrame: true,
+      text: 'Softened prompt for the primary',
+      source: 'softened',
+      inputHash: original.inputHash,
+      analysisModel: original.analysisModel,
+    });
+    expect((await selectedMotionVersion())?.id).toBe(selected.id);
+  });
+
   it('restoring an AI prompt that is currently live still appends a restored row (audit trail)', async () => {
     // Without the partial-index `source != 'restored'` exclusion, this case
     // hit onConflictDoNothing and silently returned the original AI row.
@@ -514,6 +610,7 @@ describe('shot_prompt_variants helper', () => {
     const original = await methods.write({
       shotId,
       promptType: 'motion',
+      usesStartFrame: true,
       text: 'AI prompt v1',
       source: 'ai-generated',
       inputHash: 'context-hash-1',
@@ -523,6 +620,7 @@ describe('shot_prompt_variants helper', () => {
     const restored = await methods.write({
       shotId,
       promptType: 'motion',
+      usesStartFrame: true,
       text: original.text,
       components: original.components,
       parameters: original.parameters,
@@ -545,6 +643,7 @@ describe('shot_prompt_variants helper', () => {
     const userEdit = await methods.write({
       shotId,
       promptType: 'motion',
+      usesStartFrame: true,
       text: 'Hand-written prompt',
       source: 'user-edit',
       inputHash: null,
@@ -556,6 +655,7 @@ describe('shot_prompt_variants helper', () => {
     const restored = await methods.write({
       shotId,
       promptType: 'motion',
+      usesStartFrame: true,
       text: userEdit.text,
       components: userEdit.components,
       parameters: userEdit.parameters,
@@ -574,6 +674,7 @@ describe('shot_prompt_variants helper', () => {
     const ai = await methods.write({
       shotId,
       promptType: 'motion',
+      usesStartFrame: true,
       text: 'AI prompt',
       source: 'ai-generated',
       inputHash: 'ai-hash-1',
@@ -583,6 +684,7 @@ describe('shot_prompt_variants helper', () => {
     await methods.write({
       shotId,
       promptType: 'motion',
+      usesStartFrame: true,
       text: 'Hand-typed prompt',
       source: 'user-edit',
       inputHash: null,
@@ -604,6 +706,7 @@ describe('shot_prompt_variants helper', () => {
     const written = await methods.write({
       shotId,
       promptType: 'motion',
+      usesStartFrame: true,
       text: 'Selected motion prompt',
       source: 'ai-generated',
       inputHash: 'sel-hash-1',
@@ -631,6 +734,7 @@ describe('shot_prompt_variants helper', () => {
     const v1 = await methods.write({
       shotId,
       promptType: 'motion',
+      usesStartFrame: true,
       text: 'Motion v1',
       source: 'ai-generated',
       inputHash: 'hash-1',
@@ -639,6 +743,7 @@ describe('shot_prompt_variants helper', () => {
     await methods.write({
       shotId,
       promptType: 'motion',
+      usesStartFrame: true,
       text: 'Motion v2',
       source: 'regenerated',
       inputHash: 'hash-2',
@@ -664,6 +769,7 @@ describe('shot_prompt_variants helper', () => {
     const foreign = await methods.write({
       shotId: otherShot.id,
       promptType: 'motion',
+      usesStartFrame: true,
       text: 'Foreign motion prompt',
       source: 'ai-generated',
       inputHash: 'foreign-hash',
@@ -680,12 +786,14 @@ describe('shotPromptVersions.completePendingAiVersion', () => {
   it('completes the claim in place and selects it', async () => {
     const m = createShotPromptVersionsMethods(db);
     const claim = await m.createPending({
+      usesStartFrame: true,
       shotId,
       pendingInputHash: 'live-hash',
     });
     await m.markGenerating(claim.id, 'run-1');
 
     const completed = await m.completePendingAiVersion({
+      usesStartFrame: true,
       versionId: claim.id,
       shotId,
       text: 'Regenerated motion prompt',
@@ -704,6 +812,7 @@ describe('shotPromptVersions.completePendingAiVersion', () => {
   it('a post-click user edit keeps the selection — the run completes to history only', async () => {
     const m = createShotPromptVersionsMethods(db);
     const claim = await m.createPending({
+      usesStartFrame: true,
       shotId,
       pendingInputHash: 'live-hash',
     });
@@ -712,6 +821,7 @@ describe('shotPromptVersions.completePendingAiVersion', () => {
     const edit = await m.write({
       shotId,
       promptType: 'motion',
+      usesStartFrame: true,
       text: 'Post-click hand edit',
       source: 'user-edit',
       inputHash: null,
@@ -719,6 +829,7 @@ describe('shotPromptVersions.completePendingAiVersion', () => {
     });
 
     const completed = await m.completePendingAiVersion({
+      usesStartFrame: true,
       versionId: claim.id,
       shotId,
       text: 'Older run output',
@@ -740,12 +851,14 @@ describe('shotPromptVersions.completePendingAiVersion', () => {
     const original = await m.write({
       shotId,
       promptType: 'motion',
+      usesStartFrame: true,
       text: 'Original',
       source: 'ai-generated',
       inputHash: 'hash-0',
       analysisModel: 'anthropic/claude-haiku-4.5',
     });
     const claim = await m.createPending({
+      usesStartFrame: true,
       shotId,
       pendingInputHash: 'live-hash',
     });
@@ -753,6 +866,7 @@ describe('shotPromptVersions.completePendingAiVersion', () => {
     await m.markTerminal(claim.id, 'cancelled');
 
     const completed = await m.completePendingAiVersion({
+      usesStartFrame: true,
       versionId: claim.id,
       shotId,
       text: 'Should be discarded',
@@ -775,18 +889,21 @@ describe('shotPromptVersions.completePendingAiVersion', () => {
     const existing = await m.write({
       shotId,
       promptType: 'motion',
+      usesStartFrame: true,
       text: 'Same output',
       source: 'ai-generated',
       inputHash: 'hash-1',
       analysisModel: 'anthropic/claude-haiku-4.5',
     });
     const claim = await m.createPending({
+      usesStartFrame: true,
       shotId,
       pendingInputHash: 'hash-1',
     });
     await m.markGenerating(claim.id, 'run-1');
 
     const completed = await m.completePendingAiVersion({
+      usesStartFrame: true,
       versionId: claim.id,
       shotId,
       text: 'Same output',
@@ -812,18 +929,21 @@ describe('shotPromptVersions.completePendingAiVersion', () => {
     const existing = await m.write({
       shotId,
       promptType: 'motion',
+      usesStartFrame: true,
       text: 'Old output',
       source: 'ai-generated',
       inputHash: 'hash-1',
       analysisModel: 'anthropic/claude-haiku-4.5',
     });
     const claim = await m.createPending({
+      usesStartFrame: true,
       shotId,
       pendingInputHash: 'hash-1',
     });
     await m.markGenerating(claim.id, 'run-1');
 
     const completed = await m.completePendingAiVersion({
+      usesStartFrame: true,
       versionId: claim.id,
       shotId,
       text: 'New output',
@@ -846,12 +966,14 @@ describe('shotPromptVersions.completePendingAiVersion', () => {
     const original = await m.write({
       shotId,
       promptType: 'motion',
+      usesStartFrame: true,
       text: 'Original motion',
       source: 'ai-generated',
       inputHash: 'hash-0',
       analysisModel: 'anthropic/claude-haiku-4.5',
     });
     const claim = await m.createPending({
+      usesStartFrame: true,
       shotId,
       pendingInputHash: 'live-hash',
     });
@@ -866,6 +988,7 @@ describe('shotPromptVersions.completePendingAiVersion', () => {
     expect(demoted?.pendingInputHash).toBeNull();
 
     await m.completePendingAiVersion({
+      usesStartFrame: true,
       versionId: claim.id,
       shotId,
       text: 'Would clobber restore',

@@ -127,6 +127,7 @@ const perSegmentShots: ShotView[] = PS_SHOT_CONFIGS.map((cfg, index) => {
 const psVersion = (id: string, model: string): SegmentVideoVersion => ({
   id,
   model,
+  resolution: null,
   status: 'completed',
   url: PS_VIDEO_URL,
   createdAt: PS_FIXED_DATE,
@@ -198,6 +199,7 @@ const psScene = (
   continuity: null,
   script: { extract, dialogue: [] },
   selectedScriptVersionId: null,
+  deletedAt: null,
   createdAt: PS_FIXED_DATE,
   updatedAt: PS_FIXED_DATE,
 });
@@ -214,13 +216,15 @@ const perSegmentScenes: SceneWithScript[] = [
 ];
 
 const defaultArgs = {
+  sequenceId: PS_SEQ,
+  className: 'w-[360px]',
   shots: [] as typeof mockShots,
   scenes: [],
   selection: { sceneIds: [] as string[] },
   aspectRatio: DEFAULT_ASPECT_RATIO,
   sequenceModels: { imageModel: 'nano_banana', videoModel: 'veo3' },
   onSelectScene: () => console.log('onSelectScene'),
-  onSelectShot: () => console.log('onSelectShot'),
+  onSelectShot: (shotId: string) => console.log('onSelectShot', shotId),
   onClearSelection: () => console.log('onClearSelection'),
   regeneratingImages: new Set<string>(),
   regeneratingMotion: new Set<string>(),

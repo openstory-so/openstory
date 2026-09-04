@@ -1,0 +1,24 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use @Image1 as the starting frame.\nStatic locked-off frame, slightly above, punchy on-camera flash. SCARLETT holds the @Image3 upright in frame; her fingers twist the ribbed base so the coral bullet climbs a little higher into the light, its flat-cut top catching a glossy highlight. She then tilts the tube a few degrees toward the lens like evidence, wrist rotating slowly, and lifts her gaze from the bullet to the camera with a deadpan raised brow, holding the look. Her supporting forearm stays planted on the counter.\n\nNo dialogue. Only breath and a small settling of the jaw.\n\nLoose strands of hair drift faintly; a crisp shadow shifts across the counter as the tube turns.\n\nquiet apartment room tone, faint distant street traffic through the window. soft click and grind of lipstick mechanism twisting, light shift of fabric sleeve on countertop, single quiet breath.\n\nNo BGM, no music. Generate only dialogue, environmental sounds, and action sounds. Single continuous shot, no cuts. Avoid jitter and bent limbs.\n\nReference images:\n@Image2: SCARLETT VEGA — keep visually consistent throughout the shot.",
+        "model": "bytedance/seedance-2.0/enterprise/v2/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://v3b.fal.media/files/b/0aa74e9f/AfE7On4409-yrKj978nbP_video.mp4",
+            "content_type": "video/mp4",
+            "file_name": "video.mp4",
+            "file_size": 1330386
+          },
+          "seed": 1085495181
+        },
+        "status": 200,
+        "billableUnits": 108.9
+      }
+    }
+  ]
+}

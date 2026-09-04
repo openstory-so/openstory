@@ -10,6 +10,7 @@
  * body, which the compiler strips.
  */
 
+import { usesStartFrame } from '@/lib/shots/use-start-frame';
 import {
   loadSceneContextBySequence,
   resolveSceneForShot,
@@ -31,26 +32,39 @@ import {
   resolveVideoModel,
 } from '@/lib/ai/resolve-asset-models';
 import {
+  estimateAudioCost,
   estimateImageCost,
   estimateVideoCost,
   gateEstimate,
 } from '@/lib/billing/cost-estimation';
 import { getEffectiveFalPricing } from '@/lib/ai/fal-pricing-live';
-import { addMicros, ZERO_MICROS } from '@/lib/billing/money';
-import { requireCredits } from '@/lib/billing/preflight';
+import {
+  releaseReservationOnThrow,
+  reserveRunCredits,
+} from '@/lib/billing/preflight';
 import { estimateStoryboardPreflightCost } from '@/lib/billing/storyboard-preflight-cost';
 import { aspectRatioToImageSize } from '@/lib/constants/aspect-ratios';
 import type { ScopedDb } from '@/lib/db/scoped';
-import { type Character, type Sequence, type Shot } from '@/lib/db/schema';
+import {
+  type CharacterWithSheet,
+  type Sequence,
+  type Shot,
+} from '@/lib/db/schema';
 import { analyzeFailures } from '@/lib/failures/failure-analysis';
 import {
   motionPromptFromVersion,
   resolveMotionPromptFromVersion,
 } from '@/lib/motion/resolve-motion-prompt';
 import { toShotView } from '@/lib/shots/shot-view';
+import { buildMotionReferenceImages } from '@/lib/motion/build-motion-references';
 import { buildCharacterReferenceImages } from '@/lib/prompts/character-prompt';
 import { triggerWorkflow } from '@/lib/workflow/client';
 import { buildWorkflowLabel } from '@/lib/workflow/labels';
+import { toWorkflowScopedDb } from '@/lib/db/scoped-workflow';
+import {
+  notifySequenceReady,
+  sequenceScenesUrl,
+} from '@/lib/emails/notify-sequence-ready';
 import {
   assertNoActiveStoryboard,
   triggerStoryboard,
@@ -63,9 +77,12 @@ import type {
 } from '@/lib/workflow/types';
 import { buildMusicSceneSummaries } from '@/lib/workflows/music-scene-summaries';
 import { sumShotDurationsSeconds } from '@/lib/sequences/shot-durations';
+import { getLogger } from '@/lib/observability/logger';
+
+const logger = getLogger(['openstory', 'sequences', 'smart-retry']);
 
 function getSceneCharacterReferenceImages(
-  allCharacters: Character[],
+  allCharacters: CharacterWithSheet[],
   characterTags: string[]
 ) {
   if (characterTags.length === 0) return [];
@@ -182,47 +199,52 @@ export async function executeSmartRetry(context: SmartRetryContext) {
       DEFAULT_VIDEO_MODEL
     );
 
-    await requireCredits(
+    const reservationId = await reserveRunCredits(
       context.scopedDb,
       estimateStoryboardPreflightCost({
         script: sequence.script ?? '',
         imageModel,
         aspectRatio: sequence.aspectRatio,
+        resolution: sequence.resolution,
         autoGenerateMotion: sequence.autoGenerateMotion,
         videoModels: [videoModel],
         autoGenerateMusic: sequence.autoGenerateMusic,
         audioModels: [safeAudioModel(sequence.musicModel, DEFAULT_MUSIC_MODEL)],
+        referenceOnly: !sequence.generateStartFrames,
         pricing: await getEffectiveFalPricing(),
       }),
       {
         providers: ['fal', 'openrouter'],
         errorMessage: 'Insufficient credits to retry storyboard',
+        sequenceId: sequence.id,
       }
     );
 
     // Owns the generation mutex, the 'processing' status write, and the
     // run-id persistence (#839).
-    await triggerStoryboard(context.scopedDb, {
-      userId: user.id,
-      teamId,
-      sequenceId: sequence.id,
-      options: {
-        shotsPerScene: 3,
-        generateThumbnails: true,
-        generateDescriptions: true,
-        aiProvider: 'openrouter',
-        regenerateAll: true,
-      },
-      autoGenerateMotion: sequence.autoGenerateMotion,
-      autoGenerateMusic: sequence.autoGenerateMusic,
-    });
+    await releaseReservationOnThrow(context.scopedDb, reservationId, () =>
+      triggerStoryboard(context.scopedDb, {
+        userId: user.id,
+        teamId,
+        sequenceId: sequence.id,
+        reservationId,
+        options: {
+          shotsPerScene: 3,
+          generateThumbnails: true,
+          generateDescriptions: true,
+          aiProvider: 'openrouter',
+          regenerateAll: true,
+        },
+        autoGenerateMotion: sequence.autoGenerateMotion,
+        autoGenerateMusic: sequence.autoGenerateMusic,
+      })
+    );
 
     return { retryType: 'full' as const, retriedItems: ['full storyboard'] };
   }
 
   // Smart retry: only retry failed parts
   const retried: string[] = [];
-  let totalCost = ZERO_MICROS;
 
   // Model identity lives on the version that produced each asset (#1066).
   // Every shot here is in a failed state, so the FAILED attempt's model is the
@@ -257,48 +279,26 @@ export async function executeSmartRetry(context: SmartRetryContext) {
   const failedImageShots = shotViews.filter(
     (f) => f.frame.imageStatus === 'failed'
   );
+  // Reference-only shots have no still by design, so requiring one here made
+  // every failed reference-only clip invisible to retry — and the empty result
+  // reported "none of the failed items can be retried", pushing the user at a
+  // full regeneration to recover clips that were retryable all along.
+  // Per shot: a shot can override the sequence's start-frame mode either way,
+  // so a retry has to re-ask rather than assume the sequence default.
+  const shotUsesStartFrame = (shot: { useStartFrame?: boolean | null }) =>
+    usesStartFrame(shot, sequence);
   const failedMotionShots = shotViews.filter(
     (f) =>
-      f.videoStatus === 'failed' && f.image?.url && f.motionPrompt?.fullPrompt
+      f.videoStatus === 'failed' &&
+      (!shotUsesStartFrame(f) || f.image?.url) &&
+      f.motionPrompt?.fullPrompt
   );
+  // Loaded once for the batch; `includeLocations` still decides per shot.
+  const anyReferenceOnly = shotViews.some((f) => !shotUsesStartFrame(f));
   const hasMusicFailure =
     sequence.musicStatus === 'failed' && sequence.musicPrompt;
 
-  // Calculate total cost — sum per shot since scenes may use different models.
   const pricing = await getEffectiveFalPricing();
-  for (const shot of failedImageShots) {
-    totalCost = addMicros(
-      totalCost,
-      gateEstimate(
-        estimateImageCost(imageModelFor(shot), sequence.aspectRatio, 1, {
-          pricing,
-        }),
-        { model: imageModelFor(shot), operation: 'smart-retry:image' }
-      )
-    );
-  }
-
-  if (failedMotionShots.length > 0) {
-    const { snapDuration } = await import('@/lib/motion/snap-duration');
-    for (const shot of failedMotionShots) {
-      const model = videoModelFor(shot);
-      totalCost = addMicros(
-        totalCost,
-        gateEstimate(
-          estimateVideoCost(model, snapDuration(undefined, model), { pricing }),
-          { model, operation: 'smart-retry:motion' }
-        )
-      );
-    }
-  }
-
-  // Single credit check for all retries
-  if (totalCost > 0) {
-    await requireCredits(context.scopedDb, totalCost, {
-      providers: ['fal'],
-      errorMessage: 'Insufficient credits to retry failed items',
-    });
-  }
 
   // 1. Retry failed images
   if (failedImageShots.length > 0) {
@@ -322,11 +322,30 @@ export async function executeSmartRetry(context: SmartRetryContext) {
         characterTags
       );
 
+      const imageModel = imageModelFor(shot);
+      const imageCost = gateEstimate(
+        estimateImageCost(imageModel, sequence.aspectRatio, 1, {
+          pricing,
+          resolution: sequence.resolution,
+        }),
+        { model: imageModel, operation: 'smart-retry:image' }
+      );
+      const reservationId =
+        imageCost > 0
+          ? await reserveRunCredits(context.scopedDb, imageCost, {
+              providers: ['fal'],
+              errorMessage: 'Insufficient credits to retry failed items',
+              sequenceId: sequence.id,
+            })
+          : undefined;
+
       const workflowInput: ImageWorkflowInput = {
         userId: user.id,
         teamId,
+        reservationId,
+        ownsReservation: true,
         prompt,
-        model: imageModelFor(shot),
+        model: imageModel,
         imageSize: aspectRatioToImageSize(sequence.aspectRatio),
         numImages: 1,
         shotId: shot.id,
@@ -338,9 +357,11 @@ export async function executeSmartRetry(context: SmartRetryContext) {
         referenceImages,
       };
 
-      await triggerWorkflow('/image', workflowInput, {
-        label: buildWorkflowLabel(sequence.id),
-      });
+      await releaseReservationOnThrow(context.scopedDb, reservationId, () =>
+        triggerWorkflow('/image', workflowInput, {
+          label: buildWorkflowLabel(sequence.id),
+        })
+      );
       triggeredImages++;
     }
 
@@ -349,24 +370,72 @@ export async function executeSmartRetry(context: SmartRetryContext) {
 
   // 2. Retry failed motion
   if (failedMotionShots.length > 0) {
+    const { snapDuration } = await import('@/lib/motion/snap-duration');
+    // Reference-only clips are driven ENTIRELY by their reference sheets, so a
+    // retry that forwarded none would silently resubmit as text-to-video —
+    // different characters, different set, at the same price. Loaded once for
+    // the whole batch; the image-to-video path keeps its existing behaviour.
+    const [motionCharacters, motionElements, motionLocations] = anyReferenceOnly
+      ? await Promise.all([
+          context.scopedDb.characters.listWithSheets(sequence.id),
+          context.scopedDb.sequenceElements.list(sequence.id),
+          context.scopedDb.sequenceLocations.listWithReferences(sequence.id),
+        ])
+      : [[], [], []];
     let triggeredMotion = 0;
     for (const shot of failedMotionShots) {
       const imageUrl = shot.image?.url;
-      if (!imageUrl) continue;
+      const referenceOnly = !shotUsesStartFrame(shot);
+      if (!imageUrl && !referenceOnly) continue;
 
       const shotVideoModel = videoModelFor(shot);
       const scene = sceneOf(shot);
       const selectedMotion = selectedMotionByShot.get(shot.id) ?? null;
+      const motionCost = gateEstimate(
+        estimateVideoCost(
+          shotVideoModel,
+          snapDuration(undefined, shotVideoModel),
+          { pricing, resolution: sequence.resolution, referenceOnly }
+        ),
+        { model: shotVideoModel, operation: 'smart-retry:motion' }
+      );
+      const reservationId =
+        motionCost > 0
+          ? await reserveRunCredits(context.scopedDb, motionCost, {
+              providers: ['fal'],
+              errorMessage: 'Insufficient credits to retry failed items',
+              sequenceId: sequence.id,
+            })
+          : undefined;
       const workflowInput: MotionWorkflowInput = {
         userId: user.id,
         teamId,
+        reservationId,
+        ownsReservation: true,
         shotId: shot.id,
         sceneId: shot.sceneId,
         sequenceId: sequence.id,
-        imageUrl,
+        // Null only on the reference-only path — the `continue` above still
+        // rejects a missing still everywhere else.
+        imageUrl: referenceOnly ? undefined : (imageUrl ?? undefined),
+        referenceOnly,
+        ...(referenceOnly
+          ? {
+              referenceImages: buildMotionReferenceImages({
+                scene: scene ?? null,
+                characters: motionCharacters,
+                elements: motionElements,
+                motionPrompt: selectedMotion?.text ?? null,
+                includeLocations: true,
+                locations: motionLocations,
+              }),
+            }
+          : {}),
         // The versions this clip renders from, pinned here so the render
-        // manifest can't name rows a concurrent edit repointed to.
-        frameVersionId: shot.image?.id ?? null,
+        // manifest can't name rows a concurrent edit repointed to. `null` when
+        // the clip renders from references — see `isSelectedVersionStale`: a
+        // pointer at a still the clip never received reads as divergence.
+        frameVersionId: referenceOnly ? null : (shot.image?.id ?? null),
         motionPromptVersionId: selectedMotion?.id ?? null,
         sequenceTitle: sequence.title,
         prompt: resolveMotionPromptFromVersion(
@@ -379,12 +448,15 @@ export async function executeSmartRetry(context: SmartRetryContext) {
         ),
         model: shotVideoModel,
         aspectRatio: sequence.aspectRatio,
+        resolution: sequence.resolution,
         duration: shot.durationMs ? shot.durationMs / 1000 : undefined,
       };
 
-      await triggerWorkflow('/motion', workflowInput, {
-        label: buildWorkflowLabel(sequence.id),
-      });
+      await releaseReservationOnThrow(context.scopedDb, reservationId, () =>
+        triggerWorkflow('/motion', workflowInput, {
+          label: buildWorkflowLabel(sequence.id),
+        })
+      );
       triggeredMotion++;
     }
 
@@ -397,11 +469,26 @@ export async function executeSmartRetry(context: SmartRetryContext) {
   if (hasMusicFailure && sequence.musicPrompt) {
     const allShots = await context.scopedDb.shots.listBySequence(sequence.id);
     const totalDuration = sumShotDurationsSeconds(allShots);
+    const musicModel = safeAudioModel(sequence.musicModel, DEFAULT_MUSIC_MODEL);
+    const musicCost = gateEstimate(
+      estimateAudioCost(musicModel, totalDuration || 30, { pricing }),
+      { model: musicModel, operation: 'smart-retry:music' }
+    );
+    const reservationId =
+      musicCost > 0
+        ? await reserveRunCredits(context.scopedDb, musicCost, {
+            providers: ['fal'],
+            errorMessage: 'Insufficient credits to retry failed items',
+            sequenceId: sequence.id,
+          })
+        : undefined;
 
     const musicInput: MusicWorkflowInput = {
       userId: user.id,
       teamId,
       sequenceId: sequence.id,
+      reservationId,
+      ownsReservation: true,
       prompt: sequence.musicPrompt,
       tags: sequence.musicTags ?? '',
       duration: totalDuration || 30,
@@ -412,9 +499,11 @@ export async function executeSmartRetry(context: SmartRetryContext) {
       musicError: null,
     });
 
-    await triggerWorkflow('/music', musicInput, {
-      label: buildWorkflowLabel(sequence.id),
-    });
+    await releaseReservationOnThrow(context.scopedDb, reservationId, () =>
+      triggerWorkflow('/music', musicInput, {
+        label: buildWorkflowLabel(sequence.id),
+      })
+    );
 
     retried.push('music');
   }
@@ -476,6 +565,24 @@ export async function executeSmartRetry(context: SmartRetryContext) {
   // status flips back to 'failed' and the failure summary reappears.
   if (sequence.status === 'failed') {
     await context.scopedDb.sequence(sequence.id).updateStatus('completed');
+    const ownerEmail = await context.scopedDb.teamManagement.getMemberEmail(
+      user.id
+    );
+    try {
+      await notifySequenceReady({
+        scopedDb: toWorkflowScopedDb(context.scopedDb),
+        sequenceId: sequence.id,
+        ownerEmail,
+        sequenceUrl: sequenceScenesUrl(sequence.id),
+        posterUrl: sequence.posterUrl,
+        userId: user.id,
+      });
+    } catch (err) {
+      logger.error('Ready email failed after smart-retry complete', {
+        err,
+        sequenceId: sequence.id,
+      });
+    }
   }
 
   return { retryType: 'smart' as const, retriedItems: retried };

@@ -9,6 +9,10 @@ import {
   type AspectRatio,
   DEFAULT_ASPECT_RATIO,
 } from '@/lib/constants/aspect-ratios';
+import {
+  DEFAULT_RESOLUTION,
+  type Resolution,
+} from '@/lib/constants/resolutions';
 import type { Database } from '@/lib/db/client';
 import {
   assembleShotViews,
@@ -26,6 +30,10 @@ import {
 } from '@/lib/db/schema';
 import type { NewSequence, Sequence } from '@/lib/db/schema';
 import type { MusicStatus, SequenceStatus } from '@/lib/db/schema/sequences';
+import type {
+  GenerationCheckpoint,
+  GenerationStage,
+} from '@/lib/generation/pipeline';
 import { parseStyleConfig } from '@/lib/style/style-config';
 import type { ShotReadiness, ShotView } from '@/lib/shots/shot-view';
 import { getLatestPreviewByFrameIds } from './frame-variants';
@@ -65,6 +73,17 @@ function createSequencesReadMethods(db: Database, teamId: string) {
             eq(sequences.teamId, teamId),
             not(eq(sequences.status, 'archived'))
           )
+        )
+        .orderBy(desc(sequences.updatedAt));
+    },
+
+    /** The team's archived sequences — the unarchive picker (#1108 Phase 4). */
+    listArchived: async (): Promise<Sequence[]> => {
+      return await db
+        .select()
+        .from(sequences)
+        .where(
+          and(eq(sequences.teamId, teamId), eq(sequences.status, 'archived'))
         )
         .orderBy(desc(sequences.updatedAt));
     },
@@ -150,7 +169,9 @@ function createSequencesReadMethods(db: Database, teamId: string) {
             .where(
               and(
                 inArray(shots.sequenceId, batch),
-                eq(sequences.teamId, teamId)
+                eq(sequences.teamId, teamId),
+                // Soft-deleted shots stay out of list views (#1108).
+                isNull(shots.deletedAt)
               )
             )
             .orderBy(asc(shots.sequenceId), ...shotHierarchicalOrder)
@@ -225,7 +246,11 @@ function createSequencesReadMethods(db: Database, teamId: string) {
             .where(
               and(
                 inArray(shots.sequenceId, batch),
-                eq(sequences.teamId, teamId)
+                eq(sequences.teamId, teamId),
+                // Soft-deleted shots stay out of list counts (#1108). Twin of
+                // `listShotsByIds` — public `GET /api/v1/sequences` uses this
+                // path for `counts`.
+                isNull(shots.deletedAt)
               )
             )
         )
@@ -293,12 +318,16 @@ export function createSequencesMethods(
        */
       deferStyleSnapshot?: boolean;
       aspectRatio?: AspectRatio;
+      resolution?: Resolution;
       analysisModel?: string;
       imageModel?: string;
       videoModel?: string;
       musicModel?: string;
       autoGenerateMotion?: boolean;
       autoGenerateMusic?: boolean;
+      generationStopAt?: GenerationStage;
+      /** Opt-in to the frame-based workflow; off = reference-only (the default). */
+      generateStartFrames?: boolean;
       suggestedTalentIds?: string[];
       suggestedLocationIds?: string[];
     }): Promise<Sequence> => {
@@ -315,6 +344,7 @@ export function createSequencesMethods(
         styleId: params.styleId,
         styleConfig,
         aspectRatio: params.aspectRatio ?? DEFAULT_ASPECT_RATIO,
+        resolution: params.resolution ?? DEFAULT_RESOLUTION,
         // The sequences SQL column defaults are stale literals
         // ('anthropic/claude-haiku-4.5' for analysis, 'nano_banana_2' for
         // image, 'kling_v3_pro' for video — see schema/sequences.ts) that
@@ -326,6 +356,8 @@ export function createSequencesMethods(
         musicModel: params.musicModel,
         autoGenerateMotion: params.autoGenerateMotion ?? false,
         autoGenerateMusic: params.autoGenerateMusic ?? false,
+        generationStopAt: params.generationStopAt,
+        generateStartFrames: params.generateStartFrames ?? false,
         suggestedTalentIds: params.suggestedTalentIds ?? null,
         suggestedLocationIds: params.suggestedLocationIds ?? null,
         status: 'draft',
@@ -371,6 +403,36 @@ export function createSequencesMethods(
       return claimed.length > 0;
     },
 
+    /**
+     * CAS-claim the ready-email slot (#1276). Returns true only for the first
+     * caller; later retries / smart-retry re-completes see false.
+     */
+    claimReadyEmailSend: async (sequenceId: string): Promise<boolean> => {
+      const claimed = await db
+        .update(sequences)
+        .set({ readyEmailSentAt: new Date(), updatedAt: new Date() })
+        .where(
+          and(
+            eq(sequences.id, sequenceId),
+            eq(sequences.teamId, teamId),
+            isNull(sequences.readyEmailSentAt)
+          )
+        )
+        .returning({ id: sequences.id });
+      return claimed.length > 0;
+    },
+
+    /**
+     * Drop the ready-email claim so a failed send can retry. Only the sender
+     * that just claimed should call this.
+     */
+    releaseReadyEmailSend: async (sequenceId: string): Promise<void> => {
+      await db
+        .update(sequences)
+        .set({ readyEmailSentAt: null, updatedAt: new Date() })
+        .where(and(eq(sequences.id, sequenceId), eq(sequences.teamId, teamId)));
+    },
+
     update: async (params: {
       id: string;
       title?: string;
@@ -380,6 +442,7 @@ export function createSequencesMethods(
       workflowRunId?: string;
       analysisModel?: string;
       aspectRatio?: AspectRatio;
+      resolution?: Resolution;
       imageModel?: string;
       videoModel?: string;
       musicModel?: string;
@@ -390,6 +453,11 @@ export function createSequencesMethods(
       musicGeneratedAt?: Date;
       posterUrl?: string | null;
       includeMusic?: boolean;
+      autoGenerateMotion?: boolean;
+      autoGenerateMusic?: boolean;
+      generationStopAt?: GenerationStage | null;
+      pipelineStage?: GenerationStage | null;
+      generationCheckpoint?: GenerationCheckpoint | null;
     }): Promise<Sequence> => {
       // Scoped by teamId like every other write here — `workflowRunId` in
       // particular is the generation-mutex column (#839), so a cross-team id

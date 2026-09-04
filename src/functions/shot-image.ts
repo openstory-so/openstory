@@ -5,6 +5,7 @@ import {
   safeTextToImageModel,
 } from '@/lib/ai/models';
 import { resolveUpscaleModel } from '@/lib/ai/resolve-asset-models';
+import { shotPromptSequence } from '@/lib/shots/use-start-frame';
 import {
   estimateImageCost,
   estimateStoryboardCost,
@@ -12,7 +13,11 @@ import {
 } from '@/lib/billing/cost-estimation';
 import { getEffectiveFalPricing } from '@/lib/ai/fal-pricing-live';
 import { getFrameImageUrl } from '@/lib/shots/frame-image';
-import { requireCredits } from '@/lib/billing/preflight';
+import {
+  releaseReservationOnThrow,
+  requireCredits,
+  reserveRunCredits,
+} from '@/lib/billing/preflight';
 import { getVariantGridConfig } from '@/lib/constants/aspect-ratios';
 import { cropTileFromGrid } from '@/lib/image/image-crop';
 import { buildCharacterReferenceImages } from '@/lib/prompts/character-prompt';
@@ -35,7 +40,7 @@ import type {
   ShotVariantWorkflowInput,
   UpscaleShotVariantWorkflowInput,
 } from '@/lib/workflow/types';
-import { matchCharactersToScene } from '@/lib/workflows/scene-matching';
+import { matchCharactersToShotImage } from '@/lib/workflows/scene-matching';
 import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
@@ -50,7 +55,7 @@ export const generateShotsFn = createServerFn({ method: 'POST' })
   .handler(async ({ context }) => {
     const { sequence, user } = context;
 
-    await requireCredits(
+    const reservationId = await reserveRunCredits(
       context.scopedDb,
       estimateStoryboardCost({
         imageModel: safeTextToImageModel(
@@ -58,14 +63,20 @@ export const generateShotsFn = createServerFn({ method: 'POST' })
           DEFAULT_IMAGE_MODEL
         ),
         aspectRatio: sequence.aspectRatio,
+        resolution: sequence.resolution,
         videoModels: [
           safeImageToVideoModel(sequence.videoModel, DEFAULT_VIDEO_MODEL),
         ],
+        // Whole-run envelope before any shot exists, so the sequence default
+        // is the right question here: without start frames the image line is
+        // zero and motion prices the reference-to-video route.
+        referenceOnly: !sequence.generateStartFrames,
         pricing: await getEffectiveFalPricing(),
       }),
       {
         providers: ['fal', 'openrouter'],
         errorMessage: 'Insufficient credits to generate storyboard',
+        sequenceId: sequence.id,
       }
     );
 
@@ -73,6 +84,7 @@ export const generateShotsFn = createServerFn({ method: 'POST' })
       userId: user.id,
       teamId: sequence.teamId,
       sequenceId: sequence.id,
+      reservationId,
       options: {
         shotsPerScene: 3,
         generateThumbnails: true,
@@ -84,9 +96,10 @@ export const generateShotsFn = createServerFn({ method: 'POST' })
 
     // Owns the generation mutex, the 'processing' status write, and the
     // run-id persistence (#839).
-    const { workflowRunId } = await triggerStoryboard(
+    const { workflowRunId } = await releaseReservationOnThrow(
       context.scopedDb,
-      workflowInput
+      reservationId,
+      () => triggerStoryboard(context.scopedDb, workflowInput)
     );
 
     return { workflowRunId, shots: [] };
@@ -141,7 +154,7 @@ export const generateShotImageFn = createServerFn({ method: 'POST' })
 
     const workflowInput = await prepareShotImageWorkflowInput({
       scopedDb: context.scopedDb,
-      sequence,
+      sequence: shotPromptSequence(sequence, shot),
       shot,
       scene: sceneForInput,
       frame,
@@ -242,22 +255,6 @@ export const generateShotVariantsFn = createServerFn({ method: 'POST' })
       throw new Error('Shot must have a still image to generate variants');
     }
 
-    const allCharacters = await context.scopedDb.characters.listWithSheets(
-      sequence.id
-    );
-    const characterTags = scene?.continuity?.characterTags ?? [];
-    const characterReferences = buildCharacterReferenceImages(
-      matchCharactersToScene(allCharacters, characterTags)
-    );
-
-    const allLocations =
-      await context.scopedDb.sequenceLocations.listWithReferences(sequence.id);
-    const locationReferences = getSceneLocationReferenceImages(
-      allLocations,
-      scene?.continuity?.environmentTag ?? '',
-      scene?.metadata?.location ?? ''
-    );
-
     const numImages = data.numImages ?? 1;
     await requireCredits(
       context.scopedDb,
@@ -266,7 +263,10 @@ export const generateShotVariantsFn = createServerFn({ method: 'POST' })
           data.model ?? DEFAULT_IMAGE_MODEL,
           sequence.aspectRatio,
           numImages,
-          { pricing: await getEffectiveFalPricing() }
+          {
+            pricing: await getEffectiveFalPricing(),
+            resolution: sequence.resolution,
+          }
         ),
         {
           model: data.model ?? DEFAULT_IMAGE_MODEL,
@@ -279,8 +279,23 @@ export const generateShotVariantsFn = createServerFn({ method: 'POST' })
 
     const gridConfig = getVariantGridConfig(sequence.aspectRatio);
 
-    const selectedPrompt =
-      await context.scopedDb.framePromptVersions.getSelected(frame.id);
+    const [allCharacters, allLocations, selectedPrompt] = await Promise.all([
+      context.scopedDb.characters.listWithSheets(sequence.id),
+      context.scopedDb.sequenceLocations.listWithReferences(sequence.id),
+      context.scopedDb.framePromptVersions.getSelected(frame.id),
+    ]);
+    const characterReferences = buildCharacterReferenceImages(
+      matchCharactersToShotImage(allCharacters, {
+        characterTags: scene?.continuity?.characterTags,
+        visualPrompt: selectedPrompt?.text,
+      })
+    );
+    const locationReferences = getSceneLocationReferenceImages(
+      allLocations,
+      scene?.continuity?.environmentTag ?? '',
+      scene?.metadata?.location ?? '',
+      scene?.originalScript.extract
+    );
 
     const workflowInput: ShotVariantWorkflowInput = {
       userId: user.id,
@@ -293,6 +308,7 @@ export const generateShotVariantsFn = createServerFn({ method: 'POST' })
       promptVersionId: selectedPrompt?.id ?? null,
       model: data.model,
       aspectRatio: sequence.aspectRatio,
+      resolution: sequence.resolution,
       imageSize: data.imageSize || gridConfig.imageSize,
       numImages,
       seed: data.seed,
@@ -378,9 +394,13 @@ export const selectShotVariantFn = createServerFn({ method: 'POST' })
     const allCharacters = await context.scopedDb.characters.listWithSheets(
       sequence.id
     );
-    const characterTags = scene?.continuity?.characterTags ?? [];
+    const selectedPrompt =
+      await context.scopedDb.framePromptVersions.getSelected(frame.id);
     const characterReferences = buildCharacterReferenceImages(
-      matchCharactersToScene(allCharacters, characterTags)
+      matchCharactersToShotImage(allCharacters, {
+        characterTags: scene?.continuity?.characterTags,
+        visualPrompt: selectedPrompt?.text,
+      })
     );
 
     const allLocations =
@@ -388,7 +408,8 @@ export const selectShotVariantFn = createServerFn({ method: 'POST' })
     const locationReferences = getSceneLocationReferenceImages(
       allLocations,
       scene?.continuity?.environmentTag ?? '',
-      scene?.metadata?.location ?? ''
+      scene?.metadata?.location ?? '',
+      scene?.originalScript.extract
     );
 
     // Price the model that will actually render the upscale (#1066) — the same
@@ -401,7 +422,10 @@ export const selectShotVariantFn = createServerFn({ method: 'POST' })
           resolveUpscaleModel(sheet.model),
           sequence.aspectRatio,
           1,
-          { pricing: await getEffectiveFalPricing() }
+          {
+            pricing: await getEffectiveFalPricing(),
+            resolution: sequence.resolution,
+          }
         ),
         {
           model: resolveUpscaleModel(sheet.model),
@@ -454,6 +478,7 @@ export const selectShotVariantFn = createServerFn({ method: 'POST' })
       croppedTileUrl: cropResult.url,
       croppedTilePath: cropResult.path,
       aspectRatio: sequence.aspectRatio,
+      resolution: sequence.resolution,
       characterReferences,
       locationReferences,
       // The framing version the upscaled tile derives from (#989) — the upscale
@@ -636,7 +661,9 @@ export function isImageHistoryVersion(v: {
   sourceVariantId?: string | null;
 }): boolean {
   return (
-    v.kind === 'model' || (v.kind === 'framing' && Boolean(v.sourceVariantId))
+    v.kind === 'model' ||
+    v.kind === 'upload' ||
+    (v.kind === 'framing' && Boolean(v.sourceVariantId))
   );
 }
 
@@ -648,7 +675,7 @@ export function isImageHistoryVersion(v: {
 export type ShotImageVersionRow = {
   id: string;
   model: string;
-  kind: 'model' | 'framing';
+  kind: 'model' | 'framing' | 'upload';
   status: string;
   url: string | null;
   createdAt: Date;
@@ -675,10 +702,11 @@ const shotHistoryListInputSchema = z.object({
 
 /**
  * Append-only image generation history for a shot's anchor frame (#1070).
- * Newest first. Model stills and framing tiles cropped from a grid sheet
- * (sourceVariantId set). Grid sheets themselves and preview rows (#1101)
- * stay out. Includes in-flight / failed rows so the sheet can show progress
- * and errors; discarded rows stay hidden (soft-hide is undoable elsewhere).
+ * Newest first. Model stills, user uploads (`kind: 'upload'`), and framing
+ * tiles cropped from a grid sheet (sourceVariantId set). Grid sheets
+ * themselves and preview rows (#1101) stay out. Includes in-flight / failed
+ * rows so the sheet can show progress and errors; discarded rows stay hidden
+ * (soft-hide is undoable elsewhere).
  */
 export const listShotImageVersionsFn = createServerFn({ method: 'GET' })
   .middleware([shotAccessMiddleware])
@@ -693,7 +721,12 @@ export const listShotImageVersionsFn = createServerFn({ method: 'GET' })
       .map((v) => ({
         id: v.id,
         model: v.model,
-        kind: v.kind === 'framing' ? ('framing' as const) : ('model' as const),
+        kind:
+          v.kind === 'framing'
+            ? ('framing' as const)
+            : v.kind === 'upload'
+              ? ('upload' as const)
+              : ('model' as const),
         status: v.status,
         url: v.url,
         createdAt: v.createdAt,

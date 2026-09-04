@@ -1,0 +1,24 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use @Image1 as the starting frame.\nSteady handheld track follows @Image2 as she walks across the car park toward the promenade. From this mid-stride, she thumbs the cap onto the @Image3, drops the tube into the tote, and keeps walking without breaking pace. She turns her gaze forward, leaving the parked car behind her.\n\nFlip-flops slap the concrete. The tote swings at her hip. Morning sun flashes off chrome and white paint as hair shifts with each step.\n\nearly-morning Bondi car park hush, distant surf, light coastal wind. flip-flops slapping concrete, lipstick cap click, tube dropping into canvas tote, tote strap shifting on shoulder.\n\nNo BGM, no music. Generate only dialogue, environmental sounds, and action sounds. Single continuous shot, no cuts. Avoid jitter and bent limbs.",
+        "model": "bytedance/seedance-2.5/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://v3b.fal.media/files/b/0aa70c17/C_AnhQmcE0A07n-lj8-pM_video.mp4",
+            "content_type": "video/mp4",
+            "file_name": "video.mp4",
+            "file_size": 3054988
+          },
+          "seed": 420271647
+        },
+        "status": 200,
+        "billableUnits": 108.9
+      }
+    }
+  ]
+}

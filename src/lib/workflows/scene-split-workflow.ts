@@ -41,7 +41,7 @@ import {
   PROMPT_REASONING,
 } from '@/lib/ai/llm-client';
 import { PREVIEW_IMAGE_MODEL } from '@/lib/ai/models';
-import { getContextWindow, SCENE_SPLIT_MODEL } from '@/lib/ai/models.config';
+import { getMaxOutputTokens, SCENE_SPLIT_MODEL } from '@/lib/ai/models.config';
 import {
   type SceneSplitBiblesResult,
   type SceneSplitScenesResult,
@@ -217,7 +217,7 @@ async function triggerPreviewImage({
         userId: input.userId,
         teamId: input.teamId,
         sequenceId,
-        prompt: buildPreviewPrompt(sceneText, input.styleConfig),
+        prompt: buildPreviewPrompt(sceneText),
         model: PREVIEW_IMAGE_MODEL,
         imageSize: aspectRatioToImageSize(input.aspectRatio),
         numImages: 1,
@@ -325,10 +325,8 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
     // Both calls see the same numbered-gutter copy of the script: the scenes
     // call reports hintLine against it, the bibles call firstMention lines.
     const gutteredScript = addLineGutter(script);
-    const splitMaxTokens = Math.floor(
-      getContextWindow(SCENE_SPLIT_MODEL) * 0.65
-    );
-    const biblesMaxTokens = Math.floor(getContextWindow(modelId) * 0.65);
+    const splitMaxTokens = getMaxOutputTokens(SCENE_SPLIT_MODEL, 0.65);
+    const biblesMaxTokens = getMaxOutputTokens(modelId, 0.65);
 
     // The two LLM calls are independent given the script, so their steps run
     // concurrently — output length drives latency and the scenes stream is
@@ -342,7 +340,8 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
           script: gutteredScript,
         });
 
-        const llmKeyInfo = await scopedDb.credentials.resolveLlmKey(modelId);
+        const llmKeyInfo =
+          await scopedDb.credentials.resolveLlmKey(SCENE_SPLIT_MODEL);
 
         logger.info(
           `[SceneSplitWorkflow:cf] [LLM:${LOG_NAME}] Starting streaming call`,
@@ -516,7 +515,8 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
         let finalBoundaries = parsedResult.boundaries;
         let llmCostMicros = llmCostFromUsage(
           firstPass.usage,
-          SCENE_SPLIT_MODEL
+          SCENE_SPLIT_MODEL,
+          llmKeyInfo.via
         );
 
         const degraded = isExcessivelyRepaired(
@@ -554,7 +554,11 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
           if (retryPass.parsed) {
             llmCostMicros = addMicros(
               llmCostMicros,
-              llmCostFromUsage(retryPass.usage, SCENE_SPLIT_MODEL)
+              llmCostFromUsage(
+                retryPass.usage,
+                SCENE_SPLIT_MODEL,
+                llmKeyInfo.via
+              )
             );
             const retryAssembled = assembleScenes(
               script,
@@ -603,15 +607,6 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
         }
         const scenes = assembled.scenes;
         const offsets = assembled.resolution.offsets;
-
-        // Advance the UI to the casting label once scene cards exist; the
-        // parent still awaits both sibling steps before matching.
-        if (sequenceId) {
-          await getGenerationChannel(sequenceId).emit(
-            'generation.phase:start',
-            { phase: 2, phaseName: 'Casting characters & locations…' }
-          );
-        }
 
         // Preview sweep: any scene persisted without a trigger (e.g. a
         // replay that skipped the stream loop) still gets one.
@@ -697,7 +692,7 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
 
       const result: BiblesStepResult = {
         ...parsed,
-        llmCostMicros: llmCostFromUsage(usage, modelId),
+        llmCostMicros: llmCostFromUsage(usage, modelId, llmKeyInfo.via),
         llmKeySource: llmKeyInfo.source,
       };
       return JSON.stringify(result);
@@ -1013,6 +1008,7 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
         usedOwnKey: streamResult.llmKeySource === 'team',
         description: `LLM analysis (${SCENE_SPLIT_MODEL})`,
         idempotencyKey: `${event.instanceId}:llm-${STEP_NAME}`,
+        reservationId: input.reservationId,
         metadata: {
           model: SCENE_SPLIT_MODEL,
           phase: PHASE.number,
@@ -1030,6 +1026,7 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
         usedOwnKey: biblesResult.llmKeySource === 'team',
         description: `LLM analysis (${modelId})`,
         idempotencyKey: `${event.instanceId}:llm-${BIBLES_STEP_NAME}`,
+        reservationId: input.reservationId,
         metadata: {
           model: modelId,
           phase: PHASE.number,

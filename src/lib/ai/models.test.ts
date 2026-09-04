@@ -4,22 +4,92 @@ import {
   DEFAULT_VIDEO_MODEL,
   IMAGE_MODELS,
   IMAGE_TO_VIDEO_MODELS,
+  MOTION_REFERENCE_ENDPOINTS,
+  capReferenceImages,
+  getEditEndpoint,
+  getMotionReferenceEndpoint,
+  isNativeBytePlusVideoModel,
   isValidImageToVideoModel,
   isValidTextToImageModel,
+  referenceOnlyMotionModels,
   safeImageToVideoModel,
   safeTextToImageModel,
+  supportsReferenceImages,
+  supportsReferenceOnlyMotion,
   videoModelSupportsAudio,
 } from './models';
+import { typedEntries } from '@/lib/utils/typed-object';
+
+describe('turbo image models (#1390)', () => {
+  it('exposes Nano Banana 2 Lite, FLUX.2 Flash, and FLUX.2 Turbo in the picker', () => {
+    expect('hidden' in IMAGE_MODELS.nano_banana_2_lite).toBe(false);
+    expect('hidden' in IMAGE_MODELS.flux_2_flash).toBe(false);
+    expect('hidden' in IMAGE_MODELS.flux_2_turbo).toBe(false);
+    // Preview-only: no edit endpoint, stays off the picker.
+    expect('hidden' in IMAGE_MODELS.krea_2_turbo).toBe(true);
+  });
+
+  it('routes every turbo picker model through an edit endpoint that takes refs', () => {
+    expect(supportsReferenceImages('nano_banana_2_lite')).toBe(true);
+    expect(getEditEndpoint('nano_banana_2_lite')).toBe(
+      'google/nano-banana-lite/edit'
+    );
+    expect(supportsReferenceImages('flux_2_flash')).toBe(true);
+    expect(getEditEndpoint('flux_2_flash')).toBe('fal-ai/flux-2/flash/edit');
+    expect(supportsReferenceImages('flux_2_turbo')).toBe(true);
+    expect(getEditEndpoint('flux_2_turbo')).toBe('fal-ai/flux-2/turbo/edit');
+    expect(supportsReferenceImages('krea_2_turbo')).toBe(false);
+  });
+
+  it('caps Flash/Turbo refs at 4 and leaves Lite uncapped', () => {
+    const many = Array.from({ length: 8 }, (_, i) => i);
+    expect(capReferenceImages('flux_2_flash', many)).toHaveLength(4);
+    expect(capReferenceImages('flux_2_turbo', many)).toHaveLength(4);
+    expect(capReferenceImages('nano_banana_2_lite', many)).toHaveLength(8);
+  });
+});
+
+describe('Seedance catalog split', () => {
+  it('sends 2.5 to 2.5 and 2.0 to 2.0 enterprise', () => {
+    expect(IMAGE_TO_VIDEO_MODELS.seedance_v2_5.id).toBe(
+      'bytedance/seedance-2.5/image-to-video'
+    );
+    expect(MOTION_REFERENCE_ENDPOINTS.seedance_v2_5?.endpointId).toBe(
+      'bytedance/seedance-2.5/reference-to-video'
+    );
+    expect(IMAGE_TO_VIDEO_MODELS.seedance_v2.id).toBe(
+      'bytedance/seedance-2.0/enterprise/v2/image-to-video'
+    );
+    expect(MOTION_REFERENCE_ENDPOINTS.seedance_v2?.endpointId).toBe(
+      'bytedance/seedance-2.0/enterprise/v2/reference-to-video'
+    );
+    expect(MOTION_REFERENCE_ENDPOINTS.minimax_h3_max?.endpointId).toBe(
+      'minimax/h3-max/reference-to-video'
+    );
+    expect(MOTION_REFERENCE_ENDPOINTS.minimax_h3_max?.imageField).toBe(
+      'reference_image_urls'
+    );
+    expect(isNativeBytePlusVideoModel('seedance_v2_5')).toBe(true);
+    expect(isNativeBytePlusVideoModel('seedance_v2')).toBe(false);
+    expect(DEFAULT_VIDEO_MODEL).toBe('seedance_v2');
+    expect('hidden' in IMAGE_TO_VIDEO_MODELS.seedance_v2_5).toBe(true);
+    expect('hidden' in IMAGE_TO_VIDEO_MODELS.seedance_v2).toBe(false);
+  });
+});
 
 describe('videoModelSupportsAudio', () => {
   it('returns true for audio-capable video models', () => {
     expect(videoModelSupportsAudio('seedance_v2')).toBe(true);
+    expect(videoModelSupportsAudio('seedance_v2_5')).toBe(true);
     expect(videoModelSupportsAudio('kling_v3_pro')).toBe(true);
     expect(videoModelSupportsAudio('veo3_1')).toBe(true);
   });
 
   it('returns false for models without audio', () => {
     expect(videoModelSupportsAudio('grok_imagine_video_1_5')).toBe(false);
+    // Omni Flash always emits audio but has no generate_audio API field, so
+    // the scene-editor SFX toggle must stay hidden.
+    expect(videoModelSupportsAudio('gemini_omni_flash')).toBe(false);
   });
 });
 
@@ -48,6 +118,7 @@ describe('Model Validation', () => {
       expect(isValidImageToVideoModel('kling_v3_pro')).toBe(true);
       expect(isValidImageToVideoModel('veo3_1')).toBe(true);
       expect(isValidImageToVideoModel('seedance_v2')).toBe(true);
+      expect(isValidImageToVideoModel('seedance_v2_5')).toBe(true);
     });
 
     it('returns false for invalid model keys', () => {
@@ -134,5 +205,39 @@ describe('Model Validation', () => {
         expect(IMAGE_TO_VIDEO_MODELS[model]).toBeDefined();
       }
     });
+  });
+});
+
+describe('supportsReferenceOnlyMotion', () => {
+  it('is exactly the set of models with a reference-to-video endpoint', () => {
+    for (const [model] of typedEntries(IMAGE_TO_VIDEO_MODELS)) {
+      expect(supportsReferenceOnlyMotion(model)).toBe(
+        getMotionReferenceEndpoint(model) !== null
+      );
+    }
+  });
+
+  it('excludes models whose only route needs a start frame', () => {
+    // Kling's `elements` and Grok's fal route both ride image-to-video, which
+    // requires `image_url` — a reference-only shot has nowhere to go there.
+    expect(supportsReferenceOnlyMotion('kling_v3_pro')).toBe(false);
+    expect(supportsReferenceOnlyMotion('grok_imagine_video_1_5')).toBe(false);
+    expect(supportsReferenceOnlyMotion('veo3_1')).toBe(false);
+  });
+
+  it('includes both Seedance tiers, H3 Max and Omni Flash', () => {
+    expect(supportsReferenceOnlyMotion('seedance_v2')).toBe(true);
+    expect(supportsReferenceOnlyMotion('seedance_v2_5')).toBe(true);
+    // H3 Max's reference-to-video route requires only `prompt` — no still.
+    expect(supportsReferenceOnlyMotion('minimax_h3_max')).toBe(true);
+    // Omni Flash qualifies on its fal reference-to-video route, so it needs no
+    // Google key — unlike Grok, which is reference-only ONLY on the native via.
+    expect(supportsReferenceOnlyMotion('gemini_omni_flash')).toBe(true);
+    expect(referenceOnlyMotionModels().sort()).toEqual([
+      'gemini_omni_flash',
+      'minimax_h3_max',
+      'seedance_v2',
+      'seedance_v2_5',
+    ]);
   });
 });

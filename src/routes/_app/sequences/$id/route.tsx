@@ -1,5 +1,7 @@
 import { RouteErrorFallback } from '@/components/error/route-error-fallback';
 import { routeParams } from '@/components/layout/breadcrumbs';
+import { RenameSequenceButton } from '@/components/sequence/rename-sequence-button';
+import { SEQUENCE_HEADER_SLOT_ID } from '@/components/sequence/sequence-header-slot';
 import { getDefaultSequenceTabPath } from '@/components/sequence/sequence-tabs';
 import { getSequenceFn } from '@/functions/sequences';
 import { sequenceKeys, useSequence } from '@/hooks/use-sequences';
@@ -10,7 +12,8 @@ import { createFileRoute, notFound, Outlet } from '@tanstack/react-router';
 
 function SequenceCrumbLabel({ id }: { id: string }) {
   const { data } = useSequence(id);
-  return <>{data?.title ?? '…'}</>;
+  const title = data?.title ?? '…';
+  return <span title={title}>{title}</span>;
 }
 
 export const Route = createFileRoute('/_app/sequences/$id')({
@@ -55,7 +58,29 @@ function SequenceLayout() {
   return (
     <div className="flex h-full flex-col">
       <div className="mx-auto w-full max-w-[1920px] shrink-0 space-y-1 px-6 pt-4">
-        <h1 className="sr-only">{sequence?.title ?? 'Sequence'}</h1>
+        {/* Title made visible (#1108 Phase 4) so rename has a surface — the
+            breadcrumb crumb is always a Link here, which can't host a button. */}
+        <div className="flex min-w-0 items-center gap-1">
+          <h1 className="truncate text-sm font-medium">
+            {sequence?.title ?? 'Sequence'}
+          </h1>
+          {sequence && (
+            <RenameSequenceButton
+              sequenceId={sequenceId}
+              title={sequence.title}
+            />
+          )}
+          {/* Generation progress portals in here (#1427). The row is already
+              this tall with just the title in it, so progress costs no layout
+              shift and sits over nothing. `@container` so the chip can size
+              its label against the space it actually has, which requires the
+              slot be `flex-1` — a container sized by its own content could
+              never satisfy the query. */}
+          <div
+            id={SEQUENCE_HEADER_SLOT_ID}
+            className="@container flex min-w-0 flex-1 items-center justify-end pl-2"
+          />
+        </div>
         {/* No Script | Scenes tab strip — those are lifecycle destinations,
             not peer pages. Pre-analysis lives at /script; analysed work at
             /scenes with script as a canvas view toggle (#1037 / #1072). */}

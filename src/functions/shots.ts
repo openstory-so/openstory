@@ -1,3 +1,8 @@
+import { usesStartFrame } from '@/lib/shots/use-start-frame';
+import { canRenderReferenceOnly } from '@/lib/motion/motion-generation';
+import { resolveVideoModel } from '@/lib/ai/resolve-asset-models';
+import { toWorkflowScopedDb } from '@/lib/db/scoped-workflow';
+import { REFERENCE_ONLY_MODEL_ERROR } from '@/lib/schemas/sequence.schemas';
 import { DEFAULT_IMAGE_MODEL, safeTextToImageModel } from '@/lib/ai/models';
 import { getEffectiveFalPricing } from '@/lib/ai/fal-pricing-live';
 import { estimateImageCost, gateEstimate } from '@/lib/billing/cost-estimation';
@@ -35,6 +40,7 @@ import {
   updateShotSchema,
 } from '@/lib/schemas/shot.schemas';
 import { dbSceneId } from '@/lib/db/schema';
+import { NotFoundError } from '@/lib/errors';
 import { ulidSchema } from '@/lib/schemas/id.schemas';
 import { typedFromEntries } from '@/lib/utils/typed-object';
 import {
@@ -387,11 +393,44 @@ export const getSequenceSelectedModelsFn = createServerFn({ method: 'GET' })
     };
   });
 
+/** Live shot may only land in a live scene of this sequence. Exported for tests. */
+export function requireWritableScene(
+  scene: { sequenceId: string; deletedAt: Date | null } | null,
+  sequenceId: string
+): void {
+  if (!scene || scene.sequenceId !== sequenceId || scene.deletedAt !== null) {
+    throw new NotFoundError('Scene not found in this sequence');
+  }
+}
+
 export const createShotFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
   .validator(zodValidator(singleShotSchema.extend({ sequenceId: ulidSchema })))
   .handler(async ({ data, context }) => {
-    return context.scopedDb.shots.create(data);
+    if (data.sceneId) {
+      const scene = await context.scopedDb.scenes.getById(
+        dbSceneId(data.sceneId)
+      );
+      requireWritableScene(scene, context.sequence.id);
+    }
+    // Auto-number within the scene when the caller didn't pick a slot (#1108):
+    // max over ALL rows (deleted keep their slots) + 1, so a manual add never
+    // collides with the `(sceneId, shotNumber)` unique index.
+    const shotNumber =
+      data.shotNumber ??
+      (data.sceneId
+        ? (await context.scopedDb.shots.getMaxShotNumber(data.sceneId)) + 1
+        : null);
+    const shot = await context.scopedDb.shots.create({ ...data, shotNumber });
+    await context.scopedDb.sequenceEvents.record({
+      sequenceId: data.sequenceId,
+      actorId: context.user.id,
+      kind: 'shot.created',
+      targetType: 'shot',
+      targetId: shot.id,
+      data: { sceneId: shot.sceneId ?? null, shotNumber: shot.shotNumber },
+    });
+    return shot;
   });
 
 export const createShotsBulkFn = createServerFn({ method: 'POST' })
@@ -505,6 +544,7 @@ export const updateShotFn = createServerFn({ method: 'POST' })
         dialogue: selectedMotion?.dialogue ?? null,
         audio: selectedMotion?.audio ?? null,
         source: 'user-edit',
+        usesStartFrame: usesStartFrame(context.shot, context.sequence),
         inputHash: null,
         analysisModel: null,
         createdBy: context.user.id,
@@ -512,6 +552,61 @@ export const updateShotFn = createServerFn({ method: 'POST' })
     }
 
     return context.scopedDb.shots.update(shotId, shotUpdate);
+  });
+
+const setShotUseStartFrameSchema = z.object({
+  sequenceId: ulidSchema,
+  shotId: ulidSchema,
+  /** null clears the override and returns the shot to the sequence default. */
+  useStartFrame: z.boolean().nullable(),
+});
+
+/**
+ * Set the per-shot start-frame override. Resolution and cost of a flip:
+ * `usesStartFrame()`.
+ *
+ * Both directions are gated, because either can persist a shot that cannot
+ * render: ON needs an existing still (a checkbox must never start image
+ * generation and spend money), OFF needs a model with a route whose start
+ * frame is optional. Ungated, one unrenderable shot rejected the whole
+ * sequence's "Generate all motion", naming a sequence flag that was not set.
+ */
+export const setShotUseStartFrameFn = createServerFn({ method: 'POST' })
+  .middleware([shotAccessMiddleware])
+  .validator(zodValidator(setShotUseStartFrameSchema))
+  .handler(async ({ data, context }) => {
+    const { shot, frame, sequence, scopedDb } = context;
+    if (data.useStartFrame === true) {
+      const still = await scopedDb.frameVariants.getSelected(frame.id);
+      if (!still?.url) {
+        throw new ValidationError(
+          'This shot has no start frame yet. Generate one first.'
+        );
+      }
+    }
+    if (!usesStartFrame({ useStartFrame: data.useStartFrame }, sequence)) {
+      // Same via-aware question the render path asks, so the checkbox cannot
+      // accept a state the Generate button then refuses.
+      const selectedVersion = await scopedDb.videoVariants.getSelectedByShot(
+        shot.id
+      );
+      const model = resolveVideoModel({
+        selectedVersionModel: selectedVersion?.model,
+        sequenceModel: sequence.videoModel,
+      });
+      if (
+        !(await canRenderReferenceOnly(
+          model,
+          toWorkflowScopedDb(scopedDb).credentials
+        ))
+      ) {
+        throw new ValidationError(REFERENCE_ONLY_MODEL_ERROR);
+      }
+    }
+    const updated = await scopedDb.shots.update(shot.id, {
+      useStartFrame: data.useStartFrame,
+    });
+    return updated ?? shot;
   });
 
 const updateShotDurationSchema = z.object({
@@ -543,12 +638,67 @@ export const updateShotDurationFn = createServerFn({ method: 'POST' })
     return updated ?? shot;
   });
 
+/**
+ * Product delete is a SOFT delete since #1108 — the shot vanishes from the
+ * editor/plans/export but keeps its frames, versions and hashes for a
+ * lossless `restoreShotFn` (toast Undo). The hard scoped `delete` remains for
+ * the storyboard wipe and admin/GC.
+ */
 export const deleteShotFn = createServerFn({ method: 'POST' })
   .middleware([shotAccessMiddleware])
   .validator(zodValidator(shotIdInputSchema))
   .handler(async ({ data, context }) => {
-    await context.scopedDb.shots.delete(data.shotId);
-    return { success: true, sequenceId: data.sequenceId };
+    const deletedAt = await context.scopedDb.shots.softDelete(data.shotId, {
+      actorId: context.user.id,
+    });
+    return { success: true, sequenceId: data.sequenceId, deletedAt };
+  });
+
+/** Undo a shot soft-delete. Refuses while the parent scene is deleted. */
+export const restoreShotFn = createServerFn({ method: 'POST' })
+  .middleware([sequenceAccessMiddleware])
+  .validator(
+    zodValidator(z.object({ sequenceId: ulidSchema, shotId: ulidSchema }))
+  )
+  .handler(async ({ data, context }) => {
+    // sequenceAccessMiddleware (not shotAccessMiddleware): the shot-scoped
+    // middleware resolves scene context a hidden shot doesn't need, and this
+    // must work on exactly the rows the default reads hide.
+    const shot = await context.scopedDb.shots.getById(data.shotId);
+    if (!shot || shot.sequenceId !== context.sequence.id) {
+      throw new NotFoundError('Shot not found in this sequence');
+    }
+    return await context.scopedDb.shots.restore(data.shotId, {
+      actorId: context.user.id,
+    });
+  });
+
+/**
+ * Reorder the live shots of one scene; a pure reorder changes no content
+ * hash (position left the prompt-hash surface in v5).
+ */
+export const reorderShotsFn = createServerFn({ method: 'POST' })
+  .middleware([sequenceAccessMiddleware])
+  .validator(
+    zodValidator(
+      z.object({
+        sequenceId: ulidSchema,
+        sceneId: ulidSchema,
+        shotIds: z.array(ulidSchema).min(1),
+      })
+    )
+  )
+  .handler(async ({ data, context }) => {
+    const scene = await context.scopedDb.scenes.getById(
+      dbSceneId(data.sceneId)
+    );
+    if (!scene || scene.sequenceId !== context.sequence.id) {
+      throw new NotFoundError('Scene not found in this sequence');
+    }
+    await context.scopedDb.shots.reorderInScene(data.sceneId, data.shotIds, {
+      actorId: context.user.id,
+    });
+    return { success: true };
   });
 
 export const deleteShotsBySequenceFn = createServerFn({ method: 'POST' })
@@ -750,6 +900,7 @@ export const updateStaleShotsFn = createServerFn({ method: 'POST' })
         gateEstimate(
           estimateImageCost(model, sequence.aspectRatio, 1, {
             pricing: await getEffectiveFalPricing(),
+            resolution: sequence.resolution,
           }),
           { model, operation: 'update-stale-shots' }
         ),

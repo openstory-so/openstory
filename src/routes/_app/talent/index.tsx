@@ -3,8 +3,7 @@ import { AddTalentDialog } from '@/components/talent-library/add-talent-dialog';
 import { TalentLibraryFilters } from '@/components/talent-library/talent-library-filters';
 import { TalentLibraryList } from '@/components/talent-library/talent-library-list';
 import { PageContainer } from '@/components/layout/page-container';
-import { PageDescription } from '@/components/typography/page-description';
-import { PageHeader } from '@/components/typography/page-header';
+import { PageIntro } from '@/components/typography/page-intro';
 import { EmptyState } from '@/components/ui/empty-state';
 import { useTalent } from '@/hooks/use-talent';
 import { createFileRoute } from '@tanstack/react-router';
@@ -42,16 +41,12 @@ function TalentPage() {
 
   return (
     <div className="h-full overflow-auto">
-      <PageContainer>
-        <h1 className="sr-only">Talent Library</h1>
-        <PageHeader actions={addAction}>
-          <PageDescription>
-            {isAuthenticated
-              ? "Manage your team's talent library for consistent AI-generated content."
-              : 'Browse system talent. Sign in to add your own and keep characters consistent across sequences.'}
-          </PageDescription>
-        </PageHeader>
-
+      <PageIntro title="Talent Library" actions={addAction}>
+        {isAuthenticated
+          ? "Manage your team's talent library for consistent AI-generated content."
+          : 'Browse system talent. Sign in to add your own and keep characters consistent across sequences.'}
+      </PageIntro>
+      <PageContainer padding="none" className="pb-8">
         {isAuthenticated && <TalentLibraryFilters currentFilter={filter} />}
 
         {!isLoading && talent && talent.length === 0 ? (

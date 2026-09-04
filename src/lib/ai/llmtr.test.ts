@@ -13,6 +13,7 @@ import {
   LLMTR_BASE_URL,
   LLMTR_ONLY_MODEL_IDS,
   LLMTR_TEXT_MODELS,
+  LLMTR_UNMAPPED_MODEL_IDS,
   llmtrTextCostFromUsage,
   llmtrTextModel,
 } from './llmtr';
@@ -29,7 +30,7 @@ const usage = (promptTokens: number, completionTokens: number) => ({
 describe('llmtrTextModel', () => {
   it('translates the vendor prefixes LLMTR spells differently', () => {
     expect(llmtrTextModel('x-ai/grok-4.6')).toBe('xai/grok-4.6');
-    expect(llmtrTextModel('z-ai/glm-5.2')).toBe('zai/glm-5.2');
+    expect(llmtrTextModel('z-ai/glm-5.3-flash')).toBe('zai/glm-5.3-flash');
     expect(llmtrTextModel('mistralai/mistral-small-2603')).toBe(
       'mistral/mistral-small-latest'
     );
@@ -57,10 +58,18 @@ describe('llmtrTextModel', () => {
     expect(llmtrTextModel('')).toBeUndefined();
   });
 
-  it('only maps ids the registry actually declares', () => {
-    const registryIds = new Set<string>(
-      SCRIPT_ANALYSIS_MODELS.map((model) => model.id)
+  it('covers every registry id as mapped or explicitly unmapped', () => {
+    const registryIds = SCRIPT_ANALYSIS_MODELS.map((model) => model.id);
+    const mapped = new Set<string>(
+      typedEntries(LLMTR_TEXT_MODELS).map(([id]) => id)
     );
+    const unmapped = new Set<string>(LLMTR_UNMAPPED_MODEL_IDS);
+    for (const id of registryIds) {
+      expect(
+        mapped.has(id) || unmapped.has(id),
+        `${id} is neither in LLMTR_TEXT_MODELS nor LLMTR_UNMAPPED_MODEL_IDS`
+      ).toBe(true);
+    }
     for (const [id] of typedEntries(LLMTR_TEXT_MODELS)) {
       expect(registryIds).toContain(id);
     }

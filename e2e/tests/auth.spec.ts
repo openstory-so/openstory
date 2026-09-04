@@ -36,7 +36,9 @@ baseTest.describe('Route Protection', () => {
       await waitForScriptEditor(page);
       const editor = page.locator('[data-slot="markdown-editor"]');
       await expect(
-        page.getByText('Paste a screenplay, or a one-liner we can expand.')
+        page.getByText(
+          'Paste a screenplay, or a one-liner we can expand - not a prompt.'
+        )
       ).toBeVisible();
       const height = await editor.evaluate(
         (el) => el.getBoundingClientRect().height
@@ -55,6 +57,62 @@ baseTest.describe('Route Protection', () => {
       await expect(page).toHaveURL(/\/sequences/);
       await expect(page).not.toHaveURL(/\/login/);
       await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();
+    }
+  );
+
+  baseTest(
+    'anonymous visitor can open Images without being redirected',
+    async ({ page }) => {
+      await page.goto('/images');
+      await expect(page).toHaveURL(/\/images/);
+      await expect(page).not.toHaveURL(/\/login/);
+      await expect(
+        page.locator('[data-testid="studio-prompt"] .ProseMirror')
+      ).toBeVisible({ timeout: 15_000 });
+    }
+  );
+
+  baseTest(
+    'anonymous image generate is intercepted by the login dialog',
+    async ({ page }) => {
+      await page.goto('/images');
+      await fillScriptEditor(page, 'A red fox in fog at dawn');
+      await page.getByRole('button', { name: 'Generate image' }).click();
+      const dialog = page.getByRole('dialog', { name: 'Sign in to continue' });
+      await expect(dialog).toBeVisible();
+      await expect(page).toHaveURL(/\/images/);
+    }
+  );
+
+  baseTest(
+    'anonymous empty-prompt generate opens the login dialog (#1393)',
+    async ({ page }) => {
+      await page.goto('/images');
+      await waitForScriptEditor(page);
+      const generate = page.getByRole('button', { name: 'Generate image' });
+      await expect(generate).toBeEnabled();
+      await generate.click();
+      await expect(
+        page.getByRole('dialog', { name: 'Sign in to continue' })
+      ).toBeVisible();
+    }
+  );
+
+  baseTest(
+    'anonymous empty-script generate opens the login dialog (#1393)',
+    async ({ page }) => {
+      await page.goto('/');
+      await waitForScriptEditor(page);
+      const generate = page.getByRole('button', {
+        name: 'Generate',
+        exact: true,
+      });
+      await expect(generate).toBeEnabled();
+      await generate.click();
+      await expect(
+        page.getByRole('dialog', { name: 'Sign in to continue' })
+      ).toBeVisible();
+      await expect(page).toHaveURL('/');
     }
   );
 
@@ -83,6 +141,29 @@ baseTest.describe('Route Protection', () => {
       await expect(dialog).toBeVisible();
       await expect(dialog.getByLabel('Email')).toBeVisible();
       await expect(page).toHaveURL('/');
+    }
+  );
+
+  baseTest(
+    'anonymous enhance is intercepted by the login dialog and keeps intent',
+    async ({ page }) => {
+      await page.goto('/');
+      await fillScriptEditor(
+        page,
+        'INT. KITCHEN - DAY\n\nA cat knocks a glass off the counter.'
+      );
+
+      await page.getByRole('button', { name: /Enhance Script/i }).click();
+      await expect(page.getByText('Target video duration')).toBeVisible();
+      await page.getByRole('button', { name: 'Enhance', exact: true }).click();
+
+      const dialog = page.getByRole('dialog', { name: 'Sign in to continue' });
+      await expect(dialog).toBeVisible();
+      await expect(page).toHaveURL('/');
+      const pending = await page.evaluate(() =>
+        localStorage.getItem('openstory:pending-generate')
+      );
+      expect(pending).toMatch(/^enhance:/);
     }
   );
 

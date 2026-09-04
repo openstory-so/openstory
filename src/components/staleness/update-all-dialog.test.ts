@@ -1,6 +1,11 @@
 import type { ShotStaleness } from '@/hooks/use-shot-staleness';
 import { describe, expect, it } from 'vitest';
-import { describeCauses, previewLevels, shotsLabel } from './update-all-dialog';
+import {
+  describeCauses,
+  levelsFromStaleShots,
+  previewLevels,
+  shotsLabel,
+} from './update-all-dialog';
 
 const shot = (causes: string[]): ShotStaleness => ({
   thumbnail: 'stale',
@@ -35,6 +40,43 @@ describe('shotsLabel', () => {
   });
   it('falls back to a count without numbering', () => {
     expect(shotsLabel(['x', 'y'], undefined, false)).toBe('2 shots');
+  });
+});
+
+describe('levelsFromStaleShots', () => {
+  it('shows prompts + images from client staleness so checkboxes render before the preview (#1432)', () => {
+    expect(
+      levelsFromStaleShots([
+        {
+          thumbnail: 'stale',
+          visualPrompt: 'stale',
+          motionPrompt: 'fresh',
+          causes: ['Script'],
+        },
+      ])
+    ).toEqual([
+      { depth: 'prompts', label: 'Prompts' },
+      { depth: 'images', label: 'Images' },
+    ]);
+  });
+
+  it('shows images only when the still is stale and prompts are fresh', () => {
+    expect(levelsFromStaleShots([shot(['Character "Woman"'])])).toEqual([
+      { depth: 'images', label: 'Images' },
+    ]);
+  });
+
+  it('shows prompts only when motion is stale and the still is not', () => {
+    expect(
+      levelsFromStaleShots([
+        {
+          thumbnail: 'fresh',
+          visualPrompt: 'fresh',
+          motionPrompt: 'stale',
+          causes: ['Script'],
+        },
+      ])
+    ).toEqual([{ depth: 'prompts', label: 'Prompts' }]);
   });
 });
 

@@ -11,7 +11,12 @@
  * materialised per shot at spawn time.
  */
 
-import { computeMusicPromptInputHash } from '@/lib/ai/input-hash';
+import {
+  rendersReferenceOnly,
+  usesStartFrame,
+  type StartFrameSequence,
+} from '@/lib/shots/use-start-frame';
+import { musicPromptInputHashMatches } from '@/lib/ai/input-hash';
 import {
   DEFAULT_ANALYSIS_MODEL,
   getAnalysisModelById,
@@ -30,6 +35,7 @@ import type {
   Scene,
 } from '@/lib/ai/scene-analysis.schema';
 import type { AspectRatio } from '@/lib/constants/aspect-ratios';
+import type { Resolution } from '@/lib/constants/resolutions';
 import type {
   Frame,
   FramePromptVersion,
@@ -81,6 +87,13 @@ export type PlanTarget = {
   afterShotId: string | null;
   /** Frame image URL at plan time; image stage may produce a newer one later. */
   startingFrameImageUrl: string | null;
+  /**
+   * Does THIS shot animate from its still? Snapshotted per target rather than
+   * read off `plan.sequence`, because a shot can override the sequence
+   * (`shots.useStartFrame`). Frozen at click time like every other pointer
+   * here — a mid-run toggle must not send half the run down each route.
+   */
+  usesStartFrame: boolean;
   /** Clip length, snapped to the model at render time. */
   durationMs: number | null;
   /**
@@ -194,10 +207,18 @@ type PlanSequence = {
   teamId: string;
   title: string;
   aspectRatio: AspectRatio;
+  resolution: Resolution;
   imageModel: string;
   videoModel: string;
   styleId: string | null;
   analysisModel: string;
+  /**
+   * Reference-only mode, pinned with the rest of the plan: an update-stale run
+   * regenerates prompts, and the mode selects which motion-prompt template
+   * writes them. Re-reading it per stage would let a mid-run toggle produce a
+   * sequence with half its prompts in each style.
+   */
+  generateStartFrames: boolean;
 };
 
 type PlanPromptContext = {
@@ -210,6 +231,7 @@ type PlanPromptContext = {
 
 export type UpdateStalePlan = {
   aspectRatio: AspectRatio;
+  resolution: Resolution;
   sequence: PlanSequence;
   /** Non-null only at depth 'music'. */
   music: MusicPlan | null;
@@ -218,16 +240,43 @@ export type UpdateStalePlan = {
   skipped: SkippedShot[];
 };
 
+/**
+ * The first target whose `usesStartFrame` did not survive the payload round
+ * trip, or `null` when the plan is intact.
+ *
+ * `usesStartFrame` is typed required, but a plan frozen by a build that
+ * predates it replays out of the durable payload without the key — and
+ * `!undefined` is `true`, which every read site takes to mean "render this
+ * shot reference-only". That failure is silent AND expensive: on a model with
+ * a reference-to-video route the run SUCCEEDS, rewriting every motion prompt
+ * with the reference-only template and re-rendering every clip with no start
+ * frame, billed, with nothing in the logs.
+ *
+ * So the value is demanded rather than defaulted. Inferring `!referenceOnly`
+ * here would be a guess about a shot that may have overridden the sequence,
+ * and a wrong guess spends money; a rejected run costs one click.
+ */
+export function findTargetMissingStartFrameMode(
+  plan: Pick<UpdateStalePlan, 'targets'>
+): PlanTarget | null {
+  return (
+    plan.targets.find((target) => typeof target.usesStartFrame !== 'boolean') ??
+    null
+  );
+}
+
 function toPlanSequence(sequence: Sequence): PlanSequence {
   return {
     id: sequence.id,
     teamId: sequence.teamId,
     title: sequence.title,
     aspectRatio: sequence.aspectRatio,
+    resolution: sequence.resolution,
     imageModel: sequence.imageModel,
     videoModel: sequence.videoModel,
     styleId: sequence.styleId,
     analysisModel: sequence.analysisModel,
+    generateStartFrames: sequence.generateStartFrames,
   };
 }
 
@@ -273,6 +322,7 @@ export async function computePlan(args: {
 
   const empty: UpdateStalePlan = {
     aspectRatio: sequence.aspectRatio,
+    resolution: sequence.resolution,
     sequence: toPlanSequence(sequence),
     music,
     promptContext: null,
@@ -282,7 +332,7 @@ export async function computePlan(args: {
   if (inScope.length === 0) return empty;
 
   const videoStateByShot = depthIncludes(depth, 'video')
-    ? await loadVideoStateByShot(scopedDb, sequenceId, allShots)
+    ? await loadVideoStateByShot(scopedDb, sequenceId, allShots, sequence)
     : new Map<string, ShotVideoState>();
 
   await scopedDb.shots.ensureAnchorFrames(inScope);
@@ -354,15 +404,18 @@ export async function computePlan(args: {
     return { ...empty, skipped };
   }
 
-  // Sequence-wide bibles + style — same loader as single-shot regen.
+  // Sequence-wide bibles + style — same loader as single-shot regen. Only
+  // the bibles are read off this context, so the sequence default stands in
+  // for the per-shot mode (which is frozen per target as `usesStartFrame`).
   const ctx = await loadShotPromptContext({
     scopedDb,
-    sequence,
+    sequence: { ...sequence, referenceOnly: !sequence.generateStartFrames },
     scene: sceneForBibles,
   });
 
   return {
     aspectRatio: sequence.aspectRatio,
+    resolution: sequence.resolution,
     sequence: toPlanSequence(sequence),
     music,
     promptContext: {
@@ -421,7 +474,8 @@ type ShotVideoState = {
 async function loadVideoStateByShot(
   scopedDb: ScopedDb,
   sequenceId: string,
-  allShots: Shot[]
+  allShots: Shot[],
+  sequence: StartFrameSequence
 ): Promise<Map<string, ShotVideoState>> {
   const [segments, versions, allFrames] = await Promise.all([
     scopedDb.renderSegments.listBySequence(sequenceId),
@@ -431,7 +485,12 @@ async function loadVideoStateByShot(
   const assembled = assembleSequenceSegments({
     segments,
     versions,
-    shots: allShots,
+    // Per shot, not per sequence — staleness compares against what each clip
+    // actually rendered from, and a shot can override the sequence default.
+    shots: allShots.map((shot) => ({
+      ...shot,
+      rendersReferenceOnly: rendersReferenceOnly(shot, sequence),
+    })),
     frames: allFrames,
   });
 
@@ -526,7 +585,14 @@ async function decideShotTarget(args: {
     };
   }
 
-  const flags = cascadeFlags({ staleness, selectedImage, depth, videoState });
+  const shotUsesStartFrame = usesStartFrame(shot, sequence);
+  const flags = cascadeFlags({
+    staleness,
+    selectedImage,
+    depth,
+    videoState,
+    usesStartFrame: shotUsesStartFrame,
+  });
   if (
     !flags.regenVisual &&
     !flags.regenMotion &&
@@ -547,6 +613,7 @@ async function decideShotTarget(args: {
       afterShotId:
         flags.regenMotion && idx >= 0 ? (allShots[idx + 1]?.id ?? null) : null,
       startingFrameImageUrl: selectedImage?.url ?? null,
+      usesStartFrame: usesStartFrame(shot, sequence),
       durationMs: shot.durationMs,
       standingImageVariantId: selectedImage?.id ?? null,
       standingMotionVersionId: selectedMotionVersionId,
@@ -587,13 +654,15 @@ function cascadeFlags(args: {
   selectedImage: Pick<FrameVariant, 'url'> | null;
   depth: UpdateStaleDepth;
   videoState: ShotVideoState | undefined;
+  /** Resolved per shot — a reference-only clip never reads its still. */
+  usesStartFrame: boolean;
 }): {
   regenVisual: boolean;
   regenMotion: boolean;
   regenImage: boolean;
   regenVideo: boolean;
 } {
-  const { staleness, selectedImage, depth, videoState } = args;
+  const { staleness, selectedImage, depth, videoState, usesStartFrame } = args;
 
   // 'stale' only — 'updating' is a live claim already fixing this artifact.
   const regenVisual = staleness.visualPrompt === 'stale';
@@ -601,8 +670,11 @@ function cascadeFlags(args: {
 
   // Depth ≥ images: re-render stills that are stale, or whose visual prompt
   // regenerates in this run (would read stale the moment the prompt lands).
-  // Depth 'prompts' renders nothing. Never a FIRST still.
+  // Depth 'prompts' renders nothing. Never a FIRST still. Never on a
+  // reference-only shot: its clip renders from the sheets, so a re-rendered
+  // still is billed and then ignored — and would cascade into the clip too.
   const regenImage =
+    usesStartFrame &&
     depthIncludes(depth, 'images') &&
     !!selectedImage?.url &&
     (staleness.thumbnail === 'stale' || regenVisual);
@@ -674,11 +746,10 @@ async function computeMusicPlan(
       sequence.id
     );
     const analysisModel = latest?.analysisModel ?? analysisModelId;
-    const liveHash = await computeMusicPromptInputHash({
-      sceneSummaries,
-      analysisModel,
-    });
-    const regenPrompt = liveHash !== sequence.musicPromptInputHash;
+    const regenPrompt = !(await musicPromptInputHashMatches(
+      sequence.musicPromptInputHash,
+      { sceneSummaries, analysisModel }
+    ));
     return {
       regenPrompt,
       // Cascade-only: track follows its prompt. No track-level staleness today.
@@ -796,6 +867,7 @@ async function claimShotArtifacts(args: {
         scopedDb.shotPromptVersions.createPending({
           shotId: target.shotId,
           pendingInputHash: motionLiveHash,
+          usesStartFrame: target.usesStartFrame,
           workflowRunId: parentInstanceId,
         }),
     });

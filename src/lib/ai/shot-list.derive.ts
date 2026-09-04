@@ -76,10 +76,7 @@ function deriveVisualPrompt(
     ...sceneParts,
   ]);
 
-  return {
-    fullPrompt,
-    negativePrompt: '',
-  };
+  return { fullPrompt };
 }
 
 /**
@@ -112,10 +109,10 @@ export function deriveMotionPrompt(
           presence: true,
           lines: scene.originalScript.dialogue,
         }
-      : null,
+      : { presence: false, lines: [] },
     audio: soundCue.trim().length
       ? { ambientSound: soundCue, soundEffects: [] }
-      : null,
+      : { ambientSound: '', soundEffects: [] },
   };
 }
 

@@ -2,6 +2,15 @@
 @plugin '@tailwindcss/typography';
 @import 'tw-animate-css';
 @import '@videojs/react/video/minimal-skin.css';
+
+/* Video.js icon controls (play/mute/fullscreen) are ~38px; mobile hit target is 44. */
+@media (max-width: 767px) {
+  .media-minimal-skin .media-button--icon {
+    width: 44px;
+    height: 44px;
+    min-height: 44px;
+  }
+}
 @import 'tw-animate-css';
 @import 'shadcn/tailwind.css';
 @import '@fontsource-variable/geist';
@@ -208,6 +217,31 @@ body {
   }
 }
 
+@keyframes progress-shimmer {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+
+/* A light sweep across an in-flight progress chip, so it reads as busy at
+   a glance. Static under reduced motion — the spinner is already still. */
+.progress-shimmer::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 30%,
+    color-mix(in oklch, var(--primary) 22%, transparent) 50%,
+    transparent 70%
+  );
+  animation: progress-shimmer 2.4s ease-in-out infinite;
+  pointer-events: none;
+}
+
 @keyframes marquee {
   0% {
     transform: translateX(0);
@@ -323,6 +357,9 @@ body {
 
 /* Reduced motion: simple fade pulse */
 @media (prefers-reduced-motion: reduce) {
+  .progress-shimmer::after {
+    animation: none;
+  }
   @keyframes balance-flash-in {
     from {
       opacity: 0;

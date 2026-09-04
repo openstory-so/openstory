@@ -7,6 +7,7 @@
  * Continuity tags are assigned later from bibles ∩ slice.
  */
 
+import { plainSceneTitle } from '@/lib/utils/markdown-plain';
 import type {
   Continuity,
   DialogueLine,
@@ -47,27 +48,31 @@ export function parseSceneHeading(firstLine: string): SceneHeading {
   if (trimmed.length === 0) {
     return { title: '', location: '', timeOfDay: '' };
   }
+  // Scripts are authored in a markdown editor; strip sigils before matching
+  // INT./EXT. so `**INT. OFFICE - DAY**` parses as a real slugline.
+  const heading = plainSceneTitle(trimmed) || trimmed;
 
-  const timeMatch = trimmed.match(TIME_SUFFIX);
+  const timeMatch = heading.match(TIME_SUFFIX);
   const timeOfDay = [timeMatch?.[1]?.trim(), timeMatch?.[2]]
     .filter((part): part is string => Boolean(part))
     .join(' ')
     .toLowerCase();
-  const isHeading = SCENE_HEADING_PREFIX.test(trimmed) || timeMatch !== null;
+  const isHeading = SCENE_HEADING_PREFIX.test(heading) || timeMatch !== null;
 
   if (!isHeading) {
-    const title = trimmed.length > 50 ? `${trimmed.slice(0, 47)}...` : trimmed;
-    return { title, location: '', timeOfDay: '' };
+    const fallback =
+      heading.length > 50 ? `${heading.slice(0, 47)}...` : heading;
+    return { title: fallback, location: '', timeOfDay: '' };
   }
 
-  const withoutPrefix = trimmed.replace(
+  const withoutPrefix = heading.replace(
     /^(?:INT\.|EXT\.|INT\/EXT\.|I\/E\.)\s*/i,
     ''
   );
   const core = withoutPrefix.replace(TIME_SUFFIX, '').trim();
   return {
-    title: core || trimmed,
-    location: trimmed,
+    title: core || heading,
+    location: heading,
     timeOfDay,
   };
 }

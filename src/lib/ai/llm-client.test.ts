@@ -24,13 +24,14 @@ vi.doMock('@tanstack/ai', () => ({
   chat: mockChat,
 }));
 
-// Mock create-adapter to avoid real adapter creation. `resolveNativeGrokModel`
-// returns undefined so these tests exercise the OpenRouter request shape;
-// native xAI routing has its own coverage in create-adapter.test.ts.
+// Mock create-adapter to avoid real adapter creation. The native resolvers
+// return undefined so these tests exercise the OpenRouter request shape;
+// native xAI/Google routing has its own coverage in create-adapter.test.ts.
 const mockCreateAdapter = vi.fn(() => ({ kind: 'text', name: 'mock' }));
 vi.doMock('./create-adapter', () => ({
   createAdapter: mockCreateAdapter,
   resolveNativeGrokModel: () => undefined,
+  resolveNativeGeminiModel: () => undefined,
 }));
 
 // Mock the PostHog OTel middleware factory — observability hints are
@@ -54,8 +55,10 @@ const {
   llmCostFromUsage,
   preferUsage,
   RECOMMENDED_MODELS,
+  toGeminiThinkingLevel,
 } = await import('./llm-client');
-const { DEFAULT_VISION_MODEL } = await import('./models.config');
+const { DEFAULT_ANALYSIS_MODEL, DEFAULT_VISION_MODEL } =
+  await import('./models.config');
 
 const usage = (cost?: number): TokenUsage => ({
   promptTokens: 0,
@@ -356,6 +359,47 @@ describe('llm-client', () => {
       );
     });
 
+    it('retries DeepSeek rejecting image input with the vision fallback (#1323)', async () => {
+      mockChat
+        .mockReturnValueOnce(
+          (async function* () {
+            yield {
+              type: 'RUN_ERROR',
+              message: 'No endpoints found that support image input',
+              model: 'deepseek/deepseek-v4-pro-0813',
+            };
+          })()
+        )
+        .mockReturnValueOnce(
+          (async function* () {
+            yield { type: 'TEXT_MESSAGE_CONTENT', delta: 'vision answer' };
+          })()
+        );
+
+      const result = await callLLM({
+        model: 'deepseek/deepseek-v4-pro-0813',
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', content: 'describe' },
+              {
+                type: 'image',
+                source: { type: 'url', value: 'https://cdn/el.png' },
+              },
+            ],
+          },
+        ],
+      });
+
+      expect(result).toBe('vision answer');
+      expect(mockCreateAdapter).toHaveBeenNthCalledWith(
+        2,
+        'mistralai/mistral-small-2603',
+        undefined
+      );
+    });
+
     it('does not retry a region block after content was already yielded', async () => {
       mockChat.mockReturnValueOnce(
         (async function* () {
@@ -630,6 +674,7 @@ describe('llm-client', () => {
       // together on a model bump; this catches a bump that misses one.
       const lockstepModels = [
         ...new Set([
+          DEFAULT_ANALYSIS_MODEL,
           DEFAULT_VISION_MODEL,
           ...Object.values(RECOMMENDED_MODELS),
         ]),
@@ -662,24 +707,26 @@ describe('llm-client', () => {
           yield { type: 'TEXT_MESSAGE_CONTENT', delta: 'hi' };
         })();
 
-      it('keeps Anthropic models off Azure by default', async () => {
-        // Azure-hosted Claude rejects our analysis schemas ("compiled grammar
-        // is too large"); Anthropic's own endpoint accepts them.
+      it("pins Anthropic models to Anthropic's own endpoint", async () => {
+        // Vertex advertises response_format without structured_outputs (#1285);
+        // Azure's grammar is too small. Pinning with `only` is what actually
+        // excludes them — requireParameters does not, and with Vertex off at
+        // the account it emptied the candidate set (#1302).
         mockChat.mockReturnValue(textStream());
 
         await drain(
           callLLMStream({
-            model: 'anthropic/claude-fable-5',
+            model: 'anthropic/claude-opus-5',
             messages: [{ role: 'user', content: 'test' }],
           })
         );
 
         expect(mockChat.mock.calls[0]?.[0]?.modelOptions.provider).toEqual({
-          ignore: ['azure'],
+          only: ['anthropic'],
         });
       });
 
-      it('leaves non-Anthropic models unrestricted', async () => {
+      it('only requires parameter support for non-Anthropic, non-OpenAI models', async () => {
         mockChat.mockReturnValue(textStream());
 
         await drain(
@@ -689,24 +736,91 @@ describe('llm-client', () => {
           })
         );
 
-        expect(
-          mockChat.mock.calls[0]?.[0]?.modelOptions.provider
-        ).toBeUndefined();
+        expect(mockChat.mock.calls[0]?.[0]?.modelOptions.provider).toEqual({
+          requireParameters: true,
+        });
       });
 
-      it('caller-supplied provider preferences win', async () => {
+      it("pins OpenAI models to OpenAI's own endpoint", async () => {
+        // Azure GPT-5 hosts advertise max_completion_tokens; native OpenAI
+        // advertises max_tokens. Pinning avoids the #1302 empty-candidate
+        // trap until the native OpenAI via (#1168) ships.
+        mockChat.mockReturnValue(textStream());
+
+        await drain(
+          callLLMStream({
+            model: 'openai/gpt-5.6-luna',
+            messages: [{ role: 'user', content: 'test' }],
+          })
+        );
+
+        expect(mockChat.mock.calls[0]?.[0]?.modelOptions.provider).toEqual({
+          only: ['openai'],
+        });
+      });
+
+      it('drops temperature for GPT-5 chat models that advertise no sampling params', async () => {
+        mockChat.mockReturnValue(textStream());
+
+        await drain(
+          callLLMStream({
+            model: 'openai/gpt-5.6-luna',
+            messages: [{ role: 'user', content: 'test' }],
+            temperature: 0.7,
+          })
+        );
+
+        const options = mockChat.mock.calls[0]?.[0]?.modelOptions;
+        expect(options.temperature).toBeUndefined();
+        expect(options.topP).toBeUndefined();
+      });
+
+      it('keeps temperature for models that support classic sampling', async () => {
         mockChat.mockReturnValue(textStream());
 
         await drain(
           callLLMStream({
             model: 'anthropic/claude-sonnet-5',
             messages: [{ role: 'user', content: 'test' }],
-            provider: { only: ['anthropic'] },
+            temperature: 0.7,
+          })
+        );
+
+        expect(mockChat.mock.calls[0]?.[0]?.modelOptions.temperature).toBe(0.7);
+      });
+
+      it('sends max_tokens, not max_completion_tokens, so requireParameters keeps DeepSeek routable', async () => {
+        // DeepSeek endpoints advertise `max_tokens` only; `max_completion_tokens`
+        // + requireParameters returned "No endpoints found" on the region fallback.
+        mockChat.mockReturnValue(textStream());
+
+        await drain(
+          callLLMStream({
+            model: 'deepseek/deepseek-v4-pro-0813',
+            max_tokens: 300,
+            messages: [{ role: 'user', content: 'test' }],
+          })
+        );
+
+        const options = mockChat.mock.calls[0]?.[0]?.modelOptions;
+        expect(options.maxTokens).toBe(300);
+        expect(options.maxCompletionTokens).toBeUndefined();
+      });
+
+      it('caller-supplied provider preferences layer on top', async () => {
+        mockChat.mockReturnValue(textStream());
+
+        await drain(
+          callLLMStream({
+            model: 'anthropic/claude-sonnet-5',
+            messages: [{ role: 'user', content: 'test' }],
+            provider: { allowFallbacks: false },
           })
         );
 
         expect(mockChat.mock.calls[0]?.[0]?.modelOptions.provider).toEqual({
           only: ['anthropic'],
+          allowFallbacks: false,
         });
       });
     });
@@ -788,8 +902,10 @@ describe('llm-client', () => {
 
         const callArgs = mockChat.mock.calls[0]?.[0];
         if (!callArgs) throw new Error('expected mockChat to have been called');
+        // `enabled: true` is stripped: since @tanstack/ai-openrouter 0.19 the
+        // effort config itself is the opt-in, and `enabled` only carries the
+        // explicit `false` opt-out.
         expect(callArgs.modelOptions.reasoning).toEqual({
-          enabled: true,
           effort: 'medium',
         });
       });
@@ -1053,6 +1169,36 @@ describe('llm-client', () => {
       expect(llmCostFromUsage(usage(0.0123), 'x-ai/grok-4.6')).toBe(
         usdToMicros(0.0123)
       );
+    });
+
+    it('prices a Gemini model from Google’s published rates', () => {
+      expect(
+        llmCostFromUsage(
+          {
+            promptTokens: 100_000,
+            completionTokens: 100_000,
+            totalTokens: 200_000,
+          },
+          'google/gemini-3.1-pro-preview'
+        )
+      ).toBe(1_400_000);
+    });
+
+    it('still prefers OpenRouter’s reported cost for a Gemini model', () => {
+      expect(
+        llmCostFromUsage(usage(0.0123), 'google/gemini-3.1-pro-preview')
+      ).toBe(usdToMicros(0.0123));
+    });
+  });
+
+  describe('toGeminiThinkingLevel', () => {
+    it('maps the five-level effort scale onto Gemini thinking levels', () => {
+      expect(toGeminiThinkingLevel('minimal')).toBe('MINIMAL');
+      expect(toGeminiThinkingLevel('low')).toBe('LOW');
+      expect(toGeminiThinkingLevel('medium')).toBe('MEDIUM');
+      expect(toGeminiThinkingLevel(undefined)).toBe('MEDIUM');
+      expect(toGeminiThinkingLevel('high')).toBe('HIGH');
+      expect(toGeminiThinkingLevel('xhigh')).toBe('HIGH');
     });
   });
 

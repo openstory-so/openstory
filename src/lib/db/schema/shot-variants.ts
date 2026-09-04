@@ -51,8 +51,15 @@ export const shotVariants = snakeCase.table(
     shotVariantStatus: text().$type<ShotGenerationStatus>().default('pending'),
     shotVariantWorkflowRunId: text(),
 
-    // Generation tracking
-    status: text().$type<ShotGenerationStatus>().default('pending').notNull(),
+    // Generation tracking. Widened with 'cancelled' (#1108, TS-only): the
+    // video rows this table's read shims project from (`video_variants`)
+    // carry it, and the projection surfaces statuses VERBATIM — mapping a
+    // cancel to 'failed' at any boundary re-arms the retry paths a cancel
+    // exists to stop.
+    status: text()
+      .$type<ShotGenerationStatus | 'cancelled'>()
+      .default('pending')
+      .notNull(),
     workflowRunId: text(),
     generatedAt: integer({ mode: 'timestamp' }),
     error: text(),

@@ -1,0 +1,24 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use @Image1 as the starting frame.\nHandheld camera drifts in slightly with natural micro-shake, holding SCARLETT in the narrow hallway. From her raised hand at her mouth, she sweeps the @Image3 across her lower lip in two quick blind strokes, no mirror, then presses her lips together and blots them fast on the back of her wrist. Her other hand pushes the door open as she pivots her shoulder into it, tote swinging against her hip.\n\nShe cuts a flat look straight into the lens and speaks two clipped lines, eyebrow lifting once, deadpan, before turning away toward the doorway light.\n\nCoats sway on the wall hooks from her passing; the door edge swings wide into cooler stairwell spill.\n\nquiet apartment hallway, faint street noise bleeding through the stairwell. lipstick cap click, fabric rustle of tote strap, door latch and hinge creak as door swings open, boot steps on wood floor.\n\n@Image2 says \"Nine minutes. Forty blocks.\" in a deadpan, dry, matter-of-fact voice.\n\nNo BGM, no music. Generate only dialogue, environmental sounds, and action sounds. Single continuous shot, no cuts. Avoid jitter and bent limbs.",
+        "model": "bytedance/seedance-2.0/enterprise/v2/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://v3b.fal.media/files/b/0aa74e9e/GbS3Zc4kPtxU2YtC7tTxr_video.mp4",
+            "content_type": "video/mp4",
+            "file_name": "video.mp4",
+            "file_size": 2660456
+          },
+          "seed": 1031921199
+        },
+        "status": 200,
+        "billableUnits": 130.5
+      }
+    }
+  ]
+}

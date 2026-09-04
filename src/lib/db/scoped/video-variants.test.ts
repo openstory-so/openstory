@@ -169,6 +169,7 @@ function versionInput(
         shotId,
         motionPromptVersionId: null,
         frameVersionId: null,
+        usesStartFrame: true,
         durationMs: 3000,
       },
     ],
@@ -445,6 +446,7 @@ describe('listSelectedModelsBySequence (#1066)', () => {
             shotId: other.shotId,
             motionPromptVersionId: null,
             frameVersionId: null,
+            usesStartFrame: true,
             durationMs: 3000,
           },
         ],
@@ -504,6 +506,7 @@ describe('listLastFailedModelsBySequence (#1066)', () => {
             shotId: other.shotId,
             motionPromptVersionId: null,
             frameVersionId: null,
+            usesStartFrame: true,
             durationMs: 3000,
           },
         ],
@@ -593,5 +596,12 @@ describe('isStale', () => {
       versionInput({ inputHash: null })
     );
     expect(await methods.isStale(legacy.id, 'anything')).toBe(false);
+  });
+
+  it('treats a null live hash as unknown-not-stale (#1380)', async () => {
+    const hashed = await methods.appendVersion(
+      versionInput({ inputHash: 'h1' })
+    );
+    expect(await methods.isStale(hashed.id, null)).toBe(false);
   });
 });

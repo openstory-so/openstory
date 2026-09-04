@@ -35,6 +35,11 @@ export async function runApiV1Handler(
     return await fn();
   } catch (error) {
     if (error instanceof z.ZodError) {
+      logger.warn('api/v1 handler rejected: {code} {message}', {
+        code: 'VALIDATION_ERROR',
+        message: 'Invalid request body.',
+        status: 400,
+      });
       return apiJsonError(400, 'VALIDATION_ERROR', 'Invalid request body.', {
         issues: error.issues,
       });
@@ -51,6 +56,12 @@ export async function runApiV1Handler(
         message: handled.message,
         // Keep the original error (stack/cause) so a 500 is traceable later.
         err: toErrorPayload(error),
+      });
+    } else {
+      logger.warn('api/v1 handler rejected: {code} {message}', {
+        code: handled.code,
+        message: handled.message,
+        status: handled.statusCode,
       });
     }
     return apiJsonError(handled.statusCode, handled.code, handled.message);

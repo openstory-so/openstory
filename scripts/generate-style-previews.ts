@@ -331,7 +331,7 @@ async function processTask(
         prompt: prompt,
         imageSize: 'square_hd',
         numImages: 1,
-        resolution: '2K',
+        resolution: '1080p',
       },
       {
         onQueueUpdate: (update) => {

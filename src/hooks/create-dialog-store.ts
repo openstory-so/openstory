@@ -16,14 +16,17 @@
 
 import { useSyncExternalStore } from 'react';
 
-export type DialogStore = {
-  open: () => void;
+export type DialogStore<P extends string = string> = {
+  /** `payload` names why/where it was opened; read it back via `getPayload`. */
+  open: (payload?: P) => void;
   close: () => void;
   useIsOpen: () => boolean;
+  getPayload: () => P | undefined;
 };
 
-export function createDialogStore(): DialogStore {
+export function createDialogStore<P extends string = string>(): DialogStore<P> {
   let isOpen = false;
+  let payload: P | undefined;
   const listeners = new Set<() => void>();
 
   const emit = () => {
@@ -44,8 +47,12 @@ export function createDialogStore(): DialogStore {
   };
 
   return {
-    open: () => set(true),
+    open: (next?: P) => {
+      payload = next;
+      set(true);
+    },
     close: () => set(false),
+    getPayload: () => payload,
     useIsOpen: () =>
       useSyncExternalStore(
         subscribe,

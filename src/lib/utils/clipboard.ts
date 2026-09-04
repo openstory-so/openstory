@@ -33,6 +33,70 @@ export async function copyTextToClipboard(text: string): Promise<boolean> {
 }
 
 /**
+ * Copy an image (by URL) onto the clipboard as PNG bytes — not the URL
+ * string. Safari requires `clipboard.write` to run in the same turn as the
+ * click, so the fetch is handed to `ClipboardItem` as a promise; Chrome
+ * prefers a resolved Blob, and the catch retries that way.
+ *
+ * Returns whether the image made it onto the clipboard. Never throws.
+ */
+export async function copyImageToClipboard(url: string): Promise<boolean> {
+  const clipboard = (globalThis as { navigator?: Partial<Navigator> }).navigator
+    ?.clipboard;
+  const ClipboardItemCtor = (
+    globalThis as { ClipboardItem?: typeof ClipboardItem }
+  ).ClipboardItem;
+
+  if (!clipboard?.write || !ClipboardItemCtor) {
+    return false;
+  }
+
+  const png = loadPngBlob(url);
+  try {
+    await clipboard.write([new ClipboardItemCtor({ 'image/png': png })]);
+    return true;
+  } catch {
+    try {
+      const blob = await png;
+      await clipboard.write([new ClipboardItemCtor({ 'image/png': blob })]);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}
+
+async function loadPngBlob(url: string): Promise<Blob> {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch image (${response.status})`);
+  }
+  const blob = await response.blob();
+  if (blob.type === 'image/png') return blob;
+  return rasterizeToPng(blob);
+}
+
+async function rasterizeToPng(blob: Blob): Promise<Blob> {
+  const bitmap = await createImageBitmap(blob);
+  const canvas = document.createElement('canvas');
+  canvas.width = bitmap.width;
+  canvas.height = bitmap.height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    bitmap.close();
+    throw new Error('Could not convert image to PNG');
+  }
+  ctx.drawImage(bitmap, 0, 0);
+  bitmap.close();
+  return await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob(
+      (png) => (png ? resolve(png) : reject(new Error('toBlob failed'))),
+      'image/png'
+    );
+  });
+}
+
+/**
  * Selection-based copy. The textarea has to be in the document and visible to
  * the layout engine (`display: none` or `hidden` elements cannot be selected),
  * hence off-screen-but-rendered rather than hidden.

@@ -183,13 +183,22 @@ export const ElementDetailView: React.FC<ElementDetailViewProps> = ({
                 <p className="text-sm text-muted-foreground">Analyzing…</p>
               </div>
             ) : null}
-            <AppImage
-              src={element.imageUrl}
-              alt={element.token}
-              width={640}
-              height={360}
-              className="h-full w-full object-contain"
-            />
+            {element.imageUrl ? (
+              <AppImage
+                src={element.imageUrl}
+                alt={element.token}
+                width={640}
+                height={360}
+                className="h-full w-full object-contain"
+              />
+            ) : (
+              <div className="flex h-full w-full flex-col items-center justify-center gap-2">
+                <ImagePlus className="size-12 text-muted-foreground/30" />
+                <p className="text-sm text-muted-foreground">
+                  No reference yet — generated at the References stage
+                </p>
+              </div>
+            )}
             {element.visionStatus === 'completed' && (
               <ElementTokenButton
                 token={element.token}
@@ -258,9 +267,9 @@ export const ElementDetailView: React.FC<ElementDetailViewProps> = ({
             <AlertDialogTitle>Delete {element.token}?</AlertDialogTitle>
             <AlertDialogDescription>
               This removes the reference image from the sequence.
-              {affectedShotCount > 0
-                ? ` ${affectedShotCount} shot${affectedShotCount === 1 ? '' : 's'} still mention it — those prompts will keep the token until you edit them.`
-                : ''}
+              {affectedShotCount > 0 && (
+                <span>{` ${affectedShotCount} shot${affectedShotCount === 1 ? '' : 's'} still mention it — those prompts will keep the token until you edit them.`}</span>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -272,14 +281,10 @@ export const ElementDetailView: React.FC<ElementDetailViewProps> = ({
               onClick={handleDelete}
               disabled={deleteElement.isPending}
             >
-              {deleteElement.isPending ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Deleting…
-                </>
-              ) : (
-                'Delete'
+              {deleteElement.isPending && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               )}
+              <span>{deleteElement.isPending ? 'Deleting…' : 'Delete'}</span>
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
