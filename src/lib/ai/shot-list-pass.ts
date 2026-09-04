@@ -13,6 +13,7 @@
  */
 
 import type { NewShot } from '@/lib/db/schema';
+import { allocateClipDurations } from '@/lib/motion/snap-duration';
 import type { DbSceneId } from '@/shared/scene-id';
 import type { SceneSplittingScene } from './streaming-scene-parser';
 import {
@@ -91,6 +92,51 @@ export function isSingleShotScene(
   scene: Pick<SceneSplittingScene, 'shots'>
 ): boolean {
   return (scene.shots?.length ?? 1) <= 1;
+}
+
+/**
+ * Rewrite every attached shot's duration so the film sums as close as
+ * possible to `targetSeconds` on the video-model clip grid. Scene metadata
+ * totals follow the shot sum so the 1-shot persist path (`shotDurationMs`
+ * reads scene duration) stays in lockstep.
+ *
+ * No-op when targetSeconds is missing/non-positive or there are no shots —
+ * existing tests and retries without a duration chip stay byte-identical.
+ */
+export function applyTargetDurations(
+  scenes: ReadonlyArray<SceneSplittingScene>,
+  targetSeconds: number | undefined,
+  grid: readonly number[]
+): SceneSplittingScene[] {
+  if (targetSeconds == null || !(targetSeconds > 0)) {
+    return [...scenes];
+  }
+  const specs = scenes.flatMap((scene) => scene.shots ?? []);
+  if (specs.length === 0) return [...scenes];
+
+  const allocated = allocateClipDurations(
+    specs.map((shot) => Math.max(1, shot.durationSeconds || 1)),
+    targetSeconds,
+    grid
+  );
+  let i = 0;
+  return scenes.map((scene) => {
+    const list = scene.shots;
+    if (!list || list.length === 0) return scene;
+    const nextShots = list.map((shot) => ({
+      ...shot,
+      durationSeconds: allocated[i++] ?? shot.durationSeconds,
+    }));
+    const sceneTotal = nextShots.reduce(
+      (sum, shot) => sum + shot.durationSeconds,
+      0
+    );
+    return {
+      ...scene,
+      shots: nextShots,
+      metadata: { ...scene.metadata, durationSeconds: sceneTotal },
+    };
+  });
 }
 
 /** Duration written onto `shots.durationMs`: scene label for 1-shot, spec otherwise. */

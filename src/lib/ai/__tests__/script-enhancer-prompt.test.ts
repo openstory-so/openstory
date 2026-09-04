@@ -47,6 +47,7 @@ describe('createUserPrompt (issue #855)', () => {
       videoModel: 'ltx_2_3_pro',
     });
     expect(prompt).toContain('Target running time: 1 minute');
+    expect(prompt).toContain('The rendered film should sum to about 1 minute');
     // LTX min clip 6s caps 60s at 10 beats; preferred 8–12 intersects to 8–10.
     expect(prompt).toContain('about 8-10 locations/beats');
     expect(prompt).not.toMatch(/~\s*\d+\s*words/);

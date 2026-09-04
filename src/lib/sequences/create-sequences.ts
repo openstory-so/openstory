@@ -394,6 +394,9 @@ export const createSequences = createServerOnlyFn(
               audioModels,
               suggestedTalentIds,
               suggestedLocationIds,
+              ...(targetDurationSeconds != null && {
+                targetSeconds: targetDurationSeconds,
+              }),
             };
 
             const { workflowRunId } = await triggerStoryboard(

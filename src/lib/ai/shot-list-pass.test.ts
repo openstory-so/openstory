@@ -5,6 +5,7 @@ import { deriveShots } from './shot-list.derive';
 import type { ShotListPassResult, ShotSpec } from './shot-list.schema';
 import type { SceneSplittingScene } from './streaming-scene-parser';
 import {
+  applyTargetDurations,
   attachShotLists,
   buildSceneWithShots,
   buildShotInserts,
@@ -134,6 +135,67 @@ describe('attachShotLists', () => {
     expect(attached[0]?.shots).toHaveLength(1);
     expect(attached[1]?.shots).toHaveLength(1);
     expect(attached[1]?.shots?.[0]?.durationSeconds).toBe(5);
+  });
+});
+
+describe('applyTargetDurations', () => {
+  const seedance = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+
+  it('is a no-op without a target so existing tests stay identical', () => {
+    const attached = attachShotLists([makeScene(1, 'A man walks in.')], null);
+    expect(applyTargetDurations(attached, undefined, seedance)).toEqual(
+      attached
+    );
+  });
+
+  it('spreads 30s across five one-shot scenes on the Seedance grid', () => {
+    const scenes = [1, 2, 3, 4, 5].map((n) => makeScene(n, `Beat ${n}.`));
+    const allocated = applyTargetDurations(
+      attachShotLists(scenes, null),
+      30,
+      seedance
+    );
+    const seconds = allocated.flatMap(
+      (scene) => scene.shots?.map((shot) => shot.durationSeconds) ?? []
+    );
+    expect(seconds).toEqual([6, 6, 6, 6, 6]);
+    expect(allocated[0]?.metadata.durationSeconds).toBe(6);
+    const inserts = buildShotInserts(
+      'seq-1',
+      allocated,
+      new Map(allocated.map((_, i) => [i, dbSceneId(`scene-row-${i + 1}`)]))
+    );
+    expect(inserts.map((row) => row.durationMs)).toEqual([
+      6000, 6000, 6000, 6000, 6000,
+    ]);
+  });
+
+  it('keeps two shots in one scene and still hits 30s across the film', () => {
+    const scenes = [
+      makeScene(1, 'She opens the door. Cut to the hallway beyond.'),
+      makeScene(2, 'She walks on.'),
+      makeScene(3, 'She stops.'),
+      makeScene(4, 'She smiles.'),
+    ];
+    const pass: ShotListPassResult = {
+      scenes: [
+        { sceneNumber: 1, shots: [twoShotSpec(1), twoShotSpec(2)] },
+        { sceneNumber: 2, shots: [twoShotSpec(1)] },
+        { sceneNumber: 3, shots: [twoShotSpec(1)] },
+        { sceneNumber: 4, shots: [twoShotSpec(1)] },
+      ],
+    };
+    const allocated = applyTargetDurations(
+      attachShotLists(scenes, pass),
+      30,
+      seedance
+    );
+    const seconds = allocated.flatMap(
+      (scene) => scene.shots?.map((shot) => shot.durationSeconds) ?? []
+    );
+    expect(seconds).toHaveLength(5);
+    expect(seconds.reduce((a, b) => a + b, 0)).toBe(30);
+    expect(allocated[0]?.shots).toHaveLength(2);
   });
 });
 

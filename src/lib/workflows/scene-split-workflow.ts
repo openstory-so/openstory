@@ -52,6 +52,7 @@ import {
   sceneSplitScenesResultSchema,
 } from '@/lib/ai/response-schemas';
 import {
+  applyTargetDurations,
   attachShotLists,
   buildShotInserts,
   formatScenesForShotListPrompt,
@@ -88,6 +89,7 @@ import { generateId } from '@/shared/id';
 import { dbSceneId, type NewShot } from '@/lib/db/schema';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import type { ShotWithAnchorFrame } from '@/lib/db/scoped/shots';
+import { durationGridForModel } from '@/lib/motion/snap-duration';
 import { getChatPrompt, type ChatMessage } from '@/lib/prompts';
 import { buildPreviewPrompt } from '@/lib/prompts/poster-prompt';
 import { getGenerationChannel } from '@/lib/realtime';
@@ -894,9 +896,10 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
       llmCostMicros: Microdollars;
       llmKeySource: 'team' | 'platform';
     } = JSON.parse(shotListJson);
-    const scenesWithShots = attachShotLists(
-      reconciledScenes,
-      shotListStep.result
+    const scenesWithShots = applyTargetDurations(
+      attachShotLists(reconciledScenes, shotListStep.result),
+      input.videoModel ? input.targetSeconds : undefined,
+      input.videoModel ? durationGridForModel(input.videoModel) : []
     );
 
     // Step 3: Reconcile — ensure all shots exist (handles cached step replay).

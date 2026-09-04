@@ -178,7 +178,7 @@ export const shotSpecSchema = z.object({
       'On-screen SFX / ambience hook for audio-capable models (e.g. "door creak, distant traffic"). Empty string when none.',
   }),
   durationSeconds: z.number().meta({
-    description: `Shot duration in seconds. At least ${MIN_SHOT_DURATION_SECONDS}; the scene's shots sum to at most ${MAX_SCENE_DURATION_SECONDS}.`,
+    description: `Relative clip length in seconds (pacing hint, at least ${MIN_SHOT_DURATION_SECONDS}). The system snaps clips to the video-model grid so the film hits the target running time.`,
   }),
 });
 
@@ -220,10 +220,8 @@ export const sceneWithShotsSchema = z.object({
   }),
   // `.min(1).max()` compile to JSON-Schema minItems/maxItems — NOT an `anyOf`
   // union — so the count bound is enforced at parse time without touching the
-  // zero-union budget (asserted in the union-budget test). The per-shot 3s
-  // floor and 15s scene-sum cap are cross-field and can't be expressed
-  // union-free per field; they stay prompt-only (the field descriptions) and
-  // are enforced by the #910 render-layer consumer.
+  // zero-union budget (asserted in the union-budget test). Clip lengths are
+  // assigned after parse (`applyTargetDurations`); the field is a pacing hint.
   shots: z
     .array(shotSpecSchema)
     .min(1)
