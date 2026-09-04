@@ -173,7 +173,6 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
   );
 
   const setMusicEnabled = useSetSequenceMusic(sequence?.id ?? '');
-  const playbackMode = sequenceExport.playbackMode;
 
   if (loadError) {
     return (
@@ -304,20 +303,10 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
         cachedVideoUrl={
           scope !== 'sequence'
             ? null
-            : !sequenceExport.isCacheResolved
-              ? undefined
-              : playbackMode === 'native'
-                ? sequenceExport.freshExportUrl
-                : null
+            : sequenceExport.isCacheResolved
+              ? sequenceExport.freshExportUrl
+              : undefined
         }
-        cutPending={playbackMode === 'wait-for-cut'}
-        cutPendingLabel={
-          sequenceExport.isRunning
-            ? formatExportProgress(sequenceExport.progress)
-            : undefined
-        }
-        onPreviewLive={sequenceExport.previewNow}
-        onPrepared={(meta) => sequenceExport.notePrepared(meta.canTransmux)}
         overlayActions={
           scope === 'sequence' ? (
             <TheatreShareOverlay sequenceExport={sequenceExport} />

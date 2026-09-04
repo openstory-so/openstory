@@ -1,8 +1,8 @@
 /**
- * Live theatre player. When `cachedVideoUrl` (an export whose input hash
- * matches the current scenes + music choice, #1253) is available it plays
- * that MP4 natively. Otherwise it either waits for a server cut (`cutPending`)
- * or stitches scene videos + music via Mediabunny on a canvas.
+ * Live in-browser theatre player. When `cachedVideoUrl` (an export whose input
+ * hash matches the current scenes + music choice, #1253) is available it plays
+ * that MP4 natively; otherwise it stitches scene videos + music via Mediabunny
+ * on a canvas.
  *
  * Falls back to a CTA ("Export as MP4 to download") when the browser can't
  * decode the source codecs. The export pipeline lives in
@@ -84,15 +84,6 @@ type SequencePlayerProps = {
   /** PostHog `video_play` source. Theatre player on the scenes canvas. */
   playSource?: VideoPlaySource;
   sequenceId?: string;
-  /**
-   * Server cut is rendering — CSS-hide live-stitch controls and show a poster
-   * overlay instead of inviting play. The canvas engine stays mounted so
-   * Preview now is instant (the expensive work is the stitcher, not the chrome).
-   */
-  cutPending?: boolean;
-  cutPendingLabel?: string;
-  onPreviewLive?: () => void;
-  onPrepared?: (meta: SequencePlayerMeta) => void;
 };
 
 export const SequencePlayer: React.FC<SequencePlayerProps> = ({
@@ -108,10 +99,6 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
   cachedVideoUrl,
   playSource = 'theatre',
   sequenceId,
-  cutPending = false,
-  cutPendingLabel,
-  onPreviewLive,
-  onPrepared,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -197,7 +184,6 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
         if (cancelled) return;
         setMeta(m);
         tracker.setDuration(m.durationSeconds);
-        onPrepared?.(m);
       })
       .catch((err: unknown) => {
         if (cancelled) return;
@@ -379,29 +365,31 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
         className="absolute inset-0 h-full w-full object-contain"
         aria-label="Sequence playback"
       />
-      <div className={cn(meta && 'hidden')}>
-        {posterUrl && (
-          <img
-            src={posterUrl}
-            alt=""
-            className="absolute inset-0 h-full w-full object-contain opacity-60"
+      {!meta && (
+        <>
+          {posterUrl && (
+            <img
+              src={posterUrl}
+              alt=""
+              className="absolute inset-0 h-full w-full object-contain opacity-60"
+            />
+          )}
+          <Skeleton
+            data-testid="player-loading"
+            className="absolute inset-0 h-full w-full bg-muted/40"
           />
-        )}
-        <Skeleton
-          data-testid="player-loading"
-          className="absolute inset-0 h-full w-full bg-muted/40"
-        />
-        <p
-          aria-live="polite"
-          className="absolute inset-x-0 bottom-3 text-center text-xs text-white/80"
-        >
-          {cachedVideoUrl === undefined
-            ? 'Loading…'
-            : loadedScenes < scenes.length
-              ? `Loading scene ${loadedScenes + 1} of ${scenes.length}…`
-              : 'Preparing playback…'}
-        </p>
-      </div>
+          <p
+            aria-live="polite"
+            className="absolute inset-x-0 bottom-3 text-center text-xs text-white/80"
+          >
+            {cachedVideoUrl === undefined
+              ? 'Loading…'
+              : loadedScenes < scenes.length
+                ? `Loading scene ${loadedScenes + 1} of ${scenes.length}…`
+                : 'Preparing playback…'}
+          </p>
+        </>
+      )}
       <div className="absolute top-2 right-2 z-10 flex items-center gap-2">
         {meta?.hasMixedResolutions && (
           <Tooltip>
@@ -429,46 +417,25 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
             enabled={musicEnabled}
             onToggle={() => onMusicEnabledChange(!musicEnabled)}
             className="bg-black/50 hover:bg-black/70"
-            disabled={cutPending}
           />
         )}
         {overlayActions}
       </div>
-      <div
-        className={cn(
-          'absolute inset-0 z-[5] flex-col items-center justify-center gap-3 bg-black/55 px-4',
-          cutPending ? 'flex' : 'hidden'
-        )}
-      >
-        <p aria-live="polite" className="text-center text-sm text-white/90">
-          {cutPendingLabel ?? 'Preparing full video…'}
-        </p>
-        {onPreviewLive && (
-          <Button
-            type="button"
-            variant="secondary"
-            className="h-11 px-4 md:h-8"
-            onClick={onPreviewLive}
-          >
-            Preview now
-          </Button>
-        )}
-      </div>
-      <div className={cn((!meta || cutPending) && 'hidden')}>
+      {meta && (
         <PlayerControls
           playing={playing}
           currentTime={currentTime}
-          duration={meta?.durationSeconds ?? 0}
+          duration={meta.durationSeconds}
           volume={volume}
-          muted={muted || !(meta?.hasAudio ?? false)}
-          hasAudio={meta?.hasAudio ?? false}
+          muted={muted || !meta.hasAudio}
+          hasAudio={meta.hasAudio}
           onTogglePlay={togglePlay}
           onSeek={seek}
           onVolumeChange={setVolume}
           onToggleMute={() => setMuted((m) => !m)}
           containerRef={containerRef}
         />
-      </div>
+      )}
     </div>
   );
 };
@@ -610,8 +577,7 @@ const MusicToggle: React.FC<{
   enabled: boolean;
   onToggle: () => void;
   className?: string;
-  disabled?: boolean;
-}> = ({ enabled, onToggle, className, disabled }) => (
+}> = ({ enabled, onToggle, className }) => (
   <Tooltip>
     <TooltipTrigger asChild>
       <Button
@@ -622,7 +588,6 @@ const MusicToggle: React.FC<{
           className
         )}
         onClick={onToggle}
-        disabled={disabled}
         aria-pressed={enabled}
         aria-label={enabled ? 'Turn music off' : 'Turn music on'}
       >

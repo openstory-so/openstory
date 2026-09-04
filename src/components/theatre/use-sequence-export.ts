@@ -5,9 +5,7 @@
  *      poll until the container row is `ready` (#1402). Mixed-resolution
  *      (missing AVC) still fails with the #1397 message — the container
  *      cannot re-encode.
- *   3. Theatre play skips the browser encode and POSTs the server path
- *      (`wait-for-cut`) so the player can swap to the native MP4.
- *   4. Browser path: reserve an upload URL, PUT the Blob, commit the row.
+ *   3. Browser path: reserve an upload URL, PUT the Blob, commit the row.
  *
  * Every commit (and every server-side ready row) records `sourceShotsHash` —
  * SHA-256 of `{sceneUrls, musicUrl}` via `hashSequenceExportInputs` — so
@@ -40,15 +38,11 @@ import {
   type ExportProgress,
 } from '@/shared/sequence-player/export';
 import { exportSequenceOnServer } from '@/shared/sequence-player/server-export-client';
-import {
-  theatrePlaybackMode,
-  type TheatrePlaybackMode,
-} from '@/shared/sequence-player/theatre-playback-mode';
 import type { Sequence } from '@/types/database';
 import { copyTextToClipboard } from '@/shared/utils/clipboard';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { usePostHog } from '@posthog/react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
 const sequenceExportKeys = {
@@ -61,7 +55,7 @@ const sequenceExportKeys = {
 // (browser export's safety valve, matching server — #1430).
 const UPLOAD_TIMEOUT_MS = 10 * 60 * 1000;
 
-type SequenceExportAndThen = 'download' | 'copy-link' | 'play';
+type SequenceExportAndThen = 'download' | 'copy-link';
 
 export type SequenceExportState = {
   isRunning: boolean;
@@ -79,12 +73,6 @@ export type SequenceExportState = {
   clipsTotal: number;
   /** False until every shot has a clip. */
   canExport: boolean;
-  /** Theatre play path — native MP4, wait for a server cut, or live stitch. */
-  playbackMode: TheatrePlaybackMode;
-  /** Codec probe from the stitch engine — decides wait-for-cut vs mixed-res stitch. */
-  notePrepared: (canTransmux: boolean) => void;
-  /** Escape wait-for-cut and play the live stitch immediately. */
-  previewNow: () => void;
 };
 
 export function useSequenceExport(
@@ -102,7 +90,7 @@ export function useSequenceExport(
     enabled: Boolean(sequence),
   });
 
-  const { data: serverExportAvailable = false } = useQuery({
+  useQuery({
     queryKey: sequenceExportKeys.serverAvailable,
     queryFn: () => isServerExportAvailableFn(),
     staleTime: Infinity,
@@ -145,25 +133,15 @@ export function useSequenceExport(
 
   const [isRunning, setIsRunning] = useState(false);
   const [progress, setProgress] = useState<ExportProgress | null>(null);
-  const [playCutFailed, setPlayCutFailed] = useState(false);
-  const [canTransmux, setCanTransmux] = useState<boolean | null>(null);
-  const [previewLive, setPreviewLive] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
-  const playKickHashRef = useRef<string | null>(null);
-  const sceneUrlsKey = exportInputs?.sceneUrls.join('\0') ?? '';
-  const transmuxScope = `${sequenceId}:${sceneUrlsKey}`;
-  const [transmuxForKey, setTransmuxForKey] = useState(transmuxScope);
-  const [liveForHash, setLiveForHash] = useState(inputsHash);
 
   const exportMutation = useMutation({
     mutationFn: async ({
       signal,
       andThen,
-      via,
     }: {
       signal: AbortSignal;
       andThen: SequenceExportAndThen;
-      via?: 'server';
     }) => {
       if (!sequence) throw new Error('No sequence selected.');
       if (!shots || shots.length === 0) {
@@ -188,29 +166,6 @@ export function useSequenceExport(
         throw new Error('Could not fingerprint the scenes for export.', {
           cause: inputsHashError,
         });
-      }
-
-      if (via === 'server') {
-        const available = await queryClient.ensureQueryData({
-          queryKey: sequenceExportKeys.serverAvailable,
-          queryFn: () => isServerExportAvailableFn(),
-        });
-        if (!available) {
-          throw new Error(
-            'Server export is not available in this environment.'
-          );
-        }
-        setProgress({ phase: 'server', completed: 0, total: 0 });
-        const server = await exportSequenceOnServer({
-          sequenceId: sequence.id,
-          signal,
-        });
-        return {
-          reEncoded: false,
-          url: server.url,
-          andThen,
-          via: 'server' as const,
-        };
       }
 
       let blob: Blob;
@@ -310,7 +265,6 @@ export function useSequenceExport(
       void queryClient.invalidateQueries({
         queryKey: sequenceExportKeys.list(sequenceId),
       });
-      if (andThen === 'play') return;
       if (andThen === 'download') {
         toast.success('MP4 ready to download.');
         triggerDownload(url, sequence?.title);
@@ -334,11 +288,8 @@ export function useSequenceExport(
         });
       }
     },
-    onError: (error, variables) => {
+    onError: (error) => {
       if (abortRef.current?.signal.aborted) return;
-      if (variables.andThen === 'play') {
-        setPlayCutFailed(true);
-      }
       toast.error(toExportErrorMessage(error));
       posthog.captureException(error, { sequence_id: sequenceId });
     },
@@ -350,13 +301,13 @@ export function useSequenceExport(
   });
 
   const run = useCallback(
-    (andThen: SequenceExportAndThen, via?: 'server') => {
+    (andThen: SequenceExportAndThen) => {
       if (isRunning) return;
       const controller = new AbortController();
       abortRef.current = controller;
       setIsRunning(true);
       setProgress(null);
-      exportMutation.mutate({ signal: controller.signal, andThen, via });
+      exportMutation.mutate({ signal: controller.signal, andThen });
     },
     [exportMutation, isRunning]
   );
@@ -375,44 +326,6 @@ export function useSequenceExport(
   const clipsTotal = shotList.length;
   const clipsReady = shotList.filter((s) => Boolean(s.video?.url)).length;
   const canExport = clipsTotal > 0 && clipsReady === clipsTotal;
-
-  if (transmuxForKey !== transmuxScope) {
-    setTransmuxForKey(transmuxScope);
-    setCanTransmux(null);
-  }
-  if (liveForHash !== inputsHash) {
-    setLiveForHash(inputsHash);
-    setPlayCutFailed(false);
-    setPreviewLive(false);
-  }
-
-  const playbackMode = theatrePlaybackMode({
-    freshExportUrl,
-    serverExportAvailable,
-    canTransmux,
-    previewLive,
-    playCutFailed,
-  });
-
-  const ensureCut = useCallback(() => {
-    if (freshExportUrl || !canExport || !inputsHash || isRunning) return;
-    if (playKickHashRef.current === inputsHash) return;
-    playKickHashRef.current = inputsHash;
-    run('play', 'server');
-  }, [freshExportUrl, canExport, inputsHash, isRunning, run]);
-
-  useEffect(() => {
-    if (playbackMode !== 'wait-for-cut') return;
-    ensureCut();
-  }, [playbackMode, ensureCut]);
-
-  const notePrepared = useCallback((nextCanTransmux: boolean) => {
-    setCanTransmux(nextCanTransmux);
-  }, []);
-
-  const previewNow = useCallback(() => {
-    setPreviewLive(true);
-  }, []);
 
   const download = useCallback(() => {
     posthog.capture('export_clicked', {
@@ -465,9 +378,6 @@ export function useSequenceExport(
     clipsReady,
     clipsTotal,
     canExport,
-    playbackMode,
-    notePrepared,
-    previewNow,
   };
 }
 
