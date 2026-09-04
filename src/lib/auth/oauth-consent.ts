@@ -246,17 +246,24 @@ export async function decideOAuthConsent(input: {
 }): Promise<{ url: string }> {
   const oauthQuery = resolveOAuthQuery(input.oauthQuery).replace(/^\?/, '');
   const queryParams = new URLSearchParams(oauthQuery);
-  const url = `${consentApiOrigin(input.headers)}/api/auth/oauth2/consent`;
+  const origin = consentApiOrigin(input.headers);
+  const headers = consentRequestHeaders(input.headers);
+  headers.set('Origin', origin);
   let res: Response;
   try {
-    res = await fetch(url, {
-      method: 'POST',
-      headers: consentRequestHeaders(input.headers),
-      body: JSON.stringify({
-        accept: input.accept,
-        oauth_query: oauthQuery,
-      }),
-    });
+    // In-process: a worker `fetch()` to the public origin can drop the
+    // session cookie / CSRF origin. `auth.handler` is the same POST
+    // `/api/auth/oauth2/consent` Better Auth's client uses.
+    res = await getAuth().handler(
+      new Request(`${origin}/api/auth/oauth2/consent`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          accept: input.accept,
+          oauth_query: oauthQuery,
+        }),
+      })
+    );
   } catch (error) {
     logger.warn('oauth consent fetch failed', {
       hasSig: queryParams.has('sig'),

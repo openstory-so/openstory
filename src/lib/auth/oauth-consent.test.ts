@@ -1,11 +1,12 @@
 import { ValidationError } from '@/lib/errors';
 import { APIError } from 'better-auth/api';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const getOAuthClientPublic = vi.fn();
 const getOAuthConsents = vi.fn();
 const deleteOAuthConsent = vi.fn();
 const oauth2Consent = vi.fn();
+const authHandler = vi.fn();
 const revokeOAuthGrantTokens = vi.fn();
 const resolveUserTeam = vi.fn();
 
@@ -17,6 +18,7 @@ vi.doMock('@/lib/auth/config', () => ({
       deleteOAuthConsent,
       oauth2Consent,
     },
+    handler: authHandler,
   }),
 }));
 vi.doMock('@/lib/db/scoped', () => ({
@@ -44,6 +46,7 @@ beforeEach(() => {
   getOAuthConsents.mockReset();
   deleteOAuthConsent.mockReset();
   oauth2Consent.mockReset();
+  authHandler.mockReset();
   revokeOAuthGrantTokens.mockReset();
   resolveUserTeam.mockReset();
   resolveUserTeam.mockResolvedValue({ teamId: 'team_1', teamName: 'T' });
@@ -177,7 +180,6 @@ describe('decideOAuthConsent', () => {
   const signedQuery =
     '?client_id=c1&sig=deadbeef&exp=1700000000&resource=https://x/api/v1';
   const origin = 'https://pr.example';
-  const fetchMock = vi.fn();
 
   const jsonRes = (body: unknown, status = 200) =>
     new Response(JSON.stringify(body), {
@@ -185,17 +187,8 @@ describe('decideOAuthConsent', () => {
       headers: { 'content-type': 'application/json' },
     });
 
-  beforeEach(() => {
-    fetchMock.mockReset();
-    vi.stubGlobal('fetch', fetchMock);
-  });
-
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
   it('accepts redirect_uri when the client does not set url', async () => {
-    fetchMock.mockResolvedValueOnce(
+    authHandler.mockResolvedValueOnce(
       jsonRes({ redirect_uri: 'http://127.0.0.1:8765/cb?code=2' })
     );
     const result = await decideOAuthConsent({
@@ -210,7 +203,7 @@ describe('decideOAuthConsent', () => {
 
   it('unpacks a packed q before calling the provider', async () => {
     const { packOAuthQuery } = await import('./oauth-query-snapshot');
-    fetchMock.mockResolvedValueOnce(
+    authHandler.mockResolvedValueOnce(
       jsonRes({ url: 'http://127.0.0.1:8765/cb?code=3' })
     );
     await decideOAuthConsent({
@@ -220,20 +213,18 @@ describe('decideOAuthConsent', () => {
       oauthQuery: `?q=${packOAuthQuery(signedQuery)}`,
       headers: new Headers({ origin }),
     });
-    expect(fetchMock).toHaveBeenCalledWith(
-      `${origin}/api/auth/oauth2/consent`,
-      expect.objectContaining({
-        method: 'POST',
-        body: JSON.stringify({
-          accept: true,
-          oauth_query: signedQuery.slice(1),
-        }),
-      })
-    );
+    const req = authHandler.mock.calls[0]?.[0];
+    expect(req).toBeInstanceOf(Request);
+    expect(req.url).toBe(`${origin}/api/auth/oauth2/consent`);
+    expect(req.method).toBe('POST');
+    expect(await req.json()).toEqual({
+      accept: true,
+      oauth_query: signedQuery.slice(1),
+    });
   });
 
   it('posts JSON with the session cookie and CORS fetch hints', async () => {
-    fetchMock.mockResolvedValueOnce(
+    authHandler.mockResolvedValueOnce(
       jsonRes({ url: 'http://127.0.0.1:8765/cb?code=4' })
     );
     await decideOAuthConsent({
@@ -247,15 +238,16 @@ describe('decideOAuthConsent', () => {
         accept: 'text/html',
       }),
     });
-    const init = fetchMock.mock.calls[0]?.[1];
-    expect(init?.headers).toBeInstanceOf(Headers);
-    expect(init?.headers.get('Accept')).toBe('application/json');
-    expect(init?.headers.get('Sec-Fetch-Mode')).toBe('cors');
-    expect(init?.headers.get('Cookie')).toBe('better-auth.session_token=abc');
+    const req = authHandler.mock.calls[0]?.[0];
+    expect(req).toBeInstanceOf(Request);
+    expect(req.headers.get('Accept')).toBe('application/json');
+    expect(req.headers.get('Sec-Fetch-Mode')).toBe('cors');
+    expect(req.headers.get('Cookie')).toBe('better-auth.session_token=abc');
+    expect(req.headers.get('Origin')).toBe(origin);
   });
 
   it('uses Location from a 302', async () => {
-    fetchMock.mockResolvedValueOnce(
+    authHandler.mockResolvedValueOnce(
       new Response(null, {
         status: 302,
         headers: { Location: 'http://127.0.0.1:8765/cb?code=5' },
@@ -272,7 +264,7 @@ describe('decideOAuthConsent', () => {
   });
 
   it('strips a leading ? and returns the provider redirect', async () => {
-    fetchMock.mockResolvedValueOnce(
+    authHandler.mockResolvedValueOnce(
       jsonRes({ url: 'http://127.0.0.1:8765/cb?code=1' })
     );
     const result = await decideOAuthConsent({
@@ -286,7 +278,7 @@ describe('decideOAuthConsent', () => {
   });
 
   it('surfaces a provider error_description as ValidationError', async () => {
-    fetchMock.mockResolvedValueOnce(
+    authHandler.mockResolvedValueOnce(
       jsonRes(
         {
           error: 'invalid_request',
