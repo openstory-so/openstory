@@ -17,7 +17,7 @@ import type { EffectiveFalPricing } from '@/lib/ai/fal-pricing-live';
 import { TYPICAL_SHORT_COST_USD } from '@/lib/billing/constants';
 import { microsToUsd } from '@/lib/billing/money';
 import { estimateStoryboardPreflightCost } from '@/lib/billing/storyboard-preflight-cost';
-import { DEFAULT_ASPECT_RATIO } from '@/lib/constants/aspect-ratios';
+import { DEFAULT_ASPECT_RATIO } from '@/shared/constants/aspect-ratios';
 
 /** Enhance's default target duration — the short we quote. */
 const TYPICAL_SHORT_SECONDS = 30;
