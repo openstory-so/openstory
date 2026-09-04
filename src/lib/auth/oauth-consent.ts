@@ -12,6 +12,7 @@
  */
 
 import { getAuth } from '@/lib/auth/config';
+import { resolveOAuthIssuer } from '@/lib/auth/oauth-provider';
 import { resolveOAuthQuery } from '@/lib/auth/oauth-query-snapshot';
 import { OAUTH_SCOPE_DESCRIPTIONS } from '@/lib/auth/oauth-scopes';
 import { resolveUserTeam, revokeOAuthGrantTokens } from '@/lib/db/scoped';
@@ -125,6 +126,16 @@ const CONSENT_STALE_MESSAGE =
   'This request is no longer valid. Start again from the app.';
 
 /** Provider errors often set `error` / `error_description` and leave `message` empty. */
+function providerErrorText(body: {
+  error?: string;
+  error_description?: string;
+  message?: string;
+}): string | null {
+  if (body.error === 'invalid_signature') return null;
+  const text = body.error_description || body.message;
+  return text?.trim() ? text : null;
+}
+
 export function oauthProviderUserMessage(
   error: unknown,
   fallback: string
@@ -133,24 +144,48 @@ export function oauthProviderUserMessage(
     const body = error.body as
       | { error?: string; error_description?: string; message?: string }
       | undefined;
-    if (body?.error === 'invalid_signature') return fallback;
-    const text = body?.error_description || body?.message;
-    if (text?.trim()) return text;
+    if (body) {
+      const text = providerErrorText(body);
+      if (text) return text;
+      if (body.error === 'invalid_signature') return fallback;
+    }
+  } else if (error && typeof error === 'object') {
+    const errorCode = 'error' in error ? error.error : undefined;
+    const description =
+      'error_description' in error ? error.error_description : undefined;
+    const message = 'message' in error ? error.message : undefined;
+    const text = providerErrorText({
+      error: typeof errorCode === 'string' ? errorCode : undefined,
+      error_description:
+        typeof description === 'string' ? description : undefined,
+      message: typeof message === 'string' ? message : undefined,
+    });
+    if (text) return text;
+    if (errorCode === 'invalid_signature') return fallback;
   }
   if (error instanceof Error && error.message.trim()) return error.message;
   return fallback;
 }
 
-/**
- * Better Auth 302s the consent result (`APIError FOUND` + `Location`) unless
- * the call is treated as a CORS JSON fetch. `auth.api` from a server fn is
- * not a Request, so the grant is written and the redirect is thrown — which
- * we used to map to "no longer valid".
- */
-function jsonConsentHeaders(headers: Headers): Headers {
-  const next = new Headers(headers);
-  next.set('Accept', 'application/json');
-  next.set('Sec-Fetch-Mode', 'cors');
+function consentApiOrigin(headers: Headers): string {
+  const origin = headers.get('origin');
+  if (origin) return origin.replace(/\/$/, '');
+  const host = headers.get('x-forwarded-host') ?? headers.get('host');
+  if (host) {
+    const proto = headers.get('x-forwarded-proto') ?? 'https';
+    return `${proto}://${host}`;
+  }
+  return resolveOAuthIssuer();
+}
+
+function consentRequestHeaders(headers: Headers): Headers {
+  const next = new Headers({
+    Accept: 'application/json',
+    'Content-Type': 'application/json',
+    'Sec-Fetch-Mode': 'cors',
+  });
+  const cookie = headers.get('cookie');
+  if (cookie) next.set('Cookie', cookie);
   return next;
 }
 
@@ -209,55 +244,58 @@ export async function decideOAuthConsent(input: {
   oauthQuery: string;
   headers: Headers;
 }): Promise<{ url: string }> {
-  const auth = getAuth();
   const oauthQuery = resolveOAuthQuery(input.oauthQuery).replace(/^\?/, '');
   const queryParams = new URLSearchParams(oauthQuery);
+  const url = `${consentApiOrigin(input.headers)}/api/auth/oauth2/consent`;
+  let res: Response;
   try {
-    const result = await auth.api.oauth2Consent({
-      headers: jsonConsentHeaders(input.headers),
-      body: { accept: input.accept, oauth_query: oauthQuery },
-      asResponse: true,
-    });
-    let url = consentRedirectUrl(result);
-    if (!url && result instanceof Response) {
-      try {
-        url = consentRedirectUrl(await result.clone().json());
-      } catch {
-        url = null;
-      }
-    }
-    if (!url) {
-      throw new ValidationError(CONSENT_STALE_MESSAGE);
-    }
-    logger.info('oauth consent decided', {
-      userId: input.userId,
-      teamId: input.teamId,
-      accept: input.accept,
-      clientId: queryParams.get('client_id'),
-    });
-    return { url };
-  } catch (error) {
-    if (error instanceof ValidationError) throw error;
-    const thrownUrl = consentRedirectUrl(error);
-    if (thrownUrl) {
-      logger.info('oauth consent decided via redirect', {
-        userId: input.userId,
-        teamId: input.teamId,
+    res = await fetch(url, {
+      method: 'POST',
+      headers: consentRequestHeaders(input.headers),
+      body: JSON.stringify({
         accept: input.accept,
-        clientId: queryParams.get('client_id'),
-      });
-      return { url: thrownUrl };
-    }
-    logger.warn('oauth consent rejected', {
+        oauth_query: oauthQuery,
+      }),
+    });
+  } catch (error) {
+    logger.warn('oauth consent fetch failed', {
       hasSig: queryParams.has('sig'),
       baParamCount: queryParams.getAll('ba_param').length,
-      keyCount: [...queryParams.keys()].length,
       reason: oauthProviderUserMessage(error, CONSENT_STALE_MESSAGE),
     });
     throw new ValidationError(
       oauthProviderUserMessage(error, CONSENT_STALE_MESSAGE)
     );
   }
+  let redirect = headerLocation(res.headers);
+  let body: unknown = null;
+  if (!redirect) {
+    try {
+      body = await res.json();
+      redirect = consentRedirectUrl(body);
+    } catch {
+      body = null;
+    }
+  }
+  if (redirect) {
+    logger.info('oauth consent decided', {
+      userId: input.userId,
+      teamId: input.teamId,
+      accept: input.accept,
+      clientId: queryParams.get('client_id'),
+    });
+    return { url: redirect };
+  }
+  logger.warn('oauth consent rejected', {
+    hasSig: queryParams.has('sig'),
+    baParamCount: queryParams.getAll('ba_param').length,
+    keyCount: [...queryParams.keys()].length,
+    status: res.status,
+    reason: oauthProviderUserMessage(body, CONSENT_STALE_MESSAGE),
+  });
+  throw new ValidationError(
+    oauthProviderUserMessage(body, CONSENT_STALE_MESSAGE)
+  );
 }
 
 /** Apps the user has granted access to, newest first. */

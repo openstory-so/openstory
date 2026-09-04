@@ -1,6 +1,6 @@
 import { ValidationError } from '@/lib/errors';
 import { APIError } from 'better-auth/api';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const getOAuthClientPublic = vi.fn();
 const getOAuthConsents = vi.fn();
@@ -176,79 +176,86 @@ describe('consentRedirectUrl', () => {
 describe('decideOAuthConsent', () => {
   const signedQuery =
     '?client_id=c1&sig=deadbeef&exp=1700000000&resource=https://x/api/v1';
+  const origin = 'https://pr.example';
+  const fetchMock = vi.fn();
+
+  const jsonRes = (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { 'content-type': 'application/json' },
+    });
+
+  beforeEach(() => {
+    fetchMock.mockReset();
+    vi.stubGlobal('fetch', fetchMock);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
 
   it('accepts redirect_uri when the client does not set url', async () => {
-    oauth2Consent.mockResolvedValueOnce({
-      redirect_uri: 'http://127.0.0.1:8765/cb?code=2',
-    });
-    const result = await decideOAuthConsent({
-      userId: 'user_1',
-      teamId: 'team_1',
-      accept: true,
-      oauthQuery: 'client_id=c1',
-      headers: new Headers(),
-    });
-    expect(result.url).toBe('http://127.0.0.1:8765/cb?code=2');
-  });
-
-  it('unpacks a packed q before calling the provider', async () => {
-    const { packOAuthQuery } = await import('./oauth-query-snapshot');
-    oauth2Consent.mockResolvedValueOnce({
-      url: 'http://127.0.0.1:8765/cb?code=3',
-    });
-    await decideOAuthConsent({
-      userId: 'user_1',
-      teamId: 'team_1',
-      accept: true,
-      oauthQuery: `?q=${packOAuthQuery(signedQuery)}`,
-      headers: new Headers(),
-    });
-    expect(oauth2Consent).toHaveBeenCalledWith({
-      headers: expect.any(Headers),
-      asResponse: true,
-      body: {
-        accept: true,
-        oauth_query: signedQuery.slice(1),
-      },
-    });
-  });
-
-  it('asks the provider for a JSON redirect instead of a 302', async () => {
-    oauth2Consent.mockResolvedValueOnce({
-      url: 'http://127.0.0.1:8765/cb?code=4',
-    });
-    await decideOAuthConsent({
-      userId: 'user_1',
-      teamId: 'team_1',
-      accept: true,
-      oauthQuery: 'client_id=c1',
-      headers: new Headers({ accept: 'text/html' }),
-    });
-    const passed = oauth2Consent.mock.calls[0]?.[0];
-    expect(passed?.headers).toBeInstanceOf(Headers);
-    expect(passed?.headers.get('Accept')).toBe('application/json');
-    expect(passed?.headers.get('Sec-Fetch-Mode')).toBe('cors');
-    expect(passed?.asResponse).toBe(true);
-  });
-
-  it('uses location when the provider throws a FOUND APIError', async () => {
-    oauth2Consent.mockRejectedValueOnce(
-      new APIError('FOUND', undefined, {
-        location: 'http://127.0.0.1:8765/cb?code=6',
-      })
+    fetchMock.mockResolvedValueOnce(
+      jsonRes({ redirect_uri: 'http://127.0.0.1:8765/cb?code=2' })
     );
     const result = await decideOAuthConsent({
       userId: 'user_1',
       teamId: 'team_1',
       accept: true,
       oauthQuery: 'client_id=c1',
-      headers: new Headers(),
+      headers: new Headers({ origin }),
     });
-    expect(result.url).toBe('http://127.0.0.1:8765/cb?code=6');
+    expect(result.url).toBe('http://127.0.0.1:8765/cb?code=2');
   });
 
-  it('uses Location when the provider throws a redirect Response', async () => {
-    oauth2Consent.mockRejectedValueOnce(
+  it('unpacks a packed q before calling the provider', async () => {
+    const { packOAuthQuery } = await import('./oauth-query-snapshot');
+    fetchMock.mockResolvedValueOnce(
+      jsonRes({ url: 'http://127.0.0.1:8765/cb?code=3' })
+    );
+    await decideOAuthConsent({
+      userId: 'user_1',
+      teamId: 'team_1',
+      accept: true,
+      oauthQuery: `?q=${packOAuthQuery(signedQuery)}`,
+      headers: new Headers({ origin }),
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${origin}/api/auth/oauth2/consent`,
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          accept: true,
+          oauth_query: signedQuery.slice(1),
+        }),
+      })
+    );
+  });
+
+  it('posts JSON with the session cookie and CORS fetch hints', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonRes({ url: 'http://127.0.0.1:8765/cb?code=4' })
+    );
+    await decideOAuthConsent({
+      userId: 'user_1',
+      teamId: 'team_1',
+      accept: true,
+      oauthQuery: 'client_id=c1',
+      headers: new Headers({
+        origin,
+        cookie: 'better-auth.session_token=abc',
+        accept: 'text/html',
+      }),
+    });
+    const init = fetchMock.mock.calls[0]?.[1];
+    expect(init?.headers).toBeInstanceOf(Headers);
+    expect(init?.headers.get('Accept')).toBe('application/json');
+    expect(init?.headers.get('Sec-Fetch-Mode')).toBe('cors');
+    expect(init?.headers.get('Cookie')).toBe('better-auth.session_token=abc');
+  });
+
+  it('uses Location from a 302', async () => {
+    fetchMock.mockResolvedValueOnce(
       new Response(null, {
         status: 302,
         headers: { Location: 'http://127.0.0.1:8765/cb?code=5' },
@@ -259,39 +266,34 @@ describe('decideOAuthConsent', () => {
       teamId: 'team_1',
       accept: true,
       oauthQuery: 'client_id=c1',
-      headers: new Headers(),
+      headers: new Headers({ origin }),
     });
     expect(result.url).toBe('http://127.0.0.1:8765/cb?code=5');
   });
 
   it('strips a leading ? and returns the provider redirect', async () => {
-    oauth2Consent.mockResolvedValueOnce({
-      url: 'http://127.0.0.1:8765/cb?code=1',
-    });
+    fetchMock.mockResolvedValueOnce(
+      jsonRes({ url: 'http://127.0.0.1:8765/cb?code=1' })
+    );
     const result = await decideOAuthConsent({
       userId: 'user_1',
       teamId: 'team_1',
       accept: true,
       oauthQuery: signedQuery,
-      headers: new Headers(),
+      headers: new Headers({ origin }),
     });
     expect(result.url).toBe('http://127.0.0.1:8765/cb?code=1');
-    expect(oauth2Consent).toHaveBeenCalledWith({
-      headers: expect.any(Headers),
-      asResponse: true,
-      body: {
-        accept: true,
-        oauth_query: signedQuery.slice(1),
-      },
-    });
   });
 
   it('surfaces a provider error_description as ValidationError', async () => {
-    oauth2Consent.mockRejectedValueOnce(
-      new APIError('BAD_REQUEST', {
-        error: 'invalid_request',
-        error_description: 'missing oauth query',
-      })
+    fetchMock.mockResolvedValueOnce(
+      jsonRes(
+        {
+          error: 'invalid_request',
+          error_description: 'missing oauth query',
+        },
+        400
+      )
     );
     await expect(
       decideOAuthConsent({
@@ -299,7 +301,7 @@ describe('decideOAuthConsent', () => {
         teamId: 'team_1',
         accept: true,
         oauthQuery: 'client_id=c1',
-        headers: new Headers(),
+        headers: new Headers({ origin }),
       })
     ).rejects.toMatchObject({
       name: ValidationError.name,
