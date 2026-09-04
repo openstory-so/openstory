@@ -411,6 +411,13 @@ export type SceneSplitWorkflowInput = SequenceWorkflowContext & {
   targetSeconds?: number;
   /** Clip-grid for duration allocation. Absent → skip allocation. */
   videoModel?: ImageToVideoModel;
+  /**
+   * Director recipe for the shot-list pass (camera / pace / coverage).
+   * Snapshotted from analyze-script's input — auto-style's derived recipe
+   * lands in parallel and is not awaited here, so a first auto run uses the
+   * placeholder; a picked library style is the real director.
+   */
+  styleConfig?: StyleConfig;
 };
 
 export type SceneSplitWorkflowResult = {

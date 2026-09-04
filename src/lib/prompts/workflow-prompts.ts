@@ -874,39 +874,35 @@ IMPORTANT: each boundary's quote must be copied character-for-character from the
   'phase/scene-shot-list-chat': [
     {
       role: 'system',
-      content: `You are a Shot Lister. You will be called via a structured output tool. Follow the provided schema exactly.
+      content: `You are a director covering scenes for a video shoot. You will be called via a structured output tool. Follow the provided schema exactly.
 
-You receive scenes that have already been sliced from a script. Each scene is one location + time + story beat. Your job is to list the SHOTS inside each scene. You NEVER create, merge, or rewrite scenes. You NEVER re-emit the script.
+You receive scenes already sliced from a script (one location + time + story beat each) and a director style. Your job is to decide HOW TO SHOOT each scene — the camera setups, not a new story. You NEVER create, merge, or rewrite scenes. You NEVER re-emit the script.
 
-A SHOT is one continuous camera take without a cut. A SCENE holds 1..N shots.
+A SHOT is one continuous camera take (one setup). A SCENE holds 1..N shots. You are not splitting the page; you are covering the action the way this director would.
 
-- A scene with no internal cut is ONE shot covering the whole scene.
-- A cut, a new camera setup, or a sequential framing change INSIDE the same location/beat is the NEXT SHOT of that scene — not a new scene.
+## Style is the director
+
+The style's camera, shot selection, pace, and energy decide coverage:
+- Slow / measured / one-take language → hold the scene in fewer, longer setups. A whole scene can be one shot.
+- Brisk / frenetic / "fast cuts" / inserts / hero-then-tight → cover the same action in multiple setups (wide then close, lifestyle then product, master then insert) even when the script never says CUT TO.
+- Honor explicit CUT TO: / new camera setups / "then we see" already in the script — those are coverage the writer already called.
+- Do not invent a new location, time jump, or story beat.
 
 ## Rules
 
-1. Emit 1..5 shots per scene. Prefer fewer. A short scene is one shot.
+1. Emit 1..5 shots per scene. Prefer fewer. A short scene with one action is usually one shot.
 2. Each shot has: one primary action, exactly one camera move (never stacked), a pacing adverb (slow, smooth, or gradual), framing and subject start-state, an optional sound cue (empty string when none), and durationSeconds as a relative pacing hint (longer take = larger number). The system assigns the real clip lengths so the film hits the target running time — do not try to make the seconds add up.
-3. Prefer fewer, fuller takes over many tiny ones. Each shot is at least 3 seconds of action.
+3. Match camera move and framing to the style (handheld vs locked, wide vs insert, slow push vs static).
 4. sceneNumber MUST match the "## Scene N" heading you were given. Shot 1 is the opening take; later shots follow in story order.
-5. Do not invent vendor syntax (no Seedance/Kling tokens). Do not invent scenes that were not in the input.
-
-## When to emit more than one shot
-
-- "Cut to...", "Then we see...", "Now we see..."
-- Sequential framings: "Close-up of X. Wide shot of Y."
-- Numbered shots: "Shot 1:", "Shot 2:"
-- A new camera setup in the same location/beat
-
-## When to keep one shot
-
-- Continuous camera move (track, pan, dolly) with no cut
-- A character performs a sequence of actions in one take
-- A short scene is already a single clip`,
+5. Do not invent vendor syntax (no Seedance/Kling tokens). Do not invent scenes that were not in the input.`,
     },
     {
       role: 'user',
-      content: `List the shots inside each scene. Copy sceneNumber from the "## Scene N" headings. A scene with no internal cut is a single shot.
+      content: `Cover each scene. The script is what happens; you decide the camera setups in this director's style. Copy sceneNumber from the "## Scene N" headings.
+
+<DIRECTOR_STYLE>
+{{style}}
+</DIRECTOR_STYLE>
 
 <SCENES>
 {{scenes}}

@@ -307,6 +307,9 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
           elements: elementsMinimal,
           targetSeconds: input.targetSeconds,
           videoModel: primaryVideoModel,
+          // Shot-list covers scenes in this recipe. Auto-style derives in
+          // parallel, so a first auto run still has the placeholder here.
+          styleConfig: inputStyleConfig,
         },
         spawnStepName: 'spawn-scene-split',
         awaitStepName: 'await-scene-split',
