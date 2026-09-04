@@ -204,6 +204,28 @@ async function persistStreamedSceneAndShot(
  * A content-checker hit on one of ~18 previews is a routine outcome, not a
  * reason to lose the run.
  */
+/** Animatic text for a shot: spec action/framing when the scene has 2+ shots. */
+function previewTextForShot(
+  scene: SceneSplittingScene,
+  shotNumber: number
+): string {
+  const spec = scene.shots?.find((shot) => shot.shotNumber === shotNumber);
+  if (spec && (scene.shots?.length ?? 1) > 1) {
+    const parts = [
+      spec.framing.shotSize,
+      spec.framing.angle,
+      spec.framing.subjectStartState,
+      spec.action,
+    ]
+      .map((part) => part.trim())
+      .filter((part) => part.length > 0);
+    if (parts.length > 0) return parts.join('. ');
+  }
+  return (
+    scene.originalScript.extract || scene.metadata.title || 'A cinematic scene'
+  );
+}
+
 async function triggerPreviewImage({
   input,
   sequenceId,
@@ -211,6 +233,7 @@ async function triggerPreviewImage({
   shot,
   scene,
   scopedDb,
+  previewText,
 }: {
   input: SceneSplitWorkflowInput;
   sequenceId: string;
@@ -218,9 +241,13 @@ async function triggerPreviewImage({
   shot: { id: string; frameId: string };
   scene: SceneSplittingScene;
   scopedDb: WorkflowScopedDb;
+  previewText?: string;
 }): Promise<void> {
   const sceneText =
-    scene.originalScript.extract || scene.metadata.title || 'A cinematic scene';
+    previewText ??
+    (scene.originalScript.extract ||
+      scene.metadata.title ||
+      'A cinematic scene');
 
   try {
     const enforcement = await scopedDb.liveRead.compliance.listEnforcementFor(
@@ -965,23 +992,37 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
           'analyze-script-shorter-prompts-batch-size-1'
         );
 
-        // Emit shot:created for any shots the streaming step didn't cover
-        // (shot 2..N of a multi-shot scene, or a scene that missed the stream).
+        // Emit shot:created and fire a preview for any shots the streaming
+        // step didn't cover (shot 2..N, or a scene that missed the stream).
         const streamedShotIds = new Set(
           streamResult.shotMapping.map((f) => f.shotId)
         );
-        for (const { analysisSceneId: sId, shotId } of reconciledMapping) {
-          if (!streamedShotIds.has(shotId)) {
-            const scene = scenes.find((s) => s.sceneId === sId);
-            await getGenerationChannel(sequenceId).emit(
-              'generation.shot:created',
-              {
-                shotId,
-                sceneId: sId,
-                orderIndex: scene?.sceneNumber ? scene.sceneNumber - 1 : 0,
-              }
-            );
-          }
+        for (const {
+          analysisSceneId: sId,
+          shotId,
+          frameId,
+          shotNumber,
+        } of reconciledMapping) {
+          if (streamedShotIds.has(shotId)) continue;
+          const scene = scenes.find((s) => s.sceneId === sId);
+          await getGenerationChannel(sequenceId).emit(
+            'generation.shot:created',
+            {
+              shotId,
+              sceneId: sId,
+              orderIndex: scene?.sceneNumber ? scene.sceneNumber - 1 : 0,
+            }
+          );
+          if (!scene || !frameId) continue;
+          await triggerPreviewImage({
+            input,
+            sequenceId,
+            parentInstanceId: event.instanceId,
+            shot: { id: shotId, frameId },
+            scene,
+            scopedDb,
+            previewText: previewTextForShot(scene, shotNumber ?? 1),
+          });
         }
 
         return JSON.stringify({

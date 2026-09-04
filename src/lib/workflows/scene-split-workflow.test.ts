@@ -204,6 +204,17 @@ function makeScopedDb(
     shotSeq++;
     return { id: `shot_${shotSeq}`, anchorFrameId: `frame_${shotSeq}` };
   };
+  // Same (sceneId, shotNumber) must return the stream-time row on reconcile
+  // so shot 1 is not treated as a new pass-2 shot (and re-previewed).
+  const shotByKey = new Map<string, { id: string; anchorFrameId: string }>();
+  const shotFor = (sceneId: string | null | undefined, shotNumber?: number) => {
+    const key = `${sceneId ?? 'none'}:${shotNumber ?? 1}`;
+    const existing = shotByKey.get(key);
+    if (existing) return existing;
+    const created = shot();
+    shotByKey.set(key, created);
+    return created;
+  };
   const scopedDb = {
     credentials: {
       resolveLlmKey,
@@ -224,18 +235,21 @@ function makeScopedDb(
     },
     sceneScriptVersions: { seedSplitVersions: () => Promise.resolve() },
     shots: {
-      upsert: () => Promise.resolve(shot()),
-      // Reconcile re-derives the mapping; keep ids stable per scene index.
+      upsert: (data: { sceneId?: string | null; shotNumber?: number }) =>
+        Promise.resolve(shotFor(data.sceneId, data.shotNumber)),
       bulkUpsert: (
         rows: Array<{ sceneId: string | null; shotNumber?: number }>
       ) =>
         Promise.resolve(
-          rows.map((row, index) => ({
-            id: `shot_r${index}`,
-            anchorFrameId: `frame_r${index}`,
-            sceneId: row.sceneId,
-            shotNumber: row.shotNumber ?? 1,
-          }))
+          rows.map((row) => {
+            const created = shotFor(row.sceneId, row.shotNumber);
+            return {
+              id: created.id,
+              anchorFrameId: created.anchorFrameId,
+              sceneId: row.sceneId,
+              shotNumber: row.shotNumber ?? 1,
+            };
+          })
         ),
       update: () => Promise.resolve(true),
       delete: () => Promise.resolve(),
@@ -648,6 +662,13 @@ describe('SceneSplitWorkflow shot-list pass (#1486)', () => {
     expect(
       result.shotMapping.filter((m) => m.analysisSceneId === 'scene_1')
     ).toHaveLength(2);
+    // Stream previews shot 1 of each scene; pass 2 previews the extra shot.
+    expect(previewCalls()).toHaveLength(4);
+    const extraPreview = previewCalls().find((call) => {
+      const body = call[1] as { prompt?: string };
+      return body.prompt?.includes('Cut to the hallway beyond');
+    });
+    expect(extraPreview).toBeDefined();
   });
 
   test('runs the shot-list call on the analysis model', async () => {

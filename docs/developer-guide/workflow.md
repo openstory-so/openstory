@@ -170,7 +170,7 @@ Since #1035 the split runs as **two parallel LLM calls** (sibling `step.do`s via
 1. **`scene-splitting-stream`** — the scenes call, a **boundary-annotation** contract: the model returns `boundaries[] = { hintLine, quote }`, and `boundary-split.ts` resolves each verbatim quote to a raw offset (exact → normalized → fuzzy, monotonic cursor) and slices the ORIGINAL script — extracts are byte-verbatim adjacent substrings (`concat(slices) === script`, asserted). The stream is fed through `createStreamingSceneParser()`:
    - On each finalized boundary: persists the scene + shot 1, emits `generation.scene:new` / `generation.shot:created`
    - On title detection: updates the sequence title, emits `generation.updated`
-   - Preview image per streamed scene (fire-and-forget via `triggerWorkflow`)
+   - Preview image per streamed scene (fire-and-forget via `triggerWorkflow`); pass 2 fires another for each extra shot it creates
    - Excessive anchor repairs → one retry with feedback; a second degraded result keeps the first-pass LLM scenes. Dropped boundaries are logged and emitted as a non-fatal `generation.error`
    - A cut inside one location/beat is **not** a new scene (the ONE SHOT RULE is gone)
 2. **`scene-bibles`** — the bibles call: `{ characterBible[], locationBible[], elementBible[] }`. Location/element `firstMention` is `{ text, lineNumber }` on the wire; the owning scene id is derived server-side from the gutter line. After the join, scene continuity tags are canonicalized onto bible tags (`tag-reconcile.ts`) since two independent calls can disagree.
