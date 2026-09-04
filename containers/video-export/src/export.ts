@@ -1,12 +1,10 @@
 /**
- * Server-side sequence export — the Node/mediabunny counterpart of the browser
- * pipeline in `src/shared/sequence-player/export.ts`.
+ * Server-side sequence export. Stitches scene videos and mixes music +
+ * dialogue into one MP4.
  *
- * v1 scope: concatenate transmux-compatible scenes (every scene AVC with a
- * byte-identical decoder config — the common single-model sequence) and mix
- * the background music + per-scene dialogue into one AAC track. Mixed-codec /
- * mixed-resolution sequences need a decode→resize→re-encode pass and are
- * rejected for now (the browser export still handles them client-side).
+ * Uniform AVC (byte-identical decoder config) concatenates packets. Mixed
+ * codec / mixed resolution decodes each scene, letterboxes into the bounding
+ * box, and re-encodes one AVC track (`VideoSampleSource` + `fit: 'contain'`).
  */
 
 import {
@@ -20,7 +18,10 @@ import {
   Input,
   Mp4OutputFormat,
   Output,
+  QUALITY_HIGH,
   UrlSource,
+  VideoSampleSink,
+  VideoSampleSource,
   type InputAudioTrack,
   type InputVideoTrack,
 } from 'mediabunny';
@@ -83,6 +84,74 @@ function describeResolutions(probes: SceneProbe[]): string {
   const seen = new Set<string>();
   for (const p of probes) seen.add(`${p.width}×${p.height}`);
   return seen.size > 1 ? [...seen].join(', ') : '';
+}
+
+/** H.264 4:2:0 needs even dimensions; match the browser stitch target. */
+function toEvenCeil(value: number): number {
+  const rounded = Math.ceil(value);
+  const even = rounded % 2 === 0 ? rounded : rounded + 1;
+  return Math.max(2, even);
+}
+
+function targetSize(probes: SceneProbe[]): { width: number; height: number } {
+  let width = 0;
+  let height = 0;
+  for (const p of probes) {
+    if (p.width > width) width = p.width;
+    if (p.height > height) height = p.height;
+  }
+  return { width: toEvenCeil(width), height: toEvenCeil(height) };
+}
+
+async function writeTransmuxedVideo(
+  probes: SceneProbe[],
+  videoSource: EncodedVideoPacketSource
+): Promise<void> {
+  let firstPacketEmitted = false;
+  for (const probe of probes) {
+    const decoderConfig = firstPacketEmitted
+      ? null
+      : await probe.videoTrack.getDecoderConfig();
+    const sink = new EncodedPacketSink(probe.videoTrack);
+    for await (const packet of sink.packets()) {
+      const offsetPacket = new EncodedPacket(
+        packet.data,
+        packet.type,
+        packet.timestamp + probe.offsetSeconds,
+        packet.duration,
+        undefined,
+        packet.byteLength,
+        packet.sideData
+      );
+      await videoSource.add(
+        offsetPacket,
+        firstPacketEmitted || !decoderConfig ? undefined : { decoderConfig }
+      );
+      firstPacketEmitted = true;
+    }
+  }
+}
+
+async function writeReencodedVideo(
+  probes: SceneProbe[],
+  videoSource: VideoSampleSource
+): Promise<void> {
+  for (const probe of probes) {
+    if (!(await probe.videoTrack.canDecode())) {
+      throw new Error(
+        `Scene cannot be decoded for re-encode (${probe.width}×${probe.height}, codec ${probe.codec ?? 'unknown'})`
+      );
+    }
+    const sink = new VideoSampleSink(probe.videoTrack);
+    for await (const sample of sink.samples()) {
+      try {
+        sample.setTimestamp(sample.timestamp + probe.offsetSeconds);
+        await videoSource.add(sample);
+      } finally {
+        sample.close();
+      }
+    }
+  }
 }
 
 async function probeScene(
@@ -165,20 +234,24 @@ export async function exportSequence(job: ExportJob): Promise<ExportOutput> {
         (p) => p.codec === 'avc' && p.descriptionHex === first.descriptionHex
       );
     const resolutionsLabel = describeResolutions(probes);
-    if (!canTransmux) {
-      throw new Error(
-        resolutionsLabel
-          ? `Scenes have mixed resolutions (${resolutionsLabel}); server export currently requires a uniform AVC sequence. Use the in-app export for mixed-resolution sequences.`
-          : 'Scenes have differing codecs or decoder configs; server export currently requires a uniform AVC sequence. Use the in-app export for these.'
-      );
-    }
+    const target = targetSize(probes);
 
     const output = new Output({
       format: new Mp4OutputFormat({ fastStart: 'in-memory' }),
       target: new BufferTarget(),
     });
 
-    const videoSource = new EncodedVideoPacketSource('avc');
+    const videoSource = canTransmux
+      ? new EncodedVideoPacketSource('avc')
+      : new VideoSampleSource({
+          codec: 'avc',
+          quality: QUALITY_HIGH,
+          transform: {
+            width: target.width,
+            height: target.height,
+            fit: 'contain',
+          },
+        });
     output.addVideoTrack(videoSource);
 
     const sceneAudio = probes.filter((p) => p.audioTrack !== null);
@@ -190,29 +263,10 @@ export async function exportSequence(job: ExportJob): Promise<ExportOutput> {
 
     await output.start();
 
-    // VIDEO — transmux: concatenate encoded packets with global timestamps.
-    let firstPacketEmitted = false;
-    for (const probe of probes) {
-      const decoderConfig = firstPacketEmitted
-        ? null
-        : await probe.videoTrack.getDecoderConfig();
-      const sink = new EncodedPacketSink(probe.videoTrack);
-      for await (const packet of sink.packets()) {
-        const offsetPacket = new EncodedPacket(
-          packet.data,
-          packet.type,
-          packet.timestamp + probe.offsetSeconds,
-          packet.duration,
-          undefined,
-          packet.byteLength,
-          packet.sideData
-        );
-        await videoSource.add(
-          offsetPacket,
-          firstPacketEmitted || !decoderConfig ? undefined : { decoderConfig }
-        );
-        firstPacketEmitted = true;
-      }
+    if (videoSource instanceof EncodedVideoPacketSource) {
+      await writeTransmuxedVideo(probes, videoSource);
+    } else {
+      await writeReencodedVideo(probes, videoSource);
     }
 
     // AUDIO — decode + mix music and dialogue, encode one AAC track.
@@ -287,7 +341,7 @@ export async function exportSequence(job: ExportJob): Promise<ExportOutput> {
       buffer: new Uint8Array(buffer),
       meta: {
         durationSeconds: totalDurationSeconds,
-        reEncoded: false,
+        reEncoded: !canTransmux,
         resolutionsLabel,
       },
     };

@@ -7,6 +7,8 @@ import { MobileSceneDrawer } from '@/components/scenes/mobile-scene-drawer';
 import { CanvasViewToggle } from '@/components/scenes/canvas-view-toggle';
 import { CopyScriptButton } from '@/components/scenes/copy-script-button';
 import { SceneCanvas } from '@/components/scenes/scene-canvas';
+import { SequenceExportActions } from '@/components/scenes/sequence-export-actions';
+import { useSequenceExport } from '@/components/theatre/use-sequence-export';
 import { SceneScriptDocument } from '@/components/scenes/scene-script-document';
 import type { BatchGenerateMotionArgs } from '@/components/scenes/scene-list';
 import { SceneList, type SceneListProps } from '@/components/scenes/scene-list';
@@ -298,6 +300,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
         : false;
     },
   });
+  const sequenceExport = useSequenceExport(sequence);
   const aspectRatio = sequence?.aspectRatio || DEFAULT_ASPECT_RATIO;
   // No stills are ever rendered in this mode, so every motion-eligibility
   // check has to stop requiring one (`isBatchMotionEligible`).
@@ -1569,7 +1572,9 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
               trailing={
                 effectiveView === 'script' ? (
                   <CopyScriptButton sequenceId={sequenceId} />
-                ) : null
+                ) : (
+                  <SequenceExportActions sequenceExport={sequenceExport} />
+                )
               }
             />
             {/* flex-col so SceneCanvas's flex-1 chain still stretches — in a
@@ -1589,6 +1594,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
                 />
               ) : (
                 <SceneCanvas
+                  sequenceExport={sequenceExport}
                   selection={selection}
                   shots={shots}
                   scenes={scenes}

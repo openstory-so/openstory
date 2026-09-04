@@ -4,9 +4,8 @@
  * that MP4 natively; otherwise it stitches scene videos + music via Mediabunny
  * on a canvas.
  *
- * Falls back to a CTA ("Export as MP4 to download") when the browser can't
- * decode the source codecs. The export pipeline lives in
- * `src/shared/sequence-player/export.ts`.
+ * Falls back to an overlay message when the browser can't decode the source
+ * codecs. Download/Copy live on `overlayActions` (theatre).
  */
 
 import { Button } from '@/components/ui/button';
@@ -70,8 +69,6 @@ type SequencePlayerProps = {
   className?: string;
   /** Slot rendered as an overlay (top-right) — e.g. the Download / Share actions. */
   overlayActions?: React.ReactNode;
-  /** Still shown behind the loading state (and as the native `<video>` poster) so the user isn't staring at a blank skeleton (#1253). */
-  posterUrl?: string | null;
   /**
    * A ready-made MP4 of exactly these scenes + music choice (the latest
    * export whose input hash matches). When set, plays natively instead of
@@ -95,7 +92,6 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
   aspectRatio,
   className,
   overlayActions,
-  posterUrl,
   cachedVideoUrl,
   playSource = 'theatre',
   sequenceId,
@@ -310,7 +306,6 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
             in the app (#1253). */}
         <VideoPlayer
           src={cachedVideoUrl}
-          posterSrc={posterUrl}
           aspectRatio={aspectRatio}
           className="absolute inset-0 h-full max-h-none w-full"
           playSource={playSource}
@@ -367,13 +362,6 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
       />
       {!meta && (
         <>
-          {posterUrl && (
-            <img
-              src={posterUrl}
-              alt=""
-              className="absolute inset-0 h-full w-full object-contain opacity-60"
-            />
-          )}
           <Skeleton
             data-testid="player-loading"
             className="absolute inset-0 h-full w-full bg-muted/40"

@@ -2,11 +2,9 @@ import { ScenePlayer } from '@/components/motion/scene-player';
 import { CanvasMediaStage } from '@/components/scenes/canvas-media-stage';
 import { ShotMediaDropZone } from '@/components/scenes/shot-media-drop-zone';
 import { StartingFrameVariants } from '@/components/scenes/starting-frame-variants';
+import { formatExportProgress } from '@/components/scenes/sequence-export-actions';
 import { SequencePlayer } from '@/components/theatre/sequence-player';
-import {
-  useSequenceExport,
-  type SequenceExportState,
-} from '@/components/theatre/use-sequence-export';
+import type { SequenceExportState } from '@/components/theatre/use-sequence-export';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
@@ -28,7 +26,6 @@ import type { ShotView } from '@/lib/shots/shot-view';
 import type { Sequence } from '@/types/database';
 import { Download, Film, Link, Loader2 } from 'lucide-react';
 import { useMemo } from 'react';
-import type { ExportProgress } from '@/shared/sequence-player/export';
 import { toPlaybackScenes } from '@/shared/sequence-player/playback-scenes';
 
 type SceneCanvasProps = {
@@ -61,36 +58,14 @@ type SceneCanvasProps = {
    * the sequence has something to act on (#1286).
    */
   firstRunActive?: boolean;
+  sequenceExport: SequenceExportState;
 };
 
-function formatExportProgress(progress: ExportProgress | null): string {
-  if (!progress) return 'Exporting…';
-  const phaseLabel: Record<ExportProgress['phase'], string> = {
-    prepare: 'Preparing',
-    video: 'Stitching video',
-    music: 'Downloading music',
-    dialogue: 'Decoding dialogue',
-    mix: 'Mixing audio',
-    encode: 'Encoding audio',
-    finalize: 'Finalizing',
-    upload: 'Uploading',
-    commit: 'Saving',
-  };
-  const label = phaseLabel[progress.phase];
-  if (progress.total > 0) {
-    const pct = Math.min(
-      100,
-      Math.round((progress.completed / progress.total) * 100)
-    );
-    return `${label}… ${pct}%`;
-  }
-  return `${label}…`;
-}
-
 /**
- * Download + Share for the theatre. Both actions treat `sequence_exports` as
- * a content-addressed cache of what the user is looking at: a cached MP4 of
- * the current state is reused, otherwise a new export runs first (#1253).
+ * Download + Copy on the theatre player. Icon-only so they fit the existing
+ * overlay row (music + mixed-res). Desktop also has a labeled Export menu in
+ * the Canvas/Script toggle trailing slot; mobile keeps these overlay icons
+ * at the 44px hit target.
  */
 const TheatreShareOverlay: React.FC<{
   sequenceExport: SequenceExportState;
@@ -118,7 +93,6 @@ const TheatreShareOverlay: React.FC<{
     <>
       <Tooltip>
         <TooltipTrigger asChild>
-          {/* Span so a disabled button still shows the pending-count tooltip. */}
           <span className="inline-flex">
             <Button
               variant="ghost"
@@ -127,8 +101,6 @@ const TheatreShareOverlay: React.FC<{
               aria-label={downloadLabel}
               aria-busy={running}
               disabled={pending}
-              // Stays enabled while running (the actions no-op) so the tooltip
-              // can show progress — disabled buttons emit no pointer events.
               onClick={sequenceExport.download}
             >
               {running ? (
@@ -188,6 +160,7 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
   regeneratingSceneVariants,
   onGenerateSceneVariantsStart,
   firstRunActive = false,
+  sequenceExport,
 }) => {
   const scope = selectionScope(selection);
   const scopedShots = useMemo(
@@ -201,7 +174,6 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
   );
 
   const setMusicEnabled = useSetSequenceMusic(sequence?.id ?? '');
-  const sequenceExport = useSequenceExport(sequence);
 
   if (loadError) {
     return (
@@ -255,6 +227,7 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
         progressMessage={progressMessage}
         retry={retry}
         posterUrl={sequence?.posterUrl ?? undefined}
+        sequence={sequence}
         className="h-full max-h-none w-full"
         wrapperClassName="h-full w-full"
         frameOverlay={frameOverlay}
@@ -295,6 +268,7 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
             aspectRatio={aspectRatio}
             progressMessage={progressMessage}
             posterUrl={sequence?.posterUrl ?? undefined}
+            sequence={sequence}
             className="h-full max-h-none w-full"
             wrapperClassName="h-full w-full"
           />
@@ -328,7 +302,6 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
         className="h-full max-h-none w-full"
         playSource="theatre"
         sequenceId={sequence.id}
-        posterUrl={scopedShots[0]?.image?.url ?? sequence.posterUrl}
         cachedVideoUrl={
           scope !== 'sequence'
             ? null

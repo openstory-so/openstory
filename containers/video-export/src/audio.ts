@@ -1,7 +1,7 @@
 /**
  * Audio decode/resample/mix helpers for the server export.
  *
- * The browser export mixes music + per-scene dialogue in an `OfflineAudioContext`
+ * Live playback mixes music + per-scene dialogue in an `OfflineAudioContext`
  * (which resamples for free). Node has no Web Audio, so we decode each track to
  * planar f32 PCM via mediabunny's `AudioSampleSink`, resample to a common rate
  * with linear interpolation, downmix to stereo, and sum at scene offsets.

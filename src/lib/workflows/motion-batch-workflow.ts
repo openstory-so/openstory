@@ -14,8 +14,8 @@
  *     `context.workflowRunId`.
  *   - Each `context.invoke(...)` becomes a Pattern 3 `spawnAndAwaitChild`
  *     against the relevant binding (MOTION_WORKFLOW × N shots, optional
- *     MUSIC_WORKFLOW). There is no server-side video merge step — playback
- *     and the final MP4 are produced client-side (Mediabunny browser export).
+ *     MUSIC_WORKFLOW). There is no merge step in this workflow — playback
+ *     is the live canvas stitch; the downloadable MP4 is `SequenceExportWorkflow`.
  *   - Fan-out: `Promise.all` on spawn (parents block until every child has
  *     been queued so a transient spawn failure surfaces as a workflow error
  *     rather than a silently-skipped child), `Promise.allSettled` on await
@@ -247,9 +247,8 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
       }
     }
 
-    // Playback and the final MP4 are produced client-side by
-    // `<SequencePlayer>` / the Mediabunny browser export — there is no
-    // server-side video merge step (parity with the QStash motion-batch).
+    // Playback is the live canvas stitch; the downloadable MP4 is a
+    // separate SequenceExportWorkflow. No merge step here.
     const reservationId = input.reservationId;
     if (reservationId) {
       await step.do('zero-reservation', async () => {

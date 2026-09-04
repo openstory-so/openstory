@@ -20,7 +20,12 @@ import { cn } from '@/shared/utils';
 import { plainSceneTitle } from '@/shared/utils/markdown-plain';
 import { copyTextToClipboard } from '@/shared/utils/clipboard';
 import type { ShotView } from '@/lib/shots/shot-view';
+import {
+  usesStartFrame,
+  type StartFrameSequence,
+} from '@/lib/shots/use-start-frame';
 import { AppImage } from '@/components/ui/app-image';
+import { playerPosterSrc } from './player-poster';
 import { usePostHog } from '@posthog/react';
 import { Download, Link, Loader2, Share2, VideoIcon } from 'lucide-react';
 import { useCallback, useState } from 'react';
@@ -69,6 +74,8 @@ type ScenePlayerProps = {
    */
   retry?: { attempt: number; maxAttempts?: number };
   posterUrl?: string;
+  /** Sequence row — `usesStartFrame` reads the default + shot override. */
+  sequence?: StartFrameSequence | null;
   /**
    * Extra node rendered absolutely inside the frame container (#986) — e.g. the
    * starting-frame variants control. Positioned by the overlay itself.
@@ -94,6 +101,7 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
   progressMessage,
   retry,
   posterUrl,
+  sequence,
   frameOverlay,
   onTimeUpdate,
   onEnded,
@@ -336,27 +344,24 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
     ? ''
     : (overrideVideoUrl ?? currentShot.video?.url ?? '');
 
-  // The storyboard preview is a placeholder for a still that has not arrived.
-  // Once a clip is playable it is not a placeholder any more, it is a
-  // DIFFERENT picture — reference-only never renders the still it stood in
-  // for, so it would sit in front of the finished shot forever, captioned
-  // "may not match the final image". Drop it (and its badge) as soon as the
-  // clip can play, and let the video show its own first frame. A real still
-  // still wins: on that path the still IS the first frame.
-  const previewSupersededByVideo =
-    !!playbackVideoUrl && !currentShot.image?.url && !overrideImageUrl;
-
-  // Best available image: override (variant preview) → final thumbnail → fast preview → sequence poster
-  const displayImage = previewSupersededByVideo
-    ? null
-    : (overrideImageUrl ??
+  const displayImage = showsStillImage
+    ? (overrideImageUrl ??
       currentShot.image?.url ??
       currentShot.previewThumbnailUrl ??
-      posterUrl ??
-      null);
+      null)
+    : playerPosterSrc({
+        videoUrl: playbackVideoUrl || null,
+        stillUrl: currentShot.image?.url,
+        previewUrl: currentShot.previewThumbnailUrl,
+        overrideImageUrl,
+        usesStartFrame: usesStartFrame(
+          currentShot,
+          sequence ?? { generateStartFrames: false }
+        ),
+      });
   const isPreviewImage =
-    !previewSupersededByVideo &&
-    !!currentShot.previewThumbnailUrl &&
+    !!displayImage &&
+    displayImage === currentShot.previewThumbnailUrl &&
     !currentShot.image?.url;
   const isVariantPreview =
     !!overrideImageUrl && overrideImageUrl !== currentShot.image?.url;
@@ -482,7 +487,7 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
             // reused the previous shot's poster after a shot switch (#1070).
             key={`${currentShot.id}:${playbackVideoUrl || displayImage || ''}`}
             src={playbackVideoUrl}
-            posterSrc={displayImage}
+            posterSrc={playbackVideoUrl ? null : displayImage}
             aspectRatio={aspectRatio}
             className="h-full w-full"
             autoPlay={shouldAutoPlay}

@@ -3,11 +3,9 @@
  * split — and rows accumulate. Theatre reuse is hash-matched on
  * `sourceShotsHash`, not "newest ready".
  *
- * Two producers write here:
- * - the browser export pipeline (see `src/shared/sequence-player/export.ts`),
- *   which commits a finished `ready` row directly; and
- * - the server-side (API) export workflow, which `createProcessing()`s a row
- *   up front and later flips it to `ready`/`failed`.
+ * The server-side export workflow `createProcessing()`s a row up front and
+ * later flips it to `ready`/`failed`. Theatre Download/Copy POST the same
+ * API and reuse a ready hash-matched row.
  *
  * `listBySequence` is `ready`-only so the download UI never offers an
  * in-flight or failed server export; the API uses `listAllBySequence` to
@@ -15,11 +13,7 @@
  */
 
 import type { Database } from '@/lib/db/client';
-import {
-  sequenceExports,
-  type NewSequenceExport,
-  type SequenceExport,
-} from '@/lib/db/schema';
+import { sequenceExports, type SequenceExport } from '@/lib/db/schema';
 import { isUniqueConstraintError } from '@/lib/db/scoped/divergent-insert';
 import { and, desc, eq } from 'drizzle-orm';
 
@@ -57,12 +51,6 @@ export function createSequenceExportsMethods(db: Database) {
         .where(eq(sequenceExports.id, id))
         .limit(1);
       return rows[0] ?? null;
-    },
-
-    insert: async (input: NewSequenceExport): Promise<SequenceExport> => {
-      const [row] = await db.insert(sequenceExports).values(input).returning();
-      if (!row) throw new Error('Failed to insert sequence export');
-      return row;
     },
 
     /**
