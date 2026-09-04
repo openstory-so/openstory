@@ -86,6 +86,8 @@ type SceneScriptBlockProps = {
   isSelected: boolean;
   onSelect: (sceneId: string) => void;
   mentionItems?: MentionItem[];
+  /** Rename the target a pill points at (#1475); see `MarkdownEditor`. */
+  onMentionRename?: (item: MentionItem, name: string) => void;
 };
 
 const SceneScriptBlock: React.FC<SceneScriptBlockProps> = ({
@@ -94,6 +96,7 @@ const SceneScriptBlock: React.FC<SceneScriptBlockProps> = ({
   isSelected,
   onSelect,
   mentionItems,
+  onMentionRename,
 }) => {
   // `undefined` = no draft; the editor mirrors the saved text. Each block owns
   // its own draft so editing one scene never blocks or discards another's.
@@ -198,6 +201,7 @@ const SceneScriptBlock: React.FC<SceneScriptBlockProps> = ({
         className="min-h-[120px]"
         disabled={saveScript.isPending}
         mentionItems={mentionItems}
+        onMentionRename={onMentionRename}
       />
     </section>
   );
@@ -221,7 +225,8 @@ export const SceneScriptDocument: React.FC<SceneScriptDocumentProps> = ({
   onSelectScene,
   splittingScript,
 }) => {
-  const { items: mentionItems } = useSequenceMentionItems(sequenceId);
+  const { items: mentionItems, onMentionRename } =
+    useSequenceMentionItems(sequenceId);
   const blocks = scenes ? buildScriptBlocks(scenes) : [];
   const tail = splittingScript
     ? unsplitScriptTail(splittingScript, blocks)
@@ -260,6 +265,7 @@ export const SceneScriptDocument: React.FC<SceneScriptDocumentProps> = ({
             isSelected={selected.has(block.sceneId)}
             onSelect={onSelectScene}
             mentionItems={mentionItems}
+            onMentionRename={onMentionRename}
           />
         ))}
         {tail && (

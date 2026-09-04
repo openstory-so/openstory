@@ -501,6 +501,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     characters: mentionCharacters,
     elements: mentionElements,
     locations: mentionLocations,
+    onMentionRename,
   } = useSequenceMentionItems(sequenceId);
   // The realtime hook owns the per-prompt-type stream status — `'pending'`
   // covers the window between a successful enqueue and the first delta, so
@@ -1840,6 +1841,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
           isCopied={copiedTab === 'script'}
           onCopy={(text) => void handleCopy(text, 'script')}
           mentionItems={mentionItems}
+          onMentionRename={onMentionRename}
         />
       </TabsContent>
 
@@ -1951,6 +1953,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
               // Lock while streaming so local edits can't fight the LLM.
               disabled={isAwaitingVisualPrompt}
               mentionItems={mentionItems}
+              onMentionRename={onMentionRename}
             />
             {visualPromptDirty && (
               <div className="flex items-center justify-end gap-2">
@@ -2259,6 +2262,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
               // Lock while streaming so local edits can't fight the LLM.
               disabled={isAwaitingMotionPrompt}
               mentionItems={mentionItems}
+              onMentionRename={onMentionRename}
             />
             {motionPromptDirty && (
               <div className="flex items-center justify-end gap-2">

@@ -33,10 +33,12 @@ export type MentionListRef = {
 export type MentionListProps = {
   items: MentionItem[];
   command: (item: MentionItem) => void;
+  /** Overrides the standalone-popup chrome when embedded in another surface. */
+  className?: string;
 };
 
 export const MentionList = forwardRef<MentionListRef, MentionListProps>(
-  ({ items, command }, ref) => {
+  ({ items, command, className }, ref) => {
     const [selectedIdx, setSelectedIdx] = useState(0);
 
     useEffect(() => {
@@ -82,7 +84,10 @@ export const MentionList = forwardRef<MentionListRef, MentionListProps>(
         <div
           role="listbox"
           aria-label="Mention suggestions"
-          className="w-72 rounded-md border bg-popover p-2 text-sm text-muted-foreground shadow-md"
+          className={cn(
+            'w-72 rounded-md border bg-popover p-2 text-sm text-muted-foreground shadow-md',
+            className
+          )}
         >
           No matches
         </div>
@@ -94,7 +99,10 @@ export const MentionList = forwardRef<MentionListRef, MentionListProps>(
       <div
         role="listbox"
         aria-label="Mention suggestions"
-        className="flex max-h-72 w-80 flex-col overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
+        className={cn(
+          'flex max-h-72 w-80 flex-col overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md',
+          className
+        )}
       >
         {sections.map(({ section, entries }) => (
           <div key={section} className="py-1 first:pt-0 last:pb-0">
