@@ -133,10 +133,7 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
     <Popover open={open} onOpenChange={setOpen}>
       <div className="flex items-center gap-2 flex-wrap">
         <PopoverTrigger asChild disabled={disabled}>
-          <GenerationSettingsTrigger
-            aspectRatio={aspectRatio}
-            resolution={resolution}
-          />
+          <GenerationSettingsTrigger aspectRatio={aspectRatio} />
         </PopoverTrigger>
         {appliedFromStyle && onResetStyleDefaults && (
           <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 text-primary px-2 py-0.5 text-xs">

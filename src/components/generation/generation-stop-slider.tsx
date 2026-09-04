@@ -1,6 +1,7 @@
 import {
   GENERATION_STAGE_META,
   sliderStages,
+  sliderStopLabel,
   sliderThumbIndex,
   stopAfterSentence,
   stopAtFromSliderIndex,
@@ -99,8 +100,11 @@ export const GenerationStopSlider: FC<GenerationStopSliderProps> = ({
               )}
               style={{ left: `${stopLabelPercent(index, lastStop)}%` }}
             >
+              {/* Ticks name the stop; the heading above says what happens
+                  there. The last tick used stopAfterSentence, so it repeated
+                  the heading ("Don't stop") instead of naming the stage. */}
               {index === lastStop
-                ? stopAfterSentence(stage)
+                ? sliderStopLabel(stage)
                 : GENERATION_STAGE_META[stage].shortName}
             </button>
           ))}
@@ -115,7 +119,7 @@ export const GenerationStopSlider: FC<GenerationStopSliderProps> = ({
               onCheckedChange={(next) => {
                 onGenerateStartFramesChange(next);
                 // Off drops the Images stop; a thumb sitting on it moves up to
-                // Music & Motion so the parent's value matches the slider.
+                // Motion & Music so the parent's value matches the slider.
                 const nextStages = sliderStages(!next);
                 const moved = stopAtFromSliderIndex(
                   sliderThumbIndex(value, nextStages),
