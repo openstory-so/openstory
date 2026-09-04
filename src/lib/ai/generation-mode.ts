@@ -69,8 +69,13 @@ export const QUALITY_DEFAULT_IMAGE = 'gpt_image_2' as const;
 export const QUALITY_DEFAULT_VIDEO = 'seedance_v2' as const;
 export const QUALITY_DEFAULT_AUDIO = 'elevenlabs_music' as const;
 
+const TURBO_ANALYSIS_MODEL_SET = new Set<string>(TURBO_ANALYSIS_MODELS);
 const TURBO_IMAGE_MODEL_SET = new Set<string>(TURBO_IMAGE_MODELS);
 const TURBO_VIDEO_MODEL_SET = new Set<string>(TURBO_VIDEO_MODELS);
+
+export function isTurboAnalysisModel(model: string): boolean {
+  return TURBO_ANALYSIS_MODEL_SET.has(model);
+}
 
 export function isTurboImageModel(model: string): boolean {
   return TURBO_IMAGE_MODEL_SET.has(model);
