@@ -50,6 +50,9 @@ export const CONTENT_REJECTION_PATTERNS: readonly RegExp[] = [
   /content could not be processed/i,
   /content (?:filter|policy|moderation)/i,
   /\bnsfw\b/i,
+  // Gemini Omni Flash via fal: "Request blocked due to safety violations (harmful content)"
+  /safety violations?/i,
+  /harmful content/i,
 ];
 
 /**

@@ -60,11 +60,8 @@ import {
   ensureExternallyFetchableUrl,
   toDataOrCdnUrl,
 } from '@/lib/storage/external-url';
-import {
-  generateVideo,
-  getVideoJobStatus,
-  type TokenUsage,
-} from '@tanstack/ai';
+import { generateVideo, type TokenUsage } from '@tanstack/ai';
+import { getVideoJobStatus } from '@/lib/ai/video-job-status';
 import { falVideo } from '@tanstack/ai-fal';
 import { createGeminiVideo } from '@tanstack/ai-gemini';
 import { createGrokVideo } from '@tanstack/ai-grok';

@@ -28,6 +28,7 @@ describe('isContentRejectionError', () => {
       'Could not generate images with the given prompts and images. Please try again with different inputs.',
       'Unexpected result from the model.',
       'Output audio has sensitive content.',
+      'Video generation failed: body.prompt: Request blocked due to safety violations (harmful content). Please modify your input and retry.',
     ];
     for (const message of observed) {
       expect(isContentRejectionError(new Error(message)), message).toBe(true);
