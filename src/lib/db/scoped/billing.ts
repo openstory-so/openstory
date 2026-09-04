@@ -37,7 +37,7 @@ import type {
 } from '@/lib/db/schema/credits';
 import { ValidationError } from '@/shared/errors';
 import { getBillingChannel } from '@/lib/realtime';
-import { and, count, desc, eq, gte, notExists, sql } from 'drizzle-orm';
+import { and, count, desc, eq, gte, isNull, notExists, sql } from 'drizzle-orm';
 import { generateId } from '@/shared/id';
 import { giftTokenRedemptions, giftTokens } from '../schema';
 
@@ -326,16 +326,66 @@ export function createBillingMethods(
       .where(eq(teamBillingSettings.teamId, teamId));
   }
 
+  /**
+   * Pause auto-reload after a decline, and tell the customer once (#1499).
+   *
+   * The `isNull` guard IS the one-shot claim: `maybeAutoTopUp` reaches here
+   * from many reservation debits and captures, and only the transition
+   * `autoTopUpFailedAt: null → now` notifies. `clearAutoTopUpFailure` (a
+   * successful purchase, a new default card) re-arms the next send.
+   */
   async function recordAutoTopUpFailure(declineCode: string): Promise<void> {
-    await db
+    const claimed = await db
       .update(teamBillingSettings)
       .set({
         autoTopUpFailedAt: new Date(),
         autoTopUpDeclineCode: declineCode,
         updatedAt: new Date(),
       })
-      .where(eq(teamBillingSettings.teamId, teamId));
+      .where(
+        and(
+          eq(teamBillingSettings.teamId, teamId),
+          isNull(teamBillingSettings.autoTopUpFailedAt)
+        )
+      )
+      .returning({ teamId: teamBillingSettings.teamId });
+
+    if (claimed.length === 0) {
+      // Already paused. Refresh the cooldown window anyway — otherwise a
+      // decline after the first cooldown expires would leave the stale
+      // timestamp in place and the next debit would charge again (#1334).
+      await db
+        .update(teamBillingSettings)
+        .set({
+          autoTopUpFailedAt: new Date(),
+          autoTopUpDeclineCode: declineCode,
+          updatedAt: new Date(),
+        })
+        .where(eq(teamBillingSettings.teamId, teamId));
+      return;
+    }
+
     await emitTeamFunds({ amountMicros: ZERO_MICROS });
+
+    try {
+      // Dynamic import for the same reason as `@/lib/billing/stripe` below:
+      // this module is in the client graph and the email service pulls in
+      // `cloudflare:workers` bindings (#1253).
+      const { notifyAutoTopUpFailed } =
+        await import('@/lib/emails/notify-auto-top-up-failed');
+      const { available } = await read.getAvailable();
+      await notifyAutoTopUpFailed({
+        db,
+        teamId,
+        userId,
+        balanceMicros: available,
+      });
+    } catch (err) {
+      // Log, don't rethrow and don't release the claim: clearing
+      // `autoTopUpFailedAt` to retry the email would also lift the decline
+      // cooldown, putting us straight back into the retry loop #1334 fixed.
+      logger.error('Failed to send auto-top-up-failed email', { teamId, err });
+    }
   }
 
   async function addCredits(

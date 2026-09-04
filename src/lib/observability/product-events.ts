@@ -27,6 +27,7 @@ type ProductEventName =
   | 'checkout_failed'
   | 'feedback_submitted'
   | 'sequence_ready_email_sent'
+  | 'auto_top_up_failed_email_sent'
   | 'studio_generation_started';
 
 export type CaptureProductEventArgs = {

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { AutoTopUpFailedEmail } from './auto-top-up-failed-email';
 import { OtpEmail } from './otp-email';
 import { SequenceReadyEmail } from './sequence-ready-email';
 import { renderEmail } from './render-email';
@@ -69,5 +70,32 @@ describe('renderEmail(SequenceReadyEmail)', () => {
     expect(text).toMatch(/the long walk is ready/i);
     expect(text).toContain('Watch');
     expect(text).not.toContain('<');
+  });
+});
+
+describe('renderEmail(AutoTopUpFailedEmail)', () => {
+  const email = (
+    <AutoTopUpFailedEmail
+      appName="OpenStory"
+      billingUrl="https://openstory.so/credits"
+      balanceDisplay="$1.20"
+    />
+  );
+
+  it('renders the pause, the balance, and one link to fix the card', async () => {
+    const { html } = await renderEmail(email);
+
+    expect(html).toContain('Auto-reload is paused');
+    expect(html).toContain('$1.20');
+    expect(html).toContain('https://openstory.so/credits');
+    expect(html).toContain('Update card');
+  });
+
+  it('never prints the raw Stripe decline code', async () => {
+    const { text } = await renderEmail(email);
+
+    // The template takes no decline code at all — this pins that it stays
+    // that way. "do_not_honor" tells a customer nothing they can act on.
+    expect(text).not.toMatch(/do_not_honor|insufficient_funds|requires_action/);
   });
 });

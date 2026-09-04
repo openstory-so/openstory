@@ -52,6 +52,11 @@ vi.doMock('@/lib/observability/logger', () => ({
   }),
 }));
 
+const notifyAutoTopUpFailed = vi.fn();
+vi.doMock('@/lib/emails/notify-auto-top-up-failed', () => ({
+  notifyAutoTopUpFailed,
+}));
+
 vi.doMock('@/lib/billing/stripe', () => ({
   getStripeOrThrow: () => ({
     customers: {
@@ -374,6 +379,82 @@ describe('maybeAutoTopUp', () => {
     const billing = createBillingMethods(db, teamId, userId);
     await expect(billing.checkAutoTopUp()).rejects.toThrow('stripe is down');
     expect((await settingsOf())?.autoTopUpFailedAt).toBeNull();
+  });
+});
+
+describe('decline notice (#1499)', () => {
+  async function declineOnce() {
+    const billing = createBillingMethods(db, teamId, userId);
+    await billing.checkAutoTopUp();
+    return billing;
+  }
+
+  /** Let the decline cooldown lapse so the next attempt reaches Stripe. */
+  async function expireCooldown() {
+    await db
+      .update(teamBillingSettings)
+      .set({
+        autoTopUpFailedAt: new Date(
+          Date.now() - AUTO_TOPUP_DECLINE_COOLDOWN_MS - 1_000
+        ),
+      })
+      .where(eq(teamBillingSettings.teamId, teamId));
+  }
+
+  beforeEach(async () => {
+    await seedSettings({ balance: 3_000_000, thresholdMicros: 5_000_000 });
+    paymentIntentCreate.mockRejectedValue(cardDeclinedError());
+  });
+
+  it('notifies the customer on the first decline', async () => {
+    await declineOnce();
+
+    expect(notifyAutoTopUpFailed).toHaveBeenCalledTimes(1);
+    expect(notifyAutoTopUpFailed.mock.calls[0]?.[0]).toMatchObject({
+      teamId,
+      userId,
+      balanceMicros: 3_000_000,
+    });
+  });
+
+  it('stays silent on every later attempt, and refreshes the cooldown', async () => {
+    await declineOnce();
+
+    const billing = createBillingMethods(db, teamId, userId);
+    for (let i = 0; i < 3; i++) {
+      await expireCooldown();
+      await billing.checkAutoTopUp();
+    }
+
+    expect(paymentIntentCreate).toHaveBeenCalledTimes(4);
+    expect(notifyAutoTopUpFailed).toHaveBeenCalledTimes(1);
+
+    // The repeat decline must still push the cooldown forward — a stale
+    // timestamp would let the very next debit charge the card again (#1334).
+    const failedAt = (await settingsOf())?.autoTopUpFailedAt;
+    expect(Date.now() - (failedAt?.getTime() ?? 0)).toBeLessThan(
+      AUTO_TOPUP_DECLINE_COOLDOWN_MS
+    );
+  });
+
+  it('re-arms once the card is fixed', async () => {
+    await declineOnce();
+
+    const billing = createBillingMethods(db, teamId, userId);
+    await billing.clearAutoTopUpFailure();
+    await billing.checkAutoTopUp();
+
+    expect(notifyAutoTopUpFailed).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not fail the debit when the email send throws', async () => {
+    notifyAutoTopUpFailed.mockRejectedValueOnce(new Error('mailbox full'));
+
+    const billing = createBillingMethods(db, teamId, userId);
+    await expect(billing.checkAutoTopUp()).resolves.toBeUndefined();
+
+    // Still paused — the claim is never released, or the retry loop resumes.
+    expect((await settingsOf())?.autoTopUpFailedAt).toBeInstanceOf(Date);
   });
 });
 

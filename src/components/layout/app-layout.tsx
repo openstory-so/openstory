@@ -12,6 +12,7 @@ import { AddCreditsDialog } from '@/components/billing/add-credits-dialog';
 import { GlobalBillingGateDialog } from '@/components/billing/billing-gate-dialog';
 import { WelcomeCreditsProvider } from '@/components/billing/welcome-credits-dialog';
 import { AppSidebar } from './app-sidebar';
+import { AutoTopUpFailedBanner } from './auto-top-up-failed-banner';
 import { Breadcrumbs } from './breadcrumbs';
 import { ComplianceRestrictionBanner } from './compliance-restriction-banner';
 import { InvalidApiKeyBanner } from './invalid-api-key-banner';
@@ -44,6 +45,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
               </header>
               <ComplianceRestrictionBanner />
               <InvalidApiKeyBanner />
+              <AutoTopUpFailedBanner />
               <div
                 className={cn(
                   'flex flex-col flex-1 min-w-0 min-h-0 overflow-x-hidden overflow-y-auto [scrollbar-gutter:stable]',
