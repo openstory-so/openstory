@@ -27,6 +27,7 @@ import type {
   DialogueLine,
   SceneMetadata,
 } from './scene-analysis.schema';
+import type { ShotSpec } from './shot-list.schema';
 
 /**
  * The per-scene shape the scene-split workflow persists and emits mid-stream.
@@ -38,6 +39,8 @@ export type SceneSplittingScene = {
   originalScript: { extract: string; dialogue: DialogueLine[] };
   metadata: SceneMetadata;
   continuity: Continuity;
+  /** Filled by the shot-list pass (#1486). Absent until that step runs. */
+  shots?: ShotSpec[];
 };
 
 export type StreamedSceneEvent =

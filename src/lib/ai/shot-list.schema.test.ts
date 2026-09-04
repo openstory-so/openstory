@@ -6,6 +6,7 @@ import {
   MIN_SHOT_DURATION_SECONDS,
   sceneWithShotsResultSchema,
   sceneWithShotsSchema,
+  shotListPassResultSchema,
   shotSpecSchema,
 } from './shot-list.schema';
 
@@ -35,6 +36,10 @@ describe('shot-list schema — union budget', () => {
     const unions = countUnions(sceneWithShotsResultSchema);
     expect(unions).toBe(0);
     expect(unions).toBeLessThanOrEqual(16);
+  });
+
+  it('shotListPassResultSchema compiles to ZERO union-typed params', () => {
+    expect(countUnions(shotListPassResultSchema)).toBe(0);
   });
 
   it('has no optional/nullish/catch fields (all required, emptyable)', () => {

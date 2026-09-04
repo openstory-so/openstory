@@ -492,6 +492,24 @@ export function createShotsMethods(db: Database) {
       return result.rowsAffected ?? 0;
     },
 
+    /**
+     * Drop shots in a scene with `shotNumber >= minShotNumber`. Re-analyze
+     * companion: a scene that used to have 3 shots and now has 1 must not
+     * keep the extras. Predicate DELETE so a workflow never lists live rows.
+     */
+    deleteFromShotNumber: async (
+      sceneId: string,
+      minShotNumber: number
+    ): Promise<number> => {
+      const result = await db
+        .delete(shots)
+        .where(
+          and(eq(shots.sceneId, sceneId), gte(shots.shotNumber, minShotNumber))
+        );
+      // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- DB result may be undefined at runtime
+      return result.rowsAffected ?? 0;
+    },
+
     createBulk: async (shotData: NewShot[]): Promise<Shot[]> => {
       const BATCH_SIZE = 5;
       const results: Shot[] = [];

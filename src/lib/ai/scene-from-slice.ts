@@ -20,8 +20,10 @@ const TIME_SUFFIX = new RegExp(
   `\\s*[-–—]\\s*((?:EARLY|LATE|MID)\\s+)?(${TIME_WORD})\\b.*$`,
   'i'
 );
-/** Enhancer labels like `Scene 3 — 5s` — duration, not a location heading. */
-const DURATION_LABEL = /^Scene\s+\d+\s*[–—-]\s*(\d+)\s*s\b/i;
+/** Enhancer labels like `Scene 3 — 5s` — scene total, not a location heading. */
+const SCENE_DURATION_LABEL = /^Scene\s+\d+\s*[–—-]\s*(\d+)\s*s\b/i;
+/** `Shot 1 — 4s` — clip duration; skip as a heading, don't steal the scene total. */
+const SHOT_DURATION_LABEL = /^Shot\s+\d+\s*[–—-]\s*(\d+)\s*s\b/i;
 const TRANSITION =
   /^(?:CUT TO:|DISSOLVE TO:|FADE IN:|FADE OUT[.:]?|SMASH CUT TO:|MATCH CUT TO:|WIPE TO:)\s*$/i;
 const PARENTHETICAL = /^\([^)]+\)$/;
@@ -77,11 +79,17 @@ export function parseSceneHeading(firstLine: string): SceneHeading {
   };
 }
 
-function parseDurationLabel(trimmed: string): number | null {
-  const match = trimmed.match(DURATION_LABEL);
+function parseSceneDurationLabel(trimmed: string): number | null {
+  const match = trimmed.match(SCENE_DURATION_LABEL);
   if (!match?.[1]) return null;
   const seconds = Number(match[1]);
   return Number.isFinite(seconds) ? seconds : null;
+}
+
+function isDurationLabel(trimmed: string): boolean {
+  return (
+    SCENE_DURATION_LABEL.test(trimmed) || SHOT_DURATION_LABEL.test(trimmed)
+  );
 }
 
 type SliceLead = {
@@ -94,9 +102,11 @@ function sliceLead(slice: string): SliceLead {
   for (const line of slice.split('\n')) {
     const trimmed = line.trim();
     if (trimmed.length === 0) continue;
-    const labeled = parseDurationLabel(trimmed);
-    if (labeled !== null && durationSeconds === null) {
-      durationSeconds = labeled;
+    if (isDurationLabel(trimmed)) {
+      const labeled = parseSceneDurationLabel(trimmed);
+      if (labeled !== null && durationSeconds === null) {
+        durationSeconds = labeled;
+      }
       continue;
     }
     return { headingLine: trimmed, durationSeconds };

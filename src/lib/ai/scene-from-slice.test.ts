@@ -156,6 +156,20 @@ describe('buildSceneFromSlice', () => {
     expect(scene.metadata.timeOfDay).toBe('early morning');
     expect(scene.metadata.durationSeconds).toBe(5);
   });
+
+  it('skips shot duration labels and keeps the scene total', () => {
+    const slice = [
+      'Scene 1 — 10s',
+      'INT. HALLWAY - NIGHT',
+      'Shot 1 — 4s',
+      'She opens the door.',
+      'Shot 2 — 6s',
+      'Cut to the hallway beyond.',
+    ].join('\n');
+    const scene = buildSceneFromSlice('scene_1', 0, slice);
+    expect(scene.metadata.title).toBe('HALLWAY');
+    expect(scene.metadata.durationSeconds).toBe(10);
+  });
 });
 
 describe('inheritMissingLocation', () => {

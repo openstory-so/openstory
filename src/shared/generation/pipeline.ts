@@ -319,6 +319,7 @@ export type GenerationCheckpoint = {
     analysisSceneId: string;
     shotId: string;
     frameId: string | null;
+    shotNumber?: number;
   }>;
   characterBible?: CharacterBibleEntry[];
   locationBible?: LocationBibleEntry[];

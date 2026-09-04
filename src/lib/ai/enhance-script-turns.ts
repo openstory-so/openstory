@@ -9,7 +9,8 @@ import {
   createTotalLineFilter,
   durationCorrectionNeeded,
   maybeRewriteDurationLabels,
-  parseSceneDurationLabels,
+  parseClipDurationLabels,
+  parseShotDurationLabels,
   stripTotalLine,
 } from '@/lib/ai/enhance-duration';
 import type { ImageToVideoModel } from '@/lib/ai/models';
@@ -59,7 +60,7 @@ export async function* runEnhanceScriptTurns(opts: {
   const first = yield* streamTurn(opts.generate, opts.messages, true);
 
   let script = first;
-  const labels = parseSceneDurationLabels(script);
+  const labels = parseClipDurationLabels(script);
   const needsCorrection = durationCorrectionNeeded({
     labels,
     targetSeconds: opts.targetSeconds,
@@ -73,6 +74,7 @@ export async function* runEnhanceScriptTurns(opts: {
       targetSeconds: opts.targetSeconds,
       grid,
       sceneCount: labels.length,
+      usingShotLabels: parseShotDurationLabels(script).length > 0,
     });
     script = yield* streamTurn(
       opts.generate,

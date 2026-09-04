@@ -508,7 +508,13 @@ export const sceneAnalysisSchema = z.object({
 // ============================================================================
 
 export type SceneAnalysis = z.infer<typeof sceneAnalysisSchema>;
-export type Scene = z.infer<typeof sceneSchema>;
+/**
+ * Analysis scene. `shots` is attached after the shot-list pass (#1486) and is
+ * not part of the (unused) `sceneSchema` LLM wire shape.
+ */
+export type Scene = z.infer<typeof sceneSchema> & {
+  shots?: import('./shot-list.schema').ShotSpec[];
+};
 export type CharacterBibleEntry = z.infer<typeof characterBibleEntrySchema>;
 // Bible entry types as consumed downstream: firstMention carries the
 // server-derived sceneId (see FirstMentionWithScene). The raw z.infer of the
