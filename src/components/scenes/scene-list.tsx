@@ -13,6 +13,7 @@ import {
   type ContinueStage,
   type GenerationStage,
 } from '@/lib/generation/pipeline';
+import { useHydrated } from '@/hooks/use-hydrated';
 import { useCreateScene, useReorderScenes } from '@/hooks/use-scene-structure';
 import {
   DEFAULT_IMAGE_MODEL,
@@ -216,6 +217,10 @@ const SceneListComponent: React.FC<SceneListProps> = ({
   }, [divergentVariants]);
 
   const createScene = useCreateScene(sequenceId);
+  // The rail is in the SSR markup, so a click can land before React has
+  // attached the handler and silently do nothing (the manual-pipeline e2e
+  // hit this under parallel workers). Same gate as the library Add buttons.
+  const isHydrated = useHydrated();
   const reorderScenes = useReorderScenes(sequenceId);
 
   // Scene order lives in the scenes array; a ref keeps a stale closure in a
@@ -678,7 +683,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
               variant="outline"
               size="sm"
               onClick={handleAddScene}
-              disabled={createScene.isPending}
+              disabled={!isHydrated || createScene.isPending}
             >
               {createScene.isPending ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
