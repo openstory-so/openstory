@@ -1,14 +1,18 @@
 import { StudioComposer } from '@/components/studio/studio-composer';
+import { StudioComposerResizeHandle } from '@/components/studio/studio-composer-resize';
 import { StudioGallery } from '@/components/studio/studio-gallery';
 import { useAuthGate } from '@/components/auth/auth-gate-provider';
 import { Button } from '@/components/ui/button';
 import { PageContainer } from '@/components/layout/page-container';
 import { PageIntro } from '@/components/typography/page-intro';
 import { useStudioAssets } from '@/hooks/use-studio-assets';
+import { useStudioComposerMaxFraction } from '@/hooks/use-studio-composer-max-fraction';
+import { studioComposerMaxHeightCss } from '@/lib/studio/composer-max-height';
 import { studioPrompt } from '@/lib/studio/outputs';
 import type { StudioActivity, StudioSort } from '@/lib/studio/schema';
 import { Link } from '@tanstack/react-router';
 import { Star } from 'lucide-react';
+import { useRef } from 'react';
 
 type StudioViewProps = {
   activity: StudioActivity;
@@ -18,6 +22,8 @@ type StudioViewProps = {
 
 export function StudioView({ activity, sort, favorites }: StudioViewProps) {
   const { isAuthenticated } = useAuthGate();
+  const columnRef = useRef<HTMLDivElement>(null);
+  const [composerMax, setComposerMax] = useStudioComposerMaxFraction();
   const query = useStudioAssets({
     activity,
     favoritesOnly: favorites || undefined,
@@ -31,7 +37,7 @@ export function StudioView({ activity, sort, favorites }: StudioViewProps) {
   const to = activity === 'video' ? '/videos' : '/images';
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div ref={columnRef} className="flex h-full min-h-0 flex-col">
       <div className="min-h-0 flex-1 overflow-auto">
         <PageIntro
           title={activity === 'video' ? 'Videos' : 'Images'}
@@ -105,8 +111,21 @@ export function StudioView({ activity, sort, favorites }: StudioViewProps) {
         </PageContainer>
       </div>
 
-      <div className="shrink-0 border-t bg-background/80 backdrop-blur-md">
-        <PageContainer maxWidth="wide" padding="compact" className="py-4">
+      <div
+        className="relative flex min-h-0 shrink-0 flex-col overflow-hidden border-t bg-background/80 backdrop-blur-md"
+        style={{ maxHeight: studioComposerMaxHeightCss(composerMax) }}
+        data-testid="studio-composer-pane"
+      >
+        <StudioComposerResizeHandle
+          fraction={composerMax}
+          onFractionChange={setComposerMax}
+          columnRef={columnRef}
+        />
+        <PageContainer
+          maxWidth="wide"
+          padding="compact"
+          className="flex h-full min-h-0 flex-col overflow-hidden py-4"
+        >
           <StudioComposer
             activity={activity}
             generatingPrompts={generatingPrompts}

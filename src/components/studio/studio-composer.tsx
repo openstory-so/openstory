@@ -893,7 +893,7 @@ export function StudioComposer({
     // oxlint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- drop zone; the Add tile is the keyboard path
     <form
       className={cn(
-        'relative flex flex-col gap-3 rounded-xl border bg-card p-3 shadow-sm',
+        'relative flex h-full min-h-0 flex-col gap-3 overflow-hidden rounded-xl border bg-card p-3 shadow-sm',
         dragging && 'border-ring ring-3 ring-ring/30'
       )}
       onSubmit={(event) => {
@@ -917,7 +917,7 @@ export function StudioComposer({
       onDrop={onDrop}
       onPasteCapture={onPasteCapture}
     >
-      <div className="flex flex-col gap-3 md:flex-row">
+      <div className="flex min-h-0 flex-col gap-3 overflow-y-auto md:flex-row">
         {showTiles && (
           <div
             className="flex shrink-0 gap-2 overflow-x-auto md:max-w-[19rem] md:flex-wrap"
@@ -1021,7 +1021,7 @@ export function StudioComposer({
         />
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex shrink-0 flex-wrap items-center gap-2">
         {isVideo && (
           <Select
             value={mode}
