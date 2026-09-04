@@ -1,10 +1,9 @@
 /**
  * Tell the customer their auto-reload was declined (#1499).
  *
- * Server-only, and only ever reached through a dynamic `import()` from
- * `@/lib/db/scoped/billing` — that module is in the client graph, and a
- * static import here would ship the email service (and `cloudflare:workers`)
- * to the browser (#1253).
+ * Server-only, and reached through a dynamic `import()` from
+ * `@/lib/db/scoped/billing` so the email service and its
+ * `cloudflare:workers` bindings stay out of any browser chunk (#1253).
  *
  * The one-shot guarantee lives in the caller: `recordAutoTopUpFailure` only
  * calls this on the CAS transition `autoTopUpFailedAt: null → now`, so the

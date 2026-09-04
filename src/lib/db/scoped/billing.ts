@@ -368,9 +368,12 @@ export function createBillingMethods(
     await emitTeamFunds({ amountMicros: ZERO_MICROS });
 
     try {
-      // Dynamic import for the same reason as `@/lib/billing/stripe` below:
-      // this module is in the client graph and the email service pulls in
-      // `cloudflare:workers` bindings (#1253).
+      // Dynamic, matching the `@/lib/billing/stripe` import below (#1253).
+      // The email service reaches `cloudflare:workers` bindings and the
+      // React Email renderer — neither belongs in a browser chunk. Note the
+      // boundary guard does NOT currently walk into this module (`@/lib/db`
+      // is server-only wholesale, so nothing client-side may import it), so
+      // the import shape is what keeps this true, not the test.
       const { notifyAutoTopUpFailed } =
         await import('@/lib/emails/notify-auto-top-up-failed');
       const { available } = await read.getAvailable();
