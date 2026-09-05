@@ -47,12 +47,13 @@ describe('createUserPrompt (issue #855)', () => {
       videoModel: 'ltx_2_3_pro',
     });
     expect(prompt).toContain('Target video duration: 1 minute');
-    // LTX min clip 6s caps 60s at 10 scenes; preferred 8–12 intersects to 8–10.
-    expect(prompt).toContain('about 8-10 scenes');
+    // LTX min clip 6s caps 60s at 10 clips; preferred 8–12 intersects to 8–10.
+    expect(prompt).toContain('about 8-10 clips');
     expect(prompt).not.toMatch(/~\s*\d+\s*words/);
     expect(prompt).toContain('Clip durations MUST be 6, 8 or 10 seconds');
     expect(prompt).toContain('MUST add up to 60 seconds');
     expect(prompt).toContain('TOTAL: <sum>s');
+    expect(prompt).toContain('Each SHOT is one video clip');
   });
 
   it('threads style name/category/tags so the genre drives the events', () => {

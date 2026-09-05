@@ -61,6 +61,7 @@ type StreamChunk = {
  * mock, keyed on observationName).
  */
 let streamChunks: StreamChunk[] = [];
+let shotListParsed: { scenes: unknown[] } = { scenes: [] };
 function singleDoneChunk(): StreamChunk[] {
   return [
     { done: true, accumulated: '{}', parsed: SCENES_RESULT, usage: undefined },
@@ -72,18 +73,25 @@ vi.doMock('@/lib/ai/llm-client', () => ({
   llmCostFromUsage: vi.fn(() => 0),
   callLLMStream: vi.fn((params: { observationName?: string }) => ({
     async *[Symbol.asyncIterator]() {
-      const chunks =
-        params.observationName === 'phase-1-scene-bibles'
-          ? [
-              {
-                done: true,
-                accumulated: '{}',
-                parsed: BIBLES_RESULT,
-                usage: undefined,
-              },
-            ]
-          : streamChunks;
-      for (const chunk of chunks) yield chunk;
+      if (params.observationName === 'phase-1-scene-bibles') {
+        yield {
+          done: true,
+          accumulated: '{}',
+          parsed: BIBLES_RESULT,
+          usage: undefined,
+        };
+        return;
+      }
+      if (params.observationName === 'phase-1-scene-shot-list') {
+        yield {
+          done: true,
+          accumulated: '{}',
+          parsed: shotListParsed,
+          usage: undefined,
+        };
+        return;
+      }
+      for (const chunk of streamChunks) yield chunk;
     },
   })),
 }));
@@ -196,6 +204,17 @@ function makeScopedDb(
     shotSeq++;
     return { id: `shot_${shotSeq}`, anchorFrameId: `frame_${shotSeq}` };
   };
+  // Same (sceneId, shotNumber) must return the stream-time row on reconcile
+  // so shot 1 is not treated as a new pass-2 shot (and re-previewed).
+  const shotByKey = new Map<string, { id: string; anchorFrameId: string }>();
+  const shotFor = (sceneId: string | null | undefined, shotNumber?: number) => {
+    const key = `${sceneId ?? 'none'}:${shotNumber ?? 1}`;
+    const existing = shotByKey.get(key);
+    if (existing) return existing;
+    const created = shot();
+    shotByKey.set(key, created);
+    return created;
+  };
   const scopedDb = {
     credentials: {
       resolveLlmKey,
@@ -216,19 +235,26 @@ function makeScopedDb(
     },
     sceneScriptVersions: { seedSplitVersions: () => Promise.resolve() },
     shots: {
-      upsert: () => Promise.resolve(shot()),
-      // Reconcile re-derives the mapping; keep ids stable per scene index.
-      bulkUpsert: (rows: Array<{ sceneId: string | null }>) =>
+      upsert: (data: { sceneId?: string | null; shotNumber?: number }) =>
+        Promise.resolve(shotFor(data.sceneId, data.shotNumber)),
+      bulkUpsert: (
+        rows: Array<{ sceneId: string | null; shotNumber?: number }>
+      ) =>
         Promise.resolve(
-          rows.map((row, index) => ({
-            id: `shot_r${index}`,
-            anchorFrameId: `frame_r${index}`,
-            sceneId: row.sceneId,
-          }))
+          rows.map((row) => {
+            const created = shotFor(row.sceneId, row.shotNumber);
+            return {
+              id: created.id,
+              anchorFrameId: created.anchorFrameId,
+              sceneId: row.sceneId,
+              shotNumber: row.shotNumber ?? 1,
+            };
+          })
         ),
       update: () => Promise.resolve(true),
       delete: () => Promise.resolve(),
       deleteByScenesFromOrderIndex: () => Promise.resolve(),
+      deleteFromShotNumber: () => Promise.resolve(0),
     },
     sequences: {
       updateTitle: () => Promise.resolve(),
@@ -293,6 +319,10 @@ function makeWorkflow(): Probe {
 
 const previewCalls = () =>
   triggerWorkflow.mock.calls.filter((call) => call[0] === '/image');
+
+beforeEach(() => {
+  shotListParsed = { scenes: [] };
+});
 
 describe('SceneSplitWorkflow preview fan-out', () => {
   beforeEach(() => {
@@ -567,5 +597,94 @@ describe('SceneSplitWorkflow degraded boundary retry', () => {
         phase: 1,
       })
     );
+  });
+});
+
+function shotSpec(shotNumber: number, action: string) {
+  return {
+    shotNumber,
+    framing: {
+      shotSize: 'medium',
+      angle: 'eye level',
+      composition: 'centered',
+      subjectStartState: 'standing',
+    },
+    action,
+    cameraMovement: { move: 'static', pacing: 'slow' as const },
+    soundCue: '',
+    durationSeconds: 4,
+  };
+}
+
+describe('SceneSplitWorkflow shot-list pass (#1486)', () => {
+  beforeEach(() => {
+    triggerWorkflow.mockReset();
+    triggerWorkflow.mockResolvedValue('run_1');
+    streamChunks = singleDoneChunk();
+    shotListParsed = { scenes: [] };
+    feed.mockReset();
+  });
+
+  test('defaults to one shot per scene when the pass emits nothing', async () => {
+    const result = await makeWorkflow().split(
+      makeEvent(),
+      makeStep(),
+      makeScopedDb()
+    );
+    expect(result.shotMapping).toHaveLength(SCENES.length);
+    expect(result.scenes.every((s) => (s.shots?.length ?? 1) === 1)).toBe(true);
+  });
+
+  test('persists two shots on a scene with an internal cut', async () => {
+    shotListParsed = {
+      scenes: [
+        {
+          sceneNumber: 1,
+          shots: [
+            shotSpec(1, 'She opens the door'),
+            shotSpec(2, 'Cut to the hallway beyond'),
+          ],
+        },
+      ],
+    };
+    const result = await makeWorkflow().split(
+      makeEvent(),
+      makeStep(),
+      makeScopedDb()
+    );
+    expect(result.scenes[0]?.shots).toHaveLength(2);
+    expect(result.scenes[0]?.shots?.map((s) => s.action)).toEqual([
+      'She opens the door',
+      'Cut to the hallway beyond',
+    ]);
+    // Scene 1 → 2 shots, scenes 2–3 → 1 each.
+    expect(result.shotMapping).toHaveLength(4);
+    expect(
+      result.shotMapping.filter((m) => m.analysisSceneId === 'scene_1')
+    ).toHaveLength(2);
+    // Stream previews shot 1 of each scene; pass 2 previews the extra shot.
+    expect(previewCalls()).toHaveLength(4);
+    const extraPreview = previewCalls().find((call) => {
+      const body = call[1];
+      return (
+        typeof body === 'object' &&
+        body !== null &&
+        'prompt' in body &&
+        typeof body.prompt === 'string' &&
+        body.prompt.includes('Cut to the hallway beyond')
+      );
+    });
+    expect(extraPreview).toBeDefined();
+  });
+
+  test('runs the shot-list call on the analysis model', async () => {
+    await makeWorkflow().split(makeEvent(), makeStep(), makeScopedDb());
+    const shotListCall = vi
+      .mocked(callLLMStream)
+      .mock.calls.find(
+        ([params]) => params.observationName === 'phase-1-scene-shot-list'
+      )?.[0];
+    expect(shotListCall?.model).toBe(INPUT.modelId);
+    expect(shotListCall?.responseSchema).toBeDefined();
   });
 });

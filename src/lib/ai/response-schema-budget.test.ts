@@ -39,6 +39,7 @@ import {
   motionPromptSchema,
   visualPromptResultSchema,
 } from './scene-analysis.schema';
+import { shotListPassResultSchema } from './shot-list.schema';
 
 const MEASURED_SCHEMAS: Record<string, z.ZodType> = {
   sceneSplitScenesResultSchema,
@@ -54,6 +55,7 @@ const MEASURED_SCHEMAS: Record<string, z.ZodType> = {
   talentMediaAnalysisSchema,
   autoStyleResponseSchema,
   softenImagePromptResponseSchema,
+  shotListPassResultSchema,
 };
 
 describe('structured-output schema budget', () => {
