@@ -133,8 +133,14 @@ describe('geminiTextCostFromUsage', () => {
 
 describe('geminiVideoCostFromUsage', () => {
   it('prices the interaction’s video-output tokens at $17.50/1M', () => {
-    // A 10-second 720p clip: 57,920 output tokens → $1.0136.
-    expect(geminiVideoCostFromUsage(usage(120, 57_920))).toBe(1_013_600);
+    // A 10-second 720p clip: 57,920 output tokens → $1.0136. Zero prompt
+    // tokens so this is the video-output line alone.
+    expect(geminiVideoCostFromUsage(usage(0, 57_920))).toBe(1_013_600);
+  });
+
+  it('adds input tokens at the published $1.50/1M rate', () => {
+    // Same 10s clip plus 120 prompt tokens → $1.0136 + $0.00018.
+    expect(geminiVideoCostFromUsage(usage(120, 57_920))).toBe(1_013_780);
   });
 
   it('returns undefined for missing usage or zero output tokens', () => {

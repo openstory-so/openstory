@@ -555,7 +555,7 @@ describe('studioVideoCostFromUsage', () => {
       },
       { promptTokens: 120, completionTokens: 28_960, totalTokens: 29_080 }
     );
-    expect(billing.cost).toBe(506_800);
+    expect(billing.cost).toBe(506_980);
     expect(billing.recordFalUsage).toBe(false);
     expect(billing.endpointId).toBe('gemini-omni-1.1-flash');
   });

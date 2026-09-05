@@ -131,10 +131,16 @@ const TEXT_RATES: Record<
 /**
  * Omni Flash bills video output as tokens: a fixed 5,792 tokens per second of
  * 720p video at the video-output rate of $17.50 per 1M tokens (≈$0.101/s).
- * The adapter surfaces those output tokens as `usage.completionTokens`.
+ * Input (text / image / video / audio) is $1.50 per 1M tokens. Published
+ * rates, ai.google.dev/gemini-api/docs/pricing, read 2026-09-04.
+ *
+ * The adapter surfaces video-output tokens as `usage.completionTokens`. Text
+ * / thinking output ($9/1M) is not split out of that field, so it is priced
+ * at the video rate when present.
  */
 const OMNI_VIDEO_TOKENS_PER_SECOND = 5_792;
 const OMNI_VIDEO_USD_PER_1M_TOKENS = 17.5;
+const OMNI_VIDEO_INPUT_USD_PER_1M_TOKENS = 1.5;
 
 /** Undefined when the adapter reported no usage — the caller reports that as a
  *  missing cost rather than inventing one. */
@@ -157,7 +163,7 @@ export function geminiTextCostFromUsage(
 
 /**
  * Settled charge for an Omni Flash video, from the interaction's reported
- * output tokens. Undefined when the adapter reported no usage (or zero output
+ * tokens. Undefined when the adapter reported no usage (or zero output
  * tokens — a completed video always bills some), so the caller reports a
  * missing cost instead of recording $0 owed.
  */
@@ -166,8 +172,12 @@ export function geminiVideoCostFromUsage(
 ): Microdollars | undefined {
   if (!usage || !Number.isFinite(usage.completionTokens)) return undefined;
   if (usage.completionTokens <= 0) return undefined;
+  const inputTokens = Number.isFinite(usage.promptTokens)
+    ? Math.max(0, usage.promptTokens)
+    : 0;
   return usdToMicros(
-    (usage.completionTokens / 1_000_000) * OMNI_VIDEO_USD_PER_1M_TOKENS
+    (inputTokens / 1_000_000) * OMNI_VIDEO_INPUT_USD_PER_1M_TOKENS +
+      (usage.completionTokens / 1_000_000) * OMNI_VIDEO_USD_PER_1M_TOKENS
   );
 }
 

@@ -415,10 +415,14 @@ describe('recordMediaGenerationSpan', () => {
     expect(name).toBe('motion');
     expect(options?.attributes).toEqual({
       'gen_ai.system': 'fal',
-      'gen_ai.operation.name': 'video_generation',
+      // PostHog only classifies `chat` as $ai_generation; the histogram
+      // below still records `video_generation`.
+      'gen_ai.operation.name': 'chat',
       'gen_ai.request.model': 'kling-v2.5',
       // 350_000 microdollars → $0.35.
       'gen_ai.usage.cost': 0.35,
+      $ai_total_cost_usd: 0.35,
+      $ai_output_cost_usd: 0.35,
       'tanstack.ai.usage.units_billed': 5,
       'gen_ai.input.messages': JSON.stringify([
         {
@@ -561,6 +565,24 @@ describe('recordMediaGenerationSpan', () => {
     expect(message).not.toBe(otelPayload);
     expect(message).toContain('{otelMessage}');
     expect(properties?.otelMessage).toBe(otelPayload);
+  });
+
+  it('forwards token counts onto the span for token-billed vias', async () => {
+    const { recordMediaGenerationSpan } = await importAiOtel({
+      token: 'phc_test',
+    });
+
+    recordMediaGenerationSpan({
+      ...record,
+      inputTokens: 120,
+      outputTokens: 28_960,
+    });
+
+    const [, options] = mockStartSpan.mock.calls[0] ?? [];
+    expect(options?.attributes).toMatchObject({
+      'gen_ai.usage.input_tokens': 120,
+      'gen_ai.usage.output_tokens': 28_960,
+    });
   });
 
   it('keeps per-user attributes and provider prose out of the histogram', async () => {

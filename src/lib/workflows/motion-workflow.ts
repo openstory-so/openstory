@@ -47,6 +47,7 @@ import {
   canRenderReferenceOnly,
   motionCostFromUsage,
   pollMotionJob,
+  resolveMotionVia,
   submitMotionJob,
 } from '@/lib/motion/motion-generation';
 import { getEffectiveFalPricing } from '@/lib/ai/fal-pricing-live';
@@ -924,6 +925,8 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
         durationMs: Date.now() - job.submittedAt,
         costMicros: actualCost,
         unitsBilled: billing.unitsBilled,
+        inputTokens: billedUsage?.promptTokens,
+        outputTokens: billedUsage?.completionTokens,
         usedOwnKey: job.usedOwnKey,
         prompt,
         outputUrl: videoUrl,
@@ -1069,7 +1072,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
             assetKind: 'video_variant',
             assetId: provenanceVersionId,
             storageKey: buildR2Key(STORAGE_BUCKETS.VIDEOS, storageResult.path),
-            provider: 'fal',
+            provider: job.via,
             model: activeModel,
             providerRequestId: job.jobId,
             workflowRunId: event.instanceId,
@@ -1108,7 +1111,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
     // a step return this hook can't see.
     recordMediaGenerationSpan({
       model,
-      provider: 'fal',
+      provider: await resolveMotionVia(model, scopedDb.credentials),
       activity: 'video',
       prompt: input.prompt,
       errorType: isContentRejectionError(error)
