@@ -219,9 +219,9 @@ async function fetchSafeImage(
 }
 
 export type IngestedImage = {
-  /** Bucket-relative temp path, e.g. `<teamId>/temp/<id>.png`. */
+  /** Bucket-relative ingest path, e.g. `<teamId>/temp/<id>.png`. */
   tempPath: string;
-  /** Public URL of the uploaded temp object. */
+  /** Public URL of the uploaded object. */
   publicUrl: string;
   extension: string;
   contentType: string;
@@ -234,21 +234,24 @@ export type ImageFetchSource = {
 
 /**
  * SSRF-safely fetch a caller-supplied image URL and store it under the given
- * bucket's `temp/` prefix, returning the temp path + public URL. The temp
- * object is later promoted to permanent storage by the relevant create flow
- * (elements → `promoteTempElements`; talent/locations → their create cores).
+ * bucket's `pathPrefix` folder, returning the path + public URL.
+ *
+ * `temp/` is the default: talent and location creates still move the object to
+ * a permanent key. Elements pass `uploads` instead — nothing moves them
+ * (#1471), so they must not land somewhere a temp sweep could reclaim.
  */
 export async function ingestImageToTempBucket(
   url: string,
   bucket: StorageBucket,
   teamId: string,
-  source?: ImageFetchSource
+  source?: ImageFetchSource,
+  pathPrefix = 'temp'
 ): Promise<IngestedImage> {
   const { bytes, contentType, extension } = await fetchSafeImage(
     url,
     source?.label ?? DEFAULT_IMAGE_LABEL
   );
-  const tempPath = `${teamId}/temp/${generateId()}.${extension}`;
+  const tempPath = `${teamId}/${pathPrefix}/${generateId()}.${extension}`;
   await uploadFile(bucket, tempPath, bytes, { contentType });
   return {
     tempPath,
