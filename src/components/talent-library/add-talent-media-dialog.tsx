@@ -10,7 +10,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import { statementFor } from '@/lib/compliance/attestations';
+import { statementFor } from '@/shared/compliance/attestations';
 import { PortraitAttestationFields } from './portrait-attestation-fields';
 import { TalentMediaUpload } from './talent-media-upload';
 

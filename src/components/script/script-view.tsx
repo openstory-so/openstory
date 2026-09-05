@@ -70,7 +70,7 @@ import {
 import { useSequenceLocations } from '@/hooks/use-sequence-locations';
 import { useCreateSequence } from '@/hooks/use-sequences';
 import { useRecommendedStyles, useStyle, useStyles } from '@/hooks/use-styles';
-import { AUTO_STYLE_ID } from '@/lib/style/auto-style';
+import { AUTO_STYLE_ID } from '@/shared/style/auto-style';
 import { errorMessage } from '@/shared/errors';
 import {
   assessDurationFit,
@@ -78,8 +78,8 @@ import {
   estimateMotionDurations,
   formatClipGrid,
   TITLE_CARD_NOTE,
-} from '@/lib/ai/enhance-duration';
-import { toEnhanceInputs } from '@/lib/ai/enhance-inputs';
+} from '@/shared/ai/enhance-duration';
+import { toEnhanceInputs } from '@/shared/ai/enhance-inputs';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   DEFAULT_IMAGE_MODEL,
@@ -93,24 +93,24 @@ import {
   type AudioModel,
   type ImageToVideoModel,
   type TextToImageModel,
-} from '@/lib/ai/models';
+} from '@/shared/ai/models';
 import {
   applyGenerationMode,
   type GenerationMode,
-} from '@/lib/ai/generation-mode';
+} from '@/shared/ai/generation-mode';
 import {
   DEFAULT_ANALYSIS_MODEL,
   isValidAnalysisModelId,
   type AnalysisModelId,
-} from '@/lib/ai/models.config';
-import { SCRIPT_SHORT_THRESHOLD } from '@/lib/ai/should-enhance';
+} from '@/shared/ai/models.config';
+import { SCRIPT_SHORT_THRESHOLD } from '@/shared/ai/should-enhance';
 import {
   estimateImageCost,
   estimateStoryboardCost,
-} from '@/lib/billing/cost-estimation';
+} from '@/shared/billing/cost-estimation';
 import { clampResolution } from '@/shared/constants/resolutions';
 import type { Resolution } from '@/shared/constants/resolutions';
-import { availableResolutions } from '@/lib/ai/resolution-support';
+import { availableResolutions } from '@/shared/ai/resolution-support';
 import {
   aspectRatioSchema,
   type AspectRatio,
@@ -120,18 +120,18 @@ import {
   takePendingIntent,
 } from '@/shared/generation/pending-generate';
 import { estimateSceneCount } from '@/shared/generation/time-estimate';
-import { replaceTokenInText } from '@/lib/sequence-elements/cascade-rename';
-import { shouldRestoreComposerDraft } from '@/lib/sequences/sequence-draft';
+import { replaceTokenInText } from '@/shared/sequence-elements/cascade-rename';
+import { shouldRestoreComposerDraft } from '@/shared/sequences/sequence-draft';
 import {
   pickShuffleStyle,
   sampleScriptForStyle,
-} from '@/lib/style/composer-sample';
+} from '@/shared/style/composer-sample';
 import {
   ALL_COMPOSER_STYLE_CATEGORIES,
   DEFAULT_COMPOSER_STYLE_CATEGORY,
   styleAfterComposerCategoryChange,
   styleCategoryGroupKey,
-} from '@/lib/style/composer-style-row';
+} from '@/shared/style/composer-style-row';
 import { cn } from '@/shared/utils';
 import {
   dataTransferHasImages,

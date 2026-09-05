@@ -9,7 +9,7 @@
  * original transaction id instead of double-debiting the team.
  */
 
-import { micros, negateMicros } from '@/lib/billing/money';
+import { micros, negateMicros } from '@/shared/billing/money';
 import type { Database } from '@/lib/db/client';
 import { generateId } from '@/shared/id';
 import {

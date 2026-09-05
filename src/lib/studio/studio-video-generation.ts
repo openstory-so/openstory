@@ -23,7 +23,7 @@ import {
 } from '@/lib/ai/byteplus-portrait-filter';
 import { bytePlusVideoUnitsBilled } from '@/lib/ai/byteplus-pricing';
 import { withBytePlusQuotaRetry } from '@/lib/ai/byteplus-rate-limit';
-import { falCostFromUnits } from '@/lib/ai/fal-cost';
+import { falCostFromUnits } from '@/lib/ai/fal-cost-billing';
 import {
   createDeadlineFetch,
   FAL_REQUEST_TIMEOUT_MS,
@@ -32,28 +32,28 @@ import {
   geminiVideoCostFromUsage,
   isNativeGeminiVideoModel,
   NATIVE_GEMINI_VIDEO_MODEL,
-} from '@/lib/ai/gemini-native';
+} from '@/shared/ai/gemini-native';
 import {
   grokVideoCost,
   isNativeGrokVideoModel,
   NATIVE_GROK_VIDEO_MODEL,
-} from '@/lib/ai/grok-native';
+} from '@/shared/ai/grok-native';
 import {
   getBytePlusVideoModelId,
   IMAGE_TO_VIDEO_MODELS,
   isNativeBytePlusVideoModel,
   type ImageToVideoModel,
-} from '@/lib/ai/models';
+} from '@/shared/ai/models';
 import { assertMediaVia, type MediaVia } from '@/lib/ai/via';
-import { GROK_VIDEO_RESOLUTIONS } from '@/lib/motion/build-grok-video-request';
+import { GROK_VIDEO_RESOLUTIONS } from '@/shared/motion/build-grok-video-request';
 import { workersSafeFetch } from '@/lib/ai/workers-safe-fetch';
-import { reportMissingBillingCost } from '@/lib/billing/billing-observability';
-import { ZERO_MICROS } from '@/lib/billing/money';
+import { reportMissingBillingCost } from '@/shared/billing/billing-observability';
+import { ZERO_MICROS } from '@/shared/billing/money';
 import type { AspectRatio } from '@/shared/constants/aspect-ratios';
 import type { Resolution } from '@/shared/constants/resolutions';
 import type { ResolvedApiKey } from '@/lib/db/scoped/api-keys';
 import type { CredentialScopedDb } from '@/lib/db/scoped-workflow';
-import { MOTION_TRANSFORMS } from '@/lib/motion/endpoint-map';
+import { MOTION_TRANSFORMS } from '@/shared/motion/endpoint-map';
 import {
   ensureExternallyFetchableUrls,
   toDataOrCdnUrl,
@@ -66,7 +66,7 @@ import {
   tagStudioReferences,
   type StudioVideoMode,
   type StudioVideoRequest,
-} from '@/lib/studio/text-to-video';
+} from '@/shared/studio/text-to-video';
 import { generateVideo, type TokenUsage } from '@tanstack/ai';
 import { getVideoJobStatus } from '@/lib/ai/video-job-status';
 import { falVideo } from '@tanstack/ai-fal';
@@ -76,7 +76,7 @@ import {
   geminiImagePart,
   geminiNativeModelOptions,
   geminiVideoSize,
-} from '@/lib/motion/build-gemini-video-request';
+} from '@/shared/motion/build-gemini-video-request';
 import {
   getGeminiFileState,
   isGeminiFilesVideoUrl,

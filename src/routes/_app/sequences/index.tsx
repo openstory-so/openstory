@@ -4,7 +4,7 @@ import { PageContainer } from '@/components/layout/page-container';
 import { PageIntro } from '@/components/typography/page-intro';
 import { useSequencesListPrefs } from '@/hooks/use-sequences-list-prefs';
 import { useUser } from '@/hooks/use-user';
-import { sequencesListSearchSchema } from '@/lib/sequences/list-prefs';
+import { sequencesListSearchSchema } from '@/shared/sequences/list-prefs';
 import { createFileRoute } from '@tanstack/react-router';
 import { Video } from 'lucide-react';
 

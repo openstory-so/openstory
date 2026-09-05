@@ -23,14 +23,14 @@ import {
   clipContentRejectionMessage,
   flaggedInputs,
   isContentRejectionError,
-} from '@/lib/ai/content-rejection';
-import { extractFalErrorMessage } from '@/lib/ai/fal-error';
+} from '@/shared/ai/content-rejection';
+import { extractFalErrorMessage } from '@/shared/ai/fal-error';
 import { computeVideoManifestInputHash } from '@/lib/ai/input-hash';
-import { DEFAULT_VIDEO_MODEL, IMAGE_TO_VIDEO_MODELS } from '@/lib/ai/models';
+import { DEFAULT_VIDEO_MODEL, IMAGE_TO_VIDEO_MODELS } from '@/shared/ai/models';
 import {
   DEFAULT_ANALYSIS_MODEL,
   getAnalysisModelById,
-} from '@/lib/ai/models.config';
+} from '@/shared/ai/models.config';
 import type { VideoManifest } from '@/lib/db/schema';
 import {
   MOTION_CONTENT_FALLBACK_MODEL,
@@ -50,7 +50,7 @@ import {
   submitMotionJob,
 } from '@/lib/motion/motion-generation';
 import { getEffectiveFalPricing } from '@/lib/ai/fal-pricing-live';
-import { gateEstimate } from '@/lib/billing/cost-estimation';
+import { gateEstimate } from '@/shared/billing/cost-estimation';
 import type { TokenUsage } from '@tanstack/ai';
 import { buildVideoManifest } from '@/lib/motion/render-segments';
 import {
@@ -60,8 +60,8 @@ import {
 import { recordProvenance } from '@/lib/compliance/provenance';
 import { buildR2Key, STORAGE_BUCKETS } from '@/lib/storage/buckets';
 import { recordMediaGenerationSpan } from '@/lib/observability/ai-otel';
-import { getLogger } from '@/lib/observability/logger';
-import { getGenerationChannel } from '@/lib/realtime';
+import { getLogger } from '@/shared/observability/logger';
+import { getGenerationChannel } from '@/shared/realtime';
 import { OpenStoryWorkflowEntrypoint } from '@/lib/workflow/base-workflow';
 import { WorkflowValidationError } from '@/lib/workflow/errors';
 import type { MotionWorkflowInput } from '@/lib/workflow/types';

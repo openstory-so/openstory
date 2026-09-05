@@ -23,8 +23,8 @@
 
 import { resolveAudioModels } from '@/lib/ai/resolve-audio-models';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
-import { assembleMotionPrompt } from '@/lib/motion/assemble-motion-prompt';
-import { getGenerationChannel } from '@/lib/realtime';
+import { assembleMotionPrompt } from '@/shared/motion/assemble-motion-prompt';
+import { getGenerationChannel } from '@/shared/realtime';
 import { OpenStoryWorkflowEntrypoint } from '@/lib/workflow/base-workflow';
 import { spawnAndAwaitChild } from '@/lib/workflow/await-child';
 import { WorkflowValidationError } from '@/lib/workflow/errors';
@@ -37,7 +37,7 @@ import type {
   MusicWorkflowResult,
 } from '@/lib/workflow/types';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'workflow', 'motion-batch']);
 

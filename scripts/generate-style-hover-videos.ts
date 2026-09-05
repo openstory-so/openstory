@@ -60,29 +60,29 @@ import {
   isValidImageToVideoModel,
   safeImageToVideoModel,
   type ImageToVideoModel,
-} from '@/lib/ai/models';
+} from '@/shared/ai/models';
 import {
   analysisModelSupportsVision,
   DEFAULT_ANALYSIS_MODEL,
   getContextWindow,
   resolveVisionModel,
-} from '@/lib/ai/models.config';
+} from '@/shared/ai/models.config';
 import {
   motionPromptSchema,
   type MotionPrompt,
 } from '@/lib/ai/scene-analysis.schema';
-import { assembleMotionPrompt } from '@/lib/motion/assemble-motion-prompt';
+import { assembleMotionPrompt } from '@/shared/motion/assemble-motion-prompt';
 import { fetchVideoForUpload } from '@/lib/motion/video-storage';
 import { pollMotionJob, submitMotionJob } from '@/lib/motion/motion-generation';
-import { snapDuration } from '@/lib/motion/snap-duration';
+import { snapDuration } from '@/shared/motion/snap-duration';
 import {
   getChatPrompt,
   type ChatMessage,
   type ChatMessageImagePart,
 } from '@/lib/prompts';
 import { toVisionImageSource } from '@/lib/storage/external-url';
-import { styleSlug } from '@/lib/style/style-slug';
-import { DEFAULT_STYLE_TEMPLATES } from '@/lib/style/style-templates';
+import { styleSlug } from '@/shared/style/style-slug';
+import { DEFAULT_STYLE_TEMPLATES } from '@/shared/style/style-templates';
 import { chat } from '@tanstack/ai';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';

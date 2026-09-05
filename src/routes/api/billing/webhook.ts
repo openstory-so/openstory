@@ -5,13 +5,13 @@
 
 import { stripeWebhookMiddleware } from '@/functions/stripe-webhook-middleware';
 import { captureCheckoutAnalyticsForStripeEvent } from '@/lib/billing/checkout-events';
-import { microsToDisplayUsd, usdToMicros } from '@/lib/billing/money';
+import { microsToDisplayUsd, usdToMicros } from '@/shared/billing/money';
 import { getStripeOrThrow } from '@/lib/billing/stripe';
 import { getPostHogClient } from '@/lib/posthog-server';
 import { createFileRoute } from '@tanstack/react-router';
 import { scheduleFlushAnalytics } from '#flush-scheduler';
 
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'api', 'billing', 'webhook']);
 

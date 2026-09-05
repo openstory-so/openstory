@@ -114,7 +114,7 @@ styles/{slug}/thumbnail.webp         # 256px, the chosen scene
 ```
 
 The local `preview/{slug}` folder name matches the R2 `styles/{slug}` path —
-both use the canonical slug rule in `src/lib/style/style-slug.ts`, shared with
+both use the canonical slug rule in `src/shared/style/style-slug.ts`, shared with
 the sample-video URLs.
 
 ## TL;DR

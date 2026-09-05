@@ -10,7 +10,7 @@ import { useScenesBySequence, type SceneWithScript } from '@/hooks/use-scenes';
 import type { SequenceWithShots } from '@/hooks/use-sequences-with-shots';
 import type { ViewMode } from './eval-view';
 import { getAspectRatioData } from '@/shared/constants/aspect-ratios';
-import { getAnalysisModelById } from '@/lib/ai/models.config';
+import { getAnalysisModelById } from '@/shared/ai/models.config';
 import { Link } from '@tanstack/react-router';
 import { ChevronRight, Mail, User } from 'lucide-react';
 import { SequenceListStatus } from './eval-sequence-metadata';

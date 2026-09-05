@@ -11,7 +11,7 @@
  * re-validates against the live schema); everything here is UX.
  */
 
-import type { JsonSchema, JsonValue } from '@/lib/models/catalog';
+import type { JsonSchema, JsonValue } from '@/shared/models/catalog';
 
 /**
  * Beyond this nesting depth a field falls back to the raw-JSON escape hatch.

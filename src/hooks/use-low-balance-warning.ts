@@ -10,7 +10,7 @@ import { openAddCreditsDialog } from './use-add-credits-dialog';
 import { openBillingGate } from './use-billing-gate-dialog';
 import { useBillingBalance } from './use-billing-balance';
 import { useFalPricing } from './use-fal-pricing';
-import { typicalShortCostUsd } from '@/lib/billing/typical-short-cost';
+import { typicalShortCostUsd } from '@/shared/billing/typical-short-cost';
 
 export function useLowBalanceWarning() {
   const { balance, isLowBalance, isZeroBalance, lowBalanceThreshold } =

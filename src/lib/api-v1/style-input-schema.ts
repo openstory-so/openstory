@@ -7,7 +7,7 @@
  */
 
 import { aspectRatioSchema } from '@/shared/constants/aspect-ratios';
-import { StyleConfigSchema } from '@/lib/style/style-config';
+import { StyleConfigSchema } from '@/shared/style/style-config';
 import { z } from 'zod';
 
 const tagList = z.array(z.string().trim().min(1).max(60)).max(20);

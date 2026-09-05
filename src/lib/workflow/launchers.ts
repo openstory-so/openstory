@@ -41,16 +41,16 @@ import {
   DEFAULT_VIDEO_MODEL,
   safeImageToVideoModel,
   safeTextToImageModel,
-} from '@/lib/ai/models';
+} from '@/shared/ai/models';
 import {
   DEFAULT_ANALYSIS_MODEL,
   getAnalysisModelById,
-} from '@/lib/ai/models.config';
+} from '@/shared/ai/models.config';
 import { generateId } from '@/shared/id';
 import { NotFoundError, ValidationError } from '@/shared/errors';
 import type { ScopedDb } from '@/lib/db/scoped';
 import type { Sequence } from '@/lib/db/schema';
-import { resolveSequenceStyleConfig } from '@/lib/style/style-config';
+import { resolveSequenceStyleConfig } from '@/shared/style/style-config';
 import { sequenceScenesUrl } from '@/lib/emails/notify-sequence-ready';
 import { refreshCheckpointFromCast } from '@/lib/workflow/refresh-checkpoint';
 import { resolveStopAt } from '@/shared/generation/pipeline';

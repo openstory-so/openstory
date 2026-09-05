@@ -16,12 +16,12 @@ import {
   microsToDisplayUsd,
   ZERO_MICROS,
   type Microdollars,
-} from '@/lib/billing/money';
+} from '@/shared/billing/money';
 import type { UpdateStalePreview } from '@/lib/shots/update-stale-preview';
 import {
   UPDATE_STALE_DEPTH_LABELS,
   type UpdateStaleDepth,
-} from '@/lib/shots/update-stale-depth';
+} from '@/shared/shots/update-stale-depth';
 import { cn } from '@/shared/utils';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';

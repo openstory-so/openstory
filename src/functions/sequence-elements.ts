@@ -4,12 +4,12 @@ import {
   describeElementImage,
   ELEMENT_VISION_MODEL,
 } from '@/lib/ai/element-vision';
-import { reportMissingBillingCost } from '@/lib/billing/billing-observability';
-import { estimateLLMCost } from '@/lib/billing/cost-estimation';
+import { reportMissingBillingCost } from '@/shared/billing/billing-observability';
+import { estimateLLMCost } from '@/shared/billing/cost-estimation';
 import { InsufficientCreditsError, NotFoundError } from '@/shared/errors';
 import { generateId } from '@/shared/id';
 import { ulidSchema } from '@/lib/schemas/id.schemas';
-import { deriveTokenFromFilename } from '@/lib/sequence-elements/derive-token';
+import { deriveTokenFromFilename } from '@/shared/sequence-elements/derive-token';
 import { STORAGE_BUCKETS } from '@/lib/storage/buckets';
 import {
   getExtensionFromUrl,

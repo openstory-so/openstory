@@ -19,9 +19,9 @@
 import { readdirSync, readFileSync, existsSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
-import { DEFAULT_STYLE_TEMPLATES } from '@/lib/style/style-templates';
+import { DEFAULT_STYLE_TEMPLATES } from '@/shared/style/style-templates';
 import { briefForStyle } from '@/lib/style/sample-videos';
-import { styleSlug } from '@/lib/style/style-slug';
+import { styleSlug } from '@/shared/style/style-slug';
 
 const ROOT = process.cwd();
 

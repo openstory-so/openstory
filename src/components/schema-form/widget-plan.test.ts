@@ -1,4 +1,4 @@
-import type { JsonSchema } from '@/lib/models/catalog';
+import type { JsonSchema } from '@/shared/models/catalog';
 import { describe, expect, it } from 'vitest';
 import {
   CHIP_ENUM_MAX,

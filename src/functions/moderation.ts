@@ -16,7 +16,7 @@ import { ENFORCEMENT_ACTIONS } from '@/lib/db/schema/compliance';
 import { extractStorageKey, parseTraceId } from '@/lib/compliance/provenance';
 import { ulidSchema } from '@/lib/schemas/id.schemas';
 import { ValidationError } from '@/shared/errors';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';

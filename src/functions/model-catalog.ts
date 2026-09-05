@@ -2,7 +2,7 @@
  * Model Catalog Server Functions (#458)
  *
  * Thin server-side wrappers around the modelschemas catalog client
- * (src/lib/models/catalog.ts). No auth middleware: the catalog is public
+ * (src/shared/models/catalog.ts). No auth middleware: the catalog is public
  * data and the app shell is anonymous-browsable (same policy as
  * getPublicStylesFn) — running a model is what's gated, not browsing.
  */
@@ -13,7 +13,7 @@ import {
   getModelFamily,
   getModelFamilyByPath,
   listCatalogModelFamilies,
-} from '@/lib/models/catalog';
+} from '@/shared/models/catalog';
 import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';

@@ -1,11 +1,14 @@
-import { usesStartFrame } from '@/lib/shots/use-start-frame';
+import { usesStartFrame } from '@/shared/shots/use-start-frame';
 import { canRenderReferenceOnly } from '@/lib/motion/motion-generation';
-import { resolveVideoModel } from '@/lib/ai/resolve-asset-models';
+import { resolveVideoModel } from '@/shared/ai/resolve-asset-models';
 import { toWorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import { REFERENCE_ONLY_MODEL_ERROR } from '@/lib/schemas/sequence.schemas';
-import { DEFAULT_IMAGE_MODEL, safeTextToImageModel } from '@/lib/ai/models';
+import { DEFAULT_IMAGE_MODEL, safeTextToImageModel } from '@/shared/ai/models';
 import { getEffectiveFalPricing } from '@/lib/ai/fal-pricing-live';
-import { estimateImageCost, gateEstimate } from '@/lib/billing/cost-estimation';
+import {
+  estimateImageCost,
+  gateEstimate,
+} from '@/shared/billing/cost-estimation';
 import { requireCredits } from '@/lib/billing/preflight';
 import { getWorkflowRunOutcome } from '@/lib/workflow/run-outcome';
 import { workflowNameFromRunId } from '@/lib/workflow/trigger-bindings';
@@ -19,7 +22,7 @@ import {
 import {
   DEFAULT_UPDATE_STALE_DEPTH,
   UPDATE_STALE_DEPTHS,
-} from '@/lib/shots/update-stale-depth';
+} from '@/shared/shots/update-stale-depth';
 import { computePlan } from '@/lib/shots/update-stale-plan';
 import {
   buildUpdateStalePreview,
@@ -30,9 +33,9 @@ import {
   shotViewMissingFrame,
   pendingUpscaleUrlFromVersion,
   type ShotGridSheet,
-} from '@/lib/shots/shot-view';
+} from '@/shared/shots/shot-view';
 import { getVideoDownloadUrl } from '@/lib/motion/video-storage';
-import { motionPromptFromVersion } from '@/lib/motion/resolve-motion-prompt';
+import { motionPromptFromVersion } from '@/shared/motion/resolve-motion-prompt';
 import { projectVideoVariants } from '@/lib/motion/video-variant-projection';
 import {
   bulkShotSchema,
@@ -61,7 +64,7 @@ import {
 } from './middleware';
 import { ValidationError } from '@/shared/errors';
 
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'serverFn', 'shots']);
 

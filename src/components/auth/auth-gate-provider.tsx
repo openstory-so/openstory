@@ -28,7 +28,7 @@ import {
 } from '@/components/ui/dialog';
 import { useUser } from '@/hooks/use-user';
 import { getAuthOptionsFn } from '@/functions/auth-options';
-import { sanitizeAuthRedirect } from '@/lib/auth/navigation';
+import { sanitizeAuthRedirect } from '@/shared/auth/navigation';
 import { usePostHog } from '@posthog/react';
 import { useQuery } from '@tanstack/react-query';
 import { useRouterState } from '@tanstack/react-router';

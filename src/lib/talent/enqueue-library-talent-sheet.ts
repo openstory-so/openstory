@@ -6,12 +6,12 @@
  * and other tabs) then rethrow.
  */
 
-import { getLogger } from '@/lib/observability/logger';
-import { getTalentChannel } from '@/lib/realtime';
+import { getLogger } from '@/shared/observability/logger';
+import { getTalentChannel } from '@/shared/realtime';
 import { triggerWorkflow } from '@/lib/workflow/client';
 import { buildWorkflowLabel } from '@/lib/workflow/labels';
 import type { LibraryTalentSheetWorkflowInput } from '@/lib/workflow/types';
-import type { SheetProgressActivity } from './sheet-progress-copy';
+import type { SheetProgressActivity } from '@/shared/talent/sheet-progress-copy';
 
 const logger = getLogger([
   'openstory',

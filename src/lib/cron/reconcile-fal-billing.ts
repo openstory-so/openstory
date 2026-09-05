@@ -24,15 +24,15 @@ import {
   type FalBillingEvent,
   fetchFalBillingEvents,
 } from '@/lib/ai/fal-pricing-fetch';
-import { reportBillingDrift } from '@/lib/billing/billing-observability';
-import { FAL_UNVERIFIED_SIBLINGS } from '@/lib/ai/fal-typical-units';
-import { usdToMicros } from '@/lib/billing/money';
+import { reportBillingDrift } from '@/shared/billing/billing-observability';
+import { FAL_UNVERIFIED_SIBLINGS } from '@/shared/ai/fal-typical-units';
+import { usdToMicros } from '@/shared/billing/money';
 import {
   modelPricing,
   modelPricingHistory,
   transactions,
 } from '@/lib/db/schema';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 import { and, eq, gte, lte } from 'drizzle-orm';
 import {
   type PricingRefreshDb,

@@ -14,8 +14,8 @@ import type {
   LocationBibleEntry,
   Scene,
 } from '@/lib/ai/scene-analysis.schema';
-import { DEFAULT_STYLE_TEMPLATES } from '@/lib/style/style-templates';
-import type { StyleConfig } from '@/lib/style/style-config';
+import { DEFAULT_STYLE_TEMPLATES } from '@/shared/style/style-templates';
+import type { StyleConfig } from '@/shared/style/style-config';
 
 const DIR = dirname(fileURLToPath(import.meta.url));
 

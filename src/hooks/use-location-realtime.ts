@@ -1,13 +1,13 @@
 import { getChannelHistoryFn } from '@/functions/realtime-history';
 import { useUser } from '@/hooks/use-user';
-import { useRealtime } from '@/lib/realtime/client';
-import type { StaleDetectedPayload } from '@/lib/realtime';
+import { useRealtime } from '@/shared/realtime/client';
+import type { StaleDetectedPayload } from '@/shared/realtime';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useState } from 'react';
 import { locationLibraryKeys } from './use-location-library';
 import { libraryLocationKeys } from './use-sequence-locations';
 
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'ui', 'use-location-realtime']);
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { micros, ZERO_MICROS } from '../money';
+import { micros, ZERO_MICROS } from '@/shared/billing/money';
 import { extractImageCost } from '../workflow-deduction';
 
 describe('extractImageCost', () => {

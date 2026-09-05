@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_MUSIC_MODEL, type AudioModel } from './models';
+import { DEFAULT_MUSIC_MODEL, type AudioModel } from '@/shared/ai/models';
 import { resolveAudioModels } from './resolve-audio-models';
 
 describe('resolveAudioModels', () => {

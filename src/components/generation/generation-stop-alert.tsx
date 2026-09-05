@@ -11,7 +11,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Checkbox } from '@/components/ui/checkbox';
-import type { Microdollars } from '@/lib/billing/money';
+import type { Microdollars } from '@/shared/billing/money';
 import type { GenerationStage } from '@/shared/generation/pipeline';
 import { useEffect, useState, type FC } from 'react';
 

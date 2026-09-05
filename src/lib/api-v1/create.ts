@@ -14,9 +14,12 @@
  */
 
 import { enhanceScriptToString } from '@/lib/ai/script-enhancement';
-import { toEnhanceInputs } from '@/lib/ai/enhance-inputs';
-import { DEFAULT_VIDEO_MODEL, isValidImageToVideoModel } from '@/lib/ai/models';
-import { isShortScript } from '@/lib/ai/should-enhance';
+import { toEnhanceInputs } from '@/shared/ai/enhance-inputs';
+import {
+  DEFAULT_VIDEO_MODEL,
+  isValidImageToVideoModel,
+} from '@/shared/ai/models';
+import { isShortScript } from '@/shared/ai/should-enhance';
 import { DEFAULT_RESOLUTION } from '@/shared/constants/resolutions';
 import { DEFAULT_ASPECT_RATIO } from '@/shared/constants/aspect-ratios';
 import type { ScopedDb } from '@/lib/db/scoped';
@@ -24,7 +27,7 @@ import {
   createLibraryLocation,
   enqueueLibraryLocationSheet,
 } from '@/lib/locations/create-library-location';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 import { createSequenceSchema } from '@/lib/schemas/sequence.schemas';
 import { createSequences } from '@/lib/sequences/create-sequences';
 import { STORAGE_BUCKETS, type StorageBucket } from '@/lib/storage/buckets';

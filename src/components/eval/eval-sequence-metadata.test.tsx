@@ -1,4 +1,4 @@
-import { CREDITS_SHORT_TITLE } from '@/lib/billing/credits-short';
+import { CREDITS_SHORT_TITLE } from '@/shared/billing/credits-short';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import {

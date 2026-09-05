@@ -19,10 +19,10 @@ import {
   CONTENT_REJECTION_EVENT,
   clipContentRejectionMessage,
   isContentRejectionError,
-} from '@/lib/ai/content-rejection';
-import { extractFalErrorMessage } from '@/lib/ai/fal-error';
-import { IMAGE_TO_VIDEO_MODELS } from '@/lib/ai/models';
-import { ZERO_MICROS } from '@/lib/billing/money';
+} from '@/shared/ai/content-rejection';
+import { extractFalErrorMessage } from '@/shared/ai/fal-error';
+import { IMAGE_TO_VIDEO_MODELS } from '@/shared/ai/models';
+import { ZERO_MICROS } from '@/shared/billing/money';
 import {
   deductWorkflowCredits,
   recordFalUsageStep,
@@ -32,14 +32,14 @@ import { aspectRatioToImageSize } from '@/shared/constants/aspect-ratios';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import type { GeneratedAssetOutput } from '@/lib/db/schema';
 import { generateImageWithProvider } from '@/lib/image/image-generation';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 import {
   pollStudioVideoJob,
   studioVideoCostFromUsage,
   submitStudioVideoJob,
 } from '@/lib/studio/studio-video-generation';
-import type { StudioCreateInput } from '@/lib/studio/schema';
-import { tagStudioReferences } from '@/lib/studio/text-to-video';
+import type { StudioCreateInput } from '@/shared/studio/schema';
+import { tagStudioReferences } from '@/shared/studio/text-to-video';
 import { videoUrlFitsWorkflowCheckpoint } from '@/lib/motion/video-storage';
 import { uploadStudioImage, uploadStudioVideo } from '@/lib/studio/upload';
 import { OpenStoryWorkflowEntrypoint } from '@/lib/workflow/base-workflow';

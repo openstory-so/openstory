@@ -21,7 +21,7 @@ import { useSequenceCharacters } from '@/hooks/use-sequence-characters';
 import { useSequenceElements } from '@/hooks/use-sequence-elements';
 import { useSequenceLocations } from '@/hooks/use-sequence-locations';
 import type { SceneWithScript } from '@/hooks/use-scenes';
-import type { ShotView } from '@/lib/shots/shot-view';
+import type { ShotView } from '@/shared/shots/shot-view';
 import type { AspectRatio } from '@/shared/constants/aspect-ratios';
 import { stripMarkdown } from '@/shared/utils/markdown-plain';
 import { Clapperboard, FileTextIcon, ImageIcon, TextIcon } from 'lucide-react';

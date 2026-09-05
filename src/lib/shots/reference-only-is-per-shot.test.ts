@@ -39,7 +39,7 @@ const SEQUENCE_READ =
  */
 const SEQUENCE_LEVEL_BY_DESIGN: Record<string, string> = {
   // The flag's own home: it resolves the shot override against this default.
-  'src/lib/shots/use-start-frame.ts':
+  'src/shared/shots/use-start-frame.ts':
     'defines the resolution — the default it falls back to',
   // A full storyboard run starts in the sequence's mode; per-shot overrides
   // are applied later, per shot, by the render paths.

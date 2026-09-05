@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { migrateStyleConfigV1ToV2 } from '@/lib/style/style-config';
-import { buildCastCharacterBible } from '@/lib/prompts/character-prompt';
+import { migrateStyleConfigV1ToV2 } from '@/shared/style/style-config';
+import { buildCastCharacterBible } from '@/shared/prompts/character-prompt';
 import type {
   CharacterWithSheet,
   SequenceElement,

@@ -3,7 +3,7 @@
  *
  * Activated by the `storybook` import condition in package.json's `imports.#db-client`.
  * Storybook never reaches `getDb()` at runtime — `.storybook/server-stub-plugin.ts`
- * replaces every server-only path (`@/functions/*`, `@/lib/auth/server`, etc.) with a
+ * replaces every server-only path (`@/functions/*`, `@/functions/session`, etc.) with a
  * chainable Proxy before code that touches the DB ever runs. This file exists so the
  * import resolves to something with zero `@libsql/client` / `drizzle-orm` cost in the
  * Storybook bundle.

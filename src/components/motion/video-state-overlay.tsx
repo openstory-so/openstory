@@ -3,7 +3,7 @@ import {
   CONTENT_REJECTION_USER_HINT,
   CONTENT_REJECTION_USER_TITLE,
   isContentRejectionError,
-} from '@/lib/ai/content-rejection';
+} from '@/shared/ai/content-rejection';
 import { cn } from '@/shared/utils';
 import { AlertCircle, Info, Loader2 } from 'lucide-react';
 

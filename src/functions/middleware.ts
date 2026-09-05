@@ -45,7 +45,7 @@ import {
   errorHeadline,
   getLogger,
   toErrorPayload,
-} from '@/lib/observability/logger';
+} from '@/shared/observability/logger';
 import { ulidSchema } from '@/lib/schemas/id.schemas';
 import type { Frame } from '@/lib/db/schema';
 import type { SequenceStatus } from '@/lib/db/schema/sequences';

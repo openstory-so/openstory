@@ -18,8 +18,8 @@ const mockLogError = vi.fn(
 const mockLogWarn = vi.fn(
   (_message: string, _properties?: Record<string, unknown>) => {}
 );
-vi.doMock('./logger', async () => {
-  const real = await import('./logger');
+vi.doMock('@/shared/observability/logger', async () => {
+  const real = await import('@/shared/observability/logger');
   return {
     ...real,
     getLogger: () => ({

@@ -5,7 +5,7 @@ import { SequenceImageModelSelector } from '@/components/model/sequence-image-mo
 import { SequenceVideoModelSelector } from '@/components/model/sequence-video-model-selector';
 import { StyleBadge } from '@/components/style/style-badge';
 import { Kbd } from '@/components/ui/kbd';
-import type { ImageToVideoModel, TextToImageModel } from '@/lib/ai/models';
+import type { ImageToVideoModel, TextToImageModel } from '@/shared/ai/models';
 import {
   getAspectRatioData,
   type AspectRatio,
@@ -15,7 +15,7 @@ import {
   type Resolution,
 } from '@/shared/constants/resolutions';
 import { Badge } from '@/components/ui/badge';
-import type { SelectionScope } from '@/lib/scenes/scene-selection';
+import type { SelectionScope } from '@/shared/scenes/scene-selection';
 import { usePostHog } from '@posthog/react';
 import { Link } from '@tanstack/react-router';
 import { CopyPlus } from 'lucide-react';

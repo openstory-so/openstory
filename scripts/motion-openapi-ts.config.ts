@@ -478,7 +478,7 @@ function getFalModelOpenApiObjects(filename: string): Array<OpenAPISpec> {
 
 /** Output path overrides by category. Default: ./libs/types/src/{category} */
 const OUTPUT_PATH_OVERRIDES: Record<string, string> = {
-  motion: './src/lib/motion/generated',
+  motion: './src/shared/motion/generated',
 };
 
 export default getFalGroupedCategoryFilenames().map(

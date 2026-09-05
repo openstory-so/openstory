@@ -202,7 +202,8 @@ describe('decideOAuthConsent', () => {
   });
 
   it('unpacks a packed q before calling the provider', async () => {
-    const { packOAuthQuery } = await import('./oauth-query-snapshot');
+    const { packOAuthQuery } =
+      await import('@/shared/auth/oauth-query-snapshot');
     authHandler.mockResolvedValueOnce(
       jsonRes({ url: 'http://127.0.0.1:8765/cb?code=3' })
     );

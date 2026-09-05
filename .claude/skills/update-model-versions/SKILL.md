@@ -14,13 +14,13 @@ description: >
 
 Our model registries are the single source of truth:
 
-| Class                   | File                          | Export                   |
-| ----------------------- | ----------------------------- | ------------------------ |
-| Text (OpenRouter)       | `src/lib/ai/models.config.ts` | `SCRIPT_ANALYSIS_MODELS` |
-| Image (fal.ai)          | `src/lib/ai/models.ts`        | `IMAGE_MODELS`           |
-| Video / motion (fal.ai) | `src/lib/ai/models.ts`        | `IMAGE_TO_VIDEO_MODELS`  |
-| Audio (fal.ai)          | `src/lib/ai/models.ts`        | `AUDIO_MODELS`           |
-| BytePlus Ark ids        | `src/lib/ai/models.ts`        | `byteplusId` fields      |
+| Class                   | File                             | Export                   |
+| ----------------------- | -------------------------------- | ------------------------ |
+| Text (OpenRouter)       | `src/shared/ai/models.config.ts` | `SCRIPT_ANALYSIS_MODELS` |
+| Image (fal.ai)          | `src/shared/ai/models.ts`        | `IMAGE_MODELS`           |
+| Video / motion (fal.ai) | `src/shared/ai/models.ts`        | `IMAGE_TO_VIDEO_MODELS`  |
+| Audio (fal.ai)          | `src/shared/ai/models.ts`        | `AUDIO_MODELS`           |
+| BytePlus Ark ids        | `src/shared/ai/models.ts`        | `byteplusId` fields      |
 
 A model with a native BytePlus route (#1157) carries **two ids under one
 key**: the fal endpoint `id` AND a `byteplusId` (Ark model id). A version bump
@@ -152,7 +152,7 @@ Per class, edit and follow through:
     re-date the header comment, and note the rate is advertised-not-verified).
     A missed rename means Ark generations bill $0 — exactly the #1069 failure
     mode the card exists to prevent.
-  - `src/lib/ai/fal-cost.ts` `ENDPOINT_STRATEGY` — if the old fal endpoint ids
+  - `src/shared/ai/fal-cost.ts` `ENDPOINT_STRATEGY` — if the old fal endpoint ids
     appear there (token-billed Seedance endpoints do), rename them too.
   - The request builders (`build-byteplus-video-request.ts` /
     `build-byteplus-image-request.ts`) read the id from the registry, but

@@ -1,0 +1,207 @@
+/**
+ * Pure assembly of the exact BytePlus Ark request for a motion generation
+ * (#1157) — the Ark analogue of `build-model-input.ts`.
+ *
+ * Ark is not fal-shaped, so none of the fal codegen (`bun motion:codegen`,
+ * `MOTION_TRANSFORMS`) applies: there is no endpoint id, `size` is a
+ * `ratio_resolution` template rather than an `aspect_ratio` field (and
+ * first-frame / first-last-frame jobs may only send `adaptive`), and images
+ * ride as roled prompt parts instead of `image_url` / `image_urls[]`.
+ *
+ * The one constraint that shapes this file: **Ark rejects frame roles and
+ * reference roles in the same request.** So a shot with cast/element
+ * references cannot also pin its rendered still as `first_frame` — the still
+ * becomes the first `reference` image and the prompt declares it as the
+ * opening frame, which is exactly what fal's `reference-to-video` endpoint
+ * does for the same underlying model. That keeps one prompt-binding
+ * implementation (`buildReferenceVideoPrompt`) across both routes. Seedance
+ * 2.5 tags are `@Image1`/`@Image2` on fal and Ark. Ark does not want a
+ * trailing "Reference images:" legend.
+ *
+ * Reference-only mode has no still to demote, so the mix-ban stops mattering
+ * and `size` switches from `adaptive` to the sequence's own ratio (nothing is
+ * left for `adaptive` to adapt to — see the comment at the `size` assignment).
+ *
+ * Client-safe: no env, no adapters.
+ */
+
+import {
+  getMotionReferenceEndpoint,
+  IMAGE_TO_VIDEO_MODELS,
+  type ImageToVideoModel,
+} from '@/shared/ai/models';
+import type { AspectRatio } from '@/shared/constants/aspect-ratios';
+import type { ReferenceImageDescription } from '@/shared/prompts/reference-image-prompt';
+import {
+  inlineReferenceDescription,
+  substituteReferenceTags,
+} from '@/shared/prompts/reference-legend';
+import {
+  pickVideoResolution,
+  type Resolution,
+} from '@/shared/constants/resolutions';
+import { buildReferenceVideoPrompt } from './build-reference-video-prompt';
+
+/**
+ * Resolution tokens Ark serves for Seedance. Matches the fal route's enum, so
+ * switching route doesn't silently change what a shot costs or how it looks.
+ * A missing tier falls back to 720p — the old fixed value (#1449).
+ */
+const BYTEPLUS_RESOLUTIONS = ['480p', '720p', '1080p', '4k'] as const;
+
+/** One entry of the Ark prompt-parts array. */
+type BytePlusPromptPart =
+  | { type: 'text'; content: string }
+  | {
+      type: 'image';
+      source: { type: 'url'; value: string };
+      metadata?: { role: 'start_frame' | 'reference' };
+    };
+
+export type BytePlusVideoRequest = {
+  /** BytePlus Ark model id (not a fal endpoint). */
+  modelId: string;
+  prompt: BytePlusPromptPart[];
+  /** `ratio_resolution` template. Frame jobs are `adaptive_720p`. */
+  size: string;
+  /** Whole seconds; the adapter snaps it into the model's range. */
+  duration?: number;
+  modelOptions: Record<string, unknown>;
+};
+
+export type BytePlusVideoRequestOptions = {
+  /** The rendered still, or undefined in reference-only mode. */
+  imageUrl?: string;
+  prompt: string;
+  aspectRatio?: AspectRatio;
+  duration?: number;
+  resolution?: Resolution;
+  generateAudio?: boolean;
+  referenceImages?: ReferenceImageDescription[];
+};
+
+function truncate(prompt: string, maxLength: number): string {
+  return prompt.length <= maxLength
+    ? prompt
+    : `${prompt.slice(0, maxLength - 3)}...`;
+}
+
+/**
+ * Build the Ark request for a motion run.
+ *
+ * @throws Error when the model has no BytePlus via — callers claim the via
+ * first (`isNativeBytePlusVideoModel` + `claimBytePlusVia`), so reaching
+ * here without one is a bug rather than a silent fallback.
+ */
+export function buildBytePlusVideoRequest(
+  options: BytePlusVideoRequestOptions,
+  modelKey: ImageToVideoModel
+): BytePlusVideoRequest {
+  const config = IMAGE_TO_VIDEO_MODELS[modelKey];
+  const modelId = 'byteplusId' in config ? config.byteplusId : undefined;
+  if (!modelId) {
+    throw new Error(`No BytePlus model id for motion model "${modelKey}"`);
+  }
+
+  const references = (options.referenceImages ?? []).filter(
+    (ref) => ref.referenceImageUrl
+  );
+  // Seedance 2.5 first-frame / first-last-frame rejects a concrete ratio
+  // (`9:16`, `16:9`, …). Output follows the first-frame still; `adaptive`
+  // is the only accepted value there. Sequence motion normally sends a still.
+  //
+  // Reference-only inverts that: with no frame role in the request there is
+  // nothing for `adaptive` to adapt TO, and Ark would size the clip from the
+  // first reference — a portrait character sheet would silently render a
+  // 9:16 clip into a 16:9 sequence. So the sequence's own ratio is stated.
+  const resolution =
+    (options.resolution &&
+      pickVideoResolution(BYTEPLUS_RESOLUTIONS, options.resolution)) ??
+    '720p';
+  const size = options.imageUrl
+    ? `adaptive_${resolution}`
+    : `${options.aspectRatio ?? '16:9'}_${resolution}`;
+
+  const modelOptions: Record<string, unknown> = {
+    // Ark defaults `watermark` to false for video, but state it: the flag is
+    // per-request and a provider-side default change would burn a mark into
+    // every clip we have already sold.
+    watermark: false,
+    ...(options.generateAudio !== undefined && {
+      generate_audio: options.generateAudio,
+    }),
+  };
+
+  const startFrameUrl = options.imageUrl;
+
+  if (references.length === 0) {
+    return {
+      modelId,
+      prompt: [
+        {
+          type: 'text',
+          content: truncate(options.prompt, config.maxPromptLength),
+        },
+        // Reference-only with no matched sheets is pure text-to-video: a
+        // prompt part and nothing else. Ark serves that on the same model id.
+        ...(startFrameUrl
+          ? [
+              {
+                type: 'image' as const,
+                source: { type: 'url' as const, value: startFrameUrl },
+                metadata: { role: 'start_frame' as const },
+              },
+            ]
+          : []),
+      ],
+      size,
+      duration: options.duration,
+      modelOptions,
+    };
+  }
+
+  // Reference mode. The still cannot be a frame role here (see file header),
+  // so it leads the reference list and the prompt names it as the opening
+  // frame — the binding `buildReferenceVideoPrompt` already writes for fal.
+  const referenceConfig = getMotionReferenceEndpoint(modelKey);
+  const { prompt, imageUrls } = referenceConfig
+    ? buildReferenceVideoPrompt(
+        referenceConfig,
+        options.prompt,
+        startFrameUrl ?? null,
+        references,
+        config.maxPromptLength,
+        { skipLegend: true }
+      )
+    : // A model with a BytePlus route but no reference-tag convention can't
+      // bind images to prompt positions; inline the descriptions instead so
+      // the prompt stays self-contained and send the still alone.
+      {
+        prompt: truncate(
+          substituteReferenceTags(
+            options.prompt,
+            references.map((ref) => ({
+              token: ref.token,
+              render: inlineReferenceDescription(ref),
+            }))
+          ).prompt,
+          config.maxPromptLength
+        ),
+        imageUrls: startFrameUrl ? [startFrameUrl] : [],
+      };
+
+  return {
+    modelId,
+    prompt: [
+      { type: 'text', content: prompt },
+      ...imageUrls.map((url): BytePlusPromptPart => ({
+        type: 'image',
+        source: { type: 'url', value: url },
+        metadata: { role: 'reference' },
+      })),
+    ],
+    size,
+    duration: options.duration,
+    modelOptions,
+  };
+}

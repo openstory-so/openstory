@@ -73,7 +73,7 @@ import { createTalentSheetVariantsMethods } from '@/lib/db/scoped/talent-sheet-v
 import { createTeamManagementMethods } from '@/lib/db/scoped/team-management';
 import { and, inArray, isNull, lt, notExists, eq, sql } from 'drizzle-orm';
 
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'db', 'scoped']);
 

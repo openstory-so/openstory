@@ -11,7 +11,7 @@
  *   - Uses `step.do` instead of `context.run`.
  *   - Reads payload from `event.payload` instead of `context.requestPayload`. */
 
-import { DEFAULT_IMAGE_MODEL } from '@/lib/ai/models';
+import { DEFAULT_IMAGE_MODEL } from '@/shared/ai/models';
 import {
   deductWorkflowCredits,
   extractImageCost,
@@ -23,9 +23,9 @@ import type { ImageGenerationParams } from '@/lib/image/image-generation';
 import {
   buildLibraryLocationSheetPrompt,
   buildLocationPreviewPrompt,
-} from '@/lib/prompts/location-prompt';
+} from '@/shared/prompts/location-prompt';
 import { recordProvenance } from '@/lib/compliance/provenance';
-import { getLocationChannel } from '@/lib/realtime';
+import { getLocationChannel } from '@/shared/realtime';
 import { STORAGE_BUCKETS } from '@/lib/storage/buckets';
 import { uploadResponse } from '@/lib/storage/upload-response';
 import { OpenStoryWorkflowEntrypoint } from '@/lib/workflow/base-workflow';
@@ -40,7 +40,7 @@ import {
 } from '@/lib/workflows/sheet-divergence';
 import { computeLibraryLocationSheetHashCurrent } from '@/lib/workflows/sheet-snapshots';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'workflow', 'library-location-sheet']);
 

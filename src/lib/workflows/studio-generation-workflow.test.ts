@@ -6,9 +6,9 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { micros } from '@/lib/billing/money';
+import { micros } from '@/shared/billing/money';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
-import type { StudioCreateInput } from '@/lib/studio/schema';
+import type { StudioCreateInput } from '@/shared/studio/schema';
 import type { StudioGenerationWorkflowInput } from '@/lib/workflow/types';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 

@@ -5,8 +5,8 @@ import {
   shotIsStale,
   shotIsUpdating,
 } from '@/hooks/use-shot-staleness';
-import type { ShotView } from '@/lib/shots/shot-view';
-import type { UpdateStaleDepth } from '@/lib/shots/update-stale-depth';
+import type { ShotView } from '@/shared/shots/shot-view';
+import type { UpdateStaleDepth } from '@/shared/shots/update-stale-depth';
 import { Loader2 } from 'lucide-react';
 import { useState } from 'react';
 

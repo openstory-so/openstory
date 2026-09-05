@@ -12,8 +12,8 @@ import { getFalEndpointIds } from '@/lib/ai/fal-endpoints';
 import {
   FAL_ADVERTISED_CALL_USD,
   FAL_TYPICAL_UNITS_PER_DEFAULT_CLIP,
-} from '@/lib/ai/fal-typical-units';
-import { usdToMicros } from '@/lib/billing/money';
+} from '@/shared/ai/fal-typical-units';
+import { usdToMicros } from '@/shared/billing/money';
 import { modelPricing } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import type { SeedDb } from './seed-system-templates';

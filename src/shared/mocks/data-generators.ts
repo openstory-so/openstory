@@ -1,5 +1,5 @@
 import type { Shot } from '@/lib/db/schema';
-import { type ShotView, toShotView } from '@/lib/shots/shot-view';
+import { type ShotView, toShotView } from '@/shared/shots/shot-view';
 import type { Style } from '@/types/database';
 import { faker } from '@faker-js/faker';
 import {

@@ -12,18 +12,18 @@ import {
   unarchiveSequenceFn,
   type AddModelResult,
 } from '@/functions/sequences';
-import { DEFAULT_ANALYSIS_MODEL } from '@/lib/ai/models.config';
+import { DEFAULT_ANALYSIS_MODEL } from '@/shared/ai/models.config';
 import type { SequenceMusicVariant } from '@/lib/db/schema';
 import type { VariantType } from '@/lib/db/schema/shot-variants';
 import type { CreateSequenceInput } from '@/lib/schemas/sequence.schemas';
-import { UNTITLED_SEQUENCE_TITLE } from '@/lib/sequences/untitled-sequence-title';
+import { UNTITLED_SEQUENCE_TITLE } from '@/shared/sequences/untitled-sequence-title';
 import type { Sequence } from '@/types/database';
-import { useAuthSession } from '@/lib/auth/session-query';
+import { useAuthSession } from '@/shared/auth/session-query';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { usePostHog } from '@posthog/react';
 import { toast } from 'sonner';
 
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'ui', 'use-sequences']);
 

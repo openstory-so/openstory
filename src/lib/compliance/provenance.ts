@@ -12,12 +12,12 @@
  * throw inside the step.
  */
 
-import { sha256Hex } from '@/lib/compliance/hash';
+import { sha256Hex } from '@/shared/compliance/hash';
 import type {
   NewContentProvenance,
   ProvenanceAssetKind,
 } from '@/lib/db/schema/compliance';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 import { r2KeyFromUrl, STORAGE_BUCKETS } from '@/lib/storage/buckets';
 
 const logger = getLogger(['openstory', 'compliance', 'provenance']);
@@ -30,16 +30,10 @@ const logger = getLogger(['openstory', 'compliance', 'provenance']);
  * indistinguishable from every other id and comes back to us unusable.
  */
 const TRACE_PREFIX = 'OS';
-const REPORT_PREFIX = 'OR';
 
 /** Public trace id for a provenance row, e.g. `OS-01JAV…`. */
 export function formatTraceId(provenanceId: string): string {
   return `${TRACE_PREFIX}-${provenanceId}`;
-}
-
-/** Public reference for a content report, e.g. `OR-01JAV…`. */
-export function formatReportReference(reportId: string): string {
-  return `${REPORT_PREFIX}-${reportId}`;
 }
 
 /**

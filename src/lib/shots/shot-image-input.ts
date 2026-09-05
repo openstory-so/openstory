@@ -9,9 +9,12 @@ import type { Scene } from '@/lib/ai/scene-analysis.schema';
 
 import { getEffectiveFalPricing } from '@/lib/ai/fal-pricing-live';
 import type { ShotPromptContextRefs } from '@/lib/ai/prompt-context';
-import { isValidTextToImageModel } from '@/lib/ai/models';
-import { resolveImageModel } from '@/lib/ai/resolve-asset-models';
-import { estimateImageCost, gateEstimate } from '@/lib/billing/cost-estimation';
+import { isValidTextToImageModel } from '@/shared/ai/models';
+import { resolveImageModel } from '@/shared/ai/resolve-asset-models';
+import {
+  estimateImageCost,
+  gateEstimate,
+} from '@/shared/billing/cost-estimation';
 import { requireCredits } from '@/lib/billing/preflight';
 import type { Resolution } from '@/shared/constants/resolutions';
 import {
@@ -24,10 +27,10 @@ import type {
   Shot,
 } from '@/lib/db/schema';
 import type { ScopedDb } from '@/lib/db/scoped';
-import { buildCharacterReferenceImages } from '@/lib/prompts/character-prompt';
-import { buildElementReferenceImages } from '@/lib/prompts/element-prompt';
-import { buildLocationReferenceImages } from '@/lib/prompts/location-prompt';
-import type { ReferenceImageDescription } from '@/lib/prompts/reference-image-prompt';
+import { buildCharacterReferenceImages } from '@/shared/prompts/character-prompt';
+import { buildElementReferenceImages } from '@/shared/prompts/element-prompt';
+import { buildLocationReferenceImages } from '@/shared/prompts/location-prompt';
+import type { ReferenceImageDescription } from '@/shared/prompts/reference-image-prompt';
 import { buildUserEditProvenance } from '@/lib/prompts/user-edit-provenance';
 import type {
   ImageWorkflowInput,
@@ -38,7 +41,7 @@ import {
   matchCharactersToShotImage,
   matchElementsToShotImage,
   matchLocationsToScene,
-} from '@/lib/workflows/scene-matching';
+} from '@/shared/scenes/scene-matching';
 import { computeShotImageSceneHash } from '@/lib/workflows/sheet-snapshots';
 
 /** The sequence-scoped rows reference matching needs, resolved once per run. */

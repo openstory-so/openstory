@@ -15,7 +15,7 @@
  *   - Calls the snapshot DTO computers directly instead of going through
  *     the `context.snapshot.*` extension. */
 
-import { DEFAULT_IMAGE_MODEL } from '@/lib/ai/models';
+import { DEFAULT_IMAGE_MODEL } from '@/shared/ai/models';
 import {
   deductWorkflowCredits,
   extractImageCost,
@@ -24,10 +24,10 @@ import {
 import { generateId } from '@/shared/id';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import type { ImageGenerationParams } from '@/lib/image/image-generation';
-import { buildLibraryTalentSheetPrompt } from '@/lib/prompts/character-prompt';
+import { buildLibraryTalentSheetPrompt } from '@/shared/prompts/character-prompt';
 import { cropTalentSheetPortrait } from '@/lib/talent/crop-sheet-portrait';
 import { recordProvenance } from '@/lib/compliance/provenance';
-import { getTalentChannel } from '@/lib/realtime';
+import { getTalentChannel } from '@/shared/realtime';
 import { STORAGE_BUCKETS } from '@/lib/storage/buckets';
 import { copyStoredImage } from '@/lib/storage/copy-stored-image';
 import { uploadResponse } from '@/lib/storage/upload-response';
@@ -47,7 +47,7 @@ import {
   saveDivergentTalentSheet,
 } from '@/lib/workflows/sheet-divergence';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'workflow', 'library-talent-sheet']);
 

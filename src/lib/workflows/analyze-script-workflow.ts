@@ -32,14 +32,14 @@ import type { Scene } from '@/lib/ai/scene-analysis.schema';
 import {
   estimateReferenceSheetCost,
   estimateStoryboardRenderCost,
-} from '@/lib/billing/cost-estimation';
-import { creditsShortStatusError } from '@/lib/billing/credits-short';
-import { addMicros, microsToUsd } from '@/lib/billing/money';
+} from '@/shared/billing/cost-estimation';
+import { creditsShortStatusError } from '@/shared/billing/credits-short';
+import { addMicros, microsToUsd } from '@/shared/billing/money';
 import { gateStoryboardRenders } from '@/lib/billing/storyboard-render-gate';
 import { reusesTalentSheet } from '@/lib/talent/reuse-talent-sheet';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
-import { buildCastCharacterBible } from '@/lib/prompts/character-prompt';
-import { getGenerationChannel } from '@/lib/realtime';
+import { buildCastCharacterBible } from '@/shared/prompts/character-prompt';
+import { getGenerationChannel } from '@/shared/realtime';
 import { spawnAndAwaitChild } from '@/lib/workflow/await-child';
 import { OpenStoryWorkflowEntrypoint } from '@/lib/workflow/base-workflow';
 import { WorkflowValidationError } from '@/lib/workflow/errors';
@@ -92,7 +92,7 @@ import type {
 } from '@/lib/db/schema';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { NonRetryableError } from 'cloudflare:workflows';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'workflow', 'analyze-script']);
 

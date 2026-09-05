@@ -12,7 +12,7 @@ import {
   type CatalogFalPricingMap,
 } from '@/functions/pricing';
 import type { EffectiveFalPricing } from '@/lib/ai/fal-pricing-live';
-import { micros } from '@/lib/billing/money';
+import { micros } from '@/shared/billing/money';
 
 const FAL_PRICING_QUERY_KEY = ['fal-catalog-pricing'] as const;
 

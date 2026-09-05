@@ -2,7 +2,7 @@ import {
   type BannerPhase,
   ProgressBanner,
 } from '@/components/generation/progress-banner';
-import type { ShotView } from '@/lib/shots/shot-view';
+import type { ShotView } from '@/shared/shots/shot-view';
 import type { Sequence } from '@/lib/db/schema/sequences';
 import {
   estimateMotionSeconds,

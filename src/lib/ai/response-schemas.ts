@@ -43,6 +43,9 @@ export const styleRecommendationResponseSchema = z.object({
     })
   ),
 });
+export type StyleRecommendationResponse = z.infer<
+  typeof styleRecommendationResponseSchema
+>;
 
 /**
  * Talent Matching Response

@@ -4,7 +4,7 @@ import { Card } from '@/components/ui/card';
 import { useTalentSheetsRealtime } from '@/hooks/use-talent-sheets-realtime';
 import { useTeamTalentDivergentVariants } from '@/hooks/use-talent-sheet-variants';
 import type { TalentWithSheets } from '@/lib/db/schema';
-import { sheetProgressCopy } from '@/lib/talent/sheet-progress-copy';
+import { sheetProgressCopy } from '@/shared/talent/sheet-progress-copy';
 import type React from 'react';
 import { useMemo } from 'react';
 

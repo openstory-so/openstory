@@ -18,7 +18,7 @@ import {
   getViaAvailabilityFn,
   type ViaAvailability,
 } from '@/functions/via-availability';
-import { referenceOnlyMotionModels } from '@/lib/ai/models';
+import { referenceOnlyMotionModels } from '@/shared/ai/models';
 
 /** No native vias — every model that qualifies on its fal route alone. */
 const CONSERVATIVE: ViaAvailability = {

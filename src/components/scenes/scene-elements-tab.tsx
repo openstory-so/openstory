@@ -18,7 +18,7 @@ import {
   useUploadElementToSequence,
 } from '@/hooks/use-sequence-elements';
 import type { SequenceElement } from '@/lib/db/schema';
-import { MAX_SEQUENCE_ELEMENTS } from '@/lib/sequence-elements/limits';
+import { MAX_SEQUENCE_ELEMENTS } from '@/shared/sequence-elements/limits';
 import { cn } from '@/shared/utils';
 import {
   extractImagesFromSnapshot,

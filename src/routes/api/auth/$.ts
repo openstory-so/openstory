@@ -1,7 +1,7 @@
 import { assertDeviceLoginRate } from '@/lib/api-v1/device-auth';
 import { getAuth } from '@/lib/auth/config';
 import { pruneOrphanedOAuthClients } from '@/lib/db/scoped';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 import { createFileRoute } from '@tanstack/react-router';
 import { scheduleFlushAnalytics } from '#flush-scheduler';
 

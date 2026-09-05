@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { micros } from '@/lib/billing/money';
+import { micros } from '@/shared/billing/money';
 
 const { estimateImageCost, estimateVideoCost, estimateAudioCost } = vi.hoisted(
   () => ({
@@ -8,7 +8,7 @@ const { estimateImageCost, estimateVideoCost, estimateAudioCost } = vi.hoisted(
     estimateAudioCost: vi.fn(),
   })
 );
-vi.mock('@/lib/billing/cost-estimation', async (importOriginal) => ({
+vi.mock('@/shared/billing/cost-estimation', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   estimateImageCost,
   estimateVideoCost,

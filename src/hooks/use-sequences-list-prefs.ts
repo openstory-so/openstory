@@ -9,7 +9,7 @@ import {
   searchSpecifiesPrefs,
   type SequencesListPrefs,
   type SequencesListSearch,
-} from '@/lib/sequences/list-prefs';
+} from '@/shared/sequences/list-prefs';
 import { useCallback, useRef } from 'react';
 
 type SequencesListNavigate = (opts: {

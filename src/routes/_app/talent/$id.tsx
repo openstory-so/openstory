@@ -4,7 +4,7 @@ import { routeParams } from '@/components/layout/breadcrumbs';
 import { EditTalentDialog } from '@/components/talent-library/edit-talent-dialog';
 import { PortraitAttestationFields } from '@/components/talent-library/portrait-attestation-fields';
 import { TalentMediaUpload } from '@/components/talent-library/talent-media-upload';
-import { statementFor } from '@/lib/compliance/attestations';
+import { statementFor } from '@/shared/compliance/attestations';
 import { PageContainer } from '@/components/layout/page-container';
 import { getCurrentUserProfileFn } from '@/functions/user';
 import { PageDescription } from '@/components/typography/page-description';
@@ -20,7 +20,7 @@ import {
   useSetDefaultSheet,
   useToggleTalentFavorite,
 } from '@/hooks/use-talent';
-import { sheetProgressCopy } from '@/lib/talent/sheet-progress-copy';
+import { sheetProgressCopy } from '@/shared/talent/sheet-progress-copy';
 import { cn } from '@/shared/utils';
 import { useQuery } from '@tanstack/react-query';
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';

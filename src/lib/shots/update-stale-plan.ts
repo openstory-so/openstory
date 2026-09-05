@@ -15,18 +15,18 @@ import {
   rendersReferenceOnly,
   usesStartFrame,
   type StartFrameSequence,
-} from '@/lib/shots/use-start-frame';
+} from '@/shared/shots/use-start-frame';
 import { musicPromptInputHashMatches } from '@/lib/ai/input-hash';
 import {
   DEFAULT_ANALYSIS_MODEL,
   getAnalysisModelById,
   type AnalysisModelId,
-} from '@/lib/ai/models.config';
+} from '@/shared/ai/models.config';
 import {
   DEFAULT_IMAGE_MODEL,
   safeTextToImageModel,
   type TextToImageModel,
-} from '@/lib/ai/models';
+} from '@/shared/ai/models';
 import { loadShotPromptContext } from '@/lib/ai/prompt-context';
 import type {
   CharacterBibleEntry,
@@ -45,8 +45,8 @@ import type {
   StyleConfig,
 } from '@/lib/db/schema';
 import type { ScopedDb } from '@/lib/db/scoped';
-import { getLogger } from '@/lib/observability/logger';
-import { assembleSequenceSegments } from '@/lib/scenes/scene-segments';
+import { getLogger } from '@/shared/observability/logger';
+import { assembleSequenceSegments } from '@/shared/scenes/scene-segments';
 import {
   loadSceneContextBySequence,
   resolveSceneForShot,
@@ -60,7 +60,7 @@ import {
   DEFAULT_UPDATE_STALE_DEPTH,
   depthIncludes,
   type UpdateStaleDepth,
-} from '@/lib/shots/update-stale-depth';
+} from '@/shared/shots/update-stale-depth';
 import { buildMusicSceneSummaries } from '@/lib/workflows/music-scene-summaries';
 import { NotFoundError } from '@/shared/errors';
 import type { MusicSceneSummary } from '@/lib/workflow/types';

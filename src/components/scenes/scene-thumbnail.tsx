@@ -2,7 +2,7 @@ import { BlobLoaderContainer } from '@/components/ui/blob-loader';
 import {
   CONTENT_REJECTION_USER_TITLE,
   isContentRejectionError,
-} from '@/lib/ai/content-rejection';
+} from '@/shared/ai/content-rejection';
 import {
   type AspectRatio,
   getAspectRatioClassName,

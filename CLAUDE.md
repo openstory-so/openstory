@@ -62,7 +62,7 @@ src/
     _app/           #   App shell (anonymous-browsable; actions gated behind login)
   functions/        # createServerFn endpoints — most business logic lives here
   components/       # React UI (shadcn/ui base + layout-only Tailwind)
-  shared/         # Client-safe code (utils, vocabularies, sequence-player…) — where client code should import from; `@/lib` value imports are limited to the shrinking exception list in .oxlintrc.json
+  shared/         # Client-safe code (model catalog, cost estimators, request builders, realtime client, logger…) — the only place client code may value-import from
   lib/            # Server-only (see Client/server boundary below)
     ai/             #   AI model configs, prompt schemas, frame.schema
     db/             #   Drizzle schema + clients (D1 in prod + dev via Wrangler)
@@ -81,7 +81,7 @@ drizzle/migrations/ # Generated SQL (do NOT hand-edit)
 **Core rules:**
 
 - Database access ONLY in server handlers (never in components).
-- **Client/server boundary (#1445):** `src/lib` is server-only; `src/shared` is client-safe. `src/components`, `src/hooks`, `src/routes` and `src/shared` may not value-import `@/lib/**` — enforced per-file by `no-restricted-imports` in `.oxlintrc.json`, and transitively by `src/lib/client-server-boundary.test.ts` (pre-commit). `src/routes/api/**` and `src/functions/**` are exempt from the per-file rule (server handlers); the test covers them by modelling what the Start compiler strips. Top-level `import type` is free; the inline `import { type X }` form is NOT — it leaves a side-effect import that ships the whole graph, so `typescript/no-import-type-side-effects` bans it. Directories still listed as `!@/lib/<dir>` exceptions mix both halves; moving a helper into `src/shared` and deleting its exception line is the migration (two exceptions are not that shape — see the comment in `.oxlintrc.json`).
+- **Client/server boundary (#1445):** `src/lib` is server-only; `src/shared` is client-safe. `src/components`, `src/hooks`, `src/routes` and `src/shared` may not value-import `@/lib/**` — enforced per-file by `no-restricted-imports` in `.oxlintrc.json`, and transitively by `src/lib/client-server-boundary.test.ts` (pre-commit). `src/routes/api/**` and `src/functions/**` are exempt from the per-file rule (server handlers), as are the two root-level server-only routes (`[.]well-known`, `oauth/login`) and `*.test.ts`; the test covers the handlers by modelling what the Start compiler strips. Top-level `import type` is free; the inline `import { type X }` form is NOT — it leaves a side-effect import that ships the whole graph, so `typescript/no-import-type-side-effects` bans it. `typeof value` in a type alias is a value reference too (`functions/ai.ts`). The exception list is down to `!@/lib/storage` (#1489), which is not a mixed directory and must not be migrated — see the comment in `.oxlintrc.json`. A file that mixes halves is split, not exempted: the client-safe part moves to `src/shared`, the server part keeps its `src/lib` home and imports the shared half (e.g. `shared/ai/fal-cost` vs `lib/ai/fal-cost-billing`). One deliberate leak shape remains: a `createIsomorphicFn().server(…)` body may value-import `@/lib` under an `oxlint-disable-next-line` (`shared/billing/billing-observability.ts`), because the compiler strips it.
 - Anonymous-first → upgrade to save work.
 - Team-based resources (sequences, styles, characters).
 - Script-driven generation for consistency.
@@ -368,7 +368,7 @@ OpenRouter/fal when an xAI key resolves (team `xai` key → platform
 `XAI_API_KEY` → neither, which falls back to the old path unchanged). e2e never
 sets `XAI_API_KEY`, so fixtures keep exercising the fallback.
 
-`src/lib/ai/grok-native.ts` owns registry id → xAI model name plus the pricing,
+`src/shared/ai/grok-native.ts` owns registry id → xAI model name plus the pricing,
 transcribed from docs.x.ai — the adapter reports a cost for video only. Native
 spend bypasses `model_pricing` and the hourly fal reconcile, so it is
 **unaudited**: the #1069 drift detection covers none of it.
@@ -389,7 +389,7 @@ neither, which falls back to OpenRouter/fal unchanged). e2e never sets
 `GEMINI_API_KEY`, so fixtures keep exercising the fallback;
 `GEMINI_BASE_URL` is the aimock hook for the native path.
 
-`src/lib/ai/gemini-native.ts` owns registry id → Gemini model name plus the
+`src/shared/ai/gemini-native.ts` owns registry id → Gemini model name plus the
 pricing, transcribed from ai.google.dev — Google reports tokens, never cost,
 so those tables ARE the bill (like xAI, native spend is **unaudited** by the
 #1069 drift detection). Omni Flash bills video output as tokens (5,792/s of
@@ -470,7 +470,7 @@ https://fal.ai/models/{model-path}/llms.txt
 # e.g. https://fal.ai/models/fal-ai/kling-video/v2.5-turbo/pro/image-to-video/llms.txt
 ```
 
-More reliable than HTML docs; essential for `src/lib/ai/models.ts`. **For new motion models, run `bun motion:codegen`** to auto-generate schemas — don't write inline.
+More reliable than HTML docs; essential for `src/shared/ai/models.ts`. **For new motion models, run `bun motion:codegen`** to auto-generate schemas — don't write inline.
 
 Motion status checking: `checkMotionStatus(statusUrl)`, `getMotionResult(responseUrl)`, `cancelMotionGeneration(cancelUrl)` from `@/lib/services/motion.service`, or `bun scripts/check-motion-status.ts <url>`.
 

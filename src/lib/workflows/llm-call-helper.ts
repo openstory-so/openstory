@@ -28,25 +28,25 @@ import {
   toGeminiThinkingLevel,
 } from '@/lib/ai/llm-client';
 import { withLlmRateLimitRetry } from '@/lib/ai/llm-rate-limit';
-import type { TextModel } from '@/lib/ai/models';
+import type { TextModel } from '@/shared/ai/models';
 import {
   analysisModelSupportsVision,
   getMaxOutputTokens,
   resolveVisionModel,
-} from '@/lib/ai/models.config';
-import { withRegionFallback } from '@/lib/ai/region-policy';
+} from '@/shared/ai/models.config';
+import { withRegionFallback } from '@/shared/ai/region-policy';
 import { extractStreamingStringField } from '@/lib/ai/stream-extract';
-import type { Microdollars } from '@/lib/billing/money';
+import type { Microdollars } from '@/shared/billing/money';
 import { deductWorkflowCredits } from '@/lib/billing/workflow-deduction';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import { aiObservabilityMiddleware } from '@/lib/observability/ai-otel';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 import {
   getChatPrompt,
   type ChatMessage,
   type ChatMessageImagePart,
 } from '@/lib/prompts';
-import { getShotPromptChannel } from '@/lib/realtime';
+import { getShotPromptChannel } from '@/shared/realtime';
 import { toVisionImageSource } from '@/lib/storage/external-url';
 import { chat } from '@tanstack/ai';
 import type { WorkflowStep } from 'cloudflare:workers';
