@@ -9,8 +9,9 @@
  *   2. generate-image, or submit/poll video (retried on a content flag)
  *   3. capture credits against the run envelope from reported units
  *   4. upload outputs to R2
- *   5. record-provenance
- *   6. persist-result on the reserved `generated_assets` row — last, so a
+ *   5. record-video-observation (clips only; stills record inside generateImage)
+ *   6. record-provenance
+ *   7. persist-result on the reserved `generated_assets` row — last, so a
  *      failure anywhere before it leaves the row `failed`, never
  *      `completed` then flipped
  */
@@ -32,15 +33,17 @@ import { aspectRatioToImageSize } from '@/shared/constants/aspect-ratios';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import type { GeneratedAssetOutput } from '@/lib/db/schema';
 import { generateImageWithProvider } from '@/lib/image/image-generation';
+import { resolveMotionVia } from '@/lib/motion/motion-generation';
+import { videoUrlFitsWorkflowCheckpoint } from '@/lib/motion/video-storage';
+import { recordMediaGenerationSpan } from '@/lib/observability/ai-otel';
 import { getLogger } from '@/lib/observability/logger';
+import type { StudioCreateInput } from '@/lib/studio/schema';
 import {
   pollStudioVideoJob,
   studioVideoCostFromUsage,
   submitStudioVideoJob,
 } from '@/lib/studio/studio-video-generation';
-import type { StudioCreateInput } from '@/lib/studio/schema';
 import { tagStudioReferences } from '@/lib/studio/text-to-video';
-import { videoUrlFitsWorkflowCheckpoint } from '@/lib/motion/video-storage';
 import { uploadStudioImage, uploadStudioVideo } from '@/lib/studio/upload';
 import { OpenStoryWorkflowEntrypoint } from '@/lib/workflow/base-workflow';
 import type { StudioGenerationWorkflowInput } from '@/lib/workflow/types';
@@ -434,6 +437,26 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
       { url: videoUpload.url, contentType: videoUpload.contentType },
     ];
 
+    await step.do('record-video-observation', async () => {
+      recordMediaGenerationSpan({
+        model: videoModel,
+        provider: job.via,
+        activity: 'video',
+        costMicros: videoCost,
+        unitsBilled: billing.unitsBilled,
+        inputTokens: billedUsage?.promptTokens,
+        outputTokens: billedUsage?.completionTokens,
+        usedOwnKey: job.usedOwnKey,
+        prompt: input.prompt,
+        outputUrl: videoUpload.url,
+        observationName: 'studio-video',
+        tags: ['studio', 'motion'],
+        userId,
+        sessionId: assetId,
+        metadata: { model: videoModel, assetId },
+      });
+    });
+
     await step.do('record-provenance', async () => {
       await recordProvenance(scopedDb.provenance, {
         teamId,
@@ -468,9 +491,31 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
     error: string;
     scopedDb: WorkflowScopedDb;
   }): Promise<void> {
-    await scopedDb.generatedAssets.markFailed(event.payload.assetId, error);
+    const { assetId, userId, input } = event.payload;
+    if (input.activity === 'video') {
+      // Image failures are already recorded inside generateImageWithProvider.
+      recordMediaGenerationSpan({
+        model: input.videoModel,
+        provider: await resolveMotionVia(
+          input.videoModel,
+          scopedDb.credentials
+        ),
+        activity: 'video',
+        prompt: input.prompt,
+        errorType: isContentRejectionError(error)
+          ? 'content_filter'
+          : 'provider_error',
+        errorMessage: error,
+        observationName: 'studio-video',
+        tags: ['studio', 'motion'],
+        userId,
+        sessionId: assetId,
+        metadata: { model: input.videoModel, assetId },
+      });
+    }
+    await scopedDb.generatedAssets.markFailed(assetId, error);
     logger.error(
-      `[StudioGenerationWorkflow] Asset ${event.payload.assetId} failed: ${error}`
+      `[StudioGenerationWorkflow] Asset ${assetId} failed: ${error}`
     );
   }
 }

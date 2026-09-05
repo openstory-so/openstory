@@ -65,6 +65,7 @@ const {
   pollMotionJob,
   motionCostFromUsage,
   calculateMotionMetadata,
+  resolveMotionVia,
 } = await import('./motion-generation');
 
 describe('Motion Service', () => {
@@ -815,15 +816,29 @@ describe('Motion Service', () => {
     });
 
     it('prices Google video-output tokens and skips fal usage sampling', async () => {
-      // 5s of 720p video = 28,960 output tokens @ $17.50/1M = $0.5068.
+      // 5s of 720p video = 28,960 output tokens @ $17.50/1M = $0.5068
+      // plus 120 prompt tokens @ $1.50/1M = $0.00018.
       const billing = await motionCostFromUsage(
         'google',
         { promptTokens: 120, completionTokens: 28_960, totalTokens: 29_080 },
         { modelKey: 'gemini_omni_flash', hasReferenceImages: false }
       );
-      expect(billing.cost).toBe(506_800);
+      expect(billing.cost).toBe(506_980);
       expect(billing.recordFalUsage).toBe(false);
       expect(billing.endpointId).toBe('gemini-omni-1.1-flash');
+    });
+  });
+
+  describe('resolveMotionVia', () => {
+    it('claims Google for Omni Flash when a Google key is present', async () => {
+      testEnv.GEMINI_API_KEY = 'platform-google';
+      await expect(resolveMotionVia('gemini_omni_flash')).resolves.toBe(
+        'google'
+      );
+    });
+
+    it('falls back to fal for Omni Flash when no Google key exists', async () => {
+      await expect(resolveMotionVia('gemini_omni_flash')).resolves.toBe('fal');
     });
   });
 });
