@@ -35,6 +35,7 @@ vi.doMock('#db-client', () => ({
   getDb: vi.fn(),
 }));
 vi.doMock('@/lib/db/seed-model-pricing', () => ({
+  ensureE2eModelPricing: async () => {},
   ensureLocalModelPricingSeeded: vi.fn(),
 }));
 vi.doMock('@/lib/db/scoped', () => ({

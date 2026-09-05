@@ -21,7 +21,6 @@ import {
   user,
   verification,
 } from '@/lib/db/schema';
-import { eq } from 'drizzle-orm';
 
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
@@ -29,11 +28,9 @@ import { emailOTP, lastLoginMethod } from 'better-auth/plugins';
 import { tanstackStartCookies } from 'better-auth/tanstack-start';
 
 import { getDb } from '#db-client';
+import { createDefaultTeam, getUserIdentity } from '@/lib/db/scoped';
 import { getEnv } from '#env';
-import { teamMembers, teams } from '@/lib/db/schema';
 import { SIGNUP_GRANT_MICROS } from '@/shared/billing/constants';
-import { microsToDisplayUsd } from '@/shared/billing/money';
-import { createBillingMethods } from '@/lib/db/scoped/billing';
 import { sendOtpEmail } from '@/lib/services/email-service';
 import {
   currentAuthCookiePrefix,
@@ -292,38 +289,16 @@ export function createAuth(db: ReturnType<typeof getDb> = getDb()) {
       user: {
         create: {
           after: async (user) => {
-            const db = getDb();
-            const teamName = user.name
-              ? `${user.name}'s Team`
-              : `Team ${user.id.slice(0, 8)}`;
-            const teamSlug = `team-${user.id.slice(0, 8)}`;
-
-            const [team] = await db
-              .insert(teams)
-              .values({ name: teamName, slug: teamSlug })
-              .returning();
-
-            if (!team) {
-              throw new Error(
-                `Failed to create default team for user ${user.id}`
-              );
-            }
-
-            await db.insert(teamMembers).values({
-              teamId: team.id,
+            // Team + owner membership + one-time welcome credit (#1047; preflight
+            // fixed in #1062). The SQL lives in db/scoped so this file never
+            // writes a table directly.
+            const team = await createDefaultTeam({
               userId: user.id,
-              role: 'owner',
+              teamName: user.name
+                ? `${user.name}'s Team`
+                : `Team ${user.id.slice(0, 8)}`,
+              welcomeCreditMicros: SIGNUP_GRANT_MICROS,
             });
-
-            // Grant every new team a one-time welcome credit (#1047; preflight fixed in #1062).
-            await createBillingMethods(db, team.id, user.id).addCredits(
-              SIGNUP_GRANT_MICROS,
-              {
-                type: 'credit_adjustment',
-                description: `Welcome credit: ${microsToDisplayUsd(SIGNUP_GRANT_MICROS)}`,
-                metadata: { signupGrant: true },
-              }
-            );
 
             // First-time account only — drives #product-alerts via PostHog (#1088).
             // personProperties set email/name on the PostHog person so Slack
@@ -355,12 +330,7 @@ export function createAuth(db: ReturnType<typeof getDb> = getDb()) {
             // fail session create.
             let personProperties: Record<string, unknown> | undefined;
             try {
-              const db = getDb();
-              const [signedInUser] = await db
-                .select({ email: user.email, name: user.name })
-                .from(user)
-                .where(eq(user.id, session.userId))
-                .limit(1);
+              const signedInUser = await getUserIdentity(session.userId);
               if (signedInUser) {
                 personProperties = {
                   email: signedInUser.email,

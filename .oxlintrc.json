@@ -197,6 +197,7 @@
         "**/cron/reconcile-fal-billing.ts",
         "**/cron/refresh-fal-pricing.ts",
         "**/ai/fal-pricing-live.ts",
+        "**/db/seed-model-pricing.ts",
         "**/lib/test/seed.ts"
       ],
       "rules": {
@@ -215,11 +216,12 @@
       }
     },
     {
-      // The request middlewares mint the scoped db for handlers; they never
-      // touch the raw handle.
+      // The request middlewares and the workflow base mint the scoped db for
+      // handlers / runs; they never touch the raw handle.
       "files": [
         "**/functions/middleware.ts",
-        "**/functions/stripe-webhook-middleware.ts"
+        "**/functions/stripe-webhook-middleware.ts",
+        "**/workflow/base-workflow.ts"
       ],
       "rules": {
         "no-restricted-imports": [
@@ -233,14 +235,6 @@
             ]
           }
         ]
-      }
-    },
-    {
-      // The workflow base class needs both: the raw handle for its own
-      // bookkeeping and the factory to build the run's ScopedDb.
-      "files": ["**/workflow/base-workflow.ts"],
-      "rules": {
-        "no-restricted-imports": "off"
       }
     }
   ]

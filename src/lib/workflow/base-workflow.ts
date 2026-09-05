@@ -16,10 +16,8 @@
  *     so the failure write itself benefits from retries + step durability.
  */
 
-import { getEnv } from '#env';
-import { getDb } from '#db-client';
 import { configureFalProxyFromEnv } from '@/lib/ai/fal-config';
-import { ensureLocalModelPricingSeeded } from '@/lib/db/seed-model-pricing';
+import { ensureE2eModelPricing } from '@/lib/db/seed-model-pricing';
 import { createScopedDb } from '@/lib/db/scoped';
 import {
   toWorkflowScopedDb,
@@ -63,14 +61,6 @@ async function zeroOwnedReservation(
       { err }
     );
   }
-}
-
-let e2ePricingSeed: Promise<unknown> | null = null;
-
-async function ensureE2eModelPricing(): Promise<void> {
-  if (getEnv().E2E_TEST !== 'true') return;
-  e2ePricingSeed ??= ensureLocalModelPricingSeeded(getDb());
-  await e2ePricingSeed;
 }
 
 /**
