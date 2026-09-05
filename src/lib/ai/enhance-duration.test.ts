@@ -202,23 +202,21 @@ describe('assessDurationFit', () => {
 });
 
 describe('buildDurationPromptParagraph', () => {
-  it('asks for Fountain at the target length, not labeled clip sums', () => {
+  it('requires a hard sum, the LTX grid, a TOTAL line, and title-card substitution', () => {
     const paragraph = buildDurationPromptParagraph({
       targetSeconds: 30,
       videoModel: 'ltx_2_3_pro',
     });
-    expect(paragraph).toContain('Target running time: 30 seconds');
-    expect(paragraph).toContain('about 4-5 locations/beats');
-    expect(paragraph).toContain(
-      'The rendered film should sum to about 30 seconds'
-    );
-    expect(paragraph).toContain('Fountain');
-    expect(paragraph).toContain('6, 8 or 10 seconds');
-    expect(paragraph).not.toContain('TOTAL:');
-    expect(paragraph).not.toContain('Scene 3 —');
-    expect(paragraph).not.toContain('Shot 1 —');
+    expect(paragraph).toContain('Target video duration: 30 seconds');
+    expect(paragraph).toContain('about 4-5 clips');
+    expect(paragraph).toContain('Clip durations MUST be 6, 8 or 10 seconds');
+    expect(paragraph).toContain('MUST add up to 30 seconds');
+    expect(paragraph).toContain('TOTAL: <sum>s');
     expect(paragraph).toContain('title card');
-    expect(paragraph).toContain('living final beat');
+    expect(paragraph).toContain('living beat');
+    expect(paragraph).toContain('a scene may hold several shots');
+    expect(paragraph).toContain('one-shot scene needs only the scene label');
+    expect(paragraph).toContain('Each SHOT is one video clip');
   });
 });
 
