@@ -2,7 +2,8 @@
  * Scoped Database Context
  * Factory that returns team-scoped query methods, auto-injecting teamId.
  * Sub-modules in ./scoped/ contain domain-specific methods.
- * Only this file and auth/config.ts should import getDb.
+ * Raw `getDb` readers are allowlisted in `.oxlintrc.json` and pinned by
+ * `db-access-allowlist.test.ts`; everything team-scoped goes through here.
  */
 
 import { getDb } from '#db-client';
@@ -19,6 +20,7 @@ import {
   user,
 } from '@/lib/db/schema';
 import type { TeamMemberRole } from '@/lib/db/schema/teams';
+import { type Microdollars, microsToDisplayUsd } from '@/shared/billing/money';
 import { createAdminMethods } from '@/lib/db/scoped/admin';
 import { createApiKeysMethods } from '@/lib/db/scoped/api-keys';
 import { createBillingMethods } from '@/lib/db/scoped/billing';
@@ -305,6 +307,57 @@ export async function getSequenceByIdUnscoped(
 }
 
 /**
+ * Create a user's default team with them as owner. The one place the
+ * sign-up bootstrap SQL lives: the Better Auth `user.create` hook and
+ * `ensureUserAndTeam` both call it, so neither touches `teams` /
+ * `team_members` directly.
+ */
+export async function createDefaultTeam(input: {
+  userId: string;
+  teamName: string;
+  /** Sign-up grant (#1047). Omitted on the anonymous bootstrap path. */
+  welcomeCreditMicros?: Microdollars;
+}) {
+  const db = getDb();
+  const [team] = await db
+    .insert(teams)
+    .values({ name: input.teamName, slug: `team-${input.userId.slice(0, 8)}` })
+    .returning();
+  // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: DB query may return undefined
+  if (!team) {
+    throw new Error(`Failed to create default team for user ${input.userId}`);
+  }
+  await db.insert(teamMembers).values({
+    teamId: team.id,
+    userId: input.userId,
+    role: 'owner',
+  });
+  if (input.welcomeCreditMicros !== undefined) {
+    await createBillingMethods(db, team.id, input.userId).addCredits(
+      input.welcomeCreditMicros,
+      {
+        type: 'credit_adjustment',
+        description: `Welcome credit: ${microsToDisplayUsd(input.welcomeCreditMicros)}`,
+        metadata: { signupGrant: true },
+      }
+    );
+  }
+  return team;
+}
+
+/** Email + name for a PostHog identify. Null when the row is missing. */
+export async function getUserIdentity(
+  userId: string
+): Promise<{ email: string; name: string } | null> {
+  const [row] = await getDb()
+    .select({ email: user.email, name: user.name })
+    .from(user)
+    .where(eq(user.id, userId))
+    .limit(1);
+  return row ?? null;
+}
+
+/**
  * Ensure user exists in database with team membership.
  * Creates user record, team, and membership if they don't exist.
  * Bootstrap function — does not require a scopedDb instance.
@@ -348,23 +401,11 @@ export async function ensureUserAndTeam(authUser: {
       })
       .onConflictDoNothing();
 
-    const teamName = authUser.name
-      ? `${authUser.name}'s Team`
-      : `Anonymous Team ${authUser.id.slice(0, 8)}`;
-    const teamSlug = `team-${authUser.id.slice(0, 8)}`;
-
-    const [team] = await db
-      .insert(teams)
-      .values({ name: teamName, slug: teamSlug })
-      .returning();
-
-    // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: DB query may return undefined
-    if (!team) throw new Error('Failed to create team');
-
-    await db.insert(teamMembers).values({
-      teamId: team.id,
+    const team = await createDefaultTeam({
       userId: authUser.id,
-      role: 'owner',
+      teamName: authUser.name
+        ? `${authUser.name}'s Team`
+        : `Anonymous Team ${authUser.id.slice(0, 8)}`,
     });
 
     const createdUser = await db.query.user.findFirst({
