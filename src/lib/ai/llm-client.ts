@@ -3,13 +3,13 @@
  * Routes through native xAI / Google, LLMTR (OpenAI-compat), or OpenRouter.
  */
 
-import type { TextModel } from '@/lib/ai/models';
-import { reportMissingBillingCost } from '@/lib/billing/billing-observability';
+import type { TextModel } from '@/shared/ai/models';
+import { reportMissingBillingCost } from '@/shared/billing/billing-observability';
 import {
   usdToMicros,
   ZERO_MICROS,
   type Microdollars,
-} from '@/lib/billing/money';
+} from '@/shared/billing/money';
 import { aiObservabilityMiddleware } from '@/lib/observability/ai-otel';
 import type { ChatMessage } from '@/lib/prompts';
 import {
@@ -26,16 +26,16 @@ import { z } from 'zod';
 import {
   geminiTextCostFromUsage,
   nativeGeminiTextModel,
-} from '@/lib/ai/gemini-native';
+} from '@/shared/ai/gemini-native';
 import {
   grokTextCostFromUsage,
   nativeGrokTextModel,
-} from '@/lib/ai/grok-native';
+} from '@/shared/ai/grok-native';
 import { llmtrCompatibleApi, llmtrTextCostFromUsage } from '@/lib/ai/llmtr';
 import {
   isRegionBlockedLlmError,
   regionFallbackModel,
-} from '@/lib/ai/region-policy';
+} from '@/shared/ai/region-policy';
 import { aiDebugLogger } from './ai-debug-logger';
 import {
   createAdapter,
@@ -44,7 +44,7 @@ import {
   type LlmKeyInfo,
 } from './create-adapter';
 
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'ai', 'llm-client']);
 

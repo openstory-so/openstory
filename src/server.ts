@@ -26,7 +26,7 @@ import {
 import { ensureLocalModelPricingSeeded } from '@/lib/db/seed-model-pricing';
 import { ensureSystemTemplatesSeeded } from '@/lib/db/seed-system-templates';
 
-import { getLogger, toErrorPayload } from '@/lib/observability/logger';
+import { getLogger, toErrorPayload } from '@/shared/observability/logger';
 import { drizzle } from 'drizzle-orm/d1';
 
 const logger = getLogger(['openstory', 'server']);

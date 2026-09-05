@@ -24,7 +24,7 @@ import {
   getFalEndpointIds,
   UNLISTED_FAL_ENDPOINTS,
 } from '@/lib/ai/fal-endpoints';
-import { listCatalogEndpointIds } from '@/lib/models/catalog';
+import { listCatalogEndpointIds } from '@/shared/models/catalog';
 import {
   type FalUnitPrice,
   fetchFalBilledRates,
@@ -35,8 +35,8 @@ import {
 import {
   FAL_TYPICAL_UNITS_PER_DEFAULT_CLIP,
   FAL_UNVERIFIED_SIBLINGS,
-} from '@/lib/ai/fal-typical-units';
-import { usdToMicros } from '@/lib/billing/money';
+} from '@/shared/ai/fal-typical-units';
+import { usdToMicros } from '@/shared/billing/money';
 import {
   modelPricing,
   modelPricingHistory,
@@ -44,7 +44,7 @@ import {
   transactions,
 } from '@/lib/db/schema';
 import type { ObservedUnits } from '@/lib/db/schema/model-pricing';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 import { and, eq, lt, sql, type SQL } from 'drizzle-orm';
 import type { drizzle as drizzleD1 } from 'drizzle-orm/d1';
 

@@ -7,7 +7,7 @@
  * cap. Jitter desynchronises siblings that all 429'd on the same tick.
  */
 
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'ai', 'llm-rate-limit']);
 

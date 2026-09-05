@@ -27,10 +27,10 @@
 import { resolveImageModels } from '@/lib/ai/resolve-image-models';
 import { aspectRatioToImageSize } from '@/shared/constants/aspect-ratios';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
-import { buildCharacterReferenceImages } from '@/lib/prompts/character-prompt';
-import { buildElementReferenceImages } from '@/lib/prompts/element-prompt';
-import { buildLocationReferenceImages } from '@/lib/prompts/location-prompt';
-import type { ReferenceImageDescription } from '@/lib/prompts/reference-image-prompt';
+import { buildCharacterReferenceImages } from '@/shared/prompts/character-prompt';
+import { buildElementReferenceImages } from '@/shared/prompts/element-prompt';
+import { buildLocationReferenceImages } from '@/shared/prompts/location-prompt';
+import type { ReferenceImageDescription } from '@/shared/prompts/reference-image-prompt';
 import { shotVariantDedupId } from '@/lib/workflow/dedup-ids';
 import { OpenStoryWorkflowEntrypoint } from '@/lib/workflow/base-workflow';
 import { spawnAndAwaitChild } from '@/lib/workflow/await-child';
@@ -48,14 +48,14 @@ import {
   matchCharactersToShotImage,
   matchElementsToShotImage,
   matchLocationsToScene,
-} from '@/lib/workflows/scene-matching';
+} from '@/shared/scenes/scene-matching';
 import {
   computeShotImageSceneHash,
   computeShotImagesHashFromDto,
   type ShotImageSceneSnapshot,
 } from '@/lib/workflows/sheet-snapshots';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'workflow', 'shot-images']);
 

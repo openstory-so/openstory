@@ -1,5 +1,5 @@
 import type { StyleConfig } from '@/lib/db/schema/libraries';
-import { UNTITLED_SEQUENCE_TITLE } from '@/lib/sequences/untitled-sequence-title';
+import { UNTITLED_SEQUENCE_TITLE } from '@/shared/sequences/untitled-sequence-title';
 
 const MAX_PROMPT_LENGTH = 2000;
 const MAX_SCRIPT_LENGTH = 500;

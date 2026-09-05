@@ -15,7 +15,7 @@ import {
   isValidAudioModel,
   isValidImageToVideoModel,
   isValidTextToImageModel,
-} from '@/lib/ai/models';
+} from '@/shared/ai/models';
 import {
   compareSelectorModels,
   QUALITY_DEFAULT_AUDIO,
@@ -27,11 +27,11 @@ import {
   TURBO_IMAGE_MODELS,
   TURBO_VIDEO_MODELS,
   type SelectorGroup,
-} from '@/lib/ai/generation-mode';
+} from '@/shared/ai/generation-mode';
 import type { VariantType } from '@/lib/db/schema/shot-variants';
 import { DEFAULT_ASPECT_RATIO } from '@/shared/constants/aspect-ratios';
 import { useViaAvailability } from '@/hooks/use-via-availability';
-import { rendersReferenceOnly } from '@/lib/shots/use-start-frame';
+import { rendersReferenceOnly } from '@/shared/shots/use-start-frame';
 import { useMemo } from 'react';
 import { toast } from 'sonner';
 

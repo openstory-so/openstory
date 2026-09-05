@@ -29,7 +29,7 @@ import {
   IMAGE_MODELS,
   isValidTextToImageModel,
   videoModelDisplayName,
-} from '@/lib/ai/models';
+} from '@/shared/ai/models';
 import type { PromptVariantSource, PromptVersionStatus } from '@/lib/db/schema';
 import { cn } from '@/shared/utils';
 import {

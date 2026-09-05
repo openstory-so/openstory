@@ -10,9 +10,9 @@
  * instead.
  */
 
-import { IMAGE_MODELS } from '@/lib/ai/models';
-import { resolveUpscaleModel } from '@/lib/ai/resolve-asset-models';
-import { ZERO_MICROS } from '@/lib/billing/money';
+import { IMAGE_MODELS } from '@/shared/ai/models';
+import { resolveUpscaleModel } from '@/shared/ai/resolve-asset-models';
+import { ZERO_MICROS } from '@/shared/billing/money';
 import {
   deductWorkflowCredits,
   recordFalUsageStep,
@@ -27,8 +27,8 @@ import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import { generateImageWithProvider } from '@/lib/image/image-generation';
 import { recordProvenance } from '@/lib/compliance/provenance';
 import { uploadImageToStorage } from '@/lib/image/image-storage';
-import { buildReferenceImagePrompt } from '@/lib/prompts/reference-image-prompt';
-import { getGenerationChannel } from '@/lib/realtime';
+import { buildReferenceImagePrompt } from '@/shared/prompts/reference-image-prompt';
+import { getGenerationChannel } from '@/shared/realtime';
 import { buildR2Key, STORAGE_BUCKETS } from '@/lib/storage/buckets';
 import { OpenStoryWorkflowEntrypoint } from '@/lib/workflow/base-workflow';
 import { WorkflowValidationError } from '@/lib/workflow/errors';
@@ -38,7 +38,7 @@ import type {
 } from '@/lib/workflow/types';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { getAnchorImageUrl } from '@/lib/shots/frame-image';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'workflow', 'upscale-shot-variant']);
 

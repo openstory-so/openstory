@@ -31,12 +31,12 @@ import {
 } from '@/hooks/use-sequences-with-shots';
 import { useStudioAssets } from '@/hooks/use-studio-assets';
 import { useTalent } from '@/hooks/use-talent';
-import { isBrowserDisplayableStillUrl } from '@/lib/shots/shot-view';
+import { isBrowserDisplayableStillUrl } from '@/shared/shots/shot-view';
 import {
   studioPosterOutput,
   studioPrimaryOutput,
   studioPrompt,
-} from '@/lib/studio/outputs';
+} from '@/shared/studio/outputs';
 import { cn } from '@/shared/utils';
 import {
   ArrowLeft,
@@ -49,7 +49,7 @@ import {
   Upload,
   Users,
 } from 'lucide-react';
-import type { StudioReferenceKind } from '@/lib/studio/schema';
+import type { StudioReferenceKind } from '@/shared/studio/schema';
 import { useMemo, useRef, useState } from 'react';
 
 export type StudioReference = {

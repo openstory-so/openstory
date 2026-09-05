@@ -26,7 +26,7 @@ import {
   migrateStyleConfigV1ToV2,
   StyleConfigSchema,
   type StyleConfig,
-} from '@/lib/style/style-config';
+} from '@/shared/style/style-config';
 import { createSeedDb, parseSeedTarget } from './seed-db-client';
 
 const DRY_RUN = process.argv.includes('--dry-run');

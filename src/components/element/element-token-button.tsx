@@ -13,7 +13,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import { deriveTokenFromFilename } from '@/lib/sequence-elements/derive-token';
+import { deriveTokenFromFilename } from '@/shared/sequence-elements/derive-token';
 import { Pencil } from 'lucide-react';
 import { useRef, useState } from 'react';
 

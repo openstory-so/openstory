@@ -33,8 +33,11 @@ import {
   frameVariantFixture,
   videoVariantFixture,
 } from '@/shared/mocks/frame-fixtures';
-import { toShotView, type ShotView } from '@/lib/shots/shot-view';
-import { estimateImageCost, gateEstimate } from '@/lib/billing/cost-estimation';
+import { toShotView, type ShotView } from '@/shared/shots/shot-view';
+import {
+  estimateImageCost,
+  gateEstimate,
+} from '@/shared/billing/cost-estimation';
 
 const assertNoActiveStoryboardMock = vi.fn();
 const triggerStoryboardMock = vi.fn();

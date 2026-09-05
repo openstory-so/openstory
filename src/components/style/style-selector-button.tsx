@@ -4,7 +4,7 @@ import { AppImage } from '@/components/ui/app-image';
 import { ChevronDown } from 'lucide-react';
 import { useState, type FC } from 'react';
 import { getStyleGradient } from './style-gradient';
-import { getConfigColorPalette } from '@/lib/style/style-config';
+import { getConfigColorPalette } from '@/shared/style/style-config';
 
 type StyleSelectorButtonProps = {
   selectedStyle?: Style | null;

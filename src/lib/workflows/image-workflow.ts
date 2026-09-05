@@ -16,8 +16,8 @@
  *      retains a stale-flagged version without repointing the primary.
  */
 
-import { DEFAULT_IMAGE_MODEL, IMAGE_MODELS } from '@/lib/ai/models';
-import { ZERO_MICROS } from '@/lib/billing/money';
+import { DEFAULT_IMAGE_MODEL, IMAGE_MODELS } from '@/shared/ai/models';
+import { ZERO_MICROS } from '@/shared/billing/money';
 import {
   deductWorkflowCredits,
   recordFalUsageStep,
@@ -28,13 +28,13 @@ import type { Frame } from '@/lib/db/schema';
 import {
   CONTENT_REJECTION_EVENT,
   isContentRejectionError,
-} from '@/lib/ai/content-rejection';
+} from '@/shared/ai/content-rejection';
 import type { ImageGenerationParams } from '@/lib/image/image-generation';
 import { uploadImageToStorage } from '@/lib/image/image-storage';
 import { recordProvenance } from '@/lib/compliance/provenance';
 import { buildR2Key, STORAGE_BUCKETS } from '@/lib/storage/buckets';
-import { buildReferenceImagePrompt } from '@/lib/prompts/reference-image-prompt';
-import { getGenerationChannel } from '@/lib/realtime';
+import { buildReferenceImagePrompt } from '@/shared/prompts/reference-image-prompt';
+import { getGenerationChannel } from '@/shared/realtime';
 import { simpleHash } from '@/shared/utils/hash';
 import { OpenStoryWorkflowEntrypoint } from '@/lib/workflow/base-workflow';
 import { WorkflowValidationError } from '@/lib/workflow/errors';
@@ -42,7 +42,7 @@ import type { ImageWorkflowInput } from '@/lib/workflow/types';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { computeImageWorkflowHashFromDto } from '@/lib/workflows/image-workflow-snapshot';
 import { generateImageWithContentRetry } from '@/lib/workflows/soften-image-prompt';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'workflow', 'image']);
 

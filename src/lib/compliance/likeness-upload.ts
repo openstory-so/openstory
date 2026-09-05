@@ -7,7 +7,7 @@
  * checkbox.
  */
 
-import { statementFor, statementHash } from '@/lib/compliance/attestations';
+import { statementFor, statementHash } from '@/shared/compliance/attestations';
 import type { ScopedDb } from '@/lib/db/scoped';
 import { AttestationRequiredError, ValidationError } from '@/shared/errors';
 import { z } from 'zod';

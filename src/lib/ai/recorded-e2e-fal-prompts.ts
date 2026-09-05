@@ -6,16 +6,16 @@
  * (`matchElementsToShotImage`), same as live image stamp.
  */
 
-import { buildCharacterReferenceImages } from '@/lib/prompts/character-prompt';
-import { buildElementReferenceImages } from '@/lib/prompts/element-prompt';
-import { buildLocationReferenceImages } from '@/lib/prompts/location-prompt';
-import { buildReferenceImagePrompt } from '@/lib/prompts/reference-image-prompt';
+import { buildCharacterReferenceImages } from '@/shared/prompts/character-prompt';
+import { buildElementReferenceImages } from '@/shared/prompts/element-prompt';
+import { buildLocationReferenceImages } from '@/shared/prompts/location-prompt';
+import { buildReferenceImagePrompt } from '@/shared/prompts/reference-image-prompt';
 import { getVariantImagePrompt } from '@/lib/prompts/variant-image';
 import {
   matchCharactersToScene,
   matchElementsToShotImage,
   matchLocationsToScene,
-} from '@/lib/workflows/scene-matching';
+} from '@/shared/scenes/scene-matching';
 import {
   extractTaggedJson,
   loadOpenrouterStage,

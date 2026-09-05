@@ -5,8 +5,8 @@ import type { SceneWithScript } from '@/hooks/use-scenes';
 import type {
   SegmentVideoVersion,
   SequenceSegment,
-} from '@/lib/scenes/scene-segments';
-import type { ShotView } from '@/lib/shots/shot-view';
+} from '@/shared/scenes/scene-segments';
+import type { ShotView } from '@/shared/shots/shot-view';
 import type { Meta, StoryObj } from '@storybook/react';
 import { SceneList } from './scene-list';
 

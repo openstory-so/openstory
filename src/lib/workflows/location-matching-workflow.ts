@@ -21,7 +21,7 @@
 import { buildLocationMatchingPromptVariables } from '@/lib/ai/location-matching-prompt';
 import { locationMatchResponseSchema } from '@/lib/ai/response-schemas';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
-import { getGenerationChannel } from '@/lib/realtime';
+import { getGenerationChannel } from '@/shared/realtime';
 import { GENERATION_STAGE_META } from '@/shared/generation/pipeline';
 import { OpenStoryWorkflowEntrypoint } from '@/lib/workflow/base-workflow';
 import { durableLLMCallCf } from '@/lib/workflows/llm-call-helper';
@@ -32,7 +32,7 @@ import type {
   LocationMatchingWorkflowOutput,
 } from '@/lib/workflow/types';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'workflow', 'location-matching']);
 

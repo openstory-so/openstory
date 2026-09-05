@@ -391,7 +391,7 @@ export function createVideoVariantsMethods(db: Database) {
      * The model of each shot's SELECTED video version across a sequence, keyed
      * by shot (#1066). Model identity lives on the version row that rendered
      * the clip, so this is what generate/display resolve from — see
-     * `@/lib/ai/resolve-asset-models`. Joined through the shot's render
+     * `@/shared/ai/resolve-asset-models`. Joined through the shot's render
      * segment, so batch paths (smart retry, batch motion) don't go N+1. Shots
      * with no segment or no selection are absent; the caller falls back a tier.
      *

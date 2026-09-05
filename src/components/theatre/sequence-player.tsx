@@ -37,7 +37,7 @@ import {
   createPlaybackTracker,
   type PlaybackTracker,
   type VideoPlaySource,
-} from '@/lib/observability/player-events';
+} from '@/shared/observability/player-events';
 import { cn } from '@/shared/utils';
 import { usePostHog } from '@posthog/react';
 import {

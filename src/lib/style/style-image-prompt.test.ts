@@ -1,4 +1,4 @@
-import { migrateStyleConfigV1ToV2 } from '@/lib/style/style-config';
+import { migrateStyleConfigV1ToV2 } from '@/shared/style/style-config';
 import { describe, expect, it } from 'vitest';
 import { buildStyledImagePrompt } from './style-image-prompt';
 

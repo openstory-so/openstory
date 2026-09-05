@@ -23,7 +23,7 @@ import {
   microsToDisplayUsd,
   microsToUsd,
   type Microdollars,
-} from '@/lib/billing/money';
+} from '@/shared/billing/money';
 import { cn } from '@/shared/utils';
 import { AlertTriangle } from 'lucide-react';
 import type { ReactNode } from 'react';

@@ -5,7 +5,7 @@ import {
   frameVariantFixture,
   videoVariantFixture,
 } from '@/shared/mocks/frame-fixtures';
-import { toShotView, type ShotView } from '@/lib/shots/shot-view';
+import { toShotView, type ShotView } from '@/shared/shots/shot-view';
 import { DivergenceCompareDialog } from './divergence-compare-dialog';
 
 const NOW = new Date('2026-04-29T00:00:00Z');

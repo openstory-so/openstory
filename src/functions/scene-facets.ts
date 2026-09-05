@@ -27,7 +27,7 @@ import {
   matchCharactersToScene,
   matchElementsToShotImage,
   matchLocationsToScene,
-} from '@/lib/workflows/scene-matching';
+} from '@/shared/scenes/scene-matching';
 import { createServerFn } from '@tanstack/react-start';
 
 /** Facet ids that apply to each shot, keyed by shot id. */

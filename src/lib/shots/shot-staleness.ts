@@ -8,9 +8,9 @@
 import {
   rendersReferenceOnly,
   type StartFrameSequence,
-} from '@/lib/shots/use-start-frame';
+} from '@/shared/shots/use-start-frame';
 import { z } from 'zod';
-import { DEFAULT_IMAGE_MODEL, safeTextToImageModel } from '@/lib/ai/models';
+import { DEFAULT_IMAGE_MODEL, safeTextToImageModel } from '@/shared/ai/models';
 import {
   computeMotionPromptInputHash,
   computeVisualPromptInputHash,
@@ -33,8 +33,8 @@ import {
 import type { SequenceStatus } from '@/lib/db/schema/sequences';
 import type { ScopedDb } from '@/lib/db/scoped';
 import { buildRegenerateShotSnapshot } from '@/lib/workflows/regenerate-shots-snapshot';
-import { matchElementsToShotImage } from '@/lib/workflows/scene-matching';
-import { getLogger } from '@/lib/observability/logger';
+import { matchElementsToShotImage } from '@/shared/scenes/scene-matching';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'shots', 'staleness']);
 

@@ -9,8 +9,8 @@ import { and, eq } from 'drizzle-orm';
 import type { Database } from '@/lib/db/client';
 import { getEnv } from '#env';
 import { getPlatformLlmKey } from '@/lib/ai/create-adapter';
-import { nativeGeminiTextModel } from '@/lib/ai/gemini-native';
-import { nativeGrokTextModel } from '@/lib/ai/grok-native';
+import { nativeGeminiTextModel } from '@/shared/ai/gemini-native';
+import { nativeGrokTextModel } from '@/shared/ai/grok-native';
 import {
   LLMTR_BASE_URL,
   LLMTR_VALIDATION_MODEL,
@@ -23,7 +23,7 @@ import {
 } from '@/lib/crypto/api-key-encryption';
 import { type ApiKeyProvider, teamApiKeys } from '@/lib/db/schema';
 
-import { getLogger, serializeError } from '@/lib/observability/logger';
+import { getLogger, serializeError } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'db', 'api-keys']);
 

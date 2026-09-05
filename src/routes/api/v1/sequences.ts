@@ -40,7 +40,7 @@ import {
   withSequenceStateLinks,
 } from '@/lib/api-v1/state';
 import { getWaitMs, longPoll } from '@/lib/api-v1/wait';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 import { createFileRoute } from '@tanstack/react-router';
 
 const logger = getLogger(['openstory', 'api-v1']);

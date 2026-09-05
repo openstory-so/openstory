@@ -6,7 +6,7 @@ import {
 } from '@/functions/admin-support';
 import type { SequenceWithShots } from './use-sequences-with-shots';
 import type { Sequence } from '@/types/database';
-import type { ShotView } from '@/lib/shots/shot-view';
+import type { ShotView } from '@/shared/shots/shot-view';
 
 const PAGE_SIZE = 50;
 

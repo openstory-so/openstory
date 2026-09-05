@@ -1,5 +1,5 @@
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
-import type { GenerationMode } from '@/lib/ai/generation-mode';
+import type { GenerationMode } from '@/shared/ai/generation-mode';
 import { Gauge, Zap } from 'lucide-react';
 import type { FC } from 'react';
 

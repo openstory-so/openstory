@@ -24,7 +24,7 @@ import {
   resolveSceneForShot,
 } from '@/lib/scenes/scene-script';
 import { typedEntries } from '@/shared/utils/typed-object';
-import { matchCharacterToShotTags } from '@/lib/workflows/scene-matching';
+import { matchCharacterToShotTags } from '@/shared/scenes/scene-matching';
 import { createCharacterSheetVariantsMethods } from './character-sheet-variants';
 import { buildEventInsert } from './sequence-events';
 

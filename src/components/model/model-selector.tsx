@@ -5,18 +5,18 @@ import {
   isValidAnalysisModelId,
   SCRIPT_ANALYSIS_MODELS,
   type AnalysisModelId,
-} from '@/lib/ai/models.config';
+} from '@/shared/ai/models.config';
 import {
   compareSelectorModels,
   QUALITY_DEFAULT_ANALYSIS,
   SELECTOR_GROUP_ORDER,
   selectorGroup,
   TURBO_ANALYSIS_MODELS,
-} from '@/lib/ai/generation-mode';
+} from '@/shared/ai/generation-mode';
 import {
   isRegionBlockedModel,
   resolveModelForCountry,
-} from '@/lib/ai/region-policy';
+} from '@/shared/ai/region-policy';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo } from 'react';
 

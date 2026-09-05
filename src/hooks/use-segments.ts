@@ -1,5 +1,5 @@
 import { getSequenceSegmentsFn } from '@/functions/segments';
-import type { SequenceSegment } from '@/lib/scenes/scene-segments';
+import type { SequenceSegment } from '@/shared/scenes/scene-segments';
 import { useQuery } from '@tanstack/react-query';
 
 export const segmentKeys = {

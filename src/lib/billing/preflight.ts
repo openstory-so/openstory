@@ -5,11 +5,11 @@
  */
 
 import { llmtrTextModel } from '@/lib/ai/llmtr';
-import type { Microdollars } from '@/lib/billing/money';
+import type { Microdollars } from '@/shared/billing/money';
 import type { ScopedDb } from '@/lib/db/scoped';
 import { InsufficientCreditsError } from '@/shared/errors';
 import { generateId } from '@/shared/id';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'billing', 'preflight']);
 

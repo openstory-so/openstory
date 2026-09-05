@@ -25,7 +25,7 @@ import { sceneKeys, type SceneWithScript } from '@/hooks/use-scenes';
 import { segmentKeys } from '@/hooks/use-segments';
 import { shotStalenessNamespace } from '@/hooks/use-shot-staleness';
 import { shotKeys } from '@/hooks/use-shots';
-import type { ShotView } from '@/lib/shots/shot-view';
+import type { ShotView } from '@/shared/shots/shot-view';
 import {
   useMutation,
   useQueryClient,

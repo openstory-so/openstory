@@ -22,9 +22,9 @@ import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
-import { DEFAULT_IMAGE_MODEL, DEFAULT_VIDEO_MODEL } from '@/lib/ai/models';
-import { GENERATED_STYLE_BRIEFS } from '@/lib/style/style-briefs.generated';
-import { styleSlug } from '@/lib/style/style-slug';
+import { DEFAULT_IMAGE_MODEL, DEFAULT_VIDEO_MODEL } from '@/shared/ai/models';
+import { GENERATED_STYLE_BRIEFS } from '@/shared/style/style-briefs.generated';
+import { styleSlug } from '@/shared/style/style-slug';
 import { concatClips, downloadTo } from './sample-media';
 import {
   createSampleSequence,

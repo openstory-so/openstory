@@ -8,18 +8,18 @@
  */
 
 import type { EffectiveFalPricing } from '@/lib/ai/fal-pricing-live';
-import { estimateStrategy, knownUnitsPerCall } from '@/lib/ai/fal-cost';
+import { estimateStrategy, knownUnitsPerCall } from '@/shared/ai/fal-cost';
 import {
   AUDIO_MODELS,
   IMAGE_MODELS,
   IMAGE_TO_VIDEO_MODELS,
-} from '@/lib/ai/models';
-import { SCRIPT_ANALYSIS_MODELS } from '@/lib/ai/models.config';
+} from '@/shared/ai/models';
+import { SCRIPT_ANALYSIS_MODELS } from '@/shared/ai/models.config';
 import {
   OPENROUTER_PRICING,
   OPENROUTER_PRICING_LAST_UPDATED,
 } from '@/lib/ai/openrouter-pricing-data';
-import { microsToUsd } from '@/lib/billing/money';
+import { microsToUsd } from '@/shared/billing/money';
 
 type PricingVia = 'fal.ai' | 'OpenRouter' | 'BytePlus';
 

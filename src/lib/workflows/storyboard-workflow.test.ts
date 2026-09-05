@@ -15,10 +15,10 @@
  *   3. Payload without a sequenceId → no DB access at all.
  */
 
-import { migrateStyleConfigV1ToV2 } from '@/lib/style/style-config';
+import { migrateStyleConfigV1ToV2 } from '@/shared/style/style-config';
 import { describe, expect, test, vi } from 'vitest';
-import { DEFAULT_IMAGE_MODEL, DEFAULT_VIDEO_MODEL } from '@/lib/ai/models';
-import { DEFAULT_ANALYSIS_MODEL } from '@/lib/ai/models.config';
+import { DEFAULT_IMAGE_MODEL, DEFAULT_VIDEO_MODEL } from '@/shared/ai/models';
+import { DEFAULT_ANALYSIS_MODEL } from '@/shared/ai/models.config';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import type { StoryboardWorkflowInput } from '@/lib/workflow/types';
@@ -35,7 +35,7 @@ vi.doMock('@/lib/image/image-generation', () => ({
 
 const emit = vi.fn();
 const getGenerationChannel = vi.fn(() => ({ emit }));
-vi.doMock('@/lib/realtime', () => ({ getGenerationChannel }));
+vi.doMock('@/shared/realtime', () => ({ getGenerationChannel }));
 
 const spawnAndAwaitChild = vi.fn(async () => undefined);
 vi.doMock('@/lib/workflow/await-child', () => ({ spawnAndAwaitChild }));

@@ -10,7 +10,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_IMAGE_MODEL } from '@/lib/ai/models';
+import { DEFAULT_IMAGE_MODEL } from '@/shared/ai/models';
 import type { Scene } from '@/lib/ai/scene-analysis.schema';
 import type { CharacterMinimal, Shot } from '@/lib/db/schema';
 import { buildShotImageWorkflowInput } from '@/lib/image/build-shot-image-input';

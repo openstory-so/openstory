@@ -7,7 +7,7 @@
  * prompt assembly and reference-image binding join on these tags.
  */
 
-import { matchLocationsToScene } from '@/lib/workflows/scene-matching';
+import { matchLocationsToScene } from '@/shared/scenes/scene-matching';
 import type { SceneSplitBiblesResult } from './response-schemas';
 import type { SceneSplittingScene } from './streaming-scene-parser';
 

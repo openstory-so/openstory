@@ -23,7 +23,7 @@
  *     through the `context.snapshot.*` extension.
  *   - `failureFunction` → `onFailure`. */
 
-import { DEFAULT_IMAGE_MODEL } from '@/lib/ai/models';
+import { DEFAULT_IMAGE_MODEL } from '@/shared/ai/models';
 import { aspectRatioToImageSize } from '@/shared/constants/aspect-ratios';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import { triggerWorkflow } from '@/lib/workflow/client';
@@ -42,7 +42,7 @@ import {
   computeRegenerateShotsBatchHash,
   emitRecastEvent,
 } from '@/lib/workflows/regenerate-shots-snapshot';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'workflow', 'regenerate-shots']);
 

@@ -4,7 +4,7 @@
  * its binding mid-run (promoted) is never rewritten.
  */
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
-import type { AutoStyleResponse } from '@/lib/style/auto-style';
+import type { AutoStyleResponse } from '@/shared/style/auto-style';
 import type { WorkflowStep } from 'cloudflare:workers';
 import { describe, expect, it, vi } from 'vitest';
 import type { z } from 'zod';
@@ -13,7 +13,7 @@ const durableLLMCallCf = vi.fn();
 vi.doMock('@/lib/workflows/llm-call-helper', () => ({ durableLLMCallCf }));
 
 const emit = vi.fn();
-vi.doMock('@/lib/realtime', () => ({
+vi.doMock('@/shared/realtime', () => ({
   getGenerationChannel: vi.fn(() => ({ emit })),
 }));
 

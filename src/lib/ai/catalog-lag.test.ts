@@ -11,7 +11,7 @@
 import type { OpenRouterModelOptionsByName } from '@tanstack/ai-openrouter';
 import { describe, expectTypeOf, it } from 'vitest';
 import type { CATALOG_LAG_MODELS } from './create-adapter';
-import type { AnalysisModelId } from './models.config';
+import type { AnalysisModelId } from '@/shared/ai/models.config';
 
 type CatalogId = keyof OpenRouterModelOptionsByName;
 type LagId = (typeof CATALOG_LAG_MODELS)['length'] extends 0

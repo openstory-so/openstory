@@ -13,11 +13,11 @@
 
 import { getAuth } from '@/lib/auth/config';
 import { resolveOAuthIssuer } from '@/lib/auth/oauth-provider';
-import { resolveOAuthQuery } from '@/lib/auth/oauth-query-snapshot';
+import { resolveOAuthQuery } from '@/shared/auth/oauth-query-snapshot';
 import { OAUTH_SCOPE_DESCRIPTIONS } from '@/lib/auth/oauth-scopes';
 import { resolveUserTeam, revokeOAuthGrantTokens } from '@/lib/db/scoped';
 import { ValidationError } from '@/shared/errors';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 import { APIError } from 'better-auth/api';
 
 const logger = getLogger(['openstory', 'serverFn', 'oauth-consent']);

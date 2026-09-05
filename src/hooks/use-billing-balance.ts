@@ -4,8 +4,8 @@
  */
 
 import { useQuery } from '@tanstack/react-query';
-import { useAuthSession } from '@/lib/auth/session-query';
-import { LOW_BALANCE_THRESHOLD_USD } from '@/lib/billing/constants';
+import { useAuthSession } from '@/shared/auth/session-query';
+import { LOW_BALANCE_THRESHOLD_USD } from '@/shared/billing/constants';
 import { getBillingBalanceFn } from '@/functions/billing';
 
 export const BILLING_BALANCE_KEY = ['billing-balance'] as const;

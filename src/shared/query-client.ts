@@ -3,7 +3,7 @@ import { isAuthError, isInsufficientCreditsError } from '@/shared/errors';
 import { MutationCache, QueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'query-client', 'query-client']);
 

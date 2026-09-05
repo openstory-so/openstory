@@ -17,7 +17,7 @@ import {
 import { generateId } from '@/shared/id';
 import type { Talent } from '@/lib/db/schema';
 import type { ScopedDb } from '@/lib/db/scoped';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 import {
   STORAGE_BUCKETS,
   getPathFromUrl,

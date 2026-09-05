@@ -26,12 +26,12 @@ import {
   buildShotRenameDeltas,
   replaceTokenInText,
   renameTokenInContinuity,
-} from '@/lib/sequence-elements/cascade-rename';
+} from '@/shared/sequence-elements/cascade-rename';
 import {
   loadSceneContextBySequenceFromDb,
   resolveSceneForShot,
 } from '@/lib/scenes/scene-script';
-import { matchElementsToShotImage } from '@/lib/workflows/scene-matching';
+import { matchElementsToShotImage } from '@/shared/scenes/scene-matching';
 import { and, eq, inArray, isNull, like, ne, or, sql } from 'drizzle-orm';
 import { buildEventInsert } from './sequence-events';
 

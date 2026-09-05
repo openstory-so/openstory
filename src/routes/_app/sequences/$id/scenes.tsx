@@ -3,7 +3,7 @@ import { getScenesFn } from '@/functions/scenes';
 import { getShotsFn } from '@/functions/shots';
 import { sceneKeys } from '@/hooks/use-scenes';
 import { shotKeys } from '@/hooks/use-shots';
-import { scenesSearchSchema } from '@/lib/scenes/scene-selection';
+import { scenesSearchSchema } from '@/shared/scenes/scene-selection';
 import { createFileRoute } from '@tanstack/react-router';
 
 export const Route = createFileRoute('/_app/sequences/$id/scenes')({

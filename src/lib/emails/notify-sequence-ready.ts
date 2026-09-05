@@ -6,8 +6,8 @@
  * cannot double-send.
  */
 
-import { TYPICAL_SHORT_COST_USD } from '@/lib/billing/constants';
-import { microsToDisplayUsd } from '@/lib/billing/money';
+import { TYPICAL_SHORT_COST_USD } from '@/shared/billing/constants';
+import { microsToDisplayUsd } from '@/shared/billing/money';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import { SITE_CONFIG } from '@/shared/marketing/constants';
 import { captureProductEvent } from '@/lib/observability/product-events';

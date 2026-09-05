@@ -12,17 +12,17 @@ import { BYTEPLUS_RATE_CARD } from '@/lib/ai/byteplus-pricing';
 import {
   FAL_TYPICAL_UNITS_PER_DEFAULT_CLIP,
   FAL_UNVERIFIED_SIBLINGS,
-} from '@/lib/ai/fal-typical-units';
+} from '@/shared/ai/fal-typical-units';
 import {
   IMAGE_MODELS,
   IMAGE_TO_VIDEO_MODELS,
   MOTION_REFERENCE_ENDPOINTS,
-} from '@/lib/ai/models';
+} from '@/shared/ai/models';
 import { typedEntries } from '@/shared/utils/typed-object';
-import { micros, type Microdollars } from '@/lib/billing/money';
+import { micros, type Microdollars } from '@/shared/billing/money';
 import { modelPricing } from '@/lib/db/schema';
 import type { ObservedUnits } from '@/lib/db/schema/model-pricing';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 import { eq } from 'drizzle-orm';
 
 const logger = getLogger(['openstory', 'ai', 'fal-pricing-live']);

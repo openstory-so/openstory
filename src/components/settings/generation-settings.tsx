@@ -26,14 +26,14 @@ import {
   type AudioModel,
   type ImageToVideoModel,
   type TextToImageModel,
-} from '@/lib/ai/models';
-import type { AnalysisModelId } from '@/lib/ai/models.config';
+} from '@/shared/ai/models';
+import type { AnalysisModelId } from '@/shared/ai/models.config';
 import type { AspectRatio } from '@/shared/constants/aspect-ratios';
 import type { Resolution } from '@/shared/constants/resolutions';
 import {
   availableResolutions,
   resolutionCeilingNote,
-} from '@/lib/ai/resolution-support';
+} from '@/shared/ai/resolution-support';
 import { useMemo, useState, type FC } from 'react';
 import { useViaAvailability } from '@/hooks/use-via-availability';
 import { AspectRatioPills } from './aspect-ratio-pills';

@@ -447,6 +447,6 @@ Per-scene fan-out (image, variant, motion) uses `Promise.allSettled` over `spawn
 | `src/lib/workflows/recast-location-workflow.ts`      | Recast a location and regenerate affected frames                    |
 | `src/lib/workflows/regenerate-frames-workflow.ts`    | Regenerate specific frames with new prompts                         |
 | **Schemas + Events**                                 |                                                                     |
-| `src/lib/realtime/index.ts`                          | Real-time event schema and channel helpers                          |
+| `src/shared/realtime.ts`                             | Real-time event schema and channel helpers                          |
 | `src/lib/ai/scene-analysis.schema.ts`                | `Scene` type definition                                             |
 | `src/lib/ai/response-schemas.ts`                     | `musicDesignResultSchema` and other LLM response schemas            |

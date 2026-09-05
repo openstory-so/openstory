@@ -19,8 +19,8 @@ import {
   llmtrTextCostFromUsage,
   llmtrTextModel,
 } from './llmtr';
-import { SCRIPT_ANALYSIS_MODELS } from './models.config';
-import { microsToUsd, ZERO_MICROS } from '@/lib/billing/money';
+import { SCRIPT_ANALYSIS_MODELS } from '@/shared/ai/models.config';
+import { microsToUsd, ZERO_MICROS } from '@/shared/billing/money';
 import { typedEntries } from '@/shared/utils/typed-object';
 
 const usage = (promptTokens: number, completionTokens: number) => ({

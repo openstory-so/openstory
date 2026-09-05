@@ -21,7 +21,7 @@
  * for the 2.5 bump.)
  */
 
-import { micros } from '@/lib/billing/money';
+import { micros } from '@/shared/billing/money';
 import type { EffectiveFalPricing } from '@/lib/ai/fal-pricing-live';
 
 /**

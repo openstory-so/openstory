@@ -560,7 +560,7 @@ The visual & motion prompt hashes are stamped from the **raw scene-split
 character bible** carried in the workflow payload. But the
 `character-bible-workflow` **rewrites** several of those exact fields when it
 persists the character, via
-[`buildCastingAttributes`](../../src/lib/prompts/character-prompt.ts) whenever a
+[`buildCastingAttributes`](../../src/shared/prompts/character-prompt.ts) whenever a
 character is matched to library talent:
 
 | field                          | raw scene-split value (hashed at stamp) | persisted value (hashed at verify)                                            |
@@ -685,7 +685,7 @@ Ordered by value / risk.
 | Hash helpers + `sceneInputContext`       | `src/lib/ai/input-hash.ts`                                                    |
 | Prompt context load + narrowing          | `src/lib/ai/prompt-context.ts`                                                |
 | Bible builders (DB → bible, verify side) | `src/lib/ai/bibles-from-scoped.ts`                                            |
-| Casting transform                        | `src/lib/prompts/character-prompt.ts` (`buildCastingAttributes`)              |
+| Casting transform                        | `src/shared/prompts/character-prompt.ts` (`buildCastingAttributes`)           |
 | Visual prompt stamp                      | `src/lib/workflows/visual-prompt-scene-workflow.ts`                           |
 | Motion prompt stamp                      | `src/lib/workflows/motion-prompt-scene-workflow.ts`                           |
 | Bible persistence (cast)                 | `src/lib/workflows/character-bible-workflow.ts`, `location-bible-workflow.ts` |

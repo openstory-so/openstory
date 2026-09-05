@@ -11,17 +11,17 @@
  *   bun scripts/generate-system-previews.ts                            # Dry-run (no FAL_KEY)
  */
 
-import { DEFAULT_IMAGE_MODEL } from '@/lib/ai/models';
+import { DEFAULT_IMAGE_MODEL } from '@/shared/ai/models';
 import { generateImageWithProvider } from '@/lib/image/image-generation';
 import { DEFAULT_LOCATION_TEMPLATES } from '@/lib/location/location-templates';
 import {
   buildLibraryTalentSheetPrompt,
   buildTalentHeadshotPrompt,
-} from '@/lib/prompts/character-prompt';
+} from '@/shared/prompts/character-prompt';
 import {
   buildLibraryLocationSheetPrompt,
   buildLocationPreviewPrompt,
-} from '@/lib/prompts/location-prompt';
+} from '@/shared/prompts/location-prompt';
 import { DEFAULT_TALENT_TEMPLATES } from '@/lib/talent/talent-templates';
 import { PhotonImage } from '@cf-wasm/photon';
 import { mkdir, writeFile } from 'node:fs/promises';

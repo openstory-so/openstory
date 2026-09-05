@@ -4,7 +4,7 @@ import { Label } from '@/components/ui/label';
 import {
   PORTRAIT_RIGHTS_V1,
   type AttestationStatement,
-} from '@/lib/compliance/attestations';
+} from '@/shared/compliance/attestations';
 
 type PortraitAttestationFieldsProps = {
   statement?: AttestationStatement;

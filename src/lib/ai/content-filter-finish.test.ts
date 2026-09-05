@@ -16,7 +16,7 @@ import {
   contentRejectionSummary,
   isContentFilterFinish,
   isContentRejectionError,
-} from '@/lib/ai/content-rejection';
+} from '@/shared/ai/content-rejection';
 
 describe('isContentFilterFinish', () => {
   it('detects a RUN_FINISHED that stopped on the safety classifier', () => {

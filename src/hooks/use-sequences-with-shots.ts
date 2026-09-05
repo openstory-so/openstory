@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useSequences } from './use-sequences';
 import { getShotsForSequencesFn } from '@/functions/shots';
 import type { Sequence } from '@/types/database';
-import type { ShotView } from '@/lib/shots/shot-view';
+import type { ShotView } from '@/shared/shots/shot-view';
 
 export type SequenceWithShots = Sequence & {
   shots: ShotView[];

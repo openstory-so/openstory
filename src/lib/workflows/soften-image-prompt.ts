@@ -15,23 +15,23 @@ import {
   CONTENT_REJECTION_RETRY_EVENT,
   CONTENT_REJECTION_SOFTEN_EVENT,
   isContentRejectionError,
-} from '@/lib/ai/content-rejection';
-import { extractFalErrorMessage } from '@/lib/ai/fal-error';
-import { IMAGE_MODELS, type TextToImageModel } from '@/lib/ai/models';
+} from '@/shared/ai/content-rejection';
+import { extractFalErrorMessage } from '@/shared/ai/fal-error';
+import { IMAGE_MODELS, type TextToImageModel } from '@/shared/ai/models';
 import {
   DEFAULT_ANALYSIS_MODEL,
   getAnalysisModelById,
   type AnalysisModelId,
-} from '@/lib/ai/models.config';
+} from '@/shared/ai/models.config';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import {
   generateImageWithProvider,
   type ImageGenerationParams,
   type ImageGenerationResult,
 } from '@/lib/image/image-generation';
-import { getLogger } from '@/lib/observability/logger';
-import { buildReferenceImagePrompt } from '@/lib/prompts/reference-image-prompt';
-import { getGenerationChannel } from '@/lib/realtime';
+import { getLogger } from '@/shared/observability/logger';
+import { buildReferenceImagePrompt } from '@/shared/prompts/reference-image-prompt';
+import { getGenerationChannel } from '@/shared/realtime';
 import type { ImageWorkflowInput } from '@/lib/workflow/types';
 import {
   IMAGE_CONTENT_FALLBACK_MODEL,

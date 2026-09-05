@@ -6,7 +6,7 @@ import type { WorkflowStep } from 'cloudflare:workers';
 import * as tanstackAi from '@tanstack/ai';
 import * as createAdapterModule from '@/lib/ai/create-adapter';
 import * as promptsModule from '@/lib/prompts';
-import * as realtimeModule from '@/lib/realtime';
+import * as realtimeModule from '@/shared/realtime';
 
 const mockChat = vi.fn();
 vi.doMock('@tanstack/ai', () => ({
@@ -37,7 +37,7 @@ vi.doMock('@/lib/prompts', () => ({
 }));
 
 const emitted: unknown[] = [];
-vi.doMock('@/lib/realtime', () => ({
+vi.doMock('@/shared/realtime', () => ({
   ...realtimeModule,
   getShotPromptChannel: () => ({
     emit: (event: string, payload: unknown) => {
@@ -53,7 +53,7 @@ const {
   durableStreamingLLMCallCf,
   shouldInlineVisionForVia,
 } = await import('./llm-call-helper');
-const { usdToMicros, ZERO_MICROS } = await import('@/lib/billing/money');
+const { usdToMicros, ZERO_MICROS } = await import('@/shared/billing/money');
 
 // Minimal WorkflowStep: run every step body immediately, no retries.
 // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal WorkflowStep stub: the helper only uses `do`

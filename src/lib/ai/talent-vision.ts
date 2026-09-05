@@ -6,7 +6,7 @@
  * sheet metadata without a second model call.
  */
 
-import type { Microdollars } from '@/lib/billing/money';
+import type { Microdollars } from '@/shared/billing/money';
 import type { ResolvedLlmKey } from '@/lib/db/scoped/api-keys';
 import {
   aiObservabilityMiddleware,
@@ -23,8 +23,8 @@ import {
   llmCostFromUsage,
   throwNotedRunError,
 } from './llm-client';
-import { DEFAULT_VISION_MODEL } from './models.config';
-import { talentSubjectKindSchema } from '@/lib/talent/subject-kind';
+import { DEFAULT_VISION_MODEL } from '@/shared/ai/models.config';
+import { talentSubjectKindSchema } from '@/shared/talent/subject-kind';
 
 export const TALENT_VISION_MODEL = DEFAULT_VISION_MODEL;
 

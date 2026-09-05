@@ -22,12 +22,12 @@ import {
   parseSceneDurationLabels,
   stripTotalLine,
   sumSceneDurations,
-} from '@/lib/ai/enhance-duration';
+} from '@/shared/ai/enhance-duration';
 import {
   DEFAULT_VIDEO_MODEL,
   isValidImageToVideoModel,
   type ImageToVideoModel,
-} from '@/lib/ai/models';
+} from '@/shared/ai/models';
 import { createUserPrompt } from '@/lib/ai/script-enhancer';
 import { WORKFLOW_TEXT_PROMPTS } from '@/lib/prompts/workflow-prompts';
 

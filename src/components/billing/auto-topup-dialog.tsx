@@ -29,7 +29,7 @@ import {
   MAX_TOPUP_AMOUNT_USD,
   MIN_TOPUP_AMOUNT_USD,
   splitCheckoutAmounts,
-} from '@/lib/billing/constants';
+} from '@/shared/billing/constants';
 import { usePostHog } from '@posthog/react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';

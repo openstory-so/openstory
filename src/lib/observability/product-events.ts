@@ -11,7 +11,7 @@
 
 import { getPostHogClient } from '@/lib/posthog-server';
 
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'observability', 'product-events']);
 

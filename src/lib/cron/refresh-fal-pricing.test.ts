@@ -259,7 +259,7 @@ describe('refreshFalPricing', () => {
     pricesRequested = undefined;
     vi.doMock('#db-client', () => ({ getDb: () => db }));
     vi.doMock('#env', () => ({ getEnv: () => ({ FAL_KEY: 'test-key' }) }));
-    vi.doMock('@/lib/models/catalog', () => ({
+    vi.doMock('@/shared/models/catalog', () => ({
       listCatalogEndpointIds: () => Promise.resolve(opts.modelsCatalog ?? []),
     }));
     vi.doMock('@/lib/ai/fal-endpoints', async () => ({

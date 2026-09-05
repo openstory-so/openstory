@@ -6,8 +6,8 @@
 import type { CharacterBibleEntry } from '@/lib/ai/scene-analysis.schema';
 import type { CharacterWithSheet } from '@/lib/db/schema';
 import type { ScopedDb } from '@/lib/db/scoped';
-import { resolveSheetImageModel } from '@/lib/sheets/sheet-image-model';
-import { resolveSequenceStyleConfig } from '@/lib/style/style-config';
+import { resolveSheetImageModel } from '@/shared/sheets/sheet-image-model';
+import { resolveSequenceStyleConfig } from '@/shared/style/style-config';
 import type { CharacterSheetWorkflowInput } from '@/lib/workflow/types';
 import { computeCharacterSheetHashFromDto } from '@/lib/workflows/sheet-snapshots';
 

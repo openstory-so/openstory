@@ -14,17 +14,17 @@ import { getEnv } from '#env';
 import {
   nativeGeminiTextModel,
   type NativeGeminiTextModel,
-} from '@/lib/ai/gemini-native';
+} from '@/shared/ai/gemini-native';
 import {
   nativeGrokTextModel,
   type NativeGrokTextModel,
-} from '@/lib/ai/grok-native';
+} from '@/shared/ai/grok-native';
 import {
   LLMTR_BASE_URL,
   llmtrCompatibleApi,
   llmtrTextModel,
 } from '@/lib/ai/llmtr';
-import type { TextModel } from '@/lib/ai/models';
+import type { TextModel } from '@/shared/ai/models';
 import { workersSafeFetch } from '@/lib/ai/workers-safe-fetch';
 import { HTTPClient } from '@openrouter/sdk/lib/http';
 import { createModel, extendAdapter } from '@tanstack/ai';
@@ -33,7 +33,7 @@ import { createGrokText } from '@tanstack/ai-grok';
 import { openaiCompatibleText } from '@tanstack/ai-openai/compatible';
 import { createOpenRouterText, openRouterText } from '@tanstack/ai-openrouter';
 
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'ai', 'create-adapter']);
 

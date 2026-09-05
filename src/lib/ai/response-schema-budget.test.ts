@@ -20,7 +20,7 @@ import { describe, expect, test } from 'vitest';
 import type { z } from 'zod';
 import { elementVisionResponseSchema } from './element-vision';
 import { talentMediaAnalysisSchema } from './talent-vision';
-import { autoStyleResponseSchema } from '@/lib/style/auto-style';
+import { autoStyleResponseSchema } from '@/shared/style/auto-style';
 import { softenImagePromptResponseSchema } from '@/lib/workflows/content-soften';
 import {
   ANTHROPIC_GRAMMAR_BUDGET_BYTES,

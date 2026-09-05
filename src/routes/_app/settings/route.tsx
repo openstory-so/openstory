@@ -5,7 +5,7 @@
 
 import { RouteErrorFallback } from '@/components/error/route-error-fallback';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { requireSessionOrRedirect } from '@/lib/auth/route-guards';
+import { requireSessionOrRedirect } from '@/shared/auth/route-guards';
 import {
   createFileRoute,
   Link,

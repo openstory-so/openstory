@@ -10,7 +10,7 @@ import { drizzle } from 'drizzle-orm/d1';
 import { getEnv } from '../env/cloudflare';
 import { relations } from './schema/relations';
 
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'db', 'client-d1']);
 

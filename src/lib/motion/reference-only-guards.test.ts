@@ -6,17 +6,17 @@
 
 import { describe, expect, it } from 'vitest';
 import { canRenderReferenceOnly } from './motion-generation';
-import { estimateFalCost } from '@/lib/ai/fal-cost';
-import { estimateVideoCost } from '@/lib/billing/cost-estimation';
-import { micros } from '@/lib/billing/money';
+import { estimateFalCost } from '@/shared/ai/fal-cost';
+import { estimateVideoCost } from '@/shared/billing/cost-estimation';
+import { micros } from '@/shared/billing/money';
 import {
   isBatchMotionEligible,
   isMotionGenerating,
-} from '@/lib/shots/shot-view';
+} from '@/shared/shots/shot-view';
 import {
   referenceOnlyCapableWith,
   referenceOnlyMotionModels,
-} from '@/lib/ai/models';
+} from '@/shared/ai/models';
 import {
   createSequenceSchema,
   REFERENCE_ONLY_MODEL_ERROR,

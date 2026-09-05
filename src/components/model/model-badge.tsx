@@ -1,6 +1,6 @@
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { getAnalysisModelById } from '@/lib/ai/models.config';
+import { getAnalysisModelById } from '@/shared/ai/models.config';
 
 export const ModelBadge = ({ model }: { model?: string }) => {
   if (!model) {

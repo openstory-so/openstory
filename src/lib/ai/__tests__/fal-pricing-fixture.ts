@@ -5,7 +5,7 @@
  * covered.
  */
 import type { EffectiveFalPricing } from '@/lib/ai/fal-pricing-live';
-import { micros } from '@/lib/billing/money';
+import { micros } from '@/shared/billing/money';
 
 export const TEST_FAL_PRICING: Record<string, EffectiveFalPricing> = {
   // Image models

@@ -3,11 +3,11 @@
  * decline — `recordAutoTopUpFailure` owns that guarantee.
  */
 
-import { type Microdollars, microsToDisplayUsd } from '@/lib/billing/money';
+import { type Microdollars, microsToDisplayUsd } from '@/shared/billing/money';
 import type { Database } from '@/lib/db/client';
 import { teamMembers } from '@/lib/db/schema/teams';
 import { user } from '@/lib/db/schema/auth';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 import { captureProductEvent } from '@/lib/observability/product-events';
 import { sendAutoTopUpFailedEmail } from '@/lib/services/email-service';
 import { SITE_CONFIG } from '@/shared/marketing/constants';

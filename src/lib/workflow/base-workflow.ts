@@ -46,7 +46,7 @@ import {
 import { NonRetryableError } from 'cloudflare:workflows';
 import { flushAnalytics } from '@/lib/observability/flush-analytics';
 import { captureProductEvent } from '@/lib/observability/product-events';
-import { getLogger, serializeError } from '@/lib/observability/logger';
+import { getLogger, serializeError } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'workflow', 'cf', 'base']);
 

@@ -424,7 +424,7 @@ import type {
 } from './scene-analysis.schema';
 import type { MusicSceneSummary } from '@/lib/workflow/types';
 import type { StyleConfig, VideoManifestEntry } from '@/lib/db/schema';
-import { styleConfigHashBody } from '@/lib/style/style-config';
+import { styleConfigHashBody } from '@/shared/style/style-config';
 
 export type PromptSceneContextHashInput = {
   /**

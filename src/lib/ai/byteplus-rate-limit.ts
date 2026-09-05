@@ -23,7 +23,7 @@
  */
 
 import { reportBytePlusQuotaBackoff } from '@/lib/ai/byteplus-observability';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'ai', 'byteplus-rate-limit']);
 

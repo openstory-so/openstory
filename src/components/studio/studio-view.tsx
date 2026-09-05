@@ -5,8 +5,8 @@ import { Button } from '@/components/ui/button';
 import { PageContainer } from '@/components/layout/page-container';
 import { PageIntro } from '@/components/typography/page-intro';
 import { useStudioAssets } from '@/hooks/use-studio-assets';
-import { studioPrompt } from '@/lib/studio/outputs';
-import type { StudioActivity, StudioSort } from '@/lib/studio/schema';
+import { studioPrompt } from '@/shared/studio/outputs';
+import type { StudioActivity, StudioSort } from '@/shared/studio/schema';
 import { Link } from '@tanstack/react-router';
 import { Star } from 'lucide-react';
 

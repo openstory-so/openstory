@@ -1,10 +1,10 @@
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { videoModelDisplayName } from '@/lib/ai/models';
+import { videoModelDisplayName } from '@/shared/ai/models';
 import type {
   SegmentVideoVersion,
   SequenceSegment,
-} from '@/lib/scenes/scene-segments';
+} from '@/shared/scenes/scene-segments';
 import { AlertTriangle, Check, Film, Loader2 } from 'lucide-react';
 
 type SegmentVideoPanelProps = {

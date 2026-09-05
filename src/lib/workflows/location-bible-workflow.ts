@@ -18,7 +18,7 @@
  *     equivalent work inline because `context.invoke()` returned the child's
  *     value directly; CF has no equivalent so we spawn-and-await. */
 
-import { DEFAULT_IMAGE_MODEL } from '@/lib/ai/models';
+import { DEFAULT_IMAGE_MODEL } from '@/shared/ai/models';
 import { generateId } from '@/shared/id';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import type { SequenceLocationMinimal } from '@/lib/db/schema';
@@ -34,7 +34,7 @@ import type {
 } from '@/lib/workflow/types';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { NonRetryableError } from 'cloudflare:workflows';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'workflow', 'location-bible']);
 

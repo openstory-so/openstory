@@ -12,7 +12,7 @@
  * needs it (cost = unitsBilled × unitPrice); estimation maps it to a strategy
  * at read time in `fal-cost.ts`.
  */
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'ai', 'fal-pricing-fetch']);
 

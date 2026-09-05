@@ -6,14 +6,14 @@ import {
   AUDIO_MODELS,
   isValidAudioModel,
   type AudioModel,
-} from '@/lib/ai/models';
+} from '@/shared/ai/models';
 import {
   compareSelectorModels,
   QUALITY_DEFAULT_AUDIO,
   SELECTOR_GROUP_ORDER,
   selectorGroup,
   TURBO_AUDIO_MODELS,
-} from '@/lib/ai/generation-mode';
+} from '@/shared/ai/generation-mode';
 import { useMemo } from 'react';
 
 // Shared option list — only music models (not SFX), sorted by quality.

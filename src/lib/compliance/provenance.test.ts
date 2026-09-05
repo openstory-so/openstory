@@ -2,12 +2,12 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   extractPromptForProvenance,
   extractStorageKey,
-  formatReportReference,
   formatTraceId,
   parseTraceId,
   recordProvenance,
 } from './provenance';
-import { sha256Hex } from './hash';
+import { formatReportReference } from '@/shared/compliance/report-reference';
+import { sha256Hex } from '@/shared/compliance/hash';
 
 describe('trace ids', () => {
   it('formats and parses a provenance id', () => {

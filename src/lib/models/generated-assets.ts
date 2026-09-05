@@ -15,7 +15,7 @@
  */
 
 import type { CreateGeneratedAssetData } from '@/functions/model-assets';
-import { usdToMicros, type Microdollars } from '@/lib/billing/money';
+import { usdToMicros, type Microdollars } from '@/shared/billing/money';
 import { requireCredits } from '@/lib/billing/preflight';
 import { requireGenerationAllowed } from '@/lib/compliance/generation-gate';
 import type { ScopedDb } from '@/lib/db/scoped';
@@ -27,7 +27,7 @@ import {
   fetchModelInputSchema,
   type ModelInputJsonSchema,
 } from '@/lib/models/schema-fetch';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 import { triggerWorkflow } from '@/lib/workflow/client';
 import type { AssetGenerationWorkflowInput } from '@/lib/workflow/types';
 import { z } from 'zod';

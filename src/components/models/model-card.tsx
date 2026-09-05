@@ -1,5 +1,5 @@
 import { Badge } from '@/components/ui/badge';
-import type { CatalogModel } from '@/lib/models/catalog';
+import type { CatalogModel } from '@/shared/models/catalog';
 import { Link } from '@tanstack/react-router';
 import { AudioLines, Film, Image as ImageIcon } from 'lucide-react';
 import type { FC } from 'react';

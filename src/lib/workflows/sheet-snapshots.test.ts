@@ -20,7 +20,7 @@ import type {
   LocationSheetWorkflowInput,
 } from '@/lib/workflow/types';
 import type { ScopedDb } from '@/lib/db/scoped';
-import { DEFAULT_IMAGE_MODEL } from '@/lib/ai/models';
+import { DEFAULT_IMAGE_MODEL } from '@/shared/ai/models';
 import {
   computeCharacterSheetHashCurrent,
   computeCharacterSheetHashFromDto,

@@ -4,7 +4,7 @@ import {
   frameFixture,
   frameVariantFixture,
 } from '@/shared/mocks/frame-fixtures';
-import { toShotView, type ShotView } from '@/lib/shots/shot-view';
+import { toShotView, type ShotView } from '@/shared/shots/shot-view';
 import type { Meta, StoryObj } from '@storybook/react';
 import { fn } from 'storybook/test';
 import {

@@ -1,7 +1,7 @@
 import {
   SPECIALIZED_CATEGORY,
   smallCategoryKeys,
-} from '@/lib/style/style-assets';
+} from '@/shared/style/style-assets';
 import type { Style } from '@/types/database';
 
 /**

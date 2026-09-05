@@ -24,7 +24,7 @@
  * we are already leaving; `isReloadPending` lets the boundary tell.
  */
 
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'ui', 'chunk-reload']);
 

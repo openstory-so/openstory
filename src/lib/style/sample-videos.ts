@@ -18,13 +18,13 @@ import {
   StyleSampleVideoSchema,
   type StyleSampleVideo,
 } from '@/lib/db/schema/libraries';
-import { styleSlug } from '@/lib/style/style-slug';
+import { styleSlug } from '@/shared/style/style-slug';
 
 // Brief data + resolver moved to a schema-free module (#956) so client code can
 // import `briefForStyle` without pulling the Drizzle schema into the browser
 // bundle. Re-exported here for the render/seed scripts that import it from this
 // module. (The brief constant maps live in `brief-for-style.ts`.)
-export { briefForStyle } from '@/lib/style/brief-for-style';
+export { briefForStyle } from '@/shared/style/brief-for-style';
 
 /** A single curated shot, flattened into script prose via `beatsToScript`. */
 export type SampleBeat = {

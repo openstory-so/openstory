@@ -15,20 +15,20 @@
  *   …--filter "car-talk,podcast-clip" | --limit 10 | --model anthropic/claude-opus-5
  *
  * Commit (writes a generated Record<slug,brief> TS module):
- *   …scripts/generate-style-briefs.ts --out src/lib/style/style-briefs.generated.ts
+ *   …scripts/generate-style-briefs.ts --out src/shared/style/style-briefs.generated.ts
  *
  * Extra composer samples (#1393) — N distinct briefs per style in ONE call,
  * written as Record<slug,brief[]>; these are the ALTERNATIVES the composer's
  * Shuffle picks between, on top of the canonical brief above:
- *   …scripts/generate-style-briefs.ts --variants 2 --out src/lib/style/style-brief-variants.generated.ts
+ *   …scripts/generate-style-briefs.ts --variants 2 --out src/shared/style/style-brief-variants.generated.ts
  *
  * Script-only (not imported by the app). Uses OpenRouter's REST endpoint
  * directly, like the eval harness — no worker-env dependency.
  */
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { DEFAULT_STYLE_TEMPLATES } from '@/lib/style/style-templates';
-import { styleSlug } from '@/lib/style/style-slug';
+import { DEFAULT_STYLE_TEMPLATES } from '@/shared/style/style-templates';
+import { styleSlug } from '@/shared/style/style-slug';
 import { z } from 'zod';
 
 const OPENROUTER_KEY = process.env.OPENROUTER_KEY;

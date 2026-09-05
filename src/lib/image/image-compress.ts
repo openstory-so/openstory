@@ -1,4 +1,4 @@
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 import { isLocalStorageServing, toCdnUrl } from '@/lib/storage/buckets';
 
 const logger = getLogger(['openstory', 'image', 'image-compress']);

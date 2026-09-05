@@ -6,7 +6,7 @@ import {
 import {
   DEFAULT_ANALYSIS_MODEL,
   getAnalysisModelById,
-} from '@/lib/ai/models.config';
+} from '@/shared/ai/models.config';
 import type {
   CharacterBibleEntry,
   ElementBibleEntry,
@@ -16,12 +16,12 @@ import type {
 import type { ScopedDb } from '@/lib/db/scoped';
 import { ValidationError } from '@/shared/errors';
 import type { StyleConfig } from '@/lib/db/schema';
-import { resolveSequenceStyleConfig } from '@/lib/style/style-config';
+import { resolveSequenceStyleConfig } from '@/shared/style/style-config';
 import {
   matchCharactersToScene,
   matchElementsToScene,
   matchLocationsToScene,
-} from '@/lib/workflows/scene-matching';
+} from '@/shared/scenes/scene-matching';
 
 export type ShotPromptContext = {
   scene: Scene;

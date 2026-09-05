@@ -14,7 +14,7 @@ import {
   sha256Hex,
   type ShotImageHashInput,
 } from '@/lib/ai/input-hash';
-import type { TextToImageModel } from '@/lib/ai/models';
+import type { TextToImageModel } from '@/shared/ai/models';
 import type { Scene } from '@/lib/ai/scene-analysis.schema';
 import type { AspectRatio } from '@/shared/constants/aspect-ratios';
 import type {
@@ -23,9 +23,9 @@ import type {
   SequenceElement,
   SequenceLocationWithReference,
 } from '@/lib/db/schema';
-import { buildCharacterReferenceImages } from '@/lib/prompts/character-prompt';
-import { buildLocationReferenceImages } from '@/lib/prompts/location-prompt';
-import { getGenerationChannel } from '@/lib/realtime';
+import { buildCharacterReferenceImages } from '@/shared/prompts/character-prompt';
+import { buildLocationReferenceImages } from '@/shared/prompts/location-prompt';
+import { getGenerationChannel } from '@/shared/realtime';
 import type {
   RegenerateShotSnapshot,
   RegenerateShotsWorkflowInput,

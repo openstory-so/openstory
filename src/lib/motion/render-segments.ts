@@ -18,10 +18,13 @@
  * See docs/architecture/scene-shot-frame-redesign.md.
  */
 
-import { IMAGE_TO_VIDEO_MODELS, type ImageToVideoModel } from '@/lib/ai/models';
+import {
+  IMAGE_TO_VIDEO_MODELS,
+  type ImageToVideoModel,
+} from '@/shared/ai/models';
 import type { VideoManifest, VideoManifestEntry } from '@/lib/db/schema';
-import { MOTION_JSON_SCHEMAS } from '@/lib/motion/endpoint-map';
-import { getDurationValues, numericOf } from '@/lib/motion/motion-transform';
+import { MOTION_JSON_SCHEMAS } from '@/shared/motion/endpoint-map';
+import { getDurationValues, numericOf } from '@/shared/motion/motion-transform';
 
 /** Fallback segment cap when a model's schema exposes no duration set. */
 export const DEFAULT_SEGMENT_CAP_MS = 15_000;

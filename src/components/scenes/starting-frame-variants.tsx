@@ -9,9 +9,9 @@ import {
 } from '@/components/ui/dialog';
 import { useFalBillingGate } from '@/hooks/use-billing-gate';
 import { useGenerateVariants, useSelectVariant } from '@/hooks/use-shots';
-import type { TextToImageModel } from '@/lib/ai/models';
+import type { TextToImageModel } from '@/shared/ai/models';
 import type { AspectRatio } from '@/shared/constants/aspect-ratios';
-import type { ShotView } from '@/lib/shots/shot-view';
+import type { ShotView } from '@/shared/shots/shot-view';
 import { Grid2x2, Loader2 } from 'lucide-react';
 import { useCallback, useState } from 'react';
 import { toast } from 'sonner';

@@ -2,7 +2,7 @@ import {
   rendersReferenceOnly,
   shotPromptSequence,
   usesStartFrame,
-} from '@/lib/shots/use-start-frame';
+} from '@/shared/shots/use-start-frame';
 import {
   computeMotionPromptInputHash,
   computeMusicPromptInputHash,
@@ -14,7 +14,7 @@ import {
 import {
   DEFAULT_ANALYSIS_MODEL,
   getAnalysisModelById,
-} from '@/lib/ai/models.config';
+} from '@/shared/ai/models.config';
 import {
   loadShotPromptContext,
   narrowShotPromptContext,
@@ -47,7 +47,7 @@ import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
 import { shotAccessMiddleware, sequenceAccessMiddleware } from './middleware';
 
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'serverFn', 'prompt-variants']);
 

@@ -90,7 +90,7 @@
       "files": [
         "scripts/**/*.ts",
         "e2e/**/*.ts",
-        "src/lib/observability/logger.ts",
+        "src/shared/observability/logger.ts",
         "src/shared/mocks/**/*.ts"
       ],
       "rules": {
@@ -111,15 +111,12 @@
       // to reference `src/lib` from inside its handler, which the compiler
       // strips. The boundary test covers it instead, modelling that stripping.
       //
-      // Most `!` exceptions below are a directory still mixing server and
-      // shared code: delete the line once its client-safe files have moved to
-      // `src/shared`. Two are NOT that shape and must not be "migrated":
-      //   `!@/lib/storage`   — `routes/r2.$.ts` imports `serve-media` inside a
-      //                        `server: { handlers }` block the client build
-      //                        prunes. It reaches `#storage`; it can never
-      //                        move to `src/shared`.
-      //   `!@/lib/workflows` — one `.test.ts` import only. No production
-      //                        client file needs it.
+      // The one `!` exception left is NOT a directory still mixing halves and
+      // must not be "migrated" (#1489):
+      //   `!@/lib/storage` — `routes/r2.$.ts` imports `serve-media` inside a
+      //                      `server: { handlers }` block the client build
+      //                      prunes. It reaches `#storage`; it can never move
+      //                      to `src/shared`.
       "files": [
         "src/components/**",
         "src/hooks/**",
@@ -146,46 +143,8 @@
                 "group": [
                   "@/lib/*",
                   "@/lib/**",
-                  "!@/lib/ai",
-                  "!@/lib/ai/**",
-                  "!@/lib/auth",
-                  "!@/lib/auth/**",
-                  "!@/lib/billing",
-                  "!@/lib/billing/**",
-                  "!@/lib/compliance",
-                  "!@/lib/compliance/**",
-                  "!@/lib/image",
-                  "!@/lib/image/**",
-                  "!@/lib/models",
-                  "!@/lib/models/**",
-                  "!@/lib/motion",
-                  "!@/lib/motion/**",
-                  "!@/lib/observability",
-                  "!@/lib/observability/**",
-                  "!@/lib/prompts",
-                  "!@/lib/prompts/**",
-                  "!@/lib/realtime",
-                  "!@/lib/realtime/**",
-                  "!@/lib/scenes",
-                  "!@/lib/scenes/**",
-                  "!@/lib/sequence-elements",
-                  "!@/lib/sequence-elements/**",
-                  "!@/lib/sequences",
-                  "!@/lib/sequences/**",
-                  "!@/lib/sheets",
-                  "!@/lib/sheets/**",
-                  "!@/lib/shots",
-                  "!@/lib/shots/**",
                   "!@/lib/storage",
-                  "!@/lib/storage/**",
-                  "!@/lib/studio",
-                  "!@/lib/studio/**",
-                  "!@/lib/style",
-                  "!@/lib/style/**",
-                  "!@/lib/talent",
-                  "!@/lib/talent/**",
-                  "!@/lib/workflows",
-                  "!@/lib/workflows/**"
+                  "!@/lib/storage/**"
                 ],
                 "allowTypeImports": true,
                 "message": "src/lib is server-only and must not ship to the browser. Import the client-safe helper from @/shared (move it there if it is not yet), or make this a type-only import."
@@ -196,8 +155,16 @@
       }
     },
     {
-      // `routes/api/**` are server handlers, not client code.
-      "files": ["src/routes/api/**"],
+      // Server-only routes: `routes/api/**`, plus the two root-level routes
+      // whose only `createFileRoute` option is `server` (pruned from the client
+      // route tree). Tests never ship either.
+      "files": [
+        "src/routes/api/**",
+        "src/routes/*well-known/**",
+        "src/routes/oauth/login.ts",
+        "src/**/*.test.ts",
+        "src/**/*.test.tsx"
+      ],
       "rules": {
         "no-restricted-imports": [
           "error",

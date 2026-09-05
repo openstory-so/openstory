@@ -28,7 +28,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { VoiceInputButton } from '@/components/voice/voice-input-button';
-import type { JsonSchema, JsonValue } from '@/lib/models/catalog';
+import type { JsonSchema, JsonValue } from '@/shared/models/catalog';
 import { useTextDictation } from '@/hooks/use-dictation';
 import { Plus, X } from 'lucide-react';
 import type { FC, FormEvent, KeyboardEvent, ReactNode } from 'react';

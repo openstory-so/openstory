@@ -11,7 +11,7 @@ import {
   type ShotView,
   type ShotViewSources,
   toShotView,
-} from '@/lib/shots/shot-view';
+} from '@/shared/shots/shot-view';
 
 const render = (overrides: Partial<VideoVariant> = {}) =>
   videoVariantFixture({

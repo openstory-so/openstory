@@ -16,13 +16,13 @@ import { Textarea } from '@/components/ui/textarea';
 import { useHydrated } from '@/hooks/use-hydrated';
 import { useAnalyzeTalentMedia, useCreateTalent } from '@/hooks/use-talent';
 import { getFileKey } from '@/shared/utils/upload';
-import { statementFor } from '@/lib/compliance/attestations';
+import { statementFor } from '@/shared/compliance/attestations';
 import type { Talent } from '@/lib/db/schema';
-import { sheetProgressCopy } from '@/lib/talent/sheet-progress-copy';
+import { sheetProgressCopy } from '@/shared/talent/sheet-progress-copy';
 import {
   strongestSubjectKind,
   type TalentSubjectKind,
-} from '@/lib/talent/subject-kind';
+} from '@/shared/talent/subject-kind';
 import { Loader2, Plus, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';

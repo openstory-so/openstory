@@ -27,7 +27,7 @@
  */
 
 import { simpleHash } from '@/shared/utils/hash';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 import {
   isInstanceAlreadyExistsError,
   isRecipientInFiniteStateError,

@@ -10,13 +10,13 @@ import {
   type ShotView,
   type ShotViewSources,
   toShotView,
-} from '@/lib/shots/shot-view';
+} from '@/shared/shots/shot-view';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 
 // Stub the logger so the deliberate missing-style case below doesn't print an
 // error line (buildSequenceSummary logs unresolved styles). Hoisted so the mock
 // lands before ./list → ./state captures its logger at import.
-vi.mock('@/lib/observability/logger', () => ({
+vi.mock('@/shared/observability/logger', () => ({
   getLogger: () => ({
     error: vi.fn(),
     warn: vi.fn(),

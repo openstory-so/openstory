@@ -28,14 +28,14 @@ import type {
   ShotPromptVersion,
   VideoVariant,
 } from '@/lib/db/schema';
-import { motionPromptFromVersion } from '@/lib/motion/resolve-motion-prompt';
+import { motionPromptFromVersion } from '@/shared/motion/resolve-motion-prompt';
 import {
   type ShotGridSheet,
   type ShotView,
   pendingUpscaleUrlFromVersion,
   shotViewMissingFrame,
   toShotView,
-} from '@/lib/shots/shot-view';
+} from '@/shared/shots/shot-view';
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import {
   getFrameVariantsByIds,

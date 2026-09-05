@@ -7,7 +7,7 @@ import type {
   SceneSplitBiblesResult,
   SceneSplitScenesResult,
 } from '@/lib/ai/response-schemas';
-import type { AutoStyleResponse } from '@/lib/style/auto-style';
+import type { AutoStyleResponse } from '@/shared/style/auto-style';
 import { z } from 'zod';
 import { LOCATION_CASE, PROSE_GOLD_BEATS, TALENT_CASE } from './fixtures';
 

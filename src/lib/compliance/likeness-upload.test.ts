@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { ASSET_RIGHTS_V1, PORTRAIT_RIGHTS_V1 } from './attestations';
+import {
+  ASSET_RIGHTS_V1,
+  PORTRAIT_RIGHTS_V1,
+} from '@/shared/compliance/attestations';
 import { requireUploadAttestation } from './likeness-upload';
 import { AttestationRequiredError, ValidationError } from '@/shared/errors';
 

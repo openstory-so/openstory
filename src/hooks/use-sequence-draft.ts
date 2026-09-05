@@ -6,7 +6,7 @@ import {
   writeSequenceDraft,
   type PersistableSequenceDraft,
   type SequenceDraft,
-} from '@/lib/sequences/sequence-draft';
+} from '@/shared/sequences/sequence-draft';
 
 export function useSequenceDraft() {
   const [draft, setDraft] = useState<SequenceDraft>(EMPTY_SEQUENCE_DRAFT);

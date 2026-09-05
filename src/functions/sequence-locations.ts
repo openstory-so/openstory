@@ -1,5 +1,8 @@
 import { mediaUrlSchema } from '@/shared/schemas/media-url.schemas';
-import { isValidTextToImageModel, safeTextToImageModel } from '@/lib/ai/models';
+import {
+  isValidTextToImageModel,
+  safeTextToImageModel,
+} from '@/shared/ai/models';
 import type { LocationBibleUpdate } from '@/lib/db/scoped/sequence-locations';
 import type { SheetStaleness } from '@/lib/sheets/sheet-staleness';
 import {
@@ -9,8 +12,8 @@ import {
   slugifyTag,
 } from '@/lib/schemas/bible-field';
 import { ulidSchema } from '@/lib/schemas/id.schemas';
-import { resolveSequenceStyleConfig } from '@/lib/style/style-config';
-import { getGenerationChannel } from '@/lib/realtime';
+import { resolveSequenceStyleConfig } from '@/shared/style/style-config';
+import { getGenerationChannel } from '@/shared/realtime';
 import {
   buildRegenerateLocationSheetPayload,
   toLocationMetadata,
@@ -24,7 +27,7 @@ import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
 import { NotFoundError } from '@/shared/errors';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 import { authWithTeamMiddleware, sequenceAccessMiddleware } from './middleware';
 
 const logger = getLogger(['openstory', 'serverFn', 'sequence-locations']);

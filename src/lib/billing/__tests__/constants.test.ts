@@ -3,7 +3,7 @@ import {
   TURBO_DEFAULT_AUDIO,
   TURBO_DEFAULT_IMAGE,
   TURBO_DEFAULT_VIDEO,
-} from '@/lib/ai/generation-mode';
+} from '@/shared/ai/generation-mode';
 import { describe, expect, it } from 'vitest';
 import { TEST_FAL_PRICING as FAL_PRICING } from '@/lib/ai/__tests__/fal-pricing-fixture';
 import {
@@ -13,9 +13,9 @@ import {
   splitCheckoutAmounts,
   totalCheckoutCents,
   totalCheckoutUsd,
-} from '../constants';
-import { estimateStoryboardCost } from '../cost-estimation';
-import { micros, microsToUsd, usdToMicros } from '../money';
+} from '@/shared/billing/constants';
+import { estimateStoryboardCost } from '@/shared/billing/cost-estimation';
+import { micros, microsToUsd, usdToMicros } from '@/shared/billing/money';
 
 /** Matches film-cost / Enhance default: 30s ≈ 6 × 5s shots. */
 const WELCOME_SHORT_SCENE_COUNT = 6;

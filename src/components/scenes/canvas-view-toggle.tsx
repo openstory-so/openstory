@@ -8,7 +8,7 @@
  */
 
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
-import type { CanvasView } from '@/lib/scenes/scene-selection';
+import type { CanvasView } from '@/shared/scenes/scene-selection';
 import { FileText, Film } from 'lucide-react';
 
 type CanvasViewToggleProps = {

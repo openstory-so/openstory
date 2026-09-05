@@ -15,7 +15,7 @@ import type { Database } from '@/lib/db/client';
 import { generatedAssets, teams, user } from '@/lib/db/schema';
 import { relations } from '@/lib/db/schema/relations';
 import { InsufficientCreditsError } from '@/shared/errors';
-import { studioCreateInputSchema } from '@/lib/studio/schema';
+import { studioCreateInputSchema } from '@/shared/studio/schema';
 
 let db: Database;
 
@@ -34,7 +34,7 @@ vi.doMock('@/lib/billing/preflight', async (importOriginal) => {
     reserveRunCredits: mockReserveRunCredits,
   };
 });
-vi.doMock('@/lib/realtime', () => ({
+vi.doMock('@/shared/realtime', () => ({
   getBillingChannel: () => ({
     emit: vi.fn().mockResolvedValue(undefined),
     history: async () => [],

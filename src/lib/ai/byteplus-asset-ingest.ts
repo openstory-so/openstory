@@ -15,7 +15,7 @@
  * existing fal fallback.
  */
 
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 import type { BytePlusAssetSlot } from '@/lib/db/schema/byteplus-assets';
 import {
   ensureExternallyFetchableUrl,

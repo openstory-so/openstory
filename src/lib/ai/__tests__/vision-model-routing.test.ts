@@ -3,7 +3,7 @@ import {
   analysisModelSupportsVision,
   DEFAULT_VISION_MODEL,
   resolveVisionModel,
-} from '../models.config';
+} from '@/shared/ai/models.config';
 
 // Text-only analysis models can't see the rendered still the motion-prompt pass
 // conditions on (#929), so an image-bearing call on one routes to

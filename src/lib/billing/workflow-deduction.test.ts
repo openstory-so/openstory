@@ -6,11 +6,11 @@
 
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import { describe, expect, it, vi } from 'vitest';
-import { micros, ZERO_MICROS } from './money';
+import { micros, ZERO_MICROS } from '@/shared/billing/money';
 
 const reportMissingBillingCost = vi.fn();
 const reportSkippedDeduction = vi.fn();
-vi.doMock('./billing-observability', () => ({
+vi.doMock('@/shared/billing/billing-observability', () => ({
   reportMissingBillingCost,
   reportSkippedDeduction,
 }));

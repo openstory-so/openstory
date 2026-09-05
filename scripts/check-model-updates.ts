@@ -50,8 +50,8 @@ import {
   AUDIO_MODELS,
   IMAGE_MODELS,
   IMAGE_TO_VIDEO_MODELS,
-} from '@/lib/ai/models';
-import { SCRIPT_ANALYSIS_MODELS } from '@/lib/ai/models.config';
+} from '@/shared/ai/models';
+import { SCRIPT_ANALYSIS_MODELS } from '@/shared/ai/models.config';
 
 const jsonOutput = process.argv.includes('--json');
 

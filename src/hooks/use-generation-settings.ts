@@ -7,7 +7,7 @@ import {
   type AudioModel,
   type ImageToVideoModel,
   type TextToImageModel,
-} from '@/lib/ai/models';
+} from '@/shared/ai/models';
 import {
   applyGenerationMode,
   DEFAULT_GENERATION_MODE,
@@ -17,12 +17,12 @@ import {
   TURBO_DEFAULT_IMAGE,
   TURBO_DEFAULT_VIDEO,
   type GenerationMode,
-} from '@/lib/ai/generation-mode';
+} from '@/shared/ai/generation-mode';
 import {
   isSelectableAnalysisModelId,
   isValidAnalysisModelId,
   type AnalysisModelId,
-} from '@/lib/ai/models.config';
+} from '@/shared/ai/models.config';
 import {
   DEFAULT_ASPECT_RATIO,
   type AspectRatio,
@@ -40,7 +40,7 @@ import {
 } from '@/shared/generation/pipeline';
 import { useCallback, useEffect, useState } from 'react';
 
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'ui', 'use-generation-settings']);
 

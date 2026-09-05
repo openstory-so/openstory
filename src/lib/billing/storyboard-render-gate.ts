@@ -4,9 +4,13 @@
  */
 
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
-import { getLogger } from '@/lib/observability/logger';
-import { reportReservationShort } from './billing-observability';
-import { type Microdollars, subtractMicros, ZERO_MICROS } from './money';
+import { getLogger } from '@/shared/observability/logger';
+import { reportReservationShort } from '@/shared/billing/billing-observability';
+import {
+  type Microdollars,
+  subtractMicros,
+  ZERO_MICROS,
+} from '@/shared/billing/money';
 
 const logger = getLogger(['openstory', 'billing', 'storyboard-render-gate']);
 

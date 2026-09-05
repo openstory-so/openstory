@@ -15,7 +15,7 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
-import { DEFAULT_IMAGE_MODEL } from '@/lib/ai/models';
+import { DEFAULT_IMAGE_MODEL } from '@/shared/ai/models';
 import type { Frame, Shot } from '@/lib/db/schema';
 
 vi.doMock('@/lib/ai/fal-pricing-live', () => ({

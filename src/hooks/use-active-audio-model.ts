@@ -1,7 +1,7 @@
-import { isValidAudioModel, type AudioModel } from '@/lib/ai/models';
+import { isValidAudioModel, type AudioModel } from '@/shared/ai/models';
 import { useCallback, useSyncExternalStore } from 'react';
 
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'ui', 'use-active-audio-model']);
 

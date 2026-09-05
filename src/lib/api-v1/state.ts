@@ -11,14 +11,14 @@ import type { ScopedDb } from '@/lib/db/scoped';
 import { SHOT_GENERATION_STATUSES } from '@/lib/db/schema/shots';
 import type { Style } from '@/lib/db/schema/libraries';
 import type { MusicStatus, SequenceStatus } from '@/lib/db/schema/sequences';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 import {
   readinessImageUrl,
   readinessVideoStatus,
   type ShotReadiness,
   type ShotView,
   toShotView,
-} from '@/lib/shots/shot-view';
+} from '@/shared/shots/shot-view';
 import { toShareableUrl } from '@/lib/storage/buckets';
 import type { Sequence } from '@/types/database';
 import { API_V1_BASE, type HalResource, waitLink, withLinks } from './hal';

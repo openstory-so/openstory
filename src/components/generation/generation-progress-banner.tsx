@@ -7,7 +7,7 @@ import {
   estimateSceneCount,
   estimateTotalSeconds,
 } from '@/shared/generation/time-estimate';
-import type { GenerationStreamState } from '@/lib/realtime/generation-stream.reducer';
+import type { GenerationStreamState } from '@/shared/realtime/generation-stream.reducer';
 import { useEffect, useRef, useState } from 'react';
 
 type GenerationProgressBannerProps = {

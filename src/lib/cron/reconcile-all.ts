@@ -33,7 +33,7 @@ import {
 import { resolveRunState, STALE_THRESHOLD_MS } from '@/lib/workflow/reconcile';
 import { and, eq, inArray, isNotNull, isNull, lt } from 'drizzle-orm';
 
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'cron', 'reconcile-all']);
 

@@ -11,7 +11,7 @@ import {
   type StudioActivity,
   type StudioCreateInput,
   type StudioSort,
-} from '@/lib/studio/schema';
+} from '@/shared/studio/schema';
 import {
   useInfiniteQuery,
   useMutation,

@@ -9,9 +9,9 @@
  * generated — is merged into the snapshots in memory (`recast-snapshot.ts`).
  */
 
-import { DEFAULT_IMAGE_MODEL } from '@/lib/ai/models';
+import { DEFAULT_IMAGE_MODEL } from '@/shared/ai/models';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
-import { getGenerationChannel } from '@/lib/realtime';
+import { getGenerationChannel } from '@/shared/realtime';
 import { spawnAndAwaitChild } from '@/lib/workflow/await-child';
 import { OpenStoryWorkflowEntrypoint } from '@/lib/workflow/base-workflow';
 import type { CloudflareEnv } from '@/lib/workflow/types';
@@ -26,7 +26,7 @@ import { mergeRecastSheetIntoSnapshots } from '@/lib/workflows/recast-snapshot';
 import { computeCharacterSheetHashFromDto } from '@/lib/workflows/sheet-snapshots';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { NonRetryableError } from 'cloudflare:workflows';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'workflow', 'recast-character']);
 

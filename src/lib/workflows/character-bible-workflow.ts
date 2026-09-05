@@ -16,14 +16,14 @@
  *   - Reads the workflow run id from `event.instanceId` instead of
  *     `context.workflowRunId`. */
 
-import { DEFAULT_IMAGE_MODEL } from '@/lib/ai/models';
+import { DEFAULT_IMAGE_MODEL } from '@/shared/ai/models';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import type { CharacterMinimal } from '@/lib/db/schema';
 import { buildCharacterInsert } from '@/lib/workflows/cast-records';
-import { buildCastingAttributes } from '@/lib/prompts/character-prompt';
+import { buildCastingAttributes } from '@/shared/prompts/character-prompt';
 import { reusesTalentSheet } from '@/lib/talent/reuse-talent-sheet';
 import { spawnAndAwaitChild } from '@/lib/workflow/await-child';
-import { contentRejectionSummary } from '@/lib/ai/content-rejection';
+import { contentRejectionSummary } from '@/shared/ai/content-rejection';
 import { OpenStoryWorkflowEntrypoint } from '@/lib/workflow/base-workflow';
 import { WorkflowValidationError } from '@/lib/workflow/errors';
 import type {
@@ -33,7 +33,7 @@ import type {
   TalentCharacterMatch,
 } from '@/lib/workflow/types';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'workflow', 'character-bible']);
 

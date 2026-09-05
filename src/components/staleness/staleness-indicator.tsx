@@ -9,7 +9,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { UpdateAllDialog } from '@/components/staleness/update-all-dialog';
 import type { ShotStaleness } from '@/hooks/use-shot-staleness';
-import type { UpdateStaleDepth } from '@/lib/shots/update-stale-depth';
+import type { UpdateStaleDepth } from '@/shared/shots/update-stale-depth';
 import { cn } from '@/shared/utils';
 
 export type StalenessArtifact =

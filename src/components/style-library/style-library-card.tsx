@@ -1,5 +1,5 @@
 import { StyleHoverPreview } from '@/components/style/style-hover-preview';
-import { styleCategoryLabel } from '@/lib/style/style-assets';
+import { styleCategoryLabel } from '@/shared/style/style-assets';
 import type { Style } from '@/types/database';
 import type { FC } from 'react';
 import { useCallback } from 'react';

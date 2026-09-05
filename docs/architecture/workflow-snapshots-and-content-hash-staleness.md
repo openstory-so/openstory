@@ -22,11 +22,11 @@ Before describing the design, it's worth stating what the original doc recommend
 | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Inngest for orchestration         | Cloudflare Workflows is already wired, and `OpenStoryWorkflowEntrypoint` (`src/lib/workflow/base-workflow.ts`) enforces `teamId`/`userId` on every run. Swapping orchestrators would be pure churn.                                                                                                                                                     |
 | XState v5 lifecycle machines      | Per-artifact status columns on `frames` (`imageStatus`) and `shots` (`videoStatus`, `audioStatus`) already model `pending → generating → completed → failed`. `sequences.status` is sequence lifecycle (`draft → processing → completed → failed → archived`), not per-artifact generation. Adding XState on top would duplicate state, not replace it. |
-| Custom Redis pub/sub + PG NOTIFY  | `src/lib/realtime/index.ts` already provides a typed `realtimeSchema`; delivery runs through the in-repo SSE client and `RealtimeChannel` Durable Object. We extend this schema, we don't replace it.                                                                                                                                                   |
+| Custom Redis pub/sub + PG NOTIFY  | `src/shared/realtime.ts` already provides a typed `realtimeSchema`; delivery runs through the in-repo SSE client and `RealtimeChannel` Durable Object. We extend this schema, we don't replace it.                                                                                                                                                      |
 | Postgres JSONB / SKIP LOCKED      | The app runs on Cloudflare D1 (SQLite). Cloudflare Workflows is already the durable job engine; we don't need a DB-level queue at all.                                                                                                                                                                                                                  |
 | Entity version chains / branching | `frame_variants` (`src/lib/db/schema/frame-variants.ts`) already holds alternate per-model outputs, which covers the realistic "keep old vs new" use case for frame artifacts. General-purpose branching adds complexity we don't need.                                                                                                                 |
 | Property-level LWW + rebasing     | We are not a concurrent editor. TanStack Query + server functions give us implicit last-writer-wins at the server boundary.                                                                                                                                                                                                                             |
-| Dependency edge table (v1)        | Character/location → shot linkage is inferred at runtime via `characterTags` in shot metadata and `matchCharactersToScene` (`src/lib/workflows/scene-matching.ts`). Good enough until we have a reason to materialize it.                                                                                                                               |
+| Dependency edge table (v1)        | Character/location → shot linkage is inferred at runtime via `characterTags` in shot metadata and `matchCharactersToScene` (`src/shared/scenes/scene-matching.ts`). Good enough until we have a reason to materialize it.                                                                                                                               |
 | `stale` status enum value (v1)    | Staleness is a **derived** boolean (`generatedFromInputHash !== computeInputHash(entity)`). Adding it to the enum is a v2 question if the derived form ever proves insufficient.                                                                                                                                                                        |
 
 ## Pillar 1: Input-hash staleness
@@ -233,7 +233,7 @@ Two models — do not conflate them:
 
 ### Realtime event
 
-`realtimeSchema.generation` in `src/lib/realtime/index.ts` defines `stale:detected` as a discriminated union on `entityType`. Clients subscribe on the generation channel and listen for the dotted path `generation.stale:detected`:
+`realtimeSchema.generation` in `src/shared/realtime.ts` defines `stale:detected` as a discriminated union on `entityType`. Clients subscribe on the generation channel and listen for the dotted path `generation.stale:detected`:
 
 ```ts
 'stale:detected': z.discriminatedUnion('entityType', [
@@ -293,7 +293,7 @@ Prompt **storage** is shipped (`frame_prompt_versions`, `shot_prompt_versions`).
 
 Everything else from the original doc that we're explicitly _not_ implementing yet:
 
-- **`frame_dependencies` edge table.** Keep inferring from `characterTags` / `matchCharactersToScene` (`src/lib/workflows/scene-matching.ts`, used by `sheet-snapshots.ts` and `shot-images-workflow.ts`) until there's a concrete reason to materialize it — e.g., needing to walk dependents faster than a scan allows.
+- **`frame_dependencies` edge table.** Keep inferring from `characterTags` / `matchCharactersToScene` (`src/shared/scenes/scene-matching.ts`, used by `sheet-snapshots.ts` and `shot-images-workflow.ts`) until there's a concrete reason to materialize it — e.g., needing to walk dependents faster than a scan allows.
 - **`stale` as a status enum value.** The derived boolean is sufficient until it isn't.
 - **Topological regeneration queue.** Not needed until we have a materialized dependency graph to walk.
 - **Content-addressable snapshot table** (`workflow_input_snapshots`). Not needed until inlining snapshots into Cloudflare Workflows payloads actually strains the payload-size budget.

@@ -10,7 +10,7 @@
  * tier wherever a real model is required.
  */
 
-import { DEFAULT_IMAGE_MODEL, safeTextToImageModel } from '@/lib/ai/models';
+import { DEFAULT_IMAGE_MODEL, safeTextToImageModel } from '@/shared/ai/models';
 import type { Scene } from '@/lib/ai/scene-analysis.schema';
 import type { AspectRatio } from '@/shared/constants/aspect-ratios';
 import type {
@@ -19,14 +19,9 @@ import type {
   SequenceLocationWithReference,
 } from '@/lib/db/schema';
 import { r2KeyFromUrl, type StorageBucket } from '@/lib/storage/buckets';
+import { USER_UPLOAD_MODEL } from '@/shared/shots/user-upload-model';
 import { getExtensionFromUrl } from '@/shared/utils/file';
 import { buildRegenerateShotSnapshot } from '@/lib/workflows/regenerate-shots-snapshot';
-
-/**
- * Sentinel `model` for user-uploaded versions (stills, clips, tracks). Never a
- * valid generation model id — the model-resolution tiers skip it by design.
- */
-export const USER_UPLOAD_MODEL = 'user-upload';
 
 /**
  * Extensions each upload surface accepts. The PUT route takes its

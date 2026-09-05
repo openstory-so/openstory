@@ -1,4 +1,4 @@
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'ai', 'prompt-validation']);
 // Security: Prompt injection protection patterns

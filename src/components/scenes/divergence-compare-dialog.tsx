@@ -12,7 +12,7 @@ import {
 import { Loader2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { ShotVariant } from '@/lib/db/schema';
-import type { ShotView } from '@/lib/shots/shot-view';
+import type { ShotView } from '@/shared/shots/shot-view';
 import type { VariantType } from '@/lib/db/schema/shot-variants';
 
 type DivergencePromptDiff = {

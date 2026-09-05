@@ -4,7 +4,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { micros } from '@/lib/billing/money';
+import { micros } from '@/shared/billing/money';
 
 type Row = {
   provider: string;

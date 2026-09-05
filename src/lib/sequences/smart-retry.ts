@@ -10,7 +10,7 @@
  * body, which the compiler strips.
  */
 
-import { usesStartFrame } from '@/lib/shots/use-start-frame';
+import { usesStartFrame } from '@/shared/shots/use-start-frame';
 import {
   loadSceneContextBySequence,
   resolveSceneForShot,
@@ -22,27 +22,27 @@ import {
   safeAudioModel,
   safeImageToVideoModel,
   safeTextToImageModel,
-} from '@/lib/ai/models';
+} from '@/shared/ai/models';
 import {
   DEFAULT_ANALYSIS_MODEL,
   getAnalysisModelById,
-} from '@/lib/ai/models.config';
+} from '@/shared/ai/models.config';
 import {
   resolveImageModel,
   resolveVideoModel,
-} from '@/lib/ai/resolve-asset-models';
+} from '@/shared/ai/resolve-asset-models';
 import {
   estimateAudioCost,
   estimateImageCost,
   estimateVideoCost,
   gateEstimate,
-} from '@/lib/billing/cost-estimation';
+} from '@/shared/billing/cost-estimation';
 import { getEffectiveFalPricing } from '@/lib/ai/fal-pricing-live';
 import {
   releaseReservationOnThrow,
   reserveRunCredits,
 } from '@/lib/billing/preflight';
-import { estimateStoryboardPreflightCost } from '@/lib/billing/storyboard-preflight-cost';
+import { estimateStoryboardPreflightCost } from '@/shared/billing/storyboard-preflight-cost';
 import { aspectRatioToImageSize } from '@/shared/constants/aspect-ratios';
 import type { ScopedDb } from '@/lib/db/scoped';
 import type { CharacterWithSheet, Sequence, Shot } from '@/lib/db/schema';
@@ -50,10 +50,10 @@ import { analyzeFailures } from '@/shared/failures/failure-analysis';
 import {
   motionPromptFromVersion,
   resolveMotionPromptFromVersion,
-} from '@/lib/motion/resolve-motion-prompt';
-import { toShotView } from '@/lib/shots/shot-view';
-import { buildMotionReferenceImages } from '@/lib/motion/build-motion-references';
-import { buildCharacterReferenceImages } from '@/lib/prompts/character-prompt';
+} from '@/shared/motion/resolve-motion-prompt';
+import { toShotView } from '@/shared/shots/shot-view';
+import { buildMotionReferenceImages } from '@/shared/motion/build-motion-references';
+import { buildCharacterReferenceImages } from '@/shared/prompts/character-prompt';
 import { triggerWorkflow } from '@/lib/workflow/client';
 import { buildWorkflowLabel } from '@/lib/workflow/labels';
 import { toWorkflowScopedDb } from '@/lib/db/scoped-workflow';
@@ -73,7 +73,7 @@ import type {
 } from '@/lib/workflow/types';
 import { buildMusicSceneSummaries } from '@/lib/workflows/music-scene-summaries';
 import { sumShotDurationsSeconds } from '@/lib/sequences/shot-durations';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'sequences', 'smart-retry']);
 
@@ -366,7 +366,7 @@ export async function executeSmartRetry(context: SmartRetryContext) {
 
   // 2. Retry failed motion
   if (failedMotionShots.length > 0) {
-    const { snapDuration } = await import('@/lib/motion/snap-duration');
+    const { snapDuration } = await import('@/shared/motion/snap-duration');
     // Reference-only clips are driven ENTIRELY by their reference sheets, so a
     // retry that forwarded none would silently resubmit as text-to-video —
     // different characters, different set, at the same price. Loaded once for

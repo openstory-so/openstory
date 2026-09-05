@@ -5,11 +5,11 @@ import {
   CONTENT_REJECTION_USER_HINT,
   CONTENT_REJECTION_USER_TITLE,
   isContentRejectionError,
-} from '@/lib/ai/content-rejection';
+} from '@/shared/ai/content-rejection';
 import {
   CREDITS_SHORT_TITLE,
   creditsShortHint,
-} from '@/lib/billing/credits-short';
+} from '@/shared/billing/credits-short';
 import type { FailureSummary } from '@/shared/failures/failure-analysis';
 import { cn } from '@/shared/utils';
 import {

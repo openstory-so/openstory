@@ -8,7 +8,7 @@
  * "selected" — it's only the source the tiles are cropped from.
  */
 
-import { DEFAULT_IMAGE_MODEL, IMAGE_MODELS } from '@/lib/ai/models';
+import { DEFAULT_IMAGE_MODEL, IMAGE_MODELS } from '@/shared/ai/models';
 import {
   deductWorkflowCredits,
   extractImageCost,
@@ -26,9 +26,9 @@ import { r2KeyFromUrl } from '@/lib/storage/buckets';
 import {
   buildReferenceImagePrompt,
   type ReferenceImageDescription,
-} from '@/lib/prompts/reference-image-prompt';
+} from '@/shared/prompts/reference-image-prompt';
 import { getVariantImagePrompt } from '@/lib/prompts/variant-image';
-import { getGenerationChannel } from '@/lib/realtime';
+import { getGenerationChannel } from '@/shared/realtime';
 import { OpenStoryWorkflowEntrypoint } from '@/lib/workflow/base-workflow';
 import { generateImageSoftening } from '@/lib/workflows/content-soften';
 import { WorkflowValidationError } from '@/lib/workflow/errors';
@@ -37,7 +37,7 @@ import type {
   ShotVariantWorkflowResult,
 } from '@/lib/workflow/types';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'workflow', 'shot-variant']);
 

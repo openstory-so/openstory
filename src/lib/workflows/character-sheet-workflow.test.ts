@@ -32,7 +32,7 @@ vi.doMock('@/lib/billing/workflow-deduction', () => ({
 vi.doMock('@/lib/compliance/provenance', () => ({
   recordProvenance: mockRecordProvenance,
 }));
-vi.doMock('@/lib/realtime', () => ({
+vi.doMock('@/shared/realtime', () => ({
   getGenerationChannel: () => ({ emit: mockEmit }),
 }));
 

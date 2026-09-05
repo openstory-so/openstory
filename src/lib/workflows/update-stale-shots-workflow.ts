@@ -1,7 +1,7 @@
 /**
  * "Update all" (#1077/#1085) — durable server-side regeneration of the
  * out-of-date artifacts in scope (a shot, a scene, or the whole sequence),
- * at a user-chosen cascade depth (src/lib/shots/update-stale-depth.ts):
+ * at a user-chosen cascade depth (src/shared/shots/update-stale-depth.ts):
  *
  *   'prompts' → stale visual/motion prompts only, nothing renders
  *   'images'  → + stale stills, and stills whose visual prompt regenerates
@@ -46,16 +46,19 @@
  */
 
 import { musicPromptInputHashMatches } from '@/lib/ai/input-hash';
-import { resolveVideoModel } from '@/lib/ai/resolve-asset-models';
+import { resolveVideoModel } from '@/shared/ai/resolve-asset-models';
 import type { Scene } from '@/lib/ai/scene-analysis.schema';
 import { getEffectiveFalPricing } from '@/lib/ai/fal-pricing-live';
-import { estimateVideoCost, gateEstimate } from '@/lib/billing/cost-estimation';
+import {
+  estimateVideoCost,
+  gateEstimate,
+} from '@/shared/billing/cost-estimation';
 import { requireCredits } from '@/lib/billing/preflight';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import { isInsufficientCreditsError } from '@/shared/errors';
-import { buildMotionReferenceImages } from '@/lib/motion/build-motion-references';
-import { resolveMotionPromptFromVersion } from '@/lib/motion/resolve-motion-prompt';
-import { resolveShotDuration } from '@/lib/motion/resolve-shot-duration';
+import { buildMotionReferenceImages } from '@/shared/motion/build-motion-references';
+import { resolveMotionPromptFromVersion } from '@/shared/motion/resolve-motion-prompt';
+import { resolveShotDuration } from '@/shared/motion/resolve-shot-duration';
 import { getAnchorImageUrl } from '@/lib/shots/frame-image';
 import type {
   FramePromptVersion,
@@ -64,7 +67,7 @@ import type {
 } from '@/lib/db/schema';
 import type { FramePromptResult } from '@/lib/workflows/frame-prompt-workflow';
 import type { MotionPromptWorkflowResult } from '@/lib/workflows/motion-prompt-workflow';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 import { reinforceInstrumentalTags } from '@/lib/prompts/music-prompt';
 import {
   loadSceneContextBySequence,

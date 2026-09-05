@@ -8,8 +8,8 @@
  * `/oauth/consent` before the router sees it. Same shape as `/oauth/login`.
  */
 
-import { consentStartLocation } from '@/lib/auth/oauth-query-snapshot';
-import { getLogger } from '@/lib/observability/logger';
+import { consentStartLocation } from '@/shared/auth/oauth-query-snapshot';
+import { getLogger } from '@/shared/observability/logger';
 import { createFileRoute } from '@tanstack/react-router';
 
 const logger = getLogger(['openstory', 'oauth', 'consent-start']);

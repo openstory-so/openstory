@@ -15,7 +15,10 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { listCatalogModelFamiliesFn } from '@/functions/model-catalog';
-import { CATALOG_ACTIVITIES, type CatalogActivity } from '@/lib/models/catalog';
+import {
+  CATALOG_ACTIVITIES,
+  type CatalogActivity,
+} from '@/shared/models/catalog';
 import { useSuspenseInfiniteQuery } from '@tanstack/react-query';
 import { Boxes, Search, X } from 'lucide-react';
 import type { ChangeEvent, FC, FormEvent } from 'react';

@@ -1,4 +1,4 @@
-import { CREDITS_SHORT_TITLE } from '@/lib/billing/credits-short';
+import { CREDITS_SHORT_TITLE } from '@/shared/billing/credits-short';
 import type { FailureSummary } from '@/shared/failures/failure-analysis';
 import type { Meta, StoryObj } from '@storybook/react';
 import { FailureSummaryBanner } from './failure-summary-banner';

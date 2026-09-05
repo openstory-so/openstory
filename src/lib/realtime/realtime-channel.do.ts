@@ -1,6 +1,6 @@
 import { DurableObject } from 'cloudflare:workers';
 
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 /**
  * Cloudflare-native realtime broker. One Durable Object instance per channel

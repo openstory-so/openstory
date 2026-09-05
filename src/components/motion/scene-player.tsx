@@ -19,11 +19,11 @@ import {
 import { cn } from '@/shared/utils';
 import { plainSceneTitle } from '@/shared/utils/markdown-plain';
 import { copyTextToClipboard } from '@/shared/utils/clipboard';
-import type { ShotView } from '@/lib/shots/shot-view';
+import type { ShotView } from '@/shared/shots/shot-view';
 import {
   usesStartFrame,
   type StartFrameSequence,
-} from '@/lib/shots/use-start-frame';
+} from '@/shared/shots/use-start-frame';
 import { AppImage } from '@/components/ui/app-image';
 import { playerPosterSrc } from './player-poster';
 import { usePostHog } from '@posthog/react';

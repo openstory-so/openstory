@@ -7,12 +7,15 @@ import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
 
-import { isValidTextToImageModel, safeTextToImageModel } from '@/lib/ai/models';
+import {
+  isValidTextToImageModel,
+  safeTextToImageModel,
+} from '@/shared/ai/models';
 import type { CharacterBibleUpdate } from '@/lib/db/scoped/characters';
-import { resolveSequenceStyleConfig } from '@/lib/style/style-config';
-import { buildCastingAttributes } from '@/lib/prompts/character-prompt';
+import { resolveSequenceStyleConfig } from '@/shared/style/style-config';
+import { buildCastingAttributes } from '@/shared/prompts/character-prompt';
 import { shouldReuseTalentSheet } from '@/lib/talent/reuse-talent-sheet';
-import { getGenerationChannel } from '@/lib/realtime';
+import { getGenerationChannel } from '@/shared/realtime';
 import {
   bibleField,
   identityToken,
@@ -29,7 +32,7 @@ import type { SheetStaleness } from '@/lib/sheets/sheet-staleness';
 import { characterSheetHashMatchesStored } from '@/lib/workflows/sheet-snapshots';
 
 import { NotFoundError } from '@/shared/errors';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 import { authWithTeamMiddleware, sequenceAccessMiddleware } from './middleware';
 
 const logger = getLogger(['openstory', 'serverFn', 'sequence-characters']);

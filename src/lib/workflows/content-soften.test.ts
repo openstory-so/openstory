@@ -4,7 +4,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
-import type { ImageGenerationParams } from '@/lib/image/build-image-request';
+import type { ImageGenerationParams } from '@/shared/image/build-image-request';
 import type { ImageGenerationResult } from '@/lib/image/image-generation';
 import type { WorkflowStep } from 'cloudflare:workers';
 

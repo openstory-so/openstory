@@ -17,17 +17,17 @@ import {
   MAX_TOPUP_AMOUNT_USD,
   MIN_TOPUP_AMOUNT_USD,
   totalCheckoutCents,
-} from '@/lib/billing/constants';
+} from '@/shared/billing/constants';
 import {
   micros,
   microsToDisplayUsd,
   microsToUsd,
   usdToMicros,
-} from '@/lib/billing/money';
+} from '@/shared/billing/money';
 import type { TransactionType } from '@/lib/db/schema/credits';
 import { ValidationError } from '@/shared/errors';
 import { FOUNDER_EMAIL } from '@/shared/marketing/constants';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 import { captureProductEvent } from '@/lib/observability/product-events';
 import { sendFounderCreditRequestEmail } from '@/lib/services/email-service';
 import { getServerAppUrl } from '@/shared/utils/environment';

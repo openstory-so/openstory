@@ -47,7 +47,7 @@ import {
   type CatalogActivity,
   type JsonValue,
   type ModelDetail,
-} from '@/lib/models/catalog';
+} from '@/shared/models/catalog';
 import {
   skipToken,
   useMutation,

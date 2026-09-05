@@ -29,10 +29,10 @@ import {
   DEFAULT_MUSIC_MODEL,
   safeAudioModel,
   type AudioModel,
-} from '@/lib/ai/models';
+} from '@/shared/ai/models';
 import type { SequenceMusicVariant } from '@/lib/db/schema';
-import { useGenerationStream } from '@/lib/realtime/use-generation-stream';
-import { useSequenceStaleDetected } from '@/lib/realtime/use-sequence-stale-detected';
+import { useGenerationStream } from '@/shared/realtime/use-generation-stream';
+import { useSequenceStaleDetected } from '@/shared/realtime/use-sequence-stale-detected';
 import type { Sequence } from '@/types/database';
 import { Music } from 'lucide-react';
 import { usePostHog } from '@posthog/react';

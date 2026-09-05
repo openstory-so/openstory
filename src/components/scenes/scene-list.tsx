@@ -22,29 +22,33 @@ import {
   type AudioModel,
   type ImageToVideoModel,
   type TextToImageModel,
-} from '@/lib/ai/models';
+} from '@/shared/ai/models';
 import {
   estimateAudioCost,
   estimateImageCost,
   estimateStoryboardCost,
   estimateVideoCost,
-} from '@/lib/billing/cost-estimation';
-import { addMicros, ZERO_MICROS, type Microdollars } from '@/lib/billing/money';
+} from '@/shared/billing/cost-estimation';
+import {
+  addMicros,
+  ZERO_MICROS,
+  type Microdollars,
+} from '@/shared/billing/money';
 import type { AspectRatio } from '@/shared/constants/aspect-ratios';
 import type { Resolution } from '@/shared/constants/resolutions';
 import { useFalPricing } from '@/hooks/use-fal-pricing';
 import type { SceneWithScript } from '@/hooks/use-scenes';
 import type { ShotVariant } from '@/lib/db/schema';
 import { errorMessage } from '@/shared/errors';
-import { resolveShotDuration } from '@/lib/motion/resolve-shot-duration';
-import type { SceneSelection } from '@/lib/scenes/scene-selection';
-import type { SequenceSegment } from '@/lib/scenes/scene-segments';
-import { rendersReferenceOnly } from '@/lib/shots/use-start-frame';
+import { resolveShotDuration } from '@/shared/motion/resolve-shot-duration';
+import type { SceneSelection } from '@/shared/scenes/scene-selection';
+import type { SequenceSegment } from '@/shared/scenes/scene-segments';
+import { rendersReferenceOnly } from '@/shared/shots/use-start-frame';
 import {
   isBatchMotionEligible,
   isMotionGenerating,
   type ShotView,
-} from '@/lib/shots/shot-view';
+} from '@/shared/shots/shot-view';
 import { cn } from '@/shared/utils';
 import { FileText, Images, Loader2, Music, Plus, Video } from 'lucide-react';
 import {

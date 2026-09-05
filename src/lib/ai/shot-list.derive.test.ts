@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { migrateStyleConfigV1ToV2 } from '@/lib/style/style-config';
+import { migrateStyleConfigV1ToV2 } from '@/shared/style/style-config';
 import type { StyleConfig } from '@/lib/db/schema/libraries';
 import { deriveMotionPrompt, deriveShots } from './shot-list.derive';
 import type { SceneWithShots } from './shot-list.schema';

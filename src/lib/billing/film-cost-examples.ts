@@ -18,21 +18,21 @@ import {
   TURBO_DEFAULT_AUDIO,
   TURBO_DEFAULT_IMAGE,
   TURBO_DEFAULT_VIDEO,
-} from '@/lib/ai/generation-mode';
+} from '@/shared/ai/generation-mode';
 import {
   AUDIO_MODELS,
   IMAGE_MODELS,
   IMAGE_TO_VIDEO_MODELS,
-} from '@/lib/ai/models';
+} from '@/shared/ai/models';
 import { DEFAULT_ASPECT_RATIO } from '@/shared/constants/aspect-ratios';
 import {
   estimateCharacterSheetCount,
   estimateImageCost,
   estimateLocationSheetCount,
   estimateStoryboardCost,
-} from '@/lib/billing/cost-estimation';
-import { microsToDisplayUsd, type Microdollars } from '@/lib/billing/money';
-import { SIGNUP_GRANT_MICROS } from '@/lib/billing/constants';
+} from '@/shared/billing/cost-estimation';
+import { microsToDisplayUsd, type Microdollars } from '@/shared/billing/money';
+import { SIGNUP_GRANT_MICROS } from '@/shared/billing/constants';
 
 /**
  * Composer default target duration (`script-view` duration chip: 15 / 30 / 60 / 120 / 180 / 300).

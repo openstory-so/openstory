@@ -29,7 +29,7 @@
 import { getEnv } from '#env';
 import type { BytePlusAssetSlot } from '@/lib/db/schema/byteplus-assets';
 import type { createBytePlusAssetsMethods } from '@/lib/db/scoped/byteplus-assets';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 import { reportBytePlusAssetPool } from './byteplus-observability';
 import {
   deleteAsset,

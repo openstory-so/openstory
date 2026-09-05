@@ -3,7 +3,7 @@
  * new ledger rows (not idempotent workflow replays).
  */
 
-import { micros } from '@/lib/billing/money';
+import { micros } from '@/shared/billing/money';
 import type { Database } from '@/lib/db/client';
 import { generateId } from '@/shared/id';
 import {
@@ -29,7 +29,7 @@ import {
 
 const emitMock = vi.fn().mockResolvedValue(undefined);
 
-vi.mock('@/lib/realtime', () => ({
+vi.mock('@/shared/realtime', () => ({
   getBillingChannel: () => ({
     emit: emitMock,
     history: async () => [],

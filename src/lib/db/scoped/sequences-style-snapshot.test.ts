@@ -7,7 +7,7 @@ import { generateId } from '@/shared/id';
 import { sequences, styles, teams, user } from '@/lib/db/schema';
 import { relations } from '@/lib/db/schema/relations';
 import { createSequencesMethods } from '@/lib/db/scoped/sequences';
-import { isStyleConfigV2, parseStyleConfig } from '@/lib/style/style-config';
+import { isStyleConfigV2, parseStyleConfig } from '@/shared/style/style-config';
 import { type Client, createClient } from '@libsql/client';
 import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/libsql';

@@ -8,11 +8,11 @@
  * badly undercounts (e.g. 29 labeled scenes → ~8 by words → ~⅓ the real cost).
  */
 
-import { isTurboAnalysisModel } from '@/lib/ai/generation-mode';
+import { isTurboAnalysisModel } from '@/shared/ai/generation-mode';
 import {
   DEFAULT_ANALYSIS_MODEL,
   isValidAnalysisModelId,
-} from '@/lib/ai/models.config';
+} from '@/shared/ai/models.config';
 import {
   ANALYSIS_FAST,
   ANALYSIS_QUALITY,

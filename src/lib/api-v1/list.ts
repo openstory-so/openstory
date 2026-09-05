@@ -12,7 +12,7 @@
 import type { ScopedDb } from '@/lib/db/scoped';
 import type { Style } from '@/lib/db/schema/libraries';
 import { ValidationError } from '@/shared/errors';
-import type { ShotReadiness } from '@/lib/shots/shot-view';
+import type { ShotReadiness } from '@/shared/shots/shot-view';
 import type { Sequence } from '@/types/database';
 import { createSequenceLink } from './discovery';
 import { API_V1_BASE, getLink, type HalResource, withLinks } from './hal';

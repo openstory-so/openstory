@@ -14,7 +14,7 @@ import {
   InputGroupInput,
 } from '@/components/ui/input-group';
 import { Skeleton } from '@/components/ui/skeleton';
-import { groupStylesByCategory } from '@/lib/style/style-assets';
+import { groupStylesByCategory } from '@/shared/style/style-assets';
 import { filterStyles } from '@/shared/utils/style-filters';
 import type { Style } from '@/types/database';
 import { Search, X } from 'lucide-react';

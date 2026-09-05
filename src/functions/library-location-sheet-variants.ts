@@ -2,12 +2,12 @@ import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
 
-import { getLocationChannel } from '@/lib/realtime';
+import { getLocationChannel } from '@/shared/realtime';
 import { ulidSchema } from '@/lib/schemas/id.schemas';
 
 import { authWithTeamMiddleware } from './middleware';
 
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger([
   'openstory',

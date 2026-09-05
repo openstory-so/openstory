@@ -20,7 +20,7 @@ import type { Database } from '@/lib/db/client';
 import { framePromptVersions, frames, user } from '@/lib/db/schema';
 import type { FramePromptVersion } from '@/lib/db/schema';
 import { and, desc, eq, gt, inArray, isNotNull, ne } from 'drizzle-orm';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 import { buildEventInsert } from './sequence-events';
 
 const logger = getLogger(['openstory', 'db', 'frame-prompt-versions']);

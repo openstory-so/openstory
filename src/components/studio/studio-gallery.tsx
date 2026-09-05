@@ -31,8 +31,8 @@ import {
   studioPosterOutput,
   studioPrimaryOutput,
   studioPrompt,
-} from '@/lib/studio/outputs';
-import { estimateStudioProgress } from '@/lib/studio/progress';
+} from '@/shared/studio/outputs';
+import { estimateStudioProgress } from '@/shared/studio/progress';
 import { cn } from '@/shared/utils';
 import { Download, Images, Star, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';

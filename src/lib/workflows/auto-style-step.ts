@@ -4,18 +4,21 @@
  * recipe onto the sequence-bound style row and the sequence's own snapshot,
  * and hands the resolved `StyleConfig` back for every child payload.
  */
-import type { AnalysisModelId } from '@/lib/ai/models.config';
+import type { AnalysisModelId } from '@/shared/ai/models.config';
 import type { AspectRatio } from '@/shared/constants/aspect-ratios';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
-import { getLogger } from '@/lib/observability/logger';
-import { getGenerationChannel } from '@/lib/realtime';
+import { getLogger } from '@/shared/observability/logger';
+import { getGenerationChannel } from '@/shared/realtime';
 import {
   autoStyleDraftFromResponse,
   autoStyleResponseSchema,
   STYLE_CATEGORIES,
   type AutoStyleDraft,
-} from '@/lib/style/auto-style';
-import { STYLE_PACE_VALUES, type StyleConfig } from '@/lib/style/style-config';
+} from '@/shared/style/auto-style';
+import {
+  STYLE_PACE_VALUES,
+  type StyleConfig,
+} from '@/shared/style/style-config';
 import { durableLLMCallCf } from '@/lib/workflows/llm-call-helper';
 import type { WorkflowStep } from 'cloudflare:workers';
 import { NonRetryableError } from 'cloudflare:workflows';

@@ -12,7 +12,7 @@
  * shot-creation time in `scene-split-workflow` and threaded here via
  * `shotMapping` (#991). */
 
-import { contentRejectionSummary } from '@/lib/ai/content-rejection';
+import { contentRejectionSummary } from '@/shared/ai/content-rejection';
 import type { Scene, VisualPrompt } from '@/lib/ai/scene-analysis.schema';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import { spawnAndAwaitChild } from '@/lib/workflow/await-child';
@@ -24,7 +24,7 @@ import type {
 } from '@/lib/workflow/types';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { NonRetryableError } from 'cloudflare:workflows';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'workflow', 'frame-prompt-batch']);
 

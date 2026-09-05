@@ -28,7 +28,7 @@ import {
   useUpdateTalent,
   useDeleteTalentMedia,
 } from '@/hooks/use-talent';
-import { useSheetStaleDetected } from '@/lib/realtime/use-sheet-stale-detected';
+import { useSheetStaleDetected } from '@/shared/realtime/use-sheet-stale-detected';
 import { AddTalentMediaDialog } from './add-talent-media-dialog';
 import type {
   Talent,

@@ -31,7 +31,7 @@ import type {
   TalentWithSheets,
 } from '@/lib/db/schema';
 import type { ScopedDb } from '@/lib/db/scoped';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 import type { WorkflowSleepDuration, WorkflowStep } from 'cloudflare:workers';
 
 const logger = getLogger(['openstory', 'workflow', 'wait-for-sheets']);

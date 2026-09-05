@@ -11,7 +11,7 @@ import { moveFile } from '#storage';
 import { generateId } from '@/shared/id';
 import type { LibraryLocation } from '@/lib/db/schema';
 import type { ScopedDb } from '@/lib/db/scoped';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 import { STORAGE_BUCKETS, getPublicUrl } from '@/lib/storage/buckets';
 import { getExtensionFromUrl } from '@/shared/utils/file';
 import { triggerWorkflow } from '@/lib/workflow/client';

@@ -17,13 +17,14 @@ import {
   llmCostFromUsage,
   RECOMMENDED_MODELS,
 } from '@/lib/ai/llm-client';
-import { isValidImageToVideoModel } from '@/lib/ai/models';
-import { isValidAnalysisModelId } from '@/lib/ai/models.config';
+import { isValidImageToVideoModel } from '@/shared/ai/models';
+import { isValidAnalysisModelId } from '@/shared/ai/models.config';
 import { sanitizeScriptContent } from '@/lib/ai/prompt-validation';
 import {
   sceneDurationResponseSchema,
   styleRecommendationResponseSchema,
 } from '@/lib/ai/response-schemas';
+import type { StyleRecommendationResponse } from '@/lib/ai/response-schemas';
 import {
   RateLimiter,
   scriptEnhancementRateLimiter,
@@ -34,7 +35,10 @@ import {
 } from '@/lib/ai/script-enhancement';
 import { aspectRatioSchema } from '@/shared/constants/aspect-ratios';
 import type { Style } from '@/lib/db/schema/libraries';
-import { parseStyleConfig, StyleConfigSchema } from '@/lib/style/style-config';
+import {
+  parseStyleConfig,
+  StyleConfigSchema,
+} from '@/shared/style/style-config';
 import { ulidSchema } from '@/lib/schemas/id.schemas';
 import { createServerFn } from '@tanstack/react-start';
 import { getRequest } from '@tanstack/react-start/server';
@@ -42,7 +46,7 @@ import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
 import { authWithTeamMiddleware, shotAccessMiddleware } from './middleware';
 
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'serverFn', 'ai']);
 
@@ -329,9 +333,10 @@ const recommendStylesInputSchema = z.object({
   limit: z.number().int().min(1).max(MAX_RECOMMENDATION_LIMIT).optional(),
 });
 
-type RawStyleRecommendations = z.infer<
-  typeof styleRecommendationResponseSchema
->;
+// `typeof` on the value import would keep the schema module in the client
+// bundle (the compiler only strips handler bodies); the type is imported
+// separately so the value import is handler-only and gets DCE'd.
+type RawStyleRecommendations = StyleRecommendationResponse;
 
 export type StyleRecommendation = {
   styleId: string;

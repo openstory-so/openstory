@@ -21,7 +21,7 @@ import { claimBytePlusVia } from '@/lib/ai/byteplus-config';
 import {
   referenceOnlyMotionModels,
   type ImageToVideoModel,
-} from '@/lib/ai/models';
+} from '@/shared/ai/models';
 import { authWithTeamMiddleware } from './middleware';
 
 export type ViaAvailability = {

@@ -23,7 +23,7 @@ import {
   resolveSceneForShot,
 } from '@/lib/scenes/scene-script';
 import { typedEntries } from '@/shared/utils/typed-object';
-import { matchLocationsToScene } from '@/lib/workflows/scene-matching';
+import { matchLocationsToScene } from '@/shared/scenes/scene-matching';
 import { createLocationSheetVariantsMethods } from './location-sheet-variants';
 import { buildEventInsert } from './sequence-events';
 

@@ -7,34 +7,34 @@ import {
   loadBytePlusImage,
 } from '@/lib/ai/byteplus-config';
 import { withBytePlusQuotaRetry } from '@/lib/ai/byteplus-rate-limit';
-import { isContentRejectionError } from '@/lib/ai/content-rejection';
-import { falCostFromUnits } from '@/lib/ai/fal-cost';
+import { isContentRejectionError } from '@/shared/ai/content-rejection';
+import { falCostFromUnits } from '@/lib/ai/fal-cost-billing';
 import { FAL_GENERATION_TIMEOUT_MS } from '@/lib/ai/fal-deadline-fetch';
-import { extractFalErrorMessage } from '@/lib/ai/fal-error';
+import { extractFalErrorMessage } from '@/shared/ai/fal-error';
 import {
   grokImageCost,
   isNativeGrokImageModel,
   nativeGrokImageModel,
-} from '@/lib/ai/grok-native';
+} from '@/shared/ai/grok-native';
 import {
   geminiImageCost,
   isNativeGeminiImageModel,
   nativeGeminiImageModel,
-} from '@/lib/ai/gemini-native';
+} from '@/shared/ai/gemini-native';
 import { withLlmRateLimitRetry } from '@/lib/ai/llm-rate-limit';
-import { isNativeBytePlusImageModel } from '@/lib/ai/models';
+import { isNativeBytePlusImageModel } from '@/shared/ai/models';
 import type { MediaVia } from '@/lib/ai/via';
 import { workersSafeFetch } from '@/lib/ai/workers-safe-fetch';
-import type { Microdollars } from '@/lib/billing/money';
+import type { Microdollars } from '@/shared/billing/money';
 import type { ResolvedApiKey } from '@/lib/db/scoped/api-keys';
 import type { CredentialScopedDb } from '@/lib/db/scoped-workflow';
-import { buildBytePlusImageRequest } from '@/lib/image/build-byteplus-image-request';
-import type { ImageGenerationParams } from '@/lib/image/build-image-request';
+import { buildBytePlusImageRequest } from '@/shared/image/build-byteplus-image-request';
+import type { ImageGenerationParams } from '@/shared/image/build-image-request';
 import {
   buildGeminiImageRequest,
   buildGrokImageRequest,
   buildImageRequest,
-} from '@/lib/image/build-image-request';
+} from '@/shared/image/build-image-request';
 import {
   recordMediaGenerationSpan,
   type AIObservabilityMeta,
@@ -52,7 +52,7 @@ import { falImage } from '@tanstack/ai-fal';
 import { createGeminiImage } from '@tanstack/ai-gemini';
 import { createGrokImage } from '@tanstack/ai-grok';
 
-export type { ImageGenerationParams } from '@/lib/image/build-image-request';
+export type { ImageGenerationParams } from '@/shared/image/build-image-request';
 
 /** Non-serializable options passed separately from ImageGenerationParams */
 export type ImageGenerationOptions = {

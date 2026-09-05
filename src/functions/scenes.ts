@@ -30,7 +30,7 @@ export const getScenesFn = createServerFn({ method: 'GET' })
 // own — model identity belongs to the version row that recorded the generation
 // (`frame_variants.model` / `video_variants.model`). Picking a model in the
 // editor is a per-request choice that becomes durable when the version it
-// produces is selected; see `@/lib/ai/resolve-asset-models`.
+// produces is selected; see `@/shared/ai/resolve-asset-models`.
 
 /** Composed sequence script from selected scene versions (#1030). Before the
  *  split has seeded any versions (mid-analysis, #1225) fall back to the

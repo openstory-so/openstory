@@ -46,7 +46,7 @@ provenance row and must be traced through the sequence graph. See
    likeness can enter (`upload_attestations`), recording the exact wording
    agreed to, the declared basis for authorization, and request context.
 3. Provider content filters reject prohibited output; rejections are logged and
-   queryable (`src/lib/ai/content-rejection.ts`).
+   queryable (`src/shared/ai/content-rejection.ts`).
 4. Reported content is traced and the responsible account restricted.
 
 **Emergency response plan:** [`incident-response.md`](./incident-response.md),
@@ -74,7 +74,7 @@ rather than only asserted in a policy document:
   statement text shown, so a 2026 attestation cannot be misread against wording
   shipped later.
 - **Statement text** is versioned and single-sourced in
-  `src/lib/compliance/attestations.ts`. Editing a statement in place is
+  `src/shared/compliance/attestations.ts`. Editing a statement in place is
   prohibited (it would invalidate every stored hash); a test pins this.
 
 ---

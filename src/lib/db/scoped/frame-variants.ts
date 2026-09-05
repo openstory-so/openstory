@@ -955,7 +955,7 @@ export function createFrameVariantsMethods(db: Database) {
      * The model of each shot's SELECTED image version across a sequence, keyed
      * by the owning shot (#1066). Model identity lives on the version row that
      * produced the bytes, so this is what generate/display resolve from — see
-     * `@/lib/ai/resolve-asset-models`. One join, so the batch read paths
+     * `@/shared/ai/resolve-asset-models`. One join, so the batch read paths
      * (smart retry, the editor's model bar) don't go N+1. Shots whose anchor
      * frame has no selection are absent; the caller falls back a tier.
      *

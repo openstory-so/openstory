@@ -20,7 +20,7 @@ import {
   apiResourceIdentifier,
   resolveOAuthIssuer,
 } from '@/lib/auth/oauth-provider';
-import { getLogger, toErrorPayload } from '@/lib/observability/logger';
+import { getLogger, toErrorPayload } from '@/shared/observability/logger';
 import { APIError } from 'better-auth/api';
 
 const apiAuthLogger = getLogger(['openstory', 'api', 'auth']);

@@ -22,7 +22,7 @@ const mockEmit = vi.fn();
 vi.doMock('@/lib/workflow/client', () => ({
   triggerWorkflow: mockTriggerWorkflow,
 }));
-vi.doMock('@/lib/realtime', () => ({
+vi.doMock('@/shared/realtime', () => ({
   getTalentChannel: () => ({ emit: mockEmit }),
 }));
 vi.doMock('./analyze-talent-media', () => ({

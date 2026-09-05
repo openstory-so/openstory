@@ -13,7 +13,7 @@
  * because the still already fixed the set.
  */
 
-import type { ImageToVideoModel } from '@/lib/ai/models';
+import type { ImageToVideoModel } from '@/shared/ai/models';
 import type { MotionPrompt, Scene } from '@/lib/ai/scene-analysis.schema';
 import type { AspectRatio } from '@/shared/constants/aspect-ratios';
 import type { Resolution } from '@/shared/constants/resolutions';
@@ -22,9 +22,9 @@ import type {
   SequenceElementMinimal,
   SequenceLocationMinimal,
 } from '@/lib/db/schema';
-import { assembleMotionPrompt } from '@/lib/motion/assemble-motion-prompt';
-import { buildMotionReferenceImages } from '@/lib/motion/build-motion-references';
-import { getLogger } from '@/lib/observability/logger';
+import { assembleMotionPrompt } from '@/shared/motion/assemble-motion-prompt';
+import { buildMotionReferenceImages } from '@/shared/motion/build-motion-references';
+import { getLogger } from '@/shared/observability/logger';
 import { WorkflowValidationError } from '@/lib/workflow/errors';
 import type { BatchMotionMusicWorkflowInput } from '@/lib/workflow/types';
 

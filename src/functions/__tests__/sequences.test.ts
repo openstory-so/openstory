@@ -11,7 +11,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Frame, FrameVariant, Shot } from '@/lib/db/schema';
 import { frameVariantFixture } from '@/shared/mocks/frame-fixtures';
-import { toShotView, type ShotView } from '@/lib/shots/shot-view';
+import { toShotView, type ShotView } from '@/shared/shots/shot-view';
 import {
   assertModelNotAlreadyAdded,
   buildAddAudioMusicInput,

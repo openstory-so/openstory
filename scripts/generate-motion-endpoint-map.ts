@@ -23,7 +23,7 @@ const GENERATED_DIR = join(
   'generated'
 );
 
-const MOTION_DIR = join(import.meta.dirname, '..', 'src', 'lib', 'motion');
+const MOTION_DIR = join(import.meta.dirname, '..', 'src', 'shared', 'motion');
 
 type EndpointInfo = {
   endpointId: string;

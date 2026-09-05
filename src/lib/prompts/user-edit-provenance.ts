@@ -20,7 +20,7 @@ import {
   type ShotPromptContextSequence,
 } from '@/lib/ai/prompt-context';
 import type { ScopedDb } from '@/lib/db/scoped';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 import type { UserEditProvenance } from '@/lib/workflow/types';
 
 const logger = getLogger(['openstory', 'prompts', 'user-edit-provenance']);

@@ -21,7 +21,7 @@ import {
   getGenerationChannel,
   getLocationChannel,
   getTalentChannel,
-} from '@/lib/realtime';
+} from '@/shared/realtime';
 
 // Subset of ScopedDb used by the helpers below. Defined structurally so the
 // full ScopedDb is assignable (production passes it directly) and tests can

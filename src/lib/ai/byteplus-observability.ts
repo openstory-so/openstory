@@ -21,7 +21,7 @@
  * whole system). Until then this stays report-only.
  */
 
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 import { getPostHogClient } from '@/lib/posthog-server';
 
 const logger = getLogger(['openstory', 'ai', 'byteplus']);

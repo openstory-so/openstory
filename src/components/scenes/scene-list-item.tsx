@@ -18,7 +18,7 @@ import type { SceneWithScript } from '@/hooks/use-scenes';
 import type { AspectRatio } from '@/shared/constants/aspect-ratios';
 import { cn } from '@/shared/utils';
 import { plainSceneTitle, stripMarkdown } from '@/shared/utils/markdown-plain';
-import type { ShotView } from '@/lib/shots/shot-view';
+import type { ShotView } from '@/shared/shots/shot-view';
 import { Link } from '@tanstack/react-router';
 import {
   ArrowDown,

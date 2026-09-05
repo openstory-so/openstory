@@ -8,14 +8,17 @@
  * activity is supported but not yet reachable from the composer.
  */
 
-import type { Microdollars } from '@/lib/billing/money';
+import type { Microdollars } from '@/shared/billing/money';
 import type { ResolvedLlmKey } from '@/lib/db/scoped/api-keys';
 import {
   aiObservabilityMiddleware,
   type AIObservabilityMeta,
 } from '@/lib/observability/ai-otel';
 import type { ChatMessage } from '@/lib/prompts';
-import type { StudioActivity, StudioReferenceKind } from '@/lib/studio/schema';
+import type {
+  StudioActivity,
+  StudioReferenceKind,
+} from '@/shared/studio/schema';
 import { toVisionImageSource } from '@/lib/storage/external-url';
 import { chat } from '@tanstack/ai';
 import { createAdapter } from './create-adapter';
@@ -25,7 +28,7 @@ import {
   llmCostFromUsage,
   throwNotedRunError,
 } from './llm-client';
-import { DEFAULT_VISION_MODEL } from './models.config';
+import { DEFAULT_VISION_MODEL } from '@/shared/ai/models.config';
 
 export const STUDIO_DRAFT_MODEL = DEFAULT_VISION_MODEL;
 

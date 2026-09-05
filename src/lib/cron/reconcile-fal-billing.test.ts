@@ -59,7 +59,7 @@ describe('reconcileFalBilling', () => {
     driftReports.length = 0;
     vi.doMock('#db-client', () => ({ getDb: () => db }));
     vi.doMock('#env', () => ({ getEnv: () => ({}) }));
-    vi.doMock('@/lib/billing/billing-observability', () => ({
+    vi.doMock('@/shared/billing/billing-observability', () => ({
       reportBillingDrift: (ctx: unknown) => driftReports.push(ctx),
     }));
     vi.stubGlobal(

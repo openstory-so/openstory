@@ -25,12 +25,10 @@ import {
   CONTENT_REPORT_TARGET_TYPES,
 } from '@/shared/content-reports';
 import { complianceEnv } from '@/lib/compliance/config';
-import {
-  formatReportReference,
-  parseTraceId,
-} from '@/lib/compliance/provenance';
+import { parseTraceId } from '@/lib/compliance/provenance';
+import { formatReportReference } from '@/shared/compliance/report-reference';
 import { submitPublicContentReport } from '@/lib/db/scoped';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 import { sendAbuseReportNotifyEmail } from '@/lib/services/email-service';
 import { createServerFn } from '@tanstack/react-start';
 import { getRequest } from '@tanstack/react-start/server';

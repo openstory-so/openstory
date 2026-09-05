@@ -18,7 +18,7 @@ import {
   type AudioModel,
   type ImageToVideoModel,
   type TextToImageModel,
-} from '@/lib/ai/models';
+} from '@/shared/ai/models';
 
 export type WallClock = {
   p50: number;

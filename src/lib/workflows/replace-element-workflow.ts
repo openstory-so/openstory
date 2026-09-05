@@ -34,7 +34,7 @@ import {
   DEFAULT_IMAGE_MODEL,
   safeTextToImageModel,
   supportsReferenceImages,
-} from '@/lib/ai/models';
+} from '@/shared/ai/models';
 import { aspectRatioToImageSize } from '@/shared/constants/aspect-ratios';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import type { ElementVisionStatus } from '@/lib/db/schema';
@@ -43,7 +43,7 @@ import {
   type ReplaceElementCompletePayload,
   type ReplaceElementFailedPayload,
   type ReplaceElementStartPayload,
-} from '@/lib/realtime';
+} from '@/shared/realtime';
 import { spawnAndAwaitChild } from '@/lib/workflow/await-child';
 import { OpenStoryWorkflowEntrypoint } from '@/lib/workflow/base-workflow';
 import type {
@@ -55,7 +55,7 @@ import type {
 } from '@/lib/workflow/types';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { NonRetryableError } from 'cloudflare:workflows';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'workflow', 'replace-element']);
 
