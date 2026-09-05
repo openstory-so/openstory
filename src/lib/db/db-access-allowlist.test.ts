@@ -24,8 +24,8 @@ const RAW_DB_ALLOWLIST = [
   'src/lib/cron/reconcile-fal-billing.ts',
   'src/lib/cron/refresh-fal-pricing.ts',
   'src/lib/ai/fal-pricing-live.ts',
+  'src/lib/db/seed-model-pricing.ts',
   'src/lib/test/seed.ts',
-  'src/lib/workflow/base-workflow.ts',
 ];
 
 /** Files that may value-import `createScopedDb` / `createSystemAdminScopedDb`. */
