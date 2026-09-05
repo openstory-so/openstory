@@ -13,8 +13,8 @@ import {
   throwNotedRunError,
   type LLMRequestParams,
 } from '@/lib/ai/llm-client';
-import type { TextModel } from '@/lib/ai/models';
-import { getMaxOutputTokens } from '@/lib/ai/models.config';
+import type { TextModel } from '@/shared/ai/models';
+import { getMaxOutputTokens } from '@/shared/ai/models.config';
 import type { ChatMessage, ChatMessageImagePart } from '@/lib/prompts';
 import { chat, type TokenUsage } from '@tanstack/ai';
 import type { ProviderPreferences } from '@tanstack/ai-openrouter';

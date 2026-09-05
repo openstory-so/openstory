@@ -11,7 +11,7 @@
  *       against the NEW prompt text), committed in one batch; video stale.
  */
 
-import { DEFAULT_IMAGE_MODEL, safeTextToImageModel } from '@/lib/ai/models';
+import { DEFAULT_IMAGE_MODEL, safeTextToImageModel } from '@/shared/ai/models';
 import { computeVideoManifestInputHash } from '@/lib/ai/input-hash';
 import type { Scene } from '@/lib/ai/scene-analysis.schema';
 import type { Database } from '@/lib/db/client';
@@ -38,8 +38,8 @@ import {
   computeUploadedStillInputHash,
   parseUploadedStoragePath,
   resolveUploadExtension,
-  USER_UPLOAD_MODEL,
 } from '@/lib/shots/upload-media';
+import { USER_UPLOAD_MODEL } from '@/shared/shots/user-upload-model';
 import { buildRegenerateShotSnapshot } from '@/lib/workflows/regenerate-shots-snapshot';
 import { type Client, createClient } from '@libsql/client';
 import { eq } from 'drizzle-orm';

@@ -3,7 +3,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
-import type { ImageGenerationParams } from '@/lib/image/build-image-request';
+import type { ImageGenerationParams } from '@/shared/image/build-image-request';
 import type { ImageGenerationResult } from '@/lib/image/image-generation';
 import type { ImageWorkflowInput } from '@/lib/workflow/types';
 import type { WorkflowStep } from 'cloudflare:workers';
@@ -20,7 +20,7 @@ const durableLLMCallCf = vi.fn();
 vi.doMock('@/lib/workflows/llm-call-helper', () => ({ durableLLMCallCf }));
 
 const emit = vi.fn();
-vi.doMock('@/lib/realtime', () => ({
+vi.doMock('@/shared/realtime', () => ({
   getGenerationChannel: vi.fn(() => ({ emit })),
 }));
 

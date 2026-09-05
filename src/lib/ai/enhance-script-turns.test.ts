@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   parseSceneDurationLabels,
   sumSceneDurations,
-} from './enhance-duration';
+} from '@/shared/ai/enhance-duration';
 import {
   runEnhanceScriptTurns,
   type EnhanceGenerate,

@@ -13,7 +13,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { authClient } from '@/lib/auth/client';
+import { authClient } from '@/shared/auth/client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { Fingerprint, Plus, Trash2 } from 'lucide-react';

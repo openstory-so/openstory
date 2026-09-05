@@ -31,15 +31,15 @@ import { tanstackStartCookies } from 'better-auth/tanstack-start';
 import { getDb } from '#db-client';
 import { getEnv } from '#env';
 import { teamMembers, teams } from '@/lib/db/schema';
-import { SIGNUP_GRANT_MICROS } from '@/lib/billing/constants';
-import { microsToDisplayUsd } from '@/lib/billing/money';
+import { SIGNUP_GRANT_MICROS } from '@/shared/billing/constants';
+import { microsToDisplayUsd } from '@/shared/billing/money';
 import { createBillingMethods } from '@/lib/db/scoped/billing';
 import { sendOtpEmail } from '@/lib/services/email-service';
 import {
   currentAuthCookiePrefix,
   lastUsedLoginMethodCookieName,
-} from '@/lib/auth/cookie-prefix';
-import { DEV_OTP_CODE } from '@/lib/auth/dev-otp';
+} from '@/shared/auth/cookie-prefix';
+import { DEV_OTP_CODE } from '@/shared/auth/dev-otp';
 import { isGoogleAuthConfigured } from '@/lib/auth/google-auth';
 import { isLocalRequestHost } from '@/shared/utils/environment';
 import { DEVICE_VERIFICATION_PATH } from '@/lib/api-v1/device-auth';
@@ -50,7 +50,7 @@ import { deviceAuthorization } from 'better-auth/plugins/device-authorization';
 import { passkey as passkeyPlugin } from '@better-auth/passkey';
 
 import { captureProductEvent } from '@/lib/observability/product-events';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'auth', 'config']);
 const betterAuthLogger = getLogger(['openstory', 'auth', 'better-auth']);

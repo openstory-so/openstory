@@ -11,11 +11,11 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useArchiveSequence } from '@/hooks/use-sequences';
 import type { SequenceWithShots } from '@/hooks/use-sequences-with-shots';
-import { getImageModelById } from '@/lib/ai/models';
+import { getImageModelById } from '@/shared/ai/models';
 import {
   CREDITS_SHORT_TITLE,
   isCreditsShortError,
-} from '@/lib/billing/credits-short';
+} from '@/shared/billing/credits-short';
 import { getAspectRatioData } from '@/shared/constants/aspect-ratios';
 import { errorMessage } from '@/shared/errors';
 import { formatDistanceToNow } from '@/shared/format-date';

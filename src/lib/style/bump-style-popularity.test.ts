@@ -25,7 +25,7 @@ vi.doMock('@/lib/posthog-server', () => ({
   getPostHogClient: mockGetClient,
 }));
 
-vi.doMock('@/lib/observability/logger', () => ({
+vi.doMock('@/shared/observability/logger', () => ({
   getLogger: () => mockLoggerInstance,
 }));
 

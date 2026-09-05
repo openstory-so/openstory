@@ -1,7 +1,10 @@
 import { mediaUrlSchema } from '@/shared/schemas/media-url.schemas';
-import { buildDurationPromptParagraph } from '@/lib/ai/enhance-duration';
-import type { EnhanceStyle } from '@/lib/ai/enhance-inputs';
-import { DEFAULT_VIDEO_MODEL, type ImageToVideoModel } from '@/lib/ai/models';
+import { buildDurationPromptParagraph } from '@/shared/ai/enhance-duration';
+import type { EnhanceStyle } from '@/shared/ai/enhance-inputs';
+import {
+  DEFAULT_VIDEO_MODEL,
+  type ImageToVideoModel,
+} from '@/shared/ai/models';
 import type { AspectRatio } from '@/shared/constants/aspect-ratios';
 import { z } from 'zod';
 

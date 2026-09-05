@@ -8,7 +8,7 @@ import {
   multiplyMicros,
   micros,
   ZERO_MICROS,
-} from '../money';
+} from '@/shared/billing/money';
 
 const m = micros;
 

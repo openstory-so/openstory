@@ -20,7 +20,7 @@ import {
 } from '@/lib/ai/recorded-e2e-scenes';
 import { reconstructRecordedMusicDesignPrompt } from '@/lib/ai/recorded-e2e-music-prompt';
 import { getChatPrompt } from '@/lib/prompts';
-import { StyleConfigSchema } from '@/lib/style/style-config';
+import { StyleConfigSchema } from '@/shared/style/style-config';
 
 function listStage(stage: string): Array<{
   name: string;

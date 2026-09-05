@@ -17,17 +17,17 @@ import {
   type EnhanceChunk,
   streamScriptEnhancement,
 } from '@/lib/ai/script-enhancement';
-import { assessDurationFit } from '@/lib/ai/enhance-duration';
-import { toEnhanceInputs } from '@/lib/ai/enhance-inputs';
+import { assessDurationFit } from '@/shared/ai/enhance-duration';
+import { toEnhanceInputs } from '@/shared/ai/enhance-inputs';
 import {
   DEFAULT_VIDEO_MODEL,
   isValidImageToVideoModel,
   type ImageToVideoModel,
-} from '@/lib/ai/models';
+} from '@/shared/ai/models';
 import { aspectRatioSchema } from '@/shared/constants/aspect-ratios';
 import type { ScopedDb } from '@/lib/db/scoped';
 import { handleApiError } from '@/shared/errors';
-import { getLogger, toErrorPayload } from '@/lib/observability/logger';
+import { getLogger, toErrorPayload } from '@/shared/observability/logger';
 import { createSequenceLink, enhanceScriptLink } from './discovery';
 import type { ApiEnhanceScriptInput } from './enhance-input-schema';
 import { API_V1_BASE, type HalLinks, getLink } from './hal';

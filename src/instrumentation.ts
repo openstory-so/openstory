@@ -8,6 +8,6 @@
  * `chat()` call.)
  */
 
-import { configureLogging } from '@/lib/observability/logger';
+import { configureLogging } from '@/shared/observability/logger';
 
 configureLogging();

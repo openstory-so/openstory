@@ -3,9 +3,9 @@ import {
   EDIT_ENDPOINTS,
   IMAGE_TO_VIDEO_MODELS,
   MOTION_REFERENCE_ENDPOINTS,
-} from '@/lib/ai/models';
+} from '@/shared/ai/models';
 import { catalogFalEndpointIds } from '@/lib/billing/catalog-endpoints';
-import { studioVideoEndpointId } from '@/lib/studio/text-to-video';
+import { studioVideoEndpointId } from '@/shared/studio/text-to-video';
 
 describe('catalogFalEndpointIds', () => {
   it('includes Seedance image-to-video and reference-to-video endpoints', () => {

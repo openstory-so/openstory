@@ -98,7 +98,7 @@ input }`. Wire in all 3 places (wrangler.jsonc `workflows[]` binding `ASSET_WORK
 enforces. Follow the existing image/motion workflow structure for fal key resolution, fal queue
 call, R2 upload, cost deduction, failure handling. Steps write the row status transitions.
 
-### Catalog lib: `src/lib/models/catalog.ts` + `src/functions/model-catalog.ts` (Agent B owns)
+### Catalog lib: `src/shared/models/catalog.ts` + `src/functions/model-catalog.ts` (Agent B owns)
 
 - `listCatalogModels({ activity?, q?, cursor?, limit? })` → modelschemas `/v1/models` (provider
   fal), returns `{ models: CatalogModel[], nextCursor? }`. `CatalogModel`: `endpointId`,

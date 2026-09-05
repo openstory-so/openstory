@@ -1,10 +1,10 @@
 import {
   isValidImageToVideoModel,
   type ImageToVideoModel,
-} from '@/lib/ai/models';
+} from '@/shared/ai/models';
 import { useCallback, useSyncExternalStore } from 'react';
 
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'ui', 'use-active-video-model']);
 

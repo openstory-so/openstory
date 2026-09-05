@@ -3,7 +3,7 @@
  * off-session for a flat configured amount and credit it (#1099).
  */
 
-import { micros } from '@/lib/billing/money';
+import { micros } from '@/shared/billing/money';
 import type { Database } from '@/lib/db/client';
 import { generateId } from '@/shared/id';
 import {
@@ -19,8 +19,8 @@ import { type Client, createClient } from '@libsql/client';
 import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/libsql';
 import { migrate } from 'drizzle-orm/libsql/migrator';
-import * as realConstants from '@/lib/billing/constants';
-import { AUTO_TOPUP_DECLINE_COOLDOWN_MS } from '@/lib/billing/constants';
+import * as realConstants from '@/shared/billing/constants';
+import { AUTO_TOPUP_DECLINE_COOLDOWN_MS } from '@/shared/billing/constants';
 import {
   afterAll,
   beforeAll,
@@ -38,12 +38,12 @@ const loggerDebug = vi.fn();
 const loggerInfo = vi.fn();
 const loggerWarn = vi.fn();
 
-vi.doMock('@/lib/billing/constants', () => ({
+vi.doMock('@/shared/billing/constants', () => ({
   ...realConstants,
   isStripeEnabled: () => true,
 }));
 
-vi.doMock('@/lib/observability/logger', () => ({
+vi.doMock('@/shared/observability/logger', () => ({
   getLogger: () => ({
     error: loggerError,
     debug: loggerDebug,

@@ -22,7 +22,7 @@ import {
   type SceneSplittingScene,
 } from './streaming-scene-parser';
 import { reconcileSceneTags } from './tag-reconcile';
-import { buildCastCharacterBible } from '@/lib/prompts/character-prompt';
+import { buildCastCharacterBible } from '@/shared/prompts/character-prompt';
 
 const OPENROUTER_DIR = resolve(
   dirname(fileURLToPath(import.meta.url)),

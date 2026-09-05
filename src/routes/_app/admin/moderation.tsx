@@ -23,7 +23,7 @@ import {
   resolveContentReportFn,
   traceContentFn,
 } from '@/functions/moderation';
-import { formatReportReference } from '@/lib/compliance/provenance';
+import { formatReportReference } from '@/shared/compliance/report-reference';
 import {
   CONTENT_REPORT_REASONS,
   type ContentReportReason,

@@ -41,7 +41,7 @@ vi.doMock('@/lib/talent/crop-sheet-portrait', () => ({
 vi.doMock('@/lib/compliance/provenance', () => ({
   recordProvenance: mockRecordProvenance,
 }));
-vi.doMock('@/lib/realtime', () => ({
+vi.doMock('@/shared/realtime', () => ({
   getTalentChannel: () => ({ emit: mockEmit }),
 }));
 

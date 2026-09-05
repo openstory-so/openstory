@@ -7,14 +7,14 @@ import {
   isModelCompatibleWithAspectRatio,
   isValidImageToVideoModel,
   type ImageToVideoModel,
-} from '@/lib/ai/models';
+} from '@/shared/ai/models';
 import {
   compareSelectorModels,
   QUALITY_DEFAULT_VIDEO,
   SELECTOR_GROUP_ORDER,
   selectorGroup,
   TURBO_VIDEO_MODELS,
-} from '@/lib/ai/generation-mode';
+} from '@/shared/ai/generation-mode';
 import { useViaAvailability } from '@/hooks/use-via-availability';
 import type { AspectRatio } from '@/shared/constants/aspect-ratios';
 import { useMemo } from 'react';

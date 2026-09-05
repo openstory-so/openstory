@@ -6,7 +6,7 @@
  * the webhook API route imports this file.
  */
 
-import { isStripeEnabled } from '@/lib/billing/constants';
+import { isStripeEnabled } from '@/shared/billing/constants';
 import { getStripeOrThrow, getStripeWebhookSecret } from '@/lib/billing/stripe';
 import { createScopedDb, type ScopedDb } from '@/lib/db/scoped';
 import { createMiddleware } from '@tanstack/react-start';

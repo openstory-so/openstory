@@ -35,7 +35,7 @@ import {
 } from '@/hooks/use-sequence-elements';
 import type { SequenceElement } from '@/lib/db/schema';
 import { errorMessage } from '@/shared/errors';
-import { MAX_SEQUENCE_ELEMENTS } from '@/lib/sequence-elements/limits';
+import { MAX_SEQUENCE_ELEMENTS } from '@/shared/sequence-elements/limits';
 import { cn } from '@/shared/utils';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -55,7 +55,7 @@ import {
 } from 'react';
 import { toast } from 'sonner';
 
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 import { AppImage } from '@/components/ui/app-image';
 
 const logger = getLogger(['openstory', 'ui', 'element', 'element-selector']);

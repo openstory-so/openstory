@@ -27,7 +27,7 @@ import {
   useSoftDeleteShot,
   useUpdateScene,
 } from '@/hooks/use-scene-structure';
-import { videoModelDisplayName } from '@/lib/ai/models';
+import { videoModelDisplayName } from '@/shared/ai/models';
 import type { AspectRatio } from '@/shared/constants/aspect-ratios';
 import type { SceneWithScript } from '@/hooks/use-scenes';
 import type { ShotVariant } from '@/lib/db/schema';
@@ -35,8 +35,8 @@ import { errorMessage } from '@/shared/errors';
 import {
   groupShotsBySegment,
   type SequenceSegment,
-} from '@/lib/scenes/scene-segments';
-import type { ShotView } from '@/lib/shots/shot-view';
+} from '@/shared/scenes/scene-segments';
+import type { ShotView } from '@/shared/shots/shot-view';
 import { cn } from '@/shared/utils';
 import { plainSceneTitle } from '@/shared/utils/markdown-plain';
 import { useQueryClient } from '@tanstack/react-query';

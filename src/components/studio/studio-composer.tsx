@@ -18,9 +18,9 @@ import { MotionModelSelector } from '@/components/model/motion-model-selector';
 import type { MentionItem } from '@/components/scenes/prompt-mention/mention-items';
 import { AspectRatioPills } from '@/components/settings/aspect-ratio-pills';
 import { ResolutionPills } from '@/components/settings/resolution-pills';
-import { IMAGE_MODELS } from '@/lib/ai/models';
-import { imageResolutionTiers } from '@/lib/image/build-image-request';
-import { motionResolutionTiers } from '@/lib/motion/build-model-input';
+import { IMAGE_MODELS } from '@/shared/ai/models';
+import { imageResolutionTiers } from '@/shared/image/build-image-request';
+import { motionResolutionTiers } from '@/shared/motion/build-model-input';
 import {
   clampResolution,
   DEFAULT_RESOLUTION,
@@ -78,12 +78,12 @@ import {
   supportsReferenceImages,
   type ImageToVideoModel,
   type TextToImageModel,
-} from '@/lib/ai/models';
+} from '@/shared/ai/models';
 import {
   estimateImageCost,
   estimateStudioVideoCost,
-} from '@/lib/billing/cost-estimation';
-import { multiplyMicros } from '@/lib/billing/money';
+} from '@/shared/billing/cost-estimation';
+import { multiplyMicros } from '@/shared/billing/money';
 import {
   ASPECT_RATIOS,
   DEFAULT_ASPECT_RATIO,
@@ -95,12 +95,12 @@ import { useEditorDictation } from '@/hooks/use-dictation';
 import {
   pickShufflePrompt,
   studioShufflePrompts,
-} from '@/lib/studio/prompt-shuffle';
-import { parseStudioPaste } from '@/lib/studio/paste-import';
+} from '@/shared/studio/prompt-shuffle';
+import { parseStudioPaste } from '@/shared/studio/paste-import';
 import type {
   StudioCreateInput,
   StudioReferenceKind,
-} from '@/lib/studio/schema';
+} from '@/shared/studio/schema';
 import {
   renumberStudioReferences,
   snapStudioVideoDuration,
@@ -115,7 +115,7 @@ import {
   studioVideoSupportsAudio,
   type StudioReferenceToken,
   type StudioVideoMode,
-} from '@/lib/studio/text-to-video';
+} from '@/shared/studio/text-to-video';
 import {
   dataTransferHasImages,
   extractImagesFromSnapshot,

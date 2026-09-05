@@ -5,7 +5,7 @@
  */
 
 import { handleApiError, OpenStoryError } from '@/shared/errors';
-import { getLogger, toErrorPayload } from '@/lib/observability/logger';
+import { getLogger, toErrorPayload } from '@/shared/observability/logger';
 import { z } from 'zod';
 
 const logger = getLogger(['openstory', 'api-v1']);

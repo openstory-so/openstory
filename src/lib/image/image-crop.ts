@@ -18,7 +18,7 @@ import {
   r2KeyFromUrl,
   toCdnUrl,
 } from '@/lib/storage/buckets';
-import { tileCropRect } from './tile-crop';
+import { tileCropRect } from '@/shared/image/tile-crop';
 
 type CropTileOptions = {
   gridImageUrl: string;

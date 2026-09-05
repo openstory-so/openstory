@@ -1,5 +1,5 @@
 import { Badge } from '@/components/ui/badge';
-import type { ModelFamily } from '@/lib/models/model-families';
+import type { ModelFamily } from '@/shared/models/model-families';
 import { Link } from '@tanstack/react-router';
 import type { FC } from 'react';
 import { ACTIVITY_ICONS, ACTIVITY_LABELS, ModelCard } from './model-card';

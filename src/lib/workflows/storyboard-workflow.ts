@@ -21,7 +21,7 @@
  *     dashboard. CF instances surface in the Workflows dashboard via
  *     `event.instanceId`. */
 
-import { PREVIEW_IMAGE_MODEL } from '@/lib/ai/models';
+import { PREVIEW_IMAGE_MODEL } from '@/shared/ai/models';
 import {
   deductWorkflowCredits,
   extractImageCost,
@@ -36,7 +36,7 @@ import {
   notifySequenceReady,
   sequenceScenesUrl,
 } from '@/lib/emails/notify-sequence-ready';
-import { getGenerationChannel } from '@/lib/realtime';
+import { getGenerationChannel } from '@/shared/realtime';
 import { includesStage } from '@/shared/generation/pipeline';
 import { validateSequenceAuth } from '@/lib/workflow/auth';
 import { spawnAndAwaitChild } from '@/lib/workflow/await-child';
@@ -47,7 +47,7 @@ import type {
   StoryboardWorkflowInput,
 } from '@/lib/workflow/types';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'workflow', 'storyboard']);
 

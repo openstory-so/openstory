@@ -11,7 +11,7 @@ import {
 } from '@/shared/utils/file';
 import { generateId } from '@/shared/id';
 
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'audio', 'audio-storage']);
 

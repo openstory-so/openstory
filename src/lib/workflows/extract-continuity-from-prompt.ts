@@ -18,7 +18,7 @@ import type {
   SequenceElementMinimal,
   SequenceLocationMinimal,
 } from '@/lib/db/schema';
-import { matchElementsToScene } from '@/lib/workflows/scene-matching';
+import { matchElementsToScene } from '@/shared/scenes/scene-matching';
 
 type CharacterTerm = Pick<
   CharacterMinimal,

@@ -31,8 +31,8 @@ import {
 } from '@/hooks/use-sequence-locations';
 import type { LocationSheetVariant } from '@/lib/db/schema';
 import { errorMessage } from '@/shared/errors';
-import { useRealtime } from '@/lib/realtime/client';
-import { useSheetStaleDetected } from '@/lib/realtime/use-sheet-stale-detected';
+import { useRealtime } from '@/shared/realtime/client';
+import { useSheetStaleDetected } from '@/shared/realtime/use-sheet-stale-detected';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -45,9 +45,9 @@ import {
 } from '@/components/ui/alert-dialog';
 import { useFalPricing } from '@/hooks/use-fal-pricing';
 import { useSequence } from '@/hooks/use-sequences';
-import type { TextToImageModel } from '@/lib/ai/models';
-import { estimateImageCost } from '@/lib/billing/cost-estimation';
-import { resolveSheetImageModel } from '@/lib/sheets/sheet-image-model';
+import type { TextToImageModel } from '@/shared/ai/models';
+import { estimateImageCost } from '@/shared/billing/cost-estimation';
+import { resolveSheetImageModel } from '@/shared/sheets/sheet-image-model';
 import { useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { ArrowLeft, Loader2, MapPin, RefreshCw, Trash2 } from 'lucide-react';

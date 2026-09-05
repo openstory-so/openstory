@@ -5,8 +5,8 @@
 
 import { createServerFn } from '@tanstack/react-start';
 import { authWithTeamMiddleware } from './middleware';
-import { isStripeEnabled } from '@/lib/billing/constants';
-import { microsToUsd } from '@/lib/billing/money';
+import { isStripeEnabled } from '@/shared/billing/constants';
+import { microsToUsd } from '@/shared/billing/money';
 
 /**
  * Check billing gate status: balance, BYOK keys, and auto-top-up

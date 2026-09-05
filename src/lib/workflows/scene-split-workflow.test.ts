@@ -16,7 +16,7 @@
  * always parsed.
  */
 
-import { SCENE_SPLIT_MODEL } from '@/lib/ai/models.config';
+import { SCENE_SPLIT_MODEL } from '@/shared/ai/models.config';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import type {
   WorkflowEvent,
@@ -38,7 +38,7 @@ vi.doMock('@/lib/prompts', () => ({
 }));
 
 const emit = vi.fn(() => Promise.resolve());
-vi.doMock('@/lib/realtime', () => ({
+vi.doMock('@/shared/realtime', () => ({
   getGenerationChannel: vi.fn(() => ({ emit })),
 }));
 

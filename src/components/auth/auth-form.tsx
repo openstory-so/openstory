@@ -15,17 +15,17 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import type { AuthOptions } from '@/functions/auth-options';
-import { authClient } from '@/lib/auth/client';
-import { DEV_OTP_CODE } from '@/lib/auth/dev-otp';
+import { authClient } from '@/shared/auth/client';
+import { DEV_OTP_CODE } from '@/shared/auth/dev-otp';
 import {
   finishSignInRedirect,
   sanitizeAuthRedirect,
-} from '@/lib/auth/navigation';
+} from '@/shared/auth/navigation';
 import { usePostHog } from '@posthog/react';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'ui', 'auth', 'auth-form']);
 

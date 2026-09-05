@@ -42,7 +42,7 @@ vi.doMock('@posthog/react', () => ({
   usePostHog: () => ({ capture: vi.fn() }),
 }));
 vi.doMock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
-vi.doMock('@/lib/auth/session-query', () => ({
+vi.doMock('@/shared/auth/session-query', () => ({
   useAuthSession: () => ({ data: null }),
 }));
 

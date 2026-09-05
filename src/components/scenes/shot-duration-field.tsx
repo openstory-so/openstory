@@ -37,10 +37,10 @@ import {
   IMAGE_TO_VIDEO_MODELS,
   videoModelDisplayName,
   type ImageToVideoModel,
-} from '@/lib/ai/models';
-import { MOTION_JSON_SCHEMAS } from '@/lib/motion/endpoint-map';
-import { snapDuration } from '@/lib/motion/snap-duration';
-import { getDurationValues, numericOf } from '@/lib/motion/motion-transform';
+} from '@/shared/ai/models';
+import { MOTION_JSON_SCHEMAS } from '@/shared/motion/endpoint-map';
+import { snapDuration } from '@/shared/motion/snap-duration';
+import { getDurationValues, numericOf } from '@/shared/motion/motion-transform';
 import type { Shot } from '@/types/database';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Loader2, Sparkles } from 'lucide-react';

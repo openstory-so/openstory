@@ -9,7 +9,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { IMAGE_TO_VIDEO_MODELS } from '@/lib/ai/models';
+import { IMAGE_TO_VIDEO_MODELS } from '@/shared/ai/models';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import type { MotionWorkflowInput } from '@/lib/workflow/types';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
@@ -40,7 +40,9 @@ vi.doMock('@/lib/motion/motion-generation', () => ({
 vi.doMock('@/lib/ai/fal-pricing-live', () => ({
   getEffectiveFalPricing: async () => ({}),
 }));
-vi.doMock('@/lib/billing/cost-estimation', () => ({ gateEstimate: () => 0 }));
+vi.doMock('@/shared/billing/cost-estimation', () => ({
+  gateEstimate: () => 0,
+}));
 vi.doMock('@/lib/billing/workflow-deduction', () => ({
   deductWorkflowCredits: mockDeductWorkflowCredits,
   recordFalUsageStep: vi.fn(async () => ({})),
@@ -62,7 +64,7 @@ vi.doMock('@/lib/compliance/provenance', () => ({
 vi.doMock('@/lib/observability/ai-otel', () => ({
   recordMediaGenerationSpan: mockRecordMediaGenerationSpan,
 }));
-vi.doMock('@/lib/realtime', () => ({
+vi.doMock('@/shared/realtime', () => ({
   getGenerationChannel: () => ({ emit }),
 }));
 vi.doMock('@/lib/workflows/motion-workflow-persist', () => ({

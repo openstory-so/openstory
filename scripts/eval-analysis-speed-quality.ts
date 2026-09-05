@@ -33,14 +33,14 @@ import {
   SCRIPT_ANALYSIS_MODELS,
   getAnalysisModelById,
   isSelectableAnalysisModelId,
-} from '@/lib/ai/models.config';
+} from '@/shared/ai/models.config';
 import { addLineGutter } from '@/lib/ai/boundary-split';
 import { narrowShotPromptContext } from '@/lib/ai/prompt-context';
 import { buildMatchingPromptVariables } from '@/lib/ai/talent-matching-prompt';
 import { buildLocationMatchingPromptVariables } from '@/lib/ai/location-matching-prompt';
 import { buildMusicSceneSummaries } from '@/lib/workflows/music-scene-summaries';
-import { STYLE_CATEGORIES } from '@/lib/style/auto-style';
-import { STYLE_PACE_VALUES } from '@/lib/style/style-config';
+import { STYLE_CATEGORIES } from '@/shared/style/auto-style';
+import { STYLE_PACE_VALUES } from '@/shared/style/style-config';
 import type { LibraryLocation } from '@/lib/db/schema/location-library';
 import {
   LOCATION_CASE,

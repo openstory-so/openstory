@@ -18,7 +18,7 @@ import {
 import { AppImage } from '@/components/ui/app-image';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { deriveTokenFromFilename } from '@/lib/sequence-elements/derive-token';
+import { deriveTokenFromFilename } from '@/shared/sequence-elements/derive-token';
 import { Trash2 } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { MentionList, type MentionListRef } from './mention-list';

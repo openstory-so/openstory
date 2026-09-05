@@ -45,7 +45,7 @@ import {
   useSequenceShotStaleness,
 } from '@/hooks/use-shot-staleness';
 import { errorMessage, isInsufficientCreditsError } from '@/shared/errors';
-import { adjacentShotId } from '@/lib/scenes/shot-walk';
+import { adjacentShotId } from '@/shared/scenes/shot-walk';
 import { sequenceKeys, useSequence } from '@/hooks/use-sequences';
 import {
   shotKeys,
@@ -71,7 +71,7 @@ import {
   type AudioModel,
   type ImageToVideoModel,
   type TextToImageModel,
-} from '@/lib/ai/models';
+} from '@/shared/ai/models';
 import {
   clearSelection,
   selectShot,
@@ -79,21 +79,21 @@ import {
   selectionShots,
   type SceneFacet,
   type ScenesSearch,
-} from '@/lib/scenes/scene-selection';
-import { formatShotSpan } from '@/lib/scenes/scene-segments';
+} from '@/shared/scenes/scene-selection';
+import { formatShotSpan } from '@/shared/scenes/scene-segments';
 import {
   resolveImageModel,
   resolveVideoModel,
-} from '@/lib/ai/resolve-asset-models';
+} from '@/shared/ai/resolve-asset-models';
 import { DEFAULT_ASPECT_RATIO } from '@/shared/constants/aspect-ratios';
-import { isSetImageOffered } from '@/lib/shots/set-image-offer';
+import { isSetImageOffered } from '@/shared/shots/set-image-offer';
 import type { FrameVariant, ShotVariant } from '@/lib/db/schema';
-import { rendersReferenceOnly } from '@/lib/shots/use-start-frame';
-import { isBatchMotionEligible, type ShotView } from '@/lib/shots/shot-view';
+import { rendersReferenceOnly } from '@/shared/shots/use-start-frame';
+import { isBatchMotionEligible, type ShotView } from '@/shared/shots/shot-view';
 import { analyzeLoadedFailures } from '@/shared/failures/failure-analysis';
-import type { GenerationPhaseConfig } from '@/lib/realtime/generation-stream.reducer';
-import { useGenerationStream } from '@/lib/realtime/use-generation-stream';
-import { useStaleDetected } from '@/lib/realtime/use-stale-detected';
+import type { GenerationPhaseConfig } from '@/shared/realtime/generation-stream.reducer';
+import { useGenerationStream } from '@/shared/realtime/use-generation-stream';
+import { useStaleDetected } from '@/shared/realtime/use-stale-detected';
 import type { Sequence } from '@/types/database';
 import { cn } from '@/shared/utils';
 import { ChevronDown } from 'lucide-react';
@@ -101,7 +101,7 @@ import { usePostHog } from '@posthog/react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from '@tanstack/react-router';
 import { getSequencesFn } from '@/functions/sequences';
-import { captureSequenceReadySeen } from '@/lib/observability/player-events';
+import { captureSequenceReadySeen } from '@/shared/observability/player-events';
 
 import {
   estimateSceneCount,

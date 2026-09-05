@@ -1,7 +1,7 @@
 import { getChannelHistoryFn } from '@/functions/realtime-history';
 import { useUser } from '@/hooks/use-user';
-import { useRealtime } from '@/lib/realtime/client';
-import type { StaleDetectedPayload } from '@/lib/realtime';
+import { useRealtime } from '@/shared/realtime/client';
+import type { StaleDetectedPayload } from '@/shared/realtime';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useState } from 'react';
 import { talentKeys } from './use-talent';
@@ -10,9 +10,9 @@ import {
   isSheetProgressStale,
   SHEET_PROGRESS_STALE_MS,
   type SheetProgressActivity,
-} from '@/lib/talent/sheet-progress-copy';
+} from '@/shared/talent/sheet-progress-copy';
 
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'ui', 'use-talent-realtime']);
 

@@ -6,7 +6,7 @@
  * it fronts most of the registry directly.
  */
 
-import { micros } from '@/lib/billing/money';
+import { micros } from '@/shared/billing/money';
 import type { ScopedDb } from '@/lib/db/scoped';
 import { InsufficientCreditsError } from '@/shared/errors';
 import { describe, expect, it, vi } from 'vitest';

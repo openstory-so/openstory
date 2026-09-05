@@ -10,14 +10,18 @@ import {
   estimateImageCost,
   estimateLLMCost,
   estimateVideoCost,
-} from '@/lib/billing/cost-estimation';
+} from '@/shared/billing/cost-estimation';
 import type { EffectiveFalPricing } from '@/lib/ai/fal-pricing-live';
 
 type FalPricingMap = Record<string, EffectiveFalPricing>;
-import { safeAudioModel, safeImageToVideoModel } from '@/lib/ai/models';
-import { addMicros, ZERO_MICROS, type Microdollars } from '@/lib/billing/money';
+import { safeAudioModel, safeImageToVideoModel } from '@/shared/ai/models';
+import {
+  addMicros,
+  ZERO_MICROS,
+  type Microdollars,
+} from '@/shared/billing/money';
 import type { UpdateStalePlan } from '@/lib/shots/update-stale-plan';
-import type { UpdateStaleDepth } from '@/lib/shots/update-stale-depth';
+import type { UpdateStaleDepth } from '@/shared/shots/update-stale-depth';
 
 export type UpdateStalePreview = {
   visualPromptShotIds: string[];

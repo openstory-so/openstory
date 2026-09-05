@@ -11,13 +11,20 @@
  * `cost × count`.
  */
 
-import type { ImageToVideoModel } from '@/lib/ai/models';
-import { resolveVideoModel } from '@/lib/ai/resolve-asset-models';
-import type { EffectiveFalPricing } from '@/lib/ai/fal-cost';
-import { estimateVideoCost, gateEstimate } from '@/lib/billing/cost-estimation';
-import { addMicros, ZERO_MICROS, type Microdollars } from '@/lib/billing/money';
+import type { ImageToVideoModel } from '@/shared/ai/models';
+import { resolveVideoModel } from '@/shared/ai/resolve-asset-models';
+import type { EffectiveFalPricing } from '@/shared/ai/fal-cost';
+import {
+  estimateVideoCost,
+  gateEstimate,
+} from '@/shared/billing/cost-estimation';
+import {
+  addMicros,
+  ZERO_MICROS,
+  type Microdollars,
+} from '@/shared/billing/money';
 import type { Resolution } from '@/shared/constants/resolutions';
-import { snapDuration } from '@/lib/motion/snap-duration';
+import { snapDuration } from '@/shared/motion/snap-duration';
 
 /** `useStartFrame` so a caller can price each shot on its own render route. */
 type BatchShot = { id: string; useStartFrame?: boolean | null };

@@ -2,7 +2,7 @@ import {
   getUpdateStaleShotsRunFn,
   updateStaleShotsFn,
 } from '@/functions/shots';
-import type { UpdateStaleDepth } from '@/lib/shots/update-stale-depth';
+import type { UpdateStaleDepth } from '@/shared/shots/update-stale-depth';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';

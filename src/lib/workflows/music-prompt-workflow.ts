@@ -22,7 +22,7 @@ import { computeMusicPromptInputHash } from '@/lib/ai/input-hash';
 import { musicDesignResultSchema } from '@/lib/ai/response-schemas';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import { reinforceInstrumentalTags } from '@/lib/prompts/music-prompt';
-import { getGenerationChannel } from '@/lib/realtime';
+import { getGenerationChannel } from '@/shared/realtime';
 import { OpenStoryWorkflowEntrypoint } from '@/lib/workflow/base-workflow';
 import type {
   MusicPromptWorkflowInput,
@@ -30,7 +30,7 @@ import type {
 } from '@/lib/workflow/types';
 import { durableLLMCallCf } from '@/lib/workflows/llm-call-helper';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'workflow', 'music-prompt']);
 

@@ -6,7 +6,7 @@ import {
   isBrowserDisplayableStillUrl,
   shotAfterVariantSelect,
   type ShotView,
-} from '@/lib/shots/shot-view';
+} from '@/shared/shots/shot-view';
 import {
   getShotsFn,
   getDivergentVariantsFn,

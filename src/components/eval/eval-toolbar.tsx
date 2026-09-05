@@ -19,8 +19,8 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import { SCRIPT_ANALYSIS_MODELS } from '@/lib/ai/models.config';
-import { IMAGE_MODELS } from '@/lib/ai/models';
+import { SCRIPT_ANALYSIS_MODELS } from '@/shared/ai/models.config';
+import { IMAGE_MODELS } from '@/shared/ai/models';
 import { ASPECT_RATIOS } from '@/shared/constants/aspect-ratios';
 import {
   Clapperboard,

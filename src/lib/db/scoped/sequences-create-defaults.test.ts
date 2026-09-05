@@ -3,8 +3,8 @@
  * stale SQL column literals (#1116 / imageModel+videoModel pattern).
  */
 
-import { DEFAULT_ANALYSIS_MODEL } from '@/lib/ai/models.config';
-import { DEFAULT_IMAGE_MODEL, DEFAULT_VIDEO_MODEL } from '@/lib/ai/models';
+import { DEFAULT_ANALYSIS_MODEL } from '@/shared/ai/models.config';
+import { DEFAULT_IMAGE_MODEL, DEFAULT_VIDEO_MODEL } from '@/shared/ai/models';
 import type { Database } from '@/lib/db/client';
 import { generateId } from '@/shared/id';
 import { sequences, styles, teams, user } from '@/lib/db/schema';

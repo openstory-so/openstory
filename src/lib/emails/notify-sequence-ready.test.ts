@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
-import { usdToMicros } from '@/lib/billing/money';
+import { usdToMicros } from '@/shared/billing/money';
 
 const sendSequenceReadyEmail = vi.fn();
 vi.doMock('@/lib/services/email-service', () => ({

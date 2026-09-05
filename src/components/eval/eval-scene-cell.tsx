@@ -1,7 +1,7 @@
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { SceneWithScript } from '@/hooks/use-scenes';
-import type { ShotView } from '@/lib/shots/shot-view';
+import type { ShotView } from '@/shared/shots/shot-view';
 import type { AspectRatio } from '@/shared/constants/aspect-ratios';
 import { stripMarkdown } from '@/shared/utils/markdown-plain';
 import { AppImage } from '@/components/ui/app-image';

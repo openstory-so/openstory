@@ -7,11 +7,11 @@ import {
   IMAGE_TO_VIDEO_MODELS,
   referenceOnlyCapableWith,
   type ImageToVideoModel,
-} from '@/lib/ai/models';
+} from '@/shared/ai/models';
 import {
   DEFAULT_ANALYSIS_MODEL,
   isValidAnalysisModelId,
-} from '@/lib/ai/models.config';
+} from '@/shared/ai/models.config';
 import { aspectRatioSchema } from '@/shared/constants/aspect-ratios';
 import { resolutionSchema } from '@/shared/constants/resolutions';
 import { sequences } from '@/lib/db/schema/sequences';

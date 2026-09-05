@@ -17,10 +17,10 @@
  *     two parallel `spawnAndAwaitChild` calls (Pattern 3).
  * */
 
-import { DEFAULT_VIDEO_MODEL } from '@/lib/ai/models';
+import { DEFAULT_VIDEO_MODEL } from '@/shared/ai/models';
 import type { Scene } from '@/lib/ai/scene-analysis.schema';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
-import { snapDuration } from '@/lib/motion/snap-duration';
+import { snapDuration } from '@/shared/motion/snap-duration';
 import { reinforceInstrumentalTags } from '@/lib/prompts/music-prompt';
 import { OpenStoryWorkflowEntrypoint } from '@/lib/workflow/base-workflow';
 import { spawnAndAwaitChild } from '@/lib/workflow/await-child';
@@ -37,7 +37,7 @@ import {
   joinMusicDesignByIndex,
 } from '@/lib/workflows/music-scene-summaries';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'workflow', 'motion-music-prompts']);
 

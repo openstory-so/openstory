@@ -12,7 +12,7 @@ import {
 } from '@/lib/compliance/enforcement';
 import { loadComplianceRecords } from '@/lib/db/scoped';
 
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'workflow', 'client']);
 

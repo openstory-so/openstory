@@ -5,7 +5,10 @@
  */
 
 import type { Style } from '@/lib/db/schema/libraries';
-import { parseStyleConfig, StyleConfigSchema } from '@/lib/style/style-config';
+import {
+  parseStyleConfig,
+  StyleConfigSchema,
+} from '@/shared/style/style-config';
 import { z } from 'zod';
 import { createSequenceLink } from './discovery';
 import { getLink, STYLES_PATH, withLinks } from './hal';

@@ -41,7 +41,7 @@ import {
 } from '@/hooks/use-billing-balance';
 import { BILLING_GATE_KEY } from '@/hooks/use-billing-gate';
 import { useShowCosts } from '@/hooks/use-show-costs';
-import { MIN_TOPUP_AMOUNT_USD } from '@/lib/billing/constants';
+import { MIN_TOPUP_AMOUNT_USD } from '@/shared/billing/constants';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
 import {

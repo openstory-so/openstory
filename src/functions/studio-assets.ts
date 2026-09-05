@@ -11,11 +11,11 @@ import {
   draftStudioPrompt,
   STUDIO_DRAFT_MODEL,
 } from '@/lib/ai/studio-prompt-draft';
-import { reportMissingBillingCost } from '@/lib/billing/billing-observability';
-import { estimateLLMCost } from '@/lib/billing/cost-estimation';
+import { reportMissingBillingCost } from '@/shared/billing/billing-observability';
+import { estimateLLMCost } from '@/shared/billing/cost-estimation';
 import { InsufficientCreditsError } from '@/shared/errors';
 import { mediaUrlSchema } from '@/shared/schemas/media-url.schemas';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 import { STORAGE_BUCKETS, r2KeyFromUrl } from '@/lib/storage/buckets';
 import { deleteFile } from '@/lib/storage/storage-cloudflare';
 import { createStudioAssets } from '@/lib/studio/create-studio-asset';
@@ -24,7 +24,7 @@ import {
   studioCreateInputSchema,
   studioReferenceKindSchema,
   studioSortSchema,
-} from '@/lib/studio/schema';
+} from '@/shared/studio/schema';
 import { ulidSchema } from '@/lib/schemas/id.schemas';
 import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';

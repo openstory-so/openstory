@@ -27,12 +27,12 @@
 
 import { readFile } from 'node:fs/promises';
 import { parseArgs } from 'node:util';
-import { DEFAULT_IMAGE_MODEL, DEFAULT_VIDEO_MODEL } from '@/lib/ai/models';
+import { DEFAULT_IMAGE_MODEL, DEFAULT_VIDEO_MODEL } from '@/shared/ai/models';
 import {
   ANALYSIS_MODEL_IDS,
   DEFAULT_ANALYSIS_MODEL,
   isValidAnalysisModelId,
-} from '../src/lib/ai/models.config';
+} from '@/shared/ai/models.config';
 import {
   aspectRatioSchema,
   type AspectRatio,
@@ -41,7 +41,7 @@ import { z } from 'zod';
 import {
   parseStyleConfig,
   type StyleConfig,
-} from '../src/lib/style/style-config';
+} from '@/shared/style/style-config';
 import { triggerWorkflow } from '../src/lib/workflow/client';
 
 function printUsage() {

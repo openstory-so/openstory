@@ -19,12 +19,12 @@ import {
   styleCanonicalVideoUrl,
   styleCategoryLabel,
   stylePreviewImageUrls,
-} from '@/lib/style/style-assets';
+} from '@/shared/style/style-assets';
 import {
   getConfigColorPalette,
   getConfigDisplayFields,
-} from '@/lib/style/style-config';
-import { styleSlug } from '@/lib/style/style-slug';
+} from '@/shared/style/style-config';
+import { styleSlug } from '@/shared/style/style-slug';
 import type { Style } from '@/types/database';
 import { Link } from '@tanstack/react-router';
 import { Wand2 } from 'lucide-react';

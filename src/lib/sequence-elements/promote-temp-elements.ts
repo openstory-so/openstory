@@ -8,9 +8,9 @@ import { triggerWorkflow } from '@/lib/workflow/client';
 import { buildWorkflowLabel } from '@/lib/workflow/labels';
 import type { ElementVisionWorkflowInput } from '@/lib/workflow/types';
 import { z } from 'zod';
-import { deriveTokenFromFilename } from './derive-token';
+import { deriveTokenFromFilename } from '@/shared/sequence-elements/derive-token';
 
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger([
   'openstory',

@@ -17,14 +17,14 @@ import {
   type ShotView,
   type ShotViewSources,
   toShotView,
-} from '@/lib/shots/shot-view';
+} from '@/shared/shots/shot-view';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 
 // Stub the logger so the "style failed to resolve" anomaly path is observable
 // (and doesn't print an error line during the run). Hoisted so the mock is in
 // place before ./state captures its logger at import.
 const { loggerErrorMock } = vi.hoisted(() => ({ loggerErrorMock: vi.fn() }));
-vi.mock('@/lib/observability/logger', () => ({
+vi.mock('@/shared/observability/logger', () => ({
   getLogger: () => ({
     error: loggerErrorMock,
     warn: vi.fn(),

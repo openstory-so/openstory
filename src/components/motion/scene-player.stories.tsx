@@ -10,7 +10,7 @@ import {
   toShotView,
   type ShotGridSheet,
   type ShotView,
-} from '@/lib/shots/shot-view';
+} from '@/shared/shots/shot-view';
 import type { Meta, StoryObj } from '@storybook/react';
 import { ScenePlayer } from './scene-player';
 

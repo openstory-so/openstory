@@ -29,8 +29,8 @@
  * Client-safe: no env access, no adapters.
  */
 
-import type { AnalysisModelId } from '@/lib/ai/models.config';
-import { usdToMicros, type Microdollars } from '@/lib/billing/money';
+import type { AnalysisModelId } from '@/shared/ai/models.config';
+import { usdToMicros, type Microdollars } from '@/shared/billing/money';
 import { typedEntries } from '@/shared/utils/typed-object';
 import type { TokenUsage } from '@tanstack/ai';
 

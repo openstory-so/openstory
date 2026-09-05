@@ -11,14 +11,14 @@ import { generateId } from '@/shared/id';
 import { user } from './auth';
 import { teams } from './teams';
 
-// Canonical config schema lives drizzle-free in src/lib/style/style-config.ts;
+// Canonical config schema lives drizzle-free in src/shared/style/style-config.ts;
 // re-exported here to keep the historical `@/lib/db/schema` import paths.
-import type { StoredStyleConfig } from '@/lib/style/style-config';
+import type { StoredStyleConfig } from '@/shared/style/style-config';
 export {
   StyleConfigSchema,
   type StyleConfig,
   type StoredStyleConfig,
-} from '@/lib/style/style-config';
+} from '@/shared/style/style-config';
 
 const StyleSampleVideoKindSchema = z.enum(['canonical', 'category', 'bespoke']);
 

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 const loggerWarn = vi.fn();
-vi.doMock('@/lib/observability/logger', () => ({
+vi.doMock('@/shared/observability/logger', () => ({
   getLogger: () => ({ warn: loggerWarn, error: vi.fn(), info: vi.fn() }),
 }));
 
@@ -15,7 +15,7 @@ const {
   reportMissingBillingCost,
   reportReservationShort,
   reportSkippedDeduction,
-} = await import('../billing-observability');
+} = await import('@/shared/billing/billing-observability');
 
 describe('reportFlooredEstimate', () => {
   it('captures a billing_estimate_floored event', () => {

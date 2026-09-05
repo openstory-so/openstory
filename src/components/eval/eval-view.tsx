@@ -23,7 +23,7 @@ import type { AspectRatio } from '@/shared/constants/aspect-ratios';
 import type {
   SequencesListPrefs,
   SequencesListSearch,
-} from '@/lib/sequences/list-prefs';
+} from '@/shared/sequences/list-prefs';
 import { getCreatorIdentity } from './creator-identity';
 
 export type ViewMode = 'script' | 'prompts' | 'images' | 'motion';

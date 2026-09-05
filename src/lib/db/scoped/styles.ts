@@ -12,8 +12,8 @@ import {
   type ServerManagedStyleColumn,
 } from '@/lib/schemas/style.schemas';
 import { stripServerManagedColumns } from './server-managed';
-import { styleSlug } from '@/lib/style/style-slug';
-import type { AutoStyleDraft } from '@/lib/style/auto-style';
+import { styleSlug } from '@/shared/style/style-slug';
+import type { AutoStyleDraft } from '@/shared/style/auto-style';
 import {
   and,
   asc,
@@ -27,7 +27,7 @@ import {
   sql,
 } from 'drizzle-orm';
 
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'db', 'styles']);
 

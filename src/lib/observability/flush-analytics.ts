@@ -20,7 +20,7 @@
 
 import { getPostHogClient } from '@/lib/posthog-server';
 import { flushAIObservability } from './ai-otel';
-import { getLogger, toErrorPayload } from './logger';
+import { getLogger, toErrorPayload } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'observability', 'flush-scheduler']);
 

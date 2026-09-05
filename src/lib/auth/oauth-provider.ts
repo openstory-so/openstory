@@ -38,10 +38,10 @@
  */
 
 import { getEnv } from '#env';
-import { OAUTH_CONSENT_START_PATH } from '@/lib/auth/oauth-query-snapshot';
+import { OAUTH_CONSENT_START_PATH } from '@/shared/auth/oauth-query-snapshot';
 import { OAUTH_API_SCOPES, OAUTH_SCOPES } from '@/lib/auth/oauth-scopes';
 import { resolveUserTeam } from '@/lib/db/scoped';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 import { mcp } from '@better-auth/mcp';
 import { jwt } from 'better-auth/plugins';
 

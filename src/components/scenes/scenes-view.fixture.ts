@@ -22,7 +22,7 @@ import {
   toShotView,
   type ShotGridSheet,
   type ShotView,
-} from '@/lib/shots/shot-view';
+} from '@/shared/shots/shot-view';
 import type { Sequence, Style } from '@/types/database';
 
 export const fixtureSequence: Sequence = {

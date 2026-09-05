@@ -8,8 +8,8 @@ import type {
   IMAGE_TO_VIDEO_MODELS,
   ImageToVideoModel,
   TextToImageModel,
-} from '@/lib/ai/models';
-import type { AnalysisModelId } from '@/lib/ai/models.config';
+} from '@/shared/ai/models';
+import type { AnalysisModelId } from '@/shared/ai/models.config';
 import type {
   AssemblableMotionPrompt,
   CharacterBibleEntry,
@@ -59,9 +59,9 @@ import type {
   SequenceLocationMinimal,
   StyleConfig,
 } from '@/lib/db/schema';
-import type { ReferenceImageDescription } from '@/lib/prompts/reference-image-prompt';
+import type { ReferenceImageDescription } from '@/shared/prompts/reference-image-prompt';
 import type { UpdateStalePlan } from '@/lib/shots/update-stale-plan';
-import type { StudioCreateInput } from '@/lib/studio/schema';
+import type { StudioCreateInput } from '@/shared/studio/schema';
 import type { Json } from '@/types/database';
 import type {
   GenerationCheckpoint,
