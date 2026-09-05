@@ -11,6 +11,7 @@ import {
   zGrokImagineVideoV15ImageToVideoInput,
   zH3MaxImageToVideoInput,
   zH3MaxReferenceToVideoInput,
+  zKlingVideoO3ProReferenceToVideoInput,
   zKlingVideoV3ProImageToVideoInput,
   zLtx23ImageToVideoInput,
   zMinimaxHailuo23ProImageToVideoInput,
@@ -27,6 +28,7 @@ import {
   GrokImagineVideoV15ImageToVideoInputSchema,
   H3MaxImageToVideoInputSchema,
   H3MaxReferenceToVideoInputSchema,
+  KlingVideoO3ProReferenceToVideoInputSchema,
   KlingVideoV3ProImageToVideoInputSchema,
   Ltx23ImageToVideoInputSchema,
   MinimaxHailuo23ProImageToVideoInputSchema,
@@ -43,6 +45,7 @@ export type MotionJSONSchema =
   | typeof GrokImagineVideoV15ImageToVideoInputSchema
   | typeof H3MaxImageToVideoInputSchema
   | typeof H3MaxReferenceToVideoInputSchema
+  | typeof KlingVideoO3ProReferenceToVideoInputSchema
   | typeof KlingVideoV3ProImageToVideoInputSchema
   | typeof Ltx23ImageToVideoInputSchema
   | typeof MinimaxHailuo23ProImageToVideoInputSchema
@@ -63,6 +66,8 @@ export const MOTION_INPUT_SCHEMAS = {
     zGeminiOmni11FlashImageToVideoInput,
   'fal-ai/gemini-omni-1.1-flash/reference-to-video':
     zGeminiOmni11FlashReferenceToVideoInput,
+  'fal-ai/kling-video/o3/pro/reference-to-video':
+    zKlingVideoO3ProReferenceToVideoInput,
   'fal-ai/kling-video/v3/pro/image-to-video': zKlingVideoV3ProImageToVideoInput,
   'fal-ai/ltx-2.3/image-to-video': zLtx23ImageToVideoInput,
   'fal-ai/minimax/hailuo-2.3/pro/image-to-video':
@@ -97,6 +102,8 @@ export const MOTION_JSON_SCHEMAS = {
     GeminiOmni11FlashImageToVideoInputSchema,
   'fal-ai/gemini-omni-1.1-flash/reference-to-video':
     GeminiOmni11FlashReferenceToVideoInputSchema,
+  'fal-ai/kling-video/o3/pro/reference-to-video':
+    KlingVideoO3ProReferenceToVideoInputSchema,
   'fal-ai/kling-video/v3/pro/image-to-video':
     KlingVideoV3ProImageToVideoInputSchema,
   'fal-ai/ltx-2.3/image-to-video': Ltx23ImageToVideoInputSchema,
@@ -133,6 +140,10 @@ export const MOTION_TRANSFORMS = {
   'fal-ai/gemini-omni-1.1-flash/reference-to-video': motionTransform(
     zGeminiOmni11FlashReferenceToVideoInput,
     GeminiOmni11FlashReferenceToVideoInputSchema
+  ),
+  'fal-ai/kling-video/o3/pro/reference-to-video': motionTransform(
+    zKlingVideoO3ProReferenceToVideoInput,
+    KlingVideoO3ProReferenceToVideoInputSchema
   ),
   'fal-ai/kling-video/v3/pro/image-to-video': motionTransform(
     zKlingVideoV3ProImageToVideoInput,

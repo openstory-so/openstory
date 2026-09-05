@@ -66,7 +66,7 @@ These models animate still images into video clips.
 | LTX 2.3 Pro            | Lightricks | ~2 min    | Open Weight |                                             |
 | Veo 3.1                | Google     | ~2.5 min  | Proprietary | 20K max prompt length                       |
 | MiniMax Hailuo 2.3     | MiniMax    | ~3 min    | Proprietary | In the Turbo picker; Seedance-class latency |
-| Kling v3 Pro           | Kling      | ~5 min    | Proprietary |                                             |
+| Kling 3.0 Omni         | Kling      | ~5 min    | Proprietary |                                             |
 
 ### Aspect Ratio Compatibility
 

@@ -245,45 +245,15 @@ describe('buildModelInput', () => {
       },
     ];
 
-    it('Kling emits an elements array with frontal + reference images', () => {
-      const result = build('kling_v3_pro', { referenceImages });
-      expect(result.elements).toEqual([
-        {
-          frontal_image_url: 'https://example.com/jack-sheet.png',
-          reference_image_urls: ['https://example.com/jack-sheet.png'],
-        },
-        {
-          frontal_image_url: 'https://example.com/logo.png',
-          reference_image_urls: ['https://example.com/logo.png'],
-        },
-      ]);
-    });
-
-    it('Kling appends an @ElementN legend matching the elements order', () => {
-      const result = build('kling_v3_pro', { referenceImages });
-      expect(result.prompt).toContain(baseOptions.prompt);
-      expect(result.prompt).toContain('@Element1: Jack - tall man with a scar');
-      expect(result.prompt).toContain(
-        '@Element2: ACME_LOGO - red circular badge'
-      );
-    });
-
-    it('Kling without references is unchanged (no elements key)', () => {
-      const result = build('kling_v3_pro');
-      expect(result).not.toHaveProperty('elements');
-      expect(result.prompt).toBe(baseOptions.prompt);
-    });
-
-    it('non-Kling models get no elements key and an unchanged prompt when no tokens are mentioned', () => {
+    it('image-to-video builder never emits an elements key', () => {
       for (const key of Object.keys(IMAGE_TO_VIDEO_MODELS)) {
-        if (key === 'kling_v3_pro') continue;
         const result = build(safeImageToVideoModel(key), { referenceImages });
         expect(result).not.toHaveProperty('elements');
         expect(result.prompt).toBe(baseOptions.prompt);
       }
     });
 
-    it('non-Kling models substitute mentioned tokens with descriptions', () => {
+    it('substitutes mentioned tokens with descriptions on the i2v path', () => {
       const tokenRefs = [
         {
           referenceImageUrl: 'https://example.com/jack-sheet.png',
@@ -360,7 +330,7 @@ describe('buildModelInput', () => {
       });
 
       it('applies the seedance resolution quality override', () => {
-        expect(buildRef().resolution).toBe('720p');
+        expect(buildRef()).toMatchObject({ resolution: '720p' });
       });
 
       it('forwards generate_audio=false when caller suppresses audio', () => {
@@ -368,6 +338,60 @@ describe('buildModelInput', () => {
       });
     }
   );
+
+  describe('buildMotionRequest reference-to-video (kling_v3_pro)', () => {
+    const referenceImages = [
+      {
+        referenceImageUrl: 'https://example.com/jack-sheet.png',
+        description: 'Jack - tall man with a scar',
+        role: 'character' as const,
+      },
+      {
+        referenceImageUrl: 'https://example.com/logo.png',
+        description: 'ACME_LOGO - red circular badge',
+        role: 'element' as const,
+      },
+    ];
+
+    const buildRef = (overrides: Partial<GenerateMotionOptions> = {}) => {
+      const { endpointId, input } = buildMotionRequest(
+        { ...baseOptions, referenceImages, ...overrides },
+        'kling_v3_pro'
+      );
+      if (!('image_urls' in input)) {
+        throw new Error('expected Kling O3 reference-to-video input');
+      }
+      return { endpointId, input };
+    };
+
+    it('routes to O3 Pro and puts stills in image_urls', () => {
+      const { endpointId, input } = buildRef();
+      expect(endpointId).toBe('fal-ai/kling-video/o3/pro/reference-to-video');
+      expect(input).not.toHaveProperty('image_url');
+      expect(input).not.toHaveProperty('start_image_url');
+      expect(input.image_urls).toEqual([
+        baseOptions.imageUrl,
+        'https://example.com/jack-sheet.png',
+        'https://example.com/logo.png',
+      ]);
+    });
+
+    it('declares the still as @Image1 and legends unmentioned refs', () => {
+      const { input } = buildRef();
+      expect(
+        typeof input.prompt === 'string' &&
+          input.prompt.startsWith('Use @Image1 as the starting frame.')
+      ).toBe(true);
+      expect(input.prompt).toContain('@Image2: Jack - tall man with a scar');
+      expect(input.prompt).toContain('@Image3: ACME_LOGO - red circular badge');
+    });
+
+    it('forwards generate_audio=false when caller suppresses audio', () => {
+      expect(buildRef({ generateAudio: false }).input.generate_audio).toBe(
+        false
+      );
+    });
+  });
 
   describe('buildMotionRequest reference-to-video (minimax_h3_max)', () => {
     const referenceImages = [
@@ -518,11 +542,27 @@ describe('buildMotionRequest — reference-only', () => {
     expect(input.aspect_ratio).toBe('9:16');
   });
 
+  it('routes Kling reference-only to O3 Pro with no start frame', () => {
+    const { endpointId, input } = buildMotionRequest(
+      referenceOnlyOptions,
+      'kling_v3_pro'
+    );
+
+    expect(endpointId).toBe('fal-ai/kling-video/o3/pro/reference-to-video');
+    expect(input).not.toHaveProperty('image_url');
+    expect(input).not.toHaveProperty('start_image_url');
+    expect('image_urls' in input ? input.image_urls : undefined).toEqual([
+      'https://example.com/scarlett.png',
+    ]);
+    expect(input.prompt).not.toContain('starting frame');
+    expect(input.prompt).toContain('@Image1');
+  });
+
   it('refuses a start-frame model asked to render without one', () => {
     expect(() =>
       buildMotionRequest(
         { ...referenceOnlyOptions, referenceOnly: false },
-        'kling_v3_pro'
+        'veo3_1'
       )
     ).toThrow(/requires a start frame/);
   });

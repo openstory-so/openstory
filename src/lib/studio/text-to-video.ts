@@ -145,7 +145,7 @@ const STUDIO_REFERENCE_ENDPOINTS: Partial<
     maxImages: 4,
     maxVideos: 0,
     maxAudio: 0,
-    note: 'Reference mode runs on Kling O3 Pro, the tier with a reference endpoint.',
+    note: 'Reference mode uses Kling 3.0 Omni. Start/end frames still run on Kling VIDEO 3.0.',
   },
   veo3_1: {
     endpointId: 'fal-ai/veo3.1/reference-to-video',

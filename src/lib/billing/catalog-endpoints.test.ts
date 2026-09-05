@@ -17,6 +17,7 @@ describe('catalogFalEndpointIds', () => {
     expect(ids).toContain(
       MOTION_REFERENCE_ENDPOINTS.minimax_h3_max?.endpointId
     );
+    expect(ids).toContain(MOTION_REFERENCE_ENDPOINTS.kling_v3_pro?.endpointId);
   });
 
   it('includes studio text/reference endpoints and edit siblings (#1388)', () => {

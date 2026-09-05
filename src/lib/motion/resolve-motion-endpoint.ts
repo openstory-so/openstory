@@ -9,9 +9,10 @@
  * otherwise stay on the normal image-to-video endpoint.
  *
  * `references` is how those images ride, if at all:
- *   - `endpoint` — dedicated reference-to-video endpoint (Seedance, H3 Max)
- *   - `inline` — URLs on the same generations call (Kling `elements`, Grok
- *     Imagine 1.5 native `reference`/`character` prompt parts)
+ *   - `endpoint` — dedicated reference-to-video endpoint (Seedance, H3 Max,
+ *     Kling O3, Omni Flash)
+ *   - `inline` — URLs on the same generations call (Grok Imagine 1.5 native
+ *     `reference`/`character` prompt parts; Ark / Google vias)
  *   - `none` — URLs are not sent; tokens become descriptions in the prompt
  *
  * `referenceOnly` is the mode where no start frame was ever rendered: the clip
@@ -26,7 +27,6 @@ import { NATIVE_GEMINI_VIDEO_MODEL } from '@/lib/ai/gemini-native';
 import { NATIVE_GROK_VIDEO_MODEL } from '@/lib/ai/grok-native';
 import {
   IMAGE_TO_VIDEO_MODELS,
-  attachesInlineReferences,
   getBytePlusVideoModelId,
   getMotionReferenceEndpoint,
   type ImageToVideoModel,
@@ -118,13 +118,6 @@ export function resolveMotionEndpoint(
       throw new Error(
         `Motion model "${modelKey}" has no reference-to-video endpoint and cannot render without a start frame`
       );
-    }
-    if (attachesInlineReferences(modelKey)) {
-      return {
-        via: 'fal',
-        endpointId: IMAGE_TO_VIDEO_MODELS[modelKey].id,
-        references: 'inline',
-      };
     }
   }
   return {

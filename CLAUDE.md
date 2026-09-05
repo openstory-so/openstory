@@ -232,7 +232,8 @@ render-only switch: it picks the motion-prompt template and folds into the
 motion hash, so flipping it re-stales that shot's motion prompt.
 
 **Two capability questions, don't mix them.** `supportsReferenceOnlyMotion` is
-the model-only floor (fal `reference-to-video`: Seedance 2.0 / 2.5, H3 Max);
+the model-only floor (fal `reference-to-video`: Seedance 2.0 / 2.5, H3 Max,
+Kling O3 Pro, Gemini Omni Flash);
 `referenceOnlyCapableWith(model, vias)` is its isomorphic via-aware form, which
 `createSequenceSchema` asks with `{ xai: true }` for **every** selected video
 model, not just the primary. Anywhere a team's keys are

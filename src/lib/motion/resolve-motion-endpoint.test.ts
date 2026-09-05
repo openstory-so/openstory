@@ -57,11 +57,20 @@ describe('resolveMotionEndpoint', () => {
     });
   });
 
-  it('keeps Kling on image-to-video and marks refs as inline', () => {
+  it('routes Kling to O3 Pro reference-to-video when refs are present', () => {
     expect(resolveMotionEndpoint('kling_v3_pro', true)).toEqual({
       via: 'fal',
+      endpointId: 'fal-ai/kling-video/o3/pro/reference-to-video',
+      references: 'endpoint',
+      referenceConfig: MOTION_REFERENCE_ENDPOINTS.kling_v3_pro,
+    });
+  });
+
+  it('keeps Kling on v3 Pro image-to-video when there are no refs', () => {
+    expect(resolveMotionEndpoint('kling_v3_pro', false)).toEqual({
+      via: 'fal',
       endpointId: IMAGE_TO_VIDEO_MODELS.kling_v3_pro.id,
-      references: 'inline',
+      references: 'none',
     });
   });
 
@@ -155,10 +164,16 @@ describe('reference-only', () => {
     });
   });
 
+  it('routes Kling to O3 Pro even with no matched refs in reference-only', () => {
+    expect(resolveMotionEndpoint('kling_v3_pro', false, 'fal', true)).toEqual({
+      via: 'fal',
+      endpointId: 'fal-ai/kling-video/o3/pro/reference-to-video',
+      references: 'endpoint',
+      referenceConfig: MOTION_REFERENCE_ENDPOINTS.kling_v3_pro,
+    });
+  });
+
   it('refuses a model with no reference-to-video route', () => {
-    expect(() =>
-      resolveMotionEndpoint('kling_v3_pro', true, 'fal', true)
-    ).toThrow(/cannot render without a start frame/);
     expect(() => resolveMotionEndpoint('veo3_1', false, 'fal', true)).toThrow(
       /cannot render without a start frame/
     );
