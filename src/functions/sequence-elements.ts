@@ -10,6 +10,10 @@ import { InsufficientCreditsError, NotFoundError } from '@/shared/errors';
 import { generateId } from '@/shared/id';
 import { ulidSchema } from '@/lib/schemas/id.schemas';
 import { deriveTokenFromFilename } from '@/lib/sequence-elements/derive-token';
+import {
+  DRAFT_ELEMENT_UPLOAD_PREFIX,
+  isValidElementStoragePath,
+} from '@/lib/sequence-elements/storage-path';
 import { STORAGE_BUCKETS } from '@/lib/storage/buckets';
 import {
   getExtensionFromUrl,
@@ -22,24 +26,6 @@ import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
 import { authWithTeamMiddleware, sequenceAccessMiddleware } from './middleware';
-
-/**
- * Sequence-element storage paths must live exactly under
- * `elements/<teamId>/`. `startsWith` alone accepts traversal artifacts like
- * `elements/<myTeamId>/../<otherTeamId>/x` — R2 stores keys literally so the
- * practical blast radius is small, but rejecting `..` and `//` segments closes
- * the namespace boundary explicitly.
- */
-export function isValidElementStoragePath(
-  path: string,
-  teamId: string
-): boolean {
-  const prefix = `elements/${teamId}/`;
-  if (!path.startsWith(prefix)) return false;
-  const rest = path.slice(prefix.length);
-  if (rest.length === 0) return false;
-  return !rest.split('/').some((seg) => seg === '' || seg === '..');
-}
 
 async function triggerElementVision(params: {
   elementId: string;
@@ -58,11 +44,12 @@ async function triggerElementVision(params: {
 }
 
 // ============================================================================
-// Presign upload — drafts go under the user's default team's `temp/` folder
-// and are later relocated via `promoteTempElements`. Persisted uploads
-// (existing sequence) must use the *sequence's* teamId in the path so the
-// finalize check passes for users whose default team differs from the
-// sequence's team (multi-team members and system admins).
+// Presign upload — drafts go under the user's default team's `uploads/` folder,
+// a permanent, sequence-agnostic key that `promoteTempElements` points rows at
+// without moving anything (#1471). Persisted uploads (existing sequence) must
+// use the *sequence's* teamId in the path so the finalize check passes for
+// users whose default team differs from the sequence's team (multi-team members
+// and system admins).
 // ============================================================================
 
 export const presignDraftElementUploadFn = createServerFn({ method: 'POST' })
@@ -72,7 +59,7 @@ export const presignDraftElementUploadFn = createServerFn({ method: 'POST' })
     const ext = getExtensionFromUrl(data.filename);
     const uploadId = generateId();
     const contentType = getMimeTypeFromExtension(ext);
-    const storagePath = `${context.teamId}/temp/${uploadId}.${ext}`;
+    const storagePath = `${context.teamId}/${DRAFT_ELEMENT_UPLOAD_PREFIX}/${uploadId}.${ext}`;
 
     return getSignedUploadUrl(
       STORAGE_BUCKETS.ELEMENTS,

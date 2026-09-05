@@ -14,6 +14,7 @@ import type { Style } from '@/lib/db/schema';
 import type { ScopedDb } from '@/lib/db/scoped';
 import { NotFoundError } from '@/shared/errors';
 import type { TempElementUpload } from '@/lib/sequence-elements/promote-temp-elements';
+import { DRAFT_ELEMENT_UPLOAD_PREFIX } from '@/lib/sequence-elements/storage-path';
 import { STORAGE_BUCKETS } from '@/lib/storage/buckets';
 import type { ApiCreateSequenceInput } from './input-schema';
 import { ingestImageToTempBucket } from './safe-fetch';
@@ -192,8 +193,9 @@ export async function resolveLocationIds(
 }
 
 /**
- * Ingest caller-hosted reference images into element temp storage and return
- * `TempElementUpload`s for `promoteTempElements`. Vision is intentionally NOT
+ * Ingest caller-hosted reference images into element upload storage and return
+ * `TempElementUpload`s for `promoteTempElements`. The key is permanent — the
+ * rows point straight at it (#1471). Vision is intentionally NOT
  * run here: promotion leaves `visionStatus: pending`, which fires the
  * `element-vision` workflow, and analyze-script's `waitForElementVision` gate
  * blocks scene-split until it completes — so the request stays fast.
@@ -214,7 +216,8 @@ export async function ingestElements(
           label: el.token
             ? `Element "${el.token}"`
             : `Element image #${index + 1}`,
-        }
+        },
+        DRAFT_ELEMENT_UPLOAD_PREFIX
       );
       return {
         // promote contract wants the bucket-prefixed `elements/` form.

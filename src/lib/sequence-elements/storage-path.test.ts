@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isValidElementStoragePath } from '@/functions/sequence-elements';
+import { isValidElementStoragePath } from './storage-path';
 
 describe('isValidElementStoragePath', () => {
   const teamId = 'teamA';

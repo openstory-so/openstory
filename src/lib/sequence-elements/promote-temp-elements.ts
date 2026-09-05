@@ -1,9 +1,8 @@
 import { mediaUrlSchema } from '@/shared/schemas/media-url.schemas';
-import { moveFile } from '#storage';
 import type { ScopedDb } from '@/lib/db/scoped';
 import { generateId } from '@/shared/id';
 import { STORAGE_BUCKETS, getPublicUrl } from '@/lib/storage/buckets';
-import { getExtensionFromUrl } from '@/shared/utils/file';
+import { isValidElementStoragePath } from './storage-path';
 import { triggerWorkflow } from '@/lib/workflow/client';
 import { buildWorkflowLabel } from '@/lib/workflow/labels';
 import type { ElementVisionWorkflowInput } from '@/lib/workflow/types';
@@ -18,6 +17,10 @@ const logger = getLogger([
   'promote-temp-elements',
 ]);
 
+// The `temp*` field names are a wire contract, not a description: a draft is
+// persisted to localStorage under these keys (`sequence-draft`), so renaming
+// them would silently drop the elements out of every draft already saved in a
+// browser. The objects they point at are permanent (#1471).
 const tempUploadSchema = z.object({
   tempPath: z.string().min(1),
   tempPublicUrl: mediaUrlSchema,
@@ -49,6 +52,23 @@ async function triggerElementVision(params: {
   });
 }
 
+/**
+ * Attach draft element uploads to a freshly created sequence: one
+ * `sequence_elements` row per upload, plus vision when it didn't already run
+ * inline during the draft upload.
+ *
+ * **It does not move the R2 object** (#1471). Draft uploads land at a
+ * permanent, sequence-agnostic key and rows point straight at it. The old
+ * temp-then-move design deleted the source object on promotion, which broke
+ * two ways: the create view kept rendering `tempPublicUrl` for an object that
+ * no longer existed (the reported broken thumbnails), and multi-model creation
+ * — N sequences promoting the *same* keys in parallel — had the first mover
+ * delete them out from under its siblings, failing those creates and losing
+ * the images for everyone.
+ *
+ * The cost is orphan objects from abandoned drafts: small reference images,
+ * left to a bucket lifecycle rule.
+ */
 export async function promoteTempElements(params: {
   scopedDb: ScopedDb;
   teamId: string;
@@ -68,25 +88,18 @@ export async function promoteTempElements(params: {
   if (uploads.length === 0) return;
 
   for (const upload of uploads) {
-    const tempPrefix = `elements/${teamId}/temp/`;
-    if (!upload.tempPath.startsWith(tempPrefix)) {
-      logger.warn('Skipping non-temp path:', { data: upload.tempPath });
+    // The path is client-supplied, so it stays inside this team's namespace —
+    // and the URL is re-derived from it rather than trusted off the payload.
+    if (!isValidElementStoragePath(upload.tempPath, teamId)) {
+      logger.warn('Skipping element upload outside the team namespace:', {
+        data: upload.tempPath,
+      });
       continue;
     }
 
-    const relativeTempPath = upload.tempPath.slice('elements/'.length);
-    const ext = getExtensionFromUrl(upload.tempPath);
+    const relativePath = upload.tempPath.slice('elements/'.length);
     const newId = generateId();
-    const permanentRelative = `${teamId}/${sequenceId}/${newId}.${ext}`;
-    const permanentPath = `elements/${permanentRelative}`;
-
-    await moveFile(
-      STORAGE_BUCKETS.ELEMENTS,
-      relativeTempPath,
-      permanentRelative
-    );
-
-    const publicUrl = getPublicUrl(STORAGE_BUCKETS.ELEMENTS, permanentRelative);
+    const publicUrl = getPublicUrl(STORAGE_BUCKETS.ELEMENTS, relativePath);
 
     const rawToken =
       upload.token && upload.token.length > 0
@@ -105,7 +118,7 @@ export async function promoteTempElements(params: {
       uploadedFilename: upload.filename,
       token,
       imageUrl: publicUrl,
-      imagePath: permanentPath,
+      imagePath: upload.tempPath,
       description: hasInlineVision ? upload.description : null,
       consistencyTag: hasInlineVision ? upload.consistencyTag : null,
       visionStatus: hasInlineVision ? 'completed' : 'pending',
