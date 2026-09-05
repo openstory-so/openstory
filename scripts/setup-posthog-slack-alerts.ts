@@ -2,7 +2,12 @@
  * #1088 — Wire PostHog → Slack destinations/alerts.
  *
  * Creates (idempotent by name) the product-activity Slack destinations and the
- * error-tracking spike alert described in issue #1088.
+ * error-tracking spike alert described in issue #1088, plus the per-exception
+ * alert with a replay link from #1513.
+ *
+ * Idempotency is by destination NAME: editing a spec below does not update the
+ * destination that already exists — delete it in PostHog first, or edit it
+ * there.
  *
  * Prerequisites:
  * 1. Slack is connected in PostHog → Settings → Integrations
@@ -130,7 +135,14 @@ async function listSlackIntegrations(): Promise<
   return data.results.filter((i) => i.kind === 'slack');
 }
 
-function eventFilter(eventName: string) {
+type PropertyFilter = {
+  key: string;
+  value: string | string[];
+  operator: string;
+  type: 'event';
+};
+
+function eventFilter(eventName: string, properties: PropertyFilter[] = []) {
   return {
     source: 'events',
     events: [
@@ -139,6 +151,7 @@ function eventFilter(eventName: string) {
         name: eventName,
         type: 'events',
         order: 0,
+        properties,
       },
     ],
     filter_test_accounts: true,
@@ -206,6 +219,58 @@ function spikeBlocks() {
   ];
 }
 
+/**
+ * One message per exception, with the replay cued to the moment it threw
+ * (#1513). The spike alert only fires on a *rate* change, so a two-user
+ * regression right after a deploy reached nobody.
+ *
+ * `replay_url` is stamped client-side in `src/components/providers.tsx`; the
+ * fallback keeps the button a valid URL when there is no recording (Slack
+ * rejects the whole message over one empty button href).
+ */
+function exceptionBlocks() {
+  return [
+    {
+      type: 'header',
+      text: { type: 'plain_text', text: '💥 Exception' },
+    },
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: '```{event.properties.$exception_types}: {substring(event.properties.$exception_values, 1, 1000)}```',
+      },
+    },
+    {
+      type: 'context',
+      elements: [
+        { type: 'mrkdwn', text: 'URL: {event.properties.$current_url}' },
+        {
+          type: 'mrkdwn',
+          text: 'Person: {person.properties.email ?? event.distinct_id}',
+        },
+        { type: 'mrkdwn', text: 'Project: <{project.url}|{project.name}>' },
+      ],
+    },
+    { type: 'divider' },
+    {
+      type: 'actions',
+      elements: [
+        {
+          type: 'button',
+          text: { type: 'plain_text', text: 'Watch replay' },
+          url: "{empty(event.properties.replay_url) ? concat(project.url, '/replay/', event.properties.$session_id) : event.properties.replay_url}",
+        },
+        {
+          type: 'button',
+          text: { type: 'plain_text', text: 'View issue' },
+          url: '{project.url}/error_tracking/fingerprint/{encodeURLComponent(event.properties.$exception_fingerprint)}?timestamp={event.timestamp}&utm_source=alert&utm_campaign=exception_alert&utm_medium=slack',
+        },
+      ],
+    },
+  ];
+}
+
 type DestinationSpec = {
   name: string;
   type: 'destination' | 'internal_destination';
@@ -213,6 +278,7 @@ type DestinationSpec = {
   channel: string;
   text: string;
   blocks: unknown[];
+  properties?: PropertyFilter[];
 };
 
 function specs(): DestinationSpec[] {
@@ -260,6 +326,31 @@ function specs(): DestinationSpec[] {
       text: 'Issue spiking: {event.properties.name}',
       blocks: spikeBlocks(),
     },
+    {
+      name: `Exception · ${OPS_CHANNEL} (#1513)`,
+      type: 'destination',
+      event: '$exception',
+      channel: OPS_CHANNEL,
+      text: 'Exception: {event.properties.$exception_types} {event.properties.$exception_values}',
+      blocks: exceptionBlocks(),
+      properties: [
+        // Cancelled fetches, not failures — every navigation away produces one.
+        {
+          key: '$exception_types',
+          value: 'AbortError',
+          operator: 'not_icontains',
+          type: 'event',
+        },
+        // Chrome translate rewrites the DOM out from under React; the crashes
+        // that follow are the translator's, not ours (see react-errors.ts).
+        {
+          key: 'page_translated',
+          value: 'true',
+          operator: 'is_not',
+          type: 'event',
+        },
+      ],
+    },
   ];
 }
 
@@ -280,7 +371,7 @@ async function ensureDestination(
     name: spec.name,
     description: 'Created by scripts/setup-posthog-slack-alerts.ts for #1088',
     enabled: true,
-    filters: eventFilter(spec.event),
+    filters: eventFilter(spec.event, spec.properties),
     inputs: {
       slack_workspace: { value: slackWorkspaceId },
       channel: { value: spec.channel },

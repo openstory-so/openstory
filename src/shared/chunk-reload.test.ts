@@ -8,6 +8,19 @@ type PreloadHandler = (event: {
 const store = new Map<string, string>();
 const reload = vi.fn();
 let handler: PreloadHandler | undefined;
+let reloadOnStaleRouteChunk: (error: unknown) => void;
+
+/** A route chunk that imported but resolved to the wrong shape. */
+function staleRouteChunkError() {
+  const error = new TypeError(
+    "Cannot read properties of undefined (reading 'component')"
+  );
+  error.stack =
+    "TypeError: Cannot read properties of undefined (reading 'component')\n" +
+    '    at https://openstory.so/assets/lazyRouteComponent-7ROn1-wk.js:1:1234\n' +
+    '    at async Xe.load (https://openstory.so/assets/breadcrumbs-c67hzjKa.js:1:17940)';
+  return error;
+}
 
 /** Dispatch what Vite's preload helper dispatches. */
 function firePreloadError() {
@@ -31,8 +44,9 @@ beforeEach(async () => {
   });
   vi.stubGlobal('location', { reload });
   vi.resetModules();
-  const { installChunkReload } = await import('./chunk-reload');
-  installChunkReload();
+  const mod = await import('./chunk-reload');
+  reloadOnStaleRouteChunk = mod.reloadOnStaleRouteChunk;
+  mod.installChunkReload();
 });
 
 describe('installChunkReload', () => {
@@ -62,5 +76,24 @@ describe('installChunkReload', () => {
     const preventDefault = firePreloadError();
     expect(reload).not.toHaveBeenCalled();
     expect(preventDefault).not.toHaveBeenCalled();
+  });
+});
+
+describe('reloadOnStaleRouteChunk', () => {
+  it('reloads when the stack originates in the lazyRouteComponent chunk', () => {
+    reloadOnStaleRouteChunk(staleRouteChunkError());
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores any other error', () => {
+    reloadOnStaleRouteChunk(new TypeError('x is not a function'));
+    reloadOnStaleRouteChunk('not an error at all');
+    expect(reload).not.toHaveBeenCalled();
+  });
+
+  it('shares the one reload with the preload-error path', () => {
+    firePreloadError();
+    reloadOnStaleRouteChunk(staleRouteChunkError());
+    expect(reload).toHaveBeenCalledTimes(1);
   });
 });

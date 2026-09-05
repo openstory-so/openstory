@@ -19,6 +19,7 @@ import {
   type ViaAvailability,
 } from '@/functions/via-availability';
 import { referenceOnlyMotionModels } from '@/lib/ai/models';
+import { useAuthSession } from '@/lib/auth/session-query';
 
 /** No native vias — every model that qualifies on its fal route alone. */
 const CONSERVATIVE: ViaAvailability = {
@@ -36,11 +37,14 @@ export const viaAvailabilityQueryOptions = queryOptions({
 });
 
 export function useViaAvailability(): ViaAvailability {
+  const { data: session } = useAuthSession();
   const { data } = useQuery({
     ...viaAvailabilityQueryOptions,
-    // Anonymous visitors 401 here (the fn needs a team). Browsing the composer
-    // signed-out is supported, so failing back to the conservative list is the
-    // designed outcome, not an error to surface.
+    // The fn needs a team, so an anonymous visitor can only ever 401 — and
+    // every one of those landed in the server error stream (#1513). Browsing
+    // the composer signed-out is supported and the conservative list is the
+    // right answer for them, so don't ask the question at all.
+    enabled: session != null,
     retry: false,
   });
   return data ?? CONSERVATIVE;
