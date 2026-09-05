@@ -31,7 +31,7 @@ export function createUserPrompt(
   // Per-request payload only. The enhancement rules (event/subject/motion/
   // genre/no-furniture) live in the `script/enhance` system prompt — not
   // duplicated here. The injection guard stays adjacent to the untrusted script
-  // as defense-in-depth. Target running time + clip-length pacing are in
+  // as defense-in-depth. Target duration + clip-grid labels are in
   // `buildDurationPromptParagraph` (#1374).
   // The invent variant has no <USER_SCRIPT> on purpose: the instruction to
   // make something up has to sit OUTSIDE the tags, whose whole point is that
