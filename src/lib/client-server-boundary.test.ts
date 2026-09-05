@@ -435,18 +435,51 @@ describe('client/server import boundary', () => {
     });
   });
 
-  test('every no-restricted-imports block carries the same `paths`', () => {
-    // oxlint overrides REPLACE a rule's config rather than merging it, so the
-    // base `paths` array is copied into each override that re-declares the
-    // rule. Nothing else keeps the copies in sync: adding a restricted path
-    // to the base block alone would silently exempt every file the overrides
-    // match. Deep-equal them here, next to the exception list this file
-    // already reads, rather than trusting the copies to be maintained.
+  test('every no-restricted-imports override narrows the base `paths`, never drifts', () => {
+    // oxlint overrides REPLACE a rule's config rather than merging it, so
+    // every override that re-declares the rule carries its own copy of the
+    // `paths` entries. Nothing else keeps the copies in sync: editing an entry
+    // in the base block alone would silently leave the overrides on the old
+    // text. Each override entry must deep-equal a base entry (so the copies
+    // cannot drift), and the boundary override must carry the whole base list
+    // (it only ADDS the `patterns` group). The db-access overrides at the
+    // bottom of the file deliberately keep a subset — one capability each.
     const raw = readFileSync(join(SRC, '.oxlintrc.json'), 'utf8');
-    const config: unknown = JSON.parse(raw.replace(/^\s*\/\/.*$/gm, ''));
-    const paths = JSON.stringify(config).match(/"paths":(\[.*?\]),"/g) ?? [];
-    expect(paths.length).toBeGreaterThan(1);
-    expect(new Set(paths).size).toBe(1);
+    const parsed: unknown = JSON.parse(raw.replace(/^\s*\/\/.*$/gm, ''));
+    type Config = {
+      rules: Record<string, unknown>;
+      overrides: { files: string[]; rules: Record<string, unknown> }[];
+    };
+    const isConfig = (v: unknown): v is Config =>
+      typeof v === 'object' && v !== null && 'rules' in v && 'overrides' in v;
+    if (!isConfig(parsed)) throw new Error('.oxlintrc.json shape changed');
+    const config = parsed;
+    type Rule = [string, { paths: unknown[]; patterns?: unknown[] }];
+    const isRule = (v: unknown): v is Rule =>
+      Array.isArray(v) &&
+      typeof v[1] === 'object' &&
+      v[1] !== null &&
+      'paths' in v[1];
+    const base = config.rules['no-restricted-imports'];
+    if (!isRule(base)) throw new Error('base no-restricted-imports missing');
+    const baseEntries = base[1].paths.map((p) => JSON.stringify(p));
+    let overridesSeen = 0;
+    for (const o of config.overrides) {
+      const rule = o.rules['no-restricted-imports'];
+      if (!isRule(rule)) continue;
+      overridesSeen++;
+      for (const p of rule[1].paths) {
+        expect(baseEntries, `override ${o.files.join(', ')} drifted`).toContain(
+          JSON.stringify(p)
+        );
+      }
+      if (rule[1].patterns) {
+        expect(rule[1].paths.map((p) => JSON.stringify(p))).toEqual(
+          baseEntries
+        );
+      }
+    }
+    expect(overridesSeen).toBeGreaterThan(1);
   });
 
   test('the lint rule still exempts some src/lib directories', () => {
