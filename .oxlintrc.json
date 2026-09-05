@@ -66,12 +66,12 @@
         "paths": [
           {
             "name": "#db-client",
-            "message": "Only db/scoped.ts and auth/config.ts may import #db-client"
+            "message": "#db-client is the raw D1 handle. Only the scoped-db factory, Better Auth, the pricing/cron jobs and the seed read it (allowlist: the db-access override at the bottom of this file + src/lib/db/db-access-allowlist.test.ts). Everything team-scoped goes through context.scopedDb."
           },
           {
             "name": "@/lib/db/scoped",
             "importNames": ["createScopedDb"],
-            "message": "createScopedDb only allowed in middleware.ts, workflow/base-workflow.ts, and authorized route handlers. Use context.scopedDb."
+            "message": "createScopedDb only in functions/middleware.ts, functions/stripe-webhook-middleware.ts and workflow/base-workflow.ts. Use context.scopedDb."
           }
         ]
       }
@@ -130,12 +130,12 @@
             "paths": [
               {
                 "name": "#db-client",
-                "message": "Only db/scoped.ts and auth/config.ts may import #db-client"
+                "message": "#db-client is the raw D1 handle. Only the scoped-db factory, Better Auth, the pricing/cron jobs and the seed read it (allowlist: the db-access override at the bottom of this file + src/lib/db/db-access-allowlist.test.ts). Everything team-scoped goes through context.scopedDb."
               },
               {
                 "name": "@/lib/db/scoped",
                 "importNames": ["createScopedDb"],
-                "message": "createScopedDb only allowed in middleware.ts, workflow/base-workflow.ts, and authorized route handlers. Use context.scopedDb."
+                "message": "createScopedDb only in functions/middleware.ts, functions/stripe-webhook-middleware.ts and workflow/base-workflow.ts. Use context.scopedDb."
               }
             ],
             "patterns": [
@@ -172,12 +172,12 @@
             "paths": [
               {
                 "name": "#db-client",
-                "message": "Only db/scoped.ts and auth/config.ts may import #db-client"
+                "message": "#db-client is the raw D1 handle. Only the scoped-db factory, Better Auth, the pricing/cron jobs and the seed read it (allowlist: the db-access override at the bottom of this file + src/lib/db/db-access-allowlist.test.ts). Everything team-scoped goes through context.scopedDb."
               },
               {
                 "name": "@/lib/db/scoped",
                 "importNames": ["createScopedDb"],
-                "message": "createScopedDb only allowed in middleware.ts, workflow/base-workflow.ts, and authorized route handlers. Use context.scopedDb."
+                "message": "createScopedDb only in functions/middleware.ts, functions/stripe-webhook-middleware.ts and workflow/base-workflow.ts. Use context.scopedDb."
               }
             ]
           }
@@ -185,20 +185,60 @@
       }
     },
     {
+      // Raw `#db-client` readers. Each is a platform-wide (not team-scoped)
+      // table or the scoped-db factory itself; `createScopedDb` stays restricted.
+      // `src/lib/db/db-access-allowlist.test.ts` pins the same list against every
+      // import form, including the relative ones this path rule cannot see.
       "files": [
         "**/db/scoped.ts",
         "**/db/client.ts",
         "**/auth/config.ts",
-        "**/functions/middleware.ts",
-        "**/functions/stripe-webhook-middleware.ts",
-        "**/workflow/base-workflow.ts",
         "**/cron/reconcile-all.ts",
         "**/cron/reconcile-fal-billing.ts",
         "**/cron/refresh-fal-pricing.ts",
         "**/ai/fal-pricing-live.ts",
-        "**/openrouter/callback.ts",
         "**/lib/test/seed.ts"
       ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "@/lib/db/scoped",
+                "importNames": ["createScopedDb"],
+                "message": "createScopedDb only in functions/middleware.ts, functions/stripe-webhook-middleware.ts and workflow/base-workflow.ts. Use context.scopedDb."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      // The request middlewares mint the scoped db for handlers; they never
+      // touch the raw handle.
+      "files": [
+        "**/functions/middleware.ts",
+        "**/functions/stripe-webhook-middleware.ts"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "#db-client",
+                "message": "#db-client is the raw D1 handle. Only the scoped-db factory, Better Auth, the pricing/cron jobs and the seed read it (allowlist: the db-access override at the bottom of this file + src/lib/db/db-access-allowlist.test.ts). Everything team-scoped goes through context.scopedDb."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      // The workflow base class needs both: the raw handle for its own
+      // bookkeeping and the factory to build the run's ScopedDb.
+      "files": ["**/workflow/base-workflow.ts"],
       "rules": {
         "no-restricted-imports": "off"
       }
