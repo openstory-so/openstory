@@ -9,13 +9,10 @@
  *
  * PostHog inits in a provider effect, so a boundary hit during the first
  * render queues until the SDK's `loaded` callback calls `flushReactErrors`.
- *
- * It is also where a deploy-stale route chunk surfaces (#1513) — see
- * `reloadOnStaleRouteChunk`.
  */
 
 import { errorCode } from '@/shared/errors';
-import { reloadOnStaleRouteChunk } from '@/shared/chunk-reload';
+import { isReloadPending } from '@/shared/chunk-reload';
 import { getLogger } from '@/lib/observability/logger';
 import posthog from 'posthog-js';
 import type { ErrorInfo } from 'react';
@@ -31,6 +28,9 @@ const pending: Pending[] = [];
 export function captureRouteError(error: unknown, info: ErrorInfo): void {
   // A 404 from a stale link renders the not-found page; not an app error.
   if (errorCode(error) === 'NOT_FOUND') return;
+  // A stale-chunk reload is already under way (#1513): whatever the router
+  // threw in the meantime is the page shutting down, not something to fix.
+  if (isReloadPending()) return;
   const props = {
     component_stack: info.componentStack ?? null,
     // Chrome translate leaves these wrappers; lets the dashboard split
@@ -45,10 +45,6 @@ export function captureRouteError(error: unknown, info: ErrorInfo): void {
   } else if (pending.length < MAX_PENDING) {
     pending.push([error, props]);
   }
-  // After capturing, not before: a deploy-stale route chunk is repaired by a
-  // reload, and we still want the event that says it happened. posthog-js
-  // flushes its queue on pagehide, so the capture survives the navigation.
-  reloadOnStaleRouteChunk(error);
 }
 
 export function flushReactErrors(): void {
