@@ -47,6 +47,9 @@ export const getBillingGateStatusFn = createServerFn({ method: 'GET' })
         billingSettings.autoTopUpEnabled &&
         !!billingSettings.stripeCustomerId &&
         !billingSettings.autoTopUpFailedAt,
+      // Auto-reload paused by a decline (#1499). Distinct from `hasAutoTopUp`
+      // being false: this one is a problem the customer has to fix.
+      autoTopUpFailed: !!billingSettings.autoTopUpFailedAt,
       stripeEnabled: isStripeEnabled(),
     };
   });

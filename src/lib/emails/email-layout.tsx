@@ -54,6 +54,22 @@ export const paragraphStyle: React.CSSProperties = {
   color: emailColors.mutedForeground,
 };
 
+/** Primary CTA — light pill on the dark card. */
+export const buttonStyle: React.CSSProperties = {
+  marginTop: 16,
+  marginBottom: 16,
+  boxSizing: 'border-box',
+  display: 'inline-block',
+  borderRadius: 6,
+  backgroundColor: '#fafafa',
+  padding: '12px 24px',
+  textAlign: 'center',
+  fontSize: 16,
+  fontWeight: 700,
+  color: '#262626',
+  textDecoration: 'none',
+};
+
 export const detailRowStyle: React.CSSProperties = {
   marginTop: 0,
   marginBottom: 0,

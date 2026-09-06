@@ -8,6 +8,7 @@
 import { getEnv } from '#env';
 import { env as workerEnv } from 'cloudflare:workers';
 import { AbuseReportEmail } from '@/lib/emails/abuse-report-email';
+import { AutoTopUpFailedEmail } from '@/lib/emails/auto-top-up-failed-email';
 import { FeedbackEmail } from '@/lib/emails/feedback-email';
 import { FounderCreditRequestEmail } from '@/lib/emails/founder-credit-request-email';
 import { OtpEmail } from '@/lib/emails/otp-email';
@@ -193,6 +194,26 @@ export async function sendSequenceReadyEmail(params: {
         clipMeta={params.clipMeta}
         balanceDisplay={params.balanceDisplay}
         typicalShortCostDisplay={params.typicalShortCostDisplay}
+      />
+    ),
+  });
+}
+
+/** "Auto-reload is paused" — one per decline, not per skipped attempt (#1499). */
+export async function sendAutoTopUpFailedEmail(params: {
+  to: string;
+  billingUrl: string;
+  balanceDisplay: string;
+}): Promise<{ success: boolean; error?: string }> {
+  return sendEmail({
+    to: params.to,
+    subject: 'Auto-reload is paused — your card was declined',
+    replyTo: CONTACT_EMAIL,
+    body: (
+      <AutoTopUpFailedEmail
+        appName={getAppName()}
+        billingUrl={params.billingUrl}
+        balanceDisplay={params.balanceDisplay}
       />
     ),
   });
