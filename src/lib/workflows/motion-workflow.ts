@@ -24,6 +24,7 @@ import {
   flaggedInputs,
   isContentRejectionError,
 } from '@/lib/ai/content-rejection';
+import { releasePooledAssets } from '@/lib/ai/byteplus-asset-pool';
 import { extractFalErrorMessage } from '@/lib/ai/fal-error';
 import { computeVideoManifestInputHash } from '@/lib/ai/input-hash';
 import { DEFAULT_VIDEO_MODEL, IMAGE_TO_VIDEO_MODELS } from '@/lib/ai/models';
@@ -894,6 +895,22 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
     // Capture into a const so the step closures below keep the non-null
     // narrowing (a `let` could be reassigned, so TS widens it inside closures).
     const job = succeededJob;
+
+    // The clip is rendered, so the `asset://` stills this job pinned are free
+    // to evict again (#1361). Nothing is deleted — they stay resident and
+    // reusable, which is the whole point of the pool; the lease only stops a
+    // sibling batch deleting a slot out from under an in-flight Seedance job.
+    // Release is the fast path, not the guarantee: a run that dies before here
+    // leaks its lease until the TTL expires, which is exactly what the TTL is
+    // for.
+    if (job.via === 'byteplus') {
+      await step.do('release-byteplus-asset-leases', async () => {
+        await releasePooledAssets([
+          ...(input.imageUrl ? [input.imageUrl] : []),
+          ...(input.referenceImages ?? []).map((ref) => ref.referenceImageUrl),
+        ]);
+      });
+    }
 
     // Exact charge from the via's reported usage (the check-credits `cost`
     // was only an estimate for the affordability gate). The via owns endpoint

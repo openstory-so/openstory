@@ -209,3 +209,23 @@ export async function ingestAigcAsset(
   }
   return `asset://${ready.Id}`;
 }
+
+/**
+ * Free one slot in the account pool (#1361). Irreversible — the `asset://`
+ * dies with it, and any job still holding that URI 400s, which is why the
+ * caller must own an unexpired lease before calling this.
+ *
+ * `DeleteAssetGroup` is deliberately not wrapped: it wipes every asset in the
+ * group in one irreversible call and has no place on the eviction path.
+ */
+export async function deleteAsset(
+  config: BytePlusOpenApiConfig,
+  id: string
+): Promise<void> {
+  await bytePlusOpenApi<unknown>(
+    config,
+    'DeleteAsset',
+    withProject(config, { Id: id }),
+    { allowEmptyResult: true }
+  );
+}

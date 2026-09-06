@@ -483,17 +483,21 @@ export async function submitMotionJob(
       // a generated start frame) 400s as a possible real person.
       const falKey = await resolveOptionalFalKey(options.scopedDb);
       const imageUrl = options.imageUrl
-        ? await toArkMediaUrl(options.imageUrl, 'Image', falKey?.key)
+        ? await toArkMediaUrl(options.imageUrl, {
+            slot: 'frame',
+            ...(falKey?.key && { falApiKey: falKey.key }),
+          })
         : undefined;
       const referenceImages = options.referenceImages?.length
         ? await Promise.all(
             options.referenceImages.map(async (ref) => ({
               ...ref,
-              referenceImageUrl: await toArkMediaUrl(
-                ref.referenceImageUrl,
-                'Image',
-                falKey?.key
-              ),
+              // Cast/location/element sheets are the pool's long-lived
+              // residents — evicting one costs every shot that binds it.
+              referenceImageUrl: await toArkMediaUrl(ref.referenceImageUrl, {
+                slot: 'library',
+                ...(falKey?.key && { falApiKey: falKey.key }),
+              }),
             }))
           )
         : options.referenceImages;

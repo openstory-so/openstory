@@ -304,7 +304,10 @@ async function urlPart(
 ) {
   // Start frame, end frame, and reference stills all go through the
   // virtual library. A public URL of a photorealistic face 400s.
-  const value = await toArkMediaUrl(url, 'Image', falApiKey);
+  const value = await toArkMediaUrl(url, {
+    slot: role === 'reference' ? 'library' : 'frame',
+    ...(falApiKey && { falApiKey }),
+  });
   return {
     type: 'image' as const,
     source: { type: 'url' as const, value },
