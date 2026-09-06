@@ -21,6 +21,13 @@
  *     rather than a silently-skipped child), `Promise.allSettled` on await
  *     so a single bad shot doesn't kill the rest of the batch. */
 
+import {
+  arkAssetIdentities,
+  bytePlusAssetSlots,
+} from '@/lib/ai/byteplus-asset-pool';
+import { reportBytePlusAssetPool } from '@/lib/ai/byteplus-observability';
+import { isBytePlusAssetsConfigured } from '@/lib/ai/byteplus-config';
+import { isNativeBytePlusVideoModel } from '@/lib/ai/models';
 import { resolveAudioModels } from '@/lib/ai/resolve-audio-models';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import { assembleMotionPrompt } from '@/lib/motion/assemble-motion-prompt';
@@ -40,6 +47,12 @@ import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { getLogger } from '@/lib/observability/logger';
 
 const logger = getLogger(['openstory', 'workflow', 'motion-batch']);
+
+/** Admission re-checks before the batch fans out regardless. */
+const POOL_ADMISSION_ATTEMPTS = 5;
+
+/** Long enough for a sibling batch's shots to finish and release. */
+const POOL_ADMISSION_WAIT = '2 minutes';
 
 type MotionBatchWorkflowResult = {
   sequenceId: string;
@@ -84,6 +97,20 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
           .join(', ')}`
       );
     }
+
+    // Step 0: BytePlus ACR admission (#1361). Every still a Seedance shot
+    // sends — start frame and every matched sheet — has to be registered as
+    // `asset://`, and those slots are per BytePlus ACCOUNT, not per run. 20
+    // children that each discover slot 51 for themselves is 20 wasted
+    // `CreateAsset` round trips and 20 fal fallbacks, so count the batch
+    // against the pool first and let it drain.
+    //
+    // Reads live D1 outside `scopedDb` on purpose: the pool is platform-global
+    // (no team column, like `model_pricing`, which `price-motion-generation`
+    // already reads live in this same run) and occupancy is the one thing that
+    // cannot be snapshotted at the trigger — a run that froze it would evict
+    // slots another team leased minutes later.
+    await this.awaitBytePlusPoolAdmission(input, step, scopedDb);
 
     // Step 1: Fan out motion workflows + optional music workflow in parallel.
     // Multi-model video (#545): one MOTION_WORKFLOW child per (shot, model)
@@ -256,6 +283,55 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
       });
     }
     return { sequenceId };
+  }
+
+  /**
+   * Hold the fan-out until this batch's distinct stills fit the ACR pool.
+   *
+   * Bounded on purpose: waiting forever would turn a busy pool into a hung
+   * generation, and overshooting is not fatal — a shot that finds nothing
+   * evictable sends the public URL and takes the existing portrait-filter
+   * fallback to fal. A BYOK-fal team never touches the pool but is not
+   * excluded here (that needs a credential read for a check that only ever
+   * costs a `count(*)`); it can be delayed by other teams' traffic, which the
+   * `deferred` event will show if it ever matters.
+   */
+  private async awaitBytePlusPoolAdmission(
+    input: BatchMotionMusicWorkflowInput,
+    step: WorkflowStep,
+    scopedDb: WorkflowScopedDb
+  ): Promise<void> {
+    const models = input.videoModels ?? input.shots.map((shot) => shot.model);
+    if (
+      !isBytePlusAssetsConfigured() ||
+      !models.some((model) => model && isNativeBytePlusVideoModel(model))
+    ) {
+      return;
+    }
+    const stills = input.shots.flatMap((shot) => [
+      ...(shot.imageUrl ? [shot.imageUrl] : []),
+      ...(shot.referenceImages ?? []).map((ref) => ref.referenceImageUrl),
+    ]);
+    if (!stills.length) return;
+
+    for (let attempt = 0; attempt < POOL_ADMISSION_ATTEMPTS; attempt++) {
+      const admission = await step.do(
+        `byteplus-pool-admission-${attempt}`,
+        async () =>
+          scopedDb.liveRead.bytePlusAssets.getAdmission(
+            await arkAssetIdentities(stills),
+            bytePlusAssetSlots()
+          )
+      );
+      if (admission.fits) return;
+      reportBytePlusAssetPool({ outcome: 'deferred' });
+      logger.warn(
+        `[MotionBatchWorkflow:cf] BytePlus asset pool cannot fit ${admission.needed} new stills (free ${admission.free}, evictable ${admission.evictable})`
+      );
+      if (attempt < POOL_ADMISSION_ATTEMPTS - 1) {
+        await step.sleep(`byteplus-pool-wait-${attempt}`, POOL_ADMISSION_WAIT);
+      }
+    }
   }
 
   protected override async onFailure({

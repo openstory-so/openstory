@@ -79,3 +79,35 @@ export function reportBytePlusPortraitFilterFallback(operation: string): void {
     properties: { operation },
   });
 }
+
+const BYTEPLUS_ASSET_POOL_EVENT = 'byteplus_asset_pool';
+
+export type BytePlusAssetPoolContext = {
+  /**
+   * `hit` — reused a resident slot (the reuse this pool exists for).
+   * `created` — burned a free slot. `evicted` — dropped an unleased slot to
+   * make room. `exhausted` — every slot was pinned by an in-flight job, so
+   * the shot went to fal. `deferred` — a batch waited at admission.
+   */
+  outcome: 'hit' | 'created' | 'evicted' | 'exhausted' | 'deferred';
+  slot?: 'frame' | 'library';
+};
+
+/**
+ * Sibling of `byteplus_quota_backoff`, and read the same way: a rate, not an
+ * incident. The `hit`:`created` ratio says whether reuse is working; a
+ * non-zero `exhausted` (or `deferred`) rate says 50 slots is no longer enough
+ * for the concurrency we run and the bounded queue in front of Ark (#891) is
+ * due. Un-deduped, for the same reason as the quota event.
+ */
+export function reportBytePlusAssetPool(ctx: BytePlusAssetPoolContext): void {
+  const posthog = getPostHogClient();
+  posthog?.capture({
+    distinctId: 'system',
+    event: BYTEPLUS_ASSET_POOL_EVENT,
+    properties: {
+      outcome: ctx.outcome,
+      ...(ctx.slot && { slot: ctx.slot }),
+    },
+  });
+}

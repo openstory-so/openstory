@@ -30,7 +30,13 @@ export type BytePlusOpenApiConfig = {
 export async function bytePlusOpenApi<T>(
   config: BytePlusOpenApiConfig,
   action: string,
-  body: Record<string, unknown>
+  body: Record<string, unknown>,
+  /**
+   * Actions that answer with an empty envelope on success (DeleteAsset).
+   * Without it a successful delete reads as "returned no Result" and the
+   * caller leaks the Ark slot it just dropped from its own ledger.
+   */
+  options?: { allowEmptyResult?: boolean }
 ): Promise<T> {
   const host = config.host ?? DEFAULT_BYTEPLUS_OPENAPI_HOST;
   const region = config.region ?? DEFAULT_BYTEPLUS_OPENAPI_REGION;
@@ -67,10 +73,13 @@ export async function bytePlusOpenApi<T>(
       `BytePlus OpenAPI ${action} failed (${code}): ${message || response.statusText}`
     );
   }
-  if (parsed.result === undefined) {
-    throw new Error(`BytePlus OpenAPI ${action} returned no Result`);
+  if (parsed.result !== undefined) return parsed.result;
+  if (options?.allowEmptyResult) {
+    // Void action (DeleteAsset): the caller types it `<unknown>`.
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    return undefined as T;
   }
-  return parsed.result;
+  throw new Error(`BytePlus OpenAPI ${action} returned no Result`);
 }
 
 function parseEnvelope<T>(text: string): {

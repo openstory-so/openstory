@@ -51,6 +51,7 @@ import {
   createPublicLocationsReadMethods,
 } from '@/lib/db/scoped/location-library';
 import { createLocationSheetVariantsMethods } from '@/lib/db/scoped/location-sheet-variants';
+import { createBytePlusAssetsMethods } from '@/lib/db/scoped/byteplus-assets';
 import { createModelUsageMethods } from '@/lib/db/scoped/model-usage';
 import { createSequenceElementsMethods } from '@/lib/db/scoped/sequence-elements';
 import { createSequenceExportsMethods } from '@/lib/db/scoped/sequence-exports';
@@ -441,6 +442,11 @@ export function createScopedDb(teamId: string, userId: string) {
 
     // Platform-global pricing telemetry (#1069) — not team-scoped.
     modelUsage: createModelUsageMethods(db),
+
+    // BytePlus ACR slot ledger (#1361) — also platform-global: the asset
+    // slots are per BytePlus ACCOUNT, shared by every team, so there is
+    // nothing to scope. Policy lives in `@/lib/ai/byteplus-asset-pool`.
+    bytePlusAssets: createBytePlusAssetsMethods(db),
 
     billing: createBillingMethods(db, teamId, userId),
     apiKeys: createApiKeysMethods(db, teamId, userId),

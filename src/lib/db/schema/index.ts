@@ -115,6 +115,9 @@ import {
   uploadAttestations,
 } from './compliance';
 
+// BytePlus ACR asset pool ledger (#1361 — platform-global slot/lease table)
+import { bytePlusAssets } from './byteplus-assets';
+
 // Better Auth tables
 export {
   account,
@@ -383,6 +386,16 @@ export { GENERATED_ASSET_ACTIVITIES } from './generated-assets';
 // history, refreshed daily by the Worker cron; fal rows today)
 export { modelPricing, modelPricingHistory, modelUsageObservations };
 
+/**
+ * BytePlus ACR asset pool (#1361 — the account pool's slot/lease ledger).
+ * Individually exported like the compliance tables below: drizzle-kit only
+ * diffs top-level exports, and a table reachable only through `schema` reads
+ * as deleted. Consumers import it from `@/lib/db/schema/byteplus-assets`.
+ *
+ * @public used by drizzle-kit generate, not the app graph
+ */
+export { bytePlusAssets };
+
 export type {
   GeneratedAsset,
   NewGeneratedAsset,
@@ -514,4 +527,7 @@ export const schema = {
   uploadAttestations,
   contentReports,
   enforcementActions,
+
+  // BytePlus ACR asset pool (#1361)
+  bytePlusAssets,
 };
