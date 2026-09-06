@@ -10,7 +10,7 @@
  */
 
 import { useQuery, type QueryKey } from '@tanstack/react-query';
-import { useAuthSession } from '@/lib/auth/session-query';
+import { useAuthSession } from '@/components/auth/session-query';
 
 export function usePublicOrTeamQuery<T>(options: {
   teamKey: QueryKey;

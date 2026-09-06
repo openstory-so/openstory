@@ -8,7 +8,7 @@
  * it fires, the analytics, and what the buttons open.
  */
 
-import { MIN_TOPUP_AMOUNT_USD } from '@/lib/billing/constants';
+import { MIN_TOPUP_AMOUNT_USD } from '@/shared/billing/constants';
 import type { CSSProperties } from 'react';
 import { toast } from 'sonner';
 

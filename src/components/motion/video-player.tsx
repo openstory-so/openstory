@@ -11,7 +11,7 @@ import {
   createPlaybackTracker,
   type PlaybackTracker,
   type VideoPlaySource,
-} from '@/lib/observability/player-events';
+} from '@/components/theatre/player-events';
 import { cn } from '@/shared/utils';
 import { usePostHog } from '@posthog/react';
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';

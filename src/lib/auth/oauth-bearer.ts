@@ -11,7 +11,7 @@
 import { getAuth } from '@/lib/auth/config';
 import { resolveOAuthIssuer } from '@/lib/auth/oauth-provider';
 import { PUBLIC_API_KEY_PREFIX } from '@/lib/auth/public-api-key';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 import {
   createLocalJWKSet,
   errors as joseErrors,

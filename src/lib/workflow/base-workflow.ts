@@ -1,10 +1,9 @@
 /**
  * Base class for Cloudflare Workflows entrypoints.
  *
- * Wraps `run()` with a sanitized failure handler that mirrors the QStash
- * `failureFunction` contract — when the workflow body throws, the wrapper
- * extracts a friendly message, calls a subclass-supplied `onFailure` (typed),
- * and rethrows so CF marks the instance as `errored`.
+ * Wraps `run()` with a sanitized failure handler: when the workflow body
+ * throws, the wrapper extracts a friendly message, calls a subclass-supplied
+ * `onFailure` (typed), and rethrows so CF marks the instance as `errored`.
  *
  * Subclasses implement `runImpl(event, step, scopedDb)` and optionally
  * `onFailure({ event, error, scopedDb })`. The base class:
@@ -16,10 +15,8 @@
  *     so the failure write itself benefits from retries + step durability.
  */
 
-import { getEnv } from '#env';
-import { getDb } from '#db-client';
 import { configureFalProxyFromEnv } from '@/lib/ai/fal-config';
-import { ensureLocalModelPricingSeeded } from '@/lib/db/seed-model-pricing';
+import { ensureE2eModelPricing } from '@/lib/db/seed-model-pricing';
 import { createScopedDb } from '@/lib/db/scoped';
 import {
   toWorkflowScopedDb,
@@ -46,7 +43,7 @@ import {
 import { NonRetryableError } from 'cloudflare:workflows';
 import { flushAnalytics } from '@/lib/observability/flush-analytics';
 import { captureProductEvent } from '@/lib/observability/product-events';
-import { getLogger, serializeError } from '@/lib/observability/logger';
+import { getLogger, serializeError } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'workflow', 'cf', 'base']);
 
@@ -63,14 +60,6 @@ async function zeroOwnedReservation(
       { err }
     );
   }
-}
-
-let e2ePricingSeed: Promise<unknown> | null = null;
-
-async function ensureE2eModelPricing(): Promise<void> {
-  if (getEnv().E2E_TEST !== 'true') return;
-  e2ePricingSeed ??= ensureLocalModelPricingSeeded(getDb());
-  await e2ePricingSeed;
 }
 
 /**
@@ -153,9 +142,9 @@ export abstract class OpenStoryWorkflowEntrypoint<
     // Install the fal→proxy middleware on the global `fal` singleton before any
     // step runs a fal adapter. In E2E this routes fal.run / queue.fal.run to the
     // aimock proxy (FAL_PROXY_URL); in prod it's a no-op (FAL_PROXY_URL unset).
-    // The QStash-era base-workflow did this at the top of run(); the CF Workflows
-    // rewrite (a8011203) dropped it, so workflow fal calls bypassed aimock and
-    // hit real endpoints even in replay. Idempotent (module-flag guarded), so
+    // The CF Workflows rewrite (a8011203) dropped this, so workflow fal calls
+    // bypassed aimock and hit real endpoints even in replay. Idempotent
+    // (module-flag guarded), so
     // running it per workflow invocation / retry is safe. See lib/ai/fal-config.
     configureFalProxyFromEnv();
     // Workflow isolates never run the fetch handler's self-seed. Replay

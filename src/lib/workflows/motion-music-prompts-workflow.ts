@@ -1,26 +1,14 @@
 /**
- * Cloudflare Workflows port of `motionMusicPromptsWorkflow`.
+ * The `motionMusicPromptsWorkflow` durable workflow.
  *
  * Wave 3 mid-tier orchestrator: fans out to motion-prompts (per-scene tree)
  * and music-prompt (single scene-summaries → music design call) in parallel.
- *
- * Mirrors the QStash version (`src/lib/workflows/motion-music-prompts-workflow.ts`)
- * step for step — same step names, same control flow, same side effects.
- * The only differences are:
- *
- *   - Extends `OpenStoryWorkflowEntrypoint` instead of being built by
- *     `createScopedWorkflow`. Failure parity comes from the base class
- *     (see `base-workflow.ts`).
- *   - Uses `step.do` instead of `context.run`.
- *   - Reads payload from `event.payload` instead of `context.requestPayload`.
- *   - Replaces `Promise.all([context.invoke(...), context.invoke(...)])` with
- *     two parallel `spawnAndAwaitChild` calls (Pattern 3).
- * */
+ */
 
-import { DEFAULT_VIDEO_MODEL } from '@/lib/ai/models';
+import { DEFAULT_VIDEO_MODEL } from '@/shared/ai/models';
 import type { Scene } from '@/lib/ai/scene-analysis.schema';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
-import { snapDuration } from '@/lib/motion/snap-duration';
+import { snapDuration } from '@/shared/motion/snap-duration';
 import { reinforceInstrumentalTags } from '@/lib/prompts/music-prompt';
 import { OpenStoryWorkflowEntrypoint } from '@/lib/workflow/base-workflow';
 import { spawnAndAwaitChild } from '@/lib/workflow/await-child';
@@ -37,7 +25,7 @@ import {
   joinMusicDesignByIndex,
 } from '@/lib/workflows/music-scene-summaries';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'workflow', 'motion-music-prompts']);
 

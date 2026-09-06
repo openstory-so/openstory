@@ -15,18 +15,18 @@ import {
 import type { SceneWithScript } from '@/hooks/use-scenes';
 import { useSetSequenceMusic } from '@/hooks/use-sequences';
 import type { TabValue } from '@/components/scenes/scene-script-prompts';
-import type { TextToImageModel } from '@/lib/ai/models';
+import type { TextToImageModel } from '@/shared/ai/models';
 import type { AspectRatio } from '@/shared/constants/aspect-ratios';
 import {
   selectionScope,
   selectionShots,
   type SceneSelection,
-} from '@/lib/scenes/scene-selection';
-import type { ShotView } from '@/lib/shots/shot-view';
-import type { Sequence } from '@/types/database';
+} from '@/components/scenes/scene-selection';
+import type { ShotView } from '@/shared/shots/shot-view';
+import type { Sequence } from '@/lib/db/schema';
 import { Download, Film, Link, Loader2 } from 'lucide-react';
 import { useMemo } from 'react';
-import { toPlaybackScenes } from '@/shared/sequence-player/playback-scenes';
+import { toPlaybackScenes } from '@/components/theatre/playback-scenes';
 
 type SceneCanvasProps = {
   selection: SceneSelection;

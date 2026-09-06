@@ -12,13 +12,16 @@ import type { Shot } from '@/lib/db/schema';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
 
-import { AUDIO_MODELS } from '@/lib/ai/models';
+import { AUDIO_MODELS } from '@/shared/ai/models';
 import { canRenderReferenceOnly } from '@/lib/motion/motion-generation';
 import { toWorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import { REFERENCE_ONLY_MODEL_ERROR } from '@/lib/schemas/sequence.schemas';
-import { resolveVideoModel } from '@/lib/ai/resolve-asset-models';
+import { resolveVideoModel } from '@/shared/ai/resolve-asset-models';
 import { getEffectiveFalPricing } from '@/lib/ai/fal-pricing-live';
-import { estimateVideoCost, gateEstimate } from '@/lib/billing/cost-estimation';
+import {
+  estimateVideoCost,
+  gateEstimate,
+} from '@/shared/billing/cost-estimation';
 import {
   estimateBatchMotionCost,
   resolveBatchShotVideoModel,
@@ -27,16 +30,15 @@ import {
   releaseReservationOnThrow,
   reserveRunCredits,
 } from '@/lib/billing/preflight';
-import { buildMotionReferenceImages } from '@/lib/motion/build-motion-references';
-import { resolveShotDuration } from '@/lib/motion/resolve-shot-duration';
+import { buildMotionReferenceImages } from '@/shared/motion/build-motion-references';
+import { resolveShotDuration } from '@/shared/motion/resolve-shot-duration';
 import { generateMotionSchema } from '@/lib/schemas/shot.schemas';
 import { dbSceneId } from '@/shared/scene-id';
 import { ulidSchema } from '@/lib/schemas/id.schemas';
 import { NotFoundError } from '@/shared/errors';
-import { getLogger } from '@/lib/observability/logger';
-import { getGenerationChannel } from '@/lib/realtime';
+import { getLogger } from '@/shared/observability/logger';
+import { getGenerationChannel } from '@/shared/realtime';
 import { triggerWorkflow } from '@/lib/workflow/client';
-import { buildWorkflowLabel } from '@/lib/workflow/labels';
 import { terminateSingleArtifactRun } from '@/lib/workflow/run-outcome';
 
 const motionLogger = getLogger(['openstory', 'serverFn', 'motion']);
@@ -46,12 +48,12 @@ import {
   motionPromptFromVersion,
   resolveMotionPrompt,
   resolveMotionPromptFromVersion,
-} from '@/lib/motion/resolve-motion-prompt';
+} from '@/shared/motion/resolve-motion-prompt';
 import {
   rendersReferenceOnly,
   shotPromptSequence,
-} from '@/lib/shots/use-start-frame';
-import { isBatchMotionEligible, toShotView } from '@/lib/shots/shot-view';
+} from '@/shared/shots/use-start-frame';
+import { isBatchMotionEligible, toShotView } from '@/shared/shots/shot-view';
 import { rescanContinuityFromPrompt } from '@/lib/scenes/rescan-continuity-from-prompt';
 import { buildUserEditProvenance } from '@/lib/prompts/user-edit-provenance';
 import { shouldRecordUserEdit } from '@/lib/workflows/user-edit-predicate';
@@ -283,7 +285,6 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
           workflowInput,
           {
             deduplicationId: `motion-batch-${shot.id}-${Date.now()}`,
-            label: buildWorkflowLabel(sequence.id),
           }
         );
 
@@ -599,7 +600,6 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
           workflowInput,
           {
             deduplicationId: `motion-batch-${sequence.id}-${Date.now()}`,
-            label: buildWorkflowLabel(sequence.id),
           }
         );
 

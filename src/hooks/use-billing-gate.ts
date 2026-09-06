@@ -4,7 +4,7 @@
  */
 
 import { useQuery } from '@tanstack/react-query';
-import { useAuthSession } from '@/lib/auth/session-query';
+import { useAuthSession } from '@/components/auth/session-query';
 import { getBillingGateStatusFn } from '@/functions/billing-gate';
 import { openBillingGate } from './use-billing-gate-dialog';
 

@@ -5,7 +5,7 @@
  */
 
 import { getEnv } from '#env';
-import { ConfigurationError } from '@/shared/errors';
+import { OpenStoryError } from '@/shared/errors';
 import Stripe from 'stripe';
 
 let stripeInstance: Stripe | null = null;
@@ -41,8 +41,9 @@ function getStripe(): Stripe | null {
 export function getStripeOrThrow(): Stripe {
   const stripe = getStripe();
   if (!stripe) {
-    throw new ConfigurationError(
-      'STRIPE_SECRET_KEY environment variable is required for billing'
+    throw new OpenStoryError(
+      'STRIPE_SECRET_KEY environment variable is required for billing',
+      'CONFIGURATION_ERROR'
     );
   }
   return stripe;

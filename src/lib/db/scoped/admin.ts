@@ -4,7 +4,7 @@
  * Not team-scoped (admin operations span all teams).
  */
 
-import { micros, microsToUsd, usdToMicros } from '@/lib/billing/money';
+import { micros, microsToUsd, usdToMicros } from '@/shared/billing/money';
 import type { Database } from '@/lib/db/client';
 import { generateId } from '@/shared/id';
 import { user } from '@/lib/db/schema/auth';
@@ -19,7 +19,7 @@ import { giftTokenRedemptions, giftTokens } from '@/lib/db/schema/gift-tokens';
 import type { GiftToken } from '@/lib/db/schema/gift-tokens';
 import { sequences } from '@/lib/db/schema/sequences';
 import type { Sequence } from '@/lib/db/schema';
-import type { ShotView } from '@/lib/shots/shot-view';
+import type { ShotView } from '@/shared/shots/shot-view';
 import { teamMembers, teams } from '@/lib/db/schema/teams';
 import { ValidationError } from '@/shared/errors';
 import { and, count, desc, eq, exists, like, not, or, sql } from 'drizzle-orm';

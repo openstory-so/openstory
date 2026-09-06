@@ -28,8 +28,8 @@ import {
   needsOAuthQueryPack,
   pickOAuthQuery,
   resolveOAuthQuery,
-} from '@/lib/auth/oauth-query-snapshot';
-import { requireSessionOrRedirect } from '@/lib/auth/route-guards';
+} from '@/shared/auth/oauth-query-snapshot';
+import { requireSessionOrRedirect } from '@/components/auth/route-guards';
 import { errorMessage } from '@/shared/errors';
 import { useMutation } from '@tanstack/react-query';
 import { createFileRoute, redirect } from '@tanstack/react-router';

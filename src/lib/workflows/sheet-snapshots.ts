@@ -23,8 +23,8 @@ import {
   type ShotImageHashInput,
   type LocationBibleHashFields,
 } from '@/lib/ai/input-hash';
-import { DEFAULT_IMAGE_MODEL } from '@/lib/ai/models';
-import { styleConfigHashBody } from '@/lib/style/style-config';
+import { DEFAULT_IMAGE_MODEL } from '@/shared/ai/models';
+import { styleConfigHashBody } from '@/shared/style/style-config';
 import type { ScopedDb } from '@/lib/db/scoped';
 import type {
   CharacterMinimal,
@@ -44,7 +44,7 @@ import {
   matchCharactersToShotImage,
   matchElementsToShotImage,
   matchLocationsToScene,
-} from './scene-matching';
+} from '@/shared/scenes/scene-matching';
 
 export type { ShotImageSceneSnapshot } from '@/lib/workflow/types';
 

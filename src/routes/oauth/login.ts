@@ -4,11 +4,11 @@
  * `/api/auth/oauth2/authorize` sends signed-out users here with the client's
  * signed authorization query. We hand off to the normal login page with a
  * `redirectTo` that re-enters authorize once they're signed in. See
- * `src/lib/auth/oauth-login-resume.ts`.
+ * `src/shared/auth/oauth-login-resume.ts`.
  */
 
-import { buildLoginRedirect } from '@/lib/auth/oauth-login-resume';
-import { getLogger } from '@/lib/observability/logger';
+import { buildLoginRedirect } from '@/components/auth/oauth-login-resume';
+import { getLogger } from '@/shared/observability/logger';
 import { createFileRoute } from '@tanstack/react-router';
 
 const logger = getLogger(['openstory', 'oauth', 'login']);

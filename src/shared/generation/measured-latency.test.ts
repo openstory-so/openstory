@@ -3,7 +3,7 @@ import {
   AUDIO_MODELS,
   IMAGE_MODELS,
   IMAGE_TO_VIDEO_MODELS,
-} from '@/lib/ai/models';
+} from '@/shared/ai/models';
 import {
   AUDIO_WALL_CLOCK,
   IMAGE_WALL_CLOCK,

@@ -18,9 +18,9 @@
  */
 
 import { beforeEach, describe, expect, test, vi } from 'vitest';
-import { migrateStyleConfigV1ToV2 } from '@/lib/style/style-config';
-import { DEFAULT_IMAGE_MODEL, DEFAULT_VIDEO_MODEL } from '@/lib/ai/models';
-import { DEFAULT_ANALYSIS_MODEL } from '@/lib/ai/models.config';
+import { migrateStyleConfigV1ToV2 } from '@/shared/style/style-config';
+import { DEFAULT_IMAGE_MODEL, DEFAULT_VIDEO_MODEL } from '@/shared/ai/models';
+import { DEFAULT_ANALYSIS_MODEL } from '@/shared/ai/models.config';
 import type {
   WorkflowEvent,
   WorkflowStep,
@@ -52,7 +52,7 @@ vi.doMock('@/lib/workflows/cast-records', () => ({
 }));
 
 const emit = vi.fn(async () => undefined);
-vi.doMock('@/lib/realtime', () => ({
+vi.doMock('@/shared/realtime', () => ({
   getGenerationChannel: vi.fn(() => ({ emit })),
 }));
 

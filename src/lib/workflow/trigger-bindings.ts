@@ -15,7 +15,7 @@ import type { CloudflareEnv } from '@/lib/workflow/types';
 import { isInstanceAlreadyExistsError } from '@/lib/workflow/errors';
 import { buildInstanceId } from '@/lib/workflow/instance-id';
 import { disposeRpcStub } from '@/lib/workflow/rpc-dispose';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'workflow', 'trigger-bindings']);
 

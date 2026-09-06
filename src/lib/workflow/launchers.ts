@@ -41,21 +41,20 @@ import {
   DEFAULT_VIDEO_MODEL,
   safeImageToVideoModel,
   safeTextToImageModel,
-} from '@/lib/ai/models';
+} from '@/shared/ai/models';
 import {
   DEFAULT_ANALYSIS_MODEL,
   getAnalysisModelById,
-} from '@/lib/ai/models.config';
+} from '@/shared/ai/models.config';
 import { generateId } from '@/shared/id';
 import { NotFoundError, ValidationError } from '@/shared/errors';
 import type { ScopedDb } from '@/lib/db/scoped';
 import type { Sequence } from '@/lib/db/schema';
-import { resolveSequenceStyleConfig } from '@/lib/style/style-config';
+import { resolveSequenceStyleConfig } from '@/shared/style/style-config';
 import { sequenceScenesUrl } from '@/lib/emails/notify-sequence-ready';
 import { refreshCheckpointFromCast } from '@/lib/workflow/refresh-checkpoint';
 import { resolveStopAt } from '@/shared/generation/pipeline';
 import { triggerWorkflow } from '@/lib/workflow/client';
-import { buildWorkflowLabel } from '@/lib/workflow/labels';
 import { resolveRunState } from '@/lib/workflow/reconcile';
 import type {
   StoryboardTriggerInput,
@@ -273,7 +272,6 @@ export async function triggerStoryboard(
   // 'failed' on the next acquire and the slot recovers.
   const workflowRunId = await triggerWorkflow('/storyboard', payload, {
     deduplicationId: claimId,
-    label: buildWorkflowLabel(sequenceId),
   });
   await scopedDb.sequences.update({ id: sequenceId, workflowRunId });
 

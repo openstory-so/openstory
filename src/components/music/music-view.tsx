@@ -11,10 +11,13 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import { VoiceInputButton } from '@/components/voice/voice-input-button';
 import { useFalPricing } from '@/hooks/use-fal-pricing';
-import { getAudioModelDurationLimits, type AudioModel } from '@/lib/ai/models';
-import { estimateAudioCost } from '@/lib/billing/cost-estimation';
+import {
+  getAudioModelDurationLimits,
+  type AudioModel,
+} from '@/shared/ai/models';
+import { estimateAudioCost } from '@/shared/billing/cost-estimation';
 import { useTextDictation } from '@/hooks/use-dictation';
-import type { Sequence } from '@/types/database';
+import type { Sequence } from '@/lib/db/schema';
 import {
   AlertCircle,
   AlertTriangle,

@@ -4,24 +4,10 @@
  * matching → character/location bibles + visual prompts → shot images +
  * motion/music prompts → motion-batch.
  *
- * Mirrors the QStash version (`src/lib/workflows/analyze-script-workflow.ts`)
- * phase for phase. Key differences:
- *
- *   - Extends `OpenStoryWorkflowEntrypoint` instead of being built by
- *     `createScopedWorkflow`. Failure parity comes from the base class
- *     (see `base-workflow.ts`).
- *   - Uses `step.do` instead of `context.run`.
- *   - Every `context.invoke('child', { workflow, body })` becomes a
- *     `spawnAndAwaitChild` Pattern 3 call (await-child.ts). Parallel
- *     `Promise.all([context.invoke, context.invoke])` becomes
- *     `Promise.all` over `spawnAndAwaitChild` calls; we use
- *     `Promise.allSettled` where the QStash original individually checked
- *     `.isFailed` so a single child failure surfaces as a typed error
- *     instead of an unhandled rejection.
- *
  * Every child workflow is CF-ported and spawned via `spawnAndAwaitChild`,
  * including `scene-split` (LLM streaming wrapped in a single `step.do`) and
- * `motion-batch` (Phase 5 motion + music + merge tree). */
+ * `motion-batch` (Phase 5 motion + music + merge tree).
+ */
 
 import { getEffectiveFalPricing } from '@/lib/ai/fal-pricing-live';
 import { sanitizeScriptContent } from '@/lib/ai/prompt-validation';
@@ -32,14 +18,14 @@ import type { Scene } from '@/lib/ai/scene-analysis.schema';
 import {
   estimateReferenceSheetCost,
   estimateStoryboardRenderCost,
-} from '@/lib/billing/cost-estimation';
-import { creditsShortStatusError } from '@/lib/billing/credits-short';
-import { addMicros, microsToUsd } from '@/lib/billing/money';
+} from '@/shared/billing/cost-estimation';
+import { creditsShortStatusError } from '@/shared/billing/credits-short';
+import { addMicros, microsToUsd } from '@/shared/billing/money';
 import { gateStoryboardRenders } from '@/lib/billing/storyboard-render-gate';
 import { reusesTalentSheet } from '@/lib/talent/reuse-talent-sheet';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
-import { buildCastCharacterBible } from '@/lib/prompts/character-prompt';
-import { getGenerationChannel } from '@/lib/realtime';
+import { buildCastCharacterBible } from '@/shared/prompts/character-prompt';
+import { getGenerationChannel } from '@/shared/realtime';
 import { spawnAndAwaitChild } from '@/lib/workflow/await-child';
 import { OpenStoryWorkflowEntrypoint } from '@/lib/workflow/base-workflow';
 import { WorkflowValidationError } from '@/lib/workflow/errors';
@@ -92,7 +78,7 @@ import type {
 } from '@/lib/db/schema';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { NonRetryableError } from 'cloudflare:workflows';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'workflow', 'analyze-script']);
 
@@ -211,10 +197,11 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
       });
     }
 
-    // Load sequence elements. Vision MUST be terminal before scene-split.
-    // See QStash original for the full rationale. After the wait above this
-    // only trips for vision that genuinely failed to terminate within the
-    // timeout, in which case we still surface the explicit error.
+    // Load sequence elements. Vision MUST be terminal before scene-split:
+    // a scene split against a half-described element bakes the wrong look
+    // into every downstream prompt. After the wait above this only trips for
+    // vision that genuinely failed to terminate within the timeout, in which
+    // case we still surface the explicit error.
     //
     // Reads by the trigger-time `elementIds` — the vision-written fields
     // arrive late so the ROW read must be live, but re-enumerating the
@@ -1047,7 +1034,8 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
               ])
             )[0];
 
-    // Record analysis duration before raising failures (mirrors QStash).
+    // Record analysis duration before raising failures, so a failed run
+    // still reports how long it spent.
     await step.do('record-analysis-duration', async () => {
       if (sequenceId) {
         await scopedDb.sequences.updateAnalysisDurationMs(

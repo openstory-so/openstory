@@ -10,9 +10,9 @@ import {
 import {
   ALL_COMPOSER_STYLE_CATEGORIES,
   composerStyleCategoryOptions,
-} from '@/lib/style/composer-style-row';
-import { styleCategoryLabel } from '@/lib/style/style-assets';
-import type { Style } from '@/types/database';
+} from '@/components/style/composer-style-row';
+import { styleCategoryLabel } from '@/components/style/style-assets';
+import type { Style } from '@/lib/db/schema';
 import { ChevronDown } from 'lucide-react';
 
 type StyleCategorySelectProps = {

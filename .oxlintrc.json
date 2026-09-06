@@ -66,12 +66,12 @@
         "paths": [
           {
             "name": "#db-client",
-            "message": "Only db/scoped.ts and auth/config.ts may import #db-client"
+            "message": "#db-client is the raw D1 handle. Only the scoped-db factory, Better Auth, the pricing/cron jobs and the seed read it (allowlist: the db-access override at the bottom of this file + src/lib/db/db-access-allowlist.test.ts). Everything team-scoped goes through context.scopedDb."
           },
           {
             "name": "@/lib/db/scoped",
             "importNames": ["createScopedDb"],
-            "message": "createScopedDb only allowed in middleware.ts, workflow/base-workflow.ts, and authorized route handlers. Use context.scopedDb."
+            "message": "createScopedDb only in functions/middleware.ts, functions/stripe-webhook-middleware.ts and workflow/base-workflow.ts. Use context.scopedDb."
           }
         ]
       }
@@ -90,7 +90,7 @@
       "files": [
         "scripts/**/*.ts",
         "e2e/**/*.ts",
-        "src/lib/observability/logger.ts",
+        "src/shared/observability/logger.ts",
         "src/shared/mocks/**/*.ts"
       ],
       "rules": {
@@ -111,15 +111,12 @@
       // to reference `src/lib` from inside its handler, which the compiler
       // strips. The boundary test covers it instead, modelling that stripping.
       //
-      // Most `!` exceptions below are a directory still mixing server and
-      // shared code: delete the line once its client-safe files have moved to
-      // `src/shared`. Two are NOT that shape and must not be "migrated":
-      //   `!@/lib/storage`   — `routes/r2.$.ts` imports `serve-media` inside a
-      //                        `server: { handlers }` block the client build
-      //                        prunes. It reaches `#storage`; it can never
-      //                        move to `src/shared`.
-      //   `!@/lib/workflows` — one `.test.ts` import only. No production
-      //                        client file needs it.
+      // There are NO `!` exceptions: every `src/lib` module is off-limits to
+      // this file set (#1489). `routes/r2.$.ts` used to need one for
+      // `@/lib/storage/serve-media`, but it is a pure server route — its only
+      // `createFileRoute` option is `server: { handlers }`, which the client
+      // build prunes — so it belongs in the server-routes override below
+      // alongside `oauth/login.ts`, not in a hole punched through this rule.
       "files": [
         "src/components/**",
         "src/hooks/**",
@@ -133,60 +130,17 @@
             "paths": [
               {
                 "name": "#db-client",
-                "message": "Only db/scoped.ts and auth/config.ts may import #db-client"
+                "message": "#db-client is the raw D1 handle. Only the scoped-db factory, Better Auth, the pricing/cron jobs and the seed read it (allowlist: the db-access override at the bottom of this file + src/lib/db/db-access-allowlist.test.ts). Everything team-scoped goes through context.scopedDb."
               },
               {
                 "name": "@/lib/db/scoped",
                 "importNames": ["createScopedDb"],
-                "message": "createScopedDb only allowed in middleware.ts, workflow/base-workflow.ts, and authorized route handlers. Use context.scopedDb."
+                "message": "createScopedDb only in functions/middleware.ts, functions/stripe-webhook-middleware.ts and workflow/base-workflow.ts. Use context.scopedDb."
               }
             ],
             "patterns": [
               {
-                "group": [
-                  "@/lib/*",
-                  "@/lib/**",
-                  "!@/lib/ai",
-                  "!@/lib/ai/**",
-                  "!@/lib/auth",
-                  "!@/lib/auth/**",
-                  "!@/lib/billing",
-                  "!@/lib/billing/**",
-                  "!@/lib/compliance",
-                  "!@/lib/compliance/**",
-                  "!@/lib/image",
-                  "!@/lib/image/**",
-                  "!@/lib/models",
-                  "!@/lib/models/**",
-                  "!@/lib/motion",
-                  "!@/lib/motion/**",
-                  "!@/lib/observability",
-                  "!@/lib/observability/**",
-                  "!@/lib/prompts",
-                  "!@/lib/prompts/**",
-                  "!@/lib/realtime",
-                  "!@/lib/realtime/**",
-                  "!@/lib/scenes",
-                  "!@/lib/scenes/**",
-                  "!@/lib/sequence-elements",
-                  "!@/lib/sequence-elements/**",
-                  "!@/lib/sequences",
-                  "!@/lib/sequences/**",
-                  "!@/lib/sheets",
-                  "!@/lib/sheets/**",
-                  "!@/lib/shots",
-                  "!@/lib/shots/**",
-                  "!@/lib/storage",
-                  "!@/lib/storage/**",
-                  "!@/lib/studio",
-                  "!@/lib/studio/**",
-                  "!@/lib/style",
-                  "!@/lib/style/**",
-                  "!@/lib/talent",
-                  "!@/lib/talent/**",
-                  "!@/lib/workflows",
-                  "!@/lib/workflows/**"
-                ],
+                "group": ["@/lib/*", "@/lib/**"],
                 "allowTypeImports": true,
                 "message": "src/lib is server-only and must not ship to the browser. Import the client-safe helper from @/shared (move it there if it is not yet), or make this a type-only import."
               }
@@ -196,8 +150,20 @@
       }
     },
     {
-      // `routes/api/**` are server handlers, not client code.
-      "files": ["src/routes/api/**"],
+      // Server-only routes: `routes/api/**`, plus the root-level routes whose
+      // only `createFileRoute` option is `server` (pruned from the client
+      // route tree) — `[.]well-known`, `oauth/login.ts`, `r2.$.ts`. Tests never ship either, and neither do Storybook
+      // stories — they are built by Storybook, not the app graph, so a story
+      // may pull server-side fixture data (e.g. the style templates).
+      "files": [
+        "src/routes/api/**",
+        "src/routes/*well-known/**",
+        "src/routes/oauth/login.ts",
+        "src/routes/r2.$.ts",
+        "src/**/*.test.ts",
+        "src/**/*.test.tsx",
+        "src/**/*.stories.tsx"
+      ],
       "rules": {
         "no-restricted-imports": [
           "error",
@@ -205,12 +171,12 @@
             "paths": [
               {
                 "name": "#db-client",
-                "message": "Only db/scoped.ts and auth/config.ts may import #db-client"
+                "message": "#db-client is the raw D1 handle. Only the scoped-db factory, Better Auth, the pricing/cron jobs and the seed read it (allowlist: the db-access override at the bottom of this file + src/lib/db/db-access-allowlist.test.ts). Everything team-scoped goes through context.scopedDb."
               },
               {
                 "name": "@/lib/db/scoped",
                 "importNames": ["createScopedDb"],
-                "message": "createScopedDb only allowed in middleware.ts, workflow/base-workflow.ts, and authorized route handlers. Use context.scopedDb."
+                "message": "createScopedDb only in functions/middleware.ts, functions/stripe-webhook-middleware.ts and workflow/base-workflow.ts. Use context.scopedDb."
               }
             ]
           }
@@ -218,22 +184,56 @@
       }
     },
     {
+      // Raw `#db-client` readers. Each is a platform-wide (not team-scoped)
+      // table or the scoped-db factory itself; `createScopedDb` stays restricted.
+      // `src/lib/db/db-access-allowlist.test.ts` pins the same list against every
+      // import form, including the relative ones this path rule cannot see.
       "files": [
         "**/db/scoped.ts",
         "**/db/client.ts",
         "**/auth/config.ts",
-        "**/functions/middleware.ts",
-        "**/functions/stripe-webhook-middleware.ts",
-        "**/workflow/base-workflow.ts",
         "**/cron/reconcile-all.ts",
         "**/cron/reconcile-fal-billing.ts",
         "**/cron/refresh-fal-pricing.ts",
         "**/ai/fal-pricing-live.ts",
-        "**/openrouter/callback.ts",
+        "**/db/seed-model-pricing.ts",
         "**/lib/test/seed.ts"
       ],
       "rules": {
-        "no-restricted-imports": "off"
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "@/lib/db/scoped",
+                "importNames": ["createScopedDb"],
+                "message": "createScopedDb only in functions/middleware.ts, functions/stripe-webhook-middleware.ts and workflow/base-workflow.ts. Use context.scopedDb."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      // The request middlewares and the workflow base mint the scoped db for
+      // handlers / runs; they never touch the raw handle.
+      "files": [
+        "**/functions/middleware.ts",
+        "**/functions/stripe-webhook-middleware.ts",
+        "**/workflow/base-workflow.ts"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "#db-client",
+                "message": "#db-client is the raw D1 handle. Only the scoped-db factory, Better Auth, the pricing/cron jobs and the seed read it (allowlist: the db-access override at the bottom of this file + src/lib/db/db-access-allowlist.test.ts). Everything team-scoped goes through context.scopedDb."
+              }
+            ]
+          }
+        ]
       }
     }
   ]

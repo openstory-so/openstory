@@ -15,7 +15,7 @@
 
 import { toast } from 'sonner';
 
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'utils', 'drag-images']);
 

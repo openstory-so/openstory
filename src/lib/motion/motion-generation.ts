@@ -13,12 +13,12 @@ import {
   isBytePlusPortraitFilterError,
 } from '@/lib/ai/byteplus-portrait-filter';
 import { bytePlusVideoUnitsBilled } from '@/lib/ai/byteplus-pricing';
-import { withBytePlusQuotaRetry } from '@/lib/ai/byteplus-rate-limit';
+import { withBytePlusQuotaRetry } from '@/lib/ai/quota-retry';
+import { falCostFromUnits } from '@/lib/ai/fal-cost-billing';
 import {
   estimateFalCost,
-  falCostFromUnits,
   type EffectiveFalPricing,
-} from '@/lib/ai/fal-cost';
+} from '@/shared/ai/fal-cost';
 import {
   createDeadlineFetch,
   FAL_REQUEST_TIMEOUT_MS,
@@ -28,13 +28,13 @@ import {
   geminiVideoDurationCost,
   isNativeGeminiVideoModel,
   NATIVE_GEMINI_VIDEO_MODEL,
-} from '@/lib/ai/gemini-native';
+} from '@/shared/ai/gemini-native';
 import {
   grokVideoCost,
   grokVideoDurationCost,
   isNativeGrokVideoModel,
   NATIVE_GROK_VIDEO_MODEL,
-} from '@/lib/ai/grok-native';
+} from '@/shared/ai/grok-native';
 import {
   DEFAULT_VIDEO_MODEL,
   getBytePlusVideoModelId,
@@ -43,19 +43,19 @@ import {
   referenceOnlyCapableWith,
   supportsReferenceOnlyMotion,
   type ImageToVideoModel,
-} from '@/lib/ai/models';
+} from '@/shared/ai/models';
 import { assertMediaVia, type MediaVia } from '@/lib/ai/via';
 import { workersSafeFetch } from '@/lib/ai/workers-safe-fetch';
-import { reportMissingBillingCost } from '@/lib/billing/billing-observability';
-import { getLogger } from '@/lib/observability/logger';
+import { reportMissingBillingCost } from '@/shared/billing/billing-observability';
+import { getLogger } from '@/shared/observability/logger';
 import { getPostHogClient } from '@/lib/posthog-server';
-import { ZERO_MICROS, type Microdollars } from '@/lib/billing/money';
+import { ZERO_MICROS, type Microdollars } from '@/shared/billing/money';
 import type { AspectRatio } from '@/shared/constants/aspect-ratios';
 import type { Resolution } from '@/shared/constants/resolutions';
 import type { ResolvedApiKey } from '@/lib/db/scoped/api-keys';
 import type { CredentialScopedDb } from '@/lib/db/scoped-workflow';
-import { snapDuration } from '@/lib/motion/snap-duration';
-import type { ReferenceImageDescription } from '@/lib/prompts/reference-image-prompt';
+import { snapDuration } from '@/shared/motion/snap-duration';
+import type { ReferenceImageDescription } from '@/shared/prompts/reference-image-prompt';
 import {
   ensureExternallyFetchableUrl,
   toDataOrCdnUrl,
@@ -65,15 +65,15 @@ import { getVideoJobStatus } from '@/lib/ai/video-job-status';
 import { falVideo } from '@tanstack/ai-fal';
 import { createGeminiVideo } from '@tanstack/ai-gemini';
 import { createGrokVideo } from '@tanstack/ai-grok';
-import { buildBytePlusVideoRequest } from './build-byteplus-video-request';
-import { buildGeminiVideoRequest } from './build-gemini-video-request';
+import { buildBytePlusVideoRequest } from '@/shared/motion/build-byteplus-video-request';
+import { buildGeminiVideoRequest } from '@/shared/motion/build-gemini-video-request';
 import {
   getGeminiFileState,
   isGeminiFilesVideoUrl,
 } from '@/lib/motion/video-storage';
-import { buildGrokVideoRequest } from './build-grok-video-request';
-import { buildMotionRequest } from './build-model-input';
-import { resolveMotionEndpoint } from './resolve-motion-endpoint';
+import { buildGrokVideoRequest } from '@/shared/motion/build-grok-video-request';
+import { buildMotionRequest } from '@/shared/motion/build-model-input';
+import { resolveMotionEndpoint } from '@/shared/motion/resolve-motion-endpoint';
 
 const logger = getLogger(['openstory', 'motion', 'generation']);
 

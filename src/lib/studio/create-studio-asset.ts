@@ -17,8 +17,8 @@ import {
   estimateImageCost,
   estimateStudioVideoCost,
   gateEstimate,
-} from '@/lib/billing/cost-estimation';
-import { multiplyMicros, type Microdollars } from '@/lib/billing/money';
+} from '@/shared/billing/cost-estimation';
+import { multiplyMicros, type Microdollars } from '@/shared/billing/money';
 import {
   releaseReservationOnThrow,
   reserveRunCredits,
@@ -26,14 +26,14 @@ import {
 import { requireGenerationAllowed } from '@/lib/compliance/generation-gate';
 import type { ScopedDb } from '@/lib/db/scoped';
 import type { GeneratedAssetInput } from '@/lib/db/schema';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 import {
   studioEndpointId,
   studioModelName,
   type StudioCreateInput,
   type StudioCreateResult,
-} from '@/lib/studio/schema';
-import { snapStudioVideoDuration } from '@/lib/studio/text-to-video';
+} from '@/shared/studio/schema';
+import { snapStudioVideoDuration } from '@/shared/studio/text-to-video';
 import { triggerWorkflow } from '@/lib/workflow/client';
 import { captureProductEvent } from '@/lib/observability/product-events';
 import type { StudioGenerationWorkflowInput } from '@/lib/workflow/types';

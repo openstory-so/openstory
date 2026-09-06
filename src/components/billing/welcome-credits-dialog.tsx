@@ -24,9 +24,9 @@ import { openAddCreditsDialog } from '@/hooks/use-add-credits-dialog';
 import { useBillingBalance } from '@/hooks/use-billing-balance';
 import { useShowCosts } from '@/hooks/use-show-costs';
 import { useUser } from '@/hooks/use-user';
-import { SIGNUP_GRANT_MICROS } from '@/lib/billing/constants';
-import { microsToDisplayUsd } from '@/lib/billing/money';
-import { hasPendingGenerate } from '@/shared/generation/pending-generate';
+import { SIGNUP_GRANT_MICROS } from '@/shared/billing/constants';
+import { microsToDisplayUsd } from '@/shared/billing/money';
+import { hasPendingGenerate } from '@/components/generation/pending-generate';
 import { Sparkles } from 'lucide-react';
 import {
   createContext,

@@ -8,7 +8,7 @@ import {
   formatPlatformFeePercent,
   MIN_TOPUP_AMOUNT_USD,
   splitCheckoutAmounts,
-} from './constants';
+} from '@/shared/billing/constants';
 import { captureCheckoutOpened } from './checkout-events';
 import type { ScopedDb } from '@/lib/db/scoped';
 import { getStripeOrThrow } from './stripe';

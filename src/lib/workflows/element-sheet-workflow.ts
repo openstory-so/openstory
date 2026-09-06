@@ -21,7 +21,7 @@
  * idempotency guard.
  */
 
-import { DEFAULT_IMAGE_MODEL } from '@/lib/ai/models';
+import { DEFAULT_IMAGE_MODEL } from '@/shared/ai/models';
 import type { ElementBibleEntry } from '@/lib/ai/scene-analysis.schema';
 import {
   deductWorkflowCredits,
@@ -33,11 +33,11 @@ import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import type { SequenceElement, SequenceElementMinimal } from '@/lib/db/schema';
 import type { ImageGenerationParams } from '@/lib/image/image-generation';
 import { recordProvenance } from '@/lib/compliance/provenance';
-import { buildElementSheetPrompt } from '@/lib/prompts/element-prompt';
+import { buildElementSheetPrompt } from '@/shared/prompts/element-prompt';
 import { rejectionReasonMessage } from '@/lib/workflows/replace-element-workflow';
 import { STORAGE_BUCKETS } from '@/lib/storage/buckets';
 import { uploadResponse } from '@/lib/storage/upload-response';
-import { contentRejectionSummary } from '@/lib/ai/content-rejection';
+import { contentRejectionSummary } from '@/shared/ai/content-rejection';
 import { OpenStoryWorkflowEntrypoint } from '@/lib/workflow/base-workflow';
 import { generateImageSoftening } from '@/lib/workflows/content-soften';
 import { MAX_AUTO_ELEMENTS } from '@/lib/workflows/cast-records';
@@ -46,7 +46,7 @@ import type {
   ElementSheetWorkflowResult,
 } from '@/lib/workflow/types';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'workflow', 'element-sheet']);
 

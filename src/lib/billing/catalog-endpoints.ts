@@ -5,7 +5,7 @@
  */
 
 import { getFalEndpointIds } from '@/lib/ai/fal-endpoints';
-import { IMAGE_MODELS, IMAGE_TO_VIDEO_MODELS } from '@/lib/ai/models';
+import { IMAGE_MODELS, IMAGE_TO_VIDEO_MODELS } from '@/shared/ai/models';
 
 /**
  * Unique pricing ids for every endpoint a client-side estimate can price:

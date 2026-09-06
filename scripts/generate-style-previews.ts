@@ -2,11 +2,11 @@ import {
   DEFAULT_IMAGE_MODEL,
   safeTextToImageModel,
   type TextToImageModel,
-} from '@/lib/ai/models';
-import { parseStyleConfig } from '@/lib/style/style-config';
+} from '@/shared/ai/models';
+import { parseStyleConfig } from '@/shared/style/style-config';
 import { generateImageWithProvider } from '@/lib/image/image-generation';
 import { buildStyledImagePrompt } from '@/lib/style/style-image-prompt';
-import { styleSlug } from '@/lib/style/style-slug';
+import { styleSlug } from '@/shared/style/style-slug';
 import { DEFAULT_STYLE_TEMPLATES } from '@/lib/style/style-templates';
 import { PhotonImage } from '@cf-wasm/photon';
 import { mkdir, writeFile } from 'node:fs/promises';

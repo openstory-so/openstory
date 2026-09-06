@@ -12,7 +12,7 @@ import { teamInvitations, teamMembers, user } from '@/lib/db/schema';
 import { ValidationError } from '@/shared/errors';
 import crypto from 'node:crypto';
 
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'db', 'team-management']);
 

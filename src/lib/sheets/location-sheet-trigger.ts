@@ -4,8 +4,8 @@
 
 import type { SequenceLocationWithReference } from '@/lib/db/schema';
 import type { ScopedDb } from '@/lib/db/scoped';
-import { resolveSheetImageModel } from '@/lib/sheets/sheet-image-model';
-import { resolveSequenceStyleConfig } from '@/lib/style/style-config';
+import { resolveSheetImageModel } from '@/shared/sheets/sheet-image-model';
+import { resolveSequenceStyleConfig } from '@/shared/style/style-config';
 import type { LocationSheetWorkflowInput } from '@/lib/workflow/types';
 import { computeLocationSheetHashFromDto } from '@/lib/workflows/sheet-snapshots';
 

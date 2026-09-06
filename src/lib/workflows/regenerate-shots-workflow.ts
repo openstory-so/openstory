@@ -1,34 +1,16 @@
 /**
- * Cloudflare Workflows port of `regenerateShotsWorkflow`.
+ * The `regenerateShotsWorkflow` durable workflow.
  *
- * Wave 3 fan-out leaf: bulk regenerates shot images after a character or
- * location recast. Mirrors the QStash version
- * (`src/lib/workflows/regenerate-shots-workflow.ts`) step for step — same
- * step names, same control flow, same side effects. The only differences are:
- *
- *   - Extends `OpenStoryWorkflowEntrypoint` instead of being built by
- *     `createScopedWorkflow`. Failure parity comes from the base class
- *     (see `base-workflow.ts`).
- *   - Uses `step.do` instead of `context.run`.
- *   - Reads payload from `event.payload` instead of `context.requestPayload`
- *     and the workflow run id from `event.instanceId` instead of
- *     `context.workflowRunId`.
- *   - The Promise.all over `context.invoke('image', ...)` becomes a
- *     Pattern 3 `spawnAndAwaitChild` fan-out (`await-child.ts`), unbounded
- *     since #1143. Each child gets a deterministic
- *     instance ID (`image:${sequenceId}:${shotId}`) and a unique event-type
- *     qualifier so siblings cannot match each other's completion events.
- *   - Calls the snapshot DTO computer (`computeRegenerateShotsBatchHash`)
- *     directly inside `step.do('validate-snapshot')` instead of going
- *     through the `context.snapshot.*` extension.
- *   - `failureFunction` → `onFailure`. */
+ * The batch snapshot hash (`computeRegenerateShotsBatchHash`) is validated
+ * inside `step.do('validate-snapshot')`, so a stale payload fails the run
+ * rather than regenerating against shots the user has since changed.
+ */
 
-import { DEFAULT_IMAGE_MODEL } from '@/lib/ai/models';
+import { DEFAULT_IMAGE_MODEL } from '@/shared/ai/models';
 import { aspectRatioToImageSize } from '@/shared/constants/aspect-ratios';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import { triggerWorkflow } from '@/lib/workflow/client';
 import { WorkflowValidationError } from '@/lib/workflow/errors';
-import { buildWorkflowLabel } from '@/lib/workflow/labels';
 import { spawnAndAwaitChild } from '@/lib/workflow/await-child';
 import { OpenStoryWorkflowEntrypoint } from '@/lib/workflow/base-workflow';
 import type {
@@ -42,7 +24,7 @@ import {
   computeRegenerateShotsBatchHash,
   emitRecastEvent,
 } from '@/lib/workflows/regenerate-shots-snapshot';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'workflow', 'regenerate-shots']);
 
@@ -82,8 +64,6 @@ export class RegenerateShotsWorkflow extends OpenStoryWorkflowEntrypoint<Regener
     const input = event.payload;
     const parentInstanceId = event.instanceId;
     const { sequenceId, teamId, triggerKind, triggerId } = input;
-    const label = buildWorkflowLabel(sequenceId);
-
     // ============================================================
     // Top-level validation (re-throws as NonRetryableError via the base
     // class's WorkflowValidationError re-wrap). Inside step.do we use
@@ -96,9 +76,9 @@ export class RegenerateShotsWorkflow extends OpenStoryWorkflowEntrypoint<Regener
 
     const childBinding = this.env.IMAGE_WORKFLOW;
 
-    // Validate the snapshot hash inside the workflow body. Mirrors the QStash
-    // `validate-snapshot` step but calls the DTO computer directly because CF
-    // has no `context.snapshot.*` extension.
+    // Validate the snapshot hash inside the workflow body: a payload that no
+    // longer matches the live shots must halt the run, not regenerate against
+    // stale intent.
     await step.do('validate-snapshot', async () => {
       const expected = input.snapshotInputHash;
       if (!expected) return;
@@ -276,7 +256,6 @@ export class RegenerateShotsWorkflow extends OpenStoryWorkflowEntrypoint<Regener
                 model: imageModel,
               },
               {
-                label,
                 // Dedupe: a retry of this step.do mustn't re-fire variants.
                 deduplicationId: `variant-image-${result.shotId}-${imageModel}-${snapshot.snapshotInputHash.slice(0, 16)}`,
                 enforcement,

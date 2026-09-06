@@ -11,7 +11,10 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { setShotUseStartFrameFn } from '@/functions/shots';
-import { canUseStartFrame, usesStartFrame } from '@/lib/shots/use-start-frame';
+import {
+  canUseStartFrame,
+  usesStartFrame,
+} from '@/shared/shots/use-start-frame';
 import {
   Select,
   SelectContent,
@@ -50,10 +53,10 @@ import {
   useReplaceFrameImage,
   useReplaceShotVideo,
 } from '@/hooks/use-media-upload';
-import type { SequenceSegment } from '@/lib/scenes/scene-segments';
-import type { UpdateStaleDepth } from '@/lib/shots/update-stale-depth';
+import type { SequenceSegment } from '@/shared/scenes/scene-segments';
+import type { UpdateStaleDepth } from '@/shared/shots/update-stale-depth';
 import { copyTextToClipboard } from '@/shared/utils/clipboard';
-import { isSetImageOffered } from '@/lib/shots/set-image-offer';
+import { isSetImageOffered } from '@/components/scenes/set-image-offer';
 import {
   type ShotStaleness,
   markArtifactFresh,
@@ -84,11 +87,11 @@ import {
   videoModelSupportsAudio,
   type ImageToVideoModel,
   type TextToImageModel,
-} from '@/lib/ai/models';
+} from '@/shared/ai/models';
 import {
   estimateImageCost,
   estimateVideoCost,
-} from '@/lib/billing/cost-estimation';
+} from '@/shared/billing/cost-estimation';
 import {
   aspectRatioToImageSize,
   DEFAULT_ASPECT_RATIO,
@@ -109,25 +112,25 @@ import {
   CONTENT_REJECTION_USER_HINT,
   CONTENT_REJECTION_USER_TITLE,
   isContentRejectionError,
-} from '@/lib/ai/content-rejection';
-import { isNativeGeminiVideoModel } from '@/lib/ai/gemini-native';
-import { isNativeGrokVideoModel } from '@/lib/ai/grok-native';
-import { buildImageRequest } from '@/lib/image/build-image-request';
-import { buildBytePlusImageRequest } from '@/lib/image/build-byteplus-image-request';
-import { buildGeminiVideoRequest } from '@/lib/motion/build-gemini-video-request';
-import { buildGrokVideoRequest } from '@/lib/motion/build-grok-video-request';
-import { buildBytePlusVideoRequest } from '@/lib/motion/build-byteplus-video-request';
-import { buildMotionRequest } from '@/lib/motion/build-model-input';
+} from '@/shared/ai/content-rejection';
+import { isNativeGeminiVideoModel } from '@/shared/ai/gemini-native';
+import { isNativeGrokVideoModel } from '@/shared/ai/grok-native';
+import { buildImageRequest } from '@/shared/image/build-image-request';
+import { buildBytePlusImageRequest } from '@/shared/image/build-byteplus-image-request';
+import { buildGeminiVideoRequest } from '@/shared/motion/build-gemini-video-request';
+import { buildGrokVideoRequest } from '@/shared/motion/build-grok-video-request';
+import { buildBytePlusVideoRequest } from '@/shared/motion/build-byteplus-video-request';
+import { buildMotionRequest } from '@/shared/motion/build-model-input';
 import {
   buildMotionReferenceImages,
   buildShotImageReferenceImages,
-} from '@/lib/motion/build-motion-references';
-import { buildReferenceImagePrompt } from '@/lib/prompts/reference-image-prompt';
-import { resolveMotionPrompt } from '@/lib/motion/resolve-motion-prompt';
-import { resolveShotDuration } from '@/lib/motion/resolve-shot-duration';
+} from '@/shared/motion/build-motion-references';
+import { buildReferenceImagePrompt } from '@/shared/prompts/reference-image-prompt';
+import { resolveMotionPrompt } from '@/shared/motion/resolve-motion-prompt';
+import { resolveShotDuration } from '@/shared/motion/resolve-shot-duration';
 import type { AssemblableMotionPrompt } from '@/lib/ai/scene-analysis.schema';
-import { useShotPromptStream } from '@/lib/realtime/use-shot-prompt-stream';
-import type { ShotView } from '@/lib/shots/shot-view';
+import { useShotPromptStream } from '@/components/realtime/use-shot-prompt-stream';
+import type { ShotView } from '@/shared/shots/shot-view';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CopyIcon, History, Loader2, Minimize2, RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -136,7 +139,7 @@ import {
   SCENE_FACETS,
   type SceneFacet,
   type SelectionScope,
-} from '@/lib/scenes/scene-selection';
+} from '@/components/scenes/scene-selection';
 import { errorMessage, isInsufficientCreditsError } from '@/shared/errors';
 import { useUpdateStaleShots } from '@/hooks/use-update-stale-shots';
 import { SceneCastTab } from './scene-cast-tab';
@@ -147,7 +150,7 @@ import { SceneMusicFacet } from './scene-music-facet';
 import { SceneScriptTab } from './scene-script-tab';
 import { ShotDurationField } from './shot-duration-field';
 
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'ui', 'scenes', 'scene-script-prompts']);
 

@@ -5,7 +5,11 @@ import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { listUserActivityFn } from '@/functions/admin';
 import type { UserActivityRow } from '@/lib/db/scoped';
-import { micros, microsToDisplayUsd, microsToUsd } from '@/lib/billing/money';
+import {
+  micros,
+  microsToDisplayUsd,
+  microsToUsd,
+} from '@/shared/billing/money';
 import { useQuery } from '@tanstack/react-query';
 import { createFileRoute, Link } from '@tanstack/react-router';
 import {

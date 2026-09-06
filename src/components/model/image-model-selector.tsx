@@ -6,14 +6,14 @@ import {
   IMAGE_MODELS,
   isValidTextToImageModel,
   type TextToImageModel,
-} from '@/lib/ai/models';
+} from '@/shared/ai/models';
 import {
   compareSelectorModels,
   QUALITY_DEFAULT_IMAGE,
   SELECTOR_GROUP_ORDER,
   selectorGroup,
   TURBO_IMAGE_MODELS,
-} from '@/lib/ai/generation-mode';
+} from '@/shared/ai/generation-mode';
 import { useMemo } from 'react';
 
 type RecommendationProps = {

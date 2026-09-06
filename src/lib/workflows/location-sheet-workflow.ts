@@ -1,20 +1,9 @@
 /**
- * Cloudflare Workflows port of `locationSheetWorkflow`.
- *
- * Mirrors the QStash version (`src/lib/workflows/location-sheet-workflow.ts`)
- * step for step — same step names, same control flow, same side effects. The
- * only differences are:
- *
- *   - Extends `OpenStoryWorkflowEntrypoint` instead of being built by
- *     `createScopedWorkflow`. Failure parity comes from the base class
- *     (see `base-workflow.ts`).
- *   - Uses `step.do` instead of `context.run`.
- *   - Reads the workflow run id from `event.instanceId` instead of
- *     `context.workflowRunId`.
- *   - Calls the snapshot DTO computers directly instead of going through
- *     the `context.snapshot.*` extension. */
+ * The `locationSheetWorkflow` durable workflow.
 
-import { DEFAULT_IMAGE_MODEL } from '@/lib/ai/models';
+ */
+
+import { DEFAULT_IMAGE_MODEL } from '@/shared/ai/models';
 import {
   deductWorkflowCredits,
   extractImageCost,
@@ -23,9 +12,9 @@ import {
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import { generateId } from '@/shared/id';
 import type { ImageGenerationParams } from '@/lib/image/image-generation';
-import { buildLocationSheetPrompt } from '@/lib/prompts/location-prompt';
+import { buildLocationSheetPrompt } from '@/shared/prompts/location-prompt';
 import { recordProvenance } from '@/lib/compliance/provenance';
-import { getGenerationChannel } from '@/lib/realtime';
+import { getGenerationChannel } from '@/shared/realtime';
 import { STORAGE_BUCKETS } from '@/lib/storage/buckets';
 import { uploadResponse } from '@/lib/storage/upload-response';
 import { OpenStoryWorkflowEntrypoint } from '@/lib/workflow/base-workflow';
@@ -44,7 +33,7 @@ import {
   computeLocationSheetHashCurrent,
   computeLocationSheetHashFromDto,
 } from '@/lib/workflows/sheet-snapshots';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'workflow', 'location-sheet']);
 

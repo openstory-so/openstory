@@ -108,7 +108,7 @@ export type PersistMotionScopedDb = {
 
 /**
  * Payload shape for `generation.video:progress`. A subset of the realtime
- * schema (see `src/lib/realtime/index.ts`) — assignable to the channel's
+ * schema (see `src/shared/realtime.ts`) — assignable to the channel's
  * emitter so the workflow can forward it directly.
  */
 export type MotionVideoProgressPayload =

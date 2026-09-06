@@ -1,17 +1,6 @@
 /**
- * Cloudflare Workflows port of `elementVisionWorkflow`.
- *
- * Mirrors the QStash version (`src/lib/workflows/element-vision-workflow.ts`)
- * step for step — same step names, same control flow, same side effects.
- * The only differences are:
- *
- *   - Extends `OpenStoryWorkflowEntrypoint` instead of being built by
- *     `createScopedWorkflow`. Failure parity comes from the base class
- *     (see `base-workflow.ts`).
- *   - Uses `step.do` instead of `context.run`.
- *   - Reads the workflow run id from `event.instanceId` instead of
- *     `context.workflowRunId` (not needed for this workflow, but listed
- *     here for parity with the other CF ports). */
+ * The `elementVisionWorkflow` durable workflow.
+ */
 
 import {
   describeElementImage,
@@ -25,7 +14,7 @@ import type {
   ElementVisionWorkflowResult,
 } from '@/lib/workflow/types';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'workflow', 'element-vision']);
 

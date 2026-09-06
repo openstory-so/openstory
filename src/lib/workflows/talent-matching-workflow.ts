@@ -1,15 +1,5 @@
 /**
- * Cloudflare Workflows port of `talentMatchingWorkflow`.
- *
- * Mirrors the QStash version (`src/lib/workflows/talent-matching-workflow.ts`)
- * step for step — same step names, same control flow, same side effects. The
- * only differences are:
- *
- *   - Extends `OpenStoryWorkflowEntrypoint` instead of being built by
- *     `createScopedWorkflow`. Failure parity comes from the base class
- *     (see `base-workflow.ts`).
- *   - Uses `step.do` instead of `context.run`.
- *   - Reads payload from `event.payload` instead of `context.requestPayload`.
+ * The `talentMatchingWorkflow` durable workflow.
  *
  * The LLM call goes through `durableLLMCallCf`; see
  * `src/lib/workflows/llm-call-helper.ts`.
@@ -18,7 +8,7 @@
 import { talentMatchResponseSchema } from '@/lib/ai/response-schemas';
 import { buildMatchingPromptVariables } from '@/lib/ai/talent-matching-prompt';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
-import { getGenerationChannel } from '@/lib/realtime';
+import { getGenerationChannel } from '@/shared/realtime';
 import { GENERATION_STAGE_META } from '@/shared/generation/pipeline';
 import { OpenStoryWorkflowEntrypoint } from '@/lib/workflow/base-workflow';
 import { durableLLMCallCf } from '@/lib/workflows/llm-call-helper';
@@ -29,7 +19,7 @@ import type {
   TalentMatchingWorkflowOutput,
 } from '@/lib/workflow/types';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'workflow', 'talent-matching']);
 

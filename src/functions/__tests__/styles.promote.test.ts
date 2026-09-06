@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { NotFoundError, ValidationError } from '@/shared/errors';
-import { placeholderAutoStyleDraft } from '@/lib/style/auto-style';
+import { placeholderAutoStyleDraft } from '@/shared/style/auto-style';
 import { assertPromotableAutoStyle } from '@/functions/styles';
 
 const derived = placeholderAutoStyleDraft().config;

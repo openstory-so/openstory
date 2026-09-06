@@ -23,12 +23,12 @@
  *   bun scripts/eval-enhance-creativity.ts --model openai/gpt-5.5 --runs 2
  */
 import { callLLM, RECOMMENDED_MODELS } from '@/lib/ai/llm-client';
-import type { TextModel } from '@/lib/ai/models';
+import type { TextModel } from '@/shared/ai/models';
 import {
   ANALYSIS_MODEL_IDS,
   isValidAnalysisModelId,
-} from '@/lib/ai/models.config';
-import { toEnhanceInputs } from '@/lib/ai/enhance-inputs';
+} from '@/shared/ai/models.config';
+import { toEnhanceInputs } from '@/shared/ai/enhance-inputs';
 import { createUserPrompt } from '@/lib/ai/script-enhancer';
 import { DEFAULT_STYLE_TEMPLATES } from '@/lib/style/style-templates';
 import { WORKFLOW_TEXT_PROMPTS } from '@/lib/prompts/workflow-prompts';

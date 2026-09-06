@@ -3,8 +3,8 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { DEFAULT_VISION_MODEL } from './models.config';
-import { strongestSubjectKind } from '@/lib/talent/subject-kind';
+import { DEFAULT_VISION_MODEL } from '@/shared/ai/models.config';
+import { strongestSubjectKind } from '@/shared/talent/subject-kind';
 import {
   buildTalentVisionMessages,
   talentMediaAnalysisSchema,

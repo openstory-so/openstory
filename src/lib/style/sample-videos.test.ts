@@ -5,7 +5,7 @@ import {
   briefForStyle,
   CATEGORY_BRIEFS,
   STYLE_BRIEF_OVERRIDES,
-} from './brief-for-style';
+} from '@/shared/style/brief-for-style';
 import {
   beatsToScript,
   BESPOKE_SCRIPTS,
@@ -16,7 +16,7 @@ import {
   isHeroStyle,
   sampleVideoUrl,
 } from './sample-videos';
-import { styleSlug } from './style-slug';
+import { styleSlug } from '@/shared/style/style-slug';
 
 const DOMAIN = 'assets.openstory.so';
 

@@ -3,7 +3,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { matchLocationsToScene } from '@/lib/workflows/scene-matching';
+import { matchLocationsToScene } from '@/shared/scenes/scene-matching';
 import type { SequenceLocationWithReference } from '@/lib/db/schema';
 
 // Mock location data - using full SequenceLocation type

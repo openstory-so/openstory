@@ -8,7 +8,7 @@ import { BillingSettings } from '@/components/settings/billing-settings';
 import { GiftCodeSettings } from '@/components/settings/gift-code-settings';
 import { TransactionSettings } from '@/components/settings/transaction-settings';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { requireSessionOrRedirect } from '@/lib/auth/route-guards';
+import { requireSessionOrRedirect } from '@/components/auth/route-guards';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { Gift, Receipt, Wallet } from 'lucide-react';
 import { z } from 'zod';

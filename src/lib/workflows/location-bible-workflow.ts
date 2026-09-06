@@ -1,24 +1,12 @@
 /**
- * Cloudflare Workflows port of `locationBibleWorkflow`.
+ * The `locationBibleWorkflow` durable workflow.
  *
- * Mirrors the QStash version (`src/lib/workflows/location-bible-workflow.ts`)
- * step for step — same step names, same control flow, same side effects. The
- * key differences are:
- *
- *   - Extends `OpenStoryWorkflowEntrypoint` instead of being built by
- *     `createScopedWorkflow`. Failure parity comes from the base class
- *     (see `base-workflow.ts`).
- *   - Uses `step.do` instead of `context.run`.
- *   - Reads payload from `event.payload` and the run id from
- *     `event.instanceId` instead of `context.requestPayload` /
- *     `context.workflowRunId`.
- *   - Mid-tier orchestrator: instead of generating each location reference
- *     image inline, it fans out to child `LocationSheetWorkflow` instances
- *     via Pattern 3 (`spawnAndAwaitChild`). The QStash version did the
- *     equivalent work inline because `context.invoke()` returned the child's
- *     value directly; CF has no equivalent so we spawn-and-await. */
+ * Mid-tier orchestrator: rather than generating each location reference image
+ * inline, it fans out to child `LocationSheetWorkflow` instances via Pattern 3
+ * (`spawnAndAwaitChild`).
+ */
 
-import { DEFAULT_IMAGE_MODEL } from '@/lib/ai/models';
+import { DEFAULT_IMAGE_MODEL } from '@/shared/ai/models';
 import { generateId } from '@/shared/id';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import type { SequenceLocationMinimal } from '@/lib/db/schema';
@@ -34,7 +22,7 @@ import type {
 } from '@/lib/workflow/types';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { NonRetryableError } from 'cloudflare:workflows';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'workflow', 'location-bible']);
 
@@ -225,10 +213,9 @@ export class LocationBibleWorkflow extends OpenStoryWorkflowEntrypoint<LocationB
     error: string;
     scopedDb: WorkflowScopedDb;
   }): void {
-    // QStash's `failureFunction` here just logged + returned a friendly
-    // message — no DB writes (the inserted `sequence_locations` rows stay in
-    // `generating` and each child's own `onFailure` writes per-row failure).
-    // Mirror that behaviour exactly: log and let the base class rethrow.
+    // Log only, no DB writes: the inserted `sequence_locations` rows stay in
+    // `generating` and each child's own `onFailure` writes the per-row
+    // failure. Log and let the base class rethrow.
     logger.error(
       `[LocationBibleWorkflow:cf] Location reference generation failed: ${error}`
     );

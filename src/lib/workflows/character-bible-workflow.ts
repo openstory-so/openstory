@@ -1,29 +1,20 @@
 /**
- * Cloudflare Workflows port of `characterBibleWorkflow`.
+ * The `characterBibleWorkflow` durable workflow.
  *
- * Mirrors the QStash version (`src/lib/workflows/character-bible-workflow.ts`)
- * step for step — same step names, same control flow, same side effects. The
- * only differences are:
- *
- *   - Extends `OpenStoryWorkflowEntrypoint` instead of being built by
- *     `createScopedWorkflow`. Failure parity comes from the base class
- *     (see `base-workflow.ts`).
- *   - Uses `step.do` instead of `context.run`.
- *   - The QStash original inlined the per-character sheet generation; this
- *     port fans out to the `CharacterSheetWorkflow` child via Pattern 3
- *     (`spawnAndAwaitChild`) so the parent stays thin and the children get
- *     their own retry budget. See await-child.ts.
- *   - Reads the workflow run id from `event.instanceId` instead of
- *     `context.workflowRunId`. */
+ * Fans out to the `CharacterSheetWorkflow` child via Pattern 3
+ * (`spawnAndAwaitChild`) rather than generating each sheet inline, so the
+ * parent stays thin and every child gets its own retry budget. See
+ * await-child.ts.
+ */
 
-import { DEFAULT_IMAGE_MODEL } from '@/lib/ai/models';
+import { DEFAULT_IMAGE_MODEL } from '@/shared/ai/models';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import type { CharacterMinimal } from '@/lib/db/schema';
 import { buildCharacterInsert } from '@/lib/workflows/cast-records';
-import { buildCastingAttributes } from '@/lib/prompts/character-prompt';
+import { buildCastingAttributes } from '@/shared/prompts/character-prompt';
 import { reusesTalentSheet } from '@/lib/talent/reuse-talent-sheet';
 import { spawnAndAwaitChild } from '@/lib/workflow/await-child';
-import { contentRejectionSummary } from '@/lib/ai/content-rejection';
+import { contentRejectionSummary } from '@/shared/ai/content-rejection';
 import { OpenStoryWorkflowEntrypoint } from '@/lib/workflow/base-workflow';
 import { WorkflowValidationError } from '@/lib/workflow/errors';
 import type {
@@ -33,7 +24,7 @@ import type {
   TalentCharacterMatch,
 } from '@/lib/workflow/types';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'workflow', 'character-bible']);
 
@@ -53,8 +44,8 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
       talentMatches.map((m) => [m.characterId, m])
     );
 
-    // Step 1: Insert character records into database (always runs - mirrors
-    // the QStash original which used this to satisfy the Upstash auth check).
+    // Step 1: Insert character records into the database. Always runs, so a
+    // resumed run finds its rows already present.
     const createdCharacters = await step.do(
       'create-character-records',
       async () => {

@@ -1,5 +1,5 @@
 /**
- * Row builders for the tables a {@link import('@/lib/shots/shot-view').ShotView}
+ * Row builders for the tables a {@link import('@/shared/shots/shot-view').ShotView}
  * is assembled from. Each returns a complete, valid row with sensible defaults;
  * a caller overrides only the columns its test cares about. Parameter names ARE
  * column names, so a fixture reads like the DB.

@@ -18,7 +18,7 @@
  *   bun scripts/verify-fal-costs.ts --compare            # fetch usage for existing results
  */
 
-import { estimateFalCost } from '@/lib/ai/fal-cost';
+import { estimateFalCost } from '@/shared/ai/fal-cost';
 // Verifies the local `model_pricing` snapshot against fal's actual usage.
 import { loadLocalFalPricing } from './load-local-fal-pricing';
 import {
@@ -27,10 +27,10 @@ import {
   IMAGE_TO_VIDEO_MODELS,
   type AudioModel,
   type TextToImageModel,
-} from '@/lib/ai/models';
-import { microsToUsd, type Microdollars } from '@/lib/billing/money';
-import { buildModelInput } from '@/lib/motion/build-model-input';
-import { snapDuration } from '@/lib/motion/snap-duration';
+} from '@/shared/ai/models';
+import { microsToUsd, type Microdollars } from '@/shared/billing/money';
+import { buildModelInput } from '@/shared/motion/build-model-input';
+import { snapDuration } from '@/shared/motion/snap-duration';
 import { typedEntries } from '@/shared/utils/typed-object';
 import { createFalClient } from '@fal-ai/client';
 import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';

@@ -22,7 +22,7 @@ import type {
   SheetStatus,
 } from '@/lib/db/schema';
 import type { ReferenceStatus } from '@/lib/db/schema/sequence-locations';
-import { buildCastingAttributes } from '@/lib/prompts/character-prompt';
+import { buildCastingAttributes } from '@/shared/prompts/character-prompt';
 import type {
   ElementSheetEntry,
   LibraryLocationMatch,

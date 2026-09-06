@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { migrateStyleConfigV1ToV2 } from '@/lib/style/style-config';
+import { migrateStyleConfigV1ToV2 } from '@/shared/style/style-config';
 import { createStyleSchema, updateStyleSchema } from './style.schemas';
 
 const baseConfig = migrateStyleConfigV1ToV2({

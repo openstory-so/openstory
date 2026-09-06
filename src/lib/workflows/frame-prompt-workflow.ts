@@ -13,7 +13,7 @@ import {
   CONTENT_REJECTION_EVENT,
   contentFilterLlmMessage,
   isContentFilterFinish,
-} from '@/lib/ai/content-rejection';
+} from '@/shared/ai/content-rejection';
 import { createAdapter } from '@/lib/ai/create-adapter';
 import { computeVisualPromptInputHash } from '@/lib/ai/input-hash';
 import {
@@ -30,13 +30,13 @@ import {
   visualPromptResultSchema,
 } from '@/lib/ai/scene-analysis.schema';
 import { extractStreamingStringField } from '@/lib/ai/stream-extract';
-import type { Microdollars } from '@/lib/billing/money';
+import type { Microdollars } from '@/shared/billing/money';
 import { deductWorkflowCredits } from '@/lib/billing/workflow-deduction';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import { aiObservabilityMiddleware } from '@/lib/observability/ai-otel';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 import { getChatPrompt } from '@/lib/prompts';
-import { getShotPromptChannel, getGenerationChannel } from '@/lib/realtime';
+import { getShotPromptChannel, getGenerationChannel } from '@/shared/realtime';
 import { OpenStoryWorkflowEntrypoint } from '@/lib/workflow/base-workflow';
 import { WorkflowValidationError } from '@/lib/workflow/errors';
 import type { FramePromptWorkflowInput } from '@/lib/workflow/types';

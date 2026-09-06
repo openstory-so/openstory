@@ -8,22 +8,22 @@ import {
   safeAudioModel,
   safeImageToVideoModel,
   safeTextToImageModel,
-} from '@/lib/ai/models';
+} from '@/shared/ai/models';
 import {
   estimateAudioCost,
   estimateImageCost,
   estimateVideoCost,
   gateEstimate,
-} from '@/lib/billing/cost-estimation';
+} from '@/shared/billing/cost-estimation';
 import { getEffectiveFalPricing } from '@/lib/ai/fal-pricing-live';
 import { sumShotDurationsSeconds } from '@/lib/sequences/shot-durations';
-import { addMicros, ZERO_MICROS } from '@/lib/billing/money';
-import { buildMotionReferenceImages } from '@/lib/motion/build-motion-references';
+import { addMicros, ZERO_MICROS } from '@/shared/billing/money';
+import { buildMotionReferenceImages } from '@/shared/motion/build-motion-references';
 import {
   releaseReservationOnThrow,
   reserveRunCredits,
 } from '@/lib/billing/preflight';
-import { estimateStoryboardPreflightCost } from '@/lib/billing/storyboard-preflight-cost';
+import { estimateStoryboardPreflightCost } from '@/shared/billing/storyboard-preflight-cost';
 import { DEFAULT_ASPECT_RATIO } from '@/shared/constants/aspect-ratios';
 import type { Shot } from '@/lib/db/schema';
 import {
@@ -31,11 +31,11 @@ import {
   resolveSceneForShot,
 } from '@/lib/scenes/scene-script';
 import { buildShotImageWorkflowInput } from '@/lib/image/build-shot-image-input';
-import { toShotView, type ShotView } from '@/lib/shots/shot-view';
+import { toShotView, type ShotView } from '@/shared/shots/shot-view';
 import {
   motionPromptFromVersion,
   resolveMotionPrompt,
-} from '@/lib/motion/resolve-motion-prompt';
+} from '@/shared/motion/resolve-motion-prompt';
 import { VARIANT_TYPES, type VariantType } from '@/lib/db/schema/shot-variants';
 import { ulidSchema } from '@/lib/schemas/id.schemas';
 import {
@@ -44,7 +44,6 @@ import {
   updateSequenceSchema,
 } from '@/lib/schemas/sequence.schemas';
 import { triggerWorkflow } from '@/lib/workflow/client';
-import { buildWorkflowLabel } from '@/lib/workflow/labels';
 import { triggerStoryboard } from '@/lib/workflow/launchers';
 import { ValidationError } from '@/shared/errors';
 import {
@@ -65,14 +64,14 @@ import { z } from 'zod';
 import { authWithTeamMiddleware, sequenceAccessMiddleware } from './middleware';
 import { bumpStylePopularity } from '@/lib/style/bump-style-popularity';
 import { simpleHash } from '@/shared/utils/hash';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 import { createSequences } from '@/lib/sequences/create-sequences';
 import { canRenderReferenceOnly } from '@/lib/motion/motion-generation';
 import { toWorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import {
   rendersReferenceOnly,
   type StartFrameSequence,
-} from '@/lib/shots/use-start-frame';
+} from '@/shared/shots/use-start-frame';
 import { REFERENCE_ONLY_MODEL_ERROR } from '@/lib/schemas/sequence.schemas';
 
 const logger = getLogger(['openstory', 'serverFn', 'sequences']);
@@ -788,7 +787,6 @@ export const addModelToSequenceFn = createServerFn({ method: 'POST' })
             };
             const workflowRunId = await triggerWorkflow('/music', musicInput, {
               deduplicationId: `add-audio-${sequence.id}-${model}-${Date.now()}`,
-              label: buildWorkflowLabel(sequence.id),
             });
             return {
               workflowRunId,
@@ -1014,7 +1012,6 @@ export const addModelToSequenceFn = createServerFn({ method: 'POST' })
             };
             return triggerWorkflow('/motion-batch', workflowInput, {
               deduplicationId: `add-video-${sequence.id}-${model}-${Date.now()}`,
-              label: buildWorkflowLabel(sequence.id),
             });
           }
         );
@@ -1149,7 +1146,6 @@ export const addModelToSequenceFn = createServerFn({ method: 'POST' })
           { ...input, reservationId, ownsReservation: true },
           {
             deduplicationId: `add-image-${input.shotId}-${model}-${Date.now()}`,
-            label: buildWorkflowLabel(sequence.id),
           }
         );
         triggered++;
@@ -1426,7 +1422,6 @@ export const generateMusicFn = createServerFn({ method: 'POST' })
         duration: baseInput.duration,
         model: baseInput.model,
       }),
-      label: buildWorkflowLabel(sequence.id),
     });
 
     return { success: true };

@@ -4,7 +4,7 @@
  * The workflow opts into the snapshot pattern (see
  * docs/architecture/workflow-snapshots-and-content-hash-staleness.md):
  * a per-shot DTO is resolved at trigger time, hashed, and inlined into the
- * QStash payload. Here we own (1) building the per-shot DTO from the live
+ * workflow payload. Here we own (1) building the per-shot DTO from the live
  * scoped DB and (2) computing the batch hash that gates the start-time
  * tamper check.
  */
@@ -14,7 +14,7 @@ import {
   sha256Hex,
   type ShotImageHashInput,
 } from '@/lib/ai/input-hash';
-import type { TextToImageModel } from '@/lib/ai/models';
+import type { TextToImageModel } from '@/shared/ai/models';
 import type { Scene } from '@/lib/ai/scene-analysis.schema';
 import type { AspectRatio } from '@/shared/constants/aspect-ratios';
 import type {
@@ -23,9 +23,9 @@ import type {
   SequenceElement,
   SequenceLocationWithReference,
 } from '@/lib/db/schema';
-import { buildCharacterReferenceImages } from '@/lib/prompts/character-prompt';
-import { buildLocationReferenceImages } from '@/lib/prompts/location-prompt';
-import { getGenerationChannel } from '@/lib/realtime';
+import { buildCharacterReferenceImages } from '@/shared/prompts/character-prompt';
+import { buildLocationReferenceImages } from '@/shared/prompts/location-prompt';
+import { getGenerationChannel } from '@/shared/realtime';
 import type {
   RegenerateShotSnapshot,
   RegenerateShotsWorkflowInput,

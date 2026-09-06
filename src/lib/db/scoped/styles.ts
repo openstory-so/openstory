@@ -6,14 +6,14 @@
 import type { Database } from '@/lib/db/client';
 import type { NewStyle, Style } from '@/lib/db/schema';
 import { styles } from '@/lib/db/schema';
-import { ConflictError, ValidationError } from '@/shared/errors';
+import { OpenStoryError, ValidationError } from '@/shared/errors';
 import {
   SERVER_MANAGED_STYLE_COLUMNS,
   type ServerManagedStyleColumn,
 } from '@/lib/schemas/style.schemas';
 import { stripServerManagedColumns } from './server-managed';
-import { styleSlug } from '@/lib/style/style-slug';
-import type { AutoStyleDraft } from '@/lib/style/auto-style';
+import { styleSlug } from '@/shared/style/style-slug';
+import type { AutoStyleDraft } from '@/shared/style/auto-style';
 import {
   and,
   asc,
@@ -27,7 +27,7 @@ import {
   sql,
 } from 'drizzle-orm';
 
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'db', 'styles']);
 
@@ -84,8 +84,10 @@ async function assertSlugAvailable(
     );
   const clash = visible.find((s) => styleSlug(s.name) === slug);
   if (clash) {
-    throw new ConflictError(
+    throw new OpenStoryError(
       `A style named “${clash.name}” already exists, which would share the URL slug “${slug}”. Choose a more distinct name.`,
+      'CONFLICT',
+      409,
       { slug, conflictsWith: clash.name }
     );
   }

@@ -7,12 +7,15 @@ import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
 
-import { isValidTextToImageModel, safeTextToImageModel } from '@/lib/ai/models';
+import {
+  isValidTextToImageModel,
+  safeTextToImageModel,
+} from '@/shared/ai/models';
 import type { CharacterBibleUpdate } from '@/lib/db/scoped/characters';
-import { resolveSequenceStyleConfig } from '@/lib/style/style-config';
-import { buildCastingAttributes } from '@/lib/prompts/character-prompt';
+import { resolveSequenceStyleConfig } from '@/shared/style/style-config';
+import { buildCastingAttributes } from '@/shared/prompts/character-prompt';
 import { shouldReuseTalentSheet } from '@/lib/talent/reuse-talent-sheet';
-import { getGenerationChannel } from '@/lib/realtime';
+import { getGenerationChannel } from '@/shared/realtime';
 import {
   bibleField,
   identityToken,
@@ -21,7 +24,6 @@ import {
 } from '@/lib/schemas/bible-field';
 import { ulidSchema } from '@/lib/schemas/id.schemas';
 import { triggerWorkflow } from '@/lib/workflow/client';
-import { buildWorkflowLabel } from '@/lib/workflow/labels';
 import type { RecastCharacterWorkflowInput } from '@/lib/workflow/types';
 import { buildRecastRegenerateSnapshots } from '@/lib/workflows/recast-snapshot';
 import { buildRegenerateCharacterSheetPayload } from '@/lib/sheets/character-sheet-trigger';
@@ -29,7 +31,7 @@ import type { SheetStaleness } from '@/lib/sheets/sheet-staleness';
 import { characterSheetHashMatchesStored } from '@/lib/workflows/sheet-snapshots';
 
 import { NotFoundError } from '@/shared/errors';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 import { authWithTeamMiddleware, sequenceAccessMiddleware } from './middleware';
 
 const logger = getLogger(['openstory', 'serverFn', 'sequence-characters']);
@@ -258,7 +260,6 @@ export const regenerateCharacterSheetFn = createServerFn({ method: 'POST' })
     let workflowRunId: string;
     try {
       workflowRunId = await triggerWorkflow('/character-sheet', payload, {
-        label: buildWorkflowLabel(character.sequenceId),
         // Explicit regen must not reuse the bible-child id
         // `character-sheet:${id}` — that instance is already complete, and CF
         // would no-op a second Generate (sheetStatus stuck at generating).
@@ -469,8 +470,7 @@ export const recastCharacterFn = createServerFn({ method: 'POST' })
 
     const workflowRunId = await triggerWorkflow(
       '/recast-character',
-      workflowInput,
-      { label: buildWorkflowLabel(character.sequenceId) }
+      workflowInput
     );
 
     return {

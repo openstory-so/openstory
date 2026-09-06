@@ -16,14 +16,14 @@
  */
 
 import { computeShotImageInputHash } from '@/lib/ai/input-hash';
-import type { TextToImageModel } from '@/lib/ai/models';
+import type { TextToImageModel } from '@/shared/ai/models';
 import type { AspectRatio } from '@/shared/constants/aspect-ratios';
 import type { ScopedDb } from '@/lib/db/scoped';
 import type {
   CharacterWithSheet,
   SequenceLocationWithReference,
 } from '@/lib/db/schema';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 import {
   loadSceneContextBySequence,
   resolveSceneForShot,

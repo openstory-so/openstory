@@ -4,7 +4,7 @@ import { cn } from '@/shared/utils';
 import { Info, Sparkles } from 'lucide-react';
 import { useState } from 'react';
 import { getStyleGradient } from './style-gradient';
-import { getConfigColorPalette } from '@/lib/style/style-config';
+import { getConfigColorPalette } from '@/shared/style/style-config';
 
 const StyleTileBackground: React.FC<{
   style: Style;

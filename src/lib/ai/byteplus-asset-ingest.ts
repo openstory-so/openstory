@@ -9,7 +9,7 @@
  * every submit would burn a new slot in the 50-asset Entry quota.
  */
 
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 import {
   ensureExternallyFetchableUrl,
   toDataOrCdnUrl,

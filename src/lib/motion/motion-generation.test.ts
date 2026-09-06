@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TEST_FAL_PRICING } from '@/lib/ai/__tests__/fal-pricing-fixture';
-import { micros } from '@/lib/billing/money';
+import { micros } from '@/shared/billing/money';
 import {
   mockFalVideo,
   mockGenerateVideo,

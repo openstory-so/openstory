@@ -1,5 +1,5 @@
 import { NewSequencePage } from '@/components/script/new-sequence-page';
-import { publicStylesQueryOptions } from '@/lib/style/public-styles-query';
+import { publicStylesQueryOptions } from '@/components/style/public-styles-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { z } from 'zod';
 

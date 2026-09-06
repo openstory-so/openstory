@@ -13,14 +13,14 @@ import type {
 } from '@tanstack/ai/middlewares/otel';
 import type { Attributes, SpanOptions, SpanStatus } from '@opentelemetry/api';
 import { diag, SpanStatusCode } from '@opentelemetry/api';
-import { micros } from '@/lib/billing/money';
+import { micros } from '@/shared/billing/money';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockLogError = vi.fn(
   (_message: string, _properties?: Record<string, unknown>) => {}
 );
-vi.doMock('./logger', async () => {
-  const real = await import('./logger');
+vi.doMock('@/shared/observability/logger', async () => {
+  const real = await import('@/shared/observability/logger');
   return {
     ...real,
     getLogger: () => ({

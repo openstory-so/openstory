@@ -26,16 +26,16 @@
  *   bun scripts/score-style-previews.ts --scene action        # only that scene
  *   bun scripts/score-style-previews.ts --model openai/gpt-5.5 --threshold 6.5
  */
-import { parseStyleConfig } from '@/lib/style/style-config';
-import type { TextModel } from '@/lib/ai/models';
+import { parseStyleConfig } from '@/shared/style/style-config';
+import type { TextModel } from '@/shared/ai/models';
 import { callLLM } from '@/lib/ai/llm-client';
 import {
   ANALYSIS_MODEL_IDS,
   isValidAnalysisModelId,
-} from '@/lib/ai/models.config';
+} from '@/shared/ai/models.config';
 import type { StyleConfig } from '@/lib/db/schema/libraries';
 import type { ChatMessage, ChatMessageContentPart } from '@/lib/prompts';
-import { styleSlug } from '@/lib/style/style-slug';
+import { styleSlug } from '@/shared/style/style-slug';
 import { DEFAULT_STYLE_TEMPLATES } from '@/lib/style/style-templates';
 import { PhotonImage } from '@cf-wasm/photon';
 import { readdir, readFile, writeFile } from 'node:fs/promises';

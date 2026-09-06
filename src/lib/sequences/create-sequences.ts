@@ -17,13 +17,13 @@ import {
   safeAudioModel,
   safeImageToVideoModel,
   safeTextToImageModel,
-} from '@/lib/ai/models';
+} from '@/shared/ai/models';
 import { canRenderReferenceOnly } from '@/lib/motion/motion-generation';
 import {
   DEFAULT_ANALYSIS_MODEL,
   getAnalysisModelById,
-} from '@/lib/ai/models.config';
-import { resolveModelForCountry } from '@/lib/ai/region-policy';
+} from '@/shared/ai/models.config';
+import { resolveModelForCountry } from '@/shared/ai/region-policy';
 import { resolveAudioModels } from '@/lib/ai/resolve-audio-models';
 import { resolveImageModels } from '@/lib/ai/resolve-image-models';
 import { resolveVideoModels } from '@/lib/ai/resolve-video-models';
@@ -32,7 +32,7 @@ import {
   releaseReservationOnThrow,
   reserveRunCredits,
 } from '@/lib/billing/preflight';
-import { estimateStoryboardPreflightCost } from '@/lib/billing/storyboard-preflight-cost';
+import { estimateStoryboardPreflightCost } from '@/shared/billing/storyboard-preflight-cost';
 import { generateId } from '@/shared/id';
 import type { ScopedDb } from '@/lib/db/scoped';
 import { toWorkflowScopedDb } from '@/lib/db/scoped-workflow';
@@ -42,14 +42,14 @@ import {
   AUTO_STYLE_ID,
   type AutoStyleDraft,
   placeholderAutoStyleDraft,
-} from '@/lib/style/auto-style';
-import { parseStyleConfig } from '@/lib/style/style-config';
-import type { Sequence } from '@/types/database';
+} from '@/shared/style/auto-style';
+import { parseStyleConfig } from '@/shared/style/style-config';
+import type { Sequence } from '@/lib/db/schema';
 import {
   REFERENCE_ONLY_MODEL_ERROR,
   type CreateSequenceInput,
 } from '@/lib/schemas/sequence.schemas';
-import { UNTITLED_SEQUENCE_TITLE } from '@/lib/sequences/untitled-sequence-title';
+import { UNTITLED_SEQUENCE_TITLE } from '@/shared/sequences/untitled-sequence-title';
 import { copySequenceElements } from '@/lib/sequence-elements/copy-sequence-elements';
 import { promoteTempElements } from '@/lib/sequence-elements/promote-temp-elements';
 import { captureProductEvent } from '@/lib/observability/product-events';

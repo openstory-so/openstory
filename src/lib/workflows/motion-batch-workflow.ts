@@ -1,30 +1,20 @@
 /**
- * Cloudflare Workflows port of `motionBatchWorkflow`.
+ * The `motionBatchWorkflow` durable workflow.
  *
- * Mirrors the QStash version (`src/lib/workflows/motion-batch-workflow.ts`)
- * step for step — same control flow, same side effects. Differences (all
- * infrastructure-level, not behavioural):
+ * Spawns one `MOTION_WORKFLOW` child per shot (plus an optional
+ * `MUSIC_WORKFLOW`) via Pattern 3. There is no merge step — playback is the
+ * live canvas stitch; the downloadable MP4 is `SequenceExportWorkflow`.
  *
- *   - Extends `OpenStoryWorkflowEntrypoint` instead of being built by
- *     `createScopedWorkflow`. Failure parity comes from the base class
- *     (see `base-workflow.ts`).
- *   - Uses `step.do` instead of `context.run`.
- *   - Reads payload from `event.payload` and the run id from
- *     `event.instanceId` instead of `context.requestPayload` /
- *     `context.workflowRunId`.
- *   - Each `context.invoke(...)` becomes a Pattern 3 `spawnAndAwaitChild`
- *     against the relevant binding (MOTION_WORKFLOW × N shots, optional
- *     MUSIC_WORKFLOW). There is no merge step in this workflow — playback
- *     is the live canvas stitch; the downloadable MP4 is `SequenceExportWorkflow`.
- *   - Fan-out: `Promise.all` on spawn (parents block until every child has
- *     been queued so a transient spawn failure surfaces as a workflow error
- *     rather than a silently-skipped child), `Promise.allSettled` on await
- *     so a single bad shot doesn't kill the rest of the batch. */
+ * Fan-out: `Promise.all` on spawn (the parent blocks until every child has
+ * been queued, so a transient spawn failure surfaces as a workflow error
+ * rather than a silently-skipped child), `Promise.allSettled` on await so a
+ * single bad shot doesn't kill the rest of the batch.
+ */
 
 import { resolveAudioModels } from '@/lib/ai/resolve-audio-models';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
-import { assembleMotionPrompt } from '@/lib/motion/assemble-motion-prompt';
-import { getGenerationChannel } from '@/lib/realtime';
+import { assembleMotionPrompt } from '@/shared/motion/assemble-motion-prompt';
+import { getGenerationChannel } from '@/shared/realtime';
 import { OpenStoryWorkflowEntrypoint } from '@/lib/workflow/base-workflow';
 import { spawnAndAwaitChild } from '@/lib/workflow/await-child';
 import { WorkflowValidationError } from '@/lib/workflow/errors';
@@ -37,7 +27,7 @@ import type {
   MusicWorkflowResult,
 } from '@/lib/workflow/types';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'workflow', 'motion-batch']);
 
@@ -213,11 +203,9 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
       ? await Promise.allSettled(musicAwaits)
       : null;
 
-    // Log per-shot motion failures for visibility; we don't throw here — the
-    // QStash original uses Promise.all + a single combined await, but parity
-    // with the rest of the CF batch surface (shot-images) is to allSettle
-    // and rely on the collect step below to validate that we have something
-    // mergeable.
+    // Log per-shot motion failures for visibility; we don't throw here. Like
+    // the rest of the batch surface (shot-images) this allSettles and relies
+    // on the collect step below to validate that we have something mergeable.
     for (let i = 0; i < motionResults.length; i++) {
       const r = motionResults[i];
       if (r?.status === 'rejected') {

@@ -4,7 +4,7 @@ import {
   bytePlusVideoUnitsBilled,
   isBytePlusPricedModel,
 } from './byteplus-pricing';
-import { IMAGE_MODELS, IMAGE_TO_VIDEO_MODELS } from './models';
+import { IMAGE_MODELS, IMAGE_TO_VIDEO_MODELS } from '@/shared/ai/models';
 
 describe('BYTEPLUS_RATE_CARD', () => {
   // A catalog entry routed to Ark with no rate bills $0 — #1069's exact

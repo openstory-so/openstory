@@ -3,8 +3,8 @@
  * Team-scoped sequence CRUD and per-sequence update methods.
  */
 
-import { DEFAULT_ANALYSIS_MODEL } from '@/lib/ai/models.config';
-import { DEFAULT_IMAGE_MODEL, DEFAULT_VIDEO_MODEL } from '@/lib/ai/models';
+import { DEFAULT_ANALYSIS_MODEL } from '@/shared/ai/models.config';
+import { DEFAULT_IMAGE_MODEL, DEFAULT_VIDEO_MODEL } from '@/shared/ai/models';
 import {
   type AspectRatio,
   DEFAULT_ASPECT_RATIO,
@@ -34,8 +34,8 @@ import type {
   GenerationCheckpoint,
   GenerationStage,
 } from '@/shared/generation/pipeline';
-import { parseStyleConfig } from '@/lib/style/style-config';
-import type { ShotReadiness, ShotView } from '@/lib/shots/shot-view';
+import { parseStyleConfig } from '@/shared/style/style-config';
+import type { ShotReadiness, ShotView } from '@/shared/shots/shot-view';
 import { getLatestPreviewByFrameIds } from './frame-variants';
 import { getPrimaryVideoByShotIds } from './video-variants';
 import {

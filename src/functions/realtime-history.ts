@@ -1,10 +1,10 @@
-import { getChannelHistory } from '@/lib/realtime';
+import { getChannelHistory } from '@/shared/realtime';
 import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
 import { authMiddleware } from './middleware';
 
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'serverFn', 'realtime-history']);
 

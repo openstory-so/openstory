@@ -23,7 +23,7 @@ import type {
 import type { MotionPromptWorkflowResult } from '@/lib/workflows/motion-prompt-workflow';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { NonRetryableError } from 'cloudflare:workflows';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'workflow', 'motion-prompt-batch']);
 
@@ -194,8 +194,7 @@ export class MotionPromptBatchWorkflow extends OpenStoryWorkflowEntrypoint<Motio
     error: string;
     scopedDb: WorkflowScopedDb;
   }): void {
-    // Mirror QStash's `failureFunction`, which returned a static string and
-    // performed no DB writes — per-scene failures already surface via the
+    // Log only, no DB writes: per-scene failures already surface via the
     // child workflow's own onFailure (e.g. shotPrompt.failed emits).
     logger.error(
       '[MotionPromptBatchWorkflow:cf] Motion prompt generation failed',

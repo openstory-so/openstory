@@ -15,8 +15,11 @@ import { Badge } from '@/components/ui/badge';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
 import { getModelFamilyByPathFn } from '@/functions/model-catalog';
-import { CATALOG_ACTIVITIES, type CatalogActivity } from '@/lib/models/catalog';
-import type { ModelFamily, ModelVariant } from '@/lib/models/model-families';
+import {
+  CATALOG_ACTIVITIES,
+  type CatalogActivity,
+} from '@/shared/models/catalog';
+import type { ModelFamily, ModelVariant } from '@/shared/models/model-families';
 import { useSuspenseQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { SearchX } from 'lucide-react';

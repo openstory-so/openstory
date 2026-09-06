@@ -28,21 +28,21 @@ import {
   createDeadlineFetch,
   FAL_REQUEST_TIMEOUT_MS,
 } from '@/lib/ai/fal-deadline-fetch';
-import { extractFalErrorMessage } from '@/lib/ai/fal-error';
+import { extractFalErrorMessage } from '@/shared/ai/fal-error';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import type {
   GeneratedAssetActivity,
   GeneratedAssetOutput,
   JsonValue,
 } from '@/lib/db/schema';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 import {
   extractPromptForProvenance,
   recordProvenance,
 } from '@/lib/compliance/provenance';
 import { STORAGE_BUCKETS, type StorageBucket } from '@/lib/storage/buckets';
 import { uploadResponse } from '@/lib/storage/upload-response';
-import { getMimeTypeFromExtension } from '@/shared/utils/file';
+import { getMimeTypeFromExtension } from '@/lib/storage/file';
 import { OpenStoryWorkflowEntrypoint } from '@/lib/workflow/base-workflow';
 import type { AssetGenerationWorkflowInput } from '@/lib/workflow/types';
 import { fal } from '@fal-ai/client';

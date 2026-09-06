@@ -3,14 +3,13 @@ import { moveFile } from '#storage';
 import type { ScopedDb } from '@/lib/db/scoped';
 import { generateId } from '@/shared/id';
 import { STORAGE_BUCKETS, getPublicUrl } from '@/lib/storage/buckets';
-import { getExtensionFromUrl } from '@/shared/utils/file';
+import { getExtensionFromUrl } from '@/lib/storage/file';
 import { triggerWorkflow } from '@/lib/workflow/client';
-import { buildWorkflowLabel } from '@/lib/workflow/labels';
 import type { ElementVisionWorkflowInput } from '@/lib/workflow/types';
 import { z } from 'zod';
-import { deriveTokenFromFilename } from './derive-token';
+import { deriveTokenFromFilename } from '@/shared/sequence-elements/derive-token';
 
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger([
   'openstory',
@@ -44,9 +43,7 @@ async function triggerElementVision(params: {
 }): Promise<void> {
   const { teamId, userId, ...element } = params;
   const input: ElementVisionWorkflowInput = { userId, teamId, ...element };
-  await triggerWorkflow('/element-vision', input, {
-    label: buildWorkflowLabel(params.sequenceId),
-  });
+  await triggerWorkflow('/element-vision', input);
 }
 
 export async function promoteTempElements(params: {

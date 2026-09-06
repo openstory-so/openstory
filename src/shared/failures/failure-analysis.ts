@@ -6,16 +6,16 @@
 import {
   contentRejectionSubjects,
   isContentRejectionError,
-} from '@/lib/ai/content-rejection';
+} from '@/shared/ai/content-rejection';
 import {
   CREDITS_SHORT_TITLE,
   isCreditsShortError,
-} from '@/lib/billing/credits-short';
+} from '@/shared/billing/credits-short';
 import type { SceneRow } from '@/lib/db/schema/scenes';
 import type { Shot } from '@/lib/db/schema/shots';
 import type { Sequence } from '@/lib/db/schema/sequences';
-import type { ShotView } from '@/lib/shots/shot-view';
-import { usesStartFrame } from '@/lib/shots/use-start-frame';
+import type { ShotView } from '@/shared/shots/shot-view';
+import { usesStartFrame } from '@/shared/shots/use-start-frame';
 import { plainSceneTitle } from '@/shared/utils/markdown-plain';
 
 /** Scene titles keyed by scene id — the label source for each failed shot. */

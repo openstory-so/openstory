@@ -50,8 +50,8 @@ import {
   safeTextToImageModel,
   type ImageToVideoModel,
   type TextToImageModel,
-} from '@/lib/ai/models';
-import { microsToUsd } from '@/lib/billing/money';
+} from '@/shared/ai/models';
+import { microsToUsd } from '@/shared/billing/money';
 import { loadLocalFalPricing } from './load-local-fal-pricing';
 import {
   aspectRatioSchema,
@@ -72,7 +72,7 @@ import {
   NOMINAL_BEAT_SECONDS,
   type SampleBeat,
 } from '@/lib/style/sample-videos';
-import { styleSlug } from '@/lib/style/style-slug';
+import { styleSlug } from '@/shared/style/style-slug';
 import { DEFAULT_STYLE_TEMPLATES } from '@/lib/style/style-templates';
 import { access, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';

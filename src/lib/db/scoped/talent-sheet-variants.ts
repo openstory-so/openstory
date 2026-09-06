@@ -138,7 +138,7 @@ export function createTalentSheetVariantsMethods(db: Database, teamId: string) {
 
     /**
      * Idempotent on (talentSheetId, model, inputHash) within the divergent
-     * partial unique index. Tolerant to QStash step retry and cross-run race;
+     * partial unique index. Tolerant to step retry and cross-run race;
      * see `divergent-insert.ts` for the rationale.
      */
     insertDivergent: async (

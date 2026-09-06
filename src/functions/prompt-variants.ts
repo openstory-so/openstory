@@ -2,7 +2,7 @@ import {
   rendersReferenceOnly,
   shotPromptSequence,
   usesStartFrame,
-} from '@/lib/shots/use-start-frame';
+} from '@/shared/shots/use-start-frame';
 import {
   computeMotionPromptInputHash,
   computeMusicPromptInputHash,
@@ -14,7 +14,7 @@ import {
 import {
   DEFAULT_ANALYSIS_MODEL,
   getAnalysisModelById,
-} from '@/lib/ai/models.config';
+} from '@/shared/ai/models.config';
 import {
   loadShotPromptContext,
   narrowShotPromptContext,
@@ -32,7 +32,6 @@ import {
 import { getFrameImageUrl } from '@/lib/shots/frame-image';
 import { simpleHash } from '@/shared/utils/hash';
 import { triggerWorkflow } from '@/lib/workflow/client';
-import { buildWorkflowLabel } from '@/lib/workflow/labels';
 import { terminateSingleArtifactRun } from '@/lib/workflow/run-outcome';
 import type { Scene } from '@/lib/ai/scene-analysis.schema';
 import type { ScopedDb } from '@/lib/db/scoped';
@@ -47,7 +46,7 @@ import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
 import { shotAccessMiddleware, sequenceAccessMiddleware } from './middleware';
 
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'serverFn', 'prompt-variants']);
 
@@ -652,7 +651,6 @@ export const regenerateShotPromptFn = createServerFn({ method: 'POST' })
       : shotPromptDedupId(data.promptType, shot.id, liveHash);
     const triggerOpts = {
       deduplicationId,
-      label: buildWorkflowLabel(sequence.id),
     };
 
     // Neighbour scenes give the motion LLM the same continuity context the
@@ -857,7 +855,6 @@ export const regenerateMusicPromptFn = createServerFn({ method: 'POST' })
         // Dedup by the live input hash so a retry of the same upstream context
         // collapses to one workflow run instead of N.
         deduplicationId: musicPromptDedupId(sequence.id, liveHash),
-        label: buildWorkflowLabel(sequence.id),
       }
     );
 

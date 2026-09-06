@@ -1,4 +1,4 @@
-import type { Shot } from '@/types/database';
+import type { Shot } from '@/lib/db/schema';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ShotVariant } from '@/lib/db/schema';
 import type { ImageVariantWithShot } from '@/lib/db/scoped/frame-variants';
@@ -6,7 +6,7 @@ import {
   isBrowserDisplayableStillUrl,
   shotAfterVariantSelect,
   type ShotView,
-} from '@/lib/shots/shot-view';
+} from '@/shared/shots/shot-view';
 import {
   getShotsFn,
   getDivergentVariantsFn,

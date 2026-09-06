@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { TEST_FAL_PRICING } from '@/lib/ai/__tests__/fal-pricing-fixture';
-import { TYPICAL_SHORT_COST_USD } from '../constants';
-import { typicalShortCostUsd } from '../typical-short-cost';
+import { TYPICAL_SHORT_COST_USD } from '@/shared/billing/constants';
+import { typicalShortCostUsd } from '@/components/billing/typical-short-cost';
 
 describe('typicalShortCostUsd', () => {
   it('prices a default short from live pricing', () => {

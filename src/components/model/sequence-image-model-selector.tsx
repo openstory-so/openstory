@@ -16,8 +16,8 @@ import {
   useSequenceImageVariants,
   useShotsBySequence,
 } from '@/hooks/use-shots';
-import { IMAGE_MODELS, isValidTextToImageModel } from '@/lib/ai/models';
-import { computeSequenceModelCoverage } from '@/shared/model/sequence-model-coverage';
+import { IMAGE_MODELS, isValidTextToImageModel } from '@/shared/ai/models';
+import { computeSequenceModelCoverage } from '@/components/model/sequence-model-coverage';
 import { ChevronDown } from 'lucide-react';
 import { useMemo } from 'react';
 

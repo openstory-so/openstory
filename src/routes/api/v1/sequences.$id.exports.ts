@@ -27,6 +27,7 @@ import {
   type HalLinks,
 } from '@/lib/api-v1/hal';
 import { getWaitMs, longPoll } from '@/lib/api-v1/wait';
+import type { SequenceExportDocument } from '@/lib/api-v1/state';
 import type { SequenceExport } from '@/lib/db/schema';
 import { generateId } from '@/shared/id';
 import { NotFoundError, ValidationError } from '@/shared/errors';
@@ -38,7 +39,7 @@ import {
 import {
   effectiveExportMusicUrl,
   hashSequenceExportInputs,
-} from '@/shared/sequence-player/source-shots-hash';
+} from '@/components/theatre/source-shots-hash';
 import { triggerWorkflow } from '@/lib/workflow/client';
 import type { SequenceExportWorkflowInput } from '@/lib/workflow/types';
 import { createFileRoute } from '@tanstack/react-router';
@@ -57,7 +58,10 @@ function buildExportPath(teamId: string, sequenceId: string): string {
   return `teams/${teamId}/sequences/${sequenceId}/exports/${generateId().slice(-8)}${EXPORT_FILENAME_SUFFIX}`;
 }
 
-function formatExport(row: SequenceExport, origin: string) {
+function formatExport(
+  row: SequenceExport,
+  origin: string
+): SequenceExportDocument {
   return {
     id: row.id,
     status: row.status,

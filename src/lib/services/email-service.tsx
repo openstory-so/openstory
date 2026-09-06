@@ -14,7 +14,7 @@ import { OtpEmail } from '@/lib/emails/otp-email';
 import { SequenceReadyEmail } from '@/lib/emails/sequence-ready-email';
 import { renderEmail } from '@/lib/emails/render-email';
 import { CONTACT_EMAIL } from '@/shared/marketing/constants';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'services', 'email-service']);
 

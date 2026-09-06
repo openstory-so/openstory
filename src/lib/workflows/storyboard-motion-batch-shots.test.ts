@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_VIDEO_MODEL } from '@/lib/ai/models';
+import { DEFAULT_VIDEO_MODEL } from '@/shared/ai/models';
 import type { MotionPrompt, Scene } from '@/lib/ai/scene-analysis.schema';
 import type {
   CharacterMinimal,

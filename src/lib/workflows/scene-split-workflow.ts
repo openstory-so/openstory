@@ -40,8 +40,11 @@ import {
   llmCostFromUsage,
   PROMPT_REASONING,
 } from '@/lib/ai/llm-client';
-import { PREVIEW_IMAGE_MODEL } from '@/lib/ai/models';
-import { getMaxOutputTokens, SCENE_SPLIT_MODEL } from '@/lib/ai/models.config';
+import { PREVIEW_IMAGE_MODEL } from '@/shared/ai/models';
+import {
+  getMaxOutputTokens,
+  SCENE_SPLIT_MODEL,
+} from '@/shared/ai/models.config';
 import {
   type SceneSplitBiblesResult,
   type SceneSplitScenesResult,
@@ -64,7 +67,7 @@ import type {
   ElementBibleEntry,
   LocationBibleEntry,
 } from '@/lib/ai/scene-analysis.schema';
-import { addMicros, type Microdollars } from '@/lib/billing/money';
+import { addMicros, type Microdollars } from '@/shared/billing/money';
 import type { TokenUsage } from '@tanstack/ai';
 import { deductWorkflowCredits } from '@/lib/billing/workflow-deduction';
 import {
@@ -78,11 +81,10 @@ import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import type { ShotWithAnchorFrame } from '@/lib/db/scoped/shots';
 import { getChatPrompt, type ChatMessage } from '@/lib/prompts';
 import { buildPreviewPrompt } from '@/lib/prompts/poster-prompt';
-import { getGenerationChannel } from '@/lib/realtime';
+import { getGenerationChannel } from '@/shared/realtime';
 import { previewImageDedupId } from '@/lib/workflow/dedup-ids';
 import { OpenStoryWorkflowEntrypoint } from '@/lib/workflow/base-workflow';
 import { triggerWorkflow } from '@/lib/workflow/client';
-import { buildWorkflowLabel } from '@/lib/workflow/labels';
 import { WorkflowValidationError } from '@/lib/workflow/errors';
 import { handleLlmAuthFailure } from '@/lib/workflow/llm-auth-failure';
 import { sanitizeFailResponse } from '@/lib/workflow/sanitize-fail-response';
@@ -97,7 +99,7 @@ import type {
   WorkflowStepConfig,
 } from 'cloudflare:workers';
 import { NonRetryableError } from 'cloudflare:workflows';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'workflow', 'scene-split']);
 
@@ -229,7 +231,6 @@ async function triggerPreviewImage({
         skipStorage: true,
       } satisfies ImageWorkflowInput,
       {
-        label: buildWorkflowLabel(sequenceId),
         deduplicationId: previewImageDedupId(parentInstanceId, shot.id),
         enforcement,
       }

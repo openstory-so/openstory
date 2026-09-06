@@ -15,8 +15,8 @@ import {
   API_V1_BASE,
   getLink,
   type HalLink,
-  type HalResource,
   STYLES_PATH,
+  halLinksSchema,
 } from './hal';
 import { apiCreateSequenceSchema } from './input-schema';
 import { EXAMPLE_CREATE_STYLE_BODY } from './style-input-schema';
@@ -166,13 +166,31 @@ export function createStyleLink(): HalLink {
   };
 }
 
-export type RootDocument = HalResource<{
-  name: string;
-  version: string;
-  instructions: string;
-  /** The JSON Schema for the create request body, inline for tool callers. */
-  requestSchema: unknown;
-}>;
+export const rootDocumentSchema = z
+  .object({
+    name: z.string(),
+    version: z.string(),
+    instructions: z.string(),
+    /** The JSON Schema for the create request body, inline for tool callers. */
+    requestSchema: z
+      .looseObject({})
+      .describe('The create request body as JSON Schema.'),
+    _links: halLinksSchema,
+  })
+  .meta({ id: 'RootDocument' });
+
+export type RootDocument = z.infer<typeof rootDocumentSchema>;
+
+/** The error envelope every 4xx/5xx carries. */
+export const errorEnvelopeSchema = z
+  .object({
+    error: z.object({
+      code: z.string(),
+      message: z.string(),
+      details: z.looseObject({}).optional(),
+    }),
+  })
+  .meta({ id: 'Error' });
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -183,9 +201,9 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
  * `.meta({ id })`. Tool callers expect a draft object (`type: "object"`) at
  * the root; inline that named def and keep the remaining `$defs`.
  */
-function jsonSchemaForToolCallers(schema: z.ZodType): unknown {
+function jsonSchemaForToolCallers(schema: z.ZodType): Record<string, unknown> {
   const generated: unknown = JSON.parse(JSON.stringify(z.toJSONSchema(schema)));
-  if (!isPlainObject(generated)) return generated;
+  if (!isPlainObject(generated)) return {};
   const ref = generated.$ref;
   const defs = generated.$defs;
   if (

@@ -13,13 +13,13 @@ import {
   type MotionPrompt,
 } from '@/lib/ai/scene-analysis.schema';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
-import { getShotPromptChannel, getGenerationChannel } from '@/lib/realtime';
+import { getShotPromptChannel, getGenerationChannel } from '@/shared/realtime';
 import { OpenStoryWorkflowEntrypoint } from '@/lib/workflow/base-workflow';
 import type { MotionPromptWorkflowInput } from '@/lib/workflow/types';
 import { hydrateMotionPromptFromScene } from '@/lib/motion/hydrate-motion-prompt';
 import { durableStreamingLLMCallCf } from '@/lib/workflows/llm-call-helper';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'workflow', 'motion-prompt']);
 

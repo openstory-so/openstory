@@ -29,8 +29,8 @@ import { useBillingBalanceRealtime } from '@/hooks/use-billing-balance-realtime'
 import { useBillingGateQuery } from '@/hooks/use-billing-gate';
 import { useShowCosts } from '@/hooks/use-show-costs';
 import { useUser } from '@/hooks/use-user';
-import { SIGNUP_GRANT_MICROS } from '@/lib/billing/constants';
-import { microsToDisplayUsd } from '@/lib/billing/money';
+import { SIGNUP_GRANT_MICROS } from '@/shared/billing/constants';
+import { microsToDisplayUsd } from '@/shared/billing/money';
 import { Link } from '@tanstack/react-router';
 import { Wallet } from 'lucide-react';
 

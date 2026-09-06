@@ -1,7 +1,7 @@
-import type { StyleConfig } from '@/lib/style/style-config';
-import { styleSlug } from '@/lib/style/style-slug';
+import type { StyleConfig } from '@/shared/style/style-config';
+import { styleSlug } from '@/shared/style/style-slug';
 import { getPublicAssetsDomain } from '@/lib/storage/public-assets';
-import type { Style } from '@/types/database';
+import type { Style } from '@/lib/db/schema';
 
 function getStylePreviewUrl(styleName: string): string {
   return `https://${getPublicAssetsDomain()}/styles/${styleSlug(styleName)}/thumbnail.webp`;

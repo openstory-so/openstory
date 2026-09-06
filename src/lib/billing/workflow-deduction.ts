@@ -16,20 +16,24 @@ import { isBytePlusPricedModel } from '@/lib/ai/byteplus-pricing';
 import {
   isNativeGeminiImageEndpoint,
   NATIVE_GEMINI_VIDEO_MODEL,
-} from '@/lib/ai/gemini-native';
+} from '@/shared/ai/gemini-native';
 import {
   isNativeGrokImageEndpoint,
   NATIVE_GROK_VIDEO_MODEL,
-} from '@/lib/ai/grok-native';
+} from '@/shared/ai/grok-native';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import type { ModelPricingProvider } from '@/lib/db/schema/model-pricing';
 import {
   reportMissingBillingCost,
   reportSkippedDeduction,
-} from './billing-observability';
-import { type Microdollars, microsToUsd, ZERO_MICROS } from './money';
+} from '@/shared/billing/billing-observability';
+import {
+  type Microdollars,
+  microsToUsd,
+  ZERO_MICROS,
+} from '@/shared/billing/money';
 
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'billing', 'workflow-deduction']);
 

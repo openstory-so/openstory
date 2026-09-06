@@ -12,9 +12,8 @@ import { STORAGE_BUCKETS } from '@/lib/storage/buckets';
 import {
   getExtensionFromUrl,
   getMimeTypeFromExtension,
-} from '@/shared/utils/file';
+} from '@/lib/storage/file';
 import { triggerWorkflow } from '@/lib/workflow/client';
-import { buildWorkflowLabel } from '@/lib/workflow/labels';
 import type { LibraryLocationSheetWorkflowInput } from '@/lib/workflow/types';
 import { computeLibraryLocationSheetHashFromDto } from '@/lib/workflows/sheet-snapshots';
 import {
@@ -273,8 +272,7 @@ export const addLocationSheetsFn = createServerFn({ method: 'POST' })
 
     const workflowRunId = await triggerWorkflow(
       '/library-location-sheet',
-      workflowInput,
-      { label: buildWorkflowLabel(data.locationId) }
+      workflowInput
     );
 
     return { sheets: newSheets, workflowRunId };

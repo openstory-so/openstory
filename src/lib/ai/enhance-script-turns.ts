@@ -11,9 +11,9 @@ import {
   maybeRewriteDurationLabels,
   parseSceneDurationLabels,
   stripTotalLine,
-} from '@/lib/ai/enhance-duration';
-import type { ImageToVideoModel } from '@/lib/ai/models';
-import { durationGridForModel } from '@/lib/motion/snap-duration';
+} from '@/shared/ai/enhance-duration';
+import type { ImageToVideoModel } from '@/shared/ai/models';
+import { durationGridForModel } from '@/shared/motion/snap-duration';
 import type { ChatMessage } from '@/lib/prompts';
 
 type EnhanceTextDelta = { delta: string; reasoning?: string };

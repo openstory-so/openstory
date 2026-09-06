@@ -306,7 +306,7 @@ export function createLocationSheetVariantsMethods(db: Database) {
 
     /**
      * Idempotent on (parentType, parentId, model, inputHash) within the
-     * divergent partial unique index. Tolerant to QStash step retry and
+     * divergent partial unique index. Tolerant to step retry and
      * cross-run race; see `divergent-insert.ts` for the rationale.
      */
     insertDivergent: async (

@@ -22,7 +22,7 @@ import type {
   ShotPromptVersion,
   ShotPromptVersionComponents,
 } from '@/lib/db/schema';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 import { and, desc, eq, gt, inArray, isNotNull, lte, ne } from 'drizzle-orm';
 import { LIVE_PENDING_STATUSES } from './frame-prompt-versions';
 import { buildEventInsert } from './sequence-events';

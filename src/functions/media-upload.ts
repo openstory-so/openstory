@@ -24,7 +24,7 @@ import {
   computeLocationSheetInputHash,
   computeVisualPromptInputHash,
 } from '@/lib/ai/input-hash';
-import { resolveSheetImageModel } from '@/lib/sheets/sheet-image-model';
+import { resolveSheetImageModel } from '@/shared/sheets/sheet-image-model';
 import { StyleConfigSchema } from '@/lib/db/schema';
 import { NotFoundError } from '@/shared/errors';
 import { computeStyleConfigHash } from '@/lib/workflows/sheet-snapshots';
@@ -36,14 +36,14 @@ import { computeVideoManifestInputHash } from '@/lib/ai/input-hash';
 import {
   shotPromptSequence,
   usesStartFrame,
-} from '@/lib/shots/use-start-frame';
+} from '@/shared/shots/use-start-frame';
 import { generateId } from '@/shared/id';
 import type { Scene } from '@/lib/ai/scene-analysis.schema';
 import type { AspectRatio } from '@/shared/constants/aspect-ratios';
 import type { ScopedDb } from '@/lib/db/scoped';
 import { ValidationError } from '@/shared/errors';
 import { buildVideoManifest } from '@/lib/motion/render-segments';
-import { getGenerationChannel } from '@/lib/realtime';
+import { getGenerationChannel } from '@/shared/realtime';
 import { ulidSchema } from '@/lib/schemas/id.schemas';
 import { mediaUrlSchema } from '@/shared/schemas/media-url.schemas';
 import { getFrameImageUrl } from '@/lib/shots/frame-image';
@@ -52,17 +52,17 @@ import {
   parseUploadedStoragePath,
   resolveUploadExtension,
   uploadExtensionList,
-  USER_UPLOAD_MODEL,
   type UploadMediaSurface,
 } from '@/lib/shots/upload-media';
+import { USER_UPLOAD_MODEL } from '@/shared/shots/user-upload-model';
 import { STORAGE_BUCKETS, type StorageBucket } from '@/lib/storage/buckets';
-import { getMimeTypeFromExtension } from '@/shared/utils/file';
+import { getMimeTypeFromExtension } from '@/lib/storage/file';
 import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
 import { shotAccessMiddleware, sequenceAccessMiddleware } from './middleware';
 
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'serverFn', 'media-upload']);
 

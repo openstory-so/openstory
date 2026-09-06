@@ -1,29 +1,20 @@
 /**
- * Cloudflare Workflows port of `generateMusicWorkflow`.
- *
- * Mirrors the QStash version (`src/lib/workflows/music-workflow.ts`) step
- * for step — same step names, same control flow, same side effects. The
- * only differences are:
- *
- *   - Extends `OpenStoryWorkflowEntrypoint` instead of being built by
- *     `createScopedWorkflow`. Failure parity comes from the base class
- *     (see `base-workflow.ts`).
- *   - Uses `step.do` instead of `context.run`.
- *   - Reads payload from `event.payload` instead of `context.requestPayload`. */
+ * The `generateMusicWorkflow` durable workflow.
+ */
 
 import { computeSequenceMusicInputHash } from '@/lib/ai/input-hash';
-import { DEFAULT_MUSIC_MODEL } from '@/lib/ai/models';
+import { DEFAULT_MUSIC_MODEL } from '@/shared/ai/models';
 import { uploadAudioToStorage } from '@/lib/audio/audio-storage';
 import { recordProvenance } from '@/lib/compliance/provenance';
 import { buildR2Key, STORAGE_BUCKETS } from '@/lib/storage/buckets';
 import { generateMusic } from '@/lib/audio/music-generation';
-import { ZERO_MICROS } from '@/lib/billing/money';
+import { ZERO_MICROS } from '@/shared/billing/money';
 import {
   deductWorkflowCredits,
   recordFalUsageStep,
 } from '@/lib/billing/workflow-deduction';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
-import { getGenerationChannel } from '@/lib/realtime';
+import { getGenerationChannel } from '@/shared/realtime';
 import { OpenStoryWorkflowEntrypoint } from '@/lib/workflow/base-workflow';
 import { WorkflowValidationError } from '@/lib/workflow/errors';
 import type {
@@ -31,7 +22,7 @@ import type {
   MusicWorkflowResult,
 } from '@/lib/workflow/types';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
-import { getLogger } from '@/lib/observability/logger';
+import { getLogger } from '@/shared/observability/logger';
 
 const logger = getLogger(['openstory', 'workflow', 'music']);
 

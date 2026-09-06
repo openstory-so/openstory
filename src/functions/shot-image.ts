@@ -3,14 +3,14 @@ import {
   DEFAULT_VIDEO_MODEL,
   safeImageToVideoModel,
   safeTextToImageModel,
-} from '@/lib/ai/models';
-import { resolveUpscaleModel } from '@/lib/ai/resolve-asset-models';
-import { shotPromptSequence } from '@/lib/shots/use-start-frame';
+} from '@/shared/ai/models';
+import { resolveUpscaleModel } from '@/shared/ai/resolve-asset-models';
+import { shotPromptSequence } from '@/shared/shots/use-start-frame';
 import {
   estimateImageCost,
   estimateStoryboardCost,
   gateEstimate,
-} from '@/lib/billing/cost-estimation';
+} from '@/shared/billing/cost-estimation';
 import { getEffectiveFalPricing } from '@/lib/ai/fal-pricing-live';
 import { getFrameImageUrl } from '@/lib/shots/frame-image';
 import {
@@ -20,7 +20,7 @@ import {
 } from '@/lib/billing/preflight';
 import { getVariantGridConfig } from '@/shared/constants/aspect-ratios';
 import { cropTileFromGrid } from '@/lib/image/image-crop';
-import { buildCharacterReferenceImages } from '@/lib/prompts/character-prompt';
+import { buildCharacterReferenceImages } from '@/shared/prompts/character-prompt';
 import {
   generateVariantSchema,
   regenerateShotSchema,
@@ -34,13 +34,12 @@ import {
 } from '@/lib/shots/shot-image-input';
 import { triggerWorkflow } from '@/lib/workflow/client';
 import { triggerStoryboard } from '@/lib/workflow/launchers';
-import { buildWorkflowLabel } from '@/lib/workflow/labels';
 import type {
   StoryboardTriggerInput,
   ShotVariantWorkflowInput,
   UpscaleShotVariantWorkflowInput,
 } from '@/lib/workflow/types';
-import { matchCharactersToShotImage } from '@/lib/workflows/scene-matching';
+import { matchCharactersToShotImage } from '@/shared/scenes/scene-matching';
 import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
@@ -218,7 +217,6 @@ export const generateShotImageFn = createServerFn({ method: 'POST' })
           // duplicate create()s), fresh per claim so a deliberate re-roll
           // after completion still gets a new run.
           deduplicationId: `image-${shot.id}-${claim.id}`,
-          label: buildWorkflowLabel(sequence.id),
         }
       );
     } catch (error) {
@@ -321,7 +319,6 @@ export const generateShotVariantsFn = createServerFn({ method: 'POST' })
       workflowInput,
       {
         deduplicationId: `variant-${shot.id}-${Date.now()}`,
-        label: buildWorkflowLabel(sequence.id),
       }
     );
 
@@ -494,7 +491,6 @@ export const selectShotVariantFn = createServerFn({ method: 'POST' })
     try {
       workflowRunId = await triggerWorkflow('/upscale-variant', workflowInput, {
         deduplicationId: `upscale-variant-${shot.id}-${Date.now()}`,
-        label: buildWorkflowLabel(sequence.id),
       });
     } catch (error) {
       await context.scopedDb.frameVariants.update(version.id, {

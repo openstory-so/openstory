@@ -10,7 +10,7 @@
  * The pattern below combines two race-tolerance mechanisms:
  *
  *   1. A pre-check `SELECT` for an existing divergent row, returned early if
- *      found. Handles the common case where QStash retries the same workflow
+ *      found. Handles the common case where the engine retries the same workflow
  *      step (same payload, same hash) and the row was inserted on a previous
  *      attempt.
  *

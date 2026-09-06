@@ -4,19 +4,18 @@ import {
   describeElementImage,
   ELEMENT_VISION_MODEL,
 } from '@/lib/ai/element-vision';
-import { reportMissingBillingCost } from '@/lib/billing/billing-observability';
-import { estimateLLMCost } from '@/lib/billing/cost-estimation';
+import { reportMissingBillingCost } from '@/shared/billing/billing-observability';
+import { estimateLLMCost } from '@/shared/billing/cost-estimation';
 import { InsufficientCreditsError, NotFoundError } from '@/shared/errors';
 import { generateId } from '@/shared/id';
 import { ulidSchema } from '@/lib/schemas/id.schemas';
-import { deriveTokenFromFilename } from '@/lib/sequence-elements/derive-token';
+import { deriveTokenFromFilename } from '@/shared/sequence-elements/derive-token';
 import { STORAGE_BUCKETS } from '@/lib/storage/buckets';
 import {
   getExtensionFromUrl,
   getMimeTypeFromExtension,
-} from '@/shared/utils/file';
+} from '@/lib/storage/file';
 import { triggerWorkflow } from '@/lib/workflow/client';
-import { buildWorkflowLabel } from '@/lib/workflow/labels';
 import type { ElementVisionWorkflowInput } from '@/lib/workflow/types';
 import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
@@ -52,9 +51,7 @@ async function triggerElementVision(params: {
 }): Promise<void> {
   const { teamId, userId, ...element } = params;
   const input: ElementVisionWorkflowInput = { userId, teamId, ...element };
-  await triggerWorkflow('/element-vision', input, {
-    label: buildWorkflowLabel(params.sequenceId),
-  });
+  await triggerWorkflow('/element-vision', input);
 }
 
 // ============================================================================
@@ -209,7 +206,7 @@ export const finalizeElementUploadFn = createServerFn({ method: 'POST' })
       visionStatus: 'pending',
     });
 
-    // If the QStash trigger fails, mark the row failed before re-throwing —
+    // If the trigger fails, mark the row failed before re-throwing —
     // otherwise the element would poll forever in `pending`.
     try {
       await triggerElementVision({

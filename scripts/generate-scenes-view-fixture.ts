@@ -158,7 +158,7 @@ const file = `// AUTO-GENERATED Storybook fixture — real rows from local D1 (s
 import type { SceneWithScript } from '@/hooks/use-scenes';
 import { dbSceneId } from '@/shared/scene-id';
 import type { Shot } from '@/lib/db/schema';
-import type { Sequence, Style } from '@/types/database';
+import type { Sequence, Style } from '@/lib/db/schema';
 
 export const fixtureSequence: Sequence = ${emit(sequence)};
 

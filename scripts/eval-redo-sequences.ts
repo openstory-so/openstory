@@ -19,7 +19,7 @@
  */
 import { readFile, writeFile } from 'node:fs/promises';
 import { briefForStyle } from '@/lib/style/sample-videos';
-import { styleSlug } from '@/lib/style/style-slug';
+import { styleSlug } from '@/shared/style/style-slug';
 import { DEFAULT_STYLE_TEMPLATES } from '@/lib/style/style-templates';
 import { z } from 'zod';
 

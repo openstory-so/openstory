@@ -45,11 +45,11 @@ import {
   errorHeadline,
   getLogger,
   toErrorPayload,
-} from '@/lib/observability/logger';
+} from '@/shared/observability/logger';
 import { ulidSchema } from '@/lib/schemas/id.schemas';
 import type { Frame } from '@/lib/db/schema';
 import type { SequenceStatus } from '@/lib/db/schema/sequences';
-import type { Shot, Sequence } from '@/types/database';
+import type { Shot, Sequence } from '@/lib/db/schema';
 import { createMiddleware } from '@tanstack/react-start';
 import { getRequest } from '@tanstack/react-start/server';
 import { zodValidator } from '@tanstack/zod-adapter';
@@ -68,8 +68,6 @@ export type TeamContext = AuthContext & {
   teamId: string;
   scopedDb: ScopedDb;
 };
-
-export type SystemAdminContext = TeamContext;
 
 export type SequenceContext = TeamContext & {
   sequence: Sequence;

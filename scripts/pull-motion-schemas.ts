@@ -14,7 +14,7 @@ import { join } from 'node:path';
 import {
   IMAGE_TO_VIDEO_MODELS,
   MOTION_REFERENCE_ENDPOINTS,
-} from '@/lib/ai/models';
+} from '@/shared/ai/models';
 
 function runCommand(cmd: string, args: string[]): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -107,7 +107,7 @@ async function main() {
   console.log('\nGenerating endpoint map...\n');
   await runCommand('bun', ['scripts/generate-motion-endpoint-map.ts']);
 
-  console.log('\nDone! Generated types in src/lib/motion/generated/');
+  console.log('\nDone! Generated types in src/shared/motion/generated/');
 }
 
 main().catch((err) => {

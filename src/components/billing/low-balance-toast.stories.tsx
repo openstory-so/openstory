@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react';
 import { useCallback, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Toaster } from '@/components/ui/sonner';
-import { TYPICAL_SHORT_COST_USD } from '@/lib/billing/constants';
+import { TYPICAL_SHORT_COST_USD } from '@/shared/billing/constants';
 import {
   showLowBalanceToast,
   type LowBalanceToastProps,

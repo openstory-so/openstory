@@ -12,9 +12,11 @@ import { getFalEndpointIds } from '@/lib/ai/fal-endpoints';
 import {
   FAL_ADVERTISED_CALL_USD,
   FAL_TYPICAL_UNITS_PER_DEFAULT_CLIP,
-} from '@/lib/ai/fal-typical-units';
-import { usdToMicros } from '@/lib/billing/money';
+} from '@/shared/ai/fal-typical-units';
+import { usdToMicros } from '@/shared/billing/money';
 import { modelPricing } from '@/lib/db/schema';
+import { getDb } from '#db-client';
+import { getEnv } from '#env';
 import { eq } from 'drizzle-orm';
 import type { SeedDb } from './seed-system-templates';
 
@@ -199,4 +201,18 @@ export async function ensureLocalModelPricingSeeded(
 /** Endpoints we expose that have no seed row — empty means the catalog is complete. */
 export function unseededFalEndpoints(): string[] {
   return getFalEndpointIds().filter((id) => !(id in LOCAL_FAL_PRICING_SEED));
+}
+
+let e2ePricingSeed: Promise<unknown> | null = null;
+
+/**
+ * Workflow isolates never run the fetch handler's self-seed (`src/server.ts`),
+ * so under Playwright a replay still would bill $0 and spam
+ * `reportMissingBillingCost` until this insert-if-missing pass runs. No-op
+ * outside `E2E_TEST`; memoised so per-invocation calls stay cheap.
+ */
+export async function ensureE2eModelPricing(): Promise<void> {
+  if (getEnv().E2E_TEST !== 'true') return;
+  e2ePricingSeed ??= ensureLocalModelPricingSeeded(getDb());
+  await e2ePricingSeed;
 }

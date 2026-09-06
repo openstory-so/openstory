@@ -27,7 +27,7 @@
  * Env: OPENSTORY_API_URL (default https://openstory.so), OPENSTORY_API_KEY.
  */
 
-import { styleSlug } from '@/lib/style/style-slug';
+import { styleSlug } from '@/shared/style/style-slug';
 import { access, mkdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';

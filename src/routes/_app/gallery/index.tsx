@@ -3,7 +3,7 @@ import { SampleVideoCard } from '@/components/style/sample-video-showcase';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useStyles } from '@/hooks/use-styles';
-import { buildSampleEntries } from '@/lib/style/sample-entries';
+import { buildSampleEntries } from '@/components/style/sample-entries';
 import { createFileRoute } from '@tanstack/react-router';
 import { Clapperboard } from 'lucide-react';
 
