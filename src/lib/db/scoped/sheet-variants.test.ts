@@ -7,7 +7,7 @@
  * `divergedAt`) and a parallel race-tolerance helper. The tests pin the
  * substantive new behavior introduced in PR #618:
  *
- *  - QStash retry idempotency: repeated calls with the same identity tuple
+ *  - Step-retry idempotency: repeated calls with the same identity tuple
  *    return the existing row instead of double-inserting.
  *  - Cross-run race tolerance: a unique-constraint conflict triggered by a
  *    concurrent run is absorbed into a re-fetch that returns the winner.
@@ -188,7 +188,7 @@ describe('character-sheet-variants insertDivergent', () => {
   it('pre-check returns the existing row when a divergent variant is already present', async () => {
     // Seeds the row directly, then calls `insertDivergent`. The helper's
     // pre-check SELECT finds the row and returns it — exercises the
-    // "QStash retried the same step" path. The post-collision retry path
+    // "the engine retried the same step" path. The post-collision retry path
     // is exercised separately at the helper level (see `insertDivergentRaceTolerant`
     // tests below).
     const methods = createCharacterSheetVariantsMethods(db);

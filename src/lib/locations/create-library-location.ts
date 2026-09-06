@@ -13,9 +13,8 @@ import type { LibraryLocation } from '@/lib/db/schema';
 import type { ScopedDb } from '@/lib/db/scoped';
 import { getLogger } from '@/shared/observability/logger';
 import { STORAGE_BUCKETS, getPublicUrl } from '@/lib/storage/buckets';
-import { getExtensionFromUrl } from '@/shared/utils/file';
+import { getExtensionFromUrl } from '@/lib/storage/file';
 import { triggerWorkflow } from '@/lib/workflow/client';
-import { buildWorkflowLabel } from '@/lib/workflow/labels';
 import type { LibraryLocationSheetWorkflowInput } from '@/lib/workflow/types';
 import { computeLibraryLocationSheetHashFromDto } from '@/lib/workflows/sheet-snapshots';
 
@@ -78,13 +77,10 @@ export type CreateLibraryLocationResult = {
 };
 
 export async function enqueueLibraryLocationSheet(
-  workflowInput: LibraryLocationSheetWorkflowInput,
-  locationId: string
+  workflowInput: LibraryLocationSheetWorkflowInput
 ): Promise<void> {
   try {
-    await triggerWorkflow('/library-location-sheet', workflowInput, {
-      label: buildWorkflowLabel(locationId),
-    });
+    await triggerWorkflow('/library-location-sheet', workflowInput);
   } catch (error) {
     logger.error('Failed to trigger location sheet workflow:', { err: error });
   }
@@ -138,7 +134,7 @@ export async function createLibraryLocation(
 
   if (options?.enqueueSheet !== false) {
     // Dashboard create: fire-and-forget so the dialog can return immediately.
-    void enqueueLibraryLocationSheet(workflowInput, newLocation.id);
+    void enqueueLibraryLocationSheet(workflowInput);
   }
 
   return { location: newLocation, sheetWorkflowInput: workflowInput };

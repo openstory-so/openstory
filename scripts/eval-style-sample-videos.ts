@@ -29,7 +29,7 @@ import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import { DEFAULT_STYLE_TEMPLATES } from '@/shared/style/style-templates';
+import { DEFAULT_STYLE_TEMPLATES } from '@/lib/style/style-templates';
 import { styleSlug } from '@/shared/style/style-slug';
 import { z } from 'zod';
 

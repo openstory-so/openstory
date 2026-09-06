@@ -514,7 +514,7 @@ describe('computeRegenerateShotsBatchHash', () => {
   });
 });
 
-// `validateSnapshotPayload` lived in the QStash `scoped-workflow` middleware
+// `validateSnapshotPayload` lived in the pre-CF `scoped-workflow` middleware
 // (removed in the Cloudflare Workflows cutover). Cloudflare workflows validate
 // the snapshot hash inline at `runImpl` start — see
 // `regenerate-shots-workflow.ts`.

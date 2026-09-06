@@ -13,6 +13,7 @@
  * the enhanced script when enhancement ran.
  */
 
+import { z } from 'zod';
 import { enhanceScriptToString } from '@/lib/ai/script-enhancement';
 import { toEnhanceInputs } from '@/shared/ai/enhance-inputs';
 import {
@@ -37,17 +38,17 @@ import {
   type EnqueueLibraryTalentSheetParams,
 } from '@/lib/talent/enqueue-library-talent-sheet';
 import type { LibraryLocationSheetWorkflowInput } from '@/lib/workflow/types';
-import type { SequenceStatus } from '@/lib/db/schema/sequences';
+import { SEQUENCE_STATUSES } from '@/lib/db/schema/sequences';
 import { createSequenceLink } from './discovery';
 import {
   API_V1_BASE,
   type HalLinks,
-  type HalResource,
+  halLinksSchema,
   getLink,
   waitLink,
 } from './hal';
 import type { ApiCreateSequenceInput } from './input-schema';
-import type { SequenceState } from './state';
+import { sequenceStateResourceSchema } from './state';
 import {
   ingestElements,
   resolveLocationIds,
@@ -65,44 +66,60 @@ export type OneShotContext = {
 };
 
 /** One created sequence in the (non-`?wait`) create response. */
-type OneShotSequenceEntry = {
-  id: string;
-  status: SequenceStatus;
-  workflowRunId: string;
-  statusUrl: string;
-  /** Affordances for this sequence: read status, or long-poll it. */
-  _links: HalLinks;
-};
+const oneShotSequenceEntrySchema = z
+  .object({
+    id: z.string(),
+    status: z.enum(SEQUENCE_STATUSES),
+    workflowRunId: z.string(),
+    statusUrl: z.string(),
+    /** Affordances for this sequence: read status, or long-poll it. */
+    _links: halLinksSchema,
+  })
+  .describe('A created sequence (non-?wait response entry).')
+  .meta({ id: 'SequenceSummary' });
 
-export type OneShotResult = {
-  sequences: OneShotSequenceEntry[];
-  enhancedScript?: string;
-  /** Affordances available from the create response itself. */
-  _links: HalLinks;
-};
+export const oneShotResultSchema = z
+  .object({
+    sequences: z.array(oneShotSequenceEntrySchema),
+    enhancedScript: z
+      .string()
+      .optional()
+      .describe('Present only when script enhancement ran.'),
+    /** Affordances available from the create response itself. */
+    _links: halLinksSchema,
+  })
+  .meta({ id: 'CreateSequenceResult' });
 
 /**
  * One created sequence in the `?wait` create response: the redundant top-level
  * status/statusUrl/_links are dropped in favour of the live embedded `state`,
  * plus the long-poll outcome flags.
  */
-type OneShotWaitSequenceEntry = {
-  id: string;
-  workflowRunId: string;
-  /** First progress snapshot (with its own `_links`); `null` if unavailable. */
-  state: HalResource<SequenceState> | null;
-  /** The sequence advanced during the wait. */
-  waitChanged: boolean;
-  /** The sequence reached a terminal state during the wait. */
-  waitDone: boolean;
-};
+const oneShotWaitSequenceEntrySchema = z
+  .object({
+    id: z.string(),
+    workflowRunId: z.string(),
+    /** First progress snapshot (with its own `_links`); `null` if unavailable. */
+    state: sequenceStateResourceSchema.nullable(),
+    waitChanged: z.boolean().describe('The sequence advanced during the wait.'),
+    waitDone: z.boolean().describe('The sequence reached a terminal state.'),
+  })
+  .describe(
+    'A created sequence with its first progress snapshot embedded (?wait response entry).'
+  )
+  .meta({ id: 'WaitedSequence' });
 
 /** The `?wait` variant of {@link OneShotResult} (the wire shape the route returns). */
-export type OneShotWaitResult = {
-  sequences: OneShotWaitSequenceEntry[];
-  enhancedScript?: string;
-  _links: HalLinks;
-};
+export const oneShotWaitResultSchema = z
+  .object({
+    sequences: z.array(oneShotWaitSequenceEntrySchema),
+    enhancedScript: z.string().optional(),
+    _links: halLinksSchema,
+  })
+  .meta({ id: 'CreateSequenceWaitResult' });
+
+export type OneShotResult = z.infer<typeof oneShotResultSchema>;
+export type OneShotWaitResult = z.infer<typeof oneShotWaitResultSchema>;
 
 type CharacterCreate = Exclude<
   NonNullable<ApiCreateSequenceInput['characters']>[number],
@@ -341,8 +358,8 @@ export async function runOneShotCreate(
     // the storyboard wait-for-sheets gate will surface a missing sheet.
     await Promise.allSettled([
       ...deferredTalentSheets.map((sheet) => enqueueLibraryTalentSheet(sheet)),
-      ...deferredLocationSheets.map(({ locationId, workflowInput }) =>
-        enqueueLibraryLocationSheet(workflowInput, locationId)
+      ...deferredLocationSheets.map(({ workflowInput }) =>
+        enqueueLibraryLocationSheet(workflowInput)
       ),
     ]);
 

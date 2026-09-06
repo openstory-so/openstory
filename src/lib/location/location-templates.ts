@@ -1,5 +1,5 @@
 import type { LibraryLocation } from '@/lib/db/schema';
-import { getPublicAssetsDomain } from '@/shared/storage/public-assets';
+import { getPublicAssetsDomain } from '@/lib/storage/public-assets';
 
 function sanitizeName(name: string): string {
   return name

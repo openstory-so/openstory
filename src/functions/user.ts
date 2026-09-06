@@ -7,14 +7,14 @@ import { createServerFn } from '@tanstack/react-start';
 
 import { authMiddleware } from './middleware';
 import { ensureUserAndTeam, resolveUserTeam } from '@/lib/db/scoped';
-import type { UserProfile } from '@/types/database';
+import type { User } from '@/lib/db/schema';
 
 // ============================================================================
 // Get Current User
 // ============================================================================
 
 export type CurrentUserData = {
-  user: UserProfile;
+  user: User;
   isAuthenticated: boolean;
   teamId?: string;
   teamRole?: string;

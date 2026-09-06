@@ -23,13 +23,13 @@ import {
 import {
   SequencePlayerEngine,
   type SequencePlayerMeta,
-} from '@/shared/sequence-player/playback';
-import type { SceneInput } from '@/shared/sequence-player/concatenated-video-source';
-import { scenePlaybackKey } from '@/shared/sequence-player/playback-scenes';
+} from '@/components/theatre/playback';
+import type { SceneInput } from '@/components/theatre/concatenated-video-source';
+import { scenePlaybackKey } from '@/components/theatre/playback-scenes';
 import {
   playAttemptUiState,
   type PlayAttemptResult,
-} from '@/shared/sequence-player/play-attempt';
+} from '@/components/theatre/play-attempt';
 import {
   captureVideoPlay,
   captureVideoPlayFailed,
@@ -37,7 +37,7 @@ import {
   createPlaybackTracker,
   type PlaybackTracker,
   type VideoPlaySource,
-} from '@/shared/observability/player-events';
+} from '@/components/theatre/player-events';
 import { cn } from '@/shared/utils';
 import { usePostHog } from '@posthog/react';
 import {

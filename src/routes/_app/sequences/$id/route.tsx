@@ -6,7 +6,7 @@ import { getDefaultSequenceTabPath } from '@/components/sequence/sequence-tabs';
 import { getSequenceFn } from '@/functions/sequences';
 import { sequenceKeys, useSequence } from '@/hooks/use-sequences';
 import { useUser } from '@/hooks/use-user';
-import { requireSessionOrRedirect } from '@/shared/auth/route-guards';
+import { requireSessionOrRedirect } from '@/components/auth/route-guards';
 import { isValidId } from '@/shared/id';
 import { createFileRoute, notFound, Outlet } from '@tanstack/react-router';
 

@@ -55,7 +55,6 @@ import { toShotView } from '@/shared/shots/shot-view';
 import { buildMotionReferenceImages } from '@/shared/motion/build-motion-references';
 import { buildCharacterReferenceImages } from '@/shared/prompts/character-prompt';
 import { triggerWorkflow } from '@/lib/workflow/client';
-import { buildWorkflowLabel } from '@/lib/workflow/labels';
 import { toWorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import {
   notifySequenceReady,
@@ -354,9 +353,7 @@ export async function executeSmartRetry(context: SmartRetryContext) {
       };
 
       await releaseReservationOnThrow(context.scopedDb, reservationId, () =>
-        triggerWorkflow('/image', workflowInput, {
-          label: buildWorkflowLabel(sequence.id),
-        })
+        triggerWorkflow('/image', workflowInput)
       );
       triggeredImages++;
     }
@@ -449,9 +446,7 @@ export async function executeSmartRetry(context: SmartRetryContext) {
       };
 
       await releaseReservationOnThrow(context.scopedDb, reservationId, () =>
-        triggerWorkflow('/motion', workflowInput, {
-          label: buildWorkflowLabel(sequence.id),
-        })
+        triggerWorkflow('/motion', workflowInput)
       );
       triggeredMotion++;
     }
@@ -496,9 +491,7 @@ export async function executeSmartRetry(context: SmartRetryContext) {
     });
 
     await releaseReservationOnThrow(context.scopedDb, reservationId, () =>
-      triggerWorkflow('/music', musicInput, {
-        label: buildWorkflowLabel(sequence.id),
-      })
+      triggerWorkflow('/music', musicInput)
     );
 
     retried.push('music');
@@ -520,22 +513,18 @@ export async function executeSmartRetry(context: SmartRetryContext) {
     const totalDuration = sumShotDurationsSeconds(allShots);
 
     // Generate music prompt
-    await triggerWorkflow<MusicPromptWorkflowInput>(
-      '/music-prompt',
-      {
-        userId: user.id,
-        teamId,
-        sequenceId: sequence.id,
-        sceneSummaries: scenes,
-        analysisModelId:
-          getAnalysisModelById(sequence.analysisModel)?.id ??
-          DEFAULT_ANALYSIS_MODEL,
-        duration: totalDuration || 30,
-        // This branch only runs when the sequence has no music prompt at all.
-        promptSource: 'ai-generated',
-      },
-      { label: buildWorkflowLabel(sequence.id) }
-    );
+    await triggerWorkflow<MusicPromptWorkflowInput>('/music-prompt', {
+      userId: user.id,
+      teamId,
+      sequenceId: sequence.id,
+      sceneSummaries: scenes,
+      analysisModelId:
+        getAnalysisModelById(sequence.analysisModel)?.id ??
+        DEFAULT_ANALYSIS_MODEL,
+      duration: totalDuration || 30,
+      // This branch only runs when the sequence has no music prompt at all.
+      promptSource: 'ai-generated',
+    });
 
     retried.push('music prompt');
   }

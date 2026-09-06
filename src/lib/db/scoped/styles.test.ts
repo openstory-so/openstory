@@ -20,7 +20,7 @@ import {
   createPublicStylesReadMethods,
   createStylesMethods,
 } from '@/lib/db/scoped/styles';
-import { ConflictError } from '@/shared/errors';
+import { OpenStoryError } from '@/shared/errors';
 import type { ServerManagedStyleColumn } from '@/lib/schemas/style.schemas';
 import { createClient, type Client } from '@libsql/client';
 import { asc, desc, eq, or, sql } from 'drizzle-orm';
@@ -386,7 +386,7 @@ describe('createStylesMethods slug uniqueness (#956)', () => {
     await markPublic(noir.id);
     await expect(
       methods.create({ name: 'cinematic  noir!', config: baseConfig })
-    ).rejects.toBeInstanceOf(ConflictError);
+    ).rejects.toBeInstanceOf(OpenStoryError);
   });
 
   it('rejects a new style whose slug collides with another style in the same team', async () => {
@@ -394,7 +394,7 @@ describe('createStylesMethods slug uniqueness (#956)', () => {
     await methods.create({ name: 'My Style', config: baseConfig });
     await expect(
       methods.create({ name: 'MY  style', config: baseConfig })
-    ).rejects.toBeInstanceOf(ConflictError);
+    ).rejects.toBeInstanceOf(OpenStoryError);
   });
 
   it('allows a distinct slug', async () => {
@@ -428,7 +428,7 @@ describe('createStylesMethods slug uniqueness (#956)', () => {
 
     await expect(
       methods.update(second.id, { name: 'first' })
-    ).rejects.toBeInstanceOf(ConflictError);
+    ).rejects.toBeInstanceOf(OpenStoryError);
 
     // excludeId skips the row being renamed, so a same-slug variant of its own
     // name is allowed.

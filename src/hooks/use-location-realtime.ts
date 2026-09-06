@@ -1,6 +1,6 @@
 import { getChannelHistoryFn } from '@/functions/realtime-history';
 import { useUser } from '@/hooks/use-user';
-import { useRealtime } from '@/shared/realtime/client';
+import { useRealtime } from '@/components/realtime/client';
 import type { StaleDetectedPayload } from '@/shared/realtime';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useState } from 'react';

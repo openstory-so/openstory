@@ -10,7 +10,7 @@ import { getEnv } from '#env';
 
 /**
  * Server-side application URL
- * Used by Better Auth, QStash webhooks, and internal API calls
+ * Used by Better Auth, webhooks, and internal API calls
  * Lazily evaluated to support Cloudflare Workers
  */
 export function getServerAppUrl(request: Request): string {

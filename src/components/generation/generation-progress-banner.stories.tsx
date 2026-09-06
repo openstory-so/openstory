@@ -2,7 +2,7 @@ import {
   createInitialState,
   type GenerationPhase,
   type GenerationStreamState,
-} from '@/shared/realtime/generation-stream.reducer';
+} from '@/components/realtime/generation-stream.reducer';
 import type { Meta, StoryObj } from '@storybook/react';
 import { Pencil } from 'lucide-react';
 import { GenerationProgressBanner } from './generation-progress-banner';

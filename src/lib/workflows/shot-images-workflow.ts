@@ -1,28 +1,16 @@
 /**
- * Cloudflare Workflows port of `shotImagesWorkflow`.
+ * The `shotImagesWorkflow` durable workflow.
  *
- * Mirrors the QStash version (`src/lib/workflows/shot-images-workflow.ts`)
- * step for step — same step names, same control flow, same side effects.
- * Differences (all infrastructure-level, not behavioural):
+ * Per-scene × per-model fan-out uses Pattern 3 — `spawnAndAwaitChild` against
+ * `IMAGE_WORKFLOW`, flattened into (scene, model) jobs and spawned unbounded
+ * (#1143; the per-run ceiling #1126 added measured no benefit). Per-job settle
+ * isolation, so a single failing image (or timeout) doesn't kill the rest of
+ * the batch.
  *
- *   - Extends `OpenStoryWorkflowEntrypoint` instead of being built by
- *     `createScopedWorkflow`. Failure parity comes from the base class
- *     (see `base-workflow.ts`).
- *   - Uses `step.do` instead of `context.run`.
- *   - Reads payload from `event.payload` and the run id from
- *     `event.instanceId` instead of `context.requestPayload` /
- *     `context.workflowRunId`.
- *   - Calls the snapshot DTO computer directly in a `validate-snapshot`
- *     step instead of going through the `context.snapshot.*` extension.
- *   - Per-scene × per-model fan-out uses Pattern 3 — `spawnAndAwaitChild`
- *     against `IMAGE_WORKFLOW`, flattened into (scene, model) jobs and spawned
- *     unbounded (#1143; the per-run ceiling #1126 added measured no benefit).
- *     Per-job settle isolation, so a single failing image (or timeout) doesn't
- *     kill the rest of the batch.
- *   - The variant-image (shot-grid) fire-and-forget kick remains routed
- *     through `triggerWorkflow('/variant-image', …)` for parity with the
- *     QStash original — the engine registry decides whether that hits CF
- *     or QStash per-deploy. */
+ * The variant-image (shot-grid) fire-and-forget kick goes through
+ * `triggerWorkflow('/variant-image', …)` rather than a direct spawn, so the
+ * trigger-binding registry stays the single place that maps paths to bindings.
+ */
 
 import { resolveImageModels } from '@/lib/ai/resolve-image-models';
 import { aspectRatioToImageSize } from '@/shared/constants/aspect-ratios';
@@ -36,7 +24,6 @@ import { OpenStoryWorkflowEntrypoint } from '@/lib/workflow/base-workflow';
 import { spawnAndAwaitChild } from '@/lib/workflow/await-child';
 import { triggerWorkflow } from '@/lib/workflow/client';
 import { WorkflowValidationError } from '@/lib/workflow/errors';
-import { buildWorkflowLabel } from '@/lib/workflow/labels';
 import { NonRetryableError } from 'cloudflare:workflows';
 import type {
   ShotImagesWorkflowInput,
@@ -114,8 +101,7 @@ export class ShotImagesWorkflow extends OpenStoryWorkflowEntrypoint<ShotImagesWo
     const input = event.payload;
     const parentInstanceId = event.instanceId;
 
-    // Snapshot validation. The QStash original calls
-    // `context.snapshot.validate()` inside a `context.run`; the CF base
+    // Snapshot validation runs inside the step body; the CF base
     // class has no snapshot extension, so we recompute the DTO hash and
     // compare directly. Top-level throw → `WorkflowValidationError` (the
     // base class re-wraps as CF `NonRetryableError`).
@@ -153,8 +139,6 @@ export class ShotImagesWorkflow extends OpenStoryWorkflowEntrypoint<ShotImagesWo
     } = input;
 
     const imageModels = resolveImageModels(imageModelsInput, imageModel);
-
-    const label = buildWorkflowLabel(sequenceId);
 
     // Build per-scene character, location, and element maps for reference
     // image lookup. The payload's elements are the ONLY source: they are what
@@ -235,7 +219,7 @@ export class ShotImagesWorkflow extends OpenStoryWorkflowEntrypoint<ShotImagesWo
     // Fan out one IMAGE_WORKFLOW child per (scene, model). Wave-bounded
     // (#1126) so large sequences don't stampede isolates + D1; allSettled
     // isolation is preserved within each wave. Per-scene failures surface
-    // via WorkflowValidationError below for parity with the QStash
+    // via WorkflowValidationError below, matching the
     // `result.isFailed` check.
     // Per-scene inputs, resolved once instead of per (scene, model) job.
     // Stored as value-or-error: a scene with no visual prompt must fail only
@@ -410,9 +394,6 @@ export class ShotImagesWorkflow extends OpenStoryWorkflowEntrypoint<ShotImagesWo
               model,
             },
             {
-              label,
-              retries: 3,
-              retryDelay: 'pow(2, retried) * 1000',
               // Replay-stable: a retry of this step.do must reuse the
               // existing variant instance instead of spawning a second
               // paid job (see dedup-ids.ts).
@@ -481,7 +462,7 @@ export class ShotImagesWorkflow extends OpenStoryWorkflowEntrypoint<ShotImagesWo
 
     // Surface per-model failures. The primary (index 0) result is what
     // becomes this scene's `imageUrl`; if it failed the scene is rejected
-    // for parity with the QStash original's `result.isFailed` check.
+    // mirroring the pre-CF `result.isFailed` check.
     // Sibling-model failures are logged but don't block — they're
     // alternates that enrich `shot_variants`, not the primary.
     const sceneResults: PromiseSettledResult<ShotImageJobResult>[] =

@@ -194,8 +194,7 @@ export class MotionPromptBatchWorkflow extends OpenStoryWorkflowEntrypoint<Motio
     error: string;
     scopedDb: WorkflowScopedDb;
   }): void {
-    // Mirror QStash's `failureFunction`, which returned a static string and
-    // performed no DB writes — per-scene failures already surface via the
+    // Log only, no DB writes: per-scene failures already surface via the
     // child workflow's own onFailure (e.g. shotPrompt.failed emits).
     logger.error(
       '[MotionPromptBatchWorkflow:cf] Motion prompt generation failed',

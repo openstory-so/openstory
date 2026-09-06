@@ -28,7 +28,7 @@ import {
   type LibraryLocationWithSheets,
 } from '@/hooks/use-location-library';
 import type { LocationSheetVariant } from '@/lib/db/schema';
-import { useSheetStaleDetected } from '@/shared/realtime/use-sheet-stale-detected';
+import { useSheetStaleDetected } from '@/components/realtime/use-sheet-stale-detected';
 
 type EditLocationDialogProps = {
   location: LibraryLocationWithSheets;

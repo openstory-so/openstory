@@ -21,12 +21,12 @@ import {
   selectionScope,
   selectionShots,
   type SceneSelection,
-} from '@/shared/scenes/scene-selection';
+} from '@/components/scenes/scene-selection';
 import type { ShotView } from '@/shared/shots/shot-view';
-import type { Sequence } from '@/types/database';
+import type { Sequence } from '@/lib/db/schema';
 import { Download, Film, Link, Loader2 } from 'lucide-react';
 import { useMemo } from 'react';
-import { toPlaybackScenes } from '@/shared/sequence-player/playback-scenes';
+import { toPlaybackScenes } from '@/components/theatre/playback-scenes';
 
 type SceneCanvasProps = {
   selection: SceneSelection;

@@ -27,7 +27,7 @@ import {
   throwNotedRunError,
   toGeminiThinkingLevel,
 } from '@/lib/ai/llm-client';
-import { withLlmRateLimitRetry } from '@/lib/ai/llm-rate-limit';
+import { withLlmRateLimitRetry } from '@/lib/ai/quota-retry';
 import type { TextModel } from '@/shared/ai/models';
 import {
   analysisModelSupportsVision,

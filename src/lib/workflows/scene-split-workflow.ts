@@ -85,7 +85,6 @@ import { getGenerationChannel } from '@/shared/realtime';
 import { previewImageDedupId } from '@/lib/workflow/dedup-ids';
 import { OpenStoryWorkflowEntrypoint } from '@/lib/workflow/base-workflow';
 import { triggerWorkflow } from '@/lib/workflow/client';
-import { buildWorkflowLabel } from '@/lib/workflow/labels';
 import { WorkflowValidationError } from '@/lib/workflow/errors';
 import { handleLlmAuthFailure } from '@/lib/workflow/llm-auth-failure';
 import { sanitizeFailResponse } from '@/lib/workflow/sanitize-fail-response';
@@ -232,7 +231,6 @@ async function triggerPreviewImage({
         skipStorage: true,
       } satisfies ImageWorkflowInput,
       {
-        label: buildWorkflowLabel(sequenceId),
         deduplicationId: previewImageDedupId(parentInstanceId, shot.id),
         enforcement,
       }

@@ -6,7 +6,6 @@ import {
   isBytePlusConfigured,
   loadBytePlusImage,
 } from '@/lib/ai/byteplus-config';
-import { withBytePlusQuotaRetry } from '@/lib/ai/byteplus-rate-limit';
 import { isContentRejectionError } from '@/shared/ai/content-rejection';
 import { falCostFromUnits } from '@/lib/ai/fal-cost-billing';
 import { FAL_GENERATION_TIMEOUT_MS } from '@/lib/ai/fal-deadline-fetch';
@@ -21,7 +20,10 @@ import {
   isNativeGeminiImageModel,
   nativeGeminiImageModel,
 } from '@/shared/ai/gemini-native';
-import { withLlmRateLimitRetry } from '@/lib/ai/llm-rate-limit';
+import {
+  withBytePlusQuotaRetry,
+  withLlmRateLimitRetry,
+} from '@/lib/ai/quota-retry';
 import { isNativeBytePlusImageModel } from '@/shared/ai/models';
 import type { MediaVia } from '@/lib/ai/via';
 import { workersSafeFetch } from '@/lib/ai/workers-safe-fetch';

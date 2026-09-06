@@ -1,29 +1,18 @@
 /**
- * Cloudflare Workflows port of `replaceElementWorkflow`.
+ * The `replaceElementWorkflow` durable workflow.
  *
  * Keep this workflow wired. The replace UI (#1192) currently persists the
  * new image and re-runs vision, then leaves affected shots stale. A later
  * "apply to shots" action should trigger this fan-out again.
  *
- * Mirrors the QStash version (`src/lib/workflows/replace-element-workflow.ts`)
- * step for step — same step names, same control flow, same side effects. The
- * only differences are:
- *
- *   - Extends `OpenStoryWorkflowEntrypoint` instead of being built by
- *     `createScopedWorkflow`. Failure parity comes from the base class
- *     (see `base-workflow.ts`).
- *   - Uses `step.do` instead of `context.run`.
  *   - The vision call inlines into a single `describe-new-element` step
- *     instead of invoking the `element-vision` child workflow — matches the
- *     QStash original, which also runs vision in-process here. The
+ *     rather than invoking the `element-vision` child workflow; the
  *     `ElementVisionWorkflow` child is exercised by *other* trigger paths.
  *   - Per-shot fan-out uses `spawnAndAwaitChild` (Pattern 3) to invoke
  *     `ImageWorkflow` for each affected shot, with `Promise.all` to spawn
  *     in parallel and `Promise.allSettled` to gather results so a single
  *     timed-out child cannot tank the rest of the batch.
- *   - Reads the workflow run id from `event.instanceId` instead of
- *     `context.workflowRunId` (not needed by this workflow, but included
- *     here for parity with other CF ports). */
+ */
 
 import {
   describeElementImage,

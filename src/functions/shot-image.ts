@@ -34,7 +34,6 @@ import {
 } from '@/lib/shots/shot-image-input';
 import { triggerWorkflow } from '@/lib/workflow/client';
 import { triggerStoryboard } from '@/lib/workflow/launchers';
-import { buildWorkflowLabel } from '@/lib/workflow/labels';
 import type {
   StoryboardTriggerInput,
   ShotVariantWorkflowInput,
@@ -218,7 +217,6 @@ export const generateShotImageFn = createServerFn({ method: 'POST' })
           // duplicate create()s), fresh per claim so a deliberate re-roll
           // after completion still gets a new run.
           deduplicationId: `image-${shot.id}-${claim.id}`,
-          label: buildWorkflowLabel(sequence.id),
         }
       );
     } catch (error) {
@@ -321,7 +319,6 @@ export const generateShotVariantsFn = createServerFn({ method: 'POST' })
       workflowInput,
       {
         deduplicationId: `variant-${shot.id}-${Date.now()}`,
-        label: buildWorkflowLabel(sequence.id),
       }
     );
 
@@ -494,7 +491,6 @@ export const selectShotVariantFn = createServerFn({ method: 'POST' })
     try {
       workflowRunId = await triggerWorkflow('/upscale-variant', workflowInput, {
         deduplicationId: `upscale-variant-${shot.id}-${Date.now()}`,
-        label: buildWorkflowLabel(sequence.id),
       });
     } catch (error) {
       await context.scopedDb.frameVariants.update(version.id, {

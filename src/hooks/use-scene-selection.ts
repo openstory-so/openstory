@@ -11,7 +11,7 @@ import {
   type ScenesSearch,
   selectionToSearchParams,
   toggleSceneInSelection,
-} from '@/shared/scenes/scene-selection';
+} from '@/components/scenes/scene-selection';
 import { useNavigate } from '@tanstack/react-router';
 import { useCallback, useMemo } from 'react';
 

@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { z } from 'zod';
 import { migrateStyleConfigV1ToV2 } from '@/shared/style/style-config';
-import { DEFAULT_STYLE_TEMPLATES } from '@/shared/style/style-templates';
+import { DEFAULT_STYLE_TEMPLATES } from '@/lib/style/style-templates';
 import { toEnhanceInputs } from '@/shared/ai/enhance-inputs';
 import { createUserPrompt } from '../script-enhancer';
 

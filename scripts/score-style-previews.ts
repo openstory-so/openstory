@@ -36,7 +36,7 @@ import {
 import type { StyleConfig } from '@/lib/db/schema/libraries';
 import type { ChatMessage, ChatMessageContentPart } from '@/lib/prompts';
 import { styleSlug } from '@/shared/style/style-slug';
-import { DEFAULT_STYLE_TEMPLATES } from '@/shared/style/style-templates';
+import { DEFAULT_STYLE_TEMPLATES } from '@/lib/style/style-templates';
 import { PhotonImage } from '@cf-wasm/photon';
 import { readdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';

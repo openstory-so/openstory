@@ -4,7 +4,7 @@
  * The workflow opts into the snapshot pattern (see
  * docs/architecture/workflow-snapshots-and-content-hash-staleness.md):
  * a per-shot DTO is resolved at trigger time, hashed, and inlined into the
- * QStash payload. Here we own (1) building the per-shot DTO from the live
+ * workflow payload. Here we own (1) building the per-shot DTO from the live
  * scoped DB and (2) computing the batch hash that gates the start-time
  * tamper check.
  */

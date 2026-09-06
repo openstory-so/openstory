@@ -25,7 +25,7 @@
  * today that's mostly modelschemas' tracking epoch, so ties fall back to
  * variant count, but it gets meaningful as dates are backdated.
  */
-import type { CatalogActivity, CatalogModel } from './catalog';
+import type { CatalogActivity, CatalogModel } from '@/shared/models/catalog';
 
 export type ModelVariant = CatalogModel & {
   /** Normalized version label ("v3", "v2.3-fast", "o3") — null when the id carries none. */

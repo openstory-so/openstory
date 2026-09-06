@@ -44,7 +44,7 @@ import {
   placeholderAutoStyleDraft,
 } from '@/shared/style/auto-style';
 import { parseStyleConfig } from '@/shared/style/style-config';
-import type { Sequence } from '@/types/database';
+import type { Sequence } from '@/lib/db/schema';
 import {
   REFERENCE_ONLY_MODEL_ERROR,
   type CreateSequenceInput,

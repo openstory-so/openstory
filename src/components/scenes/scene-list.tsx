@@ -41,7 +41,7 @@ import type { SceneWithScript } from '@/hooks/use-scenes';
 import type { ShotVariant } from '@/lib/db/schema';
 import { errorMessage } from '@/shared/errors';
 import { resolveShotDuration } from '@/shared/motion/resolve-shot-duration';
-import type { SceneSelection } from '@/shared/scenes/scene-selection';
+import type { SceneSelection } from '@/components/scenes/scene-selection';
 import type { SequenceSegment } from '@/shared/scenes/scene-segments';
 import { rendersReferenceOnly } from '@/shared/shots/use-start-frame';
 import {

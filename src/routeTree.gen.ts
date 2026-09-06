@@ -63,12 +63,10 @@ import { Route as AppTalentIdRouteImport } from './routes/_app/talent/$id'
 import { Route as AppVideosIndexRouteImport } from './routes/_app/videos/index'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiBillingWebhookRouteImport } from './routes/api/billing/webhook'
-import { Route as ApiDevMemoryRouteImport } from './routes/api/dev/memory'
 import { Route as ApiOpenrouterCallbackRouteImport } from './routes/api/openrouter/callback'
 import { Route as ApiStorageMultipartRouteImport } from './routes/api/storage/multipart'
 import { Route as ApiStorageUploadRouteImport } from './routes/api/storage/upload'
 import { Route as ApiTestCharacterRouteImport } from './routes/api/test/character'
-import { Route as ApiTestCleanupRouteImport } from './routes/api/test/cleanup'
 import { Route as ApiTestImageRouteImport } from './routes/api/test/image'
 import { Route as ApiTestLocationRouteImport } from './routes/api/test/location'
 import { Route as ApiTestSequenceRouteImport } from './routes/api/test/sequence'
@@ -367,11 +365,6 @@ const ApiBillingWebhookRoute = ApiBillingWebhookRouteImport.update({
   path: '/api/billing/webhook',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiDevMemoryRoute = ApiDevMemoryRouteImport.update({
-  id: '/api/dev/memory',
-  path: '/api/dev/memory',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ApiOpenrouterCallbackRoute = ApiOpenrouterCallbackRouteImport.update({
   id: '/api/openrouter/callback',
   path: '/api/openrouter/callback',
@@ -390,11 +383,6 @@ const ApiStorageUploadRoute = ApiStorageUploadRouteImport.update({
 const ApiTestCharacterRoute = ApiTestCharacterRouteImport.update({
   id: '/character',
   path: '/character',
-  getParentRoute: () => ApiTestRouteRoute,
-} as any)
-const ApiTestCleanupRoute = ApiTestCleanupRouteImport.update({
-  id: '/cleanup',
-  path: '/cleanup',
   getParentRoute: () => ApiTestRouteRoute,
 } as any)
 const ApiTestImageRoute = ApiTestImageRouteImport.update({
@@ -591,12 +579,10 @@ export interface FileRoutesByFullPath {
   '/talent/$id': typeof AppTalentIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/billing/webhook': typeof ApiBillingWebhookRoute
-  '/api/dev/memory': typeof ApiDevMemoryRoute
   '/api/openrouter/callback': typeof ApiOpenrouterCallbackRoute
   '/api/storage/multipart': typeof ApiStorageMultipartRoute
   '/api/storage/upload': typeof ApiStorageUploadRoute
   '/api/test/character': typeof ApiTestCharacterRoute
-  '/api/test/cleanup': typeof ApiTestCleanupRoute
   '/api/test/image': typeof ApiTestImageRoute
   '/api/test/location': typeof ApiTestLocationRoute
   '/api/test/sequence': typeof ApiTestSequenceRoute
@@ -678,12 +664,10 @@ export interface FileRoutesByTo {
   '/talent/$id': typeof AppTalentIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/billing/webhook': typeof ApiBillingWebhookRoute
-  '/api/dev/memory': typeof ApiDevMemoryRoute
   '/api/openrouter/callback': typeof ApiOpenrouterCallbackRoute
   '/api/storage/multipart': typeof ApiStorageMultipartRoute
   '/api/storage/upload': typeof ApiStorageUploadRoute
   '/api/test/character': typeof ApiTestCharacterRoute
-  '/api/test/cleanup': typeof ApiTestCleanupRoute
   '/api/test/image': typeof ApiTestImageRoute
   '/api/test/location': typeof ApiTestLocationRoute
   '/api/test/sequence': typeof ApiTestSequenceRoute
@@ -770,12 +754,10 @@ export interface FileRoutesById {
   '/_app/talent/$id': typeof AppTalentIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/billing/webhook': typeof ApiBillingWebhookRoute
-  '/api/dev/memory': typeof ApiDevMemoryRoute
   '/api/openrouter/callback': typeof ApiOpenrouterCallbackRoute
   '/api/storage/multipart': typeof ApiStorageMultipartRoute
   '/api/storage/upload': typeof ApiStorageUploadRoute
   '/api/test/character': typeof ApiTestCharacterRoute
-  '/api/test/cleanup': typeof ApiTestCleanupRoute
   '/api/test/image': typeof ApiTestImageRoute
   '/api/test/location': typeof ApiTestLocationRoute
   '/api/test/sequence': typeof ApiTestSequenceRoute
@@ -861,12 +843,10 @@ export interface FileRouteTypes {
     | '/talent/$id'
     | '/api/auth/$'
     | '/api/billing/webhook'
-    | '/api/dev/memory'
     | '/api/openrouter/callback'
     | '/api/storage/multipart'
     | '/api/storage/upload'
     | '/api/test/character'
-    | '/api/test/cleanup'
     | '/api/test/image'
     | '/api/test/location'
     | '/api/test/sequence'
@@ -948,12 +928,10 @@ export interface FileRouteTypes {
     | '/talent/$id'
     | '/api/auth/$'
     | '/api/billing/webhook'
-    | '/api/dev/memory'
     | '/api/openrouter/callback'
     | '/api/storage/multipart'
     | '/api/storage/upload'
     | '/api/test/character'
-    | '/api/test/cleanup'
     | '/api/test/image'
     | '/api/test/location'
     | '/api/test/sequence'
@@ -1039,12 +1017,10 @@ export interface FileRouteTypes {
     | '/_app/talent/$id'
     | '/api/auth/$'
     | '/api/billing/webhook'
-    | '/api/dev/memory'
     | '/api/openrouter/callback'
     | '/api/storage/multipart'
     | '/api/storage/upload'
     | '/api/test/character'
-    | '/api/test/cleanup'
     | '/api/test/image'
     | '/api/test/location'
     | '/api/test/sequence'
@@ -1105,7 +1081,6 @@ export interface RootRouteChildren {
   R2SplatRoute: typeof R2SplatRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiBillingWebhookRoute: typeof ApiBillingWebhookRoute
-  ApiDevMemoryRoute: typeof ApiDevMemoryRoute
   ApiOpenrouterCallbackRoute: typeof ApiOpenrouterCallbackRoute
   ApiStorageMultipartRoute: typeof ApiStorageMultipartRoute
   ApiStorageUploadRoute: typeof ApiStorageUploadRoute
@@ -1498,13 +1473,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiBillingWebhookRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/dev/memory': {
-      id: '/api/dev/memory'
-      path: '/api/dev/memory'
-      fullPath: '/api/dev/memory'
-      preLoaderRoute: typeof ApiDevMemoryRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/api/openrouter/callback': {
       id: '/api/openrouter/callback'
       path: '/api/openrouter/callback'
@@ -1531,13 +1499,6 @@ declare module '@tanstack/react-router' {
       path: '/character'
       fullPath: '/api/test/character'
       preLoaderRoute: typeof ApiTestCharacterRouteImport
-      parentRoute: typeof ApiTestRouteRoute
-    }
-    '/api/test/cleanup': {
-      id: '/api/test/cleanup'
-      path: '/cleanup'
-      fullPath: '/api/test/cleanup'
-      preLoaderRoute: typeof ApiTestCleanupRouteImport
       parentRoute: typeof ApiTestRouteRoute
     }
     '/api/test/image': {
@@ -1899,7 +1860,6 @@ const DocsRouteWithChildren = DocsRoute._addFileChildren(DocsRouteChildren)
 
 interface ApiTestRouteRouteChildren {
   ApiTestCharacterRoute: typeof ApiTestCharacterRoute
-  ApiTestCleanupRoute: typeof ApiTestCleanupRoute
   ApiTestImageRoute: typeof ApiTestImageRoute
   ApiTestLocationRoute: typeof ApiTestLocationRoute
   ApiTestSequenceRoute: typeof ApiTestSequenceRoute
@@ -1912,7 +1872,6 @@ interface ApiTestRouteRouteChildren {
 
 const ApiTestRouteRouteChildren: ApiTestRouteRouteChildren = {
   ApiTestCharacterRoute: ApiTestCharacterRoute,
-  ApiTestCleanupRoute: ApiTestCleanupRoute,
   ApiTestImageRoute: ApiTestImageRoute,
   ApiTestLocationRoute: ApiTestLocationRoute,
   ApiTestSequenceRoute: ApiTestSequenceRoute,
@@ -1981,7 +1940,6 @@ const rootRouteChildren: RootRouteChildren = {
   R2SplatRoute: R2SplatRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiBillingWebhookRoute: ApiBillingWebhookRoute,
-  ApiDevMemoryRoute: ApiDevMemoryRoute,
   ApiOpenrouterCallbackRoute: ApiOpenrouterCallbackRoute,
   ApiStorageMultipartRoute: ApiStorageMultipartRoute,
   ApiStorageUploadRoute: ApiStorageUploadRoute,

@@ -9,7 +9,7 @@
  */
 
 import { ulidSchema } from '@/lib/schemas/id.schemas';
-import { isServerExportAvailable } from '@/shared/sequence-player/server-export-available';
+import { isServerExportAvailable } from '@/lib/sequences/server-export-available';
 import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';

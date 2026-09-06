@@ -275,7 +275,7 @@ export function createCharacterSheetVariantsMethods(db: Database) {
      * Idempotent on (characterId, model, inputHash) within the divergent
      * partial unique index. Tolerant to two failure modes:
      *
-     *  - QStash step retry: the row was inserted on a previous attempt, the
+     *  - Step retry: the row was inserted on a previous attempt, the
      *    pre-check returns it.
      *  - Cross-run race: two divergent runs both pass the pre-check, one
      *    INSERT loses; the helper re-fetches and returns the winner's row.

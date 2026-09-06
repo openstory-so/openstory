@@ -15,7 +15,7 @@ import {
   type Resolution,
 } from '@/shared/constants/resolutions';
 import { Badge } from '@/components/ui/badge';
-import type { SelectionScope } from '@/shared/scenes/scene-selection';
+import type { SelectionScope } from '@/components/scenes/scene-selection';
 import { usePostHog } from '@posthog/react';
 import { Link } from '@tanstack/react-router';
 import { CopyPlus } from 'lucide-react';

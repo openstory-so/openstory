@@ -1,6 +1,6 @@
 import { generateMockStyles } from '@/shared/mocks/data-generators';
 import { StyleInlineTile } from '@/components/style/style-inline-tile';
-import type { Style } from '@/types/database';
+import type { Style } from '@/lib/db/schema';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 

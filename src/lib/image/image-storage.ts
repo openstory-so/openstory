@@ -10,7 +10,7 @@ import {
   getExtensionFromUrl,
   getMimeTypeFromExtension,
   sniffImageMimeType,
-} from '@/shared/utils/file';
+} from '@/lib/storage/file';
 import { generateId } from '@/shared/id';
 
 interface UploadImageOptions {

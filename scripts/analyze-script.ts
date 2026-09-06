@@ -191,21 +191,17 @@ async function main() {
   console.log('');
 
   try {
-    const workflowRunId = await triggerWorkflow(
-      '/analyze-script',
-      {
-        script,
-        styleConfig: parsedStyle,
-        aspectRatio,
-        analysisModelId: analysisModel,
-        imageModel: values['image-model'],
-        videoModel: values['video-model'],
-        userId: values['user-id'] ?? 'cli-user',
-        teamId: values['team-id'] ?? 'cli-team',
-        sequenceId: values['sequence-id'],
-      },
-      { label: 'cli-analyze-script' }
-    );
+    const workflowRunId = await triggerWorkflow('/analyze-script', {
+      script,
+      styleConfig: parsedStyle,
+      aspectRatio,
+      analysisModelId: analysisModel,
+      imageModel: values['image-model'],
+      videoModel: values['video-model'],
+      userId: values['user-id'] ?? 'cli-user',
+      teamId: values['team-id'] ?? 'cli-team',
+      sequenceId: values['sequence-id'],
+    });
 
     console.log('✅ Workflow triggered successfully');
     console.log(`   Workflow Run ID: ${workflowRunId}`);

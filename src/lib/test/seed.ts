@@ -33,7 +33,7 @@ import {
   videoVariants,
 } from '@/lib/db/schema';
 import { getDb } from '#db-client';
-import { and, asc, desc, eq, isNull, like, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, isNull } from 'drizzle-orm';
 
 export type CreatedTestUser = {
   id: string;
@@ -442,58 +442,6 @@ export async function createTestLocation(
   });
 
   return { id: inserted.id, teamId, name };
-}
-
-/**
- * Basic cleanup for a team's test data.
- * Prefer specific cleanups when possible.
- */
-export async function cleanupTeamTestData(teamId: string): Promise<void> {
-  const db = getDb();
-
-  // Best-effort broad cleanup. Prefer the specific cleanup* functions in practice.
-  await db.delete(sequences).where(eq(sequences.teamId, teamId));
-  await db.delete(styles).where(eq(styles.teamId, teamId));
-  await db.delete(talent).where(eq(talent.teamId, teamId));
-  await db.delete(locationLibrary).where(eq(locationLibrary.teamId, teamId));
-}
-
-/**
- * Targeted cleanup of common E2E test data patterns (used by cleanTestData).
- */
-export async function cleanTestData(): Promise<void> {
-  const db = getDb();
-
-  await db.delete(user).where(like(user.email, '%@e2e.test'));
-  await db.delete(teams).where(like(teams.slug, 'test-team-%'));
-
-  try {
-    await db.delete(sequences).where(like(sequences.title, 'E2E Test%'));
-  } catch {
-    // table may not exist yet
-  }
-
-  try {
-    await db.delete(talent).where(like(talent.name, 'E2E Test%'));
-  } catch {
-    // table may not exist yet
-  }
-}
-
-/**
- * Nuclear option: delete all rows from all user tables.
- * Use very sparingly.
- */
-export async function resetTestDatabase(): Promise<void> {
-  const db = getDb();
-
-  const tables = await db.all<{ name: string }>(
-    sql`SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_litestream%'`
-  );
-
-  for (const row of tables) {
-    await db.run(sql.raw(`DELETE FROM "${row.name}"`));
-  }
 }
 
 /**

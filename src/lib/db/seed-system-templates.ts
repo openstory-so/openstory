@@ -19,7 +19,7 @@ import {
   DEFAULT_SYSTEM_LOCATIONS,
   getLocationSheetUrl,
 } from '@/lib/location/location-templates';
-import { DEFAULT_SYSTEM_STYLES } from '@/shared/style/style-templates';
+import { DEFAULT_SYSTEM_STYLES } from '@/lib/style/style-templates';
 import {
   DEFAULT_SYSTEM_TALENT,
   getTalentSheetUrl,

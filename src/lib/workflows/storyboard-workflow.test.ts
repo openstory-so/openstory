@@ -1,7 +1,7 @@
 /**
  * Tests for `StoryboardWorkflow.onFailure` (#839).
  *
- * The June 6 incident: the QStash-era log-only onFailure left ~20 sequences
+ * The June 6 incident: an earlier log-only onFailure left ~20 sequences
  * stranded in 'processing' when await-analyze-script timed out. These tests
  * pin the rewritten hook's three branches:
  *

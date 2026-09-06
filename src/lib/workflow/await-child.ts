@@ -4,7 +4,7 @@
  * CF Workflows has no `context.invoke()`-equivalent that returns the child's
  * value. This helper composes the documented primitives — `BINDING.create()`,
  * `step.waitForEvent`, and `WorkflowInstance.sendEvent` — into the same
- * "spawn child, await result" shape we get from QStash.
+ * "spawn child, await result" shape a call-and-return primitive would give.
  *
  * Parent side:
  *

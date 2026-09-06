@@ -87,26 +87,31 @@ const CLIENT_ROOTS = [
 ];
 
 /**
- * `src/lib` directories the lint rule still exempts (`!@/lib/<dir>` in
- * `.oxlintrc.json`) because they mix server and client-safe files. Read from
- * the config so this test and the lint rule enforce the same list.
+ * `src/lib` modules the lint rule exempts (`!@/lib/<path>` in
+ * `.oxlintrc.json`). Read from the config so this test and the lint rule
+ * enforce the same list — which is now EMPTY (#1489). A file that needs to
+ * reach `src/lib` is a server file: put it in the server-routes override, do
+ * not punch a hole in the path rule. The test below fails if one comes back.
  */
-function readMixedLibDirs(): Set<string> {
+function readExemptLibModules(): Set<string> {
   const raw = readFileSync(join(SRC, '.oxlintrc.json'), 'utf8');
   // The config's comments are all full-line, so this cannot clip a `//`
   // inside a string value.
   const config: unknown = JSON.parse(raw.replace(/^\s*\/\/.*$/gm, ''));
-  const groups = JSON.stringify(config).match(/"!@\/lib\/([^"/]+)"/g) ?? [];
-  return new Set(groups.map((g) => g.slice('"!@/lib/'.length, -1)));
+  const groups = JSON.stringify(config).match(/"!@\/lib\/([^"]+)"/g) ?? [];
+  return new Set(
+    groups
+      .map((g) => g.slice('"!@/lib/'.length, -1))
+      .map((m) => m.replace(/\/\*\*?$/, ''))
+  );
 }
-const MIXED_LIB_DIRS = readMixedLibDirs();
+const EXEMPT_LIB_MODULES = readExemptLibModules();
 
-/** A `src/lib/**` file outside the directories the lint rule still exempts. */
+/** A `src/lib/**` file the lint rule does not exempt — i.e. all of them. */
 function isServerOnlyFile(file: string): boolean {
   const inLib = file.replace(`${SRC}/src/lib/`, '');
   if (inLib === file) return false;
-  const top = inLib.split('/')[0];
-  return top !== undefined && !MIXED_LIB_DIRS.has(top);
+  return !EXEMPT_LIB_MODULES.has(inLib.replace(/\.tsx?$/, ''));
 }
 
 function isServerOnly(spec: string): boolean {
@@ -482,11 +487,13 @@ describe('client/server import boundary', () => {
     expect(overridesSeen).toBeGreaterThan(1);
   });
 
-  test('the lint rule still exempts some src/lib directories', () => {
-    // Sanity-check the config parse: an empty set would silently turn the
-    // path check below into "all of src/lib", not "none of it".
-    expect(MIXED_LIB_DIRS.size).toBeGreaterThan(0);
-    expect(MIXED_LIB_DIRS.has('db')).toBe(false);
+  test('the lint rule exempts no src/lib module at all', () => {
+    // #1489 took this to zero. `routes/r2.$.ts` was the last holder: it is a
+    // pure server route, so it moved into the server-routes override instead
+    // of exempting `@/lib/storage/serve-media` for every client file. If a
+    // `!@/lib/...` reappears here, the fix is almost always to classify the
+    // importing file as server-only, not to widen this rule.
+    expect([...EXEMPT_LIB_MODULES]).toEqual([]);
   });
 
   // Walks every client-reachable file synchronously, so it runs 5-9s and

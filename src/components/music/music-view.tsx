@@ -17,7 +17,7 @@ import {
 } from '@/shared/ai/models';
 import { estimateAudioCost } from '@/shared/billing/cost-estimation';
 import { useTextDictation } from '@/hooks/use-dictation';
-import type { Sequence } from '@/types/database';
+import type { Sequence } from '@/lib/db/schema';
 import {
   AlertCircle,
   AlertTriangle,

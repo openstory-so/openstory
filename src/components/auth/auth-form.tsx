@@ -15,12 +15,12 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import type { AuthOptions } from '@/functions/auth-options';
-import { authClient } from '@/shared/auth/client';
+import { authClient } from '@/components/auth/client';
 import { DEV_OTP_CODE } from '@/shared/auth/dev-otp';
 import {
   finishSignInRedirect,
   sanitizeAuthRedirect,
-} from '@/shared/auth/navigation';
+} from '@/components/auth/navigation';
 import { usePostHog } from '@posthog/react';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';

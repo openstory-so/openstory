@@ -11,7 +11,7 @@ import {
 import { redeemGiftTokenFn } from '@/functions/gift-tokens';
 import { BILLING_BALANCE_KEY } from '@/hooks/use-billing-balance';
 import { BILLING_GATE_KEY } from '@/hooks/use-billing-gate';
-import { sessionQueryOptions } from '@/shared/auth/session-query';
+import { sessionQueryOptions } from '@/components/auth/session-query';
 import { usePostHog } from '@posthog/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {

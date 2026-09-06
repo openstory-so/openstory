@@ -4,7 +4,7 @@
  */
 
 import { useQuery } from '@tanstack/react-query';
-import { useAuthSession } from '@/shared/auth/session-query';
+import { useAuthSession } from '@/components/auth/session-query';
 import { LOW_BALANCE_THRESHOLD_USD } from '@/shared/billing/constants';
 import { getBillingBalanceFn } from '@/functions/billing';
 

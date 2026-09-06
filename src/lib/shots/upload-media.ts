@@ -20,7 +20,7 @@ import type {
 } from '@/lib/db/schema';
 import { r2KeyFromUrl, type StorageBucket } from '@/lib/storage/buckets';
 import { USER_UPLOAD_MODEL } from '@/shared/shots/user-upload-model';
-import { getExtensionFromUrl } from '@/shared/utils/file';
+import { getExtensionFromUrl } from '@/lib/storage/file';
 import { buildRegenerateShotSnapshot } from '@/lib/workflows/regenerate-shots-snapshot';
 
 /**

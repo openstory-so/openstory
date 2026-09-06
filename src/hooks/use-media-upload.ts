@@ -28,7 +28,7 @@ import { sequenceKeys } from '@/hooks/use-sequences';
 import { shotStalenessNamespace } from '@/hooks/use-shot-staleness';
 import { shotKeys } from '@/hooks/use-shots';
 import { putToR2 } from '@/shared/utils/upload';
-import { fitImageFileToAspectRatio } from '@/shared/utils/fit-image-aspect';
+import { fitImageFileToAspectRatio } from '@/hooks/fit-image-aspect';
 import type { AspectRatio } from '@/shared/constants/aspect-ratios';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 

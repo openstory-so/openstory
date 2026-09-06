@@ -1,4 +1,7 @@
-import { computeWordDiff, type WordDiffSegment } from '@/shared/diff/word-diff';
+import {
+  computeWordDiff,
+  type WordDiffSegment,
+} from '@/components/prompts/word-diff';
 import { cn } from '@/shared/utils';
 import { useMemo } from 'react';
 

@@ -2,13 +2,23 @@ import {
   type BannerPhase,
   ProgressBanner,
 } from '@/components/generation/progress-banner';
-import { PHASE_DESCRIPTIONS } from '@/shared/generation/phase-descriptions';
 import {
   estimateSceneCount,
   estimateTotalSeconds,
 } from '@/shared/generation/time-estimate';
-import type { GenerationStreamState } from '@/shared/realtime/generation-stream.reducer';
+import type { GenerationStreamState } from '@/components/realtime/generation-stream.reducer';
 import { useEffect, useRef, useState } from 'react';
+
+/**
+ * User-friendly descriptions for each generation phase.
+ */
+
+const PHASE_DESCRIPTIONS: Record<number, string> = {
+  1: 'Breaking your script into scenes and casting characters, locations & elements',
+  2: 'Generating reference sheets and crafting visual prompts',
+  3: 'Generating images and writing motion & music prompts',
+  4: 'Generating motion video and music',
+};
 
 type GenerationProgressBannerProps = {
   generationState: GenerationStreamState;

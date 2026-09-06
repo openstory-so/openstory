@@ -13,19 +13,19 @@ import { Separator } from '@/components/ui/separator';
 import {
   optimizedVideoUrl,
   videoPosterUrl,
-} from '@/shared/media/cloudflare-video';
+} from '@/components/style/cloudflare-video';
 import {
   styleBespokeVideoUrl,
   styleCanonicalVideoUrl,
   styleCategoryLabel,
   stylePreviewImageUrls,
-} from '@/shared/style/style-assets';
+} from '@/components/style/style-assets';
 import {
   getConfigColorPalette,
   getConfigDisplayFields,
 } from '@/shared/style/style-config';
 import { styleSlug } from '@/shared/style/style-slug';
-import type { Style } from '@/types/database';
+import type { Style } from '@/lib/db/schema';
 import { Link } from '@tanstack/react-router';
 import { Wand2 } from 'lucide-react';
 import type { FC } from 'react';

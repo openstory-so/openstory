@@ -10,7 +10,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 import { BILLING_BALANCE_KEY } from '@/hooks/use-billing-balance';
 import { billingChannelId } from '@/shared/realtime';
-import { useRealtime } from '@/shared/realtime/client';
+import { useRealtime } from '@/components/realtime/client';
 
 export const BILLING_TRANSACTIONS_KEY = ['billing-transactions'] as const;
 

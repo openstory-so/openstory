@@ -50,7 +50,7 @@ export function getEnvironmentSlug(env: { VITE_APP_URL?: string }): string {
  * Truncates to 100 chars (CF limit). Truncation happens at the suffix
  * because the env slug + workflow name are needed for namespacing and the
  * suffix is the dedup key — if it gets cut, the worst case is two callers
- * with very similar suffixes colliding (already the same in QStash today).
+ * with very similar suffixes colliding.
  */
 export function buildInstanceId({
   env,

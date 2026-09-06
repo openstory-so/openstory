@@ -25,7 +25,6 @@ import { execFile } from 'node:child_process';
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { PhotonImage, resize, SamplingFilter } from '@cf-wasm/photon';
 import { z } from 'zod';
 
@@ -35,35 +34,9 @@ const PREVIEW_DIR = path.join(process.cwd(), 'preview');
 const TEMP_DIR = path.join(process.cwd(), '.tmp/r2-upload');
 const PREVIEW_SIZE = 512;
 const THUMBNAIL_SIZE = 256;
-// Parallel uploads. The S3 path (when R2 S3 creds are set) has no per-file
-// process spawn, so it can run wide; the wrangler fallback spawns a process per
-// file, so keep it lower to avoid thrashing.
-const UPLOAD_CONCURRENCY = Number(process.env.UPLOAD_CONCURRENCY ?? '12');
-
-/**
- * Optional direct-S3 client (opt-in via --s3). Default is the wrangler CLI,
- * which authenticates with your account-wide CLOUDFLARE_API_TOKEN / `wrangler
- * login` and reliably has write access to the public bucket. We do NOT
- * auto-select S3 just because R2_* keys exist — those keys are often scoped to
- * a different bucket, which yields "Access Denied" writing to
- * openstory-public-assets.
- */
-function createR2S3Client(): S3Client | null {
-  if (!process.argv.includes('--s3')) return null;
-  const accountId = process.env.R2_ACCOUNT_ID;
-  const accessKeyId = process.env.R2_ACCESS_KEY_ID;
-  const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY;
-  if (!accountId || !accessKeyId || !secretAccessKey) {
-    throw new Error(
-      '--s3 requires R2_ACCOUNT_ID, R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY (and the key must have write access to the bucket)'
-    );
-  }
-  return new S3Client({
-    region: 'auto',
-    endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
-    credentials: { accessKeyId, secretAccessKey },
-  });
-}
+// Parallel uploads. `wrangler r2 object put` spawns a process per file, so
+// keep this modest to avoid thrashing.
+const UPLOAD_CONCURRENCY = Number(process.env.UPLOAD_CONCURRENCY ?? '6');
 
 const isDryRun = process.argv.includes('--dry-run');
 const skipConfirm = process.argv.includes('--yes');
@@ -168,26 +141,11 @@ async function scanStyleImages(): Promise<ImageInfo[]> {
 }
 
 /**
- * Upload one object to R2: direct S3 PutObject when creds are present (fast, no
- * process spawn), else the wrangler CLI fallback (one process per file).
+ * Upload one object to R2 via the wrangler CLI, which authenticates with your
+ * account-wide CLOUDFLARE_API_TOKEN / `wrangler login` and reliably has write
+ * access to the public bucket.
  */
-async function uploadObject(
-  s3: S3Client | null,
-  r2Key: string,
-  buffer: Buffer
-): Promise<void> {
-  if (s3) {
-    await s3.send(
-      new PutObjectCommand({
-        Bucket: R2_CONFIG.bucket,
-        Key: r2Key,
-        Body: buffer,
-        ContentType: 'image/webp',
-        CacheControl: 'public, max-age=2592000',
-      })
-    );
-    return;
-  }
+async function uploadObject(r2Key: string, buffer: Buffer): Promise<void> {
   const tempFile = path.join(TEMP_DIR, r2Key.replace(/\//g, '-'));
   await mkdir(path.dirname(tempFile), { recursive: true });
   await writeFile(tempFile, buffer);
@@ -221,8 +179,6 @@ async function uploadImages(
   images: ImageInfo[],
   thumbnailMap: Map<string, string>
 ): Promise<{ success: number; failed: number }> {
-  const s3 = createR2S3Client();
-
   // Build the full flat list of files to upload up front: per scene image, the
   // original + a 512px preview, plus a 256px thumbnail for the chosen scene.
   const jobs: UploadJob[] = [];
@@ -245,16 +201,12 @@ async function uploadImages(
     }
   }
 
-  // The S3 path is pure HTTP so it parallelizes wide; the wrangler fallback
-  // spawns a process per file, so cap it tighter.
-  const concurrency = s3 ? UPLOAD_CONCURRENCY : Math.min(UPLOAD_CONCURRENCY, 6);
-
   let success = 0;
   let failed = 0;
   let index = 0;
   const spinner = p.spinner();
   spinner.start(
-    `Uploading ${jobs.length} files to ${R2_CONFIG.bucket} via ${s3 ? 'S3' : 'wrangler'} (${concurrency} concurrent)`
+    `Uploading ${jobs.length} files to ${R2_CONFIG.bucket} (${UPLOAD_CONCURRENCY} concurrent)`
   );
 
   const worker = async () => {
@@ -262,7 +214,7 @@ async function uploadImages(
       const job = jobs[index++];
       if (!job) break;
       try {
-        await uploadObject(s3, job.key, await job.make());
+        await uploadObject(job.key, await job.make());
         success++;
       } catch (error) {
         failed++;
@@ -274,7 +226,7 @@ async function uploadImages(
     }
   };
   await Promise.all(
-    Array.from({ length: Math.min(concurrency, jobs.length) }, worker)
+    Array.from({ length: Math.min(UPLOAD_CONCURRENCY, jobs.length) }, worker)
   );
 
   spinner.stop(`Uploaded: ${success} files, ${failed} failed`);

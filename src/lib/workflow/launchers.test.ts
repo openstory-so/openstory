@@ -189,7 +189,7 @@ describe('triggerStoryboard', () => {
     expect(triggerWorkflowMock).toHaveBeenCalledWith(
       '/storyboard',
       expect.objectContaining(INPUT),
-      { deduplicationId: claimId, label: expect.any(String) }
+      { deduplicationId: claimId }
     );
     expect(update).toHaveBeenCalledWith({
       id: 'seq_1',

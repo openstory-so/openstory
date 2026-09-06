@@ -2,25 +2,31 @@
  * OpenAPI 3.1 document for the public `/api/v1`, served at
  * `GET /api/v1/openapi.json`.
  *
- * The request body schema is generated from the SAME `apiCreateSequenceSchema`
- * the runtime validates against (via `z.toJSONSchema`), so the published
- * contract can't drift from what the endpoint actually accepts. Response
- * schemas are hand-authored to mirror the `SequenceState` / one-shot result
- * documents in `state.ts` / `create.ts`.
- *
- * Shot and music generation statuses reuse `SHOT_GENERATION_STATUSES` (their
- * value sets are identical); the sequence status set is declared locally.
+ * EVERY schema here is generated from the Zod schema the runtime actually
+ * uses (via `z.toJSONSchema`) — request bodies from the validators, response
+ * documents from the schemas the response types are inferred from in
+ * `state.ts` / `create.ts` / `list.ts` / `styles.ts` / `hal.ts`. Nothing is
+ * hand-authored, so the published contract cannot drift from the wire shape.
+ * A component is named by `.meta({ id })` on its schema; `componentSchemas`
+ * hoists those into `components.schemas`.
  */
 
-import { SHOT_GENERATION_STATUSES } from '@/lib/db/schema/shots';
+import { oneShotResultSchema, oneShotWaitResultSchema } from './create';
 import { apiEnhanceScriptSchema } from './enhance-input-schema';
-import { API_V1_BASE } from './hal';
+import { API_V1_BASE, halLinksSchema } from './hal';
 import { apiCreateSequenceSchema } from './input-schema';
+import { sequenceListPageSchema } from './list';
+import {
+  sequenceExportAcceptedSchema,
+  sequenceExportsResultSchema,
+  sequenceStateResourceSchema,
+} from './state';
 import {
   apiCreateStyleSchema,
   EXAMPLE_CREATE_STYLE_BODY,
 } from './style-input-schema';
-import { styleDocumentSchema } from './styles';
+import { errorEnvelopeSchema, rootDocumentSchema } from './discovery';
+import { styleListResultSchema } from './styles';
 import { z, type ZodType } from 'zod';
 
 type JsonValue =
@@ -31,15 +37,6 @@ type JsonValue =
   | JsonValue[]
   | { [key: string]: JsonValue };
 type JsonObject = { [key: string]: JsonValue };
-
-const GEN_STATUSES: JsonValue[] = [...SHOT_GENERATION_STATUSES];
-const SEQUENCE_STATUSES: JsonValue[] = [
-  'draft',
-  'processing',
-  'completed',
-  'failed',
-  'archived',
-];
 
 /** Recursively repoint Zod's `#/$defs/X` refs at OpenAPI `#/components/schemas/X`. */
 function rewriteRefs(node: JsonValue): JsonValue {
@@ -61,13 +58,13 @@ function rewriteRefsInObject(obj: JsonObject): JsonObject {
 }
 
 /**
- * Split a generated request schema into an OpenAPI root component plus its lifted
- * `$defs` (CharacterRef, CreateCharacter, …), all refs repointed at
- * `#/components/schemas`. Zod emits a self-contained draft-2020-12 schema whose
- * internal `#/$defs` refs don't resolve once embedded in an OpenAPI document, so
- * we hoist them to siblings under `components.schemas`.
+ * Turn a Zod schema into its OpenAPI root component plus its lifted `$defs`
+ * (CharacterRef, SequenceStateShot, HalLink, …), all refs repointed at
+ * `#/components/schemas`. Zod emits a self-contained draft-2020-12 schema
+ * whose internal `#/$defs` refs don't resolve once embedded in an OpenAPI
+ * document, so we hoist them to siblings under `components.schemas`.
  */
-function requestSchemas(schema: ZodType): {
+function componentSchemas(schema: ZodType): {
   root: JsonObject;
   defs: JsonObject;
 } {
@@ -82,6 +79,14 @@ function requestSchemas(schema: ZodType): {
     root: rewriteRefsInObject(root),
     defs: rewriteRefsInObject(defs),
   };
+}
+
+/**
+ * The `$defs` a named schema lifts — for response documents, whose root is
+ * itself a `$ref` into its own defs, everything we want is in `defs`.
+ */
+function componentDefs(schema: ZodType): JsonObject {
+  return componentSchemas(schema).defs;
 }
 
 /** A representative create body, embedded as the request example. */
@@ -103,68 +108,6 @@ const EXAMPLE_ENHANCE_BODY: JsonObject = {
   targetSeconds: 30,
 };
 
-const statusEnum = (values: JsonValue[]): JsonObject => ({
-  type: 'string',
-  enum: values,
-});
-const nullableString: JsonObject = { type: ['string', 'null'] };
-const genStatusObject: JsonObject = {
-  type: 'object',
-  required: ['status', 'url'],
-  properties: { status: statusEnum(GEN_STATUSES), url: nullableString },
-};
-const videoStatusObject: JsonObject = {
-  type: 'object',
-  required: ['status', 'url', 'error'],
-  properties: {
-    status: statusEnum(GEN_STATUSES),
-    url: nullableString,
-    error: {
-      ...nullableString,
-      description:
-        'Why the primary render failed. On a content check this names the flagged input (the still, the prompt, or both) and the model that refused it. Null unless status is "failed".',
-    },
-  },
-};
-const countsObject: JsonObject = {
-  type: 'object',
-  required: ['shots', 'imagesReady', 'videosReady', 'videosFailed'],
-  properties: {
-    shots: { type: 'integer' },
-    imagesReady: { type: 'integer' },
-    videosReady: { type: 'integer' },
-    videosFailed: {
-      type: 'integer',
-      description:
-        'Shots whose video generation failed. Can be > 0 even when `status` is "completed".',
-    },
-  },
-};
-const posterObject: JsonObject = {
-  type: ['object', 'null'],
-  required: ['url'],
-  properties: { url: { type: 'string' } },
-};
-const styleObject: JsonObject = {
-  type: 'object',
-  description:
-    "The style the sequence was generated with — `id` is the UI's `styleId` filter value; `name` is what the UI search matches on (null only if the style row fails to resolve, which the FK normally makes impossible).",
-  required: ['id', 'name'],
-  properties: { id: { type: 'string' }, name: nullableString },
-};
-const modelsObject: JsonObject = {
-  type: 'object',
-  description:
-    'The models the sequence was generated with — the raw ids the UI filters/sorts on.',
-  required: ['analysis', 'image', 'video', 'music'],
-  properties: {
-    analysis: { type: 'string', description: 'Script-analysis model id.' },
-    image: { type: 'string', description: 'Per-shot image model id.' },
-    video: { type: 'string', description: 'Per-shot video model id.' },
-    music: { ...nullableString, description: 'Music model id, if any.' },
-  },
-};
-
 /** Shared error-envelope reference for 4xx/5xx responses. */
 function errorResponse(description: string): JsonObject {
   return {
@@ -177,19 +120,14 @@ function errorResponse(description: string): JsonObject {
 
 /** Build the full OpenAPI 3.1 document for `/api/v1`. */
 export function buildOpenApiDocument(): JsonObject {
-  const { root: createRequest, defs } = requestSchemas(apiCreateSequenceSchema);
-  const { root: enhanceRequest, defs: enhanceDefs } = requestSchemas(
+  const { root: createRequest, defs } = componentSchemas(
+    apiCreateSequenceSchema
+  );
+  const { root: enhanceRequest, defs: enhanceDefs } = componentSchemas(
     apiEnhanceScriptSchema
   );
   const { root: createStyleRequest, defs: styleDefs } =
-    requestSchemas(apiCreateStyleSchema);
-  // `_links` is tagged with the id of the hand-authored HalLinks component
-  // below, so Zod emits a $ref to it (its own stub def is overridden by spread order).
-  const { root: styleDoc, defs: styleDocDefs } = requestSchemas(
-    styleDocumentSchema.extend({
-      _links: z.record(z.string(), z.unknown()).meta({ id: 'HalLinks' }),
-    })
-  );
+    componentSchemas(apiCreateStyleSchema);
 
   const waitParam: JsonObject = {
     name: 'wait',
@@ -709,291 +647,19 @@ export function buildOpenApiDocument(): JsonObject {
         ...enhanceDefs,
         CreateStyleRequest: createStyleRequest,
         ...styleDefs,
-        ...styleDocDefs,
-        StyleDocument: styleDoc,
-        StyleListResult: {
-          type: 'object',
-          required: ['styles', '_links'],
-          properties: {
-            styles: {
-              type: 'array',
-              items: { $ref: '#/components/schemas/StyleDocument' },
-            },
-            _links: { $ref: '#/components/schemas/HalLinks' },
-          },
-        },
-        HalLink: {
-          type: 'object',
-          required: ['href'],
-          description:
-            'One callable affordance. Absent `method` means GET, per HAL convention.',
-          properties: {
-            href: { type: 'string' },
-            method: statusEnum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']),
-            title: { type: 'string' },
-            templated: { type: 'boolean' },
-            contentType: { type: 'string' },
-            examples: { type: 'array', items: {} },
-            stepUp: { type: 'boolean' },
-            idempotencyRequired: { type: 'boolean' },
-          },
-        },
-        HalLinks: {
-          type: 'object',
-          description: 'A catalog of affordances keyed by relation name.',
-          additionalProperties: { $ref: '#/components/schemas/HalLink' },
-        },
-        Error: {
-          type: 'object',
-          required: ['error'],
-          properties: {
-            error: {
-              type: 'object',
-              required: ['code', 'message'],
-              properties: {
-                code: { type: 'string' },
-                message: { type: 'string' },
-                details: { type: 'object', additionalProperties: true },
-              },
-            },
-          },
-        },
-        SequenceStateShot: {
-          type: 'object',
-          required: ['id', 'orderIndex', 'title', 'image', 'video'],
-          properties: {
-            id: { type: 'string' },
-            orderIndex: { type: 'integer' },
-            title: nullableString,
-            image: genStatusObject,
-            video: videoStatusObject,
-          },
-        },
-        SequenceState: {
-          type: 'object',
-          required: [
-            'id',
-            'title',
-            'status',
-            'statusError',
-            'aspectRatio',
-            'resolution',
-            'style',
-            'models',
-            'createdAt',
-            'updatedAt',
-            'poster',
-            'music',
-            'shots',
-            'counts',
-            '_links',
-          ],
-          properties: {
-            id: { type: 'string' },
-            title: { type: 'string' },
-            status: statusEnum(SEQUENCE_STATUSES),
-            statusError: nullableString,
-            aspectRatio: { type: 'string' },
-            resolution: { type: 'string' },
-            style: styleObject,
-            models: modelsObject,
-            createdAt: { type: 'string', format: 'date-time' },
-            updatedAt: { type: 'string', format: 'date-time' },
-            poster: posterObject,
-            music: genStatusObject,
-            shots: {
-              type: 'array',
-              items: { $ref: '#/components/schemas/SequenceStateShot' },
-            },
-            counts: countsObject,
-            _links: { $ref: '#/components/schemas/HalLinks' },
-          },
-        },
-        SequenceListItem: {
-          type: 'object',
-          description:
-            'A compact sequence summary (status-document scalars + style, models, and counts, without the shot array) as returned in a list page.',
-          required: [
-            'id',
-            'title',
-            'status',
-            'statusError',
-            'aspectRatio',
-            'resolution',
-            'style',
-            'models',
-            'createdAt',
-            'updatedAt',
-            'poster',
-            'music',
-            'counts',
-            '_links',
-          ],
-          properties: {
-            id: { type: 'string' },
-            title: { type: 'string' },
-            status: statusEnum(SEQUENCE_STATUSES),
-            statusError: nullableString,
-            aspectRatio: { type: 'string' },
-            resolution: { type: 'string' },
-            style: styleObject,
-            models: modelsObject,
-            createdAt: { type: 'string', format: 'date-time' },
-            updatedAt: { type: 'string', format: 'date-time' },
-            poster: posterObject,
-            music: genStatusObject,
-            counts: countsObject,
-            _links: { $ref: '#/components/schemas/HalLinks' },
-          },
-        },
-        SequenceListResult: {
-          type: 'object',
-          description:
-            'A page of sequence summaries, most recent first. `_links.next` is present only when a further page exists.',
-          required: ['sequences', '_links'],
-          properties: {
-            sequences: {
-              type: 'array',
-              items: { $ref: '#/components/schemas/SequenceListItem' },
-            },
-            _links: { $ref: '#/components/schemas/HalLinks' },
-          },
-        },
-        SequenceSummary: {
-          type: 'object',
-          description: 'A created sequence (non-?wait response entry).',
-          required: ['id', 'status', 'workflowRunId', 'statusUrl', '_links'],
-          properties: {
-            id: { type: 'string' },
-            status: statusEnum(SEQUENCE_STATUSES),
-            workflowRunId: { type: 'string' },
-            statusUrl: { type: 'string' },
-            _links: { $ref: '#/components/schemas/HalLinks' },
-          },
-        },
-        WaitedSequence: {
-          type: 'object',
-          description:
-            'A created sequence with its first progress snapshot embedded (?wait response entry).',
-          required: ['id', 'workflowRunId', 'state', 'waitChanged', 'waitDone'],
-          properties: {
-            id: { type: 'string' },
-            workflowRunId: { type: 'string' },
-            state: {
-              oneOf: [
-                { $ref: '#/components/schemas/SequenceState' },
-                { type: 'null' },
-              ],
-            },
-            waitChanged: {
-              type: 'boolean',
-              description: 'The sequence advanced during the wait.',
-            },
-            waitDone: {
-              type: 'boolean',
-              description: 'The sequence reached a terminal state.',
-            },
-          },
-        },
-        CreateSequenceResult: {
-          type: 'object',
-          required: ['sequences', '_links'],
-          properties: {
-            sequences: {
-              type: 'array',
-              items: { $ref: '#/components/schemas/SequenceSummary' },
-            },
-            enhancedScript: {
-              type: 'string',
-              description: 'Present only when script enhancement ran.',
-            },
-            _links: { $ref: '#/components/schemas/HalLinks' },
-          },
-        },
-        CreateSequenceWaitResult: {
-          type: 'object',
-          required: ['sequences', '_links'],
-          properties: {
-            sequences: {
-              type: 'array',
-              items: { $ref: '#/components/schemas/WaitedSequence' },
-            },
-            enhancedScript: { type: 'string' },
-            _links: { $ref: '#/components/schemas/HalLinks' },
-          },
-        },
-        SequenceExport: {
-          type: 'object',
-          description: 'One server-side MP4 export of a sequence.',
-          required: [
-            'id',
-            'status',
-            'url',
-            'durationSeconds',
-            'error',
-            'createdAt',
-          ],
-          properties: {
-            id: { type: 'string' },
-            status: statusEnum(['processing', 'ready', 'failed']),
-            url: {
-              oneOf: [{ type: 'string' }, { type: 'null' }],
-              description:
-                'Absolute download URL, present only when `status` is `ready`.',
-            },
-            durationSeconds: {
-              oneOf: [{ type: 'number' }, { type: 'null' }],
-            },
-            error: {
-              oneOf: [{ type: 'string' }, { type: 'null' }],
-              description:
-                'Failure reason, present only when `status` is `failed`.',
-            },
-            createdAt: { type: 'string', format: 'date-time' },
-            workflowRunId: { type: 'string' },
-          },
-        },
-        SequenceExportsResult: {
-          type: 'object',
-          required: ['sequenceId', 'exports', '_links'],
-          properties: {
-            sequenceId: { type: 'string' },
-            exports: {
-              type: 'array',
-              items: { $ref: '#/components/schemas/SequenceExport' },
-            },
-            _links: { $ref: '#/components/schemas/HalLinks' },
-          },
-        },
-        SequenceExportAccepted: {
-          type: 'object',
-          required: ['export', '_links'],
-          properties: {
-            export: { $ref: '#/components/schemas/SequenceExport' },
-            _links: { $ref: '#/components/schemas/HalLinks' },
-          },
-        },
-        RootDocument: {
-          type: 'object',
-          required: [
-            'name',
-            'version',
-            'instructions',
-            'requestSchema',
-            '_links',
-          ],
-          properties: {
-            name: { type: 'string' },
-            version: { type: 'string' },
-            instructions: { type: 'string' },
-            requestSchema: {
-              type: 'object',
-              additionalProperties: true,
-              description: 'The create request body as JSON Schema.',
-            },
-            _links: { $ref: '#/components/schemas/HalLinks' },
-          },
-        },
+        // Response documents, generated from the schemas their TypeScript
+        // types are inferred from. Each contributes its own component plus any
+        // nested named schema (SequenceStateShot, HalLink, StyleDocument, …).
+        ...componentDefs(halLinksSchema),
+        ...componentDefs(sequenceStateResourceSchema),
+        ...componentDefs(sequenceListPageSchema),
+        ...componentDefs(oneShotResultSchema),
+        ...componentDefs(oneShotWaitResultSchema),
+        ...componentDefs(sequenceExportsResultSchema),
+        ...componentDefs(sequenceExportAcceptedSchema),
+        ...componentDefs(styleListResultSchema),
+        ...componentDefs(rootDocumentSchema),
+        ...componentDefs(errorEnvelopeSchema),
       },
     },
   };

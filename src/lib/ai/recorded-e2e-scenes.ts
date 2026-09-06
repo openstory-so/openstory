@@ -224,10 +224,6 @@ export function extractTaggedJson<T>(
   return schema.parse(parseJson(block(userMessage, tag)));
 }
 
-export function parseFixtureFile(raw: string): FixtureFile {
-  return fixtureFileSchema.parse(parseJson(raw));
-}
-
 export const visualPromptResponseSchema = z.object({
   visual: z
     .object({
@@ -235,5 +231,3 @@ export const visualPromptResponseSchema = z.object({
     })
     .optional(),
 });
-
-export { OPENROUTER_DIR };

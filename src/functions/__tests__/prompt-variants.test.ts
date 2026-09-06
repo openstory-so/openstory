@@ -3,7 +3,7 @@
  *
  * The server-fn middleware chain is exercised end-to-end by the e2e suite;
  * here we lock down the deduplication contract that prevents double-clicks
- * and QStash retries from spawning duplicate workflow runs and history rows.
+ * and step retries from spawning duplicate workflow runs and history rows.
  *
  * A regression that drops `isPromptUpToDate` or substitutes `Date.now()` into
  * the dedup id would silently produce N copies of every regeneration.
@@ -50,7 +50,7 @@ describe('shotPromptDedupId', () => {
 
   it('is stable for the same inputs (no time-based salt)', () => {
     // A regression that introduces `Date.now()` here would silently disable
-    // QStash dedup and produce a duplicate workflow run on every retry.
+    // dedup and produce a duplicate workflow run on every retry.
     const first = shotPromptDedupId('visual', 'shot-1', 'hash');
     const second = shotPromptDedupId('visual', 'shot-1', 'hash');
     expect(first).toBe(second);
@@ -59,7 +59,7 @@ describe('shotPromptDedupId', () => {
 
 describe('shotPromptForceDedupId', () => {
   it('builds an id distinct from the stable hash-based dedup id', () => {
-    // The force-regen path must use a different ID prefix so QStash treats it
+    // The force-regen path must use a different ID prefix so the engine treats it
     // as a fresh run instead of collapsing it into the stable hash bucket.
     const stable = shotPromptDedupId('visual', 'shot-1', 'hash');
     const forced = shotPromptForceDedupId('visual', 'shot-1', 'nonce');

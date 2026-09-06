@@ -18,7 +18,7 @@ import {
   decideDeviceGrantFn,
   lookupDeviceGrantFn,
 } from '@/functions/device-auth';
-import { requireSessionOrRedirect } from '@/shared/auth/route-guards';
+import { requireSessionOrRedirect } from '@/components/auth/route-guards';
 import {
   useMutation,
   useQueryClient,
