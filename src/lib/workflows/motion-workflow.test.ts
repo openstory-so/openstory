@@ -9,6 +9,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { hashAssetIdentity } from '@/lib/ai/byteplus-assets';
 import { IMAGE_TO_VIDEO_MODELS } from '@/lib/ai/models';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import type { MotionWorkflowInput } from '@/lib/workflow/types';
@@ -130,6 +131,9 @@ function makeScopedDb() {
     appendVersion: vi.fn(async () => ({ id: 'vv-1' })),
     update: vi.fn(async () => {}),
   };
+  const bytePlusAssets = {
+    releaseLeases: vi.fn(async (_identities: readonly string[]) => {}),
+  };
   // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- stub covering only the surface runImpl touches
   const scopedDb = {
     credentials: { resolveKey: async () => ({ source: 'platform' }) },
@@ -157,9 +161,10 @@ function makeScopedDb() {
     },
     shotPromptVersions,
     videoVariants,
+    bytePlusAssets,
     provenance: {},
   } as unknown as WorkflowScopedDb;
-  return { scopedDb, shotPromptVersions, videoVariants };
+  return { scopedDb, shotPromptVersions, videoVariants, bytePlusAssets };
 }
 
 const MODEL = 'seedance_v2';
@@ -474,6 +479,36 @@ describe('MotionWorkflow onFailure observation', () => {
         activity: 'video',
         errorType: 'provider_error',
       })
+    );
+  });
+
+  it('unpins the ACR slots this shot leased (#1361)', async () => {
+    const { scopedDb, bytePlusAssets } = makeScopedDb();
+
+    await makeWorkflow().fail(
+      makeEvent({
+        imageUrl: 'https://cdn/still.png',
+        referenceImages: [
+          {
+            referenceImageUrl: 'https://cdn/sheet.png',
+            description: 'Ada',
+            role: 'character',
+            token: '@Ada',
+          },
+        ],
+      }),
+      scopedDb
+    );
+
+    // Hashed identities, not raw URLs — the ledger never sees a URL. A failed
+    // run that skipped this would hold both slots for the full lease TTL.
+    const [identities] = bytePlusAssets.releaseLeases.mock.calls[0] ?? [];
+    expect(identities).toEqual(
+      await Promise.all(
+        ['https://cdn/still.png', 'https://cdn/sheet.png'].map(
+          hashAssetIdentity
+        )
+      )
     );
   });
 });
