@@ -68,10 +68,7 @@ async function assertTriggerAllowed(
  * (persisted as `workflowRunId` on the relevant DB row).
  *
  * `options.deduplicationId` becomes the instance id suffix — pass a stable
- * value to make a trigger idempotent. `label`/`retries`/`retryDelay` are
- * accepted for backwards-compatibility with existing call sites but are no-ops
- * under Cloudflare Workflows (retry policy is configured per `step.do`/on the
- * workflow class; observability comes from the instance id + tail logs).
+ * value to make a trigger idempotent.
  */
 export async function triggerWorkflow<
   T extends { userId: string; teamId: string },
@@ -80,9 +77,6 @@ export async function triggerWorkflow<
   body: T,
   options?: {
     deduplicationId?: string;
-    label?: string;
-    retries?: number;
-    retryDelay?: string;
     /**
      * Mid-run: rows from `scopedDb.liveRead.compliance.listEnforcementFor`.
      * Request-path callers omit this and the gate loads the rows itself.

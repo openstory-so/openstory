@@ -1,5 +1,5 @@
 import { useSetSequenceModel } from '@/hooks/use-sequences';
-import type { ModelCoverage } from '@/shared/model/sequence-model-coverage';
+import type { ModelCoverage } from '@/components/model/sequence-model-coverage';
 import { toast } from 'sonner';
 
 /**

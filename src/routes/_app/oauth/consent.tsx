@@ -29,7 +29,7 @@ import {
   pickOAuthQuery,
   resolveOAuthQuery,
 } from '@/shared/auth/oauth-query-snapshot';
-import { requireSessionOrRedirect } from '@/shared/auth/route-guards';
+import { requireSessionOrRedirect } from '@/components/auth/route-guards';
 import { errorMessage } from '@/shared/errors';
 import { useMutation } from '@tanstack/react-query';
 import { createFileRoute, redirect } from '@tanstack/react-router';

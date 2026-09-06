@@ -14,9 +14,9 @@ import {
   InputGroupInput,
 } from '@/components/ui/input-group';
 import { Skeleton } from '@/components/ui/skeleton';
-import { groupStylesByCategory } from '@/shared/style/style-assets';
-import { filterStyles } from '@/shared/utils/style-filters';
-import type { Style } from '@/types/database';
+import { groupStylesByCategory } from '@/components/style/style-assets';
+import { filterStyles } from '@/components/style-library/style-filters';
+import type { Style } from '@/lib/db/schema';
 import { Search, X } from 'lucide-react';
 import type { ChangeEvent, FC } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';

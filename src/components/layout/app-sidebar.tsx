@@ -1,3 +1,4 @@
+import { usePostHog } from '@posthog/react';
 import { GitHubIcon } from '@/components/icons/github-icon';
 import { XIcon } from '@/components/icons/x-icon';
 import { YouTubeIcon } from '@/components/icons/youtube-icon';
@@ -19,12 +20,10 @@ import {
   useSidebar,
 } from '@/components/ui/sidebar';
 import { FeedbackDialog } from '@/components/feedback/feedback-dialog';
-import { useLowBalanceWarning } from '@/hooks/use-low-balance-warning';
 import { MODELS_ENABLED } from '@/shared/flags';
 import { SITE_CONFIG } from '@/shared/marketing/constants';
-import { usePostHog } from '@posthog/react';
 import { Link, useRouterState } from '@tanstack/react-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import {
   BadgeDollarSign,
   Boxes,
@@ -41,6 +40,76 @@ import {
 } from 'lucide-react';
 import { CreditBalancePill } from './credit-balance-pill';
 import { UserSidebarFooter } from './user-sidebar-footer';
+
+/**
+ * Low Balance Warning Hook
+ * Fires toast notifications when balance decreases and crosses threshold
+ */
+
+import { showLowBalanceToast } from '@/components/billing/low-balance-toast';
+import { openAddCreditsDialog } from '@/hooks/use-add-credits-dialog';
+import { openBillingGate } from '@/hooks/use-billing-gate-dialog';
+import { useBillingBalance } from '@/hooks/use-billing-balance';
+import { useFalPricing } from '@/hooks/use-fal-pricing';
+import { typicalShortCostUsd } from '@/components/billing/typical-short-cost';
+
+function useLowBalanceWarning() {
+  const { balance, isLowBalance, isZeroBalance, lowBalanceThreshold } =
+    useBillingBalance();
+  const { pricing } = useFalPricing();
+  const posthog = usePostHog();
+  const prevBalanceRef = useRef<number | null>(null);
+  const hasWarnedRef = useRef(false);
+
+  useEffect(() => {
+    if (balance === null) return;
+
+    const prevBalance = prevBalanceRef.current;
+    prevBalanceRef.current = balance;
+
+    // Only warn on balance decrease, not on initial load
+    if (prevBalance === null) return;
+    if (balance >= prevBalance) {
+      // Balance went up — reset warning so it can fire again next time
+      if (balance > lowBalanceThreshold) {
+        hasWarnedRef.current = false;
+      }
+      return;
+    }
+
+    // Balance decreased — check if we should warn
+    if (hasWarnedRef.current) return;
+    if (!isZeroBalance && !isLowBalance) return;
+
+    hasWarnedRef.current = true;
+    const props = { balance_usd: balance, is_zero: isZeroBalance };
+    posthog.capture('low_balance_toast_shown', props);
+
+    const clicked = (choice: 'add_credits' | 'other_options') =>
+      posthog.capture('low_balance_toast_clicked', { ...props, choice });
+
+    showLowBalanceToast({
+      balanceUsd: balance,
+      isZeroBalance,
+      runCostUsd: typicalShortCostUsd(pricing),
+      onAddCredits: () => {
+        clicked('add_credits');
+        openAddCreditsDialog('low_balance_toast');
+      },
+      onOtherOptions: () => {
+        clicked('other_options');
+        openBillingGate(isZeroBalance ? 'zero' : 'manual');
+      },
+    });
+  }, [
+    balance,
+    isLowBalance,
+    isZeroBalance,
+    lowBalanceThreshold,
+    posthog,
+    pricing,
+  ]);
+}
 
 const navLinks = [
   { to: '/sequences', label: 'Sequences', icon: Video },

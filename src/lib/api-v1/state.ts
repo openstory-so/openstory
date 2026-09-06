@@ -9,8 +9,13 @@
 
 import type { ScopedDb } from '@/lib/db/scoped';
 import { SHOT_GENERATION_STATUSES } from '@/lib/db/schema/shots';
+import { z } from 'zod';
 import type { Style } from '@/lib/db/schema/libraries';
-import type { MusicStatus, SequenceStatus } from '@/lib/db/schema/sequences';
+import {
+  MUSIC_STATUSES,
+  SEQUENCE_STATUSES,
+  type SequenceStatus,
+} from '@/lib/db/schema/sequences';
 import { getLogger } from '@/shared/observability/logger';
 import {
   readinessImageUrl,
@@ -20,12 +25,16 @@ import {
   toShotView,
 } from '@/shared/shots/shot-view';
 import { toShareableUrl } from '@/lib/storage/buckets';
-import type { Sequence } from '@/types/database';
-import { API_V1_BASE, type HalResource, waitLink, withLinks } from './hal';
+import type { Sequence } from '@/lib/db/schema';
+import {
+  API_V1_BASE,
+  type HalResource,
+  halLinksSchema,
+  waitLink,
+  withLinks,
+} from './hal';
 
 const logger = getLogger(['openstory', 'api-v1']);
-
-type ShotGenStatus = (typeof SHOT_GENERATION_STATUSES)[number];
 
 /** Sequence statuses past which no further generation happens. */
 const TERMINAL_STATUSES = new Set<SequenceStatus>([
@@ -34,51 +43,71 @@ const TERMINAL_STATUSES = new Set<SequenceStatus>([
   'archived',
 ]);
 
-type SequenceStateShot = {
-  id: string;
-  orderIndex: number;
-  title: string | null;
-  image: { status: ShotGenStatus; url: string | null };
-  video: {
-    status: ShotGenStatus;
-    url: string | null;
-    /** Why the primary render failed — names the flagged input on a content
-     * check (#1373). Null unless `status` is "failed". */
-    error: string | null;
-  };
-};
+/**
+ * The response documents, as Zod schemas.
+ *
+ * These are the single source of truth for both the TypeScript types below
+ * (`z.infer`) and the published OpenAPI component schemas (`openapi.ts` runs
+ * them through `z.toJSONSchema`), so the contract we document cannot drift
+ * from the shape we return. `.meta({ id })` names the OpenAPI component;
+ * `.describe()` becomes its description.
+ */
+/** `z.iso.datetime()` would also publish a monstrous regex; format is enough. */
+const isoDateTime = z.string().meta({ format: 'date-time' });
 
-export type SequenceCounts = {
-  shots: number;
-  imagesReady: number;
-  videosReady: number;
-  /**
-   * Shots whose video generation failed. A sequence can reach the terminal
-   * `completed` status with `videosFailed > 0` (per-shot motion failures
-   * don't fail the run), so an agent must check this to know a terminal
-   * result actually succeeded end-to-end.
-   */
-  videosFailed: number;
-};
+const genStatusSchema = z.object({
+  status: z.enum(SHOT_GENERATION_STATUSES),
+  url: z.string().nullable(),
+});
 
-/** The style a sequence was generated with — the UI's `styleId` filter value
- * plus its human-readable name (what the UI search matches on). `name` is null
- * only when the style row fails to resolve — a data anomaly the notNull FK
- * normally makes impossible, logged in `buildSequenceSummary`. */
-type SequenceStyle = {
-  id: string;
-  name: string | null;
-};
+const videoStatusSchema = z.object({
+  status: z.enum(SHOT_GENERATION_STATUSES),
+  url: z.string().nullable(),
+  error: z
+    .string()
+    .nullable()
+    .describe(
+      'Why the primary render failed. On a content check this names the flagged input (the still, the prompt, or both) and the model that refused it. Null unless status is "failed".'
+    ),
+});
 
-/** The models a sequence was generated with — the raw ids the UI filters/sorts
- * on (script analysis + per-shot image + per-shot video, and the optional
- * music model). */
-type SequenceModels = {
-  analysis: string;
-  image: string;
-  video: string;
-  music: string | null;
-};
+const sequenceStateShotSchema = z
+  .object({
+    id: z.string(),
+    orderIndex: z.int(),
+    title: z.string().nullable(),
+    image: genStatusSchema,
+    video: videoStatusSchema,
+  })
+  .meta({ id: 'SequenceStateShot' });
+
+const sequenceCountsSchema = z.object({
+  shots: z.int(),
+  imagesReady: z.int(),
+  videosReady: z.int(),
+  videosFailed: z
+    .int()
+    .describe(
+      'Shots whose video generation failed. Can be > 0 even when `status` is "completed".'
+    ),
+});
+
+const sequenceStyleSchema = z
+  .object({ id: z.string(), name: z.string().nullable() })
+  .describe(
+    "The style the sequence was generated with — `id` is the UI's `styleId` filter value; `name` is what the UI search matches on (null only if the style row fails to resolve, which the FK normally makes impossible)."
+  );
+
+const sequenceModelsSchema = z
+  .object({
+    analysis: z.string().describe('Script-analysis model id.'),
+    image: z.string().describe('Per-shot image model id.'),
+    video: z.string().describe('Per-shot video model id.'),
+    music: z.string().nullable().describe('Music model id, if any.'),
+  })
+  .describe(
+    'The models the sequence was generated with — the raw ids the UI filters/sorts on.'
+  );
 
 /**
  * The scalar fields shared by the single-sequence status document and each
@@ -86,25 +115,82 @@ type SequenceModels = {
  * per-shot array. Built once in `buildSequenceSummary` so the two documents
  * can't drift.
  */
-export type SequenceSummary = {
-  id: string;
-  title: string;
-  status: SequenceStatus;
-  statusError: string | null;
-  aspectRatio: string;
-  resolution: string;
-  style: SequenceStyle;
-  models: SequenceModels;
-  createdAt: string;
-  updatedAt: string;
-  poster: { url: string } | null;
-  music: { status: MusicStatus; url: string | null };
-  counts: SequenceCounts;
-};
+export const sequenceSummarySchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  status: z.enum(SEQUENCE_STATUSES),
+  statusError: z.string().nullable(),
+  aspectRatio: z.string(),
+  resolution: z.string(),
+  style: sequenceStyleSchema,
+  models: sequenceModelsSchema,
+  createdAt: isoDateTime,
+  updatedAt: isoDateTime,
+  poster: z.object({ url: z.string() }).nullable(),
+  music: z.object({
+    status: z.enum(MUSIC_STATUSES),
+    url: z.string().nullable(),
+  }),
+  counts: sequenceCountsSchema,
+});
 
-export type SequenceState = SequenceSummary & {
-  shots: SequenceStateShot[];
-};
+const sequenceStateSchema = sequenceSummarySchema.extend({
+  shots: z.array(sequenceStateShotSchema),
+});
+
+/**
+ * The wire shape: a state document always ships with its `_links` catalog.
+ * `.meta({ id })` goes here, not on the bare body, because `.extend()` mints a
+ * new schema and drops the tag — a component named on the body would be
+ * published but never referenced.
+ */
+export const sequenceStateResourceSchema = sequenceStateSchema
+  .extend({ _links: halLinksSchema })
+  .meta({ id: 'SequenceState' });
+
+/**
+ * Server-side MP4 export documents (`/api/v1/sequences/:id/exports`). Here
+ * rather than in the route so `openapi.ts` publishes the shape the route
+ * actually returns — `formatExport` is typed by `SequenceExportDocument`.
+ */
+const sequenceExportSchema = z
+  .object({
+    id: z.string(),
+    status: z.enum(['processing', 'ready', 'failed']),
+    url: z
+      .string()
+      .nullable()
+      .describe(
+        'Absolute download URL, present only when `status` is `ready`.'
+      ),
+    durationSeconds: z.number().nullable(),
+    error: z
+      .string()
+      .nullable()
+      .describe('Failure reason, present only when `status` is `failed`.'),
+    createdAt: isoDateTime,
+    workflowRunId: z.string().optional(),
+  })
+  .describe('One server-side MP4 export of a sequence.')
+  .meta({ id: 'SequenceExport' });
+
+export const sequenceExportsResultSchema = z
+  .object({
+    sequenceId: z.string(),
+    exports: z.array(sequenceExportSchema),
+    _links: halLinksSchema,
+  })
+  .meta({ id: 'SequenceExportsResult' });
+
+export const sequenceExportAcceptedSchema = z
+  .object({ export: sequenceExportSchema, _links: halLinksSchema })
+  .meta({ id: 'SequenceExportAccepted' });
+
+export type SequenceExportDocument = z.infer<typeof sequenceExportSchema>;
+
+export type SequenceCounts = z.infer<typeof sequenceCountsSchema>;
+export type SequenceSummary = z.infer<typeof sequenceSummarySchema>;
+export type SequenceState = z.infer<typeof sequenceStateSchema>;
 
 /** The image URL a shot exposes once its still is ready (else null). */
 function shotImageUrl(shot: ShotView): string | null {
@@ -278,7 +364,7 @@ export async function buildSequenceState(
   const share = (url: string | null): string | null =>
     url === null ? null : toShareableUrl(url, origin);
 
-  const stateShots: SequenceStateShot[] = ordered.map((shot, index) => {
+  const stateShots: SequenceState['shots'] = ordered.map((shot, index) => {
     const imageUrl = shotImageUrl(shot);
     return {
       id: shot.id,

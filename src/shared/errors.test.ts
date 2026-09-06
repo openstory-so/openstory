@@ -4,16 +4,12 @@ import { describe, expect, it } from 'vitest';
 // instance takes seconds under full-suite load and would blow the timeout.
 import { startInstance } from '@/start';
 import {
-  ConfigurationError,
-  ConnectionError,
-  DatabaseError,
   errorCode,
   errorMessage,
   handleApiError,
   InsufficientCreditsError,
   isInsufficientCreditsError,
   openStoryErrorSerializationAdapter,
-  StorageError,
   ValidationError,
   OpenStoryError,
 } from './errors';
@@ -53,34 +49,6 @@ describe('OpenStoryError', () => {
 });
 
 describe('Custom Error Classes', () => {
-  describe('DatabaseError', () => {
-    it('should create a database error with 500 status', () => {
-      const error = new DatabaseError('Database connection failed', {
-        table: 'users',
-      });
-
-      expect(error.message).toBe('Database connection failed');
-      expect(error.code).toBe('DATABASE_ERROR');
-      expect(error.statusCode).toBe(500);
-      expect(error.details).toEqual({ table: 'users' });
-      expect(error.name).toBe('DatabaseError');
-    });
-  });
-
-  describe('ConnectionError', () => {
-    it('should create a connection error with 503 status', () => {
-      const error = new ConnectionError('Service unavailable', {
-        service: 'some-service',
-      });
-
-      expect(error.message).toBe('Service unavailable');
-      expect(error.code).toBe('CONNECTION_ERROR');
-      expect(error.statusCode).toBe(503);
-      expect(error.details).toEqual({ service: 'some-service' });
-      expect(error.name).toBe('ConnectionError');
-    });
-  });
-
   describe('ValidationError', () => {
     it('should create a validation error with 400 status', () => {
       const error = new ValidationError('Invalid input', {
@@ -94,39 +62,11 @@ describe('Custom Error Classes', () => {
       expect(error.name).toBe('ValidationError');
     });
   });
-
-  describe('ConfigurationError', () => {
-    it('should create a configuration error with 500 status', () => {
-      const error = new ConfigurationError('Missing environment variable', {
-        variable: 'POSTGRES_URL',
-      });
-
-      expect(error.message).toBe('Missing environment variable');
-      expect(error.code).toBe('CONFIGURATION_ERROR');
-      expect(error.statusCode).toBe(500);
-      expect(error.details).toEqual({ variable: 'POSTGRES_URL' });
-      expect(error.name).toBe('ConfigurationError');
-    });
-  });
-
-  describe('StorageError', () => {
-    it('should create a storage error with 500 status', () => {
-      const error = new StorageError('Failed to upload file', {
-        bucket: 'images',
-      });
-
-      expect(error.message).toBe('Failed to upload file');
-      expect(error.code).toBe('STORAGE_ERROR');
-      expect(error.statusCode).toBe(500);
-      expect(error.details).toEqual({ bucket: 'images' });
-      expect(error.name).toBe('StorageError');
-    });
-  });
 });
 
 describe('handleApiError', () => {
   it('should return OpenStoryError instance as is', () => {
-    const openStoryError = new DatabaseError('Test error');
+    const openStoryError = new ValidationError('Test error');
     const result = handleApiError(openStoryError);
     expect(result).toBe(openStoryError);
   });

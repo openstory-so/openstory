@@ -1,6 +1,6 @@
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { getComplianceStatusFn } from '@/functions/compliance';
-import { useAuthSession } from '@/shared/auth/session-query';
+import { useAuthSession } from '@/components/auth/session-query';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { ShieldAlert } from 'lucide-react';

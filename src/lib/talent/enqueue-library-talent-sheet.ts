@@ -9,7 +9,6 @@
 import { getLogger } from '@/shared/observability/logger';
 import { getTalentChannel } from '@/shared/realtime';
 import { triggerWorkflow } from '@/lib/workflow/client';
-import { buildWorkflowLabel } from '@/lib/workflow/labels';
 import type { LibraryTalentSheetWorkflowInput } from '@/lib/workflow/types';
 import type { SheetProgressActivity } from '@/shared/talent/sheet-progress-copy';
 
@@ -34,7 +33,6 @@ export async function enqueueLibraryTalentSheet(
       '/library-talent-sheet',
       params.workflowInput,
       {
-        label: buildWorkflowLabel(params.talentId),
         deduplicationId: params.deduplicationId,
       }
     );

@@ -13,7 +13,7 @@ import {
   isBytePlusPortraitFilterError,
 } from '@/lib/ai/byteplus-portrait-filter';
 import { bytePlusVideoUnitsBilled } from '@/lib/ai/byteplus-pricing';
-import { withBytePlusQuotaRetry } from '@/lib/ai/byteplus-rate-limit';
+import { withBytePlusQuotaRetry } from '@/lib/ai/quota-retry';
 import { falCostFromUnits } from '@/lib/ai/fal-cost-billing';
 import {
   estimateFalCost,

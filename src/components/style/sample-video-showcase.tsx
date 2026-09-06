@@ -11,8 +11,8 @@ import { getAspectRatioClassName } from '@/shared/constants/aspect-ratios';
 import {
   optimizedVideoUrl,
   videoPosterUrl,
-} from '@/shared/media/cloudflare-video';
-import type { SampleEntry } from '@/shared/style/sample-entries';
+} from '@/components/style/cloudflare-video';
+import type { SampleEntry } from '@/components/style/sample-entries';
 import { cn } from '@/shared/utils';
 import { Link } from '@tanstack/react-router';
 import { Wand2 } from 'lucide-react';

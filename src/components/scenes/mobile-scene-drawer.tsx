@@ -1,6 +1,6 @@
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import type { SceneWithScript } from '@/hooks/use-scenes';
-import type { SceneSelection } from '@/shared/scenes/scene-selection';
+import type { SceneSelection } from '@/components/scenes/scene-selection';
 import { plainSceneTitle } from '@/shared/utils/markdown-plain';
 import { ChevronUp } from 'lucide-react';
 import { useMemo, useState } from 'react';

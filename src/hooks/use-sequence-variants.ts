@@ -9,7 +9,7 @@ import {
 } from '@/functions/sequence-variants';
 import { sequenceKeys } from '@/hooks/use-sequences';
 import type { SequenceMusicVariant } from '@/lib/db/schema';
-import type { Sequence } from '@/types/database';
+import type { Sequence } from '@/lib/db/schema';
 
 /**
  * Query-key factory for sequence-level music variants. The strings here match

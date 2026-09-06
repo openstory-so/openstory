@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { selectFilesToAccept } from './element-selector';
-import { MAX_SEQUENCE_ELEMENTS } from '@/shared/sequence-elements/limits';
+import { MAX_SEQUENCE_ELEMENTS } from '@/components/element/limits';
 import { getFileKey } from '@/shared/utils/upload';
 
 // Pinned lastModified so keys (`name-lastModified`) are deterministic.

@@ -7,7 +7,7 @@
  * disturbing the live entity).
  *
  * The decision is a hash comparison: callers pass the `snapshotInputHash`
- * computed when the workflow was triggered (frozen in the QStash payload)
+ * computed when the workflow was triggered (frozen on the payload)
  * and the `currentInputHash` recomputed from live scoped-DB state at write
  * time. If they differ, the inputs changed mid-flight — the result belongs
  * in a variants row, and the UI is notified via `stale:detected`.

@@ -1,7 +1,7 @@
 import { createFileRoute, notFound } from '@tanstack/react-router';
 import { allDocs } from 'content-collections';
 import { MarkdownContent } from '@/components/docs/markdown';
-import { parseDocsMarkdown } from '@/shared/docs/markdown';
+import { parseDocsMarkdown } from '@/components/docs/markdown-ast';
 
 export const Route = createFileRoute('/docs/$')({
   loader: ({ params }) => {

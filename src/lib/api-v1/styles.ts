@@ -11,10 +11,10 @@ import {
 } from '@/shared/style/style-config';
 import { z } from 'zod';
 import { createSequenceLink } from './discovery';
-import { getLink, STYLES_PATH, withLinks } from './hal';
+import { getLink, halLinksSchema, STYLES_PATH, withLinks } from './hal';
 
 /** Response body (minus `_links`) — the OpenAPI `StyleDocument` component derives from this. */
-export const styleDocumentSchema = z.object({
+const styleDocumentSchema = z.object({
   id: z.string(),
   name: z.string(),
   description: z.string().nullable(),
@@ -30,8 +30,20 @@ export const styleDocumentSchema = z.object({
   recommendedVideoModel: z.string().nullable(),
   previewUrl: z.string().nullable(),
   config: StyleConfigSchema,
-  createdAt: z.iso.datetime(),
+  createdAt: z.string().meta({ format: 'date-time' }),
 });
+
+/** The wire shape — a style document always ships with its `_links` catalog. */
+const styleResourceSchema = styleDocumentSchema
+  .extend({ _links: halLinksSchema })
+  .meta({ id: 'StyleDocument' });
+
+export const styleListResultSchema = z
+  .object({
+    styles: z.array(styleResourceSchema),
+    _links: halLinksSchema,
+  })
+  .meta({ id: 'StyleListResult' });
 
 export function styleDocument(style: Style) {
   return withLinks(

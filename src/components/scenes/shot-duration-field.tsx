@@ -41,7 +41,7 @@ import {
 import { MOTION_JSON_SCHEMAS } from '@/shared/motion/endpoint-map';
 import { snapDuration } from '@/shared/motion/snap-duration';
 import { getDurationValues, numericOf } from '@/shared/motion/motion-transform';
-import type { Shot } from '@/types/database';
+import type { Shot } from '@/lib/db/schema';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Loader2, Sparkles } from 'lucide-react';
 import { useState } from 'react';

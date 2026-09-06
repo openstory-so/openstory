@@ -485,8 +485,7 @@ describe('executeSmartRetry — partial retry status reset', () => {
         shotId: 'shot-1',
         prompt: 'A cinematic shot of the lab',
         sequenceId: 'seq_1',
-      }),
-      expect.objectContaining({ label: expect.any(String) })
+      })
     );
     expect(updateStatus).toHaveBeenCalledWith('completed');
     expect(result).toEqual({
@@ -521,8 +520,7 @@ describe('executeSmartRetry — partial retry status reset', () => {
     expect(triggerWorkflowMock).toHaveBeenCalledTimes(1);
     expect(triggerWorkflowMock).toHaveBeenCalledWith(
       '/image',
-      expect.objectContaining({ shotId: 'shot-1' }),
-      expect.objectContaining({ label: expect.any(String) })
+      expect.objectContaining({ shotId: 'shot-1' })
     );
     expect(result).toEqual({
       retryType: 'smart',
@@ -559,8 +557,7 @@ describe('executeSmartRetry — partial retry status reset', () => {
         // stored text is carried rather than reproduced verbatim.
         prompt: expect.stringContaining('slow pan across the lab'),
         duration: 5,
-      }),
-      expect.objectContaining({ label: expect.any(String) })
+      })
     );
     expect(result).toEqual({
       retryType: 'smart',
@@ -659,8 +656,7 @@ describe('executeSmartRetry — per-asset model selection (#1066)', () => {
         shotId: 'shot-a',
         model: 'gpt_image_2',
         ownsReservation: true,
-      }),
-      expect.objectContaining({ label: expect.any(String) })
+      })
     );
     expect(triggerWorkflowMock).toHaveBeenCalledWith(
       '/image',
@@ -668,8 +664,7 @@ describe('executeSmartRetry — per-asset model selection (#1066)', () => {
         shotId: 'shot-b',
         model: 'flux_2_max',
         ownsReservation: true,
-      }),
-      expect.objectContaining({ label: expect.any(String) })
+      })
     );
 
     // One hold per shot so leftover zeros cannot kill a sibling envelope.
@@ -729,8 +724,7 @@ describe('executeSmartRetry — per-asset model selection (#1066)', () => {
         shotId: 'shot-a',
         model: 'seedance_v2',
         ownsReservation: true,
-      }),
-      expect.objectContaining({ label: expect.any(String) })
+      })
     );
     expect(triggerWorkflowMock).toHaveBeenCalledWith(
       '/motion',
@@ -738,8 +732,7 @@ describe('executeSmartRetry — per-asset model selection (#1066)', () => {
         shotId: 'shot-b',
         model: 'kling_v3_pro',
         ownsReservation: true,
-      }),
-      expect.objectContaining({ label: expect.any(String) })
+      })
     );
   });
 
@@ -764,8 +757,7 @@ describe('executeSmartRetry — per-asset model selection (#1066)', () => {
 
     expect(triggerWorkflowMock).toHaveBeenCalledWith(
       '/image',
-      expect.objectContaining({ shotId: 'shot-a', model: 'flux_2_max' }),
-      expect.objectContaining({ label: expect.any(String) })
+      expect.objectContaining({ shotId: 'shot-a', model: 'flux_2_max' })
     );
     // …and it is priced as flux_2_max, so the estimate matches the charge.
     expect(reserveRunCreditsMock.mock.calls[0]?.[1]).toEqual(
@@ -800,8 +792,7 @@ describe('executeSmartRetry — per-asset model selection (#1066)', () => {
 
     expect(triggerWorkflowMock).toHaveBeenCalledWith(
       '/motion',
-      expect.objectContaining({ shotId: 'shot-a', model: 'veo3_1' }),
-      expect.objectContaining({ label: expect.any(String) })
+      expect.objectContaining({ shotId: 'shot-a', model: 'veo3_1' })
     );
   });
 
@@ -819,8 +810,7 @@ describe('executeSmartRetry — per-asset model selection (#1066)', () => {
 
     expect(triggerWorkflowMock).toHaveBeenCalledWith(
       '/image',
-      expect.objectContaining({ shotId: 'shot-a', model: 'nano_banana_2' }),
-      expect.objectContaining({ label: expect.any(String) })
+      expect.objectContaining({ shotId: 'shot-a', model: 'nano_banana_2' })
     );
   });
 });

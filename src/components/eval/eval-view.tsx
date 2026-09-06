@@ -8,11 +8,10 @@ import {
   useSequencesWithShots,
   type SequenceWithShots,
 } from '@/hooks/use-sequences-with-shots';
-import { useAdminAllSequencesWithShots } from '@/hooks/use-admin-support';
 import { useTeamDivergentSequenceVariants } from '@/hooks/use-sequence-variants';
 import { useStyles } from '@/hooks/use-styles';
 import { isSystemAdminFn } from '@/functions/gift-tokens';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useInfiniteQuery, useQueries } from '@tanstack/react-query';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
@@ -23,8 +22,110 @@ import type { AspectRatio } from '@/shared/constants/aspect-ratios';
 import type {
   SequencesListPrefs,
   SequencesListSearch,
-} from '@/shared/sequences/list-prefs';
+} from '@/components/sequence/list-prefs';
 import { getCreatorIdentity } from './creator-identity';
+import {
+  getAdminShotsFn,
+  getAllAdminSequencesFn,
+} from '@/functions/admin-support';
+import type { Sequence } from '@/lib/db/schema';
+import type { ShotView } from '@/shared/shots/shot-view';
+
+const PAGE_SIZE = 50;
+
+const adminSupportKeys = {
+  all: ['admin-support'] as const,
+  sequences: (search?: string) =>
+    [...adminSupportKeys.all, 'sequences', search ?? ''] as const,
+  shots: (sequenceId: string) =>
+    [...adminSupportKeys.all, 'shots', sequenceId] as const,
+};
+
+type AdminSequenceWithShots = SequenceWithShots & {
+  creatorName: string | null;
+  creatorEmail: string | null;
+};
+
+function useAdminAllSequencesWithShots(enabled: boolean, search?: string) {
+  const trimmedSearch = search?.trim() || undefined;
+
+  const {
+    data: infiniteData,
+    isLoading: seqLoading,
+    error: seqError,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery({
+    queryKey: adminSupportKeys.sequences(trimmedSearch),
+    queryFn: ({ pageParam }) =>
+      getAllAdminSequencesFn({
+        data: {
+          limit: PAGE_SIZE,
+          offset: pageParam * PAGE_SIZE,
+          search: trimmedSearch,
+        },
+      }),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, _allPages, lastPageParam) =>
+      lastPage.length === PAGE_SIZE ? lastPageParam + 1 : undefined,
+    enabled,
+    staleTime: 60_000,
+  });
+
+  const allSequences = useMemo(
+    () => infiniteData?.pages.flat() ?? [],
+    [infiniteData]
+  );
+
+  const shotsQueries = useQueries({
+    queries: allSequences.map((seq: Sequence) => ({
+      queryKey: adminSupportKeys.shots(seq.id),
+      queryFn: async (): Promise<ShotView[]> => {
+        return getAdminShotsFn({ data: { sequenceId: seq.id } });
+      },
+      staleTime: 60_000,
+      enabled: allSequences.length > 0,
+    })),
+  });
+
+  const data = useMemo<AdminSequenceWithShots[]>(() => {
+    if (allSequences.length === 0) return [];
+    return allSequences.map(
+      (
+        seq: Sequence & {
+          creatorName: string | null;
+          creatorEmail: string | null;
+        },
+        i: number
+      ) => ({
+        ...seq,
+        shots: shotsQueries[i]?.data ?? [],
+      })
+    );
+  }, [allSequences, shotsQueries]);
+
+  const shotsLoadingMap = useMemo<Record<string, boolean>>(() => {
+    const map: Record<string, boolean> = {};
+    allSequences.forEach((seq, i) => {
+      const q = shotsQueries[i];
+      map[seq.id] = Boolean(q?.isLoading);
+    });
+    return map;
+  }, [allSequences, shotsQueries]);
+
+  const error = seqError || shotsQueries.find((q) => q.error)?.error;
+
+  return {
+    data,
+    isLoading: seqLoading,
+    shotsLoadingMap,
+    error,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  };
+}
 
 export type ViewMode = 'script' | 'prompts' | 'images' | 'motion';
 

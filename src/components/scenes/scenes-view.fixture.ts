@@ -23,7 +23,7 @@ import {
   type ShotGridSheet,
   type ShotView,
 } from '@/shared/shots/shot-view';
-import type { Sequence, Style } from '@/types/database';
+import type { Sequence, Style } from '@/lib/db/schema';
 
 export const fixtureSequence: Sequence = {
   id: '01KT2TPG5WYQ15H79SAV88EH45',

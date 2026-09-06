@@ -9,25 +9,39 @@
  * costs one shots round-trip rather than N (see `listShotsByIds`).
  */
 
+import { z } from 'zod';
 import type { ScopedDb } from '@/lib/db/scoped';
 import type { Style } from '@/lib/db/schema/libraries';
 import { ValidationError } from '@/shared/errors';
 import type { ShotReadiness } from '@/shared/shots/shot-view';
-import type { Sequence } from '@/types/database';
+import type { Sequence } from '@/lib/db/schema';
 import { createSequenceLink } from './discovery';
-import { API_V1_BASE, getLink, type HalResource, withLinks } from './hal';
+import { API_V1_BASE, getLink, halLinksSchema, withLinks } from './hal';
 import {
   buildSequenceSummary,
-  type SequenceSummary,
+  sequenceSummarySchema,
   summarizeShotCounts,
 } from './state';
 
 /** A compact list entry — the status-document scalars without the shot array. */
-type SequenceListItem = SequenceSummary;
+const sequenceListItemSchema = sequenceSummarySchema
+  .extend({ _links: halLinksSchema })
+  .describe(
+    'A compact sequence summary (status-document scalars + style, models, and counts, without the shot array) as returned in a list page.'
+  )
+  .meta({ id: 'SequenceListItem' });
 
-export type SequenceListPage = HalResource<{
-  sequences: HalResource<SequenceListItem>[];
-}>;
+export const sequenceListPageSchema = z
+  .object({
+    sequences: z.array(sequenceListItemSchema),
+    _links: halLinksSchema,
+  })
+  .describe(
+    'A page of sequence summaries, most recent first. `_links.next` is present only when a further page exists.'
+  )
+  .meta({ id: 'SequenceListResult' });
+
+export type SequenceListPage = z.infer<typeof sequenceListPageSchema>;
 
 /** Keyset position: a sequence's `(updatedAt, id)`, encoded into the cursor. */
 export type SequenceCursor = { updatedAt: Date; id: string };
@@ -80,7 +94,7 @@ function buildListItem(
   shots: ShotReadiness[],
   style: Style | null,
   origin: string
-): HalResource<SequenceListItem> {
+): SequenceListPage['sequences'][number] {
   const item = buildSequenceSummary({
     sequence,
     style,

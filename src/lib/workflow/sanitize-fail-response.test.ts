@@ -9,24 +9,10 @@ describe('sanitizeFailResponse', () => {
     );
   });
 
-  test('extracts inner message from QStash wrapper pattern', () => {
-    const wrapped =
-      "Couldn't parse 'failResponse' in 'failureFunction', received: 'error code: 1102'";
-    expect(sanitizeFailResponse(wrapped)).toBe(
-      'Worker exceeded memory limit (error code: 1102)'
-    );
-  });
-
   test('maps known CF error code 1102 to friendly message', () => {
     expect(sanitizeFailResponse('error code: 1102')).toBe(
       'Worker exceeded memory limit (error code: 1102)'
     );
-  });
-
-  test('extracts inner text for unknown error codes', () => {
-    const wrapped =
-      "Couldn't parse 'failResponse' in 'failureFunction', received: 'some unexpected error'";
-    expect(sanitizeFailResponse(wrapped)).toBe('some unexpected error');
   });
 
   test('truncates excessively long messages', () => {
@@ -65,7 +51,7 @@ describe('sanitizeFailResponse', () => {
   });
 
   test('serializes non-enumerable Error fields instead of returning "{}"', () => {
-    // Errors crossing QStash step boundaries lose their `instanceof Error`
+    // Errors crossing step boundaries lose their `instanceof Error`
     // identity but keep `.message` as a non-enumerable own property — the
     // old `JSON.stringify` path rendered these as the useless string "{}".
     const errlike: Record<string, unknown> = Object.create(null);

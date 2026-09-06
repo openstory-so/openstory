@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { sessionQueryOptions } from '@/shared/auth/session-query';
+import { sessionQueryOptions } from '@/components/auth/session-query';
 
 /**
  * Hook for client components that need user data. Reads from the session cache

@@ -19,7 +19,6 @@ import {
   toLocationMetadata,
 } from '@/lib/sheets/location-sheet-trigger';
 import { triggerWorkflow } from '@/lib/workflow/client';
-import { buildWorkflowLabel } from '@/lib/workflow/labels';
 import type { RecastLocationWorkflowInput } from '@/lib/workflow/types';
 import { buildRecastRegenerateSnapshots } from '@/lib/workflows/recast-snapshot';
 import { locationSheetHashMatchesStored } from '@/lib/workflows/sheet-snapshots';
@@ -257,7 +256,6 @@ export const regenerateLocationSheetFn = createServerFn({ method: 'POST' })
     let workflowRunId: string;
     try {
       workflowRunId = await triggerWorkflow('/location-sheet', payload, {
-        label: buildWorkflowLabel(location.sequenceId),
         // Explicit regen must not reuse the bible-child id
         // `location-sheet:${id}` — that instance is already complete, and CF
         // would no-op a second Generate. Same pattern as generateTalentSheetFn.
@@ -384,28 +382,24 @@ export const recastLocationFn = createServerFn({ method: 'POST' })
         subject: { kind: 'location', location: updatedLocation },
       });
 
-    const workflowRunId = await triggerWorkflow(
-      '/recast-location',
-      {
-        locationDbId: data.locationId,
-        locationName: location.name,
-        locationMetadata: toLocationMetadata(location),
-        sequenceId: location.sequenceId,
-        teamId: context.teamId,
-        userId: context.user.id,
-        referenceImageUrl: data.referenceImageUrl,
-        libraryLocationDescription: data.description,
-        libraryLocationId: data.libraryLocationId,
-        libraryLocationReferenceHash: libraryLocation.referenceInputHash,
-        imageModel,
-        styleConfig,
-        aspectRatio: sequence.aspectRatio,
-        resolution: sequence.resolution,
-        shotSnapshots,
-        snapshotInputHash,
-      } satisfies RecastLocationWorkflowInput,
-      { label: buildWorkflowLabel(location.sequenceId) }
-    );
+    const workflowRunId = await triggerWorkflow('/recast-location', {
+      locationDbId: data.locationId,
+      locationName: location.name,
+      locationMetadata: toLocationMetadata(location),
+      sequenceId: location.sequenceId,
+      teamId: context.teamId,
+      userId: context.user.id,
+      referenceImageUrl: data.referenceImageUrl,
+      libraryLocationDescription: data.description,
+      libraryLocationId: data.libraryLocationId,
+      libraryLocationReferenceHash: libraryLocation.referenceInputHash,
+      imageModel,
+      styleConfig,
+      aspectRatio: sequence.aspectRatio,
+      resolution: sequence.resolution,
+      shotSnapshots,
+      snapshotInputHash,
+    } satisfies RecastLocationWorkflowInput);
 
     return {
       locationId: data.locationId,

@@ -8,18 +8,15 @@
  *
  * Default upload path is the wrangler CLI (account-wide CLOUDFLARE_API_TOKEN /
  * `wrangler login`, which has write access to the public bucket), run through a
- * concurrency pool. Pass --s3 to use direct S3 PutObject (faster, no process
- * spawn) — but only if your R2 keys are actually scoped to this bucket.
+ * UPLOAD_CONCURRENCY pool.
  *
  * Usage:
  *   bun scripts/upload-style-sample-videos-to-r2.ts            # upload all found
  *   bun scripts/upload-style-sample-videos-to-r2.ts --dry-run  # list keys only
  *   bun scripts/upload-style-sample-videos-to-r2.ts --filter product-ad
- *   bun scripts/upload-style-sample-videos-to-r2.ts --s3       # direct S3 (opt-in)
  */
-import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { execFile } from 'node:child_process';
-import { readdir, readFile, stat } from 'node:fs/promises';
+import { readdir, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
 
@@ -27,7 +24,7 @@ const execFileAsync = promisify(execFile);
 
 const SAMPLE_DIR = path.join(process.cwd(), 'sample-videos');
 const KINDS = ['canonical', 'bespoke'] as const;
-const UPLOAD_CONCURRENCY = Number(process.env.UPLOAD_CONCURRENCY ?? '12');
+const UPLOAD_CONCURRENCY = Number(process.env.UPLOAD_CONCURRENCY ?? '6');
 
 const isDryRun = process.argv.includes('--dry-run');
 const filterIdx = process.argv.findIndex((a) => a === '--filter');
@@ -37,24 +34,6 @@ const R2_CONFIG = {
   bucket: process.env.R2_PUBLIC_ASSETS_BUCKET || 'openstory-public-assets',
   url: `https://${process.env.VITE_R2_PUBLIC_ASSETS_DOMAIN || 'assets.openstory.so'}`,
 };
-
-/** Direct-S3 client, opt-in via --s3 (see upload-style-previews-to-r2.ts). */
-function createR2S3Client(): S3Client | null {
-  if (!process.argv.includes('--s3')) return null;
-  const accountId = process.env.R2_ACCOUNT_ID;
-  const accessKeyId = process.env.R2_ACCESS_KEY_ID;
-  const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY;
-  if (!accountId || !accessKeyId || !secretAccessKey) {
-    throw new Error(
-      '--s3 requires R2_ACCOUNT_ID, R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY (and the key must have write access to the bucket)'
-    );
-  }
-  return new S3Client({
-    region: 'auto',
-    endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
-    credentials: { accessKeyId, secretAccessKey },
-  });
-}
 
 type Upload = { localPath: string; r2Key: string };
 
@@ -91,24 +70,8 @@ async function collectUploads(): Promise<Upload[]> {
   return uploads;
 }
 
-/** Upload one mp4 via S3 (opt-in) or the wrangler CLI fallback. */
-async function uploadObject(
-  s3: S3Client | null,
-  localPath: string,
-  r2Key: string
-): Promise<void> {
-  if (s3) {
-    await s3.send(
-      new PutObjectCommand({
-        Bucket: R2_CONFIG.bucket,
-        Key: r2Key,
-        Body: await readFile(localPath),
-        ContentType: 'video/mp4',
-        CacheControl: 'public, max-age=2592000',
-      })
-    );
-    return;
-  }
+/** Upload one mp4 through the wrangler CLI. */
+async function uploadObject(localPath: string, r2Key: string): Promise<void> {
   try {
     await execFileAsync('bunx', [
       'wrangler',
@@ -144,11 +107,7 @@ async function main() {
     return;
   }
 
-  const s3 = createR2S3Client();
-  const concurrency = s3 ? UPLOAD_CONCURRENCY : Math.min(UPLOAD_CONCURRENCY, 6);
-  console.log(
-    `Uploading via ${s3 ? 'S3' : 'wrangler'} (${concurrency} concurrent)…`
-  );
+  console.log(`Uploading via wrangler (${UPLOAD_CONCURRENCY} concurrent)…`);
 
   let success = 0;
   let index = 0;
@@ -158,7 +117,7 @@ async function main() {
       const u = uploads[index++];
       if (!u) break;
       try {
-        await uploadObject(s3, u.localPath, u.r2Key);
+        await uploadObject(u.localPath, u.r2Key);
         success++;
         console.log(`  ✅ ${u.r2Key}`);
       } catch (error) {
@@ -170,7 +129,7 @@ async function main() {
     }
   };
   await Promise.all(
-    Array.from({ length: Math.min(concurrency, uploads.length) }, worker)
+    Array.from({ length: Math.min(UPLOAD_CONCURRENCY, uploads.length) }, worker)
   );
 
   console.log(`\nUploaded ${success}/${uploads.length}.`);

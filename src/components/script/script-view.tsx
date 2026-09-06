@@ -62,7 +62,6 @@ import {
 import { useComposedScript } from '@/hooks/use-scenes';
 import { useSequenceCharacters } from '@/hooks/use-sequence-characters';
 import { useViaAvailability } from '@/hooks/use-via-availability';
-import { useSequenceDraft } from '@/hooks/use-sequence-draft';
 import {
   useSequenceElements,
   type DraftElementUpload,
@@ -110,7 +109,7 @@ import {
 } from '@/shared/billing/cost-estimation';
 import { clampResolution } from '@/shared/constants/resolutions';
 import type { Resolution } from '@/shared/constants/resolutions';
-import { availableResolutions } from '@/shared/ai/resolution-support';
+import { availableResolutions } from '@/components/models/resolution-support';
 import {
   aspectRatioSchema,
   type AspectRatio,
@@ -118,20 +117,28 @@ import {
 import {
   markPendingIntent,
   takePendingIntent,
-} from '@/shared/generation/pending-generate';
+} from '@/components/generation/pending-generate';
 import { estimateSceneCount } from '@/shared/generation/time-estimate';
 import { replaceTokenInText } from '@/shared/sequence-elements/cascade-rename';
-import { shouldRestoreComposerDraft } from '@/shared/sequences/sequence-draft';
+import {
+  shouldRestoreComposerDraft,
+  clearSequenceDraft,
+  EMPTY_SEQUENCE_DRAFT,
+  readSequenceDraft,
+  writeSequenceDraft,
+  type PersistableSequenceDraft,
+  type SequenceDraft,
+} from '@/components/script/sequence-draft';
 import {
   pickShuffleStyle,
   sampleScriptForStyle,
-} from '@/shared/style/composer-sample';
+} from '@/components/style/composer-sample';
 import {
   ALL_COMPOSER_STYLE_CATEGORIES,
   DEFAULT_COMPOSER_STYLE_CATEGORY,
   styleAfterComposerCategoryChange,
   styleCategoryGroupKey,
-} from '@/shared/style/composer-style-row';
+} from '@/components/style/composer-style-row';
 import { cn } from '@/shared/utils';
 import {
   dataTransferHasImages,
@@ -139,7 +146,7 @@ import {
   snapshotDataTransfer,
   toastDragImportCorsError,
 } from '@/shared/utils/drag-images';
-import type { Sequence } from '@/types/database';
+import type { Sequence } from '@/lib/db/schema';
 import { usePostHog } from '@posthog/react';
 import {
   ImagePlus,
@@ -163,6 +170,30 @@ import React, {
 import { VoiceInputButton } from '@/components/voice/voice-input-button';
 import { useEditorDictation } from '@/hooks/use-dictation';
 import { ScriptEditor } from './script-editor';
+function useSequenceDraft() {
+  const [draft, setDraft] = useState<SequenceDraft>(EMPTY_SEQUENCE_DRAFT);
+  const [isLoaded, setIsLoaded] = useState(false);
+
+  useEffect(() => {
+    const loaded = readSequenceDraft();
+    if (loaded) {
+      setDraft(loaded);
+    }
+    setIsLoaded(true);
+  }, []);
+
+  const saveDraft = useCallback((data: PersistableSequenceDraft) => {
+    setDraft({ ...data, savedAt: Date.now() });
+    writeSequenceDraft(data);
+  }, []);
+
+  const clearDraft = useCallback(() => {
+    setDraft(EMPTY_SEQUENCE_DRAFT);
+    clearSequenceDraft();
+  }, []);
+
+  return { draft, isLoaded, saveDraft, clearDraft };
+}
 
 const DURATION_PRESETS = [
   { value: '15', label: '15s', seconds: 15 },

@@ -7,7 +7,7 @@
  * `src/shared/auth/oauth-login-resume.ts`.
  */
 
-import { buildLoginRedirect } from '@/shared/auth/oauth-login-resume';
+import { buildLoginRedirect } from '@/components/auth/oauth-login-resume';
 import { getLogger } from '@/shared/observability/logger';
 import { createFileRoute } from '@tanstack/react-router';
 

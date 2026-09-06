@@ -95,8 +95,8 @@ import { useEditorDictation } from '@/hooks/use-dictation';
 import {
   pickShufflePrompt,
   studioShufflePrompts,
-} from '@/shared/studio/prompt-shuffle';
-import { parseStudioPaste } from '@/shared/studio/paste-import';
+} from '@/components/studio/prompt-shuffle';
+import { parseStudioPaste } from '@/components/studio/paste-import';
 import type {
   StudioCreateInput,
   StudioReferenceKind,

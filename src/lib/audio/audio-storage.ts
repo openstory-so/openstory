@@ -8,7 +8,7 @@ import { uploadResponse } from '@/lib/storage/upload-response';
 import {
   getExtensionFromUrl,
   getMimeTypeFromExtension,
-} from '@/shared/utils/file';
+} from '@/lib/storage/file';
 import { generateId } from '@/shared/id';
 
 import { getLogger } from '@/shared/observability/logger';

@@ -8,7 +8,7 @@ import {
   videoVariantFixture,
 } from '@/shared/mocks/frame-fixtures';
 import { toShotView, type ShotView } from '@/shared/shots/shot-view';
-import type { Sequence, Style } from '@/types/database';
+import type { Sequence, Style } from '@/lib/db/schema';
 import type { Meta, StoryObj } from '@storybook/react';
 import {
   fixtureScenes,

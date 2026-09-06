@@ -44,7 +44,7 @@ import {
 import { closeBillingGate } from '@/hooks/use-billing-gate-dialog';
 import { BILLING_BALANCE_KEY } from '@/hooks/use-billing-balance';
 import { BILLING_GATE_KEY } from '@/hooks/use-billing-gate';
-import { useAuthSession } from '@/shared/auth/session-query';
+import { useAuthSession } from '@/components/auth/session-query';
 import {
   formatPlatformFeePercent,
   MAX_TOPUP_AMOUNT_USD,

@@ -20,7 +20,7 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { briefForStyle } from '@/lib/style/sample-videos';
 import { styleSlug } from '@/shared/style/style-slug';
-import { DEFAULT_STYLE_TEMPLATES } from '@/shared/style/style-templates';
+import { DEFAULT_STYLE_TEMPLATES } from '@/lib/style/style-templates';
 import { z } from 'zod';
 
 const OPENROUTER_KEY = process.env.OPENROUTER_KEY;

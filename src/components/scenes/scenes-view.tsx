@@ -22,7 +22,11 @@ import { FailureSummaryBanner } from '@/components/sequence/failure-summary-bann
 import { SequenceHeaderPortal } from '@/components/sequence/sequence-header-slot';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { batchGenerateMotionFn } from '@/functions/motion-functions';
-import { continueGenerationFn, generateMusicFn } from '@/functions/sequences';
+import {
+  continueGenerationFn,
+  generateMusicFn,
+  getSequencesFn,
+} from '@/functions/sequences';
 import {
   artifactsFromSequenceState,
   continueStageFromState,
@@ -35,7 +39,6 @@ import { useActiveImageModel } from '@/hooks/use-active-image-model';
 import { useActiveVideoModel } from '@/hooks/use-active-video-model';
 import { BILLING_BALANCE_KEY } from '@/hooks/use-billing-balance';
 import { useFalBillingGate } from '@/hooks/use-billing-gate';
-import { useHorizontalSwipe } from '@/hooks/use-horizontal-swipe';
 import { useSceneSelection } from '@/hooks/use-scene-selection';
 import { useSequenceSegments } from '@/hooks/use-segments';
 import { useScenesBySequence, type SceneWithScript } from '@/hooks/use-scenes';
@@ -45,7 +48,7 @@ import {
   useSequenceShotStaleness,
 } from '@/hooks/use-shot-staleness';
 import { errorMessage, isInsufficientCreditsError } from '@/shared/errors';
-import { adjacentShotId } from '@/shared/scenes/shot-walk';
+import { adjacentShotId } from '@/components/scenes/shot-walk';
 import { sequenceKeys, useSequence } from '@/hooks/use-sequences';
 import {
   shotKeys,
@@ -79,36 +82,94 @@ import {
   selectionShots,
   type SceneFacet,
   type ScenesSearch,
-} from '@/shared/scenes/scene-selection';
+} from '@/components/scenes/scene-selection';
 import { formatShotSpan } from '@/shared/scenes/scene-segments';
 import {
   resolveImageModel,
   resolveVideoModel,
 } from '@/shared/ai/resolve-asset-models';
 import { DEFAULT_ASPECT_RATIO } from '@/shared/constants/aspect-ratios';
-import { isSetImageOffered } from '@/shared/shots/set-image-offer';
-import type { FrameVariant, ShotVariant } from '@/lib/db/schema';
+import { isSetImageOffered } from '@/components/scenes/set-image-offer';
+import type { FrameVariant, ShotVariant, Sequence } from '@/lib/db/schema';
 import { rendersReferenceOnly } from '@/shared/shots/use-start-frame';
 import { isBatchMotionEligible, type ShotView } from '@/shared/shots/shot-view';
 import { analyzeLoadedFailures } from '@/shared/failures/failure-analysis';
-import type { GenerationPhaseConfig } from '@/shared/realtime/generation-stream.reducer';
-import { useGenerationStream } from '@/shared/realtime/use-generation-stream';
-import { useStaleDetected } from '@/shared/realtime/use-stale-detected';
-import type { Sequence } from '@/types/database';
+import type { GenerationPhaseConfig } from '@/components/realtime/generation-stream.reducer';
+import { useGenerationStream } from '@/components/realtime/use-generation-stream';
+import { useStaleDetected } from '@/components/realtime/use-stale-detected';
 import { cn } from '@/shared/utils';
 import { ChevronDown } from 'lucide-react';
 import { usePostHog } from '@posthog/react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from '@tanstack/react-router';
-import { getSequencesFn } from '@/functions/sequences';
-import { captureSequenceReadySeen } from '@/shared/observability/player-events';
+import { captureSequenceReadySeen } from '@/components/theatre/player-events';
 
 import {
   estimateSceneCount,
   estimateTotalSeconds,
 } from '@/shared/generation/time-estimate';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent,
+} from 'react';
 import { toast } from 'sonner';
+const THRESHOLD_PX = 56;
+
+/**
+ * Horizontal swipe (touch/pen only) that ignores vertical pans and
+ * interactive controls. `delta` is -1 for previous (swipe right), +1 for next
+ * (swipe left).
+ */
+function useHorizontalSwipe(onSwipe: ((delta: -1 | 1) => void) | undefined) {
+  const startRef = useRef<{ x: number; y: number } | null>(null);
+
+  const onPointerDown = useCallback(
+    (event: PointerEvent<HTMLElement>) => {
+      if (!onSwipe) return;
+      if (event.pointerType === 'mouse') return;
+      if (
+        typeof window !== 'undefined' &&
+        window.matchMedia('(min-width: 768px)').matches
+      ) {
+        return;
+      }
+      const target = event.target;
+      if (
+        target instanceof Element &&
+        target.closest('input, textarea, button, a, [role="slider"]')
+      ) {
+        return;
+      }
+      startRef.current = { x: event.clientX, y: event.clientY };
+    },
+    [onSwipe]
+  );
+
+  const finish = useCallback(
+    (event: PointerEvent<HTMLElement>) => {
+      const start = startRef.current;
+      startRef.current = null;
+      if (!onSwipe || !start) return;
+      const dx = event.clientX - start.x;
+      const dy = event.clientY - start.y;
+      if (Math.abs(dx) < THRESHOLD_PX || Math.abs(dx) < Math.abs(dy)) return;
+      onSwipe(dx < 0 ? 1 : -1);
+    },
+    [onSwipe]
+  );
+
+  const onPointerUp = finish;
+  const onPointerCancel = useCallback(() => {
+    startRef.current = null;
+  }, []);
+
+  if (!onSwipe) return {};
+  return { onPointerDown, onPointerUp, onPointerCancel };
+}
 
 /**
  * Minimal coverage row shared by video (`shot_variants`) and image

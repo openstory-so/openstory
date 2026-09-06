@@ -55,7 +55,6 @@ import { sequenceScenesUrl } from '@/lib/emails/notify-sequence-ready';
 import { refreshCheckpointFromCast } from '@/lib/workflow/refresh-checkpoint';
 import { resolveStopAt } from '@/shared/generation/pipeline';
 import { triggerWorkflow } from '@/lib/workflow/client';
-import { buildWorkflowLabel } from '@/lib/workflow/labels';
 import { resolveRunState } from '@/lib/workflow/reconcile';
 import type {
   StoryboardTriggerInput,
@@ -273,7 +272,6 @@ export async function triggerStoryboard(
   // 'failed' on the next acquire and the slot recovers.
   const workflowRunId = await triggerWorkflow('/storyboard', payload, {
     deduplicationId: claimId,
-    label: buildWorkflowLabel(sequenceId),
   });
   await scopedDb.sequences.update({ id: sequenceId, workflowRunId });
 

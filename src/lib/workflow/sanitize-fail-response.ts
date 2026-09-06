@@ -8,21 +8,12 @@ const CF_ERROR_CODES: Record<string, string> = {
 };
 
 /**
- * Extract a useful error message from QStash failResponse.
- *
- * QStash wraps the actual error in a pattern like:
- *   "Couldn't parse 'failResponse' in 'failureFunction', received: '<actual error>'"
- *
- * This function extracts the inner error and maps known codes to friendly messages.
+ * Extract a useful error message from a thrown workflow failure, mapping known
+ * Cloudflare error codes to friendly text and capping the length.
  */
 export function sanitizeFailResponse(failResponse: unknown): string {
-  const raw = extractRawMessage(failResponse).trim();
-  if (!raw) return 'Unknown error';
-
-  // Extract inner message from QStash wrapper pattern
-  const wrapperMatch = raw.match(/received:\s*'(.+)'$/s);
-  const innerMessage = wrapperMatch?.[1];
-  const message = innerMessage ? innerMessage.trim() : raw;
+  const message = extractRawMessage(failResponse).trim();
+  if (!message) return 'Unknown error';
 
   // Map known CF error codes
   const codeMatch = message.match(/error code:\s*(\d+)/i);
@@ -40,8 +31,8 @@ export function sanitizeFailResponse(failResponse: unknown): string {
   return message;
 }
 
-// QStash failure functions can receive a failResponse whose `JSON.stringify`
-// renders as `"{}"` because the error's enumerable own properties are empty
+// A failure handler can receive a value whose `JSON.stringify` renders as
+// `"{}"` because the error's enumerable own properties are empty
 // (e.g. an Error reconstituted across step boundaries, a fetch Response, or
 // an HTTPError-style object). Walk known message-bearing fields and the full
 // property set including non-enumerables before giving up.

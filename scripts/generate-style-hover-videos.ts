@@ -82,7 +82,7 @@ import {
 } from '@/lib/prompts';
 import { toVisionImageSource } from '@/lib/storage/external-url';
 import { styleSlug } from '@/shared/style/style-slug';
-import { DEFAULT_STYLE_TEMPLATES } from '@/shared/style/style-templates';
+import { DEFAULT_STYLE_TEMPLATES } from '@/lib/style/style-templates';
 import { chat } from '@tanstack/ai';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';

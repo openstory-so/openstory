@@ -10,7 +10,6 @@ import {
 import { EmptyState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { SceneWithScript } from '@/hooks/use-scenes';
-import { useShotDownloadUrl } from '@/hooks/use-shot-download-url';
 import {
   type AspectRatio,
   aspectRatioToDimensions,
@@ -32,6 +31,38 @@ import { useCallback, useState } from 'react';
 import { toast } from 'sonner';
 import { VideoPlayer } from './video-player';
 import { VideoStateOverlay } from './video-state-overlay';
+import { getShotDownloadUrlFn } from '@/functions/shots';
+import { useQuery } from '@tanstack/react-query';
+
+type UseShotDownloadUrlParams = {
+  shotId?: string;
+  sequenceId?: string;
+};
+
+/**
+ * Hook to get a signed download URL for a shot's video.
+ * Uses Content-Disposition header to force browser download.
+ *
+ * @param params - Shot and sequence IDs
+ * @param enabled - Whether to fetch (default: true)
+ * @returns Query result with downloadUrl and filename
+ */
+function useShotDownloadUrl(
+  { shotId, sequenceId }: UseShotDownloadUrlParams,
+  enabled = true
+) {
+  return useQuery({
+    queryKey: ['shot-download-url', shotId, sequenceId],
+    queryFn: async () => {
+      if (!shotId || !sequenceId) {
+        throw new Error('Shot ID and Sequence ID are required');
+      }
+      return getShotDownloadUrlFn({ data: { shotId, sequenceId } });
+    },
+    enabled: enabled && !!shotId && !!sequenceId,
+    staleTime: 30 * 60 * 1000, // 30 minutes (URLs expire in 1 hour)
+  });
+}
 
 type ScenePlayerProps = {
   shots?: ShotView[];

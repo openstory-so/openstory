@@ -36,7 +36,7 @@ import {
   studioPosterOutput,
   studioPrimaryOutput,
   studioPrompt,
-} from '@/shared/studio/outputs';
+} from '@/components/studio/outputs';
 import { cn } from '@/shared/utils';
 import {
   ArrowLeft,

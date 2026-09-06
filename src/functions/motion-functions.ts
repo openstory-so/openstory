@@ -39,7 +39,6 @@ import { NotFoundError } from '@/shared/errors';
 import { getLogger } from '@/shared/observability/logger';
 import { getGenerationChannel } from '@/shared/realtime';
 import { triggerWorkflow } from '@/lib/workflow/client';
-import { buildWorkflowLabel } from '@/lib/workflow/labels';
 import { terminateSingleArtifactRun } from '@/lib/workflow/run-outcome';
 
 const motionLogger = getLogger(['openstory', 'serverFn', 'motion']);
@@ -286,7 +285,6 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
           workflowInput,
           {
             deduplicationId: `motion-batch-${shot.id}-${Date.now()}`,
-            label: buildWorkflowLabel(sequence.id),
           }
         );
 
@@ -602,7 +600,6 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
           workflowInput,
           {
             deduplicationId: `motion-batch-${sequence.id}-${Date.now()}`,
-            label: buildWorkflowLabel(sequence.id),
           }
         );
 

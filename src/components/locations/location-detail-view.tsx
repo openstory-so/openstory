@@ -31,8 +31,8 @@ import {
 } from '@/hooks/use-sequence-locations';
 import type { LocationSheetVariant } from '@/lib/db/schema';
 import { errorMessage } from '@/shared/errors';
-import { useRealtime } from '@/shared/realtime/client';
-import { useSheetStaleDetected } from '@/shared/realtime/use-sheet-stale-detected';
+import { useRealtime } from '@/components/realtime/client';
+import { useSheetStaleDetected } from '@/components/realtime/use-sheet-stale-detected';
 import {
   AlertDialog,
   AlertDialogAction,

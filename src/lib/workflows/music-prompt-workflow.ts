@@ -1,15 +1,5 @@
 /**
- * Cloudflare Workflows port of `generateMusicPromptWorflow`.
- *
- * Mirrors the QStash version (`src/lib/workflows/music-prompt-workflow.ts`)
- * step for step — same step names, same control flow, same side effects.
- * The only differences are:
- *
- *   - Extends `OpenStoryWorkflowEntrypoint` instead of being built by
- *     `createScopedWorkflow`. Failure parity comes from the base class
- *     (see `base-workflow.ts`).
- *   - Uses `step.do` instead of `context.run`.
- *   - Reads payload from `event.payload` instead of `context.requestPayload`.
+ * The `generateMusicPromptWorflow` durable workflow.
  *
  * The LLM call goes through `durableLLMCallCf` (the CF port of
  * `durableLLMCall`); see `src/lib/workflows/llm-call-helper.ts`.

@@ -34,7 +34,7 @@ import { getEnv } from '#env';
 // proxied clients as usual.
 import { createFalClient } from '@fal-ai/client';
 import { readStorageObject } from '#storage';
-import { sniffImageMimeType } from '@/shared/utils/file';
+import { sniffImageMimeType } from '@/lib/storage/file';
 import { r2KeyFromUrl, toCdnUrl } from './buckets';
 
 function isReplayMode(): boolean {
