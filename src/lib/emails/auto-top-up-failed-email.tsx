@@ -6,27 +6,18 @@
  */
 
 import { Button, Heading, Section, Text } from '@react-email/components';
-import { EmailLayout, headingStyle, paragraphStyle } from './email-layout';
+import {
+  buttonStyle,
+  EmailLayout,
+  headingStyle,
+  paragraphStyle,
+} from './email-layout';
 
 export interface AutoTopUpFailedEmailProps {
   appName: string;
   billingUrl: string;
   balanceDisplay: string;
 }
-
-const updateButtonStyle: React.CSSProperties = {
-  marginTop: 16,
-  boxSizing: 'border-box',
-  display: 'inline-block',
-  borderRadius: 6,
-  backgroundColor: '#fafafa',
-  padding: '12px 24px',
-  textAlign: 'center',
-  fontSize: 16,
-  fontWeight: 700,
-  color: '#262626',
-  textDecoration: 'none',
-};
 
 export const AutoTopUpFailedEmail: React.FC<AutoTopUpFailedEmailProps> = ({
   appName,
@@ -49,7 +40,7 @@ export const AutoTopUpFailedEmail: React.FC<AutoTopUpFailedEmailProps> = ({
       <Text style={paragraphStyle}>
         Update your card and auto-reload starts again.
       </Text>
-      <Button href={billingUrl} style={updateButtonStyle}>
+      <Button href={billingUrl} style={buttonStyle}>
         Update card
       </Button>
     </Section>

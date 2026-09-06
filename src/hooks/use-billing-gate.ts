@@ -18,7 +18,6 @@ type BillingGateStatus = {
   falKeyInvalid: boolean;
   balance: number;
   hasAutoTopUp: boolean;
-  autoTopUpFailed: boolean;
   stripeEnabled: boolean;
 };
 
@@ -69,7 +68,6 @@ export function useBillingGate() {
     falKeyInvalid: data?.falKeyInvalid ?? false,
     hasCredits: data?.hasCredits ?? true,
     hasAutoTopUp: data?.hasAutoTopUp ?? false,
-    autoTopUpFailed: data?.autoTopUpFailed ?? false,
     stripeEnabled: data?.stripeEnabled ?? true,
     // Opens the globally-mounted gate dialog (#1099)
     showGate: openBillingGate,

@@ -35,6 +35,7 @@ import type {
   TeamBillingSetting,
   TransactionType,
 } from '@/lib/db/schema/credits';
+import { notifyAutoTopUpFailed } from '@/lib/emails/notify-auto-top-up-failed';
 import { ValidationError } from '@/shared/errors';
 import { getBillingChannel } from '@/lib/realtime';
 import { and, count, desc, eq, gte, isNull, notExists, sql } from 'drizzle-orm';
@@ -335,13 +336,14 @@ export function createBillingMethods(
    * successful purchase, a new default card) re-arms the next send.
    */
   async function recordAutoTopUpFailure(declineCode: string): Promise<void> {
+    const paused = {
+      autoTopUpFailedAt: new Date(),
+      autoTopUpDeclineCode: declineCode,
+      updatedAt: new Date(),
+    };
     const claimed = await db
       .update(teamBillingSettings)
-      .set({
-        autoTopUpFailedAt: new Date(),
-        autoTopUpDeclineCode: declineCode,
-        updatedAt: new Date(),
-      })
+      .set(paused)
       .where(
         and(
           eq(teamBillingSettings.teamId, teamId),
@@ -356,11 +358,7 @@ export function createBillingMethods(
       // timestamp in place and the next debit would charge again (#1334).
       await db
         .update(teamBillingSettings)
-        .set({
-          autoTopUpFailedAt: new Date(),
-          autoTopUpDeclineCode: declineCode,
-          updatedAt: new Date(),
-        })
+        .set(paused)
         .where(eq(teamBillingSettings.teamId, teamId));
       return;
     }
@@ -368,14 +366,6 @@ export function createBillingMethods(
     await emitTeamFunds({ amountMicros: ZERO_MICROS });
 
     try {
-      // Dynamic, matching the `@/lib/billing/stripe` import below (#1253).
-      // The email service reaches `cloudflare:workers` bindings and the
-      // React Email renderer — neither belongs in a browser chunk. Note the
-      // boundary guard does NOT currently walk into this module (`@/lib/db`
-      // is server-only wholesale, so nothing client-side may import it), so
-      // the import shape is what keeps this true, not the test.
-      const { notifyAutoTopUpFailed } =
-        await import('@/lib/emails/notify-auto-top-up-failed');
       const { available } = await read.getAvailable();
       await notifyAutoTopUpFailed({
         db,

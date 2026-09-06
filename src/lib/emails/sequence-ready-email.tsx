@@ -10,7 +10,12 @@ import {
   Section,
   Text,
 } from '@react-email/components';
-import { EmailLayout, headingStyle, paragraphStyle } from './email-layout';
+import {
+  buttonStyle,
+  EmailLayout,
+  headingStyle,
+  paragraphStyle,
+} from './email-layout';
 
 export interface SequenceReadyEmailProps {
   appName: string;
@@ -26,21 +31,6 @@ export interface SequenceReadyEmailProps {
 const posterStyle: React.CSSProperties = {
   marginBottom: 24,
   borderRadius: 8,
-};
-
-const watchButtonStyle: React.CSSProperties = {
-  marginTop: 16,
-  marginBottom: 16,
-  boxSizing: 'border-box',
-  display: 'inline-block',
-  borderRadius: 6,
-  backgroundColor: '#fafafa',
-  padding: '12px 24px',
-  textAlign: 'center',
-  fontSize: 16,
-  fontWeight: 700,
-  color: '#262626',
-  textDecoration: 'none',
 };
 
 const creditsLinkStyle: React.CSSProperties = {
@@ -71,7 +61,7 @@ export const SequenceReadyEmail: React.FC<SequenceReadyEmailProps> = ({
         <Img src={posterUrl} width="536" alt="" style={posterStyle} />
       ) : null}
       {clipMeta ? <Text style={paragraphStyle}>{clipMeta}</Text> : null}
-      <Button href={watchUrl} style={watchButtonStyle}>
+      <Button href={watchUrl} style={buttonStyle}>
         Watch
       </Button>
       <Text style={paragraphStyle}>

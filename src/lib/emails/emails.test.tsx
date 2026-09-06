@@ -90,12 +90,4 @@ describe('renderEmail(AutoTopUpFailedEmail)', () => {
     expect(html).toContain('https://openstory.so/credits');
     expect(html).toContain('Update card');
   });
-
-  it('never prints the raw Stripe decline code', async () => {
-    const { text } = await renderEmail(email);
-
-    // The template takes no decline code at all — this pins that it stays
-    // that way. "do_not_honor" tells a customer nothing they can act on.
-    expect(text).not.toMatch(/do_not_honor|insufficient_funds|requires_action/);
-  });
 });

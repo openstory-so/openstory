@@ -1,13 +1,6 @@
 /**
- * Tell the customer their auto-reload was declined (#1499).
- *
- * Server-only, and reached through a dynamic `import()` from
- * `@/lib/db/scoped/billing` so the email service and its
- * `cloudflare:workers` bindings stay out of any browser chunk (#1253).
- *
- * The one-shot guarantee lives in the caller: `recordAutoTopUpFailure` only
- * calls this on the CAS transition `autoTopUpFailedAt: null → now`, so the
- * 2nd..20th skipped attempt send nothing.
+ * Tell the customer their auto-reload was declined (#1499). Once per
+ * decline — `recordAutoTopUpFailure` owns that guarantee.
  */
 
 import { type Microdollars, microsToDisplayUsd } from '@/lib/billing/money';
@@ -18,34 +11,25 @@ import { getLogger } from '@/lib/observability/logger';
 import { captureProductEvent } from '@/lib/observability/product-events';
 import { sendAutoTopUpFailedEmail } from '@/lib/services/email-service';
 import { SITE_CONFIG } from '@/shared/marketing/constants';
-import { and, asc, eq, inArray } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 
 const logger = getLogger(['openstory', 'emails', 'auto-top-up-failed']);
 
 /**
- * Billing contact = the team owner, falling back to an admin. Not the user
- * whose generation happened to trip the debit — they may not be the one
- * holding the card.
+ * Billing contact = the team owner, not the user whose generation happened
+ * to trip the debit — they may not be the one holding the card.
  */
 async function getBillingContactEmail(
   db: Database,
   teamId: string
 ): Promise<string | null> {
-  const rows = await db
-    .select({ email: user.email, role: teamMembers.role })
+  const [row] = await db
+    .select({ email: user.email })
     .from(teamMembers)
     .innerJoin(user, eq(teamMembers.userId, user.id))
-    .where(
-      and(
-        eq(teamMembers.teamId, teamId),
-        inArray(teamMembers.role, ['owner', 'admin'])
-      )
-    )
-    .orderBy(asc(teamMembers.joinedAt));
-
-  return (
-    rows.find((row) => row.role === 'owner')?.email ?? rows[0]?.email ?? null
-  );
+    .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.role, 'owner')))
+    .limit(1);
+  return row?.email ?? null;
 }
 
 export async function notifyAutoTopUpFailed(opts: {
