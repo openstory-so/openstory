@@ -18,6 +18,10 @@ const mockSubmit = vi.fn();
 const mockPoll = vi.fn();
 const mockSoften = vi.fn();
 const mockDeductWorkflowCredits = vi.fn();
+const mockResolveMotionVia = vi.fn(
+  async (): Promise<'fal' | 'google'> => 'fal'
+);
+const mockRecordMediaGenerationSpan = vi.fn();
 const emit = vi.fn(async () => {});
 
 vi.doMock('@/lib/motion/motion-generation', () => ({
@@ -31,6 +35,7 @@ vi.doMock('@/lib/motion/motion-generation', () => ({
     endpointId: 'fal/x',
     recordFalUsage: false,
   }),
+  resolveMotionVia: mockResolveMotionVia,
 }));
 vi.doMock('@/lib/ai/fal-pricing-live', () => ({
   getEffectiveFalPricing: async () => ({}),
@@ -57,7 +62,7 @@ vi.doMock('@/lib/compliance/provenance', () => ({
   recordProvenance: vi.fn(async () => {}),
 }));
 vi.doMock('@/lib/observability/ai-otel', () => ({
-  recordMediaGenerationSpan: () => {},
+  recordMediaGenerationSpan: mockRecordMediaGenerationSpan,
 }));
 vi.doMock('@/shared/realtime', () => ({
   getGenerationChannel: () => ({ emit }),
@@ -87,6 +92,13 @@ class Probe extends MotionWorkflow {
     scopedDb: WorkflowScopedDb
   ) {
     return this.runImpl(event, step, scopedDb);
+  }
+  fail(
+    event: Readonly<WorkflowEvent<MotionWorkflowInput>>,
+    scopedDb: WorkflowScopedDb,
+    error = 'Motion generation failed: boom'
+  ) {
+    return this.onFailure({ event, error, scopedDb });
   }
 }
 
@@ -226,6 +238,7 @@ beforeEach(() => {
   mockSubmit.mockImplementation(async () => job());
   mockPoll.mockResolvedValue({ status: 'completed', url: 'https://fal/a.mp4' });
   mockSoften.mockResolvedValue('the softened prompt');
+  mockResolveMotionVia.mockResolvedValue('fal');
 });
 
 describe('MotionWorkflow content-flag rescue (#1373)', () => {
@@ -437,6 +450,31 @@ describe('MotionWorkflow reference-only provenance', () => {
             frameVersionId: null,
           }),
         ],
+      })
+    );
+  });
+});
+
+describe('MotionWorkflow onFailure observation', () => {
+  it('records the resolved via, not a hardcoded fal', async () => {
+    mockResolveMotionVia.mockResolvedValueOnce('google');
+    const { scopedDb } = makeScopedDb();
+
+    await makeWorkflow().fail(
+      makeEvent({ model: 'gemini_omni_flash' }),
+      scopedDb
+    );
+
+    expect(mockResolveMotionVia).toHaveBeenCalledWith(
+      'gemini_omni_flash',
+      scopedDb.credentials
+    );
+    expect(mockRecordMediaGenerationSpan).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: 'gemini_omni_flash',
+        provider: 'google',
+        activity: 'video',
+        errorType: 'provider_error',
       })
     );
   });

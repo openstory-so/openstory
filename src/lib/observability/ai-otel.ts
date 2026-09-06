@@ -475,6 +475,15 @@ export type MediaActivity = 'video' | 'image' | 'audio';
  */
 export type MediaErrorType = 'content_filter' | 'provider_error';
 
+/**
+ * PostHog's OTLP mapper only classifies `gen_ai.operation.name=chat` as an
+ * `$ai_generation` event. Media semconv names (`video_generation` etc.) land
+ * as empty `$ai_trace` rows: no nested generation, `$ai_total_cost_usd`
+ * null, invisible on the Generations tab. The duration histogram below keeps
+ * the real activity so video latency is not mixed into chat.
+ */
+const POSTHOG_GENERATION_OPERATION = 'chat';
+
 export type MediaGenerationRecord = AIObservabilityMeta & {
   /** Model id as submitted to the provider. */
   model: string;
@@ -499,6 +508,10 @@ export type MediaGenerationRecord = AIObservabilityMeta & {
   costMicros?: Microdollars;
   /** Provider-reported billable units for the completed job. */
   unitsBilled?: number;
+  /** Provider-reported prompt tokens, when the via bills in tokens. */
+  inputTokens?: number;
+  /** Provider-reported completion tokens, when the via bills in tokens. */
+  outputTokens?: number;
   /**
    * True when a team's own provider key paid for this. `costMicros` is priced
    * the same either way, but only the `false` case is spend on us — without
@@ -569,6 +582,10 @@ function emitMediaGenerationSpan(record: MediaGenerationRecord): void {
     typeof record.outputUrl === 'string'
       ? [record.outputUrl]
       : record.outputUrl;
+  const costUsd =
+    record.costMicros !== undefined
+      ? microsToUsd(record.costMicros)
+      : undefined;
   const span = active.tracer.startSpan(
     record.observationName ?? `${operationName} ${record.model}`,
     {
@@ -576,10 +593,20 @@ function emitMediaGenerationSpan(record: MediaGenerationRecord): void {
       startTime: endTime - (durationMs ?? 0),
       attributes: {
         'gen_ai.system': record.provider,
-        'gen_ai.operation.name': operationName,
+        'gen_ai.operation.name': POSTHOG_GENERATION_OPERATION,
         'gen_ai.request.model': record.model,
-        ...(record.costMicros !== undefined && {
-          'gen_ai.usage.cost': microsToUsd(record.costMicros),
+        ...(costUsd !== undefined && {
+          'gen_ai.usage.cost': costUsd,
+          // PostHog's cost column reads these, not gen_ai.usage.cost, and
+          // cannot look up gemini_omni_flash in OpenRouter's price table.
+          $ai_total_cost_usd: costUsd,
+          $ai_output_cost_usd: costUsd,
+        }),
+        ...(record.inputTokens !== undefined && {
+          'gen_ai.usage.input_tokens': record.inputTokens,
+        }),
+        ...(record.outputTokens !== undefined && {
+          'gen_ai.usage.output_tokens': record.outputTokens,
         }),
         ...(record.unitsBilled !== undefined && {
           'tanstack.ai.usage.units_billed': record.unitsBilled,

@@ -18,6 +18,10 @@ const mockRecordProvenance = vi.fn();
 const mockSubmit = vi.fn();
 const mockPoll = vi.fn();
 const mockCost = vi.fn();
+const mockRecordMediaGenerationSpan = vi.fn();
+const mockResolveMotionVia = vi.fn(
+  async (): Promise<'fal' | 'google'> => 'fal'
+);
 
 vi.doMock('@/lib/image/image-generation', () => ({
   generateImageWithProvider: mockGenerateImageWithProvider,
@@ -45,6 +49,12 @@ vi.doMock('@/lib/studio/studio-video-generation', () => ({
   submitStudioVideoJob: mockSubmit,
   pollStudioVideoJob: mockPoll,
   studioVideoCostFromUsage: mockCost,
+}));
+vi.doMock('@/lib/observability/ai-otel', () => ({
+  recordMediaGenerationSpan: mockRecordMediaGenerationSpan,
+}));
+vi.doMock('@/lib/motion/motion-generation', () => ({
+  resolveMotionVia: mockResolveMotionVia,
 }));
 
 const { StudioGenerationWorkflow } =
@@ -240,6 +250,7 @@ describe('StudioGenerationWorkflow video', () => {
       'price-video-generation',
       'deduct-video-credits',
       'upload-video',
+      'record-video-observation',
       'record-provenance',
       'persist-result',
     ]);
@@ -253,6 +264,14 @@ describe('StudioGenerationWorkflow video', () => {
       outputs: [{ url: '/r2/videos/a.mp4', contentType: 'video/mp4' }],
       costMicros: 70_000,
     });
+    expect(mockRecordMediaGenerationSpan).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: 'fal',
+        activity: 'video',
+        observationName: 'studio-video',
+        costMicros: 70_000,
+      })
+    );
   });
 
   it('gives up after three content flags without billing', async () => {
@@ -290,5 +309,25 @@ describe('StudioGenerationWorkflow onFailure', () => {
     const { scopedDb, generatedAssets } = makeScopedDb();
     await makeWorkflow().fail(makeEvent(IMAGE), scopedDb);
     expect(generatedAssets.markFailed).toHaveBeenCalledWith('asset-1', 'boom');
+    // Image failures are recorded inside generateImageWithProvider.
+    expect(mockRecordMediaGenerationSpan).not.toHaveBeenCalled();
+  });
+
+  it('records a video failure span on the resolved via', async () => {
+    mockResolveMotionVia.mockResolvedValueOnce('google');
+    const { scopedDb, generatedAssets } = makeScopedDb();
+    await makeWorkflow().fail(
+      makeEvent({ ...VIDEO, videoModel: 'gemini_omni_flash' }),
+      scopedDb
+    );
+    expect(generatedAssets.markFailed).toHaveBeenCalledWith('asset-1', 'boom');
+    expect(mockRecordMediaGenerationSpan).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: 'gemini_omni_flash',
+        provider: 'google',
+        activity: 'video',
+        observationName: 'studio-video',
+      })
+    );
   });
 });

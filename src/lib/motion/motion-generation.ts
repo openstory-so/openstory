@@ -193,6 +193,33 @@ export async function canRenderReferenceOnly(
   });
 }
 
+/**
+ * Which via this model would submit to right now. Same claim order as
+ * `submitMotionJob` (native xAI → native Google → BytePlus → fal). Used by
+ * motion `onFailure` so a Google Omni failure is not recorded as `fal`.
+ */
+export async function resolveMotionVia(
+  modelKey: ImageToVideoModel,
+  scopedDb?: CredentialScopedDb
+): Promise<MediaVia> {
+  if (isNativeGrokVideoModel(modelKey)) {
+    const xaiKey = await resolveOptionalXaiKey(scopedDb);
+    if (xaiKey) return 'xai';
+  }
+  if (isNativeGeminiVideoModel(modelKey)) {
+    const googleKey = await resolveOptionalGoogleKey(scopedDb);
+    if (googleKey) return 'google';
+  }
+  if (isNativeBytePlusVideoModel(modelKey) && isBytePlusConfigured()) {
+    const falKey = await resolveOptionalFalKey(scopedDb);
+    return claimBytePlusVia({
+      native: true,
+      usingOwnFalKey: falKey?.source === 'team',
+    });
+  }
+  return 'fal';
+}
+
 function createNativeMotionAdapter(apiKey: string) {
   const env = getEnv();
   return createGrokVideo(NATIVE_GROK_VIDEO_MODEL, apiKey, {
@@ -326,29 +353,15 @@ export async function submitMotionJob(
   // `resolveKey('fal')` throws with no fal key, so an xAI-only (or
   // Google-only) deploy must not reach it. BytePlus is platform-only (no
   // resolveOptionalKey('byteplus')) and yields to a BYOK fal team.
-  const xaiKey = isNativeGrokVideoModel(modelKey)
-    ? await resolveOptionalXaiKey(options.scopedDb)
-    : undefined;
-  const googleKey = isNativeGeminiVideoModel(modelKey)
-    ? await resolveOptionalGoogleKey(options.scopedDb)
-    : undefined;
+  const via = await resolveMotionVia(modelKey, options.scopedDb);
+  const xaiKey =
+    via === 'xai' ? await resolveOptionalXaiKey(options.scopedDb) : undefined;
+  const googleKey =
+    via === 'google'
+      ? await resolveOptionalGoogleKey(options.scopedDb)
+      : undefined;
 
   const hasReferenceImages = (options.referenceImages?.length ?? 0) > 0;
-
-  let via: MediaVia;
-  if (xaiKey) {
-    via = 'xai';
-  } else if (googleKey) {
-    via = 'google';
-  } else if (isNativeBytePlusVideoModel(modelKey) && isBytePlusConfigured()) {
-    const falKey = await resolveOptionalFalKey(options.scopedDb);
-    via = claimBytePlusVia({
-      native: true,
-      usingOwnFalKey: falKey?.source === 'team',
-    });
-  } else {
-    via = 'fal';
-  }
 
   const endpoint = resolveMotionEndpoint(
     modelKey,

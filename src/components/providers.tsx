@@ -6,6 +6,7 @@ import { installChunkReload } from '@/shared/chunk-reload';
 import { configureLogging } from '@/shared/observability/logger';
 import { flushReactErrors } from '@/components/react-errors';
 import { PostHogProvider } from '@posthog/react';
+import posthog, { type BeforeSendFn } from 'posthog-js';
 import type { QueryClient } from '@tanstack/react-query';
 import { QueryClientProvider } from '@tanstack/react-query';
 import {
@@ -57,6 +58,26 @@ const TanStackDevtoolsLazy: FC =
       })
     : () => null;
 
+/**
+ * Stamp every `$exception` with the replay URL for the moment it happened
+ * (#1513), so the Slack alert can link straight into the recording instead of
+ * making someone hunt for the session. `withTimestamp` starts playback
+ * ~10s before the throw — enough to see what the user did to get there.
+ *
+ * Module-level so the identity is stable: `PostHogProvider` deep-compares its
+ * `options` on every render and calls `set_config` when they differ, and a
+ * fresh closure would differ every time.
+ */
+const stampReplayUrl: BeforeSendFn = (event) => {
+  if (event?.event === '$exception') {
+    event.properties.replay_url = posthog.get_session_replay_url({
+      withTimestamp: true,
+      timestampLookBack: 10,
+    });
+  }
+  return event;
+};
+
 type ProvidersProps = {
   children: React.ReactNode;
   queryClient: QueryClient;
@@ -95,6 +116,7 @@ const ObservabilityProvider: FC<{
         api_host: apiHost,
         defaults: '2025-05-24',
         capture_exceptions: true,
+        before_send: stampReplayUrl,
         loaded: flushReactErrors,
         debug: false,
         ...(user && {
