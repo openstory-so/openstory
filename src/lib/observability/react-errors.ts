@@ -12,6 +12,7 @@
  */
 
 import { errorCode } from '@/shared/errors';
+import { isReloadPending } from '@/shared/chunk-reload';
 import { getLogger } from '@/lib/observability/logger';
 import posthog from 'posthog-js';
 import type { ErrorInfo } from 'react';
@@ -27,6 +28,9 @@ const pending: Pending[] = [];
 export function captureRouteError(error: unknown, info: ErrorInfo): void {
   // A 404 from a stale link renders the not-found page; not an app error.
   if (errorCode(error) === 'NOT_FOUND') return;
+  // A stale-chunk reload is already under way (#1513): whatever the router
+  // threw in the meantime is the page shutting down, not something to fix.
+  if (isReloadPending()) return;
   const props = {
     component_stack: info.componentStack ?? null,
     // Chrome translate leaves these wrappers; lets the dashboard split

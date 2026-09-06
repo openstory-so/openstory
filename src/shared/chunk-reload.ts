@@ -15,6 +15,13 @@
  * browser-specific ("Failed to fetch dynamically imported module" /
  * "Importing a module script failed"), so a matcher can only ever go stale
  * and silently stop firing.
+ *
+ * The page keeps running for a beat after `location.reload()`, and
+ * `preventDefault()` makes the helper *resolve* the failed import with
+ * `undefined` instead of throwing. The router then reads `.component` off it,
+ * the route boundary catches that, and — before #1513 — reported it as a
+ * fresh TypeError from `lazyRouteComponent`. It is the death rattle of a page
+ * we are already leaving; `isReloadPending` lets the boundary tell.
  */
 
 import { getLogger } from '@/lib/observability/logger';
@@ -28,6 +35,13 @@ const KEY = 'os:chunk-reloaded-at';
 // remedy on this page?" — bounding a broken deploy to one wasted reload
 // instead of a loop. Anything longer than a page load would do.
 const RETRY_WINDOW_MS = 10_000;
+
+let reloadPending = false;
+
+/** True once this page has called `location.reload()` and is on its way out. */
+export function isReloadPending(): boolean {
+  return reloadPending;
+}
 
 export function installChunkReload(): void {
   if (typeof window === 'undefined') return;
@@ -43,6 +57,7 @@ export function installChunkReload(): void {
     }
     logger.warn('stale chunk after deploy, reloading', { err: event.payload });
     event.preventDefault(); // Suppress the throw; we're leaving the page.
+    reloadPending = true;
     location.reload();
   });
 }

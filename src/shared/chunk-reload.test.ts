@@ -8,6 +8,7 @@ type PreloadHandler = (event: {
 const store = new Map<string, string>();
 const reload = vi.fn();
 let handler: PreloadHandler | undefined;
+let isReloadPending: () => boolean;
 
 /** Dispatch what Vite's preload helper dispatches. */
 function firePreloadError() {
@@ -31,15 +32,19 @@ beforeEach(async () => {
   });
   vi.stubGlobal('location', { reload });
   vi.resetModules();
-  const { installChunkReload } = await import('./chunk-reload');
-  installChunkReload();
+  const mod = await import('./chunk-reload');
+  isReloadPending = mod.isReloadPending;
+  mod.installChunkReload();
 });
 
 describe('installChunkReload', () => {
   it('reloads on the first preload error and suppresses the throw', () => {
+    expect(isReloadPending()).toBe(false);
     const preventDefault = firePreloadError();
     expect(reload).toHaveBeenCalledTimes(1);
     expect(preventDefault).toHaveBeenCalled();
+    // The page runs on for a beat; the boundary uses this to stay quiet.
+    expect(isReloadPending()).toBe(true);
   });
 
   it('does not reload twice for the same page load', () => {
@@ -62,5 +67,6 @@ describe('installChunkReload', () => {
     const preventDefault = firePreloadError();
     expect(reload).not.toHaveBeenCalled();
     expect(preventDefault).not.toHaveBeenCalled();
+    expect(isReloadPending()).toBe(false);
   });
 });
