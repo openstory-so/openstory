@@ -142,7 +142,9 @@ type ReadBucket =
   /** Resolve a key inside the step that spends it (a replayed step gets a fresh isolate). */
   | 'CREDENTIAL'
   /** The team's balance at charge time — the whole point is that it moved. */
-  | 'BALANCE';
+  | 'BALANCE'
+  /** Free slots in the account-wide BytePlus ACR asset pool, at fan-out time. */
+  | 'POOL-CAPACITY';
 
 /**
  * Which hatch spellings a bucket may be reached through. This correspondence
@@ -174,6 +176,7 @@ const BUCKET_HATCH: Record<ReadBucket, readonly (Hatch | null)[]> = {
   // Strict: a key is not a row, and the spelling has to say so.
   CREDENTIAL: ['credentials'],
   BALANCE: ['liveRead'],
+  'POOL-CAPACITY': ['liveRead'],
 };
 
 type SanctionedRead = {
@@ -194,6 +197,13 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
       read: 'sequenceElements.listByIds',
       bucket: 'WAIT-GATE',
       why: "/element-vision writes description + visionStatus late, so the row must be live — but only for the trigger's elementIds, never a re-enumeration.",
+    },
+  ],
+  'motion-batch-workflow.ts': [
+    {
+      read: 'bytePlusAssets.getAdmission',
+      bucket: 'POOL-CAPACITY',
+      why: 'ACR asset slots are per BytePlus ACCOUNT and shared by every team (#1361), so occupancy at the trigger says nothing about occupancy at the fan-out — a frozen count would evict slots another team leased in between.',
     },
   ],
   'cast-records.ts': [

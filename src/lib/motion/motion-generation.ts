@@ -1,5 +1,6 @@
 import { getEnv } from '#env';
 import { toArkMediaUrl } from '@/lib/ai/byteplus-asset-ingest';
+import type { AssetPoolLedger } from '@/lib/ai/byteplus-asset-pool';
 import {
   arkAdapterConfig,
   claimBytePlusVia,
@@ -344,8 +345,22 @@ async function fallbackBytePlusPortraitFilterToFal(
  * Submit a motion generation job without polling.
  * Returns the job ID so the workflow can poll with `context.sleep()` between steps.
  */
+/**
+ * Submitting also LEASES pool slots, which estimating does not — so the
+ * ledger rides here rather than on `GenerateMotionOptions`, which
+ * `calculateMotionMetadata` shares and has nothing to lease.
+ */
+export type SubmitMotionOptions = GenerateMotionOptions & {
+  /**
+   * The BytePlus ACR slot ledger (`scopedDb.bytePlusAssets`, #1361). Only the
+   * byteplus via touches it: every still Seedance sees has to be leased as
+   * `asset://` from an account-wide pool of ~50 slots.
+   */
+  assetLedger: AssetPoolLedger;
+};
+
 export async function submitMotionJob(
-  options: GenerateMotionOptions
+  options: SubmitMotionOptions
 ): Promise<MotionJobSubmission> {
   const modelKey = options.model || DEFAULT_VIDEO_MODEL;
 
@@ -484,6 +499,7 @@ export async function submitMotionJob(
       const falKey = await resolveOptionalFalKey(options.scopedDb);
       const imageUrl = options.imageUrl
         ? await toArkMediaUrl(options.imageUrl, {
+            ledger: options.assetLedger,
             slot: 'frame',
             ...(falKey?.key && { falApiKey: falKey.key }),
           })
@@ -495,6 +511,7 @@ export async function submitMotionJob(
               // Cast/location/element sheets are the pool's long-lived
               // residents — evicting one costs every shot that binds it.
               referenceImageUrl: await toArkMediaUrl(ref.referenceImageUrl, {
+                ledger: options.assetLedger,
                 slot: 'library',
                 ...(falKey?.key && { falApiKey: falKey.key }),
               }),

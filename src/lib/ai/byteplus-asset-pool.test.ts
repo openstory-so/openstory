@@ -1,5 +1,6 @@
 /**
- * In-memory D1 tests for the ACR asset pool (#1361).
+ * In-memory D1 tests for the ACR asset pool (#1361), driven through the real
+ * `scopedDb.bytePlusAssets` ledger so the CAS SQL is covered too.
  *
  * The pool's whole job is deciding what to delete, so the cases that matter
  * are the ones where it must NOT: a slot another job is holding, and a slot
@@ -7,9 +8,9 @@
  */
 
 import { createClient, type Client } from '@libsql/client';
+import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/libsql';
 import { migrate } from 'drizzle-orm/libsql/migrator';
-import { eq } from 'drizzle-orm';
 import {
   afterAll,
   beforeAll,
@@ -22,27 +23,20 @@ import {
 import type { Database } from '@/lib/db/client';
 import { bytePlusAssets } from '@/lib/db/schema/byteplus-assets';
 import { relations } from '@/lib/db/schema/relations';
+import { createBytePlusAssetsMethods } from '@/lib/db/scoped/byteplus-assets';
 import { generateId } from '@/shared/id';
 import { hashAssetIdentity } from './byteplus-assets';
 import type { BytePlusOpenApiConfig } from './byteplus-openapi';
 
 vi.mock('#env', () => ({ getEnv: () => ({ BYTEPLUS_ASSET_SLOTS: '3' }) }));
-vi.mock('#db-client', () => ({
-  getDb: () => {
-    throw new Error('tests must pass their own db');
-  },
-}));
 vi.mock('@/lib/posthog-server', () => ({ getPostHogClient: () => undefined }));
 
-const {
-  BytePlusAssetPoolExhaustedError,
-  bytePlusPoolAdmission,
-  ingestPooledAsset,
-  releasePooledAssets,
-} = await import('./byteplus-asset-pool');
+const { arkAssetIdentities, bytePlusAssetSlots, ingestPooledAsset } =
+  await import('./byteplus-asset-pool');
 
 let client: Client;
 let db: Database;
+let ledger: ReturnType<typeof createBytePlusAssetsMethods>;
 
 /** Ark stub: CreateAsset mints an id, GetAsset reports it Active. */
 function arkStub(): { config: BytePlusOpenApiConfig; deleted: string[] } {
@@ -101,6 +95,22 @@ async function seedSlot(input: {
   });
 }
 
+function ingest(config: BytePlusOpenApiConfig, identity: string) {
+  return ingestPooledAsset(config, ledger, {
+    identity,
+    publicUrl: 'https://fal/scratch.png',
+    assetType: 'Image',
+    slot: 'frame',
+  });
+}
+
+/** What the batch workflow spells inline at its `liveRead` call site. */
+function admissionFor(storedUrls: string[]) {
+  return arkAssetIdentities(storedUrls).then((keys) =>
+    ledger.getAdmission(keys, bytePlusAssetSlots())
+  );
+}
+
 const PAST = new Date(0);
 const FUTURE = new Date(Date.now() + 60 * 60 * 1000);
 const ago = (minutes: number) => new Date(Date.now() - minutes * 60_000);
@@ -109,6 +119,7 @@ beforeAll(async () => {
   client = createClient({ url: ':memory:' });
   db = drizzle({ client, relations });
   await migrate(db, { migrationsFolder: './drizzle/migrations' });
+  ledger = createBytePlusAssetsMethods(db);
 });
 
 afterAll(() => {
@@ -130,18 +141,10 @@ describe('ingestPooledAsset', () => {
       leaseExpiresAt: PAST,
     });
 
-    const uri = await ingestPooledAsset(
-      config,
-      {
-        identity: 'https://cdn/still-a.png',
-        publicUrl: 'https://fal/scratch.png',
-        assetType: 'Image',
-        slot: 'frame',
-      },
-      db
+    expect(await ingest(config, 'https://cdn/still-a.png')).toBe(
+      'asset://ark-existing'
     );
 
-    expect(uri).toBe('asset://ark-existing');
     const [row] = await db.select().from(bytePlusAssets);
     // The reuse re-pins the slot: a sibling batch must not evict it now.
     expect(row?.leaseExpiresAt.getTime()).toBeGreaterThan(Date.now());
@@ -149,38 +152,11 @@ describe('ingestPooledAsset', () => {
 
   it('evicts the oldest unleased frame when the pool is full', async () => {
     const { config, deleted } = arkStub();
-    await seedSlot({
-      url: 'a',
-      assetId: 'ark-a',
-      slot: 'frame',
-      lastUsedAt: ago(5),
-      leaseExpiresAt: PAST,
-    });
-    await seedSlot({
-      url: 'b',
-      assetId: 'ark-b',
-      slot: 'frame',
-      lastUsedAt: ago(90),
-      leaseExpiresAt: PAST,
-    });
-    await seedSlot({
-      url: 'c',
-      assetId: 'ark-c',
-      slot: 'frame',
-      lastUsedAt: ago(30),
-      leaseExpiresAt: PAST,
-    });
+    await seedSlot({ url: 'a', assetId: 'ark-a', slot: 'frame', lastUsedAt: ago(5), leaseExpiresAt: PAST }); // prettier-ignore
+    await seedSlot({ url: 'b', assetId: 'ark-b', slot: 'frame', lastUsedAt: ago(90), leaseExpiresAt: PAST }); // prettier-ignore
+    await seedSlot({ url: 'c', assetId: 'ark-c', slot: 'frame', lastUsedAt: ago(30), leaseExpiresAt: PAST }); // prettier-ignore
 
-    await ingestPooledAsset(
-      config,
-      {
-        identity: 'https://cdn/new.png',
-        publicUrl: 'https://fal/new.png',
-        assetType: 'Image',
-        slot: 'frame',
-      },
-      db
-    );
+    await ingest(config, 'https://cdn/new.png');
 
     expect(deleted).toEqual(['ark-b']);
     const rows = await db.select().from(bytePlusAssets);
@@ -194,78 +170,24 @@ describe('ingestPooledAsset', () => {
   it('evicts a start frame before an older library sheet', async () => {
     const { config, deleted } = arkStub();
     // The sheet is by far the least recently used — LRU alone would take it.
-    await seedSlot({
-      url: 'sheet',
-      assetId: 'ark-sheet',
-      slot: 'library',
-      lastUsedAt: ago(600),
-      leaseExpiresAt: PAST,
-    });
-    await seedSlot({
-      url: 'f1',
-      assetId: 'ark-f1',
-      slot: 'frame',
-      lastUsedAt: ago(20),
-      leaseExpiresAt: PAST,
-    });
-    await seedSlot({
-      url: 'f2',
-      assetId: 'ark-f2',
-      slot: 'frame',
-      lastUsedAt: ago(10),
-      leaseExpiresAt: PAST,
-    });
+    await seedSlot({ url: 'sheet', assetId: 'ark-sheet', slot: 'library', lastUsedAt: ago(600), leaseExpiresAt: PAST }); // prettier-ignore
+    await seedSlot({ url: 'f1', assetId: 'ark-f1', slot: 'frame', lastUsedAt: ago(20), leaseExpiresAt: PAST }); // prettier-ignore
+    await seedSlot({ url: 'f2', assetId: 'ark-f2', slot: 'frame', lastUsedAt: ago(10), leaseExpiresAt: PAST }); // prettier-ignore
 
-    await ingestPooledAsset(
-      config,
-      {
-        identity: 'https://cdn/new.png',
-        publicUrl: 'https://fal/new.png',
-        assetType: 'Image',
-        slot: 'frame',
-      },
-      db
-    );
+    await ingest(config, 'https://cdn/new.png');
 
     expect(deleted).toEqual(['ark-f1']);
   });
 
   it('refuses to evict a leased slot and reports the pool exhausted', async () => {
     const { config, deleted } = arkStub();
-    await seedSlot({
-      url: 'a',
-      assetId: 'ark-a',
-      slot: 'frame',
-      lastUsedAt: ago(90),
-      leaseExpiresAt: FUTURE,
-    });
-    await seedSlot({
-      url: 'b',
-      assetId: 'ark-b',
-      slot: 'frame',
-      lastUsedAt: ago(80),
-      leaseExpiresAt: FUTURE,
-    });
-    await seedSlot({
-      url: 'c',
-      assetId: 'ark-c',
-      slot: 'library',
-      lastUsedAt: ago(70),
-      leaseExpiresAt: FUTURE,
-    });
+    await seedSlot({ url: 'a', assetId: 'ark-a', slot: 'frame', lastUsedAt: ago(90), leaseExpiresAt: FUTURE }); // prettier-ignore
+    await seedSlot({ url: 'b', assetId: 'ark-b', slot: 'frame', lastUsedAt: ago(80), leaseExpiresAt: FUTURE }); // prettier-ignore
+    await seedSlot({ url: 'c', assetId: 'ark-c', slot: 'library', lastUsedAt: ago(70), leaseExpiresAt: FUTURE }); // prettier-ignore
 
-    await expect(
-      ingestPooledAsset(
-        config,
-        {
-          identity: 'https://cdn/new.png',
-          publicUrl: 'https://fal/new.png',
-          assetType: 'Image',
-          slot: 'frame',
-        },
-        db
-      )
-    ).rejects.toBeInstanceOf(BytePlusAssetPoolExhaustedError);
+    await expect(ingest(config, 'https://cdn/new.png')).rejects.toThrow(
+      /every slot is leased/
+    );
     expect(deleted).toEqual([]);
     expect(await db.select().from(bytePlusAssets)).toHaveLength(3);
   });
@@ -273,15 +195,9 @@ describe('ingestPooledAsset', () => {
 
 describe('releasePooledAssets', () => {
   it('unpins the slot without deleting it', async () => {
-    await seedSlot({
-      url: 'https://cdn/a.png',
-      assetId: 'ark-a',
-      slot: 'frame',
-      lastUsedAt: ago(1),
-      leaseExpiresAt: FUTURE,
-    });
+    await seedSlot({ url: 'https://cdn/a.png', assetId: 'ark-a', slot: 'frame', lastUsedAt: ago(1), leaseExpiresAt: FUTURE }); // prettier-ignore
 
-    await releasePooledAssets(['https://cdn/a.png'], db);
+    await ledger.releaseLeases(await arkAssetIdentities(['https://cdn/a.png']));
 
     const [row] = await db
       .select()
@@ -292,33 +208,16 @@ describe('releasePooledAssets', () => {
 });
 
 describe('bytePlusPoolAdmission', () => {
-  it('counts resident stills as free, not as work', async () => {
-    await seedSlot({
-      url: 'a',
-      assetId: 'ark-a',
-      slot: 'frame',
-      lastUsedAt: ago(1),
-      leaseExpiresAt: FUTURE,
-    });
-    await seedSlot({
-      url: 'b',
-      assetId: 'ark-b',
-      slot: 'frame',
-      lastUsedAt: ago(1),
-      leaseExpiresAt: FUTURE,
-    });
-    await seedSlot({
-      url: 'c',
-      assetId: 'ark-c',
-      slot: 'frame',
-      lastUsedAt: ago(1),
-      leaseExpiresAt: PAST,
-    });
+  beforeEach(async () => {
+    await seedSlot({ url: 'a', assetId: 'ark-a', slot: 'frame', lastUsedAt: ago(1), leaseExpiresAt: FUTURE }); // prettier-ignore
+    await seedSlot({ url: 'b', assetId: 'ark-b', slot: 'frame', lastUsedAt: ago(1), leaseExpiresAt: FUTURE }); // prettier-ignore
+    await seedSlot({ url: 'c', assetId: 'ark-c', slot: 'frame', lastUsedAt: ago(1), leaseExpiresAt: PAST }); // prettier-ignore
+  });
 
+  it('counts resident stills as reuse, not as work', async () => {
     // Two of the three are already ours; only 'new' needs a slot, and 'c' is
     // the one unleased row we could take.
-    const admission = await bytePlusPoolAdmission(['a', 'b', 'new'], db);
-    expect(admission).toMatchObject({
+    expect(await admissionFor(['a', 'b', 'new'])).toMatchObject({
       needed: 1,
       free: 0,
       evictable: 1,
@@ -327,30 +226,11 @@ describe('bytePlusPoolAdmission', () => {
   });
 
   it('does not fit when the batch needs more than free + evictable', async () => {
-    await seedSlot({
-      url: 'a',
-      assetId: 'ark-a',
-      slot: 'frame',
-      lastUsedAt: ago(1),
-      leaseExpiresAt: FUTURE,
+    expect(await admissionFor(['x', 'y', 'z'])).toMatchObject({
+      needed: 3,
+      free: 0,
+      evictable: 1,
+      fits: false,
     });
-    await seedSlot({
-      url: 'b',
-      assetId: 'ark-b',
-      slot: 'frame',
-      lastUsedAt: ago(1),
-      leaseExpiresAt: FUTURE,
-    });
-    await seedSlot({
-      url: 'c',
-      assetId: 'ark-c',
-      slot: 'frame',
-      lastUsedAt: ago(1),
-      leaseExpiresAt: PAST,
-    });
-
-    const admission = await bytePlusPoolAdmission(['x', 'y', 'z'], db);
-    expect(admission.fits).toBe(false);
-    expect(admission).toMatchObject({ needed: 3, free: 0, evictable: 1 });
   });
 });

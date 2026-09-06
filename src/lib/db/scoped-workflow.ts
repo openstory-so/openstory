@@ -123,6 +123,15 @@ type WorkflowClaims = {
 type WorkflowLiveReads = Pick<ScopedDb, 'teamId' | 'userId'> & {
   /** Whether the team owns a usable key — the BYOK half of a charge gate. */
   apiKeys: Pick<ScopedDb['apiKeys'], 'hasUsableKey'>;
+  /**
+   * Free/evictable slots in the account-wide BytePlus ACR pool (#1361),
+   * before a motion batch fans out. Live by definition: the pool is shared by
+   * every team, so occupancy at the trigger says nothing about occupancy when
+   * the run reaches the fan-out — a frozen count would evict slots another
+   * team leased minutes later. Reserving a slot is `scopedDb.bytePlusAssets
+   * .claimSlot`, a write, and needs no hatch.
+   */
+  bytePlusAssets: Pick<ScopedDb['bytePlusAssets'], 'getAdmission'>;
   /** Balance at charge time (and the top-up it triggers) — the point is that it moved. */
   billing: Pick<
     ScopedDb['billing'],

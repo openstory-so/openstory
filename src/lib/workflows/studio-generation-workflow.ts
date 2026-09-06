@@ -213,6 +213,7 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
       const submitOutcome = await step.do(`submit-video${tag}`, async () => {
         try {
           const job = await submitStudioVideoJob({
+            assetLedger: scopedDb.bytePlusAssets,
             prompt: input.prompt,
             model: videoModel,
             duration: input.duration,

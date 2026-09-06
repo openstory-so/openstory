@@ -9,6 +9,7 @@ import {
   toArkFetchableUrl,
   toArkMediaUrl,
 } from '@/lib/ai/byteplus-asset-ingest';
+import type { AssetPoolLedger } from '@/lib/ai/byteplus-asset-pool';
 import {
   arkAdapterConfig,
   claimBytePlusVia,
@@ -82,7 +83,7 @@ import {
   isGeminiFilesVideoUrl,
 } from '@/lib/motion/video-storage';
 
-export type StudioVideoJobOptions = {
+type StudioVideoJobOptions = {
   scopedDb?: CredentialScopedDb;
   prompt: string;
   model: ImageToVideoModel;
@@ -300,11 +301,13 @@ async function fallbackStudioPortraitFilterToFal(
 async function urlPart(
   url: string,
   role: 'start_frame' | 'end_frame' | 'reference' | undefined,
+  ledger: AssetPoolLedger,
   falApiKey?: string
 ) {
   // Start frame, end frame, and reference stills all go through the
   // virtual library. A public URL of a photorealistic face 400s.
   const value = await toArkMediaUrl(url, {
+    ledger,
     slot: role === 'reference' ? 'library' : 'frame',
     ...(falApiKey && { falApiKey }),
   });
@@ -316,7 +319,7 @@ async function urlPart(
 }
 
 async function buildStudioBytePlusPrompt(
-  options: StudioVideoJobOptions,
+  options: SubmitStudioVideoOptions,
   mode: StudioVideoMode,
   promptText: string
 ) {
@@ -326,7 +329,7 @@ async function buildStudioBytePlusPrompt(
   if (mode === 'reference') {
     const images = await Promise.all(
       (options.referenceImages ?? []).map((url) =>
-        urlPart(url, 'reference', falKey?.key)
+        urlPart(url, 'reference', options.assetLedger, falKey?.key)
       )
     );
     const videos = await Promise.all(
@@ -360,16 +363,34 @@ async function buildStudioBytePlusPrompt(
     throw new Error('Studio image-to-video needs a start frame');
   }
   const frames = [
-    await urlPart(options.startImageUrl, 'start_frame', falKey?.key),
+    await urlPart(
+      options.startImageUrl,
+      'start_frame',
+      options.assetLedger,
+      falKey?.key
+    ),
   ];
   if (options.endImageUrl) {
-    frames.push(await urlPart(options.endImageUrl, 'end_frame', falKey?.key));
+    frames.push(
+      await urlPart(
+        options.endImageUrl,
+        'end_frame',
+        options.assetLedger,
+        falKey?.key
+      )
+    );
   }
   return [{ type: 'text' as const, content: promptText }, ...frames];
 }
 
+/** Submitting leases ACR slots (#1361); building the request does not. */
+export type SubmitStudioVideoOptions = StudioVideoJobOptions & {
+  /** `scopedDb.bytePlusAssets` — see `SubmitMotionOptions.assetLedger`. */
+  assetLedger: AssetPoolLedger;
+};
+
 export async function submitStudioVideoJob(
-  options: StudioVideoJobOptions
+  options: SubmitStudioVideoOptions
 ): Promise<StudioVideoJobSubmission> {
   const modelKey = options.model;
   const mode = options.mode ?? 'text';

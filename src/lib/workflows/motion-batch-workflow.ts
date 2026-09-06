@@ -21,7 +21,10 @@
  *     rather than a silently-skipped child), `Promise.allSettled` on await
  *     so a single bad shot doesn't kill the rest of the batch. */
 
-import { bytePlusPoolAdmission } from '@/lib/ai/byteplus-asset-pool';
+import {
+  arkAssetIdentities,
+  bytePlusAssetSlots,
+} from '@/lib/ai/byteplus-asset-pool';
 import { reportBytePlusAssetPool } from '@/lib/ai/byteplus-observability';
 import { isBytePlusAssetsConfigured } from '@/lib/ai/byteplus-config';
 import { isNativeBytePlusVideoModel } from '@/lib/ai/models';
@@ -107,7 +110,7 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
     // already reads live in this same run) and occupancy is the one thing that
     // cannot be snapshotted at the trigger — a run that froze it would evict
     // slots another team leased minutes later.
-    await this.awaitBytePlusPoolAdmission(input, step);
+    await this.awaitBytePlusPoolAdmission(input, step, scopedDb);
 
     // Step 1: Fan out motion workflows + optional music workflow in parallel.
     // Multi-model video (#545): one MOTION_WORKFLOW child per (shot, model)
@@ -295,7 +298,8 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
    */
   private async awaitBytePlusPoolAdmission(
     input: BatchMotionMusicWorkflowInput,
-    step: WorkflowStep
+    step: WorkflowStep,
+    scopedDb: WorkflowScopedDb
   ): Promise<void> {
     const models = input.videoModels ?? input.shots.map((shot) => shot.model);
     if (
@@ -313,7 +317,11 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
     for (let attempt = 0; attempt < POOL_ADMISSION_ATTEMPTS; attempt++) {
       const admission = await step.do(
         `byteplus-pool-admission-${attempt}`,
-        async () => bytePlusPoolAdmission(stills)
+        async () =>
+          scopedDb.liveRead.bytePlusAssets.getAdmission(
+            await arkAssetIdentities(stills),
+            bytePlusAssetSlots()
+          )
       );
       if (admission.fits) return;
       reportBytePlusAssetPool({ outcome: 'deferred' });

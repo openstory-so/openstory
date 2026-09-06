@@ -24,7 +24,7 @@ import {
   flaggedInputs,
   isContentRejectionError,
 } from '@/lib/ai/content-rejection';
-import { releasePooledAssets } from '@/lib/ai/byteplus-asset-pool';
+import { arkAssetIdentities } from '@/lib/ai/byteplus-asset-pool';
 import { extractFalErrorMessage } from '@/lib/ai/fal-error';
 import { computeVideoManifestInputHash } from '@/lib/ai/input-hash';
 import { DEFAULT_VIDEO_MODEL, IMAGE_TO_VIDEO_MODELS } from '@/lib/ai/models';
@@ -654,6 +654,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
             // Cast/element reference images (#873) — only Kling v3 Pro emits them.
             referenceImages: input.referenceImages,
             scopedDb: scopedDb.credentials,
+            assetLedger: scopedDb.bytePlusAssets,
           });
           return { ok: true as const, job };
         } catch (error) {
@@ -905,10 +906,14 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
     // for.
     if (job.via === 'byteplus') {
       await step.do('release-byteplus-asset-leases', async () => {
-        await releasePooledAssets([
-          ...(input.imageUrl ? [input.imageUrl] : []),
-          ...(input.referenceImages ?? []).map((ref) => ref.referenceImageUrl),
-        ]);
+        await scopedDb.bytePlusAssets.releaseLeases(
+          await arkAssetIdentities([
+            ...(input.imageUrl ? [input.imageUrl] : []),
+            ...(input.referenceImages ?? []).map(
+              (ref) => ref.referenceImageUrl
+            ),
+          ])
+        );
       });
     }
 

@@ -21,7 +21,7 @@ import {
   ensureExternallyFetchableUrl,
   toDataOrCdnUrl,
 } from '@/lib/storage/external-url';
-import { ingestPooledAsset } from './byteplus-asset-pool';
+import { ingestPooledAsset, type AssetPoolLedger } from './byteplus-asset-pool';
 import type { BytePlusAssetKind } from './byteplus-assets';
 import { bytePlusOpenApiConfig } from './byteplus-config';
 
@@ -37,10 +37,11 @@ function isHttpUrl(url: string): boolean {
  * bound by every shot that matched it.
  */
 export type ArkMediaOptions = {
+  /** `scopedDb.bytePlusAssets` — the slot ledger this ingest leases from. */
+  ledger: AssetPoolLedger;
   slot: BytePlusAssetSlot;
   kind?: BytePlusAssetKind;
   falApiKey?: string;
-  sleep?: (ms: number) => Promise<void>;
 };
 
 async function resolveBytePlusMediaUrl(
@@ -61,13 +62,13 @@ async function resolveBytePlusMediaUrl(
         secretKey: config.secretKey,
         host: config.host,
       },
+      options.ledger,
       {
         identity: identityUrl,
         publicUrl,
         assetType: kind,
         slot: options.slot,
         groupId: config.groupId,
-        ...(options.sleep && { sleep: options.sleep }),
       }
     );
   } catch (error) {

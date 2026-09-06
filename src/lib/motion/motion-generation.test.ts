@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TEST_FAL_PRICING } from '@/lib/ai/__tests__/fal-pricing-fixture';
+import { unledgeredAssetPool } from '@/lib/ai/byteplus-asset-pool';
 import { micros } from '@/lib/billing/money';
 import {
   mockFalVideo,
@@ -92,6 +93,7 @@ describe('Motion Service', () => {
       });
 
       const result = await submitMotionJob({
+        assetLedger: unledgeredAssetPool,
         imageUrl: 'https://example.com/image.jpg',
         prompt: 'A person walking',
         model: 'kling_v3_pro',
@@ -125,6 +127,7 @@ describe('Motion Service', () => {
       });
 
       const result = await submitMotionJob({
+        assetLedger: unledgeredAssetPool,
         imageUrl: 'https://example.com/image.jpg',
         prompt: 'Dynamic action sequence',
         model: 'seedance_v2_5',
@@ -150,6 +153,7 @@ describe('Motion Service', () => {
 
       await expect(
         submitMotionJob({
+          assetLedger: unledgeredAssetPool,
           imageUrl: 'https://example.com/image.jpg',
           prompt: 'Test prompt',
           model: 'kling_v3_pro',
@@ -164,6 +168,7 @@ describe('Motion Service', () => {
       });
 
       const result = await submitMotionJob({
+        assetLedger: unledgeredAssetPool,
         imageUrl: 'https://example.com/image.jpg',
         prompt: 'Smooth camera movement',
         model: 'veo3_1',
@@ -188,6 +193,7 @@ describe('Motion Service', () => {
       mockGenerateVideo.mockResolvedValue({ jobId: 'ark-job-id' });
 
       const result = await submitMotionJob({
+        assetLedger: unledgeredAssetPool,
         imageUrl: 'https://example.com/image.jpg',
         prompt: 'Dynamic action sequence',
         model: 'seedance_v2_5',
@@ -204,6 +210,7 @@ describe('Motion Service', () => {
       mockGenerateVideo.mockResolvedValue({ jobId: 'ark-assets' });
 
       await submitMotionJob({
+        assetLedger: unledgeredAssetPool,
         imageUrl: 'https://example.com/still.jpg',
         prompt: 'SCARLETT waves the LOGO',
         model: 'seedance_v2_5',
@@ -262,6 +269,7 @@ describe('Motion Service', () => {
         .mockResolvedValueOnce({ jobId: 'fal-after-ark' });
 
       const result = await submitMotionJob({
+        assetLedger: unledgeredAssetPool,
         imageUrl: 'https://example.com/image.jpg',
         prompt: 'Dynamic action sequence',
         model: 'seedance_v2_5',
@@ -284,6 +292,7 @@ describe('Motion Service', () => {
 
       await expect(
         submitMotionJob({
+          assetLedger: unledgeredAssetPool,
           imageUrl: 'https://example.com/image.jpg',
           prompt: 'Dynamic action sequence',
           model: 'seedance_v2_5',
@@ -304,6 +313,7 @@ describe('Motion Service', () => {
 
       await expect(
         submitMotionJob({
+          assetLedger: unledgeredAssetPool,
           imageUrl: 'https://example.com/image.jpg',
           prompt: 'Dynamic action sequence',
           model: 'seedance_v2_5',
@@ -320,6 +330,7 @@ describe('Motion Service', () => {
       });
 
       const result = await submitMotionJob({
+        assetLedger: unledgeredAssetPool,
         imageUrl: 'https://example.com/image.jpg',
         prompt: 'A person walking',
         model: 'kling_v3_pro',
@@ -336,6 +347,7 @@ describe('Motion Service', () => {
       });
 
       const result = await submitMotionJob({
+        assetLedger: unledgeredAssetPool,
         imageUrl: 'https://example.com/still.jpg',
         prompt: 'SCARLETT waves',
         model: 'minimax_h3_max',
@@ -364,6 +376,7 @@ describe('Motion Service', () => {
       });
 
       const result = await submitMotionJob({
+        assetLedger: unledgeredAssetPool,
         imageUrl: 'https://example.com/still.jpg',
         prompt: 'A person walking',
         model: 'minimax_h3_max',
@@ -486,6 +499,7 @@ describe('Motion Service', () => {
       });
 
       const result = await submitMotionJob({
+        assetLedger: unledgeredAssetPool,
         imageUrl: 'https://example.com/image.jpg',
         prompt: 'A person walking',
         model: 'grok_imagine_video_1_5',
@@ -504,6 +518,7 @@ describe('Motion Service', () => {
       });
 
       const result = await submitMotionJob({
+        assetLedger: unledgeredAssetPool,
         imageUrl: 'https://example.com/image.jpg',
         prompt: 'A person walking',
         model: 'grok_imagine_video_1_5',
@@ -522,6 +537,7 @@ describe('Motion Service', () => {
       });
 
       await submitMotionJob({
+        assetLedger: unledgeredAssetPool,
         imageUrl: 'https://example.com/image.jpg',
         prompt: 'A person walking',
         model: 'grok_imagine_video_1_5',
@@ -550,6 +566,7 @@ describe('Motion Service', () => {
       });
 
       await submitMotionJob({
+        assetLedger: unledgeredAssetPool,
         imageUrl: 'https://example.com/still.jpg',
         prompt: 'SCARLETT lifts the CORAL_LIPSTICK',
         model: 'grok_imagine_video_1_5',
@@ -615,6 +632,7 @@ describe('Motion Service', () => {
       });
 
       const result = await submitMotionJob({
+        assetLedger: unledgeredAssetPool,
         imageUrl: 'https://example.com/image.jpg',
         prompt: 'A person walking',
         model: 'gemini_omni_flash',
@@ -633,6 +651,7 @@ describe('Motion Service', () => {
       });
 
       const result = await submitMotionJob({
+        assetLedger: unledgeredAssetPool,
         imageUrl: 'https://example.com/image.jpg',
         prompt: 'A person walking',
         model: 'gemini_omni_flash',
@@ -651,6 +670,7 @@ describe('Motion Service', () => {
       });
 
       await submitMotionJob({
+        assetLedger: unledgeredAssetPool,
         imageUrl: 'https://example.com/image.jpg',
         prompt: 'A person walking',
         model: 'gemini_omni_flash',
@@ -689,6 +709,7 @@ describe('Motion Service', () => {
       });
 
       await submitMotionJob({
+        assetLedger: unledgeredAssetPool,
         imageUrl: 'https://example.com/still.jpg',
         prompt: 'SCARLETT lifts the CORAL_LIPSTICK',
         model: 'gemini_omni_flash',
