@@ -1,18 +1,7 @@
 /**
- * Cloudflare Workflows port of `characterSheetWorkflow`.
- *
- * Mirrors the QStash version (`src/lib/workflows/character-sheet-workflow.ts`)
- * step for step — same step names, same control flow, same side effects. The
- * only differences are:
- *
- *   - Extends `OpenStoryWorkflowEntrypoint` instead of being built by
- *     `createScopedWorkflow`. Failure parity comes from the base class
- *     (see `base-workflow.ts`).
- *   - Uses `step.do` instead of `context.run`.
- *   - Reads the workflow run id from `event.instanceId` instead of
- *     `context.workflowRunId`.
- *   - Calls the snapshot DTO computers directly instead of going through
- *     the `context.snapshot.*` extension. */
+ * The `characterSheetWorkflow` durable workflow.
+
+ */
 
 import {
   CONTENT_REJECTION_EVENT,
@@ -196,8 +185,8 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
     const input = event.payload;
     const workflowRunId = event.instanceId;
 
-    // Validate snapshot hash inside the workflow body. Matches QStash parity:
-    // tampered payloads must halt the run from inside a step, not silently.
+    // Validate the snapshot hash inside the workflow body: a tampered
+    // payload must halt the run from inside a step, not silently.
     await step.do('validate-snapshot', async () => {
       if (input.snapshotInputHash) {
         const expected = input.snapshotInputHash;

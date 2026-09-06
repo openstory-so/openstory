@@ -8,7 +8,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { StyleLibraryView } from '@/components/style-library/style-library-view';
-import type { Style } from '@/types/database';
+import type { Style } from '@/lib/db/schema';
 import type { FC, ReactNode } from 'react';
 import { useState } from 'react';
 

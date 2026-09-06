@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { CatalogModel } from './catalog';
+import type { CatalogModel } from '@/shared/models/catalog';
 import {
   compareVersionsDesc,
   groupModelsIntoFamilies,

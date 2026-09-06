@@ -19,38 +19,55 @@
  * the origin they reached us on. Templated hrefs use RFC 6570 (`{id}`, `{?wait}`).
  */
 
+import { z } from 'zod';
+
 export const API_V1_BASE = '/api/v1';
 export const STYLES_PATH = `${API_V1_BASE}/styles`;
 
-type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+/**
+ * An extended HAL link object — one callable affordance.
+ *
+ * Zod rather than a bare type so `openapi.ts` publishes exactly this shape;
+ * `.meta({ id })` names the OpenAPI component the response documents $ref.
+ */
+const halLinkSchema = z
+  .object({
+    /** Server-relative URL, possibly an RFC 6570 template (see `templated`). */
+    href: z.string(),
+    /** HTTP verb. Omitted means GET, per HAL convention. */
+    method: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']).optional(),
+    /** Human/agent-readable label for the affordance. */
+    title: z.string().optional(),
+    /** True when `href` is an RFC 6570 URI template (e.g. contains `{id}`). */
+    templated: z.boolean().optional(),
+    /** Request body media type for write affordances (e.g. `application/json`). */
+    contentType: z.string().optional(),
+    /** Example request bodies (writes) or example values, shown inline. */
+    examples: z.array(z.unknown()).optional(),
+    /**
+     * Declares this affordance needs step-up authentication beyond the API key.
+     * Advertised so an agent can prepare rather than discover it via a 403. Not
+     * enforced by any current endpoint.
+     */
+    stepUp: z.boolean().optional(),
+    /**
+     * Declares this affordance needs an `Idempotency-Key` request header.
+     * Advertised up front rather than surfaced via a 4xx. Not enforced by any
+     * current endpoint.
+     */
+    idempotencyRequired: z.boolean().optional(),
+  })
+  .describe(
+    'One callable affordance. Absent `method` means GET, per HAL convention.'
+  )
+  .meta({ id: 'HalLink' });
 
-/** An extended HAL link object — one callable affordance. */
-export type HalLink = {
-  /** Server-relative URL, possibly an RFC 6570 template (see `templated`). */
-  href: string;
-  /** HTTP verb. Omitted means GET, per HAL convention. */
-  method?: HttpMethod;
-  /** Human/agent-readable label for the affordance. */
-  title?: string;
-  /** True when `href` is an RFC 6570 URI template (e.g. contains `{id}`). */
-  templated?: boolean;
-  /** Request body media type for write affordances (e.g. `application/json`). */
-  contentType?: string;
-  /** Example request bodies (writes) or example values, shown inline. */
-  examples?: unknown[];
-  /**
-   * Declares this affordance needs step-up authentication beyond the API key.
-   * Advertised so an agent can prepare rather than discover it via a 403. Not
-   * enforced by any current endpoint.
-   */
-  stepUp?: boolean;
-  /**
-   * Declares this affordance needs an `Idempotency-Key` request header.
-   * Advertised up front rather than surfaced via a 4xx. Not enforced by any
-   * current endpoint.
-   */
-  idempotencyRequired?: boolean;
-};
+export const halLinksSchema = z
+  .record(z.string(), halLinkSchema)
+  .describe('A catalog of affordances keyed by relation name.')
+  .meta({ id: 'HalLinks' });
+
+export type HalLink = z.infer<typeof halLinkSchema>;
 
 export type HalLinks = Record<string, HalLink>;
 

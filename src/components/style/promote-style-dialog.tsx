@@ -10,7 +10,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { usePromoteSequenceStyle } from '@/hooks/use-styles';
-import type { Style } from '@/types/database';
+import type { Style } from '@/lib/db/schema';
 import { useId } from 'react';
 import { toast } from 'sonner';
 import { z } from 'zod';

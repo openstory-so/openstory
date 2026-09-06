@@ -23,7 +23,7 @@ import {
   getPathFromUrl,
   getPublicUrl,
 } from '@/lib/storage/buckets';
-import { getExtensionFromUrl } from '@/shared/utils/file';
+import { getExtensionFromUrl } from '@/lib/storage/file';
 import type { LibraryTalentSheetWorkflowInput } from '@/lib/workflow/types';
 import { computeLibraryTalentSheetHashFromDto } from '@/lib/workflows/sheet-snapshots';
 import type { CharacterBibleEntry } from '@/lib/ai/scene-analysis.schema';

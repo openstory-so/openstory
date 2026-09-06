@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useSequences } from './use-sequences';
 import { getShotsForSequencesFn } from '@/functions/shots';
-import type { Sequence } from '@/types/database';
+import type { Sequence } from '@/lib/db/schema';
 import type { ShotView } from '@/shared/shots/shot-view';
 
 export type SequenceWithShots = Sequence & {

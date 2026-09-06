@@ -7,7 +7,7 @@ import { parseStyleConfig } from '@/shared/style/style-config';
 import { generateImageWithProvider } from '@/lib/image/image-generation';
 import { buildStyledImagePrompt } from '@/lib/style/style-image-prompt';
 import { styleSlug } from '@/shared/style/style-slug';
-import { DEFAULT_STYLE_TEMPLATES } from '@/shared/style/style-templates';
+import { DEFAULT_STYLE_TEMPLATES } from '@/lib/style/style-templates';
 import { PhotonImage } from '@cf-wasm/photon';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';

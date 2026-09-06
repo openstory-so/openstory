@@ -1,5 +1,5 @@
 import { Button } from '@/components/ui/button';
-import type { Style } from '@/types/database';
+import type { Style } from '@/lib/db/schema';
 import { AppImage } from '@/components/ui/app-image';
 import { ChevronDown } from 'lucide-react';
 import { useState, type FC } from 'react';

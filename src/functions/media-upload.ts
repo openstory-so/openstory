@@ -56,7 +56,7 @@ import {
 } from '@/lib/shots/upload-media';
 import { USER_UPLOAD_MODEL } from '@/shared/shots/user-upload-model';
 import { STORAGE_BUCKETS, type StorageBucket } from '@/lib/storage/buckets';
-import { getMimeTypeFromExtension } from '@/shared/utils/file';
+import { getMimeTypeFromExtension } from '@/lib/storage/file';
 import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';

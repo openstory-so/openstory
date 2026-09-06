@@ -1,8 +1,8 @@
 import { AppImage } from '@/components/ui/app-image';
-import { optimizedVideoUrl } from '@/shared/media/cloudflare-video';
-import { styleHoverVideoUrl } from '@/shared/style/style-assets';
+import { optimizedVideoUrl } from '@/components/style/cloudflare-video';
+import { styleHoverVideoUrl } from '@/components/style/style-assets';
 import { cn } from '@/shared/utils';
-import type { Style } from '@/types/database';
+import type { Style } from '@/lib/db/schema';
 import type { FC } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getStyleGradient } from './style-gradient';

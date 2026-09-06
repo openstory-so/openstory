@@ -1,4 +1,7 @@
-import { isDocsPath, rememberDocsReturnUrl } from '@/shared/docs/docs-referrer';
+import {
+  isDocsPath,
+  rememberDocsReturnUrl,
+} from '@/components/docs/docs-referrer';
 import { useRouter } from '@tanstack/react-router';
 import { useEffect } from 'react';
 

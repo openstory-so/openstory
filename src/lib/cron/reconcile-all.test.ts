@@ -1,6 +1,6 @@
 /**
  * Tests for the broad cron sweep — focused on the highest-risk paths:
- * the blind-fail passes (mass-mutation without QStash verification) and
+ * the blind-fail passes (mass-mutation without run-state verification) and
  * pass isolation (one bad pass must not wedge the rest of the sweep).
  *
  * Drizzle is mocked at the call-chain level. We assert behaviour (which

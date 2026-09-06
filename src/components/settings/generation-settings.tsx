@@ -33,7 +33,7 @@ import type { Resolution } from '@/shared/constants/resolutions';
 import {
   availableResolutions,
   resolutionCeilingNote,
-} from '@/shared/ai/resolution-support';
+} from '@/components/models/resolution-support';
 import { useMemo, useState, type FC } from 'react';
 import { useViaAvailability } from '@/hooks/use-via-availability';
 import { AspectRatioPills } from './aspect-ratio-pills';

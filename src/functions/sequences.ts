@@ -44,7 +44,6 @@ import {
   updateSequenceSchema,
 } from '@/lib/schemas/sequence.schemas';
 import { triggerWorkflow } from '@/lib/workflow/client';
-import { buildWorkflowLabel } from '@/lib/workflow/labels';
 import { triggerStoryboard } from '@/lib/workflow/launchers';
 import { ValidationError } from '@/shared/errors';
 import {
@@ -788,7 +787,6 @@ export const addModelToSequenceFn = createServerFn({ method: 'POST' })
             };
             const workflowRunId = await triggerWorkflow('/music', musicInput, {
               deduplicationId: `add-audio-${sequence.id}-${model}-${Date.now()}`,
-              label: buildWorkflowLabel(sequence.id),
             });
             return {
               workflowRunId,
@@ -1014,7 +1012,6 @@ export const addModelToSequenceFn = createServerFn({ method: 'POST' })
             };
             return triggerWorkflow('/motion-batch', workflowInput, {
               deduplicationId: `add-video-${sequence.id}-${model}-${Date.now()}`,
-              label: buildWorkflowLabel(sequence.id),
             });
           }
         );
@@ -1149,7 +1146,6 @@ export const addModelToSequenceFn = createServerFn({ method: 'POST' })
           { ...input, reservationId, ownsReservation: true },
           {
             deduplicationId: `add-image-${input.shotId}-${model}-${Date.now()}`,
-            label: buildWorkflowLabel(sequence.id),
           }
         );
         triggered++;
@@ -1426,7 +1422,6 @@ export const generateMusicFn = createServerFn({ method: 'POST' })
         duration: baseInput.duration,
         model: baseInput.model,
       }),
-      label: buildWorkflowLabel(sequence.id),
     });
 
     return { success: true };

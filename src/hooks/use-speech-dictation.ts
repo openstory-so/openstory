@@ -14,11 +14,11 @@ import {
   createDictationSession,
   DictationError,
   type DictationSession,
-} from '@/shared/voice/dictation-session';
+} from '@/components/voice/dictation-session';
 import {
   getSpeechRecognition,
   type SpeechRecognition,
-} from '@/shared/voice/speech-recognition';
+} from '@/components/voice/speech-recognition';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAsRef } from './use-as-ref';
 import { useHydrated } from './use-hydrated';

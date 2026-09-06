@@ -1,19 +1,7 @@
 /**
- * Cloudflare Workflows port of `generateMotionWorkflow`.
- *
- * Mirrors the QStash version (`src/lib/workflows/motion-workflow.ts`) step
- * for step — same step names, same control flow, same side effects. The
- * only differences are:
- *
- *   - Extends `OpenStoryWorkflowEntrypoint` instead of being built by
- *     `createScopedWorkflow`. Failure parity comes from the base class
- *     (see `base-workflow.ts`).
- *   - Uses `step.do` instead of `context.run` and `step.sleep` instead of
- *     `context.sleep`.
- *   - Reads the workflow run id from `event.instanceId` instead of
- *     `context.workflowRunId`.
- *   - Throws `NonRetryableError` from `cloudflare:workflows` in place of
- *     the old Upstash workflow `WorkflowNonRetryableError`. */
+ * The `generateMotionWorkflow` durable workflow.
+
+ */
 
 import {
   CONTENT_REJECTION_EVENT,

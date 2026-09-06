@@ -4,7 +4,7 @@
  */
 
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { finishSignInRedirect } from '@/shared/auth/navigation';
+import { finishSignInRedirect } from '@/components/auth/navigation';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -19,7 +19,7 @@ import {
   InputOTPSlot,
 } from '@/components/ui/input-otp';
 import { useHydrated } from '@/hooks/use-hydrated';
-import { authClient } from '@/shared/auth/client';
+import { authClient } from '@/components/auth/client';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useCallback, useEffect, useState, useTransition } from 'react';
 

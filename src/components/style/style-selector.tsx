@@ -7,13 +7,13 @@ import {
   ALL_COMPOSER_STYLE_CATEGORIES,
   composerCategoryHiddenCount,
   stylesForComposerCategory,
-} from '@/shared/style/composer-style-row';
+} from '@/components/style/composer-style-row';
 import {
   buildRecommendationReasoningMap,
   catalogueWithoutRecommendations,
   RECOMMENDED_STYLE_SLOT_COUNT,
   resolveRecommendedStyles,
-} from '@/shared/style/prioritize-recommended-styles';
+} from '@/components/style/prioritize-recommended-styles';
 import { AutoStyleTile } from '@/components/style/auto-style-tile';
 import { StyleDetailDialog } from '@/components/style/style-detail-dialog';
 import { StyleInlineTile } from '@/components/style/style-inline-tile';

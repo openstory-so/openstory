@@ -1,25 +1,8 @@
 /**
- * Cloudflare Workflows port of `generateStoryboardWorkflow`.
+ * The `generateStoryboardWorkflow` durable workflow.
  *
- * Mirrors the QStash version (`src/lib/workflows/storyboard-workflow.ts`)
- * step for step — same step names, same control flow, same side effects.
- * Differences (all infrastructure-level, not behavioural):
- *
- *   - Extends `OpenStoryWorkflowEntrypoint` instead of being built by
- *     `createScopedWorkflow`. Failure parity comes from the base class
- *     (see `base-workflow.ts`).
- *   - Uses `step.do` instead of `context.run`.
- *   - The QStash original used `context.invoke('analyze-script', …)` to fan
- *     out to the analyze-script child and (implicitly) await its return.
- *     The CF port replaces that with `spawnAndAwaitChild` against
- *     `ANALYZE_SCRIPT_WORKFLOW` so the parent stays thin and the child gets
- *     its own retry budget (Pattern 3 — see await-child.ts).
- *   - Reads payload from `event.payload` and the workflow run id from
- *     `event.instanceId` instead of `context.requestPayload` /
- *     `context.workflowRunId`.
- *   - QStash labels are dropped — they only meant something in the QStash
- *     dashboard. CF instances surface in the Workflows dashboard via
- *     `event.instanceId`. */
+ * Runs surface in the Cloudflare Workflows dashboard by `event.instanceId`.
+ */
 
 import { PREVIEW_IMAGE_MODEL } from '@/shared/ai/models';
 import {
@@ -120,8 +103,7 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
 
     // Generate a poster image from the script for the video player empty
     // state. Non-critical — failures are logged and swallowed so a poster
-    // outage cannot block the storyboard. Mirrors the QStash original's
-    // try/catch swallow inside the step.
+    // outage cannot block the storyboard.
     let posterUrl: string | null = null;
 
     const posterResult = skipPoster
@@ -308,9 +290,9 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
     );
 
     // Mark the sequence failed so the user sees the failure summary + retry
-    // UI instead of an eternal 'processing' spinner. The log-only QStash
-    // mirror left ~20 sequences stranded when await-analyze-script timed out
-    // on 2026-06-06 (issue #839).
+    // UI instead of an eternal 'processing' spinner. A log-only handler here
+    // left ~20 sequences stranded when await-analyze-script timed out on
+    // 2026-06-06 (issue #839).
     //
     // Skip the write when the analyze-script child already marked the
     // sequence failed — its message ("Your OpenRouter API key is invalid…")

@@ -56,7 +56,7 @@ import {
 import type { SequenceSegment } from '@/shared/scenes/scene-segments';
 import type { UpdateStaleDepth } from '@/shared/shots/update-stale-depth';
 import { copyTextToClipboard } from '@/shared/utils/clipboard';
-import { isSetImageOffered } from '@/shared/shots/set-image-offer';
+import { isSetImageOffered } from '@/components/scenes/set-image-offer';
 import {
   type ShotStaleness,
   markArtifactFresh,
@@ -129,7 +129,7 @@ import { buildReferenceImagePrompt } from '@/shared/prompts/reference-image-prom
 import { resolveMotionPrompt } from '@/shared/motion/resolve-motion-prompt';
 import { resolveShotDuration } from '@/shared/motion/resolve-shot-duration';
 import type { AssemblableMotionPrompt } from '@/lib/ai/scene-analysis.schema';
-import { useShotPromptStream } from '@/shared/realtime/use-shot-prompt-stream';
+import { useShotPromptStream } from '@/components/realtime/use-shot-prompt-stream';
 import type { ShotView } from '@/shared/shots/shot-view';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CopyIcon, History, Loader2, Minimize2, RefreshCw } from 'lucide-react';
@@ -139,7 +139,7 @@ import {
   SCENE_FACETS,
   type SceneFacet,
   type SelectionScope,
-} from '@/shared/scenes/scene-selection';
+} from '@/components/scenes/scene-selection';
 import { errorMessage, isInsufficientCreditsError } from '@/shared/errors';
 import { useUpdateStaleShots } from '@/hooks/use-update-stale-shots';
 import { SceneCastTab } from './scene-cast-tab';

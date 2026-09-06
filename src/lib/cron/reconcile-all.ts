@@ -8,13 +8,13 @@
  * removed in #727.
  *
  * Two reconciliation shapes:
- *   A. Tables with a workflow_run_id column — query QStash, trust its truth
- *      (5min staleness threshold).
+ *   A. Tables with a workflow_run_id column — query the workflow binding for
+ *      the run's real state, and trust it (5min staleness threshold).
  *   B. Tables without a workflow_run_id column — blind-fail after a longer
  *      threshold (30min) because we can't verify run state.
  *
- * Each pass is capped at MAX_ROWS_PER_PASS to avoid hammering QStash if a
- * regression leaves many rows stuck.
+ * Each pass is capped at MAX_ROWS_PER_PASS to avoid hammering the workflow
+ * bindings if a regression leaves many rows stuck.
  */
 
 import { getDb } from '#db-client';
@@ -54,7 +54,7 @@ export const PASS_ERRORED = -1;
  *
  * Always emits one summary log line per sweep so observability/alerting has a
  * single high-signal event per cron tick — without it, a systemic failure
- * (e.g. revoked QStash token making every per-row check throw) would look
+ * (e.g. a binding outage making every per-row check throw) would look
  * identical to a clean sweep with nothing to do.
  */
 export async function reconcileAllStuckJobs(): Promise<ReconcileCounts> {
@@ -570,10 +570,11 @@ async function failOrphanedGeneratedAssetsPass(db: Database): Promise<number> {
 type BlindFailPipeline = 'sequencesMusic' | 'sequenceElements';
 
 /**
- * Tables without a workflow_run_id column: we can't ask QStash what happened.
+ * Tables without a workflow_run_id column: we can't ask the engine what
+ * happened.
  * After a longer threshold we mark them failed so the user can retry.
  *
- * Why 30min vs the 5min QStash-verified threshold: with no run id we can't
+ * Why 30min vs the 5min run-verified threshold: with no run id we can't
  * distinguish a slow-but-alive run from a dead one, so we wait long enough
  * that any reasonable workflow would have completed (the slowest current
  * workflows — music gen and element vision — finish well under 30min).

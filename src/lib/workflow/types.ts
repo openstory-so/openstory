@@ -1,5 +1,5 @@
 /**
- * Type definitions for QStash Workflows
+ * Payload and result types for the Cloudflare Workflows entrypoints.
  */
 
 import type {
@@ -62,7 +62,6 @@ import type {
 import type { ReferenceImageDescription } from '@/shared/prompts/reference-image-prompt';
 import type { UpdateStalePlan } from '@/lib/shots/update-stale-plan';
 import type { StudioCreateInput } from '@/shared/studio/schema';
-import type { Json } from '@/types/database';
 import type {
   GenerationCheckpoint,
   GenerationStage,
@@ -99,7 +98,7 @@ export interface SequenceWorkflowContext extends UserWorkflowContext {
  */
 export interface ImageWorkflowInput extends SequenceWorkflowContext {
   prompt: string;
-  style?: Json;
+  style?: Record<string, unknown> | unknown[];
   model?: keyof typeof IMAGE_MODELS;
   width?: number;
   height?: number;

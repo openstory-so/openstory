@@ -10,8 +10,8 @@ import {
 import { SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
 import { isSystemAdminFn } from '@/functions/gift-tokens';
 import { useUser } from '@/hooks/use-user';
-import { authClient } from '@/shared/auth/client';
-import { sessionQueryOptions } from '@/shared/auth/session-query';
+import { authClient } from '@/components/auth/client';
+import { sessionQueryOptions } from '@/components/auth/session-query';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
 import {

@@ -52,7 +52,6 @@ import {
 } from '@/lib/scenes/scene-script';
 import { rescanContinuityFromPrompt } from '@/lib/scenes/rescan-continuity-from-prompt';
 import { triggerWorkflow } from '@/lib/workflow/client';
-import { buildWorkflowLabel } from '@/lib/workflow/labels';
 import type { UpdateStaleShotsWorkflowInput } from '@/lib/workflow/types';
 import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
@@ -926,7 +925,6 @@ export const updateStaleShotsFn = createServerFn({ method: 'POST' })
         plan,
       },
       {
-        label: buildWorkflowLabel(sequence.id),
         // Embed the sequence id in the instance id (the timestamp+uuid tail
         // keeps it unique per click) so `getUpdateStaleShotsRunFn` can verify
         // a polled run id actually belongs to the sequence being authorized —

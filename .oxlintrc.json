@@ -111,12 +111,12 @@
       // to reference `src/lib` from inside its handler, which the compiler
       // strips. The boundary test covers it instead, modelling that stripping.
       //
-      // The one `!` exception left is NOT a directory still mixing halves and
-      // must not be "migrated" (#1489):
-      //   `!@/lib/storage` — `routes/r2.$.ts` imports `serve-media` inside a
-      //                      `server: { handlers }` block the client build
-      //                      prunes. It reaches `#storage`; it can never move
-      //                      to `src/shared`.
+      // There are NO `!` exceptions: every `src/lib` module is off-limits to
+      // this file set (#1489). `routes/r2.$.ts` used to need one for
+      // `@/lib/storage/serve-media`, but it is a pure server route — its only
+      // `createFileRoute` option is `server: { handlers }`, which the client
+      // build prunes — so it belongs in the server-routes override below
+      // alongside `oauth/login.ts`, not in a hole punched through this rule.
       "files": [
         "src/components/**",
         "src/hooks/**",
@@ -140,12 +140,7 @@
             ],
             "patterns": [
               {
-                "group": [
-                  "@/lib/*",
-                  "@/lib/**",
-                  "!@/lib/storage",
-                  "!@/lib/storage/**"
-                ],
+                "group": ["@/lib/*", "@/lib/**"],
                 "allowTypeImports": true,
                 "message": "src/lib is server-only and must not ship to the browser. Import the client-safe helper from @/shared (move it there if it is not yet), or make this a type-only import."
               }
@@ -155,15 +150,19 @@
       }
     },
     {
-      // Server-only routes: `routes/api/**`, plus the two root-level routes
-      // whose only `createFileRoute` option is `server` (pruned from the client
-      // route tree). Tests never ship either.
+      // Server-only routes: `routes/api/**`, plus the root-level routes whose
+      // only `createFileRoute` option is `server` (pruned from the client
+      // route tree) — `[.]well-known`, `oauth/login.ts`, `r2.$.ts`. Tests never ship either, and neither do Storybook
+      // stories — they are built by Storybook, not the app graph, so a story
+      // may pull server-side fixture data (e.g. the style templates).
       "files": [
         "src/routes/api/**",
         "src/routes/*well-known/**",
         "src/routes/oauth/login.ts",
+        "src/routes/r2.$.ts",
         "src/**/*.test.ts",
-        "src/**/*.test.tsx"
+        "src/**/*.test.tsx",
+        "src/**/*.stories.tsx"
       ],
       "rules": {
         "no-restricted-imports": [

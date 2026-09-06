@@ -35,7 +35,7 @@ import {
 } from '@/hooks/use-sequence-elements';
 import type { SequenceElement } from '@/lib/db/schema';
 import { errorMessage } from '@/shared/errors';
-import { MAX_SEQUENCE_ELEMENTS } from '@/shared/sequence-elements/limits';
+import { MAX_SEQUENCE_ELEMENTS } from '@/components/element/limits';
 import { cn } from '@/shared/utils';
 import { useQueryClient } from '@tanstack/react-query';
 import {
