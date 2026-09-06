@@ -229,7 +229,6 @@
         "**/cron/reconcile-fal-billing.ts",
         "**/cron/refresh-fal-pricing.ts",
         "**/ai/fal-pricing-live.ts",
-        "**/ai/byteplus-asset-pool.ts",
         "**/openrouter/callback.ts",
         "**/lib/test/seed.ts"
       ],
