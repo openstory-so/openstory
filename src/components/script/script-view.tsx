@@ -33,14 +33,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from '@/components/ui/sheet';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { enhanceScriptStreamFn } from '@/functions/ai';
 import { useAutoScroll } from '@/hooks/use-auto-scroll';
@@ -136,13 +128,14 @@ import {
 import type { Sequence } from '@/types/database';
 import { usePostHog } from '@posthog/react';
 import {
+  ChevronDown,
   ImagePlus,
+  Library,
   Loader2,
   Shuffle,
   Sparkles,
   Square,
   Undo2,
-  Library,
   Wand2,
 } from 'lucide-react';
 import React, {
@@ -1126,7 +1119,7 @@ export const ScriptView: FC<{
   const isSubmitting = createSequenceMutation.isPending;
   const isDisabled = !isReady || isSubmitting || isEnhancing || isElementBusy;
 
-  const [referencesSheetOpen, setReferencesSheetOpen] = useState(false);
+  const [referencesOpen, setReferencesOpen] = useState(false);
   const referenceCount =
     selectedTalentIds.length +
     selectedLocationIds.length +
@@ -1419,8 +1412,7 @@ export const ScriptView: FC<{
         className="flex flex-col min-h-0 max-h-full"
       >
         {/* Control bar. Talent / locations / elements stay behind one
-            References sheet at every breakpoint — the same bottom sheet
-            mobile already used (#1526). */}
+            References popover at every breakpoint (#1526). */}
         <CardHeader className="shrink-0 flex flex-row items-center justify-between gap-3 px-6 py-4 border-b border-border/50 bg-card/40 short-h:py-2">
           <GenerationSettings
             aspectRatio={aspectRatio}
@@ -1439,11 +1431,8 @@ export const ScriptView: FC<{
             disabled={loading}
             styleCategory={styleCategory}
           />
-          <Sheet
-            open={referencesSheetOpen}
-            onOpenChange={setReferencesSheetOpen}
-          >
-            <SheetTrigger asChild>
+          <Popover open={referencesOpen} onOpenChange={setReferencesOpen}>
+            <PopoverTrigger asChild>
               <Button
                 type="button"
                 variant="outline"
@@ -1458,21 +1447,19 @@ export const ScriptView: FC<{
                     {referenceCount}
                   </span>
                 )}
+                <ChevronDown className="size-3.5 text-muted-foreground" />
               </Button>
-            </SheetTrigger>
-            <SheetContent side="bottom" className="px-4 pb-6">
-              <SheetHeader className="px-0">
-                <SheetTitle>Talent, locations & elements</SheetTitle>
-                <SheetDescription>
-                  Pre-cast talent, pin locations, or add reference images.
-                  Anything you skip is extracted from the script.
-                </SheetDescription>
-              </SheetHeader>
-              <div className="flex flex-col items-start gap-3">
+            </PopoverTrigger>
+            <PopoverContent
+              align="end"
+              collisionPadding={12}
+              className="w-max min-w-44 max-w-[calc(100vw-2rem)] p-2"
+            >
+              <div className="flex flex-col items-start gap-1">
                 {referenceSelectors}
               </div>
-            </SheetContent>
-          </Sheet>
+            </PopoverContent>
+          </Popover>
         </CardHeader>
 
         {/* Holds the script alone; the enhance row, style grid and footer are
