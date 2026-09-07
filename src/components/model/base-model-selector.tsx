@@ -263,7 +263,11 @@ export const BaseModelSelector: React.FC<BaseModelSelectorProps> = ({
                     onCheckedChange={(checked) =>
                       handleToggle(model.id, checked)
                     }
-                    onSelect={(e) => e.preventDefault()}
+                    onSelect={(e) => {
+                      // Keep the menu open while picking several models.
+                      // Single-select (Multiple off) should close on pick.
+                      if (isMultiActive) e.preventDefault();
+                    }}
                     disabled={isDisabled}
                     className="cursor-pointer"
                   >
