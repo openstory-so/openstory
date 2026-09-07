@@ -58,7 +58,7 @@ type FilmCostExample = {
 
 export type FilmCostExamples = {
   examples: FilmCostExample[];
-  /** e.g. "$20.00" — from SIGNUP_GRANT_MICROS. */
+  /** e.g. "$10.00" — from SIGNUP_GRANT_MICROS. */
   welcomeCredits: string;
   imageModelName: string;
   videoModelName: string;

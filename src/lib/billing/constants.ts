@@ -21,14 +21,10 @@ export const PLATFORM_FEE_PERCENT = 0.07;
 /**
  * Free credit granted to every new team on signup, in USD.
  *
- * Must cover a typical first short with product defaults: Enhance 30s target
- * (~6 shots × 5s), stills + motion + music (Turbo: Nano Banana 2 Lite /
- * H3 Max / ElevenLabs). Guarded by the signup-grant test in
- * constants.test.ts. Preflight uses fal historical typicalUnitsPerCall
- * (not raw unitPrice alone). Raised from $10 when motion+music became the
- * default aha path (#1140).
+ * Demo branch (`topup-demo`): $10. Product default on main is $20 (covers a
+ * typical first 30s short with motion and music — #1140).
  */
-const SIGNUP_GRANT_USD = 20;
+const SIGNUP_GRANT_USD = 10;
 
 /** Free credit granted to every new team on signup, in microdollars */
 export const SIGNUP_GRANT_MICROS: Microdollars = usdToMicros(SIGNUP_GRANT_USD);
