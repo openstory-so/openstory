@@ -1,16 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react';
 import { useState } from 'react';
-import { micros } from '@/shared/billing/money';
-import type { GenerationStage } from '@/shared/generation/pipeline';
 import { GenerationStopAlert } from './generation-stop-alert';
-
-const COST_BY_STAGE: Record<GenerationStage, ReturnType<typeof micros>> = {
-  script: micros(8_000),
-  references: micros(420_000),
-  images: micros(1_200_000),
-  motion: micros(2_100_000),
-  music: micros(2_400_000),
-};
 
 function OpenAlert() {
   const [open, setOpen] = useState(true);
@@ -21,7 +11,6 @@ function OpenAlert() {
       stopAt="music"
       generateStartFrames={false}
       remember={false}
-      estimateForStopAt={(stage) => COST_BY_STAGE[stage]}
       onConfirm={() => setOpen(false)}
     />
   );

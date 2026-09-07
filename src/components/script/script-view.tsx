@@ -49,7 +49,6 @@ import { useAutoScroll } from '@/hooks/use-auto-scroll';
 import { BILLING_BALANCE_KEY } from '@/hooks/use-billing-balance';
 import { BILLING_TRANSACTIONS_KEY } from '@/hooks/use-billing-balance-realtime';
 import { useBillingGate } from '@/hooks/use-billing-gate';
-import { useFalPricing } from '@/hooks/use-fal-pricing';
 import { useGenerationSettings } from '@/hooks/use-generation-settings';
 import {
   DEFAULT_GENERATION_STOP_AT,
@@ -73,7 +72,6 @@ import { errorMessage } from '@/shared/errors';
 import {
   assessDurationFit,
   briefRequestsUnrenderableText,
-  estimateMotionDurations,
   formatClipGrid,
   TITLE_CARD_NOTE,
 } from '@/shared/ai/enhance-duration';
@@ -102,10 +100,7 @@ import {
   type AnalysisModelId,
 } from '@/shared/ai/models.config';
 import { SCRIPT_SHORT_THRESHOLD } from '@/shared/ai/should-enhance';
-import {
-  estimateImageCost,
-  estimateStoryboardCost,
-} from '@/shared/billing/cost-estimation';
+import { useDraftGenerationEstimate } from '@/hooks/use-draft-generation-estimate';
 import { clampResolution } from '@/shared/constants/resolutions';
 import type { Resolution } from '@/shared/constants/resolutions';
 import { availableResolutions } from '@/components/models/resolution-support';
@@ -117,7 +112,7 @@ import {
   markPendingIntent,
   takePendingIntent,
 } from '@/components/generation/pending-generate';
-import { estimateSceneCount } from '@/shared/generation/time-estimate';
+
 import { replaceTokenInText } from '@/shared/sequence-elements/cascade-rename';
 import {
   shouldRestoreComposerDraft,
@@ -1339,80 +1334,24 @@ export const ScriptView: FC<{
     content: scriptValue,
   });
 
-  // Transparent pricing under Generate (#1140). Honest estimate only —
-  // null with no script (nothing to generate yet), or when the primary
-  // image model has no pricing signal. The Generate button always quotes
-  // the full pipeline (stills + motion + music); the stop-at alert quotes
-  // the selected slice.
-  const { pricing: falPricing } = useFalPricing();
-  const estimateForStopAt = useCallback(
-    (runUntil: GenerationStage, startFrames: boolean = generateStartFrames) => {
-      if (!scriptValue.trim()) return null;
-      const needsMedia =
-        includesStage(runUntil, 'references') ||
-        includesStage(runUntil, 'images') ||
-        includesStage(runUntil, 'motion') ||
-        includesStage(runUntil, 'music');
-      if (needsMedia && !falPricing) return null;
-      const primaryImage = imageModels[0] ?? DEFAULT_IMAGE_MODEL;
-      if (
-        falPricing &&
-        includesStage(runUntil, 'images') &&
-        estimateImageCost(primaryImage, aspectRatio, 1, {
-          pricing: falPricing,
-        }) === null
-      ) {
-        return null;
-      }
-      const sceneCount = estimateSceneCount(scriptValue, {
-        targetDurationSeconds: targetDuration,
-      });
-      const motionDurations = estimateMotionDurations({
-        script: scriptValue,
-        targetSeconds: targetDuration,
-        sceneCount,
-        model: videoModels[0] ?? DEFAULT_VIDEO_MODEL,
-      });
-      const motionOn = includesStage(runUntil, 'motion');
-      const musicOn = includesStage(runUntil, 'music');
-      return estimateStoryboardCost({
-        imageModel: primaryImage,
-        imageModelCount: Math.max(imageModels.length, 1),
-        aspectRatio,
-        resolution,
-        estimatedSceneCount: sceneCount,
-        stopAt: runUntil,
-        autoGenerateMotion: motionOn,
-        referenceOnly: !startFrames,
-        videoModels: motionOn ? videoModels : undefined,
-        videoDurationSeconds: motionOn
-          ? motionDurations.perShotSeconds
-          : undefined,
-        autoGenerateMusic: musicOn,
-        audioModels: musicOn ? audioModels : undefined,
-        audioDurationSeconds: musicOn
-          ? motionDurations.totalSeconds
-          : undefined,
-        pricing: falPricing ?? {},
-      });
-    },
-    [
-      falPricing,
-      imageModels,
-      aspectRatio,
-      resolution,
-      scriptValue,
-      targetDuration,
-      videoModels,
-      audioModels,
-      generateStartFrames,
-    ]
-  );
-  // Remembered: the footer quotes the run that will actually happen. Otherwise
-  // the dialog asks, so quote the default full run.
-  const storyboardCostEstimate = estimateForStopAt(
-    savedSettings.rememberStopAt ? stopAt : DEFAULT_GENERATION_STOP_AT
-  );
+  // Transparent pricing under Generate (#1140). Computed on the server so
+  // the dialog does not ship the estimator. The footer quotes the run that
+  // will actually happen when stop-at is remembered; otherwise the default
+  // full run, and the dialog quotes the selected slice.
+  const draftEstimateBase = {
+    script: scriptValue,
+    imageModels,
+    videoModels,
+    audioModels,
+    aspectRatio,
+    resolution,
+    targetDurationSeconds: targetDuration,
+  };
+  const storyboardCostEstimate = useDraftGenerationEstimate({
+    ...draftEstimateBase,
+    stopAt: savedSettings.rememberStopAt ? stopAt : DEFAULT_GENERATION_STOP_AT,
+    generateStartFrames,
+  });
 
   // Nothing written yet: Enhance writes the script instead of expanding one
   // (#1393), so it stays live at any length and says which job it is doing.
@@ -1959,7 +1898,7 @@ export const ScriptView: FC<{
             ? "A copy will be created from this script. Your original sequence won't change."
             : undefined
         }
-        estimateForStopAt={estimateForStopAt}
+        estimateBase={draftEstimateBase}
         onConfirm={({
           stopAt: nextStopAt,
           generateStartFrames: nextStartFrames,

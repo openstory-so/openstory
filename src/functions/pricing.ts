@@ -13,6 +13,24 @@ import {
   type PricingCatalog,
 } from '@/lib/billing/pricing-catalog';
 import { createServerFn } from '@tanstack/react-start';
+import { zodValidator } from '@tanstack/zod-adapter';
+import { z } from 'zod';
+import {
+  DEFAULT_IMAGE_MODEL,
+  DEFAULT_MUSIC_MODEL,
+  DEFAULT_VIDEO_MODEL,
+  safeAudioModel,
+  safeImageToVideoModel,
+  safeTextToImageModel,
+} from '@/shared/ai/models';
+import { estimateImageCost } from '@/shared/billing/cost-estimation';
+import { estimateStoryboardPreflightCost } from '@/shared/billing/storyboard-preflight-cost';
+import { aspectRatioSchema } from '@/shared/constants/aspect-ratios';
+import {
+  generationStageSchema,
+  includesStage,
+} from '@/shared/generation/pipeline';
+import { resolutionSchema } from '@/shared/constants/resolutions';
 
 /** Public pricing catalog for the /pricing page, from live `model_pricing`. */
 export const getPricingCatalogFn = createServerFn({ method: 'GET' }).handler(
@@ -72,3 +90,53 @@ export const getCatalogFalPricingFn = createServerFn({ method: 'GET' }).handler(
     return out;
   }
 );
+
+const estimateDraftGenerationInputSchema = z.object({
+  script: z.string(),
+  imageModels: z.array(z.string()).min(1),
+  videoModels: z.array(z.string()).min(1),
+  audioModels: z.array(z.string()).min(1),
+  aspectRatio: aspectRatioSchema,
+  resolution: resolutionSchema.optional(),
+  stopAt: generationStageSchema,
+  generateStartFrames: z.boolean(),
+  targetDurationSeconds: z.number().int().positive().optional(),
+});
+
+/** Live Generate-dialog estimate. Public: catalog rates only, no secrets. */
+export const estimateDraftGenerationFn = createServerFn({ method: 'POST' })
+  .validator(zodValidator(estimateDraftGenerationInputSchema))
+  .handler(async ({ data }) => {
+    if (!data.script.trim()) return { estimateMicros: null };
+    const pricing = await getEffectiveFalPricing();
+    const imageModel = safeTextToImageModel(
+      data.imageModels[0],
+      DEFAULT_IMAGE_MODEL
+    );
+    if (
+      includesStage(data.stopAt, 'images') &&
+      estimateImageCost(imageModel, data.aspectRatio, 1, { pricing }) === null
+    ) {
+      return { estimateMicros: null };
+    }
+    const estimate = estimateStoryboardPreflightCost({
+      script: data.script,
+      imageModel,
+      imageModelCount: data.imageModels.length,
+      aspectRatio: data.aspectRatio,
+      resolution: data.resolution,
+      stopAt: data.stopAt,
+      videoModels: data.videoModels.map((model) =>
+        safeImageToVideoModel(model, DEFAULT_VIDEO_MODEL)
+      ),
+      audioModels: data.audioModels.map((model) =>
+        safeAudioModel(model, DEFAULT_MUSIC_MODEL)
+      ),
+      autoGenerateMotion: true,
+      autoGenerateMusic: true,
+      referenceOnly: !data.generateStartFrames,
+      targetDurationSeconds: data.targetDurationSeconds,
+      pricing,
+    });
+    return { estimateMicros: Number(estimate) };
+  });

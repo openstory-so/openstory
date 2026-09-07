@@ -11,7 +11,10 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Checkbox } from '@/components/ui/checkbox';
-import type { Microdollars } from '@/shared/billing/money';
+import {
+  useDraftGenerationEstimate,
+  type DraftGenerationEstimateInput,
+} from '@/hooks/use-draft-generation-estimate';
 import type { GenerationStage } from '@/shared/generation/pipeline';
 import { useEffect, useState, type FC } from 'react';
 
@@ -30,11 +33,11 @@ type GenerationStopAlertProps = {
   /** Extra copy — e.g. Generate Copy warning. */
   description?: string;
   confirmLabel?: string;
-  /** Cost of a run that stops at the given stage in the given mode. */
-  estimateForStopAt?: (
-    stage: GenerationStage,
-    generateStartFrames: boolean
-  ) => Microdollars | null;
+  /** Shared with the Generate footer so slider ticks reuse the same query. */
+  estimateBase?: Omit<
+    DraftGenerationEstimateInput,
+    'stopAt' | 'generateStartFrames'
+  > | null;
 };
 
 export const GenerationStopAlert: FC<GenerationStopAlertProps> = ({
@@ -46,7 +49,7 @@ export const GenerationStopAlert: FC<GenerationStopAlertProps> = ({
   onConfirm,
   description,
   confirmLabel = 'Generate',
-  estimateForStopAt,
+  estimateBase,
 }) => {
   const [draftStopAt, setDraftStopAt] = useState(stopAt);
   const [draftStartFrames, setDraftStartFrames] = useState(generateStartFrames);
@@ -59,7 +62,15 @@ export const GenerationStopAlert: FC<GenerationStopAlertProps> = ({
     setDraftRemember(remember);
   }, [open, stopAt, generateStartFrames, remember]);
 
-  const estimate = estimateForStopAt?.(draftStopAt, draftStartFrames) ?? null;
+  const estimate = useDraftGenerationEstimate(
+    open && estimateBase
+      ? {
+          ...estimateBase,
+          stopAt: draftStopAt,
+          generateStartFrames: draftStartFrames,
+        }
+      : null
+  );
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
