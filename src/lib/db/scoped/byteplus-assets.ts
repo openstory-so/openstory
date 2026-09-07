@@ -161,6 +161,26 @@ export function createBytePlusAssetsMethods(db: Database) {
       });
     },
 
+    /** Every Ark asset id the ledger knows — the sweep's view of us (#1519). */
+    async listAssetIds(): Promise<string[]> {
+      const rows = await db
+        .select({ assetId: bytePlusAssets.assetId })
+        .from(bytePlusAssets);
+      return rows.map((row) => row.assetId);
+    },
+
+    /**
+     * Drop rows whose Ark asset no longer exists (deleted out from under us,
+     * or a failed DeleteAsset that later succeeded) so the slots count as
+     * free again.
+     */
+    async forgetAssets(assetIds: readonly string[]): Promise<void> {
+      if (!assetIds.length) return;
+      await db
+        .delete(bytePlusAssets)
+        .where(inArray(bytePlusAssets.assetId, [...assetIds]));
+    },
+
     /**
      * Unpin the slots a finished job held. Nothing is deleted — the asset
      * stays resident and reusable, it just becomes evictable again.

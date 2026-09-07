@@ -7,8 +7,10 @@
   "triggers": {
     // Sweep stuck generating-status rows every 5 minutes (#727) and refresh
     // the model_pricing table daily (#1069 — the expression must match
-    // FAL_PRICING_CRON in src/lib/cron/refresh-fal-pricing.ts).
-    "crons": ["*/5 * * * *", "17 3 * * *", "37 * * * *"],
+    // FAL_PRICING_CRON in src/lib/cron/refresh-fal-pricing.ts). Hourly at
+    // :53, diff this deployment's BytePlus asset group against the ledger
+    // (#1519 — BYTEPLUS_ASSETS_RECONCILE_CRON).
+    "crons": ["*/5 * * * *", "17 3 * * *", "37 * * * *", "53 * * * *"],
   },
   "observability": {
     "enabled": true,
@@ -604,7 +606,7 @@
         },
       ],
       "triggers": {
-        "crons": ["*/5 * * * *", "17 3 * * *", "37 * * * *"],
+        "crons": ["*/5 * * * *", "17 3 * * *", "37 * * * *", "53 * * * *"],
       },
       // Same forwarder as the top-level default — redeclared because
       // tail_consumers is non-inheritable across env blocks.

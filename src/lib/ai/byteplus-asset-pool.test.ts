@@ -37,6 +37,7 @@ const {
   claimPooledAsset,
   createPooledAsset,
 } = await import('./byteplus-asset-pool');
+const { aigcGroupName } = await import('./byteplus-config');
 
 let client: Client;
 let db: Database;
@@ -62,7 +63,7 @@ function arkStub(): { config: BytePlusOpenApiConfig; deleted: string[] } {
       const result = (() => {
         switch (action) {
           case 'ListAssetGroups':
-            return { Items: [{ Id: 'group-1', Name: 'openstory-virtual' }] };
+            return { Items: [{ Id: 'group-1', Name: aigcGroupName() }] };
           case 'ListAssets':
             return { Items: [] };
           case 'CreateAsset':

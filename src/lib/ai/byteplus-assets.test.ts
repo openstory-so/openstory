@@ -1,12 +1,17 @@
-import { describe, expect, it } from 'vitest';
-import {
+import { describe, expect, it, vi } from 'vitest';
+import type { BytePlusOpenApiConfig } from './byteplus-openapi';
+
+vi.mock('#env', () => ({
+  getEnv: () => ({ VITE_APP_URL: 'https://pr-1520.openstory.workers.dev' }),
+}));
+
+const { aigcGroupName } = await import('./byteplus-config');
+const {
   hashAssetIdentity,
   ingestAigcAsset,
-  OPENSTORY_AIGC_GROUP_NAME,
-  type BytePlusAsset,
-  type BytePlusAssetGroup,
-} from './byteplus-assets';
-import type { BytePlusOpenApiConfig } from './byteplus-openapi';
+}: typeof import('./byteplus-assets') = await import('./byteplus-assets');
+type BytePlusAsset = import('./byteplus-assets').BytePlusAsset;
+type BytePlusAssetGroup = { Id?: string; Name?: string; GroupType?: string };
 
 type Handler = (body: Record<string, unknown>) => unknown;
 
@@ -56,7 +61,7 @@ describe('ingestAigcAsset', () => {
       {
         ListAssetGroups: () => ({ Items: [] as BytePlusAssetGroup[] }),
         CreateAssetGroup: (body) => {
-          expect(body.Name).toBe(OPENSTORY_AIGC_GROUP_NAME);
+          expect(body.Name).toBe(aigcGroupName());
           expect(body.GroupType).toBe('AIGC');
           return { Id: 'group-1' };
         },
@@ -109,7 +114,7 @@ describe('ingestAigcAsset', () => {
           Items: [
             {
               Id: 'group-1',
-              Name: OPENSTORY_AIGC_GROUP_NAME,
+              Name: aigcGroupName(),
               GroupType: 'AIGC',
             },
           ],

@@ -67,7 +67,14 @@ export type BytePlusAssetPoolContext = {
    * make room. `exhausted` — every slot was pinned by an in-flight job, so
    * the shot went to fal. `deferred` — a batch waited at admission.
    */
-  outcome: 'hit' | 'created' | 'evicted' | 'exhausted' | 'deferred';
+  outcome:
+    | 'hit'
+    | 'created'
+    | 'evicted'
+    | 'exhausted'
+    | 'deferred'
+    | 'swept'
+    | 'forgotten';
   slot?: 'frame' | 'library';
 };
 

@@ -93,6 +93,31 @@ export function isBytePlusAssetsConfigured(): boolean {
   return true;
 }
 
+/**
+ * The AIGC asset group this deployment owns, `openstory-virtual-<host>`
+ * (#1519). Every deployment on the account — production and each preview —
+ * keeps its own ledger, so each needs its own group: the hourly sweep
+ * deletes group assets the ledger does not know, and a shared group would
+ * have previews deleting each other's sheets. `BYTEPLUS_ASSET_GROUP_ID`
+ * pins a group by id and skips the name entirely.
+ */
+export function aigcGroupName(): string {
+  const appUrl = optionalEnv('VITE_APP_URL');
+  let host = 'local';
+  if (appUrl) {
+    try {
+      host = new URL(appUrl).host;
+    } catch {
+      host = appUrl;
+    }
+  }
+  const slug = host
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
+  return `openstory-virtual-${slug}`.slice(0, 64);
+}
+
 export function bytePlusOpenApiConfig():
   | {
       accessKey: string;

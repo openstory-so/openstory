@@ -23,6 +23,10 @@ import {
   FAL_BILLING_RECONCILE_CRON,
   reconcileFalBilling,
 } from '@/lib/cron/reconcile-fal-billing';
+import {
+  BYTEPLUS_ASSETS_RECONCILE_CRON,
+  reconcileBytePlusAssets,
+} from '@/lib/cron/reconcile-byteplus-assets';
 import { ensureLocalModelPricingSeeded } from '@/lib/db/seed-model-pricing';
 import { ensureSystemTemplatesSeeded } from '@/lib/db/seed-system-templates';
 
@@ -171,6 +175,15 @@ const exportedHandler: ExportedHandler<WorkerEnv> = {
       ctx.waitUntil(
         reconcileFalBilling().catch((error) => {
           logger.error('reconcileFalBilling failed:', { err: error });
+        })
+      );
+      return;
+    }
+    // Hourly diff of the BytePlus asset group against the ledger (#1519).
+    if (controller.cron === BYTEPLUS_ASSETS_RECONCILE_CRON) {
+      ctx.waitUntil(
+        reconcileBytePlusAssets().catch((error) => {
+          logger.error('reconcileBytePlusAssets failed:', { err: error });
         })
       );
       return;
