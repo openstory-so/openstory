@@ -157,7 +157,7 @@ export async function selectComposerStyle(
 }
 
 /**
- * Open Talent or Locations from the composer's References panel (#1526).
+ * Open Talent or Locations from the composer's References sheet (#1526).
  * The three pickers sit behind one control at every breakpoint.
  */
 export async function openComposerReference(
