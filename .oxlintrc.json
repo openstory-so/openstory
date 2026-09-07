@@ -116,7 +116,8 @@
       // `@/lib/storage/serve-media`, but it is a pure server route — its only
       // `createFileRoute` option is `server: { handlers }`, which the client
       // build prunes — so it belongs in the server-routes override below
-      // alongside `oauth/login.ts`, not in a hole punched through this rule.
+      // alongside `oauth/login.ts`, `llms.txt`, and `robots.txt`, not in a
+      // hole punched through this rule.
       "files": [
         "src/components/**",
         "src/hooks/**",
@@ -152,7 +153,8 @@
     {
       // Server-only routes: `routes/api/**`, plus the root-level routes whose
       // only `createFileRoute` option is `server` (pruned from the client
-      // route tree) — `[.]well-known`, `oauth/login.ts`, `r2.$.ts`. Tests never ship either, and neither do Storybook
+      // route tree) — `[.]well-known`, `oauth/login.ts`, `r2.$.ts`,
+      // `llms[.]txt.ts`, `robots[.]txt.ts`. Tests never ship either, and neither do Storybook
       // stories — they are built by Storybook, not the app graph, so a story
       // may pull server-side fixture data (e.g. the style templates).
       "files": [
@@ -160,6 +162,8 @@
         "src/routes/*well-known/**",
         "src/routes/oauth/login.ts",
         "src/routes/r2.$.ts",
+        "src/routes/llms*.ts",
+        "src/routes/robots*.ts",
         "src/**/*.test.ts",
         "src/**/*.test.tsx",
         "src/**/*.stories.tsx"

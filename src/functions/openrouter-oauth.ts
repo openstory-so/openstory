@@ -17,7 +17,7 @@ import {
   getOAuthCookieOptions,
   sealOAuthState,
 } from '@/lib/byok/openrouter-oauth-cookie';
-import { getServerAppUrl } from '@/shared/utils/environment';
+import { getServerAppUrl } from '@/lib/env/environment';
 
 // ============================================================================
 // Initiate OAuth Flow

@@ -12,7 +12,7 @@
  *    their Accept normalized to text/html instead.
  */
 import { allDocs } from 'content-collections';
-import { buildFaqMarkdown, buildLlmsTxt } from '@/shared/marketing/llms';
+import { buildFaqMarkdown, buildLlmsTxt } from '@/lib/agent/llms';
 
 /**
  * RFC 8288 Link header advertising machine-readable discovery resources.

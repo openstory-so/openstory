@@ -81,7 +81,7 @@ const LOCAL_ENV_HEADER = `# ====================================================
  * the few values the app cannot default at runtime (auth/encryption secrets
  * are generated; VITE_APP_URL feeds marketing emails, the OpenRouter
  * referer, workflow instance-id slugs, image-transform absolutization in
- * app-image.tsx, and preview/production detection in utils/environment.ts —
+ * app-image.tsx, and preview/production detection in src/lib/env/environment.ts —
  * media *serving* no longer needs it, see #894, but dropping it silently
  * disables image transforms). Never overwrites existing values. Returns the
  * keys it added.

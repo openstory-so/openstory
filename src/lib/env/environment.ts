@@ -69,7 +69,7 @@ function isLocalDevelopment(): boolean {
 
 /**
  * Is this request being served on a local/network-dev host (localhost or a
- * bare IP)? Mirrors the local-access check in src/routes/__root.tsx: real
+ * bare IP)? Mirrors the local-access check in `src/routes/__root.tsx`: real
  * deployments — wherever they are hosted — are always reached by hostname,
  * never a bare IP or localhost.
  *

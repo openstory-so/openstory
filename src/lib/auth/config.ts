@@ -38,7 +38,7 @@ import {
 } from '@/shared/auth/cookie-prefix';
 import { DEV_OTP_CODE } from '@/shared/auth/dev-otp';
 import { isGoogleAuthConfigured } from '@/lib/auth/google-auth';
-import { isLocalRequestHost } from '@/shared/utils/environment';
+import { isLocalRequestHost } from '@/lib/env/environment';
 import { DEVICE_VERIFICATION_PATH } from '@/lib/api-v1/device-auth';
 import { createOAuthProviderPlugins } from '@/lib/auth/oauth-provider';
 import { readPublicApiKeyFromHeaders } from '@/lib/auth/public-api-key';

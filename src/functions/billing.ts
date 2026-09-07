@@ -30,7 +30,7 @@ import { FOUNDER_EMAIL } from '@/shared/marketing/constants';
 import { getLogger } from '@/shared/observability/logger';
 import { captureProductEvent } from '@/lib/observability/product-events';
 import { sendFounderCreditRequestEmail } from '@/lib/services/email-service';
-import { getServerAppUrl } from '@/shared/utils/environment';
+import { getServerAppUrl } from '@/lib/env/environment';
 import { createServerFn } from '@tanstack/react-start';
 import { getRequest } from '@tanstack/react-start/server';
 import { zodValidator } from '@tanstack/zod-adapter';

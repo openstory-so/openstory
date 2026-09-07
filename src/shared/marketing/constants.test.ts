@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { FAQ_ITEMS, SITE_CONFIG } from './constants';
-import { buildLlmsTxt } from './llms';
+import { buildLlmsTxt } from '@/lib/agent/llms';
 
 describe('SITE_CONFIG messaging (#1255)', () => {
   it('explains longer consistent films and iteration', () => {

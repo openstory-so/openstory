@@ -1,7 +1,7 @@
 /**
  * Google OAuth availability. Server-only (#1445): it reads
  * `GOOGLE_CLIENT_SECRET`, so it lives in `src/lib`, not next to the
- * Request-shaped deployment helpers in `@/shared/utils/environment`.
+ * Request-shaped deployment helpers in `@/lib/env/environment`.
  */
 
 import { getEnv } from '#env';
