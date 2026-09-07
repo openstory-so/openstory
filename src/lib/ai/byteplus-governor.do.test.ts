@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { BytePlusGovernor } from './byteplus-governor.do';
 
-const bucket = { bucket: 'assets-openapi', capacity: 3, refillPerMinute: 60 };
+const bucket = {
+  bucket: 'assets-write',
+  capacity: 3,
+  refillPerMinute: 60,
+  maxWaitMs: 60_000,
+};
 
 function governor(): BytePlusGovernor {
   return new BytePlusGovernor(
@@ -38,6 +43,17 @@ describe('BytePlusGovernor.acquire', () => {
     expect(g.acquire(bucket, t0 + 3_600_000)).toBe(0);
     expect(g.acquire(bucket, t0 + 3_600_000)).toBe(0);
     expect(g.acquire(bucket, t0 + 3_600_000)).toBe(1_000);
+  });
+
+  it('refuses without reserving when the wait would exceed maxWaitMs', () => {
+    const g = governor();
+    const t0 = 1_000_000;
+    const tight = { ...bucket, maxWaitMs: 1_500 };
+    for (let i = 0; i < 3; i += 1) g.acquire(tight, t0);
+    expect(g.acquire(tight, t0)).toBe(1_000);
+    // Would be 2000ms: refused, and the bucket's debt stays at one.
+    expect(g.acquire(tight, t0)).toBe(-1);
+    expect(g.acquire({ ...tight, maxWaitMs: 60_000 }, t0)).toBe(2_000);
   });
 
   it('keeps buckets independent', () => {

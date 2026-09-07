@@ -26,6 +26,12 @@ export type AcquireInput = {
   capacity: number;
   /** Sustained rate. */
   refillPerMinute: number;
+  /**
+   * Longest delay the caller will sleep. A reservation beyond it is refused
+   * (nothing is taken from the bucket) and `acquire` returns -1, so a queue
+   * that would outlive the workflow step fails fast instead of hanging.
+   */
+  maxWaitMs: number;
 };
 
 export class BytePlusGovernor extends DurableObject {
@@ -33,7 +39,8 @@ export class BytePlusGovernor extends DurableObject {
 
   /**
    * Reserve one token. Returns the delay in ms the caller must sleep before
-   * sending — 0 when a token is free now. Tokens are reserved in the order
+   * sending — 0 when a token is free now, -1 when the wait would exceed
+   * `maxWaitMs` (then nothing was reserved). Tokens are reserved in the order
    * calls arrive, so a burst of N callers gets N ascending delays rather than
    * all retrying together.
    */
@@ -51,7 +58,13 @@ export class BytePlusGovernor extends DurableObject {
     // Going negative is the reservation: the caller who takes the bucket to
     // -k owes the k-th refill interval.
     const tokens = refilled - 1;
+    const delayMs = tokens >= 0 ? 0 : Math.ceil(-tokens / refillPerMs);
+    if (delayMs > input.maxWaitMs) {
+      // Refused: persist only the refill, not the reservation.
+      this.buckets.set(input.bucket, { tokens: refilled, lastRefillAt: now });
+      return -1;
+    }
     this.buckets.set(input.bucket, { tokens, lastRefillAt: now });
-    return tokens >= 0 ? 0 : Math.ceil(-tokens / refillPerMs);
+    return delayMs;
   }
 }

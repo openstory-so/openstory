@@ -1,5 +1,8 @@
 import { getEnv } from '#env';
-import { toArkMediaUrl } from '@/lib/ai/byteplus-asset-ingest';
+import {
+  toArkFetchableUrl,
+  toArkMediaUrl,
+} from '@/lib/ai/byteplus-asset-ingest';
 import type { AssetPoolLedger } from '@/lib/ai/byteplus-asset-pool';
 import {
   arkAdapterConfig,
@@ -493,21 +496,28 @@ export async function submitMotionJob(
             ...(falKey?.key && { falApiKey: falKey.key }),
           })
         : undefined;
-      // Sequential on purpose: the batch already fans shots out in parallel,
-      // and CreateAsset has a per-minute write quota (#1519).
+      // Only a still that can carry a face goes through the portrait
+      // library: the start frame and the character sheets. CreateAsset
+      // allows 3/min per account (#1519), so location and element sheets —
+      // no people — are sent as plain URLs. Sequential on purpose: the batch
+      // already fans shots out in parallel.
       let referenceImages = options.referenceImages;
       if (referenceImages?.length) {
         referenceImages = [];
         for (const ref of options.referenceImages ?? []) {
+          const mayCarryFace =
+            ref.role !== 'location' && ref.role !== 'element';
           referenceImages.push({
             ...ref,
-            // Cast/location/element sheets are the pool's long-lived
-            // residents — evicting one costs every shot that binds it.
-            referenceImageUrl: await toArkMediaUrl(ref.referenceImageUrl, {
-              ledger: options.assetLedger,
-              slot: 'library',
-              ...(falKey?.key && { falApiKey: falKey.key }),
-            }),
+            referenceImageUrl: mayCarryFace
+              ? // Cast sheets are the pool's long-lived residents — evicting
+                // one costs every shot that binds it.
+                await toArkMediaUrl(ref.referenceImageUrl, {
+                  ledger: options.assetLedger,
+                  slot: 'library',
+                  ...(falKey?.key && { falApiKey: falKey.key }),
+                })
+              : await toArkFetchableUrl(ref.referenceImageUrl, falKey?.key),
           });
         }
       }

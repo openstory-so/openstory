@@ -205,7 +205,7 @@ describe('Motion Service', () => {
       expect(result.jobId).toBe('ark-job-id');
     });
 
-    it('registers the start frame and every reference as asset://', async () => {
+    it('registers the start frame and character refs as asset://, sends element/location sheets as URLs (#1519)', async () => {
       testEnv.ARK_API_KEY = 'ark-test';
       mockGenerateVideo.mockResolvedValue({ jobId: 'ark-assets' });
 
@@ -247,10 +247,12 @@ describe('Motion Service', () => {
                 value: 'asset://https://example.com/scarlett.png',
               }),
             }),
+            // An element sheet carries no face; CreateAsset is 3/min, so it
+            // is not spent here.
             expect.objectContaining({
               type: 'image',
               source: expect.objectContaining({
-                value: 'asset://https://example.com/logo.png',
+                value: 'https://example.com/logo.png',
               }),
             }),
           ],

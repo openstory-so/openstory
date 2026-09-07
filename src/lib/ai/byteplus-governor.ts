@@ -15,20 +15,46 @@ import type { BytePlusGovernor } from './byteplus-governor.do';
 const logger = getLogger(['openstory', 'ai', 'byteplus-governor']);
 
 /**
- * Sustained Assets OpenAPI calls per minute. BytePlus publishes no number;
- * `QuotaWriteQPMExceeded` landed on a ~15-call burst in #1519, so this
- * starts conservative. Raise it via `BYTEPLUS_OPENAPI_QPM` once a live
- * account shows headroom.
+ * Two buckets. `CreateAsset` is the scarce one — the account allows THREE
+ * per minute (`QuotaWriteQPMExceeded`, relayed by Tom 2026-09-07), which is
+ * why only stills that can carry a face are ingested at all (character
+ * sheets and start frames; see `submitMotionJob`). Reads (`ListAssets`,
+ * `GetAsset` polls, group lookup) sit under a separate flow-control limit
+ * BytePlus does not publish; 60/min has not tripped it.
  */
+const DEFAULT_ASSET_WRITE_QPM = 3;
 const DEFAULT_OPENAPI_QPM = 60;
-const OPENAPI_BURST = 10;
-const BUCKET = 'assets-openapi';
+const WRITE_ACTIONS = new Set(['CreateAsset']);
 const GOVERNOR_NAME = 'byteplus';
 
-function openApiQpm(): number {
-  const raw = Reflect.get(getEnv(), 'BYTEPLUS_OPENAPI_QPM');
+/**
+ * Longest a caller sleeps for a token. The Cloudflare step this runs inside
+ * defaults to a 10-minute limit; beyond this the DO refuses without
+ * reserving and the shot fails with a message that names the queue.
+ */
+const BYTEPLUS_GOVERNOR_MAX_WAIT_MS = 5 * 60_000;
+
+function envQpm(name: string, fallback: number): number {
+  const raw = Reflect.get(getEnv(), name);
   const parsed = typeof raw === 'string' ? Number.parseInt(raw, 10) : NaN;
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_OPENAPI_QPM;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function bucketFor(action: string): {
+  bucket: string;
+  capacity: number;
+  refillPerMinute: number;
+} {
+  if (WRITE_ACTIONS.has(action)) {
+    const qpm = envQpm('BYTEPLUS_ASSET_WRITE_QPM', DEFAULT_ASSET_WRITE_QPM);
+    return { bucket: 'assets-write', capacity: qpm, refillPerMinute: qpm };
+  }
+  const qpm = envQpm('BYTEPLUS_OPENAPI_QPM', DEFAULT_OPENAPI_QPM);
+  return {
+    bucket: 'assets-read',
+    capacity: Math.min(10, qpm),
+    refillPerMinute: qpm,
+  };
 }
 
 function governorStub(): DurableObjectStub<BytePlusGovernor> | undefined {
@@ -52,11 +78,15 @@ export async function acquireBytePlusOpenApiToken(
   const stub = governorStub();
   if (!stub) return;
   const delayMs = await stub.acquire({
-    bucket: BUCKET,
-    capacity: OPENAPI_BURST,
-    refillPerMinute: openApiQpm(),
+    ...bucketFor(action),
+    maxWaitMs: BYTEPLUS_GOVERNOR_MAX_WAIT_MS,
   });
-  if (delayMs <= 0) return;
+  if (delayMs < 0) {
+    throw new Error(
+      `BytePlus ${action} queue is longer than ${BYTEPLUS_GOVERNOR_MAX_WAIT_MS / 60_000} minutes (the account allows ${bucketFor(action).refillPerMinute}/min). Retry once the batch ahead has cleared.`
+    );
+  }
+  if (delayMs === 0) return;
   logger.debug(`BytePlus ${action}: governor delay ${delayMs}ms`, {
     action,
     delayMs,
