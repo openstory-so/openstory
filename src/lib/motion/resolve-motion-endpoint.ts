@@ -11,7 +11,10 @@
  *
  * `references` is the request shape — how the images ride, or that nothing
  * rides at all:
- *   - `endpoint` — dedicated reference-to-video endpoint (Seedance, H3 Max,
+ *  | {
+      via: 'fal';
+      endpointId: MotionEndpointId;
+      references: 'endpoint'; - `endpoint` — dedicated reference-to-video endpoint (Seedance, H3 Max,
  *     Omni Flash)
  *   - `inline` — URLs on the same generations call (Kling `elements`, Grok
  *     Imagine 1.5 native `reference`/`character` prompt parts)
