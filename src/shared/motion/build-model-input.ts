@@ -18,11 +18,7 @@ import {
   inlineReferenceDescription,
   substituteReferenceTags,
 } from '@/shared/prompts/reference-legend';
-import {
-  pickVideoResolution,
-  tiersForTokens,
-  type Resolution,
-} from '@/shared/constants/resolutions';
+import { pickVideoResolution } from '@/shared/constants/resolutions';
 import {
   MOTION_JSON_SCHEMAS,
   MOTION_TRANSFORMS,
@@ -52,18 +48,6 @@ export function motionResolutionTokens(endpointId: MotionEndpointId): string[] {
   const values: unknown = field.enum;
   if (!Array.isArray(values)) return [];
   return values.filter((value): value is string => typeof value === 'string');
-}
-
-/**
- * The tiers a motion model can actually deliver — what the resolution picker
- * offers for it (#1449). Reads the i2v endpoint's enum; the T2V and
- * reference-to-video siblings advertise the same tokens.
- */
-export function motionResolutionTiers(model: ImageToVideoModel): Resolution[] {
-  return tiersForTokens(
-    motionResolutionTokens(IMAGE_TO_VIDEO_MODELS[model].id),
-    'video'
-  );
 }
 
 /**

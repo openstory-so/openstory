@@ -22,7 +22,7 @@ import {
   type Resolution,
 } from '@/shared/constants/resolutions';
 import { imageResolutionTiers } from '@/shared/image/build-image-request';
-import { motionResolutionTiers } from '@/shared/motion/build-model-input';
+import { motionResolutionTiers } from '@/shared/motion/model-capabilities';
 
 type Selection = {
   imageModels?: readonly TextToImageModel[];

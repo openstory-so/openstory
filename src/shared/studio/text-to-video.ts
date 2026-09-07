@@ -16,7 +16,7 @@ import {
   IMAGE_TO_VIDEO_MODELS,
   type ImageToVideoModel,
 } from '@/shared/ai/models';
-import { motionResolutionTokens } from '@/shared/motion/build-model-input';
+import { motionResolutionTokensForModel } from '@/shared/motion/model-capabilities';
 import type { AspectRatio } from '@/shared/constants/aspect-ratios';
 import {
   DEFAULT_RESOLUTION,
@@ -288,7 +288,7 @@ export function studioVideoResolution(
   model: ImageToVideoModel,
   resolution: Resolution | undefined
 ): string | undefined {
-  const options = motionResolutionTokens(IMAGE_TO_VIDEO_MODELS[model].id);
+  const options = motionResolutionTokensForModel(model);
   if (options.length === 0) return undefined;
   return pickVideoResolution(options, resolution ?? DEFAULT_RESOLUTION);
 }

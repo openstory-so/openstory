@@ -8,15 +8,12 @@
 import { isNativeGrokVideoModel } from '@/shared/ai/grok-native';
 import type { AnalysisModelId } from '@/shared/ai/models.config';
 import type { AspectRatio } from '@/shared/constants/aspect-ratios';
-import {
-  MOTION_INPUT_SCHEMAS,
-  type MotionEndpointId,
-} from '@/shared/motion/endpoint-map';
+import type { MotionEndpointId } from '@/shared/motion/endpoint-map';
+import { modelSupportsAspectRatio } from '@/shared/motion/model-capabilities';
 // Type-only: the Seedream adapter narrows `model` to a literal union, so the
 // catalog's `byteplusId` has to be that union rather than a bare string —
 // a retired id then fails typecheck instead of at request time (#1157).
 import type { BytePlusImageModel } from '@tanstack/ai-byteplus';
-import { z } from 'zod';
 
 import { getLogger } from '@/shared/observability/logger';
 
@@ -50,6 +47,7 @@ export const IMAGE_TO_VIDEO_MODELS = {
     license: 'proprietary' as const,
     qualityRank: 1,
     maxPromptLength: 2500,
+    supportsAudio: false,
     performance: { estimatedGenerationTime: 33, quality: 'best' as const },
   },
   ltx_2_3_pro: {
@@ -59,6 +57,7 @@ export const IMAGE_TO_VIDEO_MODELS = {
     license: 'open-weight' as const,
     qualityRank: 2,
     maxPromptLength: 2500,
+    supportsAudio: true,
     performance: { estimatedGenerationTime: 126, quality: 'best' as const },
   },
   veo3_1: {
@@ -68,6 +67,7 @@ export const IMAGE_TO_VIDEO_MODELS = {
     license: 'proprietary' as const,
     qualityRank: 2,
     maxPromptLength: 20000,
+    supportsAudio: true,
     performance: { estimatedGenerationTime: 147, quality: 'best' as const },
   },
   gemini_omni_flash: {
@@ -80,6 +80,7 @@ export const IMAGE_TO_VIDEO_MODELS = {
     // the fal schema nor the Interactions API expose a generate_audio toggle
     // (`videoModelSupportsAudio` is false), so audio direction is in-prompt
     // and the scene-editor SFX checkbox stays hidden.
+    supportsAudio: false,
     maxPromptLength: 20000,
     performance: { estimatedGenerationTime: 20, quality: 'best' as const },
   },
@@ -90,6 +91,7 @@ export const IMAGE_TO_VIDEO_MODELS = {
     license: 'proprietary' as const,
     qualityRank: 3,
     maxPromptLength: 2500,
+    supportsAudio: true,
     performance: { estimatedGenerationTime: 306, quality: 'best' as const },
   },
   minimax_hailuo_02: {
@@ -99,6 +101,7 @@ export const IMAGE_TO_VIDEO_MODELS = {
     license: 'proprietary' as const,
     qualityRank: 5,
     maxPromptLength: 2500,
+    supportsAudio: false,
     performance: { estimatedGenerationTime: 199, quality: 'best' as const },
   },
   minimax_h3_max: {
@@ -122,6 +125,7 @@ export const IMAGE_TO_VIDEO_MODELS = {
     license: 'proprietary' as const,
     qualityRank: 4,
     maxPromptLength: 4096,
+    supportsAudio: true,
     performance: { estimatedGenerationTime: 208, quality: 'best' as const },
   },
   seedance_v2_5: {
@@ -131,6 +135,7 @@ export const IMAGE_TO_VIDEO_MODELS = {
     license: 'proprietary' as const,
     qualityRank: 2,
     maxPromptLength: 4096,
+    supportsAudio: true,
     performance: { estimatedGenerationTime: 208, quality: 'best' as const },
     // Hidden from sequence/studio pickers: public fal 2.5 400s photoreal
     // faces without Ark `asset://` ingest, and we are not rolling Ark out.
@@ -364,17 +369,10 @@ export function isNativeBytePlusVideoModel(model: ImageToVideoModel): boolean {
 
 export const DEFAULT_VIDEO_MODEL: ImageToVideoModel = 'seedance_v2';
 
-function schemaOf(modelKey: ImageToVideoModel) {
-  return MOTION_INPUT_SCHEMAS[IMAGE_TO_VIDEO_MODELS[modelKey].id];
-}
-
-/** Check if a video model supports audio output.
- *  Checks the Zod schema for a generate_audio field, respects per-model overrides. */
+/** Check if a video model supports audio output. */
 export function videoModelSupportsAudio(modelKey: ImageToVideoModel): boolean {
   const config = IMAGE_TO_VIDEO_MODELS[modelKey];
-  if ('supportsAudio' in config && typeof config.supportsAudio === 'boolean')
-    return config.supportsAudio;
-  return 'generate_audio' in schemaOf(modelKey).shape;
+  return 'supportsAudio' in config && config.supportsAudio === true;
 }
 
 /**
@@ -466,11 +464,7 @@ export function isModelCompatibleWithAspectRatio(
   model: ImageToVideoModel,
   aspectRatio: AspectRatio
 ): boolean {
-  const schema = schemaOf(model);
-  if (!('aspect_ratio' in schema.shape)) return true;
-  return z
-    .object({ aspect_ratio: schema.shape.aspect_ratio })
-    .safeParse({ aspect_ratio: aspectRatio }).success;
+  return modelSupportsAspectRatio(model, aspectRatio);
 }
 
 /**

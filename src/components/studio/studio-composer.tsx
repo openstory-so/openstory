@@ -20,7 +20,7 @@ import { AspectRatioPills } from '@/components/settings/aspect-ratio-pills';
 import { ResolutionPills } from '@/components/settings/resolution-pills';
 import { IMAGE_MODELS } from '@/shared/ai/models';
 import { imageResolutionTiers } from '@/shared/image/build-image-request';
-import { motionResolutionTiers } from '@/shared/motion/build-model-input';
+import { motionResolutionTiers } from '@/shared/motion/model-capabilities';
 import {
   clampResolution,
   DEFAULT_RESOLUTION,

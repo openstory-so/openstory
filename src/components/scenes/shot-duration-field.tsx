@@ -34,13 +34,11 @@ import { sequenceKeys } from '@/hooks/use-sequences';
 import { shotStalenessNamespace } from '@/hooks/use-shot-staleness';
 import { shotKeys } from '@/hooks/use-shots';
 import {
-  IMAGE_TO_VIDEO_MODELS,
   videoModelDisplayName,
   type ImageToVideoModel,
 } from '@/shared/ai/models';
-import { MOTION_JSON_SCHEMAS } from '@/shared/motion/endpoint-map';
+import { durationGridForModel } from '@/shared/motion/model-capabilities';
 import { snapDuration } from '@/shared/motion/snap-duration';
-import { getDurationValues, numericOf } from '@/shared/motion/motion-transform';
 import type { Shot } from '@/lib/db/schema';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Loader2, Sparkles } from 'lucide-react';
@@ -74,9 +72,7 @@ export const ShotDurationField: React.FC<ShotDurationFieldProps> = ({
       ? shot.durationMs / 1000
       : undefined;
 
-  const durationOptions = getDurationValues(
-    MOTION_JSON_SCHEMAS[IMAGE_TO_VIDEO_MODELS[motionModel].id]
-  ).map(numericOf);
+  const durationOptions = durationGridForModel(motionModel);
   const durationItems = durationOptions.map((seconds) => ({
     value: String(seconds),
     label: `${seconds}s`,
