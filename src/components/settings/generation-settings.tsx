@@ -21,7 +21,6 @@ import {
   DEFAULT_IMAGE_MODEL,
   DEFAULT_MUSIC_MODEL,
   DEFAULT_VIDEO_MODEL,
-  IMAGE_TO_VIDEO_MODELS,
   type AudioModel,
   type ImageToVideoModel,
   type TextToImageModel,
@@ -33,8 +32,7 @@ import {
   availableResolutions,
   resolutionCeilingNote,
 } from '@/lib/ai/resolution-support';
-import { useMemo, useState, type FC } from 'react';
-import { useViaAvailability } from '@/hooks/use-via-availability';
+import { useState, type FC } from 'react';
 import { AspectRatioPills } from './aspect-ratio-pills';
 import { ResolutionPills } from './resolution-pills';
 import { GenerationSettingsTrigger } from './generation-settings-trigger';
@@ -69,10 +67,6 @@ type GenerationSettingsProps = {
   singleSelectMusic?: boolean;
   /** Current style category, used to show/hide style-restricted motion models */
   styleCategory?: string;
-  /** Current style name, used in aspect-ratio recommendation tooltips */
-  styleName?: string;
-  /** Style-recommended aspect ratio — drives the "Recommended" badge */
-  recommendedAspectRatio?: string | null;
 };
 
 export const GenerationSettings: FC<GenerationSettingsProps> = ({
@@ -95,8 +89,6 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
   singleSelectMotion = false,
   singleSelectMusic = false,
   styleCategory,
-  styleName,
-  recommendedAspectRatio,
 }) => {
   const [open, setOpen] = useState(false);
   // How far the run goes is picked at Generate (#1408), so the video models
@@ -106,17 +98,6 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
     videoModels,
     aspectRatio,
   };
-
-  // Per-team list from the `_app` loader, so the copy names the models this
-  // team can actually pick — Grok Imagine included when xAI is reachable.
-  const { referenceOnlyModels } = useViaAvailability();
-  const referenceOnlyModelNames = useMemo(
-    () =>
-      new Intl.ListFormat('en', { style: 'long', type: 'disjunction' }).format(
-        referenceOnlyModels.map((m) => IMAGE_TO_VIDEO_MODELS[m].name)
-      ),
-    [referenceOnlyModels]
-  );
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -137,8 +118,6 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
             <AspectRatioPills
               value={aspectRatio}
               onChange={onAspectRatioChange}
-              recommendedAspectRatio={recommendedAspectRatio}
-              styleName={styleName}
             />
           </section>
 
@@ -186,14 +165,6 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
             <h3 className="text-sm font-medium text-foreground">
               {singleSelectMotion ? 'Motion Model' : 'Motion Models'}
             </h3>
-            {!generateStartFrames && (
-              <p className="text-xs text-muted-foreground">
-                Each shot renders straight to video from the character, location
-                and element references — no still is generated first. Faster and
-                cheaper, with looser control over composition. Only{' '}
-                {referenceOnlyModelNames} can do this.
-              </p>
-            )}
             {singleSelectMotion ? (
               <MotionModelSelector
                 selectedModel={videoModels[0] ?? DEFAULT_VIDEO_MODEL}

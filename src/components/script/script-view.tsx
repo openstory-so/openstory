@@ -461,13 +461,12 @@ export const ScriptView: FC<{
 
   const posthog = usePostHog();
 
-  // Derive style metadata for motion model filtering + recommendation badges
+  // Derive style metadata for motion model filtering
   const selectedStyle = useMemo(
     () => styles.find((s) => s.id === (styleId || sequence?.styleId)),
     [styles, styleId, sequence?.styleId]
   );
   const styleCategory = selectedStyle?.category ?? undefined;
-  const styleName = selectedStyle?.name ?? undefined;
 
   // Automatic style (#1213): a fresh `auto` pick, or — when editing — the
   // sequence's own script-derived style (not in the library list, so it is
@@ -626,8 +625,6 @@ export const ScriptView: FC<{
     },
     []
   );
-  const recommendedAspectRatio = selectedStyle?.defaultAspectRatio ?? null;
-
   // Sync draft state when creating new sequences (not editing). A Try /
   // Use-this-style seed for a *different* style is just-now intent and wins;
   // the same-style leftover `?style=` after login/reload restores the draft
@@ -1433,8 +1430,6 @@ export const ScriptView: FC<{
             onAudioModelsChange={(v) => updateGen('audioModels', v)}
             disabled={loading}
             styleCategory={styleCategory}
-            styleName={styleName}
-            recommendedAspectRatio={recommendedAspectRatio}
           />
           <Button
             type="button"
