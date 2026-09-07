@@ -2,6 +2,7 @@ import {
   addModelToSequenceFn,
   archiveSequenceFn,
   createSequenceFn,
+  estimateGenerationSliceFn,
   getArchivedSequencesFn,
   getSequenceAudioVariantsFn,
   getSequenceFn,
@@ -12,6 +13,8 @@ import {
   unarchiveSequenceFn,
   type AddModelResult,
 } from '@/functions/sequences';
+import type { GenerationStage } from '@/shared/generation/pipeline';
+import { micros, type Microdollars } from '@/shared/billing/money';
 import { DEFAULT_ANALYSIS_MODEL } from '@/shared/ai/models.config';
 import type { SequenceMusicVariant } from '@/lib/db/schema';
 import type { VariantType } from '@/lib/db/schema/shot-variants';
@@ -35,7 +38,50 @@ export const sequenceKeys = {
   list: (teamId?: string) => [...sequenceKeys.lists(), teamId] as const,
   details: () => [...sequenceKeys.all, 'detail'] as const,
   detail: (id?: string) => [...sequenceKeys.details(), id] as const,
+  generationSlice: (
+    id: string,
+    startFrom: GenerationStage,
+    stopAt: GenerationStage
+  ) =>
+    [
+      ...sequenceKeys.detail(id),
+      'generation-slice',
+      startFrom,
+      stopAt,
+    ] as const,
 };
+
+export function useGenerationSliceEstimate(args: {
+  sequenceId: string;
+  startFrom: GenerationStage | null | undefined;
+  stopAt: GenerationStage;
+  enabled?: boolean;
+}): Microdollars | null | undefined {
+  const { data } = useQuery({
+    queryKey:
+      args.startFrom == null
+        ? sequenceKeys.generationSlice(args.sequenceId, 'script', args.stopAt)
+        : sequenceKeys.generationSlice(
+            args.sequenceId,
+            args.startFrom,
+            args.stopAt
+          ),
+    queryFn: async () => {
+      if (args.startFrom == null) return { estimateMicros: null };
+      return estimateGenerationSliceFn({
+        data: {
+          sequenceId: args.sequenceId,
+          startFrom: args.startFrom,
+          stopAt: args.stopAt,
+        },
+      });
+    },
+    enabled: Boolean(args.enabled ?? true) && args.startFrom != null,
+    staleTime: 60_000,
+  });
+  if (data === undefined) return undefined;
+  return data.estimateMicros === null ? null : micros(data.estimateMicros);
+}
 
 /**
  * Music-prompt staleness — its own key rather than a member of

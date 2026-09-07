@@ -12,6 +12,7 @@ import {
 import {
   estimateAudioCost,
   estimateImageCost,
+  estimateStoryboardCost,
   estimateVideoCost,
   gateEstimate,
 } from '@/shared/billing/cost-estimation';
@@ -19,6 +20,7 @@ import { getEffectiveFalPricing } from '@/lib/ai/fal-pricing-live';
 import { sumShotDurationsSeconds } from '@/lib/sequences/shot-durations';
 import { addMicros, ZERO_MICROS } from '@/shared/billing/money';
 import { buildMotionReferenceImages } from '@/shared/motion/build-motion-references';
+import { resolveShotDuration } from '@/shared/motion/resolve-shot-duration';
 import {
   releaseReservationOnThrow,
   reserveRunCredits,
@@ -50,6 +52,7 @@ import {
   continueStageSchema,
   flagsFromStopAt,
   generationStageSchema,
+  includesStage,
   nextStageAfter,
   stageIndex,
 } from '@/shared/generation/pipeline';
@@ -111,6 +114,72 @@ export const getSequenceFn = createServerFn({ method: 'GET' })
   .validator(zodValidator(z.object({ sequenceId: ulidSchema })))
   .handler(async ({ context }) => {
     return context.sequence;
+  });
+
+const estimateGenerationSliceInputSchema = z.object({
+  sequenceId: ulidSchema,
+  startFrom: generationStageSchema,
+  stopAt: generationStageSchema,
+});
+
+/**
+ * Pre-flight cost of a generation slice on a saved sequence (continue footer,
+ * and later the Generate dialog). The client must not run estimateStoryboardCost.
+ */
+export const estimateGenerationSliceFn = createServerFn({ method: 'GET' })
+  .middleware([sequenceAccessMiddleware])
+  .validator(zodValidator(estimateGenerationSliceInputSchema))
+  .handler(async ({ data, context }) => {
+    const { sequence, scopedDb } = context;
+    const [shots, scenes, pricing] = await Promise.all([
+      scopedDb.shots.listBySequence(sequence.id),
+      scopedDb.scenes.listBySequence(sequence.id),
+      getEffectiveFalPricing(),
+    ]);
+    const imageModel = safeTextToImageModel(
+      sequence.imageModel,
+      DEFAULT_IMAGE_MODEL
+    );
+    if (
+      includesStage(data.stopAt, 'images') &&
+      estimateImageCost(imageModel, sequence.aspectRatio, 1, { pricing }) ===
+        null
+    ) {
+      return { estimateMicros: null };
+    }
+    const videoModel = safeImageToVideoModel(
+      sequence.videoModel,
+      DEFAULT_VIDEO_MODEL
+    );
+    const sceneCount = Math.max(scenes.length, shots.length, 1);
+    const perShotSeconds =
+      shots.length > 0
+        ? resolveShotDuration({
+            durationMs: shots[0]?.durationMs,
+            model: videoModel,
+          })
+        : 5;
+    const motionOn = includesStage(data.stopAt, 'motion');
+    const musicOn = includesStage(data.stopAt, 'music');
+    const estimate = estimateStoryboardCost({
+      imageModel,
+      aspectRatio: sequence.aspectRatio,
+      resolution: sequence.resolution,
+      estimatedSceneCount: sceneCount,
+      startFrom: data.startFrom,
+      stopAt: data.stopAt,
+      referenceOnly: !sequence.generateStartFrames,
+      autoGenerateMotion: motionOn,
+      videoModels: motionOn ? [videoModel] : undefined,
+      videoDurationSeconds: motionOn ? perShotSeconds : undefined,
+      autoGenerateMusic: musicOn,
+      audioModels: musicOn
+        ? [safeAudioModel(sequence.musicModel, DEFAULT_MUSIC_MODEL)]
+        : undefined,
+      audioDurationSeconds: musicOn ? perShotSeconds * sceneCount : undefined,
+      pricing,
+    });
+    return { estimateMicros: Number(estimate) };
   });
 
 /**

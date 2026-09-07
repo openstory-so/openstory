@@ -8,7 +8,6 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   actionLabelForStage,
   DEFAULT_GENERATION_STOP_AT,
-  includesStage,
   isContinueStage,
   type ContinueStage,
   type GenerationStage,
@@ -16,7 +15,6 @@ import {
 import { useHydrated } from '@/hooks/use-hydrated';
 import { useCreateScene, useReorderScenes } from '@/hooks/use-scene-structure';
 import {
-  DEFAULT_IMAGE_MODEL,
   DEFAULT_MUSIC_MODEL,
   DEFAULT_VIDEO_MODEL,
   type AudioModel,
@@ -25,8 +23,6 @@ import {
 } from '@/shared/ai/models';
 import {
   estimateAudioCost,
-  estimateImageCost,
-  estimateStoryboardCost,
   estimateVideoCost,
 } from '@/shared/billing/cost-estimation';
 import {
@@ -37,6 +33,7 @@ import {
 import type { AspectRatio } from '@/shared/constants/aspect-ratios';
 import type { Resolution } from '@/shared/constants/resolutions';
 import { useFalPricing } from '@/hooks/use-fal-pricing';
+import { useGenerationSliceEstimate } from '@/hooks/use-sequences';
 import type { SceneWithScript } from '@/hooks/use-scenes';
 import type { ShotVariant } from '@/lib/db/schema';
 import { errorMessage } from '@/shared/errors';
@@ -198,7 +195,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
   onCompareDivergent,
   initialMusicModel,
   initialVideoModel,
-  initialImageModel,
+  initialImageModel: _initialImageModel,
   styleCategory,
   generateStartFrames = false,
   styleName,
@@ -454,61 +451,12 @@ const SceneListComponent: React.FC<SceneListProps> = ({
     generateStartFrames,
   ]);
 
-  const continueCostEstimate = useMemo((): Microdollars | null => {
-    if (!nextStage || !showContinueFooter) return null;
-    const needsMedia =
-      includesStage(continueStopAt, 'references') ||
-      includesStage(continueStopAt, 'images') ||
-      includesStage(continueStopAt, 'motion') ||
-      includesStage(continueStopAt, 'music');
-    if (needsMedia && !falPricing) return null;
-    const imageModel = initialImageModel ?? DEFAULT_IMAGE_MODEL;
-    if (
-      falPricing &&
-      includesStage(continueStopAt, 'images') &&
-      estimateImageCost(imageModel, aspectRatio, 1, { pricing: falPricing }) ===
-        null
-    ) {
-      return null;
-    }
-    const sceneCount = Math.max(scenes?.length ?? shots?.length ?? 0, 1);
-    const motionOn = includesStage(continueStopAt, 'motion');
-    const musicOn = includesStage(continueStopAt, 'music');
-    const perShotSeconds =
-      shots && shots.length > 0
-        ? resolveShotDuration({
-            durationMs: shots[0]?.durationMs,
-            model: videoModel,
-          })
-        : 5;
-    return estimateStoryboardCost({
-      imageModel,
-      aspectRatio,
-      estimatedSceneCount: sceneCount,
-      startFrom: nextStage,
-      stopAt: continueStopAt,
-      referenceOnly: !generateStartFrames,
-      autoGenerateMotion: motionOn,
-      videoModels: motionOn ? [videoModel] : undefined,
-      videoDurationSeconds: motionOn ? perShotSeconds : undefined,
-      autoGenerateMusic: musicOn,
-      audioModels: musicOn ? [musicModel] : undefined,
-      audioDurationSeconds: musicOn ? perShotSeconds * sceneCount : undefined,
-      pricing: falPricing ?? {},
-    });
-  }, [
-    falPricing,
-    nextStage,
-    showContinueFooter,
-    initialImageModel,
-    aspectRatio,
-    scenes?.length,
-    shots,
-    continueStopAt,
-    generateStartFrames,
-    videoModel,
-    musicModel,
-  ]);
+  const continueCostEstimate = useGenerationSliceEstimate({
+    sequenceId,
+    startFrom: nextStage,
+    stopAt: continueStopAt,
+    enabled: showContinueFooter,
+  });
 
   const shotsBySceneId = useMemo(() => {
     const map = new Map<string, ShotView[]>();
