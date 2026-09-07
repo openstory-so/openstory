@@ -2,6 +2,7 @@ import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
@@ -13,7 +14,7 @@ import {
 } from '@/lib/style/composer-style-row';
 import { styleCategoryLabel } from '@/lib/style/style-assets';
 import type { Style } from '@/types/database';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, Loader2, Sparkles } from 'lucide-react';
 
 type StyleCategorySelectProps = {
   styles: Style[];
@@ -21,6 +22,12 @@ type StyleCategorySelectProps = {
   onChange: (category: string) => void;
   disabled?: boolean;
   size?: 'sm' | 'default' | 'lg';
+  /** Rank styles for the current script. Lives in this menu so the strip
+   *  chrome stays one control, not a row of buttons (#1526). */
+  onRecommend?: () => void;
+  recommendDisabled?: boolean;
+  recommendLabel?: string;
+  isRecommending?: boolean;
 };
 
 export function StyleCategorySelect({
@@ -29,6 +36,10 @@ export function StyleCategorySelect({
   onChange,
   disabled = false,
   size = 'sm',
+  onRecommend,
+  recommendDisabled = false,
+  recommendLabel = 'Recommend',
+  isRecommending = false,
 }: StyleCategorySelectProps) {
   const families = composerStyleCategoryOptions(styles);
   const isAll = value === ALL_COMPOSER_STYLE_CATEGORIES;
@@ -46,20 +57,44 @@ export function StyleCategorySelect({
           size={size}
           disabled={disabled}
           aria-label={`Style category: ${label}`}
+          className="gap-1.5 whitespace-nowrap"
         >
-          <span className="max-w-40 truncate">{label}</span>
+          <span>{label}</span>
           <ChevronDown className="size-3.5" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start">
+      <DropdownMenuContent align="start" className="w-max min-w-56">
+        {onRecommend ? (
+          <>
+            <DropdownMenuItem
+              disabled={recommendDisabled || isRecommending}
+              onSelect={() => onRecommend()}
+            >
+              {isRecommending ? (
+                <Loader2 className="size-3.5 animate-spin text-primary" />
+              ) : (
+                <Sparkles className="size-3.5 text-primary" />
+              )}
+              {recommendLabel}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+          </>
+        ) : null}
         <DropdownMenuRadioGroup value={value} onValueChange={onChange}>
           {families.map((option) => (
-            <DropdownMenuRadioItem key={option.value} value={option.value}>
+            <DropdownMenuRadioItem
+              key={option.value}
+              value={option.value}
+              className="whitespace-nowrap"
+            >
               {option.label}
             </DropdownMenuRadioItem>
           ))}
           {families.length > 0 ? <DropdownMenuSeparator /> : null}
-          <DropdownMenuRadioItem value={ALL_COMPOSER_STYLE_CATEGORIES}>
+          <DropdownMenuRadioItem
+            value={ALL_COMPOSER_STYLE_CATEGORIES}
+            className="whitespace-nowrap"
+          >
             All styles
           </DropdownMenuRadioItem>
         </DropdownMenuRadioGroup>

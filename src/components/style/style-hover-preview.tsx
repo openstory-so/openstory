@@ -13,6 +13,14 @@ type StyleHoverPreviewProps = {
   /** Disable the hover clip (e.g. on a touch surface). Defaults to enabled. */
   hoverVideo?: boolean;
   className?: string;
+  /** First-paint tiles: eager + high fetch priority so they beat lazy ones. */
+  priority?: boolean;
+  /** Explicit pixel size for composer tiles (keeps the SSR srcset small). */
+  width?: number;
+  height?: number;
+  sizes?: string;
+  /** Cloudflare Media Transformations width for the hover clip. */
+  videoWidth?: number;
 };
 
 function prefersReducedMotion(): boolean {
@@ -36,6 +44,11 @@ export const StyleHoverPreview: FC<StyleHoverPreviewProps> = ({
   style,
   hoverVideo = true,
   className,
+  priority = false,
+  width,
+  height,
+  sizes,
+  videoWidth = 400,
 }) => {
   const [imgError, setImgError] = useState(false);
   const [hovered, setHovered] = useState(false);
@@ -49,7 +62,9 @@ export const StyleHoverPreview: FC<StyleHoverPreviewProps> = ({
   // grid of tiles fetches a small, tile-sized re-encode rather than the full
   // master mp4 (degrades to the original URL off-zone, e.g. local dev).
   const rawHoverUrl = hoverVideo ? styleHoverVideoUrl(style) : null;
-  const hoverUrl = rawHoverUrl ? optimizedVideoUrl(rawHoverUrl, 400) : null;
+  const hoverUrl = rawHoverUrl
+    ? optimizedVideoUrl(rawHoverUrl, videoWidth)
+    : null;
 
   const handleEnter = useCallback(() => {
     if (!hoverUrl || prefersReducedMotion()) return;
@@ -95,11 +110,21 @@ export const StyleHoverPreview: FC<StyleHoverPreviewProps> = ({
     >
       {showImage ? (
         <AppImage
+          key={style.id}
           src={style.previewUrl ?? ''}
           alt={`${style.name} style preview`}
-          layout="fullWidth"
           className="h-full w-full object-cover"
           onError={() => setImgError(true)}
+          {...(width && height
+            ? {
+                width,
+                height,
+                sizes: sizes ?? `${width}px`,
+                fetchPriority: priority ? 'high' : 'low',
+                loading: priority ? 'eager' : 'lazy',
+                decoding: 'async' as const,
+              }
+            : { layout: 'fullWidth' as const })}
         />
       ) : (
         <div

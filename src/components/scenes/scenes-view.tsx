@@ -1507,6 +1507,10 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     onSelectScene: handleSelectScene,
     onSelectShot: handleSelectShot,
     onClearSelection: handleClearSelection,
+    onPlaySequence: () => {
+      handleClearSelection();
+      setView('canvas');
+    },
     regeneratingImages,
     regeneratingMotion,
     onBatchGenerateMotion: handleBatchMotionGeneration,

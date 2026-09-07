@@ -136,7 +136,7 @@ Both are marked as "optional" in the UI — sequences work fine without them.
 
 ## Style Selection
 
-Below the script editor, choose a **visual style** that defines the aesthetic of your sequence. Styles appear as a grid of tiles with preview images. Click any tile to select it, or click **More** to browse the full style catalog in a dialog.
+Below the script editor, choose a **visual style** that defines the aesthetic of your sequence. Styles appear as a grid of tiles with preview images — hover a tile to play its sample clip, click it to open the style dialog, then **Use this style** (or press Return). Click **More** to browse the full catalog. Recommend lives in the style-category menu.
 
 Each style includes configuration for color palette, artistic direction, and rendering approach. The selected style influences:
 
@@ -146,7 +146,7 @@ Each style includes configuration for color palette, artistic direction, and ren
 
 ## The Generation Pipeline
 
-Next to **Generate**, a **Quality | Turbo** switch picks the recommended default in each catalog (Turbo: Luna, Nano Banana 2 Lite, MiniMax H3 Max, ElevenLabs). Both modes show the full list, grouped Fast / Quality.
+The line under **Generate** is a **Whole sequence** link that opens the stop-at dialog — how far the run should go. Model pickers in generation settings still group Fast / Quality.
 
 When you click **Generate Sequence**, OpenStory runs an automated pipeline:
 

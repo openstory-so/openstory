@@ -11,7 +11,6 @@ import {
   MusicModelMultiSelector,
   MusicModelSelector,
 } from '@/components/model/music-model-selector';
-import { Button } from '@/components/ui/button';
 import {
   Popover,
   PopoverContent,
@@ -74,14 +73,6 @@ type GenerationSettingsProps = {
   styleName?: string;
   /** Style-recommended aspect ratio — drives the "Recommended" badge */
   recommendedAspectRatio?: string | null;
-  /**
-   * Active style-applied-defaults marker. When set, the trigger renders a
-   * sibling pill saying "From style · Reset" (fixed text — style names vary in
-   * length and would wrap the control row). Cleared on user reset.
-   */
-  appliedFromStyle?: { styleId: string; styleName: string } | null;
-  /** Restore the pre-apply snapshot. Required when `appliedFromStyle` is set. */
-  onResetStyleDefaults?: () => void;
 };
 
 export const GenerationSettings: FC<GenerationSettingsProps> = ({
@@ -106,8 +97,6 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
   styleCategory,
   styleName,
   recommendedAspectRatio,
-  appliedFromStyle,
-  onResetStyleDefaults,
 }) => {
   const [open, setOpen] = useState(false);
   // How far the run goes is picked at Generate (#1408), so the video models
@@ -131,33 +120,9 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <div className="flex items-center gap-2 flex-wrap">
-        <PopoverTrigger asChild disabled={disabled}>
-          <GenerationSettingsTrigger aspectRatio={aspectRatio} />
-        </PopoverTrigger>
-        {appliedFromStyle && onResetStyleDefaults && (
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 text-primary px-2 py-0.5 text-xs">
-            {/* Mobile: just "Reset" — the label + trigger don't fit one row. */}
-            <span className="hidden sm:inline">From style</span>
-            <span
-              aria-hidden="true"
-              className="hidden text-primary/40 sm:inline"
-            >
-              ·
-            </span>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-auto px-1 py-0 text-xs font-medium text-primary hover:bg-primary/15"
-              onClick={onResetStyleDefaults}
-              disabled={disabled}
-            >
-              Reset
-            </Button>
-          </span>
-        )}
-      </div>
+      <PopoverTrigger asChild disabled={disabled}>
+        <GenerationSettingsTrigger aspectRatio={aspectRatio} />
+      </PopoverTrigger>
       <PopoverContent
         align="start"
         collisionPadding={12}

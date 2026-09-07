@@ -46,7 +46,15 @@ import {
   type ShotView,
 } from '@/lib/shots/shot-view';
 import { cn } from '@/shared/utils';
-import { FileText, Images, Loader2, Music, Plus, Video } from 'lucide-react';
+import {
+  FileText,
+  Images,
+  Loader2,
+  Music,
+  Play,
+  Plus,
+  Video,
+} from 'lucide-react';
 import {
   memo,
   useCallback,
@@ -133,6 +141,8 @@ export type SceneListProps = {
   onSelectScene: (sceneId: string, additive: boolean) => void;
   onSelectShot: (shotId: string) => void;
   onClearSelection: () => void;
+  /** Zoom out to the sequence player and switch the centre column to canvas. */
+  onPlaySequence?: () => void;
   regeneratingImages: Set<string>;
   regeneratingMotion: Set<string>;
   onBatchGenerateMotion?: (args: BatchGenerateMotionArgs) => Promise<void>;
@@ -182,6 +192,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
   onSelectScene,
   onSelectShot,
   onClearSelection,
+  onPlaySequence,
   regeneratingImages,
   regeneratingMotion,
   onBatchGenerateMotion,
@@ -580,21 +591,49 @@ const SceneListComponent: React.FC<SceneListProps> = ({
         </h2>
       </div>
 
-      <button
-        type="button"
-        onClick={onClearSelection}
-        title={
-          isWholeSequence
-            ? 'Whole sequence selected'
-            : 'Show the whole sequence (Esc zooms out one level at a time)'
-        }
+      <div
         className={cn(
-          'border-b px-4 py-2.5 text-left text-sm transition-colors hover:bg-muted/40',
-          isWholeSequence && 'bg-primary/5 font-medium text-primary'
+          'flex items-center gap-1 border-b px-2 py-1.5',
+          isWholeSequence
+            ? 'bg-primary/15 text-primary ring-1 ring-inset ring-primary/40'
+            : 'hover:bg-muted/40'
         )}
       >
-        Whole sequence
-      </button>
+        <button
+          type="button"
+          onClick={onClearSelection}
+          title={
+            isWholeSequence
+              ? 'Whole sequence selected'
+              : 'Show the whole sequence (Esc zooms out one level at a time)'
+          }
+          className={cn(
+            'min-h-11 flex-1 rounded-md px-2 py-1.5 text-left text-sm md:min-h-0',
+            isWholeSequence ? 'font-semibold' : 'font-medium'
+          )}
+        >
+          Whole sequence
+        </button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          className={cn(
+            'size-11 shrink-0 md:size-8',
+            isWholeSequence
+              ? 'text-primary hover:bg-primary/15 hover:text-primary'
+              : 'text-muted-foreground'
+          )}
+          aria-label="Play sequence"
+          title="Play the whole sequence"
+          onClick={() => {
+            onClearSelection();
+            onPlaySequence?.();
+          }}
+        >
+          <Play className="size-3.5 fill-current" />
+        </Button>
+      </div>
 
       <ScrollArea className="flex-1 min-h-0">
         <div className="flex flex-col gap-3 p-4">
@@ -888,7 +927,8 @@ const areEqual = (
     prevProps.onCompareDivergent !== nextProps.onCompareDivergent ||
     prevProps.onSelectScene !== nextProps.onSelectScene ||
     prevProps.onSelectShot !== nextProps.onSelectShot ||
-    prevProps.onClearSelection !== nextProps.onClearSelection
+    prevProps.onClearSelection !== nextProps.onClearSelection ||
+    prevProps.onPlaySequence !== nextProps.onPlaySequence
   ) {
     return false;
   }

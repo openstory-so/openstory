@@ -617,13 +617,13 @@ export const ElementSelector: React.FC<ElementSelectorProps> = (props) => {
         <PopoverTrigger asChild>
           <Button
             type="button"
-            variant="outline"
+            variant="ghost"
             size="sm"
             disabled={disabled}
-            className="gap-1.5"
+            className="gap-2 text-muted-foreground"
           >
-            <ImagePlus className="size-3.5" />
-            Elements
+            <ImagePlus className="h-4 w-4" />
+            <span>Elements</span>
             {count > 0 && (
               <span className="ml-1 rounded-full bg-primary/10 px-1.5 text-xs">
                 {count}

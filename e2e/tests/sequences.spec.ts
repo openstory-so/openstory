@@ -153,7 +153,7 @@ test.describe('Sequences', () => {
     });
     await expect(automatic).toHaveAttribute('aria-pressed', 'true');
     await expect(
-      page.getByRole('button', { name: 'Select Action style' })
+      page.getByRole('button', { name: 'View Action style details' })
     ).toBeVisible();
     const generate = page.getByRole('button', {
       name: 'Generate',
@@ -177,7 +177,7 @@ test.describe('Sequences', () => {
     await fillScriptEditor(page, 'A cat walks into a diner at dawn.');
     await expect(automatic).toHaveAttribute('aria-pressed', 'true');
     await expect(
-      page.getByRole('button', { name: 'Select Action style' })
+      page.getByRole('button', { name: 'View Action style details' })
     ).toBeVisible();
     await expect(generate).toBeEnabled();
   });
@@ -250,7 +250,7 @@ test.describe('Sequences', () => {
     // Signed-in `/` hydrates the team style list after the public prefetch;
     // Action tiles are the proof that Surprise me has a sample to pick (#1384).
     await expect(
-      page.getByRole('button', { name: 'Select Action style' })
+      page.getByRole('button', { name: 'View Action style details' })
     ).toBeVisible({ timeout: 15_000 });
     const shuffle = page.getByRole('button', { name: 'Surprise me' });
     await expect(shuffle).toBeEnabled({ timeout: 15_000 });
@@ -298,8 +298,7 @@ test.describe('Sequences', () => {
     await expect(
       page.getByRole('button', { name: 'Style category: Film & Cinematic' })
     ).toBeVisible({ timeout: 15_000 });
-    // Switching family still auto-selects that family's first style; a
-    // selected tile relabels from "Select … style" to "View … details".
+    // Switching family still auto-selects that family's first style.
     await page.getByRole('button', { name: /^Style category:/ }).click();
     await page.getByRole('menuitemradio', { name: 'E-commerce' }).click();
     await expect(

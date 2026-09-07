@@ -342,7 +342,6 @@ export function StyleSelector({
                     priority={index < 4}
                     reasoning={reasoningByStyleId.get(style.id)}
                     tabIndex={autoSlots + index === focusableIndex ? 0 : -1}
-                    onSelect={onStyleSelect}
                     onShowDetails={() => setDetailStyle(style)}
                     onKeyDown={(e) => handleKeyDown(e, autoSlots + index)}
                   />
@@ -358,7 +357,6 @@ export function StyleSelector({
                   disabled={disabled}
                   priority={unifiedIndex < 4}
                   tabIndex={unifiedIndex === focusableIndex ? 0 : -1}
-                  onSelect={onStyleSelect}
                   onShowDetails={() => setDetailStyle(style)}
                   onKeyDown={(e) => handleKeyDown(e, unifiedIndex)}
                 />

@@ -53,3 +53,18 @@ export const Disabled: Story = {
     );
   },
 };
+
+export const WithRecommend: Story = {
+  render: function RenderWithRecommend() {
+    const [value, setValue] = useState(DEFAULT_COMPOSER_STYLE_CATEGORY);
+    return (
+      <StyleCategorySelect
+        styles={MOCK_SYSTEM_STYLES}
+        value={value}
+        onChange={setValue}
+        onRecommend={() => undefined}
+        recommendLabel="Recommend"
+      />
+    );
+  },
+};

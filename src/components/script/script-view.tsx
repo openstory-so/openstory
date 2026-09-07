@@ -11,7 +11,6 @@ import { GenerateSequenceIcon } from '@/components/icons/generate-sequence-icon'
 import { LocationSuggestionSelector } from '@/components/location-library/location-suggestion-selector';
 import { buildMentionItems } from '@/components/scenes/prompt-mention/mention-items';
 import { GenerationStopAlert } from '@/components/generation/generation-stop-alert';
-import { GenerationModeToggle } from '@/components/settings/generation-mode-toggle';
 import { GenerationSettings } from '@/components/settings/generation-settings';
 import { StyleCategorySelect } from '@/components/style/style-category-select';
 import { StyleSelector } from '@/components/style/style-selector';
@@ -110,10 +109,7 @@ import {
 import { clampResolution } from '@/shared/constants/resolutions';
 import type { Resolution } from '@/shared/constants/resolutions';
 import { availableResolutions } from '@/lib/ai/resolution-support';
-import {
-  aspectRatioSchema,
-  type AspectRatio,
-} from '@/shared/constants/aspect-ratios';
+import type { AspectRatio } from '@/shared/constants/aspect-ratios';
 import {
   markPendingIntent,
   takePendingIntent,
@@ -367,7 +363,6 @@ export const ScriptView: FC<{
         : savedSettings.audioModels,
   }));
   const {
-    generationMode,
     analysisModels,
     aspectRatio,
     imageModels,
@@ -394,9 +389,6 @@ export const ScriptView: FC<{
     setGenSettings((s) =>
       applyGenerationMode({ ...s, [key]: value }, s.generationMode)
     );
-  const setGenerationMode = (mode: GenerationMode) => {
-    setGenSettings((s) => applyGenerationMode(s, mode));
-  };
   /**
    * Turning start frames OFF narrows the motion list, which can strand a
    * selection the server would then reject at submit. Drop the models that
@@ -782,91 +774,6 @@ export const ScriptView: FC<{
     }
   }, [styleCategory, videoModels]);
 
-  // Auto-apply the style's aspect ratio on style change. A style's model
-  // recommendations are no longer applied here (#1408) — only its aspect
-  // ratio. A "From {Style} · Reset"
-  // pill lets the user back out with a single click.
-  //
-  // The seed value of `lastAppliedStyleIdRef` is the sequence's stored styleId
-  // when editing (so we don't clobber existing values on mount) or null when
-  // creating (so the first catalogue pick — not Automatic — triggers the apply).
-  const lastAppliedStyleIdRef = useRef<string | null>(
-    sequence?.styleId ?? null
-  );
-  const styleApplySnapshotRef = useRef<{
-    aspectRatio: AspectRatio;
-  } | null>(null);
-  const [appliedFromStyle, setAppliedFromStyle] = useState<{
-    styleId: string;
-    styleName: string;
-  } | null>(null);
-
-  useEffect(() => {
-    // Wait for localStorage sync in create mode so we don't snapshot a
-    // pre-sync default and then have savedSettings overwrite the applied
-    // values immediately after.
-    if (!isEditing && !settingsLoaded) return;
-
-    const id = selectedStyle?.id;
-    if (!id || id === lastAppliedStyleIdRef.current) return;
-
-    const parsedRatio = recommendedAspectRatio
-      ? aspectRatioSchema.safeParse(recommendedAspectRatio)
-      : null;
-    const validRatio = parsedRatio?.success ? parsedRatio.data : null;
-
-    lastAppliedStyleIdRef.current = id;
-
-    // Always restore the existing snapshot first (if any) so chained style
-    // switches measure against the user's pre-auto-apply baseline, never
-    // against another style's applied values. Switching to a style with no
-    // recommended ratio therefore lands the user back on their baseline.
-    const baseline = styleApplySnapshotRef.current;
-
-    if (!validRatio) {
-      if (baseline) {
-        setGenSettings((s) =>
-          applyGenerationMode({ ...s, ...baseline }, s.generationMode)
-        );
-      }
-      styleApplySnapshotRef.current = null;
-      setAppliedFromStyle(null);
-      return;
-    }
-
-    setGenSettings((s) => {
-      const start = baseline ?? { aspectRatio: s.aspectRatio };
-      styleApplySnapshotRef.current = start;
-      return applyGenerationMode(
-        {
-          ...s,
-          aspectRatio: validRatio,
-        },
-        s.generationMode
-      );
-    });
-    setAppliedFromStyle({
-      styleId: id,
-      styleName: selectedStyle?.name ?? 'this style',
-    });
-  }, [
-    isEditing,
-    settingsLoaded,
-    selectedStyle?.id,
-    selectedStyle?.name,
-    recommendedAspectRatio,
-  ]);
-
-  const resetStyleDefaults = () => {
-    const snapshot = styleApplySnapshotRef.current;
-    if (!snapshot) return;
-    setGenSettings((s) =>
-      applyGenerationMode({ ...s, ...snapshot }, s.generationMode)
-    );
-    styleApplySnapshotRef.current = null;
-    setAppliedFromStyle(null);
-  };
-
   const [targetDuration, setTargetDuration] = useState(30);
   const [enhancePopoverOpen, setEnhancePopoverOpen] = useState(false);
   // Thinking is streamed on its own channel and kept out of `enhanceUI` — it
@@ -899,10 +806,10 @@ export const ScriptView: FC<{
   const { needsBillingSetup, showGate } = useBillingGate();
 
   // Style recommendations. We rank a *snapshot* of the script (not the live
-  // value) so the LLM call only fires on an explicit trigger — the "Recommend
-  // styles" button (never automatically, #1279) — and editing the script
-  // afterwards doesn't re-spend a call on every keystroke. Repeats are free
-  // (cached by script hash in useRecommendedStyles).
+  // value) so the LLM call only fires on an explicit trigger — Recommend in
+  // the style-category menu (never automatically, #1279) — and editing the
+  // script afterwards doesn't re-spend a call on every keystroke. Repeats
+  // are free (cached by script hash in useRecommendedStyles).
   const [recommendScript, setRecommendScript] = useState<string | null>(null);
   const {
     data: recommendData,
@@ -1379,9 +1286,14 @@ export const ScriptView: FC<{
   );
   // Remembered: the footer quotes the run that will actually happen. Otherwise
   // the dialog asks, so quote the default full run.
-  const storyboardCostEstimate = estimateForStopAt(
-    savedSettings.rememberStopAt ? stopAt : DEFAULT_GENERATION_STOP_AT
-  );
+  const quotedStopAt = savedSettings.rememberStopAt
+    ? stopAt
+    : DEFAULT_GENERATION_STOP_AT;
+  const storyboardCostEstimate = estimateForStopAt(quotedStopAt);
+  const generateScopeLabel =
+    quotedStopAt === 'music' || quotedStopAt === 'motion'
+      ? 'Whole sequence'
+      : sliderStopLabel(quotedStopAt);
 
   // Nothing written yet: Enhance writes the script instead of expanding one
   // (#1393), so it stays live at any length and says which job it is doing.
@@ -1540,8 +1452,6 @@ export const ScriptView: FC<{
             styleCategory={styleCategory}
             styleName={styleName}
             recommendedAspectRatio={recommendedAspectRatio}
-            appliedFromStyle={appliedFromStyle}
-            onResetStyleDefaults={resetStyleDefaults}
           />
           {/* The selectors own their dialogs and the element ref, so they
               mount exactly once: inline on md+, inside the sheet below it.
@@ -1641,32 +1551,21 @@ export const ScriptView: FC<{
             behind a long script. */}
         <div className="shrink-0 flex flex-col gap-2 px-6 pb-3 sm:gap-3 sm:pb-6 short-h:gap-2 short-h:pb-3">
           <div className="flex flex-wrap items-center gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="gap-1.5"
-              disabled={
-                loading || currentScriptText.length < 3 || isRecommending
-              }
-              onClick={triggerRecommend}
-            >
-              {isRecommending ? (
-                <Loader2 className="size-3.5 animate-spin text-primary" />
-              ) : (
-                <Sparkles className="size-3.5 text-primary" />
-              )}
-              {recommendButtonLabel}
-            </Button>
             <StyleCategorySelect
               styles={styles}
               value={styleCategoryFilter}
               onChange={handleStyleCategoryChange}
               disabled={loading || isLoadingStyles}
+              onRecommend={triggerRecommend}
+              recommendDisabled={
+                loading || currentScriptText.length < 3 || isRecommending
+              }
+              recommendLabel={recommendButtonLabel}
+              isRecommending={isRecommending}
             />
             {/* Sits with the style controls: it picks a random style and its
-                sample, so it belongs beside Recommend and the category filter,
-                not with the script tools (#1481). */}
+                sample, so it belongs beside the category filter, not with the
+                script tools (#1481). */}
             {!isEditing && (
               <Button
                 type="button"
@@ -1744,11 +1643,6 @@ export const ScriptView: FC<{
                     Cancel
                   </Button>
                 )}
-                <GenerationModeToggle
-                  value={generationMode}
-                  onChange={setGenerationMode}
-                  disabled={loading}
-                />
                 <Button
                   type="submit"
                   disabled={isDisabled}
@@ -1780,21 +1674,16 @@ export const ScriptView: FC<{
                   estimate={storyboardCostEstimate}
                   align="end"
                   prefix={
-                    savedSettings.rememberStopAt ? (
-                      <span>
-                        Stops after{' '}
-                        <button
-                          type="button"
-                          className="underline underline-offset-2 hover:text-foreground"
-                          onClick={() => {
-                            setStopAlertMode('edit');
-                            setShowStopAlert(true);
-                          }}
-                        >
-                          {sliderStopLabel(stopAt)}
-                        </button>
-                      </span>
-                    ) : undefined
+                    <button
+                      type="button"
+                      className="underline underline-offset-2 hover:text-foreground"
+                      onClick={() => {
+                        setStopAlertMode('edit');
+                        setShowStopAlert(true);
+                      }}
+                    >
+                      {generateScopeLabel}
+                    </button>
                   }
                 />
               </div>

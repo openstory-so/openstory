@@ -65,7 +65,7 @@ export const GenerationStopAlert: FC<GenerationStopAlertProps> = ({
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent className="data-[size=default]:max-w-lg data-[size=default]:sm:max-w-lg">
         <AlertDialogHeader>
-          <AlertDialogTitle>How much control do you want?</AlertDialogTitle>
+          <AlertDialogTitle>Generate the whole sequence?</AlertDialogTitle>
           {description && (
             <AlertDialogDescription>{description}</AlertDialogDescription>
           )}

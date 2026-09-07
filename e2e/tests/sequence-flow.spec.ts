@@ -86,9 +86,10 @@ Here's your caffeine fix. How's it going?
       // tiles by aria-label so the trailing "View all" tile is never picked.
       const firstStyle = page
         .getByRole('grid', { name: 'Style selection' })
-        .getByRole('button', { name: /^Select .+ style$/ })
+        .getByRole('button', { name: /^View .+ details$/ })
         .first();
       await firstStyle.click();
+      await page.getByRole('button', { name: /^Use the .+ style$/ }).click();
 
       // Now fill the editor - React is hydrated since style click worked
       await fillScriptEditor(page, testScript);

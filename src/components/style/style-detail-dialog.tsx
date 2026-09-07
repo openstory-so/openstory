@@ -28,8 +28,8 @@ import { styleSlug } from '@/lib/style/style-slug';
 import type { Style } from '@/types/database';
 import { Link } from '@tanstack/react-router';
 import { Wand2 } from 'lucide-react';
-import type { FC } from 'react';
-import { useState } from 'react';
+import type { FC, KeyboardEvent, RefObject } from 'react';
+import { useRef, useState } from 'react';
 import { getStyleGradient } from './style-gradient';
 
 type StyleDetailDialogProps = {
@@ -162,12 +162,42 @@ export const StyleDetailDialog: FC<StyleDetailDialogProps> = ({
   onTryStyle,
   readOnly = false,
 }) => {
+  const useStyleRef = useRef<HTMLButtonElement>(null);
+
+  const handleOpenAutoFocus = (event: Event) => {
+    if (readOnly || !useStyleRef.current) return;
+    event.preventDefault();
+    useStyleRef.current.focus();
+  };
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'Enter' || event.defaultPrevented) return;
+    if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) {
+      return;
+    }
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+    if (target.closest('textarea, input, select, [contenteditable="true"]')) {
+      return;
+    }
+    const action = target.closest('a, button, [role="button"]');
+    if (action && action !== useStyleRef.current) return;
+    if (!useStyleRef.current) return;
+    event.preventDefault();
+    useStyleRef.current.click();
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[90vh] max-w-[95vw] flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl lg:max-w-4xl">
+      <DialogContent
+        className="flex max-h-[90vh] max-w-[95vw] flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl lg:max-w-4xl"
+        onOpenAutoFocus={handleOpenAutoFocus}
+        onKeyDown={handleKeyDown}
+      >
         {style && (
           <StyleDetailContent
             style={style}
+            useStyleRef={useStyleRef}
             onUseStyle={
               onUseStyle
                 ? () => {
@@ -197,7 +227,8 @@ const StyleDetailContent: FC<{
   onUseStyle?: () => void;
   onTryStyle?: () => void;
   readOnly?: boolean;
-}> = ({ style, onUseStyle, onTryStyle, readOnly = false }) => {
+  useStyleRef?: RefObject<HTMLButtonElement | null>;
+}> = ({ style, onUseStyle, onTryStyle, readOnly = false, useStyleRef }) => {
   const canonicalUrl = styleCanonicalVideoUrl(style);
   const videoSrc = canonicalUrl ? optimizedVideoUrl(canonicalUrl) : null;
   const poster = canonicalUrl ? videoPosterUrl(canonicalUrl) : undefined;
@@ -353,13 +384,15 @@ const StyleDetailContent: FC<{
             navigates to a fresh composer seeded with this style. */}
         {readOnly ? null : onUseStyle ? (
           <Button
+            ref={useStyleRef}
+            type="button"
             onClick={onUseStyle}
             aria-label={`Use the ${style.name} style`}
           >
             Use this style
           </Button>
         ) : (
-          <Button asChild>
+          <Button ref={useStyleRef} asChild>
             <Link
               to="/"
               search={{ style: styleSlug(style.name), prefill: 'style' }}

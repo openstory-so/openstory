@@ -40,9 +40,9 @@ export const SequenceExportActions: React.FC<{
         <DropdownMenuTrigger asChild>
           <Button
             type="button"
-            variant="ghost"
+            variant="default"
             size="sm"
-            className="h-8 px-2.5"
+            className="h-8 px-3 font-medium"
             aria-label={label}
             aria-busy={running}
             disabled={pending}

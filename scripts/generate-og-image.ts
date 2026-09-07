@@ -33,7 +33,7 @@ await page.getByRole('heading', { name: 'Tell your whole story' }).waitFor();
 // Wait for the style library to load so the composer shows real style tiles
 // instead of empty skeletons.
 await page
-  .getByRole('button', { name: /^Select .+ style$/ })
+  .getByRole('button', { name: /^View .+ details$/ })
   .first()
   .waitFor();
 await page.evaluate(() => document.fonts.ready);

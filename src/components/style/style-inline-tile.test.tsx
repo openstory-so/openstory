@@ -22,7 +22,7 @@ describe('StyleInlineTile', () => {
         selected={false}
         priority
         tabIndex={0}
-        onSelect={() => undefined}
+        onShowDetails={() => undefined}
         onKeyDown={() => undefined}
       />
     );
@@ -32,5 +32,7 @@ describe('StyleInlineTile', () => {
     expect(html).toMatch(/fetchpriority="high"/i);
     expect(html).toContain('width=130');
     expect(html).not.toContain('width=6016');
+    expect(html).toContain('View Product Ad details');
+    expect(html).toContain('aria-pressed="false"');
   });
 });
