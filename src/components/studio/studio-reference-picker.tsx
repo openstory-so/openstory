@@ -37,7 +37,7 @@ import {
   studioPrimaryOutput,
   studioPrompt,
 } from '@/components/studio/outputs';
-import { cn } from '@/shared/utils';
+import { cn } from '@/components/utils';
 import {
   ArrowLeft,
   AudioLines,

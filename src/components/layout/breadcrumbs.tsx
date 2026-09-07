@@ -6,7 +6,7 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb';
-import { cn } from '@/shared/utils';
+import { cn } from '@/components/utils';
 import type { AnyRouteMatch } from '@tanstack/react-router';
 import { Link, useMatches } from '@tanstack/react-router';
 import { Fragment } from 'react';

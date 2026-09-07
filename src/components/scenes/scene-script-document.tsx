@@ -24,7 +24,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useSequenceMentionItems } from '@/hooks/use-mention-items';
 import { useSaveSceneScript, type SceneWithScript } from '@/hooks/use-scenes';
-import { cn } from '@/shared/utils';
+import { cn } from '@/components/utils';
 import { plainSceneTitle } from '@/shared/utils/markdown-plain';
 import { Loader2 } from 'lucide-react';
 import { useState } from 'react';

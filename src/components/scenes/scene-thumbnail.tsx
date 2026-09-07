@@ -8,7 +8,7 @@ import {
   getAspectRatioClassName,
 } from '@/shared/constants/aspect-ratios';
 import { Skeleton } from '@/components/ui/skeleton';
-import { cn } from '@/shared/utils';
+import { cn } from '@/components/utils';
 import { AlertCircle, Info } from 'lucide-react';
 import { AppImage } from '@/components/ui/app-image';
 import { memo } from 'react';

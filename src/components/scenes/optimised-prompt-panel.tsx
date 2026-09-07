@@ -16,8 +16,8 @@ import type {
   BoundPromptImage,
   OptimisedPromptPreview,
 } from '@/lib/prompts/optimised-prompt-preview';
-import { cn } from '@/shared/utils';
-import { copyImageToClipboard } from '@/shared/utils/clipboard';
+import { cn } from '@/components/utils';
+import { copyImageToClipboard } from '@/components/clipboard';
 import { ChevronRight, CopyIcon } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';

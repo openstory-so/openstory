@@ -5,12 +5,12 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { useReplaceSequenceElement } from '@/hooks/use-sequence-elements';
-import { cn } from '@/shared/utils';
+import { cn } from '@/components/utils';
 import {
   extractImagesFromSnapshot,
   snapshotDataTransfer,
   toastDragImportCorsError,
-} from '@/shared/utils/drag-images';
+} from '@/components/drag-images';
 import { Loader2, RefreshCw, Upload, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';

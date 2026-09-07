@@ -15,7 +15,7 @@ import {
   type AspectRatio,
 } from '@/shared/constants/aspect-ratios';
 import { tileBackgroundCss } from '@/shared/image/tile-crop';
-import { cn } from '@/shared/utils';
+import { cn } from '@/components/utils';
 import { Loader2 } from 'lucide-react';
 import { useCallback, useRef, useState, useEffect } from 'react';
 

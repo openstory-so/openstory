@@ -1,6 +1,6 @@
 import type * as React from 'react';
 
-import { cn } from '@/shared/utils';
+import { cn } from '@/components/utils';
 
 function PremiumCard({
   className,

@@ -31,7 +31,7 @@ import {
   videoModelDisplayName,
 } from '@/shared/ai/models';
 import type { PromptVariantSource, PromptVersionStatus } from '@/lib/db/schema';
-import { cn } from '@/shared/utils';
+import { cn } from '@/components/utils';
 import {
   AlertCircle,
   AlertTriangle,

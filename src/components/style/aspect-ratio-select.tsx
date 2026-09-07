@@ -12,7 +12,7 @@ import {
   aspectRatioSchema,
   type AspectRatio,
 } from '@/shared/constants/aspect-ratios';
-import { cn } from '@/shared/utils';
+import { cn } from '@/components/utils';
 import { ChevronDown } from 'lucide-react';
 
 function isValidAspectRatio(value: string): value is AspectRatio {

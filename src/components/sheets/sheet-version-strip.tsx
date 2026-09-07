@@ -1,5 +1,5 @@
 import { AppImage } from '@/components/ui/app-image';
-import { cn } from '@/shared/utils';
+import { cn } from '@/components/utils';
 import { Loader2 } from 'lucide-react';
 
 export type SheetVersionThumb = {

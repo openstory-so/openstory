@@ -16,7 +16,7 @@ import {
 } from '@/components/theatre/source-shots-hash';
 import { exportSequenceOnServer } from '@/components/theatre/server-export-client';
 import type { Sequence } from '@/lib/db/schema';
-import { copyTextToClipboard } from '@/shared/utils/clipboard';
+import { copyTextToClipboard } from '@/components/clipboard';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { usePostHog } from '@posthog/react';
 import { useCallback, useMemo, useRef, useState } from 'react';

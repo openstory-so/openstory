@@ -2,7 +2,7 @@ import {
   isInternalDocsHref,
   type MarkdownDocument,
 } from '@/components/docs/markdown-ast';
-import { cn } from '@/shared/utils';
+import { cn } from '@/components/utils';
 import {
   Markdown,
   type MarkdownComponentProps,

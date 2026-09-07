@@ -1,7 +1,7 @@
 import { Info } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import { cn } from '@/shared/utils';
+import { cn } from '@/components/utils';
 import type {
   StalenessArtifact,
   StalenessEntityType,

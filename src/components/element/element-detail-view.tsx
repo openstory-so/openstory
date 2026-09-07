@@ -20,7 +20,7 @@ import {
   useSequenceElements,
   useShotCountsForAllElements,
 } from '@/hooks/use-sequence-elements';
-import { cn } from '@/shared/utils';
+import { cn } from '@/components/utils';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { ArrowLeft, ImagePlus, Loader2, Trash2 } from 'lucide-react';
 import { useState } from 'react';

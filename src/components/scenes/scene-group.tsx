@@ -37,7 +37,7 @@ import {
   type SequenceSegment,
 } from '@/shared/scenes/scene-segments';
 import type { ShotView } from '@/shared/shots/shot-view';
-import { cn } from '@/shared/utils';
+import { cn } from '@/components/utils';
 import { plainSceneTitle } from '@/shared/utils/markdown-plain';
 import { useQueryClient } from '@tanstack/react-query';
 import {

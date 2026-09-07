@@ -7,7 +7,7 @@
  */
 
 import type { MentionItem } from '@/components/scenes/prompt-mention/mention-items';
-import { cn } from '@/shared/utils';
+import { cn } from '@/components/utils';
 import { Fragment } from 'react';
 import type React from 'react';
 import { splitMentions } from './mention-match';

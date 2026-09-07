@@ -14,7 +14,7 @@ import {
   Slot as SlotPrimitive,
 } from 'radix-ui';
 import * as React from 'react';
-import { cn } from '@/shared/utils';
+import { cn } from '@/components/utils';
 import { useAsRef } from '@/hooks/use-as-ref';
 import { useLazyRef } from '@/hooks/use-lazy-ref';
 

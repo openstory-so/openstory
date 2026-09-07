@@ -97,7 +97,7 @@ import { analyzeLoadedFailures } from '@/shared/failures/failure-analysis';
 import type { GenerationPhaseConfig } from '@/components/realtime/generation-stream.reducer';
 import { useGenerationStream } from '@/components/realtime/use-generation-stream';
 import { useStaleDetected } from '@/components/realtime/use-stale-detected';
-import { cn } from '@/shared/utils';
+import { cn } from '@/components/utils';
 import { ChevronDown } from 'lucide-react';
 import { usePostHog } from '@posthog/react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';

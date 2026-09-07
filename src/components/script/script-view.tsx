@@ -133,13 +133,13 @@ import {
   styleAfterComposerCategoryChange,
   styleCategoryGroupKey,
 } from '@/components/style/composer-style-row';
-import { cn } from '@/shared/utils';
+import { cn } from '@/components/utils';
 import {
   dataTransferHasImages,
   extractImagesFromSnapshot,
   snapshotDataTransfer,
   toastDragImportCorsError,
-} from '@/shared/utils/drag-images';
+} from '@/components/drag-images';
 import type { Sequence } from '@/lib/db/schema';
 import { usePostHog } from '@posthog/react';
 import {

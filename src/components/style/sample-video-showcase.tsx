@@ -13,7 +13,7 @@ import {
   videoPosterUrl,
 } from '@/components/style/cloudflare-video';
 import type { SampleEntry } from '@/components/style/sample-entries';
-import { cn } from '@/shared/utils';
+import { cn } from '@/components/utils';
 import { Link } from '@tanstack/react-router';
 import { Wand2 } from 'lucide-react';
 import { useCallback, useRef, useState } from 'react';

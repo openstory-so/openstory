@@ -15,9 +15,9 @@ import {
   aspectRatioToDimensions,
   getAspectRatioClassName,
 } from '@/shared/constants/aspect-ratios';
-import { cn } from '@/shared/utils';
+import { cn } from '@/components/utils';
 import { plainSceneTitle } from '@/shared/utils/markdown-plain';
-import { copyTextToClipboard } from '@/shared/utils/clipboard';
+import { copyTextToClipboard } from '@/components/clipboard';
 import type { ShotView } from '@/shared/shots/shot-view';
 import {
   usesStartFrame,

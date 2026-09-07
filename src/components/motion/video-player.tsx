@@ -12,7 +12,7 @@ import {
   type PlaybackTracker,
   type VideoPlaySource,
 } from '@/components/theatre/player-events';
-import { cn } from '@/shared/utils';
+import { cn } from '@/components/utils';
 import { usePostHog } from '@posthog/react';
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 

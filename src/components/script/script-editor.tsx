@@ -3,7 +3,7 @@ import {
   MarkdownEditor,
   type MarkdownEditorHandle,
 } from '@/components/text-editor/markdown-editor';
-import { cn } from '@/shared/utils';
+import { cn } from '@/components/utils';
 import type * as React from 'react';
 import { useCallback } from 'react';
 

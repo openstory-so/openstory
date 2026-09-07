@@ -36,14 +36,14 @@ import {
 import type { SequenceElement } from '@/lib/db/schema';
 import { errorMessage } from '@/shared/errors';
 import { MAX_SEQUENCE_ELEMENTS } from '@/components/element/limits';
-import { cn } from '@/shared/utils';
+import { cn } from '@/components/utils';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   extractImagesFromSnapshot,
   snapshotDataTransfer,
   toastDragImportCorsError,
-} from '@/shared/utils/drag-images';
-import { getFileKey } from '@/shared/utils/upload';
+} from '@/components/drag-images';
+import { getFileKey } from '@/components/upload';
 import { ImagePlus, Loader2, Upload, X } from 'lucide-react';
 import {
   useCallback,

@@ -14,7 +14,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { formatTimeRemaining } from '@/shared/generation/time-estimate';
-import { cn } from '@/shared/utils';
+import { cn } from '@/components/utils';
 import { Check, Loader2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 

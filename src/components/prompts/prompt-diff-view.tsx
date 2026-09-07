@@ -2,7 +2,7 @@ import {
   computeWordDiff,
   type WordDiffSegment,
 } from '@/components/prompts/word-diff';
-import { cn } from '@/shared/utils';
+import { cn } from '@/components/utils';
 import { useMemo } from 'react';
 
 type PromptDiffViewProps = {

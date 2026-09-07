@@ -56,7 +56,7 @@ import {
 } from '@/hooks/use-media-upload';
 import type { SequenceSegment } from '@/shared/scenes/scene-segments';
 import type { UpdateStaleDepth } from '@/shared/shots/update-stale-depth';
-import { copyTextToClipboard } from '@/shared/utils/clipboard';
+import { copyTextToClipboard } from '@/components/clipboard';
 import { isSetImageOffered } from '@/components/scenes/set-image-offer';
 import {
   type ShotStaleness,

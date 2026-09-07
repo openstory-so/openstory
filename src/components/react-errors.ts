@@ -12,7 +12,7 @@
  */
 
 import { errorCode } from '@/shared/errors';
-import { isReloadPending } from '@/shared/chunk-reload';
+import { isReloadPending } from '@/components/chunk-reload';
 import { getLogger } from '@/shared/observability/logger';
 import posthog from 'posthog-js';
 import type { ErrorInfo } from 'react';

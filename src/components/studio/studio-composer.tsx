@@ -119,8 +119,8 @@ import {
   extractImagesFromSnapshot,
   snapshotDataTransfer,
   toastDragImportCorsError,
-} from '@/shared/utils/drag-images';
-import { cn } from '@/shared/utils';
+} from '@/components/drag-images';
+import { cn } from '@/components/utils';
 import { usePostHog } from '@posthog/react';
 import {
   ArrowUp,

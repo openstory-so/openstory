@@ -46,7 +46,7 @@ import {
   isMotionGenerating,
   type ShotView,
 } from '@/shared/shots/shot-view';
-import { cn } from '@/shared/utils';
+import { cn } from '@/components/utils';
 import { FileText, Images, Loader2, Music, Plus, Video } from 'lucide-react';
 import {
   memo,

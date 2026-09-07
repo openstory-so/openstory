@@ -1,5 +1,5 @@
 import type * as React from 'react';
-import { cn } from '@/shared/utils';
+import { cn } from '@/components/utils';
 
 interface PageHeaderProps extends React.HTMLAttributes<HTMLDivElement> {
   actions?: React.ReactNode;

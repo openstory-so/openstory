@@ -18,7 +18,7 @@ import {
 } from '@/shared/billing/credits-short';
 import { getAspectRatioData } from '@/shared/constants/aspect-ratios';
 import { errorMessage } from '@/shared/errors';
-import { formatDistanceToNow } from '@/shared/format-date';
+import { formatDistanceToNow } from '@/components/format-date';
 import { Link } from '@tanstack/react-router';
 import {
   AlertTriangle,

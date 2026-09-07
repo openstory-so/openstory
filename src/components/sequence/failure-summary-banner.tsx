@@ -11,7 +11,7 @@ import {
   creditsShortHint,
 } from '@/shared/billing/credits-short';
 import type { FailureSummary } from '@/shared/failures/failure-analysis';
-import { cn } from '@/shared/utils';
+import { cn } from '@/components/utils';
 import {
   AlertCircle,
   ChevronDown,

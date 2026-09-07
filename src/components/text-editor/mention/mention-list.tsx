@@ -16,7 +16,7 @@ import {
   type MentionItem,
   type MentionSection,
 } from '@/components/scenes/prompt-mention/mention-items';
-import { cn } from '@/shared/utils';
+import { cn } from '@/components/utils';
 import { AppImage } from '@/components/ui/app-image';
 import {
   forwardRef,
