@@ -22,8 +22,8 @@ const PORTRAIT_FILTER_MESSAGE = /may contain real person/i;
  * Thrown when Ark blocks the still and there is no fal key to fall back to.
  * Surfaces on `sequence.statusError` / studio failure banners.
  */
-export const BYTEPLUS_PORTRAIT_FILTER_NO_FAL_MESSAGE =
-  'BytePlus Ark blocked this still as a possible real person (photorealistic generated faces trip this too). Seedance 2.5 only accepts those faces as asset:// IDs from the virtual portrait library. Set BYTEPLUS_ACCESS_KEY and BYTEPLUS_SECRET_KEY so we can register the still, or configure FAL_KEY to fall back to fal.';
+export const BYTEPLUS_PORTRAIT_FILTER_MESSAGE =
+  'BytePlus Ark blocked a still as a possible real person (photorealistic generated faces trip this too). Seedance only accepts those faces as asset:// IDs from the virtual portrait library — set BYTEPLUS_ACCESS_KEY / BYTEPLUS_SECRET_KEY and check Advanced Creation Rights on the account.';
 
 /** True when Ark refused the still as a possible real person. */
 export function isBytePlusPortraitFilterError(error: unknown): boolean {

@@ -50,6 +50,12 @@ const QUOTA_MARKERS = [
   'too many requests',
   'serverovervalue',
   'concurrency',
+  // Assets OpenAPI (#1519): `AccountFlowLimitExceeded` on List*, and
+  // `QuotaWriteQPMExceeded` on CreateAsset — a batch fanning out shots that
+  // each ingest every reference sheet trips both.
+  'flowlimitexceeded',
+  'flow control',
+  'qpmexceeded',
 ];
 
 /** True when an error is Ark telling us to slow down rather than stop. */

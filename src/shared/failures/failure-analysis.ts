@@ -330,10 +330,10 @@ export function analyzeFailures(
 
   const hasFailed = groups.length > 0 || sequence.status === 'failed';
 
-  const failedShotIds = new Set(
-    groups.flatMap((g) => g.shots.map((s) => s.shotId))
-  );
-  const clipsReady = shots.filter((s) => !failedShotIds.has(s.id)).length;
+  // Ready = a rendered clip, the same rule the export button uses — not
+  // "hasn't failed", which counted every still-rendering shot as ready the
+  // moment one sibling failed (#1519).
+  const clipsReady = shots.filter((s) => Boolean(s.video?.url)).length;
 
   return {
     requiresFullRetry,

@@ -17,9 +17,8 @@ import {
   isBytePlusConfigured,
   loadBytePlusVideo,
 } from '@/lib/ai/byteplus-config';
-import { reportBytePlusPortraitFilterFallback } from '@/lib/ai/byteplus-observability';
 import {
-  BYTEPLUS_PORTRAIT_FILTER_NO_FAL_MESSAGE,
+  BYTEPLUS_PORTRAIT_FILTER_MESSAGE,
   isBytePlusPortraitFilterError,
 } from '@/lib/ai/byteplus-portrait-filter';
 import { bytePlusVideoUnitsBilled } from '@/lib/ai/byteplus-pricing';
@@ -281,21 +280,6 @@ async function submitFalStudioVideoJob(
     via: 'fal',
     usedOwnKey: key.source === 'team',
   };
-}
-
-async function fallbackStudioPortraitFilterToFal(
-  error: unknown,
-  options: StudioVideoJobOptions,
-  modelKey: ImageToVideoModel,
-  mode: StudioVideoMode
-): Promise<StudioVideoJobSubmission> {
-  if (!isBytePlusPortraitFilterError(error)) throw error;
-  const falKey = await resolveOptionalFalKey(options.scopedDb);
-  if (!falKey) {
-    throw new Error(BYTEPLUS_PORTRAIT_FILTER_NO_FAL_MESSAGE);
-  }
-  reportBytePlusPortraitFilterFallback('studio motion submit');
-  return submitFalStudioVideoJob(options, modelKey, mode);
 }
 
 async function urlPart(
@@ -644,12 +628,12 @@ export async function submitStudioVideoJob(
           usedOwnKey: false,
         };
       } catch (error) {
-        return fallbackStudioPortraitFilterToFal(
-          error,
-          options,
-          modelKey,
-          mode
-        );
+        // No fal fallback (#1519): an Ark rejection is the failure the user
+        // sees and retries against.
+        if (isBytePlusPortraitFilterError(error)) {
+          throw new Error(BYTEPLUS_PORTRAIT_FILTER_MESSAGE, { cause: error });
+        }
+        throw error;
       }
     }
     case 'fal': {

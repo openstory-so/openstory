@@ -298,7 +298,7 @@ describe('analyzeFailures', () => {
     const shots = [
       makeShot({
         frame: { imageStatus: 'failed', imageError: 'Model timeout' },
-        sources: { image: null },
+        sources: { image: null, video: null, primaryVideo: null },
       }),
       makeShot({ shot: { id: 'shot-2' } }),
     ];
@@ -330,7 +330,7 @@ describe('analyzeFailures', () => {
       makeShot({
         shot: { id: 'shot-7' },
         frame: { imageStatus: 'failed', imageError: 'content flag' },
-        sources: { image: null },
+        sources: { image: null, video: null, primaryVideo: null },
       }),
     ];
 
@@ -342,6 +342,36 @@ describe('analyzeFailures', () => {
 
     expect(result.requiresFullRetry).toBe(false);
     expect(result.headline).toBe('6 of 7 clips ready \u00b7 1 image failed');
+  });
+
+  test('a still-rendering sibling is not "ready" just because it has not failed (#1519)', () => {
+    const generating = render({ status: 'generating', url: null });
+    const shots = [
+      makeShot({ shot: { id: 'shot-1' } }),
+      makeShot({
+        shot: { id: 'shot-2' },
+        sources: { video: generating, primaryVideo: generating },
+      }),
+      makeShot({
+        shot: { id: 'shot-3' },
+        sources: {
+          video: render({ status: 'failed', error: 'likeness', url: null }),
+          primaryVideo: render({
+            status: 'failed',
+            error: 'likeness',
+            url: null,
+          }),
+        },
+      }),
+    ];
+
+    const result = analyzeFailures(
+      shots,
+      makeSequence({ status: 'processing' }),
+      SCENES
+    );
+
+    expect(result.headline).toMatch(/^1 of 3 clips ready/);
   });
 
   test('motion-only failures', () => {

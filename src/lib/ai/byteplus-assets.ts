@@ -83,15 +83,29 @@ async function createAssetGroup(
   return result.Id;
 }
 
+/**
+ * The group never changes once created, and looking it up per still is what
+ * tripped `AccountFlowLimitExceeded` on ListAssetGroups (#1519). Keyed by
+ * access key so two accounts in one isolate (tests) cannot share an id.
+ */
+const aigcGroupIdByAccount = new Map<string, Promise<string>>();
+
 async function resolveAigcGroupId(
   config: BytePlusOpenApiConfig,
   existingGroupId?: string
 ): Promise<string> {
   if (existingGroupId) return existingGroupId;
-  const existing = await listAssetGroups(config, OPENSTORY_AIGC_GROUP_NAME);
-  const found = existing[0]?.Id;
-  if (found) return found;
-  return createAssetGroup(config, OPENSTORY_AIGC_GROUP_NAME);
+  const cached = aigcGroupIdByAccount.get(config.accessKey);
+  if (cached) return cached;
+  const lookup = (async () => {
+    const existing = await listAssetGroups(config, OPENSTORY_AIGC_GROUP_NAME);
+    const found = existing[0]?.Id;
+    if (found) return found;
+    return createAssetGroup(config, OPENSTORY_AIGC_GROUP_NAME);
+  })();
+  aigcGroupIdByAccount.set(config.accessKey, lookup);
+  lookup.catch(() => aigcGroupIdByAccount.delete(config.accessKey));
+  return lookup;
 }
 
 async function listAssetsByName(

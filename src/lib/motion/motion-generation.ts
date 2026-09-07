@@ -8,9 +8,8 @@ import {
   isBytePlusConfigured,
   loadBytePlusVideo,
 } from '@/lib/ai/byteplus-config';
-import { reportBytePlusPortraitFilterFallback } from '@/lib/ai/byteplus-observability';
 import {
-  BYTEPLUS_PORTRAIT_FILTER_NO_FAL_MESSAGE,
+  BYTEPLUS_PORTRAIT_FILTER_MESSAGE,
   isBytePlusPortraitFilterError,
 } from '@/lib/ai/byteplus-portrait-filter';
 import { bytePlusVideoUnitsBilled } from '@/lib/ai/byteplus-pricing';
@@ -327,21 +326,6 @@ async function submitFalMotionJob(
   };
 }
 
-async function fallbackBytePlusPortraitFilterToFal(
-  error: unknown,
-  operation: string,
-  options: GenerateMotionOptions,
-  modelKey: ImageToVideoModel
-): Promise<{ jobId: string; usedOwnKey: boolean; endpointId: string }> {
-  if (!isBytePlusPortraitFilterError(error)) throw error;
-  const falKey = await resolveOptionalFalKey(options.scopedDb);
-  if (!falKey) {
-    throw new Error(BYTEPLUS_PORTRAIT_FILTER_NO_FAL_MESSAGE);
-  }
-  reportBytePlusPortraitFilterFallback(operation);
-  return submitFalMotionJob(options, modelKey);
-}
-
 /**
  * Submit a motion generation job without polling.
  * Returns the job ID so the workflow can poll with `context.sleep()` between steps.
@@ -509,20 +493,24 @@ export async function submitMotionJob(
             ...(falKey?.key && { falApiKey: falKey.key }),
           })
         : undefined;
-      const referenceImages = options.referenceImages?.length
-        ? await Promise.all(
-            options.referenceImages.map(async (ref) => ({
-              ...ref,
-              // Cast/location/element sheets are the pool's long-lived
-              // residents — evicting one costs every shot that binds it.
-              referenceImageUrl: await toArkMediaUrl(ref.referenceImageUrl, {
-                ledger: options.assetLedger,
-                slot: 'library',
-                ...(falKey?.key && { falApiKey: falKey.key }),
-              }),
-            }))
-          )
-        : options.referenceImages;
+      // Sequential on purpose: the batch already fans shots out in parallel,
+      // and CreateAsset has a per-minute write quota (#1519).
+      let referenceImages = options.referenceImages;
+      if (referenceImages?.length) {
+        referenceImages = [];
+        for (const ref of options.referenceImages ?? []) {
+          referenceImages.push({
+            ...ref,
+            // Cast/location/element sheets are the pool's long-lived
+            // residents — evicting one costs every shot that binds it.
+            referenceImageUrl: await toArkMediaUrl(ref.referenceImageUrl, {
+              ledger: options.assetLedger,
+              slot: 'library',
+              ...(falKey?.key && { falApiKey: falKey.key }),
+            }),
+          });
+        }
+      }
       const request = buildBytePlusVideoRequest(
         { ...options, imageUrl, referenceImages },
         modelKey
@@ -549,16 +537,12 @@ export async function submitMotionJob(
         jobId = job.jobId;
         usedOwnKey = false;
       } catch (error) {
-        const fal = await fallbackBytePlusPortraitFilterToFal(
-          error,
-          'motion submit',
-          options,
-          modelKey
-        );
-        jobId = fal.jobId;
-        usedOwnKey = fal.usedOwnKey;
-        stampedVia = 'fal';
-        stampedEndpointId = fal.endpointId;
+        // No fal fallback (#1519): the job was routed to Ark, so an Ark
+        // rejection is the failure the user sees and retries against.
+        if (isBytePlusPortraitFilterError(error)) {
+          throw new Error(BYTEPLUS_PORTRAIT_FILTER_MESSAGE, { cause: error });
+        }
+        throw error;
       }
       break;
     }

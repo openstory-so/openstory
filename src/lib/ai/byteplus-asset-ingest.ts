@@ -9,10 +9,10 @@
  * every submit would burn a new slot in the Entry asset quota.
  *
  * Slots are finite and account-wide, so every ingest goes through the pool
- * (`byteplus-asset-pool.ts`): reuse, lease, evict-LRU. A full pool with
- * nothing evictable is not fatal — it returns the public URL, which either
- * works (no face in the still) or trips the portrait filter and takes the
- * existing fal fallback.
+ * (`byteplus-asset-pool.ts`): reuse, lease, evict-LRU. An ingest that fails
+ * (throttled, pool exhausted, asset failed processing) FAILS THE SHOT: the
+ * public URL would trip Ark's portrait filter on any photoreal face, and a
+ * silent hop to a different provider hid exactly that (#1519).
  */
 
 import { getLogger } from '@/lib/observability/logger';
@@ -72,12 +72,17 @@ async function resolveBytePlusMediaUrl(
       }
     );
   } catch (error) {
-    logger.warn('BytePlus asset ingest failed; sending the public URL', {
+    logger.error('BytePlus asset ingest failed', {
       error: error instanceof Error ? error.message : String(error),
       kind,
       slot: options.slot,
     });
-    return publicUrl;
+    throw new Error(
+      `BytePlus asset ingest failed for ${kind.toLowerCase()} (${options.slot}): ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+      { cause: error }
+    );
   }
 }
 

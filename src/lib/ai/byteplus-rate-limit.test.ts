@@ -29,6 +29,9 @@ describe('isBytePlusQuotaError', () => {
     'RateLimitExceeded: too many requests',
     'QuotaExceeded for this account',
     'ServerOverValue — concurrency limit reached',
+    // Assets OpenAPI control plane (#1519) — the two a fan-out actually hit.
+    'BytePlus OpenAPI ListAssetGroups failed (AccountFlowLimitExceeded): Request was rejected because the request speed of this openAPI is beyond the current flow control limit.',
+    'BytePlus OpenAPI CreateAsset failed (QuotaWriteQPMExceeded): Create asset rate limit exceeded, please retry later.',
   ])('classifies Ark quota text: %s', (message) => {
     expect(isBytePlusQuotaError(new Error(message))).toBe(true);
   });

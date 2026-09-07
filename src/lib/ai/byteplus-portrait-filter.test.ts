@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  BYTEPLUS_PORTRAIT_FILTER_NO_FAL_MESSAGE,
+  BYTEPLUS_PORTRAIT_FILTER_MESSAGE,
   isBytePlusPortraitFilterError,
 } from './byteplus-portrait-filter';
 
@@ -51,8 +51,8 @@ describe('isBytePlusPortraitFilterError', () => {
     expect(isBytePlusPortraitFilterError(undefined)).toBe(false);
   });
 
-  it('keeps the no-fal message as something the UI can show', () => {
-    expect(BYTEPLUS_PORTRAIT_FILTER_NO_FAL_MESSAGE).toMatch(/asset:\/\//);
-    expect(BYTEPLUS_PORTRAIT_FILTER_NO_FAL_MESSAGE).toMatch(/FAL_KEY/);
+  it('keeps the message as something the UI can show', () => {
+    expect(BYTEPLUS_PORTRAIT_FILTER_MESSAGE).toMatch(/asset:\/\//);
+    expect(BYTEPLUS_PORTRAIT_FILTER_MESSAGE).not.toMatch(/fall back/);
   });
 });

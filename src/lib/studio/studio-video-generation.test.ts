@@ -378,29 +378,26 @@ describe('submitStudioVideoJob', () => {
     );
   });
 
-  it('falls back to fal when Ark rejects a studio still as a possible real person', async () => {
+  it('never falls back to fal when Ark rejects a studio still as a possible real person (#1519)', async () => {
     testEnv.ARK_API_KEY = 'ark-test';
-    mockGenerateVideo
-      .mockRejectedValueOnce(
-        new Error(
-          "BytePlus Ark video task creation failed (400 InputImageSensitiveContentDetected.PrivacyInformation): The request failed because the input image 'content[1]' may contain real person."
-        )
+    mockGenerateVideo.mockRejectedValue(
+      new Error(
+        "BytePlus Ark video task creation failed (400 InputImageSensitiveContentDetected.PrivacyInformation): The request failed because the input image 'content[1]' may contain real person."
       )
-      .mockResolvedValueOnce({ jobId: 'fal-after-ark' });
+    );
 
-    const result = await submitStudioVideoJob({
-      assetLedger: unledgeredAssetPool,
-      prompt: 'Camera pushes in',
-      model: 'seedance_v2_5',
-      mode: 'frames',
-      startImageUrl: 'https://example.com/start.jpg',
-      duration: 5,
-    });
-
-    expect(result.via).toBe('fal');
-    expect(result.jobId).toBe('fal-after-ark');
-    expect(mockFalVideo).toHaveBeenCalled();
-    expect(mockGenerateVideo).toHaveBeenCalledTimes(2);
+    await expect(
+      submitStudioVideoJob({
+        assetLedger: unledgeredAssetPool,
+        prompt: 'Camera pushes in',
+        model: 'seedance_v2_5',
+        mode: 'frames',
+        startImageUrl: 'https://example.com/start.jpg',
+        duration: 5,
+      })
+    ).rejects.toThrow(/asset:\/\//);
+    expect(mockFalVideo).not.toHaveBeenCalled();
+    expect(mockGenerateVideo).toHaveBeenCalledTimes(1);
   });
 
   it('sends studio frames to Ark as start_frame / end_frame', async () => {

@@ -258,28 +258,24 @@ describe('Motion Service', () => {
       );
     });
 
-    it('falls back to fal when Ark rejects the still as a possible real person', async () => {
+    it('never falls back to fal when Ark rejects the still as a possible real person (#1519)', async () => {
       testEnv.ARK_API_KEY = 'ark-test';
-      mockGenerateVideo
-        .mockRejectedValueOnce(
-          new Error(
-            "BytePlus Ark video task creation failed (400 InputImageSensitiveContentDetected.PrivacyInformation): The request failed because the input image 'content[1]' may contain real person."
-          )
+      mockGenerateVideo.mockRejectedValue(
+        new Error(
+          "BytePlus Ark video task creation failed (400 InputImageSensitiveContentDetected.PrivacyInformation): The request failed because the input image 'content[1]' may contain real person."
         )
-        .mockResolvedValueOnce({ jobId: 'fal-after-ark' });
+      );
 
-      const result = await submitMotionJob({
-        assetLedger: unledgeredAssetPool,
-        imageUrl: 'https://example.com/image.jpg',
-        prompt: 'Dynamic action sequence',
-        model: 'seedance_v2_5',
-        duration: 5,
-      });
-
-      expect(result.via).toBe('fal');
-      expect(result.jobId).toBe('fal-after-ark');
-      expect(result.usedOwnKey).toBe(false);
-      expect(mockGenerateVideo).toHaveBeenCalledTimes(2);
+      await expect(
+        submitMotionJob({
+          assetLedger: unledgeredAssetPool,
+          imageUrl: 'https://example.com/image.jpg',
+          prompt: 'Dynamic action sequence',
+          model: 'seedance_v2_5',
+          duration: 5,
+        })
+      ).rejects.toThrow(/asset:\/\//);
+      expect(mockGenerateVideo).toHaveBeenCalledTimes(1);
     });
 
     it('does not fall back to fal on a different Ark 400', async () => {
