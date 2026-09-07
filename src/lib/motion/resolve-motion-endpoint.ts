@@ -6,10 +6,13 @@
  * endpoint that takes an image list bound to per-model prompt tokens and has
  * no single start-frame `image_url` — see `MOTION_REFERENCE_ENDPOINTS`. When a
  * scene actually has references AND the model has such an endpoint, route there;
- * otherwise stay on the normal image-to-video endpoint.
+ * a reference-only scene with no references goes to that model's text-to-video
+ * sibling; otherwise stay on the normal image-to-video endpoint.
  *
- * `references` is how those images ride, if at all:
- *   - `endpoint` — dedicated reference-to-video endpoint (Seedance, H3 Max)
+ * `references` is the request shape — how the images ride, or that nothing
+ * rides at all:
+ *   - `endpoint` — dedicated reference-to-video endpoint (Seedance, H3 Max,
+ *     Omni Flash)
  *   - `inline` — URLs on the same generations call (Kling `elements`, Grok
  *     Imagine 1.5 native `reference`/`character` prompt parts)
  *   - `none` — URLs are not sent; tokens become descriptions in the prompt
@@ -36,6 +39,7 @@ import {
   type MotionReferenceEndpointConfig,
 } from '@/lib/ai/models';
 import type { MediaVia } from '@/lib/ai/via';
+import type { MotionEndpointId } from '@/lib/motion/endpoint-map';
 
 export type MotionEndpointResolution =
   | {
@@ -53,7 +57,7 @@ export type MotionEndpointResolution =
     }
   | {
       via: 'fal';
-      endpointId: string;
+      endpointId: MotionEndpointId;
       references: 'text-to-video';
     };
 
@@ -109,18 +113,18 @@ export function resolveMotionEndpoint(
   }
   if (hasReferenceImages || referenceOnly) {
     const referenceConfig = getMotionReferenceEndpoint(modelKey);
-    if (referenceConfig && !hasReferenceImages) {
-      // Reference-only with nothing matched (an abstract piece, an unmatched
-      // location): the reference-to-video endpoint 422s on an empty image
-      // list, so the shot goes to the prompt-only sibling. Billing and the
-      // estimator resolve through here too, so they price the same row.
-      return {
-        via: 'fal',
-        endpointId: referenceConfig.textToVideoEndpointId,
-        references: 'text-to-video',
-      };
-    }
     if (referenceConfig) {
+      if (!hasReferenceImages) {
+        // Reference-only with nothing matched (an abstract piece, an unmatched
+        // location): the reference-to-video endpoint 422s on an empty image
+        // list, so the shot goes to the prompt-only sibling. Billing and the
+        // estimator resolve through here too, so they price the same row.
+        return {
+          via: 'fal',
+          endpointId: referenceConfig.textToVideoEndpointId,
+          references: 'text-to-video',
+        };
+      }
       return {
         via: 'fal',
         endpointId: referenceConfig.endpointId,

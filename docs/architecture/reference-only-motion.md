@@ -208,10 +208,12 @@ predate reference-only and so were image-to-video.
 ## Model gating
 
 Only models in `MOTION_REFERENCE_ENDPOINTS` qualify — today Seedance 2.0 and
-2.5 and MiniMax H3 Max, whose `reference-to-video` route requires only a
-prompt and takes its images in `reference_image_urls` rather than `image_urls`
-(`imageField` on the endpoint config; every builder reads it, so a fourth model
-with a fourth field name needs no code).
+2.5, MiniMax H3 Max and Gemini Omni Flash, each with a `reference-to-video`
+route that needs no start frame (H3 Max takes its images in
+`reference_image_urls` rather than `image_urls` — `imageField` on the endpoint
+config; every builder reads it, so a fifth model with a fifth field name needs
+no code) and a `textToVideoEndpointId` sibling for a shot that matched nothing
+(#1521).
 `supportsReferenceOnlyMotion` is keyed on the MODEL, not the resolved via — the
 conservative floor, safe in a pure isomorphic schema. It is NOT the question to
 ask anywhere a team's keys are reachable; see below.

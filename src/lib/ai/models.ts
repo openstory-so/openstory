@@ -8,7 +8,10 @@
 import { isNativeGrokVideoModel } from '@/lib/ai/grok-native';
 import type { AnalysisModelId } from '@/lib/ai/models.config';
 import type { AspectRatio } from '@/shared/constants/aspect-ratios';
-import { MOTION_INPUT_SCHEMAS } from '@/lib/motion/endpoint-map';
+import {
+  MOTION_INPUT_SCHEMAS,
+  type MotionEndpointId,
+} from '@/lib/motion/endpoint-map';
 // Type-only: the Seedream adapter narrows `model` to a literal union, so the
 // catalog's `byteplusId` has to be that union rather than a bare string —
 // a retired id then fails typecheck instead of at request time (#1157).
@@ -690,14 +693,14 @@ export function getEditEndpoint(model: TextToImageModel): string | null {
  */
 export type MotionReferenceEndpointConfig = {
   /** The fal reference-to-video endpoint id to submit to. */
-  endpointId: string;
+  endpointId: MotionEndpointId;
   /**
    * The model's fal text-to-video sibling (#1521). Every fal
    * reference-to-video endpoint rejects an empty image list ("At least one
    * reference image, video, or audio must be provided"), so a reference-only
    * shot that matched no cast, location or element sheets submits here.
    */
-  textToVideoEndpointId: string;
+  textToVideoEndpointId: MotionEndpointId;
   /**
    * Renders the prompt token bound to the image-list field at
    * `position - 1` (1-based) — e.g. `@Image1` for Seedance, `Image 1`
@@ -790,10 +793,11 @@ export function attachesInlineReferences(model: ImageToVideoModel): boolean {
  * Reference-only mode (see `docs/architecture/reference-only-motion.md`) skips
  * still generation entirely, so the model must have a route whose start frame
  * is optional. That is exactly the `MOTION_REFERENCE_ENDPOINTS` set: fal's
- * `reference-to-video` endpoints take an optional `image_urls[]` and have no
- * `image_url` field at all, and the same models' BytePlus Ark route sends
- * every image as a `reference` role (Ark's frame/reference mix-ban means the
- * still was never a frame there either).
+ * `reference-to-video` endpoints have no `image_url` field at all (the image
+ * list is schema-optional but rejected when empty — a shot with nothing
+ * matched goes to `textToVideoEndpointId`, #1521), and the same models'
+ * BytePlus Ark route sends every image as a `reference` role (Ark's
+ * frame/reference mix-ban means the still was never a frame there either).
  *
  * Keyed on the MODEL alone, so it is true on EVERY via — the floor, safe to
  * call anywhere including a pure isomorphic schema. Kling is excluded: its

@@ -1433,9 +1433,8 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
             ? generateAudio
             : undefined,
           referenceImages,
-          // Forces the reference-to-video route even when this scene matched
-          // no sheets — exactly as submit does, so the endpoint shown is the
-          // endpoint used.
+          // Same routing as submit (r2v with sheets, the t2v sibling with
+          // none, #1521), so the endpoint shown is the endpoint used.
           referenceOnly: !shotUsesStartFrame,
         },
         modelKey

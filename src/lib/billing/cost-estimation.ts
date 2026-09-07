@@ -195,15 +195,20 @@ export function estimateVideoCost(
     referenceOnly?: boolean;
   }
 ): Microdollars | null {
+  // Gated on the model: `resolveMotionEndpoint` THROWS for reference-only on
+  // a model with no fal reference-to-video route, and an estimator must not.
+  // Grok reference-only is exactly that case — it runs on the native xAI via,
+  // whose cost is the flat per-second rate off `modelConfig.id` anyway.
+  const referenceOnly =
+    opts.referenceOnly === true && supportsReferenceOnlyMotion(model);
   const { endpointId } = resolveMotionEndpoint(
     model,
-    opts.hasReferenceImages === true,
+    // A caller that has not matched sheets yet assumes a reference-only shot
+    // will bind some: r2v is the conservative quote, and the t2v sibling
+    // (#1521) is only priced when the caller KNOWS nothing matched.
+    opts.hasReferenceImages ?? referenceOnly,
     'fal',
-    // Gated on the model: `resolveMotionEndpoint` THROWS for reference-only on
-    // a model with no fal reference-to-video route, and an estimator must not.
-    // Grok reference-only is exactly that case — it runs on the native xAI via,
-    // whose cost is the flat per-second rate off `modelConfig.id` anyway.
-    opts.referenceOnly === true && supportsReferenceOnlyMotion(model)
+    referenceOnly
   );
   // Keep the catalog model id path when unresolved (tests / unknown keys).
   // Both ids alias to the Ark rate when the platform routes there (#1157).

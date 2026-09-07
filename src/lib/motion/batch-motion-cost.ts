@@ -72,9 +72,10 @@ export function estimateBatchMotionCost(
      */
     hasReferenceImages?: boolean | ((shot: BatchShot) => boolean);
     /**
-     * @see estimateVideoCost — reference-only always routes to r2v. Per shot
-     * like its neighbour: a batch can mix, and pricing every shot on one
-     * shot's answer quotes the wrong endpoint for the rest.
+     * @see estimateVideoCost — reference-only routes to r2v, or to the t2v
+     * sibling when the shot matched no sheets (#1521). Per shot like its
+     * neighbour: a batch can mix, and pricing every shot on one shot's answer
+     * quotes the wrong endpoint for the rest.
      */
     referenceOnly?: boolean | ((shot: BatchShot) => boolean);
   }

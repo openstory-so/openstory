@@ -186,9 +186,10 @@ describe('BytePlus route aliasing', () => {
     const { getEffectiveFalPricing } = await loadWithRows(falRows, {
       ARK_API_KEY: 'ark-test',
     });
-    expect((await getEffectiveFalPricing())[SEEDANCE_REF]?.unitPrice).toBe(
-      10_700
-    );
+    const map = await getEffectiveFalPricing();
+    expect(map[SEEDANCE_REF]?.unitPrice).toBe(10_700);
+    // Reference-only with no matched sheets bills on the t2v sibling (#1521).
+    expect(map['bytedance/seedance-2.5/text-to-video']?.unitPrice).toBe(10_700);
   });
 
   it('leaves models with no BytePlus via on their fal rate', async () => {

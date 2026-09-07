@@ -119,6 +119,16 @@ describe('estimateVideoCost', () => {
     expect(Number(withFlag)).toBeGreaterThan(0);
   });
 
+  it('quotes reference-to-video when the caller has not matched sheets yet', () => {
+    // Pre-flight gates (add-video-model, smart-retry, stale preview) run before
+    // any sheet is bound; omitting the flag must keep the conservative row.
+    const quote = estimateVideoCost('seedance_v2_5', 5, {
+      pricing,
+      referenceOnly: true,
+    });
+    expect(Number(quote)).toBe(at('bytedance/seedance-2.5/reference-to-video'));
+  });
+
   it('prices text-to-video with no matched sheets, never image-to-video (#1521)', () => {
     // The shot submits to the t2v sibling (fal r2v rejects an empty list);
     // resolving on hasReferenceImages alone priced the i2v row for a job that

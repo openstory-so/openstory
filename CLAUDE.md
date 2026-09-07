@@ -232,7 +232,7 @@ render-only switch: it picks the motion-prompt template and folds into the
 motion hash, so flipping it re-stales that shot's motion prompt.
 
 **Two capability questions, don't mix them.** `supportsReferenceOnlyMotion` is
-the model-only floor (fal `reference-to-video`: Seedance 2.0 / 2.5, H3 Max);
+the model-only floor (fal `reference-to-video`: Seedance 2.0 / 2.5, H3 Max, Omni Flash);
 `referenceOnlyCapableWith(model, vias)` is its isomorphic via-aware form, which
 `createSequenceSchema` asks with `{ xai: true }` for **every** selected video
 model, not just the primary. Anywhere a team's keys are
@@ -255,8 +255,9 @@ Gotchas: motion references gain the location sheet (ordered first — the budget
 is spent in order); `buildReferenceVideoPrompt` drops the "Use @Image1 as the
 starting frame" line and binds refs from slot 1; Ark `size` switches from
 `adaptive` to the sequence's ratio (nothing is left to adapt to, and a portrait
-sheet would silently render 9:16); billing prices the r2v endpoint per shot,
-since a batch can mix. The mode folds into the motion-prompt hash **only when
+sheet would silently render 9:16); billing prices the endpoint the shot hits per shot
+(r2v with sheets, the model's `textToVideoEndpointId` with none — fal r2v
+rejects an empty image list, #1521), since a batch can mix. The mode folds into the motion-prompt hash **only when
 true**, so no stored digest moves — and it is REQUIRED on
 `ShotPromptContextSequence` because omitting it would make every reference-only
 prompt read stale forever, silently. The manifest records
@@ -354,7 +355,7 @@ fal is the default **via** for every image / video / audio model. Catalog **vend
 Two vias, one catalog key. `IMAGE_TO_VIDEO_MODELS.seedance_v2_5` / `IMAGE_MODELS.seedream_v5` carry a `byteplusId` alongside their fal endpoint id. `seedance_v2` is fal Seedance 2.0 enterprise (no Ark via). fal has no enterprise 2.5. Claim is the Grok pattern (#1167): `isNativeBytePlus*Model` + live `ARK_API_KEY` (`claimBytePlusVia`), then `resolveMotionEndpoint(..., via)` / the image `switch (via)` — **BytePlus when Ark is configured AND the model is native AND the team is not on its own fal key**. BYOK fal stays on fal (their key, their bill). Stamp `via` on the job; poll MUST follow the stamp (default missing stamps to `'fal'`). Sequences store the model _key_, never the endpoint.
 
 - **Platform key only.** `team_api_keys` stays `'openrouter' | 'fal'` — there is no `'byteplus'` on `API_KEY_PROVIDERS` and no `resolveOptionalKey('byteplus')`.
-- **Ark is not fal-shaped**, so the fal codegen (`bun motion:codegen`, `MOTION_TRANSFORMS`) does not apply. `resolveMotionEndpoint` stays fal i2v vs reference-to-video. Ark Seedance with refs uses `buildBytePlusVideoRequest` — Ark **rejects frame roles mixed with reference roles** (a shot with cast refs sends the still AS a reference). Seedream's `2K` token is **square**, so non-square sizes must be spelled in pixels. Image `watermark` **defaults to true**.
+- **Ark is not fal-shaped**, so the fal codegen (`bun motion:codegen`, `MOTION_TRANSFORMS`) does not apply. `resolveMotionEndpoint` stays fal i2v / reference-to-video / text-to-video. Ark Seedance with refs uses `buildBytePlusVideoRequest` — Ark **rejects frame roles mixed with reference roles** (a shot with cast refs sends the still AS a reference). Seedream's `2K` token is **square**, so non-square sizes must be spelled in pixels. Image `watermark` **defaults to true**.
 - **Pricing is a static card**, not `model_pricing` — BytePlus publishes no pricing API. `src/lib/ai/byteplus-pricing.ts` holds dated, advertised (NOT bill-verified) rates and is merged into the effective pricing map at read time, so a fresh deploy never bills $0. When Ark is configured, `applyBytePlusRouteAliases` points the fal endpoint ids at the Ark rate, which is why **no estimator or UI call site needs to know the via**. Video bills in tokens (÷1000 for the `1000 tokens` unit); images bill per image. Ark units set `recordFalUsage: false`.
 - **Ark quotas are per-ACCOUNT** (shared by every team), where fal's are per-key — so the backpressure is 429 classification + exponential backoff in `byteplus-rate-limit.ts` (`withBytePlusQuotaRetry` lives inside the byteplus via case), which deliberately does **not** consume the content-flag retry budget. Deliberately **not** a per-run fan-out cap: #1143 deleted that mechanism because it is per workflow RUN. Real admission control has to live where it can see the whole system. Every rejection emits a `byteplus_quota_backoff` PostHog event (`byteplus-observability.ts`) — un-deduped. Watch the `exhausted: true` rate: non-zero means it is time for a bounded queue in front of Ark (#891).
 - **Photorealistic faces (including generated ones).** Seedance 2.5/2.0 reject a public URL that _may contain a real person_ (`InputImageSensitiveContentDetected.PrivacyInformation`). Advanced Creation Rights unlock the **virtual** portrait library. Submit registers **every still** as `asset://` (`BYTEPLUS_ACCESS_KEY` / `BYTEPLUS_SECRET_KEY`) — start frame and all references. If ingest is missing or Ark still 400s, fal fallback remains. Do **not** fold it into the content-flag re-roll.
@@ -413,13 +414,13 @@ pass top-level `duration`/`size` to `generateVideo` — the adapter overwrites
 API instead of inlining a multi-MB `data:` URL. Inline bytes miss Cloudflare
 Workflows' 1 MiB `step.do` cap; poll/upload download the Files URI with the
 Google key. Without a Google key the same model runs on fal's
-`fal-ai/gemini-omni-1.1-flash[/image-to-video|/reference-to-video]` endpoints.
+`fal-ai/gemini-omni-1.1-flash[/image-to-video|/reference-to-video]` endpoints
+(the bare id is fal's text-to-video route, used when a reference-only shot
+matched nothing).|/reference-to-video]`endpoints.
 Data-URI stills must be decomposed to inline base64 on the native path —
-Google won't fetch `data:` as a URI. Chat vision (motion prompts) and
-native image refs must also inline stored stills: Google's
-`fileData.fileUri` HTTP fetch (CDN / fal URLs) sits on a separate quota
-that 429s while the same bytes as `inlineData` succeed.
-`toVisionImageSource(..., { inline: true })` is that path.
+Google won't fetch`data:`as a URI. Chat vision (motion prompts) and
+native image refs must also inline stored stills: Google's`fileData.fileUri`HTTP fetch (CDN / fal URLs) sits on a separate quota
+that 429s while the same bytes as`inlineData`succeed.`toVisionImageSource(..., { inline: true })` is that path.
 
 ### LLMTR Gateway
 

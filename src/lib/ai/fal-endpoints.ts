@@ -15,9 +15,12 @@ export function getFalEndpointIds(): string[] {
   const image = Object.values(IMAGE_MODELS).map((m) => m.id);
   const audio = Object.values(AUDIO_MODELS).map((m) => m.id);
   const edit = Object.values(EDIT_ENDPOINTS);
-  const motionRef = Object.values(MOTION_REFERENCE_ENDPOINTS).map(
-    (m) => m.endpointId
-  );
+  // Both rows a reference-only shot can bill on (#1521): the reference
+  // endpoint, and the text-to-video sibling it takes with no matched sheets.
+  const motionRef = Object.values(MOTION_REFERENCE_ENDPOINTS).flatMap((m) => [
+    m.endpointId,
+    m.textToVideoEndpointId,
+  ]);
   const studioVideo = studioVideoEndpointIds();
 
   return [

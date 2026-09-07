@@ -171,26 +171,12 @@ export function buildModelInput<T extends ImageToVideoModel>(
   return result;
 }
 
-/** Output of a reference-to-video transform (the endpoints in
- *  `MOTION_REFERENCE_ENDPOINTS`). */
-type ReferenceVideoOutput =
-  | z.output<
-      (typeof MOTION_TRANSFORMS)['bytedance/seedance-2.5/reference-to-video']
-    >
-  | z.output<
-      (typeof MOTION_TRANSFORMS)['bytedance/seedance-2.0/enterprise/v2/reference-to-video']
-    >
-  | z.output<(typeof MOTION_TRANSFORMS)['minimax/h3-max/reference-to-video']>;
-
-/** Output of a text-to-video transform (`textToVideoEndpointId` in
- *  `MOTION_REFERENCE_ENDPOINTS`, #1521). */
-type TextToVideoOutput =
-  | z.output<(typeof MOTION_TRANSFORMS)['bytedance/seedance-2.5/text-to-video']>
-  | z.output<
-      (typeof MOTION_TRANSFORMS)['bytedance/seedance-2.0/enterprise/v2/text-to-video']
-    >
-  | z.output<(typeof MOTION_TRANSFORMS)['minimax/h3-max/text-to-video']>
-  | z.output<(typeof MOTION_TRANSFORMS)['fal-ai/gemini-omni-1.1-flash']>;
+/** Output of any registered fal transform: the reference-to-video and
+ *  text-to-video rows `MOTION_REFERENCE_ENDPOINTS` names are typed
+ *  `MotionEndpointId`, so this can never drift from the map. */
+type RegisteredMotionOutput = z.output<
+  (typeof MOTION_TRANSFORMS)[MotionEndpointId]
+>;
 
 /**
  * Resolve the endpoint and build the exact fal request body for a motion run
@@ -213,7 +199,7 @@ export function buildMotionRequest<T extends ImageToVideoModel>(
   modelKey: T
 ): {
   endpointId: string;
-  input: ModelOutputMap[T] | ReferenceVideoOutput | TextToVideoOutput;
+  input: ModelOutputMap[T] | RegisteredMotionOutput;
 } {
   const modelConfig = IMAGE_TO_VIDEO_MODELS[modelKey];
   const endpoint = resolveMotionEndpoint(
@@ -224,27 +210,26 @@ export function buildMotionRequest<T extends ImageToVideoModel>(
   );
 
   if (endpoint.references === 'text-to-video') {
-    // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- guarded below: unregistered endpoints throw
-    const textEndpointId = endpoint.endpointId as MotionEndpointId;
-    const textTransform = MOTION_TRANSFORMS[textEndpointId];
-    // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- defensive guard for exhaustiveness
-    if (!textTransform) {
+    if (options.imageUrl) {
+      // The prompt-only route has nowhere to put a still. Reaching here with
+      // one means a caller set `referenceOnly` on a shot that rendered a
+      // frame; dropping it silently would return a different kind of clip.
       throw new Error(
-        `No motion transform registered for text-to-video endpoint: ${textEndpointId}`
+        `Motion model "${modelKey}" was given a start frame in reference-only mode`
       );
     }
-    // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- transform is the text-to-video schema
-    const input = textTransform.parse({
+    const { endpointId } = endpoint;
+    const input = MOTION_TRANSFORMS[endpointId].parse({
       prompt: options.prompt,
       duration: options.duration,
       aspectRatio: options.aspectRatio,
       ...QUALITY_OVERRIDES[modelKey],
-      ...resolutionOverride(textEndpointId, options.resolution),
+      ...resolutionOverride(endpointId, options.resolution),
       ...(options.generateAudio !== undefined && {
         generate_audio: options.generateAudio,
       }),
-    }) as TextToVideoOutput;
-    return { endpointId: endpoint.endpointId, input };
+    });
+    return { endpointId, input };
   }
 
   if (endpoint.references !== 'endpoint') {
@@ -263,15 +248,8 @@ export function buildMotionRequest<T extends ImageToVideoModel>(
     };
   }
 
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- guarded below: unregistered endpoints throw
-  const endpointId = endpoint.referenceConfig.endpointId as MotionEndpointId;
+  const endpointId = endpoint.referenceConfig.endpointId;
   const transform = MOTION_TRANSFORMS[endpointId];
-  // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- defensive guard for exhaustiveness
-  if (!transform) {
-    throw new Error(
-      `No motion transform registered for reference endpoint: ${endpointId}`
-    );
-  }
 
   if (!options.imageUrl && !options.referenceOnly) {
     // The reference-to-video endpoint accepts a request with no still, so a
@@ -293,7 +271,6 @@ export function buildMotionRequest<T extends ImageToVideoModel>(
 
   const imageField = endpoint.referenceConfig.imageField ?? 'image_urls';
 
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- transform is the reference-to-video schema
   const input = transform.parse({
     prompt,
     duration: options.duration,
@@ -306,7 +283,7 @@ export function buildMotionRequest<T extends ImageToVideoModel>(
     ...(options.generateAudio !== undefined && {
       generate_audio: options.generateAudio,
     }),
-  }) as ReferenceVideoOutput;
+  });
 
   return { endpointId: endpoint.endpointId, input };
 }

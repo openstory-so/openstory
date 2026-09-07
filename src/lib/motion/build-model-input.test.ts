@@ -364,7 +364,9 @@ describe('buildModelInput', () => {
       });
 
       it('forwards generate_audio=false when caller suppresses audio', () => {
-        expect(buildRef({ generateAudio: false }).generate_audio).toBe(false);
+        expect(buildRef({ generateAudio: false })).toMatchObject({
+          generate_audio: false,
+        });
       });
     }
   );
@@ -525,6 +527,19 @@ describe('buildMotionRequest — reference-only', () => {
     }
   );
 
+  it('refuses to drop a start frame on the text-to-video route', () => {
+    expect(() =>
+      buildMotionRequest(
+        {
+          ...referenceOnlyOptions,
+          referenceImages: [],
+          imageUrl: 'https://example.com/shot.jpg',
+        },
+        'seedance_v2_5'
+      )
+    ).toThrow(/start frame in reference-only mode/);
+  });
+
   it('keeps H3 Max quality overrides on the text-to-video route', () => {
     const { input } = buildMotionRequest(
       { ...referenceOnlyOptions, referenceImages: [], resolution: '720p' },
@@ -542,7 +557,7 @@ describe('buildMotionRequest — reference-only', () => {
       { ...referenceOnlyOptions, aspectRatio: '9:16' },
       'seedance_v2_5'
     );
-    expect(input.aspect_ratio).toBe('9:16');
+    expect(input).toMatchObject({ aspect_ratio: '9:16' });
   });
 
   it('refuses a start-frame model asked to render without one', () => {

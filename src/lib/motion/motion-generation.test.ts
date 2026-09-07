@@ -848,6 +848,30 @@ describe('Motion Service', () => {
       expect(billing.recordFalUsage).toBe(false);
       expect(billing.endpointId).toBe('gemini-omni-1.1-flash');
     });
+
+    // The post-run charge re-resolves the row submit used, so the two must
+    // agree on all three fal routes (#873, #1521).
+    it.each([
+      [false, false, 'bytedance/seedance-2.5/image-to-video'],
+      [true, true, 'bytedance/seedance-2.5/reference-to-video'],
+      [false, true, 'bytedance/seedance-2.5/text-to-video'],
+    ] as const)(
+      'prices the fal row the shot hit (refs=%s, referenceOnly=%s)',
+      async (hasReferenceImages, referenceOnly, endpointId) => {
+        const billing = await motionCostFromUsage(
+          'fal',
+          {
+            promptTokens: 0,
+            completionTokens: 0,
+            totalTokens: 0,
+            unitsBilled: 5,
+          },
+          { modelKey: 'seedance_v2_5', hasReferenceImages, referenceOnly }
+        );
+        expect(billing.endpointId).toBe(endpointId);
+        expect(billing.recordFalUsage).toBe(true);
+      }
+    );
   });
 
   describe('resolveMotionVia', () => {
