@@ -146,14 +146,31 @@ describe('resolveMotionEndpoint', () => {
 });
 
 describe('reference-only', () => {
-  it('routes Seedance to reference-to-video even with no matched refs', () => {
-    expect(resolveMotionEndpoint('seedance_v2_5', false, 'fal', true)).toEqual({
+  it('routes Seedance to reference-to-video when refs matched', () => {
+    expect(resolveMotionEndpoint('seedance_v2_5', true, 'fal', true)).toEqual({
       via: 'fal',
       endpointId: 'bytedance/seedance-2.5/reference-to-video',
       references: 'endpoint',
       referenceConfig: MOTION_REFERENCE_ENDPOINTS.seedance_v2_5,
     });
   });
+
+  // fal's reference-to-video endpoints 422 on an empty image list (#1521).
+  it.each([
+    ['seedance_v2', 'bytedance/seedance-2.0/enterprise/v2/text-to-video'],
+    ['seedance_v2_5', 'bytedance/seedance-2.5/text-to-video'],
+    ['minimax_h3_max', 'minimax/h3-max/text-to-video'],
+    ['gemini_omni_flash', 'fal-ai/gemini-omni-1.1-flash'],
+  ] as const)(
+    'routes %s to text-to-video with no matched refs',
+    (model, endpointId) => {
+      expect(resolveMotionEndpoint(model, false, 'fal', true)).toEqual({
+        via: 'fal',
+        endpointId,
+        references: 'text-to-video',
+      });
+    }
+  );
 
   it('refuses a model with no reference-to-video route', () => {
     expect(() =>

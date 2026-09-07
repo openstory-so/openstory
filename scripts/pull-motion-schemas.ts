@@ -48,9 +48,11 @@ async function main() {
   const endpointIds = [
     ...new Set([
       ...Object.values(IMAGE_TO_VIDEO_MODELS).map((m) => m.id),
-      ...Object.values(MOTION_REFERENCE_ENDPOINTS).map(
-        (config) => config.endpointId
-      ),
+      ...Object.values(MOTION_REFERENCE_ENDPOINTS).flatMap((config) => [
+        config.endpointId,
+        // Reference-only with no matched sheets submits here (#1521).
+        config.textToVideoEndpointId,
+      ]),
     ]),
   ];
 

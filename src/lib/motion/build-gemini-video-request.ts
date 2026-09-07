@@ -9,14 +9,13 @@
  */
 
 import { NATIVE_GEMINI_VIDEO_MODEL } from '@/lib/ai/gemini-native';
-import {
-  IMAGE_TO_VIDEO_MODELS,
-  type ImageToVideoModel,
-  type MotionReferenceEndpointConfig,
-} from '@/lib/ai/models';
+import { IMAGE_TO_VIDEO_MODELS, type ImageToVideoModel } from '@/lib/ai/models';
 import type { AspectRatio } from '@/shared/constants/aspect-ratios';
 import type { ReferenceImageDescription } from '@/lib/prompts/reference-image-prompt';
-import { buildReferenceVideoPrompt } from './build-reference-video-prompt';
+import {
+  buildReferenceVideoPrompt,
+  type ReferencePromptBinding,
+} from './build-reference-video-prompt';
 import { snapDuration } from './snap-duration';
 
 /**
@@ -28,10 +27,9 @@ import { snapDuration } from './snap-duration';
  * line.
  */
 const GEMINI_VIDEO_REFERENCE_CONFIG = {
-  endpointId: NATIVE_GEMINI_VIDEO_MODEL,
   tag: (position: number) => `<IMAGE_REF_${position - 1}>`,
   maxImages: 7,
-} satisfies MotionReferenceEndpointConfig;
+} satisfies ReferencePromptBinding;
 
 type GeminiVideoPromptPart =
   | { type: 'text'; content: string }

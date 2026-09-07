@@ -7,49 +7,61 @@ import { motionTransform } from './motion-transform';
 
 import {
   zGeminiOmni11FlashImageToVideoInput,
+  zGeminiOmni11FlashInput,
   zGeminiOmni11FlashReferenceToVideoInput,
   zGrokImagineVideoV15ImageToVideoInput,
   zH3MaxImageToVideoInput,
   zH3MaxReferenceToVideoInput,
+  zH3MaxTextToVideoInput,
   zKlingVideoV3ProImageToVideoInput,
   zLtx23ImageToVideoInput,
   zMinimaxHailuo23ProImageToVideoInput,
   zSeedance20EnterpriseV2ImageToVideoInput,
   zSeedance20EnterpriseV2ReferenceToVideoInput,
+  zSeedance20EnterpriseV2TextToVideoInput,
   zSeedance25ImageToVideoInput,
   zSeedance25ReferenceToVideoInput,
+  zSeedance25TextToVideoInput,
   zVeo31ImageToVideoInput,
 } from './generated/zod.gen';
 
 import {
   GeminiOmni11FlashImageToVideoInputSchema,
+  GeminiOmni11FlashInputSchema,
   GeminiOmni11FlashReferenceToVideoInputSchema,
   GrokImagineVideoV15ImageToVideoInputSchema,
   H3MaxImageToVideoInputSchema,
   H3MaxReferenceToVideoInputSchema,
+  H3MaxTextToVideoInputSchema,
   KlingVideoV3ProImageToVideoInputSchema,
   Ltx23ImageToVideoInputSchema,
   MinimaxHailuo23ProImageToVideoInputSchema,
   Seedance20EnterpriseV2ImageToVideoInputSchema,
   Seedance20EnterpriseV2ReferenceToVideoInputSchema,
+  Seedance20EnterpriseV2TextToVideoInputSchema,
   Seedance25ImageToVideoInputSchema,
   Seedance25ReferenceToVideoInputSchema,
+  Seedance25TextToVideoInputSchema,
   Veo31ImageToVideoInputSchema,
 } from './generated/schemas.gen';
 
 export type MotionJSONSchema =
   | typeof GeminiOmni11FlashImageToVideoInputSchema
+  | typeof GeminiOmni11FlashInputSchema
   | typeof GeminiOmni11FlashReferenceToVideoInputSchema
   | typeof GrokImagineVideoV15ImageToVideoInputSchema
   | typeof H3MaxImageToVideoInputSchema
   | typeof H3MaxReferenceToVideoInputSchema
+  | typeof H3MaxTextToVideoInputSchema
   | typeof KlingVideoV3ProImageToVideoInputSchema
   | typeof Ltx23ImageToVideoInputSchema
   | typeof MinimaxHailuo23ProImageToVideoInputSchema
   | typeof Seedance20EnterpriseV2ImageToVideoInputSchema
   | typeof Seedance20EnterpriseV2ReferenceToVideoInputSchema
+  | typeof Seedance20EnterpriseV2TextToVideoInputSchema
   | typeof Seedance25ImageToVideoInputSchema
   | typeof Seedance25ReferenceToVideoInputSchema
+  | typeof Seedance25TextToVideoInputSchema
   | typeof Veo31ImageToVideoInputSchema;
 
 export const MOTION_INPUT_SCHEMAS = {
@@ -57,8 +69,12 @@ export const MOTION_INPUT_SCHEMAS = {
     zSeedance20EnterpriseV2ImageToVideoInput,
   'bytedance/seedance-2.0/enterprise/v2/reference-to-video':
     zSeedance20EnterpriseV2ReferenceToVideoInput,
+  'bytedance/seedance-2.0/enterprise/v2/text-to-video':
+    zSeedance20EnterpriseV2TextToVideoInput,
   'bytedance/seedance-2.5/image-to-video': zSeedance25ImageToVideoInput,
   'bytedance/seedance-2.5/reference-to-video': zSeedance25ReferenceToVideoInput,
+  'bytedance/seedance-2.5/text-to-video': zSeedance25TextToVideoInput,
+  'fal-ai/gemini-omni-1.1-flash': zGeminiOmni11FlashInput,
   'fal-ai/gemini-omni-1.1-flash/image-to-video':
     zGeminiOmni11FlashImageToVideoInput,
   'fal-ai/gemini-omni-1.1-flash/reference-to-video':
@@ -70,6 +86,7 @@ export const MOTION_INPUT_SCHEMAS = {
   'fal-ai/veo3.1/image-to-video': zVeo31ImageToVideoInput,
   'minimax/h3-max/image-to-video': zH3MaxImageToVideoInput,
   'minimax/h3-max/reference-to-video': zH3MaxReferenceToVideoInput,
+  'minimax/h3-max/text-to-video': zH3MaxTextToVideoInput,
   'xai/grok-imagine-video/v1.5/image-to-video':
     zGrokImagineVideoV15ImageToVideoInput,
 };
@@ -90,9 +107,13 @@ export const MOTION_JSON_SCHEMAS = {
     Seedance20EnterpriseV2ImageToVideoInputSchema,
   'bytedance/seedance-2.0/enterprise/v2/reference-to-video':
     Seedance20EnterpriseV2ReferenceToVideoInputSchema,
+  'bytedance/seedance-2.0/enterprise/v2/text-to-video':
+    Seedance20EnterpriseV2TextToVideoInputSchema,
   'bytedance/seedance-2.5/image-to-video': Seedance25ImageToVideoInputSchema,
   'bytedance/seedance-2.5/reference-to-video':
     Seedance25ReferenceToVideoInputSchema,
+  'bytedance/seedance-2.5/text-to-video': Seedance25TextToVideoInputSchema,
+  'fal-ai/gemini-omni-1.1-flash': GeminiOmni11FlashInputSchema,
   'fal-ai/gemini-omni-1.1-flash/image-to-video':
     GeminiOmni11FlashImageToVideoInputSchema,
   'fal-ai/gemini-omni-1.1-flash/reference-to-video':
@@ -105,6 +126,7 @@ export const MOTION_JSON_SCHEMAS = {
   'fal-ai/veo3.1/image-to-video': Veo31ImageToVideoInputSchema,
   'minimax/h3-max/image-to-video': H3MaxImageToVideoInputSchema,
   'minimax/h3-max/reference-to-video': H3MaxReferenceToVideoInputSchema,
+  'minimax/h3-max/text-to-video': H3MaxTextToVideoInputSchema,
   'xai/grok-imagine-video/v1.5/image-to-video':
     GrokImagineVideoV15ImageToVideoInputSchema,
 } satisfies Record<MotionEndpointId, MotionJSONSchema>;
@@ -118,6 +140,10 @@ export const MOTION_TRANSFORMS = {
     zSeedance20EnterpriseV2ReferenceToVideoInput,
     Seedance20EnterpriseV2ReferenceToVideoInputSchema
   ),
+  'bytedance/seedance-2.0/enterprise/v2/text-to-video': motionTransform(
+    zSeedance20EnterpriseV2TextToVideoInput,
+    Seedance20EnterpriseV2TextToVideoInputSchema
+  ),
   'bytedance/seedance-2.5/image-to-video': motionTransform(
     zSeedance25ImageToVideoInput,
     Seedance25ImageToVideoInputSchema
@@ -125,6 +151,14 @@ export const MOTION_TRANSFORMS = {
   'bytedance/seedance-2.5/reference-to-video': motionTransform(
     zSeedance25ReferenceToVideoInput,
     Seedance25ReferenceToVideoInputSchema
+  ),
+  'bytedance/seedance-2.5/text-to-video': motionTransform(
+    zSeedance25TextToVideoInput,
+    Seedance25TextToVideoInputSchema
+  ),
+  'fal-ai/gemini-omni-1.1-flash': motionTransform(
+    zGeminiOmni11FlashInput,
+    GeminiOmni11FlashInputSchema
   ),
   'fal-ai/gemini-omni-1.1-flash/image-to-video': motionTransform(
     zGeminiOmni11FlashImageToVideoInput,
@@ -157,6 +191,10 @@ export const MOTION_TRANSFORMS = {
   'minimax/h3-max/reference-to-video': motionTransform(
     zH3MaxReferenceToVideoInput,
     H3MaxReferenceToVideoInputSchema
+  ),
+  'minimax/h3-max/text-to-video': motionTransform(
+    zH3MaxTextToVideoInput,
+    H3MaxTextToVideoInputSchema
   ),
   'xai/grok-imagine-video/v1.5/image-to-video': motionTransform(
     zGrokImagineVideoV15ImageToVideoInput,

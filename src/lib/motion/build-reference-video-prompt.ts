@@ -39,8 +39,18 @@ import {
   substituteReferenceTags,
 } from '@/lib/prompts/reference-legend';
 
+/**
+ * The two knobs the prompt binding needs. The native Grok / Gemini builders
+ * pass their own (one model id serves every task there, so they have no
+ * separate reference or text-to-video endpoint to name).
+ */
+export type ReferencePromptBinding = Pick<
+  MotionReferenceEndpointConfig,
+  'tag' | 'maxImages'
+>;
+
 export function buildReferenceVideoPrompt(
-  config: MotionReferenceEndpointConfig,
+  config: ReferencePromptBinding,
   basePrompt: string,
   /** The rendered still, or null in reference-only mode (no start frame). */
   startImageUrl: string | null,

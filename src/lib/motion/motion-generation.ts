@@ -386,10 +386,10 @@ export async function submitMotionJob(
   );
 
   // Reference-only with nothing matched is not the mode — it is text-to-video
-  // at the reference-to-video price, with the character, set and continuity all
-  // reinvented for this one shot while every sibling shot binds its sheets.
-  // The request is still valid (the endpoint serves it), so this is a warning
-  // rather than a throw; without it the shot just comes back looking wrong and
+  // (the fal route submits to the t2v sibling, #1521), with the character, set
+  // and continuity all reinvented for this one shot while every sibling shot
+  // binds its sheets. The request is still valid, so this is a warning rather
+  // than a throw; without it the shot just comes back looking wrong and
   // nothing anywhere says why. Also emitted as an event: a server log is
   // nobody's dashboard, and the rate of this is the measure of how often
   // reference-only silently degrades to text-to-video.
@@ -681,10 +681,10 @@ export async function motionCostFromUsage(
     modelKey: ImageToVideoModel;
     hasReferenceImages: boolean;
     /**
-     * Reference-only shots route to the reference-to-video endpoint even with
-     * no matched sheets, so the charge must be priced against that endpoint —
-     * resolving without it would bill an image-to-video rate for a job that
-     * never ran there.
+     * Reference-only shots route to the reference-to-video endpoint (or its
+     * text-to-video sibling when no sheets matched, #1521), so the charge must
+     * be priced against that endpoint — resolving without it would bill an
+     * image-to-video rate for a job that never ran there.
      */
     referenceOnly?: boolean;
   }

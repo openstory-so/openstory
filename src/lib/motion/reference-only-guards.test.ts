@@ -96,11 +96,33 @@ describe('estimateVideoCost', () => {
       unit: 'seconds',
       unitPrice: micros(2000),
     },
+    'bytedance/seedance-2.5/text-to-video': {
+      unit: 'seconds',
+      unitPrice: micros(3000),
+    },
   };
 
-  it('prices reference-to-video even with no matched sheets', () => {
-    // The shot routes to r2v regardless; resolving on hasReferenceImages alone
-    // priced the i2v row for a job that never runs there.
+  // Pinned to a row, not merely "different from i2v": any wrong route that
+  // happens to differ would pass an inequality.
+  const at = (endpointId: string) =>
+    Number(estimateFalCost(endpointId, { durationSeconds: 5 }, pricing));
+
+  it('prices reference-to-video when sheets matched', () => {
+    const withFlag = estimateVideoCost('seedance_v2_5', 5, {
+      pricing,
+      hasReferenceImages: true,
+      referenceOnly: true,
+    });
+    expect(Number(withFlag)).toBe(
+      at('bytedance/seedance-2.5/reference-to-video')
+    );
+    expect(Number(withFlag)).toBeGreaterThan(0);
+  });
+
+  it('prices text-to-video with no matched sheets, never image-to-video (#1521)', () => {
+    // The shot submits to the t2v sibling (fal r2v rejects an empty list);
+    // resolving on hasReferenceImages alone priced the i2v row for a job that
+    // never runs there.
     const withFlag = estimateVideoCost('seedance_v2_5', 5, {
       pricing,
       hasReferenceImages: false,
@@ -110,13 +132,7 @@ describe('estimateVideoCost', () => {
       pricing,
       hasReferenceImages: false,
     });
-    // Pinned to the r2v row, not merely "different from i2v": any wrong route
-    // that happens to differ would pass an inequality.
-    const at = (endpointId: string) =>
-      Number(estimateFalCost(endpointId, { durationSeconds: 5 }, pricing));
-    expect(Number(withFlag)).toBe(
-      at('bytedance/seedance-2.5/reference-to-video')
-    );
+    expect(Number(withFlag)).toBe(at('bytedance/seedance-2.5/text-to-video'));
     expect(Number(withoutFlag)).toBe(
       at('bytedance/seedance-2.5/image-to-video')
     );

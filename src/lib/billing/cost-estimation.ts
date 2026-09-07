@@ -187,10 +187,10 @@ export function estimateVideoCost(
      */
     hasReferenceImages?: boolean;
     /**
-     * Reference-only shots route to reference-to-video even when the scene
-     * matched no sheets at all, so the estimate has to be told: resolving on
-     * `hasReferenceImages` alone would price the image-to-video row for a job
-     * that never runs there.
+     * Reference-only shots route to reference-to-video (or, with no sheets
+     * matched, its text-to-video sibling — #1521), so the estimate has to be
+     * told: resolving on `hasReferenceImages` alone would price the
+     * image-to-video row for a job that never runs there.
      */
     referenceOnly?: boolean;
   }

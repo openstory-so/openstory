@@ -692,6 +692,13 @@ export type MotionReferenceEndpointConfig = {
   /** The fal reference-to-video endpoint id to submit to. */
   endpointId: string;
   /**
+   * The model's fal text-to-video sibling (#1521). Every fal
+   * reference-to-video endpoint rejects an empty image list ("At least one
+   * reference image, video, or audio must be provided"), so a reference-only
+   * shot that matched no cast, location or element sheets submits here.
+   */
+  textToVideoEndpointId: string;
+  /**
    * Renders the prompt token bound to the image-list field at
    * `position - 1` (1-based) — e.g. `@Image1` for Seedance, `Image 1`
    * for H3 Max.
@@ -724,16 +731,21 @@ export const MOTION_REFERENCE_ENDPOINTS: Partial<
 > = {
   seedance_v2: {
     endpointId: 'bytedance/seedance-2.0/enterprise/v2/reference-to-video',
+    textToVideoEndpointId: 'bytedance/seedance-2.0/enterprise/v2/text-to-video',
     tag: (position) => `@Image${position}`,
     maxImages: 9,
   },
   seedance_v2_5: {
     endpointId: 'bytedance/seedance-2.5/reference-to-video',
+    textToVideoEndpointId: 'bytedance/seedance-2.5/text-to-video',
     tag: (position) => `@Image${position}`,
     maxImages: 9,
   },
   gemini_omni_flash: {
     endpointId: 'fal-ai/gemini-omni-1.1-flash/reference-to-video',
+    // fal serves Omni Flash text-to-video from the bare model id; there is no
+    // `/text-to-video` path (the queue answers "Path /text-to-video not found").
+    textToVideoEndpointId: 'fal-ai/gemini-omni-1.1-flash',
     // Google numbers references from zero (Omni Flash prompt guide); the API
     // caps a request at 7 reference images.
     tag: (position) => `<IMAGE_REF_${position - 1}>`,
@@ -742,6 +754,7 @@ export const MOTION_REFERENCE_ENDPOINTS: Partial<
   // Schema caps images at 9 (videos 3, audio 3; combined 12 files).
   minimax_h3_max: {
     endpointId: 'minimax/h3-max/reference-to-video',
+    textToVideoEndpointId: 'minimax/h3-max/text-to-video',
     tag: (position) => `Image ${position}`,
     maxImages: 9,
     imageField: 'reference_image_urls',

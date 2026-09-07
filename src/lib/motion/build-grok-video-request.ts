@@ -8,18 +8,17 @@
  */
 
 import { NATIVE_GROK_VIDEO_MODEL } from '@/lib/ai/grok-native';
-import {
-  IMAGE_TO_VIDEO_MODELS,
-  type ImageToVideoModel,
-  type MotionReferenceEndpointConfig,
-} from '@/lib/ai/models';
+import { IMAGE_TO_VIDEO_MODELS, type ImageToVideoModel } from '@/lib/ai/models';
 import type { AspectRatio } from '@/shared/constants/aspect-ratios';
 import {
   pickVideoResolution,
   type Resolution,
 } from '@/shared/constants/resolutions';
 import type { ReferenceImageDescription } from '@/lib/prompts/reference-image-prompt';
-import { buildReferenceVideoPrompt } from './build-reference-video-prompt';
+import {
+  buildReferenceVideoPrompt,
+  type ReferencePromptBinding,
+} from './build-reference-video-prompt';
 
 /**
  * Imagine 1.5 reference-to-video: still first, then up to 6 library refs
@@ -28,10 +27,9 @@ import { buildReferenceVideoPrompt } from './build-reference-video-prompt';
  * a start-frame `image` with `reference_images`.
  */
 const GROK_VIDEO_REFERENCE_CONFIG = {
-  endpointId: NATIVE_GROK_VIDEO_MODEL,
   tag: (position: number) => `<IMAGE_${position - 1}>`,
   maxImages: 7,
-} satisfies MotionReferenceEndpointConfig;
+} satisfies ReferencePromptBinding;
 
 type GrokVideoPromptPart =
   | { type: 'text'; content: string }

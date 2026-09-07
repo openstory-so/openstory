@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { getMotionReferenceEndpoint } from '@/lib/ai/models';
-import type { MotionReferenceEndpointConfig } from '@/lib/ai/models';
 import type { ReferenceImageDescription } from '@/lib/prompts/reference-image-prompt';
-import { buildReferenceVideoPrompt } from './build-reference-video-prompt';
+import {
+  buildReferenceVideoPrompt,
+  type ReferencePromptBinding,
+} from './build-reference-video-prompt';
 
 const STILL = 'https://example.com/still.png';
 
@@ -31,7 +33,7 @@ describe.each([
   ['seedance_v2_5', seedanceV25Config] as const,
 ])(
   'buildReferenceVideoPrompt (%s)',
-  (_model, seedanceConfig: MotionReferenceEndpointConfig) => {
+  (_model, seedanceConfig: ReferencePromptBinding) => {
     it('declares the still as the starting frame on the first line', () => {
       const result = buildReferenceVideoPrompt(
         seedanceConfig,
@@ -192,8 +194,7 @@ describe('buildReferenceVideoPrompt (minimax_h3_max)', () => {
 
 describe('buildReferenceVideoPrompt (per-model config knobs)', () => {
   // Gemini Omni Flash-style config: 0-indexed angle-bracket tags, tighter cap.
-  const omniStyleConfig: MotionReferenceEndpointConfig = {
-    endpointId: 'google/gemini-omni-flash/reference-to-video',
+  const omniStyleConfig: ReferencePromptBinding = {
     tag: (position) => `<IMAGE_REF_${position - 1}>`,
     maxImages: 4,
   };
@@ -228,8 +229,7 @@ describe('buildReferenceVideoPrompt (per-model config knobs)', () => {
   });
 
   it('tags Grok Imagine 1.5 refs as <IMAGE_0>… in request order', () => {
-    const grokConfig: MotionReferenceEndpointConfig = {
-      endpointId: 'grok-imagine-video-1.5',
+    const grokConfig: ReferencePromptBinding = {
       tag: (position) => `<IMAGE_${position - 1}>`,
       maxImages: 7,
     };

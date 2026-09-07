@@ -182,6 +182,16 @@ type ReferenceVideoOutput =
     >
   | z.output<(typeof MOTION_TRANSFORMS)['minimax/h3-max/reference-to-video']>;
 
+/** Output of a text-to-video transform (`textToVideoEndpointId` in
+ *  `MOTION_REFERENCE_ENDPOINTS`, #1521). */
+type TextToVideoOutput =
+  | z.output<(typeof MOTION_TRANSFORMS)['bytedance/seedance-2.5/text-to-video']>
+  | z.output<
+      (typeof MOTION_TRANSFORMS)['bytedance/seedance-2.0/enterprise/v2/text-to-video']
+    >
+  | z.output<(typeof MOTION_TRANSFORMS)['minimax/h3-max/text-to-video']>
+  | z.output<(typeof MOTION_TRANSFORMS)['fal-ai/gemini-omni-1.1-flash']>;
+
 /**
  * Resolve the endpoint and build the exact fal request body for a motion run
  * (#873). Shared by `submitMotionJob` and the scene editor's optimised-prompt
@@ -194,14 +204,16 @@ type ReferenceVideoOutput =
  * first in the image-list field with the sheets after it — there is no
  * separate start-frame `image_url` on that endpoint. In reference-only mode
  * (`options.referenceOnly`) there is no still at all: the sheets fill that
- * field from slot 1 and the prompt carries the composition.
+ * field from slot 1 and the prompt carries the composition. A reference-only
+ * shot that matched no sheets is prompt-only and goes to the model's
+ * text-to-video sibling (#1521) — the reference endpoints reject an empty list.
  */
 export function buildMotionRequest<T extends ImageToVideoModel>(
   options: GenerateMotionOptions,
   modelKey: T
 ): {
   endpointId: string;
-  input: ModelOutputMap[T] | ReferenceVideoOutput;
+  input: ModelOutputMap[T] | ReferenceVideoOutput | TextToVideoOutput;
 } {
   const modelConfig = IMAGE_TO_VIDEO_MODELS[modelKey];
   const endpoint = resolveMotionEndpoint(
@@ -210,6 +222,30 @@ export function buildMotionRequest<T extends ImageToVideoModel>(
     'fal',
     options.referenceOnly ?? false
   );
+
+  if (endpoint.references === 'text-to-video') {
+    // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- guarded below: unregistered endpoints throw
+    const textEndpointId = endpoint.endpointId as MotionEndpointId;
+    const textTransform = MOTION_TRANSFORMS[textEndpointId];
+    // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- defensive guard for exhaustiveness
+    if (!textTransform) {
+      throw new Error(
+        `No motion transform registered for text-to-video endpoint: ${textEndpointId}`
+      );
+    }
+    // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- transform is the text-to-video schema
+    const input = textTransform.parse({
+      prompt: options.prompt,
+      duration: options.duration,
+      aspectRatio: options.aspectRatio,
+      ...QUALITY_OVERRIDES[modelKey],
+      ...resolutionOverride(textEndpointId, options.resolution),
+      ...(options.generateAudio !== undefined && {
+        generate_audio: options.generateAudio,
+      }),
+    }) as TextToVideoOutput;
+    return { endpointId: endpoint.endpointId, input };
+  }
 
   if (endpoint.references !== 'endpoint') {
     if (!options.imageUrl) {
@@ -262,10 +298,9 @@ export function buildMotionRequest<T extends ImageToVideoModel>(
     prompt,
     duration: options.duration,
     aspectRatio: options.aspectRatio,
-    // The image list is optional on the reference-to-video schema; a
-    // reference-only shot whose scene matched no cast, location or element
-    // sheets degenerates to pure text-to-video, which the endpoint serves.
-    ...(imageUrls.length > 0 && { [imageField]: imageUrls }),
+    // Never empty here: a reference-only shot with nothing matched resolved to
+    // the text-to-video branch above, because fal rejects an empty list.
+    [imageField]: imageUrls,
     ...QUALITY_OVERRIDES[modelKey],
     ...resolutionOverride(endpointId, options.resolution),
     ...(options.generateAudio !== undefined && {

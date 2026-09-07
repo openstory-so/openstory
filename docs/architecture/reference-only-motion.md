@@ -150,11 +150,15 @@ player before it loses its set.
 
 `resolveMotionEndpoint(model, hasRefs, via, referenceOnly)`:
 
-- Forces the reference route even when a scene matched no sheets at all. A
-  two-hander in an unmatched location still needs an endpoint whose start frame
-  is optional.
-- Throws for a model with no such route rather than submitting a request the
-  endpoint must reject.
+- Forces the reference route whenever a scene matched at least one sheet.
+- Routes a scene that matched NO sheets (an abstract piece, an unmatched
+  location) to the model's `textToVideoEndpointId` (#1521). Every fal
+  reference-to-video endpoint rejects an empty image list ("At least one
+  reference image, video, or audio must be provided"); an empty bible is a
+  valid outcome, not a bug, so the shot renders prompt-only rather than failing.
+  The native Ark / xAI / Google builders already send plain text-to-video here.
+- Throws for a model with no reference route rather than submitting a request
+  the endpoint must reject.
 
 `buildReferenceVideoPrompt` drops the `Use @Image1 as the starting frame.` line
 and binds references from slot 1. Pointing the model at `@Image1` when
@@ -170,8 +174,8 @@ Billing prices the reference-to-video endpoint the job actually hits, not the
 image-to-video row — the post-hoc charge (`motionCostFromUsage`), the workflow
 estimate (`calculateMotionMetadata`), AND the pre-flight credit gates, which
 take `referenceOnly` through `estimateVideoCost`. A reference-only shot routes
-to r2v even having matched no sheets at all, so resolving on `hasReferenceImages`
-alone under-prices exactly the shots with the least to go on.
+to r2v (or its t2v sibling with nothing matched), so resolving on
+`hasReferenceImages` alone under-prices exactly the shots with the least to go on.
 
 `video_variants.manifest` records `frameVersionId: null` — the documented
 encoding of "reference-driven shot with no dedicated first frame". Every write

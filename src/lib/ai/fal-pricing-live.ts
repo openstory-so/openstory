@@ -154,7 +154,11 @@ function applyBytePlusRouteAliases(
     // it is the same model id, so that endpoint aliases too — otherwise a
     // referenced shot silently quotes the fal rate.
     const referenceEndpoint = MOTION_REFERENCE_ENDPOINTS[modelKey];
-    if (referenceEndpoint) map[referenceEndpoint.endpointId] = rate;
+    if (referenceEndpoint) {
+      map[referenceEndpoint.endpointId] = rate;
+      // Reference-only with no matched sheets bills on the t2v sibling (#1521).
+      map[referenceEndpoint.textToVideoEndpointId] = rate;
+    }
   }
 }
 
