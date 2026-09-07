@@ -16,7 +16,6 @@ import { GenerationSettings } from '@/components/settings/generation-settings';
 import { StyleCategorySelect } from '@/components/style/style-category-select';
 import { StyleSelector } from '@/components/style/style-selector';
 import { TalentSuggestionSelector } from '@/components/talent/talent-suggestion-selector';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -147,7 +146,6 @@ import {
   Shuffle,
   Sparkles,
   Square,
-  TriangleAlert,
   Undo2,
   Library,
   Wand2,
@@ -179,15 +177,13 @@ const COMPOSER_SCRIPT_PLACEHOLDER =
   'Paste a screenplay, or a one-liner we can expand - not a prompt.';
 
 function DurationFitHint({
-  targetDuration,
   videoModel,
   script,
 }: {
-  targetDuration: number;
   videoModel: ImageToVideoModel;
   script: string;
 }) {
-  const fit = assessDurationFit(script, targetDuration, videoModel);
+  const fit = assessDurationFit(script, videoModel);
   const grid = formatClipGrid(fit.clipGrid);
   const modelName = videoModelDisplayName(videoModel);
   const snapped =
@@ -1307,11 +1303,6 @@ export const ScriptView: FC<{
 
   const scriptValue = script ?? baseScript ?? '';
   const primaryVideoModel = videoModels[0] ?? DEFAULT_VIDEO_MODEL;
-  const durationFit = assessDurationFit(
-    scriptValue,
-    targetDuration,
-    primaryVideoModel
-  );
   const { ref: textareaRef } = useAutoScroll<HTMLDivElement>({
     enabled: isEnhancing,
     content: scriptValue,
@@ -1472,7 +1463,6 @@ export const ScriptView: FC<{
                 </p>
               ) : (
                 <DurationFitHint
-                  targetDuration={targetDuration}
                   videoModel={primaryVideoModel}
                   script={scriptValue}
                 />
@@ -1610,16 +1600,6 @@ export const ScriptView: FC<{
             text={thinkingText || undefined}
             className="shrink-0"
           />
-          {!isEnhancing && durationFit.message ? (
-            <Alert>
-              <TriangleAlert />
-              <AlertTitle>
-                This brief cannot fit {targetDuration}s on{' '}
-                {videoModelDisplayName(primaryVideoModel)}
-              </AlertTitle>
-              <AlertDescription>{durationFit.message}</AlertDescription>
-            </Alert>
-          ) : null}
           {/* Label only while a sample is in the box — empty composers keep
               this row off so the placeholder is the instruction (#1255). */}
           {!isEditing && sampleStyleId ? (
@@ -1902,7 +1882,6 @@ export const ScriptView: FC<{
               ))}
             </ToggleGroup>
             <DurationFitHint
-              targetDuration={targetDuration}
               videoModel={primaryVideoModel}
               script={scriptValue}
             />

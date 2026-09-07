@@ -134,7 +134,7 @@ const SSE_HEADERS = {
 export function enhanceSseResponse(
   first: IteratorResult<EnhanceChunk>,
   rest: AsyncGenerator<EnhanceChunk>,
-  opts?: { targetSeconds: number; videoModel: ImageToVideoModel }
+  opts?: { videoModel: ImageToVideoModel }
 ): Response {
   const encoder = new TextEncoder();
 
@@ -168,11 +168,7 @@ export function enhanceSseResponse(
         for await (const chunk of rest) push(chunk);
         const enhancedScript = full.trim();
         const duration = opts
-          ? assessDurationFit(
-              enhancedScript,
-              opts.targetSeconds,
-              opts.videoModel
-            )
+          ? assessDurationFit(enhancedScript, opts.videoModel)
           : undefined;
         event('done', {
           enhancedScript,

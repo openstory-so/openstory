@@ -1,8 +1,8 @@
 /**
  * Duration arithmetic for script enhancement (#1374).
  *
- * Client-safe: the UI derives the snapped-total chip and the "cannot fit"
- * warning from the same helpers the enhancer uses to constrain labels.
+ * Client-safe: the UI derives the snapped-total chip from the same helpers the
+ * enhancer uses to constrain labels.
  */
 
 import type { ImageToVideoModel } from '@/lib/ai/models';
@@ -26,8 +26,6 @@ const DURATION_PROMPT_TOLERANCE_SECONDS = 2;
 export type DurationFit = {
   snappedSeconds: number | null;
   clipGrid: number[];
-  /** Set only when scene count × min clip overshoots the target. */
-  message: string | null;
 };
 
 function preferredMinMax(targetSeconds: number): [number, number] {
@@ -180,31 +178,24 @@ export function maybeRewriteDurationLabels(
   return rewriteSceneDurationLabels(script, next);
 }
 
+/**
+ * What the script's own labels render to on this model's grid. There is
+ * deliberately no "cannot fit the target" verdict here (#1523): the target is
+ * an enhance-time input, not a property of the sequence — generation takes its
+ * clip lengths from these labels — so an overshoot is a length, not a fault.
+ */
 export function assessDurationFit(
   script: string,
-  targetSeconds: number,
   model: ImageToVideoModel
 ): DurationFit {
   const clipGrid = durationGridForModel(model);
   const labels = parseSceneDurationLabels(script);
-  const minClip = clipGrid[0];
   if (labels.length === 0) {
-    return { snappedSeconds: null, clipGrid, message: null };
+    return { snappedSeconds: null, clipGrid };
   }
 
   const snapped = labels.map((s) => snapDuration(s, model));
-  const snappedSeconds = snapped.reduce((a, b) => a + b, 0);
-  // Only "too many scenes for this model's shortest clip" — never "too few
-  // yet" (that fires on a half-streamed enhance and then vanishes).
-  const minTotal = minClip !== undefined ? labels.length * minClip : 0;
-  const message =
-    minClip !== undefined && minTotal > targetSeconds
-      ? `${labels.length} scenes at ≥${minClip}s clips is ≥${minTotal}s ` +
-        `(target ${targetSeconds}s). This video will be about ${snappedSeconds}s. ` +
-        `Shorten the brief, pick a model with shorter clips, or raise the target.`
-      : null;
-
-  return { snappedSeconds, clipGrid, message };
+  return { snappedSeconds: snapped.reduce((a, b) => a + b, 0), clipGrid };
 }
 
 export function briefRequestsUnrenderableText(script: string): boolean {

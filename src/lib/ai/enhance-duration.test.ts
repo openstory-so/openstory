@@ -144,26 +144,22 @@ describe('maybeRewriteDurationLabels', () => {
 });
 
 describe('assessDurationFit', () => {
-  it('flags 9 beats × 6s LTX clips as unachievable at 30s', () => {
-    const fit = assessDurationFit(NINE_SCENES, 30, 'ltx_2_3_pro');
-    expect(fit.snappedSeconds).toBe(54);
-    expect(fit.message).toContain('9 scenes at ≥6s clips is ≥54s');
-    expect(fit.message).toContain('target 30s');
-    expect(fit.message).toContain('about 54s');
+  it('reports the snapped total, off-grid labels included', () => {
+    // 9 × 5s labels snap up to the LTX 6s floor — the script renders at 54s
+    // whatever the enhance target was.
+    expect(assessDurationFit(NINE_SCENES, 'ltx_2_3_pro').snappedSeconds).toBe(
+      54
+    );
+    expect(
+      assessDurationFit(FIVE_SCENES.replaceAll('5s', '6s'), 'ltx_2_3_pro')
+        .snappedSeconds
+    ).toBe(30);
   });
 
-  it('fits five 6s LTX clips at 30s', () => {
-    const script = FIVE_SCENES.replaceAll('5s', '6s');
-    const fit = assessDurationFit(script, 30, 'ltx_2_3_pro');
-    expect(fit.message).toBeNull();
-    expect(fit.snappedSeconds).toBe(30);
-  });
-
-  it('does not warn on a partial stream (1–2 scenes of a 30s target)', () => {
-    const one = 'Scene 1 — 6s\nA door opens.';
-    const two = `${one}\n\nScene 2 — 6s\nShe walks.`;
-    expect(assessDurationFit(one, 30, 'ltx_2_3_pro').message).toBeNull();
-    expect(assessDurationFit(two, 30, 'ltx_2_3_pro').message).toBeNull();
+  it('reports no total for an unlabeled script', () => {
+    const fit = assessDurationFit('A door opens.', 'ltx_2_3_pro');
+    expect(fit.snappedSeconds).toBeNull();
+    expect(fit.clipGrid).toEqual([6, 8, 10]);
   });
 });
 

@@ -67,10 +67,7 @@ describe('enhanceSseResponse', () => {
     const stream = gen();
     const first = await stream.next();
     const body = await readSse(
-      enhanceSseResponse(first, stream, {
-        targetSeconds: 6,
-        videoModel: 'ltx_2_3_pro',
-      })
+      enhanceSseResponse(first, stream, { videoModel: 'ltx_2_3_pro' })
     );
     expect(body).toContain('event: replace');
     const doneShot = body
@@ -81,7 +78,7 @@ describe('enhanceSseResponse', () => {
     );
     expect(donePayload.enhancedScript).toBe('Scene 1 — 6s\nJust right.');
     expect(donePayload.duration.snappedSeconds).toBe(6);
-    expect(donePayload.duration.message).toBeNull();
+    expect(donePayload.duration.clipGrid).toEqual([6, 8, 10]);
   });
 
   it('emits an error shot when the generator fails mid-stream', async () => {

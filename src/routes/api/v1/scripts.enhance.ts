@@ -53,7 +53,6 @@ export const Route = createFileRoute('/api/v1/scripts/enhance')({
           // status before any SSE headers are committed.
           const first = await gen.next();
           return enhanceSseResponse(first, gen, {
-            targetSeconds: input.targetSeconds ?? 30,
             videoModel:
               input.videoModel && isValidImageToVideoModel(input.videoModel)
                 ? input.videoModel
