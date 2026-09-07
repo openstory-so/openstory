@@ -19,6 +19,7 @@ import type { CreateSequenceInput } from '@/lib/schemas/sequence.schemas';
 import { UNTITLED_SEQUENCE_TITLE } from '@/lib/sequences/untitled-sequence-title';
 import type { Sequence } from '@/types/database';
 import { useAuthSession } from '@/lib/auth/session-query';
+import { isInsufficientCreditsError } from '@/shared/errors';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { usePostHog } from '@posthog/react';
 import { toast } from 'sonner';
@@ -213,8 +214,10 @@ export function useCreateSequence() {
         });
     },
     // A silent failure here is what produced 9 identical resubmissions in
-    // #1259 — always tell the user why nothing happened.
+    // #1259 — always tell the user why nothing happened. Insufficient
+    // credits is the global mutation handler's job (low-balance toast).
     onError: (error) => {
+      if (isInsufficientCreditsError(error)) return;
       toast.error(error.message || 'Generation failed to start.');
     },
   });

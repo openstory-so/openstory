@@ -40,8 +40,6 @@ import {
   listGeneratedAssetsFn,
 } from '@/functions/model-assets';
 import { getModelDetailFn, getModelFamilyFn } from '@/functions/model-catalog';
-import { BILLING_BALANCE_KEY } from '@/hooks/use-billing-balance';
-import { useFalBillingGate } from '@/hooks/use-billing-gate';
 import { isInsufficientCreditsError } from '@/shared/errors';
 import type { GeneratedAsset } from '@/lib/db/schema';
 import {
@@ -181,7 +179,6 @@ const ModelRunPanel: FC<{ detail: ModelDetail }> = ({ detail }) => {
   const { model, inputSchema } = detail;
   const queryClient = useQueryClient();
   const { requireAuth, isAuthenticated } = useAuthGate();
-  const { showGate: showBillingGate } = useFalBillingGate();
 
   const [values, setValues] = useState<Record<string, JsonValue>>(() =>
     seedFormValue(inputSchema)
@@ -206,12 +203,6 @@ const ModelRunPanel: FC<{ detail: ModelDetail }> = ({ detail }) => {
       void queryClient.invalidateQueries({
         queryKey: ['generated-assets', model.endpointId],
       });
-    },
-    onError: (error) => {
-      if (isInsufficientCreditsError(error)) {
-        showBillingGate('insufficient');
-        void queryClient.invalidateQueries({ queryKey: BILLING_BALANCE_KEY });
-      }
     },
   });
 

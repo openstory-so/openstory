@@ -1,11 +1,14 @@
 /**
  * Low Balance Warning Hook
- * Fires toast notifications when balance decreases and crosses threshold
+ * Fires toast notifications when balance decreases and crosses threshold,
+ * and when a generation is rejected for insufficient credits (preflight
+ * does not debit, so that path never looks like a balance drop).
  */
 
 import { usePostHog } from '@posthog/react';
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { showLowBalanceToast } from '@/components/billing/low-balance-toast';
+import { subscribeInsufficientCredits } from './notify-insufficient-credits';
 import { openAddCreditsDialog } from './use-add-credits-dialog';
 import { openBillingGate } from './use-billing-gate-dialog';
 import { useBillingBalance } from './use-billing-balance';
@@ -19,6 +22,43 @@ export function useLowBalanceWarning() {
   const posthog = usePostHog();
   const prevBalanceRef = useRef<number | null>(null);
   const hasWarnedRef = useRef(false);
+
+  const fireToast = useCallback(
+    (source: 'balance_drop' | 'insufficient_credits') => {
+      const balanceUsd = balance ?? 0;
+      const zero = balance === null ? true : isZeroBalance;
+      const props = {
+        balance_usd: balanceUsd,
+        is_zero: zero,
+        source,
+      };
+      posthog.capture('low_balance_toast_shown', props);
+
+      const clicked = (choice: 'add_credits' | 'other_options') =>
+        posthog.capture('low_balance_toast_clicked', { ...props, choice });
+
+      showLowBalanceToast({
+        balanceUsd,
+        isZeroBalance: zero,
+        runCostUsd: typicalShortCostUsd(pricing),
+        onAddCredits: () => {
+          clicked('add_credits');
+          openAddCreditsDialog('low_balance_toast');
+        },
+        onOtherOptions: () => {
+          clicked('other_options');
+          openBillingGate(zero ? 'zero' : 'insufficient');
+        },
+      });
+    },
+    [balance, isZeroBalance, posthog, pricing]
+  );
+
+  useEffect(() => {
+    return subscribeInsufficientCredits(() => {
+      fireToast('insufficient_credits');
+    });
+  }, [fireToast]);
 
   useEffect(() => {
     if (balance === null) return;
@@ -41,31 +81,6 @@ export function useLowBalanceWarning() {
     if (!isZeroBalance && !isLowBalance) return;
 
     hasWarnedRef.current = true;
-    const props = { balance_usd: balance, is_zero: isZeroBalance };
-    posthog.capture('low_balance_toast_shown', props);
-
-    const clicked = (choice: 'add_credits' | 'other_options') =>
-      posthog.capture('low_balance_toast_clicked', { ...props, choice });
-
-    showLowBalanceToast({
-      balanceUsd: balance,
-      isZeroBalance,
-      runCostUsd: typicalShortCostUsd(pricing),
-      onAddCredits: () => {
-        clicked('add_credits');
-        openAddCreditsDialog('low_balance_toast');
-      },
-      onOtherOptions: () => {
-        clicked('other_options');
-        openBillingGate(isZeroBalance ? 'zero' : 'manual');
-      },
-    });
-  }, [
-    balance,
-    isLowBalance,
-    isZeroBalance,
-    lowBalanceThreshold,
-    posthog,
-    pricing,
-  ]);
+    fireToast('balance_drop');
+  }, [balance, fireToast, isLowBalance, isZeroBalance, lowBalanceThreshold]);
 }

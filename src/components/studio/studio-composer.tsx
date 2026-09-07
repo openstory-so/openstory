@@ -61,7 +61,6 @@ import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
-import { useFalBillingGate } from '@/hooks/use-billing-gate';
 import { useFalPricing } from '@/hooks/use-fal-pricing';
 import {
   useCreateStudioAssets,
@@ -89,7 +88,6 @@ import {
   DEFAULT_ASPECT_RATIO,
   type AspectRatio,
 } from '@/shared/constants/aspect-ratios';
-import { isInsufficientCreditsError } from '@/shared/errors';
 import { VoiceInputButton } from '@/components/voice/voice-input-button';
 import { useEditorDictation } from '@/hooks/use-dictation';
 import {
@@ -283,7 +281,6 @@ export function StudioComposer({
 }: StudioComposerProps) {
   const { requireAuth, isAuthenticated } = useAuthGate();
   const posthog = usePostHog();
-  const { showGate } = useFalBillingGate();
   const { pricing } = useFalPricing();
   const create = useCreateStudioAssets();
   const draft = useDraftStudioPrompt();
@@ -677,9 +674,6 @@ export function StudioComposer({
           setLastShuffled(next);
           options?.onDrafted?.(next);
         },
-        onError: (error) => {
-          if (isInsufficientCreditsError(error)) showGate();
-        },
       }
     );
   };
@@ -841,11 +835,7 @@ export function StudioComposer({
       return;
     }
     requireAuth(() => {
-      create.mutate(buildInput(), {
-        onError: (error) => {
-          if (isInsufficientCreditsError(error)) showGate();
-        },
-      });
+      create.mutate(buildInput());
     });
   };
 

@@ -46,6 +46,7 @@ import { BILLING_BALANCE_KEY } from '@/hooks/use-billing-balance';
 import { BILLING_GATE_KEY } from '@/hooks/use-billing-gate';
 import { useAuthSession } from '@/lib/auth/session-query';
 import {
+  DEFAULT_TOPUP_AMOUNT_USD,
   formatPlatformFeePercent,
   MAX_TOPUP_AMOUNT_USD,
   MIN_TOPUP_AMOUNT_USD,
@@ -63,7 +64,7 @@ import { ulid } from 'ulid';
 const NEW_CARD = 'new-card';
 
 /** Amount the dialog opens on — matches the low-balance toast's "Add $10". */
-const DEFAULT_TOPUP_AMOUNT = String(MIN_TOPUP_AMOUNT_USD);
+const DEFAULT_TOPUP_AMOUNT = String(DEFAULT_TOPUP_AMOUNT_USD);
 
 function formatBrand(brand: string): string {
   return brand.charAt(0).toUpperCase() + brand.slice(1);

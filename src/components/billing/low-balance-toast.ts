@@ -8,7 +8,7 @@
  * it fires, the analytics, and what the buttons open.
  */
 
-import { MIN_TOPUP_AMOUNT_USD } from '@/lib/billing/constants';
+import { DEFAULT_TOPUP_AMOUNT_USD } from '@/lib/billing/constants';
 import type { CSSProperties } from 'react';
 import { toast } from 'sonner';
 
@@ -29,7 +29,7 @@ export function showLowBalanceToast({
   onOtherOptions,
 }: LowBalanceToastProps) {
   const action = {
-    label: `Add $${MIN_TOPUP_AMOUNT_USD}`,
+    label: `Add $${DEFAULT_TOPUP_AMOUNT_USD}`,
     onClick: onAddCredits,
   };
   const cancel = { label: 'Other options', onClick: onOtherOptions };
@@ -41,6 +41,7 @@ export function showLowBalanceToast({
 
   if (isZeroBalance) {
     toast.error('Your credit balance is $0', {
+      id: 'low-balance',
       description: 'Generation is off until you add credits.',
       action,
       cancel,
@@ -51,6 +52,7 @@ export function showLowBalanceToast({
   }
 
   toast.warning(`Balance is $${balanceUsd.toFixed(2)}`, {
+    id: 'low-balance',
     description: `Another short is about $${Math.round(runCostUsd)}.`,
     action,
     cancel,

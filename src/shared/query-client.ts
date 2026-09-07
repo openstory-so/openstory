@@ -1,4 +1,4 @@
-import { openBillingGate } from '@/hooks/use-billing-gate-dialog';
+import { notifyInsufficientCredits } from '@/hooks/notify-insufficient-credits';
 import { isAuthError, isInsufficientCreditsError } from '@/shared/errors';
 import { MutationCache, QueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -31,10 +31,11 @@ export function makeQueryClient() {
         logger.error('[MUTATION ERROR]', {
           data: error instanceof Error ? error.message : error,
         });
-        // Out of credits is a billing problem, not an error toast — open the
-        // globally-mounted gate dialog instead (#1099).
+        // Out of credits is a billing problem, not an error toast — the
+        // low-balance toast carries the top-up offer; "Other options" opens
+        // the gate.
         if (isInsufficientCreditsError(error)) {
-          openBillingGate('insufficient');
+          notifyInsufficientCredits();
           return;
         }
         // Mutations that render their own inline error opt out, so a failure

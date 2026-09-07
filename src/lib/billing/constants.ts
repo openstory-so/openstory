@@ -42,7 +42,13 @@ export const SIGNUP_GRANT_MICROS: Microdollars = usdToMicros(SIGNUP_GRANT_USD);
 export const TYPICAL_SHORT_COST_USD = 13;
 
 /** Minimum top-up amount in USD */
-export const MIN_TOPUP_AMOUNT_USD = 10;
+export const MIN_TOPUP_AMOUNT_USD = 5;
+
+/**
+ * Amount the add-credits dialog and low-balance toast open on.
+ * Higher than the floor so a one-click top-up still funds a typical short.
+ */
+export const DEFAULT_TOPUP_AMOUNT_USD = 10;
 
 /** Minimum top-up amount in microdollars */
 export const MIN_TOPUP_AMOUNT_MICROS: Microdollars =

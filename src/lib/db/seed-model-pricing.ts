@@ -15,7 +15,7 @@ import {
 } from '@/lib/ai/fal-typical-units';
 import { usdToMicros } from '@/lib/billing/money';
 import { modelPricing } from '@/lib/db/schema';
-import { eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import type { SeedDb } from './seed-system-templates';
 
 type SeedPrice = {
@@ -157,19 +157,69 @@ export const LOCAL_FAL_PRICING_SEED: Record<string, SeedPrice> = {
 /** D1 100-bind cap; 10 columns × 9 rows. */
 const INSERT_CHUNK = 9;
 
+/** fal's $1/unit catalog stub — no typical, no observed. ActionCost hides. */
+function isCatalogStub(row: {
+  unit: string;
+  unitPriceMicros: number;
+  typicalUnitsPerCall: number | null;
+  observedSampleCount: number;
+}): boolean {
+  return (
+    row.unit === 'units' &&
+    row.unitPriceMicros === 1_000_000 &&
+    row.typicalUnitsPerCall == null &&
+    row.observedSampleCount === 0
+  );
+}
+
 /**
  * Insert seed rows for fal endpoints that have no `model_pricing` row yet.
- * Does not overwrite a live refresh.
+ * Also replaces fal $1/unit catalog stubs for seeded endpoints — a live
+ * `refresh-fal-pricing` snapshot writes those stubs and would otherwise
+ * hide Generate's cost on Turbo (Lite). Never overwrites a real rate.
  */
 export async function ensureLocalModelPricingSeeded(
   db: SeedDb,
   log: (message: string) => void = () => {}
 ): Promise<number> {
   const existing = await db
-    .select({ endpointId: modelPricing.endpointId })
+    .select({
+      endpointId: modelPricing.endpointId,
+      unit: modelPricing.unit,
+      unitPriceMicros: modelPricing.unitPriceMicros,
+      typicalUnitsPerCall: modelPricing.typicalUnitsPerCall,
+      observedSampleCount: modelPricing.observedSampleCount,
+    })
     .from(modelPricing)
     .where(eq(modelPricing.provider, 'fal'));
-  const have = new Set(existing.map((row) => row.endpointId));
+
+  const stubIds = [
+    ...new Set(
+      existing
+        .filter(
+          (row) =>
+            isCatalogStub(row) && row.endpointId in LOCAL_FAL_PRICING_SEED
+        )
+        .map((row) => row.endpointId)
+    ),
+  ];
+  if (stubIds.length > 0) {
+    await db
+      .delete(modelPricing)
+      .where(
+        and(
+          eq(modelPricing.provider, 'fal'),
+          inArray(modelPricing.endpointId, stubIds)
+        )
+      );
+    log(
+      `💰 Replaced ${stubIds.length} catalog-stub model_pricing row(s) with local seed rates`
+    );
+  }
+
+  const have = new Set(
+    existing.map((row) => row.endpointId).filter((id) => !stubIds.includes(id))
+  );
 
   const now = new Date();
   const rows = Object.entries(LOCAL_FAL_PRICING_SEED)

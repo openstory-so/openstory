@@ -32,6 +32,7 @@ import {
 } from '@/functions/motion-functions';
 import { regenerateShotPromptFn } from '@/functions/prompt-variants';
 import { BILLING_BALANCE_KEY } from '@/hooks/use-billing-balance';
+import { notifyInsufficientCredits } from '@/hooks/notify-insufficient-credits';
 import { useFalBillingGate } from '@/hooks/use-billing-gate';
 import { useFalPricing } from '@/hooks/use-fal-pricing';
 import { segmentKeys } from '@/hooks/use-segments';
@@ -979,7 +980,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
       invalidateContinuity();
     } catch (error) {
       if (isInsufficientCreditsError(error)) {
-        showFalGate();
+        notifyInsufficientCredits();
         void queryClient.invalidateQueries({
           queryKey: [...BILLING_BALANCE_KEY],
         });
@@ -1002,7 +1003,6 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     queryClient,
     invalidateContinuity,
     onRegenerateStart,
-    showFalGate,
   ]);
 
   const handleRegenerateMotion = useCallback(async () => {
@@ -1070,7 +1070,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
       invalidateContinuity();
     } catch (error) {
       if (isInsufficientCreditsError(error)) {
-        showFalGate();
+        notifyInsufficientCredits();
         void queryClient.invalidateQueries({
           queryKey: [...BILLING_BALANCE_KEY],
         });
@@ -1094,7 +1094,6 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     queryClient,
     invalidateContinuity,
     onRegenerateStart,
-    showFalGate,
   ]);
 
   // The shot's selected motion prompt, projected from its version row (#713) —

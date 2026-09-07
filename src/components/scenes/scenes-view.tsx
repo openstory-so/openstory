@@ -34,7 +34,7 @@ import { smartRetryFn } from '@/functions/smart-retry';
 import { useActiveImageModel } from '@/hooks/use-active-image-model';
 import { useActiveVideoModel } from '@/hooks/use-active-video-model';
 import { BILLING_BALANCE_KEY } from '@/hooks/use-billing-balance';
-import { useFalBillingGate } from '@/hooks/use-billing-gate';
+import { notifyInsufficientCredits } from '@/hooks/notify-insufficient-credits';
 import { useHorizontalSwipe } from '@/hooks/use-horizontal-swipe';
 import { useSceneSelection } from '@/hooks/use-scene-selection';
 import { useSequenceSegments } from '@/hooks/use-segments';
@@ -249,8 +249,6 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
 }) => {
   const queryClient = useQueryClient();
   const posthog = usePostHog();
-
-  const { showGate: showBillingGate } = useFalBillingGate();
 
   const {
     selection,
@@ -1235,7 +1233,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
       void queryClient.invalidateQueries({ queryKey: ['shots', sequenceId] });
     } catch (error) {
       if (isInsufficientCreditsError(error)) {
-        showBillingGate('insufficient');
+        notifyInsufficientCredits();
         void queryClient.invalidateQueries({
           queryKey: BILLING_BALANCE_KEY,
         });
@@ -1247,7 +1245,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     } finally {
       setIsRetrying(false);
     }
-  }, [sequenceId, queryClient, showBillingGate]);
+  }, [sequenceId, queryClient]);
 
   // Handler for batch motion generation (server determines eligible shots)
   const handleBatchMotionGeneration = useCallback(
@@ -1332,7 +1330,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
         }
 
         if (isInsufficientCreditsError(error)) {
-          showBillingGate('insufficient');
+          notifyInsufficientCredits();
           void queryClient.invalidateQueries({
             queryKey: BILLING_BALANCE_KEY,
           });
@@ -1341,14 +1339,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
         }
       }
     },
-    [
-      sequenceId,
-      shots,
-      generateStartFrames,
-      queryClient,
-      posthog,
-      showBillingGate,
-    ]
+    [sequenceId, shots, generateStartFrames, queryClient, posthog]
   );
 
   const musicPromptsReady = !!(sequence?.musicPrompt && sequence.musicTags);
@@ -1397,10 +1388,10 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
         });
       } catch (error) {
         // Continue reserves credits like any other run, so it hits the same
-        // gate as batch motion — show the gate, not a generic error toast.
+        // toast as batch motion — not a generic error.
         queryClient.setQueryData<Sequence>(key, previous);
         if (!isInsufficientCreditsError(error)) throw error;
-        showBillingGate('insufficient');
+        notifyInsufficientCredits();
         void queryClient.invalidateQueries({ queryKey: BILLING_BALANCE_KEY });
         return;
       }
@@ -1408,7 +1399,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
         queryKey: sequenceKeys.detail(sequenceId),
       });
     },
-    [sequenceId, queryClient, showBillingGate]
+    [sequenceId, queryClient]
   );
 
   const handleGenerateMusic = useCallback(
