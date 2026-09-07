@@ -128,6 +128,13 @@ const VideoPlayerInner: React.FC<VideoPlayerSurfaceProps> = ({
     };
   }, [media]);
 
+  useEffect(() => {
+    if (!autoPlay || !media || !isVideoMedia(media)) return;
+    void media.play().catch(() => {
+      // Autoplay blocked or interrupted — the on-player control remains.
+    });
+  }, [autoPlay, media]);
+
   return (
     <MinimalVideoSkin>
       <Video

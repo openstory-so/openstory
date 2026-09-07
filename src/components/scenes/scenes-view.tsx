@@ -262,6 +262,15 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     view,
     setView,
   } = useSceneSelection({ search, sequenceId });
+  const [autoPlaySequence, setAutoPlaySequence] = useState(false);
+  const handlePlaySequence = useCallback(() => {
+    handleClearSelection();
+    setView('canvas');
+    setAutoPlaySequence(true);
+  }, [handleClearSelection, setView]);
+  const handleAutoPlayConsumed = useCallback(() => {
+    setAutoPlaySequence(false);
+  }, []);
 
   const [selectedTab, setSelectedTab] = useState<TabValue>(() =>
     facetToTab(search.facet)
@@ -1507,10 +1516,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     onSelectScene: handleSelectScene,
     onSelectShot: handleSelectShot,
     onClearSelection: handleClearSelection,
-    onPlaySequence: () => {
-      handleClearSelection();
-      setView('canvas');
-    },
+    onPlaySequence: handlePlaySequence,
     regeneratingImages,
     regeneratingMotion,
     onBatchGenerateMotion: handleBatchMotionGeneration,
@@ -1590,6 +1596,8 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
               ) : (
                 <SceneCanvas
                   sequenceExport={sequenceExport}
+                  autoPlay={autoPlaySequence}
+                  onAutoPlayConsumed={handleAutoPlayConsumed}
                   selection={selection}
                   shots={shots}
                   scenes={scenes}

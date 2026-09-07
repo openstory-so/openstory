@@ -593,10 +593,8 @@ const SceneListComponent: React.FC<SceneListProps> = ({
 
       <div
         className={cn(
-          'flex items-center gap-1 border-b px-2 py-1.5',
-          isWholeSequence
-            ? 'bg-primary/15 text-primary ring-1 ring-inset ring-primary/40'
-            : 'hover:bg-muted/40'
+          'flex items-center gap-1 border-b px-2 py-1.5 transition-colors hover:bg-muted/40',
+          isWholeSequence && 'bg-primary/5 font-medium text-primary'
         )}
       >
         <button
@@ -607,10 +605,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
               ? 'Whole sequence selected'
               : 'Show the whole sequence (Esc zooms out one level at a time)'
           }
-          className={cn(
-            'min-h-11 flex-1 rounded-md px-2 py-1.5 text-left text-sm md:min-h-0',
-            isWholeSequence ? 'font-semibold' : 'font-medium'
-          )}
+          className="min-h-11 flex-1 rounded-md px-2 py-1.5 text-left text-sm md:min-h-0"
         >
           Whole sequence
         </button>
@@ -618,12 +613,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
           type="button"
           variant="ghost"
           size="icon-sm"
-          className={cn(
-            'size-11 shrink-0 md:size-8',
-            isWholeSequence
-              ? 'text-primary hover:bg-primary/15 hover:text-primary'
-              : 'text-muted-foreground'
-          )}
+          className="size-11 shrink-0 text-muted-foreground md:size-8"
           aria-label="Play sequence"
           title="Play the whole sequence"
           onClick={() => {

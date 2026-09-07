@@ -59,6 +59,9 @@ type SceneCanvasProps = {
    */
   firstRunActive?: boolean;
   sequenceExport: SequenceExportState;
+  /** Scene-list play button — start the theatre player once it is ready. */
+  autoPlay?: boolean;
+  onAutoPlayConsumed?: () => void;
 };
 
 /**
@@ -161,6 +164,8 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
   onGenerateSceneVariantsStart,
   firstRunActive = false,
   sequenceExport,
+  autoPlay = false,
+  onAutoPlayConsumed,
 }) => {
   const scope = selectionScope(selection);
   const scopedShots = useMemo(
@@ -302,6 +307,8 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
         className="h-full max-h-none w-full"
         playSource="theatre"
         sequenceId={sequence.id}
+        autoPlay={autoPlay}
+        onAutoPlayConsumed={onAutoPlayConsumed}
         cachedVideoUrl={
           scope !== 'sequence'
             ? null
