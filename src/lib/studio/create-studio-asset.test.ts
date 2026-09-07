@@ -133,7 +133,7 @@ describe('studioCreateInputSchema', () => {
     expect(result.success).toBe(false);
   });
 
-  it('rejects hidden Seedance 2.5 — public fal 2.5 is not a studio option', () => {
+  it('lets Seedance 2.5 through the static schema — the via gate is per team', () => {
     const result = studioCreateInputSchema.safeParse({
       activity: 'video',
       prompt: 'the fox turns toward camera',
@@ -142,7 +142,7 @@ describe('studioCreateInputSchema', () => {
       resolution: '720p' as const,
       duration: 5,
     });
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
   });
 
   it('rejects H3 Max reference lists that exceed the combined 12-file cap', () => {
@@ -198,6 +198,29 @@ describe('studioCreateInputSchema', () => {
 });
 
 describe('createStudioAssets', () => {
+  it('refuses Seedance 2.5 where BytePlus is not live — public fal 2.5 is not a studio option', async () => {
+    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+
+    await expect(
+      createStudioAssets(scopedDb, {
+        activity: 'video',
+        prompt: 'the fox turns toward camera',
+        videoModel: 'seedance_v2_5',
+        aspectRatio: '9:16',
+        resolution: '720p' as const,
+        duration: 5,
+        count: 1,
+        mode: 'text',
+        referenceImages: [],
+        referenceVideos: [],
+        referenceAudio: [],
+      })
+    ).rejects.toThrow('Unknown video model');
+
+    expect(mockReserveRunCredits).not.toHaveBeenCalled();
+    expect(await db.select().from(generatedAssets)).toEqual([]);
+  });
+
   it('rejects a restricted account BEFORE the credit gate, leaving no row', async () => {
     const { AccountRestrictedError } = await import('@/shared/errors');
     mockRequireGenerationAllowed.mockRejectedValue(

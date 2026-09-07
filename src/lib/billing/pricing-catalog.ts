@@ -27,6 +27,7 @@ import {
   AUDIO_MODELS,
   IMAGE_MODELS,
   IMAGE_TO_VIDEO_MODELS,
+  isOfferedVideoModel,
   type ImageToVideoModel,
   type TextToImageModel,
 } from '@/lib/ai/models';
@@ -279,7 +280,7 @@ export function buildPricingCatalog(opts: {
     .sort(([, a], [, b]) => a.qualityRank - b.qualityRank)
     .map(([key, model]) => toFalRow(model, nativeImageRoute(key, vias)));
   const videoRows = typedEntries(IMAGE_TO_VIDEO_MODELS)
-    .filter(([, model]) => !('hidden' in model && model.hidden))
+    .filter(([key]) => isOfferedVideoModel(key, vias))
     .sort(([, a], [, b]) => a.qualityRank - b.qualityRank)
     .map(([key, model]) => toFalRow(model, nativeVideoRoute(key, vias)));
   const audioRows = Object.values(AUDIO_MODELS)

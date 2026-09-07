@@ -5,6 +5,7 @@ import {
 import {
   IMAGE_TO_VIDEO_MODELS,
   isModelCompatibleWithAspectRatio,
+  isOfferedVideoModel,
   isValidImageToVideoModel,
   type ImageToVideoModel,
 } from '@/lib/ai/models';
@@ -62,13 +63,14 @@ function useMotionModels({
   // Resolved server-side per team and seeded by the `_app` route loader, so the
   // list is right on first paint. Grok Imagine appears here only where an xAI
   // key resolves — on fal its id is an image-to-video endpoint.
-  const { referenceOnlyModels } = useViaAvailability();
+  const vias = useViaAvailability();
+  const { referenceOnlyModels } = vias;
   return useMemo(
     () =>
       Object.entries(IMAGE_TO_VIDEO_MODELS)
         .filter(([key, m]) => {
           if (!isValidImageToVideoModel(key)) return false;
-          if ('hidden' in m) return false;
+          if (!isOfferedVideoModel(key, vias)) return false;
           if (allowedIds && !allowedIds.includes(key)) return false;
           if (
             referenceOnly &&
@@ -121,6 +123,7 @@ function useMotionModels({
       referenceOnly,
       keepId,
       referenceOnlyModels,
+      vias,
     ]
   );
 }

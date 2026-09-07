@@ -132,10 +132,11 @@ export const IMAGE_TO_VIDEO_MODELS = {
     qualityRank: 2,
     maxPromptLength: 4096,
     performance: { estimatedGenerationTime: 208, quality: 'best' as const },
-    // Hidden from sequence/studio pickers: public fal 2.5 400s photoreal
-    // faces without Ark `asset://` ingest, and we are not rolling Ark out.
-    // Catalog key stays so a later Ark enablement does not need a rename.
-    hidden: true,
+    // Offered only where the BytePlus via is live (#1519): public fal 2.5
+    // 400s photoreal faces without Ark `asset://` ingest, so on a fal-only
+    // deployment (production, while the Ark hold stands) it stays out of the
+    // pickers and the pricing page. See `isOfferedVideoModel`.
+    requiresVia: 'byteplus' as const,
     // Native BytePlus Ark route (#1157). Must be activated in the Ark console
     // first — an unopened model answers 404 ModelNotOpen at request time. The
     // Ark route requests 720p (see BYTEPLUS_RESOLUTION); the rate card's
@@ -484,9 +485,25 @@ function getModelsForAspectRatio(
   return Object.keys(IMAGE_TO_VIDEO_MODELS).filter(
     (key): key is ImageToVideoModel =>
       isValidImageToVideoModel(key) &&
-      !('hidden' in IMAGE_TO_VIDEO_MODELS[key]) &&
+      isOfferedVideoModel(key) &&
       isModelCompatibleWithAspectRatio(key, aspectRatio)
   );
+}
+
+/**
+ * Should a picker or the pricing page list this video model? `hidden` is
+ * never offered; `requiresVia` is offered only when that native via is
+ * reachable. No `vias` is the conservative answer (fal-only), which is what
+ * an anonymous visitor and any server-side fallback get.
+ */
+export function isOfferedVideoModel(
+  model: ImageToVideoModel,
+  vias: { byteplus?: boolean } = {}
+): boolean {
+  const entry = IMAGE_TO_VIDEO_MODELS[model];
+  if ('hidden' in entry) return false;
+  if ('requiresVia' in entry) return vias[entry.requiresVia] === true;
+  return true;
 }
 
 /**

@@ -45,6 +45,8 @@ const imageModelKeySchema = z
     { message: 'Unknown image model' }
   );
 
+// `requiresVia` models pass here — the schema is static and cannot see a
+// team's vias, so `createStudioAssets` refuses them where the via is claimed.
 const visibleVideoModelKeys = Object.entries(IMAGE_TO_VIDEO_MODELS)
   .filter(([, model]) => !('hidden' in model))
   .map(([key]) => key);

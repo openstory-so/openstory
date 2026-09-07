@@ -12,7 +12,9 @@
  * leftover for siblings.
  */
 
+import { claimBytePlusVia } from '@/lib/ai/byteplus-config';
 import { getEffectiveFalPricing } from '@/lib/ai/fal-pricing-live';
+import { isOfferedVideoModel } from '@/lib/ai/models';
 import {
   estimateImageCost,
   estimateStudioVideoCost,
@@ -130,6 +132,17 @@ export async function createStudioAssets(
   input: StudioCreateInput
 ): Promise<StudioCreateResult> {
   if (input.activity === 'video') {
+    // Same answer the picker showed (`getViaAvailabilityFn`): a model gated
+    // to the BytePlus via is refused where this team would land on fal.
+    const falKey = await scopedDb.apiKeys.resolveOptionalKey('fal');
+    const byteplus =
+      claimBytePlusVia({
+        native: true,
+        usingOwnFalKey: falKey?.source === 'team',
+      }) === 'byteplus';
+    if (!isOfferedVideoModel(input.videoModel, { byteplus })) {
+      throw new Error('Unknown video model');
+    }
     input = {
       ...input,
       duration: snapStudioVideoDuration(input.duration, input.videoModel),
