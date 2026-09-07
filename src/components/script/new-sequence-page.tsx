@@ -38,6 +38,18 @@ function dismissBillingPrompt() {
   localStorage.setItem(BILLING_PROMPT_KEY, String(expiry));
 }
 
+function GalleryLink() {
+  return (
+    <Link
+      to="/gallery"
+      className="mt-4 inline-flex shrink-0 items-center justify-center gap-1 self-center text-sm font-medium text-muted-foreground hover:text-foreground short-h:hidden"
+    >
+      Browse the gallery to see what you can create
+      <ArrowRight className="size-4" />
+    </Link>
+  );
+}
+
 type NewSequencePageProps = {
   style?: string;
   prefill?: 'style';
@@ -265,19 +277,22 @@ export function NewSequencePage({
           padding="none"
           className="flex min-h-0 flex-1 flex-col overflow-hidden"
         >
-          <div className="flex min-h-0 flex-1 flex-col">
-            <ScriptView
-              key={from ? `copy:${from}` : composerKey}
-              loading={false}
-              onSuccess={handleSuccess}
-              sequence={sourceSequence}
-              allowScriptEdit={!!from}
-              onCancel={handleCancelCopy}
-              initialScript={from ? undefined : seedScript}
-              initialStyleId={from ? undefined : seedStyleId}
-              initialScriptIsSample={!from && !!seedScript}
-              onStyleChange={from ? undefined : handleStyleChange}
-            />
+          <div className="flex min-h-0 flex-1 flex-col pb-4">
+            <div className="flex min-h-0 flex-1 flex-col">
+              <ScriptView
+                key={from ? `copy:${from}` : composerKey}
+                loading={false}
+                onSuccess={handleSuccess}
+                sequence={sourceSequence}
+                allowScriptEdit={!!from}
+                onCancel={handleCancelCopy}
+                initialScript={from ? undefined : seedScript}
+                initialStyleId={from ? undefined : seedStyleId}
+                initialScriptIsSample={!from && !!seedScript}
+                onStyleChange={from ? undefined : handleStyleChange}
+              />
+            </div>
+            <GalleryLink />
           </div>
         </PageContainer>
       </div>
@@ -326,13 +341,7 @@ export function NewSequencePage({
           />
           {/* Right under the card (not pinned to the viewport bottom): the
               card is a sibling flex item that shrinks to fit above this. */}
-          <Link
-            to="/gallery"
-            className="mt-4 inline-flex shrink-0 items-center justify-center gap-1 self-center text-sm font-medium text-muted-foreground hover:text-foreground short-h:hidden"
-          >
-            Browse the gallery to see what you can create
-            <ArrowRight className="size-4" />
-          </Link>
+          <GalleryLink />
         </div>
       </PageContainer>
     </div>

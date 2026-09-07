@@ -33,15 +33,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from '@/components/ui/sheet';
-import { useIsMobile } from '@/hooks/use-mobile';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { enhanceScriptStreamFn } from '@/functions/ai';
 import { useAutoScroll } from '@/hooks/use-auto-scroll';
@@ -1130,8 +1121,7 @@ export const ScriptView: FC<{
   const isSubmitting = createSequenceMutation.isPending;
   const isDisabled = !isReady || isSubmitting || isEnhancing || isElementBusy;
 
-  const isMobile = useIsMobile();
-  const [referencesSheetOpen, setReferencesSheetOpen] = useState(false);
+  const [referencesOpen, setReferencesOpen] = useState(false);
   const referenceCount =
     selectedTalentIds.length +
     selectedLocationIds.length +
@@ -1423,10 +1413,10 @@ export const ScriptView: FC<{
         onSubmit={(e) => void handleSubmit(e)}
         className="flex flex-col min-h-0 max-h-full"
       >
-        {/* Control bar. Below md the three reference selectors fold into one "References"
-            button that opens a sheet, so the bar is a single row next to the
-            settings trigger. */}
-        <CardHeader className="shrink-0 flex flex-row items-center md:flex-col md:items-start lg:flex-row justify-between gap-3 px-6 py-4 border-b border-border/50 bg-card/40 short-h:py-2">
+        {/* Control bar. Talent / locations / elements stay behind one
+            References control at every breakpoint (#1526). The panel uses
+            `hidden` (not unmount) so the element drop-target ref stays live. */}
+        <CardHeader className="shrink-0 flex flex-row items-center justify-between gap-3 px-6 py-4 border-b border-border/50 bg-card/40 short-h:py-2">
           <GenerationSettings
             aspectRatio={aspectRatio}
             resolution={resolution}
@@ -1446,47 +1436,38 @@ export const ScriptView: FC<{
             styleName={styleName}
             recommendedAspectRatio={recommendedAspectRatio}
           />
-          {/* The selectors own their dialogs and the element ref, so they
-              mount exactly once: inline on md+, inside the sheet below it.
-              Visibility is CSS; only the mount point follows the hook. */}
-          <div className="hidden md:flex items-center gap-2 min-h-10">
-            {!isMobile && referenceSelectors}
-          </div>
-          <Sheet
-            open={referencesSheetOpen}
-            onOpenChange={setReferencesSheetOpen}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={loading}
+            className="gap-1.5 shrink-0"
+            aria-expanded={referencesOpen}
+            aria-controls="composer-references"
+            onClick={() => setReferencesOpen((open) => !open)}
           >
-            <SheetTrigger asChild>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={loading}
-                className="md:hidden gap-1.5 shrink-0"
-              >
-                <Library className="size-3.5" />
-                References
-                {referenceCount > 0 && (
-                  <span className="ml-1 rounded-full bg-primary/10 px-1.5 text-xs">
-                    {referenceCount}
-                  </span>
-                )}
-              </Button>
-            </SheetTrigger>
-            <SheetContent side="bottom" className="px-4 pb-6">
-              <SheetHeader className="px-0">
-                <SheetTitle>Talent, locations & elements</SheetTitle>
-                <SheetDescription>
-                  Pre-cast talent, pin locations, or add reference images.
-                  Anything you skip is extracted from the script.
-                </SheetDescription>
-              </SheetHeader>
-              <div className="flex flex-col items-start gap-3">
-                {isMobile && referenceSelectors}
-              </div>
-            </SheetContent>
-          </Sheet>
+            <Library className="size-3.5" />
+            References
+            {referenceCount > 0 && (
+              <span className="ml-1 rounded-full bg-primary/10 px-1.5 text-xs">
+                {referenceCount}
+              </span>
+            )}
+          </Button>
         </CardHeader>
+        <div
+          id="composer-references"
+          className={cn(
+            'flex flex-col items-start gap-3 border-b px-6 py-4',
+            !referencesOpen && 'hidden'
+          )}
+        >
+          <p className="text-xs text-muted-foreground">
+            Pre-cast talent, pin locations, or add reference images. Anything
+            you skip is extracted from the script.
+          </p>
+          {referenceSelectors}
+        </div>
 
         {/* Holds the script alone; the enhance row, style grid and footer are
             pinned below (outside), so long scripts scroll inside the editor

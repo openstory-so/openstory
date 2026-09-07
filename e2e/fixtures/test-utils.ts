@@ -157,6 +157,22 @@ export async function selectComposerStyle(
 }
 
 /**
+ * Open Talent or Locations from the composer's References panel (#1526).
+ * The three pickers sit behind one control at every breakpoint.
+ */
+export async function openComposerReference(
+  page: Page,
+  name: 'Talent' | 'Locations'
+): Promise<void> {
+  const inner = page.getByRole('button', { name, exact: true });
+  if (!(await inner.isVisible())) {
+    await page.getByRole('button', { name: 'References' }).click();
+  }
+  await expect(inner).toBeVisible({ timeout: HYDRATION_TIMEOUT });
+  await inner.click();
+}
+
+/**
  * Pick the image/motion models the recorded fal fixtures cover. Call this
  * after the style tile, before Generate.
  */

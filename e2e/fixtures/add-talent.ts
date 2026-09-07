@@ -7,6 +7,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import {
   fillScriptEditor,
+  openComposerReference,
   waitForLibraryPageLoad,
   waitForUploadComplete,
 } from './test-utils';
@@ -46,7 +47,7 @@ export async function openAddTalentFromSequence(page: Page): Promise<{
     page,
     'INT. STUDIO - DAY\n\nA person looks at the camera.'
   );
-  await page.locator('main').getByRole('button', { name: 'Talent' }).click();
+  await openComposerReference(page, 'Talent');
   // DialogTitle is not always the accessible name; match on the heading copy.
   const picker = page
     .getByRole('dialog')

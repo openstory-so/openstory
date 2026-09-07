@@ -10,7 +10,10 @@
 import { expect } from 'playwright/test';
 import { test as testWithUser } from '../fixtures/auth.fixture';
 import { setupMockRoutes } from '../mocks/handlers';
-import { fillScriptEditor } from '../fixtures/test-utils';
+import {
+  fillScriptEditor,
+  openComposerReference,
+} from '../fixtures/test-utils';
 import {
   createTestTalentSet,
   cleanupTalentById,
@@ -102,11 +105,7 @@ Here's your caffeine fix. How's it going?
         { timeout: 10000 }
       );
 
-      // Open talent suggestion dialog
-      const talentButton = page
-        .locator('main')
-        .getByRole('button', { name: 'Talent' });
-      await talentButton.click();
+      await openComposerReference(page, 'Talent');
 
       // Wait for talent dialog to open - the dialog is rendered via a portal
       // Use a longer timeout as it may need to fetch talent data
@@ -399,12 +398,7 @@ testWithUser.describe.skip('Empty States', () => {
         page.getByRole('grid', { name: 'Style selection' })
       ).toBeVisible({ timeout: 15000 });
 
-      // Open talent dialog - find button in main content area
-      const talentButton = page
-        .locator('main')
-        .getByRole('button', { name: 'Talent' });
-      await expect(talentButton).toBeVisible();
-      await talentButton.click();
+      await openComposerReference(page, 'Talent');
 
       // Wait for dialog to open
       const dialog = page.getByRole('dialog');
