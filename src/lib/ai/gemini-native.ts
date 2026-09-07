@@ -142,6 +142,22 @@ const OMNI_VIDEO_TOKENS_PER_SECOND = 5_792;
 const OMNI_VIDEO_USD_PER_1M_TOKENS = 17.5;
 const OMNI_VIDEO_INPUT_USD_PER_1M_TOKENS = 1.5;
 
+/** Standard-tier token rates for the /pricing page; undefined when the
+ *  registry id has no native Gemini model. */
+export function nativeGeminiTextPricing(
+  modelId: string
+):
+  | { promptPerMillionTokens: number; completionPerMillionTokens: number }
+  | undefined {
+  const native = nativeGeminiTextModel(modelId);
+  if (!native) return undefined;
+  const rates = TEXT_RATES[native];
+  return {
+    promptPerMillionTokens: rates.input,
+    completionPerMillionTokens: rates.output,
+  };
+}
+
 /** Undefined when the adapter reported no usage — the caller reports that as a
  *  missing cost rather than inventing one. */
 export function geminiTextCostFromUsage(

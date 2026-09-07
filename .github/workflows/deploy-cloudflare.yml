@@ -227,11 +227,20 @@ jobs:
           # have no registered OAuth redirect URIs, and absence of the
           # secrets is what hides Google sign-in (isGoogleAuthConfigured).
           SECRET_OPENROUTER_KEY: ${{ secrets.OPENROUTER_KEY }}
-          # Absent → Grok/Gemini fall back to OpenRouter/fal on previews
-          # (#1167 / native Google). Staging has both; empty values are
-          # stripped by the jq filter below.
+          # Direct providers on previews (#1519). Absent → Grok/Gemini fall
+          # back to OpenRouter/fal and Seedance/Seedream to fal; empty values
+          # are stripped by the jq filter below. Production keeps BytePlus
+          # held (scripts/push-secrets.ts) — previews are where it runs.
           SECRET_XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
           SECRET_GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          SECRET_ARK_API_KEY: ${{ secrets.ARK_API_KEY }}
+          # IAM AK/SK for the virtual portrait library; without them Seedance
+          # 2.5 rejects photorealistic stills and falls through to fal.
+          SECRET_BYTEPLUS_ACCESS_KEY: ${{ secrets.BYTEPLUS_ACCESS_KEY }}
+          SECRET_BYTEPLUS_SECRET_KEY: ${{ secrets.BYTEPLUS_SECRET_KEY }}
+          # Admin-scoped fal key so the preview's daily pricing refresh
+          # bill-verifies model_pricing instead of error-logging (#1069).
+          SECRET_FAL_BILLING_KEY: ${{ secrets.FAL_BILLING_KEY }}
           SECRET_VITE_R2_PUBLIC_ASSETS_DOMAIN: ${{ vars.VITE_R2_PUBLIC_ASSETS_DOMAIN }}
           SECRET_R2_PUBLIC_STORAGE_DOMAIN: ${{ vars.R2_PUBLIC_STORAGE_DOMAIN }}
           SECRET_VITE_PUBLIC_POSTHOG_PROJECT_TOKEN: ${{ secrets.VITE_PUBLIC_POSTHOG_PROJECT_TOKEN }}

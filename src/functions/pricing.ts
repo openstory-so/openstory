@@ -1,3 +1,4 @@
+import { getEnv } from '#env';
 import { isBytePlusConfigured } from '@/lib/ai/byteplus-config';
 import {
   getEffectiveFalPricing,
@@ -27,7 +28,12 @@ export const getPricingCatalogFn = createServerFn({ method: 'GET' }).handler(
       ...buildPricingCatalog({
         falPricing,
         falUpdatedAt,
-        byteplusEnabled: isBytePlusConfigured(),
+        // Platform keys only — the page is public, so no team BYOK applies.
+        vias: {
+          byteplus: isBytePlusConfigured(),
+          xai: Boolean(getEnv().XAI_API_KEY),
+          google: Boolean(getEnv().GEMINI_API_KEY),
+        },
       }),
       filmCosts: buildFilmCostExamples(falPricing),
     };

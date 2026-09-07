@@ -111,6 +111,22 @@ const IMAGE_USD_PER_IMAGE: Record<NativeGrokImageModel, number> = {
 };
 const VIDEO_USD_PER_SECOND = 0.08;
 
+/** Standard-tier token rates for the /pricing page; undefined when the
+ *  registry id has no native xAI model. */
+export function nativeGrokTextPricing(
+  modelId: string
+):
+  | { promptPerMillionTokens: number; completionPerMillionTokens: number }
+  | undefined {
+  const native = nativeGrokTextModel(modelId);
+  if (!native) return undefined;
+  const rates = TEXT_RATES[native];
+  return {
+    promptPerMillionTokens: rates.input,
+    completionPerMillionTokens: rates.output,
+  };
+}
+
 /** Undefined when the adapter reported no usage — the caller reports that as a
  *  missing cost rather than inventing one. */
 export function grokTextCostFromUsage(
