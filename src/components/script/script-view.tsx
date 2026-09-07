@@ -54,7 +54,7 @@ import {
   DEFAULT_GENERATION_STOP_AT,
   flagsFromStopAt,
   includesStage,
-  sliderStopLabel,
+  runScopeLabel,
   type GenerationStage,
 } from '@/shared/generation/pipeline';
 import { useComposedScript } from '@/hooks/use-scenes';
@@ -1284,16 +1284,9 @@ export const ScriptView: FC<{
       generateStartFrames,
     ]
   );
-  // Remembered: the footer quotes the run that will actually happen. Otherwise
-  // the dialog asks, so quote the default full run.
-  const quotedStopAt = savedSettings.rememberStopAt
-    ? stopAt
-    : DEFAULT_GENERATION_STOP_AT;
-  const storyboardCostEstimate = estimateForStopAt(quotedStopAt);
-  const generateScopeLabel =
-    quotedStopAt === 'music' || quotedStopAt === 'motion'
-      ? 'Whole sequence'
-      : sliderStopLabel(quotedStopAt);
+  // The scope line names the current stop-at, and the estimate matches it.
+  const storyboardCostEstimate = estimateForStopAt(stopAt);
+  const generateScopeLabel = runScopeLabel(stopAt);
 
   // Nothing written yet: Enhance writes the script instead of expanding one
   // (#1393), so it stays live at any length and says which job it is doing.

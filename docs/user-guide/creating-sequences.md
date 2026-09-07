@@ -146,7 +146,7 @@ Each style includes configuration for color palette, artistic direction, and ren
 
 ## The Generation Pipeline
 
-The line under **Generate** is a **Whole sequence** link that opens the stop-at dialog — how far the run should go. Model pickers in generation settings still group Fast / Quality.
+The line under **Generate** names the current stop-at (**Whole sequence**, or **Stops after Casting**, and so on) and opens the stop-at dialog. Model pickers in generation settings still group Fast / Quality.
 
 When you click **Generate Sequence**, OpenStory runs an automated pipeline:
 

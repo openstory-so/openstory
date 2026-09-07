@@ -1,6 +1,7 @@
 import { AppImage } from '@/components/ui/app-image';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Kbd } from '@/components/ui/kbd';
 import {
   Dialog,
   DialogContent,
@@ -387,9 +388,13 @@ const StyleDetailContent: FC<{
             ref={useStyleRef}
             type="button"
             onClick={onUseStyle}
+            aria-keyshortcuts="Enter"
             aria-label={`Use the ${style.name} style`}
           >
             Use this style
+            <Kbd className="bg-primary-foreground/20 text-primary-foreground">
+              ⏎
+            </Kbd>
           </Button>
         ) : (
           <Button ref={useStyleRef} asChild>
@@ -397,9 +402,13 @@ const StyleDetailContent: FC<{
               to="/"
               search={{ style: styleSlug(style.name), prefill: 'style' }}
               hash="compose"
+              aria-keyshortcuts="Enter"
               aria-label={`Use the ${style.name} style`}
             >
               Use this style
+              <Kbd className="bg-primary-foreground/20 text-primary-foreground">
+                ⏎
+              </Kbd>
             </Link>
           </Button>
         )}

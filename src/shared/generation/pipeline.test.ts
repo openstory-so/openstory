@@ -7,6 +7,7 @@ import {
   sliderStages,
   sliderStopLabel,
   stopAfterSentence,
+  runScopeLabel,
   sliderThumbIndex,
   stopAtFromSliderIndex,
   continueStageFromState,
@@ -270,6 +271,16 @@ describe('completedStageFromArtifacts / nextActionFromArtifacts', () => {
     expect(sliderStopLabel('references')).toBe('References & Prompts');
     expect(sliderStopLabel('images')).toBe('Images');
     expect(stopAfterSentence('motion')).toBe('Don’t stop');
+  });
+
+  it('runScopeLabel names the Generate-button stop', () => {
+    expect(runScopeLabel('music')).toBe('Whole sequence');
+    expect(runScopeLabel('motion')).toBe('Whole sequence');
+    expect(runScopeLabel('script')).toBe('Stops after Casting');
+    expect(runScopeLabel('references')).toBe(
+      'Stops after References & Prompts'
+    );
+    expect(runScopeLabel('images')).toBe('Stops after Images');
   });
 
   it('slider has no Images stop in reference-only', () => {
