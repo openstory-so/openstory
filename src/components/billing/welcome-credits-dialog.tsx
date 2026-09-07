@@ -105,6 +105,11 @@ export const WelcomeCreditsProvider: React.FC<{ children: ReactNode }> = ({
 
   useEffect(() => {
     if (!user) return;
+    // Free credits off (#1529): nothing to announce.
+    if (SIGNUP_GRANT_MICROS <= 0) {
+      setSettled(true);
+      return;
+    }
     // Wait until balance query settles (success or error). Don't use isFetched
     // alone — while the query is disabled it stays false forever.
     if (!balanceReady && !balanceFailed) return;

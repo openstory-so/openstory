@@ -67,24 +67,28 @@ describe('billing constants', () => {
    * #1062 / #1140: new users must finish a first short on welcome credits with
    * product defaults — Enhance 30s target, stills + motion + music on.
    * If this fails, raise SIGNUP_GRANT_USD or re-check default model pricing.
+   * Skipped while free credits are off (#1529).
    */
-  it('signup grant covers a default 30s stills+motion+music pre-flight estimate', () => {
-    const defaultShortCost = estimateStoryboardCost({
-      imageModel: TURBO_DEFAULT_IMAGE,
-      aspectRatio: DEFAULT_ASPECT_RATIO,
-      estimatedSceneCount: WELCOME_SHORT_SCENE_COUNT,
-      autoGenerateMotion: true,
-      videoModels: [TURBO_DEFAULT_VIDEO],
-      videoDurationSeconds: WELCOME_SHORT_SHOT_DURATION_S,
-      autoGenerateMusic: true,
-      audioModels: [TURBO_DEFAULT_AUDIO],
-      audioDurationSeconds: WELCOME_SHORT_TARGET_S,
-      pricing: FAL_PRICING,
-    });
+  it.skipIf(SIGNUP_GRANT_MICROS <= 0)(
+    'signup grant covers a default 30s stills+motion+music pre-flight estimate',
+    () => {
+      const defaultShortCost = estimateStoryboardCost({
+        imageModel: TURBO_DEFAULT_IMAGE,
+        aspectRatio: DEFAULT_ASPECT_RATIO,
+        estimatedSceneCount: WELCOME_SHORT_SCENE_COUNT,
+        autoGenerateMotion: true,
+        videoModels: [TURBO_DEFAULT_VIDEO],
+        videoDurationSeconds: WELCOME_SHORT_SHOT_DURATION_S,
+        autoGenerateMusic: true,
+        audioModels: [TURBO_DEFAULT_AUDIO],
+        audioDurationSeconds: WELCOME_SHORT_TARGET_S,
+        pricing: FAL_PRICING,
+      });
 
-    expect(
-      SIGNUP_GRANT_MICROS,
-      `SIGNUP_GRANT ($${microsToUsd(SIGNUP_GRANT_MICROS)}) must be ≥ default short estimate ($${microsToUsd(defaultShortCost).toFixed(2)}; ${TURBO_DEFAULT_IMAGE} + ${TURBO_DEFAULT_VIDEO} + ${TURBO_DEFAULT_AUDIO})`
-    ).toBeGreaterThanOrEqual(defaultShortCost);
-  });
+      expect(
+        SIGNUP_GRANT_MICROS,
+        `SIGNUP_GRANT ($${microsToUsd(SIGNUP_GRANT_MICROS)}) must be ≥ default short estimate ($${microsToUsd(defaultShortCost).toFixed(2)}; ${TURBO_DEFAULT_IMAGE} + ${TURBO_DEFAULT_VIDEO} + ${TURBO_DEFAULT_AUDIO})`
+      ).toBeGreaterThanOrEqual(defaultShortCost);
+    }
+  );
 });

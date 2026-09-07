@@ -58,8 +58,8 @@ type FilmCostExample = {
 
 export type FilmCostExamples = {
   examples: FilmCostExample[];
-  /** e.g. "$10.00" — from SIGNUP_GRANT_MICROS. */
-  welcomeCredits: string;
+  /** e.g. "$10.00" — from SIGNUP_GRANT_MICROS; null when free credits are off (#1529). */
+  welcomeCredits: string | null;
   imageModelName: string;
   videoModelName: string;
   audioModelName: string;
@@ -140,7 +140,8 @@ export function buildFilmCostExamples(
   const locationSheets = estimateLocationSheetCount(TYPICAL_SCENE_COUNT);
 
   return {
-    welcomeCredits: microsToDisplayUsd(SIGNUP_GRANT_MICROS),
+    welcomeCredits:
+      SIGNUP_GRANT_MICROS > 0 ? microsToDisplayUsd(SIGNUP_GRANT_MICROS) : null,
     imageModelName: imageName,
     videoModelName: videoName,
     audioModelName: audioName,

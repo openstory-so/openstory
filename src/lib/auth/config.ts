@@ -316,14 +316,17 @@ export function createAuth(db: ReturnType<typeof getDb> = getDb()) {
             });
 
             // Grant every new team a one-time welcome credit (#1047; preflight fixed in #1062).
-            await createBillingMethods(db, team.id, user.id).addCredits(
-              SIGNUP_GRANT_MICROS,
-              {
-                type: 'credit_adjustment',
-                description: `Welcome credit: ${microsToDisplayUsd(SIGNUP_GRANT_MICROS)}`,
-                metadata: { signupGrant: true },
-              }
-            );
+            // Off when the grant is 0 (#1529) — no $0 ledger row.
+            if (SIGNUP_GRANT_MICROS > 0) {
+              await createBillingMethods(db, team.id, user.id).addCredits(
+                SIGNUP_GRANT_MICROS,
+                {
+                  type: 'credit_adjustment',
+                  description: `Welcome credit: ${microsToDisplayUsd(SIGNUP_GRANT_MICROS)}`,
+                  metadata: { signupGrant: true },
+                }
+              );
+            }
 
             // First-time account only — drives #product-alerts via PostHog (#1088).
             // personProperties set email/name on the PostHog person so Slack

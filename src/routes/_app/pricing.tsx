@@ -55,7 +55,7 @@ function PricingPage() {
         <p className="mt-3 text-base leading-relaxed text-muted-foreground">
           Pay providers as you go. We show an estimate under each action before
           you spend.
-          {filmCosts ? (
+          {filmCosts?.welcomeCredits ? (
             <>
               {' '}
               New accounts start with{' '}

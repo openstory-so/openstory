@@ -56,6 +56,8 @@ export const CreditBalancePill: React.FC = () => {
   useBillingBalanceRealtime(teamId, !isSignedOut && isSignedInVisible);
 
   if (isSignedOut) {
+    // Free credits off (#1529): nothing to preview.
+    if (SIGNUP_GRANT_MICROS <= 0) return null;
     return (
       <SidebarMenu>
         <SidebarMenuItem>

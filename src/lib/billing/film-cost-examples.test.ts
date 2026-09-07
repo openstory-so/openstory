@@ -48,18 +48,22 @@ describe('buildFilmCostExamples', () => {
     expect(motion.breakdown.some((line) => /6 × 5s/i.test(line))).toBe(true);
   });
 
-  it('keeps the full stills+motion+music tier within the welcome grant under fixture pricing', () => {
-    const result = buildFilmCostExamples(FAL_PRICING);
-    expect(result).not.toBeNull();
-    if (!result) return;
+  // Skipped while free credits are off (#1529).
+  it.skipIf(SIGNUP_GRANT_MICROS <= 0)(
+    'keeps the full stills+motion+music tier within the welcome grant under fixture pricing',
+    () => {
+      const result = buildFilmCostExamples(FAL_PRICING);
+      expect(result).not.toBeNull();
+      if (!result) return;
 
-    const full = result.examples.find((e) => e.id === 'with-motion-music');
-    expect(full).toBeDefined();
-    if (!full) return;
+      const full = result.examples.find((e) => e.id === 'with-motion-music');
+      expect(full).toBeDefined();
+      if (!full) return;
 
-    expect(
-      full.costMicros,
-      `with-motion-music ($${microsToUsd(full.costMicros).toFixed(2)} with ${TURBO_DEFAULT_IMAGE}) should fit in welcome grant ($${microsToUsd(SIGNUP_GRANT_MICROS)})`
-    ).toBeLessThanOrEqual(SIGNUP_GRANT_MICROS);
-  });
+      expect(
+        full.costMicros,
+        `with-motion-music ($${microsToUsd(full.costMicros).toFixed(2)} with ${TURBO_DEFAULT_IMAGE}) should fit in welcome grant ($${microsToUsd(SIGNUP_GRANT_MICROS)})`
+      ).toBeLessThanOrEqual(SIGNUP_GRANT_MICROS);
+    }
+  );
 });

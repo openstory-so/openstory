@@ -21,10 +21,10 @@ export const PLATFORM_FEE_PERCENT = 0.07;
 /**
  * Free credit granted to every new team on signup, in USD.
  *
- * Demo branch (`topup-demo`): $10. Product default on main is $20 (covers a
- * typical first 30s short with motion and music — #1140).
+ * 0 = free credits are off (#1529): no ledger row on signup, and the welcome
+ * dialog / signed-out pill / pricing blurb all hide. Was $10.
  */
-const SIGNUP_GRANT_USD = 10;
+const SIGNUP_GRANT_USD = 0;
 
 /** Free credit granted to every new team on signup, in microdollars */
 export const SIGNUP_GRANT_MICROS: Microdollars = usdToMicros(SIGNUP_GRANT_USD);
