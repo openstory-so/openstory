@@ -10,7 +10,7 @@
 
 import { getEnv } from '#env';
 import { getLogger } from '@/lib/observability/logger';
-import type { BytePlusGovernor } from './byteplus-governor.do';
+import type { AcquireInput, BytePlusGovernor } from './byteplus-governor.do';
 
 const logger = getLogger(['openstory', 'ai', 'byteplus-governor']);
 
@@ -28,11 +28,18 @@ const WRITE_ACTIONS = new Set(['CreateAsset']);
 const GOVERNOR_NAME = 'byteplus';
 
 /**
- * Longest a caller sleeps for a token. The Cloudflare step this runs inside
- * defaults to a 10-minute limit; beyond this the DO refuses without
- * reserving and the shot fails with a message that names the queue.
+ * Longest a create waits for its turn. The wait is a durable `step.sleep`
+ * (`byteplus-asset-steps.ts`), so this bounds the queue, not a Worker: at
+ * 3/min it is ~45 creates ahead. Beyond it the DO refuses without reserving
+ * and the shot fails with a message that names the queue.
  */
-const BYTEPLUS_GOVERNOR_MAX_WAIT_MS = 5 * 60_000;
+const CREATE_MAX_WAIT_MS = 15 * 60_000;
+
+/**
+ * Reads are paced in-step: their waits are seconds, and a Worker sleeping a
+ * few seconds is cheaper than a step boundary.
+ */
+const READ_MAX_WAIT_MS = 60_000;
 
 function envQpm(name: string, fallback: number): number {
   const raw = Reflect.get(getEnv(), name);
@@ -40,21 +47,44 @@ function envQpm(name: string, fallback: number): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
-function bucketFor(action: string): {
-  bucket: string;
-  capacity: number;
-  refillPerMinute: number;
-} {
-  if (WRITE_ACTIONS.has(action)) {
-    const qpm = envQpm('BYTEPLUS_ASSET_WRITE_QPM', DEFAULT_ASSET_WRITE_QPM);
-    return { bucket: 'assets-write', capacity: qpm, refillPerMinute: qpm };
-  }
+function writeBucket(): AcquireInput {
+  const qpm = envQpm('BYTEPLUS_ASSET_WRITE_QPM', DEFAULT_ASSET_WRITE_QPM);
+  return {
+    bucket: 'assets-write',
+    capacity: qpm,
+    refillPerMinute: qpm,
+    maxWaitMs: CREATE_MAX_WAIT_MS,
+  };
+}
+
+function readBucket(): AcquireInput {
   const qpm = envQpm('BYTEPLUS_OPENAPI_QPM', DEFAULT_OPENAPI_QPM);
   return {
     bucket: 'assets-read',
     capacity: Math.min(10, qpm),
     refillPerMinute: qpm,
+    maxWaitMs: READ_MAX_WAIT_MS,
   };
+}
+
+function refused(action: string, bucket: AcquireInput): Error {
+  return new Error(
+    `BytePlus ${action} queue is longer than ${bucket.maxWaitMs / 60_000} minutes (this deployment allows ${bucket.refillPerMinute}/min). Retry once the batch ahead has cleared.`
+  );
+}
+
+/**
+ * Reserve a CreateAsset turn. Returns the ms to `step.sleep` before
+ * creating — 0 when the token is free now. Call it from its own `step.do`
+ * so a replay reuses the reservation instead of taking another.
+ */
+export async function reserveBytePlusCreateSlot(): Promise<number> {
+  const stub = governorStub();
+  if (!stub) return 0;
+  const bucket = writeBucket();
+  const delayMs = await stub.acquire(bucket);
+  if (delayMs < 0) throw refused('CreateAsset', bucket);
+  return delayMs;
 }
 
 function governorStub(): DurableObjectStub<BytePlusGovernor> | undefined {
@@ -69,23 +99,20 @@ function governorStub(): DurableObjectStub<BytePlusGovernor> | undefined {
 }
 
 /**
- * Wait for a token before an Assets OpenAPI call. No-op where the DO is not
- * bound (unit tests, scripts) — the backoff retry still covers those.
+ * Pace a READ before it fires. CreateAsset is not paced here: its token was
+ * reserved by {@link reserveBytePlusCreateSlot} and slept off durably, so a
+ * second reservation would spend a turn nobody uses. No-op where the DO is
+ * not bound (unit tests, scripts) — the backoff retry still covers those.
  */
 export async function acquireBytePlusOpenApiToken(
   action: string
 ): Promise<void> {
+  if (WRITE_ACTIONS.has(action)) return;
   const stub = governorStub();
   if (!stub) return;
-  const delayMs = await stub.acquire({
-    ...bucketFor(action),
-    maxWaitMs: BYTEPLUS_GOVERNOR_MAX_WAIT_MS,
-  });
-  if (delayMs < 0) {
-    throw new Error(
-      `BytePlus ${action} queue is longer than ${BYTEPLUS_GOVERNOR_MAX_WAIT_MS / 60_000} minutes (the account allows ${bucketFor(action).refillPerMinute}/min). Retry once the batch ahead has cleared.`
-    );
-  }
+  const bucket = readBucket();
+  const delayMs = await stub.acquire(bucket);
+  if (delayMs < 0) throw refused(action, bucket);
   if (delayMs === 0) return;
   logger.debug(`BytePlus ${action}: governor delay ${delayMs}ms`, {
     action,

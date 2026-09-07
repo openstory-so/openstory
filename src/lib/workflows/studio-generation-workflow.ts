@@ -33,6 +33,7 @@ import { aspectRatioToImageSize } from '@/shared/constants/aspect-ratios';
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
 import type { GeneratedAssetOutput } from '@/lib/db/schema';
 import { generateImageWithProvider } from '@/lib/image/image-generation';
+import { ingestArkAssets } from '@/lib/ai/byteplus-asset-steps';
 import { resolveMotionVia } from '@/lib/motion/motion-generation';
 import { videoUrlFitsWorkflowCheckpoint } from '@/lib/motion/video-storage';
 import { recordMediaGenerationSpan } from '@/lib/observability/ai-otel';
@@ -41,6 +42,7 @@ import type { StudioCreateInput } from '@/lib/studio/schema';
 import {
   pollStudioVideoJob,
   studioVideoCostFromUsage,
+  arkStillsForStudio,
   submitStudioVideoJob,
 } from '@/lib/studio/studio-video-generation';
 import { tagStudioReferences } from '@/lib/studio/text-to-video';
@@ -210,10 +212,24 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
 
     for (let attempt = 0; attempt < MAX_MOTION_ATTEMPTS; attempt++) {
       const tag = attempt === 0 ? '' : `-retry-${attempt}`;
+      // Register the user's stills with BytePlus before the submit step
+      // (#1519) — see MotionWorkflow for why this sits outside it.
+      const submitVia = await step.do(`resolve-video-via${tag}`, () =>
+        resolveMotionVia(videoModel, scopedDb.credentials)
+      );
+      const arkAssets =
+        submitVia === 'byteplus'
+          ? await ingestArkAssets(step, {
+              prefix: `studio${tag}`,
+              stills: arkStillsForStudio(input),
+              ledger: scopedDb.bytePlusAssets,
+              credentials: scopedDb.credentials,
+            })
+          : {};
       const submitOutcome = await step.do(`submit-video${tag}`, async () => {
         try {
           const job = await submitStudioVideoJob({
-            assetLedger: scopedDb.bytePlusAssets,
+            arkAssets,
             prompt: input.prompt,
             model: videoModel,
             duration: input.duration,

@@ -243,8 +243,13 @@ describe('StudioGenerationWorkflow video', () => {
 
     expect(step.names).toEqual([
       'set-running',
+      // The via is resolved per attempt so the stills are registered with
+      // BytePlus before submit only when the model is going there (#1519).
+      'resolve-video-via',
       'submit-video',
+      'resolve-video-via-retry-1',
       'submit-video-retry-1',
+      'resolve-video-via-retry-2',
       'submit-video-retry-2',
       'video-poll-batch-2-0',
       'price-video-generation',

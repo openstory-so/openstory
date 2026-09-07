@@ -85,11 +85,6 @@ export function bytePlusAssetSlots(): number {
  * one either, so it would burn the account's pool permanently. The ingest
  * catches this and sends the public URL, exactly as it did before the pool.
  */
-export const unledgeredAssetPool: AssetPoolLedger = {
-  claimSlot: async () => ({ kind: 'exhausted' }),
-  recordSlot: async () => {},
-};
-
 /**
  * The ledger's key for each distinct stored URL. Exported so a workflow can
  * spell its pool call as `scopedDb.liveRead.bytePlusAssets.getAdmission(...)`
@@ -104,22 +99,24 @@ export async function arkAssetIdentities(
   return Promise.all(unique.map((url) => hashAssetIdentity(url)));
 }
 
+const ASSET_POOL_EXHAUSTED_MESSAGE =
+  'BytePlus asset pool is full and every slot is leased by an in-flight job';
+
+export type PooledAssetClaim =
+  | { kind: 'hit'; uri: string }
+  | { kind: 'reserved'; identity: string; evictedAssetId: string | null };
+
 /**
- * Reuse-or-create one `asset://`, holding a lease on it for the job about to
- * submit it. `identity` is the STORED url — a one-off fal scratch URL would
- * burn a fresh slot on every submit.
+ * Lease a pool slot for one still. `identity` is the STORED url — a one-off
+ * fal scratch URL would burn a fresh slot on every submit. A hit is the
+ * `asset://` to send; a reservation is the go-ahead to create (the workflow
+ * waits for a CreateAsset token first, #1519); a full pool with nothing
+ * evictable throws — there is no public-URL fallback.
  */
-export async function ingestPooledAsset(
-  config: BytePlusOpenApiConfig,
+export async function claimPooledAsset(
   ledger: AssetPoolLedger,
-  input: {
-    identity: string;
-    publicUrl: string;
-    assetType: BytePlusAssetKind;
-    slot: BytePlusAssetSlot;
-    groupId?: string;
-  }
-): Promise<string> {
+  input: { identity: string; slot: BytePlusAssetSlot }
+): Promise<PooledAssetClaim> {
   const identity = await hashAssetIdentity(input.identity);
   const claim = await ledger.claimSlot({
     identity,
@@ -127,28 +124,43 @@ export async function ingestPooledAsset(
     capacity: bytePlusAssetSlots(),
     leaseMs: LEASE_TTL_MS,
   });
-
   if (claim.kind === 'hit') {
     reportBytePlusAssetPool({ outcome: 'hit', slot: input.slot });
-    return `asset://${claim.assetId}`;
+    return { kind: 'hit', uri: `asset://${claim.assetId}` };
   }
   if (claim.kind === 'exhausted') {
     reportBytePlusAssetPool({ outcome: 'exhausted' });
-    throw new Error(
-      'BytePlus asset pool is full and every slot is leased by an in-flight job'
-    );
+    throw new Error(ASSET_POOL_EXHAUSTED_MESSAGE);
   }
+  return { kind: 'reserved', identity, evictedAssetId: claim.evictedAssetId };
+}
 
-  if (claim.evictedAssetId) {
+/**
+ * Create the asset a reservation from {@link claimPooledAsset} made room
+ * for, and record the slot. Runs after the governor's CreateAsset token.
+ */
+export async function createPooledAsset(
+  config: BytePlusOpenApiConfig,
+  ledger: AssetPoolLedger,
+  input: {
+    claim: Extract<PooledAssetClaim, { kind: 'reserved' }>;
+    storedUrl: string;
+    publicUrl: string;
+    assetType: BytePlusAssetKind;
+    slot: BytePlusAssetSlot;
+    groupId?: string;
+  }
+): Promise<string> {
+  if (input.claim.evictedAssetId) {
     try {
-      await deleteAsset(config, claim.evictedAssetId);
+      await deleteAsset(config, input.claim.evictedAssetId);
     } catch (error) {
       // ponytail: the Ark asset outlives our ledger row, so the account is one
       // slot tighter than we think until CreateAsset refuses and the shot
-      // falls back to fal. Reconciling against ListAssets is the upgrade if
-      // this shows up in the pool events.
+      // fails. Reconciling against ListAssets is the upgrade if this shows up
+      // in the pool events.
       logger.warn('BytePlus DeleteAsset failed; slot may leak on Ark', {
-        assetId: claim.evictedAssetId,
+        assetId: input.claim.evictedAssetId,
         error: error instanceof Error ? error.message : String(error),
       });
     }
@@ -158,14 +170,14 @@ export async function ingestPooledAsset(
   // `ingestAigcAsset` still checks Ark by name first, which is what heals a
   // ledger that lost rows (a wiped preview DB) without duplicating the asset.
   const uri = await ingestAigcAsset(config, {
-    identity: input.identity,
+    identity: input.storedUrl,
     publicUrl: input.publicUrl,
     assetType: input.assetType,
     ...(input.groupId && { groupId: input.groupId }),
   });
 
   await ledger.recordSlot({
-    identity,
+    identity: input.claim.identity,
     assetId: uri.slice('asset://'.length),
     slot: input.slot,
     leaseMs: LEASE_TTL_MS,

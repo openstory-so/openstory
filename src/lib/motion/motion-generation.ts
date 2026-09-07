@@ -1,9 +1,10 @@
 import { getEnv } from '#env';
+import { toArkFetchableUrl } from '@/lib/ai/byteplus-asset-ingest';
 import {
-  toArkFetchableUrl,
-  toArkMediaUrl,
-} from '@/lib/ai/byteplus-asset-ingest';
-import type { AssetPoolLedger } from '@/lib/ai/byteplus-asset-pool';
+  arkUrlFor,
+  type ArkAssetMap,
+  type ArkStill,
+} from '@/lib/ai/byteplus-asset-steps';
 import {
   arkAdapterConfig,
   claimBytePlusVia,
@@ -334,18 +335,36 @@ async function submitFalMotionJob(
  * Returns the job ID so the workflow can poll with `context.sleep()` between steps.
  */
 /**
- * Submitting also LEASES pool slots, which estimating does not — so the
- * ledger rides here rather than on `GenerateMotionOptions`, which
- * `calculateMotionMetadata` shares and has nothing to lease.
+ * Submitting needs the stills the workflow already registered with BytePlus
+ * (`ingestArkAssets`, #1519), which estimating does not — so the map rides
+ * here rather than on `GenerateMotionOptions`, which `calculateMotionMetadata`
+ * shares. Only the byteplus via reads it; see {@link arkStillsForMotion} for
+ * which stills it must cover.
  */
 export type SubmitMotionOptions = GenerateMotionOptions & {
-  /**
-   * The BytePlus ACR slot ledger (`scopedDb.bytePlusAssets`, #1361). Only the
-   * byteplus via touches it: every still Seedance sees has to be leased as
-   * `asset://` from an account-wide pool of ~50 slots.
-   */
-  assetLedger: AssetPoolLedger;
+  arkAssets: ArkAssetMap;
 };
+
+/**
+ * The stills a BytePlus submit needs registered: the start frame and every
+ * reference that can carry a face. CreateAsset allows 3/min per account, so
+ * location and element sheets — no people — are not spent on. The workflow
+ * runs these through `ingestArkAssets` before the submit step.
+ */
+export function arkStillsForMotion(
+  options: Pick<GenerateMotionOptions, 'imageUrl' | 'referenceImages'>
+): ArkStill[] {
+  const stills: ArkStill[] = [];
+  if (options.imageUrl)
+    stills.push({ storedUrl: options.imageUrl, slot: 'frame' });
+  for (const ref of options.referenceImages ?? []) {
+    if (ref.role === 'location' || ref.role === 'element') continue;
+    // Cast sheets are the pool's long-lived residents — evicting one costs
+    // every shot that binds it.
+    stills.push({ storedUrl: ref.referenceImageUrl, slot: 'library' });
+  }
+  return stills;
+}
 
 export async function submitMotionJob(
   options: SubmitMotionOptions
@@ -485,38 +504,22 @@ export async function submitMotionJob(
       if (!arkKey) {
         throw new Error('ARK_API_KEY is required for the BytePlus motion via');
       }
-      // Every still Seedance sees — start frame and every reference — has
-      // to be `asset://`. A public URL of a photorealistic face (including
-      // a generated start frame) 400s as a possible real person.
+      // Every still that can carry a face was registered by the workflow
+      // (`arkStillsForMotion` → `ingestArkAssets`); the rest are plain URLs.
+      // A still missing from the map throws — nothing is re-derived here.
       const falKey = await resolveOptionalFalKey(options.scopedDb);
       const imageUrl = options.imageUrl
-        ? await toArkMediaUrl(options.imageUrl, {
-            ledger: options.assetLedger,
-            slot: 'frame',
-            ...(falKey?.key && { falApiKey: falKey.key }),
-          })
+        ? arkUrlFor(options.arkAssets, options.imageUrl)
         : undefined;
-      // Only a still that can carry a face goes through the portrait
-      // library: the start frame and the character sheets. CreateAsset
-      // allows 3/min per account (#1519), so location and element sheets —
-      // no people — are sent as plain URLs. Sequential on purpose: the batch
-      // already fans shots out in parallel.
       let referenceImages = options.referenceImages;
       if (referenceImages?.length) {
         referenceImages = [];
         for (const ref of options.referenceImages ?? []) {
-          const mayCarryFace =
-            ref.role !== 'location' && ref.role !== 'element';
+          const registered = ref.role !== 'location' && ref.role !== 'element';
           referenceImages.push({
             ...ref,
-            referenceImageUrl: mayCarryFace
-              ? // Cast sheets are the pool's long-lived residents — evicting
-                // one costs every shot that binds it.
-                await toArkMediaUrl(ref.referenceImageUrl, {
-                  ledger: options.assetLedger,
-                  slot: 'library',
-                  ...(falKey?.key && { falApiKey: falKey.key }),
-                })
+            referenceImageUrl: registered
+              ? arkUrlFor(options.arkAssets, ref.referenceImageUrl)
               : await toArkFetchableUrl(ref.referenceImageUrl, falKey?.key),
           });
         }
