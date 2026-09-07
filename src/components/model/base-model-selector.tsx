@@ -104,6 +104,7 @@ type BaseModelSelectorProps = {
   onSelectionChange: (ids: string[]) => void;
   disabled?: boolean;
   multiSelect?: boolean;
+  size?: 'default' | 'sm';
 };
 
 export const BaseModelSelector: React.FC<BaseModelSelectorProps> = ({
@@ -114,6 +115,7 @@ export const BaseModelSelector: React.FC<BaseModelSelectorProps> = ({
   onSelectionChange,
   disabled = false,
   multiSelect = false,
+  size = 'default',
 }) => {
   const [open, setOpen] = useState(false);
   const [multipleEnabled, setMultipleEnabled] = useState(
@@ -203,6 +205,7 @@ export const BaseModelSelector: React.FC<BaseModelSelectorProps> = ({
       <DropdownMenuTrigger asChild>
         <Button
           variant="outline"
+          size={size}
           className="w-full justify-between"
           disabled={disabled}
           aria-label={`${label}: ${displayLabel}`}

@@ -43,6 +43,7 @@ export const ResolutionPills: FC<ResolutionPillsProps> = ({
             if (val && isResolution(val)) onChange(val);
           }}
           variant="outline"
+          size="sm"
           spacing={0}
           disabled={disabled}
           className="w-full min-w-0 flex-nowrap justify-start"
@@ -51,7 +52,7 @@ export const ResolutionPills: FC<ResolutionPillsProps> = ({
             <ToggleGroupItem
               key={option.value}
               value={option.value}
-              className="flex h-9 min-w-0 flex-1 shrink items-center justify-center px-2 sm:px-3"
+              className="flex min-w-0 flex-1 shrink items-center justify-center px-2 sm:px-3"
             >
               <span className="font-mono text-xs">{option.label}</span>
             </ToggleGroupItem>

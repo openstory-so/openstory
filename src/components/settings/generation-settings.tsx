@@ -144,20 +144,6 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
 
           <Separator />
 
-          {/* Resolution Section */}
-          <section className="flex flex-col gap-2">
-            <h3 className="text-sm font-medium text-foreground">Resolution</h3>
-            <ResolutionPills
-              value={resolution}
-              onChange={onResolutionChange}
-              available={availableResolutions(modelSelection)}
-              disabled={disabled}
-              note={resolutionCeilingNote(resolution, modelSelection)}
-            />
-          </section>
-
-          <Separator />
-
           {/* Analysis Model Section */}
           <section className="flex flex-col gap-2">
             <h3 className="text-sm font-medium text-foreground">
@@ -213,6 +199,7 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
                 selectedModel={videoModels[0] ?? DEFAULT_VIDEO_MODEL}
                 onModelChange={(model) => onVideoModelsChange([model])}
                 disabled={disabled}
+                size="sm"
                 aspectRatio={aspectRatio}
                 styleCategory={styleCategory}
                 referenceOnly={!generateStartFrames}
@@ -222,11 +209,20 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
                 selectedModels={videoModels}
                 onModelsChange={onVideoModelsChange}
                 disabled={disabled}
+                size="sm"
                 aspectRatio={aspectRatio}
                 styleCategory={styleCategory}
                 referenceOnly={!generateStartFrames}
               />
             )}
+            <h3 className="text-sm font-medium text-foreground">Resolution</h3>
+            <ResolutionPills
+              value={resolution}
+              onChange={onResolutionChange}
+              available={availableResolutions(modelSelection)}
+              disabled={disabled}
+              note={resolutionCeilingNote(resolution, modelSelection)}
+            />
           </section>
 
           {onAudioModelsChange && audioModels && (
