@@ -152,9 +152,15 @@ jobs:
               ...(obj.durable_objects.bindings || []),
               { name: 'VIDEO_EXPORT_CONTAINER', class_name: 'VideoExportContainer' }
             ];
+            // Splice v2 in tag order: wrangler applies migrations after the
+            // worker's last-applied tag in ARRAY order, so a v2 appended after
+            // the default block's v3 would leave v3 unapplied on a preview
+            // that already ran v2.
+            const migrations = obj.migrations || [];
             obj.migrations = [
-              ...(obj.migrations || []),
-              { tag: 'v2', new_sqlite_classes: ['VideoExportContainer'] }
+              ...migrations.filter((m) => m.tag === 'v1'),
+              { tag: 'v2', new_sqlite_classes: ['VideoExportContainer'] },
+              ...migrations.filter((m) => m.tag !== 'v1')
             ];
             // Tail-consume preview logs into the staging log forwarder
             // (workers/posthog-log-forwarder), which transforms our LogTape

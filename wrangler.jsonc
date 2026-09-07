@@ -298,12 +298,24 @@
         "name": "REALTIME",
         "class_name": "RealtimeChannel",
       },
+      // BytePlus request governor (#1519): one token bucket per account so
+      // the Assets OpenAPI stays under its per-account quota. Tag v3 — v2 is
+      // the production/preview container, which the preview patch splices
+      // in ahead of this.
+      {
+        "name": "BYTEPLUS_GOVERNOR",
+        "class_name": "BytePlusGovernor",
+      },
     ],
   },
   "migrations": [
     {
       "tag": "v1",
       "new_sqlite_classes": ["RealtimeChannel"],
+    },
+    {
+      "tag": "v3",
+      "new_sqlite_classes": ["BytePlusGovernor"],
     },
   ],
   "env": {
@@ -571,6 +583,10 @@
             "name": "VIDEO_EXPORT_CONTAINER",
             "class_name": "VideoExportContainer",
           },
+          {
+            "name": "BYTEPLUS_GOVERNOR",
+            "class_name": "BytePlusGovernor",
+          },
         ],
       },
       "migrations": [
@@ -581,6 +597,10 @@
         {
           "tag": "v2",
           "new_sqlite_classes": ["VideoExportContainer"],
+        },
+        {
+          "tag": "v3",
+          "new_sqlite_classes": ["BytePlusGovernor"],
         },
       ],
       "triggers": {
@@ -850,12 +870,20 @@
             "name": "REALTIME",
             "class_name": "RealtimeChannel",
           },
+          {
+            "name": "BYTEPLUS_GOVERNOR",
+            "class_name": "BytePlusGovernor",
+          },
         ],
       },
       "migrations": [
         {
           "tag": "v1",
           "new_sqlite_classes": ["RealtimeChannel"],
+        },
+        {
+          "tag": "v3",
+          "new_sqlite_classes": ["BytePlusGovernor"],
         },
       ],
       // Explicit empty array opts out of inheritance and silences wrangler's

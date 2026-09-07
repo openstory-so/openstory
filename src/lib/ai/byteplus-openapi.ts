@@ -5,6 +5,7 @@
  * that `@tanstack/ai-byteplus` drives with `ARK_API_KEY`. Assets live here.
  */
 
+import { acquireBytePlusOpenApiToken } from '@/lib/ai/byteplus-governor';
 import { withBytePlusQuotaRetry } from '@/lib/ai/byteplus-rate-limit';
 import { workersSafeFetch } from '@/lib/ai/workers-safe-fetch';
 import {
@@ -39,12 +40,14 @@ export async function bytePlusOpenApi<T>(
    */
   options?: { allowEmptyResult?: boolean }
 ): Promise<T> {
-  // A throttled ingest used to fall through to the public URL, which Ark
-  // then rejects as a possible real person (#1519) — so back off here, the
-  // one place every Assets action passes through.
-  return withBytePlusQuotaRetry(`BytePlus ${action}`, () =>
-    bytePlusOpenApiOnce<T>(config, action, body, options)
-  );
+  // Every Assets action passes through here (#1519): the governor DO paces
+  // calls under the account quota, and the backoff retry is the backstop for
+  // a throttle it did not model. A throttled ingest used to fall through to
+  // the public URL, which Ark then rejects as a possible real person.
+  return withBytePlusQuotaRetry(`BytePlus ${action}`, async () => {
+    await acquireBytePlusOpenApiToken(action);
+    return bytePlusOpenApiOnce<T>(config, action, body, options);
+  });
 }
 
 async function bytePlusOpenApiOnce<T>(

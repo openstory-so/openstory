@@ -114,6 +114,7 @@ export { StudioGenerationWorkflow } from '@/lib/workflows/studio-generation-work
 // Realtime broker Durable Object. Re-exported so the binding's `class_name`
 // in wrangler.jsonc resolves in the Worker bundle (#802).
 export { RealtimeChannel } from '@/lib/realtime/realtime-channel.do';
+export { BytePlusGovernor } from '@/lib/ai/byteplus-governor.do';
 
 // Server-side video-export container DO (#968). Production-only binding
 // (`VIDEO_EXPORT_CONTAINER`); re-exported so its `class_name` resolves in the
