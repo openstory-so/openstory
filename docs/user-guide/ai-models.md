@@ -62,6 +62,7 @@ These models animate still images into video clips.
 | ---------------------- | ---------- | --------- | ----------- | ------------------------------------------- |
 | **MiniMax H3 Max**     | MiniMax    | ~10s      | Proprietary | Turbo default; native audio                 |
 | **Seedance 2.0**       | ByteDance  | ~3.5 min  | Proprietary | Quality default; native audio               |
+| Seedance 2.0 Mini      | ByteDance  | ~2 min    | Proprietary | Half the 2.0 rate, 720p; BytePlus via only  |
 | Grok Imagine Video 1.5 | SpaceXAI   | ~30s      | Proprietary | Highest quality ranking                     |
 | LTX 2.3 Pro            | Lightricks | ~2 min    | Open Weight |                                             |
 | Veo 3.1                | Google     | ~2.5 min  | Proprietary | 20K max prompt length                       |

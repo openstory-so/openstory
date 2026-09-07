@@ -35,6 +35,7 @@ describe('studioVideoEndpointId', () => {
       'minimax/h3-max/text-to-video',
       'bytedance/seedance-2.0/enterprise/v2/text-to-video',
       'bytedance/seedance-2.5/text-to-video',
+      'bytedance/seedance-2.0/mini/text-to-video',
     ]);
     expect(ids.some((id) => id.includes('image-to-video'))).toBe(false);
     // Pricing refresh sees the reference siblings too.

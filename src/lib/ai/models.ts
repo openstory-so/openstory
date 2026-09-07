@@ -123,6 +123,10 @@ export const IMAGE_TO_VIDEO_MODELS = {
     qualityRank: 4,
     maxPromptLength: 4096,
     performance: { estimatedGenerationTime: 208, quality: 'best' as const },
+    // Native BytePlus Ark route (#1519). fal enterprise 2.0 stays the fal via
+    // (it takes photoreal faces without asset ingest, unlike public 2.0), so
+    // this model is offered everywhere and only the route changes.
+    byteplusId: 'dreamina-seedance-2-0-260128' as const,
   },
   seedance_v2_5: {
     id: 'bytedance/seedance-2.5/image-to-video',
@@ -143,6 +147,20 @@ export const IMAGE_TO_VIDEO_MODELS = {
     // $10.70/1M-token entry is exact for that tier only. fal has no
     // enterprise 2.5 (those paths 404); public 2.5 is the fal via.
     byteplusId: 'dreamina-seedance-2-5-260628' as const,
+  },
+  seedance_v2_mini: {
+    id: 'bytedance/seedance-2.0/mini/image-to-video',
+    name: 'Seedance 2.0 Mini',
+    vendor: 'ByteDance',
+    license: 'proprietary' as const,
+    qualityRank: 6,
+    maxPromptLength: 4096,
+    performance: { estimatedGenerationTime: 120, quality: 'best' as const },
+    // Half the 2.0 rate, 720p ceiling, 4–15s. fal has no enterprise mini, so
+    // like 2.5 the public fal endpoint 400s photoreal faces: offered only
+    // where the BytePlus via (with asset ingest) is live (#1519).
+    requiresVia: 'byteplus' as const,
+    byteplusId: 'dreamina-seedance-2-0-mini-260615' as const,
   },
 } as const;
 
@@ -758,6 +776,12 @@ export const MOTION_REFERENCE_ENDPOINTS: Partial<
   seedance_v2_5: {
     endpointId: 'bytedance/seedance-2.5/reference-to-video',
     textToVideoEndpointId: 'bytedance/seedance-2.5/text-to-video',
+    tag: (position) => `@Image${position}`,
+    maxImages: 9,
+  },
+  seedance_v2_mini: {
+    endpointId: 'bytedance/seedance-2.0/mini/reference-to-video',
+    textToVideoEndpointId: 'bytedance/seedance-2.0/mini/text-to-video',
     tag: (position) => `@Image${position}`,
     maxImages: 9,
   },

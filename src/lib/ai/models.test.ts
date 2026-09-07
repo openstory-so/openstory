@@ -71,7 +71,14 @@ describe('Seedance catalog split', () => {
       'reference_image_urls'
     );
     expect(isNativeBytePlusVideoModel('seedance_v2_5')).toBe(true);
-    expect(isNativeBytePlusVideoModel('seedance_v2')).toBe(false);
+    expect(isNativeBytePlusVideoModel('seedance_v2')).toBe(true);
+    expect(isNativeBytePlusVideoModel('seedance_v2_mini')).toBe(true);
+    // fal enterprise 2.0 takes photoreal faces, so 2.0 is offered everywhere;
+    // Mini has no enterprise endpoint and is BytePlus-only like 2.5.
+    expect(isOfferedVideoModel('seedance_v2_mini')).toBe(false);
+    expect(isOfferedVideoModel('seedance_v2_mini', { byteplus: true })).toBe(
+      true
+    );
     expect(DEFAULT_VIDEO_MODEL).toBe('seedance_v2');
     expect(isOfferedVideoModel('seedance_v2_5')).toBe(false);
     expect(isOfferedVideoModel('seedance_v2_5', { byteplus: true })).toBe(true);
@@ -240,6 +247,7 @@ describe('supportsReferenceOnlyMotion', () => {
       'minimax_h3_max',
       'seedance_v2',
       'seedance_v2_5',
+      'seedance_v2_mini',
     ]);
   });
 });

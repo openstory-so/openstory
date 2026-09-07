@@ -19,6 +19,9 @@ import {
   zSeedance20EnterpriseV2ImageToVideoInput,
   zSeedance20EnterpriseV2ReferenceToVideoInput,
   zSeedance20EnterpriseV2TextToVideoInput,
+  zSeedance20MiniImageToVideoInput,
+  zSeedance20MiniReferenceToVideoInput,
+  zSeedance20MiniTextToVideoInput,
   zSeedance25ImageToVideoInput,
   zSeedance25ReferenceToVideoInput,
   zSeedance25TextToVideoInput,
@@ -39,6 +42,9 @@ import {
   Seedance20EnterpriseV2ImageToVideoInputSchema,
   Seedance20EnterpriseV2ReferenceToVideoInputSchema,
   Seedance20EnterpriseV2TextToVideoInputSchema,
+  Seedance20MiniImageToVideoInputSchema,
+  Seedance20MiniReferenceToVideoInputSchema,
+  Seedance20MiniTextToVideoInputSchema,
   Seedance25ImageToVideoInputSchema,
   Seedance25ReferenceToVideoInputSchema,
   Seedance25TextToVideoInputSchema,
@@ -59,6 +65,9 @@ export type MotionJSONSchema =
   | typeof Seedance20EnterpriseV2ImageToVideoInputSchema
   | typeof Seedance20EnterpriseV2ReferenceToVideoInputSchema
   | typeof Seedance20EnterpriseV2TextToVideoInputSchema
+  | typeof Seedance20MiniImageToVideoInputSchema
+  | typeof Seedance20MiniReferenceToVideoInputSchema
+  | typeof Seedance20MiniTextToVideoInputSchema
   | typeof Seedance25ImageToVideoInputSchema
   | typeof Seedance25ReferenceToVideoInputSchema
   | typeof Seedance25TextToVideoInputSchema
@@ -71,6 +80,11 @@ export const MOTION_INPUT_SCHEMAS = {
     zSeedance20EnterpriseV2ReferenceToVideoInput,
   'bytedance/seedance-2.0/enterprise/v2/text-to-video':
     zSeedance20EnterpriseV2TextToVideoInput,
+  'bytedance/seedance-2.0/mini/image-to-video':
+    zSeedance20MiniImageToVideoInput,
+  'bytedance/seedance-2.0/mini/reference-to-video':
+    zSeedance20MiniReferenceToVideoInput,
+  'bytedance/seedance-2.0/mini/text-to-video': zSeedance20MiniTextToVideoInput,
   'bytedance/seedance-2.5/image-to-video': zSeedance25ImageToVideoInput,
   'bytedance/seedance-2.5/reference-to-video': zSeedance25ReferenceToVideoInput,
   'bytedance/seedance-2.5/text-to-video': zSeedance25TextToVideoInput,
@@ -109,6 +123,12 @@ export const MOTION_JSON_SCHEMAS = {
     Seedance20EnterpriseV2ReferenceToVideoInputSchema,
   'bytedance/seedance-2.0/enterprise/v2/text-to-video':
     Seedance20EnterpriseV2TextToVideoInputSchema,
+  'bytedance/seedance-2.0/mini/image-to-video':
+    Seedance20MiniImageToVideoInputSchema,
+  'bytedance/seedance-2.0/mini/reference-to-video':
+    Seedance20MiniReferenceToVideoInputSchema,
+  'bytedance/seedance-2.0/mini/text-to-video':
+    Seedance20MiniTextToVideoInputSchema,
   'bytedance/seedance-2.5/image-to-video': Seedance25ImageToVideoInputSchema,
   'bytedance/seedance-2.5/reference-to-video':
     Seedance25ReferenceToVideoInputSchema,
@@ -143,6 +163,18 @@ export const MOTION_TRANSFORMS = {
   'bytedance/seedance-2.0/enterprise/v2/text-to-video': motionTransform(
     zSeedance20EnterpriseV2TextToVideoInput,
     Seedance20EnterpriseV2TextToVideoInputSchema
+  ),
+  'bytedance/seedance-2.0/mini/image-to-video': motionTransform(
+    zSeedance20MiniImageToVideoInput,
+    Seedance20MiniImageToVideoInputSchema
+  ),
+  'bytedance/seedance-2.0/mini/reference-to-video': motionTransform(
+    zSeedance20MiniReferenceToVideoInput,
+    Seedance20MiniReferenceToVideoInputSchema
+  ),
+  'bytedance/seedance-2.0/mini/text-to-video': motionTransform(
+    zSeedance20MiniTextToVideoInput,
+    Seedance20MiniTextToVideoInputSchema
   ),
   'bytedance/seedance-2.5/image-to-video': motionTransform(
     zSeedance25ImageToVideoInput,

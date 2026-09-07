@@ -207,6 +207,7 @@ describe('buildModelInput', () => {
       ltx_2_3_pro: [6, 8, 10],
       seedance_v2: Array.from({ length: 12 }, (_, i) => String(i + 4)),
       seedance_v2_5: Array.from({ length: 27 }, (_, i) => String(i + 4)),
+      seedance_v2_mini: Array.from({ length: 12 }, (_, i) => String(i + 4)),
       minimax_hailuo_02: [],
       minimax_h3_max: [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
       gemini_omni_flash: [3, 4, 5, 6, 7, 8, 9, 10],

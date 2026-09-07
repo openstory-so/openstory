@@ -56,6 +56,18 @@ export const BYTEPLUS_RATE_CARD: Record<string, EffectiveFalPricing> = {
     unitPrice: micros(10_700),
     unit: '1000 tokens',
   },
+  // Seedance 2.0 — $7.00 per 1M tokens without video input ($4.30 with).
+  // Same no-video-input over-estimate policy as 2.5. Read 2026-09-07.
+  'dreamina-seedance-2-0-260128': {
+    unitPrice: micros(7_000),
+    unit: '1000 tokens',
+  },
+  // Seedance 2.0 Mini — $3.50 per 1M tokens without video input ($2.10
+  // with); 480p/720p only. Read 2026-09-07.
+  'dreamina-seedance-2-0-mini-260615': {
+    unitPrice: micros(3_500),
+    unit: '1000 tokens',
+  },
   // Seedream 5.0 Pro — $0.09 per image above 2.36MP. Exactly one image per
   // unit, so the per-call estimate is exact rather than a historical guess.
   'dola-seedream-5-0-pro-260628': {

@@ -155,6 +155,9 @@ const ENDPOINT_STRATEGY: Record<string, EstimateStrategy> = {
   'bytedance/seedance-2.5/image-to-video': 'tokens',
   'bytedance/seedance-2.5/reference-to-video': 'tokens',
   'bytedance/seedance-2.5/text-to-video': 'tokens',
+  'bytedance/seedance-2.0/mini/image-to-video': 'tokens',
+  'bytedance/seedance-2.0/mini/reference-to-video': 'tokens',
+  'bytedance/seedance-2.0/mini/text-to-video': 'tokens',
 };
 
 /**

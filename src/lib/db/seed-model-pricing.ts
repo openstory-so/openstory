@@ -145,10 +145,14 @@ export const LOCAL_FAL_PRICING_SEED: Record<string, SeedPrice> = {
   'bytedance/seedance-2.5/image-to-video': units(0.014),
   'bytedance/seedance-2.5/reference-to-video': units(0.014),
   'bytedance/seedance-2.5/text-to-video': units(0.014),
-  // Seedance 2.0 enterprise (fal only — no Ark via).
+  // Seedance 2.0 enterprise (fal via; Ark serves the same model natively).
   'bytedance/seedance-2.0/enterprise/v2/image-to-video': units(0.014),
   'bytedance/seedance-2.0/enterprise/v2/text-to-video': units(0.014),
   'bytedance/seedance-2.0/enterprise/v2/reference-to-video': units(0.014),
+  // Seedance 2.0 Mini — fal advertises $0.007 per 1000 tokens.
+  'bytedance/seedance-2.0/mini/image-to-video': units(0.007),
+  'bytedance/seedance-2.0/mini/text-to-video': units(0.007),
+  'bytedance/seedance-2.0/mini/reference-to-video': units(0.007),
   'fal-ai/elevenlabs/music': { unit: 'minutes', unitPriceUsd: 0.8 },
   'fal-ai/ace-step-1.5': units(0.0005),
   'fal-ai/ace-step/prompt-to-audio': units(0.0005),

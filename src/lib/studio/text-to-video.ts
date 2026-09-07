@@ -31,6 +31,7 @@ const STUDIO_TEXT_TO_VIDEO_ENDPOINTS = {
   minimax_h3_max: 'minimax/h3-max/text-to-video',
   seedance_v2: 'bytedance/seedance-2.0/enterprise/v2/text-to-video',
   seedance_v2_5: 'bytedance/seedance-2.5/text-to-video',
+  seedance_v2_mini: 'bytedance/seedance-2.0/mini/text-to-video',
 } as const satisfies Record<ImageToVideoModel, string>;
 
 const RANGE = (min: number, max: number): readonly number[] =>
@@ -47,6 +48,7 @@ const STUDIO_VIDEO_DURATIONS = {
   minimax_h3_max: RANGE(5, 15),
   seedance_v2: RANGE(4, 15),
   seedance_v2_5: RANGE(4, 30),
+  seedance_v2_mini: RANGE(4, 15),
 } as const satisfies Record<ImageToVideoModel, readonly number[]>;
 
 /** Of our `AspectRatio` set, the ones the T2V sibling accepts. */
@@ -60,6 +62,7 @@ const STUDIO_VIDEO_ASPECTS = {
   minimax_h3_max: ['16:9', '1:1', '9:16'],
   seedance_v2: ['16:9', '1:1', '9:16'],
   seedance_v2_5: ['16:9', '1:1', '9:16'],
+  seedance_v2_mini: ['16:9', '1:1', '9:16'],
 } as const satisfies Record<ImageToVideoModel, readonly AspectRatio[]>;
 
 const STUDIO_VIDEO_HAS_AUDIO = {
@@ -72,6 +75,7 @@ const STUDIO_VIDEO_HAS_AUDIO = {
   minimax_h3_max: false,
   seedance_v2: true,
   seedance_v2_5: true,
+  seedance_v2_mini: true,
 } as const satisfies Record<ImageToVideoModel, boolean>;
 
 export const STUDIO_VIDEO_MODES = ['text', 'reference', 'frames'] as const;
@@ -123,6 +127,14 @@ const STUDIO_REFERENCE_ENDPOINTS: Partial<
   },
   seedance_v2_5: {
     endpointId: 'bytedance/seedance-2.5/reference-to-video',
+    imageField: 'image_urls',
+    imageTag: atImage,
+    maxImages: 9,
+    maxVideos: 3,
+    maxAudio: 3,
+  },
+  seedance_v2_mini: {
+    endpointId: 'bytedance/seedance-2.0/mini/reference-to-video',
     imageField: 'image_urls',
     imageTag: atImage,
     maxImages: 9,
@@ -195,6 +207,7 @@ const STUDIO_END_FRAME_MODELS = {
   minimax_h3_max: true,
   seedance_v2: true,
   seedance_v2_5: true,
+  seedance_v2_mini: true,
   gemini_omni_flash: true,
 } as const satisfies Partial<Record<ImageToVideoModel, true>>;
 
@@ -348,6 +361,7 @@ function encodeDuration(
     case 'kling_v3_pro':
     case 'seedance_v2':
     case 'seedance_v2_5':
+    case 'seedance_v2_mini':
       return String(seconds);
     case 'veo3_1':
       return `${seconds}s`;

@@ -65,6 +65,7 @@ export const VIDEO_WALL_CLOCK = {
   minimax_h3_max: { p50: 10, p90: 10, n: 74 },
   seedance_v2: { p50: 208, p90: 288, n: 611 },
   seedance_v2_5: { p50: 208, p90: 288, n: 0, proxy: 'seedance_v2' },
+  seedance_v2_mini: { p50: 120, p90: 180, n: 0, proxy: 'seedance_v2' },
 } as const satisfies Record<ImageToVideoModel, WallClock>;
 
 export const IMAGE_WALL_CLOCK = {
