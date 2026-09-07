@@ -12,98 +12,17 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import type {
+  BoundPromptImage,
+  OptimisedPromptPreview,
+} from '@/lib/prompts/optimised-prompt-preview';
 import { cn } from '@/shared/utils';
 import { copyImageToClipboard } from '@/shared/utils/clipboard';
 import { ChevronRight, CopyIcon } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 
-export type BoundPromptImage = {
-  label: string;
-  url: string;
-};
-
-export type OptimisedPromptPreview = {
-  modelName: string;
-  endpointId: string;
-  /** Assembled prompt text the model reads (after refs / audio sections). */
-  prompt: string;
-  /** Pretty-printed fal request body, or null when only the text exists. */
-  json: string | null;
-  promptLength: number;
-  maxPromptLength: number;
-  /** Bound stills in prompt order (`@Image1`, `@Image2`, …). */
-  images?: BoundPromptImage[];
-};
-
-export function boundPromptImages(
-  urls: readonly string[],
-  tag: (position: number) => string
-): BoundPromptImage[] {
-  return urls
-    .filter((url) => url.length > 0)
-    .map((url, index) => ({ label: tag(index + 1), url }));
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
-
-/** Pull ordered still URLs off a fal motion/image request body. */
-export function imageUrlsFromFalInput(input: unknown): string[] {
-  if (!isRecord(input)) return [];
-  const urls: string[] = [];
-  const push = (value: unknown) => {
-    if (typeof value === 'string' && value.length > 0) urls.push(value);
-  };
-  if (Array.isArray(input.image_urls)) {
-    for (const url of input.image_urls) push(url);
-  } else if (Array.isArray(input.reference_image_urls)) {
-    for (const url of input.reference_image_urls) push(url);
-  } else {
-    push(input.image_url);
-    push(input.start_image_url);
-  }
-  if (Array.isArray(input.elements)) {
-    for (const element of input.elements) {
-      if (isRecord(element)) push(element.frontal_image_url);
-    }
-  }
-  return urls;
-}
-
-/** Image parts from an Ark / Grok multimodal prompt array. */
-export function imageUrlsFromPromptParts(parts: unknown): string[] {
-  if (!Array.isArray(parts)) return [];
-  const urls: string[] = [];
-  for (const part of parts) {
-    if (!isRecord(part) || part.type !== 'image' || !isRecord(part.source)) {
-      continue;
-    }
-    if (typeof part.source.value === 'string' && part.source.value.length > 0) {
-      urls.push(part.source.value);
-    }
-  }
-  return urls;
-}
-
 type PreviewView = 'prompt' | 'json';
-
-/**
- * Pull `input.prompt` off a fal request body. Shared by the image and motion
- * builders so the panel shows the same string the endpoint receives.
- */
-export function promptFromFalInput(input: unknown, fallback: string): string {
-  if (
-    input !== null &&
-    typeof input === 'object' &&
-    'prompt' in input &&
-    typeof input.prompt === 'string'
-  ) {
-    return input.prompt;
-  }
-  return fallback;
-}
 
 export const OptimisedPromptPanel: React.FC<{
   preview: OptimisedPromptPreview;

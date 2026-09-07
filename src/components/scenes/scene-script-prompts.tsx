@@ -78,10 +78,7 @@ import type { FrameVariant, ShotVariant } from '@/lib/db/schema';
 import {
   DEFAULT_IMAGE_MODEL,
   DEFAULT_VIDEO_MODEL,
-  IMAGE_MODELS,
   IMAGE_TO_VIDEO_MODELS,
-  getBytePlusImageModelId,
-  getBytePlusVideoModelId,
   getCompatibleModel,
   safeImageToVideoModel,
   safeTextToImageModel,
@@ -94,42 +91,21 @@ import {
   estimateVideoCost,
 } from '@/shared/billing/cost-estimation';
 import {
-  aspectRatioToImageSize,
   DEFAULT_ASPECT_RATIO,
   type AspectRatio,
 } from '@/shared/constants/aspect-ratios';
 import type { Resolution } from '@/shared/constants/resolutions';
-import { getMediaRoutesFn } from '@/functions/media-routes';
 import { getStorageDomainFn } from '@/functions/storage-config';
-import {
-  boundPromptImages,
-  imageUrlsFromFalInput,
-  imageUrlsFromPromptParts,
-  OptimisedPromptPanel,
-  promptFromFalInput,
-  type OptimisedPromptPreview,
-} from '@/components/scenes/optimised-prompt-panel';
+import { previewShotPromptsFn } from '@/functions/prompt-preview';
+import { OptimisedPromptPanel } from '@/components/scenes/optimised-prompt-panel';
 import {
   CONTENT_REJECTION_USER_HINT,
   CONTENT_REJECTION_USER_TITLE,
   isContentRejectionError,
 } from '@/shared/ai/content-rejection';
-import { isNativeGeminiVideoModel } from '@/shared/ai/gemini-native';
-import { isNativeGrokVideoModel } from '@/shared/ai/grok-native';
-import { buildImageRequest } from '@/shared/image/build-image-request';
-import { buildBytePlusImageRequest } from '@/shared/image/build-byteplus-image-request';
-import { buildGeminiVideoRequest } from '@/shared/motion/build-gemini-video-request';
-import { buildGrokVideoRequest } from '@/shared/motion/build-grok-video-request';
-import { buildBytePlusVideoRequest } from '@/shared/motion/build-byteplus-video-request';
-import { buildMotionRequest } from '@/shared/motion/build-model-input';
-import {
-  buildMotionReferenceImages,
-  buildShotImageReferenceImages,
-} from '@/shared/motion/build-motion-references';
-import { buildReferenceImagePrompt } from '@/shared/prompts/reference-image-prompt';
-import { resolveMotionPrompt } from '@/shared/motion/resolve-motion-prompt';
 import { resolveShotDuration } from '@/shared/motion/resolve-shot-duration';
 import type { AssemblableMotionPrompt } from '@/lib/ai/scene-analysis.schema';
+
 import { useShotPromptStream } from '@/components/realtime/use-shot-prompt-stream';
 import type { ShotView } from '@/shared/shots/shot-view';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -500,13 +476,8 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     ]
   );
 
-  const {
-    items: mentionItems,
-    characters: mentionCharacters,
-    elements: mentionElements,
-    locations: mentionLocations,
-    onMentionRename,
-  } = useSequenceMentionItems(sequenceId);
+  const { items: mentionItems, onMentionRename } =
+    useSequenceMentionItems(sequenceId);
   // The realtime hook owns the per-prompt-type stream status — `'pending'`
   // covers the window between a successful enqueue and the first delta, so
   // the button stays in its busy state without a sibling useState to sync.
@@ -1102,61 +1073,48 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
   // The shot's selected motion prompt, projected from its version row (#713) —
   // metadata.prompts.motion no longer exists.
   const shotMotionPrompt = shot?.motionPrompt ?? null;
-  const characterTags = scene?.continuity?.characterTags;
-  // The scene shape the reference resolvers read (continuity tags, script text,
-  // location) — the client mirror of what the workflows match against.
-  const sceneReference = useMemo(
-    () =>
-      scene
-        ? {
-            continuity: scene.continuity,
-            originalScript: scene.script,
-            metadata: { location: scene.location ?? '' },
-          }
-        : null,
-    [scene]
-  );
-  const sceneDescription = scene?.script?.extract ?? null;
-
-  // Raw prompt for editing (just motion direction, no dialogue/audio)
   const rawMotionPrompt = shotMotionPrompt?.fullPrompt || '';
-  // What submit will actually send. Cast and element refs follow the motion
-  // prompt (#1432), so the preview, the cost estimate and the request all have
-  // to match on the same text — an unsaved edit included.
-  const effectiveMotionPromptText =
-    editedMotionPrompt || rawMotionPrompt || null;
 
-  // Assembled preview: exactly what resolveMotionPrompt produces on the server.
-  // Overlay any unsaved edit onto the structured prompt so the dialogue/audio
-  // sections still appear for audio-capable models.
-  const assembledPrompt = useMemo(() => {
-    const overrideText = editedMotionPrompt || rawMotionPrompt;
-    const mp: AssemblableMotionPrompt | null = shotMotionPrompt
-      ? {
-          ...shotMotionPrompt,
-          fullPrompt: overrideText || shotMotionPrompt.fullPrompt,
-        }
-      : overrideText
-        ? { fullPrompt: overrideText, dialogue: null, audio: null }
-        : null;
-    return resolveMotionPrompt(
-      {
-        motionPrompt: mp,
-        characterTags,
-        description: sceneDescription,
-        generateAudio,
-      },
-      effectiveMotionModel
-    );
-  }, [
-    generateAudio,
-    editedMotionPrompt,
-    rawMotionPrompt,
-    shotMotionPrompt,
-    characterTags,
-    sceneDescription,
-    effectiveMotionModel,
-  ]);
+  const [debouncedImagePrompt, setDebouncedImagePrompt] =
+    useState(editedImagePrompt);
+  const [debouncedMotionPrompt, setDebouncedMotionPrompt] =
+    useState(editedMotionPrompt);
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setDebouncedImagePrompt(editedImagePrompt);
+      setDebouncedMotionPrompt(editedMotionPrompt);
+    }, 300);
+    return () => window.clearTimeout(timeout);
+  }, [editedImagePrompt, editedMotionPrompt]);
+
+  const { data: promptPreview } = useQuery({
+    queryKey: [
+      'shot-prompt-preview',
+      sequenceId,
+      shot?.id,
+      effectiveImageModel,
+      effectiveMotionModel,
+      debouncedImagePrompt || imagePrompt || '',
+      debouncedMotionPrompt || rawMotionPrompt,
+      generateAudio,
+    ],
+    queryFn: () =>
+      previewShotPromptsFn({
+        data: {
+          sequenceId,
+          shotId: shot?.id ?? '',
+          imageModel: effectiveImageModel,
+          videoModel: effectiveMotionModel,
+          imagePrompt: debouncedImagePrompt || imagePrompt || undefined,
+          motionPrompt: debouncedMotionPrompt || rawMotionPrompt || undefined,
+          generateAudio,
+        },
+      }),
+    enabled: Boolean(shot?.id),
+  });
+  const assembledPrompt = promptPreview?.assembledMotionPrompt ?? null;
+  const imageRequestPreview = promptPreview?.image ?? null;
+  const motionRequestPreview = promptPreview?.motion ?? null;
 
   // Transparent pricing under Generate Image / Generate Motion (#1140).
   const { pricing: falPricing } = useFalPricing();
@@ -1175,68 +1133,33 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
       durationMs: shot.durationMs,
       model: effectiveMotionModel,
     });
-    // Per shot, not the sequence default: the chip must quote the route the
-    // submit takes, and without a still the location sheet counts as a ref.
     const referenceOnly = !usesStartFrame(shot, {
       generateStartFrames: sequenceGeneratesStartFrames,
     });
-    const hasReferenceImages =
-      buildMotionReferenceImages({
-        scene: sceneReference,
-        characters: mentionCharacters ?? [],
-        elements: mentionElements ?? [],
-        motionPrompt: effectiveMotionPromptText,
-        includeLocations: referenceOnly,
-        locations: mentionLocations ?? [],
-      }).length > 0;
     return estimateVideoCost(effectiveMotionModel, duration, {
       pricing: falPricing,
       resolution,
-      hasReferenceImages,
+      hasReferenceImages: promptPreview?.motionHasReferenceImages ?? false,
       referenceOnly,
     });
   }, [
     falPricing,
     shot,
     effectiveMotionModel,
-    sceneReference,
-    mentionCharacters,
-    mentionElements,
-    mentionLocations,
     resolution,
-    effectiveMotionPromptText,
     sequenceGeneratesStartFrames,
+    promptPreview?.motionHasReferenceImages,
   ]);
 
-  // CDN-backed deployments absolutize stored /r2/ URLs at submit (toCdnUrl) —
-  // fetch the server-only domain once so the preview shows the same final
-  // URLs. Locally it's null and the preview keeps the stored relative URLs
-  // (at submit those become fal-storage uploads we can't predict).
+  // CDN-backed deployments absolutize stored /r2/ URLs at submit. The
+  // inspector now does that on the server; this flag only drives the footnote
+  // that relative URLs become public at submit when no CDN is configured.
   const { data: storageConfig } = useQuery({
     queryKey: ['storage-domain'],
     queryFn: () => getStorageDomainFn(),
     staleTime: Infinity,
   });
   const storageDomain = storageConfig?.storageDomain ?? null;
-
-  // Which media route the platform is on (#1157) — decides whether the request
-  // preview below shows a fal body or an Ark one.
-  const { data: mediaRoutes } = useQuery({
-    queryKey: ['media-routes'],
-    queryFn: () => getMediaRoutesFn(),
-    staleTime: Infinity,
-  });
-  const byteplusEnabled = mediaRoutes?.byteplusEnabled ?? false;
-
-  // Mirror of toCdnUrl for the client: absolutize only when the CDN domain
-  // is configured, so prod previews show exactly what fal receives.
-  const absolutizeUrl = useCallback(
-    (url: string) =>
-      storageDomain && url.startsWith('/r2/')
-        ? `https://${storageDomain}/${url.slice('/r2/'.length)}`
-        : url,
-    [storageDomain]
-  );
 
   // Flipping this re-stales the motion prompt — the two modes use different
   // templates. See `usesStartFrame`.
@@ -1257,14 +1180,8 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
   // saying before the money is spent, not after the clip looks wrong.
   const noReferencesMatched =
     !shotUsesStartFrame &&
-    buildMotionReferenceImages({
-      scene: sceneReference,
-      characters: mentionCharacters ?? [],
-      elements: mentionElements ?? [],
-      motionPrompt: effectiveMotionPromptText,
-      includeLocations: true,
-      locations: mentionLocations ?? [],
-    }).length === 0;
+    promptPreview !== undefined &&
+    !promptPreview.motionHasReferenceImages;
   const startFrameAvailable = !!shot && canUseStartFrame(shot);
   const setUseStartFrame = useMutation({
     mutationFn: (next: boolean) =>
@@ -1273,293 +1190,16 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['shots', sequenceId] });
-      // The flip re-stales the motion prompt; without this the indicator kept
-      // reading fresh and the shot rendered with the other mode's prompt.
       void queryClient.invalidateQueries({ queryKey: shotStalenessNamespace });
-      // Segment staleness derives the frame pointer from the mode, so the
-      // Video tab's Stale badge lags a full stale-time without this.
       void queryClient.invalidateQueries({
         queryKey: segmentKeys.list(sequenceId),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ['shot-prompt-preview', sequenceId],
       });
     },
     onError: (error: Error) => toast.error(error.message),
   });
-
-  // Exact request for the *selected* video model — same builder
-  // submitMotionJob uses, including reference bindings. Other catalog
-  // models are omitted (#1242): they inflate the inspector for picks the
-  // user has not made. A transform rejection (e.g. no still yet) falls
-  // back to the plain-text assembled prompt at render. Grok native uses
-  // buildGrokVideoRequest so the panel shows <IMAGE_n> parts, not the fal
-  // i2v bag.
-  const motionRequestPreview = useMemo((): OptimisedPromptPreview | null => {
-    if (!shot) return null;
-    const modelKey = effectiveMotionModel;
-    const config = IMAGE_TO_VIDEO_MODELS[modelKey];
-    const referenceImages = buildMotionReferenceImages({
-      scene: sceneReference,
-      characters: mentionCharacters ?? [],
-      elements: mentionElements ?? [],
-      motionPrompt: effectiveMotionPromptText,
-      // Must mirror the submit path or the preview shows the wrong slot
-      // numbers: without a still the location sheet is sent, and it goes FIRST,
-      // shifting every other reference down one.
-      includeLocations: !shotUsesStartFrame,
-      locations: mentionLocations ?? [],
-    }).map((ref) => ({
-      ...ref,
-      referenceImageUrl: absolutizeUrl(ref.referenceImageUrl),
-    }));
-    const overrideText = editedMotionPrompt || rawMotionPrompt;
-    const mp: AssemblableMotionPrompt | null = shotMotionPrompt
-      ? {
-          ...shotMotionPrompt,
-          fullPrompt: overrideText || shotMotionPrompt.fullPrompt,
-        }
-      : overrideText
-        ? { fullPrompt: overrideText, dialogue: null, audio: null }
-        : null;
-    try {
-      const modelPrompt = resolveMotionPrompt(
-        {
-          motionPrompt: mp,
-          characterTags,
-          description: sceneDescription,
-          generateAudio,
-        },
-        modelKey
-      );
-      if (!modelPrompt) return null;
-      const duration = resolveShotDuration({
-        explicit: undefined,
-        durationMs: shot.durationMs,
-        model: modelKey,
-      });
-      // The whole point of this panel is that it shows what the model receives.
-      // Unticking "Use start frame" withholds the still at submit, so it has to
-      // be withheld here too — that is what drops the "Use @Image1 as the
-      // starting frame." line and rebinds references from slot 1.
-      const imageUrl = shotUsesStartFrame
-        ? absolutizeUrl(shot.image?.url ?? '')
-        : undefined;
-      if (isNativeGrokVideoModel(modelKey)) {
-        const request = buildGrokVideoRequest({
-          prompt: modelPrompt,
-          imageUrl,
-          duration,
-          aspectRatio,
-          referenceImages,
-          model: modelKey,
-        });
-        const textPart = request.input.prompt.find(
-          (part) => part.type === 'text'
-        );
-        const prompt = textPart?.content ?? modelPrompt;
-        return {
-          modelName: config.name,
-          endpointId: request.endpointId,
-          prompt,
-          json: JSON.stringify(request.input, null, 2),
-          promptLength: prompt.length,
-          maxPromptLength: config.maxPromptLength,
-          images: boundPromptImages(
-            imageUrlsFromPromptParts(request.input.prompt),
-            (position) => `<IMAGE_${position - 1}>`
-          ),
-        };
-      }
-      if (byteplusEnabled && getBytePlusVideoModelId(modelKey) !== undefined) {
-        const ark = buildBytePlusVideoRequest(
-          {
-            prompt: modelPrompt,
-            imageUrl,
-            duration,
-            aspectRatio,
-            generateAudio: videoModelSupportsAudio(modelKey)
-              ? generateAudio
-              : undefined,
-            referenceImages,
-          },
-          modelKey
-        );
-        const { modelId, ...body } = ark;
-        const textPart = ark.prompt.find((part) => part.type === 'text');
-        const prompt = textPart?.content ?? modelPrompt;
-        return {
-          modelName: config.name,
-          endpointId: modelId,
-          prompt,
-          json: JSON.stringify(body, null, 2),
-          promptLength: prompt.length,
-          maxPromptLength: config.maxPromptLength,
-          images: boundPromptImages(
-            imageUrlsFromPromptParts(ark.prompt),
-            (position) => `@Image${position}`
-          ),
-        };
-      }
-      if (isNativeGeminiVideoModel(modelKey)) {
-        const request = buildGeminiVideoRequest({
-          prompt: modelPrompt,
-          imageUrl,
-          duration,
-          aspectRatio,
-          referenceImages,
-          model: modelKey,
-        });
-        const textPart = request.input.prompt.find(
-          (part) => part.type === 'text'
-        );
-        const prompt = textPart?.content ?? modelPrompt;
-        return {
-          modelName: config.name,
-          endpointId: request.endpointId,
-          prompt,
-          json: JSON.stringify(request.input, null, 2),
-          promptLength: prompt.length,
-          maxPromptLength: config.maxPromptLength,
-          images: boundPromptImages(
-            imageUrlsFromPromptParts(request.input.prompt),
-            (position) => `<IMAGE_REF_${position - 1}>`
-          ),
-        };
-      }
-      const request = buildMotionRequest(
-        {
-          prompt: modelPrompt,
-          imageUrl,
-          duration,
-          aspectRatio,
-          resolution,
-          generateAudio: videoModelSupportsAudio(modelKey)
-            ? generateAudio
-            : undefined,
-          referenceImages,
-          // Same routing as submit (r2v with sheets, the t2v sibling with
-          // none, #1521), so the endpoint shown is the endpoint used.
-          referenceOnly: !shotUsesStartFrame,
-        },
-        modelKey
-      );
-      return {
-        modelName: config.name,
-        endpointId: request.endpointId,
-        prompt: promptFromFalInput(request.input, modelPrompt),
-        json: JSON.stringify(request.input, null, 2),
-        promptLength: modelPrompt.length,
-        maxPromptLength: config.maxPromptLength,
-        images: boundPromptImages(
-          imageUrlsFromFalInput(request.input),
-          (position) => `@Image${position}`
-        ),
-      };
-    } catch {
-      return null;
-    }
-  }, [
-    mentionLocations,
-    shotUsesStartFrame,
-    shot,
-    effectiveMotionModel,
-    sceneReference,
-    sceneDescription,
-    mentionCharacters,
-    mentionElements,
-    editedMotionPrompt,
-    rawMotionPrompt,
-    effectiveMotionPromptText,
-    shotMotionPrompt,
-    characterTags,
-    aspectRatio,
-    resolution,
-    generateAudio,
-    absolutizeUrl,
-    byteplusEnabled,
-  ]);
-
-  // Exact fal request for the *selected* image model — same reference
-  // resolution the `/image` trigger uses and the same request assembly the
-  // workflow uses, so the panel shows the real endpoint payload including
-  // inline (Image N) bindings. Hidden catalog models are skipped unless
-  // they are the current pick (preview turbo).
-  const imageRequestPreview = useMemo((): OptimisedPromptPreview | null => {
-    const basePrompt = (editedImagePrompt || imagePrompt || '').trim();
-    if (!basePrompt || !shot) return null;
-    const modelKey = effectiveImageModel;
-    const config = IMAGE_MODELS[modelKey];
-    const referenceImages = buildShotImageReferenceImages({
-      scene: sceneReference,
-      visualPrompt: basePrompt,
-      characters: mentionCharacters ?? [],
-      locations: mentionLocations ?? [],
-      elements: mentionElements ?? [],
-    }).map((ref) => ({
-      ...ref,
-      referenceImageUrl: absolutizeUrl(ref.referenceImageUrl),
-    }));
-    try {
-      const { prompt: enhancedPrompt, referenceUrls } =
-        buildReferenceImagePrompt(
-          basePrompt,
-          referenceImages,
-          config.maxPromptLength
-        );
-      const buildParams = {
-        model: modelKey,
-        prompt: enhancedPrompt,
-        imageSize: aspectRatio
-          ? aspectRatioToImageSize(aspectRatio)
-          : undefined,
-        resolution,
-        numImages: 1,
-        referenceImageUrls: referenceUrls,
-      };
-      if (byteplusEnabled && getBytePlusImageModelId(modelKey) !== undefined) {
-        const { modelId, ...body } = buildBytePlusImageRequest(buildParams);
-        return {
-          modelName: config.name,
-          endpointId: modelId,
-          prompt: enhancedPrompt,
-          json: JSON.stringify(body, null, 2),
-          promptLength: enhancedPrompt.length,
-          maxPromptLength: config.maxPromptLength,
-          images: boundPromptImages(
-            referenceUrls,
-            (position) => `Image ${position}`
-          ),
-        };
-      }
-      const request = buildImageRequest(buildParams);
-      const falImageUrls = imageUrlsFromFalInput(request.input);
-      return {
-        modelName: config.name,
-        endpointId: request.endpointId,
-        prompt: promptFromFalInput(request.input, enhancedPrompt),
-        json: JSON.stringify(request.input, null, 2),
-        promptLength: enhancedPrompt.length,
-        maxPromptLength: config.maxPromptLength,
-        images: boundPromptImages(
-          falImageUrls.length > 0 ? falImageUrls : referenceUrls,
-          (position) => `Image ${position}`
-        ),
-      };
-    } catch {
-      return null;
-    }
-  }, [
-    editedImagePrompt,
-    imagePrompt,
-    shot,
-    effectiveImageModel,
-    sceneReference,
-    mentionCharacters,
-    mentionElements,
-    mentionLocations,
-    aspectRatio,
-    resolution,
-    absolutizeUrl,
-    byteplusEnabled,
-  ]);
 
   // Has the *currently-selected* video model produced a video for this scene —
   // drives Generate vs Regenerate (NOT whether the shot has any video, which
