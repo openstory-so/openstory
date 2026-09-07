@@ -42,7 +42,6 @@ export const SequenceExportActions: React.FC<{
             type="button"
             variant="default"
             size="sm"
-            className="h-8 px-3 font-medium"
             aria-label={label}
             aria-busy={running}
             disabled={pending}
