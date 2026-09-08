@@ -420,12 +420,21 @@ function xaiJsonImageEditsMount(): Mountable {
           }
         }
       } else {
-        const form = new FormData();
-        form.set('prompt', body.prompt);
-        form.set('model', body.model);
+        // Hand-built multipart: the web FormData serializer rewrites every \n
+        // in a field value as \r\n, and the recorded prompt has bare \n — the
+        // matcher compares them byte for byte.
+        const boundary = `----xai-edits-${Date.now()}`;
+        const part = (name: string, value: string) =>
+          `--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`;
         upstream = await fetch(
           `http://127.0.0.1:${XAI_AIMOCK_PORT}/v1/images/edits`,
-          { method: 'POST', body: form }
+          {
+            method: 'POST',
+            headers: {
+              'content-type': `multipart/form-data; boundary=${boundary}`,
+            },
+            body: `${part('prompt', body.prompt)}${part('model', body.model)}--${boundary}--\r\n`,
+          }
         );
       }
       res.writeHead(upstream.status, {
