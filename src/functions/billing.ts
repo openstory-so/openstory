@@ -39,6 +39,12 @@ import { FOUNDER_EMAIL } from '@/shared/marketing/constants';
 import { getLogger } from '@/lib/observability/logger';
 import { captureProductEvent } from '@/lib/observability/product-events';
 import { sendFounderCreditRequestEmail } from '@/lib/services/email-service';
+import {
+  isPhoneVerificationEnabled,
+  normalizePhoneNumber,
+  sendPhoneVerification,
+  verifyPhoneAndGrant,
+} from '@/lib/billing/phone-verification';
 import { getServerAppUrl } from '@/shared/utils/environment';
 import { createServerFn } from '@tanstack/react-start';
 import { getRequest } from '@tanstack/react-start/server';
@@ -127,6 +133,46 @@ export const claimWelcomeCreditsFn = createServerFn({ method: 'POST' })
       scopedDb: context.scopedDb,
       teamId: context.teamId,
       userId: context.user.id,
+    });
+  });
+
+const phoneNumberSchema = z.object({ phoneNumber: z.string().max(32) });
+
+/** SMS alternative to saving a card for the welcome grant (#1539). */
+export const sendWelcomePhoneCodeFn = createServerFn({ method: 'POST' })
+  .middleware([authWithTeamMiddleware])
+  .inputValidator(zodValidator(phoneNumberSchema))
+  .handler(async ({ data, context }) => {
+    if (!isStripeEnabled() || !isPhoneVerificationEnabled()) {
+      throw new ValidationError('Phone verification is not available');
+    }
+    await requireTeamAdminAccess(context.user.id, context.teamId);
+    await sendPhoneVerification({
+      scopedDb: context.scopedDb,
+      teamId: context.teamId,
+      phoneNumber: normalizePhoneNumber(data.phoneNumber),
+    });
+    return { sent: true };
+  });
+
+export const verifyWelcomePhoneCodeFn = createServerFn({ method: 'POST' })
+  .middleware([authWithTeamMiddleware])
+  .inputValidator(
+    zodValidator(
+      phoneNumberSchema.extend({ code: z.string().trim().min(4).max(10) })
+    )
+  )
+  .handler(async ({ data, context }) => {
+    if (!isStripeEnabled() || !isPhoneVerificationEnabled()) {
+      throw new ValidationError('Phone verification is not available');
+    }
+    await requireTeamAdminAccess(context.user.id, context.teamId);
+    return verifyPhoneAndGrant({
+      scopedDb: context.scopedDb,
+      teamId: context.teamId,
+      userId: context.user.id,
+      phoneNumber: normalizePhoneNumber(data.phoneNumber),
+      code: data.code,
     });
   });
 
@@ -468,6 +514,7 @@ export const getBillingBalanceFn = createServerFn({ method: 'GET' })
       availableUsd: microsToUsd(funds.available),
       reservedUsd: microsToUsd(funds.reserved),
       stripeEnabled: isStripeEnabled(),
+      phoneVerificationEnabled: isPhoneVerificationEnabled(),
       // D1 `count(*)` can arrive as a string — coerce. Prefer row presence too.
       hasUsedCredits:
         usageHistory.transactions.length > 0 || Number(usageHistory.total) > 0,

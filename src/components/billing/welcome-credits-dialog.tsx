@@ -2,7 +2,8 @@
  * Welcome Credits Dialog (#1096, #1516)
  *
  * - **claim**: Stripe on, $20 unpaid. Add a card (Stripe Checkout setup,
- *   no charge) to unlock it.
+ *   no charge) to unlock it — or verify a mobile number by SMS when Twilio
+ *   is configured (#1539; wallets like WeChat Pay cannot be saved as cards).
  * - **gift**: unused signup grant and Stripe off (e2e / self-host).
  *
  * Dismiss cadence lives in localStorage (house pattern for UI prefs).
@@ -10,6 +11,7 @@
  */
 
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
   Dialog,
   DialogContent,
@@ -22,6 +24,8 @@ import { Switch } from '@/components/ui/switch';
 import {
   claimWelcomeCreditsFn,
   createSetupCheckoutSessionFn,
+  sendWelcomePhoneCodeFn,
+  verifyWelcomePhoneCodeFn,
 } from '@/functions/billing';
 import {
   BILLING_BALANCE_KEY,
@@ -157,6 +161,7 @@ export const WelcomeCreditsProvider: React.FC<{ children: ReactNode }> = ({
   const welcomeSetup = search?.welcome_setup;
   const {
     stripeEnabled,
+    phoneVerificationEnabled,
     hasUsedCredits,
     hasSignupGrant,
     isSuccess: balanceReady,
@@ -166,6 +171,7 @@ export const WelcomeCreditsProvider: React.FC<{ children: ReactNode }> = ({
   const [skippedUserId, setSkippedUserId] = useState<string | null>(null);
   const [forcedOpen, setForcedOpen] = useState(false);
   const [redirectingToStripe, setRedirectingToStripe] = useState(false);
+  const [viaPhone, setViaPhone] = useState(false);
   const isClient = useSyncExternalStore(
     subscribeNever,
     () => true,
@@ -226,6 +232,7 @@ export const WelcomeCreditsProvider: React.FC<{ children: ReactNode }> = ({
       }
       setForcedOpen(false);
       setSetupError(null);
+      setViaPhone(false);
       if (welcomeSetup) clearWelcomeSetupSearch();
     }
   };
@@ -311,6 +318,21 @@ export const WelcomeCreditsProvider: React.FC<{ children: ReactNode }> = ({
             onStart={() => handleOpenChange(false)}
             primaryLabel={primaryLabel}
           />
+        ) : viaPhone ? (
+          <PhoneClaimDialogContent
+            grantDisplay={GRANT_DISPLAY}
+            showCosts={showCosts}
+            onShowCostsChange={setShowCosts}
+            onGranted={async () => {
+              await queryClient.invalidateQueries({
+                queryKey: [...BILLING_BALANCE_KEY],
+              });
+              await queryClient.invalidateQueries({
+                queryKey: [...BILLING_GATE_KEY],
+              });
+            }}
+            onUseCard={() => setViaPhone(false)}
+          />
         ) : (
           <ClaimDialogContent
             grantDisplay={GRANT_DISPLAY}
@@ -325,6 +347,9 @@ export const WelcomeCreditsProvider: React.FC<{ children: ReactNode }> = ({
               setupMutation.mutate();
             }}
             onSkip={() => handleOpenChange(false)}
+            onUsePhone={
+              phoneVerificationEnabled ? () => setViaPhone(true) : undefined
+            }
           />
         )}
       </Dialog>
@@ -341,6 +366,7 @@ function ClaimDialogContent({
   claiming,
   onAddCard,
   onSkip,
+  onUsePhone,
 }: {
   grantDisplay: string;
   showCosts: boolean;
@@ -350,6 +376,7 @@ function ClaimDialogContent({
   claiming: boolean;
   onAddCard: () => void;
   onSkip: () => void;
+  onUsePhone?: () => void;
 }) {
   const busy = opening || claiming;
   return (
@@ -363,6 +390,17 @@ function ClaimDialogContent({
         <Button className="self-center" onClick={onAddCard} disabled={busy}>
           {claiming ? 'Unlocking…' : opening ? 'Opening…' : 'Add a card'}
         </Button>
+
+        {onUsePhone ? (
+          <Button
+            variant="link"
+            className="self-center text-muted-foreground"
+            onClick={onUsePhone}
+            disabled={busy}
+          >
+            No card? Verify by SMS instead
+          </Button>
+        ) : null}
 
         {setupError ? (
           <p role="alert" className="text-xs text-destructive">
@@ -381,6 +419,144 @@ function ClaimDialogContent({
           Skip for now
         </Button>
       </div>
+    </DialogContent>
+  );
+}
+
+function errorMessage(err: unknown, fallback: string): string {
+  return err instanceof Error ? err.message : fallback;
+}
+
+/** SMS branch of the claim dialog: number → code → grant. Closes itself via
+ *  the balance refetch (`hasSignupGrant` flips, `open` goes false). */
+function PhoneClaimDialogContent({
+  grantDisplay,
+  showCosts,
+  onShowCostsChange,
+  onGranted,
+  onUseCard,
+}: {
+  grantDisplay: string;
+  showCosts: boolean;
+  onShowCostsChange: (value: boolean) => void;
+  onGranted: () => Promise<void>;
+  onUseCard: () => void;
+}) {
+  const [phoneNumber, setPhoneNumber] = useState<string | null>(null);
+
+  const send = useMutation({
+    meta: { inlineError: true },
+    mutationFn: (data: { phoneNumber: string }) =>
+      sendWelcomePhoneCodeFn({ data }),
+    onSuccess: (_result, data) => setPhoneNumber(data.phoneNumber),
+  });
+  const verify = useMutation({
+    meta: { inlineError: true },
+    mutationFn: (data: { phoneNumber: string; code: string }) =>
+      verifyWelcomePhoneCodeFn({ data }),
+    onSuccess: onGranted,
+  });
+
+  const busy = send.isPending || verify.isPending;
+  const error = verify.error
+    ? isWelcomeCardAlreadyClaimedError(verify.error)
+      ? 'This number has already been used to claim welcome credits'
+      : errorMessage(verify.error, 'Could not verify that code')
+    : send.error
+      ? errorMessage(send.error, 'Could not send a code')
+      : null;
+
+  const onSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const form = new FormData(e.currentTarget);
+    const field = (name: string) => {
+      const value = form.get(name);
+      return typeof value === 'string' ? value : '';
+    };
+    if (phoneNumber) verify.mutate({ phoneNumber, code: field('code') });
+    else send.mutate({ phoneNumber: field('phoneNumber') });
+  };
+
+  return (
+    <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-md">
+      <WelcomeHeader
+        amount={grantDisplay}
+        description={
+          phoneNumber
+            ? `Enter the code we texted to ${phoneNumber}.`
+            : "Verify your mobile number to unlock it. We only text you a code — it just confirms you're a real person."
+        }
+      />
+
+      <form onSubmit={onSubmit} className="flex flex-col gap-4 px-6 py-5">
+        {phoneNumber ? (
+          <Input
+            key="code"
+            name="code"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            placeholder="Code"
+            aria-label="Verification code"
+            required
+          />
+        ) : (
+          <Input
+            key="phone"
+            name="phoneNumber"
+            type="tel"
+            autoComplete="tel"
+            placeholder="+1 555 123 4567"
+            aria-label="Mobile number"
+            required
+          />
+        )}
+
+        <Button type="submit" className="self-center" disabled={busy}>
+          {phoneNumber
+            ? verify.isPending
+              ? 'Unlocking…'
+              : 'Unlock'
+            : send.isPending
+              ? 'Sending…'
+              : 'Send code'}
+        </Button>
+
+        {error ? (
+          <p role="alert" className="text-xs text-destructive">
+            {error}
+          </p>
+        ) : null}
+
+        <ShowCostsRow checked={showCosts} onCheckedChange={onShowCostsChange} />
+
+        <div className="flex justify-between">
+          {phoneNumber ? (
+            <Button
+              type="button"
+              variant="link"
+              className="text-muted-foreground"
+              onClick={() => {
+                setPhoneNumber(null);
+                verify.reset();
+              }}
+              disabled={busy}
+            >
+              Change number
+            </Button>
+          ) : (
+            <span />
+          )}
+          <Button
+            type="button"
+            variant="link"
+            className="text-muted-foreground"
+            onClick={onUseCard}
+            disabled={busy}
+          >
+            Use a card instead
+          </Button>
+        </div>
+      </form>
     </DialogContent>
   );
 }

@@ -197,7 +197,7 @@ describe('welcome credit grants', () => {
       teamId,
       userId,
       source: 'claim',
-      cardFingerprint: 'fp_team',
+      fingerprint: 'fp_team',
     });
     expect(first.granted).toBe(true);
     expect(await createBillingMethods(db, teamId, userId).getBalance()).toBe(
@@ -209,7 +209,7 @@ describe('welcome credit grants', () => {
       teamId,
       userId,
       source: 'claim',
-      cardFingerprint: 'fp_team',
+      fingerprint: 'fp_team',
     });
     expect(replay.granted).toBe(false);
     expect(await createBillingMethods(db, teamId, userId).getBalance()).toBe(
@@ -223,7 +223,7 @@ describe('welcome credit grants', () => {
       teamId,
       userId,
       source: 'setup_checkout',
-      cardFingerprint: 'fp_shared',
+      fingerprint: 'fp_shared',
     });
 
     const otherTeamId = generateId();
@@ -237,7 +237,7 @@ describe('welcome credit grants', () => {
         teamId: otherTeamId,
         userId,
         source: 'claim',
-        cardFingerprint: 'fp_shared',
+        fingerprint: 'fp_shared',
       })
     ).rejects.toSatisfy(isWelcomeCardAlreadyClaimedError);
     expect(
@@ -258,7 +258,7 @@ describe('welcome credit grants', () => {
       teamId,
       userId,
       source: 'purchase',
-      cardFingerprint: 'fp_legacy',
+      fingerprint: 'fp_legacy',
     });
     expect(result.granted).toBe(false);
     expect(await billing.getBalance()).toBe(SIGNUP_GRANT_MICROS);
@@ -273,7 +273,7 @@ describe('welcome credit grants', () => {
         teamId: otherTeamId,
         userId,
         source: 'claim',
-        cardFingerprint: 'fp_legacy',
+        fingerprint: 'fp_legacy',
       })
     ).rejects.toSatisfy(isWelcomeCardAlreadyClaimedError);
   });

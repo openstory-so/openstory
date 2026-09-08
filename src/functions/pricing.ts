@@ -9,6 +9,7 @@ import {
   buildFilmCostExamples,
   type FilmCostExamples,
 } from '@/lib/billing/film-cost-examples';
+import { isPhoneVerificationEnabled } from '@/lib/billing/phone-verification';
 import {
   buildPricingCatalog,
   type PricingCatalog,
@@ -18,7 +19,11 @@ import { createServerFn } from '@tanstack/react-start';
 /** Public pricing catalog for the /pricing page, from live `model_pricing`. */
 export const getPricingCatalogFn = createServerFn({ method: 'GET' }).handler(
   async (): Promise<
-    PricingCatalog & { filmCosts: FilmCostExamples | null }
+    PricingCatalog & {
+      filmCosts: FilmCostExamples | null;
+      /** Welcome grant can be unlocked by SMS as well as by card (#1539). */
+      phoneVerification: boolean;
+    }
   > => {
     const [falPricing, falUpdatedAt] = await Promise.all([
       getEffectiveFalPricing(),
@@ -36,6 +41,7 @@ export const getPricingCatalogFn = createServerFn({ method: 'GET' }).handler(
         },
       }),
       filmCosts: buildFilmCostExamples(falPricing),
+      phoneVerification: isPhoneVerificationEnabled(),
     };
   }
 );
