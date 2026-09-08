@@ -18,7 +18,6 @@ import {
   WelcomeCardAlreadyClaimedError,
 } from '@/shared/errors';
 import { env as workerEnv } from 'cloudflare:workers';
-import { splitDialCode } from '@/shared/phone-countries';
 import { z } from 'zod';
 import { getLogger } from '@/lib/observability/logger';
 import { grantWelcomeCreditsForTeam } from './checkout';
@@ -42,13 +41,13 @@ export function isPhoneVerificationEnabled(): boolean {
   return twilioConfig() !== null;
 }
 
-/** E.164: `+` then 8–15 digits. Separators and a trunk 0 after the
- *  dial code ("+61 0412…") are dropped. */
+/**
+ * E.164 shape: `+` then 8–15 digits, separators dropped. Deliberately no
+ * trunk-zero stripping: Italy keeps its 0 after +39, and Twilio canonicalises
+ * anyway — the check uses the `to` Twilio returned from the send.
+ */
 export function normalizePhoneNumber(raw: string): string {
-  const split = splitDialCode(raw);
-  const digits = split
-    ? `+${split.dialCode}${split.national.replace(/^0+/, '')}`
-    : raw.replace(/[\s().-]/g, '');
+  const digits = raw.replace(/[\s().-]/g, '');
   if (!/^\+[1-9]\d{7,14}$/.test(digits)) {
     throw new ValidationError(
       'Enter your mobile number with the country code, like +1 555 123 4567'
@@ -80,6 +79,11 @@ const TWILIO_MESSAGES: Record<number, string> = {
   60205: 'That number cannot receive SMS.',
 };
 
+/** "+61…678" — enough to spot a mismatch in logs, not enough to dial. */
+function maskPhone(phoneNumber: string): string {
+  return `${phoneNumber.slice(0, 3)}…${phoneNumber.slice(-3)}`;
+}
+
 async function twilioPost(
   path: 'Verifications' | 'VerificationChecks',
   form: Record<string, string>
@@ -100,12 +104,9 @@ async function twilioPost(
   );
   const body = twilioBody.parse(await response.json().catch(() => ({})));
   if (!response.ok) {
-    logger.warn('Twilio Verify request failed', {
-      path,
-      status: response.status,
-      code: body.code,
-      message: body.message,
-    });
+    logger.warn(
+      `Twilio Verify ${path} failed: HTTP ${response.status}, code ${body.code ?? '?'}, to ${maskPhone(form.To ?? '')}: ${body.message ?? ''}`
+    );
     // 20404 on a check = no pending verification (expired, already used, or
     // too many wrong codes). On a send it means the SERVICE was not found —
     // wrong TWILIO_VERIFY_SERVICE_SID, not anything the user can fix.
