@@ -36,6 +36,22 @@ async function cardFingerprint(paymentMethodId: string): Promise<string> {
   return fingerprint;
 }
 
+/**
+ * Account fingerprint of whatever paid a charge — card, Alipay or WeChat Pay
+ * (#1537). Stripe stamps one on each so the welcome grant's one-per-account
+ * rule holds for wallets too. `null` for a method Stripe does not fingerprint
+ * (e.g. Link), which cannot claim the grant.
+ */
+export function chargeFingerprint(charge: Stripe.Charge): string | null {
+  const details = charge.payment_method_details;
+  return (
+    details?.card?.fingerprint ??
+    details?.alipay?.fingerprint ??
+    details?.wechat_pay?.fingerprint ??
+    null
+  );
+}
+
 type CreateCheckoutParams = {
   scopedDb: ScopedDb;
   teamId: string;
@@ -126,12 +142,17 @@ export async function createCheckoutSession(
   const session = await stripe.checkout.sessions.create({
     mode: 'payment',
     customer: customerId,
-    payment_method_types: ['card'],
-    // Save the payment method for auto-top-up
-    payment_intent_data: {
-      setup_future_usage: 'off_session',
-      metadata,
+    // No `payment_method_types`: Stripe shows what is enabled in the Dashboard
+    // (card, Alipay, WeChat Pay — #1537) and only when eligible for the
+    // currency, so a wallet that is off or unavailable can never break
+    // checkout. Alipay / WeChat Pay are single-use, so the card is the only
+    // method saved for auto-top-up — a session-level `setup_future_usage`
+    // would hide the wallets.
+    payment_method_options: {
+      card: { setup_future_usage: 'off_session' },
+      wechat_pay: { client: 'web' },
     },
+    payment_intent_data: { metadata },
     line_items: [
       {
         price_data: {

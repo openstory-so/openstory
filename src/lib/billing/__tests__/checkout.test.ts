@@ -26,6 +26,7 @@ vi.doMock('@/lib/observability/product-events', () => ({
 }));
 
 const {
+  chargeFingerprint,
   createCheckoutSession,
   createSetupCheckoutSession,
   grantWelcomeIfTeamHasCard,
@@ -93,6 +94,32 @@ describe('createCheckoutSession', () => {
         stripe_payment_intent_id: 'pi_1',
         surface: 'sidebar_pill',
       }),
+    });
+  });
+
+  it('lets the Dashboard pick payment methods and saves only cards (#1537)', async () => {
+    create.mockResolvedValue({
+      id: 'cs_2',
+      url: 'https://x',
+      payment_intent: 'pi_2',
+    });
+    await createCheckoutSession({
+      scopedDb: makeScopedDb(),
+      teamId: 'team_1',
+      amountUsd: 10,
+      userId: 'user_1',
+      userEmail: 'test@example.com',
+      successUrl: 'https://app/success',
+      cancelUrl: 'https://app/cancel',
+    });
+    const session = create.mock.calls.at(-1)?.[0];
+    // A hard-coded list would 400 the whole checkout when a wallet is off.
+    expect(session.payment_method_types).toBeUndefined();
+    // Session-level setup_future_usage hides single-use wallets.
+    expect(session.payment_intent_data.setup_future_usage).toBeUndefined();
+    expect(session.payment_method_options).toEqual({
+      card: { setup_future_usage: 'off_session' },
+      wechat_pay: { client: 'web' },
     });
   });
 
@@ -193,5 +220,34 @@ describe('grantWelcomeIfTeamHasCard', () => {
       hasSignupGrant: false,
     });
     expect(addCredits).not.toHaveBeenCalled();
+  });
+});
+
+describe('chargeFingerprint', () => {
+  const charge = (payment_method_details: unknown) =>
+    // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- test double
+    ({ payment_method_details }) as unknown as import('stripe').Stripe.Charge;
+
+  it('reads the card, Alipay or WeChat Pay account fingerprint', () => {
+    expect(
+      chargeFingerprint(charge({ type: 'card', card: { fingerprint: 'fp_c' } }))
+    ).toBe('fp_c');
+    expect(
+      chargeFingerprint(
+        charge({ type: 'alipay', alipay: { fingerprint: 'fp_a' } })
+      )
+    ).toBe('fp_a');
+    expect(
+      chargeFingerprint(
+        charge({ type: 'wechat_pay', wechat_pay: { fingerprint: 'fp_w' } })
+      )
+    ).toBe('fp_w');
+  });
+
+  it('is null for a method Stripe does not fingerprint', () => {
+    expect(
+      chargeFingerprint(charge({ type: 'link', link: { country: 'AU' } }))
+    ).toBeNull();
+    expect(chargeFingerprint(charge(null))).toBeNull();
   });
 });
