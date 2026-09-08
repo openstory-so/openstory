@@ -13,7 +13,7 @@ describe('phone countries', () => {
       flag: '🇦🇺',
     });
     expect(list.map((c) => c.name)).toEqual(
-      [...list.map((c) => c.name)].sort((a, b) => a.localeCompare(b))
+      list.map((c) => c.name).sort((a, b) => a.localeCompare(b))
     );
   });
 
