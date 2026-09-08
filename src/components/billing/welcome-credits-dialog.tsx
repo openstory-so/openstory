@@ -505,8 +505,9 @@ function PhoneClaimDialogContent({
 
       <form onSubmit={onSubmit} className="flex flex-col gap-4 px-6 py-5">
         {phoneNumber ? (
-          // Plain field, not the slot widget: macOS/iOS autofill from Messages
-          // needs a real, visible text input with one-time-code autocomplete.
+          // Plain field, not the slot widget, and NOT autofocused: code
+          // autofill from Messages only offers itself on an unfocused
+          // one-time-code input.
           <Input
             name="code"
             type="text"
@@ -520,8 +521,6 @@ function PhoneClaimDialogContent({
             value={code}
             onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
             disabled={busy}
-            // oxlint-disable-next-line no-autofocus -- the code is the only field on this step
-            autoFocus
           />
         ) : (
           <PhoneInput
