@@ -3,9 +3,9 @@
  * OpenAI-style "Add to credit balance" modal — the in-app purchase surface.
  * (Credits also arrive via gift codes, the signup grant, founder grants, and
  * auto-top-up.) A saved card is charged in place; "+ Add payment method" (or
- * having no saved card) falls back to Stripe Checkout, which saves the card
- * for next time. Globally mounted in AppLayout, opened via
- * openAddCreditsDialog().
+ * having no saved card) falls back to Stripe Checkout — card, Alipay or WeChat
+ * Pay (#1537); a card is saved for next time. Globally mounted in AppLayout,
+ * opened via openAddCreditsDialog().
  */
 
 import { Button } from '@/components/ui/button';
@@ -63,7 +63,7 @@ import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { ulid } from 'ulid';
 
-/** Sentinel Select value for "pay with a new card at checkout". */
+/** Sentinel Select value for "pay at checkout" — new card, Alipay or WeChat Pay (#1537). */
 const NEW_CARD = 'new-card';
 
 /** Amount the dialog opens on — matches the low-balance toast's "Add $10". */
@@ -285,7 +285,10 @@ export function AddCreditsDialog() {
                   value: pm.id,
                   label: `${formatBrand(pm.brand)} •••• ${pm.last4}`,
                 })),
-                { value: NEW_CARD, label: 'New card at checkout' },
+                {
+                  value: NEW_CARD,
+                  label: 'Card, Alipay or WeChat Pay at checkout',
+                },
               ]}
               onValueChange={(value) => {
                 if (value == null) return;
@@ -305,7 +308,7 @@ export function AddCreditsDialog() {
                 ))}
                 <SelectItem value={NEW_CARD}>
                   <Plus className="size-4 text-muted-foreground" />
-                  New card at checkout
+                  Card, Alipay or WeChat Pay at checkout
                 </SelectItem>
               </SelectContent>
             </Select>

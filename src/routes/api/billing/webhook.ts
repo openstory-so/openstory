@@ -5,8 +5,10 @@
 
 import { stripeWebhookMiddleware } from '@/functions/stripe-webhook-middleware';
 import {
+  chargeFingerprint,
   fulfillSavedCard,
   grantWelcomeCreditsForPaymentMethod,
+  grantWelcomeCreditsForTeam,
   SAVE_CARD_METADATA_TYPE,
   type WelcomeGrantSource,
 } from '@/lib/billing/checkout';
@@ -100,17 +102,25 @@ export const Route = createFileRoute('/api/billing/webhook')({
                 expand: ['latest_charge'],
               });
               const charge = pi.latest_charge;
-              const receiptUrl =
-                charge && typeof charge === 'object'
-                  ? (charge.receipt_url ?? undefined)
-                  : undefined;
-              const purchasePaymentMethodId = stripeObjectId(pi.payment_method);
-              if (!purchasePaymentMethodId) {
-                throw new Error('checkout session missing payment method');
+              if (!charge || typeof charge !== 'object') {
+                throw new Error('checkout session missing charge');
               }
+              const receiptUrl = charge.receipt_url ?? undefined;
 
-              // Default PM / decline-cooldown — not required for the welcome grant.
-              if (customerId) {
+              // Default PM / decline-cooldown — not required for the welcome
+              // grant. Only a card is reusable: Alipay / WeChat Pay are
+              // single-use (#1537), so they are never attached and never
+              // become the auto-top-up method.
+              if (
+                customerId &&
+                charge.payment_method_details?.type === 'card'
+              ) {
+                const purchasePaymentMethodId = stripeObjectId(
+                  pi.payment_method
+                );
+                if (!purchasePaymentMethodId) {
+                  throw new Error('checkout session missing payment method');
+                }
                 try {
                   await stripe.customers.update(customerId, {
                     invoice_settings: {
@@ -160,12 +170,25 @@ export const Route = createFileRoute('/api/billing/webhook')({
               if (!teamId || !userId) {
                 throw new Error('credit_top_up missing teamId or userId');
               }
-              await grantWelcomeFromPaymentMethod({
-                scopedDb,
-                teamId,
-                userId,
-                paymentMethodId: purchasePaymentMethodId,
-              });
+              const fingerprint = chargeFingerprint(charge);
+              if (!fingerprint) {
+                // Nothing to key the one-per-account rule on; the team can
+                // still claim by saving a card.
+                logger.info('welcome grant skipped: no payment fingerprint', {
+                  teamId,
+                  paymentMethodType: charge.payment_method_details?.type,
+                });
+                break;
+              }
+              await grantWelcomeOrThrow(scopedDb, teamId, () =>
+                grantWelcomeCreditsForTeam({
+                  scopedDb,
+                  teamId,
+                  userId,
+                  source: 'purchase',
+                  cardFingerprint: fingerprint,
+                })
+              );
               break;
             }
 
@@ -257,12 +280,15 @@ export const Route = createFileRoute('/api/billing/webhook')({
               if (!pmId) {
                 throw new Error('credit_top_up_direct missing payment method');
               }
-              await grantWelcomeFromPaymentMethod({
-                scopedDb,
-                teamId,
-                userId,
-                paymentMethodId: pmId,
-              });
+              await grantWelcomeOrThrow(scopedDb, teamId, () =>
+                grantWelcomeCreditsForPaymentMethod({
+                  scopedDb,
+                  teamId,
+                  userId,
+                  paymentMethodId: pmId,
+                  source: 'purchase',
+                })
+              );
               break;
             }
 
@@ -300,25 +326,19 @@ function stripeObjectId(
  * Purchase/setup webhooks 200 on already-claimed so Stripe stops. Anything
  * else that leaves this team without a grant must 400 so Stripe retries.
  */
-async function grantWelcomeFromPaymentMethod(opts: {
-  scopedDb: ScopedDb;
-  teamId: string;
-  userId: string;
-  paymentMethodId: string;
-}): Promise<void> {
+async function grantWelcomeOrThrow(
+  scopedDb: ScopedDb,
+  teamId: string,
+  grant: () => Promise<{ granted: boolean }>
+): Promise<void> {
   try {
-    const { granted } = await grantWelcomeCreditsForPaymentMethod({
-      ...opts,
-      source: 'purchase',
-    });
+    const { granted } = await grant();
     if (granted || SIGNUP_GRANT_MICROS <= 0) return;
-    if (await opts.scopedDb.billing.hasSignupGrant()) return;
+    if (await scopedDb.billing.hasSignupGrant()) return;
     throw new Error('Welcome grant did not land');
   } catch (err) {
     if (isWelcomeCardAlreadyClaimedError(err)) {
-      logger.info('welcome grant skipped: card already claimed', {
-        teamId: opts.teamId,
-      });
+      logger.info('welcome grant skipped: card already claimed', { teamId });
       return;
     }
     throw err;
