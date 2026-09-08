@@ -17,7 +17,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import type { SceneWithScript } from '@/hooks/use-scenes';
 import type { AspectRatio } from '@/shared/constants/aspect-ratios';
 import { cn } from '@/shared/utils';
-import { plainSceneTitle, stripMarkdown } from '@/shared/utils/markdown-plain';
+import { plainSceneTitle } from '@/shared/utils/markdown-plain';
 import type { ShotView } from '@/lib/shots/shot-view';
 import { Link } from '@tanstack/react-router';
 import {
@@ -33,7 +33,7 @@ import { SceneThumbnail } from './scene-thumbnail';
 
 type SceneListItemProps = {
   shot?: ShotView | undefined;
-  /** The shot's scene — carries the number, title and script the card shows. */
+  /** The shot's scene — names the link ("Scene 2 — Shot 1 · 6s"). */
   scene?: SceneWithScript | undefined;
   aspectRatio: AspectRatio;
   isActive?: boolean;
@@ -93,13 +93,17 @@ const SceneListItemComponent: React.FC<SceneListItemProps> = ({
   const hasVideo = shot?.videoStatus === 'completed' && !!shot.video?.url;
   const isGeneratingVideo =
     !!shot && (shot.videoStatus === 'generating' || isRegeneratingMotion);
+  // The row reads like a shot-list line: number + length, then the one action
+  // and camera move. The scene title and script live on the group header
+  // above — repeating them per shot left the thumbnail as the only difference.
   const sceneNumber = (scene?.orderIndex ?? 0) + 1;
   const title = !shot
     ? undefined
-    : plainSceneTitle(scene?.title) || `Scene ${sceneNumber}`;
-  const scriptPreview = !shot
-    ? undefined
-    : stripMarkdown(scene?.script?.extract ?? '');
+    : `Shot ${shot.shotNumber ?? 1} · ${Math.round((shot.durationMs ?? 3000) / 1000)}s`;
+  const linkLabel = shot
+    ? `${plainSceneTitle(scene?.title) || `Scene ${sceneNumber}`} — ${title}`
+    : undefined;
+  const preview = !shot ? undefined : (shot.motionPrompt?.fullPrompt ?? '');
 
   // Skeleton state (no shot): no link, no pointer cursor.
   const isSkeleton = !shot;
@@ -125,7 +129,7 @@ const SceneListItemComponent: React.FC<SceneListItemProps> = ({
         <Link
           from="/sequences/$id/scenes"
           search={(prev) => ({ ...prev, scenes: undefined, shot: shot.id })}
-          aria-label={title}
+          aria-label={linkLabel}
           className="absolute inset-0 z-10 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           onClick={onSelect}
         />
@@ -193,7 +197,7 @@ const SceneListItemComponent: React.FC<SceneListItemProps> = ({
                 thumbnailStatus={shot?.frame.imageStatus || undefined}
                 videoUrl={hasVideo ? shot.video?.url : null}
                 generationError={shot?.frame.imageError}
-                alt={title ?? 'Scene thumbnail'}
+                alt={linkLabel ?? 'Shot thumbnail'}
                 aspectRatio={aspectRatio}
                 className="w-full rounded-md"
                 gridSheetUrl={shot?.gridSheet?.url}
@@ -246,8 +250,8 @@ const SceneListItemComponent: React.FC<SceneListItemProps> = ({
             <CardTitle className="text-sm">
               {title ?? <Skeleton className="w-24 h-4" />}
             </CardTitle>
-            <CardDescription className="line-clamp-4 text-xs leading-snug">
-              {scriptPreview ?? <Skeleton className="w-full h-4" />}
+            <CardDescription className="line-clamp-2 text-xs leading-snug">
+              {preview ?? <Skeleton className="w-full h-4" />}
             </CardDescription>
           </div>
         </div>
@@ -334,7 +338,7 @@ const areEqual = (
     return false;
   }
 
-  // Scene fields used in render: number, title, script extract.
+  // Scene fields used in render: number and title (link label only).
   const prevScene = prevProps.scene;
   const nextScene = nextProps.scene;
   if (prevScene !== nextScene) {
@@ -343,8 +347,7 @@ const areEqual = (
     }
     if (
       prevScene.orderIndex !== nextScene.orderIndex ||
-      prevScene.title !== nextScene.title ||
-      prevScene.script?.extract !== nextScene.script?.extract
+      prevScene.title !== nextScene.title
     ) {
       return false;
     }
@@ -390,7 +393,11 @@ const areEqual = (
     return false;
   }
 
-  if (prevShot.shotNumber !== nextShot.shotNumber) {
+  if (
+    prevShot.shotNumber !== nextShot.shotNumber ||
+    prevShot.durationMs !== nextShot.durationMs ||
+    prevShot.motionPrompt?.fullPrompt !== nextShot.motionPrompt?.fullPrompt
+  ) {
     return false;
   }
 
