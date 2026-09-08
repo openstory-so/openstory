@@ -287,7 +287,7 @@ export function AddCreditsDialog() {
                 })),
                 {
                   value: NEW_CARD,
-                  label: 'Pay at checkout',
+                  label: 'Enter at checkout',
                 },
               ]}
               onValueChange={(value) => {
@@ -308,7 +308,7 @@ export function AddCreditsDialog() {
                 ))}
                 <SelectItem value={NEW_CARD}>
                   <Plus className="size-4 text-muted-foreground" />
-                  Pay at checkout
+                  Enter at checkout
                 </SelectItem>
               </SelectContent>
             </Select>
