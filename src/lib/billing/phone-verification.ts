@@ -85,7 +85,7 @@ function maskPhone(phoneNumber: string): string {
 }
 
 async function twilioPost(
-  path: 'Verifications' | 'VerificationChecks',
+  path: 'Verifications' | 'VerificationCheck',
   form: Record<string, string>
 ): Promise<z.infer<typeof twilioBody>> {
   const config = twilioConfig();
@@ -110,7 +110,7 @@ async function twilioPost(
     // 20404 on a check = no pending verification (expired, already used, or
     // too many wrong codes). On a send it means the SERVICE was not found —
     // wrong TWILIO_VERIFY_SERVICE_SID, not anything the user can fix.
-    if (body.code === 20404 && path === 'VerificationChecks') {
+    if (body.code === 20404 && path === 'VerificationCheck') {
       throw new ValidationError('That code has expired. Send a new one.');
     }
     const known = body.code != null ? TWILIO_MESSAGES[body.code] : undefined;
@@ -156,7 +156,7 @@ export async function verifyPhoneAndGrant(opts: {
   phoneNumber: string;
   code: string;
 }): Promise<{ granted: boolean }> {
-  const check = await twilioPost('VerificationChecks', {
+  const check = await twilioPost('VerificationCheck', {
     To: opts.phoneNumber,
     Code: opts.code,
   });

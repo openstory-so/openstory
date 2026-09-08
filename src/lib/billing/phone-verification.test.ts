@@ -111,6 +111,10 @@ describe('phone verification', () => {
       code: '123456',
     });
     expect(result).toEqual({ granted: true });
+    // Twilio's check endpoint is singular; the plural 404s as "not found".
+    expect(fetchMock.mock.lastCall?.[0].url).toBe(
+      'https://verify.twilio.com/v2/Services/VA1/VerificationCheck'
+    );
     const args = grant.mock.calls[0]?.[0];
     if (!args) throw new Error('grant not called');
     expect(args.source).toBe('phone');
