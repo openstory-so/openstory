@@ -33,7 +33,7 @@ import {
   videoVariants,
 } from '@/lib/db/schema';
 import { getDb } from '#db-client';
-import { and, asc, desc, eq, isNull, like, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, isNotNull, isNull, like, sql } from 'drizzle-orm';
 
 export type CreatedTestUser = {
   id: string;
@@ -775,7 +775,8 @@ export async function getTestSequenceShots(sequenceId: string): Promise<
   const statusByShot = new Map(primaryRows.map((v) => [v.shotId, v.status]));
   // The still-image surface lives on each shot's anchor frame now (#989);
   // project it back under the legacy thumbnail* names — keyed by shotId
-  // (orderIndex 0), never by id-reuse.
+  // (orderIndex 0), never by id-reuse. Same fallback as ShotView: selected
+  // still, else the skipStorage `kind: 'preview'` animatic (#1101 / #1486).
   const frameRows = await db
     .select({
       shotId: frames.shotId,
@@ -789,15 +790,43 @@ export async function getTestSequenceShots(sequenceId: string): Promise<
     )
     .where(and(eq(frames.sequenceId, sequenceId), eq(frames.orderIndex, 0)));
   const framesByShot = new Map(frameRows.map((f) => [f.shotId, f]));
+  const previewRows = await db
+    .select({
+      shotId: frames.shotId,
+      previewUrl: frameVariants.url,
+    })
+    .from(frames)
+    .innerJoin(frameVariants, eq(frameVariants.frameId, frames.id))
+    .where(
+      and(
+        eq(frames.sequenceId, sequenceId),
+        eq(frames.orderIndex, 0),
+        eq(frameVariants.kind, 'preview'),
+        eq(frameVariants.status, 'completed'),
+        isNotNull(frameVariants.url),
+        isNull(frameVariants.discardedAt)
+      )
+    )
+    .orderBy(asc(frameVariants.id));
+  const previewByShot = new Map(
+    previewRows.map((row) => [row.shotId, row.previewUrl])
+  );
   return rows
     .map((row) => {
       const frame = framesByShot.get(row.id);
+      const selectedUrl = frame?.imageUrl ?? null;
+      const previewUrl = previewByShot.get(row.id) ?? null;
+      const thumbnailUrl = selectedUrl ?? previewUrl;
       return {
         id: row.id,
         orderIndex: row.sceneOrderIndex ?? 0,
         shotNumber: row.shotNumber ?? 0,
-        thumbnailUrl: frame?.imageUrl ?? null,
-        thumbnailStatus: frame?.imageStatus ?? null,
+        thumbnailUrl,
+        thumbnailStatus: selectedUrl
+          ? (frame?.imageStatus ?? null)
+          : previewUrl
+            ? 'completed'
+            : (frame?.imageStatus ?? null),
         videoUrl: videoByShot.get(row.id) ?? null,
         videoStatus: statusByShot.get(row.id) ?? null,
       };

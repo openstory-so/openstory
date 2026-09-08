@@ -1418,6 +1418,12 @@ export interface BatchMotionMusicWorkflowInput extends SequenceWorkflowContext {
  */
 export type ShotImageSceneSnapshot = {
   sceneId: string;
+  /**
+   * Present when the scene has 2+ shots so two snapshots of the same scene
+   * don't collide. Omitted on the 1-shot path so the batch hash stays
+   * byte-identical to pre-#1486 payloads.
+   */
+  shotId?: string;
   visualPrompt: string;
   characterSheetHashes: string[];
   locationSheetHashes: string[];
@@ -1453,16 +1459,14 @@ export interface ShotImagesWorkflowInput extends SequenceWorkflowContext {
 
 export interface ShotImagesWorkflowResult {
   /**
-   * Primary image URL per scene, ALIGNED to the input
-   * `scenesWithVisualPrompts` order — a failed scene keeps its slot as
-   * `null`. Consumers index this by scene position (analyze-script phase 5),
-   * so compacting failures out would silently pair the wrong image with the
-   * wrong scene.
+   * Primary image URL per clip, ALIGNED to `shotWorkItems(scenes, shotMapping)`
+   * (scene order, then shotNumber). A 1-shot film is still one slot per scene.
+   * A failed clip keeps its slot as `null`.
    */
   imageUrls: (string | null)[];
   /**
-   * Primary `frame_variants` version id per scene, ALIGNED to `imageUrls`.
-   * Null slot = that scene's image failed. Threaded into the motion-batch
+   * Primary `frame_variants` version id per clip, ALIGNED to `imageUrls`.
+   * Null slot = that clip's image failed. Threaded into the motion-batch
    * payload so the clip's manifest names the still it actually rendered from
    * (#1380). Optional only so an in-flight child from a pre-#1380 build
    * (URLs only) still type-checks at the parent; treat a missing array as
@@ -1527,6 +1531,12 @@ export interface MotionMusicPromptsWorkflowResult {
    */
   motionPromptsBySceneId: Record<string, MotionPrompt>;
   /**
+   * Per-clip motion prompts keyed by `shotId`. Extra shots of a multi-shot
+   * scene live here; the scene-head is also written so motion-batch can
+   * look up either map.
+   */
+  motionPromptsByShotId?: Record<string, MotionPrompt>;
+  /**
    * The `shot_prompt_versions` id each per-scene child left live, keyed by
    * `sceneId`. Analyze-script pins this onto the motion-batch payload so the
    * clip's manifest names the prompt it rendered from (#1380). Null when the
@@ -1535,6 +1545,7 @@ export interface MotionMusicPromptsWorkflowResult {
    * treat a missing map as all-null.
    */
   motionPromptVersionIdsBySceneId?: Record<string, string | null>;
+  motionPromptVersionIdsByShotId?: Record<string, string | null>;
   musicPrompt: string;
   musicTags: string;
 }

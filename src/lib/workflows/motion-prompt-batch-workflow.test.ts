@@ -17,6 +17,7 @@
  */
 
 import type { WorkflowScopedDb } from '@/lib/db/scoped-workflow';
+import { migrateStyleConfigV1ToV2 } from '@/lib/style/style-config';
 import type {
   MotionPromptBatchWorkflowInput,
   MotionPromptWorkflowInput,
@@ -110,7 +111,13 @@ function makeWorkflow(): Probe {
 }
 
 // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- runImpl never touches scopedDb
-const SCOPED_DB = {} as unknown as WorkflowScopedDb;
+const SCOPED_DB = {
+  shotPromptVersions: {
+    writeAiVersion: vi.fn(async (input: { shotId: string }) => ({
+      id: `mpv-derived-${input.shotId}`,
+    })),
+  },
+} as unknown as WorkflowScopedDb;
 
 const succeed = (sceneId: string) =>
   Promise.resolve({
@@ -233,5 +240,104 @@ describe('MotionPromptBatchWorkflow reference-only', () => {
       ([, args]) => args.childPayload
     );
     expect(payloads.every((p) => p.referenceOnly === true)).toBe(true);
+  });
+});
+
+describe('MotionPromptBatchWorkflow extra shots (#1486)', () => {
+  test('LLM-spawns once per scene and derives extras', async () => {
+    spawnAndAwaitChild.mockReset();
+    spawnAndAwaitChild.mockImplementation(
+      (_step: unknown, args: { childId: string }) =>
+        succeed(args.childId.split(':').at(-1) ?? '')
+    );
+
+    const multiShotScenes: MotionPromptBatchWorkflowInput['scenes'] = [
+      {
+        sceneId: 'scene_1',
+        sceneNumber: 1,
+        originalScript: { extract: 'a beat', dialogue: [] },
+        metadata: {
+          title: 'scene_1',
+          durationSeconds: 13,
+          location: '',
+          timeOfDay: '',
+          storyBeat: '',
+        },
+        continuity: {
+          characterTags: [],
+          environmentTag: '',
+          colorPalette: '',
+          lightingSetup: '',
+          styleTag: '',
+        },
+        shots: [
+          {
+            shotNumber: 1,
+            framing: {
+              shotSize: 'wide',
+              angle: 'eye level',
+              composition: '',
+              subjectStartState: '',
+            },
+            action: 'opens the door',
+            cameraMovement: { move: 'static', pacing: 'slow' },
+            soundCue: '',
+            durationSeconds: 7,
+          },
+          {
+            shotNumber: 2,
+            framing: {
+              shotSize: 'medium',
+              angle: 'eye level',
+              composition: '',
+              subjectStartState: '',
+            },
+            action: 'cut to the hallway',
+            cameraMovement: { move: 'truck', pacing: 'smooth' },
+            soundCue: '',
+            durationSeconds: 6,
+          },
+        ],
+      },
+    ];
+    const event = makeEvent({
+      styleConfig: migrateStyleConfigV1ToV2({
+        mood: 'tense',
+        artStyle: 'cinematic',
+        lighting: 'soft',
+        colorPalette: ['#111'],
+        cameraWork: 'handheld',
+        referenceFilms: [],
+        colorGrading: 'neutral',
+      }),
+      scenes: multiShotScenes,
+      shotMapping: [
+        {
+          analysisSceneId: 'scene_1',
+          shotId: 'sh-1',
+          frameId: 'fr-1',
+          shotNumber: 1,
+        },
+        {
+          analysisSceneId: 'scene_1',
+          shotId: 'sh-2',
+          frameId: 'fr-2',
+          shotNumber: 2,
+        },
+      ],
+      startingFrameImageUrls: {
+        scene_1: 'https://example.com/scene_1.png',
+        'sh-1': 'https://example.com/sh-1.png',
+        'sh-2': 'https://example.com/sh-2.png',
+      },
+    });
+
+    const result = await makeWorkflow().batch(event, makeStep(), SCOPED_DB);
+
+    expect(spawnAndAwaitChild).toHaveBeenCalledTimes(1);
+    expect(result).toHaveLength(2);
+    expect(result[0]?.shotId).toBe('sh-1');
+    expect(result[1]?.shotId).toBe('sh-2');
+    expect(result[1]?.motionPrompt.fullPrompt).toContain('cut to the hallway');
   });
 });

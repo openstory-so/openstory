@@ -100,6 +100,91 @@ describe('buildStoryboardMotionBatchShots', () => {
     expect(shots[0]?.motionPromptVersionId).toBe('mpv-2');
   });
 
+  it('emits one clip per mapping row, using each shot duration (#1486)', () => {
+    const shots = buildStoryboardMotionBatchShots({
+      scenes: [
+        scene('sc-1', 13, {
+          shots: [
+            {
+              shotNumber: 1,
+              framing: {
+                shotSize: 'wide',
+                angle: 'eye level',
+                composition: '',
+                subjectStartState: '',
+              },
+              action: 'opens the door',
+              cameraMovement: { move: 'static', pacing: 'slow' },
+              soundCue: '',
+              durationSeconds: 7,
+            },
+            {
+              shotNumber: 2,
+              framing: {
+                shotSize: 'medium',
+                angle: 'eye level',
+                composition: '',
+                subjectStartState: '',
+              },
+              action: 'cut to the hallway',
+              cameraMovement: { move: 'truck', pacing: 'smooth' },
+              soundCue: '',
+              durationSeconds: 6,
+            },
+          ],
+        }),
+      ],
+      shotMapping: [
+        {
+          analysisSceneId: 'sc-1',
+          shotId: 'shot-1',
+          frameId: 'fr-1',
+          shotNumber: 1,
+        },
+        {
+          analysisSceneId: 'sc-1',
+          shotId: 'shot-1b',
+          frameId: 'fr-1b',
+          shotNumber: 2,
+        },
+      ],
+      imageUrls: ['https://cdn/a.png', 'https://cdn/b.png'],
+      frameVersionIds: ['fv-1', 'fv-1b'],
+      motionPromptsBySceneId: {
+        'sc-1': prompt('pan across the dock'),
+      },
+      motionPromptsByShotId: {
+        'shot-1': prompt('pan across the dock'),
+        'shot-1b': prompt('cut to the hallway. Camera: smooth truck'),
+      },
+      motionPromptVersionIdsBySceneId: { 'sc-1': 'mpv-1' },
+      motionPromptVersionIdsByShotId: {
+        'shot-1': 'mpv-1',
+        'shot-1b': 'mpv-1b',
+      },
+      videoModel: DEFAULT_VIDEO_MODEL,
+      aspectRatio: '16:9',
+      characters: [],
+      elements: [],
+    });
+
+    expect(shots).toHaveLength(2);
+    expect(shots[0]).toMatchObject({
+      shotId: 'shot-1',
+      imageUrl: 'https://cdn/a.png',
+      frameVersionId: 'fv-1',
+      motionPromptVersionId: 'mpv-1',
+      duration: 7,
+    });
+    expect(shots[1]).toMatchObject({
+      shotId: 'shot-1b',
+      imageUrl: 'https://cdn/b.png',
+      frameVersionId: 'fv-1b',
+      motionPromptVersionId: 'mpv-1b',
+      duration: 6,
+    });
+  });
+
   it('throws when a still exists but the motion prompt does not', () => {
     expect(() =>
       buildStoryboardMotionBatchShots({

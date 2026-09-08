@@ -341,15 +341,17 @@ SUPER:  CORAL.  OUT NOW.
       //   - video: grok "Handheld camera tracks forward…"
       // so the vanity scene's primary image and that clip's video each fail
       // once and are rescued by the workflow retry (image: CF default step
-      // retry; motion: submit→poll loop). The "every shot completed" /
-      // "every shot has video" assertions below therefore also prove the
-      // retry path end-to-end — no separate spec needed.
+      // retry; motion: submit→poll loop). Every shot should have a thumbnail
+      // (selected still, or the skipStorage animatic preview while that still
+      // is in flight).
       await expect
         .poll(
           async () => {
             const shots = await getTestSequenceShots(sequenceId);
             if (shots.length === 0) return false;
-            return shots.every((f) => f.thumbnailStatus === 'completed');
+            return shots.every(
+              (s) => s.thumbnailStatus === 'completed' && s.thumbnailUrl
+            );
           },
           { timeout: 600_000, intervals: [2_000, 5_000, 10_000] }
         )
@@ -377,11 +379,8 @@ SUPER:  CORAL.  OUT NOW.
         )
         .toBe(true);
 
-      // 11. Per-scene playback: click through every scene-list-item and
-      //     assert the active <video> in the ScenePlayer is decodable.
-      //     The list item carries `data-testid="scene-list-item"` so we can
-      //     enumerate without relying on title text. Shots are nested under
-      //     scene-group headers after stream-time scene persistence (#1072).
+      // 11. Per-clip playback: click each shot and assert the ScenePlayer
+      //     <video> is decodable. One clip per shot (#1486).
       //
       //     The player only shows the scene's <video> on a video tab; the
       //     default "Variants" tab (the multi-model scene-review UX, #545)
@@ -400,22 +399,28 @@ SUPER:  CORAL.  OUT NOW.
       await expect(canvasToggle).toBeEnabled();
       await expect(canvasToggle).toHaveAttribute('data-state', 'on');
 
-      const sceneItems = page.locator('[data-testid="scene-list-item"]');
-      const sceneCount = await sceneItems.count();
-      expect(sceneCount, 'sequence has at least one scene').toBeGreaterThan(0);
-      await sceneItems.first().click();
+      const clips = await getTestSequenceShots(sequenceId);
+      expect(
+        clips.length,
+        'sequence has at least one rendered clip'
+      ).toBeGreaterThan(0);
+      const firstClip = clips[0];
+      if (!firstClip) {
+        throw new Error('sequence has no rendered clip');
+      }
+      await page.locator(`[data-shot-id="${firstClip.id}"]`).click();
       await page.getByRole('tab', { name: 'Video' }).click();
       // Scope to visible videos: the hidden next-scene prefetch is a <video>
       // too, and while the player swaps scenes its own element can drop out of
       // the DOM, so a bare `video` locator resolves to the prefetch.
       const playerVideo = page.locator('video:visible').first();
       let assertedSrc = '';
-      for (let i = 0; i < sceneCount; i++) {
-        await sceneItems.nth(i).click();
+      for (const clip of clips) {
+        await page.locator(`[data-shot-id="${clip.id}"]`).click();
         assertedSrc = await expectSceneVideoPlayable(
           playerVideo,
           assertedSrc,
-          `scene ${i + 1} video`
+          `scene ${clip.orderIndex + 1} shot ${clip.shotNumber} video`
         );
       }
 

@@ -54,6 +54,11 @@ import {
   computeShotImagesHashFromDto,
   type ShotImageSceneSnapshot,
 } from '@/lib/workflows/sheet-snapshots';
+import {
+  imageSnapshotKey,
+  shotWorkItems,
+  snapshotLookupKey,
+} from '@/lib/workflows/shot-work-items';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { getLogger } from '@/lib/observability/logger';
 
@@ -201,27 +206,24 @@ export class ShotImagesWorkflow extends OpenStoryWorkflowEntrypoint<ShotImagesWo
       });
 
     const imageSize = aspectRatioToImageSize(aspectRatio);
+    const items = shotWorkItems(scenesWithVisualPrompts, shotMapping);
 
-    // Build a sceneId→snapshot index once so the per-(scene, model) inner
-    // loop doesn't repeat O(snapshots) `find` work for every shot × model.
+    // Clip-keyed snapshot index. 1-shot payloads omit `shotId` so the key is
+    // still `sceneId` and the batch hash stays byte-identical.
     const sceneSnapshotsById = new Map<string, ShotImageSceneSnapshot>(
-      (input.sceneSnapshots ?? []).map((s) => [s.sceneId, s])
+      (input.sceneSnapshots ?? []).map((s) => [snapshotLookupKey(s), s])
     );
 
-    // Pre-compute every (sceneId, model) snapshot hash once and persist via
-    // `step.do`. Workflow bodies replay from the top on every step callback,
-    // so wrapping in `step.do` snapshots the result — replays just read the
-    // persisted Record instead of re-hashing on each callback.
-    const snapshotHashKey = (sceneId: string, model: string) =>
-      `${sceneId}::${model}`;
+    const snapshotHashKey = (item: (typeof items)[number], model: string) =>
+      `${imageSnapshotKey(item)}::${model}`;
     const snapshotHashByKey = await step.do(
       'compute-snapshot-hashes',
       async () => {
         const out: Record<string, string | undefined> = {};
-        for (const scene of scenesWithVisualPrompts) {
-          const snap = sceneSnapshotsById.get(scene.sceneId);
+        for (const item of items) {
+          const snap = sceneSnapshotsById.get(imageSnapshotKey(item));
           for (const model of imageModels) {
-            out[snapshotHashKey(scene.sceneId, model)] = snap
+            out[snapshotHashKey(item, model)] = snap
               ? await computeShotImageSceneHash(snap, model, aspectRatio)
               : undefined;
           }
@@ -241,17 +243,15 @@ export class ShotImagesWorkflow extends OpenStoryWorkflowEntrypoint<ShotImagesWo
     // Stored as value-or-error: a scene with no visual prompt must fail only
     // its own slot, so resolving eagerly must not throw out of the batch.
     const sceneContexts = new Map<string, SceneImageContext | Error>();
-    for (const scene of scenesWithVisualPrompts) {
-      // The visual prompt is no longer carried on `scene.prompts` (#713); it
-      // rides on the per-scene snapshot, which analyze-script populates from
-      // the shot's `frame.imagePrompt` mirror. Sourcing it here keeps the
-      // hashed snapshot and the rendered prompt identical by construction.
-      const visualPrompt = sceneSnapshotsById.get(scene.sceneId)?.visualPrompt;
+    for (const item of items) {
+      const scene = item.scene;
+      const key = imageSnapshotKey(item);
+      const visualPrompt = sceneSnapshotsById.get(key)?.visualPrompt;
       if (!visualPrompt) {
         sceneContexts.set(
-          scene.sceneId,
+          key,
           new WorkflowValidationError(
-            `Scene ${scene.sceneId} has no visual prompt`
+            `Shot ${item.mapping.shotId || scene.sceneId} has no visual prompt`
           )
         );
         continue;
@@ -270,29 +270,26 @@ export class ShotImagesWorkflow extends OpenStoryWorkflowEntrypoint<ShotImagesWo
         sceneElementMap[scene.sceneId] || []
       );
 
-      sceneContexts.set(scene.sceneId, {
+      sceneContexts.set(key, {
         visualPrompt,
-        matchedShot: shotMapping.find(
-          (f) => f.analysisSceneId === scene.sceneId
-        ),
+        matchedShot: {
+          analysisSceneId: item.mapping.analysisSceneId,
+          shotId: item.mapping.shotId,
+          frameId: item.mapping.frameId,
+        },
         characterRefs,
         locationRefs,
         elementRefs,
         allReferences: [...characterRefs, ...locationRefs, ...elementRefs],
-        // Bound to sceneId rather than index so a re-ordered `sceneSnapshots`
-        // array (e.g. analyze-script sorts by sceneId; we don't) still maps
-        // right.
-        sceneSnapshot: sceneSnapshotsById.get(scene.sceneId),
+        sceneSnapshot: sceneSnapshotsById.get(key),
       });
     }
 
-    // Flatten (scene × model) so one ceiling governs the real unit of work.
-    // #1126 capped scenes and then ran models one at a time inside each scene,
-    // which multiplied the wave count by the model count for no extra safety.
-    const jobs = scenesWithVisualPrompts.flatMap((scene, sceneIndex) =>
+    const jobs = items.flatMap((item, itemIndex) =>
       imageModels.map((model) => ({
-        scene,
-        sceneIndex,
+        scene: item.scene,
+        item,
+        itemIndex,
         model,
       }))
     );
@@ -304,13 +301,14 @@ export class ShotImagesWorkflow extends OpenStoryWorkflowEntrypoint<ShotImagesWo
     // concurrent sequences multiplied straight through it. Rate limiting
     // belongs somewhere that can see the whole system, not here.
     const runImageJob = async (
-      { scene, model }: (typeof jobs)[number],
+      { scene, item, model }: (typeof jobs)[number],
       attempt: 'first' | 'retry'
     ): Promise<ShotImageJobResult> => {
-      const context = sceneContexts.get(scene.sceneId);
+      const contextKey = imageSnapshotKey(item);
+      const context = sceneContexts.get(contextKey);
       if (context === undefined) {
         throw new WorkflowValidationError(
-          `Scene ${scene.sceneId} has no resolved image context`
+          `Shot ${item.mapping.shotId || scene.sceneId} has no resolved image context`
         );
       }
       if (context instanceof Error) throw context;
@@ -324,7 +322,7 @@ export class ShotImagesWorkflow extends OpenStoryWorkflowEntrypoint<ShotImagesWo
         sceneSnapshot,
       } = context;
       const perShotSnapshotInputHash =
-        snapshotHashByKey[snapshotHashKey(scene.sceneId, model)];
+        snapshotHashByKey[snapshotHashKey(item, model)];
 
       const childBody: ImageWorkflowInput = {
         userId: input.userId,
@@ -366,8 +364,8 @@ export class ShotImagesWorkflow extends OpenStoryWorkflowEntrypoint<ShotImagesWo
         parentInstanceId,
         childId: childIdSuffix,
         childPayload: childBody,
-        spawnStepName: `spawn-image-${scene.sceneId}-${model}${stepSuffix}`,
-        awaitStepName: `await-image-${scene.sceneId}-${model}${stepSuffix}`,
+        spawnStepName: `spawn-image-${item.hasSiblingShots && item.mapping.shotId ? item.mapping.shotId : scene.sceneId}-${model}${stepSuffix}`,
+        awaitStepName: `await-image-${item.hasSiblingShots && item.mapping.shotId ? item.mapping.shotId : scene.sceneId}-${model}${stepSuffix}`,
         timeout: '30 minutes',
       });
 
@@ -383,7 +381,7 @@ export class ShotImagesWorkflow extends OpenStoryWorkflowEntrypoint<ShotImagesWo
       // its progress is tracked independently via
       // `shot.variantImageStatus`.
       await step.do(
-        `trigger-variant-${scene.sceneId}-${model}${stepSuffix}`,
+        `trigger-variant-${item.hasSiblingShots && item.mapping.shotId ? item.mapping.shotId : scene.sceneId}-${model}${stepSuffix}`,
         async () => {
           const enforcement =
             await scopedDb.liveRead.compliance.listEnforcementFor(
@@ -467,16 +465,16 @@ export class ShotImagesWorkflow extends OpenStoryWorkflowEntrypoint<ShotImagesWo
     // `jobs` is generated scene-major with models in order, and both forEach
     // and mapWithConcurrency preserve input order, so appending here rebuilds
     // each scene's model sequence exactly.
-    const modelResultsByScene = new Map<
+    const modelResultsByItem = new Map<
       number,
       PromiseSettledResult<ShotImageJobResult>[]
     >();
     jobs.forEach((job, jobIndex) => {
       const result = jobResults[jobIndex];
       if (!result) return;
-      const forScene = modelResultsByScene.get(job.sceneIndex) ?? [];
-      forScene.push(result);
-      modelResultsByScene.set(job.sceneIndex, forScene);
+      const forItem = modelResultsByItem.get(job.itemIndex) ?? [];
+      forItem.push(result);
+      modelResultsByItem.set(job.itemIndex, forItem);
     });
 
     // Surface per-model failures. The primary (index 0) result is what
@@ -484,15 +482,16 @@ export class ShotImagesWorkflow extends OpenStoryWorkflowEntrypoint<ShotImagesWo
     // for parity with the QStash original's `result.isFailed` check.
     // Sibling-model failures are logged but don't block — they're
     // alternates that enrich `shot_variants`, not the primary.
-    const sceneResults: PromiseSettledResult<ShotImageJobResult>[] =
-      scenesWithVisualPrompts.map((scene, sceneIndex) => {
-        const modelResults = modelResultsByScene.get(sceneIndex) ?? [];
+    const sceneResults: PromiseSettledResult<ShotImageJobResult>[] = items.map(
+      (item, itemIndex) => {
+        const modelResults = modelResultsByItem.get(itemIndex) ?? [];
         const primary = modelResults[0];
+        const label = item.mapping.shotId || item.scene.sceneId;
         if (!primary) {
           return {
             status: 'rejected',
             reason: new WorkflowValidationError(
-              `Primary image generation failed for scene ${scene.sceneId}: no models configured`
+              `Primary image generation failed for shot ${label}: no models configured`
             ),
           };
         }
@@ -500,7 +499,7 @@ export class ShotImagesWorkflow extends OpenStoryWorkflowEntrypoint<ShotImagesWo
           return {
             status: 'rejected',
             reason: new WorkflowValidationError(
-              `Primary image generation failed for scene ${scene.sceneId}: ${String(primary.reason)}`
+              `Primary image generation failed for shot ${label}: ${String(primary.reason)}`
             ),
           };
         }
@@ -508,7 +507,7 @@ export class ShotImagesWorkflow extends OpenStoryWorkflowEntrypoint<ShotImagesWo
           const r = modelResults[i];
           if (r?.status === 'rejected') {
             logger.warn(
-              `[ShotImagesWorkflow:cf] Alternate model ${imageModels[i]} failed for scene ${scene.sceneId}:`,
+              `[ShotImagesWorkflow:cf] Alternate model ${imageModels[i]} failed for shot ${label}:`,
               {
                 err: r.reason,
               }
@@ -516,22 +515,14 @@ export class ShotImagesWorkflow extends OpenStoryWorkflowEntrypoint<ShotImagesWo
           }
         }
         return { status: 'fulfilled', value: primary.value };
-      });
+      }
+    );
 
-    // Collect results ALIGNED to scene order — a rejected scene keeps its
-    // slot as `null` rather than being compacted out. Consumers index
-    // `imageUrls` by scene position (analyze-script phase 5 pairs
-    // `imageUrls[index]` with `completeScenes[index]`), so compaction shifted
-    // every later image onto the wrong scene and made the trailing scene
-    // throw "has no generated image URL" (June 6 sample-run failure).
-    // Rejections get reported but don't kill the workflow, so a single scene
-    // with no visual prompt (or a deleted shot mid-flight) can't poison the
-    // rest of the batch.
     const imageUrls: (string | null)[] = sceneResults.map((r, i) => {
       if (r.status === 'fulfilled') return r.value.imageUrl;
-      const scene = scenesWithVisualPrompts[i];
+      const item = items[i];
       logger.error(
-        `[ShotImagesWorkflow:cf] Scene ${scene?.sceneId ?? '(unknown)'} failed: ${String(r.reason)}`,
+        `[ShotImagesWorkflow:cf] Shot ${item?.mapping.shotId || item?.scene.sceneId || '(unknown)'} failed: ${String(r.reason)}`,
         {
           err: r.reason,
         }

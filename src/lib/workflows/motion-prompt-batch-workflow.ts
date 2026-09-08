@@ -24,6 +24,11 @@ import type { MotionPromptWorkflowResult } from '@/lib/workflows/motion-prompt-w
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { NonRetryableError } from 'cloudflare:workflows';
 import { getLogger } from '@/lib/observability/logger';
+import { sha256Hex } from '@/lib/ai/input-hash';
+import {
+  derivedShotForItem,
+  shotWorkItems,
+} from '@/lib/workflows/shot-work-items';
 
 const logger = getLogger(['openstory', 'workflow', 'motion-prompt-batch']);
 
@@ -33,7 +38,7 @@ export class MotionPromptBatchWorkflow extends OpenStoryWorkflowEntrypoint<Motio
   protected override async runImpl(
     event: Readonly<WorkflowEvent<MotionPromptBatchWorkflowInput>>,
     step: WorkflowStep,
-    _scopedDb: WorkflowScopedDb
+    scopedDb: WorkflowScopedDb
   ): Promise<MotionPromptBatchWorkflowResult> {
     const input = event.payload;
     const parentInstanceId = event.instanceId;
@@ -64,28 +69,22 @@ export class MotionPromptBatchWorkflow extends OpenStoryWorkflowEntrypoint<Motio
     }
 
     const childBinding = this.env.MOTION_PROMPT_WORKFLOW;
+    const clipItems = shotWorkItems(scenes, shotMapping);
+    const headItems = clipItems.filter((item) => item.isSceneHead);
 
     // ============================================================
-    // PHASE 3: Motion Prompt Generation — fan out per scene
+    // PHASE 3: Motion Prompt Generation — LLM per scene-head, derived
+    // extras (#1486 one clip per shot).
     // ============================================================
     const settled = await Promise.allSettled(
-      scenes.map((scene, sceneIndex) => {
-        // The pipeline renders images BEFORE motion prompts precisely so the
-        // prompt can be conditioned on the actual still (#929). A scene with
-        // no still here means its image failed — fail the scene loudly (the
-        // rejection is collected below) rather than silently degrading to a
-        // text-only prompt. A degraded prompt is nondeterministic (the same
-        // pipeline produces different LLM requests depending on which
-        // failures happened) and unanchored to the frame it must animate.
-        // Explicit single-shot regenerates (scenes.ts / prompt-variants.ts)
-        // stay text-only-capable: there the trigger deliberately snapshots a
-        // null still because no image exists yet.
-        //
-        // Reference-only sequences are the one case where a missing still is
-        // correct: no image pass ever ran. The guard is skipped there, and the
-        // child writes its prompt from the reference-only template instead.
+      headItems.map((item) => {
+        const { scene, sceneIndex, mapping } = item;
         const startingFrameImageUrl =
-          startingFrameImageUrls?.[scene.sceneId] ?? null;
+          (mapping.shotId
+            ? startingFrameImageUrls?.[mapping.shotId]
+            : undefined) ??
+          startingFrameImageUrls?.[scene.sceneId] ??
+          null;
         if (!startingFrameImageUrl && !referenceOnly) {
           return Promise.reject(
             new Error(
@@ -110,10 +109,7 @@ export class MotionPromptBatchWorkflow extends OpenStoryWorkflowEntrypoint<Motio
           teamId: input.teamId,
           userId: input.userId,
           sequenceId,
-          shotId: shotMapping?.find((f) => f.analysisSceneId === scene.sceneId)
-            ?.shotId,
-          // Pass the rendered still per scene, snapshotted upstream (#929) —
-          // never looked up inside the child workflow.
+          shotId: mapping.shotId || undefined,
           startingFrameImageUrl,
           referenceOnly,
         };
@@ -139,9 +135,13 @@ export class MotionPromptBatchWorkflow extends OpenStoryWorkflowEntrypoint<Motio
     const results: MotionPromptWorkflowResult[] = [];
     for (const [i, outcome] of settled.entries()) {
       if (outcome.status === 'fulfilled') {
-        results.push(outcome.value);
+        const head = headItems[i];
+        results.push({
+          ...outcome.value,
+          shotId: outcome.value.shotId ?? head?.mapping.shotId,
+        });
       } else {
-        const scene = scenes[i];
+        const scene = headItems[i]?.scene;
         const reason =
           outcome.reason instanceof Error
             ? outcome.reason.message
@@ -152,7 +152,7 @@ export class MotionPromptBatchWorkflow extends OpenStoryWorkflowEntrypoint<Motio
 
     if (failures.length > 0) {
       logger.warn(
-        `[MotionPromptBatchWorkflow:cf] Motion prompt generation failed for ${failures.length}/${scenes.length} scenes; continuing with ${results.length}: ${failures.join('; ')}`
+        `[MotionPromptBatchWorkflow:cf] Motion prompt generation failed for ${failures.length}/${headItems.length} scenes; continuing with ${results.length}: ${failures.join('; ')}`
       );
     }
 
@@ -168,21 +168,62 @@ export class MotionPromptBatchWorkflow extends OpenStoryWorkflowEntrypoint<Motio
     // under one `Promise.all`, so throwing here rejected that immediately and
     // left the still-running music child to finish into a parent already in a
     // finite state.
-    if (results.length === 0 && scenes.length > 0) {
+    if (results.length === 0 && headItems.length > 0) {
       // NonRetryableError so CF doesn't retry the entire fan-out when every
       // child has already exhausted its own retries. The base class routes
       // this through onFailure + notifyParentOfFailure.
       throw new NonRetryableError(
-        `[MotionPromptBatchWorkflow:cf] Motion prompt generation failed for all ${scenes.length} scenes: ${failures.join('; ')}`,
+        `[MotionPromptBatchWorkflow:cf] Motion prompt generation failed for all ${headItems.length} scenes: ${failures.join('; ')}`,
         'MotionPromptFanOutError'
       );
     }
 
-    return results.map((result) => ({
+    const extraItems = clipItems.filter((item) => !item.isSceneHead);
+    const extras = await step.do(
+      'derive-extra-shot-motion-prompts',
+      async (): Promise<MotionPromptWorkflowResult[]> => {
+        const out: MotionPromptWorkflowResult[] = [];
+        const headByScene = new Map(
+          results.map((result) => [result.sceneId, result])
+        );
+        for (const item of extraItems) {
+          const derived = derivedShotForItem(item, styleConfig);
+          const motionPrompt =
+            derived?.motionPrompt ??
+            headByScene.get(item.scene.sceneId)?.motionPrompt;
+          if (!motionPrompt?.fullPrompt) continue;
+          let finalVersionId: string | null = null;
+          if (item.mapping.shotId) {
+            const written = await scopedDb.shotPromptVersions.writeAiVersion({
+              shotId: item.mapping.shotId,
+              text: motionPrompt.fullPrompt,
+              dialogue: motionPrompt.dialogue,
+              audio: motionPrompt.audio,
+              usesStartFrame: !referenceOnly,
+              inputHash: await sha256Hex({
+                kind: 'derived-shot-motion',
+                shotId: item.mapping.shotId,
+                text: motionPrompt.fullPrompt,
+              }),
+              analysisModel: analysisModelId,
+            });
+            finalVersionId = written.id;
+          }
+          out.push({
+            sceneId: item.scene.sceneId,
+            shotId: item.mapping.shotId,
+            motionPrompt,
+            finalVersionId,
+          });
+        }
+        return out;
+      }
+    );
+
+    return [...results, ...extras].map((result) => ({
       sceneId: result.sceneId,
+      shotId: result.shotId,
       motionPrompt: result.motionPrompt,
-      // Threaded so analyze-script can pin the render off THIS id rather
-      // than re-reading the shot's selection pointer (#1380).
       finalVersionId: result.finalVersionId ?? null,
     }));
   }

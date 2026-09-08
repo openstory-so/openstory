@@ -194,11 +194,24 @@ export class MotionMusicPromptsWorkflow extends OpenStoryWorkflowEntrypoint<Moti
     const motionPromptVersionIdsBySceneId = Object.fromEntries(
       motionPrompts.map((m) => [m.sceneId, m.finalVersionId ?? null])
     );
+    const motionPromptsByShotId: Record<
+      string,
+      (typeof motionPrompts)[number]['motionPrompt']
+    > = {};
+    const motionPromptVersionIdsByShotId: Record<string, string | null> = {};
+    for (const prompt of motionPrompts) {
+      if (!prompt.shotId) continue;
+      motionPromptsByShotId[prompt.shotId] = prompt.motionPrompt;
+      motionPromptVersionIdsByShotId[prompt.shotId] =
+        prompt.finalVersionId ?? null;
+    }
 
     return {
       completeScenes,
       motionPromptsBySceneId,
       motionPromptVersionIdsBySceneId,
+      motionPromptsByShotId,
+      motionPromptVersionIdsByShotId,
       musicPrompt: musicDesign.prompt,
       musicTags: reinforceInstrumentalTags(musicDesign.tags),
     };

@@ -27,24 +27,30 @@ import { buildMotionReferenceImages } from '@/lib/motion/build-motion-references
 import { getLogger } from '@/lib/observability/logger';
 import { WorkflowValidationError } from '@/lib/workflow/errors';
 import type { BatchMotionMusicWorkflowInput } from '@/lib/workflow/types';
+import {
+  clipDurationSeconds,
+  shotWorkItems,
+  type ShotMappingRow,
+} from './shot-work-items';
 
 const logger = getLogger(['openstory', 'workflow', 'analyze-script']);
 
-type ShotMapping = Array<{
-  analysisSceneId: string;
-  shotId: string;
-  frameId?: string | null;
-}>;
-
 export function buildStoryboardMotionBatchShots(input: {
   scenes: readonly Scene[];
-  shotMapping: ShotMapping;
-  /** Aligned to `scenes`; a null slot means that scene's still failed. */
+  shotMapping: ShotMappingRow[];
+  /**
+   * Primary still URL per clip, ALIGNED to `shotWorkItems(scenes, shotMapping)`
+   * (scene order, then shotNumber). A 1-shot film is still one slot per scene.
+   * A null slot means that clip's still failed.
+   */
   imageUrls: readonly (string | null)[];
-  /** Aligned to `scenes` / `imageUrls`. */
+  /** Aligned to `imageUrls`. */
   frameVersionIds: readonly (string | null)[];
   motionPromptsBySceneId: Record<string, MotionPrompt | undefined>;
   motionPromptVersionIdsBySceneId: Record<string, string | null | undefined>;
+  /** Per-clip prompts; wins over the scene map when present. */
+  motionPromptsByShotId?: Record<string, MotionPrompt | undefined>;
+  motionPromptVersionIdsByShotId?: Record<string, string | null | undefined>;
   videoModel: ImageToVideoModel;
   aspectRatio: AspectRatio;
   resolution?: Resolution;
@@ -58,47 +64,42 @@ export function buildStoryboardMotionBatchShots(input: {
    */
   referenceOnly?: boolean;
 }): BatchMotionMusicWorkflowInput['shots'] {
-  return input.scenes.flatMap((scene, index) => {
-    const matchedShot = input.shotMapping.find(
-      (f) => f.analysisSceneId === scene.sceneId
-    );
-    // `imageUrls` is aligned to scene order; a null slot means that
-    // scene's image generation failed (the shot is already marked
-    // failed by the image workflow). Motion-prompt batch also skips
-    // those scenes (no starting frame). Skip rather than throwing —
-    // a missing still used to fail the whole storyboard.
+  const items = shotWorkItems(input.scenes, input.shotMapping);
+  return items.flatMap((item, index) => {
+    const { scene, mapping } = item;
     const imageUrl = input.imageUrls[index];
     if (!imageUrl && !input.referenceOnly) {
       logger.warn(
-        `[AnalyzeScriptWorkflow:cf] Scene ${scene.sceneId} has no generated image (index ${index}); skipping its motion`
+        `[AnalyzeScriptWorkflow:cf] Shot ${mapping.shotId || scene.sceneId} has no generated image (index ${index}); skipping its motion`
       );
       return [];
     }
 
-    const motionPromptData = input.motionPromptsBySceneId[scene.sceneId];
+    const motionPromptData =
+      (mapping.shotId
+        ? input.motionPromptsByShotId?.[mapping.shotId]
+        : undefined) ?? input.motionPromptsBySceneId[scene.sceneId];
     if (!motionPromptData?.fullPrompt) {
       throw new WorkflowValidationError(
-        `Scene ${scene.sceneId} has no motion prompt`
+        `Shot ${mapping.shotId || scene.sceneId} has no motion prompt`
       );
     }
 
     const characterTags = scene.continuity?.characterTags;
+    const motionPromptVersionId =
+      (mapping.shotId
+        ? input.motionPromptVersionIdsByShotId?.[mapping.shotId]
+        : undefined) ??
+      input.motionPromptVersionIdsBySceneId[scene.sceneId] ??
+      null;
 
     return {
-      shotId: matchedShot?.shotId ?? '',
-      // Reference-only carries no still and no frame version — a null
-      // `frameVersionId` in the render manifest is the documented encoding of
-      // "reference-driven shot with no dedicated first frame".
+      shotId: mapping.shotId,
       ...(input.referenceOnly
         ? { referenceOnly: true as const }
-        : // The early return above already rejected a null slot on this path;
-          // the fallback keeps the narrowing local instead of asserting.
-          { referenceOnly: false as const, imageUrl: imageUrl ?? undefined }),
+        : { referenceOnly: false as const, imageUrl: imageUrl ?? undefined }),
       frameVersionId: input.frameVersionIds[index] ?? null,
-      motionPromptVersionId:
-        input.motionPromptVersionIdsBySceneId[scene.sceneId] ?? null,
-      // Primary-model prompt (fallback / single-model). `motion-batch`
-      // re-assembles per model from `motionPrompt` for the alternates.
+      motionPromptVersionId,
       prompt: assembleMotionPrompt({
         motionPrompt: motionPromptData,
         model: input.videoModel,
@@ -107,12 +108,9 @@ export function buildStoryboardMotionBatchShots(input: {
       model: input.videoModel,
       motionPrompt: motionPromptData,
       characterTags,
-      duration: scene.metadata?.durationSeconds || 3,
+      duration: clipDurationSeconds(item),
       aspectRatio: input.aspectRatio,
       resolution: input.resolution,
-      // Cast/element refs so motion preserves identity across the clip
-      // (#873) — only Kling v3 Pro emits them. Same library + matcher the
-      // image step uses, so motion attaches the same references.
       referenceImages: buildMotionReferenceImages({
         scene,
         characters: input.characters,

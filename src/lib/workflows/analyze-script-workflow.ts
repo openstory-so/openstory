@@ -79,6 +79,11 @@ import {
 } from '@/lib/workflows/cast-records';
 import { buildStoryboardMotionBatchShots } from '@/lib/workflows/storyboard-motion-batch-shots';
 import {
+  derivedShotForItem,
+  shotWorkItems,
+} from '@/lib/workflows/shot-work-items';
+import { sha256Hex } from '@/lib/ai/input-hash';
+import {
   computeShotImagesHashFromDto,
   type ShotImageSceneSnapshot,
   resolveSceneShotImageReferences,
@@ -928,27 +933,54 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
       });
     }
 
-    // Build per-scene snapshots for shot-images divergence detection. Resolve
-    // references through the SAME helper the image-gen stamp and staleness
-    // verify use (`resolveSceneShotImageReferences`) so the three sites can't
-    // drift on matcher choice or hash-filtering — that drift was the #867 bug.
-    const sceneSnapshots: ShotImageSceneSnapshot[] =
-      scenesWithVisualPrompts.map((scene) => {
-        const refs = resolveSceneShotImageReferences({
-          scene,
-          visualPrompt: visualPromptBySceneId[scene.sceneId] ?? '',
-          characters: charactersWithSheets,
-          locations: locationsWithSheets,
-          elements: allElements,
-        });
-        return {
-          sceneId: scene.sceneId,
-          visualPrompt: visualPromptBySceneId[scene.sceneId] ?? '',
-          characterSheetHashes: refs.characterSheetHashes,
-          locationSheetHashes: refs.locationSheetHashes,
-          elementReferenceHashes: refs.elementReferenceHashes,
-        };
+    const clipItems = shotWorkItems(scenesWithVisualPrompts, shotMapping);
+
+    if (!referenceOnly) {
+      await step.do('persist-derived-visual-prompts', async () => {
+        for (const item of clipItems) {
+          const derived = derivedShotForItem(item, styleConfig);
+          const frameId = item.mapping.frameId;
+          if (!derived || !frameId) continue;
+          await scopedDb.framePromptVersions.writeAiVersion({
+            frameId,
+            text: derived.visualPrompt.fullPrompt,
+            inputHash: await sha256Hex({
+              kind: 'derived-shot-visual',
+              shotId: item.mapping.shotId,
+              text: derived.visualPrompt.fullPrompt,
+            }),
+            analysisModel: analysisModelId,
+          });
+        }
       });
+    }
+
+    // One snapshot per clip. 1-shot films omit `shotId` so the batch hash
+    // stays byte-identical; extras carry shotId + the derived visual prompt.
+    const sceneSnapshots: ShotImageSceneSnapshot[] = clipItems.map((item) => {
+      const derived = derivedShotForItem(item, styleConfig);
+      const visualPrompt =
+        derived?.visualPrompt.fullPrompt ??
+        visualPromptBySceneId[item.scene.sceneId] ??
+        '';
+      const refs = resolveSceneShotImageReferences({
+        scene: item.scene,
+        visualPrompt,
+        characters: charactersWithSheets,
+        locations: locationsWithSheets,
+        elements: allElements,
+      });
+      return {
+        sceneId: item.scene.sceneId,
+        ...(item.hasSiblingShots && item.mapping.shotId
+          ? { shotId: item.mapping.shotId }
+          : {}),
+        visualPrompt,
+        characterSheetHashes: refs.characterSheetHashes,
+        locationSheetHashes: refs.locationSheetHashes,
+        elementReferenceHashes: refs.elementReferenceHashes,
+      };
+    });
 
     const shotImagesPayload: ShotImagesWorkflowInput = {
       userId: input.userId,
@@ -1014,22 +1046,20 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
             ])
           )[0];
 
-    // Snapshot the rendered primary still per scene. `imageUrls` is aligned to
-    // `scenesWithVisualPrompts` order (shot-images preserves slots, null for a
-    // failed scene); a rejected batch → empty map → motion falls back to
-    // text-only (and the rejection is raised below regardless). Reference-only
-    // leaves every entry null, which is what the mode means.
+    // Clip-aligned stills from shot-images (one slot per work item). Also
+    // index by sceneId for the scene-head so motion-prompt batch can keep
+    // looking up the 1-shot path by scene.
     const shotImageUrls =
       shotImagesSettled.status === 'fulfilled'
         ? shotImagesSettled.value.imageUrls
         : [];
-    const startingFrameImageUrls: Record<string, string | null> =
-      Object.fromEntries(
-        scenesWithVisualPrompts.map((scene, i) => [
-          scene.sceneId,
-          shotImageUrls[i] ?? null,
-        ])
-      );
+    const startingFrameImageUrls: Record<string, string | null> = {};
+    for (const [index, item] of clipItems.entries()) {
+      const url = shotImageUrls[index] ?? null;
+      if (item.mapping.shotId)
+        startingFrameImageUrls[item.mapping.shotId] = url;
+      if (item.isSceneHead) startingFrameImageUrls[item.scene.sceneId] = url;
+    }
 
     // Settled back in phase 3 when reference-only; otherwise it starts here,
     // because it needs the stills phase 4 just rendered. A phase-3 rejection
@@ -1079,6 +1109,8 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
       completeScenes,
       motionPromptsBySceneId,
       motionPromptVersionIdsBySceneId,
+      motionPromptsByShotId,
+      motionPromptVersionIdsByShotId,
       musicPrompt,
       musicTags,
     } = motionMusicSettled.value;
@@ -1122,6 +1154,8 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
         frameVersionIds,
         motionPromptsBySceneId,
         motionPromptVersionIdsBySceneId: motionPromptVersionIdsBySceneId ?? {},
+        motionPromptsByShotId,
+        motionPromptVersionIdsByShotId,
         videoModel: primaryVideoModel,
         aspectRatio,
         resolution,

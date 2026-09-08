@@ -474,8 +474,10 @@ export async function computeShotImagesHashFromDto(
     imageModel: input.imageModel ?? null,
     imageModels: input.imageModels ?? null,
     aspectRatio: input.aspectRatio,
-    scenes: [...input.sceneSnapshots].sort((a, b) =>
-      a.sceneId.localeCompare(b.sceneId)
+    scenes: [...input.sceneSnapshots].sort(
+      (a, b) =>
+        a.sceneId.localeCompare(b.sceneId) ||
+        (a.shotId ?? '').localeCompare(b.shotId ?? '')
     ),
   });
 }
