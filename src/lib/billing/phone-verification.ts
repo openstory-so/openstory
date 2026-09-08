@@ -20,7 +20,10 @@ import {
 import { env as workerEnv } from 'cloudflare:workers';
 import { splitDialCode } from '@/shared/phone-countries';
 import { z } from 'zod';
+import { getLogger } from '@/lib/observability/logger';
 import { grantWelcomeCreditsForTeam } from './checkout';
+
+const logger = getLogger(['openstory', 'billing', 'phone-verification']);
 
 function optionalEnv(name: string): string | undefined {
   const value = Reflect.get(getEnv(), name);
@@ -71,7 +74,6 @@ const twilioBody = z.object({
 
 /** Twilio error codes worth a specific sentence. Anything else is generic. */
 const TWILIO_MESSAGES: Record<number, string> = {
-  20404: 'That code has expired. Send a new one.',
   60200: 'That does not look like a mobile number.',
   60202: 'Too many wrong codes. Send a new one.',
   60203: 'Too many codes sent to this number. Try again later.',
@@ -98,6 +100,18 @@ async function twilioPost(
   );
   const body = twilioBody.parse(await response.json().catch(() => ({})));
   if (!response.ok) {
+    logger.warn('Twilio Verify request failed', {
+      path,
+      status: response.status,
+      code: body.code,
+      message: body.message,
+    });
+    // 20404 on a check = no pending verification (expired, already used, or
+    // too many wrong codes). On a send it means the SERVICE was not found —
+    // wrong TWILIO_VERIFY_SERVICE_SID, not anything the user can fix.
+    if (body.code === 20404 && path === 'VerificationChecks') {
+      throw new ValidationError('That code has expired. Send a new one.');
+    }
     const known = body.code != null ? TWILIO_MESSAGES[body.code] : undefined;
     if (known) throw new ValidationError(known);
     throw new Error(
