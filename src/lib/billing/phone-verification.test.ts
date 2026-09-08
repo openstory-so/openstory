@@ -74,18 +74,19 @@ describe('phone verification', () => {
 
   it('posts a Verification and surfaces Twilio codes as user copy', async () => {
     twilioEnv();
-    reply(201, { status: 'pending' });
-    await sendPhoneVerification({
+    reply(201, { status: 'pending', to: '+15551234567' });
+    const sent = await sendPhoneVerification({
       scopedDb: scopedDb(false),
       teamId: 't1',
-      phoneNumber: '+15551234567',
+      phoneNumber: '+1555123-4567',
     });
+    expect(sent).toEqual({ phoneNumber: '+15551234567' });
     const request = fetchMock.mock.calls[0]?.[0];
     if (!request) throw new Error('fetch not called');
     expect(request.url).toBe(
       'https://verify.twilio.com/v2/Services/VA1/Verifications'
     );
-    expect(await request.text()).toBe('To=%2B15551234567&Channel=sms');
+    expect(await request.text()).toBe('To=%2B1555123-4567&Channel=sms');
     expect(limit).toHaveBeenCalledWith({ key: 'welcome-sms:t1' });
 
     reply(400, { code: 60200, message: 'Invalid parameter', status: 400 });

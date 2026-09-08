@@ -60,6 +60,8 @@ const twilioBody = z.object({
   status: z.string().or(z.number()).optional(),
   code: z.number().optional(),
   message: z.string().optional(),
+  /** Canonical E.164 Twilio stored the verification under. */
+  to: z.string().optional(),
 });
 
 /** Twilio error codes worth a specific sentence. Anything else is generic. */
@@ -104,7 +106,7 @@ export async function sendPhoneVerification(opts: {
   scopedDb: ScopedDb;
   teamId: string;
   phoneNumber: string;
-}): Promise<void> {
+}): Promise<{ phoneNumber: string }> {
   if (await opts.scopedDb.billing.hasSignupGrant()) {
     throw new ValidationError('Welcome credits are already unlocked');
   }
@@ -117,7 +119,14 @@ export async function sendPhoneVerification(opts: {
   if (!success)
     throw new ValidationError('Too many codes sent. Try again in a minute.');
 
-  await twilioPost('Verifications', { To: opts.phoneNumber, Channel: 'sms' });
+  const sent = await twilioPost('Verifications', {
+    To: opts.phoneNumber,
+    Channel: 'sms',
+  });
+  // Twilio canonicalises (drops a trunk 0 after the country code, etc.) and
+  // keys the pending verification by THAT number, so the check and the
+  // claim hash must use it — the typed form 404s as "not found".
+  return { phoneNumber: sent.to ?? opts.phoneNumber };
 }
 
 export async function verifyPhoneAndGrant(opts: {

@@ -147,12 +147,11 @@ export const sendWelcomePhoneCodeFn = createServerFn({ method: 'POST' })
       throw new ValidationError('Phone verification is not available');
     }
     await requireTeamAdminAccess(context.user.id, context.teamId);
-    await sendPhoneVerification({
+    return sendPhoneVerification({
       scopedDb: context.scopedDb,
       teamId: context.teamId,
       phoneNumber: normalizePhoneNumber(data.phoneNumber),
     });
-    return { sent: true };
   });
 
 export const verifyWelcomePhoneCodeFn = createServerFn({ method: 'POST' })

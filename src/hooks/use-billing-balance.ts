@@ -3,7 +3,7 @@
  * Provides balance data, low-balance detection, and query key for invalidation
  */
 
-import { useQuery } from '@tanstack/react-query';
+import { queryOptions, useQuery } from '@tanstack/react-query';
 import { useAuthSession } from '@/lib/auth/session-query';
 import { LOW_BALANCE_THRESHOLD_USD } from '@/lib/billing/constants';
 import { getBillingBalanceFn } from '@/functions/billing';
@@ -11,13 +11,19 @@ import { getBillingBalanceFn } from '@/functions/billing';
 export const BILLING_BALANCE_KEY = ['billing-balance'] as const;
 export const BILLING_PAYMENT_METHODS_KEY = ['billing-payment-methods'] as const;
 
+/** Seeded in the app shell's beforeLoad so the welcome dialog (and its
+ *  card/SMS options) paints on first render instead of after a client fetch. */
+export const billingBalanceQueryOptions = queryOptions({
+  queryKey: [...BILLING_BALANCE_KEY],
+  queryFn: () => getBillingBalanceFn(),
+  staleTime: 30_000,
+});
+
 export function useBillingBalance() {
   const { data: session } = useAuthSession();
 
   const query = useQuery({
-    queryKey: [...BILLING_BALANCE_KEY],
-    queryFn: () => getBillingBalanceFn(),
-    staleTime: 30_000,
+    ...billingBalanceQueryOptions,
     enabled: !!session?.user,
   });
 

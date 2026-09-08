@@ -448,7 +448,7 @@ function PhoneClaimDialogContent({
     meta: { inlineError: true },
     mutationFn: (data: { phoneNumber: string }) =>
       sendWelcomePhoneCodeFn({ data }),
-    onSuccess: (_result, data) => setPhoneNumber(data.phoneNumber),
+    onSuccess: (result) => setPhoneNumber(result.phoneNumber),
   });
   const verify = useMutation({
     meta: { inlineError: true },
