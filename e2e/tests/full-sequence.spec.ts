@@ -324,18 +324,13 @@ SUPER:  CORAL.  OUT NOW.
       }
       createdSequenceId = sequenceId;
 
-      // Progressive reveal (#1091): analysis lands on the forced script view —
-      // the canvas has nothing to show until the first shot preview arrives.
-      // Assert immediately after the redirect, before any preview can land
-      // and auto-reveal the canvas.
-      //
-      // The toggle itself only exists post-hydration, so wait for it to render
-      // before reading `data-state` — on the bare 5s expect timeout the
-      // assertion could fail because the control had not mounted yet, which
-      // looks identical to the view being wrong.
-      const scriptToggle = page.getByRole('radio', { name: 'Show the script' });
-      await expect(scriptToggle).toBeVisible({ timeout: t(15_000) });
-      await expect(scriptToggle).toHaveAttribute('data-state', 'on');
+      // Progressive reveal (#1091): the split lands on the forced script view
+      // and the first shot preview auto-reveals the canvas. Under aimock that
+      // preview can land before this page hydrates, so don't assert the
+      // script state — just wait for the reveal.
+      await expect(
+        page.getByRole('radio', { name: 'Show the canvas' })
+      ).toHaveAttribute('data-state', 'on', { timeout: t(60_000) });
 
       // 9. Wait for storyboard + shot images to land in the DB.
       //
