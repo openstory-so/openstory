@@ -287,7 +287,7 @@ export function AddCreditsDialog() {
                 })),
                 {
                   value: NEW_CARD,
-                  label: 'Card, Alipay or WeChat Pay at checkout',
+                  label: 'Pay at checkout',
                 },
               ]}
               onValueChange={(value) => {
@@ -308,7 +308,7 @@ export function AddCreditsDialog() {
                 ))}
                 <SelectItem value={NEW_CARD}>
                   <Plus className="size-4 text-muted-foreground" />
-                  Card, Alipay or WeChat Pay at checkout
+                  Pay at checkout
                 </SelectItem>
               </SelectContent>
             </Select>
