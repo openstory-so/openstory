@@ -56,6 +56,7 @@ describe('phone verification', () => {
 
   it('normalises to E.164 and rejects the rest', () => {
     expect(normalizePhoneNumber(' +1 (555) 123-4567 ')).toBe('+15551234567');
+    expect(normalizePhoneNumber('+61 0412 345 678')).toBe('+61412345678');
     expect(() => normalizePhoneNumber('5551234567')).toThrow(/country code/);
     expect(() => normalizePhoneNumber('+1 555')).toThrow(/country code/);
   });

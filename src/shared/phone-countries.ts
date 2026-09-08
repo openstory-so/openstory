@@ -272,16 +272,53 @@ export function phoneCountries(): PhoneCountry[] {
   })).sort((a, b) => a.name.localeCompare(b.name));
 }
 
-/** Browser locale region (en-AU → AU) when we know it, else US. */
-export function defaultPhoneCountry(): string {
+function isKnownCountry(iso: string | null | undefined): iso is string {
+  return !!iso && DIAL_CODES.some(([code]) => code === iso);
+}
+
+/**
+ * Where the visitor is (Cloudflare's geo-IP, passed in), else the browser
+ * locale's region (en-AU → AU), else US. The locale is the language
+ * setting, not a location — en-GB in Sydney is common.
+ */
+export function defaultPhoneCountry(geoCountry?: string | null): string {
+  if (isKnownCountry(geoCountry)) return geoCountry;
   const region =
     typeof navigator === 'undefined'
       ? undefined
       : new Intl.Locale(navigator.language).maximize().region;
-  return region && DIAL_CODES.some(([iso]) => iso === region) ? region : 'US';
+  return isKnownCountry(region) ? region : 'US';
 }
 
-/** `+<dial><national>` with a trunk 0 and separators dropped. */
-export function composePhoneNumber(dialCode: string, national: string): string {
-  return `+${dialCode}${national.replace(/\D/g, '').replace(/^0+/, '')}`;
+/** Shared dial codes resolve to the country most people mean. */
+const PREFERRED: Record<string, string> = {
+  '1': 'US',
+  '7': 'RU',
+  '44': 'GB',
+  '61': 'AU',
+};
+
+/**
+ * Split a typed international number ("+61 4…") into its country and the
+ * rest, by longest dial-code match. `current` wins a tie (a Canadian who
+ * picked CA and types +1 stays on CA). Null when nothing matches yet.
+ */
+export function splitDialCode(
+  typed: string,
+  current?: string
+): { iso: string; dialCode: string; national: string } | null {
+  const digits = typed.replace(/\D/g, '');
+  if (!typed.startsWith('+') || !digits) return null;
+  const matches = DIAL_CODES.filter(([, dialCode]) =>
+    digits.startsWith(dialCode)
+  );
+  const longest = Math.max(0, ...matches.map(([, d]) => d.length));
+  const candidates = matches.filter(([, d]) => d.length === longest);
+  const [iso, dialCode] =
+    candidates.find(([c]) => c === current) ??
+    candidates.find(([c, d]) => PREFERRED[d] === c) ??
+    candidates[0] ??
+    [];
+  if (!iso || !dialCode) return null;
+  return { iso, dialCode, national: digits.slice(dialCode.length) };
 }

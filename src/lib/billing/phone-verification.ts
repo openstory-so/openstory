@@ -18,6 +18,7 @@ import {
   WelcomeCardAlreadyClaimedError,
 } from '@/shared/errors';
 import { env as workerEnv } from 'cloudflare:workers';
+import { splitDialCode } from '@/shared/phone-countries';
 import { z } from 'zod';
 import { grantWelcomeCreditsForTeam } from './checkout';
 
@@ -38,9 +39,13 @@ export function isPhoneVerificationEnabled(): boolean {
   return twilioConfig() !== null;
 }
 
-/** E.164: `+` then 8–15 digits. Spaces, dashes, dots and parens are stripped. */
+/** E.164: `+` then 8–15 digits. Separators and a trunk 0 after the
+ *  dial code ("+61 0412…") are dropped. */
 export function normalizePhoneNumber(raw: string): string {
-  const digits = raw.replace(/[\s().-]/g, '');
+  const split = splitDialCode(raw);
+  const digits = split
+    ? `+${split.dialCode}${split.national.replace(/^0+/, '')}`
+    : raw.replace(/[\s().-]/g, '');
   if (!/^\+[1-9]\d{7,14}$/.test(digits)) {
     throw new ValidationError(
       'Enter your mobile number with the country code, like +1 555 123 4567'

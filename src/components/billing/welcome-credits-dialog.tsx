@@ -48,7 +48,7 @@ import type { WelcomeDialogMode } from '@/lib/billing/constants';
 import { microsToDisplayUsd } from '@/lib/billing/money';
 import { hasPendingGenerate } from '@/shared/generation/pending-generate';
 import { isWelcomeCardAlreadyClaimedError } from '@/shared/errors';
-import { composePhoneNumber, phoneCountries } from '@/shared/phone-countries';
+import { phoneCountries } from '@/shared/phone-countries';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { Sparkles } from 'lucide-react';
@@ -168,6 +168,7 @@ export const WelcomeCreditsProvider: React.FC<{ children: ReactNode }> = ({
   const {
     stripeEnabled,
     phoneVerificationEnabled,
+    phoneCountry,
     hasUsedCredits,
     hasSignupGrant,
     isSuccess: balanceReady,
@@ -341,6 +342,7 @@ export const WelcomeCreditsProvider: React.FC<{ children: ReactNode }> = ({
                 });
               }}
               onUseCard={() => setViaPhone(false)}
+              defaultCountry={phoneCountry}
             />
           ) : (
             <ClaimDialogContent
@@ -445,12 +447,14 @@ function PhoneClaimDialogContent({
   onShowCostsChange,
   onGranted,
   onUseCard,
+  defaultCountry,
 }: {
   grantDisplay: string;
   showCosts: boolean;
   onShowCostsChange: (value: boolean) => void;
   onGranted: () => Promise<void>;
   onUseCard: () => void;
+  defaultCountry: string | null;
 }) {
   const [phoneNumber, setPhoneNumber] = useState<string | null>(null);
   const [code, setCode] = useState('');
@@ -489,13 +493,7 @@ function PhoneClaimDialogContent({
       verify.mutate({ phoneNumber, code });
       return;
     }
-    const dialCode = countries.find(
-      (c) => c.iso === field('country')
-    )?.dialCode;
-    if (!dialCode) return;
-    send.mutate({
-      phoneNumber: composePhoneNumber(dialCode, field('national')),
-    });
+    send.mutate({ phoneNumber: field('phoneNumber') });
   };
 
   return (
@@ -533,7 +531,7 @@ function PhoneClaimDialogContent({
         ) : (
           <PhoneInput
             countries={countries}
-            placeholder="Mobile number"
+            defaultCountry={defaultCountry}
             aria-label="Mobile number"
             disabled={busy}
             required

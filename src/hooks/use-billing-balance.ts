@@ -44,6 +44,7 @@ export function useBillingBalance() {
     teamId: query.data?.teamId,
     stripeEnabled: query.data?.stripeEnabled ?? false,
     phoneVerificationEnabled: query.data?.phoneVerificationEnabled ?? false,
+    phoneCountry: query.data?.phoneCountry ?? null,
     hasUsedCredits: query.data?.hasUsedCredits ?? false,
     hasSignupGrant: query.data?.hasSignupGrant ?? false,
     isLowBalance:

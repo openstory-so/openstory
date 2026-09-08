@@ -491,6 +491,20 @@ export const purchaseCreditsFn = createServerFn({ method: 'POST' })
 // Balance
 // ============================================================================
 
+/**
+ * Cloudflare's geo-IP country for the SMS dialog's default dial code.
+ * `request.cf` is set by workerd (locally from the developer's real
+ * connection, in prod by the edge); the header only exists behind the edge.
+ * 'XX' / 'T1' mean unknown; the client falls back to its locale.
+ */
+function requestCountry(): string | null {
+  const req = getRequest();
+  const country = req.cf?.country;
+  return typeof country === 'string'
+    ? country
+    : req.headers.get('cf-ipcountry');
+}
+
 export const getBillingBalanceFn = createServerFn({ method: 'GET' })
   .middleware([authWithTeamMiddleware])
   .handler(async ({ context }) => {
@@ -514,6 +528,7 @@ export const getBillingBalanceFn = createServerFn({ method: 'GET' })
       reservedUsd: microsToUsd(funds.reserved),
       stripeEnabled: isStripeEnabled(),
       phoneVerificationEnabled: isPhoneVerificationEnabled(),
+      phoneCountry: requestCountry(),
       // D1 `count(*)` can arrive as a string — coerce. Prefer row presence too.
       hasUsedCredits:
         usageHistory.transactions.length > 0 || Number(usageHistory.total) > 0,
