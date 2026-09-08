@@ -111,18 +111,19 @@ describe('buildPushPayload', () => {
     expect(JSON.stringify(payload)).not.toContain(':null');
   });
 
-  it('never writes held BytePlus keys even when Doppler has them', () => {
+  it('writes BytePlus keys when Doppler has them (#1519 lifted the hold)', () => {
     const payload = buildPushPayload(SECRETS, {
       FAL_KEY: 'fal-key',
       ARK_API_KEY: 'ark-key',
-      ARK_BASE_URL: 'https://ark.example',
       BYTEPLUS_ACCESS_KEY: 'ak',
       BYTEPLUS_SECRET_KEY: 'sk',
-      BYTEPLUS_ASSET_GROUP_ID: 'group',
-      BYTEPLUS_OPENAPI_HOST: 'host',
     });
-    expect(payload).toEqual({ FAL_KEY: 'fal-key' });
-    expect(payload).not.toHaveProperty('ARK_API_KEY');
+    expect(payload).toEqual({
+      FAL_KEY: 'fal-key',
+      ARK_API_KEY: 'ark-key',
+      BYTEPLUS_ACCESS_KEY: 'ak',
+      BYTEPLUS_SECRET_KEY: 'sk',
+    });
   });
 });
 
@@ -164,18 +165,14 @@ describe('SECRETS catalog (#1502)', () => {
     expect(TOOLING_OR_LEGACY.has('LLMTR_API_KEY')).toBe(true);
   });
 
-  it('holds BytePlus keys as runtime-but-not-pushed', () => {
-    const held = {
-      runtime: true,
-      build: false,
-      hold: 'BytePlus native is off',
-    };
-    expect(SECRETS.ARK_API_KEY).toEqual(held);
-    expect(SECRETS.ARK_BASE_URL).toEqual(held);
-    expect(SECRETS.BYTEPLUS_ACCESS_KEY).toEqual(held);
-    expect(SECRETS.BYTEPLUS_SECRET_KEY).toEqual(held);
-    expect(SECRETS.BYTEPLUS_ASSET_GROUP_ID).toEqual(held);
-    expect(SECRETS.BYTEPLUS_OPENAPI_HOST).toEqual(held);
+  it('pushes BytePlus keys as plain runtime secrets', () => {
+    const runtime = { runtime: true, build: false };
+    expect(SECRETS.ARK_API_KEY).toEqual(runtime);
+    expect(SECRETS.ARK_BASE_URL).toEqual(runtime);
+    expect(SECRETS.BYTEPLUS_ACCESS_KEY).toEqual(runtime);
+    expect(SECRETS.BYTEPLUS_SECRET_KEY).toEqual(runtime);
+    expect(SECRETS.BYTEPLUS_ASSET_GROUP_ID).toEqual(runtime);
+    expect(SECRETS.BYTEPLUS_OPENAPI_HOST).toEqual(runtime);
   });
 
   it('classifies VITE_APP_* and PostHog as both runtime and build', () => {

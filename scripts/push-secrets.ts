@@ -57,9 +57,6 @@ export type SecretNeed = {
   hold?: string;
 };
 
-/** Live `ARK_API_KEY` on the Worker is what claims the BytePlus via. */
-const BYTEPLUS_NATIVE_OFF = 'BytePlus native is off';
-
 /**
  * App secrets production may hold. Source of truth is Doppler; this catalog
  * only gates what we write and how we report. Extend when the Worker starts
@@ -68,28 +65,13 @@ const BYTEPLUS_NATIVE_OFF = 'BytePlus native is off';
 export const SECRETS = {
   ADMIN_EMAILS: { runtime: true, build: false },
   API_KEY_ENCRYPTION_KEY: { runtime: true, build: false },
-  ARK_API_KEY: { runtime: true, build: false, hold: BYTEPLUS_NATIVE_OFF },
-  ARK_BASE_URL: { runtime: true, build: false, hold: BYTEPLUS_NATIVE_OFF },
-  BYTEPLUS_ACCESS_KEY: {
-    runtime: true,
-    build: false,
-    hold: BYTEPLUS_NATIVE_OFF,
-  },
-  BYTEPLUS_SECRET_KEY: {
-    runtime: true,
-    build: false,
-    hold: BYTEPLUS_NATIVE_OFF,
-  },
-  BYTEPLUS_ASSET_GROUP_ID: {
-    runtime: true,
-    build: false,
-    hold: BYTEPLUS_NATIVE_OFF,
-  },
-  BYTEPLUS_OPENAPI_HOST: {
-    runtime: true,
-    build: false,
-    hold: BYTEPLUS_NATIVE_OFF,
-  },
+  // Live `ARK_API_KEY` on the Worker is what claims the BytePlus via (#1519).
+  ARK_API_KEY: { runtime: true, build: false },
+  ARK_BASE_URL: { runtime: true, build: false },
+  BYTEPLUS_ACCESS_KEY: { runtime: true, build: false },
+  BYTEPLUS_SECRET_KEY: { runtime: true, build: false },
+  BYTEPLUS_ASSET_GROUP_ID: { runtime: true, build: false },
+  BYTEPLUS_OPENAPI_HOST: { runtime: true, build: false },
   BETTER_AUTH_SECRET: { runtime: true, build: false },
   EMAIL_FROM: { runtime: true, build: false },
   FAL_BILLING_KEY: { runtime: true, build: false },
