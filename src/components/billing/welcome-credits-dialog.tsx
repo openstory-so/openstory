@@ -515,7 +515,7 @@ function PhoneClaimDialogContent({
             maxLength={6}
             autoComplete="one-time-code"
             aria-label="Verification code"
-            placeholder="6-digit code"
+            placeholder="Enter code"
             className="text-center tracking-[0.3em] tabular-nums"
             value={code}
             onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
