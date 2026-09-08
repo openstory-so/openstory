@@ -197,8 +197,8 @@ testWithUser.describe('Full Sequence Pipeline', () => {
         }
       });
 
-      // 1. Open the new-sequence page. Pin Quality + recorded Grok/Seedance
-      // before first paint so Turbo (Lite / H3 Max) never hits aimock.
+      // 1. Open the new-sequence page. Pin Quality + recorded Grok/H3 Max
+      // before first paint so Turbo's Lite never hits aimock.
       await pinRecordedPipelineSettings(page);
       await page.goto('/sequences/new');
 
@@ -289,10 +289,11 @@ SUPER:  CORAL.  OUT NOW.
         resolve(import.meta.dirname, '../fixtures/broadcast-mic.jpg')
       );
 
-      // 7b. Quality + Grok Imagine 2.0 + Seedance 2.0. Style apply can
+      // 7b. Quality + Grok Imagine 2.0 + MiniMax H3 Max. Style apply can
       // remap recommendations; the recorded fal folders are those two
-      // endpoints (Grok 2.0 edit/t2i, Seedance 2.0 r2v). Turbo's Lite /
-      // H3 Max have no recordings.
+      // endpoints (Grok 2.0 edit/t2i, H3 Max r2v). H3 Max is fal-only, so a
+      // record run can never wander off to Ark. Turbo's Lite has no
+      // recordings.
       await selectRecordedPipelineModels(page);
 
       // 8. Generate — should kick off the workflow chain and navigate.

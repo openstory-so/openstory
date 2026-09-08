@@ -30,10 +30,10 @@ export const RECORDED_PIPELINE_SETTINGS = {
   analysisModels: ['openai/gpt-5.6-luna'],
   imageModel: 'grok_imagine_image',
   imageModels: ['grok_imagine_image'],
-  motionModel: 'seedance_v2',
-  videoModels: ['seedance_v2'],
+  motionModel: 'minimax_h3_max',
+  videoModels: ['minimax_h3_max'],
   // Pinned, not defaulted: the tier picks each model's resolution token, and
-  // the fixtures were recorded at Seedance 720p / Grok Imagine 1k (#1449).
+  // the fixtures were recorded at H3 Max 720p / Grok Imagine 1k (#1449).
   resolution: '720p',
   autoGenerateMotion: true,
   // The fixtures were recorded on the frame-based workflow; reference-only
@@ -188,8 +188,8 @@ export async function selectRecordedPipelineModels(page: Page): Promise<void> {
   await selectSingleCatalogModel(
     page,
     /^Motion Models?:/,
-    'Seedance 2.0',
-    /Motion Models?: Seedance 2.0/
+    'MiniMax H3 Max',
+    /Motion Models?: MiniMax H3 Max/
   );
 
   await page.keyboard.press('Escape');

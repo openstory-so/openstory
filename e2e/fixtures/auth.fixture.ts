@@ -105,7 +105,7 @@ export async function authenticateUser(
     );
   });
   // Replay fal fixtures were recorded on Quality + Grok Imagine 2.0 /
-  // Seedance 2.0. Turbo (Lite / H3 Max) is the product default.
+  // MiniMax H3 Max. Turbo (Lite) is the product default.
   await pinRecordedPipelineSettings(page);
 
   // Create OTP via test API (the route normalizes to the identifier
