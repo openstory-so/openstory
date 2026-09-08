@@ -106,8 +106,16 @@ function block(source: string, tag: string): string {
   return source.slice(start + tag.length + 2, end).trim();
 }
 
+// The script the pipeline actually split is the LAST enhance turn: when the
+// clip labels missed the target, enhance-duration.ts sends a correction turn
+// ("Your clip duration labels sum to …") whose answer replaces the first.
 function recordedEnhancedScript(): string {
-  return responseContent('script-enhance/script-enhance.json');
+  const correction = loadOpenrouterStage('script-enhance').find((file) =>
+    file.fixtures[0]?.match.userMessage?.startsWith(
+      'Your clip duration labels sum to'
+    )
+  )?.fixtures[0]?.response.content;
+  return correction ?? responseContent('script-enhance/script-enhance.json');
 }
 
 function recordedSceneIds(): string[] {

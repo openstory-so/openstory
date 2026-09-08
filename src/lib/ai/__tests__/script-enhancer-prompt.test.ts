@@ -140,7 +140,8 @@ SUPER:  CORAL.  OUT NOW.`;
       },
       aspectRatio: '16:9',
       targetDuration: 60,
-      videoModel: 'seedance_v2',
+      // The full-pipeline recording runs on MiniMax H3 Max (5–15s clips).
+      videoModel: 'minimax_h3_max',
     });
     const fixture = z
       .object({

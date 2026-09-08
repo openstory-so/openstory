@@ -369,8 +369,9 @@ Two vias, one catalog key. `IMAGE_TO_VIDEO_MODELS.seedance_v2` / `seedance_v2_5`
 
 Grok chat, image, and video go to `api.x.ai` via `@tanstack/ai-grok` instead of
 OpenRouter/fal when an xAI key resolves (team `xai` key → platform
-`XAI_API_KEY` → neither, which falls back to the old path unchanged). e2e never
-sets `XAI_API_KEY`, so fixtures keep exercising the fallback.
+`XAI_API_KEY` → neither, which falls back to the old path unchanged). e2e sets
+a mock `XAI_API_KEY` and points `XAI_BASE_URL` at a second aimock instance
+(:4011), so Grok replays the native path from `fixtures/recorded/xai`.
 
 `src/lib/ai/grok-native.ts` owns registry id → xAI model name plus the pricing,
 transcribed from docs.x.ai — the adapter reports a cost for video only. Native

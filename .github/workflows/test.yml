@@ -160,13 +160,15 @@ jobs:
         run: |
           # No R2 creds or R2_PUBLIC_STORAGE_DOMAIN: e2e R2 is the local
           # Miniflare binding, with reads served by the worker's /r2/$ route.
-          # No XAI_API_KEY either — that would route Grok natively (#1167),
-          # past aimock, and no xAI fixtures are recorded. Keep it unset.
+          # XAI_API_KEY routes Grok natively (#1167) to the second aimock
+          # instance on :4011, where the xai/ fixtures were recorded.
           cat > dist/server/.dev.vars <<EOF
           BETTER_AUTH_SECRET=$E2E_BETTER_AUTH_SECRET
           BETTER_AUTH_URL=http://localhost:3001
           OPENROUTER_KEY=test-mock-key
           OPENROUTER_BASE_URL=http://localhost:4010
+          XAI_API_KEY=test-mock-key
+          XAI_BASE_URL=http://localhost:4011/v1
           FAL_KEY=test-mock-key
           GOOGLE_CLIENT_ID=$E2E_GOOGLE_CLIENT_ID
           GOOGLE_CLIENT_SECRET=$E2E_GOOGLE_CLIENT_SECRET
@@ -253,13 +255,15 @@ jobs:
         run: |
           # No R2 creds or R2_PUBLIC_STORAGE_DOMAIN: e2e R2 is the local
           # Miniflare binding, with reads served by the worker's /r2/$ route.
-          # No XAI_API_KEY either — that would route Grok natively (#1167),
-          # past aimock, and no xAI fixtures are recorded. Keep it unset.
+          # XAI_API_KEY routes Grok natively (#1167) to the second aimock
+          # instance on :4011, where the xai/ fixtures were recorded.
           cat > dist/server/.dev.vars <<EOF
           BETTER_AUTH_SECRET=$E2E_BETTER_AUTH_SECRET
           BETTER_AUTH_URL=http://localhost:3001
           OPENROUTER_KEY=test-mock-key
           OPENROUTER_BASE_URL=http://localhost:4010
+          XAI_API_KEY=test-mock-key
+          XAI_BASE_URL=http://localhost:4011/v1
           FAL_KEY=test-mock-key
           FAL_PROXY_URL=http://localhost:4010/fal
           GOOGLE_CLIENT_ID=$E2E_GOOGLE_CLIENT_ID

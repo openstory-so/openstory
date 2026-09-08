@@ -120,6 +120,9 @@ export default defineConfig({
       // aimock instance — see aimock-server.ts. The Grok adapter's default
       // base URL ends in /v1, so this one must too.
       'XAI_BASE_URL=http://localhost:4011/v1',
+      // Replay needs a key so Grok routes natively at all; record runs use
+      // the real XAI_API_KEY from .env.local (the mount forwards it upstream).
+      ...(process.env.E2E_RECORD === '1' ? [] : ['XAI_API_KEY=test-mock-key']),
       'VITE_DISABLE_DEVTOOLS=true',
     ].join(' ');
 
