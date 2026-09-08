@@ -1,0 +1,26 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "userMessage": "Analyze this talent reference: is the image already a character sheet? Describe the person.\nUploaded filename: character-sheet.jpg",
+        "model": "anthropic/claude-sonnet-5",
+        "turnIndex": 0,
+        "hasToolResult": false
+      },
+      "response": {
+        "content": "{\"isCharacterSheet\":true,\"subjectKind\":\"animated\",\"suggestedName\":\"\",\"description\":\"A small, chibi-proportioned robot with an oversized spherical helmet-style head and compact humanoid body. Its face is a black visor featuring two glowing cyan ring-shaped eyes. The body is built from polished silver-gray metallic plating with black joint segments at shoulders, elbows, hips, and knees, and a glowing cyan orb centered on its chest.\",\"age\":\"\",\"gender\":\"\",\"ethnicity\":\"\",\"physicalDescription\":\"Round bulbous head disproportionate to a short stocky body, glossy silver metal plating throughout, black rubberized joints, side-mounted circular ear/sensor units on the head, articulated hands with metallic fingers, stubby legs ending in rounded boot-like feet.\",\"standardClothing\":\"No clothing; body is composed of brushed silver metal armor plating with black accent joints and a glowing cyan chest light and eye rings.\",\"distinguishingFeatures\":\"Glowing teal ring eyes, glowing cyan chest orb, side-mounted lens/sensor on head resembling an ear, visible panel seams and small vents on the head and torso.\"}"
+      },
+      "recordedTimings": {
+        "ttftMs": 4177,
+        "interChunkDelaysMs": [
+          0, 0, 0, 1, 0, 0, 0, 0, 0, 329, 419, 351, 127, 345, 413, 172, 463, 91,
+          433, 204, 419, 61, 419, 142, 419, 107, 381, 73, 1, 0
+        ],
+        "totalDurationMs": 9547
+      },
+      "metadata": {
+        "systemHash": "67e7d0bd"
+      }
+    }
+  ]
+}

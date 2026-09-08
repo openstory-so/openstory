@@ -1,0 +1,26 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "userMessage": "Analyze this talent reference: is the image already a character sheet? Describe the person.\nUploaded filename: test-image.jpg",
+        "model": "anthropic/claude-sonnet-5",
+        "turnIndex": 0,
+        "hasToolResult": false
+      },
+      "response": {
+        "content": "{\"isCharacterSheet\": false, \"subjectKind\": \"human\", \"suggestedName\": \"\", \"description\": \"A woman with long, wavy blonde hair parted at the side, striking light blue-gray eyes, and defined eyebrows. She has fair, sun-touched skin with visible natural texture, high cheekbones, a straight nose, and full lips. She wears minimal makeup and a dark, possibly black blazer or jacket, photographed against a dark neutral backdrop.\", \"age\": \"30s\", \"gender\": \"female\", \"ethnicity\": \"Caucasian\", \"physicalDescription\": \"Oval face with high cheekbones, straight nose, full lips, and light blue-gray eyes. Long wavy blonde hair with subtle highlights, parted to one side. Fair skin with natural texture and slight sun exposure. Slim neck and shoulders visible.\", \"standardClothing\": \"Dark blazer or jacket with a structured collar\", \"distinguishingFeatures\": \"\"}"
+      },
+      "recordedTimings": {
+        "ttftMs": 3853,
+        "interChunkDelaysMs": [
+          0, 0, 0, 0, 0, 1, 0, 0, 415, 228, 492, 89, 441, 0, 418, 120, 509, 72,
+          447, 75, 453, 248, 39, 0, 1
+        ],
+        "totalDurationMs": 7901
+      },
+      "metadata": {
+        "systemHash": "67e7d0bd"
+      }
+    }
+  ]
+}

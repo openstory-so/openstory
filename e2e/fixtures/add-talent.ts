@@ -12,9 +12,13 @@ import {
   waitForUploadComplete,
 } from './test-utils';
 
-export const TEST_IMAGE_JPEG = readFileSync(
-  path.join(import.meta.dirname, 'test-image.jpg')
-);
+// Named uploads send the REAL bytes of that fixture file (`test-image.jpg` is a
+// photo, `character-sheet.jpg` a stylised robot sheet, `creature.jpg` a forest
+// spirit), so the recorded vision answers are what the model actually said
+// about each image — not one photo relabelled three ways.
+function fixtureImage(filename: string): Buffer {
+  return readFileSync(path.join(import.meta.dirname, filename));
+}
 
 export function uniqueTalentName(label: string): string {
   return `E2E ${label} ${crypto.randomUUID().slice(0, 8)}`;
@@ -70,7 +74,7 @@ export async function uploadNamedTalentImage(
   await fileChooser.setFiles({
     name: filename,
     mimeType: 'image/jpeg',
-    buffer: TEST_IMAGE_JPEG,
+    buffer: fixtureImage(filename),
   });
   await waitForUploadComplete(page);
 }
@@ -88,7 +92,7 @@ export async function dropNamedTalentImage(
       dt.items.add(new File([bytes], name, { type: 'image/jpeg' }));
       return dt;
     },
-    { b64: TEST_IMAGE_JPEG.toString('base64'), name: filename }
+    { b64: fixtureImage(filename).toString('base64'), name: filename }
   );
   await addTalentDialog(page)
     .getByText('Drag & drop or paste')

@@ -242,10 +242,9 @@ testWithUser.describe('Add Talent with Reference Media', () => {
       await dialog
         .getByRole('button', { name: 'Generate from photos' })
         .click();
-      await expect(dialog.getByLabel('Description')).toHaveValue(
-        /chrome robot/i,
-        { timeout: 15_000 }
-      );
+      await expect(dialog.getByLabel('Description')).toHaveValue(/robot/i, {
+        timeout: 15_000,
+      });
       await expect(
         page.getByText('Description generated from photos')
       ).toBeVisible();

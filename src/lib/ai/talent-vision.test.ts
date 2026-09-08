@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -24,9 +24,9 @@ const talentVisionFixtureFileSchema = z.object({
     .min(1),
 });
 
-const TALENT_VISION_FIXTURE = resolve(
+const TALENT_VISION_FIXTURE_DIR = resolve(
   dirname(fileURLToPath(import.meta.url)),
-  '../../../e2e/fixtures/recorded/openrouter/talent-vision/talent-vision.json'
+  '../../../e2e/fixtures/recorded/openrouter/talent-vision'
 );
 
 describe('talentMediaAnalysisSchema', () => {
@@ -130,27 +130,30 @@ describe('buildTalentVisionMessages', () => {
 });
 
 describe('e2e talent-vision aimock fixture', () => {
-  const loadFixtures = () => {
-    const raw: unknown = JSON.parse(
-      readFileSync(TALENT_VISION_FIXTURE, 'utf8')
-    );
-    return talentVisionFixtureFileSchema.parse(raw).fixtures;
-  };
+  // Recorded by `bun test:e2e:record e2e/tests/talent.spec.ts` against real
+  // uploads of e2e/fixtures/{test-image,character-sheet,creature}.jpg — one
+  // file per prompt. aimock matches userMessage exactly under the request
+  // transform, so file order never matters.
+  const loadFixtures = () =>
+    readdirSync(TALENT_VISION_FIXTURE_DIR)
+      .filter((name) => name.endsWith('.json'))
+      .flatMap((name) => {
+        const raw: unknown = JSON.parse(
+          readFileSync(resolve(TALENT_VISION_FIXTURE_DIR, name), 'utf8')
+        );
+        return talentVisionFixtureFileSchema.parse(raw).fixtures;
+      });
 
   const parseFixture = (fixture: {
     response: { content: string };
   }): ReturnType<typeof talentMediaAnalysisSchema.parse> =>
     talentMediaAnalysisSchema.parse(JSON.parse(fixture.response.content));
 
-  it('lists filename-specific fixtures before the generic fallback', () => {
-    const fixtures = loadFixtures();
-    const messages = fixtures.map((fixture) => fixture.match.userMessage);
-    const genericIndex = messages.findIndex(
-      (message) =>
-        message ===
-        'Analyze this talent reference: is the image already a character sheet? Describe the person.'
+  it('covers the photo, the sheet and the creature uploads', () => {
+    const messages = loadFixtures().map((fixture) => fixture.match.userMessage);
+    expect(messages).toContain(
+      'Analyze this talent reference: is the image already a character sheet? Describe the person.'
     );
-    expect(genericIndex).toBe(fixtures.length - 1);
     expect(
       messages.some((message) => message.includes('character-sheet.jpg'))
     ).toBe(true);
@@ -188,7 +191,10 @@ describe('e2e talent-vision aimock fixture', () => {
     expect(parsed.subjectKind).toBe('other');
   });
 
-  it('matches the singular prompt and treats a photo as human', () => {
+  // The untagged prompt is the server's sheet-metadata pass in
+  // create-library-talent.ts, which only runs for a sheet the client already
+  // classified — the robot sheet is the only one the suite uploads.
+  it('matches the singular prompt with the sheet-metadata answer', () => {
     const fixtures = loadFixtures();
     const messages = buildTalentVisionMessages([
       { type: 'url', value: 'https://example.com/a.png' },
@@ -203,8 +209,8 @@ describe('e2e talent-vision aimock fixture', () => {
     );
     if (!fixture) throw new Error('missing generic talent-vision fixture');
     const parsed = parseFixture(fixture);
-    expect(parsed.isCharacterSheet).toBe(false);
-    expect(parsed.subjectKind).toBe('human');
+    expect(parsed.isCharacterSheet).toBe(true);
+    expect(parsed.subjectKind).toBe('animated');
   });
 });
 

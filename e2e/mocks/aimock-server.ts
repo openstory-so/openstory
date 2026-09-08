@@ -310,7 +310,10 @@ function tolerantUserMessageRegex(userMessage: string): RegExp {
         : '[0-9A-HJKMNP-TV-Z]{26}';
     })
     .join('');
-  return new RegExp(pattern);
+  // Anchored: a fixture must match the WHOLE prompt. Unanchored, a prompt
+  // that is a prefix of another (the untagged talent-vision prompt vs. its
+  // `Uploaded filename:` variants) answered for both, first file wins.
+  return new RegExp(`^${pattern}$`);
 }
 
 // The OpenRouter fixtures were recorded when DEFAULT_ANALYSIS_MODEL was Opus 5
