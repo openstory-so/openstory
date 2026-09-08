@@ -327,7 +327,7 @@ export async function grantWelcomeCreditsForTeam(opts: {
   teamId: string;
   userId: string;
   source: WelcomeGrantSource;
-  /** Stripe card fingerprint, or the hashed phone number (#1539). */
+  /** Stripe payment-method fingerprint (card, Alipay, WeChat Pay) or the hashed phone number (#1539). */
   fingerprint: string;
 }): Promise<{ granted: boolean }> {
   const reserved = await opts.scopedDb.billing.claimWelcomeCardFingerprint(

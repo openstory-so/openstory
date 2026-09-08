@@ -186,7 +186,7 @@ export const Route = createFileRoute('/api/billing/webhook')({
                   teamId,
                   userId,
                   source: 'purchase',
-                  cardFingerprint: fingerprint,
+                  fingerprint,
                 })
               );
               break;
