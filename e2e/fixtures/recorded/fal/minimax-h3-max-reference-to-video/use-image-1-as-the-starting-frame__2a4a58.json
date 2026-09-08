@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use Image 1 as the starting frame.\nImage 2 twists the coral lipstick bullet upward as a window reflection travels across its satin surface.. Camera: gradual push-in\n\noverall_soundscape: subtle lipstick twist click. No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\nnon_diegetic_music: N/A\n\nReference images:\nImage 3: CORAL_LIPSTICK - A slim luxury lipstick in a compact cylindrical tube with a warm champagne-metallic casing and a smooth satin finish — keep visually consistent throughout the shot.",
+        "model": "minimax/h3-max/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://v3b.fal.media/files/b/0aa9924f/rSTpo29HNS0tI2NDExNdK_minimax-h3.mp4",
+            "content_type": "video/mp4",
+            "file_name": "rSTpo29HNS0tI2NDExNdK_minimax-h3.mp4",
+            "file_size": 7931515
+          },
+          "expanded_prompt": "subject_definitions:\n<Subject 1> is the woman with blonde wavy hair wearing a black blazer and turtleneck, as seen in <Picture 2>.\n<Subject 2> is the luxury lipstick, \"SCARLETT CORAL\", featuring a champagne-metallic cylindrical casing and a warm coral-colored bullet, as seen in <Picture 3> and <Picture 1>.\n\nsummary:\n[keyframe completion + reference generation] The target video starts from the composition in <Picture 1>, showing a close-up of <Subject 2> being operated by the hands of <Subject 1> on a bathroom counter.\n\nretention_analysis:\n<Subject 1> (appears in [Shot 1]): partially_preserved - only the hands are visible, maintaining the skin tone and manicured look from <Picture 1> and <Picture 2>.\n<Subject 2> (appears in [Shot 1]): fully_preserved - the champagne-metallic casing and coral bullet are kept visually consistent with <Picture 3>.\n<Picture 1> (appears in [Shot 1]): fully_preserved - used as the initial frame for composition, lighting, and placement of objects.\n\ndetailed_description:\nThe video is a high-end commercial beauty shot with a clean, bright aesthetic, characterized by soft natural daylight and sharp focus on product textures.\n\n[Shot 1] The video begins with the exact frame of <Picture 1>. The camera is positioned in a high-angle close-up over a white tiled bathroom counter. <Subject 1>'s hands are holding <Subject 2>, which is currently open with the coral bullet exposed. As the shot progresses, the fingers of <Subject 1> gently rotate the base of the champagne-metallic casing. The coral lipstick bullet <Subject 2> twists smoothly upward, emerging further from the tube. Simultaneously, a bright, linear window reflection glides across the satin surface of the metallic casing, emphasizing its luxurious sheen. The camera performs a gradual Push In with small amplitude at a slow speed, tightening the frame on the lipstick's texture. In the background, the black sink, the \"METRO CITY TRANSIT\" card, and the smartphone remain static.\n\noverall_soundscape:\nThe audio is minimal and crisp, featuring the subtle, mechanical \"click\" and sliding friction sound of the lipstick mechanism being twisted. There is a faint ambient room tone of a quiet indoor space.\n\nnon_diegetic_music:\nN/A",
+          "seed": 423943586,
+          "timings": {
+            "inference": 5.882826524000848
+          }
+        },
+        "status": 200,
+        "billableUnits": 9.830400000000001
+      }
+    }
+  ]
+}

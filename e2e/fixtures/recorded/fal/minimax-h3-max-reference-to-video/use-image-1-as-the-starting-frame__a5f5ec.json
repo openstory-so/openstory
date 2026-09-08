@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use Image 1 as the starting frame.\nSmooth handheld drift follows scarlett_city_influencer at the sink. Starting from her hands already opening the carton, she tears the remaining flap free and tilts the package; the Image 3 tube slips toward the sink. She reacts immediately, catches it just before it rolls into the basin, and steadies it above the counter. Keep the motion controlled and tactile, preserving the existing framing and eye-level three-quarter view.\n\nNo dialogue. The phone continues buzzing beside her as she gives the caught Image 3 a brief focused glance.\n\nHard morning sunlight remains fixed across the tile and counter while the carton flaps tremble from the tear and a small reflection slides across the lipstick casing. End with the Image 3 secure in her hand, ready for the next beat.\n\noverall_soundscape: quiet bathroom room tone with faint city noise through the window. phone buzzing on the counter, cardboard carton tearing, lipstick tube tapping lightly against the counter. No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\nnon_diegetic_music: N/A\n\nReference images:\nImage 2: Scarlett — keep visually consistent throughout the shot.",
+        "model": "minimax/h3-max/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://v3b.fal.media/files/b/0aa9924f/EagIas3N3GQWEfm_2vYCv_minimax-h3.mp4",
+            "content_type": "video/mp4",
+            "file_name": "EagIas3N3GQWEfm_2vYCv_minimax-h3.mp4",
+            "file_size": 9236828
+          },
+          "expanded_prompt": "subject_definitions:\n<Subject 1> is the woman, Scarlett, from <Picture 2>, with wavy blonde hair, wearing a black turtleneck and a black blazer with a pink floral brooch.\n<Subject 2> is the lipstick product from <Picture 3>, a gold-cased lipstick with \"SCARLETT CORAL\" printed on the side and a coral-colored tip.\n\nsummary:\n[keyframe completion] The target video begins with <Picture 1> and shows <Subject 1> opening a cardboard carton at a bathroom sink, nearly dropping <Subject 2> before catching it and holding it securely.\n\nretention_analysis:\n<Subject 1> (appears in [Shot 1]): fully_preserved - visually consistent with <Picture 2>.\n<Subject 2> (appears in [Shot 1]): fully_preserved - visually consistent with <Picture 3>.\n<Picture 1> (appears in [Shot 1]): fully_preserved - serves as the starting frame.\n\ndetailed_description:\nThe cinematic style is clean and high-end, characterized by bright morning sunlight and high contrast, maintaining the composition and lighting of the reference images.\n\n[Shot 1] The video begins with the exact composition of <Picture 1>. The camera is at an eye-level three-quarter view, utilizing a smooth handheld drift with small amplitude to create a natural, lifelike feel. <Subject 1> is standing at a black granite sink in a white-tiled bathroom. Her hands are already on the cardboard carton; she tears the remaining paper flap free with a tactile, controlled motion, causing the carton to tremble slightly. As she tilts the package to retrieve the contents, <Subject 2> slips out and slides toward the edge of the sink basin. <Subject 1> reacts immediately, her hand darting forward to catch <Subject 2> just before it rolls into the basin. She steadies the gold lipstick casing above the counter, bringing it close to her line of sight. She gives <Subject 2> a brief, focused glance of relief and satisfaction. Throughout the action, a smartphone lies face-up on the counter beside her, buzzing continuously with haptic vibrations. Hard morning sunlight streams in from the right, casting sharp shadows across the white tiles and creating a sliding specular highlight on the gold surface of <Subject 2> as it moves. The shot ends with <Subject 1> holding <Subject 2> securely in her hand, poised for the next action.\n\noverall_soundscape:\nQuiet bathroom room tone with faint, distant city traffic noise filtering through the window. The distinct, rhythmic buzzing of a smartphone on a hard granite surface is heard throughout. Sounds include the crisp tearing of cardboard and the light metallic tap of the lipstick tube against the counter.\n\nnon_diegetic_music:\nN/A",
+          "seed": 1203755425,
+          "timings": {
+            "inference": 5.968017854029313
+          }
+        },
+        "status": 200,
+        "billableUnits": 9.830400000000001
+      }
+    }
+  ]
+}

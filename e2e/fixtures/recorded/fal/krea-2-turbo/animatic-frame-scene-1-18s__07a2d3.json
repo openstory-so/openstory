@@ -1,0 +1,34 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Animatic frame. Scene 1 — 18s\n\nShot 1 — 6s\nINT. DOWNTOWN APARTMENT BATHROOM — MORNING. Hard sunlight cuts across white tile and a black stone sink. Scarlett, a sharp-eyed city influencer in a black turtleneck, tears open a coral lipstick carton with one hand while her phone buzzes beside it. The handheld camera drifts with her movement as she catches the tube before it rolls into the sink.\n\nShot 2 — 6s\nOverhead o. Loose freehand black line drawing on plain flat white, quick gesture strokes, nothing ruled or geometric. Figures as a few flowing outline strokes with blank faces, the setting hinted with a handful of loose lines. No shading, no texture, no colour, no rendering, no realism, no detail. No text, no titles, no subtitles, no watermarks, no letters, no words, no signs, no UI elements.",
+        "model": "fal-ai/krea-2/turbo"
+      },
+      "response": {
+        "json": {
+          "images": [
+            {
+              "url": "https://v3b.fal.media/files/b/0aa99233/jdjDw5OrMeakjSvR-5dZU_v42HtKaU.png",
+              "content_type": "image/png",
+              "file_name": "jdjDw5OrMeakjSvR-5dZU_v42HtKaU.png",
+              "file_size": null,
+              "width": 1024,
+              "height": 576
+            }
+          ],
+          "timings": {
+            "inference": 0.8366812029998982
+          },
+          "seed": 1123393047,
+          "has_nsfw_concepts": [false],
+          "prompt": "Animatic frame. Scene 1 — 18s\n\nShot 1 — 6s\nINT. DOWNTOWN APARTMENT BATHROOM — MORNING. Hard sunlight cuts across white tile and a black stone sink. Scarlett, a sharp-eyed city influencer in a black turtleneck, tears open a coral lipstick carton with one hand while her phone buzzes beside it. The handheld camera drifts with her movement as she catches the tube before it rolls into the sink.\n\nShot 2 — 6s\nOverhead o. Loose freehand black line drawing on plain flat white, quick gesture strokes, nothing ruled or geometric. Figures as a few flowing outline strokes with blank faces, the setting hinted with a handful of loose lines. No shading, no texture, no colour, no rendering, no realism, no detail. No text, no titles, no subtitles, no watermarks, no letters, no words, no signs, no UI elements.",
+          "actual_prompt": null
+        },
+        "status": 200,
+        "billableUnits": 0.5625
+      }
+    }
+  ]
+}

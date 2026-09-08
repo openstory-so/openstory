@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use Image 1 as the starting frame.\nImage 2 compares the ranunculus to her lips, laughs, and tucks one bloom into her coat pocket.. Camera: smooth pan\n\noverall_soundscape: Image 3 chuckle, street ambience, brief camera flash. No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\nnon_diegetic_music: N/A\n\nReference images:\nImage 4: CORAL_LIPSTICK - A slim luxury lipstick in a compact cylindrical tube with a warm champagne-metallic casing and a smooth satin finish — keep visually consistent throughout the shot.",
+        "model": "minimax/h3-max/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://v3b.fal.media/files/b/0aa9924e/W09O6vlu3xoywfPNxxeTX_minimax-h3.mp4",
+            "content_type": "video/mp4",
+            "file_name": "W09O6vlu3xoywfPNxxeTX_minimax-h3.mp4",
+            "file_size": 13978554
+          },
+          "expanded_prompt": "subject_definitions:\n<Subject 1> is the blonde woman in <Picture 1> and <Picture 2>, wearing a black blazer over a black turtleneck and black trousers, with a coral ranunculus flower pinned to her lapel.\n<Subject 2> is the woman with dark curly hair in <Picture 1> and <Picture 3>, wearing a black hooded outdoor jacket and black cargo pants.\n<Subject 3> is the coral lipstick in <Picture 4>, a luxury lipstick with a champagne-metallic casing and a satin finish, the shade of which is applied to the lips of <Subject 1>.\n\nsummary:\n[keyframe completion + reference generation] The target video begins with the scene from <Picture 1>, where <Subject 1> interacts with <Subject 2> on a New York City street, comparing a flower to her lips and tucking it into her pocket.\n\nretention_analysis:\n<Subject 1> (appears in [Shot 1]): fully_preserved - maintains appearance, clothing, and coral lip color from <Picture 1> and <Picture 2>.\n<Subject 2> (appears in [Shot 1]): fully_preserved - maintains appearance and clothing from <Picture 1> and <Picture 3>.\n<Subject 3> (appears in [Shot 1]): attribute_transfer - the specific \"Scarlett Coral\" color from <Picture 4> is preserved on the lips of <Subject 1>.\n<Picture 1> (appears in [Shot 1]): fully_preserved - serves as the initial frame.\n\ndetailed_description:\nThe video is a high-end cinematic sequence with natural daylight and a shallow depth of field, maintaining a clean, commercial aesthetic.\n\n[Shot 1] The video begins exactly as seen in <Picture 1>, with <Subject 1> (S1) holding a coffee cup and phone, speaking to <Subject 2> who holds a bouquet of coral ranunculus. <Subject 1> (S1) says <d>[English] Sorry—coming through!</d> while looking ahead. The camera then begins a smooth, slow Pan Right. <Subject 1> (S1) turns her attention to the bouquet, picking up one coral ranunculus flower. She brings the bloom close to her face, glancing between the vibrant coral petals and her own lips, which are colored with the specific satin shade of <Subject 3>. A soft, genuine smile grows on her face, and she lets out a light, airy chuckle. With a graceful motion, she tucks the flower into the pocket of her black blazer. As she does this, a brief, bright white flash of a camera occurs from an off-screen photographer, momentarily illuminating the scene. The shot ends as she looks back at <Subject 2> with a playful expression.\n\noverall_soundscape:\nThe soundscape consists of a bustling New York City street atmosphere with distant traffic, muffled sirens, and the chatter of pedestrians. It includes a clear, light female chuckle from <Subject 1> and the distinct, sharp mechanical click and electronic beep of a professional camera flash.\n\nnon_diegetic_music:\nN/A",
+          "seed": 1900785820,
+          "timings": {
+            "inference": 8.424215885999729
+          }
+        },
+        "status": 200,
+        "billableUnits": 13.760000000000002
+      }
+    }
+  ]
+}

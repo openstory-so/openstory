@@ -22,6 +22,7 @@ import {
   type ChatCompletionRequest,
   type Fixture,
   type JournalEntry,
+  type Mountable,
 } from '@copilotkit/aimock';
 import { createHash } from 'node:crypto';
 import {
@@ -70,6 +71,8 @@ const RECORD_STAGING_DIR = resolve(
 // family — otherwise its recordings get stuck in `_unsorted/` with a warning.
 const STAGE_PREFIXES: ReadonlyArray<readonly [string, string]> = [
   ['Enhance the script inside <USER_SCRIPT>', 'script-enhance'],
+  // The duration-fix retry turn of the same call (enhance-duration.ts).
+  ['Your clip duration labels sum to', 'script-enhance'],
   ['STYLE CATALOG (choose by index):', 'style-recommend'],
   ['Split the script within the USER_SCRIPT', 'script-analyze'],
   ['Extract a complete character bible', 'script-bibles'],
@@ -338,6 +341,100 @@ function tolerateRuntimeIds(fixtures: Fixture[]): Fixture[] {
   return fixtures;
 }
 
+/**
+ * xAI's `/v1/images/edits` takes `application/json` (the Grok adapter posts
+ * `{ model, prompt, image | images }`), but aimock's built-in edits handler
+ * only parses OpenAI's multipart form and 400s a JSON body with
+ * "Missing required parameter: 'prompt'" — the character-sheet step that
+ * hands Grok Imagine a reference still hit exactly that. This mount sits in
+ * front of the built-in route and takes JSON only:
+ *
+ * - replay: re-wrap prompt + model as multipart and loop back into the same
+ *   server, so aimock's own matcher, journal and STRICT abort still apply
+ *   (the mount returns false for multipart, which is what lets the loopback
+ *   reach the built-in handler);
+ * - record: aimock would forward that multipart to xAI, which rejects it, so
+ *   post the JSON upstream ourselves and write the fixture in the same
+ *   `{ match: { endpoint: 'image' }, response: { image } }` shape the
+ *   recorder uses for generations.
+ */
+function xaiJsonImageEditsMount(): Mountable {
+  return {
+    async handleRequest(req, res) {
+      if (
+        req.method !== 'POST' ||
+        !req.headers['content-type']?.includes('application/json')
+      ) {
+        return false;
+      }
+      const chunks: Buffer[] = [];
+      for await (const chunk of req) chunks.push(Buffer.from(chunk));
+      const raw = Buffer.concat(chunks);
+      const body: { model: string; prompt: string } = JSON.parse(
+        raw.toString('utf8')
+      );
+
+      let upstream: Response;
+      if (E2E_RECORDING) {
+        upstream = await fetch('https://api.x.ai/v1/images/edits', {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            authorization: req.headers.authorization ?? '',
+          },
+          body: raw,
+        });
+        if (upstream.ok) {
+          const json: { data?: Array<{ url?: string; b64_json?: string }> } =
+            await upstream.clone().json();
+          const image = json.data?.[0];
+          if (image) {
+            const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+            const hash = createHash('sha256')
+              .update(body.prompt)
+              .digest('hex')
+              .slice(0, 8);
+            mkdirSync(XAI_FIXTURE_DIR, { recursive: true });
+            writeFileSync(
+              resolve(XAI_FIXTURE_DIR, `openai-${stamp}-${hash}.json`),
+              JSON.stringify(
+                {
+                  fixtures: [
+                    {
+                      match: {
+                        endpoint: 'image',
+                        userMessage: body.prompt,
+                        model: body.model,
+                      },
+                      response: { image },
+                    },
+                  ],
+                },
+                null,
+                2
+              )
+            );
+          }
+        }
+      } else {
+        const form = new FormData();
+        form.set('prompt', body.prompt);
+        form.set('model', body.model);
+        upstream = await fetch(
+          `http://127.0.0.1:${XAI_AIMOCK_PORT}/v1/images/edits`,
+          { method: 'POST', body: form }
+        );
+      }
+      res.writeHead(upstream.status, {
+        'content-type':
+          upstream.headers.get('content-type') ?? 'application/json',
+      });
+      res.end(Buffer.from(await upstream.arrayBuffer()));
+      return true;
+    },
+  };
+}
+
 let mockServer: LLMock | null = null;
 let xaiMockServer: LLMock | null = null;
 
@@ -433,7 +530,7 @@ export async function startAimockServer(): Promise<string> {
         bodyTimeoutMs: 120_000,
       },
     }),
-  });
+  }).mount('/v1/images/edits', xaiJsonImageEditsMount());
   if (existsSync(XAI_FIXTURE_DIR)) {
     xaiMockServer.addFixtures(loadFixturesRecursive(XAI_FIXTURE_DIR));
   }

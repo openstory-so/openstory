@@ -1,0 +1,17 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "image",
+        "userMessage": "Medium-wide eye-level shot on a 35mm handheld lens, three-quarter view of Scarlett (Image 1) standing at the black stone bathroom sink, one hand gripping a partly opened carton containing the lipstick from (CORAL_LIPSTICK), the other hovering beside a buzzing phone on the counter. The unopened tube is poised near the carton and sink edge, with clear space toward the basin for its imminent roll and catch. Scarlett (Image 1)’s weight leans toward the counter, attention fixed on the carton. Compact downtown apartment bathroom, white tiled walls, mirror and bright window visible. Hard morning sunlight creates crisp geometric shadows and warm highlights. Clean, bright modern social-first beauty photography, tactile editorial energy, airy contrast, 16:9.\n\nReference images define identity — keep every referenced character, object, and location consistent with its reference image; never render a reference image itself as a separate panel or subject.\nImage 2 (location): INT. DOWNTOWN APARTMENT BATHROOM — MORNING - A compact",
+        "model": "grok-imagine-image-2.0"
+      },
+      "response": {
+        "image": {
+          "url": "https://imgen.x.ai/xai-imgen/xai-tmp-imgen-134d25df-c02f-9d06-a6b2-91a917dc3912-668510f0.jpeg",
+          "mime_type": "image/jpeg"
+        }
+      }
+    }
+  ]
+}

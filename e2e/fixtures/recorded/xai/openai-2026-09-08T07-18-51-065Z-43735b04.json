@@ -1,0 +1,17 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "image",
+        "userMessage": "Medium-wide eye-level shot on a 35mm lens, street-level camera positioned just outside a narrow downtown apartment entrance. Scarlett (Image 1) stands at the threshold in a forward-leaning ready stance, one foot planted inside and one reaching toward the sidewalk, holding a takeaway coffee in one hand and gripping a smartphone in the other, eyes fixed on an open path through the approaching commuter crowd. Her tailored black coat is poised to swing as movement begins. Morning daylight fills the pavement, with reflective blue-gray glass towers and yellow taxis sliding through the background. Fresh social-first editorial photography, bright natural exposure, crisp shadows, clean true-to-life color, vivid coral accent, 16:9.\n\nReference images define identity — keep every referenced character, object, and location consistent with its reference image; never render a reference image itself as a separate panel or subject.\nImage 2 (character): vendor\nImage 3 (location): EXT. DOWNTOWN SIDEWALK — MORNING - A busy downtown sidewalk surrounding a narrow apartment entrance",
+        "model": "grok-imagine-image-2.0"
+      },
+      "response": {
+        "image": {
+          "url": "https://imgen.x.ai/xai-imgen/xai-tmp-imgen-41545dc0-f5b5-9ac0-960e-98b33c2df2a2-d5c7680a.jpeg",
+          "mime_type": "image/jpeg"
+        }
+      }
+    }
+  ]
+}

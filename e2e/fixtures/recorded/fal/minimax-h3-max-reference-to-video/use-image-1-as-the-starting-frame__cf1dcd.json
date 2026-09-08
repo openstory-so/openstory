@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use Image 1 as the starting frame.\nImage 2 raises the lipstick toward the skyline, then turns toward camera with a bright smile.. Camera: slow static\n\noverall_soundscape: distant train rumble, rooftop wind. No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\nnon_diegetic_music: N/A\n\nReference images:\nImage 3: CORAL_LIPSTICK - A slim luxury lipstick in a compact cylindrical tube with a warm champagne-metallic casing and a smooth satin finish — keep visually consistent throughout the shot.",
+        "model": "minimax/h3-max/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://v3b.fal.media/files/b/0aa9924f/uB4If4J5pseBZf8y5rdnA_minimax-h3.mp4",
+            "content_type": "video/mp4",
+            "file_name": "uB4If4J5pseBZf8y5rdnA_minimax-h3.mp4",
+            "file_size": 9317153
+          },
+          "expanded_prompt": "subject_definitions:\n<Subject 1> is the blonde woman in <Picture 1> and <Picture 2>, wearing a black turtleneck, a black tailored blazer with a pink floral brooch on the lapel, and black trousers.\n<Subject 2> is the luxury lipstick from <Picture 3>, featuring a warm champagne-metallic cylindrical casing and a smooth satin-finish coral-colored lipstick bullet.\n\nsummary:\n[keyframe completion + reference generation] The target video begins with the scene from <Picture 1>, where <Subject 1> stands on a rooftop overlooking a city skyline, then shows her raising <Subject 2> toward the sky before turning to the camera with a bright smile.\n\nretention_analysis:\n<Subject 1> (appears in [Shot 1]): fully_preserved - maintaining her appearance, outfit, and blonde hair.\n<Subject 2> (appears in [Shot 1]): fully_preserved - maintaining the metallic casing and coral bullet.\n<Picture 1> (appears in [Shot 1]): fully_preserved - used as the initial starting frame.\n\ndetailed_description:\nThe video is a cinematic high-fashion commercial shot in a warm, golden hour light with a soft, ethereal glow over the city skyline.\n\n[Shot 1] The video opens exactly as shown in <Picture 1>. <Subject 1> is leaning against a black metal railing on a rooftop, her blonde hair gently windswept. She is holding <Subject 2> in her right hand. As the scene unfolds, <Subject 1> slowly raises <Subject 2> upward, lifting the coral lipstick toward the golden skyline and the distant skyscrapers as if offering a toast to the city. After a brief pause at the peak of the gesture, she smoothly rotates her body and turns her head toward the lens. She looks directly into the camera with a radiant, bright, and confident smile, highlighting the coral shade of her lips. The camera is a Static Shot, maintaining a medium shot composition throughout the 6-second duration to emphasize the subject's movement and expression. The lighting remains consistent with the sunset hues of <Picture 1>, casting a warm rim light on <Subject 1>'s hair and the metallic surface of <Subject 2>.\n\noverall_soundscape:\nThe ambient sound consists of a low-frequency distant train rumble coming from the tracks below and the soft, steady whistling of rooftop wind. There are subtle foley sounds of fabric rustling as <Subject 1> turns.\n\nnon_diegetic_music:\nN/A",
+          "seed": 2014041014,
+          "timings": {
+            "inference": 5.885660141997505
+          }
+        },
+        "status": 200,
+        "billableUnits": 9.830400000000001
+      }
+    }
+  ]
+}

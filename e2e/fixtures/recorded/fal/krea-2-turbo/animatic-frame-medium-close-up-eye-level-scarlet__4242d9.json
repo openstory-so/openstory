@@ -1,0 +1,34 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Animatic frame. medium close-up. eye level. Scarlett has stopped outside the flower kiosk as the vendor extends a small bunch of coral ranunculus toward her; she looks surprised and amused.. Scarlett compares the ranunculus to her lips, laughs, and tucks one bloom into her coat pocket.. Loose freehand black line drawing on plain flat white, quick gesture strokes, nothing ruled or geometric. Figures as a few flowing outline strokes with blank faces, the setting hinted with a handful of loose lines. No shading, no texture, no colour, no rendering, no realism, no detail. No text, no titles, no subtitles, no watermarks, no letters, no words, no signs, no UI elements.",
+        "model": "fal-ai/krea-2/turbo"
+      },
+      "response": {
+        "json": {
+          "images": [
+            {
+              "url": "https://v3b.fal.media/files/b/0aa99235/RvKcnwIf6W6kDuKUtuuCA_LLlqU6in.png",
+              "content_type": "image/png",
+              "file_name": "RvKcnwIf6W6kDuKUtuuCA_LLlqU6in.png",
+              "file_size": null,
+              "width": 1024,
+              "height": 576
+            }
+          ],
+          "timings": {
+            "inference": 0.8321534360002261
+          },
+          "seed": 833905375,
+          "has_nsfw_concepts": [false],
+          "prompt": "Animatic frame. medium close-up. eye level. Scarlett has stopped outside the flower kiosk as the vendor extends a small bunch of coral ranunculus toward her; she looks surprised and amused.. Scarlett compares the ranunculus to her lips, laughs, and tucks one bloom into her coat pocket.. Loose freehand black line drawing on plain flat white, quick gesture strokes, nothing ruled or geometric. Figures as a few flowing outline strokes with blank faces, the setting hinted with a handful of loose lines. No shading, no texture, no colour, no rendering, no realism, no detail. No text, no titles, no subtitles, no watermarks, no letters, no words, no signs, no UI elements.",
+          "actual_prompt": null
+        },
+        "status": 200,
+        "billableUnits": 0.5625
+      }
+    }
+  ]
+}
