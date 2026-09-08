@@ -157,8 +157,8 @@ export async function selectComposerStyle(
 }
 
 /**
- * Open Talent or Locations from the composer's References popover (#1526).
- * The three pickers sit behind one control at every breakpoint.
+ * Open Talent or Locations from the composer. Desktop shows the pickers
+ * inline; below md they sit behind a References sheet.
  */
 export async function openComposerReference(
   page: Page,

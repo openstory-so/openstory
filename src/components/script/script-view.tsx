@@ -33,6 +33,14 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from '@/components/ui/sheet';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { enhanceScriptStreamFn } from '@/functions/ai';
 import { useAutoScroll } from '@/hooks/use-auto-scroll';
@@ -41,6 +49,7 @@ import { BILLING_TRANSACTIONS_KEY } from '@/hooks/use-billing-balance-realtime';
 import { useBillingGate } from '@/hooks/use-billing-gate';
 import { useFalPricing } from '@/hooks/use-fal-pricing';
 import { useGenerationSettings } from '@/hooks/use-generation-settings';
+import { useIsMobile } from '@/hooks/use-mobile';
 import {
   DEFAULT_GENERATION_STOP_AT,
   flagsFromStopAt,
@@ -128,7 +137,6 @@ import {
 import type { Sequence } from '@/types/database';
 import { usePostHog } from '@posthog/react';
 import {
-  ChevronDown,
   ImagePlus,
   Library,
   Loader2,
@@ -1119,7 +1127,8 @@ export const ScriptView: FC<{
   const isSubmitting = createSequenceMutation.isPending;
   const isDisabled = !isReady || isSubmitting || isEnhancing || isElementBusy;
 
-  const [referencesOpen, setReferencesOpen] = useState(false);
+  const isMobile = useIsMobile();
+  const [referencesSheetOpen, setReferencesSheetOpen] = useState(false);
   const referenceCount =
     selectedTalentIds.length +
     selectedLocationIds.length +
@@ -1411,9 +1420,9 @@ export const ScriptView: FC<{
         onSubmit={(e) => void handleSubmit(e)}
         className="flex flex-col min-h-0 max-h-full"
       >
-        {/* Control bar. Talent / locations / elements stay behind one
-            References popover at every breakpoint (#1526). */}
-        <CardHeader className="shrink-0 flex flex-row items-center justify-between gap-3 px-6 py-4 border-b border-border/50 bg-card/40 short-h:py-2">
+        {/* Control bar. Below md the three reference selectors fold into one
+            References sheet; md+ shows Talent / Locations / Elements inline. */}
+        <CardHeader className="shrink-0 flex flex-row items-center md:flex-col md:items-start lg:flex-row justify-between gap-3 px-6 py-4 border-b border-border/50 bg-card/40 short-h:py-2">
           <GenerationSettings
             aspectRatio={aspectRatio}
             resolution={resolution}
@@ -1431,14 +1440,23 @@ export const ScriptView: FC<{
             disabled={loading}
             styleCategory={styleCategory}
           />
-          <Popover open={referencesOpen} onOpenChange={setReferencesOpen}>
-            <PopoverTrigger asChild>
+          {/* The selectors own their dialogs and the element ref, so they
+              mount exactly once: inline on md+, inside the sheet below it.
+              Visibility is CSS; only the mount point follows the hook. */}
+          <div className="hidden md:flex items-center gap-2 min-h-10">
+            {!isMobile && referenceSelectors}
+          </div>
+          <Sheet
+            open={referencesSheetOpen}
+            onOpenChange={setReferencesSheetOpen}
+          >
+            <SheetTrigger asChild>
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
                 disabled={loading}
-                className="gap-1.5 shrink-0"
+                className="md:hidden gap-1.5 shrink-0"
               >
                 <Library className="size-3.5" />
                 References
@@ -1447,19 +1465,21 @@ export const ScriptView: FC<{
                     {referenceCount}
                   </span>
                 )}
-                <ChevronDown className="size-3.5 text-muted-foreground" />
               </Button>
-            </PopoverTrigger>
-            <PopoverContent
-              align="end"
-              collisionPadding={12}
-              className="w-max min-w-44 max-w-[calc(100vw-2rem)] p-2"
-            >
-              <div className="flex flex-col items-start gap-1">
-                {referenceSelectors}
+            </SheetTrigger>
+            <SheetContent side="bottom" className="px-4 pb-6">
+              <SheetHeader className="px-0">
+                <SheetTitle>Talent, locations & elements</SheetTitle>
+                <SheetDescription>
+                  Pre-cast talent, pin locations, or add reference images.
+                  Anything you skip is extracted from the script.
+                </SheetDescription>
+              </SheetHeader>
+              <div className="flex flex-col items-start gap-3">
+                {isMobile && referenceSelectors}
               </div>
-            </PopoverContent>
-          </Popover>
+            </SheetContent>
+          </Sheet>
         </CardHeader>
 
         {/* Holds the script alone; the enhance row, style grid and footer are
