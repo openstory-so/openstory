@@ -88,7 +88,7 @@ describe('phone verification', () => {
     expect(await request.text()).toBe('To=%2B15551234567&Channel=sms');
     expect(limit).toHaveBeenCalledWith({ key: 'welcome-sms:t1' });
 
-    reply(400, { code: 60200, message: 'Invalid parameter' });
+    reply(400, { code: 60200, message: 'Invalid parameter', status: 400 });
     await expect(
       sendPhoneVerification({
         scopedDb: scopedDb(false),

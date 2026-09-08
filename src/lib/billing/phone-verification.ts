@@ -55,8 +55,9 @@ async function phoneClaimFingerprint(phoneNumber: string): Promise<string> {
   return `phone:${Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('')}`;
 }
 
+// `status` is "pending" / "approved" on success and the HTTP number on errors.
 const twilioBody = z.object({
-  status: z.string().optional(),
+  status: z.string().or(z.number()).optional(),
   code: z.number().optional(),
   message: z.string().optional(),
 });
