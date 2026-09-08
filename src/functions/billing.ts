@@ -22,6 +22,7 @@ import {
   isStripeEnabled,
   MAX_TOPUP_AMOUNT_USD,
   MIN_TOPUP_AMOUNT_USD,
+  SIGNUP_GRANT_MICROS,
   totalCheckoutCents,
 } from '@/lib/billing/constants';
 import {
@@ -472,6 +473,11 @@ export const getBillingBalanceFn = createServerFn({ method: 'GET' })
       hasUsedCredits:
         usageHistory.transactions.length > 0 || Number(usageHistory.total) > 0,
       hasSignupGrant,
+      // Credits the welcome grant did not put there — seeded, bought, or
+      // adjusted. A team that already holds credits is never offered the
+      // welcome grant (gift or claim), whatever it has spent.
+      hasOtherCredits:
+        funds.balance > (hasSignupGrant ? SIGNUP_GRANT_MICROS : 0),
       autoTopUp: {
         enabled: settings.autoTopUpEnabled,
         thresholdUsd: settings.autoTopUpThresholdMicros

@@ -52,6 +52,7 @@ export const CreditBalancePill: React.FC = () => {
     isLowBalance,
     stripeEnabled,
     hasSignupGrant,
+    hasOtherCredits,
   } = useBillingBalance();
   const { data: gateStatus } = useBillingGateQuery();
   const { showCosts } = useShowCosts();
@@ -60,7 +61,8 @@ export const CreditBalancePill: React.FC = () => {
 
   const isSignedOut = !userLoading && !user;
   const unclaimedWelcome = Boolean(
-    user && shouldOfferWelcomeClaim({ stripeEnabled, hasSignupGrant })
+    user &&
+    shouldOfferWelcomeClaim({ stripeEnabled, hasSignupGrant, hasOtherCredits })
   );
 
   // A fal key alone covers generation (LLM calls route through fal's

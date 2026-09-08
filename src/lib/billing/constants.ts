@@ -188,13 +188,16 @@ export type WelcomeDialogMode = 'claim' | 'gift' | 'none';
  *
  * - `claim`: Stripe on and the grant is unpaid (BYOK spend does not suppress this).
  * - `gift`: Stripe off, grant exists, unused.
- * - `none`: Stripe on and already granted, or Stripe off and (spent or no grant).
+ * - `none`: the team already holds credits the grant did not give it, Stripe
+ *   on and already granted, or Stripe off and (spent or no grant).
  */
 export function welcomeDialogMode(input: {
   stripeEnabled: boolean;
   hasSignupGrant: boolean;
   hasUsedCredits: boolean;
+  hasOtherCredits: boolean;
 }): WelcomeDialogMode {
+  if (input.hasOtherCredits) return 'none';
   if (input.stripeEnabled) {
     return input.hasSignupGrant ? 'none' : 'claim';
   }
@@ -208,7 +211,9 @@ export function welcomeDialogMode(input: {
 export function shouldOfferWelcomeClaim(input: {
   stripeEnabled: boolean;
   hasSignupGrant: boolean;
+  hasOtherCredits: boolean;
 }): boolean {
   if (SIGNUP_GRANT_MICROS <= 0) return false;
+  if (input.hasOtherCredits) return false;
   return input.stripeEnabled && !input.hasSignupGrant;
 }

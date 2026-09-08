@@ -188,11 +188,12 @@ export function NewSequencePage({
   );
 
   const { needsBillingSetup, hasFalKey, stripeEnabled } = useBillingGate();
-  const { hasSignupGrant } = useBillingBalance();
+  const { hasSignupGrant, hasOtherCredits } = useBillingBalance();
   const [billingOpen, setBillingOpen] = useState(false);
   const offerWelcomeClaim = shouldOfferWelcomeClaim({
     stripeEnabled,
     hasSignupGrant,
+    hasOtherCredits,
   });
 
   // Clear billing return flag when user is back on this page

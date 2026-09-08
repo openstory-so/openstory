@@ -351,11 +351,13 @@ export const BillingGateDialog: React.FC<BillingGateDialogProps> = ({
 export const GlobalBillingGateDialog: React.FC = () => {
   const open = useBillingGateDialogOpen();
   const { data } = useBillingGateQuery();
-  const { stripeEnabled, hasSignupGrant } = useBillingBalance();
+  const { stripeEnabled, hasSignupGrant, hasOtherCredits } =
+    useBillingBalance();
   const { reopen } = useWelcomeCreditsGate();
   const offerClaim = shouldOfferWelcomeClaim({
     stripeEnabled,
     hasSignupGrant,
+    hasOtherCredits,
   });
 
   useEffect(() => {

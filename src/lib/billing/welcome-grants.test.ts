@@ -30,6 +30,7 @@ describe('welcomeDialogMode', () => {
         stripeEnabled: true,
         hasSignupGrant: false,
         hasUsedCredits: false,
+        hasOtherCredits: false,
       })
     ).toBe('claim');
   });
@@ -40,6 +41,7 @@ describe('welcomeDialogMode', () => {
         stripeEnabled: true,
         hasSignupGrant: true,
         hasUsedCredits: false,
+        hasOtherCredits: false,
       })
     ).toBe('none');
   });
@@ -50,6 +52,7 @@ describe('welcomeDialogMode', () => {
         stripeEnabled: false,
         hasSignupGrant: true,
         hasUsedCredits: false,
+        hasOtherCredits: false,
       })
     ).toBe('gift');
   });
@@ -60,6 +63,26 @@ describe('welcomeDialogMode', () => {
         stripeEnabled: true,
         hasSignupGrant: true,
         hasUsedCredits: true,
+        hasOtherCredits: false,
+      })
+    ).toBe('none');
+  });
+
+  it('never shows for a team that already holds credits the grant did not give it', () => {
+    expect(
+      welcomeDialogMode({
+        stripeEnabled: true,
+        hasSignupGrant: false,
+        hasUsedCredits: false,
+        hasOtherCredits: true,
+      })
+    ).toBe('none');
+    expect(
+      welcomeDialogMode({
+        stripeEnabled: false,
+        hasSignupGrant: true,
+        hasUsedCredits: false,
+        hasOtherCredits: true,
       })
     ).toBe('none');
   });
@@ -70,6 +93,7 @@ describe('welcomeDialogMode', () => {
         stripeEnabled: true,
         hasSignupGrant: false,
         hasUsedCredits: true,
+        hasOtherCredits: false,
       })
     ).toBe('claim');
   });
@@ -77,14 +101,27 @@ describe('welcomeDialogMode', () => {
 
 describe('shouldOfferWelcomeClaim', () => {
   it('is true only for hosted Stripe with an unpaid grant', () => {
+    const unpaid = { hasSignupGrant: false, hasOtherCredits: false };
+    expect(shouldOfferWelcomeClaim({ stripeEnabled: true, ...unpaid })).toBe(
+      SIGNUP_GRANT_MICROS > 0
+    );
     expect(
-      shouldOfferWelcomeClaim({ stripeEnabled: true, hasSignupGrant: false })
-    ).toBe(SIGNUP_GRANT_MICROS > 0);
-    expect(
-      shouldOfferWelcomeClaim({ stripeEnabled: true, hasSignupGrant: true })
+      shouldOfferWelcomeClaim({
+        stripeEnabled: true,
+        hasSignupGrant: true,
+        hasOtherCredits: false,
+      })
     ).toBe(false);
+    expect(shouldOfferWelcomeClaim({ stripeEnabled: false, ...unpaid })).toBe(
+      false
+    );
+    // A team that already holds credits is not offered the grant.
     expect(
-      shouldOfferWelcomeClaim({ stripeEnabled: false, hasSignupGrant: false })
+      shouldOfferWelcomeClaim({
+        stripeEnabled: true,
+        hasSignupGrant: false,
+        hasOtherCredits: true,
+      })
     ).toBe(false);
   });
 });
