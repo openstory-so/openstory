@@ -316,48 +316,52 @@ export const WelcomeCreditsProvider: React.FC<{ children: ReactNode }> = ({
     <WelcomeCreditsContext.Provider value={value}>
       {children}
       <Dialog open={open} onOpenChange={handleOpenChange}>
-        {mode === 'gift' ? (
-          <GiftDialogContent
-            grantDisplay={GRANT_DISPLAY}
-            showCosts={showCosts}
-            onShowCostsChange={setShowCosts}
-            onStart={() => handleOpenChange(false)}
-            primaryLabel={primaryLabel}
-          />
-        ) : viaPhone ? (
-          <PhoneClaimDialogContent
-            grantDisplay={GRANT_DISPLAY}
-            showCosts={showCosts}
-            onShowCostsChange={setShowCosts}
-            onGranted={async () => {
-              await queryClient.invalidateQueries({
-                queryKey: [...BILLING_BALANCE_KEY],
-              });
-              await queryClient.invalidateQueries({
-                queryKey: [...BILLING_GATE_KEY],
-              });
-            }}
-            onUseCard={() => setViaPhone(false)}
-          />
-        ) : (
-          <ClaimDialogContent
-            grantDisplay={GRANT_DISPLAY}
-            showCosts={showCosts}
-            onShowCostsChange={setShowCosts}
-            setupError={claimError}
-            opening={setupMutation.isPending || redirectingToStripe}
-            claiming={claimQuery.isPending && returnedFromStripe}
-            onAddCard={() => {
-              setSetupError(null);
-              setRedirectingToStripe(true);
-              setupMutation.mutate();
-            }}
-            onSkip={() => handleOpenChange(false)}
-            onUsePhone={
-              phoneVerificationEnabled ? () => setViaPhone(true) : undefined
-            }
-          />
-        )}
+        {/* One DialogContent for every branch: swapping the whole content
+            would remount it and replay the open animation. */}
+        <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-md">
+          {mode === 'gift' ? (
+            <GiftDialogContent
+              grantDisplay={GRANT_DISPLAY}
+              showCosts={showCosts}
+              onShowCostsChange={setShowCosts}
+              onStart={() => handleOpenChange(false)}
+              primaryLabel={primaryLabel}
+            />
+          ) : viaPhone ? (
+            <PhoneClaimDialogContent
+              grantDisplay={GRANT_DISPLAY}
+              showCosts={showCosts}
+              onShowCostsChange={setShowCosts}
+              onGranted={async () => {
+                await queryClient.invalidateQueries({
+                  queryKey: [...BILLING_BALANCE_KEY],
+                });
+                await queryClient.invalidateQueries({
+                  queryKey: [...BILLING_GATE_KEY],
+                });
+              }}
+              onUseCard={() => setViaPhone(false)}
+            />
+          ) : (
+            <ClaimDialogContent
+              grantDisplay={GRANT_DISPLAY}
+              showCosts={showCosts}
+              onShowCostsChange={setShowCosts}
+              setupError={claimError}
+              opening={setupMutation.isPending || redirectingToStripe}
+              claiming={claimQuery.isPending && returnedFromStripe}
+              onAddCard={() => {
+                setSetupError(null);
+                setRedirectingToStripe(true);
+                setupMutation.mutate();
+              }}
+              onSkip={() => handleOpenChange(false)}
+              onUsePhone={
+                phoneVerificationEnabled ? () => setViaPhone(true) : undefined
+              }
+            />
+          )}
+        </DialogContent>
       </Dialog>
     </WelcomeCreditsContext.Provider>
   );
@@ -386,7 +390,7 @@ function ClaimDialogContent({
 }) {
   const busy = opening || claiming;
   return (
-    <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-md">
+    <>
       <WelcomeHeader
         amount={grantDisplay}
         description="Add a card to unlock it. We won't charge you — it just confirms you're a real person."
@@ -425,7 +429,7 @@ function ClaimDialogContent({
           Skip for now
         </Button>
       </div>
-    </DialogContent>
+    </>
   );
 }
 
@@ -495,7 +499,7 @@ function PhoneClaimDialogContent({
   };
 
   return (
-    <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-md">
+    <>
       <WelcomeHeader
         amount={grantDisplay}
         description={
@@ -587,7 +591,7 @@ function PhoneClaimDialogContent({
           </Button>
         </div>
       </form>
-    </DialogContent>
+    </>
   );
 }
 
@@ -605,7 +609,7 @@ function GiftDialogContent({
   primaryLabel: string;
 }) {
   return (
-    <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-md">
+    <>
       <WelcomeHeader
         amount={grantDisplay}
         description="Free credits on us — enough for a typical 30s short with motion and music. Generations draw from this balance at provider rates."
@@ -620,7 +624,7 @@ function GiftDialogContent({
           </Button>
         </DialogFooter>
       </div>
-    </DialogContent>
+    </>
   );
 }
 
