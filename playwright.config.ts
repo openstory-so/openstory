@@ -102,6 +102,17 @@ export default defineConfig({
       // upstream, which can trip the SDK's retry path and produce duplicate
       // fixture writes for the same prompt.
       ...(process.env.E2E_RECORD === '1' ? ['E2E_RECORD=1'] : []),
+      // Record runs talk to the real providers with the keys in .env.local
+      // (bun autoloads it; CLOUDFLARE_INCLUDE_PROCESS_ENV forwards it). fal
+      // and xAI need nothing more, but Ark stays OFF under E2E_TEST unless a
+      // host is wired (byteplus-config.ts — a laptop ARK_API_KEY must never
+      // bill a replay run), so wire the real hosts only when recording.
+      ...(process.env.E2E_RECORD === '1'
+        ? [
+            `ARK_BASE_URL=${process.env.ARK_BASE_URL ?? 'https://ark.ap-southeast.bytepluses.com/api/v3'}`,
+            `BYTEPLUS_OPENAPI_HOST=${process.env.BYTEPLUS_OPENAPI_HOST ?? 'ark.ap-southeast-1.byteplusapi.com'}`,
+          ]
+        : []),
       'PORT=3001',
       'VITE_APP_URL=http://localhost:3001',
       'OPENROUTER_BASE_URL=http://localhost:4010',
