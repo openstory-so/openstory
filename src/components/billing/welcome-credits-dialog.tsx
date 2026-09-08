@@ -11,7 +11,12 @@
  */
 
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import {
+  InputOTP,
+  InputOTPGroup,
+  InputOTPSlot,
+} from '@/components/ui/input-otp';
+import { PhoneInput } from '@/components/ui/phone-input';
 import {
   Dialog,
   DialogContent,
@@ -43,6 +48,7 @@ import type { WelcomeDialogMode } from '@/lib/billing/constants';
 import { microsToDisplayUsd } from '@/lib/billing/money';
 import { hasPendingGenerate } from '@/shared/generation/pending-generate';
 import { isWelcomeCardAlreadyClaimedError } from '@/shared/errors';
+import { composePhoneNumber, phoneCountries } from '@/shared/phone-countries';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { Sparkles } from 'lucide-react';
@@ -443,6 +449,8 @@ function PhoneClaimDialogContent({
   onUseCard: () => void;
 }) {
   const [phoneNumber, setPhoneNumber] = useState<string | null>(null);
+  const [code, setCode] = useState('');
+  const countries = useMemo(() => phoneCountries(), []);
 
   const send = useMutation({
     meta: { inlineError: true },
@@ -473,8 +481,17 @@ function PhoneClaimDialogContent({
       const value = form.get(name);
       return typeof value === 'string' ? value : '';
     };
-    if (phoneNumber) verify.mutate({ phoneNumber, code: field('code') });
-    else send.mutate({ phoneNumber: field('phoneNumber') });
+    if (phoneNumber) {
+      verify.mutate({ phoneNumber, code });
+      return;
+    }
+    const dialCode = countries.find(
+      (c) => c.iso === field('country')
+    )?.dialCode;
+    if (!dialCode) return;
+    send.mutate({
+      phoneNumber: composePhoneNumber(dialCode, field('national')),
+    });
   };
 
   return (
@@ -490,28 +507,40 @@ function PhoneClaimDialogContent({
 
       <form onSubmit={onSubmit} className="flex flex-col gap-4 px-6 py-5">
         {phoneNumber ? (
-          <Input
-            key="code"
-            name="code"
-            inputMode="numeric"
-            autoComplete="one-time-code"
-            placeholder="Code"
+          <InputOTP
+            maxLength={6}
+            value={code}
+            onChange={setCode}
+            disabled={busy}
+            containerClassName="justify-center"
             aria-label="Verification code"
-            required
-          />
+            // oxlint-disable-next-line no-autofocus -- the code is the only field on this step
+            autoFocus
+          >
+            <InputOTPGroup>
+              <InputOTPSlot index={0} />
+              <InputOTPSlot index={1} />
+              <InputOTPSlot index={2} />
+              <InputOTPSlot index={3} />
+              <InputOTPSlot index={4} />
+              <InputOTPSlot index={5} />
+            </InputOTPGroup>
+          </InputOTP>
         ) : (
-          <Input
-            key="phone"
-            name="phoneNumber"
-            type="tel"
-            autoComplete="tel"
-            placeholder="+1 555 123 4567"
+          <PhoneInput
+            countries={countries}
+            placeholder="Mobile number"
             aria-label="Mobile number"
+            disabled={busy}
             required
           />
         )}
 
-        <Button type="submit" className="self-center" disabled={busy}>
+        <Button
+          type="submit"
+          className="self-center"
+          disabled={busy || (phoneNumber !== null && code.length !== 6)}
+        >
           {phoneNumber
             ? verify.isPending
               ? 'Unlocking…'
@@ -537,6 +566,7 @@ function PhoneClaimDialogContent({
               className="text-muted-foreground"
               onClick={() => {
                 setPhoneNumber(null);
+                setCode('');
                 verify.reset();
               }}
               disabled={busy}
