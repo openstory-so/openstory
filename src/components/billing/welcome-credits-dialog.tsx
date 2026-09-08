@@ -11,11 +11,7 @@
  */
 
 import { Button } from '@/components/ui/button';
-import {
-  InputOTP,
-  InputOTPGroup,
-  InputOTPSlot,
-} from '@/components/ui/input-otp';
+import { Input } from '@/components/ui/input';
 import { PhoneInput } from '@/components/ui/phone-input';
 import {
   Dialog,
@@ -509,25 +505,24 @@ function PhoneClaimDialogContent({
 
       <form onSubmit={onSubmit} className="flex flex-col gap-4 px-6 py-5">
         {phoneNumber ? (
-          <InputOTP
+          // Plain field, not the slot widget: macOS/iOS autofill from Messages
+          // needs a real, visible text input with one-time-code autocomplete.
+          <Input
+            name="code"
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
             maxLength={6}
-            value={code}
-            onChange={setCode}
-            disabled={busy}
-            containerClassName="justify-center"
+            autoComplete="one-time-code"
             aria-label="Verification code"
+            placeholder="6-digit code"
+            className="text-center tracking-[0.3em] tabular-nums"
+            value={code}
+            onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
+            disabled={busy}
             // oxlint-disable-next-line no-autofocus -- the code is the only field on this step
             autoFocus
-          >
-            <InputOTPGroup>
-              <InputOTPSlot index={0} />
-              <InputOTPSlot index={1} />
-              <InputOTPSlot index={2} />
-              <InputOTPSlot index={3} />
-              <InputOTPSlot index={4} />
-              <InputOTPSlot index={5} />
-            </InputOTPGroup>
-          </InputOTP>
+          />
         ) : (
           <PhoneInput
             countries={countries}
