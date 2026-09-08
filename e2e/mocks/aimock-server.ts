@@ -426,6 +426,10 @@ export async function startAimockServer(): Promise<string> {
         // /v1/videos/* has its own handler keyed on `grok`.
         providers: { openai: 'https://api.x.ai', grok: 'https://api.x.ai' },
         fixturePath: XAI_FIXTURE_DIR,
+        // Grok Imagine's image endpoint is synchronous: it answers only once
+        // the still is rendered, which under a concurrent fan-out runs past
+        // aimock's 30s default deadline for response HEADERS.
+        upstreamTimeoutMs: 180_000,
         bodyTimeoutMs: 120_000,
       },
     }),
