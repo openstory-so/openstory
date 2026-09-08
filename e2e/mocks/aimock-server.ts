@@ -46,6 +46,15 @@ const FAL_FIXTURE_DIR = resolve(
   import.meta.dirname,
   '../fixtures/recorded/fal'
 );
+// Native xAI gets its own aimock: the images / Responses handlers proxy to
+// the `openai` upstream, which on :4010 is OpenRouter. The worker reaches it
+// via XAI_BASE_URL (playwright.config.ts) — path shapes are OpenAI's, so no
+// request transform is needed, and the recorder writes flat into this dir.
+const XAI_AIMOCK_PORT = 4011;
+const XAI_FIXTURE_DIR = resolve(
+  import.meta.dirname,
+  '../fixtures/recorded/xai'
+);
 // aimock's recorder writes flat into a single directory; we point it here and
 // `sortStagingFixtures()` (run on shutdown) classifies each new file by its
 // provider-key prefix (`openai-…` vs `fal-…`) and moves it into the right
@@ -330,6 +339,7 @@ function tolerateRuntimeIds(fixtures: Fixture[]): Fixture[] {
 }
 
 let mockServer: LLMock | null = null;
+let xaiMockServer: LLMock | null = null;
 
 export async function startAimockServer(): Promise<string> {
   mockServer = new LLMock({
@@ -404,6 +414,28 @@ export async function startAimockServer(): Promise<string> {
   // spec keeps running. Kill Playwright on the first miss instead.
   if (!E2E_RECORDING) abortPlaywrightOnStrictMiss(mockServer);
   console.log(`[e2e] aimock server started at ${url}`);
+
+  xaiMockServer = new LLMock({
+    port: XAI_AIMOCK_PORT,
+    strict: !E2E_RECORDING,
+    logLevel: 'info',
+    replaySpeed: Number(process.env.AIMOCK_REPLAY_SPEED ?? 100),
+    ...(E2E_RECORDING && {
+      record: {
+        // Chat (Responses) + images go through the generic `openai` proxy;
+        // /v1/videos/* has its own handler keyed on `grok`.
+        providers: { openai: 'https://api.x.ai', grok: 'https://api.x.ai' },
+        fixturePath: XAI_FIXTURE_DIR,
+        bodyTimeoutMs: 120_000,
+      },
+    }),
+  });
+  if (existsSync(XAI_FIXTURE_DIR)) {
+    xaiMockServer.addFixtures(loadFixturesRecursive(XAI_FIXTURE_DIR));
+  }
+  const xaiUrl = await xaiMockServer.start();
+  if (!E2E_RECORDING) abortPlaywrightOnStrictMiss(xaiMockServer);
+  console.log(`[e2e] aimock xAI server started at ${xaiUrl}`);
   return url;
 }
 
@@ -454,6 +486,14 @@ function abortPlaywrightOnStrictMiss(server: LLMock): void {
 }
 
 export async function stopAimockServer(): Promise<void> {
+  if (xaiMockServer) {
+    try {
+      await xaiMockServer.stop();
+    } catch {
+      // Ignore stop errors — the server may never have started.
+    }
+    xaiMockServer = null;
+  }
   if (!mockServer) return;
   dumpUnmatchedRequests(mockServer);
   if (E2E_RECORDING) sortStagingFixtures();

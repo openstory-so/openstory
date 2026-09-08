@@ -116,6 +116,10 @@ export default defineConfig({
       'PORT=3001',
       'VITE_APP_URL=http://localhost:3001',
       'OPENROUTER_BASE_URL=http://localhost:4010',
+      // Native xAI (Grok chat / Imagine stills / video) goes to a second
+      // aimock instance — see aimock-server.ts. The Grok adapter's default
+      // base URL ends in /v1, so this one must too.
+      'XAI_BASE_URL=http://localhost:4011/v1',
       'VITE_DISABLE_DEVTOOLS=true',
     ].join(' ');
 
