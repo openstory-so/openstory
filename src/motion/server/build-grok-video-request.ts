@@ -22,6 +22,18 @@ import {
  * (API max 7). Prompt tokens are `<IMAGE_0>`, `<IMAGE_1>`, … in that order
  * — TanStack's grok adapter documents 0-based tags, and xAI forbids mixing
  * a start-frame `image` with `reference_images`.
+ *
+ * NO `maxAudio` (#1559), and the reason is a gate rather than a gap. Imagine
+ * 1.5 does take audio references — `reference_audios`, up to 3, tagged
+ * `<AUDIO_0>`…`<AUDIO_2>` alongside the image tags — but the shape is
+ * `{ voice_id: 'eve' }`, a PRESET voice from the same roster as xAI's
+ * text-to-speech. That is a voice picker, which #1556 owns, not an uploaded
+ * file. Per docs.x.ai: "Preset voices are generally available. Voice
+ * references with your own audio files are available to trusted partners, on
+ * request." So an uploaded audio element cannot ride this route until we hold
+ * that access, and it is described in prose instead. If we ever get it, note
+ * the audio arrives in `modelOptions.reference_audios`, NOT as an audio
+ * prompt part — the adapter throws on those.
  */
 const GROK_VIDEO_REFERENCE_CONFIG = {
   tag: (position: number) => `<IMAGE_${position - 1}>`,
