@@ -22,13 +22,15 @@ supplied lines.
 | 1   | One line, `@Image1` + `@Audio1`, prompt `@Image1 says @Audio1` | Succeeded — lip-synced, dialogue verbatim                                 |
 | 2   | 6 lines, 2 characters, 21 s, 2 images + 6 audio files          | Succeeded — all 6 lines in order, shot/reverse-shot cut to whoever speaks |
 | 3   | Audio as the only reference, no image                          | Succeeded — invented a speaker and lip-synced them                        |
-| 4   | Is 2.5 activated on the production account?                    | Yes — no `ModelNotOpen`; all four tasks ran                               |
+| 4   | Is 2.5 activated on the production account?                    | Yes — no `ModelNotOpen`; every task here ran                              |
+| 5   | Same as 1 but `generate_audio: false`                          | Succeeded — the MP4 has **no audio stream at all**                        |
 
 Samples (fal storage, durable):
 
 - Test 1 — https://v3b.fal.media/files/b/0aa9b39f/mog31s8DyAnaRFt3jRcn1_1551-test1.mp4
 - Test 2 — https://v3b.fal.media/files/b/0aa9b3a1/IW56vte6HqummOh3DQGWg_1551-test2_scene.mp4
 - Test 3 — https://v3b.fal.media/files/b/0aa9b3a9/YnIawIjRf-U4uk1j1ZS6R_1551-test3_audioonly.mp4
+- Test 5 — https://v3b.fal.media/files/b/0aa9b3c8/4Gpc3EKw9JanR2ZYxeu8b_1551-test4-generate-audio-false.mp4
 
 ## 1. One line, image + audio
 
@@ -106,7 +108,18 @@ ElevenLabs bytes on the timeline, that is a mux over the rendered clip, not
 something Seedance hands back.
 
 `generate_audio` defaults to **true** whenever reference audio is present —
-Ark set it on every task here without being asked.
+Ark set it on every task here without being asked. Setting it to **false** does
+not hand back a clean dialogue track: the returned MP4 has **no audio stream at
+all**. The character still articulates, so muxing the original ElevenLabs file
+over a silent render is a plausible route to exact audio, but that take is a
+different seed and there is no track in the file to check the sync against, so
+whether it stays locked to the reference is **unverified** — confirm by ear
+before designing around it.
+
+A caveat on how the sync above was measured: it was read off frames, not
+scored. A dark-pixel "mouth openness" proxy was tried and abandoned — it picks
+up hair and coat as readily as the mouth cavity and scores the known-good take
+no better than chance, so no correlation number here would mean anything.
 
 ## Not covered
 
@@ -119,7 +132,5 @@ Ark set it on every task here without being asked.
   `BYTEPLUS_SECRET_KEY`, which this session could not reach. Both roles are
   reference media, so the mix-ban does not apply; worth one confirming run
   before #1555 lands.
-- Whether `generate_audio: false` suppresses the ambience bed and leaves a
-  cleaner dialogue track.
 - Per-line speaker binding when a character is named in more than one line, and
   what happens when combined audio exceeds 30.2 s or 10 files.
