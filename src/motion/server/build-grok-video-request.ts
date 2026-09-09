@@ -143,12 +143,14 @@ export function buildGrokVideoRequest(options: {
     maxPromptLength
   );
   // `imageUrls` leads with the still when there is one, so the reference that
-  // owns slot `index` sits one further back in `usable` on that path.
+  // owns slot `index` sits one further back in `usable` on that path. Only
+  // image references appear there — xAI has no reference clip or audio slot,
+  // so those are inlined as prose by the binding (#1559) and must not shift
+  // the role alignment.
   const referenceOffset = startFrameUrl ? 1 : 0;
-  const usable = attached.slice(
-    0,
-    GROK_VIDEO_REFERENCE_CONFIG.maxImages - referenceOffset
-  );
+  const usable = attached
+    .filter((ref) => (ref.kind ?? 'image') === 'image')
+    .slice(0, GROK_VIDEO_REFERENCE_CONFIG.maxImages - referenceOffset);
   return {
     endpointId: NATIVE_GROK_VIDEO_MODEL,
     input: {

@@ -128,6 +128,8 @@ export async function refreshCheckpointFromCast(
       description: el.description,
       imageUrl: el.imageUrl,
       consistencyTag: el.consistencyTag,
+      kind: el.kind,
+      durationSeconds: el.durationSeconds,
     }));
   }
 

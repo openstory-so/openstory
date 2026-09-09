@@ -8,12 +8,16 @@
  */
 
 import {
+  getMotionReferenceEndpoint,
   IMAGE_TO_VIDEO_MODELS,
   type ImageToVideoModel,
   videoModelSupportsAudio,
 } from '@/models/models';
 import type { z } from 'zod';
-import { buildReferenceVideoPrompt } from './build-reference-video-prompt';
+import {
+  bindableReferences,
+  buildReferenceVideoPrompt,
+} from './build-reference-video-prompt';
 import {
   inlineReferenceDescription,
   substituteReferenceTags,
@@ -206,9 +210,16 @@ export function buildMotionRequest<T extends ImageToVideoModel>(
   input: ModelOutputMap[T] | RegisteredMotionOutput;
 } {
   const modelConfig = IMAGE_TO_VIDEO_MODELS[modelKey];
+  // "Has references" means references this endpoint can actually carry
+  // (#1559): a shot whose only attachment is an audio clip has nothing to send
+  // a reference-to-video endpoint, which rejects an empty image list.
   const endpoint = resolveMotionEndpoint(
     modelKey,
-    (options.referenceImages?.length ?? 0) > 0,
+    bindableReferences(
+      getMotionReferenceEndpoint(modelKey),
+      options.referenceImages ?? [],
+      Boolean(options.imageUrl)
+    ).length > 0,
     'fal',
     options.referenceOnly ?? false
   );
@@ -266,7 +277,7 @@ export function buildMotionRequest<T extends ImageToVideoModel>(
 
   const pinsStartFrame = pinsDedicatedStartFrame(endpointId, options);
 
-  const { prompt, imageUrls } = buildReferenceVideoPrompt(
+  const { prompt, imageUrls, videoUrls, audioUrls } = buildReferenceVideoPrompt(
     endpoint.referenceConfig,
     options.prompt,
     // Pinned in its own field, the still is not part of the image list: the
@@ -278,18 +289,26 @@ export function buildMotionRequest<T extends ImageToVideoModel>(
     modelConfig.maxPromptLength
   );
 
-  const imageField = endpoint.referenceConfig.imageField ?? 'image_urls';
+  const config = endpoint.referenceConfig;
+  const imageField = config.imageField ?? 'image_urls';
 
   const input = transform.parse({
     prompt,
     duration: options.duration,
     aspectRatio: options.aspectRatio,
-    // Never empty here: a reference-only shot with nothing matched resolved to
-    // the text-to-video branch above, because fal rejects an empty list.
+    // Never empty here unless clips carry the shot instead: a reference-only
+    // shot with nothing bindable resolved to the text-to-video branch above,
+    // because fal rejects a request with no reference image OR video.
     [imageField]: imageUrls,
     // The transform maps `imageUrl` onto the schema's start-frame field
     // (`start_image_url` on Kling O3, the only reference endpoint with one).
     ...(pinsStartFrame && { imageUrl: options.imageUrl }),
+    ...(videoUrls.length > 0 && {
+      [config.videoField ?? 'video_urls']: videoUrls,
+    }),
+    ...(audioUrls.length > 0 && {
+      [config.audioField ?? 'audio_urls']: audioUrls,
+    }),
     ...QUALITY_OVERRIDES[modelKey],
     ...resolutionOverride(endpointId, options.resolution),
     generate_audio: options.generateAudio ?? videoModelSupportsAudio(modelKey),

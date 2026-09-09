@@ -19,6 +19,8 @@ const elements: SequenceElementMinimal[] = [
     description: 'A red hex logo',
     imageUrl: 'https://example.com/logo.png',
     consistencyTag: 'red-hex-logo',
+    kind: 'image',
+    durationSeconds: null,
   },
   {
     id: '2',
@@ -26,6 +28,8 @@ const elements: SequenceElementMinimal[] = [
     description: 'Silver water bottle',
     imageUrl: 'https://example.com/bottle.png',
     consistencyTag: 'silver-bottle',
+    kind: 'image',
+    durationSeconds: null,
   },
 ];
 

@@ -744,6 +744,25 @@ export type MotionReferenceEndpointConfig = {
    * uses `reference_image_urls`. Defaults to `image_urls`.
    */
   imageField?: 'image_urls' | 'reference_image_urls';
+  /**
+   * Reference CLIPS and AUDIO the endpoint takes (#1559) — a dialogue line, a
+   * music bed, a performance or camera move to copy, uploaded as a sequence
+   * element and bound by `@` mention. 0 (the default) means the endpoint takes
+   * none, and an attached one is inlined as prose instead of dropped.
+   */
+  maxVideos?: number;
+  maxAudio?: number;
+  /** Defaults to `video_urls` / `audio_urls`. */
+  videoField?: 'video_urls' | 'reference_video_urls';
+  audioField?: 'audio_urls' | 'reference_audio_urls';
+  /** Default `@VideoN` / `@AudioN`, as with `tag`. */
+  videoTag?: (position: number) => string;
+  audioTag?: (position: number) => string;
+  /**
+   * Combined stills + clips + audio cap. fal's H3 Max r2v rejects more than 12
+   * files even when each list is inside its own max (9/3/3 = 15).
+   */
+  maxCombined?: number;
 };
 
 /**
@@ -769,18 +788,27 @@ export const MOTION_REFERENCE_ENDPOINTS: Partial<
     textToVideoEndpointId: 'bytedance/seedance-2.0/enterprise/v2/text-to-video',
     tag: (position) => `@Image${position}`,
     maxImages: 9,
+    maxVideos: 3,
+    maxAudio: 3,
+    maxCombined: 12,
   },
   seedance_v2_5: {
     endpointId: 'bytedance/seedance-2.5/reference-to-video',
     textToVideoEndpointId: 'bytedance/seedance-2.5/text-to-video',
     tag: (position) => `@Image${position}`,
     maxImages: 9,
+    maxVideos: 3,
+    maxAudio: 3,
+    maxCombined: 12,
   },
   seedance_v2_mini: {
     endpointId: 'bytedance/seedance-2.0/mini/reference-to-video',
     textToVideoEndpointId: 'bytedance/seedance-2.0/mini/text-to-video',
     tag: (position) => `@Image${position}`,
     maxImages: 9,
+    maxVideos: 3,
+    maxAudio: 3,
+    maxCombined: 12,
   },
   gemini_omni_flash: {
     endpointId: 'fal-ai/gemini-omni-1.1-flash/reference-to-video',
@@ -813,6 +841,13 @@ export const MOTION_REFERENCE_ENDPOINTS: Partial<
     tag: (position) => `Image ${position}`,
     maxImages: 9,
     imageField: 'reference_image_urls',
+    maxVideos: 3,
+    maxAudio: 3,
+    maxCombined: 12,
+    videoField: 'reference_video_urls',
+    audioField: 'reference_audio_urls',
+    videoTag: (position) => `Video ${position}`,
+    audioTag: (position) => `Audio ${position}`,
   },
 };
 

@@ -1,8 +1,9 @@
 /**
  * Scene Elements Tab
- * Displays user-uploaded reference elements (logos, products) referenced in
- * the current shot by UPPERCASE token. Add / click-through to replace live
- * here — the standalone elements page was retired in #986.
+ * Displays user-uploaded reference elements — images (logos, products) and,
+ * since #1559, clips and audio — referenced in the current shot by UPPERCASE
+ * token. Add / click-through to replace live here; the standalone elements
+ * page was retired in #986.
  */
 
 import { Button } from '@/ui/shadcn/button';
@@ -14,7 +15,14 @@ import {
   useUploadElementToSequence,
 } from '@/cast/ui/use-sequence-elements';
 import type { SequenceElement } from '@/platform/server/db/schema';
+import {
+  ELEMENT_UPLOAD_ACCEPT,
+  elementKindFromFile,
+  formatElementDuration,
+} from '@/cast/element-kind';
 import { MAX_SEQUENCE_ELEMENTS } from '@/cast/ui/element/limits';
+import { unsupportedReferenceNotice } from '@/motion/reference-support';
+import type { ImageToVideoModel } from '@/models/models';
 import { cn } from '@/ui/utils';
 import {
   extractImagesFromSnapshot,
@@ -22,7 +30,7 @@ import {
   toastDragImportCorsError,
 } from '@/ui/drag-images';
 import { Link } from '@tanstack/react-router';
-import { ImagePlus, Loader2, Upload } from 'lucide-react';
+import { AudioLines, Film, ImagePlus, Loader2, Upload } from 'lucide-react';
 import { AppImage } from '@/ui/shadcn/app-image';
 import { useCallback, useRef, useState } from 'react';
 import { toast } from 'sonner';
@@ -34,6 +42,12 @@ type SceneElementsTabProps = {
   sequenceId: string;
   /** Shots in the current selection. `null` = whole sequence (show all). */
   shotIds: string[] | null;
+  /**
+   * The motion model these shots render on. Elements it cannot take are still
+   * attachable — they describe themselves in the prompt instead — but the
+   * panel says so rather than dropping them silently (#1559).
+   */
+  motionModel?: ImageToVideoModel;
 };
 
 const AddElementButton: React.FC<{
@@ -48,9 +62,9 @@ const AddElementButton: React.FC<{
 
   const handleFiles = useCallback(
     (files: File[]) => {
-      const images = files.filter((f) => f.type.startsWith('image/'));
-      if (images.length === 0) return;
-      const accepted = images.slice(0, Math.max(0, remaining));
+      const usable = files.filter((f) => elementKindFromFile(f) !== null);
+      if (usable.length === 0) return;
+      const accepted = usable.slice(0, Math.max(0, remaining));
       if (accepted.length === 0) {
         toast.error(`You can add up to ${MAX_SEQUENCE_ELEMENTS} elements`);
         return;
@@ -80,7 +94,7 @@ const AddElementButton: React.FC<{
       <input
         ref={inputRef}
         type="file"
-        accept="image/*"
+        accept={ELEMENT_UPLOAD_ACCEPT}
         multiple
         className="sr-only"
         aria-hidden="true"
@@ -111,7 +125,8 @@ const AddElementButton: React.FC<{
         <div className="flex flex-col gap-2">
           <p className="text-sm font-medium">Upload a reference</p>
           <p className="text-xs text-muted-foreground">
-            Logos, product shots, screenshots. Type @ to insert one.
+            Images, MP3/WAV or MP4/MOV — a logo, a product shot, a dialogue
+            line, a music bed, a move to copy. Type @ to insert one.
           </p>
           <div
             // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- dropzone cannot be a <button> because it contains a nested <Button>
@@ -193,9 +208,40 @@ const AddElementButton: React.FC<{
   );
 };
 
+/** The tile face for an element: the still, or a labelled clip / audio card. */
+const ElementTile: React.FC<{ element: SequenceElement }> = ({ element }) => {
+  const length = formatElementDuration(element.durationSeconds);
+  if (element.kind === 'image') {
+    return element.imageUrl ? (
+      <AppImage
+        src={element.imageUrl}
+        alt={element.token}
+        width={160}
+        height={160}
+        className="h-full w-full object-contain transition-transform duration-500 group-hover:scale-105"
+      />
+    ) : (
+      <div className="flex h-full w-full flex-col items-center justify-center gap-2">
+        <ImagePlus className="size-8 text-muted-foreground/30" />
+        <p className="text-xs text-muted-foreground">No reference yet</p>
+      </div>
+    );
+  }
+  const Icon = element.kind === 'audio' ? AudioLines : Film;
+  return (
+    <div className="flex h-full w-full flex-col items-center justify-center gap-2">
+      <Icon className="size-8 text-muted-foreground/50" />
+      <p className="text-xs text-muted-foreground">
+        {`${element.kind === 'audio' ? 'Audio' : 'Clip'}${length ? ` · ${length}` : ''}`}
+      </p>
+    </div>
+  );
+};
+
 export const SceneElementsTab: React.FC<SceneElementsTabProps> = ({
   sequenceId,
   shotIds,
+  motionModel,
 }) => {
   const { data: elements = [], isLoading } = useSequenceElements(sequenceId);
   const { data: facetMaps } = useSceneFacetMaps(sequenceId);
@@ -214,13 +260,26 @@ export const SceneElementsTab: React.FC<SceneElementsTabProps> = ({
     );
   }
 
+  // What the selected model will do with what is attached (#1559) — an
+  // element it cannot carry is described in the prompt, never dropped in
+  // silence.
+  const notice = motionModel
+    ? unsupportedReferenceNotice(
+        motionModel,
+        sceneElements.map((el) => el.kind)
+      )
+    : null;
+
   const header = (
-    <div className="flex items-start justify-between gap-3">
-      <p className="text-xs text-muted-foreground">{ELEMENT_MENTION_HINT}</p>
-      <AddElementButton
-        sequenceId={sequenceId}
-        currentCount={elements.length}
-      />
+    <div className="flex flex-col gap-2">
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-xs text-muted-foreground">{ELEMENT_MENTION_HINT}</p>
+        <AddElementButton
+          sequenceId={sequenceId}
+          currentCount={elements.length}
+        />
+      </div>
+      {notice && <p className="text-xs text-muted-foreground">{notice}</p>}
     </div>
   );
 
@@ -263,22 +322,7 @@ export const SceneElementsTab: React.FC<SceneElementsTabProps> = ({
             className="group relative block overflow-hidden rounded-lg bg-card"
           >
             <div className="relative aspect-square overflow-hidden bg-muted">
-              {el.imageUrl ? (
-                <AppImage
-                  src={el.imageUrl}
-                  alt={el.token}
-                  width={160}
-                  height={160}
-                  className="h-full w-full object-contain transition-transform duration-500 group-hover:scale-105"
-                />
-              ) : (
-                <div className="flex h-full w-full flex-col items-center justify-center gap-2">
-                  <ImagePlus className="size-8 text-muted-foreground/30" />
-                  <p className="text-xs text-muted-foreground">
-                    No reference yet
-                  </p>
-                </div>
-              )}
+              <ElementTile element={el} />
               <div className="absolute inset-x-0 bottom-0 bg-linear-to-t from-black/80 via-black/20 to-transparent p-3">
                 <span className="font-mono text-xs font-semibold tracking-wider text-white">
                   {el.token}

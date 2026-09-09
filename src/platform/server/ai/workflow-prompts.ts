@@ -541,6 +541,11 @@ When an image is attached to the user message, it IS the exact first frame the v
 3. **SELF-CONTAINED**: Video generators have ZERO memory between scenes. Each motion prompt must be completely self-contained.
 4. **ENTITY TOKENS**: When a character or a tracked element moves or is acted on, name it by its exact canonical token — characters by their bible name (e.g. "SCARLETT turns toward the window"), elements by their UPPERCASE token from \`continuity.elementTags\` / the script (e.g. "lifts the CORAL_LIPSTICK"). Downstream rendering binds each token to that entity's reference image on video models that support references (and swaps in a description on models that don't), so exact spelling matters — never paraphrase a tracked entity as "the woman" or "the product". This complements rule 2: the token names WHO/WHAT moves; still do not describe their static appearance.
 
+### ATTACHED SOUND AND CLIP REFERENCES
+A tracked element may be a SOUND or a CLIP rather than an image — a line of dialogue, a voice sample, a music bed, a performance or camera move to copy. The element bible marks those \`[audio]\` / \`[video]\` and states their length. Name them by their UPPERCASE token exactly as you would any other element; the renderer binds each to the model's own reference slot.
+
+The one rule is negative: **do not invent what the reference already supplies.** Do not write the words of a line the model is being handed, do not describe a voice — its timbre, accent, pitch, gender — when a speech reference is attached to this shot, and do not re-describe a motion a clip reference already demonstrates. Say when it happens and who it belongs to, not what it sounds or looks like. The stated length is a hint for pacing, not a constraint: only speech needs the clip to cover the shot.
+
 ### MOTION CONSTRUCTION STRATEGY
 1. **FOCUS ON VERBS**: Use strong, imperative verbs. (e.g., "Camera pushes in," "Character turns abruptly," "Smoke billows").
 2. **CAMERA MOVEMENT — EXACTLY ONE PER SHOT**: Define ONE primary camera move based on the <DIRECTOR_STYLE>, always paired with a pacing adverb (slow, smooth, gentle, gradual, steady).
@@ -655,6 +660,11 @@ Never write a character's face, hair, skin, build, age, ethnicity or default cos
 4. **LIGHT** — direction, quality, colour temperature, and the practical source when there is one ("late gold raking in from the window camera-left, deep shadow on the far wall"). This is the single highest-leverage line in the prompt.
 5. **LOOK** — the medium, palette and grade from <DIRECTOR_STYLE>, stated as concrete visual decisions.
 6. **PROP STATE** — pin the state of any object the action depends on, at the top ("the roller door is three-quarters down with a low gap left"), and say when it changes. Video models do not reason backwards from an outcome: an object that must still be open when a character reaches it has to be described as open, or the model closes it early.
+
+### ATTACHED SOUND AND CLIP REFERENCES
+A tracked element may be a SOUND or a CLIP rather than an image — a line of dialogue, a voice sample, a music bed, a performance or camera move to copy. The element bible marks those \`[audio]\` / \`[video]\` and states their length. Name them by their UPPERCASE token exactly as you would any other element; the renderer binds each to the model's own reference slot.
+
+The one rule is negative: **do not invent what the reference already supplies.** Do not write the words of a line the model is being handed, do not describe a voice — its timbre, accent, pitch, gender — when a speech reference is attached to this shot, and do not re-describe a motion a clip reference already demonstrates. Say when it happens and who it belongs to, not what it sounds or looks like. The stated length is a hint for pacing, not a constraint: only speech needs the clip to cover the shot.
 
 ### MOTION CONSTRUCTION
 1. **CAMERA MOVEMENT — EXACTLY ONE PER SHOT**: one primary move drawn from <DIRECTOR_STYLE>, always paired with a pacing adverb (slow, smooth, gentle, gradual, steady). Examples: "Slow dolly forward," "Steady handheld drift," "Static lock-off," "Smooth pan right to follow subject." Use professional cinematography language: tracking, dolly, crane, steadicam, handheld, pan, tilt, zoom. NEVER stack moves ("push in, then pan left, then orbit") — stacked moves read as jitter on every video model.
@@ -963,6 +973,8 @@ Elements are recurring visual assets — logos, product shots, screenshots, hero
 - description: the provided description, or a 1-sentence visual description if none was provided
 - consistencyTag: a short lowercase slug (e.g. "red-hex-brand-logo")
 - firstMention: { text, lineNumber } — the first script text and gutter line where the token appears
+
+An uploaded element tagged \`[audio]\` or \`[video]\` is a SOUND or a CLIP, not a thing to look at — a line of dialogue, a voice sample, a music bed, a performance or camera move to copy. Do not invent a visual description for one. Copy the provided description if there is one, otherwise state plainly what it is ("uploaded audio reference", "uploaded clip reference"), and never generate a reference image for it.
 
 **2. Detected recurring products/objects (no upload).** If the script centres on a specific product or object that appears in MULTIPLE scenes and must read as the SAME physical item every time (a hero product in an ad, a branded bottle, a signature prop), ALSO produce an elementBible entry for it:
 - token: a NEW short UPPERCASE_SNAKE_CASE token you invent (1-3 words, max 30 chars). Prefer brand/product names from the script (e.g. "CORAL_LIPSTICK"); never collide with a token from <ELEMENTS>.

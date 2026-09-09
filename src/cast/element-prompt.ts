@@ -7,6 +7,7 @@
  * images (recurring products detected during scene split with no upload).
  */
 
+import { formatElementDuration } from '@/cast/element-kind';
 import type { ElementBibleEntry } from '@/shots/scene-analysis.schema';
 import type {
   SequenceElementMinimal,
@@ -16,20 +17,31 @@ import type { ReferenceImageDescription } from '@/stills/reference-image-prompt'
 
 /**
  * Build a concise descriptor for an element for use in reference-image prompts.
+ *
+ * A clip or an audio file also states its LENGTH (#1559). It is a hint, not a
+ * constraint — the model is told how long the reference runs so it can pace a
+ * line of dialogue against the shot; only speech actually needs the clip to
+ * cover it.
  */
 export function buildElementDescription(
   element: SequenceElementMinimal
 ): string {
   const summary = (element.description ?? '').split(/[.,]/)[0]?.trim() ?? '';
   const suffix = summary && summary.length < 120 ? ` - ${summary}` : '';
-  return `${element.token}${suffix}`;
+  const kind = element.kind ?? 'image';
+  const length =
+    kind === 'image' ? null : formatElementDuration(element.durationSeconds);
+  const media =
+    kind === 'image' ? '' : ` [${kind}${length ? `, ${length}` : ''}]`;
+  return `${element.token}${suffix}${media}`;
 }
 
 /**
- * Build role-tagged reference images for elements. Elements must have an
- * imageUrl; description is optional — when vision analysis hasn't finished,
- * the token alone is enough context for the image model since the reference
- * image itself carries the visual identity.
+ * Build role-tagged references for elements. Elements must have stored media
+ * (`imageUrl` holds it for every kind); description is optional — when vision
+ * analysis hasn't finished, or the element is a clip or audio file the user
+ * hasn't described, the token alone is enough context, since the reference
+ * itself carries what the prompt cannot say.
  */
 export function buildElementReferenceImages(
   elements: SequenceElementMinimal[]
@@ -41,10 +53,26 @@ export function buildElementReferenceImages(
             referenceImageUrl: el.imageUrl,
             description: buildElementDescription(el),
             role: 'element' as const,
+            kind: el.kind ?? ('image' as const),
             token: el.token,
           },
         ]
       : []
+  );
+}
+
+/**
+ * The same list for an IMAGE model (#1559). A clip or an audio element has no
+ * slot on any image endpoint — handing one over as a `reference_image_url`
+ * sends an MP3 where a PNG is expected — so the still paths bind only the
+ * image elements and the token falls back to prose. Motion is the only side
+ * that can carry the other two.
+ */
+export function buildElementStillReferences(
+  elements: SequenceElementMinimal[]
+): ReferenceImageDescription[] {
+  return buildElementReferenceImages(
+    elements.filter((el) => (el.kind ?? 'image') === 'image')
   );
 }
 

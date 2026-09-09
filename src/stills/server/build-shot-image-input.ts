@@ -18,7 +18,7 @@ import type {
   SequenceLocationWithReference,
 } from '@/platform/server/db/schema';
 import { buildCharacterReferenceImages } from '@/cast/character-prompt';
-import { buildElementReferenceImages } from '@/cast/element-prompt';
+import { buildElementStillReferences } from '@/cast/element-prompt';
 import { buildLocationReferenceImages } from '@/cast/location-prompt';
 import type { AspectRatio } from '@/models/aspect-ratios';
 import type {
@@ -115,7 +115,7 @@ export async function buildShotImageWorkflowInput(opts: {
     elementTags: continuity?.elementTags,
     sceneExtract: scriptExtract,
   });
-  const elementReferences = buildElementReferenceImages(matchedElements);
+  const elementReferences = buildElementStillReferences(matchedElements);
 
   const sceneSnapshot: ShotImageSceneSnapshot = {
     sceneId: opts.scene?.sceneId ?? shot.id,

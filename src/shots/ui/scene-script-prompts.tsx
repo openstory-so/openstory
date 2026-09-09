@@ -2182,7 +2182,11 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
       </TabsContent>
 
       <TabsContent value="elements">
-        <SceneElementsTab sequenceId={sequenceId} shotIds={facetShotIds} />
+        <SceneElementsTab
+          sequenceId={sequenceId}
+          shotIds={facetShotIds}
+          motionModel={effectiveMotionModel}
+        />
       </TabsContent>
 
       <TabsContent value="music">

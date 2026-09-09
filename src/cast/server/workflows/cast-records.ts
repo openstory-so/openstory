@@ -218,6 +218,8 @@ export async function createCastRecords(
       description: row.description,
       imageUrl: row.imageUrl,
       consistencyTag: row.consistencyTag,
+      kind: row.kind,
+      durationSeconds: row.durationSeconds,
     });
   }
   return { elements };

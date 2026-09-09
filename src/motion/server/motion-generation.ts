@@ -39,6 +39,7 @@ import {
 import {
   DEFAULT_VIDEO_MODEL,
   getBytePlusVideoModelId,
+  getMotionReferenceEndpoint,
   IMAGE_TO_VIDEO_MODELS,
   isNativeBytePlusVideoModel,
   referenceOnlyCapableWith,
@@ -61,6 +62,7 @@ import {
   ensureExternallyFetchableUrl,
   toDataOrCdnUrl,
 } from '@/platform/server/storage/external-url';
+import { bindableReferences } from './build-reference-video-prompt';
 import { generateVideo, type TokenUsage } from '@tanstack/ai';
 import { getVideoJobStatus } from './video-job-status';
 import { falVideo } from '@tanstack/ai-fal';
@@ -265,7 +267,15 @@ async function submitFalMotionJob(
   options: GenerateMotionOptions,
   modelKey: ImageToVideoModel
 ): Promise<{ jobId: string; usedOwnKey: boolean; endpointId: string }> {
-  const hasReferenceImages = (options.referenceImages?.length ?? 0) > 0;
+  // References this model can actually carry (#1559): a shot whose only
+  // attachment is an audio element has nothing to send a reference endpoint,
+  // which rejects a request with no reference image or video.
+  const hasReferenceImages =
+    bindableReferences(
+      getMotionReferenceEndpoint(modelKey),
+      options.referenceImages ?? [],
+      Boolean(options.imageUrl)
+    ).length > 0;
   const endpoint = resolveMotionEndpoint(
     modelKey,
     hasReferenceImages,
@@ -380,7 +390,15 @@ export async function submitMotionJob(
       ? await resolveOptionalGoogleKey(options.scopedDb)
       : undefined;
 
-  const hasReferenceImages = (options.referenceImages?.length ?? 0) > 0;
+  // References this model can actually carry (#1559): a shot whose only
+  // attachment is an audio element has nothing to send a reference endpoint,
+  // which rejects a request with no reference image or video.
+  const hasReferenceImages =
+    bindableReferences(
+      getMotionReferenceEndpoint(modelKey),
+      options.referenceImages ?? [],
+      Boolean(options.imageUrl)
+    ).length > 0;
 
   const endpoint = resolveMotionEndpoint(
     modelKey,

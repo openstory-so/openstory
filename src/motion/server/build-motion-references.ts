@@ -26,7 +26,10 @@ import type {
   SequenceLocationMinimal,
 } from '@/platform/server/db/schema';
 import { buildCharacterReferenceImages } from '@/cast/character-prompt';
-import { buildElementReferenceImages } from '@/cast/element-prompt';
+import {
+  buildElementReferenceImages,
+  buildElementStillReferences,
+} from '@/cast/element-prompt';
 import { buildLocationReferenceImages } from '@/cast/location-prompt';
 import type { ReferenceImageDescription } from '@/stills/reference-image-prompt';
 import {
@@ -163,6 +166,8 @@ export function buildShotImageReferenceImages(params: {
   return [
     ...buildCharacterReferenceImages(matchedCharacters),
     ...buildLocationReferenceImages(matchedLocations),
-    ...buildElementReferenceImages(matchedElements),
+    // Stills only: an image endpoint has nowhere to put a clip or an audio
+    // element (#1559).
+    ...buildElementStillReferences(matchedElements),
   ];
 }

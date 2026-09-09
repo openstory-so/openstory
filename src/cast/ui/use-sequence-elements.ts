@@ -9,7 +9,14 @@ import {
   renameSequenceElementTokenFn,
   replaceSequenceElementFn,
   restoreSequenceElementFn,
+  setSequenceElementDescriptionFn,
 } from '@/cast/sequence-elements.fn';
+import {
+  elementKindFromFile,
+  readMediaDuration,
+  type SequenceElementKind,
+} from '@/cast/element-kind';
+import { deriveTokenFromFilename } from '@/cast/derive-token';
 import { putToR2 } from '@/ui/upload';
 import { sceneKeys } from '@/shots/ui/use-scenes';
 import { shotStalenessNamespace } from '@/shots/ui/use-shot-staleness';
@@ -74,6 +81,7 @@ export function useUploadElementToSequence() {
           sequenceId: data.sequenceId,
           path: presign.path,
           filename: data.file.name,
+          durationSeconds: await fileDuration(data.file),
         },
       });
       return element;
@@ -86,19 +94,34 @@ export function useUploadElementToSequence() {
   });
 }
 
+/** The clip length, measured client-side; null for an image or an undecodable file. */
+async function fileDuration(file: File): Promise<number | null> {
+  const kind: SequenceElementKind = elementKindFromFile(file) ?? 'image';
+  return readMediaDuration(file, kind);
+}
+
 export type DraftElementUpload = {
   tempPath: string;
   tempPublicUrl: string;
   filename: string;
+  /**
+   * Vision's suggested token for an image; for a clip or an audio file (no
+   * vision pass) the filename-derived one, which is what the server would
+   * fall back to anyway.
+   */
   token: string;
   /**
-   * Vision-LLM description, populated during draft upload. `useUploadDraftElement`
-   * rejects if vision fails, so successful uploads always carry both fields —
-   * but `attachElementUpload` still accepts nullable values for backwards-compat
-   * with E2E fixture paths and falls back to the async vision workflow there.
+   * Vision-LLM description, populated during draft upload of an IMAGE.
+   * `useUploadDraftElement` rejects if vision fails, so a successful image
+   * upload always carries both fields — but `attachElementUpload` still
+   * accepts nullable values for backwards-compat with E2E fixture paths (and
+   * for clips and audio, which have no vision pass) and falls back to the
+   * async vision workflow there.
    */
   description: string | null;
   consistencyTag: string | null;
+  /** Clip length in seconds; null for an image. */
+  durationSeconds: number | null;
 };
 
 /**
@@ -120,6 +143,8 @@ export function useUploadDraftElement() {
       onProgress?: (percent: number) => void;
       onAnalyzingChange?: (analyzing: boolean) => void;
     }): Promise<DraftElementUpload> => {
+      const kind: SequenceElementKind =
+        elementKindFromFile(data.file) ?? 'image';
       const presign = await presignDraftElementUploadFn({
         data: { filename: data.file.name },
       });
@@ -129,6 +154,22 @@ export function useUploadDraftElement() {
         presign.contentType,
         data.onProgress
       );
+      const durationSeconds = await readMediaDuration(data.file, kind);
+
+      // Vision reads pixels: a clip or an audio file skips it entirely and is
+      // ready the moment the bytes land (#1559).
+      if (kind !== 'image') {
+        return {
+          tempPath: presign.path,
+          tempPublicUrl: presign.publicUrl,
+          filename: data.file.name,
+          token: deriveTokenFromFilename(data.file.name),
+          description: null,
+          consistencyTag: null,
+          durationSeconds,
+        };
+      }
+
       data.onAnalyzingChange?.(true);
       let result: {
         description: string;
@@ -153,8 +194,26 @@ export function useUploadDraftElement() {
         token: result.suggestedToken,
         description: result.description,
         consistencyTag: result.consistencyTag,
+        durationSeconds,
       };
     },
+  });
+}
+
+/**
+ * Write an element's description by hand (#1559) — the only source for a clip
+ * or an audio file, which vision never looks at.
+ */
+export function useSetSequenceElementDescription() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: {
+      sequenceId: string;
+      elementId: string;
+      description: string;
+    }) => setSequenceElementDescriptionFn({ data }),
+    onSuccess: (_res, variables) =>
+      invalidateElementMembership(queryClient, variables.sequenceId),
   });
 }
 
@@ -275,6 +334,7 @@ export function useReplaceSequenceElement() {
           elementId: data.elementId,
           path: presign.path,
           filename: data.file.name,
+          durationSeconds: await fileDuration(data.file),
         },
       });
     },

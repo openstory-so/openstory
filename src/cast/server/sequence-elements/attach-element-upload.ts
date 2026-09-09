@@ -1,5 +1,6 @@
 import { fileExists } from '#storage';
 import { deriveTokenFromFilename } from '@/cast/derive-token';
+import { elementKindFromFilename } from '@/cast/element-kind';
 import type { DraftElementUploadInput } from '@/cast/draft-element-upload';
 import type { SequenceElement } from '@/platform/server/db/schema';
 import type { ScopedDb } from '@/platform/server/db/scoped';
@@ -81,6 +82,8 @@ export async function attachElementUpload(params: {
   token?: string | null;
   description?: string | null;
   consistencyTag?: string | null;
+  /** Clip length read in the browser (#1559); an image sends none. */
+  durationSeconds?: number | null;
 }): Promise<SequenceElement> {
   const { scopedDb, teamId, userId, sequenceId, path, filename } = params;
 
@@ -92,24 +95,32 @@ export async function attachElementUpload(params: {
     params.token || deriveTokenFromFilename(filename)
   );
 
+  // An unknown extension predates #1559 and was an image; keep it one rather
+  // than failing an attach the user can no longer retry.
+  const kind = elementKindFromFilename(filename) ?? 'image';
   // Vision ran inline during draft upload (the happy path); write it straight
   // onto the row instead of paying for it a second time.
   const hasInlineVision = !!params.description && !!params.consistencyTag;
+  // A clip or an audio file never ran vision — there are no pixels to read —
+  // so it is `completed` on arrival with whatever description the user gave.
+  const visionDone = kind !== 'image' || hasInlineVision;
 
   const element = await scopedDb.sequenceElements.create({
     id: generateId(),
     sequenceId,
     uploadedFilename: filename,
     token,
+    kind,
+    durationSeconds: params.durationSeconds ?? null,
     imageUrl,
     imagePath: path,
     description: hasInlineVision ? params.description : null,
     consistencyTag: hasInlineVision ? params.consistencyTag : null,
-    visionStatus: hasInlineVision ? 'completed' : 'pending',
-    visionGeneratedAt: hasInlineVision ? new Date() : null,
+    visionStatus: visionDone ? 'completed' : 'pending',
+    visionGeneratedAt: visionDone ? new Date() : null,
   });
 
-  if (hasInlineVision) return element;
+  if (visionDone) return element;
 
   // If the trigger fails, mark the row failed before re-throwing — otherwise
   // the element would poll forever in `pending`.
@@ -183,6 +194,7 @@ export async function attachDraftElementUploads(params: {
       token: upload.token,
       description: upload.description,
       consistencyTag: upload.consistencyTag,
+      durationSeconds: upload.durationSeconds,
     });
   }
 }

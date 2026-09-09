@@ -30,6 +30,8 @@ const element = (token: string, imageUrl: string): SequenceElementMinimal => ({
   description: `${token} description`,
   imageUrl,
   consistencyTag: token.toLowerCase(),
+  kind: 'image',
+  durationSeconds: null,
 });
 
 describe('buildMotionReferenceImages', () => {
@@ -61,6 +63,7 @@ describe('buildMotionReferenceImages', () => {
         referenceImageUrl: 'https://example.com/logo.png',
         description: 'LOGO - LOGO description',
         role: 'element',
+        kind: 'image',
         token: 'LOGO',
       },
     ]);

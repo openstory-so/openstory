@@ -30,10 +30,7 @@ import {
 } from '@/billing/server/workflow-deduction';
 import { generateId } from '@/platform/id';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
-import type {
-  SequenceElement,
-  SequenceElementMinimal,
-} from '@/platform/server/db/schema';
+import type { SequenceElementMinimal } from '@/platform/server/db/schema';
 import type { ImageGenerationParams } from '@/stills/server/image-generation';
 import { recordProvenance } from '@/platform/server/compliance/provenance';
 import { buildElementSheetPrompt } from '@/cast/element-prompt';
@@ -53,18 +50,15 @@ import { getLogger } from '@/platform/logger';
 
 const logger = getLogger(['openstory', 'workflow', 'element-sheet']);
 
-function toMinimalElement(
-  row: Pick<
-    SequenceElement,
-    'id' | 'token' | 'description' | 'imageUrl' | 'consistencyTag'
-  >
-): SequenceElementMinimal {
+function toMinimalElement(row: SequenceElementMinimal): SequenceElementMinimal {
   return {
     id: row.id,
     token: row.token,
     description: row.description,
     imageUrl: row.imageUrl,
     consistencyTag: row.consistencyTag,
+    kind: row.kind,
+    durationSeconds: row.durationSeconds,
   };
 }
 

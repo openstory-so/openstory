@@ -333,3 +333,96 @@ describe('reference-only (no start frame)', () => {
     expect(result.imageUrls).toEqual([]);
   });
 });
+
+// #1559 — clips and audio ride their own lists and their own tag namespaces.
+describe('buildReferenceVideoPrompt with clip and audio references', () => {
+  const media = (
+    kind: 'video' | 'audio',
+    token: string
+  ): ReferenceImageDescription => ({
+    referenceImageUrl: `https://example.com/${token.toLowerCase()}.${kind === 'audio' ? 'mp3' : 'mp4'}`,
+    description: `${token} [${kind}, 4s]`,
+    role: 'element',
+    kind,
+    token,
+  });
+
+  it('numbers each kind from 1 and binds it inline', () => {
+    const result = buildReferenceVideoPrompt(
+      seedanceV25Config,
+      'SCARLETT says STEVE_LINE_3 while moving like PUPPET_WALK',
+      STILL,
+      [
+        ref('https://example.com/a.png', 'Scarlett - athletic', 'SCARLETT'),
+        media('audio', 'STEVE_LINE_3'),
+        media('video', 'PUPPET_WALK'),
+      ]
+    );
+
+    // The still holds @Image1, so the sheet is @Image2 — but the clip and the
+    // audio each start their own numbering at 1.
+    expect(result.prompt).toContain(
+      '@Image2 says @Audio1 while moving like @Video1'
+    );
+    expect(result.imageUrls).toEqual([STILL, 'https://example.com/a.png']);
+    expect(result.videoUrls).toEqual(['https://example.com/puppet_walk.mp4']);
+    expect(result.audioUrls).toEqual(['https://example.com/steve_line_3.mp3']);
+  });
+
+  it('inlines the description when the endpoint takes no clips or audio', () => {
+    const noMedia: ReferencePromptBinding = {
+      tag: (n) => `@Image${n}`,
+      maxImages: 7,
+    };
+    const result = buildReferenceVideoPrompt(
+      noMedia,
+      'Play THEME_MUSIC under the shot',
+      STILL,
+      [media('audio', 'THEME_MUSIC')]
+    );
+
+    expect(result.audioUrls).toEqual([]);
+    expect(result.prompt).toContain('THEME_MUSIC [audio, 4s]');
+  });
+
+  it('refuses to send audio as the only reference', () => {
+    // Every reference endpoint requires at least one image or video; a
+    // reference-only shot whose sole attachment is a voice line describes it
+    // instead, and routes to the prompt-only sibling.
+    const result = buildReferenceVideoPrompt(
+      seedanceV25Config,
+      'Under THEME_MUSIC, the room empties',
+      null,
+      [media('audio', 'THEME_MUSIC')]
+    );
+
+    expect(result.audioUrls).toEqual([]);
+    expect(result.imageUrls).toEqual([]);
+    expect(result.prompt).toContain('THEME_MUSIC [audio, 4s]');
+  });
+
+  it('honours the endpoint combined file cap across kinds', () => {
+    // H3 Max: 9 images / 3 clips / 3 audio per list, but 12 files total.
+    const h3 = getMotionReferenceEndpoint('minimax_h3_max');
+    if (!h3) throw new Error('minimax_h3_max must have a reference endpoint');
+    const images = Array.from({ length: 9 }, (_, i) =>
+      ref(`https://example.com/${i}.png`, `Ref ${i}`, `REF_${i}`)
+    );
+    const result = buildReferenceVideoPrompt(h3, 'A shot', STILL, [
+      ...images,
+      media('video', 'CLIP_A'),
+      media('video', 'CLIP_B'),
+      media('audio', 'LINE_A'),
+    ]);
+
+    expect(
+      result.imageUrls.length +
+        result.videoUrls.length +
+        result.audioUrls.length
+    ).toBe(12);
+    // The still plus 8 sheets fills the image list; the clips take the rest.
+    expect(result.imageUrls).toHaveLength(9);
+    expect(result.videoUrls).toHaveLength(2);
+    expect(result.audioUrls).toHaveLength(1);
+  });
+});

@@ -21,6 +21,13 @@ export type ReferenceImageDescription = {
   /** Role distinguishes the primary scene from supporting reference images */
   role?: 'primary' | 'character' | 'location' | 'element';
   /**
+   * What the referenced FILE is (#1559). Absent means image — every reference
+   * was one before sequence elements could be clips or audio, and only the
+   * reference-to-video binding has anywhere to put the other two. Distinct
+   * from `role`, which says whose reference it is.
+   */
+  kind?: 'image' | 'video' | 'audio';
+  /**
    * The canonical token this entity is named by in prompts — a character's
    * bible name (e.g. "Scarlett") or an element's UPPERCASE token (e.g.
    * "CORAL_LIPSTICK"). Builders substitute occurrences with the model's
