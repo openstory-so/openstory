@@ -823,7 +823,16 @@ export const MOTION_REFERENCE_ENDPOINTS: Partial<
     // (3 max, each ≤3s) proxies the same Interactions content blocks the
     // native adapter sends. No `<VIDEO_REF_n>` token is documented, so a clip
     // is named in prose — an invented tag would be a literal string binding
-    // nothing. No audio on either route.
+    // nothing.
+    //
+    // Audio is absent because the API has not shipped it, NOT because the
+    // model lacks it: Omni is marketed as natively multimodal over audio and
+    // generates its own track, but ai.google.dev/gemini-api/docs/omni says
+    // "uploading audio references is unsupported in the current version of
+    // the API", fal exposes no audio field, and the Gemini adapter throws on
+    // audio prompt parts. Expect that to change — when it does this is
+    // `maxAudio` plus an `audioField`, and the binding already handles the
+    // rest.
     maxVideos: 3,
     videoField: 'reference_video_urls',
     videoTag: (position) => `reference video ${position}`,
