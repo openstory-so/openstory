@@ -35,8 +35,8 @@ import {
  * `duration` / `reference_images` / `reference_audios` / `mode` out of
  * modelOptions and spreads the rest straight into the request body, which is
  * the same passthrough `reference_audios` itself depends on. Delete the
- * workaround once the upstream guard is lifted; the request shape is
- * identical either way.
+ * workaround once the upstream guard is lifted (TanStack/ai#1352); the
+ * request shape is identical either way.
  *
  * NO `maxAudio` (#1559), and the reason is a gate rather than a gap. Imagine
  * 1.5 does take audio references — `reference_audios`, up to 3, tagged
