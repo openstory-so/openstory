@@ -19,15 +19,21 @@ describe('motionReferenceSupport', () => {
   });
 
   it('reports images only where the model binds stills but no media', () => {
-    // Kling carries stills inline; Omni Flash on its reference endpoint.
+    // Kling carries stills inline on its image-to-video endpoint.
     expect(motionReferenceSupport('kling_v3_pro')).toMatchObject({
       image: true,
       video: false,
       audio: false,
     });
-    expect(motionReferenceSupport('gemini_omni_flash')).toMatchObject({
+  });
+
+  it('reports clips but not audio on Omni Flash', () => {
+    // Google: "Video references support a maximum of 3 clips, up to 3 seconds
+    // each", but "Uploading audio references is unsupported in the current
+    // version of the API" — so this split is the provider's, on both vias.
+    expect(motionReferenceSupport('gemini_omni_flash')).toEqual({
       image: true,
-      video: false,
+      video: true,
       audio: false,
     });
   });

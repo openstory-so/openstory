@@ -819,6 +819,14 @@ export const MOTION_REFERENCE_ENDPOINTS: Partial<
     // caps a request at 7 reference images.
     tag: (position) => `<IMAGE_REF_${position - 1}>`,
     maxImages: 7,
+    // Reference CLIPS, on both vias (#1559): fal's `reference_video_urls`
+    // (3 max, each ≤3s) proxies the same Interactions content blocks the
+    // native adapter sends. No `<VIDEO_REF_n>` token is documented, so a clip
+    // is named in prose — an invented tag would be a literal string binding
+    // nothing. No audio on either route.
+    maxVideos: 3,
+    videoField: 'reference_video_urls',
+    videoTag: (position) => `reference video ${position}`,
   },
   // fal documents the 4-image cap as `elements` + reference images "when
   // using video"; applied unconditionally rather than tracking a second
