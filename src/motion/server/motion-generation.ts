@@ -509,6 +509,9 @@ export async function submitMotionJob(
         prompt: input.prompt,
         duration: input.duration,
         ...(input.size && { size: input.size }),
+        // Carries the pinned opening frame on a shot that has both a still
+        // and references — see `GROK_VIDEO_REFERENCE_CONFIG`.
+        ...(input.modelOptions && { modelOptions: input.modelOptions }),
         timeout: FAL_REQUEST_TIMEOUT_MS,
         debug: false,
       });

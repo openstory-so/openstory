@@ -575,7 +575,7 @@ describe('Motion Service', () => {
       );
     });
 
-    it('sends library refs as reference/character parts and tags the prompt', async () => {
+    it('pins the still as the opening frame and tags refs from <IMAGE_0>', async () => {
       testEnv.XAI_API_KEY = 'platform-xai';
       mockGenerateVideo.mockResolvedValue({
         jobId: 'xai-job-refs',
@@ -604,19 +604,17 @@ describe('Motion Service', () => {
         ],
       });
 
+      // xAI documents `image` + `reference_images` as the matching first-frame
+      // pin, so the still stays a pinned frame instead of being demoted into
+      // reference slot 0 (a reference does not lock the first frame). It rides
+      // modelOptions to get past the SDK's stale guard.
       expect(mockGenerateVideo).toHaveBeenCalledWith(
         expect.objectContaining({
+          modelOptions: { image: { url: 'https://example.com/still.jpg' } },
           prompt: [
             {
               type: 'text',
-              content: expect.stringMatching(
-                /Use <IMAGE_0> as the starting frame\.\n<IMAGE_1> lifts the <IMAGE_2>/
-              ),
-            },
-            {
-              type: 'image',
-              source: { type: 'url', value: 'https://example.com/still.jpg' },
-              metadata: { role: 'reference' },
+              content: '<IMAGE_0> lifts the <IMAGE_1>',
             },
             {
               type: 'image',

@@ -70,9 +70,11 @@ export function resolveMotionEndpoint(
   if (via === 'xai') {
     // Imagine 1.5 reference-to-video rides the same `/videos/generations`
     // endpoint as image-to-video: extra images go on the generateVideo prompt
-    // as `metadata.role: 'reference' | 'character'` parts. xAI forbids mixing
-    // a start frame with `reference_images`, so submit drops start_frame and
-    // sends the still as the first reference when this is `'inline'`.
+    // as `metadata.role: 'reference' | 'character'` parts, and the rendered
+    // still is PINNED as the opening frame alongside them (xAI documents
+    // `image` + `reference_images` as the matching first-frame pin). It used
+    // to be demoted into the first reference slot on the belief that the two
+    // could not be combined — see `GROK_VIDEO_REFERENCE_CONFIG`.
     return {
       via: 'xai',
       endpointId: NATIVE_GROK_VIDEO_MODEL,

@@ -39,7 +39,7 @@ describe('buildGrokVideoRequest', () => {
     });
   });
 
-  it('tags library refs as <IMAGE_n> and does not keep a start_frame role', () => {
+  it('pins the still as the opening frame and numbers refs from <IMAGE_0>', () => {
     const { input } = buildGrokVideoRequest({
       prompt: 'SCARLETT lifts the CORAL_LIPSTICK',
       imageUrl: STILL,
@@ -60,18 +60,14 @@ describe('buildGrokVideoRequest', () => {
         ),
       ],
     });
+    // The still is the pinned first frame, not a reference: it takes no slot,
+    // so the first sheet is <IMAGE_0>, and there is no "starting frame" line
+    // pointing the model at a character sheet.
     expect(input.prompt[0]).toEqual({
       type: 'text',
-      content: expect.stringMatching(
-        /Use <IMAGE_0> as the starting frame\.\n<IMAGE_1> lifts the <IMAGE_2>/
-      ),
+      content: '<IMAGE_0> lifts the <IMAGE_1>',
     });
     expect(input.prompt.slice(1)).toEqual([
-      {
-        type: 'image',
-        source: { type: 'url', value: STILL },
-        metadata: { role: 'reference' },
-      },
       {
         type: 'image',
         source: { type: 'url', value: 'https://example.com/scarlett.png' },
@@ -83,6 +79,41 @@ describe('buildGrokVideoRequest', () => {
         metadata: { role: 'reference' },
       },
     ]);
+    // The still rides modelOptions so the adapter's stale
+    // `startFrame && hasReference` guard does not reject the combination.
+    expect(input.modelOptions).toEqual({ image: { url: STILL } });
     expect(input.size).toBe('9:16_720p');
+  });
+
+  it('uses the full 7-slot budget now that the still takes none', () => {
+    const { input } = buildGrokVideoRequest({
+      prompt: 'A crowd scene',
+      imageUrl: STILL,
+      referenceImages: Array.from({ length: 9 }, (_, i) =>
+        ref(`https://example.com/${i}.png`, `Ref ${i}`, 'character', `REF_${i}`)
+      ),
+    });
+    const images = input.prompt.filter((part) => part.type === 'image');
+    expect(images).toHaveLength(7);
+    expect(input.modelOptions).toEqual({ image: { url: STILL } });
+  });
+
+  it('sends no modelOptions in reference-only mode', () => {
+    const { input } = buildGrokVideoRequest({
+      prompt: 'SCARLETT walks',
+      referenceImages: [
+        ref(
+          'https://example.com/scarlett.png',
+          'Scarlett - athletic',
+          'character',
+          'SCARLETT'
+        ),
+      ],
+    });
+    expect(input.modelOptions).toBeUndefined();
+    expect(input.prompt[0]).toEqual({
+      type: 'text',
+      content: '<IMAGE_0> walks',
+    });
   });
 });

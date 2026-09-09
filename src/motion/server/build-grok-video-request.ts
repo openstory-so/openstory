@@ -11,6 +11,7 @@ import { NATIVE_GROK_VIDEO_MODEL } from '@/models/grok-native';
 import { IMAGE_TO_VIDEO_MODELS, type ImageToVideoModel } from '@/models/models';
 import type { AspectRatio } from '@/models/aspect-ratios';
 import { pickVideoResolution, type Resolution } from '@/models/resolutions';
+import type { GrokVideoProviderOptions } from '@tanstack/ai-grok';
 import type { ReferenceImageDescription } from '@/stills/reference-image-prompt';
 import {
   buildReferenceVideoPrompt,
@@ -18,10 +19,24 @@ import {
 } from './build-reference-video-prompt';
 
 /**
- * Imagine 1.5 reference-to-video: still first, then up to 6 library refs
- * (API max 7). Prompt tokens are `<IMAGE_0>`, `<IMAGE_1>`, … in that order
- * — TanStack's grok adapter documents 0-based tags, and xAI forbids mixing
- * a start-frame `image` with `reference_images`.
+ * Imagine 1.5 reference-to-video: up to 7 library refs, tagged `<IMAGE_0>`,
+ * `<IMAGE_1>`, … in that order (xAI numbers from zero).
+ *
+ * The rendered still is NOT one of them. xAI documents `image` combined with
+ * `reference_images` as the matching first-frame pin, so the still is pinned
+ * as the opening frame and the whole 7-slot budget stays available for
+ * sheets. It used to be demoted into reference slot 0 — a real quality loss,
+ * since a pinned first frame is honoured exactly while a reference is only
+ * an influence — on the belief that xAI forbade the combination.
+ *
+ * `@tanstack/ai-grok` still believes that: `createVideoJob` throws on
+ * `startFrame && hasReference`. So the still rides `modelOptions.image`
+ * rather than a `start_frame` prompt part — the adapter destructures only
+ * `duration` / `reference_images` / `reference_audios` / `mode` out of
+ * modelOptions and spreads the rest straight into the request body, which is
+ * the same passthrough `reference_audios` itself depends on. Delete the
+ * workaround once the upstream guard is lifted; the request shape is
+ * identical either way.
  *
  * NO `maxAudio` (#1559), and the reason is a gate rather than a gap. Imagine
  * 1.5 does take audio references — `reference_audios`, up to 3, tagged
@@ -52,6 +67,15 @@ type GrokVideoRequestInput = {
   prompt: GrokVideoPromptPart[];
   duration: number;
   size?: `${AspectRatio}_${'480p' | '720p' | '1080p'}` | AspectRatio;
+  /**
+   * Passthrough options for the xAI body. Carries the pinned opening frame
+   * (`image`) when the shot has both a still and references — see the note on
+   * `GROK_VIDEO_REFERENCE_CONFIG`. Intersected with the adapter's own option
+   * type so the submit site needs no cast: `image` is a real field on xAI's
+   * `/v1/videos/generations` body that `GrokVideoProviderOptions` does not
+   * model yet, and the adapter spreads unmodelled options straight through.
+   */
+  modelOptions?: GrokVideoProviderOptions & { image: { url: string } };
 };
 
 function grokReferencePartRole(
@@ -147,22 +171,23 @@ export function buildGrokVideoRequest(options: {
     };
   }
 
+  // `null`, not the still: the still is pinned as the opening frame below and
+  // never consumes a reference slot, so the first real reference is
+  // `<IMAGE_0>` and the binding writes no "use X as the starting frame" line.
   const { prompt, imageUrls } = buildReferenceVideoPrompt(
     GROK_VIDEO_REFERENCE_CONFIG,
     options.prompt,
-    startFrameUrl ?? null,
+    null,
     references,
     maxPromptLength
   );
-  // `imageUrls` leads with the still when there is one, so the reference that
-  // owns slot `index` sits one further back in `usable` on that path. Only
-  // image references appear there — xAI has no reference clip or audio slot,
-  // so those are inlined as prose by the binding (#1559) and must not shift
-  // the role alignment.
-  const referenceOffset = startFrameUrl ? 1 : 0;
+  // Only image references reach `imageUrls` — xAI has no reference clip slot,
+  // and its audio slot takes a preset `voice_id` rather than a file (#1559) —
+  // so those are inlined as prose by the binding and cannot shift the role
+  // alignment here.
   const usable = attached
     .filter((ref) => (ref.kind ?? 'image') === 'image')
-    .slice(0, GROK_VIDEO_REFERENCE_CONFIG.maxImages - referenceOffset);
+    .slice(0, GROK_VIDEO_REFERENCE_CONFIG.maxImages);
   return {
     endpointId: NATIVE_GROK_VIDEO_MODEL,
     input: {
@@ -170,14 +195,12 @@ export function buildGrokVideoRequest(options: {
         prompt,
         imageUrls.map((url, index) => ({
           url,
-          role:
-            startFrameUrl && index === 0
-              ? 'reference'
-              : grokReferencePartRole(usable[index - referenceOffset]?.role),
+          role: grokReferencePartRole(usable[index]?.role),
         }))
       ),
       duration,
       ...(size && { size }),
+      ...(startFrameUrl && { modelOptions: { image: { url: startFrameUrl } } }),
     },
   };
 }
