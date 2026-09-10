@@ -3,23 +3,29 @@
  * + cast/element reference images (#873).
  *
  * Models in `MOTION_REFERENCE_ENDPOINTS` accept references on a dedicated
- * reference-to-video endpoint that has NO start-frame `image_url`. It takes
- * an image list (`image_urls` or `reference_image_urls`) bound to prompt
+ * reference-to-video endpoint whose start frame is optional. It takes an
+ * image list (`image_urls` or `reference_image_urls`) bound to prompt
  * tokens — Seedance's `@Image1…N`, H3 Max's `Image 1…N`, Kling O3's
  * `@Image1…N` — via the endpoint's `tag` config.
  *
  * Binding follows the vendors' own prompt examples: the FIRST line declares
- * the still as the starting frame ("Use @Image1 as the starting frame." —
- * critical, since this endpoint has no start-frame parameter), and each
+ * the still as the starting frame ("Use @Image1 as the starting frame."),
+ * and each
  * reference is bound INLINE by substituting its canonical token ("SCARLETT",
  * "CORAL_LIPSTICK") with the model's tag at the exact narrative moment it
  * appears. References never mentioned in the prompt fall back to a trailing
  * legend line so their images aren't orphaned.
  *
+ * Seedance and H3 Max have no start-frame field at all; Kling O3 does
+ * (`start_image_url`) but is bound the same way, so one builder serves every
+ * reference endpoint and the tag numbering stays identical across them.
+ *
  * The endpoint's `maxImages` caps the total; the still consumes one slot, so
  * at most `maxImages - 1` references are taken. Overflow references have
  * their tokens replaced with plain descriptions instead, keeping the prompt
- * self-contained.
+ * self-contained — but a token that never appeared in the prompt leaves no
+ * trace, which is why `submitFalMotionJob` warns and emits
+ * `motion_references_over_cap` when the list is over budget.
  *
  * REFERENCE-ONLY (`startImageUrl: null`): no still was ever rendered, so slot
  * 1 belongs to the first real reference and the starting-frame line is

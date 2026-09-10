@@ -4,7 +4,8 @@
  * Most models have a single image-to-video endpoint (`modelConfig.id`). A few
  * accept cast/element reference images only on a SEPARATE reference-to-video
  * endpoint that takes an image list bound to per-model prompt tokens and has
- * no single start-frame `image_url` — see `MOTION_REFERENCE_ENDPOINTS`. When a
+ * an optional (Kling O3) or absent (Seedance, H3 Max) start frame — see
+ * `MOTION_REFERENCE_ENDPOINTS`. When a
  * scene actually has references AND the model has such an endpoint, route there;
  * a reference-only scene with no references goes to that model's text-to-video
  * sibling; otherwise stay on the normal image-to-video endpoint.

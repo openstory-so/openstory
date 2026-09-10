@@ -224,6 +224,15 @@ references, and reference-only shots, route to Kling O3 Pro
 (`fal-ai/kling-video/o3/pro/reference-to-video`) — the sibling whose start
 frame is optional. Catalog key stays `kling_v3_pro`.
 
+Two Kling-specific consequences of that split. Its `generate_audio` defaults
+to **false** on the O3 endpoints where v3 image-to-video defaults to **true**,
+so `buildModelInput` resolves the flag from the catalog rather than inheriting
+either default — otherwise whether a shot matched a cast sheet would decide
+whether the clip has sound. And O3 caps the image list at 4 including the
+still, the tightest budget of any reference model (Seedance 9, H3 Max 9, Grok
+7, Omni Flash 7), so a scene casting four people drops one; the submit path
+warns and emits `motion_references_over_cap` when that happens.
+
 **Grok Imagine 1.5 is not excluded because it lacks references — it has them.**
 `GROK_VIDEO_REFERENCE_CONFIG` binds up to 7, `resolveMotionEndpoint` returns
 `inline` for it, and `buildGrokVideoRequest` handles the no-still case. What it

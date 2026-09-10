@@ -149,7 +149,8 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
         sceneTitle: shot.sceneTitle,
         sequenceTitle: shot.sequenceTitle,
         priorMotion: shot.priorMotion,
-        // Cast/element reference images (#873) — only Kling v3 Pro emits them.
+        // Cast/element reference images (#873) — carried by every model, on
+        // the wire or as substituted descriptions.
         referenceImages: shot.referenceImages,
         // Add-model (#547) batches generate alternates only — the child must
         // not write the legacy `shots.video*` columns.

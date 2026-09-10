@@ -751,8 +751,8 @@ export type MotionReferenceEndpointConfig = {
  *
  * Some motion models accept cast/element reference images only on a dedicated
  * endpoint that takes an image list (bound to prompt tokens — see
- * `MotionReferenceEndpointConfig.tag`) and has NO single start-frame
- * `image_url`. This is the motion analogue of `EDIT_ENDPOINTS` on the image
+ * `MotionReferenceEndpointConfig.tag`) and whose start frame is optional or
+ * absent. This is the motion analogue of `EDIT_ENDPOINTS` on the image
  * side: when a scene has references AND the model is listed here, motion
  * routes to this endpoint and passes the rendered still as the first image
  * plus cast/element refs after it (see `resolveMotionEndpoint`).
@@ -829,9 +829,10 @@ export function getMotionReferenceEndpoint(
  * Reference-only mode (see `docs/architecture/reference-only-motion.md`) skips
  * still generation entirely, so the model must have a route whose start frame
  * is optional. That is exactly the `MOTION_REFERENCE_ENDPOINTS` set: fal's
- * `reference-to-video` endpoints have no `image_url` field at all (the image
- * list is schema-optional but rejected when empty — a shot with nothing
- * matched goes to `textToVideoEndpointId`, #1521), and the same models'
+ * `reference-to-video` endpoints never require a start frame — Seedance and
+ * H3 Max have no such field, Kling O3's `start_image_url` is optional (the
+ * image list is schema-optional but rejected when empty — a shot with nothing
+ * matched goes to `textToVideoEndpointId`, #1521) — and the same models'
  * BytePlus Ark route sends every image as a `reference` role (Ark's
  * frame/reference mix-ban means the still was never a frame there either).
  *
