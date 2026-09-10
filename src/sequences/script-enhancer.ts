@@ -1,14 +1,29 @@
 import { mediaUrlSchema } from '@/platform/schemas/media-url.schemas';
+import { formatElementDuration } from '@/cast/element-kind';
 import { buildDurationPromptParagraph } from '@/models/enhance-duration';
 import type { EnhanceStyle } from '@/models/enhance-inputs';
 import { DEFAULT_VIDEO_MODEL, type ImageToVideoModel } from '@/models/models';
 import type { AspectRatio } from '@/models/aspect-ratios';
 import { z } from 'zod';
 
-const enhanceElementSchema = z.object({
+/**
+ * The one element shape the enhancer accepts. Exported so the server fn and the
+ * public API validate against THIS rather than keeping their own copies — the
+ * copies are how `kind` would reach one path and not another.
+ */
+export const enhanceElementSchema = z.object({
   token: z.string().min(1),
   description: z.string().nullable().optional(),
   imageUrl: mediaUrlSchema,
+  /**
+   * What the file IS (#1559). Absent means image, which is what every element
+   * was before clips and audio existed. Only an image is ever attached as a
+   * vision part — the other two are named in prose, because the LLM cannot
+   * look at an MP3 and sending one as an image aborts the whole enhance.
+   */
+  kind: z.enum(['image', 'video', 'audio']).optional(),
+  /** Clip length in seconds, so the script can be paced against it. */
+  durationSeconds: z.number().positive().nullable().optional(),
 });
 
 type EnhanceElement = z.infer<typeof enhanceElementSchema>;
@@ -57,15 +72,38 @@ ${buildDurationPromptParagraph({
   ];
 
   if (options?.elements && options.elements.length > 0) {
+    const hasImages = options.elements.some(
+      (el) => (el.kind ?? 'image') === 'image'
+    );
+    const hasMedia = options.elements.some(
+      (el) => (el.kind ?? 'image') !== 'image'
+    );
     const lines = [
-      'The user has uploaded visual reference elements (logos, products, screenshots) that should be woven into the enhanced script. Each element has an UPPERCASE token — use that exact token IN CAPS wherever you reference the element in action/description lines. Do NOT invent new tokens, do NOT rename existing ones, and only reference elements that are clearly relevant to the story. Images accompany this message (below) so you can see each element before deciding how to work it in naturally.',
+      `The user has uploaded reference elements that should be woven into the enhanced script. Each element has an UPPERCASE token — use that exact token IN CAPS wherever you reference the element in action/description lines. Do NOT invent new tokens, do NOT rename existing ones, and only reference elements that are clearly relevant to the story.${
+        hasImages
+          ? ' Images accompany this message (below) so you can see each element before deciding how to work it in naturally.'
+          : ''
+      }${
+        hasMedia
+          ? ' Elements marked [audio] or [video] are SOUNDS and CLIPS, not things to look at — a line of dialogue, a voice sample, a music bed, a performance or camera move. You cannot hear or watch them, so rely on their description. Reference one where the script would naturally use it (a character speaking their line, a bed running under a beat); their stated length is a pacing hint, not a rule.'
+          : ''
+      }`,
       '',
       'Available elements:',
       ...options.elements.map((el) => {
+        const kind = el.kind ?? 'image';
+        const length =
+          kind === 'image'
+            ? null
+            : formatElementDuration(el.durationSeconds ?? null);
+        const media =
+          kind === 'image' ? '' : ` [${kind}${length ? `, ${length}` : ''}]`;
         const desc = el.description
           ? ` — ${el.description.slice(0, 200)}`
-          : ' — (no description yet; rely on the image)';
-        return `- ${el.token}${desc}`;
+          : kind === 'image'
+            ? ' — (no description yet; rely on the image)'
+            : ' — (not described)';
+        return `- ${el.token}${media}${desc}`;
       }),
     ];
     parts.push(`\n${lines.join('\n')}`);

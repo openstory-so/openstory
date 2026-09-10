@@ -11,7 +11,6 @@
  * bodies, which the compiler strips.
  */
 
-import { mediaUrlSchema } from '@/platform/schemas/media-url.schemas';
 import {
   callLLMStream,
   llmCostFromUsage,
@@ -26,6 +25,7 @@ import {
 } from '@/sequences/response-schemas';
 import type { StyleRecommendationResponse } from '@/sequences/response-schemas';
 import {
+  enhanceElementSchema,
   RateLimiter,
   scriptEnhancementRateLimiter,
 } from '@/sequences/script-enhancer';
@@ -277,15 +277,7 @@ const enhanceScriptInputSchema = z
       .optional(),
     analysisModel: z.string().optional(),
     aspectRatio: aspectRatioSchema.optional(),
-    elements: z
-      .array(
-        z.object({
-          token: z.string().min(1),
-          description: z.string().nullable().optional(),
-          imageUrl: mediaUrlSchema,
-        })
-      )
-      .optional(),
+    elements: z.array(enhanceElementSchema).optional(),
   })
   .refine(
     (input) => input.invent === true || input.script.trim().length >= 10,

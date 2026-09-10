@@ -5,6 +5,7 @@
  * client-safe logger (type-only import of StyleConfig otherwise) so this stays
  * safe to import from the client bundle.
  */
+import type { SequenceElementKind } from '@/cast/element-kind';
 import { getLogger } from '@/platform/logger';
 import { parseStyleConfig, type StyleConfig } from '@/look/style-config';
 
@@ -50,16 +51,25 @@ type ElementLike = {
   token?: string | null;
   /** Create-flow draft upload URL. */
   tempPublicUrl?: string | null;
-  /** Persisted sequence-element image URL (enhance-on-existing-sequence). */
+  /** Persisted sequence-element media URL (enhance-on-existing-sequence). */
   imageUrl?: string | null;
   description?: string | null;
+  /** #1559 — absent means image, the only kind that predates clips and audio. */
+  kind?: SequenceElementKind | null;
+  durationSeconds?: number | null;
 };
 
-/** The enhancer's element shape: an UPPERCASE token + an image to look at. */
+/**
+ * The enhancer's element shape: an UPPERCASE token plus the media behind it.
+ * Only an `image` is ever shown to the model; a clip or an audio file is named
+ * in prose (#1559), so `kind` and `durationSeconds` ride along as text.
+ */
 type EnhanceElement = {
   token: string;
   imageUrl: string;
   description?: string;
+  kind?: SequenceElementKind;
+  durationSeconds?: number;
 };
 
 /**
@@ -89,6 +99,12 @@ export function toEnhanceInputs(args: {
         token: el.token,
         imageUrl,
         ...(el.description ? { description: el.description } : {}),
+        // Carried so the enhancer can name a clip or a voice line in prose.
+        // It must never attach one as a vision part — see script-enhancement.
+        ...(el.kind ? { kind: el.kind } : {}),
+        ...(el.durationSeconds != null
+          ? { durationSeconds: el.durationSeconds }
+          : {}),
       },
     ];
   });

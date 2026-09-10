@@ -159,8 +159,16 @@ export async function* streamScriptEnhancement(
   // call already uses. A failed/expired image aborts the whole enhance, so log
   // which element broke before rethrowing: the raw "Failed to read local storage
   // object …" is otherwise undiagnosable.
+  // Images only (#1559). An element can now be a clip or an audio file, and
+  // `toVisionImageSource` on an MP3 either throws — aborting the whole enhance,
+  // see below — or ships bytes the provider rejects as an image. Those
+  // elements still reach the model, as text: `createUserPrompt` lists them by
+  // token with their kind and length so the script can still weave them in.
+  const visualElements = elements.filter(
+    (el) => (el.kind ?? 'image') === 'image'
+  );
   const imageParts = await Promise.all(
-    elements.map<Promise<ChatMessageContentPart>>(async (el) => {
+    visualElements.map<Promise<ChatMessageContentPart>>(async (el) => {
       try {
         return {
           type: 'image',
@@ -182,7 +190,7 @@ export async function* streamScriptEnhancement(
     })
   );
   const userContent: string | ChatMessageContentPart[] =
-    elements.length > 0
+    imageParts.length > 0
       ? [{ type: 'text', content: userPrompt }, ...imageParts]
       : userPrompt;
 
