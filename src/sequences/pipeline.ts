@@ -133,6 +133,14 @@ export function includesStage(
 }
 
 /**
+ * Script + references with no credits (#1566). Enhance and analysis are cheap
+ * enough to eat; images / motion / music still need a card.
+ */
+export function allowsUnfundedGeneration(stopAt: GenerationStage): boolean {
+  return stageIndex(stopAt) <= stageIndex('references');
+}
+
+/**
  * True when a continue run that starts at `startFrom` and stops at `stopAt`
  * should execute `stage`.
  */

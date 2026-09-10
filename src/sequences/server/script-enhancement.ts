@@ -57,7 +57,8 @@ const logger = getLogger(['openstory', 'serverFn', 'ai']);
 export async function prepareBilling(
   scopedDb: ScopedDb,
   description: string,
-  metadata?: Record<string, unknown>
+  metadata?: Record<string, unknown>,
+  opts?: { allowUnfunded?: boolean }
 ): Promise<{
   llmKey: ResolvedLlmKey;
   deduct?: (actualCost: Microdollars) => Promise<void>;
@@ -70,6 +71,7 @@ export async function prepareBilling(
   const estimatedCost = estimateLLMCost(1);
   const canAfford = await scopedDb.billing.hasEnoughCredits(estimatedCost);
   if (!canAfford) {
+    if (opts?.allowUnfunded) return { llmKey };
     throw new InsufficientCreditsError(
       `Insufficient credits for ${description.toLowerCase()}`
     );
@@ -127,7 +129,8 @@ export async function* streamScriptEnhancement(
   const { llmKey, deduct } = await prepareBilling(
     ctx.scopedDb,
     'Script enhancement',
-    { model }
+    { model },
+    { allowUnfunded: true }
   );
 
   if (checkForInjectionAttempts(data.script)) {

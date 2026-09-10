@@ -12,8 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/ui/shadcn/dialog';
-import { Textarea } from '@/ui/shadcn/textarea';
-import { requestFounderCreditsFn } from '@/billing/billing.fn';
+import { AskFounderCard, founderOptionCardClassName } from './ask-founder-card';
 import { useWelcomeCreditsGate } from './welcome-credits-dialog';
 import { openAddCreditsDialog } from './use-add-credits-dialog';
 import { useBillingBalance } from './use-billing-balance';
@@ -27,17 +26,9 @@ import {
 } from './use-billing-gate-dialog';
 import { cn } from '@/ui/utils';
 import { usePostHog } from '@posthog/react';
-import { useMutation } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import {
-  ArrowRight,
-  Check,
-  CreditCard,
-  Gift,
-  HeartHandshake,
-  Key,
-} from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { ArrowRight, CreditCard, Gift, Key } from 'lucide-react';
+import { useEffect } from 'react';
 
 const RETURN_KEY = 'openstory:billing-return';
 
@@ -58,16 +49,7 @@ type OptionCardProps = {
   onClick?: () => void;
 };
 
-const cardClassName = (variant: 'primary' | 'muted') =>
-  cn(
-    'group relative flex items-center gap-3.5 rounded-xl border p-3.5 transition-all duration-200',
-    // The primary card is THE action — it must read as highlighted next to
-    // the muted fallbacks, not as a sibling (#1099).
-    variant === 'primary' &&
-      'border-primary/50 bg-primary/10 hover:border-primary hover:bg-primary/15',
-    variant === 'muted' &&
-      'border-border/60 bg-transparent hover:border-border hover:bg-accent/50'
-  );
+const cardClassName = founderOptionCardClassName;
 
 const OptionCard: React.FC<OptionCardProps> = ({
   to,
@@ -115,117 +97,6 @@ const OptionCard: React.FC<OptionCardProps> = ({
     <Link to={to} search={search} onClick={onClick}>
       {card}
     </Link>
-  );
-};
-
-/**
- * "Ask the founder for credits" (#1096, reworked in #1099) — expands into an
- * optional message form (like the Feedback dialog) before emailing the
- * founder (a PostHog product event fires server-side). Success collapses
- * into a confirmation card so it can't be re-sent from the same dialog.
- */
-const AskFounderCard: React.FC = () => {
-  const [expanded, setExpanded] = useState(false);
-  const [message, setMessage] = useState('');
-
-  const mutation = useMutation({
-    mutationFn: () =>
-      requestFounderCreditsFn({
-        data: { message: message.trim() || undefined },
-      }),
-  });
-
-  if (mutation.isSuccess) {
-    return (
-      <div className={cardClassName('muted')}>
-        <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted text-emerald-600 dark:text-emerald-400">
-          <Check className="size-4" />
-        </div>
-        <div className="flex-1 space-y-0.5">
-          <span className="text-sm font-medium">Request sent</span>
-          <p className="text-xs text-muted-foreground">
-            Tom will reply to your account email soon.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!expanded) {
-    return (
-      <button
-        type="button"
-        onClick={() => setExpanded(true)}
-        className={cn(cardClassName('muted'), 'w-full text-left')}
-      >
-        <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground group-hover:bg-muted/80">
-          <HeartHandshake className="size-4" />
-        </div>
-        <div className="flex-1 space-y-0.5">
-          <span className="text-sm font-medium">
-            Ask the founder for credits
-          </span>
-          <p className="text-xs text-muted-foreground">
-            Seriously. Tom replies.
-          </p>
-        </div>
-        <ArrowRight className="size-3.5 shrink-0 -translate-x-1 text-muted-foreground opacity-0 transition-all duration-200 group-hover:translate-x-0 group-hover:opacity-60" />
-      </button>
-    );
-  }
-
-  return (
-    <div className="flex flex-col gap-2.5 rounded-xl border border-border/60 p-3.5">
-      <div className="flex items-center gap-3.5">
-        <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
-          <HeartHandshake className="size-4" />
-        </div>
-        <div className="flex-1 space-y-0.5">
-          <span className="text-sm font-medium">
-            Ask the founder for credits
-          </span>
-          <p className="text-xs text-muted-foreground">
-            Seriously. Tom replies.
-          </p>
-        </div>
-      </div>
-      <Textarea
-        value={message}
-        onChange={(e) => setMessage(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-            mutation.mutate();
-          }
-        }}
-        placeholder="Tell Tom what you're making (optional)"
-        rows={3}
-        maxLength={2000}
-      />
-      <div className="flex justify-end gap-2">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => setExpanded(false)}
-          disabled={mutation.isPending}
-        >
-          Cancel
-        </Button>
-        <Button
-          size="sm"
-          onClick={() => mutation.mutate()}
-          disabled={mutation.isPending}
-        >
-          {mutation.isPending ? 'Sending…' : 'Send request'}
-        </Button>
-      </div>
-      {mutation.isError && (
-        <p role="alert" className="text-xs text-destructive">
-          {mutation.error instanceof Error
-            ? mutation.error.message
-            : 'Failed to send request'}
-        </p>
-      )}
-    </div>
   );
 };
 

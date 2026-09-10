@@ -38,8 +38,7 @@ export const Route = createFileRoute('/_app/pricing')({
 });
 
 function PricingPage() {
-  const { sections, lastUpdated, filmCosts, phoneVerification } =
-    Route.useLoaderData();
+  const { sections, lastUpdated, filmCosts } = Route.useLoaderData();
   const { requireAuth } = useAuthGate();
   const feePercent = formatPlatformFeePercent();
   const chargeFor100 = (100 * (1 + PLATFORM_FEE_PERCENT)).toFixed(0);
@@ -63,12 +62,8 @@ function PricingPage() {
               <span className="font-medium text-foreground tabular-nums">
                 {filmCosts.welcomeCredits}
               </span>{' '}
-              free after{' '}
-              {phoneVerification
-                ? 'saving a card or verifying your phone'
-                : 'saving a card'}{' '}
-              (no charge) — enough for a typical 30s short with motion and
-              music.
+              free after saving a card (no charge) — enough for a typical 30s
+              short with motion and music.
             </>
           ) : null}
         </p>
