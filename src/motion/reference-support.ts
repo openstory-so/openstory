@@ -58,6 +58,36 @@ export function unsupportedReferenceNotice(
   return `${IMAGE_TO_VIDEO_MODELS[model].name} takes no reference ${listed(dropped)} — those are described in the prompt instead of sent.`;
 }
 
+/**
+ * The attached clips and audio this model is too short to take (#1559). They
+ * are still described in the prompt, but the panel has to say which ones did
+ * not ride, or an over-long clip looks like it was used and silently was not.
+ */
+export function overlongReferenceNotice(
+  model: ImageToVideoModel,
+  attached: Iterable<{
+    token: string;
+    kind: 'image' | 'video' | 'audio';
+    durationSeconds: number | null;
+  }>
+): string | null {
+  const config = getMotionReferenceEndpoint(model);
+  if (!config) return null;
+  const tooLong: { token: string; max: number }[] = [];
+  for (const el of attached) {
+    if (el.kind === 'image' || el.durationSeconds == null) continue;
+    const max =
+      el.kind === 'video' ? config.videoSeconds?.max : config.audioSeconds?.max;
+    if (max !== undefined && el.durationSeconds > max) {
+      tooLong.push({ token: el.token, max });
+    }
+  }
+  if (tooLong.length === 0) return null;
+  const max = tooLong[0]?.max ?? 0;
+  const tokens = listed(tooLong.map((t) => t.token));
+  return `${IMAGE_TO_VIDEO_MODELS[model].name} takes references up to ${max}s, so ${tokens} ${tooLong.length === 1 ? 'is' : 'are'} described in the prompt instead of sent. Trim ${tooLong.length === 1 ? 'it' : 'them'} to attach.`;
+}
+
 function listed(items: string[]): string {
   if (items.length <= 1) return items[0] ?? '';
   return `${items.slice(0, -1).join(', ')} or ${items.at(-1)}`;

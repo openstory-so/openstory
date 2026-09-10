@@ -21,7 +21,10 @@ import {
   formatElementDuration,
 } from '@/cast/element-kind';
 import { MAX_SEQUENCE_ELEMENTS } from '@/cast/ui/element/limits';
-import { unsupportedReferenceNotice } from '@/motion/reference-support';
+import {
+  overlongReferenceNotice,
+  unsupportedReferenceNotice,
+} from '@/motion/reference-support';
 import type { ImageToVideoModel } from '@/models/models';
 import { cn } from '@/ui/utils';
 import {
@@ -263,12 +266,15 @@ export const SceneElementsTab: React.FC<SceneElementsTabProps> = ({
   // What the selected model will do with what is attached (#1559) — an
   // element it cannot carry is described in the prompt, never dropped in
   // silence.
-  const notice = motionModel
-    ? unsupportedReferenceNotice(
-        motionModel,
-        sceneElements.map((el) => el.kind)
-      )
-    : null;
+  const notices = motionModel
+    ? [
+        unsupportedReferenceNotice(
+          motionModel,
+          sceneElements.map((el) => el.kind)
+        ),
+        overlongReferenceNotice(motionModel, sceneElements),
+      ].filter((line) => line !== null)
+    : [];
 
   const header = (
     <div className="flex flex-col gap-2">
@@ -279,7 +285,11 @@ export const SceneElementsTab: React.FC<SceneElementsTabProps> = ({
           currentCount={elements.length}
         />
       </div>
-      {notice && <p className="text-xs text-muted-foreground">{notice}</p>}
+      {notices.map((line) => (
+        <p key={line} className="text-xs text-muted-foreground">
+          {line}
+        </p>
+      ))}
     </div>
   );
 

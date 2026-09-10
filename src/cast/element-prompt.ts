@@ -54,6 +54,7 @@ export function buildElementReferenceImages(
             description: buildElementDescription(el),
             role: 'element' as const,
             kind: el.kind ?? ('image' as const),
+            durationSeconds: el.durationSeconds,
             token: el.token,
           },
         ]

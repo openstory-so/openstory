@@ -763,6 +763,26 @@ export type MotionReferenceEndpointConfig = {
    * files even when each list is inside its own max (9/3/3 = 15).
    */
   maxCombined?: number;
+  /**
+   * Length limits on reference clips and audio (#1559), per file and summed.
+   * A reference that busts one is rejected by the provider outright, so the
+   * binding leaves it off the request and describes it in prose instead —
+   * the same treatment as any other overflow, and disclosed by the scene
+   * panel rather than dropped in silence.
+   *
+   * Omitted where the provider states none. An element whose length we never
+   * learned (`durationSeconds: null`) is always attached: guessing it is over
+   * would drop a reference the provider might have accepted.
+   */
+  videoSeconds?: MediaDurationLimit;
+  audioSeconds?: MediaDurationLimit;
+};
+
+export type MediaDurationLimit = {
+  /** Longest single file. */
+  max?: number;
+  /** Longest total across every file of this kind. */
+  maxCombined?: number;
 };
 
 /**
@@ -791,15 +811,25 @@ export const MOTION_REFERENCE_ENDPOINTS: Partial<
     maxVideos: 3,
     maxAudio: 3,
     maxCombined: 12,
+    // 2.0 states its clip window as a COMBINED range (2–15s), not per file.
+    videoSeconds: { maxCombined: 15 },
+    audioSeconds: { maxCombined: 15 },
   },
   seedance_v2_5: {
     endpointId: 'bytedance/seedance-2.5/reference-to-video',
     textToVideoEndpointId: 'bytedance/seedance-2.5/text-to-video',
     tag: (position) => `@Image${position}`,
-    maxImages: 9,
-    maxVideos: 3,
-    maxAudio: 3,
-    maxCombined: 12,
+    // 2.5 is far roomier than the 2.0 family and was previously pinned to
+    // 2.0's numbers, which quietly threw away most of its reference budget.
+    // fal's schema: 30 images / 10 clips / 10 audio, 50 files total. Ark
+    // documents the same 50 as "a free combination of images, videos and
+    // audio", so the per-kind splits are its floor, not a stricter ceiling.
+    maxImages: 30,
+    maxVideos: 10,
+    maxAudio: 10,
+    maxCombined: 50,
+    videoSeconds: { max: 30.2, maxCombined: 30.2 },
+    audioSeconds: { max: 30.2, maxCombined: 30.2 },
   },
   seedance_v2_mini: {
     endpointId: 'bytedance/seedance-2.0/mini/reference-to-video',
@@ -809,6 +839,8 @@ export const MOTION_REFERENCE_ENDPOINTS: Partial<
     maxVideos: 3,
     maxAudio: 3,
     maxCombined: 12,
+    videoSeconds: { maxCombined: 15 },
+    audioSeconds: { maxCombined: 15 },
   },
   gemini_omni_flash: {
     endpointId: 'fal-ai/gemini-omni-1.1-flash/reference-to-video',
@@ -836,6 +868,8 @@ export const MOTION_REFERENCE_ENDPOINTS: Partial<
     maxVideos: 3,
     videoField: 'reference_video_urls',
     videoTag: (position) => `reference video ${position}`,
+    // "Video references support a maximum of 3 clips, up to 3 seconds each."
+    videoSeconds: { max: 3 },
   },
   // fal documents the 4-image cap as `elements` + reference images "when
   // using video"; applied unconditionally rather than tracking a second
@@ -865,6 +899,8 @@ export const MOTION_REFERENCE_ENDPOINTS: Partial<
     audioField: 'reference_audio_urls',
     videoTag: (position) => `Video ${position}`,
     audioTag: (position) => `Audio ${position}`,
+    videoSeconds: { max: 15, maxCombined: 15 },
+    audioSeconds: { max: 15, maxCombined: 15 },
   },
 };
 

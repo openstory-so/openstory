@@ -130,26 +130,35 @@ describe.each([
     });
 
     it('caps attached images at maxImages and substitutes overflow tokens with descriptions', () => {
-      const refs = Array.from({ length: 10 }, (_, i) =>
+      // Two more refs than the endpoint's budget, whatever that budget is —
+      // 2.0 and 2.5 differ (9 vs 30), and pinning a literal here would just
+      // re-break the day a provider raises one.
+      const budget = seedanceConfig.maxImages;
+      const overflowing = budget + 1;
+      const refs = Array.from({ length: overflowing }, (_, i) =>
         ref(
           `https://example.com/${i}.png`,
           `Ref ${i} - person ${i}`,
           `REF_${i}`
         )
       );
+      const last = overflowing - 1;
       const result = buildReferenceVideoPrompt(
         seedanceConfig,
-        'REF_0 waves while REF_9 walks away',
+        `REF_0 waves while REF_${last} walks away`,
         STILL,
         refs
       );
-      // still + 8 refs = 9 images; REF_8 and REF_9 overflow.
-      expect(result.imageUrls).toHaveLength(9);
+      // The still takes one slot, so `budget - 1` refs attach and the rest
+      // overflow into prose.
+      expect(result.imageUrls).toHaveLength(budget);
       expect(result.imageUrls[0]).toBe(STILL);
       // Attached + mentioned → inline tag; overflow + mentioned → description.
       expect(result.prompt).toContain('@Image2 waves');
-      expect(result.prompt).toContain('Ref 9 (person 9) walks away');
-      expect(result.prompt).not.toContain('@Image10');
+      expect(result.prompt).toContain(
+        `Ref ${last} (person ${last}) walks away`
+      );
+      expect(result.prompt).not.toContain(`@Image${budget + 1}`);
     });
 
     it('truncates the base prompt (never the legend or start line) to fit the limit', () => {
@@ -424,5 +433,64 @@ describe('buildReferenceVideoPrompt with clip and audio references', () => {
     expect(result.imageUrls).toHaveLength(9);
     expect(result.videoUrls).toHaveLength(2);
     expect(result.audioUrls).toHaveLength(1);
+  });
+});
+
+// #1559 — a reference the provider would reject for length never goes on the
+// request; it becomes prose, like any other overflow.
+describe('buildReferenceVideoPrompt duration limits', () => {
+  const clip = (
+    token: string,
+    durationSeconds: number | null
+  ): ReferenceImageDescription => ({
+    referenceImageUrl: `https://example.com/${token.toLowerCase()}.mp4`,
+    description: `${token} - a clip`,
+    role: 'element',
+    kind: 'video',
+    durationSeconds,
+    token,
+  });
+
+  it('drops a clip longer than the per-file ceiling', () => {
+    // Omni Flash: "up to 3 seconds each".
+    const omni = getMotionReferenceEndpoint('gemini_omni_flash');
+    if (!omni) throw new Error('gemini_omni_flash must have a config');
+    const result = buildReferenceVideoPrompt(
+      omni,
+      'Move like LONG_TAKE then like SHORT_TAKE',
+      STILL,
+      [clip('LONG_TAKE', 10), clip('SHORT_TAKE', 2)]
+    );
+
+    expect(result.videoUrls).toEqual(['https://example.com/short_take.mp4']);
+    expect(result.prompt).toContain('LONG_TAKE (a clip)');
+    expect(result.prompt).not.toContain('LONG_TAKE (a clip) (a clip)');
+  });
+
+  it('stops taking clips once the combined ceiling is reached', () => {
+    // H3 Max: 15s each, 15s combined.
+    const h3 = getMotionReferenceEndpoint('minimax_h3_max');
+    if (!h3) throw new Error('minimax_h3_max must have a config');
+    const result = buildReferenceVideoPrompt(
+      h3,
+      'Move like FIRST, then SECOND, then THIRD',
+      STILL,
+      [clip('FIRST', 10), clip('SECOND', 4), clip('THIRD', 4)]
+    );
+
+    // 10 + 4 fits; the third would reach 18s, past the 15s combined ceiling.
+    expect(result.videoUrls).toHaveLength(2);
+    expect(result.prompt).toContain('THIRD (a clip)');
+  });
+
+  it('attaches a clip whose length we never learned', () => {
+    // Guessing would drop a reference the provider might have accepted.
+    const omni = getMotionReferenceEndpoint('gemini_omni_flash');
+    if (!omni) throw new Error('gemini_omni_flash must have a config');
+    const result = buildReferenceVideoPrompt(omni, 'A shot', STILL, [
+      clip('UNKNOWN', null),
+    ]);
+
+    expect(result.videoUrls).toEqual(['https://example.com/unknown.mp4']);
   });
 });

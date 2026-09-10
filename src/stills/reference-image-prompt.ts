@@ -28,6 +28,13 @@ export type ReferenceImageDescription = {
    */
   kind?: 'image' | 'video' | 'audio';
   /**
+   * Length of a clip or audio reference, when we know it (#1559). The
+   * reference-to-video binding uses it to leave a file off a request the
+   * provider would reject for being too long; `null`/absent means unknown,
+   * which is always attached rather than guessed at.
+   */
+  durationSeconds?: number | null;
+  /**
    * The canonical token this entity is named by in prompts — a character's
    * bible name (e.g. "Scarlett") or an element's UPPERCASE token (e.g.
    * "CORAL_LIPSTICK"). Builders substitute occurrences with the model's

@@ -64,6 +64,7 @@ describe('buildMotionReferenceImages', () => {
         description: 'LOGO - LOGO description',
         role: 'element',
         kind: 'image',
+        durationSeconds: null,
         token: 'LOGO',
       },
     ]);

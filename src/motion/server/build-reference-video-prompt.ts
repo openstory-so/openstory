@@ -43,7 +43,10 @@
  * reference-only motion prompt template in `workflow-prompts.ts`).
  */
 
-import type { MotionReferenceEndpointConfig } from '@/models/models';
+import type {
+  MediaDurationLimit,
+  MotionReferenceEndpointConfig,
+} from '@/models/models';
 import type { ReferenceImageDescription } from '@/stills/reference-image-prompt';
 import {
   appendLegendWithinLimit,
@@ -67,6 +70,8 @@ export type ReferencePromptBinding = Pick<
   | 'maxCombined'
   | 'videoTag'
   | 'audioTag'
+  | 'videoSeconds'
+  | 'audioSeconds'
 >;
 
 type Kind = 'image' | 'video' | 'audio';
@@ -81,6 +86,13 @@ const kindOf = (ref: ReferenceImageDescription): Kind => ref.kind ?? 'image';
  * least one reference image or video is required", so a shot whose only
  * reference is a voice line has no request to make of them — it describes the
  * line instead and goes to the prompt-only route.
+ *
+ * Clips and audio are also checked against the endpoint's length limits
+ * (#1559): a 10s clip on Omni Flash, whose ceiling is 3s, is rejected outright
+ * by the provider, so sending it would fail the whole shot rather than degrade
+ * it. Over-length references overflow into prose like any other, and the scene
+ * panel says so. A reference of unknown length is always attached — guessing
+ * it is too long would drop one the provider might have taken.
  */
 function partitionReferences(
   binding: ReferencePromptBinding | null,
@@ -108,6 +120,11 @@ function partitionReferences(
   let filesLeft =
     (binding?.maxCombined ?? Number.POSITIVE_INFINITY) -
     (hasStartFrame ? 1 : 0);
+  const limits: Partial<Record<Kind, MediaDurationLimit | undefined>> = {
+    video: binding?.videoSeconds,
+    audio: binding?.audioSeconds,
+  };
+  const secondsUsed: Record<Kind, number> = { image: 0, video: 0, audio: 0 };
 
   for (const ref of withUrls) {
     const kind = kindOf(ref);
@@ -115,7 +132,12 @@ function partitionReferences(
       overflow.push(ref);
       continue;
     }
+    if (exceedsDuration(ref, limits[kind], secondsUsed[kind])) {
+      overflow.push(ref);
+      continue;
+    }
     taken[kind].push(ref);
+    secondsUsed[kind] += ref.durationSeconds ?? 0;
     filesLeft -= 1;
   }
 
@@ -150,6 +172,24 @@ export function bindableReferences(
 ): ReferenceImageDescription[] {
   const parts = partitionReferences(binding, references, hasStartFrame);
   return [...parts.images, ...parts.videos, ...parts.audio];
+}
+
+/**
+ * Would attaching this reference bust the endpoint's length limits? Unknown
+ * length is never "too long" — see `partitionReferences`.
+ */
+function exceedsDuration(
+  ref: ReferenceImageDescription,
+  limit: MediaDurationLimit | undefined,
+  secondsAlreadyTaken: number
+): boolean {
+  const seconds = ref.durationSeconds;
+  if (!limit || seconds == null) return false;
+  if (limit.max !== undefined && seconds > limit.max) return true;
+  return (
+    limit.maxCombined !== undefined &&
+    secondsAlreadyTaken + seconds > limit.maxCombined
+  );
 }
 
 const atVideo = (position: number): string => `@Video${position}`;

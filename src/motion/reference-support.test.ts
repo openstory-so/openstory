@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   motionReferenceSupport,
+  overlongReferenceNotice,
   unsupportedReferenceNotice,
 } from './reference-support';
 
@@ -53,5 +54,40 @@ describe('unsupportedReferenceNotice', () => {
       'video',
     ]);
     expect(notice).toContain('audio or clips');
+  });
+});
+
+describe('overlongReferenceNotice', () => {
+  const el = (
+    token: string,
+    kind: 'image' | 'video' | 'audio',
+    durationSeconds: number | null
+  ) => ({ token, kind, durationSeconds });
+
+  it('names a clip past the model ceiling and how to fix it', () => {
+    const notice = overlongReferenceNotice('gemini_omni_flash', [
+      el('LONG_TAKE', 'video', 10),
+    ]);
+    expect(notice).toContain('up to 3s');
+    expect(notice).toContain('LONG_TAKE');
+    expect(notice).toContain('Trim it');
+  });
+
+  it('is silent for a clip inside the ceiling, and for unknown lengths', () => {
+    expect(
+      overlongReferenceNotice('gemini_omni_flash', [el('SHORT', 'video', 2)])
+    ).toBeNull();
+    // Unknown length is attached rather than guessed at, so nothing to warn.
+    expect(
+      overlongReferenceNotice('gemini_omni_flash', [
+        el('MYSTERY', 'video', null),
+      ])
+    ).toBeNull();
+  });
+
+  it('is silent on a model with no reference endpoint at all', () => {
+    expect(
+      overlongReferenceNotice('kling_v3_pro', [el('LONG', 'video', 60)])
+    ).toBeNull();
   });
 });
