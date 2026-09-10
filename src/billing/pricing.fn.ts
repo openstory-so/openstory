@@ -10,7 +10,6 @@ import {
   buildFilmCostExamples,
   type FilmCostExamples,
 } from '@/billing/server/film-cost-examples';
-import { isPhoneVerificationEnabled } from '@/billing/server/phone-verification';
 import {
   buildPricingCatalog,
   type PricingCatalog,
@@ -37,8 +36,6 @@ export const getPricingCatalogFn = createServerFn({ method: 'GET' }).handler(
   async (): Promise<
     PricingCatalog & {
       filmCosts: FilmCostExamples | null;
-      /** Welcome grant can be unlocked by SMS as well as by card (#1539). */
-      phoneVerification: boolean;
     }
   > => {
     const [falPricing, falUpdatedAt] = await Promise.all([
@@ -57,7 +54,6 @@ export const getPricingCatalogFn = createServerFn({ method: 'GET' }).handler(
         },
       }),
       filmCosts: buildFilmCostExamples(falPricing),
-      phoneVerification: isPhoneVerificationEnabled(),
     };
   }
 );

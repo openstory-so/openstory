@@ -133,6 +133,14 @@ export function includesStage(
 }
 
 /**
+ * Script analysis with no credits (#1566). Sheets, images, motion, and
+ * music still go through the usual credit gate.
+ */
+export function allowsUnfundedGeneration(stopAt: GenerationStage): boolean {
+  return stopAt === 'script';
+}
+
+/**
  * True when a continue run that starts at `startFrom` and stops at `stopAt`
  * should execute `stage`.
  */

@@ -37,6 +37,7 @@ import { generateId } from '@/platform/id';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { toWorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import { ValidationError } from '@/platform/errors';
+import { allowsUnfundedGeneration } from '@/sequences/pipeline';
 import { DEFAULT_RESOLUTION } from '@/models/resolutions';
 import {
   AUTO_STYLE_ID,
@@ -298,15 +299,13 @@ export const createSequences = createServerOnlyFn(
     const created = await Promise.all(
       analysisModels.map(async (modelId) => {
         const sequenceId = generateId();
-        const reservationId = await reserveRunCredits(
-          context.scopedDb,
-          envelopeCost,
-          {
-            providers: ['fal', 'openrouter'],
-            errorMessage: 'Insufficient credits to generate storyboard',
-            sequenceId,
-          }
-        );
+        const reservationId = allowsUnfundedGeneration(stopAt)
+          ? undefined
+          : await reserveRunCredits(context.scopedDb, envelopeCost, {
+              providers: ['fal', 'openrouter'],
+              errorMessage: 'Insufficient credits to generate storyboard',
+              sequenceId,
+            });
 
         return releaseReservationOnThrow(
           context.scopedDb,
