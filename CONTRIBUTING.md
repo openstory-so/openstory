@@ -120,9 +120,12 @@ bun test:e2e:full     # Full pipeline: real Cloudflare Workflows, fal+LLM via ai
 The full-pipeline test (`e2e/tests/full-sequence.spec.ts`) replays AI responses from `e2e/fixtures/recorded/`. To capture or refresh them:
 
 ```bash
-# With real keys in .env.local (FAL_KEY, OPENROUTER_KEY):
+# With real keys in .env.local (FAL_KEY, OPENROUTER_KEY, XAI_API_KEY):
+# wrangler login required — the post-step uploads media to openstory-public-assets.
 bun test:e2e:full:record
 ```
+
+Recording always runs `scripts/mirror-e2e-fixture-media.ts` afterwards, which copies provider media (`fal.media`, `imgen.x.ai`, …) to `assets.openstory.so/e2e/<sha>.<ext>` and rewrites the fixtures. Replay fetches those bytes for real, and the provider CDNs expire.
 
 Commit the generated fixtures alongside any code change that alters AI prompts or model selection.
 
