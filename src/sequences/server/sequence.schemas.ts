@@ -1,4 +1,3 @@
-import { mediaUrlSchema } from '@/platform/schemas/media-url.schemas';
 import {
   AUDIO_MODELS,
   DEFAULT_IMAGE_MODEL,
@@ -23,6 +22,7 @@ import {
 } from '@/sequences/pipeline';
 import { ulidSchemaOptional } from '@/platform/server/schemas/id.schemas';
 import { createInsertSchema, createUpdateSchema } from 'drizzle-orm/zod';
+import { draftElementUploadSchema } from '@/cast/draft-element-upload';
 import { z } from 'zod';
 
 /**
@@ -162,22 +162,10 @@ export const createSequenceSchema = createInsertSchema(sequences, {
     suggestedTalentIds: z.array(z.string()).optional(),
     // Suggested location IDs for visual consistency during generation
     suggestedLocationIds: z.array(z.string()).optional(),
-    // Draft element uploads (presigned to temp path before sequence exists).
-    // description/consistencyTag are populated by the inline analyzeDraftElementFn
-    // call so promoteTempElements can write them straight onto the new row
-    // instead of re-triggering the async vision workflow.
-    elementUploads: z
-      .array(
-        z.object({
-          tempPath: z.string().min(1),
-          tempPublicUrl: mediaUrlSchema,
-          filename: z.string().min(1),
-          token: z.string().min(1).max(100),
-          description: z.string().nullable().optional(),
-          consistencyTag: z.string().nullable().optional(),
-        })
-      )
-      .optional(),
+    // Draft element uploads: images already at a permanent key, waiting for a
+    // sequence to point rows at them (#1471). One schema, shared with the
+    // localStorage draft and the public API — see `draftElementUploadSchema`.
+    elementUploads: z.array(draftElementUploadSchema).optional(),
     // When regenerating from an existing sequence, copy its elements onto the
     // newly created sequence so the user doesn't have to re-upload references.
     sourceSequenceId: ulidSchemaOptional,

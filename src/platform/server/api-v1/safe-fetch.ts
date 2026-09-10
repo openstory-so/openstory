@@ -222,9 +222,9 @@ async function fetchSafeImage(
 }
 
 export type IngestedImage = {
-  /** Bucket-relative temp path, e.g. `<teamId>/temp/<id>.png`. */
-  tempPath: string;
-  /** Public URL of the uploaded temp object. */
+  /** Bucket-relative key, `<teamId>/<prefix>/<id>.<ext>`. */
+  storagePath: string;
+  /** Public URL of the uploaded object. */
   publicUrl: string;
   extension: string;
   contentType: string;
@@ -236,26 +236,40 @@ export type ImageFetchSource = {
 };
 
 /**
- * SSRF-safely fetch a caller-supplied image URL and store it under the given
- * bucket's `temp/` prefix, returning the temp path + public URL. The temp
- * object is later promoted to permanent storage by the relevant create flow
- * (elements → `promoteTempElements`; talent/locations → their create cores).
+ * Which folder an ingested image lands in. Required rather than defaulted: the
+ * two values have opposite durability contracts, and the reclaimable one would
+ * be what a caller got by forgetting an argument.
+ *
+ * - `temp` — talent and location creates move the object to a permanent key of
+ *   their own, so whatever is left here is abandoned by definition.
+ * - `uploads` — elements are never moved; the row points at this key forever
+ *   (#1471). See `DRAFT_ELEMENT_UPLOAD_PREFIX`.
+ *
+ * Nothing sweeps `temp/` today, and nothing ever has — abandoned ingests leak.
+ * That is a known cost, not a mechanism to rely on.
  */
-export async function ingestImageToTempBucket(
+export type IngestPrefix = 'temp' | 'uploads';
+
+/**
+ * SSRF-safely fetch a caller-supplied image URL and store it under the given
+ * bucket's `pathPrefix` folder, returning the key + public URL.
+ */
+export async function ingestImageToBucket(
   url: string,
   bucket: StorageBucket,
   teamId: string,
+  pathPrefix: IngestPrefix,
   source?: ImageFetchSource
 ): Promise<IngestedImage> {
   const { bytes, contentType, extension } = await fetchSafeImage(
     url,
     source?.label ?? DEFAULT_IMAGE_LABEL
   );
-  const tempPath = `${teamId}/temp/${generateId()}.${extension}`;
-  await uploadFile(bucket, tempPath, bytes, { contentType });
+  const storagePath = `${teamId}/${pathPrefix}/${generateId()}.${extension}`;
+  await uploadFile(bucket, storagePath, bytes, { contentType });
   return {
-    tempPath,
-    publicUrl: getPublicUrl(bucket, tempPath),
+    storagePath,
+    publicUrl: getPublicUrl(bucket, storagePath),
     extension,
     contentType,
   };

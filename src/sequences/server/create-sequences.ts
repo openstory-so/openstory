@@ -52,7 +52,10 @@ import {
 } from './sequence.schemas';
 import { UNTITLED_SEQUENCE_TITLE } from '@/sequences/untitled-sequence-title';
 import { copySequenceElements } from '@/cast/server/sequence-elements/copy-sequence-elements';
-import { promoteTempElements } from '@/cast/server/sequence-elements/promote-temp-elements';
+import {
+  assertDraftElementUploadsAttachable,
+  attachDraftElementUploads,
+} from '@/cast/server/sequence-elements/attach-element-upload';
 import { captureProductEvent } from '@/platform/server/observability/product-events';
 import { bumpStylePopularity } from '@/look/server/bump-style-popularity';
 import { triggerStoryboard } from './launchers';
@@ -274,6 +277,16 @@ export const createSequences = createServerOnlyFn(
       throw new Error('Style ID and aspect ratio are required');
     }
 
+    // Fail on a bad draft upload here, before any credit reservation or
+    // sequence row exists — a throw inside the fan-out below would strand a
+    // sequence with no workflow behind it.
+    if (elementUploads && elementUploads.length > 0) {
+      await assertDraftElementUploadsAttachable({
+        teamId,
+        uploads: elementUploads,
+      });
+    }
+
     const envelopeCost = estimateStoryboardPreflightCost({
       script,
       imageModel: primaryImageModel,
@@ -347,11 +360,11 @@ export const createSequences = createServerOnlyFn(
                 : undefined,
             });
 
-            // Promote any draft element uploads to this new sequence (temp → final
-            // path + insert rows + trigger vision). Runs before workflow trigger
-            // so analyze-script-workflow can wait for vision to complete.
+            // Point rows at any draft element uploads (insert + vision; the
+            // R2 object is not moved — see attachElementUpload). Runs before
+            // the workflow trigger so analyze-script can wait for vision.
             if (elementUploads && elementUploads.length > 0) {
-              await promoteTempElements({
+              await attachDraftElementUploads({
                 scopedDb: context.scopedDb,
                 teamId,
                 userId: context.user.id,

@@ -2,7 +2,7 @@
  * Element selector for the sequence creation + edit forms.
  *
  * Two modes:
- *  - draft (default): files upload to a temp R2 path and land in the parent's
+ *  - draft (default): files upload to a permanent R2 path and land in the parent's
  *    `draftElements` list via onDraftElementsChange. The parent list is the
  *    canonical state (it's what localStorage draft persistence restores after
  *    a reload — #1079); local entries here only track in-flight uploads and
@@ -79,7 +79,14 @@ type BaseProps = {
 type DraftModeProps = BaseProps & {
   sequenceId?: undefined;
   draftElements: DraftElementUpload[];
-  onDraftElementsChange: (next: DraftElementUpload[]) => void;
+  /**
+   * A state setter, not a value callback: uploads finish from async callbacks,
+   * so an append must be a functional update or two uploads completing in the
+   * same tick would each spread a stale list and one would be lost (#1231).
+   */
+  onDraftElementsChange: React.Dispatch<
+    React.SetStateAction<DraftElementUpload[]>
+  >;
   /**
    * Fires after a draft element's token is renamed so the parent can rewrite
    * references in the script text (the persisted path does the same
@@ -167,20 +174,6 @@ export const ElementSelector: React.FC<ElementSelectorProps> = (props) => {
     isPersisted ? sequenceId : undefined
   );
 
-  // Mirror of the parent's canonical draft list, updated synchronously on our
-  // own emissions so two uploads completing in the same tick don't lose the
-  // first append (the prop only catches up on the parent's next render).
-  const draftElementsRef = useRef<DraftElementUpload[]>(draftElements ?? []);
-  draftElementsRef.current = draftElements ?? [];
-
-  const emitDraftElements = useCallback(
-    (next: DraftElementUpload[]) => {
-      draftElementsRef.current = next;
-      onDraftElementsChange?.(next);
-    },
-    [onDraftElementsChange]
-  );
-
   const hasInflightLocalEntry = useMemo(
     () =>
       Array.from(entries.values()).some(
@@ -220,6 +213,7 @@ export const ElementSelector: React.FC<ElementSelectorProps> = (props) => {
     const persistedFilenames = new Set(
       persistedElements.map((el) => el.uploadedFilename)
     );
+    // oxlint-disable-next-line react/set-state-in-effect -- blob-URL lifecycle tied to query data, not a derivable value: the row landing is the only signal, and dropping the entry without revoking (or deriving it away and keeping the File alive) leaks.
     setEntries((prev) => {
       let changed = false;
       const next = new Map(prev);
@@ -272,11 +266,15 @@ export const ElementSelector: React.FC<ElementSelectorProps> = (props) => {
 
       // Accept files BEFORE touching state (see selectFilesToAccept). The ref
       // mirror is what this function reads synchronously for keys/counts; the
-      // state updater below stays pure and merges the same entries.
+      // state updater below stays pure and merges the same entries. The draft
+      // count reads the committed prop: this runs from a user event, and an
+      // in-flight upload is counted once, as a local entry, until its row
+      // lands in the parent list.
       const currentEntries = entriesRef.current;
-      const existingCount = isPersisted
-        ? persistedElements.length + currentEntries.size
-        : draftElementsRef.current.length + currentEntries.size;
+      const existingCount =
+        (isPersisted
+          ? persistedElements.length
+          : (draftElements?.length ?? 0)) + currentEntries.size;
       const accepted = selectFilesToAccept(
         images,
         new Set(currentEntries.keys()),
@@ -346,7 +344,7 @@ export const ElementSelector: React.FC<ElementSelectorProps> = (props) => {
               // in which case the result is discarded.
               if (entriesRef.current.has(key)) {
                 removeLocalEntry(key);
-                emitDraftElements([...draftElementsRef.current, result]);
+                onDraftElementsChange?.((prev) => [...prev, result]);
               }
             }
           } catch (err) {
@@ -379,11 +377,12 @@ export const ElementSelector: React.FC<ElementSelectorProps> = (props) => {
       requireAuth,
       isPersisted,
       persistedElements.length,
+      draftElements?.length,
       sequenceId,
       draftUpload,
       sequenceUpload,
       removeLocalEntry,
-      emitDraftElements,
+      onDraftElementsChange,
     ]
   );
 
@@ -425,22 +424,24 @@ export const ElementSelector: React.FC<ElementSelectorProps> = (props) => {
 
   const removeDraftElement = useCallback(
     (tempPath: string) => {
-      emitDraftElements(
-        draftElementsRef.current.filter((el) => el.tempPath !== tempPath)
+      onDraftElementsChange?.((prev) =>
+        prev.filter((el) => el.tempPath !== tempPath)
       );
     },
-    [emitDraftElements]
+    [onDraftElementsChange]
   );
 
   // Rename a draft (pre-sequence) element in the parent's canonical list; the
   // parent rewrites script references through onDraftTokenRename. Uniqueness
-  // is checked locally — promoteTempElements would silently suffix a
+  // is checked locally — attachElementUpload would silently suffix a
   // collision, but a user-typed name should be rejected loudly instead
   // (matching the persisted rename server fn).
   const renameDraftElement = useCallback(
     // oxlint-disable-next-line require-await -- ElementTokenButton takes an async commit; rejections surface inline
     async (tempPath: string, nextToken: string) => {
-      const current = draftElementsRef.current;
+      // A rename is a user click, so the committed prop is current; the
+      // duplicate check reads it and the write is a functional update.
+      const current = draftElements ?? [];
       const target = current.find((el) => el.tempPath === tempPath);
       if (!target || nextToken === target.token) return;
       const duplicate = current.some(
@@ -451,14 +452,14 @@ export const ElementSelector: React.FC<ElementSelectorProps> = (props) => {
           `Another element is already named "${nextToken}". Pick a different name.`
         );
       }
-      emitDraftElements(
-        current.map((el) =>
+      onDraftElementsChange?.((prev) =>
+        prev.map((el) =>
           el.tempPath === tempPath ? { ...el, token: nextToken } : el
         )
       );
       onDraftTokenRename?.(target.token, nextToken);
     },
-    [emitDraftElements, onDraftTokenRename]
+    [draftElements, onDraftElementsChange, onDraftTokenRename]
   );
 
   // Rename a persisted element — the server fn cascades the new token through

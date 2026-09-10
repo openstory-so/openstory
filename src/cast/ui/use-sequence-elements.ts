@@ -72,7 +72,6 @@ export function useUploadElementToSequence() {
       const element = await finalizeElementUploadFn({
         data: {
           sequenceId: data.sequenceId,
-          publicUrl: presign.publicUrl,
           path: presign.path,
           filename: data.file.name,
         },
@@ -95,7 +94,7 @@ export type DraftElementUpload = {
   /**
    * Vision-LLM description, populated during draft upload. `useUploadDraftElement`
    * rejects if vision fails, so successful uploads always carry both fields —
-   * but `promoteTempElements` still accepts nullable values for backwards-compat
+   * but `attachElementUpload` still accepts nullable values for backwards-compat
    * with E2E fixture paths and falls back to the async vision workflow there.
    */
   description: string | null;
@@ -104,10 +103,10 @@ export type DraftElementUpload = {
 
 /**
  * Upload an element file as a *draft* (before a sequence exists). Returns the
- * temp storage path + public URL so the caller can persist it in local state
- * and pass it to the createSequence mutation for promotion.
+ * permanent storage path + public URL so the caller can persist it in local
+ * state and pass it to the createSequence mutation, which points a row at it.
  *
- * Runs vision analysis inline after the upload resolves so promoteTempElements
+ * Runs vision analysis inline after the upload resolves so `attachElementUpload`
  * can write the row in `completed` state with description + consistencyTag
  * already populated. The mutation rejects on vision failure — the element
  * selector surfaces this as an error entry and the user must retry or remove
@@ -274,7 +273,6 @@ export function useReplaceSequenceElement() {
         data: {
           sequenceId: data.sequenceId,
           elementId: data.elementId,
-          publicUrl: presign.publicUrl,
           path: presign.path,
           filename: data.file.name,
         },

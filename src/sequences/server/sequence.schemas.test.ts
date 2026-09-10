@@ -121,6 +121,26 @@ describe('createSequenceSchema', () => {
 
     expect(result.success).toBe(true);
   });
+
+  it('accepts an element upload with no token (the public API omits it)', () => {
+    // The API documents `elements[].token` as optional and attach derives one
+    // from the filename, but this schema used to require it — so every
+    // token-less API create 400'd here before the two shapes were shared.
+    const result = createSequenceSchema.safeParse({
+      script: 'A valid length script here.',
+      styleId: 'style_1',
+      aspectRatio: '16:9',
+      elementUploads: [
+        {
+          tempPath: 'elements/team-1/uploads/up-1.png',
+          tempPublicUrl: '/r2/elements/team-1/uploads/up-1.png',
+          filename: 'logo.png',
+        },
+      ],
+    });
+
+    expect(result.success).toBe(true);
+  });
 });
 
 describe('createSequenceSchema — reference-only', () => {

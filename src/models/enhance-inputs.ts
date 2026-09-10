@@ -42,7 +42,7 @@ type StyleLike = {
 
 /**
  * An ingested element, narrowed to the fields the enhancer reads. Satisfied by
- * the create-flow drafts (`DraftElementUpload` / `TempElementUpload`, which
+ * the create-flow drafts (`DraftElementUpload` / `DraftElementUploadInput`, which
  * carry `tempPublicUrl`) AND by persisted `SequenceElement` rows when enhancing
  * an existing sequence (which carry `imageUrl`).
  */

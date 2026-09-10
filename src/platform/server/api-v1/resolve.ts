@@ -4,7 +4,7 @@
  *   - style:   id | name | slug  → styleId (auto-pick a default when omitted)
  *   - talent:  id | name         → suggestedTalentIds
  *   - location:id | name         → suggestedLocationIds
- *   - element: hosted URL        → promoted TempElementUpload
+ *   - element: hosted URL        → ingested DraftElementUploadInput
  *
  * Every lookup goes through the team-scoped `list()` (team-owned + public), so
  * a caller can never resolve another team's private library entry.
@@ -13,10 +13,11 @@
 import type { Style } from '@/platform/server/db/schema';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { NotFoundError } from '@/platform/errors';
-import type { TempElementUpload } from '@/cast/server/sequence-elements/promote-temp-elements';
+import type { DraftElementUploadInput } from '@/cast/draft-element-upload';
+import { DRAFT_ELEMENT_UPLOAD_PREFIX } from '@/cast/server/sequence-elements/storage-path';
 import { STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
 import type { ApiCreateSequenceInput } from './input-schema';
-import { ingestImageToTempBucket } from './safe-fetch';
+import { ingestImageToBucket } from './safe-fetch';
 
 /** lowercase, non-alphanumerics → single hyphens; for forgiving name matching. */
 function slugify(value: string): string {
@@ -192,24 +193,29 @@ export async function resolveLocationIds(
 }
 
 /**
- * Ingest caller-hosted reference images into element temp storage and return
- * `TempElementUpload`s for `promoteTempElements`. Vision is intentionally NOT
- * run here: promotion leaves `visionStatus: pending`, which fires the
- * `element-vision` workflow, and analyze-script's `waitForElementVision` gate
- * blocks scene-split until it completes — so the request stays fast.
+ * Ingest caller-hosted reference images into element storage and return the
+ * draft uploads `attachDraftElementUploads` expects. The key is permanent and
+ * the rows point straight at it (#1471), so a caller-hosted image is never
+ * left under a name that reads as reclaimable.
+ *
+ * Vision is intentionally NOT run here: attach leaves `visionStatus: pending`,
+ * which fires the `element-vision` workflow, and analyze-script's
+ * `waitForElementVision` gate blocks scene-split until it completes — so the
+ * request stays fast.
  */
 export async function ingestElements(
   teamId: string,
   elements: ApiCreateSequenceInput['elements']
-): Promise<TempElementUpload[]> {
+): Promise<DraftElementUploadInput[]> {
   if (!elements || elements.length === 0) return [];
 
   return Promise.all(
     elements.map(async (el, index) => {
-      const { tempPath, publicUrl, extension } = await ingestImageToTempBucket(
+      const { storagePath, publicUrl, extension } = await ingestImageToBucket(
         el.url,
         STORAGE_BUCKETS.ELEMENTS,
         teamId,
+        DRAFT_ELEMENT_UPLOAD_PREFIX,
         {
           label: el.token
             ? `Element "${el.token}"`
@@ -217,11 +223,11 @@ export async function ingestElements(
         }
       );
       return {
-        // promote contract wants the bucket-prefixed `elements/` form.
-        tempPath: `elements/${tempPath}`,
+        // The attach contract wants the bucket-prefixed `elements/` form.
+        tempPath: `elements/${storagePath}`,
         tempPublicUrl: publicUrl,
         filename: el.filename ?? `element.${extension}`,
-        // Token from the caller if given; else promote derives it from the
+        // Token from the caller if given; else attach derives it from the
         // filename and the vision workflow refines it.
         token: el.token,
       };

@@ -55,7 +55,7 @@ import {
   resolveStyle,
   resolveTalentIds,
 } from './resolve';
-import { ingestImageToTempBucket } from './safe-fetch';
+import { ingestImageToBucket } from './safe-fetch';
 
 const logger = getLogger(['openstory', 'api-v1', 'create']);
 
@@ -145,7 +145,9 @@ async function ingestReferenceImages(
   if (!urls || urls.length === 0) return [];
   const ingested = await Promise.all(
     urls.map((url, index) =>
-      ingestImageToTempBucket(url, bucket, teamId, {
+      // Talent and location creates move the object to a permanent key of
+      // their own, so `temp` is the honest folder for them.
+      ingestImageToBucket(url, bucket, teamId, 'temp', {
         label: labelFor(index),
       })
     )

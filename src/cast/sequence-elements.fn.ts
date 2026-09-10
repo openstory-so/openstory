@@ -10,13 +10,20 @@ import { InsufficientCreditsError, NotFoundError } from '@/platform/errors';
 import { generateId } from '@/platform/id';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
 import { deriveTokenFromFilename } from './derive-token';
+import {
+  assertElementUploadAttachable,
+  attachElementUpload,
+  triggerElementVision,
+} from '@/cast/server/sequence-elements/attach-element-upload';
+import {
+  DRAFT_ELEMENT_UPLOAD_PREFIX,
+  elementImageUrlFromPath,
+} from '@/cast/server/sequence-elements/storage-path';
 import { STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
 import {
   getExtensionFromUrl,
   getMimeTypeFromExtension,
 } from '@/platform/server/storage/file';
-import { triggerWorkflow } from '@/platform/server/workflow/client';
-import type { ElementVisionWorkflowInput } from '@/platform/server/workflow/types';
 import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
@@ -25,44 +32,13 @@ import {
   sequenceAccessMiddleware,
 } from '@/platform/middleware.fn';
 
-/**
- * Sequence-element storage paths must live exactly under
- * `elements/<teamId>/`. `startsWith` alone accepts traversal artifacts like
- * `elements/<myTeamId>/../<otherTeamId>/x` — R2 stores keys literally so the
- * practical blast radius is small, but rejecting `..` and `//` segments closes
- * the namespace boundary explicitly.
- */
-export function isValidElementStoragePath(
-  path: string,
-  teamId: string
-): boolean {
-  const prefix = `elements/${teamId}/`;
-  if (!path.startsWith(prefix)) return false;
-  const rest = path.slice(prefix.length);
-  if (rest.length === 0) return false;
-  return !rest.split('/').some((seg) => seg === '' || seg === '..');
-}
-
-async function triggerElementVision(params: {
-  elementId: string;
-  sequenceId: string;
-  imageUrl: string;
-  filename: string;
-  token: string;
-  teamId: string;
-  userId: string;
-}): Promise<void> {
-  const { teamId, userId, ...element } = params;
-  const input: ElementVisionWorkflowInput = { userId, teamId, ...element };
-  await triggerWorkflow('/element-vision', input);
-}
-
 // ============================================================================
-// Presign upload — drafts go under the user's default team's `temp/` folder
-// and are later relocated via `promoteTempElements`. Persisted uploads
-// (existing sequence) must use the *sequence's* teamId in the path so the
-// finalize check passes for users whose default team differs from the
-// sequence's team (multi-team members and system admins).
+// Presign upload — drafts go under the user's default team's `uploads/`
+// folder, a permanent sequence-agnostic key that attach points rows at without
+// moving anything (#1471). Persisted uploads (existing sequence) must use the
+// *sequence's* teamId in the path so the attach check passes for users whose
+// default team differs from the sequence's team (multi-team members and system
+// admins).
 // ============================================================================
 
 export const presignDraftElementUploadFn = createServerFn({ method: 'POST' })
@@ -72,7 +48,7 @@ export const presignDraftElementUploadFn = createServerFn({ method: 'POST' })
     const ext = getExtensionFromUrl(data.filename);
     const uploadId = generateId();
     const contentType = getMimeTypeFromExtension(ext);
-    const storagePath = `${context.teamId}/temp/${uploadId}.${ext}`;
+    const storagePath = `${context.teamId}/${DRAFT_ELEMENT_UPLOAD_PREFIX}/${uploadId}.${ext}`;
 
     return getSignedUploadUrl(
       STORAGE_BUCKETS.ELEMENTS,
@@ -182,56 +158,23 @@ export const finalizeElementUploadFn = createServerFn({ method: 'POST' })
     zodValidator(
       z.object({
         sequenceId: ulidSchema,
-        publicUrl: mediaUrlSchema,
         path: z.string().min(1),
         filename: z.string().min(1),
       })
     )
   )
   .handler(async ({ context, data }) => {
-    if (!isValidElementStoragePath(data.path, context.teamId)) {
-      throw new Error('Invalid storage path');
-    }
-
-    const rawToken = deriveTokenFromFilename(data.filename);
-    const token = await context.scopedDb.sequenceElements.ensureUniqueToken(
-      data.sequenceId,
-      rawToken
-    );
-
-    const element = await context.scopedDb.sequenceElements.create({
-      id: generateId(),
+    // Same core as a draft upload attached at creation time: the object is
+    // already in R2 and nothing moves it. The caller does not send a public
+    // URL — it is derived from the validated path (#1471).
+    return await attachElementUpload({
+      scopedDb: context.scopedDb,
+      teamId: context.teamId,
+      userId: context.user.id,
       sequenceId: data.sequenceId,
-      uploadedFilename: data.filename,
-      token,
-      imageUrl: data.publicUrl,
-      imagePath: data.path,
-      visionStatus: 'pending',
+      path: data.path,
+      filename: data.filename,
     });
-
-    // If the trigger fails, mark the row failed before re-throwing —
-    // otherwise the element would poll forever in `pending`.
-    try {
-      await triggerElementVision({
-        elementId: element.id,
-        sequenceId: element.sequenceId,
-        imageUrl: data.publicUrl,
-        filename: element.uploadedFilename,
-        token: element.token,
-        teamId: context.teamId,
-        userId: context.user.id,
-      });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unknown error';
-      await context.scopedDb.sequenceElements.updateVisionStatus(
-        element.id,
-        'failed',
-        message
-      );
-      throw err;
-    }
-
-    return element;
   });
 
 // ============================================================================
@@ -382,28 +325,32 @@ export const replaceSequenceElementFn = createServerFn({ method: 'POST' })
       z.object({
         sequenceId: ulidSchema,
         elementId: ulidSchema,
-        publicUrl: mediaUrlSchema,
         path: z.string().min(1),
         filename: z.string().min(1),
       })
     )
   )
   .handler(async ({ context, data }) => {
-    if (!isValidElementStoragePath(data.path, context.teamId)) {
-      throw new Error('Invalid storage path');
-    }
+    await assertElementUploadAttachable({
+      path: data.path,
+      filename: data.filename,
+      teamId: context.teamId,
+    });
 
     const element = await context.scopedDb.sequenceElements.getById(
       data.elementId
     );
     if (!element || element.sequenceId !== context.sequence.id) {
-      throw new Error('Element not found');
+      throw new NotFoundError('Element not found');
     }
+
+    // Derived, never taken off the payload — see `elementImageUrlFromPath`.
+    const imageUrl = elementImageUrlFromPath(data.path);
 
     const updated = await context.scopedDb.sequenceElements.update(
       data.elementId,
       {
-        imageUrl: data.publicUrl,
+        imageUrl,
         imagePath: data.path,
         uploadedFilename: data.filename,
         description: null,
@@ -418,7 +365,7 @@ export const replaceSequenceElementFn = createServerFn({ method: 'POST' })
       await triggerElementVision({
         elementId: updated.id,
         sequenceId: context.sequence.id,
-        imageUrl: data.publicUrl,
+        imageUrl,
         filename: updated.uploadedFilename,
         token: updated.token,
         teamId: context.teamId,
