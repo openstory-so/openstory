@@ -951,8 +951,8 @@ export const ScriptView: FC<{
   };
 
   const requestGenerate = () => {
-    // Remembered paid stops still open the slider when the team has no
-    // credits, so they can slide back to References (#1566).
+    // Remembered paid stop + no credits: open the slider instead of firing
+    // Generate (the credit gate still runs on confirm).
     if (
       savedSettings.rememberStopAt &&
       !(needsBillingSetup && !allowsUnfundedGeneration(stopAt))

@@ -18,6 +18,7 @@ import {
   useMutationState,
   useQueryClient,
 } from '@tanstack/react-query';
+import { isInsufficientCreditsError } from '@/platform/errors';
 import { toast } from 'sonner';
 
 type StudioAssetFilters = {
@@ -81,6 +82,7 @@ export function useCreateStudioAssets() {
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: studioAssetKeys.all }),
     onError: (error) => {
+      if (isInsufficientCreditsError(error)) return;
       toast.error(error.message);
     },
   });
@@ -136,6 +138,7 @@ export function useDraftStudioPrompt() {
     mutationFn: (input: Parameters<typeof draftStudioPromptFn>[0]['data']) =>
       draftStudioPromptFn({ data: input }),
     onError: (error) => {
+      if (isInsufficientCreditsError(error)) return;
       toast.error(error.message);
     },
   });

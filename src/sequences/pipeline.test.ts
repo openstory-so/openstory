@@ -109,9 +109,9 @@ describe('generation pipeline stages', () => {
     expect(stagesUpTo('references')).toEqual(['script', 'references']);
   });
 
-  it('lets unfunded teams run through references, not images or motion', () => {
+  it('lets unfunded teams run script analysis, not sheets or later stages', () => {
     expect(allowsUnfundedGeneration('script')).toBe(true);
-    expect(allowsUnfundedGeneration('references')).toBe(true);
+    expect(allowsUnfundedGeneration('references')).toBe(false);
     expect(allowsUnfundedGeneration('images')).toBe(false);
     expect(allowsUnfundedGeneration('motion')).toBe(false);
     expect(allowsUnfundedGeneration('music')).toBe(false);
