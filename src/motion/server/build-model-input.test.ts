@@ -367,26 +367,27 @@ describe('buildModelInput', () => {
       return { endpointId, input };
     };
 
-    it('routes to O3 Pro and puts stills in image_urls', () => {
+    // Unlike Seedance and H3 Max, O3 has a real start-frame field, so the
+    // still is pinned rather than spending an image slot and being asked for
+    // in prose. The whole 4-image list stays available for sheets (#1498).
+    it('pins the still in start_image_url, leaving image_urls to the sheets', () => {
       const { endpointId, input } = buildRef();
       expect(endpointId).toBe('fal-ai/kling-video/o3/pro/reference-to-video');
       expect(input).not.toHaveProperty('image_url');
-      expect(input).not.toHaveProperty('start_image_url');
+      expect(
+        'start_image_url' in input ? input.start_image_url : undefined
+      ).toBe(baseOptions.imageUrl);
       expect(input.image_urls).toEqual([
-        baseOptions.imageUrl,
         'https://example.com/jack-sheet.png',
         'https://example.com/logo.png',
       ]);
     });
 
-    it('declares the still as @Image1 and legends unmentioned refs', () => {
+    it('numbers the sheets from @Image1 with no starting-frame line', () => {
       const { input } = buildRef();
-      expect(
-        typeof input.prompt === 'string' &&
-          input.prompt.startsWith('Use @Image1 as the starting frame.')
-      ).toBe(true);
-      expect(input.prompt).toContain('@Image2: Jack - tall man with a scar');
-      expect(input.prompt).toContain('@Image3: ACME_LOGO - red circular badge');
+      expect(input.prompt).not.toContain('starting frame');
+      expect(input.prompt).toContain('@Image1: Jack - tall man with a scar');
+      expect(input.prompt).toContain('@Image2: ACME_LOGO - red circular badge');
     });
 
     // O3's schema defaults `generate_audio` to false where Kling's v3

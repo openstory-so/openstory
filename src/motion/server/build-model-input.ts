@@ -24,6 +24,7 @@ import {
   MOTION_TRANSFORMS,
   type MotionEndpointId,
 } from './endpoint-map';
+import { hasStartFrameField } from './motion-transform';
 import { resolveMotionEndpoint } from '@/motion/resolve-motion-endpoint';
 import type { GenerateMotionOptions } from './motion-generation';
 
@@ -162,16 +163,41 @@ type RegisteredMotionOutput = z.output<
  *
  * When `resolveMotionEndpoint` routes to a dedicated reference-to-video
  * endpoint (Seedance / H3 Max / Kling O3 / Omni Flash with cast/element
- * refs), the still goes first in the image-list field with the sheets after
- * it, declared as the starting frame in the prompt. Seedance and H3 Max have
- * no start-frame field at all; Kling O3 does (`start_image_url`) but is bound
- * the same way so one builder serves every reference endpoint and the tag
- * numbering stays identical across them (#1498). In reference-only mode
- * (`options.referenceOnly`) there is no still at all: the sheets fill that
- * field from slot 1 and the prompt carries the composition. A reference-only
- * shot that matched no sheets is prompt-only and goes to the model's
- * text-to-video sibling (#1521) — the reference endpoints reject an empty list.
+ * refs), how the still rides depends on whether the endpoint has a real
+ * start-frame field. Seedance, H3 Max and Omni Flash have none, so the still
+ * goes first in the image-list field with the sheets after it and the prompt
+ * declares it as the opening frame. Kling O3 has `start_image_url`, so the
+ * still is pinned there instead (#1498): the frame is guaranteed rather than
+ * requested in prose, the whole image list stays available for sheets, and
+ * `usesStartFrame: true` keeps meaning what it says.
+ *
+ * In reference-only mode (`options.referenceOnly`) there is no still at all:
+ * the sheets fill the image list from slot 1 and the prompt carries the
+ * composition. A reference-only shot that matched no sheets is prompt-only
+ * and goes to the model's text-to-video sibling (#1521) — the reference
+ * endpoints reject an empty list.
  */
+/**
+ * Does this reference-to-video submission pin the still in its own
+ * start-frame field rather than spending the first image slot on it?
+ *
+ * Only true where the endpoint actually has such a field (Kling O3) and the
+ * shot actually rendered a still. Exported so the over-cap check in
+ * `submitFalMotionJob` computes the same reference budget the builder does —
+ * the two disagreeing would mean warning about drops that never happened, or
+ * missing the ones that did.
+ */
+export function pinsDedicatedStartFrame(
+  endpointId: MotionEndpointId,
+  options: Pick<GenerateMotionOptions, 'imageUrl' | 'referenceOnly'>
+): boolean {
+  return (
+    !options.referenceOnly &&
+    Boolean(options.imageUrl) &&
+    hasStartFrameField(MOTION_JSON_SCHEMAS[endpointId])
+  );
+}
+
 export function buildMotionRequest<T extends ImageToVideoModel>(
   options: GenerateMotionOptions,
   modelKey: T
@@ -238,10 +264,16 @@ export function buildMotionRequest<T extends ImageToVideoModel>(
     );
   }
 
+  const pinsStartFrame = pinsDedicatedStartFrame(endpointId, options);
+
   const { prompt, imageUrls } = buildReferenceVideoPrompt(
     endpoint.referenceConfig,
     options.prompt,
-    options.imageUrl ?? null,
+    // Pinned in its own field, the still is not part of the image list: the
+    // binding is then exactly the reference-only shape — sheets from slot 1,
+    // no "Use @Image1 as the starting frame." line, because the frame is
+    // guaranteed by the request rather than asked for in prose.
+    pinsStartFrame ? null : (options.imageUrl ?? null),
     options.referenceImages ?? [],
     modelConfig.maxPromptLength
   );
@@ -255,6 +287,9 @@ export function buildMotionRequest<T extends ImageToVideoModel>(
     // Never empty here: a reference-only shot with nothing matched resolved to
     // the text-to-video branch above, because fal rejects an empty list.
     [imageField]: imageUrls,
+    // The transform maps `imageUrl` onto the schema's start-frame field
+    // (`start_image_url` on Kling O3, the only reference endpoint with one).
+    ...(pinsStartFrame && { imageUrl: options.imageUrl }),
     ...QUALITY_OVERRIDES[modelKey],
     ...resolutionOverride(endpointId, options.resolution),
     generate_audio: options.generateAudio ?? videoModelSupportsAudio(modelKey),

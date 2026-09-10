@@ -794,7 +794,10 @@ export const MOTION_REFERENCE_ENDPOINTS: Partial<
   },
   // fal documents the 4-image cap as `elements` + reference images "when
   // using video"; applied unconditionally rather than tracking a second
-  // budget. The still takes one slot, so a shot binds at most 3 sheets.
+  // budget. The start frame is neither, and rides `start_image_url` on this
+  // endpoint, so all 4 go to sheets — the same budget the inline `elements`
+  // path allowed before #1498. Worth re-checking against a live 4-sheet
+  // request if fal ever turns out to count the start frame too.
   kling_v3_pro: {
     endpointId: 'fal-ai/kling-video/o3/pro/reference-to-video',
     // The O3 tier, not v3: `fal-pricing-live.ts` aliases this row to the

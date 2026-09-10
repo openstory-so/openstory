@@ -62,12 +62,30 @@ function getPromptMaxLength(schema: MotionJSONSchema): number | undefined {
   return Number(unwrapAnyOf(props.prompt, 'maxLength')?.maxLength ?? undefined);
 }
 
-/** Find the image URL field name (start_image_url or image_url). */
+/**
+ * Find the image URL field name (start_image_url or image_url).
+ *
+ * Exported as {@link hasStartFrameField} so callers can ask whether an
+ * endpoint takes a real start frame without duplicating the answer into a
+ * config that could then disagree with the schema.
+ */
 function getImageUrlField(schema: MotionJSONSchema): string | undefined {
   const props = schema.properties;
   if ('start_image_url' in props) return 'start_image_url';
   if ('image_url' in props) return 'image_url';
   return undefined;
+}
+
+/**
+ * Does this endpoint accept a still in a dedicated start-frame field?
+ *
+ * True for every image-to-video schema, and — among the reference-to-video
+ * endpoints — only for Kling O3, whose `start_image_url` is optional. The
+ * transform maps our `imageUrl` onto whichever field this finds, so passing
+ * it to an endpoint without one is a no-op rather than a bad request.
+ */
+export function hasStartFrameField(schema: MotionJSONSchema): boolean {
+  return getImageUrlField(schema) !== undefined;
 }
 
 // ---------------------------------------------------------------------------

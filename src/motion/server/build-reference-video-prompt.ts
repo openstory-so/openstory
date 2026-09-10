@@ -16,12 +16,14 @@
  * appears. References never mentioned in the prompt fall back to a trailing
  * legend line so their images aren't orphaned.
  *
- * Seedance and H3 Max have no start-frame field at all; Kling O3 does
- * (`start_image_url`) but is bound the same way, so one builder serves every
- * reference endpoint and the tag numbering stays identical across them.
+ * `startImageUrl` is the still ONLY when it rides the image list. Kling O3
+ * has a real `start_image_url`, so `buildMotionRequest` pins the still there
+ * and passes null here — the binding is then the reference-only shape below,
+ * which is correct: with the frame guaranteed by the request there is nothing
+ * for the prose to declare.
  *
- * The endpoint's `maxImages` caps the total; the still consumes one slot, so
- * at most `maxImages - 1` references are taken. Overflow references have
+ * The endpoint's `maxImages` caps the total; a still in the list consumes one
+ * slot, so at most `maxImages - 1` references are taken. Overflow references have
  * their tokens replaced with plain descriptions instead, keeping the prompt
  * self-contained — but a token that never appeared in the prompt leaves no
  * trace, which is why `submitFalMotionJob` warns and emits

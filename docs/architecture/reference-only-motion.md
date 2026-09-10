@@ -224,14 +224,29 @@ references, and reference-only shots, route to Kling O3 Pro
 (`fal-ai/kling-video/o3/pro/reference-to-video`) — the sibling whose start
 frame is optional. Catalog key stays `kling_v3_pro`.
 
-Two Kling-specific consequences of that split. Its `generate_audio` defaults
-to **false** on the O3 endpoints where v3 image-to-video defaults to **true**,
-so `buildModelInput` resolves the flag from the catalog rather than inheriting
-either default — otherwise whether a shot matched a cast sheet would decide
-whether the clip has sound. And O3 caps the image list at 4 including the
-still, the tightest budget of any reference model (Seedance 9, H3 Max 9, Grok
-7, Omni Flash 7), so a scene casting four people drops one; the submit path
-warns and emits `motion_references_over_cap` when that happens.
+Three Kling-specific consequences of that split.
+
+**The still is pinned, not described.** O3 is the only reference endpoint with
+a real start-frame field, so a shot that rendered one sends it as
+`start_image_url` rather than as `image_urls[0]` with a "Use @Image1 as the
+starting frame." line. The frame is then guaranteed instead of requested, the
+image-to-video motion template's NO VISUAL REDUNDANCY rule ("the video model
+already sees these in the starting frame") is true again, and
+`usesStartFrame: true` keeps meaning what it says. Sheets number from
+`@Image1`, as in reference-only. `pinsDedicatedStartFrame` is the one place
+that decides, derived from the schema so it cannot drift.
+
+**Audio is resolved, not inherited.** `generate_audio` defaults to **false**
+on the O3 endpoints where v3 image-to-video defaults to **true** — every other
+endpoint in the catalog defaults true. `buildModelInput` therefore resolves
+the flag from the catalog rather than inheriting either default; otherwise
+whether a shot matched a cast sheet would decide whether the clip has sound.
+
+**The image budget is the tightest we have.** O3 takes 4 (Seedance 9, H3 Max
+9, Grok 7, Omni Flash 7). With the start frame in its own field all 4 go to
+sheets — the same budget the deleted inline `elements` path allowed — but a
+scene casting five still drops one, so the submit path warns and emits
+`motion_references_over_cap`.
 
 **Grok Imagine 1.5 is not excluded because it lacks references — it has them.**
 `GROK_VIDEO_REFERENCE_CONFIG` binds up to 7, `resolveMotionEndpoint` returns
