@@ -20,6 +20,47 @@ import {
 } from '@/models/models';
 import { isNativeGrokVideoModel } from '@/models/grok-native';
 
+/**
+ * Can this model carry a reference of this kind and length? The one question
+ * asked by all three gates (#1559) — the create-time schema, the scene panel,
+ * and the submit refusal — so a sequence cannot be accepted for a run that
+ * submit will then refuse.
+ *
+ * Unknown length is always accepted: we only learn it if the browser could
+ * decode the file, and guessing "probably too long" would block a reference
+ * the provider would have taken.
+ */
+export function acceptsReference(
+  model: ImageToVideoModel,
+  ref: { kind: 'image' | 'video' | 'audio'; durationSeconds: number | null }
+): boolean {
+  if (ref.kind === 'image') return true;
+  if (!motionReferenceSupport(model)[ref.kind]) {
+    // The model takes no reference of this kind at all. That is a disclosure,
+    // not a blocker — elements live on the sequence while models vary per
+    // render, so the binding describes it in prose and the panel says so.
+    return true;
+  }
+  const config = getMotionReferenceEndpoint(model);
+  const max =
+    ref.kind === 'video'
+      ? config?.videoSeconds?.max
+      : config?.audioSeconds?.max;
+  if (max === undefined || ref.durationSeconds == null) return true;
+  return ref.durationSeconds <= max;
+}
+
+/** The longest reference of this kind the model will take, or null for no limit. */
+export function referenceSecondsLimit(
+  model: ImageToVideoModel,
+  kind: 'video' | 'audio'
+): number | null {
+  const config = getMotionReferenceEndpoint(model);
+  const max =
+    kind === 'video' ? config?.videoSeconds?.max : config?.audioSeconds?.max;
+  return max ?? null;
+}
+
 export type MotionReferenceSupport = {
   image: boolean;
   video: boolean;
@@ -74,16 +115,11 @@ export function overlongReferenceNotice(
     durationSeconds: number | null;
   }>
 ): string | null {
-  const config = getMotionReferenceEndpoint(model);
-  if (!config) return null;
   const tooLong: { token: string; max: number }[] = [];
   for (const el of attached) {
-    if (el.kind === 'image' || el.durationSeconds == null) continue;
-    const max =
-      el.kind === 'video' ? config.videoSeconds?.max : config.audioSeconds?.max;
-    if (max !== undefined && el.durationSeconds > max) {
-      tooLong.push({ token: el.token, max });
-    }
+    if (el.kind === 'image' || acceptsReference(model, el)) continue;
+    const max = referenceSecondsLimit(model, el.kind);
+    if (max !== null) tooLong.push({ token: el.token, max });
   }
   if (tooLong.length === 0) return null;
   const max = tooLong[0]?.max ?? 0;
