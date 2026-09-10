@@ -213,11 +213,10 @@ export const BillingGateDialog: React.FC<BillingGateDialogProps> = ({
 };
 
 /**
- * Globally-mounted gate instance (#1099), opened via `openBillingGate()` —
- * including by the query client's global mutation error handler on
- * INSUFFICIENT_CREDITS. If the welcome grant is still unpaid, openers get
- * the claim dialog instead of this gate. The onboarding flow on the home
- * composer keeps its own instance for its dismissal memory.
+ * Globally-mounted gate instance (#1099), opened via `openBillingGate()`.
+ * If the welcome grant is still unpaid, openers get the claim dialog
+ * instead of this gate (same as the low-balance toast). The onboarding
+ * flow on the home composer keeps its own instance for its dismissal memory.
  */
 export const GlobalBillingGateDialog: React.FC = () => {
   const open = useBillingGateDialogOpen();
