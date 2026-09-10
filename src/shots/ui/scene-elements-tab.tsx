@@ -67,7 +67,14 @@ const AddElementButton: React.FC<{
   const handleFiles = useCallback(
     (files: File[]) => {
       const usable = files.filter((f) => elementKindFromFile(f) !== null);
-      if (usable.length === 0) return;
+      if (usable.length === 0) {
+        if (files.length > 0) {
+          toast.error("That file can't be a reference", {
+            description: 'Drop an image, an MP3/WAV, or an MP4/MOV.',
+          });
+        }
+        return;
+      }
       const accepted = usable.slice(0, Math.max(0, remaining));
       if (accepted.length === 0) {
         toast.error(`You can add up to ${MAX_SEQUENCE_ELEMENTS} elements`);

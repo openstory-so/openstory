@@ -266,7 +266,16 @@ export const ElementSelector: React.FC<ElementSelectorProps> = (props) => {
     async (newFiles: File[]) => {
       if (disabled) return;
       const usable = newFiles.filter((f) => elementKindFromFile(f) !== null);
-      if (usable.length === 0) return;
+      if (usable.length === 0) {
+        // Say so rather than doing nothing: a dropped .pdf that vanishes with
+        // no upload and no message is indistinguishable from a broken app.
+        if (newFiles.length > 0) {
+          toast.error("That file can't be a reference", {
+            description: 'Drop an image, an MP3/WAV, or an MP4/MOV.',
+          });
+        }
+        return;
+      }
 
       // Uploads hit the server immediately — anonymous visitors get the login
       // prompt instead (covers browse, drop, paste, and external drops).
