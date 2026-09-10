@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use Image 1 as the starting frame.\nImage 2 raises the lipstick like a baton and grins toward camera before disappearing into the crowd.. Camera: smooth pull-out\n\noverall_soundscape: walk signal, taxi pass, crowd murmur, spoken line: “Same city. Better color.”. No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\nnon_diegetic_music: N/A\n\nReference images:\nImage 3: CORAL_LIPSTICK - A slim — keep visually consistent throughout the shot.",
+        "model": "minimax/h3-max/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://assets.openstory.so/e2e/8efc8825a27caa4e348efb51f5889c5068bfc70edebc8757770efb9ac564b231.mp4",
+            "content_type": "video/mp4",
+            "file_name": "7D5lOSugFJwj4I24XmQit_minimax-h3.mp4",
+            "file_size": 11668262
+          },
+          "expanded_prompt": "subject_definitions:\n<Subject 1> is the woman in <Picture 1>, with long wavy blonde hair, wearing sunglasses, a black turtleneck sweater, grey trousers, and carrying a beige tote bag.\n<Subject 2> is the blonde woman from <Picture 2>, sharing the same appearance and attire as <Subject 1>.\n<Subject 3> is the slim coral lipstick from <Picture 3>, featuring a gold-toned tube with \"SCARLET MATTE CORAL\" text.\nsummary:\n[reference generation] The target video starts with the composition of <Picture 1> and depicts <Subject 2> interacting with <Subject 3> before moving into a crowd.\n\nretention_analysis:\n<Subject 1> (appears in [Shot 1]): fully_preserved - the starting frame's facial features, clothing, and environment remain identical.\n<Subject 2> (appears in [Shot 1], [Shot 2]): fully_preserved - the character identity and outfit are maintained.\n<Subject 3> (appears in [Shot 2]): fully_preserved - the specific design and color of the lipstick are maintained.\n\ndetailed_description:\nThe video is shot in a high-end cinematic style with natural city daylight and a vibrant urban atmosphere.\n[Shot 1] The video begins with the exact frame of <Picture 1>, showing <Subject 2> standing on a busy city crosswalk, looking over her shoulder toward the camera with a slight smile. In the background, a yellow taxi is passing and pedestrians are crossing the street under modern glass-fronted buildings.\n[Shot 2] At 00:01.500, the camera begins a smooth pull-out motion. <Subject 2> turns fully toward the camera, confidently raising <Subject 3> in her right hand, holding it upright like a relay baton. She looks directly into the lens and gives a wide, playful grin. <Subject 2> (S2) says <d>[English]Same city. Better color.</d> Immediately after speaking, she turns and walks briskly into the dense crowd of pedestrians, disappearing from view as the camera continues to pull back to reveal the bustling urban intersection.\n\noverall_soundscape:\nThe ambient environment features the rhythmic chirping of a walk signal, the low hum of a taxi driving by, and the constant murmur of a busy crowd. The clear sound of <Subject 2> speaking is heard over the city noise.\n\nnon_diegetic_music:\nN/A",
+          "seed": 607228275,
+          "timings": {
+            "inference": 5.964856264996342
+          }
+        },
+        "status": 200,
+        "billableUnits": 9.830400000000001
+      }
+    }
+  ]
+}

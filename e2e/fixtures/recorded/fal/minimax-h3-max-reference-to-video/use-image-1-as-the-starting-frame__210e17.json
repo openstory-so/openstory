@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use Image 1 as the starting frame.\nImage 2 hooks the tote strap with her elbow and checks the lipstick bullet in the parked car window.. Camera: smooth orbit\n\noverall_soundscape: wind gust, tote strap flutter, passing traffic. No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\nnon_diegetic_music: N/A\n\nReference images:\nImage 3: CORAL_LIPSTICK - A slim — keep visually consistent throughout the shot.",
+        "model": "minimax/h3-max/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://assets.openstory.so/e2e/799b46d765c6fc44477de67420e71d6651aa1c7af9a19a0d65fed22b5dcb557d.mp4",
+            "content_type": "video/mp4",
+            "file_name": "Da1EymcpTJQQzuz_n-Ld2_minimax-h3.mp4",
+            "file_size": 11154981
+          },
+          "expanded_prompt": "subject_definitions:\n<Subject 1> is the blonde woman in <Image 1>, with long wavy hair, wearing black sunglasses, a black turtleneck sweater, and grey trousers, carrying a large canvas tote bag.\n<Subject 2> is the slim coral-colored lipstick bullet from <Image 3>, featuring the text \"SCARLET MATTE CORAL\" on the base.\n\nsummary:\n[keyframe completion + reference generation] The target video starts with the composition of <Image 1> and shows <Subject 1> checking her reflection in a car window while holding <Subject 2>.\n\nretention_analysis:\n<Subject 1> (appears in [Shot 1], [Shot 2]): fully_preserved - her facial features, clothing, and hair remain consistent throughout.\n<Subject 2 (appears in [Shot 2]): fully_preserved - the specific color and design of the lipstick are maintained.\n\ndetailed_description:\nThe video is a cinematic, high-definition urban scene with a shallow depth of field and natural daylight lighting.\n[Shot 1] The video begins exactly as the first frame of <Image 1>, where <Subject 1> stands on a busy city street, smiling at the camera while wearing sunglasses and a black turtleneck, holding her canvas tote bag. In the background, pedestrians walk and a yellow taxi is visible but blurred.\n[Shot 2] At 00:00.000, the camera performs a smooth, slow orbit motion around <Subject 1> as she moves toward a parked dark car. She reaches up and naturally hooks the strap of her canvas tote bag over her left elbow. She then leans slightly toward the reflective glass of the car window. In the reflection, we see her holding <Subject 2>, the coral-colored lipstick. She checks the lipstick bullet in the reflection, adjusting her pose slightly. The sound includes a gust of wind blowing through the city buildings, the rustle of the canvas tote strap fluttering, and the distant hum of passing city traffic.\n\noverall_soundscape:\nThe environment is filled with a steady gust of wind, the fabric flutter of the tote bag strap, and the ambient white noise of passing traffic on a city street.\n\nnon_diegetic_music:\nN/A",
+          "seed": 1173890524,
+          "timings": {
+            "inference": 5.9307818450033665
+          }
+        },
+        "status": 200,
+        "billableUnits": 9.830400000000001
+      }
+    }
+  ]
+}

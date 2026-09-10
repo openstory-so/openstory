@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use Image 1 as the starting frame.\nShot 1, 0–6 seconds: Smooth orbit around Image 2 as she keeps the opened Image 3 raised beside her face, glances into the dark reflection of her phone, and makes one quick, precise touch-up. She lowers the product slightly and laughs toward the distant elevated train. Shot 2, 6–12 seconds: Smooth lateral truck at a low angle as Image 2 closes the Image 3, places it on the rooftop ledge, then reaches immediately when a gust nudges it toward the edge. She catches it, gives the camera a knowing smile, slips it into her pocket, and walks toward the glowing skyline. End as she turns into the warm light, her coral lips briefly becoming the focal point. Wind moves loose hair and potted grasses throughout.\n\noverall_soundscape: steady rooftop wind, distant downtown traffic, elevated train approaching and rattling across the skyline. lipstick cap clicking shut, small object scraping across concrete ledge, brief warm laugh, soft footsteps on the rooftop. No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\nnon_diegetic_music: N/A",
+        "model": "minimax/h3-max/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://assets.openstory.so/e2e/a5a4cce09c69474460d028e9e55856f4e17028aed01a7236ec67b5ec24fb3e65.mp4",
+            "content_type": "video/mp4",
+            "file_name": "L-1nJ_G9c4la51XwU_y89_minimax-h3.mp4",
+            "file_size": 9343107
+          },
+          "expanded_prompt": "subject_definitions:\n<Subject 1> is the blonde woman from <Picture 2>, with long wavy hair, wearing black sunglasses, a black turtleneck sweater, grey trousers, and a beige tote bag.\n<Subject 2> is the coral matte lipstick product shown in <Picture 3>, featuring a gold band and the \"SCARLETT\" branding.\n\nsummary:\n[reference generation + video reference] The target video starts from <Picture 1>, showing <Subject 1> on a rooftop using <Subject 2> while interacting with her phone and the city skyline.\n\nretention_analysis:\n<Subject 1> (appears in [Shot 1], [Shot 2]): fully_preserved - her appearance, clothing, and accessories remain consistent throughout.\n<Subject 2> (appears in [Shot 1], [Shot 2]): fully_preserved - the specific product design and coral color are maintained.\n\ndetailed_description:\nThe video is filmed in a cinematic style during the golden hour, characterized by warm tones and high-contrast lighting. \n[Shot 1] The scene begins with the frame from <Picture 1>, where <Subject 1> stands on a rooftop overlooking a city skyline. The camera performs a smooth orbit motion around <Subject 1> as she holds the open <Subject 2> (the coral lipstick) up beside her face. She glances down into the dark screen of her smartphone, checking her reflection before making one quick, precise touch-up to her lips. She then lowers the <Subject 2> slightly and lets out a brief, genuine laugh looking toward a distant elevated train moving across the tracks in the background.\n[Shot 2] At 00:06.000, the shot cuts to a smooth lateral truck at a low angle. <Subject 1> closes the <Subject 2> with a satisfying click and places it on the concrete rooftop ledge. Suddenly, a gust of wind nudges the lipstick toward the edge; <Subject 1> reaches out immediately, catching it just before it falls. She gives the camera a knowing, playful smile, slips the <Subject 2> into her pocket, and begins walking toward the glowing skyline. The camera follows her as she turns into the warm, golden light, her coral-painted lips becoming the sharp focal point of the frame. Throughout, the wind moves her loose blonde hair and the potted grasses in the background planters.\n\noverall_soundscape:\nSteady rooftop wind, distant downtown traffic, and an elevated train approaching and rattling across the skyline. Physical sounds include the lipstick cap clicking shut, a small object scraping across the concrete ledge, a brief warm laugh, and soft footsteps on the rooftop surface.\n\nnon_diegetic_music:\nN/A",
+          "seed": 1786698785,
+          "timings": {
+            "inference": 5.95625808800105
+          }
+        },
+        "status": 200,
+        "billableUnits": 9.830400000000001
+      }
+    }
+  ]
+}

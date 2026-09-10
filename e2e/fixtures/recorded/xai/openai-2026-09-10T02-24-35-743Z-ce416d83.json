@@ -1,0 +1,17 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "image",
+        "userMessage": "medium, eye level, Scarlett (Image 1) reaches the far curb still moving, holding the coral lipstick at her side as the walk signal changes., Scarlett (Image 1) is placed in the foreground facing back toward camera while office workers stream around her; a taxi glides through the sunlit background., downtown_crosswalk_glass_towers_taxis, Bright late-morning daylight reflects from glass towers and car windows, with crisp highlights on moving vehicles and softer ambient fill in the street canyon., Concrete gray, black, cream, steel blue, reflective glass, taxi yellow, muted urban neutrals, and vivid coral., scarlett_city_influencer, Modern social-first product photography with tactile, editorial energy. Products shown in real-life context -- hands opening packaging, fingers pressing textures, products on bathroom shelves, kitchen counters, rumpled linen. Close-up detail shots emphasize material and finish. Flat-lays with curated minimal arrangements. Color-matched backgrounds that complement the product. Every frame feels like something you would screenshot and save\n\nReference images define identity — keep every referenced character, object, and location consistent with its reference image; never render a reference image itself as a separate panel or subject.\nImage 2 (location): Downtown Crosswalk - Busy downtown intersection filled with commuters moving through a broad crosswalk",
+        "model": "grok-imagine-image-2.0"
+      },
+      "response": {
+        "image": {
+          "url": "https://assets.openstory.so/e2e/1e7ea6aa5e404aca27b6ef24821395095ffe4e6e6c748a3c98770eb00ddacc51.jpeg",
+          "mime_type": "image/jpeg"
+        }
+      }
+    }
+  ]
+}

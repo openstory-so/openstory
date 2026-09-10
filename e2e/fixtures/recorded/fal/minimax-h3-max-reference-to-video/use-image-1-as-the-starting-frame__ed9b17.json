@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use Image 1 as the starting frame.\nImage 2 continues descending while glancing at her reflection with an amused expression.. Camera: smooth pan\n\noverall_soundscape: footsteps on concrete, rail touch, distant city and stairwell echo. No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\nnon_diegetic_music: N/A",
+        "model": "minimax/h3-max/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://assets.openstory.so/e2e/7943de5728c62dfa66edc599ba5ccdd2f3b3ce51b0192ae04e6a12851f38d502.mp4",
+            "content_type": "video/mp4",
+            "file_name": "Ul6peBjp41c5-BIkApS6J_minimax-h3.mp4",
+            "file_size": 8336189
+          },
+          "expanded_prompt": "subject_definitions:\n<Subject 1> is the woman in <Picture 1> and <Picture 2>, with long wavy blonde hair, wearing black sunglasses, a black turtleneck sweater, grey trousers, and carrying a white tote bag.\n\nsummary:\n[reference generation + video continuation] The target video uses <Picture 1> as the starting frame to show <Subject 1> descending a staircase while glancing at her reflection and looking amused.\n\nretention_analysis:\n<Subject 1> (appears in [Shot 1], [Shot 2]): fully_preserved - her physical features, clothing, accessories, and bag remain consistent throughout.\n<Picture 1>: fully_preserved - used as the initial keyframe for the sequence.\n<Picture 2>: attribute_transfer - used to define the subject's facial expression and movement.\n\ndetailed_description:\nThe video is shot in a clean, cinematic style with natural, bright sunlight filtering through a modern stairwell.\n[Shot 1] The video begins exactly as framed in <Picture 1>, showing <Subject 1> as she begins descending the grey concrete staircase. She has her right hand resting on the black handrail.\n[Shot 2] At 00:00.000, the camera performs a smooth pan right with medium amplitude, following her movement. <Subject 1> continues to walk downward. She turns her head slightly to glance at her reflection in a glass surface off-camera. She wears an amused, playful smile, showing her teeth slightly. Her white tote bag sways naturally against her side as she moves. The sound of her rhythmic footsteps echoes against the concrete stairwell, accompanied by the faint metallic clink of her hand sliding along the handrail.\n\noverall_soundscape:\nThe rhythmic sound of heels hitting concrete steps, the soft scuff of a hand moving on a metal rail, and a hollow, distant city ambience echoing within the enclosed stairwell.\n\nnon_diegetic_music:\nN/A",
+          "seed": 782453613,
+          "timings": {
+            "inference": 5.734034199034795
+          }
+        },
+        "status": 200,
+        "billableUnits": 9.600000000000001
+      }
+    }
+  ]
+}

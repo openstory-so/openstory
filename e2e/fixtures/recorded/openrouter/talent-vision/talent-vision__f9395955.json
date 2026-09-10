@@ -8,15 +8,15 @@
         "hasToolResult": false
       },
       "response": {
-        "content": "{\"isCharacterSheet\": false, \"subjectKind\": \"other\", \"suggestedName\": \"Moss Sprite\", \"description\": \"A small forest sprite creature with a round mossy head resembling dense green fur, large pointed elf-like ears, and huge glowing orange eyes with dark pupils. Its skin is olive-green, and it has slender limbs with clawed fingers. It wears a leafy skirt and a woven green scarf, and carries a tiny glowing lantern while standing atop a moss-covered mound in a misty forest.\", \"age\": \"\", \"gender\": \"\", \"ethnicity\": \"\", \"physicalDescription\": \"Round moss-textured head, large pointed ears, oversized orange eyes with black pupils, small nose, gentle closed-mouth expression, thin greenish-brown skin, slender arms and clawed hands, trailing moss-like hair down the back.\", \"standardClothing\": \"Layered leaf skirt in shades of green, a wrapped green fabric scarf around the neck, no footwear visible.\", \"distinguishingFeatures\": \"Glowing orange eyes, moss-covered head resembling hair, carries a small lit lantern.\"}"
+        "content": "{\"isCharacterSheet\": false, \"subjectKind\": \"other\", \"suggestedName\": \"Moss Sprite\", \"description\": \"A small forest creature with a round mossy head resembling thick green fur, large pointed elf-like ears, and oversized glowing orange eyes with dark pupils. Its skin is greenish-grey, textured like bark, with slender clawed fingers. It wears a leafy skirt-like garment and a draped green scarf, and carries a tiny glowing lantern while perched atop a moss-covered mound.\", \"age\": \"\", \"gender\": \"\", \"ethnicity\": \"\", \"physicalDescription\": \"Round moss-textured head, large pointed ears, huge orange eyes with black pupils, small nose, subtle smile, greenish-grey bark-like skin, slender limbs with clawed fingers.\", \"standardClothing\": \"Leafy skirt made of layered leaf fronds and a draped green fabric scarf around the neck and shoulders.\", \"distinguishingFeatures\": \"Glowing orange eyes, moss-covered head resembling hair, carries a small lit lantern.\"}"
       },
       "recordedTimings": {
-        "ttftMs": 4268,
+        "ttftMs": 2902,
         "interChunkDelaysMs": [
-          0, 0, 0, 0, 0, 0, 0, 1, 0, 382, 231, 382, 141, 348, 175, 388, 136,
-          396, 131, 414, 145, 490, 38, 488, 57, 465, 39, 64, 1, 3
+          437, 122, 418, 124, 415, 133, 433, 107, 428, 122, 418, 133, 414, 124,
+          367, 52, 0, 3
         ],
-        "totalDurationMs": 9183
+        "totalDurationMs": 7152
       },
       "metadata": {
         "systemHash": "67e7d0bd"

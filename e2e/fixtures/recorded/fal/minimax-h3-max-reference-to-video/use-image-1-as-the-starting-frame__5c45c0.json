@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use Image 1 as the starting frame.\nBegin exactly from the attached frame: a smooth lateral truck follows scarlett_city_influencer as she steps off the curb and walks against the commuter flow with relaxed purpose. Traffic rolls behind her while foreground pedestrians continue crossing. Cut to a smooth orbit around scarlett_city_influencer at the curb as a gust lifts the loose tote strap; she catches it with her elbow, retrieves the Image 3, and checks its bullet in a parked car window while maintaining her stride. Cut to a smooth pull-out as scarlett_city_influencer reaches the far curb, turns back toward camera while still moving, raises the Image 3 like a tiny baton, and grins before merging into the office-worker stream. She delivers the line with confident, playful timing and a knowing smile. Keep all hand actions physically grounded and continuous.\n\nImage 2 says in a confident playful, lightly amused tone: <d>[English] Same city. Better color.</d>\n\noverall_soundscape: busy downtown traffic, crossing-signal beeps, layered commuter footsteps, distant city murmur. bicycle bell, rolling taxi tires, tote strap fluttering in a gust, subtle lipstick tube handling, taxi passing through the background. No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\nnon_diegetic_music: N/A",
+        "model": "minimax/h3-max/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://assets.openstory.so/e2e/003de236d7c80ac9b1bd8b146c7a990b949ca3dcd00fd455a65db123dedb1a0b.mp4",
+            "content_type": "video/mp4",
+            "file_name": "h3-bPElLm1qZKgfYFAdXV_minimax-h3.mp4",
+            "file_size": 12203154
+          },
+          "expanded_prompt": "subject_definitions:\n<Subject 1> is the scarlett_city_influencer from <Picture 1>, a woman with wavy blonde hair wearing sunglasses, a black turtleneck, grey trousers, and black loafers, carrying a white tote bag.\n<Subject 2> is the matte coral lipstick from <Picture 3> with \"SCARLETT\" printed on the tube.\n<Audio 1> is the voice-timbre reference for <Subject 1> (S1), featuring a confident playful, lightly amused tone.\n\nsummary:\n[reference generation + audio reuse] The target video shows <Subject 1> walking through a busy city, interacting with <Subject 2>, and delivering dialogue matched to <Audio 1>.\n\nretention_analysis:\n<Subject 1> (appears in [Shot 1], [Shot 2], [Shot 3]): fully_preserved - outfit, hair, and physical features remain consistent throughout the sequence.\n<Subject 2> (appears in [Shot 2]): fully_preserved - the specific color and branding of the lipstick are maintained.\n<Audio 1>: fully_copy - the voice-timbre and delivery are used for the dialogue.\n\ndetailed_description:\nThe video is a cinematic, high-definition urban fashion film with natural daylight lighting and a shallow depth of field. \n[Shot 1] The video begins exactly from <Picture 1>. A smooth lateral truck shot follows <Subject 1> as she steps off the curb into a busy crosswalk, walking against the flow of commuters with relaxed purpose. In the background, a yellow taxi and other city traffic roll by, while foreground pedestrians continue crossing the street behind her.\n[Shot 2] At 00:02.000, the shot cuts to a smooth orbit camera around <Subject 1> as she reaches the curb. A sudden gust of wind lifts the loose strap of her white tote bag; <Subject 1> deftly catches it with her elbow. She retrieves <Subject 2> from the bag. As she continues her stride, she glances at the window of a parked car to check the bullet of the lipstick, the reflection visible in the glass. \n[Shot 3] At 00:04.500, the shot cuts to a smooth pull-out as <Subject 1> reaches the far curb. She turns back toward the camera while still moving forward, raising <Subject 2> up like a tiny baton. She grins with a knowing smile before merging into a stream of office workers. <Subject 1> (S1) delivers the line with confident timing: <d>[English] Same city. Better color.</d> All hand actions remain physically grounded and continuous throughout the movement.\n\noverall_soundscape:\nBusy downtown traffic ambience with crossing-signal beeps, layered commuter footsteps, and a distant city murmur. Sounds include a bicycle bell, rolling taxi tires, the fluttering of a tote strap in the wind, and the subtle click of the lipstick tube being handled.\n\nnon_diegetic_music:\nN/A",
+          "seed": 2108790660,
+          "timings": {
+            "inference": 5.931797470082529
+          }
+        },
+        "status": 200,
+        "billableUnits": 9.830400000000001
+      }
+    }
+  ]
+}

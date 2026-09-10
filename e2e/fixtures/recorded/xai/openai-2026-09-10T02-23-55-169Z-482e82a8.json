@@ -1,0 +1,17 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "image",
+        "userMessage": "Medium-wide over-the-shoulder shot on a 35mm lens, 16:9 composition. Scarlett (Image 1) stands at the right third of a compact downtown apartment bathroom vanity, holding a sealed coral lipstick carton in one hand while the other hand pinches its edge, poised to tear it open. The black stone sink and brushed chrome faucet sit in the foreground, with a smartphone beside the faucet, ignored. Glossy white wall tile and the mirror fill the background, leaving open space around her hands and the carton. Hard directional morning sunlight cuts a crisp stripe across the tile and sink, with sharp reflections and softly neutral shadows. Handheld modern social-first beauty advertising, tactile editorial energy, clean bright color, vivid coral accent.\n\nReference images define identity — keep every referenced character, object, and location consistent with its reference image; never render a reference image itself as a separate panel or subject.\nImage 2 (location): Downtown Apartment Bathroom - Compact",
+        "model": "grok-imagine-image-2.0"
+      },
+      "response": {
+        "image": {
+          "url": "https://assets.openstory.so/e2e/4401a8375ec14f0d7047fae2fb66920aaa762c1a30fc531828c06a493b451165.jpeg",
+          "mime_type": "image/jpeg"
+        }
+      }
+    }
+  ]
+}

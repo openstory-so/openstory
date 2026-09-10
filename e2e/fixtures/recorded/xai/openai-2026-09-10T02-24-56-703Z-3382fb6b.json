@@ -1,0 +1,17 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "image",
+        "userMessage": "Wide eye-level street composition on a 28mm lens, framed 16:9 from a camera position at pedestrian height beside a downtown intersection. Scarlett (Image 1) stands at the near curb at the instant before stepping into the broad crosswalk, weight shifted forward and eyes fixed across the street, with open space ahead for movement against the commuter flow. Commuters cluster around the foreground and far stripes; yellow taxis, delivery bikes, and rolling traffic wait behind, while mirrored office towers rise through the background. Bright late-morning daylight creates crisp vehicle and glass highlights with soft street-canyon fill. Clean, bright modern social-first editorial photography, tactile realism, neutral urban palette with taxi yellow and vivid coral accent.\n\nReference images define identity — keep every referenced character, object, and location consistent with its reference image; never render a reference image itself as a separate panel or subject.\nImage 2 (location): Downtown Crosswalk - Busy downtown intersection filled with commuters moving through a broad crosswalk",
+        "model": "grok-imagine-image-2.0"
+      },
+      "response": {
+        "image": {
+          "url": "https://assets.openstory.so/e2e/c4eeb1ca5aba8c29767b18aea5116c645fa068439f45a207e5712f63a21a8adc.jpeg",
+          "mime_type": "image/jpeg"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use Image 1 as the starting frame.\nImage 2 twists the lipstick bullet upward and turns it through the sunlight.. Camera: gradual push-in\n\noverall_soundscape: soft tube twist, subtle fingertip movement. No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\nnon_diegetic_music: N/A",
+        "model": "minimax/h3-max/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://assets.openstory.so/e2e/38097d2e11a289a639badd0295c6055478f38484958752b52f39d5b8288ea238.mp4",
+            "content_type": "video/mp4",
+            "file_name": "aPaLIsquO4A_BXs7wv7FY_minimax-h3.mp4",
+            "file_size": 6728000
+          },
+          "expanded_prompt": "subject_definitions:\n<Subject 1> is the pair of hands in <Picture 1> with white manicured fingernails, holding a red lipstick in a black and gold tube.\n<Subject 2> is the blonde woman in <Picture 2> with long wavy hair, wearing black sunglasses, a black turtleneck, grey trousers, and carrying a cream tote bag.\n\nsummary:\n[keyframe completion + reference generation] The target video starts with the frame from <Picture 1> and depicts the hands of <Subject 1> twisting the lipstick upward and rotating it under sunlight.\n\nretention_analysis:\n<Subject 1> (appears in [Shot 1]): fully_preserved - The hand anatomy, nail polish color, and lipstick tube design are maintained.\n<Subject 2> (appears in [Shot 2]): weak_reference - The woman's appearance provides the aesthetic context for the transition.\n\ndetailed_description:\nThe video is a high-definition cinematic commercial shot with bright, natural lighting and a shallow depth of field.\n[Shot 1] The video begins exactly as the composition in <Picture 1>, showing <Subject 1> holding a red lipstick tube over a dark marble sink. The sunlight streams from the side, creating sharp highlights on the chrome faucet in the background and the metallic gold band of the lipstick.\n[Shot 2] At 00:00.000, the hands of <Subject 1> gently twist the base of the lipstick, causing the red bullet to extend upward from the tube. The hand then slowly rotates the lipstick 30 degrees, allowing the surface of the red pigment to catch the sunlight and reveal its creamy texture. The camera performs a gradual push-in with small amplitude, focusing tighter on the shimmering lipstick bullet as it moves. The background remains softly blurred, keeping the focus on the product.\n\noverall_soundscape:\nThe mechanical click and soft scrape of the lipstick tube twisting, accompanied by the subtle friction of fingertips against the plastic and metal casing.\n\nnon_diegetic_music:\nN/A",
+          "seed": 414047106,
+          "timings": {
+            "inference": 5.7105321099516
+          }
+        },
+        "status": 200,
+        "billableUnits": 9.600000000000001
+      }
+    }
+  ]
+}

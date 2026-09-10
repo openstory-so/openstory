@@ -1,0 +1,17 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "image",
+        "userMessage": "Medium close-up at eye level, 50mm lens, 16:9. Scarlett (Image 1) stands beside a low concrete parapet on an open downtown rooftop, holding the opened lipstick from (CORAL_LIPSTICK) beside her face and a dark phone reflection angled toward her, poised just before a quick touch-up. Scarlett (Image 1)’s weight rests on the back foot, gaze fixed on the phone, with the rooftop path open toward the glowing skyline. Potted ornamental grasses shift in the foreground wind; glass towers and a distant elevated train line sit beyond. Warm late-afternoon sunlight creates clean rim light and elongated concrete highlights beneath a pale sky. Fresh, tactile, modern social-first editorial product photography, natural color, airy shadows, vivid coral accent.\n\nReference images define identity — keep every referenced character, object, and location consistent with its reference image; never render a reference image itself as a separate panel or subject.\nImage 2 (location): Rooftop Above Downtown - Open city rooftop overlooking a glowing downtown skyline",
+        "model": "grok-imagine-image-2.0"
+      },
+      "response": {
+        "image": {
+          "url": "https://assets.openstory.so/e2e/97617fbdf01d0b3b187e0e75717fd7d8e4f028ad01468c94ef37d6fd71a36ecb.jpeg",
+          "mime_type": "image/jpeg"
+        }
+      }
+    }
+  ]
+}

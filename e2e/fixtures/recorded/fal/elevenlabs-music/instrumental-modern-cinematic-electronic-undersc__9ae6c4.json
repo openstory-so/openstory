@@ -1,0 +1,23 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Instrumental modern cinematic electronic underscore for a stylish beauty campaign, beginning with poised minimal pulses, building into a confident driving rhythm for the downtown movement, then opening into an airy, warm, quietly triumphant rooftop resolution. Bright synths, crisp percussion, and restrained bass should feel tactile, polished, energetic, and editorial.",
+        "model": "fal-ai/elevenlabs/music"
+      },
+      "response": {
+        "json": {
+          "audio": {
+            "url": "https://assets.openstory.so/e2e/1fb068f13947b460e670f60c34de2e2c0af9d87c0db556cfba69b0ec8837b557.mp3",
+            "content_type": "audio/mpeg",
+            "file_name": "music_generated.mp3",
+            "file_size": 864802
+          }
+        },
+        "status": 200,
+        "billableUnits": 1
+      }
+    }
+  ]
+}

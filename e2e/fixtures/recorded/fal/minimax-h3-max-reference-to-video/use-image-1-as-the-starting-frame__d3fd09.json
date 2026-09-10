@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use Image 1 as the starting frame.\nImage 2 pauses, checks the time on her phone, and gathers her sunglasses before exiting the reflection.. Camera: slow static\n\noverall_soundscape: distant subway rumble, phone tap, soft spoken line: “Okay. City’s waiting.”. No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\nnon_diegetic_music: N/A",
+        "model": "minimax/h3-max/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://assets.openstory.so/e2e/1d8306adce74e984b7bcb763ab45d32b04a7793f8f8c41fae1fab2e1c3e81630.mp4",
+            "content_type": "video/mp4",
+            "file_name": "JPLMu022GHQc2CJU4oB7U_minimax-h3.mp4",
+            "file_size": 7105321
+          },
+          "expanded_prompt": "subject_definitions:\n<Subject 1> is the woman in <Image 1> and <Image 2>, with long wavy blonde hair, wearing a black turtleneck, grey trousers, and black sunglasses.\n<Subject 2> is the reflection of the woman in the mirror from <Image 1>, showing her face and torso with blonde hair, black turtleneck, and black sunglasses, wearing red lipstick.\n<Audio 1> is the voice-timbre reference for <Subject 1> (S1).\n\nsummary:\n[keyframe completion + reference generation + audio reference] The video starts with <Image 1>, showing <Subject 1> checking her phone, grabbing her sunglasses, and leaving the frame, accompanied by <Audio 1>.\n\nretention_analysis:\n<Subject 1> (appears in [Shot 1], [Shot 2]): fully_preserved - her appearance, clothing, and hair remain consistent throughout.\n<Subject 2> (appears in [Shot 1], [Shot 2]): fully_preserved - the reflection accurately mirrors the subject's actions.\n<Audio 1>: fully_copy.\n\ndetailed_description:\nThe video is a cinematic, high-definition sequence with clean, natural lighting in a modern bathroom. \n[Shot 1] The scene begins exactly as in <Image 1>. <Subject 1> is seen from behind, standing in front of a white-tiled wall. She is looking into the mirror, which reflects <Subject 2>. <Subject 2> is wearing black sunglasses and red lipstick. <Subject 1> holds a smartphone in her left hand, checking the time. She then reaches down with her right hand to pick up a pair of black sunglasses resting on the dark countertop. The camera is a slow static shot, capturing the intimate preparation. \n[Shot 2] At 00:02.000, the shot continues as <Subject 1> puts the sunglasses on her face, adjusting them while watching <Subject 2> in the mirror. She drapes a beige tote bag over her left shoulder. The reflection <Subject 2> mimics these movements perfectly. <Subject 1> turns her body and walks out of the frame to the right, leaving the empty mirror and the sink visible. <Subject 1> (S1) says softly, <d>[English]Okay. City’s waiting.</d>.\n\noverall_soundscape:\nThe environment features a distant, low-frequency subway rumble. The distinct tap of fingers on a phone screen and the rustle of clothing and a tote bag are audible.\n\nnon_diegetic_music:\nN/A",
+          "seed": 870872365,
+          "timings": {
+            "inference": 5.61216483701719
+          }
+        },
+        "status": 200,
+        "billableUnits": 9.600000000000001
+      }
+    }
+  ]
+}
