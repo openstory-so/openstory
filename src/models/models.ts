@@ -203,12 +203,16 @@ export const IMAGE_MODELS = {
     maxPromptLength: 50000,
   },
   gpt_image_2: {
-    id: 'openai/gpt-image-2' as const,
-    name: 'GPT Image 2',
+    // GPT Image 2.5 ships as two API tiers. Flare is OpenAI's stated successor
+    // to GPT Image 2 ("higher-quality images than GPT-Image-2 at 50% lower
+    // latency"); Sunburst is a new slower premium tier, not a bump of this key.
+    id: 'openai/gpt-image-2.5/flare/text-to-image' as const,
+    name: 'GPT Image 2.5 Flare',
     vendor: 'OpenAI',
     license: 'proprietary' as const,
     qualityRank: 2,
-    description: 'Near-perfect text rendering, UI fidelity, up to 4K',
+    description:
+      'Sharper detail, near-perfect text rendering, up to 4K, faster than GPT Image 2',
     maxPromptLength: 32000,
   },
   grok_imagine_image: {
@@ -659,7 +663,7 @@ export const EDIT_ENDPOINTS: Partial<Record<TextToImageModel, string>> = {
   // advertises as $0 compute-seconds.
   nano_banana_2_lite: 'google/nano-banana-lite/edit',
   nano_banana_pro: 'fal-ai/nano-banana-pro/edit',
-  gpt_image_2: 'openai/gpt-image-2/edit',
+  gpt_image_2: 'openai/gpt-image-2.5/flare/edit',
   grok_imagine_image: 'xai/grok-imagine-image/v2.0/edit',
   grok_imagine_image_quality: 'xai/grok-imagine-image/quality/edit',
   flux_2_max: 'fal-ai/flux-2-max/edit',

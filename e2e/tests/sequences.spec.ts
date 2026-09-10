@@ -204,7 +204,7 @@ test.describe('Sequences', () => {
         contentType: 'application/json',
         body: JSON.stringify({
           result: {
-            'openai/gpt-image-2': {
+            'openai/gpt-image-2.5/flare/text-to-image': {
               unitPriceMicros: 1_000_000,
               unit: 'units',
               typicalUnitsPerCall: 0.22,

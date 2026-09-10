@@ -26,8 +26,8 @@ type Story = StoryObj<typeof OptimisedPromptPanel>;
 export const Collapsed: Story = {
   args: {
     preview: {
-      modelName: 'GPT Image 2',
-      endpointId: 'openai/gpt-image-2',
+      modelName: 'GPT Image 2.5 Flare',
+      endpointId: 'openai/gpt-image-2.5/flare/text-to-image',
       prompt: 'Wide shot of Sarah at a sunlit coffee shop, typing furiously.',
       json: JSON.stringify(
         {
