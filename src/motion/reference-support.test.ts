@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   motionReferenceSupport,
   overlongReferenceNotice,
+  referenceUsability,
   unsupportedReferenceNotice,
 } from './reference-support';
 
@@ -92,5 +93,44 @@ describe('overlongReferenceNotice', () => {
     expect(
       overlongReferenceNotice('kling_v3_pro', [el('LONG', 'video', 60)])
     ).toBeNull();
+  });
+});
+
+// #1559 — what the element badge reads off.
+describe('referenceUsability', () => {
+  it('is silent for a still — every model takes one', () => {
+    expect(
+      referenceUsability({ kind: 'image', durationSeconds: null })
+    ).toEqual({ level: 'ok' });
+  });
+
+  it('warns for a clip, naming the models that will carry it', () => {
+    const usability = referenceUsability({ kind: 'video', durationSeconds: 5 });
+    expect(usability.level).toBe('limited');
+    if (usability.level !== 'limited') return;
+    // Omni Flash caps clips at 3s, so a 5s clip is past it.
+    expect(usability.models).not.toContain('gemini_omni_flash');
+    expect(usability.models).toContain('seedance_v2_5');
+    expect(usability.models).toContain('minimax_h3_max');
+    // Never a model that takes no reference clip at all.
+    expect(usability.models).not.toContain('kling_v3_pro');
+  });
+
+  it('errors when no model in the catalog is long enough', () => {
+    // Seedance 2.5 is the roomiest at 30.2s.
+    const usability = referenceUsability({
+      kind: 'video',
+      durationSeconds: 120,
+    });
+    expect(usability.level).toBe('unusable');
+    if (usability.level !== 'unusable') return;
+    expect(usability.maxSeconds).toBe(30.2);
+  });
+
+  it('warns rather than errors when the length is unknown', () => {
+    // Unknown is accepted everywhere, so it can never be "unusable".
+    expect(
+      referenceUsability({ kind: 'audio', durationSeconds: null }).level
+    ).toBe('limited');
   });
 });

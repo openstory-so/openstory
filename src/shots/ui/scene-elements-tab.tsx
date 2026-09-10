@@ -20,6 +20,7 @@ import {
   elementKindFromFile,
   formatElementDuration,
 } from '@/cast/element-kind';
+import { ElementSupportBadge } from '@/cast/ui/element/element-support-badge';
 import { MAX_SEQUENCE_ELEMENTS } from '@/cast/ui/element/limits';
 import {
   overlongReferenceNotice,
@@ -333,6 +334,10 @@ export const SceneElementsTab: React.FC<SceneElementsTabProps> = ({
           >
             <div className="relative aspect-square overflow-hidden bg-muted">
               <ElementTile element={el} />
+              <ElementSupportBadge
+                kind={el.kind}
+                durationSeconds={el.durationSeconds}
+              />
               <div className="absolute inset-x-0 bottom-0 bg-linear-to-t from-black/80 via-black/20 to-transparent p-3">
                 <span className="font-mono text-xs font-semibold tracking-wider text-white">
                   {el.token}

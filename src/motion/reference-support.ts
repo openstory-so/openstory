@@ -16,6 +16,7 @@
 import {
   getMotionReferenceEndpoint,
   IMAGE_TO_VIDEO_MODELS,
+  isOfferedVideoModel,
   type ImageToVideoModel,
 } from '@/models/models';
 import { isNativeGrokVideoModel } from '@/models/grok-native';
@@ -41,24 +42,98 @@ export function acceptsReference(
     // render, so the binding describes it in prose and the panel says so.
     return true;
   }
-  const config = getMotionReferenceEndpoint(model);
-  const max =
-    ref.kind === 'video'
-      ? config?.videoSeconds?.max
-      : config?.audioSeconds?.max;
-  if (max === undefined || ref.durationSeconds == null) return true;
+  const max = referenceSecondsLimit(model, ref.kind);
+  if (max === null || ref.durationSeconds == null) return true;
   return ref.durationSeconds <= max;
 }
 
-/** The longest reference of this kind the model will take, or null for no limit. */
+/**
+ * The longest SINGLE reference of this kind the model will take, or null when
+ * it states no limit.
+ *
+ * Falls back to the combined ceiling where no per-file one is declared: one
+ * file on its own IS the whole combined budget, so Seedance 2.0's "combined
+ * duration must be between 2 and 15 seconds" caps a lone clip at 15s just as
+ * firmly as an explicit per-file rule would.
+ */
 export function referenceSecondsLimit(
   model: ImageToVideoModel,
   kind: 'video' | 'audio'
 ): number | null {
   const config = getMotionReferenceEndpoint(model);
-  const max =
-    kind === 'video' ? config?.videoSeconds?.max : config?.audioSeconds?.max;
-  return max ?? null;
+  const limit = kind === 'video' ? config?.videoSeconds : config?.audioSeconds;
+  return limit?.max ?? limit?.maxCombined ?? null;
+}
+
+export type ReferenceUsability =
+  /** Every model that could render this shot will carry it. Images, today. */
+  | { level: 'ok' }
+  /**
+   * Some models carry it, others describe it in prose instead. True of EVERY
+   * clip and voice line — only the Seedance family, H3 Max and Omni Flash take
+   * them at all — so this is the normal state for those, not an edge case.
+   */
+  | { level: 'limited'; models: ImageToVideoModel[]; maxSeconds: number | null }
+  /**
+   * No offered model can carry it. Today that means only one thing: longer
+   * than the most generous ceiling in the catalog. Nothing the user can do
+   * except trim it, so it reads as an error rather than a warning.
+   */
+  | { level: 'unusable'; maxSeconds: number };
+
+/** Every offered video model that would actually SEND this reference. */
+function modelsAcceptingReference(ref: {
+  kind: 'image' | 'video' | 'audio';
+  durationSeconds: number | null;
+}): ImageToVideoModel[] {
+  return Object.keys(IMAGE_TO_VIDEO_MODELS)
+    .filter((key): key is ImageToVideoModel => key in IMAGE_TO_VIDEO_MODELS)
+    .filter((model) => isOfferedVideoModel(model, { byteplus: true }))
+    .filter((model) => {
+      if (ref.kind === 'image') return true;
+      // `acceptsReference` deliberately tolerates a kind the model does not
+      // take (it degrades to prose). Here the question is stricter: would the
+      // file actually ride?
+      if (!motionReferenceSupport(model)[ref.kind]) return false;
+      return acceptsReference(model, ref);
+    });
+}
+
+/**
+ * How usable is this element as a reference, across the whole catalog (#1559)?
+ * Drives the badge on the element tile: nothing for a still, a warning naming
+ * the models that take it for a clip or voice line, an error when its length
+ * puts it beyond every one of them.
+ */
+export function referenceUsability(ref: {
+  kind: 'image' | 'video' | 'audio';
+  durationSeconds: number | null;
+}): ReferenceUsability {
+  if (ref.kind === 'image') return { level: 'ok' };
+  const kind = ref.kind;
+  const models = modelsAcceptingReference(ref);
+  if (models.length > 0) {
+    // The roomiest ceiling among the models that will take it — what the user
+    // is working against if they add a longer one next time.
+    const limits = models
+      .map((model) => referenceSecondsLimit(model, kind))
+      .filter((max): max is number => max !== null);
+    return {
+      level: 'limited',
+      models,
+      maxSeconds: limits.length > 0 ? Math.max(...limits) : null,
+    };
+  }
+  // Nothing takes it. The only cause today is length, so report the ceiling it
+  // has to come under — computed from the catalog rather than hardcoded, so a
+  // roomier model appearing moves it on its own.
+  const ceilings = Object.keys(IMAGE_TO_VIDEO_MODELS)
+    .filter((key): key is ImageToVideoModel => key in IMAGE_TO_VIDEO_MODELS)
+    .filter((model) => isOfferedVideoModel(model, { byteplus: true }))
+    .filter((model) => motionReferenceSupport(model)[kind])
+    .map((model) => referenceSecondsLimit(model, kind))
+    .filter((max): max is number => max !== null);
+  return { level: 'unusable', maxSeconds: Math.max(0, ...ceilings) };
 }
 
 export type MotionReferenceSupport = {

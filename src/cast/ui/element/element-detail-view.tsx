@@ -22,6 +22,10 @@ import {
   useShotCountsForAllElements,
 } from '@/cast/ui/use-sequence-elements';
 import { formatElementDuration } from '@/cast/element-kind';
+import {
+  ElementSupportBadge,
+  elementSupportSummary,
+} from './element-support-badge';
 import { Textarea } from '@/ui/shadcn/textarea';
 import { cn } from '@/ui/utils';
 import { Link, useNavigate } from '@tanstack/react-router';
@@ -301,10 +305,31 @@ export const ElementDetailView: React.FC<ElementDetailViewProps> = ({
               </div>
             )}
             {element.kind !== 'image' && (
-              <DetailRow
-                label="Length"
-                value={formatElementDuration(element.durationSeconds)}
-              />
+              <>
+                <DetailRow
+                  label="Length"
+                  value={formatElementDuration(element.durationSeconds)}
+                />
+                <div className="space-y-1">
+                  <dt className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                    Model support
+                  </dt>
+                  <dd className="flex items-start gap-2 text-sm leading-relaxed">
+                    <ElementSupportBadge
+                      kind={element.kind}
+                      durationSeconds={element.durationSeconds}
+                      variant="inline"
+                      className="mt-0.5 shrink-0"
+                    />
+                    <span>
+                      {elementSupportSummary(
+                        element.kind,
+                        element.durationSeconds
+                      )}
+                    </span>
+                  </dd>
+                </div>
+              </>
             )}
             {affectedShotCount > 0 ? (
               <DetailRow
