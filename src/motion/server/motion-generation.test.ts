@@ -507,6 +507,88 @@ describe('Motion Service', () => {
     });
   });
 
+  // #1559 — an over-long reference is the user's own file with an obvious fix,
+  // so submit refuses instead of quietly rendering a clip that ignored it.
+  describe('over-long reference guard', () => {
+    it('refuses rather than silently dropping the clip', async () => {
+      await expect(
+        submitMotionJob({
+          arkAssets: registeredAssets,
+          imageUrl: 'https://example.com/still.jpg',
+          prompt: 'Move like LONG_TAKE',
+          model: 'gemini_omni_flash',
+          duration: 5,
+          referenceImages: [
+            {
+              referenceImageUrl: 'https://example.com/long.mp4',
+              description: 'LONG_TAKE - a long clip',
+              role: 'element',
+              kind: 'video',
+              durationSeconds: 10,
+              token: 'LONG_TAKE',
+            },
+          ],
+        })
+      ).rejects.toThrow(/LONG_TAKE \(10s, max 3s\)/);
+
+      expect(mockGenerateVideo).not.toHaveBeenCalled();
+    });
+
+    it('submits when the clip is inside the ceiling', async () => {
+      mockGenerateVideo.mockResolvedValue({
+        jobId: 'omni-ok',
+        model: 'gemini-omni-1.1-flash',
+      });
+
+      await submitMotionJob({
+        arkAssets: registeredAssets,
+        imageUrl: 'https://example.com/still.jpg',
+        prompt: 'Move like SHORT_TAKE',
+        model: 'gemini_omni_flash',
+        duration: 5,
+        referenceImages: [
+          {
+            referenceImageUrl: 'https://example.com/short.mp4',
+            description: 'SHORT_TAKE - a short clip',
+            role: 'element',
+            kind: 'video',
+            durationSeconds: 2,
+            token: 'SHORT_TAKE',
+          },
+        ],
+      });
+
+      expect(mockGenerateVideo).toHaveBeenCalled();
+    });
+
+    it('submits a reference whose length was never measured', async () => {
+      mockGenerateVideo.mockResolvedValue({
+        jobId: 'omni-unknown',
+        model: 'gemini-omni-1.1-flash',
+      });
+
+      await submitMotionJob({
+        arkAssets: registeredAssets,
+        imageUrl: 'https://example.com/still.jpg',
+        prompt: 'Move like MYSTERY',
+        model: 'gemini_omni_flash',
+        duration: 5,
+        referenceImages: [
+          {
+            referenceImageUrl: 'https://example.com/mystery.mp4',
+            description: 'MYSTERY - unknown length',
+            role: 'element',
+            kind: 'video',
+            durationSeconds: null,
+            token: 'MYSTERY',
+          },
+        ],
+      });
+
+      expect(mockGenerateVideo).toHaveBeenCalled();
+    });
+  });
+
   describe('native xAI submit (issue #1167)', () => {
     it('submits a Grok clip to xAI when a key is present', async () => {
       testEnv.XAI_API_KEY = 'platform-xai';

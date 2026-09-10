@@ -62,7 +62,10 @@ import {
   ensureExternallyFetchableUrl,
   toDataOrCdnUrl,
 } from '@/platform/server/storage/external-url';
-import { bindableReferences } from './build-reference-video-prompt';
+import {
+  bindableReferences,
+  overlongReferences,
+} from './build-reference-video-prompt';
 import { generateVideo, type TokenUsage } from '@tanstack/ai';
 import { getVideoJobStatus } from './video-job-status';
 import { falVideo } from '@tanstack/ai-fal';
@@ -267,6 +270,28 @@ async function submitFalMotionJob(
   options: GenerateMotionOptions,
   modelKey: ImageToVideoModel
 ): Promise<{ jobId: string; usedOwnKey: boolean; endpointId: string }> {
+  // A reference this endpoint is too short to take is a refusal, not a
+  // degradation (#1559). The file is the user's own choice, the remedy is to
+  // trim it, and rendering anyway would bill a clip that ignored what they
+  // attached — silently, and once per shot across a batch. The scene panel
+  // says the same thing before Generate, so reaching here means it was
+  // attached anyway or the model changed underneath it.
+  const overlong = overlongReferences(
+    getMotionReferenceEndpoint(modelKey),
+    options.referenceImages ?? []
+  );
+  if (overlong.length > 0) {
+    const named = overlong
+      .map(
+        ({ ref, max }) =>
+          `${ref.token ?? 'a reference'} (${ref.durationSeconds}s, max ${max}s)`
+      )
+      .join(', ');
+    throw new Error(
+      `${IMAGE_TO_VIDEO_MODELS[modelKey].name} cannot use ${named}. Trim the reference or pick a model that takes it.`
+    );
+  }
+
   // References this model can actually carry (#1559): a shot whose only
   // attachment is an audio element has nothing to send a reference endpoint,
   // which rejects a request with no reference image or video.
@@ -389,6 +414,28 @@ export async function submitMotionJob(
     via === 'google'
       ? await resolveOptionalGoogleKey(options.scopedDb)
       : undefined;
+
+  // A reference this endpoint is too short to take is a refusal, not a
+  // degradation (#1559). The file is the user's own choice, the remedy is to
+  // trim it, and rendering anyway would bill a clip that ignored what they
+  // attached — silently, and once per shot across a batch. The scene panel
+  // says the same thing before Generate, so reaching here means it was
+  // attached anyway or the model changed underneath it.
+  const overlong = overlongReferences(
+    getMotionReferenceEndpoint(modelKey),
+    options.referenceImages ?? []
+  );
+  if (overlong.length > 0) {
+    const named = overlong
+      .map(
+        ({ ref, max }) =>
+          `${ref.token ?? 'a reference'} (${ref.durationSeconds}s, max ${max}s)`
+      )
+      .join(', ');
+    throw new Error(
+      `${IMAGE_TO_VIDEO_MODELS[modelKey].name} cannot use ${named}. Trim the reference or pick a model that takes it.`
+    );
+  }
 
   // References this model can actually carry (#1559): a shot whose only
   // attachment is an audio element has nothing to send a reference endpoint,

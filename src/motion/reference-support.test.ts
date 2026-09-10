@@ -70,6 +70,9 @@ describe('overlongReferenceNotice', () => {
     ]);
     expect(notice).toContain('up to 3s');
     expect(notice).toContain('LONG_TAKE');
+    // Pre-flight warning: the submit path refuses these, so the line must say
+    // the shot will not render rather than promising a graceful degrade.
+    expect(notice).toContain('will not render');
     expect(notice).toContain('Trim it');
   });
 

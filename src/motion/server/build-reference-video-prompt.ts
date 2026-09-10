@@ -160,6 +160,36 @@ function partitionReferences(
 }
 
 /**
+ * Attached references this endpoint is too short to take (#1559).
+ *
+ * Unlike the other overflow reasons this one is a defect in a specific file
+ * the user chose, with an obvious remedy — trim it — so the submit path
+ * REFUSES rather than quietly substituting prose. Degrading would bill a
+ * render that ignored the reference, fifty times over in a batch, and the
+ * house rule is that a job which cannot use its input fails as itself rather
+ * than coming back subtly wrong with nothing saying why.
+ *
+ * Count overflow stays a degradation: a scene that matched more sheets than
+ * the endpoint has slots has no user remedy, and something has to give.
+ */
+export function overlongReferences(
+  binding: ReferencePromptBinding | null,
+  references: ReferenceImageDescription[]
+): { ref: ReferenceImageDescription; max: number }[] {
+  const out: { ref: ReferenceImageDescription; max: number }[] = [];
+  for (const ref of references) {
+    const kind = kindOf(ref);
+    if (kind === 'image') continue;
+    const limit =
+      kind === 'video' ? binding?.videoSeconds : binding?.audioSeconds;
+    const max = limit?.max;
+    if (max === undefined || ref.durationSeconds == null) continue;
+    if (ref.durationSeconds > max) out.push({ ref, max });
+  }
+  return out;
+}
+
+/**
  * The references that will ride on the wire for this endpoint — what "this
  * shot has references" MEANS at routing time. A shot carrying only media the
  * endpoint cannot take is a prompt-only shot, and routing it to the

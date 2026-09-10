@@ -59,9 +59,12 @@ export function unsupportedReferenceNotice(
 }
 
 /**
- * The attached clips and audio this model is too short to take (#1559). They
- * are still described in the prompt, but the panel has to say which ones did
- * not ride, or an over-long clip looks like it was used and silently was not.
+ * The attached clips and audio this model is too short to take (#1559).
+ *
+ * These BLOCK the render rather than degrading it — see `overlongReferences`.
+ * So this line is a pre-flight warning, not an after-the-fact disclosure: it
+ * exists so the user trims the file before spending credits, instead of
+ * meeting the same refusal from the submit path.
  */
 export function overlongReferenceNotice(
   model: ImageToVideoModel,
@@ -85,7 +88,8 @@ export function overlongReferenceNotice(
   if (tooLong.length === 0) return null;
   const max = tooLong[0]?.max ?? 0;
   const tokens = listed(tooLong.map((t) => t.token));
-  return `${IMAGE_TO_VIDEO_MODELS[model].name} takes references up to ${max}s, so ${tokens} ${tooLong.length === 1 ? 'is' : 'are'} described in the prompt instead of sent. Trim ${tooLong.length === 1 ? 'it' : 'them'} to attach.`;
+  const isOne = tooLong.length === 1;
+  return `${IMAGE_TO_VIDEO_MODELS[model].name} takes references up to ${max}s, so ${tokens} ${isOne ? 'is' : 'are'} too long and ${isOne ? 'this shot' : 'these shots'} will not render. Trim ${isOne ? 'it' : 'them'}, or pick a model that takes ${isOne ? 'it' : 'them'}.`;
 }
 
 function listed(items: string[]): string {
