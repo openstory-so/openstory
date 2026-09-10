@@ -1,11 +1,9 @@
 import { createFileRoute, redirect } from '@tanstack/react-router';
-import { studioSortSchema } from '@/studio/schema';
+import { studioListSearchSchema } from '@/studio/ui/list-prefs';
 import { z } from 'zod';
 
-const searchParamsSchema = z.object({
+const searchParamsSchema = studioListSearchSchema.extend({
   kind: z.enum(['all', 'image', 'video']).optional(),
-  sort: studioSortSchema.optional(),
-  favorites: z.boolean().optional(),
 });
 
 export const Route = createFileRoute('/_app/studio/')({
@@ -16,6 +14,10 @@ export const Route = createFileRoute('/_app/studio/')({
       search: {
         sort: search.sort,
         favorites: search.favorites,
+        user: search.user,
+        q: search.q,
+        support: search.support,
+        hideInternal: search.hideInternal,
       },
     });
   },

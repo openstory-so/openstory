@@ -21,11 +21,29 @@ import {
 } from '@/platform/server/db/schema/gift-tokens';
 import type { GiftToken } from '@/platform/server/db/schema/gift-tokens';
 import { sequences } from '@/platform/server/db/schema/sequences';
-import type { Sequence } from '@/platform/server/db/schema';
+import {
+  generatedAssets,
+  type GeneratedAsset,
+  type Sequence,
+} from '@/platform/server/db/schema';
 import type { ShotView } from '@/shots/shot-view';
 import { teamMembers, teams } from '@/platform/server/db/schema/teams';
 import { ValidationError } from '@/platform/errors';
-import { and, count, desc, eq, exists, like, not, or, sql } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  exists,
+  gt,
+  like,
+  lt,
+  not,
+  or,
+  sql,
+  type SQL,
+} from 'drizzle-orm';
 import { alias } from 'drizzle-orm/sqlite-core';
 
 // Ambiguity-free alphabet (no 0/O/1/I) -- 32 chars -> 32^6 ~ 1B combinations.
@@ -216,6 +234,101 @@ export function createAdminMethods(db: Database) {
     return assembleShotViews(db, rows);
   }
 
+  // ---- Support: cross-team studio images/videos (#1568) ----
+
+  type StudioAssetWithCreator = GeneratedAsset & {
+    creatorName: string | null;
+    creatorEmail: string | null;
+  };
+
+  async function getAllStudioAssets(opts?: {
+    activity?: GeneratedAsset['activity'];
+    search?: string;
+    favoritesOnly?: boolean;
+    order?: 'newest' | 'oldest';
+    limit?: number;
+    cursor?: string;
+  }): Promise<{
+    assets: StudioAssetWithCreator[];
+    nextCursor: string | null;
+  }> {
+    const {
+      activity,
+      search,
+      favoritesOnly,
+      order = 'newest',
+      limit = 40,
+      cursor,
+    } = opts ?? {};
+
+    const trimmed = search?.trim().toLowerCase();
+    const memberUser = alias(user, 'member_user');
+    const searchClause = trimmed
+      ? or(
+          like(sql`lower(${generatedAssets.modelName})`, `%${trimmed}%`),
+          like(sql`lower(${generatedAssets.input})`, `%${trimmed}%`),
+          exists(
+            db
+              .select({ one: sql`1` })
+              .from(teamMembers)
+              .innerJoin(memberUser, eq(memberUser.id, teamMembers.userId))
+              .where(
+                and(
+                  eq(teamMembers.teamId, generatedAssets.teamId),
+                  or(
+                    like(sql`lower(${memberUser.name})`, `%${trimmed}%`),
+                    like(sql`lower(${memberUser.email})`, `%${trimmed}%`)
+                  )
+                )
+              )
+          )
+        )
+      : undefined;
+
+    const conditions: SQL[] = [eq(generatedAssets.source, 'studio')];
+    if (activity) {
+      conditions.push(eq(generatedAssets.activity, activity));
+    }
+    if (favoritesOnly) {
+      conditions.push(eq(generatedAssets.isFavorite, true));
+    }
+    if (cursor) {
+      conditions.push(
+        order === 'oldest'
+          ? gt(generatedAssets.id, cursor)
+          : lt(generatedAssets.id, cursor)
+      );
+    }
+    if (searchClause) {
+      conditions.push(searchClause);
+    }
+
+    const rows = await db
+      .select({
+        asset: generatedAssets,
+        creatorName: user.name,
+        creatorEmail: user.email,
+      })
+      .from(generatedAssets)
+      .leftJoin(user, eq(generatedAssets.userId, user.id))
+      .where(and(...conditions))
+      .orderBy(
+        order === 'oldest' ? asc(generatedAssets.id) : desc(generatedAssets.id)
+      )
+      .limit(limit + 1);
+
+    const page = rows.slice(0, limit);
+    const last = page[page.length - 1];
+    return {
+      assets: page.map(({ asset, creatorName, creatorEmail }) => ({
+        ...asset,
+        creatorName,
+        creatorEmail,
+      })),
+      nextCursor: rows.length > limit && last ? last.asset.id : null,
+    };
+  }
+
   // ---- User activity reporting ----
 
   async function listUserActivity(): Promise<UserActivityRow[]> {
@@ -293,6 +406,7 @@ export function createAdminMethods(db: Database) {
     listGiftTokens,
     getAllSequences,
     getShotsForSequence,
+    getAllStudioAssets,
     listUserActivity,
   };
 }
