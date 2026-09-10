@@ -2,7 +2,7 @@
  * Welcome Credits Dialog (#1096, #1516)
  *
  * - **claim**: Stripe on, $20 unpaid. Add a card (Stripe Checkout setup,
- *   no charge) to unlock it. No card? Ask the founder (#1566).
+ *   no charge) to unlock it.
  * - **gift**: unused signup grant and Stripe off (e2e / self-host).
  *
  * Dismiss cadence lives in localStorage (house pattern for UI prefs).
@@ -23,7 +23,6 @@ import {
   claimWelcomeCreditsFn,
   createSetupCheckoutSessionFn,
 } from '@/billing/billing.fn';
-import { AskFounderCard } from '@/billing/ui/ask-founder-card';
 import {
   BILLING_BALANCE_KEY,
   BILLING_PAYMENT_METHODS_KEY,
@@ -367,8 +366,6 @@ function ClaimDialogContent({
         <Button className="self-center" onClick={onAddCard} disabled={busy}>
           {claiming ? 'Unlocking…' : opening ? 'Opening…' : 'Add a card'}
         </Button>
-
-        <AskFounderCard variant="link" />
 
         {setupError ? (
           <p role="alert" className="text-xs text-destructive">

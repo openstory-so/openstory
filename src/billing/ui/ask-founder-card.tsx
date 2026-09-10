@@ -24,9 +24,7 @@ export const founderOptionCardClassName = (variant: 'primary' | 'muted') =>
       'border-border/60 bg-transparent hover:border-border hover:bg-accent/50'
   );
 
-export const AskFounderCard: React.FC<{ variant?: 'card' | 'link' }> = ({
-  variant = 'card',
-}) => {
+export const AskFounderCard: React.FC = () => {
   const [expanded, setExpanded] = useState(false);
   const [message, setMessage] = useState('');
 
@@ -54,18 +52,6 @@ export const AskFounderCard: React.FC<{ variant?: 'card' | 'link' }> = ({
   }
 
   if (!expanded) {
-    if (variant === 'link') {
-      return (
-        <Button
-          type="button"
-          variant="link"
-          className="self-center text-muted-foreground"
-          onClick={() => setExpanded(true)}
-        >
-          Ask the founder for credits
-        </Button>
-      );
-    }
     return (
       <button
         type="button"
