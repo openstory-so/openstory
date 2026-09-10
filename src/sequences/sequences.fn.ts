@@ -986,6 +986,13 @@ export const addModelToSequenceFn = createServerFn({ method: 'POST' })
       const reservationId = await reserveRunCredits(
         scopedDb,
         // Per shot: a reference-only shot prices the reference-to-video route.
+        // So does a start-frame shot once sheets exist — the payload below
+        // attaches cast/element refs to EVERY shot, and on a model whose refs
+        // switch endpoint (Kling O3, Seedance, H3 Max) that is a different,
+        // dearer row. Asked at sequence granularity because the per-shot match
+        // needs scene context that is only loaded after the reservation; a
+        // shot that matches nothing merely over-reserves, which is refunded,
+        // where under-reserving fails the run mid-flight.
         eligible.reduce(
           (sum, shot) =>
             addMicros(
@@ -995,6 +1002,8 @@ export const addModelToSequenceFn = createServerFn({ method: 'POST' })
                   pricing,
                   resolution: sequence.resolution,
                   referenceOnly: shotIsReferenceOnly(shot),
+                  hasReferenceImages:
+                    characters.length > 0 || elements.length > 0,
                 }),
                 { model, operation: 'add-video-model' }
               )

@@ -86,7 +86,7 @@ export const IMAGE_TO_VIDEO_MODELS = {
   },
   kling_v3_pro: {
     id: 'fal-ai/kling-video/v3/pro/image-to-video',
-    name: 'Kling v3 Pro',
+    name: 'Kling 3.0 Omni',
     vendor: 'Kling',
     license: 'proprietary' as const,
     qualityRank: 3,
@@ -421,7 +421,7 @@ export function isValidImageToVideoModel(
 }
 
 /**
- * Friendly display name for a video model id ("Kling v3 Pro"); returns the raw
+ * Friendly display name for a video model id ("Kling 3.0 Omni"); returns the raw
  * id for an unrecognized (e.g. retired) model rather than hiding it.
  */
 export function videoModelDisplayName(model: string): string {
@@ -751,13 +751,15 @@ export type MotionReferenceEndpointConfig = {
  *
  * Some motion models accept cast/element reference images only on a dedicated
  * endpoint that takes an image list (bound to prompt tokens — see
- * `MotionReferenceEndpointConfig.tag`) and has NO single start-frame
- * `image_url`. This is the motion analogue of `EDIT_ENDPOINTS` on the image
+ * `MotionReferenceEndpointConfig.tag`) and whose start frame is optional or
+ * absent. This is the motion analogue of `EDIT_ENDPOINTS` on the image
  * side: when a scene has references AND the model is listed here, motion
  * routes to this endpoint and passes the rendered still as the first image
- * plus cast/element refs after it (see `resolveMotionEndpoint`). Models that
- * emit references inline on their normal endpoint (e.g. Kling v3 Pro's
- * `elements` field) are NOT listed here.
+ * plus cast/element refs after it (see `resolveMotionEndpoint`).
+ *
+ * Kling v3 Pro's start-frame-only shots stay on image-to-video; shots with
+ * references (and reference-only shots) route to Kling O3 Pro, the sibling
+ * that actually has a reference-to-video endpoint (#1498).
  */
 export const MOTION_REFERENCE_ENDPOINTS: Partial<
   Record<ImageToVideoModel, MotionReferenceEndpointConfig>
@@ -790,6 +792,20 @@ export const MOTION_REFERENCE_ENDPOINTS: Partial<
     tag: (position) => `<IMAGE_REF_${position - 1}>`,
     maxImages: 7,
   },
+  // fal documents the 4-image cap as `elements` + reference images "when
+  // using video"; applied unconditionally rather than tracking a second
+  // budget. The start frame is neither, and rides `start_image_url` on this
+  // endpoint, so all 4 go to sheets — the same budget the inline `elements`
+  // path allowed before #1498. Worth re-checking against a live 4-sheet
+  // request if fal ever turns out to count the start frame too.
+  kling_v3_pro: {
+    endpointId: 'fal-ai/kling-video/o3/pro/reference-to-video',
+    // The O3 tier, not v3: `fal-pricing-live.ts` aliases this row to the
+    // reference endpoint's rate, and Studio prices v3 text-to-video itself.
+    textToVideoEndpointId: 'fal-ai/kling-video/o3/pro/text-to-video',
+    tag: (position) => `@Image${position}`,
+    maxImages: 4,
+  },
   // Schema caps images at 9 (videos 3, audio 3; combined 12 files).
   minimax_h3_max: {
     endpointId: 'minimax/h3-max/reference-to-video',
@@ -801,15 +817,6 @@ export const MOTION_REFERENCE_ENDPOINTS: Partial<
 };
 
 /**
- * Models that attach reference images on the normal image-to-video endpoint
- * (Kling's `elements` field). Distinct from `MOTION_REFERENCE_ENDPOINTS`,
- * which switch to a different endpoint.
- */
-const MOTION_INLINE_REFERENCE_MODELS = {
-  kling_v3_pro: true,
-} as const satisfies Partial<Record<ImageToVideoModel, true>>;
-
-/**
  * Get the reference-to-video endpoint config for a motion model, if it has one.
  * @returns The endpoint config, or null if the model has no reference endpoint
  */
@@ -819,29 +826,24 @@ export function getMotionReferenceEndpoint(
   return MOTION_REFERENCE_ENDPOINTS[model] ?? null;
 }
 
-export function attachesInlineReferences(model: ImageToVideoModel): boolean {
-  return model in MOTION_INLINE_REFERENCE_MODELS;
-}
-
 /**
  * Can this model render a shot from reference images alone — no start frame?
  *
  * Reference-only mode (see `docs/architecture/reference-only-motion.md`) skips
  * still generation entirely, so the model must have a route whose start frame
  * is optional. That is exactly the `MOTION_REFERENCE_ENDPOINTS` set: fal's
- * `reference-to-video` endpoints have no `image_url` field at all (the image
- * list is schema-optional but rejected when empty — a shot with nothing
- * matched goes to `textToVideoEndpointId`, #1521), and the same models'
+ * `reference-to-video` endpoints never require a start frame — Seedance and
+ * H3 Max have no such field, Kling O3's `start_image_url` is optional (the
+ * image list is schema-optional but rejected when empty — a shot with nothing
+ * matched goes to `textToVideoEndpointId`, #1521) — and the same models'
  * BytePlus Ark route sends every image as a `reference` role (Ark's
  * frame/reference mix-ban means the still was never a frame there either).
  *
  * Keyed on the MODEL alone, so it is true on EVERY via — the floor, safe to
- * call anywhere including a pure isomorphic schema. Kling is excluded: its
- * `elements` ride on the image-to-video endpoint, which requires `image_url`.
- * Grok Imagine is excluded here too, but only because its fal id is
- * `xai/grok-imagine-video/v1.5/image-to-video` — it DOES accept references
- * with no start frame on the native xAI via. Where the via is known, ask
- * {@link referenceOnlyCapableWith} instead.
+ * call anywhere including a pure isomorphic schema. Grok Imagine is excluded
+ * here because its fal id is `xai/grok-imagine-video/v1.5/image-to-video` —
+ * it DOES accept references with no start frame on the native xAI via. Where
+ * the via is known, ask {@link referenceOnlyCapableWith} instead.
  */
 export function supportsReferenceOnlyMotion(model: ImageToVideoModel): boolean {
   return model in MOTION_REFERENCE_ENDPOINTS;

@@ -166,9 +166,10 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
     }
 
     // Resolve cast/element reference images so motion preserves identity across
-    // the clip, not just in the start frame (#873). Only Kling v3 Pro emits
-    // them downstream; threaded for every model so they're ready if support
-    // widens. Matches the continuity AFTER any rescan above.
+    // the clip, not just in the start frame (#873). Threaded for every model:
+    // those with a reference-to-video route send them on the wire, the rest
+    // substitute the tokens with descriptions. Matches the continuity AFTER
+    // any rescan above.
     const [characters, elements, locations] = await Promise.all([
       context.scopedDb.characters.listWithSheets(sequence.id),
       context.scopedDb.sequenceElements.list(sequence.id),

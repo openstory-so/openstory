@@ -246,45 +246,15 @@ describe('buildModelInput', () => {
       },
     ];
 
-    it('Kling emits an elements array with frontal + reference images', () => {
-      const result = build('kling_v3_pro', { referenceImages });
-      expect(result.elements).toEqual([
-        {
-          frontal_image_url: 'https://example.com/jack-sheet.png',
-          reference_image_urls: ['https://example.com/jack-sheet.png'],
-        },
-        {
-          frontal_image_url: 'https://example.com/logo.png',
-          reference_image_urls: ['https://example.com/logo.png'],
-        },
-      ]);
-    });
-
-    it('Kling appends an @ElementN legend matching the elements order', () => {
-      const result = build('kling_v3_pro', { referenceImages });
-      expect(result.prompt).toContain(baseOptions.prompt);
-      expect(result.prompt).toContain('@Element1: Jack - tall man with a scar');
-      expect(result.prompt).toContain(
-        '@Element2: ACME_LOGO - red circular badge'
-      );
-    });
-
-    it('Kling without references is unchanged (no elements key)', () => {
-      const result = build('kling_v3_pro');
-      expect(result).not.toHaveProperty('elements');
-      expect(result.prompt).toBe(baseOptions.prompt);
-    });
-
-    it('non-Kling models get no elements key and an unchanged prompt when no tokens are mentioned', () => {
+    it('image-to-video builder never emits an elements key', () => {
       for (const key of Object.keys(IMAGE_TO_VIDEO_MODELS)) {
-        if (key === 'kling_v3_pro') continue;
         const result = build(safeImageToVideoModel(key), { referenceImages });
         expect(result).not.toHaveProperty('elements');
         expect(result.prompt).toBe(baseOptions.prompt);
       }
     });
 
-    it('non-Kling models substitute mentioned tokens with descriptions', () => {
+    it('substitutes mentioned tokens with descriptions on the i2v path', () => {
       const tokenRefs = [
         {
           referenceImageUrl: 'https://example.com/jack-sheet.png',
@@ -361,7 +331,7 @@ describe('buildModelInput', () => {
       });
 
       it('applies the seedance resolution quality override', () => {
-        expect(buildRef().resolution).toBe('720p');
+        expect(buildRef()).toMatchObject({ resolution: '720p' });
       });
 
       it('forwards generate_audio=false when caller suppresses audio', () => {
@@ -371,6 +341,68 @@ describe('buildModelInput', () => {
       });
     }
   );
+
+  describe('buildMotionRequest reference-to-video (kling_v3_pro)', () => {
+    const referenceImages = [
+      {
+        referenceImageUrl: 'https://example.com/jack-sheet.png',
+        description: 'Jack - tall man with a scar',
+        role: 'character' as const,
+      },
+      {
+        referenceImageUrl: 'https://example.com/logo.png',
+        description: 'ACME_LOGO - red circular badge',
+        role: 'element' as const,
+      },
+    ];
+
+    const buildRef = (overrides: Partial<GenerateMotionOptions> = {}) => {
+      const { endpointId, input } = buildMotionRequest(
+        { ...baseOptions, referenceImages, ...overrides },
+        'kling_v3_pro'
+      );
+      if (!('image_urls' in input) || !('generate_audio' in input)) {
+        throw new Error('expected Kling O3 reference-to-video input');
+      }
+      return { endpointId, input };
+    };
+
+    // Unlike Seedance and H3 Max, O3 has a real start-frame field, so the
+    // still is pinned rather than spending an image slot and being asked for
+    // in prose. The whole 4-image list stays available for sheets (#1498).
+    it('pins the still in start_image_url, leaving image_urls to the sheets', () => {
+      const { endpointId, input } = buildRef();
+      expect(endpointId).toBe('fal-ai/kling-video/o3/pro/reference-to-video');
+      expect(input).not.toHaveProperty('image_url');
+      expect(
+        'start_image_url' in input ? input.start_image_url : undefined
+      ).toBe(baseOptions.imageUrl);
+      expect(input.image_urls).toEqual([
+        'https://example.com/jack-sheet.png',
+        'https://example.com/logo.png',
+      ]);
+    });
+
+    it('numbers the sheets from @Image1 with no starting-frame line', () => {
+      const { input } = buildRef();
+      expect(input.prompt).not.toContain('starting frame');
+      expect(input.prompt).toContain('@Image1: Jack - tall man with a scar');
+      expect(input.prompt).toContain('@Image2: ACME_LOGO - red circular badge');
+    });
+
+    // O3's schema defaults `generate_audio` to false where Kling's v3
+    // image-to-video defaults it to true, so inheriting the default would make
+    // a shot silent purely because it matched a cast sheet (#1498).
+    it('keeps native audio on, matching the start-frame route', () => {
+      expect(buildRef().input.generate_audio).toBe(true);
+    });
+
+    it('forwards generate_audio=false when caller suppresses audio', () => {
+      expect(buildRef({ generateAudio: false }).input.generate_audio).toBe(
+        false
+      );
+    });
+  });
 
   describe('buildMotionRequest reference-to-video (minimax_h3_max)', () => {
     const referenceImages = [
@@ -561,11 +593,27 @@ describe('buildMotionRequest — reference-only', () => {
     expect(input).toMatchObject({ aspect_ratio: '9:16' });
   });
 
+  it('routes Kling reference-only to O3 Pro with no start frame', () => {
+    const { endpointId, input } = buildMotionRequest(
+      referenceOnlyOptions,
+      'kling_v3_pro'
+    );
+
+    expect(endpointId).toBe('fal-ai/kling-video/o3/pro/reference-to-video');
+    expect(input).not.toHaveProperty('image_url');
+    expect(input).not.toHaveProperty('start_image_url');
+    expect('image_urls' in input ? input.image_urls : undefined).toEqual([
+      'https://example.com/scarlett.png',
+    ]);
+    expect(input.prompt).not.toContain('starting frame');
+    expect(input.prompt).toContain('@Image1');
+  });
+
   it('refuses a start-frame model asked to render without one', () => {
     expect(() =>
       buildMotionRequest(
         { ...referenceOnlyOptions, referenceOnly: false },
-        'kling_v3_pro'
+        'veo3_1'
       )
     ).toThrow(/requires a start frame/);
   });

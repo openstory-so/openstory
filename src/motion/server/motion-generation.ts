@@ -70,7 +70,10 @@ import { buildBytePlusVideoRequest } from './build-byteplus-video-request';
 import { buildGeminiVideoRequest } from './build-gemini-video-request';
 import { getGeminiFileState, isGeminiFilesVideoUrl } from './video-storage';
 import { buildGrokVideoRequest } from './build-grok-video-request';
-import { buildMotionRequest } from './build-model-input';
+import {
+  buildMotionRequest,
+  pinsDedicatedStartFrame,
+} from './build-model-input';
 import { resolveMotionEndpoint } from '@/motion/resolve-motion-endpoint';
 
 const logger = getLogger(['openstory', 'motion', 'generation']);
@@ -100,7 +103,7 @@ export type GenerateMotionOptions = {
   /**
    * Character + element reference images for identity consistency across the
    * clip (#873). Emitted when `resolveMotionEndpoint` says they go on the
-   * wire: Kling `elements`, Seedance `image_urls[]`, H3 Max
+   * wire: Seedance / Kling O3 `image_urls[]`, H3 Max
    * `reference_image_urls[]`, and Grok Imagine 1.5 native
    * `metadata.role: 'reference' | 'character'` prompt parts. Other models
    * substitute tokens with descriptions instead.
@@ -408,6 +411,52 @@ export async function submitMotionJob(
         endpointId: endpoint.endpointId,
       },
     });
+  }
+
+  // The image list is capped per endpoint, so references past the cap never
+  // reach the model. Their tokens degrade to plain descriptions, and one whose
+  // token was never in the prompt leaves no trace at all — no image, no
+  // description, no legend line. Kling O3's cap of 4 is the tightest of any
+  // reference model, so a large cast reaches it in ordinary use. Warned rather
+  // than thrown for the same reason as above — the request is valid, the clip
+  // just comes back missing someone.
+  if (endpoint.references === 'endpoint') {
+    // The still only spends a slot where it rides the image list; pinned in
+    // its own start-frame field it does not (#1498).
+    const budget =
+      endpoint.referenceConfig.maxImages -
+      (pinsDedicatedStartFrame(endpoint.referenceConfig.endpointId, options)
+        ? 0
+        : options.imageUrl
+          ? 1
+          : 0);
+    const attachable = (options.referenceImages ?? []).filter(
+      (ref) => ref.referenceImageUrl
+    ).length;
+    if (attachable > budget) {
+      logger.warn(
+        'Motion references exceed the endpoint image cap; the overflow is not attached',
+        {
+          modelKey,
+          endpointId: endpoint.endpointId,
+          attachable,
+          budget,
+          dropped: attachable - budget,
+        }
+      );
+      getPostHogClient()?.capture({
+        distinctId: 'system',
+        event: 'motion_references_over_cap',
+        properties: {
+          model: modelKey,
+          via: endpoint.via,
+          endpointId: endpoint.endpointId,
+          attachable,
+          budget,
+          dropped: attachable - budget,
+        },
+      });
+    }
   }
 
   let jobId: string;

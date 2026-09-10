@@ -208,18 +208,45 @@ predate reference-only and so were image-to-video.
 ## Model gating
 
 Only models in `MOTION_REFERENCE_ENDPOINTS` qualify — today Seedance 2.0 and
-2.5, MiniMax H3 Max and Gemini Omni Flash, each with a `reference-to-video`
-route that needs no start frame (H3 Max takes its images in
-`reference_image_urls` rather than `image_urls` — `imageField` on the endpoint
-config; every builder reads it, so a fifth model with a fifth field name needs
-no code) and a `textToVideoEndpointId` sibling for a shot that matched nothing
-(#1521).
+2.5, MiniMax H3 Max, Gemini Omni Flash and Kling O3 Pro, each with a
+`reference-to-video` route whose start frame is optional (H3 Max takes its
+images in `reference_image_urls` rather than `image_urls` — `imageField` on
+the endpoint config, so no builder needs to know the field name; a genuinely
+new field name still has to widen that union, and every new endpoint needs a
+transform registered in `endpoint-map.ts`) and a `textToVideoEndpointId`
+sibling for a shot that matched nothing (#1521).
 `supportsReferenceOnlyMotion` is keyed on the MODEL, not the resolved via — the
 conservative floor, safe in a pure isomorphic schema. It is NOT the question to
 ask anywhere a team's keys are reachable; see below.
 
-Kling is excluded — its `elements` ride on the image-to-video endpoint, which
-requires `image_url`.
+Kling v3 Pro start-frame-only shots stay on image-to-video. Shots with
+references, and reference-only shots, route to Kling O3 Pro
+(`fal-ai/kling-video/o3/pro/reference-to-video`) — the sibling whose start
+frame is optional. Catalog key stays `kling_v3_pro`.
+
+Three Kling-specific consequences of that split.
+
+**The still is pinned, not described.** O3 is the only reference endpoint with
+a real start-frame field, so a shot that rendered one sends it as
+`start_image_url` rather than as `image_urls[0]` with a "Use @Image1 as the
+starting frame." line. The frame is then guaranteed instead of requested, the
+image-to-video motion template's NO VISUAL REDUNDANCY rule ("the video model
+already sees these in the starting frame") is true again, and
+`usesStartFrame: true` keeps meaning what it says. Sheets number from
+`@Image1`, as in reference-only. `pinsDedicatedStartFrame` is the one place
+that decides, derived from the schema so it cannot drift.
+
+**Audio is resolved, not inherited.** `generate_audio` defaults to **false**
+on the O3 endpoints where v3 image-to-video defaults to **true** — every other
+endpoint in the catalog defaults true. `buildModelInput` therefore resolves
+the flag from the catalog rather than inheriting either default; otherwise
+whether a shot matched a cast sheet would decide whether the clip has sound.
+
+**The image budget is the tightest we have.** O3 takes 4 (Seedance 9, H3 Max
+9, Grok 7, Omni Flash 7). With the start frame in its own field all 4 go to
+sheets — the same budget the deleted inline `elements` path allowed — but a
+scene casting five still drops one, so the submit path warns and emits
+`motion_references_over_cap`.
 
 **Grok Imagine 1.5 is not excluded because it lacks references — it has them.**
 `GROK_VIDEO_REFERENCE_CONFIG` binds up to 7, `resolveMotionEndpoint` returns

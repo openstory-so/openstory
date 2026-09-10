@@ -134,7 +134,7 @@ describe('estimateBatchMotionCost', () => {
     expect(Number(mixed)).toBeLessThan(Number(bothRef));
   });
 
-  it('leaves Kling on i2v when hasReferenceImages is true', () => {
+  it('prices Kling with refs on O3 Pro reference-to-video', () => {
     const shots = [{ id: 'shot-b' }];
     const withRefs = estimateBatchMotionCost(shots, shotModels, sequence, {
       pricing: FAL_PRICING,
@@ -144,7 +144,21 @@ describe('estimateBatchMotionCost', () => {
       pricing: FAL_PRICING,
       hasReferenceImages: false,
     });
-    expect(withRefs).toEqual(without);
+    expect(withRefs).toEqual(
+      estimateVideoCost(
+        'kling_v3_pro',
+        snapDuration(undefined, 'kling_v3_pro'),
+        { pricing: FAL_PRICING, hasReferenceImages: true }
+      )
+    );
+    expect(without).toEqual(
+      estimateVideoCost(
+        'kling_v3_pro',
+        snapDuration(undefined, 'kling_v3_pro'),
+        { pricing: FAL_PRICING, hasReferenceImages: false }
+      )
+    );
+    expect(withRefs).not.toEqual(without);
   });
 
   it('sums per-shot cost across shots rendered by different (priced) models', () => {

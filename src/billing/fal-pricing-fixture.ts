@@ -39,6 +39,10 @@ export const TEST_FAL_PRICING: Record<string, EffectiveFalPricing> = {
     unitPrice: micros(70_000),
     unit: 'seconds',
   },
+  'fal-ai/kling-video/o3/pro/reference-to-video': {
+    unitPrice: micros(140_000),
+    unit: 'seconds',
+  },
   'fal-ai/veo3.1/image-to-video': {
     unitPrice: micros(400_000),
     unit: 'seconds',

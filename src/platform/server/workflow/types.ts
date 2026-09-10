@@ -552,8 +552,10 @@ export interface MotionWorkflowInput extends SequenceWorkflowContext {
   /**
    * Character + element reference images for identity consistency across the
    * clip (#873). Resolved at trigger time from the scene's continuity tags +
-   * the cast/element library. Only consumed by Kling v3 Pro (emitted as its
-   * `elements` field); every other model ignores them.
+   * the cast/element library. Sent on the wire by every model with a
+   * reference-to-video route (`MOTION_REFERENCE_ENDPOINTS`) and by the native
+   * xAI / Ark / Google inline vias; the rest substitute the tokens with bible
+   * descriptions, so they are never ignored — only carried differently.
    */
   referenceImages?: ReferenceImageDescription[];
   /**
