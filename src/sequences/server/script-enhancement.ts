@@ -42,6 +42,7 @@ import {
   type ChatMessageContentPart,
 } from '@/platform/server/ai/prompts-index';
 import { toVisionImageSource } from '@/platform/server/storage/external-url';
+import { shouldInlineVisionForVia } from '@/models/server/llm-call-helper';
 import { createServerOnlyFn } from '@tanstack/react-start';
 
 export type { EnhanceChunk } from '@/sequences/enhance-script-turns';
@@ -167,12 +168,23 @@ export async function* streamScriptEnhancement(
   const visualElements = elements.filter(
     (el) => (el.kind ?? 'image') === 'image'
   );
+  // Google will not FETCH a reference by URL: its `fileData.fileUri` path
+  // answers 403 PERMISSION_DENIED for a CDN / fal URL, which aborts the
+  // stream and surfaces to the user as an undefined async iterator. The same
+  // bytes inline succeed. `shouldInlineVisionForVia` is the existing answer
+  // to this — the workflow vision path has used it all along; enhance built
+  // its own image parts and never asked, so enhancing with ANY element
+  // attached failed outright on a Gemini analysis model while working fine
+  // with none.
+  const inlineForProvider = shouldInlineVisionForVia(llmKey.via);
   const imageParts = await Promise.all(
     visualElements.map<Promise<ChatMessageContentPart>>(async (el) => {
       try {
         return {
           type: 'image',
-          source: await toVisionImageSource(el.imageUrl),
+          source: await toVisionImageSource(el.imageUrl, undefined, {
+            inline: inlineForProvider,
+          }),
         };
       } catch (cause) {
         logger.error('Script enhancement: failed to load element image', {

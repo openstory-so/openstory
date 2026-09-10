@@ -37,6 +37,7 @@ import {
   elementKindFromFilename,
   type SequenceElementKind,
 } from '@/cast/element-kind';
+import { ElementThumbnail } from './element-thumbnail';
 import { MAX_SEQUENCE_ELEMENTS } from './limits';
 import { cn } from '@/ui/utils';
 import { useQueryClient } from '@tanstack/react-query';
@@ -46,7 +47,7 @@ import {
   toastDragImportCorsError,
 } from '@/ui/drag-images';
 import { getFileKey } from '@/ui/upload';
-import { AudioLines, Film, ImagePlus, Loader2, Upload, X } from 'lucide-react';
+import { ImagePlus, Loader2, Upload, X } from 'lucide-react';
 import {
   useCallback,
   useEffect,
@@ -58,7 +59,6 @@ import {
 import { toast } from 'sonner';
 
 import { getLogger } from '@/platform/logger';
-import { AppImage } from '@/ui/shadcn/app-image';
 
 const logger = getLogger(['openstory', 'ui', 'element', 'element-selector']);
 
@@ -723,27 +723,12 @@ export const ElementSelector: React.FC<ElementSelectorProps> = (props) => {
                       key={item.key}
                       className="relative aspect-square overflow-hidden rounded-md group"
                     >
-                      {item.mediaKind !== 'image' ? (
-                        <div className="flex size-full flex-col items-center justify-center gap-1 bg-muted">
-                          {item.mediaKind === 'audio' ? (
-                            <AudioLines className="size-6 text-muted-foreground/50" />
-                          ) : (
-                            <Film className="size-6 text-muted-foreground/50" />
-                          )}
-                        </div>
-                      ) : item.imageUrl ? (
-                        <AppImage
-                          src={item.imageUrl}
-                          alt={item.token ?? 'Element'}
-                          width={160}
-                          height={160}
-                          className="size-full object-cover"
-                        />
-                      ) : (
-                        <div className="flex size-full items-center justify-center bg-muted">
-                          <ImagePlus className="size-6 text-muted-foreground/40" />
-                        </div>
-                      )}
+                      <ElementThumbnail
+                        kind={item.mediaKind}
+                        url={item.imageUrl}
+                        label={item.token ?? 'Element'}
+                        fit="cover"
+                      />
                       {(item.status === 'uploading' ||
                         item.status === 'analyzing') && (
                         <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-background/50">

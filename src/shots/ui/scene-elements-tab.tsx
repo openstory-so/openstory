@@ -18,9 +18,9 @@ import type { SequenceElement } from '@/platform/server/db/schema';
 import {
   ELEMENT_UPLOAD_ACCEPT,
   elementKindFromFile,
-  formatElementDuration,
 } from '@/cast/element-kind';
 import { ElementSupportBadge } from '@/cast/ui/element/element-support-badge';
+import { ElementThumbnail } from '@/cast/ui/element/element-thumbnail';
 import { MAX_SEQUENCE_ELEMENTS } from '@/cast/ui/element/limits';
 import {
   overlongReferenceNotice,
@@ -34,8 +34,7 @@ import {
   toastDragImportCorsError,
 } from '@/ui/drag-images';
 import { Link } from '@tanstack/react-router';
-import { AudioLines, Film, ImagePlus, Loader2, Upload } from 'lucide-react';
-import { AppImage } from '@/ui/shadcn/app-image';
+import { ImagePlus, Loader2, Upload } from 'lucide-react';
 import { useCallback, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
@@ -219,36 +218,6 @@ const AddElementButton: React.FC<{
   );
 };
 
-/** The tile face for an element: the still, or a labelled clip / audio card. */
-const ElementTile: React.FC<{ element: SequenceElement }> = ({ element }) => {
-  const length = formatElementDuration(element.durationSeconds);
-  if (element.kind === 'image') {
-    return element.imageUrl ? (
-      <AppImage
-        src={element.imageUrl}
-        alt={element.token}
-        width={160}
-        height={160}
-        className="h-full w-full object-contain transition-transform duration-500 group-hover:scale-105"
-      />
-    ) : (
-      <div className="flex h-full w-full flex-col items-center justify-center gap-2">
-        <ImagePlus className="size-8 text-muted-foreground/30" />
-        <p className="text-xs text-muted-foreground">No reference yet</p>
-      </div>
-    );
-  }
-  const Icon = element.kind === 'audio' ? AudioLines : Film;
-  return (
-    <div className="flex h-full w-full flex-col items-center justify-center gap-2">
-      <Icon className="size-8 text-muted-foreground/50" />
-      <p className="text-xs text-muted-foreground">
-        {`${element.kind === 'audio' ? 'Audio' : 'Clip'}${length ? ` · ${length}` : ''}`}
-      </p>
-    </div>
-  );
-};
-
 export const SceneElementsTab: React.FC<SceneElementsTabProps> = ({
   sequenceId,
   shotIds,
@@ -340,7 +309,12 @@ export const SceneElementsTab: React.FC<SceneElementsTabProps> = ({
             className="group relative block overflow-hidden rounded-lg bg-card"
           >
             <div className="relative aspect-square overflow-hidden bg-muted">
-              <ElementTile element={el} />
+              <ElementThumbnail
+                kind={el.kind}
+                url={el.imageUrl}
+                label={el.token}
+                durationSeconds={el.durationSeconds}
+              />
               <ElementSupportBadge
                 kind={el.kind}
                 durationSeconds={el.durationSeconds}
