@@ -29,6 +29,7 @@ import {
   useBillingBalance,
 } from '@/billing/ui/use-billing-balance';
 import { BILLING_GATE_KEY } from '@/billing/ui/use-billing-gate';
+import { openAddCreditsDialog } from '@/billing/ui/use-add-credits-dialog';
 import { useShowCosts } from '@/billing/ui/use-show-costs';
 import { useUser } from '@/platform/ui/use-user';
 import { SIGNUP_GRANT_MICROS, welcomeDialogMode } from '@/billing/constants';
@@ -326,6 +327,10 @@ export const WelcomeCreditsProvider: React.FC<{ children: ReactNode }> = ({
                 setRedirectingToStripe(true);
                 setupMutation.mutate();
               }}
+              onBuyCredits={() => {
+                handleOpenChange(false);
+                openAddCreditsDialog('welcome_credits');
+              }}
               onSkip={() => handleOpenChange(false)}
             />
           )}
@@ -343,6 +348,7 @@ function ClaimDialogContent({
   opening,
   claiming,
   onAddCard,
+  onBuyCredits,
   onSkip,
 }: {
   grantDisplay: string;
@@ -352,6 +358,7 @@ function ClaimDialogContent({
   opening: boolean;
   claiming: boolean;
   onAddCard: () => void;
+  onBuyCredits: () => void;
   onSkip: () => void;
 }) {
   const busy = opening || claiming;
@@ -365,6 +372,15 @@ function ClaimDialogContent({
       <div className="flex flex-col gap-4 px-6 py-5">
         <Button className="self-center" onClick={onAddCard} disabled={busy}>
           {claiming ? 'Unlocking…' : opening ? 'Opening…' : 'Add a card'}
+        </Button>
+
+        <Button
+          variant="link"
+          className="self-center text-muted-foreground"
+          onClick={onBuyCredits}
+          disabled={busy}
+        >
+          Can&apos;t add a card? Buy credits
         </Button>
 
         {setupError ? (
