@@ -410,6 +410,46 @@ export async function submitMotionJob(
     });
   }
 
+  // The image list is capped per endpoint and the still spends a slot, so
+  // references past the cap never reach the model. Their tokens degrade to
+  // plain descriptions, and one whose token was never in the prompt leaves no
+  // trace at all — no image, no description, no legend line. Kling O3 makes
+  // this reachable in ordinary use: 4 slots minus the still binds three
+  // sheets, so a scene casting four people quietly drops one. Warned rather
+  // than thrown for the same reason as above — the request is valid, the clip
+  // just comes back missing someone.
+  if (endpoint.references === 'endpoint') {
+    const budget =
+      endpoint.referenceConfig.maxImages - (options.imageUrl ? 1 : 0);
+    const attachable = (options.referenceImages ?? []).filter(
+      (ref) => ref.referenceImageUrl
+    ).length;
+    if (attachable > budget) {
+      logger.warn(
+        'Motion references exceed the endpoint image cap; the overflow is not attached',
+        {
+          modelKey,
+          endpointId: endpoint.endpointId,
+          attachable,
+          budget,
+          dropped: attachable - budget,
+        }
+      );
+      getPostHogClient()?.capture({
+        distinctId: 'system',
+        event: 'motion_references_over_cap',
+        properties: {
+          model: modelKey,
+          via: endpoint.via,
+          endpointId: endpoint.endpointId,
+          attachable,
+          budget,
+          dropped: attachable - budget,
+        },
+      });
+    }
+  }
+
   let jobId: string;
   let usedOwnKey: boolean;
   let stampedVia: MediaVia = endpoint.via;
