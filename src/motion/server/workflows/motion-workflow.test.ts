@@ -19,6 +19,7 @@ const mockSubmit = vi.fn();
 const mockPoll = vi.fn();
 const mockSoften = vi.fn();
 const mockDeductWorkflowCredits = vi.fn();
+const mockCalculateMotionMetadata = vi.fn(() => ({ cost: 0, duration: 5 }));
 const mockResolveMotionVia = vi.fn(
   async (): Promise<'fal' | 'google'> => 'fal'
 );
@@ -29,7 +30,7 @@ vi.doMock('@/motion/server/motion-generation', () => ({
   submitMotionJob: mockSubmit,
   pollMotionJob: mockPoll,
   canRenderReferenceOnly: async () => true,
-  calculateMotionMetadata: () => ({ cost: 0, duration: 5 }),
+  calculateMotionMetadata: mockCalculateMotionMetadata,
   motionCostFromUsage: () => ({
     cost: 0,
     unitsBilled: 0,
@@ -511,6 +512,23 @@ describe('MotionWorkflow onFailure observation', () => {
           hashAssetIdentity
         )
       )
+    );
+  });
+});
+
+describe('MotionWorkflow affordability estimate (#1570)', () => {
+  it('forwards the selected resolution into calculateMotionMetadata', async () => {
+    const { scopedDb } = makeScopedDb();
+
+    await makeWorkflow().runBody(
+      makeEvent({ resolution: '1080p' }),
+      makeStep(),
+      scopedDb
+    );
+
+    expect(mockCalculateMotionMetadata).toHaveBeenCalledWith(
+      expect.objectContaining({ resolution: '1080p' }),
+      expect.anything()
     );
   });
 });

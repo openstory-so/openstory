@@ -197,6 +197,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
             fps: input.fps,
             motionBucket: input.motionBucket,
             aspectRatio: input.aspectRatio,
+            resolution: input.resolution,
             generateAudio: input.generateAudio,
           },
           await getEffectiveFalPricing()
