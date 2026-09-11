@@ -264,8 +264,8 @@ export function createFrameVariantsMethods(db: Database) {
      * (#1108 §4.3 B), committing the row and its `image.uploaded` event in one
      * `db.batch()`. Selection is the caller's next step (`select`), so the
      * upload lands in history exactly like a finished generation and the
-     * repoint keeps the setImageFromVariantFn semantics (mirror + event +
-     * pending-promote clear + prompt pairing).
+     * repoint behaves like any history pick (mirror + event + pending-promote
+     * clear + prompt pairing).
      *
      * `inputHash` must be stamped from the CURRENT selected prompt + sheets
      * (same builder as the image workflow — see §8 "hash stamp consistency"),
@@ -999,8 +999,8 @@ export function createFrameVariantsMethods(db: Database) {
      * only, like the sibling above.
      *
      * Newest version, not newest failure: any later version (a render, an
-     * upload, a tile pick) ends the failed state, or an old failure would pin
-     * every later render to its model.
+     * upload, a tile pick — not a storyboard preview) ends the failed state,
+     * or an old failure would pin every later render to its model.
      */
     listLastFailedModelsBySequence: async (
       sequenceId: string
@@ -1018,6 +1018,8 @@ export function createFrameVariantsMethods(db: Database) {
           and(
             eq(frames.sequenceId, sequenceId),
             eq(frames.orderIndex, 0),
+            // A preview renders the scene text, not an attempt at the still.
+            ne(frameVariants.kind, 'preview'),
             isNull(frameVariants.discardedAt)
           )
         )
@@ -1099,6 +1101,7 @@ export function createFrameVariantsMethods(db: Database) {
         .where(
           and(
             eq(frameVariants.frameId, frameId),
+            ne(frameVariants.kind, 'preview'),
             isNull(frameVariants.discardedAt)
           )
         )
