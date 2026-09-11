@@ -52,6 +52,11 @@ export const characters = snakeCase.table(
     physicalDescription: text(),
     standardClothing: text(),
     distinguishingFeatures: text(),
+    // Performance (#1561): who they are and how the body moves. Only the
+    // motion prompt reads them — a still does not walk. Nullable only because
+    // rows that predate the fields are genuinely unknown.
+    personality: text(),
+    movement: text(),
     consistencyTag: text(), // e.g. "char_001: Jack-denim-jacket"
     // First appearance in script
     firstMentionSceneId: text(),

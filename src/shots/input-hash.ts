@@ -554,6 +554,21 @@ function projectCharacterForPromptV4(c: CharacterBibleEntry) {
   return { name: trim(c.name), ...projectCharacterForPrompt(c) };
 }
 
+/**
+ * Performance fields (#1561) drive the MOTION prompt only — a still does not
+ * walk, so the visual prompt and the sheet never hash them. Each joins the
+ * body only when set, the same shape-stable trick as `referenceOnly`: no
+ * stored digest moves for a character that has neither.
+ */
+function projectCharacterPerformance(c: CharacterBibleEntry) {
+  const personality = trim(c.personality);
+  const movement = trim(c.movement);
+  return {
+    ...(personality ? { personality } : {}),
+    ...(movement ? { movement } : {}),
+  };
+}
+
 function projectLocationForPrompt(l: LocationBibleEntry) {
   return {
     type: l.type,
@@ -642,12 +657,19 @@ function motionPromptHashBody(
 ): unknown {
   const flags = promptHashFlags(kind);
   const bibles = promptBibleProjection(input, flags.named);
+  const character = flags.named
+    ? projectCharacterForPromptV4
+    : projectCharacterForPrompt;
   return {
     artifact: 'shot:motion-prompt',
     hashVersion: flags.hashVersion,
     scene: sceneInputContext(input.scene, kind),
     styleConfig: styleConfigHashBody(input.styleConfig),
     ...bibles,
+    characterBible: sortedBibles(input).characterBible.map((c) => ({
+      ...character(c),
+      ...projectCharacterPerformance(c),
+    })),
     aspectRatio: trim(input.aspectRatio),
     analysisModel: trim(input.analysisModel),
     startingFrameImageUrl: trim(input.startingFrameImageUrl),

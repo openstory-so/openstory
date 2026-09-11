@@ -148,6 +148,9 @@ type TalentAppearanceData = {
   talentName: string;
   /** Talent description/notes */
   talentDescription?: string;
+  /** Talent performance (#1561); wins over the script's when set. */
+  personality?: string;
+  movement?: string;
 };
 
 /**
@@ -161,6 +164,8 @@ type CastingAttributes = {
   physicalDescription: string;
   standardClothing: string;
   distinguishingFeatures: string;
+  personality: string;
+  movement: string;
   consistencyTag: string;
 };
 
@@ -205,6 +210,9 @@ export const buildCastingAttributes = (
     // Costume/styling: always from the character role
     standardClothing: scriptEntry.standardClothing,
     distinguishingFeatures: scriptEntry.distinguishingFeatures,
+    // Performance: the talent's own where the library has it, else the role's
+    personality: talent.personality || scriptEntry.personality,
+    movement: talent.movement || scriptEntry.movement,
     // Regenerate tag from talent identity
     consistencyTag: `${scriptEntry.characterId}_${slugify(talent.talentName)}`,
   };
@@ -230,6 +238,8 @@ export const buildCastCharacterBible = (
     characterId: string;
     talentName: string;
     sheetMetadata?: CharacterBibleEntry;
+    personality?: string;
+    movement?: string;
   }[]
 ): CharacterBibleEntry[] => {
   const byCharacterId = new Map(talentMatches.map((m) => [m.characterId, m]));
@@ -239,6 +249,8 @@ export const buildCastCharacterBible = (
     const cast = buildCastingAttributes(character, {
       sheetMetadata: match.sheetMetadata,
       talentName: match.talentName,
+      personality: match.personality,
+      movement: match.movement,
     });
     return { ...character, ...cast };
   });

@@ -17,6 +17,8 @@ const scriptEntry: CharacterBibleEntry = {
   physicalDescription: 'Tall, blonde hair, blue eyes',
   standardClothing: 'Dark trench coat, badge on belt',
   distinguishingFeatures: 'Small scar on left cheek',
+  personality: '',
+  movement: '',
   consistencyTag: 'detective_sarah_blonde_30s',
 };
 
@@ -29,6 +31,8 @@ const talentMetadata: CharacterBibleEntry = {
   physicalDescription: 'Dark hair, sideburns, athletic build',
   standardClothing: 'White jumpsuit',
   distinguishingFeatures: 'Signature sideburns',
+  personality: '',
+  movement: '',
   consistencyTag: 'elvis_presley',
 };
 
@@ -45,6 +49,29 @@ describe('buildCastingAttributes', () => {
     expect(result.physicalDescription).toBe(
       'Dark hair, sideburns, athletic build'
     );
+  });
+
+  test("performance: the talent's own wins, else the role's (#1561)", () => {
+    const role = {
+      ...scriptEntry,
+      personality: 'anxious',
+      movement: 'restless hands',
+    };
+    const fromTalent = buildCastingAttributes(role, {
+      sheetMetadata: talentMetadata,
+      talentName: 'Elvis Presley',
+      personality: 'swaggering',
+      movement: 'hip swivel',
+    });
+    expect(fromTalent.personality).toBe('swaggering');
+    expect(fromTalent.movement).toBe('hip swivel');
+
+    const fromRole = buildCastingAttributes(role, {
+      sheetMetadata: talentMetadata,
+      talentName: 'Elvis Presley',
+    });
+    expect(fromRole.personality).toBe('anxious');
+    expect(fromRole.movement).toBe('restless hands');
   });
 
   test('keeps costume and distinguishing features from script', () => {
@@ -137,6 +164,8 @@ describe('buildCastCharacterBible', () => {
     physicalDescription: 'Short, dark hair',
     standardClothing: 'Grey suit',
     distinguishingFeatures: 'Glasses',
+    personality: '',
+    movement: '',
     consistencyTag: 'bob_grey_suit',
   };
 

@@ -69,6 +69,8 @@ const characterBibleFieldsSchema = z.object({
   physicalDescription: bibleField.optional(),
   standardClothing: bibleField.optional(),
   distinguishingFeatures: bibleField.optional(),
+  personality: bibleField.optional(),
+  movement: bibleField.optional(),
   consistencyTag: bibleField.optional(),
 });
 
@@ -366,6 +368,8 @@ export const recastCharacterFn = createServerFn({ method: 'POST' })
         physicalDescription: character.physicalDescription ?? '',
         standardClothing: character.standardClothing ?? '',
         distinguishingFeatures: character.distinguishingFeatures ?? '',
+        personality: character.personality ?? '',
+        movement: character.movement ?? '',
         consistencyTag: character.consistencyTag ?? '',
       },
       {
@@ -373,6 +377,8 @@ export const recastCharacterFn = createServerFn({ method: 'POST' })
         sheetMetadata: defaultSheet?.metadata ?? undefined,
         talentName: talentWithSheets.name,
         talentDescription: talentWithSheets.description ?? undefined,
+        personality: talentWithSheets.personality ?? undefined,
+        movement: talentWithSheets.movement ?? undefined,
       }
     );
 

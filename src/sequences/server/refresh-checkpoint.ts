@@ -55,6 +55,8 @@ export async function refreshCheckpointFromCast(
         sheetImageUrl: sheet.imageUrl,
         sheetMetadata: sheet.metadata ?? undefined,
         talentDescription: talent.description ?? undefined,
+        personality: talent.personality ?? undefined,
+        movement: talent.movement ?? undefined,
       });
     }
     next.talentMatches = talentMatches;

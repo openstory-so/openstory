@@ -21,6 +21,8 @@ export function charactersToBible(
     physicalDescription: c.physicalDescription ?? '',
     standardClothing: c.standardClothing ?? '',
     distinguishingFeatures: c.distinguishingFeatures ?? '',
+    personality: c.personality ?? '',
+    movement: c.movement ?? '',
     consistencyTag: c.consistencyTag ?? '',
   }));
 }

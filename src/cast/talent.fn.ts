@@ -470,6 +470,8 @@ export const addCharacterToLibraryFn = createServerFn({ method: 'POST' })
     const newTalent = await context.scopedDb.talent.create({
       name: character.name,
       description: character.physicalDescription ?? undefined,
+      personality: character.personality ?? undefined,
+      movement: character.movement ?? undefined,
       imageUrl: character.sheetImageUrl ?? undefined,
       imagePath: character.sheetImagePath ?? undefined,
       isFavorite: false,
@@ -492,6 +494,8 @@ export const addCharacterToLibraryFn = createServerFn({ method: 'POST' })
           physicalDescription: character.physicalDescription ?? '',
           standardClothing: character.standardClothing ?? '',
           distinguishingFeatures: character.distinguishingFeatures ?? '',
+          personality: character.personality ?? '',
+          movement: character.movement ?? '',
           consistencyTag: character.consistencyTag ?? '',
         },
         isDefault: true,

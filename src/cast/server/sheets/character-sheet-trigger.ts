@@ -23,6 +23,8 @@ export function toCharacterMetadata(
     physicalDescription: character.physicalDescription ?? '',
     standardClothing: character.standardClothing ?? '',
     distinguishingFeatures: character.distinguishingFeatures ?? '',
+    personality: character.personality ?? '',
+    movement: character.movement ?? '',
     consistencyTag: character.consistencyTag ?? '',
   };
 }

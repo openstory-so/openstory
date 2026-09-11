@@ -38,6 +38,8 @@ const characterBible = [
     physicalDescription: '',
     standardClothing: '',
     distinguishingFeatures: '',
+    personality: '',
+    movement: '',
     consistencyTag: 'jack_denim_weathered',
   },
 ];

@@ -80,6 +80,8 @@ describe('createCastRecords', () => {
           physicalDescription: 'tall',
           standardClothing: 'coat',
           distinguishingFeatures: '',
+          personality: '',
+          movement: '',
           consistencyTag: 'sarah',
         },
       ],

@@ -91,6 +91,8 @@ type CharacterBibleInput = {
   physicalDescription?: string;
   standardClothing?: string;
   distinguishingFeatures?: string;
+  personality?: string;
+  movement?: string;
 };
 
 /** Manual character create (#1108 Phase 2) — sheet-less until recast. */

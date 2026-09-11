@@ -90,6 +90,9 @@ export function sheetMetadataFromAnalysis(
       analysis.physicalDescription.trim() || analysis.description,
     standardClothing: analysis.standardClothing,
     distinguishingFeatures: analysis.distinguishingFeatures,
+    // A photo carries no performance; the user fills these in on the card.
+    personality: '',
+    movement: '',
     consistencyTag: slug,
   };
 }

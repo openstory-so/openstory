@@ -106,6 +106,8 @@ For each character determine:
 - Physical: height, build, hair color/style, eye color, skin tone, age markers
 - Clothing: complete outfit that defines the character
 - Distinguishing features: scars, tattoos, jewelry, accessories
+- Personality: temperament, how they react under pressure (not appearance)
+- Movement: gait, posture, habitual gestures, a limp (not appearance)
 - Consistency tag: short unique reference (e.g., "Jack-denim-weathered")
 
 ## First Mention Tracking
@@ -127,6 +129,8 @@ For each character determine:
     "physicalDescription": "Complete details: 6'0, athletic build, short dark brown hair, weathered tan skin, hazel eyes with crow's feet",
     "standardClothing": "Worn denim jacket over faded black t-shirt, dark jeans, brown leather boots",
     "distinguishingFeatures": "Small scar above left eyebrow, silver watch",
+    "personality": "Guarded, dry humour, slow to anger and slower to forgive",
+    "movement": "Heavy deliberate stride, favours his left knee, hands stay in jacket pockets",
     "consistencyTag": "Jack-denim-weathered"
   }]
 }`,
@@ -601,7 +605,7 @@ Always populate the \`audio\` field:
 </SCENE_AFTER>
 
 <CHARACTER_BIBLE>
-(Use only for gait/movement style/mannerisms - ignore physical appearance)
+(Use "personality" for performance, expressions, reactions and delivery; "movement" for gait, posture and blocking. Never describe physical appearance — the starting frame carries it.)
 {{characterBible}}
 </CHARACTER_BIBLE>
 
@@ -713,7 +717,7 @@ You will be called via a structured output tool. Follow the provided schema exac
 </SCENE_AFTER>
 
 <CHARACTER_BIBLE>
-(Use for names, mannerisms and gait, and for wardrobe ONLY where this scene changes it. Never describe physical appearance — the reference sheet carries identity.)
+(Use for names; "personality" for performance, expressions, reactions and delivery; "movement" for gait, posture and blocking; wardrobe ONLY where this scene changes it. Never describe physical appearance — the reference sheet carries identity.)
 {{characterBible}}
 </CHARACTER_BIBLE>
 
@@ -927,6 +931,9 @@ Build a complete character bible. For each character:
 - Physical: height, build, hair color/style, eye color, skin tone, age markers
 - Clothing: complete outfit that defines the character
 - Distinguishing features: scars, tattoos, jewelry, accessories
+- personality — who they are, NOT what they look like: temperament, archetype, how they react under pressure, comic register. Drives expressions, reactions, pacing and delivery.
+- movement — how the body moves: gait, posture, energy, habitual gestures, a limp, a tremor. Drives blocking and action.
+  Extract both from the script, and infer where the script only implies them ("fidgets with his tie" → personality: anxious, eager to please; movement: restless hands, shoulders tight). Never repeat appearance in either field.
 - consistencyTag — HARD FORMAT CONTRACT: the snake_case slug of the character's name AS WRITTEN IN THE SCRIPT ("GIRL ONE" → "girl_one"). Optional descriptive context may follow the name slug ("jack_denim_weathered"), but the tag MUST start with the name slug. An independent system joins scene tags against these.
 
 Track first mentions:
@@ -1112,7 +1119,7 @@ No text, signs or subtitles. No holograms or floating UI. One coherent frame. Fu
 </SCENE_AFTER>
 
 <CHARACTER_BIBLE>
-(Use ONLY for character names and costume/wardrobe. Do NOT describe physical appearance — the reference image handles identity.)
+(Use ONLY for character names and costume/wardrobe. Ignore "personality" and "movement" — a still does not walk. Do NOT describe physical appearance — the reference image handles identity.)
 {{characterBible}}
 </CHARACTER_BIBLE>
 

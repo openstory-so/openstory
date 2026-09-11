@@ -40,6 +40,10 @@ export const talent = snakeCase.table(
       .references(() => teams.id, { onDelete: 'cascade' }),
     name: text({ length: 255 }).notNull(),
     description: text(),
+    // Performance (#1561), copied to the character at cast and back at
+    // save-to-library. Identity-level like `description`, not per sheet.
+    personality: text(),
+    movement: text(),
     imageUrl: text(), // Talent avatar/headshot
     imagePath: text(), // R2 storage path for avatar
     isFavorite: integer({ mode: 'boolean' }).default(false),

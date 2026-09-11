@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import { toast } from 'sonner';
+import { BibleField } from '@/cast/ui/bible-field';
 import { SheetComparisonDialog } from '@/cast/ui/sheets/sheet-comparison-dialog';
 import { SheetStalenessBanners } from '@/cast/ui/sheets/sheet-staleness-banners';
 import { Button } from '@/ui/shadcn/button';
@@ -162,6 +163,10 @@ export const EditTalentDialog: React.FC<EditTalentDialogProps> = ({
     const name = typeof nameValue === 'string' ? nameValue : '';
     const description =
       typeof descriptionValue === 'string' ? descriptionValue : '';
+    const text = (key: string) => {
+      const value = formData.get(key);
+      return typeof value === 'string' ? value.trim() || null : null;
+    };
 
     if (!name.trim()) return;
 
@@ -170,6 +175,8 @@ export const EditTalentDialog: React.FC<EditTalentDialogProps> = ({
         talentId: talent.id,
         name: name.trim(),
         description: description.trim() || undefined,
+        personality: text('personality'),
+        movement: text('movement'),
       },
       {
         onSuccess: () => setOpen(false),
@@ -284,6 +291,21 @@ export const EditTalentDialog: React.FC<EditTalentDialogProps> = ({
                 rows={3}
               />
             </div>
+
+            <BibleField
+              idPrefix="talent"
+              label="Personality"
+              name="personality"
+              defaultValue={talent.personality}
+              textarea
+            />
+            <BibleField
+              idPrefix="talent"
+              label="Body movement"
+              name="movement"
+              defaultValue={talent.movement}
+              textarea
+            />
 
             <div className="flex flex-col gap-2">
               <Label>Reference Media</Label>
