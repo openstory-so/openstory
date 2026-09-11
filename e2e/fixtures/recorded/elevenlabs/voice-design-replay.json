@@ -1,0 +1,9 @@
+{
+  "match": {
+    "method": "POST",
+    "pathPrefix": "/v1/text-to-voice/"
+  },
+  "status": 200,
+  "contentType": "application/json",
+  "bodyBase64": "eyJwcmV2aWV3cyI6W3siYXVkaW9fYmFzZV82NCI6IlNVUXpabUZyWlMxbE1tVXRkSFJ6IiwiZ2VuZXJhdGVkX3ZvaWNlX2lkIjoiZ2VuX2UyZV9wcmV2aWV3XzEiLCJtZWRpYV90eXBlIjoiYXVkaW8vbXBlZyIsImR1cmF0aW9uX3NlY3MiOjF9XSwidGV4dCI6IkhlbGxvIGZyb20gdGhlIGUyZSBWb2ljZSBEZXNpZ24gZml4dHVyZS4ifQ=="
+}

@@ -1,0 +1,9 @@
+{
+  "match": {
+    "method": "POST",
+    "pathPrefix": "/v1/text-to-speech/"
+  },
+  "status": 200,
+  "contentType": "audio/mpeg",
+  "bodyBase64": "SUQzZmFrZS1lMmUtdHRz"
+}

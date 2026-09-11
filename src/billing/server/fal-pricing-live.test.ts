@@ -131,6 +131,21 @@ describe('getEffectiveFalPricing', () => {
     });
   });
 
+  it('keeps the static ElevenLabs rate card when the fal table is empty', async () => {
+    const { getEffectiveFalPricing } = await loadWithRows([]);
+    const map = await getEffectiveFalPricing();
+    expect(map['elevenlabs-tts']).toEqual({
+      unitPrice: 100_000,
+      unit: '1000 characters',
+      typicalUnitsPerCall: 1,
+    });
+    expect(map['elevenlabs-voice-design']).toEqual({
+      unitPrice: 300_000,
+      unit: 'generations',
+      typicalUnitsPerCall: 1,
+    });
+  });
+
   it('reports when the newest row was fetched', async () => {
     const older = new Date('2026-07-01T00:00:00Z');
     const newer = new Date('2026-07-02T00:00:00Z');

@@ -12,6 +12,10 @@
  *   against recorded fixtures under `fixtures/recorded/fal/`. No `mount()`
  *   needed — the library handles it.
  *
+ * Native ElevenLabs (TTS + Voice Design) is not OpenAI-shaped, so it runs
+ * on a dedicated HTTP mock at :4012 (`elevenlabs-server.ts`) with fixtures
+ * under `fixtures/recorded/elevenlabs/`.
+ *
  * Browser-side mocks (R2, QStash) remain in handlers.ts via Playwright routes.
  */
 
@@ -37,6 +41,7 @@ import {
 } from 'node:fs';
 import { resolve } from 'node:path';
 import { E2E_RECORDING } from '../recording-mode';
+import { startElevenLabsMock, stopElevenLabsMock } from './elevenlabs-server';
 
 const AIMOCK_PORT = 4010;
 const FIXTURE_DIR = resolve(
@@ -549,6 +554,7 @@ export async function startAimockServer(): Promise<string> {
   const xaiUrl = await xaiMockServer.start();
   if (!E2E_RECORDING) abortPlaywrightOnStrictMiss(xaiMockServer);
   console.log(`[e2e] aimock xAI server started at ${xaiUrl}`);
+  await startElevenLabsMock();
   return url;
 }
 
@@ -599,6 +605,7 @@ function abortPlaywrightOnStrictMiss(server: LLMock): void {
 }
 
 export async function stopAimockServer(): Promise<void> {
+  await stopElevenLabsMock();
   if (xaiMockServer) {
     try {
       await xaiMockServer.stop();

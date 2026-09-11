@@ -322,6 +322,17 @@ describe('recordFalUsage', () => {
     expect(recordUsage).not.toHaveBeenCalled();
   });
 
+  it('does not file ElevenLabs units as fal observations', async () => {
+    const { scopedDb, recordUsage } = makeScopedDb();
+
+    await recordFalUsageImpl(scopedDb, {
+      endpointId: 'elevenlabs-tts',
+      unitsBilled: 0.25,
+    });
+
+    expect(recordUsage).not.toHaveBeenCalled();
+  });
+
   it('skips samples with no unitsBilled rather than seeding the median with zeros', async () => {
     const { scopedDb, recordUsage } = makeScopedDb();
 

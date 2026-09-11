@@ -123,6 +123,15 @@ export default defineConfig({
       // Replay needs a key so Grok routes natively at all; record runs use
       // the real XAI_API_KEY from .env.local (the mount forwards it upstream).
       ...(process.env.E2E_RECORD === '1' ? [] : ['XAI_API_KEY=test-mock-key']),
+      // Native ElevenLabs (TTS + Voice Design) is not OpenAI-shaped, so it
+      // gets its own HTTP mock on :4012 — see elevenlabs-server.ts. The SDK
+      // default base is https://api.elevenlabs.io (no /v1 suffix; paths
+      // include it). Replay needs a key so the via is claimed at all;
+      // record runs use the real ELEVENLABS_API_KEY from .env.local.
+      'ELEVENLABS_BASE_URL=http://localhost:4012',
+      ...(process.env.E2E_RECORD === '1'
+        ? []
+        : ['ELEVENLABS_API_KEY=test-mock-key']),
       'VITE_DISABLE_DEVTOOLS=true',
     ].join(' ');
 
