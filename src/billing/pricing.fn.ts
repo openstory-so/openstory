@@ -1,5 +1,4 @@
 import { getEnv } from '#env';
-import { authWithTeamMiddleware } from '@/platform/middleware.fn';
 import { isBytePlusConfigured } from '@/models/server/byteplus-config';
 import {
   getEffectiveFalPricing,
@@ -112,11 +111,10 @@ const estimateDraftGenerationInputSchema = z.object({
 });
 
 /**
- * Live Generate-dialog estimate. Catalog rates only, no secrets, but every
- * debounced composer edit lands here, so it is gated like the create fn.
+ * Live Generate-dialog estimate. Catalog rates only, no secrets — public so
+ * the anonymous composer can show ~$x.xx. Create stays authed.
  */
 export const estimateDraftGenerationFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
   .validator(zodValidator(estimateDraftGenerationInputSchema))
   .handler(async ({ data }) => {
     if (!data.script.trim()) return { estimateMicros: null };
