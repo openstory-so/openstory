@@ -63,6 +63,8 @@ type Candidate = {
   id: string;
   title?: string;
   version: string | null;
+  /** fal's own category for the endpoint (`text-to-image`, `image-to-video`, …). */
+  category?: string;
 };
 
 type ModelReport = {
@@ -279,6 +281,7 @@ async function falCatalog(
     id: i.id,
     title: i.title,
     version: extractVersion(i.id),
+    category: i.category,
   }));
 }
 
@@ -306,6 +309,11 @@ async function checkFalModel(
       if (compareVersions(c.version, currentVersion) <= 0) return false;
       if (ADOPTED_IDS.has(c.id)) return false; // already used under another key
       if (VARIANT_DENYLIST.some((token) => c.id.includes(token))) return false;
+      // fal's search ignores the `category` query param and returns every
+      // modality (a "flux" text-to-image search lists FLUX 3 *video*), so
+      // compare fal's own per-item category — this is what keeps a bare id
+      // with no modality leaf (`fal-ai/flux-2`) from adopting a video model.
+      if (c.category && c.category !== category) return false;
       // Apples-to-apples: a same-role successor, not a cross-modality sibling.
       if (currentLeaf && modalityLeaf(c.id) !== currentLeaf) return false;
       return true;
@@ -477,7 +485,7 @@ async function main() {
       checkFalModel('fal-video', key, m.id, 'image-to-video')
     ),
     ...Object.entries(AUDIO_MODELS).map(([key, m]) =>
-      checkFalModel('fal-audio', key, m.id, 'text-to-music')
+      checkFalModel('fal-audio', key, m.id, 'text-to-audio')
     ),
   ];
 
