@@ -53,6 +53,9 @@ export const buildLocationReferenceImages = (
       referenceImageUrl: l.referenceImageUrl ?? '',
       description: buildLocationDescription(l),
       role: 'location' as const,
+      // The bible id prompts name the set by (`metropolitan_sidewalk_corner`),
+      // so it gets swapped for its `@ImageN` tag like a character's name.
+      token: l.locationId,
     }));
 };
 

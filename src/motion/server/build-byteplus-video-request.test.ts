@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { buildLocationReferenceImages } from '@/cast/location-prompt';
 import { buildBytePlusVideoRequest } from './build-byteplus-video-request';
 
 const base = {
@@ -162,6 +163,35 @@ describe('buildBytePlusVideoRequest — reference-only', () => {
         'seedance_v2_5'
       ).size
     ).toBe('9:16_720p');
+  });
+
+  it('binds the location by its bible id, like a character by name', () => {
+    const request = buildBytePlusVideoRequest(
+      {
+        ...referenceOnlyBase,
+        prompt: 'SCARLETT waits on metropolitan_sidewalk_corner',
+        referenceImages: [
+          ...buildLocationReferenceImages([
+            {
+              id: 'loc-1',
+              locationId: 'metropolitan_sidewalk_corner',
+              name: 'EXT. METROPOLITAN SIDEWALK CORNER - DAY',
+              referenceImageUrl: 'https://cdn.example.com/corner.png',
+              referenceStatus: 'completed',
+              referenceInputHash: 'hash',
+              selectedReferenceVersionId: null,
+              description: 'A busy corner',
+              consistencyTag: 'metropolitan_sidewalk_corner',
+            },
+          ]),
+          ...references,
+        ],
+      },
+      'seedance_v2_5'
+    );
+    const text = request.prompt.find((part) => part.type === 'text');
+
+    expect(text?.content).toContain('@Image2 waits on @Image1');
   });
 
   it('sends every image as a reference role and no start_frame', () => {
