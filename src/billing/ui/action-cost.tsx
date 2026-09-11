@@ -6,6 +6,9 @@
  * - there is no estimate (null/undefined) — never invent a number here
  * - estimate is still loading and no value yet
  *
+ * Logged out: the amount slot is the glyph `~$x.xx`, not a calculated
+ * figure. The estimate fn is authed; we do not call it (#1575).
+ *
  * Callers should pass an honest single-action estimate (`estimateImageCost` /
  * video / audio → null when unknown). Storyboard totals from
  * `estimateStoryboardCost` may still embed gate floors for unpriced
@@ -24,6 +27,7 @@ import {
   microsToUsd,
   type Microdollars,
 } from '@/billing/money';
+import { useAuthSession } from '@/platform/ui/auth/session-query';
 import { cn } from '@/ui/utils';
 import { AlertTriangle } from 'lucide-react';
 import type { ReactNode } from 'react';
@@ -49,6 +53,7 @@ export function ActionCost({
   prefix,
 }: ActionCostProps) {
   const { showCosts } = useShowCosts();
+  const { data: session } = useAuthSession();
   const { balance } = useBillingBalance();
   const { data: gate } = useBillingGateQuery();
 
@@ -65,6 +70,21 @@ export function ActionCost({
         {prefix}
       </span>
     ) : null;
+  }
+  if (!session) {
+    return (
+      <span
+        className={cn(
+          justify,
+          'min-h-4 tabular-nums text-muted-foreground',
+          className
+        )}
+        aria-label="Estimated cost shown after sign in"
+      >
+        {prefix}
+        <span>~$x.xx</span>
+      </span>
+    );
   }
   // The estimate arrives client-side after the pricing query, so an empty
   // line is reserved until then — otherwise every button it sits under jumps.
