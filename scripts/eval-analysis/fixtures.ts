@@ -68,6 +68,8 @@ export const TALENT_CASE = {
       standardClothing: 'Fitted black turtleneck, dark jeans, scuffed boots.',
       distinguishingFeatures:
         'Signature glossy coral lipstick, gold hoop earrings.',
+      personality: 'Sharp, self-possessed, performs ease for the camera.',
+      movement: 'Quick precise hands, chin up, never hurries her feet.',
       consistencyTag: 'scarlett_vega',
     },
     {
@@ -81,6 +83,8 @@ export const TALENT_CASE = {
       standardClothing: 'Navy chore coat over a faded tee, work jeans.',
       distinguishingFeatures:
         'Scar through the left eyebrow, scuffed silver watch.',
+      personality: 'Guarded, dry, slow to trust.',
+      movement: 'Heavy deliberate stride, favours the left knee.',
       consistencyTag: 'jack_cole',
     },
   ] satisfies CharacterBibleEntry[],

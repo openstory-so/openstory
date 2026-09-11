@@ -9,10 +9,9 @@ import type {
   SequenceLocationWithReference,
 } from '@/platform/server/db/schema';
 
-export function charactersToBible(
-  rows: readonly CharacterWithSheet[]
-): CharacterBibleEntry[] {
-  return rows.map((c) => ({
+/** Nullable columns read as `''` — a bible entry's fields are all required. */
+export function characterToBible(c: CharacterWithSheet): CharacterBibleEntry {
+  return {
     characterId: c.characterId,
     name: c.name,
     age: c.age ?? '',
@@ -21,8 +20,16 @@ export function charactersToBible(
     physicalDescription: c.physicalDescription ?? '',
     standardClothing: c.standardClothing ?? '',
     distinguishingFeatures: c.distinguishingFeatures ?? '',
+    personality: c.personality ?? '',
+    movement: c.movement ?? '',
     consistencyTag: c.consistencyTag ?? '',
-  }));
+  };
+}
+
+export function charactersToBible(
+  rows: readonly CharacterWithSheet[]
+): CharacterBibleEntry[] {
+  return rows.map(characterToBible);
 }
 
 export function sequenceLocationsToBible(

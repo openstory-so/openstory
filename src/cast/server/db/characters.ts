@@ -44,6 +44,8 @@ export type CharacterBibleUpdate = Partial<
     | 'physicalDescription'
     | 'standardClothing'
     | 'distinguishingFeatures'
+    | 'personality'
+    | 'movement'
     | 'consistencyTag'
   >
 >;
@@ -207,6 +209,8 @@ export function createCharactersMethods(db: Database) {
             physicalDescription: data.physicalDescription,
             standardClothing: data.standardClothing,
             distinguishingFeatures: data.distinguishingFeatures,
+            personality: data.personality,
+            movement: data.movement,
             consistencyTag: data.consistencyTag,
             // Sheet OUTPUT is not re-written here (#1419). A re-analysis used
             // to blank `sheetImageUrl` while leaving the version rows intact,
