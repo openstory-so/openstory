@@ -8,6 +8,16 @@ import { PromptHistorySheet } from '@/shots/ui/prompts/prompt-history-sheet';
 import { DivergentAlternateBanner } from '@/shots/ui/staleness/divergent-alternate-banner';
 import { StalenessIndicator } from '@/shots/ui/staleness/staleness-indicator';
 import { Alert, AlertDescription } from '@/ui/shadcn/alert';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/ui/shadcn/alert-dialog';
 import { Button } from '@/ui/shadcn/button';
 import { Checkbox } from '@/ui/shadcn/checkbox';
 import { setShotUseStartFrameFn } from '@/shots/shots.fn';
@@ -363,6 +373,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     setEditPrompts((s) => ({ ...s, motionPrompt: v }));
   // SFX/dialogue toggle for audio-capable models (kling v3, veo3, etc.)
   const [generateAudio, setGenerateAudio] = useState(true);
+  const [confirmSilentOpen, setConfirmSilentOpen] = useState(false);
 
   // Script tab edit state — `undefined` means "no draft" (textarea mirrors the
   // saved value); a string means "user has typed". We reset to `undefined` when
@@ -1143,6 +1154,13 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
   const assembledPrompt = promptPreview?.assembledMotionPrompt ?? null;
   const imageRequestPreview = promptPreview?.image ?? null;
   const motionRequestPreview = promptPreview?.motion ?? null;
+  // A bound voice line with SFX & dialogue off renders a clip with no audio
+  // track at all — the line is sent and never heard. Asked, not refused: the
+  // toggle is the user's call.
+  const silencedVoiceLines =
+    videoModelSupportsAudio(effectiveMotionModel) && !generateAudio
+      ? (motionRequestPreview?.audio ?? []).map((track) => track.label)
+      : [];
 
   // Transparent pricing under Generate Image / Generate Motion (#1140).
   const { pricing: falPricing } = useFalPricing();
@@ -2181,6 +2199,10 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
                     showFalGate();
                     return;
                   }
+                  if (silencedVoiceLines.length > 0) {
+                    setConfirmSilentOpen(true);
+                    return;
+                  }
                   void handleRegenerateMotion();
                 }}
                 disabled={
@@ -2204,6 +2226,29 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
               <ActionCost estimate={motionCostEstimate} />
             </div>
           )}
+
+          <AlertDialog
+            open={confirmSilentOpen}
+            onOpenChange={setConfirmSilentOpen}
+          >
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Generate without audio?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  SFX &amp; dialogue is off, so {silencedVoiceLines.join(', ')}{' '}
+                  won&apos;t be heard. The clip will be silent.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() => void handleRegenerateMotion()}
+                >
+                  Generate silent
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
 
           {/* Cancel the in-flight render (#1108 Phase 4). Needs the
               generating version's id — the projected variant row carries it. */}

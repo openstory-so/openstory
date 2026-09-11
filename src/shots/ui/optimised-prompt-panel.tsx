@@ -132,12 +132,10 @@ export const OptimisedPromptPanel: React.FC<{
               {preview.endpointId}
             </span>
           )}
-          {preview.images && preview.images.length > 0 && (
-            <BoundImageStrip images={preview.images} />
-          )}
           {/* Clips and audio ride the request too (#1559) — listed under the
               tag the prompt binds them by, so the preview is the request. */}
           <BoundMediaList
+            images={preview.images ?? []}
             clips={preview.videos ?? []}
             audio={preview.audio ?? []}
           />
@@ -167,12 +165,14 @@ export const OptimisedPromptPanel: React.FC<{
   );
 };
 
-const BoundImageStrip: React.FC<{
-  images: BoundPromptImage[];
-}> = ({ images }) => {
-  const [copiedLabel, setCopiedLabel] = useState<string | null>(null);
+/**
+ * Copy a bound image as PNG bytes. Clips and audio get no button: browsers
+ * only put PNG and text on the clipboard, so there is nothing to paste.
+ */
+const CopyImageButton: React.FC<{ image: BoundPromptImage }> = ({ image }) => {
+  const [copied, setCopied] = useState(false);
 
-  const handleCopyImage = async (image: BoundPromptImage) => {
+  const handleCopy = async () => {
     if (!(await copyImageToClipboard(image.url))) {
       toast.error('Failed to copy image', {
         description:
@@ -180,70 +180,59 @@ const BoundImageStrip: React.FC<{
       });
       return;
     }
-    setCopiedLabel(image.label);
-    window.setTimeout(() => setCopiedLabel(null), 2000);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 2000);
   };
 
   return (
-    <ul
-      className="flex gap-2 overflow-x-auto"
-      aria-label="Bound reference images"
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon"
+      className="absolute top-0.5 right-0.5 h-6 w-6 bg-background/80"
+      onClick={() => void handleCopy()}
+      aria-label={
+        copied ? `Copied ${image.label}` : `Copy ${image.label} image`
+      }
     >
-      {images.map((image) => {
-        const copied = copiedLabel === image.label;
-        return (
-          <li key={`${image.label}-${image.url}`} className="shrink-0">
-            <figure className="flex flex-col items-center gap-1">
-              <div className="relative size-16 overflow-hidden rounded-sm border bg-muted">
-                <AppImage
-                  src={image.url}
-                  alt=""
-                  width={64}
-                  height={64}
-                  className="size-16 object-cover"
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="absolute top-0.5 right-0.5 h-6 w-6 bg-background/80"
-                  onClick={() => void handleCopyImage(image)}
-                  aria-label={
-                    copied
-                      ? `Copied ${image.label}`
-                      : `Copy ${image.label} image`
-                  }
-                >
-                  {copied ? (
-                    <span aria-hidden className="text-xs">
-                      ✓
-                    </span>
-                  ) : (
-                    <CopyIcon className="h-3.5 w-3.5" />
-                  )}
-                </Button>
-              </div>
-              <figcaption className="font-mono text-xs text-muted-foreground">
-                {image.label}
-              </figcaption>
-            </figure>
-          </li>
-        );
-      })}
-    </ul>
+      {copied ? (
+        <span aria-hidden className="text-xs">
+          ✓
+        </span>
+      ) : (
+        <CopyIcon className="h-3.5 w-3.5" />
+      )}
+    </Button>
   );
 };
 
 const BoundMediaList: React.FC<{
+  images: BoundPromptImage[];
   clips: BoundPromptImage[];
   audio: BoundPromptImage[];
-}> = ({ clips, audio }) => {
-  if (clips.length === 0 && audio.length === 0) return null;
+}> = ({ images, clips, audio }) => {
+  if (images.length + clips.length + audio.length === 0) return null;
   return (
-    <ul
-      className="flex gap-2 overflow-x-auto"
-      aria-label="Bound reference clips and audio"
-    >
+    <ul className="flex flex-wrap gap-2" aria-label="Bound references">
+      {images.map((image) => (
+        <li key={`${image.label}-${image.url}`} className="shrink-0">
+          <figure className="flex flex-col items-center gap-1">
+            <div className="relative size-16 overflow-hidden rounded-sm border bg-muted">
+              <AppImage
+                src={image.url}
+                alt=""
+                width={64}
+                height={64}
+                className="size-16 object-cover"
+              />
+              <CopyImageButton image={image} />
+            </div>
+            <figcaption className="font-mono text-xs text-muted-foreground">
+              {image.label}
+            </figcaption>
+          </figure>
+        </li>
+      ))}
       {clips.map((clip) => (
         <HoverPlayTile
           key={`${clip.label}-${clip.url}`}
