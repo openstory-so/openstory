@@ -32,7 +32,7 @@ export type SelectorGroup = (typeof SELECTOR_GROUP_ORDER)[number];
 export const TURBO_ANALYSIS_MODELS = [
   'openai/gpt-5.6-luna',
   'anthropic/claude-opus-5-fast',
-  'google/gemini-3.7-flash',
+  'google/gemini-3.8-flash',
   'z-ai/glm-5.3-flash',
 ] as const satisfies readonly AnalysisModelId[];
 

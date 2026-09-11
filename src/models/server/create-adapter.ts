@@ -147,6 +147,22 @@ const createGrokTextExtended = extendAdapter(
   GROK_CATALOG_LAG_MODELS
 );
 
+/** {@link CATALOG_LAG_MODELS} for the native Gemini adapter.
+ *  `@tanstack/ai-gemini@0.26.5` stops at `gemini-3.7-flash`; 3.8 Flash is
+ *  lag-bridged until Dependabot lands ≥0.28.0 (first catalog with that id).
+ *  Prune is the Gemini block in `catalog-lag.test.ts`. */
+export const GEMINI_CATALOG_LAG_MODELS = [
+  createModel('gemini-3.8-flash', {
+    input: ['text', 'image', 'video', 'audio', 'document'],
+    features: ['reasoning', 'structured_outputs'],
+  }),
+] as const;
+
+const createGeminiChatExtended = extendAdapter(
+  createGeminiChat,
+  GEMINI_CATALOG_LAG_MODELS
+);
+
 /**
  * Whether a request goes to xAI directly, and under which model name. The
  * request body differs by route (xAI speaks the Responses API), so `llm-client`
@@ -199,7 +215,7 @@ export function createAdapter(model: TextModel, keyInfo?: LlmKeyInfo) {
 
   const nativeGeminiModel = resolveNativeGeminiModel(model, resolved);
   if (nativeGeminiModel && key) {
-    return createGeminiChat(nativeGeminiModel, key, {
+    return createGeminiChatExtended(nativeGeminiModel, key, {
       // GEMINI_BASE_URL is the aimock hook for the native Google path,
       // mirroring XAI_BASE_URL above.
       ...(env.GEMINI_BASE_URL && {

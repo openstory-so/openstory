@@ -1,16 +1,21 @@
 /**
- * Guards for CATALOG_LAG_MODELS (create-adapter.ts) — the registry model ids
- * that @tanstack/ai-openrouter's generated catalog doesn't know yet.
+ * Guards for CATALOG_LAG_MODELS and GEMINI_CATALOG_LAG_MODELS
+ * (create-adapter.ts) — registry / native ids the installed adapter catalogs
+ * don't know yet.
  *
- * The prune check is compile-time: when an @tanstack/ai-openrouter bump ships a
- * lag id in the upstream catalog, `bun typecheck` fails here naming the id —
- * delete its entry from CATALOG_LAG_MODELS in the same PR. That dependency bump
- * is Dependabot's (the model-freshness routine, #792, no longer touches npm
- * deps), so the prune lands alongside the version bump that made it stale.
+ * The prune check is compile-time: when an `@tanstack/ai-openrouter` or
+ * `@tanstack/ai-gemini` bump ships a lag id, `bun typecheck` fails here
+ * naming the id — delete that entry in the same PR. Dependabot owns those
+ * package bumps (#792 no longer touches npm deps).
  */
+import type { GeminiTextModel } from '@tanstack/ai-gemini';
 import type { OpenRouterModelOptionsByName } from '@tanstack/ai-openrouter';
 import { describe, expectTypeOf, it } from 'vitest';
-import type { CATALOG_LAG_MODELS } from './create-adapter';
+import type {
+  CATALOG_LAG_MODELS,
+  GEMINI_CATALOG_LAG_MODELS,
+} from './create-adapter';
+import type { NativeGeminiTextModel } from '@/models/gemini-native';
 import type { AnalysisModelId } from '@/models/models.config';
 
 type CatalogId = keyof OpenRouterModelOptionsByName;
@@ -33,5 +38,24 @@ describe('CATALOG_LAG_MODELS', () => {
 
   it('only bridges ids that are still in the model registry', () => {
     expectTypeOf<UnregisteredLagEntries>().toBeNever();
+  });
+});
+
+type GeminiLagId = (typeof GEMINI_CATALOG_LAG_MODELS)['length'] extends 0
+  ? never
+  : (typeof GEMINI_CATALOG_LAG_MODELS)[number] extends { name: infer N }
+    ? N
+    : never;
+
+type StaleGeminiLagEntries = Extract<GeminiTextModel, GeminiLagId>;
+type UnregisteredGeminiLagEntries = Exclude<GeminiLagId, NativeGeminiTextModel>;
+
+describe('GEMINI_CATALOG_LAG_MODELS', () => {
+  it('contains no id the upstream catalog now ships (prune it when this fails)', () => {
+    expectTypeOf<StaleGeminiLagEntries>().toBeNever();
+  });
+
+  it('only bridges native Gemini names that are still routed', () => {
+    expectTypeOf<UnregisteredGeminiLagEntries>().toBeNever();
   });
 });
