@@ -57,11 +57,23 @@ export function useSequenceElements(sequenceId: string | undefined) {
 }
 
 /**
+ * Every upload surface catches its own failure: it toasts a titled message
+ * naming the file AND marks the tile as errored so the user can retry or
+ * remove it. Without `inlineError` the global `MutationCache.onError` in
+ * `query-client.ts` ALSO toasts, bare — which is the duplicate error toast
+ * seen on a failed paste. The flag is the opt-out that handler already
+ * honours; it belongs on the hook, not on each call site, because the error
+ * UI is the same wherever these are used.
+ */
+const UPLOAD_HANDLES_ITS_OWN_ERRORS = { inlineError: true } as const;
+
+/**
  * Upload an element file into an existing sequence: presign → R2 → finalize.
  */
 export function useUploadElementToSequence() {
   const queryClient = useQueryClient();
   return useMutation({
+    meta: UPLOAD_HANDLES_ITS_OWN_ERRORS,
     mutationFn: async (data: {
       file: File;
       sequenceId: string;
@@ -138,6 +150,7 @@ export type DraftElementUpload = {
  */
 export function useUploadDraftElement() {
   return useMutation({
+    meta: UPLOAD_HANDLES_ITS_OWN_ERRORS,
     mutationFn: async (data: {
       file: File;
       onProgress?: (percent: number) => void;
@@ -313,6 +326,7 @@ export function useShotCountsForAllElements(sequenceId: string | undefined) {
 export function useReplaceSequenceElement() {
   const queryClient = useQueryClient();
   return useMutation({
+    meta: UPLOAD_HANDLES_ITS_OWN_ERRORS,
     mutationFn: async (data: {
       file: File;
       sequenceId: string;
