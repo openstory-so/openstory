@@ -718,6 +718,19 @@ describe('frameVariants.listLastFailedModelsBySequence (#1066)', () => {
     );
   });
 
+  it('drops a failure once a newer version succeeds', async () => {
+    const m = createFrameVariantsMethods(db);
+    const failed = await m.appendVersion(
+      variantInput({ model: 'phota', status: 'failed', url: null })
+    );
+    await m.appendVersion(variantInput({ model: 'gpt_image_2' }));
+
+    expect(await m.listLastFailedModelsBySequence(sequenceId)).toEqual(
+      new Map()
+    );
+    expect(await m.getLastFailed(failed.frameId)).toBeNull();
+  });
+
   it('never returns a shot from another sequence', async () => {
     const m = createFrameVariantsMethods(db);
     const other = await seedSecondSequence();

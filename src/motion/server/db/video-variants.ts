@@ -422,16 +422,24 @@ export function createVideoVariantsMethods(db: Database) {
     },
 
     /**
-     * The `model` of each shot's newest FAILED video version, keyed by shot
+     * The `model` of each shot whose NEWEST video version failed, keyed by shot
      * (#1066) — the motion analog of `frameVariants.listLastFailedModelsBySequence`.
      * A shot mid-failed-attempt resolves to the model that failed, so a retry
      * re-runs what the user asked for rather than the older selected model.
+     *
+     * Newest version, not newest failure: once a later attempt succeeds (or is
+     * uploaded, or cancelled) the shot is no longer mid-failure, and an old
+     * failure outranking the selected version pins every later render to it.
      */
     listLastFailedModelsBySequence: async (
       sequenceId: string
     ): Promise<Map<string, string>> => {
       const rows = await db
-        .select({ shotId: shots.id, model: videoVariants.model })
+        .select({
+          shotId: shots.id,
+          model: videoVariants.model,
+          status: videoVariants.status,
+        })
         .from(shots)
         .innerJoin(
           videoVariants,
@@ -440,14 +448,17 @@ export function createVideoVariantsMethods(db: Database) {
         .where(
           and(
             eq(shots.sequenceId, sequenceId),
-            eq(videoVariants.status, 'failed'),
             isNull(videoVariants.discardedAt)
           )
         )
         .orderBy(asc(videoVariants.id));
-      // asc by id (≈ time) → last write per shot wins.
+      // asc by id (≈ time) → the newest version per shot wins.
+      const newest = new Map<string, (typeof rows)[number]>();
+      for (const row of rows) newest.set(row.shotId, row);
       const byShot = new Map<string, string>();
-      for (const row of rows) byShot.set(row.shotId, row.model);
+      for (const [shotId, row] of newest) {
+        if (row.status === 'failed') byShot.set(shotId, row.model);
+      }
       return byShot;
     },
 
@@ -544,8 +555,8 @@ export function createVideoVariantsMethods(db: Database) {
     },
 
     /**
-     * The newest FAILED version for a shot's segment, or null. The single-shot
-     * analog of {@link listLastFailedModelsBySequence}.
+     * The shot segment's newest version if it FAILED, else null. The
+     * single-shot analog of {@link listLastFailedModelsBySequence}.
      */
     getLastFailedByShot: async (
       shotId: string
@@ -555,19 +566,18 @@ export function createVideoVariantsMethods(db: Database) {
         .from(shots)
         .where(eq(shots.id, shotId));
       if (!shot?.segmentId) return null;
-      const rows = await db
+      const [newest] = await db
         .select()
         .from(videoVariants)
         .where(
           and(
             eq(videoVariants.renderSegmentId, shot.segmentId),
-            eq(videoVariants.status, 'failed'),
             isNull(videoVariants.discardedAt)
           )
         )
         .orderBy(desc(videoVariants.id))
         .limit(1);
-      return rows[0] ?? null;
+      return newest?.status === 'failed' ? newest : null;
     },
 
     /**

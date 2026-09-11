@@ -991,11 +991,16 @@ export function createFrameVariantsMethods(db: Database) {
     },
 
     /**
-     * The `model` of each shot's newest FAILED image version, keyed by the
-     * owning shot (#1066). A shot in a failed state is mid-attempt: this is the
-     * model the user actually asked for, and it outranks the (older, still
-     * selected) successful version when resolving a retry — otherwise a retry
-     * silently re-runs the previous model. Anchors only, like the sibling above.
+     * The `model` of each shot whose NEWEST image version is a failed model
+     * render, keyed by the owning shot (#1066). A shot in a failed state is
+     * mid-attempt: this is the model the user actually asked for, and it
+     * outranks the (older, still selected) successful version when resolving a
+     * retry — otherwise a retry silently re-runs the previous model. Anchors
+     * only, like the sibling above.
+     *
+     * Newest version, not newest failure: any later version (a render, an
+     * upload, a tile pick) ends the failed state, or an old failure would pin
+     * every later render to its model.
      */
     listLastFailedModelsBySequence: async (
       sequenceId: string
@@ -1004,7 +1009,8 @@ export function createFrameVariantsMethods(db: Database) {
         .select({
           shotId: frames.shotId,
           model: frameVariants.model,
-          versionId: frameVariants.id,
+          kind: frameVariants.kind,
+          status: frameVariants.status,
         })
         .from(frames)
         .innerJoin(frameVariants, eq(frameVariants.frameId, frames.id))
@@ -1012,15 +1018,19 @@ export function createFrameVariantsMethods(db: Database) {
           and(
             eq(frames.sequenceId, sequenceId),
             eq(frames.orderIndex, 0),
-            eq(frameVariants.kind, 'model'),
-            eq(frameVariants.status, 'failed'),
             isNull(frameVariants.discardedAt)
           )
         )
         .orderBy(...oldestFirst);
-      // asc by id (≈ time) → last write per shot wins.
+      // Oldest first → the newest version per shot wins.
+      const newest = new Map<string, (typeof rows)[number]>();
+      for (const row of rows) newest.set(row.shotId, row);
       const byShot = new Map<string, string>();
-      for (const row of rows) byShot.set(row.shotId, row.model);
+      for (const [shotId, row] of newest) {
+        if (row.kind === 'model' && row.status === 'failed') {
+          byShot.set(shotId, row.model);
+        }
+      }
       return byShot;
     },
 
@@ -1079,24 +1089,24 @@ export function createFrameVariantsMethods(db: Database) {
     },
 
     /**
-     * The newest FAILED version for a frame, or null. The single-shot analog of
-     * {@link listLastFailedModelsBySequence}.
+     * The frame's newest version if it is a failed model render, else null.
+     * The single-shot analog of {@link listLastFailedModelsBySequence}.
      */
     getLastFailed: async (frameId: string): Promise<FrameVariant | null> => {
-      const rows = await db
+      const [newest] = await db
         .select()
         .from(frameVariants)
         .where(
           and(
             eq(frameVariants.frameId, frameId),
-            eq(frameVariants.kind, 'model'),
-            eq(frameVariants.status, 'failed'),
             isNull(frameVariants.discardedAt)
           )
         )
         .orderBy(...newestFirst)
         .limit(1);
-      return rows[0] ?? null;
+      return newest?.kind === 'model' && newest.status === 'failed'
+        ? newest
+        : null;
     },
 
     /**
