@@ -319,6 +319,16 @@ export async function readStorageObject(
 }
 
 /**
+ * Size in bytes of a storage object by key (`<bucket>/<path>`), or null when
+ * there is no such key. What a ranged reader needs up front — e.g. a demuxer
+ * reading a clip's header without downloading the clip.
+ */
+export async function storageObjectSize(key: string): Promise<number | null> {
+  const head = await getR2Bucket().head(key);
+  return head?.size ?? null;
+}
+
+/**
  * Serve a storage object straight from the R2 binding. Backs the `/r2/$`
  * route (see src/routes/r2.$.ts), which streams stored media whenever no
  * public CDN domain is configured — local dev, e2e, and CDN-less production

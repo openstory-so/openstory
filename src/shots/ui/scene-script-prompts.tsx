@@ -101,7 +101,14 @@ import type {
 import { useShotPromptStream } from './use-shot-prompt-stream';
 import type { ShotView } from '@/shots/shot-view';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CopyIcon, History, Loader2, Minimize2, RefreshCw } from 'lucide-react';
+import {
+  AlertTriangle,
+  CopyIcon,
+  History,
+  Loader2,
+  Minimize2,
+  RefreshCw,
+} from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import {
@@ -777,6 +784,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
   // dialogue panel shows the lines but offers no voice picker (#1559).
   const motionTakesAudioReferences =
     motionReferenceSupport(effectiveMotionModel).audio;
+
   const imagePrompt = shot?.imagePromptVersion?.text ?? undefined;
 
   const variantIsCompleted =
@@ -1119,6 +1127,12 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
       }),
     enabled: Boolean(shot?.id),
   });
+  // Clips and voice lines this shot attaches that the selected model cannot
+  // use, or a voice line with nothing to ride alongside (#1559). No fallback:
+  // submit refuses these, so say it here and hold Generate rather than let
+  // the click come back as a failed job. Computed server-side from the exact
+  // references the render will bind.
+  const unusableElementLines = promptPreview?.motionUnusable ?? [];
   useEffect(() => {
     if (promptPreviewError) {
       toast.error('Prompt preview failed', {
@@ -1219,11 +1233,12 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
 
   // Has the *currently-selected* video model produced a video for this scene —
   // drives Generate vs Regenerate (NOT whether the shot has any video, which
-  // could be from a different model). A variant row (any status) means it was
-  // attempted; the legacy fallback covers pre-#545 shots that carry a primary
-  // video but no variant row.
+  // could be from a different model). Only a COMPLETED row counts: a failed
+  // attempt produced nothing to regenerate, and "Regenerate" after a failure
+  // promised a video the shot never had. The legacy fallback covers pre-#545
+  // shots that carry a primary video but no variant row.
   const videoModelGenerated =
-    !!videoVariantForSelectedModel ||
+    videoVariantForSelectedModel?.status === 'completed' ||
     (!!shot?.video?.url &&
       effectiveMotionModel ===
         safeImageToVideoModel(shot.video.model, DEFAULT_VIDEO_MODEL));
@@ -2133,6 +2148,17 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
             </p>
           )}
 
+          {unusableElementLines.length > 0 && (
+            <Alert className="text-warning">
+              <AlertTriangle />
+              <AlertDescription className="flex flex-col gap-1">
+                {unusableElementLines.map((line) => (
+                  <span key={line}>{line}</span>
+                ))}
+              </AlertDescription>
+            </Alert>
+          )}
+
           {/* Motion action button — variant-aware (#545), mirror of the image
               tab: when the picked model already has a completed video for this
               scene, offer to Set it; otherwise Generate/Regenerate. */}
@@ -2161,6 +2187,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
                   isGenerating ||
                   isGeneratingMotion ||
                   videoVariantIsGenerating ||
+                  unusableElementLines.length > 0 ||
                   !shot
                 }
                 className="w-full"

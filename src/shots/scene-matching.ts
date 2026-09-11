@@ -366,6 +366,36 @@ export function matchElementsToShotImage<T extends ElementMatchInput>(
   );
 }
 
+/**
+ * Every element a shot's renders will attach — the still's AND the video's
+ * (#1559). The video attaches what its own prompt names as well: an @-mention
+ * in the motion prompt, and the voice a dialogue line is bound to. A clip or a
+ * voice line can ONLY ride the video, so answering with the still's matcher
+ * alone hides exactly the elements that most need seeing. The motion half is
+ * the same additive union `buildMotionReferenceImages` takes.
+ */
+export function matchElementsToShot<T extends ElementMatchInput>(
+  allElements: T[],
+  args: {
+    visualPrompt?: string | null;
+    elementTags?: string[] | null;
+    sceneExtract?: string | null;
+    motionPrompt?: string | null;
+    voiceTokens?: readonly string[];
+  }
+): T[] {
+  return [
+    ...new Set([
+      ...matchElementsToShotImage(allElements, args),
+      ...matchElementsToScene(
+        allElements,
+        [...(args.voiceTokens ?? [])],
+        args.motionPrompt ?? ''
+      ),
+    ]),
+  ];
+}
+
 function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

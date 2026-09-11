@@ -431,6 +431,57 @@ describe('shot_prompt_variants helper', () => {
     expect(history).toHaveLength(1);
   });
 
+  it('a voice-only change at the same text appends and selects a new row', async () => {
+    // #1559: binding a voice changes the dialogue, not the text. Matching on
+    // text alone handed back the version with the OLD voice, so a new pick
+    // saved nothing and the picker snapped back.
+    const methods = createShotPromptVersionsMethods(db);
+    const line = {
+      character: 'Mateo',
+      line: 'Wait, right now?',
+      tone: 'surprised',
+    };
+    const base = {
+      shotId,
+      promptType: 'motion' as const,
+      usesStartFrame: true,
+      text: 'Handheld push-in on Mateo.',
+      source: 'user-edit' as const,
+      inputHash: 'context-hash-1',
+      analysisModel: null,
+    };
+
+    const oldVoice = await methods.write({
+      ...base,
+      dialogue: {
+        presence: true,
+        lines: [{ ...line, voiceToken: 'MATEO_SHOT_1' }],
+      },
+    });
+    const newVoice = await methods.write({
+      ...base,
+      dialogue: {
+        presence: true,
+        lines: [{ ...line, voiceToken: 'MATEO_SHOT_1_3' }],
+      },
+    });
+
+    expect(newVoice.id).not.toBe(oldVoice.id);
+    expect(newVoice.dialogue?.lines[0]?.voiceToken).toBe('MATEO_SHOT_1_3');
+    const [shot] = await db.select().from(shots).where(eq(shots.id, shotId));
+    expect(shot?.selectedMotionPromptVersionId).toBe(newVoice.id);
+
+    // And a genuine retry of the new one still collapses onto it.
+    const retried = await methods.write({
+      ...base,
+      dialogue: {
+        presence: true,
+        lines: [{ ...line, voiceToken: 'MATEO_SHOT_1_3' }],
+      },
+    });
+    expect(retried.id).toBe(newVoice.id);
+  });
+
   it('a different input_hash produces a new row for the same shot+type', async () => {
     const methods = createShotPromptVersionsMethods(db);
 

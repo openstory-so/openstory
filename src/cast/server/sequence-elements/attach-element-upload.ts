@@ -1,6 +1,7 @@
 import { fileExists } from '#storage';
 import { deriveTokenFromFilename } from '@/cast/derive-token';
 import { elementKindFromFilename } from '@/cast/element-kind';
+import { measureStoredMediaDuration } from './media-duration';
 import type { DraftElementUploadInput } from '@/cast/draft-element-upload';
 import type { SequenceElement } from '@/platform/server/db/schema';
 import type { ScopedDb } from '@/platform/server/db/scoped';
@@ -111,7 +112,11 @@ export async function attachElementUpload(params: {
     uploadedFilename: filename,
     token,
     kind,
-    durationSeconds: params.durationSeconds ?? null,
+    // The browser measured it on upload; a caller that sent none (the public
+    // API, an old saved draft) gets it read from the file instead.
+    durationSeconds:
+      params.durationSeconds ??
+      (kind === 'image' ? null : await measureStoredMediaDuration(path)),
     imageUrl,
     imagePath: path,
     description: hasInlineVision ? params.description : null,

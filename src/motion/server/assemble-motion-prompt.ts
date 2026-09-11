@@ -195,15 +195,11 @@ function buildSeedancePrompt(
   if (soundProse.length > 0) parts.push(soundProse.join(' '));
 
   if (dialogue) {
-    const dialogueProse = dialogue.lines
-      .map((line) => {
-        const subject = line.character || 'A voice';
-        const tone = line.tone ? ` in a ${line.tone} voice` : '';
-        return `${subject} says${tone}: {${line.line}}`;
-      })
-      .join(' ');
-    const voices = voiceBindings(dialogue.lines);
-    parts.push(voices ? `${dialogueProse} ${voices}` : dialogueProse);
+    parts.push(
+      dialogue.lines
+        .map((line) => spokenLine(line, `{${line.line}}`, 'voice'))
+        .join(' ')
+    );
   }
 
   // Constraint words, which the ByteDance guide asks for at the end of the
@@ -249,15 +245,13 @@ function buildMinimaxH3Prompt(
   if (dialogue) {
     // ponytail: dialogue lines carry no language; assume English until the
     // scene schema records one.
-    const dialogueProse = dialogue.lines
-      .map((line) => {
-        const subject = line.character || 'A voice';
-        const tone = line.tone ? ` in a ${line.tone} tone` : '';
-        return `${subject} says${tone}: <d>[English] ${line.line}</d>`;
-      })
-      .join(' ');
-    const voices = voiceBindings(dialogue.lines);
-    parts.push(voices ? `${dialogueProse} ${voices}` : dialogueProse);
+    parts.push(
+      dialogue.lines
+        .map((line) =>
+          spokenLine(line, `<d>[English] ${line.line}</d>`, 'tone')
+        )
+        .join(' ')
+    );
   }
 
   const soundscape: string[] = [];
@@ -278,38 +272,34 @@ function asSentence(text: string): string {
 }
 
 /**
- * Bind each speaking character to the audio element the user chose for their
- * voice (#1559).
+ * One line of dialogue as ONE speaking event (#1559).
  *
- * The vendors join a voice to a speaker by NAME, not by slot — "@Audio1 is
- * used for Sarah's voice timbre and dialogue", never "Image1 says Audio1" —
- * so this declares the role and leaves the words to the `{…}` line above it.
- * That split is the guide's own default: a reference clip supplies timbre,
- * accent, rate and emotion, and the written line supplies what is said. Saying
- * so explicitly stops the model reciting whatever the sample happens to say.
+ * With a recording bound, the line names it as the source of the words, voice
+ * and delivery in the same sentence that carries the transcript. A separate
+ * binding sentence after "X says: {…}" read as a second utterance — two
+ * speaking events for one line invite the model to say it twice — and a tone
+ * adjective beside a recording asks for a delivery the recording already has.
+ *
+ * Asking for the words FROM the recording is deliberate: by default a
+ * reference clip supplies only timbre, accent, pace and emotion, and "the
+ * exception is when the user explicitly asks to reuse the dialogue in the
+ * audio" (Seedance 2.5 guide). A file bound to a line IS that line.
  *
  * The token is emitted RAW. `buildReferenceVideoPrompt` substitutes it for the
- * endpoint's tag (`@Audio1`) when the element rides, and for a plain
- * description when the model takes no audio — which is why the reference
- * matchers must scan the ASSEMBLED prompt, not `fullPrompt`: this sentence is
- * the only place the token appears.
+ * endpoint's tag (`@Audio1`), which is why the reference matchers must scan
+ * the ASSEMBLED prompt, not `fullPrompt`: this is the only place it appears.
  */
-function voiceBindings(lines: DialogueLine[]): string | null {
-  // One sentence per speaker, not per line — a character with four lines binds
-  // the same voice four times, and the repetition only crowds the prompt.
-  const seen = new Set<string>();
-  const sentences: string[] = [];
-  for (const line of lines) {
-    if (!line.voiceToken) continue;
-    const subject = line.character || 'the speaker';
-    const key = `${subject}\u0000${line.voiceToken}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    sentences.push(
-      `Use ${line.voiceToken} for ${subject}'s voice timbre, accent and delivery; the spoken words are exactly as written above.`
-    );
+function spokenLine(
+  line: DialogueLine,
+  words: string,
+  toneNoun: 'voice' | 'tone'
+): string {
+  const subject = line.character || 'A voice';
+  if (line.voiceToken) {
+    return `${subject} speaks this line exactly as recorded in ${line.voiceToken}: ${words}`;
   }
-  return sentences.length > 0 ? sentences.join(' ') : null;
+  const tone = line.tone ? ` in a ${line.tone} ${toneNoun}` : '';
+  return `${subject} says${tone}: ${words}`;
 }
 
 // ---------------------------------------------------------------------------

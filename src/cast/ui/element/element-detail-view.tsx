@@ -316,6 +316,8 @@ export const ElementDetailView: React.FC<ElementDetailViewProps> = ({
                   </dt>
                   <dd className="flex items-start gap-2 text-sm leading-relaxed">
                     <ElementSupportBadge
+                      token={element.token}
+                      url={element.imageUrl}
                       kind={element.kind}
                       durationSeconds={element.durationSeconds}
                       variant="inline"
@@ -324,7 +326,8 @@ export const ElementDetailView: React.FC<ElementDetailViewProps> = ({
                     <span>
                       {elementSupportSummary(
                         element.kind,
-                        element.durationSeconds
+                        element.durationSeconds,
+                        element.imageUrl
                       )}
                     </span>
                   </dd>

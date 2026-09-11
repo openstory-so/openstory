@@ -22,10 +22,7 @@ import {
 import { ElementSupportBadge } from '@/cast/ui/element/element-support-badge';
 import { ElementThumbnail } from '@/cast/ui/element/element-thumbnail';
 import { MAX_SEQUENCE_ELEMENTS } from '@/cast/ui/element/limits';
-import {
-  overlongReferenceNotice,
-  unsupportedReferenceNotice,
-} from '@/motion/reference-support';
+import { unusableReferenceLines } from '@/motion/reference-support';
 import type { ImageToVideoModel } from '@/models/models';
 import { cn } from '@/ui/utils';
 import {
@@ -34,7 +31,8 @@ import {
   toastDragImportCorsError,
 } from '@/ui/drag-images';
 import { Link } from '@tanstack/react-router';
-import { ImagePlus, Loader2, Upload } from 'lucide-react';
+import { AlertTriangle, ImagePlus, Loader2, Upload } from 'lucide-react';
+import { Alert, AlertDescription } from '@/ui/shadcn/alert';
 import { useCallback, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
@@ -240,17 +238,10 @@ export const SceneElementsTab: React.FC<SceneElementsTabProps> = ({
     );
   }
 
-  // What the selected model will do with what is attached (#1559) — an
-  // element it cannot carry is described in the prompt, never dropped in
-  // silence.
+  // What the selected model cannot use (#1559). There is no fallback — the
+  // shot refuses to render — so this is a warning, said before Generate.
   const notices = motionModel
-    ? [
-        unsupportedReferenceNotice(
-          motionModel,
-          sceneElements.map((el) => el.kind)
-        ),
-        overlongReferenceNotice(motionModel, sceneElements),
-      ].filter((line) => line !== null)
+    ? unusableReferenceLines(motionModel, sceneElements)
     : [];
 
   const header = (
@@ -262,11 +253,16 @@ export const SceneElementsTab: React.FC<SceneElementsTabProps> = ({
           currentCount={elements.length}
         />
       </div>
-      {notices.map((line) => (
-        <p key={line} className="text-xs text-muted-foreground">
-          {line}
-        </p>
-      ))}
+      {notices.length > 0 && (
+        <Alert className="text-warning">
+          <AlertTriangle />
+          <AlertDescription className="flex flex-col gap-1">
+            {notices.map((line) => (
+              <span key={line}>{line}</span>
+            ))}
+          </AlertDescription>
+        </Alert>
+      )}
     </div>
   );
 
@@ -316,8 +312,11 @@ export const SceneElementsTab: React.FC<SceneElementsTabProps> = ({
                 durationSeconds={el.durationSeconds}
               />
               <ElementSupportBadge
+                token={el.token}
+                url={el.imageUrl}
                 kind={el.kind}
                 durationSeconds={el.durationSeconds}
+                motionModel={motionModel}
               />
               <div className="absolute inset-x-0 bottom-0 bg-linear-to-t from-black/80 via-black/20 to-transparent p-3">
                 <span className="font-mono text-xs font-semibold tracking-wider text-white">

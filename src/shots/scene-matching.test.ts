@@ -9,6 +9,7 @@ import {
   matchCharactersToScene,
   matchCharactersToShotImage,
   matchElementsToScene,
+  matchElementsToShot,
   matchElementsToShotImage,
 } from './scene-matching';
 
@@ -311,5 +312,45 @@ describe('matchElementsToShotImage', () => {
       sceneExtract: 'The BOTTLE sits on the counter.',
     });
     expect(result.map((e) => e.token).sort()).toEqual(['BOTTLE', 'LOGO']);
+  });
+});
+
+// #1559 — a voice line bound to dialogue is named nowhere in the image prompt,
+// so the still's matcher alone left it off the shot's Elements tab.
+describe('matchElementsToShot', () => {
+  const voice: SequenceElementMinimal = {
+    id: '3',
+    token: 'MATEO_SHOT_1',
+    description: null,
+    imageUrl: 'https://example.com/mateo.m4a',
+    consistencyTag: null,
+    kind: 'audio',
+    durationSeconds: 3.75,
+  };
+  const all = [...elements, voice];
+
+  it('includes the voice a dialogue line is bound to', () => {
+    const result = matchElementsToShot(all, {
+      visualPrompt: 'Close-up of the LOGO on the wall.',
+      motionPrompt: 'Slow push in.',
+      voiceTokens: ['MATEO_SHOT_1'],
+    });
+    expect(result.map((e) => e.token).sort()).toEqual(['LOGO', 'MATEO_SHOT_1']);
+  });
+
+  it('includes what only the motion prompt mentions', () => {
+    const result = matchElementsToShot(all, {
+      visualPrompt: 'Close-up of her face.',
+      motionPrompt: 'She lifts the BOTTLE to drink.',
+    });
+    expect(result.map((e) => e.token)).toEqual(['BOTTLE']);
+  });
+
+  it('lists an element both renders use once', () => {
+    const result = matchElementsToShot(all, {
+      visualPrompt: 'The LOGO glows.',
+      motionPrompt: 'The LOGO pulses.',
+    });
+    expect(result.map((e) => e.token)).toEqual(['LOGO']);
   });
 });

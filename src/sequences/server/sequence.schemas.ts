@@ -24,7 +24,7 @@ import {
 import { elementKindFromFilename } from '@/cast/element-kind';
 import {
   acceptsReference,
-  referenceSecondsLimit,
+  unusableReferenceLines,
 } from '@/motion/reference-support';
 import { ulidSchemaOptional } from '@/platform/server/schemas/id.schemas';
 import { createInsertSchema, createUpdateSchema } from 'drizzle-orm/zod';
@@ -243,19 +243,24 @@ export const createSequenceSchema = createInsertSchema(sequences, {
     for (const upload of data.elementUploads ?? []) {
       const kind = elementKindFromFilename(upload.filename) ?? 'image';
       if (kind === 'image') continue;
-      const ref = { kind, durationSeconds: upload.durationSeconds ?? null };
+      const ref = {
+        // `token` is optional on the shared wire schema (#1471), so name the
+        // file when it is absent rather than telling the user "null is 20s".
+        token: upload.token || upload.filename,
+        kind,
+        durationSeconds: upload.durationSeconds ?? null,
+        // The stored key carries the extension, for the format check.
+        imageUrl: upload.tempPath,
+      };
       for (const model of data.videoModels) {
         if (!validVideoModelKeys.includes(model)) continue;
         // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- guarded above
         const key = model as ImageToVideoModel;
         if (acceptsReference(key, ref)) continue;
-        ctx.addIssue({
-          code: 'custom',
-          path: ['elementUploads'],
-          // `token` is optional on the shared wire schema (#1471), so name the
-          // file when it is absent rather than telling the user "null is 20s".
-          message: `${upload.token || upload.filename} is ${upload.durationSeconds}s, longer than the ${referenceSecondsLimit(key, kind)}s ${IMAGE_TO_VIDEO_MODELS[key].name} accepts. Trim it, or drop that model.`,
-        });
+        // Same words the scene panel and the submit refusal use (#1559).
+        for (const message of unusableReferenceLines(key, [ref])) {
+          ctx.addIssue({ code: 'custom', path: ['elementUploads'], message });
+        }
       }
     }
   })

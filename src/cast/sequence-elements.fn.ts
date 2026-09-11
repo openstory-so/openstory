@@ -20,6 +20,10 @@ import {
   elementImageUrlFromPath,
 } from '@/cast/server/sequence-elements/storage-path';
 import { elementKindFromFilename } from './element-kind';
+import {
+  measureStoredMediaDuration,
+  withMeasuredDurations,
+} from '@/cast/server/sequence-elements/media-duration';
 import { STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
 import {
   getExtensionFromUrl,
@@ -251,7 +255,12 @@ export const listSequenceElementsFn = createServerFn({ method: 'GET' })
   .middleware([sequenceAccessMiddleware])
   .validator(zodValidator(z.object({ sequenceId: ulidSchema })))
   .handler(async ({ context }) => {
-    return context.scopedDb.sequenceElements.list(context.sequence.id);
+    // Heals rows stored with no length (#1559) the first time the editor
+    // lists them, so the tile badge and every length gate see the real one.
+    return withMeasuredDurations(
+      context.scopedDb,
+      await context.scopedDb.sequenceElements.list(context.sequence.id)
+    );
   });
 
 /**
@@ -424,7 +433,11 @@ export const replaceSequenceElementFn = createServerFn({ method: 'POST' })
         imagePath: data.path,
         uploadedFilename: data.filename,
         kind,
-        durationSeconds: data.durationSeconds ?? null,
+        durationSeconds:
+          data.durationSeconds ??
+          (kind === 'image'
+            ? null
+            : await measureStoredMediaDuration(data.path)),
         description: null,
         consistencyTag: null,
         visionStatus: kind === 'image' ? 'analyzing' : 'completed',

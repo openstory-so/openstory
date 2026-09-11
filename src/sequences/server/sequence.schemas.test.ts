@@ -239,7 +239,9 @@ describe('createSequenceSchema over-long reference gate', () => {
     expect(result.success).toBe(false);
     if (!result.success) {
       const message = result.error.issues.map((i) => i.message).join(' ');
-      expect(message).toContain('PUPPET_WALK is 10s');
+      expect(message).toContain(
+        "can't use PUPPET_WALK — 10s, over its 3s limit"
+      );
       expect(message).toContain('3s');
       expect(message).toContain('Trim it');
     }

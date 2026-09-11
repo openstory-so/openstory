@@ -5,6 +5,7 @@
  */
 
 import { AppImage } from '@/ui/shadcn/app-image';
+import { ElementThumbnail } from '@/cast/ui/element/element-thumbnail';
 import { Button } from '@/ui/shadcn/button';
 import {
   Collapsible,
@@ -134,6 +135,12 @@ export const OptimisedPromptPanel: React.FC<{
           {preview.images && preview.images.length > 0 && (
             <BoundImageStrip images={preview.images} />
           )}
+          {/* Clips and audio ride the request too (#1559) — listed under the
+              tag the prompt binds them by, so the preview is the request. */}
+          <BoundMediaList
+            clips={preview.videos ?? []}
+            audio={preview.audio ?? []}
+          />
           {showingJson ? (
             <pre
               id={previewId}
@@ -224,5 +231,75 @@ const BoundImageStrip: React.FC<{
         );
       })}
     </ul>
+  );
+};
+
+const BoundMediaList: React.FC<{
+  clips: BoundPromptImage[];
+  audio: BoundPromptImage[];
+}> = ({ clips, audio }) => {
+  if (clips.length === 0 && audio.length === 0) return null;
+  return (
+    <ul
+      className="flex gap-2 overflow-x-auto"
+      aria-label="Bound reference clips and audio"
+    >
+      {clips.map((clip) => (
+        <HoverPlayTile
+          key={`${clip.label}-${clip.url}`}
+          kind="video"
+          media={clip}
+        />
+      ))}
+      {audio.map((track) => (
+        <HoverPlayTile
+          key={`${track.label}-${track.url}`}
+          kind="audio"
+          media={track}
+        />
+      ))}
+    </ul>
+  );
+};
+
+/**
+ * A 64px reference tile that plays while hovered or focused — the style-icon
+ * pattern, because a native player squeezed into a tile has no room for its
+ * own controls. A click toggles it for touch, where there is no hover.
+ */
+const HoverPlayTile: React.FC<{
+  kind: 'video' | 'audio';
+  media: BoundPromptImage;
+}> = ({ kind, media }) => {
+  const [playing, setPlaying] = useState(false);
+  return (
+    <li className="shrink-0">
+      <figure className="flex flex-col items-center gap-1">
+        <button
+          type="button"
+          className="relative size-16 overflow-hidden rounded-sm border bg-muted outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+          aria-label={`${playing ? 'Stop' : 'Play'} ${media.label}`}
+          aria-pressed={playing}
+          // Hover is a mouse thing: a tap fires an emulated enter AND a
+          // click, which would start and stop it in one touch. Touch and
+          // keyboard (Enter / Space) toggle through the click instead.
+          onPointerEnter={(e) => e.pointerType === 'mouse' && setPlaying(true)}
+          onPointerLeave={(e) => e.pointerType === 'mouse' && setPlaying(false)}
+          onBlur={() => setPlaying(false)}
+          onClick={() => setPlaying((was) => !was)}
+        >
+          <ElementThumbnail
+            kind={kind}
+            url={media.url}
+            label={media.label}
+            fit="cover"
+            playing={playing}
+          />
+        </button>
+        <figcaption className="font-mono text-xs text-muted-foreground">
+          {media.label}
+        </figcaption>
+      </figure>
+    </li>
   );
 };

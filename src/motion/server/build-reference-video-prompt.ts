@@ -83,9 +83,10 @@ const kindOf = (ref: ReferenceImageDescription): Kind => ref.kind ?? 'image';
  * and the overflow that has to become prose.
  *
  * Audio never rides alone: every reference endpoint we submit to states "at
- * least one reference image or video is required", so a shot whose only
- * reference is a voice line has no request to make of them — it describes the
- * line instead and goes to the prompt-only route.
+ * least one reference image or video is required". Submit refuses such a
+ * shot before it gets here (`assertReferencesUsable`, #1559); the demotion
+ * below only keeps the builder from ever emitting a request the provider
+ * would reject, for the preview and any caller that skips the gate.
  *
  * Clips and audio are also checked against the endpoint's length limits
  * (#1559): a 10s clip on Omni Flash, whose ceiling is 3s, is rejected outright
@@ -157,36 +158,6 @@ function partitionReferences(
     audio: taken.audio,
     overflow,
   };
-}
-
-/**
- * Attached references this endpoint is too short to take (#1559).
- *
- * Unlike the other overflow reasons this one is a defect in a specific file
- * the user chose, with an obvious remedy — trim it — so the submit path
- * REFUSES rather than quietly substituting prose. Degrading would bill a
- * render that ignored the reference, fifty times over in a batch, and the
- * house rule is that a job which cannot use its input fails as itself rather
- * than coming back subtly wrong with nothing saying why.
- *
- * Count overflow stays a degradation: a scene that matched more sheets than
- * the endpoint has slots has no user remedy, and something has to give.
- */
-export function overlongReferences(
-  binding: ReferencePromptBinding | null,
-  references: ReferenceImageDescription[]
-): { ref: ReferenceImageDescription; max: number }[] {
-  const out: { ref: ReferenceImageDescription; max: number }[] = [];
-  for (const ref of references) {
-    const kind = kindOf(ref);
-    if (kind === 'image') continue;
-    const limit =
-      kind === 'video' ? binding?.videoSeconds : binding?.audioSeconds;
-    const max = limit?.max;
-    if (max === undefined || ref.durationSeconds == null) continue;
-    if (ref.durationSeconds > max) out.push({ ref, max });
-  }
-  return out;
 }
 
 /**

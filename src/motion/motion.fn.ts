@@ -3,6 +3,12 @@
  * Shot motion (image-to-video) generation operations.
  */
 
+import {
+  assertReferencesUsable,
+  missingVoiceLines,
+  unusableShotReferenceLines,
+} from '@/motion/reference-support';
+import { withMeasuredDurations } from '@/cast/server/sequence-elements/media-duration';
 import { createServerFn } from '@tanstack/react-start';
 import {
   loadSceneContextBySequence,
@@ -172,7 +178,10 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
     // any rescan above.
     const [characters, elements, locations] = await Promise.all([
       context.scopedDb.characters.listWithSheets(sequence.id),
-      context.scopedDb.sequenceElements.list(sequence.id),
+      // A clip with no known length passes every length gate unchecked.
+      context.scopedDb.sequenceElements
+        .list(sequence.id)
+        .then((rows) => withMeasuredDurations(context.scopedDb, rows)),
       // Reference-only additionally needs the location sheet: with no still,
       // it is the only thing establishing the set.
       referenceOnly
@@ -189,6 +198,16 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
       includeLocations: referenceOnly,
       locations,
     });
+    // No fallback (#1559): a clip or voice line this model cannot use refuses
+    // the render here, before credits are reserved, rather than as a failed
+    // job after them.
+    assertReferencesUsable(model, referenceImages, !referenceOnly);
+    const missingVoices = missingVoiceLines(
+      model,
+      selectedMotion?.dialogue,
+      elements
+    );
+    if (missingVoices.length > 0) throw new Error(missingVoices.join(' '));
 
     // Snap the resolved duration onto the selected model's valid set before
     // both the credit pre-flight and the workflow input — otherwise an
@@ -408,7 +427,9 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
     // endpoint when refs will actually be sent.
     const [characters, elements, batchLocations] = await Promise.all([
       context.scopedDb.characters.listWithSheets(sequence.id),
-      context.scopedDb.sequenceElements.list(sequence.id),
+      context.scopedDb.sequenceElements
+        .list(sequence.id)
+        .then((rows) => withMeasuredDurations(context.scopedDb, rows)),
       // Reference-only only: with no still, the location sheet is the set.
       anyReferenceOnly
         ? context.scopedDb.sequenceLocations.listWithReferences(sequence.id)
@@ -469,6 +490,33 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
         resolveShotVideoModel(shot)
       );
     };
+
+    // No fallback (#1559): refuse the batch before reserving if any shot's
+    // model cannot use a clip or voice line it attaches. The same element
+    // usually sits on several shots, so each problem is named once.
+    const unusable = new Set(
+      eligibleShots.flatMap((shot) =>
+        unusableShotReferenceLines(
+          resolveShotVideoModel(shot),
+          buildMotionReferenceImages({
+            scene: sceneOf(shot),
+            characters,
+            elements,
+            motionPrompt: motionPromptTextFor(shot),
+            includeLocations: shotIsReferenceOnly(shot),
+            locations: batchLocations,
+          }),
+          !shotIsReferenceOnly(shot)
+        ).concat(
+          missingVoiceLines(
+            resolveShotVideoModel(shot),
+            selectedMotionByShot.get(shot.id)?.dialogue,
+            elements
+          )
+        )
+      )
+    );
+    if (unusable.size > 0) throw new Error([...unusable].join(' '));
 
     // Sum per-shot costs — shots may render with different (priced) models.
     const estimatedCost = estimateBatchMotionCost(

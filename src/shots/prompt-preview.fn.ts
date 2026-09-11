@@ -4,6 +4,7 @@
  * this server fn so the client graph does not ship them.
  */
 
+import { withMeasuredDurations } from '@/cast/server/sequence-elements/media-duration';
 import { isBytePlusConfigured } from '@/models/server/byteplus-config';
 import { motionPromptFromVersion } from '@/motion/server/resolve-motion-prompt';
 import {
@@ -48,7 +49,10 @@ export const previewShotPromptsFn = createServerFn({ method: 'POST' })
       selectedVisual,
     ] = await Promise.all([
       scopedDb.characters.listWithSheets(sequence.id),
-      scopedDb.sequenceElements.list(sequence.id),
+      // Same lengths submit will see, or the preview binds a clip submit drops.
+      scopedDb.sequenceElements
+        .list(sequence.id)
+        .then((rows) => withMeasuredDurations(scopedDb, rows)),
       scopedDb.sequenceLocations.listWithReferences(sequence.id),
       usesFrame
         ? scopedDb.frameVariants.getSelected(frame.id)
@@ -72,7 +76,6 @@ export const previewShotPromptsFn = createServerFn({ method: 'POST' })
       videoModel: safeImageToVideoModel(data.videoModel, DEFAULT_VIDEO_MODEL),
       imagePrompt: data.imagePrompt ?? selectedVisual?.text ?? '',
       motionPrompt,
-      motionPromptText: overrideText || null,
       shotDurationMs: shot.durationMs,
       startFrameUrl: selectedStill?.url ?? null,
       usesStartFrame: usesFrame,

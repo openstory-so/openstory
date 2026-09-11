@@ -194,10 +194,15 @@ export function createShotPromptVersionsMethods(db: Database) {
 
       // A workflow step retry re-submits the same output for the same context.
       // Same context but NEW text is a force-regen and must append.
+      //
+      // "Same output" includes the dialogue and audio direction, not just the
+      // text (#1559): binding a voice to a dialogue line changes only the
+      // dialogue, and matching on text alone handed back the version with the
+      // OLD voice — the new pick was silently dropped.
       let version: ShotPromptVersion | undefined;
       // A restore always appends its audit row, even at identical content.
       if (nextHash !== null && input.source !== 'restored') {
-        [version] = await db
+        const sameText = await db
           .select()
           .from(shotPromptVersions)
           .where(
@@ -208,8 +213,13 @@ export function createShotPromptVersionsMethods(db: Database) {
               eq(shotPromptVersions.text, input.text),
               ne(shotPromptVersions.source, 'restored')
             )
-          )
-          .limit(1);
+          );
+        const same = (a: unknown, b: unknown) =>
+          JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+        version = sameText.find(
+          (row) =>
+            same(row.dialogue, input.dialogue) && same(row.audio, input.audio)
+        );
       }
 
       if (!version) {

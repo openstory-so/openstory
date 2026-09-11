@@ -2,8 +2,8 @@
  * Selection-scoped facet resolution.
  *
  * Which cast, locations and elements belong to a shot is decided by matching
- * the shot's continuity tags (and, for elements, its visual prompt) against
- * the sequence bible. That resolution is server-owned: it is the SAME
+ * the shot's continuity tags (and, for elements, its prompts) against the
+ * sequence bible. That resolution is server-owned: it is the SAME
  * question the image-generation path answers when it picks reference images
  * (`shot-image.ts`), so resolving it here keeps the inspector showing exactly
  * what a render would use.
@@ -25,7 +25,7 @@ import {
 } from '@/shots/server/scene-script';
 import {
   matchCharactersToScene,
-  matchElementsToShotImage,
+  matchElementsToShot,
   matchLocationsToScene,
 } from './scene-matching';
 import { createServerFn } from '@tanstack/react-start';
@@ -59,6 +59,10 @@ export const getSceneFacetMapsFn = createServerFn({ method: 'GET' })
     const promptByShotId = new Map(
       anchors.map((f) => [f.shotId, promptByFrameId.get(f.id)?.text ?? ''])
     );
+    const motionByShotId =
+      await scopedDb.shotPromptVersions.getSelectedMotionByShots(
+        shots.map((s) => s.id)
+      );
 
     const locationIdsByShot: Record<string, string[]> = {};
     const characterIdsByShot: Record<string, string[]> = {};
@@ -79,10 +83,15 @@ export const getSceneFacetMapsFn = createServerFn({ method: 'GET' })
         characterTags
       ).map((c) => c.id);
 
-      elementIdsByShot[shot.id] = matchElementsToShotImage(elements, {
+      const motion = motionByShotId.get(shot.id);
+      elementIdsByShot[shot.id] = matchElementsToShot(elements, {
         visualPrompt: promptByShotId.get(shot.id),
         elementTags: scene?.continuity?.elementTags,
         sceneExtract: scene?.originalScript?.extract,
+        motionPrompt: motion?.text,
+        voiceTokens: motion?.dialogue?.lines.flatMap((line) =>
+          line.voiceToken ? [line.voiceToken] : []
+        ),
       }).map((e) => e.id);
     }
 

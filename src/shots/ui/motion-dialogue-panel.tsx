@@ -48,6 +48,10 @@ export const MotionDialoguePanel: React.FC<{
   // Only audio elements can carry a voice. A clip or a still in this list
   // would bind to a slot the endpoint rejects.
   const voices = (elements ?? []).filter((el) => el.kind === 'audio');
+  const voiceItems: Record<string, string> = {
+    [NO_VOICE]: 'Model\u2019s own voice',
+    ...Object.fromEntries(voices.map((el) => [el.token, voiceLabel(el)])),
+  };
 
   const setVoice = (index: number, token: string | undefined) => {
     if (!onChange) return;
@@ -68,54 +72,75 @@ export const MotionDialoguePanel: React.FC<{
         </span>
       </div>
       <ul className="flex flex-col gap-2 rounded-md border p-3">
-        {lines.map((line, index) => (
-          <li
-            key={`${line.character}-${index}`}
-            className="flex flex-col gap-1.5"
-          >
-            <p className="text-sm">
-              <span className="font-medium">
-                {line.character || 'Narrator'}
-              </span>
-              {line.tone && (
-                <span className="text-muted-foreground"> · {line.tone}</span>
+        {lines.map((line, index) => {
+          // A line can outlive its voice: delete the element and the binding
+          // still names it. The picker must never hold a value none of its
+          // options has — Base UI then ignores the next pick, which is how a
+          // new upload could not be chosen at all (#1559) — so an orphaned
+          // binding shows as unbound, and the line says what happened.
+          const bound = voices.some((el) => el.token === line.voiceToken);
+          // `elements` is undefined until the list loads, and every binding
+          // looks deleted until then — which flashed the warning on refresh.
+          const orphaned =
+            elements !== undefined && Boolean(line.voiceToken) && !bound;
+          return (
+            <li
+              key={`${line.character}-${index}`}
+              className="flex flex-col gap-1.5"
+            >
+              <p className="text-sm">
+                <span className="font-medium">
+                  {line.character || 'Narrator'}
+                </span>
+                {line.tone && (
+                  <span className="text-muted-foreground"> · {line.tone}</span>
+                )}
+              </p>
+              <p className="text-sm text-muted-foreground">“{line.line}”</p>
+              {orphaned && (
+                <p className="text-xs text-warning">
+                  {line.voiceToken} was deleted — pick another voice, or this
+                  shot won't render.
+                </p>
               )}
-            </p>
-            <p className="text-sm text-muted-foreground">“{line.line}”</p>
-            {onChange && voices.length > 0 && (
-              <Select
-                value={line.voiceToken ?? NO_VOICE}
-                onValueChange={(value) =>
-                  setVoice(
-                    index,
-                    typeof value === 'string' && value !== NO_VOICE
-                      ? value
-                      : undefined
-                  )
-                }
-                disabled={disabled}
-              >
-                <SelectTrigger
-                  size="sm"
-                  className="w-full"
-                  aria-label={`Voice for ${line.character || 'Narrator'}`}
+              {onChange && voices.length > 0 && (
+                <Select
+                  value={bound ? line.voiceToken : NO_VOICE}
+                  // Base UI renders the raw value in the trigger unless it has
+                  // labels to map it to — without this it showed `__none__`.
+                  items={voiceItems}
+                  onValueChange={(value) =>
+                    setVoice(
+                      index,
+                      typeof value === 'string' && value !== NO_VOICE
+                        ? value
+                        : undefined
+                    )
+                  }
+                  disabled={disabled}
                 >
-                  <SelectValue placeholder="Model's own voice" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={NO_VOICE}>
-                    Model&rsquo;s own voice
-                  </SelectItem>
-                  {voices.map((el) => (
-                    <SelectItem key={el.id} value={el.token}>
-                      <span>{voiceLabel(el)}</span>
+                  <SelectTrigger
+                    size="sm"
+                    className="w-full"
+                    aria-label={`Voice for ${line.character || 'Narrator'}`}
+                  >
+                    <SelectValue placeholder="Model's own voice" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NO_VOICE}>
+                      Model&rsquo;s own voice
                     </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-          </li>
-        ))}
+                    {voices.map((el) => (
+                      <SelectItem key={el.id} value={el.token}>
+                        <span>{voiceLabel(el)}</span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </li>
+          );
+        })}
       </ul>
       {onChange && voices.length === 0 && (
         <p className="text-xs text-muted-foreground">

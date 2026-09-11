@@ -53,19 +53,14 @@ describe('ELEMENT_UPLOAD_ACCEPT', () => {
   it('offers every extension the parser stores', () => {
     // The two drifted once: `.m4a` parsed as audio but the picker refused it,
     // so a voice line could be pasted but not browsed to.
-    for (const name of [
-      'a.mp3',
-      'a.wav',
-      'a.m4a',
-      'a.ogg',
-      'a.mp4',
-      'a.mov',
-      'a.webm',
-    ]) {
+    for (const name of ['a.mp3', 'a.wav', 'a.m4a', 'a.ogg', 'a.mp4', 'a.mov']) {
       const ext = `.${name.split('.').pop()}`;
       expect(elementKindFromFilename(name)).not.toBeNull();
       expect(ELEMENT_UPLOAD_ACCEPT).toContain(ext);
     }
     expect(ELEMENT_UPLOAD_ACCEPT).toContain('image/*');
+    // No models take WebM, and the browser cannot convert video cheaply.
+    expect(elementKindFromFilename('a.webm')).toBeNull();
+    expect(ELEMENT_UPLOAD_ACCEPT).not.toContain('.webm');
   });
 });

@@ -11,12 +11,18 @@
  *
  * The seek is what does the work — a `<video>` parked at 0 with no poster
  * renders blank in Chrome until something asks it for a frame.
+ *
+ * `playing` turns it into a preview the PARENT drives — hover and focus live
+ * on whatever focusable tile wraps it, the style-icon pattern: a clip plays
+ * muted on a loop, a voice line plays out loud, and both rewind when it goes
+ * false. Left undefined, it is a still thumbnail and plays nothing.
  */
 
 import { formatElementDuration } from '@/cast/element-kind';
 import { AppImage } from '@/ui/shadcn/app-image';
 import { cn } from '@/ui/utils';
 import { AudioLines, ImagePlus } from 'lucide-react';
+import { useEffect, useRef } from 'react';
 
 type ElementThumbnailProps = {
   kind: 'image' | 'video' | 'audio';
@@ -26,8 +32,15 @@ type ElementThumbnailProps = {
   durationSeconds?: number | null;
   /** `contain` keeps a logo whole; `cover` fills a square tile. */
   fit?: 'contain' | 'cover';
+  /** Play while true (the parent's hover / focus); rewind when false. */
+  playing?: boolean;
   className?: string;
 };
+
+/** A hair past zero: the first frame everywhere, clamped for a short clip. */
+function firstFrameTime(el: HTMLMediaElement): number {
+  return Math.min(0.1, (el.duration || 1) / 2);
+}
 
 export const ElementThumbnail: React.FC<ElementThumbnailProps> = ({
   kind,
@@ -35,18 +48,40 @@ export const ElementThumbnail: React.FC<ElementThumbnailProps> = ({
   label,
   durationSeconds = null,
   fit = 'contain',
+  playing,
   className,
 }) => {
   const length = formatElementDuration(durationSeconds);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const audioRef = useRef<HTMLAudioElement>(null);
+
+  useEffect(() => {
+    if (playing === undefined) return;
+    const el = kind === 'video' ? videoRef.current : audioRef.current;
+    if (!el) return;
+    if (!playing) {
+      el.pause();
+      el.currentTime = kind === 'video' ? firstFrameTime(el) : 0;
+      return;
+    }
+    // A moving clip is motion; a voice line is not, so only the clip defers
+    // to the reduced-motion preference.
+    const reduceMotion =
+      kind === 'video' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (!reduceMotion) void el.play().catch(() => {});
+  }, [playing, kind]);
 
   if (kind === 'video' && url) {
     return (
       <div className={cn('relative h-full w-full', className)}>
         {/* eslint-disable-next-line jsx-a11y/media-has-caption -- a silent poster frame, not playable media */}
         <video
+          ref={videoRef}
           src={url}
           preload="metadata"
           muted
+          loop
           playsInline
           // Never let it play or take focus: this is a thumbnail.
           tabIndex={-1}
@@ -60,7 +95,7 @@ export const ElementThumbnail: React.FC<ElementThumbnailProps> = ({
             // first frame everywhere, and is clamped for a clip shorter than
             // the offset.
             const el = event.currentTarget;
-            el.currentTime = Math.min(0.1, (el.duration || 1) / 2);
+            el.currentTime = firstFrameTime(el);
           }}
         >
           <track kind="captions" />
@@ -86,6 +121,11 @@ export const ElementThumbnail: React.FC<ElementThumbnailProps> = ({
         <p className="text-xs text-muted-foreground">
           {`Audio${length ? ` · ${length}` : ''}`}
         </p>
+        {playing !== undefined &&
+          url && (
+            // eslint-disable-next-line jsx-a11y/media-has-caption -- a user-uploaded voice line; no caption track exists
+            <audio ref={audioRef} src={url} preload="none" />
+          )}
       </div>
     );
   }

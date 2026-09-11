@@ -779,6 +779,11 @@ export type MotionReferenceEndpointConfig = {
 };
 
 export type MediaDurationLimit = {
+  /**
+   * Shortest single file (#1559). A clip under it is rejected by the provider
+   * just like one over `max`, so it is refused before Generate the same way.
+   */
+  min?: number;
   /** Longest single file. */
   max?: number;
   /** Longest total across every file of this kind. */
@@ -812,7 +817,9 @@ export const MOTION_REFERENCE_ENDPOINTS: Partial<
     maxAudio: 3,
     maxCombined: 12,
     // 2.0 states its clip window as a COMBINED range (2–15s), not per file.
-    videoSeconds: { maxCombined: 15 },
+    // ponytail: the 2s floor is checked per clip, which refuses two 1.5s clips
+    // the provider would take together; check the sum if that ever matters.
+    videoSeconds: { min: 2, maxCombined: 15 },
     audioSeconds: { maxCombined: 15 },
   },
   seedance_v2_5: {
@@ -828,8 +835,9 @@ export const MOTION_REFERENCE_ENDPOINTS: Partial<
     maxVideos: 10,
     maxAudio: 10,
     maxCombined: 50,
-    videoSeconds: { max: 30.2, maxCombined: 30.2 },
-    audioSeconds: { max: 30.2, maxCombined: 30.2 },
+    // "Each video must be 1.8 to 30.2 seconds"; audio the same.
+    videoSeconds: { min: 1.8, max: 30.2, maxCombined: 30.2 },
+    audioSeconds: { min: 1.8, max: 30.2, maxCombined: 30.2 },
   },
   seedance_v2_mini: {
     endpointId: 'bytedance/seedance-2.0/mini/reference-to-video',
@@ -839,7 +847,8 @@ export const MOTION_REFERENCE_ENDPOINTS: Partial<
     maxVideos: 3,
     maxAudio: 3,
     maxCombined: 12,
-    videoSeconds: { maxCombined: 15 },
+    // Same combined 2–15s clip window as 2.0 — see the ponytail note there.
+    videoSeconds: { min: 2, maxCombined: 15 },
     audioSeconds: { maxCombined: 15 },
   },
   gemini_omni_flash: {
@@ -899,8 +908,9 @@ export const MOTION_REFERENCE_ENDPOINTS: Partial<
     audioField: 'reference_audio_urls',
     videoTag: (position) => `Video ${position}`,
     audioTag: (position) => `Audio ${position}`,
-    videoSeconds: { max: 15, maxCombined: 15 },
-    audioSeconds: { max: 15, maxCombined: 15 },
+    // "2-15 seconds each" for both clips and audio.
+    videoSeconds: { min: 2, max: 15, maxCombined: 15 },
+    audioSeconds: { min: 2, max: 15, maxCombined: 15 },
   },
 };
 

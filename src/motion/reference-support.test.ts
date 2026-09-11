@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  assertReferencesUsable,
   motionReferenceSupport,
-  overlongReferenceNotice,
   referenceUsability,
-  unsupportedReferenceNotice,
+  unusableReferenceLines,
+  unusableShotReferenceLines,
 } from './reference-support';
 
 describe('motionReferenceSupport', () => {
@@ -41,62 +42,157 @@ describe('motionReferenceSupport', () => {
   });
 });
 
-describe('unsupportedReferenceNotice', () => {
-  it('is silent when everything attached is carried', () => {
-    expect(
-      unsupportedReferenceNotice('seedance_v2_5', ['image', 'audio', 'video'])
-    ).toBeNull();
-  });
-
-  it('names the kinds that will be described instead of sent', () => {
-    const notice = unsupportedReferenceNotice('kling_v3_pro', [
-      'image',
-      'audio',
-      'video',
-    ]);
-    expect(notice).toContain('audio or clips');
-  });
-});
-
-describe('overlongReferenceNotice', () => {
+// #1559: no fallback. A clip or voice line the selected model cannot use
+// refuses the shot, so every surface asks the same question and says why.
+describe('unusableReferenceLines', () => {
   const el = (
     token: string,
     kind: 'image' | 'video' | 'audio',
     durationSeconds: number | null
   ) => ({ token, kind, durationSeconds });
 
-  it('names a clip past the model ceiling and how to fix it', () => {
-    const notice = overlongReferenceNotice('gemini_omni_flash', [
-      el('LONG_TAKE', 'video', 10),
-    ]);
-    expect(notice).toContain('up to 3s');
-    expect(notice).toContain('LONG_TAKE');
-    // Pre-flight warning: the submit path refuses these, so the line must say
-    // the shot will not render rather than promising a graceful degrade.
-    expect(notice).toContain('will not render');
-    expect(notice).toContain('Trim it');
+  it('is silent when the model can use everything attached', () => {
+    expect(
+      unusableReferenceLines('seedance_v2_5', [
+        el('SHEET', 'image', null),
+        el('VOICE', 'audio', 4),
+        el('CLIP', 'video', 10),
+      ])
+    ).toEqual([]);
   });
 
-  it('is silent for a clip inside the ceiling, and for unknown lengths', () => {
+  it('names a kind the model takes no reference of, and who does', () => {
+    const [line] = unusableReferenceLines('kling_v3_pro', [
+      el('SMOKE_INK', 'video', 10),
+    ]);
+    expect(line).toContain("can't use SMOKE_INK");
+    expect(line).toContain('takes no reference clips');
+    expect(line).toContain('Seedance 2.5');
+  });
+
+  it('names a clip past the ceiling, with its real length', () => {
+    // The 15.05s clip that failed at fal: 0.05s over, which "15s" hid.
+    const [line] = unusableReferenceLines('minimax_h3_max', [
+      el('SMOKE_INK', 'video', 15.0465),
+    ]);
+    expect(line).toContain('15.05s, over its 15s limit');
+    expect(line).toContain('Trim it, or use Seedance 2.5');
+  });
+
+  it('never refuses a still, or a clip of unknown length', () => {
     expect(
-      overlongReferenceNotice('gemini_omni_flash', [el('SHORT', 'video', 2)])
-    ).toBeNull();
-    // Unknown length is attached rather than guessed at, so nothing to warn.
+      unusableReferenceLines('kling_v3_pro', [el('SHEET', 'image', null)])
+    ).toEqual([]);
     expect(
-      overlongReferenceNotice('gemini_omni_flash', [
+      unusableReferenceLines('gemini_omni_flash', [
         el('MYSTERY', 'video', null),
       ])
-    ).toBeNull();
+    ).toEqual([]);
   });
 
-  it('is silent on a model with no reference endpoint at all', () => {
+  it('refuses a stored format no model takes, and says what to use', () => {
+    // The M4A voice memo Ark rejected after Generate ("audio format … not
+    // valid for model dreamina-seedance-2-5 in r2v").
+    const [line] = unusableReferenceLines('seedance_v2_5', [
+      {
+        token: 'MATEO_SHOT_1',
+        kind: 'audio',
+        durationSeconds: 3.75,
+        imageUrl: '/r2/elements/t/s/el.m4a',
+      },
+    ]);
+    expect(line).toContain("can't use MATEO_SHOT_1 — it is M4A");
+    expect(line).toContain('MP3 or WAV');
     expect(
-      overlongReferenceNotice('kling_v3_pro', [el('LONG', 'video', 60)])
-    ).toBeNull();
+      unusableReferenceLines('seedance_v2_5', [
+        {
+          token: 'OK',
+          kind: 'audio',
+          durationSeconds: 3,
+          imageUrl: '/r2/x.wav',
+        },
+        {
+          token: 'CLIP',
+          kind: 'video',
+          durationSeconds: 5,
+          referenceImageUrl: 'https://cdn.example/c.mov?v=1',
+        },
+      ])
+    ).toEqual([]);
+  });
+
+  it('refuses at submit with the same words', () => {
+    expect(() =>
+      assertReferencesUsable('kling_v3_pro', [el('VOICE', 'audio', 3)], true)
+    ).toThrow("can't use VOICE — it takes no reference audio");
+    expect(() =>
+      assertReferencesUsable('seedance_v2_5', [el('VOICE', 'audio', 3)], true)
+    ).not.toThrow();
+  });
+
+  it('refuses a clip under the model minimum', () => {
+    // H3 Max takes clips of 2–15s; Seedance 2.5 takes 1.8–30.2s.
+    const [line] = unusableReferenceLines('minimax_h3_max', [
+      el('BLINK', 'video', 1.9),
+    ]);
+    expect(line).toContain('1.9s, under its 2s minimum');
+    expect(line).toContain('Seedance 2.5');
+    expect(
+      unusableReferenceLines('seedance_v2_5', [el('BLINK', 'video', 1.9)])
+    ).toEqual([]);
   });
 });
 
-// #1559 — what the element badge reads off.
+// Every reference endpoint that takes audio refuses it as the only reference
+// ("At least one reference image or video is required"). It used to be
+// described in the prompt instead; now it refuses like any other misfit.
+describe('unusableShotReferenceLines — a voice line with nothing to ride on', () => {
+  const voice = {
+    token: 'NARRATOR',
+    kind: 'audio' as const,
+    durationSeconds: 4,
+  };
+  const sheet = {
+    token: 'SARAH',
+    kind: 'image' as const,
+    durationSeconds: null,
+  };
+
+  it('refuses a voice line with no start frame and no sheet or clip', () => {
+    const [line] = unusableShotReferenceLines('seedance_v2_5', [voice], false);
+    expect(line).toContain("can't send NARRATOR on its own");
+    expect(line).toContain('or use a start frame');
+  });
+
+  it('lets it ride with a start frame, a sheet or a clip', () => {
+    expect(unusableShotReferenceLines('seedance_v2_5', [voice], true)).toEqual(
+      []
+    );
+    expect(
+      unusableShotReferenceLines('seedance_v2_5', [voice, sheet], false)
+    ).toEqual([]);
+    expect(
+      unusableShotReferenceLines(
+        'seedance_v2_5',
+        [voice, { token: 'CLIP', kind: 'video', durationSeconds: 5 }],
+        false
+      )
+    ).toEqual([]);
+  });
+
+  it('does not count a clip the model refuses as something to ride with', () => {
+    const lines = unusableShotReferenceLines(
+      'minimax_h3_max',
+      [voice, { token: 'LONG', kind: 'video', durationSeconds: 40 }],
+      false
+    );
+    expect(lines.some((line) => line.includes('over its 15s limit'))).toBe(
+      true
+    );
+    expect(lines.some((line) => line.includes('on its own'))).toBe(true);
+  });
+});
+
 describe('referenceUsability', () => {
   it('is silent for a still — every model takes one', () => {
     expect(
@@ -116,6 +212,26 @@ describe('referenceUsability', () => {
     expect(usability.models).not.toContain('kling_v3_pro');
   });
 
+  it('names the models a clip is too long for, apart from those it fits', () => {
+    // The 15.05s clip that surfaced this: four models take clips but cap them
+    // at 15s or less, so the list of models it FITS is only Seedance 2.5 —
+    // which read as "only Seedance 2.5 takes clips".
+    const usability = referenceUsability({
+      kind: 'video',
+      durationSeconds: 15.05,
+    });
+    expect(usability.level).toBe('limited');
+    if (usability.level !== 'limited') return;
+    expect(usability.models).toEqual(['seedance_v2_5']);
+    const tooLong = Object.fromEntries(
+      usability.tooLong.map(({ model, maxSeconds }) => [model, maxSeconds])
+    );
+    expect(tooLong.minimax_h3_max).toBe(15);
+    expect(tooLong.gemini_omni_flash).toBe(3);
+    // A model with no clip slot is not "too long" — it describes it instead.
+    expect(tooLong.kling_v3_pro).toBeUndefined();
+  });
+
   it('errors when no model in the catalog is long enough', () => {
     // Seedance 2.5 is the roomiest at 30.2s.
     const usability = referenceUsability({
@@ -124,7 +240,7 @@ describe('referenceUsability', () => {
     });
     expect(usability.level).toBe('unusable');
     if (usability.level !== 'unusable') return;
-    expect(usability.maxSeconds).toBe(30.2);
+    expect(usability.problem).toEqual({ reason: 'too-long', maxSeconds: 30.2 });
   });
 
   it('warns rather than errors when the length is unknown', () => {

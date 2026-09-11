@@ -555,10 +555,7 @@ describe('a dialogue line bound to a voice element', () => {
 
     expect(result.audioUrls).toEqual(['https://example.com/sarah_voice.mp3']);
     expect(result.prompt).toContain(
-      "Use @Audio1 for Sarah's voice timbre, accent and delivery"
-    );
-    expect(result.prompt).toContain(
-      'Sarah says in a flat voice: {It is already done.}'
+      'Sarah speaks this line exactly as recorded in @Audio1: {It is already done.}'
     );
     expect(result.prompt).not.toContain('SARAH_VOICE');
   });

@@ -17,6 +17,7 @@ import {
   type SequenceElementKind,
 } from '@/cast/element-kind';
 import { deriveTokenFromFilename } from '@/cast/derive-token';
+import { normalizeElementFile } from '@/cast/ui/element/normalize-element-file';
 import { putToR2 } from '@/ui/upload';
 import { sceneKeys } from '@/shots/ui/use-scenes';
 import { shotStalenessNamespace } from '@/shots/ui/use-shot-staleness';
@@ -79,12 +80,14 @@ export function useUploadElementToSequence() {
       sequenceId: string;
       onProgress?: (percent: number) => void;
     }) => {
+      // MP3 / WAV audio only reaches a model (#1559) — convert the rest here.
+      const file = await normalizeElementFile(data.file);
       const presign = await presignElementUploadFn({
-        data: { filename: data.file.name, sequenceId: data.sequenceId },
+        data: { filename: file.name, sequenceId: data.sequenceId },
       });
       await putToR2(
         presign.uploadUrl,
-        data.file,
+        file,
         presign.contentType,
         data.onProgress
       );
@@ -92,8 +95,8 @@ export function useUploadElementToSequence() {
         data: {
           sequenceId: data.sequenceId,
           path: presign.path,
-          filename: data.file.name,
-          durationSeconds: await fileDuration(data.file),
+          filename: file.name,
+          durationSeconds: await fileDuration(file),
         },
       });
       return element;
@@ -156,18 +159,19 @@ export function useUploadDraftElement() {
       onProgress?: (percent: number) => void;
       onAnalyzingChange?: (analyzing: boolean) => void;
     }): Promise<DraftElementUpload> => {
-      const kind: SequenceElementKind =
-        elementKindFromFile(data.file) ?? 'image';
+      // MP3 / WAV audio only reaches a model (#1559) — convert the rest here.
+      const file = await normalizeElementFile(data.file);
+      const kind: SequenceElementKind = elementKindFromFile(file) ?? 'image';
       const presign = await presignDraftElementUploadFn({
-        data: { filename: data.file.name },
+        data: { filename: file.name },
       });
       await putToR2(
         presign.uploadUrl,
-        data.file,
+        file,
         presign.contentType,
         data.onProgress
       );
-      const durationSeconds = await readMediaDuration(data.file, kind);
+      const durationSeconds = await readMediaDuration(file, kind);
 
       // Vision reads pixels: a clip or an audio file skips it entirely and is
       // ready the moment the bytes land (#1559).
@@ -175,8 +179,8 @@ export function useUploadDraftElement() {
         return {
           tempPath: presign.path,
           tempPublicUrl: presign.publicUrl,
-          filename: data.file.name,
-          token: deriveTokenFromFilename(data.file.name),
+          filename: file.name,
+          token: deriveTokenFromFilename(file.name),
           description: null,
           consistencyTag: null,
           durationSeconds,
@@ -193,7 +197,7 @@ export function useUploadDraftElement() {
         result = await analyzeDraftElementFn({
           data: {
             publicUrl: presign.publicUrl,
-            filename: data.file.name,
+            filename: file.name,
           },
         });
       } finally {
@@ -203,7 +207,7 @@ export function useUploadDraftElement() {
       return {
         tempPath: presign.path,
         tempPublicUrl: presign.publicUrl,
-        filename: data.file.name,
+        filename: file.name,
         token: result.suggestedToken,
         description: result.description,
         consistencyTag: result.consistencyTag,
@@ -333,12 +337,14 @@ export function useReplaceSequenceElement() {
       elementId: string;
       onProgress?: (percent: number) => void;
     }) => {
+      // MP3 / WAV audio only reaches a model (#1559) — convert the rest here.
+      const file = await normalizeElementFile(data.file);
       const presign = await presignElementUploadFn({
-        data: { filename: data.file.name, sequenceId: data.sequenceId },
+        data: { filename: file.name, sequenceId: data.sequenceId },
       });
       await putToR2(
         presign.uploadUrl,
-        data.file,
+        file,
         presign.contentType,
         data.onProgress
       );
@@ -347,8 +353,8 @@ export function useReplaceSequenceElement() {
           sequenceId: data.sequenceId,
           elementId: data.elementId,
           path: presign.path,
-          filename: data.file.name,
-          durationSeconds: await fileDuration(data.file),
+          filename: file.name,
+          durationSeconds: await fileDuration(file),
         },
       });
     },

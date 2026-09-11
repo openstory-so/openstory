@@ -252,7 +252,7 @@ describe('assembleMotionPrompt', () => {
         expect(result).not.toContain('says "');
       });
 
-      it('binds a line to the voice element the user chose, words unchanged', () => {
+      it('speaks a recorded line once, from the recording', () => {
         const result = assembleMotionPrompt({
           motionPrompt: makeMotionPrompt({
             dialogue: {
@@ -268,10 +268,18 @@ describe('assembleMotionPrompt', () => {
         // Raw token: `buildReferenceVideoPrompt` swaps it for `@Audio1` when
         // the element rides, or for a description when it cannot.
         expect(result).toContain(
-          "Use SARAH_VOICE for Sarah's voice timbre, accent and delivery; the spoken words are exactly as written above."
+          'Sarah speaks this line exactly as recorded in SARAH_VOICE: {We need to reconsider the entire approach.}'
         );
-        // The unbound line gets no binding sentence of its own.
-        expect(result).not.toContain("James's voice timbre");
+        // ONE speaking event: a second "says" for the same line invites the
+        // model to say it twice, and a tone beside a recording contradicts it.
+        expect(
+          result.split('We need to reconsider the entire approach.').length - 1
+        ).toBe(1);
+        expect(result).not.toContain('firm commanding');
+        // The unbound line keeps its tone and plain form.
+        expect(result).toContain(
+          "James says in a soft resigned voice: {I couldn't agree more.}"
+        );
       });
 
       it('emits no voice binding when no line has one', () => {
@@ -280,7 +288,7 @@ describe('assembleMotionPrompt', () => {
           model,
         });
 
-        expect(result).not.toContain('voice timbre');
+        expect(result).not.toContain('as recorded in');
       });
 
       it('always appends the no-music and single-continuous-shot guards', () => {

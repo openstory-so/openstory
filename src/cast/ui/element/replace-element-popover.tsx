@@ -141,10 +141,10 @@ export const ReplaceElementPopover: React.FC<ReplaceElementPopoverProps> = ({
             variant="outline"
             className="flex-1"
             disabled={disabled}
-            aria-label={`Replace ${token} image`}
+            aria-label={`Replace ${token}`}
           >
             <RefreshCw className="h-4 w-4" />
-            Replace image
+            Replace
           </Button>
         ) : (
           <Button
@@ -152,8 +152,8 @@ export const ReplaceElementPopover: React.FC<ReplaceElementPopoverProps> = ({
             variant="ghost"
             size="icon"
             disabled={disabled}
-            aria-label={`Replace ${token} image`}
-            title="Replace image"
+            aria-label={`Replace ${token}`}
+            title="Replace"
           >
             <RefreshCw className="size-4" />
           </Button>
