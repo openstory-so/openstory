@@ -1,12 +1,18 @@
 /**
- * Draft estimate is public (catalog rates, no secrets) so the anonymous
- * composer can show ~$x.xx. It must still not fire on an empty script.
+ * The composer is anonymous-browsable; `estimateDraftGenerationFn` is not.
+ * Firing it logged-out 401s at error level on every debounced keystroke
+ * (same class as useSequences, #1333 / #1575).
  */
 
 import { describe, expect, it, vi } from 'vitest';
 
 const estimateDraftGenerationFn = vi.fn();
 vi.doMock('@/billing/pricing.fn', () => ({ estimateDraftGenerationFn }));
+
+const sessionRef: { current: unknown } = { current: null };
+vi.doMock('@/platform/ui/auth/session-query', () => ({
+  useAuthSession: () => ({ data: sessionRef.current }),
+}));
 
 type QueryOpts = { enabled?: boolean };
 let lastQuery: QueryOpts = {};
@@ -40,13 +46,22 @@ const INPUT = {
 };
 
 describe('useDraftGenerationEstimate', () => {
-  it('fires with a script even without a session', () => {
+  it('does not fire the authed fn without a session', () => {
+    sessionRef.current = null;
+    lastQuery = {};
+    useDraftGenerationEstimate(INPUT);
+    expect(lastQuery.enabled).toBe(false);
+  });
+
+  it('fires once there is a session and a script', () => {
+    sessionRef.current = { user: { id: 'u1' } };
     lastQuery = {};
     useDraftGenerationEstimate(INPUT);
     expect(lastQuery.enabled).toBe(true);
   });
 
-  it('stays off when the script is empty', () => {
+  it('stays off when the script is empty even with a session', () => {
+    sessionRef.current = { user: { id: 'u1' } };
     lastQuery = {};
     useDraftGenerationEstimate({ ...INPUT, script: '   ' });
     expect(lastQuery.enabled).toBe(false);
