@@ -153,3 +153,34 @@ export const musicDesignResultSchema = z.object({
       '1-2 sentence music prompt describing the overall mood and progression',
   }),
 });
+
+/**
+ * Phase 1: Dialogue extraction (#1585) — a third call, parallel with the
+ * scenes and bibles calls. The regex parser in `scene-from-slice.ts` only
+ * understands screenplay cues (`SARAH` / `NAME: line`); prose speech
+ * (`Lena says, “…”`) has too many shapes for it, so the LLM lists every
+ * spoken line against the gutter and the join maps each to its scene.
+ */
+export const sceneSplitDialogueResultSchema = z.object({
+  lines: z.array(
+    z.object({
+      lineNumber: z.number().meta({
+        description: 'Gutter line number the speech starts on',
+      }),
+      character: z.string().meta({
+        description:
+          'Speaker name exactly as the script spells it, or empty for narrator / voiceover',
+      }),
+      line: z.string().meta({
+        description: 'The spoken words, copied verbatim (no quotes, no gutter)',
+      }),
+      tone: z.string().meta({
+        description: 'Delivery note the script implies, or empty',
+      }),
+    })
+  ),
+});
+
+export type SceneSplitDialogueResult = z.infer<
+  typeof sceneSplitDialogueResultSchema
+>;

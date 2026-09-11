@@ -482,8 +482,10 @@ export function estimateStoryboardCost(opts: StoryboardCostOpts): Microdollars {
   const sceneCount = opts.estimatedSceneCount ?? DEFAULT_ESTIMATED_SCENE_COUNT;
   const { pricing } = opts;
 
-  // Script = scene-split + talent matching + location matching.
-  const llmCalls = estimateRunsStage(opts, 'script') ? 3 : 0;
+  // Script = scene-split (scenes + bibles + dialogue, #1585) + talent
+  // matching + location matching; the shot-list pass rides on the same
+  // envelope. One stand-in per call.
+  const llmCalls = estimateRunsStage(opts, 'script') ? 4 : 0;
   const llmCost = estimateLLMCost(llmCalls);
 
   const sheetCost = estimateRunsStage(opts, 'references')

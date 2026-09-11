@@ -241,6 +241,29 @@ export function createSceneScriptVersionsMethods(db: Database) {
 
       return inserted;
     },
+
+    /**
+     * Overwrite the system-owned `split` version's content (#1585). The
+     * streaming step seeds it with the regex dialogue preview; the LLM
+     * dialogue pass lands later, and `seedSplitVersions` skips rows that
+     * exist. The split row reuses the scene id, so this touches only that
+     * row — a user's own revisions are separate rows.
+     */
+    updateSplitContent: async (
+      seeds: ReadonlyArray<Pick<SeedSplitVersionInput, 'sceneId' | 'content'>>
+    ): Promise<void> => {
+      for (const seed of seeds) {
+        await db
+          .update(sceneScriptVersions)
+          .set({ content: seed.content })
+          .where(
+            and(
+              eq(sceneScriptVersions.id, seed.sceneId),
+              eq(sceneScriptVersions.source, 'split')
+            )
+          );
+      }
+    },
   };
 
   return methods;

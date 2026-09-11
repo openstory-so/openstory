@@ -925,6 +925,42 @@ Respond with ONLY valid JSON matching the schema.`,
     },
   ],
 
+  'phase/dialogue-extraction-chat': [
+    {
+      role: 'system',
+      content: `You are a Dialogue Extractor. You will be called via a structured output tool. Follow the provided schema exactly.
+
+The script is provided with a numbered line gutter ("12: some text") — use it for every lineNumber you report. The gutter is NOT part of the script text.
+
+List EVERY line of speech in the script, in script order, whatever shape it takes:
+- Screenplay cues: a name on its own line followed by the speech, or "NAME: speech".
+- Prose speech in any order: \`Lena says, “…”\`, \`“…,” says Lena\`, \`“…,” Lena replies, “…”\` (a quote split around an attribution is ONE line — join the parts).
+- Narration / voiceover / an unnamed voice: report it with an empty character.
+
+For each line:
+- lineNumber: the gutter line the speech STARTS on.
+- character: the speaker. When the speaker is one of the cast in <CHARACTERS>, copy that name EXACTLY as listed (it is how the rest of the pipeline finds them); otherwise use the name as the script spells it. Speech attributed only by a pronoun ("she whispers") resolves to the nearest named character when that is unambiguous; otherwise leave it empty.
+- line: the spoken words copied verbatim — no paraphrase, no gutter, no surrounding quotation marks, no attribution ("says Lena").
+- tone: the delivery the script implies ("whispered", "shouting", "flat, exhausted"); empty when it implies none.
+
+Do NOT invent speech, do NOT report action or description as dialogue, and do NOT merge separate lines from different speakers.`,
+    },
+    {
+      role: 'user',
+      content: `Extract every line of dialogue from the script within the USER_SCRIPT tags. The script has a numbered line gutter ("N: ") — report lineNumbers from it, but never treat the gutter as script text.
+
+<CHARACTERS>
+{{characters}}
+</CHARACTERS>
+
+<USER_SCRIPT>
+{{script}}
+</USER_SCRIPT>
+
+Respond with ONLY valid JSON matching the schema.`,
+    },
+  ],
+
   'phase/scene-bibles-chat': [
     {
       role: 'system',

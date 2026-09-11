@@ -87,6 +87,7 @@ const STAGE_PREFIXES: ReadonlyArray<readonly [string, string]> = [
   ['STYLE CATALOG (choose by index):', 'style-recommend'],
   ['Split the script within the USER_SCRIPT', 'script-analyze'],
   ['Extract a complete character bible', 'script-bibles'],
+  ['Extract every line of dialogue', 'script-dialogue'],
   ['Cover each scene.', 'script-shot-list'],
   ['Match the following library locations', 'location-match'],
   ['Cast the following talent', 'talent-cast'],

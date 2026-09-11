@@ -49,7 +49,7 @@ vi.doMock('@/billing/server/workflow-deduction', () => ({
 type StreamChunk = {
   done: boolean;
   accumulated: string;
-  parsed?: typeof SCENES_RESULT | typeof BIBLES_RESULT;
+  parsed?: typeof SCENES_RESULT | typeof BIBLES_RESULT | DialogueResult;
   usage?: undefined;
 };
 
@@ -62,6 +62,16 @@ type StreamChunk = {
  */
 let streamChunks: StreamChunk[] = [];
 let shotListParsed: { scenes: unknown[] } = { scenes: [] };
+type DialogueResult = {
+  lines: Array<{
+    lineNumber: number;
+    character: string;
+    line: string;
+    tone: string;
+  }>;
+};
+let dialogueParsed: DialogueResult = { lines: [] };
+let dialogueError: Error | undefined;
 function singleDoneChunk(): StreamChunk[] {
   return [
     { done: true, accumulated: '{}', parsed: SCENES_RESULT, usage: undefined },
@@ -78,6 +88,16 @@ vi.doMock('@/models/server/llm-client', () => ({
           done: true,
           accumulated: '{}',
           parsed: BIBLES_RESULT,
+          usage: undefined,
+        };
+        return;
+      }
+      if (params.observationName === 'phase-1-scene-dialogue') {
+        if (dialogueError) throw dialogueError;
+        yield {
+          done: true,
+          accumulated: '{}',
+          parsed: dialogueParsed,
           usage: undefined,
         };
         return;
@@ -193,6 +213,10 @@ const INPUT: SceneSplitWorkflowInput = {
   elements: [],
 };
 
+const updateSplitContent = vi.fn<
+  (seeds: Array<{ content: { dialogue: unknown[] } }>) => Promise<void>
+>(() => Promise.resolve());
+
 function makeScopedDb(
   resolveLlmKey: (model?: string) => Promise<{
     source: string;
@@ -235,7 +259,10 @@ function makeScopedDb(
         }),
       deleteFromOrderIndex: () => Promise.resolve(),
     },
-    sceneScriptVersions: { seedSplitVersions: () => Promise.resolve() },
+    sceneScriptVersions: {
+      seedSplitVersions: () => Promise.resolve(),
+      updateSplitContent: updateSplitContent,
+    },
     shots: {
       upsert: (data: { sceneId?: string | null; shotNumber?: number }) =>
         Promise.resolve(shotFor(data.sceneId, data.shotNumber)),
@@ -324,6 +351,57 @@ const previewCalls = () =>
 
 beforeEach(() => {
   shotListParsed = { scenes: [] };
+  dialogueParsed = { lines: [] };
+  dialogueError = undefined;
+});
+
+describe('SceneSplitWorkflow dialogue extraction (#1585)', () => {
+  beforeEach(() => {
+    streamChunks = singleDoneChunk();
+  });
+
+  test('maps each extracted line to the scene owning its gutter line', async () => {
+    dialogueParsed = {
+      lines: [
+        { lineNumber: 1, character: 'Lena', line: 'Steady.', tone: 'calm' },
+        { lineNumber: 3, character: '', line: 'Lane four.', tone: '' },
+      ],
+    };
+    const result = await makeWorkflow().split(
+      makeEvent(),
+      makeStep(),
+      makeScopedDb()
+    );
+    expect(result.scenes.map((s) => s.originalScript.dialogue)).toEqual([
+      [{ character: 'Lena', line: 'Steady.', tone: 'calm' }],
+      [],
+      [{ character: '', line: 'Lane four.', tone: '' }],
+    ]);
+    expect(lastDoMock.mock.calls.map((c) => c[0])).toContain(
+      'deduct-llm-credits-scene-dialogue'
+    );
+    // The stream seeded the split version with the regex preview; the LLM
+    // lines must overwrite it (seedSplitVersions skips existing rows).
+    const seeds = updateSplitContent.mock.calls.at(-1)?.[0] ?? [];
+    expect(seeds.map((s) => s.content.dialogue.length)).toEqual([1, 0, 1]);
+  });
+
+  test('hands the bible cast to the dialogue prompt', async () => {
+    await makeWorkflow().split(makeEvent(), makeStep(), makeScopedDb());
+    const { getChatPrompt } =
+      await import('@/platform/server/ai/prompts-index');
+    expect(vi.mocked(getChatPrompt)).toHaveBeenCalledWith(
+      'phase/dialogue-extraction-chat',
+      expect.objectContaining({ characters: '(none)' })
+    );
+  });
+
+  test('a failed dialogue call fails the split — no regex fallback', async () => {
+    dialogueError = new Error('dialogue boom');
+    await expect(
+      makeWorkflow().split(makeEvent(), makeStep(), makeScopedDb())
+    ).rejects.toThrow('dialogue boom');
+  });
 });
 
 describe('SceneSplitWorkflow preview fan-out', () => {

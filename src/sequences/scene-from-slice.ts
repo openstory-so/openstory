@@ -129,6 +129,11 @@ function cueName(trimmed: string): string {
   return trimmed.replace(/\s*\([^)]*\)\s*$/, '').trim();
 }
 
+/**
+ * Streaming PREVIEW value only. Understands screenplay cues (`SARAH` /
+ * `NAME: line`), not prose speech. Superseded before persist by the LLM
+ * dialogue-extraction pass (#1585, `assignDialogueToScenes`).
+ */
 export function extractDialogueFromSlice(slice: string): DialogueLine[] {
   const lines = slice.split('\n');
   const dialogue: DialogueLine[] = [];
