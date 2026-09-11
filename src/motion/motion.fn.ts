@@ -195,7 +195,7 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
       characters,
       elements,
       motionPrompt: prompt,
-      includeLocations: referenceOnly,
+      referenceOnly,
       locations,
     });
     // No fallback (#1559): a clip or voice line this model cannot use refuses
@@ -402,7 +402,7 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
       isBatchMotionEligible(f, shotIsReferenceOnly(f))
     );
     // Location sheets are loaded once for the batch, so ANY reference-only
-    // shot pulls them; `includeLocations` below still decides per shot.
+    // shot pulls them; `referenceOnly` below still decides per shot.
     const anyReferenceOnly = allShots.some(shotIsReferenceOnly);
 
     if (eligibleShots.length === 0) {
@@ -503,7 +503,7 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
             characters,
             elements,
             motionPrompt: motionPromptTextFor(shot),
-            includeLocations: shotIsReferenceOnly(shot),
+            referenceOnly: shotIsReferenceOnly(shot),
             locations: batchLocations,
           }),
           !shotIsReferenceOnly(shot)
@@ -540,7 +540,7 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
               // Must match the set actually sent below, or a reference-only
               // shot carried only by its location sheet estimates as ref-less.
               motionPrompt: motionPromptTextFor(shot),
-              includeLocations: shotIsReferenceOnly(shot),
+              referenceOnly: shotIsReferenceOnly(shot),
               locations: batchLocations,
             }).length > 0
           );
@@ -651,7 +651,7 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
                 characters,
                 elements,
                 motionPrompt: motionPromptTextFor(shot),
-                includeLocations: shotIsReferenceOnly(shot),
+                referenceOnly: shotIsReferenceOnly(shot),
                 locations: batchLocations,
               }),
             };

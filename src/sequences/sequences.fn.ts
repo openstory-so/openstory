@@ -1096,7 +1096,7 @@ export const addModelToSequenceFn = createServerFn({ method: 'POST' })
                     characters,
                     elements,
                     motionPrompt: selectedMotion?.text ?? null,
-                    includeLocations: referenceOnly,
+                    referenceOnly,
                     locations,
                   }),
                   prompt: resolveMotionPrompt(

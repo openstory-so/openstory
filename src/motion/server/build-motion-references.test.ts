@@ -193,7 +193,7 @@ describe('buildMotionReferenceImages — reference-only', () => {
       scene,
       characters,
       elements: [],
-      includeLocations: true,
+      referenceOnly: true,
       locations,
     });
 
@@ -209,7 +209,7 @@ describe('buildMotionReferenceImages — reference-only', () => {
       scene,
       characters,
       elements: [],
-      includeLocations: true,
+      referenceOnly: true,
     });
 
     expect(refs.map((r) => r.role)).toEqual(['character']);

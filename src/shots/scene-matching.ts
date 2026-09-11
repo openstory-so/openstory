@@ -367,12 +367,48 @@ export function matchElementsToShotImage<T extends ElementMatchInput>(
 }
 
 /**
+ * Elements a shot's VIDEO attaches.
+ *
+ * Reference-only: the prompt decides, like the still's prompt does. That
+ * template names every element by its token, so one the prompt does not name
+ * would ride unbound — and deleting a mention has to drop it, even when the
+ * scene's tags or script still name it. Tags and script only stand in while
+ * there is no prompt yet.
+ *
+ * With a start frame they stay ADDITIVE: that template forbids naming what the
+ * still already shows, so a prop the prompt omits is still on screen and its
+ * sheet keeps it consistent across the clip.
+ */
+export function matchElementsToMotion<T extends ElementMatchInput>(
+  allElements: T[],
+  args: {
+    elementTags?: string[] | null;
+    sceneExtract?: string | null;
+    motionPrompt?: string | null;
+    referenceOnly: boolean;
+  }
+): T[] {
+  const prompt = (args.motionPrompt ?? '').trim();
+  const named = matchElementsToScene(allElements, [], prompt);
+  if (args.referenceOnly && prompt.length > 0) return named;
+  return [
+    ...new Set([
+      ...matchElementsToScene(
+        allElements,
+        args.elementTags ?? [],
+        args.sceneExtract ?? ''
+      ),
+      ...named,
+    ]),
+  ];
+}
+
+/**
  * Every element a shot's renders will attach — the still's AND the video's
- * (#1559). The video attaches what its own prompt names as well: an @-mention
- * in the motion prompt, and the voice a dialogue line is bound to. A clip or a
- * voice line can ONLY ride the video, so answering with the still's matcher
- * alone hides exactly the elements that most need seeing. The motion half is
- * the same additive union `buildMotionReferenceImages` takes.
+ * (#1559), plus the voice a dialogue line is bound to. A clip or a voice line
+ * can ONLY ride the video, so answering with the still's matcher alone hides
+ * exactly the elements that most need seeing. A reference-only shot renders no
+ * still from references, so only the video's half counts.
  */
 export function matchElementsToShot<T extends ElementMatchInput>(
   allElements: T[],
@@ -382,16 +418,16 @@ export function matchElementsToShot<T extends ElementMatchInput>(
     sceneExtract?: string | null;
     motionPrompt?: string | null;
     voiceTokens?: readonly string[];
+    referenceOnly: boolean;
   }
 ): T[] {
   return [
     ...new Set([
-      ...matchElementsToShotImage(allElements, args),
-      ...matchElementsToScene(
-        allElements,
-        [...(args.voiceTokens ?? [])],
-        args.motionPrompt ?? ''
-      ),
+      ...(args.referenceOnly
+        ? []
+        : matchElementsToShotImage(allElements, args)),
+      ...matchElementsToMotion(allElements, args),
+      ...matchElementsToScene(allElements, [...(args.voiceTokens ?? [])]),
     ]),
   ];
 }

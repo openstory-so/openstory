@@ -13,7 +13,7 @@
  * sheet only competes with it for reference slots). Reference-only mode has no
  * still, which makes the location sheet the ONLY thing standing between the
  * prompt's words and an invented set — so those callers pass
- * `includeLocations` and the matched location sheets ride along.
+ * `referenceOnly` and the matched location sheets ride along.
  *
  * Accepts the structural scene shape both the strict `Scene` and the looser
  * `frame.metadata` satisfy, so the single-frame, batch, and full-pipeline
@@ -34,7 +34,7 @@ import { buildLocationReferenceImages } from '@/cast/location-prompt';
 import type { ReferenceImageDescription } from '@/stills/reference-image-prompt';
 import {
   matchCharactersToShotImage,
-  matchElementsToScene,
+  matchElementsToMotion,
   matchElementsToShotImage,
   matchLocationsToScene,
 } from '@/shots/scene-matching';
@@ -69,11 +69,12 @@ export function buildMotionReferenceImages(params: {
    */
   motionPrompt: string | null;
   /**
-   * Reference-only mode: also attach the scene's location sheet. With no start
-   * frame there is nothing else establishing the set, and the same matcher the
-   * image step uses (`matchLocationsToScene`) picks it.
+   * Reference-only mode. Also attaches the scene's location sheet — with no
+   * start frame there is nothing else establishing the set, and the same
+   * matcher the image step uses (`matchLocationsToScene`) picks it — and lets
+   * the prompt alone decide the elements (`matchElementsToMotion`).
    */
-  includeLocations?: boolean;
+  referenceOnly?: boolean;
   locations?: SequenceLocationMinimal[];
 }): ReferenceImageDescription[] {
   const {
@@ -81,7 +82,7 @@ export function buildMotionReferenceImages(params: {
     characters,
     elements,
     motionPrompt,
-    includeLocations,
+    referenceOnly,
     locations,
   } = params;
 
@@ -92,24 +93,16 @@ export function buildMotionReferenceImages(params: {
     characterTags: scene?.continuity?.characterTags,
     visualPrompt: motionPrompt,
   });
-  // Elements are ADDITIVE here, not prompt-wins like the still: the
-  // image-to-video template forbids naming what the start frame already shows,
-  // so a prop the motion prompt omits is still in the shot. Tags/extract stay
-  // primary; the prompt only adds what they missed. (Characters get the same
-  // union for free — `matchCharactersToShotImage` is already additive.)
-  const taggedElements = matchElementsToScene(
-    elements,
-    scene?.continuity?.elementTags ?? [],
-    scene?.originalScript?.extract ?? ''
-  );
-  const matchedElements = [
-    ...new Set([
-      ...taggedElements,
-      ...matchElementsToScene(elements, [], motionPrompt ?? ''),
-    ]),
-  ];
+  // Reference-only: the prompt decides; with a start frame, additive. See
+  // `matchElementsToMotion`.
+  const matchedElements = matchElementsToMotion(elements, {
+    elementTags: scene?.continuity?.elementTags,
+    sceneExtract: scene?.originalScript?.extract,
+    motionPrompt,
+    referenceOnly: referenceOnly ?? false,
+  });
   const matchedLocations =
-    includeLocations && locations
+    referenceOnly && locations
       ? matchLocationsToScene(
           locations,
           scene?.continuity?.environmentTag ?? '',

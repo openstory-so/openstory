@@ -124,7 +124,7 @@ export function buildStoryboardMotionBatchShots(input: {
         characters: input.characters,
         elements: input.elements,
         motionPrompt: prompt,
-        includeLocations: input.referenceOnly,
+        referenceOnly: input.referenceOnly,
         locations: input.locations,
       }),
     };

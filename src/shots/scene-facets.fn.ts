@@ -28,6 +28,7 @@ import {
   matchElementsToShot,
   matchLocationsToScene,
 } from './scene-matching';
+import { rendersReferenceOnly } from './use-start-frame';
 import { createServerFn } from '@tanstack/react-start';
 
 /** Facet ids that apply to each shot, keyed by shot id. */
@@ -92,6 +93,7 @@ export const getSceneFacetMapsFn = createServerFn({ method: 'GET' })
         voiceTokens: motion?.dialogue?.lines.flatMap((line) =>
           line.voiceToken ? [line.voiceToken] : []
         ),
+        referenceOnly: rendersReferenceOnly(shot, sequence),
       }).map((e) => e.id);
     }
 

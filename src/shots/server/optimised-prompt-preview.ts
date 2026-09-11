@@ -221,7 +221,7 @@ export function buildShotPromptPreview(input: {
       // matching the raw text dropped it here while submit sent it — the
       // preview showed `MATEO_SHOT_1` where the provider got `Audio 1`.
       motionPrompt: assembledMotionPrompt,
-      includeLocations: !input.usesStartFrame,
+      referenceOnly: !input.usesStartFrame,
       locations: input.locations,
     })
   );

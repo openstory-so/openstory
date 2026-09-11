@@ -8,6 +8,7 @@ import {
   matchCharacterToShotTags,
   matchCharactersToScene,
   matchCharactersToShotImage,
+  matchElementsToMotion,
   matchElementsToScene,
   matchElementsToShot,
   matchElementsToShotImage,
@@ -334,6 +335,7 @@ describe('matchElementsToShot', () => {
       visualPrompt: 'Close-up of the LOGO on the wall.',
       motionPrompt: 'Slow push in.',
       voiceTokens: ['MATEO_SHOT_1'],
+      referenceOnly: false,
     });
     expect(result.map((e) => e.token).sort()).toEqual(['LOGO', 'MATEO_SHOT_1']);
   });
@@ -342,6 +344,7 @@ describe('matchElementsToShot', () => {
     const result = matchElementsToShot(all, {
       visualPrompt: 'Close-up of her face.',
       motionPrompt: 'She lifts the BOTTLE to drink.',
+      referenceOnly: false,
     });
     expect(result.map((e) => e.token)).toEqual(['BOTTLE']);
   });
@@ -350,7 +353,54 @@ describe('matchElementsToShot', () => {
     const result = matchElementsToShot(all, {
       visualPrompt: 'The LOGO glows.',
       motionPrompt: 'The LOGO pulses.',
+      referenceOnly: false,
     });
     expect(result.map((e) => e.token)).toEqual(['LOGO']);
+  });
+
+  it('drops a reference-only element the prompt no longer mentions', () => {
+    const result = matchElementsToShot(all, {
+      visualPrompt: '',
+      elementTags: ['LOGO'],
+      sceneExtract: 'A tee printed with the LOGO.',
+      motionPrompt: 'He halts mid-stride and grins.',
+      voiceTokens: ['MATEO_SHOT_1'],
+      referenceOnly: true,
+    });
+    expect(result.map((e) => e.token)).toEqual(['MATEO_SHOT_1']);
+  });
+});
+
+describe('matchElementsToMotion', () => {
+  const scene = {
+    elementTags: ['LOGO'],
+    sceneExtract: 'A tee printed with the LOGO.',
+  };
+
+  it('reference-only: the prompt decides, over tags and script', () => {
+    const result = matchElementsToMotion(elements, {
+      ...scene,
+      motionPrompt: 'She lifts the BOTTLE to drink.',
+      referenceOnly: true,
+    });
+    expect(result.map((e) => e.token)).toEqual(['BOTTLE']);
+  });
+
+  it('reference-only with no prompt yet falls back to tags and script', () => {
+    const result = matchElementsToMotion(elements, {
+      ...scene,
+      motionPrompt: null,
+      referenceOnly: true,
+    });
+    expect(result.map((e) => e.token)).toEqual(['LOGO']);
+  });
+
+  it('with a start frame, keeps what the prompt omits', () => {
+    const result = matchElementsToMotion(elements, {
+      ...scene,
+      motionPrompt: 'She lifts the BOTTLE to drink.',
+      referenceOnly: false,
+    });
+    expect(result.map((e) => e.token).sort()).toEqual(['BOTTLE', 'LOGO']);
   });
 });
