@@ -1,11 +1,8 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "4135c494-880d-4836-8104-4974bd6bd7c6",
-  "prevIds": [
-    "7dcff0e2-ae4a-4958-b79c-a223797670f8",
-    "bef87e29-9688-47ad-8cb6-0693b46b326f"
-  ],
+  "id": "7ecafcb2-4fe3-4c76-b60a-6e0f1c8a2d55",
+  "prevIds": ["48401714-7ad0-4e92-a362-d8113644d66b"],
   "ddl": [
     {
       "name": "account",
@@ -1068,6 +1065,26 @@
       "default": null,
       "generated": null,
       "name": "distinguishing_features",
+      "entityType": "columns",
+      "table": "characters"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "personality",
+      "entityType": "columns",
+      "table": "characters"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "movement",
       "entityType": "columns",
       "table": "characters"
     },
@@ -6928,6 +6945,26 @@
       "default": null,
       "generated": null,
       "name": "description",
+      "entityType": "columns",
+      "table": "talent"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "personality",
+      "entityType": "columns",
+      "table": "talent"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "movement",
       "entityType": "columns",
       "table": "talent"
     },
