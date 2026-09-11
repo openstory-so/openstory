@@ -138,7 +138,6 @@ function ConsentDecision({
 
   const decide = useMutation({
     // Suppress the global MutationCache toast — we render our own below.
-    meta: { inlineError: true },
     mutationFn: (accept: boolean) =>
       decideOAuthConsentFn({
         data: { accept, oauthQuery },

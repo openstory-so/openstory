@@ -115,7 +115,6 @@ function AutoRedeemView({ code }: GiftCodeViewProps) {
   const hasTriggered = useRef(false);
 
   const { mutate, isError, isPending, error } = useMutation({
-    meta: { inlineError: true },
     mutationFn: (input: { code: string }) => redeemGiftTokenFn({ data: input }),
     onSuccess: (result) => {
       void queryClient.invalidateQueries({

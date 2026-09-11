@@ -43,7 +43,6 @@ export function useUpdateStaleShots(args: { sequenceId: string }) {
   const deadlineRef = useRef(0);
 
   const trigger = useMutation({
-    meta: { inlineError: true },
     mutationFn: (vars: {
       sceneId?: string;
       shotId?: string;

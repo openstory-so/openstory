@@ -305,7 +305,6 @@ export const SceneMusicFacet: React.FC<SceneMusicFacetProps> = ({
   );
 
   const generateMusic = useMutation({
-    meta: { inlineError: true },
     mutationFn: (args?: {
       prompt?: string;
       tags?: string;
@@ -362,7 +361,6 @@ export const SceneMusicFacet: React.FC<SceneMusicFacetProps> = ({
   // Persist a post-track prompt edit (#1108 Phase 4) — a user-edit version,
   // no regen; the Generate/Regenerate button stays the explicit re-render.
   const saveMusicPrompt = useMutation({
-    meta: { inlineError: true },
     mutationFn: (prompt: string) =>
       saveMusicPromptFn({ data: { sequenceId, prompt } }),
     onSuccess: async (result) => {
@@ -395,7 +393,6 @@ export const SceneMusicFacet: React.FC<SceneMusicFacetProps> = ({
     (sequence?.musicPrompt ?? '').trim() !== playingVariantPrompt.trim();
 
   const regenerateMusicPrompt = useMutation({
-    meta: { inlineError: true },
     mutationFn: () => regenerateMusicPromptFn({ data: { sequenceId } }),
     onSuccess: async (result) => {
       if (result.alreadyUpToDate) {

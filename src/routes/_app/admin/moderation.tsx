@@ -106,7 +106,6 @@ const ReportsTab: React.FC = () => {
     void queryClient.invalidateQueries({ queryKey: ['moderation-reports'] });
 
   const resolveMutation = useMutation({
-    meta: { inlineError: true },
     mutationFn: (input: {
       reportId: string;
       status: 'triaged' | 'actioned' | 'dismissed';
@@ -121,7 +120,6 @@ const ReportsTab: React.FC = () => {
   });
 
   const enforceMutation = useMutation({
-    meta: { inlineError: true },
     mutationFn: (input: {
       reportId: string;
       subjectUserId?: string;
@@ -350,7 +348,6 @@ const TraceTab: React.FC = () => {
   });
 
   const attributeMutation = useMutation({
-    meta: { inlineError: true },
     mutationFn: (input: {
       reportId: string;
       subjectTeamId?: string;
@@ -367,7 +364,6 @@ const TraceTab: React.FC = () => {
   });
 
   const enforceMutation = useMutation({
-    meta: { inlineError: true },
     mutationFn: (input: {
       subjectUserId?: string;
       subjectTeamId?: string;

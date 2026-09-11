@@ -55,7 +55,6 @@ function invalidateStructure(
 export function useCreateScene(sequenceId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    meta: { inlineError: true },
     mutationFn: (input?: { title?: string; withShot?: boolean }) =>
       createSceneFn({ data: { sequenceId, ...input } }),
     onSuccess: ({ scene }) => {
@@ -79,7 +78,6 @@ export function useCreateScene(sequenceId: string) {
 export function useCreateShot(sequenceId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    meta: { inlineError: true },
     mutationFn: (input: { sceneId: string }) =>
       // durationMs omitted so the column's 3000ms default applies.
       createShotFn({ data: { sequenceId, sceneId: input.sceneId } }),
@@ -96,7 +94,6 @@ export function useCreateShot(sequenceId: string) {
 export function useUpdateScene(sequenceId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    meta: { inlineError: true },
     mutationFn: (input: {
       sceneId: string;
       title?: string;
@@ -113,7 +110,6 @@ export function useUpdateScene(sequenceId: string) {
 export function useReorderScenes(sequenceId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    meta: { inlineError: true },
     scope: { id: `reorder-scenes-${sequenceId}` },
     mutationFn: (sceneIds: SceneWithScript['id'][]) =>
       reorderScenesFn({ data: { sequenceId, sceneIds } }),
@@ -156,7 +152,6 @@ export function useReorderScenes(sequenceId: string) {
 export function useReorderShots(sequenceId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    meta: { inlineError: true },
     scope: { id: `reorder-shots-${sequenceId}` },
     mutationFn: (input: { sceneId: string; shotIds: string[] }) =>
       reorderShotsFn({ data: { sequenceId, ...input } }),
@@ -203,7 +198,6 @@ export function useReorderShots(sequenceId: string) {
 export function useSoftDeleteScene(sequenceId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    meta: { inlineError: true },
     mutationFn: (input: { sceneId: string }) =>
       softDeleteSceneFn({ data: { sequenceId, ...input } }),
     onSuccess: () =>
@@ -215,7 +209,6 @@ export function useSoftDeleteScene(sequenceId: string) {
 export function useSoftDeleteShot(sequenceId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    meta: { inlineError: true },
     mutationFn: (input: { shotId: string }) =>
       deleteShotFn({ data: { sequenceId, ...input } }),
     onSuccess: () =>

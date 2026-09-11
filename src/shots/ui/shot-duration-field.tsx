@@ -87,7 +87,6 @@ export const ShotDurationField: React.FC<ShotDurationFieldProps> = ({
     savedSeconds !== undefined && snappedSavedSeconds !== savedSeconds;
 
   const saveMutation = useMutation({
-    meta: { inlineError: true },
     mutationFn: async (durationSeconds: number) => {
       if (!shot?.id) throw new Error('shot required');
       return updateShotDurationFn({
@@ -118,7 +117,6 @@ export const ShotDurationField: React.FC<ShotDurationFieldProps> = ({
   });
 
   const estimateMutation = useMutation({
-    meta: { inlineError: true },
     mutationFn: async () => {
       if (!shot?.id) throw new Error('shot required');
       if (!scriptExtract.trim()) throw new Error('scene script is empty');

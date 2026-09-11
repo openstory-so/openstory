@@ -43,7 +43,6 @@ export function useLocationSheetVersions(
 export function useSelectLocationSheetVersion() {
   const queryClient = useQueryClient();
   return useMutation({
-    meta: { inlineError: true },
     mutationFn: (input: {
       sequenceId: string;
       locationDbId: string;
@@ -87,7 +86,6 @@ type VariantInput = { sequenceId: string; variantId: string };
 export function usePromoteSequenceLocationSheetVariant() {
   const queryClient = useQueryClient();
   return useMutation({
-    meta: { inlineError: true },
     mutationFn: async (input: VariantInput) =>
       promoteSequenceLocationSheetVariantFn({ data: input }),
     onSuccess: async (_, { sequenceId }) => {
@@ -115,7 +113,6 @@ export function useDiscardSequenceLocationSheetVariant() {
     Error,
     VariantInput
   >({
-    meta: { inlineError: true },
     mutationFn: async (input) =>
       discardSequenceLocationSheetVariantFn({ data: input }),
     onSuccess: async (_, { sequenceId }) => {
@@ -129,7 +126,6 @@ export function useDiscardSequenceLocationSheetVariant() {
 export function useUndiscardSequenceLocationSheetVariant() {
   const queryClient = useQueryClient();
   return useMutation<{ variantId: string }, Error, VariantInput>({
-    meta: { inlineError: true },
     mutationFn: async (input) =>
       undiscardSequenceLocationSheetVariantFn({ data: input }),
     onSuccess: async (_, { sequenceId }) => {

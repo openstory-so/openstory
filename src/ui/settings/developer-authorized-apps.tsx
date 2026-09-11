@@ -102,7 +102,6 @@ function AppList() {
 function AppRow({ app }: { app: AuthorizedApp }) {
   const queryClient = useQueryClient();
   const revoke = useMutation({
-    meta: { inlineError: true },
     mutationFn: () =>
       revokeAuthorizedAppFn({
         data: { consentId: app.consentId, clientId: app.client.clientId },

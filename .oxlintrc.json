@@ -10,7 +10,6 @@
   ],
   "jsPlugins": [
     "./scripts/lint/no-loose-text.ts",
-    "./scripts/lint/mutation-inline-error.ts",
     "./scripts/lint/restricted-imports.ts"
   ],
   "categories": {
@@ -64,7 +63,6 @@
       }
     ],
     "openstory/no-loose-text": "error",
-    "mutations/declare-inline-error": "error",
     // ── Import boundaries (#1445, #1489) ─────────────────────────────────
     // One rule per concern, so each override below answers exactly one
     // question — "which files may do X" — and never restates another rule.

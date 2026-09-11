@@ -119,7 +119,6 @@ export function useRecommendedStyles(
 export function usePromoteSequenceStyle() {
   const queryClient = useQueryClient();
   return useMutation({
-    meta: { inlineError: true },
     mutationFn: (input: { sequenceId: string; name: string }) =>
       promoteSequenceStyleFn({ data: input }),
     onSuccess: (style) => {

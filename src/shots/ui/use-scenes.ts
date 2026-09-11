@@ -61,7 +61,6 @@ export function useScenesBySequence(sequenceId?: string) {
 export function useSaveSceneScript(sequenceId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    meta: { inlineError: true },
     mutationFn: async (input: { sceneId: string; extract: string }) =>
       updateSceneScriptFn({
         data: {

@@ -75,7 +75,6 @@ export function useTalentById(talentId: string) {
  */
 export function useAnalyzeTalentMedia() {
   return useMutation({
-    meta: { inlineError: true },
     mutationFn: (input: { imageUrls: string[]; filenames?: string[] }) =>
       analyzeTalentMediaFn({ data: input }),
   });
@@ -88,7 +87,6 @@ export function useCreateTalent() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    meta: { inlineError: true },
     mutationFn: (data: CreateTalentInput) => createTalentFn({ data }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: talentKeys.lists() });
@@ -103,7 +101,7 @@ export function useUpdateTalent() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    meta: { inlineError: false },
+    meta: { globalError: true },
     mutationFn: (data: UpdateTalentInput & { talentId: string }) =>
       updateTalentFn({ data }),
     onSuccess: (_, variables) => {
@@ -122,7 +120,6 @@ export function useDeleteTalent() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    meta: { inlineError: true },
     mutationFn: (talentId: string) => deleteTalentFn({ data: { talentId } }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: talentKeys.lists() });
@@ -142,7 +139,7 @@ export function useToggleTalentFavorite() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    meta: { inlineError: false },
+    meta: { globalError: true },
     mutationFn: (talentId: string) =>
       toggleTalentFavoriteFn({ data: { talentId } }),
     onSuccess: (data) => {
@@ -161,7 +158,6 @@ export function useUploadTalentMedia() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    meta: { inlineError: true },
     mutationFn: async (data: {
       talentId: string;
       type: 'image' | 'video' | 'recording';
@@ -217,7 +213,6 @@ export function useUploadTalentMedia() {
  */
 export function useUploadTempMedia() {
   return useMutation({
-    meta: { inlineError: true },
     mutationFn: async (data: {
       file: File;
       type: 'image' | 'video' | 'recording';
@@ -249,7 +244,7 @@ export function useDeleteTalentMedia() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    meta: { inlineError: false },
+    meta: { globalError: true },
     mutationFn: (data: { mediaId: string; talentId: string }) =>
       deleteTalentMediaFn({ data: { mediaId: data.mediaId } }),
     onSuccess: (_, variables) => {
@@ -267,7 +262,6 @@ export function useGenerateTalentSheet() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    meta: { inlineError: true },
     mutationFn: (data: { talentId: string; sheetName?: string }) =>
       generateTalentSheetFn({ data }),
     onSuccess: (_, variables) => {
@@ -291,7 +285,7 @@ export function useSetDefaultSheet() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    meta: { inlineError: false },
+    meta: { globalError: true },
     mutationFn: (data: { sheetId: string; talentId: string }) =>
       setDefaultSheetFn({ data: { sheetId: data.sheetId } }),
     onSuccess: (_, variables) => {

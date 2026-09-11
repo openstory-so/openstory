@@ -30,7 +30,6 @@ export function FeedbackDialog({ open, onOpenChange }: FeedbackDialogProps) {
   const { data: user } = useUser();
 
   const mutation = useMutation({
-    meta: { inlineError: true },
     mutationFn: (input: { message: string; email?: string }) =>
       submitFeedbackFn({ data: input }),
     onSuccess: () => {

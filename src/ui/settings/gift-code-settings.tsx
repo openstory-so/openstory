@@ -55,7 +55,6 @@ function RedeemSection() {
   const [code, setCode] = useState('');
 
   const redeemMutation = useMutation({
-    meta: { inlineError: true },
     mutationFn: (input: { code: string }) => redeemGiftTokenFn({ data: input }),
     onSuccess: (result) => {
       setCode('');
@@ -162,7 +161,6 @@ function BatchCreateCard() {
     setForm((f) => ({ ...f, [field]: value }));
 
   const batchMutation = useMutation({
-    meta: { inlineError: true },
     mutationFn: (input: {
       count: number;
       amountUsd: number;
@@ -349,7 +347,6 @@ function CreateGiftCodeCard() {
     setForm((f) => ({ ...f, [field]: value }));
 
   const createMutation = useMutation({
-    meta: { inlineError: true },
     mutationFn: (input: {
       amountUsd: number;
       maxRedemptions: number;

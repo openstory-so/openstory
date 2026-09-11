@@ -129,7 +129,6 @@ export function useAddModelToSequence() {
     Error,
     { sequenceId: string; variantType: VariantType; model: string }
   >({
-    meta: { inlineError: true },
     mutationFn: async (input) => addModelToSequenceFn({ data: input }),
     onSuccess: async (_, { sequenceId, variantType }) => {
       await Promise.all([
@@ -157,7 +156,6 @@ export function useSetSequenceModel() {
     Error,
     { sequenceId: string; variantType: 'image' | 'video'; model: string }
   >({
-    meta: { inlineError: true },
     mutationFn: async (input) => setSequenceModelFn({ data: input }),
     onSuccess: async (_, { sequenceId, variantType }) => {
       await Promise.all([
@@ -230,7 +228,6 @@ export function useCreateSequence() {
     Error,
     CreateSequenceInput
   >({
-    meta: { inlineError: true },
     mutationFn: async (input) => {
       // SPREAD, never a field list. This was a hand-copied allowlist, and a
       // field missing from it is invisible: the composer sets it, this drops
@@ -285,7 +282,6 @@ export function useArchivedSequences() {
 export function useArchiveSequence() {
   const queryClient = useQueryClient();
   return useMutation({
-    meta: { inlineError: true },
     mutationFn: (sequenceId: string) =>
       archiveSequenceFn({ data: { sequenceId } }),
     onSuccess: () => invalidateSequenceLists(queryClient),
@@ -296,7 +292,6 @@ export function useArchiveSequence() {
 export function useUnarchiveSequence() {
   const queryClient = useQueryClient();
   return useMutation({
-    meta: { inlineError: true },
     mutationFn: (sequenceId: string) =>
       unarchiveSequenceFn({ data: { sequenceId } }),
     onSuccess: () => invalidateSequenceLists(queryClient),
@@ -321,7 +316,6 @@ function invalidateSequenceLists(
 export function useRenameSequence(sequenceId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    meta: { inlineError: true },
     mutationFn: (title: string) =>
       renameSequenceFn({ data: { sequenceId, title } }),
     onSuccess: (updated) => {
@@ -345,7 +339,6 @@ export function useSetSequenceMusic(sequenceId: string) {
   const posthog = usePostHog();
 
   return useMutation({
-    meta: { inlineError: true },
     // Serialize per-sequence writes so a quick off→on double-toggle can't have
     // its two POSTs resolve out of order and persist the stale value (#834).
     scope: { id: `set-sequence-music-${sequenceId}` },

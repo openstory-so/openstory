@@ -57,7 +57,7 @@ export function useAddCharacterToLibrary() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    meta: { inlineError: false },
+    meta: { globalError: true },
     mutationFn: (characterId: string) =>
       addCharacterToLibraryFn({ data: { characterId } }),
     onSuccess: () => {
@@ -98,7 +98,6 @@ type CharacterBibleInput = {
 export function useCreateSequenceCharacter() {
   const queryClient = useQueryClient();
   return useMutation({
-    meta: { inlineError: true },
     mutationFn: (
       data: { sequenceId: string; name: string } & CharacterBibleInput
     ) => createSequenceCharacterFn({ data }),
@@ -118,7 +117,6 @@ export function useCreateSequenceCharacter() {
 export function useUpdateSequenceCharacter() {
   const queryClient = useQueryClient();
   return useMutation({
-    meta: { inlineError: true },
     mutationFn: (
       data: {
         sequenceId: string;
@@ -154,7 +152,6 @@ export function useCharacterSheetStaleness(
 export function useRegenerateCharacterSheet() {
   const queryClient = useQueryClient();
   return useMutation({
-    meta: { inlineError: true },
     mutationFn: (data: {
       sequenceId: string;
       characterId: string;
@@ -180,7 +177,6 @@ export function useRegenerateCharacterSheet() {
 export function useSoftDeleteSequenceCharacter() {
   const queryClient = useQueryClient();
   return useMutation({
-    meta: { inlineError: true },
     mutationFn: (data: { sequenceId: string; characterId: string }) =>
       softDeleteSequenceCharacterFn({ data }),
     onSuccess: (_result, { sequenceId }) =>
@@ -220,7 +216,7 @@ export function useRecastCharacter() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    meta: { inlineError: false },
+    meta: { globalError: true },
     mutationFn: (data: { characterId: string; talentId: string }) =>
       recastCharacterFn({ data }),
     onSuccess: () => {

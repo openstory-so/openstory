@@ -11,12 +11,12 @@ declare module '@tanstack/react-query' {
   interface Register {
     mutationMeta: {
       /**
-       * Declared on every useMutation (lint: mutations/declare-inline-error,
-       * #1571). true: the hook or its callers surface the failure themselves
-       * (toast, inline state, try/catch) and the global toast stays quiet.
-       * false: nobody does, so the global toast is the error UI.
+       * Opt in to the global error toast (#1571). Off by default: nearly every
+       * mutation surfaces its own failure (titled toast, inline state,
+       * try/catch), and the bare toast on top was a duplicate. Set it on a
+       * hook whose callers do nothing with the error.
        */
-      inlineError: boolean;
+      globalError?: boolean;
     };
   }
 }
@@ -43,11 +43,9 @@ export function makeQueryClient() {
           notifyInsufficientCredits();
           return;
         }
-        // Mutations whose hook or callers surface the failure themselves opt
-        // out, so it isn't reported twice. Every mutation declares the flag
-        // (lint: mutations/declare-inline-error); missing means untagged
-        // legacy, which keeps the safety net.
-        if (mutation.meta?.inlineError) return;
+        // Opt-in: a mutation that handles its own error would otherwise
+        // report it twice.
+        if (!mutation.meta?.globalError) return;
         toast.error(error.message);
       },
     }),

@@ -169,7 +169,6 @@ export function usePromoteVariantToPrimary() {
     Error,
     { sequenceId: string; shotId: string; variantId: string }
   >({
-    meta: { inlineError: true },
     mutationFn: async (input) => {
       const result = await promoteVariantFn({ data: input });
       return result;
@@ -200,7 +199,6 @@ export function useDiscardVariant() {
     Error,
     { sequenceId: string; shotId: string; variantId: string }
   >({
-    meta: { inlineError: true },
     mutationFn: async (input) => discardVariantFn({ data: input }),
     onSuccess: async (_, { sequenceId }) => {
       await queryClient.invalidateQueries({
@@ -217,7 +215,6 @@ export function useUndiscardVariant() {
     Error,
     { sequenceId: string; shotId: string; variantId: string }
   >({
-    meta: { inlineError: true },
     mutationFn: async (input) => undiscardVariantFn({ data: input }),
     onSuccess: async (_, { sequenceId }) => {
       await queryClient.invalidateQueries({
@@ -258,7 +255,6 @@ export function useGenerateVariants() {
   const queryClient = useQueryClient();
 
   return useMutation<{ workflowRunId: string }, Error, GenerateVariantInput>({
-    meta: { inlineError: true },
     mutationFn: async (input: GenerateVariantInput) => {
       const { sequenceId, shotId, model, imageSize, numImages, seed } = input;
 
@@ -335,7 +331,6 @@ export function useSelectVariant() {
       previousList: ShotView[] | undefined;
     }
   >({
-    meta: { inlineError: true },
     mutationFn: async ({ sequenceId, shotId, variantIndex }) => {
       const result = await selectShotVariantFn({
         data: { sequenceId, shotId, variantIndex },
@@ -420,7 +415,6 @@ export function useSetImageFromVariant() {
     Error,
     { sequenceId: string; shotId: string; model: string }
   >({
-    meta: { inlineError: true },
     mutationFn: async (input) => {
       return setImageFromVariantFn({ data: input });
     },
@@ -505,7 +499,6 @@ export function useSetVideoFromVariant() {
     Error,
     { sequenceId: string; shotId: string; model: string }
   >({
-    meta: { inlineError: true },
     mutationFn: async (input) => {
       return setVideoFromVariantFn({ data: input });
     },
@@ -580,7 +573,6 @@ export function useSelectSegmentVideoVersion() {
     Error,
     { sequenceId: string; shotId: string; versionId: string }
   >({
-    meta: { inlineError: true },
     mutationFn: async (input) => {
       return selectSegmentVideoVersionFn({ data: input });
     },
@@ -669,7 +661,6 @@ export function useSelectFrameImageVersion() {
     Error,
     { sequenceId: string; shotId: string; versionId: string }
   >({
-    meta: { inlineError: true },
     mutationFn: async (input) => selectFrameImageVersionFn({ data: input }),
     onSuccess: async (data, { sequenceId, shotId }) => {
       if (data.thumbnailUrl) {

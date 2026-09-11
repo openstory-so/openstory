@@ -55,7 +55,6 @@ async function presignPut(
 export function useReplaceFrameImage() {
   const queryClient = useQueryClient();
   return useMutation({
-    meta: { inlineError: true },
     mutationFn: async (input: {
       file: File;
       sequenceId: string;
@@ -123,7 +122,6 @@ export function useReplaceFrameImage() {
 export function useReplaceShotVideo() {
   const queryClient = useQueryClient();
   return useMutation({
-    meta: { inlineError: true },
     mutationFn: async (input: {
       file: File;
       sequenceId: string;
@@ -214,7 +212,6 @@ function readMediaDuration(
 export function useUploadCharacterSheet() {
   const queryClient = useQueryClient();
   return useMutation({
-    meta: { inlineError: true },
     mutationFn: async (input: {
       file: File;
       sequenceId: string;
@@ -258,7 +255,6 @@ export function useUploadCharacterSheet() {
 export function useUploadLocationReference() {
   const queryClient = useQueryClient();
   return useMutation({
-    meta: { inlineError: true },
     mutationFn: async (input: {
       file: File;
       sequenceId: string;
@@ -302,7 +298,6 @@ export function useUploadLocationReference() {
 export function useUploadSequenceMusic() {
   const queryClient = useQueryClient();
   return useMutation({
-    meta: { inlineError: true },
     mutationFn: async (input: {
       file: File;
       sequenceId: string;

@@ -29,7 +29,6 @@ export const AskFounderCard: React.FC = () => {
   const [message, setMessage] = useState('');
 
   const mutation = useMutation({
-    meta: { inlineError: true },
     mutationFn: () =>
       requestFounderCreditsFn({
         data: { message: message.trim() || undefined },
