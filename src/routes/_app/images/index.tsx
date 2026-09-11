@@ -1,20 +1,21 @@
 import { StudioView } from '@/studio/ui/studio-view';
+import { studioListSearchSchema } from '@/studio/ui/list-prefs';
 import { createFileRoute } from '@tanstack/react-router';
-import { studioSortSchema } from '@/studio/schema';
-import { z } from 'zod';
-
-const searchParamsSchema = z.object({
-  sort: studioSortSchema.optional(),
-  favorites: z.boolean().optional(),
-});
 
 export const Route = createFileRoute('/_app/images/')({
-  validateSearch: searchParamsSchema,
+  validateSearch: studioListSearchSchema,
   component: ImagesPage,
   staticData: { breadcrumb: 'Images' },
 });
 
 function ImagesPage() {
-  const { sort = 'newest', favorites = false } = Route.useSearch();
-  return <StudioView activity="image" sort={sort} favorites={favorites} />;
+  const search = Route.useSearch();
+  const navigate = Route.useNavigate();
+  return (
+    <StudioView
+      activity="image"
+      search={search}
+      navigate={(opts) => navigate(opts)}
+    />
+  );
 }

@@ -380,15 +380,33 @@ const UserRow: React.FC<{ row: UserActivityRow }> = ({ row }) => {
         {microsToDisplayUsd(micros(row.currentBalanceMicros))}
       </td>
       <td className="px-4 py-3">
-        <Link
-          to="/sequences"
-          search={{ user: row.email }}
-          className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
-          aria-label={`Open support view for ${row.email}`}
-        >
-          <LifeBuoy className="h-4 w-4" />
-          Support
-        </Link>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <Link
+            to="/sequences"
+            search={{ user: row.email }}
+            className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
+            aria-label={`Open sequence support view for ${row.email}`}
+          >
+            <LifeBuoy className="h-4 w-4" />
+            Sequences
+          </Link>
+          <Link
+            to="/images"
+            search={{ user: row.email }}
+            className="text-sm text-primary hover:underline"
+            aria-label={`Open image support view for ${row.email}`}
+          >
+            Images
+          </Link>
+          <Link
+            to="/videos"
+            search={{ user: row.email }}
+            className="text-sm text-primary hover:underline"
+            aria-label={`Open video support view for ${row.email}`}
+          >
+            Videos
+          </Link>
+        </div>
       </td>
     </tr>
   );
@@ -410,6 +428,8 @@ const CSV_COLUMNS = [
   'creditsGiftedUsd',
   'currentBalanceUsd',
   'supportUrl',
+  'imagesSupportUrl',
+  'videosSupportUrl',
 ] as const;
 
 function csvEscape(value: string | number | null): string {
@@ -428,7 +448,10 @@ function toCsv(rows: UserActivityRow[], origin: string): string {
       row.avgAnalysisDurationMs === null
         ? null
         : Math.round(row.avgAnalysisDurationMs / 1000);
-    const supportUrl = `${origin}/sequences?user=${encodeURIComponent(row.email)}`;
+    const encoded = encodeURIComponent(row.email);
+    const supportUrl = `${origin}/sequences?user=${encoded}`;
+    const imagesSupportUrl = `${origin}/images?user=${encoded}`;
+    const videosSupportUrl = `${origin}/videos?user=${encoded}`;
     const values: Array<string | number | null> = [
       row.userId,
       row.name,
@@ -445,6 +468,8 @@ function toCsv(rows: UserActivityRow[], origin: string): string {
       microsToUsd(micros(row.creditsGiftedMicros)).toFixed(2),
       microsToUsd(micros(row.currentBalanceMicros)).toFixed(2),
       supportUrl,
+      imagesSupportUrl,
+      videosSupportUrl,
     ];
     return values.map(csvEscape).join(',');
   });
