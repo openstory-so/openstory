@@ -269,6 +269,22 @@ Before you finish, check the whole script against the RENDER IT CLEANLY rules an
  * Chat prompts (used via getChatPrompt → durable workflow calls)
  */
 export const WORKFLOW_CHAT_PROMPTS: Record<string, ChatMessage[]> = {
+  // Voice Design (#1553): one sentence ElevenLabs can cast from. Prompted
+  // like their own guidance — age, gender, accent, pitch, texture, pace,
+  // attitude — and nothing about looks, which a voice cannot carry.
+  'phase/voice-design-chat': [
+    {
+      role: 'system',
+      content: `You are a casting director writing a voice brief for a text-to-voice model. You will be called via a structured output tool. Follow the provided schema exactly.
+
+Given a character bible, write ONE "voiceDescription" of 20–60 words that describes only what can be HEARD: age, gender, accent or region, pitch, texture (gravelly, breathy, clear), pace, energy and attitude, in the register the personality implies. Name a concrete accent where the bible gives ethnicity or region. Never describe appearance, clothing or movement. No character name, no quotes, no lists — a single descriptive sentence, e.g. "A warm, low-pitched British woman in her 50s, unhurried and precise, with a dry amused edge."`,
+    },
+    {
+      role: 'user',
+      content: `Character bible:
+{{character}}`,
+    },
+  ],
   'phase/music-design-chat': [
     {
       role: 'system',

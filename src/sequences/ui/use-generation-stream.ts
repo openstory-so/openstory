@@ -366,6 +366,7 @@ export function useGenerationStream(
       'generation.talent:unmatched',
       'generation.location:matched',
       'generation.character-sheet:progress',
+      'generation.character-voice:progress',
       'generation.location-sheet:progress',
       'generation.poster:ready',
       'generation.style:ready',

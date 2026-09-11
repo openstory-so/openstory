@@ -24,11 +24,21 @@ import { triggerWorkflow } from '@/platform/server/workflow/client';
 import type { RecastCharacterWorkflowInput } from '@/platform/server/workflow/types';
 import { buildRecastRegenerateSnapshots } from '@/cast/server/workflows/recast-snapshot';
 import { characterToBible } from '@/cast/server/bibles-from-scoped';
+import {
+  releaseCharacterVoice,
+  releaseVoiceIfUnreferenced,
+} from '@/cast/server/voice/release-voice';
+import { isElevenLabsConfigured } from '@/models/server/elevenlabs-config';
+import {
+  DEFAULT_ANALYSIS_MODEL,
+  getAnalysisModelById,
+} from '@/models/models.config';
+import type { CharacterVoiceWorkflowInput } from '@/platform/server/workflow/types';
 import { buildRegenerateCharacterSheetPayload } from '@/cast/server/sheets/character-sheet-trigger';
 import type { SheetStaleness } from '@/cast/server/sheets/sheet-staleness';
 import { characterSheetHashMatchesStored } from '@/cast/server/workflows/sheet-snapshots';
 
-import { NotFoundError } from '@/platform/errors';
+import { NotFoundError, ValidationError } from '@/platform/errors';
 import { getLogger } from '@/platform/logger';
 import {
   authWithTeamMiddleware,
@@ -72,6 +82,7 @@ const characterBibleFieldsSchema = z.object({
   distinguishingFeatures: bibleField.optional(),
   personality: bibleField.optional(),
   movement: bibleField.optional(),
+  voiceDescription: bibleField.optional(),
   consistencyTag: bibleField.optional(),
 });
 
@@ -180,7 +191,65 @@ export const softDeleteSequenceCharacterFn = createServerFn({ method: 'POST' })
       data.characterId,
       { actorId: context.user.id }
     );
+    // The voice slot is account-wide, so it goes with the row (#1553); the
+    // description and previews stay, so a restore can regenerate.
+    await releaseCharacterVoice(context.scopedDb, existing);
     return { characterId: data.characterId, deletedAt };
+  });
+
+/**
+ * Design (or re-design) a character's voice (#1553). The old voice is
+ * released before the run starts so a regenerate never holds two slots; the
+ * workflow drafts a description from the bible when the row has none.
+ */
+export const generateCharacterVoiceFn = createServerFn({ method: 'POST' })
+  .middleware([sequenceAccessMiddleware])
+  .validator(zodValidator(characterIdInput))
+  .handler(async ({ context, data }) => {
+    if (!isElevenLabsConfigured()) {
+      throw new ValidationError('Voice design is not configured');
+    }
+    const character = await context.scopedDb.characters.getById(
+      data.characterId
+    );
+    if (!character || character.sequenceId !== data.sequenceId) {
+      throw new NotFoundError('Character not found');
+    }
+    await releaseCharacterVoice(context.scopedDb, character);
+    const payload: CharacterVoiceWorkflowInput = {
+      userId: context.user.id,
+      teamId: context.teamId,
+      sequenceId: character.sequenceId,
+      characterDbId: character.id,
+      characterBible: characterToBible(character),
+      voiceDescription: character.voiceDescription ?? '',
+      analysisModelId:
+        getAnalysisModelById(context.sequence.analysisModel)?.id ??
+        DEFAULT_ANALYSIS_MODEL,
+    };
+    const workflowRunId = await triggerWorkflow('/character-voice', payload);
+    return { characterId: character.id, workflowRunId };
+  });
+
+/**
+ * Per-character voice switch (#1553): an explicit override of the sequence
+ * default. Off releases the saved voice.
+ */
+export const setCharacterVoiceEnabledFn = createServerFn({ method: 'POST' })
+  .middleware([sequenceAccessMiddleware])
+  .validator(zodValidator(characterIdInput.extend({ enabled: z.boolean() })))
+  .handler(async ({ context, data }) => {
+    const character = await context.scopedDb.characters.getById(
+      data.characterId
+    );
+    if (!character || character.sequenceId !== data.sequenceId) {
+      throw new NotFoundError('Character not found');
+    }
+    await context.scopedDb.characters.update(character.id, {
+      useVoice: data.enabled,
+    });
+    if (!data.enabled) await releaseCharacterVoice(context.scopedDb, character);
+    return { characterId: character.id, useVoice: data.enabled };
   });
 
 /** Undo a character soft-delete. */
@@ -381,7 +450,23 @@ export const recastCharacterFn = createServerFn({ method: 'POST' })
       personality: castingAttrs.personality,
       movement: castingAttrs.movement,
       consistencyTag: castingAttrs.consistencyTag,
+      // Cast copies the talent's voice (#1553); the role's own is released
+      // below once nothing else points at it.
+      ...(talentWithSheets.voiceId
+        ? {
+            voiceId: talentWithSheets.voiceId,
+            voiceDescription: talentWithSheets.voiceDescription,
+            voicePreviews: null,
+          }
+        : {}),
     });
+    if (
+      character.voiceId &&
+      talentWithSheets.voiceId &&
+      character.voiceId !== talentWithSheets.voiceId
+    ) {
+      await releaseVoiceIfUnreferenced(context.scopedDb, character.voiceId);
+    }
     // Re-read rather than use the write's row: the recast snapshot needs the
     // live sheet, which resolves from the version pointer (#1419).
     const updatedCharacter = await context.scopedDb.characters.getById(

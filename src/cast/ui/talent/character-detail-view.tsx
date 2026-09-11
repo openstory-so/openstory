@@ -64,6 +64,7 @@ import {
 import { useCallback, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { CharacterBibleForm } from './character-bible-form';
+import { CharacterVoiceSection } from './character-voice-section';
 import { RecastConfirmDialog } from './recast-confirm-dialog';
 import { TalentPickerDialog } from './talent-picker-dialog';
 import { AppImage } from '@/ui/shadcn/app-image';
@@ -612,6 +613,12 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
                   {softDelete.isPending ? 'Removing…' : 'Remove'}
                 </Button>
               </div>
+
+              <CharacterVoiceSection
+                sequenceId={sequenceId}
+                character={character}
+                generateVoices={sequence?.generateVoices ?? false}
+              />
 
               {character.talent ? (
                 <div className="flex items-center gap-3 rounded-lg bg-muted/50 p-3">

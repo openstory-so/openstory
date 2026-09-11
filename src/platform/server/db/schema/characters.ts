@@ -23,6 +23,13 @@ const SHEET_STATUSES = [
 ] as const;
 export type SheetStatus = (typeof SHEET_STATUSES)[number];
 
+/** One Voice Design audition: the ElevenLabs preview id + its MP3 in R2. */
+export type VoicePreview = {
+  generatedVoiceId: string;
+  url: string;
+  path: string;
+};
+
 /**
  * Characters table
  * Stores characters extracted from a sequence's script with their generated reference sheets
@@ -57,6 +64,17 @@ export const characters = snakeCase.table(
     // rows that predate the fields, and `bibleField` clears `''` to NULL.
     personality: text(),
     movement: text(),
+    // Voice (#1553). `voiceId` is an ElevenLabs voice on the PLATFORM account;
+    // the same id is copied onto `talent.voiceId` at save-to-library and
+    // back at cast, so release through `releaseVoiceIfUnreferenced`, never a
+    // bare delete. Nullable: a character without a voice is a legitimate
+    // state, not an unknown. `voicePreviews` are the Voice Design auditions
+    // in R2 (the first is the saved voice). `useVoice` NULL = inherit
+    // `sequences.generateVoices` — resolve with `usesVoice()`, never raw.
+    voiceId: text(),
+    voiceDescription: text(),
+    voicePreviews: text({ mode: 'json' }).$type<VoicePreview[]>(),
+    useVoice: integer({ mode: 'boolean' }),
     consistencyTag: text(), // e.g. "char_001: Jack-denim-jacket"
     // First appearance in script
     firstMentionSceneId: text(),

@@ -88,6 +88,8 @@ export class TalentMatchingWorkflow extends OpenStoryWorkflowEntrypoint<TalentMa
             description: snapshot.description,
             personality: snapshot.personality,
             movement: snapshot.movement,
+            voiceId: snapshot.voiceId,
+            voiceDescription: snapshot.voiceDescription,
           }
         : row;
     });
@@ -162,6 +164,8 @@ export class TalentMatchingWorkflow extends OpenStoryWorkflowEntrypoint<TalentMa
             talentDescription: talent.description ?? undefined,
             personality: talent.personality ?? '',
             movement: talent.movement ?? '',
+            voiceId: talent.voiceId,
+            voiceDescription: talent.voiceDescription,
           });
         }
 

@@ -183,6 +183,8 @@ describe('createCastRecords (talent match, #1561)', () => {
     consistencyTag: 'sarah',
   };
   const match = {
+    voiceId: null,
+    voiceDescription: null,
     characterId: 'char_1',
     talentId: 'tal_1',
     talentName: 'Ada',

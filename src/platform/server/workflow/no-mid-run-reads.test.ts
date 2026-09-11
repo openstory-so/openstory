@@ -316,6 +316,13 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
       why: 'The pending-promote claim, read back to confirm THIS run owns it before clearing it.',
     },
   ],
+  'character-voice-workflow.ts': [
+    {
+      read: 'resolveKey',
+      bucket: 'CREDENTIAL',
+      why: 'The platform ElevenLabs key, resolved inside the design and save steps that spend it (#1553).',
+    },
+  ],
   'motion-workflow.ts': [
     {
       read: 'resolveKey',

@@ -260,6 +260,13 @@ export const realtimeSchema = {
       error: z.string().optional(),
     }),
 
+    // Character voice design progress (#1553)
+    'character-voice:progress': z.object({
+      characterId: z.string(),
+      status: z.enum(['generating', 'completed', 'failed']),
+      error: z.string().optional(),
+    }),
+
     // Location reference generation progress (during recasting)
     'location-sheet:progress': z.object({
       locationId: z.string(),

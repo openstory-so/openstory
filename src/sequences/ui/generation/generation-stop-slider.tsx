@@ -7,6 +7,8 @@ import {
   stopAtFromSliderIndex,
 } from '@/sequences/pipeline';
 import type { GenerationStage } from '@/sequences/pipeline';
+import { VOICE_DESIGN_COST } from '@/billing/elevenlabs-pricing';
+import { microsToDisplayUsd } from '@/billing/money';
 import { Label } from '@/ui/shadcn/label';
 import { Slider } from '@/ui/shadcn/slider';
 import { Switch } from '@/ui/shadcn/switch';
@@ -25,6 +27,9 @@ type GenerationStopSliderProps = {
    */
   generateStartFrames?: boolean;
   onGenerateStartFramesChange?: (value: boolean) => void;
+  /** Design a voice per speaking character (#1553); offered like start frames. */
+  generateVoices?: boolean;
+  onGenerateVoicesChange?: (value: boolean) => void;
   disabled?: boolean;
 };
 
@@ -38,6 +43,8 @@ export const GenerationStopSlider: FC<GenerationStopSliderProps> = ({
   minStage,
   generateStartFrames = true,
   onGenerateStartFramesChange,
+  generateVoices = false,
+  onGenerateVoicesChange,
   disabled = false,
 }) => {
   const stages = sliderStages(!generateStartFrames);
@@ -137,6 +144,26 @@ export const GenerationStopSlider: FC<GenerationStopSliderProps> = ({
             {generateStartFrames
               ? 'Each shot’s video starts from a generated still.'
               : 'Video is generated straight from the reference sheets.'}
+          </p>
+        </div>
+      )}
+      {onGenerateVoicesChange && (
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-2">
+            <Switch
+              id="generate-voices"
+              checked={generateVoices}
+              onCheckedChange={onGenerateVoicesChange}
+              disabled={disabled}
+            />
+            <Label htmlFor="generate-voices" className="text-sm">
+              Voices
+            </Label>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {generateVoices
+              ? `Each speaking character gets a designed voice (${microsToDisplayUsd(VOICE_DESIGN_COST)} each).`
+              : 'Characters have no voice.'}
           </p>
         </div>
       )}

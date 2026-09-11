@@ -3,7 +3,15 @@
  * Character CRUD, sheet generation, talent assignment, and shot-character matching.
  */
 
-import { and, eq, getTableColumns, inArray, isNull, sql } from 'drizzle-orm';
+import {
+  and,
+  count,
+  eq,
+  getTableColumns,
+  inArray,
+  isNull,
+  sql,
+} from 'drizzle-orm';
 import type { Database } from '@/platform/server/db/client';
 import type {
   CharacterWithSheet,
@@ -46,6 +54,7 @@ export type CharacterBibleUpdate = Partial<
     | 'distinguishingFeatures'
     | 'personality'
     | 'movement'
+    | 'voiceDescription'
     | 'consistencyTag'
   >
 >;
@@ -211,6 +220,11 @@ export function createCharactersMethods(db: Database) {
             distinguishingFeatures: data.distinguishingFeatures,
             personality: data.personality,
             movement: data.movement,
+            // A voice already on the row wins (#1553): re-writing it would
+            // orphan an ElevenLabs slot. A row without one takes the talent
+            // copy the insert carries.
+            voiceId: sql`coalesce(${characters.voiceId}, excluded.voice_id)`,
+            voiceDescription: sql`coalesce(${characters.voiceDescription}, excluded.voice_description)`,
             consistencyTag: data.consistencyTag,
             // Sheet OUTPUT is not re-written here (#1419). A re-analysis used
             // to blank `sheetImageUrl` while leaving the version rows intact,
@@ -252,6 +266,22 @@ export function createCharactersMethods(db: Database) {
     },
 
     update,
+
+    /**
+     * Rows (any team — the id is the ElevenLabs account's) still pointing at
+     * a voice, across characters AND talent. Zero = the slot can be freed.
+     */
+    countVoiceReferences: async (voiceId: string): Promise<number> => {
+      const [chars] = await db
+        .select({ n: count() })
+        .from(characters)
+        .where(eq(characters.voiceId, voiceId));
+      const [tal] = await db
+        .select({ n: count() })
+        .from(talent)
+        .where(eq(talent.voiceId, voiceId));
+      return (chars?.n ?? 0) + (tal?.n ?? 0);
+    },
 
     delete: async (id: string): Promise<boolean> => {
       const result = await db.delete(characters).where(eq(characters.id, id));
