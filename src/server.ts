@@ -87,6 +87,7 @@ export { MusicWorkflow } from '@/audio/server/workflows/music-workflow';
 export { MotionWorkflow } from '@/motion/server/workflows/motion-workflow';
 export { MotionBatchWorkflow } from '@/motion/server/workflows/motion-batch-workflow';
 export { CharacterSheetWorkflow } from '@/cast/server/workflows/character-sheet-workflow';
+export { CharacterVoiceWorkflow } from '@/cast/server/workflows/character-voice-workflow';
 export { LocationSheetWorkflow } from '@/cast/server/workflows/location-sheet-workflow';
 export { LibraryTalentSheetWorkflow } from '@/cast/server/workflows/library-talent-sheet-workflow';
 export { LibraryLocationSheetWorkflow } from '@/cast/server/workflows/library-location-sheet-workflow';

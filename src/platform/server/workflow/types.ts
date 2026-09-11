@@ -312,6 +312,12 @@ export interface StoryboardWorkflowInput extends SequenceWorkflowContext {
    */
   referenceOnly?: boolean;
   /**
+   * Design a voice per speaking character (#1553). Snapshotted from
+   * `sequences.generateVoices` by the launcher; absent on legacy payloads =
+   * off.
+   */
+  generateVoices?: boolean;
+  /**
    * Duration chip from Enhance / Generate (e.g. 30). Scene-split assigns
    * snapped clip lengths so the rendered shots sum as close as possible to
    * this. Absent on retries that did not pass a chip — allocation is skipped.
@@ -392,6 +398,8 @@ export interface AnalyzeScriptWorkflowInput extends SequenceWorkflowContext {
    * is doing.
    */
   referenceOnly?: boolean;
+  /** @see StoryboardWorkflowInput.generateVoices — passed straight through. */
+  generateVoices?: boolean;
   /** @see StoryboardWorkflowInput.targetSeconds — passed straight through. */
   targetSeconds?: number;
 }
@@ -777,6 +785,10 @@ export type TalentCharacterMatch = {
   // tolerates pre-#1561 checkpoints that lack the keys).
   personality: string;
   movement: string;
+  // Talent voice (#1553), copied onto the character at cast. `null` = the
+  // library has none (pre-#1553 checkpoints lack the keys: `?? null`).
+  voiceId: string | null;
+  voiceDescription: string | null;
 };
 
 /**
@@ -803,6 +815,8 @@ type SuggestedTalentSnapshot = {
   description: string | null;
   personality: string;
   movement: string;
+  voiceId: string | null;
+  voiceDescription: string | null;
 };
 
 /** @see LocationMatchingWorkflowInput.suggestedLocations */
@@ -831,6 +845,38 @@ export interface CharacterBibleWorkflowInput extends SequenceWorkflowContext {
 
   /** Sequence style config to apply to character sheets */
   styleConfig?: StyleConfig;
+
+  /**
+   * Voice Design (#1553). `generateVoices` is the sequence default snapshotted
+   * at the trigger; `speakingCharacterIds` are the bible ids with dialogue
+   * lines in the analysed scenes (`speakingCharacterIds()`). A voice child
+   * spawns for a speaking character when the upserted row resolves
+   * `usesVoice()` true and has no voice yet.
+   */
+  generateVoices: boolean;
+  speakingCharacterIds: string[];
+  /** Drafts the voice description when the character has none. */
+  analysisModelId: AnalysisModelId;
+}
+
+/**
+ * One character's ElevenLabs voice (#1553): LLM-draft the description when
+ * missing, Voice Design → previews in R2, save the top preview as a voice.
+ * Spawned per speaking character by the bible workflow and triggered
+ * directly by "Generate voice" on the character card.
+ */
+export interface CharacterVoiceWorkflowInput extends SequenceWorkflowContext {
+  sequenceId: string;
+  characterDbId: string;
+  characterBible: CharacterBibleEntry;
+  /** The stored description; empty = draft one from the bible first. */
+  voiceDescription: string;
+  analysisModelId: AnalysisModelId;
+}
+
+export interface CharacterVoiceWorkflowResult {
+  voiceId: string;
+  voiceDescription: string;
 }
 
 /**

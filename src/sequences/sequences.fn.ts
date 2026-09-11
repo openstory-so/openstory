@@ -67,6 +67,7 @@ import type {
   StoryboardTriggerInput,
 } from '@/platform/server/workflow/types';
 import { createServerFn } from '@tanstack/react-start';
+import { releaseCharacterVoice } from '@/cast/server/voice/release-voice';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
 import {
@@ -608,6 +609,13 @@ export const archiveSequenceFn = createServerFn({ method: 'POST' })
     await context.scopedDb
       .sequence(context.sequence.id)
       .updateStatus('archived');
+    // Archive is the product's delete: free the cast's voice slots (#1553).
+    // Descriptions and previews stay, so an unarchive can regenerate.
+    for (const character of await context.scopedDb.characters.list(
+      context.sequence.id
+    )) {
+      await releaseCharacterVoice(context.scopedDb, character);
+    }
     await context.scopedDb.sequenceEvents.record({
       sequenceId: context.sequence.id,
       actorId: context.user.id,

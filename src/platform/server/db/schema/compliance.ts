@@ -48,6 +48,7 @@ const PROVENANCE_ASSET_KINDS = [
   'video_variant',
   'shot_variant',
   'character_sheet',
+  'character_voice',
   'location_sheet',
   'talent_sheet',
   'element_sheet',

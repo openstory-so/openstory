@@ -57,6 +57,8 @@ export async function refreshCheckpointFromCast(
         talentDescription: talent.description ?? undefined,
         personality: talent.personality ?? '',
         movement: talent.movement ?? '',
+        voiceId: talent.voiceId,
+        voiceDescription: talent.voiceDescription,
       });
     }
     next.talentMatches = talentMatches;

@@ -24,10 +24,13 @@ type GenerationStopAlertProps = {
   stopAt: GenerationStage;
   /** Start frames on/off rides with the stop-at: off hides the Images stop. */
   generateStartFrames: boolean;
+  /** Design a voice per speaking character (#1553). */
+  generateVoices: boolean;
   remember: boolean;
   onConfirm: (next: {
     stopAt: GenerationStage;
     generateStartFrames: boolean;
+    generateVoices: boolean;
     remember: boolean;
   }) => void;
   /** Extra copy — e.g. Generate Copy warning. */
@@ -45,6 +48,7 @@ export const GenerationStopAlert: FC<GenerationStopAlertProps> = ({
   onOpenChange,
   stopAt,
   generateStartFrames,
+  generateVoices,
   remember,
   onConfirm,
   description,
@@ -53,14 +57,16 @@ export const GenerationStopAlert: FC<GenerationStopAlertProps> = ({
 }) => {
   const [draftStopAt, setDraftStopAt] = useState(stopAt);
   const [draftStartFrames, setDraftStartFrames] = useState(generateStartFrames);
+  const [draftVoices, setDraftVoices] = useState(generateVoices);
   const [draftRemember, setDraftRemember] = useState(remember);
 
   useEffect(() => {
     if (!open) return;
     setDraftStopAt(stopAt);
     setDraftStartFrames(generateStartFrames);
+    setDraftVoices(generateVoices);
     setDraftRemember(remember);
-  }, [open, stopAt, generateStartFrames, remember]);
+  }, [open, stopAt, generateStartFrames, generateVoices, remember]);
 
   const estimate = useDraftGenerationEstimate(
     open && estimateBase
@@ -86,6 +92,8 @@ export const GenerationStopAlert: FC<GenerationStopAlertProps> = ({
           onChange={setDraftStopAt}
           generateStartFrames={draftStartFrames}
           onGenerateStartFramesChange={setDraftStartFrames}
+          generateVoices={draftVoices}
+          onGenerateVoicesChange={setDraftVoices}
         />
         <AlertDialogFooter className="sm:items-start">
           {/* "Don't ask again" lives in the button bar, opposite the buttons,
@@ -109,6 +117,7 @@ export const GenerationStopAlert: FC<GenerationStopAlertProps> = ({
                 onConfirm({
                   stopAt: draftStopAt,
                   generateStartFrames: draftStartFrames,
+                  generateVoices: draftVoices,
                   remember: draftRemember,
                 })
               }

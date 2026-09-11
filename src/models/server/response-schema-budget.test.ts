@@ -34,6 +34,7 @@ import {
   sceneSplitScenesResultSchema,
   styleRecommendationResponseSchema,
   talentMatchResponseSchema,
+  voiceDescriptionSchema,
 } from '@/sequences/response-schemas';
 import {
   motionPromptSchema,
@@ -56,6 +57,7 @@ const MEASURED_SCHEMAS: Record<string, z.ZodType> = {
   autoStyleResponseSchema,
   softenImagePromptResponseSchema,
   shotListPassResultSchema,
+  voiceDescriptionSchema,
 };
 
 describe('structured-output schema budget', () => {

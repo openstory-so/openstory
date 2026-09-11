@@ -81,6 +81,7 @@ function makeSequence(overrides: Partial<Sequence> = {}): Sequence {
     pipelineStage: null,
     generationCheckpoint: null,
     generateStartFrames: true,
+    generateVoices: false,
     suggestedTalentIds: null,
     suggestedLocationIds: null,
     ...overrides,

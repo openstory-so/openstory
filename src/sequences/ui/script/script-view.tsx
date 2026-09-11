@@ -363,6 +363,7 @@ export const ScriptView: FC<{
     videoModels: ImageToVideoModel[];
     stopAt: GenerationStage;
     generateStartFrames: boolean;
+    generateVoices: boolean;
     audioModels: AudioModel[];
   }>(() => ({
     generationMode: savedSettings.generationMode,
@@ -385,6 +386,9 @@ export const ScriptView: FC<{
     generateStartFrames: isEditing
       ? sequence.generateStartFrames
       : savedSettings.generateStartFrames,
+    generateVoices: isEditing
+      ? sequence.generateVoices
+      : savedSettings.generateVoices,
     audioModels:
       isEditing && sequence.musicModel
         ? [safeAudioModel(sequence.musicModel, DEFAULT_MUSIC_MODEL)]
@@ -397,6 +401,7 @@ export const ScriptView: FC<{
     videoModels,
     stopAt,
     generateStartFrames,
+    generateVoices,
     audioModels,
   } = genSettings;
   // Derived, not stored: the picker only offers tiers the chosen models serve,
@@ -737,6 +742,7 @@ export const ScriptView: FC<{
         videoModels: savedSettings.videoModels,
         stopAt: savedSettings.stopAt,
         generateStartFrames: savedSettings.generateStartFrames,
+        generateVoices: savedSettings.generateVoices,
         audioModels: savedSettings.audioModels,
       });
       hasSyncedRef.current = true;
@@ -894,10 +900,15 @@ export const ScriptView: FC<{
   const executeRegeneration = (
     run: Pick<
       typeof genSettings,
-      'stopAt' | 'generateStartFrames' | 'videoModels'
+      'stopAt' | 'generateStartFrames' | 'generateVoices' | 'videoModels'
     > = genSettings
   ) => {
-    const { stopAt: runUntil, generateStartFrames, videoModels } = run;
+    const {
+      stopAt: runUntil,
+      generateStartFrames,
+      generateVoices,
+      videoModels,
+    } = run;
     if (needsBillingSetup && !allowsUnfundedGeneration(runUntil)) {
       showGate();
       return;
@@ -921,6 +932,7 @@ export const ScriptView: FC<{
         autoGenerateMotion: flags.autoGenerateMotion,
         autoGenerateMusic: flags.autoGenerateMusic,
         generateStartFrames,
+        generateVoices,
         musicModel: audioModels[0] ?? DEFAULT_MUSIC_MODEL,
         audioModels,
         targetDurationSeconds: targetDuration,
@@ -1766,6 +1778,7 @@ export const ScriptView: FC<{
         onOpenChange={setShowStopAlert}
         stopAt={stopAt}
         generateStartFrames={generateStartFrames}
+        generateVoices={generateVoices}
         remember={savedSettings.rememberStopAt}
         confirmLabel={
           stopAlertMode === 'edit'
@@ -1783,10 +1796,11 @@ export const ScriptView: FC<{
         onConfirm={({
           stopAt: nextStopAt,
           generateStartFrames: nextStartFrames,
+          generateVoices: nextVoices,
           remember,
         }) => {
           const next = withStartFrames(
-            { ...genSettings, stopAt: nextStopAt },
+            { ...genSettings, stopAt: nextStopAt, generateVoices: nextVoices },
             nextStartFrames
           );
           setGenSettings(next);

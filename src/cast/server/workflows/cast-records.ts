@@ -60,6 +60,10 @@ export function buildCharacterInsert(args: {
     movement: castingAttrs?.movement ?? character.movement,
     voiceOnly: character.voiceOnly,
     consistencyTag: castingAttrs?.consistencyTag ?? character.consistencyTag,
+    // Cast copies the talent's voice (#1553); the upsert keeps a voice the
+    // row already holds.
+    voiceId: talentMatch?.voiceId ?? null,
+    voiceDescription: talentMatch?.voiceDescription ?? null,
     firstMentionSceneId: null,
     firstMentionText: null,
     firstMentionLine: null,

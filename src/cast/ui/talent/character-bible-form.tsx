@@ -21,6 +21,7 @@ const characterFormSchema = z.object({
   movement: z.string().max(2000).default(''),
   // A checked box submits 'on'; an unchecked one is absent from FormData.
   voiceOnly: z.preprocess((v) => v === 'on', z.boolean()),
+  voiceDescription: z.string().max(2000).default(''),
 });
 
 /**
@@ -153,6 +154,13 @@ export const CharacterBibleForm: React.FC<{
           textarea
         />
       )}
+      <BibleField
+        idPrefix="character"
+        label="Voice"
+        name="voiceDescription"
+        defaultValue={character.voiceDescription}
+        textarea
+      />
       <div className="flex justify-end">
         <Button type="submit" disabled={updateCharacter.isPending}>
           {updateCharacter.isPending && (

@@ -65,6 +65,8 @@ type GenerationSettings = {
   rememberStopAt: boolean;
   /** Render a still per shot first (the frame-based workflow); off = reference-only. */
   generateStartFrames: boolean;
+  /** Design a voice per speaking character (#1553). */
+  generateVoices: boolean;
   musicModel: AudioModel;
   audioModels: AudioModel[];
 };
@@ -106,6 +108,7 @@ const DEFAULT_SETTINGS: GenerationSettings = withMode({
   // Off by default: a new sequence renders reference-only; start frames are
   // the opt-in for steerable composition.
   generateStartFrames: false,
+  generateVoices: false,
   musicModel: TURBO_DEFAULT_AUDIO,
   audioModels: [TURBO_DEFAULT_AUDIO],
 });
@@ -267,6 +270,10 @@ function loadSettings(): GenerationSettings {
         'generateStartFrames' in parsed &&
         typeof parsed.generateStartFrames === 'boolean'
           ? parsed.generateStartFrames
+          : false,
+      generateVoices:
+        'generateVoices' in parsed && typeof parsed.generateVoices === 'boolean'
+          ? parsed.generateVoices
           : false,
       musicModel,
       audioModels,

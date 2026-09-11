@@ -20,7 +20,9 @@ import {
   estimateStoryboardRenderCost,
 } from '@/billing/cost-estimation';
 import { creditsShortStatusError } from '@/billing/credits-short';
-import { addMicros, microsToUsd } from '@/billing/money';
+import { addMicros, microsToUsd, multiplyMicros } from '@/billing/money';
+import { VOICE_DESIGN_COST } from '@/billing/elevenlabs-pricing';
+import { speakingCharacterIds } from '@/cast/voice';
 import { gateStoryboardRenders } from '@/billing/server/storyboard-render-gate';
 import { reusesTalentSheet } from '@/cast/server/talent/reuse-talent-sheet';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
@@ -118,6 +120,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
       suggestedTalentIds,
       suggestedLocationIds,
       referenceOnly = false,
+      generateVoices = false,
     } = input;
 
     // Stop-at is the only word on how far to run; the legacy flags on the
@@ -522,6 +525,11 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
         ).length
       : 0;
     const billedLocationSheets = runReferences ? locationBible.length : 0;
+    // Voices (#1553): every speaking character, ignoring rows that already
+    // hold one or opted out — an over-estimate is the safe direction here.
+    const speakingIds = speakingCharacterIds(characterBible, scenes);
+    const billedVoices =
+      runReferences && generateVoices ? speakingIds.length : 0;
     const billedElementSheets = runReferences
       ? findMissingElementEntries(elementBible, knownElements).length
       : 0;
@@ -556,13 +564,16 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
           audioDurationSeconds: totalDurationSeconds,
           pricing,
         }),
-        estimateReferenceSheetCost({
-          imageModel,
-          characterSheets: billedCharacterSheets,
-          locationSheets: billedLocationSheets,
-          elementSheets: billedElementSheets,
-          pricing,
-        })
+        addMicros(
+          multiplyMicros(VOICE_DESIGN_COST, billedVoices),
+          estimateReferenceSheetCost({
+            imageModel,
+            characterSheets: billedCharacterSheets,
+            locationSheets: billedLocationSheets,
+            elementSheets: billedElementSheets,
+            pricing,
+          })
+        )
       );
       return gateStoryboardRenders({
         scopedDb,
@@ -768,6 +779,9 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
                 talentMatches: talentCharacterMatches,
                 imageModel,
                 styleConfig,
+                generateVoices,
+                speakingCharacterIds: speakingIds,
+                analysisModelId,
               },
               spawnStepName: 'spawn-character-bible',
               awaitStepName: 'await-character-bible',

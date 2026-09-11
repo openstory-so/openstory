@@ -154,6 +154,11 @@
       "class_name": "CharacterSheetWorkflow",
     },
     {
+      "name": "character-voice-workflow",
+      "binding": "CHARACTER_VOICE_WORKFLOW",
+      "class_name": "CharacterVoiceWorkflow",
+    },
+    {
       "name": "location-sheet-workflow",
       "binding": "LOCATION_SHEET_WORKFLOW",
       "class_name": "LocationSheetWorkflow",
@@ -419,6 +424,11 @@
           "name": "character-sheet-workflow",
           "binding": "CHARACTER_SHEET_WORKFLOW",
           "class_name": "CharacterSheetWorkflow",
+        },
+        {
+          "name": "character-voice-workflow",
+          "binding": "CHARACTER_VOICE_WORKFLOW",
+          "class_name": "CharacterVoiceWorkflow",
         },
         {
           "name": "location-sheet-workflow",
@@ -724,6 +734,11 @@
           "name": "character-sheet-workflow",
           "binding": "CHARACTER_SHEET_WORKFLOW",
           "class_name": "CharacterSheetWorkflow",
+        },
+        {
+          "name": "character-voice-workflow",
+          "binding": "CHARACTER_VOICE_WORKFLOW",
+          "class_name": "CharacterVoiceWorkflow",
         },
         {
           "name": "location-sheet-workflow",

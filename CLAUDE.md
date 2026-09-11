@@ -433,6 +433,22 @@ conservative 3 × 1000-char preview over-estimate). `recordFalUsage: false`,
 unaudited like xAI/Google/Ark spend. Do not alias onto
 `fal-ai/elevenlabs/music` — that is a different product.
 
+**Character voices (#1553).** `sequences.generateVoices` (Generate dialog
+"Voices" switch, off by default) is the sequence default; `characters.useVoice`
+overrides it per character (NULL = inherit) — resolve with `usesVoice()`.
+`CharacterBibleWorkflow` spawns a `CharacterVoiceWorkflow` child per
+_speaking_ character (`speakingCharacterIds()`: a bible name sharing a token
+with a dialogue speaker cue) that resolves true and has no `voiceId` yet: the
+LLM drafts `voiceDescription` when empty (`phase/voice-design-chat`), Voice
+Design's previews are parked in R2 (`characters.voicePreviews`, AUDIO bucket)
+and the first is saved as the voice. Previews cost no slot; a saved voice is
+an **account-wide** ElevenLabs slot, so the id is shared by copy (talent ↔
+character at cast / save-to-library) and freed only through
+`releaseVoiceIfUnreferenced` (`countVoiceReferences` over both tables) on
+character soft-delete, sequence archive, talent delete and regenerate — never
+a bare delete, and the upsert keeps a voice the row already holds. Billed at
+`VOICE_DESIGN_COST` per design call.
+
 Out of scope here: voice cloning from an uploaded sample, realtime/agents.
 
 ### Native Grok (xAI)
