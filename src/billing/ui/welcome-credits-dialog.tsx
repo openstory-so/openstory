@@ -236,7 +236,6 @@ export const WelcomeCreditsProvider: React.FC<{ children: ReactNode }> = ({
   }, [welcomeSetup, clearWelcomeSetupSearch]);
 
   const setupMutation = useMutation({
-    meta: { inlineError: true },
     mutationFn: () => createSetupCheckoutSessionFn(),
     onSuccess: (data) => {
       window.location.href = data.url;

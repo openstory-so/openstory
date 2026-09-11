@@ -135,7 +135,6 @@ export function AddCreditsDialog() {
   };
 
   const purchaseMutation = useMutation({
-    meta: { inlineError: true },
     mutationFn: (input: {
       amountUsd: number;
       paymentMethodId: string;
@@ -165,7 +164,6 @@ export function AddCreditsDialog() {
   });
 
   const checkoutMutation = useMutation({
-    meta: { inlineError: true },
     mutationFn: (checkoutAmountUsd: number) =>
       createCheckoutSessionFn({
         data: {

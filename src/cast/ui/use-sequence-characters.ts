@@ -57,6 +57,7 @@ export function useAddCharacterToLibrary() {
   const queryClient = useQueryClient();
 
   return useMutation({
+    meta: { globalError: true },
     mutationFn: (characterId: string) =>
       addCharacterToLibraryFn({ data: { characterId } }),
     onSuccess: () => {
@@ -215,6 +216,7 @@ export function useRecastCharacter() {
   const queryClient = useQueryClient();
 
   return useMutation({
+    meta: { globalError: true },
     mutationFn: (data: { characterId: string; talentId: string }) =>
       recastCharacterFn({ data }),
     onSuccess: () => {

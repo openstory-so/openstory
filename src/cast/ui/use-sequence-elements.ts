@@ -203,6 +203,7 @@ function invalidateElementMembership(
 export function useRenameSequenceElementToken() {
   const queryClient = useQueryClient();
   return useMutation({
+    meta: { globalError: true },
     mutationFn: (data: {
       elementId: string;
       sequenceId: string;
