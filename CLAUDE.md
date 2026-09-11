@@ -414,12 +414,15 @@ created them, so there is no team BYOK and `'elevenlabs'` is not on
 `API_KEY_PROVIDERS` (same shape as `ARK_API_KEY`). Workflows spend the key
 through `scopedDb.credentials.resolveKey('elevenlabs')`.
 
-`ELEVENLABS_BASE_URL` is the e2e/aimock hook (default `https://api.elevenlabs.io`,
-no `/v1` suffix — paths include it). Playwright points it at a dedicated HTTP
-mock on `:4012` (`e2e/mocks/elevenlabs-server.ts`) with fixtures under
-`e2e/fixtures/recorded/elevenlabs/`. Replay injects `ELEVENLABS_API_KEY=test-mock-key`;
-record forwards the real key from `.env.local`. Under `E2E_TEST` the via stays
-off unless the base URL is also set, so a laptop key cannot bill replay.
+`ELEVENLABS_BASE_URL` is the e2e hook on both the TanStack TTS adapter and
+the official SDK (default `https://api.elevenlabs.io`, no `/v1` suffix —
+paths include it). Playwright points it at a replay-only mock on `:4012`
+(`e2e/mocks/elevenlabs-server.ts`) with fixtures under
+`e2e/fixtures/recorded/elevenlabs/`. The mock does not reverse-proxy
+`req.url` — Voice Design is not OpenAI-shaped, so it cannot ride the xAI
+aimock recorder; live recording belongs on a hardcoded URL when a product
+call exists. Under `E2E_TEST` the via stays off unless the base URL is also
+set, so a laptop key cannot bill replay.
 
 Pricing is a static card (`src/billing/elevenlabs-pricing.ts`), merged into
 the effective map like BytePlus: TTS per 1000 characters (v3 / Multilingual v2

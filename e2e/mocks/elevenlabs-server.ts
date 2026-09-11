@@ -1,65 +1,24 @@
 /**
  * ElevenLabs e2e mock (#1552).
  *
- * Native TTS and Voice Design are not OpenAI-shaped, so they cannot share
- * the xAI LLMock on :4011. This is a small HTTP reverse-proxy that:
+ * TanStack AI wraps TTS (`elevenlabsSpeech`) but not Voice Design — that
+ * goes through `@elevenlabs/elevenlabs-js` (`textToVoice.design`). Neither
+ * path is OpenAI-shaped, so they cannot share the xAI LLMock on :4011.
  *
- * - Replay: matches recorded fixtures under `fixtures/recorded/elevenlabs/`.
- * - Record (`E2E_RECORD=1`): forwards to https://api.elevenlabs.io and
- *   writes the response as a fixture.
+ * This server is replay-only against `fixtures/recorded/elevenlabs/`. It
+ * does not reverse-proxy `req.url` (CodeQL `js/request-forgery`). Live
+ * recording, when a product call exists, must fetch a hardcoded ElevenLabs
+ * URL the way `xaiJsonImageEditsMount` fetches `https://api.x.ai/v1/images/edits`.
  *
- * Playwright points `ELEVENLABS_BASE_URL` at this host. The SDK default
- * base is `https://api.elevenlabs.io` (no `/v1` suffix — paths include it).
+ * Playwright points `ELEVENLABS_BASE_URL` here. The adapter/SDK default
+ * host is `https://api.elevenlabs.io` (no `/v1` suffix — paths include it).
  */
 
-import { createHash } from 'node:crypto';
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  readdirSync,
-  writeFileSync,
-} from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import http from 'node:http';
 import { resolve } from 'node:path';
-import { E2E_RECORDING } from '../recording-mode';
 
 export const ELEVENLABS_AIMOCK_PORT = 4012;
-const UPSTREAM_ORIGIN = 'https://api.elevenlabs.io';
-
-/**
- * Resolve a recorder target. `req.url` is attacker-controlled on any HTTP
- * server, so concatenating it onto the ElevenLabs host is SSRF
- * (`js/request-forgery`). Only relative `/v1/text-to-speech|text-to-voice…`
- * paths on the hardcoded origin are forwarded.
- */
-function resolveElevenLabsUpstream(requestUrl: string): URL | undefined {
-  if (!requestUrl.startsWith('/') || requestUrl.startsWith('//')) {
-    return undefined;
-  }
-  let parsed: URL;
-  try {
-    parsed = new URL(requestUrl, UPSTREAM_ORIGIN);
-  } catch {
-    return undefined;
-  }
-  if (
-    parsed.origin !== UPSTREAM_ORIGIN ||
-    parsed.hostname !== 'api.elevenlabs.io' ||
-    parsed.protocol !== 'https:'
-  ) {
-    return undefined;
-  }
-  const path = parsed.pathname;
-  if (
-    !path.startsWith('/v1/text-to-speech/') &&
-    !path.startsWith('/v1/text-to-voice')
-  ) {
-    return undefined;
-  }
-  return parsed;
-}
-
 const FIXTURE_DIR = resolve(
   import.meta.dirname,
   '../fixtures/recorded/elevenlabs'
@@ -122,80 +81,16 @@ function matchFixture(
   );
 }
 
-function writeFixture(
-  method: string,
-  path: string,
-  status: number,
-  contentType: string,
-  body: Buffer
-): void {
-  mkdirSync(FIXTURE_DIR, { recursive: true });
-  const pathPrefix = path.startsWith('/v1/text-to-speech/')
-    ? '/v1/text-to-speech/'
-    : path.startsWith('/v1/text-to-voice/')
-      ? '/v1/text-to-voice/'
-      : (path.split('?')[0] ?? path);
-  const hash = createHash('sha256').update(body).digest('hex').slice(0, 8);
-  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const kind = pathPrefix.includes('text-to-speech')
-    ? 'tts'
-    : pathPrefix.includes('text-to-voice')
-      ? 'voice-design'
-      : 'other';
-  writeFileSync(
-    resolve(FIXTURE_DIR, `${kind}-${stamp}-${hash}.json`),
-    JSON.stringify(
-      {
-        match: { method, pathPrefix },
-        status,
-        contentType,
-        bodyBase64: body.toString('base64'),
-      } satisfies Fixture,
-      null,
-      2
-    )
-  );
-}
-
 async function handle(
   req: http.IncomingMessage,
   res: http.ServerResponse
 ): Promise<void> {
-  const chunks: Buffer[] = [];
-  for await (const chunk of req) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  // Drain the body so the client isn't left hanging; replay ignores it.
+  for await (const _chunk of req) {
+    /* empty */
   }
-  const body = Buffer.concat(chunks);
   const path = req.url ?? '/';
   const method = req.method ?? 'GET';
-
-  if (E2E_RECORDING) {
-    const target = resolveElevenLabsUpstream(path);
-    if (!target) {
-      res.writeHead(400, { 'content-type': 'application/json' });
-      res.end(JSON.stringify({ error: 'refusing non-ElevenLabs upstream' }));
-      return;
-    }
-    const headers = new Headers();
-    const apiKey = req.headers['xi-api-key'];
-    if (typeof apiKey === 'string') headers.set('xi-api-key', apiKey);
-    const contentType = req.headers['content-type'];
-    if (typeof contentType === 'string') {
-      headers.set('content-type', contentType);
-    }
-    const upstream = await fetch(target, {
-      method,
-      headers,
-      body: method === 'GET' || method === 'HEAD' ? undefined : body,
-    });
-    const buf = Buffer.from(await upstream.arrayBuffer());
-    const upstreamType =
-      upstream.headers.get('content-type') ?? 'application/octet-stream';
-    writeFixture(method, path, upstream.status, upstreamType, buf);
-    res.writeHead(upstream.status, { 'content-type': upstreamType });
-    res.end(buf);
-    return;
-  }
 
   const fixture = matchFixture(method, path, loadFixtures());
   if (!fixture) {
