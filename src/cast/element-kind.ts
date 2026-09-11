@@ -15,10 +15,6 @@
 const ELEMENT_KINDS = ['image', 'video', 'audio'] as const;
 export type SequenceElementKind = (typeof ELEMENT_KINDS)[number];
 
-/** `accept` for every element file input. Mirrors `studio-reference-picker`. */
-export const ELEMENT_UPLOAD_ACCEPT =
-  'image/*,audio/mpeg,audio/wav,video/mp4,video/quicktime,.mp3,.wav,.mp4,.mov';
-
 /** Extensions we accept for the two non-image kinds. Images are sniffed by prefix. */
 const NON_IMAGE_EXTENSIONS: Record<string, SequenceElementKind> = {
   mp3: 'audio',
@@ -29,6 +25,20 @@ const NON_IMAGE_EXTENSIONS: Record<string, SequenceElementKind> = {
   mov: 'video',
   webm: 'video',
 };
+
+/**
+ * `accept` for every element file input.
+ *
+ * DERIVED from the extension table above rather than spelled out: the two
+ * drifted apart once already — `NON_IMAGE_EXTENSIONS` took `.m4a`, `.ogg` and
+ * `.webm` while this string did not, so the picker silently refused a file
+ * that paste and drag-and-drop both accepted, and that the server stores
+ * happily. A list that can disagree with the parser will.
+ */
+export const ELEMENT_UPLOAD_ACCEPT = [
+  'image/*',
+  ...Object.keys(NON_IMAGE_EXTENSIONS).map((ext) => `.${ext}`),
+].join(',');
 
 const IMAGE_EXTENSIONS = new Set([
   'jpg',
