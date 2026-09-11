@@ -12,7 +12,6 @@ import { useIsomorphicLayoutEffect } from '@/ui/use-isomorphic-layout-effect';
 import { useAdminStudioAssets, useStudioAssets } from './use-studio-assets';
 import { studioPrompt } from './outputs';
 import {
-  isDefaultStudioListPrefs,
   loadStudioListPrefs,
   prefsFromSearch,
   prefsToSearch,
@@ -50,8 +49,8 @@ function useStudioListPrefs(
     }
 
     const resolved = resolveStudioListPrefs(search, loadStudioListPrefs());
-    if (isDefaultStudioListPrefs(resolved)) return;
     const nextSearch = prefsToSearch(resolved, search.user);
+    if (Object.keys(nextSearch).length === 0) return;
     saveStudioListPrefs(resolved);
     void navigate({ search: nextSearch, replace: true });
   }, [navigate, search]);
@@ -174,8 +173,7 @@ export function StudioView({ activity, search, navigate }: StudioViewProps) {
             hasNextPage={query.hasNextPage}
             isFetchingNextPage={query.isFetchingNextPage}
             onLoadMore={() => void query.fetchNextPage()}
-            readOnly={supportMode}
-            showCreator={supportMode}
+            supportMode={supportMode}
           />
         </PageContainer>
       </div>

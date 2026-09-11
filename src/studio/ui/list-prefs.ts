@@ -86,16 +86,6 @@ export function resolveStudioListPrefs(
   };
 }
 
-export function isDefaultStudioListPrefs(prefs: StudioListPrefs): boolean {
-  return (
-    prefs.search === '' &&
-    !prefs.supportMode &&
-    !prefs.hideInternal &&
-    prefs.sort === 'newest' &&
-    !prefs.favorites
-  );
-}
-
 export function prefsToSearch(
   prefs: StudioListPrefs,
   currentUser?: string

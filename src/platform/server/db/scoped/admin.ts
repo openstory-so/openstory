@@ -265,7 +265,6 @@ export function createAdminMethods(db: Database) {
     const memberUser = alias(user, 'member_user');
     const searchClause = trimmed
       ? or(
-          like(sql`lower(${generatedAssets.modelName})`, `%${trimmed}%`),
           like(sql`lower(${generatedAssets.input})`, `%${trimmed}%`),
           exists(
             db

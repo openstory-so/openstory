@@ -56,13 +56,11 @@ export type StudioGalleryAsset = GeneratedAsset & {
 function StudioCard({
   asset,
   onOpen,
-  readOnly,
-  showCreator,
+  supportMode,
 }: {
   asset: StudioGalleryAsset;
   onOpen: () => void;
-  readOnly: boolean;
-  showCreator: boolean;
+  supportMode: boolean;
 }) {
   const favorite = useToggleStudioFavorite();
   const primary = studioPrimaryOutput(asset);
@@ -129,7 +127,7 @@ function StudioCard({
           </div>
         )}
       </button>
-      {!readOnly && (
+      {!supportMode && (
         <div className="pointer-events-none absolute inset-x-0 top-0 flex justify-end p-2 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
           <Button
             type="button"
@@ -152,7 +150,7 @@ function StudioCard({
           </Button>
         </div>
       )}
-      {showCreator && (asset.creatorName || asset.creatorEmail) && (
+      {supportMode && (asset.creatorName || asset.creatorEmail) && (
         <p className="pointer-events-none absolute inset-x-0 top-0 truncate bg-background/80 px-2 py-1 text-xs text-muted-foreground">
           <span>
             {asset.creatorName && asset.creatorEmail
@@ -240,8 +238,7 @@ export function StudioGallery({
   hasNextPage,
   isFetchingNextPage,
   onLoadMore,
-  readOnly = false,
-  showCreator = false,
+  supportMode = false,
 }: {
   assets: StudioGalleryAsset[];
   isLoading: boolean;
@@ -250,14 +247,13 @@ export function StudioGallery({
   hasNextPage: boolean;
   isFetchingNextPage: boolean;
   onLoadMore: () => void;
-  readOnly?: boolean;
-  showCreator?: boolean;
+  supportMode?: boolean;
 }) {
   const [openId, setOpenId] = useState<string | null>(null);
   const remove = useDeleteStudioAsset();
   const openAsset = assets.find((asset) => asset.id === openId);
   const pendingCreates = useStudioPendingCreates(activity);
-  const pending = readOnly
+  const pending = supportMode
     ? []
     : pendingCreates.flatMap((input, index) =>
         Array.from({ length: input.count }, (_, i) => ({
@@ -284,7 +280,7 @@ export function StudioGallery({
       <EmptyState
         icon={<Images className="h-12 w-12" />}
         title={
-          readOnly
+          supportMode
             ? activity === 'video'
               ? 'No matching videos'
               : 'No matching images'
@@ -293,7 +289,7 @@ export function StudioGallery({
               : 'Sign in to generate'
         }
         description={
-          readOnly
+          supportMode
             ? activity === 'video'
               ? 'No clips match this search across any users.'
               : 'No stills match this search across any users.'
@@ -320,8 +316,7 @@ export function StudioGallery({
             <StudioCard
               asset={asset}
               onOpen={() => setOpenId(asset.id)}
-              readOnly={readOnly}
-              showCreator={showCreator}
+              supportMode={supportMode}
             />
           </div>
         ))}
@@ -356,7 +351,7 @@ export function StudioGallery({
                   {[
                     openAsset.modelName,
                     studioAspectRatio(openAsset),
-                    showCreator
+                    supportMode
                       ? [openAsset.creatorName, openAsset.creatorEmail]
                           .filter(Boolean)
                           .join(' · ')
@@ -384,7 +379,7 @@ export function StudioGallery({
                     </Button>
                   );
                 })()}
-                {!readOnly &&
+                {!supportMode &&
                   openAsset.status !== 'queued' &&
                   openAsset.status !== 'running' && (
                     <AlertDialog>
