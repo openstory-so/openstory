@@ -40,6 +40,8 @@ export function buildCharacterInsert(args: {
     ? buildCastingAttributes(character, {
         sheetMetadata: talentMatch.sheetMetadata,
         talentName: talentMatch.talentName,
+        personality: talentMatch.personality,
+        movement: talentMatch.movement,
       })
     : null;
   return {
@@ -54,6 +56,8 @@ export function buildCharacterInsert(args: {
       castingAttrs?.physicalDescription ?? character.physicalDescription,
     standardClothing: character.standardClothing,
     distinguishingFeatures: character.distinguishingFeatures,
+    personality: castingAttrs?.personality ?? character.personality,
+    movement: castingAttrs?.movement ?? character.movement,
     consistencyTag: castingAttrs?.consistencyTag ?? character.consistencyTag,
     firstMentionSceneId: null,
     firstMentionText: null,

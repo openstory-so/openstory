@@ -73,6 +73,9 @@ export const SECRETS = {
   BYTEPLUS_ASSET_GROUP_ID: { runtime: true, build: false },
   BYTEPLUS_OPENAPI_HOST: { runtime: true, build: false },
   BETTER_AUTH_SECRET: { runtime: true, build: false },
+  // Designed voices live on this account; there is no team BYOK (#1552).
+  ELEVENLABS_API_KEY: { runtime: true, build: false },
+  ELEVENLABS_BASE_URL: { runtime: true, build: false },
   EMAIL_FROM: { runtime: true, build: false },
   FAL_BILLING_KEY: { runtime: true, build: false },
   FAL_KEY: { runtime: true, build: false },

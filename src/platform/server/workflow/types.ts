@@ -772,6 +772,11 @@ export type TalentCharacterMatch = {
   sheetMetadata?: CharacterBibleEntry;
   /** Talent library description, snapshotted at match time for reuse checks. */
   talentDescription?: string;
+  // Talent performance (#1561) from the trigger-time snapshot; `''` = library
+  // has none, use the script's (`||` in buildCastingAttributes, which also
+  // tolerates pre-#1561 checkpoints that lack the keys).
+  personality: string;
+  movement: string;
 };
 
 /**
@@ -781,8 +786,8 @@ export interface TalentMatchingWorkflowInput extends SequenceWorkflowContext {
   analysisModelId: AnalysisModelId;
   suggestedTalentIds?: string[];
   /**
-   * Name/description per suggested talent, snapshotted at the trigger. The
-   * workflow re-reads the talent rows only for `defaultSheet.imageUrl`, which
+   * Name/description/performance per suggested talent, snapshotted at the
+   * trigger. The workflow re-reads the talent rows only for `defaultSheet.imageUrl`, which
    * genuinely arrives late (fire-and-forget `/library-talent-sheet`); the
    * casting identity itself must not drift mid-run.
    */
@@ -796,6 +801,8 @@ type SuggestedTalentSnapshot = {
   talentId: string;
   name: string;
   description: string | null;
+  personality: string;
+  movement: string;
 };
 
 /** @see LocationMatchingWorkflowInput.suggestedLocations */

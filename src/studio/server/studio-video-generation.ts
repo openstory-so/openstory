@@ -210,6 +210,7 @@ async function buildStudioImageModeInput(
     (url): url is string => Boolean(url)
   );
   const urls = await ensureExternallyFetchableUrls(stored, falApiKey);
+  const resolution = studioVideoResolution(modelKey, options.resolution);
   const { prompt, ...modelOptions } = transform.parse({
     prompt: options.prompt,
     duration: options.duration,
@@ -219,6 +220,7 @@ async function buildStudioImageModeInput(
     ...(options.generateAudio !== undefined && {
       generate_audio: options.generateAudio,
     }),
+    ...(resolution && { resolution }),
   });
   return {
     endpointId,
@@ -263,6 +265,7 @@ async function submitFalStudioVideoJob(
     model: modelKey,
     duration: options.duration,
     aspectRatio: options.aspectRatio,
+    resolution: options.resolution,
     generateAudio: options.generateAudio,
   });
   const key = await resolveFalKey(options.scopedDb);

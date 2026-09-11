@@ -2,6 +2,7 @@ import { estimateDraftGenerationFn } from '@/billing/pricing.fn';
 import { micros, type Microdollars } from '@/billing/money';
 import type { AspectRatio } from '@/models/aspect-ratios';
 import type { Resolution } from '@/models/resolutions';
+import { useAuthSession } from '@/platform/ui/auth/session-query';
 import type { GenerationStage } from '@/sequences/pipeline';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
@@ -21,6 +22,10 @@ export type DraftGenerationEstimateInput = {
 export function useDraftGenerationEstimate(
   input: DraftGenerationEstimateInput | null
 ): Microdollars | null | undefined {
+  // Composer is anonymous-browsable; the fn is not. Don't fire (and
+  // error-log AUTHENTICATION_ERROR) without a session — same gate as
+  // useSequences (#1333, #1575).
+  const { data: session } = useAuthSession();
   const [debouncedScript, setDebouncedScript] = useState(input?.script ?? '');
   useEffect(() => {
     const timeout = window.setTimeout(
@@ -30,7 +35,7 @@ export function useDraftGenerationEstimate(
     return () => window.clearTimeout(timeout);
   }, [input?.script]);
 
-  const enabled = Boolean(input && debouncedScript.trim());
+  const enabled = Boolean(session && input && debouncedScript.trim());
   const { data } = useQuery({
     queryKey: [
       'draft-generation-estimate',

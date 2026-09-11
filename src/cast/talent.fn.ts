@@ -27,6 +27,7 @@ import {
 } from '@/platform/server/storage/file';
 import type { LibraryTalentSheetWorkflowInput } from '@/platform/server/workflow/types';
 import { computeLibraryTalentSheetHashFromDto } from '@/cast/server/workflows/sheet-snapshots';
+import { characterToBible } from '@/cast/server/bibles-from-scoped';
 import { isTeamWritableTalent } from '@/cast/server/db/talent';
 import { createLibraryTalent } from '@/cast/server/talent/create-library-talent';
 import { analyzeTalentMediaForTeam } from '@/cast/server/talent/analyze-talent-media';
@@ -470,6 +471,8 @@ export const addCharacterToLibraryFn = createServerFn({ method: 'POST' })
     const newTalent = await context.scopedDb.talent.create({
       name: character.name,
       description: character.physicalDescription ?? undefined,
+      personality: character.personality ?? undefined,
+      movement: character.movement ?? undefined,
       imageUrl: character.sheetImageUrl ?? undefined,
       imagePath: character.sheetImagePath ?? undefined,
       isFavorite: false,
@@ -483,17 +486,7 @@ export const addCharacterToLibraryFn = createServerFn({ method: 'POST' })
         name: 'Default',
         imageUrl: character.sheetImageUrl,
         imagePath: character.sheetImagePath ?? undefined,
-        metadata: {
-          characterId: character.characterId,
-          name: character.name,
-          age: character.age ?? '',
-          gender: character.gender ?? '',
-          ethnicity: character.ethnicity ?? '',
-          physicalDescription: character.physicalDescription ?? '',
-          standardClothing: character.standardClothing ?? '',
-          distinguishingFeatures: character.distinguishingFeatures ?? '',
-          consistencyTag: character.consistencyTag ?? '',
-        },
+        metadata: characterToBible(character),
         isDefault: true,
         source: 'script_analysis',
       });

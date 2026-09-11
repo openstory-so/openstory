@@ -15,6 +15,8 @@ const characterFormSchema = z.object({
   physicalDescription: z.string().max(2000),
   standardClothing: z.string().max(2000),
   distinguishingFeatures: z.string().max(2000),
+  personality: z.string().max(2000),
+  movement: z.string().max(2000),
 });
 
 /**
@@ -102,6 +104,20 @@ export const CharacterBibleForm: React.FC<{
         label="Distinguishing Features"
         name="distinguishingFeatures"
         defaultValue={character.distinguishingFeatures}
+        textarea
+      />
+      <BibleField
+        idPrefix="character"
+        label="Personality"
+        name="personality"
+        defaultValue={character.personality}
+        textarea
+      />
+      <BibleField
+        idPrefix="character"
+        label="Body movement"
+        name="movement"
+        defaultValue={character.movement}
         textarea
       />
       <div className="flex justify-end">

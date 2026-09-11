@@ -90,6 +90,9 @@ export function sheetMetadataFromAnalysis(
       analysis.physicalDescription.trim() || analysis.description,
     standardClothing: analysis.standardClothing,
     distinguishingFeatures: analysis.distinguishingFeatures,
+    // A photo carries no performance; cast reads the talent row's (Edit talent).
+    personality: '',
+    movement: '',
     consistencyTag: slug,
   };
 }

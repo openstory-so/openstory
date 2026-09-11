@@ -175,6 +175,12 @@ describe('SECRETS catalog (#1502)', () => {
     expect(SECRETS.BYTEPLUS_OPENAPI_HOST).toEqual(runtime);
   });
 
+  it('pushes ElevenLabs keys as plain runtime secrets — platform only, no BYOK', () => {
+    const runtime = { runtime: true, build: false };
+    expect(SECRETS.ELEVENLABS_API_KEY).toEqual(runtime);
+    expect(SECRETS.ELEVENLABS_BASE_URL).toEqual(runtime);
+  });
+
   it('classifies VITE_APP_* and PostHog as both runtime and build', () => {
     expect(SECRETS.VITE_APP_NAME).toEqual({ runtime: true, build: true });
     expect(SECRETS.VITE_APP_URL).toEqual({ runtime: true, build: true });

@@ -1,4 +1,5 @@
 import { useAuthGate } from '@/platform/ui/auth/auth-gate-provider';
+import { getAllAdminStudioAssetsFn } from '@/platform/admin-support.fn';
 import {
   createStudioAssetsFn,
   deleteStudioAssetFn,
@@ -33,14 +34,20 @@ const studioAssetKeys = {
     [...studioAssetKeys.all, 'list', filters] as const,
 };
 
+const adminStudioAssetKeys = {
+  all: ['admin-support', 'studio-assets'] as const,
+  list: (filters: StudioAssetFilters & { search?: string }) =>
+    [...adminStudioAssetKeys.all, 'list', filters] as const,
+};
+
 const PAGE_SIZE = 40;
 
-export function useStudioAssets(filters: StudioAssetFilters) {
+export function useStudioAssets(filters: StudioAssetFilters, enabled = true) {
   const { isAuthenticated } = useAuthGate();
 
   return useInfiniteQuery({
     queryKey: studioAssetKeys.list(filters),
-    enabled: isAuthenticated,
+    enabled: isAuthenticated && enabled,
     initialPageParam: undefined as string | undefined,
     queryFn: ({ pageParam }) =>
       listStudioAssetsFn({
@@ -63,6 +70,36 @@ export function useStudioAssets(filters: StudioAssetFilters) {
       );
       return inFlight ? 2000 : false;
     },
+  });
+}
+
+/** Cross-team studio gallery for support mode. Gated by the caller on isAdmin. */
+export function useAdminStudioAssets(
+  filters: StudioAssetFilters & { search?: string },
+  enabled: boolean
+) {
+  const trimmedSearch = filters.search?.trim() || undefined;
+
+  return useInfiniteQuery({
+    queryKey: adminStudioAssetKeys.list({
+      ...filters,
+      search: trimmedSearch,
+    }),
+    enabled,
+    initialPageParam: undefined as string | undefined,
+    queryFn: ({ pageParam }) =>
+      getAllAdminStudioAssetsFn({
+        data: {
+          activity: filters.activity,
+          favoritesOnly: filters.favoritesOnly,
+          order: filters.order,
+          search: trimmedSearch,
+          limit: PAGE_SIZE,
+          cursor: pageParam,
+        },
+      }),
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    staleTime: 60_000,
   });
 }
 

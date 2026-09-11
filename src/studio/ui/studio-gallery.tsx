@@ -48,12 +48,19 @@ function useNow(active: boolean) {
   return active ? now : null;
 }
 
+export type StudioGalleryAsset = GeneratedAsset & {
+  creatorName?: string | null;
+  creatorEmail?: string | null;
+};
+
 function StudioCard({
   asset,
   onOpen,
+  supportMode,
 }: {
-  asset: GeneratedAsset;
+  asset: StudioGalleryAsset;
   onOpen: () => void;
+  supportMode: boolean;
 }) {
   const favorite = useToggleStudioFavorite();
   const primary = studioPrimaryOutput(asset);
@@ -120,27 +127,38 @@ function StudioCard({
           </div>
         )}
       </button>
-      <div className="pointer-events-none absolute inset-x-0 top-0 flex justify-end p-2 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
-        <Button
-          type="button"
-          size="icon"
-          variant="secondary"
-          className="pointer-events-auto"
-          aria-label={asset.isFavorite ? 'Remove from favorites' : 'Favorite'}
-          aria-pressed={asset.isFavorite}
-          onClick={() =>
-            favorite.mutate({
-              id: asset.id,
-              isFavorite: !asset.isFavorite,
-            })
-          }
-        >
-          <Star
-            className={cn(asset.isFavorite && 'fill-current')}
-            aria-hidden="true"
-          />
-        </Button>
-      </div>
+      {!supportMode && (
+        <div className="pointer-events-none absolute inset-x-0 top-0 flex justify-end p-2 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+          <Button
+            type="button"
+            size="icon"
+            variant="secondary"
+            className="pointer-events-auto"
+            aria-label={asset.isFavorite ? 'Remove from favorites' : 'Favorite'}
+            aria-pressed={asset.isFavorite}
+            onClick={() =>
+              favorite.mutate({
+                id: asset.id,
+                isFavorite: !asset.isFavorite,
+              })
+            }
+          >
+            <Star
+              className={cn(asset.isFavorite && 'fill-current')}
+              aria-hidden="true"
+            />
+          </Button>
+        </div>
+      )}
+      {supportMode && (asset.creatorName || asset.creatorEmail) && (
+        <p className="pointer-events-none absolute inset-x-0 top-0 truncate bg-background/80 px-2 py-1 text-xs text-muted-foreground">
+          <span>
+            {asset.creatorName && asset.creatorEmail
+              ? `${asset.creatorName} · ${asset.creatorEmail}`
+              : (asset.creatorName ?? asset.creatorEmail)}
+          </span>
+        </p>
+      )}
       {inFlight && (
         <p
           aria-live="polite"
@@ -220,24 +238,29 @@ export function StudioGallery({
   hasNextPage,
   isFetchingNextPage,
   onLoadMore,
+  supportMode = false,
 }: {
-  assets: GeneratedAsset[];
+  assets: StudioGalleryAsset[];
   isLoading: boolean;
   isAuthenticated: boolean;
   activity: 'image' | 'video';
   hasNextPage: boolean;
   isFetchingNextPage: boolean;
   onLoadMore: () => void;
+  supportMode?: boolean;
 }) {
   const [openId, setOpenId] = useState<string | null>(null);
   const remove = useDeleteStudioAsset();
   const openAsset = assets.find((asset) => asset.id === openId);
-  const pending = useStudioPendingCreates(activity).flatMap((input, index) =>
-    Array.from({ length: input.count }, (_, i) => ({
-      key: `pending-${index}-${i}`,
-      aspectRatio: input.aspectRatio,
-    }))
-  );
+  const pendingCreates = useStudioPendingCreates(activity);
+  const pending = supportMode
+    ? []
+    : pendingCreates.flatMap((input, index) =>
+        Array.from({ length: input.count }, (_, i) => ({
+          key: `pending-${index}-${i}`,
+          aspectRatio: input.aspectRatio,
+        }))
+      );
 
   if (isLoading) {
     return (
@@ -256,13 +279,25 @@ export function StudioGallery({
     return (
       <EmptyState
         icon={<Images className="h-12 w-12" />}
-        title={isAuthenticated ? 'Nothing here yet' : 'Sign in to generate'}
-        description={
-          isAuthenticated
+        title={
+          supportMode
             ? activity === 'video'
-              ? 'Your clips land here. Start with a prompt below.'
-              : 'Your stills land here. Start with a prompt below.'
-            : 'Browse the composer, then sign in to generate and keep a library.'
+              ? 'No matching videos'
+              : 'No matching images'
+            : isAuthenticated
+              ? 'Nothing here yet'
+              : 'Sign in to generate'
+        }
+        description={
+          supportMode
+            ? activity === 'video'
+              ? 'No clips match this search across any users.'
+              : 'No stills match this search across any users.'
+            : isAuthenticated
+              ? activity === 'video'
+                ? 'Your clips land here. Start with a prompt below.'
+                : 'Your stills land here. Start with a prompt below.'
+              : 'Browse the composer, then sign in to generate and keep a library.'
         }
       />
     );
@@ -278,7 +313,11 @@ export function StudioGallery({
         ))}
         {assets.map((asset) => (
           <div key={asset.id} className="mb-4 break-inside-avoid">
-            <StudioCard asset={asset} onOpen={() => setOpenId(asset.id)} />
+            <StudioCard
+              asset={asset}
+              onOpen={() => setOpenId(asset.id)}
+              supportMode={supportMode}
+            />
           </div>
         ))}
       </div>
@@ -309,7 +348,17 @@ export function StudioGallery({
                   {studioPrompt(openAsset) || 'Generated asset'}
                 </DialogTitle>
                 <DialogDescription>
-                  {openAsset.modelName} · {studioAspectRatio(openAsset)}
+                  {[
+                    openAsset.modelName,
+                    studioAspectRatio(openAsset),
+                    supportMode
+                      ? [openAsset.creatorName, openAsset.creatorEmail]
+                          .filter(Boolean)
+                          .join(' · ')
+                      : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}
                 </DialogDescription>
               </DialogHeader>
               <StudioViewer asset={openAsset} />
@@ -330,7 +379,8 @@ export function StudioGallery({
                     </Button>
                   );
                 })()}
-                {openAsset.status !== 'queued' &&
+                {!supportMode &&
+                  openAsset.status !== 'queued' &&
                   openAsset.status !== 'running' && (
                     <AlertDialog>
                       <AlertDialogTrigger asChild>

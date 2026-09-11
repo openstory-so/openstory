@@ -80,6 +80,8 @@ describe('createCastRecords', () => {
           physicalDescription: 'tall',
           standardClothing: 'coat',
           distinguishingFeatures: '',
+          personality: '',
+          movement: '',
           consistencyTag: 'sarah',
         },
       ],
@@ -163,5 +165,63 @@ describe('createCastRecords', () => {
 
     expect(elementCreate).not.toHaveBeenCalled();
     expect(result.elements).toEqual([existing]);
+  });
+});
+
+describe('createCastRecords (talent match, #1561)', () => {
+  const sarah = {
+    characterId: 'char_1',
+    name: 'Sarah',
+    age: '30s',
+    gender: 'female',
+    ethnicity: '',
+    physicalDescription: 'tall',
+    standardClothing: 'coat',
+    distinguishingFeatures: '',
+    personality: 'anxious',
+    movement: 'restless hands',
+    consistencyTag: 'sarah',
+  };
+  const match = {
+    characterId: 'char_1',
+    talentId: 'tal_1',
+    talentName: 'Ada',
+    sheetImageUrl: '/r2/ada.png',
+  };
+
+  const run = async (personality: string, movement: string) => {
+    const characterCreate = vi.fn(async (row: { id: string }) => row);
+    // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal stub
+    const scopedDb = {
+      characters: { create: characterCreate },
+      sequenceLocations: { createBulk: vi.fn(async () => []) },
+      sequenceElements: { create: vi.fn() },
+      liveRead: { sequenceElements: { getByToken: vi.fn(async () => null) } },
+    } as unknown as WorkflowScopedDb;
+    await createCastRecords(scopedDb, {
+      sequenceId: 'seq_1',
+      characterBible: [sarah],
+      talentMatches: [{ ...match, personality, movement }],
+      locationBible: [],
+      locationMatches: [],
+      elementBible: [],
+      existingElements: [],
+    });
+    return characterCreate.mock.calls[0]?.[0];
+  };
+
+  test("the talent's own performance wins", async () => {
+    expect(await run('swaggering', 'hip swivel')).toMatchObject({
+      talentId: 'tal_1',
+      personality: 'swaggering',
+      movement: 'hip swivel',
+    });
+  });
+
+  test("a talent with none keeps the script's", async () => {
+    expect(await run('', '')).toMatchObject({
+      personality: 'anxious',
+      movement: 'restless hands',
+    });
   });
 });

@@ -343,6 +343,7 @@ export async function executeSmartRetry(context: SmartRetryContext) {
         prompt,
         model: imageModel,
         imageSize: aspectRatioToImageSize(sequence.aspectRatio),
+        resolution: sequence.resolution,
         numImages: 1,
         shotId: shot.id,
         // The anchor + the prompt version `prompt` came from, snapshotted here

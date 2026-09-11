@@ -47,6 +47,8 @@ function makeCharacter(
     physicalDescription: null,
     standardClothing: null,
     distinguishingFeatures: null,
+    personality: null,
+    movement: null,
     consistencyTag: 'jack-the-pi',
     sheetImageUrl: 'https://example.com/jack.png',
     sheetImagePath: null,

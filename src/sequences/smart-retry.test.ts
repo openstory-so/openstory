@@ -812,3 +812,26 @@ describe('executeSmartRetry — per-asset model selection (#1066)', () => {
     );
   });
 });
+
+describe('executeSmartRetry — resolution forwarding (#1570)', () => {
+  test('forwards the sequence resolution onto the still-generation workflow input', async () => {
+    resetMocks();
+    const shot = makeShot({
+      imageStatus: 'failed',
+      imagePrompt: 'A cinematic shot of the lab',
+    });
+    const { context } = makeContext(makeSequence({ resolution: '1080p' }), [
+      shot,
+    ]);
+
+    await executeSmartRetry(context);
+
+    expect(triggerWorkflowMock).toHaveBeenCalledWith(
+      '/image',
+      expect.objectContaining({
+        shotId: 'shot-1',
+        resolution: '1080p',
+      })
+    );
+  });
+});

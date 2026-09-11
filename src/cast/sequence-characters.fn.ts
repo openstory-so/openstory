@@ -23,6 +23,7 @@ import { ulidSchema } from '@/platform/server/schemas/id.schemas';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
 import type { RecastCharacterWorkflowInput } from '@/platform/server/workflow/types';
 import { buildRecastRegenerateSnapshots } from '@/cast/server/workflows/recast-snapshot';
+import { characterToBible } from '@/cast/server/bibles-from-scoped';
 import { buildRegenerateCharacterSheetPayload } from '@/cast/server/sheets/character-sheet-trigger';
 import type { SheetStaleness } from '@/cast/server/sheets/sheet-staleness';
 import { characterSheetHashMatchesStored } from '@/cast/server/workflows/sheet-snapshots';
@@ -69,6 +70,8 @@ const characterBibleFieldsSchema = z.object({
   physicalDescription: bibleField.optional(),
   standardClothing: bibleField.optional(),
   distinguishingFeatures: bibleField.optional(),
+  personality: bibleField.optional(),
+  movement: bibleField.optional(),
   consistencyTag: bibleField.optional(),
 });
 
@@ -356,25 +359,14 @@ export const recastCharacterFn = createServerFn({ method: 'POST' })
       talentWithSheets.sheets?.find((s) => !s.divergedAt);
 
     // Merge talent appearance with character role attributes
-    const castingAttrs = buildCastingAttributes(
-      {
-        characterId: character.characterId,
-        name: character.name,
-        age: character.age ?? '',
-        gender: character.gender ?? '',
-        ethnicity: character.ethnicity ?? '',
-        physicalDescription: character.physicalDescription ?? '',
-        standardClothing: character.standardClothing ?? '',
-        distinguishingFeatures: character.distinguishingFeatures ?? '',
-        consistencyTag: character.consistencyTag ?? '',
-      },
-      {
-        // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
-        sheetMetadata: defaultSheet?.metadata ?? undefined,
-        talentName: talentWithSheets.name,
-        talentDescription: talentWithSheets.description ?? undefined,
-      }
-    );
+    const castingAttrs = buildCastingAttributes(characterToBible(character), {
+      // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
+      sheetMetadata: defaultSheet?.metadata ?? undefined,
+      talentName: talentWithSheets.name,
+      talentDescription: talentWithSheets.description ?? undefined,
+      personality: talentWithSheets.personality ?? '',
+      movement: talentWithSheets.movement ?? '',
+    });
 
     // Update talent assignment AND physical attributes from talent
     await context.scopedDb.characters.updateTalent(
@@ -386,6 +378,8 @@ export const recastCharacterFn = createServerFn({ method: 'POST' })
       gender: castingAttrs.gender,
       ethnicity: castingAttrs.ethnicity,
       physicalDescription: castingAttrs.physicalDescription,
+      personality: castingAttrs.personality,
+      movement: castingAttrs.movement,
       consistencyTag: castingAttrs.consistencyTag,
     });
     // Re-read rather than use the write's row: the recast snapshot needs the

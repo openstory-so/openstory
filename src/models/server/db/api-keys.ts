@@ -9,6 +9,10 @@ import { and, eq } from 'drizzle-orm';
 import type { Database } from '@/platform/server/db/client';
 import { getEnv } from '#env';
 import { getPlatformLlmKey } from '@/models/server/create-adapter';
+import {
+  getElevenLabsApiKey,
+  isElevenLabsConfigured,
+} from '@/models/server/elevenlabs-config';
 import { nativeGeminiTextModel } from '@/models/gemini-native';
 import { nativeGrokTextModel } from '@/models/grok-native';
 import {
@@ -24,6 +28,13 @@ import {
 import { type ApiKeyProvider, teamApiKeys } from '@/platform/server/db/schema';
 
 import { getLogger, serializeError } from '@/platform/logger';
+
+/**
+ * Platform-only providers that `resolveKey` can spend but that are NOT on
+ * `API_KEY_PROVIDERS` — no team row, no Settings UI, no BYOK. Designed
+ * ElevenLabs voices live in the account that created them (#1552).
+ */
+export type ResolvableProvider = ApiKeyProvider | 'elevenlabs';
 
 const logger = getLogger(['openstory', 'db', 'api-keys']);
 
@@ -310,17 +321,25 @@ export function createApiKeysReadMethods(db: Database, teamId: string) {
   // uses this to skip to the next provider (usually fal). `resolveKey` wraps
   // this and throws, which is what fal's always-claim path needs.
   async function resolveOptionalKey(
-    provider: ApiKeyProvider
+    provider: ResolvableProvider
   ): Promise<ResolvedApiKey | undefined> {
+    if (provider === 'elevenlabs') {
+      if (!isElevenLabsConfigured()) return undefined;
+      const key = getElevenLabsApiKey();
+      return key ? { key, source: 'platform' } : undefined;
+    }
+
+    const teamProvider: ApiKeyProvider = provider;
+
     function platformFallback(
       fallbackReason?: string
     ): ResolvedApiKey | undefined {
-      const platformKey = platformKeyFor(provider);
+      const platformKey = platformKeyFor(teamProvider);
       if (!platformKey) return undefined;
       return { key: platformKey, source: 'platform', fallbackReason };
     }
 
-    const lookup = await readKeyRowLogged(provider);
+    const lookup = await readKeyRowLogged(teamProvider);
 
     if (!lookup.found) return platformFallback();
 
@@ -342,7 +361,9 @@ export function createApiKeysReadMethods(db: Database, teamId: string) {
   // Resolve the usable key for `provider`. The D1 lookup is memoized per scope;
   // the decrypted key is produced fresh on every call (and is GC-eligible as
   // soon as the caller is done), so plaintext is never retained in the cache.
-  async function resolveKey(provider: ApiKeyProvider): Promise<ResolvedApiKey> {
+  async function resolveKey(
+    provider: ResolvableProvider
+  ): Promise<ResolvedApiKey> {
     const resolved = await resolveOptionalKey(provider);
     if (!resolved) {
       throw new Error(`No API key available for provider: ${provider}`);

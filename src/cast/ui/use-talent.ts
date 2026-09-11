@@ -101,6 +101,7 @@ export function useUpdateTalent() {
   const queryClient = useQueryClient();
 
   return useMutation({
+    meta: { globalError: true },
     mutationFn: (data: UpdateTalentInput & { talentId: string }) =>
       updateTalentFn({ data }),
     onSuccess: (_, variables) => {
@@ -138,6 +139,7 @@ export function useToggleTalentFavorite() {
   const queryClient = useQueryClient();
 
   return useMutation({
+    meta: { globalError: true },
     mutationFn: (talentId: string) =>
       toggleTalentFavoriteFn({ data: { talentId } }),
     onSuccess: (data) => {
@@ -242,6 +244,7 @@ export function useDeleteTalentMedia() {
   const queryClient = useQueryClient();
 
   return useMutation({
+    meta: { globalError: true },
     mutationFn: (data: { mediaId: string; talentId: string }) =>
       deleteTalentMediaFn({ data: { mediaId: data.mediaId } }),
     onSuccess: (_, variables) => {
@@ -282,6 +285,7 @@ export function useSetDefaultSheet() {
   const queryClient = useQueryClient();
 
   return useMutation({
+    meta: { globalError: true },
     mutationFn: (data: { sheetId: string; talentId: string }) =>
       setDefaultSheetFn({ data: { sheetId: data.sheetId } }),
     onSuccess: (_, variables) => {

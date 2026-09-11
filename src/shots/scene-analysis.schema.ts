@@ -40,6 +40,9 @@ export const characterBibleEntrySchema = z.object({
   physicalDescription: z.string(),
   standardClothing: z.string(),
   distinguishingFeatures: z.string(),
+  // Performance (#1561). Guidance lives in the bible prompt (grammar budget).
+  personality: z.string(),
+  movement: z.string(),
   consistencyTag: z.string().meta({
     description:
       'Snake_case slug of the character name as written in the script (e.g., "detective_sarah"); optional descriptive context may follow the name slug',

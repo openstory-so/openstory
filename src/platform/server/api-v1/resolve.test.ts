@@ -69,6 +69,8 @@ function makeTalent(
     teamId: 'team-1',
     name: 'Ada Lovelace',
     description: null,
+    personality: null,
+    movement: null,
     imageUrl: null,
     imagePath: null,
     isFavorite: false,
