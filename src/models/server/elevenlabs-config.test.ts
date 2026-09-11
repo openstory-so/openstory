@@ -37,7 +37,7 @@ describe('isElevenLabsConfigured', () => {
 
   // Playwright injects the developer's process env into the worker, so a key
   // in a local .env.local would otherwise point the suite at real, billable
-  // ElevenLabs — aimock cannot intercept it the way it intercepts fal.
+  // ElevenLabs unless ELEVENLABS_BASE_URL is also set (aimock on :4010).
   it('stays off under E2E_TEST when no mock host is wired', () => {
     env.ELEVENLABS_API_KEY = 'el-test';
     env.E2E_TEST = 'true';
@@ -47,7 +47,7 @@ describe('isElevenLabsConfigured', () => {
   it('allows the route under E2E_TEST when ELEVENLABS_BASE_URL points at a mock', () => {
     env.ELEVENLABS_API_KEY = 'el-test';
     env.E2E_TEST = 'true';
-    env.ELEVENLABS_BASE_URL = 'http://localhost:4012';
+    env.ELEVENLABS_BASE_URL = 'http://localhost:4010';
     expect(isElevenLabsConfigured()).toBe(true);
   });
 });
@@ -65,16 +65,16 @@ describe('elevenLabsAdapterConfig', () => {
   });
 
   it('passes ELEVENLABS_BASE_URL through for e2e/proxy overrides', () => {
-    env.ELEVENLABS_BASE_URL = 'http://localhost:4012';
+    env.ELEVENLABS_BASE_URL = 'http://localhost:4010';
     expect(elevenLabsAdapterConfig('el-test').baseURL).toBe(
-      'http://localhost:4012'
+      'http://localhost:4010'
     );
   });
 });
 
 describe('lazy loaders', () => {
   beforeEach(() => {
-    env.ELEVENLABS_BASE_URL = 'http://localhost:4012';
+    env.ELEVENLABS_BASE_URL = 'http://localhost:4010';
   });
 
   it('loads the speech adapter factory', async () => {

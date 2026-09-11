@@ -1,9 +1,15 @@
 {
-  "match": {
-    "method": "POST",
-    "pathPrefix": "/v1/text-to-speech/"
-  },
-  "status": 200,
-  "contentType": "audio/mpeg",
-  "bodyBase64": "SUQzZmFrZS1lMmUtdHRz"
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "elevenlabs-tts",
+        "userMessage": "e2e elevenlabs tts replay stub",
+        "model": "eleven_v3"
+      },
+      "response": {
+        "audio": "SUQzZmFrZS1lMmUtdHRz",
+        "format": "mp3"
+      }
+    }
+  ]
 }

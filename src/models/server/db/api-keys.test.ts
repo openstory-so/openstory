@@ -824,7 +824,7 @@ describe('resolveKey elevenlabs (platform-only, #1552)', () => {
     const scope = createApiKeysReadMethods(db, teamId);
     expect(await scope.resolveOptionalKey('elevenlabs')).toBeUndefined();
 
-    testEnv.ELEVENLABS_BASE_URL = 'http://localhost:4012';
+    testEnv.ELEVENLABS_BASE_URL = 'http://localhost:4010';
     expect(await scope.resolveKey('elevenlabs')).toEqual({
       key: 'el-platform',
       source: 'platform',
