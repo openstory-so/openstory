@@ -535,90 +535,6 @@ export const selectShotVariantFn = createServerFn({ method: 'POST' })
     };
   });
 
-// ---------------------------------------------------------------------------
-// Set Image from Variant
-// ---------------------------------------------------------------------------
-
-const setImageFromVariantInputSchema = z.object({
-  sequenceId: ulidSchema,
-  shotId: ulidSchema,
-  model: z.string().min(1),
-});
-
-export const setImageFromVariantFn = createServerFn({ method: 'POST' })
-  .middleware([shotAccessMiddleware])
-  .validator(zodValidator(setImageFromVariantInputSchema))
-  .handler(async ({ context, data }) => {
-    const { shot, frame } = context;
-
-    // The model's image versions live in `frame_variants` now (#989). Pick the
-    // latest completed one and SELECT it — a pointer repoint that mirrors its
-    // image fields onto the frame + logs `image.selected`. This is the #677 fix:
-    // selecting a model is a retained version + repoint, never an overwrite, so
-    // the old "set image shows old image" / false-staleness bugs disappear (the
-    // version carries its own inputHash; the mirror adopts it).
-    const versions = await context.scopedDb.frameVariants.listByGroup({
-      frameId: frame.id,
-      kind: 'model',
-      model: data.model,
-    });
-    const latest = [...versions]
-      .reverse()
-      .find((v) => v.status === 'completed' && v.url);
-    if (!latest) {
-      throw new Error('No completed variant found for this model');
-    }
-
-    await context.scopedDb.frameVariants.select(frame.id, latest.id, {
-      actorId: context.user.id,
-    });
-
-    return { shotId: shot.id, thumbnailUrl: latest.url };
-  });
-
-const setVideoFromVariantInputSchema = z.object({
-  sequenceId: ulidSchema,
-  shotId: ulidSchema,
-  model: z.string().min(1),
-});
-
-/**
- * Repoint a shot's primary video to a model's latest render (#545, re-routed to
- * `video_variants` in #990) — the motion analog of `setImageFromVariantFn`.
- * Selection is a pointer now: `videoVariants.select` repoints the render
- * segment's `selectedVideoVersionId` and logs a `video.selected` event —
- * atomically and non-destructively (the version is retained, so the viewer can
- * switch back).
- */
-export const setVideoFromVariantFn = createServerFn({ method: 'POST' })
-  .middleware([shotAccessMiddleware])
-  .validator(zodValidator(setVideoFromVariantInputSchema))
-  .handler(async ({ context, data }) => {
-    const { shot, scopedDb } = context;
-    // No render segment ⇒ the shot was never rendered, so no version to select.
-    if (!shot.renderSegmentId) {
-      throw new Error('No completed video variant found for this model');
-    }
-
-    // Pick the latest completed version for (segment, model).
-    const versions = await scopedDb.videoVariants.listByGroup({
-      renderSegmentId: shot.renderSegmentId,
-      model: data.model,
-    });
-    const completed = versions.filter((v) => v.status === 'completed' && v.url);
-    const latest = completed[completed.length - 1];
-    if (!latest || !latest.url) {
-      throw new Error('No completed video variant found for this model');
-    }
-    const videoUrl = latest.url;
-
-    await scopedDb.videoVariants.select(shot.id, latest.id, {
-      actorId: scopedDb.userId,
-    });
-
-    return { shotId: shot.id, videoUrl };
-  });
-
 const selectSegmentVideoVersionInputSchema = z.object({
   sequenceId: ulidSchema,
   shotId: ulidSchema,
@@ -627,10 +543,10 @@ const selectSegmentVideoVersionInputSchema = z.object({
 
 /**
  * Repoint a render segment's selection at a SPECIFIC version (#986) — the
- * version-switcher analog of `setVideoFromVariantFn` (which only picks the
- * latest for a model). `videoVariants.select` validates the version belongs to
- * the shot's segment and is completed, repoints `selectedVideoVersionId`, and
- * logs `video.selected` — atomically.
+ * history pick, and the only way a shot switches to another model's clip.
+ * `videoVariants.select` validates the version belongs to the shot's segment
+ * and is completed, repoints `selectedVideoVersionId`, and logs
+ * `video.selected` — atomically.
  */
 export const selectSegmentVideoVersionFn = createServerFn({ method: 'POST' })
   .middleware([shotAccessMiddleware])

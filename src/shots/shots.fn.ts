@@ -288,7 +288,7 @@ export const promoteVariantFn = createServerFn({ method: 'POST' })
   )
   .handler(async () => {
     throw new Error(
-      'Promoting a divergent alternate is retired — pick a version from the shot’s video history instead (selectSegmentVideoVersionFn), or a model via setVideoFromVariantFn.'
+      'Promoting a divergent alternate is retired — pick a version from the shot’s video history instead.'
     );
   });
 

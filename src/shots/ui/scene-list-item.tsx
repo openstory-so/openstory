@@ -44,10 +44,6 @@ type SceneListItemProps = {
    */
   divergentVariantId?: string;
   onCompareDivergent?: () => void;
-  /** Pinned image model hasn't generated this scene (#547) — show a badge. */
-  modelMissing?: boolean;
-  /** Name of the pinned image model, for the "No {model}" badge. */
-  modelMissingLabel?: string | null;
   /**
    * Prompts/image out of date since the last edit (#1077) — quiet amber
    * corner dot. Divergent alternates and the regen spinner take precedence.
@@ -70,8 +66,6 @@ const SceneListItemComponent: React.FC<SceneListItemProps> = ({
   isRegeneratingMotion = false,
   divergentVariantId,
   onCompareDivergent,
-  modelMissing = false,
-  modelMissingLabel,
   isStale = false,
   onMoveUp,
   onMoveDown,
@@ -226,18 +220,6 @@ const SceneListItemComponent: React.FC<SceneListItemProps> = ({
                   <Play className="h-2.5 w-2.5 fill-current" />
                 </span>
               )}
-              {modelMissing && (
-                <span
-                  className="absolute bottom-1 left-1 rounded bg-amber-500/90 px-1.5 py-0.5 text-[10px] font-medium leading-none text-white"
-                  aria-label={
-                    modelMissingLabel
-                      ? `Not generated with ${modelMissingLabel}`
-                      : 'Not generated with the selected model'
-                  }
-                >
-                  No {modelMissingLabel}
-                </span>
-              )}
             </div>
           </div>
 
@@ -316,8 +298,6 @@ const areEqual = (
     prevProps.isRegeneratingImage !== nextProps.isRegeneratingImage ||
     prevProps.isRegeneratingMotion !== nextProps.isRegeneratingMotion ||
     prevProps.divergentVariantId !== nextProps.divergentVariantId ||
-    prevProps.modelMissing !== nextProps.modelMissing ||
-    prevProps.modelMissingLabel !== nextProps.modelMissingLabel ||
     prevProps.isStale !== nextProps.isStale
   ) {
     return false;

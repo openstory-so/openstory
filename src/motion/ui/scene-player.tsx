@@ -88,12 +88,6 @@ type ScenePlayerProps = {
   overrideVideoUrl?: string | null;
   badgeMessage?: string | null;
   /**
-   * Warning badge shown when the pinned image model has not generated this
-   * scene (#547) — the displayed image is the primary fallback, not the
-   * pinned model's output.
-   */
-  modelMismatchLabel?: string | null;
-  /**
    * Quiet stale chip (#1077) — the displayed image was generated from
    * earlier inputs. Info-level: amber dot on a muted chip, no warning fill.
    */
@@ -127,7 +121,6 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
   overrideImageUrl,
   overrideVideoUrl,
   badgeMessage,
-  modelMismatchLabel,
   staleLabel,
   progressMessage,
   retry,
@@ -549,12 +542,7 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
               {badgeMessage}
             </span>
           )}
-          {modelMismatchLabel && !badgeMessage && (
-            <span className="absolute top-12 left-2 z-10 rounded bg-amber-500/90 px-2 py-1 text-xs font-medium text-white backdrop-blur-sm">
-              {modelMismatchLabel}
-            </span>
-          )}
-          {staleLabel && !badgeMessage && !modelMismatchLabel && (
+          {staleLabel && !badgeMessage && (
             <span className="absolute top-12 left-2 z-10 flex items-center gap-1.5 rounded bg-background/80 px-2 py-1 text-xs font-medium text-muted-foreground backdrop-blur-sm">
               <span
                 aria-hidden="true"

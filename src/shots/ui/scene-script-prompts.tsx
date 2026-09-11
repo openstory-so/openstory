@@ -43,12 +43,7 @@ import { notifyInsufficientCredits } from '@/billing/ui/notify-insufficient-cred
 import { useFalBillingGate } from '@/billing/ui/use-billing-gate';
 import { useFalPricing } from '@/billing/ui/use-fal-pricing';
 import { segmentKeys } from './use-segments';
-import {
-  shotKeys,
-  useSelectSegmentVideoVersion,
-  useSetImageFromVariant,
-  useSetVideoFromVariant,
-} from './use-shots';
+import { shotKeys, useSelectSegmentVideoVersion } from './use-shots';
 import {
   SegmentVideoPanel,
   segmentPanelIsInformative,
@@ -58,7 +53,6 @@ import { useReplaceFrameImage, useReplaceShotVideo } from './use-media-upload';
 import type { SequenceSegment } from '@/shots/scene-segments';
 import type { UpdateStaleDepth } from '@/shots/update-stale-depth';
 import { copyTextToClipboard } from '@/ui/clipboard';
-import { isSetImageOffered } from './set-image-offer';
 import {
   type ShotStaleness,
   markArtifactFresh,
@@ -418,8 +412,6 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
   }, [shot?.id]);
 
   const queryClient = useQueryClient();
-  const setImageFromVariant = useSetImageFromVariant();
-  const setVideoFromVariant = useSetVideoFromVariant();
   const selectSegmentVideoVersion = useSelectSegmentVideoVersion();
   const replaceFrameImage = useReplaceFrameImage();
   const replaceShotVideo = useReplaceShotVideo();
@@ -798,20 +790,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
 
   const imagePrompt = shot?.imagePromptVersion?.text ?? undefined;
 
-  const variantIsCompleted =
-    variantForSelectedModel?.status === 'completed' &&
-    !!variantForSelectedModel.url;
   const variantIsGenerating = variantForSelectedModel?.status === 'generating';
-  // Set Image only when the dropdown model differs from the model that
-  // produced the *current* primary still. Uploads are already the selected
-  // version — offering Set Image would revert them to an older generation.
-  const offerSetImage = isSetImageOffered({
-    variantCompleted: variantIsCompleted,
-    currentImageUrl: shot?.image?.url,
-    currentKind: shot?.image?.kind,
-    currentModel: shot?.image?.model,
-    dropdownModel: effectiveImageModel,
-  });
 
   // Has the selected image model produced an image for this scene — drives
   // Generate vs Regenerate (mirror of videoModelGenerated). Variant row (any
@@ -821,55 +800,8 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     !!variantForSelectedModel ||
     (!!shot?.image?.url && effectiveImageModel === imageModel);
 
-  const handleSetImageFromVariant = useCallback(async () => {
-    if (!shot?.id || !shot.sequenceId) return;
-
-    try {
-      await setImageFromVariant.mutateAsync({
-        sequenceId: shot.sequenceId,
-        shotId: shot.id,
-        model: effectiveImageModel,
-      });
-    } catch (error) {
-      toast.error('Failed to set image', {
-        description: errorMessage(error),
-      });
-    }
-  }, [shot, effectiveImageModel, setImageFromVariant]);
-
-  // Video equivalents (#545): drive the "Set Video" action from the selected
-  // scene's video variant for the picked model.
-  const videoVariantIsCompleted =
-    videoVariantForSelectedModel?.status === 'completed' &&
-    !!videoVariantForSelectedModel.url;
   const videoVariantIsGenerating =
     videoVariantForSelectedModel?.status === 'generating';
-  // Same rule as image: Set Video only when the dropdown model isn't the one
-  // that produced the current primary clip (not URL equality to latest).
-  const currentVideoModel = safeImageToVideoModel(
-    shot?.video?.model,
-    DEFAULT_VIDEO_MODEL
-  );
-  const videoVariantAlreadySet =
-    videoVariantIsCompleted &&
-    !!shot?.video?.url &&
-    effectiveMotionModel === currentVideoModel;
-
-  const handleSetVideoFromVariant = useCallback(async () => {
-    if (!shot?.id || !shot.sequenceId) return;
-
-    try {
-      await setVideoFromVariant.mutateAsync({
-        sequenceId: shot.sequenceId,
-        shotId: shot.id,
-        model: effectiveMotionModel,
-      });
-    } catch (error) {
-      toast.error('Failed to set video', {
-        description: errorMessage(error),
-      });
-    }
-  }, [shot, effectiveMotionModel, setVideoFromVariant]);
 
   const handleShortenPrompt = useCallback(async () => {
     setShortenStatus({ loading: false, error: null, success: null });
@@ -1774,43 +1706,31 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
             />
           )}
 
-          {/* Image action button — variant-aware */}
-          {offerSetImage ? (
+          {/* Image action button. Switching to another model's existing
+              still is a history pick, like any other version. */}
+          <div className="flex flex-col gap-1">
             <Button
-              onClick={() => void handleSetImageFromVariant()}
-              disabled={setImageFromVariant.isPending || !shot}
+              onClick={() => {
+                if (falNeedsBillingSetup) {
+                  showFalGate();
+                  return;
+                }
+                void handleRegenerate();
+              }}
+              disabled={isGenerating || variantIsGenerating || !shot}
               className="w-full"
             >
-              {setImageFromVariant.isPending && (
+              {(isGenerating || variantIsGenerating) && (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               )}
-              {setImageFromVariant.isPending ? 'Setting…' : 'Set Image'}
+              {isGenerating || variantIsGenerating
+                ? 'Generating…'
+                : imageModelGenerated
+                  ? 'Regenerate Image'
+                  : 'Generate Image'}
             </Button>
-          ) : (
-            <div className="flex flex-col gap-1">
-              <Button
-                onClick={() => {
-                  if (falNeedsBillingSetup) {
-                    showFalGate();
-                    return;
-                  }
-                  void handleRegenerate();
-                }}
-                disabled={isGenerating || variantIsGenerating || !shot}
-                className="w-full"
-              >
-                {(isGenerating || variantIsGenerating) && (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                )}
-                {isGenerating || variantIsGenerating
-                  ? 'Generating…'
-                  : imageModelGenerated
-                    ? 'Regenerate Image'
-                    : 'Generate Image'}
-              </Button>
-              <ActionCost estimate={imageCostEstimate} />
-            </div>
-          )}
+            <ActionCost estimate={imageCostEstimate} />
+          </div>
 
           {/* Manual still inject (#1108) — upload replaces the selected image;
               a pending prompt edit is saved atomically with it (§4.3 C). */}
@@ -2177,55 +2097,41 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
             </Alert>
           )}
 
-          {/* Motion action button — variant-aware (#545), mirror of the image
-              tab: when the picked model already has a completed video for this
-              scene, offer to Set it; otherwise Generate/Regenerate. */}
-          {videoVariantIsCompleted && !videoVariantAlreadySet ? (
+          {/* Motion action button. Switching to another model's existing
+              clip is a history pick, like any other version. */}
+          <div className="flex flex-col gap-1">
             <Button
-              onClick={() => void handleSetVideoFromVariant()}
-              disabled={setVideoFromVariant.isPending || !shot}
+              onClick={() => {
+                if (falNeedsBillingSetup) {
+                  showFalGate();
+                  return;
+                }
+                if (silencedVoiceLines.length > 0) {
+                  setConfirmSilentOpen(true);
+                  return;
+                }
+                void handleRegenerateMotion();
+              }}
+              disabled={
+                isGenerating ||
+                isGeneratingMotion ||
+                videoVariantIsGenerating ||
+                unusableElementLines.length > 0 ||
+                !shot
+              }
               className="w-full"
             >
-              {setVideoFromVariant.isPending && (
+              {(isGeneratingMotion || videoVariantIsGenerating) && (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               )}
-              {setVideoFromVariant.isPending ? 'Setting…' : 'Set Video'}
+              {isGeneratingMotion || videoVariantIsGenerating
+                ? 'Generating…'
+                : videoModelGenerated
+                  ? 'Regenerate Motion'
+                  : 'Generate Motion'}
             </Button>
-          ) : (
-            <div className="flex flex-col gap-1">
-              <Button
-                onClick={() => {
-                  if (falNeedsBillingSetup) {
-                    showFalGate();
-                    return;
-                  }
-                  if (silencedVoiceLines.length > 0) {
-                    setConfirmSilentOpen(true);
-                    return;
-                  }
-                  void handleRegenerateMotion();
-                }}
-                disabled={
-                  isGenerating ||
-                  isGeneratingMotion ||
-                  videoVariantIsGenerating ||
-                  unusableElementLines.length > 0 ||
-                  !shot
-                }
-                className="w-full"
-              >
-                {(isGeneratingMotion || videoVariantIsGenerating) && (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                )}
-                {isGeneratingMotion || videoVariantIsGenerating
-                  ? 'Generating…'
-                  : videoModelGenerated
-                    ? 'Regenerate Motion'
-                    : 'Generate Motion'}
-              </Button>
-              <ActionCost estimate={motionCostEstimate} />
-            </div>
-          )}
+            <ActionCost estimate={motionCostEstimate} />
+          </div>
 
           <AlertDialog
             open={confirmSilentOpen}

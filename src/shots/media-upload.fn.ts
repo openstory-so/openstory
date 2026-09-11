@@ -219,8 +219,8 @@ async function emitUploadCompleted(
  * `replaceFrameContentFn`.
  *
  * Appends a `frame_variants.kind:'upload'` version stamped against the CURRENT
- * selected visual prompt + sheets, then `select`s it — the exact repoint
- * `setImageFromVariantFn` performs, so the mirror, `image.selected` event,
+ * selected visual prompt + sheets, then `select`s it — the same repoint a
+ * history pick performs, so the mirror, `image.selected` event,
  * pending-promote clear, and prompt pairing all behave identically. The visual
  * prompt is NOT touched; downstream video reads stale by manifest derivation.
  */

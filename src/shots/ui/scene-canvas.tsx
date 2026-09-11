@@ -31,14 +31,12 @@ type SceneCanvasProps = {
   scenes?: SceneWithScript[];
   /** Shots query failure — shown instead of an indefinite skeleton. */
   loadError?: Error | null;
-  playerShots?: ShotView[];
   sequence?: Sequence;
   aspectRatio: AspectRatio;
   selectedTab?: TabValue;
   overrideImageUrl?: string | null;
   overrideVideoUrl?: string | null;
   badgeMessage?: string | null;
-  modelMismatchLabel?: string | null;
   /** Quiet stale chip for the displayed image (#1077). */
   staleLabel?: string | null;
   progressMessage?: React.ReactNode;
@@ -143,14 +141,12 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
   shots,
   scenes,
   loadError,
-  playerShots,
   sequence,
   aspectRatio,
   selectedTab,
   overrideImageUrl,
   overrideVideoUrl,
   badgeMessage,
-  modelMismatchLabel,
   staleLabel,
   progressMessage,
   retry,
@@ -214,7 +210,7 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
       ) : undefined;
     const player = (
       <ScenePlayer
-        shots={playerShots}
+        shots={shots}
         scenes={scenes}
         selectedShotId={selection.shotId}
         aspectRatio={aspectRatio}
@@ -223,7 +219,6 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
         overrideImageUrl={overrideImageUrl}
         overrideVideoUrl={overrideVideoUrl}
         badgeMessage={badgeMessage}
-        modelMismatchLabel={modelMismatchLabel}
         staleLabel={staleLabel}
         progressMessage={progressMessage}
         retry={retry}
@@ -263,7 +258,7 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
       return (
         <CanvasMediaStage aspectRatio={aspectRatio}>
           <ScenePlayer
-            shots={playerShots}
+            shots={shots}
             scenes={scenes}
             selectedShotId={stillShot.id}
             aspectRatio={aspectRatio}
