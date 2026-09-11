@@ -377,8 +377,8 @@ export const recastCharacterFn = createServerFn({ method: 'POST' })
         sheetMetadata: defaultSheet?.metadata ?? undefined,
         talentName: talentWithSheets.name,
         talentDescription: talentWithSheets.description ?? undefined,
-        personality: talentWithSheets.personality ?? undefined,
-        movement: talentWithSheets.movement ?? undefined,
+        personality: talentWithSheets.personality ?? '',
+        movement: talentWithSheets.movement ?? '',
       }
     );
 

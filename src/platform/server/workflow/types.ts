@@ -772,9 +772,9 @@ export type TalentCharacterMatch = {
   sheetMetadata?: CharacterBibleEntry;
   /** Talent library description, snapshotted at match time for reuse checks. */
   talentDescription?: string;
-  /** Talent performance (#1561), snapshotted at match time; wins over the script's. */
-  personality?: string;
-  movement?: string;
+  /** Talent performance (#1561), snapshotted at match time; `''` = library has none, use the script's. */
+  personality: string;
+  movement: string;
 };
 
 /**

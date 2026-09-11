@@ -41,6 +41,8 @@ describe('buildCastingAttributes', () => {
     const result = buildCastingAttributes(scriptEntry, {
       sheetMetadata: talentMetadata,
       talentName: 'Elvis Presley',
+      personality: '',
+      movement: '',
     });
 
     expect(result.age).toBe('25');
@@ -69,6 +71,8 @@ describe('buildCastingAttributes', () => {
     const fromRole = buildCastingAttributes(role, {
       sheetMetadata: talentMetadata,
       talentName: 'Elvis Presley',
+      personality: '',
+      movement: '',
     });
     expect(fromRole.personality).toBe('anxious');
     expect(fromRole.movement).toBe('restless hands');
@@ -78,6 +82,8 @@ describe('buildCastingAttributes', () => {
     const result = buildCastingAttributes(scriptEntry, {
       sheetMetadata: talentMetadata,
       talentName: 'Elvis Presley',
+      personality: '',
+      movement: '',
     });
 
     expect(result.standardClothing).toBe('Dark trench coat, badge on belt');
@@ -88,6 +94,8 @@ describe('buildCastingAttributes', () => {
     const result = buildCastingAttributes(scriptEntry, {
       sheetMetadata: talentMetadata,
       talentName: 'Elvis Presley',
+      personality: '',
+      movement: '',
     });
 
     expect(result.consistencyTag).toBe('char_001_elvis_presley');
@@ -96,6 +104,8 @@ describe('buildCastingAttributes', () => {
   test('falls back to script attributes when talent metadata is missing', () => {
     const result = buildCastingAttributes(scriptEntry, {
       talentName: 'Elvis Presley',
+      personality: '',
+      movement: '',
     });
 
     expect(result.age).toBe('30s');
@@ -112,6 +122,8 @@ describe('buildCastingAttributes', () => {
     const result = buildCastingAttributes(scriptEntry, {
       sheetMetadata: sparseMetadata,
       talentName: 'Elvis Presley',
+      personality: '',
+      movement: '',
     });
 
     // Naming a person + "match exactly" trips OpenAI's likeness moderation —
@@ -124,10 +136,14 @@ describe('buildCastingAttributes', () => {
     const result1 = buildCastingAttributes(scriptEntry, {
       sheetMetadata: talentMetadata,
       talentName: 'Elvis Presley',
+      personality: '',
+      movement: '',
     });
     const result2 = buildCastingAttributes(scriptEntry, {
       sheetMetadata: talentMetadata,
       talentName: 'Elvis Presley',
+      personality: '',
+      movement: '',
     });
 
     expect(result1.consistencyTag).toBe(result2.consistencyTag);
@@ -145,6 +161,8 @@ describe('buildCastingAttributes', () => {
     const result = buildCastingAttributes(scriptEntry, {
       sheetMetadata: partialMeta,
       talentName: 'Test Actor',
+      personality: '',
+      movement: '',
     });
 
     expect(result.age).toBe('40');
@@ -176,6 +194,8 @@ describe('buildCastCharacterBible', () => {
         {
           characterId: 'char_001',
           talentName: 'Elvis Presley',
+          personality: '',
+          movement: '',
           sheetMetadata: talentMetadata,
         },
       ]
@@ -188,6 +208,8 @@ describe('buildCastCharacterBible', () => {
     const expected = buildCastingAttributes(scriptEntry, {
       sheetMetadata: talentMetadata,
       talentName: 'Elvis Presley',
+      personality: '',
+      movement: '',
     });
     expect(cast).toEqual({
       characterId: 'char_001',
@@ -206,6 +228,8 @@ describe('buildCastCharacterBible', () => {
       {
         characterId: 'char_001',
         talentName: 'Elvis Presley',
+        personality: '',
+        movement: '',
         sheetMetadata: talentMetadata,
       },
     ]);
@@ -222,7 +246,14 @@ describe('buildCastCharacterBible', () => {
   test('preserves characterId and name when casting', () => {
     const [cast] = buildCastCharacterBible(
       [scriptEntry],
-      [{ characterId: 'char_001', talentName: 'Elvis Presley' }]
+      [
+        {
+          characterId: 'char_001',
+          talentName: 'Elvis Presley',
+          personality: '',
+          movement: '',
+        },
+      ]
     );
     if (!cast) throw new Error('expected one cast entry');
     expect(cast.characterId).toBe('char_001');

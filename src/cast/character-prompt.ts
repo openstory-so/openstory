@@ -148,9 +148,9 @@ type TalentAppearanceData = {
   talentName: string;
   /** Talent description/notes */
   talentDescription?: string;
-  /** Talent performance (#1561); wins over the script's when set. */
-  personality?: string;
-  movement?: string;
+  /** Talent performance (#1561); wins over the script's when non-empty. */
+  personality: string;
+  movement: string;
 };
 
 /**
@@ -238,8 +238,8 @@ export const buildCastCharacterBible = (
     characterId: string;
     talentName: string;
     sheetMetadata?: CharacterBibleEntry;
-    personality?: string;
-    movement?: string;
+    personality: string;
+    movement: string;
   }[]
 ): CharacterBibleEntry[] => {
   const byCharacterId = new Map(talentMatches.map((m) => [m.characterId, m]));

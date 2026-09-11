@@ -417,6 +417,8 @@ describe('casting round-trip — stamp matches verify (#867)', () => {
   const match = {
     characterId: 'char_001',
     talentName: 'Elvis Presley',
+    personality: '',
+    movement: '',
     sheetMetadata: talentSheet,
   };
   // Scene references the character by name slug (matching is name-based, stable

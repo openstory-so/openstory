@@ -74,6 +74,8 @@ const TALENT_MATCH = {
   characterId: 'c1',
   talentId: 'tal_1',
   talentName: 'Ada',
+  personality: '',
+  movement: '',
   sheetImageUrl: '/r2/ada.png',
 };
 const LOCATION_MATCH = {
