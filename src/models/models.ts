@@ -272,13 +272,16 @@ export const IMAGE_MODELS = {
     maxPromptLength: 2000,
   },
   qwen_image: {
-    id: 'fal-ai/qwen-image-2/pro/text-to-image' as const,
-    name: 'Qwen Image 2 Pro',
+    // Qwen Image 3 ships as one line (no Pro tier) under fal's `alibaba/`
+    // namespace; it is the successor to Qwen Image 2 Pro (same schema shape,
+    // 1K/2K per-image pricing, prompt-guided resolution selection).
+    id: 'alibaba/qwen-image-3/text-to-image' as const,
+    name: 'Qwen Image 3',
     vendor: 'Alibaba',
     license: 'open-weight' as const,
     qualityRank: 8,
-    description: 'Apache 2.0, native 2K, text rendering, editing support',
-    maxPromptLength: 2000,
+    description: 'Apache 2.0, up to 2K, text rendering, editing support',
+    maxPromptLength: 5000,
   },
   hidream_i1: {
     id: 'fal-ai/hidream-i1-full' as const,
@@ -672,7 +675,7 @@ export const EDIT_ENDPOINTS: Partial<Record<TextToImageModel, string>> = {
   flux_2_dev: 'fal-ai/flux-2/edit',
   flux_2_flash: 'fal-ai/flux-2/flash/edit',
   flux_2_turbo: 'fal-ai/flux-2/turbo/edit',
-  qwen_image: 'fal-ai/qwen-image-2/pro/edit',
+  qwen_image: 'alibaba/qwen-image-3/edit',
   seedream_v5: 'bytedance/seedream/v5/pro/edit',
 };
 

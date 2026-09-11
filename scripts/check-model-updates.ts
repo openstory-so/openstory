@@ -95,6 +95,8 @@ const ORG_PREFIXES = new Set([
   'mistralai',
   'meta-llama',
   'qwen',
+  'alibaba',
+  'blackforestlabs',
   'minimax',
 ]);
 

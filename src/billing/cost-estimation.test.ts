@@ -575,7 +575,7 @@ describe('the resolution tier sizes the estimate (#1449)', () => {
   // genuinely moves both the request and the charge.
   const MEGAPIXEL_PRICED = {
     ...FAL_PRICING,
-    'fal-ai/qwen-image-2/pro/text-to-image': {
+    'alibaba/qwen-image-3/text-to-image': {
       unitPrice: micros(70_000),
       unit: 'megapixels',
     },

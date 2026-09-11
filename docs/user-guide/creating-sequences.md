@@ -81,7 +81,7 @@ The AI model for generating scene images. You can select **multiple image models
 | Model                      | Vendor            | Notes                                                     |
 | -------------------------- | ----------------- | --------------------------------------------------------- |
 | Nano Banana 2 Lite         | Google            | Turbo default — fastest Google tier, references, fixed 1K |
-| GPT Image 2                | OpenAI            | Quality default — text rendering, UI fidelity, up to 4K   |
+| GPT Image 2.5 Flare        | OpenAI            | Quality default — text rendering, UI fidelity, up to 4K   |
 | Nano Banana 2              | Google            | Fast generation and editing                               |
 | Nano Banana Pro            | Google            | Enhanced realism and typography                           |
 | Grok Imagine Image 2.0     | SpaceXAI          | Newest Imagine image model, 1K/2K, edit up to 3 refs      |
@@ -90,7 +90,7 @@ The AI model for generating scene images. You can select **multiple image models
 | Phota                      | Phota             | Character consistency via profiles                        |
 | Hunyuan Image v3           | Tencent           | Open weights with strong composition                      |
 | FLUX.2 Dev                 | Black Forest Labs | 32B open weights                                          |
-| Qwen Image 2 Pro           | Alibaba           | Apache 2.0, native 2K, text rendering                     |
+| Qwen Image 3               | Alibaba           | Apache 2.0, up to 2K, text rendering                      |
 | HiDream I1                 | HiDream           | MIT licensed, 17B parameters                              |
 | Seedream 5.0 Pro           | ByteDance         | Flagship generation and editing                           |
 | FLUX.2 Flash               | Black Forest Labs | Cheapest distilled FLUX.2 — sub-second, edit up to 4 refs |

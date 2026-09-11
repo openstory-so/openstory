@@ -69,8 +69,9 @@ export const LOCAL_FAL_PRICING_SEED: Record<string, SeedPrice> = {
   'fal-ai/hunyuan-image/v3/instruct/edit': img(0.04),
   'fal-ai/flux-2': { unit: 'megapixels', unitPriceUsd: 0.03 },
   'fal-ai/flux-2/edit': { unit: 'megapixels', unitPriceUsd: 0.03 },
-  'fal-ai/qwen-image-2/pro/text-to-image': img(0.04),
-  'fal-ai/qwen-image-2/pro/edit': img(0.04),
+  // Qwen Image 3: $0.04 per image at 1K, $0.075 at 2K (fal model page).
+  'alibaba/qwen-image-3/text-to-image': img(0.04),
+  'alibaba/qwen-image-3/edit': img(0.04),
   'fal-ai/hidream-i1-full': img(0.04),
   'bytedance/seedream/v5/pro/text-to-image': img(0.135),
   'bytedance/seedream/v5/pro/edit': img(0.135),
