@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use Image 1 as the starting frame.\nShot 1: Smooth handheld drift closer over the shoulder as Image 2 finishes pulling open the coral carton, removes the lipstick with precise hands, and leaves the vibrating phone beside the faucet untouched. Keep her attention on the ritual.\n\nShot 2: Gradual macro push-in as Image 2 steadies the tube, twists the lipstick bullet upward, and rotates it through the hard stripe of sunlight. The coral surface catches a clean highlight against the tile.\n\nShot 3: Static lock-off as Image 2 applies the lipstick in the mirror, pauses mid-smile at a distant subway rumble, then checks the phone and gathers the sunglasses. She speaks softly to her reflection before sweeping out of frame, ending with the coral lipstick prominent in the held composition. Maintain precise, self-possessed gestures throughout. Subtle reflected light shifts across the sink and mirror; her sleeve and hair move naturally as she exits.\n\nImage 2 says in a soft, self-possessed tone: <d>[English] Okay. City’s waiting.</d>\n\noverall_soundscape: quiet apartment bathroom ambience with a distant subway rumble. phone vibrating beside the faucet, carton tearing, soft lipstick tube twist, phone tap, sunglasses lifted from the counter, light footsteps as Image 2 exits. No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\nnon_diegetic_music: N/A",
+        "model": "minimax/h3-max/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://assets.openstory.so/e2e/6ab08e2474246a546c4333bd942b6ac5c005a53be85472a88119f655115e7782.mp4",
+            "content_type": "video/mp4",
+            "file_name": "UPKmWZ7Npay7b2lrQk86r_minimax-h3.mp4",
+            "file_size": 7140009
+          },
+          "expanded_prompt": "subject_definitions:\n<Subject 1> is the blonde woman shown in <Picture 1> and <Picture 2>, wearing a black long-sleeved turtleneck.\n\nsummary:\n[keyframe completion + reference generation] The video begins on <Picture 1> as <Subject 1> unboxes and applies coral lipstick before leaving her apartment bathroom.\n\nretention_analysis:\n<Picture 1> (appears in [Shot 1]): fully_preserved - serves as the exact initial frame of the video.\n<Picture 2> (appears in [Shot 1], [Shot 2], [Shot 3]): attribute_transfer - provides facial features, hair, and styling for <Subject 1>.\n<Subject 1> (appears in [Shot 1], [Shot 2], [Shot 3]): fully_preserved - consistent identity, hair, and wardrobe throughout all shots.\n\ndetailed_description:\nA cinematic, naturalistic commercial style with soft daylight raking across a modern bathroom vanity.\n\n[Shot 1] Starting from <Picture 1>, the camera performs a Push In with small amplitude at slow speed over the shoulder of <Subject 1>. She finishes opening the coral carton and extracts the lipstick tube, ignoring her vibrating smartphone beside the faucet. Sounds include the buzz of the phone on stone and paper carton creaks.\n\n[Shot 2] At 00:02.000, the shot cuts to an extreme close-up macro view. The camera executes a Push In with small amplitude at slow speed as hands belonging to <Subject 1> twist the coral lipstick bullet upward, rotating it through a direct beam of sunlight. A precise mechanical click and twist sound accompanies the movement against faint distant traffic.\n\n[Shot 3] At 00:03.800, the shot cuts to a medium Static Shot facing the bathroom mirror. <Subject 1> (S1) applies the lipstick, pauses mid-smile at a distant subway rumble, taps her phone screen, and picks up her sunglasses. Looking into the mirror, <Subject 1> (S1) speaks softly: <d>[English] Okay. City’s waiting.</d> She turns and exits frame right, leaving the coral lipstick standing on the marble counter. Footsteps fade away.\n\noverall_soundscape:\nSubtle bathroom ambience with distant city and subway rumbles, phone buzz on stone, carton rustling, lipstick twisting, phone screen tap, and departing footsteps.\n\nnon_diegetic_music:\nN/A",
+          "seed": 453051737,
+          "timings": {
+            "inference": 5.656774029950611
+          }
+        },
+        "status": 200,
+        "billableUnits": 9.600000000000001
+      }
+    }
+  ]
+}

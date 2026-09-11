@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use Image 1 as the starting frame.\nImage 2 twists the lipstick bullet upward and turns it through the sunlight.. Camera: gradual push-in\n\nImage 2 says in a softly tone: <d>[English] Okay. City’s waiting.</d>\n\noverall_soundscape: soft tube twist, subtle fingertip movement. No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\nnon_diegetic_music: N/A",
+        "model": "minimax/h3-max/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://assets.openstory.so/e2e/82e2d63415de4b5bde3f05fc63296cabf1a39b1a16e8502ddff0c65f7af12f6e.mp4",
+            "content_type": "video/mp4",
+            "file_name": "co_MgNMU6dL426SgzDeaJ_minimax-h3.mp4",
+            "file_size": 6711663
+          },
+          "expanded_prompt": "subject_definitions:\n<Subject 1> is the hands holding the red lipstick bullet and black-and-gold casing over the marble vanity in <Picture 1>.\n<Subject 2> is the blonde woman from <Picture 2> wearing a black turtleneck and bright red lipstick, serving as speaker (S1).\n\nsummary:\n[keyframe completion + reference generation] Starting precisely from <Picture 1>, <Subject 2> gently twists the lipstick upward and angles it into the warm bathroom sunlight while speaking softly off-screen.\n\nretention_analysis:\n<Picture 1> (appears in [Shot 1]): fully_preserved - Serves as the exact starting frame, maintaining composition, vanity counter, and hands holding the lipstick.\n<Picture 2> (appears in [Shot 1]): attribute_transfer - Informs the identity of the person holding the lipstick, the black knit sleeve, and the voice timbre of speaker (S1).\n<Subject 1> (appears in [Shot 1]): fully_preserved - Maintains the hands, lipstick tube, and smooth twisting motion throughout the shot.\n<Subject 2> (appears in [Shot 1]): weak_reference - Present through hands, black knit cuff, and off-screen vocal performance.\n\ndetailed_description:\nCinematic natural lighting in a modern interior bathroom with bright morning sunbeams.\n[Shot 1] The shot initiates directly from <Picture 1>. The manicured hands of <Subject 1>, wearing the black sleeve of <Subject 2>, grip the black base and rotate the gold collar smoothly. The red lipstick bullet glides upward, catching the sharp angled sunlight with a glossy reflection. The hands slowly tilt the tube to admire the fresh tip. The camera performs a Push In with small amplitude at slow speed toward the lipstick bullet. Off-screen, <Subject 2> (S1) speaks in a soft, calm tone: <d>[English] Okay. City’s waiting.</d>\n\noverall_soundscape:\nSoft mechanical glide of the lipstick casing twisting upward, delicate friction of fingertips on polished metal, and faint room tone.\n\nnon_diegetic_music:\nN/A",
+          "seed": 30081833,
+          "timings": {
+            "inference": 5.643179058970418
+          }
+        },
+        "status": 200,
+        "billableUnits": 9.600000000000001
+      }
+    }
+  ]
+}

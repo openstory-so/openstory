@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use Image 1 as the starting frame.\nImage 2 pauses, checks the time on her phone, and gathers her sunglasses before exiting the reflection.. Camera: slow static\n\nImage 2 says in a softly tone: <d>[English] Okay. City’s waiting.</d>\n\noverall_soundscape: distant subway rumble, phone tap, soft spoken line: “Okay. City’s waiting.”. No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\nnon_diegetic_music: N/A",
+        "model": "minimax/h3-max/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://assets.openstory.so/e2e/75bb225467f3b47339d328a09627ef8291a8806e567cbc91281ffd9945106861.mp4",
+            "content_type": "video/mp4",
+            "file_name": "HXSY0m6Y0X9HUpN28vBfI_minimax-h3.mp4",
+            "file_size": 7801137
+          },
+          "expanded_prompt": "subject_definitions:\n<Subject 1> is the blonde woman shown in <Picture 1> and <Picture 2>, styled with blonde wavy hair, bright red lipstick, and a black turtleneck.\n<Subject 2> is the bathroom vanity setting in <Picture 1>, featuring a large wall mirror, black counter, chrome faucet, white subway tile, a smartphone, and dark sunglasses.\n\nsummary:\n[keyframe completion + reference generation] The target video begins with <Picture 1> as the opening frame, where <Subject 1> finishes applying lipstick at <Subject 2>, taps her phone to check the time, grabs her sunglasses, speaks softly, and steps away from the mirror.\n\nretention_analysis:\n<Picture 1> (appears in [Shot 1]): fully_preserved - serves as the initial starting frame and environment setup.\n<Picture 2> (appears in [Shot 1]): attribute_transfer - informs <Subject 1>'s styling and sunglasses appearance.\n<Subject 1> (appears in [Shot 1]): fully_preserved - maintains facial features, blonde wavy hair, red lipstick, and wardrobe.\n<Subject 2> (appears in [Shot 1]): fully_preserved - mirrors, vanity counter, tiled walls, and resting props remain spatially consistent.\n\ndetailed_description:\nCinematic natural lighting with soft morning shadows against clean white bathroom tile.\n\n[Shot 1] Beginning exactly on the frame of <Picture 1>, <Subject 1> pulls the red lipstick tube back from her lips, caps it, and sets it onto the countertop of <Subject 2>. Pausing to examine her reflection, she reaches down to tap the screen of her smartphone, illuminating the lock screen to check the time. She scoops up the black sunglasses referenced in <Picture 2>. Looking at her reflection one final time, <Subject 1> (S1) speaks softly: <d>[English] Okay. City’s waiting.</d>. She pivots and walks out of frame to the right, leaving the mirror and vanity still. The camera remains in a Static Shot at slow speed with minimal breathing drift.\n\noverall_soundscape:\nA low, distant subway rumble vibrates through the walls, accompanied by the crisp tap of a fingernail on glass, the light click of sunglasses lifted from the counter, and soft receding footsteps.\n\nnon_diegetic_music:\nN/A",
+          "seed": 1820121425,
+          "timings": {
+            "inference": 5.7462222470203415
+          }
+        },
+        "status": 200,
+        "billableUnits": 9.600000000000001
+      }
+    }
+  ]
+}

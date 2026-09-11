@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use Image 1 as the starting frame.\nShot 1: Smooth lateral truck at pedestrian pace, starting from scarlett_city_influencer’s exact mid-stride position in the crosswalk. Keep her centered as she continues walking left-to-right against the commuter flow with relaxed purpose. Foreground pedestrians and a delivery bike pass naturally while taxis begin rolling behind her.\n\nShot 2: Smooth orbit around scarlett_city_influencer as she reaches the curb. A gust lifts the loose tote strap; she catches it neatly with her elbow without breaking stride, withdraws Image 3, and checks its bullet in the reflection of a parked car window. Let the moving city soften into lateral streaks behind her.\n\nShot 3: Smooth pull-out as scarlett_city_influencer reaches the far side and turns back toward camera while still walking. She raises Image 3 like a tiny baton, grins, delivers her line, then merges into the office-worker stream. A taxi glides through the background with sunlight flashing across its windows. Commuter clothing, tote fabric, and loose hair respond subtly to passing traffic and wind.\n\nImage 2 says in a confident playful, knowing smile tone: <d>[English] Same city. Better color</d>\n\noverall_soundscape: busy downtown traffic, crossing signal, commuter crowd murmur, bicycle bells, footsteps on pavement. footsteps moving through the crosswalk, bicycle bell passing in the foreground, traffic beginning to roll, tote strap fluttering in a gust, taxi passing, walk signal changing. No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\nnon_diegetic_music: N/A",
+        "model": "minimax/h3-max/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://assets.openstory.so/e2e/dfbe5b3033bd623918592b9b37650e84f58d6d8653db0aa9f8a817eed02547b4.mp4",
+            "content_type": "video/mp4",
+            "file_name": "Ju9JSgpMq1CS9zDxcuV73_minimax-h3.mp4",
+            "file_size": 11505681
+          },
+          "expanded_prompt": "subject_definitions:\n<Subject 1> is the stylish blonde woman in <Picture 1> and <Picture 2>, wearing black sunglasses, a black turtleneck, wide-leg black trousers, loafers, a cream tote bag, and bright coral lipstick.\n<Subject 2> is the coral matte lipstick in the matching cylindrical case shown in <Picture 3>.\n\nsummary:\n[keyframe completion + reference generation] The video begins from <Picture 1> as <Subject 1> strides across a bustling city intersection, steps onto the curb to retrieve <Subject 2>, and delivers a line directly to the camera before disappearing into the pedestrian crowd.\n\nretention_analysis:\n<Picture 1> (appears in [Shot 1]): fully_preserved - initial keyframe composition, lighting, and starting poses.\n<Picture 2> (appears in [Shot 1], [Shot 2], [Shot 3]): fully_preserved - appearance, styling, and wardrobe of <Subject 1>.\n<Picture 3> (appears in [Shot 2], [Shot 3]): fully_preserved - tube design, matte coral shade, and branding of <Subject 2>.\n<Subject 1> (appears in [Shot 1], [Shot 2], [Shot 3]): fully_preserved - movement, identity, and facial features.\n<Subject 2> (appears in [Shot 2], [Shot 3]): fully_preserved - physical prop appearance.\n\ndetailed_description:\nCinematic natural daylight with crisp contrast and urban commercial polish.\n\n[Shot 1] Starting from the exact frame in <Picture 1>, the camera performs a smooth lateral Truck Right at medium pedestrian pace, keeping <Subject 1> centered as she strides across the marked crosswalk against commuter traffic. Pedestrians and a bicycle cross through the foreground while yellow cabs begin moving in the background.\n\n[Shot 2] At 00:02.000, the shot cuts to an Arc Shot orbiting smoothly at medium speed around <Subject 1> as she steps onto the sidewalk curb. Wind lifts her tote strap, which she effortlessly catches with her elbow while withdrawing <Subject 2> from the bag, checking its tip against a parked car window's reflection as background traffic blurs into soft streaks.\n\n[Shot 3] At 00:04.000, the shot cuts to a medium frontal view pulling out at slow speed as <Subject 1> (S1) turns slightly back toward the lens while continuing forward. She raises <Subject 2> like a baton, grins with confident playfulness, and delivers: <d>[English] Same city. Better color</d>. She blends into the pedestrian stream as a taxi passes behind her, catching bright afternoon sunlight.\n\noverall_soundscape:\nDowntown ambiance with crosswalk chirps, distant traffic rumble, rolling bicycle tires, ringing bicycle bells, rustling tote canvas, and distinct rhythmic footsteps on pavement.\n\nnon_diegetic_music:\nN/A",
+          "seed": 390697667,
+          "timings": {
+            "inference": 5.8517594679724425
+          }
+        },
+        "status": 200,
+        "billableUnits": 9.830400000000001
+      }
+    }
+  ]
+}

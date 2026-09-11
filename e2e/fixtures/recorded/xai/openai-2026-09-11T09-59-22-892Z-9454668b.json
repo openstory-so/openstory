@@ -1,0 +1,17 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "image",
+        "userMessage": "Medium-wide eye-level shot on a 35mm lens, composed for 16:9. Scarlett (Image 1) VEGA strides toward the backward-moving camera through a narrow downtown apartment hallway, one hand holding an open coral lipstick tube and the other carrying a structured neutral canvas tote, her weight already driving forward and eyes fixed ahead before snapping the cap shut. Cream plaster walls, implied apartment doors, and a gray radiator shelf recede behind her toward the stairwell; her smartphone rests on the shelf in the background. Soft natural morning light fills the corridor evenly. Fresh, tactile, editorial social-first beauty campaign style, clean bright color, lifted shadows, crisp coral accent, subtle handheld energy.\n\nReference images define identity — keep every referenced character, object, and location consistent with its reference image; never render a reference image itself as a separate panel or subject.\nImage 2 (location): Apartment Hallway",
+        "model": "grok-imagine-image-2.0"
+      },
+      "response": {
+        "image": {
+          "url": "https://assets.openstory.so/e2e/c6757cbc64ef75e726cde0dd63a301fb21100951a82c2514b5b3a423412d75a8.jpeg",
+          "mime_type": "image/jpeg"
+        }
+      }
+    }
+  ]
+}

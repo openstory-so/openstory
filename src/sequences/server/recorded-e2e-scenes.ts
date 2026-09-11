@@ -11,8 +11,10 @@ import { z } from 'zod';
 import { sceneIndexForLine } from '@/sequences/boundary-split';
 import {
   sceneSplitBiblesResultSchema,
+  sceneSplitDialogueResultSchema,
   sceneSplitScenesResultSchema,
 } from '@/sequences/response-schemas';
+import { assignDialogueToScenes } from '@/sequences/scene-dialogue';
 import type {
   ElementBibleEntry,
   LocationBibleEntry,
@@ -177,11 +179,21 @@ export function replayRecordedE2eScenes(): {
     })
   );
 
-  const { scenes } = reconcileSceneTags(assembled.scenes, {
+  const { scenes: tagged } = reconcileSceneTags(assembled.scenes, {
     characterBible: bibles.characterBible,
     locationBible,
     elementBible,
   });
+  // The dialogue pass (#1585) replaces the regex preview before persist.
+  const dialogue = sceneSplitDialogueResultSchema.parse(
+    parseJson(responseContent('script-dialogue/script-dialogue.json'))
+  );
+  const scenes = assignDialogueToScenes(
+    script,
+    assembled.resolution.offsets,
+    tagged,
+    dialogue.lines
+  );
 
   // Analyze-script casts matched talent onto the bible BEFORE visual/motion
   // prompts (#867). Replay the recorded Maisie → Sienna Blake match so
