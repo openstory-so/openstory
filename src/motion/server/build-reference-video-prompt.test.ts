@@ -5,6 +5,8 @@ import {
   buildReferenceVideoPrompt,
   type ReferencePromptBinding,
 } from './build-reference-video-prompt';
+import { assembleMotionPrompt } from './assemble-motion-prompt';
+import { buildMotionReferenceImages } from './build-motion-references';
 
 const STILL = 'https://example.com/still.png';
 
@@ -492,5 +494,72 @@ describe('buildReferenceVideoPrompt duration limits', () => {
     ]);
 
     expect(result.videoUrls).toEqual(['https://example.com/unknown.mp4']);
+  });
+});
+
+// #1559 — the dialogue→voice join, end to end. A voice binding is worth
+// nothing unless the token assembly emits survives matching and lands on the
+// audio list, and the three steps live in three modules, so nothing else would
+// catch a break in the middle.
+describe('a dialogue line bound to a voice element', () => {
+  const voiceElement = {
+    id: '01J000000000000000000VOICE',
+    token: 'SARAH_VOICE',
+    description: 'Sarah, dry and clipped',
+    imageUrl: 'https://example.com/sarah_voice.mp3',
+    consistencyTag: 'sarah_voice',
+    kind: 'audio' as const,
+    durationSeconds: 6,
+  };
+
+  const scene = {
+    continuity: { characterTags: [], elementTags: [], environmentTag: null },
+    originalScript: { extract: 'Sarah delivers the bad news.' },
+  };
+
+  it('reaches the request as @Audio1 with the file attached', () => {
+    const prompt = assembleMotionPrompt({
+      motionPrompt: {
+        fullPrompt: 'Slow push in on Sarah at the window.',
+        dialogue: {
+          presence: true,
+          lines: [
+            {
+              character: 'Sarah',
+              line: 'It is already done.',
+              tone: 'flat',
+              voiceToken: 'SARAH_VOICE',
+            },
+          ],
+        },
+        audio: { ambientSound: '', soundEffects: [] },
+      },
+      model: 'seedance_v2_5',
+    });
+
+    // The matchers scan the ASSEMBLED prompt — the token appears nowhere else.
+    const references = buildMotionReferenceImages({
+      scene,
+      characters: [],
+      elements: [voiceElement],
+      motionPrompt: prompt,
+    });
+    expect(references.map((r) => r.token)).toEqual(['SARAH_VOICE']);
+
+    const result = buildReferenceVideoPrompt(
+      seedanceV25Config,
+      prompt,
+      STILL,
+      references
+    );
+
+    expect(result.audioUrls).toEqual(['https://example.com/sarah_voice.mp3']);
+    expect(result.prompt).toContain(
+      "Use @Audio1 for Sarah's voice timbre, accent and delivery"
+    );
+    expect(result.prompt).toContain(
+      'Sarah says in a flat voice: {It is already done.}'
+    );
+    expect(result.prompt).not.toContain('SARAH_VOICE');
   });
 });

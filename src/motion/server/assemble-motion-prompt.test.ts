@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import type { MotionPrompt } from '@/shots/scene-analysis.schema';
+import type {
+  MotionDialogue,
+  MotionPrompt,
+} from '@/shots/scene-analysis.schema';
 import { assembleMotionPrompt } from './assemble-motion-prompt';
 
 // ---------------------------------------------------------------------------
 // Test fixtures
 // ---------------------------------------------------------------------------
 
-const dialogueWithTone: NonNullable<MotionPrompt['dialogue']> = {
+const dialogueWithTone: MotionDialogue = {
   presence: true,
   lines: [
     {
@@ -219,30 +222,65 @@ describe('assembleMotionPrompt', () => {
         expect(result.startsWith(fullPromptText)).toBe(true);
       });
 
-      it('weaves sound as prose without labeled sections', () => {
+      it('weaves ambience as prose and marks each effect with <>', () => {
         const result = assembleMotionPrompt({
           motionPrompt: makeMotionPrompt(),
           model,
         });
 
+        // Ambience is one continuous bed, so it stays prose; the effects are
+        // discrete and separately timed, so each gets ByteDance's `<>` marker.
         expect(result).toContain('quiet office hum with keyboard clicks.');
-        expect(result).toContain('chair scrape, paper rustling.');
+        expect(result).toContain('<chair scrape> <paper rustling>');
         expect(result).not.toContain('Audio:');
         expect(result).not.toContain('Ambient sounds:');
       });
 
-      it('formats dialogue as X says "…" in a [tone] voice', () => {
+      it("wraps the spoken words in ByteDance's {} dialogue markers", () => {
         const result = assembleMotionPrompt({
           motionPrompt: makeMotionPrompt(),
           model,
         });
 
         expect(result).toContain(
-          'Sarah says "We need to reconsider the entire approach." in a firm commanding voice.'
+          'Sarah says in a firm commanding voice: {We need to reconsider the entire approach.}'
         );
         expect(result).toContain(
-          'James says "I couldn\'t agree more." in a soft resigned voice.'
+          "James says in a soft resigned voice: {I couldn't agree more.}"
         );
+        // Plain quotes let narrative words either side leak into the take.
+        expect(result).not.toContain('says "');
+      });
+
+      it('binds a line to the voice element the user chose, words unchanged', () => {
+        const result = assembleMotionPrompt({
+          motionPrompt: makeMotionPrompt({
+            dialogue: {
+              presence: true,
+              lines: dialogueWithTone.lines.map((line, index) =>
+                index === 0 ? { ...line, voiceToken: 'SARAH_VOICE' } : line
+              ),
+            },
+          }),
+          model,
+        });
+
+        // Raw token: `buildReferenceVideoPrompt` swaps it for `@Audio1` when
+        // the element rides, or for a description when it cannot.
+        expect(result).toContain(
+          "Use SARAH_VOICE for Sarah's voice timbre, accent and delivery; the spoken words are exactly as written above."
+        );
+        // The unbound line gets no binding sentence of its own.
+        expect(result).not.toContain("James's voice timbre");
+      });
+
+      it('emits no voice binding when no line has one', () => {
+        const result = assembleMotionPrompt({
+          motionPrompt: makeMotionPrompt(),
+          model,
+        });
+
+        expect(result).not.toContain('voice timbre');
       });
 
       it('always appends the no-music and single-continuous-shot guards', () => {

@@ -92,7 +92,11 @@ import {
   isContentRejectionError,
 } from '@/models/content-rejection';
 import { resolveShotDuration } from '@/motion/resolve-shot-duration';
-import type { AssemblableMotionPrompt } from '@/shots/scene-analysis.schema';
+import { motionReferenceSupport } from '@/motion/reference-support';
+import type {
+  AssemblableMotionPrompt,
+  MotionDialogue,
+} from '@/shots/scene-analysis.schema';
 
 import { useShotPromptStream } from './use-shot-prompt-stream';
 import type { ShotView } from '@/shots/shot-view';
@@ -112,6 +116,7 @@ import { SceneStaleShots } from './scene-stale-shots';
 import { SceneElementsTab } from './scene-elements-tab';
 import { SceneLocationTab } from './scene-location-tab';
 import { SceneMusicFacet } from './scene-music-facet';
+import { MotionDialoguePanel } from './motion-dialogue-panel';
 import { SceneScriptTab } from './scene-script-tab';
 import { ShotDurationField } from './shot-duration-field';
 
@@ -464,8 +469,11 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     ]
   );
 
-  const { items: mentionItems, onMentionRename } =
-    useSequenceMentionItems(sequenceId);
+  const {
+    items: mentionItems,
+    elements,
+    onMentionRename,
+  } = useSequenceMentionItems(sequenceId);
   // The realtime hook owns the per-prompt-type stream status — `'pending'`
   // covers the window between a successful enqueue and the first delta, so
   // the button stays in its busy state without a sibling useState to sync.
@@ -590,32 +598,38 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
 
   const handleSaveVisualPrompt = useCallback(
     (text: string) => {
-      saveVisualPrompt.mutate(text, {
-        onSuccess: (r) => {
-          dirtyImageRef.current = false;
-          toast.success(r.unchanged ? 'No changes to save' : 'Prompt saved');
-        },
-        onError: (e) =>
-          toast.error('Save failed', {
-            description: e instanceof Error ? e.message : 'Unknown error',
-          }),
-      });
+      saveVisualPrompt.mutate(
+        { text },
+        {
+          onSuccess: (r) => {
+            dirtyImageRef.current = false;
+            toast.success(r.unchanged ? 'No changes to save' : 'Prompt saved');
+          },
+          onError: (e) =>
+            toast.error('Save failed', {
+              description: e instanceof Error ? e.message : 'Unknown error',
+            }),
+        }
+      );
     },
     [saveVisualPrompt]
   );
 
   const handleSaveMotionPrompt = useCallback(
-    (text: string) => {
-      saveMotionPrompt.mutate(text, {
-        onSuccess: (r) => {
-          dirtyMotionRef.current = false;
-          toast.success(r.unchanged ? 'No changes to save' : 'Prompt saved');
-        },
-        onError: (e) =>
-          toast.error('Save failed', {
-            description: e instanceof Error ? e.message : 'Unknown error',
-          }),
-      });
+    (text: string, dialogue?: MotionDialogue) => {
+      saveMotionPrompt.mutate(
+        { text, dialogue },
+        {
+          onSuccess: (r) => {
+            dirtyMotionRef.current = false;
+            toast.success(r.unchanged ? 'No changes to save' : 'Prompt saved');
+          },
+          onError: (e) =>
+            toast.error('Save failed', {
+              description: e instanceof Error ? e.message : 'Unknown error',
+            }),
+        }
+      );
     },
     [saveMotionPrompt]
   );
@@ -758,6 +772,11 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
       ? DEFAULT_VIDEO_MODEL
       : aspectCompatibleMotion;
   const regenMotionModel = effectiveMotionModel;
+  // Can this model carry a voice reference at all? Without an audio slot the
+  // binding would substitute to prose and the file would never ride, so the
+  // dialogue panel shows the lines but offers no voice picker (#1559).
+  const motionTakesAudioReferences =
+    motionReferenceSupport(effectiveMotionModel).audio;
   const imagePrompt = shot?.imagePromptVersion?.text ?? undefined;
 
   const variantIsCompleted =
@@ -1928,6 +1947,24 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
               </div>
             )}
           </div>
+
+          {/* The dialogue that assembly appends to the prompt above (#1559).
+              Read-only lines — they come from the script — plus the one thing
+              only this panel can say: whose recorded voice speaks them. */}
+          <MotionDialoguePanel
+            dialogue={shot?.motionPrompt?.dialogue}
+            elements={elements}
+            onChange={
+              motionTakesAudioReferences
+                ? (next) =>
+                    handleSaveMotionPrompt(
+                      editedMotionPrompt || rawMotionPrompt,
+                      next
+                    )
+                : null
+            }
+            disabled={saveMotionPrompt.isPending || isAwaitingMotionPrompt}
+          />
 
           {/* Model selector — per-asset (#1066): seeded from the shot's selected
               video version; a pick applies to the next generation. */}

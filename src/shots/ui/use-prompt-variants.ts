@@ -12,6 +12,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { sequenceKeys } from '@/sequences/ui/use-sequences';
 import { shotStalenessNamespace } from './use-shot-staleness';
 import { shotKeys } from './use-shots';
+import type { MotionDialogue } from '@/shots/scene-analysis.schema';
 
 /**
  * The two shot-prompt history axes. Visual history lives in
@@ -119,15 +120,17 @@ export function useSaveShotPrompt(args: {
   return useMutation<
     { unchanged: true } | { unchanged: false; versionId: string },
     Error,
-    string
+    /** `dialogue` only when the user changed a voice binding (#1559). */
+    { text: string; dialogue?: MotionDialogue }
   >({
-    mutationFn: (text) =>
+    mutationFn: ({ text, dialogue }) =>
       saveShotPromptFn({
         data: {
           sequenceId: args.sequenceId,
           shotId: args.shotId,
           promptType: args.promptType,
           text,
+          dialogue,
         },
       }),
     onSuccess: async () => {

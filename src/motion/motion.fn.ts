@@ -450,8 +450,25 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
       await context.scopedDb.shotPromptVersions.getSelectedMotionByShots(
         eligibleShots.map((s) => s.id)
       );
-    const motionPromptTextFor = (shotId: string) =>
-      selectedMotionByShot.get(shotId)?.text ?? null;
+    // The ASSEMBLED prompt, not the version's raw `text` (#1559). A dialogue
+    // line's bound voice element is named only in the dialogue section
+    // assembly appends, so matching the raw text would leave its token
+    // unsubstituted in the prompt and its audio file off the request. Assembly
+    // is model-specific and a batch can mix models, so it is resolved per shot
+    // against that shot's own model — the same one the submit below uses.
+    const motionPromptTextFor = (shot: (typeof eligibleShots)[number]) => {
+      const version = selectedMotionByShot.get(shot.id);
+      if (!version) return null;
+      return resolveMotionPromptFromVersion(
+        version,
+        {
+          characterTags: sceneOf(shot)?.continuity?.characterTags,
+          description: null,
+          generateAudio: data.generateAudio,
+        },
+        resolveShotVideoModel(shot)
+      );
+    };
 
     // Sum per-shot costs — shots may render with different (priced) models.
     const estimatedCost = estimateBatchMotionCost(
@@ -474,7 +491,7 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
               elements,
               // Must match the set actually sent below, or a reference-only
               // shot carried only by its location sheet estimates as ref-less.
-              motionPrompt: motionPromptTextFor(shot.id),
+              motionPrompt: motionPromptTextFor(shot),
               includeLocations: shotIsReferenceOnly(shot),
               locations: batchLocations,
             }).length > 0
@@ -585,7 +602,7 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
                 scene,
                 characters,
                 elements,
-                motionPrompt: motionPromptTextFor(shot.id),
+                motionPrompt: motionPromptTextFor(shot),
                 includeLocations: shotIsReferenceOnly(shot),
                 locations: batchLocations,
               }),

@@ -160,10 +160,19 @@ function formatKlingDialogue(lines: DialogueLine[]): string {
 // ---------------------------------------------------------------------------
 // ByteDance Seedance 2.0 / 2.5: sound as natural prose woven into the prompt
 // — no labeled sections. One ambient sentence, SFX tied to on-screen actions,
-// dialogue as `X says "…" in a [tone] voice` (lip-sync is weaker than
-// SFX/ambience, so dialogue stays concise). Neither version has
-// negative_prompt or camera_fixed parameters, so guards go in-prompt.
-// Guide: https://fal.ai/learn/devs/bytedance-seedance2-prompts
+// dialogue kept concise (lip-sync is weaker than SFX/ambience). Neither
+// version has negative_prompt or camera_fixed parameters, so guards go
+// in-prompt.
+//
+// The audio DELIMITERS are ByteDance's own parsing convention, not a style
+// choice: `{…}` marks the exact words to speak, `<…>` a discrete sound
+// effect, `(…)` music. Sending dialogue in plain double quotes (which is what
+// this did until #1559) leaves the model to guess where the line starts and
+// ends, and lets narrative words either side leak into the spoken take. Note
+// `<>` is spent on sound effects here, so character names must never be
+// wrapped in angle brackets — the same symbol cannot mean two things.
+// Guides: https://fal.ai/learn/devs/bytedance-seedance2-prompts,
+// https://docs.byteplus.com/en/docs/ModelArk/2607689
 // ---------------------------------------------------------------------------
 
 function buildSeedancePrompt(
@@ -177,7 +186,11 @@ function buildSeedancePrompt(
   const soundProse: string[] = [];
   if (audio?.ambientSound) soundProse.push(asSentence(audio.ambientSound));
   if (audio && audio.soundEffects.length > 0) {
-    soundProse.push(asSentence(audio.soundEffects.join(', ')));
+    // Each effect gets its own `<>`: they are discrete, separately timed
+    // sounds, where ambience is one continuous bed and stays prose.
+    soundProse.push(
+      audio.soundEffects.map((sfx) => `<${sfx.trim()}>`).join(' ')
+    );
   }
   if (soundProse.length > 0) parts.push(soundProse.join(' '));
 
@@ -186,10 +199,11 @@ function buildSeedancePrompt(
       .map((line) => {
         const subject = line.character || 'A voice';
         const tone = line.tone ? ` in a ${line.tone} voice` : '';
-        return `${subject} says "${line.line}"${tone}.`;
+        return `${subject} says${tone}: {${line.line}}`;
       })
       .join(' ');
-    parts.push(dialogueProse);
+    const voices = voiceBindings(dialogue.lines);
+    parts.push(voices ? `${dialogueProse} ${voices}` : dialogueProse);
   }
 
   // Constraint words, which the ByteDance guide asks for at the end of the
@@ -242,7 +256,8 @@ function buildMinimaxH3Prompt(
         return `${subject} says${tone}: <d>[English] ${line.line}</d>`;
       })
       .join(' ');
-    parts.push(dialogueProse);
+    const voices = voiceBindings(dialogue.lines);
+    parts.push(voices ? `${dialogueProse} ${voices}` : dialogueProse);
   }
 
   const soundscape: string[] = [];
@@ -260,6 +275,41 @@ function buildMinimaxH3Prompt(
 function asSentence(text: string): string {
   const trimmed = text.trim();
   return /[.!?]$/.test(trimmed) ? trimmed : `${trimmed}.`;
+}
+
+/**
+ * Bind each speaking character to the audio element the user chose for their
+ * voice (#1559).
+ *
+ * The vendors join a voice to a speaker by NAME, not by slot — "@Audio1 is
+ * used for Sarah's voice timbre and dialogue", never "Image1 says Audio1" —
+ * so this declares the role and leaves the words to the `{…}` line above it.
+ * That split is the guide's own default: a reference clip supplies timbre,
+ * accent, rate and emotion, and the written line supplies what is said. Saying
+ * so explicitly stops the model reciting whatever the sample happens to say.
+ *
+ * The token is emitted RAW. `buildReferenceVideoPrompt` substitutes it for the
+ * endpoint's tag (`@Audio1`) when the element rides, and for a plain
+ * description when the model takes no audio — which is why the reference
+ * matchers must scan the ASSEMBLED prompt, not `fullPrompt`: this sentence is
+ * the only place the token appears.
+ */
+function voiceBindings(lines: DialogueLine[]): string | null {
+  // One sentence per speaker, not per line — a character with four lines binds
+  // the same voice four times, and the repetition only crowds the prompt.
+  const seen = new Set<string>();
+  const sentences: string[] = [];
+  for (const line of lines) {
+    if (!line.voiceToken) continue;
+    const subject = line.character || 'the speaker';
+    const key = `${subject}\u0000${line.voiceToken}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    sentences.push(
+      `Use ${line.voiceToken} for ${subject}'s voice timbre, accent and delivery; the spoken words are exactly as written above.`
+    );
+  }
+  return sentences.length > 0 ? sentences.join(' ') : null;
 }
 
 // ---------------------------------------------------------------------------
