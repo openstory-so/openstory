@@ -217,8 +217,9 @@ method removed — so a mid-run read is a type error. The few reads that cannot 
 snapshotted reach the run through three **named hatches**, so the spelling at
 the call site is the justification:
 
-- `scopedDb.credentials.resolveKey('fal')` / `.resolveLlmKey()` — a secret, not a
-  row. Resolved inside the step that spends it.
+- `scopedDb.credentials.resolveKey('fal')` / `.resolveKey('elevenlabs')` /
+  `.resolveLlmKey()` — a secret, not a row. Resolved inside the step that
+  spends it. `'elevenlabs'` is platform-only (not on `API_KEY_PROVIDERS`).
 - `scopedDb.claims.<domain>.getById…(id)` — an append-only row by an id this run
   already holds (its own claim, or the row that claim retired into). Cannot
   express a selection pointer, which is the point.
@@ -384,7 +385,7 @@ frame.metadata = {
 
 Access via `frameService.getSceneData(frame)`, `getVisualPrompt(frame)`, `getMotionPrompt(frame)`, or directly: `frame.metadata.metadata.title`, `frame.metadata.prompts.visual.fullPrompt`. Storing the full scene lets us regenerate without re-analyzing the script and preserves variants for retries.
 
-## Media vias: fal + BytePlus + xAI + Google
+## Media vias: fal + BytePlus + xAI + Google + ElevenLabs
 
 fal is the default **via** for every image / video / audio model. Catalog **vendor** is who trained the model (ByteDance, Kling, …). **Seedance (video) and Seedream (image) also have a native BytePlus Ark via (#1157)** — see below. Grok has a native xAI via, and Gemini (chat + Omni Flash video) a native Google via. Everything after this paragraph in the fal section applies to the fal via only.
 
@@ -402,6 +403,37 @@ Two vias, one catalog key. `IMAGE_TO_VIDEO_MODELS.seedance_v2` / `seedance_v2_5`
 - **ACR slots are a working set, not a library (#1361).** ~50 resident assets per BytePlus **account** (`BYTEPLUS_ASSET_SLOTS`), shared by every team — the same shape as the Ark quotas. `byteplus-asset-pool.ts` reuses by identity (the **stored** URL, hashed), evicts the least-recently-used **unleased** slot when full (start frames before cast/location sheets), and refuses when everything is leased, which falls through to fal. The lease is a `byteplus_assets` row with a CAS delete as the mutex: deleting an `asset://` a job is still polling 400s that job, so the lease must cover submit **through** poll. `MotionWorkflow` releases on BOTH exits — success and `onFailure`, the lease twin of the batch's `zeroReservation` — and the TTL only covers a run that reached neither. A parent must never sweep its fan-out's leases: a terminal parent does not imply dead children (#839). LRU is our own `lastUsedAt`, never Ark's `LastInferenceTime` (absent ≠ never used). `MotionBatchWorkflow` counts the batch's distinct stills against `free + evictable` before fanning out (`liveRead.bytePlusAssets.getAdmission`, bucket `POOL-CAPACITY` — occupancy is shared with every other team, so it cannot be snapshotted at the trigger). Every statement lives in `scopedDb.bytePlusAssets`; like `modelUsage` it is platform-global, so nothing is team-scoped, and `claimSlot` is a write that happens to read.
 - **Ark keys are region-scoped** and Seedance is served only from `ap-southeast`; an EU key fails at request time, not startup.
 - **E2E stays on fal.** `isBytePlusConfigured()` returns false under `E2E_TEST` unless `ARK_BASE_URL` is also set. Recording Ark fixtures needs a real Ark key.
+
+### Native ElevenLabs
+
+Character TTS and Voice Design go to `api.elevenlabs.io` via
+`@tanstack/ai-elevenlabs` (`elevenlabsSpeech`) and `@elevenlabs/elevenlabs-js`
+(Voice Design / create-voice — the adapter does not wrap those). **Platform
+key only** (`ELEVENLABS_API_KEY`): designed voices live in the account that
+created them, so there is no team BYOK and `'elevenlabs'` is not on
+`API_KEY_PROVIDERS` (same shape as `ARK_API_KEY`). Workflows spend the key
+through `scopedDb.credentials.resolveKey('elevenlabs')`.
+
+`ELEVENLABS_BASE_URL` is the e2e hook on both the TanStack TTS adapter and
+the official SDK (default `https://api.elevenlabs.io`, no `/v1` suffix —
+paths include it). Playwright points it at the main aimock on `:4010`,
+which already dispatches `POST /v1/text-to-speech/{voice_id}`
+(`onElevenLabsTTS`). Fixtures live under
+`e2e/fixtures/recorded/elevenlabs/`. Replay injects
+`ELEVENLABS_API_KEY=test-mock-key`; record uses the real key from
+`.env.local` and aimock's `providers.elevenlabs` proxy. Voice Design
+(`/v1/text-to-voice/*`) is not in aimock yet. Under `E2E_TEST` the via
+stays off unless the base URL is also set, so a laptop key cannot bill
+replay.
+
+Pricing is a static card (`src/billing/elevenlabs-pricing.ts`), merged into
+the effective map like BytePlus: TTS per 1000 characters (v3 / Multilingual v2
+$0.10, advertised **2026-09-11**), Voice Design per call ($0.30, a
+conservative 3 × 1000-char preview over-estimate). `recordFalUsage: false`,
+unaudited like xAI/Google/Ark spend. Do not alias onto
+`fal-ai/elevenlabs/music` — that is a different product.
+
+Out of scope here: voice cloning from an uploaded sample, realtime/agents.
 
 ### Native Grok (xAI)
 

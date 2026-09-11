@@ -241,7 +241,9 @@ export function toWorkflowScopedDb(scopedDb: ScopedDb): WorkflowScopedDb {
  * look for an optional native-provider key (#1216), and know whose run this
  * is for observability. BytePlus Ark is platform-only — `ARK_API_KEY` comes
  * from env, is not on `API_KEY_PROVIDERS`, and is never resolved here (#1157).
- * Satisfied by `scopedDb.credentials`.
+ * ElevenLabs is the same shape (platform key, no BYOK) but IS resolved here
+ * as `resolveKey('elevenlabs')` so a workflow step can spend it without
+ * reading env (#1552). Satisfied by `scopedDb.credentials`.
  */
 export type CredentialScopedDb = Pick<ScopedDb, 'userId'> &
   Pick<ScopedDb['apiKeys'], 'resolveKey' | 'resolveOptionalKey'>;
