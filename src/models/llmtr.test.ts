@@ -45,6 +45,9 @@ describe('llmtrTextModel', () => {
     expect(llmtrTextModel('google/gemini-3-flash-preview')).toBe(
       'google/gemini-3-flash-preview'
     );
+    expect(llmtrTextModel('google/gemini-3.8-flash')).toBe(
+      'google/gemini-3.8-flash'
+    );
   });
 
   it('returns undefined for registry models LLMTR does not carry', () => {

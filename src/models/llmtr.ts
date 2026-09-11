@@ -68,7 +68,7 @@ type LlmtrMappedId = Exclude<
 export const LLMTR_TEXT_MODELS = {
   'anthropic/claude-fable-5.1': 'anthropic/claude-fable-5.1',
   'anthropic/claude-opus-5': 'anthropic/claude-opus-5',
-  'google/gemini-3.7-flash': 'google/gemini-3.7-flash',
+  'google/gemini-3.8-flash': 'google/gemini-3.8-flash',
   'google/gemini-3.1-pro-preview': 'google/gemini-3.1-pro-preview',
   'openai/gpt-5.6-sol': 'openai/gpt-5.6-sol',
   'openai/gpt-5.5': 'openai/gpt-5.5',
@@ -168,7 +168,7 @@ const LLMTR_TEXT_RATES: Record<
 > = {
   'anthropic/claude-fable-5.1': { input: 10, output: 50 },
   'anthropic/claude-opus-5': { input: 5, output: 25 },
-  'google/gemini-3.7-flash': { input: 0.75, output: 3.75 },
+  'google/gemini-3.8-flash': { input: 0.75, output: 3.75 },
   'google/gemini-3.1-pro-preview': { input: 2, output: 12 },
   'openai/gpt-5.6-sol': { input: 4, output: 20 },
   'openai/gpt-5.5': { input: 5, output: 30 },
