@@ -135,6 +135,7 @@ type LocationBibleInput = {
 export function useCreateSequenceLocation() {
   const queryClient = useQueryClient();
   return useMutation({
+    meta: { inlineError: true },
     mutationFn: (
       data: { sequenceId: string; name: string } & LocationBibleInput
     ) => createSequenceLocationFn({ data }),
@@ -154,6 +155,7 @@ export function useCreateSequenceLocation() {
 export function useUpdateSequenceLocation() {
   const queryClient = useQueryClient();
   return useMutation({
+    meta: { inlineError: true },
     mutationFn: (
       data: {
         sequenceId: string;
@@ -189,6 +191,7 @@ export function useLocationSheetStaleness(
 export function useRegenerateLocationSheet() {
   const queryClient = useQueryClient();
   return useMutation({
+    meta: { inlineError: true },
     mutationFn: (data: {
       sequenceId: string;
       locationDbId: string;
@@ -210,6 +213,7 @@ export function useRegenerateLocationSheet() {
 export function useSoftDeleteSequenceLocation() {
   const queryClient = useQueryClient();
   return useMutation({
+    meta: { inlineError: true },
     mutationFn: (data: { sequenceId: string; locationDbId: string }) =>
       softDeleteSequenceLocationFn({ data }),
     onSuccess: (_result, { sequenceId }) =>
@@ -247,6 +251,7 @@ export function useRecastLocation() {
   const queryClient = useQueryClient();
 
   return useMutation({
+    meta: { inlineError: false },
     mutationFn: (data: {
       locationId: string;
       libraryLocationId: string;

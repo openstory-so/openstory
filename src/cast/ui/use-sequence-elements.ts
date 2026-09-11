@@ -55,6 +55,7 @@ export function useSequenceElements(sequenceId: string | undefined) {
 export function useUploadElementToSequence() {
   const queryClient = useQueryClient();
   return useMutation({
+    meta: { inlineError: true },
     mutationFn: async (data: {
       file: File;
       sequenceId: string;
@@ -115,6 +116,7 @@ export type DraftElementUpload = {
  */
 export function useUploadDraftElement() {
   return useMutation({
+    meta: { inlineError: true },
     mutationFn: async (data: {
       file: File;
       onProgress?: (percent: number) => void;
@@ -166,6 +168,7 @@ export function useUploadDraftElement() {
 export function useDeleteSequenceElement() {
   const queryClient = useQueryClient();
   return useMutation({
+    meta: { inlineError: true },
     mutationFn: (data: { elementId: string; sequenceId: string }) =>
       deleteSequenceElementFn({ data }),
     onSuccess: (_res, variables) =>
@@ -203,6 +206,7 @@ function invalidateElementMembership(
 export function useRenameSequenceElementToken() {
   const queryClient = useQueryClient();
   return useMutation({
+    meta: { inlineError: false },
     mutationFn: (data: {
       elementId: string;
       sequenceId: string;
@@ -254,6 +258,7 @@ export function useShotCountsForAllElements(sequenceId: string | undefined) {
 export function useReplaceSequenceElement() {
   const queryClient = useQueryClient();
   return useMutation({
+    meta: { inlineError: true },
     mutationFn: async (data: {
       file: File;
       sequenceId: string;

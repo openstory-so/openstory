@@ -600,6 +600,7 @@ Refs: [drizzle-orm#3065](https://github.com/drizzle-team/drizzle-orm/issues/3065
 - **Loading:** inline `<Skeleton />` fallbacks that mirror final content (no separate skeleton components).
 - **Visibility:** CSS `hidden`/`block` (pre-render) rather than conditional mounting, to avoid layout shift.
 - **Forms:** TanStack Query mutations + Zod (`safeParse`) — no controlled-input boilerplate, use `FormData`.
+- **Mutation errors:** every `useMutation` declares `meta: { inlineError: true | false }` (lint `mutations/declare-inline-error`, #1571). `true` = the hook or its callers own the error UI (toast, inline state, try/catch); `false` = the global toast in `src/ui/query-client.ts` is the error UI. Untagged, both fire.
 - **Routing:** TanStack Router `createFileRoute`, params via `Route.useParams()`. URL reflects state via search params.
 - **Files:** `kebab-case.tsx`, named exports, vanilla TS (`.ts`) for logic. `@/` alias. No default exports.
 

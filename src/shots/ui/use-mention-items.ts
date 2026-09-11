@@ -9,7 +9,6 @@ import {
 } from '@/cast/ui/use-sequence-elements';
 import { useSequenceLocations } from '@/cast/ui/use-sequence-locations';
 import { useMemo } from 'react';
-import { toast } from 'sonner';
 
 /**
  * The @-mention autocomplete items for a sequence — the same canonical
@@ -43,13 +42,7 @@ export function useSequenceMentionItems(sequenceId: string) {
       ? item.id.slice('element:'.length)
       : null;
     if (!elementId) return;
-    renameToken.mutate(
-      { elementId, sequenceId, token: name },
-      {
-        onError: (error) =>
-          toast.error(error instanceof Error ? error.message : 'Rename failed'),
-      }
-    );
+    renameToken.mutate({ elementId, sequenceId, token: name });
   };
 
   // The raw lists come back too — callers that also build reference images or

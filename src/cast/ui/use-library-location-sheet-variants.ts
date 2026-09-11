@@ -39,6 +39,7 @@ type VariantInput = { variantId: string };
 export function usePromoteLibraryLocationSheetVariant() {
   const queryClient = useQueryClient();
   return useMutation({
+    meta: { inlineError: true },
     mutationFn: async (input: VariantInput) =>
       promoteLibraryLocationSheetVariantFn({ data: input }),
     onSuccess: async () => {
@@ -61,6 +62,7 @@ export function useDiscardLibraryLocationSheetVariant() {
     Error,
     VariantInput
   >({
+    meta: { inlineError: true },
     mutationFn: async (input) =>
       discardLibraryLocationSheetVariantFn({ data: input }),
     onSuccess: async () => {
@@ -74,6 +76,7 @@ export function useDiscardLibraryLocationSheetVariant() {
 export function useUndiscardLibraryLocationSheetVariant() {
   const queryClient = useQueryClient();
   return useMutation<{ variantId: string }, Error, VariantInput>({
+    meta: { inlineError: true },
     mutationFn: async (input) =>
       undiscardLibraryLocationSheetVariantFn({ data: input }),
     onSuccess: async () => {

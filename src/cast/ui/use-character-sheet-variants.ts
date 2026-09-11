@@ -61,6 +61,7 @@ export function useCharacterSheetVersions(
 export function useSelectCharacterSheetVersion() {
   const queryClient = useQueryClient();
   return useMutation({
+    meta: { inlineError: true },
     mutationFn: (input: {
       sequenceId: string;
       characterId: string;
@@ -83,6 +84,7 @@ type VariantInput = { sequenceId: string; variantId: string };
 export function usePromoteCharacterSheetVariant() {
   const queryClient = useQueryClient();
   return useMutation({
+    meta: { inlineError: true },
     mutationFn: async (input: VariantInput) =>
       promoteCharacterSheetVariantFn({ data: input }),
     onSuccess: async (_, { sequenceId }) => {
@@ -107,6 +109,7 @@ export function useDiscardCharacterSheetVariant() {
     Error,
     VariantInput
   >({
+    meta: { inlineError: true },
     mutationFn: async (input) =>
       discardCharacterSheetVariantFn({ data: input }),
     onSuccess: async (_, { sequenceId }) => {
@@ -120,6 +123,7 @@ export function useDiscardCharacterSheetVariant() {
 export function useUndiscardCharacterSheetVariant() {
   const queryClient = useQueryClient();
   return useMutation<{ variantId: string }, Error, VariantInput>({
+    meta: { inlineError: true },
     mutationFn: async (input) =>
       undiscardCharacterSheetVariantFn({ data: input }),
     onSuccess: async (_, { sequenceId }) => {

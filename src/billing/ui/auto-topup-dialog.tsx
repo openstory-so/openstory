@@ -116,6 +116,7 @@ export function AutoTopUpDialog({ open, onOpenChange }: AutoTopUpDialogProps) {
     enabled && isValid ? splitCheckoutAmounts(amountUsd) : null;
 
   const mutation = useMutation({
+    meta: { inlineError: true },
     mutationFn: () =>
       updateAutoTopUpFn({
         data: {

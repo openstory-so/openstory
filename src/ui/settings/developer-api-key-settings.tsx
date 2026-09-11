@@ -88,6 +88,7 @@ function CreateKeyForm() {
   } | null>(null);
 
   const createMutation = useMutation({
+    meta: { inlineError: true },
     mutationFn: (input: { name: string }) =>
       createPublicApiKeyFn({ data: input }),
     onSuccess: (result) => {
@@ -206,6 +207,7 @@ function KeyList() {
   });
 
   const revokeMutation = useMutation({
+    meta: { inlineError: true },
     mutationFn: (keyId: string) => revokePublicApiKeyFn({ data: { keyId } }),
     onSuccess: () => {
       void queryClient.invalidateQueries({

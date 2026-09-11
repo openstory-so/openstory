@@ -137,6 +137,7 @@ function ApiKeySettingsContent({
   };
 
   const saveKeyMutation = useMutation({
+    meta: { inlineError: true },
     mutationFn: ({
       provider,
       apiKey,
@@ -155,6 +156,7 @@ function ApiKeySettingsContent({
   });
 
   const deleteMutation = useMutation({
+    meta: { inlineError: true },
     mutationFn: (provider: ApiKeyProviderId) =>
       deleteApiKeyFn({ data: { teamId, provider } }),
     onSuccess: (_, provider) => {
@@ -168,6 +170,7 @@ function ApiKeySettingsContent({
   });
 
   const oauthMutation = useMutation({
+    meta: { inlineError: true },
     mutationFn: () => initiateOpenRouterOAuthFn({ data: { teamId } }),
     onSuccess: (data) => {
       posthog.capture('openrouter_oauth_started');
@@ -179,6 +182,7 @@ function ApiKeySettingsContent({
   });
 
   const revalidateMutation = useMutation({
+    meta: { inlineError: true },
     mutationFn: (provider: ApiKeyProviderId) =>
       revalidateApiKeyFn({ data: { teamId, provider } }),
     onSuccess: (result, provider) => {

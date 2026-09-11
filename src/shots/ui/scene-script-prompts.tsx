@@ -473,6 +473,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     useShotPromptStream(shot?.id, Boolean(shot?.id));
 
   const regeneratePromptMutation = useMutation({
+    meta: { inlineError: true },
     mutationFn: (vars: {
       promptType: 'visual' | 'motion';
       force?: boolean;
@@ -540,6 +541,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
   // video_variants row terminal and terminates its single-artifact run — a
   // finishing render can no longer resurrect it. Data-only; idempotent.
   const cancelVideoRender = useMutation({
+    meta: { inlineError: true },
     mutationFn: (versionId: string) => {
       if (!shot?.id) throw new Error('shot required');
       return cancelVideoRenderFn({
@@ -1181,6 +1183,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     !promptPreview.motionHasReferenceImages;
   const startFrameAvailable = !!shot && canUseStartFrame(shot);
   const setUseStartFrame = useMutation({
+    meta: { inlineError: true },
     mutationFn: (next: boolean) =>
       setShotUseStartFrameFn({
         data: { sequenceId, shotId: shot?.id ?? '', useStartFrame: next },

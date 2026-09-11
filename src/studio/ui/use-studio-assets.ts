@@ -112,6 +112,7 @@ export function useCreateStudioAssets() {
   const queryClient = useQueryClient();
 
   return useMutation({
+    meta: { inlineError: true },
     mutationFn: createStudioAssets,
     // Awaited so the mutation stays pending until the new rows are in the
     // list — the composer's spinner and the gallery's placeholder tiles
@@ -144,6 +145,7 @@ export function useToggleStudioFavorite() {
   const queryClient = useQueryClient();
 
   return useMutation({
+    meta: { inlineError: true },
     mutationFn: (input: { id: string; isFavorite: boolean }) =>
       setStudioAssetFavoriteFn({ data: input }),
     onSuccess: () => {
@@ -159,6 +161,7 @@ export function useDeleteStudioAsset() {
   const queryClient = useQueryClient();
 
   return useMutation({
+    meta: { inlineError: true },
     mutationFn: (id: string) => deleteStudioAssetFn({ data: { id } }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: studioAssetKeys.all });
@@ -172,6 +175,7 @@ export function useDeleteStudioAsset() {
 
 export function useDraftStudioPrompt() {
   return useMutation({
+    meta: { inlineError: true },
     mutationFn: (input: Parameters<typeof draftStudioPromptFn>[0]['data']) =>
       draftStudioPromptFn({ data: input }),
     onError: (error) => {

@@ -87,6 +87,7 @@ export function useCreateLibraryLocation() {
   const queryClient = useQueryClient();
 
   return useMutation({
+    meta: { inlineError: false },
     mutationFn: (data: {
       name: string;
       description?: string;
@@ -103,6 +104,7 @@ export function useUpdateLibraryLocation() {
   const queryClient = useQueryClient();
 
   return useMutation({
+    meta: { inlineError: false },
     mutationFn: (data: {
       locationId: string;
       name?: string;
@@ -121,6 +123,7 @@ export function useDeleteLibraryLocation() {
   const queryClient = useQueryClient();
 
   return useMutation({
+    meta: { inlineError: false },
     mutationFn: (locationId: string) =>
       deleteLibraryLocationFn({ data: { locationId } }),
     onSuccess: () => invalidateLocationQueries(queryClient),
@@ -132,6 +135,7 @@ export function useDeleteLibraryLocation() {
  */
 export function useUploadLocationMedia() {
   return useMutation({
+    meta: { inlineError: true },
     mutationFn: async (data: {
       file: File;
       locationId?: string;
@@ -176,6 +180,7 @@ export function useAddLocationSheets() {
   const queryClient = useQueryClient();
 
   return useMutation({
+    meta: { inlineError: false },
     mutationFn: (data: { locationId: string; imageUrls: string[] }) =>
       addLocationSheetsFn({ data }),
     onSuccess: (_, variables) =>
@@ -190,6 +195,7 @@ export function useDeleteLocationSheet() {
   const queryClient = useQueryClient();
 
   return useMutation({
+    meta: { inlineError: false },
     mutationFn: (data: { sheetId: string; locationId: string }) =>
       deleteLocationSheetFn({ data: { sheetId: data.sheetId } }),
     onSuccess: (_, variables) =>

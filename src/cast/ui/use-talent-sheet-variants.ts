@@ -56,6 +56,7 @@ type VariantInput = { variantId: string; talentId?: string };
 export function usePromoteTalentSheetVariant() {
   const queryClient = useQueryClient();
   return useMutation({
+    meta: { inlineError: true },
     mutationFn: async (input: VariantInput) =>
       promoteTalentSheetVariantFn({ data: { variantId: input.variantId } }),
     onSuccess: async (_data, input) => {
@@ -85,6 +86,7 @@ export function useDiscardTalentSheetVariant() {
     Error,
     VariantInput
   >({
+    meta: { inlineError: true },
     mutationFn: async (input) =>
       discardTalentSheetVariantFn({ data: { variantId: input.variantId } }),
     onSuccess: async (_data, input) => {
@@ -107,6 +109,7 @@ export function useDiscardTalentSheetVariant() {
 export function useUndiscardTalentSheetVariant() {
   const queryClient = useQueryClient();
   return useMutation<{ variantId: string }, Error, VariantInput>({
+    meta: { inlineError: true },
     mutationFn: async (input) =>
       undiscardTalentSheetVariantFn({ data: { variantId: input.variantId } }),
     onSuccess: async (_data, input) => {

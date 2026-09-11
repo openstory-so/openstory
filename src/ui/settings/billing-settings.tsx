@@ -191,6 +191,7 @@ export function BillingSettings({
   });
 
   const autoTopUpMutation = useMutation({
+    meta: { inlineError: true },
     mutationFn: (body: {
       enabled: boolean;
       thresholdUsd?: number;

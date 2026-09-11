@@ -84,6 +84,7 @@ function ReportPage() {
   const [reference, setReference] = useState<string | null>(null);
 
   const mutation = useMutation({
+    meta: { inlineError: true },
     mutationFn: (data: z.infer<typeof formSchema>) =>
       submitContentReportFn({
         data: {

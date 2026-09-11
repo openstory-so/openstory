@@ -96,6 +96,7 @@ function GrantDecision({ userCode }: { userCode: string }) {
   });
   const queryClient = useQueryClient();
   const decide = useMutation({
+    meta: { inlineError: true },
     mutationFn: (approve: boolean) =>
       decideDeviceGrantFn({ data: { userCode, approve } }),
     onSuccess: ({ error }, approve) => {

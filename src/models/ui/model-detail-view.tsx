@@ -182,6 +182,7 @@ const ModelRunPanel: FC<{ detail: ModelDetail }> = ({ detail }) => {
   const [activeAssetId, setActiveAssetId] = useState<string>();
 
   const runMutation = useMutation({
+    meta: { inlineError: true },
     mutationFn: (input: Record<string, JsonValue>) =>
       createGeneratedAssetFn({
         data: {

@@ -111,6 +111,7 @@ export function useSequenceExport(
   const abortRef = useRef<AbortController | null>(null);
 
   const exportMutation = useMutation({
+    meta: { inlineError: true },
     mutationFn: async ({
       signal,
       andThen,

@@ -79,6 +79,7 @@ export function useRestoreShotPromptVariant(args: {
 }) {
   const queryClient = useQueryClient();
   return useMutation<{ variantId: string }, Error, string>({
+    meta: { inlineError: true },
     mutationFn: (variantId) =>
       restoreShotPromptVariantFn({
         data: {
@@ -121,6 +122,7 @@ export function useSaveShotPrompt(args: {
     Error,
     string
   >({
+    meta: { inlineError: true },
     mutationFn: (text) =>
       saveShotPromptFn({
         data: {
@@ -164,6 +166,7 @@ export function useCancelPendingArtifact(args: {
     Error,
     { versionId: string; artifact: 'visual-prompt' | 'motion-prompt' | 'image' }
   >({
+    meta: { inlineError: true },
     mutationFn: ({ versionId, artifact }) =>
       cancelPendingArtifactFn({
         data: {
@@ -192,6 +195,7 @@ export function useCancelPendingArtifact(args: {
 export function useRestoreMusicPromptVariant(sequenceId: string) {
   const queryClient = useQueryClient();
   return useMutation<{ variantId: string }, Error, string>({
+    meta: { inlineError: true },
     mutationFn: (variantId) =>
       restoreSequenceMusicPromptVariantFn({
         data: { sequenceId, variantId },

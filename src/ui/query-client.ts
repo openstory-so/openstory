@@ -10,8 +10,13 @@ const logger = getLogger(['openstory', 'query-client', 'query-client']);
 declare module '@tanstack/react-query' {
   interface Register {
     mutationMeta: {
-      /** Set when the mutation surfaces its own error UI — suppresses the global toast. */
-      inlineError?: boolean;
+      /**
+       * Declared on every useMutation (lint: mutations/declare-inline-error,
+       * #1571). true: the hook or its callers surface the failure themselves
+       * (toast, inline state, try/catch) and the global toast stays quiet.
+       * false: nobody does, so the global toast is the error UI.
+       */
+      inlineError: boolean;
     };
   }
 }
@@ -38,8 +43,10 @@ export function makeQueryClient() {
           notifyInsufficientCredits();
           return;
         }
-        // Mutations that render their own inline error opt out, so a failure
-        // isn't reported twice.
+        // Mutations whose hook or callers surface the failure themselves opt
+        // out, so it isn't reported twice. Every mutation declares the flag
+        // (lint: mutations/declare-inline-error); missing means untagged
+        // legacy, which keeps the safety net.
         if (mutation.meta?.inlineError) return;
         toast.error(error.message);
       },

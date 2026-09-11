@@ -45,6 +45,7 @@ export function PasskeySettings({ isSetupFlow }: PasskeySettingsProps) {
   });
 
   const addPasskeyMutation = useMutation({
+    meta: { inlineError: true },
     mutationFn: async () => {
       const result = await authClient.passkey.addPasskey();
       if (result.error) {
@@ -68,6 +69,7 @@ export function PasskeySettings({ isSetupFlow }: PasskeySettingsProps) {
   });
 
   const deletePasskeyMutation = useMutation({
+    meta: { inlineError: true },
     mutationFn: async (id: string) => {
       const result = await authClient.passkey.deletePasskey({ id });
       if (result.error) {

@@ -68,6 +68,7 @@ export function usePromoteSequenceMusicVariant() {
     Error,
     VariantMutationInput
   >({
+    meta: { inlineError: true },
     mutationFn: async (input) => promoteSequenceMusicVariantFn({ data: input }),
     onSuccess: async ({ sequence }, { sequenceId }) => {
       queryClient.setQueryData(sequenceKeys.detail(sequenceId), sequence);
@@ -97,6 +98,7 @@ export function useSetMusicFromVariant() {
     Error,
     { sequenceId: string; model: string }
   >({
+    meta: { inlineError: true },
     mutationFn: async (input) => setMusicFromVariantFn({ data: input }),
     onSuccess: async ({ sequence }, { sequenceId }) => {
       queryClient.setQueryData(sequenceKeys.detail(sequenceId), sequence);
@@ -122,6 +124,7 @@ export function useDiscardSequenceMusicVariant() {
     Error,
     VariantMutationInput
   >({
+    meta: { inlineError: true },
     mutationFn: async (input) => discardSequenceMusicVariantFn({ data: input }),
     onSuccess: async (_, { sequenceId }) => {
       await Promise.all([
@@ -139,6 +142,7 @@ export function useDiscardSequenceMusicVariant() {
 export function useUndiscardSequenceMusicVariant() {
   const queryClient = useQueryClient();
   return useMutation<{ variantId: string }, Error, VariantMutationInput>({
+    meta: { inlineError: true },
     mutationFn: async (input) =>
       undiscardSequenceMusicVariantFn({ data: input }),
     onSuccess: async (_, { sequenceId }) => {
