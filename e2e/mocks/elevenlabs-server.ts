@@ -25,7 +25,41 @@ import { resolve } from 'node:path';
 import { E2E_RECORDING } from '../recording-mode';
 
 export const ELEVENLABS_AIMOCK_PORT = 4012;
-const UPSTREAM = 'https://api.elevenlabs.io';
+const UPSTREAM_ORIGIN = 'https://api.elevenlabs.io';
+
+/**
+ * Resolve a recorder target. `req.url` is attacker-controlled on any HTTP
+ * server, so concatenating it onto the ElevenLabs host is SSRF
+ * (`js/request-forgery`). Only relative `/v1/text-to-speech|text-to-voice…`
+ * paths on the hardcoded origin are forwarded.
+ */
+function resolveElevenLabsUpstream(requestUrl: string): URL | undefined {
+  if (!requestUrl.startsWith('/') || requestUrl.startsWith('//')) {
+    return undefined;
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(requestUrl, UPSTREAM_ORIGIN);
+  } catch {
+    return undefined;
+  }
+  if (
+    parsed.origin !== UPSTREAM_ORIGIN ||
+    parsed.hostname !== 'api.elevenlabs.io' ||
+    parsed.protocol !== 'https:'
+  ) {
+    return undefined;
+  }
+  const path = parsed.pathname;
+  if (
+    !path.startsWith('/v1/text-to-speech/') &&
+    !path.startsWith('/v1/text-to-voice')
+  ) {
+    return undefined;
+  }
+  return parsed;
+}
+
 const FIXTURE_DIR = resolve(
   import.meta.dirname,
   '../fixtures/recorded/elevenlabs'
@@ -136,6 +170,12 @@ async function handle(
   const method = req.method ?? 'GET';
 
   if (E2E_RECORDING) {
+    const target = resolveElevenLabsUpstream(path);
+    if (!target) {
+      res.writeHead(400, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ error: 'refusing non-ElevenLabs upstream' }));
+      return;
+    }
     const headers = new Headers();
     const apiKey = req.headers['xi-api-key'];
     if (typeof apiKey === 'string') headers.set('xi-api-key', apiKey);
@@ -143,7 +183,7 @@ async function handle(
     if (typeof contentType === 'string') {
       headers.set('content-type', contentType);
     }
-    const upstream = await fetch(`${UPSTREAM}${path}`, {
+    const upstream = await fetch(target, {
       method,
       headers,
       body: method === 'GET' || method === 'HEAD' ? undefined : body,
