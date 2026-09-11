@@ -666,6 +666,7 @@ function motionPromptHashBody(
     scene: sceneInputContext(input.scene, kind),
     styleConfig: styleConfigHashBody(input.styleConfig),
     ...bibles,
+    // Overrides bibles.characterBible: the same projection plus performance.
     characterBible: sortedBibles(input).characterBible.map((c) => ({
       ...character(c),
       ...projectCharacterPerformance(c),

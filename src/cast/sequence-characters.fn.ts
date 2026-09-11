@@ -392,6 +392,8 @@ export const recastCharacterFn = createServerFn({ method: 'POST' })
       gender: castingAttrs.gender,
       ethnicity: castingAttrs.ethnicity,
       physicalDescription: castingAttrs.physicalDescription,
+      personality: castingAttrs.personality,
+      movement: castingAttrs.movement,
       consistencyTag: castingAttrs.consistencyTag,
     });
     // Re-read rather than use the write's row: the recast snapshot needs the

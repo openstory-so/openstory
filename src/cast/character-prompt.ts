@@ -148,7 +148,8 @@ type TalentAppearanceData = {
   talentName: string;
   /** Talent description/notes */
   talentDescription?: string;
-  /** Talent performance (#1561); wins over the script's when non-empty. */
+  // Talent performance (#1561): the talent's own when non-blank, else the
+  // role's. `''` = library has none.
   personality: string;
   movement: string;
 };
@@ -183,6 +184,7 @@ const slugify = (name: string): string =>
  *
  * Physical appearance (age, gender, ethnicity, physicalDescription) comes from the TALENT.
  * Costume/styling (standardClothing, distinguishingFeatures) comes from the CHARACTER role.
+ * Performance (personality, movement) is the talent's when non-blank, else the role's.
  * ConsistencyTag is regenerated from the character ID + talent name.
  *
  * @param scriptEntry - The character's script-derived attributes
@@ -211,8 +213,8 @@ export const buildCastingAttributes = (
     standardClothing: scriptEntry.standardClothing,
     distinguishingFeatures: scriptEntry.distinguishingFeatures,
     // Performance: the talent's own where the library has it, else the role's
-    personality: talent.personality || scriptEntry.personality,
-    movement: talent.movement || scriptEntry.movement,
+    personality: talent.personality.trim() || scriptEntry.personality,
+    movement: talent.movement.trim() || scriptEntry.movement,
     // Regenerate tag from talent identity
     consistencyTag: `${scriptEntry.characterId}_${slugify(talent.talentName)}`,
   };

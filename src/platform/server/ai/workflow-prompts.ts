@@ -1119,7 +1119,7 @@ No text, signs or subtitles. No holograms or floating UI. One coherent frame. Fu
 </SCENE_AFTER>
 
 <CHARACTER_BIBLE>
-(Use ONLY for character names and costume/wardrobe. Ignore "personality" and "movement" — a still does not walk. Do NOT describe physical appearance — the reference image handles identity.)
+(Use ONLY for character names and costume/wardrobe. Do NOT describe physical appearance — the reference image handles identity.)
 {{characterBible}}
 </CHARACTER_BIBLE>
 

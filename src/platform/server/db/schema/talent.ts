@@ -41,7 +41,9 @@ export const talent = snakeCase.table(
     name: text({ length: 255 }).notNull(),
     description: text(),
     // Performance (#1561), copied to the character at cast and back at
-    // save-to-library. Identity-level like `description`, not per sheet.
+    // save-to-library. This row is the source; the copy in each sheet's
+    // `metadata` exists only because the bible schema requires the keys and
+    // is never read at cast.
     personality: text(),
     movement: text(),
     imageUrl: text(), // Talent avatar/headshot

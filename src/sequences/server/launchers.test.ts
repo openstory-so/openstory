@@ -73,7 +73,13 @@ function makeScopedDb(opts: {
     config: StyleConfig;
   } | null;
   elementIds?: string[];
-  talent?: Array<{ id: string; name: string; description: string | null }>;
+  talent?: Array<{
+    id: string;
+    name: string;
+    description: string | null;
+    personality: string | null;
+    movement: string | null;
+  }>;
   locations?: Array<{ id: string; name: string; description: string | null }>;
   musicPrompt?: string | null;
   generationStopAt?: GenerationStage | null;
@@ -381,7 +387,15 @@ describe('triggerStoryboard', () => {
     triggerWorkflowMock.mockResolvedValue('run-1');
     const { scopedDb, getTalentByIds, getLocationsByIds } = makeScopedDb({
       workflowRunId: null,
-      talent: [{ id: 'tal_1', name: 'Alice', description: 'Lead' }],
+      talent: [
+        {
+          id: 'tal_1',
+          name: 'Alice',
+          description: 'Lead',
+          personality: 'guarded',
+          movement: null,
+        },
+      ],
       locations: [{ id: 'loc_1', name: 'Docks', description: null }],
     });
 
@@ -395,7 +409,13 @@ describe('triggerStoryboard', () => {
     expect(getLocationsByIds).toHaveBeenCalledWith(['loc_1']);
     expect(triggerWorkflowMock.mock.calls[0]?.[1]).toMatchObject({
       suggestedTalent: [
-        { talentId: 'tal_1', name: 'Alice', description: 'Lead' },
+        {
+          talentId: 'tal_1',
+          name: 'Alice',
+          description: 'Lead',
+          personality: 'guarded',
+          movement: '',
+        },
       ],
       suggestedLocations: [
         { locationId: 'loc_1', name: 'Docks', description: null },

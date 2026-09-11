@@ -73,16 +73,22 @@ export class TalentMatchingWorkflow extends OpenStoryWorkflowEntrypoint<TalentMa
         : [];
 
     // The wait's final poll IS the read: re-querying here would discard a
-    // fresher result and re-open the race it just closed. Name/description
-    // come from the trigger-time snapshot — only the sheet image is allowed to
-    // arrive late, so a rename mid-run must not change who we cast.
+    // fresher result and re-open the race it just closed. Name/description/
+    // performance come from the trigger-time snapshot — only the sheet image is
+    // allowed to arrive late, so an edit mid-run must not change who we cast.
     const snapshotById = new Map(
       (input.suggestedTalent ?? []).map((t) => [t.talentId, t])
     );
     const talentList = sheetRows.map((row) => {
       const snapshot = snapshotById.get(row.id);
       return snapshot
-        ? { ...row, name: snapshot.name, description: snapshot.description }
+        ? {
+            ...row,
+            name: snapshot.name,
+            description: snapshot.description,
+            personality: snapshot.personality,
+            movement: snapshot.movement,
+          }
         : row;
     });
     const matchingPromptVariables =

@@ -76,6 +76,15 @@ describe('buildCastingAttributes', () => {
     });
     expect(fromRole.personality).toBe('anxious');
     expect(fromRole.movement).toBe('restless hands');
+
+    const blank = buildCastingAttributes(role, {
+      sheetMetadata: talentMetadata,
+      talentName: 'Elvis Presley',
+      personality: '  ',
+      movement: '\n',
+    });
+    expect(blank.personality).toBe('anxious');
+    expect(blank.movement).toBe('restless hands');
   });
 
   test('keeps costume and distinguishing features from script', () => {

@@ -698,6 +698,16 @@ describe('prompt input hashes', () => {
     expect(await computeMotionPromptInputHash(whitespace)).toBe(
       await computeMotionPromptInputHash(sceneCtx)
     );
+    // Pre-#1561 JSON (checkpoints, sheet metadata) has no keys at all.
+    const { personality: _p, movement: _m, ...legacyAlice } = aliceCharacter;
+    const legacy = {
+      ...sceneCtx,
+      // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- stored JSON that predates the fields
+      characterBible: [legacyAlice as CharacterBibleEntry],
+    };
+    expect(await computeMotionPromptInputHash(legacy)).toBe(
+      await computeMotionPromptInputHash(sceneCtx)
+    );
   });
 
   it('omitting startingFrameImageUrl equals passing null (legacy shots)', async () => {
