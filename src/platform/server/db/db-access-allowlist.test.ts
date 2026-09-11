@@ -34,6 +34,9 @@ const SCOPED_FACTORY_ALLOWLIST = [
   'src/platform/middleware.fn.ts',
   'src/billing/stripe-webhook-middleware.fn.ts',
   'src/platform/server/workflow/base-workflow.ts',
+  // Local single-tenant runtime: mints the one implicit team's scoped db, the
+  // non-Workerd equivalent of the request middleware.
+  'src/platform/server/local/bootstrap.ts',
 ];
 
 function* walk(dir: string): Generator<string> {

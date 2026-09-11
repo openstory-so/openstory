@@ -18,6 +18,10 @@ export default {
     'src/mocks/tanstack-start.ts',
     // Aliased for `cloudflare:workers` in .storybook/main.ts (string path).
     'src/mocks/cloudflare-workers.ts',
+    // Node/Bun shim for `cloudflare:workers` in the local (non-Workerd) server:
+    // supplied via a Bun preload and a vite alias (string path), never a static
+    // import, so knip can't trace it.
+    'src/platform/server/local/cloudflare-shim.ts',
     // Aliased for @react-email/code-block in vite.config.ts (string path) to
     // keep prismjs out of the worker's startup path.
     'src/platform/server/emails/stubs/code-block.tsx',

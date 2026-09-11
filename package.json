@@ -15,6 +15,7 @@
     },
     "#storage": {
       "workerd": "./src/platform/server/storage/storage-cloudflare.ts",
+      "local": "./src/platform/server/storage/storage-node.ts",
       "default": "./src/platform/server/storage/storage-stub.ts"
     },
     "#flush-scheduler": {

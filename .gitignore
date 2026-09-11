@@ -140,3 +140,6 @@ json/
 
 # `bun auth:generate` output — port into src/lib/db/schema/auth.ts, never commit
 auth-schema.ts
+
+# Local single-tenant server runtime data (SQLite db + filesystem storage)
+.openstory/

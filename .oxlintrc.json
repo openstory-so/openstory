@@ -187,10 +187,13 @@
     {
       // The request middlewares and the workflow base mint the scoped db for
       // handlers / runs. Pinned by db-access-allowlist.test.ts.
+      // The local single-tenant bootstrap is the non-Workerd equivalent of the
+      // request middleware — it mints the one implicit team's scoped db.
       "files": [
         "src/platform/middleware.fn.ts",
         "src/billing/stripe-webhook-middleware.fn.ts",
-        "src/platform/server/workflow/base-workflow.ts"
+        "src/platform/server/workflow/base-workflow.ts",
+        "src/platform/server/local/bootstrap.ts"
       ],
       "rules": { "boundaries/no-scoped-factory": "off" }
     },
