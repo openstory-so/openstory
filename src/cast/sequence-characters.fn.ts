@@ -23,6 +23,7 @@ import { ulidSchema } from '@/platform/server/schemas/id.schemas';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
 import type { RecastCharacterWorkflowInput } from '@/platform/server/workflow/types';
 import { buildRecastRegenerateSnapshots } from '@/cast/server/workflows/recast-snapshot';
+import { characterToBible } from '@/cast/server/bibles-from-scoped';
 import { buildRegenerateCharacterSheetPayload } from '@/cast/server/sheets/character-sheet-trigger';
 import type { SheetStaleness } from '@/cast/server/sheets/sheet-staleness';
 import { characterSheetHashMatchesStored } from '@/cast/server/workflows/sheet-snapshots';
@@ -358,29 +359,14 @@ export const recastCharacterFn = createServerFn({ method: 'POST' })
       talentWithSheets.sheets?.find((s) => !s.divergedAt);
 
     // Merge talent appearance with character role attributes
-    const castingAttrs = buildCastingAttributes(
-      {
-        characterId: character.characterId,
-        name: character.name,
-        age: character.age ?? '',
-        gender: character.gender ?? '',
-        ethnicity: character.ethnicity ?? '',
-        physicalDescription: character.physicalDescription ?? '',
-        standardClothing: character.standardClothing ?? '',
-        distinguishingFeatures: character.distinguishingFeatures ?? '',
-        personality: character.personality ?? '',
-        movement: character.movement ?? '',
-        consistencyTag: character.consistencyTag ?? '',
-      },
-      {
-        // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
-        sheetMetadata: defaultSheet?.metadata ?? undefined,
-        talentName: talentWithSheets.name,
-        talentDescription: talentWithSheets.description ?? undefined,
-        personality: talentWithSheets.personality ?? '',
-        movement: talentWithSheets.movement ?? '',
-      }
-    );
+    const castingAttrs = buildCastingAttributes(characterToBible(character), {
+      // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
+      sheetMetadata: defaultSheet?.metadata ?? undefined,
+      talentName: talentWithSheets.name,
+      talentDescription: talentWithSheets.description ?? undefined,
+      personality: talentWithSheets.personality ?? '',
+      movement: talentWithSheets.movement ?? '',
+    });
 
     // Update talent assignment AND physical attributes from talent
     await context.scopedDb.characters.updateTalent(

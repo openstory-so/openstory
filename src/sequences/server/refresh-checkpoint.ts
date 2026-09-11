@@ -24,7 +24,7 @@ import type {
   LibraryLocationMatch,
   TalentCharacterMatch,
 } from '@/platform/server/workflow/types';
-import { toCharacterMetadata } from '@/cast/server/sheets/character-sheet-trigger';
+import { characterToBible } from '@/cast/server/bibles-from-scoped';
 import { toLocationMetadata } from '@/cast/server/sheets/location-sheet-trigger';
 
 export async function refreshCheckpointFromCast(
@@ -40,7 +40,7 @@ export async function refreshCheckpointFromCast(
   const next: GenerationCheckpoint = { ...checkpoint };
 
   if (characters.length > 0) {
-    next.characterBible = characters.map(toCharacterMetadata);
+    next.characterBible = characters.map(characterToBible);
     const talentMatches: TalentCharacterMatch[] = [];
     for (const character of characters) {
       if (!character.talentId) continue;

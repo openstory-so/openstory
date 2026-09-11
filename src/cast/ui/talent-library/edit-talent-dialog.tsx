@@ -157,26 +157,22 @@ export const EditTalentDialog: React.FC<EditTalentDialogProps> = ({
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
-    const nameValue = formData.get('name');
-    const descriptionValue = formData.get('description');
-
-    const name = typeof nameValue === 'string' ? nameValue : '';
-    const description =
-      typeof descriptionValue === 'string' ? descriptionValue : '';
     const text = (key: string) => {
       const value = formData.get(key);
-      return typeof value === 'string' ? value.trim() || null : null;
+      return typeof value === 'string' ? value.trim() : '';
     };
 
-    if (!name.trim()) return;
+    const name = text('name');
+    if (!name) return;
 
     updateTalent.mutate(
       {
         talentId: talent.id,
-        name: name.trim(),
-        description: description.trim() || undefined,
-        personality: text('personality'),
-        movement: text('movement'),
+        name,
+        description: text('description') || undefined,
+        // null clears the column; `''` would store an empty string.
+        personality: text('personality') || null,
+        movement: text('movement') || null,
       },
       {
         onSuccess: () => setOpen(false),

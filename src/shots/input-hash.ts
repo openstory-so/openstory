@@ -616,7 +616,7 @@ function sortedBibles(input: PromptSceneContextHashInput) {
 
 function promptBibleProjection(
   input: PromptSceneContextHashInput,
-  named: boolean
+  { named, performance }: { named: boolean; performance: boolean }
 ) {
   const bibles = sortedBibles(input);
   const character = named
@@ -626,7 +626,10 @@ function promptBibleProjection(
     ? projectLocationForPromptV4
     : projectLocationForPrompt;
   return {
-    characterBible: bibles.characterBible.map(character),
+    characterBible: bibles.characterBible.map((c) => ({
+      ...character(c),
+      ...(performance ? projectCharacterPerformance(c) : {}),
+    })),
     locationBible: bibles.locationBible.map(location),
     elementBible: bibles.elementBible
       ? bibles.elementBible.map(projectElementForPrompt)
@@ -639,7 +642,10 @@ function visualPromptHashBody(
   kind: PromptHashKind
 ): unknown {
   const flags = promptHashFlags(kind);
-  const bibles = promptBibleProjection(input, flags.named);
+  const bibles = promptBibleProjection(input, {
+    named: flags.named,
+    performance: false,
+  });
   return {
     artifact: 'shot:visual-prompt',
     hashVersion: flags.hashVersion,
@@ -656,21 +662,16 @@ function motionPromptHashBody(
   kind: PromptHashKind
 ): unknown {
   const flags = promptHashFlags(kind);
-  const bibles = promptBibleProjection(input, flags.named);
-  const character = flags.named
-    ? projectCharacterForPromptV4
-    : projectCharacterForPrompt;
+  const bibles = promptBibleProjection(input, {
+    named: flags.named,
+    performance: true,
+  });
   return {
     artifact: 'shot:motion-prompt',
     hashVersion: flags.hashVersion,
     scene: sceneInputContext(input.scene, kind),
     styleConfig: styleConfigHashBody(input.styleConfig),
     ...bibles,
-    // Overrides bibles.characterBible: the same projection plus performance.
-    characterBible: sortedBibles(input).characterBible.map((c) => ({
-      ...character(c),
-      ...projectCharacterPerformance(c),
-    })),
     aspectRatio: trim(input.aspectRatio),
     analysisModel: trim(input.analysisModel),
     startingFrameImageUrl: trim(input.startingFrameImageUrl),
