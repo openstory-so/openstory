@@ -179,3 +179,71 @@ describe('buildGeminiVideoRequest — reference-only', () => {
     );
   });
 });
+
+// #1559 — Omni Flash carries reference clips on the native route too. The
+// adapter maps video prompt parts into Interactions content for this model;
+// only audio is refused, which mirrors Google ("Uploading audio references is
+// unsupported in the current version of the API").
+describe('buildGeminiVideoRequest with reference clips', () => {
+  it('sends clips as video parts, after the images and before the text', () => {
+    const request = buildGeminiVideoRequest({
+      prompt: 'SCARLETT moves like PUPPET_WALK',
+      imageUrl: 'https://example.com/still.png',
+      referenceImages: [
+        {
+          referenceImageUrl: 'https://example.com/scarlett.png',
+          description: 'Scarlett - athletic',
+          role: 'character',
+          token: 'SCARLETT',
+        },
+        {
+          referenceImageUrl: 'https://example.com/walk.mp4',
+          description: 'PUPPET_WALK [video, 3s]',
+          role: 'element',
+          kind: 'video',
+          token: 'PUPPET_WALK',
+        },
+      ],
+    });
+
+    const kinds = request.input.prompt.map((part) => part.type);
+    expect(kinds).toEqual(['image', 'image', 'video', 'text']);
+    expect(request.input.prompt[2]).toEqual({
+      type: 'video',
+      source: { type: 'url', value: 'https://example.com/walk.mp4' },
+    });
+    // No `<VIDEO_REF_n>` token is documented, so the clip is named in prose.
+    const text = request.input.prompt.at(-1);
+    expect(text?.type === 'text' && text.content).toContain(
+      'reference video 1'
+    );
+  });
+
+  it('describes an audio reference instead of sending it', () => {
+    const request = buildGeminiVideoRequest({
+      prompt: 'Under THEME_MUSIC, the room empties',
+      imageUrl: 'https://example.com/still.png',
+      referenceImages: [
+        {
+          referenceImageUrl: 'https://example.com/theme.mp3',
+          description: 'THEME_MUSIC [audio, 12s]',
+          role: 'element',
+          kind: 'audio',
+          token: 'THEME_MUSIC',
+        },
+      ],
+    });
+
+    // The still and the prompt, and nothing else — the audio never became a
+    // part. (The part union has no audio arm at all, so this is belt on top of
+    // braces: the type makes an audio part unrepresentable here.)
+    expect(request.input.prompt.map((part) => part.type)).toEqual([
+      'image',
+      'text',
+    ]);
+    const text = request.input.prompt.at(-1);
+    expect(text?.type === 'text' && text.content).toContain(
+      'THEME_MUSIC [audio, 12s]'
+    );
+  });
+});

@@ -211,3 +211,78 @@ describe('createSequenceSchema — reference-only', () => {
     expect(result.success).toBe(true);
   });
 });
+
+// #1559 — a reference no selected model can take is refused at submit, which
+// on a full run lands after script, references and images are already paid
+// for. Catch it at create instead.
+describe('createSequenceSchema over-long reference gate', () => {
+  const base = {
+    script: 'A valid length script here.',
+    styleId: 'style_1',
+    aspectRatio: '16:9' as const,
+  };
+  const upload = (durationSeconds: number | null) => ({
+    tempPath: 'elements/team_1/temp/x.mp4',
+    tempPublicUrl: 'https://example.com/x.mp4',
+    filename: 'puppet_walk.mp4',
+    token: 'PUPPET_WALK',
+    durationSeconds,
+  });
+
+  it('rejects a clip longer than a selected model accepts', () => {
+    const result = createSequenceSchema.safeParse({
+      ...base,
+      videoModels: ['gemini_omni_flash'],
+      elementUploads: [upload(10)],
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const message = result.error.issues.map((i) => i.message).join(' ');
+      expect(message).toContain(
+        "can't use PUPPET_WALK — 10s, over its 3s limit"
+      );
+      expect(message).toContain('3s');
+      expect(message).toContain('Trim it');
+    }
+  });
+
+  it('rejects when ANY selected variant model is too short', () => {
+    // A variant that cannot take the reference fails every shot mentioning it.
+    const result = createSequenceSchema.safeParse({
+      ...base,
+      videoModels: ['seedance_v2_5', 'gemini_omni_flash'],
+      elementUploads: [upload(10)],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts the same clip on a model with room for it', () => {
+    const result = createSequenceSchema.safeParse({
+      ...base,
+      videoModels: ['seedance_v2_5'],
+      elementUploads: [upload(10)],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts a clip whose length was never measured', () => {
+    const result = createSequenceSchema.safeParse({
+      ...base,
+      videoModels: ['gemini_omni_flash'],
+      elementUploads: [upload(null)],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('does not gate a run that stops before motion', () => {
+    // Nothing renders, so nothing can be refused for being too long.
+    const result = createSequenceSchema.safeParse({
+      ...base,
+      videoModels: ['gemini_omni_flash'],
+      stopAt: 'images',
+      elementUploads: [upload(10)],
+    });
+    expect(result.success).toBe(true);
+  });
+});

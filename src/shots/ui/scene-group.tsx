@@ -79,8 +79,6 @@ type SceneGroupProps = {
   regeneratingMotion: Set<string>;
   divergentByShotId: Map<string, ShotVariant>;
   onCompareDivergent?: (variant: ShotVariant) => void;
-  modelMissingShotIds?: Set<string>;
-  modelMissingLabel?: string | null;
   /** Shots with stale prompts/image (#1077) — amber corner dot. */
   staleShotIds?: Set<string>;
 };
@@ -103,8 +101,6 @@ const SceneGroupComponent: React.FC<SceneGroupProps> = ({
   regeneratingMotion,
   divergentByShotId,
   onCompareDivergent,
-  modelMissingShotIds,
-  modelMissingLabel,
   staleShotIds,
 }) => {
   const [expanded, setExpanded] = useState(true);
@@ -404,11 +400,6 @@ const SceneGroupComponent: React.FC<SceneGroupProps> = ({
                       ? () => onCompareDivergent?.(divergent)
                       : undefined
                   }
-                  modelMissing={
-                    !!modelMissingLabel &&
-                    (modelMissingShotIds?.has(shot.id) ?? false)
-                  }
-                  modelMissingLabel={modelMissingLabel}
                   isStale={staleShotIds?.has(shot.id) ?? false}
                   onMoveUp={
                     shotIndex > 0

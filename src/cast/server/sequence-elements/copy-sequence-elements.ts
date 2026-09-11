@@ -57,6 +57,11 @@ export async function copySequenceElements(params: {
       sequenceId: targetSequenceId,
       uploadedFilename: source.uploadedFilename,
       token: source.token,
+      // Both carried, or a copied clip lands as an IMAGE (the column's
+      // default) with no length (#1559) — sent to image endpoints as a PNG,
+      // and waved past every length check on the video side.
+      kind: source.kind,
+      durationSeconds: source.durationSeconds,
       description: carryVision ? source.description : null,
       consistencyTag: carryVision ? source.consistencyTag : null,
       imageUrl: publicUrl,
@@ -65,7 +70,8 @@ export async function copySequenceElements(params: {
       visionGeneratedAt: carryVision ? source.visionGeneratedAt : null,
     });
 
-    if (!carryVision && publicUrl) {
+    // Vision reads pixels; a clip or a voice line has none to read.
+    if (!carryVision && publicUrl && source.kind === 'image') {
       const input: ElementVisionWorkflowInput = {
         userId,
         teamId,

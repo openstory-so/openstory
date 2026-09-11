@@ -16,7 +16,7 @@ import { resolveImageModels } from '@/models/resolve-image-models';
 import { aspectRatioToImageSize } from '@/models/aspect-ratios';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import { buildCharacterReferenceImages } from '@/cast/character-prompt';
-import { buildElementReferenceImages } from '@/cast/element-prompt';
+import { buildElementStillReferences } from '@/cast/element-prompt';
 import { buildLocationReferenceImages } from '@/cast/location-prompt';
 import type { ReferenceImageDescription } from '@/stills/reference-image-prompt';
 import { shotVariantDedupId } from '@/platform/server/workflow/dedup-ids';
@@ -249,7 +249,7 @@ export class ShotImagesWorkflow extends OpenStoryWorkflowEntrypoint<ShotImagesWo
         // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
         sceneLocationMap[scene.sceneId] || []
       );
-      const elementRefs = buildElementReferenceImages(
+      const elementRefs = buildElementStillReferences(
         // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
         sceneElementMap[scene.sceneId] || []
       );

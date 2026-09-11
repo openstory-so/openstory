@@ -1096,7 +1096,7 @@ export const addModelToSequenceFn = createServerFn({ method: 'POST' })
                     characters,
                     elements,
                     motionPrompt: selectedMotion?.text ?? null,
-                    includeLocations: referenceOnly,
+                    referenceOnly,
                     locations,
                   }),
                   prompt: resolveMotionPrompt(
@@ -1295,8 +1295,7 @@ export const addModelToSequenceFn = createServerFn({ method: 'POST' })
  * Promote a model to the live primary across the WHOLE sequence (#547) — the
  * sequence-wide "Set" that pairs with the header image/video dropdowns. For
  * every shot that has a completed `shot_variants` row for `model`, copies that
- * row onto the legacy primary columns (the per-scene `setImageFromVariantFn` /
- * `setVideoFromVariantFn` applied in bulk, reusing `buildPromoteUpdate`). Shots
+ * row onto the legacy primary columns (reusing `buildPromoteUpdate`). Shots
  * the model never generated are left on their current primary. Image promotion
  * invalidates each affected shot's video (the start image changed); video
  * promotion is terminal. Audio is per-sequence — use `setMusicFromVariantFn`.

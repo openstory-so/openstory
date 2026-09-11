@@ -3,6 +3,12 @@
  * Shot motion (image-to-video) generation operations.
  */
 
+import {
+  assertReferencesUsable,
+  missingVoiceLines,
+  unusableShotReferenceLines,
+} from '@/motion/reference-support';
+import { withMeasuredDurations } from '@/cast/server/sequence-elements/media-duration';
 import { createServerFn } from '@tanstack/react-start';
 import {
   loadSceneContextBySequence,
@@ -172,7 +178,10 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
     // any rescan above.
     const [characters, elements, locations] = await Promise.all([
       context.scopedDb.characters.listWithSheets(sequence.id),
-      context.scopedDb.sequenceElements.list(sequence.id),
+      // A clip with no known length passes every length gate unchecked.
+      context.scopedDb.sequenceElements
+        .list(sequence.id)
+        .then((rows) => withMeasuredDurations(context.scopedDb, rows)),
       // Reference-only additionally needs the location sheet: with no still,
       // it is the only thing establishing the set.
       referenceOnly
@@ -186,9 +195,19 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
       characters,
       elements,
       motionPrompt: prompt,
-      includeLocations: referenceOnly,
+      referenceOnly,
       locations,
     });
+    // No fallback (#1559): a clip or voice line this model cannot use refuses
+    // the render here, before credits are reserved, rather than as a failed
+    // job after them.
+    assertReferencesUsable(model, referenceImages, !referenceOnly);
+    const missingVoices = missingVoiceLines(
+      model,
+      selectedMotion?.dialogue,
+      elements
+    );
+    if (missingVoices.length > 0) throw new Error(missingVoices.join(' '));
 
     // Snap the resolved duration onto the selected model's valid set before
     // both the credit pre-flight and the workflow input — otherwise an
@@ -383,7 +402,7 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
       isBatchMotionEligible(f, shotIsReferenceOnly(f))
     );
     // Location sheets are loaded once for the batch, so ANY reference-only
-    // shot pulls them; `includeLocations` below still decides per shot.
+    // shot pulls them; `referenceOnly` below still decides per shot.
     const anyReferenceOnly = allShots.some(shotIsReferenceOnly);
 
     if (eligibleShots.length === 0) {
@@ -408,7 +427,9 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
     // endpoint when refs will actually be sent.
     const [characters, elements, batchLocations] = await Promise.all([
       context.scopedDb.characters.listWithSheets(sequence.id),
-      context.scopedDb.sequenceElements.list(sequence.id),
+      context.scopedDb.sequenceElements
+        .list(sequence.id)
+        .then((rows) => withMeasuredDurations(context.scopedDb, rows)),
       // Reference-only only: with no still, the location sheet is the set.
       anyReferenceOnly
         ? context.scopedDb.sequenceLocations.listWithReferences(sequence.id)
@@ -450,8 +471,52 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
       await context.scopedDb.shotPromptVersions.getSelectedMotionByShots(
         eligibleShots.map((s) => s.id)
       );
-    const motionPromptTextFor = (shotId: string) =>
-      selectedMotionByShot.get(shotId)?.text ?? null;
+    // The ASSEMBLED prompt, not the version's raw `text` (#1559). A dialogue
+    // line's bound voice element is named only in the dialogue section
+    // assembly appends, so matching the raw text would leave its token
+    // unsubstituted in the prompt and its audio file off the request. Assembly
+    // is model-specific and a batch can mix models, so it is resolved per shot
+    // against that shot's own model — the same one the submit below uses.
+    const motionPromptTextFor = (shot: (typeof eligibleShots)[number]) => {
+      const version = selectedMotionByShot.get(shot.id);
+      if (!version) return null;
+      return resolveMotionPromptFromVersion(
+        version,
+        {
+          characterTags: sceneOf(shot)?.continuity?.characterTags,
+          description: null,
+          generateAudio: data.generateAudio,
+        },
+        resolveShotVideoModel(shot)
+      );
+    };
+
+    // No fallback (#1559): refuse the batch before reserving if any shot's
+    // model cannot use a clip or voice line it attaches. The same element
+    // usually sits on several shots, so each problem is named once.
+    const unusable = new Set(
+      eligibleShots.flatMap((shot) =>
+        unusableShotReferenceLines(
+          resolveShotVideoModel(shot),
+          buildMotionReferenceImages({
+            scene: sceneOf(shot),
+            characters,
+            elements,
+            motionPrompt: motionPromptTextFor(shot),
+            referenceOnly: shotIsReferenceOnly(shot),
+            locations: batchLocations,
+          }),
+          !shotIsReferenceOnly(shot)
+        ).concat(
+          missingVoiceLines(
+            resolveShotVideoModel(shot),
+            selectedMotionByShot.get(shot.id)?.dialogue,
+            elements
+          )
+        )
+      )
+    );
+    if (unusable.size > 0) throw new Error([...unusable].join(' '));
 
     // Sum per-shot costs — shots may render with different (priced) models.
     const estimatedCost = estimateBatchMotionCost(
@@ -474,8 +539,8 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
               elements,
               // Must match the set actually sent below, or a reference-only
               // shot carried only by its location sheet estimates as ref-less.
-              motionPrompt: motionPromptTextFor(shot.id),
-              includeLocations: shotIsReferenceOnly(shot),
+              motionPrompt: motionPromptTextFor(shot),
+              referenceOnly: shotIsReferenceOnly(shot),
               locations: batchLocations,
             }).length > 0
           );
@@ -585,8 +650,8 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
                 scene,
                 characters,
                 elements,
-                motionPrompt: motionPromptTextFor(shot.id),
-                includeLocations: shotIsReferenceOnly(shot),
+                motionPrompt: motionPromptTextFor(shot),
+                referenceOnly: shotIsReferenceOnly(shot),
                 locations: batchLocations,
               }),
             };

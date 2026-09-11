@@ -29,6 +29,15 @@ import { snapDuration } from '@/motion/snap-duration';
 const GEMINI_VIDEO_REFERENCE_CONFIG = {
   tag: (position: number) => `<IMAGE_REF_${position - 1}>`,
   maxImages: 7,
+  // Reference CLIPS ride the same content list (#1559): the adapter maps
+  // video prompt parts into Interactions content for this model, and fal's
+  // proxy of it exposes the same three slots as `reference_video_urls`.
+  // Google documents no `<VIDEO_REF_n>` token, so a clip is named in prose
+  // rather than with an invented tag that would bind nothing — the same
+  // choice Veo's stills make. Audio is genuinely absent on both routes: the
+  // adapter throws on audio parts and fal's schema has no audio field.
+  maxVideos: 3,
+  videoTag: (position: number) => `reference video ${position}`,
 } satisfies ReferencePromptBinding;
 
 type GeminiVideoPromptPart =
@@ -38,7 +47,10 @@ type GeminiVideoPromptPart =
       source:
         | { type: 'url'; value: string }
         | { type: 'data'; value: string; mimeType: string };
-    };
+    }
+  // A reference clip (#1559). Stored clips are always URLs — nothing here
+  // produces a `data:` video — so this arm has no inline form.
+  | { type: 'video'; source: { type: 'url'; value: string } };
 
 /** Omni Flash outputs only these two shapes. Resolution stays 720p unless
  *  we pass a top-level `size` suffix (`16:9_1080p`); we don't, because that
@@ -130,12 +142,20 @@ export function geminiImagePart(url: string): GeminiVideoPromptPart {
 
 function geminiVideoPromptParts(
   text: string,
-  imageUrls: string[]
+  imageUrls: string[],
+  videoUrls: string[] = []
 ): GeminiVideoPromptPart[] {
-  // Images lead: the adapter groups interaction content as images, then the
-  // text prompt, and keeping the array in that order makes the on-screen
-  // JSON match the wire.
-  return [...imageUrls.map(geminiImagePart), { type: 'text', content: text }];
+  // Images lead, then clips, then the text prompt: that is exactly how the
+  // adapter groups interaction content, and keeping the array in that order
+  // makes the on-screen JSON match the wire.
+  return [
+    ...imageUrls.map(geminiImagePart),
+    ...videoUrls.map((url): GeminiVideoPromptPart => ({
+      type: 'video',
+      source: { type: 'url', value: url },
+    })),
+    { type: 'text', content: text },
+  ];
 }
 
 export function geminiVideoSize(
@@ -191,7 +211,7 @@ export function buildGeminiVideoRequest(options: {
     };
   }
 
-  const { prompt, imageUrls } = buildReferenceVideoPrompt(
+  const { prompt, imageUrls, videoUrls } = buildReferenceVideoPrompt(
     GEMINI_VIDEO_REFERENCE_CONFIG,
     options.prompt,
     options.imageUrl ?? null,
@@ -201,7 +221,7 @@ export function buildGeminiVideoRequest(options: {
   return {
     endpointId: NATIVE_GEMINI_VIDEO_MODEL,
     input: {
-      prompt: geminiVideoPromptParts(prompt, imageUrls),
+      prompt: geminiVideoPromptParts(prompt, imageUrls, videoUrls),
       duration,
       ...(size && { size }),
       modelOptions: geminiNativeModelOptions(

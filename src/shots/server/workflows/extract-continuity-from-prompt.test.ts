@@ -13,6 +13,8 @@ const el = (token: string): SequenceElementMinimal => ({
   description: '',
   imageUrl: '',
   consistencyTag: null,
+  kind: 'image',
+  durationSeconds: null,
 });
 
 const emptyContinuity: Continuity = {

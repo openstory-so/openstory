@@ -22,6 +22,7 @@ const noopElement: MentionElementInput = {
   token: 'red-hex-logo',
   description: 'A red hex logo',
   imageUrl: 'https://example.com/logo.png',
+  kind: 'image',
   consistencyTag: null,
 };
 

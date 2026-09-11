@@ -31,6 +31,13 @@ import {
 } from '@/cast/ui/use-sequence-elements';
 import type { SequenceElement } from '@/platform/server/db/schema';
 import { errorMessage } from '@/platform/errors';
+import {
+  ELEMENT_UPLOAD_ACCEPT,
+  elementKindFromFile,
+  elementKindFromFilename,
+  type SequenceElementKind,
+} from '@/cast/element-kind';
+import { ElementThumbnail } from './element-thumbnail';
 import { MAX_SEQUENCE_ELEMENTS } from './limits';
 import { cn } from '@/ui/utils';
 import { useQueryClient } from '@tanstack/react-query';
@@ -52,7 +59,6 @@ import {
 import { toast } from 'sonner';
 
 import { getLogger } from '@/platform/logger';
-import { AppImage } from '@/ui/shadcn/app-image';
 
 const logger = getLogger(['openstory', 'ui', 'element', 'element-selector']);
 
@@ -141,6 +147,8 @@ export function selectFilesToAccept(
 
 type DisplayItem = {
   key: string;
+  /** What the file IS (#1559) — a clip or audio tile shows an icon, not a still. */
+  mediaKind: SequenceElementKind;
   imageUrl: string | null;
   token?: string;
   status: 'uploading' | 'analyzing' | 'done' | 'error';
@@ -257,8 +265,17 @@ export const ElementSelector: React.FC<ElementSelectorProps> = (props) => {
   const processFiles = useCallback(
     async (newFiles: File[]) => {
       if (disabled) return;
-      const images = newFiles.filter((f) => f.type.startsWith('image/'));
-      if (images.length === 0) return;
+      const usable = newFiles.filter((f) => elementKindFromFile(f) !== null);
+      if (usable.length === 0) {
+        // Say so rather than doing nothing: a dropped .pdf that vanishes with
+        // no upload and no message is indistinguishable from a broken app.
+        if (newFiles.length > 0) {
+          toast.error("That file can't be a reference", {
+            description: 'Drop an image, an MP3/WAV, or an MP4/MOV.',
+          });
+        }
+        return;
+      }
 
       // Uploads hit the server immediately — anonymous visitors get the login
       // prompt instead (covers browse, drop, paste, and external drops).
@@ -276,7 +293,7 @@ export const ElementSelector: React.FC<ElementSelectorProps> = (props) => {
           ? persistedElements.length
           : (draftElements?.length ?? 0)) + currentEntries.size;
       const accepted = selectFilesToAccept(
-        images,
+        usable,
         new Set(currentEntries.keys()),
         existingCount
       );
@@ -552,6 +569,7 @@ export const ElementSelector: React.FC<ElementSelectorProps> = (props) => {
         source: el,
         item: {
           key: `draft-${el.tempPath}`,
+          mediaKind: elementKindFromFilename(el.filename) ?? 'image',
           imageUrl: el.tempPublicUrl,
           token: el.token,
           status: 'done',
@@ -573,6 +591,7 @@ export const ElementSelector: React.FC<ElementSelectorProps> = (props) => {
         source: el,
         item: {
           key: `persisted-${el.id}`,
+          mediaKind: el.kind,
           imageUrl: el.imageUrl,
           token: el.token,
           status,
@@ -588,6 +607,7 @@ export const ElementSelector: React.FC<ElementSelectorProps> = (props) => {
       key,
       item: {
         key: `local-${key}`,
+        mediaKind: elementKindFromFile(entry.file) ?? 'image',
         imageUrl: entry.previewUrl,
         status: entry.status,
         errorMessage: entry.errorMessage,
@@ -604,7 +624,7 @@ export const ElementSelector: React.FC<ElementSelectorProps> = (props) => {
       <input
         ref={inputRef}
         type="file"
-        accept="image/*"
+        accept={ELEMENT_UPLOAD_ACCEPT}
         multiple
         className="sr-only"
         disabled={disabled}
@@ -633,8 +653,8 @@ export const ElementSelector: React.FC<ElementSelectorProps> = (props) => {
             <div className="flex flex-col gap-1">
               <p className="text-sm font-medium">Upload reference elements</p>
               <p className="text-xs text-muted-foreground">
-                Logos, product shots, screenshots. Type @ in a prompt or script
-                to insert an element.
+                Images, MP3/WAV or MP4/MOV — a logo, a product shot, a dialogue
+                line, a music bed. Type @ in a prompt or script to insert one.
               </p>
             </div>
             {currentCount < MAX_SEQUENCE_ELEMENTS && (
@@ -690,7 +710,7 @@ export const ElementSelector: React.FC<ElementSelectorProps> = (props) => {
                   Browse
                 </Button>
                 <span className="text-[11px] text-muted-foreground">
-                  Up to {MAX_SEQUENCE_ELEMENTS} images
+                  Up to {MAX_SEQUENCE_ELEMENTS} references
                 </span>
               </div>
             )}
@@ -703,19 +723,12 @@ export const ElementSelector: React.FC<ElementSelectorProps> = (props) => {
                       key={item.key}
                       className="relative aspect-square overflow-hidden rounded-md group"
                     >
-                      {item.imageUrl ? (
-                        <AppImage
-                          src={item.imageUrl}
-                          alt={item.token ?? 'Element'}
-                          width={160}
-                          height={160}
-                          className="size-full object-cover"
-                        />
-                      ) : (
-                        <div className="flex size-full items-center justify-center bg-muted">
-                          <ImagePlus className="size-6 text-muted-foreground/40" />
-                        </div>
-                      )}
+                      <ElementThumbnail
+                        kind={item.mediaKind}
+                        url={item.imageUrl}
+                        label={item.token ?? 'Element'}
+                        fit="cover"
+                      />
                       {(item.status === 'uploading' ||
                         item.status === 'analyzing') && (
                         <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-background/50">

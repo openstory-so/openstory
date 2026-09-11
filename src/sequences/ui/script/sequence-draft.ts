@@ -28,6 +28,9 @@ const draftElementSchema = z.object({
   token: z.string(),
   description: z.string().nullable().default(null),
   consistencyTag: z.string().nullable().default(null),
+  // Clip length for an audio/video element (#1559); null for an image, and for
+  // a draft saved before this field existed.
+  durationSeconds: z.number().nullable().default(null),
 });
 
 const sequenceDraftSchema = z.object({

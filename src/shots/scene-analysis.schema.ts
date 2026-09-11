@@ -243,6 +243,19 @@ const dialogueSchema = z.object({
     .meta({ description: 'Array of dialogue lines in the scene' }),
 });
 
+/**
+ * The dialogue shape as STORED and as the editor sends it back (#1559) —
+ * `dialogueSchema` plus the voice element a user bound to each line. Kept
+ * apart from the wire schema above so `voiceToken` never reaches the LLM,
+ * which has no way to know which elements exist and would invent a token.
+ */
+export const storedMotionDialogueSchema = z.object({
+  presence: z.boolean(),
+  lines: z.array(
+    dialogueLineSchema.extend({ voiceToken: z.string().optional() })
+  ),
+});
+
 const motionAudioSchema = z.object({
   ambientSound: z.string().meta({
     description:
@@ -535,8 +548,26 @@ export type VisualPromptComponents = z.infer<
   typeof visualPromptComponentsSchema
 >;
 export type MotionPrompt = z.infer<typeof motionPromptSchema>;
-export type MotionDialogue = MotionPrompt['dialogue'];
 export type MotionAudio = MotionPrompt['audio'];
+/**
+ * A dialogue line, plus the voice the USER bound to it (#1559).
+ *
+ * `voiceToken` names an audio element — `SARAH_VOICE` — whose file supplies
+ * that character's timbre, accent and delivery. It is deliberately NOT on
+ * `dialogueLineSchema`: the LLM never authors a voice binding, and publishing
+ * the field on the wire schema would invite it to invent a token that matches
+ * no element. So it is absent on every line the analysis writes, and present
+ * only on one a user bound in the editor — which is also why it is optional
+ * rather than required: every line stored before this shipped genuinely has
+ * no answer, not a null one.
+ */
+export type DialogueLine = z.infer<typeof dialogueLineSchema> & {
+  voiceToken?: string;
+};
+export type MotionDialogue = {
+  presence: boolean;
+  lines: DialogueLine[];
+};
 /**
  * The fields model-specific assembly (`assembleMotionPrompt`) actually consumes:
  * the narrative base plus the dialogue/audio direction appended for audio-capable
@@ -555,6 +586,5 @@ export type MotionPromptComponents = z.infer<
 export type MotionPromptParameters = z.infer<
   typeof motionPromptParametersSchema
 >;
-export type DialogueLine = z.infer<typeof dialogueLineSchema>;
 export type Continuity = z.infer<typeof continuitySchema>;
 export type SceneMetadata = z.infer<typeof sceneMetadataSchema>;

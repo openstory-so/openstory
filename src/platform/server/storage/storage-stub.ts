@@ -130,5 +130,8 @@ export const readStorageObject = (
 ): Promise<{ bytes: Uint8Array<ArrayBuffer>; contentType: string } | null> =>
   throwStub();
 
+export const storageObjectSize = (_key: string): Promise<number | null> =>
+  throwStub();
+
 export const serveFile = (_key: string, _request: Request): Promise<Response> =>
   throwStub();

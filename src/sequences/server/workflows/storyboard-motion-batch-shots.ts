@@ -93,6 +93,18 @@ export function buildStoryboardMotionBatchShots(input: {
       input.motionPromptVersionIdsBySceneId[scene.sceneId] ??
       null;
 
+    // The ASSEMBLED prompt, not `fullPrompt`, is what the reference matchers
+    // have to scan (#1559): a dialogue line's bound voice element is named
+    // only in the dialogue section assembly appends, so matching the raw
+    // prompt would leave its token unsubstituted and its audio file off the
+    // request. The single-shot path in `motion.fn.ts` already matched the
+    // assembled text; this brings the batch in line with it.
+    const prompt = assembleMotionPrompt({
+      motionPrompt: motionPromptData,
+      model: input.videoModel,
+      characterTags,
+    });
+
     return {
       shotId: mapping.shotId,
       ...(input.referenceOnly
@@ -100,11 +112,7 @@ export function buildStoryboardMotionBatchShots(input: {
         : { referenceOnly: false as const, imageUrl: imageUrl ?? undefined }),
       frameVersionId: input.frameVersionIds[index] ?? null,
       motionPromptVersionId,
-      prompt: assembleMotionPrompt({
-        motionPrompt: motionPromptData,
-        model: input.videoModel,
-        characterTags,
-      }),
+      prompt,
       model: input.videoModel,
       motionPrompt: motionPromptData,
       characterTags,
@@ -115,8 +123,8 @@ export function buildStoryboardMotionBatchShots(input: {
         scene,
         characters: input.characters,
         elements: input.elements,
-        motionPrompt: motionPromptData.fullPrompt,
-        includeLocations: input.referenceOnly,
+        motionPrompt: prompt,
+        referenceOnly: input.referenceOnly,
         locations: input.locations,
       }),
     };

@@ -619,7 +619,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
             motionPrompt: prompt,
             // With no still the location sheet is the only thing establishing
             // the set — and `renderRefs` already loaded it for the image stage.
-            includeLocations: !target.usesStartFrame,
+            referenceOnly: !target.usesStartFrame,
             locations: renderRefs.locations,
           });
           const duration = resolveShotDuration({

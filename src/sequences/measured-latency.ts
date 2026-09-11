@@ -1,10 +1,18 @@
 /**
- * Wall-clock seconds from Production PostHog `posthog.metrics`
- * (`gen_ai.client.operation.duration`, 30 days ending 2026-09-01).
+ * Wall-clock seconds per completed generation, from production D1: each
+ * `video_variants` / `frame_variants` row's `created_at` → `generated_at`,
+ * 30 days ending 2026-09-11 (#1559). That is the time a user actually waits
+ * for one clip or still — fal queueing and Ark asset pacing included.
  *
- * `n` is completed generations. `p50` / `p90` are seconds. This is not a
- * governed catalog metric — re-query PostHog before changing the numbers.
+ * It replaced PostHog's `gen_ai.client.operation.duration`, which reported
+ * H3 Max at 10s / 10s over 74 samples when production renders take 22s / 73s
+ * — the countdown hit zero and sat on "Finishing up…". Rows copied from a
+ * sibling were similarly wrong: Seedance 2.5 borrowed 2.0's 208 / 288 and
+ * really takes 293 / 466.
  *
+ * `n` is completed generations. `p50` / `p90` are seconds. Re-run the query
+ * rather than editing numbers by hand. Rows marked `pre-D1` keep their PostHog
+ * figure: those models write their row only on completion, so D1 reads 0s.
  * Rows with `proxy` have no (or too few) samples; they copy a sibling.
  */
 
@@ -50,35 +58,30 @@ export const CASTING_QUALITY = { base: 12, perScene: 1 };
 export const CASTING_FAST = { base: 8, perScene: 1 };
 
 export const VIDEO_WALL_CLOCK = {
-  grok_imagine_video_1_5: { p50: 33, p90: 44, n: 18 },
+  grok_imagine_video_1_5: { p50: 37, p90: 43, n: 20 },
   // No samples yet; Grok Imagine is the nearest fast native-provider i2v.
-  gemini_omni_flash: {
-    p50: 33,
-    p90: 44,
-    n: 0,
-    proxy: 'grok_imagine_video_1_5',
-  },
-  ltx_2_3_pro: { p50: 126, p90: 199, n: 39 },
-  veo3_1: { p50: 147, p90: 156, n: 6 },
-  kling_v3_pro: { p50: 306, p90: 328, n: 3 },
-  minimax_hailuo_02: { p50: 199, p90: 228, n: 14 },
-  minimax_h3_max: { p50: 10, p90: 10, n: 74 },
-  seedance_v2: { p50: 208, p90: 288, n: 611 },
-  seedance_v2_5: { p50: 208, p90: 288, n: 0, proxy: 'seedance_v2' },
+  gemini_omni_flash: { p50: 68, p90: 114, n: 55 },
+  ltx_2_3_pro: { p50: 128, p90: 201, n: 40 },
+  veo3_1: { p50: 155, p90: 166, n: 6 },
+  kling_v3_pro: { p50: 233, p90: 573, n: 17 },
+  minimax_hailuo_02: { p50: 204, p90: 234, n: 14 },
+  minimax_h3_max: { p50: 22, p90: 73, n: 427 },
+  seedance_v2: { p50: 211, p90: 289, n: 631 },
+  seedance_v2_5: { p50: 293, p90: 466, n: 11 },
   seedance_v2_mini: { p50: 120, p90: 180, n: 0, proxy: 'seedance_v2' },
 } as const satisfies Record<ImageToVideoModel, WallClock>;
 
 export const IMAGE_WALL_CLOCK = {
-  gpt_image_2: { p50: 99, p90: 126, n: 2659 },
-  krea_2_turbo: { p50: 3, p90: 3, n: 1326 },
-  flux_2_turbo: { p50: 3, p90: 8, n: 585 },
-  nano_banana_2: { p50: 25, p90: 41, n: 209 },
-  grok_imagine_image: { p50: 32, p90: 123, n: 179 },
-  hunyuan_image_v3: { p50: 122, p90: 158, n: 81 },
-  nano_banana_pro: { p50: 41, p90: 66, n: 51 },
-  qwen_image: { p50: 28, p90: 47, n: 22 },
+  gpt_image_2: { p50: 106, p90: 127, n: 1700 },
+  krea_2_turbo: { p50: 3, p90: 3, n: 1326 }, // pre-D1
+  flux_2_turbo: { p50: 3, p90: 8, n: 585 }, // pre-D1
+  nano_banana_2: { p50: 32, p90: 50, n: 179 },
+  grok_imagine_image: { p50: 34, p90: 48, n: 103 },
+  hunyuan_image_v3: { p50: 133, p90: 169, n: 58 },
+  nano_banana_pro: { p50: 49, p90: 77, n: 48 },
+  qwen_image: { p50: 46, p90: 55, n: 11 },
   flux_2_dev: { p50: 9, p90: 10, n: 4 },
-  nano_banana_2_lite: { p50: 3, p90: 8, n: 0, proxy: 'flux_2_turbo' },
+  nano_banana_2_lite: { p50: 15, p90: 29, n: 305 },
   flux_2_flash: { p50: 3, p90: 8, n: 0, proxy: 'flux_2_turbo' },
   grok_imagine_image_quality: {
     p50: 32,
@@ -93,7 +96,7 @@ export const IMAGE_WALL_CLOCK = {
 } as const satisfies Record<TextToImageModel, WallClock>;
 
 export const AUDIO_WALL_CLOCK = {
-  elevenlabs_music: { p50: 10, p90: 14, n: 114 },
+  elevenlabs_music: { p50: 10, p90: 14, n: 114 }, // pre-D1
   ace_step_1_5: { p50: 33, p90: 59, n: 8 },
   ace_step: { p50: 33, p90: 59, n: 0, proxy: 'ace_step_1_5' },
 } as const satisfies Record<AudioModel, WallClock>;

@@ -576,6 +576,8 @@ describe('location/element bible round-trip — stamp matches verify (#867)', ()
     id: `row_${e.token}`,
     sequenceId: 'seq_1',
     uploadedFilename: 'logo.png',
+    kind: 'image',
+    durationSeconds: null,
     token: e.token,
     description: e.description,
     consistencyTag: e.consistencyTag,

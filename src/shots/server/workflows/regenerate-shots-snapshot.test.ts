@@ -112,6 +112,8 @@ function makeElement(
     id: 'e1',
     sequenceId: 'seq1',
     uploadedFilename: 'bottle.png',
+    kind: 'image',
+    durationSeconds: null,
     token: 'BOTTLE',
     description: 'A silver bottle',
     consistencyTag: 'silver-bottle',

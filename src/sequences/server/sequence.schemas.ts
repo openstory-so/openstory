@@ -18,8 +18,14 @@ import {
   DEFAULT_GENERATION_STOP_AT,
   flagsFromStopAt,
   generationStageSchema,
+  includesStage,
   stopAtFromFlags,
 } from '@/sequences/pipeline';
+import { elementKindFromFilename } from '@/cast/element-kind';
+import {
+  acceptsReference,
+  unusableReferenceLines,
+} from '@/motion/reference-support';
 import { ulidSchemaOptional } from '@/platform/server/schemas/id.schemas';
 import { createInsertSchema, createUpdateSchema } from 'drizzle-orm/zod';
 import { draftElementUploadSchema } from '@/cast/draft-element-upload';
@@ -165,6 +171,11 @@ export const createSequenceSchema = createInsertSchema(sequences, {
     // Draft element uploads: images already at a permanent key, waiting for a
     // sequence to point rows at them (#1471). One schema, shared with the
     // localStorage draft and the public API — see `draftElementUploadSchema`.
+    //
+    // It carries `durationSeconds` because the length is needed HERE, not just
+    // at motion time (#1559): a full-pipeline run pays for script, references
+    // and images before the first clip is submitted, so a reference no
+    // selected model can take has to be caught before any of that.
     elementUploads: z.array(draftElementUploadSchema).optional(),
     // When regenerating from an existing sequence, copy its elements onto the
     // newly created sequence so the user doesn't have to re-upload references.
@@ -214,6 +225,45 @@ export const createSequenceSchema = createInsertSchema(sequences, {
       message: REFERENCE_ONLY_MODEL_ERROR,
     }
   )
+  // An attached clip or voice line the chosen model is too short to take will
+  // be REFUSED at submit (#1559) — deliberately, since the fix is to trim the
+  // file. That refusal lands at the motion step, which on a full run is after
+  // script, references and images have all been paid for. So the same question
+  // is asked here, up front, against every selected model: a variant that
+  // cannot take the reference fails every shot that mentions it.
+  //
+  // Warn-and-block rather than silently filtering the model list — the user
+  // picked those models, and changing their selection under them is worse than
+  // telling them what is wrong.
+  .superRefine((data, ctx) => {
+    const reachesMotion = data.stopAt
+      ? includesStage(data.stopAt, 'motion')
+      : data.autoGenerateMotion !== false;
+    if (!reachesMotion) return;
+    for (const upload of data.elementUploads ?? []) {
+      const kind = elementKindFromFilename(upload.filename) ?? 'image';
+      if (kind === 'image') continue;
+      const ref = {
+        // `token` is optional on the shared wire schema (#1471), so name the
+        // file when it is absent rather than telling the user "null is 20s".
+        token: upload.token || upload.filename,
+        kind,
+        durationSeconds: upload.durationSeconds ?? null,
+        // The stored key carries the extension, for the format check.
+        imageUrl: upload.tempPath,
+      };
+      for (const model of data.videoModels) {
+        if (!validVideoModelKeys.includes(model)) continue;
+        // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- guarded above
+        const key = model as ImageToVideoModel;
+        if (acceptsReference(key, ref)) continue;
+        // Same words the scene panel and the submit refusal use (#1559).
+        for (const message of unusableReferenceLines(key, [ref])) {
+          ctx.addIssue({ code: 'custom', path: ['elementUploads'], message });
+        }
+      }
+    }
+  })
   .transform((data) => {
     const stopAt =
       data.stopAt ??

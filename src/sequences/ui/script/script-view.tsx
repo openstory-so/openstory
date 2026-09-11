@@ -1,3 +1,4 @@
+import { elementKindFromFilename } from '@/cast/element-kind';
 import { ThinkingBar } from '@/ui/ai/thinking-bar';
 import { useAuthGate } from '@/platform/ui/auth/auth-gate-provider';
 import { ActionCost } from '@/billing/ui/action-cost';
@@ -636,6 +637,7 @@ export const ScriptView: FC<{
               description: el.description,
               imageUrl: el.tempPublicUrl,
               consistencyTag: el.consistencyTag,
+              kind: elementKindFromFilename(el.filename) ?? 'image',
             })),
             locations: [],
           }),

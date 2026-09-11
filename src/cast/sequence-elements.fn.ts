@@ -19,6 +19,11 @@ import {
   DRAFT_ELEMENT_UPLOAD_PREFIX,
   elementImageUrlFromPath,
 } from '@/cast/server/sequence-elements/storage-path';
+import { elementKindFromFilename } from './element-kind';
+import {
+  measureStoredMediaDuration,
+  withMeasuredDurations,
+} from '@/cast/server/sequence-elements/media-duration';
 import { STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
 import {
   getExtensionFromUrl,
@@ -152,6 +157,29 @@ export const analyzeDraftElementFn = createServerFn({ method: 'POST' })
 // Finalize upload to an existing sequence
 // ============================================================================
 
+/**
+ * The uploaded file's kind, from its filename — the ONE place the answer is
+ * derived server-side, so a clip can never land as an image row (#1559).
+ * Anything we don't store as an element is rejected rather than defaulted:
+ * defaulting would send a .pdf to the vision LLM as an image.
+ */
+function elementKindOrThrow(filename: string) {
+  const kind = elementKindFromFilename(filename);
+  if (!kind) {
+    throw new Error(
+      `Unsupported element file "${filename}" — use an image, MP3/WAV, or MP4/MOV.`
+    );
+  }
+  return kind;
+}
+
+/**
+ * `durationSeconds` is read in the browser and passed through: the worker
+ * would otherwise have to download and demux the file to learn a number that
+ * is only ever a prompt hint. Missing simply means the prompt goes without it.
+ */
+const durationInput = z.number().positive().max(86_400).nullable().optional();
+
 export const finalizeElementUploadFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
   .validator(
@@ -160,6 +188,7 @@ export const finalizeElementUploadFn = createServerFn({ method: 'POST' })
         sequenceId: ulidSchema,
         path: z.string().min(1),
         filename: z.string().min(1),
+        durationSeconds: durationInput,
       })
     )
   )
@@ -167,6 +196,13 @@ export const finalizeElementUploadFn = createServerFn({ method: 'POST' })
     // Same core as a draft upload attached at creation time: the object is
     // already in R2 and nothing moves it. The caller does not send a public
     // URL — it is derived from the validated path (#1471).
+    //
+    // The kind is checked here rather than left to `attachElementUpload`,
+    // which tolerates an unknown extension as an image for drafts written
+    // before #1559. This upload is happening right now, so an unsupported file
+    // is a mistake the user can still fix — say so instead of silently
+    // storing an MP3 as an image.
+    elementKindOrThrow(data.filename);
     return await attachElementUpload({
       scopedDb: context.scopedDb,
       teamId: context.teamId,
@@ -174,6 +210,40 @@ export const finalizeElementUploadFn = createServerFn({ method: 'POST' })
       sequenceId: data.sequenceId,
       path: data.path,
       filename: data.filename,
+      durationSeconds: data.durationSeconds,
+    });
+  });
+
+/**
+ * Set an element's description by hand (#1559). Vision writes this for an
+ * image; for a clip or an audio file there is nothing to look at, so the user
+ * says what it is — a transcript, "upbeat synth bed", "puppet walk cycle".
+ * Shots that mention the element go stale, which is correct: the description
+ * is prompt input.
+ */
+export const setSequenceElementDescriptionFn = createServerFn({
+  method: 'POST',
+})
+  .middleware([sequenceAccessMiddleware])
+  .validator(
+    zodValidator(
+      z.object({
+        sequenceId: ulidSchema,
+        elementId: ulidSchema,
+        description: z.string().max(2000),
+      })
+    )
+  )
+  .handler(async ({ context, data }) => {
+    const element = await context.scopedDb.sequenceElements.getById(
+      data.elementId
+    );
+    if (!element || element.sequenceId !== context.sequence.id) {
+      throw new NotFoundError('Element not found');
+    }
+    const trimmed = data.description.trim();
+    return await context.scopedDb.sequenceElements.update(data.elementId, {
+      description: trimmed.length > 0 ? trimmed : null,
     });
   });
 
@@ -185,7 +255,12 @@ export const listSequenceElementsFn = createServerFn({ method: 'GET' })
   .middleware([sequenceAccessMiddleware])
   .validator(zodValidator(z.object({ sequenceId: ulidSchema })))
   .handler(async ({ context }) => {
-    return context.scopedDb.sequenceElements.list(context.sequence.id);
+    // Heals rows stored with no length (#1559) the first time the editor
+    // lists them, so the tile badge and every length gate see the real one.
+    return withMeasuredDurations(
+      context.scopedDb,
+      await context.scopedDb.sequenceElements.list(context.sequence.id)
+    );
   });
 
 /**
@@ -327,6 +402,7 @@ export const replaceSequenceElementFn = createServerFn({ method: 'POST' })
         elementId: ulidSchema,
         path: z.string().min(1),
         filename: z.string().min(1),
+        durationSeconds: durationInput,
       })
     )
   )
@@ -346,6 +422,9 @@ export const replaceSequenceElementFn = createServerFn({ method: 'POST' })
 
     // Derived, never taken off the payload — see `elementImageUrlFromPath`.
     const imageUrl = elementImageUrlFromPath(data.path);
+    // A replacement can change the kind (swap a still for the clip it came
+    // from), so it is re-derived rather than inherited.
+    const kind = elementKindOrThrow(data.filename);
 
     const updated = await context.scopedDb.sequenceElements.update(
       data.elementId,
@@ -353,13 +432,21 @@ export const replaceSequenceElementFn = createServerFn({ method: 'POST' })
         imageUrl,
         imagePath: data.path,
         uploadedFilename: data.filename,
+        kind,
+        durationSeconds:
+          data.durationSeconds ??
+          (kind === 'image'
+            ? null
+            : await measureStoredMediaDuration(data.path)),
         description: null,
         consistencyTag: null,
-        visionStatus: 'analyzing',
+        visionStatus: kind === 'image' ? 'analyzing' : 'completed',
         visionError: null,
-        visionGeneratedAt: null,
+        visionGeneratedAt: kind === 'image' ? null : new Date(),
       }
     );
+
+    if (kind !== 'image') return { element: updated };
 
     try {
       await triggerElementVision({

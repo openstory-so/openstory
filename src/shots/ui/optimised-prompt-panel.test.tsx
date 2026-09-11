@@ -101,4 +101,24 @@ describe('OptimisedPromptPanel', () => {
     expect(html).toContain('https://cdn.example/still.png');
     expect(html).toContain('https://cdn.example/cast.png');
   });
+
+  it('lists images, clips and audio in one wrapping row; only images copy', () => {
+    const html = renderPanel(
+      {
+        ...selected,
+        modelName: 'Seedance 2.5',
+        images: [{ label: '@Image1', url: 'https://cdn.example/still.png' }],
+        videos: [{ label: '@Video1', url: 'https://cdn.example/clip.mp4' }],
+        audio: [{ label: '@Audio1', url: 'https://cdn.example/line.wav' }],
+      },
+      { defaultOpen: true }
+    );
+    expect(html.match(/<ul/g)).toHaveLength(1);
+    expect(html).toContain('flex-wrap');
+    expect(html).toContain('Copy @Image1 image');
+    expect(html).toContain('Play @Video1');
+    expect(html).toContain('Play @Audio1');
+    expect(html).not.toContain('Copy @Video1');
+    expect(html).not.toContain('Copy @Audio1');
+  });
 });

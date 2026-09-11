@@ -39,6 +39,7 @@ import {
 import {
   DEFAULT_VIDEO_MODEL,
   getBytePlusVideoModelId,
+  getMotionReferenceEndpoint,
   IMAGE_TO_VIDEO_MODELS,
   isNativeBytePlusVideoModel,
   referenceOnlyCapableWith,
@@ -61,6 +62,8 @@ import {
   ensureExternallyFetchableUrl,
   toDataOrCdnUrl,
 } from '@/platform/server/storage/external-url';
+import { bindableReferences } from './build-reference-video-prompt';
+import { assertReferencesUsable } from '@/motion/reference-support';
 import { generateVideo, type TokenUsage } from '@tanstack/ai';
 import { getVideoJobStatus } from './video-job-status';
 import { falVideo } from '@tanstack/ai-fal';
@@ -265,7 +268,27 @@ async function submitFalMotionJob(
   options: GenerateMotionOptions,
   modelKey: ImageToVideoModel
 ): Promise<{ jobId: string; usedOwnKey: boolean; endpointId: string }> {
-  const hasReferenceImages = (options.referenceImages?.length ?? 0) > 0;
+  // A clip or voice line this model cannot use — it takes no reference of
+  // that kind, or not one that long — is a refusal, not a degradation
+  // (#1559). Describing it in the prompt instead would bill a clip that
+  // ignored what the user attached, silently, once per shot across a batch.
+  // The panel and the trigger say the same thing before Generate, so reaching
+  // here means the model changed underneath the shot.
+  assertReferencesUsable(
+    modelKey,
+    options.referenceImages ?? [],
+    Boolean(options.imageUrl)
+  );
+
+  // References this model can actually carry (#1559): a shot whose only
+  // attachment is an audio element has nothing to send a reference endpoint,
+  // which rejects a request with no reference image or video.
+  const hasReferenceImages =
+    bindableReferences(
+      getMotionReferenceEndpoint(modelKey),
+      options.referenceImages ?? [],
+      Boolean(options.imageUrl)
+    ).length > 0;
   const endpoint = resolveMotionEndpoint(
     modelKey,
     hasReferenceImages,
@@ -380,7 +403,27 @@ export async function submitMotionJob(
       ? await resolveOptionalGoogleKey(options.scopedDb)
       : undefined;
 
-  const hasReferenceImages = (options.referenceImages?.length ?? 0) > 0;
+  // A clip or voice line this model cannot use — it takes no reference of
+  // that kind, or not one that long — is a refusal, not a degradation
+  // (#1559). Describing it in the prompt instead would bill a clip that
+  // ignored what the user attached, silently, once per shot across a batch.
+  // The panel and the trigger say the same thing before Generate, so reaching
+  // here means the model changed underneath the shot.
+  assertReferencesUsable(
+    modelKey,
+    options.referenceImages ?? [],
+    Boolean(options.imageUrl)
+  );
+
+  // References this model can actually carry (#1559): a shot whose only
+  // attachment is an audio element has nothing to send a reference endpoint,
+  // which rejects a request with no reference image or video.
+  const hasReferenceImages =
+    bindableReferences(
+      getMotionReferenceEndpoint(modelKey),
+      options.referenceImages ?? [],
+      Boolean(options.imageUrl)
+    ).length > 0;
 
   const endpoint = resolveMotionEndpoint(
     modelKey,
@@ -491,6 +534,9 @@ export async function submitMotionJob(
         prompt: input.prompt,
         duration: input.duration,
         ...(input.size && { size: input.size }),
+        // Carries the pinned opening frame on a shot that has both a still
+        // and references — see `GROK_VIDEO_REFERENCE_CONFIG`.
+        ...(input.modelOptions && { modelOptions: input.modelOptions }),
         timeout: FAL_REQUEST_TIMEOUT_MS,
         debug: false,
       });

@@ -160,10 +160,19 @@ function formatKlingDialogue(lines: DialogueLine[]): string {
 // ---------------------------------------------------------------------------
 // ByteDance Seedance 2.0 / 2.5: sound as natural prose woven into the prompt
 // — no labeled sections. One ambient sentence, SFX tied to on-screen actions,
-// dialogue as `X says "…" in a [tone] voice` (lip-sync is weaker than
-// SFX/ambience, so dialogue stays concise). Neither version has
-// negative_prompt or camera_fixed parameters, so guards go in-prompt.
-// Guide: https://fal.ai/learn/devs/bytedance-seedance2-prompts
+// dialogue kept concise (lip-sync is weaker than SFX/ambience). Neither
+// version has negative_prompt or camera_fixed parameters, so guards go
+// in-prompt.
+//
+// The audio DELIMITERS are ByteDance's own parsing convention, not a style
+// choice: `{…}` marks the exact words to speak, `<…>` a discrete sound
+// effect, `(…)` music. Sending dialogue in plain double quotes (which is what
+// this did until #1559) leaves the model to guess where the line starts and
+// ends, and lets narrative words either side leak into the spoken take. Note
+// `<>` is spent on sound effects here, so character names must never be
+// wrapped in angle brackets — the same symbol cannot mean two things.
+// Guides: https://fal.ai/learn/devs/bytedance-seedance2-prompts,
+// https://docs.byteplus.com/en/docs/ModelArk/2607689
 // ---------------------------------------------------------------------------
 
 function buildSeedancePrompt(
@@ -177,19 +186,20 @@ function buildSeedancePrompt(
   const soundProse: string[] = [];
   if (audio?.ambientSound) soundProse.push(asSentence(audio.ambientSound));
   if (audio && audio.soundEffects.length > 0) {
-    soundProse.push(asSentence(audio.soundEffects.join(', ')));
+    // Each effect gets its own `<>`: they are discrete, separately timed
+    // sounds, where ambience is one continuous bed and stays prose.
+    soundProse.push(
+      audio.soundEffects.map((sfx) => `<${sfx.trim()}>`).join(' ')
+    );
   }
   if (soundProse.length > 0) parts.push(soundProse.join(' '));
 
   if (dialogue) {
-    const dialogueProse = dialogue.lines
-      .map((line) => {
-        const subject = line.character || 'A voice';
-        const tone = line.tone ? ` in a ${line.tone} voice` : '';
-        return `${subject} says "${line.line}"${tone}.`;
-      })
-      .join(' ');
-    parts.push(dialogueProse);
+    parts.push(
+      dialogue.lines
+        .map((line) => spokenLine(line, `{${line.line}}`, 'voice'))
+        .join(' ')
+    );
   }
 
   // Constraint words, which the ByteDance guide asks for at the end of the
@@ -235,14 +245,13 @@ function buildMinimaxH3Prompt(
   if (dialogue) {
     // ponytail: dialogue lines carry no language; assume English until the
     // scene schema records one.
-    const dialogueProse = dialogue.lines
-      .map((line) => {
-        const subject = line.character || 'A voice';
-        const tone = line.tone ? ` in a ${line.tone} tone` : '';
-        return `${subject} says${tone}: <d>[English] ${line.line}</d>`;
-      })
-      .join(' ');
-    parts.push(dialogueProse);
+    parts.push(
+      dialogue.lines
+        .map((line) =>
+          spokenLine(line, `<d>[English] ${line.line}</d>`, 'tone')
+        )
+        .join(' ')
+    );
   }
 
   const soundscape: string[] = [];
@@ -260,6 +269,37 @@ function buildMinimaxH3Prompt(
 function asSentence(text: string): string {
   const trimmed = text.trim();
   return /[.!?]$/.test(trimmed) ? trimmed : `${trimmed}.`;
+}
+
+/**
+ * One line of dialogue as ONE speaking event (#1559).
+ *
+ * With a recording bound, the line names it as the source of the words, voice
+ * and delivery in the same sentence that carries the transcript. A separate
+ * binding sentence after "X says: {…}" read as a second utterance — two
+ * speaking events for one line invite the model to say it twice — and a tone
+ * adjective beside a recording asks for a delivery the recording already has.
+ *
+ * Asking for the words FROM the recording is deliberate: by default a
+ * reference clip supplies only timbre, accent, pace and emotion, and "the
+ * exception is when the user explicitly asks to reuse the dialogue in the
+ * audio" (Seedance 2.5 guide). A file bound to a line IS that line.
+ *
+ * The token is emitted RAW. `buildReferenceVideoPrompt` substitutes it for the
+ * endpoint's tag (`@Audio1`), which is why the reference matchers must scan
+ * the ASSEMBLED prompt, not `fullPrompt`: this is the only place it appears.
+ */
+function spokenLine(
+  line: DialogueLine,
+  words: string,
+  toneNoun: 'voice' | 'tone'
+): string {
+  const subject = line.character || 'A voice';
+  if (line.voiceToken) {
+    return `${subject} speaks this line exactly as recorded in ${line.voiceToken}: ${words}`;
+  }
+  const tone = line.tone ? ` in a ${line.tone} ${toneNoun}` : '';
+  return `${subject} says${tone}: ${words}`;
 }
 
 // ---------------------------------------------------------------------------

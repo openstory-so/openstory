@@ -42,6 +42,7 @@ import {
   type ChatMessageContentPart,
 } from '@/platform/server/ai/prompts-index';
 import { toVisionImageSource } from '@/platform/server/storage/external-url';
+import { shouldInlineVisionForVia } from '@/models/server/llm-call-helper';
 import { createServerOnlyFn } from '@tanstack/react-start';
 
 export type { EnhanceChunk } from '@/sequences/enhance-script-turns';
@@ -159,12 +160,31 @@ export async function* streamScriptEnhancement(
   // call already uses. A failed/expired image aborts the whole enhance, so log
   // which element broke before rethrowing: the raw "Failed to read local storage
   // object …" is otherwise undiagnosable.
+  // Images only (#1559). An element can now be a clip or an audio file, and
+  // `toVisionImageSource` on an MP3 either throws — aborting the whole enhance,
+  // see below — or ships bytes the provider rejects as an image. Those
+  // elements still reach the model, as text: `createUserPrompt` lists them by
+  // token with their kind and length so the script can still weave them in.
+  const visualElements = elements.filter(
+    (el) => (el.kind ?? 'image') === 'image'
+  );
+  // Google will not FETCH a reference by URL: its `fileData.fileUri` path
+  // answers 403 PERMISSION_DENIED for a CDN / fal URL, which aborts the
+  // stream and surfaces to the user as an undefined async iterator. The same
+  // bytes inline succeed. `shouldInlineVisionForVia` is the existing answer
+  // to this — the workflow vision path has used it all along; enhance built
+  // its own image parts and never asked, so enhancing with ANY element
+  // attached failed outright on a Gemini analysis model while working fine
+  // with none.
+  const inlineForProvider = shouldInlineVisionForVia(llmKey.via);
   const imageParts = await Promise.all(
-    elements.map<Promise<ChatMessageContentPart>>(async (el) => {
+    visualElements.map<Promise<ChatMessageContentPart>>(async (el) => {
       try {
         return {
           type: 'image',
-          source: await toVisionImageSource(el.imageUrl),
+          source: await toVisionImageSource(el.imageUrl, undefined, {
+            inline: inlineForProvider,
+          }),
         };
       } catch (cause) {
         logger.error('Script enhancement: failed to load element image', {
@@ -182,7 +202,7 @@ export async function* streamScriptEnhancement(
     })
   );
   const userContent: string | ChatMessageContentPart[] =
-    elements.length > 0
+    imageParts.length > 0
       ? [{ type: 'text', content: userPrompt }, ...imageParts]
       : userPrompt;
 

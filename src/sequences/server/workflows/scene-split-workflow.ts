@@ -363,11 +363,17 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
             .map((el) => {
               // analyzeScriptWorkflow refuses to start while any element
               // is pending/analyzing, so a null description here means
-              // vision genuinely failed for this row.
-              const desc = el.description
-                ? `: ${el.description}`
-                : ' (no visual reference available)';
-              return `- ${el.token}${desc}`;
+              // vision genuinely failed for this row — or, for a clip or an
+              // audio element (#1559), that nobody described it: those never
+              // run vision, and what they ARE is the user's to say.
+              const kind = el.kind ?? 'image';
+              const fallback =
+                kind === 'image'
+                  ? ' (no visual reference available)'
+                  : ` (${kind} reference, not described)`;
+              const desc = el.description ? `: ${el.description}` : fallback;
+              const media = kind === 'image' ? '' : ` [${kind}]`;
+              return `- ${el.token}${media}${desc}`;
             })
             .join('\n')
         : '(none)';

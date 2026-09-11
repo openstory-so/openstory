@@ -105,7 +105,6 @@ describe('buildShotPromptPreview', () => {
         dialogue: null,
         audio: null,
       },
-      motionPromptText: 'Camera dolly forward slowly',
       shotDurationMs: 5000,
       startFrameUrl: 'https://example.com/shot.jpg',
       usesStartFrame: true,
@@ -137,7 +136,6 @@ describe('buildShotPromptPreview', () => {
       videoModel: 'grok_imagine_video_1_5',
       imagePrompt: '   ',
       motionPrompt: null,
-      motionPromptText: null,
       shotDurationMs: 5000,
       startFrameUrl: null,
       usesStartFrame: true,
@@ -149,5 +147,67 @@ describe('buildShotPromptPreview', () => {
       byteplusEnabled: false,
     });
     expect(result.image).toBeNull();
+  });
+});
+
+// #1559 — the preview matched references against the raw prompt while submit
+// matched the assembled one, so a voice bound to a dialogue line showed as a
+// raw `MATEO_SHOT_1` here while the provider got `Audio 1` and the file.
+describe('buildShotPromptPreview with a bound voice', () => {
+  const voice = {
+    id: 'el-voice',
+    token: 'MATEO_SHOT_1',
+    description: null,
+    imageUrl: 'https://cdn.example/mateo.m4a',
+    consistencyTag: null,
+    kind: 'audio' as const,
+    durationSeconds: 3.75,
+  };
+  const preview = () =>
+    buildShotPromptPreview({
+      imageModel: 'nano_banana_2',
+      videoModel: 'minimax_h3_max',
+      imagePrompt: 'Mateo on a sidewalk',
+      motionPrompt: {
+        fullPrompt: 'Handheld push-in on Mateo.',
+        dialogue: {
+          presence: true,
+          lines: [
+            {
+              character: 'Mateo',
+              line: 'Wait, right now?',
+              tone: 'surprised',
+              voiceToken: 'MATEO_SHOT_1',
+            },
+          ],
+        },
+        audio: null,
+      },
+      shotDurationMs: 6000,
+      startFrameUrl: 'https://cdn.example/still.jpg',
+      usesStartFrame: true,
+      generateAudio: true,
+      aspectRatio: '16:9',
+      scene: {
+        originalScript: { extract: 'Mateo is stopped mid-stride.' },
+        continuity: { characterTags: [] },
+        metadata: { location: 'sidewalk' },
+      },
+      characters: [],
+      elements: [voice],
+      locations: [],
+      byteplusEnabled: false,
+    });
+
+  it('binds the voice by the tag the provider reads', () => {
+    const motion = preview().motion;
+    expect(motion?.prompt).toContain('exactly as recorded in Audio 1');
+    expect(motion?.prompt).not.toContain('MATEO_SHOT_1');
+  });
+
+  it('lists the audio file under that same tag', () => {
+    expect(preview().motion?.audio).toEqual([
+      { label: 'Audio 1', url: 'https://cdn.example/mateo.m4a' },
+    ]);
   });
 });

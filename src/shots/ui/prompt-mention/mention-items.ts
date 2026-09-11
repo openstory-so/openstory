@@ -46,7 +46,7 @@ export type MentionCharacterInput = Pick<
 >;
 export type MentionElementInput = Pick<
   SequenceElement,
-  'id' | 'token' | 'description' | 'imageUrl' | 'consistencyTag'
+  'id' | 'token' | 'description' | 'imageUrl' | 'consistencyTag' | 'kind'
 >;
 export type MentionLocationInput = Pick<
   SequenceLocationWithReference,
@@ -109,7 +109,9 @@ export function buildMentionItems(args: {
       haystack: [tag, el.description ?? '', el.consistencyTag ?? '']
         .join(' ')
         .toLowerCase(),
-      thumbnailUrl: el.imageUrl,
+      // Only a still is a thumbnail: an `<img src>` pointed at an MP3 renders
+      // as a broken image (#1559).
+      thumbnailUrl: el.kind === 'image' ? el.imageUrl : null,
     });
   }
 

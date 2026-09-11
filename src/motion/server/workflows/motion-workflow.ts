@@ -16,7 +16,12 @@ import { arkAssetIdentities } from '@/models/server/byteplus-asset-pool';
 import { ingestArkAssets } from '@/models/server/byteplus-asset-steps';
 import { extractFalErrorMessage } from '@/models/fal-error';
 import { computeVideoManifestInputHash } from '@/shots/input-hash';
-import { DEFAULT_VIDEO_MODEL, IMAGE_TO_VIDEO_MODELS } from '@/models/models';
+import {
+  DEFAULT_VIDEO_MODEL,
+  getMotionReferenceEndpoint,
+  IMAGE_TO_VIDEO_MODELS,
+} from '@/models/models';
+import { bindableReferences } from '@/motion/server/build-reference-video-prompt';
 import {
   DEFAULT_ANALYSIS_MODEL,
   getAnalysisModelById,
@@ -987,7 +992,15 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
     const billing = await step.do('price-motion-generation', async () =>
       motionCostFromUsage(job.via, billedUsage, {
         modelKey: job.modelKey,
-        hasReferenceImages: (input.referenceImages?.length ?? 0) > 0,
+        // The same question submit asked (#1559): references this model can
+        // actually carry. A shot whose only attachment is an audio element
+        // went to the prompt-only endpoint, and must be billed at its rate.
+        hasReferenceImages:
+          bindableReferences(
+            getMotionReferenceEndpoint(job.modelKey),
+            input.referenceImages ?? [],
+            Boolean(input.imageUrl)
+          ).length > 0,
         referenceOnly: input.referenceOnly,
       })
     );

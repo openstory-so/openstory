@@ -34,6 +34,12 @@ export const draftElementUploadSchema = z.object({
    */
   description: z.string().nullable().optional(),
   consistencyTag: z.string().nullable().optional(),
+  /**
+   * Clip length in seconds, measured in the browser (#1559). Null for an
+   * image, and for a clip whose file the browser could not decode — the
+   * prompt loses a hint, nothing else.
+   */
+  durationSeconds: z.number().positive().max(86_400).nullable().optional(),
 });
 
 export type DraftElementUploadInput = z.infer<typeof draftElementUploadSchema>;

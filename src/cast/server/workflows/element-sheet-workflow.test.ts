@@ -9,6 +9,8 @@ describe('collectElementResults', () => {
     description: `Visual description of ${token}`,
     imageUrl: `https://storage.example/${token.toLowerCase()}.png`,
     consistencyTag: token.toLowerCase().replaceAll('_', '-'),
+    kind: 'image',
+    durationSeconds: null,
   });
   const fulfilled = (
     token: string

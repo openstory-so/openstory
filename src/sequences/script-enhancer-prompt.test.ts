@@ -258,3 +258,79 @@ describe('toEnhanceInputs (UI/API parity, issue #855)', () => {
     });
   });
 });
+
+// #1559 — an element can be a clip or an audio file. It must reach the enhancer
+// as TEXT: the model cannot look at an MP3, and `script-enhancement.ts` aborts
+// the whole enhance if a vision part fails to load.
+describe('createUserPrompt with clip and audio elements', () => {
+  const audio = {
+    token: 'STEVE_LINE_3',
+    imageUrl: 'https://example.com/line3.mp3',
+    description: 'Steve: "We are not doing this again."',
+    kind: 'audio' as const,
+    durationSeconds: 4,
+  };
+
+  it('labels the kind and length, and explains they cannot be seen', () => {
+    const prompt = createUserPrompt('A short film', { elements: [audio] });
+
+    expect(prompt).toContain('STEVE_LINE_3 [audio, 4s]');
+    expect(prompt).toContain('Steve: "We are not doing this again."');
+    expect(prompt).toContain('SOUNDS and CLIPS, not things to look at');
+    // The images sentence is only true when an image is actually attached.
+    expect(prompt).not.toContain('Images accompany this message');
+  });
+
+  it('still promises the images when an image element is present', () => {
+    const prompt = createUserPrompt('A short film', {
+      elements: [
+        audio,
+        {
+          token: 'LOGO',
+          imageUrl: 'https://example.com/logo.png',
+          description: 'A red hex logo',
+        },
+      ],
+    });
+
+    expect(prompt).toContain('Images accompany this message');
+    expect(prompt).toContain('SOUNDS and CLIPS');
+    expect(prompt).toContain('- LOGO — A red hex logo');
+  });
+});
+
+describe('toEnhanceInputs carries the element kind (#1559)', () => {
+  it('passes kind and duration through so the prompt can label them', () => {
+    const { elements } = toEnhanceInputs({
+      elements: [
+        {
+          token: 'THEME_MUSIC',
+          imageUrl: 'https://example.com/theme.mp3',
+          description: 'upbeat synth bed',
+          kind: 'audio',
+          durationSeconds: 12,
+        },
+      ],
+    });
+
+    expect(elements).toEqual([
+      {
+        token: 'THEME_MUSIC',
+        imageUrl: 'https://example.com/theme.mp3',
+        description: 'upbeat synth bed',
+        kind: 'audio',
+        durationSeconds: 12,
+      },
+    ]);
+  });
+
+  it('leaves a plain image element unlabelled, as before', () => {
+    const { elements } = toEnhanceInputs({
+      elements: [{ token: 'LOGO', imageUrl: 'https://example.com/logo.png' }],
+    });
+
+    expect(elements).toEqual([
+      { token: 'LOGO', imageUrl: 'https://example.com/logo.png' },
+    ]);
+  });
+});

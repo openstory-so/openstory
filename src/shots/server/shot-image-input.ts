@@ -25,7 +25,7 @@ import type {
 } from '@/platform/server/db/schema';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { buildCharacterReferenceImages } from '@/cast/character-prompt';
-import { buildElementReferenceImages } from '@/cast/element-prompt';
+import { buildElementStillReferences } from '@/cast/element-prompt';
 import { buildLocationReferenceImages } from '@/cast/location-prompt';
 import type { ReferenceImageDescription } from '@/stills/reference-image-prompt';
 import { buildUserEditProvenance } from './user-edit-provenance';
@@ -206,7 +206,7 @@ export async function prepareShotImageWorkflowInput(args: {
     elementTags: continuity?.elementTags,
     sceneExtract: scriptExtract,
   });
-  const elementReferences = buildElementReferenceImages(matchedElements);
+  const elementReferences = buildElementStillReferences(matchedElements);
 
   // Model identity lives on the version that produced the still (#1066): an
   // explicit per-request model wins (one-off variant generation), else the

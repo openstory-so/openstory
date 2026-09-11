@@ -744,6 +744,50 @@ export type MotionReferenceEndpointConfig = {
    * uses `reference_image_urls`. Defaults to `image_urls`.
    */
   imageField?: 'image_urls' | 'reference_image_urls';
+  /**
+   * Reference CLIPS and AUDIO the endpoint takes (#1559) — a dialogue line, a
+   * music bed, a performance or camera move to copy, uploaded as a sequence
+   * element and bound by `@` mention. 0 (the default) means the endpoint takes
+   * none, and an attached one is inlined as prose instead of dropped.
+   */
+  maxVideos?: number;
+  maxAudio?: number;
+  /** Defaults to `video_urls` / `audio_urls`. */
+  videoField?: 'video_urls' | 'reference_video_urls';
+  audioField?: 'audio_urls' | 'reference_audio_urls';
+  /** Default `@VideoN` / `@AudioN`, as with `tag`. */
+  videoTag?: (position: number) => string;
+  audioTag?: (position: number) => string;
+  /**
+   * Combined stills + clips + audio cap. fal's H3 Max r2v rejects more than 12
+   * files even when each list is inside its own max (9/3/3 = 15).
+   */
+  maxCombined?: number;
+  /**
+   * Length limits on reference clips and audio (#1559), per file and summed.
+   * A reference that busts one is rejected by the provider outright, so the
+   * binding leaves it off the request and describes it in prose instead —
+   * the same treatment as any other overflow, and disclosed by the scene
+   * panel rather than dropped in silence.
+   *
+   * Omitted where the provider states none. An element whose length we never
+   * learned (`durationSeconds: null`) is always attached: guessing it is over
+   * would drop a reference the provider might have accepted.
+   */
+  videoSeconds?: MediaDurationLimit;
+  audioSeconds?: MediaDurationLimit;
+};
+
+export type MediaDurationLimit = {
+  /**
+   * Shortest single file (#1559). A clip under it is rejected by the provider
+   * just like one over `max`, so it is refused before Generate the same way.
+   */
+  min?: number;
+  /** Longest single file. */
+  max?: number;
+  /** Longest total across every file of this kind. */
+  maxCombined?: number;
 };
 
 /**
@@ -769,18 +813,43 @@ export const MOTION_REFERENCE_ENDPOINTS: Partial<
     textToVideoEndpointId: 'bytedance/seedance-2.0/enterprise/v2/text-to-video',
     tag: (position) => `@Image${position}`,
     maxImages: 9,
+    maxVideos: 3,
+    maxAudio: 3,
+    maxCombined: 12,
+    // 2.0 states its clip window as a COMBINED range (2–15s), not per file.
+    // ponytail: the 2s floor is checked per clip, which refuses two 1.5s clips
+    // the provider would take together; check the sum if that ever matters.
+    videoSeconds: { min: 2, maxCombined: 15 },
+    audioSeconds: { maxCombined: 15 },
   },
   seedance_v2_5: {
     endpointId: 'bytedance/seedance-2.5/reference-to-video',
     textToVideoEndpointId: 'bytedance/seedance-2.5/text-to-video',
     tag: (position) => `@Image${position}`,
-    maxImages: 9,
+    // 2.5 is far roomier than the 2.0 family and was previously pinned to
+    // 2.0's numbers, which quietly threw away most of its reference budget.
+    // fal's schema: 30 images / 10 clips / 10 audio, 50 files total. Ark
+    // documents the same 50 as "a free combination of images, videos and
+    // audio", so the per-kind splits are its floor, not a stricter ceiling.
+    maxImages: 30,
+    maxVideos: 10,
+    maxAudio: 10,
+    maxCombined: 50,
+    // "Each video must be 1.8 to 30.2 seconds"; audio the same.
+    videoSeconds: { min: 1.8, max: 30.2, maxCombined: 30.2 },
+    audioSeconds: { min: 1.8, max: 30.2, maxCombined: 30.2 },
   },
   seedance_v2_mini: {
     endpointId: 'bytedance/seedance-2.0/mini/reference-to-video',
     textToVideoEndpointId: 'bytedance/seedance-2.0/mini/text-to-video',
     tag: (position) => `@Image${position}`,
     maxImages: 9,
+    maxVideos: 3,
+    maxAudio: 3,
+    maxCombined: 12,
+    // Same combined 2–15s clip window as 2.0 — see the ponytail note there.
+    videoSeconds: { min: 2, maxCombined: 15 },
+    audioSeconds: { maxCombined: 15 },
   },
   gemini_omni_flash: {
     endpointId: 'fal-ai/gemini-omni-1.1-flash/reference-to-video',
@@ -791,6 +860,25 @@ export const MOTION_REFERENCE_ENDPOINTS: Partial<
     // caps a request at 7 reference images.
     tag: (position) => `<IMAGE_REF_${position - 1}>`,
     maxImages: 7,
+    // Reference CLIPS, on both vias (#1559): fal's `reference_video_urls`
+    // (3 max, each ≤3s) proxies the same Interactions content blocks the
+    // native adapter sends. No `<VIDEO_REF_n>` token is documented, so a clip
+    // is named in prose — an invented tag would be a literal string binding
+    // nothing.
+    //
+    // Audio is absent because the API has not shipped it, NOT because the
+    // model lacks it: Omni is marketed as natively multimodal over audio and
+    // generates its own track, but ai.google.dev/gemini-api/docs/omni says
+    // "uploading audio references is unsupported in the current version of
+    // the API", fal exposes no audio field, and the Gemini adapter throws on
+    // audio prompt parts. Expect that to change — when it does this is
+    // `maxAudio` plus an `audioField`, and the binding already handles the
+    // rest.
+    maxVideos: 3,
+    videoField: 'reference_video_urls',
+    videoTag: (position) => `reference video ${position}`,
+    // "Video references support a maximum of 3 clips, up to 3 seconds each."
+    videoSeconds: { max: 3 },
   },
   // fal documents the 4-image cap as `elements` + reference images "when
   // using video"; applied unconditionally rather than tracking a second
@@ -813,6 +901,16 @@ export const MOTION_REFERENCE_ENDPOINTS: Partial<
     tag: (position) => `Image ${position}`,
     maxImages: 9,
     imageField: 'reference_image_urls',
+    maxVideos: 3,
+    maxAudio: 3,
+    maxCombined: 12,
+    videoField: 'reference_video_urls',
+    audioField: 'reference_audio_urls',
+    videoTag: (position) => `Video ${position}`,
+    audioTag: (position) => `Audio ${position}`,
+    // "2-15 seconds each" for both clips and audio.
+    videoSeconds: { min: 2, max: 15, maxCombined: 15 },
+    audioSeconds: { min: 2, max: 15, maxCombined: 15 },
   },
 };
 
