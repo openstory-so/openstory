@@ -8,7 +8,7 @@ import { estimateVideoCost, gateEstimate } from '@/billing/cost-estimation';
 import { addMicros, micros, ZERO_MICROS } from '@/billing/money';
 import { snapDuration } from '@/motion/snap-duration';
 
-const sequence = { videoModel: 'minimax_hailuo_02' };
+const sequence = { videoModel: 'grok_imagine_video_1_5' };
 // `video_variants.model` of each shot's selected version (#1066).
 const shotModels = {
   selected: new Map([
@@ -43,19 +43,19 @@ describe('resolveBatchShotVideoModel', () => {
         shotModels,
         sequence
       )
-    ).toBe('minimax_hailuo_02');
+    ).toBe('grok_imagine_video_1_5');
   });
 
   it("prefers a failed attempt's model over the older selected version", () => {
-    // shot-a's last render failed on veo3_1; re-running the batch must retry
+    // shot-a's last render failed on gemini_omni_flash; re-running the batch must retry
     // that model, not silently fall back to the selected seedance_v2.
     const withFailure = {
       selected: shotModels.selected,
-      lastFailed: new Map([['shot-a', 'veo3_1']]),
+      lastFailed: new Map([['shot-a', 'gemini_omni_flash']]),
     };
     expect(
       resolveBatchShotVideoModel({ id: 'shot-a' }, withFailure, sequence)
-    ).toBe('veo3_1');
+    ).toBe('gemini_omni_flash');
     // Shots without a failure are untouched.
     expect(
       resolveBatchShotVideoModel({ id: 'shot-b' }, withFailure, sequence)
@@ -65,7 +65,7 @@ describe('resolveBatchShotVideoModel', () => {
   it('still lets an explicit batch model override a failed attempt', () => {
     const withFailure = {
       selected: shotModels.selected,
-      lastFailed: new Map([['shot-a', 'veo3_1']]),
+      lastFailed: new Map([['shot-a', 'gemini_omni_flash']]),
     };
     expect(
       resolveBatchShotVideoModel(

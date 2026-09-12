@@ -73,15 +73,17 @@ describe('buildModelInput', () => {
     });
   });
 
-  describe('Veo 3.1 (audio)', () => {
+  describe('resolution tiers', () => {
     it('falls back to the schema default with no tier asked for', () => {
-      const result = build('veo3_1');
+      const result = build('seedance_v2');
       expect(result.resolution).toBe('720p');
     });
 
     it('resolves the requested tier against the endpoint enum (#1449)', () => {
-      expect(build('veo3_1', { resolution: '1080p' }).resolution).toBe('1080p');
-      expect(build('veo3_1', { resolution: '4k' }).resolution).toBe('4k');
+      expect(build('seedance_v2', { resolution: '1080p' }).resolution).toBe(
+        '1080p'
+      );
+      expect(build('seedance_v2', { resolution: '4k' }).resolution).toBe('4k');
       // Seedance 2.5 stops at 1080p — a 4K ask lands there, not on a 422.
       expect(build('seedance_v2_5', { resolution: '4k' }).resolution).toBe(
         '1080p'
@@ -97,40 +99,6 @@ describe('buildModelInput', () => {
         'resolution'
       );
     });
-
-    it('sets generate_audio to true from schema default', () => {
-      const result = build('veo3_1');
-      expect(result.generate_audio).toBe(true);
-    });
-
-    it('forwards generate_audio=false when caller suppresses audio', () => {
-      const result = build('veo3_1', { generateAudio: false });
-      expect(result.generate_audio).toBe(false);
-    });
-
-    it('uses image_url', () => {
-      const result = build('veo3_1');
-      expect(result).toHaveProperty('image_url', baseOptions.imageUrl);
-    });
-
-    it('suppresses music via negative_prompt', () => {
-      const result = build('veo3_1');
-      expect(result.negative_prompt).toBe(
-        'background music, musical score, soundtrack'
-      );
-    });
-  });
-
-  describe('MiniMax Hailuo 2.3', () => {
-    it('uses image_url', () => {
-      const result = build('minimax_hailuo_02');
-      expect(result).toHaveProperty('image_url', baseOptions.imageUrl);
-    });
-
-    it('includes prompt', () => {
-      const result = build('minimax_hailuo_02');
-      expect(result.prompt).toBe(baseOptions.prompt);
-    });
   });
 
   describe('MiniMax H3 Max', () => {
@@ -142,18 +110,6 @@ describe('buildModelInput', () => {
         resolution: '768P',
         prompt_expansion_mode: 'balanced',
       });
-    });
-  });
-
-  describe('LTX 2.3 Pro', () => {
-    it('uses image_url', () => {
-      const result = build('ltx_2_3_pro');
-      expect(result).toHaveProperty('image_url', baseOptions.imageUrl);
-    });
-
-    it('includes prompt', () => {
-      const result = build('ltx_2_3_pro');
-      expect(result.prompt).toBe(baseOptions.prompt);
     });
   });
 
@@ -203,12 +159,9 @@ describe('buildModelInput', () => {
       grok_imagine_video_1_5: [
         1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
       ],
-      veo3_1: ['4s', '6s', '8s'],
-      ltx_2_3_pro: [6, 8, 10],
       seedance_v2: Array.from({ length: 12 }, (_, i) => String(i + 4)),
       seedance_v2_5: Array.from({ length: 27 }, (_, i) => String(i + 4)),
       seedance_v2_mini: Array.from({ length: 12 }, (_, i) => String(i + 4)),
-      minimax_hailuo_02: [],
       minimax_h3_max: [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
       gemini_omni_flash: [3, 4, 5, 6, 7, 8, 9, 10],
     };
@@ -613,7 +566,7 @@ describe('buildMotionRequest — reference-only', () => {
     expect(() =>
       buildMotionRequest(
         { ...referenceOnlyOptions, referenceOnly: false },
-        'veo3_1'
+        'grok_imagine_video_1_5'
       )
     ).toThrow(/requires a start frame/);
   });

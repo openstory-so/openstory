@@ -139,7 +139,7 @@ function tierOf(
  *
  * Exactly the inverse of the picker, which is what keeps the two consistent:
  * a tier is offered iff some advertised token lands in that tier's band, and
- * picking it then returns that token. LTX starts at 1080p, so it offers no
+ * picking it then returns that token. A model whose floor is 1080p offers no
  * 720p; H3 Max tops out at 768P, so 720p is all it offers.
  */
 export function tiersForTokens(

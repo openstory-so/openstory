@@ -510,7 +510,7 @@ export interface MotionWorkflowInput extends SequenceWorkflowContext {
   aspectRatio?: AspectRatio; // "16:9", "9:16", "1:1"
   resolution?: Resolution;
   /**
-   * For audio-capable models (kling v3, veo3), pass `false` to suppress the
+   * For audio-capable models (kling v3, seedance), pass `false` to suppress the
    * model's native audio output (sfx/ambient/lip-sync). Omit to use the API
    * schema default (true for audio-capable models).
    */

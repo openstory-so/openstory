@@ -44,13 +44,13 @@ describe('createUserPrompt (issue #855)', () => {
   it('anchors length to scene count, clip grid, and a hard sum (#1374)', () => {
     const prompt = createUserPrompt('a brief', {
       targetDuration: 60,
-      videoModel: 'ltx_2_3_pro',
+      videoModel: 'kling_v3_pro',
     });
     expect(prompt).toContain('Target video duration: 1 minute');
-    // LTX min clip 6s caps 60s at 10 clips; preferred 8–12 intersects to 8–10.
-    expect(prompt).toContain('about 8-10 clips');
+    // Kling min clip 3s caps 60s at 20 clips; preferred 8–12 stays 8–12.
+    expect(prompt).toContain('about 8-12 clips');
     expect(prompt).not.toMatch(/~\s*\d+\s*words/);
-    expect(prompt).toContain('Clip durations MUST be 6, 8 or 10 seconds');
+    expect(prompt).toContain('Clip durations MUST be 3–15 seconds');
     expect(prompt).toContain('MUST add up to 60 seconds');
     expect(prompt).toContain('TOTAL: <sum>s');
     expect(prompt).toContain('Each SHOT is one video clip');

@@ -221,8 +221,7 @@ function buildSeedancePrompt(
 // `overall_soundscape`, and `non_diegetic_music`. fal's prompt expander
 // rewrites whatever we send into that shape, so the no-music intent has to be
 // explicit or the expander invents a score. `non_diegetic_music: N/A` is the
-// documented off value. Hailuo 2.3 shares the vendor but is non-audio, so it
-// never reaches this builder.
+// documented off value.
 // Spec: https://platform.minimax.io/docs/api-reference/video-generation-v2-h3-context-ir
 // ---------------------------------------------------------------------------
 
@@ -303,7 +302,8 @@ function spokenLine(
 }
 
 // ---------------------------------------------------------------------------
-// Google Veo 3/3.1 + OpenAI Sora: Natural narrative quotes + Audio: section
+// Default narrative style (Veo / Sora guides): quotes + Audio: section. No
+// catalog model routes here today; it stays the fallback for a new vendor.
 // Guide: https://fal.ai/learn/devs/veo3-prompt-guide
 // ---------------------------------------------------------------------------
 

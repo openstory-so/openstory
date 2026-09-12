@@ -6,8 +6,8 @@ import {
 
 describe('availableResolutions', () => {
   it('offers only what a video model can render', () => {
-    // Veo 3.1 serves all three; Seedance 2.5 stops at 1080p.
-    expect(availableResolutions({ videoModels: ['veo3_1'] })).toEqual([
+    // Seedance 2.0 serves all three; Seedance 2.5 stops at 1080p.
+    expect(availableResolutions({ videoModels: ['seedance_v2'] })).toEqual([
       '720p',
       '1080p',
       '4k',
@@ -60,7 +60,7 @@ describe('availableResolutions', () => {
 describe('resolutionCeilingNote', () => {
   it('is silent when every model serves the tier', () => {
     expect(
-      resolutionCeilingNote('1080p', { videoModels: ['veo3_1'] })
+      resolutionCeilingNote('1080p', { videoModels: ['seedance_v2'] })
     ).toBeNull();
   });
 
@@ -77,7 +77,7 @@ describe('resolutionCeilingNote', () => {
     expect(
       resolutionCeilingNote('720p', {
         imageModels: ['nano_banana_2_lite'],
-        videoModels: ['veo3_1'],
+        videoModels: ['seedance_v2'],
       })
     ).toBe('Nano Banana 2 Lite renders at a fixed size');
     expect(
@@ -107,17 +107,8 @@ describe('resolutionCeilingNote', () => {
     ).toBe('Nano Banana 2 Lite and Seedance 2.0 Mini render at a fixed size');
   });
 
-  it('says "above" for a model whose floor is over the tier', () => {
-    // LTX starts at 1080p, so a 720p ask renders ABOVE it — and costs more.
-    // Calling that "below 720p" told the user they were getting less while
-    // they were billed for more.
-    expect(
-      resolutionCeilingNote('720p', {
-        imageModels: ['gpt_image_2'],
-        videoModels: ['ltx_2_3_pro'],
-      })
-    ).toBe('LTX 2.3 Pro renders above 720p');
-  });
+  // No catalog model currently has a floor above 720p, so the "renders above"
+  // branch has no live case to pin (LTX 2.3 Pro, 1080p floor, was retired in #1511).
 
   it('reads the aspect ratio — a tier can be out of reach at one shape only', () => {
     // Seedream's documented pixel range puts 720p out of reach when square,

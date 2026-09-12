@@ -209,7 +209,7 @@ export const createSequenceSchema = createInsertSchema(sequences, {
   //
   // This schema is isomorphic and pure, so it cannot know which vias a team
   // reaches. It asks the widest question — capable on SOME via — which rejects
-  // Kling / Veo / LTX always and lets Grok Imagine through; `createSequences`
+  // Kling v3 always and lets Grok Imagine through; `createSequences`
   // then re-asks it against the team's real keys via `canRenderReferenceOnly`.
   .refine(
     (data) =>

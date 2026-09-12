@@ -85,7 +85,7 @@ describe('geminiImageCost', () => {
 describe('isNativeGeminiVideoModel', () => {
   it('claims only the Omni Flash registry key', () => {
     expect(isNativeGeminiVideoModel('gemini_omni_flash')).toBe(true);
-    expect(isNativeGeminiVideoModel('veo3_1')).toBe(false);
+    expect(isNativeGeminiVideoModel('seedance_v2')).toBe(false);
     expect(isNativeGeminiVideoModel('grok_imagine_video_1_5')).toBe(false);
   });
 });

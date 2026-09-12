@@ -5,7 +5,7 @@ import { buildMotionJobs } from './motion-batch-jobs';
 type Shot = { shotId: string; model?: ImageToVideoModel };
 
 const A: ImageToVideoModel = 'kling_v3_pro';
-const B: ImageToVideoModel = 'veo3_1';
+const B: ImageToVideoModel = 'seedance_v2';
 
 const shots: Shot[] = [{ shotId: 'f0' }, { shotId: 'f1' }, { shotId: 'f2' }];
 

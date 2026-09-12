@@ -190,10 +190,6 @@ describe('estimateMotionSeconds', () => {
     // every clip.
     expect(estimateMotionSeconds('minimax_h3_max', 5)).toBe(73);
   });
-
-  test('Hailuo stays Seedance-class even though it is in the turbo picker', () => {
-    expect(estimateMotionSeconds('minimax_hailuo_02', 5)).toBe(234);
-  });
 });
 
 describe('formatTimeRemaining', () => {

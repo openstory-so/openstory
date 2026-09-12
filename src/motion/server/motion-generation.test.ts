@@ -164,22 +164,22 @@ describe('Motion Service', () => {
       ).rejects.toThrow('API error');
     });
 
-    it('should submit job with Veo 3.1 model options', async () => {
+    it('should submit job with Seedance 2.0 model options', async () => {
       mockGenerateVideo.mockResolvedValue({
-        jobId: 'test-veo3-1-request-id',
-        model: 'fal-ai/veo3.1/image-to-video',
+        jobId: 'test-seedance-request-id',
+        model: 'bytedance/seedance-2.0/enterprise/v2/image-to-video',
       });
 
       const result = await submitMotionJob({
         arkAssets: registeredAssets,
         imageUrl: 'https://example.com/image.jpg',
         prompt: 'Smooth camera movement',
-        model: 'veo3_1',
+        model: 'seedance_v2',
         duration: 8,
       });
 
-      expect(result.jobId).toBe('test-veo3-1-request-id');
-      expect(result.modelKey).toBe('veo3_1');
+      expect(result.jobId).toBe('test-seedance-request-id');
+      expect(result.modelKey).toBe('seedance_v2');
 
       expect(mockGenerateVideo).toHaveBeenCalledWith(
         expect.objectContaining({

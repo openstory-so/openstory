@@ -217,7 +217,7 @@ export function clipContentRejectionMessage(args: {
    * when nothing was named.
    */
   rejections: string[];
-  /** Display names in the order tried, e.g. `['LTX 2.3 Pro', 'Grok …']`. */
+  /** Display names in the order tried, e.g. `['Seedance 2.0', 'Grok …']`. */
   models: string[];
   softened: boolean;
   /**

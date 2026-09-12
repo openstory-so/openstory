@@ -50,6 +50,18 @@ export type QueueStatus = {
  */
 export type GrokImagineVideoV15ImageToVideoInput = {
   /**
+   * Duration
+   *
+   * Video duration in seconds.
+   */
+  duration?: number;
+  /**
+   * Prompt
+   *
+   * Text description of desired changes or motion in the video.
+   */
+  prompt: string;
+  /**
    * Image URL
    *
    * URL of the input image for video generation.
@@ -61,18 +73,6 @@ export type GrokImagineVideoV15ImageToVideoInput = {
    * Resolution of the output video.
    */
   resolution?: '480p' | '720p' | '1080p';
-  /**
-   * Prompt
-   *
-   * Text description of desired changes or motion in the video.
-   */
-  prompt: string;
-  /**
-   * Duration
-   *
-   * Video duration in seconds.
-   */
-  duration?: number;
 };
 
 /**
@@ -87,23 +87,23 @@ export type GrokImagineVideoV15ImageToVideoOutput = {
  */
 export type VideoFile = {
   /**
-   * File Name
+   * Fps
    *
-   * The name of the file. It will be auto-generated if not provided.
+   * The FPS of the video
    */
-  file_name?: string | unknown;
-  /**
-   * Height
-   *
-   * The height of the video
-   */
-  height?: number | unknown;
+  fps?: number | unknown;
   /**
    * Content Type
    *
    * The mime type of the file.
    */
   content_type?: string | unknown;
+  /**
+   * Duration
+   *
+   * The duration of the video
+   */
+  duration?: number | unknown;
   /**
    * Num Frames
    *
@@ -117,11 +117,11 @@ export type VideoFile = {
    */
   url: string;
   /**
-   * Fps
+   * Height
    *
-   * The FPS of the video
+   * The height of the video
    */
-  fps?: number | unknown;
+  height?: number | unknown;
   /**
    * Width
    *
@@ -129,150 +129,65 @@ export type VideoFile = {
    */
   width?: number | unknown;
   /**
+   * File Name
+   *
+   * The name of the file. It will be auto-generated if not provided.
+   */
+  file_name?: string | unknown;
+  /**
    * File Size
    *
    * The size of the file in bytes.
    */
   file_size?: number | unknown;
-  /**
-   * Duration
-   *
-   * The duration of the video
-   */
-  duration?: number | unknown;
 };
 
 /**
- * LTXV23ImageToVideoRequest
+ * Omni11FlashImageToVideoInput
  */
-export type Ltx23ImageToVideoInput = {
-  /**
-   * Frames per Second
-   *
-   * The frames per second of the generated video
-   */
-  fps?: 24 | 25 | 48 | 50;
-  /**
-   * Resolution
-   *
-   * The resolution of the generated video
-   */
-  resolution?: '1080p' | '1440p' | '2160p';
+export type GeminiOmni11FlashImageToVideoInput = {
   /**
    * Prompt
    *
-   * The prompt to use for the generated video
+   * The text prompt describing how the first image should be animated or interpolated into the optional end image.
    */
   prompt: string;
   /**
-   * Aspect Ratio
-   *
-   * The aspect ratio of the generated video. If 'auto', the aspect ratio will be determined automatically based on the input image.
-   */
-  aspect_ratio?: 'auto' | '16:9' | '9:16';
-  /**
-   * End Image URL
-   *
-   * The URL of the end image to use for the generated video. When provided, generates a transition video between start and end frames.
-   */
-  end_image_url?: string | unknown;
-  /**
    * Duration
    *
-   * The duration of the generated video in seconds
+   * The duration of the generated video, in seconds.
    */
-  duration?: 6 | 8 | 10;
+  duration?: number;
   /**
-   * Start Image URL
+   * Aspect Ratio
    *
-   * The URL of the start image to use for the generated video.
+   * The aspect ratio of the generated video.
    */
-  image_url: string | Blob | File;
-  /**
-   * Generate Audio
-   *
-   * Whether to generate audio for the generated video
-   */
-  generate_audio?: boolean;
-};
-
-/**
- * LTXV23ImageToVideoResponse
- */
-export type Ltx23ImageToVideoOutput = {
-  video: VideoFile;
-};
-
-/**
- * Veo31ImageToVideoInput
- */
-export type Veo31ImageToVideoInput = {
-  /**
-   * Seed
-   *
-   * The seed for the random number generator.
-   */
-  seed?: number | unknown;
+  aspect_ratio?: '16:9' | '9:16';
   /**
    * Image URL
    *
-   * URL of the input image to animate. Should be 720p or higher resolution in 16:9 or 9:16 aspect ratio. If the image is not in 16:9 or 9:16 aspect ratio, it will be cropped to fit.
+   * URL of the first frame to animate.
    */
   image_url: string | Blob | File;
   /**
-   * Negative Prompt
+   * End Image URL
    *
-   * A negative prompt to guide the video generation.
+   * Optional URL of the end frame. When provided, the model interpolates between the two images in their listed order.
    */
-  negative_prompt?: string | unknown;
-  /**
-   * Safety Tolerance
-   *
-   * The safety tolerance level for content moderation. 1 is the most strict (blocks most content), 6 is the least strict.
-   */
-  safety_tolerance?: '1' | '2' | '3' | '4' | '5' | '6';
+  end_image_url?: string | unknown;
   /**
    * Resolution
    *
    * The resolution of the generated video.
    */
-  resolution?: '720p' | '1080p' | '4k';
-  /**
-   * Auto Fix
-   *
-   * Whether to automatically attempt to fix prompts that fail content policy or other validation checks by rewriting them.
-   */
-  auto_fix?: boolean;
-  /**
-   * Generate Audio
-   *
-   * Whether to generate audio for the video.
-   */
-  generate_audio?: boolean;
-  /**
-   * Duration
-   *
-   * The duration of the generated video.
-   */
-  duration?: '4s' | '6s' | '8s';
-  /**
-   * Prompt
-   *
-   * The text prompt describing the video you want to generate
-   */
-  prompt: string;
-  /**
-   * Aspect Ratio
-   *
-   * The aspect ratio of the generated video. Only 16:9 and 9:16 are supported.
-   */
-  aspect_ratio?: 'auto' | '16:9' | '9:16';
+  resolution?: '360p' | '720p' | '1080p' | '4k';
 };
 
 /**
- * Veo31ImageToVideoOutput
+ * VideoOutput
  */
-export type Veo31ImageToVideoOutput = {
+export type GeminiOmni11FlashImageToVideoOutput = {
   video: File;
 };
 
@@ -280,12 +195,6 @@ export type Veo31ImageToVideoOutput = {
  * File
  */
 export type File = {
-  /**
-   * File Name
-   *
-   * The name of the file. It will be auto-generated if not provided.
-   */
-  file_name?: string | unknown;
   /**
    * File Size
    *
@@ -304,55 +213,12 @@ export type File = {
    * The mime type of the file.
    */
   content_type?: string | unknown;
-};
-
-/**
- * Omni11FlashImageToVideoInput
- */
-export type GeminiOmni11FlashImageToVideoInput = {
   /**
-   * Image URL
+   * File Name
    *
-   * URL of the first frame to animate.
+   * The name of the file. It will be auto-generated if not provided.
    */
-  image_url: string | Blob | File;
-  /**
-   * Resolution
-   *
-   * The resolution of the generated video.
-   */
-  resolution?: '360p' | '720p' | '1080p' | '4k';
-  /**
-   * End Image URL
-   *
-   * Optional URL of the end frame. When provided, the model interpolates between the two images in their listed order.
-   */
-  end_image_url?: string | unknown;
-  /**
-   * Aspect Ratio
-   *
-   * The aspect ratio of the generated video.
-   */
-  aspect_ratio?: '16:9' | '9:16';
-  /**
-   * Duration
-   *
-   * The duration of the generated video, in seconds.
-   */
-  duration?: number;
-  /**
-   * Prompt
-   *
-   * The text prompt describing how the first image should be animated or interpolated into the optional end image.
-   */
-  prompt: string;
-};
-
-/**
- * VideoOutput
- */
-export type GeminiOmni11FlashImageToVideoOutput = {
-  video: File;
+  file_name?: string | unknown;
 };
 
 /**
@@ -360,30 +226,11 @@ export type GeminiOmni11FlashImageToVideoOutput = {
  */
 export type KlingVideoV3ProImageToVideoInput = {
   /**
-   * Start Image Url
+   * Elements
    *
-   * URL of the image to be used for the video
+   * Elements (characters/objects) to include in the video. Each example can either be an image set (frontal + reference images) or a video. Reference in prompt as @Element1, @Element2, etc.
    */
-  start_image_url: string | Blob | File;
-  /**
-   * Shot Type
-   *
-   * The type of multi-shot video generation. 'intelligent' lets the model automatically determine shot structure.
-   */
-  shot_type?: 'customize' | 'intelligent';
-  /**
-   * Negative Prompt
-   */
-  negative_prompt?: string;
-  /**
-   * Cfg Scale
-   *
-   *
-   *             The CFG (Classifier Free Guidance) scale is a measure of how close you want
-   *             the model to stick to your prompt.
-   *
-   */
-  cfg_scale?: number;
+  elements?: Array<KlingV3ComboElementInput> | unknown;
   /**
    * Prompt
    *
@@ -403,11 +250,26 @@ export type KlingVideoV3ProImageToVideoInput = {
    */
   multi_prompt?: Array<KlingV3MultiPromptElement> | unknown;
   /**
-   * Generate Audio
+   * Start Image Url
    *
-   * Whether to generate native audio for the video. Supports Chinese and English voice output. Other languages are automatically translated to English. For English speech, use lowercase letters; for acronyms or proper nouns, use uppercase.
+   * URL of the image to be used for the video
    */
-  generate_audio?: boolean;
+  start_image_url: string | Blob | File;
+  /**
+   * Shot Type
+   *
+   * The type of multi-shot video generation. 'intelligent' lets the model automatically determine shot structure.
+   */
+  shot_type?: 'customize' | 'intelligent';
+  /**
+   * Cfg Scale
+   *
+   *
+   *             The CFG (Classifier Free Guidance) scale is a measure of how close you want
+   *             the model to stick to your prompt.
+   *
+   */
+  cfg_scale?: number;
   /**
    * End Image Url
    *
@@ -415,11 +277,15 @@ export type KlingVideoV3ProImageToVideoInput = {
    */
   end_image_url?: string | unknown;
   /**
-   * Elements
-   *
-   * Elements (characters/objects) to include in the video. Each example can either be an image set (frontal + reference images) or a video. Reference in prompt as @Element1, @Element2, etc.
+   * Negative Prompt
    */
-  elements?: Array<KlingV3ComboElementInput> | unknown;
+  negative_prompt?: string;
+  /**
+   * Generate Audio
+   *
+   * Whether to generate native audio for the video. Supports Chinese and English voice output. Other languages are automatically translated to English. For English speech, use lowercase letters; for acronyms or proper nouns, use uppercase.
+   */
+  generate_audio?: boolean;
 };
 
 /**
@@ -427,6 +293,36 @@ export type KlingVideoV3ProImageToVideoInput = {
  */
 export type KlingVideoV3ProImageToVideoOutput = {
   video: File;
+};
+
+/**
+ * KlingV3ComboElementInput
+ */
+export type KlingV3ComboElementInput = {
+  /**
+   * Reference Image Urls
+   *
+   * Additional reference images from different angles. 1-3 images supported. At least one image is required.
+   */
+  reference_image_urls?: Array<string> | unknown;
+  /**
+   * Voice Id
+   *
+   * The voice ID for this element. The voice will be binded to the element and references to this element will use the binded voice. Get voice IDs from the following endpoint: https://fal.ai/models/fal-ai/kling-video/create-voice
+   */
+  voice_id?: string | unknown;
+  /**
+   * Frontal Image Url
+   *
+   * The frontal image of the element (main view).
+   */
+  frontal_image_url?: string | unknown;
+  /**
+   * Video Url
+   *
+   * The video URL of the element. A request can only have one element with a video.
+   */
+  video_url?: string | unknown;
 };
 
 /**
@@ -448,100 +344,15 @@ export type KlingV3MultiPromptElement = {
 };
 
 /**
- * KlingV3ComboElementInput
- */
-export type KlingV3ComboElementInput = {
-  /**
-   * Voice Id
-   *
-   * The voice ID for this element. The voice will be binded to the element and references to this element will use the binded voice. Get voice IDs from the following endpoint: https://fal.ai/models/fal-ai/kling-video/create-voice
-   */
-  voice_id?: string | unknown;
-  /**
-   * Reference Image Urls
-   *
-   * Additional reference images from different angles. 1-3 images supported. At least one image is required.
-   */
-  reference_image_urls?: Array<string> | unknown;
-  /**
-   * Frontal Image Url
-   *
-   * The frontal image of the element (main view).
-   */
-  frontal_image_url?: string | unknown;
-  /**
-   * Video Url
-   *
-   * The video URL of the element. A request can only have one element with a video.
-   */
-  video_url?: string | unknown;
-};
-
-/**
- * ProImageToVideoHailuo23Input
- */
-export type MinimaxHailuo23ProImageToVideoInput = {
-  /**
-   * Image Url
-   *
-   * URL of the image to use as the first frame
-   */
-  image_url: string | Blob | File;
-  /**
-   * Prompt Optimizer
-   *
-   * Whether to use the model's prompt optimizer
-   */
-  prompt_optimizer?: boolean;
-  /**
-   * Prompt
-   *
-   * Text prompt for video generation
-   */
-  prompt: string;
-};
-
-/**
- * ProImageToVideoHailuo23Output
- */
-export type MinimaxHailuo23ProImageToVideoOutput = {
-  video: File;
-};
-
-/**
  * TurboImageToVideoHailuo03Input
  */
 export type H3MaxImageToVideoInput = {
-  /**
-   * Duration
-   *
-   * The duration of the video in seconds.
-   */
-  duration?: number;
   /**
    * Sync Mode
    *
    * Return the generated video as base64 instead of a CDN URL.
    */
   sync_mode?: boolean;
-  /**
-   * Enable Safety Checker
-   *
-   * If set to true, the safety checker will be enabled.
-   */
-  enable_safety_checker?: boolean;
-  /**
-   * Prompt
-   *
-   * Text prompt for video generation
-   */
-  prompt: string;
-  /**
-   * Seed
-   *
-   * Random seed. A random seed is selected when omitted.
-   */
-  seed?: number | unknown;
   /**
    * Prompt Expansion Mode
    *
@@ -555,6 +366,12 @@ export type H3MaxImageToVideoInput = {
    */
   image_url?: string | unknown;
   /**
+   * Prompt
+   *
+   * Text prompt for video generation
+   */
+  prompt: string;
+  /**
    * Resolution
    *
    * The native generation resolution, or 1080P latent refinement from a native 768P source.
@@ -566,19 +383,30 @@ export type H3MaxImageToVideoInput = {
    * Optional URL of the image to use as the last frame. It may be provided alone for end-only keyframe generation; in that case the output canvas follows this image.
    */
   end_image_url?: string | unknown;
+  /**
+   * Seed
+   *
+   * Random seed. A random seed is selected when omitted.
+   */
+  seed?: number | unknown;
+  /**
+   * Duration
+   *
+   * The duration of the video in seconds.
+   */
+  duration?: number;
+  /**
+   * Enable Safety Checker
+   *
+   * If set to true, the safety checker will be enabled.
+   */
+  enable_safety_checker?: boolean;
 };
 
 /**
  * TurboImageToVideoHailuo03Output
  */
 export type H3MaxImageToVideoOutput = {
-  /**
-   * Expanded Prompt
-   *
-   * The prompt after expansion, as sent to the model. Null when prompt expansion was disabled, left the prompt unchanged, or was performed internally by MiniMax's hosted API.
-   */
-  expanded_prompt?: string | unknown;
-  video: File;
   /**
    * Timings
    *
@@ -587,6 +415,13 @@ export type H3MaxImageToVideoOutput = {
   timings?: {
     [key: string]: number;
   } | unknown;
+  /**
+   * Expanded Prompt
+   *
+   * The prompt after expansion, as sent to the model. Null when prompt expansion was disabled, left the prompt unchanged, or was performed internally by MiniMax's hosted API.
+   */
+  expanded_prompt?: string | unknown;
+  video: File;
 };
 
 /**
@@ -594,23 +429,17 @@ export type H3MaxImageToVideoOutput = {
  */
 export type Seedance20EnterpriseV2ImageToVideoInput = {
   /**
+   * End Image Url
+   *
+   * The URL of the image to use as the last frame of the video. When provided, the generated video will transition from the starting image to this ending image. Supported formats: JPEG, PNG, WebP. Max 30 MB.
+   */
+  end_image_url?: string | unknown;
+  /**
    * Duration
    *
    * Duration of the video in seconds. Supports 4 to 15 seconds, or auto to let the model decide based on the prompt.
    */
   duration?: 'auto' | '4' | '5' | '6' | '7' | '8' | '9' | '10' | '11' | '12' | '13' | '14' | '15';
-  /**
-   * Bitrate Mode
-   *
-   * Output bitrate mode. 'high' requests a higher-quality, larger-file encode from the model; 'standard' uses the default bitrate.
-   */
-  bitrate_mode?: 'standard' | 'high';
-  /**
-   * Generate Audio
-   *
-   * Whether to generate synchronized audio for the video, including sound effects, ambient sounds, and lip-synced speech. The cost of video generation is the same regardless of whether audio is generated or not.
-   */
-  generate_audio?: boolean;
   /**
    * End User Id
    *
@@ -624,72 +453,23 @@ export type Seedance20EnterpriseV2ImageToVideoInput = {
    */
   aspect_ratio?: 'auto' | '21:9' | '16:9' | '4:3' | '1:1' | '3:4' | '9:16';
   /**
-   * Prompt
-   *
-   * The text prompt describing the desired motion and action for the video.
-   */
-  prompt: string;
-  /**
-   * Image Url
-   *
-   * The URL of the starting frame image to animate. Supported formats: JPEG, PNG, WebP. Max 30 MB.
-   */
-  image_url: string | Blob | File;
-  /**
    * Resolution
    *
    * Video resolution - 480p for faster generation, 720p for balance, 1080p for high quality, 4k for highest quality.
    */
   resolution?: '480p' | '720p' | '1080p' | '4k';
   /**
-   * End Image Url
+   * Bitrate Mode
    *
-   * The URL of the image to use as the last frame of the video. When provided, the generated video will transition from the starting image to this ending image. Supported formats: JPEG, PNG, WebP. Max 30 MB.
+   * Output bitrate mode. 'high' requests a higher-quality, larger-file encode from the model; 'standard' uses the default bitrate.
    */
-  end_image_url?: string | unknown;
-};
-
-/**
- * Seedance2VideoOutput
- */
-export type Seedance20EnterpriseV2ImageToVideoOutput = {
-  video: File;
+  bitrate_mode?: 'standard' | 'high';
   /**
-   * Seed
+   * Prompt
    *
-   * The seed used for generation.
+   * The text prompt describing the desired motion and action for the video.
    */
-  seed: number;
-};
-
-/**
- * Seedance2I2VInput
- */
-export type Seedance25ImageToVideoInput = {
-  /**
-   * Image Url
-   *
-   * The URL of the starting frame image to animate. Supported formats: JPEG, PNG, WebP. Max 30 MB.
-   */
-  image_url: string | Blob | File;
-  /**
-   * End Image Url
-   *
-   * The URL of the image to use as the last frame of the video. When provided, the generated video will transition from the starting image to this ending image. Supported formats: JPEG, PNG, WebP. Max 30 MB.
-   */
-  end_image_url?: string | unknown;
-  /**
-   * Resolution
-   *
-   * Video resolution - 480p for faster generation, 720p for balance, 1080p for high quality.
-   */
-  resolution?: '480p' | '720p' | '1080p';
-  /**
-   * Duration
-   *
-   * Duration of the video in seconds. Supports 4 to 30 seconds, or auto to let the model decide based on the prompt.
-   */
-  duration?: 'auto' | '4' | '5' | '6' | '7' | '8' | '9' | '10' | '11' | '12' | '13' | '14' | '15' | '16' | '17' | '18' | '19' | '20' | '21' | '22' | '23' | '24' | '25' | '26' | '27' | '28' | '29' | '30';
+  prompt: string;
   /**
    * Generate Audio
    *
@@ -697,17 +477,72 @@ export type Seedance25ImageToVideoInput = {
    */
   generate_audio?: boolean;
   /**
-   * End User Id
+   * Image Url
    *
-   * The unique user ID of the end user.
+   * The URL of the starting frame image to animate. Supported formats: JPEG, PNG, WebP. Max 30 MB.
    */
-  end_user_id?: string | unknown;
+  image_url: string | Blob | File;
+};
+
+/**
+ * Seedance2VideoOutput
+ */
+export type Seedance20EnterpriseV2ImageToVideoOutput = {
+  /**
+   * Seed
+   *
+   * The seed used for generation.
+   */
+  seed: number;
+  video: File;
+};
+
+/**
+ * Seedance2I2VInput
+ */
+export type Seedance25ImageToVideoInput = {
+  /**
+   * Duration
+   *
+   * Duration of the video in seconds. Supports 4 to 30 seconds, or auto to let the model decide based on the prompt.
+   */
+  duration?: 'auto' | '4' | '5' | '6' | '7' | '8' | '9' | '10' | '11' | '12' | '13' | '14' | '15' | '16' | '17' | '18' | '19' | '20' | '21' | '22' | '23' | '24' | '25' | '26' | '27' | '28' | '29' | '30';
   /**
    * Prompt
    *
    * The text prompt describing the desired motion and action for the video.
    */
   prompt: string;
+  /**
+   * Generate Audio
+   *
+   * Whether to generate synchronized audio for the video, including sound effects, ambient sounds, and lip-synced speech. The cost of video generation is the same regardless of whether audio is generated or not.
+   */
+  generate_audio?: boolean;
+  /**
+   * Image Url
+   *
+   * The URL of the starting frame image to animate. Supported formats: JPEG, PNG, WebP. Max 30 MB.
+   */
+  image_url: string | Blob | File;
+  /**
+   * Resolution
+   *
+   * Video resolution - 480p for faster generation, 720p for balance, 1080p for high quality.
+   */
+  resolution?: '480p' | '720p' | '1080p';
+  /**
+   * End Image Url
+   *
+   * The URL of the image to use as the last frame of the video. When provided, the generated video will transition from the starting image to this ending image. Supported formats: JPEG, PNG, WebP. Max 30 MB.
+   */
+  end_image_url?: string | unknown;
+  /**
+   * End User Id
+   *
+   * The unique user ID of the end user.
+   */
+  end_user_id?: string | unknown;
   /**
    * Bitrate Mode
    *
@@ -740,17 +575,17 @@ export type Seedance25ImageToVideoOutput = {
  */
 export type Seedance20MiniImageToVideoInput = {
   /**
+   * End Image Url
+   *
+   * The URL of the image to use as the last frame of the video. When provided, the generated video will transition from the starting image to this ending image. Supported formats: JPEG, PNG, WebP. Max 30 MB.
+   */
+  end_image_url?: string | unknown;
+  /**
    * Duration
    *
    * Duration of the video in seconds. Supports 4 to 15 seconds, or auto to let the model decide based on the prompt.
    */
   duration?: 'auto' | '4' | '5' | '6' | '7' | '8' | '9' | '10' | '11' | '12' | '13' | '14' | '15';
-  /**
-   * Prompt
-   *
-   * The text prompt describing the desired motion and action for the video.
-   */
-  prompt: string;
   /**
    * End User Id
    *
@@ -758,23 +593,11 @@ export type Seedance20MiniImageToVideoInput = {
    */
   end_user_id?: string | unknown;
   /**
-   * Generate Audio
-   *
-   * Whether to generate synchronized audio for the video, including sound effects, ambient sounds, and lip-synced speech. The cost of video generation is the same regardless of whether audio is generated or not.
-   */
-  generate_audio?: boolean;
-  /**
    * Aspect Ratio
    *
    * The aspect ratio of the generated video. Use 16:9 for landscape, 9:16 for portrait/vertical, 1:1 for square, 21:9 for ultrawide cinematic, or auto to infer from the input image.
    */
   aspect_ratio?: 'auto' | '21:9' | '16:9' | '4:3' | '1:1' | '3:4' | '9:16';
-  /**
-   * Image Url
-   *
-   * The URL of the starting frame image to animate. Supported formats: JPEG, PNG, WebP. Max 30 MB.
-   */
-  image_url: string | Blob | File;
   /**
    * Resolution
    *
@@ -782,24 +605,36 @@ export type Seedance20MiniImageToVideoInput = {
    */
   resolution?: '480p' | '720p';
   /**
-   * End Image Url
+   * Prompt
    *
-   * The URL of the image to use as the last frame of the video. When provided, the generated video will transition from the starting image to this ending image. Supported formats: JPEG, PNG, WebP. Max 30 MB.
+   * The text prompt describing the desired motion and action for the video.
    */
-  end_image_url?: string | unknown;
+  prompt: string;
+  /**
+   * Generate Audio
+   *
+   * Whether to generate synchronized audio for the video, including sound effects, ambient sounds, and lip-synced speech. The cost of video generation is the same regardless of whether audio is generated or not.
+   */
+  generate_audio?: boolean;
+  /**
+   * Image Url
+   *
+   * The URL of the starting frame image to animate. Supported formats: JPEG, PNG, WebP. Max 30 MB.
+   */
+  image_url: string | Blob | File;
 };
 
 /**
  * Seedance2VideoOutput
  */
 export type Seedance20MiniImageToVideoOutput = {
-  video: File;
   /**
    * Seed
    *
    * The seed used for generation.
    */
   seed: number;
+  video: File;
 };
 
 /**
@@ -813,35 +648,23 @@ export type Seedance20EnterpriseV2ReferenceToVideoInput = {
    */
   duration?: 'auto' | '4' | '5' | '6' | '7' | '8' | '9' | '10' | '11' | '12' | '13' | '14' | '15';
   /**
-   * Bitrate Mode
-   *
-   * Output bitrate mode. 'high' requests a higher-quality, larger-file encode from the model; 'standard' uses the default bitrate.
-   */
-  bitrate_mode?: 'standard' | 'high';
-  /**
-   * Generate Audio
-   *
-   * Whether to generate synchronized audio for the video, including sound effects, ambient sounds, and lip-synced speech. The cost of video generation is the same regardless of whether audio is generated or not.
-   */
-  generate_audio?: boolean;
-  /**
    * End User Id
    *
    * The unique user ID of the end user.
    */
   end_user_id?: string | unknown;
   /**
-   * Video Urls
-   *
-   * Reference videos to guide video generation. Refer to them in the prompt as @Video1, @Video2, etc. Supported formats: MP4, MOV. Up to 3 videos, combined duration must be between 2 and 15 seconds, total size under 50 MB. Each video must be between ~480p (640x640) and ~720p (834x1112) in resolution.
-   */
-  video_urls?: Array<string>;
-  /**
    * Aspect Ratio
    *
    * The aspect ratio of the generated video. Use 16:9 for landscape, 9:16 for portrait/vertical, 1:1 for square, 21:9 for ultrawide cinematic, or auto to let the model decide.
    */
   aspect_ratio?: 'auto' | '21:9' | '16:9' | '4:3' | '1:1' | '3:4' | '9:16';
+  /**
+   * Resolution
+   *
+   * Video resolution - 480p for faster generation, 720p for balance, 1080p for high quality, 4k for highest quality.
+   */
+  resolution?: '480p' | '720p' | '1080p' | '4k';
   /**
    * Audio Urls
    *
@@ -849,36 +672,48 @@ export type Seedance20EnterpriseV2ReferenceToVideoInput = {
    */
   audio_urls?: Array<string>;
   /**
-   * Prompt
-   *
-   * The text prompt used to generate the video.
-   */
-  prompt: string;
-  /**
    * Image Urls
    *
    * Reference images to guide video generation. Refer to them in the prompt as @Image1, @Image2, etc. Supported formats: JPEG, PNG, WebP. Max 30 MB per image. Up to 9 images. Total files across all modalities must not exceed 12.
    */
   image_urls?: Array<string>;
   /**
-   * Resolution
+   * Video Urls
    *
-   * Video resolution - 480p for faster generation, 720p for balance, 1080p for high quality, 4k for highest quality.
+   * Reference videos to guide video generation. Refer to them in the prompt as @Video1, @Video2, etc. Supported formats: MP4, MOV. Up to 3 videos, combined duration must be between 2 and 15 seconds, total size under 50 MB. Each video must be between ~480p (640x640) and ~720p (834x1112) in resolution.
    */
-  resolution?: '480p' | '720p' | '1080p' | '4k';
+  video_urls?: Array<string>;
+  /**
+   * Bitrate Mode
+   *
+   * Output bitrate mode. 'high' requests a higher-quality, larger-file encode from the model; 'standard' uses the default bitrate.
+   */
+  bitrate_mode?: 'standard' | 'high';
+  /**
+   * Prompt
+   *
+   * The text prompt used to generate the video.
+   */
+  prompt: string;
+  /**
+   * Generate Audio
+   *
+   * Whether to generate synchronized audio for the video, including sound effects, ambient sounds, and lip-synced speech. The cost of video generation is the same regardless of whether audio is generated or not.
+   */
+  generate_audio?: boolean;
 };
 
 /**
  * Seedance2VideoOutput
  */
 export type Seedance20EnterpriseV2ReferenceToVideoOutput = {
-  video: File;
   /**
    * Seed
    *
    * The seed used for generation.
    */
   seed: number;
+  video: File;
 };
 
 /**
@@ -886,17 +721,17 @@ export type Seedance20EnterpriseV2ReferenceToVideoOutput = {
  */
 export type Seedance20EnterpriseV2TextToVideoInput = {
   /**
-   * Resolution
+   * Prompt
    *
-   * Video resolution - 480p for faster generation, 720p for balance, 1080p for high quality, 4k for highest quality.
+   * The text prompt used to generate the video
    */
-  resolution?: '480p' | '720p' | '1080p' | '4k';
+  prompt: string;
   /**
-   * End User Id
+   * Bitrate Mode
    *
-   * The unique user ID of the end user.
+   * Output bitrate mode. 'high' requests a higher-quality, larger-file encode from the model; 'standard' uses the default bitrate.
    */
-  end_user_id?: string | unknown;
+  bitrate_mode?: 'standard' | 'high';
   /**
    * Duration
    *
@@ -904,42 +739,42 @@ export type Seedance20EnterpriseV2TextToVideoInput = {
    */
   duration?: 'auto' | '4' | '5' | '6' | '7' | '8' | '9' | '10' | '11' | '12' | '13' | '14' | '15';
   /**
-   * Generate Audio
+   * End User Id
    *
-   * Whether to generate synchronized audio for the video, including sound effects, ambient sounds, and lip-synced speech. The cost of video generation is the same regardless of whether audio is generated or not.
+   * The unique user ID of the end user.
    */
-  generate_audio?: boolean;
-  /**
-   * Bitrate Mode
-   *
-   * Output bitrate mode. 'high' requests a higher-quality, larger-file encode from the model; 'standard' uses the default bitrate.
-   */
-  bitrate_mode?: 'standard' | 'high';
-  /**
-   * Prompt
-   *
-   * The text prompt used to generate the video
-   */
-  prompt: string;
+  end_user_id?: string | unknown;
   /**
    * Aspect Ratio
    *
    * The aspect ratio of the generated video. Use 16:9 for landscape, 9:16 for portrait/vertical, 1:1 for square, 21:9 for ultrawide cinematic, or auto to let the model decide.
    */
   aspect_ratio?: 'auto' | '21:9' | '16:9' | '4:3' | '1:1' | '3:4' | '9:16';
+  /**
+   * Generate Audio
+   *
+   * Whether to generate synchronized audio for the video, including sound effects, ambient sounds, and lip-synced speech. The cost of video generation is the same regardless of whether audio is generated or not.
+   */
+  generate_audio?: boolean;
+  /**
+   * Resolution
+   *
+   * Video resolution - 480p for faster generation, 720p for balance, 1080p for high quality, 4k for highest quality.
+   */
+  resolution?: '480p' | '720p' | '1080p' | '4k';
 };
 
 /**
  * Seedance2VideoOutput
  */
 export type Seedance20EnterpriseV2TextToVideoOutput = {
-  video: File;
   /**
    * Seed
    *
    * The seed used for generation.
    */
   seed: number;
+  video: File;
 };
 
 /**
@@ -947,35 +782,17 @@ export type Seedance20EnterpriseV2TextToVideoOutput = {
  */
 export type Seedance25ReferenceToVideoInput = {
   /**
-   * Seed
+   * Task
    *
-   * Random seed for reproducibility. Note that results may still vary slightly even with the same seed.
+   * The type of video generation task. Reference uses the supplied media as guidance. Editing modifies a reference video and automatically coerces aspect_ratio and duration to auto. Extension continues a reference video and automatically coerces aspect_ratio to auto.
    */
-  seed?: number | unknown;
+  task?: 'reference' | 'editing' | 'extension';
   /**
-   * Image Urls
+   * Bitrate Mode
    *
-   * Reference images to guide video generation. Refer to them in the prompt as @Image1, @Image2, etc. Supported formats: JPG, PNG, WebP, BMP, TIFF, GIF, HEIC, HEIF. Max 30 MB per image. Up to 30 images. Total files across all modalities must not exceed 50.
+   * Output bitrate mode. 'high' requests a higher-quality, larger-file encode from the model; 'standard' uses the default bitrate.
    */
-  image_urls?: Array<string>;
-  /**
-   * Resolution
-   *
-   * Video resolution - 480p for faster generation, 720p for balance, 1080p for high quality.
-   */
-  resolution?: '480p' | '720p' | '1080p';
-  /**
-   * Video Urls
-   *
-   * Reference videos to guide video generation. Refer to them in the prompt as @Video1, @Video2, etc. Supported formats: MP4, MOV. Up to 10 videos. Each video must be 1.8 to 30.2 seconds and no larger than 200 MB; combined duration must not exceed 30.2 seconds. Dimensions must be 300 to 6,000 pixels per side, aspect ratio 0.4 to 2.5, and frame rate 24 to 60 FPS.
-   */
-  video_urls?: Array<string>;
-  /**
-   * Audio Urls
-   *
-   * Reference audio to guide video generation. Refer to them in the prompt as @Audio1, @Audio2, etc. Supported formats: MP3, WAV. Up to 10 files. Each file must be 1.8 to 30.2 seconds and no larger than 15 MB; combined duration must not exceed 30.2 seconds. At least one reference image or video is required.
-   */
-  audio_urls?: Array<string>;
+  bitrate_mode?: 'standard' | 'high';
   /**
    * Duration
    *
@@ -983,11 +800,41 @@ export type Seedance25ReferenceToVideoInput = {
    */
   duration?: 'auto' | '4' | '5' | '6' | '7' | '8' | '9' | '10' | '11' | '12' | '13' | '14' | '15' | '16' | '17' | '18' | '19' | '20' | '21' | '22' | '23' | '24' | '25' | '26' | '27' | '28' | '29' | '30';
   /**
+   * Prompt
+   *
+   * The text prompt used to generate the video.
+   */
+  prompt: string;
+  /**
+   * Video Urls
+   *
+   * Reference videos to guide video generation. Refer to them in the prompt as @Video1, @Video2, etc. Supported formats: MP4, MOV. Up to 10 videos. Each video must be 1.8 to 30.2 seconds and no larger than 200 MB; combined duration must not exceed 30.2 seconds. Dimensions must be 300 to 6,000 pixels per side, aspect ratio 0.4 to 2.5, and frame rate 24 to 60 FPS.
+   */
+  video_urls?: Array<string>;
+  /**
    * Generate Audio
    *
    * Whether to generate synchronized audio for the video, including sound effects, ambient sounds, and lip-synced speech. The cost of video generation is the same regardless of whether audio is generated or not.
    */
   generate_audio?: boolean;
+  /**
+   * Audio Urls
+   *
+   * Reference audio to guide video generation. Refer to them in the prompt as @Audio1, @Audio2, etc. Supported formats: MP3, WAV. Up to 10 files. Each file must be 1.8 to 30.2 seconds and no larger than 15 MB; combined duration must not exceed 30.2 seconds. At least one reference image or video is required.
+   */
+  audio_urls?: Array<string>;
+  /**
+   * Resolution
+   *
+   * Video resolution - 480p for faster generation, 720p for balance, 1080p for high quality.
+   */
+  resolution?: '480p' | '720p' | '1080p';
+  /**
+   * Seed
+   *
+   * Random seed for reproducibility. Note that results may still vary slightly even with the same seed.
+   */
+  seed?: number | unknown;
   /**
    * End User Id
    *
@@ -995,17 +842,11 @@ export type Seedance25ReferenceToVideoInput = {
    */
   end_user_id?: string | unknown;
   /**
-   * Prompt
+   * Image Urls
    *
-   * The text prompt used to generate the video.
+   * Reference images to guide video generation. Refer to them in the prompt as @Image1, @Image2, etc. Supported formats: JPG, PNG, WebP, BMP, TIFF, GIF, HEIC, HEIF. Max 30 MB per image. Up to 30 images. Total files across all modalities must not exceed 50.
    */
-  prompt: string;
-  /**
-   * Bitrate Mode
-   *
-   * Output bitrate mode. 'high' requests a higher-quality, larger-file encode from the model; 'standard' uses the default bitrate.
-   */
-  bitrate_mode?: 'standard' | 'high';
+  image_urls?: Array<string>;
   /**
    * Aspect Ratio
    *
@@ -1032,29 +873,11 @@ export type Seedance25ReferenceToVideoOutput = {
  */
 export type Seedance25TextToVideoInput = {
   /**
-   * Aspect Ratio
-   *
-   * The aspect ratio of the generated video. Use 16:9 for landscape, 9:16 for portrait/vertical, 1:1 for square, 21:9 for ultrawide cinematic, or auto to let the model decide.
-   */
-  aspect_ratio?: 'auto' | '21:9' | '16:9' | '4:3' | '1:1' | '3:4' | '9:16';
-  /**
-   * Duration
-   *
-   * Duration of the video in seconds. Supports 4 to 30 seconds, or auto to let the model decide based on the prompt.
-   */
-  duration?: 'auto' | '4' | '5' | '6' | '7' | '8' | '9' | '10' | '11' | '12' | '13' | '14' | '15' | '16' | '17' | '18' | '19' | '20' | '21' | '22' | '23' | '24' | '25' | '26' | '27' | '28' | '29' | '30';
-  /**
    * Generate Audio
    *
    * Whether to generate synchronized audio for the video, including sound effects, ambient sounds, and lip-synced speech. The cost of video generation is the same regardless of whether audio is generated or not.
    */
   generate_audio?: boolean;
-  /**
-   * End User Id
-   *
-   * The unique user ID of the end user.
-   */
-  end_user_id?: string | unknown;
   /**
    * Resolution
    *
@@ -1062,17 +885,35 @@ export type Seedance25TextToVideoInput = {
    */
   resolution?: '480p' | '720p' | '1080p';
   /**
-   * Bitrate Mode
+   * Duration
    *
-   * Output bitrate mode. 'high' requests a higher-quality, larger-file encode from the model; 'standard' uses the default bitrate.
+   * Duration of the video in seconds. Supports 4 to 30 seconds, or auto to let the model decide based on the prompt.
    */
-  bitrate_mode?: 'standard' | 'high';
+  duration?: 'auto' | '4' | '5' | '6' | '7' | '8' | '9' | '10' | '11' | '12' | '13' | '14' | '15' | '16' | '17' | '18' | '19' | '20' | '21' | '22' | '23' | '24' | '25' | '26' | '27' | '28' | '29' | '30';
   /**
    * Prompt
    *
    * The text prompt used to generate the video
    */
   prompt: string;
+  /**
+   * End User Id
+   *
+   * The unique user ID of the end user.
+   */
+  end_user_id?: string | unknown;
+  /**
+   * Bitrate Mode
+   *
+   * Output bitrate mode. 'high' requests a higher-quality, larger-file encode from the model; 'standard' uses the default bitrate.
+   */
+  bitrate_mode?: 'standard' | 'high';
+  /**
+   * Aspect Ratio
+   *
+   * The aspect ratio of the generated video. Use 16:9 for landscape, 9:16 for portrait/vertical, 1:1 for square, 21:9 for ultrawide cinematic, or auto to let the model decide.
+   */
+  aspect_ratio?: 'auto' | '21:9' | '16:9' | '4:3' | '1:1' | '3:4' | '9:16';
 };
 
 /**
@@ -1099,29 +940,23 @@ export type Seedance20MiniReferenceToVideoInput = {
    */
   duration?: 'auto' | '4' | '5' | '6' | '7' | '8' | '9' | '10' | '11' | '12' | '13' | '14' | '15';
   /**
-   * Prompt
-   *
-   * The text prompt used to generate the video.
-   */
-  prompt: string;
-  /**
    * End User Id
    *
    * The unique user ID of the end user.
    */
   end_user_id?: string | unknown;
   /**
-   * Video Urls
+   * Aspect Ratio
    *
-   * Reference videos to guide video generation. Refer to them in the prompt as @Video1, @Video2, etc. Supported formats: MP4, MOV. Up to 3 videos, combined duration must be between 2 and 15 seconds, total size under 50 MB. Each video must be between ~480p (640x640) and ~720p (834x1112) in resolution.
+   * The aspect ratio of the generated video. Use 16:9 for landscape, 9:16 for portrait/vertical, 1:1 for square, 21:9 for ultrawide cinematic, or auto to let the model decide.
    */
-  video_urls?: Array<string>;
+  aspect_ratio?: 'auto' | '21:9' | '16:9' | '4:3' | '1:1' | '3:4' | '9:16';
   /**
-   * Generate Audio
+   * Resolution
    *
-   * Whether to generate synchronized audio for the video, including sound effects, ambient sounds, and lip-synced speech. The cost of video generation is the same regardless of whether audio is generated or not.
+   * Video resolution - 480p for faster generation, 720p for balance.
    */
-  generate_audio?: boolean;
+  resolution?: '480p' | '720p';
   /**
    * Audio Urls
    *
@@ -1129,36 +964,42 @@ export type Seedance20MiniReferenceToVideoInput = {
    */
   audio_urls?: Array<string>;
   /**
-   * Aspect Ratio
-   *
-   * The aspect ratio of the generated video. Use 16:9 for landscape, 9:16 for portrait/vertical, 1:1 for square, 21:9 for ultrawide cinematic, or auto to let the model decide.
-   */
-  aspect_ratio?: 'auto' | '21:9' | '16:9' | '4:3' | '1:1' | '3:4' | '9:16';
-  /**
    * Image Urls
    *
    * Reference images to guide video generation. Refer to them in the prompt as @Image1, @Image2, etc. Supported formats: JPEG, PNG, WebP. Max 30 MB per image. Up to 9 images. Total files across all modalities must not exceed 12.
    */
   image_urls?: Array<string>;
   /**
-   * Resolution
+   * Video Urls
    *
-   * Video resolution - 480p for faster generation, 720p for balance.
+   * Reference videos to guide video generation. Refer to them in the prompt as @Video1, @Video2, etc. Supported formats: MP4, MOV. Up to 3 videos, combined duration must be between 2 and 15 seconds, total size under 50 MB. Each video must be between ~480p (640x640) and ~720p (834x1112) in resolution.
    */
-  resolution?: '480p' | '720p';
+  video_urls?: Array<string>;
+  /**
+   * Prompt
+   *
+   * The text prompt used to generate the video.
+   */
+  prompt: string;
+  /**
+   * Generate Audio
+   *
+   * Whether to generate synchronized audio for the video, including sound effects, ambient sounds, and lip-synced speech. The cost of video generation is the same regardless of whether audio is generated or not.
+   */
+  generate_audio?: boolean;
 };
 
 /**
  * Seedance2VideoOutput
  */
 export type Seedance20MiniReferenceToVideoOutput = {
-  video: File;
   /**
    * Seed
    *
    * The seed used for generation.
    */
   seed: number;
+  video: File;
 };
 
 /**
@@ -1166,17 +1007,11 @@ export type Seedance20MiniReferenceToVideoOutput = {
  */
 export type Seedance20MiniTextToVideoInput = {
   /**
-   * Resolution
+   * Prompt
    *
-   * Video resolution - 480p for faster generation, 720p for balance.
+   * The text prompt used to generate the video
    */
-  resolution?: '480p' | '720p';
-  /**
-   * End User Id
-   *
-   * The unique user ID of the end user.
-   */
-  end_user_id?: string | unknown;
+  prompt: string;
   /**
    * Duration
    *
@@ -1184,36 +1019,42 @@ export type Seedance20MiniTextToVideoInput = {
    */
   duration?: 'auto' | '4' | '5' | '6' | '7' | '8' | '9' | '10' | '11' | '12' | '13' | '14' | '15';
   /**
-   * Generate Audio
+   * End User Id
    *
-   * Whether to generate synchronized audio for the video, including sound effects, ambient sounds, and lip-synced speech. The cost of video generation is the same regardless of whether audio is generated or not.
+   * The unique user ID of the end user.
    */
-  generate_audio?: boolean;
-  /**
-   * Prompt
-   *
-   * The text prompt used to generate the video
-   */
-  prompt: string;
+  end_user_id?: string | unknown;
   /**
    * Aspect Ratio
    *
    * The aspect ratio of the generated video. Use 16:9 for landscape, 9:16 for portrait/vertical, 1:1 for square, 21:9 for ultrawide cinematic, or auto to let the model decide.
    */
   aspect_ratio?: 'auto' | '21:9' | '16:9' | '4:3' | '1:1' | '3:4' | '9:16';
+  /**
+   * Generate Audio
+   *
+   * Whether to generate synchronized audio for the video, including sound effects, ambient sounds, and lip-synced speech. The cost of video generation is the same regardless of whether audio is generated or not.
+   */
+  generate_audio?: boolean;
+  /**
+   * Resolution
+   *
+   * Video resolution - 480p for faster generation, 720p for balance.
+   */
+  resolution?: '480p' | '720p';
 };
 
 /**
  * Seedance2VideoOutput
  */
 export type Seedance20MiniTextToVideoOutput = {
-  video: File;
   /**
    * Seed
    *
    * The seed used for generation.
    */
   seed: number;
+  video: File;
 };
 
 /**
@@ -1221,17 +1062,11 @@ export type Seedance20MiniTextToVideoOutput = {
  */
 export type GeminiOmni11FlashReferenceToVideoInput = {
   /**
-   * Resolution
+   * Prompt
    *
-   * The resolution of the generated video.
+   * The text prompt describing the video. Reference media is sent in list order before the prompt.
    */
-  resolution?: '360p' | '720p' | '1080p' | '4k';
-  /**
-   * Image URLs
-   *
-   * URLs of reference images to incorporate into the video.
-   */
-  image_urls?: Array<string>;
+  prompt: string;
   /**
    * Duration
    *
@@ -1245,17 +1080,23 @@ export type GeminiOmni11FlashReferenceToVideoInput = {
    */
   aspect_ratio?: '16:9' | '9:16';
   /**
+   * Image URLs
+   *
+   * URLs of reference images to incorporate into the video.
+   */
+  image_urls?: Array<string>;
+  /**
+   * Resolution
+   *
+   * The resolution of the generated video.
+   */
+  resolution?: '360p' | '720p' | '1080p' | '4k';
+  /**
    * Reference Video URLs
    *
    * URLs of up to three reference videos. Each video must be at most three seconds long.
    */
   reference_video_urls?: Array<string>;
-  /**
-   * Prompt
-   *
-   * The text prompt describing the video. Reference media is sent in list order before the prompt.
-   */
-  prompt: string;
 };
 
 /**
@@ -1270,17 +1111,11 @@ export type GeminiOmni11FlashReferenceToVideoOutput = {
  */
 export type GeminiOmni11FlashInput = {
   /**
-   * Resolution
+   * Prompt
    *
-   * The resolution of the generated video.
+   * The text prompt describing the video you want to generate.
    */
-  resolution?: '360p' | '720p' | '1080p' | '4k';
-  /**
-   * Aspect Ratio
-   *
-   * The aspect ratio of the generated video.
-   */
-  aspect_ratio?: '16:9' | '9:16';
+  prompt: string;
   /**
    * Duration
    *
@@ -1288,11 +1123,17 @@ export type GeminiOmni11FlashInput = {
    */
   duration?: number;
   /**
-   * Prompt
+   * Aspect Ratio
    *
-   * The text prompt describing the video you want to generate.
+   * The aspect ratio of the generated video.
    */
-  prompt: string;
+  aspect_ratio?: '16:9' | '9:16';
+  /**
+   * Resolution
+   *
+   * The resolution of the generated video.
+   */
+  resolution?: '360p' | '720p' | '1080p' | '4k';
 };
 
 /**
@@ -1307,29 +1148,17 @@ export type GeminiOmni11FlashOutput = {
  */
 export type KlingVideoO3ProReferenceToVideoInput = {
   /**
-   * Start Image Url
-   *
-   * Image to use as the first frame of the video.
-   */
-  start_image_url?: string | unknown;
-  /**
-   * Shot Type
-   *
-   * The type of multi-shot video generation. 'intelligent' lets the model automatically determine shot structure.
-   */
-  shot_type?: 'customize' | 'intelligent';
-  /**
    * Aspect Ratio
    *
    * The aspect ratio of the generated video frame.
    */
   aspect_ratio?: '16:9' | '9:16' | '1:1';
   /**
-   * End Image Url
+   * Elements
    *
-   * Image to use as the last frame of the video.
+   * Elements (characters/objects) to include. Reference in prompt as @Element1, @Element2.
    */
-  end_image_url?: string | unknown;
+  elements?: Array<KlingV3ComboElementInput> | unknown;
   /**
    * Prompt
    *
@@ -1349,6 +1178,24 @@ export type KlingVideoO3ProReferenceToVideoInput = {
    */
   multi_prompt?: Array<KlingV3MultiPromptElement> | unknown;
   /**
+   * Start Image Url
+   *
+   * Image to use as the first frame of the video.
+   */
+  start_image_url?: string | unknown;
+  /**
+   * Shot Type
+   *
+   * The type of multi-shot video generation. 'intelligent' lets the model automatically determine shot structure.
+   */
+  shot_type?: 'customize' | 'intelligent';
+  /**
+   * End Image Url
+   *
+   * Image to use as the last frame of the video.
+   */
+  end_image_url?: string | unknown;
+  /**
    * Generate Audio
    *
    * Whether to generate native audio for the video.
@@ -1360,12 +1207,6 @@ export type KlingVideoO3ProReferenceToVideoInput = {
    * Reference images for style/appearance. Reference in prompt as @Image1, @Image2, etc. Maximum 4 total (elements + reference images) when using video.
    */
   image_urls?: Array<string> | unknown;
-  /**
-   * Elements
-   *
-   * Elements (characters/objects) to include. Reference in prompt as @Element1, @Element2.
-   */
-  elements?: Array<KlingV3ComboElementInput> | unknown;
 };
 
 /**
@@ -1380,11 +1221,29 @@ export type KlingVideoO3ProReferenceToVideoOutput = {
  */
 export type KlingVideoO3ProTextToVideoInput = {
   /**
+   * Shot Type
+   *
+   * The type of multi-shot video generation. 'intelligent' lets the model automatically determine shot structure.
+   */
+  shot_type?: 'customize' | 'intelligent';
+  /**
    * Duration
    *
    * Video duration in seconds (3-15s).
    */
   duration?: '3' | '4' | '5' | '6' | '7' | '8' | '9' | '10' | '11' | '12' | '13' | '14' | '15';
+  /**
+   * Prompt
+   *
+   * Text prompt for video generation. Required unless multi_prompt is provided.
+   */
+  prompt?: string | unknown;
+  /**
+   * Generate Audio
+   *
+   * Whether to generate native audio for the video.
+   */
+  generate_audio?: boolean;
   /**
    * Multi Prompt
    *
@@ -1397,24 +1256,6 @@ export type KlingVideoO3ProTextToVideoInput = {
    * Aspect ratio of the generated video.
    */
   aspect_ratio?: '16:9' | '9:16' | '1:1';
-  /**
-   * Shot Type
-   *
-   * The type of multi-shot video generation. 'intelligent' lets the model automatically determine shot structure.
-   */
-  shot_type?: 'customize' | 'intelligent';
-  /**
-   * Generate Audio
-   *
-   * Whether to generate native audio for the video.
-   */
-  generate_audio?: boolean;
-  /**
-   * Prompt
-   *
-   * Text prompt for video generation. Required unless multi_prompt is provided.
-   */
-  prompt?: string | unknown;
 };
 
 /**
@@ -1431,11 +1272,11 @@ export type KlingVideoO3ProTextToVideoOutput = {
  */
 export type H3MaxReferenceToVideoInput = {
   /**
-   * Duration
+   * Reference Audio URLs
    *
-   * The duration of the video in seconds.
+   * URLs of reference audio clips (2-15 seconds each, combined duration at most 15 seconds), referenced in the prompt as Audio 1, Audio 2, and so on. Audio cannot be the only reference input; provide at least one reference image or video with it. Reference images, videos, and audio clips must add up to at most 12 files.
    */
-  duration?: number;
+  reference_audio_urls?: Array<string>;
   /**
    * Sync Mode
    *
@@ -1443,47 +1284,11 @@ export type H3MaxReferenceToVideoInput = {
    */
   sync_mode?: boolean;
   /**
-   * Reference Audio URLs
-   *
-   * URLs of reference audio clips (2-15 seconds each, combined duration at most 15 seconds), referenced in the prompt as Audio 1, Audio 2, and so on. Audio cannot be the only reference input; provide at least one reference image or video with it. Reference images, videos, and audio clips must add up to at most 12 files.
-   */
-  reference_audio_urls?: Array<string>;
-  /**
-   * Enable Safety Checker
-   *
-   * If set to true, the safety checker will be enabled.
-   */
-  enable_safety_checker?: boolean;
-  /**
-   * Prompt
-   *
-   * Text prompt for video generation. Refer to reference assets by their modality and order in the reference lists: Image 1, Image 2, Video 1, Audio 1, and so on.
-   */
-  prompt: string;
-  /**
-   * Aspect Ratio
-   *
-   * The aspect ratio of the generated video.
-   */
-  aspect_ratio?: 'adaptive' | '21:9' | '16:9' | '4:3' | '1:1' | '3:4' | '9:16';
-  /**
-   * Seed
-   *
-   * Random seed. A random seed is selected when omitted.
-   */
-  seed?: number | unknown;
-  /**
    * Prompt Expansion Mode
    *
    * How much effort to spend rewriting the prompt before generation. 'balanced' returns in about a second. 'quality' spends up to ~30s on a richer prompt.
    */
   prompt_expansion_mode: string;
-  /**
-   * Reference Image URLs
-   *
-   * URLs of subject/style reference images, referenced in the prompt as Image 1, Image 2, and so on. Reference images, videos, and audio clips must add up to at most 12 files.
-   */
-  reference_image_urls?: Array<string>;
   /**
    * Reference Video URLs
    *
@@ -1491,11 +1296,47 @@ export type H3MaxReferenceToVideoInput = {
    */
   reference_video_urls?: Array<string>;
   /**
+   * Seed
+   *
+   * Random seed. A random seed is selected when omitted.
+   */
+  seed?: number | unknown;
+  /**
    * Resolution
    *
    * The native generation resolution, or 1080P latent refinement from a native 768P source.
    */
   resolution?: '480P' | '768P' | '1080P';
+  /**
+   * Reference Image URLs
+   *
+   * URLs of subject/style reference images, referenced in the prompt as Image 1, Image 2, and so on. Reference images, videos, and audio clips must add up to at most 12 files.
+   */
+  reference_image_urls?: Array<string>;
+  /**
+   * Aspect Ratio
+   *
+   * The aspect ratio of the generated video.
+   */
+  aspect_ratio?: 'adaptive' | '21:9' | '16:9' | '4:3' | '1:1' | '3:4' | '9:16';
+  /**
+   * Prompt
+   *
+   * Text prompt for video generation. Refer to reference assets by their modality and order in the reference lists: Image 1, Image 2, Video 1, Audio 1, and so on.
+   */
+  prompt: string;
+  /**
+   * Enable Safety Checker
+   *
+   * If set to true, the safety checker will be enabled.
+   */
+  enable_safety_checker?: boolean;
+  /**
+   * Duration
+   *
+   * The duration of the video in seconds.
+   */
+  duration?: number;
 };
 
 /**
@@ -1508,7 +1349,6 @@ export type H3MaxReferenceToVideoOutput = {
    * The prompt after expansion, as sent to the model. Null when prompt expansion was disabled, left the prompt unchanged, or was performed internally by MiniMax's hosted API.
    */
   expanded_prompt?: string | unknown;
-  video: File;
   /**
    * Timings
    *
@@ -1517,6 +1357,7 @@ export type H3MaxReferenceToVideoOutput = {
   timings?: {
     [key: string]: number;
   } | unknown;
+  video: File;
   /**
    * Seed
    *
@@ -1530,41 +1371,11 @@ export type H3MaxReferenceToVideoOutput = {
  */
 export type H3MaxTextToVideoInput = {
   /**
-   * Duration
-   *
-   * The duration of the video in seconds.
-   */
-  duration?: number;
-  /**
    * Sync Mode
    *
    * Return the generated video as base64 instead of a CDN URL.
    */
   sync_mode?: boolean;
-  /**
-   * Enable Safety Checker
-   *
-   * If set to true, the safety checker will be enabled.
-   */
-  enable_safety_checker?: boolean;
-  /**
-   * Prompt
-   *
-   * Text prompt for video generation
-   */
-  prompt: string;
-  /**
-   * Seed
-   *
-   * Random seed. A random seed is selected when omitted.
-   */
-  seed?: number | unknown;
-  /**
-   * Aspect Ratio
-   *
-   * The aspect ratio of the generated video.
-   */
-  aspect_ratio?: '21:9' | '16:9' | '4:3' | '1:1' | '3:4' | '9:16';
   /**
    * Prompt Expansion Mode
    *
@@ -1572,24 +1383,47 @@ export type H3MaxTextToVideoInput = {
    */
   prompt_expansion_mode: string;
   /**
+   * Seed
+   *
+   * Random seed. A random seed is selected when omitted.
+   */
+  seed?: number | unknown;
+  /**
    * Resolution
    *
    * The native generation resolution, or 1080P latent refinement from a native 768P source.
    */
   resolution?: '480P' | '768P' | '1080P';
+  /**
+   * Prompt
+   *
+   * Text prompt for video generation
+   */
+  prompt: string;
+  /**
+   * Aspect Ratio
+   *
+   * The aspect ratio of the generated video.
+   */
+  aspect_ratio?: '21:9' | '16:9' | '4:3' | '1:1' | '3:4' | '9:16';
+  /**
+   * Duration
+   *
+   * The duration of the video in seconds.
+   */
+  duration?: number;
+  /**
+   * Enable Safety Checker
+   *
+   * If set to true, the safety checker will be enabled.
+   */
+  enable_safety_checker?: boolean;
 };
 
 /**
  * TurboTextToVideoHailuo03Output
  */
 export type H3MaxTextToVideoOutput = {
-  /**
-   * Expanded Prompt
-   *
-   * The prompt after expansion, as sent to the model. Null when prompt expansion was disabled, left the prompt unchanged, or was performed internally by MiniMax's hosted API.
-   */
-  expanded_prompt?: string | unknown;
-  video: File;
   /**
    * Timings
    *
@@ -1598,6 +1432,13 @@ export type H3MaxTextToVideoOutput = {
   timings?: {
     [key: string]: number;
   } | unknown;
+  /**
+   * Expanded Prompt
+   *
+   * The prompt after expansion, as sent to the model. Null when prompt expansion was disabled, left the prompt unchanged, or was performed internally by MiniMax's hosted API.
+   */
+  expanded_prompt?: string | unknown;
+  video: File;
 };
 
 export type GetXaiGrokImagineVideoV15ImageToVideoRequestsByRequestIdStatusData = {
@@ -1688,184 +1529,6 @@ export type GetXaiGrokImagineVideoV15ImageToVideoRequestsByRequestIdResponses = 
 };
 
 export type GetXaiGrokImagineVideoV15ImageToVideoRequestsByRequestIdResponse = GetXaiGrokImagineVideoV15ImageToVideoRequestsByRequestIdResponses[keyof GetXaiGrokImagineVideoV15ImageToVideoRequestsByRequestIdResponses];
-
-export type GetFalAiLtx23ImageToVideoRequestsByRequestIdStatusData = {
-  body?: never;
-  path: {
-    /**
-     * Request ID
-     */
-    request_id: string;
-  };
-  query?: {
-    /**
-     * Whether to include logs (`1`) in the response or not (`0`).
-     */
-    logs?: number;
-  };
-  url: '/fal-ai/ltx-2.3/image-to-video/requests/{request_id}/status';
-};
-
-export type GetFalAiLtx23ImageToVideoRequestsByRequestIdStatusResponses = {
-  /**
-   * The request status.
-   */
-  200: QueueStatus;
-};
-
-export type GetFalAiLtx23ImageToVideoRequestsByRequestIdStatusResponse = GetFalAiLtx23ImageToVideoRequestsByRequestIdStatusResponses[keyof GetFalAiLtx23ImageToVideoRequestsByRequestIdStatusResponses];
-
-export type PutFalAiLtx23ImageToVideoRequestsByRequestIdCancelData = {
-  body?: never;
-  path: {
-    /**
-     * Request ID
-     */
-    request_id: string;
-  };
-  query?: never;
-  url: '/fal-ai/ltx-2.3/image-to-video/requests/{request_id}/cancel';
-};
-
-export type PutFalAiLtx23ImageToVideoRequestsByRequestIdCancelResponses = {
-  /**
-   * The request was cancelled.
-   */
-  200: {
-    /**
-     * Whether the request was cancelled successfully.
-     */
-    success?: boolean;
-  };
-};
-
-export type PutFalAiLtx23ImageToVideoRequestsByRequestIdCancelResponse = PutFalAiLtx23ImageToVideoRequestsByRequestIdCancelResponses[keyof PutFalAiLtx23ImageToVideoRequestsByRequestIdCancelResponses];
-
-export type PostFalAiLtx23ImageToVideoData = {
-  body: Ltx23ImageToVideoInput;
-  path?: never;
-  query?: never;
-  url: '/fal-ai/ltx-2.3/image-to-video';
-};
-
-export type PostFalAiLtx23ImageToVideoResponses = {
-  /**
-   * The request status.
-   */
-  200: QueueStatus;
-};
-
-export type PostFalAiLtx23ImageToVideoResponse = PostFalAiLtx23ImageToVideoResponses[keyof PostFalAiLtx23ImageToVideoResponses];
-
-export type GetFalAiLtx23ImageToVideoRequestsByRequestIdData = {
-  body?: never;
-  path: {
-    /**
-     * Request ID
-     */
-    request_id: string;
-  };
-  query?: never;
-  url: '/fal-ai/ltx-2.3/image-to-video/requests/{request_id}';
-};
-
-export type GetFalAiLtx23ImageToVideoRequestsByRequestIdResponses = {
-  /**
-   * Result of the request.
-   */
-  200: Ltx23ImageToVideoOutput;
-};
-
-export type GetFalAiLtx23ImageToVideoRequestsByRequestIdResponse = GetFalAiLtx23ImageToVideoRequestsByRequestIdResponses[keyof GetFalAiLtx23ImageToVideoRequestsByRequestIdResponses];
-
-export type GetFalAiVeo31ImageToVideoRequestsByRequestIdStatusData = {
-  body?: never;
-  path: {
-    /**
-     * Request ID
-     */
-    request_id: string;
-  };
-  query?: {
-    /**
-     * Whether to include logs (`1`) in the response or not (`0`).
-     */
-    logs?: number;
-  };
-  url: '/fal-ai/veo3.1/image-to-video/requests/{request_id}/status';
-};
-
-export type GetFalAiVeo31ImageToVideoRequestsByRequestIdStatusResponses = {
-  /**
-   * The request status.
-   */
-  200: QueueStatus;
-};
-
-export type GetFalAiVeo31ImageToVideoRequestsByRequestIdStatusResponse = GetFalAiVeo31ImageToVideoRequestsByRequestIdStatusResponses[keyof GetFalAiVeo31ImageToVideoRequestsByRequestIdStatusResponses];
-
-export type PutFalAiVeo31ImageToVideoRequestsByRequestIdCancelData = {
-  body?: never;
-  path: {
-    /**
-     * Request ID
-     */
-    request_id: string;
-  };
-  query?: never;
-  url: '/fal-ai/veo3.1/image-to-video/requests/{request_id}/cancel';
-};
-
-export type PutFalAiVeo31ImageToVideoRequestsByRequestIdCancelResponses = {
-  /**
-   * The request was cancelled.
-   */
-  200: {
-    /**
-     * Whether the request was cancelled successfully.
-     */
-    success?: boolean;
-  };
-};
-
-export type PutFalAiVeo31ImageToVideoRequestsByRequestIdCancelResponse = PutFalAiVeo31ImageToVideoRequestsByRequestIdCancelResponses[keyof PutFalAiVeo31ImageToVideoRequestsByRequestIdCancelResponses];
-
-export type PostFalAiVeo31ImageToVideoData = {
-  body: Veo31ImageToVideoInput;
-  path?: never;
-  query?: never;
-  url: '/fal-ai/veo3.1/image-to-video';
-};
-
-export type PostFalAiVeo31ImageToVideoResponses = {
-  /**
-   * The request status.
-   */
-  200: QueueStatus;
-};
-
-export type PostFalAiVeo31ImageToVideoResponse = PostFalAiVeo31ImageToVideoResponses[keyof PostFalAiVeo31ImageToVideoResponses];
-
-export type GetFalAiVeo31ImageToVideoRequestsByRequestIdData = {
-  body?: never;
-  path: {
-    /**
-     * Request ID
-     */
-    request_id: string;
-  };
-  query?: never;
-  url: '/fal-ai/veo3.1/image-to-video/requests/{request_id}';
-};
-
-export type GetFalAiVeo31ImageToVideoRequestsByRequestIdResponses = {
-  /**
-   * Result of the request.
-   */
-  200: Veo31ImageToVideoOutput;
-};
-
-export type GetFalAiVeo31ImageToVideoRequestsByRequestIdResponse = GetFalAiVeo31ImageToVideoRequestsByRequestIdResponses[keyof GetFalAiVeo31ImageToVideoRequestsByRequestIdResponses];
 
 export type GetFalAiGeminiOmni11FlashImageToVideoRequestsByRequestIdStatusData = {
   body?: never;
@@ -2044,95 +1707,6 @@ export type GetFalAiKlingVideoV3ProImageToVideoRequestsByRequestIdResponses = {
 };
 
 export type GetFalAiKlingVideoV3ProImageToVideoRequestsByRequestIdResponse = GetFalAiKlingVideoV3ProImageToVideoRequestsByRequestIdResponses[keyof GetFalAiKlingVideoV3ProImageToVideoRequestsByRequestIdResponses];
-
-export type GetFalAiMinimaxHailuo23ProImageToVideoRequestsByRequestIdStatusData = {
-  body?: never;
-  path: {
-    /**
-     * Request ID
-     */
-    request_id: string;
-  };
-  query?: {
-    /**
-     * Whether to include logs (`1`) in the response or not (`0`).
-     */
-    logs?: number;
-  };
-  url: '/fal-ai/minimax/hailuo-2.3/pro/image-to-video/requests/{request_id}/status';
-};
-
-export type GetFalAiMinimaxHailuo23ProImageToVideoRequestsByRequestIdStatusResponses = {
-  /**
-   * The request status.
-   */
-  200: QueueStatus;
-};
-
-export type GetFalAiMinimaxHailuo23ProImageToVideoRequestsByRequestIdStatusResponse = GetFalAiMinimaxHailuo23ProImageToVideoRequestsByRequestIdStatusResponses[keyof GetFalAiMinimaxHailuo23ProImageToVideoRequestsByRequestIdStatusResponses];
-
-export type PutFalAiMinimaxHailuo23ProImageToVideoRequestsByRequestIdCancelData = {
-  body?: never;
-  path: {
-    /**
-     * Request ID
-     */
-    request_id: string;
-  };
-  query?: never;
-  url: '/fal-ai/minimax/hailuo-2.3/pro/image-to-video/requests/{request_id}/cancel';
-};
-
-export type PutFalAiMinimaxHailuo23ProImageToVideoRequestsByRequestIdCancelResponses = {
-  /**
-   * The request was cancelled.
-   */
-  200: {
-    /**
-     * Whether the request was cancelled successfully.
-     */
-    success?: boolean;
-  };
-};
-
-export type PutFalAiMinimaxHailuo23ProImageToVideoRequestsByRequestIdCancelResponse = PutFalAiMinimaxHailuo23ProImageToVideoRequestsByRequestIdCancelResponses[keyof PutFalAiMinimaxHailuo23ProImageToVideoRequestsByRequestIdCancelResponses];
-
-export type PostFalAiMinimaxHailuo23ProImageToVideoData = {
-  body: MinimaxHailuo23ProImageToVideoInput;
-  path?: never;
-  query?: never;
-  url: '/fal-ai/minimax/hailuo-2.3/pro/image-to-video';
-};
-
-export type PostFalAiMinimaxHailuo23ProImageToVideoResponses = {
-  /**
-   * The request status.
-   */
-  200: QueueStatus;
-};
-
-export type PostFalAiMinimaxHailuo23ProImageToVideoResponse = PostFalAiMinimaxHailuo23ProImageToVideoResponses[keyof PostFalAiMinimaxHailuo23ProImageToVideoResponses];
-
-export type GetFalAiMinimaxHailuo23ProImageToVideoRequestsByRequestIdData = {
-  body?: never;
-  path: {
-    /**
-     * Request ID
-     */
-    request_id: string;
-  };
-  query?: never;
-  url: '/fal-ai/minimax/hailuo-2.3/pro/image-to-video/requests/{request_id}';
-};
-
-export type GetFalAiMinimaxHailuo23ProImageToVideoRequestsByRequestIdResponses = {
-  /**
-   * Result of the request.
-   */
-  200: MinimaxHailuo23ProImageToVideoOutput;
-};
-
-export type GetFalAiMinimaxHailuo23ProImageToVideoRequestsByRequestIdResponse = GetFalAiMinimaxHailuo23ProImageToVideoRequestsByRequestIdResponses[keyof GetFalAiMinimaxHailuo23ProImageToVideoRequestsByRequestIdResponses];
 
 export type GetMinimaxH3MaxImageToVideoRequestsByRequestIdStatusData = {
   body?: never;

@@ -9,7 +9,7 @@
  * Usage:
  *   bun scripts/eval-enhance-duration.ts
  *   bun scripts/eval-enhance-duration.ts --runs 3
- *   bun scripts/eval-enhance-duration.ts --video-model ltx_2_3_pro
+ *   bun scripts/eval-enhance-duration.ts --video-model kling_v3_pro
  *
  * Needs OPENROUTER_KEY. Report-only — never writes to the DB.
  */

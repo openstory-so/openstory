@@ -98,11 +98,11 @@ describe('resolveVideoModel', () => {
   it('prefers the last failed attempt over the selected version', () => {
     expect(
       resolveVideoModel({
-        lastFailedAttemptModel: 'veo3_1',
+        lastFailedAttemptModel: 'minimax_h3_max',
         selectedVersionModel: 'kling_v3_pro',
         sequenceModel: 'seedance_v2',
       })
-    ).toBe('veo3_1');
+    ).toBe('minimax_h3_max');
   });
 
   it('uses the selected version when there is no failed attempt', () => {
