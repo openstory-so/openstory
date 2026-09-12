@@ -58,6 +58,7 @@ export function buildCharacterInsert(args: {
     distinguishingFeatures: character.distinguishingFeatures,
     personality: castingAttrs?.personality ?? character.personality,
     movement: castingAttrs?.movement ?? character.movement,
+    voiceOnly: character.voiceOnly,
     consistencyTag: castingAttrs?.consistencyTag ?? character.consistencyTag,
     firstMentionSceneId: null,
     firstMentionText: null,

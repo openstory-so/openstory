@@ -32,8 +32,10 @@ export class TalentMatchingWorkflow extends OpenStoryWorkflowEntrypoint<TalentMa
     const input = event.payload;
     const { suggestedTalentIds, sequenceId, analysisModelId } = input;
 
-    // Use pre-extracted bible from scene splitting (always provided by upstream)
-    const characterBible = input.characterBible;
+    // Use pre-extracted bible from scene splitting (always provided by upstream).
+    // A voice-only character has no face to cast (#1585): it is never offered
+    // to the matcher, and `build-matches` below drops any match naming it.
+    const characterBible = input.characterBible.filter((c) => !c.voiceOnly);
 
     // Talent matching only runs against pre-selected talent IDs. Characters
     // without a pre-cast talent are auto-extracted later in the pipeline and

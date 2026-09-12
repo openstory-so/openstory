@@ -428,6 +428,7 @@ export const recastCharacterFn = createServerFn({ method: 'POST' })
       characterMetadata: {
         characterId: character.characterId,
         name: character.name,
+        voiceOnly: character.voiceOnly,
         ...castingAttrs,
       },
       sequenceId: character.sequenceId,

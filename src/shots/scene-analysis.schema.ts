@@ -41,6 +41,9 @@ export const characterBibleEntrySchema = z.object({
   // Performance (#1561). Guidance lives in the bible prompt (grammar budget).
   personality: z.string(),
   movement: z.string(),
+  // Narrator, radio voice, a caller on the phone: a voice with no face, so no
+  // sheet, no talent match, no place in an image prompt (#1585).
+  voiceOnly: z.boolean().meta({ description: 'Heard but never seen' }),
   consistencyTag: z.string().meta({ description: 'snake_case name slug' }),
 });
 

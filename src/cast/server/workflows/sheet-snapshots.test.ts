@@ -86,6 +86,7 @@ describe('character-sheet hash', () => {
       distinguishingFeatures: '',
       personality: '',
       movement: '',
+      voiceOnly: false,
       consistencyTag: 'jack',
     },
     imageModel: 'nano_banana_2',

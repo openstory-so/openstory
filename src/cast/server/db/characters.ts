@@ -211,6 +211,7 @@ export function createCharactersMethods(db: Database) {
             distinguishingFeatures: data.distinguishingFeatures,
             personality: data.personality,
             movement: data.movement,
+            voiceOnly: data.voiceOnly,
             consistencyTag: data.consistencyTag,
             // Sheet OUTPUT is not re-written here (#1419). A re-analysis used
             // to blank `sheetImageUrl` while leaving the version rows intact,

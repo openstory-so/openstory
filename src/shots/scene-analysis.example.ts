@@ -17,6 +17,7 @@ export const sceneAnalysisExample: SceneAnalysis = {
       distinguishingFeatures: 'Unique identifiers',
       personality: 'Temperament and how they react',
       movement: 'Gait, posture, habitual gestures',
+      voiceOnly: false,
       consistencyTag: 'Short tag for continuity',
     },
   ],

@@ -10,13 +10,13 @@ import { z } from 'zod';
 const characterFormSchema = z.object({
   name: z.string().trim().min(1).max(255),
   age: z.string().max(2000),
-  gender: z.string().max(2000),
-  ethnicity: z.string().max(2000),
-  physicalDescription: z.string().max(2000),
-  standardClothing: z.string().max(2000),
-  distinguishingFeatures: z.string().max(2000),
+  gender: z.string().max(2000).default(''),
+  ethnicity: z.string().max(2000).default(''),
+  physicalDescription: z.string().max(2000).default(''),
+  standardClothing: z.string().max(2000).default(''),
+  distinguishingFeatures: z.string().max(2000).default(''),
   personality: z.string().max(2000),
-  movement: z.string().max(2000),
+  movement: z.string().max(2000).default(''),
 });
 
 /**
@@ -30,6 +30,11 @@ export const CharacterBibleForm: React.FC<{
   character: CharacterWithSheet;
 }> = ({ sequenceId, character }) => {
   const updateCharacter = useUpdateSequenceCharacter();
+  // A voice-only character (#1585) has no appearance: hide the empty
+  // appearance fields (the schema defaults them to '') and label
+  // personality as the voice.
+  const showAppearance = (value: string | null) =>
+    !character.voiceOnly || Boolean(value);
 
   const onSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -72,54 +77,66 @@ export const CharacterBibleForm: React.FC<{
           name="age"
           defaultValue={character.age}
         />
+        {showAppearance(character.gender) && (
+          <BibleField
+            idPrefix="character"
+            label="Gender"
+            name="gender"
+            defaultValue={character.gender}
+          />
+        )}
+      </div>
+      {showAppearance(character.ethnicity) && (
         <BibleField
           idPrefix="character"
-          label="Gender"
-          name="gender"
-          defaultValue={character.gender}
+          label="Ethnicity"
+          name="ethnicity"
+          defaultValue={character.ethnicity}
         />
-      </div>
+      )}
+      {showAppearance(character.physicalDescription) && (
+        <BibleField
+          idPrefix="character"
+          label="Physical Description"
+          name="physicalDescription"
+          defaultValue={character.physicalDescription}
+          textarea
+        />
+      )}
+      {showAppearance(character.standardClothing) && (
+        <BibleField
+          idPrefix="character"
+          label="Standard Clothing"
+          name="standardClothing"
+          defaultValue={character.standardClothing}
+          textarea
+        />
+      )}
+      {showAppearance(character.distinguishingFeatures) && (
+        <BibleField
+          idPrefix="character"
+          label="Distinguishing Features"
+          name="distinguishingFeatures"
+          defaultValue={character.distinguishingFeatures}
+          textarea
+        />
+      )}
       <BibleField
         idPrefix="character"
-        label="Ethnicity"
-        name="ethnicity"
-        defaultValue={character.ethnicity}
-      />
-      <BibleField
-        idPrefix="character"
-        label="Physical Description"
-        name="physicalDescription"
-        defaultValue={character.physicalDescription}
-        textarea
-      />
-      <BibleField
-        idPrefix="character"
-        label="Standard Clothing"
-        name="standardClothing"
-        defaultValue={character.standardClothing}
-        textarea
-      />
-      <BibleField
-        idPrefix="character"
-        label="Distinguishing Features"
-        name="distinguishingFeatures"
-        defaultValue={character.distinguishingFeatures}
-        textarea
-      />
-      <BibleField
-        idPrefix="character"
-        label="Personality"
+        label={character.voiceOnly ? 'Voice' : 'Personality'}
         name="personality"
         defaultValue={character.personality}
         textarea
       />
-      <BibleField
-        idPrefix="character"
-        label="Body movement"
-        name="movement"
-        defaultValue={character.movement}
-        textarea
-      />
+      {showAppearance(character.movement) && (
+        <BibleField
+          idPrefix="character"
+          label="Body movement"
+          name="movement"
+          defaultValue={character.movement}
+          textarea
+        />
+      )}
       <div className="flex justify-end">
         <Button type="submit" disabled={updateCharacter.isPending}>
           {updateCharacter.isPending && (

@@ -1,0 +1,1 @@
+ALTER TABLE `characters` ADD `voice_only` integer DEFAULT false NOT NULL;

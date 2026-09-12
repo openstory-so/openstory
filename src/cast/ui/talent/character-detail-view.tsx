@@ -5,6 +5,7 @@ import { SheetComparisonDialog } from '@/cast/ui/sheets/sheet-comparison-dialog'
 import { SheetStalenessBanners } from '@/cast/ui/sheets/sheet-staleness-banners';
 import { SheetVersionStrip } from '@/cast/ui/sheets/sheet-version-strip';
 import { StalenessIndicator } from '@/shots/ui/staleness/staleness-indicator';
+import { Badge } from '@/ui/shadcn/badge';
 import { Button } from '@/ui/shadcn/button';
 import { ScrollArea } from '@/ui/shadcn/scroll-area';
 import { Skeleton } from '@/ui/shadcn/skeleton';
@@ -57,6 +58,7 @@ import {
   ArrowLeft,
   Library,
   Loader2,
+  Mic,
   RefreshCw,
   Trash2,
   User,
@@ -456,116 +458,131 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
 
           <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
             <div className="flex flex-col gap-4">
-              <div className="flex items-center gap-2">
-                <p className="text-sm font-medium">Sheet</p>
-                {isSheetStale && (
-                  <StalenessIndicator
-                    artifact="sheet"
-                    entityType="character"
-                    density="header-chip"
-                    isRegenerating={regenerateSheet.isPending}
-                    onRegenerate={handleRegenerateSheet}
-                  />
-                )}
-              </div>
-
-              <div className="flex flex-col gap-2">
-                <div className="relative aspect-video overflow-hidden rounded-lg bg-muted">
-                  {character.sheetImageUrl ? (
-                    <AppImage
-                      src={character.sheetImageUrl}
-                      alt={character.name}
-                      width={640}
-                      height={360}
-                      className="h-full w-full object-cover"
-                    />
-                  ) : isSheetGenerating ? (
-                    <div className="flex h-full w-full flex-col items-center justify-center gap-3">
-                      <Loader2 className="h-10 w-10 animate-spin text-muted-foreground" />
-                      <p className="text-sm text-muted-foreground">
-                        {sheetBusyLabel}
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="flex h-full w-full flex-col items-center justify-center gap-2">
-                      <User className="h-16 w-16 text-muted-foreground/20" />
-                      <p className="text-sm text-muted-foreground">
-                        No sheet yet
-                      </p>
-                    </div>
-                  )}
-                  {isSheetGenerating && character.sheetImageUrl ? (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-background/60">
-                      <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                      <p className="text-sm text-muted-foreground">
-                        {sheetBusyLabel}
-                      </p>
-                    </div>
-                  ) : null}
+              {character.voiceOnly ? (
+                // Heard, never seen (#1585): no sheet exists or is offered.
+                <div className="flex items-center gap-3 rounded-lg bg-muted/50 p-3">
+                  <Mic className="h-5 w-5 text-muted-foreground" />
+                  <div className="flex flex-col gap-1">
+                    <Badge variant="secondary">Voice only</Badge>
+                    <p className="text-sm text-muted-foreground">
+                      Heard but never seen. No sheet is generated.
+                    </p>
+                  </div>
                 </div>
-                <SheetVersionStrip
-                  label="Versions"
-                  selectingId={
-                    selectVersion.isPending
-                      ? selectVersion.variables.versionId
-                      : null
-                  }
-                  onSelect={(versionId) =>
-                    selectVersion.mutate(
-                      { sequenceId, characterId, versionId },
-                      {
-                        onError: (error) =>
-                          toast.error('Failed to switch sheet', {
-                            description: errorMessage(error),
-                          }),
-                      }
-                    )
-                  }
-                  versions={(versionHistory?.versions ?? []).map((row) => ({
-                    id: row.id,
-                    url: row.url,
-                    selected:
-                      row.id ===
-                      (versionHistory?.selectedSheetVersionId ??
-                        character.selectedSheetVersionId),
-                  }))}
-                />
-              </div>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium">Sheet</p>
+                    {isSheetStale && (
+                      <StalenessIndicator
+                        artifact="sheet"
+                        entityType="character"
+                        density="header-chip"
+                        isRegenerating={regenerateSheet.isPending}
+                        onRegenerate={handleRegenerateSheet}
+                      />
+                    )}
+                  </div>
 
-              <ImageModelSelector
-                selectedModel={selectedSheetModel}
-                onModelChange={setSheetModel}
-                disabled={regenerateSheet.isPending || isSheetGenerating}
-              />
-              <p className="text-xs text-muted-foreground">
-                Used for this character's sheet. Shot stills still follow the
-                sequence image model.
-              </p>
-              <div className="flex w-fit flex-col gap-1">
-                <Button
-                  onClick={handleRegenerateSheet}
-                  disabled={regenerateSheet.isPending}
-                >
-                  {regenerateSheet.isPending ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <RefreshCw className="mr-2 h-4 w-4" />
-                  )}
-                  {regenerateSheet.isPending
-                    ? hasPriorSheet
-                      ? 'Regenerating…'
-                      : 'Generating…'
-                    : hasPriorSheet
-                      ? isSheetGenerating
-                        ? 'Generate again'
-                        : 'Regenerate Sheet'
-                      : 'Generate Sheet'}
-                </Button>
-                <ActionCost estimate={sheetCostEstimate} />
-              </div>
+                  <div className="flex flex-col gap-2">
+                    <div className="relative aspect-video overflow-hidden rounded-lg bg-muted">
+                      {character.sheetImageUrl ? (
+                        <AppImage
+                          src={character.sheetImageUrl}
+                          alt={character.name}
+                          width={640}
+                          height={360}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : isSheetGenerating ? (
+                        <div className="flex h-full w-full flex-col items-center justify-center gap-3">
+                          <Loader2 className="h-10 w-10 animate-spin text-muted-foreground" />
+                          <p className="text-sm text-muted-foreground">
+                            {sheetBusyLabel}
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="flex h-full w-full flex-col items-center justify-center gap-2">
+                          <User className="h-16 w-16 text-muted-foreground/20" />
+                          <p className="text-sm text-muted-foreground">
+                            No sheet yet
+                          </p>
+                        </div>
+                      )}
+                      {isSheetGenerating && character.sheetImageUrl ? (
+                        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-background/60">
+                          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                          <p className="text-sm text-muted-foreground">
+                            {sheetBusyLabel}
+                          </p>
+                        </div>
+                      ) : null}
+                    </div>
+                    <SheetVersionStrip
+                      label="Versions"
+                      selectingId={
+                        selectVersion.isPending
+                          ? selectVersion.variables.versionId
+                          : null
+                      }
+                      onSelect={(versionId) =>
+                        selectVersion.mutate(
+                          { sequenceId, characterId, versionId },
+                          {
+                            onError: (error) =>
+                              toast.error('Failed to switch sheet', {
+                                description: errorMessage(error),
+                              }),
+                          }
+                        )
+                      }
+                      versions={(versionHistory?.versions ?? []).map((row) => ({
+                        id: row.id,
+                        url: row.url,
+                        selected:
+                          row.id ===
+                          (versionHistory?.selectedSheetVersionId ??
+                            character.selectedSheetVersionId),
+                      }))}
+                    />
+                  </div>
+
+                  <ImageModelSelector
+                    selectedModel={selectedSheetModel}
+                    onModelChange={setSheetModel}
+                    disabled={regenerateSheet.isPending || isSheetGenerating}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Used for this character's sheet. Shot stills still follow
+                    the sequence image model.
+                  </p>
+                  <div className="flex w-fit flex-col gap-1">
+                    <Button
+                      onClick={handleRegenerateSheet}
+                      disabled={regenerateSheet.isPending}
+                    >
+                      {regenerateSheet.isPending ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <RefreshCw className="mr-2 h-4 w-4" />
+                      )}
+                      {regenerateSheet.isPending
+                        ? hasPriorSheet
+                          ? 'Regenerating…'
+                          : 'Generating…'
+                        : hasPriorSheet
+                          ? isSheetGenerating
+                            ? 'Generate again'
+                            : 'Regenerate Sheet'
+                          : 'Generate Sheet'}
+                    </Button>
+                    <ActionCost estimate={sheetCostEstimate} />
+                  </div>
+                </>
+              )}
 
               <div className="flex flex-wrap gap-2">
-                {!character.talent && (
+                {!character.talent && !character.voiceOnly && (
                   <Button
                     variant="outline"
                     onClick={() => addToLibrary.mutate(character.id)}
@@ -575,33 +592,37 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
                     {addToLibrary.isPending ? 'Adding…' : 'Add to Library'}
                   </Button>
                 )}
-                <Button
-                  variant="outline"
-                  onClick={() => setIsPickerOpen(true)}
-                  disabled={isSheetGenerating}
-                >
-                  {character.talent ? 'Recast' : 'Cast'}
-                </Button>
-                <UploadMediaButton
-                  label="Upload Sheet"
-                  pendingLabel="Uploading…"
-                  accept="image/*"
-                  isPending={uploadSheet.isPending}
-                  disabled={isSheetGenerating}
-                  onFile={(file) =>
-                    uploadSheet.mutate(
-                      { file, sequenceId, characterId },
-                      {
-                        onSuccess: () =>
-                          toast.success('Character sheet uploaded'),
-                        onError: (error) =>
-                          toast.error('Sheet upload failed', {
-                            description: errorMessage(error),
-                          }),
-                      }
-                    )
-                  }
-                />
+                {!character.voiceOnly && (
+                  <Button
+                    variant="outline"
+                    onClick={() => setIsPickerOpen(true)}
+                    disabled={isSheetGenerating}
+                  >
+                    {character.talent ? 'Recast' : 'Cast'}
+                  </Button>
+                )}
+                {!character.voiceOnly && (
+                  <UploadMediaButton
+                    label="Upload Sheet"
+                    pendingLabel="Uploading…"
+                    accept="image/*"
+                    isPending={uploadSheet.isPending}
+                    disabled={isSheetGenerating}
+                    onFile={(file) =>
+                      uploadSheet.mutate(
+                        { file, sequenceId, characterId },
+                        {
+                          onSuccess: () =>
+                            toast.success('Character sheet uploaded'),
+                          onError: (error) =>
+                            toast.error('Sheet upload failed', {
+                              description: errorMessage(error),
+                            }),
+                        }
+                      )
+                    }
+                  />
+                )}
                 <Button
                   variant="outline"
                   className="text-destructive hover:text-destructive"

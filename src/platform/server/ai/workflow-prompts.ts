@@ -995,6 +995,7 @@ Build a complete character bible. For each character:
 - movement — how the body moves: gait, posture, energy, habitual gestures, a limp, a tremor. Drives blocking and action.
   Extract both from the script, and infer where the script only implies them ("fidgets with his tie" → personality: anxious, eager to please; movement: restless hands, shoulders tight). Never repeat appearance in either field.
 - consistencyTag — HARD FORMAT CONTRACT: the snake_case slug of the character's name AS WRITTEN IN THE SCRIPT ("GIRL ONE" → "girl_one"). Optional descriptive context may follow the name slug ("jack_denim_weathered"), but the tag MUST start with the name slug. An independent system joins scene tags against these.
+- voiceOnly — true only for a voice that is heard but NEVER seen: a narrator, a voiceover, a radio or phone voice with no face on screen. Each distinct such voice is its own entry, named as the script names it, or "Narrator" for unnamed narration. Its personality describes the VOICE — register, warmth, pace, attitude. Age may be a guess if the voice implies one, otherwise empty; gender, ethnicity, physicalDescription, standardClothing, distinguishingFeatures and movement are empty strings. Create none when nobody speaks off screen. A character who is off screen for a moment, or seen in another scene, has a face: voiceOnly false, full appearance.
 
 Track first mentions:
 - "a man walks in" → the character first appears as "a man"
@@ -1058,11 +1059,12 @@ The following user-uploaded elements are available. Produce an elementBible entr
 {{script}}
 </USER_SCRIPT>
 
-For each character that appears:
+For each character that appears on screen:
 1. Provide COMPLETE physical descriptions for visual consistency
 2. Include clothing details that define the character
 3. Add distinguishing features
 4. Create a consistencyTag starting with the character's name slug
+A voice that is only heard gets its own entry with voiceOnly true, a voice description in personality, and empty appearance fields.
 
 For each unique location:
 1. Provide COMPLETE visual descriptions for visual consistency

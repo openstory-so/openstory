@@ -70,6 +70,7 @@ export const TALENT_CASE = {
         'Signature glossy coral lipstick, gold hoop earrings.',
       personality: 'Sharp, self-possessed, performs ease for the camera.',
       movement: 'Quick precise hands, chin up, never hurries her feet.',
+      voiceOnly: false,
       consistencyTag: 'scarlett_vega',
     },
     {
@@ -85,6 +86,7 @@ export const TALENT_CASE = {
         'Scar through the left eyebrow, scuffed silver watch.',
       personality: 'Guarded, dry, slow to trust.',
       movement: 'Heavy deliberate stride, favours the left knee.',
+      voiceOnly: false,
       consistencyTag: 'jack_cole',
     },
   ] satisfies CharacterBibleEntry[],

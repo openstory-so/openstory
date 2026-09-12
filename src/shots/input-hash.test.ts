@@ -593,6 +593,7 @@ describe('prompt input hashes', () => {
     distinguishingFeatures: '',
     personality: '',
     movement: '',
+    voiceOnly: false,
     consistencyTag: '',
   };
 
