@@ -14,6 +14,18 @@ import type { Scene } from '@/shots/scene-analysis.schema';
 import { deriveShots, type DerivedShot } from '@/shots/shot-list.derive';
 import type { ShotSpec } from '@/shots/shot-list.schema';
 import type { StyleConfig } from '@/look/style-config';
+import { dialogueForShot } from '@/sequences/scene-dialogue';
+
+/** The scene as one clip sees it: only the dialogue spoken in that shot (#1585). */
+function sceneForShot(scene: Scene, shotNumber: number): Scene {
+  return {
+    ...scene,
+    originalScript: {
+      ...scene.originalScript,
+      dialogue: dialogueForShot(scene.originalScript.dialogue, shotNumber),
+    },
+  };
+}
 
 export type ShotMappingRow = {
   analysisSceneId: string;
@@ -69,7 +81,7 @@ export function shotWorkItems(
     const hasSiblingShots = rows.length > 1;
     for (const [rowIndex, row] of rows.entries()) {
       items.push({
-        scene,
+        scene: sceneForShot(scene, row.shotNumber ?? 1),
         sceneIndex,
         mapping: {
           analysisSceneId: row.analysisSceneId,

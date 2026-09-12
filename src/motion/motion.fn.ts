@@ -347,7 +347,7 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
       context.scopedDb,
       sequence.id
     );
-    const sceneOf = (s: Pick<Shot, 'sceneId' | 'durationMs'>) =>
+    const sceneOf = (s: Pick<Shot, 'sceneId' | 'durationMs' | 'shotNumber'>) =>
       resolveSceneForShot(s, sceneContext).scene;
     const [
       selectedByFrame,

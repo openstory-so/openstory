@@ -1010,10 +1010,17 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
       llmCostMicros: Microdollars;
       llmKeySource: 'team' | 'platform';
     } = JSON.parse(shotListJson);
+    const shotListed = applyTargetDurations(
+      attachShotLists(reconciledScenes, shotListStep.result),
+      input.videoModel ? input.targetSeconds : undefined,
+      input.videoModel ? durationGridForModel(input.videoModel) : []
+    );
+    // Dialogue joins AFTER the shot list so each line is stamped with the
+    // shot it is spoken in; `dialogueForShot` filters per clip downstream.
     const dialogueJoin = assignDialogueToScenes(
       script,
       streamResult.offsets,
-      reconciledScenes,
+      shotListed,
       dialogueResult.lines
     );
     if (dialogueJoin.dropped.length > 0) {
@@ -1022,11 +1029,7 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
         { sequenceId, dropped: dialogueJoin.dropped }
       );
     }
-    const scenesWithShots = applyTargetDurations(
-      attachShotLists(dialogueJoin.scenes, shotListStep.result),
-      input.videoModel ? input.targetSeconds : undefined,
-      input.videoModel ? durationGridForModel(input.videoModel) : []
-    );
+    const scenesWithShots = dialogueJoin.scenes;
 
     // Step 3: Reconcile — ensure all shots exist (handles cached step replay).
     const reconcileJson = await step.do(

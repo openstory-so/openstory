@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { resolveBoundaries } from '@/sequences/boundary-split';
-import { assignDialogueToScenes } from './scene-dialogue';
+import type { DialogueLine } from '@/shots/scene-analysis.schema';
+import { assignDialogueToScenes, dialogueForShot } from './scene-dialogue';
 
 const SCRIPT = [
   'INT. GYM - MORNING',
@@ -13,7 +14,7 @@ const SCRIPT = [
 
 const scene = (id: string, extract: string) => ({
   sceneId: id,
-  originalScript: { extract, dialogue: [] },
+  originalScript: { extract, dialogue: [] as DialogueLine[] },
 });
 
 describe('assignDialogueToScenes', () => {
@@ -81,5 +82,91 @@ describe('assignDialogueToScenes', () => {
       []
     );
     expect(out.scenes.map((s) => s.originalScript.dialogue)).toEqual([[], []]);
+  });
+});
+
+describe('assignDialogueToScenes — shot stamping (#1585)', () => {
+  const LABELLED = [
+    'Scene 1 — 15s',
+    'Shot 1 — 7s',
+    'Mara grips the lantern and says, “My sister is dead.”',
+    'Shot 2 — 8s',
+    'Mara steps backward and says, “You’re not Eliza.”',
+  ].join('\n');
+  const lines = [
+    { lineNumber: 3, character: 'Mara', line: 'My sister is dead.', tone: '' },
+    { lineNumber: 5, character: 'Mara', line: 'You’re not Eliza.', tone: '' },
+  ];
+  const shot = (shotNumber: number, action: string) => ({ shotNumber, action });
+
+  it('stamps each line with the enhancer Shot label section it sits in', () => {
+    const out = assignDialogueToScenes(
+      LABELLED,
+      [0],
+      [
+        {
+          originalScript: { extract: LABELLED, dialogue: [] as DialogueLine[] },
+          shots: [shot(1, 'a'), shot(2, 'b')],
+        },
+      ],
+      lines
+    );
+    expect(
+      out.scenes[0]?.originalScript.dialogue.map((l) => l.shotNumber)
+    ).toEqual([1, 2]);
+  });
+
+  it('falls back to the shot whose action quotes the line when labels do not match the shot list', () => {
+    const out = assignDialogueToScenes(
+      LABELLED,
+      [0],
+      [
+        {
+          originalScript: { extract: LABELLED, dialogue: [] as DialogueLine[] },
+          shots: [
+            shot(1, 'Mara grips the lantern'),
+            shot(2, 'A chair drags itself away'),
+            shot(3, 'Mara steps backward and says, "You\'re not Eliza."'),
+          ],
+        },
+      ],
+      lines
+    );
+    expect(
+      out.scenes[0]?.originalScript.dialogue.map((l) => l.shotNumber)
+    ).toEqual([undefined, 3]);
+  });
+
+  it('leaves a one-shot scene unstamped', () => {
+    const out = assignDialogueToScenes(
+      LABELLED,
+      [0],
+      [
+        {
+          originalScript: { extract: LABELLED, dialogue: [] as DialogueLine[] },
+          shots: [shot(1, 'a')],
+        },
+      ],
+      lines
+    );
+    expect(
+      out.scenes[0]?.originalScript.dialogue.every(
+        (l) => l.shotNumber === undefined
+      )
+    ).toBe(true);
+  });
+});
+
+describe('dialogueForShot', () => {
+  it("keeps the shot's own lines plus unplaced ones", () => {
+    const lines = [
+      { character: 'A', line: 'one', tone: '', shotNumber: 1 },
+      { character: 'B', line: 'two', tone: '', shotNumber: 2 },
+      { character: 'C', line: 'any', tone: '' },
+    ];
+    expect(dialogueForShot(lines, 2).map((l) => l.line)).toEqual([
+      'two',
+      'any',
+    ]);
   });
 });

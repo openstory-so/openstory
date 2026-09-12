@@ -528,7 +528,8 @@ export type SceneAnalysis = z.infer<typeof sceneAnalysisSchema>;
  * Analysis scene. `shots` is attached after the shot-list pass (#1486) and is
  * not part of the (unused) `sceneSchema` LLM wire shape.
  */
-export type Scene = z.infer<typeof sceneSchema> & {
+export type Scene = Omit<z.infer<typeof sceneSchema>, 'originalScript'> & {
+  originalScript: { extract: string; dialogue: DialogueLine[] };
   shots?: import('./shot-list.schema').ShotSpec[];
 };
 export type CharacterBibleEntry = z.infer<typeof characterBibleEntrySchema>;
@@ -563,6 +564,13 @@ export type MotionAudio = MotionPrompt['audio'];
  */
 export type DialogueLine = z.infer<typeof dialogueLineSchema> & {
   voiceToken?: string;
+  /**
+   * The shot this line is spoken in, stamped by scene split once the shot
+   * list exists (#1585, `assignDialogueToScenes`). Absent = every shot of
+   * the scene (a one-shot scene, or a line the split could not place), so
+   * pre-#1585 rows keep their old meaning. `dialogueForShot` is the filter.
+   */
+  shotNumber?: number;
 };
 export type MotionDialogue = {
   presence: boolean;

@@ -36,7 +36,12 @@ const sceneRowFixture = (overrides: Partial<SceneRow> = {}): SceneRow => ({
 });
 
 describe('resolveSceneForShot', () => {
-  const shot = { id: 'shot-1', sceneId: 'scene-row-1', durationMs: 5000 };
+  const shot = {
+    id: 'shot-1',
+    sceneId: 'scene-row-1',
+    durationMs: 5000,
+    shotNumber: 1,
+  };
 
   it('composes the scene from the scene row, not the shot', () => {
     const { scene, script } = resolveSceneForShot(shot, {
@@ -48,6 +53,27 @@ describe('resolveSceneForShot', () => {
     expect(scene?.metadata?.title).toBe('Office');
     expect(scene?.sceneId).toBe('scene-row-1');
     expect(scene?.sceneNumber).toBe(1);
+  });
+
+  it('filters the script dialogue to the lines spoken in this shot (#1585)', () => {
+    const script = {
+      extract: 'Two shots.',
+      dialogue: [
+        { character: 'A', line: 'first', tone: '', shotNumber: 1 },
+        { character: 'B', line: 'second', tone: '', shotNumber: 2 },
+        { character: 'C', line: 'either', tone: '' },
+      ],
+    };
+    const { scene, script: raw } = resolveSceneForShot(
+      { ...shot, shotNumber: 2 },
+      { scene: sceneRowFixture(), script }
+    );
+    expect(scene?.originalScript.dialogue.map((l) => l.line)).toEqual([
+      'second',
+      'either',
+    ]);
+    // The raw script stays scene-level; only the composed scene is per shot.
+    expect(raw?.dialogue).toHaveLength(3);
   });
 
   it('strips markdown from the composed scene title', () => {
