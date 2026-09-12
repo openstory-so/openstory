@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use Image 1 as the starting frame.\nImage 2 hooks the tote strap with her elbow and checks the lipstick bullet in the parked car window.. Camera: smooth pan\n\noverall_soundscape: gust of wind, passing traffic. No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\nnon_diegetic_music: N/A\n\nReference images:\nImage 3: CORAL_LIPSTICK - A compact luxury lipstick with a slim cylindrical tube in satin black metal — keep visually consistent throughout the shot.",
+        "model": "minimax/h3-max/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://assets.openstory.so/e2e/7aebdcd4b955b6afe4c0c9683d3b33b7d881840ff449ef0335841a4eb5cbce09.mp4",
+            "content_type": "video/mp4",
+            "file_name": "HSgbMDmyuXQkYdWImHXOf_minimax-h3.mp4",
+            "file_size": 10269870
+          },
+          "expanded_prompt": "subject_definitions:\n<Subject 1> is the blonde woman from <Picture 1> and <Picture 2>, with shoulder-length blonde wavy hair, wearing a fitted black turtleneck, dark grey trousers, black sunglasses, a thin gold bracelet, holding a large cream tote bag, and wearing coral-orange lipstick.\n<Subject 2> is the CORAL_LIPSTICK compact product from <Picture 3>, a slim cylindrical lipstick with a satin black metal tube and a coral-coral lipstick bullet.\n<Subject 3> is the dark grey sedan from <Picture 1>, serving as the reflective surface for the lipstick check.\n\nsummary:\n[keyframe completion + reference generation] The target video features <Subject 1> walking on a sunny city boulevard next to a parked <Subject 3>. She uses her elbow to adjust her tote bag and pauses to check the reflection of the <Subject 2> in the car window.\n\nretention_analysis:\n<Subject 1> (appears in [Shot 1]): fully_preserved - The subject's identity, outfit, and hairstyle match the references exactly.\n<Subject 2> (appears in [Shot 1]): attribute_transfer - The visual design (satin black, coral) of the product is transferred as a reflected image on glass.\n<Subject 3> (appears in [Shot 1]): fully_preserved - The sedan's appearance and position are maintained.\n\ndetailed_description:\nA cinematic, 16:9 urban fashion commercial with high-detail realism and a neutral color grade.\n[Shot 1] The video begins with a medium shot of <Subject 1> walking mid-stride past the driver's side of a parked <Subject 3> on a busy city street. The environment is bright and urban, with skyscrapers and passing traffic in the background. Soft daylight illuminates <Subject 1>, giving her skin a clean, natural look. As she walks, she executes a quick, fluid motion where her right elbow shifts the shoulder of her cream tote bag, adjusting its position against her hip. Simultaneously, she shifts her gaze toward the dark window of the <Subject 3>. In the glossy reflection of the car window, the compact form of <Subject 2> is clearly visible as her reflection, showing the coral-colored bullet against her lips. The camera performs a smooth Pan Right with small amplitude at a moderate speed, tracking her movement and emphasizing the reflection in the glass. The shot remains stable and clear throughout the 6-second duration.\n[d] English: (No dialogue)\n\noverall_soundscape:\nThe background features a low-frequency city street rumble from passing traffic and occasional gusts of wind. The action is layered with the soft, rhythmic sound of her heels on the asphalt and the subtle rustle of the tote bag fabric as it shifts. No music is present.\n\nnon_diegetic_music:\nN/A",
+          "seed": 802728991,
+          "timings": {
+            "inference": 5.971267903005355
+          }
+        },
+        "status": 200,
+        "billableUnits": 9.830400000000001
+      }
+    }
+  ]
+}

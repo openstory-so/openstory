@@ -1,0 +1,17 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "image",
+        "userMessage": "low angle, low angle, Scarlett (Image 1) has just placed the closed lipstick on the ledge and stands beside it, facing the skyline as wind nudges the tube toward the edge., The rooftop ledge and lipstick sit in the foreground while Scarlett (Image 1)'s silhouette moves toward the glowing skyline, ending with her coral lips catching warm light., rooftop_above_downtown, Warm directional late-afternoon sunlight creates a glowing rim and long soft highlights around Scarlett (Image 1), the ledge, and the skyline. The open sky provides broad ambient fill., Pale sky blue, warm late-afternoon gold, light gray concrete, muted green grasses, reflective blue-gray glass, black clothing, and vivid coral lipstick., Scarlett (Image 1), Modern social-first product photography with tactile, editorial energy. Products shown in real-life context -- hands opening packaging, fingers pressing textures, products on bathroom shelves, kitchen counters, rumpled linen. Close-up detail shots emphasize material and finish. Flat-lays with curated minimal arrangements. Color-matched backgrounds that complement the product. Every frame feels like something you would screenshot and save\n\nReference images define identity — keep every referenced character, object, and location consistent with its reference image; never render a reference image itself as a separate panel or subject.\nImage 2 (location): Rooftop Above Downtown - An open urban rooftop overlooking a glowing downtown skyline",
+        "model": "grok-imagine-image-2.0"
+      },
+      "response": {
+        "image": {
+          "url": "https://assets.openstory.so/e2e/64a88d80c7ce5baec5f9579a6232a81c1cb7a6c91b3299944dffa9294afe185e.jpeg",
+          "mime_type": "image/jpeg"
+        }
+      }
+    }
+  ]
+}

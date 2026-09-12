@@ -2,25 +2,25 @@
   "fixtures": [
     {
       "match": {
-        "userMessage": "Cast the following talent into character roles. The user specifically selected these 1 talent members.\n\nCHARACTERS (1 available):\n- Character ID: scarlett\n  Name: Scarlett\n  Age: 20s-30s\n  Gender: Female\n  Ethnicity: Not specified; contemporary urban appearance\n  Physical: Lean, poised city influencer with an average-to-tall height, graceful athletic build, sharp facial features, expressive eyes, defined brows, and medium skin tone. Dark brown to black hair worn loose with a natural, slightly tousled texture; several strands move freely in the rooftop wind. Her signature look includes a precise coral-colored lip and a confident, alert expression.\n  Clothing: Fitted black turtleneck, tailored black or charcoal trousers, black low-profile shoes, and a structured neutral canvas tote. She carries a smartphone and wears black sunglasses, maintaining a minimalist black-and-neutral city wardrobe that makes the coral lipstick stand out.\n  Distinguishing features: Vivid matte coral lips, sharp-eyed expression, confident purposeful stride, knowing smile, black sunglasses, and a neutral canvas tote. Often handles the coral lipstick with practiced precision.\n\nTALENT TO CAST (1 selected by user):\n- Talent ID: 01KRMKES6TWAEC44S2S8PXZBM8\n  Name: Sienna Blake\n  Age: unspecified (infer from name if recognizable)\n  Gender: unspecified (infer from name if recognizable)\n  Ethnicity: unspecified\n  Physical/Description: Golden blonde, beach-tanned skin, effortless Bondi energy. Wide smile, freckles across the nose, the kind of face that sells skincare without trying. Perfect for product ads, lifestyle campaigns, and rom-com leads.\n  Clothing: unspecified\n  Distinguishing features: unspecified\n\nREQUIREMENTS:\n- Match ALL 1 talent to characters (1 talent, 1 characters available)\n- Each talent gets exactly one character\n- Each character can only have one talent\n\n\nRespond with exactly 1 matches.",
+        "userMessage": "Cast the following talent into character roles. The user specifically selected these 1 talent members.\n\nCHARACTERS (1 available):\n- Character ID: char_scarlett\n  Name: Scarlett\n  Age: 20s\n  Gender: Female\n  Ethnicity: Not specified\n  Physical: A sharp-eyed young woman of medium height with a slim, poised build, warm medium skin, dark brown shoulder-length hair worn mostly loose with a few wind-lifted strands, defined brows, expressive eyes, and a confident smile. Her lips are consistently coated in a vivid matte coral shade.\n  Clothing: A sleek black turtleneck with a streamlined black-and-neutral city outfit, likely tailored dark trousers or skirt and practical black footwear. She carries a natural canvas tote and wears black sunglasses when moving through the city.\n  Distinguishing features: Vivid matte coral lipstick is her defining visual feature. Black sunglasses, a canvas tote, and composed influencer-like styling recur throughout the sequence.\n\nTALENT TO CAST (1 selected by user):\n- Talent ID: 01KRMKES6TWAEC44S2S8PXZBM8\n  Name: Sienna Blake\n  Age: unspecified (infer from name if recognizable)\n  Gender: unspecified (infer from name if recognizable)\n  Ethnicity: unspecified\n  Physical/Description: Golden blonde, beach-tanned skin, effortless Bondi energy. Wide smile, freckles across the nose, the kind of face that sells skincare without trying. Perfect for product ads, lifestyle campaigns, and rom-com leads.\n  Clothing: unspecified\n  Distinguishing features: unspecified\n\nREQUIREMENTS:\n- Match ALL 1 talent to characters (1 talent, 1 characters available)\n- Each talent gets exactly one character\n- Each character can only have one talent\n\n\nRespond with exactly 1 matches.",
         "model": "openai/gpt-5.6-luna",
         "turnIndex": 0,
         "hasToolResult": false
       },
       "response": {
-        "content": "{\"matches\":[{\"characterId\":\"scarlett\",\"talentId\":\"01KRMKES6TWAEC44S2S8PXZBM8\",\"confidence\":0.72,\"reason\":\"Sienna’s female-presenting, camera-ready presence and confident lifestyle-campaign energy suit Scarlett’s poised urban influencer persona. Her blonde hair and freckles differ from Scarlett’s specified dark hair and sharp features, but styling, makeup, and wardrobe can create the minimalist city look and emphasize Scarlett’s signature coral lip.\"}]}"
+        "content": "{\"matches\":[{\"characterId\":\"char_scarlett\",\"talentId\":\"01KRMKES6TWAEC44S2S8PXZBM8\",\"confidence\":0.78,\"reason\":\"Sienna fits Scarlett's young female lead profile and has the confident, polished presence suited to an influencer-like city role and rom-com energy. Her blonde hair and beach-tanned look differ from Scarlett's described dark hair and warm medium complexion, but styling, makeup, and wardrobe can adapt the appearance.\"}]}"
       },
       "recordedTimings": {
-        "ttftMs": 1206,
+        "ttftMs": 1156,
         "interChunkDelaysMs": [
-          416, 402, 0, 0, 0, 0, 0, 0, 129, 0, 0, 0, 6, 0, 0, 0, 0, 0, 0, 0, 0,
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 2, 5, 0, 15, 2, 9, 6, 1, 23, 16, 0,
-          24, 58, 45, 7, 1, 27, 50, 103, 0, 0, 1, 0, 0, 10, 47, 0, 34, 7, 1, 9,
-          20, 9, 8, 2, 4, 12, 39, 42, 15, 0, 0, 34, 1, 7, 1, 18, 8, 7, 0, 31, 6,
-          7, 0, 7, 26, 7, 6, 0, 90, 0, 0, 6, 35, 13, 0, 26, 14, 0, 46, 12, 7,
-          10, 156, 2, 0
+          418, 417, 59, 9, 8, 3, 7, 0, 6, 9, 221, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+          0, 0, 0, 0, 0, 0, 0, 0, 0, 19, 10, 0, 12, 10, 14, 32, 23, 12, 5, 3, 7,
+          26, 29, 24, 14, 2, 10, 17, 5, 0, 5, 10, 19, 11, 0, 16, 26, 11, 13, 14,
+          0, 7, 2, 6, 10, 3, 99, 0, 0, 0, 0, 0, 0, 0, 0, 4, 13, 30, 14, 4, 7, 5,
+          17, 116, 1, 0
         ],
-        "totalDurationMs": 3399
+        "totalDurationMs": 3050
       },
       "metadata": {
         "systemHash": "b98a3bc5"

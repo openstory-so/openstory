@@ -1,0 +1,17 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "image",
+        "userMessage": "Medium close-up over-the-shoulder shot on a 50mm lens, framed in 16:9. Scarlett (Image 1) stands at the black stone bathroom sink, occupying the right third, one hand gripping a sealed coral lipstick carton just before tearing it open, her weight subtly shifted toward the counter and attention fixed on the carton. A phone rests beside the brushed-metal faucet in the foreground, vibrating but ignored. Compact downtown apartment bathroom, glossy white tile and broad mirror behind her, with clear space along the counter for the ritual. Hard directional morning sunlight cuts across the tile and sink, creating crisp shadows and reflections. Handheld social-first beauty photography, clean bright true-to-life color, tactile editorial energy, shallow depth of field.\n\nReference images define identity — keep every referenced character, object, and location consistent with its reference image; never render a reference image itself as a separate panel or subject.\nImage 2 (location): Downtown Apartment Bathroom - A compact",
+        "model": "grok-imagine-image-2.0"
+      },
+      "response": {
+        "image": {
+          "url": "https://assets.openstory.so/e2e/14e61025db894adaa93b503b29b2c05a628244be41324ec2751713d5d79abad7.jpeg",
+          "mime_type": "image/jpeg"
+        }
+      }
+    }
+  ]
+}
