@@ -21,6 +21,7 @@ import {
 } from '@/cast/location-library.fn';
 import { usePublicOrTeamQuery } from '@/ui/use-public-or-team-query';
 import { putToR2 } from '@/ui/upload';
+import { useUploadRightsGate } from '@/cast/ui/upload-rights-gate';
 import {
   libraryLocationKeys,
   sequenceLocationKeys,
@@ -131,16 +132,19 @@ export function useDeleteLibraryLocation() {
 }
 
 /**
- * Hook to upload location media via presigned URL
+ * Upload a location image: presign → R2 → likeness check (a real person
+ * opens the sign-off dialog) → finalize when a location already exists.
+ * Without `locationId` the temp URL is handed back for the create call,
+ * already cleared or signed.
  */
 export function useUploadLocationMedia() {
+  const { ensureUploadRights } = useUploadRightsGate();
   return useMutation({
     mutationFn: async (data: {
       file: File;
       locationId?: string;
       onProgress?: (percent: number) => void;
     }) => {
-      // 1. Get presigned URL from server
       const presign = await presignLocationUploadFn({
         data: {
           filename: data.file.name,
@@ -148,7 +152,6 @@ export function useUploadLocationMedia() {
         },
       });
 
-      // 2. Upload directly to R2
       await putToR2(
         presign.uploadUrl,
         data.file,
@@ -156,13 +159,15 @@ export function useUploadLocationMedia() {
         data.onProgress
       );
 
-      // 3. Finalize: update DB record if uploading to an existing location
+      await ensureUploadRights([
+        { url: presign.publicUrl, filename: data.file.name },
+      ]);
+
       if (data.locationId) {
         await finalizeLocationUploadFn({
           data: {
             locationId: data.locationId,
             publicUrl: presign.publicUrl,
-            path: presign.path,
           },
         });
       }

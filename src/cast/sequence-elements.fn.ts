@@ -408,6 +408,7 @@ export const replaceSequenceElementFn = createServerFn({ method: 'POST' })
   )
   .handler(async ({ context, data }) => {
     await assertElementUploadAttachable({
+      scopedDb: context.scopedDb,
       path: data.path,
       filename: data.filename,
       teamId: context.teamId,

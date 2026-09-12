@@ -12,7 +12,12 @@ import { drizzle } from 'drizzle-orm/libsql';
 import { migrate } from 'drizzle-orm/libsql/migrator';
 import { generateId } from '@/platform/id';
 import type { Database } from '@/platform/server/db/client';
-import { generatedAssets, teams, user } from '@/platform/server/db/schema';
+import {
+  generatedAssets,
+  teams,
+  uploadAttestations,
+  user,
+} from '@/platform/server/db/schema';
 import { relations } from '@/platform/server/db/schema/relations';
 import { InsufficientCreditsError } from '@/platform/errors';
 import { studioCreateInputSchema } from '@/studio/schema';
@@ -70,6 +75,7 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   await db.delete(generatedAssets);
+  await db.delete(uploadAttestations);
   vi.clearAllMocks();
   mockReserveRunCredits.mockResolvedValue('res-studio-1');
   mockTriggerWorkflow.mockResolvedValue('wf-studio-1');
@@ -521,5 +527,140 @@ describe('createStudioAssets', () => {
     expect(mockTriggerWorkflow.mock.calls[0]?.[1].input).not.toHaveProperty(
       'imageModel'
     );
+  });
+});
+
+describe('upload rights gate (#1581)', () => {
+  const uploadUrl = `/r2/talent/${TEAM_ID}/temp/01ABC.png`;
+  const request = { ipAddress: '203.0.113.9', userAgent: 'vitest' };
+  const base = {
+    activity: 'image' as const,
+    prompt: 'a red fox',
+    imageModel: 'gpt_image_2' as const,
+    aspectRatio: '16:9' as const,
+    resolution: '720p' as const,
+    count: 1,
+  };
+  const video = {
+    activity: 'video' as const,
+    prompt: 'the fox turns toward camera',
+    videoModel: 'seedance_v2' as const,
+    aspectRatio: '16:9' as const,
+    resolution: '720p' as const,
+    duration: 5,
+    count: 1,
+    referenceImages: [],
+    referenceVideos: [],
+    referenceAudio: [],
+  };
+
+  it('refuses an unchecked upload before any credit hold', async () => {
+    const { AttestationRequiredError } = await import('@/platform/errors');
+    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+
+    await expect(
+      createStudioAssets(scopedDb, { ...base, referenceImages: [uploadUrl] })
+    ).rejects.toBeInstanceOf(AttestationRequiredError);
+
+    expect(mockReserveRunCredits).not.toHaveBeenCalled();
+    expect(await db.select().from(generatedAssets)).toEqual([]);
+  });
+
+  it('refuses a detected person until signed, then generates', async () => {
+    const { AttestationRequiredError } = await import('@/platform/errors');
+    const { attestUploads, recordLikenessFinding } =
+      await import('@/cast/server/upload-rights');
+    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+
+    await recordLikenessFinding(scopedDb, [uploadUrl], 'human', request);
+    await expect(
+      createStudioAssets(scopedDb, { ...base, referenceImages: [uploadUrl] })
+    ).rejects.toBeInstanceOf(AttestationRequiredError);
+    expect(mockReserveRunCredits).not.toHaveBeenCalled();
+
+    await attestUploads(
+      scopedDb,
+      [
+        {
+          url: uploadUrl,
+          statementVersion: 'portrait-rights-v1',
+          authorizationBasis: 'this is me',
+        },
+      ],
+      request
+    );
+    await createStudioAssets(scopedDb, {
+      ...base,
+      referenceImages: [uploadUrl],
+    });
+    expect(mockTriggerWorkflow).toHaveBeenCalledTimes(1);
+  });
+
+  it('a still the check cleared generates with nothing signed', async () => {
+    const { recordLikenessFinding } =
+      await import('@/cast/server/upload-rights');
+    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+    const logoUrl = `/r2/talent/${TEAM_ID}/temp/01LOGO.png`;
+
+    await recordLikenessFinding(scopedDb, [logoUrl], 'other', request);
+    await createStudioAssets(scopedDb, {
+      ...base,
+      referenceImages: [logoUrl],
+    });
+    expect(mockTriggerWorkflow).toHaveBeenCalledTimes(1);
+  });
+
+  it('gates the video paths too: reference mode and frames', async () => {
+    const { AttestationRequiredError } = await import('@/platform/errors');
+    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+
+    await expect(
+      createStudioAssets(scopedDb, {
+        ...video,
+        mode: 'reference',
+        referenceImages: [uploadUrl],
+      })
+    ).rejects.toBeInstanceOf(AttestationRequiredError);
+    await expect(
+      createStudioAssets(scopedDb, {
+        ...video,
+        mode: 'frames',
+        startImageUrl: uploadUrl,
+      })
+    ).rejects.toBeInstanceOf(AttestationRequiredError);
+    expect(mockReserveRunCredits).not.toHaveBeenCalled();
+  });
+
+  it('lets library stills through untouched', async () => {
+    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+    await createStudioAssets(scopedDb, {
+      ...video,
+      mode: 'frames',
+      startImageUrl: `/r2/talent/${TEAM_ID}/tal1/headshot.png`,
+    });
+    expect(await db.select().from(uploadAttestations)).toEqual([]);
+    expect(mockTriggerWorkflow).toHaveBeenCalledTimes(1);
+  });
+
+  it("another team's clearance does not cover this team", async () => {
+    const { AttestationRequiredError } = await import('@/platform/errors');
+    const { recordLikenessFinding } =
+      await import('@/cast/server/upload-rights');
+    const otherTeam = generateId();
+    await db.insert(teams).values([{ id: otherTeam, name: 'O', slug: 'o' }]);
+    const url = 'https://example.com/anyone.jpg';
+
+    await recordLikenessFinding(
+      createScopedDb(otherTeam, USER_ID),
+      [url],
+      'other',
+      request
+    );
+    await expect(
+      createStudioAssets(createScopedDb(TEAM_ID, USER_ID), {
+        ...base,
+        referenceImages: [url],
+      })
+    ).rejects.toBeInstanceOf(AttestationRequiredError);
   });
 });

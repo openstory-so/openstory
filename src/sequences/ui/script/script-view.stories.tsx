@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 
 import { AuthGateStub } from '@/platform/ui/auth/auth-gate-provider';
+import { UploadRightsGateStub } from '@/cast/ui/upload-rights-gate';
 import { styleKeys } from '@/look/ui/use-styles';
 import type { Sequence } from '@/platform/server/db/schema/sequences';
 import { MOCK_SYSTEM_STYLES } from '@/look/style-templates';
@@ -100,7 +101,9 @@ const meta: Meta<typeof ScriptView> = {
     (Story) => (
       <QueryClientProvider client={createQueryClient()}>
         <AuthGateStub>
-          <Story />
+          <UploadRightsGateStub>
+            <Story />
+          </UploadRightsGateStub>
         </AuthGateStub>
       </QueryClientProvider>
     ),

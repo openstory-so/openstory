@@ -7,19 +7,25 @@ import {
 } from '@/platform/compliance/attestations';
 
 type PortraitAttestationFieldsProps = {
+  /** Element id prefix; set when two blocks render on one page. */
+  id?: string;
   statement?: AttestationStatement;
   attested: boolean;
   onAttestedChange: (attested: boolean) => void;
   authorizationBasis: string;
   onAuthorizationBasisChange: (value: string) => void;
+  /** Rendered above the statement, e.g. which tiles it covers. */
+  children?: React.ReactNode;
 };
 
 export function PortraitAttestationFields({
+  id = 'portrait-attestation',
   statement = PORTRAIT_RIGHTS_V1,
   attested,
   onAttestedChange,
   authorizationBasis,
   onAuthorizationBasisChange,
+  children,
 }: PortraitAttestationFieldsProps) {
   return (
     <div
@@ -29,19 +35,20 @@ export function PortraitAttestationFields({
           : 'flex flex-col gap-3 rounded-lg border border-border p-4'
       }
     >
+      {children}
       <div className="flex items-start gap-3">
         <Checkbox
-          id="portrait-attestation"
+          id={id}
           checked={attested}
           onCheckedChange={(checked) => onAttestedChange(checked === true)}
-          aria-describedby="portrait-attestation-text"
+          aria-describedby={`${id}-text`}
         />
         <div className="flex flex-col gap-2">
-          <Label htmlFor="portrait-attestation" className="leading-snug">
+          <Label htmlFor={id} className="leading-snug">
             {statement.label}
           </Label>
           <p
-            id="portrait-attestation-text"
+            id={`${id}-text`}
             className="text-xs leading-relaxed text-muted-foreground"
           >
             {statement.text}
@@ -50,9 +57,9 @@ export function PortraitAttestationFields({
       </div>
       {statement.requiresBasis ? (
         <div className="flex flex-col gap-2">
-          <Label htmlFor="authorization-basis">Basis for authorization</Label>
+          <Label htmlFor={`${id}-basis`}>Basis for authorization</Label>
           <Input
-            id="authorization-basis"
+            id={`${id}-basis`}
             value={authorizationBasis}
             onChange={(event) => onAuthorizationBasisChange(event.target.value)}
             placeholder="e.g. signed release on file, this is me, contract #123"

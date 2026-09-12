@@ -28,6 +28,7 @@ import { sequenceKeys } from '@/sequences/ui/use-sequences';
 import { shotStalenessNamespace } from './use-shot-staleness';
 import { shotKeys } from './use-shots';
 import { putToR2 } from '@/ui/upload';
+import { useUploadRightsGate } from '@/cast/ui/upload-rights-gate';
 import { fitImageFileToAspectRatio } from '@/ui/fit-image-aspect';
 import type { AspectRatio } from '@/models/aspect-ratios';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -54,6 +55,7 @@ async function presignPut(
  */
 export function useReplaceFrameImage() {
   const queryClient = useQueryClient();
+  const { ensureUploadRights } = useUploadRightsGate();
   return useMutation({
     mutationFn: async (input: {
       file: File;
@@ -78,6 +80,9 @@ export function useReplaceFrameImage() {
         fitted.file,
         input.onProgress
       );
+      await ensureUploadRights([
+        { url: publicUrl, filename: fitted.file.name },
+      ]);
       const result = await replaceFrameContentFn({
         data: {
           sequenceId: input.sequenceId,
@@ -211,6 +216,7 @@ function readMediaDuration(
  */
 export function useUploadCharacterSheet() {
   const queryClient = useQueryClient();
+  const { ensureUploadRights } = useUploadRightsGate();
   return useMutation({
     mutationFn: async (input: {
       file: File;
@@ -229,6 +235,7 @@ export function useUploadCharacterSheet() {
         input.file,
         input.onProgress
       );
+      await ensureUploadRights([{ url: publicUrl, filename: input.file.name }]);
       return setCharacterSheetFromUploadFn({
         data: {
           sequenceId: input.sequenceId,
@@ -254,6 +261,7 @@ export function useUploadCharacterSheet() {
 /** Location twin of `useUploadCharacterSheet` (reference image). */
 export function useUploadLocationReference() {
   const queryClient = useQueryClient();
+  const { ensureUploadRights } = useUploadRightsGate();
   return useMutation({
     mutationFn: async (input: {
       file: File;
@@ -272,6 +280,7 @@ export function useUploadLocationReference() {
         input.file,
         input.onProgress
       );
+      await ensureUploadRights([{ url: publicUrl, filename: input.file.name }]);
       return setLocationSheetFromUploadFn({
         data: {
           sequenceId: input.sequenceId,

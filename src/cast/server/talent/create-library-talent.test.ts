@@ -19,9 +19,8 @@ const mockEmit = vi.fn();
 const mockMoveFile = vi.fn();
 const mockCreate = vi.fn();
 const mockMediaCreate = vi.fn();
-const mockRequireUpload = vi.fn(
-  ({ attestation }: { attestation: unknown }) => attestation ?? null
-);
+const mockRequireRights = vi.fn();
+const mockCarryRights = vi.fn();
 
 vi.doMock('@/platform/server/workflow/client', () => ({
   triggerWorkflow: mockTriggerWorkflow,
@@ -32,9 +31,9 @@ vi.doMock('@/platform/realtime', () => ({
 vi.doMock('#storage', () => ({
   moveFile: mockMoveFile,
 }));
-vi.doMock('@/cast/server/likeness-upload', () => ({
-  requireUploadAttestation: mockRequireUpload,
-  recordPortraitAttestation: vi.fn(),
+vi.doMock('@/cast/server/upload-rights', () => ({
+  requireUploadRights: mockRequireRights,
+  carryUploadRights: mockCarryRights,
 }));
 vi.doMock('./analyze-talent-media', () => ({
   analyzeTalentMediaForTeam: mockAnalyze,
@@ -88,6 +87,12 @@ beforeEach(() => {
   mockEmit.mockResolvedValue(undefined);
   mockMoveFile.mockResolvedValue(undefined);
   mockMediaCreate.mockResolvedValue({});
+  // Every temp URL is signed for unless a test says otherwise.
+  mockRequireRights.mockImplementation(
+    async (_db: unknown, urls: string[]) =>
+      new Map(urls.map((u) => [u, { depictsRealPerson: true }]))
+  );
+  mockCarryRights.mockResolvedValue(undefined);
   mockAnalyze.mockResolvedValue({
     isCharacterSheet: false,
     subjectKind: 'human',
@@ -127,13 +132,8 @@ describe('createLibraryTalent', () => {
     await createLibraryTalent(
       {
         name: 'Sam',
-        isHuman: true,
         referenceImageUrls: ['/r2/talent/team-1/temp/a.png'],
         characterSheetImageUrls: [],
-        portraitAttestation: {
-          statementVersion: 'v1',
-          authorizationBasis: 'self',
-        },
       },
       makeCtx()
     );
@@ -146,13 +146,8 @@ describe('createLibraryTalent', () => {
     await createLibraryTalent(
       {
         name: 'Sam',
-        isHuman: true,
         referenceImageUrls: ['/r2/talent/team-1/temp/a.png'],
         characterSheetImageUrls: ['/r2/talent/team-1/temp/a.png'],
-        portraitAttestation: {
-          statementVersion: 'v1',
-          authorizationBasis: 'self',
-        },
       },
       makeCtx()
     );
@@ -167,13 +162,8 @@ describe('createLibraryTalent', () => {
     await createLibraryTalent(
       {
         name: 'Sam',
-        isHuman: true,
         referenceImageUrls: ['/r2/talent/team-1/temp/a.png'],
         characterSheetImageUrls: ['/r2/talent/other-team/x.png'],
-        portraitAttestation: {
-          statementVersion: 'v1',
-          authorizationBasis: 'self',
-        },
       },
       makeCtx()
     );
@@ -199,12 +189,7 @@ describe('createLibraryTalent', () => {
     await createLibraryTalent(
       {
         name: 'Sam',
-        isHuman: true,
         referenceImageUrls: ['/r2/talent/team-1/temp/a.png'],
-        portraitAttestation: {
-          statementVersion: 'v1',
-          authorizationBasis: 'self',
-        },
       },
       makeCtx()
     );
@@ -221,12 +206,7 @@ describe('createLibraryTalent', () => {
     await createLibraryTalent(
       {
         name: 'Sam',
-        isHuman: true,
         referenceImageUrls: ['/r2/talent/team-1/temp/a.png'],
-        portraitAttestation: {
-          statementVersion: 'v1',
-          authorizationBasis: 'self',
-        },
       },
       makeCtx()
     );
@@ -254,16 +234,11 @@ describe('createLibraryTalent', () => {
     await createLibraryTalent(
       {
         name: 'Sam',
-        isHuman: true,
         referenceImageUrls: [
           '/r2/talent/team-1/temp/a.png',
           '/r2/talent/team-1/temp/b.png',
           '/r2/talent/team-1/temp/c.png',
         ],
-        portraitAttestation: {
-          statementVersion: 'v1',
-          authorizationBasis: 'self',
-        },
       },
       makeCtx()
     );
@@ -284,16 +259,11 @@ describe('createLibraryTalent', () => {
     const result = await createLibraryTalent(
       {
         name: 'Sam',
-        isHuman: true,
         referenceImageUrls: [
           '/r2/talent/team-1/temp/a.png',
           '/r2/talent/team-1/temp/b.png',
           '/r2/talent/team-1/temp/c.png',
         ],
-        portraitAttestation: {
-          statementVersion: 'v1',
-          authorizationBasis: 'self',
-        },
         enqueueSheet: false,
       },
       makeCtx()
@@ -308,26 +278,49 @@ describe('createLibraryTalent', () => {
     );
   });
 
-  it('records an asset attestation when the subject is not human', async () => {
+  it('derives isHuman from the likeness ledger, never the client (#1581)', async () => {
+    mockRequireRights.mockResolvedValueOnce(
+      new Map([['/r2/talent/team-1/temp/a.png', { depictsRealPerson: false }]])
+    );
     await createLibraryTalent(
       {
         name: 'Eli',
-        isHuman: false,
+        isHuman: true,
         referenceImageUrls: ['/r2/talent/team-1/temp/a.png'],
         characterSheetImageUrls: [],
-        portraitAttestation: {
-          statementVersion: 'asset-rights-v1',
-        },
       },
       makeCtx()
     );
-
-    expect(mockRequireUpload).toHaveBeenCalledWith({
-      depictsRealPerson: false,
-      attestation: { statementVersion: 'asset-rights-v1' },
-    });
     expect(mockCreate).toHaveBeenCalledWith(
       expect.objectContaining({ isHuman: false })
+    );
+    expect(mockCarryRights).toHaveBeenCalledWith(
+      expect.anything(),
+      '/r2/talent/team-1/temp/a.png',
+      expect.stringMatching(/^\/r2\/talent\/team-1\/tal-1\//)
+    );
+  });
+
+  it('refuses an unchecked upload before the talent row exists (#1581)', async () => {
+    mockRequireRights.mockRejectedValueOnce(new Error('not checked'));
+    await expect(
+      createLibraryTalent(
+        {
+          name: 'Eli',
+          referenceImageUrls: ['/r2/talent/team-1/temp/a.png'],
+          characterSheetImageUrls: [],
+        },
+        makeCtx()
+      )
+    ).rejects.toThrow('not checked');
+    expect(mockCreate).not.toHaveBeenCalled();
+    expect(mockMoveFile).not.toHaveBeenCalled();
+  });
+
+  it('honours isHuman only when there is nothing to check', async () => {
+    await createLibraryTalent({ name: 'Sam', isHuman: true }, makeCtx());
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ isHuman: true })
     );
   });
 });

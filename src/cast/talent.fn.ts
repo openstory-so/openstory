@@ -1,5 +1,5 @@
 import { mediaUrlSchema } from '@/platform/schemas/media-url.schemas';
-import { deleteFile, getSignedUploadUrl } from '#storage';
+import { deleteFile, getSignedUploadUrl, moveFile } from '#storage';
 import { requireTeamAdminAccess } from '@/platform/server/auth/action-utils';
 import { generateId } from '@/platform/id';
 import {
@@ -8,10 +8,10 @@ import {
 } from '@/platform/server/db/scoped';
 import type { TalentWithSheets } from '@/platform/server/db/schema';
 import {
-  recordPortraitAttestation,
-  requireUploadAttestation,
-  uploadAttestationSchema,
-} from '@/cast/server/likeness-upload';
+  carryUploadRights,
+  recordLikenessFinding,
+  requireUploadRights,
+} from '@/cast/server/upload-rights';
 import { getRequest } from '@tanstack/react-start/server';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
 import {
@@ -20,7 +20,11 @@ import {
   listTalentFilterSchema,
   updateTalentSchema,
 } from '@/cast/server/talent.schemas';
-import { STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
+import {
+  STORAGE_BUCKETS,
+  getPathFromUrl,
+  getPublicUrl,
+} from '@/platform/server/storage/buckets';
 import {
   getExtensionFromUrl,
   getMimeTypeFromExtension,
@@ -100,15 +104,10 @@ export const createTalentFn = createServerFn({ method: 'POST' })
   .middleware([authWithTeamMiddleware])
   .validator(zodValidator(createTalentSchema))
   .handler(async ({ context, data }) => {
-    const request = getRequest();
     return createLibraryTalent(data, {
       scopedDb: context.scopedDb,
       user: context.user,
       teamId: context.teamId,
-      request: {
-        ipAddress: request.headers.get('cf-connecting-ip'),
-        userAgent: request.headers.get('user-agent'),
-      },
     });
   });
 
@@ -262,6 +261,11 @@ export const deleteTalentMediaFn = createServerFn({ method: 'POST' })
 
 const mediaTypeSchema = z.enum(['image', 'video', 'recording']);
 
+/**
+ * Every talent upload lands in `temp/` (#1581): finalize is what checks the
+ * likeness ledger and moves the object under the talent, so the talent's
+ * own folder only ever holds gated media and generated sheets.
+ */
 export const presignTalentUploadFn = createServerFn({ method: 'POST' })
   .middleware([authWithTeamMiddleware])
   .validator(
@@ -290,13 +294,9 @@ export const presignTalentUploadFn = createServerFn({ method: 'POST' })
     const mediaId = generateId();
     const contentType = getMimeTypeFromExtension(ext);
 
-    const storagePath = data.talentId
-      ? `${context.teamId}/${data.talentId}/${mediaId}.${ext}`
-      : `${context.teamId}/temp/${mediaId}.${ext}`;
-
     const result = await getSignedUploadUrl(
       STORAGE_BUCKETS.TALENT,
-      storagePath,
+      `${context.teamId}/temp/${mediaId}.${ext}`,
       contentType
     );
 
@@ -312,13 +312,11 @@ export const finalizeTalentUploadFn = createServerFn({ method: 'POST' })
         type: mediaTypeSchema,
         mediaId: ulidSchema,
         publicUrl: mediaUrlSchema,
-        path: z.string().min(1),
-        portraitAttestation: uploadAttestationSchema.optional(),
       })
     )
   )
   .handler(async ({ context, data }) => {
-    if (!data.path.startsWith(`talent/${context.teamId}/`)) {
+    if (!isTeamTalentStoredUrl(data.publicUrl, context.teamId)) {
       throw new Error('Invalid storage path');
     }
 
@@ -329,29 +327,26 @@ export const finalizeTalentUploadFn = createServerFn({ method: 'POST' })
       );
     }
 
-    const attestation = requireUploadAttestation({
-      depictsRealPerson: talentRecord.isHuman === true,
-      attestation: data.portraitAttestation,
-    });
-    const request = getRequest();
-    await recordPortraitAttestation({
-      scopedDb: context.scopedDb,
-      subjectId: data.talentId,
-      attestation,
-      request: {
-        ipAddress: request.headers.get('cf-connecting-ip'),
-        userAgent: request.headers.get('user-agent'),
-      },
-      depictsRealPerson: talentRecord.isHuman === true,
-    });
+    // A still must be cleared or signed before it is stored under the talent;
+    // a clip or a recording has no likeness check.
+    if (data.type === 'image') {
+      await requireUploadRights(context.scopedDb, [data.publicUrl]);
+    }
 
-    const storedUrl = `/r2/${data.path}`;
+    const tempPath = getPathFromUrl(data.publicUrl, STORAGE_BUCKETS.TALENT);
+    const path = `${context.teamId}/${data.talentId}/${data.mediaId}.${getExtensionFromUrl(data.publicUrl)}`;
+    await moveFile(STORAGE_BUCKETS.TALENT, tempPath, path);
+    const storedUrl = getPublicUrl(STORAGE_BUCKETS.TALENT, path);
+    if (data.type === 'image') {
+      await carryUploadRights(context.scopedDb, data.publicUrl, storedUrl);
+    }
+
     await context.scopedDb.talent.media.create({
       id: data.mediaId,
       talentId: data.talentId,
       type: data.type,
       url: storedUrl,
-      path: data.path,
+      path: `talent/${path}`,
     });
 
     if (data.type === 'image') {
@@ -438,6 +433,18 @@ export const analyzeTalentMediaFn = createServerFn({ method: 'POST' })
       filenames: data.filenames,
       idempotencyKey: `talent-vision:${data.imageUrls.join('|')}:${(data.filenames ?? []).join('|')}`,
     });
+    // The same look is the likeness check (#1581): its verdict goes on the
+    // ledger so create never has to run vision a second time.
+    const request = getRequest();
+    await recordLikenessFinding(
+      context.scopedDb,
+      data.imageUrls,
+      result.subjectKind,
+      {
+        ipAddress: request.headers.get('cf-connecting-ip'),
+        userAgent: request.headers.get('user-agent'),
+      }
+    );
     return {
       isCharacterSheet: result.isCharacterSheet,
       subjectKind: result.subjectKind,

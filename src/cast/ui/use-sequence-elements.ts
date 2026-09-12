@@ -19,6 +19,7 @@ import {
 import { deriveTokenFromFilename } from '@/cast/derive-token';
 import { normalizeElementFile } from '@/cast/ui/element/normalize-element-file';
 import { putToR2 } from '@/ui/upload';
+import { useUploadRightsGate } from '@/cast/ui/upload-rights-gate';
 import { sceneKeys } from '@/shots/ui/use-scenes';
 import { shotStalenessNamespace } from '@/shots/ui/use-shot-staleness';
 import {
@@ -62,6 +63,7 @@ export function useSequenceElements(sequenceId: string | undefined) {
  */
 export function useUploadElementToSequence() {
   const queryClient = useQueryClient();
+  const { ensureUploadRights } = useUploadRightsGate();
   return useMutation({
     mutationFn: async (data: {
       file: File;
@@ -79,6 +81,11 @@ export function useUploadElementToSequence() {
         presign.contentType,
         data.onProgress
       );
+      if (elementKindFromFile(file) === 'image') {
+        await ensureUploadRights([
+          { url: presign.publicUrl, filename: file.name },
+        ]);
+      }
       const element = await finalizeElementUploadFn({
         data: {
           sequenceId: data.sequenceId,
@@ -140,6 +147,7 @@ export type DraftElementUpload = {
  * element from reaching the analyze workflow and poisoning prompt hashes.)
  */
 export function useUploadDraftElement() {
+  const { ensureUploadRights } = useUploadRightsGate();
   return useMutation({
     mutationFn: async (data: {
       file: File;
@@ -173,6 +181,11 @@ export function useUploadDraftElement() {
           durationSeconds,
         };
       }
+
+      // A real person opens the sign-off dialog; declining fails the upload.
+      await ensureUploadRights([
+        { url: presign.publicUrl, filename: file.name },
+      ]);
 
       data.onAnalyzingChange?.(true);
       let result: {
@@ -317,6 +330,7 @@ export function useShotCountsForAllElements(sequenceId: string | undefined) {
  */
 export function useReplaceSequenceElement() {
   const queryClient = useQueryClient();
+  const { ensureUploadRights } = useUploadRightsGate();
   return useMutation({
     mutationFn: async (data: {
       file: File;
@@ -335,6 +349,11 @@ export function useReplaceSequenceElement() {
         presign.contentType,
         data.onProgress
       );
+      if (elementKindFromFile(file) === 'image') {
+        await ensureUploadRights([
+          { url: presign.publicUrl, filename: file.name },
+        ]);
+      }
       return await replaceSequenceElementFn({
         data: {
           sequenceId: data.sequenceId,

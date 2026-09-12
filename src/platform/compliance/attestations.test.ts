@@ -4,29 +4,32 @@ import {
   attestationMatchesShippedText,
   PORTRAIT_RIGHTS_V1,
   ASSET_RIGHTS_V1,
-  statementFor,
+  LIKENESS_CLEARED_V1,
+  LIKENESS_DETECTED_V1,
   statementHash,
 } from './attestations';
 
 describe('attestations', () => {
-  it('applies the portrait statement when a real person is depicted', () => {
-    expect(
-      statementFor({ subjectType: 'talent', depictsRealPerson: true }).version
-    ).toBe(PORTRAIT_RIGHTS_V1.version);
-    expect(
-      statementFor({
-        subjectType: 'sequence_element',
-        depictsRealPerson: true,
-      }).version
-    ).toBe(PORTRAIT_RIGHTS_V1.version);
-    expect(
-      statementFor({ subjectType: 'talent', depictsRealPerson: false }).version
-    ).toBe(ASSET_RIGHTS_V1.version);
+  it('demands an authorization basis for the portrait statement only', () => {
+    expect(PORTRAIT_RIGHTS_V1.requiresBasis).toBe(true);
+    expect(LIKENESS_CLEARED_V1.requiresBasis).toBe(false);
+    expect(LIKENESS_DETECTED_V1.requiresBasis).toBe(false);
   });
 
-  it('demands an authorization basis for likeness uploads only', () => {
-    expect(PORTRAIT_RIGHTS_V1.requiresBasis).toBe(true);
-    expect(ASSET_RIGHTS_V1.requiresBasis).toBe(false);
+  it('verifies every statement version the ledger can hold', async () => {
+    for (const statement of [
+      PORTRAIT_RIGHTS_V1,
+      ASSET_RIGHTS_V1,
+      LIKENESS_CLEARED_V1,
+      LIKENESS_DETECTED_V1,
+    ]) {
+      expect(
+        await attestationMatchesShippedText({
+          statementVersion: statement.version,
+          statementSha256: await statementHash(statement),
+        })
+      ).toBe(true);
+    }
   });
 
   it('hashes the statement text verbatim', async () => {

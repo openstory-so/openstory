@@ -10,7 +10,7 @@
  * without hand-writing the spec. Uses Zod 4 top-level formats (`z.url`, `z.int`).
  */
 
-import { portraitAttestationSchema } from '@/cast/server/likeness-upload';
+import { PORTRAIT_RIGHTS_V1 } from '@/platform/compliance/attestations';
 import { aspectRatioSchema } from '@/models/aspect-ratios';
 import { resolutionSchema } from '@/models/resolutions';
 import { MUSIC_REQUIRES_MOTION_ERROR } from '@/sequences/server/sequence.schemas';
@@ -31,6 +31,27 @@ const referenceImageUrls = z.array(z.url()).optional().meta({
     'Optional hosted reference image URLs; ingested and used to generate the reference sheet.',
 });
 
+/**
+ * The portrait sign-off for an item's images (#1581). Every ingested image is
+ * checked for a real person server-side; this is required only when one is
+ * found, and covers each image of the item it sits on.
+ */
+const portraitAttestationSchema = z
+  .object({
+    statementVersion: z.literal(PORTRAIT_RIGHTS_V1.version).meta({
+      description: 'The portrait-rights statement version being affirmed.',
+    }),
+    authorizationBasis: z.string().trim().min(1).max(500).meta({
+      description:
+        'Basis for the authorization: a release reference, "self", a contract id.',
+    }),
+  })
+  .meta({ id: 'PortraitAttestation' });
+const portraitAttestation = portraitAttestationSchema.optional().meta({
+  description:
+    'Required when an image shows a real, identifiable person (checked server-side): portrait-rights statement version and authorization basis.',
+});
+
 /** Inline request to create a new library cast member (talent). */
 const createCharacterSchema = z
   .object({
@@ -40,23 +61,7 @@ const createCharacterSchema = z
       description: 'Whether the character is a human (vs creature/object).',
     }),
     referenceImageUrls,
-    portraitAttestation: portraitAttestationSchema.optional().meta({
-      description:
-        'Required when referenceImageUrls is set: portrait-rights statement version and authorization basis.',
-    }),
-  })
-  .superRefine((value, ctx) => {
-    if (
-      value.referenceImageUrls?.length &&
-      !value.portraitAttestation?.authorizationBasis.trim()
-    ) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['portraitAttestation'],
-        message:
-          'portraitAttestation is required when uploading reference images of a person.',
-      });
-    }
+    portraitAttestation,
   })
   .meta({ id: 'CreateCharacter' });
 
@@ -66,6 +71,7 @@ const createLocationSchema = z
     name: entityName,
     description: entityDescription,
     referenceImageUrls,
+    portraitAttestation,
   })
   .meta({ id: 'CreateLocation' });
 
@@ -196,6 +202,7 @@ export const apiCreateSequenceSchema = z
               .min(1)
               .optional()
               .meta({ description: 'Optional original filename.' }),
+            portraitAttestation,
           })
           .meta({ id: 'ElementInput' })
       )

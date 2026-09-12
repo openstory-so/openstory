@@ -5,6 +5,7 @@ import {
   deleteStudioAssetFn,
   draftStudioPromptFn,
   listStudioAssetsFn,
+  listStudioUploadsFn,
   setStudioAssetFavoriteFn,
 } from '@/studio/studio-assets.fn';
 import {
@@ -17,6 +18,7 @@ import {
   useInfiniteQuery,
   useMutation,
   useMutationState,
+  useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
 import { isInsufficientCreditsError } from '@/platform/errors';
@@ -178,5 +180,20 @@ export function useDraftStudioPrompt() {
       if (isInsufficientCreditsError(error)) return;
       toast.error(error.message);
     },
+  });
+}
+
+export const studioUploadKeys = {
+  all: ['studio-uploads'] as const,
+};
+
+/** The team's past composer uploads (the picker's Uploads tab). */
+export function useStudioUploads() {
+  const { isAuthenticated } = useAuthGate();
+  return useQuery({
+    queryKey: studioUploadKeys.all,
+    queryFn: () => listStudioUploadsFn(),
+    enabled: isAuthenticated,
+    staleTime: 60_000,
   });
 }

@@ -26,6 +26,9 @@ import {
   reserveRunCredits,
 } from '@/billing/server/preflight';
 import { requireGenerationAllowed } from '@/platform/server/compliance/generation-gate';
+import { requireUploadRights } from '@/cast/server/upload-rights';
+import { needsLikenessCheck } from '@/cast/upload-rights';
+import { studioReferenceImages } from '@/studio/reference-rights';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { GeneratedAssetInput } from '@/platform/server/db/schema';
 import { getLogger } from '@/platform/logger';
@@ -159,6 +162,12 @@ export async function createStudioAssets(
     userId: scopedDb.userId,
     teamId: scopedDb.teamId,
   });
+  // Uploads and raw URLs must be cleared or signed on the likeness ledger
+  // (#1581); library stills passed the same gate when they were saved.
+  await requireUploadRights(
+    scopedDb,
+    studioReferenceImages(input).filter(needsLikenessCheck)
+  );
 
   // Hold every item before inserting any row. A shared envelope would let
   // the first child to finish zero leftover for siblings; a later reserve

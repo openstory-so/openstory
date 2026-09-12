@@ -282,6 +282,7 @@ export const createSequences = createServerOnlyFn(
     // sequence with no workflow behind it.
     if (elementUploads && elementUploads.length > 0) {
       await assertDraftElementUploadsAttachable({
+        scopedDb: context.scopedDb,
         teamId,
         uploads: elementUploads,
       });
