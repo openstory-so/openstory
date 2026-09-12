@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use Image 1 as the starting frame.\nShot 1: Smooth camera truck backward as scarlett_city_influencer continues striding toward the camera from the exact starting pose, holding the open lipstick and tote. She snaps the lipstick closed, slips it into the tote without breaking rhythm, then turns back toward the radiator shelf to retrieve the phone before moving on.\n\nShot 2: At the cut to the stairwell, smooth camera pan follows scarlett_city_influencer as she descends two flights at a brisk, controlled pace, one hand sliding along the rail. Passing sunlight sweeps across her face at each landing; she turns her chin toward the wired-glass reflection with a small, amused smile, then continues downward toward the street.\n\nKeep the tote strap and loose fabric swaying naturally with her stride. Let stairwell light shift across her as footsteps echo through the concrete space.\n\noverall_soundscape: quiet apartment hallway ambience transitioning to distant city noise and a lightly echoing concrete stairwell. brisk footsteps on the hallway floor, lipstick cap click, phone lifted from the radiator shelf, footsteps on concrete stairs, hand sliding along the metal rail, soft stairwell echo. No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\nnon_diegetic_music: N/A\n\nReference images:\nImage 2: Scarlett — keep visually consistent throughout the shot.",
+        "model": "minimax/h3-max/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://assets.openstory.so/e2e/f48f81b6474323b92bd9278db0cad3a5c8c70309d41ec84d61da7910f7b04c00.mp4",
+            "content_type": "video/mp4",
+            "file_name": "rX_WAeHJtXCDWiCgnIjtA_minimax-h3.mp4",
+            "file_size": 8966054
+          },
+          "expanded_prompt": "subject_definitions:\n<Subject 1> is Scarlett, the young blonde woman shown in <Picture 2>, characterized by wavy blonde hair, black cat-eye sunglasses, a small gold ear cuff, a fitted black turtleneck, charcoal grey high-waisted pleated trousers, and black leather loafers, carrying a beige tote bag on her shoulder.\n<Subject 2> is the indoor environment consisting of the beige apartment hallway with a white radiator and wooden shelf, and the concrete stairwell with metal railings and glass-paned walls, providing the setting for the target video.\n\nsummary:\n[keyframe completion + reference generation] The target video features <Subject 1> walking through a hallway and descending stairs. <Picture 1> serves as the initial keyframe anchor for the composition and lighting, while <Picture 2> provides the consistent character design for <Subject 1>.\n\nretention_analysis:\n<Picture 1>: fully_preserved - acts as the first frame, establishing the character's pose, the hallway lighting, and the placement of the objects.\n<Picture 2>: fully_preserved - defines the visual appearance of <Subject 1> throughout the entire sequence.\n\ndetailed_description:\nThe video presents a cinematic, high-fashion lookbook aesthetic with clean lines, natural lighting, and a focus on fabric movement and color harmony. The 16:9 landscape format emphasizes the horizontal flow of the hallway and the depth of the stairwell.\n\n[Shot 1] The video opens with <Picture 1> as the starting frame, capturing the exact pose of <Subject 1> in the apartment hallway, holding an open red lipstick in one hand and a beige tote bag by the strap. The camera begins a smooth Truck Backward motion with medium amplitude at a steady speed, following <Subject 1> as she strides confidently toward the lens. Her movements are rhythmic and controlled. Mid-stride, she snaps the lipstick shut with a crisp click and slips it inside the tote bag without breaking her walking pace. She then pivots toward a radiator shelf on the right, where a smartphone is visible, retrieves the phone with a quick, fluid motion, and turns back toward the end of the hallway. The beige strap and the loose fabric of her black top sway naturally with the momentum of her walk.\n\n[Shot 2] At 00:03.000, the shot cuts to a concrete stairwell. The framing shifts to a profile view as <Subject 1> descends two flights of stairs at a brisk, controlled pace. The camera maintains a smooth Pan following her descent. One hand glides steadily along the metal railing. As she passes each landing, sunlight filtering through glass-paned walls sweeps across her face, creating rhythmic variations in light and shadow. At the second landing, she turns her chin toward the wire-glass reflection, offering a small, amused smile before continuing her descent toward the street level.\n\noverall_soundscape:\nThe audio begins with quiet apartment hallway ambience and the sound of brisk footsteps on a tiled floor. Distinct action sounds include the sharp click of the lipstick cap and the soft fabric slide of the phone being lifted. As the scene transitions to the concrete stairwell, the sound becomes lightly echoing with the cadence of footsteps on stairs and the gentle metallic scrape of a hand on the rail.\n\nnon_diegetic_music:\nN/A",
+          "seed": 405993296,
+          "timings": {
+            "inference": 5.841533554019406
+          }
+        },
+        "status": 200,
+        "billableUnits": 9.600000000000001
+      }
+    }
+  ]
+}

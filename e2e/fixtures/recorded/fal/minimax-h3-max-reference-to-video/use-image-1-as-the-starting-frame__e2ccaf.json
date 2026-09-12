@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use Image 1 as the starting frame.\nShot 1, 0–6 seconds: Smooth orbit around Image 2 at eye level, beginning from her current pose as she studies the dark reflection of her phone with the opened Image 3 raised beside her face. Image 2 makes one precise touch-up, then lowers the lipstick slightly and gives a brief, natural laugh as an elevated train rattles across the skyline.\n\nShot 2, 6–12 seconds: Smooth low-angle truck beside Image 2 as she closes the Image 3 and places it on the rooftop ledge. A gust nudges it toward the edge; she reaches back immediately, catches it cleanly, gives the camera a knowing smile, and tucks it into her pocket before walking toward the glowing skyline. End with her turning into the warm light, coral lips becoming the final focal point.\n\nWind lifts loose strands of hair and stirs the potted grasses throughout. The lipstick makes a small scrape against the ledge before Image 2 catches it.\n\noverall_soundscape: steady rooftop wind, distant downtown ambience, elevated train rattling across the skyline. brief natural laugh, Image 3 cap clicking shut, small lipstick scrape along the concrete ledge, soft footsteps on the rooftop. No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\nnon_diegetic_music: N/A",
+        "model": "minimax/h3-max/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://assets.openstory.so/e2e/c2cd3d6dcdb22228f8d22db539bdf2e002ae6820b4a5389323124341bb72d081.mp4",
+            "content_type": "video/mp4",
+            "file_name": "mqlo-WCctlPSLALs0B0yf_minimax-h3.mp4",
+            "file_size": 9180422
+          },
+          "expanded_prompt": "subject_definitions:\n<Subject 1> is the female subject in <Picture 1>, possessing the full-body appearance, black turtleneck outfit, dark grey trousers, phone accessories, and coral lip color established in frame one.\n<Subject 2> is the woman in <Picture 2>, defining the facial identity, blonde wavy hair styling, and natural expression to be integrated into the [Shot 1] and [Shot 2] sequence.\n<Subject 3> is the Scarlett Matte Coral lipstick in <Picture 3>, serving as the primary prop with gold-capped branding and distinct matte coral pigment.\n\nsummary:\n[keyframe completion + reference generation] The target video is a 16:9 cinematic sequence set on a high-rise rooftop at sunset. [Shot 1] opens on the starting frame from <Picture 1>, transitioning into a 6-second medium shot where <Subject 2> applies a touch-up using <Subject 3> while <Subject 1>'s attire remains constant. [Shot 2] involves a low-angle truck shot as she secures <Subject 3> into her pocket and walks toward the city lights. The scene features a consistent urban environment with potted grasses and an elevated train.\n\nretention_analysis:\n<Subject 1> (appears in [Shot 1], [Shot 2]): fully_preserved - The subject’s wardrobe and phone access from the starting frame must remain anchored.\n<Subject 2> (appears in [Shot 1], [Shot 2]): attribute_transfer - Facial features and hair from <Picture 2> are applied to the figure to ensure a high-quality, realistic appearance.\n<Subject 3> (appears in [Shot 1], [Shot 2]): fully_preserved - The physical design of the lipstick and \"SCARLETT\" branding must match <Picture 3> precisely.\n\ndetailed_description:\nThe video is a high-end lifestyle commercial filmed on a modern rooftop during the golden hour, featuring realistic skin textures and cinematic lighting. [Shot 1] begins exactly as the visual from <Picture 1>, showcasing <Subject 2> at eye level. The camera performs a smooth Arc Shot with medium amplitude at a slow speed. She studies the dark reflection of her phone, holding <Subject 3> in her right hand. With a precise motion, she applies a coral touch-up to her lips. As she does, a distant elevated train rumbles across the skyline. She lowers the lipstick slightly, and a brief, natural laugh escapes her as the train passes. Wind lifts loose strands of her blonde hair, which is styled as seen in <Picture 2>. [Shot 2] At 00:06.000, the shot cuts to a low-angle position. The camera executes a Truck Left motion at a steady speed, staying beside <Subject 2>'s waist as she moves. She twists the cap of <Subject 3>, which clicks shut, and places it on the concrete rooftop ledge. A sudden gust nudges the cap, causing <Subject 3> to scrape against the ledge with a small physical sound. She reaches back immediately and catches it cleanly without breaking her stride. She turns to the camera, offering a knowing smile, and tucks <Subject 3> into her pocket. She then walks toward the glowing city skyline, her black turtleneck and grey trousers (from <Subject 1>) moving with her. The shot ends on a close-up of her profile as she turns into the warm light, her coral lips becoming the final focal point of the frame.\n\noverall_soundscape:\nThe scene is layered with steady rooftop wind, distant downtown traffic noise, and the rhythmic rattle of an elevated train passing the site. Physical sounds include the brief natural laugh of the subject, the sharp click of the lipstick cap closing, a small scrape of concrete, and soft footsteps on the rooftop. No background music or dialogue is present.\n\nnon_diegetic_music:\nN/A",
+          "seed": 952615568,
+          "timings": {
+            "inference": 5.996734267973807
+          }
+        },
+        "status": 200,
+        "billableUnits": 9.830400000000001
+      }
+    }
+  ]
+}
