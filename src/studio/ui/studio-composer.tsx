@@ -80,10 +80,12 @@ import {
   DEFAULT_VIDEO_MODEL,
   getCompatibleModel,
   IMAGE_TO_VIDEO_MODELS,
+  isOfferedVideoModel,
   supportsReferenceImages,
   type ImageToVideoModel,
   type TextToImageModel,
 } from '@/models/models';
+import { useViaAvailability } from '@/models/ui/use-via-availability';
 import {
   estimateImageCost,
   estimateStudioVideoCost,
@@ -309,12 +311,19 @@ export function StudioComposer({
   const attest = useAttestStudioReferences();
   const queryClient = useQueryClient();
   const library = useStudioLibrary();
+  const vias = useViaAvailability();
 
   const [prompt, setPrompt] = useState('');
   const [imageModel, setImageModel] =
     useState<TextToImageModel>(DEFAULT_IMAGE_MODEL);
-  const [videoModel, setVideoModel] =
-    useState<ImageToVideoModel>(DEFAULT_VIDEO_MODEL);
+  // Seedance 2.5 where the BytePlus via is live (it has no fal endpoint);
+  // the platform default otherwise. The via query is warmed by the `_app`
+  // loader, so a signed-in user gets the right answer on first paint.
+  const [videoModel, setVideoModel] = useState<ImageToVideoModel>(() =>
+    isOfferedVideoModel('seedance_v2_5', vias)
+      ? 'seedance_v2_5'
+      : DEFAULT_VIDEO_MODEL
+  );
   const [aspectRatio, setAspectRatio] =
     useState<AspectRatio>(DEFAULT_ASPECT_RATIO);
   const [pickedResolution, setResolution] =
@@ -947,6 +956,7 @@ export function StudioComposer({
 
   const aspect = ASPECT_RATIOS.find((r) => r.value === aspectRatio);
   const summary = [
+    activeModelName,
     aspectRatio,
     resolutionTiers.length > 0
       ? RESOLUTION_OPTIONS.find((r) => r.value === resolution)?.label
@@ -1281,31 +1291,34 @@ export function StudioComposer({
                   <Separator />
                   <section className="flex flex-col gap-2">
                     <h3 className="text-sm font-medium">Duration</h3>
-                    <ToggleGroup
-                      type="single"
+                    <Select
                       value={String(snappedDuration)}
                       onValueChange={(value) => {
                         const next = Number(value);
                         if (Number.isFinite(next) && next > 0)
                           setDuration(next);
                       }}
-                      variant="outline"
-                      spacing={0}
-                      className="flex-wrap"
-                      aria-label="Clip duration"
                     >
-                      {studioVideoDurations(compatibleVideoModel).map(
-                        (value) => (
-                          <ToggleGroupItem
-                            key={value}
-                            value={String(value)}
-                            className="px-3 font-mono text-xs"
-                          >
-                            {value}s
-                          </ToggleGroupItem>
-                        )
-                      )}
-                    </ToggleGroup>
+                      <SelectTrigger
+                        aria-label="Clip duration"
+                        className="w-28 font-mono text-xs"
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {studioVideoDurations(compatibleVideoModel).map(
+                          (value) => (
+                            <SelectItem
+                              key={value}
+                              value={String(value)}
+                              className="font-mono text-xs"
+                            >
+                              {value}s
+                            </SelectItem>
+                          )
+                        )}
+                      </SelectContent>
+                    </Select>
                   </section>
                 </>
               )}
