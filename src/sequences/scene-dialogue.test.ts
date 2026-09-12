@@ -17,11 +17,12 @@ const scene = (id: string, extract: string) => ({
 });
 
 describe('assignDialogueToScenes', () => {
+  const { offsets } = resolveBoundaries(SCRIPT, [
+    { hintLine: 1, quote: 'INT. GYM - MORNING' },
+    { hintLine: 4, quote: 'EXT. TRACK - LATER' },
+  ]);
+
   it('maps each line to the scene owning its gutter line and replaces the regex result', () => {
-    const { offsets } = resolveBoundaries(SCRIPT, [
-      { hintLine: 1, quote: 'INT. GYM - MORNING' },
-      { hintLine: 4, quote: 'EXT. TRACK - LATER' },
-    ]);
     const scenes = [
       {
         ...scene('s1', 'gym'),
@@ -35,7 +36,7 @@ describe('assignDialogueToScenes', () => {
     const out = assignDialogueToScenes(SCRIPT, offsets, scenes, [
       {
         lineNumber: 2,
-        character: 'Lena',
+        character: ' Lena ',
         line: 'Strong starts with steady.',
         tone: 'calm',
       },
@@ -46,16 +47,30 @@ describe('assignDialogueToScenes', () => {
         line: 'Lane four, on your marks.',
         tone: '',
       },
-      { lineNumber: 99, character: 'Ghost', line: '  ', tone: '' },
+      { lineNumber: 3, character: 'Ghost', line: '  ', tone: '' },
     ]);
-    expect(out[0]?.originalScript.dialogue).toEqual([
+    expect(out.scenes[0]?.originalScript.dialogue).toEqual([
       { character: 'Lena', line: 'Strong starts with steady.', tone: 'calm' },
     ]);
-    expect(out[1]?.originalScript.dialogue).toEqual([
+    expect(out.scenes[1]?.originalScript.dialogue).toEqual([
       { character: 'Coach Lena', line: 'Again', tone: '' },
       { character: '', line: 'Lane four, on your marks.', tone: '' },
     ]);
-    expect(out[0]?.originalScript.extract).toBe('gym');
+    expect(out.scenes[0]?.originalScript.extract).toBe('gym');
+    expect(out.dropped).toEqual([]);
+  });
+
+  it('drops a line whose gutter number is outside the script instead of guessing a scene', () => {
+    const scenes = [scene('s1', 'gym'), scene('s2', 'track')];
+    const out = assignDialogueToScenes(SCRIPT, offsets, scenes, [
+      { lineNumber: 0, character: 'Lena', line: 'Too early', tone: '' },
+      { lineNumber: 99, character: 'Lena', line: 'Too late', tone: '' },
+      { lineNumber: 6, character: '', line: 'Lane four.', tone: '' },
+    ]);
+    expect(out.scenes.map((s) => s.originalScript.dialogue.length)).toEqual([
+      0, 1,
+    ]);
+    expect(out.dropped.map((d) => d.line)).toEqual(['Too early', 'Too late']);
   });
 
   it('empties a scene the LLM found no speech in', () => {
@@ -65,6 +80,6 @@ describe('assignDialogueToScenes', () => {
       [scene('s1', 'a'), scene('s2', 'b')],
       []
     );
-    expect(out.map((s) => s.originalScript.dialogue)).toEqual([[], []]);
+    expect(out.scenes.map((s) => s.originalScript.dialogue)).toEqual([[], []]);
   });
 });

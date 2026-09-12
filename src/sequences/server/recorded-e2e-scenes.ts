@@ -188,7 +188,7 @@ export function replayRecordedE2eScenes(): {
   const dialogue = sceneSplitDialogueResultSchema.parse(
     parseJson(responseContent('script-dialogue/script-dialogue.json'))
   );
-  const scenes = assignDialogueToScenes(
+  const { scenes } = assignDialogueToScenes(
     script,
     assembled.resolution.offsets,
     tagged,

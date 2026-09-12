@@ -41,6 +41,21 @@ describe('scene-shot-list-chat', () => {
   });
 });
 
+describe('dialogue-extraction-chat (#1585)', () => {
+  it('is registered and takes the gutter script plus the bible cast', () => {
+    const prompt = WORKFLOW_CHAT_PROMPTS['phase/dialogue-extraction-chat'];
+    expect(prompt).toBeDefined();
+    expect(prompt?.[0]?.content).toContain('copied verbatim');
+    expect(prompt?.[1]?.content).toContain('{{script}}');
+    expect(prompt?.[1]?.content).toContain('{{characters}}');
+    expect(prompt?.[1]?.content).toContain('<CHARACTERS>');
+    // aimock routes recordings by this prefix (e2e/mocks/aimock-server.ts).
+    expect(String(prompt?.[1]?.content)).toMatch(
+      /^Extract every line of dialogue/
+    );
+  });
+});
+
 describe('script/enhance — two levels (#1486)', () => {
   const enhance = WORKFLOW_TEXT_PROMPTS['script/enhance'] ?? '';
 

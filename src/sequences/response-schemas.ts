@@ -155,11 +155,12 @@ export const musicDesignResultSchema = z.object({
 });
 
 /**
- * Phase 1: Dialogue extraction (#1585) — a third call, parallel with the
- * scenes and bibles calls. The regex parser in `scene-from-slice.ts` only
- * understands screenplay cues (`SARAH` / `NAME: line`); prose speech
- * (`Lena says, “…”`) has too many shapes for it, so the LLM lists every
- * spoken line against the gutter and the join maps each to its scene.
+ * Phase 1: Dialogue extraction (#1585). Runs after the scenes/bibles join,
+ * beside the shot-list pass, because it is handed the character bible's
+ * names. The regex parser in `scene-from-slice.ts` only understands
+ * screenplay cues (`SARAH` / `NAME: line`); prose speech (`Lena says, “…”`)
+ * has too many shapes for it, so the LLM lists every spoken line against
+ * the gutter and the join maps each to its scene.
  */
 export const sceneSplitDialogueResultSchema = z.object({
   lines: z.array(
@@ -169,7 +170,7 @@ export const sceneSplitDialogueResultSchema = z.object({
       }),
       character: z.string().meta({
         description:
-          'Speaker name exactly as the script spells it, or empty for narrator / voiceover',
+          'Speaker, spelled as the CHARACTERS list spells it when present, otherwise as the script does; empty for narrator / voiceover',
       }),
       line: z.string().meta({
         description: 'The spoken words, copied verbatim (no quotes, no gutter)',

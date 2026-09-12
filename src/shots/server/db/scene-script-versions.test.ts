@@ -191,3 +191,56 @@ describe('sceneScriptVersions.seedSplitVersions', () => {
     expect(versions).toHaveLength(1);
   });
 });
+
+describe('sceneScriptVersions.updateSplitContent', () => {
+  it('overwrites only the split row, leaving a user revision and the selection alone', async () => {
+    const methods = createSceneScriptVersionsMethods(db);
+    await methods.seedSplitVersions([
+      {
+        sceneId,
+        content: { extract: 'Scene one.', dialogue: [] },
+        createdAt: new Date(),
+      },
+    ]);
+    const userVersion = await methods.write({
+      sceneId,
+      content: { extract: 'Scene one, edited.', dialogue: [] },
+      source: 'edit',
+    });
+
+    const line = { character: 'Lena', line: 'Steady.', tone: '' };
+    await methods.updateSplitContent([
+      { sceneId, content: { extract: 'Scene one.', dialogue: [line] } },
+    ]);
+
+    const [split] = await db
+      .select()
+      .from(sceneScriptVersions)
+      .where(eq(sceneScriptVersions.id, sceneId));
+    expect(split?.content.dialogue).toEqual([line]);
+
+    const [user] = await db
+      .select()
+      .from(sceneScriptVersions)
+      .where(eq(sceneScriptVersions.id, userVersion.id));
+    expect(user?.content.dialogue).toEqual([]);
+
+    const [scene] = await db
+      .select()
+      .from(scenes)
+      .where(eq(scenes.id, sceneId));
+    expect(scene?.selectedScriptVersionId).toBe(userVersion.id);
+  });
+
+  it('is a no-op for a scene with no split row', async () => {
+    const methods = createSceneScriptVersionsMethods(db);
+    await methods.updateSplitContent([
+      { sceneId, content: { extract: 'x', dialogue: [] } },
+    ]);
+    const rows = await db
+      .select()
+      .from(sceneScriptVersions)
+      .where(eq(sceneScriptVersions.sceneId, sceneId));
+    expect(rows).toEqual([]);
+  });
+});

@@ -6,11 +6,17 @@
  * REPLACES the regex-derived `originalScript.dialogue` (the streaming
  * preview value from `extractDialogueFromSlice`) on every scene, so a scene
  * the LLM found nothing in ends up with `[]`.
+ *
+ * A line whose gutter number is outside the script is DROPPED and reported,
+ * never guessed onto scene 1 or the last scene: a misplaced spoken line is
+ * audio in the wrong clip.
  */
 
 import { sceneIndexForLine } from '@/sequences/boundary-split';
 import type { SceneSplitDialogueResult } from '@/sequences/response-schemas';
 import type { DialogueLine } from '@/shots/scene-analysis.schema';
+
+type ExtractedLine = SceneSplitDialogueResult['lines'][number];
 
 export function assignDialogueToScenes<
   T extends { originalScript: { extract: string; dialogue: DialogueLine[] } },
@@ -18,20 +24,33 @@ export function assignDialogueToScenes<
   script: string,
   offsets: number[],
   scenes: T[],
-  lines: SceneSplitDialogueResult['lines']
-): T[] {
+  lines: ExtractedLine[]
+): { scenes: T[]; dropped: ExtractedLine[] } {
+  const lineCount = script.split('\n').length;
   const byScene: DialogueLine[][] = scenes.map(() => []);
-  for (const { lineNumber, character, line, tone } of lines) {
+  const dropped: ExtractedLine[] = [];
+  for (const extracted of lines) {
+    const { lineNumber, character, line, tone } = extracted;
     const text = line.trim();
     if (text.length === 0) continue;
-    const index = Math.min(
-      sceneIndexForLine(script, offsets, lineNumber),
-      scenes.length - 1
-    );
-    byScene[index]?.push({ character: character.trim(), line: text, tone });
+    if (lineNumber < 1 || lineNumber > lineCount) {
+      dropped.push(extracted);
+      continue;
+    }
+    byScene[sceneIndexForLine(script, offsets, lineNumber)]?.push({
+      character: character.trim(),
+      line: text,
+      tone,
+    });
   }
-  return scenes.map((scene, index) => ({
-    ...scene,
-    originalScript: { ...scene.originalScript, dialogue: byScene[index] ?? [] },
-  }));
+  return {
+    scenes: scenes.map((scene, index) => ({
+      ...scene,
+      originalScript: {
+        ...scene.originalScript,
+        dialogue: byScene[index] ?? [],
+      },
+    })),
+    dropped,
+  };
 }

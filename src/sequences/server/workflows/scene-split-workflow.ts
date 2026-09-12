@@ -1,10 +1,11 @@
 /**
- * Scene-split workflow (#1035: two parallel LLM calls, boundary annotation).
+ * Scene-split workflow (#1035: boundary annotation, several small LLM calls).
  *
  * The old single mega-call (scenes + bibles in one 8.2KB schema) exceeded
  * Anthropic's native strict-output grammar budget and re-emitted the entire
- * script through the LLM. It is replaced by two independent calls over the
- * same script, run concurrently as sibling `step.do`s:
+ * script through the LLM. It is replaced by four calls over the same script:
+ * two concurrent siblings (scenes, bibles), then two more after the join
+ * (shot-list, dialogue):
  *
  *   - `scene-splitting-stream` — the scenes call. A boundary-annotation
  *     contract: the LLM returns `{ hintLine, quote }` anchors against a
@@ -341,9 +342,11 @@ type BiblesStepResult = SceneSplitBiblesResult & LlmStepBilling;
 type DialogueStepResult = SceneSplitDialogueResult & LlmStepBilling;
 
 /**
- * One non-streaming structured call, shared by the bibles and dialogue steps:
- * same script, same model, same failure mode (no validated payload = the
- * step fails; nothing falls back to a local guess).
+ * One structured call consumed to completion, shared by the bibles and
+ * dialogue steps: the stream is drained for its final validated payload and
+ * nothing is persisted or emitted per chunk (unlike `scene-splitting-stream`).
+ * Same script, same model, same failure mode: no validated payload = the
+ * step fails; nothing falls back to a local guess.
  */
 async function runStructuredCall<T extends object>({
   input,
@@ -376,6 +379,7 @@ async function runStructuredCall<T extends object>({
 
   let parsed: T | undefined;
   let usage: TokenUsage | undefined;
+  let accumulatedLength = 0;
   for await (const chunk of callLLMStream<T>({
     model: modelId,
     messages,
@@ -389,14 +393,24 @@ async function runStructuredCall<T extends object>({
     userId: input.userId,
     sessionId: input.sequenceId,
   })) {
+    accumulatedLength = chunk.accumulated.length;
     if (chunk.done) {
       parsed = chunk.parsed;
       usage = chunk.usage;
     }
   }
   if (!parsed) {
+    // Truncation at the token cap and a provider dropping the stream end the
+    // same way (no validated payload); the numbers tell them apart.
+    const completionTokens = usage?.completionTokens;
+    const atCap =
+      completionTokens !== undefined && completionTokens >= maxTokens;
+    logger.error(
+      `[SceneSplitWorkflow:cf] [LLM:${logName}] Stream ended without a validated structured-output payload`,
+      { model: modelId, maxTokens, completionTokens, accumulatedLength, atCap }
+    );
     throw new NonRetryableError(
-      `[SceneSplitWorkflow:cf] [LLM:${logName}] Stream ended without a validated structured-output payload (model=${modelId})`
+      `[SceneSplitWorkflow:cf] [LLM:${logName}] Stream ended without a validated structured-output payload (model=${modelId}${atCap ? ', output hit the token cap' : ''})`
     );
   }
   return {
@@ -460,11 +474,15 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
             })
             .join('\n')
         : '(none)';
-    // Both calls see the same numbered-gutter copy of the script: the scenes
-    // call reports hintLine against it, the bibles call firstMention lines.
+    // Every call sees the same numbered-gutter copy of the script: scenes
+    // report hintLine, bibles firstMention.lineNumber, dialogue lineNumber
+    // (#1585) against it.
     const gutteredScript = addLineGutter(script);
     const splitMaxTokens = getMaxOutputTokens(SCENE_SPLIT_MODEL, 0.65);
     const biblesMaxTokens = getMaxOutputTokens(modelId, 0.65);
+    // Dialogue re-emits every spoken line verbatim, so on a talky script it
+    // is the longest output of the phase; give it the model's full ceiling.
+    const dialogueMaxTokens = getMaxOutputTokens(modelId, 1);
 
     // The two LLM calls are independent given the script, so their steps run
     // concurrently — output length drives latency and the scenes stream is
@@ -948,8 +966,9 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
 
     // Step 2c (#1585): every spoken line, prose or screenplay, against the
     // gutter — with the bible's cast so each speaker is a bible name. Runs
-    // beside the shot-list pass; fails the run like the bibles call does (the
-    // regex preview is never the persisted answer).
+    // beside the shot-list pass; fails the run like the bibles call does (a
+    // completed run never persists the regex preview; a failed one leaves
+    // the mid-stream seed in place).
     const dialoguePromise = step.do(
       DIALOGUE_STEP_NAME,
       async (): Promise<string> => {
@@ -966,7 +985,7 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
                 .join('\n') || '(none)',
           },
           responseSchema: sceneSplitDialogueResultSchema,
-          maxTokens: biblesMaxTokens,
+          maxTokens: dialogueMaxTokens,
         });
         logger.info(
           `[SceneSplitWorkflow:cf] [LLM:${DIALOGUE_LOG_NAME}] Complete | ${result.lines.length} lines`
@@ -991,16 +1010,20 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
       llmCostMicros: Microdollars;
       llmKeySource: 'team' | 'platform';
     } = JSON.parse(shotListJson);
+    const dialogueJoin = assignDialogueToScenes(
+      script,
+      streamResult.offsets,
+      reconciledScenes,
+      dialogueResult.lines
+    );
+    if (dialogueJoin.dropped.length > 0) {
+      logger.warn(
+        `[SceneSplitWorkflow:cf] Dropped ${dialogueJoin.dropped.length} dialogue line(s) whose gutter line is outside the script`,
+        { sequenceId, dropped: dialogueJoin.dropped }
+      );
+    }
     const scenesWithShots = applyTargetDurations(
-      attachShotLists(
-        assignDialogueToScenes(
-          script,
-          streamResult.offsets,
-          reconciledScenes,
-          dialogueResult.lines
-        ),
-        shotListStep.result
-      ),
+      attachShotLists(dialogueJoin.scenes, shotListStep.result),
       input.videoModel ? input.targetSeconds : undefined,
       input.videoModel ? durationGridForModel(input.videoModel) : []
     );
