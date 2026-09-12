@@ -8,12 +8,15 @@
  * paste, picker Upload) or a raw http(s) URL. Exempt: every other stored
  * `/r2/` object, which is either something we generated (provenance on
  * record) or a library row written through its own attested flow (talent
- * media, elements).
+ * media, elements), and our own public assets domain (system talent,
+ * locations and styles ship from there).
  */
 
+import { getPublicAssetsDomain } from '@/platform/public-assets';
 import type { StudioCreateInput } from './schema';
 
 export function needsReferenceAttestation(url: string): boolean {
+  if (url.startsWith(`https://${getPublicAssetsDomain()}/`)) return false;
   return /^https?:\/\//.test(url) || /^\/r2\/talent\/[^/]+\/temp\//.test(url);
 }
 

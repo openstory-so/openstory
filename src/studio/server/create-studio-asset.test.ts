@@ -555,6 +555,13 @@ describe('reference rights gate (#1581)', () => {
     expect(
       needsReferenceAttestation('/r2/thumbnails/teams/t/studio/a/image.png')
     ).toBe(false);
+    // System talent / locations ship from our own assets domain.
+    const { getPublicAssetsDomain } = await import('@/platform/public-assets');
+    expect(
+      needsReferenceAttestation(
+        `https://${getPublicAssetsDomain()}/talent/ava/sheet.webp`
+      )
+    ).toBe(false);
   });
 
   it('refuses an upload with no sign-off on record, before any credit hold', async () => {
