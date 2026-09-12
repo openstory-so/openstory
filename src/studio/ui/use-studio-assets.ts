@@ -1,6 +1,7 @@
 import { useAuthGate } from '@/platform/ui/auth/auth-gate-provider';
 import { getAllAdminStudioAssetsFn } from '@/platform/admin-support.fn';
 import {
+  classifyStudioReferenceFn,
   createStudioAssetsFn,
   deleteStudioAssetFn,
   draftStudioPromptFn,
@@ -17,6 +18,7 @@ import {
   useInfiniteQuery,
   useMutation,
   useMutationState,
+  useQueries,
   useQueryClient,
 } from '@tanstack/react-query';
 import { isInsufficientCreditsError } from '@/platform/errors';
@@ -117,11 +119,39 @@ export function useCreateStudioAssets() {
     // list — the composer's spinner and the gallery's placeholder tiles
     // (#1455) hand off to the real queued tiles with no gap.
     onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: studioAssetKeys.all }),
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: studioAssetKeys.all }),
+        // The gate just recorded the sign-offs; re-ask so the blocks drop.
+        queryClient.invalidateQueries({ queryKey: referenceRightsKeys.all }),
+      ]),
     onError: (error) => {
       if (isInsufficientCreditsError(error)) return;
       toast.error(error.message);
     },
+  });
+}
+
+const referenceRightsKeys = {
+  all: ['studio-reference-rights'] as const,
+  url: (url: string) => [...referenceRightsKeys.all, url] as const,
+};
+
+/**
+ * Rights check per gated reference image (#1581): whether this team has
+ * already attested to it, and whether it shows a real person. Results are
+ * one per `urls` entry, in order. Cached for the session — a still that was
+ * classified once is not billed again when re-attached.
+ */
+export function useStudioReferenceRights(urls: string[]) {
+  const { isAuthenticated } = useAuthGate();
+  return useQueries({
+    queries: urls.map((url) => ({
+      queryKey: referenceRightsKeys.url(url),
+      queryFn: () => classifyStudioReferenceFn({ data: { url } }),
+      enabled: isAuthenticated,
+      staleTime: Number.POSITIVE_INFINITY,
+      retry: false,
+    })),
   });
 }
 

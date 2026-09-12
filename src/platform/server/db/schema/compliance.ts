@@ -188,6 +188,8 @@ export const ATTESTATION_SUBJECT_TYPES = [
   'sequence_element',
   'avatar_asset',
   'style_reference',
+  /** A studio upload / pasted URL; `subjectId` is the SHA-256 of the URL (#1581). */
+  'studio_reference',
 ] as const;
 export type AttestationSubjectType = (typeof ATTESTATION_SUBJECT_TYPES)[number];
 

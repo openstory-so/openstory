@@ -12,6 +12,7 @@ import {
   statementHash,
 } from '@/platform/compliance/attestations';
 import type { ScopedDb } from '@/platform/server/db/scoped';
+import type { AttestationSubjectType } from '@/platform/server/db/schema/compliance';
 import { AttestationRequiredError, ValidationError } from '@/platform/errors';
 import { z } from 'zod';
 
@@ -75,26 +76,26 @@ export function requireUploadAttestation(opts: {
   };
 }
 
-/** Persist the matching statement against a talent we just wrote. */
+/** Persist the matching statement against the upload we just accepted. */
 export async function recordPortraitAttestation(opts: {
   scopedDb: ScopedDb;
+  /** @default 'talent' */
+  subjectType?: AttestationSubjectType;
   subjectId: string;
   attestation: PortraitAttestationInput;
   request?: LikenessRequestContext;
   depictsRealPerson?: boolean;
 }): Promise<void> {
   const depictsRealPerson = opts.depictsRealPerson ?? true;
-  const statement = statementFor({
-    subjectType: 'talent',
-    depictsRealPerson,
-  });
+  const subjectType = opts.subjectType ?? 'talent';
+  const statement = statementFor({ subjectType, depictsRealPerson });
   if (statement.version !== opts.attestation.statementVersion) {
     throw new ValidationError(
       `Attestation version mismatch: expected ${statement.version}`
     );
   }
   await opts.scopedDb.compliance.attestations.record({
-    subjectType: 'talent',
+    subjectType,
     subjectId: opts.subjectId,
     statementVersion: statement.version,
     statementSha256: await statementHash(statement),

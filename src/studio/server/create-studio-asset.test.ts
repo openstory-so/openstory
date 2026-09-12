@@ -12,7 +12,12 @@ import { drizzle } from 'drizzle-orm/libsql';
 import { migrate } from 'drizzle-orm/libsql/migrator';
 import { generateId } from '@/platform/id';
 import type { Database } from '@/platform/server/db/client';
-import { generatedAssets, teams, user } from '@/platform/server/db/schema';
+import {
+  generatedAssets,
+  teams,
+  uploadAttestations,
+  user,
+} from '@/platform/server/db/schema';
 import { relations } from '@/platform/server/db/schema/relations';
 import { InsufficientCreditsError } from '@/platform/errors';
 import { studioCreateInputSchema } from '@/studio/schema';
@@ -70,6 +75,7 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   await db.delete(generatedAssets);
+  await db.delete(uploadAttestations);
   vi.clearAllMocks();
   mockReserveRunCredits.mockResolvedValue('res-studio-1');
   mockTriggerWorkflow.mockResolvedValue('wf-studio-1');
@@ -212,6 +218,7 @@ describe('createStudioAssets', () => {
         count: 1,
         mode: 'text',
         referenceImages: [],
+        referenceAttestations: [],
         referenceVideos: [],
         referenceAudio: [],
       })
@@ -237,6 +244,7 @@ describe('createStudioAssets', () => {
         resolution: '720p' as const,
         count: 1,
         referenceImages: [],
+        referenceAttestations: [],
       })
     ).rejects.toBeInstanceOf(AccountRestrictedError);
 
@@ -259,6 +267,7 @@ describe('createStudioAssets', () => {
         resolution: '720p' as const,
         count: 1,
         referenceImages: [],
+        referenceAttestations: [],
       })
     ).rejects.toThrow('Insufficient credits');
 
@@ -280,6 +289,7 @@ describe('createStudioAssets', () => {
       resolution: '720p' as const,
       count: 2,
       referenceImages: [],
+      referenceAttestations: [],
     });
 
     expect(result.assets).toHaveLength(2);
@@ -356,6 +366,7 @@ describe('createStudioAssets', () => {
         resolution: '720p' as const,
         count: 2,
         referenceImages: [],
+        referenceAttestations: [],
       })
     ).rejects.toBeInstanceOf(InsufficientCreditsError);
 
@@ -377,6 +388,7 @@ describe('createStudioAssets', () => {
         resolution: '720p' as const,
         count: 1,
         referenceImages: [],
+        referenceAttestations: [],
       })
     ).rejects.toThrow('binding exploded');
 
@@ -407,6 +419,7 @@ describe('createStudioAssets', () => {
         resolution: '720p' as const,
         count: 3,
         referenceImages: [],
+        referenceAttestations: [],
       })
     ).rejects.toThrow('binding exploded');
 
@@ -431,6 +444,7 @@ describe('createStudioAssets', () => {
       resolution: '720p' as const,
       count: 1,
       referenceImages: [],
+      referenceAttestations: [],
     });
     const second = await createStudioAssets(scopedDb, {
       activity: 'image',
@@ -440,6 +454,7 @@ describe('createStudioAssets', () => {
       resolution: '720p' as const,
       count: 1,
       referenceImages: [],
+      referenceAttestations: [],
     });
 
     const newest = await scopedDb.generatedAssets.list({
@@ -482,6 +497,7 @@ describe('createStudioAssets', () => {
       count: 1,
       mode: 'text',
       referenceImages: [],
+      referenceAttestations: [],
       referenceVideos: [],
       referenceAudio: [],
     });
@@ -521,5 +537,154 @@ describe('createStudioAssets', () => {
     expect(mockTriggerWorkflow.mock.calls[0]?.[1].input).not.toHaveProperty(
       'imageModel'
     );
+  });
+});
+
+describe('reference rights gate (#1581)', () => {
+  const uploadUrl = `/r2/talent/${TEAM_ID}/temp/01ABC.png`;
+  const base = {
+    activity: 'image' as const,
+    prompt: 'a red fox',
+    imageModel: 'gpt_image_2' as const,
+    aspectRatio: '16:9' as const,
+    resolution: '720p' as const,
+    count: 1,
+  };
+
+  it('gates uploads and raw URLs, not library or generated stills', async () => {
+    const { needsReferenceAttestation } =
+      await import('@/studio/reference-rights');
+    expect(needsReferenceAttestation(uploadUrl)).toBe(true);
+    expect(needsReferenceAttestation('https://example.com/anyone.jpg')).toBe(
+      true
+    );
+    expect(needsReferenceAttestation(`/r2/talent/${TEAM_ID}/tal1/a.png`)).toBe(
+      false
+    );
+    expect(
+      needsReferenceAttestation('/r2/thumbnails/teams/t/studio/a/image.png')
+    ).toBe(false);
+  });
+
+  it('refuses an upload with no sign-off before any credit hold', async () => {
+    const { AttestationRequiredError } = await import('@/platform/errors');
+    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+
+    await expect(
+      createStudioAssets(scopedDb, {
+        ...base,
+        referenceImages: [uploadUrl],
+        referenceAttestations: [],
+      })
+    ).rejects.toBeInstanceOf(AttestationRequiredError);
+
+    expect(mockReserveRunCredits).not.toHaveBeenCalled();
+    expect(await db.select().from(generatedAssets)).toEqual([]);
+  });
+
+  it('requires a basis for a real person', async () => {
+    const { AttestationRequiredError } = await import('@/platform/errors');
+    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+
+    await expect(
+      createStudioAssets(scopedDb, {
+        ...base,
+        referenceImages: [uploadUrl],
+        referenceAttestations: [
+          {
+            url: uploadUrl,
+            depictsRealPerson: true,
+            statementVersion: 'portrait-rights-v1',
+          },
+        ],
+      })
+    ).rejects.toBeInstanceOf(AttestationRequiredError);
+    expect(mockReserveRunCredits).not.toHaveBeenCalled();
+  });
+
+  it('records the sign-off keyed by the URL hash, then never re-asks for that still', async () => {
+    const { sha256Hex } = await import('@/platform/compliance/hash');
+    const { PORTRAIT_RIGHTS_V1, statementHash } =
+      await import('@/platform/compliance/attestations');
+    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+
+    await createStudioAssets(
+      scopedDb,
+      {
+        ...base,
+        referenceImages: [uploadUrl],
+        referenceAttestations: [
+          {
+            url: uploadUrl,
+            depictsRealPerson: true,
+            statementVersion: 'portrait-rights-v1',
+            authorizationBasis: 'this is me',
+          },
+        ],
+      },
+      { ipAddress: '203.0.113.9', userAgent: 'vitest' }
+    );
+
+    const rows = await db.select().from(uploadAttestations);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      teamId: TEAM_ID,
+      userId: USER_ID,
+      subjectType: 'studio_reference',
+      subjectId: await sha256Hex(uploadUrl),
+      statementVersion: PORTRAIT_RIGHTS_V1.version,
+      statementSha256: await statementHash(PORTRAIT_RIGHTS_V1),
+      depictsRealPerson: true,
+      authorizationBasis: 'this is me',
+      ipAddress: '203.0.113.9',
+      userAgent: 'vitest',
+    });
+    // The wording stays in the ledger, not in the run.
+    expect(
+      mockTriggerWorkflow.mock.calls[0]?.[1].input.referenceAttestations
+    ).toEqual([]);
+
+    // Same still again, no sign-off sent: already on record.
+    await createStudioAssets(scopedDb, {
+      ...base,
+      referenceImages: [uploadUrl],
+      referenceAttestations: [],
+    });
+    expect(await db.select().from(uploadAttestations)).toHaveLength(1);
+    expect(mockTriggerWorkflow).toHaveBeenCalledTimes(2);
+  });
+
+  it('gates frames-mode stills too, and lets library stills through untouched', async () => {
+    const { AttestationRequiredError } = await import('@/platform/errors');
+    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+    const video = {
+      activity: 'video' as const,
+      prompt: 'the fox turns toward camera',
+      videoModel: 'seedance_v2' as const,
+      aspectRatio: '16:9' as const,
+      resolution: '720p' as const,
+      duration: 5,
+      count: 1,
+      referenceImages: [],
+      referenceVideos: [],
+      referenceAudio: [],
+      referenceAttestations: [],
+    };
+
+    await expect(
+      createStudioAssets(scopedDb, {
+        ...video,
+        mode: 'frames',
+        startImageUrl: uploadUrl,
+      })
+    ).rejects.toBeInstanceOf(AttestationRequiredError);
+
+    await createStudioAssets(scopedDb, {
+      ...video,
+      mode: 'frames',
+      startImageUrl: `/r2/talent/${TEAM_ID}/tal1/headshot.png`,
+    });
+    expect(await db.select().from(uploadAttestations)).toEqual([]);
+    expect(mockTriggerWorkflow).toHaveBeenCalledTimes(1);
   });
 });

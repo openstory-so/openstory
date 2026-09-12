@@ -64,6 +64,25 @@ const promptSchema = z
 
 const countSchema = z.number().int().min(1).max(4);
 
+/**
+ * Rights sign-off for one gated reference image (#1581). Keyed by the URL
+ * the composer attached; the server hashes it into the attestation row.
+ */
+const referenceAttestationSchema = z.object({
+  url: mediaUrlSchema,
+  depictsRealPerson: z.boolean(),
+  statementVersion: z.string().min(1).max(60),
+  authorizationBasis: z.string().max(500).optional(),
+});
+const referenceAttestationsSchema = z
+  .array(referenceAttestationSchema)
+  .max(11)
+  .default([]);
+
+export type StudioReferenceAttestation = z.infer<
+  typeof referenceAttestationSchema
+>;
+
 export const studioActivitySchema = z.enum(['image', 'video']);
 export const studioSortSchema = z.enum(['newest', 'oldest']);
 export const studioReferenceKindSchema = z.enum(['image', 'video', 'audio']);
@@ -83,6 +102,7 @@ export const studioCreateInputSchema = z.discriminatedUnion('activity', [
       count: countSchema.default(1),
       /** Routes to the model's edit endpoint; bound as `@Image1`…`@ImageN`. */
       referenceImages: z.array(mediaUrlSchema).max(9).default([]),
+      referenceAttestations: referenceAttestationsSchema,
     })
     .superRefine((input, ctx) => {
       if (
@@ -116,6 +136,7 @@ export const studioCreateInputSchema = z.discriminatedUnion('activity', [
       /** Frames mode: the first frame, and optionally the last. */
       startImageUrl: mediaUrlSchema.optional(),
       endImageUrl: mediaUrlSchema.optional(),
+      referenceAttestations: referenceAttestationsSchema,
     })
     .superRefine((input, ctx) => {
       const limit = studioReferenceLimit(input.videoModel);

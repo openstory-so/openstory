@@ -121,6 +121,7 @@ const IMAGE: StudioCreateInput = {
   resolution: '720p' as const,
   count: 1,
   referenceImages: [],
+  referenceAttestations: [],
 };
 
 const VIDEO: StudioCreateInput = {
@@ -133,6 +134,7 @@ const VIDEO: StudioCreateInput = {
   count: 1,
   mode: 'text',
   referenceImages: [],
+  referenceAttestations: [],
   referenceVideos: [],
   referenceAudio: [],
 };

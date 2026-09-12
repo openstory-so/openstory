@@ -62,8 +62,15 @@ import {
   useCreateStudioAssets,
   useDraftStudioPrompt,
   useStudioPendingCreates,
+  useStudioReferenceRights,
 } from './use-studio-assets';
 import { useUploadTempMedia } from '@/cast/ui/use-talent';
+import { PortraitAttestationFields } from '@/cast/ui/talent-library/portrait-attestation-fields';
+import { statementFor } from '@/platform/compliance/attestations';
+import {
+  needsReferenceAttestation,
+  studioReferenceImages,
+} from '@/studio/reference-rights';
 import {
   capReferenceImages,
   DEFAULT_IMAGE_MODEL,
@@ -88,7 +95,11 @@ import { VoiceInputButton } from '@/ui/voice/voice-input-button';
 import { useEditorDictation } from '@/ui/use-dictation';
 import { pickShufflePrompt, studioShufflePrompts } from './prompt-shuffle';
 import { parseStudioPaste } from './paste-import';
-import type { StudioCreateInput, StudioReferenceKind } from '@/studio/schema';
+import type {
+  StudioCreateInput,
+  StudioReferenceAttestation,
+  StudioReferenceKind,
+} from '@/studio/schema';
 import {
   renumberStudioReferences,
   snapStudioVideoDuration,
@@ -308,6 +319,11 @@ export function StudioComposer({
   const [picker, setPicker] = useState<PickerTarget | null>(null);
   const [dragging, setDragging] = useState(false);
   const dragDepth = useRef(0);
+  // Rights sign-off (#1581). Each tick remembers the set of tiles it was
+  // given for, so attaching another unattested still un-ticks it.
+  const [portraitTickedFor, setPortraitTickedFor] = useState('');
+  const [assetTickedFor, setAssetTickedFor] = useState('');
+  const [authorizationBasis, setAuthorizationBasis] = useState('');
 
   const isVideo = activity === 'video';
   const compatibleVideoModel = getCompatibleModel(videoModel, aspectRatio);
@@ -389,10 +405,109 @@ export function StudioComposer({
     (effectiveMode === 'reference' &&
       references.length + videoRefs.length > 0) ||
     (effectiveMode === 'frames' && startFrame !== null);
+
+  const buildInput = (): StudioCreateInput => {
+    if (activity === 'video') {
+      return {
+        activity: 'video',
+        prompt: trimmed,
+        videoModel: compatibleVideoModel,
+        aspectRatio,
+        resolution,
+        duration: snappedDuration,
+        count,
+        generateAudio: audioCapable ? generateAudio : undefined,
+        mode: effectiveMode,
+        referenceImages:
+          effectiveMode === 'reference' ? references.map((r) => r.url) : [],
+        referenceVideos:
+          effectiveMode === 'reference' ? videoRefs.map((r) => r.url) : [],
+        referenceAudio:
+          effectiveMode === 'reference' ? audioRefs.map((r) => r.url) : [],
+        startImageUrl: effectiveMode === 'frames' ? startFrame?.url : undefined,
+        endImageUrl: effectiveMode === 'frames' ? endFrame?.url : undefined,
+        referenceAttestations: [],
+      };
+    }
+    return {
+      activity: 'image',
+      prompt: trimmed,
+      imageModel,
+      aspectRatio,
+      resolution,
+      count,
+      referenceImages: references.map((r) => r.url),
+      referenceAttestations: [],
+    };
+  };
+
+  // --- rights (#1581) ---------------------------------------------------------
+  // Same rule the server gate applies: uploads and raw URLs get classified,
+  // library rows do not. Logged out, nothing is asked until sign-in.
+  const gatedUrls = [
+    ...new Set(
+      studioReferenceImages(buildInput()).filter(needsReferenceAttestation)
+    ),
+  ];
+  const rights = useStudioReferenceRights(gatedUrls);
+  const checks = rights.flatMap((query, i) => {
+    const url = gatedUrls[i];
+    return url ? [{ url, query }] : [];
+  });
+  const unattested = checks.filter(
+    (c) => c.query.data !== undefined && !c.query.data.attested
+  );
+  const portraitUrls = unattested
+    .filter((c) => c.query.data?.depictsRealPerson)
+    .map((c) => c.url);
+  const assetUrls = unattested
+    .filter((c) => !c.query.data?.depictsRealPerson)
+    .map((c) => c.url);
+  const portraitKey = portraitUrls.join('\n');
+  const assetKey = assetUrls.join('\n');
+  const portraitStatement = statementFor({
+    subjectType: 'studio_reference',
+    depictsRealPerson: true,
+  });
+  const assetStatement = statementFor({
+    subjectType: 'studio_reference',
+    depictsRealPerson: false,
+  });
+  const portraitTicked =
+    portraitUrls.length > 0 && portraitTickedFor === portraitKey;
+  const assetTicked = assetUrls.length > 0 && assetTickedFor === assetKey;
+  const rightsReady =
+    !isAuthenticated ||
+    (checks.every((c) => c.query.data !== undefined) &&
+      (portraitUrls.length === 0 ||
+        (portraitTicked && authorizationBasis.trim().length > 0)) &&
+      (assetUrls.length === 0 || assetTicked));
+  const referenceAttestations: StudioReferenceAttestation[] = [
+    ...portraitUrls.map((url) => ({
+      url,
+      depictsRealPerson: true,
+      statementVersion: portraitStatement.version,
+      authorizationBasis: authorizationBasis.trim(),
+    })),
+    ...assetUrls.map((url) => ({
+      url,
+      depictsRealPerson: false,
+      statementVersion: assetStatement.version,
+    })),
+  ];
+  const badgeFor = (url: string): string => {
+    if (effectiveMode === 'frames') {
+      return url === startFrame?.url ? 'Start frame' : 'End frame';
+    }
+    const index = references.findIndex((r) => r.url === url);
+    return index >= 0 ? `@Image${index + 1}` : url;
+  };
+  const badges = (urls: string[]) => urls.map(badgeFor).join(', ');
+
   // Generate stays live on an empty prompt (#1393) — an empty click is the
   // cheapest place to open the login dialog or offer a random prompt. Only
-  // an unready mode or an in-flight upload actually disables it.
-  const canSubmit = modeReady && uploading === 0;
+  // an unready mode, an in-flight upload, or a missing sign-off disables it.
+  const canSubmit = modeReady && uploading === 0 && rightsReady;
   // The prompt, not the button, is what pulses while its generation runs
   // (#1455) — and typing anything else stops it, even mid-generation.
   const generating =
@@ -779,39 +894,6 @@ export function StudioComposer({
     setEndFrame(null);
   };
 
-  const buildInput = (): StudioCreateInput => {
-    if (activity === 'video') {
-      return {
-        activity: 'video',
-        prompt: trimmed,
-        videoModel: compatibleVideoModel,
-        aspectRatio,
-        resolution,
-        duration: snappedDuration,
-        count,
-        generateAudio: audioCapable ? generateAudio : undefined,
-        mode: effectiveMode,
-        referenceImages:
-          effectiveMode === 'reference' ? references.map((r) => r.url) : [],
-        referenceVideos:
-          effectiveMode === 'reference' ? videoRefs.map((r) => r.url) : [],
-        referenceAudio:
-          effectiveMode === 'reference' ? audioRefs.map((r) => r.url) : [],
-        startImageUrl: effectiveMode === 'frames' ? startFrame?.url : undefined,
-        endImageUrl: effectiveMode === 'frames' ? endFrame?.url : undefined,
-      };
-    }
-    return {
-      activity: 'image',
-      prompt: trimmed,
-      imageModel,
-      aspectRatio,
-      resolution,
-      count,
-      referenceImages: references.map((r) => r.url),
-    };
-  };
-
   const submit = () => {
     if (!canSubmit || create.isPending) return;
     if (trimmed.length === 0) {
@@ -825,7 +907,17 @@ export function StudioComposer({
       return;
     }
     requireAuth(() => {
-      create.mutate(buildInput());
+      create.mutate(
+        { ...buildInput(), referenceAttestations },
+        {
+          // The sign-offs are on record now; a later still gets its own tick.
+          onSuccess: () => {
+            setPortraitTickedFor('');
+            setAssetTickedFor('');
+            setAuthorizationBasis('');
+          },
+        }
+      );
     });
   };
 
@@ -1000,6 +1092,68 @@ export function StudioComposer({
           }}
         />
       </div>
+
+      {isAuthenticated && checks.length > 0 && (
+        <div className="flex shrink-0 flex-col gap-2">
+          {checks.some((c) => c.query.isPending) && (
+            <p className="text-xs text-muted-foreground" aria-live="polite">
+              Checking{' '}
+              {badges(
+                checks.filter((c) => c.query.isPending).map((c) => c.url)
+              )}{' '}
+              for real people…
+            </p>
+          )}
+          {checks
+            .filter((c) => c.query.isError)
+            .map((c) => (
+              <p key={c.url} className="text-xs text-destructive">
+                Couldn't check {badgeFor(c.url)}: {c.query.error?.message}{' '}
+                <Button
+                  type="button"
+                  variant="link"
+                  size="sm"
+                  className="h-auto p-0 text-xs"
+                  onClick={() => void c.query.refetch()}
+                >
+                  Retry
+                </Button>
+              </p>
+            ))}
+          {portraitUrls.length > 0 && (
+            <PortraitAttestationFields
+              id="studio-portrait-attestation"
+              statement={portraitStatement}
+              attested={portraitTicked}
+              onAttestedChange={(checked) =>
+                setPortraitTickedFor(checked ? portraitKey : '')
+              }
+              authorizationBasis={authorizationBasis}
+              onAuthorizationBasisChange={setAuthorizationBasis}
+            >
+              <p className="text-xs font-medium">
+                Real person in {badges(portraitUrls)}
+              </p>
+            </PortraitAttestationFields>
+          )}
+          {assetUrls.length > 0 && (
+            <PortraitAttestationFields
+              id="studio-asset-attestation"
+              statement={assetStatement}
+              attested={assetTicked}
+              onAttestedChange={(checked) =>
+                setAssetTickedFor(checked ? assetKey : '')
+              }
+              authorizationBasis=""
+              onAuthorizationBasisChange={() => {}}
+            >
+              <p className="text-xs font-medium">
+                Uploaded: {badges(assetUrls)}
+              </p>
+            </PortraitAttestationFields>
+          )}
+        </div>
+      )}
 
       <div className="flex shrink-0 flex-wrap items-center gap-2">
         {isVideo && (

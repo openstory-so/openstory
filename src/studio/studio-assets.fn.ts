@@ -22,6 +22,10 @@ import {
 } from '@/platform/server/storage/buckets';
 import { deleteFile } from '@/platform/server/storage/storage-cloudflare';
 import { createStudioAssets } from '@/studio/server/create-studio-asset';
+import { analyzeTalentMediaForTeam } from '@/cast/server/talent/analyze-talent-media';
+import { sha256Hex } from '@/platform/compliance/hash';
+import { needsReferenceAttestation } from '@/studio/reference-rights';
+import { getRequest } from '@tanstack/react-start/server';
 import {
   studioActivitySchema,
   studioCreateInputSchema,
@@ -40,7 +44,43 @@ export const createStudioAssetsFn = createServerFn({ method: 'POST' })
   .middleware([authWithTeamMiddleware])
   .validator(zodValidator(studioCreateInputSchema))
   .handler(async ({ context, data }) => {
-    return createStudioAssets(context.scopedDb, data);
+    const request = getRequest();
+    return createStudioAssets(context.scopedDb, data, {
+      ipAddress: request.headers.get('cf-connecting-ip'),
+      userAgent: request.headers.get('user-agent'),
+    });
+  });
+
+/**
+ * Rights check for one gated reference image (#1581): already attested by
+ * this team (no vision call), or classified so the composer can show the
+ * matching statement. Never defaults to human — the classifier decides.
+ */
+export const classifyStudioReferenceFn = createServerFn({ method: 'POST' })
+  .middleware([authWithTeamMiddleware])
+  .validator(zodValidator(z.object({ url: mediaUrlSchema })))
+  .handler(async ({ context, data }) => {
+    if (!needsReferenceAttestation(data.url)) {
+      throw new Error('This reference needs no rights check');
+    }
+    const [latest] =
+      await context.scopedDb.compliance.attestations.listForSubject(
+        'studio_reference',
+        await sha256Hex(data.url)
+      );
+    if (latest) {
+      return { attested: true, depictsRealPerson: latest.depictsRealPerson };
+    }
+    const analysis = await analyzeTalentMediaForTeam({
+      scopedDb: context.scopedDb,
+      userId: context.user.id,
+      imageUrls: [data.url],
+      idempotencyKey: `studio-vision:${data.url}`,
+    });
+    return {
+      attested: false,
+      depictsRealPerson: analysis.subjectKind === 'human',
+    };
   });
 
 const listStudioAssetsInputSchema = z.object({
