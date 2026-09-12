@@ -119,10 +119,7 @@ export type SceneSplitScenesResult = z.infer<
 export const sceneSplitBiblesResultSchema = z.object({
   characterBible: z.array(characterBibleEntrySchema),
   locationBible: z.array(locationBibleEntrySchema),
-  elementBible: z.array(elementBibleEntrySchema).meta({
-    description:
-      'Elements referenced by UPPERCASE token — user-uploaded reference images plus detected recurring products/objects needing a consistent canonical look',
-  }),
+  elementBible: z.array(elementBibleEntrySchema),
 });
 
 export type SceneSplitBiblesResult = z.infer<

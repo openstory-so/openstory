@@ -26,15 +26,13 @@ import { z } from 'zod';
 // Character Bible Schemas
 // ============================================================================
 
-// Descriptions here count toward Anthropic's strict-output grammar budget
-// (#1035): keep only the constraint-bearing ones — the detailed field guidance
-// lives in the prompts (`workflow-prompts.ts`).
+// Descriptions are short labels on purpose: they count toward Anthropic's
+// strict-output grammar budget (#1035), so the vocabulary and format rules
+// live in the `phase/scene-bibles-chat` prompt, which is not budgeted.
 export const characterBibleEntrySchema = z.object({
   characterId: z.string(),
   name: z.string(),
-  age: z.string().meta({
-    description: 'Age as number (e.g., 35) or range (e.g., "30s", "early 40s")',
-  }),
+  age: z.string().meta({ description: 'Number or range' }),
   gender: z.string(),
   ethnicity: z.string(),
   physicalDescription: z.string(),
@@ -43,10 +41,7 @@ export const characterBibleEntrySchema = z.object({
   // Performance (#1561). Guidance lives in the bible prompt (grammar budget).
   personality: z.string(),
   movement: z.string(),
-  consistencyTag: z.string().meta({
-    description:
-      'Snake_case slug of the character name as written in the script (e.g., "detective_sarah"); optional descriptive context may follow the name slug',
-  }),
+  consistencyTag: z.string().meta({ description: 'snake_case name slug' }),
 });
 
 // ============================================================================
@@ -62,20 +57,13 @@ export const characterBibleEntrySchema = z.object({
  */
 const firstMentionSchema = z.object({
   text: z.string(),
-  lineNumber: z
-    .number()
-    .meta({ description: '1-based line number from the script gutter' }),
+  lineNumber: z.number().meta({ description: 'Gutter line' }),
 });
 
 export const elementBibleEntrySchema = z.object({
-  token: z.string().meta({
-    description:
-      'Uppercase token used in the script to reference this element (e.g. "LOGO", "BOTTLE")',
-  }),
+  token: z.string().meta({ description: 'UPPERCASE script token' }),
   description: z.string(),
-  consistencyTag: z.string().meta({
-    description: 'Short slug tag for image generation (e.g. "red-hex-logo")',
-  }),
+  consistencyTag: z.string().meta({ description: 'Short slug' }),
   firstMention: firstMentionSchema,
 });
 
@@ -85,10 +73,7 @@ export const elementBibleEntrySchema = z.object({
 
 export const locationBibleEntrySchema = z.object({
   locationId: z.string(),
-  name: z.string().meta({
-    description:
-      'Location name as written in the script (e.g., "INT. OFFICE - DAY")',
-  }),
+  name: z.string().meta({ description: 'As written in the script' }),
   type: z.enum(['interior', 'exterior', 'both']),
   timeOfDay: z.string(),
   description: z.string(),
@@ -97,10 +82,7 @@ export const locationBibleEntrySchema = z.object({
   colorPalette: z.string(),
   lightingSetup: z.string(),
   ambiance: z.string(),
-  consistencyTag: z.string().meta({
-    description:
-      'Short snake_case prompt tag for image generation (e.g., "office_modern_steel_glass")',
-  }),
+  consistencyTag: z.string().meta({ description: 'snake_case name slug' }),
   firstMention: firstMentionSchema,
 });
 
