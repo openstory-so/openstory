@@ -30,7 +30,7 @@
         "@tailwindcss/typography": "^0.5.20",
         "@tanstack/ai": "^0.53.0",
         "@tanstack/ai-byteplus": "^0.3.4",
-        "@tanstack/ai-elevenlabs": "0.4.1",
+        "@tanstack/ai-elevenlabs": "^0.4.1",
         "@tanstack/ai-fal": "^0.13.4",
         "@tanstack/ai-gemini": "^0.26.5",
         "@tanstack/ai-grok": "^0.18.4",
